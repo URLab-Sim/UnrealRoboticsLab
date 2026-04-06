@@ -1,0 +1,107 @@
+/* ============================================================
+   URLab Documentation — Custom Styles
+   Works with both slate (dark) and default (light) Material themes.
+   ============================================================ */
+
+/* --- Search result styling (both modes) --- */
+.md-search-result__title {
+  font-weight: 700;
+}
+
+/* --- API Item Cards --- */
+.urlab-api-item {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  position: relative;
+}
+
+.urlab-api-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--md-accent-fg-color) 0%, var(--md-primary-fg-color) 100%);
+  opacity: 0.4;
+  border-radius: 8px 8px 0 0;
+  transition: opacity 0.2s ease;
+}
+
+.urlab-api-item:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.urlab-api-item:hover::before {
+  opacity: 1;
+}
+
+.urlab-api-item h4,
+.urlab-api-item h5 {
+  margin-top: 0 !important;
+  font-size: 1.15em;
+  font-weight: 700;
+  border-bottom: none;
+}
+
+.urlab-api-item blockquote {
+  border-left: 3px solid var(--md-accent-fg-color);
+  padding: 10px 14px;
+  margin: 12px 0;
+  border-radius: 0 4px 4px 0;
+  font-size: 0.95em;
+  line-height: 1.6;
+  color: var(--md-default-fg-color--light);
+}
+
+.urlab-api-item ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.urlab-api-item ul li {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  font-size: 0.9em;
+  color: var(--md-default-fg-color--light);
+}
+
+.urlab-api-item ul li strong {
+  color: var(--md-accent-fg-color);
+  min-width: 90px;
+  display: inline-block;
+}
+
+.urlab-api-item ul li code {
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+/* --- Tables --- */
+.md-typeset table:not([class]) {
+  font-size: 0.85em;
+}
+
+/* --- Admonition tweaks --- */
+.md-typeset .admonition {
+  border-radius: 6px;
+}
+
+/* --- Code blocks --- */
+.md-typeset pre > code {
+  border-radius: 6px;
+}
+
+/* --- Smooth scrolling --- */
+html {
+  scroll-behavior: smooth;
+}

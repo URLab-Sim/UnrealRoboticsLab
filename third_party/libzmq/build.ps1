@@ -14,10 +14,18 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
+$PinnedCommit = "7d95ac02"  # Pin to tested commit (v4.3.5+)
+
 $RepoDir = "src"
 if (-not (Test-Path $RepoDir)) {
-    Write-Host "Cloning libzmq..." -ForegroundColor Gray
+    Write-Host "Cloning libzmq (pinned: $PinnedCommit)..." -ForegroundColor Gray
     git clone https://github.com/zeromq/libzmq $RepoDir
+    Push-Location $RepoDir
+    git checkout $PinnedCommit
+    Pop-Location
+} else {
+    Write-Host "libzmq source already exists at '$RepoDir'. Skipping clone." -ForegroundColor Yellow
+    Write-Host "  To rebuild from scratch, delete '$RepoDir/' and re-run." -ForegroundColor Yellow
 }
 
 Push-Location $RepoDir

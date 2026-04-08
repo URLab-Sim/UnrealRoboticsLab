@@ -14,10 +14,18 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
+$PinnedCommit = "c7436bf"  # Pin to tested commit (CDT include path fix + unbundled 3rd party support)
+
 $RepoDir = "src"
 if (-not (Test-Path $RepoDir)) {
-    Write-Host "Cloning CoACD..." -ForegroundColor Gray
+    Write-Host "Cloning CoACD (pinned: $PinnedCommit)..." -ForegroundColor Gray
     git clone https://github.com/SarahWeiii/CoACD $RepoDir
+    Push-Location $RepoDir
+    git checkout $PinnedCommit
+    Pop-Location
+} else {
+    Write-Host "CoACD source already exists at '$RepoDir'. Skipping clone." -ForegroundColor Yellow
+    Write-Host "  To rebuild from scratch, delete '$RepoDir/' and re-run." -ForegroundColor Yellow
 }
 
 Push-Location $RepoDir
@@ -27,7 +35,10 @@ if ($LASTEXITCODE -ne 0) { Write-Warning "Submodule update failed for CoACD" }
 
 Write-Host "Applying custom CoACD configuration..." -ForegroundColor Gray
 Copy-Item -Path "../../CoACD_custom/CMakeLists.txt" -Destination "." -Force
-Copy-Item -Path "../../CoACD_custom/cmake/*" -Destination "cmake/" -Recurse -Force
+if (Test-Path "../../CoACD_custom/cmake") {
+    if (-not (Test-Path "cmake")) { New-Item -ItemType Directory -Path "cmake" | Out-Null }
+    Copy-Item -Path "../../CoACD_custom/cmake/*" -Destination "cmake/" -Recurse -Force
+}
 
 if (-not (Test-Path "build")) { New-Item -ItemType Directory -Path "build" }
 cd build

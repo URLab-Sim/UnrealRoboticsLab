@@ -73,7 +73,7 @@ int SaveMeshAsOBJComplex(const FString& FilePath, const Chaos::TArrayCollectionA
     CoACD_Mesh inputMesh = CoacdInterface::ConvertToCoACDMesh(Vertices, Indices);
 
     CoACD_MeshArray result = CoACD_run(inputMesh, Threshold, -1, preprocess_auto, 30, 1000, 20, 150, 3, false, true, false, 100,
-                                       false, 0.01, apx_ch, 0);
+                                       false, 0.01, apx_ch, 0, false);
     int MeshCount = result.meshes_count;
 
     UE_LOG(LogURLab, Log, TEXT("CoACD: %d convex hulls created (threshold=%.3f)"), result.meshes_count, Threshold);

@@ -14,10 +14,18 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
+$PinnedCommit = "47264877"  # Pin to tested commit (MuJoCo 3.7.0 dev, polynomial stiffness/damping)
+
 $RepoDir = "src"
 if (-not (Test-Path $RepoDir)) {
-    Write-Host "Cloning MuJoCo..." -ForegroundColor Gray
+    Write-Host "Cloning MuJoCo (pinned: $PinnedCommit)..." -ForegroundColor Gray
     git clone https://github.com/google-deepmind/mujoco $RepoDir
+    Push-Location $RepoDir
+    git checkout $PinnedCommit
+    Pop-Location
+} else {
+    Write-Host "MuJoCo source already exists at '$RepoDir'. Skipping clone." -ForegroundColor Yellow
+    Write-Host "  To rebuild from scratch, delete '$RepoDir/' and re-run." -ForegroundColor Yellow
 }
 
 Push-Location $RepoDir

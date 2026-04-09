@@ -57,16 +57,53 @@ URLab communicates with external systems over ZMQ. The companion package [**urla
 - **Python 3.11+** -- optional, for `urlab_bridge` policies.
 - **[uv](https://github.com/astral-sh/uv)** -- optional, for Python dependency management.
 
-## Installation
+## Quick Start (Installation)
 
-1. Clone into `YourProject/Plugins/UnrealRoboticsLab/`.
-2. Build third-party libraries (first time only):
-   ```powershell
-   cd Plugins/UnrealRoboticsLab/third_party
-   .\build_all.ps1    # Windows
-   # bash build_all.sh  # Linux
-   ```
-3. Regenerate project files and build.
+> **⚠️ Critical:** This is a C++ plugin. You **must** be using a C++ project. If your project is Blueprints-only, add a dummy C++ class via *Tools > New C++ Class* before starting.
+
+### 1. Setup Folders
+Clone this repo into your project's `Plugins` folder:
+```bash
+cd "YourProject/Plugins"
+git clone [https://github.com/URLab-Sim/UnrealRoboticsLab.git](https://github.com/URLab-Sim/UnrealRoboticsLab.git)
+```
+
+### 2. Build Dependencies
+Navigate to the plugin's `third_party` folder and run the build script to fetch and compile MuJoCo and ZMQ:
+```powershell
+cd UnrealRoboticsLab/third_party
+.\build_all.ps1
+```
+*(If this script fails with a **Stack Overflow** error, see [Troubleshooting](#-troubleshooting) below).*
+
+### 3. Register Module (Don't skip!)
+You must tell Unreal to link your project against the plugin. Open your project's `.Build.cs` file (e.g., `Source/MyProject/MyProject.Build.cs`) and add `"UnrealRoboticsLab"`:
+```csharp
+PublicDependencyModuleNames.AddRange(new string[] { 
+    "Core", "CoreUObject", "Engine", "InputCore", "UnrealRoboticsLab" 
+});
+```
+
+### 4. Compile & Launch
+1. Right-click your `.uproject` and select **Generate Visual Studio project files**.
+2. Build the solution in VS2022/Rider and launch the Editor.
+3. **Important:** In the Content Browser, go to **Settings (Gear Icon)** and check **"Show Plugin Content"** to see the UI and assets.
+
+---
+
+## Troubleshooting
+
+### "CL.exe" Stack Overflow (Error 0xC00000FD)
+If `build_all.ps1` fails during the MuJoCo sensor build, your compiler has run out of internal memory. This is an upstream issue with older MSVC toolsets.
+* **Fix:** Update Visual Studio 2022 to the latest (17.10+) or use **VS 2025**.
+* **Workaround:** Run the build with an increased stack flag:
+    `cmake -B build ... -DCMAKE_CXX_FLAGS="/F10000000"`
+
+### "Simulate" Dashboard is Missing
+* Ensure an `MjManager` actor is placed in your level.
+* Check that "Show Plugin Content" is enabled in your Content Browser settings.
+
+---
 
 ## Architecture
 

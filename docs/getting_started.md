@@ -2,30 +2,42 @@
 
 ## Prerequisites
 
-- Unreal Engine 5.4+
-- Windows 10/11
-- Python 3.11+ (optional, for external policy control)
+* **Unreal Engine 5.4+**
+* **Windows 10/11**
+* **C++ Project:** This plugin contains source code and cannot be used in a Blueprints-only project.
+* **Visual Studio 2022 / 2025** (with "Game development with C++" workload).
+* **Python 3.11+** (optional, for external policy control)
 
 ## Installation
 
-1. Clone the repository into your Unreal project's `Plugins/` directory:
-   ```bash
-   cd "YourProject/Plugins"
-   git clone https://github.com/URLab-Sim/UnrealRoboticsLab.git
-   ```
-2. Build the third-party dependencies (one-time):
-   ```bash
-   cd UnrealRoboticsLab/third_party
-   # Run third_party/build_all.ps1
-   ```
-   Pre-built binaries for Windows are included in `third_party/install/` (MuJoCo, libzmq, CoACD).
-3. Open your `.uproject` in Unreal Engine -- the plugin loads automatically.
-4. (Optional) Set up the Python bridge for external control:
-   ```bash
-   cd UnrealRoboticsLab/urlab_bridge
-   pip install uv
-   uv sync
-   ```
+1. **Clone the Plugin:** Navigate to your project's `Plugins/` directory and clone the repository:
+```bash
+cd "YourProject/Plugins"
+git clone [https://github.com/URLab-Sim/UnrealRoboticsLab.git](https://github.com/URLab-Sim/UnrealRoboticsLab.git)
+```
+
+2. **Build Third-Party Dependencies:** Before opening the engine, you must fetch and build the MuJoCo dependencies. Open **PowerShell** and run:
+```powershell
+cd UnrealRoboticsLab/third_party
+.\build_all.ps1
+```
+*(If you encounter a compiler stack overflow error here, see the [Troubleshooting](#troubleshooting) section below).*
+
+3. **Register the Module:** Open your host project's `.Build.cs` file (e.g., `Source/YourProject/YourProject.Build.cs`) and add `"UnrealRoboticsLab"` to your `PublicDependencyModuleNames`:
+```csharp
+PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "UnrealRoboticsLab" });
+```
+
+4. **Compile:** Right-click your `.uproject` file, select **Generate Visual Studio project files**, then open the solution and **Build** your project in your IDE.
+
+5. **Show Assets:** In the Unreal Content Browser, click the **Settings** (gear icon) and check **Show Plugin Content**. This is required to see the UI widgets and plugin assets.
+
+6. **(Optional) Python Bridge:** Set up the bridge for external control:
+```bash
+cd UnrealRoboticsLab/urlab_bridge
+pip install uv
+uv sync
+```
 
 ## Import Your First Robot
 
@@ -53,8 +65,8 @@
 
 ### From the Dashboard
 
-- Use the actuator sliders in the MjSimulate widget to move joints.
-- Set control source to UI (on manager or per-articulation) to use dashboard sliders instead of ZMQ.
+* Use the actuator sliders in the MjSimulate widget to move joints.
+* Set control source to UI (on manager or per-articulation) to use dashboard sliders instead of ZMQ.
 
 ### From Python (ZMQ)
 
@@ -82,13 +94,33 @@ All functions are `BlueprintCallable`.
 
 ## Debug Visualization
 
-See [Hotkeys](guides/blueprint_reference.md#hotkeys) for keyboard shortcuts.
+See [Hotkeys](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/blueprint_reference.md#hotkeys) for keyboard shortcuts.
 
 ## Next Steps
 
-- [features.md](features.md) -- complete feature reference
-- [MJCF Import](guides/mujoco_import.md) -- import pipeline details
-- [Blueprint Reference](guides/blueprint_reference.md) -- all Blueprint-callable functions and hotkeys
-- [ZMQ Networking](guides/zmq_networking.md) -- protocol, topics, and Python examples
-- [Policy Bridge](guides/policy_bridge.md) -- RL policy deployment
-- [Developer Tools](guides/developer_tools.md) -- schema tracking, debug XML, build/test skills
+* [features.md](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/features.md) -- complete feature reference
+* [MJCF Import](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/mujoco_import.md) -- import pipeline details
+* [Blueprint Reference](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/blueprint_reference.md) -- all Blueprint-callable functions and hotkeys
+* [ZMQ Networking](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/zmq_networking.md) -- protocol, topics, and Python examples
+* [Policy Bridge](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/policy_bridge.md) -- RL policy deployment
+* [Developer Tools](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/developer_tools.md) -- schema tracking, debug XML, build/test skills
+
+---
+
+## Troubleshooting
+
+### Build Error: MSVC Stack Overflow (0xC00000FD)
+If the `build_all.ps1` script fails with code `-1073741571`, your compiler has run out of internal memory while processing MuJoCo's complex sensor templates. 
+* **Fix:** Update Visual Studio to the latest version of **VS 2022 (17.10+)** or **VS 2025** (the MuJoCo CI reference).
+* **Workaround:** Force a larger stack size by running:
+  `cmake -B build ... -DCMAKE_CXX_FLAGS="/F10000000"`
+
+### UI: "Simulate" Dashboard Not Appearing
+The UI is context-sensitive and requires specific conditions:
+* Ensure an `MjManager` actor is present in the level.
+* In the `MjManager` settings, verify `bAutoCreateSimulateWidget` is enabled.
+* Ensure you have followed the **"Show Assets"** step in the Installation guide to make the UI widgets visible to the engine.
+
+### Simulation: Robot is Static
+* **Control Source:** Check if the **Control Source** on the `MjManager` or `MjArticulation` is set to **UI**. If set to **ZMQ**, UI sliders will be ignored.
+* **Physics State:** Ensure the `MjManager` is not paused and that the robot is not set to `Static` in its component settings.

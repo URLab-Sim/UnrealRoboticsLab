@@ -2,7 +2,7 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2504.14135-b31b1b.svg)](https://arxiv.org/abs/2504.14135)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![MuJoCo](https://img.shields.io/badge/MuJoCo-3.7+-green.svg)](https://github.com/google-deepmind/mujoco)
-[![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.4+-black.svg)](https://www.unrealengine.com)
+[![Unreal Engine](https://img.shields.io/badge/Unreal_Engine-5.7+-black.svg)](https://www.unrealengine.com)
 
 # URLab -- MuJoCo Physics in Unreal Engine
 
@@ -49,7 +49,7 @@ URLab communicates with external systems over ZMQ. The companion package [**urla
 
 ## Requirements
 
-- **Unreal Engine 5.4+**
+- **Unreal Engine 5.7+**
 - **Windows** (Win64). Linux is experimental.
 - **MuJoCo 3.7+** -- bundled in `third_party/`, built from source.
 - **Visual Studio 2022** or compatible C++ toolchain.
@@ -57,34 +57,26 @@ URLab communicates with external systems over ZMQ. The companion package [**urla
 - **Python 3.11+** -- optional, for `urlab_bridge` policies.
 - **[uv](https://github.com/astral-sh/uv)** -- optional, for Python dependency management.
 
-## Quick Start (Installation)
+## Installation
 
 > **⚠️ Critical:** This is a C++ plugin. You **must** be using a C++ project. If your project is Blueprints-only, add a dummy C++ class via *Tools > New C++ Class* before starting.
 
-### 1. Setup Folders
+### 1. Clone the Plugin
 Clone this repo into your project's `Plugins` folder:
 ```bash
 cd "YourProject/Plugins"
-git clone [https://github.com/URLab-Sim/UnrealRoboticsLab.git](https://github.com/URLab-Sim/UnrealRoboticsLab.git)
+git clone https://github.com/URLab-Sim/UnrealRoboticsLab.git
 ```
 
 ### 2. Build Dependencies
-Navigate to the plugin's `third_party` folder and run the build script to fetch and compile MuJoCo and ZMQ:
+Navigate to the plugin's `third_party` folder and run the build script to fetch and compile MuJoCo, CoACD, and ZMQ:
 ```powershell
 cd UnrealRoboticsLab/third_party
 .\build_all.ps1
 ```
-*(If this script fails with a **Stack Overflow** error, see [Troubleshooting](#-troubleshooting) below).*
+*(If this script fails with a **Stack Overflow** error, see [Troubleshooting](#troubleshooting) below).*
 
-### 3. Register Module (Don't skip!)
-You must tell Unreal to link your project against the plugin. Open your project's `.Build.cs` file (e.g., `Source/MyProject/MyProject.Build.cs`) and add `"UnrealRoboticsLab"`:
-```csharp
-PublicDependencyModuleNames.AddRange(new string[] { 
-    "Core", "CoreUObject", "Engine", "InputCore", "UnrealRoboticsLab" 
-});
-```
-
-### 4. Compile & Launch
+### 3. Compile & Launch
 1. Right-click your `.uproject` and select **Generate Visual Studio project files**.
 2. Build the solution in VS2022/Rider and launch the Editor.
 3. **Important:** In the Content Browser, go to **Settings (Gear Icon)** and check **"Show Plugin Content"** to see the UI and assets.

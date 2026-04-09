@@ -196,7 +196,8 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     else
     {
         FString PosStr = Node->GetAttribute(TEXT("pos"));
-        if ((bOverride_Pos = !PosStr.IsEmpty()))
+        bOverride_Pos = !PosStr.IsEmpty();
+        if (bOverride_Pos)
         {
             FVector MjPos = MjXmlUtils::ParseVector(PosStr);
             double p[3] = { (double)MjPos.X, (double)MjPos.Y, (double)MjPos.Z };
@@ -204,13 +205,14 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
         }
         else
         {
-            SetRelativeLocation(FVector::Zero());
+            SetRelativeLocation(FVector::ZeroVector);
             bOverride_Pos = false;
         }
-        
+
         // Orientation (quat, axisangle, euler, xyaxes, zaxis — priority order)
         double MjQuat[4];
-        if ((bOverride_Quat = MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, MjQuat)))
+        bOverride_Quat = MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, MjQuat);
+        if (bOverride_Quat)
         {
             SetRelativeRotation(MjUtils::MjToUERotation(MjQuat));
         }

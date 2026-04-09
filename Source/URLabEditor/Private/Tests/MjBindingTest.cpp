@@ -30,6 +30,7 @@
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "MuJoCo/Components/Joints/MjJoint.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
 
 // Define a test with flags to run in Editor

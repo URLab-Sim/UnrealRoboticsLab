@@ -131,6 +131,9 @@ docs/api/
 docs/_parsed_headers.json
 site/
 
+# Per-machine local settings (Python path, etc.)
+Config/LocalUnrealRoboticsLab.ini
+
 # Debug/log artifacts
 MUJOCO_LOG.TXT
 *.log

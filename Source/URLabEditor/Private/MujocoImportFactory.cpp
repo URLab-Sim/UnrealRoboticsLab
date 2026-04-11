@@ -23,6 +23,7 @@
 
 #include "MujocoImportFactory.h"
 #include "MujocoGenerationAction.h"
+#include "MjPythonHelper.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Engine/Blueprint.h"
@@ -80,32 +81,19 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 
             if (FPaths::FileExists(ScriptPath))
             {
-                // Check if Python is available
-                FString PythonExe = TEXT("python");
-                int32 ReturnCode = -1;
-                FString StdOut, StdErr;
+                FString PythonExe = FMjPythonHelper::EnsurePythonReady();
 
-                FPlatformProcess::ExecProcess(*PythonExe, TEXT("--version"), &ReturnCode, &StdOut, &StdErr);
-
-                if (ReturnCode == 0)
+                if (!PythonExe.IsEmpty())
                 {
-                    // Check if trimesh is installed
-                    FPlatformProcess::ExecProcess(*PythonExe, TEXT("-c \"import trimesh\""), &ReturnCode, &StdOut, &StdErr);
-
-                    if (ReturnCode != 0)
-                    {
-                        UE_LOG(LogURLabEditor, Log, TEXT("Installing trimesh dependency..."));
-                        FPlatformProcess::ExecProcess(*PythonExe, TEXT("-m pip install trimesh numpy"), &ReturnCode, &StdOut, &StdErr);
-                    }
-
                     // Run the clean script
+                    int32 ReturnCode = -1;
+                    FString StdOut, StdErr;
                     FString Args = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *Filename);
-                    UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: python %s"), *Args);
+                    UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
                     FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
 
                     if (ReturnCode == 0)
                     {
-                        // Check if _ue.xml was created
                         FString UeXmlPath = FPaths::Combine(
                             FPaths::GetPath(Filename),
                             FPaths::GetBaseFilename(Filename) + TEXT("_ue.xml"));
@@ -124,7 +112,7 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
                 }
                 else
                 {
-                    UE_LOG(LogURLabEditor, Log, TEXT("Python not found — skipping mesh preparation."));
+                    UE_LOG(LogURLabEditor, Log, TEXT("Python not configured — skipping mesh preparation."));
                 }
             }
         }

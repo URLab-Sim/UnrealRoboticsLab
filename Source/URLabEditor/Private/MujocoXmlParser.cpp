@@ -410,17 +410,6 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
                       UE_LOG(LogURLabEditor, Log, TEXT("[Mesh Import]   -> Resolved mesh '%s' to file: %s"), *MeshName, *MeshFile);
                       FString MeshImportPath = AssetImportPath + TEXT("/Meshes");
                       UStaticMesh* NewMesh = ImportSingleMesh(MeshFile, MeshImportPath);
-
-                      // Fallback to FBX if raw failed
-                      if (!NewMesh)
-                      {
-                          FString FbxSource = FPaths::ChangeExtension(MeshFile, TEXT("fbx"));
-                          if (FbxSource != MeshFile)
-                          {
-                              UE_LOG(LogURLabEditor, Warning, TEXT("Failed to import raw mesh %s, trying fallback: %s"), *MeshFile, *FbxSource);
-                              NewMesh = ImportSingleMesh(FbxSource, MeshImportPath);
-                          }
-                      }
                       if (NewMesh)
                       {
                             FString VizNodeName = FString::Printf(TEXT("Viz_%s"), *MeshName);
@@ -853,17 +842,6 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
             }
 
             FString FullPath = FPaths::Combine(EffectiveMeshBase, MeshFile);
-
-            // Fallback check
-            if (!FPaths::FileExists(FullPath))
-            {
-                 FString FbxPath = FPaths::ChangeExtension(FullPath, TEXT("fbx"));
-                 if (FPaths::FileExists(FbxPath))
-                 {
-                     UE_LOG(LogURLabEditor, Warning, TEXT("Mesh %s not found at %s, using fallback %s"), *MeshName, *FullPath, *FbxPath);
-                     FullPath = FbxPath;
-                 }
-            }
 
             if (!OutMeshAssets.Contains(MeshName))
             {

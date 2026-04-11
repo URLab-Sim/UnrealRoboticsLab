@@ -190,10 +190,12 @@ def process_xml(xml_path: Path):
                     output_plan.append((mesh_el, source_path, source_path, output_glb))
                 else:
                     # Rename: link1.stl -> link1_1.stl, link1_1.glb
+                    # Save to meshdir root (not the source subdirectory) so the
+                    # XML file attribute stays a simple filename relative to meshdir.
                     new_stem = f"{glb_stem}_{i}"
                     ext = source_path.suffix  # .stl, .obj, etc.
-                    renamed_source = source_path.parent / f"{new_stem}{ext}"
-                    output_glb = source_path.parent / f"{new_stem}.glb"
+                    renamed_source = mesh_base / f"{new_stem}{ext}"
+                    output_glb = mesh_base / f"{new_stem}.glb"
 
                     # Update XML file attribute (relative to meshdir)
                     new_file_attr = f"{new_stem}{ext}"
@@ -203,6 +205,9 @@ def process_xml(xml_path: Path):
                     print(f"    -> Renaming '{mesh_name}': {source_path.name} -> {new_stem}{ext}")
 
                     # Copy the source file to the new name
+                    if not source_path.exists():
+                        print(f"    x Source file missing: {source_path} — skipping")
+                        continue
                     if not renamed_source.exists() or renamed_source.stat().st_mtime < source_path.stat().st_mtime:
                         shutil.copy2(str(source_path), str(renamed_source))
                         print(f"    -> Copied {source_path.name} -> {renamed_source.name}")

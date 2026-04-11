@@ -7,12 +7,13 @@ Unreal Robotics Lab can import standard MuJoCo XML (MJCF) files and reconstruct 
 ## Importing
 
 1. Drag your `.xml` file into the Unreal **Content Browser**.
-2. `UMujocoImportFactory` automatically runs `Scripts/clean_meshes.py` as a subprocess:
+2. On first import, the editor prompts to install required Python packages (`trimesh`, `numpy`, `scipy`). By default these install to UE's bundled Python — no external Python setup needed. You can also choose a custom interpreter (conda, venv, etc.) via the dialog. The chosen path is saved to `Config/LocalUnrealRoboticsLab.ini` (per-machine, not checked into source control).
+3. `UMujocoImportFactory` runs `Scripts/clean_meshes.py` using the configured Python:
    - Parses the XML to find all referenced mesh assets
    - Detects GLB stem conflicts (e.g., `link1.obj` and `link1.stl` both producing `link1.glb`) and renames them
    - Converts meshes to GLB (preserving UVs, stripping embedded textures)
    - Produces a `_ue.xml` with updated mesh references
-   - Graceful fallback: if Python or trimesh is missing, the raw XML is used instead
+   - If the user skips Python setup, the raw XML is used instead (some meshes may not display correctly)
 3. The factory creates an `AMjArticulation` Blueprint via four parsing passes:
    - **Pass 1:** Assets (meshes with scales, textures with file paths, materials with RGBA/texture refs)
    - **Pass 2:** Defaults (class hierarchy as `UMjDefault` components)
@@ -89,15 +90,22 @@ The importer creates shared Unreal material instances keyed by XML `<material>` 
 
 The importer looks for mesh files relative to the XML file's directory. Found meshes are copied to a `/Meshes/` subfolder under the import target to avoid texture name collisions, then registered in MuJoCo's VFS during compilation.
 
-**Format priority:** FBX > GLB > OBJ. The importer tries multiple paths via `ImportSingleMesh()`: GLB (via Interchange), then raw OBJ/STL (via FBX factory), then FBX fallback. If all fail, the geom is created without a visual mesh but still exists as a collision primitive. A warning is logged and compilation still succeeds.
+**Format priority:** GLB > OBJ. The importer tries GLB first (via Interchange), then raw OBJ/STL. If all fail, the geom is created without a visual mesh but still exists as a collision primitive. A warning is logged and compilation still succeeds.
 
-**Auto mesh preparation:** The `clean_meshes_trimesh.py` script runs automatically during import (see [Importing](#importing) above). You can also run it manually:
+**Auto mesh preparation:** The `clean_meshes.py` script runs automatically during import (see [Importing](#importing) above). You can also run it manually:
 
 ```bash
 python Scripts/clean_meshes.py path/to/robot.xml
 ```
 
 This produces a `_ue.xml` file with updated mesh references that you can drag into Unreal instead of the original XML.
+
+**Changing the Python interpreter:** The plugin stores your Python path in `Config/LocalUnrealRoboticsLab.ini` inside the plugin directory. This file is gitignored (per-machine). To switch interpreters, either delete the file (the dialog will re-appear on next import) or edit it directly:
+
+```ini
+[PythonSettings]
+PythonPath=C:/Users/you/miniconda3/envs/myenv/python.exe
+```
 
 ---
 

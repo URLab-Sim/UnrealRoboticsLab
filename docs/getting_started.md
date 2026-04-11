@@ -40,7 +40,7 @@ This is **not required** if you only use the plugin through the editor, Blueprin
 ### From MJCF XML
 
 1. Get a robot XML (e.g., from [MuJoCo Menagerie](https://github.com/google-deepmind/mujoco_menagerie)).
-2. Drag the XML into the Unreal Content Browser. The importer auto-runs `Scripts/clean_meshes.py` to convert meshes to GLB (falls back gracefully if Python is missing).
+2. Drag the XML into the Unreal Content Browser. On first import, the editor will prompt to install the required Python packages (`trimesh`, `numpy`, `scipy`) — by default these are installed to UE's bundled Python, so no external setup is needed. You can also choose your own Python interpreter if preferred.
 3. A Blueprint is auto-generated with all joints, bodies, actuators, and sensors as components.
 
 ### Quick Convert (Static Meshes)

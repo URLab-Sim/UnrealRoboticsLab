@@ -254,6 +254,9 @@ FString FMjPythonHelper::EnsurePythonReady()
             TEXT("Install now?\n\n")
             TEXT("Note: The editor will be unresponsive during installation. ")
             TEXT("This may take a minute.\n\n")
+            TEXT("Alternatively, you can install these manually in your preferred Python environment:\n")
+            TEXT("  <your-python> -m pip install trimesh numpy scipy\n")
+            TEXT("Then set the path in Config/LocalUnrealRoboticsLab.ini in the plugin directory.\n\n")
             TEXT("Click 'Yes' to install, 'No' to skip mesh preprocessing, ")
             TEXT("or 'Cancel' to choose a different Python interpreter."),
             *EnvLabel));

@@ -100,6 +100,14 @@ python Scripts/clean_meshes.py path/to/robot.xml
 
 This produces a `_ue.xml` file with updated mesh references that you can drag into Unreal instead of the original XML.
 
+**Manual package install:** If you prefer to install packages yourself rather than using the dialog, run the following with your preferred Python interpreter:
+
+```bash
+/path/to/your/python -m pip install trimesh numpy scipy
+```
+
+Then make sure the same Python path is set in `Config/LocalUnrealRoboticsLab.ini` (see below). The plugin will detect the packages on next import and skip the install prompt.
+
 **Changing the Python interpreter:** The plugin stores your Python path in `Config/LocalUnrealRoboticsLab.ini` inside the plugin directory. This file is gitignored (per-machine). To switch interpreters, either delete the file (the dialog will re-appear on next import) or edit it directly:
 
 ```ini

@@ -30,6 +30,8 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Interfaces/IPluginManager.h"
+#include "RenderingThread.h"
+#include "ShaderCompiler.h"
 #include "URLabEditorLogging.h"
 
 UMujocoImportFactory::UMujocoImportFactory()
@@ -147,6 +149,16 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 
         // Compile to save changes and ensure components are valid
         FKismetEditorUtilities::CompileBlueprint(NewBP);
+
+        // Wait for all shaders to finish compiling and flush render commands.
+        // Material instances created during import trigger async shader compilation.
+        // If the content browser renders thumbnails before shaders are ready,
+        // the render thread crashes (UE-23902).
+        if (GShaderCompilingManager)
+        {
+            GShaderCompilingManager->FinishAllCompilation();
+        }
+        FlushRenderingCommands();
     }
     
     bOutOperationCanceled = false;

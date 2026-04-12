@@ -258,6 +258,15 @@ UStaticMesh* UMujocoGenerationAction::AttemptMeshImport(const FString& SourcePat
 
     if (Mesh)
     {
+        // Clear Interchange-created materials that may reference stripped textures.
+        // Our import pipeline assigns MI_ material instances on the SCS template,
+        // but the static mesh asset retains Interchange materials in its slots.
+        // These can crash the render thread when browsing/thumbnailing (UE-23902).
+        for (FStaticMaterial& Mat : Mesh->GetStaticMaterials())
+        {
+            Mat.MaterialInterface = UMaterial::GetDefaultMaterial(MD_Surface);
+        }
+
         // Force rebuild bounds - critical for fixing 0x0x0 size issue
         Mesh->Build();
         Mesh->CalculateExtendedBounds();
@@ -530,7 +539,24 @@ UMaterialInstanceConstant* UMujocoGenerationAction::CreateMaterialInstance(
         }
     }
 
-    SetScalar(TEXT("bUseTexture"), bHasBaseColorTexture ? 1.0f : 0.0f);
+    // Set bUseTexture as a static switch parameter — the master material uses
+    // a StaticSwitchParameter to completely eliminate the texture sample branch
+    // when false, preventing null texture crashes (UE-23902).
+    {
+        FStaticParameterSet StaticParams;
+        MaterialInstance->GetStaticParameterValues(StaticParams);
+
+        for (FStaticSwitchParameter& Param : StaticParams.StaticSwitchParameters)
+        {
+            if (Param.ParameterInfo.Name == TEXT("bUseTexture"))
+            {
+                Param.Value = bHasBaseColorTexture;
+                Param.bOverride = true;
+                break;
+            }
+        }
+        MaterialInstance->UpdateStaticPermutation(StaticParams);
+    }
 
     // Set normal texture if available
     if (!MaterialData.NormalTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.NormalTextureName))

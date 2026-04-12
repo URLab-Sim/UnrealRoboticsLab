@@ -28,7 +28,8 @@ public class URLabEditor : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"InputCore"
+			"InputCore",
+			"RenderCore"
 		});
 	}
 }

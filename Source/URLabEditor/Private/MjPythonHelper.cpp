@@ -178,6 +178,9 @@ bool FMjPythonHelper::InstallPythonPackages(const FString& PythonPath, FString& 
 
 FString FMjPythonHelper::EnsurePythonReady()
 {
+    // If no INI exists, always show the dialog so the user explicitly chooses
+    bool bNeedsFirstTimeSetup = GetStoredPythonOverride().IsEmpty();
+
     FString PythonPath = ResolvePythonPath();
     bool bIsUEBundled = (PythonPath == GetUEBundledPythonPath());
 
@@ -239,27 +242,50 @@ FString FMjPythonHelper::EnsurePythonReady()
     }
 
     // Check for required packages
-    if (!CheckPythonPackages(PythonPath))
+    // Show package dialog if packages are missing OR if this is first-time setup
+    // (no INI exists). First-time setup always shows the dialog so the user
+    // explicitly confirms which Python to use.
+    if (!CheckPythonPackages(PythonPath) || bNeedsFirstTimeSetup)
     {
         FString EnvLabel = bIsUEBundled
             ? TEXT("Unreal Engine's bundled Python")
             : FString::Printf(TEXT("your selected Python at:\n%s"), *PythonPath);
 
-        FText Title = FText::FromString(TEXT("Python Packages Required"));
-        FText Message = FText::FromString(FString::Printf(
-            TEXT("URLab needs the 'trimesh', 'numpy', and 'scipy' Python packages to preprocess mesh files.\n\n")
-            TEXT("Unreal Engine does not natively support all mesh formats used by MuJoCo, ")
-            TEXT("so these packages are used to convert and prepare meshes for import.\n\n")
-            TEXT("These will be installed to %s.\n\n")
-            TEXT("Install now?\n\n")
-            TEXT("Note: The editor will be unresponsive during installation. ")
-            TEXT("This may take a minute.\n\n")
-            TEXT("Alternatively, you can install these manually in your preferred Python environment:\n")
-            TEXT("  <your-python> -m pip install trimesh numpy scipy\n")
-            TEXT("Then set the path in Config/LocalUnrealRoboticsLab.ini in the plugin directory.\n\n")
-            TEXT("Click 'Yes' to install, 'No' to skip mesh preprocessing, ")
-            TEXT("or 'Cancel' to choose a different Python interpreter."),
-            *EnvLabel));
+        bool bPackagesPresent = CheckPythonPackages(PythonPath);
+
+        FText Title = FText::FromString(bPackagesPresent
+            ? TEXT("Python Setup")
+            : TEXT("Python Packages Required"));
+
+        FString MessageStr;
+        if (bPackagesPresent)
+        {
+            // First-time setup — packages already installed, just confirming Python choice
+            MessageStr = FString::Printf(
+                TEXT("URLab uses Python to preprocess mesh files during MJCF import.\n\n")
+                TEXT("Required packages are already installed in %s.\n\n")
+                TEXT("Click 'Yes' to use this Python, 'No' to skip mesh preprocessing, ")
+                TEXT("or 'Cancel' to choose a different Python interpreter."),
+                *EnvLabel);
+        }
+        else
+        {
+            MessageStr = FString::Printf(
+                TEXT("URLab needs the 'trimesh', 'numpy', and 'scipy' Python packages to preprocess mesh files.\n\n")
+                TEXT("Unreal Engine does not natively support all mesh formats used by MuJoCo, ")
+                TEXT("so these packages are used to convert and prepare meshes for import.\n\n")
+                TEXT("These will be installed to %s.\n\n")
+                TEXT("Install now?\n\n")
+                TEXT("Note: The editor will be unresponsive during installation. ")
+                TEXT("This may take a minute.\n\n")
+                TEXT("Alternatively, you can install these manually in your preferred Python environment:\n")
+                TEXT("  <your-python> -m pip install trimesh numpy scipy\n")
+                TEXT("Then set the path in Config/LocalUnrealRoboticsLab.ini in the plugin directory.\n\n")
+                TEXT("Click 'Yes' to install, 'No' to skip mesh preprocessing, ")
+                TEXT("or 'Cancel' to choose a different Python interpreter."),
+                *EnvLabel);
+        }
+        FText Message = FText::FromString(MessageStr);
 
         EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNoCancel, Message, Title);
 
@@ -317,27 +343,30 @@ FString FMjPythonHelper::EnsurePythonReady()
             }
         }
 
-        // Install packages
-        FString InstallLog;
-        if (!InstallPythonPackages(PythonPath, InstallLog))
+        // Install packages if not already present
+        if (!bPackagesPresent)
         {
-            FMessageDialog::Open(EAppMsgType::Ok,
-                FText::FromString(FString::Printf(
-                    TEXT("Failed to install packages. You can install them manually by running:\n\n")
-                    TEXT("%s -m pip install trimesh numpy\n\n")
-                    TEXT("Error log:\n%s"),
-                    *PythonPath, *InstallLog)),
-                FText::FromString(TEXT("Package Install Failed")));
-            return FString();
-        }
+            FString InstallLog;
+            if (!InstallPythonPackages(PythonPath, InstallLog))
+            {
+                FMessageDialog::Open(EAppMsgType::Ok,
+                    FText::FromString(FString::Printf(
+                        TEXT("Failed to install packages. You can install them manually by running:\n\n")
+                        TEXT("%s -m pip install trimesh numpy scipy\n\n")
+                        TEXT("Error log:\n%s"),
+                        *PythonPath, *InstallLog)),
+                    FText::FromString(TEXT("Package Install Failed")));
+                return FString();
+            }
 
-        // Verify install worked
-        if (!CheckPythonPackages(PythonPath))
-        {
-            FMessageDialog::Open(EAppMsgType::Ok,
-                FText::FromString(TEXT("Packages were installed but still cannot be imported. Check your Python environment.")),
-                FText::FromString(TEXT("Package Verification Failed")));
-            return FString();
+            // Verify install worked
+            if (!CheckPythonPackages(PythonPath))
+            {
+                FMessageDialog::Open(EAppMsgType::Ok,
+                    FText::FromString(TEXT("Packages were installed but still cannot be imported. Check your Python environment.")),
+                    FText::FromString(TEXT("Package Verification Failed")));
+                return FString();
+            }
         }
     }
 

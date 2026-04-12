@@ -25,6 +25,9 @@
 #include "MuJoCo/Utils/MjUtils.h"
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Components/Tendons/MjTendon.h"
 #include "Utils/URLabLogging.h"
 
 UMjEquality::UMjEquality()
@@ -216,3 +219,25 @@ void UMjEquality::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
 
     ExportTo(Eq);
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjEquality::GetObjOptions() const
+{
+    UClass* FilterClass = nullptr;
+    switch (EqualityType)
+    {
+        case EMjEqualityType::Connect:
+        case EMjEqualityType::Weld:
+            FilterClass = UMjBody::StaticClass();
+            break;
+        case EMjEqualityType::Joint:
+            FilterClass = UMjJoint::StaticClass();
+            break;
+        case EMjEqualityType::Tendon:
+            FilterClass = UMjTendon::StaticClass();
+            break;
+    }
+    if (!FilterClass) return {TEXT("")};
+    return UMjComponent::GetSiblingComponentOptions(this, FilterClass);
+}
+#endif

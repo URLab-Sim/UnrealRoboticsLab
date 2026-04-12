@@ -46,39 +46,39 @@ public:
 	UMjContactPair();
 
     /** @brief Name of the contact pair (optional). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     FString Name;
 
     /** @brief Name of the first geom in the contact pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair", meta=(GetOptions="GetGeomOptions"))
     FString Geom1;
 
     /** @brief Name of the second geom in the contact pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair", meta=(GetOptions="GetGeomOptions"))
     FString Geom2;
 
     /** @brief Contact dimensionality (1-6). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     int Condim = 3;
 
     /** @brief Friction coefficients (sliding, torsional, rolling). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     TArray<float> Friction;
 
     /** @brief Solver reference time/damping for contact. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     TArray<float> Solref;
 
     /** @brief Solver impedance for contact. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     TArray<float> Solimp;
 
     /** @brief Distance threshold below which contacts are detected. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     float Gap = 0.0f;
 
     /** @brief Safety margin for collision detection. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Pair")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     float Margin = 0.0f;
 
     /**
@@ -101,6 +101,11 @@ public:
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
     virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
+
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetGeomOptions() const;
+#endif
 
 protected:
     /** @brief Called when the game starts. */

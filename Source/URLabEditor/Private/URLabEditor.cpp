@@ -21,23 +21,112 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 #include "URLabEditor.h"
 #include "URLabEditorLogging.h"
+#include "MjEditorStyle.h"
 
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MjGeomDetailCustomization.h"
+#include "MjComponentDetailCustomizations.h"
+#include "MuJoCo/Components/Physics/MjContactPair.h"
+#include "MuJoCo/Components/Physics/MjContactExclude.h"
+#include "MuJoCo/Components/Constraints/MjEquality.h"
 
 #include "LevelEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "ScopedTransaction.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "MuJoCo/Components/Sensors/MjSensor.h"
+#include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Components/Geometry/MjSite.h"
+#include "MuJoCo/Components/Tendons/MjTendon.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Components/Tendons/MjTendon.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Components/Physics/MjContactPair.h"
+#include "MuJoCo/Components/Physics/MjContactExclude.h"
+#include "MuJoCo/Components/Constraints/MjEquality.h"
+#include "SMjArticulationOutliner.h"
+#include "Kismet2/BlueprintEditorUtils.h"
+#include "Framework/Docking/WorkspaceItem.h"
 
 void FURLabEditorModule::StartupModule()
 {
+    FMjEditorStyle::Initialize();
+
     FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+    // Register geom customization on all subclasses
+    {
+        TArray<UClass*> GeomClasses;
+        GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
+        GeomClasses.Add(UMjGeom::StaticClass());
+        for (UClass* Class : GeomClasses)
+        {
+            PropertyModule.RegisterCustomClassLayout(
+                Class->GetFName(),
+                FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
+        }
+    }
+    // Register actuator customization on all subclasses
+    {
+        TArray<UClass*> ActuatorClasses;
+        GetDerivedClasses(UMjActuator::StaticClass(), ActuatorClasses, true);
+        ActuatorClasses.Add(UMjActuator::StaticClass());
+        for (UClass* Class : ActuatorClasses)
+        {
+            PropertyModule.RegisterCustomClassLayout(
+                Class->GetFName(),
+                FOnGetDetailCustomizationInstance::CreateStatic(&FMjActuatorDetailCustomization::MakeInstance));
+        }
+    }
+    // Register sensor customization on all subclasses
+    {
+        TArray<UClass*> SensorClasses;
+        GetDerivedClasses(UMjSensor::StaticClass(), SensorClasses, true);
+        SensorClasses.Add(UMjSensor::StaticClass());
+        for (UClass* Class : SensorClasses)
+        {
+            PropertyModule.RegisterCustomClassLayout(
+                Class->GetFName(),
+                FOnGetDetailCustomizationInstance::CreateStatic(&FMjSensorDetailCustomization::MakeInstance));
+        }
+    }
     PropertyModule.RegisterCustomClassLayout(
-        UMjGeom::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
+        UMjContactPair::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjContactPairDetailCustomization::MakeInstance));
+    PropertyModule.RegisterCustomClassLayout(
+        UMjContactExclude::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjContactExcludeDetailCustomization::MakeInstance));
+    PropertyModule.RegisterCustomClassLayout(
+        UMjEquality::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjEqualityDetailCustomization::MakeInstance));
+    // Register joint customization on all subclasses
+    {
+        TArray<UClass*> JointClasses;
+        GetDerivedClasses(UMjJoint::StaticClass(), JointClasses, true);
+        JointClasses.Add(UMjJoint::StaticClass());
+        for (UClass* Class : JointClasses)
+        {
+            PropertyModule.RegisterCustomClassLayout(
+                Class->GetFName(),
+                FOnGetDetailCustomizationInstance::CreateStatic(&FMjJointDetailCustomization::MakeInstance));
+        }
+    }
+    PropertyModule.RegisterCustomClassLayout(
+        UMjBody::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjBodyDetailCustomization::MakeInstance));
+    PropertyModule.RegisterCustomClassLayout(
+        UMjDefault::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjDefaultDetailCustomization::MakeInstance));
+    PropertyModule.RegisterCustomClassLayout(
+        UMjSite::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjSiteDetailCustomization::MakeInstance));
+    PropertyModule.RegisterCustomClassLayout(
+        UMjTendon::StaticClass()->GetFName(),
+        FOnGetDetailCustomizationInstance::CreateStatic(&FMjTendonDetailCustomization::MakeInstance));
     PropertyModule.NotifyCustomizationModuleChanged();
 
     // Register viewport actor context menu extender
@@ -48,14 +137,63 @@ void FURLabEditorModule::StartupModule()
     auto& Extenders = LevelEditorModule.GetAllLevelViewportContextMenuExtenders();
     Extenders.Add(MenuExtender);
     ViewportContextMenuExtenderHandle = Extenders.Last().GetHandle();
+
+    // Register auto-parenting hook for MuJoCo components
+    OnObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddRaw(this, &FURLabEditorModule::OnObjectModified);
+
+    // Register MuJoCo Outliner tab (guard against double registration on hot-reload)
+    FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
+    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+        TEXT("MjArticulationOutliner"),
+        FOnSpawnTab::CreateLambda([](const FSpawnTabArgs& Args) -> TSharedRef<SDockTab>
+        {
+            TSharedRef<SMjArticulationOutliner> Outliner = SNew(SMjArticulationOutliner);
+
+            return SNew(SDockTab)
+                .TabRole(ETabRole::NomadTab)
+                .Label(FText::FromString(TEXT("MuJoCo Outliner")))
+                [
+                    Outliner
+                ];
+        }))
+        .SetDisplayName(FText::FromString(TEXT("MuJoCo Outliner")))
+        .SetTooltipText(FText::FromString(TEXT("Filtered view of MuJoCo articulation components")));
+
 }
 
 void FURLabEditorModule::ShutdownModule()
 {
+    FMjEditorStyle::Shutdown();
+
+    FCoreUObjectDelegates::OnObjectModified.Remove(OnObjectModifiedHandle);
+
+    FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
+
     if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
     {
         FPropertyEditorModule& PropertyModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-        PropertyModule.UnregisterCustomClassLayout(UMjGeom::StaticClass()->GetFName());
+        // Unregister all subclass customizations
+        auto UnregisterWithSubclasses = [&](UClass* BaseClass)
+        {
+            TArray<UClass*> Classes;
+            GetDerivedClasses(BaseClass, Classes, true);
+            Classes.Add(BaseClass);
+            for (UClass* Class : Classes)
+            {
+                PropertyModule.UnregisterCustomClassLayout(Class->GetFName());
+            }
+        };
+        UnregisterWithSubclasses(UMjGeom::StaticClass());
+        UnregisterWithSubclasses(UMjActuator::StaticClass());
+        UnregisterWithSubclasses(UMjSensor::StaticClass());
+        UnregisterWithSubclasses(UMjJoint::StaticClass());
+        PropertyModule.UnregisterCustomClassLayout(UMjContactPair::StaticClass()->GetFName());
+        PropertyModule.UnregisterCustomClassLayout(UMjContactExclude::StaticClass()->GetFName());
+        PropertyModule.UnregisterCustomClassLayout(UMjEquality::StaticClass()->GetFName());
+        PropertyModule.UnregisterCustomClassLayout(UMjBody::StaticClass()->GetFName());
+        PropertyModule.UnregisterCustomClassLayout(UMjDefault::StaticClass()->GetFName());
+        PropertyModule.UnregisterCustomClassLayout(UMjSite::StaticClass()->GetFName());
+        PropertyModule.UnregisterCustomClassLayout(UMjTendon::StaticClass()->GetFName());
     }
 
     if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
@@ -165,6 +303,106 @@ void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors
 
     UE_LOG(LogURLabEditor, Log, TEXT("MuJoCo Quick Convert applied to %d actor(s) [Static=%d, Complex=%d]"),
         Applied, bStatic, bComplex);
+}
+
+void FURLabEditorModule::OnObjectModified(UObject* Object)
+{
+    if (bIsAutoParenting) return;
+
+    USimpleConstructionScript* SCS = Cast<USimpleConstructionScript>(Object);
+    if (!SCS) return;
+
+    UBlueprint* BP = SCS->GetBlueprint();
+    if (!BP || !BP->GeneratedClass || !BP->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
+        return;
+
+    // Defer to next tick so the SCS tree is fully updated before we scan
+    TWeakObjectPtr<USimpleConstructionScript> WeakSCS = SCS;
+    TWeakObjectPtr<UBlueprint> WeakBP = BP;
+    GEditor->GetTimerManager()->SetTimerForNextTick([this, WeakSCS, WeakBP]()
+    {
+        if (bIsAutoParenting) return;
+        USimpleConstructionScript* SCSPtr = WeakSCS.Get();
+        UBlueprint* BPPtr = WeakBP.Get();
+        if (!SCSPtr || !BPPtr) return;
+
+        TArray<USCS_Node*> AllNodes = SCSPtr->GetAllNodes();
+        bIsAutoParenting = true;
+        bool bMoved = false;
+
+        for (USCS_Node* Node : AllNodes)
+        {
+            bMoved |= AutoParentSCSNode(Node, SCSPtr);
+
+        }
+        bIsAutoParenting = false;
+
+        if (bMoved)
+        {
+            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BPPtr);
+        }
+    });
+}
+
+bool FURLabEditorModule::AutoParentSCSNode(USCS_Node* Node, USimpleConstructionScript* SCS)
+{
+    if (!Node || !Node->ComponentTemplate) return false;
+
+    // Determine the correct parent folder name for this component type
+    FString TargetParentName;
+    if (Node->ComponentTemplate->IsA<UMjSensor>())        TargetParentName = TEXT("SensorsRoot");
+    else if (Node->ComponentTemplate->IsA<UMjActuator>())  TargetParentName = TEXT("ActuatorsRoot");
+    else if (Node->ComponentTemplate->IsA<UMjDefault>())   TargetParentName = TEXT("DefaultsRoot");
+    else if (Node->ComponentTemplate->IsA<UMjTendon>())    TargetParentName = TEXT("TendonsRoot");
+    else if (Node->ComponentTemplate->IsA<UMjContactPair>() || Node->ComponentTemplate->IsA<UMjContactExclude>())
+        TargetParentName = TEXT("ContactsRoot");
+    else if (Node->ComponentTemplate->IsA<UMjEquality>())  TargetParentName = TEXT("EqualitiesRoot");
+    else return false;
+
+    // Check if already correctly parented
+    USCS_Node* CurrentParent = SCS->FindParentNode(Node);
+    if (CurrentParent && CurrentParent->GetVariableName().ToString() == TargetParentName)
+        return false;
+
+    // Skip components that are under DefaultsRoot — they are default templates
+    // and must not be moved to organizational folders
+    {
+        USCS_Node* Ancestor = CurrentParent;
+        while (Ancestor)
+        {
+            if (Ancestor->GetVariableName().ToString() == TEXT("DefaultsRoot"))
+                return false;
+            Ancestor = SCS->FindParentNode(Ancestor);
+        }
+    }
+
+    // Find the target parent node
+    USCS_Node* TargetParent = nullptr;
+    for (USCS_Node* SearchNode : SCS->GetAllNodes())
+    {
+        if (SearchNode->GetVariableName().ToString() == TargetParentName)
+        {
+            TargetParent = SearchNode;
+            break;
+        }
+    }
+
+    if (!TargetParent) return false;
+
+    // Reparent
+    if (CurrentParent)
+    {
+        CurrentParent->RemoveChildNode(Node);
+    }
+    else
+    {
+        SCS->RemoveNode(Node, /*bNotify=*/false);
+    }
+    TargetParent->AddChildNode(Node);
+
+    FString CompName = Node->GetVariableName().ToString();
+    UE_LOG(LogURLabEditor, Log, TEXT("[Auto-Parent] Moved '%s' to '%s'"), *CompName, *TargetParentName);
+    return true;
 }
 
 IMPLEMENT_MODULE(FURLabEditorModule, URLabEditor)

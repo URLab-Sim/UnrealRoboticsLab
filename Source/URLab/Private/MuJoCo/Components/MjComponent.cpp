@@ -25,6 +25,13 @@
 #include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
 
+#if WITH_EDITOR
+#include "Engine/Blueprint.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#endif
+
 UMjComponent::UMjComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -120,3 +127,47 @@ UMjDefault* UMjComponent::FindEditorDefault() const
 
     return nullptr;
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjComponent::GetSiblingComponentOptions(const UObject* CallerComponent, UClass* FilterClass, bool bIncludeDefaults)
+{
+    TArray<FString> Options;
+    Options.Add(TEXT(""));  // Empty = no selection
+
+    if (!CallerComponent || !FilterClass) return Options;
+
+    // Walk the outer chain to find the owning Blueprint
+    UBlueprint* BP = nullptr;
+    for (UObject* Outer = CallerComponent->GetOuter(); Outer; Outer = Outer->GetOuter())
+    {
+        if (UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(Outer))
+        {
+            BP = Cast<UBlueprint>(BPGC->ClassGeneratedBy);
+            break;
+        }
+        if (UBlueprint* Found = Cast<UBlueprint>(Outer))
+        {
+            BP = Found;
+            break;
+        }
+    }
+
+    if (!BP || !BP->SimpleConstructionScript) return Options;
+
+    for (USCS_Node* Node : BP->SimpleConstructionScript->GetAllNodes())
+    {
+        UMjComponent* MjComp = Cast<UMjComponent>(Node->ComponentTemplate);
+        if (MjComp && MjComp->IsA(FilterClass))
+        {
+            if (MjComp->bIsDefault && !bIncludeDefaults) continue;
+
+            FString DisplayName = MjComp->MjName.IsEmpty()
+                ? Node->GetVariableName().ToString()
+                : MjComp->MjName;
+            Options.Add(DisplayName);
+        }
+    }
+
+    return Options;
+}
+#endif

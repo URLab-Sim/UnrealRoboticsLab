@@ -26,6 +26,10 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
+#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Components/Geometry/MjSite.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Components/Tendons/MjTendon.h"
 #include "Utils/URLabLogging.h"
 
 UMjActuator::UMjActuator()
@@ -345,4 +349,47 @@ void UMjActuator::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
 
     ExportTo(act, effectiveDefault);
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjActuator::GetTargetNameOptions() const
+{
+    UClass* FilterClass = nullptr;
+    switch (TransmissionType)
+    {
+        case EMjActuatorTrnType::Joint:
+        case EMjActuatorTrnType::JointInParent:
+            FilterClass = UMjJoint::StaticClass();
+            break;
+        case EMjActuatorTrnType::Tendon:
+            FilterClass = UMjTendon::StaticClass();
+            break;
+        case EMjActuatorTrnType::Site:
+        case EMjActuatorTrnType::SliderCrank:
+            FilterClass = UMjSite::StaticClass();
+            break;
+        case EMjActuatorTrnType::Body:
+            FilterClass = UMjBody::StaticClass();
+            break;
+        default:
+            FilterClass = UMjJoint::StaticClass();
+            break;
+    }
+    return GetSiblingComponentOptions(this, FilterClass);
+}
+
+TArray<FString> UMjActuator::GetSliderSiteOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjSite::StaticClass());
+}
+
+TArray<FString> UMjActuator::GetRefSiteOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjSite::StaticClass());
+}
+
+TArray<FString> UMjActuator::GetDefaultClassOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
+#endif
 

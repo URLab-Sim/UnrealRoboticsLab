@@ -26,6 +26,7 @@
 #include "Components/SceneComponent.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MjSite.generated.h"
 
 /**
@@ -98,10 +99,23 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
 	FVector Size = FVector(0.01f); 
 
-    /** @brief Optional MuJoCo class name to inherit defaults from. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
+    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
-    virtual FString GetMjClassName() const override { return MjClassName; }
+
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetDefaultClassOptions() const;
+#endif
+
+    /** @brief Reference to a UMjDefault component for default class inheritance. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
+    UMjDefault* DefaultClass = nullptr;
+
+    virtual FString GetMjClassName() const override
+    {
+        return MjClassName;
+    }
 
 	// --- Visuals ---
     /** @brief RGBA Color of the site visualization. */

@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "Components/StaticMeshComponent.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
@@ -508,8 +509,32 @@ void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent
             UE_LOG(LogURLab, Log, TEXT("[MjGeom] User manually changed Scale for '%s'. Marking bOverride_Size = true."), *GetName());
         }
     }
+
+    // Sync MjClassName when DefaultClass changes
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(UMjGeom, DefaultClass))
+    {
+        if (DefaultClass)
+            MjClassName = DefaultClass->ClassName;
+        else
+            MjClassName.Empty();
+    }
+
+    // Apply OverrideMaterial to the visual mesh
+    if (PropertyName == GET_MEMBER_NAME_CHECKED(UMjGeom, OverrideMaterial) ||
+        MemberPropertyName == GET_MEMBER_NAME_CHECKED(UMjGeom, OverrideMaterial))
+    {
+        ApplyOverrideMaterial(OverrideMaterial);
+    }
 }
 #endif
+
+void UMjGeom::ApplyOverrideMaterial(UMaterialInterface* Material)
+{
+    // Base implementation is a no-op. Mesh geoms should not have their imported
+    // materials overwritten — they already have materials from the import pipeline.
+    // Primitive subclasses (Box, Sphere, Cylinder) override this with direct
+    // VisualizerMesh access.
+}
 
 void UMjGeom::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
@@ -1026,4 +1051,11 @@ void UMjGeom::RemoveDecomposition()
 #else
 void UMjGeom::DecomposeMesh() {}
 void UMjGeom::RemoveDecomposition() {}
+#endif
+
+#if WITH_EDITOR
+TArray<FString> UMjGeom::GetDefaultClassOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
 #endif

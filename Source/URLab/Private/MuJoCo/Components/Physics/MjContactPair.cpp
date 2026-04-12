@@ -25,6 +25,8 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
+#include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "Utils/URLabLogging.h"
 
 UMjContactPair::UMjContactPair()
@@ -132,3 +134,10 @@ void UMjContactPair::Bind(mjModel* model, mjData* data, const FString& Prefix)
 {
     // Contact pairs are global static data in MuJoCo, usually not bound to runtime indices easily or needed for runtime update.
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjContactPair::GetGeomOptions() const
+{
+    return UMjComponent::GetSiblingComponentOptions(this, UMjGeom::StaticClass());
+}
+#endif

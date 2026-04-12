@@ -521,3 +521,10 @@ FString UMjJoint::GetTelemetryTopicName() const
 {
     return FString::Printf(TEXT("joint/%s"), *GetName());
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjJoint::GetDefaultClassOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
+#endif

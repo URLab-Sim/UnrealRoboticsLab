@@ -45,14 +45,35 @@ FString SanitizeXmlForComparison(const FString& InXml, const FString& PrefixToSt
         OutXml = OutXml.Replace(*PrefixToStrip, TEXT(""));
     }
 
-    // 2. Strip auto-generated names (e.g. name="AUTONAME_Geom", name="AUTONAME_Geom_0", etc.)
-    // We target anything starting with AUTONAME_ inside a name attribute.
-    const FRegexPattern AutoNamePattern(TEXT(" name=\"AUTONAME_[^\"]*\""));
-    FRegexMatcher AutoNameMatcher(AutoNamePattern, OutXml);
-    while (AutoNameMatcher.FindNext())
+    // 2. Strip auto-generated names produced by the importer for unnamed XML elements.
+    // Covers new contextual names (Geom_Box, HingeJoint, etc.) and legacy AUTONAME_*.
+    TArray<FRegexPattern> AutoNamePatterns;
+    AutoNamePatterns.Emplace(TEXT(" name=\"AUTONAME_[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Geom_[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Joint[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"FreeJoint[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Site[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Inertial[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Camera[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Sensor[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Actuator[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Tendon[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"[a-zA-Z_]*_Body[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"[a-zA-Z_]*_Frame[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"ContactPair_[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"ContactExclude_[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Eq_[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Keyframe[^\"]*\""));
+    AutoNamePatterns.Emplace(TEXT(" name=\"Default[A-Z][^\"]*\""));
+
+    for (const FRegexPattern& Pattern : AutoNamePatterns)
     {
-        OutXml = OutXml.Replace(*AutoNameMatcher.GetCaptureGroup(0), TEXT(""));
-        AutoNameMatcher = FRegexMatcher(AutoNamePattern, OutXml); 
+        FRegexMatcher Matcher(Pattern, OutXml);
+        while (Matcher.FindNext())
+        {
+            OutXml = OutXml.Replace(*Matcher.GetCaptureGroup(0), TEXT(""));
+            Matcher = FRegexMatcher(Pattern, OutXml);
+        }
     }
 
     // 3. Collapse whitespace and newlines for robust comparison

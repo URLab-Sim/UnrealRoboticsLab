@@ -158,18 +158,23 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
     int GetMjID() const { return m_ID; }
 
-    /** @brief If true, this component is used as a template in a <default> block and should be ignored by runtime discovery. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+    /** @brief If true, this component is a template in a <default> block. Auto-resolved in Setup(). */
+    UPROPERTY()
     bool bIsDefault = false;
 
     /** @brief Gets the full prefixed name of this component as it appears in the compiled MuJoCo model. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
     virtual FString GetMjName() const;
 
-    /** @brief The original name of this element in the MuJoCo Spec (from XML). 
-     * Stable for cross-referencing, unlike Unreal's GetName() which can vary. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+    /** @brief The original name of this element in the MuJoCo Spec (from XML). */
+    UPROPERTY()
     FString MjName;
+
+#if WITH_EDITOR
+    /** Returns names of sibling components of the given class in the same Blueprint SCS tree.
+     *  Static so non-UMjComponent classes (ContactPair, etc.) can also use it. */
+    static TArray<FString> GetSiblingComponentOptions(const UObject* CallerComponent, UClass* FilterClass, bool bIncludeDefaults = false);
+#endif
 
 protected:
     /** Resolves the MuJoCo default class for a given class name.

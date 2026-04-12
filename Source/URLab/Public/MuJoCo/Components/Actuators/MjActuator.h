@@ -28,6 +28,7 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Defaults/MjDefault.h"
 #include <atomic>
 #include "MjActuator.generated.h"
 
@@ -81,17 +82,25 @@ public:
     UMjActuator();
 
     /** @brief The type of actuator dynamics (e.g. Motor, Position). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator")
     EMjActuatorType Type;
 
     /** @brief The transmission type connecting the actuator to the system. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator")
     EMjActuatorTrnType TransmissionType;
 
-    /** @brief Optional MuJoCo class name to inherit defaults from. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
-    virtual FString GetMjClassName() const override { return MjClassName; }
+
+    /** @brief Reference to a UMjDefault component for default class inheritance. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator")
+    UMjDefault* DefaultClass = nullptr;
+
+    virtual FString GetMjClassName() const override
+    {
+        return MjClassName;
+    }
 
     virtual void ExportTo(mjsActuator* Actuator, mjsDefault* Default = nullptr);
     void ApplyRawOverrides(mjsActuator* Actuator, mjsDefault* Default = nullptr);
@@ -197,129 +206,140 @@ protected:
 public:
 
     /** @brief Name of the target element (Joint, Tendon, Site, etc.) this actuator acts upon. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(GetOptions="GetTargetNameOptions"))
     FString TargetName;
 
     /** @brief Override toggle for Gear. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Gear = false;
 
     /** @brief Gear ratio scaling for the transmission. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_Gear"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_Gear"))
     TArray<float> Gear;
 
     /** @brief Override toggle for GainPrm. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_GainPrm = false;
 
     /** @brief Custom gain parameters (gainprm). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_GainPrm"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_GainPrm"))
     TArray<float> GainPrm;
 
     /** @brief Override toggle for BiasPrm. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_BiasPrm = false;
 
     /** @brief Custom bias parameters (biasprm). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_BiasPrm"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_BiasPrm"))
     TArray<float> BiasPrm;
 
     /** @brief Override toggle for CtrlRange. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_CtrlRange = false;
 
     /** @brief Control range [min, max]. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_CtrlRange"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_CtrlRange"))
     TArray<float> CtrlRange = {0.0f, 0.0f};
 
     /** @brief Override toggle for CtrlLimited. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_CtrlLimited = false;
 
     /** @brief Whether control limiting is enabled. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_CtrlLimited"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_CtrlLimited"))
     bool bCtrlLimited = false;
 
     /** @brief Override toggle for ForceRange. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_ForceRange = false;
 
     /** @brief Force output range [min, max]. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_ForceRange"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_ForceRange"))
     TArray<float> ForceRange = {0.0f, 0.0f};
 
     /** @brief Override toggle for ForceLimited. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_ForceLimited = false;
 
     /** @brief Whether force limiting is enabled. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_ForceLimited"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_ForceLimited"))
     bool bForceLimited = false;
 
     /** @brief Override toggle for ActLimited. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_ActLimited = false;
 
     /** @brief Whether internal activation state is limited. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_ActLimited"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_ActLimited"))
     bool bActLimited = false;
 
     /** @brief Override toggle for ActRange. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_ActRange = false;
 
     /** @brief Activation state range [min, max]. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_ActRange"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_ActRange"))
     TArray<float> ActRange = {0.0f, 0.0f};
 
     /** @brief Override toggle for LengthRange. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_LengthRange = false;
 
     /** @brief Length range for muscle/tendon actuators. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_LengthRange"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_LengthRange"))
     TArray<float> LengthRange = {0.0f, 0.0f};
 
     // Transmission specific
     /** @brief Length of the crank for slider-crank transmission. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator")
     float CrankLength;
 
     /** @brief Name of the slider site for slider-crank transmission. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(GetOptions="GetSliderSiteOptions"))
     FString SliderSite;
 
     /** @brief Reference site name. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(GetOptions="GetRefSiteOptions"))
     FString RefSite;
 
     /** @brief Override toggle for Group. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Group = false;
 
     /** @brief Actuator group ID. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_Group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_Group"))
     int Group = 0;
 
     /** @brief Override toggle for ActEarly. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_ActEarly = false;
 
     /** @brief Whether to apply actuation early (before other forces). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_ActEarly"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_ActEarly"))
     bool bActEarly = false;
 
     /** @brief Override toggle for Dynamics. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Dynamics = false;
 
     /** @brief Override toggle for DynPrm. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_DynPrm = false;
 
     /** @brief Custom dynamic parameters (dynprm). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator", meta=(EditCondition="bOverride_DynPrm"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_DynPrm"))
     TArray<float> DynPrm;
+
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetTargetNameOptions() const;
+    UFUNCTION()
+    TArray<FString> GetSliderSiteOptions() const;
+    UFUNCTION()
+    TArray<FString> GetRefSiteOptions() const;
+    UFUNCTION()
+    TArray<FString> GetDefaultClassOptions() const;
+#endif
 
 	virtual void BeginPlay() override;
 };

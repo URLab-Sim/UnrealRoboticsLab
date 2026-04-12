@@ -232,3 +232,10 @@ void UMjSite::Bind(mjModel* model, mjData* data, const FString& Prefix)
         UE_LOG(LogURLabBind, Warning, TEXT("[MjSite] Site '%s' FAILED bind. Prefix: %s, MjName: %s"), *GetName(), *Prefix, *MjName);
     }
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjSite::GetDefaultClassOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
+#endif

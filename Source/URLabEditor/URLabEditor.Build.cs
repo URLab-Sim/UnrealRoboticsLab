@@ -30,7 +30,8 @@ public class URLabEditor : ModuleRules
 		{
 			"InputCore",
 			"RenderCore",
-			"DesktopPlatform"
+			"DesktopPlatform",
+			"Kismet"
 		});
 	}
 }

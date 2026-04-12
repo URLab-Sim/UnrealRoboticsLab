@@ -27,6 +27,12 @@
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "MuJoCo/Components/Geometry/MjSite.h"
+#include "MuJoCo/Components/Tendons/MjTendon.h"
+#include "MuJoCo/Components/Actuators/MjActuator.h"
 
 UMjSensor::UMjSensor()
 {
@@ -490,3 +496,39 @@ FString UMjSensor::GetTelemetryTopicName() const
 {
     return FString::Printf(TEXT("sensor/%s"), *GetName());
 }
+
+#if WITH_EDITOR
+namespace
+{
+    UClass* GetClassForObjType(EMjObjType ObjType)
+    {
+        switch (ObjType)
+        {
+            case EMjObjType::Body:    return UMjBody::StaticClass();
+            case EMjObjType::Joint:   return UMjJoint::StaticClass();
+            case EMjObjType::Geom:    return UMjGeom::StaticClass();
+            case EMjObjType::Site:    return UMjSite::StaticClass();
+            case EMjObjType::Tendon:  return UMjTendon::StaticClass();
+            case EMjObjType::Actuator:return UMjActuator::StaticClass();
+            case EMjObjType::Sensor:  return UMjSensor::StaticClass();
+            default:                  return UMjComponent::StaticClass();
+        }
+    }
+}
+
+TArray<FString> UMjSensor::GetTargetNameOptions() const
+{
+    return UMjComponent::GetSiblingComponentOptions(this, GetClassForObjType(ObjType));
+}
+
+TArray<FString> UMjSensor::GetReferenceNameOptions() const
+{
+    if (RefType == EMjObjType::Unknown) return {TEXT("")};
+    return UMjComponent::GetSiblingComponentOptions(this, GetClassForObjType(RefType));
+}
+
+TArray<FString> UMjSensor::GetDefaultClassOptions() const
+{
+    return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
+#endif

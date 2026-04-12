@@ -108,6 +108,7 @@
 #include "MuJoCo/Components/Geometry/Primitives/MjSphere.h"
 #include "MuJoCo/Components/Geometry/Primitives/MjCylinder.h"
 #include "MuJoCo/Components/Geometry/Primitives/MjCapsule.h"
+#include "MuJoCo/Components/Geometry/MjMeshGeom.h"
 #include "MuJoCo/Components/Physics/MjInertial.h"
 #include "MuJoCo/Components/Constraints/MjEquality.h"
 #include "MuJoCo/Components/Deformable/MjFlexcomp.h"
@@ -262,7 +263,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
         // Regular Body
         FString Name = Node->GetAttribute(TEXT("name"));
-        if (Name.IsEmpty()) Name = TEXT("AUTONAME_Body");
+        if (Name.IsEmpty())
+        {
+            FString ParentName = ParentNode ? ParentNode->GetVariableName().ToString() : TEXT("Body");
+            Name = ParentName + TEXT("_Body");
+        }
 
         if (ReuseNode)
         {
@@ -289,7 +294,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
     else if (Tag.Equals(TEXT("frame")))
     {
         FString Name = Node->GetAttribute(TEXT("name"));
-        if (Name.IsEmpty()) Name = TEXT("AUTONAME_Frame");
+        if (Name.IsEmpty())
+        {
+            FString ParentName = ParentNode ? ParentNode->GetVariableName().ToString() : TEXT("Frame");
+            Name = ParentName + TEXT("_Frame");
+        }
 
         CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjFrame::StaticClass(), *Name);
         UMjFrame* FrameComp = Cast<UMjFrame>(CreatedNode->ComponentTemplate);
@@ -315,14 +324,27 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
     else if (Tag.Equals(TEXT("geom")))
     {
         FString Name = Node->GetAttribute(TEXT("name"));
-        if (Name.IsEmpty()) Name = TEXT("AUTONAME_Geom");
-
         FString TypeStr = Node->GetAttribute(TEXT("type"));
+        FString MeshAttr = Node->GetAttribute(TEXT("mesh"));
+
+        // If no explicit type but has a mesh attribute, it's a mesh geom
+        if (TypeStr.IsEmpty() && !MeshAttr.IsEmpty())
+        {
+            TypeStr = TEXT("mesh");
+        }
+
+        if (Name.IsEmpty())
+        {
+            FString GeomTypeName = TypeStr.IsEmpty() ? TEXT("Sphere") : TypeStr;
+            GeomTypeName[0] = FChar::ToUpper(GeomTypeName[0]);
+            Name = TEXT("Geom_") + GeomTypeName;
+        }
         UClass* Class = UMjGeom::StaticClass();
         if (TypeStr == "box") Class = UMjBox::StaticClass();
         else if (TypeStr == "sphere") Class = UMjSphere::StaticClass();
         else if (TypeStr == "cylinder") Class = UMjCylinder::StaticClass();
         else if (TypeStr == "capsule") Class = UMjCapsule::StaticClass();
+        else if (TypeStr == "mesh") Class = UMjMeshGeom::StaticClass();
 
         CreatedNode = BP->SimpleConstructionScript->CreateNode(Class, *Name);
         UMjGeom* GeomComp = Cast<UMjGeom>(CreatedNode->ComponentTemplate);
@@ -336,6 +358,20 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             // name, not our auto-generated SCS variable name.
             FString NameAttr = Node->GetAttribute(TEXT("name"));
             if (!NameAttr.IsEmpty()) GeomComp->MjName = NameAttr;
+
+            // Resolve DefaultClass from the class attribute
+            {
+                FString ClassAttr = Node->GetAttribute(TEXT("class"));
+                if (ClassAttr.IsEmpty()) ClassAttr = TEXT("main");
+                if (CreatedDefaultNodes.Contains(ClassAttr))
+                {
+                    UMjDefault* DefComp = Cast<UMjDefault>(CreatedDefaultNodes[ClassAttr]->ComponentTemplate);
+                    if (DefComp)
+                    {
+                        GeomComp->DefaultClass = DefComp;
+                    }
+                }
+            }
 
             // Resolve default class transform for visual mesh placement.
             // Walk the default class hierarchy (child -> parent -> ... -> main) to find
@@ -545,9 +581,13 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
     else if (Tag.Equals(TEXT("joint")))
     {
         FString Name = Node->GetAttribute(TEXT("name"));
-        if (Name.IsEmpty()) Name = TEXT("AUTONAME_Joint");
-
         FString TypeStr = Node->GetAttribute(TEXT("type"));
+        if (Name.IsEmpty())
+        {
+            FString JointTypeName = TypeStr.IsEmpty() ? TEXT("Hinge") : TypeStr;
+            JointTypeName[0] = FChar::ToUpper(JointTypeName[0]);
+            Name = JointTypeName + TEXT("Joint");
+        }
         UClass* Class = UMjHingeJoint::StaticClass();
         if (TypeStr == "hinge") Class = UMjHingeJoint::StaticClass();
         else if (TypeStr == "slide") Class = UMjSlideJoint::StaticClass();
@@ -560,13 +600,20 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
         {
             JointComp->ImportFromXml(Node, CompilerSettings);
             JointComp->bIsDefault = bIsDefaultContext;
+
+            FString ClassAttr = Node->GetAttribute(TEXT("class"));
+            if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
+            {
+                UMjDefault* DefComp = Cast<UMjDefault>(CreatedDefaultNodes[ClassAttr]->ComponentTemplate);
+                if (DefComp) JointComp->DefaultClass = DefComp;
+            }
         }
     }
     // --- FREEJOINT (Standalone) ---
     else if (Tag.Equals(TEXT("freejoint")))
     {
         FString Name = Node->GetAttribute(TEXT("name"));
-        if (Name.IsEmpty()) Name = TEXT("AUTONAME_FreeJoint");
+        if (Name.IsEmpty()) Name = TEXT("FreeJoint");
 
         CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjFreeJoint::StaticClass(), *Name);
         UMjJoint* JointComp = Cast<UMjJoint>(CreatedNode->ComponentTemplate);
@@ -672,7 +719,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
     else if (Tag.Equals(TEXT("site")))
     {
         FString Name = Node->GetAttribute(TEXT("name"));
-        if (Name.IsEmpty()) Name = TEXT("AUTONAME_Site");
+        if (Name.IsEmpty()) Name = TEXT("Site");
         CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjSite::StaticClass(), *Name);
         UMjSite* SiteComp = Cast<UMjSite>(CreatedNode->ComponentTemplate);
         if (SiteComp)
@@ -681,12 +728,19 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             SiteComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
             if (!NameAttr.IsEmpty()) SiteComp->MjName = NameAttr;
+
+            FString ClassAttr = Node->GetAttribute(TEXT("class"));
+            if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
+            {
+                UMjDefault* DefComp = Cast<UMjDefault>(CreatedDefaultNodes[ClassAttr]->ComponentTemplate);
+                if (DefComp) SiteComp->DefaultClass = DefComp;
+            }
         }
     }
     // --- INERTIAL ---
     else if (Tag.Equals(TEXT("inertial")))
     {
-        CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjInertial::StaticClass(), TEXT("AUTONAME_Inertial"));
+        CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjInertial::StaticClass(), TEXT("Inertial"));
         UMjInertial* InertialComp = Cast<UMjInertial>(CreatedNode->ComponentTemplate);
         if (InertialComp)
         {
@@ -716,7 +770,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
              Tag == "clock" || Tag == "tactile" || Tag == "user" || Tag == "plugin")
     {
          FString Name = Node->GetAttribute(TEXT("name"));
-         if (Name.IsEmpty()) Name = TEXT("AUTONAME_") + Tag;
+         if (Name.IsEmpty())
+         {
+             FString SensorTag = Tag;
+             SensorTag[0] = FChar::ToUpper(SensorTag[0]);
+             Name = SensorTag + TEXT("Sensor");
+         }
 
          UClass* Class = UMjSensor::StaticClass();
          if (Tag == "touch") Class = UMjTouchSensor::StaticClass();
@@ -775,13 +834,20 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             SensComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
             if (!NameAttr.IsEmpty()) SensComp->MjName = NameAttr;
+
+            FString ClassAttr = Node->GetAttribute(TEXT("class"));
+            if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
+            {
+                UMjDefault* DefComp = Cast<UMjDefault>(CreatedDefaultNodes[ClassAttr]->ComponentTemplate);
+                if (DefComp) SensComp->DefaultClass = DefComp;
+            }
          }
     }
     // --- CAMERA ---
     else if (Tag.Equals(TEXT("camera")))
     {
          FString Name = Node->GetAttribute(TEXT("name"));
-         if (Name.IsEmpty()) Name = TEXT("AUTONAME_Camera");
+         if (Name.IsEmpty()) Name = TEXT("Camera");
 
          CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjCamera::StaticClass(), *Name);
          UMjCamera* CamComp = Cast<UMjCamera>(CreatedNode->ComponentTemplate);
@@ -807,7 +873,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
     else if (Tag == "motor" || Tag == "position" || Tag == "velocity" || Tag == "cylinder" || Tag == "muscle" || Tag == "general" || Tag == "damper" || Tag == "intvelocity" || Tag == "adhesion" || Tag == "dcmotor")
     {
          FString Name = Node->GetAttribute(TEXT("name"));
-         if (Name.IsEmpty()) Name = TEXT("AUTONAME_") + Tag;
+         if (Name.IsEmpty())
+         {
+             FString ActTag = Tag;
+             ActTag[0] = FChar::ToUpper(ActTag[0]);
+             Name = ActTag + TEXT("Actuator");
+         }
 
          UClass* Class = UMjActuator::StaticClass();
          if (Tag == "motor") Class = UMjMotorActuator::StaticClass();
@@ -829,6 +900,13 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             ActComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
             if (!NameAttr.IsEmpty()) ActComp->MjName = NameAttr;
+
+            FString ClassAttr = Node->GetAttribute(TEXT("class"));
+            if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
+            {
+                UMjDefault* DefComp = Cast<UMjDefault>(CreatedDefaultNodes[ClassAttr]->ComponentTemplate);
+                if (DefComp) ActComp->DefaultClass = DefComp;
+            }
          }
     }
     // --- TENDON ---
@@ -844,7 +922,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
          }
 
          FString Name = Node->GetAttribute(TEXT("name"));
-         if (Name.IsEmpty()) Name = TEXT("AUTONAME_") + Tag;
+         if (Name.IsEmpty())
+         {
+             FString TendonTag = Tag;
+             TendonTag[0] = FChar::ToUpper(TendonTag[0]);
+             Name = TendonTag + TEXT("Tendon");
+         }
 
          CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjTendon::StaticClass(), *Name);
          UMjTendon* TendonComp = Cast<UMjTendon>(CreatedNode->ComponentTemplate);
@@ -1158,7 +1241,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
 
         if (ClassName.IsEmpty()) ClassName = TEXT("main");
 
-        FString NodeName = FString::Printf(TEXT("Default_%s"), *ClassName);
+        FString NodeName = ClassName;
         UE_LOG(LogURLabEditor, Log, TEXT("Creating Default Component: %s (Parent: %s)"), *NodeName, *ParentClassName);
 
         USCS_Node* DefNode = BP->SimpleConstructionScript->CreateNode(UMjDefault::StaticClass(), *NodeName);
@@ -1191,7 +1274,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
             else if (ChildTag.Equals(TEXT("geom")))
             {
                 FString GeomName = Child->GetAttribute(TEXT("name"));
-                if (GeomName.IsEmpty()) GeomName = TEXT("AUTONAME_DefaultGeom");
+                if (GeomName.IsEmpty()) GeomName = TEXT("DefaultGeom");
 
                 USCS_Node* GeomNode = BP->SimpleConstructionScript->CreateNode(UMjGeom::StaticClass(), *GeomName);
                 DefNode->AddChildNode(GeomNode);
@@ -1206,7 +1289,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
             else if (ChildTag.Equals(TEXT("joint")))
             {
                 FString JointName = Child->GetAttribute(TEXT("name"));
-                if (JointName.IsEmpty()) JointName = TEXT("AUTONAME_DefaultJoint");
+                if (JointName.IsEmpty()) JointName = TEXT("DefaultJoint");
 
                 USCS_Node* JointNode = BP->SimpleConstructionScript->CreateNode(UMjJoint::StaticClass(), *JointName);
                 DefNode->AddChildNode(JointNode);
@@ -1222,7 +1305,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
             else if (ChildTag.Equals(TEXT("site")))
             {
                 FString SiteName = Child->GetAttribute(TEXT("name"));
-                if (SiteName.IsEmpty()) SiteName = TEXT("AUTONAME_DefaultSite");
+                if (SiteName.IsEmpty()) SiteName = TEXT("DefaultSite");
 
                 USCS_Node* SiteNode = BP->SimpleConstructionScript->CreateNode(UMjSite::StaticClass(), *SiteName);
                 DefNode->AddChildNode(SiteNode);
@@ -1237,7 +1320,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
             else if (ChildTag.Equals(TEXT("camera")))
             {
                 FString CamName = Child->GetAttribute(TEXT("name"));
-                if (CamName.IsEmpty()) CamName = TEXT("AUTONAME_DefaultCamera");
+                if (CamName.IsEmpty()) CamName = TEXT("DefaultCamera");
 
                 USCS_Node* CamNode = BP->SimpleConstructionScript->CreateNode(UMjCamera::StaticClass(), *CamName);
                 DefNode->AddChildNode(CamNode);
@@ -1258,7 +1341,12 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                      ChildTag.Equals(TEXT("dcmotor")))
             {
                  FString ActName = Child->GetAttribute(TEXT("name"));
-                 if (ActName.IsEmpty()) ActName = TEXT("AUTONAME_Default") + ChildTag;
+                 if (ActName.IsEmpty())
+                 {
+                     FString DefaultActTag = ChildTag;
+                     DefaultActTag[0] = FChar::ToUpper(DefaultActTag[0]);
+                     ActName = TEXT("Default") + DefaultActTag;
+                 }
 
                  UClass* ActClass = UMjActuator::StaticClass();
                  if (ChildTag == "motor") ActClass = UMjMotorActuator::StaticClass();
@@ -1330,7 +1418,7 @@ void UMujocoGenerationAction::ParseContactSection(const FXmlNode* Node, UBluepri
 
                 if (PairName.IsEmpty())
                 {
-                    PairName = FString::Printf(TEXT("AUTONAME_ContactPair_%s_%s"), *Geom1, *Geom2);
+                    PairName = FString::Printf(TEXT("ContactPair_%s_%s"), *Geom1, *Geom2);
                 }
 
                 UE_LOG(LogURLabEditor, Log, TEXT("Creating Contact Pair: %s (geom1=%s, geom2=%s)"), *PairName, *Geom1, *Geom2);
@@ -1353,7 +1441,7 @@ void UMujocoGenerationAction::ParseContactSection(const FXmlNode* Node, UBluepri
 
                 if (ExcludeName.IsEmpty())
                 {
-                    ExcludeName = FString::Printf(TEXT("AUTONAME_ContactExclude_%s_%s"), *Body1, *Body2);
+                    ExcludeName = FString::Printf(TEXT("ContactExclude_%s_%s"), *Body1, *Body2);
                 }
 
                 UE_LOG(LogURLabEditor, Log, TEXT("Creating Contact Exclude: %s (body1=%s, body2=%s)"), *ExcludeName, *Body1, *Body2);
@@ -1408,7 +1496,12 @@ void UMujocoGenerationAction::ParseEqualitySection(const FXmlNode* Node, UBluepr
              || ChildTag.Equals(TEXT("flex")) || ChildTag.Equals(TEXT("flexvert")) || ChildTag.Equals(TEXT("flexstrain")))
             {
                 FString EqName = Child->GetAttribute(TEXT("name"));
-                if (EqName.IsEmpty()) EqName = FString::Printf(TEXT("AUTONAME_Eq_%s"), *ChildTag);
+                if (EqName.IsEmpty())
+                {
+                    FString EqTag = ChildTag;
+                    EqTag[0] = FChar::ToUpper(EqTag[0]);
+                    EqName = TEXT("Eq_") + EqTag;
+                }
 
                 USCS_Node* EqNode = BP->SimpleConstructionScript->CreateNode(UMjEquality::StaticClass(), *EqName);
                 RootNode->AddChildNode(EqNode);
@@ -1456,7 +1549,7 @@ void UMujocoGenerationAction::ParseKeyframeSection(const FXmlNode* Node, UBluepr
             if (Child->GetTag().Equals(TEXT("key")))
             {
                 FString KeyName = Child->GetAttribute(TEXT("name"));
-                if (KeyName.IsEmpty()) KeyName = TEXT("AUTONAME_Keyframe");
+                if (KeyName.IsEmpty()) KeyName = TEXT("Keyframe");
 
                 USCS_Node* KeyNode = BP->SimpleConstructionScript->CreateNode(UMjKeyframe::StaticClass(), *KeyName);
                 RootNode->AddChildNode(KeyNode);

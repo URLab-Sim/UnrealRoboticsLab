@@ -24,6 +24,8 @@
 #include "XmlFile.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
+#include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
 #include "Utils/URLabLogging.h"
 
 UMjContactExclude::UMjContactExclude()
@@ -74,3 +76,10 @@ void UMjContactExclude::Bind(mjModel* model, mjData* data, const FString& Prefix
 {
     // Contact excludes are global static data.
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjContactExclude::GetBodyOptions() const
+{
+    return UMjComponent::GetSiblingComponentOptions(this, UMjBody::StaticClass());
+}
+#endif

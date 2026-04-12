@@ -65,6 +65,11 @@ void UMjCylinder::OnRegister()
         VisualizerMesh->SetupAttachment(this);
         VisualizerMesh->RegisterComponent();
     }
+
+    if (VisualizerMesh && OverrideMaterial && IsValid(OverrideMaterial) && GetOwner())
+    {
+        VisualizerMesh->SetMaterial(0, OverrideMaterial);
+    }
 }
 
 
@@ -106,6 +111,12 @@ void UMjCylinder::ExportTo(mjsGeom* geom, mjsDefault* def)
     }
 
 	Super::ExportTo(geom, def);
+}
+
+void UMjCylinder::ApplyOverrideMaterial(UMaterialInterface* Material)
+{
+    EnsureVisualizerMesh();
+    if (VisualizerMesh && Material && IsValid(Material)) VisualizerMesh->SetMaterial(0, Material);
 }
 
 void UMjCylinder::SyncUnrealTransformFromMj()

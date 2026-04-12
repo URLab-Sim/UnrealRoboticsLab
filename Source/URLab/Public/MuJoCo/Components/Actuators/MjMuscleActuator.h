@@ -38,83 +38,83 @@ public:
     UMjMuscleActuator();
 
     /** @brief Override toggle for TimeConst. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_TimeConst = false;
 
     /** @brief Time constant for activation dynamics. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_TimeConst"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_TimeConst"))
     float TimeConst = 0.01f;
 
     /** @brief Override toggle for TimeConst2. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_TimeConst2 = false;
 
     /** @brief Second time constant (e.g. deactivation time). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_TimeConst2"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_TimeConst2"))
     float TimeConst2 = 0.04f;
 
     /** @brief Override toggle for TauSmooth. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_TauSmooth = false;
 
     /** @brief Smoothing time constant. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_TauSmooth"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_TauSmooth"))
     float TauSmooth = 0.0f;
 
     /** @brief Override toggle for Force. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Force = false;
 
     /** @brief Peak active force. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_Force"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Force"))
     float Force = -1.0f; // Muscle force
 
     /** @brief Override toggle for Scale. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Scale = false;
 
     /** @brief Force scaling factor. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_Scale"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Scale"))
     float Scale = 200.0f; // Muscle scale
 
     /** @brief Override toggle for LMin. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_LMin = false;
 
     /** @brief Minimum fiber length. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_LMin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_LMin"))
     float LMin = 0.5f;
 
     /** @brief Override toggle for LMax. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_LMax = false;
 
     /** @brief Maximum fiber length. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_LMax"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_LMax"))
     float LMax = 1.6f;
 
     /** @brief Override toggle for VMax. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_VMax = false;
 
     /** @brief Maximum shortening velocity. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_VMax"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_VMax"))
     float VMax = 1.5f;
 
     /** @brief Override toggle for FPMax. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_FPMax = false;
 
     /** @brief Peak passive force. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_FPMax"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_FPMax"))
     float FPMax = 1.3f;
 
     /** @brief Override toggle for FVMax. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_FVMax = false;
 
     /** @brief Peak viscous force. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_FVMax"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_FVMax"))
     float FVMax = 1.2f;
 
     virtual void ParseSpecifics(const class FXmlNode* Node) override;

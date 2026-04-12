@@ -38,11 +38,11 @@ public:
     UMjDamperActuator();
 
     /** @brief Override toggle for Kv. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Kv = false;
 
     /** @brief Derivative gain (Kv) for velocity damping. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_Kv"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kv"))
     double Kv = 0.0f;
 
     virtual void ParseSpecifics(const class FXmlNode* Node) override;

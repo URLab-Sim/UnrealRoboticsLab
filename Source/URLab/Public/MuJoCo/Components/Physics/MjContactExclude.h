@@ -46,15 +46,15 @@ public:
 	UMjContactExclude();
 
     /** @brief Name of the contact exclusion (optional). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Exclude")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude")
     FString Name;
 
     /** @brief Name of the first body in the exclusion pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Exclude")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude", meta=(GetOptions="GetBodyOptions"))
     FString Body1;
 
     /** @brief Name of the second body in the exclusion pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Contact Exclude")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude", meta=(GetOptions="GetBodyOptions"))
     FString Body2;
 
     /**
@@ -77,6 +77,11 @@ public:
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
     virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
+
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetBodyOptions() const;
+#endif
 
 protected:
     /** @brief Called when the game starts. */

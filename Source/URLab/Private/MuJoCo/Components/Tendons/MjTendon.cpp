@@ -300,3 +300,10 @@ FString UMjTendon::GetMjName() const
     if (m_TendonView.id < 0 || !m_TendonView.name) return FString();
     return MjUtils::MjToString(m_TendonView.name);
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjTendon::GetDefaultClassOptions() const
+{
+    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
+#endif

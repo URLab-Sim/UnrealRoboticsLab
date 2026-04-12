@@ -78,70 +78,75 @@ public:
     void ImportFromXml(const class FXmlNode* Node);
 
     /** @brief The type of equality constraint. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality")
     EMjEqualityType EqualityType = EMjEqualityType::Weld;
 
     /** @brief Name of the first object (body, joint, or tendon). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(GetOptions="GetObjOptions"))
     FString Obj1;
 
     /** @brief Name of the second object (body, joint, or tendon). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(GetOptions="GetObjOptions"))
     FString Obj2;
 
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetObjOptions() const;
+#endif
+
     /** @brief Whether the equality constraint is initially active. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality")
     bool bActive = true;
 
     // --- Solver Parameters ---
 
     /** @brief Override toggle for SolRef. */
-    UPROPERTY(EditAnywhere, Category = "Mj Equality|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_SolRef = false;
 
     /** @brief Constraint solver reference (timeconst, dampratio). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality|Physics", meta=(EditCondition="bOverride_SolRef"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality|Physics", meta=(EditCondition="bOverride_SolRef"))
     TArray<float> SolRef;
 
     /** @brief Override toggle for SolImp. */
-    UPROPERTY(EditAnywhere, Category = "Mj Equality|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_SolImp = false;
 
     /** @brief Constraint solver impedance (dmin, dmax, width). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality|Physics", meta=(EditCondition="bOverride_SolImp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality|Physics", meta=(EditCondition="bOverride_SolImp"))
     TArray<float> SolImp;
 
     // --- Type Specific Parameters ---
 
     /** @brief Override toggle for Anchor. Used for Connect and Weld. */
-    UPROPERTY(EditAnywhere, Category = "Mj Equality|Parameters", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality|Parameters", meta=(InlineEditConditionToggle))
     bool bOverride_Anchor = false;
 
     /** @brief Position of the connection point, in body2 frame. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality|Parameters", meta=(EditCondition="bOverride_Anchor"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality|Parameters", meta=(EditCondition="bOverride_Anchor"))
     FVector Anchor = FVector::ZeroVector;
 
     /** @brief Override toggle for RelPose. Used for Weld. */
-    UPROPERTY(EditAnywhere, Category = "Mj Equality|Parameters", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality|Parameters", meta=(InlineEditConditionToggle))
     bool bOverride_RelPose = false;
 
     /** @brief Relative position and orientation of body1 in body2 frame. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality|Parameters", meta=(EditCondition="bOverride_RelPose"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality|Parameters", meta=(EditCondition="bOverride_RelPose"))
     FTransform RelPose = FTransform::Identity;
 
     /** @brief Override toggle for PolyCoef. Used for Joint and Tendon. */
-    UPROPERTY(EditAnywhere, Category = "Mj Equality|Parameters", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality|Parameters", meta=(InlineEditConditionToggle))
     bool bOverride_PolyCoef = false;
 
     /** @brief Coefficients of the cubic polynomial: y = a + b*x + c*x^2 + d*x^3. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality|Parameters", meta=(EditCondition="bOverride_PolyCoef"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality|Parameters", meta=(EditCondition="bOverride_PolyCoef"))
     TArray<float> PolyCoef;
 
     /** @brief Override toggle for TorqueScale. Used for Weld only. */
-    UPROPERTY(EditAnywhere, Category = "Mj Equality|Parameters", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality|Parameters", meta=(InlineEditConditionToggle))
     bool bOverride_TorqueScale = false;
 
     /** @brief Torque-to-force scaling ratio for weld constraint (mjSpec weld data[7]). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Equality|Parameters", meta=(EditCondition="bOverride_TorqueScale", EditConditionHides))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality|Parameters", meta=(EditCondition="bOverride_TorqueScale", EditConditionHides))
     float TorqueScale = 1.0f;
 };

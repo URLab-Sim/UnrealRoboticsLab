@@ -56,11 +56,11 @@ public:
 	UMjDefault();
 
     /** @brief Name of the default class. If empty, these defaults apply to the global scope. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Default")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Default")
     FString ClassName;
 
     /** @brief Name of the parent default class for inheritance. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Default")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Default")
     FString ParentClassName;
 
     /**
@@ -69,6 +69,10 @@ public:
      * Note: This function now primarily sets the class name. Nested components are created by the importer.
      */
     void ImportFromXml(const class FXmlNode* Node);
+
+#if WITH_EDITOR
+    virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
     /**
      * @brief Exports default settings to a MuJoCo mjsDefault structure.

@@ -54,5 +54,6 @@ public:
     virtual void SetGeomVisibility(bool bNewVisibility) override;
 
 	virtual class UStaticMeshComponent* GetVisualizerMesh() const override { const_cast<UMjBox*>(this)->EnsureVisualizerMesh(); return VisualizerMesh; }
+	virtual void ApplyOverrideMaterial(class UMaterialInterface* Material) override;
 	void EnsureVisualizerMesh();
 };

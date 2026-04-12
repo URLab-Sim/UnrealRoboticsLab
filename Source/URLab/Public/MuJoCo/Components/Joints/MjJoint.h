@@ -26,6 +26,7 @@
 #include "MuJoCo/Utils/MjBind.h"
 #include "MuJoCo/Core/MjTypes.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjJoint.generated.h"
 
@@ -135,11 +136,23 @@ public:
     /** @brief Gets the full prefixed name of this joint as it appears in the compiled MuJoCo model. */
     virtual FString GetMjName() const override;
 
-    /** @brief Optional MuJoCo class name to inherit defaults from. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint")
+    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
 
-    virtual FString GetMjClassName() const override { return MjClassName; }
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetDefaultClassOptions() const;
+#endif
+
+    /** @brief Reference to a UMjDefault component for default class inheritance. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint")
+    class UMjDefault* DefaultClass = nullptr;
+
+    virtual FString GetMjClassName() const override
+    {
+        return MjClassName;
+    }
 
     // --- Editor-time resolved accessors ---
     // Walk the default class chain to resolve effective property values.
@@ -159,135 +172,135 @@ public:
     bool GetResolvedLimited() const;
 
     /** @brief Override toggle for Type. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_Type = false;
 
     /** @brief The type of joint (Hinge, Slide, Ball, Free). Default: Hinge (MuJoCo builtin). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint", meta=(EditCondition="bOverride_Type"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Type"))
     EMjJointType Type = EMjJointType::Hinge;
 
     /** @brief Override toggle for Axis. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_Axis = false;
 
     /** @brief Local joint axis vector (relative to parent body). Ignored for Free/Ball joints. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint", meta=(EditCondition="bOverride_Axis"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Axis"))
     FVector Axis = FVector(0.0f, 0.0f, 1.0f);
 
     /** @brief Override toggle for Ref. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_Ref = false;
 
     /** @brief Value at reference configuration (qpos0). Radians for hinge, cm for slide. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint", meta=(EditCondition="bOverride_Ref", ToolTip="Reference position (qpos0). Radians for hinge joints, centimeters for slide joints."))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Ref", ToolTip="Reference position (qpos0). Radians for hinge joints, centimeters for slide joints."))
     float Ref = 0.0f;
 
     // --- Physics Properties (with override toggles) ---
 
     /** @brief Override toggle for Stiffness. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_Stiffness = false;
 
     /** @brief Joint stiffness coefficients [linear, poly0, poly1]. Polynomial spring: F = -x*(linear + poly0*x + poly1*x²). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Physics", meta=(EditCondition="bOverride_Stiffness"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Physics", meta=(EditCondition="bOverride_Stiffness"))
     TArray<float> Stiffness = {0.0f};
 
     /** @brief Override toggle for SpringRef. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_SpringRef = false;
 
     /** @brief Reference position for the spring. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Physics", meta=(EditCondition="bOverride_SpringRef"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Physics", meta=(EditCondition="bOverride_SpringRef"))
     float SpringRef = 0.0f;
     
     /** @brief Override toggle for Damping. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_Damping = false;
 
     /** @brief Damping coefficients [linear, poly0, poly1]. Polynomial damper: F = -v*(linear + poly0*|v| + poly1*v²). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Physics", meta=(EditCondition="bOverride_Damping"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Physics", meta=(EditCondition="bOverride_Damping"))
     TArray<float> Damping = {0.0f};
 
     /** @brief Override toggle for Armature. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_Armature = false;
 
     /** @brief Armature inertia/mass added to the joint. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Physics", meta=(EditCondition="bOverride_Armature"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Physics", meta=(EditCondition="bOverride_Armature"))
     float Armature = 0.0f;
 
     /** @brief Override toggle for FrictionLoss. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Physics", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Physics", meta=(InlineEditConditionToggle))
     bool bOverride_FrictionLoss = false;
 
     /** @brief Friction loss (dry friction). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Physics", meta=(EditCondition="bOverride_FrictionLoss"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Physics", meta=(EditCondition="bOverride_FrictionLoss"))
     float FrictionLoss = 0.0f;
 
     // --- Limits (with override toggles) ---
 
     /** @brief Override toggle for bLimited. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Limits", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Limits", meta=(InlineEditConditionToggle))
     bool bOverride_Limited = false;
 
     /** @brief Whether the joint limits are enabled. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Limits", meta=(EditCondition="bOverride_Limited"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Limits", meta=(EditCondition="bOverride_Limited"))
     bool bLimited = false;
 
     /** @brief Override toggle for Range. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Limits", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Limits", meta=(InlineEditConditionToggle))
     bool bOverride_Range = false;
 
     /** @brief Joint limits (min, max). Only active if bLimited is true. Radians for hinge, cm for slide. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Limits", meta=(EditCondition="bOverride_Range", ToolTip="Joint range limits [min, max]. Radians for hinge joints, centimeters for slide joints."))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Limits", meta=(EditCondition="bOverride_Range", ToolTip="Joint range limits [min, max]. Radians for hinge joints, centimeters for slide joints."))
     TArray<float> Range = {0.0f, 0.0f};
 	
-	UPROPERTY(EditAnywhere, Category = "Mj Joint|Limits", meta=(InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Limits", meta=(InlineEditConditionToggle))
 	bool bOverride_ActuatorFrcRange = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|ActuatorFrcRange", meta=(EditCondition="bOverride_ActuatorFrcRange"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|ActuatorFrcRange", meta=(EditCondition="bOverride_ActuatorFrcRange"))
 	TArray<float> ActuatorFrcRange = {0.0f, 0.0f};
 
     /** @brief Override toggle for Margin. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Limits", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Limits", meta=(InlineEditConditionToggle))
     bool bOverride_Margin = false;
 
     /** @brief Constraint margin. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Limits", meta=(EditCondition="bOverride_Margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Limits", meta=(EditCondition="bOverride_Margin"))
     float Margin = 0.0f;
 
     // --- Solver Parameters (with override toggles) ---
 
     /** @brief Override toggle for SolRefLimit. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Solving", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Solving", meta=(InlineEditConditionToggle))
     bool bOverride_SolRefLimit = false;
 
     /** @brief Constraint solver reference parameter for limits (timeconst, dampratio). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Solving", meta=(EditCondition="bOverride_SolRefLimit"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Solving", meta=(EditCondition="bOverride_SolRefLimit"))
     TArray<float> SolRefLimit = {0.02f, 1.0f};
 
     /** @brief Override toggle for SolImpLimit. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Solving", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Solving", meta=(InlineEditConditionToggle))
     bool bOverride_SolImpLimit = false;
 
     /** @brief Constraint solver impedance parameter for limits (dmin, dmax, width). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Solving", meta=(EditCondition="bOverride_SolImpLimit"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Solving", meta=(EditCondition="bOverride_SolImpLimit"))
     TArray<float> SolImpLimit = {0.9f, 0.95f, 0.001f};
 
     /** @brief Override toggle for SolRefFriction. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Solving", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Solving", meta=(InlineEditConditionToggle))
     bool bOverride_SolRefFriction = false;
 
     /** @brief Constraint solver reference parameter for friction (timeconst, dampratio). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Solving", meta=(EditCondition="bOverride_SolRefFriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Solving", meta=(EditCondition="bOverride_SolRefFriction"))
     TArray<float> SolRefFriction = {0.02f, 1.0f};
 
     /** @brief Override toggle for SolImpFriction. */
-    UPROPERTY(EditAnywhere, Category = "Mj Joint|Solving", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Solving", meta=(InlineEditConditionToggle))
     bool bOverride_SolImpFriction = false;
 
     /** @brief Constraint solver impedance parameter for friction. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Joint|Solving", meta=(EditCondition="bOverride_SolImpFriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Solving", meta=(EditCondition="bOverride_SolImpFriction"))
     TArray<float> SolImpFriction = {0.9f, 0.95f, 0.001f};
 
     // --- Group ---

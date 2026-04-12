@@ -13,20 +13,17 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
-#pragma once
 
-#include "CoreMinimal.h"
-#include "IDetailCustomization.h"
+#include "MuJoCo/Components/Geometry/MjMeshGeom.h"
 
-class FMjGeomDetailCustomization : public IDetailCustomization
+UMjMeshGeom::UMjMeshGeom()
 {
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
+	Type = EMjGeomType::Mesh;
+	bOverride_Type = true;
+}

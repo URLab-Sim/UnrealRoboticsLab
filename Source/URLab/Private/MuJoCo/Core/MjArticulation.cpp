@@ -26,6 +26,9 @@
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Misc/MessageDialog.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/SCS_Node.h"
+#include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputAction.h"
@@ -252,12 +255,71 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
     m_wrapper = new FMujocoSpecWrapper(m_ChildSpec, m_vfs);
     m_wrapper->MeshCacheSubDir = GetClass()->GetName();
 
-    // 2. Process Defaults FIRST so they exist for bodies/geoms to reference
-    TArray<UMjDefault*> Defaults;
-    GetComponents<UMjDefault>(Defaults);
-    for (UMjDefault* Def : Defaults)
+    // 1b. Auto-resolve bIsDefault and sync ParentClassName from hierarchy.
+    // This ensures correctness even if OnBlueprintCompiled hasn't run.
     {
-        m_wrapper->AddDefault(Def);
+        TArray<UMjDefault*> AllDefaults;
+        GetComponents<UMjDefault>(AllDefaults);
+        for (UMjDefault* Def : AllDefaults)
+        {
+            Def->bIsDefault = true;
+
+            // Sync ParentClassName from attachment parent if attached to another UMjDefault.
+            // If not (e.g. attached to root), keep existing ParentClassName as fallback
+            // for programmatically created defaults that set it explicitly.
+            if (UMjDefault* ParentDef = Cast<UMjDefault>(Def->GetAttachParent()))
+            {
+                Def->ParentClassName = ParentDef->ClassName;
+            }
+            else if (Def->ParentClassName.IsEmpty())
+            {
+                // No parent default in hierarchy and no explicit ParentClassName — root default
+            }
+
+            TArray<USceneComponent*> DefChildren;
+            Def->GetChildrenComponents(true, DefChildren);
+            for (USceneComponent* Child : DefChildren)
+            {
+                if (UMjComponent* MjChild = Cast<UMjComponent>(Child))
+                {
+                    MjChild->bIsDefault = true;
+                }
+            }
+        }
+    }
+
+    // 2. Process Defaults in hierarchy order (parents before children) so that
+    //    mjs_findDefault can resolve parent classes during AddDefault.
+    {
+        TArray<UMjDefault*> AllDefaults;
+        GetComponents<UMjDefault>(AllDefaults);
+
+        // Find root defaults (those whose parent is NOT a UMjDefault)
+        // and process them recursively, depth-first
+        TFunction<void(UMjDefault*)> ProcessDefaultTree = [&](UMjDefault* Def)
+        {
+            m_wrapper->AddDefault(Def);
+            // Find child defaults attached to this one
+            TArray<USceneComponent*> Children;
+            Def->GetChildrenComponents(false, Children);
+            for (USceneComponent* Child : Children)
+            {
+                if (UMjDefault* ChildDef = Cast<UMjDefault>(Child))
+                {
+                    ProcessDefaultTree(ChildDef);
+                }
+            }
+        };
+
+        for (UMjDefault* Def : AllDefaults)
+        {
+            // Only start from roots (parent is not a UMjDefault)
+            UMjDefault* ParentDef = Cast<UMjDefault>(Def->GetAttachParent());
+            if (!ParentDef)
+            {
+                ProcessDefaultTree(Def);
+            }
+        }
     }
     
     // 3. Find UMjWorldBody and build body hierarchy normally (into child spec)
@@ -1229,6 +1291,43 @@ void AMjArticulation::OnConstruction(const FTransform& Transform)
 
 void AMjArticulation::OnBlueprintCompiled(UBlueprint* Blueprint)
 {
+    // Sync MjDefault ClassName and ParentClassName from SCS hierarchy
+    if (Blueprint && Blueprint->SimpleConstructionScript)
+    {
+        USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
+        for (USCS_Node* Node : SCS->GetAllNodes())
+        {
+            if (UMjDefault* DefComp = Cast<UMjDefault>(Node->ComponentTemplate))
+            {
+                // Sync ClassName from variable name
+                FString VarName = Node->GetVariableName().ToString();
+                if (DefComp->ClassName != VarName)
+                {
+                    DefComp->ClassName = VarName;
+                }
+
+                // Sync ParentClassName from SCS parent hierarchy
+                USCS_Node* ParentNode = SCS->FindParentNode(Node);
+                if (ParentNode)
+                {
+                    if (UMjDefault* ParentDef = Cast<UMjDefault>(ParentNode->ComponentTemplate))
+                    {
+                        FString ParentVarName = ParentNode->GetVariableName().ToString();
+                        if (DefComp->ParentClassName != ParentVarName)
+                        {
+                            DefComp->ParentClassName = ParentVarName;
+                        }
+                    }
+                    else
+                    {
+                        // Parent is not a UMjDefault (e.g. DefaultsRoot) — no parent class
+                        DefComp->ParentClassName.Empty();
+                    }
+                }
+            }
+        }
+    }
+
     if (bValidateOnBlueprintCompile)
     {
         ValidateSpec();

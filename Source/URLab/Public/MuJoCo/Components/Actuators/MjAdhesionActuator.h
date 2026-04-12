@@ -38,11 +38,11 @@ public:
     UMjAdhesionActuator();
 
     /** @brief Override toggle for Kp. */
-    UPROPERTY(EditAnywhere, Category = "Mj Actuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_Kp = false;
 
     /** @brief Proportional gain (Kp) for position servos. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Actuator|Parameters", meta=(EditCondition="bOverride_Kp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kp"))
     float Kp = 1.0f;
 
     virtual void ParseSpecifics(const class FXmlNode* Node) override;

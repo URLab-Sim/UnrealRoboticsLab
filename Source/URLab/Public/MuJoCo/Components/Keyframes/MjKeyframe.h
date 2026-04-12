@@ -61,56 +61,56 @@ public:
     void ImportFromXml(const class FXmlNode* Node);
 
     /** @brief Simulation time for this keyframe. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe")
     float Time = 0.0f;
 
     // --- State Vectors ---
 
     /** @brief Override toggle for Qpos. */
-    UPROPERTY(EditAnywhere, Category = "Mj Keyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Qpos = false;
 
     /** @brief Joint positions. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe", meta=(EditCondition="bOverride_Qpos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qpos"))
     TArray<float> Qpos;
 
     /** @brief Override toggle for Qvel. */
-    UPROPERTY(EditAnywhere, Category = "Mj Keyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Qvel = false;
 
     /** @brief Joint velocities. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe", meta=(EditCondition="bOverride_Qvel"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qvel"))
     TArray<float> Qvel;
 
     /** @brief Override toggle for Act. */
-    UPROPERTY(EditAnywhere, Category = "Mj Keyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Act = false;
 
     /** @brief Actuator activations. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe", meta=(EditCondition="bOverride_Act"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Act"))
     TArray<float> Act;
 
     /** @brief Override toggle for Ctrl. */
-    UPROPERTY(EditAnywhere, Category = "Mj Keyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Ctrl = false;
 
     /** @brief Actuator controls. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe", meta=(EditCondition="bOverride_Ctrl"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Ctrl"))
     TArray<float> Ctrl;
 
     /** @brief Override toggle for Mpos. */
-    UPROPERTY(EditAnywhere, Category = "Mj Keyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Mpos = false;
 
     /** @brief Mocap body positions. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe", meta=(EditCondition="bOverride_Mpos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mpos"))
     TArray<float> Mpos;
 
     /** @brief Override toggle for Mquat. */
-    UPROPERTY(EditAnywhere, Category = "Mj Keyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Mquat = false;
 
     /** @brief Mocap body quaternions. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Keyframe", meta=(EditCondition="bOverride_Mquat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mquat"))
     TArray<float> Mquat;
 };

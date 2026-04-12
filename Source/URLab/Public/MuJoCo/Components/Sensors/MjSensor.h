@@ -28,6 +28,7 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Utils/MjBind.h"
 #include "MjSensor.generated.h"
 
@@ -159,60 +160,68 @@ public:
 	UMjSensor();
 
     /** @brief The type of sensor (Touch, Accelerometer, JointPos, etc.). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     EMjSensorType Type;
 
     /** @brief Name of the object this sensor is attached to or referencing (e.g. site name, joint name). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetTargetNameOptions"))
     FString TargetName;
 
     /** @brief Optional: Referenced object name (e.g. for reftype/refname pairs in MuJoCo). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetReferenceNameOptions"))
     FString ReferenceName;
 
     /** @brief Dimension of the sensor output. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     int Dim;
 
     /** @brief Override toggle for Noise. */
-    UPROPERTY(EditAnywhere, Category = "Mj Sensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_Noise = false;
 
     /** @brief Noise standard deviation added to the sensor reading. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor", meta=(EditCondition="bOverride_Noise"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_Noise"))
     float Noise = 0.0f;
 
     /** @brief Override toggle for Cutoff. */
-    UPROPERTY(EditAnywhere, Category = "Mj Sensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_Cutoff = false;
 
     /** @brief Cutoff frequency for the sensor filter. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor", meta=(EditCondition="bOverride_Cutoff"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_Cutoff"))
     float Cutoff = 0.0f;
 
     /** @brief Output address override for user sensors (mjsSensor::adr). -1 = let MuJoCo assign. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     int32 UserAdr = -1;
 
-    /** @brief Optional MuJoCo class name to inherit defaults from. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
-    virtual FString GetMjClassName() const override { return MjClassName; }
+
+    /** @brief Reference to a UMjDefault component for default class inheritance. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+    UMjDefault* DefaultClass = nullptr;
+
+    virtual FString GetMjClassName() const override
+    {
+        return MjClassName;
+    }
 
     /** @brief Type of object this sensor is attached to (e.g. Site, Joint, Body). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     EMjObjType ObjType;
 
     /** @brief Type of reference object (e.g. Camera for camprojection, Body/Geom for distance). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     EMjObjType RefType;
 
     /** @brief Integer parameters for sensor configuration (e.g. rangefinder flags, contact flags). Maps to sensor->intprm. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     TArray<int32> IntParams;
 
     /** @brief User data for custom sensors. Maps to sensor->userdata. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mj Sensor")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     TArray<double> UserParams;
 
 public:
@@ -251,6 +260,15 @@ public:
 
     /** @brief Gets the full prefixed name of this sensor as it appears in the compiled MuJoCo model. */
     virtual FString GetMjName() const override;
+
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetTargetNameOptions() const;
+    UFUNCTION()
+    TArray<FString> GetReferenceNameOptions() const;
+    UFUNCTION()
+    TArray<FString> GetDefaultClassOptions() const;
+#endif
 
     /** @brief The runtime view of the MuJoCo sensor. */
     SensorView m_SensorView;

@@ -90,6 +90,9 @@ public:
     /** @brief Returns the built-in visualizer mesh if it exists. */
     virtual class UStaticMeshComponent* GetVisualizerMesh() const { return nullptr; }
 
+    /** @brief Apply a material to the visual mesh. Override in subclasses with direct member access. */
+    virtual void ApplyOverrideMaterial(class UMaterialInterface* Material);
+
     /** @brief The runtime view of the MuJoCo geom. Valid only after Bind() is called. */
     GeomView m_GeomView;
 
@@ -145,7 +148,7 @@ public:
      * Used by ShouldOverrideSize() to distinguish "inherit-from-default" intent
      * (imported, bOverride_Size=false) from "use my UE scale" intent (user-authored).
      */
-    UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Geom")
+    UPROPERTY()
     bool bWasImported = false;
 
     /**
@@ -160,8 +163,8 @@ public:
     bool ShouldOverrideSize() const { return bOverride_Size || !bWasImported; }
 
     /** @brief Name of the mesh asset if Type is Mesh. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom")
-	FString MeshName; 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Geom")
+	FString MeshName;
 
     /** @brief Legacy: use complex collision mesh. Hidden — use "Decompose Mesh" button instead.
      *  Still used internally by QuickConvert and as import/compile fallback. */
@@ -175,7 +178,7 @@ public:
     float CoACDThreshold = 0.05f;
 
     /** @brief True if this geom was created by CoACD decomposition of another geom. */
-    UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Geom")
+    UPROPERTY()
     bool bIsDecomposedHull = false;
 
     /** @brief True if this geom's mesh was decomposed into hull sub-geoms.
@@ -184,11 +187,11 @@ public:
     bool bDisabledByDecomposition = false;
 
     /** @brief Runs CoACD decomposition on this geom's mesh and creates persistent hull sub-geom components. */
-    UFUNCTION(CallInEditor, Category = "MuJoCo|Geom", meta=(DisplayName="Decompose Mesh"))
+    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Geom")
     void DecomposeMesh();
 
     /** @brief Removes all hull sub-geoms created by decomposition and re-enables this geom. */
-    UFUNCTION(CallInEditor, Category = "MuJoCo|Geom", meta=(DisplayName="Remove Decomposition"))
+    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Geom")
     void RemoveDecomposition();
 
     /** @brief Override toggle for FromTo. */
@@ -211,13 +214,18 @@ public:
     UPROPERTY()
     bool bFromToResolvedHalfLength = false;
 
-    /** @brief Optional MuJoCo class name to inherit defaults from. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom")
+    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
     virtual FString GetMjClassName() const override { return MjClassName; }
 
+#if WITH_EDITOR
+    UFUNCTION()
+    TArray<FString> GetDefaultClassOptions() const;
+#endif
+
     /** @brief Optional MuJoCo material name for visual properties. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom")
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Geom")
     FString MaterialName;
 
     /** @brief Resolves MaterialName through the default class chain. Returns empty if none found. */
@@ -328,7 +336,7 @@ public:
      * @brief Number of size parameters explicitly provided in XML. 
      * Used to support partial inheritance (e.g. overriding radius but keeping length).
      */
-    UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Geom")
+    UPROPERTY()
     int32 SizeParamsCount = 0;
 
 	// --- Visuals (with override toggle) ---
@@ -341,8 +349,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Visual", meta=(EditCondition="bOverride_Rgba"))
 	FLinearColor Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
 	
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom")
-	UMjDefault* m_RefDefault;
+    /** @brief Optional Unreal material override for primitive visualizer meshes (Box/Sphere/Cylinder). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Visual",
+        meta=(EditCondition="Type != EMjGeomType::Mesh", EditConditionHides))
+    TObjectPtr<UMaterialInterface> OverrideMaterial;
+
+    /** @brief Reference to a UMjDefault component for default class inheritance. Set via detail customization dropdown. */
+	UPROPERTY(BlueprintReadWrite, Category = "MuJoCo|Geom")
+	UMjDefault* DefaultClass;
 
     /**
      * @brief Registers this geom to the MuJoCo spec.

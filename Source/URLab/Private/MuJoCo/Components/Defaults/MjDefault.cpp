@@ -46,6 +46,22 @@ void UMjDefault::ImportFromXml(const FXmlNode* Node)
     else ClassName = TEXT("main");
 }
 
+#if WITH_EDITOR
+void UMjDefault::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+    Super::PostEditChangeProperty(PropertyChangedEvent);
+
+    // If ClassName is empty after any edit, auto-populate from component name
+    if (ClassName.IsEmpty())
+    {
+        ClassName = GetName();
+        ClassName.ReplaceInline(TEXT("_GEN_VARIABLE"), TEXT(""));
+    }
+}
+#endif
+
+
+
 void UMjDefault::ExportTo(mjsDefault* def)
 {
     if (!def) return;

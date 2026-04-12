@@ -448,3 +448,10 @@ void UMjBody::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
          Setup(GetAttachParent(), ParentBody, &Wrapper);
     }
 }
+
+#if WITH_EDITOR
+TArray<FString> UMjBody::GetChildClassOptions() const
+{
+    return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
+#endif

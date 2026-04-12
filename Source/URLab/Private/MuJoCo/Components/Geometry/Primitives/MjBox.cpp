@@ -65,6 +65,12 @@ void UMjBox::OnRegister()
         VisualizerMesh->SetupAttachment(this);
         VisualizerMesh->RegisterComponent();
     }
+
+    // Apply override material after mesh is created and registered
+    if (VisualizerMesh && OverrideMaterial && IsValid(OverrideMaterial) && GetOwner())
+    {
+        VisualizerMesh->SetMaterial(0, OverrideMaterial);
+    }
 }
 
 
@@ -113,6 +119,15 @@ void UMjBox::ExportTo(mjsGeom* geom, mjsDefault* def)
     Size = Scale * 0.5f;
 
 	Super::ExportTo(geom, def);
+}
+
+void UMjBox::ApplyOverrideMaterial(UMaterialInterface* Material)
+{
+    EnsureVisualizerMesh();
+    if (VisualizerMesh && Material && IsValid(Material))
+    {
+        VisualizerMesh->SetMaterial(0, Material);
+    }
 }
 
 void UMjBox::SyncUnrealTransformFromMj()

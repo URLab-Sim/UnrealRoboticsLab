@@ -559,7 +559,19 @@ Registered to the spec during Setup (after bodies/joints). At runtime, `AMjArtic
 
 - **MjSimulate widget** (`WBP_MjSimulate`): Physics options, per-actuator sliders, debug visualization toggles, replay controls, possess button. Auto-created at BeginPlay.
 - **ValidateSpec:** Blueprint compile hook on `AMjArticulation`. Creates a temporary spec, runs `mj_compile()`, and reports errors without affecting the running simulation.
-- **MjGeomDetailCustomization** (`Source/URLabEditor/`): Custom Details panel for geom properties in the editor.
+- **MjComponentDetailCustomizations** (`Source/URLabEditor/`): Detail customizations for all MuJoCo component types — hides internal properties (DefaultClass pointers, synced names) and adds CoACD decomposition buttons for mesh geoms. Component-reference dropdowns (Target, Default Class, etc.) use `meta=(GetOptions)` on UPROPERTY declarations.
+- **MjEditorStyle** (`Source/URLabEditor/`): Custom Slate icons for all MuJoCo component types in the Blueprint component tree. Icons are loaded from `Resources/Icons/` PNGs.
+- **MuJoCo Outliner** (`SMjArticulationOutliner`): Dockable editor tab (Window menu) that shows a filtered, searchable tree of an articulation Blueprint's component hierarchy. Auto-detects open articulation BPs, provides type filter toggles and summary counts.
+
+### Editor Module Hooks (`FURLabEditorModule`)
+
+The editor module (`Source/URLabEditor/`) registers several hooks that improve the Blueprint editing workflow:
+
+| Hook | Trigger | What It Does |
+|------|---------|--------------|
+| `OnObjectModified` (SCS) | Any SCS modification | **Auto-parenting:** defers to next tick, then scans all nodes and moves sensors/actuators/defaults/tendons/contacts/equalities under their organizational root folders. |
+| `OnObjectModified` (USCS_Node) | Variable name rename | **Default ClassName sync:** keeps `UMjDefault::ClassName` in sync with the SCS variable name for user-created defaults. |
+| `OnBlueprintPreCompile` | Blueprint Compile button | **FixupDefaultFlags:** walks everything under `DefaultsRoot` and marks all `UMjComponent` descendants as `bIsDefault = true`. Ensures user-added defaults are properly flagged before the spec is built. |
 
 ---
 
@@ -580,9 +592,9 @@ Auto-created from `WBP_MjSimulate` Blueprint asset at BeginPlay. Provides:
 - Record/Replay/Snapshot controls
 - Possess button (attaches spring arm camera)
 
-### MjGeomDetailCustomization
+### Detail Panel Customizations
 
-Custom Details panel for `UMjGeom` components. Adds "Decompose Mesh" and "Remove Decomposition" buttons for CoACD operations directly in the editor.
+All MuJoCo component types have registered `IDetailCustomization` classes (in `MjComponentDetailCustomizations.h/.cpp`) that hide internal properties like `DefaultClass` pointers and auto-synced string fields. Component-reference properties (e.g. `TargetName`, `MjClassName`, `Geom1`) use UE's native `meta=(GetOptions="FunctionName")` UPROPERTY specifier to render as dropdown combo boxes — the option lists are populated by `UMjComponent::GetSiblingComponentOptions()`, which scans the Blueprint's SCS tree. Mesh geom components additionally show "Decompose Mesh" and "Remove Decomposition" buttons for CoACD operations.
 
 ---
 

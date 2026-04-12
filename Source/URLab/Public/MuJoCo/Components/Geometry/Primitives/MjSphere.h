@@ -58,5 +58,6 @@ public:
 #endif
 
 	virtual class UStaticMeshComponent* GetVisualizerMesh() const override { const_cast<UMjSphere*>(this)->EnsureVisualizerMesh(); return VisualizerMesh; }
+	virtual void ApplyOverrideMaterial(class UMaterialInterface* Material) override;
 	void EnsureVisualizerMesh();
 };

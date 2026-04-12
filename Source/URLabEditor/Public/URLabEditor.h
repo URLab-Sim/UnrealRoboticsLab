@@ -32,8 +32,13 @@ public:
 
 private:
     FDelegateHandle ViewportContextMenuExtenderHandle;
+    FDelegateHandle OnObjectModifiedHandle;
+    bool bIsAutoParenting = false;
 
     static TSharedRef<FExtender> OnExtendActorContextMenu(const TSharedRef<FUICommandList> CommandList, const TArray<AActor*> SelectedActors);
     static void BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TArray<AActor*> SelectedActors);
     static void ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex);
+
+    void OnObjectModified(UObject* Object);
+    static bool AutoParentSCSNode(class USCS_Node* Node, class USimpleConstructionScript* SCS);
 };

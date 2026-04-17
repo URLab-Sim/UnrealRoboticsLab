@@ -81,7 +81,14 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 
             if (FPaths::FileExists(ScriptPath))
             {
-                FString PythonExe = FMjPythonHelper::EnsurePythonReady();
+                bool bCancelled = false;
+                FString PythonExe = FMjPythonHelper::EnsurePythonReady(bCancelled);
+
+                if (bCancelled)
+                {
+                    UE_LOG(LogURLabEditor, Log, TEXT("Import cancelled by user during Python setup."));
+                    return nullptr;
+                }
 
                 if (!PythonExe.IsEmpty())
                 {

@@ -61,10 +61,15 @@ public:
 
 	/**
 	 * @brief Ensure Python is available with required packages.
-	 * Shows dialogs as needed. Returns the resolved Python path, or empty if user skipped.
+	 * Shows dialogs as needed. Returns the resolved Python path, or empty if
+	 * the user skipped preprocessing or cancelled the import.
+	 * @param bOutCancelled Set to true if the user chose to cancel the import entirely.
 	 */
-	static FString EnsurePythonReady();
+	static FString EnsurePythonReady(bool& bOutCancelled);
 
 private:
 	static FString GetLocalIniPath();
+
+	/** Opens a file picker and validates the selected Python binary. Returns empty if cancelled or invalid. */
+	static FString BrowseForPython();
 };

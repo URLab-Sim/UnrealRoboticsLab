@@ -176,9 +176,9 @@ bool FMjPythonHelper::InstallPythonPackages(const FString& PythonPath, FString& 
     return false;
 }
 
-FString FMjPythonHelper::EnsurePythonReady()
+FString FMjPythonHelper::EnsurePythonReady(bool& bOutCancelled)
 {
-    // If no INI exists, always show the dialog so the user explicitly chooses
+    bOutCancelled = false;
     bool bNeedsFirstTimeSetup = GetStoredPythonOverride().IsEmpty();
 
     FString PythonPath = ResolvePythonPath();
@@ -187,7 +187,6 @@ FString FMjPythonHelper::EnsurePythonReady()
     // Validate the resolved Python
     if (!ValidatePythonBinary(PythonPath))
     {
-        // Python not found at all — prompt for path
         FText Title = FText::FromString(TEXT("Python Interpreter Not Found"));
         FText Message = FText::FromString(FString::Printf(
             TEXT("URLab uses Python to preprocess mesh files during MJCF import.\n\n")
@@ -195,56 +194,31 @@ FString FMjPythonHelper::EnsurePythonReady()
             TEXT("used by MuJoCo (e.g. STL, OBJ with certain features). The preprocessing step ")
             TEXT("converts meshes to a compatible format and resolves asset conflicts.\n\n")
             TEXT("Could not find a valid Python interpreter at:\n%s\n\n")
-            TEXT("Would you like to browse for your Python interpreter?\n\n")
-            TEXT("Click 'No' to skip mesh preprocessing (import will use raw XML — some meshes may not display correctly)."),
+            TEXT("Click 'Yes' to browse for your Python interpreter, or 'Cancel' to cancel the import."),
             *PythonPath));
 
-        EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Message, Title);
-        if (Result == EAppReturnType::No)
+        EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNoCancel, Message, Title);
+        if (Result == EAppReturnType::Cancel)
         {
-            return FString(); // User chose to skip
-        }
-
-        // Open file picker
-        TArray<FString> OutFiles;
-        IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-        if (DesktopPlatform)
-        {
-            DesktopPlatform->OpenFileDialog(
-                FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr),
-                TEXT("Select Python Interpreter"),
-                TEXT(""),
-                TEXT(""),
-#if PLATFORM_WINDOWS
-                TEXT("Python Executable (*.exe)|*.exe"),
-#else
-                TEXT("All Files (*)|*"),
-#endif
-                0, OutFiles);
-        }
-
-        if (OutFiles.Num() == 0)
-        {
-            return FString(); // Cancelled
-        }
-
-        PythonPath = OutFiles[0];
-        if (!ValidatePythonBinary(PythonPath))
-        {
-            FMessageDialog::Open(EAppMsgType::Ok,
-                FText::FromString(FString::Printf(TEXT("'%s' is not a valid Python interpreter."), *PythonPath)),
-                FText::FromString(TEXT("Invalid Python")));
+            bOutCancelled = true;
             return FString();
         }
+        if (Result == EAppReturnType::No)
+        {
+            return FString(); // Skip preprocessing
+        }
 
-        StorePythonOverride(PythonPath);
+        // Browse for Python
+        PythonPath = BrowseForPython();
+        if (PythonPath.IsEmpty())
+        {
+            bOutCancelled = true;
+            return FString();
+        }
         bIsUEBundled = false;
     }
 
-    // Check for required packages
-    // Show package dialog if packages are missing OR if this is first-time setup
-    // (no INI exists). First-time setup always shows the dialog so the user
-    // explicitly confirms which Python to use.
+    // Show package dialog if packages are missing or first-time setup
     if (!CheckPythonPackages(PythonPath) || bNeedsFirstTimeSetup)
     {
         FString EnvLabel = bIsUEBundled
@@ -257,15 +231,15 @@ FString FMjPythonHelper::EnsurePythonReady()
             ? TEXT("Python Setup")
             : TEXT("Python Packages Required"));
 
+        // Button mapping: Yes = proceed, No = browse for different Python, Cancel = abort import
         FString MessageStr;
         if (bPackagesPresent)
         {
-            // First-time setup — packages already installed, just confirming Python choice
             MessageStr = FString::Printf(
                 TEXT("URLab uses Python to preprocess mesh files during MJCF import.\n\n")
                 TEXT("Required packages are already installed in %s.\n\n")
-                TEXT("Click 'Yes' to use this Python, 'No' to skip mesh preprocessing, ")
-                TEXT("or 'Cancel' to choose a different Python interpreter."),
+                TEXT("Click 'Yes' to use this Python, 'No' to choose a different interpreter, ")
+                TEXT("or 'Cancel' to cancel the import."),
                 *EnvLabel);
         }
         else
@@ -281,64 +255,46 @@ FString FMjPythonHelper::EnsurePythonReady()
                 TEXT("Alternatively, you can install these manually in your preferred Python environment:\n")
                 TEXT("  <your-python> -m pip install trimesh numpy scipy\n")
                 TEXT("Then set the path in Config/LocalUnrealRoboticsLab.ini in the plugin directory.\n\n")
-                TEXT("Click 'Yes' to install, 'No' to skip mesh preprocessing, ")
-                TEXT("or 'Cancel' to choose a different Python interpreter."),
+                TEXT("Click 'Yes' to install, 'No' to choose a different interpreter, ")
+                TEXT("or 'Cancel' to cancel the import."),
                 *EnvLabel);
         }
-        FText Message = FText::FromString(MessageStr);
 
-        EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNoCancel, Message, Title);
+        EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNoCancel,
+            FText::FromString(MessageStr), Title);
 
-        if (Result == EAppReturnType::No)
+        if (Result == EAppReturnType::Cancel)
         {
-            return FString(); // Skip
+            bOutCancelled = true;
+            return FString();
         }
-        else if (Result == EAppReturnType::Cancel)
+        else if (Result == EAppReturnType::No)
         {
-            // User wants a different Python — open file picker
-            TArray<FString> OutFiles;
-            IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-            if (DesktopPlatform)
+            PythonPath = BrowseForPython();
+            if (PythonPath.IsEmpty())
             {
-                DesktopPlatform->OpenFileDialog(
-                    FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr),
-                    TEXT("Select Python Interpreter"),
-                    TEXT(""),
-                    TEXT(""),
-#if PLATFORM_WINDOWS
-                    TEXT("Python Executable (*.exe)|*.exe"),
-#else
-                    TEXT("All Files (*)|*"),
-#endif
-                    0, OutFiles);
-            }
-
-            if (OutFiles.Num() == 0) return FString();
-
-            PythonPath = OutFiles[0];
-            if (!ValidatePythonBinary(PythonPath))
-            {
-                FMessageDialog::Open(EAppMsgType::Ok,
-                    FText::FromString(FString::Printf(TEXT("'%s' is not a valid Python interpreter."), *PythonPath)),
-                    FText::FromString(TEXT("Invalid Python")));
+                bOutCancelled = true;
                 return FString();
             }
-            StorePythonOverride(PythonPath);
 
             // Re-check packages with new Python
             if (CheckPythonPackages(PythonPath))
             {
                 UE_LOG(LogURLabEditor, Log, TEXT("[Python] Packages already available in selected Python."));
+                StorePythonOverride(PythonPath);
                 return PythonPath;
             }
+
+            bPackagesPresent = false;
 
             // Ask to install for the new Python
             FText InstallMsg = FText::FromString(FString::Printf(
                 TEXT("Install 'trimesh', 'numpy', and 'scipy' to:\n%s?\n\n")
                 TEXT("The editor will be unresponsive during installation.\n\n")
-                TEXT("Click 'No' to skip mesh preprocessing."), *PythonPath));
-            if (FMessageDialog::Open(EAppMsgType::YesNo, InstallMsg, Title) == EAppReturnType::No)
+                TEXT("Click 'Cancel' to cancel the import."), *PythonPath));
+            if (FMessageDialog::Open(EAppMsgType::OkCancel, InstallMsg, Title) == EAppReturnType::Cancel)
             {
+                bOutCancelled = true;
                 return FString();
             }
         }
@@ -359,7 +315,6 @@ FString FMjPythonHelper::EnsurePythonReady()
                 return FString();
             }
 
-            // Verify install worked
             if (!CheckPythonPackages(PythonPath))
             {
                 FMessageDialog::Open(EAppMsgType::Ok,
@@ -370,9 +325,41 @@ FString FMjPythonHelper::EnsurePythonReady()
         }
     }
 
-    // Always save the resolved path so the user can see which Python is in use
     StorePythonOverride(PythonPath);
-
     UE_LOG(LogURLabEditor, Log, TEXT("[Python] Ready: %s"), *PythonPath);
+    return PythonPath;
+}
+
+FString FMjPythonHelper::BrowseForPython()
+{
+    TArray<FString> OutFiles;
+    IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+    if (DesktopPlatform)
+    {
+        DesktopPlatform->OpenFileDialog(
+            FSlateApplication::Get().FindBestParentWindowHandleForDialogs(nullptr),
+            TEXT("Select Python Interpreter"),
+            TEXT(""),
+            TEXT(""),
+#if PLATFORM_WINDOWS
+            TEXT("Python Executable (*.exe)|*.exe"),
+#else
+            TEXT("All Files (*)|*"),
+#endif
+            0, OutFiles);
+    }
+
+    if (OutFiles.Num() == 0) return FString();
+
+    FString PythonPath = OutFiles[0];
+    if (!ValidatePythonBinary(PythonPath))
+    {
+        FMessageDialog::Open(EAppMsgType::Ok,
+            FText::FromString(FString::Printf(TEXT("'%s' is not a valid Python interpreter."), *PythonPath)),
+            FText::FromString(TEXT("Invalid Python")));
+        return FString();
+    }
+
+    StorePythonOverride(PythonPath);
     return PythonPath;
 }

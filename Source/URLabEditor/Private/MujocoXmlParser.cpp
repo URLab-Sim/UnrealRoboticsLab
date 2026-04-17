@@ -767,6 +767,48 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
     }
 }
 
+void UMujocoGenerationAction::CollectDefaultMeshScales(const FXmlNode* Node, const FString& CurrentClass)
+{
+    if (!Node) return;
+    const FString Tag = Node->GetTag();
+
+    if (Tag.Equals(TEXT("default")))
+    {
+        FString ClassName = Node->GetAttribute(TEXT("class"));
+        if (ClassName.IsEmpty()) ClassName = TEXT("main");
+
+        for (const FXmlNode* Child : Node->GetChildrenNodes())
+        {
+            if (Child->GetTag().Equals(TEXT("mesh")))
+            {
+                FString ScaleStr = Child->GetAttribute(TEXT("scale"));
+                if (!ScaleStr.IsEmpty())
+                {
+                    TArray<FString> Parts;
+                    ScaleStr.ParseIntoArray(Parts, TEXT(" "), true);
+                    if (Parts.Num() >= 3)
+                    {
+                        FVector Scale(FCString::Atof(*Parts[0]), FCString::Atof(*Parts[1]), FCString::Atof(*Parts[2]));
+                        DefaultMeshScales.Add(ClassName, Scale);
+                        UE_LOG(LogURLabEditor, Log, TEXT("[Default Mesh Scale] class='%s' scale=%s"), *ClassName, *Scale.ToString());
+                    }
+                }
+            }
+            else if (Child->GetTag().Equals(TEXT("default")))
+            {
+                CollectDefaultMeshScales(Child, ClassName);
+            }
+        }
+    }
+    else
+    {
+        for (const FXmlNode* Child : Node->GetChildrenNodes())
+        {
+            CollectDefaultMeshScales(Child, CurrentClass);
+        }
+    }
+}
+
 void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const FString& XMLDir, TMap<FString, FString>& OutMeshAssets, TMap<FString, FVector>& OutMeshScales, TMap<FString, FString>& OutTextureAssets, TMap<FString, FMuJoCoMaterialData>& OutMaterialData, const FString& MeshDir, const FString& TextureDir, const FString& AssetDir)
 {
     if (!Node) return;
@@ -848,7 +890,7 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
                 UE_LOG(LogURLabEditor, Log, TEXT("[Mesh Map] Adding mesh: name='%s' -> file='%s'"), *MeshName, *FullPath);
                 OutMeshAssets.Add(MeshName, FullPath);
 
-                // Scale parsing
+                // Scale: explicit attribute > default class > main default > (1,1,1)
                 FVector Scale(1.0f);
                 FString ScaleStr = Node->GetAttribute(TEXT("scale"));
                 if (!ScaleStr.IsEmpty())
@@ -860,6 +902,16 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
                         Scale.X = FCString::Atof(*Parts[0]);
                         Scale.Y = FCString::Atof(*Parts[1]);
                         Scale.Z = FCString::Atof(*Parts[2]);
+                    }
+                }
+                else
+                {
+                    // Fall back to default mesh scale
+                    FString MeshClass = Node->GetAttribute(TEXT("class"));
+                    if (MeshClass.IsEmpty()) MeshClass = TEXT("main");
+                    if (DefaultMeshScales.Contains(MeshClass))
+                    {
+                        Scale = DefaultMeshScales[MeshClass];
                     }
                 }
                 OutMeshScales.Add(MeshName, Scale);

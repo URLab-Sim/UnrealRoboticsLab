@@ -129,6 +129,9 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
     FString AssetImportPath = BaseContentPath + BaseName + TEXT("_Assets");
     AssetImportPath = UPackageTools::SanitizePackageName(AssetImportPath);
 
+    // 0. Pre-scan: collect default mesh scales so asset parsing can inherit them
+    CollectDefaultMeshScales(Root);
+
     // 1. Pass: Resolved Assets
     TMap<FString, FString> MeshAssets;
     TMap<FString, FVector> MeshScales;

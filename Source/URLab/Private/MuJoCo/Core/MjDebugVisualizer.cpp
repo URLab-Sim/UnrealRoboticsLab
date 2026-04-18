@@ -28,8 +28,10 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
+#include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "DrawDebugHelpers.h"
 #include "Components/SplineMeshComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -538,6 +540,236 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Per-camera segmentation pool
+// ---------------------------------------------------------------------------
+
+TArray<TObjectPtr<UStaticMeshComponent>>* UMjDebugVisualizer::GetSegPoolArray(EMjCameraMode Mode)
+{
+    switch (Mode)
+    {
+    case EMjCameraMode::InstanceSegmentation: return &InstanceSegSiblings;
+    case EMjCameraMode::SemanticSegmentation: return &SemanticSegSiblings;
+    default:                                  return nullptr;
+    }
+}
+
+TSet<TWeakObjectPtr<UMjCamera>>* UMjDebugVisualizer::GetSegSubscribers(EMjCameraMode Mode)
+{
+    switch (Mode)
+    {
+    case EMjCameraMode::InstanceSegmentation: return &InstanceSegSubscribers;
+    case EMjCameraMode::SemanticSegmentation: return &SemanticSegSubscribers;
+    default:                                  return nullptr;
+    }
+}
+
+UStaticMeshComponent* UMjDebugVisualizer::SpawnSegSibling(
+    UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash, EMjCameraMode Mode)
+{
+    if (!Original || !Original->GetStaticMesh()) return nullptr;
+    if (!OverlayParentMaterial || OverlayColorParam.IsNone()) return nullptr;
+
+    AActor* Owner = Original->GetOwner();
+    if (!Owner) return nullptr;
+
+    UStaticMeshComponent* Sibling = NewObject<UStaticMeshComponent>(Owner);
+    Sibling->SetStaticMesh(Original->GetStaticMesh());
+
+    // Attach to the same parent as the original so it inherits body transforms
+    // for free — no per-tick sync needed.
+    if (USceneComponent* Parent = Original->GetAttachParent())
+    {
+        Sibling->SetupAttachment(Parent);
+    }
+    Sibling->SetRelativeTransform(Original->GetRelativeTransform());
+
+    // Visibility flags: hidden from main viewport (bVisibleInSceneCaptureOnly),
+    // visible to scene captures that either pass it through or ShowOnly it.
+    Sibling->bVisibleInSceneCaptureOnly = true;
+    Sibling->SetCastShadow(false);
+    Sibling->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    Sibling->SetGenerateOverlapEvents(false);
+
+    // Unlit tint material — parented on the same material the viewport overlay uses.
+    // Seg cameras set CaptureSource = SCS_BaseColor, which bypasses lighting so the
+    // tint value lands in the RT unmodified.
+    UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OverlayParentMaterial, Sibling);
+    const FLinearColor Tint = (Mode == EMjCameraMode::SemanticSegmentation)
+        ? MjColor::SemanticSegmentationColor(GroupHash, /*bAwake=*/true, /*SleepValueScale=*/1.0f, /*SleepSatScale=*/1.0f)
+        : MjColor::InstanceSegmentationColor(GroupHash, BodyId, /*bAwake=*/true, /*SleepValueScale=*/1.0f, /*SleepSatScale=*/1.0f);
+    MID->SetVectorParameterValue(OverlayColorParam, Tint);
+
+    const int32 NumSlots = FMath::Max(1, Original->GetNumMaterials());
+    for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+    {
+        Sibling->SetMaterial(Slot, MID);
+    }
+
+    Sibling->ComponentTags.Add(Mode == EMjCameraMode::InstanceSegmentation
+        ? FName(TEXT("URLab_Seg_Instance"))
+        : FName(TEXT("URLab_Seg_Semantic")));
+
+    Sibling->RegisterComponent();
+    return Sibling;
+}
+
+void UMjDebugVisualizer::BuildSegPool(EMjCameraMode Mode)
+{
+    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+    if (!Pool) return;
+
+    AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+    if (!Manager) return;
+
+    Pool->Reset();
+
+    auto AddSibling = [&](UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash)
+    {
+        if (UStaticMeshComponent* Sib = SpawnSegSibling(Original, BodyId, GroupHash, Mode))
+        {
+            Pool->Add(Sib);
+        }
+    };
+
+    // Articulation visual meshes — walk geoms and their static-mesh children.
+    for (AMjArticulation* Art : Manager->GetAllArticulations())
+    {
+        if (!Art) continue;
+        const uint32 ArtHash = GetTypeHash(Art->GetClass()->GetFName());
+
+        TArray<UMjGeom*> Geoms;
+        Art->GetRuntimeComponents<UMjGeom>(Geoms);
+        for (UMjGeom* Geom : Geoms)
+        {
+            if (!Geom || !Geom->IsBound()) continue;
+            const int32 BodyId = Geom->GetMj().body_id;
+
+            AddSibling(Geom->GetVisualizerMesh(), BodyId, ArtHash);
+
+            TArray<USceneComponent*> Children;
+            Geom->GetChildrenComponents(true, Children);
+            for (USceneComponent* Child : Children)
+            {
+                if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+                {
+                    AddSibling(SMC, BodyId, ArtHash);
+                }
+            }
+        }
+    }
+
+    // Quick-Convert primitives — group hash keyed off the first static mesh.
+    for (UMjQuickConvertComponent* QC : Manager->GetAllQuickComponents())
+    {
+        if (!QC) continue;
+        const int32 BodyId = QC->GetMjBodyId();
+        if (BodyId < 0) continue;
+
+        AActor* Owner = QC->GetOwner();
+        if (!Owner) continue;
+
+        TArray<UStaticMeshComponent*> MeshComps;
+        Owner->GetComponents<UStaticMeshComponent>(MeshComps);
+
+        uint32 GroupHash = GetTypeHash(Owner->GetClass()->GetFName());
+        for (UStaticMeshComponent* SMC : MeshComps)
+        {
+            if (SMC && SMC->GetStaticMesh())
+            {
+                GroupHash = GetTypeHash(SMC->GetStaticMesh()->GetFName());
+                break;
+            }
+        }
+
+        for (UStaticMeshComponent* SMC : MeshComps)
+        {
+            AddSibling(SMC, BodyId, GroupHash);
+        }
+    }
+
+    UE_LOG(LogURLab, Log,
+        TEXT("[MjDebugVisualizer] Built seg pool mode=%s size=%d"),
+        *UEnum::GetValueAsString(Mode), Pool->Num());
+}
+
+void UMjDebugVisualizer::DestroySegPool(EMjCameraMode Mode)
+{
+    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+    if (!Pool) return;
+
+    for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
+    {
+        if (Sib) Sib->DestroyComponent();
+    }
+    Pool->Reset();
+}
+
+void UMjDebugVisualizer::AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
+                                        TArray<UPrimitiveComponent*>& OutSiblings)
+{
+    OutSiblings.Reset();
+
+    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+    TSet<TWeakObjectPtr<UMjCamera>>*          Subs = GetSegSubscribers(Mode);
+    if (!Pool || !Subs) return;
+
+    const bool bFirstSubscriber = Subs->Num() == 0;
+    Subs->Add(Camera);
+
+    if (bFirstSubscriber)
+    {
+        BuildSegPool(Mode);
+    }
+
+    OutSiblings.Reserve(Pool->Num());
+    for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
+    {
+        if (Sib) OutSiblings.Add(Sib);
+    }
+}
+
+void UMjDebugVisualizer::ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera)
+{
+    TSet<TWeakObjectPtr<UMjCamera>>* Subs = GetSegSubscribers(Mode);
+    if (!Subs) return;
+
+    Subs->Remove(Camera);
+    // Also drop any stale weak pointers so refcount reflects reality.
+    for (auto It = Subs->CreateIterator(); It; ++It)
+    {
+        if (!It->IsValid()) It.RemoveCurrent();
+    }
+
+    if (Subs->Num() == 0)
+    {
+        DestroySegPool(Mode);
+    }
+}
+
+void UMjDebugVisualizer::GetSegPoolSiblings(EMjCameraMode Mode,
+                                            TArray<UPrimitiveComponent*>& OutSiblings) const
+{
+    OutSiblings.Reset();
+    const TArray<TObjectPtr<UStaticMeshComponent>>* Pool = nullptr;
+    switch (Mode)
+    {
+    case EMjCameraMode::InstanceSegmentation: Pool = &InstanceSegSiblings; break;
+    case EMjCameraMode::SemanticSegmentation: Pool = &SemanticSegSiblings; break;
+    default:                                  return;
+    }
+
+    OutSiblings.Reserve(Pool->Num());
+    for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
+    {
+        if (Sib) OutSiblings.Add(Sib);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tendon rendering
+// ---------------------------------------------------------------------------
 
 void UMjDebugVisualizer::HideTendonTubes()
 {

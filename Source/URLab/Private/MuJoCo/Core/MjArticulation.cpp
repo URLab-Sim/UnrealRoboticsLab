@@ -295,6 +295,27 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
           }
      }
 
+     // Worldbody-level IMjSpecElement children (sites, etc. attached directly to
+     // <worldbody>) need to register against the child spec's world body so
+     // downstream references (tendons wrapping worldbody sites, for instance)
+     // resolve at compile time.
+     mjsBody* ChildWorld = mjs_findBody(m_ChildSpec, "world");
+     if (ChildWorld)
+     {
+          for (USceneComponent* Child : WorldChildren)
+          {
+               if (Cast<UMjBody>(Child) || Cast<UMjFrame>(Child)) continue;
+               if (UMjComponent* MjComp = Cast<UMjComponent>(Child))
+               {
+                    if (MjComp->bIsDefault) continue;
+                    if (IMjSpecElement* SpecElem = Cast<IMjSpecElement>(Child))
+                    {
+                         SpecElem->RegisterToSpec(*m_wrapper, ChildWorld);
+                    }
+               }
+          }
+     }
+
     // 4. Add Tendons (into child spec, after bodies so joint names are set)
     TArray<UMjTendon*> Tendons;
     GetComponents<UMjTendon>(Tendons);

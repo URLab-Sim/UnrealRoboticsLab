@@ -73,7 +73,6 @@ void UMjDefault::ExportTo(mjsDefault* def)
         }
         else if (UMjActuator* ActuatorComp = Cast<UMjActuator>(Child))
         {
-            // Export to def->actuator (handles subclass-specific properties natively via virtual ExportTo)
             ActuatorComp->ExportTo(def->actuator, nullptr);
             UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Actuator] Exported actuator defaults from %s"), *ActuatorComp->GetName());
         }

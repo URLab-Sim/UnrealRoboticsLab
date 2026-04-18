@@ -109,6 +109,7 @@
 #include "MuJoCo/Components/Geometry/Primitives/MjCylinder.h"
 #include "MuJoCo/Components/Physics/MjInertial.h"
 #include "MuJoCo/Components/Constraints/MjEquality.h"
+#include "MuJoCo/Components/Deformable/MjFlexcomp.h"
 #include "MuJoCo/Components/Keyframes/MjKeyframe.h"
 
 #include "Engine/SCS_Node.h"
@@ -574,6 +575,95 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             JointComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
             if (!NameAttr.IsEmpty()) JointComp->MjName = NameAttr;
+        }
+    }
+    // --- FLEXCOMP ---
+    else if (Tag.Equals(TEXT("flexcomp")))
+    {
+        FString Name = Node->GetAttribute(TEXT("name"));
+        if (Name.IsEmpty()) Name = TEXT("AUTONAME_Flexcomp");
+
+        CreatedNode = BP->SimpleConstructionScript->CreateNode(UMjFlexcomp::StaticClass(), *Name);
+        UMjFlexcomp* FlexComp = Cast<UMjFlexcomp>(CreatedNode->ComponentTemplate);
+        if (FlexComp)
+        {
+            FlexComp->ImportFromXml(Node);
+
+            // For mesh type, import the mesh file and create a child UStaticMeshComponent
+            FString FlexMeshFile = Node->GetAttribute(TEXT("file"));
+            if (FlexComp->Type == EMjFlexcompType::Mesh && !FlexMeshFile.IsEmpty())
+            {
+                FString MeshName = FPaths::GetBaseFilename(FlexMeshFile);
+
+                // Flexcomp references the mesh file directly (not via <asset><mesh>).
+                // The Python preprocessor converts it to GLB alongside the original.
+                // Try GLB first (preprocessed), then fall back to raw file.
+                FString MeshFilePath;
+                if (MeshAssets.Contains(MeshName))
+                {
+                    MeshFilePath = MeshAssets[MeshName];
+                }
+                else
+                {
+                    // Try GLB in meshdir, then XMLDir
+                    FString GlbName = FPaths::GetBaseFilename(FlexMeshFile) + TEXT(".glb");
+                    FString GlbPath = FPaths::Combine(XMLDir, TEXT("asset"), GlbName);
+                    if (FPaths::FileExists(GlbPath))
+                    {
+                        MeshFilePath = GlbPath;
+                    }
+                    else
+                    {
+                        GlbPath = FPaths::Combine(XMLDir, GlbName);
+                        if (FPaths::FileExists(GlbPath))
+                        {
+                            MeshFilePath = GlbPath;
+                        }
+                        else
+                        {
+                            // Fall back to original file
+                            MeshFilePath = FPaths::Combine(XMLDir, TEXT("asset"), FlexMeshFile);
+                            if (!FPaths::FileExists(MeshFilePath))
+                            {
+                                MeshFilePath = FPaths::Combine(XMLDir, FlexMeshFile);
+                            }
+                        }
+                    }
+                }
+
+                if (FPaths::FileExists(MeshFilePath))
+                {
+                    FString MeshImportPath = AssetImportPath + TEXT("/Meshes");
+                    UStaticMesh* NewMesh = ImportSingleMesh(MeshFilePath, MeshImportPath);
+                    if (NewMesh)
+                    {
+                        FString VizNodeName = FString::Printf(TEXT("Viz_%s"), *MeshName);
+                        USCS_Node* MeshNode = BP->SimpleConstructionScript->CreateNode(UStaticMeshComponent::StaticClass(), *VizNodeName);
+                        CreatedNode->AddChildNode(MeshNode);
+
+                        UStaticMeshComponent* MeshTemplate = Cast<UStaticMeshComponent>(MeshNode->ComponentTemplate);
+                        if (MeshTemplate)
+                        {
+                            MeshTemplate->SetStaticMesh(NewMesh);
+                            MeshTemplate->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+                            MeshTemplate->SetCollisionResponseToAllChannels(ECR_Overlap);
+
+                            if (MeshScales.Contains(MeshName))
+                            {
+                                FVector MeshScale = MeshScales[MeshName];
+                                if (!MeshScale.Equals(FVector::OneVector))
+                                {
+                                    MeshTemplate->SetRelativeScale3D(MeshScale);
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    UE_LOG(LogURLabEditor, Warning, TEXT("[Flexcomp] Mesh file not found: %s"), *MeshFilePath);
+                }
+            }
         }
     }
     // --- SITE ---

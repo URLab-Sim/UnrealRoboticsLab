@@ -44,6 +44,7 @@
 #include "MuJoCo/Components/Sensors/MjSensor.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Tendons/MjTendon.h"
+#include "MuJoCo/Components/Deformable/MjFlexcomp.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Components/Physics/MjContactPair.h"
 #include "MuJoCo/Components/Physics/MjContactExclude.h"
@@ -315,6 +316,36 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
                }
           }
      }
+
+    // 3b. Register flexcomp components (can be worldbody children or body children)
+    TArray<UMjFlexcomp*> Flexcomps;
+    GetComponents<UMjFlexcomp>(Flexcomps);
+    for (UMjFlexcomp* Flex : Flexcomps)
+    {
+        if (Flex && !Flex->bIsDefault)
+        {
+            mjsBody* ParentSpecBody = nullptr;
+
+            USceneComponent* Parent = Flex->GetAttachParent();
+            while (Parent)
+            {
+                if (UMjBody* Body = Cast<UMjBody>(Parent))
+                {
+                    FString BodyName = Body->MjName.IsEmpty() ? Body->GetName() : Body->MjName;
+                    ParentSpecBody = mjs_findBody(m_wrapper->Spec, TCHAR_TO_UTF8(*BodyName));
+                    if (ParentSpecBody) break;
+                }
+                Parent = Parent->GetAttachParent();
+            }
+
+            if (!ParentSpecBody)
+            {
+                ParentSpecBody = mjs_findBody(m_wrapper->Spec, "world");
+            }
+
+            Flex->RegisterToSpec(*m_wrapper, ParentSpecBody);
+        }
+    }
 
     // 4. Add Tendons (into child spec, after bodies so joint names are set)
     TArray<UMjTendon*> Tendons;

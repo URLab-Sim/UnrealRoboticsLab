@@ -132,6 +132,20 @@ def process_xml(xml_path: Path):
 
     # Collect all mesh elements
     mesh_elements = list(root.iter("mesh"))
+
+    # Also convert meshes referenced by <flexcomp file="...">
+    for flexcomp in root.iter("flexcomp"):
+        file_attr = flexcomp.get("file")
+        if file_attr:
+            source_path = mesh_base / file_attr
+            if source_path.exists():
+                output_glb = source_path.with_suffix(".glb")
+                if not output_glb.exists() or output_glb.stat().st_mtime < source_path.stat().st_mtime:
+                    print(f"\n[flexcomp] Converting mesh: {source_path.name} -> {output_glb.name}")
+                    convert_mesh(source_path, output_glb)
+                else:
+                    print(f"\n[flexcomp] Mesh up to date: {output_glb.name}")
+
     print(f"Found {len(mesh_elements)} mesh assets in XML\n")
 
     # Phase 1: Plan output filenames, detect conflicts

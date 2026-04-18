@@ -48,6 +48,10 @@ FString UMjQuickConvertComponent::GetBodyName() {
     return m_BodyName;
 }
 
+int32 UMjQuickConvertComponent::GetMjBodyId() const {
+    return m_CreatedBody ? m_CreatedBody->GetMj().id : -1;
+}
+
 void UMjQuickConvertComponent::BeginPlay() {
     Super::BeginPlay();
 }

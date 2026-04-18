@@ -155,9 +155,16 @@ void AAMjManager::BeginPlay() {
 
     if (PhysicsEngine)
     {
-        // Register debug data capture as a post-step callback
+        // Register debug data capture as a post-step callback. Fires whenever any
+        // debug overlay needs fresh mjData — contact forces (key 1), body shader
+        // overlays (Island / Segmentation modes), or tendon/muscle rendering.
         PhysicsEngine->RegisterPostStepCallback([this](mjModel* m, mjData* d) {
-            if (DebugVisualizer && DebugVisualizer->bShowDebug)
+            if (!DebugVisualizer) return;
+            const bool bNeedsCapture =
+                DebugVisualizer->bShowDebug ||
+                DebugVisualizer->DebugShaderMode != EMjDebugShaderMode::Off ||
+                DebugVisualizer->bGlobalDrawTendons;
+            if (bNeedsCapture)
             {
                 DebugVisualizer->CaptureDebugData();
             }

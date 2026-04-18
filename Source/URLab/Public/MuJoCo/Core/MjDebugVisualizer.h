@@ -42,6 +42,7 @@ enum class EMjDebugShaderMode : uint8
     SemanticSegmentation    UMETA(DisplayName="Semantic Segmentation (per-actor)")
 };
 
+
 /**
  * @class UMjDebugVisualizer
  * @brief Handles debug visualization for the MuJoCo simulation (contact forces, collision wireframes, etc.).
@@ -113,13 +114,17 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.0", ClampMax="1.0"))
     float SleepSaturationScale = 0.9f;
 
-    /** @brief Toggles tendon/muscle rendering. Toggled via key 7. */
+    /** @brief Toggles smooth-tube tendon/muscle rendering. Toggled via key 7. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
     bool bGlobalDrawTendons = false;
 
-    /** @brief Thickness (line width) for the debug-line tendon render style. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.5", ClampMax="20.0"))
-    float TendonLineThickness = 2.0f;
+    /** @brief Tube radius (cm). Muscle activation scales this up to ~2x per-tendon. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.05", ClampMax="5.0"))
+    float TendonTubeRadius = 0.25f;
+
+    /** @brief When a tendon wraps around a cylinder/sphere geom, insert this many intermediate points along the wrap arc. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0", ClampMax="16"))
+    int32 TendonArcSubdivisions = 6;
 
     // --- Thread-safe debug data ---
     FMuJoCoDebugData DebugData;
@@ -170,8 +175,14 @@ public:
     /** @brief Restore original materials recorded at overlay apply time, clear caches. */
     void ClearBodyOverlays();
 
-    /** @brief Draw tendons as debug lines using the latest snapshot. */
-    void DrawTendonLines();
+    /** @brief Rebuild / reuse the spline-mesh tendon segment pool based on the latest snapshot. */
+    void UpdateTendonTubes();
+
+    /** @brief Hide the tendon tube pool without destroying it. */
+    void HideTendonTubes();
+
+    /** @brief Destroy the tube pool entirely. Used on EndPlay. */
+    void ClearTendonTubes();
 
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -186,4 +197,16 @@ private:
 
     /** Dynamic material instances we created per mesh, reused across ticks. */
     TMap<TWeakObjectPtr<class UStaticMeshComponent>, class UMaterialInstanceDynamic*> ActiveMIDs;
+
+    /** Pool of spline-mesh components used by the tube tendon render style. Grown on demand. */
+    UPROPERTY(Transient)
+    TArray<class USplineMeshComponent*> TendonSegmentPool;
+
+    /** One MID per pool entry so each tube can colour independently. Grown in lockstep with TendonSegmentPool. */
+    UPROPERTY(Transient)
+    TArray<class UMaterialInstanceDynamic*> TendonSegmentMIDs;
+
+    /** Base cylinder mesh used for every tendon segment. Loaded from /Engine/BasicShapes at BeginPlay. */
+    UPROPERTY(Transient)
+    class UStaticMesh* TendonTubeMesh = nullptr;
 };

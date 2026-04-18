@@ -77,9 +77,9 @@ See [Controller Framework](guides/controller_framework.md) for details.
 
 ## Debug Visualization
 
-Hotkey-driven toggles during PIE for contacts, collision wireframes, joint axes, and visual meshes. Per-articulation and global toggles available via MjSimulate widget.
+Hotkey-driven toggles during PIE for contact forces, collision wireframes, joint axes + limit arcs, visual-mesh visibility, constraint-island colouring, instance + semantic segmentation shaders with sleep modulation, and smooth muscle/tendon tubes with activation-driven colour and radius.
 
-See [Blueprint Reference](guides/blueprint_reference.md) for all hotkeys.
+See [Debug Visualization](guides/debug_visualization.md) for the full hotkey table and per-mode details.
 
 ## Camera System
 

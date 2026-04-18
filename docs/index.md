@@ -28,6 +28,7 @@ The plugin gives you research-grade contact dynamics alongside Unreal's renderin
 | [MJCF Import](guides/mujoco_import.md) | Importing MuJoCo XML models into Unreal |
 | [Geometry & Collision](guides/geometry_authoring.md) | Primitives, mesh geoms, Quick Convert, heightfields |
 | [Controller Framework](guides/controller_framework.md) | PD, keyframe, and custom controllers |
+| [Debug Visualization](guides/debug_visualization.md) | Hotkey-driven overlays: contacts, joints, islands, segmentation, muscle/tendon tubes |
 | [Possession & Twist Control](guides/possession_twist.md) | WASD control, spring arm camera |
 | [Scripting with Blueprints](guides/blueprint_reference.md) | Hotkeys, API usage, scripting workflows |
 | [ZMQ Networking & ROS 2](guides/zmq_networking.md) | ZMQ transport, topics, camera streaming |

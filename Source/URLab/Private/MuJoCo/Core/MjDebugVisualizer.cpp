@@ -29,6 +29,8 @@
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Components/SplineMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Utils/URLabLogging.h"
@@ -42,6 +44,12 @@ void UMjDebugVisualizer::BeginPlay()
 {
     Super::BeginPlay();
     InitializeOverlayMaterial();
+    TendonTubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+    if (!TendonTubeMesh)
+    {
+        UE_LOG(LogURLab, Warning,
+            TEXT("Debug viz: could not load /Engine/BasicShapes/Cylinder — tendon tubes will be invisible."));
+    }
 }
 
 void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -52,7 +60,11 @@ void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
     if (bGlobalDrawTendons)
     {
-        DrawTendonLines();
+        UpdateTendonTubes();
+    }
+    else
+    {
+        HideTendonTubes();
     }
 
     if (!bShowDebug) return;
@@ -200,6 +212,7 @@ void UMjDebugVisualizer::CaptureDebugData()
     DebugData.TendonLimited.SetNumUninitialized(Model->ntendon);
     DebugData.TendonRangeLo.SetNumUninitialized(Model->ntendon);
     DebugData.TendonRangeHi.SetNumUninitialized(Model->ntendon);
+    DebugData.TendonActivation.Init(-1.0f, Model->ntendon);
     for (int32 t = 0; t < Model->ntendon; ++t)
     {
         DebugData.TendonWrapAdr[t]  = Data->ten_wrapadr ? Data->ten_wrapadr[t] : 0;
@@ -208,6 +221,27 @@ void UMjDebugVisualizer::CaptureDebugData()
         DebugData.TendonLimited[t]  = Model->tendon_limited ? Model->tendon_limited[t] : 0;
         DebugData.TendonRangeLo[t]  = Model->tendon_range ? (float)Model->tendon_range[t * 2 + 0] : 0.0f;
         DebugData.TendonRangeHi[t]  = Model->tendon_range ? (float)Model->tendon_range[t * 2 + 1] : 0.0f;
+    }
+
+    // Resolve muscle activation per tendon by scanning actuators. Muscles drive
+    // tendons via trntype == TENDON; act[actadr] holds activation in [0, 1].
+    for (int32 a = 0; a < Model->nu; ++a)
+    {
+        if (Model->actuator_trntype[a] != mjTRN_TENDON) continue;
+        if (Model->actuator_dyntype[a] != mjDYN_MUSCLE) continue;
+        const int32 TargetTendon = Model->actuator_trnid[a * 2];
+        const int32 ActAdr = Model->actuator_actadr ? Model->actuator_actadr[a] : -1;
+        if (TargetTendon < 0 || TargetTendon >= Model->ntendon) continue;
+        if (ActAdr < 0 || !Data->act) continue;
+        DebugData.TendonActivation[TargetTendon] = FMath::Clamp((float)Data->act[ActAdr], 0.0f, 1.0f);
+    }
+
+    DebugData.GeomXPos.SetNumUninitialized(Model->ngeom);
+    for (int32 g = 0; g < Model->ngeom; ++g)
+    {
+        DebugData.GeomXPos[g] = Data->geom_xpos
+            ? MjUtils::MjToUEPosition(Data->geom_xpos + g * 3)
+            : FVector::ZeroVector;
     }
 }
 
@@ -338,6 +372,7 @@ void UMjDebugVisualizer::ToggleTendons()
 void UMjDebugVisualizer::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
     ClearBodyOverlays();
+    ClearTendonTubes();
     Super::EndPlay(EndPlayReason);
 }
 
@@ -504,15 +539,81 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
     }
 }
 
-void UMjDebugVisualizer::DrawTendonLines()
+void UMjDebugVisualizer::HideTendonTubes()
 {
-    UWorld* World = GetWorld();
-    if (!World) return;
+    for (USplineMeshComponent* Seg : TendonSegmentPool)
+    {
+        if (Seg) Seg->SetVisibility(false);
+    }
+}
+
+void UMjDebugVisualizer::ClearTendonTubes()
+{
+    for (USplineMeshComponent* Seg : TendonSegmentPool)
+    {
+        if (Seg) Seg->DestroyComponent();
+    }
+    TendonSegmentPool.Reset();
+    TendonSegmentMIDs.Reset();
+}
+
+namespace
+{
+    // `/Engine/BasicShapes/Cylinder.Cylinder` ships as a 100cm-tall unit cylinder
+    // with 50cm base radius. USplineMeshComponent::SetStartScale multiplies the
+    // cross-section (X/Y) by its arg, so to get a visible radius in cm we divide
+    // by this constant. Kept local since we're the only caller.
+    constexpr float kBasicCylinderBaseRadiusCm = 50.0f;
+
+    FVector ComputeJoinTangent(const FVector& PrevDir, float PrevLen,
+                               const FVector& NextDir, float NextLen)
+    {
+        const FVector Avg = (PrevDir + NextDir).GetSafeNormal();
+        const float Scale = 0.5f * (PrevLen + NextLen);
+        return Avg * Scale;
+    }
+
+    // Spherical lerp about a shared origin — exact for sphere wraps, good enough
+    // for cylinder wraps where both wrap points share the same perpendicular
+    // distance from the cylinder axis.
+    FVector SlerpAboutCentre(const FVector& Centre, const FVector& VA, const FVector& VB, float T)
+    {
+        const float LenA = VA.Length();
+        const float LenB = VB.Length();
+        if (LenA < KINDA_SMALL_NUMBER || LenB < KINDA_SMALL_NUMBER)
+        {
+            return Centre + FMath::Lerp(VA, VB, T);
+        }
+        const FVector UA = VA / LenA;
+        const FVector UB = VB / LenB;
+        const float CosTheta = FMath::Clamp(FVector::DotProduct(UA, UB), -1.0f, 1.0f);
+        const float Theta = FMath::Acos(CosTheta);
+        if (Theta < 1e-3f)
+        {
+            return Centre + FMath::Lerp(VA, VB, T);
+        }
+        const float Radius = FMath::Lerp(LenA, LenB, T);
+        const float SinTheta = FMath::Sin(Theta);
+        const float WA = FMath::Sin((1.0f - T) * Theta) / SinTheta;
+        const float WB = FMath::Sin(T * Theta) / SinTheta;
+        return Centre + (UA * WA + UB * WB) * Radius;
+    }
+}
+
+void UMjDebugVisualizer::UpdateTendonTubes()
+{
+    AActor* Owner = GetOwner();
+    if (!Owner || !TendonTubeMesh || !OverlayParentMaterial || OverlayColorParam.IsNone())
+    {
+        HideTendonTubes();
+        return;
+    }
 
     TArray<FVector> LocalPoints;
     TArray<int32> LocalWrapObj, LocalAdr, LocalNum;
-    TArray<float> LocalLengths, LocalLo, LocalHi;
+    TArray<float> LocalLengths, LocalLo, LocalHi, LocalActivation;
     TArray<uint8> LocalLimited;
+    TArray<FVector> LocalGeomPos;
     {
         FScopeLock Lock(&DebugMutex);
         LocalPoints = DebugData.WrapPointsFlat;
@@ -523,38 +624,159 @@ void UMjDebugVisualizer::DrawTendonLines()
         LocalLimited = DebugData.TendonLimited;
         LocalLo = DebugData.TendonRangeLo;
         LocalHi = DebugData.TendonRangeHi;
+        LocalActivation = DebugData.TendonActivation;
+        LocalGeomPos = DebugData.GeomXPos;
     }
+
+    struct FTubeSeg
+    {
+        FVector Start;
+        FVector End;
+        FVector StartTangent;
+        FVector EndTangent;
+        FLinearColor Colour;
+        float Radius;     // visible radius in cm
+    };
+    TArray<FTubeSeg> Segs;
+    Segs.Reserve(LocalPoints.Num() * 2);
 
     const int32 NumTendons = LocalAdr.Num();
     for (int32 t = 0; t < NumTendons; ++t)
     {
-        float Stretch = 0.5f;
-        if (LocalLimited.IsValidIndex(t) && LocalLimited[t])
+        // Intensity: activation for muscles, length-vs-range stretch for limited tendons, else neutral.
+        float Intensity = 0.5f;
+        const float Act = LocalActivation.IsValidIndex(t) ? LocalActivation[t] : -1.0f;
+        if (Act >= 0.0f)
         {
-            const float Len = LocalLengths[t];
+            Intensity = Act;
+        }
+        else if (LocalLimited.IsValidIndex(t) && LocalLimited[t])
+        {
             const float Lo = LocalLo[t];
             const float Hi = LocalHi[t];
             if (Hi > Lo + KINDA_SMALL_NUMBER)
             {
-                Stretch = FMath::Clamp((Len - Lo) / (Hi - Lo), 0.0f, 1.0f);
+                Intensity = FMath::Clamp((LocalLengths[t] - Lo) / (Hi - Lo), 0.0f, 1.0f);
             }
         }
-        const FColor LineColor = FLinearColor::LerpUsingHSV(
-            FLinearColor::Blue, FLinearColor::Red, Stretch).ToFColor(false);
+        const FLinearColor Colour = FLinearColor::LerpUsingHSV(
+            FLinearColor(0.05f, 0.05f, 0.6f), FLinearColor(1.0f, 0.15f, 0.05f), Intensity);
+        // Swell more dramatically — 0.5× relaxed, 2× fully contracted (4× range).
+        const float Radius = TendonTubeRadius * (0.5f + 1.5f * Intensity);
 
+        // Build ordered path with optional arc subdivision across geom wraps.
+        TArray<FVector> Path;
+        Path.Reserve(LocalNum[t] * (TendonArcSubdivisions + 2));
         const int32 Adr = LocalAdr[t];
         const int32 Num = LocalNum[t];
-        // Mirror MuJoCo's engine_vis_visualize.c: for each consecutive wrap
-        // index pair (j, j+1), skip pulley endpoints (wrap_obj == -2), then
-        // connect wrap_xpos[3*j] -> wrap_xpos[3*j + 3].
         for (int32 j = Adr; j + 1 < Adr + Num; ++j)
         {
             if (LocalWrapObj.IsValidIndex(j)     && LocalWrapObj[j]     == -2) continue;
             if (LocalWrapObj.IsValidIndex(j + 1) && LocalWrapObj[j + 1] == -2) continue;
             if (!LocalPoints.IsValidIndex(j + 1)) continue;
+
             const FVector& A = LocalPoints[j];
             const FVector& B = LocalPoints[j + 1];
-            DrawDebugLine(World, A, B, LineColor, false, -1.0f, 0, TendonLineThickness);
+            if (Path.Num() == 0) Path.Add(A);
+
+            const int32 ObjJ  = LocalWrapObj.IsValidIndex(j)     ? LocalWrapObj[j]     : -1;
+            const int32 ObjJ1 = LocalWrapObj.IsValidIndex(j + 1) ? LocalWrapObj[j + 1] : -1;
+            if (ObjJ >= 0 && ObjJ == ObjJ1 && LocalGeomPos.IsValidIndex(ObjJ) && TendonArcSubdivisions > 0)
+            {
+                const FVector& Centre = LocalGeomPos[ObjJ];
+                const FVector VA = A - Centre;
+                const FVector VB = B - Centre;
+                for (int32 k = 1; k <= TendonArcSubdivisions; ++k)
+                {
+                    const float T = (float)k / (float)(TendonArcSubdivisions + 1);
+                    Path.Add(SlerpAboutCentre(Centre, VA, VB, T));
+                }
+            }
+            Path.Add(B);
+        }
+
+        if (Path.Num() < 2) continue;
+
+        const int32 SegCount = Path.Num() - 1;
+        TArray<FVector> Dirs;
+        TArray<float> Lens;
+        Dirs.SetNumUninitialized(SegCount);
+        Lens.SetNumUninitialized(SegCount);
+        for (int32 s = 0; s < SegCount; ++s)
+        {
+            const FVector D = Path[s + 1] - Path[s];
+            Lens[s] = D.Length();
+            Dirs[s] = Lens[s] > KINDA_SMALL_NUMBER ? (D / Lens[s]) : FVector::UpVector;
+        }
+
+        for (int32 s = 0; s < SegCount; ++s)
+        {
+            if (Lens[s] < 0.5f) continue;
+
+            const FVector StartTangent = (s > 0)
+                ? ComputeJoinTangent(Dirs[s - 1], Lens[s - 1], Dirs[s], Lens[s])
+                : Dirs[s] * Lens[s];
+            const FVector EndTangent = (s + 1 < SegCount)
+                ? ComputeJoinTangent(Dirs[s], Lens[s], Dirs[s + 1], Lens[s + 1])
+                : Dirs[s] * Lens[s];
+
+            FTubeSeg Seg;
+            Seg.Start = Path[s];
+            Seg.End = Path[s + 1];
+            Seg.StartTangent = StartTangent;
+            Seg.EndTangent = EndTangent;
+            Seg.Colour = Colour;
+            Seg.Radius = Radius;
+            Segs.Add(Seg);
+        }
+    }
+
+    while (TendonSegmentPool.Num() < Segs.Num())
+    {
+        USplineMeshComponent* New = NewObject<USplineMeshComponent>(Owner, NAME_None, RF_Transient);
+        if (!New) break;
+
+        New->SetMobility(EComponentMobility::Movable);
+        New->SetStaticMesh(TendonTubeMesh);
+        New->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+        New->SetCastShadow(false);
+        New->bSelectable = false;
+        New->bUseAttachParentBound = true;
+        New->SetForwardAxis(ESplineMeshAxis::Z);   // /Engine/BasicShapes/Cylinder extends along Z
+        New->RegisterComponent();
+        New->AttachToComponent(Owner->GetRootComponent(), FAttachmentTransformRules::KeepWorldTransform);
+
+        // Standard idiom: let the component create + own the MID so it's wired
+        // correctly through the render proxy. Creating via UMaterialInstanceDynamic::Create
+        // with the visualizer as outer resulted in the MID not routing to the mesh.
+        UMaterialInstanceDynamic* MID = New->CreateDynamicMaterialInstance(0, OverlayParentMaterial);
+
+        TendonSegmentPool.Add(New);
+        TendonSegmentMIDs.Add(MID);
+    }
+
+    for (int32 i = 0; i < TendonSegmentPool.Num(); ++i)
+    {
+        USplineMeshComponent* Seg = TendonSegmentPool[i];
+        if (!Seg) continue;
+        if (i < Segs.Num())
+        {
+            const FTubeSeg& S = Segs[i];
+            // Convert desired visible radius in cm to the scale factor applied
+            // to the base cylinder mesh (50cm radius → divide by 50).
+            const float Scale = S.Radius / kBasicCylinderBaseRadiusCm;
+            Seg->SetStartScale(FVector2D(Scale, Scale), false);
+            Seg->SetEndScale(FVector2D(Scale, Scale), false);
+            Seg->SetStartAndEnd(S.Start, S.StartTangent, S.End, S.EndTangent, true);
+            if (TendonSegmentMIDs.IsValidIndex(i) && TendonSegmentMIDs[i])
+            {
+                TendonSegmentMIDs[i]->SetVectorParameterValue(OverlayColorParam, S.Colour);
+            }
+            Seg->SetVisibility(true);
+        }
+        else
+        {
+            Seg->SetVisibility(false);
         }
     }
 }

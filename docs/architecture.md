@@ -57,11 +57,9 @@ Subsystems communicate through:
 
 DLL load order (sequential, each must succeed):
 
-1. `mujoco.dll` (from `third_party/install/MuJoCo/bin/`)
-2. `obj_decoder.dll` (same path)
-3. `stl_decoder.dll` (same path)
-4. `libzmq-v143-mt-4_3_6.dll` (from `third_party/install/libzmq/bin/`)
-5. `lib_coacd.dll` (from `third_party/install/CoACD/bin/`)
+1. `mujoco.dll` (from `third_party/install/MuJoCo/bin/`) — obj/stl decoders are compiled into this DLL since MuJoCo 3.7.0; the standalone `obj_decoder.dll` / `stl_decoder.dll` shipped in earlier versions should not be loaded (plugin-registration collision).
+2. `libzmq-v143-mt-4_3_6.dll` (from `third_party/install/libzmq/bin/`)
+3. `lib_coacd.dll` (from `third_party/install/CoACD/bin/`)
 
 Search path strategy: plugin `third_party/install/{SubDir}/bin/` first (editor/development builds), then `FPlatformProcess::GetModulesDirectory()` (packaged builds where DLLs are staged next to the executable).
 

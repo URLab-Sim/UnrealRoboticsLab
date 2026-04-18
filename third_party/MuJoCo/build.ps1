@@ -14,7 +14,7 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
-$PinnedCommit = "47264877"  # Pin to tested commit (MuJoCo 3.7.0 dev, polynomial stiffness/damping)
+$PinnedCommit = "72cb2b210da6"  # Pin to MuJoCo 3.7.0 release (2026-04-14)
 
 $RepoDir = "src"
 if (-not (Test-Path $RepoDir)) {

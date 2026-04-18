@@ -45,7 +45,8 @@ enum class EMjActuatorType : uint8
     Damper,
     Cylinder,
     Muscle,
-    Adhesion
+    Adhesion,
+    DcMotor
 };
 
 /**

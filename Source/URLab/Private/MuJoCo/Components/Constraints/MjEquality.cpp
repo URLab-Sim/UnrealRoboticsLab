@@ -37,14 +37,18 @@ void UMjEquality::ImportFromXml(const FXmlNode* Node)
     if (!Node) return;
 
     FString Tag = Node->GetTag().ToLower();
-    if (Tag == TEXT("connect"))       EqualityType = EMjEqualityType::Connect;
-    else if (Tag == TEXT("weld"))    EqualityType = EMjEqualityType::Weld;
-    else if (Tag == TEXT("joint"))   EqualityType = EMjEqualityType::Joint;
-    else if (Tag == TEXT("tendon"))  EqualityType = EMjEqualityType::Tendon;
+    if (Tag == TEXT("connect"))          EqualityType = EMjEqualityType::Connect;
+    else if (Tag == TEXT("weld"))        EqualityType = EMjEqualityType::Weld;
+    else if (Tag == TEXT("joint"))       EqualityType = EMjEqualityType::Joint;
+    else if (Tag == TEXT("tendon"))      EqualityType = EMjEqualityType::Tendon;
+    else if (Tag == TEXT("flex"))        EqualityType = EMjEqualityType::Flex;
+    else if (Tag == TEXT("flexvert"))    EqualityType = EMjEqualityType::FlexVert;
+    else if (Tag == TEXT("flexstrain"))  EqualityType = EMjEqualityType::FlexStrain;
 
     Obj1 = Node->GetAttribute(TEXT("body1"));
     if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("joint1"));
     if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("tendon1"));
+    if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("flex"));  // flex / flexvert / flexstrain target a single flex
 
     Obj2 = Node->GetAttribute(TEXT("body2"));
     if (Obj2.IsEmpty()) Obj2 = Node->GetAttribute(TEXT("joint2"));

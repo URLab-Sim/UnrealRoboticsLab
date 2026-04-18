@@ -34,10 +34,13 @@
 UENUM(BlueprintType)
 enum class EMjEqualityType : uint8
 {
-    Connect = 0,
-    Weld    = 1,
-    Joint   = 2,
-    Tendon  = 3
+    Connect     = 0,
+    Weld        = 1,
+    Joint       = 2,
+    Tendon      = 3,
+    Flex        = 4,
+    FlexVert    = 5,
+    FlexStrain  = 6
 };
 
 /**

@@ -1,7 +1,7 @@
 # MJCF Schema Coverage
 
-Checked against: **MuJoCo 3.4** (C API / mjSpec)
-Plugin version: UnrealRoboticsLab main branch, 2026-03-28
+Checked against: **MuJoCo 3.7.0** (C API / mjSpec)
+Plugin version: UnrealRoboticsLab main branch, 2026-04-18
 
 ## Summary
 
@@ -12,10 +12,10 @@ Plugin version: UnrealRoboticsLab main branch, 2026-03-28
 | geom | 22 | 0 | 5 | 27 |
 | site | 10 | 0 | 2 | 12 |
 | actuator (common) | 14 | 0 | 2 | 16 |
-| actuator types | 9 | 0 | 0 | 9 |
+| actuator types | 10 | 0 | 0 | 10 |
 | sensor types | 41 | 0 | 0 | 41 |
 | tendon | 16 | 0 | 1 | 17 |
-| equality | 7 | 0 | 0 | 7 |
+| equality | 10 | 0 | 0 | 10 |
 | default | 6 | 0 | 5 | 11 |
 | compiler | 5 | 0 | 2 | 7 |
 | option | 17 | 0 | 3 | 20 |
@@ -166,6 +166,7 @@ Plugin version: UnrealRoboticsLab main branch, 2026-03-28
 | cylinder | SUPPORTED | `MjCylinderActuator`. Parses `timeconst/bias/area/diameter`. Uses `mjs_setToCylinder` |
 | muscle | SUPPORTED | `MjMuscleActuator`. Uses `mjs_setToMuscle` |
 | adhesion | SUPPORTED | `MjAdhesionActuator`. Parses `gain`. Uses `mjs_setToAdhesion` |
+| dcmotor | SUPPORTED | `MjDcMotorActuator`. Parses `motorconst`, `resistance`, `nominal`, `saturation`, `inductance`, `cogging`, `controller`, `thermal`, `lugre`, `input`. Uses `mjs_setToDCMotor` (MuJoCo 3.7.0+). |
 
 ## sensor types
 
@@ -280,6 +281,9 @@ Tendon wrap types:
 | weld | SUPPORTED | Parses body1/body2, relpos, relquat, torquescale. Exports via `Eq->data[0..7]` |
 | joint | SUPPORTED | Parses joint1/joint2, polycoef. Exports via `Eq->data` |
 | tendon | SUPPORTED | Parses tendon1/tendon2, polycoef. Exports via `Eq->data` |
+| flex | SUPPORTED | Parses `flex` attribute into `Obj1`. Fixes all edge lengths of a flex (MuJoCo 3.5.0+). |
+| flexvert | SUPPORTED | Parses `flex` attribute into `Obj1`. Fixes all vertex lengths of a flex (MuJoCo 3.5.0+). |
+| flexstrain | SUPPORTED | Parses `flex` attribute into `Obj1`. Constrains strain of a trilinear/quadratic flex (MuJoCo 3.6.0+). |
 
 Equality common attributes:
 

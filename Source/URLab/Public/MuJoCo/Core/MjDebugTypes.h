@@ -41,4 +41,14 @@ struct FMuJoCoDebugData
     TArray<uint8> TendonLimited;
     TArray<float> TendonRangeLo;
     TArray<float> TendonRangeHi;
+
+    /**
+     * Per-tendon muscle activation in [0, 1] if any muscle actuator drives this
+     * tendon, else -1. Resolved by scanning actuators with trntype==TENDON.
+     * Size = ntendon.
+     */
+    TArray<float> TendonActivation;
+
+    /** Geom world positions (UE coords), size ngeom. Used to centre wrap-arc interpolation. */
+    TArray<FVector> GeomXPos;
 };

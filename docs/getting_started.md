@@ -90,13 +90,14 @@ All functions are `BlueprintCallable`.
 
 ## Debug Visualization
 
-See [Hotkeys](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/blueprint_reference.md#hotkeys) for keyboard shortcuts.
+See the [Debug Visualization guide](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/debug_visualization.md) for the full set of PIE overlays — contact forces, collision wireframes, joint axes, constraint islands, instance/semantic segmentation, and muscle/tendon tubes — plus the hotkeys that drive them.
 
 ## Next Steps
 
 * [features.md](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/features.md) -- complete feature reference
 * [MJCF Import](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/mujoco_import.md) -- import pipeline details
 * [Blueprint Reference](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/blueprint_reference.md) -- all Blueprint-callable functions and hotkeys
+* [Debug Visualization](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/debug_visualization.md) -- PIE overlays, segmentation, island colouring, muscle/tendon tubes
 * [ZMQ Networking](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/zmq_networking.md) -- protocol, topics, and Python examples
 * [Policy Bridge](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/policy_bridge.md) -- RL policy deployment
 * [Developer Tools](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/developer_tools.md) -- schema tracking, debug XML, build/test skills

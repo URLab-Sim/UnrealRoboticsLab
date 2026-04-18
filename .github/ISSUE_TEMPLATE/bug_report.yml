@@ -1,0 +1,84 @@
+name: Bug report
+description: Something in URLab doesn't work as expected.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. A concrete reproduction + logs gets the fix
+        landed far faster than a description alone.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-line description of the problem.
+      placeholder: "Importing X.xml produces Y instead of Z"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in all that apply.
+      value: |
+        - Unreal Engine version:
+        - OS (Windows / Linux) and version:
+        - URLab plugin version / commit SHA:
+        - Visual Studio version (Windows only):
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: |
+        Exact steps to trigger the bug. If the issue is import-related, paste
+        the MJCF snippet inline (or attach a minimal `.xml`) and include any
+        referenced mesh file names.
+      placeholder: |
+        1. Drag robot.xml into Content Browser
+        2. Open the generated Blueprint
+        3. Press Play
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include error messages verbatim.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Paste log excerpts from `YourProject/Saved/Logs/*.log` or the
+        `build_all.ps1` transcript. Wrap in a fenced code block.
+      render: shell
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: I'm on a supported Unreal Engine version (5.7 or newer), or I've noted why not in the environment block.
+          required: true
+        - label: I reproduced this on the latest `main` (or noted the commit I'm on).
+          required: true

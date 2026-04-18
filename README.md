@@ -143,7 +143,7 @@ See [ThirdPartyNotices.txt](ThirdPartyNotices.txt) for full license texts.
 
 ## Contributing
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Since Unreal Engine projects cannot use standard CI, maintainers manually verify builds before merging.
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Since Unreal Engine projects cannot use standard CI, each PR must include proof of a local build and passing tests; maintainers spot-check in the editor before merging.
 
 ## Citation
 

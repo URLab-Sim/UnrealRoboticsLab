@@ -53,3 +53,9 @@ The [API Reference](api/index.md) is auto-generated from C++ headers on each bui
 | [libzmq](https://zeromq.org) | MPL 2.0 | High-performance messaging |
 
 Full license texts are in `ThirdPartyNotices.txt`.
+
+---
+
+## Contributing
+
+URLab welcomes contributions. See the repo's [CONTRIBUTING.md](https://github.com/URLab-Sim/UnrealRoboticsLab/blob/main/CONTRIBUTING.md) for the workflow, and use the [issue templates](https://github.com/URLab-Sim/UnrealRoboticsLab/issues/new/choose) for bug reports and feature requests.

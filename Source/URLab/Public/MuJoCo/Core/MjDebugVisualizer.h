@@ -113,9 +113,13 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.0", ClampMax="1.0"))
     float SleepSaturationScale = 0.9f;
 
-    /** @brief Toggles tendon/muscle spline-mesh rendering. Toggled via key 7. */
+    /** @brief Toggles tendon/muscle rendering. Toggled via key 7. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
     bool bGlobalDrawTendons = false;
+
+    /** @brief Thickness (line width) for the debug-line tendon render style. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.5", ClampMax="20.0"))
+    float TendonLineThickness = 2.0f;
 
     // --- Thread-safe debug data ---
     FMuJoCoDebugData DebugData;
@@ -165,6 +169,9 @@ public:
 
     /** @brief Restore original materials recorded at overlay apply time, clear caches. */
     void ClearBodyOverlays();
+
+    /** @brief Draw tendons as debug lines using the latest snapshot. */
+    void DrawTendonLines();
 
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 

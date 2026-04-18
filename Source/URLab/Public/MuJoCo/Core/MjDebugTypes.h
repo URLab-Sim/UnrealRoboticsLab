@@ -21,4 +21,24 @@ struct FMuJoCoDebugData
      * asleep). -1 means "don't colour" (e.g. worldbody). Size nbody.
      */
     TArray<int32> BodyIslandSeed;
+
+    /**
+     * Flat array of 3D points mirroring MuJoCo's `mjData.wrap_xpos` (stride 3).
+     * MuJoCo's own renderer reads point A at offset `3*j` and point B at
+     * `3*j + 3`, where j iterates wrap-point index in `[ten_wrapadr[t],
+     * ten_wrapadr[t] + ten_wrapnum[t] - 1)`. We convert to UE coords at
+     * capture time. Logical size = 2 * nwrap (same as `nwrap x 6` layout).
+     */
+    TArray<FVector> WrapPointsFlat;
+
+    /** Mirror of `mjData.wrap_obj` (nwrap * 2 ints). -2 = pulley, skip when drawing. */
+    TArray<int32> WrapObj;
+
+    /** Per-tendon: `ten_wrapadr` / `ten_wrapnum`, length, and limit range. Sizes = ntendon. */
+    TArray<int32> TendonWrapAdr;
+    TArray<int32> TendonWrapNum;
+    TArray<float> TendonLength;
+    TArray<uint8> TendonLimited;
+    TArray<float> TendonRangeLo;
+    TArray<float> TendonRangeHi;
 };

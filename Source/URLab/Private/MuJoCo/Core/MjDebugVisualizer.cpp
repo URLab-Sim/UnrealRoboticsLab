@@ -50,6 +50,11 @@ void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
     UpdateBodyOverlays();
 
+    if (bGlobalDrawTendons)
+    {
+        DrawTendonLines();
+    }
+
     if (!bShowDebug) return;
 
     FMuJoCoDebugData LocalDebugData;
@@ -165,6 +170,44 @@ void UMjDebugVisualizer::CaptureDebugData()
         }
 
         DebugData.BodyIslandSeed[b] = H;
+    }
+
+    // Tendon wrap points — mirror MuJoCo's own renderer (engine_vis_visualize.c
+    // addSpatialTendonGeoms). It iterates wrap-point index j from ten_wrapadr[t]
+    // to ...+ten_wrapnum[t]-1 and connects wrap_xpos[3*j] -> wrap_xpos[3*j+3],
+    // skipping pulleys (wrap_obj == -2). Declared layout is `nwrap x 6` so we
+    // snapshot 2*nwrap 3D points.
+    const int32 NumWrapPoints = 2 * Model->nwrap;
+    DebugData.WrapPointsFlat.SetNumUninitialized(NumWrapPoints);
+    if (Data->wrap_xpos && Model->nwrap > 0)
+    {
+        for (int32 p = 0; p < NumWrapPoints; ++p)
+        {
+            DebugData.WrapPointsFlat[p] = MjUtils::MjToUEPosition(Data->wrap_xpos + p * 3);
+        }
+    }
+
+    const int32 NumWrapObj = 2 * Model->nwrap;
+    DebugData.WrapObj.SetNumUninitialized(NumWrapObj);
+    if (Data->wrap_obj && Model->nwrap > 0)
+    {
+        for (int32 i = 0; i < NumWrapObj; ++i) DebugData.WrapObj[i] = Data->wrap_obj[i];
+    }
+
+    DebugData.TendonWrapAdr.SetNumUninitialized(Model->ntendon);
+    DebugData.TendonWrapNum.SetNumUninitialized(Model->ntendon);
+    DebugData.TendonLength.SetNumUninitialized(Model->ntendon);
+    DebugData.TendonLimited.SetNumUninitialized(Model->ntendon);
+    DebugData.TendonRangeLo.SetNumUninitialized(Model->ntendon);
+    DebugData.TendonRangeHi.SetNumUninitialized(Model->ntendon);
+    for (int32 t = 0; t < Model->ntendon; ++t)
+    {
+        DebugData.TendonWrapAdr[t]  = Data->ten_wrapadr ? Data->ten_wrapadr[t] : 0;
+        DebugData.TendonWrapNum[t]  = Data->ten_wrapnum ? Data->ten_wrapnum[t] : 0;
+        DebugData.TendonLength[t]   = Data->ten_length ? (float)Data->ten_length[t] : 0.0f;
+        DebugData.TendonLimited[t]  = Model->tendon_limited ? Model->tendon_limited[t] : 0;
+        DebugData.TendonRangeLo[t]  = Model->tendon_range ? (float)Model->tendon_range[t * 2 + 0] : 0.0f;
+        DebugData.TendonRangeHi[t]  = Model->tendon_range ? (float)Model->tendon_range[t * 2 + 1] : 0.0f;
     }
 }
 
@@ -457,6 +500,61 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
         for (UStaticMeshComponent* SMC : MeshComps)
         {
             ApplyToMesh(SMC, BodyId, GroupHash);
+        }
+    }
+}
+
+void UMjDebugVisualizer::DrawTendonLines()
+{
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    TArray<FVector> LocalPoints;
+    TArray<int32> LocalWrapObj, LocalAdr, LocalNum;
+    TArray<float> LocalLengths, LocalLo, LocalHi;
+    TArray<uint8> LocalLimited;
+    {
+        FScopeLock Lock(&DebugMutex);
+        LocalPoints = DebugData.WrapPointsFlat;
+        LocalWrapObj = DebugData.WrapObj;
+        LocalAdr = DebugData.TendonWrapAdr;
+        LocalNum = DebugData.TendonWrapNum;
+        LocalLengths = DebugData.TendonLength;
+        LocalLimited = DebugData.TendonLimited;
+        LocalLo = DebugData.TendonRangeLo;
+        LocalHi = DebugData.TendonRangeHi;
+    }
+
+    const int32 NumTendons = LocalAdr.Num();
+    for (int32 t = 0; t < NumTendons; ++t)
+    {
+        float Stretch = 0.5f;
+        if (LocalLimited.IsValidIndex(t) && LocalLimited[t])
+        {
+            const float Len = LocalLengths[t];
+            const float Lo = LocalLo[t];
+            const float Hi = LocalHi[t];
+            if (Hi > Lo + KINDA_SMALL_NUMBER)
+            {
+                Stretch = FMath::Clamp((Len - Lo) / (Hi - Lo), 0.0f, 1.0f);
+            }
+        }
+        const FColor LineColor = FLinearColor::LerpUsingHSV(
+            FLinearColor::Blue, FLinearColor::Red, Stretch).ToFColor(false);
+
+        const int32 Adr = LocalAdr[t];
+        const int32 Num = LocalNum[t];
+        // Mirror MuJoCo's engine_vis_visualize.c: for each consecutive wrap
+        // index pair (j, j+1), skip pulley endpoints (wrap_obj == -2), then
+        // connect wrap_xpos[3*j] -> wrap_xpos[3*j + 3].
+        for (int32 j = Adr; j + 1 < Adr + Num; ++j)
+        {
+            if (LocalWrapObj.IsValidIndex(j)     && LocalWrapObj[j]     == -2) continue;
+            if (LocalWrapObj.IsValidIndex(j + 1) && LocalWrapObj[j + 1] == -2) continue;
+            if (!LocalPoints.IsValidIndex(j + 1)) continue;
+            const FVector& A = LocalPoints[j];
+            const FVector& B = LocalPoints[j + 1];
+            DrawDebugLine(World, A, B, LineColor, false, -1.0f, 0, TendonLineThickness);
         }
     }
 }

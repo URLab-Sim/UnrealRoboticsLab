@@ -32,8 +32,14 @@ class FXmlNode;
  */
 struct FMjCompilerSettings
 {
-    /** If true, angles (euler, axisangle) are in degrees. If false (default), radians. */
-    bool bAngleInDegrees = false;
+    /**
+     * If true, angles (euler, axisangle, joint range) are in degrees.
+     * MuJoCo's upstream default when no <compiler> tag is present is "degree",
+     * so we match that. Without this default, models relying on the implicit
+     * default (e.g. tendon_arm/arm26.xml) get joint ranges like 0..120 treated
+     * as radians — the compile-time muscle lengthrange solver then diverges.
+     */
+    bool bAngleInDegrees = true;
 
     /** Euler rotation sequence, e.g. "xyz", "XYZ", "zyx". Default "xyz" (intrinsic). */
     FString EulerSeq = TEXT("xyz");

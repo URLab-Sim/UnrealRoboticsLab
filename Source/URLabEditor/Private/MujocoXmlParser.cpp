@@ -327,6 +327,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             GeomComp->ImportFromXml(Node, CompilerSettings);
             GeomComp->bIsDefault = bIsDefaultContext;
 
+            // Preserve the MJCF 'name' so other components (tendons wrapping the
+            // geom, contact pairs referencing it) can resolve by the original
+            // name, not our auto-generated SCS variable name.
+            FString NameAttr = Node->GetAttribute(TEXT("name"));
+            if (!NameAttr.IsEmpty()) GeomComp->MjName = NameAttr;
+
             // Resolve default class transform for visual mesh placement.
             // Walk the default class hierarchy (child -> parent -> ... -> main) to find
             // the first default geom with a transform override.
@@ -695,8 +701,17 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
          }
     }
     // --- ACTUATOR ---
-    else if (Tag.Equals(TEXT("actuator")) ||
-             Tag == "motor" || Tag == "position" || Tag == "velocity" || Tag == "cylinder" || Tag == "muscle" || Tag == "general" || Tag == "damper" || Tag == "intvelocity" || Tag == "adhesion")
+    else if (Tag.Equals(TEXT("actuator")))
+    {
+         // The <actuator> container itself is just a wrapper — recurse into each
+         // per-type child (motor, muscle, position, etc.) to create components.
+         for (const FXmlNode* Child : Node->GetChildrenNodes())
+         {
+             ImportNodeRecursive(Child, ParentNode, BP, XMLDir, AssetImportPath, MeshAssets, MeshScales, TextureAssets, MaterialData, ImportedTextures, CompilerSettings, bIsDefaultContext);
+         }
+         return;
+    }
+    else if (Tag == "motor" || Tag == "position" || Tag == "velocity" || Tag == "cylinder" || Tag == "muscle" || Tag == "general" || Tag == "damper" || Tag == "intvelocity" || Tag == "adhesion")
     {
          FString Name = Node->GetAttribute(TEXT("name"));
          if (Name.IsEmpty()) Name = TEXT("AUTONAME_") + Tag;

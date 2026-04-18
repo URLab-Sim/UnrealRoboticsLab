@@ -530,7 +530,7 @@ void UMjGeom::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
     m_SpecElement = geom->element;
 
     FString NameToRegister = MjName.IsEmpty() ? GetName() : MjName;
-    FString UniqueName = Wrapper.GetUniqueName(GetName(), mjOBJ_GEOM, GetOwner());
+    FString UniqueName = Wrapper.GetUniqueName(NameToRegister, mjOBJ_GEOM, GetOwner());
     mjs_setName(geom->element, TCHAR_TO_UTF8(*UniqueName));
     MjName = UniqueName;
 

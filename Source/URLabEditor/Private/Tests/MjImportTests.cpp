@@ -431,6 +431,7 @@ bool FTest_MjImport_URLab_JointRangeAndDamping::RunTest(const FString&)
     FMjXmlImportSession S;
     if (!S.Init(TEXT(R"(
         <mujoco>
+          <compiler angle="radian"/>
           <worldbody>
             <body>
               <joint name="j1" type="hinge" range="-1.57 1.57" limited="true" damping="0.5"/>

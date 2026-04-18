@@ -53,9 +53,13 @@ FMjCompilerSettings MjOrientationUtils::ParseCompilerSettings(const FXmlNode* Ro
 
     if (!CompilerNode) return Settings;
 
-    // angle: "degree" or "radian" (default "radian")
+    // angle: "degree" or "radian". MuJoCo's default is "degree" (Settings default).
     FString AngleStr = CompilerNode->GetAttribute(TEXT("angle"));
-    if (AngleStr.Equals(TEXT("degree"), ESearchCase::IgnoreCase))
+    if (AngleStr.Equals(TEXT("radian"), ESearchCase::IgnoreCase))
+    {
+        Settings.bAngleInDegrees = false;
+    }
+    else if (AngleStr.Equals(TEXT("degree"), ESearchCase::IgnoreCase))
     {
         Settings.bAngleInDegrees = true;
     }

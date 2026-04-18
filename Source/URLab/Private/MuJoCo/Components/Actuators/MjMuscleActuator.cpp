@@ -83,26 +83,24 @@ void UMjMuscleActuator::ExportTo(mjsActuator* act, mjsDefault* def)
 {
     if (!act) return;
 
-    double tc[2] = { 
+    Super::ExportTo(act, def);
+
+    // mjs_setToMuscle dereferences timeconst[0..1] and range[0..1] unconditionally,
+    // treating -1 as the "not overridden — leave alone" sentinel. Never pass null.
+    // `range` here is the muscle-specific length range (gainprm[0..1] = lrmin, lrmax),
+    // NOT the actuator's ctrlrange — passing ctrlrange here would clobber the
+    // muscle defaults (0.75, 1.05). We don't yet expose this as a UPROPERTY, so
+    // pass the sentinel to keep MuJoCo's built-in muscle defaults.
+    double timeconst[2] = {
         bOverride_TimeConst  ? (double)TimeConst  : -1.0,
         bOverride_TimeConst2 ? (double)TimeConst2 : -1.0
     };
-    // MuJoCo mjs_setToMuscle: pass nullptr timeconst to use defaults from spec/defaults
-    double* timeconst_ptr = (bOverride_TimeConst || bOverride_TimeConst2) ? tc : nullptr;
+    double range[2] = { -1.0, -1.0 };
 
-    // range: MuJoCo uses {-1,-1} sentinel for "not specified". Use CtrlRange if set.
-    double range[2] = {
-        bOverride_CtrlRange && CtrlRange.Num() > 0 ? (double)CtrlRange[0] : -1.0,
-        bOverride_CtrlRange && CtrlRange.Num() > 1 ? (double)CtrlRange[1] : -1.0
-    };
-
-    Super::ExportTo(act, def); // 1. Common attributes (populates act from default via mjs_addActuator)
-
-    // Mirror OneActuator: tausmooth = act->dynprm[2] as inherited default, override only if explicitly set.
     const double tausmooth = bOverride_TauSmooth ? (double)TauSmooth : act->dynprm[2];
 
-    mjs_setToMuscle(act,           // 2. Type preset
-        timeconst_ptr,
+    mjs_setToMuscle(act,
+        timeconst,
         tausmooth,
         range,
         bOverride_Force  ? (double)Force  : -1.0,
@@ -112,5 +110,6 @@ void UMjMuscleActuator::ExportTo(mjsActuator* act, mjsDefault* def)
         bOverride_VMax   ? (double)VMax   : -1.0,
         bOverride_FPMax  ? (double)FPMax  : -1.0,
         bOverride_FVMax  ? (double)FVMax  : -1.0);
-    ApplyRawOverrides(act, def);   // 3. Raw prm overrides
+
+    ApplyRawOverrides(act, def);
 }

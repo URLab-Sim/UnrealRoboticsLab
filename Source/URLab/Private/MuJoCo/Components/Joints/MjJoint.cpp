@@ -105,10 +105,19 @@ void UMjJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Co
     // compiler (mjLIMITED_AUTO default). We do not replicate that logic here.
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), Range, bOverride_Range);
 
-    // Slide joints: convert range from meters to cm (UE units)
-    if (bOverride_Range && Type == EMjJointType::Slide)
+    if (bOverride_Range)
     {
-        for (float& V : Range) V *= 100.0f;
+        if (Type == EMjJointType::Slide)
+        {
+            // Slide joints: MJCF stores metres, UE units are cm.
+            for (float& V : Range) V *= 100.0f;
+        }
+        else if (CompilerSettings.bAngleInDegrees)
+        {
+            // Hinge/ball joint ranges in MJCF are in the compiler angle units.
+            // Our spec is compiled with radians, so convert here to match.
+            for (float& V : Range) V = FMath::DegreesToRadians(V);
+        }
     }
 
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), ActuatorFrcRange, bOverride_ActuatorFrcRange);

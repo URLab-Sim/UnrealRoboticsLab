@@ -22,6 +22,7 @@ Plugin version: UnrealRoboticsLab main branch, 2026-04-18
 | keyframe | 6 | 0 | 0 | 6 |
 | contact | 2 | 0 | 0 | 2 |
 | asset | 3 | 0 | 1 | 4 |
+| flexcomp | 22 | 0 | 2 | 24 |
 
 ---
 
@@ -381,3 +382,38 @@ Equality common attributes:
 | material | SUPPORTED | Parsed into `FMuJoCoMaterialData`. Creates UE MaterialInstance with texture params |
 | texture | SUPPORTED | Imported from disk (PNG/JPG/BMP/TGA). Applied to material instances |
 | hfield | MISSING | Not parsed from `<asset>`. Geom type=hfield recognized but asset data not imported |
+
+## flexcomp
+
+URLab parses `<flexcomp>` into a `UMjFlexcomp` component and, at spec registration, serializes back to an MJCF fragment that MuJoCo's own parser expands via `mjs_attach`. All geometry types and DOF modes work without plugin-side reimplementation.
+
+| Attribute | Status | Notes |
+|-----------|--------|-------|
+| name | SUPPORTED | Import: `ReadAttrString("name")` -> `MjName`. Export: written into generated `<flexcomp>` |
+| type | SUPPORTED | Import: string -> `EMjFlexcompType`. grid/box/cylinder/ellipsoid/square/disc/circle/mesh/direct |
+| dim | SUPPORTED | Import: `ReadAttrInt`. 1D lines / 2D triangles / 3D tetrahedra |
+| dof | SUPPORTED | Import: string -> `EMjFlexcompDof`. full/radial/trilinear/quadratic |
+| count | SUPPORTED | Import: 3-int array -> `FIntVector`. Grid/box/cylinder/ellipsoid types |
+| spacing | SUPPORTED | Import: 3-float array -> `FVector`. Same types as count |
+| pos | SUPPORTED | Import: `ParseVector` -> component relative location. Export: `UEToMjPosition` |
+| scale | SUPPORTED | Import: 3-float array + `bOverride_Scale`. Export: only emitted when overridden |
+| mass | SUPPORTED | Import: `ReadAttrFloat` + `bOverride_Mass`. Default inherits MuJoCo |
+| inertiabox | SUPPORTED | Import: `ReadAttrFloat` + `bOverride_InertiaBox` |
+| radius | SUPPORTED | Import: `ReadAttrFloat` + `bOverride_Radius` |
+| rgba | SUPPORTED | Import: 4-float array + `bOverride_Rgba` |
+| rigid | SUPPORTED | Import: `ReadAttrBool` -> `bRigid` |
+| flatskin | SUPPORTED | Import: `ReadAttrBool` -> `bFlatSkin` |
+| file | SUPPORTED | type=mesh. Import: path resolved relative to XML dir; child `UStaticMeshComponent` created. Export: welded OBJ written to VFS |
+| point | SUPPORTED | type=direct. Import: float array -> `PointData` |
+| element | SUPPORTED | type=direct. Import: int array -> `ElementData` |
+| `<contact>` | SUPPORTED | All attrs (contype/conaffinity/condim/priority/margin/gap/selfcollide/internal) via `bOverride_X` |
+| `<edge>` | SUPPORTED | stiffness/damping via `bOverride_X` |
+| `<elasticity>` | SUPPORTED | young/poisson/damping/thickness/elastic2d via `bOverride_X` |
+| `<pin>` | SUPPORTED | id/gridrange attribute arrays |
+| euler | SUPPORTED | Handled by UE component transform (set by parent body transform import) |
+| pingrid | MISSING | Only `id` and `gridrange` pin selectors supported |
+| pinrange | MISSING | Only `id` and `gridrange` pin selectors supported |
+
+### Flex element (compiled output)
+
+The compiled `<flex>` element is read at runtime for visualization (vertex positions, element indices). `UMjFlexcomp::Bind` resolves the flex by name from `mjModel.flex_*` arrays and caches `flex_vertadr`, `flex_vertnum`, and the triangle index list for per-tick updates via `mjData.flexvert_xpos`.

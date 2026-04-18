@@ -24,9 +24,13 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Utils/MjUtils.h"
+#include "MuJoCo/Utils/MjColor.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "DrawDebugHelpers.h"
+#include "Materials/MaterialInterface.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Utils/URLabLogging.h"
 
 UMjDebugVisualizer::UMjDebugVisualizer()
@@ -34,9 +38,17 @@ UMjDebugVisualizer::UMjDebugVisualizer()
     PrimaryComponentTick.bCanEverTick = true;
 }
 
+void UMjDebugVisualizer::BeginPlay()
+{
+    Super::BeginPlay();
+    InitializeOverlayMaterial();
+}
+
 void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    UpdateBodyOverlays();
 
     if (!bShowDebug) return;
 
@@ -98,6 +110,61 @@ void UMjDebugVisualizer::CaptureDebugData()
         mjtNum cforce[6];
         mj_contactForce(Model, Data, i, cforce);
         DebugData.ContactForces.Add((float)cforce[0]);
+    }
+
+    DebugData.BodyAwake.SetNumUninitialized(Model->nbody);
+    for (int32 i = 0; i < Model->nbody; ++i)
+    {
+        DebugData.BodyAwake[i] = Data->body_awake ? Data->body_awake[i] : 1;
+    }
+
+    // Per-body Halton seed, matching MuJoCo's native islandColor algorithm in
+    // engine_vis_visualize.c: use the active constraint island's dof-address if
+    // available, otherwise fall back to the kinematic tree's dof-address so
+    // sleeping bodies keep a stable colour. When asleep, mj_sleepCycle collapses
+    // connected sleep-cycle trees to their smallest index so a group of bodies
+    // resting on each other share one colour.
+    DebugData.BodyIslandSeed.Init(-1, Model->nbody);
+    const bool bSleepEnabled = (Model->opt.enableflags & mjENBL_SLEEP) != 0;
+    for (int32 b = 0; b < Model->nbody; ++b)
+    {
+        const int32 WeldId = Model->body_weldid ? Model->body_weldid[b] : b;
+        if (WeldId < 0 || WeldId >= Model->nbody) continue;
+        if (!Model->body_dofnum || Model->body_dofnum[WeldId] == 0) continue;
+
+        const int32 Dof = Model->body_dofadr ? Model->body_dofadr[WeldId] : -1;
+        if (Dof < 0 || Dof >= Model->nv) continue;
+
+        const int32 Island = (Data->nisland > 0 && Data->dof_island) ? Data->dof_island[Dof] : -1;
+        int32 H = (Island >= 0 && Data->island_dofadr) ? Data->island_dofadr[Island] : -1;
+
+        if (H == -1 && bSleepEnabled && Model->dof_treeid && Model->tree_dofadr)
+        {
+            int32 Tree = Model->dof_treeid[Dof];
+            const bool bBodyAwake = Data->body_awake ? (Data->body_awake[b] != 0) : true;
+            if (!bBodyAwake && Data->tree_asleep && Model->ntree > 0 &&
+                Tree >= 0 && Tree < Model->ntree)
+            {
+                // Reimplementation of MuJoCo's mj_sleepCycle (engine_sleep.c).
+                int32 Smallest = Tree;
+                int32 Current = Tree;
+                for (int32 Count = 0; Count <= Model->ntree; ++Count)
+                {
+                    const int32 Next = Data->tree_asleep[Current];
+                    if (Next < 0 || Next >= Model->ntree) { Smallest = -1; break; }
+                    if (Next < Smallest) Smallest = Next;
+                    Current = Next;
+                    if (Current == Tree) break;
+                }
+                Tree = Smallest;
+            }
+            if (Tree >= 0 && Tree < Model->ntree)
+            {
+                H = Model->tree_dofadr[Tree];
+            }
+        }
+
+        DebugData.BodyIslandSeed[b] = H;
     }
 }
 
@@ -201,4 +268,239 @@ void UMjDebugVisualizer::ToggleVisuals()
         }
     }
     UE_LOG(LogURLab, Log, TEXT("Visuals: %s"), bVisualsHidden ? TEXT("HIDDEN") : TEXT("VISIBLE"));
+}
+
+void UMjDebugVisualizer::CycleDebugShaderMode()
+{
+    const uint8 Count = static_cast<uint8>(EMjDebugShaderMode::SemanticSegmentation) + 1;
+    DebugShaderMode = static_cast<EMjDebugShaderMode>((static_cast<uint8>(DebugShaderMode) + 1) % Count);
+
+    const TCHAR* Label = TEXT("Off");
+    switch (DebugShaderMode)
+    {
+        case EMjDebugShaderMode::Island:                Label = TEXT("Island"); break;
+        case EMjDebugShaderMode::InstanceSegmentation:  Label = TEXT("Instance Segmentation"); break;
+        case EMjDebugShaderMode::SemanticSegmentation:  Label = TEXT("Semantic Segmentation"); break;
+        default: break;
+    }
+    UE_LOG(LogURLab, Log, TEXT("Debug shader mode: %s"), Label);
+}
+
+void UMjDebugVisualizer::ToggleTendons()
+{
+    bGlobalDrawTendons = !bGlobalDrawTendons;
+    UE_LOG(LogURLab, Log, TEXT("Tendon rendering: %s"), bGlobalDrawTendons ? TEXT("ON") : TEXT("OFF"));
+}
+
+void UMjDebugVisualizer::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+    ClearBodyOverlays();
+    Super::EndPlay(EndPlayReason);
+}
+
+void UMjDebugVisualizer::ClearBodyOverlays()
+{
+    for (auto& Pair : OriginalMaterials)
+    {
+        UStaticMeshComponent* Mesh = Pair.Key.Get();
+        if (!Mesh) continue;
+        Mesh->SetMaterial(0, Pair.Value);
+
+        if (const TMap<int32, UMaterialInterface*>* Extra = OriginalSlotMaterials.Find(Pair.Key))
+        {
+            for (const auto& SlotPair : *Extra)
+            {
+                Mesh->SetMaterial(SlotPair.Key, SlotPair.Value);
+            }
+        }
+    }
+    OriginalMaterials.Reset();
+    OriginalSlotMaterials.Reset();
+    ActiveMIDs.Reset();
+}
+
+void UMjDebugVisualizer::UpdateBodyOverlays()
+{
+    if (DebugShaderMode == EMjDebugShaderMode::Off)
+    {
+        if (OriginalMaterials.Num() > 0) ClearBodyOverlays();
+        return;
+    }
+
+    if (!OverlayParentMaterial || OverlayColorParam.IsNone()) return;
+
+    AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+    if (!Manager) return;
+
+    TArray<int32> LocalAwake;
+    TArray<int32> LocalIslandSeed;
+    {
+        FScopeLock Lock(&DebugMutex);
+        LocalAwake = DebugData.BodyAwake;
+        LocalIslandSeed = DebugData.BodyIslandSeed;
+    }
+
+    auto ApplyToMesh = [&](UStaticMeshComponent* Mesh, int32 BodyId, uint32 GroupHash)
+    {
+        if (!Mesh) return;
+
+        const bool bAwake =
+            (LocalAwake.IsValidIndex(BodyId) ? LocalAwake[BodyId] != 0 : true);
+        const int32 Seed =
+            (LocalIslandSeed.IsValidIndex(BodyId) ? LocalIslandSeed[BodyId] : -1);
+
+        TWeakObjectPtr<UStaticMeshComponent> WeakMesh(Mesh);
+        const int32 NumSlots = FMath::Max(1, Mesh->GetNumMaterials());
+
+        if (!OriginalMaterials.Contains(WeakMesh))
+        {
+            OriginalMaterials.Add(WeakMesh, Mesh->GetMaterial(0));
+            for (int32 SlotIdx = 1; SlotIdx < NumSlots; ++SlotIdx)
+            {
+                OriginalSlotMaterials.FindOrAdd(WeakMesh).Add(SlotIdx, Mesh->GetMaterial(SlotIdx));
+            }
+        }
+
+        const bool bColourAsAwake = bAwake || !bModulateBySleep;
+        FLinearColor Color;
+        switch (DebugShaderMode)
+        {
+            case EMjDebugShaderMode::Island:
+                Color = MjColor::IslandColor(Seed, bColourAsAwake,
+                    SleepValueScale, SleepSaturationScale);
+                break;
+            case EMjDebugShaderMode::InstanceSegmentation:
+                Color = MjColor::InstanceSegmentationColor(GroupHash, BodyId, bColourAsAwake,
+                    SleepValueScale, SleepSaturationScale);
+                break;
+            case EMjDebugShaderMode::SemanticSegmentation:
+                Color = MjColor::SemanticSegmentationColor(GroupHash, bColourAsAwake,
+                    SleepValueScale, SleepSaturationScale);
+                break;
+            default:
+                return;
+        }
+
+        UMaterialInstanceDynamic* MID = nullptr;
+        if (UMaterialInstanceDynamic** Existing = ActiveMIDs.Find(WeakMesh))
+        {
+            MID = *Existing;
+        }
+        if (!MID)
+        {
+            MID = UMaterialInstanceDynamic::Create(OverlayParentMaterial, this);
+            ActiveMIDs.Add(WeakMesh, MID);
+        }
+
+        for (int32 SlotIdx = 0; SlotIdx < NumSlots; ++SlotIdx)
+        {
+            if (Mesh->GetMaterial(SlotIdx) != MID)
+            {
+                Mesh->SetMaterial(SlotIdx, MID);
+            }
+        }
+
+        MID->SetVectorParameterValue(OverlayColorParam, Color);
+    };
+
+    for (AMjArticulation* Art : Manager->GetAllArticulations())
+    {
+        if (!Art) continue;
+
+        // Semantic grouping hashes the Blueprint class so two instances share colour.
+        const uint32 ArtHash = GetTypeHash(Art->GetClass()->GetFName());
+
+        TArray<UMjGeom*> Geoms;
+        Art->GetRuntimeComponents<UMjGeom>(Geoms);
+        for (UMjGeom* Geom : Geoms)
+        {
+            if (!Geom || !Geom->IsBound()) continue;
+            const int32 BodyId = Geom->GetMj().body_id;
+
+            ApplyToMesh(Geom->GetVisualizerMesh(), BodyId, ArtHash);
+
+            TArray<USceneComponent*> Children;
+            Geom->GetChildrenComponents(true, Children);
+            for (USceneComponent* Child : Children)
+            {
+                if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+                {
+                    ApplyToMesh(SMC, BodyId, ArtHash);
+                }
+            }
+        }
+    }
+
+    for (UMjQuickConvertComponent* QC : Manager->GetAllQuickComponents())
+    {
+        if (!QC) continue;
+        const int32 BodyId = QC->GetMjBodyId();
+        if (BodyId < 0) continue;
+
+        AActor* Owner = QC->GetOwner();
+        if (!Owner) continue;
+
+        TArray<UStaticMeshComponent*> MeshComps;
+        Owner->GetComponents<UStaticMeshComponent>(MeshComps);
+
+        // Semantic grouping hashes the first static mesh so props sharing a mesh read as one "type".
+        uint32 GroupHash = GetTypeHash(Owner->GetClass()->GetFName());
+        for (UStaticMeshComponent* SMC : MeshComps)
+        {
+            if (SMC && SMC->GetStaticMesh())
+            {
+                GroupHash = GetTypeHash(SMC->GetStaticMesh()->GetFName());
+                break;
+            }
+        }
+
+        for (UStaticMeshComponent* SMC : MeshComps)
+        {
+            ApplyToMesh(SMC, BodyId, GroupHash);
+        }
+    }
+}
+
+void UMjDebugVisualizer::InitializeOverlayMaterial()
+{
+    if (OverlayParentMaterial) return;
+
+    UMaterialInterface* Parent = LoadObject<UMaterialInterface>(
+        nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+
+    if (!Parent)
+    {
+        UE_LOG(LogURLab, Warning,
+            TEXT("Debug viz: failed to load /Engine/BasicShapes/BasicShapeMaterial — overlays disabled"));
+        return;
+    }
+
+    TArray<FMaterialParameterInfo> VecInfos;
+    TArray<FGuid> Guids;
+    Parent->GetAllVectorParameterInfo(VecInfos, Guids);
+
+    if (VecInfos.Num() == 0)
+    {
+        UE_LOG(LogURLab, Warning,
+            TEXT("Debug viz: BasicShapeMaterial exposes no vector params — overlays disabled"));
+        return;
+    }
+
+    // Prefer well-known colour-param names so we don't accidentally drive an emissive tint etc.
+    static const FName PreferredNames[] = {
+        TEXT("Color"), TEXT("BaseColor"), TEXT("Tint"), TEXT("TintColor"), TEXT("DiffuseColor")
+    };
+    FName Chosen = NAME_None;
+    for (const FName& Pref : PreferredNames)
+    {
+        for (const FMaterialParameterInfo& Info : VecInfos)
+        {
+            if (Info.Name == Pref) { Chosen = Pref; break; }
+        }
+        if (!Chosen.IsNone()) break;
+    }
+    if (Chosen.IsNone()) Chosen = VecInfos[0].Name;
+
+    OverlayParentMaterial = Parent;
+    OverlayColorParam = Chosen;
 }

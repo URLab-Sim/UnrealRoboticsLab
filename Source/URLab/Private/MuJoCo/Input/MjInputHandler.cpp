@@ -77,6 +77,14 @@ void UMjInputHandler::ProcessHotkeys(APlayerController* PC)
     {
         if (Manager->DebugVisualizer) Manager->DebugVisualizer->ToggleQuickConvertCollisions();
     }
+    if (PC->WasInputKeyJustPressed(EKeys::Six))
+    {
+        if (Manager->DebugVisualizer) Manager->DebugVisualizer->CycleDebugShaderMode();
+    }
+    if (PC->WasInputKeyJustPressed(EKeys::Seven))
+    {
+        if (Manager->DebugVisualizer) Manager->DebugVisualizer->ToggleTendons();
+    }
 
     // P: Pause/Resume
     if (PC->WasInputKeyJustPressed(EKeys::P))

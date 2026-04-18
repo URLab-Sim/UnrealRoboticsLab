@@ -112,6 +112,9 @@ public:
 
     /** @brief Returns proper body name. */
     FString GetBodyName();
+
+    /** @brief MuJoCo body id for this quick-converted actor, or -1 if not yet bound. */
+    int32 GetMjBodyId() const;
     
     /**
      * @brief Initializes the component, parsing meshes and adding to spec.

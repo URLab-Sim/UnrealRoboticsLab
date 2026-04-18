@@ -29,7 +29,18 @@
 
 // Forward declarations
 class AAMjManager;
+class UMaterialInterface;
 struct FMuJoCoDebugData;
+
+/** Per-body visual overlay mode applied during PIE. */
+UENUM(BlueprintType)
+enum class EMjDebugShaderMode : uint8
+{
+    Off                     UMETA(DisplayName="Off"),
+    Island                  UMETA(DisplayName="Constraint Islands"),
+    InstanceSegmentation    UMETA(DisplayName="Instance Segmentation (per-body)"),
+    SemanticSegmentation    UMETA(DisplayName="Semantic Segmentation (per-actor)")
+};
 
 /**
  * @class UMjDebugVisualizer
@@ -43,6 +54,7 @@ class URLAB_API UMjDebugVisualizer : public UActorComponent
 public:
     UMjDebugVisualizer();
 
+    virtual void BeginPlay() override;
     virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
     // --- Debug rendering params ---
@@ -85,6 +97,26 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
     bool bGlobalQuickConvertCollision = false;
 
+    /** @brief Per-body overlay shader mode (Island / Segmentation / Off). Cycled via key 6. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
+    EMjDebugShaderMode DebugShaderMode = EMjDebugShaderMode::Off;
+
+    /** @brief When true, sleeping bodies are dimmed + desaturated on top of the active shader mode. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
+    bool bModulateBySleep = true;
+
+    /** @brief Value (brightness) multiplier applied to sleeping bodies. MuJoCo upstream uses 0.6; default 0.35 dims clearly while keeping hue visible. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.05", ClampMax="1.0"))
+    float SleepValueScale = 0.35f;
+
+    /** @brief Saturation multiplier applied to sleeping bodies. Keep high to preserve hue identity; lower toward 0 to desaturate sleeping bodies to grey. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug", meta=(ClampMin="0.0", ClampMax="1.0"))
+    float SleepSaturationScale = 0.9f;
+
+    /** @brief Toggles tendon/muscle spline-mesh rendering. Toggled via key 7. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
+    bool bGlobalDrawTendons = false;
+
     // --- Thread-safe debug data ---
     FMuJoCoDebugData DebugData;
     FCriticalSection DebugMutex;
@@ -112,6 +144,39 @@ public:
     /** @brief Toggle visual mesh visibility on all articulations (key: 2). */
     void ToggleVisuals();
 
+    /** @brief Cycle per-body shader overlay: Off -> Island -> Segmentation -> Off (key: 6). */
+    void CycleDebugShaderMode();
+
+    /** @brief Toggle tendon/muscle spline rendering (key: 7). */
+    void ToggleTendons();
+
+    /** @brief Parent material for body/tendon overlay MIDs, probed from engine content at BeginPlay. */
+    UPROPERTY(Transient)
+    UMaterialInterface* OverlayParentMaterial = nullptr;
+
+    /** @brief Vector parameter name on OverlayParentMaterial that accepts the overlay colour. */
+    FName OverlayColorParam = NAME_None;
+
+    /** @brief Loads /Engine/BasicShapes/BasicShapeMaterial and records the first vector param name. */
+    void InitializeOverlayMaterial();
+
+    /** @brief Apply per-body overlay MIDs based on DebugShaderMode, or restore originals if Off. */
+    void UpdateBodyOverlays();
+
+    /** @brief Restore original materials recorded at overlay apply time, clear caches. */
+    void ClearBodyOverlays();
+
+    virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 private:
     bool bVisualsHidden = false;
+
+    /** Original slot-0 material on meshes we've overridden, so we can restore. Keyed by mesh component. */
+    TMap<TWeakObjectPtr<class UStaticMeshComponent>, class UMaterialInterface*> OriginalMaterials;
+
+    /** Original slot-1..N materials for multi-material meshes. Parallel to OriginalMaterials. */
+    TMap<TWeakObjectPtr<class UStaticMeshComponent>, TMap<int32, class UMaterialInterface*>> OriginalSlotMaterials;
+
+    /** Dynamic material instances we created per mesh, reused across ticks. */
+    TMap<TWeakObjectPtr<class UStaticMeshComponent>, class UMaterialInstanceDynamic*> ActiveMIDs;
 };

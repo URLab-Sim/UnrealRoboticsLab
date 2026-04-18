@@ -32,6 +32,20 @@
 #include "MjCamera.generated.h"
 
 /**
+ * @enum EMjCameraMode
+ * @brief What a UMjCamera captures. Read at SetStreamingEnabled(true) time —
+ *        to change mode on a running camera, toggle streaming off then on.
+ */
+UENUM(BlueprintType)
+enum class EMjCameraMode : uint8
+{
+    Real                 UMETA(DisplayName = "Photoreal RGB"),
+    Depth                UMETA(DisplayName = "Depth"),
+    SemanticSegmentation UMETA(DisplayName = "Semantic Segmentation"),
+    InstanceSegmentation UMETA(DisplayName = "Instance Segmentation"),
+};
+
+/**
  * @class FCameraZmqWorker
  * @brief Background thread for publishing high-bandwidth camera frames via ZeroMQ.
  */
@@ -97,6 +111,21 @@ public:
     /** @brief Capture resolution (pixels). Defaults to 640×480. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera")
     FIntPoint Resolution = FIntPoint(640, 480);
+
+    /** @brief What this camera captures. Read at SetStreamingEnabled(true) time —
+     *  toggle streaming off/on after changing. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera")
+    EMjCameraMode CaptureMode = EMjCameraMode::Real;
+
+    /** @brief Near clip plane for Depth capture, centimetres. Values below this read as 0. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera",
+        meta = (EditCondition = "CaptureMode == EMjCameraMode::Depth", ClampMin = "0.1"))
+    float DepthNearCm = 10.0f;
+
+    /** @brief Far clip plane for Depth capture, centimetres. Values beyond read as the maximum. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera",
+        meta = (EditCondition = "CaptureMode == EMjCameraMode::Depth", ClampMin = "1.0"))
+    float DepthFarCm = 10000.0f;
 
     // ---- Streaming ----
 

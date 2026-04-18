@@ -295,8 +295,10 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
         }
     }
 
-    // Auto-request the next frame if ZMQ is enabled to maintain the stream
-    if (bStreamingEnabled && bEnableZmqBroadcast && !bReadbackPending)
+    // Auto-request the next frame if ZMQ is enabled to maintain the stream.
+    // Depth mode doesn't have a float-capable ZMQ path yet (P5 follow-up), so skip.
+    if (bStreamingEnabled && bEnableZmqBroadcast && !bReadbackPending
+        && CaptureMode != EMjCameraMode::Depth)
     {
         RequestReadback();
     }
@@ -308,29 +310,58 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 
 void UMjCamera::SetupRenderTarget()
 {
-    // Owned by this component — lives exactly as long as the component does.
-    // (GetTransientPackage() makes the object GC-vulnerable in PIE even with UPROPERTY.)
     UTextureRenderTarget2D* RT = NewObject<UTextureRenderTarget2D>(this);
-    RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA8;
-    // bForceLinearGamma=true matches old_camera.h (line 282) exactly.
-    RT->InitCustomFormat(Resolution.X, Resolution.Y, PF_B8G8R8A8, /*bForceLinearGamma=*/true);
+
+    const bool bDepthMode = (CaptureMode == EMjCameraMode::Depth);
+    if (bDepthMode)
+    {
+        RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_R32f;
+        RT->InitCustomFormat(Resolution.X, Resolution.Y, PF_R32_FLOAT, /*bForceLinearGamma=*/true);
+    }
+    else
+    {
+        RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA8;
+        RT->InitCustomFormat(Resolution.X, Resolution.Y, PF_B8G8R8A8, /*bForceLinearGamma=*/true);
+    }
+
     RT->bGPUSharedFlag = true;
-    // TargetGamma — same as old_camera.h line 292
     if (GEngine)
     {
         RT->TargetGamma = GEngine->GetDisplayGamma();
     }
 
     CaptureComponent->TextureTarget = RT;
-    CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalToneCurveHDR;
     CaptureComponent->bAlwaysPersistRenderingState = true;
     CaptureComponent->MaxViewDistanceOverride = -1.0f;
 
-    // No post-process or show-flag overrides for now — bare minimum to get capture working.
+    switch (CaptureMode)
+    {
+    case EMjCameraMode::Depth:
+        CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
+        CaptureComponent->bOverride_CustomNearClippingPlane = true;
+        CaptureComponent->CustomNearClippingPlane           = DepthNearCm;
+        break;
+
+    case EMjCameraMode::SemanticSegmentation:
+    case EMjCameraMode::InstanceSegmentation:
+        UE_LOG(LogURLabImport, Warning,
+            TEXT("[MjCamera] '%s' seg mode is stubbed in P1 — captures RGB until pool wiring lands."),
+            *MjName);
+        CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalToneCurveHDR;
+        break;
+
+    case EMjCameraMode::Real:
+    default:
+        CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalToneCurveHDR;
+        break;
+    }
 
     RenderTarget = RT;
-    UE_LOG(LogURLabImport, Log, TEXT("[MjCamera] '%s' render target created (%dx%d)"),
-        *MjName, Resolution.X, Resolution.Y);
+    UE_LOG(LogURLabImport, Log,
+        TEXT("[MjCamera] '%s' RT created mode=%s (%dx%d)"),
+        *MjName,
+        *UEnum::GetValueAsString(CaptureMode),
+        Resolution.X, Resolution.Y);
 }
 
 void UMjCamera::RegisterWithStreamingManager()
@@ -364,12 +395,21 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 
         if (bEnableZmqBroadcast && !ZmqWorker)
         {
-            AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
-            FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
-            FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetName());
+            if (CaptureMode == EMjCameraMode::Depth)
+            {
+                UE_LOG(LogURLabNet, Warning,
+                    TEXT("[MjCamera] '%s' ZMQ broadcast skipped — Depth mode transports floats, the BGRA worker is RGB-only."),
+                    *MjName);
+            }
+            else
+            {
+                AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
+                FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
+                FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetName());
 
-            ZmqWorker = new FCameraZmqWorker(ZmqEndpoint, Topic, Resolution);
-            WorkerThread = FRunnableThread::Create(ZmqWorker, TEXT("CameraZmqWorkerThread"), 0, TPri_BelowNormal);
+                ZmqWorker = new FCameraZmqWorker(ZmqEndpoint, Topic, Resolution);
+                WorkerThread = FRunnableThread::Create(ZmqWorker, TEXT("CameraZmqWorkerThread"), 0, TPri_BelowNormal);
+            }
         }
         if (CaptureComponent)
         {
@@ -403,7 +443,11 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
         {
             CaptureComponent->bCaptureEveryFrame = false;
             CaptureComponent->SetVisibility(false); // Stop the capture dispatch loop
+            CaptureComponent->TextureTarget = nullptr;
         }
+
+        // Drop the RT so the next enable rebuilds it in the current CaptureMode.
+        RenderTarget = nullptr;
 
         if (WorkerThread)
         {

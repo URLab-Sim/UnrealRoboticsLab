@@ -29,13 +29,22 @@
 #include "Engine/StaticMesh.h"
 #include "Components/StaticMeshComponent.h"
 #include "StaticMeshResources.h"
+#include "Components/DynamicMeshComponent.h"
+#include "UDynamicMesh.h"
+#include "DynamicMesh/DynamicMesh3.h"
+#include "DynamicMesh/DynamicMeshAttributeSet.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+#include "Interfaces/IPluginManager.h"
 
 UMjFlexcomp::UMjFlexcomp()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+    PrimaryComponentTick.bCanEverTick = true;
+    PrimaryComponentTick.bStartWithTickEnabled = false;
 }
 
 // ============================================================================
@@ -247,7 +256,7 @@ void UMjFlexcomp::ImportFromXml(const FXmlNode* Node)
 // Mesh Export (for mesh-type flexcomp)
 // ============================================================================
 
-FString UMjFlexcomp::ExportMeshToVFS(FMujocoSpecWrapper& Wrapper) const
+FString UMjFlexcomp::ExportMeshToVFS(FMujocoSpecWrapper& Wrapper)
 {
     TArray<USceneComponent*> Children;
     GetChildrenComponents(false, Children);
@@ -264,12 +273,14 @@ FString UMjFlexcomp::ExportMeshToVFS(FMujocoSpecWrapper& Wrapper) const
 
     UStaticMesh* Mesh = SMC->GetStaticMesh();
     const FStaticMeshLODResources& LOD = Mesh->GetRenderData()->LODResources[0];
+    const FStaticMeshVertexBuffer& VB = LOD.VertexBuffers.StaticMeshVertexBuffer;
 
     // UE splits vertices per-face (for normals/UVs). MuJoCo needs welded
-    // vertices for flex. We build a local remap table and emit unique positions.
+    // vertices for flex. We build a remap table so the visualization can keep
+    // UE's per-face UVs/tangents while physics uses welded positions.
     int32 NumRawVerts = LOD.VertexBuffers.PositionVertexBuffer.GetNumVertices();
+    NumRenderVerts = NumRawVerts;
     TArray<FVector3f> UniquePositions;
-    TArray<int32> RawToWelded;
     RawToWelded.SetNum(NumRawVerts);
 
     const float WeldTolerance = 1e-5f;
@@ -598,3 +609,164 @@ void UMjFlexcomp::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
 
     mj_deleteSpec(TempSpec);
 }
+
+void UMjFlexcomp::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
+{
+    Super::Bind(Model, Data, Prefix);
+
+    FString FlexName = MjName.IsEmpty() ? GetName() : MjName;
+    FString PrefixedName = Prefix + FlexName;
+
+    for (int i = 0; i < Model->nflex; i++)
+    {
+        const char* Name = mj_id2name(Model, mjOBJ_FLEX, i);
+        if (Name && FString(UTF8_TO_TCHAR(Name)) == PrefixedName)
+        {
+            FlexId = i;
+            FlexVertAdr = Model->flex_vertadr[i];
+            FlexVertNum = Model->flex_vertnum[i];
+
+            // Cache shell/triangle indices once at Bind (static, no thread race)
+            int32 ShellNum = Model->flex_shellnum[i];
+            int32 ShellDataAdr = Model->flex_shelldataadr[i];
+            int32 FlexDim = Model->flex_dim[i];
+
+            UE_LOG(LogURLab, Log, TEXT("[MjFlexcomp] Bound '%s' to flex ID %d: %d flex verts, %d render verts"),
+                *FlexName, FlexId, FlexVertNum, NumRenderVerts);
+
+            CreateProceduralMesh();
+            SetComponentTickEnabled(true);
+            break;
+        }
+    }
+}
+
+void UMjFlexcomp::CreateProceduralMesh()
+{
+    if (FlexId < 0 || !m_Model || !m_Data || NumRenderVerts == 0) return;
+
+    AActor* Owner = GetOwner();
+    if (!Owner) return;
+
+    // Find source static mesh (we'll build the dynamic mesh from its render data)
+    TArray<USceneComponent*> Children;
+    GetChildrenComponents(false, Children);
+    UStaticMeshComponent* SourceSMC = nullptr;
+    for (USceneComponent* Child : Children)
+    {
+        if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+        {
+            if (SMC->GetStaticMesh()) { SourceSMC = SMC; break; }
+        }
+    }
+    if (!SourceSMC) return;
+
+    DynamicMesh = NewObject<UDynamicMeshComponent>(Owner, TEXT("FlexMesh"));
+    DynamicMesh->SetupAttachment(Owner->GetRootComponent());
+    DynamicMesh->RegisterComponent();
+    DynamicMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    // Let DynamicMesh compute tangents itself via MikkTSpace from normals + UVs.
+    DynamicMesh->SetTangentsType(EDynamicMeshComponentTangentsMode::AutoCalculated);
+
+    // Reuse the source mesh's material
+    if (UMaterialInterface* SourceMat = SourceSMC->GetMaterial(0))
+    {
+        DynamicMesh->SetMaterial(0, SourceMat);
+    }
+    SourceSMC->SetVisibility(false);
+    SourceSMC->SetHiddenInGame(true);
+
+    // Build the dynamic mesh from the static mesh's render data (vertex + index + UV + normal + tangent)
+    const FStaticMeshLODResources& LOD = SourceSMC->GetStaticMesh()->GetRenderData()->LODResources[0];
+    const FStaticMeshVertexBuffer& VB = LOD.VertexBuffers.StaticMeshVertexBuffer;
+    const FPositionVertexBuffer& PB = LOD.VertexBuffers.PositionVertexBuffer;
+    FIndexArrayView Indices = LOD.IndexBuffer.GetArrayView();
+    bool bHasUVs = VB.GetNumTexCoords() > 0;
+
+    DynamicMesh->EditMesh([&](UE::Geometry::FDynamicMesh3& Mesh)
+    {
+        Mesh.Clear();
+        Mesh.EnableAttributes();
+        Mesh.Attributes()->SetNumNormalLayers(1);
+        if (bHasUVs) Mesh.Attributes()->SetNumUVLayers(1);
+
+        UE::Geometry::FDynamicMeshNormalOverlay* NormalOverlay = Mesh.Attributes()->PrimaryNormals();
+        UE::Geometry::FDynamicMeshUVOverlay* UVOverlay = bHasUVs ? Mesh.Attributes()->PrimaryUV() : nullptr;
+
+        // Add vertices (positions in UE local space; at t=0 these come from the static mesh directly)
+        for (int32 i = 0; i < NumRenderVerts; i++)
+        {
+            FVector3f P = PB.VertexPosition(i);
+            Mesh.AppendVertex(FVector3d(P.X, P.Y, P.Z));
+
+            FVector4f Nz = VB.VertexTangentZ(i);
+            NormalOverlay->AppendElement(FVector3f(Nz.X, Nz.Y, Nz.Z));
+            if (UVOverlay)
+            {
+                FVector2f UV = VB.GetVertexUV(i, 0);
+                UVOverlay->AppendElement(FVector2f(UV.X, UV.Y));
+            }
+        }
+
+        // Add triangles — use raw UE indices and set overlays to same element indices
+        for (int32 i = 0; i + 2 < Indices.Num(); i += 3)
+        {
+            int32 A = Indices[i], B = Indices[i + 1], C = Indices[i + 2];
+            if (A == B || B == C || A == C) continue;
+            int32 TriId = Mesh.AppendTriangle(A, B, C);
+            if (TriId >= 0)
+            {
+                NormalOverlay->SetTriangle(TriId, UE::Geometry::FIndex3i(A, B, C));
+                if (UVOverlay) UVOverlay->SetTriangle(TriId, UE::Geometry::FIndex3i(A, B, C));
+            }
+        }
+    }, EDynamicMeshComponentRenderUpdateMode::FullUpdate);
+
+    UpdateProceduralMesh();
+}
+
+void UMjFlexcomp::UpdateProceduralMesh()
+{
+    if (!DynamicMesh || FlexId < 0 || !m_Data || NumRenderVerts == 0) return;
+
+    FTransform ParentTransform = DynamicMesh->GetAttachParent()
+        ? DynamicMesh->GetAttachParent()->GetComponentTransform()
+        : FTransform::Identity;
+
+    // Read welded flex positions (lock mutex to avoid torn reads from physics thread)
+    TArray<FVector> WeldedPositions;
+    WeldedPositions.SetNum(FlexVertNum);
+
+    AAMjManager* Manager = AAMjManager::GetManager();
+    UMjPhysicsEngine* Engine = Manager ? Manager->PhysicsEngine : nullptr;
+    {
+        TOptional<FScopeLock> Lock;
+        if (Engine) Lock.Emplace(&Engine->CallbackMutex);
+        for (int32 i = 0; i < FlexVertNum; i++)
+        {
+            int32 Idx = (FlexVertAdr + i) * 3;
+            FVector WorldPos = MjUtils::MjToUEPosition(&m_Data->flexvert_xpos[Idx]);
+            WeldedPositions[i] = ParentTransform.InverseTransformPosition(WorldPos);
+        }
+    }
+
+    DynamicMesh->EditMesh([&](UE::Geometry::FDynamicMesh3& Mesh)
+    {
+        for (int32 i = 0; i < NumRenderVerts; i++)
+        {
+            int32 W = RawToWelded[i];
+            FVector P = (W >= 0 && W < FlexVertNum) ? WeldedPositions[W] : FVector::ZeroVector;
+            Mesh.SetVertex(i, FVector3d(P.X, P.Y, P.Z));
+        }
+    }, EDynamicMeshComponentRenderUpdateMode::NoUpdate);
+
+    DynamicMesh->FastNotifyPositionsUpdated(/*bNormals=*/false, /*bColors=*/false, /*bUVs=*/false);
+}
+
+void UMjFlexcomp::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+{
+    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+    UpdateProceduralMesh();
+}
+
+

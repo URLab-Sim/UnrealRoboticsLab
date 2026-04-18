@@ -28,6 +28,8 @@
 #include <mujoco/mujoco.h>
 #include "MjFlexcomp.generated.h"
 
+class UDynamicMeshComponent;
+
 UENUM(BlueprintType)
 enum class EMjFlexcompType : uint8
 {
@@ -56,11 +58,8 @@ enum class EMjFlexcompDof : uint8
  * @brief Component representing a MuJoCo flexcomp deformable body.
  *
  * Flexcomp generates a deformable soft body: ropes (dim=1), cloth (dim=2),
- * or volumetric (dim=3). At spec registration, we serialize the component's
- * attributes back to a standalone <flexcomp> MJCF fragment, let MuJoCo's
- * parser expand the macro (handles geometry generation, pin resolution,
- * body/joint creation for any DOF type), then attach the resulting sub-spec
- * into the parent body via mjs_attach.
+ * or volumetric (dim=3). At spec registration, it expands into a flex element
+ * plus child bodies with slider joints for non-pinned vertices.
  */
 UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
 class URLAB_API UMjFlexcomp : public UMjComponent
@@ -241,21 +240,48 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Pin")
     TArray<int32> PinGridRange;
 
-    // --- Import/Spec ---
+    // --- Import/Export/Bind ---
 
     void ImportFromXml(const class FXmlNode* Node);
 
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
+    virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT("")) override;
+
+    virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
 private:
+    int32 FlexId = -1;
+    int32 FlexVertAdr = 0;
+    int32 FlexVertNum = 0;
+
     /** Set once RegisterToSpec succeeds — prevents double-registration from
      *  both the articulation-level loop and MjBody's child iteration. */
     bool bIsRegistered = false;
+
+    UPROPERTY()
+    UDynamicMeshComponent* DynamicMesh = nullptr;
+
+    /** Remap from raw UE vertex index → welded MuJoCo flex vertex index.
+     *  Used each tick: raw_pos[i] = flexvert_xpos[RawToWelded[i]]. */
+    TArray<int32> RawToWelded;
+
+    /** Number of raw UE vertices. */
+    int32 NumRenderVerts = 0;
+
+    void CreateProceduralMesh();
+    void UpdateProceduralMesh();
+
+    /** Captures raw UE vertex data (UVs, tangents, indices) from the child
+     *  static mesh for rendering, plus builds the welded remap for physics. */
+    void CaptureRenderData();
 
     /** Serializes this flexcomp's properties back to an <flexcomp> MJCF fragment. */
     FString BuildFlexcompXml(const FString& MeshAssetName) const;
 
     /** Exports the child StaticMeshComponent's mesh to an OBJ file in the wrapper's VFS.
-     *  Returns the filename used in the VFS, or empty string on failure. */
-    FString ExportMeshToVFS(class FMujocoSpecWrapper& Wrapper) const;
+     *  Returns the filename used in the VFS, or empty string on failure.
+     *  Also populates RawToWelded, RenderUVs, RenderTangents, RenderTriangles for
+     *  the procedural-mesh visualization path. */
+    FString ExportMeshToVFS(class FMujocoSpecWrapper& Wrapper);
 };

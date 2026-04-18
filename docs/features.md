@@ -83,11 +83,11 @@ See [Debug Visualization](guides/debug_visualization.md) for the full hotkey tab
 
 ## Camera System
 
-- **MjCamera**: scene capture attached to MuJoCo sites, streams via ZMQ, respects post-process volumes
+- **MjCamera**: scene capture attached to MuJoCo sites; per-camera `CaptureMode` for photoreal RGB, depth, semantic segmentation, or instance segmentation; streams via ZMQ; respects post-process volumes
 - **MjOrbitCamera**: auto-orbiting cinematic camera with target detection, height oscillation, configurable focal length
 - **MjKeyframeCamera**: waypoint-based camera path with smooth interpolation, `O` key play/pause
 
-See [Blueprint Reference](guides/blueprint_reference.md#mjkeyframecameraactor) for camera API details.
+See [Camera Capture Modes](guides/camera_capture_modes.md) for per-mode behaviour and the simulate-widget preview, and [Blueprint Reference](guides/blueprint_reference.md#mjkeyframecameraactor) for camera API details.
 
 ## Networking (ZMQ)
 

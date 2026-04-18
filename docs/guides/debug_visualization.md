@@ -96,13 +96,11 @@ No physics, no collision, no shadow casting, not selectable in the viewport.
 
 ## Camera interaction (known issue)
 
-Because the overlays swap real materials on real `UStaticMeshComponent`s, anything rendering the level — `USceneCaptureComponent2D`, `UMjCamera`, screenshot tools — captures the overlay, not the underlying scene. That's desirable for synthetic-data pipelines (Semantic Segmentation mode gives you free ground-truth masks) but unwanted if you need the RGB observation stream to stay photoreal.
+Because the hotkey-6 overlay swaps real materials on real `UStaticMeshComponent`s, anything rendering the level — `USceneCaptureComponent2D`, `UMjCamera`, screenshot tools — captures the overlay, not the underlying scene. The overlay is fundamentally a viewport-debug tool.
 
-Workarounds today:
-- Toggle the overlay off (`6` until Off) before capturing RGB frames.
-- Script toggles around capture windows if you're generating training data.
+For persistent camera streams that need pure RGB, depth, or segmentation output regardless of viewport state, use per-camera capture modes instead — see [Camera Capture Modes](camera_capture_modes.md). Those modes are orthogonal to hotkey 6: an `InstanceSegmentation` camera outputs masks even when the viewport overlay is off, and a `Real` camera outputs photoreal RGB even when the viewport is showing islands.
 
-A per-camera opt-out flag is on the roadmap.
+If you specifically need the hotkey-6 overlay active while also capturing RGB through a `UMjCamera`, toggle the overlay off (`6` until Off) before the capture window.
 
 ---
 

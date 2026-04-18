@@ -24,6 +24,8 @@
 #include "Components/TextBlock.h"
 #include "Components/Image.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "Engine/Texture2D.h"
+#include "TextureResource.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/Material.h"
 #include "Styling/SlateTypes.h"
@@ -61,22 +63,82 @@ void UMjCameraFeedEntry::RefreshBrush()
         ? W * static_cast<float>(BoundCamera->Resolution.Y) / static_cast<float>(BoundCamera->Resolution.X)
         : W * 0.75f;
 
-    // Set the render target DIRECTLY as the brush resource.
-    // This works without any material and has no domain restriction.
-    // (SetBrushFromMaterial silently renders nothing if the material domain
-    //  is not "User Interface" — avoid that path unless you're sure.)
-    FeedImage->SetBrushResourceObject(RT);
+    // Depth RT is R32f — slate can't display it directly. Build (or reuse)
+    // a BGRA UTexture2D preview and bind THAT as the brush. For all other
+    // modes the RT is BGRA8 and we can bind it directly.
+    UObject* BrushResource = nullptr;
+    if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
+    {
+        if (!DepthPreviewTexture
+            || DepthPreviewTexture->GetSizeX() != BoundCamera->Resolution.X
+            || DepthPreviewTexture->GetSizeY() != BoundCamera->Resolution.Y)
+        {
+            DepthPreviewTexture = UTexture2D::CreateTransient(
+                BoundCamera->Resolution.X, BoundCamera->Resolution.Y, PF_B8G8R8A8,
+                TEXT("URLabDepthPreview"));
+            DepthPreviewTexture->CompressionSettings = TC_VectorDisplacementmap;
+            DepthPreviewTexture->SRGB = false;
+            DepthPreviewTexture->UpdateResource();
+        }
+        BrushResource = DepthPreviewTexture;
+    }
+    else
+    {
+        DepthPreviewTexture = nullptr;
+        BrushResource = RT;
+    }
 
-    // Patch the rest of the brush properties on the copy UImage holds internally
+    FeedImage->SetBrushResourceObject(BrushResource);
+
     FSlateBrush Brush = FeedImage->GetBrush();
-    Brush.DrawAs   = ESlateBrushDrawType::Image;
+    Brush.DrawAs    = ESlateBrushDrawType::Image;
     Brush.ImageType = ESlateBrushImageType::FullColor;
-    Brush.Tiling   = ESlateBrushTileType::NoTile;
+    Brush.Tiling    = ESlateBrushTileType::NoTile;
     Brush.ImageSize = FVector2D(W, H);
     FeedImage->SetBrush(Brush);
 
-    UE_LOG(LogURLab, Log, TEXT("[MjCameraFeedEntry] Brush set: '%s' RT=%dx%d display=%.0fx%.0f"),
-        *BoundCamera->MjName, RT->SizeX, RT->SizeY, W, H);
+    UE_LOG(LogURLab, Log,
+        TEXT("[MjCameraFeedEntry] Brush set: '%s' mode=%s RT=%dx%d display=%.0fx%.0f"),
+        *BoundCamera->MjName, *UEnum::GetValueAsString(BoundCamera->CaptureMode),
+        RT->SizeX, RT->SizeY, W, H);
+}
+
+void UMjCameraFeedEntry::UpdateDepthPreview()
+{
+    if (!BoundCamera || !DepthPreviewTexture) return;
+    UTextureRenderTarget2D* RT = BoundCamera->RenderTarget;
+    if (!RT) return;
+
+    FTextureRenderTargetResource* Res = RT->GameThread_GetRenderTargetResource();
+    if (!Res) return;
+
+    // Read the depth RT into FLinearColor pixels. The R channel holds linear
+    // scene depth in centimetres (Unreal's world units).
+    if (!Res->ReadLinearColorPixels(DepthReadbackScratch)) return;
+
+    const int32 SizeX = RT->SizeX;
+    const int32 SizeY = RT->SizeY;
+    if (DepthReadbackScratch.Num() != SizeX * SizeY) return;
+
+    const float Near = FMath::Max(0.1f, BoundCamera->DepthNearCm);
+    const float Far  = FMath::Max(Near + 1.0f, BoundCamera->DepthFarCm);
+    const float InvRange = 1.0f / (Far - Near);
+
+    // Update the platform texture's mip0 pixels. BGRA byte order.
+    FTexture2DMipMap& Mip = DepthPreviewTexture->GetPlatformData()->Mips[0];
+    uint8* Dst = (uint8*)Mip.BulkData.Lock(LOCK_READ_WRITE);
+    for (int32 i = 0; i < DepthReadbackScratch.Num(); ++i)
+    {
+        const float Depth = DepthReadbackScratch[i].R;
+        const float Norm  = FMath::Clamp((Depth - Near) * InvRange, 0.0f, 1.0f);
+        const uint8 Gray  = (uint8)FMath::RoundToInt(Norm * 255.0f);
+        Dst[i * 4 + 0] = Gray;  // B
+        Dst[i * 4 + 1] = Gray;  // G
+        Dst[i * 4 + 2] = Gray;  // R
+        Dst[i * 4 + 3] = 255;   // A
+    }
+    Mip.BulkData.Unlock();
+    DepthPreviewTexture->UpdateResource();
 }
 
 void UMjCameraFeedEntry::UnbindCamera()
@@ -87,16 +149,22 @@ void UMjCameraFeedEntry::UnbindCamera()
         BoundCamera = nullptr;
     }
     FeedMID = nullptr;
+    DepthPreviewTexture = nullptr;
+    DepthReadbackScratch.Reset();
     if (FeedImage) FeedImage->SetBrush(FSlateBrush());
 }
 
 void UMjCameraFeedEntry::UpdateFeed()
 {
-    if (BoundCamera && FeedImage && BoundCamera->RenderTarget)
+    if (!BoundCamera || !FeedImage || !BoundCamera->RenderTarget) return;
+
+    if (!FeedImage->GetBrush().GetResourceObject())
     {
-        if (!FeedImage->GetBrush().GetResourceObject())
-        {
-            RefreshBrush();
-        }
+        RefreshBrush();
+    }
+
+    if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
+    {
+        UpdateDepthPreview();
     }
 }

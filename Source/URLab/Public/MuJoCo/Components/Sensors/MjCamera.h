@@ -209,6 +209,11 @@ private:
     void SetupRenderTarget();
     void RegisterWithStreamingManager();
 
+    /** For non-seg modes: rebuild HiddenComponents from the currently-live seg pools.
+     *  Cheap (N siblings pointer copies), called each tick so a late-starting seg
+     *  camera doesn't contaminate an already-streaming RGB/Depth camera. */
+    void RefreshHiddenComponentsFromSegPools();
+
     // ---- Readback state ----
     TOptional<TArray<FColor>> PendingPixels;
     FRenderCommandFence       ReadbackFence;

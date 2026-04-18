@@ -22,6 +22,7 @@
 
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Net/MjNetworkManager.h"
 #include "Engine/PostProcessVolume.h"
 #include "EngineUtils.h"
@@ -161,6 +162,35 @@ void FCameraZmqWorker::PushFrame(const TArray<FColor>& FrameData)
 // UMjCamera
 // ---------------------------------------------------------------------------
 
+namespace
+{
+    bool IsSegMode(EMjCameraMode Mode)
+    {
+        return Mode == EMjCameraMode::SemanticSegmentation
+            || Mode == EMjCameraMode::InstanceSegmentation;
+    }
+
+    UMjDebugVisualizer* FindDebugVisualizer(UWorld* FallbackWorld = nullptr)
+    {
+        if (AAMjManager* Manager = AAMjManager::GetManager())
+        {
+            return Manager->DebugVisualizer;
+        }
+        // Test/editor worlds don't dispatch BeginPlay, so the singleton may be unset.
+        if (FallbackWorld)
+        {
+            for (TActorIterator<AAMjManager> It(FallbackWorld); It; ++It)
+            {
+                if (AAMjManager* Manager = *It)
+                {
+                    return Manager->DebugVisualizer;
+                }
+            }
+        }
+        return nullptr;
+    }
+}
+
 UMjCamera::UMjCamera()
 {
     PrimaryComponentTick.bCanEverTick = true;
@@ -277,6 +307,13 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
         // (IStreamingManager uses timeout-based decay).
         RegisterWithStreamingManager();
 
+        // Non-seg cameras re-sync their HiddenComponents each tick so siblings
+        // spawned by a late-starting seg camera don't leak into this capture.
+        if (!IsSegMode(CaptureMode))
+        {
+            RefreshHiddenComponentsFromSegPools();
+        }
+
         // Explicit capture each tick — bCaptureEveryFrame should handle this
         // but calling it explicitly ensures the first frame fires even if
         // the component was registered after the initial world tick.
@@ -344,15 +381,21 @@ void UMjCamera::SetupRenderTarget()
 
     case EMjCameraMode::SemanticSegmentation:
     case EMjCameraMode::InstanceSegmentation:
-        UE_LOG(LogURLabImport, Warning,
-            TEXT("[MjCamera] '%s' seg mode is stubbed in P1 — captures RGB until pool wiring lands."),
-            *MjName);
-        CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalToneCurveHDR;
+        // Use the standard final-tone-curve pipeline — this is what the viewport
+        // overlay uses and is known to render the MID tint correctly.
+        // SCS_BaseColor was attempted but BasicShapeMaterial's `Color` vector
+        // parameter isn't wired directly to the BaseColor G-buffer output,
+        // so nothing appeared in the RT. Tints end up lit here (not pure flat
+        // masks); a future pass that ships a dedicated unlit material would
+        // give pixel-exact ground-truth colours.
+        CaptureComponent->CaptureSource       = ESceneCaptureSource::SCS_FinalToneCurveHDR;
+        CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
         break;
 
     case EMjCameraMode::Real:
     default:
-        CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_FinalToneCurveHDR;
+        CaptureComponent->CaptureSource      = ESceneCaptureSource::SCS_FinalToneCurveHDR;
+        CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_LegacySceneCapture;
         break;
     }
 
@@ -362,6 +405,24 @@ void UMjCamera::SetupRenderTarget()
         *MjName,
         *UEnum::GetValueAsString(CaptureMode),
         Resolution.X, Resolution.Y);
+}
+
+void UMjCamera::RefreshHiddenComponentsFromSegPools()
+{
+    if (!CaptureComponent) return;
+
+    UMjDebugVisualizer* Viz = FindDebugVisualizer(GetWorld());
+    if (!Viz) return;
+
+    CaptureComponent->HiddenComponents.Reset();
+
+    TArray<UPrimitiveComponent*> Pool;
+    Viz->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Pool);
+    for (UPrimitiveComponent* P : Pool) CaptureComponent->HiddenComponents.Add(P);
+
+    Pool.Reset();
+    Viz->GetSegPoolSiblings(EMjCameraMode::SemanticSegmentation, Pool);
+    for (UPrimitiveComponent* P : Pool) CaptureComponent->HiddenComponents.Add(P);
 }
 
 void UMjCamera::RegisterWithStreamingManager()
@@ -391,6 +452,41 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
         if (!RenderTarget)
         {
             SetupRenderTarget();
+        }
+
+        // Seg modes: subscribe to the shared sibling-mesh pool and point
+        // ShowOnlyComponents at it. Pool is built lazily on first subscriber.
+        if (IsSegMode(CaptureMode))
+        {
+            if (UMjDebugVisualizer* Viz = FindDebugVisualizer(GetWorld()))
+            {
+                TArray<UPrimitiveComponent*> Siblings;
+                Viz->AcquireSegPool(CaptureMode, this, Siblings);
+
+                CaptureComponent->ShowOnlyComponents.Reset();
+                CaptureComponent->ShowOnlyComponents.Reserve(Siblings.Num());
+                for (UPrimitiveComponent* Sib : Siblings)
+                {
+                    CaptureComponent->ShowOnlyComponents.Add(Sib);
+                }
+                UE_LOG(LogURLabImport, Log,
+                    TEXT("[MjCamera] '%s' seg mode: acquired %d sibling(s) into ShowOnlyComponents."),
+                    *MjName, Siblings.Num());
+            }
+            else
+            {
+                UE_LOG(LogURLabImport, Warning,
+                    TEXT("[MjCamera] '%s' seg mode requested but no DebugVisualizer found — seg cam will show nothing."),
+                    *MjName);
+            }
+        }
+        else
+        {
+            // Non-seg modes (Real, Depth): siblings from other seg cameras are
+            // bVisibleInSceneCaptureOnly=true, so they'd otherwise appear in RGB
+            // captures. Seed HiddenComponents now; tick-time refresh keeps it in
+            // sync with late-starting seg cameras.
+            RefreshHiddenComponentsFromSegPools();
         }
 
         if (bEnableZmqBroadcast && !ZmqWorker)
@@ -439,6 +535,21 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
     else
     {
         bStreamingEnabled = false;
+
+        // Release the seg pool first, while CaptureMode still reflects what we subscribed as.
+        if (IsSegMode(CaptureMode))
+        {
+            if (UMjDebugVisualizer* Viz = FindDebugVisualizer(GetWorld()))
+            {
+                Viz->ReleaseSegPool(CaptureMode, this);
+            }
+            if (CaptureComponent)
+            {
+                CaptureComponent->ShowOnlyComponents.Reset();
+                CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_LegacySceneCapture;
+            }
+        }
+
         if (CaptureComponent)
         {
             CaptureComponent->bCaptureEveryFrame = false;

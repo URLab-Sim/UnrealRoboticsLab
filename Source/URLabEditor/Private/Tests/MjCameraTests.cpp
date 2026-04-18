@@ -225,3 +225,108 @@ bool FMjCameraSegPoolRefcount::RunTest(const FString& Parameters)
     S.Cleanup();
     return true;
 }
+
+// ============================================================================
+// URLab.Camera.SegMode_WiresShowOnlyListFromPool
+//   A seg camera at SetStreamingEnabled(true) configures its CaptureComponent:
+//   PRM_UseShowOnlyList, CaptureSource = SCS_BaseColor, ShowOnlyComponents
+//   populated from the pool.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraSegWiresShowOnly,
+    "URLab.Camera.SegMode_WiresShowOnlyListFromPool",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraSegWiresShowOnly::RunTest(const FString& Parameters)
+{
+    FMjUESession S;
+    if (!S.Init())
+    {
+        AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+        return false;
+    }
+
+    if (S.Manager && S.Manager->DebugVisualizer)
+    {
+        S.Manager->DebugVisualizer->InitializeOverlayMaterial();
+    }
+
+    UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    UStaticMeshComponent* ChildMesh = NewObject<UStaticMeshComponent>(S.Robot, TEXT("GeomChildMesh"));
+    ChildMesh->SetStaticMesh(CubeMesh);
+    ChildMesh->RegisterComponent();
+    ChildMesh->AttachToComponent(S.Geom, FAttachmentTransformRules::KeepRelativeTransform);
+
+    UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("SegCam"));
+    Cam->CaptureMode = EMjCameraMode::InstanceSegmentation;
+    Cam->RegisterComponent();
+    Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+    Cam->SetStreamingEnabled(true);
+
+    if (!TestNotNull(TEXT("capture component"), Cam->CaptureComponent)) { S.Cleanup(); return false; }
+    TestEqual(TEXT("capture source"),
+        (int32)Cam->CaptureComponent->CaptureSource,
+        (int32)ESceneCaptureSource::SCS_FinalToneCurveHDR);
+    TestEqual(TEXT("primitive render mode"),
+        (int32)Cam->CaptureComponent->PrimitiveRenderMode,
+        (int32)ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList);
+    TestTrue(TEXT("ShowOnlyComponents populated"),
+        Cam->CaptureComponent->ShowOnlyComponents.Num() > 0);
+
+    Cam->SetStreamingEnabled(false);
+    TestEqual(TEXT("ShowOnlyComponents cleared on disable"),
+        Cam->CaptureComponent->ShowOnlyComponents.Num(), 0);
+
+    S.Cleanup();
+    return true;
+}
+
+// ============================================================================
+// URLab.Camera.NonSegMode_HidesSiblingPool
+//   A Real-mode camera and an InstanceSeg camera coexist: the Real camera's
+//   HiddenComponents list includes the seg pool siblings.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraNonSegHidesSiblings,
+    "URLab.Camera.NonSegMode_HidesSiblingPool",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraNonSegHidesSiblings::RunTest(const FString& Parameters)
+{
+    FMjUESession S;
+    if (!S.Init())
+    {
+        AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+        return false;
+    }
+
+    if (S.Manager && S.Manager->DebugVisualizer)
+    {
+        S.Manager->DebugVisualizer->InitializeOverlayMaterial();
+    }
+
+    UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    UStaticMeshComponent* ChildMesh = NewObject<UStaticMeshComponent>(S.Robot, TEXT("GeomChildMesh"));
+    ChildMesh->SetStaticMesh(CubeMesh);
+    ChildMesh->RegisterComponent();
+    ChildMesh->AttachToComponent(S.Geom, FAttachmentTransformRules::KeepRelativeTransform);
+
+    // Start the seg camera first so the pool exists when the Real camera subscribes.
+    UMjCamera* Seg = NewObject<UMjCamera>(S.Robot, TEXT("SegCam"));
+    Seg->CaptureMode = EMjCameraMode::InstanceSegmentation;
+    Seg->RegisterComponent();
+    Seg->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+    Seg->SetStreamingEnabled(true);
+
+    UMjCamera* Real = NewObject<UMjCamera>(S.Robot, TEXT("RealCam"));
+    Real->CaptureMode = EMjCameraMode::Real;
+    Real->RegisterComponent();
+    Real->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+    Real->SetStreamingEnabled(true);
+
+    if (!TestNotNull(TEXT("real capture component"), Real->CaptureComponent)) { S.Cleanup(); return false; }
+    const int32 ExpectedHidden = Seg->CaptureComponent->ShowOnlyComponents.Num();
+    TestEqual(TEXT("real cam hides seg siblings"),
+        Real->CaptureComponent->HiddenComponents.Num(), ExpectedHidden);
+
+    S.Cleanup();
+    return true;
+}

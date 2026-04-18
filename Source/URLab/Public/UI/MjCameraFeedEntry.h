@@ -30,6 +30,7 @@
 class UTextBlock;
 class UImage;
 class UMaterialInstanceDynamic;
+class UTexture2D;
 
 /**
  * @class UMjCameraFeedEntry
@@ -92,9 +93,21 @@ private:
     /** @brief (Re-)applies the FSlateBrush to FeedImage using the current render target. */
     void RefreshBrush();
 
+    /** @brief Depth mode: CPU-copy the R32f RT into DepthPreviewTexture as
+     *         grayscale, normalised by the camera's DepthNear/Far range. */
+    void UpdateDepthPreview();
+
     UPROPERTY()
     UMjCamera* BoundCamera = nullptr;
 
     UPROPERTY()
     UMaterialInstanceDynamic* FeedMID = nullptr;
+
+    /** Slate-displayable BGRA texture used as the brush resource when the bound
+     *  camera is in Depth mode. Null for other modes. */
+    UPROPERTY(Transient)
+    UTexture2D* DepthPreviewTexture = nullptr;
+
+    /** Scratch buffer reused by the depth CPU readback to avoid per-tick allocation. */
+    TArray<FLinearColor> DepthReadbackScratch;
 };

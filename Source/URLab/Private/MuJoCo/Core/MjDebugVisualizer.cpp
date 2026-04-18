@@ -585,12 +585,22 @@ UStaticMeshComponent* UMjDebugVisualizer::SpawnSegSibling(
     }
     Sibling->SetRelativeTransform(Original->GetRelativeTransform());
 
-    // Visibility flags: hidden from main viewport (bVisibleInSceneCaptureOnly),
-    // visible to scene captures that either pass it through or ShowOnly it.
-    Sibling->bVisibleInSceneCaptureOnly = true;
+    // Isolation: siblings must not contribute indirect lighting, shadows, or
+    // reflections to other views. bVisibleInSceneCaptureOnly hides the primitive
+    // from the main viewport; the rest prevents secondary lighting/reflection
+    // passes from picking it up (source of the "faint tinge" in viewport
+    // otherwise). Leave bRenderInMainPass at default true — the seg capture's
+    // own rendering uses the main pass.
+    Sibling->bVisibleInSceneCaptureOnly         = true;
     Sibling->SetCastShadow(false);
     Sibling->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     Sibling->SetGenerateOverlapEvents(false);
+    Sibling->bAffectDynamicIndirectLighting     = false;
+    Sibling->bAffectDistanceFieldLighting       = false;
+    Sibling->bVisibleInReflectionCaptures       = false;
+    Sibling->bVisibleInRealTimeSkyCaptures      = false;
+    Sibling->bVisibleInRayTracing               = false;
+    Sibling->bReceivesDecals                    = false;
 
     // Unlit tint material — parented on the same material the viewport overlay uses.
     // Seg cameras set CaptureSource = SCS_BaseColor, which bypasses lighting so the

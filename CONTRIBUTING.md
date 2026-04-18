@@ -22,17 +22,20 @@ Thank you for your interest in contributing. This document covers the process fo
    - Non-UPROPERTY private members use `m_` prefix (`m_model`, `m_data`)
    - All `.h` and `.cpp` files must have the Apache 2.0 license header
 3. Build and verify compilation succeeds.
-4. Run the automation tests via the Session Frontend in the Unreal Editor, or use the `/test` command if you have Claude Code.
+4. Run the URLab automation suite. Two options:
+   - Session Frontend in the Unreal Editor, or
+   - Command line:
+     ```
+     UnrealEditor-Cmd.exe YourProject.uproject -ExecCmds="Automation RunTests URLab;Quit" -Unattended -NullRHI -Log
+     ```
+     The command-line form gives you output you can paste straight into the PR template.
 5. Test your changes in PIE (Play in Editor).
 
 ## Submitting a Pull Request
 
 1. Push to your fork and open a PR against `main`.
-2. In the PR description, include:
-   - What the change does and why
-   - How you tested it (which robots/XMLs, what scenarios)
-   - Any breaking changes
-3. Maintainers will manually build and test before merging, since Unreal Engine projects cannot use standard CI.
+2. Fill in the [PR template](.github/pull_request_template.md). It asks for a summary, motivation, linked issue, **proof that the project builds**, and **proof that the `URLab.*` automation suite passes** on your machine — paste the tail of each command's output into the provided blocks.
+3. We spot-check every PR in the editor before merging, but because Unreal Engine projects can't use standard CI the pasted build + test output is the primary gate. A PR without them will bounce back for that evidence.
 
 ## Code Style
 
@@ -41,11 +44,9 @@ Thank you for your interest in contributing. This document covers the process fo
 - New MJCF attributes should follow the pattern in `/add-mjcf-attribute` (header property, ImportFromXml, ExportTo, test).
 - New component types should follow the existing pattern: subclass `UMjComponent`, implement `RegisterToSpec`, `ExportTo`, `ImportFromXml`, `Bind`.
 
-## Reporting Issues
+## Filing Issues
 
-- Include the Unreal Engine version, OS, and the MuJoCo XML that reproduces the issue.
-- Paste the relevant output log lines (`LogURLab`, `LogURLabImport`, `LogURLabNet`).
-- If it's a compilation error, include the full error message.
+Use the [issue templates](.github/ISSUE_TEMPLATE) to file a bug or a feature request. They collect the environment, reproduction steps, and logs we need upfront — filling them in properly is the fastest path to a fix.
 
 ## License
 

@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a new capability or an enhancement to an existing one.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the problem first, then the shape of the solution.
+        Focused requests get prioritised faster than open-ended ones.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One-line description of the feature.
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: |
+        Explain the user-facing need — the "why". Skip the implementation
+        details here; those belong in the section below.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: |
+        What the feature should do from the user's point of view. A list of
+        steps or a short example works well.
+    validations:
+      required: true
+
+  - type: textarea
+    id: api_sketch
+    attributes:
+      label: API sketch (optional)
+      description: |
+        If you already have a mental model of the Blueprint / C++ surface,
+        sketch it here. Don't worry about getting it right — it's a starting
+        point.
+      render: cpp
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered (optional)
+      description: Other approaches, and why they don't fit.
+
+  - type: dropdown
+    id: importance
+    attributes:
+      label: How important is this to you?
+      options:
+        - Nice to have
+        - Blocks my project
+        - Research / exploration
+    validations:
+      required: true

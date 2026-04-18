@@ -1,7 +1,7 @@
 {
   "_meta": {
-    "mujoco_version": "3.2.x",
-    "snapshot_date": "2026-03-28",
+    "mujoco_version": "3.7.0",
+    "snapshot_date": "2026-04-18",
     "source": "https://github.com/google-deepmind/mujoco/blob/main/src/xml/xml_native_reader.cc",
     "description": "MJCF schema snapshot for diff-based update detection. Compare against a fresh extract to find new elements/attributes."
   },
@@ -43,7 +43,8 @@
     "damper": ["kv"],
     "cylinder": ["timeconst", "area", "diameter", "bias"],
     "muscle": ["timeconst", "tausmooth", "range", "force", "scale", "lmin", "lmax", "vmax", "fpmax", "fvmax"],
-    "adhesion": ["gain"]
+    "adhesion": ["gain"],
+    "dcmotor": ["motorconst", "resistance", "nominal", "saturation", "inductance", "cogging", "controller", "thermal", "lugre", "input"]
   },
   "sensor_types": [
     "touch", "accelerometer", "velocimeter", "gyro", "force", "torque", "magnetometer",
@@ -77,7 +78,10 @@
     "connect": ["name", "class", "body1", "body2", "anchor", "site1", "site2", "active", "solref", "solimp"],
     "weld": ["name", "class", "body1", "body2", "relpose", "anchor", "site1", "site2", "active", "solref", "solimp", "torquescale"],
     "joint": ["name", "class", "joint1", "joint2", "polycoef", "active", "solref", "solimp"],
-    "tendon": ["name", "class", "tendon1", "tendon2", "polycoef", "active", "solref", "solimp"]
+    "tendon": ["name", "class", "tendon1", "tendon2", "polycoef", "active", "solref", "solimp"],
+    "flex": ["name", "class", "flex", "active", "solref", "solimp"],
+    "flexvert": ["name", "class", "flex", "active", "solref", "solimp"],
+    "flexstrain": ["name", "class", "flex", "active", "solref", "solimp"]
   },
   "contact": {
     "pair": ["name", "class", "geom1", "geom2", "condim", "friction", "solref", "solreffriction", "solimp", "gap", "margin"],
@@ -100,6 +104,6 @@
     "key": ["name", "time", "qpos", "qvel", "act", "mpos", "mquat", "ctrl"]
   },
   "default": {
-    "child_elements": ["mesh", "material", "joint", "geom", "site", "camera", "light", "pair", "equality", "tendon", "general", "motor", "position", "velocity", "intvelocity", "damper", "cylinder", "muscle", "adhesion"]
+    "child_elements": ["mesh", "material", "joint", "geom", "site", "camera", "light", "pair", "equality", "tendon", "general", "motor", "position", "velocity", "intvelocity", "damper", "cylinder", "muscle", "adhesion", "dcmotor"]
   }
 }

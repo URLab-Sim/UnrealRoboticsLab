@@ -60,10 +60,11 @@ void FURLabModule::StartupModule()
         return false;
     };
 
-    // Load MuJoCo and its decoders
+    // Load MuJoCo. Since 3.7.0 the obj/stl decoders are compiled into
+    // mujoco.dll itself (changelog item 9); loading the standalone
+    // obj_decoder.dll / stl_decoder.dll would cause a plugin-registration
+    // collision and crash during module init.
     LoadDependencyDLL(TEXT("mujoco.dll"), TEXT("MuJoCo"));
-    LoadDependencyDLL(TEXT("obj_decoder.dll"), TEXT("MuJoCo"));
-    LoadDependencyDLL(TEXT("stl_decoder.dll"), TEXT("MuJoCo"));
 
     // Load ZMQ
     LoadDependencyDLL(TEXT("libzmq-v143-mt-4_3_6.dll"), TEXT("libzmq"));

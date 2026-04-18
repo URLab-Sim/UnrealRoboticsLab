@@ -94,6 +94,7 @@
 #include "MuJoCo/Components/Actuators/MjCylinderActuator.h"
 #include "MuJoCo/Components/Actuators/MjIntVelocityActuator.h"
 #include "MuJoCo/Components/Actuators/MjAdhesionActuator.h"
+#include "MuJoCo/Components/Actuators/MjDcMotorActuator.h"
 #include "MuJoCo/Components/Actuators/MjGeneralActuator.h"
 #include "MuJoCo/Components/Tendons/MjTendon.h"
 
@@ -711,7 +712,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
          }
          return;
     }
-    else if (Tag == "motor" || Tag == "position" || Tag == "velocity" || Tag == "cylinder" || Tag == "muscle" || Tag == "general" || Tag == "damper" || Tag == "intvelocity" || Tag == "adhesion")
+    else if (Tag == "motor" || Tag == "position" || Tag == "velocity" || Tag == "cylinder" || Tag == "muscle" || Tag == "general" || Tag == "damper" || Tag == "intvelocity" || Tag == "adhesion" || Tag == "dcmotor")
     {
          FString Name = Node->GetAttribute(TEXT("name"));
          if (Name.IsEmpty()) Name = TEXT("AUTONAME_") + Tag;
@@ -725,6 +726,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
          else if (Tag == "damper") Class = UMjDamperActuator::StaticClass();
          else if (Tag == "intvelocity") Class = UMjIntVelocityActuator::StaticClass();
          else if (Tag == "adhesion") Class = UMjAdhesionActuator::StaticClass();
+         else if (Tag == "dcmotor") Class = UMjDcMotorActuator::StaticClass();
          else if (Tag == "general") Class = UMjGeneralActuator::StaticClass();
 
          CreatedNode = BP->SimpleConstructionScript->CreateNode(Class, *Name);
@@ -1160,7 +1162,8 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                      ChildTag.Equals(TEXT("velocity")) || ChildTag.Equals(TEXT("cylinder")) ||
                      ChildTag.Equals(TEXT("muscle")) || ChildTag.Equals(TEXT("general")) ||
                      ChildTag.Equals(TEXT("damper")) || ChildTag.Equals(TEXT("actuator")) ||
-                     ChildTag.Equals(TEXT("adhesion")) || ChildTag.Equals(TEXT("intvelocity")))
+                     ChildTag.Equals(TEXT("adhesion")) || ChildTag.Equals(TEXT("intvelocity")) ||
+                     ChildTag.Equals(TEXT("dcmotor")))
             {
                  FString ActName = Child->GetAttribute(TEXT("name"));
                  if (ActName.IsEmpty()) ActName = TEXT("AUTONAME_Default") + ChildTag;
@@ -1172,6 +1175,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                  else if (ChildTag == "muscle") ActClass = UMjMuscleActuator::StaticClass();
                  else if (ChildTag == "adhesion") ActClass = UMjAdhesionActuator::StaticClass();
                  else if (ChildTag == "intvelocity") ActClass = UMjIntVelocityActuator::StaticClass();
+                 else if (ChildTag == "dcmotor") ActClass = UMjDcMotorActuator::StaticClass();
 
                  USCS_Node* ActNode = BP->SimpleConstructionScript->CreateNode(ActClass, *ActName);
                  DefNode->AddChildNode(ActNode);
@@ -1307,8 +1311,9 @@ void UMujocoGenerationAction::ParseEqualitySection(const FXmlNode* Node, UBluepr
         for (const FXmlNode* Child : Node->GetChildrenNodes())
         {
             FString ChildTag = Child->GetTag();
-            // Equality tags: connect, weld, joint, tendon
-            if (ChildTag.Equals(TEXT("connect")) || ChildTag.Equals(TEXT("weld")) || ChildTag.Equals(TEXT("joint")) || ChildTag.Equals(TEXT("tendon")))
+            // Equality tags: connect, weld, joint, tendon, flex, flexvert, flexstrain
+            if (ChildTag.Equals(TEXT("connect")) || ChildTag.Equals(TEXT("weld")) || ChildTag.Equals(TEXT("joint")) || ChildTag.Equals(TEXT("tendon"))
+             || ChildTag.Equals(TEXT("flex")) || ChildTag.Equals(TEXT("flexvert")) || ChildTag.Equals(TEXT("flexstrain")))
             {
                 FString EqName = Child->GetAttribute(TEXT("name"));
                 if (EqName.IsEmpty()) EqName = FString::Printf(TEXT("AUTONAME_Eq_%s"), *ChildTag);

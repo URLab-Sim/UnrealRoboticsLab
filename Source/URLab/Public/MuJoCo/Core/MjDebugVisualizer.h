@@ -25,11 +25,13 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "MuJoCo/Core/MjDebugTypes.h"
+#include "MuJoCo/Components/Sensors/MjCameraTypes.h"
 #include "MjDebugVisualizer.generated.h"
 
 // Forward declarations
 class AAMjManager;
 class UMaterialInterface;
+class UMjCamera;
 struct FMuJoCoDebugData;
 
 /** Per-body visual overlay mode applied during PIE. */
@@ -186,8 +188,61 @@ public:
 
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
+    // --- Per-camera segmentation pool ---
+    //
+    // Seg-mode UMjCameras share sibling mesh components rather than each maintaining
+    // their own. Pools are lazy: built on first Acquire, destroyed on last Release.
+    // Only two modes are poolable — InstanceSegmentation and SemanticSegmentation.
+
+    /**
+     * @brief Subscribe a camera to the sibling-mesh pool for Mode.
+     *        Builds the pool on first subscription, returns its sibling primitives.
+     * @param Mode         Must be Semantic- or InstanceSegmentation; other values are a no-op.
+     * @param Camera       Subscriber; tracked so Release can refcount correctly.
+     * @param OutSiblings  Populated with the shared sibling primitives for the camera's ShowOnly list.
+     */
+    void AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
+                        TArray<UPrimitiveComponent*>& OutSiblings);
+
+    /**
+     * @brief Unsubscribe a camera. When the last subscriber leaves, the pool is destroyed.
+     */
+    void ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera);
+
+    /**
+     * @brief Snapshot of a currently-live sibling pool. Used for tests and for
+     *        non-seg URLab cameras that need to hide siblings via HiddenComponents.
+     */
+    void GetSegPoolSiblings(EMjCameraMode Mode, TArray<UPrimitiveComponent*>& OutSiblings) const;
+
 private:
     bool bVisualsHidden = false;
+
+    /** Sibling-mesh pool for InstanceSegmentation-mode cameras. Empty when no subscribers. */
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> InstanceSegSiblings;
+
+    /** Sibling-mesh pool for SemanticSegmentation-mode cameras. */
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UStaticMeshComponent>> SemanticSegSiblings;
+
+    TSet<TWeakObjectPtr<UMjCamera>> InstanceSegSubscribers;
+    TSet<TWeakObjectPtr<UMjCamera>> SemanticSegSubscribers;
+
+    /** Returns a mutable ref to the pool matching Mode, or null for non-seg modes. */
+    TArray<TObjectPtr<UStaticMeshComponent>>* GetSegPoolArray(EMjCameraMode Mode);
+    TSet<TWeakObjectPtr<UMjCamera>>* GetSegSubscribers(EMjCameraMode Mode);
+
+    /** Build the seg pool for Mode by walking the world's articulations + quick-convert. */
+    void BuildSegPool(EMjCameraMode Mode);
+
+    /** Destroy all siblings in Mode's pool and clear it. */
+    void DestroySegPool(EMjCameraMode Mode);
+
+    /** Spawn one sibling mesh for a given original. Returns the new component (already registered). */
+    UStaticMeshComponent* SpawnSegSibling(UStaticMeshComponent* Original,
+                                          int32 BodyId, uint32 GroupHash,
+                                          EMjCameraMode Mode);
 
     /** Original slot-0 material on meshes we've overridden, so we can restore. Keyed by mesh component. */
     TMap<TWeakObjectPtr<class UStaticMeshComponent>, class UMaterialInterface*> OriginalMaterials;

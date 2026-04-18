@@ -24,8 +24,13 @@
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Core/MjDebugVisualizer.h"
+#include "MuJoCo/Core/AMjManager.h"
 #include "Components/SceneCaptureComponent2D.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
 #include "Engine/TextureRenderTarget2D.h"
+#include "UObject/ConstructorHelpers.h"
 
 namespace
 {
@@ -144,6 +149,78 @@ bool FMjCameraModeCycleRebuildsRT::RunTest(const FString& Parameters)
     Cam->SetStreamingEnabled(true);
     if (!TestNotNull(TEXT("RT rebuilt"), Cam->RenderTarget)) { S.Cleanup(); return false; }
     TestEqual(TEXT("new format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_R32f);
+
+    S.Cleanup();
+    return true;
+}
+
+// ============================================================================
+// URLab.Camera.SegPool_AcquireReleaseRefcount
+//   Pool lifecycle: two cameras acquire → shared pool is built once, survives
+//   one release, is destroyed on the second release.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraSegPoolRefcount,
+    "URLab.Camera.SegPool_AcquireReleaseRefcount",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraSegPoolRefcount::RunTest(const FString& Parameters)
+{
+    FMjUESession S;
+    if (!S.Init())
+    {
+        AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+        return false;
+    }
+
+    UMjDebugVisualizer* Viz = S.Manager ? S.Manager->FindComponentByClass<UMjDebugVisualizer>() : nullptr;
+    if (!TestNotNull(TEXT("visualizer"), Viz)) { S.Cleanup(); return false; }
+
+    // The visualizer's OverlayParentMaterial is initialized in BeginPlay; test worlds
+    // don't dispatch BeginPlay, so trigger initialization manually.
+    Viz->InitializeOverlayMaterial();
+
+    // FMjUESession's base UMjGeom has no visualizer mesh. Attach a static-mesh child
+    // so BuildSegPool's child walk has something to mirror into a sibling.
+    UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+    if (!TestNotNull(TEXT("engine cube mesh"), CubeMesh)) { S.Cleanup(); return false; }
+
+    UStaticMeshComponent* ChildMesh = NewObject<UStaticMeshComponent>(S.Robot, TEXT("GeomChildMesh"));
+    ChildMesh->SetStaticMesh(CubeMesh);
+    ChildMesh->RegisterComponent();
+    ChildMesh->AttachToComponent(S.Geom, FAttachmentTransformRules::KeepRelativeTransform);
+
+    UMjCamera* CamA = NewObject<UMjCamera>(S.Robot, TEXT("CamA"));
+    CamA->CaptureMode = EMjCameraMode::InstanceSegmentation;
+    CamA->RegisterComponent();
+    CamA->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+
+    UMjCamera* CamB = NewObject<UMjCamera>(S.Robot, TEXT("CamB"));
+    CamB->CaptureMode = EMjCameraMode::InstanceSegmentation;
+    CamB->RegisterComponent();
+    CamB->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+
+    TArray<UPrimitiveComponent*> PoolA;
+    Viz->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamA, PoolA);
+    TestTrue(TEXT("pool has entries after first acquire"), PoolA.Num() > 0);
+
+    TArray<UPrimitiveComponent*> PoolB;
+    Viz->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamB, PoolB);
+    TestEqual(TEXT("second acquire sees same pool size"), PoolB.Num(), PoolA.Num());
+    if (PoolA.Num() > 0 && PoolB.Num() > 0)
+    {
+        TestEqual(TEXT("pool entries are shared"), PoolA[0], PoolB[0]);
+    }
+
+    // First release — pool should still exist because CamB still subscribed.
+    Viz->ReleaseSegPool(EMjCameraMode::InstanceSegmentation, CamA);
+    TArray<UPrimitiveComponent*> Snapshot;
+    Viz->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Snapshot);
+    TestTrue(TEXT("pool still alive after one release"), Snapshot.Num() > 0);
+
+    // Final release — pool should be destroyed.
+    Viz->ReleaseSegPool(EMjCameraMode::InstanceSegmentation, CamB);
+    Viz->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Snapshot);
+    TestEqual(TEXT("pool empty after last release"), Snapshot.Num(), 0);
 
     S.Cleanup();
     return true;

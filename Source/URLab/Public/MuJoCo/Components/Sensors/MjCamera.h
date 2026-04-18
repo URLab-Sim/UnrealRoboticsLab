@@ -29,21 +29,8 @@
 #include "HAL/Runnable.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Containers/Queue.h"
+#include "MuJoCo/Components/Sensors/MjCameraTypes.h"
 #include "MjCamera.generated.h"
-
-/**
- * @enum EMjCameraMode
- * @brief What a UMjCamera captures. Read at SetStreamingEnabled(true) time —
- *        to change mode on a running camera, toggle streaming off then on.
- */
-UENUM(BlueprintType)
-enum class EMjCameraMode : uint8
-{
-    Real                 UMETA(DisplayName = "Photoreal RGB"),
-    Depth                UMETA(DisplayName = "Depth"),
-    SemanticSegmentation UMETA(DisplayName = "Semantic Segmentation"),
-    InstanceSegmentation UMETA(DisplayName = "Instance Segmentation"),
-};
 
 /**
  * @class FCameraZmqWorker

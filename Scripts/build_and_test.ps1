@@ -51,6 +51,11 @@ $cmd = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 if (-not (Test-Path $ubt)) { Write-Error "UBT not found: $ubt";                exit 3 }
 if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   exit 3 }
 
+# Truncate the test log up-front so a build failure (or any early exit
+# before UnrealEditor-Cmd writes to it) doesn't leave the SHA-256 in the
+# summary pointing at a previous run's file.
+Set-Content -Path $Log -Value '' -NoNewline
+
 # --- Build -----------------------------------------------------------------
 Write-Host ">>> Building $Target (Win64 Development)..."
 $buildArgs = @($Target, 'Win64', 'Development', "-Project=$Project", '-WaitMutex')

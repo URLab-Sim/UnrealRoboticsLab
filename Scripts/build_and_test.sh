@@ -80,6 +80,11 @@ CMD="$ENGINE/Engine/Binaries/Win64/UnrealEditor-Cmd.exe"
 [[ -x "$UBT" ]] || { echo "UBT not found: $UBT" >&2; exit 3; }
 [[ -x "$CMD" ]] || { echo "UnrealEditor-Cmd not found: $CMD" >&2; exit 3; }
 
+# Truncate the test log up-front so a build failure (or any early exit
+# before UnrealEditor-Cmd writes to it) doesn't leave the SHA-256 in the
+# summary pointing at a previous run's file.
+: > "$LOG"
+
 # --- Build -----------------------------------------------------------------
 echo ">>> Building $TARGET (Win64 Development)..."
 BUILD_OUT=$("$UBT" "$TARGET" Win64 Development "-Project=$PROJECT" -WaitMutex 2>&1 || true)

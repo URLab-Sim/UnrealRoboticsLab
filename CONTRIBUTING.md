@@ -21,20 +21,28 @@ Thank you for your interest in contributing. This document covers the process fo
    - UPROPERTYs use PascalCase (`Options`, `SimSpeedPercent`)
    - Non-UPROPERTY private members use `m_` prefix (`m_model`, `m_data`)
    - All `.h` and `.cpp` files must have the Apache 2.0 license header
-3. Build and verify compilation succeeds.
-4. Run the URLab automation suite. Two options:
-   - Session Frontend in the Unreal Editor, or
-   - Command line:
-     ```
-     UnrealEditor-Cmd.exe YourProject.uproject -ExecCmds="Automation RunTests URLab;Quit" -Unattended -NullRHI -Log
-     ```
-     The command-line form gives you output you can paste straight into the PR template.
-5. Test your changes in PIE (Play in Editor).
+3. Build and verify compilation succeeds, then run the URLab automation suite. The `Scripts/build_and_test.{sh,ps1}` helpers do both in one shot and print a summary block you paste straight into the PR template — with a UTC timestamp, your git HEAD, build status, `passed / total` counts, and a SHA-256 of the full test log. **Close the Unreal editor first** — live-coding holds the build mutex and the test runner silently returns an empty log against a locked project.
+
+   Git-bash / WSL:
+   ```bash
+   ./Scripts/build_and_test.sh \
+       --engine "/c/Program Files/Epic Games/UE_5.7" \
+       --project "C:/path/to/your.uproject"
+   ```
+   PowerShell:
+   ```powershell
+   .\Scripts\build_and_test.ps1 `
+       -Engine  'C:\Program Files\Epic Games\UE_5.7' `
+       -Project 'C:\path\to\your.uproject'
+   ```
+
+   Prefer that flow. If you only need to re-run a single step you can invoke `UnrealEditor-Cmd.exe` or `UnrealBuildTool.exe` directly — see the script source for the canonical flags. You can also run individual tests from the Session Frontend inside the editor.
+4. Test your changes in PIE (Play in Editor).
 
 ## Submitting a Pull Request
 
 1. Push to your fork and open a PR against `main`.
-2. Fill in the [PR template](.github/pull_request_template.md). It asks for a summary, motivation, linked issue, **proof that the project builds**, and **proof that the `URLab.*` automation suite passes** on your machine — paste the tail of each command's output into the provided blocks.
+2. Fill in the [PR template](.github/pull_request_template.md). It asks for a summary, motivation, linked issue, and the **build+test summary block** produced by `Scripts/build_and_test.{sh,ps1}` (see step 3 above). That block is the primary gate.
 3. We spot-check every PR in the editor before merging, but because Unreal Engine projects can't use standard CI the pasted build + test output is the primary gate. A PR without them will bounce back for that evidence.
 
 ## Code Style

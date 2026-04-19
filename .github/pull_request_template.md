@@ -16,28 +16,38 @@ and the full URLab automation suite passes on your machine.
 
 Fixes #  /  Related to #
 
-## Proof of compilation
+## Build + test evidence
 
 <!--
-Paste the tail of your UnrealBuildTool / Build.bat output, enough to show
-"Result: Succeeded". MuJoCo ASAN_* macro-redefinition warnings are expected
-and can stay in the snippet.
+Run the helper script from the plugin root and paste its final summary
+block below — it captures the build status, pass/total test counts, the
+git HEAD the run was made from, and a SHA-256 of the log so the run can
+be verified against the attached log if needed.
+
+bash (git-bash, WSL):
+  ./Scripts/build_and_test.sh \
+      --engine "/c/Program Files/Epic Games/UE_5.7" \
+      --project "C:/path/to/your.uproject"
+
+PowerShell:
+  .\Scripts\build_and_test.ps1 `
+      -Engine  'C:\Program Files\Epic Games\UE_5.7' `
+      -Project 'C:\path\to\your.uproject'
+
+Close the Unreal editor before running — live-coding holds the build
+mutex and the cmd-line tester silently returns an empty log.
 -->
 
 ```
-```
-
-## Test evidence
-
-<!--
-Paste the tail of the URLab automation run. We're looking for the pass
-count and any failures, e.g.
-  grep -cE "Result=\{Success\}" ...
-  159
-  (no failures)
--->
-
-```
+=== URLab build+test summary ===
+Timestamp : <UTC>
+Host      : <machine>
+Git HEAD  : <short-sha> (<branch>)
+Engine    : <engine root>
+Build     : <Succeeded|Failed>
+Tests     : <pass> / <total> passed (<fail> failed)
+Log       : <path>  (sha256: <hash>)
+================================
 ```
 
 ## Manual verification steps

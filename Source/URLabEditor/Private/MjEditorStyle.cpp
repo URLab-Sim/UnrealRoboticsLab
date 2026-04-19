@@ -78,7 +78,9 @@ void FMjEditorStyle::Initialize()
 	RegisterIcon("ClassIcon.MjBox",             TEXT("MjBox.png"),             "ClassIcon.StaticMeshComponent");
 	RegisterIcon("ClassIcon.MjSphere",          TEXT("MjSphere.png"),          "ClassIcon.StaticMeshComponent");
 	RegisterIcon("ClassIcon.MjCylinder",        TEXT("MjCylinder.png"),        "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjCapsule",         TEXT("MjCapsule.png"),         "ClassIcon.StaticMeshComponent");
 	RegisterIcon("ClassIcon.MjMeshGeom",        TEXT("MjMeshGeom.png"),        "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjFlexcomp",        TEXT("MjFlexcomp.png"),        "ClassIcon.SkeletalMeshComponent");
 	RegisterIcon("ClassIcon.MjHingeJoint",      TEXT("MjHingeJoint.png"),      "ClassIcon.PhysicsConstraintComponent");
 	RegisterIcon("ClassIcon.MjSlideJoint",      TEXT("MjSlideJoint.png"),      "ClassIcon.PhysicsConstraintComponent");
 	RegisterIcon("ClassIcon.MjBallJoint",       TEXT("MjBallJoint.png"),       "ClassIcon.PhysicsConstraintComponent");

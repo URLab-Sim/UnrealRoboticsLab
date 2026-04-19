@@ -34,6 +34,7 @@ class UMjPhysicsEngine;
 class UMjDebugVisualizer;
 class UMjNetworkManager;
 class UMjInputHandler;
+class UMjPerturbation;
 class UMjSimulationState;
 
 /**
@@ -78,6 +79,10 @@ public:
     /** @brief Input handler component for keyboard hotkeys. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
     UMjInputHandler* InputHandler;
+
+    /** @brief Mouse-driven body perturbation (simulate-style Ctrl+LMB/RMB drag). */
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
+    UMjPerturbation* Perturbation;
     
     // --- Global Access ---
     /** 

@@ -78,6 +78,7 @@ nav:
     - Geometry & Collision: guides/geometry_authoring.md
     - Controller Framework: guides/controller_framework.md
     - Debug Visualization: guides/debug_visualization.md
+    - Interactive Perturbation: guides/perturbation.md
     - Camera Capture Modes: guides/camera_capture_modes.md
     - Possession & Twist Control: guides/possession_twist.md
     - Scripting with Blueprints: guides/blueprint_reference.md

@@ -81,6 +81,12 @@ Hotkey-driven toggles during PIE for contact forces, collision wireframes, joint
 
 See [Debug Visualization](guides/debug_visualization.md) for the full hotkey table and per-mode details.
 
+## Interactive Perturbation
+
+Mouse-driven body manipulation during PIE. Double-click LMB to select, Ctrl+RMB drag to translate, Ctrl+LMB drag to rotate — the same gesture map as MuJoCo's `simulate` viewer. Driven by the upstream `mjv_applyPerturbForce` / `mjv_applyPerturbPose` primitives, so the spring feel is identical. Works while paused for manual pose authoring (pairs well with snapshot keyframe capture).
+
+See [Interactive Perturbation](guides/perturbation.md) for gesture mapping, gizmo reference, and paused-mode workflow.
+
 ## Camera System
 
 - **MjCamera**: scene capture attached to MuJoCo sites; per-camera `CaptureMode` for photoreal RGB, depth, semantic segmentation, or instance segmentation; streams via ZMQ; respects post-process volumes

@@ -26,6 +26,7 @@
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Net/MjNetworkManager.h"
 #include "MuJoCo/Input/MjInputHandler.h"
+#include "MuJoCo/Input/MjPerturbation.h"
 #include "Replay/MjReplayManager.h"
 #include "mujoco/mujoco.h"
 
@@ -49,6 +50,7 @@ AAMjManager::AAMjManager() {
     DebugVisualizer = CreateDefaultSubobject<UMjDebugVisualizer>(TEXT("DebugVisualizer"));
     NetworkManager = CreateDefaultSubobject<UMjNetworkManager>(TEXT("NetworkManager"));
     InputHandler = CreateDefaultSubobject<UMjInputHandler>(TEXT("InputHandler"));
+    Perturbation = CreateDefaultSubobject<UMjPerturbation>(TEXT("Perturbation"));
 }
 
 // --- Forwarding shims: PreCompile, PostCompile, Compile, ApplyOptions ---

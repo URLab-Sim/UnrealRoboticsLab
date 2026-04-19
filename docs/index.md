@@ -29,6 +29,7 @@ The plugin gives you research-grade contact dynamics alongside Unreal's renderin
 | [Geometry & Collision](guides/geometry_authoring.md) | Primitives, mesh geoms, Quick Convert, heightfields |
 | [Controller Framework](guides/controller_framework.md) | PD, keyframe, and custom controllers |
 | [Debug Visualization](guides/debug_visualization.md) | Hotkey-driven overlays: contacts, joints, islands, segmentation, muscle/tendon tubes |
+| [Interactive Perturbation](guides/perturbation.md) | Mouse-driven body drag: select, translate, rotate — simulate-compatible gestures |
 | [Camera Capture Modes](guides/camera_capture_modes.md) | Per-camera RGB / depth / semantic + instance segmentation |
 | [Possession & Twist Control](guides/possession_twist.md) | WASD control, spring arm camera |
 | [Scripting with Blueprints](guides/blueprint_reference.md) | Hotkeys, API usage, scripting workflows |

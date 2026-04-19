@@ -86,11 +86,7 @@ void UMjQuickConvertComponent::DrawDebugCollision() {
 
         mjtNum _quat[4];
         mju_mat2Quat(_quat, mat);
-        FQuat quat;
-        quat.W = _quat[0];
-        quat.X = _quat[1];
-        quat.Y = _quat[2];
-        quat.Z = _quat[3];
+        const FQuat quat = MjUtils::MjToUERotation(_quat);
 
         if (m_model->mesh_graphadr[meshId] == -1) {
             continue;

@@ -428,6 +428,61 @@ bool FTest_MjImport_URLab_JointRangeAndDamping::RunTest(const FString&)
     return true;
 }
 
+// Regression: parser used to drop CompilerSettings when recursing into
+// <default> blocks, so joints declared inside a default class always saw
+// the hardcoded bAngleInDegrees=true fallback. For angle="radian" models
+// (e.g. mujoco_menagerie's unitree_go1) the default joint's Range would
+// then be re-scaled by π/180, shrinking ±0.86 rad to ±0.015 rad and
+// making imported robots barely move. Verifies the default joint
+// template keeps its radian value intact.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_DefaultClassJointRangeRadians,
+    "URLab.Import.URLab_DefaultClassJointRangeRadians",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_URLab_DefaultClassJointRangeRadians::RunTest(const FString&)
+{
+    FMjXmlImportSession S;
+    if (!S.Init(TEXT(R"(
+        <mujoco>
+          <compiler angle="radian" autolimits="true"/>
+          <default>
+            <default class="hip"><joint range="-0.86 0.86"/></default>
+          </default>
+          <worldbody>
+            <body>
+              <joint class="hip" name="j_hip"/>
+              <geom size=".1"/>
+            </body>
+          </worldbody>
+        </mujoco>
+    )"))) { AddError(S.LastError); return false; }
+
+    UMjJoint* DefaultJoint = nullptr;
+    if (S.Blueprint && S.Blueprint->SimpleConstructionScript)
+    {
+        for (USCS_Node* Node : S.Blueprint->SimpleConstructionScript->GetAllNodes())
+        {
+            UMjJoint* J = Cast<UMjJoint>(Node->ComponentTemplate);
+            if (J && J->bIsDefault) { DefaultJoint = J; break; }
+        }
+    }
+    if (!DefaultJoint) { AddError(TEXT("No default-class joint template found")); S.Cleanup(); return false; }
+
+    if (DefaultJoint->Range.Num() >= 2)
+    {
+        TestNearlyEqual(TEXT("default joint Range[0] preserved as radians"),
+                        DefaultJoint->Range[0], -0.86f, 1e-3f);
+        TestNearlyEqual(TEXT("default joint Range[1] preserved as radians"),
+                        DefaultJoint->Range[1],  0.86f, 1e-3f);
+    }
+    else
+    {
+        AddError(TEXT("default joint Range has < 2 entries"));
+    }
+
+    S.Cleanup();
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_SensorType,
     "URLab.Import.URLab_SensorType",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

@@ -170,20 +170,22 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
     USCS_Node* EqualitiesNode  = Hierarchy.EqualitiesRoot;
     USCS_Node* KeyframesNode   = Hierarchy.KeyframesRoot;
 
-    // 2. Pass: Defaults
-    ParseDefaultsRecursive(Root, BP, DefaultsNode, XMLDir, TEXT(""));
+    // 2. Parse compiler settings first (angle, eulerseq) so they can be
+    //    propagated into <default>-block imports — joint ranges inside a
+    //    default class depend on the compiler-level `angle` setting.
+    FMjCompilerSettings CompilerSettings = MjOrientationUtils::ParseCompilerSettings(Root);
 
-    // 2a. Pass: Contact pairs and excludes
+    // 2a. Pass: Defaults
+    ParseDefaultsRecursive(Root, BP, DefaultsNode, XMLDir, CompilerSettings, TEXT(""));
+
+    // 2b. Pass: Contact pairs and excludes
     ParseContactSection(Root, BP, ContactsNode, XMLDir);
 
-    // 2b. Pass: Equality constraints
+    // 2c. Pass: Equality constraints
     ParseEqualitySection(Root, BP, EqualitiesNode, XMLDir);
 
-    // 2c. Pass: Keyframes
+    // 2d. Pass: Keyframes
     ParseKeyframeSection(Root, BP, KeyframesNode, XMLDir);
-
-    // 2d. Parse compiler settings (angle, eulerseq) for orientation handling
-    FMjCompilerSettings CompilerSettings = MjOrientationUtils::ParseCompilerSettings(Root);
 
     // 3. Pass: Structure Traversal
     USCS_Node* WorldBodyNode = nullptr;

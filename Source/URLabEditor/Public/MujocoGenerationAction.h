@@ -159,7 +159,7 @@ public:
     /**
      * @brief Recursively parses XML to find all <default> tags and create UMjDefault components.
      */
-    void ParseDefaultsRecursive(const class FXmlNode* Node, UBlueprint* BP, USCS_Node* RootNode, const FString& XMLDir, const FString& ParentClassName = TEXT(""), bool bIsDefaultContext = true);
+    void ParseDefaultsRecursive(const class FXmlNode* Node, UBlueprint* BP, USCS_Node* RootNode, const FString& XMLDir, const struct FMjCompilerSettings& CompilerSettings, const FString& ParentClassName = TEXT(""), bool bIsDefaultContext = true);
     
     /** @brief Parses XML <contact> section to find <pair> and <exclude> elements and create corresponding components. */
     void ParseContactSection(const class FXmlNode* Node, UBlueprint* BP, USCS_Node* RootNode, const FString& XMLDir);

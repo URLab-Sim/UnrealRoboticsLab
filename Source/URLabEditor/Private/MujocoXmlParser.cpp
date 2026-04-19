@@ -1131,7 +1131,7 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
     }
 }
 
-void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlueprint* BP, USCS_Node* RootNode, const FString& XMLDir, const FString& ParentClassName, bool bIsDefaultContext)
+void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlueprint* BP, USCS_Node* RootNode, const FString& XMLDir, const FMjCompilerSettings& CompilerSettings, const FString& ParentClassName, bool bIsDefaultContext)
 {
     if (!Node || !BP || !RootNode) return;
 
@@ -1147,7 +1147,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
              FXmlFile IncludedFile(IncludePath);
              if (IncludedFile.IsValid())
              {
-                 ParseDefaultsRecursive(IncludedFile.GetRootNode(), BP, RootNode, FPaths::GetPath(IncludePath), ParentClassName, bIsDefaultContext);
+                 ParseDefaultsRecursive(IncludedFile.GetRootNode(), BP, RootNode, FPaths::GetPath(IncludePath), CompilerSettings, ParentClassName, bIsDefaultContext);
              }
         }
     }
@@ -1185,7 +1185,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
             if (ChildTag.Equals(TEXT("default")))
             {
                 // Pass DefNode as RootNode to establish hierarchy
-                ParseDefaultsRecursive(Child, BP, DefNode, XMLDir, ClassName, true);
+                ParseDefaultsRecursive(Child, BP, DefNode, XMLDir, CompilerSettings, ClassName, true);
             }
             // Handle Child Components
             else if (ChildTag.Equals(TEXT("geom")))
@@ -1199,7 +1199,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                 UMjGeom* GeomComp = Cast<UMjGeom>(GeomNode->ComponentTemplate);
                 if (GeomComp)
                 {
-                    GeomComp->ImportFromXml(Child);
+                    GeomComp->ImportFromXml(Child, CompilerSettings);
                     GeomComp->bIsDefault = true;
                 }
             }
@@ -1214,7 +1214,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                 UMjJoint* JointComp = Cast<UMjJoint>(JointNode->ComponentTemplate);
                 if (JointComp)
                 {
-                    JointComp->ImportFromXml(Child);
+                    JointComp->ImportFromXml(Child, CompilerSettings);
                     JointComp->bIsDefault = true;
                     UE_LOG(LogURLabEditor, Log, TEXT("  - Found Default Joint: %s (Type Overridden: %s)"), *JointName, JointComp->bOverride_Type ? TEXT("True") : TEXT("False"));
                 }
@@ -1230,7 +1230,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                 UMjSite* SiteComp = Cast<UMjSite>(SiteNode->ComponentTemplate);
                 if (SiteComp)
                 {
-                    SiteComp->ImportFromXml(Child);
+                    SiteComp->ImportFromXml(Child, CompilerSettings);
                     SiteComp->bIsDefault = true;
                 }
             }
@@ -1245,7 +1245,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
                 UMjCamera* CamComp = Cast<UMjCamera>(CamNode->ComponentTemplate);
                 if (CamComp)
                 {
-                    CamComp->ImportFromXml(Child);
+                    CamComp->ImportFromXml(Child, CompilerSettings);
                     CamComp->bIsDefault = true;
                 }
             }
@@ -1286,7 +1286,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
     {
          for (const FXmlNode* Child : Node->GetChildrenNodes())
          {
-             ParseDefaultsRecursive(Child, BP, RootNode, XMLDir, ParentClassName, bIsDefaultContext);
+             ParseDefaultsRecursive(Child, BP, RootNode, XMLDir, CompilerSettings, ParentClassName, bIsDefaultContext);
          }
     }
 }

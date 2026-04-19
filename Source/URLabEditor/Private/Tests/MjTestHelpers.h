@@ -366,13 +366,19 @@ struct FMjXmlImportSession
             mj_deleteModel(TmpM);
         }
 
-        // Create Blueprint and run generator
+        // Create Blueprint and run generator. Both the package path AND the
+        // blueprint class name are unique-per-session — hardcoding the class
+        // name caused intermittent Kismet2.cpp:424 FindObject-uniqueness
+        // assertion failures when GC hadn't collected the previous test's
+        // blueprint-generated class before the next test ran.
+        const FString UniqueSfx = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
         FString PkgName = UPackageTools::SanitizePackageName(
-            TEXT("/Temp/URLabImportTest_") + FString::FromInt(FMath::RandRange(0, 999999)));
+            FString(TEXT("/Temp/URLabImportTest_")) + UniqueSfx);
         UPackage* Pkg = CreatePackage(*PkgName);
 
+        const FString BPName = FString(TEXT("ImportTestArt_")) + UniqueSfx;
         Blueprint = FKismetEditorUtilities::CreateBlueprint(
-            AMjArticulation::StaticClass(), Pkg, TEXT("ImportTestArt"),
+            AMjArticulation::StaticClass(), Pkg, *BPName,
             BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
 
         if (!Blueprint)
@@ -426,13 +432,18 @@ struct FMjXmlImportSession
             mj_deleteModel(TmpM);
         }
 
-        // 3. Create in-memory Blueprint
+        // 3. Create in-memory Blueprint. Both the package path AND the
+        //    blueprint class name are unique-per-session (GUID suffix). See
+        //    InitFromFile above for the rationale — hardcoded class names
+        //    caused intermittent Kismet2.cpp:424 uniqueness assertions.
+        const FString UniqueSfx = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
         FString PkgName = UPackageTools::SanitizePackageName(
-            TEXT("/Temp/URLabImportTest_") + FString::FromInt(FMath::RandRange(0, 999999)));
+            FString(TEXT("/Temp/URLabImportTest_")) + UniqueSfx);
         UPackage* Pkg = CreatePackage(*PkgName);
 
+        const FString BPName = FString(TEXT("ImportTestArt_")) + UniqueSfx;
         Blueprint = FKismetEditorUtilities::CreateBlueprint(
-            AMjArticulation::StaticClass(), Pkg, TEXT("ImportTestArt"),
+            AMjArticulation::StaticClass(), Pkg, *BPName,
             BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
 
         if (!Blueprint)

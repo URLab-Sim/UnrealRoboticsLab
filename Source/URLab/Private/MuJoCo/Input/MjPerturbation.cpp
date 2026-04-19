@@ -157,17 +157,29 @@ void UMjPerturbation::HandleSelect(const FVector& CursorOrigin, const FVector& C
     }
 
     // Line trace from cursor. Distance is generous — 1 km covers typical
-    // scene scales.
+    // scene scales. Use Multi rather than Single because imported visual
+    // meshes are configured with ECR_Overlap responses (see the importer):
+    // SingleByChannel only returns blocking hits, so it would pass straight
+    // through go1-style mesh-geom-only articulations. Multi collects both
+    // block and overlap hits; we pick the first that resolves to an MjBody.
     const FVector TraceEnd = CursorOrigin + CursorDirection.GetSafeNormal() * 100000.0f;
-    FHitResult Hit;
+    TArray<FHitResult> Hits;
     FCollisionQueryParams Params;
     Params.bTraceComplex = false;
-    GetWorld()->LineTraceSingleByChannel(Hit, CursorOrigin, TraceEnd, ECC_Visibility, Params);
+    GetWorld()->LineTraceMultiByChannel(Hits, CursorOrigin, TraceEnd, ECC_Visibility, Params);
 
     int32 BodyId = -1;
-    if (Hit.bBlockingHit && Hit.GetActor())
+    FHitResult SelectedHit;
+    for (const FHitResult& H : Hits)
     {
-        BodyId = ResolveBodyIdFromActor(Hit.GetActor(), Hit.ImpactPoint);
+        if (!H.GetActor()) continue;
+        const int32 Resolved = ResolveBodyIdFromActor(H.GetActor(), H.ImpactPoint);
+        if (Resolved > 0)
+        {
+            BodyId = Resolved;
+            SelectedHit = H;
+            break;
+        }
     }
 
     FScopeLock Lock(&Manager->PhysicsEngine->CallbackMutex);
@@ -178,7 +190,7 @@ void UMjPerturbation::HandleSelect(const FVector& CursorOrigin, const FVector& C
     {
         // Compute localpos = xmat[sel]^T * (world_hit - xpos[sel])
         mjtNum HitMj[3];
-        MjUtils::UEToMjPosition(Hit.ImpactPoint, HitMj);
+        MjUtils::UEToMjPosition(SelectedHit.ImpactPoint, HitMj);
 
         mjtNum Diff[3];
         mju_sub3(Diff, HitMj, d->xpos + 3 * BodyId);
@@ -189,10 +201,10 @@ void UMjPerturbation::HandleSelect(const FVector& CursorOrigin, const FVector& C
         Perturb.skinselect  = -1;
         Perturb.active      = 0;
 
-        ClickHitWorldUE = Hit.ImpactPoint;
+        ClickHitWorldUE = SelectedHit.ImpactPoint;
 
         UE_LOG(LogURLab, Log, TEXT("[MjPerturbation] Selected body %d (%s) at world %s"),
-            BodyId, *Hit.GetActor()->GetName(), *Hit.ImpactPoint.ToString());
+            BodyId, *SelectedHit.GetActor()->GetName(), *SelectedHit.ImpactPoint.ToString());
     }
     else
     {

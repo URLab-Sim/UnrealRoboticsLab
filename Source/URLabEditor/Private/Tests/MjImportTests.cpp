@@ -144,32 +144,6 @@ bool FTest_MjImport_MJ_JointRange::RunTest(const FString&)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_Autolimits,
-    "URLab.Import.MJ_Autolimits",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-bool FTest_MjImport_MJ_Autolimits::RunTest(const FString&)
-{
-    // autolimits=true — a non-empty range implies limited=true without explicit attribute
-    FMjTestSession S;
-    if (!S.CompileXml(TEXT(R"(
-        <mujoco>
-          <compiler autolimits="true"/>
-          <worldbody>
-            <body>
-              <joint name="j1" type="hinge" range="-1.57 1.57"/>
-              <geom size=".1"/>
-            </body>
-          </worldbody>
-        </mujoco>
-    )"))) { AddError(S.LastError); return false; }
-
-    int jid = S.JointId("j1");
-    TestTrue(TEXT("j1 valid"), jid >= 0);
-    TestTrue(TEXT("j1 limited via autolimits"), S.m->jnt_limited[jid] != 0);
-    S.Cleanup();
-    return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_DefaultClassOverride,
     "URLab.Import.MJ_DefaultClassOverride",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -952,18 +926,17 @@ bool FTest_MjImport_MJ_MocapBody::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.MJ_AutoLimits
-//   <compiler autolimits="true"/> makes any joint with a range= attribute
-//   automatically limited without needing limited="true".
-//   Tier 1 baseline: verifies MuJoCo's own behaviour.
+//   MuJoCo 3.x defaults autolimits="true" — a joint with range= is auto-limited.
+//   Explicit limited="false" opts out.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_AutoLimits,
     "URLab.Import.MJ_AutoLimits",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_MJ_AutoLimits::RunTest(const FString&)
 {
-    // Without autolimits: range present but limited not set → joint NOT limited
-    FMjTestSession SNo;
-    if (!SNo.CompileXml(TEXT(R"(
+    // Default autolimits: range present → joint IS limited
+    FMjTestSession SAuto;
+    if (!SAuto.CompileXml(TEXT(R"(
         <mujoco>
           <compiler angle="radian"/>
           <worldbody>
@@ -973,31 +946,31 @@ bool FTest_MjImport_MJ_AutoLimits::RunTest(const FString&)
             </body>
           </worldbody>
         </mujoco>
-    )"))) { AddError(SNo.LastError); return false; }
-    int jid = SNo.JointId("j1");
-    TestTrue(TEXT("j1 valid without autolimits"), jid >= 0);
+    )"))) { AddError(SAuto.LastError); return false; }
+    int jid = SAuto.JointId("j1");
+    TestTrue(TEXT("j1 valid"), jid >= 0);
     if (jid >= 0)
-        TestTrue(TEXT("j1 NOT limited without autolimits"), SNo.m->jnt_limited[jid] == 0);
-    SNo.Cleanup();
+        TestTrue(TEXT("j1 IS limited by default autolimits"), SAuto.m->jnt_limited[jid] == 1);
+    SAuto.Cleanup();
 
-    // With autolimits: range present → joint IS limited
-    FMjTestSession SYes;
-    if (!SYes.CompileXml(TEXT(R"(
+    // Explicit limited="false" overrides autolimits → joint NOT limited
+    FMjTestSession SOverride;
+    if (!SOverride.CompileXml(TEXT(R"(
         <mujoco>
-          <compiler angle="radian" autolimits="true"/>
+          <compiler angle="radian"/>
           <worldbody>
             <body>
-              <joint name="j2" type="hinge" range="-1 1"/>
+              <joint name="j2" type="hinge" range="-1 1" limited="false"/>
               <geom size=".1"/>
             </body>
           </worldbody>
         </mujoco>
-    )"))) { AddError(SYes.LastError); return false; }
-    int jid2 = SYes.JointId("j2");
-    TestTrue(TEXT("j2 valid with autolimits"), jid2 >= 0);
+    )"))) { AddError(SOverride.LastError); return false; }
+    int jid2 = SOverride.JointId("j2");
+    TestTrue(TEXT("j2 valid"), jid2 >= 0);
     if (jid2 >= 0)
-        TestTrue(TEXT("j2 IS limited with autolimits"), SYes.m->jnt_limited[jid2] == 1);
-    SYes.Cleanup();
+        TestTrue(TEXT("j2 NOT limited via explicit limited=false"), SOverride.m->jnt_limited[jid2] == 0);
+    SOverride.Cleanup();
     return true;
 }
 

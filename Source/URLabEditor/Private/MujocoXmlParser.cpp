@@ -107,6 +107,7 @@
 #include "MuJoCo/Components/Geometry/Primitives/MjBox.h"
 #include "MuJoCo/Components/Geometry/Primitives/MjSphere.h"
 #include "MuJoCo/Components/Geometry/Primitives/MjCylinder.h"
+#include "MuJoCo/Components/Geometry/Primitives/MjCapsule.h"
 #include "MuJoCo/Components/Physics/MjInertial.h"
 #include "MuJoCo/Components/Constraints/MjEquality.h"
 #include "MuJoCo/Components/Keyframes/MjKeyframe.h"
@@ -320,6 +321,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
         if (TypeStr == "box") Class = UMjBox::StaticClass();
         else if (TypeStr == "sphere") Class = UMjSphere::StaticClass();
         else if (TypeStr == "cylinder") Class = UMjCylinder::StaticClass();
+        else if (TypeStr == "capsule") Class = UMjCapsule::StaticClass();
 
         CreatedNode = BP->SimpleConstructionScript->CreateNode(Class, *Name);
         UMjGeom* GeomComp = Cast<UMjGeom>(CreatedNode->ComponentTemplate);

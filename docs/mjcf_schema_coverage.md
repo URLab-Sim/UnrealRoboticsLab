@@ -76,7 +76,7 @@ Plugin version: UnrealRoboticsLab main branch, 2026-04-18
 |-----------|--------|-------|
 | name | SUPPORTED | Import: `GetAttribute("name")`. Export: `SetSpecElementName` |
 | class | SUPPORTED | Import: `ReadAttrString("class")`. Export: `ResolveDefault` |
-| type | SUPPORTED | Import: string -> enum (plane/hfield/sphere/capsule/ellipsoid/cylinder/box/mesh/sdf). Export: writes `Geom->type` |
+| type | SUPPORTED | Import: string -> enum (plane/hfield/sphere/capsule/ellipsoid/cylinder/box/mesh/sdf). Export: writes `Geom->type`. Primitives with a dedicated UE visualizer class: box (`UMjBox`), sphere (`UMjSphere`), cylinder (`UMjCylinder`), capsule (`UMjCapsule`, composite of engine cylinder + two sphere caps). Other types (ellipsoid, plane, hfield, sdf) use the base `UMjGeom` without a visualizer mesh. |
 | contype | SUPPORTED | Import: `ReadAttrInt`. Export: `Geom->contype` |
 | conaffinity | SUPPORTED | Import: `ReadAttrInt`. Export: `Geom->conaffinity` |
 | condim | SUPPORTED | Import: `ReadAttrInt`. Export: `Geom->condim` |

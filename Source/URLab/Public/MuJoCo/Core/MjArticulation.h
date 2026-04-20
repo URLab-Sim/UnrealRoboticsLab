@@ -396,6 +396,13 @@ protected:
     TMap<int32, UMjTendon*>   TendonIdMap;
     TMap<int32, UMjActuator*> ActuatorIdMap;
 
+    /** Controller cached at PostSetup (game thread) so ApplyControls can
+     *  read it from the physics thread without iterating OwnedComponents —
+     *  that iteration races against game-thread component mutations (e.g.
+     *  the auto-created UMjTwistController) and corrupts nearby heap state. */
+    UPROPERTY(Transient)
+    class UMjArticulationController* CachedController = nullptr;
+
 public:    
     virtual void Tick(float DeltaTime) override;
 

@@ -26,6 +26,11 @@ void FMuJoCoOptions::ApplyToSpec(mjSpec* Spec) const
 {
     if (!Spec) return;
 
+    if (bOverride_MemoryMB)
+    {
+        Spec->memory = static_cast<mjtSize>(MemoryMB) * 1024 * 1024;
+    }
+
     Spec->option.timestep = Timestep;
 
     // Gravity: UE cm/s² → MuJoCo m/s², negate Y for handedness

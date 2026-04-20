@@ -22,20 +22,30 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "CoreMinimal.h"
 #include "MuJoCo/Net/MjZmqComponent.h"
 #include "ZmqSensorBroadcaster.generated.h"
+
+class AMjArticulation;
+class UMjComponent;
+class UMjTwistController;
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class URLAB_API UZmqSensorBroadcaster : public UMjZmqComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	UZmqSensorBroadcaster();
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Game-thread tick: builds the broadcast cache lazily. */
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
+		FActorComponentTickFunction* ThisTickFunction) override;
 
 	// ZMQ Settings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
@@ -45,9 +55,34 @@ public:
 	virtual void InitZmq() override;
 	virtual void ShutdownZmq() override;
 	virtual void PostStep(mjModel* m, mjData* d) override;
-    
+
 private:
 	void* ZmqContext = nullptr;
 	void* ZmqPublisher = nullptr;
 	int32 FrameCounter = 0;
+
+	/** Per-articulation snapshot built once on the game thread and read
+	 *  repeatedly from the physics thread in PostStep. Iterating
+	 *  OwnedComponents on the physics thread is unsafe (the game thread
+	 *  can mutate it during actor BeginPlay — e.g. auto-created twist
+	 *  controllers), and tripping the sparse-array range-for ensure
+	 *  corrupts nearby heap state, producing seemingly-unrelated RHI
+	 *  crashes further along. */
+	struct FArticulationBroadcastRecord
+	{
+		AMjArticulation* Articulation = nullptr;
+		FString ArticPrefix;
+		TArray<UMjComponent*> TelemetryComponents;
+		UMjTwistController* TwistCtrl = nullptr;
+	};
+
+	/** Populated once on the game thread. bCacheBuilt (with acquire/release
+	 *  ordering) publishes visibility to the physics thread. No mid-play
+	 *  refresh — broadcaster assumes articulations and their components are
+	 *  stable across a single play session. */
+	TArray<FArticulationBroadcastRecord> CachedRecords;
+	std::atomic<bool> bCacheBuilt { false };
+
+	/** Game-thread-only: enumerate articulations + components into CachedRecords. */
+	void BuildBroadcastCacheGameThread();
 };

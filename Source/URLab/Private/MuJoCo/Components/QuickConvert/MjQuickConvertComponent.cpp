@@ -296,7 +296,6 @@ void UMjQuickConvertComponent::UpdateUETransform() {
 
         m_actor->SetActorRotation(_quat);
         m_actor->SetActorLocation(_pos);
-
 }
 
 void UMjQuickConvertComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) {
@@ -306,7 +305,7 @@ void UMjQuickConvertComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
     {
         UpdateUETransform();
     }
-    
+
     if (m_debug_meshes)
     {
         DrawDebugCollision();

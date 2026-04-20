@@ -31,20 +31,68 @@
 
 UZmqSensorBroadcaster::UZmqSensorBroadcaster()
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	// We need a game-thread tick to build the broadcast cache lazily after all
+	// articulations have finished BeginPlay (their component lists need to be
+	// stable before we snapshot them).
+	PrimaryComponentTick.bCanEverTick = true;
 }
 
 void UZmqSensorBroadcaster::BeginPlay()
 {
 	Super::BeginPlay();
-	// ZMQ Init is deferred to the async thread
+	// ZMQ Init is deferred to the async thread. The broadcast cache is built
+	// on the first TickComponent — can't build it here because sibling
+	// articulations may not have run BeginPlay yet (actor order is undefined).
 }
 
 void UZmqSensorBroadcaster::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Make sure the physics thread stops reading our cache before we let the
+	// manager tear down the articulations.
+	bCacheBuilt.store(false, std::memory_order_release);
+	CachedRecords.Reset();
 	Super::EndPlay(EndPlayReason);
-	// Cleanup happens via ShutdownZmq called by manager, 
+	// ZMQ cleanup happens via ShutdownZmq called by manager,
 	// or in destructor if needed, but manager thread is safest.
+}
+
+void UZmqSensorBroadcaster::TickComponent(float DeltaTime, ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	if (!bCacheBuilt.load(std::memory_order_acquire))
+	{
+		BuildBroadcastCacheGameThread();
+	}
+}
+
+void UZmqSensorBroadcaster::BuildBroadcastCacheGameThread()
+{
+	AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+	if (!Manager) return;
+
+	TArray<AMjArticulation*> Articulations = Manager->GetAllArticulations();
+	if (Articulations.Num() == 0) return;  // wait until at least one is live
+
+	CachedRecords.Reset(Articulations.Num());
+	for (AMjArticulation* Art : Articulations)
+	{
+		if (!Art) continue;
+
+		FArticulationBroadcastRecord Rec;
+		Rec.Articulation = Art;
+		Rec.ArticPrefix  = Art->GetName();
+		Art->GetComponents<UMjComponent>(Rec.TelemetryComponents);
+		Rec.TwistCtrl    = Art->FindComponentByClass<UMjTwistController>();
+		CachedRecords.Add(MoveTemp(Rec));
+	}
+
+	// Release-store publishes the fully-populated array to the physics thread.
+	bCacheBuilt.store(true, std::memory_order_release);
+
+	UE_LOG(LogURLabNet, Log,
+		TEXT("ZmqSensorBroadcaster: built broadcast cache (%d articulations)."),
+		CachedRecords.Num());
 }
 
 void UZmqSensorBroadcaster::InitZmq()
@@ -96,68 +144,58 @@ void UZmqSensorBroadcaster::PostStep(mjModel* m, mjData* d)
 		if (!bIsInitialized) return;
 	}
 
-	AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
-	if (!Manager)
+	// Acquire-load: if the game thread hasn't published the cache yet, skip
+	// this step. We DO NOT touch AActor::OwnedComponents from this thread.
+	if (!bCacheBuilt.load(std::memory_order_acquire))
 	{
-		if (bShouldLog) UE_LOG(LogURLabNet, Warning, TEXT("ZmqSensorBroadcaster: Parent is not AAMuJoCoManager!"));
 		return;
 	}
 
 	int BroadcastCount = 0;
-	TArray<AMjArticulation*> Articulations = Manager->GetAllArticulations();
 
 	if (bShouldLog)
 	{
-		UE_LOG(LogURLabNet, Log, TEXT("ZmqSensorBroadcaster PostStep: Found %d Articulations on Manager"), Articulations.Num());
+		UE_LOG(LogURLabNet, Verbose, TEXT("ZmqSensorBroadcaster PostStep: broadcasting %d cached articulations"),
+			CachedRecords.Num());
 	}
 
-	for (AMjArticulation* Articulation : Articulations)
+	for (const FArticulationBroadcastRecord& Rec : CachedRecords)
 	{
-		if (!Articulation) continue;
-		FString ArticPrefix = Articulation->GetName();
+		if (!Rec.Articulation) continue;
 
-		// Get all components that can serialize telemetry
-		TArray<UMjComponent*> Components;
-		Articulation->GetComponents<UMjComponent>(Components);
-
-		for (UMjComponent* Comp : Components)
+		for (UMjComponent* Comp : Rec.TelemetryComponents)
 		{
-			if (Comp->bIsDefault) continue;
+			if (!Comp || Comp->bIsDefault) continue;
 
 			FString TopicSuffix = Comp->GetTelemetryTopicName();
 			if (TopicSuffix.IsEmpty()) continue;
 
-			FString FullTopic = FString::Printf(TEXT("%s/%s"), *ArticPrefix, *TopicSuffix);
+			FString FullTopic = FString::Printf(TEXT("%s/%s"), *Rec.ArticPrefix, *TopicSuffix);
 
 			FBufferArchive Payload;
 			Comp->BuildBinaryPayload(Payload);
 
 			if (Payload.Num() > 0)
 			{
-				// Send Topic (ZMQ_SNDMORE)
 				zmq_send(ZmqPublisher, TCHAR_TO_UTF8(*FullTopic), FullTopic.Len(), ZMQ_SNDMORE);
-				// Send Binary Payload
 				zmq_send(ZmqPublisher, Payload.GetData(), Payload.Num(), 0);
 				BroadcastCount++;
 			}
 		}
 
-		// Broadcast twist commands if a TwistController is present
-		UMjTwistController* TwistCtrl = Articulation->FindComponentByClass<UMjTwistController>();
-		if (TwistCtrl)
+		if (Rec.TwistCtrl)
 		{
-			FVector Twist = TwistCtrl->GetTwist();
-			FString TwistTopic = FString::Printf(TEXT("%s/twist"), *ArticPrefix);
+			FVector Twist = Rec.TwistCtrl->GetTwist();
+			FString TwistTopic = FString::Printf(TEXT("%s/twist"), *Rec.ArticPrefix);
 			float TwistData[3] = { (float)Twist.X, (float)Twist.Y, (float)Twist.Z };
 			zmq_send(ZmqPublisher, TCHAR_TO_UTF8(*TwistTopic), TwistTopic.Len(), ZMQ_SNDMORE);
 			zmq_send(ZmqPublisher, TwistData, sizeof(TwistData), 0);
 			BroadcastCount++;
 
-			// Broadcast action bitmask if any keys are pressed
-			int32 Actions = TwistCtrl->GetActiveActions();
+			int32 Actions = Rec.TwistCtrl->GetActiveActions();
 			if (Actions != 0)
 			{
-				FString ActionTopic = FString::Printf(TEXT("%s/actions"), *ArticPrefix);
+				FString ActionTopic = FString::Printf(TEXT("%s/actions"), *Rec.ArticPrefix);
 				zmq_send(ZmqPublisher, TCHAR_TO_UTF8(*ActionTopic), ActionTopic.Len(), ZMQ_SNDMORE);
 				zmq_send(ZmqPublisher, &Actions, sizeof(Actions), 0);
 				BroadcastCount++;
@@ -171,6 +209,6 @@ void UZmqSensorBroadcaster::PostStep(mjModel* m, mjData* d)
 	}
 	else if (bShouldLog)
 	{
-		UE_LOG(LogURLabNet, Log, TEXT("ZmqSensorBroadcaster: successfully broadcast %d messages to ZMQ."), BroadcastCount);
+		UE_LOG(LogURLabNet, Verbose, TEXT("ZmqSensorBroadcaster: successfully broadcast %d messages to ZMQ."), BroadcastCount);
 	}
 }

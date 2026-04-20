@@ -28,13 +28,107 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "HAL/FileManager.h"
+#include "Async/Future.h"
 #include "Misc/Paths.h"
 #include "XmlFile.h"
 #include "Internationalization/Regex.h"
 #include "Utils/URLabLogging.h"
+#include <atomic>
 #if WITH_EDITOR
 #include "Misc/MessageDialog.h"
 #endif
+
+// Installed as mju_user_error / mju_user_warning so MuJoCo's fatal-error
+// path logs via UE_LOG instead of calling exit(1). Without this, any MuJoCo
+// internal invariant violation (e.g. "mj_sleep: found sleeping tree N in
+// island M" on flex × free-body + SLEEP + MULTICCD) terminates the process:
+// exit() unwinds every live FRHIBreadcrumbEventManual's TOptional across
+// threads and trips the !Node assertion, killing the editor. Messages are
+// deduplicated + throttled so pathological per-step errors can't flood the
+// log at step rate.
+static FCriticalSection GMujocoLogMutex;
+static TMap<FString, int64> GMujocoMsgHistory;  // message text -> next step count at which to log
+static std::atomic<int64>   GMujocoMsgStepCounter{0};
+
+static void URLab_LogMujocoMessage(const TCHAR* Severity, const char* Msg, ELogVerbosity::Type Verbosity)
+{
+    const FString Text = Msg ? FString(UTF8_TO_TCHAR(Msg)) : FString(TEXT("(null)"));
+    const int64 Step = GMujocoMsgStepCounter.fetch_add(1, std::memory_order_relaxed);
+
+    int64 FirstHitStep = -1;
+    int64 HitCountSinceLastLog = 0;
+    {
+        FScopeLock Lock(&GMujocoLogMutex);
+        int64* NextLog = GMujocoMsgHistory.Find(Text);
+        if (!NextLog)
+        {
+            // First occurrence — log it and start counting future hits.
+            GMujocoMsgHistory.Add(Text, Step + 500);  // log again after 500 more messages
+            FirstHitStep = Step;
+        }
+        else if (Step >= *NextLog)
+        {
+            HitCountSinceLastLog = 500;  // approx — we don't track exact
+            *NextLog = Step + 500;
+            FirstHitStep = Step;
+        }
+    }
+
+    if (FirstHitStep >= 0)
+    {
+        if (HitCountSinceLastLog > 0)
+        {
+            UE_LOG(LogURLab, Warning, TEXT("[MuJoCo %s x~%lld] %s"), Severity, (long long)HitCountSinceLastLog, *Text);
+        }
+        else
+        {
+            if (Verbosity == ELogVerbosity::Error)
+            {
+                UE_LOG(LogURLab, Error, TEXT("[MuJoCo %s] %s"), Severity, *Text);
+            }
+            else
+            {
+                UE_LOG(LogURLab, Warning, TEXT("[MuJoCo %s] %s"), Severity, *Text);
+            }
+        }
+    }
+}
+
+static void URLab_OnMujocoError(const char* Msg)
+{
+    URLab_LogMujocoMessage(TEXT("fatal"), Msg, ELogVerbosity::Error);
+}
+
+static void URLab_OnMujocoWarning(const char* Msg)
+{
+    URLab_LogMujocoMessage(TEXT("warn"), Msg, ELogVerbosity::Warning);
+}
+
+static bool GMujocoCallbacksInstalled = false;
+static void URLab_InstallMujocoCallbacks()
+{
+    if (GMujocoCallbacksInstalled) return;
+
+    // mujoco.dll is delay-loaded in URLab's Build.cs, and the linker refuses
+    // to bind data symbols through a delayed import. Resolve the two
+    // mju_user_* function pointers manually via GetDllExport.
+    void* Handle = FPlatformProcess::GetDllHandle(TEXT("mujoco.dll"));
+    if (!Handle)
+    {
+        UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve mujoco.dll to install error callbacks"));
+        return;
+    }
+
+    using ErrorFnPtr = void(*)(const char*);
+    // GetDllExport(hMod, "mju_user_error") returns the address of the
+    // exported variable itself — i.e. an ErrorFnPtr*.
+    ErrorFnPtr* PErr  = reinterpret_cast<ErrorFnPtr*>(FPlatformProcess::GetDllExport(Handle, TEXT("mju_user_error")));
+    ErrorFnPtr* PWarn = reinterpret_cast<ErrorFnPtr*>(FPlatformProcess::GetDllExport(Handle, TEXT("mju_user_warning")));
+    if (PErr)  { *PErr  = &URLab_OnMujocoError;   }
+    if (PWarn) { *PWarn = &URLab_OnMujocoWarning; }
+    UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (err=%p warn=%p)"), (void*)PErr, (void*)PWarn);
+    GMujocoCallbacksInstalled = true;
+}
 
 UMjPhysicsEngine::UMjPhysicsEngine()
 {
@@ -43,6 +137,8 @@ UMjPhysicsEngine::UMjPhysicsEngine()
     Options.bOverride_Integrator = true;
     Options.Integrator = EMjIntegrator::ImplicitFast;
     ControlSource = EControlSource::ZMQ;
+
+    URLab_InstallMujocoCallbacks();
 }
 
 void UMjPhysicsEngine::PreCompile()
@@ -237,7 +333,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 
         while (true)
         {
-            double LoopStartTime = FPlatformTime::Seconds();
+            const double LoopStartTime = FPlatformTime::Seconds();
 
             if (bShouldStopTask)
                 break;
@@ -283,7 +379,6 @@ void UMjPhysicsEngine::RunMujocoAsync()
                     }
                 }
 
-                // Pre-step callbacks (replaces direct ZmqComponent->PreStep calls)
                 for (const FPhysicsCallback& Cb : PreStepCallbacks)
                 {
                     Cb(m_model, m_data);
@@ -302,13 +397,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
                         mj_step(m_model, m_data);
                 }
 
-                // Post-step callbacks (replaces direct ZmqComponent->PostStep calls)
                 for (const FPhysicsCallback& Cb : PostStepCallbacks)
                 {
                     Cb(m_model, m_data);
                 }
 
-                // Replay/Recording post-step callback
                 if (OnPostStep)
                 {
                     OnPostStep(m_model, m_data);
@@ -316,8 +409,8 @@ void UMjPhysicsEngine::RunMujocoAsync()
             } // FScopeLock released here
 
             // Spin-wait for precise timing at small timesteps
-            float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
-            double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
+            const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
+            const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
             while (FPlatformTime::Seconds() < TargetTime)
             {
                 FPlatformProcess::YieldThread();

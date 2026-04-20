@@ -38,6 +38,7 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeTryLock.h"
 #include "HAL/FileManager.h"
 #include "Interfaces/IPluginManager.h"
 
@@ -205,11 +206,22 @@ void UMjFlexcomp::ImportFromXml(const FXmlNode* Node)
 
             FString IntStr = Child->GetAttribute(TEXT("internal"));
             if (!IntStr.IsEmpty()) { bInternal = IntStr.ToBool(); bOverride_Internal = true; }
+
+            MjXmlUtils::ReadAttrFloatArray(Child, TEXT("friction"), Friction, bOverride_Friction);
+            MjXmlUtils::ReadAttrFloat     (Child, TEXT("solmix"),   SolMix,   bOverride_SolMix);
+            MjXmlUtils::ReadAttrFloatArray(Child, TEXT("solref"),   ContactSolRef, bOverride_ContactSolRef);
+            MjXmlUtils::ReadAttrFloatArray(Child, TEXT("solimp"),   ContactSolImp, bOverride_ContactSolImp);
         }
         else if (ChildTag == TEXT("edge"))
         {
             MjXmlUtils::ReadAttrFloat(Child, TEXT("stiffness"), EdgeStiffness, bOverride_EdgeStiffness);
-            MjXmlUtils::ReadAttrFloat(Child, TEXT("damping"), EdgeDamping, bOverride_EdgeDamping);
+            MjXmlUtils::ReadAttrFloat(Child, TEXT("damping"),   EdgeDamping,   bOverride_EdgeDamping);
+
+            FString EqStr = Child->GetAttribute(TEXT("equality"));
+            if (!EqStr.IsEmpty()) { bEdgeEquality = EqStr.ToBool(); bOverride_EdgeEquality = true; }
+
+            MjXmlUtils::ReadAttrFloatArray(Child, TEXT("solref"), EdgeSolRef, bOverride_EdgeSolRef);
+            MjXmlUtils::ReadAttrFloatArray(Child, TEXT("solimp"), EdgeSolImp, bOverride_EdgeSolImp);
         }
         else if (ChildTag == TEXT("elasticity"))
         {
@@ -459,6 +471,18 @@ FString UMjFlexcomp::BuildFlexcompXml(const FString& MeshAssetName) const
     // and only emit the overridden attributes inside.
     FString SubElements;
 
+    // Small helper: join a float array into a space-separated string.
+    auto JoinFloats = [](const TArray<float>& Arr) -> FString
+    {
+        FString Out;
+        for (int32 i = 0; i < Arr.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%f"), Arr[i]);
+        }
+        return Out;
+    };
+
     // <contact>
     {
         FString ContactAttrs;
@@ -480,6 +504,14 @@ FString UMjFlexcomp::BuildFlexcompXml(const FString& MeshAssetName) const
         {
             ContactAttrs += FString::Printf(TEXT(" internal=\"%s\""), bInternal ? TEXT("true") : TEXT("false"));
         }
+        if (bOverride_Friction && Friction.Num() > 0)
+            ContactAttrs += FString::Printf(TEXT(" friction=\"%s\""), *JoinFloats(Friction));
+        if (bOverride_SolMix)
+            ContactAttrs += FString::Printf(TEXT(" solmix=\"%f\""), SolMix);
+        if (bOverride_ContactSolRef && ContactSolRef.Num() > 0)
+            ContactAttrs += FString::Printf(TEXT(" solref=\"%s\""), *JoinFloats(ContactSolRef));
+        if (bOverride_ContactSolImp && ContactSolImp.Num() > 0)
+            ContactAttrs += FString::Printf(TEXT(" solimp=\"%s\""), *JoinFloats(ContactSolImp));
         if (!ContactAttrs.IsEmpty())
         {
             SubElements += FString::Printf(TEXT("<contact%s/>"), *ContactAttrs);
@@ -491,6 +523,12 @@ FString UMjFlexcomp::BuildFlexcompXml(const FString& MeshAssetName) const
         FString EdgeAttrs;
         if (bOverride_EdgeStiffness) EdgeAttrs += FString::Printf(TEXT(" stiffness=\"%f\""), EdgeStiffness);
         if (bOverride_EdgeDamping)   EdgeAttrs += FString::Printf(TEXT(" damping=\"%f\""), EdgeDamping);
+        if (bOverride_EdgeEquality)
+            EdgeAttrs += FString::Printf(TEXT(" equality=\"%s\""), bEdgeEquality ? TEXT("true") : TEXT("false"));
+        if (bOverride_EdgeSolRef && EdgeSolRef.Num() > 0)
+            EdgeAttrs += FString::Printf(TEXT(" solref=\"%s\""), *JoinFloats(EdgeSolRef));
+        if (bOverride_EdgeSolImp && EdgeSolImp.Num() > 0)
+            EdgeAttrs += FString::Printf(TEXT(" solimp=\"%s\""), *JoinFloats(EdgeSolImp));
         if (!EdgeAttrs.IsEmpty())
         {
             SubElements += FString::Printf(TEXT("<edge%s/>"), *EdgeAttrs);
@@ -575,6 +613,12 @@ void UMjFlexcomp::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
     FString FlexcompXml = BuildFlexcompXml(MeshAssetName);
     FString FullXml = FString::Printf(
         TEXT("<mujoco><worldbody>%s</worldbody></mujoco>"), *FlexcompXml);
+
+    // Dump the exact fragment we hand to MuJoCo so we can verify
+    // override emission + see what the compile is actually seeing.
+    UE_LOG(LogURLab, Log,
+        TEXT("[MjFlexcomp] '%s' MJCF fragment:\n%s"),
+        *FlexName, *FlexcompXml);
 
     // 3. Parse into temp spec — MuJoCo expands the flexcomp macro
     char ErrBuf[1000] = "";
@@ -733,19 +777,23 @@ void UMjFlexcomp::UpdateProceduralMesh()
         ? DynamicMesh->GetAttachParent()->GetComponentTransform()
         : FTransform::Identity;
 
-    // Read welded flex positions (lock mutex to avoid torn reads from physics thread)
+    // Read welded flex positions under the physics mutex to avoid torn reads.
     TArray<FVector> WeldedPositions;
     WeldedPositions.SetNum(FlexVertNum);
 
     AAMjManager* Manager = AAMjManager::GetManager();
     UMjPhysicsEngine* Engine = Manager ? Manager->PhysicsEngine : nullptr;
+
     {
-        TOptional<FScopeLock> Lock;
-        if (Engine) Lock.Emplace(&Engine->CallbackMutex);
+        FScopeTryLock ScopeLock(Engine ? &Engine->CallbackMutex : nullptr);
+        if (Engine && !ScopeLock.IsLocked())
+        {
+            return;
+        }
         for (int32 i = 0; i < FlexVertNum; i++)
         {
-            int32 Idx = (FlexVertAdr + i) * 3;
-            FVector WorldPos = MjUtils::MjToUEPosition(&m_Data->flexvert_xpos[Idx]);
+            const int32 Idx = (FlexVertAdr + i) * 3;
+            const FVector WorldPos = MjUtils::MjToUEPosition(&m_Data->flexvert_xpos[Idx]);
             WeldedPositions[i] = ParentTransform.InverseTransformPosition(WorldPos);
         }
     }
@@ -754,8 +802,8 @@ void UMjFlexcomp::UpdateProceduralMesh()
     {
         for (int32 i = 0; i < NumRenderVerts; i++)
         {
-            int32 W = RawToWelded[i];
-            FVector P = (W >= 0 && W < FlexVertNum) ? WeldedPositions[W] : FVector::ZeroVector;
+            const int32 W = RawToWelded[i];
+            const FVector P = (W >= 0 && W < FlexVertNum) ? WeldedPositions[W] : FVector::ZeroVector;
             Mesh.SetVertex(i, FVector3d(P.X, P.Y, P.Z));
         }
     }, EDynamicMeshComponentRenderUpdateMode::NoUpdate);

@@ -314,10 +314,11 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
             RefreshHiddenComponentsFromSegPools();
         }
 
-        // Explicit capture each tick — bCaptureEveryFrame should handle this
-        // but calling it explicitly ensures the first frame fires even if
-        // the component was registered after the initial world tick.
-        CaptureComponent->CaptureScene();
+        // bCaptureEveryFrame (set by SetStreamingEnabled) drives the per-tick
+        // capture. Calling CaptureScene() again here is redundant — UE warns
+        // "Scene capture with bCaptureEveryFrame enabled was told to update —
+        // major inefficiency", and under sustained render pressure the doubled
+        // command submission can leave RHI frame breadcrumbs unbalanced.
     }
 
     // Check if an in-flight readback has completed

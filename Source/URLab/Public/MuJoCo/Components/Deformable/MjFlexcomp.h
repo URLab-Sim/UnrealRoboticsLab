@@ -185,6 +185,33 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Contact", meta=(EditCondition="bOverride_Internal"))
     bool bInternal = false;
 
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Contact", meta=(InlineEditConditionToggle))
+    bool bOverride_Friction = false;
+
+    /** Contact friction: {tangential, torsional, rolling}. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Contact", meta=(EditCondition="bOverride_Friction"))
+    TArray<float> Friction;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Contact", meta=(InlineEditConditionToggle))
+    bool bOverride_SolMix = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Contact", meta=(EditCondition="bOverride_SolMix"))
+    float SolMix = 1.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Contact", meta=(InlineEditConditionToggle))
+    bool bOverride_ContactSolRef = false;
+
+    /** Contact solref: {time_constant, damping_ratio}. Leave empty for MuJoCo defaults. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Contact", meta=(EditCondition="bOverride_ContactSolRef"))
+    TArray<float> ContactSolRef;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Contact", meta=(InlineEditConditionToggle))
+    bool bOverride_ContactSolImp = false;
+
+    /** Contact solimp: 5-element impedance vector. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Contact", meta=(EditCondition="bOverride_ContactSolImp"))
+    TArray<float> ContactSolImp;
+
     // --- Edge Properties ---
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Edge", meta=(InlineEditConditionToggle))
@@ -198,6 +225,27 @@ public:
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Edge", meta=(EditCondition="bOverride_EdgeDamping"))
     float EdgeDamping = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Edge", meta=(InlineEditConditionToggle))
+    bool bOverride_EdgeEquality = false;
+
+    /** Emit equality constraints per edge. Pairs with EdgeSolRef/EdgeSolImp. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Edge", meta=(EditCondition="bOverride_EdgeEquality"))
+    bool bEdgeEquality = false;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Edge", meta=(InlineEditConditionToggle))
+    bool bOverride_EdgeSolRef = false;
+
+    /** Edge solref: {time_constant, damping_ratio}. Only has effect when bEdgeEquality=true. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Edge", meta=(EditCondition="bOverride_EdgeSolRef"))
+    TArray<float> EdgeSolRef;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Edge", meta=(InlineEditConditionToggle))
+    bool bOverride_EdgeSolImp = false;
+
+    /** Edge solimp: 5-element impedance vector. Only has effect when bEdgeEquality=true. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Edge", meta=(EditCondition="bOverride_EdgeSolImp"))
+    TArray<float> EdgeSolImp;
 
     // --- Elasticity Properties ---
 

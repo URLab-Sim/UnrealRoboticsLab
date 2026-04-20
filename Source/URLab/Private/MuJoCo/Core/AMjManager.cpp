@@ -214,13 +214,31 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
     Super::EndPlay(EndPlayReason);
     if (Instance == this) Instance = nullptr;
 
-    // Signal the async thread to stop and wait for it to exit
+    // Signal the async thread to stop and wait for it to exit — but bound the
+    // wait. If mj_step is mid-call on a pathological flex state, the step can
+    // take many seconds (or effectively hang). An unbounded Wait() here would
+    // freeze the editor's PIE-stop; the user sees UE never coming back. With
+    // the timeout we instead detach: the async thread keeps running in the
+    // background until its current mj_step returns, then finds bShouldStopTask
+    // set and exits cleanly on its own. Cost is a one-time memory leak (we
+    // can't delete m_model / m_data while the thread may still read them).
+    bool bAsyncExited = true;
     if (PhysicsEngine)
     {
         PhysicsEngine->bShouldStopTask = true;
         if (PhysicsEngine->AsyncPhysicsFuture.IsValid())
         {
-            PhysicsEngine->AsyncPhysicsFuture.Wait();
+            constexpr double kShutdownTimeoutSec = 3.0;
+            bAsyncExited = PhysicsEngine->AsyncPhysicsFuture.WaitFor(
+                FTimespan::FromSeconds(kShutdownTimeoutSec));
+            if (!bAsyncExited)
+            {
+                UE_LOG(LogURLab, Warning,
+                    TEXT("Physics async thread did not exit within %.1fs — detaching. ")
+                    TEXT("mj_step is likely stuck; MuJoCo resources will leak for this session ")
+                    TEXT("to avoid a use-after-free in the still-running step."),
+                    kShutdownTimeoutSec);
+            }
         }
         PhysicsEngine->ClearCallbacks();
     }
@@ -239,8 +257,9 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
         }
     }
 
-    // Safe to delete MuJoCo resources — async thread has exited
-    if (PhysicsEngine)
+    // Only touch MuJoCo resources if the async thread actually exited — a
+    // detached thread may still be executing mj_step and reading these.
+    if (PhysicsEngine && bAsyncExited)
     {
         if (PhysicsEngine->m_data)
         {

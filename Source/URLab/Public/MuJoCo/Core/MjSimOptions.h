@@ -74,6 +74,15 @@ struct URLAB_API FMuJoCoOptions
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo Options", meta=(EditCondition="bOverride_Timestep"))
     float Timestep = 0.002f;
 
+    UPROPERTY(EditAnywhere, Category = "MuJoCo Options", meta=(InlineEditConditionToggle))
+    bool bOverride_MemoryMB = false;
+
+    /** @brief MuJoCo spec-level arena size in megabytes. Maps to
+     *  applied pre-compile (the unified arena is sized at mjData creation). */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo Options",
+        meta=(EditCondition="bOverride_MemoryMB", ClampMin="1"))
+    int32 MemoryMB = 100;
+
     // --- Physics Environment ---
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo Options", meta=(InlineEditConditionToggle))

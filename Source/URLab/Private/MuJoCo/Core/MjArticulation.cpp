@@ -611,11 +611,14 @@ void AMjArticulation::PostSetup(mjModel* Model, mjData* Data)
            *GetName(), *m_prefix, ActuatorIdMap.Num(), JointIdMap.Num(), SensorIdMap.Num(), BodyIdMap.Num(), TendonIdMap.Num());
 
     // Bind any articulation controller component (PD, passthrough, or user-custom)
-    if (UMjArticulationController* Ctrl = FindComponentByClass<UMjArticulationController>())
+    // and cache it so ApplyControls (physics thread) doesn't have to iterate
+    // OwnedComponents on every step — that race causes crashes under flex load.
+    CachedController = FindComponentByClass<UMjArticulationController>();
+    if (CachedController)
     {
-        Ctrl->Bind(m_model, m_data, ActuatorIdMap);
+        CachedController->Bind(m_model, m_data, ActuatorIdMap);
         UE_LOG(LogURLab, Log, TEXT("AMjArticulation::PostSetup - Bound controller '%s' with %d actuators"),
-               *Ctrl->GetClass()->GetName(), Ctrl->GetNumBindings());
+               *CachedController->GetClass()->GetName(), CachedController->GetNumBindings());
     }
 }
 
@@ -665,11 +668,12 @@ void AMjArticulation::ApplyControls()
         return;
     }
 
-    // Delegate to custom controller if present and active
-    UMjArticulationController* Ctrl = FindComponentByClass<UMjArticulationController>();
-    if (Ctrl && Ctrl->bEnabled && Ctrl->IsBound())
+    // Delegate to custom controller if present and active. Use the cached
+    // pointer from PostSetup — iterating OwnedComponents on the physics
+    // thread races against game-thread mutations and corrupts nearby heap.
+    if (CachedController && CachedController->bEnabled && CachedController->IsBound())
     {
-        Ctrl->ComputeAndApply(m_model, m_data, ControlSource);
+        CachedController->ComputeAndApply(m_model, m_data, ControlSource);
         return;
     }
 

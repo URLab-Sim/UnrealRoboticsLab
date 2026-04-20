@@ -33,6 +33,7 @@
 #include "XmlFile.h"
 #include "Internationalization/Regex.h"
 #include "Utils/URLabLogging.h"
+#include "Interfaces/IPluginManager.h"
 #include <atomic>
 #if WITH_EDITOR
 #include "Misc/MessageDialog.h"
@@ -127,6 +128,31 @@ static void URLab_InstallMujocoCallbacks()
     if (PErr)  { *PErr  = &URLab_OnMujocoError;   }
     if (PWarn) { *PWarn = &URLab_OnMujocoWarning; }
     UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (err=%p warn=%p)"), (void*)PErr, (void*)PWarn);
+
+    // MuJoCo ships OBJ and STL mesh decoding as separate mjpDecoder plugin DLLs
+    // (obj_decoder.dll, stl_decoder.dll) rather than building them into the core.
+    // Plugin DLLs must be loaded explicitly via mj_loadPluginLibrary (API added in
+    // MuJoCo 2.3.1) before any mj_compile call — without this, the codec registry
+    // is empty and mj_compile reports "no decoder found".
+    FString BinDir = IPluginManager::Get().FindPlugin(TEXT("UnrealRoboticsLab"))->GetBaseDir();
+    BinDir = FPaths::Combine(BinDir, TEXT("Binaries/Win64"));
+    BinDir = FPaths::ConvertRelativePathToFull(BinDir);
+
+    TArray<FString> CodecDlls = { TEXT("obj_decoder.dll"), TEXT("stl_decoder.dll") };
+    for (const FString& Dll : CodecDlls)
+    {
+        FString DllPath = FPaths::Combine(BinDir, Dll);
+        if (FPaths::FileExists(DllPath))
+        {
+            mj_loadPluginLibrary(TCHAR_TO_UTF8(*DllPath));
+            UE_LOG(LogURLab, Log, TEXT("[URLab] Loaded MuJoCo codec plugin %s"), *Dll);
+        }
+        else
+        {
+            UE_LOG(LogURLab, Warning, TEXT("[URLab] MuJoCo codec plugin not found: %s"), *DllPath);
+        }
+    }
+
     GMujocoCallbacksInstalled = true;
 }
 

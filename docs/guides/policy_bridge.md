@@ -29,17 +29,38 @@ The URLab Bridge is a separate companion repository (`urlab_bridge`) in the same
 
 ## Setup
 
-```bash
-cd Plugins/UnrealRoboticsLab/urlab_bridge
-uv python install 3.11
-uv venv --python 3.11 .venv
-uv pip install numpy pyzmq
+The bridge is a **separate repository** — <https://github.com/URLab-Sim/urlab_bridge>. Clone it anywhere you like; it does not need to live next to the URLab plugin. Uses [uv](https://docs.astral.sh/uv/) for Python env management; requires Python 3.11+.
+
+```powershell
+git clone https://github.com/URLab-Sim/urlab_bridge.git
+cd urlab_bridge
 ```
 
-For RL policy support (RoboJuDo):
-```bash
-uv pip install -e RoboJuDo
-uv pip install dearpygui opencv-python
+Minimum install (core dashboard + ZMQ — no policies):
+
+```powershell
+uv sync
+```
+
+That provisions a `.venv/`, pins Python 3.11+, and installs `pyzmq`, `numpy`, `opencv-python`, `dearpygui`.
+
+For RL policy support (adds `torch`, `onnxruntime`, `mujoco`, etc.):
+
+```powershell
+uv sync --extra policy
+uv pip install -e ./RoboJuDo
+```
+
+If the RoboJuDo install hangs (known uv/setuptools issue with its dynamic requirements resolution), use `--no-deps` since everything it needs is already in the `policy` extra, then add the two it uniquely needs:
+
+```powershell
+uv pip install --no-deps -e ./RoboJuDo
+uv pip install pygame pynput
+```
+
+PHC-dependent policies additionally need:
+
+```powershell
 cd RoboJuDo && git submodule update --init --recursive
 ```
 
@@ -72,23 +93,24 @@ zmq.send_control("my_robot_prefix", targets)
 zmq.close()
 ```
 
-## RoboJuDo Integration
+## Running
 
-For running pretrained RL policies, the bridge wraps [RoboJuDo](https://github.com/HansZ8/RoboJuDo) as the policy runtime.
+All three entry points go through `src/run.py`:
 
-**GUI:**
 ```powershell
-.venv\Scripts\activate
-$env:PYTHONPATH = "src"
-python src\urlab_policy\policy_gui.py
+# Dashboard (joint / sensor / camera viewer, actuator control, in-GUI policy runner)
+uv run src/run.py --ui
+
+# Headless policy loop
+uv run src/run.py --policy unitree_12dof --prefix g1
+
+# ZMQ smoke test — prints received joint messages for 10 s (no policy, no RoboJuDo)
+uv run src/run.py --test --prefix g1
 ```
 
-**CLI:**
-```bash
-python src/run_policy.py --policy unitree --prefix g1
-```
+Start URLab in PIE (unpause MuJoCo) before running any of them.
 
-Available policies are registered in `policy_registry.py`. Each entry defines the policy config class, environment config, DOF count, and controller type.
+Available policies are registered in `src/urlab_policy/policy_registry.py`. Each entry defines the policy config class, environment config, DOF count, and controller type. See the bridge's `README.md` for the current policy table.
 
 ### Go2 Walk-These-Ways Policy
 
@@ -130,9 +152,4 @@ Use `Scripts/clean_meshes.py` to convert meshes to GLB and resolve filename conf
 
 ## Debugging Tools
 
-| Script | Purpose |
-|--------|---------|
-| `zmq_visualizer_gui.py` | Standalone ZMQ state viewer with sliders |
-| `policy_gui.py` | Full policy runner with visualization |
-| `test_native_mujoco.py` | Run policy in native MuJoCo viewer (ground truth) |
-| `test_compare_targets.py` | Log targets for native vs Unreal comparison |
+The dashboard (`uv run src/run.py --ui`) is the primary diagnostic surface — it shows joint states, sensor readouts, camera feeds, and provides actuator sliders. For headless smoke-testing, `--test` prints raw ZMQ messages. For running a specific policy headlessly, `--policy`. See the bridge's `README.md` for the full flag list.

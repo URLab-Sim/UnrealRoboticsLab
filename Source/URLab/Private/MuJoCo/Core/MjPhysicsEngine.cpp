@@ -204,6 +204,14 @@ void UMjPhysicsEngine::Compile()
 {
     PreCompile();
 
+    // mjs_attach merges the body tree but silently drops the child spec's
+    // option block. Apply the articulation's SimOptions (parsed from the XML's
+    // <option> tag) directly to the root spec so they are baked into the model.
+    if (m_articulations.Num() > 0 && m_articulations[0])
+    {
+        m_articulations[0]->SimOptions.ApplyToSpec(m_spec);
+    }
+
     UE_LOG(LogURLab, Log, TEXT("Compiling MuJoCo model"));
     m_LastCompileError.Empty();
     m_model = mj_compile(m_spec, &m_vfs);

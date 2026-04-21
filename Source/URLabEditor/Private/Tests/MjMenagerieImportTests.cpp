@@ -97,6 +97,78 @@ bool FMjImportMenagerieH1::RunTest(const FString& Parameters)
 }
 
 // ============================================================================
+// URLab.Import.MenagerieVX300s
+//   Imports the Trossen VX300s from disk and verifies all 7 actuators survive
+//   the compile. This is the canonical regression for the Default-class /
+//   joint-name collision bug — vx300s.xml pairs a <default class="waist">
+//   with a <joint name="waist"> and a <position joint="waist">, and before
+//   the fix URLab's importer silently dropped every actuator (m->nu == 0)
+//   because the joint's UE variable name was disambiguated to "waist1" while
+//   the actuator's target kept the raw "waist" reference.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportMenagerieVX300s,
+    "URLab.Import.MenagerieVX300s",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportMenagerieVX300s::RunTest(const FString& Parameters)
+{
+    FString MenageriePath = FPlatformMisc::GetEnvironmentVariable(TEXT("MUJOCO_MENAGERIE_PATH"));
+    if (MenageriePath.IsEmpty())
+    {
+        AddWarning(TEXT("Skipping: MUJOCO_MENAGERIE_PATH env var not set"));
+        return true;
+    }
+    FString XmlPath = FPaths::Combine(MenageriePath, TEXT("trossen_vx300s/vx300s.xml"));
+
+    if (!FPaths::FileExists(XmlPath))
+    {
+        AddWarning(FString::Printf(TEXT("Skipping: XML not found at %s"), *XmlPath));
+        return true;
+    }
+
+    FMjXmlImportSession S;
+    if (!S.InitFromFile(XmlPath))
+    {
+        AddError(FString::Printf(TEXT("InitFromFile failed: %s"), *S.LastError));
+        S.Cleanup();
+        return false;
+    }
+
+    AddInfo(FString::Printf(TEXT("Native MuJoCo: %d bodies, %d joints, %d actuators, %d geoms"),
+        (int32)S.NativeBodyCount, (int32)S.NativeJointCount, (int32)S.NativeActuatorCount, (int32)S.NativeGeomCount));
+
+    // VX300s: 7 actuators (waist, shoulder, elbow, forearm_roll, wrist_angle, wrist_rotate, gripper)
+    TestEqual(TEXT("Native MuJoCo should report 7 actuators for vx300s"),
+        (int32)S.NativeActuatorCount, 7);
+
+    if (!S.Compile())
+    {
+        AddError(FString::Printf(TEXT("Compile failed: %s"), *S.LastError));
+        S.Cleanup();
+        return false;
+    }
+
+    mjModel* M = S.Model();
+    if (!TestNotNull(TEXT("Model valid"), M))
+    {
+        S.Cleanup();
+        return false;
+    }
+
+    AddInfo(FString::Printf(TEXT("URLab compiled: %d bodies, %d joints, %d actuators, %d geoms"),
+        M->nbody, M->njnt, M->nu, M->ngeom));
+
+    // THE critical assertion: actuators survived the Default-class name collision.
+    TestEqual(TEXT("Compiled actuator count matches native (no silent actuator drop)"),
+        (int32)M->nu, (int32)S.NativeActuatorCount);
+    TestEqual(TEXT("Compiled joint count matches native"),
+        (int32)M->njnt, (int32)S.NativeJointCount);
+
+    S.Cleanup();
+    return true;
+}
+
+// ============================================================================
 // URLab.Import.DefaultFromTo
 //   Tests that geoms inheriting fromto from default classes compile correctly.
 //   This is the H1 foot geom pattern: <geom class="foot1" /> inherits

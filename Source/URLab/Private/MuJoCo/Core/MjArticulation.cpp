@@ -1295,13 +1295,19 @@ void AMjArticulation::OnConstruction(const FTransform& Transform)
 
 void AMjArticulation::OnBlueprintCompiled(UBlueprint* Blueprint)
 {
-    // Sync MjDefault ClassName and ParentClassName from SCS hierarchy
+    // Sync MjDefault ClassName and ParentClassName from SCS hierarchy, and
+    // auto-populate MjName on user-authored non-Default components from their
+    // SCS variable name when it hasn't been set explicitly (e.g. by the XML
+    // importer, which writes the raw MJCF name= attribute into MjName).
     if (Blueprint && Blueprint->SimpleConstructionScript)
     {
         USimpleConstructionScript* SCS = Blueprint->SimpleConstructionScript;
         for (USCS_Node* Node : SCS->GetAllNodes())
         {
-            if (UMjDefault* DefComp = Cast<UMjDefault>(Node->ComponentTemplate))
+            UMjComponent* MjComp = Cast<UMjComponent>(Node->ComponentTemplate);
+            if (!MjComp) continue;
+
+            if (UMjDefault* DefComp = Cast<UMjDefault>(MjComp))
             {
                 // Sync ClassName from variable name
                 FString VarName = Node->GetVariableName().ToString();
@@ -1327,6 +1333,20 @@ void AMjArticulation::OnBlueprintCompiled(UBlueprint* Blueprint)
                         // Parent is not a UMjDefault (e.g. DefaultsRoot) — no parent class
                         DefComp->ParentClassName.Empty();
                     }
+                }
+            }
+            else
+            {
+                // Non-Default MjComponent: sync MjName from SCS variable name
+                // only when empty. Imported components have MjName set from
+                // the MJCF name= attribute and must not be overwritten here,
+                // because SCS uniqueness may have disambiguated the variable
+                // name (e.g. joint "waist" -> "waist1" when a Default class
+                // already claimed "waist"), and MjName is the source of truth
+                // for the MuJoCo spec lookup.
+                if (MjComp->MjName.IsEmpty())
+                {
+                    MjComp->MjName = Node->GetVariableName().ToString();
                 }
             }
         }

@@ -3,6 +3,17 @@ INSTALL_DIR=${1:-"../install"}
 BUILD_TYPE=${2:-"Release"}
 PINNED_COMMIT="7d95ac02"  # Pin to tested commit (v4.3.5+)
 
+# Resolve INSTALL_DIR to an absolute per-package path. URLab.Build.cs expects
+# headers/libs/dlls under install/<dep>/, matching the .ps1 layout.
+INSTALL_DIR="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")/libzmq"
+
+# Wipe any prior install of THIS package only — cmake --install is additive
+# and would otherwise leave stale files behind across version bumps.
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Removing previous install at $INSTALL_DIR"
+    rm -rf "$INSTALL_DIR"
+fi
+
 REPO_DIR="src"
 if [ ! -d "$REPO_DIR" ]; then
     echo "Cloning libzmq (pinned: $PINNED_COMMIT)..."

@@ -1,35 +1,48 @@
 #!/bin/bash
 INSTALL_DIR=${1:-"../install"}
 BUILD_TYPE=${2:-"Release"}
-PINNED_COMMIT="7d95ac02"  # Pin to tested commit (v4.3.5+)
+NO_SUBMODULE_SYNC=0
+for arg in "$@"; do
+    if [ "$arg" = "--no-submodule-sync" ]; then NO_SUBMODULE_SYNC=1; fi
+done
 
 # Resolve INSTALL_DIR to an absolute per-package path. URLab.Build.cs expects
 # headers/libs/dlls under install/<dep>/, matching the .ps1 layout.
 INSTALL_DIR="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")/libzmq"
 
-# Wipe any prior install of THIS package only — cmake --install is additive
+# Wipe any prior install of THIS package only - cmake --install is additive
 # and would otherwise leave stale files behind across version bumps.
 if [ -d "$INSTALL_DIR" ]; then
     echo "Removing previous install at $INSTALL_DIR"
     rm -rf "$INSTALL_DIR"
 fi
 
+# Sync libzmq submodule to the SHA URLab expects (see MuJoCo/build.sh for
+# rationale). Pass --no-submodule-sync to keep local edits in src/.
 REPO_DIR="src"
-if [ ! -d "$REPO_DIR" ]; then
-    echo "Cloning libzmq (pinned: $PINNED_COMMIT)..."
-    git clone https://github.com/zeromq/libzmq "$REPO_DIR"
-    cd "$REPO_DIR"
-    git checkout "$PINNED_COMMIT"
-    cd ..
+if [ "$NO_SUBMODULE_SYNC" = "1" ]; then
+    echo "Skipping submodule sync (--no-submodule-sync). Using whatever is checked out in $REPO_DIR."
+    if [ ! -f "$REPO_DIR/CMakeLists.txt" ]; then
+        echo "libzmq submodule not initialised at $REPO_DIR but --no-submodule-sync was set. Drop the flag or run 'git submodule update --init --recursive -- $REPO_DIR' manually." >&2
+        exit 1
+    fi
 else
-    echo "libzmq source already exists at '$REPO_DIR'. Skipping clone."
-    echo "  To rebuild from scratch, delete '$REPO_DIR/' and re-run."
+    echo "Syncing libzmq submodule to URLab's pinned commit..."
+    # --force for parity with MuJoCo/CoACD (see MuJoCo/build.sh for rationale).
+    git submodule update --init --recursive --force -- "$REPO_DIR"
+    if [ $? -ne 0 ]; then
+        echo "git submodule update failed for libzmq - is this a git checkout? Pass --no-submodule-sync to skip." >&2
+        exit 1
+    fi
+fi
+
+INSTALLED_SHA=$(git -C "$REPO_DIR" rev-parse HEAD)
+if [ -z "$INSTALLED_SHA" ]; then
+    echo "Failed to read HEAD SHA from $REPO_DIR - is the submodule initialised?" >&2
+    exit 1
 fi
 
 cd "$REPO_DIR"
-
-echo "Initializing submodules..."
-git submodule update --init --recursive
 
 mkdir -p build
 cd build
@@ -47,3 +60,7 @@ echo "Installing libzmq..."
 cmake --install . --config "$BUILD_TYPE"
 
 cd ../..
+
+# Record the exact source SHA we just installed from (see MuJoCo/build.ps1).
+echo "$INSTALLED_SHA" > "$INSTALL_DIR/INSTALLED_SHA.txt"
+echo "Recorded INSTALLED_SHA=$INSTALLED_SHA at $INSTALL_DIR/INSTALLED_SHA.txt"

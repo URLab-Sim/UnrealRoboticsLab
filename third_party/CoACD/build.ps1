@@ -1,6 +1,7 @@
 param(
     [string]$InstallDir = "../install",
-    [string]$BuildType = "Release"
+    [string]$BuildType = "Release",
+    [switch]$NoSubmoduleSync
 )
 
 # Convert to absolute path and normalize for CMake
@@ -14,31 +15,37 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
-# Wipe any prior install of THIS package only — cmake --install is additive
+# Wipe any prior install of THIS package only - cmake --install is additive
 # and would otherwise leave stale files behind across version bumps.
 if (Test-Path $InstallDir) {
     Write-Host "Removing previous install at $InstallDir" -ForegroundColor Gray
     Remove-Item -Recurse -Force $InstallDir
 }
 
-$PinnedCommit = "c7436bf"  # Pin to tested commit (CDT include path fix + unbundled 3rd party support)
-
+# Sync CoACD submodule to the SHA URLab expects. Unconditional by design
+# (see MuJoCo/build.ps1 for the rationale). Pass -NoSubmoduleSync to keep
+# local edits in src/.
 $RepoDir = "src"
-if (-not (Test-Path $RepoDir)) {
-    Write-Host "Cloning CoACD (pinned: $PinnedCommit)..." -ForegroundColor Gray
-    git clone https://github.com/SarahWeiii/CoACD $RepoDir
-    Push-Location $RepoDir
-    git checkout $PinnedCommit
-    Pop-Location
+if ($NoSubmoduleSync) {
+    Write-Host "Skipping submodule sync (-NoSubmoduleSync). Using whatever is checked out in $RepoDir." -ForegroundColor Yellow
+    if (-not (Test-Path (Join-Path $RepoDir "CMakeLists.txt"))) {
+        throw "CoACD submodule not initialised at $RepoDir but -NoSubmoduleSync was set. Drop the flag or run 'git submodule update --init --recursive -- $RepoDir' manually."
+    }
 } else {
-    Write-Host "CoACD source already exists at '$RepoDir'. Skipping clone." -ForegroundColor Yellow
-    Write-Host "  To rebuild from scratch, delete '$RepoDir/' and re-run." -ForegroundColor Yellow
+    Write-Host "Syncing CoACD submodule to URLab's pinned commit..." -ForegroundColor Gray
+    # --force is required: this script intentionally overlays
+    # ../CoACD_custom/{CMakeLists.txt,cmake/*} onto src/ below, so the working
+    # tree is always dirty across runs. Without --force, the next URLab-side
+    # SHA bump would hit a checkout conflict here.
+    git submodule update --init --recursive --force -- $RepoDir
+    if ($LASTEXITCODE -ne 0) { throw "git submodule update failed for CoACD - is this a git checkout? Pass -NoSubmoduleSync to skip." }
 }
 
+# Capture the SHA we are about to build from (see MuJoCo/build.ps1).
+$InstalledSha = (git -C $RepoDir rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or -not $InstalledSha) { throw "Failed to read HEAD SHA from $RepoDir - is the submodule initialised?" }
+
 Push-Location $RepoDir
-Write-Host "Initializing submodules..." -ForegroundColor Gray
-git submodule update --init --recursive
-if ($LASTEXITCODE -ne 0) { Write-Warning "Submodule update failed for CoACD" }
 
 Write-Host "Applying custom CoACD configuration..." -ForegroundColor Gray
 Copy-Item -Path "../../CoACD_custom/CMakeLists.txt" -Destination "." -Force
@@ -81,3 +88,8 @@ if ($LASTEXITCODE -ne 0) { throw "Installation failed for CoACD" }
 # We'll check if spdlog and others are in the install folder.
 
 Pop-Location
+
+# Record the exact source SHA we just installed from (see MuJoCo/build.ps1).
+$ShaFile = Join-Path $InstallDir "INSTALLED_SHA.txt"
+[System.IO.File]::WriteAllText($ShaFile, $InstalledSha)
+Write-Host "Recorded INSTALLED_SHA=$InstalledSha at $ShaFile" -ForegroundColor Gray

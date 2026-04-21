@@ -14,6 +14,13 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
+# Wipe any prior install of THIS package only — cmake --install is additive
+# and would otherwise leave stale files behind across version bumps.
+if (Test-Path $InstallDir) {
+    Write-Host "Removing previous install at $InstallDir" -ForegroundColor Gray
+    Remove-Item -Recurse -Force $InstallDir
+}
+
 $PinnedCommit = "7d95ac02"  # Pin to tested commit (v4.3.5+)
 
 $RepoDir = "src"

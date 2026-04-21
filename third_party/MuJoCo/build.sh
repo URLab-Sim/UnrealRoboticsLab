@@ -3,6 +3,20 @@ INSTALL_DIR=${1:-"../install"}
 BUILD_TYPE=${2:-"Release"}
 PINNED_COMMIT="47264877"  # Pin to tested commit (MuJoCo 3.7.0 dev, polynomial stiffness/damping)
 
+# Resolve INSTALL_DIR to an absolute per-package path. URLab.Build.cs expects
+# headers/libs/dlls under install/<dep>/, matching the .ps1 layout.
+INSTALL_DIR="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")/MuJoCo"
+
+# Wipe any prior install of THIS package only. cmake --install is additive and
+# leaves stale files behind across version bumps — e.g. the MuJoCo 3.7.0 bump
+# statically linked obj_decoder/stl_decoder into mujoco.dll, but additive
+# installs over a 3.6.x tree left the old plugin DLLs in bin/, silently
+# breaking OBJ loading until they were manually removed.
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Removing previous install at $INSTALL_DIR"
+    rm -rf "$INSTALL_DIR"
+fi
+
 REPO_DIR="src"
 if [ ! -d "$REPO_DIR" ]; then
     echo "Cloning MuJoCo (pinned: $PINNED_COMMIT)..."

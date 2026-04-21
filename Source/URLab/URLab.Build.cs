@@ -4,6 +4,7 @@
 using System;
 using UnrealBuildTool;
 using System.IO;
+using System.Text.RegularExpressions;
 
 public class URLab : ModuleRules
 {
@@ -176,9 +177,51 @@ public class URLab : ModuleRules
 		}
 	}
 
+	// Pinned MuJoCo version. Bump in lockstep with $PinnedCommit in
+	// third_party/MuJoCo/build.ps1 / build.sh and the matching constant
+	// in src/include/mujoco/mujoco.h's mjVERSION_HEADER.
+	private const int ExpectedMjVersionHeader = 3007000;  // MuJoCo 3.7.0
+
 	protected void AddMuj(ReadOnlyTargetRules Target)
 	{
+		VerifyMuJoCoInstall();
 		AddThirdPartyLibrary("MuJoCo", Target);
+	}
+
+	// Reads the installed mujoco.h and verifies its mjVERSION_HEADER matches
+	// what URLab was bumped to. Catches the common "I git-pulled URLab but
+	// forgot to re-run third_party/MuJoCo/build.ps1" failure mode before any
+	// code compiles, with a message that says exactly what to do.
+	private void VerifyMuJoCoInstall()
+	{
+		string MjHeader = Path.Combine(ThirdPartyPath, "MuJoCo", "include", "mujoco", "mujoco.h");
+		if (!File.Exists(MjHeader))
+		{
+			throw new BuildException(
+				"MuJoCo headers missing at '{0}'. Run third_party/MuJoCo/build.ps1 (Windows) " +
+				"or third_party/MuJoCo/build.sh (Linux/macOS) to build the dependency, then retry.",
+				MjHeader);
+		}
+
+		string Text = File.ReadAllText(MjHeader);
+		Match M = Regex.Match(Text, @"#define\s+mjVERSION_HEADER\s+(\d+)");
+		if (!M.Success)
+		{
+			throw new BuildException(
+				"Could not parse mjVERSION_HEADER from '{0}'. The header may be corrupt — " +
+				"wipe third_party/install/MuJoCo/ and re-run third_party/MuJoCo/build.ps1.",
+				MjHeader);
+		}
+
+		int InstalledVersion = int.Parse(M.Groups[1].Value);
+		if (InstalledVersion != ExpectedMjVersionHeader)
+		{
+			throw new BuildException(
+				"MuJoCo install at '{0}' is at version {1}; URLab expects {2}. " +
+				"Wipe third_party/install/MuJoCo/ and third_party/MuJoCo/src/build/, " +
+				"then re-run third_party/MuJoCo/build.ps1 (Windows) or build.sh (Linux/macOS).",
+				Path.Combine(ThirdPartyPath, "MuJoCo"), InstalledVersion, ExpectedMjVersionHeader);
+		}
 	}
 
 	protected void AddCoACD(ReadOnlyTargetRules Target)

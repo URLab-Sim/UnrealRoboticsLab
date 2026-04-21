@@ -14,6 +14,16 @@ $InstallDir = $InstallDir.Replace('\', '/')
 Write-Host "Resolved InstallDir: $InstallDir" -ForegroundColor Gray
 Write-Host "Resolved BuildType: $BuildType" -ForegroundColor Gray
 
+# Wipe any prior install of THIS package only. cmake --install is additive and
+# leaves stale files behind when the upstream stops producing them — e.g. the
+# MuJoCo 3.7.0 bump statically linked obj_decoder/stl_decoder into mujoco.dll
+# but additive installs over a 3.6.x tree left the old plugin DLLs in bin/,
+# silently breaking OBJ loading until they were manually removed.
+if (Test-Path $InstallDir) {
+    Write-Host "Removing previous install at $InstallDir" -ForegroundColor Gray
+    Remove-Item -Recurse -Force $InstallDir
+}
+
 $PinnedCommit = "72cb2b210da6"  # Pin to MuJoCo 3.7.0 release (2026-04-14)
 
 $RepoDir = "src"

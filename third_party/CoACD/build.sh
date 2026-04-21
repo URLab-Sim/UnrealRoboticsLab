@@ -3,6 +3,17 @@ INSTALL_DIR=${1:-"../install"}
 BUILD_TYPE=${2:-"Release"}
 PINNED_COMMIT="c7436bf"  # Pin to tested commit (CDT include path fix + unbundled 3rd party support)
 
+# Resolve INSTALL_DIR to an absolute per-package path. URLab.Build.cs expects
+# headers/libs/dlls under install/<dep>/, matching the .ps1 layout.
+INSTALL_DIR="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")/CoACD"
+
+# Wipe any prior install of THIS package only — cmake --install is additive
+# and would otherwise leave stale files behind across version bumps.
+if [ -d "$INSTALL_DIR" ]; then
+    echo "Removing previous install at $INSTALL_DIR"
+    rm -rf "$INSTALL_DIR"
+fi
+
 REPO_DIR="src"
 if [ ! -d "$REPO_DIR" ]; then
     echo "Cloning CoACD (pinned: $PINNED_COMMIT)..."

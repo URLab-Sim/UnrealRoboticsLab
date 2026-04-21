@@ -22,7 +22,7 @@
 
 <#
 .SYNOPSIS
-    Build url_projEditor and run the URLab automation suite, then print a
+    Build the project's Editor target and run the URLab automation suite, then print a
     machine-identifiable summary block to paste into a PR.
 
 .EXAMPLE
@@ -38,17 +38,16 @@
 param(
     [Parameter(Mandatory = $true)] [string] $Engine,
     [Parameter(Mandatory = $true)] [string] $Project,
-    [string] $Target = 'url_projEditor',
     [string] $Filter = 'URLab',
     [string] $Log    = (Join-Path $env:TEMP 'urlab_test.log')
 )
 
 $ErrorActionPreference = 'Stop'
 
-$ubt = Join-Path $Engine 'Engine\Binaries\DotNET\UnrealBuildTool\UnrealBuildTool.exe'
+$bat = Join-Path $Engine 'Engine\Build\BatchFiles\Build.bat'
 $cmd = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 
-if (-not (Test-Path $ubt)) { Write-Error "UBT not found: $ubt";                exit 3 }
+if (-not (Test-Path $bat)) { Write-Error "Build.bat not found: $bat";          exit 3 }
 if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   exit 3 }
 
 # Truncate the test log up-front so a build failure (or any early exit
@@ -57,9 +56,9 @@ if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   e
 Set-Content -Path $Log -Value '' -NoNewline
 
 # --- Build -----------------------------------------------------------------
-Write-Host ">>> Building $Target (Win64 Development)..."
-$buildArgs = @($Target, 'Win64', 'Development', "-Project=$Project", '-WaitMutex')
-$buildOut  = & $ubt @buildArgs 2>&1
+Write-Host ">>> Building UnrealEditor (Win64 Development, project=$Project)..."
+$buildArgs = @('UnrealEditor', 'Win64', 'Development', "-Project=$Project", '-TargetType=Editor', '-Progress')
+$buildOut  = & $bat @buildArgs 2>&1
 $buildOut | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
 $buildStatus = if ($buildOut -match 'Result: Succeeded') { 'Succeeded' } else { 'Failed' }
 

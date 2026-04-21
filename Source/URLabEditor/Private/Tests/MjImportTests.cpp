@@ -1274,3 +1274,62 @@ bool FTest_MjImport_DefaultClassJointAxis::RunTest(const FString&)
     S.Cleanup();
     return true;
 }
+
+// =============================================================================
+// URLab.Import.DefaultClass_JointName_Collision
+//   Regression for MJCFs that share a label between a <default class="X"> and
+//   a <joint name="X"> — the idiomatic Menagerie pattern for per-joint tuning
+//   (vx300s, wx250s, aloha, ...). Before MjName was populated from the XML
+//   name= attribute, the SCS uniqueness rule forced the joint's UE variable
+//   name to "X1" while the actuator's joint="X" reference kept the raw label,
+//   so MuJoCo's compiler dropped every actuator silently (nu == 0).
+//   Compare URLab's nu against MuJoCo's baseline nu for the same XML; they
+//   must match.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_DefaultClassJointNameCollision,
+    "URLab.Import.DefaultClass_JointName_Collision",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_DefaultClassJointNameCollision::RunTest(const FString&)
+{
+    static const TCHAR* Xml = TEXT(R"(
+        <mujoco>
+          <default>
+            <default class="hip">
+              <joint damping="5"/>
+              <position kp="100"/>
+            </default>
+          </default>
+          <worldbody>
+            <body>
+              <joint name="hip" class="hip" type="hinge"/>
+              <geom size=".1"/>
+            </body>
+          </worldbody>
+          <actuator>
+            <position class="hip" name="hip" joint="hip"/>
+          </actuator>
+        </mujoco>
+    )");
+
+    // Baseline: what MuJoCo itself produces from this XML.
+    FMjTestSession Ref;
+    if (!Ref.CompileXml(Xml)) { AddError(Ref.LastError); return false; }
+    const int ExpNu = Ref.m->nu;
+    const int ExpNjnt = Ref.m->njnt;
+    Ref.Cleanup();
+    TestEqual(TEXT("baseline MuJoCo nu == 1"), ExpNu, 1);
+    TestEqual(TEXT("baseline MuJoCo njnt == 1"), ExpNjnt, 1);
+
+    // Through URLab's importer + compile.
+    FMjXmlImportSession S;
+    if (!S.Init(Xml))  { AddError(S.LastError); return false; }
+    if (!S.Compile())  { AddError(S.LastError); S.Cleanup(); return false; }
+
+    TestEqual(TEXT("URLab nu matches MuJoCo baseline (actuator survived Default-class name collision)"),
+        (int)S.Model()->nu, ExpNu);
+    TestEqual(TEXT("URLab njnt matches MuJoCo baseline"),
+        (int)S.Model()->njnt, ExpNjnt);
+
+    S.Cleanup();
+    return true;
+}

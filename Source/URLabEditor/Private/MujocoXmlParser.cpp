@@ -601,6 +601,16 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             JointComp->ImportFromXml(Node, CompilerSettings);
             JointComp->bIsDefault = bIsDefaultContext;
 
+            // Preserve the MJCF 'name' so actuators / equality / tendons that
+            // reference this joint by name continue to resolve after SCS
+            // uniqueness disambiguates the UE variable name (e.g. a Default
+            // class "waist" already owning the SCS name "waist" forces the
+            // joint's variable name to "waist1"). Without this, the joint's
+            // spec name would be the disambiguated UE name and the actuator's
+            // joint="waist" reference would fail at compile.
+            FString NameAttr = Node->GetAttribute(TEXT("name"));
+            if (!NameAttr.IsEmpty()) JointComp->MjName = NameAttr;
+
             FString ClassAttr = Node->GetAttribute(TEXT("class"));
             if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
             {
@@ -1510,6 +1520,8 @@ void UMujocoGenerationAction::ParseEqualitySection(const FXmlNode* Node, UBluepr
                 if (EqComp)
                 {
                     EqComp->ImportFromXml(Child);
+                    FString NameAttr = Child->GetAttribute(TEXT("name"));
+                    if (!NameAttr.IsEmpty()) EqComp->MjName = NameAttr;
                 }
             }
         }
@@ -1558,6 +1570,8 @@ void UMujocoGenerationAction::ParseKeyframeSection(const FXmlNode* Node, UBluepr
                 if (KeyComp)
                 {
                     KeyComp->ImportFromXml(Child);
+                    FString NameAttr = Child->GetAttribute(TEXT("name"));
+                    if (!NameAttr.IsEmpty()) KeyComp->MjName = NameAttr;
                 }
             }
         }

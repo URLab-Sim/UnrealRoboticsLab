@@ -30,6 +30,14 @@
         -Engine  'C:\Program Files\Epic Games\UE_5.7' `
         -Project 'C:\path\to\your.uproject'
 
+.EXAMPLE
+    # Override the editor target only if your project doesn't follow UE's
+    # <ProjectName>Editor convention.
+    .\Scripts\build_and_test.ps1 `
+        -Engine  'C:\Program Files\Epic Games\UE_5.7' `
+        -Project 'C:\MyGame\MyGame.uproject' `
+        -Target  CustomEditorTargetName
+
 .NOTES
     Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
 #>
@@ -38,11 +46,19 @@
 param(
     [Parameter(Mandatory = $true)] [string] $Engine,
     [Parameter(Mandatory = $true)] [string] $Project,
+    [string] $Target = '',
     [string] $Filter = 'URLab',
     [string] $Log    = (Join-Path $env:TEMP 'urlab_test.log')
 )
 
 $ErrorActionPreference = 'Stop'
+
+# Derive the editor target from the .uproject filename if not explicitly
+# supplied. UE's convention is <ProjectName>Editor - e.g. MyGame.uproject ->
+# MyGameEditor. Override with -Target for projects that don't follow this.
+if ([string]::IsNullOrWhiteSpace($Target)) {
+    $Target = [System.IO.Path]::GetFileNameWithoutExtension($Project) + 'Editor'
+}
 
 $bat = Join-Path $Engine 'Engine\Build\BatchFiles\Build.bat'
 $cmd = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
@@ -56,8 +72,11 @@ if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   e
 Set-Content -Path $Log -Value '' -NoNewline
 
 # --- Build -----------------------------------------------------------------
-Write-Host ">>> Building UnrealEditor (Win64 Development, project=$Project)..."
-$buildArgs = @('UnrealEditor', 'Win64', 'Development', "-Project=$Project", '-TargetType=Editor', '-Progress')
+Write-Host ">>> Building $Target (Win64 Development)..."
+# Note: -TargetType=Editor is intentionally omitted. Combined with a positional
+# target name it makes UBT's two action-graph passes ambiguous and bails with
+# Result: Failed (ActionGraphInvalid). Just the positional target is enough.
+$buildArgs = @($Target, 'Win64', 'Development', "-Project=$Project", '-Progress')
 $buildOut  = & $bat @buildArgs 2>&1
 $buildOut | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
 $buildStatus = if ($buildOut -match 'Result: Succeeded') { 'Succeeded' } else { 'Failed' }
@@ -91,12 +110,39 @@ if ($buildStatus -eq 'Succeeded') {
 }
 
 # --- Fingerprint + summary -------------------------------------------------
+# Note: Host and Log-path lines are intentionally omitted from the summary
+# block because they leak the reporter's hostname / Windows username on local
+# runs. The SHA-256 of the log is sufficient for reviewers to verify content
+# integrity when they re-run the suite themselves (#37).
 $ts        = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
-$hostName  = [System.Net.Dns]::GetHostName()
 try {
     $gitSha    = (git rev-parse --short=8 HEAD 2>$null).Trim()
     $gitBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
 } catch { $gitSha = 'unknown'; $gitBranch = 'unknown' }
+
+# Strip the engine path down to its last segment (e.g. 'UE_5.7'). The full
+# path can contain the user's install root on a non-standard layout.
+$engineLabel = Split-Path -Leaf $Engine
+if ([string]::IsNullOrWhiteSpace($engineLabel)) { $engineLabel = $Engine }
+
+# Third-party dep SHAs — pulls from third_party/install/<dep>/INSTALLED_SHA.txt
+# (written by the CMake build scripts). Lets a reviewer verify they're
+# comparing against the same binary toolchain. Silent skip if missing.
+$pluginRoot = Split-Path -Parent $PSScriptRoot
+$depsLine = ''
+foreach ($kv in @(@{name='mj';  dir='MuJoCo'},
+                  @{name='coacd'; dir='CoACD'},
+                  @{name='zmq'; dir='libzmq'})) {
+    $shaPath = Join-Path $pluginRoot ('third_party/install/' + $kv.dir + '/INSTALLED_SHA.txt')
+    if (Test-Path $shaPath) {
+        $sha = (Get-Content $shaPath -Raw).Trim()
+        if ($sha.Length -ge 7) {
+            if ($depsLine) { $depsLine += ' ' }
+            $depsLine += ('{0}={1}' -f $kv.name, $sha.Substring(0, 7))
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($depsLine)) { $depsLine = 'unavailable' }
 
 $logHash = 'n/a'
 if ((Test-Path $Log) -and (Get-Item $Log).Length -gt 0) {
@@ -109,12 +155,12 @@ if ($testsPerformed) { $testsLine += '  [' + $testsPerformed + ']' }
 Write-Host ''
 Write-Host '=== URLab build+test summary ==='
 Write-Host ('Timestamp : ' + $ts)
-Write-Host ('Host      : ' + $hostName)
 Write-Host ('Git HEAD  : {0} ({1})' -f $gitSha, $gitBranch)
-Write-Host ('Engine    : ' + $Engine)
+Write-Host ('Engine    : ' + $engineLabel)
+Write-Host ('Deps      : ' + $depsLine)
 Write-Host ('Build     : ' + $buildStatus)
 Write-Host ('Tests     : ' + $testsLine)
-Write-Host ('Log       : {0}  (sha256: {1})' -f $Log, $logHash)
+Write-Host ('Log sha256: ' + $logHash)
 Write-Host '================================'
 
 if ($buildStatus -ne 'Succeeded') { exit 1 }

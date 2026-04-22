@@ -21,22 +21,26 @@
 # This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 # CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-# build_and_test.sh — build url_projEditor and run the URLab automation suite,
-# then print a machine-identifiable summary block to paste into a PR.
+# build_and_test.sh — build the project's Editor target and run the URLab
+# automation suite, then print a machine-identifiable summary block to paste
+# into a PR.
 #
 # Usage:
 #   ./Scripts/build_and_test.sh \
 #       --engine "/c/Program Files/Epic Games/UE_5.7" \
 #       --project "C:/path/to/your.uproject" \
-#       [--target url_projEditor] \
+#       [--target CustomEditorTargetName] \
 #       [--filter URLab] \
 #       [--log /tmp/urlab_test.log]
+#
+# --target defaults to <ProjectName>Editor derived from the .uproject filename.
+# Only override for projects that don't follow UE's naming convention.
 #
 # Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
 
 set -eu
 
-TARGET="url_projEditor"
+TARGET=""
 FILTER="URLab"
 LOG="/tmp/urlab_test.log"
 ENGINE=""
@@ -44,15 +48,17 @@ PROJECT=""
 
 usage() {
     cat >&2 <<'HELP'
-build_and_test.sh — build url_projEditor and run the URLab automation suite.
+build_and_test.sh — build the project's Editor target and run the URLab automation suite.
 
 Usage:
   ./Scripts/build_and_test.sh \
       --engine "/c/Program Files/Epic Games/UE_5.7" \
       --project "C:/path/to/your.uproject" \
-      [--target url_projEditor] \
+      [--target CustomEditorTargetName] \
       [--filter URLab] \
       [--log /tmp/urlab_test.log]
+
+--target defaults to <ProjectName>Editor derived from the .uproject filename.
 
 Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
 HELP
@@ -74,10 +80,18 @@ done
 [[ -z "$ENGINE"  ]] && { echo "Missing --engine"  >&2; usage; }
 [[ -z "$PROJECT" ]] && { echo "Missing --project" >&2; usage; }
 
-UBT="$ENGINE/Engine/Binaries/DotNET/UnrealBuildTool/UnrealBuildTool.exe"
+# Derive the editor target from the .uproject filename if not explicitly
+# supplied. UE's convention is <ProjectName>Editor — e.g. MyGame.uproject ->
+# MyGameEditor. Override with --target for projects that don't follow this.
+if [[ -z "$TARGET" ]]; then
+    PROJECT_BASENAME=$(basename "$PROJECT")
+    TARGET="${PROJECT_BASENAME%.*}Editor"
+fi
+
+BAT="$ENGINE/Engine/Build/BatchFiles/Build.bat"
 CMD="$ENGINE/Engine/Binaries/Win64/UnrealEditor-Cmd.exe"
 
-[[ -x "$UBT" ]] || { echo "UBT not found: $UBT" >&2; exit 3; }
+[[ -f "$BAT" ]] || { echo "Build.bat not found: $BAT" >&2; exit 3; }
 [[ -x "$CMD" ]] || { echo "UnrealEditor-Cmd not found: $CMD" >&2; exit 3; }
 
 # Truncate the test log up-front so a build failure (or any early exit
@@ -87,7 +101,10 @@ CMD="$ENGINE/Engine/Binaries/Win64/UnrealEditor-Cmd.exe"
 
 # --- Build -----------------------------------------------------------------
 echo ">>> Building $TARGET (Win64 Development)..."
-BUILD_OUT=$("$UBT" "$TARGET" Win64 Development "-Project=$PROJECT" -WaitMutex 2>&1 || true)
+# Note: -TargetType=Editor is intentionally omitted. Combined with a positional
+# target name it makes UBT's two action-graph passes ambiguous and bails with
+# Result: Failed (ActionGraphInvalid). Just the positional target is enough.
+BUILD_OUT=$("$BAT" "$TARGET" Win64 Development "-Project=$PROJECT" -Progress 2>&1 || true)
 echo "$BUILD_OUT" | tail -10
 if echo "$BUILD_OUT" | grep -q "Result: Succeeded"; then
     BUILD_STATUS="Succeeded"
@@ -120,10 +137,37 @@ if [[ "$BUILD_STATUS" == "Succeeded" ]]; then
 fi
 
 # --- Fingerprint + summary -------------------------------------------------
+# Note: Host and Log-path lines are intentionally omitted from the summary
+# block because they leak the reporter's hostname / username on local runs.
+# The SHA-256 of the log is sufficient for reviewers to verify content
+# integrity when they re-run the suite themselves (#37).
 TS=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-HOST=$(hostname 2>/dev/null || echo "unknown")
 GIT_SHA=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
 GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+
+# Strip the engine path down to its last segment (e.g. 'UE_5.7'). The full
+# path can contain the user's install root on a non-standard layout.
+ENGINE_LABEL=$(basename "$ENGINE")
+[[ -z "$ENGINE_LABEL" ]] && ENGINE_LABEL="$ENGINE"
+
+# Third-party dep SHAs from third_party/install/<dep>/INSTALLED_SHA.txt
+# (written by the CMake build scripts). Lets a reviewer verify they're
+# comparing against the same binary toolchain. Silent skip if missing.
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+DEPS_LINE=""
+for pair in "mj:MuJoCo" "coacd:CoACD" "zmq:libzmq"; do
+    key="${pair%%:*}"
+    dir="${pair##*:}"
+    sha_file="$PLUGIN_ROOT/third_party/install/$dir/INSTALLED_SHA.txt"
+    if [[ -s "$sha_file" ]]; then
+        sha=$(head -c 7 "$sha_file")
+        if [[ -n "$DEPS_LINE" ]]; then DEPS_LINE="$DEPS_LINE "; fi
+        DEPS_LINE="${DEPS_LINE}${key}=${sha}"
+    fi
+done
+[[ -z "$DEPS_LINE" ]] && DEPS_LINE="unavailable"
+
 LOG_HASH="n/a"
 if [[ -s "$LOG" ]]; then
     if command -v sha256sum >/dev/null 2>&1; then
@@ -137,12 +181,12 @@ cat <<EOF
 
 === URLab build+test summary ===
 Timestamp : $TS
-Host      : $HOST
 Git HEAD  : $GIT_SHA ($GIT_BRANCH)
-Engine    : $ENGINE
+Engine    : $ENGINE_LABEL
+Deps      : $DEPS_LINE
 Build     : $BUILD_STATUS
 Tests     : $PASS / $TOTAL passed ($FAIL failed)${TESTS_PERFORMED_LINE:+  [$TESTS_PERFORMED_LINE]}
-Log       : $LOG  (sha256: $LOG_HASH)
+Log sha256: $LOG_HASH
 ================================
 EOF
 

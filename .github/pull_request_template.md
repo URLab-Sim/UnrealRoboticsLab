@@ -41,12 +41,12 @@ mutex and the cmd-line tester silently returns an empty log.
 ```
 === URLab build+test summary ===
 Timestamp : <UTC>
-Host      : <machine>
 Git HEAD  : <short-sha> (<branch>)
-Engine    : <engine root>
+Engine    : <UE_X.Y>
+Deps      : mj=<sha7> coacd=<sha7> zmq=<sha7>
 Build     : <Succeeded|Failed>
 Tests     : <pass> / <total> passed (<fail> failed)
-Log       : <path>  (sha256: <hash>)
+Log sha256: <hash>
 ================================
 ```
 

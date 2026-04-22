@@ -418,6 +418,12 @@ public:
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options")
     FMuJoCoOptions SimOptions;
+
+    /** Priority for SimOptions conflict resolution when multiple articulations
+     *  set the same field. Higher wins; ties fall back to actor iteration order. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options",
+        meta=(DisplayName = "SimOptions Priority"))
+    int32 SimOptionsPriority = 0;
     
     /**
      * @brief Initializes the articulation, adding its components to the provided mjSpec.

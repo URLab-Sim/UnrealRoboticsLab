@@ -36,6 +36,7 @@ The plugin gives you research-grade contact dynamics alongside Unreal's renderin
 | [ZMQ Networking & ROS 2](guides/zmq_networking.md) | ZMQ transport, topics, camera streaming |
 | [URLab Bridge](guides/policy_bridge.md) | Python middleware, RL policies, remote control |
 | [Architecture](architecture.md) | Subsystem design, threading model, compilation pipeline |
+| [SimOptions Priority](guides/sim_options_priority.md) | How URLab resolves per-articulation option conflicts in scenes with multiple robots |
 
 ---
 

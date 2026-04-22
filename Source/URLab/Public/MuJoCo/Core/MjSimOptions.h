@@ -211,4 +211,13 @@ struct URLAB_API FMuJoCoOptions
      * Used by the manager for post-compile runtime overrides.
      */
     void ApplyOverridesToModel(mjModel* Model) const;
+
+    /** Resolve per-articulation SimOptions into TargetSpec->option, gated by
+     *  bOverride_* flags. Disagreeing values log a WARNING and pop an editor
+     *  dialog; highest SimOptionsPriority wins, tiebreak on index.
+     *  Parallel arrays must match in length. */
+    static void Resolve(const TArray<const FMuJoCoOptions*>& Options,
+                        const TArray<int32>& Priorities,
+                        const TArray<FString>& ContributorNames,
+                        mjSpec* TargetSpec);
 };

@@ -200,6 +200,12 @@ If the `build_all.ps1` script fails with code `-1073741571`, your compiler has r
 * **Workaround:** Force a larger stack size by running:
   `cmake -B build ... -DCMAKE_CXX_FLAGS="/F10000000"`
 
+### Dialog: "SimOptions conflicts detected"
+
+Two or more articulations in your scene set the same MuJoCo option field (timestep, gravity, solver, etc.) to different values. MuJoCo compiles to one value per field globally, so URLab picks a winner based on each articulation's `SimOptionsPriority`. The dialog summarises every conflict and the chosen winner.
+
+See the [SimOptions Priority guide](guides/sim_options_priority.md) for the full resolution rules, worked examples, and the three knobs you can use to change the outcome.
+
 ### UI: "Simulate" Dashboard Not Appearing
 The UI is context-sensitive and requires specific conditions:
 * Ensure an `MjManager` actor is present in the level.

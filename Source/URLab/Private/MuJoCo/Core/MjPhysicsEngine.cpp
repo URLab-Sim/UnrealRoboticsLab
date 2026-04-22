@@ -172,6 +172,27 @@ void UMjPhysicsEngine::PreCompile()
             m_heightfieldActors.Add(HFA);
         }
     }
+
+    // mjs_attach above drops each articulation's <option> block; fold the
+    // per-articulation SimOptions back into m_spec before mj_compile.
+    {
+        TArray<const FMuJoCoOptions*> OptionList;
+        TArray<int32>                 PriorityList;
+        TArray<FString>               NameList;
+        OptionList.Reserve(m_articulations.Num());
+        PriorityList.Reserve(m_articulations.Num());
+        NameList.Reserve(m_articulations.Num());
+
+        for (AMjArticulation* Art : m_articulations)
+        {
+            if (!Art) continue;
+            OptionList.Add(&Art->SimOptions);
+            PriorityList.Add(Art->SimOptionsPriority);
+            NameList.Add(Art->GetName());
+        }
+
+        FMuJoCoOptions::Resolve(OptionList, PriorityList, NameList, m_spec);
+    }
 }
 
 void UMjPhysicsEngine::PostCompile()

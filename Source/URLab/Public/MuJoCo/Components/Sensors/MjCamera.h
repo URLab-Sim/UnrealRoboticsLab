@@ -137,7 +137,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Network")
     bool bEnableZmqBroadcast = false;
 
-    /** @brief The ZMQ Endpoint for this specific camera (e.g., tcp://*:5558). Must be unique per camera. */
+    /** @brief The ZMQ Endpoint for this specific camera (e.g., tcp://0.0.0.0:5558). Must be unique per camera. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Network")
     FString ZmqEndpoint = TEXT("tcp://*:5558");
 

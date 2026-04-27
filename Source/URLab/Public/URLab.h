@@ -24,8 +24,8 @@
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
-#ifndef _WIN32
-    #define _WIN32 PLATFORM_WINDOWS
+#if PLATFORM_WINDOWS && !defined(_WIN32)
+    #define _WIN32 1
 #endif
 class FURLabModule : public IModuleInterface
 {

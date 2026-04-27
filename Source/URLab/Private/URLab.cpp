@@ -37,13 +37,16 @@ void FURLabModule::StartupModule()
     FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
     FString InstallDir = FPaths::Combine(PluginDir, TEXT("third_party/install"));
 
-    // Function to load a DLL and log success/failure
-    auto LoadDependencyDLL = [&](const FString& LibraryName, const FString& SubDir) {
+    // Function to load a shared library and log success/failure. BinSubDir is
+    // the per-package subdirectory under third_party/install/<SubDir>/ that
+    // holds the loadable artifact: "bin" on Windows (DLLs), "lib" on Linux
+    // (.so files).
+    auto LoadDependencyDLL = [&](const FString& LibraryName, const FString& SubDir, const FString& BinSubDir) {
         // Try plugin third-party path first (editor / development)
-        FString DLLPath = FPaths::Combine(InstallDir, SubDir, TEXT("bin"), LibraryName);
+        FString DLLPath = FPaths::Combine(InstallDir, SubDir, BinSubDir, LibraryName);
         if (!FPaths::FileExists(DLLPath))
         {
-            // Packaged build: DLLs staged next to the executable
+            // Packaged build: shared libs staged next to the executable
             DLLPath = FPaths::Combine(FPlatformProcess::GetModulesDirectory(), LibraryName);
         }
         if (FPaths::FileExists(DLLPath)) {
@@ -60,17 +63,21 @@ void FURLabModule::StartupModule()
         return false;
     };
 
+#if PLATFORM_WINDOWS
     // Load MuJoCo. Since 3.7.0 the obj/stl decoders are compiled into
     // mujoco.dll itself (changelog item 9); loading the standalone
     // obj_decoder.dll / stl_decoder.dll would cause a plugin-registration
     // collision and crash during module init.
-    LoadDependencyDLL(TEXT("mujoco.dll"), TEXT("MuJoCo"));
-
-    // Load ZMQ
-    LoadDependencyDLL(TEXT("libzmq-v143-mt-4_3_6.dll"), TEXT("libzmq"));
-
-    // Load CoACD (Shared library)
-    LoadDependencyDLL(TEXT("lib_coacd.dll"), TEXT("CoACD"));
+    LoadDependencyDLL(TEXT("mujoco.dll"), TEXT("MuJoCo"), TEXT("bin"));
+    LoadDependencyDLL(TEXT("libzmq-v143-mt-4_3_6.dll"), TEXT("libzmq"), TEXT("bin"));
+    LoadDependencyDLL(TEXT("lib_coacd.dll"), TEXT("CoACD"), TEXT("bin"));
+#elif PLATFORM_LINUX
+    // Linux .so layout: third_party/install/<pkg>/lib/. Names are SONAMEs
+    // produced by the upstream cmake builds.
+    LoadDependencyDLL(TEXT("libmujoco.so.3.7.0"), TEXT("MuJoCo"), TEXT("lib"));
+    LoadDependencyDLL(TEXT("libzmq.so.5"), TEXT("libzmq"), TEXT("lib"));
+    LoadDependencyDLL(TEXT("lib_coacd.so"), TEXT("CoACD"), TEXT("lib"));
+#endif
 
     // Some CoACD dependencies like TBB or runtimes might be in CoACD/bin
     // They should be loaded automatically if in search path, but we can verify here if needed.

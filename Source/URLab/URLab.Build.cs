@@ -83,16 +83,9 @@ public class URLab : ModuleRules
 
 		if (Target.Platform == UnrealTargetPlatform.Linux)
 		{
-			// Ensure Unreal recognizes MuJoCo's export macros
-		}
-
-
-		if (Target.Platform == UnrealTargetPlatform.Linux)
-		{
-			PublicDefinitions.Add("_WIN32=0");
-			PublicDefinitions.Add("USE_DECLSPEC=1");
-			PublicDefinitions.Add("__linux__=1");
-			PublicDefinitions.Add("__unix__=1");
+			// Don't define _WIN32 on Linux: `#if defined _WIN32` is true even
+			// when _WIN32 is 0, which sends MuJoCo's mjexport.h down the
+			// __declspec(dllimport) branch and breaks clang on Linux.
 		}
 
 

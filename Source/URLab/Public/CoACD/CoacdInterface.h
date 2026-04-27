@@ -27,7 +27,7 @@
 #include <functional>
 #include <mujoco/mujoco.h>
 #include "Chaos/ArrayCollectionArray.h"
-#include "Coacd/coacd.h"
+#include "CoACD/coacd.h"
 
 #include "Misc/FileHelper.h"
 namespace CoacdInterface {

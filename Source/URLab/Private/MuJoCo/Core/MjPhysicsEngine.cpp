@@ -109,13 +109,20 @@ static void URLab_InstallMujocoCallbacks()
 {
     if (GMujocoCallbacksInstalled) return;
 
-    // mujoco.dll is delay-loaded in URLab's Build.cs, and the linker refuses
+    // mujoco is delay-loaded in URLab's Build.cs, and the linker refuses
     // to bind data symbols through a delayed import. Resolve the two
     // mju_user_* function pointers manually via GetDllExport.
-    void* Handle = FPlatformProcess::GetDllHandle(TEXT("mujoco.dll"));
+#if PLATFORM_WINDOWS
+    const TCHAR* MujocoLibName = TEXT("mujoco.dll");
+#elif PLATFORM_LINUX
+    const TCHAR* MujocoLibName = TEXT("libmujoco.so.3.7.0");
+#else
+    const TCHAR* MujocoLibName = TEXT("mujoco");
+#endif
+    void* Handle = FPlatformProcess::GetDllHandle(MujocoLibName);
     if (!Handle)
     {
-        UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve mujoco.dll to install error callbacks"));
+        UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve %s to install error callbacks"), MujocoLibName);
         return;
     }
 

@@ -6,13 +6,33 @@ If you hit anything not covered here please open an issue.
 
 ## Prerequisites
 
-- **UE 5.7+** Linux binary distribution from <https://www.unrealengine.com/linux>. Extract anywhere; the rest of this guide refers to the extract root as `$UE_ROOT` (e.g. `/home/<user>/UnrealEngine`).
+### Unreal Engine 5
+
+Epic ships a precompiled UE5 binary for Linux — no source build, no GitHub access, no Setup.sh. It's the path of least friction; the source-build path is also supported by Epic but takes much longer (~hours of compile, ~150 GB disk) and is not required.
+
+1. Sign in to your Epic Games account at <https://www.unrealengine.com/linux> (top of the page).
+2. Download **Linux Unreal Engine** — currently a single `.zip` named like `Linux_Unreal_Engine_5.7.x.zip`, ~25 GB compressed / ~43 GB extracted.
+3. Extract anywhere. The rest of this guide refers to the extract root as `$UE_ROOT` (e.g. `/home/<user>/UnrealEngine`).
+4. Confirm the editor binary exists and is executable:
+
+   ```bash
+   ls -la $UE_ROOT/Engine/Binaries/Linux/UnrealEditor
+   ```
+
+**Disk-space rule of thumb:** 70 GB free during initial setup is comfortable: ~43 GB UE binaries, ~10–20 GB shader / DDC cache after first launch, and a few GB for a host project + the URLab plugin.
+
+**Display:** the editor needs a Wayland or X11 session. On a headless server, common options are NICE DCV, X2Go, or a TigerVNC `:1` display (export `DISPLAY=:1` before launching).
+
+**System libs:** UE bundles most of what it needs (libc++, ICU, etc.). On a fresh Ubuntu 22.04 you may still need `apt install libsdl2-2.0-0 libvulkan1` if the editor can't open a window — that's the symptom you'd see after launch with a missing-library message in the log.
+
+### Other prerequisites
+
 - **CMake 3.24+** — Ubuntu 22.04 ships 3.22, which is below CoACD's minimum. Easiest fix:
   ```bash
   pip install --user "cmake>=3.24,<4"
   export PATH="$HOME/.local/bin:$PATH"
   ```
-- **A host UE5 C++ project** with `UnrealRoboticsLab` cloned into its `Plugins/` (or symlinked there).
+- **A host UE5 C++ project** with `UnrealRoboticsLab` cloned into its `Plugins/` (or symlinked there). The host project must be C++; if your project is Blueprints-only, add a dummy C++ class in the editor first (Tools → New C++ Class).
 
 The plugin's third-party submodules (`MuJoCo`, `CoACD`, `libzmq`) must be initialised:
 ```bash

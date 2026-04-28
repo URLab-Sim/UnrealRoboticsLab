@@ -71,3 +71,15 @@ cd ../..
 # Record the exact source SHA we just installed from (see MuJoCo/build.ps1).
 echo "$INSTALLED_SHA" > "$INSTALL_DIR/INSTALLED_SHA.txt"
 echo "Recorded INSTALLED_SHA=$INSTALLED_SHA at $INSTALL_DIR/INSTALLED_SHA.txt"
+
+# Linux: re-stage the plugin's Binaries/Linux/ symlinks so a per-dep rebuild
+# (e.g. someone bumps MuJoCo's submodule SHA and runs only this script)
+# doesn't leave stale symlinks pointing into a wiped install/MuJoCo/lib/.
+# The helper exits cleanly with a one-line note if Binaries/Linux/ doesn't
+# exist yet (first-time fresh checkout — plugin .so not built).
+if [ "$(uname -s)" = "Linux" ]; then
+    SETUP_RUNTIME="$(cd "$(dirname "$0")/../../Scripts" 2>/dev/null && pwd)/setup_runtime_linux.sh"
+    if [ -x "$SETUP_RUNTIME" ]; then
+        bash "$SETUP_RUNTIME" || echo "WARN: setup_runtime_linux.sh failed (continuing)" >&2
+    fi
+fi

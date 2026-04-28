@@ -47,9 +47,13 @@ if [[ ! -d "$THIRD_PARTY" ]]; then
 fi
 
 if [[ ! -d "$BIN_DIR" ]]; then
-    echo "ERROR: plugin Binaries/Linux/ not found at $BIN_DIR" >&2
-    echo "Build the plugin first (Build.sh URLabTestEditor Linux Development)." >&2
-    exit 1
+    # Fresh checkout: plugin .so hasn't been built yet. Skip silently with a
+    # one-line note so per-dep build.sh invocations during initial
+    # third-party setup don't error out. The next plugin build will create
+    # Binaries/Linux/, and the next call to this script (from build.sh,
+    # build_all.sh, or build_and_test_linux.sh) will populate the symlinks.
+    echo "Skipping runtime stage: $BIN_DIR doesn't exist yet (build the plugin first)."
+    exit 0
 fi
 
 count=0

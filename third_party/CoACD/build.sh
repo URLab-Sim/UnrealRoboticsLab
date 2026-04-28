@@ -53,6 +53,13 @@ if [ -d "../../CoACD_custom/cmake" ]; then
     mkdir -p cmake
     cp -rf ../../CoACD_custom/cmake/* cmake/
 fi
+# Overlay header patches (e.g. public/coacd.h relaxes `#if _WIN32` to
+# `#if defined(_WIN32)` so URLab's build does not trip clang's -Wundef under
+# UE on Linux).
+if [ -d "../../CoACD_custom/public" ]; then
+    mkdir -p public
+    cp -rf ../../CoACD_custom/public/* public/
+fi
 
 mkdir -p build
 cd build

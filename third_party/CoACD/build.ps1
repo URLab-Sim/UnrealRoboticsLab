@@ -53,6 +53,11 @@ if (Test-Path "../../CoACD_custom/cmake") {
     if (-not (Test-Path "cmake")) { New-Item -ItemType Directory -Path "cmake" | Out-Null }
     Copy-Item -Path "../../CoACD_custom/cmake/*" -Destination "cmake/" -Recurse -Force
 }
+# Overlay header patches (see build.sh comment for rationale).
+if (Test-Path "../../CoACD_custom/public") {
+    if (-not (Test-Path "public")) { New-Item -ItemType Directory -Path "public" | Out-Null }
+    Copy-Item -Path "../../CoACD_custom/public/*" -Destination "public/" -Recurse -Force
+}
 
 if (-not (Test-Path "build")) { New-Item -ItemType Directory -Path "build" }
 cd build

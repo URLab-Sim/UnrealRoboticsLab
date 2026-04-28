@@ -159,12 +159,20 @@ void FMujocoSpecWrapper::AddDefault(UMjDefault* DefaultComp)
 {
     if (!DefaultComp) return;
 
-    const char* ClassName = DefaultComp->ClassName.IsEmpty() ? nullptr : TCHAR_TO_UTF8(*DefaultComp->ClassName);
-    
+    // TCHAR_TO_UTF8 returns a pointer into a temporary that dies at the end of
+    // the full expression. Storing it in a long-lived variable produces a
+    // dangling pointer; on Linux/clang the stack is reclaimed before the value
+    // is used and the class registers under a garbage name, breaking
+    // childclass / inheritance resolution. Use FTCHARToUTF8 with explicit
+    // function-scope lifetime instead.
+    FTCHARToUTF8 ClassNameConv(*DefaultComp->ClassName);
+    const char* ClassName = DefaultComp->ClassName.IsEmpty() ? nullptr : ClassNameConv.Get();
+
     mjsDefault* parentDef = nullptr;
     if (!DefaultComp->ParentClassName.IsEmpty())
     {
-        parentDef = mjs_findDefault(Spec, TCHAR_TO_UTF8(*DefaultComp->ParentClassName));
+        FTCHARToUTF8 ParentNameConv(*DefaultComp->ParentClassName);
+        parentDef = mjs_findDefault(Spec, ParentNameConv.Get());
         if (parentDef)
         {
              UE_LOG(LogURLabWrapper, Log, TEXT("[AddDefault] Linked Class '%s' to Parent '%s'"), *DefaultComp->ClassName, *DefaultComp->ParentClassName);

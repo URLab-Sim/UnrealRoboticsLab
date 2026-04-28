@@ -48,10 +48,19 @@ mkdir -p build
 cd build
 
 echo "Configuring libzmq..."
+# BUILD_STATIC=OFF on Linux: the libzmq static archive's mailbox_safe.cpp
+# pulls libc++ wait_until -> pthread_cond_clockwait, which UE's link
+# sysroot doesn't resolve. The shared .so links its own deps internally
+# and works fine, so just don't build the static lib on Linux.
+LIBZMQ_STATIC_FLAG=""
+case "$(uname -s)" in
+    Linux) LIBZMQ_STATIC_FLAG="-DBUILD_STATIC=OFF" ;;
+esac
 cmake .. -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
          -DZMQ_BUILD_TESTS=OFF \
          -DWITH_PERF_TOOL=OFF \
-         -DENABLE_DRAFTS=OFF
+         -DENABLE_DRAFTS=OFF \
+         $LIBZMQ_STATIC_FLAG
 
 echo "Building libzmq..."
 cmake --build . --config "$BUILD_TYPE"

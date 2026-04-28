@@ -245,7 +245,12 @@ void UMjTendon::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 
         case EMjTendonWrapType::Geom:
             {
-                const char* SideSiteStr = Wrap.SideSite.IsEmpty() ? "" : TCHAR_TO_UTF8(*Wrap.SideSite);
+                // FTCHARToUTF8 keeps the converted string alive for the
+                // duration of the wrapGeom call. Storing TCHAR_TO_UTF8 macro
+                // output in a const char* would dangle on Linux (see
+                // MjSpecWrapper::AddDefault for the same fix).
+                FTCHARToUTF8 SideSiteConv(*Wrap.SideSite);
+                const char* SideSiteStr = Wrap.SideSite.IsEmpty() ? "" : SideSiteConv.Get();
                 mjsWrap* W = mjs_wrapGeom(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName), SideSiteStr);
                 if (!W)
                 {

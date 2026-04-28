@@ -72,6 +72,7 @@ nav:
   - Home: index.md
   - Guides:
     - Getting Started: getting_started.md
+    - Linux Setup: linux_setup.md
     - Features: features.md
     - Architecture: architecture.md
     - MJCF Import: guides/mujoco_import.md

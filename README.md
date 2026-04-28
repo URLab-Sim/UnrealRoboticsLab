@@ -49,10 +49,9 @@ URLab communicates with external systems over ZMQ. The companion package [**urla
 
 ## Requirements
 
-- **Unreal Engine 5.7+**
-- **Windows** (Win64). Linux is experimental.
+- **Unreal Engine 5.7+** -- Windows binary or Linux binary distribution.
+- **Windows (Win64)** with **Visual Studio 2022**, or **Linux (x86_64)** with UE's bundled clang. See [Linux setup](docs/linux_setup.md) for the Linux-specific build flow.
 - **MuJoCo 3.7+** -- bundled in `third_party/`, built from source.
-- **Visual Studio 2022** or compatible C++ toolchain.
 - **CMake 3.24+** -- for building third-party libraries.
 - **Python 3.11+** -- optional, for `urlab_bridge` policies.
 - **[uv](https://github.com/astral-sh/uv)** -- optional, for Python dependency management.
@@ -71,10 +70,17 @@ git clone https://github.com/URLab-Sim/UnrealRoboticsLab.git
 ### 2. Build Dependencies
 Navigate to the plugin's `third_party` folder and run the build script to fetch and compile MuJoCo, CoACD, and ZMQ:
 ```powershell
+# Windows (PowerShell)
 cd UnrealRoboticsLab/third_party
 .\build_all.ps1
 ```
-*(If this script fails with a **Stack Overflow** error, see [Troubleshooting](#troubleshooting) below).*
+```bash
+# Linux: see docs/linux_setup.md for the env vars needed to build
+# the third-party libs against UE's bundled clang + libc++.
+cd UnrealRoboticsLab/third_party
+./build_all.sh
+```
+*(If the Windows script fails with a **Stack Overflow** error, see [Troubleshooting](#troubleshooting) below).*
 
 ### 3. Compile & Launch
 1. Right-click your `.uproject` and select **Generate Visual Studio project files**.

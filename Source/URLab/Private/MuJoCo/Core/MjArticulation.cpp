@@ -246,9 +246,8 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
     m_ChildSpec = mj_makeSpec();
     m_ChildSpec->compiler.degree = false;
 
-    // Apply this articulation's simulation options to the child spec.
-    // mjs_attach will merge these into the root spec at compile time.
-    SimOptions.ApplyToSpec(m_ChildSpec);
+    // SimOptions get folded into the parent spec by FMuJoCoOptions::Resolve;
+    // writing to m_ChildSpec here would be discarded by mjs_attach.
 
     m_prefix = GetName() + TEXT("_");
     

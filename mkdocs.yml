@@ -85,6 +85,7 @@ nav:
     - ZMQ Networking & ROS 2: guides/zmq_networking.md
     - URLab Bridge: guides/policy_bridge.md
     - MJCF Schema Coverage: mjcf_schema_coverage.md
+    - SimOptions Priority: guides/sim_options_priority.md
   # -- AUTO-GENERATED BELOW THIS LINE (do not edit manually) --
   - API Reference:
     - Overview: api/index.md

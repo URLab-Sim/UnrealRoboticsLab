@@ -106,14 +106,6 @@ if pgrep -fa "/UnrealEditor( |$)" >/dev/null 2>&1; then
     exit 3
 fi
 
-# Plugin runtime dep path. Editor builds don't stage RuntimeDependencies on
-# Linux, so the URLab plugin .so cannot dlopen libmujoco/lib_coacd/libzmq
-# without LD_LIBRARY_PATH pointing at the third_party install dirs.
-URLAB_3P="$(cd "$(dirname "$0")/../third_party/install" 2>/dev/null && pwd || true)"
-if [[ -d "$URLAB_3P" ]]; then
-    export LD_LIBRARY_PATH="$URLAB_3P/MuJoCo/lib:$URLAB_3P/CoACD/lib:$URLAB_3P/libzmq/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-fi
-
 : > "$LOG"
 
 # --- Build -----------------------------------------------------------------
@@ -124,6 +116,16 @@ if echo "$BUILD_OUT" | grep -q "Result: Succeeded\|Target is up to date"; then
     BUILD_STATUS="Succeeded"
 else
     BUILD_STATUS="Failed"
+fi
+
+# --- Stage runtime libs ---------------------------------------------------
+# UBT's auto-RPATH for plugins symlinked outside the host project resolves
+# incorrectly. Symlink third-party .so files into the plugin's Binaries/Linux/
+# so the loader resolves them via ${ORIGIN} (which UBT does add correctly).
+SETUP_RUNTIME="$(dirname "$0")/setup_runtime_linux.sh"
+if [[ "$BUILD_STATUS" == "Succeeded" && -x "$SETUP_RUNTIME" ]]; then
+    echo ">>> Staging third-party runtime libs..."
+    bash "$SETUP_RUNTIME" || echo "WARN: setup_runtime_linux.sh failed (continuing)" >&2
 fi
 
 # --- Test ------------------------------------------------------------------

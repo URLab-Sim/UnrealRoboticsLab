@@ -143,7 +143,19 @@ public class URLab : ModuleRules
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Linux)
 		{
-			// Link all static libraries and shared objects for Linux
+			// On Linux the URLab plugin .so already gets `${ORIGIN}` added to
+			// its RPATH by UBT, so the runtime loader resolves third-party
+			// shared libs (libmujoco / lib_coacd / libzmq) from the plugin's
+			// own Binaries/Linux/ directory. The `setup_rpath_linux.sh`
+			// helper symlinks third_party/install/<pkg>/lib/*.so* into
+			// Binaries/Linux/ after the plugin builds, so no LD_LIBRARY_PATH
+			// is needed at editor / packaging time.
+			//
+			// (UBT's auto-computed relative RPATH from absolute lib paths
+			// resolves incorrectly when the plugin lives outside the host
+			// project — the ${ORIGIN}/../../../../UnrealEngine/.. chain it
+			// emits assumes engine and project share a common ancestor.
+			// Staging via $ORIGIN sidesteps that entirely.)
 			string LibPath = Path.Combine(FullPath, "lib");
 			if (Directory.Exists(LibPath))
 			{
@@ -151,19 +163,25 @@ public class URLab : ModuleRules
 				{
 					PublicAdditionalLibraries.Add(LibFile);
 				}
+				// Link against the unversioned .so (symlink) so the linker
+				// records the SONAME, not an absolute versioned path.
 				foreach (string LibFile in Directory.GetFiles(LibPath, "*.so", SearchOption.AllDirectories))
 				{
 					PublicAdditionalLibraries.Add(LibFile);
-					RuntimeDependencies.Add(LibFile);
-					PublicDelayLoadDLLs.Add(Path.GetFileName(LibFile));
+				}
+				// Stage every *.so* (including version-suffixed real files)
+				// next to the plugin .so so the SONAME chain resolves at
+				// runtime under ${ORIGIN}.
+				foreach (string LibFile in Directory.GetFiles(LibPath, "*.so*", SearchOption.AllDirectories))
+				{
+					RuntimeDependencies.Add("$(BinaryOutputDir)/" + Path.GetFileName(LibFile), LibFile, StagedFileType.NonUFS);
 				}
 			}
 
-			// Add binaries (often plugin/shared objects) for Linux
 			string BinPath = Path.Combine(FullPath, "bin");
 			if (Directory.Exists(BinPath))
 			{
-				foreach (string BinFile in Directory.GetFiles(BinPath, "*.so", SearchOption.AllDirectories))
+				foreach (string BinFile in Directory.GetFiles(BinPath, "*.so*", SearchOption.AllDirectories))
 				{
 					RuntimeDependencies.Add(BinFile);
 					PublicDelayLoadDLLs.Add(Path.GetFileName(BinFile));

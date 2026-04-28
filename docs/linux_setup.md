@@ -31,31 +31,26 @@ Solution: point the third-party CMake builds at UE's clang and libc++ via env va
 ```bash
 UE_ROOT=/path/to/UnrealEngine
 URLAB_ROOT=$UE_ROOT/../URLabTest/Plugins/UnrealRoboticsLab    # adjust to your layout
-UE_TC=$UE_ROOT/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v26_clang-20.1.8-rockylinux8/x86_64-unknown-linux-gnu
 ```
 
 ### 1. Build third-party libs against UE's toolchain
 
 ```bash
 cd "$URLAB_ROOT/third_party"
-
-CC="$UE_TC/bin/clang" \
-CXX="$UE_TC/bin/clang++" \
-AR="$UE_TC/bin/llvm-ar" \
-RANLIB="$UE_TC/bin/llvm-ranlib" \
-CFLAGS="-fPIC -Qunused-arguments -Wno-unknown-warning-option" \
-CXXFLAGS="-stdlib=libc++ -nostdinc++ -isystem $UE_TC/include/c++/v1 -fPIC -Qunused-arguments -Wno-unknown-warning-option -Wno-missing-template-arg-list-after-template-kw" \
-LDFLAGS="-stdlib=libc++ -fuse-ld=lld -L$UE_TC/lib64 -Wl,-rpath,$UE_TC/lib64" \
-bash ./build_all.sh
+./build_all.sh --engine "$UE_ROOT"
 ```
+
+`--engine` is what makes the build use UE's bundled clang + libc++ rather than the host's gcc + libstdc++. Skip it and the resulting `.so` files have a different C++ ABI than UE's plugin link expects, which surfaces as either a wall of `std::*` undefined-symbol errors at link time, or — worse, with some toolchain combinations — system gcc emits LTO bitcode objects rather than real `.so` files which fail to load with a cryptic "file too short" at editor startup.
+
+The script globs `Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/v*_clang-*/` so future UE version bumps (v26 → v27) don't break it. It then exports the CC / CXX / AR / RANLIB pointing at UE's tools and the matching CFLAGS / CXXFLAGS / LDFLAGS internally; no env var sandwich on the user's side.
 
 Expected on success: `third_party/install/{MuJoCo,CoACD,libzmq}/` populated with headers + `.so` files.
 
-Notes:
+Build flags applied internally (for reference, in case you need to debug a per-dep failure):
 - `-Wno-unknown-warning-option` lets clang ignore `-Werror=stringop-overflow` (a GCC-only flag) that TBB (CoACD's transitive dep) tries to use.
 - `-Wno-missing-template-arg-list-after-template-kw` keeps clang 20 from rejecting OpenVDB's `OpT::template eval(...)` syntax.
 - `-Qunused-arguments` quiets MuJoCo's `-Werror -Wunused-command-line-argument` noise from `-stdlib=libc++` on compile-only steps.
-- `BUILD_STATIC=OFF` is now applied automatically for libzmq on Linux (in `third_party/libzmq/build.sh`) — the static archive's `mailbox_safe.cpp` pulls `pthread_cond_clockwait` which UE's link sysroot can't resolve, and the `.so` works fine.
+- `BUILD_STATIC=OFF` is applied automatically for libzmq on Linux (in `third_party/libzmq/build.sh`) — the static archive's `mailbox_safe.cpp` pulls `pthread_cond_clockwait` which UE's link sysroot can't resolve, and the `.so` works fine.
 
 ### 2. Generate UE project files and build the editor target
 

@@ -109,20 +109,15 @@ static void URLab_InstallMujocoCallbacks()
 {
     if (GMujocoCallbacksInstalled) return;
 
-    // mujoco is delay-loaded in URLab's Build.cs, and the linker refuses
-    // to bind data symbols through a delayed import. Resolve the two
-    // mju_user_* function pointers manually via GetDllExport.
 #if PLATFORM_WINDOWS
-    const TCHAR* MujocoLibName = TEXT("mujoco.dll");
-#elif PLATFORM_LINUX
-    const TCHAR* MujocoLibName = TEXT("libmujoco.so.3.7.0");
-#else
-    const TCHAR* MujocoLibName = TEXT("mujoco");
-#endif
-    void* Handle = FPlatformProcess::GetDllHandle(MujocoLibName);
+    // mujoco.dll is delay-loaded on Windows (URLab.Build.cs adds it via
+    // PublicDelayLoadDLLs), and the linker refuses to bind data symbols
+    // through a delayed import. Resolve the two mju_user_* function
+    // pointers manually via GetDllExport.
+    void* Handle = FPlatformProcess::GetDllHandle(TEXT("mujoco.dll"));
     if (!Handle)
     {
-        UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve %s to install error callbacks"), MujocoLibName);
+        UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve mujoco.dll to install error callbacks"));
         return;
     }
 
@@ -134,6 +129,16 @@ static void URLab_InstallMujocoCallbacks()
     if (PErr)  { *PErr  = &URLab_OnMujocoError;   }
     if (PWarn) { *PWarn = &URLab_OnMujocoWarning; }
     UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (err=%p warn=%p)"), (void*)PErr, (void*)PWarn);
+#else
+    // On Linux/macOS the lib is linked directly (no delay-load), so
+    // mju_user_error / mju_user_warning are resolvable as ordinary BSS
+    // data symbols at link time. Direct assignment is enough — no
+    // GetDllHandle / GetDllExport, no hardcoded SONAME literal needed.
+    mju_user_error   = &URLab_OnMujocoError;
+    mju_user_warning = &URLab_OnMujocoWarning;
+    UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (direct)"));
+#endif
+
     GMujocoCallbacksInstalled = true;
 }
 

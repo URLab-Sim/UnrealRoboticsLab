@@ -64,14 +64,12 @@ if [[ -n "$ENGINE" && "$(uname -s)" = "Linux" ]]; then
         echo "  expected: $SDK_BASE" >&2
         exit 3
     fi
-    UE_TC=""
-    for cand in "$SDK_BASE"/v*_clang-*/x86_64-unknown-linux-gnu; do
-        if [[ -x "$cand/bin/clang++" ]]; then
-            UE_TC="$cand"
-            break
-        fi
-    done
-    if [[ -z "$UE_TC" ]]; then
+    # Pick the highest-numbered v*_clang-* toolchain. Bash globs sort
+    # lexicographically so v25 sorts before v26 — version-aware sort with
+    # `sort -V` ensures v27 wins over v26 on a future UE bump. Latent today
+    # since UE ships one toolchain per engine version, but cheap insurance.
+    UE_TC=$(ls -d "$SDK_BASE"/v*_clang-*/x86_64-unknown-linux-gnu 2>/dev/null | sort -V | tail -1)
+    if [[ -z "$UE_TC" || ! -x "$UE_TC/bin/clang++" ]]; then
         echo "ERROR: no v*_clang-*/x86_64-unknown-linux-gnu toolchain found under $SDK_BASE" >&2
         exit 3
     fi

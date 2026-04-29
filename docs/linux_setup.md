@@ -103,17 +103,9 @@ Engine/Build/BatchFiles/Linux/GenerateProjectFiles.sh -project=/path/to/HostProj
 Engine/Build/BatchFiles/Linux/Build.sh HostProjectEditor Linux Development -Project=/path/to/HostProject.uproject
 ```
 
-### 3. Stage runtime libs
+The third-party `.so` files (libmujoco, lib_coacd, libzmq) get symlinked into the plugin's `Binaries/Linux/` automatically by each per-dep `build.sh` and by `Scripts/build_and_test_linux.sh` — see [How runtime staging works](#how-runtime-staging-works) in Troubleshooting / Advanced if you need to do it manually.
 
-UE on Linux doesn't auto-stage `RuntimeDependencies` for editor builds, and UBT's auto-computed RPATH for plugins symlinked outside the host project can resolve incorrectly. URLab ships a helper that symlinks the third-party `.so` files into the plugin's `Binaries/Linux/` so the loader finds them via `${ORIGIN}` (which UBT does add correctly):
-
-```bash
-"$URLAB_ROOT/Scripts/setup_runtime_linux.sh"
-```
-
-It's idempotent and warn-skips when `Binaries/Linux/` doesn't exist yet (first-time fresh checkout). Each per-dep `build.sh` and `Scripts/build_and_test_linux.sh` invoke it automatically too, so you usually don't run it directly.
-
-### 4. Launch the editor
+### 3. Launch the editor
 
 ```bash
 DISPLAY=:1 "$UE_ROOT/Engine/Binaries/Linux/UnrealEditor" /path/to/HostProject.uproject
@@ -139,6 +131,20 @@ Close the editor before running — the test harness needs the project lock free
 If you only changed plugin C++ and want to skip the test pass, the editor `Build.sh` step from one-time setup #2 is the inner loop.
 
 ## Troubleshooting / Advanced
+
+### How runtime staging works
+
+UE on Linux doesn't auto-stage `RuntimeDependencies` for editor builds, and UBT's auto-computed RPATH for plugins symlinked outside the host project can resolve incorrectly. URLab works around this by symlinking the third-party `.so` files into the plugin's `Binaries/Linux/` so the loader resolves them via `${ORIGIN}` (which UBT does add correctly).
+
+The helper `Scripts/setup_runtime_linux.sh` does the symlinking. It's idempotent and warn-skips when `Binaries/Linux/` doesn't exist yet (first-time fresh checkout, before the plugin .so has been built). You **don't normally call it directly** — both `build_all.sh` (via each per-dep `build.sh`) and `Scripts/build_and_test_linux.sh` invoke it after their respective build steps.
+
+You'd run it manually only if you fiddled with `third_party/install/<pkg>/lib/` outside of those scripts and need to re-sync the symlinks:
+
+```bash
+"$URLAB_ROOT/Scripts/setup_runtime_linux.sh"
+```
+
+For packaged (non-editor) builds, `RuntimeDependencies.Add("$(BinaryOutputDir)/...", LibFile, NonUFS)` from `URLab.Build.cs` stages the libs through `BuildCookRun`, and UBT's `${ORIGIN}` RPATH resolves them — no manual step needed.
 
 ### Build flags applied internally by `build_all.sh --engine`
 

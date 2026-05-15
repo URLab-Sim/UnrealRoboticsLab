@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjGeneralActuator.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjGeneralActuator::UMjGeneralActuator()
 {
@@ -28,14 +29,28 @@ UMjGeneralActuator::UMjGeneralActuator()
     Type = EMjActuatorType::Motor;
 }
 
-void UMjGeneralActuator::ExportTo(mjsActuator* act, mjsDefault* def)
+void UMjGeneralActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!act) return;
+    if (!Element) return;
 
     // General actuator has no mjs_setTo* — it is configured entirely via explicit
     // dyntype/gaintype/biastype and the raw gainprm/biasprm/dynprm arrays.
     // Super sets common attributes (transmission, gear, ranges, group, etc.),
     // then ApplyRawOverrides applies any explicit prm overrides.
-    Super::ExportTo(act, def);
-    ApplyRawOverrides(act, def);
+    Super::ExportTo(Element, def);
+
+        // --- CODEGEN_EXPORT_START ---
+    if (bOverride_actearly) Element->actearly = actearly ? 1 : 0;
+    // --- CODEGEN_EXPORT_END ---
 }
+
+void UMjGeneralActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrBool(Node, TEXT("actearly"), actearly, bOverride_actearly);
+    // --- CODEGEN_IMPORT_END ---
+}
+

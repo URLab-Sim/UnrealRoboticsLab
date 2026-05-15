@@ -36,6 +36,10 @@ class URLAB_API UMjSphere : public UMjGeom
 	GENERATED_BODY()
 
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+
+    // --- CODEGEN_PROPERTIES_END ---
+
 	UMjSphere();
 	virtual void OnRegister() override;
 
@@ -46,9 +50,8 @@ public:
     class UStaticMeshComponent* VisualizerMesh = nullptr;
 
 
-	virtual void ImportFromXml(const class FXmlNode* Node) override;
 	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings) override;
-	virtual void ExportTo(mjsGeom* geom, mjsDefault* def = nullptr) override;
+	virtual void ExportTo(mjsGeom* Element, mjsDefault* def = nullptr) override;
 
     virtual void SyncUnrealTransformFromMj() override;
     virtual void SetGeomVisibility(bool bNewVisibility) override;

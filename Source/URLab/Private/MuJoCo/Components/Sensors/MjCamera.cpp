@@ -43,7 +43,7 @@
 // ---------------------------------------------------------------------------
 
 FCameraZmqWorker::FCameraZmqWorker(const FString& InEndpoint, const FString& InTopic, FIntPoint InRes)
-    : RequestedEndpoint(InEndpoint), Topic(InTopic), Resolution(InRes), bStopThread(false)
+    : RequestedEndpoint(InEndpoint), Topic(InTopic), resolution(InRes), bStopThread(false)
 {
     BoundEndpoint = RequestedEndpoint;
 }
@@ -111,7 +111,7 @@ uint32 FCameraZmqWorker::Run()
         // A proper implementation might use FEvent, but a tight sleep is fine for this queue.
         if (FrameQueue.Dequeue(FrameData))
         {
-            if (FrameData.Num() != Resolution.X * Resolution.Y) continue;
+            if (FrameData.Num() != resolution[0] * resolution[1]) continue;
 
             // FColor is BGRA (4 bytes per pixel)
             size_t PayloadSize = FrameData.Num() * sizeof(FColor);
@@ -164,10 +164,10 @@ void FCameraZmqWorker::PushFrame(const TArray<FColor>& FrameData)
 
 namespace
 {
-    bool IsSegMode(EMjCameraMode Mode)
+    bool IsSegMode(EMjCameraMode mode)
     {
-        return Mode == EMjCameraMode::SemanticSegmentation
-            || Mode == EMjCameraMode::InstanceSegmentation;
+        return mode == EMjCameraMode::SemanticSegmentation
+            || mode == EMjCameraMode::InstanceSegmentation;
     }
 
     UMjDebugVisualizer* FindDebugVisualizer(UWorld* FallbackWorld = nullptr)
@@ -195,6 +195,9 @@ UMjCamera::UMjCamera()
 {
     PrimaryComponentTick.bCanEverTick = true;
     PrimaryComponentTick.bStartWithTickEnabled = true;
+
+    // Default resolution: codegen emits resolution as TArray<int32>{} (empty); seed [w,h].
+    resolution = { 640, 480 };
 
     // Create the scene capture sub-component
     CaptureComponent = CreateDefaultSubobject<USceneCaptureComponent2D>(TEXT("SceneCapture"));
@@ -233,7 +236,7 @@ void UMjCamera::OnRegister()
     Super::OnRegister();
     if (CaptureComponent)
     {
-        CaptureComponent->FOVAngle = Fovy;
+        CaptureComponent->FOVAngle = fovy;
     }
 }
 
@@ -354,12 +357,12 @@ void UMjCamera::SetupRenderTarget()
     if (bDepthMode)
     {
         RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_R32f;
-        RT->InitCustomFormat(Resolution.X, Resolution.Y, PF_R32_FLOAT, /*bForceLinearGamma=*/true);
+        RT->InitCustomFormat(resolution[0], resolution[1], PF_R32_FLOAT, /*bForceLinearGamma=*/true);
     }
     else
     {
         RT->RenderTargetFormat = ETextureRenderTargetFormat::RTF_RGBA8;
-        RT->InitCustomFormat(Resolution.X, Resolution.Y, PF_B8G8R8A8, /*bForceLinearGamma=*/true);
+        RT->InitCustomFormat(resolution[0], resolution[1], PF_B8G8R8A8, /*bForceLinearGamma=*/true);
     }
 
     RT->bGPUSharedFlag = true;
@@ -405,7 +408,7 @@ void UMjCamera::SetupRenderTarget()
         TEXT("[MjCamera] '%s' RT created mode=%s (%dx%d)"),
         *MjName,
         *UEnum::GetValueAsString(CaptureMode),
-        Resolution.X, Resolution.Y);
+        resolution[0], resolution[1]);
 }
 
 void UMjCamera::RefreshHiddenComponentsFromSegPools()
@@ -431,14 +434,14 @@ void UMjCamera::RegisterWithStreamingManager()
     // Inform the texture streaming system that this camera is an active viewpoint.
     // This ensures textures are streamed for the camera's frustum even when the
     // player pawn is far away. Mirrors the IStreamingManager call in old_camera.h.
-    const float HFov     = CaptureComponent ? CaptureComponent->FOVAngle : Fovy;
+    const float HFov     = CaptureComponent ? CaptureComponent->FOVAngle : fovy;
     const float Distance = (HFov > 0.0f)
-        ? Resolution.X / FMath::Tan(FMath::DegreesToRadians(HFov * 0.5f))
+        ? resolution[0] / FMath::Tan(FMath::DegreesToRadians(HFov * 0.5f))
         : 1000.0f;
 
     IStreamingManager::Get().AddViewInformation(
         GetComponentLocation(),
-        Resolution.X,
+        resolution[0],
         Distance,
         StreamingBoost,
         /*bOverrideLocation=*/false,
@@ -504,13 +507,14 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
                 FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
                 FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetName());
 
-                ZmqWorker = new FCameraZmqWorker(ZmqEndpoint, Topic, Resolution);
+                FIntPoint ResolutionPt(resolution.Num() > 0 ? resolution[0] : 0, resolution.Num() > 1 ? resolution[1] : 0);
+                ZmqWorker = new FCameraZmqWorker(ZmqEndpoint, Topic, ResolutionPt);
                 WorkerThread = FRunnableThread::Create(ZmqWorker, TEXT("CameraZmqWorkerThread"), 0, TPri_BelowNormal);
             }
         }
         if (CaptureComponent)
         {
-            CaptureComponent->FOVAngle          = Fovy;
+            CaptureComponent->FOVAngle          = fovy;
 
             // CRITICAL: SetVisibility(true) must be called to allow the component
             // to dispatch scene capture updates. bHiddenInGame alone is not sufficient —
@@ -524,7 +528,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
         bStreamingEnabled = true;
         RegisterWithStreamingManager();
 
-        // Force an immediate capture so the UI doesn't wait a full tick.
+        // force an immediate capture so the UI doesn't wait a full tick.
         // CaptureScene() bypasses the visibility check — it always fires.
         if (CaptureComponent)
         {
@@ -645,28 +649,108 @@ FString UMjCamera::GetActualZmqEndpoint() const
 // ExportTo
 // ---------------------------------------------------------------------------
 
-void UMjCamera::ExportTo(mjsCamera* cam, mjsDefault* /*def*/)
+void UMjCamera::ExportTo(mjsCamera* Element, mjsDefault* /*def*/)
 {
-    if (!cam) return;
+    if (!Element) return;
 
-    cam->fovy = (double)Fovy;
-    cam->resolution[0] = (int)Resolution.X;
-    cam->resolution[1] = (int)Resolution.Y;
+    // --- CODEGEN_EXPORT_START ---
+    if (bOverride_Pos)
+    {
+        double TmpPos[3];
+        MjUtils::UEToMjPosition(Pos, TmpPos);
+        Element->pos[0] = TmpPos[0]; Element->pos[1] = TmpPos[1]; Element->pos[2] = TmpPos[2];
+    }
+    if (bOverride_Quat)
+    {
+        double TmpQuat[4];
+        MjUtils::UEToMjRotation(Quat, TmpQuat);
+        Element->quat[0] = TmpQuat[0]; Element->quat[1] = TmpQuat[1];
+        Element->quat[2] = TmpQuat[2]; Element->quat[3] = TmpQuat[3];
+    }
+    if (bOverride_TrackingMode)
+    {
+        switch (TrackingMode)
+        {
+            case EMjCameraTrackingMode::Fixed: Element->mode = (mjtCamLight)mjCAMLIGHT_FIXED; break;
+            case EMjCameraTrackingMode::Track: Element->mode = (mjtCamLight)mjCAMLIGHT_TRACK; break;
+            case EMjCameraTrackingMode::TrackCom: Element->mode = (mjtCamLight)mjCAMLIGHT_TRACKCOM; break;
+            case EMjCameraTrackingMode::TargetBody: Element->mode = (mjtCamLight)mjCAMLIGHT_TARGETBODY; break;
+            case EMjCameraTrackingMode::TargetBodyCom: Element->mode = (mjtCamLight)mjCAMLIGHT_TARGETBODYCOM; break;
+            default: break;
+        }
+    }
+    if (bOverride_Projection)
+    {
+        switch (Projection)
+        {
+            case EMjCameraProjection::Orthographic: Element->proj = (mjtProjection)mjPROJ_ORTHOGRAPHIC; break;
+            case EMjCameraProjection::Perspective: Element->proj = (mjtProjection)mjPROJ_PERSPECTIVE; break;
+            default: break;
+        }
+    }
+    if (bOverride_fovy) Element->fovy = fovy;
+    if (bOverride_ipd) Element->ipd = ipd;
+    if (bOverride_resolution) { for (int32 i = 0; i < resolution.Num(); ++i) Element->resolution[i] = resolution[i]; }
+    if (bOverride_output) Element->output = output;
+    if (bOverride_target && !target.IsEmpty()) mjs_setString(Element->targetbody, TCHAR_TO_UTF8(*target));
+    if (bOverride_focal) { for (int32 i = 0; i < focal.Num(); ++i) Element->focal_length[i] = focal[i]; }
+    if (bOverride_focalpixel) { for (int32 i = 0; i < focalpixel.Num(); ++i) Element->focal_pixel[i] = focalpixel[i]; }
+    if (bOverride_principal) { for (int32 i = 0; i < principal.Num(); ++i) Element->principal_length[i] = principal[i]; }
+    if (bOverride_principalpixel) { for (int32 i = 0; i < principalpixel.Num(); ++i) Element->principal_pixel[i] = principalpixel[i]; }
+    if (bOverride_sensorsize) { for (int32 i = 0; i < sensorsize.Num(); ++i) Element->sensor_size[i] = sensorsize[i]; }
+    // --- CODEGEN_EXPORT_END ---
 }
 
 // ---------------------------------------------------------------------------
 // XML Import
 // ---------------------------------------------------------------------------
 
-void UMjCamera::ImportFromXml(const FXmlNode* Node)
-{
-    FMjCompilerSettings DefaultSettings;
-    ImportFromXml(Node, DefaultSettings);
-}
+
 
 void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
+
+        // --- CODEGEN_IMPORT_START ---
+    { // xml_enum: mode -> EMjCameraTrackingMode
+        FString S = Node->GetAttribute(TEXT("mode"));
+        S = S.ToLower();
+        if      (S == TEXT("fixed")) TrackingMode = EMjCameraTrackingMode::Fixed;
+        else if (S == TEXT("track")) TrackingMode = EMjCameraTrackingMode::Track;
+        else if (S == TEXT("trackcom")) TrackingMode = EMjCameraTrackingMode::TrackCom;
+        else if (S == TEXT("targetbody")) TrackingMode = EMjCameraTrackingMode::TargetBody;
+        else if (S == TEXT("targetbodycom")) TrackingMode = EMjCameraTrackingMode::TargetBodyCom;
+        if (!S.IsEmpty()) bOverride_TrackingMode = true;
+    }
+    { // xml_enum: projection -> EMjCameraProjection
+        FString S = Node->GetAttribute(TEXT("projection"));
+        S = S.ToLower();
+        if      (S == TEXT("orthographic")) Projection = EMjCameraProjection::Orthographic;
+        else if (S == TEXT("perspective")) Projection = EMjCameraProjection::Perspective;
+        if (!S.IsEmpty()) bOverride_Projection = true;
+    }
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("fovy"), fovy, bOverride_fovy);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("ipd"), ipd, bOverride_ipd);
+    MjXmlUtils::ReadAttrIntArray(Node, TEXT("resolution"), resolution, bOverride_resolution);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("output"), output, bOverride_output);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("target"), target)) bOverride_target = true;
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("focal"), focal, bOverride_focal);
+    MjXmlUtils::ReadAttrIntArray(Node, TEXT("focalpixel"), focalpixel, bOverride_focalpixel);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("principal"), principal, bOverride_principal);
+    MjXmlUtils::ReadAttrIntArray(Node, TEXT("principalpixel"), principalpixel, bOverride_principalpixel);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("sensorsize"), sensorsize, bOverride_sensorsize);
+    MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
+    { // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
+        double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
+        if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
+        {
+            Quat = MjUtils::MjToUERotation(TmpQuat);
+            bOverride_Quat = true;
+        }
+    }
+    if (bOverride_Pos)  SetRelativeLocation(Pos);
+    if (bOverride_Quat) SetRelativeRotation(Quat);
+    // --- CODEGEN_IMPORT_END ---
 
     // Name
     if (!MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName))
@@ -676,41 +760,11 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     FString FovyStr = Node->GetAttribute(TEXT("fovy"));
     if (!FovyStr.IsEmpty())
     {
-        Fovy = FCString::Atof(*FovyStr);
+        fovy = FCString::Atof(*FovyStr);
         if (CaptureComponent)
         {
-            CaptureComponent->FOVAngle = Fovy;
+            CaptureComponent->FOVAngle = fovy;
         }
     }
 
-    // Resolution hints (MuJoCo 3.x: width= / height=)
-    {
-        bool bWOverride = false, bHOverride = false;
-        MjXmlUtils::ReadAttrInt(Node, TEXT("width"),  Resolution.X, bWOverride);
-        MjXmlUtils::ReadAttrInt(Node, TEXT("height"), Resolution.Y, bHOverride);
-    }
-
-    // Position
-    FString PosStr = Node->GetAttribute(TEXT("pos"));
-    if (!PosStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        PosStr.ParseIntoArray(Parts, TEXT(" "), true);
-        if (Parts.Num() >= 3)
-        {
-            double pos[3] = {
-                FCString::Atod(*Parts[0]),
-                FCString::Atod(*Parts[1]),
-                FCString::Atod(*Parts[2])
-            };
-            SetRelativeLocation(MjUtils::MjToUEPosition(pos));
-        }
-    }
-
-    // Orientation (quat, axisangle, euler, xyaxes, zaxis — priority order)
-    double MjQuat[4];
-    if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, MjQuat))
-    {
-        SetRelativeRotation(MjUtils::MjToUERotation(MjQuat));
-    }
 }

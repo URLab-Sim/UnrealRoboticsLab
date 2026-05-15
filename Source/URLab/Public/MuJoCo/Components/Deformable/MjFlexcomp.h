@@ -26,6 +26,7 @@
 #include "MuJoCo/Components/MjComponent.h"
 #include <mujoco/mjspec.h>
 #include <mujoco/mujoco.h>
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjFlexcomp.generated.h"
 
 class UDynamicMeshComponent;
@@ -33,24 +34,26 @@ class UDynamicMeshComponent;
 UENUM(BlueprintType)
 enum class EMjFlexcompType : uint8
 {
-    Grid,
-    Box,
-    Cylinder,
-    Ellipsoid,
-    Square,
-    Disc,
-    Circle,
-    Mesh,
-    Direct
+    Grid       UMETA(DisplayName = "Grid"),
+    Box        UMETA(DisplayName = "Box"),
+    Cylinder   UMETA(DisplayName = "Cylinder"),
+    Ellipsoid  UMETA(DisplayName = "Ellipsoid"),
+    Square     UMETA(DisplayName = "Square"),
+    Disc       UMETA(DisplayName = "Disc"),
+    Circle     UMETA(DisplayName = "Circle"),
+    Mesh       UMETA(DisplayName = "Mesh"),
+    Gmsh       UMETA(DisplayName = "GMSH (.msh)"),
+    Direct     UMETA(DisplayName = "Direct (manual point + element)"),
 };
 
 UENUM(BlueprintType)
 enum class EMjFlexcompDof : uint8
 {
-    Full,
-    Radial,
-    Trilinear,
-    Quadratic
+    Full       UMETA(DisplayName = "Full"),
+    Radial     UMETA(DisplayName = "Radial"),
+    Trilinear  UMETA(DisplayName = "Trilinear"),
+    Quadratic  UMETA(DisplayName = "Quadratic"),
+    TwoD       UMETA(DisplayName = "2D"),
 };
 
 /**
@@ -67,73 +70,143 @@ class URLAB_API UMjFlexcomp : public UMjComponent
     GENERATED_BODY()
 
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp|Spatial Pose", meta=(InlineEditConditionToggle))
+    bool bOverride_Pos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    FVector Pos = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp|Orientation", meta=(InlineEditConditionToggle))
+    bool bOverride_Quat = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp|Orientation", meta=(EditCondition="bOverride_Quat"))
+    FQuat Quat = FQuat::Identity;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_group = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_group"))
+    int32 group = 0;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_dim = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_dim"))
+    int32 dim = 0;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_count = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_count"))
+    TArray<int32> count = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_spacing = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_spacing"))
+    TArray<float> spacing = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_radius = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_radius"))
+    float radius = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_rigid = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_rigid"))
+    bool rigid = false;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_mass = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_mass"))
+    float mass = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_inertiabox = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_inertiabox"))
+    float inertiabox = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_scale = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_scale"))
+    TArray<float> scale = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_file = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_file"))
+    FString file = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_point = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_point"))
+    TArray<float> point = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_element = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_element"))
+    TArray<int32> element = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_texcoord = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_texcoord"))
+    TArray<float> texcoord = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_material = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_material"))
+    FString material = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_rgba = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_rgba"))
+    FLinearColor rgba = FLinearColor::White;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_flatskin = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_flatskin"))
+    bool flatskin = false;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_origin = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_origin"))
+    TArray<float> origin = {};
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjFlexcomp();
 
-    // --- Core Properties ---
+    // --- Core Properties: enum UPROPERTYs only ---
+    // The codegen owns every other flexcomp attr (group, dim, count, spacing,
+    // scale, radius, mass, file, point, element, texcoord, material, rgba,
+    // rigid, flatskin, origin, ...) via the CODEGEN_PROPERTIES block above
+    // plus xml_enum_attrs in codegen_rules.json. The two enum UPROPERTYs
+    // below are hand-declared because codegen only owns the XML-string <->
+    // enum-value bridge, not the UE-enum UPROPERTY itself.
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    EMjFlexcompType Type = EMjFlexcompType::Grid;
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_FlexcompType = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    int32 Dim = 2;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_FlexcompType"))
+    EMjFlexcompType FlexcompType = EMjFlexcompType::Grid;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    EMjFlexcompDof DofType = EMjFlexcompDof::Full;
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_FlexcompDof = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    FIntVector Count = FIntVector(10, 10, 1);
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    FVector Spacing = FVector(0.05f, 0.05f, 0.05f);
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
-    bool bOverride_Mass = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_Mass"))
-    float Mass = 1.0f;
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
-    bool bOverride_InertiaBox = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_InertiaBox"))
-    float InertiaBox = 0.005f;
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
-    bool bOverride_Radius = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_Radius"))
-    float Radius = 0.005f;
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
-    bool bOverride_Rgba = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_Rgba"))
-    FLinearColor Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
-    bool bOverride_Scale = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_Scale"))
-    FVector Scale = FVector(1.0f);
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    bool bRigid = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    bool bFlatSkin = false;
-
-    // --- Mesh Type ---
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp")
-    FString MeshFile;
-
-    // --- Direct Type Data ---
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Direct")
-    TArray<double> PointData;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Direct")
-    TArray<int32> ElementData;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_FlexcompDof"))
+    EMjFlexcompDof FlexcompDof = EMjFlexcompDof::Full;
 
     // --- Contact Properties ---
 
@@ -290,7 +363,18 @@ public:
 
     // --- Import/Export/Bind ---
 
-    void ImportFromXml(const class FXmlNode* Node);
+    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
+
+    /**
+     * @brief Build the `<flexcomp ...>` attribute string from codegen-owned
+     *        UPROPERTYs. Method body is codegen-emitted between
+     *        ``CODEGEN_XML_PASSTHROUGH_*`` markers in MjFlexcomp.cpp so new
+     *        schema attrs flow through without hand-edits. Called by
+     *        ``BuildFlexcompXml`` which still hand-rolls the surrounding
+     *        ``<flexcomp>`` tag + sub-elements (``<contact>`` / ``<edge>``
+     *        / ``<elasticity>`` / ``<pin>``).
+     */
+    FString BuildSchemaAttrsXml() const;
 
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 

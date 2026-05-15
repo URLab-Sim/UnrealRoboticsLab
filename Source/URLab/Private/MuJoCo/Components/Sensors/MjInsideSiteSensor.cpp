@@ -21,8 +21,31 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjInsideSiteSensor.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjInsideSiteSensor::UMjInsideSiteSensor()
 {
     Type = EMjSensorType::InsideSite;
 }
+
+void UMjInsideSiteSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
+}
+
+void UMjInsideSiteSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

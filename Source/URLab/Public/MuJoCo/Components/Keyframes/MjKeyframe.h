@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -25,6 +25,7 @@
 #include "CoreMinimal.h"
 #include "mujoco/mjspec.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjKeyframe.generated.h"
 
 /**
@@ -39,13 +40,60 @@ class URLAB_API UMjKeyframe : public UMjComponent
     GENERATED_BODY()
 
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Time = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Time"))
+    float Time = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Qpos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Qpos"))
+    TArray<float> Qpos = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Qvel = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Qvel"))
+    TArray<float> Qvel = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Act = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Act"))
+    TArray<float> Act = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Mpos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Mpos"))
+    TArray<float> Mpos = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Mquat = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Mquat"))
+    TArray<float> Mquat = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    bool bOverride_Ctrl = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Ctrl"))
+    TArray<float> Ctrl = {};
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjKeyframe();
 
     /**
      * @brief Exports properties to a pre-created MuJoCo spec keyframe structure.
-     * @param Key Pointer to the target mjsKey structure.
+     *        Codegen-owned: writes Time + the six mjDoubleVec* fields (qpos/
+     *        qvel/act/ctrl/mpos/mquat) from the UPROPERTY values. RegisterToSpec
+     *        applies freejoint-aware padding for qpos/qvel on top.
+     * @param Key  Pointer to the target mjsKey structure.
      */
-    void ExportTo(mjsKey* Key);
+    void ExportTo(mjsKey* Element, mjsDefault* Default = nullptr);
 
     /**
      * @brief Registers this keyframe to the MuJoCo spec.
@@ -55,62 +103,11 @@ public:
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
     /**
-     * @brief Imports properties from a raw XML node.
-     * @param Node The <key> XML node inside <keyframe>.
+     * @brief Imports properties from a raw XML node. Codegen-owned.
+     * @param Node             The <key> XML node inside <keyframe>.
+     * @param CompilerSettings MJCF compiler-level settings (unused here, but
+     *                         matches the standard signature so codegen can
+     *                         emit a tagged import block).
      */
-    void ImportFromXml(const class FXmlNode* Node);
-
-    /** @brief Simulation time for this keyframe. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe")
-    float Time = 0.0f;
-
-    // --- State Vectors ---
-
-    /** @brief Override toggle for Qpos. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Qpos = false;
-
-    /** @brief Joint positions. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qpos"))
-    TArray<float> Qpos;
-
-    /** @brief Override toggle for Qvel. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Qvel = false;
-
-    /** @brief Joint velocities. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qvel"))
-    TArray<float> Qvel;
-
-    /** @brief Override toggle for Act. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Act = false;
-
-    /** @brief Actuator activations. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Act"))
-    TArray<float> Act;
-
-    /** @brief Override toggle for Ctrl. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Ctrl = false;
-
-    /** @brief Actuator controls. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Ctrl"))
-    TArray<float> Ctrl;
-
-    /** @brief Override toggle for Mpos. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Mpos = false;
-
-    /** @brief Mocap body positions. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mpos"))
-    TArray<float> Mpos;
-
-    /** @brief Override toggle for Mquat. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Mquat = false;
-
-    /** @brief Mocap body quaternions. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mquat"))
-    TArray<float> Mquat;
+    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 };

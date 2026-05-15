@@ -269,8 +269,8 @@ bool FMjCompileGeomSizeExported::RunTest(const FString& Parameters)
     FMjUESession S;
     if (!S.Init([](FMjUESession& Sess)
     {
-        Sess.Geom->Size = FVector(0.3f, 0.3f, 0.3f);
-        Sess.Geom->bOverride_Size = true;
+        Sess.Geom->size = { 0.3f, 0.3f, 0.3f };
+        Sess.Geom->bOverride_size = true;
     }))
     {
         AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
@@ -303,8 +303,8 @@ bool FMjCompileGeomFrictionExported::RunTest(const FString& Parameters)
     FMjUESession S;
     if (!S.Init([](FMjUESession& Sess)
     {
-        Sess.Geom->Friction = { 0.7f, 0.01f, 0.001f };
-        Sess.Geom->bOverride_Friction = true;
+        Sess.Geom->friction = { 0.7f, 0.01f, 0.001f };
+        Sess.Geom->bOverride_friction = true;
     }))
     {
         AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
@@ -339,8 +339,8 @@ bool FMjCompileJointDampingExported::RunTest(const FString& Parameters)
     {
         Sess.Joint->Type = EMjJointType::Hinge;
         Sess.Joint->bOverride_Type = true;
-        Sess.Joint->Damping = {2.5f};
-        Sess.Joint->bOverride_Damping = true;
+        Sess.Joint->damping = {2.5f};
+        Sess.Joint->bOverride_damping = true;
     }))
     {
         AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
@@ -376,10 +376,13 @@ bool FMjCompileJointLimitsExported::RunTest(const FString& Parameters)
     {
         Sess.Joint->Type = EMjJointType::Hinge;
         Sess.Joint->bOverride_Type = true;
-        Sess.Joint->Range = { -1.5f, 1.5f };
-        Sess.Joint->bOverride_Range = true;
-        Sess.Joint->bLimited = true;
-        Sess.Joint->bOverride_Limited = true;
+        // UPROPERTY range is in UE units (degrees for hinge). Express
+        // ±1.5 rad as degrees: 1.5 * 180/π ≈ 85.943669.
+        const float Rad15Deg = 1.5f * 180.0f / PI;
+        Sess.Joint->range = { -Rad15Deg, Rad15Deg };
+        Sess.Joint->bOverride_range = true;
+        Sess.Joint->limited = true;
+        Sess.Joint->bOverride_limited = true;
     }))
     {
         AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
@@ -392,6 +395,7 @@ bool FMjCompileJointLimitsExported::RunTest(const FString& Parameters)
     {
         TestTrue(TEXT("jnt_limited should be set"),
             S.Manager->PhysicsEngine->m_model->jnt_limited[JntId] != 0);
+        // jnt_range is always radians on the compiled model.
         TestTrue(TEXT("jnt_range[0] ~= -1.5"),
             FMath::Abs((float)S.Manager->PhysicsEngine->m_model->jnt_range[JntId * 2 + 0] - (-1.5f)) < 1e-4f);
         TestTrue(TEXT("jnt_range[1] ~= 1.5"),
@@ -732,8 +736,8 @@ bool FMjCompileTendonExportTo::RunTest(const FString& Parameters)
         Body2->AttachToComponent(Sess.Body, FAttachmentTransformRules::KeepRelativeTransform);
 
         UMjGeom* Geom2 = NewObject<UMjGeom>(Sess.Robot, TEXT("Geom2"));
-        Geom2->Size = FVector(0.1f, 0.1f, 0.1f);
-        Geom2->bOverride_Size = true;
+        Geom2->size = { 0.1f, 0.1f, 0.1f };
+        Geom2->bOverride_size = true;
         Geom2->RegisterComponent();
         Geom2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
 
@@ -745,10 +749,10 @@ bool FMjCompileTendonExportTo::RunTest(const FString& Parameters)
 
         // Create tendon with two joint wraps
         Tendon = NewObject<UMjTendon>(Sess.Robot, TEXT("TestTendon"));
-        Tendon->bOverride_Stiffness = true;
-        Tendon->Stiffness = {5.0f};
-        Tendon->bOverride_Damping = true;
-        Tendon->Damping = {0.1f};
+        Tendon->bOverride_stiffness = true;
+        Tendon->stiffness = {5.0f};
+        Tendon->bOverride_damping = true;
+        Tendon->damping = {0.1f};
 
         FMjTendonWrap W1;
         W1.Type = EMjTendonWrapType::Joint;
@@ -821,10 +825,10 @@ bool FMjCompileDefaultTendonSiteCamera::RunTest(const FString& Parameters)
 
     // --- Test UMjTendon::ExportTo on def->tendon ---
     UMjTendon* TendonChild = NewObject<UMjTendon>();
-    TendonChild->Stiffness = {7.5f};
-    TendonChild->Damping = {0.3f};
-    TendonChild->bOverride_Stiffness = true;
-    TendonChild->bOverride_Damping = true;
+    TendonChild->stiffness = {7.5f};
+    TendonChild->damping = {0.3f};
+    TendonChild->bOverride_stiffness = true;
+    TendonChild->bOverride_damping = true;
     TendonChild->ExportTo(Def->tendon, nullptr);
 
     TestTrue(TEXT("tendon stiffness ~= 7.5"),
@@ -835,7 +839,8 @@ bool FMjCompileDefaultTendonSiteCamera::RunTest(const FString& Parameters)
     // --- Test UMjSite::ExportTo on def->site ---
     UMjSite* SiteChild = NewObject<UMjSite>();
     SiteChild->Type = EMjSiteType::Box;
-    SiteChild->Group = 3;
+    SiteChild->group = 3;
+    SiteChild->bOverride_group = true;
     SiteChild->ExportTo(Def->site, nullptr);
 
     TestEqual(TEXT("site type == box"), (int)Def->site->type, (int)mjGEOM_BOX);
@@ -843,8 +848,10 @@ bool FMjCompileDefaultTendonSiteCamera::RunTest(const FString& Parameters)
 
     // --- Test UMjCamera::ExportTo on def->camera ---
     UMjCamera* CameraChild = NewObject<UMjCamera>();
-    CameraChild->Fovy = 90.0f;
-    CameraChild->Resolution = FIntPoint(1280, 720);
+    CameraChild->fovy = 90.0f;
+    CameraChild->bOverride_fovy = true;
+    CameraChild->resolution = { 1280, 720 };
+    CameraChild->bOverride_resolution = true;
     CameraChild->ExportTo(Def->camera, nullptr);
 
     TestTrue(TEXT("camera fovy ~= 90.0"),
@@ -901,9 +908,10 @@ bool FMjCompileEqualityExportTo::RunTest(const FString& Parameters)
     Eq->EqualityType = EMjEqualityType::Weld;
     Eq->Obj1 = TEXT("b1");
     Eq->Obj2 = TEXT("b2");
-    Eq->bActive = true;
-    Eq->bOverride_TorqueScale = true;
-    Eq->TorqueScale = 2.0f;
+    Eq->active = true;
+    Eq->bOverride_active = true;
+    Eq->bOverride_torquescale = true;
+    Eq->torquescale = 2.0f;
 
     // Create a spec and equality to export to
     mjSpec* TestSpec = mj_makeSpec();
@@ -912,8 +920,11 @@ bool FMjCompileEqualityExportTo::RunTest(const FString& Parameters)
 
     TestEqual(TEXT("type == weld"), (int)SpecEq->type, (int)mjtEq::mjEQ_WELD);
     TestTrue(TEXT("active == 1"), SpecEq->active == 1);
-    TestTrue(TEXT("data[7] ~= 2.0 (torquescale)"),
-        FMath::Abs(SpecEq->data[7] - 2.0) < 1e-4);
+    // mjsEquality.data layout for weld: data[0..2] = anchor, data[3..5] = relpose
+    // pos, data[6..9] = relpose quat, data[10] = torquescale. Older codegen
+    // wrote slot 7; verified via probe_eq_spec.py against the installed MuJoCo.
+    TestTrue(TEXT("data[10] ~= 2.0 (torquescale)"),
+        FMath::Abs(SpecEq->data[10] - 2.0) < 1e-4);
 
     mj_deleteSpec(TestSpec);
 
@@ -941,6 +952,7 @@ bool FMjCompileKeyframeExportTo::RunTest(const FString& Parameters)
 
         KF = NewObject<UMjKeyframe>(Sess.Robot, TEXT("TestKeyframe"));
         KF->Time = 1.5f;
+        KF->bOverride_Time = true;
         KF->bOverride_Qpos = true;
         KF->Qpos = { 0.5f };
         KF->RegisterComponent();

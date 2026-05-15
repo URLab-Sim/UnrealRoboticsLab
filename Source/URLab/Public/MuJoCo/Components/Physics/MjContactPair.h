@@ -27,6 +27,7 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjContactPair.generated.h"
 
 /**
@@ -42,6 +43,62 @@ class URLAB_API UMjContactPair : public USceneComponent, public IMjSpecElement
 	GENERATED_BODY()
 
 public:	
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_geom1 = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_geom1"))
+    FString geom1 = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_geom2 = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_geom2"))
+    FString geom2 = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_condim = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_condim"))
+    int32 condim = 0;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_friction = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_friction"))
+    TArray<float> friction = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_solref = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_solref"))
+    TArray<float> solref = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_solreffriction = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_solreffriction"))
+    TArray<float> solreffriction = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_solimp = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_solimp"))
+    TArray<float> solimp = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_gap = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_gap"))
+    float gap = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    bool bOverride_margin = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_margin"))
+    float margin = 0.0f;
+    // --- CODEGEN_PROPERTIES_END ---
+
     /** @brief Default constructor. */
 	UMjContactPair();
 
@@ -49,50 +106,26 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
     FString Name;
 
-    /** @brief Name of the first geom in the contact pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair", meta=(GetOptions="GetGeomOptions"))
-    FString Geom1;
 
-    /** @brief Name of the second geom in the contact pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair", meta=(GetOptions="GetGeomOptions"))
-    FString Geom2;
 
-    /** @brief Contact dimensionality (1-6). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
-    int Condim = 3;
 
-    /** @brief Friction coefficients (sliding, torsional, rolling). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
-    TArray<float> Friction;
 
-    /** @brief Solver reference time/damping for contact. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
-    TArray<float> Solref;
 
-    /** @brief Solver impedance for contact. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
-    TArray<float> Solimp;
 
-    /** @brief Distance threshold below which contacts are detected. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
-    float Gap = 0.0f;
 
-    /** @brief Safety margin for collision detection. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
-    float Margin = 0.0f;
 
     /**
      * @brief Imports contact pair settings from a MuJoCo XML <pair> node.
      * @param Node Pointer to the FXmlNode representing the <pair> element.
      */
-    void ImportFromXml(const class FXmlNode* Node);
+    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
     /**
      * @brief Exports contact pair settings to a MuJoCo mjsPair structure.
      * @param pair Pointer to the mjsPair structure to populate.
      */
 
-    void ExportTo(mjsPair* pair);
+    void ExportTo(mjsPair* Element);
 
     /**
      * @brief Registers this contact pair to the MuJoCo spec.

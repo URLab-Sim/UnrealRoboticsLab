@@ -35,6 +35,10 @@ class URLAB_API UMjFreeJoint : public UMjJoint
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjFreeJoint();
 
     /** Broadcasts full free joint state: pos[3], quat[4], linvel[3], angvel[3] = 13 floats. */
@@ -42,4 +46,8 @@ public:
 
     /** Returns base_state/<name> to distinguish from scalar hinge joints. */
     virtual FString GetTelemetryTopicName() const override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+
+    virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;
 };

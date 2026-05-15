@@ -25,8 +25,8 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Net/MjNetworkManager.h"
-#include "MuJoCo/Input/MjInputHandler.h"
-#include "MuJoCo/Input/MjPerturbation.h"
+#include "MuJoCo/input/MjInputHandler.h"
+#include "MuJoCo/input/MjPerturbation.h"
 #include "Replay/MjReplayManager.h"
 #include "mujoco/mujoco.h"
 

@@ -264,7 +264,7 @@ void AMjImpulseLauncher::FireImpulse()
         float EffectiveHeight = PeakHeight + FMath::Max(0.0f, -VertDist);
         float Vz = FMath::Sqrt(2.0f * Gravity * FMath::Max(EffectiveHeight, 1.0f));
 
-        // Time to reach peak then fall to target height:
+        // time to reach peak then fall to target height:
         // total time from launch to target: t = (Vz + sqrt(Vz² + 2*g*vertDist)) / g
         float Discriminant = Vz * Vz + 2.0f * Gravity * VertDist;
         float FlightTime = (Vz + FMath::Sqrt(FMath::Max(Discriminant, 0.0f))) / Gravity;

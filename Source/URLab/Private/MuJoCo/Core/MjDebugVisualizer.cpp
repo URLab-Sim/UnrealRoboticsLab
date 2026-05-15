@@ -82,10 +82,10 @@ void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 
     for (int i = 0; i < LocalDebugData.ContactPoints.Num(); ++i)
     {
-        float Force = 0.0f;
-        if (i < LocalDebugData.ContactForces.Num()) Force = LocalDebugData.ContactForces[i];
+        float force = 0.0f;
+        if (i < LocalDebugData.ContactForces.Num()) force = LocalDebugData.ContactForces[i];
 
-        float ClampedForce = FMath::Min(Force, DebugMaxForce);
+        float ClampedForce = FMath::Min(force, DebugMaxForce);
         float VisualLength = ClampedForce * DebugForceScale;
 
         DrawDebugPoint(World, LocalDebugData.ContactPoints[i], DebugContactPointSize, FColor::Red, false, -1.0f);
@@ -382,15 +382,15 @@ void UMjDebugVisualizer::ClearBodyOverlays()
 {
     for (auto& Pair : OriginalMaterials)
     {
-        UStaticMeshComponent* Mesh = Pair.Key.Get();
-        if (!Mesh) continue;
-        Mesh->SetMaterial(0, Pair.Value);
+        UStaticMeshComponent* mesh = Pair.Key.Get();
+        if (!mesh) continue;
+        mesh->SetMaterial(0, Pair.Value);
 
         if (const TMap<int32, UMaterialInterface*>* Extra = OriginalSlotMaterials.Find(Pair.Key))
         {
             for (const auto& SlotPair : *Extra)
             {
-                Mesh->SetMaterial(SlotPair.Key, SlotPair.Value);
+                mesh->SetMaterial(SlotPair.Key, SlotPair.Value);
             }
         }
     }
@@ -420,24 +420,24 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
         LocalIslandSeed = DebugData.BodyIslandSeed;
     }
 
-    auto ApplyToMesh = [&](UStaticMeshComponent* Mesh, int32 BodyId, uint32 GroupHash)
+    auto ApplyToMesh = [&](UStaticMeshComponent* mesh, int32 BodyId, uint32 GroupHash)
     {
-        if (!Mesh) return;
+        if (!mesh) return;
 
         const bool bAwake =
             (LocalAwake.IsValidIndex(BodyId) ? LocalAwake[BodyId] != 0 : true);
         const int32 Seed =
             (LocalIslandSeed.IsValidIndex(BodyId) ? LocalIslandSeed[BodyId] : -1);
 
-        TWeakObjectPtr<UStaticMeshComponent> WeakMesh(Mesh);
-        const int32 NumSlots = FMath::Max(1, Mesh->GetNumMaterials());
+        TWeakObjectPtr<UStaticMeshComponent> WeakMesh(mesh);
+        const int32 NumSlots = FMath::Max(1, mesh->GetNumMaterials());
 
         if (!OriginalMaterials.Contains(WeakMesh))
         {
-            OriginalMaterials.Add(WeakMesh, Mesh->GetMaterial(0));
+            OriginalMaterials.Add(WeakMesh, mesh->GetMaterial(0));
             for (int32 SlotIdx = 1; SlotIdx < NumSlots; ++SlotIdx)
             {
-                OriginalSlotMaterials.FindOrAdd(WeakMesh).Add(SlotIdx, Mesh->GetMaterial(SlotIdx));
+                OriginalSlotMaterials.FindOrAdd(WeakMesh).Add(SlotIdx, mesh->GetMaterial(SlotIdx));
             }
         }
 
@@ -474,9 +474,9 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 
         for (int32 SlotIdx = 0; SlotIdx < NumSlots; ++SlotIdx)
         {
-            if (Mesh->GetMaterial(SlotIdx) != MID)
+            if (mesh->GetMaterial(SlotIdx) != MID)
             {
-                Mesh->SetMaterial(SlotIdx, MID);
+                mesh->SetMaterial(SlotIdx, MID);
             }
         }
 
@@ -545,9 +545,9 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 // Per-camera segmentation pool
 // ---------------------------------------------------------------------------
 
-TArray<TObjectPtr<UStaticMeshComponent>>* UMjDebugVisualizer::GetSegPoolArray(EMjCameraMode Mode)
+TArray<TObjectPtr<UStaticMeshComponent>>* UMjDebugVisualizer::GetSegPoolArray(EMjCameraMode mode)
 {
-    switch (Mode)
+    switch (mode)
     {
     case EMjCameraMode::InstanceSegmentation: return &InstanceSegSiblings;
     case EMjCameraMode::SemanticSegmentation: return &SemanticSegSiblings;
@@ -555,9 +555,9 @@ TArray<TObjectPtr<UStaticMeshComponent>>* UMjDebugVisualizer::GetSegPoolArray(EM
     }
 }
 
-TSet<TWeakObjectPtr<UMjCamera>>* UMjDebugVisualizer::GetSegSubscribers(EMjCameraMode Mode)
+TSet<TWeakObjectPtr<UMjCamera>>* UMjDebugVisualizer::GetSegSubscribers(EMjCameraMode mode)
 {
-    switch (Mode)
+    switch (mode)
     {
     case EMjCameraMode::InstanceSegmentation: return &InstanceSegSubscribers;
     case EMjCameraMode::SemanticSegmentation: return &SemanticSegSubscribers;
@@ -566,7 +566,7 @@ TSet<TWeakObjectPtr<UMjCamera>>* UMjDebugVisualizer::GetSegSubscribers(EMjCamera
 }
 
 UStaticMeshComponent* UMjDebugVisualizer::SpawnSegSibling(
-    UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash, EMjCameraMode Mode)
+    UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash, EMjCameraMode mode)
 {
     if (!Original || !Original->GetStaticMesh()) return nullptr;
     if (!OverlayParentMaterial || OverlayColorParam.IsNone()) return nullptr;
@@ -606,7 +606,7 @@ UStaticMeshComponent* UMjDebugVisualizer::SpawnSegSibling(
     // Seg cameras set CaptureSource = SCS_BaseColor, which bypasses lighting so the
     // tint value lands in the RT unmodified.
     UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OverlayParentMaterial, Sibling);
-    const FLinearColor Tint = (Mode == EMjCameraMode::SemanticSegmentation)
+    const FLinearColor Tint = (mode == EMjCameraMode::SemanticSegmentation)
         ? MjColor::SemanticSegmentationColor(GroupHash, /*bAwake=*/true, /*SleepValueScale=*/1.0f, /*SleepSatScale=*/1.0f)
         : MjColor::InstanceSegmentationColor(GroupHash, BodyId, /*bAwake=*/true, /*SleepValueScale=*/1.0f, /*SleepSatScale=*/1.0f);
     MID->SetVectorParameterValue(OverlayColorParam, Tint);
@@ -617,7 +617,7 @@ UStaticMeshComponent* UMjDebugVisualizer::SpawnSegSibling(
         Sibling->SetMaterial(Slot, MID);
     }
 
-    Sibling->ComponentTags.Add(Mode == EMjCameraMode::InstanceSegmentation
+    Sibling->ComponentTags.Add(mode == EMjCameraMode::InstanceSegmentation
         ? FName(TEXT("URLab_Seg_Instance"))
         : FName(TEXT("URLab_Seg_Semantic")));
 
@@ -625,9 +625,9 @@ UStaticMeshComponent* UMjDebugVisualizer::SpawnSegSibling(
     return Sibling;
 }
 
-void UMjDebugVisualizer::BuildSegPool(EMjCameraMode Mode)
+void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
 {
-    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(mode);
     if (!Pool) return;
 
     AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
@@ -637,7 +637,7 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode Mode)
 
     auto AddSibling = [&](UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash)
     {
-        if (UStaticMeshComponent* Sib = SpawnSegSibling(Original, BodyId, GroupHash, Mode))
+        if (UStaticMeshComponent* Sib = SpawnSegSibling(Original, BodyId, GroupHash, mode))
         {
             Pool->Add(Sib);
         }
@@ -701,12 +701,12 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode Mode)
 
     UE_LOG(LogURLab, Log,
         TEXT("[MjDebugVisualizer] Built seg pool mode=%s size=%d"),
-        *UEnum::GetValueAsString(Mode), Pool->Num());
+        *UEnum::GetValueAsString(mode), Pool->Num());
 }
 
-void UMjDebugVisualizer::DestroySegPool(EMjCameraMode Mode)
+void UMjDebugVisualizer::DestroySegPool(EMjCameraMode mode)
 {
-    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(mode);
     if (!Pool) return;
 
     for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
@@ -716,13 +716,13 @@ void UMjDebugVisualizer::DestroySegPool(EMjCameraMode Mode)
     Pool->Reset();
 }
 
-void UMjDebugVisualizer::AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
+void UMjDebugVisualizer::AcquireSegPool(EMjCameraMode mode, UMjCamera* Camera,
                                         TArray<UPrimitiveComponent*>& OutSiblings)
 {
     OutSiblings.Reset();
 
-    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
-    TSet<TWeakObjectPtr<UMjCamera>>*          Subs = GetSegSubscribers(Mode);
+    TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(mode);
+    TSet<TWeakObjectPtr<UMjCamera>>*          Subs = GetSegSubscribers(mode);
     if (!Pool || !Subs) return;
 
     const bool bFirstSubscriber = Subs->Num() == 0;
@@ -730,7 +730,7 @@ void UMjDebugVisualizer::AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
 
     if (bFirstSubscriber)
     {
-        BuildSegPool(Mode);
+        BuildSegPool(mode);
     }
 
     OutSiblings.Reserve(Pool->Num());
@@ -740,9 +740,9 @@ void UMjDebugVisualizer::AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
     }
 }
 
-void UMjDebugVisualizer::ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera)
+void UMjDebugVisualizer::ReleaseSegPool(EMjCameraMode mode, UMjCamera* Camera)
 {
-    TSet<TWeakObjectPtr<UMjCamera>>* Subs = GetSegSubscribers(Mode);
+    TSet<TWeakObjectPtr<UMjCamera>>* Subs = GetSegSubscribers(mode);
     if (!Subs) return;
 
     Subs->Remove(Camera);
@@ -754,16 +754,16 @@ void UMjDebugVisualizer::ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera)
 
     if (Subs->Num() == 0)
     {
-        DestroySegPool(Mode);
+        DestroySegPool(mode);
     }
 }
 
-void UMjDebugVisualizer::GetSegPoolSiblings(EMjCameraMode Mode,
+void UMjDebugVisualizer::GetSegPoolSiblings(EMjCameraMode mode,
                                             TArray<UPrimitiveComponent*>& OutSiblings) const
 {
     OutSiblings.Reset();
     const TArray<TObjectPtr<UStaticMeshComponent>>* Pool = nullptr;
-    switch (Mode)
+    switch (mode)
     {
     case EMjCameraMode::InstanceSegmentation: Pool = &InstanceSegSiblings; break;
     case EMjCameraMode::SemanticSegmentation: Pool = &SemanticSegSiblings; break;
@@ -811,8 +811,8 @@ namespace
                                const FVector& NextDir, float NextLen)
     {
         const FVector Avg = (PrevDir + NextDir).GetSafeNormal();
-        const float Scale = 0.5f * (PrevLen + NextLen);
-        return Avg * Scale;
+        const float scale = 0.5f * (PrevLen + NextLen);
+        return Avg * scale;
     }
 
     // Spherical lerp about a shared origin — exact for sphere wraps, good enough
@@ -887,10 +887,10 @@ void UMjDebugVisualizer::UpdateTendonTubes()
     {
         // Intensity: activation for muscles, length-vs-range stretch for limited tendons, else neutral.
         float Intensity = 0.5f;
-        const float Act = LocalActivation.IsValidIndex(t) ? LocalActivation[t] : -1.0f;
-        if (Act >= 0.0f)
+        const float act = LocalActivation.IsValidIndex(t) ? LocalActivation[t] : -1.0f;
+        if (act >= 0.0f)
         {
-            Intensity = Act;
+            Intensity = act;
         }
         else if (LocalLimited.IsValidIndex(t) && LocalLimited[t])
         {
@@ -1006,9 +1006,9 @@ void UMjDebugVisualizer::UpdateTendonTubes()
             const FTubeSeg& S = Segs[i];
             // Convert desired visible radius in cm to the scale factor applied
             // to the base cylinder mesh (50cm radius → divide by 50).
-            const float Scale = S.Radius / kBasicCylinderBaseRadiusCm;
-            Seg->SetStartScale(FVector2D(Scale, Scale), false);
-            Seg->SetEndScale(FVector2D(Scale, Scale), false);
+            const float scale = S.Radius / kBasicCylinderBaseRadiusCm;
+            Seg->SetStartScale(FVector2D(scale, scale), false);
+            Seg->SetEndScale(FVector2D(scale, scale), false);
             Seg->SetStartAndEnd(S.Start, S.StartTangent, S.End, S.EndTangent, true);
             if (TendonSegmentMIDs.IsValidIndex(i) && TendonSegmentMIDs[i])
             {

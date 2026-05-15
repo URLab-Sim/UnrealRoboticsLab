@@ -40,12 +40,18 @@ bool FMjFlexcompGrid2DCompiles::RunTest(const FString& Parameters)
     bool bOk = S.Init([](FMjUESession& Session)
     {
         UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-        Flex->Type = EMjFlexcompType::Grid;
-        Flex->Dim = 2;
-        Flex->Count = FIntVector(4, 4, 1);
-        Flex->Spacing = FVector(0.05, 0.05, 0.05);
-        Flex->Mass = 0.5f;
-        Flex->Radius = 0.005f;
+        Flex->bOverride_FlexcompType = true;
+        Flex->FlexcompType = EMjFlexcompType::Grid;
+        Flex->bOverride_dim = true;
+        Flex->dim = 2;
+        Flex->bOverride_count = true;
+        Flex->count = { 4, 4, 1 };
+        Flex->bOverride_spacing = true;
+        Flex->spacing = { 0.05, 0.05, 0.05 };
+        Flex->bOverride_mass = true;
+        Flex->mass = 0.5f;
+        Flex->bOverride_radius = true;
+        Flex->radius = 0.005f;
         Flex->MjName = TEXT("testgrid");
         Flex->RegisterComponent();
         Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
@@ -79,12 +85,18 @@ bool FMjFlexcompGrid1DCompiles::RunTest(const FString& Parameters)
     bool bOk = S.Init([](FMjUESession& Session)
     {
         UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestRope"));
-        Flex->Type = EMjFlexcompType::Grid;
-        Flex->Dim = 1;
-        Flex->Count = FIntVector(8, 1, 1);
-        Flex->Spacing = FVector(0.1, 0.1, 0.1);
-        Flex->Mass = 0.2f;
-        Flex->Radius = 0.01f;
+        Flex->bOverride_FlexcompType = true;
+        Flex->FlexcompType = EMjFlexcompType::Grid;
+        Flex->bOverride_dim = true;
+        Flex->dim = 1;
+        Flex->bOverride_count = true;
+        Flex->count = { 8, 1, 1 };
+        Flex->bOverride_spacing = true;
+        Flex->spacing = { 0.1, 0.1, 0.1 };
+        Flex->bOverride_mass = true;
+        Flex->mass = 0.2f;
+        Flex->bOverride_radius = true;
+        Flex->radius = 0.01f;
         Flex->MjName = TEXT("testrope");
         Flex->RegisterComponent();
         Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
@@ -119,12 +131,18 @@ bool FMjFlexcompGrid3DCompiles::RunTest(const FString& Parameters)
     bool bOk = S.Init([](FMjUESession& Session)
     {
         UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestVol"));
-        Flex->Type = EMjFlexcompType::Grid;
-        Flex->Dim = 3;
-        Flex->Count = FIntVector(3, 3, 3);
-        Flex->Spacing = FVector(0.05, 0.05, 0.05);
-        Flex->Mass = 1.0f;
-        Flex->Radius = 0.005f;
+        Flex->bOverride_FlexcompType = true;
+        Flex->FlexcompType = EMjFlexcompType::Grid;
+        Flex->bOverride_dim = true;
+        Flex->dim = 3;
+        Flex->bOverride_count = true;
+        Flex->count = { 3, 3, 3 };
+        Flex->bOverride_spacing = true;
+        Flex->spacing = { 0.05, 0.05, 0.05 };
+        Flex->bOverride_mass = true;
+        Flex->mass = 1.0f;
+        Flex->bOverride_radius = true;
+        Flex->radius = 0.005f;
         Flex->MjName = TEXT("testvol");
         Flex->RegisterComponent();
         Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
@@ -159,12 +177,18 @@ bool FMjFlexcompGrid2DBodyCount::RunTest(const FString& Parameters)
     bool bOk = S.Init([](FMjUESession& Session)
     {
         UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-        Flex->Type = EMjFlexcompType::Grid;
-        Flex->Dim = 2;
-        Flex->Count = FIntVector(4, 4, 1);
-        Flex->Spacing = FVector(0.05, 0.05, 0.05);
-        Flex->Mass = 0.5f;
-        Flex->Radius = 0.005f;
+        Flex->bOverride_FlexcompType = true;
+        Flex->FlexcompType = EMjFlexcompType::Grid;
+        Flex->bOverride_dim = true;
+        Flex->dim = 2;
+        Flex->bOverride_count = true;
+        Flex->count = { 4, 4, 1 };
+        Flex->bOverride_spacing = true;
+        Flex->spacing = { 0.05, 0.05, 0.05 };
+        Flex->bOverride_mass = true;
+        Flex->mass = 0.5f;
+        Flex->bOverride_radius = true;
+        Flex->radius = 0.005f;
         Flex->MjName = TEXT("counttest");
         Flex->RegisterComponent();
         Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
@@ -200,12 +224,18 @@ bool FMjFlexcompPinnedVertices::RunTest(const FString& Parameters)
     bool bOk = S.Init([](FMjUESession& Session)
     {
         UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-        Flex->Type = EMjFlexcompType::Grid;
-        Flex->Dim = 1;
-        Flex->Count = FIntVector(5, 1, 1);
-        Flex->Spacing = FVector(0.1, 0.1, 0.1);
-        Flex->Mass = 0.2f;
-        Flex->Radius = 0.01f;
+        Flex->bOverride_FlexcompType = true;
+        Flex->FlexcompType = EMjFlexcompType::Grid;
+        Flex->bOverride_dim = true;
+        Flex->dim = 1;
+        Flex->bOverride_count = true;
+        Flex->count = { 5, 1, 1 };
+        Flex->bOverride_spacing = true;
+        Flex->spacing = { 0.1, 0.1, 0.1 };
+        Flex->bOverride_mass = true;
+        Flex->mass = 0.2f;
+        Flex->bOverride_radius = true;
+        Flex->radius = 0.01f;
         Flex->MjName = TEXT("pintest");
         Flex->PinIds = {0, 4}; // Pin first and last
         Flex->RegisterComponent();
@@ -264,10 +294,10 @@ bool FMjFlexcompImportGrid2D::RunTest(const FString& Parameters)
 
     if (Flex)
     {
-        TestEqual(TEXT("Type should be Grid"), Flex->Type, EMjFlexcompType::Grid);
-        TestEqual(TEXT("Dim should be 2"), Flex->Dim, 2);
-        TestEqual(TEXT("Count.X should be 3"), Flex->Count.X, 3);
-        TestEqual(TEXT("Count.Y should be 3"), Flex->Count.Y, 3);
+        TestEqual(TEXT("Type should be Grid"), Flex->FlexcompType, EMjFlexcompType::Grid);
+        TestEqual(TEXT("Dim should be 2"), Flex->dim, 2);
+        TestEqual(TEXT("count[0] should be 3"), Flex->count.Num() >= 1 ? Flex->count[0] : -1, 3);
+        TestEqual(TEXT("count[1] should be 3"), Flex->count.Num() >= 2 ? Flex->count[1] : -1, 3);
         TestTrue(TEXT("Young should be 100"), MjTestMath::NearlyEqual(Flex->Young, 100.0f));
         TestTrue(TEXT("Damping should be 0.5"), MjTestMath::NearlyEqual(Flex->Damping, 0.5f));
         TestEqual(TEXT("Should have 3 pin IDs"), Flex->PinIds.Num(), 3);

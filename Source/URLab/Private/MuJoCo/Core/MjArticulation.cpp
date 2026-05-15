@@ -775,7 +775,7 @@ void AMjArticulation::SleepAll()
 {
     for (UMjBody* Body : GetBodies())
     {
-        if (Body) Body->Sleep();
+        if (Body) Body->PutToSleep();
     }
 }
 
@@ -1193,9 +1193,9 @@ void AMjArticulation::DrawDebugJoints()
             bLimited = Joint->GetResolvedLimited() || (RangeMin != 0.0f || RangeMax != 0.0f);
 
             // Ref from component property
-            if (Joint->bOverride_Ref)
+            if (Joint->bOverride_ref)
             {
-                RefPos = Joint->Ref;
+                RefPos = Joint->ref;
             }
             else
             {
@@ -1241,8 +1241,9 @@ void AMjArticulation::DrawDebugSites()
         {
             // Editor: use component transform and properties
             Pos = Site->GetComponentLocation();
-            Radius = Site->Size.X * 100.0f; // Size is in meters on UMjSite
-            Color = Site->Rgba.ToFColor(true);
+            // size is codegen-owned TArray<float>, in metres. Convert to cm.
+            Radius = (Site->size.Num() > 0 ? Site->size[0] : 0.01f) * 100.0f;
+            Color = Site->rgba.ToFColor(true);
             Color.A = 200;
         }
 
@@ -1432,9 +1433,9 @@ void AMjArticulation::UpdateGroup3Visibility()
         {
             if (UMjGeom* DefaultGeom = Cast<UMjGeom>(Child))
             {
-                if (DefaultGeom->bOverride_Group)
+                if (DefaultGeom->bOverride_group)
                 {
-                    DefaultGroupMap.Add(Def->ClassName, DefaultGeom->Group);
+                    DefaultGroupMap.Add(Def->ClassName, DefaultGeom->group);
                 }
             }
         }
@@ -1454,10 +1455,10 @@ void AMjArticulation::UpdateGroup3Visibility()
         }
 
         // Resolve effective Group
-        int EffectiveGroup = Geom->Group;
+        int EffectiveGroup = Geom->group;
 
         // If geom doesn't override Group, check defaults
-        if (!Geom->bOverride_Group && !Geom->MjClassName.IsEmpty())
+        if (!Geom->bOverride_group && !Geom->MjClassName.IsEmpty())
         {
             if (int* FoundGroup = DefaultGroupMap.Find(Geom->MjClassName))
             {

@@ -28,6 +28,7 @@
 #include "XmlNode.h"
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 
 UMjTendon::UMjTendon()
@@ -40,42 +41,44 @@ void UMjTendon::BeginPlay()
     Super::BeginPlay();
 }
 
-void UMjTendon::ImportFromXml(const FXmlNode* Node)
+void UMjTendon::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
+
+        // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), limited, bOverride_limited);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("actuatorfrclimited"), actuatorfrclimited, bOverride_actuatorfrclimited);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), range, bOverride_range);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), actuatorfrcrange, bOverride_actuatorfrcrange);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), solreflimit, bOverride_solreflimit);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), solimplimit, bOverride_solimplimit);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), solreffriction, bOverride_solreffriction);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimpfriction"), solimpfriction, bOverride_solimpfriction);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("frictionloss"), frictionloss, bOverride_frictionloss);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("springlength"), springlength, bOverride_springlength);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("width"), width, bOverride_width);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("stiffness"), stiffness, bOverride_stiffness);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), damping, bOverride_damping);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
+    MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
+    // --- CODEGEN_IMPORT_END ---
 
     // Class name
     MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
 
     // --- Physics ---
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("stiffness"), Stiffness, bOverride_Stiffness);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("springlength"), SpringLength, bOverride_SpringLength);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), Damping, bOverride_Damping);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("frictionloss"), FrictionLoss, bOverride_FrictionLoss);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), Armature, bOverride_Armature);
 
     // --- Limits ---
-    MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), bLimited, bOverride_Limited);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), Range, bOverride_Range);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), Margin, bOverride_Margin);
     MjXmlUtils::ReadAttrBool(Node, TEXT("actfrclimited"), bActFrcLimited, bOverride_ActFrcLimited);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actfrcrange"), ActFrcRange, bOverride_ActFrcRange);
 
     // --- Solver ---
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), SolRefLimit, bOverride_SolRefLimit);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), SolImpLimit, bOverride_SolImpLimit);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), SolRefFriction, bOverride_SolRefFriction);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimpfriction"), SolImpFriction, bOverride_SolImpFriction);
 
     // --- Visual ---
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("width"), Width, bOverride_Width);
     TArray<float> RgbaParts;
-    if (MjXmlUtils::ReadAttrFloatArray(Node, TEXT("rgba"), RgbaParts, bOverride_Rgba))
-    {
-        if (RgbaParts.Num() >= 4)
-            Rgba = FLinearColor(RgbaParts[0], RgbaParts[1], RgbaParts[2], RgbaParts[3]);
-    }
-    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), Group, bOverride_Group);
 
     // --- Wrap entries (child nodes of the fixed/spatial element) ---
     Wraps.Empty();
@@ -122,77 +125,44 @@ void UMjTendon::ImportFromXml(const FXmlNode* Node)
     UE_LOG(LogURLabImport, Log, TEXT("[MjTendon XML Import] '%s' -> %d wrap entries"), *GetName(), Wraps.Num());
 }
 
-void UMjTendon::ExportTo(mjsTendon* Tendon, mjsDefault* def)
+void UMjTendon::ExportTo(mjsTendon* Element, mjsDefault* def)
 {
-    if (!Tendon) return;
+    if (!Element) return;
 
     // --- Physics properties ---
-    if (bOverride_Stiffness)
-    {
-        for (int i = 0; i < Stiffness.Num() && i < (1 + mjNPOLY); ++i)
-            Tendon->stiffness[i] = Stiffness[i];
-    }
-    if (bOverride_SpringLength)
-    {
-        for (int i = 0; i < SpringLength.Num() && i < 2; ++i)
-            Tendon->springlength[i] = SpringLength[i];
-    }
-    if (bOverride_Damping)
-    {
-        for (int i = 0; i < Damping.Num() && i < (1 + mjNPOLY); ++i)
-            Tendon->damping[i] = Damping[i];
-    }
-    if (bOverride_FrictionLoss) Tendon->frictionloss = FrictionLoss;
-    if (bOverride_Armature)    Tendon->armature = Armature;
 
     // --- Limits ---
-    if (bOverride_Limited)     Tendon->limited = bLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
-    if (bOverride_Range)
-    {
-        for (int i = 0; i < Range.Num() && i < 2; ++i)
-            Tendon->range[i] = Range[i];
-    }
-    if (bOverride_Margin)      Tendon->margin = Margin;
 
-    if (bOverride_ActFrcLimited) Tendon->actfrclimited = bActFrcLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
+    if (bOverride_ActFrcLimited) Element->actfrclimited = bActFrcLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
     if (bOverride_ActFrcRange)
     {
         for (int i = 0; i < ActFrcRange.Num() && i < 2; ++i)
-            Tendon->actfrcrange[i] = ActFrcRange[i];
+            Element->actfrcrange[i] = ActFrcRange[i];
     }
 
     // --- Solver ---
-    if (bOverride_SolRefLimit)
-    {
-        for (int i = 0; i < SolRefLimit.Num() && i < 2; ++i)
-            Tendon->solref_limit[i] = SolRefLimit[i];
-    }
-    if (bOverride_SolImpLimit)
-    {
-        for (int i = 0; i < SolImpLimit.Num() && i < 5; ++i)
-            Tendon->solimp_limit[i] = SolImpLimit[i];
-    }
-    if (bOverride_SolRefFriction)
-    {
-        for (int i = 0; i < SolRefFriction.Num() && i < 2; ++i)
-            Tendon->solref_friction[i] = SolRefFriction[i];
-    }
-    if (bOverride_SolImpFriction)
-    {
-        for (int i = 0; i < SolImpFriction.Num() && i < 5; ++i)
-            Tendon->solimp_friction[i] = SolImpFriction[i];
-    }
 
     // --- Visuals ---
-    if (bOverride_Width) Tendon->width = Width;
-    if (bOverride_Rgba)
-    {
-        Tendon->rgba[0] = Rgba.R;
-        Tendon->rgba[1] = Rgba.G;
-        Tendon->rgba[2] = Rgba.B;
-        Tendon->rgba[3] = Rgba.A;
-    }
-    if (bOverride_Group) Tendon->group = Group;
+
+        // --- CODEGEN_EXPORT_START ---
+    if (bOverride_group) Element->group = group;
+    if (bOverride_limited) Element->limited = limited ? 1 : 0;
+    if (bOverride_actuatorfrclimited) Element->actfrclimited = actuatorfrclimited ? 1 : 0;
+    if (bOverride_range) { for (int32 i = 0; i < range.Num(); ++i) Element->range[i] = range[i]; }
+    if (bOverride_actuatorfrcrange) { for (int32 i = 0; i < actuatorfrcrange.Num(); ++i) Element->actfrcrange[i] = actuatorfrcrange[i]; }
+    if (bOverride_solreflimit) { for (int32 i = 0; i < solreflimit.Num(); ++i) Element->solref_limit[i] = solreflimit[i]; }
+    if (bOverride_solimplimit) { for (int32 i = 0; i < solimplimit.Num(); ++i) Element->solimp_limit[i] = solimplimit[i]; }
+    if (bOverride_solreffriction) { for (int32 i = 0; i < solreffriction.Num(); ++i) Element->solref_friction[i] = solreffriction[i]; }
+    if (bOverride_solimpfriction) { for (int32 i = 0; i < solimpfriction.Num(); ++i) Element->solimp_friction[i] = solimpfriction[i]; }
+    if (bOverride_frictionloss) Element->frictionloss = frictionloss;
+    if (bOverride_springlength) { for (int32 i = 0; i < springlength.Num(); ++i) Element->springlength[i] = springlength[i]; }
+    if (bOverride_width) Element->width = width;
+    if (bOverride_margin) Element->margin = margin;
+    if (bOverride_stiffness) { for (int32 i = 0; i < stiffness.Num(); ++i) Element->stiffness[i] = stiffness[i]; }
+    if (bOverride_damping) { for (int32 i = 0; i < damping.Num(); ++i) Element->damping[i] = damping[i]; }
+    if (bOverride_armature) Element->armature = armature;
+    if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjTendon::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
@@ -312,3 +282,9 @@ TArray<FString> UMjTendon::GetDefaultClassOptions() const
     return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
 }
 #endif
+
+// --- Multi-UCLASS subclass constructors --------------------------------------
+// Tendon spec API doesn't distinguish spatial vs fixed; that's encoded by the
+// wrap entries the user adds. These subclasses are pure Blueprint UX hints.
+UMjSpatialTendon::UMjSpatialTendon() {}
+UMjFixedTendon::UMjFixedTendon() {}

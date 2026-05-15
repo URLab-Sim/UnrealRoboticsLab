@@ -27,6 +27,7 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjContactExclude.generated.h"
 
 /**
@@ -42,6 +43,20 @@ class URLAB_API UMjContactExclude : public USceneComponent, public IMjSpecElemen
 	GENERATED_BODY()
 
 public:	
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactExclude", meta=(InlineEditConditionToggle))
+    bool bOverride_body1 = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactExclude", meta=(EditCondition="bOverride_body1"))
+    FString body1 = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactExclude", meta=(InlineEditConditionToggle))
+    bool bOverride_body2 = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactExclude", meta=(EditCondition="bOverride_body2"))
+    FString body2 = TEXT("");
+    // --- CODEGEN_PROPERTIES_END ---
+
     /** @brief Default constructor. */
 	UMjContactExclude();
 
@@ -49,26 +64,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude")
     FString Name;
 
-    /** @brief Name of the first body in the exclusion pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude", meta=(GetOptions="GetBodyOptions"))
-    FString Body1;
 
-    /** @brief Name of the second body in the exclusion pair (required). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude", meta=(GetOptions="GetBodyOptions"))
-    FString Body2;
 
     /**
      * @brief Imports contact exclusion settings from a MuJoCo XML <exclude> node.
      * @param Node Pointer to the FXmlNode representing the <exclude> element.
      */
-    void ImportFromXml(const class FXmlNode* Node);
+    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
     /**
      * @brief Exports contact exclusion settings to a MuJoCo mjsExclude structure.
      * @param exclude Pointer to the mjsExclude structure to populate.
      */
 
-    void ExportTo(mjsExclude* exclude);
+    void ExportTo(mjsExclude* Element);
 
     /**
      * @brief Registers this contact exclusion to the MuJoCo spec.

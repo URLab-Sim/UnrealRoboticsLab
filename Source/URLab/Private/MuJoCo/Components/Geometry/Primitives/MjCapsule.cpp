@@ -130,19 +130,27 @@ void UMjCapsule::UpdateCapTransforms()
     }
 }
 
-void UMjCapsule::ImportFromXml(const FXmlNode* Node)
-{
-    ImportFromXml(Node, FMjCompilerSettings());
-}
+
 
 void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
+        // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+
     Super::ImportFromXml(Node, CompilerSettings);
 
-    // Super already resolves any `fromto` into pos/quat + Size.Y (half-length).
+    // Super already resolves any `fromto` into pos/quat + size[1] (half-length).
     // Capsule's MJCF `size` is [radius, halflength] — same layout as cylinder.
-    Radius     = Size.X;
-    HalfLength = Size.Y;
+    // The codegen fromto canon writes -1.0f sentinels for slots not set
+    // by the user (e.g. radius inherits from the default class); clamp those.
+    auto ReadSlot = [this](int32 i) -> float
+    {
+        if (size.Num() <= i) return 0.0f;
+        return size[i] < 0.0f ? 0.0f : size[i];
+    };
+    Radius     = ReadSlot(0);
+    HalfLength = ReadSlot(1);
 
     // Map (radius, halflength) → parent scale, mirroring UMjCylinder.
     FVector NewScale;
@@ -153,45 +161,30 @@ void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& 
     UpdateCapTransforms();
 }
 
-void UMjCapsule::ExportTo(mjsGeom* geom, mjsDefault* def)
+void UMjCapsule::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // Derive radius + half-length back out of the Unreal scale. Base cylinder
-    // is 100cm diameter (radius 50cm) → scale of 1.0 = 50cm radius = 0.5 m.
-    FVector Scale = GetRelativeScale3D();
-    Size.X = Scale.X * 0.5f; // Radius (metres)
-    Size.Y = Scale.Z * 0.5f; // Half-length (metres)
-
-    // User-authored geoms (bWasImported=false) need the size override flag
-    // so the base ExportTo writes both components.
+    // For user-authored capsules, derive (radius, half-length) from the
+    // Unreal scale. Base cylinder is 100cm diameter (radius 50cm) → scale
+    // 1.0 = 50cm radius = 0.5 m.
     if (!bWasImported)
     {
-        bOverride_Size = true;
+        const FVector scale = GetRelativeScale3D();
+        size = { (float)scale.X * 0.5f, (float)scale.Z * 0.5f };
+        bOverride_size = true;
     }
 
-    Super::ExportTo(geom, def);
+    Super::ExportTo(Element, def);
+
+        // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCapsule::SyncUnrealTransformFromMj()
 {
     if (m_GeomView.id == -1) return;
 
-    if (bOverride_FromTo)
-    {
-        // Raw fromto is a two-endpoint description; tearing the composite
-        // down and letting the user author manually is the path of least
-        // surprise (mirrors UMjCylinder's behaviour).
-        auto KillSMC = [](UStaticMeshComponent*& SMC)
-        {
-            if (IsValid(SMC)) { SMC->DestroyComponent(); }
-            SMC = nullptr;
-        };
-        KillSMC(VisualizerShaft);
-        KillSMC(VisualizerCapTop);
-        KillSMC(VisualizerCapBottom);
-        return;
-    }
-
-    if (!bOverride_Size)
+    if (!bOverride_size)
     {
         const float RadiusVal     = m_GeomView.size[0];
         const float HalfLengthVal = m_GeomView.size[1];
@@ -200,7 +193,7 @@ void UMjCapsule::SyncUnrealTransformFromMj()
         SetRelativeScale3D(NewScale);
 
         UE_LOG(LogURLabBind, Log,
-            TEXT("[MjCapsule] Syncing Scale for '%s' from MuJoCo radius: %f, half-length: %f -> NewScale: %s"),
+            TEXT("[MjCapsule] Syncing scale for '%s' from MuJoCo radius: %f, half-length: %f -> NewScale: %s"),
             *GetName(), RadiusVal, HalfLengthVal, *NewScale.ToString());
     }
 
@@ -218,11 +211,11 @@ void UMjCapsule::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEv
     // Enforce uniform radius (X==Y) so end caps stay spherical in X/Y.
     if (PropertyName == FName(TEXT("RelativeScale3D")) || MemberPropertyName == FName(TEXT("RelativeScale3D")))
     {
-        FVector Scale = GetRelativeScale3D();
-        if (!FMath::IsNearlyEqual(Scale.X, Scale.Y))
+        FVector scale = GetRelativeScale3D();
+        if (!FMath::IsNearlyEqual(scale.X, scale.Y))
         {
-            Scale.Y = Scale.X;
-            SetRelativeScale3D(Scale);
+            scale.Y = scale.X;
+            SetRelativeScale3D(scale);
         }
     }
 

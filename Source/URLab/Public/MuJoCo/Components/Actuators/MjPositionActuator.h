@@ -35,49 +35,51 @@ class URLAB_API UMjPositionActuator : public UMjActuator
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_inheritrange = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_inheritrange"))
+    float inheritrange = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_kp = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_kp"))
+    float kp = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_kv = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_kv"))
+    float kv = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_dampratio = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_dampratio"))
+    float dampratio = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_timeconst = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_timeconst"))
+    TArray<float> timeconst = {};
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjPositionActuator();
 
-    /** @brief Override toggle for Kp. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Kp = false;
 
-    /** @brief Proportional gain (Kp) for position servos. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kp"))
-    float Kp = 1.0f;
 
-    /** @brief Override toggle for Kv. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Kv = false;
 
-    /** @brief Derivative gain (Kv) for velocity damping. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kv"))
-    double Kv = 0.0f;
 
-    /** @brief Override toggle for DampRatio. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_DampRatio = false;
 
-    /** @brief Damping ratio. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_DampRatio"))
-    float DampRatio = 0.0f;
 
-    /** @brief Override toggle for TimeConst. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_TimeConst = false;
 
-    /** @brief Time constant for activation dynamics. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_TimeConst"))
-    float TimeConst = 0.0f;
 
-    /** @brief Override toggle for InheritRange. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_InheritRange = false;
 
-    /** @brief Inherited range scale factor. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_InheritRange"))
-    float InheritRange = 0.0f;
 
-    virtual void ParseSpecifics(const class FXmlNode* Node) override;
-    virtual void ExtractSpecifics(const mjsActuator* act) override;
-    virtual void ExportTo(mjsActuator* act, mjsDefault* def = nullptr) override;
+    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

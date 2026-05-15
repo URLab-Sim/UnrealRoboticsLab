@@ -30,6 +30,7 @@
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Utils/MjBind.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjSensor.generated.h"
 
 /**
@@ -157,6 +158,44 @@ class URLAB_API UMjSensor : public UMjComponent
 	GENERATED_BODY()
 
 public:	
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    bool bOverride_nsample = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_nsample"))
+    int32 nsample = 0;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    bool bOverride_interp = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_interp"))
+    int32 interp = 0;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    bool bOverride_delay = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_delay"))
+    float delay = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    bool bOverride_interval = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_interval"))
+    TArray<float> interval = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    bool bOverride_cutoff = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_cutoff"))
+    float cutoff = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    bool bOverride_noise = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_noise"))
+    float noise = 0.0f;
+    // --- CODEGEN_PROPERTIES_END ---
+
 	UMjSensor();
 
     /** @brief The type of sensor (Touch, Accelerometer, JointPos, etc.). */
@@ -175,21 +214,9 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
     int Dim;
 
-    /** @brief Override toggle for Noise. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_Noise = false;
 
-    /** @brief Noise standard deviation added to the sensor reading. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_Noise"))
-    float Noise = 0.0f;
 
-    /** @brief Override toggle for Cutoff. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_Cutoff = false;
 
-    /** @brief Cutoff frequency for the sensor filter. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_Cutoff"))
-    float Cutoff = 0.0f;
 
     /** @brief Output address override for user sensors (mjsSensor::adr). -1 = let MuJoCo assign. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
@@ -226,13 +253,13 @@ public:
 
 public:
 
-    void ExportTo(mjsSensor* Sensor, mjsDefault* Default = nullptr);
+    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr);
     
     /**
      * @brief Imports properties and override flags directly from the raw XML node.
      * @param Node Pointer to the corresponding FXmlNode.
      */
-    void ImportFromXml(const class FXmlNode* Node);
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
     /**
      * @brief Registers this sensor to the MuJoCo spec.

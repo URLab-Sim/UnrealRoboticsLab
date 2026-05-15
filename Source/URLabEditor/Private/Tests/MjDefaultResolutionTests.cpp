@@ -179,10 +179,10 @@ bool FMjDefResParentChain::RunTest(const FString& Parameters)
 
         UMjJoint* DerivedJoint = NewObject<UMjJoint>(Ses.Robot, TEXT("DefDerivedJoint"));
         DerivedJoint->bIsDefault = true;
-        DerivedJoint->bOverride_Range = true;
-        DerivedJoint->Range = {-1.57f, 1.57f};
-        DerivedJoint->bOverride_Limited = true;
-        DerivedJoint->bLimited = true;
+        DerivedJoint->bOverride_range = true;
+        DerivedJoint->range = {-1.57f, 1.57f};
+        DerivedJoint->bOverride_limited = true;
+        DerivedJoint->limited = true;
         DerivedJoint->RegisterComponent();
         DerivedJoint->AttachToComponent(DefDerived, FAttachmentTransformRules::KeepRelativeTransform);
     });
@@ -237,9 +237,9 @@ bool FMjDefResChildClass::RunTest(const FString& Parameters)
         DefJ->RegisterComponent();
         DefJ->AttachToComponent(Def, FAttachmentTransformRules::KeepRelativeTransform);
 
-        // Set the body's ChildClassName
-        Ses.Body->bOverride_ChildClassName = true;
-        Ses.Body->ChildClassName = TEXT("bodydef");
+        // Set the body's childclass
+        Ses.Body->bOverride_childclass = true;
+        Ses.Body->childclass = TEXT("bodydef");
     });
     if (!TestTrue(TEXT("Init"), bOk)) return false;
 
@@ -397,10 +397,10 @@ bool FMjDefResEditorMatchesCompiled::RunTest(const FString& Parameters)
         DefJ->bIsDefault = true;
         DefJ->bOverride_Axis = true;
         DefJ->Axis = FVector(1, 0, 0);
-        DefJ->bOverride_Limited = true;
-        DefJ->bLimited = true;
-        DefJ->bOverride_Range = true;
-        DefJ->Range = {-0.5f, 0.5f};
+        DefJ->bOverride_limited = true;
+        DefJ->limited = true;
+        DefJ->bOverride_range = true;
+        DefJ->range = {-0.5f, 0.5f};
         DefJ->bOverride_Type = true;
         DefJ->Type = EMjJointType::Hinge;
         DefJ->RegisterComponent();

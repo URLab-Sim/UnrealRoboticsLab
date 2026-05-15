@@ -25,52 +25,33 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjAdhesionActuator::UMjAdhesionActuator()
 {
     Type = EMjActuatorType::Adhesion;
 }
 
-void UMjAdhesionActuator::ParseSpecifics(const FXmlNode* Node)
+
+
+void UMjAdhesionActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("gain"), Kp, bOverride_Kp);
+    if (!Element) return;
+
+    Super::ExportTo(Element, def);
+
+    // --- CODEGEN_EXPORT_START ---
+    mjs_setToAdhesion(Element, bOverride_gain ? (double)gain : 0.0);
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjAdhesionActuator::ExtractSpecifics(const mjsActuator* act)
+void UMjAdhesionActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    if (GainPrm.Num() > 0)
-    {
-        Kp = GainPrm[0];
-        bOverride_Kp = true;
-    }
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("gain"), gain, bOverride_gain);
+    // --- CODEGEN_IMPORT_END ---
 }
 
-void UMjAdhesionActuator::ExportTo(mjsActuator* act, mjsDefault* def)
-{
-    if (!act) return;
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjAdhesion] '%s' ExportTo: class='%s', bOverride_Kp=%s, Kp=%.3f"),
-        *GetName(), *MjClassName, bOverride_Kp ? TEXT("true") : TEXT("false"), Kp);
-    UE_LOG(LogURLabImport, Log, TEXT("[MjAdhesion] '%s' BEFORE Super::ExportTo: ctrlrange=[%.3f, %.3f], ctrllimited=%d"),
-        *GetName(), act->ctrlrange[0], act->ctrlrange[1], act->ctrllimited);
-
-    Super::ExportTo(act, def); // 1. Common attributes
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjAdhesion] '%s' AFTER Super::ExportTo: ctrlrange=[%.3f, %.3f], ctrllimited=%d, bOverride_CtrlRange=%s"),
-        *GetName(), act->ctrlrange[0], act->ctrlrange[1], act->ctrllimited,
-        bOverride_CtrlRange ? TEXT("true") : TEXT("false"));
-
-    // Mirror OneActuator: gain = act->gainprm[0] as inherited default, override only if explicitly set.
-    double gain = bOverride_Kp ? (double)Kp : act->gainprm[0];
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjAdhesion] '%s' BEFORE mjs_setToAdhesion: gain=%.3f, ctrlrange=[%.3f, %.3f]"),
-        *GetName(), gain, act->ctrlrange[0], act->ctrlrange[1]);
-
-    const char* err = mjs_setToAdhesion(act, gain); // 2. Type preset
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjAdhesion] '%s' AFTER mjs_setToAdhesion: ctrlrange=[%.3f, %.3f], ctrllimited=%d, err='%s'"),
-        *GetName(), act->ctrlrange[0], act->ctrlrange[1], act->ctrllimited,
-        err && err[0] ? UTF8_TO_TCHAR(err) : TEXT("none"));
-
-    ApplyRawOverrides(act, def);  // 3. Raw prm overrides
-}

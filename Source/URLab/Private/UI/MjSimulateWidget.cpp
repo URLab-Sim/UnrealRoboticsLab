@@ -39,7 +39,7 @@
 #include "Components/SizeBox.h"
 #include "Components/Spacer.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Input/MjTwistController.h"
+#include "MuJoCo/input/MjTwistController.h"
 #include "Styling/SlateTypes.h"
 #include "Fonts/SlateFontInfo.h"
 #include "MuJoCo/Utils/MjUtils.h"
@@ -318,7 +318,7 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
         }
         else
         {
-            TimeText->SetText(FText::FromString(FString::Printf(TEXT("Time: %.3f s"), ManagerRef->GetSimTime())));
+            TimeText->SetText(FText::FromString(FString::Printf(TEXT("time: %.3f s"), ManagerRef->GetSimTime())));
         }
     }
 
@@ -398,7 +398,7 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
         }
     }
 
-    // Toggle Input Mode via Tab key
+    // Toggle input mode via Tab key
     if (APlayerController* PC = GetOwningPlayer())
     {
         if (PC->WasInputKeyJustPressed(EKeys::Tab))
@@ -829,7 +829,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
         }
     };
 
-    auto AddRow = [&](UVerticalBox* List, const FString& Name, float Initial, EMjPropertyType Type, bool bIsActuator, FVector2D Range = FVector2D(0.0f, 1.0f), bool bIsManagerOption = false, UObject* AssociatedObject = nullptr)
+    auto AddRow = [&](UVerticalBox* List, const FString& Name, float Initial, EMjPropertyType Type, bool bIsActuator, FVector2D range = FVector2D(0.0f, 1.0f), bool bIsManagerOption = false, UObject* AssociatedObject = nullptr)
     {
         UMjPropertyRow* Row = CreateWidget<UMjPropertyRow>(this, PropertyRowClass);
         if (Row)
@@ -841,7 +841,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
                 DisplayName = MjUtils::PrettifyName(Name, ArtName);
             }
 
-            Row->InitializeProperty(Name, Type, Initial, Range, DisplayName);
+            Row->InitializeProperty(Name, Type, Initial, range, DisplayName);
             if (bIsManagerOption)
             {
                 Row->OnValueChanged.AddDynamic(this, &UMjSimulateWidget::HandleManagerOptionChanged);
@@ -907,7 +907,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
         UVerticalBox* VisualsBox = nullptr;
         CreateSection(ManagerSettingsList, TEXT("VISUALS"), VisualsBox);
         AddRow(VisualsBox, TEXT("Global Artic. Collision"), (DV && DV->bGlobalDrawDebugCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
-        AddRow(VisualsBox, TEXT("Global Artic. Group 3"), (DV && DV->bGlobalShowGroup3) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
+        AddRow(VisualsBox, TEXT("Global Artic. group 3"), (DV && DV->bGlobalShowGroup3) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
         AddRow(VisualsBox, TEXT("Global Quick Collision"), (DV && DV->bGlobalQuickConvertCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
 
         if (SelectedArticulation)
@@ -915,8 +915,8 @@ void UMjSimulateWidget::RefreshArticulationControls()
             AddRow(VisualsBox, TEXT("Selected Collision"), SelectedArticulation->bDrawDebugCollision ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
             AddRow(VisualsBox, TEXT("Selected Joint Axes"), SelectedArticulation->bDrawDebugJoints ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
             AddRow(VisualsBox, TEXT("Selected Sites"), SelectedArticulation->bDrawDebugSites ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
-            AddRow(VisualsBox, TEXT("Selected Group 3"), SelectedArticulation->bShowGroup3 ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
-            AddRow(VisualsBox, TEXT("Selected Internal Ctrl"), SelectedArticulation->ControlSource == (uint8)EControlSource::UI ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
+            AddRow(VisualsBox, TEXT("Selected group 3"), SelectedArticulation->bShowGroup3 ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
+            AddRow(VisualsBox, TEXT("Selected Internal ctrl"), SelectedArticulation->ControlSource == (uint8)EControlSource::UI ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0,1), true);
         }
 
         UVerticalBox* NetworkBox = nullptr;
@@ -1093,14 +1093,14 @@ void UMjSimulateWidget::RefreshArticulationControls()
     {
         UVerticalBox* SecBox = nullptr;
         CreateSection(ArticulationControlList, TEXT("ACTUATORS"), SecBox);
-        for (UMjActuator* Act : Actuators)
+        for (UMjActuator* act : Actuators)
         {
-            if (!Act) continue;
-            FString ActName = Act->GetMjName();
-            if (ActName.IsEmpty()) ActName = Act->GetName();
+            if (!act) continue;
+            FString ActName = act->GetMjName();
+            if (ActName.IsEmpty()) ActName = act->GetName();
             
-            FVector2D Range = Act->GetControlRange();
-            AddRow(SecBox, ActName, Act->GetControl(), EMjPropertyType::Slider, true, Range, false, Act);
+            FVector2D range = act->GetControlRange();
+            AddRow(SecBox, ActName, act->GetControl(), EMjPropertyType::Slider, true, range, false, act);
         }
     }
 
@@ -1176,12 +1176,12 @@ void UMjSimulateWidget::RefreshArticulationControls()
         UMjTwistController* TC = SelectedArticulation->FindComponentByClass<UMjTwistController>();
         if (TC)
         {
-            auto AddTwistRow = [&](UVerticalBox* List, const FString& Name, float Initial, FVector2D Range)
+            auto AddTwistRow = [&](UVerticalBox* List, const FString& Name, float Initial, FVector2D range)
             {
                 UMjPropertyRow* Row = CreateWidget<UMjPropertyRow>(this, PropertyRowClass);
                 if (Row)
                 {
-                    Row->InitializeProperty(Name, EMjPropertyType::Slider, Initial, Range, Name);
+                    Row->InitializeProperty(Name, EMjPropertyType::Slider, Initial, range, Name);
                     Row->OnValueChanged.AddDynamic(this, &UMjSimulateWidget::HandleTwistOptionChanged);
                     Row->SetAssociatedObject(TC);
                     if (UVerticalBoxSlot* Slot = List->AddChildToVerticalBox(Row))
@@ -1200,7 +1200,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
         }
     }
 
-    // Force layout recalculation after content changes (camera feeds change panel widths)
+    // force layout recalculation after content changes (camera feeds change panel widths)
     InvalidateLayoutAndVolatility();
 }
 
@@ -1242,9 +1242,9 @@ void UMjSimulateWidget::UpdateMonitorValues()
                         // Identify the source of the value
                         if (UObject* RawObj = Row->GetAssociatedObject())
                         {
-                            if (UMjActuator* Act = Cast<UMjActuator>(RawObj))
+                            if (UMjActuator* act = Cast<UMjActuator>(RawObj))
                             {
-                                Val = Act->GetControl();
+                                Val = act->GetControl();
                             }
                             else if (UMjJoint* Joint = Cast<UMjJoint>(RawObj))
                             {
@@ -1308,13 +1308,13 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
         {
             if (Art) Art->ControlSource = NewSource;
         }
-        UpdateMonitorValues(); // Force immediate UI refresh of interactivity state
+        UpdateMonitorValues(); // force immediate UI refresh of interactivity state
     }
     else if (OptionName == TEXT("Global Artic. Collision"))
     {
         if (DV) { DV->bGlobalDrawDebugCollision = (NewValue > 0.5f); DV->UpdateAllGlobalVisibility(); }
     }
-    else if (OptionName == TEXT("Global Artic. Group 3"))
+    else if (OptionName == TEXT("Global Artic. group 3"))
     {
         if (DV) { DV->bGlobalShowGroup3 = (NewValue > 0.5f); DV->UpdateAllGlobalVisibility(); }
     }
@@ -1338,12 +1338,12 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
     {
         SelectedArticulation->bDrawDebugSites = (NewValue > 0.5f);
     }
-    else if (OptionName == TEXT("Selected Group 3") && SelectedArticulation)
+    else if (OptionName == TEXT("Selected group 3") && SelectedArticulation)
     {
         SelectedArticulation->bShowGroup3 = (NewValue > 0.5f);
         SelectedArticulation->UpdateGroup3Visibility();
     }
-    else if (OptionName == TEXT("Selected Internal Ctrl") && SelectedArticulation)
+    else if (OptionName == TEXT("Selected Internal ctrl") && SelectedArticulation)
     {
         SelectedArticulation->ControlSource = (NewValue > 0.5f) ? (uint8)EControlSource::UI : (uint8)EControlSource::ZMQ;
         UE_LOG(LogURLab, Log, TEXT("Set '%s' control source to %s"),

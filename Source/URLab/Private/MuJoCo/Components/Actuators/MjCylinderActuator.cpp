@@ -25,43 +25,36 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjCylinderActuator::UMjCylinderActuator()
 {
     Type = EMjActuatorType::Cylinder;
 }
 
-void UMjCylinderActuator::ParseSpecifics(const FXmlNode* Node)
+
+
+void UMjCylinderActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("timeconst"), TimeConst, bOverride_TimeConst);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("bias"),      Bias,      bOverride_Bias);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("area"),      Area,      bOverride_Area);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("diameter"),  Diameter,  bOverride_Diameter);
+    if (!Element) return;
+
+    Super::ExportTo(Element, def);
+
+    // --- CODEGEN_EXPORT_START ---
+    mjs_setToCylinder(Element, (bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0, bOverride_bias ? (double)bias : -1.0, bOverride_area ? (double)area : -1.0, bOverride_diameter ? (double)diameter : -1.0);
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjCylinderActuator::ExtractSpecifics(const mjsActuator* act)
+void UMjCylinderActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    // Extract parameters
-    if (DynPrm.Num() > 0) { TimeConst = DynPrm[0]; bOverride_TimeConst = true; }
-    
-    if (BiasPrm.Num() > 3) { Bias = BiasPrm[3]; bOverride_Bias = true; }
-    
-    if (GainPrm.Num() > 0) { Area = GainPrm[0]; bOverride_Area = true; }
-    if (GainPrm.Num() > 1) { Diameter = GainPrm[1]; bOverride_Diameter = true; }
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("timeconst"), timeconst, bOverride_timeconst);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("area"), area, bOverride_area);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("diameter"), diameter, bOverride_diameter);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("bias"), bias, bOverride_bias);
+    // --- CODEGEN_IMPORT_END ---
 }
 
-void UMjCylinderActuator::ExportTo(mjsActuator* act, mjsDefault* def)
-{
-    if (!act) return;
-
-    Super::ExportTo(act, def); // 1. Common attributes (populates act from default via mjs_addActuator)
-
-    // Mirror OneActuator: read from act struct as inherited defaults, override only if explicitly set.
-    const double timeconst = bOverride_TimeConst ? (double)TimeConst : act->dynprm[0];
-    const double bias      = bOverride_Bias      ? (double)Bias      : act->biasprm[0];
-    const double area      = bOverride_Area      ? (double)Area      : act->gainprm[0];
-    const double diameter  = bOverride_Diameter  ? (double)Diameter  : -1.0; // -1 = derive from area
-
-    mjs_setToCylinder(act, timeconst, bias, area, diameter); // 2. Type preset
-    ApplyRawOverrides(act, def);                             // 3. Raw prm overrides
-}

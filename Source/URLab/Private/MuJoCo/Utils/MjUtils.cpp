@@ -22,12 +22,14 @@
 
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjBind.h"
+#include "MuJoCo/Utils/MjXmlUtils.h"
 #include "DrawDebugHelpers.h"
+#include "XmlNode.h"
 
 FVector MjUtils::MjToUEPosition(const double* pos)
 {
     // MuJoCo (Right-handed, Z-up) -> UE (Left-handed, Z-up)
-    // Scale: 1 unit -> 100 cm
+    // scale: 1 unit -> 100 cm
     // Axis: X->X, Y->-Y, Z->Z
     if (!pos) return FVector::ZeroVector;
     return FVector(pos[0] * 100.0, pos[1] * -100.0, pos[2] * 100.0);
@@ -99,17 +101,41 @@ bool MjUtils::ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& 
 
     TArray<FString> Parts;
     FromToStr.ParseIntoArray(Parts, TEXT(" "), true);
-    
+
     if (Parts.Num() >= 6)
     {
         double Start[3] = {FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2])};
         double End[3] = {FCString::Atod(*Parts[3]), FCString::Atod(*Parts[4]), FCString::Atod(*Parts[5])};
-        
+
         OutStart = MjToUEPosition(Start);
         OutEnd = MjToUEPosition(End);
         return true;
     }
     return false;
+}
+
+
+bool MjUtils::DecomposeFromTo(const FXmlNode* Node,
+                              FVector& OutPos, FQuat& OutQuat,
+                              float& OutHalfLength)
+{
+    if (!Node) return false;
+    const FString FromToStr = Node->GetAttribute(TEXT("fromto"));
+    if (FromToStr.IsEmpty()) return false;
+
+    FVector Start, End;
+    if (!ParseFromTo(FromToStr, Start, End)) return false;
+
+    OutPos = (Start + End) * 0.5f;
+
+    const FVector Dir = (End - Start).GetSafeNormal();
+    OutQuat = Dir.IsNearlyZero()
+                 ? FQuat::Identity
+                 : FQuat::FindBetweenNormals(FVector(0.f, 0.f, 1.f), Dir);
+
+    // UE cm -> MuJoCo m for the half-length.
+    OutHalfLength = (End - Start).Size() * 0.5f / 100.0f;
+    return true;
 }
 
 void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geom_view, const FColor& DrawColor, float Multiplier)
@@ -238,7 +264,7 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
     }
 }
 
-void MjUtils::DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector& Axis,
+void MjUtils::DrawDebugJoint(UWorld* World, const FVector& anchor, const FVector& Axis,
     int JointType, bool bLimited, float RangeMin, float RangeMax,
     float CurrentPos, float RefPos, float ArcRadius)
 {
@@ -280,13 +306,13 @@ void MjUtils::DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector
             for (int i = 0; i <= NumSegments; ++i)
             {
                 float Theta = DrawMin + Step * i;
-                ArcPoints.Add(Anchor + FQuat(AxisDir, Theta).RotateVector(RadialDir) * ArcRadius);
+                ArcPoints.Add(anchor + FQuat(AxisDir, Theta).RotateVector(RadialDir) * ArcRadius);
             }
 
             // Filled arc (triangle fan from anchor)
             TArray<FVector> FillVerts;
             TArray<int32> FillIndices;
-            FillVerts.Add(Anchor); // index 0 = center
+            FillVerts.Add(anchor); // index 0 = center
             for (int i = 0; i <= NumSegments; ++i)
             {
                 FillVerts.Add(ArcPoints[i]);
@@ -306,22 +332,22 @@ void MjUtils::DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector
             }
 
             // Limit lines from anchor to arc edges
-            DrawDebugLine(World, Anchor, ArcPoints[0], LimitColor, false, -1, 0, 1.5f);
-            DrawDebugLine(World, Anchor, ArcPoints.Last(), LimitColor, false, -1, 0, 1.5f);
+            DrawDebugLine(World, anchor, ArcPoints[0], LimitColor, false, -1, 0, 1.5f);
+            DrawDebugLine(World, anchor, ArcPoints.Last(), LimitColor, false, -1, 0, 1.5f);
         }
 
         // Reference position (qpos0) indicator
         if (!FMath::IsNaN(RefPos))
         {
             FVector RefDir = FQuat(AxisDir, Sign * RefPos).RotateVector(RadialDir);
-            DrawDebugLine(World, Anchor, Anchor + RefDir * ArcRadius * 0.9f, RefColor, false, -1, 0, 1.0f);
+            DrawDebugLine(World, anchor, anchor + RefDir * ArcRadius * 0.9f, RefColor, false, -1, 0, 1.0f);
         }
 
         // Current position indicator
         if (!FMath::IsNaN(CurrentPos))
         {
             FVector PosDir = FQuat(AxisDir, Sign * CurrentPos).RotateVector(RadialDir);
-            DrawDebugLine(World, Anchor, Anchor + PosDir * ArcRadius * 1.15f, PosColor, false, -1, 0, 2.5f);
+            DrawDebugLine(World, anchor, anchor + PosDir * ArcRadius * 1.15f, PosColor, false, -1, 0, 2.5f);
         }
     }
     else if (JointType == mjJNT_SLIDE)
@@ -329,8 +355,8 @@ void MjUtils::DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector
         // All slide values expected in cm (caller converts from meters if needed)
         if (bLimited && (RangeMin != 0.0f || RangeMax != 0.0f))
         {
-            FVector MinPos = Anchor + AxisDir * RangeMin;
-            FVector MaxPos = Anchor + AxisDir * RangeMax;
+            FVector MinPos = anchor + AxisDir * RangeMin;
+            FVector MaxPos = anchor + AxisDir * RangeMax;
 
             // Perpendicular tick direction
             FVector TickDir = FVector::CrossProduct(AxisDir, FVector::UpVector);
@@ -339,7 +365,7 @@ void MjUtils::DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector
             TickDir.Normalize();
             float TickSize = 4.0f;
 
-            // Range bar
+            // range bar
             DrawDebugLine(World, MinPos, MaxPos, ArcColor, false, -1, 0, 1.5f);
 
             // Tick marks at limits
@@ -350,14 +376,14 @@ void MjUtils::DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector
         // Reference position
         if (!FMath::IsNaN(RefPos))
         {
-            FVector RefPoint = Anchor + AxisDir * RefPos;
+            FVector RefPoint = anchor + AxisDir * RefPos;
             DrawDebugPoint(World, RefPoint, 6.0f, RefColor, false, -1);
         }
 
         // Current position indicator
         if (!FMath::IsNaN(CurrentPos))
         {
-            FVector PosPoint = Anchor + AxisDir * CurrentPos;
+            FVector PosPoint = anchor + AxisDir * CurrentPos;
             DrawDebugPoint(World, PosPoint, 8.0f, PosColor, false, -1);
         }
     }
@@ -392,4 +418,17 @@ FString MjUtils::PrettifyName(const FString& Name, const FString& PrefixToStrip)
     Result = Result.TrimStartAndEnd().TrimChar('_');
 
     return Result.IsEmpty() ? Name : Result;
+}
+
+bool MjUtils::ReadVec3InMeters(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride)
+{
+    if (!Node) return false;
+    FString Str = Node->GetAttribute(Attr);
+    if (Str.IsEmpty()) return false;
+    bOverride = true;
+    // Schema attribute is in MJ metres; convert to UE centimetres + Y-flip.
+    FVector MjVec = MjXmlUtils::ParseVector(Str);
+    const double MjArr[3] = {MjVec.X, MjVec.Y, MjVec.Z};
+    Out = MjUtils::MjToUEPosition(MjArr);
+    return true;
 }

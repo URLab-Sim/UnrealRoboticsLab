@@ -21,9 +21,32 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Joints/MjSlideJoint.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjSlideJoint::UMjSlideJoint()
 {
     bOverride_Type = true;
     Type = EMjJointType::Slide;
 }
+
+void UMjSlideJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
+}
+
+void UMjSlideJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

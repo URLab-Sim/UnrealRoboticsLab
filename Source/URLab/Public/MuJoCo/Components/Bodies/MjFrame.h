@@ -13,27 +13,30 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
 
 #include "CoreMinimal.h"
+#include "mujoco/mjspec.h"
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjFrame.generated.h"
 
 /**
  * @class UMjFrame
- * @brief Represents a MuJoCo frame (mjsFrame) in the spec.
- * 
- * Frames are used for coordinate transformations and are compiled away 
- * by the MuJoCo compiler into relative offsets for attached elements.
- * This component does not support runtime binding.
+ * @brief Represents a MuJoCo <frame> (mjsFrame).
+ *
+ * Frames supply a coordinate offset that the MuJoCo compiler bakes into the
+ * pos/quat of their child elements; they don't survive into mjModel/mjData, so
+ * no runtime view or Bind work is needed. Spec creation goes through
+ * MjFrame::Setup, which is dispatched by the parent UMjBody during its own
+ * Setup walk and recursively visits the frame's UE child components.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjFrame : public UMjComponent
@@ -41,28 +44,54 @@ class URLAB_API UMjFrame : public UMjComponent
     GENERATED_BODY()
 
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFrame|Spatial Pose", meta=(InlineEditConditionToggle))
+    bool bOverride_Pos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFrame|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    FVector Pos = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFrame|Orientation", meta=(InlineEditConditionToggle))
+    bool bOverride_Quat = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFrame|Orientation", meta=(EditCondition="bOverride_Quat"))
+    FQuat Quat = FQuat::Identity;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFrame", meta=(InlineEditConditionToggle))
+    bool bOverride_childclass = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFrame", meta=(EditCondition="bOverride_childclass"))
+    FString childclass = TEXT("");
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjFrame();
 
     /**
-     * @brief Registers this frame to the MuJoCo spec.
-     * @param Wrapper The spec wrapper instance.
-     * @param ParentBody The parent MuJoCo body.
+     * @brief Recursive spec registration entry point for frames. Creates the
+     *        mjsFrame from the UE relative transform (the source of truth)
+     *        and dispatches RegisterToSpec on the frame's child components.
      */
     virtual void Setup(USceneComponent* Parent, mjsBody* ParentBody, class FMujocoSpecWrapper* Wrapper);
 
-    /** @brief Empty implementation as frames are compiled away and don't exist at runtime in mjModel/mjData. */
+    /**
+     * @brief Codegen-owned: writes the frame's hand-rolled childclass and any
+     *        future per-attr fields. Pos/Quat come from the UE transform via
+     *        MjSpecWrapper::CreateFrame and are deliberately skipped here.
+     */
+    virtual void ExportTo(mjsFrame* Element, mjsDefault* Default = nullptr);
+
+    /** @brief Empty: frames are compiled away. */
     virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT("")) override;
 
-    /** @brief Frames are not used in SpecElement flow directly but via Setup. */
+    /** @brief Frame registration is driven by Setup (called from UMjBody). */
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
     /**
-     * @brief Imports pos/orientation from an XML <frame> node.
-     * Sets the component's RelativeLocation and RelativeRotation in UE space.
-     * @param Node  The <frame> XML element.
-     * @param CompilerSettings  Angle units and euler sequence from <compiler>.
+     * @brief Codegen-owned: imports pos/orientation/childclass from <frame>.
+     *        Drives SetRelativeLocation/SetRelativeRotation from the codegen-
+     *        emitted Pos/Quat UPROPERTYs so the UE editor matches the data.
      */
-    void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
+    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
 private:
     /** @brief Cached list of child elements for registration. */

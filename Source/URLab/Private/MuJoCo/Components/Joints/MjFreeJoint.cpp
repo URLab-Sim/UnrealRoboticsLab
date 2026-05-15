@@ -22,6 +22,7 @@
 
 #include "MuJoCo/Components/Joints/MjFreeJoint.h"
 #include "Serialization/BufferArchive.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjFreeJoint::UMjFreeJoint()
 {
@@ -70,3 +71,25 @@ FString UMjFreeJoint::GetTelemetryTopicName() const
 {
     return FString::Printf(TEXT("base_state/%s"), *GetName());
 }
+
+void UMjFreeJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
+}
+
+void UMjFreeJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

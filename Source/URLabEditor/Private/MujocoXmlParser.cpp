@@ -129,7 +129,7 @@ static FString ResolveMaterialFromDefaults(const UMjGeom* GeomComp, UBlueprint* 
     if (!GeomComp || !BP || !BP->SimpleConstructionScript) return FString();
 
     // If the geom has an explicit material, use it
-    if (!GeomComp->MaterialName.IsEmpty()) return GeomComp->MaterialName;
+    if (GeomComp->bOverride_material && !GeomComp->material.IsEmpty()) return GeomComp->material;
 
     // Find the default class name (explicit on the geom, or from parent body's childclass)
     FString ClassName = GeomComp->MjClassName;
@@ -150,9 +150,9 @@ static FString ResolveMaterialFromDefaults(const UMjGeom* GeomComp, UBlueprint* 
                     {
                         if (UMjBody* Body = Cast<UMjBody>(Parent->ComponentTemplate))
                         {
-                            if (Body->bOverride_ChildClassName && !Body->ChildClassName.IsEmpty())
+                            if (Body->bOverride_childclass && !Body->childclass.IsEmpty())
                             {
-                                ClassName = Body->ChildClassName;
+                                ClassName = Body->childclass;
                             }
                         }
                         break;
@@ -165,7 +165,7 @@ static FString ResolveMaterialFromDefaults(const UMjGeom* GeomComp, UBlueprint* 
 
     if (ClassName.IsEmpty()) return FString();
 
-    // Walk the default class chain looking for a geom with MaterialName set
+    // Walk the default class chain looking for a geom with material set
     TArray<USCS_Node*> AllNodes = BP->SimpleConstructionScript->GetAllNodes();
     TSet<FString> Visited;
 
@@ -184,8 +184,8 @@ static FString ResolveMaterialFromDefaults(const UMjGeom* GeomComp, UBlueprint* 
             {
                 if (UMjGeom* ChildGeom = Cast<UMjGeom>(ChildNode->ComponentTemplate))
                 {
-                    if (!ChildGeom->MaterialName.IsEmpty())
-                        return ChildGeom->MaterialName;
+                    if (ChildGeom->bOverride_material && !ChildGeom->material.IsEmpty())
+                        return ChildGeom->material;
                 }
             }
 
@@ -446,7 +446,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             {
                  FString MeshName = Node->GetAttribute(TEXT("mesh"));
                  FString GeomClass = Node->GetAttribute(TEXT("class"));
-                 int32 GeomGroup = GeomComp->Group;
+                 int32 GeomGroup = GeomComp->group;
                  UE_LOG(LogURLabEditor, Log, TEXT("[Mesh Import] Geom '%s': mesh='%s', class='%s', group=%d"),
                      *Name, *MeshName, *GeomClass, GeomGroup);
 
@@ -470,7 +470,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
                                  MeshTemplate->SetCollisionResponseToAllChannels(ECR_Overlap);
 
                                  // Check if parent Geom has Group=3 (collision/hidden)
-                                 if (GeomComp && GeomComp->Group == 3)
+                                 if (GeomComp && GeomComp->group == 3)
                                  {
                                      MeshTemplate->SetVisibility(false);
                                      MeshTemplate->bHiddenInGame = true;
@@ -503,7 +503,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
                                  // Create and assign material instance
                                  FMuJoCoMaterialData MatData;
-                                 MatData.Rgba = GeomComp->Rgba; // Use geom color as default
+                                 MatData.Rgba = GeomComp->rgba; // Use geom color as default
 
                                  // Key by material name (resolved through default chain) if referenced, else fall back to mesh name
                                  FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);
@@ -544,7 +544,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
                  // Create and assign material instance
                  FMuJoCoMaterialData MatData;
-                 MatData.Rgba = GeomComp->Rgba; // Use geom color as default
+                 MatData.Rgba = GeomComp->rgba; // Use geom color as default
 
                  // Key by material name (resolved through default chain) if referenced, else fall back to geom name
                  FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);
@@ -569,7 +569,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
                  }
 
                  // Check for Group 3 visibility
-                 if (GeomComp->Group == 3)
+                 if (GeomComp->group == 3)
                  {
                      BuiltInViz->SetVisibility(false);
                      BuiltInViz->bHiddenInGame = true;
@@ -650,7 +650,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
             // For mesh type, import the mesh file and create a child UStaticMeshComponent
             FString FlexMeshFile = Node->GetAttribute(TEXT("file"));
-            if (FlexComp->Type == EMjFlexcompType::Mesh && !FlexMeshFile.IsEmpty())
+            if (FlexComp->FlexcompType == EMjFlexcompType::Mesh && !FlexMeshFile.IsEmpty())
             {
                 FString MeshName = FPaths::GetBaseFilename(FlexMeshFile);
 

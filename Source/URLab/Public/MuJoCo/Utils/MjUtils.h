@@ -77,6 +77,21 @@ public:
     static void UEToMjRotation(const FQuat& quat, double* outQuat);
 
     /**
+     * @brief Read a position attribute from XML (in MJ metres) and convert
+     * to Unreal Engine centimetres + Y-flip. Sets ``bOverride=true`` when
+     * the attribute is present. Codegen-driven thin wrapper used by the
+     * spatial_pose canonicalisation in URLab components.
+     *
+     * @param Node XML element.
+     * @param Attr Attribute name (typically TEXT("pos")).
+     * @param Out UE-space output vector.
+     * @param bOverride Set to true when the attribute is present.
+     * @return true if the attribute was present and parsed.
+     */
+    static bool ReadVec3InMeters(const class FXmlNode* Node, const TCHAR* Attr,
+                                  FVector& Out, bool& bOverride);
+
+    /**
      * @brief Converts a C-style string (possibly null) to an Unreal Engine FString.
      * 
      * @param text Pointer to the C-string.
@@ -102,6 +117,26 @@ public:
      * @return true if successful (6 values parsed), false otherwise.
      */
     static bool ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& OutEnd);
+
+    /**
+     * @brief Decompose a MuJoCo `fromto` XML attribute into URLab's canonical
+     * Pos/Quat representation plus a half-length scalar.
+     *
+     * MJCF's ``fromto="x1 y1 z1 x2 y2 z2"`` is an alternative way to specify
+     * pos+quat+size[1 or 2] for capsule/cylinder/box/ellipsoid primitives. We
+     * always normalise to (Pos = midpoint, Quat aligns +Z with the segment
+     * direction, HalfLength = half the segment length in metres). The caller
+     * decides which Size slot to write the half-length into.
+     *
+     * @param Node           XML node to read the `fromto` attribute from.
+     * @param OutPos         Receives the midpoint in UE world units (cm).
+     * @param OutQuat        Receives the orientation aligning local +Z with fromto.
+     * @param OutHalfLength  Receives the half-distance in MuJoCo metres.
+     * @return true iff `fromto` was present and successfully parsed.
+     */
+    static bool DecomposeFromTo(const class FXmlNode* Node,
+                                FVector& OutPos, FQuat& OutQuat,
+                                float& OutHalfLength);
 
     /**
      * @brief Renders the collision geometries for a specific MuJoCo Geom (Primitives and Convex Hulls).

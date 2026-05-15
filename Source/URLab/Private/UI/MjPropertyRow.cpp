@@ -37,7 +37,7 @@ void UMjPropertyRow::NativeConstruct()
     {
         PropertySlider->OnValueChanged.AddDynamic(this, &UMjPropertyRow::HandleSliderChanged);
 
-        // Force slider to fill available horizontal space
+        // force slider to fill available horizontal space
         if (UHorizontalBoxSlot* HBoxSlot = Cast<UHorizontalBoxSlot>(PropertySlider->Slot))
         {
             HBoxSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -50,7 +50,7 @@ void UMjPropertyRow::NativeConstruct()
     }
 }
 
-void UMjPropertyRow::InitializeProperty(const FString& InName, EMjPropertyType InType, float InitialValue, FVector2D Range, const FString& InDisplayName)
+void UMjPropertyRow::InitializeProperty(const FString& InName, EMjPropertyType InType, float InitialValue, FVector2D range, const FString& InDisplayName)
 {
     PropertyName = InName;
     PropertyType = InType;
@@ -65,7 +65,7 @@ void UMjPropertyRow::InitializeProperty(const FString& InName, EMjPropertyType I
     if (PropertySlider)
     {
         PropertySlider->SetVisibility((PropertyType == EMjPropertyType::Slider) ? ESlateVisibility::Visible : ESlateVisibility::Collapsed);
-        SetSliderRange(Range);
+        SetSliderRange(range);
     }
 
     if (PropertyToggle)
@@ -112,17 +112,17 @@ void UMjPropertyRow::InitializeProperty(const FString& InName, EMjPropertyType I
     }
 }
 
-void UMjPropertyRow::SetSliderRange(FVector2D Range)
+void UMjPropertyRow::SetSliderRange(FVector2D range)
 {
     if (PropertySlider)
     {
         // Add a small buffer or handle 0,0 range
-        if (Range.X == 0.0f && Range.Y == 0.0f)
+        if (range.X == 0.0f && range.Y == 0.0f)
         {
-            Range = FVector2D(-1.0f, 1.0f); // Default for unconstrained
+            range = FVector2D(-1.0f, 1.0f); // Default for unconstrained
         }
-        PropertySlider->SetMinValue(Range.X);
-        PropertySlider->SetMaxValue(Range.Y);
+        PropertySlider->SetMinValue(range.X);
+        PropertySlider->SetMaxValue(range.Y);
     }
 }
 

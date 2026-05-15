@@ -35,5 +35,13 @@ class URLAB_API UMjSubtreeComSensor : public UMjSensor
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjSubtreeComSensor();
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+
+    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
 };

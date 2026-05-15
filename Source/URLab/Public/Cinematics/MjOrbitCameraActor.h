@@ -67,7 +67,7 @@ protected:
     // --- Orbit Parameters ---
 
     /** @brief Optional: manually assign the target articulation. If empty, auto-detects from overlap. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Target")
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|target")
     AMjArticulation* ManualTarget = nullptr;
 
     /** @brief Orbit radius (distance from target) in cm. */
@@ -112,7 +112,7 @@ protected:
 
     // --- Lens ---
 
-    /** @brief Focal length in mm. 35mm = wide, 85mm = portrait, 135mm = telephoto. */
+    /** @brief focal length in mm. 35mm = wide, 85mm = portrait, 135mm = telephoto. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Lens")
     float FocalLength = 50.0f;
 

@@ -44,8 +44,8 @@ void UMjCylinder::EnsureVisualizerMesh()
         VisualizerMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         VisualizerMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
 
-        UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-        if (Mesh) VisualizerMesh->SetStaticMesh(Mesh);
+        UStaticMesh* LoadedMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+        if (LoadedMesh) VisualizerMesh->SetStaticMesh(LoadedMesh);
 
         if (IsRegistered())
         {
@@ -73,18 +73,25 @@ void UMjCylinder::OnRegister()
 }
 
 
-void UMjCylinder::ImportFromXml(const FXmlNode* Node)
-{
-	ImportFromXml(Node, FMjCompilerSettings());
-}
+
 
 void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-	Super::ImportFromXml(Node, CompilerSettings);
-	Radius = Size.X;
-	HalfLength = Size.Y;
+        // --- CODEGEN_IMPORT_START ---
 
-    // Sync Unreal Scale immediately on import so the editor visual matches the data
+    // --- CODEGEN_IMPORT_END ---
+
+	Super::ImportFromXml(Node, CompilerSettings);
+	// Clamp -1.0f sentinels (set by the fromto canon when slot is unset).
+	auto ReadSlot = [this](int32 i) -> float
+	{
+		if (size.Num() <= i) return 0.0f;
+		return size[i] < 0.0f ? 0.0f : size[i];
+	};
+	Radius     = ReadSlot(0);
+	HalfLength = ReadSlot(1);
+
+    // Sync Unreal scale immediately on import so the editor visual matches the data
     const float BaseSize = 50.0f;
     const float UnitScale = 100.0f;
     FVector NewScale;
@@ -93,24 +100,23 @@ void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
     SetRelativeScale3D(NewScale);
 }
 
-void UMjCylinder::ExportTo(mjsGeom* geom, mjsDefault* def)
+void UMjCylinder::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // Derive Size from Unreal scale
-    // Unreal Cylinder: Diameter=100, Height=100
-    // MuJoCo Cylinder size: [radius, half-length]
-    FVector Scale = GetRelativeScale3D();
-    Size.X = Scale.X * 0.5f; // Radius
-    Size.Y = Scale.Z * 0.5f; // Half-length
-
-    // For user-authored geoms (bWasImported=false), SizeParamsCount was never set by the
-    // XML parser, so we set it here to tell the base ExportTo to write both components.
+    // For user-authored cylinders, derive (radius, half-length) from the
+    // Unreal scale. Unreal Cylinder: diameter=100, Height=100. MuJoCo
+    // cylinder size: [radius, half-length] in metres.
     if (!bWasImported)
     {
-       
-        bOverride_Size = true;
+        const FVector scale = GetRelativeScale3D();
+        size = { (float)scale.X * 0.5f, (float)scale.Z * 0.5f };
+        bOverride_size = true;
     }
 
-	Super::ExportTo(geom, def);
+	Super::ExportTo(Element, def);
+
+        // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCylinder::ApplyOverrideMaterial(UMaterialInterface* Material)
@@ -123,27 +129,17 @@ void UMjCylinder::SyncUnrealTransformFromMj()
 {
     if (m_GeomView.id == -1) return;
 
-    if (bOverride_FromTo)
-    {
-        if (VisualizerMesh)
-        {
-            VisualizerMesh->DestroyComponent();
-            VisualizerMesh = nullptr;
-        }
-        return;
-    }
-
-    if (!bOverride_Size)
+    if (!bOverride_size)
     {
         // MuJoCo cylinder size: [radius, half-length]
-        // Unreal Cylinder: Diameter=100, Height=100
+        // Unreal Cylinder: diameter=100, Height=100
         float RadiusVal = m_GeomView.size[0];
         float HalfLengthVal = m_GeomView.size[1];
 
         FVector NewScale = FVector(RadiusVal * 2.0f, RadiusVal * 2.0f, HalfLengthVal * 2.0f);
         SetRelativeScale3D(NewScale);
 
-        UE_LOG(LogURLabBind, Log, TEXT("[MjCylinder] Syncing Scale for '%s' from MuJoCo radius: %f, half-length: %f -> NewScale: %s"), 
+        UE_LOG(LogURLabBind, Log, TEXT("[MjCylinder] Syncing scale for '%s' from MuJoCo radius: %f, half-length: %f -> NewScale: %s"), 
             *GetName(), RadiusVal, HalfLengthVal, *NewScale.ToString());
     }
 }
@@ -159,12 +155,12 @@ void UMjCylinder::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedE
     // Enforce uniform radius (X/Y) scaling for Cylinder
     if (PropertyName == FName(TEXT("RelativeScale3D")) || MemberPropertyName == FName(TEXT("RelativeScale3D")))
     {
-        FVector Scale = GetRelativeScale3D();
-        if (!FMath::IsNearlyEqual(Scale.X, Scale.Y))
+        FVector scale = GetRelativeScale3D();
+        if (!FMath::IsNearlyEqual(scale.X, scale.Y))
         {
-            // Force Y to match X
-            Scale.Y = Scale.X;
-            SetRelativeScale3D(Scale);
+            // force Y to match X
+            scale.Y = scale.X;
+            SetRelativeScale3D(scale);
         }
     }
 }

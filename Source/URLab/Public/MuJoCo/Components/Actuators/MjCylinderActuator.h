@@ -35,41 +35,43 @@ class URLAB_API UMjCylinderActuator : public UMjActuator
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_timeconst = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_timeconst"))
+    TArray<float> timeconst = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_area = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_area"))
+    float area = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_diameter = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_diameter"))
+    float diameter = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_bias = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_bias"))
+    float bias = 0.0f;
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjCylinderActuator();
 
-    /** @brief Override toggle for TimeConst. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_TimeConst = false;
 
-    /** @brief Time constant for activation dynamics. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_TimeConst"))
-    float TimeConst = 0.01f;
 
-    /** @brief Override toggle for Bias. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Bias = false;
 
-    /** @brief Bias force offset. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Bias"))
-    float Bias = 0.0f;
 
-    /** @brief Override toggle for Area. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Area = false;
 
-    /** @brief Cross-sectional area. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Area"))
-    float Area = 1.0f;
 
-    /** @brief Override toggle for Diameter. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Diameter = false;
 
-    /** @brief Cylinder diameter. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Diameter"))
-    float Diameter = 1.0f;
 
-    virtual void ParseSpecifics(const class FXmlNode* Node) override;
-    virtual void ExtractSpecifics(const mjsActuator* act) override;
-    virtual void ExportTo(mjsActuator* act, mjsDefault* def = nullptr) override;
+    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

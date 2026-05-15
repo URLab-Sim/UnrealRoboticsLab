@@ -25,6 +25,7 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjDcMotorActuator::UMjDcMotorActuator()
 {
@@ -33,7 +34,7 @@ UMjDcMotorActuator::UMjDcMotorActuator()
 
 namespace
 {
-    /** Copy UE TArray<float> into a double[N] buffer, zero-padding the tail. */
+    // Copy UE TArray<float> into a double[N] buffer, zero-padding the tail.
     template <int N>
     void FillDouble(double (&Out)[N], const TArray<float>& In)
     {
@@ -44,77 +45,54 @@ namespace
     }
 }
 
-void UMjDcMotorActuator::ParseSpecifics(const FXmlNode* Node)
+void UMjDcMotorActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
 {
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("motorconst"),  MotorConst,  bOverride_MotorConst);
-    MjXmlUtils::ReadAttrFloat     (Node, TEXT("resistance"),  Resistance,  bOverride_Resistance);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("nominal"),     Nominal,     bOverride_Nominal);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("saturation"),  Saturation,  bOverride_Saturation);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("inductance"),  Inductance,  bOverride_Inductance);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("cogging"),     Cogging,     bOverride_Cogging);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("controller"),  Controller,  bOverride_Controller);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("thermal"),     Thermal,     bOverride_Thermal);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("lugre"),       LuGre,       bOverride_LuGre);
+    if (!Element) return;
 
-    const FString InputStr = Node->GetAttribute(TEXT("input"));
-    if (!InputStr.IsEmpty())
+    // mjs_setToDCMotor packs the per-actuator params into mjsActuator's
+    // gainprm/biasprm/dynprm arrays. The call itself is codegen-emitted in
+    // the CODEGEN_EXPORT block below; it uses the file-local FillDouble
+    // helper to convert TArray<float> -> double[N] buffers.
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
     {
-        if      (InputStr == TEXT("voltage"))  Input = EMjDcMotorInput::Voltage;
-        else if (InputStr == TEXT("position")) Input = EMjDcMotorInput::Position;
-        else if (InputStr == TEXT("velocity")) Input = EMjDcMotorInput::Velocity;
-        bOverride_Input = true;
+        double motorconstBuf[2];  FillDouble(motorconstBuf, motorconst);
+        double nominalBuf[3];  FillDouble(nominalBuf, nominal);
+        double saturationBuf[3];  FillDouble(saturationBuf, saturation);
+        double inductanceBuf[2];  FillDouble(inductanceBuf, inductance);
+        double coggingBuf[3];  FillDouble(coggingBuf, cogging);
+        double controllerBuf[6];  FillDouble(controllerBuf, controller);
+        double thermalBuf[6];  FillDouble(thermalBuf, thermal);
+        double lugreBuf[5];  FillDouble(lugreBuf, lugre);
+        mjs_setToDCMotor(Element, bOverride_motorconst ? motorconstBuf : nullptr, bOverride_resistance ? (double)resistance : 0.0, bOverride_nominal ? nominalBuf : nullptr, bOverride_saturation ? saturationBuf : nullptr, bOverride_inductance ? inductanceBuf : nullptr, bOverride_cogging ? coggingBuf : nullptr, bOverride_controller ? controllerBuf : nullptr, bOverride_thermal ? thermalBuf : nullptr, bOverride_lugre ? lugreBuf : nullptr, bOverride_input ? (int)input : 0);
     }
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjDcMotorActuator::ExtractSpecifics(const mjsActuator* /*Actuator*/)
+void UMjDcMotorActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    // DC motor parameters are packed across gainprm/biasprm/dynprm with a
-    // non-trivial layout (see `engine/engine_xml_native_reader.cc::dcmotor`).
-    // Extracting them cleanly on the reverse path isn't needed for the XML
-    // import flow (that goes through ParseSpecifics) and isn't wired up yet.
-}
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
 
-void UMjDcMotorActuator::ExportTo(mjsActuator* Actuator, mjsDefault* Default)
-{
-    if (!Actuator) return;
-
-    Super::ExportTo(Actuator, Default);
-
-    // mjs_setToDCMotor treats null array pointers as "don't override, keep
-    // whatever the default / inherited class set". Pass nullptr for any group
-    // the user hasn't opted into so muscles of defaults-chains keep their
-    // inherited values.
-    double MotorConstBuf [2]; FillDouble(MotorConstBuf, MotorConst);
-    double NominalBuf    [3]; FillDouble(NominalBuf,    Nominal);
-    double SaturationBuf [3]; FillDouble(SaturationBuf, Saturation);
-    double InductanceBuf [2]; FillDouble(InductanceBuf, Inductance);
-    double CoggingBuf    [3]; FillDouble(CoggingBuf,    Cogging);
-    double ControllerBuf [6]; FillDouble(ControllerBuf, Controller);
-    double ThermalBuf    [6]; FillDouble(ThermalBuf,    Thermal);
-    double LuGreBuf      [5]; FillDouble(LuGreBuf,      LuGre);
-
-    const double ResistanceArg = bOverride_Resistance ? (double)Resistance : 0.0;
-    const int    InputModeArg  = bOverride_Input ? (int)Input : 0;
-
-    const char* err = mjs_setToDCMotor(
-        Actuator,
-        bOverride_MotorConst  ? MotorConstBuf  : nullptr,
-        ResistanceArg,
-        bOverride_Nominal     ? NominalBuf     : nullptr,
-        bOverride_Saturation  ? SaturationBuf  : nullptr,
-        bOverride_Inductance  ? InductanceBuf  : nullptr,
-        bOverride_Cogging     ? CoggingBuf     : nullptr,
-        bOverride_Controller  ? ControllerBuf  : nullptr,
-        bOverride_Thermal     ? ThermalBuf     : nullptr,
-        bOverride_LuGre       ? LuGreBuf       : nullptr,
-        InputModeArg);
-
-    if (err && err[0])
-    {
-        UE_LOG(LogURLabImport, Warning,
-            TEXT("[MjDcMotorActuator] '%s' mjs_setToDCMotor returned: %s"),
-            *GetName(), UTF8_TO_TCHAR(err));
+    // --- CODEGEN_IMPORT_START ---
+    { // xml_enum: input -> EMjDcMotorInput
+        FString S = Node->GetAttribute(TEXT("input"));
+        S = S.ToLower();
+        if      (S == TEXT("voltage")) input = EMjDcMotorInput::Voltage;
+        else if (S == TEXT("position")) input = EMjDcMotorInput::Position;
+        else if (S == TEXT("velocity")) input = EMjDcMotorInput::Velocity;
+        if (!S.IsEmpty()) bOverride_input = true;
     }
-
-    ApplyRawOverrides(Actuator, Default);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("motorconst"), motorconst, bOverride_motorconst);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("resistance"), resistance, bOverride_resistance);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("nominal"), nominal, bOverride_nominal);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("saturation"), saturation, bOverride_saturation);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("inductance"), inductance, bOverride_inductance);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("cogging"), cogging, bOverride_cogging);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("controller"), controller, bOverride_controller);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("thermal"), thermal, bOverride_thermal);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("lugre"), lugre, bOverride_lugre);
+    // --- CODEGEN_IMPORT_END ---
 }
+

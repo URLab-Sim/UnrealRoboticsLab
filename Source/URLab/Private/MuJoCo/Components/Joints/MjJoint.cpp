@@ -41,17 +41,51 @@ void UMjJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Co
 {
     if (!Node) return;
 
-    // Type
-    FString TypeStr = Node->GetAttribute(TEXT("type"));
-    bOverride_Type = !TypeStr.IsEmpty();
-    if (bOverride_Type)
-    {
-        if (TypeStr == "free") Type = EMjJointType::Free;
-        else if (TypeStr == "ball") Type = EMjJointType::Ball;
-        else if (TypeStr == "slide") Type = EMjJointType::Slide;
-        else if (TypeStr == "hinge") Type = EMjJointType::Hinge;
+        // --- CODEGEN_IMPORT_START ---
+    { // xml_enum: type -> EMjJointType
+        FString S = Node->GetAttribute(TEXT("type"));
+        S = S.ToLower();
+        if      (S == TEXT("hinge")) Type = EMjJointType::Hinge;
+        else if (S == TEXT("slide")) Type = EMjJointType::Slide;
+        else if (S == TEXT("ball")) Type = EMjJointType::Ball;
+        else if (S == TEXT("free")) Type = EMjJointType::Free;
+        if (!S.IsEmpty()) bOverride_Type = true;
     }
-    
+    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("springdamper"), springdamper, bOverride_springdamper);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), limited, bOverride_limited);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("actuatorfrclimited"), actuatorfrclimited, bOverride_actuatorfrclimited);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), solreflimit, bOverride_solreflimit);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), solimplimit, bOverride_solimplimit);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), solreffriction, bOverride_solreffriction);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimpfriction"), solimpfriction, bOverride_solimpfriction);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("stiffness"), stiffness, bOverride_stiffness);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), range, bOverride_range);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), actuatorfrcrange, bOverride_actuatorfrcrange);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("actuatorgravcomp"), actuatorgravcomp, bOverride_actuatorgravcomp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("ref"), ref, bOverride_ref);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("springref"), springref, bOverride_springref);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), damping, bOverride_damping);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("frictionloss"), frictionloss, bOverride_frictionloss);
+    if (bOverride_range)
+    {
+        if      (Type == EMjJointType::Slide) { for (float& V : range) { V *= 100.0f; } }
+        else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { if (!CompilerSettings.bAngleInDegrees) { for (float& V : range) { V = FMath::RadiansToDegrees(V); } } }
+    }
+    if (bOverride_ref)
+    {
+        if      (Type == EMjJointType::Slide) { ref *= 100.0f; }
+        else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { if (!CompilerSettings.bAngleInDegrees) { ref = FMath::RadiansToDegrees(ref); } }
+    }
+    if (bOverride_springref)
+    {
+        if      (Type == EMjJointType::Slide) { springref *= 100.0f; }
+        else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { if (!CompilerSettings.bAngleInDegrees) { springref = FMath::RadiansToDegrees(springref); } }
+    }
+    // --- CODEGEN_IMPORT_END ---
+
     // Class Name
     MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
 
@@ -64,13 +98,6 @@ void UMjJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Co
         Axis = FVector(RawAxis.X, -RawAxis.Y, RawAxis.Z);
     }
 
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("ref"), Ref, bOverride_Ref);
-
-    // Slide joints: convert ref from meters to cm (UE units)
-    if (bOverride_Ref && Type == EMjJointType::Slide)
-    {
-        Ref *= 100.0f;
-    }
 
     FString PosStr;
     if (MjXmlUtils::ReadAttrString(Node, TEXT("pos"), PosStr))
@@ -80,168 +107,84 @@ void UMjJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Co
         SetRelativeLocation(MjUtils::MjToUEPosition(p));
     }
 
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("stiffness"), Stiffness, bOverride_Stiffness);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), Damping, bOverride_Damping);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), Armature, bOverride_Armature);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("frictionloss"), FrictionLoss, bOverride_FrictionLoss);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("springref"), SpringRef, bOverride_SpringRef);
-
-    // springdamper="stiffness damping" — convenience attribute that sets both at once
-    {
-        TArray<float> SD;
-        bool bHasSD = false;
-        MjXmlUtils::ReadAttrFloatArray(Node, TEXT("springdamper"), SD, bHasSD);
-        if (bHasSD && SD.Num() >= 2)
-        {
-            Stiffness = {SD[0]};
-            bOverride_Stiffness = true;
-            Damping = {SD[1]};
-            bOverride_Damping = true;
-        }
-    }
-    MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), bLimited, bOverride_Limited);
-
     // Note: autolimits (limited inferred from range) is handled by the MuJoCo spec
     // compiler (mjLIMITED_AUTO default). We do not replicate that logic here.
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), Range, bOverride_Range);
 
-    if (bOverride_Range)
-    {
-        if (Type == EMjJointType::Slide)
-        {
-            // Slide joints: MJCF stores metres, UE units are cm.
-            for (float& V : Range) V *= 100.0f;
-        }
-        else if (CompilerSettings.bAngleInDegrees)
-        {
-            // Hinge/ball joint ranges in MJCF are in the compiler angle units.
-            // Our spec is compiled with radians, so convert here to match.
-            for (float& V : Range) V = FMath::DegreesToRadians(V);
-        }
-    }
-
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), ActuatorFrcRange, bOverride_ActuatorFrcRange);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), Margin, bOverride_Margin);
-
-    // Solvers
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), SolRefLimit, bOverride_SolRefLimit);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), SolImpLimit, bOverride_SolImpLimit);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), SolRefFriction, bOverride_SolRefFriction);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimpfriction"), SolImpFriction, bOverride_SolImpFriction);
-
-    // Fallback: generic solref/solimp → limit-specific if not already set
-    if (!bOverride_SolRefLimit)
-        MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"), SolRefLimit, bOverride_SolRefLimit);
-    if (!bOverride_SolImpLimit)
-        MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), SolImpLimit, bOverride_SolImpLimit);
-
-    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), Group, bOverride_Group);
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjJoint XML Import] '%s' (MjName: '%s') -> Type: %s (Overridden: %s), Stiffness: %s (%f)"),
+    UE_LOG(LogURLabImport, Log, TEXT("[MjJoint XML Import] '%s' (MjName: '%s') -> Type: %s (Overridden: %s), stiffness: %s (%f)"),
         *GetName(), *MjName,
         *StaticEnum<EMjJointType>()->GetNameStringByValue((int64)Type), bOverride_Type ? TEXT("True") : TEXT("False"),
-        bOverride_Stiffness ? TEXT("Set") : TEXT("Inherited"), Stiffness.Num() > 0 ? Stiffness[0] : 0.0f);
+        bOverride_stiffness ? TEXT("Set") : TEXT("Inherited"), stiffness.Num() > 0 ? stiffness[0] : 0.0f);
 }
 
-void UMjJoint::ExportTo(mjsJoint* Joint, mjsDefault* Default)
+void UMjJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
 {
-    if (!Joint) return;
-
-    if (bOverride_Type)
-    {
-        switch (Type)
-        {
-        case EMjJointType::Free:  Joint->type = mjJNT_FREE;  break;
-        case EMjJointType::Ball:  Joint->type = mjJNT_BALL;  break;
-        case EMjJointType::Slide: Joint->type = mjJNT_SLIDE; break;
-        case EMjJointType::Hinge: Joint->type = mjJNT_HINGE; break;
-        }
-    }
+    if (!Element) return;
 
     FVector _pos = GetRelativeLocation();
-    if (!_pos.IsZero()) MjUtils::UEToMjPosition(_pos, Joint->pos);
+    if (!_pos.IsZero()) MjUtils::UEToMjPosition(_pos, Element->pos);
 
     if (bOverride_Axis)
     {
         // Convert UE direction vector back to MuJoCo convention (negate Y, no scale)
-        Joint->axis[0] = Axis.X;
-        Joint->axis[1] = -Axis.Y;
-        Joint->axis[2] = Axis.Z;
+        Element->axis[0] = Axis.X;
+        Element->axis[1] = -Axis.Y;
+        Element->axis[2] = Axis.Z;
     }
 
     // Slide joints: convert ref from cm (UE) back to meters (MuJoCo)
-    if (bOverride_Ref)
-    {
-        Joint->ref = (Type == EMjJointType::Slide) ? Ref / 100.0f : Ref;
-    }
 
-    if (bOverride_Stiffness)
+        // --- CODEGEN_EXPORT_START ---
+    if (bOverride_Type)
     {
-        for (int i = 0; i < Stiffness.Num() && i < (1 + mjNPOLY); ++i)
-            Joint->stiffness[i] = Stiffness[i];
-    }
-    if (bOverride_Damping)
-    {
-        for (int i = 0; i < Damping.Num() && i < (1 + mjNPOLY); ++i)
-            Joint->damping[i] = Damping[i];
-    }
-    if (bOverride_Armature) Joint->armature = Armature;
-    if (bOverride_FrictionLoss) Joint->frictionloss = FrictionLoss;
-    if (bOverride_SpringRef) Joint->springref = SpringRef;
-
-    if (bOverride_Limited) Joint->limited = bLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
-    if (bOverride_Range)
-    {
-        // Slide joints: convert range from cm (UE) back to meters (MuJoCo)
-        float Scale = (Type == EMjJointType::Slide) ? 1.0f / 100.0f : 1.0f;
-        for (int i = 0; i < Range.Num() && i < 2; ++i)
+        switch (Type)
         {
-            Joint->range[i] = Range[i] * Scale;
+            case EMjJointType::Hinge: Element->type = (mjtJoint)mjJNT_HINGE; break;
+            case EMjJointType::Slide: Element->type = (mjtJoint)mjJNT_SLIDE; break;
+            case EMjJointType::Ball: Element->type = (mjtJoint)mjJNT_BALL; break;
+            case EMjJointType::Free: Element->type = (mjtJoint)mjJNT_FREE; break;
+            default: break;
         }
     }
-    if (bOverride_ActuatorFrcRange)
+    if (bOverride_group) Element->group = group;
+    if (bOverride_springdamper) { for (int32 i = 0; i < springdamper.Num(); ++i) Element->springdamper[i] = springdamper[i]; }
+    if (bOverride_limited) Element->limited = limited ? 1 : 0;
+    if (bOverride_actuatorfrclimited) Element->actfrclimited = actuatorfrclimited ? 1 : 0;
+    if (bOverride_solreflimit) { for (int32 i = 0; i < solreflimit.Num(); ++i) Element->solref_limit[i] = solreflimit[i]; }
+    if (bOverride_solimplimit) { for (int32 i = 0; i < solimplimit.Num(); ++i) Element->solimp_limit[i] = solimplimit[i]; }
+    if (bOverride_solreffriction) { for (int32 i = 0; i < solreffriction.Num(); ++i) Element->solref_friction[i] = solreffriction[i]; }
+    if (bOverride_solimpfriction) { for (int32 i = 0; i < solimpfriction.Num(); ++i) Element->solimp_friction[i] = solimpfriction[i]; }
+    if (bOverride_stiffness) { for (int32 i = 0; i < stiffness.Num(); ++i) Element->stiffness[i] = stiffness[i]; }
+    if (bOverride_actuatorfrcrange) { for (int32 i = 0; i < actuatorfrcrange.Num(); ++i) Element->actfrcrange[i] = actuatorfrcrange[i]; }
+    if (bOverride_actuatorgravcomp) Element->actgravcomp = actuatorgravcomp;
+    if (bOverride_margin) Element->margin = margin;
+    if (bOverride_armature) Element->armature = armature;
+    if (bOverride_damping) { for (int32 i = 0; i < damping.Num(); ++i) Element->damping[i] = damping[i]; }
+    if (bOverride_frictionloss) Element->frictionloss = frictionloss;
+    if (bOverride_range)
     {
-        for (int i = 0; i < ActuatorFrcRange.Num() && i < 2; ++i)
+        for (int32 i = 0; i < range.Num(); ++i)
         {
-            Joint->actfrcrange[i] = ActuatorFrcRange[i];
+            float V = range[i];
+            if      (Type == EMjJointType::Slide) { V *= 0.01f; }
+            else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { V = FMath::DegreesToRadians(V); }
+            Element->range[i] = (mjtNum)V;
         }
     }
-    
-    if (bOverride_Margin) Joint->margin = Margin;
-
-    if (bOverride_SolRefLimit)
+    if (bOverride_ref)
     {
-        for (int i = 0; i < SolRefLimit.Num() && i < 2; ++i)
-        {
-            Joint->solref_limit[i] = SolRefLimit[i];
-        }
+        float V = ref;
+        if      (Type == EMjJointType::Slide) { V *= 0.01f; }
+        else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { V = FMath::DegreesToRadians(V); }
+        Element->ref = (mjtNum)V;
     }
-    
-    if (bOverride_SolImpLimit)
+    if (bOverride_springref)
     {
-        for (int i = 0; i < SolImpLimit.Num() && i < 5; ++i)
-        {
-            Joint->solimp_limit[i] = SolImpLimit[i];
-        }
+        float V = springref;
+        if      (Type == EMjJointType::Slide) { V *= 0.01f; }
+        else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { V = FMath::DegreesToRadians(V); }
+        Element->springref = (mjtNum)V;
     }
-
-    if (bOverride_SolRefFriction)
-    {
-        for (int i = 0; i < SolRefFriction.Num() && i < 2; ++i)
-        {
-            Joint->solref_friction[i] = SolRefFriction[i];
-        }
-    }
-    
-    if (bOverride_SolImpFriction)
-    {
-        for (int i = 0; i < SolImpFriction.Num() && i < 5; ++i)
-        {
-            Joint->solimp_friction[i] = SolImpFriction[i];
-        }
-    }
-
-    if (bOverride_Group) Joint->group = Group;
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjJoint::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
@@ -421,16 +364,30 @@ FVector UMjJoint::GetResolvedAxis() const
 
 FVector2D UMjJoint::GetResolvedRange() const
 {
-    // Runtime: use compiled model
+    // Returns the range in UE conventions: degrees for hinge/ball, cm for
+    // slide. Runtime path reads from the compiled model (radians / metres)
+    // and converts; editor path returns UPROPERTY values verbatim (already
+    // in UE conventions thanks to the codegen unit_conversion rule).
+    const EMjJointType T = (m_JointView.id >= 0) ? GetResolvedType() : Type;
+    auto MjToUE = [T](float V) -> float
+    {
+        if (T == EMjJointType::Slide)  return V * 100.0f;           // m -> cm
+        if (T == EMjJointType::Hinge || T == EMjJointType::Ball)
+            return FMath::RadiansToDegrees(V);
+        return V;
+    };
+
+    // Runtime: use compiled model (rad/m).
     if (m_JointView.id >= 0 && m_JointView.range)
     {
-        return FVector2D((float)m_JointView.range[0], (float)m_JointView.range[1]);
+        return FVector2D(MjToUE((float)m_JointView.range[0]),
+                         MjToUE((float)m_JointView.range[1]));
     }
 
-    // Editor: local override wins
-    if (bOverride_Range && Range.Num() >= 2)
+    // Editor: local override wins. Already in UE units.
+    if (bOverride_range && range.Num() >= 2)
     {
-        return FVector2D(Range[0], Range[1]);
+        return FVector2D(range[0], range[1]);
     }
 
     // Walk default chain
@@ -443,9 +400,9 @@ FVector2D UMjJoint::GetResolvedRange() const
             Visited.Add(Cur->ClassName);
             if (UMjJoint* J = Cur->FindChildOfType<UMjJoint>())
             {
-                if (J->bOverride_Range && J->Range.Num() >= 2)
+                if (J->bOverride_range && J->range.Num() >= 2)
                 {
-                    return FVector2D(J->Range[0], J->Range[1]);
+                    return FVector2D(J->range[0], J->range[1]);
                 }
             }
             Cur = Cur->ParentClassName.IsEmpty() ? nullptr
@@ -466,7 +423,7 @@ bool UMjJoint::GetResolvedLimited() const
     }
 
     // Editor: local override wins
-    if (bOverride_Limited) return bLimited;
+    if (bOverride_limited) return limited;
 
     // Walk default chain
     if (UMjDefault* Def = FindEditorDefault())
@@ -478,7 +435,7 @@ bool UMjJoint::GetResolvedLimited() const
             Visited.Add(Cur->ClassName);
             if (UMjJoint* J = Cur->FindChildOfType<UMjJoint>())
             {
-                if (J->bOverride_Limited) return J->bLimited;
+                if (J->bOverride_limited) return J->limited;
             }
             Cur = Cur->ParentClassName.IsEmpty() ? nullptr
                 : FindDefaultByClassName(GetOwner(), Cur->ParentClassName);

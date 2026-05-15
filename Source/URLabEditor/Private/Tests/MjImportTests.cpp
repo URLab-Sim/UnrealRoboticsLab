@@ -56,7 +56,9 @@
 #include "MuJoCo/Components/Physics/MjContactPair.h"
 #include "MuJoCo/Components/Constraints/MjEquality.h"
 #include "MuJoCo/Components/Keyframes/MjKeyframe.h"
+#include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "mujoco/mjspec.h"
 
 // =============================================================================
 // TIER 1 — Pure MuJoCo baseline tests (FMjTestSession)
@@ -389,9 +391,9 @@ bool FTest_MjImport_URLab_GeomFriction::RunTest(const FString&)
     UMjGeom* G = S.FindTemplate<UMjGeom>(TEXT("g1"));
     if (!G) { AddError(TEXT("Geom 'g1' not found")); S.Cleanup(); return false; }
 
-    TestNearlyEqual(TEXT("friction[0]"), G->Friction[0], 0.8f,  1e-4f);
-    TestNearlyEqual(TEXT("friction[1]"), G->Friction[1], 0.1f,  1e-4f);
-    TestNearlyEqual(TEXT("friction[2]"), G->Friction[2], 0.01f, 1e-3f);
+    TestNearlyEqual(TEXT("friction[0]"), G->friction[0], 0.8f,  1e-4f);
+    TestNearlyEqual(TEXT("friction[1]"), G->friction[1], 0.1f,  1e-4f);
+    TestNearlyEqual(TEXT("friction[2]"), G->friction[2], 0.01f, 1e-3f);
 
     S.Cleanup();
     return true;
@@ -418,11 +420,14 @@ bool FTest_MjImport_URLab_JointRangeAndDamping::RunTest(const FString&)
     UMjJoint* J = S.FindTemplate<UMjJoint>(TEXT("j1"));
     if (!J) { AddError(TEXT("Joint 'j1' not found")); S.Cleanup(); return false; }
 
-    TestNearlyEqual(TEXT("range lo"), J->Range[0], -1.57f, 1e-3f);
-    TestNearlyEqual(TEXT("range hi"), J->Range[1],  1.57f, 1e-3f);
-    TestTrue(TEXT("damping has values"), J->Damping.Num() > 0);
-    if (J->Damping.Num() > 0)
-        TestNearlyEqual(TEXT("damping[0]"), J->Damping[0], 0.5f, 1e-4f);
+    // UPROPERTY range is in UE degrees; XML had radians (compiler.angle="radian"),
+    // converted on import. 1.57 rad ≈ 89.954 deg.
+    const float Rad157Deg = 1.57f * 180.0f / PI;
+    TestNearlyEqual(TEXT("range lo"), J->range[0], -Rad157Deg, 1e-2f);
+    TestNearlyEqual(TEXT("range hi"), J->range[1],  Rad157Deg, 1e-2f);
+    TestTrue(TEXT("damping has values"), J->damping.Num() > 0);
+    if (J->damping.Num() > 0)
+        TestNearlyEqual(TEXT("damping[0]"), J->damping[0], 0.5f, 1e-4f);
 
     S.Cleanup();
     return true;
@@ -432,9 +437,10 @@ bool FTest_MjImport_URLab_JointRangeAndDamping::RunTest(const FString&)
 // <default> blocks, so joints declared inside a default class always saw
 // the hardcoded bAngleInDegrees=true fallback. For angle="radian" models
 // (e.g. mujoco_menagerie's unitree_go1) the default joint's Range would
-// then be re-scaled by π/180, shrinking ±0.86 rad to ±0.015 rad and
-// making imported robots barely move. Verifies the default joint
-// template keeps its radian value intact.
+// then be re-scaled by π/180 in the wrong direction. Verifies the default
+// joint template imports radians correctly. UPROPERTY storage is UE deg
+// (codegen unit_conversion rad_to_deg_if_xml_radians), so ±0.86 rad
+// imports as ±49.274 deg.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_DefaultClassJointRangeRadians,
     "URLab.Import.URLab_DefaultClassJointRangeRadians",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -467,12 +473,15 @@ bool FTest_MjImport_URLab_DefaultClassJointRangeRadians::RunTest(const FString&)
     }
     if (!DefaultJoint) { AddError(TEXT("No default-class joint template found")); S.Cleanup(); return false; }
 
-    if (DefaultJoint->Range.Num() >= 2)
+    if (DefaultJoint->range.Num() >= 2)
     {
-        TestNearlyEqual(TEXT("default joint Range[0] preserved as radians"),
-                        DefaultJoint->Range[0], -0.86f, 1e-3f);
-        TestNearlyEqual(TEXT("default joint Range[1] preserved as radians"),
-                        DefaultJoint->Range[1],  0.86f, 1e-3f);
+        // XML had compiler.angle="radian" + range="-0.86 0.86"; UPROPERTY
+        // is UE deg, so 0.86 rad -> ~49.274 deg.
+        const float ExpectedDeg = 0.86f * 180.0f / PI;
+        TestNearlyEqual(TEXT("default joint Range[0] (rad XML -> UE deg)"),
+                        DefaultJoint->range[0], -ExpectedDeg, 1e-2f);
+        TestNearlyEqual(TEXT("default joint Range[1] (rad XML -> UE deg)"),
+                        DefaultJoint->range[1],  ExpectedDeg, 1e-2f);
     }
     else
     {
@@ -569,7 +578,7 @@ bool FTest_MjImport_URLab_TendonArmature::RunTest(const FString&)
     UMjTendon* T = S.FindTemplate<UMjTendon>(TEXT("tf"));
     if (!T) { AddError(TEXT("Tendon 'tf' not found")); S.Cleanup(); return false; }
 
-    TestNearlyEqual(TEXT("armature"), T->Armature, 2.5f, 1e-4f);
+    TestNearlyEqual(TEXT("armature"), T->armature, 2.5f, 1e-4f);
 
     S.Cleanup();
     return true;
@@ -598,9 +607,9 @@ bool FTest_MjImport_URLab_ContactPair::RunTest(const FString&)
     UMjContactPair* CP = S.FindFirstTemplate<UMjContactPair>();
     if (!CP) { AddError(TEXT("ContactPair not found")); S.Cleanup(); return false; }
 
-    TestEqual(TEXT("geom1"), CP->Geom1, FString(TEXT("floor")));
-    TestEqual(TEXT("geom2"), CP->Geom2, FString(TEXT("ball")));
-    TestEqual(TEXT("condim"), CP->Condim, 3);
+    TestEqual(TEXT("geom1"), CP->geom1, FString(TEXT("floor")));
+    TestEqual(TEXT("geom2"), CP->geom2, FString(TEXT("ball")));
+    TestEqual(TEXT("condim"), CP->condim, 3);
 
     S.Cleanup();
     return true;
@@ -947,7 +956,7 @@ bool FTest_MjImport_MJ_SensorTypeFromTag::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.MJ_MocapBody
-//   mocap="true" attribute on <body> must set bDrivenByUnreal=true.
+//   mocap="true" attribute on <body> must set mocap=true.
 //   Verifies Fix 2.9.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_MocapBody,
@@ -972,8 +981,8 @@ bool FTest_MjImport_MJ_MocapBody::RunTest(const FString&)
     UMjBody* RefBody = S.FindTemplate<UMjBody>(TEXT("ref"));
     UMjBody* B1      = S.FindTemplate<UMjBody>(TEXT("b1"));
 
-    if (RefBody) TestTrue(TEXT("ref body bDrivenByUnreal=true"),  RefBody->bDrivenByUnreal);
-    if (B1)      TestTrue(TEXT("b1 body bDrivenByUnreal=false"), !B1->bDrivenByUnreal);
+    if (RefBody) TestTrue(TEXT("ref body mocap=true"),  RefBody->mocap);
+    if (B1)      TestTrue(TEXT("b1 body mocap=false"), !B1->mocap);
 
     S.Cleanup();
     return true;
@@ -1057,8 +1066,350 @@ bool FTest_MjImport_URLab_WeldTorqueScale::RunTest(const FString&)
     TestNotNull(TEXT("weld equality 'w1' found"), Weld);
     if (Weld)
     {
-        TestTrue(TEXT("bOverride_TorqueScale == true"), Weld->bOverride_TorqueScale);
-        TestTrue(TEXT("TorqueScale ≈ 2.5"), FMath::Abs(Weld->TorqueScale - 2.5f) < 1e-4f);
+        TestTrue(TEXT("bOverride_TorqueScale == true"), Weld->bOverride_torquescale);
+        TestTrue(TEXT("TorqueScale ≈ 2.5"), FMath::Abs(Weld->torquescale - 2.5f) < 1e-4f);
+    }
+    S.Cleanup();
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.URLab_ConnectAnchor
+//   <connect anchor="0.1 -0.2 0.3"/> reads as TArray<float> in UE cm
+//   (m_to_cm conversion on import) and bOverride_anchor=true.
+//   Reproduces the franka_scene gripper miss — anchor used to be FString and
+//   wasn't being written to mjsEquality.data[] on export.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_ConnectAnchor,
+    "URLab.Import.URLab_ConnectAnchor",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_URLab_ConnectAnchor::RunTest(const FString&)
+{
+    FMjXmlImportSession S;
+    if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1"><geom size=".1"/><freejoint/></body>
+            <body name="b2"><geom size=".1"/><freejoint/></body>
+          </worldbody>
+          <equality>
+            <connect name="c1" body1="b1" body2="b2" anchor="0.1 -0.2 0.3"/>
+          </equality>
+        </mujoco>
+    )"))) { AddError(S.LastError); return false; }
+
+    UMjEquality* EQ = S.FindTemplate<UMjEquality>(TEXT("c1"));
+    if (!EQ) { AddError(TEXT("Equality 'c1' not found")); S.Cleanup(); return false; }
+
+    TestTrue(TEXT("bOverride_anchor == true"), EQ->bOverride_anchor);
+    if (EQ->anchor.Num() >= 3)
+    {
+        // XML 0.1 m -> UE 10 cm; XML -0.2 m -> -20 cm; XML 0.3 m -> 30 cm
+        TestNearlyEqual(TEXT("anchor[0] = 10 cm"),  EQ->anchor[0],  10.0f, 1e-3f);
+        TestNearlyEqual(TEXT("anchor[1] = -20 cm"), EQ->anchor[1], -20.0f, 1e-3f);
+        TestNearlyEqual(TEXT("anchor[2] = 30 cm"),  EQ->anchor[2],  30.0f, 1e-3f);
+    }
+    else
+    {
+        AddError(FString::Printf(TEXT("anchor.Num() = %d (expected 3)"), EQ->anchor.Num()));
+    }
+    S.Cleanup();
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.RoundTrip_ConnectAnchor
+//   Verifies that the codegen-emitted cm_to_m export op on
+//   mjs_data_packed_attrs.anchor packs UE cm into spec data[0..2] in m.
+//   Tests the spec write directly (raw mjsEquality) since UMjEquality is
+//   registered on a per-articulation child spec and the body-name namespace
+//   crossing in mjs_attach is independently exercised elsewhere — what we
+//   care about here is the per-slot data[] layout for the connect kind.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_ConnectAnchor,
+    "URLab.Import.RoundTrip_ConnectAnchor",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_ConnectAnchor::RunTest(const FString&)
+{
+    UMjEquality* Eq = NewObject<UMjEquality>();
+    Eq->EqualityType = EMjEqualityType::Connect;
+    Eq->Obj1 = TEXT("b1");
+    Eq->Obj2 = TEXT("b2");
+    Eq->bOverride_anchor = true;
+    Eq->anchor = { 10.0f, -20.0f, 30.0f };   // UE cm; export ×0.01 → 0.1, -0.2, 0.3 m
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
+    Eq->ExportTo(SpecEq);
+
+    TestEqual(TEXT("type == connect"), (int)SpecEq->type, (int)mjtEq::mjEQ_CONNECT);
+    TestNearlyEqual(TEXT("data[0] = 0.1 m"),  (float)SpecEq->data[0],  0.1f, 1e-4f);
+    TestNearlyEqual(TEXT("data[1] = -0.2 m"), (float)SpecEq->data[1], -0.2f, 1e-4f);
+    TestNearlyEqual(TEXT("data[2] = 0.3 m"),  (float)SpecEq->data[2],  0.3f, 1e-4f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.E2E_GripperConnectAnchor
+//   Full URLab pipeline test: hinge-jointed gripper-like linkage with a
+//   <connect> equality. After Compile(), the model must have neq==1 and the
+//   anchor must survive into eq_data[0..2] in metres (XML m units), exactly
+//   matching what the user's franka_scene gripper needs.
+//
+//   Uses hinge joints (no freejoint) because mjs_attach errors out on
+//   free-joint child bodies — and the franka_scene gripper itself uses
+//   pure hinges anyway, so this matches the real-world topology.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_E2E_GripperConnectAnchor,
+    "URLab.Import.E2E_GripperConnectAnchor",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_E2E_GripperConnectAnchor::RunTest(const FString&)
+{
+    // Minimal Robotiq-2F85-style 4-bar linkage extracted from
+    // franka_scene/test_scene_import.xml (right finger pair only).
+    static const TCHAR* Xml = TEXT(R"(
+        <mujoco>
+          <compiler angle="radian"/>
+          <worldbody>
+            <body name="base">
+              <geom size="0.05"/>
+              <body name="follower" pos="0 0 0.1">
+                <joint name="jf" type="hinge" axis="1 0 0"/>
+                <geom size="0.01"/>
+              </body>
+              <body name="spring_link" pos="0 0.02 0.1">
+                <joint name="js" type="hinge" axis="1 0 0"/>
+                <geom size="0.01"/>
+              </body>
+            </body>
+          </worldbody>
+          <equality>
+            <connect name="pin" body1="follower" body2="spring_link"
+                     anchor="0 -0.018 0.0065"/>
+          </equality>
+        </mujoco>
+    )");
+
+    FMjXmlImportSession S;
+    if (!S.Init(Xml))  { AddError(S.LastError); return false; }
+    if (!S.Compile())  { AddError(S.LastError); S.Cleanup(); return false; }
+
+    const mjModel* M = S.Model();
+    TestEqual(TEXT("neq after URLab pipeline"), (int)M->neq, 1);
+    if (M->neq >= 1)
+    {
+        // Body refs survived mjs_attach prefix
+        const int o1 = M->eq_obj1id[0];
+        const int o2 = M->eq_obj2id[0];
+        TestTrue(TEXT("eq.obj1id resolved"), o1 > 0);
+        TestTrue(TEXT("eq.obj2id resolved"), o2 > 0);
+
+        // anchor data[0..2] in spec metres (XML literal values)
+        TestNearlyEqual(TEXT("eq_data[0] = 0.0"),    (float)M->eq_data[0],  0.0f,    1e-4f);
+        TestNearlyEqual(TEXT("eq_data[1] = -0.018"), (float)M->eq_data[1], -0.018f,  1e-4f);
+        TestNearlyEqual(TEXT("eq_data[2] = 0.0065"), (float)M->eq_data[2],  0.0065f, 1e-4f);
+    }
+    S.Cleanup();
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.RoundTrip_WeldAnchorRelposeTorqueScale
+//   Verifies the full weld data[] layout: anchor -> data[0..2] (with
+//   cm_to_m), relpose -> data[3..9] (raw MJ format, no conversion),
+//   torquescale -> data[10]. Older codegen wrote torquescale to data[7] and
+//   skipped anchor/relpose entirely.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_WeldAnchorRelposeTorqueScale,
+    "URLab.Import.RoundTrip_WeldAnchorRelposeTorqueScale",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_WeldAnchorRelposeTorqueScale::RunTest(const FString&)
+{
+    UMjEquality* Eq = NewObject<UMjEquality>();
+    Eq->EqualityType = EMjEqualityType::Weld;
+    Eq->Obj1 = TEXT("b1");
+    Eq->Obj2 = TEXT("b2");
+    Eq->bOverride_anchor = true;
+    Eq->anchor = { 50.0f, 60.0f, 70.0f };   // UE cm -> 0.5, 0.6, 0.7 m
+    Eq->bOverride_relpose = true;
+    Eq->relpose = { 1.0f, 2.0f, 3.0f, 0.7071f, 0.0f, 0.7071f, 0.0f };  // raw MJ (m + quat)
+    Eq->bOverride_torquescale = true;
+    Eq->torquescale = 42.0f;
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
+    Eq->ExportTo(SpecEq);
+
+    TestEqual(TEXT("type == weld"), (int)SpecEq->type, (int)mjtEq::mjEQ_WELD);
+    // anchor (cm -> m)
+    TestNearlyEqual(TEXT("data[0] = 0.5 m"), (float)SpecEq->data[0], 0.5f, 1e-4f);
+    TestNearlyEqual(TEXT("data[1] = 0.6 m"), (float)SpecEq->data[1], 0.6f, 1e-4f);
+    TestNearlyEqual(TEXT("data[2] = 0.7 m"), (float)SpecEq->data[2], 0.7f, 1e-4f);
+    // relpose pos (raw)
+    TestNearlyEqual(TEXT("data[3] = relpose pos x"), (float)SpecEq->data[3], 1.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[4] = relpose pos y"), (float)SpecEq->data[4], 2.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[5] = relpose pos z"), (float)SpecEq->data[5], 3.0f, 1e-4f);
+    // relpose quat (raw)
+    TestNearlyEqual(TEXT("data[6] = relpose quat w"), (float)SpecEq->data[6], 0.7071f, 1e-4f);
+    TestNearlyEqual(TEXT("data[7] = relpose quat x"), (float)SpecEq->data[7], 0.0f,    1e-4f);
+    TestNearlyEqual(TEXT("data[8] = relpose quat y"), (float)SpecEq->data[8], 0.7071f, 1e-4f);
+    TestNearlyEqual(TEXT("data[9] = relpose quat z"), (float)SpecEq->data[9], 0.0f,    1e-4f);
+    // torquescale at slot 10 (was wrongly slot 7 in older codegen)
+    TestNearlyEqual(TEXT("data[10] = torquescale"), (float)SpecEq->data[10], 42.0f, 1e-4f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.RoundTrip_JointEqualityPolycoef
+//   Joint equality with polycoef must pack into data[0..4] AND set
+//   objtype = mjOBJ_JOINT. Without the objtype set, mjs_attach silently
+//   drops the equality at compile time.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_JointEqualityPolycoef,
+    "URLab.Import.RoundTrip_JointEqualityPolycoef",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_JointEqualityPolycoef::RunTest(const FString&)
+{
+    UMjEquality* Eq = NewObject<UMjEquality>();
+    Eq->EqualityType = EMjEqualityType::Joint;
+    Eq->Obj1 = TEXT("ja");
+    Eq->Obj2 = TEXT("jb");
+    Eq->bOverride_polycoef = true;
+    Eq->polycoef = { 5.0f, 6.0f, 7.0f, 8.0f, 9.0f };
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
+    Eq->ExportTo(SpecEq);
+
+    TestEqual(TEXT("type == joint"), (int)SpecEq->type, (int)mjtEq::mjEQ_JOINT);
+    TestEqual(TEXT("objtype == joint"), (int)SpecEq->objtype, (int)mjOBJ_JOINT);
+    TestNearlyEqual(TEXT("data[0] = 5"), (float)SpecEq->data[0], 5.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[1] = 6"), (float)SpecEq->data[1], 6.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[2] = 7"), (float)SpecEq->data[2], 7.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[3] = 8"), (float)SpecEq->data[3], 8.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[4] = 9"), (float)SpecEq->data[4], 9.0f, 1e-4f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.RoundTrip_TendonEqualityPolycoef
+//   Tendon equality: same polycoef packing, but objtype must be mjOBJ_TENDON.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_TendonEqualityPolycoef,
+    "URLab.Import.RoundTrip_TendonEqualityPolycoef",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_TendonEqualityPolycoef::RunTest(const FString&)
+{
+    UMjEquality* Eq = NewObject<UMjEquality>();
+    Eq->EqualityType = EMjEqualityType::Tendon;
+    Eq->Obj1 = TEXT("ta");
+    Eq->Obj2 = TEXT("tb");
+    Eq->bOverride_polycoef = true;
+    Eq->polycoef = { 0.0f, 1.0f, 0.0f, 0.0f, 0.0f };
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
+    Eq->ExportTo(SpecEq);
+
+    TestEqual(TEXT("type == tendon"), (int)SpecEq->type, (int)mjtEq::mjEQ_TENDON);
+    TestEqual(TEXT("objtype == tendon"), (int)SpecEq->objtype, (int)mjOBJ_TENDON);
+    TestNearlyEqual(TEXT("data[0]"), (float)SpecEq->data[0], 0.0f, 1e-4f);
+    TestNearlyEqual(TEXT("data[1]"), (float)SpecEq->data[1], 1.0f, 1e-4f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.RoundTrip_FlexEqualityObjType
+//   Flex / FlexVert / FlexStrain equalities must all set objtype = mjOBJ_FLEX.
+//   Covers all three Flex* arms of the objtype switch in MjEquality.cpp.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_FlexEqualityObjType,
+    "URLab.Import.RoundTrip_FlexEqualityObjType",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_FlexEqualityObjType::RunTest(const FString&)
+{
+    const EMjEqualityType FlexKinds[] = {
+        EMjEqualityType::Flex,
+        EMjEqualityType::FlexVert,
+        EMjEqualityType::FlexStrain,
+    };
+
+    for (EMjEqualityType Kind : FlexKinds)
+    {
+        UMjEquality* Eq = NewObject<UMjEquality>();
+        Eq->EqualityType = Kind;
+        Eq->Obj1 = TEXT("cloth");
+
+        mjSpec* TestSpec = mj_makeSpec();
+        mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
+        Eq->ExportTo(SpecEq);
+
+        const FString Label = FString::Printf(TEXT("flex-kind %d -> objtype == mjOBJ_FLEX"),
+            (int)Kind);
+        TestEqual(Label, (int)SpecEq->objtype, (int)mjOBJ_FLEX);
+
+        mj_deleteSpec(TestSpec);
+    }
+    return true;
+}
+
+// =============================================================================
+// URLab.Import.E2E_JointEqualityCoupling
+//   Joint coupling equality (joint1=ja, joint2=jb, polycoef="0 1 0 0 0")
+//   must survive the URLab end-to-end pipeline and resolve both joint refs
+//   in the compiled mjModel. This is the left/right driver coupling from
+//   the franka_scene 2F-85 gripper.
+// =============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_E2E_JointEqualityCoupling,
+    "URLab.Import.E2E_JointEqualityCoupling",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_E2E_JointEqualityCoupling::RunTest(const FString&)
+{
+    static const TCHAR* Xml = TEXT(R"(
+        <mujoco>
+          <compiler angle="radian"/>
+          <worldbody>
+            <body name="base">
+              <geom size="0.05"/>
+              <body name="a" pos="0 0 0.1">
+                <joint name="ja" type="hinge" axis="1 0 0"/>
+                <geom size="0.01"/>
+              </body>
+              <body name="b" pos="0 0.1 0.1">
+                <joint name="jb" type="hinge" axis="1 0 0"/>
+                <geom size="0.01"/>
+              </body>
+            </body>
+          </worldbody>
+          <equality>
+            <joint name="couple" joint1="ja" joint2="jb" polycoef="0 1 0 0 0"/>
+          </equality>
+        </mujoco>
+    )");
+
+    FMjXmlImportSession S;
+    if (!S.Init(Xml))  { AddError(S.LastError); return false; }
+    if (!S.Compile())  { AddError(S.LastError); S.Cleanup(); return false; }
+
+    const mjModel* M = S.Model();
+    TestEqual(TEXT("neq == 1"), (int)M->neq, 1);
+    if (M->neq >= 1)
+    {
+        TestEqual(TEXT("eq_type == joint"), (int)M->eq_type[0], (int)mjEQ_JOINT);
+        // For a joint equality the obj ids reference joints (not bodies)
+        TestTrue(TEXT("eq.obj1id resolved"), M->eq_obj1id[0] >= 0);
+        TestTrue(TEXT("eq.obj2id resolved"), M->eq_obj2id[0] >= 0);
+        // polycoef coefficient slot — c1=1 means joint1 tracks joint2.
+        // eq_data is a flat (neq x mjNEQDATA) array; we want slot 1 of eq 0.
+        TestNearlyEqual(TEXT("polycoef c1 = 1"), (float)M->eq_data[1], 1.0f, 1e-4f);
     }
     S.Cleanup();
     return true;
@@ -1331,5 +1682,215 @@ bool FTest_MjImport_DefaultClassJointNameCollision::RunTest(const FString&)
         (int)S.Model()->njnt, ExpNjnt);
 
     S.Cleanup();
+    return true;
+}
+
+// =============================================================================
+// CAMERA + GEOM EXPORT-GAP REGRESSION TESTS
+//
+// These cover the audit findings that landed alongside the franka_scene
+// gripper fix: schema attrs that were imported into UPROPERTYs but silently
+// dropped on export because MuJoCo renames the underlying mjsX field
+// (target -> targetbody, focal -> focal_length, shellinertia -> typeinertia,
+// fluidshape -> fluid_ellipsoid, etc.). Without these tests the gaps would
+// regress every time codegen_rules.json is touched.
+// =============================================================================
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraTarget,
+    "URLab.Import.RoundTrip_CameraTarget",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_CameraTarget::RunTest(const FString&)
+{
+    UMjCamera* Cam = NewObject<UMjCamera>();
+    Cam->bOverride_target = true;
+    Cam->target = TEXT("torso");
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsBody* World = mjs_findBody(TestSpec, "world");
+    mjsCamera* SpecCam = mjs_addCamera(World, nullptr);
+    Cam->ExportTo(SpecCam, nullptr);
+
+    const char* tb = mjs_getString(SpecCam->targetbody);
+    TestNotNull(TEXT("targetbody mjString allocated"), tb);
+    TestEqual(TEXT("targetbody == 'torso'"), FString(UTF8_TO_TCHAR(tb)), FString(TEXT("torso")));
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraProjection,
+    "URLab.Import.RoundTrip_CameraProjection",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_CameraProjection::RunTest(const FString&)
+{
+    UMjCamera* Cam = NewObject<UMjCamera>();
+    Cam->bOverride_Projection = true;
+    Cam->Projection = EMjCameraProjection::Orthographic;
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsBody* World = mjs_findBody(TestSpec, "world");
+    mjsCamera* SpecCam = mjs_addCamera(World, nullptr);
+    Cam->ExportTo(SpecCam, nullptr);
+
+    TestEqual(TEXT("proj == orthographic"),
+        (int)SpecCam->proj, (int)mjPROJ_ORTHOGRAPHIC);
+
+    // Round-trip the perspective case too.
+    Cam->Projection = EMjCameraProjection::Perspective;
+    Cam->ExportTo(SpecCam, nullptr);
+    TestEqual(TEXT("proj == perspective"),
+        (int)SpecCam->proj, (int)mjPROJ_PERSPECTIVE);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraIntrinsics2Vec,
+    "URLab.Import.RoundTrip_CameraIntrinsics2Vec",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_CameraIntrinsics2Vec::RunTest(const FString&)
+{
+    // mjsCamera.focal_length, principal_length, sensor_size are all 2-vec
+    // float arrays. Before the audit fix, focal/principal were never written
+    // and sensor_size wrote 3 elements into a 2-element field (OOB).
+    UMjCamera* Cam = NewObject<UMjCamera>();
+    Cam->bOverride_focal = true;
+    Cam->focal = { 0.5f, 0.6f };
+    Cam->bOverride_principal = true;
+    Cam->principal = { 0.1f, 0.2f };
+    Cam->bOverride_sensorsize = true;
+    Cam->sensorsize = { 0.024f, 0.018f };
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsBody* World = mjs_findBody(TestSpec, "world");
+    mjsCamera* SpecCam = mjs_addCamera(World, nullptr);
+    Cam->ExportTo(SpecCam, nullptr);
+
+    TestNearlyEqual(TEXT("focal_length[0]"), SpecCam->focal_length[0], 0.5f, 1e-6f);
+    TestNearlyEqual(TEXT("focal_length[1]"), SpecCam->focal_length[1], 0.6f, 1e-6f);
+    TestNearlyEqual(TEXT("principal_length[0]"), SpecCam->principal_length[0], 0.1f, 1e-6f);
+    TestNearlyEqual(TEXT("principal_length[1]"), SpecCam->principal_length[1], 0.2f, 1e-6f);
+    TestNearlyEqual(TEXT("sensor_size[0]"), SpecCam->sensor_size[0], 0.024f, 1e-6f);
+    TestNearlyEqual(TEXT("sensor_size[1]"), SpecCam->sensor_size[1], 0.018f, 1e-6f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_GeomShellInertia,
+    "URLab.Import.RoundTrip_GeomShellInertia",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_GeomShellInertia::RunTest(const FString&)
+{
+    UMjGeom* G = NewObject<UMjGeom>();
+    G->bOverride_ShellInertia = true;
+    G->ShellInertia = EMjGeomInertia::Shell;
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsBody* World = mjs_findBody(TestSpec, "world");
+    mjsGeom* SpecGeom = mjs_addGeom(World, nullptr);
+    G->ExportTo(SpecGeom, nullptr);
+
+    TestEqual(TEXT("typeinertia == SHELL"),
+        (int)SpecGeom->typeinertia, (int)mjINERTIA_SHELL);
+
+    G->ShellInertia = EMjGeomInertia::Volume;
+    G->ExportTo(SpecGeom, nullptr);
+    TestEqual(TEXT("typeinertia == VOLUME"),
+        (int)SpecGeom->typeinertia, (int)mjINERTIA_VOLUME);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_GeomFluidShape,
+    "URLab.Import.RoundTrip_GeomFluidShape",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_GeomFluidShape::RunTest(const FString&)
+{
+    UMjGeom* G = NewObject<UMjGeom>();
+    G->bOverride_FluidShape = true;
+    G->FluidShape = EMjFluidShape::Ellipsoid;
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsBody* World = mjs_findBody(TestSpec, "world");
+    mjsGeom* SpecGeom = mjs_addGeom(World, nullptr);
+    G->ExportTo(SpecGeom, nullptr);
+
+    TestNearlyEqual(TEXT("fluid_ellipsoid == 1 for Ellipsoid"),
+        (float)SpecGeom->fluid_ellipsoid, 1.0f, 1e-6f);
+
+    G->FluidShape = EMjFluidShape::None;
+    G->ExportTo(SpecGeom, nullptr);
+    TestNearlyEqual(TEXT("fluid_ellipsoid == 0 for None"),
+        (float)SpecGeom->fluid_ellipsoid, 0.0f, 1e-6f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_GeomFluidCoef,
+    "URLab.Import.RoundTrip_GeomFluidCoef",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_GeomFluidCoef::RunTest(const FString&)
+{
+    // mjsGeom.fluid_coefs[5] — schema attr "fluidcoef" needs the
+    // attr_to_mjs_field rename to land in the right place.
+    UMjGeom* G = NewObject<UMjGeom>();
+    G->bOverride_fluidcoef = true;
+    G->fluidcoef = { 0.5f, 0.25f, 1.5f, 1.0f, 1.0f };
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsBody* World = mjs_findBody(TestSpec, "world");
+    mjsGeom* SpecGeom = mjs_addGeom(World, nullptr);
+    G->ExportTo(SpecGeom, nullptr);
+
+    TestNearlyEqual(TEXT("fluid_coefs[0]"), (float)SpecGeom->fluid_coefs[0], 0.5f, 1e-6f);
+    TestNearlyEqual(TEXT("fluid_coefs[1]"), (float)SpecGeom->fluid_coefs[1], 0.25f, 1e-6f);
+    TestNearlyEqual(TEXT("fluid_coefs[2]"), (float)SpecGeom->fluid_coefs[2], 1.5f, 1e-6f);
+    TestNearlyEqual(TEXT("fluid_coefs[3]"), (float)SpecGeom->fluid_coefs[3], 1.0f, 1e-6f);
+    TestNearlyEqual(TEXT("fluid_coefs[4]"), (float)SpecGeom->fluid_coefs[4], 1.0f, 1e-6f);
+
+    mj_deleteSpec(TestSpec);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_EqualitySiteMode,
+    "URLab.Import.RoundTrip_EqualitySiteMode",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_RoundTrip_EqualitySiteMode::RunTest(const FString&)
+{
+    // Connect equality referring to two sites (not bodies). Discriminated
+    // by site1 UPROPERTY being non-empty -> objtype = mjOBJ_SITE.
+    UMjEquality* Eq = NewObject<UMjEquality>();
+    Eq->EqualityType = EMjEqualityType::Connect;
+    Eq->site1 = TEXT("s1");
+    Eq->site2 = TEXT("s2");
+    Eq->Obj1 = TEXT("s1");   // populated by target_collation absorbs_attrs
+    Eq->Obj2 = TEXT("s2");
+
+    mjSpec* TestSpec = mj_makeSpec();
+    mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
+    Eq->ExportTo(SpecEq);
+
+    TestEqual(TEXT("type == connect"), (int)SpecEq->type, (int)mjtEq::mjEQ_CONNECT);
+    TestEqual(TEXT("objtype == site (not body) when site1 non-empty"),
+        (int)SpecEq->objtype, (int)mjOBJ_SITE);
+    const char* n1 = mjs_getString(SpecEq->name1);
+    const char* n2 = mjs_getString(SpecEq->name2);
+    TestEqual(TEXT("name1 == 's1'"), FString(UTF8_TO_TCHAR(n1)), FString(TEXT("s1")));
+    TestEqual(TEXT("name2 == 's2'"), FString(UTF8_TO_TCHAR(n2)), FString(TEXT("s2")));
+
+    // And body-mode still works
+    UMjEquality* EqB = NewObject<UMjEquality>();
+    EqB->EqualityType = EMjEqualityType::Connect;
+    EqB->Obj1 = TEXT("b1");
+    EqB->Obj2 = TEXT("b2");
+    mjsEquality* SpecEqB = mjs_addEquality(TestSpec, nullptr);
+    EqB->ExportTo(SpecEqB);
+    TestEqual(TEXT("body-mode objtype == body when site1 empty"),
+        (int)SpecEqB->objtype, (int)mjOBJ_BODY);
+
+    mj_deleteSpec(TestSpec);
     return true;
 }

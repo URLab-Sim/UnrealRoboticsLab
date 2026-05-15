@@ -44,8 +44,8 @@ void UMjSphere::EnsureVisualizerMesh()
         VisualizerMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         VisualizerMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
 
-        UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
-        if (Mesh) VisualizerMesh->SetStaticMesh(Mesh);
+        UStaticMesh* LoadedMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
+        if (LoadedMesh) VisualizerMesh->SetStaticMesh(LoadedMesh);
 
         if (IsRegistered())
         {
@@ -73,40 +73,41 @@ void UMjSphere::OnRegister()
 }
 
 
-void UMjSphere::ImportFromXml(const FXmlNode* Node)
-{
-	ImportFromXml(Node, FMjCompilerSettings());
-}
+
 
 void UMjSphere::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-	Super::ImportFromXml(Node, CompilerSettings);
-	Radius = Size.X;
+        // --- CODEGEN_IMPORT_START ---
 
-    // Sync Unreal Scale immediately on import so the editor visual matches the data
+    // --- CODEGEN_IMPORT_END ---
+
+	Super::ImportFromXml(Node, CompilerSettings);
+	Radius = size.Num() > 0 ? size[0] : 0.0f;
+
+    // Sync Unreal scale immediately on import so the editor visual matches the data
     const float BaseSize = 50.0f;
     const float UnitScale = 100.0f;
     FVector NewScale = FVector((Radius * UnitScale) / BaseSize);
     SetRelativeScale3D(NewScale);
 }
 
-void UMjSphere::ExportTo(mjsGeom* geom, mjsDefault* def)
+void UMjSphere::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // Derive Size from Unreal scale
-    // Unreal Sphere is 100 units diameter, MuJoCo sphere size is radius in meters
-    // 1.0 Unreal Scale = 50cm radius = 0.5 size
-    FVector Scale = GetRelativeScale3D();
-    Size.X = Scale.X * 0.5f;
-
-    // For user-authored geoms (bWasImported=false), SizeParamsCount was never set by the
-    // XML parser, so we set it here to tell the base ExportTo to write the radius.
+    // For user-authored spheres, derive radius from the Unreal scale.
+    // Unreal Sphere is 100 units diameter; MuJoCo sphere size is radius in metres.
+    // 1.0 Unreal scale -> 50cm radius -> 0.5 size.
     if (!bWasImported)
     {
-       
-        bOverride_Size = true;
+        const FVector scale = GetRelativeScale3D();
+        size = { (float)scale.X * 0.5f };
+        bOverride_size = true;
     }
 
-	Super::ExportTo(geom, def);
+	Super::ExportTo(Element, def);
+
+        // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjSphere::ApplyOverrideMaterial(UMaterialInterface* Material)
@@ -119,24 +120,14 @@ void UMjSphere::SyncUnrealTransformFromMj()
 {
     if (m_GeomView.id == -1) return;
 
-    if (bOverride_FromTo)
-    {
-        if (VisualizerMesh)
-        {
-            VisualizerMesh->DestroyComponent();
-            VisualizerMesh = nullptr;
-        }
-        return;
-    }
-
-    if (!bOverride_Size)
+    if (!bOverride_size)
     {
         // MuJoCo sphere size is radius. Unreal Sphere is 100 units diameter.
         float RadiusVal = m_GeomView.size[0];
         FVector NewScale = FVector(RadiusVal * 2.0f);
         SetRelativeScale3D(NewScale);
 
-        UE_LOG(LogURLabBind, Log, TEXT("[MjSphere] Syncing Scale for '%s' from MuJoCo radius: %f -> NewScale: %s"), 
+        UE_LOG(LogURLabBind, Log, TEXT("[MjSphere] Syncing scale for '%s' from MuJoCo radius: %f -> NewScale: %s"), 
             *GetName(), RadiusVal, *NewScale.ToString());
     }
 }
@@ -152,12 +143,12 @@ void UMjSphere::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEve
     // Enforce uniform scaling for Sphere
     if (PropertyName == FName(TEXT("RelativeScale3D")) || MemberPropertyName == FName(TEXT("RelativeScale3D")))
     {
-        FVector Scale = GetRelativeScale3D();
-        if (!Scale.AllComponentsEqual())
+        FVector scale = GetRelativeScale3D();
+        if (!scale.AllComponentsEqual())
         {
-            // Force Y and Z to match X
-            Scale.Y = Scale.Z = Scale.X;
-            SetRelativeScale3D(Scale);
+            // force Y and Z to match X
+            scale.Y = scale.Z = scale.X;
+            SetRelativeScale3D(scale);
         }
     }
 }

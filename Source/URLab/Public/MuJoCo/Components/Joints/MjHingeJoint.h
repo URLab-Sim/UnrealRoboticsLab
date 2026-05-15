@@ -35,5 +35,13 @@ class URLAB_API UMjHingeJoint : public UMjJoint
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjHingeJoint();
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+
+    virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;
 };

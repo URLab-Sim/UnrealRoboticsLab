@@ -111,15 +111,15 @@ UMjDefault* UMjComponent::FindEditorDefault() const
         return FindDefaultByClassName(Owner, MyClassName);
     }
 
-    // 2. Walk up attachment parents to find nearest UMjBody with ChildClassName set
+    // 2. Walk up attachment parents to find nearest UMjBody with childclass set
     USceneComponent* Parent = GetAttachParent();
     while (Parent)
     {
         if (UMjBody* Body = Cast<UMjBody>(Parent))
         {
-            if (Body->bOverride_ChildClassName && !Body->ChildClassName.IsEmpty())
+            if (Body->bOverride_childclass && !Body->childclass.IsEmpty())
             {
-                return FindDefaultByClassName(Owner, Body->ChildClassName);
+                return FindDefaultByClassName(Owner, Body->childclass);
             }
         }
         Parent = Parent->GetAttachParent();

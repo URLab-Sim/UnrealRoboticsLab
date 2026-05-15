@@ -115,3 +115,57 @@ bool MjXmlUtils::ReadAttrString(const FXmlNode* Node, const TCHAR* Attr, FString
     Out = Str;
     return true;
 }
+
+bool MjXmlUtils::ReadAttrVec3(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride)
+{
+    FString Str = Node->GetAttribute(Attr);
+    if (Str.IsEmpty()) return false;
+    bOverride = true;
+    Out = ParseVector(Str);
+    return true;
+}
+
+bool MjXmlUtils::ReadAttrColor(const FXmlNode* Node, const TCHAR* Attr, FLinearColor& Out, bool& bOverride)
+{
+    FString Str = Node->GetAttribute(Attr);
+    if (Str.IsEmpty()) return false;
+    bOverride = true;
+    TArray<float> Vals;
+    ParseFloatArray(Str, Vals);
+    Out = FLinearColor(
+        Vals.Num() > 0 ? Vals[0] : 1.0f,
+        Vals.Num() > 1 ? Vals[1] : 1.0f,
+        Vals.Num() > 2 ? Vals[2] : 1.0f,
+        Vals.Num() > 3 ? Vals[3] : 1.0f);
+    return true;
+}
+
+bool MjXmlUtils::ReadAttrIntArray(const FXmlNode* Node, const TCHAR* Attr, TArray<int32>& Out, bool& bOverride)
+{
+    FString Str = Node->GetAttribute(Attr);
+    if (Str.IsEmpty()) return false;
+    bOverride = true;
+    Out.Reset();
+    TArray<FString> Parts;
+    Str.ParseIntoArray(Parts, TEXT(" "), true);
+    for (const FString& P : Parts)
+    {
+        Out.Add(FCString::Atoi(*P));
+    }
+    return true;
+}
+
+bool MjXmlUtils::ReadAttrDoubleArray(const FXmlNode* Node, const TCHAR* Attr, TArray<double>& Out, bool& bOverride)
+{
+    FString Str = Node->GetAttribute(Attr);
+    if (Str.IsEmpty()) return false;
+    bOverride = true;
+    Out.Reset();
+    TArray<FString> Parts;
+    Str.ParseIntoArray(Parts, TEXT(" "), true);
+    for (const FString& P : Parts)
+    {
+        Out.Add(FCString::Atod(*P));
+    }
+    return true;
+}

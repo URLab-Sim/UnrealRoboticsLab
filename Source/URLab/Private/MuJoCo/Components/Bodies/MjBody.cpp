@@ -54,7 +54,7 @@ void UMjBody::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponen
 
     if (m_IsSetup)
     {
-        if (bDrivenByUnreal && m_MocapPos && m_MocapQuat)
+        if (mocap && m_MocapPos && m_MocapQuat)
         {
         	MjUtils::UEToMjPosition(GetComponentLocation(), m_MocapPos);
         	MjUtils::UEToMjRotation(GetComponentQuat(), m_MocapQuat);
@@ -92,6 +92,21 @@ void UMjBody::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponen
 }
 
 
+void UMjBody::ExportTo(mjsBody* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    // --- CODEGEN_EXPORT_START ---
+    if (SleepPolicy != EMjBodySleepPolicy::Default)
+    {
+        Element->sleep = static_cast<mjtSleepPolicy>(static_cast<uint8>(SleepPolicy));
+    }
+    if (bOverride_childclass && !childclass.IsEmpty()) mjs_setString(Element->childclass, TCHAR_TO_UTF8(*childclass));
+    if (bOverride_mocap) Element->mocap = mocap ? 1 : 0;
+    if (bOverride_gravcomp) Element->gravcomp = gravcomp;
+    // --- CODEGEN_EXPORT_END ---
+}
+
 void UMjBody::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWrapper* Wrapper)
 {
     FTransform TargetTransform;
@@ -113,33 +128,14 @@ void UMjBody::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWra
 		ParentBody,
 		TargetTransform
 	);
-    if(BodyToAttachTo)
+    if (BodyToAttachTo)
     {
         m_SpecElement = BodyToAttachTo->element;
-        if (bOverride_Gravcomp)
-        {
-            BodyToAttachTo->gravcomp = Gravcomp;
-        }
-        
-        
+        // All per-attr writes (gravcomp / mocap / sleep / childclass) are
+        // codegen-owned inside ExportTo's CODEGEN_EXPORT block.
+        ExportTo(BodyToAttachTo, nullptr);
     }
 
-    if (bDrivenByUnreal && BodyToAttachTo)
-    {
-        BodyToAttachTo->mocap = 1;
-    }
-
-    // Sleep policy (MuJoCo 3.4+). Only written when non-default so the global option takes effect otherwise.
-    if (BodyToAttachTo && SleepPolicy != EMjBodySleepPolicy::Default)
-    {
-        BodyToAttachTo->sleep = static_cast<mjtSleepPolicy>(static_cast<uint8>(SleepPolicy));
-    }
-    
-    if (bOverride_ChildClassName)
-    {
-
-        mjs_setString(BodyToAttachTo->childclass, TCHAR_TO_UTF8(*ChildClassName));
-    }
 	m_Root = Parent;
 
 
@@ -225,49 +221,35 @@ void UMjBody::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWra
 	
 }
 
-void UMjBody::ImportFromXml(const FXmlNode* Node)
-{
-    FMjCompilerSettings DefaultSettings;
-    ImportFromXml(Node, DefaultSettings);
-}
+
 
 void UMjBody::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
 
-    FString PosStr = Node->GetAttribute(TEXT("pos"));
-    if (!PosStr.IsEmpty())
-    {
-        FVector MjPos = MjXmlUtils::ParseVector(PosStr);
-        SetRelativeLocation(MjUtils::MjToUEPosition(&MjPos.X));
+        // --- CODEGEN_IMPORT_START ---
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("childclass"), childclass)) bOverride_childclass = true;
+    MjXmlUtils::ReadAttrBool(Node, TEXT("mocap"), mocap, bOverride_mocap);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("gravcomp"), gravcomp, bOverride_gravcomp);
+    MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
+    { // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
+        double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
+        if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
+        {
+            Quat = MjUtils::MjToUERotation(TmpQuat);
+            bOverride_Quat = true;
+        }
     }
-    
-    double MjQuat[4];
-    if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, MjQuat))
-    {
-        SetRelativeRotation(MjUtils::MjToUERotation(MjQuat));
+    { // canonicalize body.sleep -> EMjBodySleepPolicy
+        FString S = Node->GetAttribute(TEXT("sleep"));
+        S = S.ToLower();
+        if      (S == TEXT("never"))   SleepPolicy = EMjBodySleepPolicy::Never;
+        else if (S == TEXT("allowed")) SleepPolicy = EMjBodySleepPolicy::Allowed;
+        else if (S == TEXT("init"))    SleepPolicy = EMjBodySleepPolicy::InitAsleep;
     }
-
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("gravcomp"), Gravcomp, bOverride_Gravcomp);
-
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("childclass"), ChildClassName))
-        bOverride_ChildClassName = true;
-
-    // mocap="true" marks this body as a kinematic reference driven from outside simulation
-    bool bMocap = false;
-    bool bDummyMocap = false;
-    if (MjXmlUtils::ReadAttrBool(Node, TEXT("mocap"), bMocap, bDummyMocap) && bMocap)
-        bDrivenByUnreal = true;
-
-    // sleep policy (MuJoCo 3.4+): "never" | "allowed" | "init"
-    FString SleepAttr;
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("sleep"), SleepAttr))
-    {
-        SleepAttr = SleepAttr.ToLower();
-        if      (SleepAttr == TEXT("never"))   SleepPolicy = EMjBodySleepPolicy::Never;
-        else if (SleepAttr == TEXT("allowed")) SleepPolicy = EMjBodySleepPolicy::Allowed;
-        else if (SleepAttr == TEXT("init"))    SleepPolicy = EMjBodySleepPolicy::InitAsleep;
-    }
+    if (bOverride_Pos)  SetRelativeLocation(Pos);
+    if (bOverride_Quat) SetRelativeRotation(Quat);
+    // --- CODEGEN_IMPORT_END ---
 
     // name attribute → store in MjName for explicit override
     MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName);
@@ -294,7 +276,7 @@ void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
             SetComponentTickEnabled(false);
         }
 
-        if (bDrivenByUnreal && m_ID >= 0)
+        if (mocap && m_ID >= 0)
         {
             int mocapid = Model->body_mocapid[m_ID];
             if (mocapid >= 0)
@@ -311,10 +293,10 @@ void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 	{
 		if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
 		{
-			UStaticMesh* Mesh = SMC->GetStaticMesh();
-			if (Mesh)
+			UStaticMesh* mesh = SMC->GetStaticMesh();
+			if (mesh)
 			{
-				UBodySetup* BodySetup = Mesh->GetBodySetup();
+				UBodySetup* BodySetup = mesh->GetBodySetup();
 				if (BodySetup)
 				{
 					FVector LocalCenter = BodySetup->AggGeom.CalcAABB(FTransform::Identity).GetCenter();
@@ -374,7 +356,7 @@ FMuJoCoSpatialVelocity UMjBody::GetSpatialVelocity() const
     return Result;
 }
 
-void UMjBody::ApplyForce(FVector Force, FVector Torque)
+void UMjBody::ApplyForce(FVector force, FVector Torque)
 {
     if (m_BodyView.id < 0 || !m_BodyView.xfrc_applied) return;
     // xfrc_applied layout: [torque_x, torque_y, torque_z, force_x, force_y, force_z] in MuJoCo frame
@@ -385,10 +367,10 @@ void UMjBody::ApplyForce(FVector Force, FVector Torque)
     xfrc[0] = (mjtNum)(Torque.X);
     xfrc[1] = (mjtNum)(-Torque.Y);
     xfrc[2] = (mjtNum)(Torque.Z);
-    // Force: same convention
-    xfrc[3] = (mjtNum)(Force.X * InvScale);
-    xfrc[4] = (mjtNum)(-Force.Y * InvScale);
-    xfrc[5] = (mjtNum)(Force.Z * InvScale);
+    // force: same convention
+    xfrc[3] = (mjtNum)(force.X * InvScale);
+    xfrc[4] = (mjtNum)(-force.Y * InvScale);
+    xfrc[5] = (mjtNum)(force.Z * InvScale);
 }
 
 void UMjBody::ClearForce()
@@ -420,7 +402,7 @@ void UMjBody::Wake()
     }
 }
 
-void UMjBody::Sleep()
+void UMjBody::PutToSleep()
 {
     if (m_BodyView.id < 0 || !m_BodyView._d || !m_BodyView._m) return;
 

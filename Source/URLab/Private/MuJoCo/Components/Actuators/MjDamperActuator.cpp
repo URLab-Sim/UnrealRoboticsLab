@@ -25,34 +25,33 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjDamperActuator::UMjDamperActuator()
 {
     Type = EMjActuatorType::Damper;
 }
 
-void UMjDamperActuator::ParseSpecifics(const FXmlNode* Node)
+
+
+void UMjDamperActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    MjXmlUtils::ReadAttrDouble(Node, TEXT("kv"), Kv, bOverride_Kv);
+    if (!Element) return;
+
+    Super::ExportTo(Element, def);
+
+    // --- CODEGEN_EXPORT_START ---
+    mjs_setToDamper(Element, bOverride_kv ? (double)kv : 0.01);
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjDamperActuator::ExtractSpecifics(const mjsActuator* act)
+void UMjDamperActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    // mjs_setToDamper sets:
-    // gainprm[0] = kv
-    // biasprm[2] = -kv
-    if (BiasPrm.Num() > 2)
-    {
-        Kv = -BiasPrm[2];
-        bOverride_Kv = true;
-    }
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("kv"), kv, bOverride_kv);
+    // --- CODEGEN_IMPORT_END ---
 }
 
-void UMjDamperActuator::ExportTo(mjsActuator* act, mjsDefault* def)
-{
-    if (!act) return;
-
-    Super::ExportTo(act, def);                         // 1. Common: transmission, gear, ranges, group...
-    mjs_setToDamper(act, bOverride_Kv ? Kv : 0.01f);  // 2. Type preset: sets dyntype/gaintype/biastype/prm
-    ApplyRawOverrides(act, def);                       // 3. Raw prm overrides win last (if set)
-}

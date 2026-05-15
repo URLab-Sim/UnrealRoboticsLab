@@ -44,8 +44,8 @@ void UMjBox::EnsureVisualizerMesh()
         VisualizerMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
         VisualizerMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
 
-        UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
-        if (Mesh) VisualizerMesh->SetStaticMesh(Mesh);
+        UStaticMesh* LoadedMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+        if (LoadedMesh) VisualizerMesh->SetStaticMesh(LoadedMesh);
 
         if (IsRegistered())
         {
@@ -89,36 +89,45 @@ void UMjBox::SetGeomVisibility(bool bNewVisibility)
     }
 }
 
-void UMjBox::ImportFromXml(const FXmlNode* Node)
-{
-	ImportFromXml(Node, FMjCompilerSettings());
-}
+
 
 void UMjBox::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-	Super::ImportFromXml(Node, CompilerSettings);
-	Extents = Size;
+        // --- CODEGEN_IMPORT_START ---
 
-    // Sync Unreal Scale immediately on import so the editor visual matches the data
+    // --- CODEGEN_IMPORT_END ---
+
+	Super::ImportFromXml(Node, CompilerSettings);
+	// MuJoCo box size is 3 half-extents in metres.
+	Extents = FVector(
+		size.Num() > 0 ? size[0] : 0.0f,
+		size.Num() > 1 ? size[1] : 0.0f,
+		size.Num() > 2 ? size[2] : 0.0f);
+
+    // Sync Unreal scale immediately on import so the editor visual matches the data
     const float BaseSize = 50.0f;
     const float UnitScale = 100.0f;
     FVector NewScale = (Extents * UnitScale) / BaseSize;
     SetRelativeScale3D(NewScale);
 }
 
-void UMjBox::ExportTo(mjsGeom* geom, mjsDefault* def)
+void UMjBox::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // Derive Size from Unreal scale if VisualizerMesh exists
-    // Unreal Cube is 100 units, MuJoCo box size is half-extents in meters
-    // So 1.0 Unreal Scale = 50cm half-extent = 0.5 size
-    if(!bWasImported){
-        
-        bOverride_Size = true;
+    // For user-authored boxes, derive size from the Unreal scale.
+    // Unreal Cube is 100 units; MuJoCo box size is half-extents in metres.
+    // 1.0 Unreal scale -> 50cm half-extent -> 0.5 size.
+    if (!bWasImported)
+    {
+        const FVector scale = GetRelativeScale3D();
+        size = { (float)scale.X * 0.5f, (float)scale.Y * 0.5f, (float)scale.Z * 0.5f };
+        bOverride_size = true;
     }
-    FVector Scale = GetRelativeScale3D();
-    Size = Scale * 0.5f;
 
-	Super::ExportTo(geom, def);
+	Super::ExportTo(Element, def);
+
+        // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjBox::ApplyOverrideMaterial(UMaterialInterface* Material)
@@ -134,21 +143,11 @@ void UMjBox::SyncUnrealTransformFromMj()
 {
     if (m_GeomView.id == -1) return;
 
-    if (bOverride_FromTo)
-    {
-        if (VisualizerMesh)
-        {
-            VisualizerMesh->DestroyComponent();
-            VisualizerMesh = nullptr;
-        }
-        return;
-    }
-
     // If we are NOT an override, sync our Unreal scale from the resolved MuJoCo size (including defaults)
-    if (!bOverride_Size)
+    if (!bOverride_size)
     {
         // MuJoCo box size is half-extents. Unreal Cube is 100 units.
-        // Size 0.5 -> Scale 1.0
+        // Size 0.5 -> scale 1.0
         float r[3];
         r[0] = m_GeomView.size[0];
         r[1] = m_GeomView.size[1];
@@ -157,7 +156,7 @@ void UMjBox::SyncUnrealTransformFromMj()
         FVector NewScale = FVector(r[0], r[1], r[2]) * 2.0f;
         SetRelativeScale3D(NewScale);
 
-        UE_LOG(LogURLabBind, Log, TEXT("[MjBox] Syncing Scale for '%s' from MuJoCo size: %f %f %f -> NewScale: %s"), 
+        UE_LOG(LogURLabBind, Log, TEXT("[MjBox] Syncing scale for '%s' from MuJoCo size: %f %f %f -> NewScale: %s"), 
             *GetName(), r[0], r[1], r[2], *NewScale.ToString());
     }
 }

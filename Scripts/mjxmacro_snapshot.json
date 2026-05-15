@@ -1,0 +1,3012 @@
+{
+  "_meta": {
+    "source": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+    "schema_kind": "mjxmacro"
+  },
+  "mjmodel_pointers": {
+    "MJMODEL_POINTERS_BODY": [
+      {
+        "type": "int",
+        "name": "body_parentid",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_rootid",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_weldid",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_mocapid",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_jntnum",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_jntadr",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_dofnum",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_dofadr",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_treeid",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_geomnum",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_geomadr",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "body_simple",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "body_sameframe",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_pos",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_quat",
+        "outer_dim": "nbody",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_ipos",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_iquat",
+        "outer_dim": "nbody",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_mass",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_subtreemass",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_inertia",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_invweight0",
+        "outer_dim": "nbody",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_gravcomp",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_margin",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "body_user",
+        "outer_dim": "nbody",
+        "stride": "MJ_M(nuser_body)"
+      },
+      {
+        "type": "int",
+        "name": "body_plugin",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_contype",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_conaffinity",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_bvhadr",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_bvhnum",
+        "outer_dim": "nbody",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_JOINT": [
+      {
+        "type": "int",
+        "name": "jnt_type",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "jnt_qposadr",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "jnt_dofadr",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "jnt_bodyid",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "jnt_actuatorid",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "jnt_group",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "jnt_limited",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "jnt_actfrclimited",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "jnt_actgravcomp",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_solref",
+        "outer_dim": "njnt",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_solimp",
+        "outer_dim": "njnt",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_pos",
+        "outer_dim": "njnt",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_axis",
+        "outer_dim": "njnt",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_stiffness",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_stiffnesspoly",
+        "outer_dim": "njnt",
+        "stride": "mjNPOLY"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_range",
+        "outer_dim": "njnt",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_actfrcrange",
+        "outer_dim": "njnt",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_margin",
+        "outer_dim": "njnt",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "jnt_user",
+        "outer_dim": "njnt",
+        "stride": "MJ_M(nuser_jnt)"
+      }
+    ],
+    "MJMODEL_POINTERS_DOF": [
+      {
+        "type": "int",
+        "name": "dof_bodyid",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_jntid",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_parentid",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_treeid",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_Madr",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_simplenum",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_solref",
+        "outer_dim": "nv",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_solimp",
+        "outer_dim": "nv",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_frictionloss",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_armature",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_damping",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_dampingpoly",
+        "outer_dim": "nv",
+        "stride": "mjNPOLY"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_invweight0",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_M0",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "dof_length",
+        "outer_dim": "nv",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_TREE": [
+      {
+        "type": "int",
+        "name": "tree_bodyadr",
+        "outer_dim": "ntree",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tree_bodynum",
+        "outer_dim": "ntree",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tree_dofadr",
+        "outer_dim": "ntree",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tree_dofnum",
+        "outer_dim": "ntree",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tree_sleep_policy",
+        "outer_dim": "ntree",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_GEOM": [
+      {
+        "type": "int",
+        "name": "geom_type",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_contype",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_conaffinity",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_condim",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_bodyid",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_dataid",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_matid",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_group",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_priority",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "geom_plugin",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "geom_sameframe",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_solmix",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_solref",
+        "outer_dim": "ngeom",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_solimp",
+        "outer_dim": "ngeom",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_size",
+        "outer_dim": "ngeom",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_aabb",
+        "outer_dim": "ngeom",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_rbound",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_pos",
+        "outer_dim": "ngeom",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_quat",
+        "outer_dim": "ngeom",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_friction",
+        "outer_dim": "ngeom",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_margin",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_gap",
+        "outer_dim": "ngeom",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_SITE": [
+      {
+        "type": "int",
+        "name": "site_type",
+        "outer_dim": "nsite",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "site_bodyid",
+        "outer_dim": "nsite",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "site_matid",
+        "outer_dim": "nsite",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "site_group",
+        "outer_dim": "nsite",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "site_sameframe",
+        "outer_dim": "nsite",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "site_size",
+        "outer_dim": "nsite",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "site_pos",
+        "outer_dim": "nsite",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "site_quat",
+        "outer_dim": "nsite",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "site_user",
+        "outer_dim": "nsite",
+        "stride": "MJ_M(nuser_site)"
+      },
+      {
+        "type": "float",
+        "name": "site_rgba",
+        "outer_dim": "nsite",
+        "stride": "4"
+      }
+    ],
+    "MJMODEL_POINTERS_CAMERA": [
+      {
+        "type": "int",
+        "name": "cam_mode",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "cam_bodyid",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "cam_targetbodyid",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_pos",
+        "outer_dim": "ncam",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_quat",
+        "outer_dim": "ncam",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_poscom0",
+        "outer_dim": "ncam",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_pos0",
+        "outer_dim": "ncam",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_mat0",
+        "outer_dim": "ncam",
+        "stride": "9"
+      },
+      {
+        "type": "int",
+        "name": "cam_projection",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_fovy",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_ipd",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "cam_resolution",
+        "outer_dim": "ncam",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "cam_output",
+        "outer_dim": "ncam",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "cam_sensorsize",
+        "outer_dim": "ncam",
+        "stride": "2"
+      },
+      {
+        "type": "float",
+        "name": "cam_intrinsic",
+        "outer_dim": "ncam",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_user",
+        "outer_dim": "ncam",
+        "stride": "MJ_M(nuser_cam)"
+      }
+    ],
+    "MJMODEL_POINTERS_LIGHT": [
+      {
+        "type": "int",
+        "name": "light_mode",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "light_bodyid",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "light_targetbodyid",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "light_type",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "light_texid",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "light_castshadow",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "light_bulbradius",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "light_intensity",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "light_range",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "light_active",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_pos",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_dir",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_poscom0",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_pos0",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_dir0",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "light_attenuation",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "light_cutoff",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "light_exponent",
+        "outer_dim": "nlight",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "light_ambient",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "light_diffuse",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "light_specular",
+        "outer_dim": "nlight",
+        "stride": "3"
+      }
+    ],
+    "MJMODEL_POINTERS_FLEX": [
+      {
+        "type": "int",
+        "name": "flex_contype",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_conaffinity",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_condim",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_priority",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_solmix",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_solref",
+        "outer_dim": "nflex",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_solimp",
+        "outer_dim": "nflex",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_friction",
+        "outer_dim": "nflex",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_margin",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_gap",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "flex_internal",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_selfcollide",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_activelayers",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_passive",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_dim",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_matid",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_group",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_interp",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_bandwidth",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_cellnum",
+        "outer_dim": "nflex",
+        "stride": "3"
+      },
+      {
+        "type": "int",
+        "name": "flex_nodeadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_nodenum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_vertadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_vertnum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_edgeadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_edgenum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemnum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemdataadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_stiffnessadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemedgeadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_bendingadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_shellnum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_shelldataadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_evpairadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_evpairnum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_texcoordadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_nodebodyid",
+        "outer_dim": "nflexnode",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_vertbodyid",
+        "outer_dim": "nflexvert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_vertedgeadr",
+        "outer_dim": "nflexvert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_vertedgenum",
+        "outer_dim": "nflexvert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_vertedge",
+        "outer_dim": "nflexedge",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "flex_edge",
+        "outer_dim": "nflexedge",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "flex_edgeflap",
+        "outer_dim": "nflexedge",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "flex_elem",
+        "outer_dim": "nflexelemdata",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemtexcoord",
+        "outer_dim": "nflexelemdata",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemedge",
+        "outer_dim": "nflexelemedge",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_elemlayer",
+        "outer_dim": "nflexelem",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_shell",
+        "outer_dim": "nflexshelldata",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_evpair",
+        "outer_dim": "nflexevpair",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_vert",
+        "outer_dim": "nflexvert",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_vert0",
+        "outer_dim": "nflexvert",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_vertmetric",
+        "outer_dim": "nflexvert",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_node",
+        "outer_dim": "nflexnode",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_node0",
+        "outer_dim": "nflexnode",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexedge_length0",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexedge_invweight0",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_radius",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_size",
+        "outer_dim": "nflex",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_stiffness",
+        "outer_dim": "nflexstiffness",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_bending",
+        "outer_dim": "nflexbending",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_damping",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_edgestiffness",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flex_edgedamping",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_edgeequality",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "flex_rigid",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "flexedge_rigid",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "flex_centered",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "flex_flatskin",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_bvhadr",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flex_bvhnum",
+        "outer_dim": "nflex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flexedge_J_rownnz",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flexedge_J_rowadr",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flexedge_J_colind",
+        "outer_dim": "nJfe",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "flexvert_J_rownnz",
+        "outer_dim": "nflexvert",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "flexvert_J_rowadr",
+        "outer_dim": "nflexvert",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "flexvert_J_colind",
+        "outer_dim": "nJfv",
+        "stride": "2"
+      },
+      {
+        "type": "float",
+        "name": "flex_rgba",
+        "outer_dim": "nflex",
+        "stride": "4"
+      },
+      {
+        "type": "float",
+        "name": "flex_texcoord",
+        "outer_dim": "nflextexcoord",
+        "stride": "2"
+      }
+    ],
+    "MJMODEL_POINTERS_MESH": [
+      {
+        "type": "int",
+        "name": "mesh_vertadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_vertnum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_faceadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_facenum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_bvhadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_bvhnum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_octadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_octnum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_normaladr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_normalnum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_texcoordadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_texcoordnum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_graphadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_SKIN": [
+      {
+        "type": "int",
+        "name": "skin_matid",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_group",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "skin_rgba",
+        "outer_dim": "nskin",
+        "stride": "4"
+      },
+      {
+        "type": "float",
+        "name": "skin_inflate",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_vertadr",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_vertnum",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_texcoordadr",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_faceadr",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_facenum",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_boneadr",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_bonenum",
+        "outer_dim": "nskin",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "skin_vert",
+        "outer_dim": "nskinvert",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "skin_texcoord",
+        "outer_dim": "nskintexvert",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "skin_face",
+        "outer_dim": "nskinface",
+        "stride": "3"
+      },
+      {
+        "type": "int",
+        "name": "skin_bonevertadr",
+        "outer_dim": "nskinbone",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_bonevertnum",
+        "outer_dim": "nskinbone",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "skin_bonebindpos",
+        "outer_dim": "nskinbone",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "skin_bonebindquat",
+        "outer_dim": "nskinbone",
+        "stride": "4"
+      },
+      {
+        "type": "int",
+        "name": "skin_bonebodyid",
+        "outer_dim": "nskinbone",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_bonevertid",
+        "outer_dim": "nskinbonevert",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "skin_bonevertweight",
+        "outer_dim": "nskinbonevert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "skin_pathadr",
+        "outer_dim": "nskin",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_HFIELD": [
+      {
+        "type": "mjtNum",
+        "name": "hfield_size",
+        "outer_dim": "nhfield",
+        "stride": "4"
+      },
+      {
+        "type": "int",
+        "name": "hfield_nrow",
+        "outer_dim": "nhfield",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "hfield_ncol",
+        "outer_dim": "nhfield",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "hfield_adr",
+        "outer_dim": "nhfield",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_TEXTURE": [
+      {
+        "type": "int",
+        "name": "tex_type",
+        "outer_dim": "ntex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tex_colorspace",
+        "outer_dim": "ntex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tex_height",
+        "outer_dim": "ntex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tex_width",
+        "outer_dim": "ntex",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tex_nchannel",
+        "outer_dim": "ntex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtSize",
+        "name": "tex_adr",
+        "outer_dim": "ntex",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_MATERIAL": [
+      {
+        "type": "int",
+        "name": "mat_texid",
+        "outer_dim": "nmat",
+        "stride": "mjNTEXROLE"
+      },
+      {
+        "type": "mjtByte",
+        "name": "mat_texuniform",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_texrepeat",
+        "outer_dim": "nmat",
+        "stride": "2"
+      },
+      {
+        "type": "float",
+        "name": "mat_emission",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_specular",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_shininess",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_reflectance",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_metallic",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_roughness",
+        "outer_dim": "nmat",
+        "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mat_rgba",
+        "outer_dim": "nmat",
+        "stride": "4"
+      }
+    ],
+    "MJMODEL_POINTERS_PAIR": [
+      {
+        "type": "int",
+        "name": "pair_dim",
+        "outer_dim": "npair",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "pair_geom1",
+        "outer_dim": "npair",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "pair_geom2",
+        "outer_dim": "npair",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "pair_signature",
+        "outer_dim": "npair",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "pair_solref",
+        "outer_dim": "npair",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "pair_solreffriction",
+        "outer_dim": "npair",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "pair_solimp",
+        "outer_dim": "npair",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "pair_margin",
+        "outer_dim": "npair",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "pair_gap",
+        "outer_dim": "npair",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "pair_friction",
+        "outer_dim": "npair",
+        "stride": "5"
+      }
+    ],
+    "MJMODEL_POINTERS_EXCLUDE": [
+      {
+        "type": "int",
+        "name": "exclude_signature",
+        "outer_dim": "nexclude",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_EQUALITY": [
+      {
+        "type": "int",
+        "name": "eq_type",
+        "outer_dim": "neq",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "eq_obj1id",
+        "outer_dim": "neq",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "eq_obj2id",
+        "outer_dim": "neq",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "eq_objtype",
+        "outer_dim": "neq",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "eq_active0",
+        "outer_dim": "neq",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "eq_solref",
+        "outer_dim": "neq",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "eq_solimp",
+        "outer_dim": "neq",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "eq_data",
+        "outer_dim": "neq",
+        "stride": "mjNEQDATA"
+      }
+    ],
+    "MJMODEL_POINTERS_TENDON": [
+      {
+        "type": "int",
+        "name": "tendon_adr",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_num",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_matid",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_actuatorid",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_group",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_treenum",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_treeid",
+        "outer_dim": "ntendon",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "ten_J_rownnz",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "ten_J_rowadr",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "ten_J_colind",
+        "outer_dim": "nJten",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "tendon_limited",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "tendon_actfrclimited",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_width",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_solref_lim",
+        "outer_dim": "ntendon",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_solimp_lim",
+        "outer_dim": "ntendon",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_solref_fri",
+        "outer_dim": "ntendon",
+        "stride": "mjNREF"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_solimp_fri",
+        "outer_dim": "ntendon",
+        "stride": "mjNIMP"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_range",
+        "outer_dim": "ntendon",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_actfrcrange",
+        "outer_dim": "ntendon",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_margin",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_stiffness",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_stiffnesspoly",
+        "outer_dim": "ntendon",
+        "stride": "mjNPOLY"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_damping",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_dampingpoly",
+        "outer_dim": "ntendon",
+        "stride": "mjNPOLY"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_armature",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_frictionloss",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_lengthspring",
+        "outer_dim": "ntendon",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_length0",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_invweight0",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "tendon_user",
+        "outer_dim": "ntendon",
+        "stride": "MJ_M(nuser_tendon)"
+      },
+      {
+        "type": "float",
+        "name": "tendon_rgba",
+        "outer_dim": "ntendon",
+        "stride": "4"
+      }
+    ],
+    "MJMODEL_POINTERS_ACTUATOR": [
+      {
+        "type": "int",
+        "name": "actuator_trntype",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_dyntype",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_gaintype",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_biastype",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_trnid",
+        "outer_dim": "nu",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_damping",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_dampingpoly",
+        "outer_dim": "nu",
+        "stride": "mjNPOLY"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_armature",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_actadr",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_actnum",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_group",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "actuator_history",
+        "outer_dim": "nu",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "actuator_historyadr",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_delay",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "actuator_ctrllimited",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "actuator_forcelimited",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "actuator_actlimited",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_dynprm",
+        "outer_dim": "nu",
+        "stride": "mjNDYN"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_gainprm",
+        "outer_dim": "nu",
+        "stride": "mjNGAIN"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_biasprm",
+        "outer_dim": "nu",
+        "stride": "mjNBIAS"
+      },
+      {
+        "type": "mjtByte",
+        "name": "actuator_actearly",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_ctrlrange",
+        "outer_dim": "nu",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_forcerange",
+        "outer_dim": "nu",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_actrange",
+        "outer_dim": "nu",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_gear",
+        "outer_dim": "nu",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_cranklength",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_acc0",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_length0",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_lengthrange",
+        "outer_dim": "nu",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_user",
+        "outer_dim": "nu",
+        "stride": "MJ_M(nuser_actuator)"
+      },
+      {
+        "type": "int",
+        "name": "actuator_plugin",
+        "outer_dim": "nu",
+        "stride": "1"
+      }
+    ],
+    "MJMODEL_POINTERS_SENSOR": [
+      {
+        "type": "int",
+        "name": "sensor_type",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_datatype",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_needstage",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_objtype",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_objid",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_reftype",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_refid",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_intprm",
+        "outer_dim": "nsensor",
+        "stride": "mjNSENS"
+      },
+      {
+        "type": "int",
+        "name": "sensor_dim",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_adr",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "sensor_cutoff",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "sensor_noise",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "sensor_history",
+        "outer_dim": "nsensor",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "sensor_historyadr",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "sensor_delay",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "sensor_interval",
+        "outer_dim": "nsensor",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "sensor_user",
+        "outer_dim": "nsensor",
+        "stride": "MJ_M(nuser_sensor)"
+      },
+      {
+        "type": "int",
+        "name": "sensor_plugin",
+        "outer_dim": "nsensor",
+        "stride": "1"
+      }
+    ]
+  },
+  "mjdata_pointers": {
+    "MJDATA_POINTERS": [
+      {
+        "type": "mjtNum",
+        "name": "qpos",
+        "outer_dim": "nq",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qvel",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "act",
+        "outer_dim": "na",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "history",
+        "outer_dim": "nhistory",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qacc_warmstart",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "plugin_state",
+        "outer_dim": "npluginstate",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ctrl",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_applied",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xfrc_applied",
+        "outer_dim": "nbody",
+        "stride": "6"
+      },
+      {
+        "type": "mjtByte",
+        "name": "eq_active",
+        "outer_dim": "neq",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "mocap_pos",
+        "outer_dim": "nmocap",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "mocap_quat",
+        "outer_dim": "nmocap",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qacc",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "act_dot",
+        "outer_dim": "na",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "userdata",
+        "outer_dim": "nuserdata",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "sensordata",
+        "outer_dim": "nsensordata",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tree_asleep",
+        "outer_dim": "ntree",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "plugin",
+        "outer_dim": "nplugin",
+        "stride": "1"
+      },
+      {
+        "type": "uintptr_t",
+        "name": "plugin_data",
+        "outer_dim": "nplugin",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xpos",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xquat",
+        "outer_dim": "nbody",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xmat",
+        "outer_dim": "nbody",
+        "stride": "9"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xipos",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ximat",
+        "outer_dim": "nbody",
+        "stride": "9"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xanchor",
+        "outer_dim": "njnt",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "xaxis",
+        "outer_dim": "njnt",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_xpos",
+        "outer_dim": "ngeom",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_xmat",
+        "outer_dim": "ngeom",
+        "stride": "9"
+      },
+      {
+        "type": "mjtNum",
+        "name": "site_xpos",
+        "outer_dim": "nsite",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "site_xmat",
+        "outer_dim": "nsite",
+        "stride": "9"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_xpos",
+        "outer_dim": "ncam",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cam_xmat",
+        "outer_dim": "ncam",
+        "stride": "9"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_xpos",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "light_xdir",
+        "outer_dim": "nlight",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "subtree_com",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cdof",
+        "outer_dim": "nv",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cinert",
+        "outer_dim": "nbody",
+        "stride": "10"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexvert_xpos",
+        "outer_dim": "nflexvert",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexelem_aabb",
+        "outer_dim": "nflexelem",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexedge_J",
+        "outer_dim": "nJfe",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexedge_length",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexvert_J",
+        "outer_dim": "nJfv",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexvert_length",
+        "outer_dim": "nflexvert",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "bvh_aabb_dyn",
+        "outer_dim": "nbvhdynamic",
+        "stride": "6"
+      },
+      {
+        "type": "int",
+        "name": "ten_wrapadr",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "ten_wrapnum",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ten_J",
+        "outer_dim": "nJten",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ten_length",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "wrap_obj",
+        "outer_dim": "nwrap",
+        "stride": "2"
+      },
+      {
+        "type": "mjtNum",
+        "name": "wrap_xpos",
+        "outer_dim": "nwrap",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_length",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "moment_rownnz",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "moment_rowadr",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "moment_colind",
+        "outer_dim": "nJmom",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_moment",
+        "outer_dim": "nJmom",
+        "stride": "1"
+      }
+    ],
+    "MJDATA_ARENA_POINTERS_SOLVER": [
+      {
+        "type": "int",
+        "name": "efc_type",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_id",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      }
+    ],
+    "MJDATA_ARENA_POINTERS_DUAL": [],
+    "MJDATA_ARENA_POINTERS_ISLAND": [
+      {
+        "type": "int",
+        "name": "tree_island",
+        "outer_dim": "MJ_M(ntree)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_ntree",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_itreeadr",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "map_itree2tree",
+        "outer_dim": "MJ_M(ntree)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_island",
+        "outer_dim": "MJ_M(nv)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_nv",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_idofadr",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_dofadr",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "map_dof2idof",
+        "outer_dim": "MJ_M(nv)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "map_idof2dof",
+        "outer_dim": "MJ_M(nv)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ifrc_smooth",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iacc_smooth",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      }
+    ],
+    "MJDATA_ARENA_POINTERS": []
+  },
+  "struct_fields": {
+    "MJOPTION_FIELDS": [
+      {
+        "type": "mjtNum",
+        "name": "timestep",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "impratio",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "tolerance",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "ls_tolerance",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "noslip_tolerance",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "ccd_tolerance",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "sleep_tolerance",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "gravity",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "mjtNum",
+        "name": "wind",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "mjtNum",
+        "name": "magnetic",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "mjtNum",
+        "name": "density",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "viscosity",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "o_margin",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "o_solref",
+        "count": "mjNREF",
+        "is_vec": true
+      },
+      {
+        "type": "mjtNum",
+        "name": "o_solimp",
+        "count": "mjNIMP",
+        "is_vec": true
+      },
+      {
+        "type": "mjtNum",
+        "name": "o_friction",
+        "count": "5",
+        "is_vec": true
+      },
+      {
+        "type": "int",
+        "name": "integrator",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "cone",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "jacobian",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "solver",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "iterations",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "ls_iterations",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "noslip_iterations",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "ccd_iterations",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "disableflags",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "enableflags",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "disableactuator",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "sdf_initpoints",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "sdf_iterations",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJSTATISTIC_FIELDS": [
+      {
+        "type": "mjtNum",
+        "name": "meaninertia",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "meanmass",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "meansize",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "extent",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "center",
+        "count": "3",
+        "is_vec": true
+      }
+    ],
+    "MJVISUAL_GLOBAL_FIELDS": [
+      {
+        "type": "int",
+        "name": "cameraid",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "orthographic",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "fovy",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "ipd",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "azimuth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "elevation",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "linewidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "glow",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "float",
+        "name": "realtime",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "offwidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "offheight",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "ellipsoidinertia",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "bvactive",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJVISUAL_QUALITY_FIELDS": [],
+    "MJVISUAL_HEADLIGHT_FIELDS": [
+      {
+        "type": "float",
+        "name": "ambient",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "float",
+        "name": "diffuse",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "float",
+        "name": "specular",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "int",
+        "name": "active",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJVISUAL_MAP_FIELDS": [],
+    "MJVISUAL_SCALE_FIELDS": [],
+    "MJVISUAL_RGBA_FIELDS": []
+  }
+}

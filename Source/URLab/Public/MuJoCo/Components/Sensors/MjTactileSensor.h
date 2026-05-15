@@ -35,6 +35,10 @@ class URLAB_API UMjTactileSensor : public UMjSensor
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjTactileSensor();
 
     /**
@@ -43,4 +47,8 @@ public:
      * MuJoCo compiler, not statically known at spec time.
      */
     virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+
+    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
 };

@@ -56,7 +56,7 @@ void AMjKeyframeCameraActor::BeginPlay()
 
     // Sort waypoints by time
     Waypoints.Sort([](const FMjCameraWaypoint& A, const FMjCameraWaypoint& B) {
-        return A.Time < B.Time;
+        return A.time < B.time;
     });
 
     if (bAutoActivate)
@@ -109,7 +109,7 @@ void AMjKeyframeCameraActor::Tick(float DeltaTime)
 
     PlaybackTime += DeltaTime;
 
-    float MaxTime = Waypoints.Last().Time;
+    float MaxTime = Waypoints.Last().time;
     if (PlaybackTime >= MaxTime)
     {
         if (bLoop)
@@ -135,7 +135,7 @@ void AMjKeyframeCameraActor::UpdateCameraTransform()
     int32 IdxB = 0;
     for (int32 i = 0; i < Waypoints.Num(); ++i)
     {
-        if (Waypoints[i].Time >= PlaybackTime)
+        if (Waypoints[i].time >= PlaybackTime)
         {
             IdxB = i;
             break;
@@ -153,8 +153,8 @@ void AMjKeyframeCameraActor::UpdateCameraTransform()
     }
 
     // Interpolation alpha
-    float TimeA = Waypoints[IdxA].Time;
-    float TimeB = Waypoints[IdxB].Time;
+    float TimeA = Waypoints[IdxA].time;
+    float TimeB = Waypoints[IdxB].time;
     float Span = TimeB - TimeA;
     float Alpha = (Span > KINDA_SMALL_NUMBER) ? (PlaybackTime - TimeA) / Span : 0.0f;
     Alpha = FMath::Clamp(Alpha, 0.0f, 1.0f);
@@ -183,7 +183,7 @@ void AMjKeyframeCameraActor::Play()
     }
     bIsPlaying = true;
     UE_LOG(LogURLab, Log, TEXT("MjKeyframeCamera: Playing (%d waypoints, %.1fs)"),
-        Waypoints.Num(), Waypoints.Last().Time);
+        Waypoints.Num(), Waypoints.Last().time);
 }
 
 void AMjKeyframeCameraActor::Pause()
@@ -221,13 +221,13 @@ void AMjKeyframeCameraActor::CaptureCurrentView()
             WP.Position = Client->GetViewLocation();
             WP.Rotation = Client->GetViewRotation();
             // Auto-assign time: last waypoint time + 3 seconds, or 0 if first
-            WP.Time = Waypoints.Num() > 0 ? Waypoints.Last().Time + 3.0f : 0.0f;
+            WP.time = Waypoints.Num() > 0 ? Waypoints.Last().time + 3.0f : 0.0f;
 
             Waypoints.Add(WP);
             RebuildSplinePreview();
 
             UE_LOG(LogURLab, Log, TEXT("MjKeyframeCamera: Captured waypoint %d at pos=%s, time=%.1fs"),
-                Waypoints.Num() - 1, *WP.Position.ToString(), WP.Time);
+                Waypoints.Num() - 1, *WP.Position.ToString(), WP.time);
         }
     }
 #endif

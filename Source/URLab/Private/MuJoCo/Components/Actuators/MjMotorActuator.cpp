@@ -21,16 +21,30 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjMotorActuator.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjMotorActuator::UMjMotorActuator()
 {
     Type = EMjActuatorType::Motor;
 }
 
-void UMjMotorActuator::ExportTo(mjsActuator* act, mjsDefault* def)
+void UMjMotorActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!act) return;
-    Super::ExportTo(act, def);       // 1. Common: transmission, gear, ranges, group...
-    mjs_setToMotor(act);             // 2. Type preset: sets dyntype/gaintype/biastype/prm
-    ApplyRawOverrides(act, def);     // 3. Raw prm overrides win last (if set)
+    if (!Element) return;
+    Super::ExportTo(Element, def);
+
+    // --- CODEGEN_EXPORT_START ---
+    mjs_setToMotor(Element);
+    // --- CODEGEN_EXPORT_END ---
 }
+
+void UMjMotorActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

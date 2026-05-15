@@ -46,9 +46,9 @@ struct FMjCameraWaypoint
     UPROPERTY(EditAnywhere, BlueprintReadWrite)
     FRotator Rotation = FRotator::ZeroRotator;
 
-    /** Time in seconds when the camera should arrive at this waypoint. */
+    /** time in seconds when the camera should arrive at this waypoint. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-    float Time = 0.0f;
+    float time = 0.0f;
 };
 
 /**
@@ -57,7 +57,7 @@ struct FMjCameraWaypoint
  *
  * Place this actor in the level, add waypoints to the Waypoints array,
  * and position each one using the transform gizmos. The camera smoothly
- * interpolates between them during PIE based on their Time values.
+ * interpolates between them during PIE based on their time values.
  *
  * Hotkey: O toggles play/pause (shared with orbit camera).
  */
@@ -97,7 +97,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
     bool bAutoPlay = true;
 
-    /** @brief Delay before playback starts (seconds). */
+    /** @brief delay before playback starts (seconds). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path",
         meta = (ClampMin = "0.0", EditCondition = "bAutoPlay"))
     float StartDelay = 0.0f;

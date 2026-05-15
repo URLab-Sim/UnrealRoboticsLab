@@ -27,6 +27,7 @@
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjContactExclude::UMjContactExclude()
 {
@@ -38,38 +39,41 @@ void UMjContactExclude::BeginPlay()
 	Super::BeginPlay();
 }
 
-void UMjContactExclude::ImportFromXml(const FXmlNode* Node)
+void UMjContactExclude::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
+        // --- CODEGEN_IMPORT_START ---
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("body1"), body1)) bOverride_body1 = true;
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("body2"), body2)) bOverride_body2 = true;
+    // --- CODEGEN_IMPORT_END ---
+
     if (!Node)
     {
         return;
     }
 
     // Required attributes
-    Body1 = Node->GetAttribute(TEXT("body1"));
-    Body2 = Node->GetAttribute(TEXT("body2"));
+    body1 = Node->GetAttribute(TEXT("body1"));
+    body2 = Node->GetAttribute(TEXT("body2"));
 
     // Optional attributes
     Name = Node->GetAttribute(TEXT("name"));
 }
 
-void UMjContactExclude::ExportTo(mjsExclude* exclude)
+void UMjContactExclude::ExportTo(mjsExclude* Element)
 {
-    if (!exclude)
-    {
-        return;
-    }
+    if (!Element) return;
 
-    // Set required body names
-    mjs_setString(exclude->bodyname1, TCHAR_TO_UTF8(*Body1));
-    mjs_setString(exclude->bodyname2, TCHAR_TO_UTF8(*Body2));
+    // --- CODEGEN_EXPORT_START ---
+    if (bOverride_body1 && !body1.IsEmpty()) mjs_setString(Element->bodyname1, TCHAR_TO_UTF8(*body1));
+    if (bOverride_body2 && !body2.IsEmpty()) mjs_setString(Element->bodyname2, TCHAR_TO_UTF8(*body2));
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjContactExclude::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
     mjsExclude* exclude = mjs_addExclude(Wrapper.Spec);
     ExportTo(exclude);
-    UE_LOG(LogURLabWrapper, Log, TEXT("Added contact exclude: %s<->%s"), *Body1, *Body2);
+    UE_LOG(LogURLabWrapper, Log, TEXT("Added contact exclude: %s<->%s"), *body1, *body2);
 }
 
 void UMjContactExclude::Bind(mjModel* model, mjData* data, const FString& Prefix)

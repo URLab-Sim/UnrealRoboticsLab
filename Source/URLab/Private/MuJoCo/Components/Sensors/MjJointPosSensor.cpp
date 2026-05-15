@@ -21,9 +21,32 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjJointPosSensor.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjJointPosSensor::UMjJointPosSensor()
 {
     Type = EMjSensorType::JointPos;
     Dim = 1;
 }
+
+void UMjJointPosSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
+}
+
+void UMjJointPosSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

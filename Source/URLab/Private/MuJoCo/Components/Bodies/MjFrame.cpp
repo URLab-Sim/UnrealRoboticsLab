@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Bodies/MjFrame.h"
@@ -39,6 +39,35 @@ UMjFrame::UMjFrame()
     PrimaryComponentTick.bCanEverTick = false;
 }
 
+void UMjFrame::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("childclass"), childclass)) bOverride_childclass = true;
+    MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
+    { // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
+        double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
+        if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
+        {
+            Quat = MjUtils::MjToUERotation(TmpQuat);
+            bOverride_Quat = true;
+        }
+    }
+    if (bOverride_Pos)  SetRelativeLocation(Pos);
+    if (bOverride_Quat) SetRelativeRotation(Quat);
+    // --- CODEGEN_IMPORT_END ---
+}
+
+void UMjFrame::ExportTo(mjsFrame* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    // --- CODEGEN_EXPORT_START ---
+    if (bOverride_childclass && !childclass.IsEmpty()) mjs_setString(Element->childclass, TCHAR_TO_UTF8(*childclass));
+    // --- CODEGEN_EXPORT_END ---
+}
+
 void UMjFrame::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWrapper* Wrapper)
 {
     // Frames directly under worldbody receive a null ParentBody; resolve it now.
@@ -57,28 +86,34 @@ void UMjFrame::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWr
     if (FrameInSpec)
     {
         m_SpecElement = FrameInSpec->element;
+        // Codegen-owned ExportTo handles childclass + any future per-attr
+        // fields. Pos/Quat are skipped (canon_export_skip in rules) because
+        // CreateFrame already wrote them from the UE transform.
+        ExportTo(FrameInSpec, nullptr);
     }
 
     TArray<USceneComponent*> DirectChildren = GetAttachChildren();
 
     for (USceneComponent* CurrentComponent : DirectChildren)
     {
-        // 1. Recursive Frames
+        // 1. Recursive Frames.
         if (UMjFrame* MjFrameComp = Cast<UMjFrame>(CurrentComponent))
         {
             MjFrameComp->Setup(this, ParentBody, Wrapper);
             continue;
         }
 
-        // 2. Check for child Bodies (attached to the parent body, not the frame directly, 
-        // but we respect Unreal hierarchy for coordinate lookup)
+        // 2. Child Bodies (attached to the parent body, not the frame
+        //    directly; we respect Unreal hierarchy for coordinate lookup).
         if (UMjBody* MjBodyComp = Cast<UMjBody>(CurrentComponent))
         {
             MjBodyComp->Setup(this, ParentBody, Wrapper);
             continue;
         }
 
-        // 3. Register standard Spec Elements (Geoms, Sites, etc.) to the frame's element.
+        // 3. Standard spec elements (Geoms, Sites, etc.) registered against
+        //    the frame's parent body. The MuJoCo compiler bakes the frame
+        //    offset into each child's pos/quat at compile time.
         if (CurrentComponent->GetClass()->ImplementsInterface(UMjSpecElement::StaticClass()))
         {
             IMjSpecElement* SpecElem = Cast<IMjSpecElement>(CurrentComponent);
@@ -94,30 +129,9 @@ void UMjFrame::Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWr
 void UMjFrame::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 {
     // Frames are compiled away by MuJoCo, so they don't have IDs in mjModel/mjData.
-    // They don't need runtime binding or ticking.
     m_Model = Model;
     m_Data = Data;
     m_ID = -1; // Not targetable at runtime by ID
-}
-
-void UMjFrame::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
-{
-    if (!Node) return;
-
-    // Position — same as body: scale ×100, negate Y
-    FString PosStr = Node->GetAttribute(TEXT("pos"));
-    if (!PosStr.IsEmpty())
-    {
-        FVector MjPos = MjXmlUtils::ParseVector(PosStr);
-        SetRelativeLocation(MjUtils::MjToUEPosition(&MjPos.X));
-    }
-
-    // Orientation (quat/axisangle/euler/xyaxes/zaxis in priority order)
-    double MjQuat[4];
-    if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, MjQuat))
-    {
-        SetRelativeRotation(MjUtils::MjToUERotation(MjQuat));
-    }
 }
 
 void UMjFrame::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)

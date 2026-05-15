@@ -30,6 +30,7 @@
 #include "HAL/ThreadSafeBool.h"
 #include "Containers/Queue.h"
 #include "MuJoCo/Components/Sensors/MjCameraTypes.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjCamera.generated.h"
 
 /**
@@ -54,7 +55,7 @@ private:
     FString RequestedEndpoint;
     FString BoundEndpoint;
     FString Topic;
-    FIntPoint Resolution;
+    FIntPoint resolution;
 
     void* ZmqContext = nullptr;
     void* ZmqPublisher = nullptr;
@@ -84,6 +85,103 @@ class URLAB_API UMjCamera : public UMjComponent
     GENERATED_BODY()
 
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera|Spatial Pose", meta=(InlineEditConditionToggle))
+    bool bOverride_Pos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    FVector Pos = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera|Orientation", meta=(InlineEditConditionToggle))
+    bool bOverride_Quat = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera|Orientation", meta=(EditCondition="bOverride_Quat"))
+    FQuat Quat = FQuat::Identity;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_fovy = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_fovy"))
+    float fovy = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_ipd = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_ipd"))
+    float ipd = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_resolution = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_resolution"))
+    TArray<int32> resolution = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_output = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_output"))
+    float output = 0.0f;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_target = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_target"))
+    FString target = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_focal = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_focal"))
+    TArray<float> focal = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_focalpixel = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_focalpixel"))
+    TArray<int32> focalpixel = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_principal = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_principal"))
+    TArray<float> principal = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_principalpixel = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_principalpixel"))
+    TArray<int32> principalpixel = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_sensorsize = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_sensorsize"))
+    TArray<float> sensorsize = {};
+    // --- CODEGEN_PROPERTIES_END ---
+
+    // Hand-declared because the UPROPERTY type is a URLab enum. Codegen
+    // owns the XML "mode" attr <-> enum mapping + mjsCamera.mode write
+    // via xml_enum_attrs in codegen_rules.json. Default = Fixed (camera
+    // moves with its body's transform; matches MuJoCo's default).
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_TrackingMode = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera",
+        meta=(EditCondition="bOverride_TrackingMode",
+              ToolTip="MJCF tracking mode (separate from CaptureMode which is the URLab render-mode selector)."))
+    EMjCameraTrackingMode TrackingMode = EMjCameraTrackingMode::Fixed;
+
+    // Hand-declared because the UPROPERTY type is a URLab enum. Codegen
+    // owns the XML "projection" attr <-> enum mapping + mjsCamera.proj
+    // write via xml_enum_attrs in codegen_rules.json. Default =
+    // Perspective (matches MuJoCo's mjPROJECTION_PERSPECTIVE).
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    bool bOverride_Projection = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera",
+        meta=(EditCondition="bOverride_Projection"))
+    EMjCameraProjection Projection = EMjCameraProjection::Perspective;
+
     UMjCamera();
 
     // ---- Identification ----
@@ -91,13 +189,7 @@ public:
 
     // ---- Camera Intrinsics ----
 
-    /** @brief Vertical field of view in degrees (fovy= attribute). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera")
-    float Fovy = 45.0f;
 
-    /** @brief Capture resolution (pixels). Defaults to 640×480. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera")
-    FIntPoint Resolution = FIntPoint(640, 480);
 
     /** @brief What this camera captures. Read at SetStreamingEnabled(true) time —
      *  toggle streaming off/on after changing. */
@@ -187,14 +279,13 @@ public:
      * @param cam Pointer to the target mjsCamera structure.
      * @param def Optional default structure (unused, kept for API consistency).
      */
-    void ExportTo(mjsCamera* cam, mjsDefault* def = nullptr);
+    void ExportTo(mjsCamera* Element, mjsDefault* def = nullptr);
 
     /**
      * @brief Imports properties from a MuJoCo XML <camera> node.
      *        Reads: name, fovy, pos, quat, euler, xyaxes, zaxis,
      *               width/height (MuJoCo 3.x resolution hints).
      */
-    void ImportFromXml(const class FXmlNode* Node);
     void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings);
 
 protected:

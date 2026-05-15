@@ -29,182 +29,132 @@
 #include "MuJoCo/Components/Joints/MjJoint.h"
 #include "MuJoCo/Components/Tendons/MjTendon.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjEquality::UMjEquality()
 {
     PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UMjEquality::ImportFromXml(const FXmlNode* Node)
+void UMjEquality::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
 
-    FString Tag = Node->GetTag().ToLower();
-    if (Tag == TEXT("connect"))          EqualityType = EMjEqualityType::Connect;
-    else if (Tag == TEXT("weld"))        EqualityType = EMjEqualityType::Weld;
-    else if (Tag == TEXT("joint"))       EqualityType = EMjEqualityType::Joint;
-    else if (Tag == TEXT("tendon"))      EqualityType = EMjEqualityType::Tendon;
-    else if (Tag == TEXT("flex"))        EqualityType = EMjEqualityType::Flex;
-    else if (Tag == TEXT("flexvert"))    EqualityType = EMjEqualityType::FlexVert;
-    else if (Tag == TEXT("flexstrain"))  EqualityType = EMjEqualityType::FlexStrain;
+    // Resolve EqualityType from the XML tag FIRST so the codegen-emitted
+    // import block (below) sees the correct enum value. The
+    // unit_conversion / mjs_data_packed_attrs branches for anchor / relpose
+    // / polycoef / torquescale are all gated on EqualityType — without
+    // this dispatch up front, they'd evaluate against the UPROPERTY default
+    // (Weld) and silently misbehave for joint/tendon/flex equalities.
+    {
+        const FString Tag = Node->GetTag().ToLower();
+        if      (Tag == TEXT("connect"))     EqualityType = EMjEqualityType::Connect;
+        else if (Tag == TEXT("weld"))        EqualityType = EMjEqualityType::Weld;
+        else if (Tag == TEXT("joint"))       EqualityType = EMjEqualityType::Joint;
+        else if (Tag == TEXT("tendon"))      EqualityType = EMjEqualityType::Tendon;
+        else if (Tag == TEXT("flex"))        EqualityType = EMjEqualityType::Flex;
+        else if (Tag == TEXT("flexvert"))    EqualityType = EMjEqualityType::FlexVert;
+        else if (Tag == TEXT("flexstrain"))  EqualityType = EMjEqualityType::FlexStrain;
+    }
 
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("relpose"), relpose, bOverride_relpose);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("anchor"), anchor, bOverride_anchor);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("site1"), site1)) bOverride_site1 = true;
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("site2"), site2)) bOverride_site2 = true;
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("active"), active, bOverride_active);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"), solref, bOverride_solref);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), solimp, bOverride_solimp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("torquescale"), torquescale, bOverride_torquescale);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("polycoef"), polycoef, bOverride_polycoef);
+    // target_collation: -> Obj1
     Obj1 = Node->GetAttribute(TEXT("body1"));
+    if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("site1"));
     if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("joint1"));
     if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("tendon1"));
-    if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("flex"));  // flex / flexvert / flexstrain target a single flex
-
+    if (Obj1.IsEmpty()) Obj1 = Node->GetAttribute(TEXT("flex"));
+    // target_collation: -> Obj2
     Obj2 = Node->GetAttribute(TEXT("body2"));
+    if (Obj2.IsEmpty()) Obj2 = Node->GetAttribute(TEXT("site2"));
     if (Obj2.IsEmpty()) Obj2 = Node->GetAttribute(TEXT("joint2"));
     if (Obj2.IsEmpty()) Obj2 = Node->GetAttribute(TEXT("tendon2"));
-
+    if (bOverride_anchor)
     {
-        bool bActiveOverride = false;
-        MjXmlUtils::ReadAttrBool(Node, TEXT("active"), bActive, bActiveOverride);
+        if      ((EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)) { for (float& V : anchor) { V *= 100.0f; } }
     }
+    // --- CODEGEN_IMPORT_END ---
 
-    // --- Physics ---
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"), SolRef, bOverride_SolRef);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), SolImp, bOverride_SolImp);
-
-    // --- Type Specific ---
-    FString AnchorStr = Node->GetAttribute(TEXT("anchor"));
-    bOverride_Anchor = !AnchorStr.IsEmpty();
-    if (bOverride_Anchor)
-    {
-        TArray<FString> Parts;
-        AnchorStr.ParseIntoArray(Parts, TEXT(" "), true);
-        if (Parts.Num() >= 3)
-            Anchor = FVector(FCString::Atof(*Parts[0]), FCString::Atof(*Parts[1]), FCString::Atof(*Parts[2])) * 100.0f;
-    }
-
-    if (EqualityType == EMjEqualityType::Weld)
-    {
-        FString RelPosStr = Node->GetAttribute(TEXT("relpos"));
-        FString RelQuatStr = Node->GetAttribute(TEXT("relquat"));
-        if (!RelPosStr.IsEmpty() || !RelQuatStr.IsEmpty())
-        {
-            bOverride_RelPose = true;
-            FVector P = FVector::ZeroVector;
-            FQuat Q = FQuat::Identity;
-            
-            if (!RelPosStr.IsEmpty())
-            {
-                TArray<FString> Parts;
-                RelPosStr.ParseIntoArray(Parts, TEXT(" "), true);
-                if (Parts.Num() >= 3)
-                    P = FVector(FCString::Atof(*Parts[0]), FCString::Atof(*Parts[1]), FCString::Atof(*Parts[2])) * 100.0f;
-            }
-            if (!RelQuatStr.IsEmpty())
-            {
-                TArray<FString> Parts;
-                RelQuatStr.ParseIntoArray(Parts, TEXT(" "), true);
-                if (Parts.Num() >= 4)
-                {
-                   double mq[4] = { FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]), FCString::Atod(*Parts[3]) };
-                   Q = MjUtils::MjToUERotation(mq);
-                }
-            }
-            RelPose = FTransform(Q, P);
-        }
-    }
-
-    if (EqualityType == EMjEqualityType::Weld)
-    {
-        FString TorqueScaleStr = Node->GetAttribute(TEXT("torquescale"));
-        if (!TorqueScaleStr.IsEmpty())
-        {
-            bOverride_TorqueScale = true;
-            TorqueScale = FCString::Atof(*TorqueScaleStr);
-        }
-    }
-
-    FString PolyCoefStr = Node->GetAttribute(TEXT("polycoef"));
-    bOverride_PolyCoef = !PolyCoefStr.IsEmpty();
-    if (bOverride_PolyCoef)
-    {
-        TArray<FString> Parts;
-        PolyCoefStr.ParseIntoArray(Parts, TEXT(" "), true);
-        PolyCoef.Empty();
-        for (const FString& P : Parts) PolyCoef.Add(FCString::Atof(*P));
-    }
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjEquality XML Import] '%s' (%d) | Obj1: %s, Obj2: %s"), 
+    UE_LOG(LogURLabImport, Log, TEXT("[MjEquality XML Import] '%s' (%d) | Obj1: %s, Obj2: %s"),
         *GetName(), (int)EqualityType, *Obj1, *Obj2);
 }
 
-void UMjEquality::ExportTo(mjsEquality* Eq)
+void UMjEquality::ExportTo(mjsEquality* Element)
 {
-    if (!Eq) return;
+    if (!Element) return;
 
-    Eq->type = (mjtEq)EqualityType;
+    Element->type = (mjtEq)EqualityType;
 
-    if (!Obj1.IsEmpty()) mjs_setString(Eq->name1, TCHAR_TO_UTF8(*Obj1));
-    if (!Obj2.IsEmpty()) mjs_setString(Eq->name2, TCHAR_TO_UTF8(*Obj2));
-
-    Eq->active = bActive ? 1 : 0;
-
-    if (bOverride_SolRef)
-    {
-        for (int i = 0; i < SolRef.Num() && i < 2; ++i)
-        {
-            Eq->solref[i] = SolRef[i];
-        }
-    }
-    if (bOverride_SolImp)
-    {
-        for (int i = 0; i < SolImp.Num() && i < 5; ++i)
-        {
-            Eq->solimp[i] = SolImp[i];
-        }
-    }
-
-    // Data mapping
+    // mjsEquality.objtype tells MuJoCo what kind of object name1/name2 refer
+    // to (body / site / joint / tendon / flex). Without this set, mjs_attach's
+    // CopyList step can't resolve the references and silently drops the
+    // equality — that was the franka_scene gripper failure mode.
+    //
+    // Connect / Weld are dual-mode: either body-to-body (with optional
+    // anchor) or site-to-site. URLab's parser collates site1/site2 into
+    // Obj1/Obj2 alongside body1/body2; we use the non-empty site1
+    // UPROPERTY as the discriminator for "this was a site-mode equality".
     switch (EqualityType)
     {
-    case EMjEqualityType::Connect:
-        if (bOverride_Anchor)
-        {
-            double mp[3];
-            MjUtils::UEToMjPosition(Anchor, mp);
-            Eq->data[0] = mp[0];
-            Eq->data[1] = mp[1];
-            Eq->data[2] = mp[2];
-        }
-        break;
-
-    case EMjEqualityType::Weld:
-        if (bOverride_RelPose)
-        {
-            double mp[3];
-            double mq[4];
-            MjUtils::UEToMjPosition(RelPose.GetLocation(), mp);
-            MjUtils::UEToMjRotation(RelPose.GetRotation(), mq);
-            Eq->data[0] = mp[0];
-            Eq->data[1] = mp[1];
-            Eq->data[2] = mp[2];
-            Eq->data[3] = mq[0]; // w
-            Eq->data[4] = mq[1]; // x
-            Eq->data[5] = mq[2]; // y
-            Eq->data[6] = mq[3]; // z
-        }
-        // data[7] = torquescale (MuJoCo 3.x weld equality, mjSpec)
-        if (bOverride_TorqueScale)
-        {
-            Eq->data[7] = TorqueScale;
-        }
-        break;
-
-    case EMjEqualityType::Joint:
-    case EMjEqualityType::Tendon:
-        if (bOverride_PolyCoef)
-        {
-            for (int i = 0; i < PolyCoef.Num() && i < 11; ++i)
-            {
-                Eq->data[i] = PolyCoef[i];
-            }
-        }
-        break;
+        case EMjEqualityType::Connect:
+        case EMjEqualityType::Weld:
+            Element->objtype = !site1.IsEmpty() ? mjOBJ_SITE : mjOBJ_BODY;
+            break;
+        case EMjEqualityType::Joint:
+            Element->objtype = mjOBJ_JOINT;
+            break;
+        case EMjEqualityType::Tendon:
+            Element->objtype = mjOBJ_TENDON;
+            break;
+        case EMjEqualityType::Flex:
+        case EMjEqualityType::FlexVert:
+        case EMjEqualityType::FlexStrain:
+            Element->objtype = mjOBJ_FLEX;
+            break;
+        default:
+            Element->objtype = mjOBJ_UNKNOWN;
+            break;
     }
+
+    // --- CODEGEN_EXPORT_START ---
+    if (bOverride_active) Element->active = active;
+    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (((EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)) && bOverride_anchor)
+    {
+        for (int32 i = 0; i < anchor.Num() && i < 3; ++i)
+        {
+            float V = anchor[i];
+            V *= 0.01f;
+            Element->data[0 + i] = (mjtNum)V;
+        }
+    }
+    if ((EqualityType == EMjEqualityType::Weld) && bOverride_relpose)
+    {
+        for (int32 i = 0; i < relpose.Num() && i < 7; ++i)
+            Element->data[3 + i] = (mjtNum)relpose[i];
+    }
+    if (((EqualityType == EMjEqualityType::Joint) || (EqualityType == EMjEqualityType::Tendon)) && bOverride_polycoef)
+    {
+        for (int32 i = 0; i < polycoef.Num() && i < 5; ++i)
+            Element->data[0 + i] = (mjtNum)polycoef[i];
+    }
+    if ((EqualityType == EMjEqualityType::Weld) && bOverride_torquescale)
+    {
+        Element->data[10] = (mjtNum)torquescale;
+    }
+    if (!Obj1.IsEmpty()) mjs_setString(Element->name1, TCHAR_TO_UTF8(*Obj1));
+    if (!Obj2.IsEmpty()) mjs_setString(Element->name2, TCHAR_TO_UTF8(*Obj2));
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjEquality::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
@@ -241,3 +191,14 @@ TArray<FString> UMjEquality::GetObjOptions() const
     return UMjComponent::GetSiblingComponentOptions(this, FilterClass);
 }
 #endif
+
+// --- Multi-UCLASS subclass constructors --------------------------------------
+// Each subclass pins EqualityType. State is on the base; mjs_data_packed_attrs
+// in codegen_rules.json branches on EqualityType for polycoef/torquescale.
+UMjConnectEquality::UMjConnectEquality()       { EqualityType = EMjEqualityType::Connect; }
+UMjWeldEquality::UMjWeldEquality()             { EqualityType = EMjEqualityType::Weld; }
+UMjJointEquality::UMjJointEquality()           { EqualityType = EMjEqualityType::Joint; }
+UMjTendonEquality::UMjTendonEquality()         { EqualityType = EMjEqualityType::Tendon; }
+UMjFlexEquality::UMjFlexEquality()             { EqualityType = EMjEqualityType::Flex; }
+UMjFlexVertEquality::UMjFlexVertEquality()     { EqualityType = EMjEqualityType::FlexVert; }
+UMjFlexStrainEquality::UMjFlexStrainEquality() { EqualityType = EMjEqualityType::FlexStrain; }

@@ -27,6 +27,7 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjSite.generated.h"
 
 /**
@@ -59,12 +60,50 @@ class URLAB_API UMjSite : public UMjComponent
 
 public:
 
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite|Spatial Pose", meta=(InlineEditConditionToggle))
+    bool bOverride_Pos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    FVector Pos = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite|Orientation", meta=(InlineEditConditionToggle))
+    bool bOverride_Quat = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite|Orientation", meta=(EditCondition="bOverride_Quat"))
+    FQuat Quat = FQuat::Identity;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    bool bOverride_group = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_group"))
+    int32 group = 0;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    bool bOverride_material = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_material"))
+    FString material = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    bool bOverride_size = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_size"))
+    TArray<float> size = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    bool bOverride_rgba = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_rgba"))
+    FLinearColor rgba = FLinearColor::White;
+    // --- CODEGEN_PROPERTIES_END ---
+
     /**
      * @brief Exports properties to a MuJoCo spec site structure.
      * @param site Pointer to the target mjsSite structure.
      * @param def Optional default structure for optimized export.
      */
-    void ExportTo(mjsSite* site, mjsDefault* def = nullptr);
+    void ExportTo(mjsSite* Element, mjsDefault* def = nullptr);
     
     /**
      * @brief Binds this component to the live MuJoCo simulation.
@@ -82,7 +121,6 @@ public:
      * @brief Imports properties from a MuJoCo XML node.
      * @param Node Pointer to the XML node.
      */
-    void ImportFromXml(const class FXmlNode* Node);
     void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings);
 
 public:	
@@ -95,9 +133,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
 	EMjSiteType Type = EMjSiteType::Sphere;
 
-	/** @brief Dimensions of the site geometry. Interpretation depends on Type. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
-	FVector Size = FVector(0.01f); 
+	// size is codegen-owned (TArray<float>) — see CODEGEN_PROPERTIES block.
+	// Interpretation depends on Type (sphere: size[0]; capsule: [0]+[1]; box: [0..2]).
 
     /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(GetOptions="GetDefaultClassOptions"))
@@ -118,26 +155,6 @@ public:
     }
 
 	// --- Visuals ---
-    /** @brief RGBA Color of the site visualization. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
-	FLinearColor Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
-    
-    /** @brief Integer group ID for visibility filtering. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
-    int32 Group = 0;
-
-    // --- FromTo Overrides ---
-    /** @brief Override toggle for FromTo. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
-    bool bOverride_FromTo = false;
-
-    /** @brief Start point for fromto definition. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_FromTo"))
-    FVector FromToStart = FVector(0.0f); 
-
-    /** @brief End point for fromto definition. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_FromTo"))
-    FVector FromToEnd = FVector(0.0f, 0.0f, 1.0f);
 
     /** @brief The runtime view of the MuJoCo site. Valid only after Bind() is called. */
     SiteView m_SiteView;
@@ -145,4 +162,51 @@ public:
     /** @brief Semantic accessor for raw MuJoCo data and helper methods. */
     SiteView& GetMj() { return m_SiteView; }
     const SiteView& GetMj() const { return m_SiteView; }
+};
+
+// --- Multi-UCLASS subclasses --------------------------------------------------
+// One UCLASS per MJCF site type, declared in this header so the Blueprint
+// "Add Component" picker lists each as a distinct item (e.g. "MuJoCo Box Site")
+// rather than forcing the user to spawn a generic UMjSite and toggle Type.
+// All schema attrs (group/material/rgba/Pos/Quat/size) live on the base
+// UMjSite via codegen — the subclasses only set the Type enum.
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Box Site"))
+class URLAB_API UMjBoxSite : public UMjSite
+{
+    GENERATED_BODY()
+public:
+    UMjBoxSite();
+};
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Sphere Site"))
+class URLAB_API UMjSphereSite : public UMjSite
+{
+    GENERATED_BODY()
+public:
+    UMjSphereSite();
+};
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Capsule Site"))
+class URLAB_API UMjCapsuleSite : public UMjSite
+{
+    GENERATED_BODY()
+public:
+    UMjCapsuleSite();
+};
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Cylinder Site"))
+class URLAB_API UMjCylinderSite : public UMjSite
+{
+    GENERATED_BODY()
+public:
+    UMjCylinderSite();
+};
+
+UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Ellipsoid Site"))
+class URLAB_API UMjEllipsoidSite : public UMjSite
+{
+    GENERATED_BODY()
+public:
+    UMjEllipsoidSite();
 };

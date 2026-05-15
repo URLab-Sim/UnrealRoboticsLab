@@ -35,7 +35,13 @@ class URLAB_API UMjMotorActuator : public UMjActuator
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjMotorActuator();
 
-    virtual void ExportTo(mjsActuator* act, mjsDefault* def = nullptr) override;
+    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

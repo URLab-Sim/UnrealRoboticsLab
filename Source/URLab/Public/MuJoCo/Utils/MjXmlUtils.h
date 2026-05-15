@@ -83,4 +83,16 @@ public:
 
     /** @brief Read a string attribute. Returns true if present (non-empty). */
     static bool ReadAttrString(const FXmlNode* Node, const TCHAR* Attr, FString& Out);
+
+    /** @brief Read a 3-component vector attribute "x y z". Returns true if present. */
+    static bool ReadAttrVec3(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride);
+
+    /** @brief Read a colour attribute "r g b" or "r g b a" into FLinearColor. Returns true if present. */
+    static bool ReadAttrColor(const FXmlNode* Node, const TCHAR* Attr, FLinearColor& Out, bool& bOverride);
+
+    /** @brief Read a space-separated int array attribute. Returns true if present. */
+    static bool ReadAttrIntArray(const FXmlNode* Node, const TCHAR* Attr, TArray<int32>& Out, bool& bOverride);
+
+    /** @brief Read a space-separated double array attribute. Returns true if present. */
+    static bool ReadAttrDoubleArray(const FXmlNode* Node, const TCHAR* Attr, TArray<double>& Out, bool& bOverride);
 };

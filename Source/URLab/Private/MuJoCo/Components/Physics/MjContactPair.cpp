@@ -28,6 +28,7 @@
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjContactPair::UMjContactPair()
 {
@@ -39,84 +40,59 @@ void UMjContactPair::BeginPlay()
 	Super::BeginPlay();
 }
 
-void UMjContactPair::ImportFromXml(const FXmlNode* Node)
+void UMjContactPair::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
+        // --- CODEGEN_IMPORT_START ---
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("geom1"), geom1)) bOverride_geom1 = true;
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("geom2"), geom2)) bOverride_geom2 = true;
+    MjXmlUtils::ReadAttrInt(Node, TEXT("condim"), condim, bOverride_condim);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("friction"), friction, bOverride_friction);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"), solref, bOverride_solref);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), solreffriction, bOverride_solreffriction);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), solimp, bOverride_solimp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"), gap, bOverride_gap);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
+    // --- CODEGEN_IMPORT_END ---
+
     if (!Node)
     {
         return;
     }
 
     // Required attributes
-    MjXmlUtils::ReadAttrString(Node, TEXT("geom1"), Geom1);
-    MjXmlUtils::ReadAttrString(Node, TEXT("geom2"), Geom2);
 
     // Optional attributes
     MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
 
     {
         bool bCondimOverride = false;
-        MjXmlUtils::ReadAttrInt(Node, TEXT("condim"), Condim, bCondimOverride);
     }
 
     // Parse friction/solref/solimp arrays
     {
         bool bFrictionOverride = false, bSolrefOverride = false, bSolimpOverride = false;
-        MjXmlUtils::ReadAttrFloatArray(Node, TEXT("friction"), Friction, bFrictionOverride);
-        MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"),   Solref,   bSolrefOverride);
-        MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"),   Solimp,   bSolimpOverride);
     }
 
     {
         bool bGapOverride = false, bMarginOverride = false;
-        MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"),    Gap,    bGapOverride);
-        MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), Margin, bMarginOverride);
     }
 }
 
-void UMjContactPair::ExportTo(mjsPair* pair)
+void UMjContactPair::ExportTo(mjsPair* Element)
 {
-    if (!pair)
-    {
-        return;
-    }
+    if (!Element) return;
 
-    // Set required geom names
-    mjs_setString(pair->geomname1, TCHAR_TO_UTF8(*Geom1));
-    mjs_setString(pair->geomname2, TCHAR_TO_UTF8(*Geom2));
-
-    // Set condim
-    pair->condim = Condim;
-
-    // Set friction
-    if (Friction.Num() > 0)
-    {
-        for (int i = 0; i < FMath::Min(Friction.Num(), 5); i++)
-        {
-            pair->friction[i] = Friction[i];
-        }
-    }
-
-    // Set solref
-    if (Solref.Num() > 0)
-    {
-        for (int i = 0; i < FMath::Min(Solref.Num(), mjNREF); i++)
-        {
-            pair->solref[i] = Solref[i];
-        }
-    }
-
-    // Set solimp
-    if (Solimp.Num() > 0)
-    {
-        for (int i = 0; i < FMath::Min(Solimp.Num(), mjNIMP); i++)
-        {
-            pair->solimp[i] = Solimp[i];
-        }
-    }
-
-    // Set gap and margin
-    pair->gap = Gap;
-    pair->margin = Margin;
+    // --- CODEGEN_EXPORT_START ---
+    if (bOverride_geom1 && !geom1.IsEmpty()) mjs_setString(Element->geomname1, TCHAR_TO_UTF8(*geom1));
+    if (bOverride_geom2 && !geom2.IsEmpty()) mjs_setString(Element->geomname2, TCHAR_TO_UTF8(*geom2));
+    if (bOverride_condim) Element->condim = condim;
+    if (bOverride_friction) { for (int32 i = 0; i < friction.Num(); ++i) Element->friction[i] = friction[i]; }
+    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solreffriction) { for (int32 i = 0; i < solreffriction.Num(); ++i) Element->solreffriction[i] = solreffriction[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_gap) Element->gap = gap;
+    if (bOverride_margin) Element->margin = margin;
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjContactPair::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
@@ -127,7 +103,7 @@ void UMjContactPair::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* Parent
         mjs_setName(pair->element, TCHAR_TO_UTF8(*Name));
     }
     ExportTo(pair);
-    UE_LOG(LogURLabWrapper, Log, TEXT("Added contact pair: %s->%s"), *Geom1, *Geom2);
+    UE_LOG(LogURLabWrapper, Log, TEXT("Added contact pair: %s->%s"), *geom1, *geom2);
 }
 
 void UMjContactPair::Bind(mjModel* model, mjData* data, const FString& Prefix)

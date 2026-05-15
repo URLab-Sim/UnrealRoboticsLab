@@ -178,7 +178,7 @@ void AMjReplayManager::SetActiveSession(const FString& Name)
     {
         ActiveSessionName = Name;
         RebuildArticulationBindings();
-        UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: Active session set to '%s' (%d frames, %d articulation bindings)"),
+        UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: active session set to '%s' (%d frames, %d articulation bindings)"),
             *Name, Sessions[Name].Frames.Num(), ArticulationBindings.Num());
     }
     else
@@ -463,7 +463,7 @@ bool AMjReplayManager::LoadFromCSV(FString FilePath, float Timestep)
         }
     }
 
-    // Group columns by joint name
+    // group columns by joint name
     // Detect bracket notation: "name[N]" -> group under "name"
     // Everything else is a 1-DOF joint column
     struct FColumnGroup
@@ -499,19 +499,19 @@ bool AMjReplayManager::LoadFromCSV(FString FilePath, float Timestep)
             FString IdxStr = ColName.Mid(BracketIdx + 1, ColName.Len() - BracketIdx - 2);
             int32 SubIdx = FCString::Atoi(*IdxStr);
 
-            FColumnGroup& Group = JointColumnMap.FindOrAdd(BaseName);
-            Group.JointName = BaseName;
-            if (Group.ColumnIndices.Num() <= SubIdx)
+            FColumnGroup& group = JointColumnMap.FindOrAdd(BaseName);
+            group.JointName = BaseName;
+            if (group.ColumnIndices.Num() <= SubIdx)
             {
-                Group.ColumnIndices.SetNum(SubIdx + 1);
+                group.ColumnIndices.SetNum(SubIdx + 1);
             }
-            Group.ColumnIndices[SubIdx] = i;
+            group.ColumnIndices[SubIdx] = i;
         }
         else
         {
-            FColumnGroup& Group = JointColumnMap.FindOrAdd(ColName);
-            Group.JointName = ColName;
-            Group.ColumnIndices.Add(i);
+            FColumnGroup& group = JointColumnMap.FindOrAdd(ColName);
+            group.JointName = ColName;
+            group.ColumnIndices.Add(i);
         }
     }
 
@@ -533,23 +533,23 @@ bool AMjReplayManager::LoadFromCSV(FString FilePath, float Timestep)
         Line.ParseIntoArray(Values, TEXT(","), false);
 
         // Get timestamp
-        double Time = (TimeCol != INDEX_NONE && TimeCol < Values.Num())
+        double time = (TimeCol != INDEX_NONE && TimeCol < Values.Num())
             ? FCString::Atod(*Values[TimeCol])
             : (double)(LineIdx - 1) * (double)Timestep;
 
         FMjReplayFrame Frame;
-        Frame.Timestamp = Time;
+        Frame.Timestamp = time;
 
         for (auto& Pair : JointColumnMap)
         {
-            const FColumnGroup& Group = Pair.Value;
+            const FColumnGroup& group = Pair.Value;
             FMjBodyKinematics Kinematics;
-            Kinematics.QPos.SetNum(Group.ColumnIndices.Num());
+            Kinematics.QPos.SetNum(group.ColumnIndices.Num());
 
             bool bValid = true;
-            for (int32 k = 0; k < Group.ColumnIndices.Num(); ++k)
+            for (int32 k = 0; k < group.ColumnIndices.Num(); ++k)
             {
-                int32 ColIdx = Group.ColumnIndices[k];
+                int32 ColIdx = group.ColumnIndices[k];
                 if (ColIdx < Values.Num())
                 {
                     Kinematics.QPos[k] = FCString::Atod(*Values[ColIdx]);
@@ -564,7 +564,7 @@ bool AMjReplayManager::LoadFromCSV(FString FilePath, float Timestep)
             if (bValid)
             {
                 // QVel left empty — mj_forward doesn't need it for kinematics
-                Frame.JointStates.Add(Group.JointName, MoveTemp(Kinematics));
+                Frame.JointStates.Add(group.JointName, MoveTemp(Kinematics));
             }
         }
 
@@ -833,8 +833,8 @@ void AMjReplayManager::OnPostStep(mjModel* m, mjData* d)
 
     if (LiveFrames.Num() > 1 && MaxRecordDuration > 0)
     {
-        const double Cutoff = LiveFrames.Last().Timestamp - (double)MaxRecordDuration;
-        int32 FirstKeep = Algo::LowerBound(LiveFrames, Cutoff,
+        const double cutoff = LiveFrames.Last().Timestamp - (double)MaxRecordDuration;
+        int32 FirstKeep = Algo::LowerBound(LiveFrames, cutoff,
             [](const FMjReplayFrame& F, double T) { return F.Timestamp < T; });
         if (FirstKeep > 0)
         {

@@ -52,8 +52,8 @@ UMjGeom::UMjGeom()
 	PrimaryComponentTick.bCanEverTick = false;
     
     // Default collision settings (matching MuJoCo defaults)
-    Contype = MujocoDefaults::Geom::Contype;
-    Conaffinity = MujocoDefaults::Geom::Conaffinity;
+    contype = MujocoDefaults::Geom::Contype;
+    conaffinity = MujocoDefaults::Geom::Conaffinity;
     bOverride_Pos = false;
     bOverride_Quat = false;
 }
@@ -65,191 +65,109 @@ UMjGeom::UMjGeom()
 
 
 
-void UMjGeom::ImportFromXml(const FXmlNode* Node)
-{
-    FMjCompilerSettings DefaultSettings;
-    ImportFromXml(Node, DefaultSettings);
-}
+
 
 void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
 
+    // size + type are both codegen-owned now. The xml_enum block sets Type
+    // first inside CODEGEN_IMPORT so the fromto canonicalisation can branch
+    // on Type to pick size[1] vs size[2] for the half-length write.
 
-    // Physics
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("friction"), Friction, bOverride_Friction);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"), SolRef, bOverride_SolRef);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), SolImp, bOverride_SolImp);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("density"), Density, bOverride_Density);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("mass"), Mass, bOverride_Mass);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), Margin, bOverride_Margin);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"), Gap, bOverride_Gap);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("condim"), Condim, bOverride_Condim);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("contype"), Contype, bOverride_Contype);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("conaffinity"), Conaffinity, bOverride_Conaffinity);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("priority"), Priority, bOverride_Priority);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), Group, bOverride_Group);
+        // --- CODEGEN_IMPORT_START ---
+    { // xml_enum: type -> EMjGeomType
+        FString S = Node->GetAttribute(TEXT("type"));
+        S = S.ToLower();
+        if      (S == TEXT("plane")) Type = EMjGeomType::Plane;
+        else if (S == TEXT("hfield")) Type = EMjGeomType::Hfield;
+        else if (S == TEXT("sphere")) Type = EMjGeomType::Sphere;
+        else if (S == TEXT("capsule")) Type = EMjGeomType::Capsule;
+        else if (S == TEXT("ellipsoid")) Type = EMjGeomType::Ellipsoid;
+        else if (S == TEXT("cylinder")) Type = EMjGeomType::Cylinder;
+        else if (S == TEXT("box")) Type = EMjGeomType::Box;
+        else if (S == TEXT("mesh")) Type = EMjGeomType::Mesh;
+        else if (S == TEXT("sdf")) Type = EMjGeomType::SDF;
+        if (!S.IsEmpty()) bOverride_Type = true;
+    }
+    { // xml_enum: shellinertia -> EMjGeomInertia
+        FString S = Node->GetAttribute(TEXT("shellinertia"));
+        S = S.ToLower();
+        if      (S == TEXT("false")) ShellInertia = EMjGeomInertia::Volume;
+        else if (S == TEXT("true")) ShellInertia = EMjGeomInertia::Shell;
+        if (!S.IsEmpty()) bOverride_ShellInertia = true;
+    }
+    { // xml_enum: fluidshape -> EMjFluidShape
+        FString S = Node->GetAttribute(TEXT("fluidshape"));
+        S = S.ToLower();
+        if      (S == TEXT("none")) FluidShape = EMjFluidShape::None;
+        else if (S == TEXT("ellipsoid")) FluidShape = EMjFluidShape::Ellipsoid;
+        if (!S.IsEmpty()) bOverride_FluidShape = true;
+    }
+    MjXmlUtils::ReadAttrInt(Node, TEXT("contype"), contype, bOverride_contype);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("conaffinity"), conaffinity, bOverride_conaffinity);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("condim"), condim, bOverride_condim);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("priority"), priority, bOverride_priority);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("size"), size, bOverride_size);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("friction"), friction, bOverride_friction);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("mass"), mass, bOverride_mass);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("density"), density, bOverride_density);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("solmix"), solmix, bOverride_solmix);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solref"), solref, bOverride_solref);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), solimp, bOverride_solimp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"), gap, bOverride_gap);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("hfield"), hfield)) bOverride_hfield = true;
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("mesh"), mesh)) bOverride_mesh = true;
+    MjXmlUtils::ReadAttrBool(Node, TEXT("fitscale"), fitscale, bOverride_fitscale);
+    MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("fluidcoef"), fluidcoef, bOverride_fluidcoef);
+    MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
+    { // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
+        double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
+        if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
+        {
+            Quat = MjUtils::MjToUERotation(TmpQuat);
+            bOverride_Quat = true;
+        }
+    }
+    { // canonicalize fromto -> Pos/Quat/size half-length
+        FVector FTPos; FQuat FTQuat; float FTHalf = 0.f;
+        if (MjUtils::DecomposeFromTo(Node, FTPos, FTQuat, FTHalf))
+        {
+            Pos = FTPos; bOverride_Pos = true;
+            Quat = FTQuat; bOverride_Quat = true;
+            const bool bFTZSlot = (Type == EMjGeomType::Box || Type == EMjGeomType::Ellipsoid);
+            const int32 FTSlot = bFTZSlot ? 2 : 1;
+            while (size.Num() <= FTSlot) { size.Add(-1.0f); }
+            size[FTSlot] = FTHalf;
+            bOverride_size = true;
+        }
+    }
+    if (bOverride_Pos)  SetRelativeLocation(Pos);
+    if (bOverride_Quat) SetRelativeRotation(Quat);
+    // --- CODEGEN_IMPORT_END ---
 
-    // Visuals
-    TArray<float> RgbaParts;
-    if (MjXmlUtils::ReadAttrFloatArray(Node, TEXT("rgba"), RgbaParts, bOverride_Rgba))
-    {
-        if (RgbaParts.Num() >= 4)
-            Rgba = FLinearColor(RgbaParts[0], RgbaParts[1], RgbaParts[2], RgbaParts[3]);
-    }
-    
-    // Type & Size
-    FString TypeStr = Node->GetAttribute(TEXT("type"));
-    bOverride_Type = !TypeStr.IsEmpty();
-    if (bOverride_Type)
-    {
-        if (TypeStr == "plane") Type = EMjGeomType::Plane;
-        else if (TypeStr == "hfield") Type = EMjGeomType::Hfield;
-        else if (TypeStr == "sphere") Type = EMjGeomType::Sphere;
-        else if (TypeStr == "capsule") Type = EMjGeomType::Capsule;
-        else if (TypeStr == "ellipsoid") Type = EMjGeomType::Ellipsoid;
-        else if (TypeStr == "cylinder") Type = EMjGeomType::Cylinder;
-        else if (TypeStr == "box") Type = EMjGeomType::Box;
-        else if (TypeStr == "mesh") Type = EMjGeomType::Mesh;
-        else if (TypeStr == "sdf") Type = EMjGeomType::SDF;
-    }
-    
-    // Class Name
+    // MuJoCo class inheritance
     MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
 
-    // Mesh Name & Implicit Detection
-    FString MeshAttr;
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("mesh"), MeshAttr))
+    // Implicit mesh-type detection (mesh attr present but type wasn't set)
+    if (!bOverride_Type && !mesh.IsEmpty())
     {
-        MeshName = MeshAttr;
-        
-        // If Type wasn't explicitly set in the XML, but we have a mesh attribute, assume Mesh
-        if (!bOverride_Type)
-        {
-            Type = EMjGeomType::Mesh;
-            bOverride_Type = true;
-            UE_LOG(LogURLabImport, Log, TEXT("[MjGeom::ImportFromXml] '%s' -> Implicitly setting Type to Mesh due to mesh attribute."), *GetName());
-        }
+        Type = EMjGeomType::Mesh;
+        bOverride_Type = true;
     }
-    
-    TArray<float> SizeParts;
-    if (MjXmlUtils::ReadAttrFloatArray(Node, TEXT("size"), SizeParts, bOverride_Size))
-    {
-        SizeParamsCount = SizeParts.Num();
-        // Populate Size directly from the parsed parts so 1- and 2-element
-        // size strings (sphere, capsule/cylinder) are stored correctly.
-        // ParseVector requires 3 values and returns zero for shorter strings.
-        Size = FVector::ZeroVector;
-        if (SizeParts.Num() >= 1) Size.X = SizeParts[0];
-        if (SizeParts.Num() >= 2) Size.Y = SizeParts[1];
-        if (SizeParts.Num() >= 3) Size.Z = SizeParts[2];
-    }
-    
-    // Support for "fromto" (overrides pos/quat/size)
-    FString FromToStr = Node->GetAttribute(TEXT("fromto"));
-    
-    UE_LOG(LogURLabImport, Verbose, TEXT("[MjGeom::ImportFromXml] '%s' TypeStr='%s' bOverride_Type=%s bOverride_Size=%s Size=%s"),
-        *GetName(), *TypeStr, bOverride_Type ? TEXT("TRUE") : TEXT("FALSE"),
-        bOverride_Size ? TEXT("TRUE") : TEXT("FALSE"), *Size.ToString());
-    
-    if (!FromToStr.IsEmpty())
-    {
-         UE_LOG(LogURLabImport, Verbose, TEXT("  - FromToStr: '%s' (Resolving to pos/quat/size)"), *FromToStr);
-
-         if (MjUtils::ParseFromTo(FromToStr, FromToStart, FromToEnd))
-         {
-             // Resolve fromto into explicit pos, quat, size — same decomposition MuJoCo does internally.
-             FVector Midpoint = (FromToStart + FromToEnd) * 0.5f;
-             SetRelativeLocation(Midpoint);
-             bOverride_Pos = true;
-
-             FVector Dir = (FromToEnd - FromToStart).GetSafeNormal();
-             if (!Dir.IsNearlyZero())
-             {
-                 FQuat Rot = FQuat::FindBetweenNormals(FVector(0.f, 0.f, 1.f), Dir);
-                 SetRelativeRotation(Rot);
-             }
-             bOverride_Quat = true;
-
-             float HalfLength = (FromToEnd - FromToStart).Size() * 0.5f / 100.0f;
-
-             if (Type == EMjGeomType::Box || Type == EMjGeomType::Ellipsoid)
-             {
-                 Size.Z = HalfLength;
-                 SizeParamsCount = FMath::Max(SizeParamsCount, 3);
-             }
-             else
-             {
-                 Size.Y = HalfLength;
-                 SizeParamsCount = FMath::Max(SizeParamsCount, 2);
-             }
-             // Only mark size as overridden if the element also had an explicit size attr.
-             // The half-length from fromto is stored in Size.Y/Z but the radius (Size.X)
-             // may come from a parent default — don't clobber it by writing size[0]=0.
-             bFromToResolvedHalfLength = true;
-             bOverride_FromTo = false;
-
-             UE_LOG(LogURLabImport, Verbose, TEXT("[MjGeom] '%s' FromTo resolved: pos=%s, halfLen=%.4f, size=(%.4f, %.4f, %.4f)"),
-                *GetName(), *Midpoint.ToString(), HalfLength, Size.X, Size.Y, Size.Z);
-         }
-    }
-    
-    else
-    {
-        FString PosStr = Node->GetAttribute(TEXT("pos"));
-        bOverride_Pos = !PosStr.IsEmpty();
-        if (bOverride_Pos)
-        {
-            FVector MjPos = MjXmlUtils::ParseVector(PosStr);
-            double p[3] = { (double)MjPos.X, (double)MjPos.Y, (double)MjPos.Z };
-            SetRelativeLocation(MjUtils::MjToUEPosition(p));
-        }
-        else
-        {
-            SetRelativeLocation(FVector::ZeroVector);
-            bOverride_Pos = false;
-        }
-
-        // Orientation (quat, axisangle, euler, xyaxes, zaxis — priority order)
-        double MjQuat[4];
-        bOverride_Quat = MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, MjQuat);
-        if (bOverride_Quat)
-        {
-            SetRelativeRotation(MjUtils::MjToUERotation(MjQuat));
-        }
-        else
-        {
-            bOverride_Quat = false;
-            SetRelativeRotation(FQuat::Identity);
-        }
-    }
-
-    // Name
-    FString NameStr = Node->GetAttribute(TEXT("name"));
-    if (!NameStr.IsEmpty())
-    {
-         UE_LOG(LogURLabImport, Verbose, TEXT("[MjGeom] Parsed name: %s"), *NameStr);
-    }
-
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), MaterialName))
-    {
-        UE_LOG(LogURLabImport, Log, TEXT("[MjGeom XML Import] '%s' -> Material: '%s'"), *GetName(), *MaterialName);
-    }
-
-    UE_LOG(LogURLabImport, Log, TEXT("[MjGeom XML Import] '%s' -> Contype: %s (%d), Conaffinity: %s (%d)"), 
-        *GetName(), 
-        bOverride_Contype ? TEXT("Set") : TEXT("Inherited"), Contype,
-        bOverride_Conaffinity ? TEXT("Set") : TEXT("Inherited"), Conaffinity);
+    MeshName = mesh;
 
     // Mark this geom as having been produced by XML import.
-    // User-authored components (bWasImported=false) use ShouldOverrideSize() to always
-    // export their UE scale, even when bOverride_Size was never set.
     bWasImported = true;
 }
 
-void UMjGeom::ExportTo(mjsGeom* Geom, mjsDefault* Default)
+void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
 {
-    if (!Geom) return;
+    if (!Element) return;
 
 
     if (!bOverride_Type && !MeshName.IsEmpty())
@@ -258,152 +176,105 @@ void UMjGeom::ExportTo(mjsGeom* Geom, mjsDefault* Default)
         bOverride_Type = true;
     }
 
-    int mjtType = mjGEOM_MESH;
-    switch(Type)
+    // Determine the FINAL effective type for the mesh-name decision. When
+    // Type isn't overridden locally, fall back to the default's geom type.
+    // (The codegen-owned xml_enum export below writes Element->type only when
+    // bOverride_Type is true — exactly the desired behavior.)
+    int FinalType = bOverride_Type
+        ? static_cast<int>(Type) /* placeholder; remapped below */
+        : (Default ? Default->geom->type : mjGEOM_MESH);
+    if (bOverride_Type)
     {
-        case EMjGeomType::Plane:    mjtType = mjGEOM_PLANE;    break;
-        case EMjGeomType::Hfield:   mjtType = mjGEOM_HFIELD;   break;
-        case EMjGeomType::Sphere:   mjtType = mjGEOM_SPHERE;   break;
-        case EMjGeomType::Capsule:  mjtType = mjGEOM_CAPSULE;  break;
-        case EMjGeomType::Ellipsoid:mjtType = mjGEOM_ELLIPSOID;break;
-        case EMjGeomType::Cylinder: mjtType = mjGEOM_CYLINDER; break;
-        case EMjGeomType::Box:      mjtType = mjGEOM_BOX;      break;
-        case EMjGeomType::Mesh:     mjtType = mjGEOM_MESH;     break;
-        case EMjGeomType::SDF:      mjtType = mjGEOM_SDF;      break;
+        switch(Type)
+        {
+            case EMjGeomType::Plane:    FinalType = mjGEOM_PLANE;    break;
+            case EMjGeomType::Hfield:   FinalType = mjGEOM_HFIELD;   break;
+            case EMjGeomType::Sphere:   FinalType = mjGEOM_SPHERE;   break;
+            case EMjGeomType::Capsule:  FinalType = mjGEOM_CAPSULE;  break;
+            case EMjGeomType::Ellipsoid:FinalType = mjGEOM_ELLIPSOID;break;
+            case EMjGeomType::Cylinder: FinalType = mjGEOM_CYLINDER; break;
+            case EMjGeomType::Box:      FinalType = mjGEOM_BOX;      break;
+            case EMjGeomType::Mesh:     FinalType = mjGEOM_MESH;     break;
+            case EMjGeomType::SDF:      FinalType = mjGEOM_SDF;      break;
+        }
     }
 
-    if (bOverride_Type) Geom->type = (mjtGeom)mjtType;
-    
-    bool bHasDefault = (Default != nullptr);
-    int DefaultTypeInt = bHasDefault ? Default->geom->type : -1;
-    int FinalType = bOverride_Type ? mjtType : (bHasDefault ? DefaultTypeInt : mjtType);
-    
     if (FinalType == mjGEOM_MESH && !MeshName.IsEmpty())
     {
-        mjs_setString(Geom->meshname, TCHAR_TO_UTF8(*MeshName));
+        mjs_setString(Element->meshname, TCHAR_TO_UTF8(*MeshName));
     }
 
-    if (bOverride_FromTo)
-    {
-        // Legacy path: if someone manually set fromto in the editor (not from import),
-        // pass it through to MuJoCo raw.
-        double Start[3], End[3];
-        MjUtils::UEToMjPosition(FromToStart, Start);
-        MjUtils::UEToMjPosition(FromToEnd, End);
+    // size: codegen-owned TArray<float>; the default per-attr export writes
+    // Element->size[i] = size[i] up to size.Num(). Clamped to 3 by mjsGeom's
+    // fixed-size array. Slots beyond size.Num() inherit defaults.
 
-        Geom->fromto[0] = Start[0]; Geom->fromto[1] = Start[1]; Geom->fromto[2] = Start[2];
-        Geom->fromto[3] = End[0];   Geom->fromto[4] = End[1];   Geom->fromto[5] = End[2];
-        UE_LOG(LogURLabBind, Log, TEXT("[MjGeom] Geom '%s' using raw fromto (manual override)"), *GetName());
+        // --- CODEGEN_EXPORT_START ---
+    if (bOverride_Pos)
+    {
+        double TmpPos[3];
+        MjUtils::UEToMjPosition(Pos, TmpPos);
+        Element->pos[0] = TmpPos[0]; Element->pos[1] = TmpPos[1]; Element->pos[2] = TmpPos[2];
     }
-    else
+    if (bOverride_Quat)
     {
-        FVector Location = GetRelativeLocation();
-        if (!Location.IsZero())
-        {
-            double pos[3] = { 0, 0, 0 };
-            MjUtils::UEToMjPosition(Location, pos);
-            Geom->pos[0] = pos[0];
-            Geom->pos[1] = pos[1];
-            Geom->pos[2] = pos[2];
-        }
-
-        FQuat Quat = GetRelativeRotation().Quaternion();
-        if (!Quat.IsIdentity())
-        {
-            double quat[4] = { 1, 0, 0, 0 };
-            MjUtils::UEToMjRotation(Quat, quat);
-            Geom->quat[0] = quat[0];
-            Geom->quat[1] = quat[1];
-            Geom->quat[2] = quat[2];
-            Geom->quat[3] = quat[3];
-        }
+        double TmpQuat[4];
+        MjUtils::UEToMjRotation(Quat, TmpQuat);
+        Element->quat[0] = TmpQuat[0]; Element->quat[1] = TmpQuat[1];
+        Element->quat[2] = TmpQuat[2]; Element->quat[3] = TmpQuat[3];
     }
-
-    if (bFromToResolvedHalfLength && !bOverride_Size)
+    if (bOverride_Type)
     {
-        // FromTo was resolved: only write the half-length slot
-        if (Type == EMjGeomType::Box || Type == EMjGeomType::Ellipsoid)
+        switch (Type)
         {
-            Geom->size[2] = Size.Z;
-        }
-        else
-        {
-            Geom->size[1] = Size.Y;
+            case EMjGeomType::Plane: Element->type = (mjtGeom)mjGEOM_PLANE; break;
+            case EMjGeomType::Hfield: Element->type = (mjtGeom)mjGEOM_HFIELD; break;
+            case EMjGeomType::Sphere: Element->type = (mjtGeom)mjGEOM_SPHERE; break;
+            case EMjGeomType::Capsule: Element->type = (mjtGeom)mjGEOM_CAPSULE; break;
+            case EMjGeomType::Ellipsoid: Element->type = (mjtGeom)mjGEOM_ELLIPSOID; break;
+            case EMjGeomType::Cylinder: Element->type = (mjtGeom)mjGEOM_CYLINDER; break;
+            case EMjGeomType::Box: Element->type = (mjtGeom)mjGEOM_BOX; break;
+            case EMjGeomType::Mesh: Element->type = (mjtGeom)mjGEOM_MESH; break;
+            case EMjGeomType::SDF: Element->type = (mjtGeom)mjGEOM_SDF; break;
+            default: break;
         }
     }
-    else if (bOverride_Size)
+    if (bOverride_ShellInertia)
     {
-        if (SizeParamsCount >= 1) Geom->size[0] = Size.X;
-        if (SizeParamsCount >= 2) Geom->size[1] = Size.Y;
-        if (SizeParamsCount >= 3) Geom->size[2] = Size.Z;
-
-        if (SizeParamsCount == 0)
+        switch (ShellInertia)
         {
-            Geom->size[0] = Size.X;
-            Geom->size[1] = Size.Y;
-            Geom->size[2] = Size.Z;
+            case EMjGeomInertia::Volume: Element->typeinertia = (mjtGeomInertia)mjINERTIA_VOLUME; break;
+            case EMjGeomInertia::Shell: Element->typeinertia = (mjtGeomInertia)mjINERTIA_SHELL; break;
+            default: break;
         }
     }
-
-
-    if (bOverride_Friction)
+    if (bOverride_FluidShape)
     {
-        for (int i = 0; i < Friction.Num() && i < 3; ++i)
+        switch (FluidShape)
         {
-            Geom->friction[i] = Friction[i];
+            case EMjFluidShape::None: Element->fluid_ellipsoid = (mjtNum)0.0; break;
+            case EMjFluidShape::Ellipsoid: Element->fluid_ellipsoid = (mjtNum)1.0; break;
+            default: break;
         }
     }
-
-    if (bOverride_SolRef)
-    {
-        for (int i = 0; i < SolRef.Num() && i < 2; ++i)
-        {
-            Geom->solref[i] = SolRef[i];
-        }
-    }
-
-    if (bOverride_SolImp)
-    {
-        for (int i = 0; i < SolImp.Num() && i < 5; ++i)
-        {
-            Geom->solimp[i] = SolImp[i];
-        }
-    }
-
-    if (bOverride_Density)
-        Geom->density = Density;
-
-    if (bOverride_Mass)
-        Geom->mass = Mass;
-    
-    if (bOverride_Margin)
-        Geom->margin = Margin;
-    
-    if (bOverride_Gap)
-        Geom->gap = Gap;
-
-    if (bOverride_Condim)
-        Geom->condim = Condim;
-
-    if (bOverride_Contype)
-        Geom->contype = Contype;
-        
-    if (bOverride_Conaffinity)
-        Geom->conaffinity = Conaffinity;
-
-    if (bOverride_Priority)
-        Geom->priority = Priority;
-        
-    if (bOverride_Group)
-        Geom->group = Group;
-
-    if (bOverride_Rgba)
-    {
-        Geom->rgba[0] = Rgba.R;
-        Geom->rgba[1] = Rgba.G;
-        Geom->rgba[2] = Rgba.B;
-        Geom->rgba[3] = Rgba.A;
-    }
+    if (bOverride_contype) Element->contype = contype;
+    if (bOverride_conaffinity) Element->conaffinity = conaffinity;
+    if (bOverride_condim) Element->condim = condim;
+    if (bOverride_group) Element->group = group;
+    if (bOverride_priority) Element->priority = priority;
+    if (bOverride_size) { for (int32 i = 0; i < size.Num(); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
+    if (bOverride_friction) { for (int32 i = 0; i < friction.Num(); ++i) Element->friction[i] = friction[i]; }
+    if (bOverride_mass) Element->mass = mass;
+    if (bOverride_density) Element->density = density;
+    if (bOverride_solmix) Element->solmix = solmix;
+    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_margin) Element->margin = margin;
+    if (bOverride_gap) Element->gap = gap;
+    if (bOverride_mesh && !mesh.IsEmpty()) mjs_setString(Element->meshname, TCHAR_TO_UTF8(*mesh));
+    if (bOverride_fitscale) Element->fitscale = fitscale ? 1 : 0;
+    if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
+    if (bOverride_fluidcoef) { for (int32 i = 0; i < fluidcoef.Num(); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
+    // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjGeom::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
@@ -450,9 +321,9 @@ FVector UMjGeom::GetWorldLocation() const
 }
 void UMjGeom::SetFriction(float NewFriction)
 {
-    if (Friction.Num() == 0) Friction.Add(NewFriction);
-    else Friction[0] = NewFriction;
-    bOverride_Friction = true;
+    if (friction.Num() == 0) friction.Add(NewFriction);
+    else friction[0] = NewFriction;
+    bOverride_friction = true;
     
     // Update runtime model if bound
     if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0 && m_GeomView.friction)
@@ -469,7 +340,7 @@ void UMjGeom::SyncUnrealTransformFromMj()
 FString UMjGeom::GetResolvedMaterialName() const
 {
     // Explicit material on this geom wins
-    if (!MaterialName.IsEmpty()) return MaterialName;
+    if (bOverride_material && !material.IsEmpty()) return material;
 
     // Walk the default class chain
     if (UMjDefault* Def = FindEditorDefault())
@@ -481,7 +352,7 @@ FString UMjGeom::GetResolvedMaterialName() const
             Visited.Add(Cur->ClassName);
             if (UMjGeom* G = Cur->FindChildOfType<UMjGeom>())
             {
-                if (!G->MaterialName.IsEmpty()) return G->MaterialName;
+                if (G->bOverride_material && !G->material.IsEmpty()) return G->material;
             }
             Cur = Cur->ParentClassName.IsEmpty() ? nullptr
                 : FindDefaultByClassName(GetOwner(), Cur->ParentClassName);
@@ -505,8 +376,8 @@ void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent
         // Don't auto-override if the scale hasn't actually changed meaningfully
         if (!GetRelativeScale3D().Equals(FVector(1.0f)))
         {
-            bOverride_Size = true;
-            UE_LOG(LogURLab, Log, TEXT("[MjGeom] User manually changed Scale for '%s'. Marking bOverride_Size = true."), *GetName());
+            bOverride_size = true;
+            UE_LOG(LogURLab, Log, TEXT("[MjGeom] User manually changed scale for '%s'. Marking bOverride_size = true."), *GetName());
         }
     }
 
@@ -530,7 +401,7 @@ void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent
 
 void UMjGeom::ApplyOverrideMaterial(UMaterialInterface* Material)
 {
-    // Base implementation is a no-op. Mesh geoms should not have their imported
+    // Base implementation is a no-op. mesh geoms should not have their imported
     // materials overwritten — they already have materials from the import pipeline.
     // Primitive subclasses (Box, Sphere, Cylinder) override this with direct
     // VisualizerMesh access.
@@ -628,6 +499,17 @@ void UMjGeom::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
         }
     }
 
+    // PrepareMeshForMuJoCo / AddMeshAsset may rewrite MeshName to the
+    // *resolved* bare asset name (e.g. XML "scene/white_table/left_foot_001"
+    // -> "left_foot_001"). Sync the codegen-owned `mesh` UPROPERTY before
+    // ExportTo so the codegen-emitted meshname write matches the asset
+    // actually registered in the spec.
+    if (Type == EMjGeomType::Mesh && !MeshName.IsEmpty())
+    {
+        mesh = MeshName;
+        bOverride_mesh = true;
+    }
+
     ExportTo(geom, SpecDef);
 
     // Extra mesh names from complex decomposition — hull sub-geoms should already
@@ -637,7 +519,7 @@ void UMjGeom::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
     if (ExtraMeshNames.Num() > 0)
     {
         UE_LOG(LogURLab, Warning, TEXT("[MjGeom] '%s' has %d extra mesh parts from complex decomposition. "
-            "These should be persistent hull sub-geom components. Use 'Decompose Mesh' in the editor."),
+            "These should be persistent hull sub-geom components. Use 'Decompose mesh' in the editor."),
             *GetName(), ExtraMeshNames.Num());
     }
 }
@@ -671,7 +553,7 @@ void UMjGeom::DecomposeMesh()
 
     if (Type != EMjGeomType::Mesh)
     {
-        UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' is not a Mesh geom (Type=%d)."), *GetName(), (int)Type);
+        UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' is not a mesh geom (Type=%d)."), *GetName(), (int)Type);
         return;
     }
 
@@ -757,8 +639,8 @@ void UMjGeom::DecomposeMesh()
         return;
     }
 
-    UStaticMesh* Mesh = SMC->GetStaticMesh();
-    UBodySetup* BodySetup = Mesh->GetBodySetup();
+    UStaticMesh* LocalMesh = SMC->GetStaticMesh();
+    UBodySetup* BodySetup = LocalMesh->GetBodySetup();
     if (!BodySetup || BodySetup->TriMeshGeometries.Num() == 0)
     {
         UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' has no collision geometry."), *GetName());
@@ -774,7 +656,7 @@ void UMjGeom::DecomposeMesh()
     SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "DecompStep1", "Decomposing mesh with CoACD..."));
 
     // Export and decompose
-    FString AssetName = Mesh->GetName();
+    FString AssetName = LocalMesh->GetName();
     FString OwnerDir = GetOwner() ? GetOwner()->GetClass()->GetName() : TEXT("Shared");
     FString FilePath = FString::Printf(TEXT("%s/URLab/ConvertedMeshes/%s/Complex_%s.obj"),
         *FPaths::ProjectSavedDir(), *OwnerDir, *AssetName);
@@ -885,19 +767,19 @@ void UMjGeom::DecomposeMesh()
         Hull->MjName = FString::Printf(TEXT("%s_hull_%d"), *(MjName.IsEmpty() ? GetName() : MjName), i);
 
         // Copy physics properties from source geom
-        Hull->Friction = Friction;           Hull->bOverride_Friction = bOverride_Friction;
-        Hull->SolRef = SolRef;               Hull->bOverride_SolRef = bOverride_SolRef;
-        Hull->SolImp = SolImp;               Hull->bOverride_SolImp = bOverride_SolImp;
-        Hull->Density = Density;             Hull->bOverride_Density = bOverride_Density;
-        Hull->Mass = Mass;                   Hull->bOverride_Mass = bOverride_Mass;
-        Hull->Margin = Margin;               Hull->bOverride_Margin = bOverride_Margin;
-        Hull->Gap = Gap;                     Hull->bOverride_Gap = bOverride_Gap;
-        Hull->Condim = Condim;               Hull->bOverride_Condim = bOverride_Condim;
-        Hull->Contype = Contype;             Hull->bOverride_Contype = bOverride_Contype;
-        Hull->Conaffinity = Conaffinity;     Hull->bOverride_Conaffinity = bOverride_Conaffinity;
-        Hull->Priority = Priority;           Hull->bOverride_Priority = bOverride_Priority;
-        Hull->Group = 3;                     Hull->bOverride_Group = true;
-        Hull->Rgba = Rgba;                   Hull->bOverride_Rgba = bOverride_Rgba;
+        Hull->friction = friction;           Hull->bOverride_friction = bOverride_friction;
+        Hull->solref = solref;               Hull->bOverride_solref = bOverride_solref;
+        Hull->solimp = solimp;               Hull->bOverride_solimp = bOverride_solimp;
+        Hull->density = density;             Hull->bOverride_density = bOverride_density;
+        Hull->mass = mass;                   Hull->bOverride_mass = bOverride_mass;
+        Hull->margin = margin;               Hull->bOverride_margin = bOverride_margin;
+        Hull->gap = gap;                     Hull->bOverride_gap = bOverride_gap;
+        Hull->condim = condim;               Hull->bOverride_condim = bOverride_condim;
+        Hull->contype = contype;             Hull->bOverride_contype = bOverride_contype;
+        Hull->conaffinity = conaffinity;     Hull->bOverride_conaffinity = bOverride_conaffinity;
+        Hull->priority = priority;           Hull->bOverride_priority = bOverride_priority;
+        Hull->group = 3;                     Hull->bOverride_group = true;
+        Hull->rgba = rgba;                   Hull->bOverride_rgba = bOverride_rgba;
         Hull->MjClassName = MjClassName;
 
         // Import the OBJ file as a UStaticMesh asset for editor visualization

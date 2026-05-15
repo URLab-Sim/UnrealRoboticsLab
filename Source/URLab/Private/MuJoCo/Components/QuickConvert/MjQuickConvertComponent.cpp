@@ -152,7 +152,8 @@ void UMjQuickConvertComponent::Setup(mjSpec* spec, mjVFS* vfs) {
         MjBody->AttachToComponent(m_actor->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
         
         MjBody->bIsQuickConverted = true;
-        MjBody->bDrivenByUnreal = bDrivenByUnreal;
+        MjBody->mocap = bDrivenByUnreal;
+        MjBody->bOverride_mocap = bDrivenByUnreal;
         
         if (!Static && !bDrivenByUnreal)
         {
@@ -198,12 +199,12 @@ void UMjQuickConvertComponent::Setup(mjSpec* spec, mjVFS* vfs) {
                          VisualGeom->bOverride_Type = true;
                          VisualGeom->MeshName = VisualMeshNames[0];
 
-                         VisualGeom->bOverride_Contype = true;
-                         VisualGeom->Contype = 0;
-                         VisualGeom->bOverride_Conaffinity = true;
-                         VisualGeom->Conaffinity = 0;
-                         VisualGeom->bOverride_Group = true;
-                         VisualGeom->Group = 2;
+                         VisualGeom->bOverride_contype = true;
+                         VisualGeom->contype = 0;
+                         VisualGeom->bOverride_conaffinity = true;
+                         VisualGeom->conaffinity = 0;
+                         VisualGeom->bOverride_group = true;
+                         VisualGeom->group = 2;
                      }
                  }
 
@@ -218,15 +219,15 @@ void UMjQuickConvertComponent::Setup(mjSpec* spec, mjVFS* vfs) {
                          Geom->Type = EMjGeomType::Mesh;
                          Geom->bOverride_Type = true;
                          Geom->MeshName = MjAssetNames[i];
-                         Geom->bOverride_Group = true;
-                         Geom->Group = 3;
+                         Geom->bOverride_group = true;
+                         Geom->group = 3;
 
-                         Geom->bOverride_Friction = true;
-                         Geom->Friction = { (float)friction.X, (float)friction.Y, (float)friction.Z };
-                         Geom->bOverride_SolRef = true;
-                         Geom->SolRef = { (float)solref.X, (float)solref.Y };
-                         Geom->bOverride_SolImp = true;
-                         Geom->SolImp = { (float)solimp.X, (float)solimp.Y, (float)solimp.Z };
+                         Geom->bOverride_friction = true;
+                         Geom->friction = { (float)friction.X, (float)friction.Y, (float)friction.Z };
+                         Geom->bOverride_solref = true;
+                         Geom->solref = { (float)solref.X, (float)solref.Y };
+                         Geom->bOverride_solimp = true;
+                         Geom->solimp = { (float)solimp.X, (float)solimp.Y, (float)solimp.Z };
                      }
                  }
              }
@@ -245,12 +246,12 @@ void UMjQuickConvertComponent::Setup(mjSpec* spec, mjVFS* vfs) {
                          Geom->bOverride_Type = true;
                          Geom->MeshName = MjAssetName;
 
-                         Geom->bOverride_Friction = true;
-                         Geom->Friction = { (float)friction.X, (float)friction.Y, (float)friction.Z };
-                         Geom->bOverride_SolRef = true;
-                         Geom->SolRef = { (float)solref.X, (float)solref.Y };
-                         Geom->bOverride_SolImp = true;
-                         Geom->SolImp = { (float)solimp.X, (float)solimp.Y, (float)solimp.Z };
+                         Geom->bOverride_friction = true;
+                         Geom->friction = { (float)friction.X, (float)friction.Y, (float)friction.Z };
+                         Geom->bOverride_solref = true;
+                         Geom->solref = { (float)solref.X, (float)solref.Y };
+                         Geom->bOverride_solimp = true;
+                         Geom->solimp = { (float)solimp.X, (float)solimp.Y, (float)solimp.Z };
                      }
                  }
              }

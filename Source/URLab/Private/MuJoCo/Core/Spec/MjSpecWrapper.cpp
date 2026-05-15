@@ -91,7 +91,7 @@ mjsFrame* FMujocoSpecWrapper::CreateFrame(const FString& Name, mjsBody* ParentBo
     return NewFrame;
 }
 
-FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString& FilePath, const FVector& Scale)
+FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString& FilePath, const FVector& scale)
 {
     FString UniqueMeshName = GetUniqueName(MeshName, mjOBJ_MESH, nullptr);
 
@@ -99,9 +99,9 @@ FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString&
     mjs_setName(MeshAsset->element, TCHAR_TO_UTF8(*UniqueMeshName));
     mjs_setString(MeshAsset->file, TCHAR_TO_UTF8(*FilePath));
 
-    MeshAsset->scale[0] = Scale.X;
-    MeshAsset->scale[1] = Scale.Y;
-    MeshAsset->scale[2] = Scale.Z;
+    MeshAsset->scale[0] = scale.X;
+    MeshAsset->scale[1] = scale.Y;
+    MeshAsset->scale[2] = scale.Z;
 
     FString Directory = FPaths::GetPath(FilePath);
     FString FileName = FPaths::GetCleanFilename(FilePath);
@@ -116,7 +116,7 @@ FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString&
     return UniqueMeshName;
 }
 
-mjsGeom* FMujocoSpecWrapper::AddPrimitiveGeom(mjsBody* Body, mjtGeom Type, const FVector& Size, const FVector4& RGBA, double Density)
+mjsGeom* FMujocoSpecWrapper::AddPrimitiveGeom(mjsBody* Body, mjtGeom Type, const FVector& Size, const FVector4& RGBA, double density)
 {
     if (!Body) return nullptr;
 
@@ -132,7 +132,7 @@ mjsGeom* FMujocoSpecWrapper::AddPrimitiveGeom(mjsBody* Body, mjtGeom Type, const
     Geom->rgba[2] = RGBA.Z;
     Geom->rgba[3] = RGBA.W;
 
-    Geom->density = Density;
+    Geom->density = density;
 
     return Geom;
 }
@@ -236,20 +236,20 @@ TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* S
     TArray<FString> ResultNames;
     if (!SMC || !SMC->GetStaticMesh()) return ResultNames;
 
-    UStaticMesh* Mesh = SMC->GetStaticMesh();
-    UBodySetup* BodySetup = Mesh->GetBodySetup();
+    UStaticMesh* mesh = SMC->GetStaticMesh();
+    UBodySetup* BodySetup = mesh->GetBodySetup();
     if (!BodySetup || BodySetup->TriMeshGeometries.Num() == 0) return ResultNames;
 
     FString MeshType = bComplexMeshRequired ? "Complex" : "Simple";
     UStaticMesh* StaticMesh = Cast<UStaticMesh>(BodySetup->GetOuter());
     FString BaseAssetName = StaticMesh ? StaticMesh->GetName() : SMC->GetName();
-    FVector Scale = SMC->GetComponentScale();
+    FVector scale = SMC->GetComponentScale();
 
     FString AssetName = BaseAssetName;
-    if (!Scale.Equals(FVector::OneVector, 0.001f))
+    if (!scale.Equals(FVector::OneVector, 0.001f))
     {
         AssetName = FString::Printf(TEXT("%s_s%.3f_%.3f_%.3f"), *BaseAssetName,
-            Scale.X, Scale.Y, Scale.Z);
+            scale.X, scale.Y, scale.Z);
     }
 
     FString SubDir = MeshCacheSubDir.IsEmpty() ? TEXT("Shared") : MeshCacheSubDir;
@@ -266,7 +266,7 @@ TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* S
     {
         if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*AssetName)))
         {
-            UE_LOG(LogURLabWrapper, Log, TEXT("Mesh Asset '%s' already exists in Spec. Reusing."), *AssetName);
+            UE_LOG(LogURLabWrapper, Log, TEXT("mesh Asset '%s' already exists in Spec. Reusing."), *AssetName);
             ResultNames.Add(AssetName);
             return ResultNames;
         }
@@ -276,7 +276,7 @@ TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* S
         FString FirstSubMeshName = FString::Printf(TEXT("%s_0"), *AssetName);
         if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*FirstSubMeshName)))
         {
-            UE_LOG(LogURLabWrapper, Log, TEXT("Complex Mesh Asset '%s' already exists in Spec. Reusing all parts."), *AssetName);
+            UE_LOG(LogURLabWrapper, Log, TEXT("Complex mesh Asset '%s' already exists in Spec. Reusing all parts."), *AssetName);
             int i = 0;
             while (true)
             {
@@ -323,7 +323,7 @@ TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* S
         FString CachedHash = IO::LoadMeshHash(FullFilePath);
         if (CachedHash != CurrentHash)
         {
-            UE_LOG(LogURLabWrapper, Log, TEXT("Mesh '%s' has changed (hash mismatch). Re-exporting."), *AssetName);
+            UE_LOG(LogURLabWrapper, Log, TEXT("mesh '%s' has changed (hash mismatch). Re-exporting."), *AssetName);
             IO::DeleteMeshCache(FullFilePath, bComplexMeshRequired);
             MeshCount = 0;
         }
@@ -359,7 +359,7 @@ TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* S
     if (!bComplexMeshRequired) 
     {
         FString sub_file_path = FString::Printf(TEXT("%s/%s.obj"), *Directory, *BaseName);
-        ResultNames.Add(AddMeshAsset(AssetName, sub_file_path, Scale));
+        ResultNames.Add(AddMeshAsset(AssetName, sub_file_path, scale));
     } 
     else
     {
@@ -367,7 +367,7 @@ TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* S
         {
             FString sub_file_path = FString::Printf(TEXT("%s/%s_sub_%d.obj"), *Directory, *BaseName, i);
             FString SubMeshName = FString::Printf(TEXT("%s_%d"), *AssetName, i);
-            ResultNames.Add(AddMeshAsset(SubMeshName, sub_file_path, Scale));
+            ResultNames.Add(AddMeshAsset(SubMeshName, sub_file_path, scale));
         }
     }
     

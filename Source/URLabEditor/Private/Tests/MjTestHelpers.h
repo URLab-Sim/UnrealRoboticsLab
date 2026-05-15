@@ -243,8 +243,8 @@ struct FMjUESession
         Body->AttachToComponent(WB, FAttachmentTransformRules::KeepRelativeTransform);
 
         Geom = NewObject<UMjGeom>(Robot, TEXT("TestGeom"));
-        Geom->Size = FVector(0.1f, 0.1f, 0.1f);
-        Geom->bOverride_Size = true;
+        Geom->size = { 0.1f, 0.1f, 0.1f };
+        Geom->bOverride_size = true;
         Geom->RegisterComponent();
         Geom->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform);
 

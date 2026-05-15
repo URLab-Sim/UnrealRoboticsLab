@@ -29,6 +29,7 @@
 #include "MuJoCo/Components/Sensors/MjSensor.h"
 
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjBody.generated.h"
 
 /**
@@ -54,31 +55,42 @@ class URLAB_API UMjBody : public UMjComponent
 	GENERATED_BODY()
 
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody|Spatial Pose", meta=(InlineEditConditionToggle))
+    bool bOverride_Pos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    FVector Pos = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody|Orientation", meta=(InlineEditConditionToggle))
+    bool bOverride_Quat = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody|Orientation", meta=(EditCondition="bOverride_Quat"))
+    FQuat Quat = FQuat::Identity;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody", meta=(InlineEditConditionToggle))
+    bool bOverride_childclass = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody", meta=(EditCondition="bOverride_childclass", GetOptions="GetChildClassOptions"))
+    FString childclass = TEXT("");
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody", meta=(InlineEditConditionToggle))
+    bool bOverride_mocap = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody", meta=(EditCondition="bOverride_mocap", DisplayName="Driven By Unreal"))
+    bool mocap = false;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody", meta=(InlineEditConditionToggle))
+    bool bOverride_gravcomp = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody", meta=(EditCondition="bOverride_gravcomp"))
+    float gravcomp = 0.0f;
+    // --- CODEGEN_PROPERTIES_END ---
+
 	UMjBody();
     /** @brief If true, this body was created via Quick Convert, enabling specific logic like pivot correction. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body")
     bool bIsQuickConverted = false;
-
-    /** @brief If true, this body's transform is driven by the Unreal Actor/Component, enabling One-Way coupling (Unreal -> MuJoCo). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body")
-    bool bDrivenByUnreal = false;
-
-    /** @brief Override toggle for Gravcomp. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta=(InlineEditConditionToggle))
-    bool bOverride_Gravcomp = false;
-
-    /** @brief Anti-gravity force applied to the body, in units of body weight. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body", meta=(EditCondition="bOverride_Gravcomp"))
-    float Gravcomp = 0.0f;
-	
-    
-    /** @brief If true, overrides the MuJoCo default class name inherited from the parent body's childclass attribute. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body")
-    bool bOverride_ChildClassName = false;
-
-    /** @brief Child class name for this body. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body", meta=(EditCondition="bOverride_ChildClassName", GetOptions="GetChildClassOptions"))
-    FString ChildClassName;
 
 #if WITH_EDITOR
     UFUNCTION()
@@ -86,8 +98,8 @@ public:
 #endif
 
     /** @brief Per-body sleep policy (MuJoCo 3.4+). Default lets the global option decide. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body|Sleep",
-        meta=(ToolTip="Sleep policy for this body's kinematic tree. Only has effect when sleep is enabled in AMjManager Options."))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body|sleep",
+        meta=(ToolTip="sleep policy for this body's kinematic tree. Only has effect when sleep is enabled in AMjManager Options."))
     EMjBodySleepPolicy SleepPolicy = EMjBodySleepPolicy::Default;
 
     /**
@@ -96,6 +108,14 @@ public:
      * @param ParentBody The parent MuJoCo body.
      */
     virtual void RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
+
+    /**
+     * @brief Writes this body's codegen-owned UPROPERTYs to an existing mjsBody.
+     * The mjsBody itself (and its pos/quat from the UE transform) is set up
+     * by the spec wrapper's CreateBody call in Setup(). This method writes
+     * gravcomp / mocap / sleep / childclass on top.
+     */
+    virtual void ExportTo(mjsBody* Element, mjsDefault* Default = nullptr);
 
 
 
@@ -110,7 +130,6 @@ public:
      * @brief Imports properties (Transform) directly from the raw XML node.
      * @param Node Pointer to the corresponding FXmlNode.
      */
-    void ImportFromXml(const class FXmlNode* Node);
 
     /**
      * @brief Imports properties with orientation handling respecting compiler settings.
@@ -155,20 +174,20 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
     void ClearForce();
 
-    // --- Sleep (MuJoCo 3.4+) ---
+    // --- sleep (MuJoCo 3.4+) ---
 
     /**
      * @brief Returns true if this body is currently awake (not sleeping).
      *        Returns true if sleep is disabled or if the body has not been bound yet.
      */
-    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Body|Sleep")
+    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Body|sleep")
     bool IsAwake() const;
 
     /**
      * @brief Wakes this body and its kinematic tree, forcing it out of sleep.
      *        No-op if sleep is disabled or if this body has not been bound.
      */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Body|Sleep")
+    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Body|sleep")
     void Wake();
 
     /**
@@ -177,8 +196,8 @@ public:
      *        receives an impulse that exceeds the sleep tolerance.
      *        No-op if sleep is disabled or if this body has not been bound.
      */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Body|Sleep")
-    void Sleep();
+    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Body|sleep")
+    void PutToSleep();
 
 protected:
 	virtual void BeginPlay() override;

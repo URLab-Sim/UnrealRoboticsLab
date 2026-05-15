@@ -20,7 +20,7 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/Input/MjTwistController.h"
+#include "MuJoCo/input/MjTwistController.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
 

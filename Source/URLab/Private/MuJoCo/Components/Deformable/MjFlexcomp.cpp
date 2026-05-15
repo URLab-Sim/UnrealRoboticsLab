@@ -52,128 +52,70 @@ UMjFlexcomp::UMjFlexcomp()
 // Import
 // ============================================================================
 
-void UMjFlexcomp::ImportFromXml(const FXmlNode* Node)
+void UMjFlexcomp::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
 
     MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName);
 
-    // Type
-    FString TypeStr = Node->GetAttribute(TEXT("type"));
-    if (TypeStr == TEXT("grid"))           Type = EMjFlexcompType::Grid;
-    else if (TypeStr == TEXT("box"))       Type = EMjFlexcompType::Box;
-    else if (TypeStr == TEXT("cylinder"))  Type = EMjFlexcompType::Cylinder;
-    else if (TypeStr == TEXT("ellipsoid")) Type = EMjFlexcompType::Ellipsoid;
-    else if (TypeStr == TEXT("square"))    Type = EMjFlexcompType::Square;
-    else if (TypeStr == TEXT("disc"))      Type = EMjFlexcompType::Disc;
-    else if (TypeStr == TEXT("circle"))    Type = EMjFlexcompType::Circle;
-    else if (TypeStr == TEXT("mesh"))      Type = EMjFlexcompType::Mesh;
-    else if (TypeStr == TEXT("direct"))    Type = EMjFlexcompType::Direct;
-
-    // Dim
-    FString DimStr = Node->GetAttribute(TEXT("dim"));
-    if (!DimStr.IsEmpty()) Dim = FCString::Atoi(*DimStr);
-
-    // Dof
-    FString DofStr = Node->GetAttribute(TEXT("dof"));
-    if (DofStr == TEXT("full"))            DofType = EMjFlexcompDof::Full;
-    else if (DofStr == TEXT("radial"))     DofType = EMjFlexcompDof::Radial;
-    else if (DofStr == TEXT("trilinear"))  DofType = EMjFlexcompDof::Trilinear;
-    else if (DofStr == TEXT("quadratic"))  DofType = EMjFlexcompDof::Quadratic;
-
-    // Count
-    FString CountStr = Node->GetAttribute(TEXT("count"));
-    if (!CountStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        CountStr.ParseIntoArray(Parts, TEXT(" "), true);
-        if (Parts.Num() >= 1) Count.X = FCString::Atoi(*Parts[0]);
-        if (Parts.Num() >= 2) Count.Y = FCString::Atoi(*Parts[1]);
-        if (Parts.Num() >= 3) Count.Z = FCString::Atoi(*Parts[2]);
+    // --- CODEGEN_IMPORT_START ---
+    { // xml_enum: type -> EMjFlexcompType
+        FString S = Node->GetAttribute(TEXT("type"));
+        S = S.ToLower();
+        if      (S == TEXT("grid")) FlexcompType = EMjFlexcompType::Grid;
+        else if (S == TEXT("box")) FlexcompType = EMjFlexcompType::Box;
+        else if (S == TEXT("cylinder")) FlexcompType = EMjFlexcompType::Cylinder;
+        else if (S == TEXT("ellipsoid")) FlexcompType = EMjFlexcompType::Ellipsoid;
+        else if (S == TEXT("square")) FlexcompType = EMjFlexcompType::Square;
+        else if (S == TEXT("disc")) FlexcompType = EMjFlexcompType::Disc;
+        else if (S == TEXT("circle")) FlexcompType = EMjFlexcompType::Circle;
+        else if (S == TEXT("mesh")) FlexcompType = EMjFlexcompType::Mesh;
+        else if (S == TEXT("gmsh")) FlexcompType = EMjFlexcompType::Gmsh;
+        else if (S == TEXT("direct")) FlexcompType = EMjFlexcompType::Direct;
+        if (!S.IsEmpty()) bOverride_FlexcompType = true;
     }
-
-    // Spacing
-    FString SpacingStr = Node->GetAttribute(TEXT("spacing"));
-    if (!SpacingStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        SpacingStr.ParseIntoArray(Parts, TEXT(" "), true);
-        if (Parts.Num() >= 1) Spacing.X = FCString::Atof(*Parts[0]);
-        if (Parts.Num() >= 2) Spacing.Y = FCString::Atof(*Parts[1]);
-        if (Parts.Num() >= 3) Spacing.Z = FCString::Atof(*Parts[2]);
+    { // xml_enum: dof -> EMjFlexcompDof
+        FString S = Node->GetAttribute(TEXT("dof"));
+        S = S.ToLower();
+        if      (S == TEXT("full")) FlexcompDof = EMjFlexcompDof::Full;
+        else if (S == TEXT("radial")) FlexcompDof = EMjFlexcompDof::Radial;
+        else if (S == TEXT("trilinear")) FlexcompDof = EMjFlexcompDof::Trilinear;
+        else if (S == TEXT("quadratic")) FlexcompDof = EMjFlexcompDof::Quadratic;
+        else if (S == TEXT("2d")) FlexcompDof = EMjFlexcompDof::TwoD;
+        if (!S.IsEmpty()) bOverride_FlexcompDof = true;
     }
-
-    // Scale
-    FString ScaleStr = Node->GetAttribute(TEXT("scale"));
-    if (!ScaleStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        ScaleStr.ParseIntoArray(Parts, TEXT(" "), true);
-        if (Parts.Num() >= 3)
+    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("dim"), dim, bOverride_dim);
+    MjXmlUtils::ReadAttrIntArray(Node, TEXT("count"), count, bOverride_count);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("spacing"), spacing, bOverride_spacing);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("radius"), radius, bOverride_radius);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("rigid"), rigid, bOverride_rigid);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("mass"), mass, bOverride_mass);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("inertiabox"), inertiabox, bOverride_inertiabox);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("scale"), scale, bOverride_scale);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("file"), file)) bOverride_file = true;
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("point"), point, bOverride_point);
+    MjXmlUtils::ReadAttrIntArray(Node, TEXT("element"), element, bOverride_element);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("texcoord"), texcoord, bOverride_texcoord);
+    if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;
+    MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("flatskin"), flatskin, bOverride_flatskin);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("origin"), origin, bOverride_origin);
+    MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
+    { // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
+        double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
+        if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
         {
-            Scale.X = FCString::Atof(*Parts[0]);
-            Scale.Y = FCString::Atof(*Parts[1]);
-            Scale.Z = FCString::Atof(*Parts[2]);
-            bOverride_Scale = true;
+            Quat = MjUtils::MjToUERotation(TmpQuat);
+            bOverride_Quat = true;
         }
     }
+    if (bOverride_Pos)  SetRelativeLocation(Pos);
+    if (bOverride_Quat) SetRelativeRotation(Quat);
+    // --- CODEGEN_IMPORT_END ---
 
-    // Scalars — set bOverride_X when the attribute is present
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("mass"), Mass, bOverride_Mass);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("inertiabox"), InertiaBox, bOverride_InertiaBox);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("radius"), Radius, bOverride_Radius);
-
-    // Rgba
-    FString RgbaStr = Node->GetAttribute(TEXT("rgba"));
-    if (!RgbaStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        RgbaStr.ParseIntoArray(Parts, TEXT(" "), true);
-        if (Parts.Num() >= 4)
-        {
-            Rgba.R = FCString::Atof(*Parts[0]);
-            Rgba.G = FCString::Atof(*Parts[1]);
-            Rgba.B = FCString::Atof(*Parts[2]);
-            Rgba.A = FCString::Atof(*Parts[3]);
-            bOverride_Rgba = true;
-        }
-    }
-
-    // Booleans
-    MjXmlUtils::ReadAttrString(Node, TEXT("file"), MeshFile);
-
-    FString RigidStr = Node->GetAttribute(TEXT("rigid"));
-    if (!RigidStr.IsEmpty()) bRigid = RigidStr.ToBool();
-
-    FString FlatStr = Node->GetAttribute(TEXT("flatskin"));
-    if (!FlatStr.IsEmpty()) bFlatSkin = FlatStr.ToBool();
-
-    // Direct data
-    FString PointStr = Node->GetAttribute(TEXT("point"));
-    if (!PointStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        PointStr.ParseIntoArray(Parts, TEXT(" "), true);
-        for (const FString& P : Parts) PointData.Add(FCString::Atod(*P));
-    }
-
-    FString ElemStr = Node->GetAttribute(TEXT("element"));
-    if (!ElemStr.IsEmpty())
-    {
-        TArray<FString> Parts;
-        ElemStr.ParseIntoArray(Parts, TEXT(" "), true);
-        for (const FString& P : Parts) ElementData.Add(FCString::Atoi(*P));
-    }
-
-    // Pos/Quat (handled by USceneComponent transform)
-    FString PosStr = Node->GetAttribute(TEXT("pos"));
-    if (!PosStr.IsEmpty())
-    {
-        FVector MjPos = MjXmlUtils::ParseVector(PosStr);
-        SetRelativeLocation(MjUtils::MjToUEPosition(&MjPos.X));
-    }
-
-    // Sub-elements
+    // Sub-elements — these aren't auto-codegen yet because the codegen
+    // doesn't model per-sub-element UPROPERTY groups. Stays hand-rolled.
     for (const FXmlNode* Child : Node->GetChildrenNodes())
     {
         FString ChildTag = Child->GetTag();
@@ -260,8 +202,8 @@ void UMjFlexcomp::ImportFromXml(const FXmlNode* Node)
         }
     }
 
-    UE_LOG(LogURLab, Log, TEXT("[MjFlexcomp] Imported '%s': type=%s dim=%d count=(%d,%d,%d)"),
-        *MjName, *TypeStr, Dim, Count.X, Count.Y, Count.Z);
+    UE_LOG(LogURLab, Log, TEXT("[MjFlexcomp] Imported '%s' (dim=%d, count.Num()=%d)"),
+        *MjName, dim, count.Num());
 }
 
 // ============================================================================
@@ -309,16 +251,16 @@ FString UMjFlexcomp::ExportMeshToVFS(FMujocoSpecWrapper& Wrapper)
 
     for (int32 i = 0; i < NumRawVerts; i++)
     {
-        FVector3f Pos = LOD.VertexBuffers.PositionVertexBuffer.VertexPosition(i);
-        int32 Bucket = HashPos(Pos);
+        FVector3f LocalPos = LOD.VertexBuffers.PositionVertexBuffer.VertexPosition(i);
+        int32 Bucket = HashPos(LocalPos);
         int32 Found = INDEX_NONE;
         for (int32 C : HashBuckets[Bucket])
         {
-            if (UniquePositions[C].Equals(Pos, WeldTolerance)) { Found = C; break; }
+            if (UniquePositions[C].Equals(LocalPos, WeldTolerance)) { Found = C; break; }
         }
         if (Found == INDEX_NONE)
         {
-            Found = UniquePositions.Add(Pos);
+            Found = UniquePositions.Add(LocalPos);
             HashBuckets[Bucket].Add(Found);
         }
         RawToWelded[i] = Found;
@@ -378,93 +320,175 @@ FString UMjFlexcomp::ExportMeshToVFS(FMujocoSpecWrapper& Wrapper)
 // XML Serialization
 // ============================================================================
 
+// Codegen-emitted helper: walks every codegen-owned UPROPERTY on UMjFlexcomp
+// and writes `name="value"` XML attr fragments for each one whose
+// bOverride_X toggle is true. Body is auto-generated between the
+// CODEGEN_XML_PASSTHROUGH markers below; new MJCF attrs flow through with
+// zero hand-edits.
+FString UMjFlexcomp::BuildSchemaAttrsXml() const
+{
+    // --- CODEGEN_XML_PASSTHROUGH_START ---
+    FString Out;
+    if (bOverride_Pos)
+    {
+        double Tmp[3];
+        MjUtils::UEToMjPosition(Pos, Tmp);
+        Out += FString::Printf(TEXT(" pos=\"%f %f %f\""), Tmp[0], Tmp[1], Tmp[2]);
+    }
+    if (bOverride_Quat)
+    {
+        double Tmp[4];
+        MjUtils::UEToMjRotation(Quat, Tmp);
+        Out += FString::Printf(TEXT(" quat=\"%f %f %f %f\""), Tmp[0], Tmp[1], Tmp[2], Tmp[3]);
+    }
+    if (bOverride_FlexcompType)
+    {
+        if      (FlexcompType == EMjFlexcompType::Grid) Out += TEXT(" type=\"grid\"");
+        else if (FlexcompType == EMjFlexcompType::Box) Out += TEXT(" type=\"box\"");
+        else if (FlexcompType == EMjFlexcompType::Cylinder) Out += TEXT(" type=\"cylinder\"");
+        else if (FlexcompType == EMjFlexcompType::Ellipsoid) Out += TEXT(" type=\"ellipsoid\"");
+        else if (FlexcompType == EMjFlexcompType::Square) Out += TEXT(" type=\"square\"");
+        else if (FlexcompType == EMjFlexcompType::Disc) Out += TEXT(" type=\"disc\"");
+        else if (FlexcompType == EMjFlexcompType::Circle) Out += TEXT(" type=\"circle\"");
+        else if (FlexcompType == EMjFlexcompType::Mesh) Out += TEXT(" type=\"mesh\"");
+        else if (FlexcompType == EMjFlexcompType::Gmsh) Out += TEXT(" type=\"gmsh\"");
+        else if (FlexcompType == EMjFlexcompType::Direct) Out += TEXT(" type=\"direct\"");
+    }
+    if (bOverride_FlexcompDof)
+    {
+        if      (FlexcompDof == EMjFlexcompDof::Full) Out += TEXT(" dof=\"full\"");
+        else if (FlexcompDof == EMjFlexcompDof::Radial) Out += TEXT(" dof=\"radial\"");
+        else if (FlexcompDof == EMjFlexcompDof::Trilinear) Out += TEXT(" dof=\"trilinear\"");
+        else if (FlexcompDof == EMjFlexcompDof::Quadratic) Out += TEXT(" dof=\"quadratic\"");
+        else if (FlexcompDof == EMjFlexcompDof::TwoD) Out += TEXT(" dof=\"2d\"");
+    }
+    if (bOverride_group) Out += FString::Printf(TEXT(" group=\"%d\""), group);
+    if (bOverride_dim) Out += FString::Printf(TEXT(" dim=\"%d\""), dim);
+    if (bOverride_count && count.Num() > 0)
+    {
+        Out += TEXT(" count=\"");
+        for (int32 i = 0; i < count.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%d"), count[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_spacing && spacing.Num() > 0)
+    {
+        Out += TEXT(" spacing=\"");
+        for (int32 i = 0; i < spacing.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%f"), spacing[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_radius) Out += FString::Printf(TEXT(" radius=\"%f\""), radius);
+    if (bOverride_rigid) Out += FString::Printf(TEXT(" rigid=\"%s\""), rigid ? TEXT("true") : TEXT("false"));
+    if (bOverride_mass) Out += FString::Printf(TEXT(" mass=\"%f\""), mass);
+    if (bOverride_inertiabox) Out += FString::Printf(TEXT(" inertiabox=\"%f\""), inertiabox);
+    if (bOverride_scale && scale.Num() > 0)
+    {
+        Out += TEXT(" scale=\"");
+        for (int32 i = 0; i < scale.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%f"), scale[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_file && !file.IsEmpty()) Out += FString::Printf(TEXT(" file=\"%s\""), *file);
+    if (bOverride_point && point.Num() > 0)
+    {
+        Out += TEXT(" point=\"");
+        for (int32 i = 0; i < point.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%f"), point[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_element && element.Num() > 0)
+    {
+        Out += TEXT(" element=\"");
+        for (int32 i = 0; i < element.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%d"), element[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_texcoord && texcoord.Num() > 0)
+    {
+        Out += TEXT(" texcoord=\"");
+        for (int32 i = 0; i < texcoord.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%f"), texcoord[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_material && !material.IsEmpty()) Out += FString::Printf(TEXT(" material=\"%s\""), *material);
+    if (bOverride_rgba) Out += FString::Printf(TEXT(" rgba=\"%f %f %f %f\""), rgba.R, rgba.G, rgba.B, rgba.A);
+    if (bOverride_flatskin) Out += FString::Printf(TEXT(" flatskin=\"%s\""), flatskin ? TEXT("true") : TEXT("false"));
+    if (bOverride_origin && origin.Num() > 0)
+    {
+        Out += TEXT(" origin=\"");
+        for (int32 i = 0; i < origin.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%f"), origin[i]);
+        }
+        Out += TEXT("\"");
+    }
+    return Out;
+    // --- CODEGEN_XML_PASSTHROUGH_END ---
+}
+
 FString UMjFlexcomp::BuildFlexcompXml(const FString& MeshAssetName) const
 {
     FString FlexName = MjName.IsEmpty() ? GetName() : MjName;
 
-    const TCHAR* TypeStr = TEXT("grid");
-    switch (Type)
+    // Build the `<flexcomp ...>` attribute string from codegen-owned
+    // UPROPERTYs first, then layer on a few attrs the codegen doesn't
+    // know about: the element name (we own the MjName resolution), the
+    // pos derived from the UE component transform (the SceneComponent
+    // location, not the UPROPERTY), and the mesh `file=` substitution
+    // (we just exported the OBJ to the VFS — name comes from the caller).
+    FString Attrs = FString::Printf(TEXT(" name=\"%s\""), *FlexName);
+    Attrs += BuildSchemaAttrsXml();
+
+    // Derive pos from the UE component transform, NOT the Pos UPROPERTY.
+    // BuildSchemaAttrsXml will emit Pos if bOverride_Pos is set, but the
+    // UE transform is the authoritative source for placement at runtime.
     {
-        case EMjFlexcompType::Grid:      TypeStr = TEXT("grid"); break;
-        case EMjFlexcompType::Box:       TypeStr = TEXT("box"); break;
-        case EMjFlexcompType::Cylinder:  TypeStr = TEXT("cylinder"); break;
-        case EMjFlexcompType::Ellipsoid: TypeStr = TEXT("ellipsoid"); break;
-        case EMjFlexcompType::Square:    TypeStr = TEXT("square"); break;
-        case EMjFlexcompType::Disc:      TypeStr = TEXT("disc"); break;
-        case EMjFlexcompType::Circle:    TypeStr = TEXT("circle"); break;
-        case EMjFlexcompType::Mesh:      TypeStr = TEXT("mesh"); break;
-        case EMjFlexcompType::Direct:    TypeStr = TEXT("direct"); break;
+        FVector UEPos = GetRelativeLocation();
+        double MjPos[3];
+        MjUtils::UEToMjPosition(UEPos, MjPos);
+        // Strip any pos=".." the codegen helper wrote — the UE transform wins.
+        int32 PosIdx = Attrs.Find(TEXT(" pos=\""), ESearchCase::CaseSensitive);
+        if (PosIdx >= 0)
+        {
+            int32 EndIdx = Attrs.Find(TEXT("\""),
+                ESearchCase::CaseSensitive, ESearchDir::FromStart, PosIdx + 7);
+            if (EndIdx > PosIdx) { Attrs.RemoveAt(PosIdx, EndIdx - PosIdx + 1); }
+        }
+        Attrs += FString::Printf(TEXT(" pos=\"%f %f %f\""), MjPos[0], MjPos[1], MjPos[2]);
     }
 
-    const TCHAR* DofStr = TEXT("full");
-    switch (DofType)
+    // Mesh-type flexcomp uses the OBJ that ExportMeshToVFS just registered.
+    // Overrides any file=".." the codegen helper produced.
+    if (FlexcompType == EMjFlexcompType::Mesh && !MeshAssetName.IsEmpty())
     {
-        case EMjFlexcompDof::Full:      DofStr = TEXT("full"); break;
-        case EMjFlexcompDof::Radial:    DofStr = TEXT("radial"); break;
-        case EMjFlexcompDof::Trilinear: DofStr = TEXT("trilinear"); break;
-        case EMjFlexcompDof::Quadratic: DofStr = TEXT("quadratic"); break;
-    }
-
-    // Structural attributes — always emitted
-    FString Attrs = FString::Printf(TEXT("name=\"%s\" type=\"%s\" dim=\"%d\" dof=\"%s\""),
-        *FlexName, TypeStr, Dim, DofStr);
-
-    // Physics/visual attributes — only emit when user opted to override
-    if (bOverride_Mass)       Attrs += FString::Printf(TEXT(" mass=\"%f\""), Mass);
-    if (bOverride_InertiaBox) Attrs += FString::Printf(TEXT(" inertiabox=\"%f\""), InertiaBox);
-    if (bOverride_Radius)     Attrs += FString::Printf(TEXT(" radius=\"%f\""), Radius);
-    if (bOverride_Rgba)       Attrs += FString::Printf(TEXT(" rgba=\"%f %f %f %f\""), Rgba.R, Rgba.G, Rgba.B, Rgba.A);
-
-    if (Type == EMjFlexcompType::Grid || Type == EMjFlexcompType::Box ||
-        Type == EMjFlexcompType::Cylinder || Type == EMjFlexcompType::Ellipsoid)
-    {
-        Attrs += FString::Printf(TEXT(" count=\"%d %d %d\" spacing=\"%f %f %f\""),
-            Count.X, Count.Y, Count.Z, Spacing.X, Spacing.Y, Spacing.Z);
-    }
-
-    if (bOverride_Scale && !Scale.Equals(FVector::OneVector))
-    {
-        Attrs += FString::Printf(TEXT(" scale=\"%f %f %f\""), Scale.X, Scale.Y, Scale.Z);
-    }
-
-    if (bRigid)    Attrs += TEXT(" rigid=\"true\"");
-    if (bFlatSkin) Attrs += TEXT(" flatskin=\"true\"");
-
-    if (Type == EMjFlexcompType::Mesh && !MeshAssetName.IsEmpty())
-    {
+        int32 FileIdx = Attrs.Find(TEXT(" file=\""), ESearchCase::CaseSensitive);
+        if (FileIdx >= 0)
+        {
+            int32 EndIdx = Attrs.Find(TEXT("\""),
+                ESearchCase::CaseSensitive, ESearchDir::FromStart, FileIdx + 8);
+            if (EndIdx > FileIdx) { Attrs.RemoveAt(FileIdx, EndIdx - FileIdx + 1); }
+        }
         Attrs += FString::Printf(TEXT(" file=\"%s\""), *MeshAssetName);
-    }
-
-    // Component's relative location in UE becomes flexcomp pos in MuJoCo coords
-    FVector UEPos = GetRelativeLocation();
-    double MjPos[3];
-    MjUtils::UEToMjPosition(UEPos, MjPos);
-    Attrs += FString::Printf(TEXT(" pos=\"%f %f %f\""), MjPos[0], MjPos[1], MjPos[2]);
-
-    // Direct-type point/element data
-    FString DirectChildren;
-    if (Type == EMjFlexcompType::Direct)
-    {
-        if (PointData.Num() > 0)
-        {
-            Attrs += TEXT(" point=\"");
-            for (int32 i = 0; i < PointData.Num(); i++)
-            {
-                if (i > 0) Attrs += TEXT(" ");
-                Attrs += FString::Printf(TEXT("%f"), PointData[i]);
-            }
-            Attrs += TEXT("\"");
-        }
-        if (ElementData.Num() > 0)
-        {
-            Attrs += TEXT(" element=\"");
-            for (int32 i = 0; i < ElementData.Num(); i++)
-            {
-                if (i > 0) Attrs += TEXT(" ");
-                Attrs += FString::Printf(TEXT("%d"), ElementData[i]);
-            }
-            Attrs += TEXT("\"");
-        }
     }
 
     // Sub-elements — emit each only when at least one attribute is overridden,
@@ -599,7 +623,7 @@ void UMjFlexcomp::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
 
     // 1. For mesh type, export child static mesh to an OBJ in the VFS
     FString MeshAssetName;
-    if (Type == EMjFlexcompType::Mesh)
+    if (FlexcompType == EMjFlexcompType::Mesh)
     {
         MeshAssetName = ExportMeshToVFS(Wrapper);
         if (MeshAssetName.IsEmpty())

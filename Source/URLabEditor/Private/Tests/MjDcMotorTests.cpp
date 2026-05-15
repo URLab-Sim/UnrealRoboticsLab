@@ -76,23 +76,23 @@ bool FMjDcMotorImportCreatesComponents::RunTest(const FString& Parameters)
     if (DcBias)
     {
         TestTrue(TEXT("dc_bias: Type == DcMotor"), DcBias->Type == EMjActuatorType::DcMotor);
-        TestTrue(TEXT("dc_bias: motorconst overridden"), DcBias->bOverride_MotorConst);
-        if (DcBias->bOverride_MotorConst && DcBias->MotorConst.Num() >= 1)
+        TestTrue(TEXT("dc_bias: motorconst overridden"), DcBias->bOverride_motorconst);
+        if (DcBias->bOverride_motorconst && DcBias->motorconst.Num() >= 1)
         {
-            TestEqual(TEXT("dc_bias: motorconst[0]"), DcBias->MotorConst[0], 2.0f);
+            TestEqual(TEXT("dc_bias: motorconst[0]"), DcBias->motorconst[0], 2.0f);
         }
-        TestTrue(TEXT("dc_bias: resistance overridden"), DcBias->bOverride_Resistance);
-        TestEqual(TEXT("dc_bias: resistance"), DcBias->Resistance, 0.5f);
+        TestTrue(TEXT("dc_bias: resistance overridden"), DcBias->bOverride_resistance);
+        TestEqual(TEXT("dc_bias: resistance"), DcBias->resistance, 0.5f);
     }
 
     if (DcLugre)
     {
-        TestTrue(TEXT("dc_lugre: lugre overridden"), DcLugre->bOverride_LuGre);
-        TestEqual(TEXT("dc_lugre: lugre length"), DcLugre->LuGre.Num(), 5);
-        if (DcLugre->LuGre.Num() == 5)
+        TestTrue(TEXT("dc_lugre: lugre overridden"), DcLugre->bOverride_lugre);
+        TestEqual(TEXT("dc_lugre: lugre length"), DcLugre->lugre.Num(), 5);
+        if (DcLugre->lugre.Num() == 5)
         {
-            TestEqual(TEXT("dc_lugre: lugre[0]"), DcLugre->LuGre[0], 1.0e4f);
-            TestEqual(TEXT("dc_lugre: lugre[4]"), DcLugre->LuGre[4], 0.1f);
+            TestEqual(TEXT("dc_lugre: lugre[0]"), DcLugre->lugre[0], 1.0e4f);
+            TestEqual(TEXT("dc_lugre: lugre[4]"), DcLugre->lugre[4], 0.1f);
         }
     }
 

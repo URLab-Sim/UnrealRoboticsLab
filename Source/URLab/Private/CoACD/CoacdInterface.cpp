@@ -22,24 +22,24 @@
 
 #include "CoACD/CoacdInterface.h"
 #include "Utils/URLabLogging.h"
-void CoacdInterface::SaveCoACDMeshAsOBJ(CoACD_Mesh& Mesh, const FString& FilePath) {
+void CoacdInterface::SaveCoACDMeshAsOBJ(CoACD_Mesh& mesh, const FString& FilePath) {
     FString OutputString;
 
     // Write vertices
-    for (uint64_t i = 0; i < Mesh.vertices_count; ++i) {
-        double X = Mesh.vertices_ptr[3 * i];
-        double Y = Mesh.vertices_ptr[3 * i + 1];
-        double Z = Mesh.vertices_ptr[3 * i + 2];
+    for (uint64_t i = 0; i < mesh.vertices_count; ++i) {
+        double X = mesh.vertices_ptr[3 * i];
+        double Y = mesh.vertices_ptr[3 * i + 1];
+        double Z = mesh.vertices_ptr[3 * i + 2];
 
         // Adjust Unreal Engine coordinates and scale (divide by 100)
         OutputString += FString::Printf(TEXT("v %f %f %f\n"), X / 100.0, -Y / 100.0, Z / 100.0);
     }
 
     // Write faces (indices are 1-based in OBJ format)
-    for (uint64_t i = 0; i < Mesh.triangles_count; ++i) {
-        int32 A = Mesh.triangles_ptr[3 * i] + 1;
-        int32 B = Mesh.triangles_ptr[3 * i + 1] + 1;
-        int32 C = Mesh.triangles_ptr[3 * i + 2] + 1;
+    for (uint64_t i = 0; i < mesh.triangles_count; ++i) {
+        int32 A = mesh.triangles_ptr[3 * i] + 1;
+        int32 B = mesh.triangles_ptr[3 * i + 1] + 1;
+        int32 C = mesh.triangles_ptr[3 * i + 2] + 1;
 
         OutputString += FString::Printf(TEXT("f %d %d %d\n"), C, B, A);
     }

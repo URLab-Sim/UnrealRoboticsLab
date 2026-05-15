@@ -578,7 +578,7 @@ bool FMjPhysicsSleep_WakeBodyRestoresAwakeState::RunTest(const FString& Paramete
 
 // ============================================================================
 // URLab.Physics.Sleep_ForceSleepBody
-//   Body->Sleep() must put the body to sleep; Wake() must restore it.
+//   Body->PutToSleep() must put the body to sleep; Wake() must restore it.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsSleep_ForceSleepBody,
     "URLab.Physics.Sleep_ForceSleepBody",
@@ -597,7 +597,7 @@ bool FMjPhysicsSleep_ForceSleepBody::RunTest(const FString& Parameters)
     }
 
     TestTrue(TEXT("Body starts awake"), S.Body->IsAwake());
-    S.Body->Sleep();
+    S.Body->PutToSleep();
     TestTrue(TEXT("Body->IsAwake() false after Sleep()"), !S.Body->IsAwake());
     S.Body->Wake();
     TestTrue(TEXT("Body->IsAwake() true after Wake()"), S.Body->IsAwake());

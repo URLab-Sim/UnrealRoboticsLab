@@ -20,11 +20,11 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/Input/MjInputHandler.h"
+#include "MuJoCo/input/MjInputHandler.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/Input/MjPerturbation.h"
+#include "MuJoCo/input/MjPerturbation.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "InputCoreTypes.h"
@@ -271,7 +271,7 @@ void UMjInputHandler::ProcessPerturbation(APlayerController* PC, float DeltaTime
         }
     }
 
-    // Ctrl+LMB press edge: start rotate.
+    // ctrl+LMB press edge: start rotate.
     const bool bCtrlLmbHeld = bCtrl && bLmbDown;
     if (bCtrlLmbHeld && !bPrevCtrlLmbHeld && Pert->HasSelection())
     {
@@ -279,7 +279,7 @@ void UMjInputHandler::ProcessPerturbation(APlayerController* PC, float DeltaTime
         LockCamera(PC);
     }
 
-    // Ctrl+RMB press edge: start translate.
+    // ctrl+RMB press edge: start translate.
     const bool bCtrlRmbHeld = bCtrl && bRmbDown;
     if (bCtrlRmbHeld && !bPrevCtrlRmbHeld && Pert->HasSelection())
     {

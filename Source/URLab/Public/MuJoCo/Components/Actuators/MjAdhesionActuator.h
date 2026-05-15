@@ -35,6 +35,14 @@ class URLAB_API UMjAdhesionActuator : public UMjActuator
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_gain = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_gain"))
+    float gain = 0.0f;
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjAdhesionActuator();
 
     /** @brief Override toggle for Kp. */
@@ -45,7 +53,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kp"))
     float Kp = 1.0f;
 
-    virtual void ParseSpecifics(const class FXmlNode* Node) override;
-    virtual void ExtractSpecifics(const mjsActuator* act) override;
-    virtual void ExportTo(mjsActuator* act, mjsDefault* def = nullptr) override;
+    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

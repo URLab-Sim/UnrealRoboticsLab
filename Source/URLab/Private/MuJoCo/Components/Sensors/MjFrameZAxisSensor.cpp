@@ -21,8 +21,31 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjFrameZAxisSensor.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjFrameZAxisSensor::UMjFrameZAxisSensor()
 {
     Type = EMjSensorType::FrameZAxis;
 }
+
+void UMjFrameZAxisSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
+}
+
+void UMjFrameZAxisSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

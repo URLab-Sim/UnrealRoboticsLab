@@ -25,73 +25,43 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjPositionActuator::UMjPositionActuator()
 {
     Type = EMjActuatorType::Position;
 }
 
-void UMjPositionActuator::ParseSpecifics(const FXmlNode* Node)
+
+
+void UMjPositionActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    MjXmlUtils::ReadAttrFloat(Node,  TEXT("kp"),           Kp,           bOverride_Kp);
-    MjXmlUtils::ReadAttrDouble(Node, TEXT("kv"),           Kv,           bOverride_Kv);
-    MjXmlUtils::ReadAttrFloat(Node,  TEXT("dampratio"),    DampRatio,    bOverride_DampRatio);
-    MjXmlUtils::ReadAttrFloat(Node,  TEXT("timeconst"),    TimeConst,    bOverride_TimeConst);
-    MjXmlUtils::ReadAttrFloat(Node,  TEXT("inheritrange"), InheritRange, bOverride_InheritRange);
+    if (!Element) return;
+
+    Super::ExportTo(Element, def);
+
+    // --- CODEGEN_EXPORT_START ---
+    {
+        double kvBuf[1] = { bOverride_kv ? (double)kv : -1.0 };
+        double dampratioBuf[1] = { bOverride_dampratio ? (double)dampratio : -1.0 };
+        double timeconstBuf[1] = { (bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0 };
+        mjs_setToPosition(Element, bOverride_kp ? (double)kp : -1.0, kvBuf, dampratioBuf, timeconstBuf, bOverride_inheritrange ? (double)inheritrange : 0.0);
+    }
+    if (bOverride_inheritrange) Element->inheritrange = inheritrange;
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjPositionActuator::ExtractSpecifics(const mjsActuator* act)
+void UMjPositionActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    if (GainPrm.Num() > 0)
-    {
-        Kp = GainPrm[0];
-        bOverride_Kp = true;
-    }
-    
-    if (BiasPrm.Num() > 2)
-    {
-        // MuJoCo 3.x stores damping as biasprm[2] = -Kv (negative) because the
-        // bias force is computed as bias[2] * qvel and subtracted from the actuator
-        // force, so a positive Kv produces a negative (damping) contribution.
-        // We negate here to recover the user-facing positive damping coefficient Kv.
-        // mjs_setToPosition() then receives Kv as a positive value and handles the
-        // sign internally. (See MuJoCo docs: "position actuator" biasprm[2].)
-        Kv = -BiasPrm[2];
-        bOverride_Kv = true;
-    }
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
 
-    // In MuJoCo, the default value for inheritrange is 1.0
-    if (act->inheritrange != 1.0)
-    {
-        InheritRange = act->inheritrange;
-        bOverride_InheritRange = true;
-    }
-}
-
-void UMjPositionActuator::ExportTo(mjsActuator* act, mjsDefault* def)
-{
-    if (!act) return;
-
-    double kvArr[1] = { (double)Kv };
-    double dampratioArr[1] = { (double)DampRatio };
-    double timeconstArr[1] = { (double)TimeConst };
-
-    double* kv_ptr        = bOverride_Kv        ? kvArr        : nullptr;
-    double* dampratio_ptr = bOverride_DampRatio  ? dampratioArr : nullptr;
-    double* timeconst_ptr = bOverride_TimeConst  ? timeconstArr : nullptr;
-
-    double inherit = bOverride_InheritRange ? InheritRange : act->inheritrange;
-    UE_LOG(LogURLabImport, Log, TEXT("[MjPositionActuator::ExportTo] '%s' -> InheritRange: %f"), *GetName(), inherit);
-    //log the value stored in InheritRange
-    UE_LOG(LogURLabImport, Log, TEXT("[MjPositionActuator::ExportTo] '%s' -> InheritRange (RAW COMP): %f"), *GetName(), InheritRange); 
-
-    Super::ExportTo(act, def); // 1. Common attributes (populates act from default via mjs_addActuator)
-
-    // Mirror OneActuator: kp = act->gainprm[0] as the inherited default, override only if explicitly set.
-    // This ensures child defaults (e.g. abduction inheriting gainprm=100 from go1) are respected.
-    double default_kp = bOverride_Kp ? (double)Kp : act->gainprm[0];
-
-    mjs_setToPosition(act, default_kp, kv_ptr, dampratio_ptr, timeconst_ptr, inherit); // 2. Type preset
-    ApplyRawOverrides(act, def);                                                        // 3. Raw prm overrides
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("inheritrange"), inheritrange, bOverride_inheritrange);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("kp"), kp, bOverride_kp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("kv"), kv, bOverride_kv);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("dampratio"), dampratio, bOverride_dampratio);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("timeconst"), timeconst, bOverride_timeconst);
+    // --- CODEGEN_IMPORT_END ---
 }
 

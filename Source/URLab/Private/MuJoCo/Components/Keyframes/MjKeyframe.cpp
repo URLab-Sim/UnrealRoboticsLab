@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Keyframes/MjKeyframe.h"
@@ -34,44 +34,61 @@ UMjKeyframe::UMjKeyframe()
     PrimaryComponentTick.bCanEverTick = false;
 }
 
-void UMjKeyframe::ImportFromXml(const FXmlNode* Node)
+void UMjKeyframe::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
 
-    {
-        bool bTimeOverride = false;
-        MjXmlUtils::ReadAttrFloat(Node, TEXT("time"), Time, bTimeOverride);
-    }
-
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("qpos"),  Qpos,  bOverride_Qpos);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("qvel"),  Qvel,  bOverride_Qvel);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("act"),   Act,   bOverride_Act);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("ctrl"),  Ctrl,  bOverride_Ctrl);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("mpos"),  Mpos,  bOverride_Mpos);
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("time"), Time, bOverride_Time);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("qpos"), Qpos, bOverride_Qpos);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("qvel"), Qvel, bOverride_Qvel);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("act"), Act, bOverride_Act);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("mpos"), Mpos, bOverride_Mpos);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("mquat"), Mquat, bOverride_Mquat);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("ctrl"), Ctrl, bOverride_Ctrl);
+    // --- CODEGEN_IMPORT_END ---
 
-    UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe XML Import] '%s' | Time: %f, Qpos: %d, Qvel: %d"), 
+    UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe XML Import] '%s' | Time: %f, Qpos: %d, Qvel: %d"),
         *GetName(), Time, Qpos.Num(), Qvel.Num());
 }
 
-void UMjKeyframe::ExportTo(mjsKey* Key)
+void UMjKeyframe::ExportTo(mjsKey* Element, mjsDefault* Default)
 {
-    if (!Key) return;
+    if (!Element) return;
 
-    Key->time = (double)Time;
-
-    auto SetVec = [](mjDoubleVec* Dest, const TArray<float>& Src) {
-        if (!Dest) return;
-        Dest->clear();
-        for (float V : Src) Dest->push_back((double)V);
-    };
-
-    if (bOverride_Qpos) SetVec(Key->qpos, Qpos);
-    if (bOverride_Qvel) SetVec(Key->qvel, Qvel);
-    if (bOverride_Act)  SetVec(Key->act, Act);
-    if (bOverride_Ctrl) SetVec(Key->ctrl, Ctrl);
-    if (bOverride_Mpos) SetVec(Key->mpos, Mpos);
-    if (bOverride_Mquat) SetVec(Key->mquat, Mquat);
+    // --- CODEGEN_EXPORT_START ---
+    if (bOverride_Time) Element->time = Time;
+    if (bOverride_Qpos && Element->qpos)
+    {
+        Element->qpos->clear();
+        for (float V : Qpos) Element->qpos->push_back((double)V);
+    }
+    if (bOverride_Qvel && Element->qvel)
+    {
+        Element->qvel->clear();
+        for (float V : Qvel) Element->qvel->push_back((double)V);
+    }
+    if (bOverride_Act && Element->act)
+    {
+        Element->act->clear();
+        for (float V : Act) Element->act->push_back((double)V);
+    }
+    if (bOverride_Ctrl && Element->ctrl)
+    {
+        Element->ctrl->clear();
+        for (float V : Ctrl) Element->ctrl->push_back((double)V);
+    }
+    if (bOverride_Mpos && Element->mpos)
+    {
+        Element->mpos->clear();
+        for (float V : Mpos) Element->mpos->push_back((double)V);
+    }
+    if (bOverride_Mquat && Element->mquat)
+    {
+        Element->mquat->clear();
+        for (float V : Mquat) Element->mquat->push_back((double)V);
+    }
+    // --- CODEGEN_EXPORT_END ---
 }
 
 // Counts expected DOF dimensions from the owning actor's joint components.
@@ -136,6 +153,17 @@ static FKeyframeDimensions CountDimensions(AActor* Owner)
     return D;
 }
 
+namespace
+{
+    // Helper for overwriting an mjDoubleVec* with a TArray<float>.
+    void SetVec(mjDoubleVec* Dest, const TArray<float>& Src)
+    {
+        if (!Dest) return;
+        Dest->clear();
+        for (float V : Src) Dest->push_back((double)V);
+    }
+}
+
 void UMjKeyframe::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
     mjsKey* Key = mjs_addKey(Wrapper.Spec);
@@ -150,99 +178,61 @@ void UMjKeyframe::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
     FString TName = MjName.IsEmpty() ? GetName() : MjName;
     mjs_setName(Key->element, TCHAR_TO_UTF8(*TName));
 
-    Key->time = (double)Time;
+    // 1) Codegen-owned ExportTo: writes Time + verbatim qpos/qvel/act/ctrl/
+    //    mpos/mquat. May be overwritten below for freejoint-aware qpos/qvel
+    //    padding.
+    ExportTo(Key);
 
-    auto SetVec = [](mjDoubleVec* Dest, const TArray<float>& Src) {
-        if (!Dest) return;
-        Dest->clear();
-        for (float V : Src) Dest->push_back((double)V);
-    };
-
+    // 2) Freejoint-aware padding: when the model has free joints, MJCF
+    //    keyframe XML often omits the freejoint qpos/qvel slots (the user
+    //    only types the hinge/slide/ball values). Detect this by length and
+    //    pad in front with identity-pose (qpos: 0,0,0, 1,0,0,0) / zero-vel
+    //    (qvel: 0,0,0, 0,0,0) per freejoint.
     FKeyframeDimensions Dims = CountDimensions(GetOwner());
 
-    // --- Qpos: size-based detection of freejoint presence ---
-    if (bOverride_Qpos)
+    if (bOverride_Qpos && Dims.NumFreeJoints > 0 && Qpos.Num() == Dims.NqJointsOnly)
     {
-        if (Dims.NumFreeJoints > 0 && Qpos.Num() == Dims.NqJointsOnly)
+        TArray<float> Padded;
+        Padded.Reserve(Dims.NqWithFree);
+        for (int32 i = 0; i < Dims.NumFreeJoints; i++)
         {
-            // XML has joints only — pad with freejoint defaults
-            TArray<float> Padded;
-            Padded.Reserve(Dims.NqWithFree);
-            for (int32 i = 0; i < Dims.NumFreeJoints; i++)
-            {
-                Padded.Append({0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
-            }
-            Padded.Append(Qpos);
-            SetVec(Key->qpos, Padded);
-            UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] '%s': padded qpos %d → %d (%d free joints)"),
-                *TName, Qpos.Num(), Padded.Num(), Dims.NumFreeJoints);
+            Padded.Append({0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
         }
-        else if (Dims.NumFreeJoints > 0 && Qpos.Num() == Dims.NqWithFree)
-        {
-            // XML already includes freejoint values — export as-is
-            SetVec(Key->qpos, Qpos);
-            UE_LOG(LogURLabImport, Verbose, TEXT("[MjKeyframe] '%s': qpos already has freejoint (%d values), no padding"),
-                *TName, Qpos.Num());
-        }
-        else
-        {
-            // No freejoints, or unexpected size — export as-is
-            if (Dims.NumFreeJoints > 0 && Qpos.Num() != Dims.NqJointsOnly && Qpos.Num() != Dims.NqWithFree)
-            {
-                UE_LOG(LogURLabImport, Warning, TEXT("[MjKeyframe] '%s': qpos has %d values, expected %d (with free) or %d (joints only)"),
-                    *TName, Qpos.Num(), Dims.NqWithFree, Dims.NqJointsOnly);
-            }
-            SetVec(Key->qpos, Qpos);
-        }
+        Padded.Append(Qpos);
+        SetVec(Key->qpos, Padded);
+        UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] '%s': padded qpos %d -> %d (%d free joints)"),
+            *TName, Qpos.Num(), Padded.Num(), Dims.NumFreeJoints);
+    }
+    else if (bOverride_Qpos && Dims.NumFreeJoints > 0 && Qpos.Num() != Dims.NqWithFree)
+    {
+        UE_LOG(LogURLabImport, Warning, TEXT("[MjKeyframe] '%s': qpos has %d values, expected %d (with free) or %d (joints only)"),
+            *TName, Qpos.Num(), Dims.NqWithFree, Dims.NqJointsOnly);
     }
 
-    // --- Qvel: same size-based detection ---
-    if (bOverride_Qvel)
+    if (bOverride_Qvel && Dims.NumFreeJoints > 0 && Qvel.Num() == Dims.NvJointsOnly)
     {
-        if (Dims.NumFreeJoints > 0 && Qvel.Num() == Dims.NvJointsOnly)
+        TArray<float> Padded;
+        Padded.Reserve(Dims.NvWithFree);
+        for (int32 i = 0; i < Dims.NumFreeJoints; i++)
         {
-            // Joints only — pad with freejoint zero velocities
-            TArray<float> Padded;
-            Padded.Reserve(Dims.NvWithFree);
-            for (int32 i = 0; i < Dims.NumFreeJoints; i++)
-            {
-                Padded.Append({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
-            }
-            Padded.Append(Qvel);
-            SetVec(Key->qvel, Padded);
-            UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] '%s': padded qvel %d → %d"),
-                *TName, Qvel.Num(), Padded.Num());
+            Padded.Append({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
         }
-        else if (Dims.NumFreeJoints > 0 && Qvel.Num() == Dims.NvWithFree)
-        {
-            SetVec(Key->qvel, Qvel);
-        }
-        else
-        {
-            if (Dims.NumFreeJoints > 0 && Qvel.Num() != Dims.NvJointsOnly && Qvel.Num() != Dims.NvWithFree)
-            {
-                UE_LOG(LogURLabImport, Warning, TEXT("[MjKeyframe] '%s': qvel has %d values, expected %d (with free) or %d (joints only)"),
-                    *TName, Qvel.Num(), Dims.NvWithFree, Dims.NvJointsOnly);
-            }
-            SetVec(Key->qvel, Qvel);
-        }
+        Padded.Append(Qvel);
+        SetVec(Key->qvel, Padded);
+        UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] '%s': padded qvel %d -> %d"),
+            *TName, Qvel.Num(), Padded.Num());
+    }
+    else if (bOverride_Qvel && Dims.NumFreeJoints > 0 && Qvel.Num() != Dims.NvWithFree)
+    {
+        UE_LOG(LogURLabImport, Warning, TEXT("[MjKeyframe] '%s': qvel has %d values, expected %d (with free) or %d (joints only)"),
+            *TName, Qvel.Num(), Dims.NvWithFree, Dims.NvJointsOnly);
     }
 
-    // --- Ctrl: validate size ---
-    if (bOverride_Ctrl)
+    if (bOverride_Ctrl && Dims.NumActuators > 0 && Ctrl.Num() != Dims.NumActuators)
     {
-        if (Dims.NumActuators > 0 && Ctrl.Num() != Dims.NumActuators)
-        {
-            UE_LOG(LogURLabImport, Warning, TEXT("[MjKeyframe] '%s': ctrl has %d values but %d actuators detected"),
-                *TName, Ctrl.Num(), Dims.NumActuators);
-        }
-        SetVec(Key->ctrl, Ctrl);
+        UE_LOG(LogURLabImport, Warning, TEXT("[MjKeyframe] '%s': ctrl has %d values but %d actuators detected"),
+            *TName, Ctrl.Num(), Dims.NumActuators);
     }
-
-    // --- Remaining arrays: no freejoint involvement ---
-    if (bOverride_Act)   SetVec(Key->act, Act);
-    if (bOverride_Mpos)  SetVec(Key->mpos, Mpos);
-    if (bOverride_Mquat) SetVec(Key->mquat, Mquat);
 
     UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] Registered '%s' at time %f (nq_joints=%d, nq_free=%d, nv_joints=%d, nv_free=%d, nu=%d)"),
         *TName, Time, Dims.NqJointsOnly, Dims.NqWithFree, Dims.NvJointsOnly, Dims.NvWithFree, Dims.NumActuators);

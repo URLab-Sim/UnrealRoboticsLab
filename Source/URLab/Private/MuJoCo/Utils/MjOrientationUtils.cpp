@@ -114,7 +114,7 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
         return false;
     }
 
-    // Priority 1: quat (w x y z)
+    // priority 1: quat (w x y z)
     FString QuatStr = Node->GetAttribute(TEXT("quat"));
     if (!QuatStr.IsEmpty())
     {
@@ -131,7 +131,7 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
         }
     }
 
-    // Priority 2: axisangle (x y z angle)
+    // priority 2: axisangle (x y z angle)
     FString AxisAngleStr = Node->GetAttribute(TEXT("axisangle"));
     if (!AxisAngleStr.IsEmpty())
     {
@@ -149,7 +149,7 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
         }
     }
 
-    // Priority 3: euler (e1 e2 e3) — sequence from compiler settings
+    // priority 3: euler (e1 e2 e3) — sequence from compiler settings
     FString EulerStr = Node->GetAttribute(TEXT("euler"));
     if (!EulerStr.IsEmpty())
     {
@@ -173,7 +173,7 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
         }
     }
 
-    // Priority 4: xyaxes (x1 x2 x3 y1 y2 y3)
+    // priority 4: xyaxes (x1 x2 x3 y1 y2 y3)
     FString XYAxesStr = Node->GetAttribute(TEXT("xyaxes"));
     if (!XYAxesStr.IsEmpty())
     {
@@ -188,7 +188,7 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
         }
     }
 
-    // Priority 5: zaxis (z1 z2 z3)
+    // priority 5: zaxis (z1 z2 z3)
     FString ZAxisStr = Node->GetAttribute(TEXT("zaxis"));
     if (!ZAxisStr.IsEmpty())
     {
@@ -384,7 +384,7 @@ void MjOrientationUtils::ZAxisToQuat(const double ZAxis[3], double OutQuat[4])
     Zx /= Len; Zy /= Len; Zz /= Len;
 
     // Source direction: (0, 0, 1)
-    // Target direction: (Zx, Zy, Zz)
+    // target direction: (Zx, Zy, Zz)
     // Rotation axis = cross(source, target), angle = acos(dot(source, target))
 
     double DotVal = Zz; // dot((0,0,1), (Zx,Zy,Zz)) = Zz

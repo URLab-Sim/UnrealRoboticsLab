@@ -22,6 +22,7 @@
 
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -47,152 +48,177 @@ void UMjActuator::BeginPlay()
 	Super::BeginPlay();
 }
 
-void UMjActuator::ExportTo(mjsActuator* Actuator, mjsDefault* Default)
+void UMjActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
 {
-    if (!Actuator) return;
+    if (!Element) return;
 
-    if (!TargetName.IsEmpty()) mjs_setString(Actuator->target, TCHAR_TO_UTF8(*TargetName));
-
-    switch(TransmissionType)
+    // --- CODEGEN_EXPORT_START ---
+    if (!TargetName.IsEmpty()) mjs_setString(Element->target, TCHAR_TO_UTF8(*TargetName));
+    switch (TransmissionType)
     {
-        case EMjActuatorTrnType::Joint:          Actuator->trntype = mjTRN_JOINT; break;
-        case EMjActuatorTrnType::JointInParent: Actuator->trntype = mjTRN_JOINTINPARENT; break;
-        case EMjActuatorTrnType::SliderCrank:   Actuator->trntype = mjTRN_SLIDERCRANK; break;
-        case EMjActuatorTrnType::Tendon:        Actuator->trntype = mjTRN_TENDON; break;
-        case EMjActuatorTrnType::Site:          Actuator->trntype = mjTRN_SITE; break;
-        case EMjActuatorTrnType::Body:          Actuator->trntype = mjTRN_BODY; break;
-        default:                                Actuator->trntype = mjTRN_UNDEFINED; break;
+        case EMjActuatorTrnType::Joint:          Element->trntype = mjTRN_JOINT;         break;
+        case EMjActuatorTrnType::JointInParent:  Element->trntype = mjTRN_JOINTINPARENT; break;
+        case EMjActuatorTrnType::SliderCrank:    Element->trntype = mjTRN_SLIDERCRANK;   break;
+        case EMjActuatorTrnType::Tendon:         Element->trntype = mjTRN_TENDON;        break;
+        case EMjActuatorTrnType::Site:           Element->trntype = mjTRN_SITE;          break;
+        case EMjActuatorTrnType::Body:           Element->trntype = mjTRN_BODY;          break;
+        default:                                 Element->trntype = mjTRN_UNDEFINED;     break;
     }
-
-    if (TransmissionType == EMjActuatorTrnType::SliderCrank)
+    if (TransmissionType == EMjActuatorTrnType::SliderCrank && !SliderSite.IsEmpty())
     {
-         if (!SliderSite.IsEmpty()) mjs_setString(Actuator->slidersite, TCHAR_TO_UTF8(*SliderSite));
-         Actuator->cranklength = CrankLength;
+        mjs_setString(Element->slidersite, TCHAR_TO_UTF8(*SliderSite));
     }
-    if (TransmissionType == EMjActuatorTrnType::Site && !RefSite.IsEmpty()) mjs_setString(Actuator->refsite, TCHAR_TO_UTF8(*RefSite));
-    
-    if (bOverride_Group) Actuator->group = Group;
-    if (bOverride_ActEarly) Actuator->actearly = bActEarly ? 1 : 0;
-    if (bOverride_ActLimited) Actuator->actlimited = bActLimited ? 1 : 0;
-
-    if (bOverride_ActRange)
+    if (TransmissionType == EMjActuatorTrnType::Site && !RefSite.IsEmpty())
     {
-        for (int i = 0; i < ActRange.Num() && i < 2; ++i)
+        mjs_setString(Element->refsite, TCHAR_TO_UTF8(*RefSite));
+    }
+    if (bOverride_GainType)
+    {
+        switch (GainType)
         {
-            Actuator->actrange[i] = ActRange[i];
+            case EMjGainType::Fixed: Element->gaintype = (mjtGain)mjGAIN_FIXED; break;
+            case EMjGainType::Affine: Element->gaintype = (mjtGain)mjGAIN_AFFINE; break;
+            case EMjGainType::Muscle: Element->gaintype = (mjtGain)mjGAIN_MUSCLE; break;
+            case EMjGainType::User: Element->gaintype = (mjtGain)mjGAIN_USER; break;
+            default: break;
         }
     }
-
-    if (bOverride_LengthRange)
+    if (bOverride_BiasType)
     {
-        for (int i = 0; i < LengthRange.Num() && i < 2; ++i)
+        switch (BiasType)
         {
-            Actuator->lengthrange[i] = LengthRange[i];
+            case EMjBiasType::None: Element->biastype = (mjtBias)mjBIAS_NONE; break;
+            case EMjBiasType::Affine: Element->biastype = (mjtBias)mjBIAS_AFFINE; break;
+            case EMjBiasType::Muscle: Element->biastype = (mjtBias)mjBIAS_MUSCLE; break;
+            case EMjBiasType::User: Element->biastype = (mjtBias)mjBIAS_USER; break;
+            default: break;
         }
     }
-
-    if (bOverride_CtrlLimited) Actuator->ctrllimited = bCtrlLimited ? 1 : 0;
-
-    if (bOverride_CtrlRange)
+    if (bOverride_DynType)
     {
-        for (int i = 0; i < CtrlRange.Num() && i < 2; ++i)
+        switch (DynType)
         {
-            Actuator->ctrlrange[i] = CtrlRange[i];
+            case EMjDynType::None: Element->dyntype = (mjtDyn)mjDYN_NONE; break;
+            case EMjDynType::Integrator: Element->dyntype = (mjtDyn)mjDYN_INTEGRATOR; break;
+            case EMjDynType::Filter: Element->dyntype = (mjtDyn)mjDYN_FILTER; break;
+            case EMjDynType::FilterExact: Element->dyntype = (mjtDyn)mjDYN_FILTEREXACT; break;
+            case EMjDynType::Muscle: Element->dyntype = (mjtDyn)mjDYN_MUSCLE; break;
+            case EMjDynType::User: Element->dyntype = (mjtDyn)mjDYN_USER; break;
+            default: break;
         }
     }
-
-    if (bOverride_ForceLimited) Actuator->forcelimited = bForceLimited ? 1 : 0;
-
-    if (bOverride_ForceRange)
-    {
-        for (int i = 0; i < ForceRange.Num() && i < 2; ++i)
-        {
-            Actuator->forcerange[i] = ForceRange[i];
-        }
-    }
-
-    if (bOverride_Gear)
-    {
-        for (int i=0; i < Gear.Num() && i < 6; ++i) Actuator->gear[i] = Gear[i];
-    }
+    if (bOverride_group) Element->group = group;
+    if (bOverride_nsample) Element->nsample = nsample;
+    if (bOverride_interp) Element->interp = interp;
+    if (bOverride_delay) Element->delay = delay;
+    if (bOverride_ctrllimited) Element->ctrllimited = ctrllimited ? 1 : 0;
+    if (bOverride_forcelimited) Element->forcelimited = forcelimited ? 1 : 0;
+    if (bOverride_actlimited) Element->actlimited = actlimited ? 1 : 0;
+    if (bOverride_ctrlrange) { for (int32 i = 0; i < ctrlrange.Num(); ++i) Element->ctrlrange[i] = ctrlrange[i]; }
+    if (bOverride_forcerange) { for (int32 i = 0; i < forcerange.Num(); ++i) Element->forcerange[i] = forcerange[i]; }
+    if (bOverride_actrange) { for (int32 i = 0; i < actrange.Num(); ++i) Element->actrange[i] = actrange[i]; }
+    if (bOverride_lengthrange) { for (int32 i = 0; i < lengthrange.Num(); ++i) Element->lengthrange[i] = lengthrange[i]; }
+    if (bOverride_gear) { for (int32 i = 0; i < gear.Num(); ++i) Element->gear[i] = gear[i]; }
+    if (bOverride_damping) { for (int32 i = 0; i < damping.Num(); ++i) Element->damping[i] = damping[i]; }
+    if (bOverride_armature) Element->armature = armature;
+    if (bOverride_cranklength) Element->cranklength = cranklength;
+    if (bOverride_gainprm) { for (int32 i = 0; i < gainprm.Num(); ++i) Element->gainprm[i] = gainprm[i]; }
+    if (bOverride_biasprm) { for (int32 i = 0; i < biasprm.Num(); ++i) Element->biasprm[i] = biasprm[i]; }
+    if (bOverride_dynprm) { for (int32 i = 0; i < dynprm.Num(); ++i) Element->dynprm[i] = dynprm[i]; }
+    if (bOverride_actdim) Element->actdim = actdim;
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjActuator::ApplyRawOverrides(mjsActuator* Actuator, mjsDefault* Default)
-{
-    if (!Actuator) return;
 
-    if (bOverride_GainPrm)
-    {
-        for(int i=0; i<GainPrm.Num() && i<mjNGAIN; ++i) Actuator->gainprm[i] = GainPrm[i];
-    }
-    if (bOverride_BiasPrm)
-    {
-        for(int i=0; i<BiasPrm.Num() && i<mjNBIAS; ++i) Actuator->biasprm[i] = BiasPrm[i];
-    }
-    if (bOverride_DynPrm)
-    {
-        for(int i=0; i<DynPrm.Num() && i<mjNDYN; ++i) Actuator->dynprm[i] = DynPrm[i];
-    }
-}
-
-void UMjActuator::ImportFromXml(const FXmlNode* Node)
+void UMjActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
 
+    // --- CODEGEN_IMPORT_START ---
+    { // xml_enum: gaintype -> EMjGainType
+        FString S = Node->GetAttribute(TEXT("gaintype"));
+        S = S.ToLower();
+        if      (S == TEXT("fixed")) GainType = EMjGainType::Fixed;
+        else if (S == TEXT("affine")) GainType = EMjGainType::Affine;
+        else if (S == TEXT("muscle")) GainType = EMjGainType::Muscle;
+        else if (S == TEXT("user")) GainType = EMjGainType::User;
+        if (!S.IsEmpty()) bOverride_GainType = true;
+    }
+    { // xml_enum: biastype -> EMjBiasType
+        FString S = Node->GetAttribute(TEXT("biastype"));
+        S = S.ToLower();
+        if      (S == TEXT("none")) BiasType = EMjBiasType::None;
+        else if (S == TEXT("affine")) BiasType = EMjBiasType::Affine;
+        else if (S == TEXT("muscle")) BiasType = EMjBiasType::Muscle;
+        else if (S == TEXT("user")) BiasType = EMjBiasType::User;
+        if (!S.IsEmpty()) bOverride_BiasType = true;
+    }
+    { // xml_enum: dyntype -> EMjDynType
+        FString S = Node->GetAttribute(TEXT("dyntype"));
+        S = S.ToLower();
+        if      (S == TEXT("none")) DynType = EMjDynType::None;
+        else if (S == TEXT("integrator")) DynType = EMjDynType::Integrator;
+        else if (S == TEXT("filter")) DynType = EMjDynType::Filter;
+        else if (S == TEXT("filterexact")) DynType = EMjDynType::FilterExact;
+        else if (S == TEXT("muscle")) DynType = EMjDynType::Muscle;
+        else if (S == TEXT("user")) DynType = EMjDynType::User;
+        if (!S.IsEmpty()) bOverride_DynType = true;
+    }
+    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("nsample"), nsample, bOverride_nsample);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("interp"), interp, bOverride_interp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("delay"), delay, bOverride_delay);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("ctrllimited"), ctrllimited, bOverride_ctrllimited);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("forcelimited"), forcelimited, bOverride_forcelimited);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("actlimited"), actlimited, bOverride_actlimited);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("ctrlrange"), ctrlrange, bOverride_ctrlrange);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("forcerange"), forcerange, bOverride_forcerange);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actrange"), actrange, bOverride_actrange);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("lengthrange"), lengthrange, bOverride_lengthrange);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("gear"), gear, bOverride_gear);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), damping, bOverride_damping);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("cranklength"), cranklength, bOverride_cranklength);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("gainprm"), gainprm, bOverride_gainprm);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("biasprm"), biasprm, bOverride_biasprm);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("dynprm"), dynprm, bOverride_dynprm);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("actdim"), actdim, bOverride_actdim);
+    { // canonicalize actuator transmission attrs
+        FString TrnTarget;
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("joint"), TrnTarget))
+        {
+            TransmissionType = EMjActuatorTrnType::Joint;
+            TargetName = TrnTarget;
+        }
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("jointinparent"), TrnTarget))
+        {
+            TransmissionType = EMjActuatorTrnType::JointInParent;
+            TargetName = TrnTarget;
+        }
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("tendon"), TrnTarget))
+        {
+            TransmissionType = EMjActuatorTrnType::Tendon;
+            TargetName = TrnTarget;
+        }
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))
+        {
+            TransmissionType = EMjActuatorTrnType::SliderCrank;
+        }
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("site"), TrnTarget))
+        {
+            TransmissionType = EMjActuatorTrnType::Site;
+            TargetName = TrnTarget;
+        }
+        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("body"), TrnTarget))
+        {
+            TransmissionType = EMjActuatorTrnType::Body;
+            TargetName = TrnTarget;
+        }
+    }
+    // --- CODEGEN_IMPORT_END ---
+
     MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), Group, bOverride_Group);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("actearly"), bActEarly, bOverride_ActEarly);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("actlimited"), bActLimited, bOverride_ActLimited);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actrange"), ActRange, bOverride_ActRange);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("ctrllimited"), bCtrlLimited, bOverride_CtrlLimited);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("ctrlrange"), CtrlRange, bOverride_CtrlRange);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("forcelimited"), bForceLimited, bOverride_ForceLimited);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("forcerange"), ForceRange, bOverride_ForceRange);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("lengthrange"), LengthRange, bOverride_LengthRange);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("gear"), Gear, bOverride_Gear);
-
-    bool bDummyCrank = false;
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("cranklength"), CrankLength, bDummyCrank);
-
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("gainprm"), GainPrm, bOverride_GainPrm);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("biasprm"), BiasPrm, bOverride_BiasPrm);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("dynprm"), DynPrm, bOverride_DynPrm);
-
-    // Transmission detection
-    FString TrnTarget;
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("joint"), TrnTarget))
-    {
-        TransmissionType = EMjActuatorTrnType::Joint;
-        TargetName = TrnTarget;
-    }
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("jointinparent"), TrnTarget))
-    {
-        TransmissionType = EMjActuatorTrnType::JointInParent;
-        TargetName = TrnTarget;
-    }
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("tendon"), TrnTarget))
-    {
-        TransmissionType = EMjActuatorTrnType::Tendon;
-        TargetName = TrnTarget;
-    }
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))
-    {
-        TransmissionType = EMjActuatorTrnType::SliderCrank;
-    }
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("site"), TrnTarget))
-    {
-        TransmissionType = EMjActuatorTrnType::Site;
-        TargetName = TrnTarget;
-    }
-    MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("body"), TrnTarget))
-    {
-        TransmissionType = EMjActuatorTrnType::Body;
-        TargetName = TrnTarget;
-    }
-
-    // Call subclass-specific parsing
-    ParseSpecifics(Node);
 }
 
 void UMjActuator::Bind(mjModel* Model, mjData* Data, const FString& Prefix)

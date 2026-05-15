@@ -1,0 +1,903 @@
+{
+  "_meta": {
+    "description": "Definitive rules for URLab Unreal codegen. Drives generate_ue_components.py: which schema attrs to emit, how to type-map them, which canonicalisations absorb multi-attr clusters, which categories use single-UCLASS or multi-UCLASS or no-subclass layouts, and which mjxmacro pointer fields belong on which view struct.",
+    "version": "5.0"
+  },
+
+  "global_exclusions": [
+    "user", "name", "class", "type"
+  ],
+  "default_type": "float",
+  "_note_property_renames": "Schema attr -> UPROPERTY identifier. Used when the UE-side identifier must differ from the verbatim schema attr (typically to avoid C++ keyword collisions or to keep PascalCase for legacy consumers). qpos/qvel/etc are PascalCase on UMjKeyframe because BP graphs / runtime accessors reference them that way.",
+  "property_renames": {
+    "qpos":  "Qpos",
+    "qvel":  "Qvel",
+    "act":   "Act",
+    "ctrl":  "Ctrl",
+    "mpos":  "Mpos",
+    "mquat": "Mquat",
+    "time":  "Time"
+  },
+
+  "_note_setto_param_defaults": "MuJoCo's mjs_setTo* API treats specific scalar defaults as sentinels. These values are how URLab signals 'not overridden, use MuJoCo's default'. Most use -1.0; a few use 0.0 or 0.01 — encoded here as data, NOT as C++ string literals.",
+  "setto_param_defaults": {
+    "mjs_setToPosition":     {"inheritrange": "0.0"},
+    "_note_mjs_setToIntVelocity": "intvelocity's mjs_setTo signature accepts a timeconst array param but MuJoCo's XML schema doesn't expose `timeconst` as an MJCF attr on <intvelocity> (unlike <position>/<cylinder>/<muscle>). Pin it to the -1.0 sentinel so the setto leaves the type-derived default alone.",
+    "mjs_setToIntVelocity":  {"inheritrange": "0.0", "timeconst": "-1.0"},
+    "mjs_setToDamper":       {"kv": "0.01"},
+    "mjs_setToMuscle":       {"tausmooth": "0.0"},
+    "mjs_setToAdhesion":     {"gain": "0.0"},
+    "mjs_setToDCMotor":      {"resistance": "0.0", "input_mode": "0"}
+  },
+
+  "_note_unmodeled_elements": "Top-level MJCF elements that the codegen drift-diagnostic silences. Each entry is the reason it's skipped — change the value to '' to make the diagnostic fire again if you want to revisit.",
+  "intentionally_unmodeled_elements": {
+    "freejoint": "Handled as a joint subtype (UMjFreeJoint) — the freejoint XML tag maps to the joint category via the parser, not as a top-level category.",
+    "light": "URLab doesn't model MJCF <light> as a UE component — UE has its own light primitives that override MJCF light placement.",
+    "flex":  "Children of <deformable>. URLab generates flexes via UMjFlexcomp (which expands to a flex at parse time); the direct <flex> element is not a UE component.",
+    "skin":  "Children of <asset>. URLab handles skinning via UE skeletal meshes; <skin> in MJCF would need a dedicated asset pipeline."
+  },
+
+  "type_mappings": {
+    "axis":              "FVector",
+    "dir":               "FVector",
+    "size":              "TArray<float>",
+    "principal":         "TArray<float>",
+    "focal":             "TArray<float>",
+    "sensorsize":        "TArray<float>",
+    "fluidcoef":         "TArray<float>",
+    "count":             "TArray<int32>",
+    "cellcount":         "TArray<int32>",
+    "spacing":           "TArray<float>",
+    "scale":             "TArray<float>",
+    "point":             "TArray<float>",
+    "element":           "TArray<int32>",
+    "texcoord":          "TArray<float>",
+    "inertiabox":        "float",
+    "rigid":             "bool",
+    "flatskin":          "bool",
+    "origin":            "TArray<float>",
+    "dim":               "int32",
+    "rgba":              "FLinearColor",
+    "rgba2":             "FLinearColor",
+    "range":             "TArray<float>",
+    "actfrcrange":       "TArray<float>",
+    "actuatorfrcrange":  "TArray<float>",
+    "ctrlrange":         "TArray<float>",
+    "forcerange":        "TArray<float>",
+    "actrange":          "TArray<float>",
+    "lengthrange":       "TArray<float>",
+    "gear":              "TArray<float>",
+    "springdamper":      "TArray<float>",
+    "springlength":      "TArray<float>",
+    "timeconst":         "TArray<float>",
+    "motorconst":        "TArray<float>",
+    "nominal":           "TArray<float>",
+    "saturation":        "TArray<float>",
+    "inductance":        "TArray<float>",
+    "cogging":           "TArray<float>",
+    "controller":        "TArray<float>",
+    "thermal":           "TArray<float>",
+    "lugre":             "TArray<float>",
+    "stiffness":         "TArray<float>",
+    "stiffnesspoly":     "TArray<float>",
+    "damping":           "TArray<float>",
+    "dampingpoly":       "TArray<float>",
+    "friction":          "TArray<float>",
+    "fullinertia":       "TArray<float>",
+    "diaginertia":       "TArray<float>",
+    "resolution":        "TArray<int32>",
+    "focalpixel":        "TArray<int32>",
+    "principalpixel":    "TArray<int32>",
+    "solref":            "TArray<float>",
+    "solimp":            "TArray<float>",
+    "solreflimit":       "TArray<float>",
+    "solimplimit":       "TArray<float>",
+    "solreffriction":    "TArray<float>",
+    "solimpfriction":    "TArray<float>",
+    "gainprm":           "TArray<float>",
+    "biasprm":           "TArray<float>",
+    "dynprm":            "TArray<float>",
+    "polycoef":          "TArray<float>",
+    "intprm":            "TArray<int32>",
+    "limited":           "bool",
+    "mocap":             "bool",
+    "actlimited":        "bool",
+    "ctrllimited":       "bool",
+    "forcelimited":      "bool",
+    "actuatorfrclimited":"bool",
+    "actgravcomp":       "bool",
+    "actearly":          "bool",
+    "shellinertia":      "bool",
+    "fitscale":          "bool",
+    "fitaabb":           "bool",
+    "discardvisual":     "bool",
+    "needstage":         "FString",
+    "datatype":          "FString",
+    "objtype":           "FString",
+    "objname":           "FString",
+    "reftype":           "FString",
+    "refname":           "FString",
+    "gaintype":          "FString",
+    "biastype":          "FString",
+    "dyntype":           "FString",
+    "fluidshape":        "FString",
+    "site":              "FString",
+    "joint":             "FString",
+    "tendon":            "FString",
+    "actuator":          "FString",
+    "geom":              "FString",
+    "geom1":             "FString",
+    "geom2":             "FString",
+    "body":              "FString",
+    "body1":             "FString",
+    "body2":             "FString",
+    "site1":             "FString",
+    "site2":             "FString",
+    "joint1":            "FString",
+    "joint2":            "FString",
+    "tendon1":           "FString",
+    "tendon2":           "FString",
+    "mesh":              "FString",
+    "material":          "FString",
+    "hfield":            "FString",
+    "childclass":        "FString",
+    "texture":           "FString",
+    "file":              "FString",
+    "target":            "FString",
+    "mode":              "FString",
+    "side":              "FString",
+    "anchor":            "TArray<float>",
+    "relpose":           "TArray<float>",
+    "ctrl":              "TArray<float>",
+    "qpos":              "TArray<float>",
+    "qvel":              "TArray<float>",
+    "act":               "TArray<float>",
+    "mpos":              "TArray<float>",
+    "mquat":             "TArray<float>",
+    "time":              "float",
+    "group":             "int32",
+    "contype":           "int32",
+    "conaffinity":       "int32",
+    "condim":            "int32",
+    "priority":          "int32",
+    "actdim":            "int32",
+    "nsample":           "int32",
+    "interp":            "int32",
+    "interval":          "TArray<float>",
+    "delay":             "float",
+    "input":             "EMjDcMotorInput"
+  },
+
+  "canonicalizations": {
+    "spatial_pose": {
+      "absorbs_attrs": ["pos"],
+      "emits_property": {"name": "Pos", "type": "FVector"},
+      "import_helper":  "MjUtils::ReadVec3InMeters",
+      "export_helper":  "MjUtils::UEToMjPosition"
+    },
+    "orientation": {
+      "absorbs_attrs": ["quat", "euler", "axisangle", "xyaxes", "zaxis"],
+      "emits_property": {"name": "Quat", "type": "FQuat"},
+      "import_helper":  "MjOrientationUtils::OrientationToMjQuat",
+      "export_helper":  "MjUtils::UEToMjRotation"
+    },
+    "actuator_transmission": {
+      "_note": "MJCF actuators encode their transmission via one of {joint, tendon, site, body, jointinparent} (the target name) plus optional {slidersite, refsite}. URLab collapses this to a single EMjActuatorTrnType enum + TargetName/SliderSite/RefSite strings. Codegen emits the parse+write blocks; the UPROPERTY declarations stay hand-side on UMjActuator.",
+      "absorbs_attrs": ["joint", "tendon", "site", "body", "jointinparent", "slidersite", "refsite"],
+      "emits_property": null,
+      "import_helper":  "(inline)",
+      "export_helper":  "(inline)"
+    },
+    "body_sleep_policy": {
+      "_note": "MJCF body.sleep is one of {'never','allowed','init'} or absent; mjsBody.sleep is the mjtSleepPolicy enum. URLab exposes EMjBodySleepPolicy SleepPolicy (with a Default entry that means 'let the global option decide'). Codegen emits the string<->enum mapping on both sides; the SleepPolicy UPROPERTY itself stays declared hand-side on UMjBody.",
+      "absorbs_attrs": ["sleep"],
+      "emits_property": null,
+      "import_helper":  "(inline)",
+      "export_helper":  "(inline)"
+    },
+    "fromto_decompose": {
+      "_note": "MJCF's `fromto` is an alternative form for capsule/cylinder/box/ellipsoid (an XY-XY segment). Decompose at import into Pos/Quat plus a half-length scalar written into size[1] (Y slot, e.g. capsule half-length) or size[2] (Z slot, e.g. box half-height) depending on shape Type. The codegen-owned size TArray<float> is grown as needed.",
+      "absorbs_attrs": ["fromto"],
+      "emits_property": null,
+      "import_helper":  "MjUtils::DecomposeFromTo",
+      "category_specifics": {
+        "geom": {
+          "z_slot_check": "(Type == EMjGeomType::Box || Type == EMjGeomType::Ellipsoid)"
+        },
+        "site": {
+          "z_slot_check": "(Type == EMjSiteType::Box || Type == EMjSiteType::Ellipsoid)"
+        }
+      }
+    }
+  },
+
+  "element_rules": {
+    "actuator": {
+      "_note_enums": "gaintype/biastype/dyntype are mjtGain/mjtBias/mjtDyn enums on mjsActuator. URLab declares EMjGainType/EMjBiasType/EMjDynType hand-side on UMjActuator; codegen owns the XML<->enum map via xml_enum_attrs. dcmotor 'input' is per-subtype (only on UMjDcMotorActuator) — emitter gates on attr-in-subtype-schema for that case.",
+      "exclude_attrs": [],
+      "applies_canonicalizations": ["actuator_transmission"],
+      "xml_enum_attrs": {
+        "gaintype": {
+          "ue_property":  "GainType",
+          "ue_enum_type": "EMjGainType",
+          "mjs_field":    "gaintype",
+          "mjs_cast":     "mjtGain",
+          "value_map": {
+            "fixed":  ["Fixed",  "mjGAIN_FIXED"],
+            "affine": ["Affine", "mjGAIN_AFFINE"],
+            "muscle": ["Muscle", "mjGAIN_MUSCLE"],
+            "user":   ["User",   "mjGAIN_USER"]
+          }
+        },
+        "biastype": {
+          "ue_property":  "BiasType",
+          "ue_enum_type": "EMjBiasType",
+          "mjs_field":    "biastype",
+          "mjs_cast":     "mjtBias",
+          "value_map": {
+            "none":   ["None",   "mjBIAS_NONE"],
+            "affine": ["Affine", "mjBIAS_AFFINE"],
+            "muscle": ["Muscle", "mjBIAS_MUSCLE"],
+            "user":   ["User",   "mjBIAS_USER"]
+          }
+        },
+        "dyntype": {
+          "ue_property":  "DynType",
+          "ue_enum_type": "EMjDynType",
+          "mjs_field":    "dyntype",
+          "mjs_cast":     "mjtDyn",
+          "value_map": {
+            "none":        ["None",        "mjDYN_NONE"],
+            "integrator":  ["Integrator",  "mjDYN_INTEGRATOR"],
+            "filter":      ["Filter",      "mjDYN_FILTER"],
+            "filterexact": ["FilterExact", "mjDYN_FILTEREXACT"],
+            "muscle":      ["Muscle",      "mjDYN_MUSCLE"],
+            "user":        ["User",        "mjDYN_USER"]
+          }
+        },
+        "input": {
+          "ue_property":  "input",
+          "ue_enum_type": "EMjDcMotorInput",
+          "mjs_field":    null,
+          "value_map": {
+            "voltage":  ["Voltage",  "0"],
+            "position": ["Position", "1"],
+            "velocity": ["Velocity", "2"]
+          }
+        }
+      }
+    },
+    "sensor": {
+      "exclude_attrs": []
+    },
+    "joint": {
+      "exclude_attrs": ["pos", "axis"],
+      "extra_property_inits": {
+        "Pos":  "FVector::ZeroVector",
+        "Axis": "FVector(0.0f, 0.0f, 1.0f)"
+      },
+      "xml_enum_attrs": {
+        "type": {
+          "ue_property":  "Type",
+          "ue_enum_type": "EMjJointType",
+          "mjs_field":    "type",
+          "mjs_cast":     "mjtJoint",
+          "value_map": {
+            "hinge": ["Hinge", "mjJNT_HINGE"],
+            "slide": ["Slide", "mjJNT_SLIDE"],
+            "ball":  ["Ball",  "mjJNT_BALL"],
+            "free":  ["Free",  "mjJNT_FREE"]
+          }
+        }
+      },
+      "_note_unit_conversion": "URLab stores joint range/ref/springref in UE conventions (degrees for hinge/ball, centimetres for slide). MJCF XML carries them in the compiler.angle unit (deg/rad) for angular joints and metres for linear; URLab's spec wrapper sets compiler.degree=false so mjsJoint.range[] must be radians on the wire. The conversions below normalize at the IO boundary so the rest of URLab can treat the UPROPERTYs as UE-native values.",
+      "unit_conversion": {
+        "range": [
+          {"condition": "Type == EMjJointType::Slide",
+           "import_op": "m_to_cm", "export_op": "cm_to_m"},
+          {"condition": "(Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)",
+           "import_op": "rad_to_deg_if_xml_radians", "export_op": "deg_to_rad"}
+        ],
+        "ref": [
+          {"condition": "Type == EMjJointType::Slide",
+           "import_op": "m_to_cm", "export_op": "cm_to_m"},
+          {"condition": "(Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)",
+           "import_op": "rad_to_deg_if_xml_radians", "export_op": "deg_to_rad"}
+        ],
+        "springref": [
+          {"condition": "Type == EMjJointType::Slide",
+           "import_op": "m_to_cm", "export_op": "cm_to_m"},
+          {"condition": "(Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)",
+           "import_op": "rad_to_deg_if_xml_radians", "export_op": "deg_to_rad"}
+        ]
+      }
+    },
+    "geom": {
+      "_note": "size is codegen-owned TArray<float>; fromto-decomposed half-length is written into size[1]/[2] by the canon. material is codegen-owned for IMPORT (FString -> UE material lookup) but SKIPPED on export because URLab handles materials as UE assets and does not register them in the mjsSpec (mjs_setString on Element->material would reference a non-existent spec entry and fail mj_compile). Orientation cluster absorbed by `orientation`; fromto absorbed by `fromto_decompose`. type is an URLab enum (EMjGeomType); codegen owns the XML<->enum string map via xml_enum_attrs.",
+      "exclude_attrs": [],
+      "_note_hfield": "hfield references URLab's own hfield actor system, not a mjsHField spec entry. Codegen still imports the string for editor visibility but skips the spec write to avoid 'hfield not found' on compile.",
+      "export_skip_attrs": ["material", "hfield"],
+      "applies_canonicalizations": ["spatial_pose", "orientation", "fromto_decompose"],
+      "_note_sentinel": "fromto-only XML inputs leave the radius slot unset; the canon writes -1.0f as the sentinel and the per-attr size export skips those slots so the parent default's radius is preserved.",
+      "sentinel_skip_export": {"size": "-1.0f"},
+      "_note_attr_to_mjs_field": "MuJoCo renames fluidcoef -> fluid_coefs on the mjsGeom struct. shellinertia and fluidshape are handled by xml_enum_attrs below (they need string<->enum + field-rename together).",
+      "attr_to_mjs_field": {
+        "fluidcoef": "fluid_coefs"
+      },
+      "xml_enum_attrs": {
+        "type": {
+          "ue_property":  "Type",
+          "ue_enum_type": "EMjGeomType",
+          "mjs_field":    "type",
+          "mjs_cast":     "mjtGeom",
+          "value_map": {
+            "plane":     ["Plane",     "mjGEOM_PLANE"],
+            "hfield":    ["Hfield",    "mjGEOM_HFIELD"],
+            "sphere":    ["Sphere",    "mjGEOM_SPHERE"],
+            "capsule":   ["Capsule",   "mjGEOM_CAPSULE"],
+            "ellipsoid": ["Ellipsoid", "mjGEOM_ELLIPSOID"],
+            "cylinder":  ["Cylinder",  "mjGEOM_CYLINDER"],
+            "box":       ["Box",       "mjGEOM_BOX"],
+            "mesh":      ["Mesh",      "mjGEOM_MESH"],
+            "sdf":       ["SDF",       "mjGEOM_SDF"]
+          }
+        },
+        "shellinertia": {
+          "_note": "XML attr is bool-ish (true/false). MuJoCo stores it as mjtGeomInertia (mjINERTIA_VOLUME=0 default, mjINERTIA_SHELL=1) in mjsGeom.typeinertia.",
+          "ue_property":  "ShellInertia",
+          "ue_enum_type": "EMjGeomInertia",
+          "mjs_field":    "typeinertia",
+          "mjs_cast":     "mjtGeomInertia",
+          "value_map": {
+            "false": ["Volume", "mjINERTIA_VOLUME"],
+            "true":  ["Shell",  "mjINERTIA_SHELL"]
+          }
+        },
+        "fluidshape": {
+          "_note": "XML attr is none/ellipsoid. MuJoCo stores 0.0/1.0 in mjsGeom.fluid_ellipsoid (mjtNum).",
+          "ue_property":  "FluidShape",
+          "ue_enum_type": "EMjFluidShape",
+          "mjs_field":    "fluid_ellipsoid",
+          "mjs_cast":     "mjtNum",
+          "value_map": {
+            "none":      ["None",      "0.0"],
+            "ellipsoid": ["Ellipsoid", "1.0"]
+          }
+        }
+      }
+    },
+    "site": {
+      "_note": "Same as geom: size codegen-owned TArray; material codegen-owned for IMPORT but export-skipped (UE-side materials); orientation + fromto canonicalized. mjsSite.type uses mjtGeom (sites are visual 'geoms'). Site has no bOverride_Type — Type always carries a value (default Sphere).",
+      "exclude_attrs": [],
+      "export_skip_attrs": ["material"],
+      "applies_canonicalizations": ["spatial_pose", "orientation", "fromto_decompose"],
+      "sentinel_skip_export": {"size": "-1.0f"},
+      "xml_enum_attrs": {
+        "type": {
+          "ue_property":  "Type",
+          "ue_enum_type": "EMjSiteType",
+          "mjs_field":    "type",
+          "mjs_cast":     "mjtGeom",
+          "has_override_toggle": false,
+          "value_map": {
+            "sphere":    ["Sphere",    "mjGEOM_SPHERE"],
+            "capsule":   ["Capsule",   "mjGEOM_CAPSULE"],
+            "ellipsoid": ["Ellipsoid", "mjGEOM_ELLIPSOID"],
+            "cylinder":  ["Cylinder",  "mjGEOM_CYLINDER"],
+            "box":       ["Box",       "mjGEOM_BOX"]
+          }
+        }
+      }
+    },
+    "tendon": {
+      "_note_material": "material codegen-owned for IMPORT but export-skipped — URLab handles materials as UE assets, not mjsMaterial spec entries.",
+      "exclude_attrs": [],
+      "export_skip_attrs": ["material"]
+    },
+    "equality": {
+      "_note_target_collation": "MJCF equality elements address one or two of {body, site, joint, tendon, flex} per the equality kind. URLab collapses to FString Obj1/Obj2 (hand-declared UPROPERTYs with dynamic GetOptions based on EqualityType). Excluded from codegen so they don't appear as separate UPROPERTYs; target_collations rule emits the import collation + mjs_setString export. site1/site2 stay as their own UPROPERTYs (codegen-owned) so the objtype switch in ExportTo can detect site-mode connects/welds and pick mjOBJ_SITE.",
+      "exclude_attrs": ["body1", "body2", "joint1", "joint2", "tendon1", "tendon2", "flex"],
+      "target_collations": {
+        "Obj1": {
+          "absorbs_attrs": ["body1", "site1", "joint1", "tendon1", "flex"],
+          "mjs_field":     "name1"
+        },
+        "Obj2": {
+          "absorbs_attrs": ["body2", "site2", "joint2", "tendon2"],
+          "mjs_field":     "name2"
+        }
+      },
+      "_note_data_packed": "mjsEquality has no per-attr fields for anchor/relpose/polycoef/torquescale; they all pack into data[] per the connect/weld/joint/tendon layout (verified via probe_eq_spec.py against the installed MuJoCo). Codegen-emitted exports replace the default per-attr emission with the packed write under the right EqualityType condition. anchor carries a cm_to_m export op so the URLab-side cm convention round-trips into spec metres. relpose is stored opaquely (raw MJ format: metres for the first 3 floats, MuJoCo quat for the last 4) — weld constraints are rare enough that the inconsistency is worth the simpler emitter.",
+      "_note_unit_conversion": "anchor is a position offset in body1's local frame; URLab stores it in centimetres (matching every other position UPROPERTY). The unit_conversion below handles the import side (XML m -> UPROPERTY cm); the data-packed export carries its own cm_to_m op so it converts in flight before writing data[0..2].",
+      "unit_conversion": {
+        "anchor": [
+          {"condition": "(EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)",
+           "import_op": "m_to_cm"}
+        ]
+      },
+      "mjs_data_packed_attrs": {
+        "anchor": {
+          "slot_range": [0, 3],
+          "condition": "(EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)",
+          "export_op": "cm_to_m"
+        },
+        "relpose": {
+          "slot_range": [3, 10],
+          "condition": "EqualityType == EMjEqualityType::Weld"
+        },
+        "polycoef": {
+          "_note": "polycoef is a 5-element MJCF attribute (default '0 1 0 0 0'). mjsEquality.data layout reserves slots 0..4 for it on joint/tendon equalities; slots 5..10 hold other fields (e.g. weld's torquescale at 10). Capping the slot_range here keeps a TArray<float> longer than 5 entries from overflowing into those slots.",
+          "slot_range": [0, 5],
+          "condition": "(EqualityType == EMjEqualityType::Joint) || (EqualityType == EMjEqualityType::Tendon)"
+        },
+        "torquescale": {
+          "slot": 10,
+          "condition": "EqualityType == EMjEqualityType::Weld"
+        }
+      }
+    },
+    "camera": {
+      "_note": "MJCF camera.mode is a tracking mode (mjtCamLight subset). URLab declares EMjCameraTrackingMode hand-side; codegen owns the XML<->enum map. NOT to be confused with URLab's EMjCameraMode which is a UE-side render-mode selector (RGB/Depth/Segmentation).",
+      "exclude_attrs": [],
+      "applies_canonicalizations": ["spatial_pose", "orientation"],
+      "_note_attr_to_mjs_field": "MuJoCo renames a handful of camera attrs between the XML schema and the mjsCamera struct: target -> targetbody (mjString*), projection -> proj (mjtProjection enum), focal -> focal_length, principal -> principal_length. sensorsize auto-resolves to sensor_size via the underscore-normalise heuristic. Without this map the auto-resolver in _resolve_mjs_field can't bridge target/focal/principal and they were silently dropped on export.",
+      "attr_to_mjs_field": {
+        "target": "targetbody",
+        "focal": "focal_length",
+        "principal": "principal_length"
+      },
+      "xml_enum_attrs": {
+        "mode": {
+          "ue_property":  "TrackingMode",
+          "ue_enum_type": "EMjCameraTrackingMode",
+          "mjs_field":    "mode",
+          "mjs_cast":     "mjtCamLight",
+          "value_map": {
+            "fixed":         ["Fixed",         "mjCAMLIGHT_FIXED"],
+            "track":         ["Track",         "mjCAMLIGHT_TRACK"],
+            "trackcom":      ["TrackCom",      "mjCAMLIGHT_TRACKCOM"],
+            "targetbody":    ["TargetBody",    "mjCAMLIGHT_TARGETBODY"],
+            "targetbodycom": ["TargetBodyCom", "mjCAMLIGHT_TARGETBODYCOM"]
+          }
+        },
+        "projection": {
+          "ue_property":  "Projection",
+          "ue_enum_type": "EMjCameraProjection",
+          "mjs_field":    "proj",
+          "mjs_cast":     "mjtProjection",
+          "value_map": {
+            "orthographic": ["Orthographic", "mjPROJ_ORTHOGRAPHIC"],
+            "perspective":  ["Perspective",  "mjPROJ_PERSPECTIVE"]
+          }
+        }
+      }
+    },
+    "body": {
+      "exclude_attrs": [],
+      "applies_canonicalizations": ["spatial_pose", "orientation", "body_sleep_policy"],
+      "_note_canon_export_skip": "Body's pos/quat are written by MjSpecWrapper::CreateBody from the UE component transform (the source of truth for body placement). The codegen-emitted spatial_pose/orientation export would overwrite those with the Pos/Quat UPROPERTYs, which are stale for any body not freshly imported from XML. Skip the export side for these two canons.",
+      "canon_export_skip": ["spatial_pose", "orientation"],
+      "property_meta": {
+        "mocap":      "DisplayName=\"Driven By Unreal\"",
+        "childclass": "GetOptions=\"GetChildClassOptions\""
+      }
+    },
+    "inertial": {
+      "exclude_attrs": [],
+      "applies_canonicalizations": ["spatial_pose", "orientation"]
+    },
+    "frame": {
+      "_note": "Like body: the UE component transform is the source of truth for placement. Codegen imports XML pos/quat into Pos/Quat UPROPERTYs (UE units / UE frame) and the cpp drives SetRelativeLocation/SetRelativeRotation from them. Spec export is skipped for the canon Pos/Quat because MjSpecWrapper::CreateFrame writes pos/quat from the UE transform.",
+      "exclude_attrs": [],
+      "applies_canonicalizations": ["spatial_pose", "orientation"],
+      "canon_export_skip": ["spatial_pose", "orientation"]
+    },
+    "flexcomp": {
+      "_note": "Flexcomp doesn't register via mjs_addX — at spec time UMjFlexcomp builds a tiny standalone MJCF fragment and re-parses it via mj_parseXMLString + mjs_attach (the flexcomp macro is expanded by MuJoCo's XML parser, not the spec API). Codegen still owns the UPROPERTY surface so new MJCF attrs auto-appear; BuildFlexcompXml in MjFlexcomp.cpp reads from those codegen-owned fields. Sub-elements (<contact>/<edge>/<elasticity>/<pin>) remain hand-rolled because the codegen doesn't have per-sub-element UPROPERTY support yet.",
+      "_note_material": "material codegen-owned for IMPORT but export-skipped — URLab handles materials as UE assets, not mjsMaterial spec entries.",
+      "exclude_attrs": [],
+      "export_skip_attrs": ["material"],
+      "applies_canonicalizations": ["spatial_pose", "orientation"],
+      "canon_export_skip": ["spatial_pose", "orientation"],
+      "xml_enum_attrs": {
+        "type": {
+          "ue_property":  "FlexcompType",
+          "ue_enum_type": "EMjFlexcompType",
+          "mjs_field":    "type",
+          "mjs_cast":     "int",
+          "value_map": {
+            "grid":      ["Grid",      "0"],
+            "box":       ["Box",       "1"],
+            "cylinder":  ["Cylinder",  "2"],
+            "ellipsoid": ["Ellipsoid", "3"],
+            "square":    ["Square",    "4"],
+            "disc":      ["Disc",      "5"],
+            "circle":    ["Circle",    "6"],
+            "mesh":      ["Mesh",      "7"],
+            "gmsh":      ["Gmsh",      "8"],
+            "direct":    ["Direct",    "9"]
+          }
+        },
+        "dof": {
+          "ue_property":  "FlexcompDof",
+          "ue_enum_type": "EMjFlexcompDof",
+          "mjs_field":    "dof",
+          "mjs_cast":     "int",
+          "value_map": {
+            "full":      ["Full",      "0"],
+            "radial":    ["Radial",    "1"],
+            "trilinear": ["Trilinear", "2"],
+            "quadratic": ["Quadratic", "3"],
+            "2d":        ["TwoD",      "4"]
+          }
+        }
+      }
+    },
+    "freejoint": {
+      "exclude_attrs": []
+    },
+    "contact_pair": {
+      "exclude_attrs": []
+    },
+    "contact_exclude": {
+      "exclude_attrs": []
+    },
+    "keyframe": {
+      "_note": "qpos/qvel/act/ctrl/mpos/mquat target mjsKey's mjDoubleVec* fields (std::vector<double>*) — require ->clear()+->push_back() rather than direct assignment. Codegen emits the import (TArray<float> read) + the mjs_double_vec-style export. RegisterToSpec hand-rolls freejoint-padding for qpos/qvel.",
+      "exclude_attrs": [],
+      "mjs_double_vec_attrs": ["qpos", "qvel", "act", "ctrl", "mpos", "mquat"]
+    }
+  },
+
+  "categories": {
+    "actuator": {
+      "layout": "single_uclass_per_file",
+      "base_class_name": "UMjActuator",
+      "base_class_header": "MuJoCo/Components/Actuators/MjActuator.h",
+      "subclass_directory_pub": "MuJoCo/Components/Actuators",
+      "subclass_directory_priv": "MuJoCo/Components/Actuators",
+      "mjs_struct": "mjsActuator",
+      "schema_common_block": "actuator_common.attrs",
+      "schema_common_extra_attrs": ["gainprm", "biasprm", "dynprm", "gaintype", "biastype", "dyntype", "actdim"],
+      "schema_subtypes_block": "actuator_types",
+      "type_enum_name": "EMjActuatorType",
+      "subtypes": [
+        {"key": "general",     "enum_value": "Motor",      "class_name": "UMjGeneralActuator",     "header": "MjGeneralActuator.h"},
+        {"key": "motor",       "enum_value": "Motor",      "class_name": "UMjMotorActuator",       "header": "MjMotorActuator.h"},
+        {"key": "position",    "enum_value": "Position",   "class_name": "UMjPositionActuator",    "header": "MjPositionActuator.h"},
+        {"key": "velocity",    "enum_value": "Velocity",   "class_name": "UMjVelocityActuator",    "header": "MjVelocityActuator.h"},
+        {"key": "intvelocity", "enum_value": "IntVelocity","class_name": "UMjIntVelocityActuator", "header": "MjIntVelocityActuator.h"},
+        {"key": "damper",      "enum_value": "Damper",     "class_name": "UMjDamperActuator",      "header": "MjDamperActuator.h"},
+        {"key": "cylinder",    "enum_value": "Cylinder",   "class_name": "UMjCylinderActuator",    "header": "MjCylinderActuator.h"},
+        {"key": "muscle",      "enum_value": "Muscle",     "class_name": "UMjMuscleActuator",      "header": "MjMuscleActuator.h"},
+        {"key": "adhesion",    "enum_value": "Adhesion",   "class_name": "UMjAdhesionActuator",    "header": "MjAdhesionActuator.h"},
+        {"key": "dcmotor",     "enum_value": "DcMotor",    "class_name": "UMjDcMotorActuator",     "header": "MjDcMotorActuator.h"}
+      ],
+      "_note_subtype_setto": "Codegen-driven mjs_setTo* call config. Function signatures are scraped into Scripts/mjspec_snapshot.json by build_mjspec_snapshot.py; the generator emits the call from the signature + the per-subtype config below. NO hand-written C++ literals in this file.",
+      "subtype_setto": {
+        "general":     null,
+        "motor":       {"call": "mjs_setToMotor"},
+        "position":    {"call": "mjs_setToPosition"},
+        "velocity":    {"call": "mjs_setToVelocity"},
+        "intvelocity": {"call": "mjs_setToIntVelocity"},
+        "damper":      {"call": "mjs_setToDamper"},
+        "cylinder":    {"call": "mjs_setToCylinder"},
+        "muscle":      {"call": "mjs_setToMuscle",
+                        "projections": {"scale": "X"}},
+        "adhesion":    {"call": "mjs_setToAdhesion"},
+        "dcmotor":     {"call": "mjs_setToDCMotor",
+                        "nullable_arrays": true,
+                        "use_filldouble": true,
+                        "param_renames": {"input_mode": "input"}}
+      }
+    },
+
+    "sensor": {
+      "layout": "single_uclass_per_file",
+      "base_class_name": "UMjSensor",
+      "base_class_header": "MuJoCo/Components/Sensors/MjSensor.h",
+      "subclass_directory_pub": "MuJoCo/Components/Sensors",
+      "subclass_directory_priv": "MuJoCo/Components/Sensors",
+      "mjs_struct": "mjsSensor",
+      "schema_common_block": "sensor_common.attrs",
+      "schema_subtypes_block": "sensor_types",
+      "type_enum_name": "EMjSensorType",
+      "subtypes": [
+        {"key": "touch",            "enum_value": "Touch",            "class_name": "UMjTouchSensor",          "header": "MjTouchSensor.h"},
+        {"key": "accelerometer",    "enum_value": "Accelerometer",    "class_name": "UMjAccelerometer",        "header": "MjAccelerometer.h"},
+        {"key": "velocimeter",      "enum_value": "Velocimeter",      "class_name": "UMjVelocimeter",          "header": "MjVelocimeter.h"},
+        {"key": "gyro",             "enum_value": "Gyro",             "class_name": "UMjGyro",                 "header": "MjGyro.h"},
+        {"key": "force",            "enum_value": "Force",            "class_name": "UMjForceSensor",          "header": "MjForceSensor.h"},
+        {"key": "torque",           "enum_value": "Torque",           "class_name": "UMjTorqueSensor",         "header": "MjTorqueSensor.h"},
+        {"key": "magnetometer",     "enum_value": "Magnetometer",     "class_name": "UMjMagnetometer",         "header": "MjMagnetometer.h"},
+        {"key": "camprojection",    "enum_value": "CamProjection",    "class_name": "UMjCamProjectionSensor",  "header": "MjCamProjectionSensor.h"},
+        {"key": "rangefinder",      "enum_value": "RangeFinder",      "class_name": "UMjRangeFinderSensor",    "header": "MjRangeFinderSensor.h"},
+        {"key": "jointpos",         "enum_value": "JointPos",         "class_name": "UMjJointPosSensor",       "header": "MjJointPosSensor.h"},
+        {"key": "jointvel",         "enum_value": "JointVel",         "class_name": "UMjJointVelSensor",       "header": "MjJointVelSensor.h"},
+        {"key": "ballquat",         "enum_value": "BallQuat",         "class_name": "UMjBallQuatSensor",       "header": "MjBallQuatSensor.h"},
+        {"key": "ballangvel",       "enum_value": "BallAngVel",       "class_name": "UMjBallAngVelSensor",     "header": "MjBallAngVelSensor.h"},
+        {"key": "jointlimitpos",    "enum_value": "JointLimitPos",    "class_name": "UMjJointLimitPosSensor",  "header": "MjJointLimitPosSensor.h"},
+        {"key": "jointlimitvel",    "enum_value": "JointLimitVel",    "class_name": "UMjJointLimitVelSensor",  "header": "MjJointLimitVelSensor.h"},
+        {"key": "jointlimitfrc",    "enum_value": "JointLimitFrc",    "class_name": "UMjJointLimitFrcSensor",  "header": "MjJointLimitFrcSensor.h"},
+        {"key": "tendonpos",        "enum_value": "TendonPos",        "class_name": "UMjTendonPosSensor",      "header": "MjTendonPosSensor.h"},
+        {"key": "tendonvel",        "enum_value": "TendonVel",        "class_name": "UMjTendonVelSensor",      "header": "MjTendonVelSensor.h"},
+        {"key": "tendonlimitpos",   "enum_value": "TendonLimitPos",   "class_name": "UMjTendonLimitPosSensor", "header": "MjTendonLimitPosSensor.h"},
+        {"key": "tendonlimitvel",   "enum_value": "TendonLimitVel",   "class_name": "UMjTendonLimitVelSensor", "header": "MjTendonLimitVelSensor.h"},
+        {"key": "tendonlimitfrc",   "enum_value": "TendonLimitFrc",   "class_name": "UMjTendonLimitFrcSensor", "header": "MjTendonLimitFrcSensor.h"},
+        {"key": "actuatorpos",      "enum_value": "ActuatorPos",      "class_name": "UMjActuatorPosSensor",    "header": "MjActuatorPosSensor.h"},
+        {"key": "actuatorvel",      "enum_value": "ActuatorVel",      "class_name": "UMjActuatorVelSensor",    "header": "MjActuatorVelSensor.h"},
+        {"key": "actuatorfrc",      "enum_value": "ActuatorFrc",      "class_name": "UMjActuatorFrcSensor",    "header": "MjActuatorFrcSensor.h"},
+        {"key": "jointactuatorfrc", "enum_value": "JointActFrc",      "class_name": "UMjJointActFrcSensor",    "header": "MjJointActFrcSensor.h"},
+        {"key": "tendonactuatorfrc","enum_value": "TendonActFrc",     "class_name": "UMjTendonActFrcSensor",   "header": "MjTendonActFrcSensor.h"},
+        {"key": "framepos",         "enum_value": "FramePos",         "class_name": "UMjFramePosSensor",       "header": "MjFramePosSensor.h"},
+        {"key": "framequat",        "enum_value": "FrameQuat",        "class_name": "UMjFrameQuatSensor",      "header": "MjFrameQuatSensor.h"},
+        {"key": "framexaxis",       "enum_value": "FrameXAxis",       "class_name": "UMjFrameXAxisSensor",     "header": "MjFrameXAxisSensor.h"},
+        {"key": "frameyaxis",       "enum_value": "FrameYAxis",       "class_name": "UMjFrameYAxisSensor",     "header": "MjFrameYAxisSensor.h"},
+        {"key": "framezaxis",       "enum_value": "FrameZAxis",       "class_name": "UMjFrameZAxisSensor",     "header": "MjFrameZAxisSensor.h"},
+        {"key": "framelinvel",      "enum_value": "FrameLinVel",      "class_name": "UMjFrameLinVelSensor",    "header": "MjFrameLinVelSensor.h"},
+        {"key": "frameangvel",      "enum_value": "FrameAngVel",      "class_name": "UMjFrameAngVelSensor",    "header": "MjFrameAngVelSensor.h"},
+        {"key": "framelinacc",      "enum_value": "FrameLinAcc",      "class_name": "UMjFrameLinAccSensor",    "header": "MjFrameLinAccSensor.h"},
+        {"key": "frameangacc",      "enum_value": "FrameAngAcc",      "class_name": "UMjFrameAngAccSensor",    "header": "MjFrameAngAccSensor.h"},
+        {"key": "subtreecom",       "enum_value": "SubtreeCom",       "class_name": "UMjSubtreeComSensor",     "header": "MjSubtreeComSensor.h"},
+        {"key": "subtreelinvel",    "enum_value": "SubtreeLinVel",    "class_name": "UMjSubtreeLinVelSensor",  "header": "MjSubtreeLinVelSensor.h"},
+        {"key": "subtreeangmom",    "enum_value": "SubtreeAngMom",    "class_name": "UMjSubtreeAngMomSensor",  "header": "MjSubtreeAngMomSensor.h"},
+        {"key": "insidesite",       "enum_value": "InsideSite",       "class_name": "UMjInsideSiteSensor",     "header": "MjInsideSiteSensor.h"},
+        {"key": "distance",         "enum_value": "GeomDist",         "class_name": "UMjGeomDistSensor",       "header": "MjGeomDistSensor.h"},
+        {"key": "normal",           "enum_value": "GeomNormal",       "class_name": "UMjGeomNormalSensor",     "header": "MjGeomNormalSensor.h"},
+        {"key": "fromto",           "enum_value": "GeomFromTo",       "class_name": "UMjGeomFromToSensor",     "header": "MjGeomFromToSensor.h"},
+        {"key": "contact",          "enum_value": "Contact",          "class_name": "UMjContactSensor",        "header": "MjContactSensor.h"},
+        {"key": "e_potential",      "enum_value": "EPotential",       "class_name": "UMjEPotentialSensor",     "header": "MjEPotentialSensor.h"},
+        {"key": "e_kinetic",        "enum_value": "EKinetic",         "class_name": "UMjEKineticSensor",       "header": "MjEKineticSensor.h"},
+        {"key": "clock",            "enum_value": "Clock",            "class_name": "UMjClockSensor",          "header": "MjClockSensor.h"},
+        {"key": "tactile",          "enum_value": "Tactile",          "class_name": "UMjTactileSensor",        "header": "MjTactileSensor.h"},
+        {"key": "user",             "enum_value": "User",             "class_name": "UMjUserSensor",           "header": "MjUserSensor.h"},
+        {"key": "plugin",           "enum_value": "Plugin",           "class_name": "UMjPluginSensor",         "header": "MjPluginSensor.h"}
+      ]
+    },
+
+    "joint": {
+      "layout": "single_uclass_per_file",
+      "base_class_name": "UMjJoint",
+      "base_class_header": "MuJoCo/Components/Joints/MjJoint.h",
+      "subclass_directory_pub": "MuJoCo/Components/Joints",
+      "subclass_directory_priv": "MuJoCo/Components/Joints",
+      "mjs_struct": "mjsJoint",
+      "schema_common_block": "joint.attrs",
+      "type_enum_name": "EMjJointType",
+      "subtypes": [
+        {"key": "hinge", "enum_value": "Hinge", "class_name": "UMjHingeJoint", "header": "MjHingeJoint.h"},
+        {"key": "slide", "enum_value": "Slide", "class_name": "UMjSlideJoint", "header": "MjSlideJoint.h"},
+        {"key": "ball",  "enum_value": "Ball",  "class_name": "UMjBallJoint",  "header": "MjBallJoint.h"},
+        {"key": "free",  "enum_value": "Free",  "class_name": "UMjFreeJoint",  "header": "MjFreeJoint.h"}
+      ]
+    },
+
+    "site": {
+      "layout": "multi_uclass",
+      "base_class_name": "UMjSite",
+      "base_class_header": "MuJoCo/Components/Geometry/MjSite.h",
+      "mjs_struct": "mjsSite",
+      "schema_common_block": "site.attrs",
+      "type_enum_name": "EMjSiteType",
+      "subtypes": [
+        {"key": "box",       "enum_value": "Box",       "class_name": "UMjBoxSite",       "display_name": "MuJoCo Box Site"},
+        {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphereSite",    "display_name": "MuJoCo Sphere Site"},
+        {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsuleSite",   "display_name": "MuJoCo Capsule Site"},
+        {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinderSite",  "display_name": "MuJoCo Cylinder Site"},
+        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoidSite", "display_name": "MuJoCo Ellipsoid Site"}
+      ]
+    },
+
+    "tendon": {
+      "layout": "multi_uclass",
+      "base_class_name": "UMjTendon",
+      "base_class_header": "MuJoCo/Components/Tendons/MjTendon.h",
+      "mjs_struct": "mjsTendon",
+      "schema_common_block": "tendon.spatial.attrs",
+      "type_enum_name": "EMjTendonType",
+      "subtypes": [
+        {"key": "spatial", "enum_value": "Spatial", "class_name": "UMjSpatialTendon", "display_name": "MuJoCo Spatial Tendon"},
+        {"key": "fixed",   "enum_value": "Fixed",   "class_name": "UMjFixedTendon",   "display_name": "MuJoCo Fixed Tendon"}
+      ]
+    },
+
+    "equality": {
+      "layout": "multi_uclass",
+      "base_class_name": "UMjEquality",
+      "base_class_header": "MuJoCo/Components/Constraints/MjEquality.h",
+      "mjs_struct": "mjsEquality",
+      "schema_common_block": "equality.weld",
+      "schema_common_extra_attrs": ["polycoef"],
+      "type_enum_name": "EMjEqualityType",
+      "subtypes": [
+        {"key": "connect",    "enum_value": "Connect",    "class_name": "UMjConnectEquality",    "display_name": "MuJoCo Connect Equality"},
+        {"key": "weld",       "enum_value": "Weld",       "class_name": "UMjWeldEquality",       "display_name": "MuJoCo Weld Equality"},
+        {"key": "joint",      "enum_value": "Joint",      "class_name": "UMjJointEquality",      "display_name": "MuJoCo Joint Equality"},
+        {"key": "tendon",     "enum_value": "Tendon",     "class_name": "UMjTendonEquality",     "display_name": "MuJoCo Tendon Equality"},
+        {"key": "flex",       "enum_value": "Flex",       "class_name": "UMjFlexEquality",       "display_name": "MuJoCo Flex Equality"},
+        {"key": "flexvert",   "enum_value": "FlexVert",   "class_name": "UMjFlexVertEquality",   "display_name": "MuJoCo FlexVert Equality"},
+        {"key": "flexstrain", "enum_value": "FlexStrain", "class_name": "UMjFlexStrainEquality", "display_name": "MuJoCo FlexStrain Equality"}
+      ]
+    },
+
+    "geom": {
+      "layout": "single_uclass_per_file",
+      "base_class_name": "UMjGeom",
+      "base_class_header": "MuJoCo/Components/Geometry/MjGeom.h",
+      "subclass_directory_pub": "MuJoCo/Components/Geometry/Primitives",
+      "subclass_directory_priv": "MuJoCo/Components/Geometry/Primitives",
+      "mjs_struct": "mjsGeom",
+      "schema_common_block": "geom.attrs",
+      "type_enum_name": "EMjGeomType",
+      "subtypes": [
+        {"key": "box",       "enum_value": "Box",       "class_name": "UMjBox",       "header": "MjBox.h",       "is_hybrid": true},
+        {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphere",    "header": "MjSphere.h",    "is_hybrid": true},
+        {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsule",   "header": "MjCapsule.h",   "is_hybrid": true},
+        {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinder",  "header": "MjCylinder.h",  "is_hybrid": true},
+        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoid", "header": "MjEllipsoid.h", "is_hybrid": false},
+        {"key": "plane",     "enum_value": "Plane",     "class_name": "UMjPlane",     "header": "MjPlane.h",     "is_hybrid": false},
+        {"key": "sdf",       "enum_value": "SDF",       "class_name": "UMjSdf",       "header": "MjSdf.h",       "is_hybrid": false}
+      ],
+      "_note_skipped_subtypes": ["hfield (URLab has its own hfield actor system)", "mesh (existing UMjMeshGeom)"]
+    },
+
+    "camera": {
+      "layout": "no_subclasses",
+      "base_class_name": "UMjCamera",
+      "base_class_header": "MuJoCo/Components/Sensors/MjCamera.h",
+      "mjs_struct": "mjsCamera",
+      "schema_common_block": "camera.attrs"
+    },
+
+    "flexcomp": {
+      "_note": "flexcomp doesn't register via mjs_addX — at spec time UMjFlexcomp builds a tiny standalone MJCF fragment and re-parses it via mj_parseXMLString + mjs_attach (the flexcomp macro is expanded by MuJoCo's XML parser, not the spec API). xml_passthrough_emission flips the export side from mjs writes to MJCF attribute-string writes (BuildSchemaAttrsXml), so any new schema attr flows end-to-end without a hand-edit.",
+      "layout": "no_subclasses",
+      "base_class_name": "UMjFlexcomp",
+      "base_class_header": "MuJoCo/Components/Deformable/MjFlexcomp.h",
+      "mjs_struct": "mjsFlex",
+      "schema_common_block": "flexcomp.attrs",
+      "xml_passthrough_emission": true
+    },
+
+    "body": {
+      "layout": "no_subclasses",
+      "base_class_name": "UMjBody",
+      "base_class_header": "MuJoCo/Components/Bodies/MjBody.h",
+      "mjs_struct": "mjsBody",
+      "schema_common_block": "body.attrs"
+    },
+
+    "frame": {
+      "_note": "MJCF <frame> nests inside <body>/<worldbody> and supplies a coordinate offset that the MuJoCo compiler bakes into the pos/quat of its child elements. UE-side the frame is a USceneComponent with a relative transform; MjFrame::Setup walks children and dispatches RegisterToSpec. The codegen-emitted Import populates Pos/Quat UPROPERTYs from XML — but the source of truth for placement is the UE transform (set via SetRelativeLocation/Rotation in ImportFromXml), so canon export is skipped for spatial_pose/orientation. childclass is codegen-owned (FString -> mjs_setString).",
+      "layout": "no_subclasses",
+      "base_class_name": "UMjFrame",
+      "base_class_header": "MuJoCo/Components/Bodies/MjFrame.h",
+      "mjs_struct": "mjsFrame",
+      "schema_common_block": "frame.attrs",
+      "schema_common_extra_attrs": ["pos", "quat", "axisangle", "euler", "xyaxes", "zaxis", "childclass"]
+    },
+
+    "inertial": {
+      "layout": "no_subclasses",
+      "base_class_name": "UMjInertial",
+      "base_class_header": "MuJoCo/Components/Physics/MjInertial.h",
+      "mjs_struct": "mjsInertial",
+      "schema_common_block": "inertial.attrs"
+    },
+
+    "contact_pair": {
+      "layout": "no_subclasses",
+      "base_class_name": "UMjContactPair",
+      "base_class_header": "MuJoCo/Components/Physics/MjContactPair.h",
+      "mjs_struct": "mjsPair",
+      "schema_common_block": "contact.pair"
+    },
+
+    "contact_exclude": {
+      "layout": "no_subclasses",
+      "base_class_name": "UMjContactExclude",
+      "base_class_header": "MuJoCo/Components/Physics/MjContactExclude.h",
+      "mjs_struct": "mjsExclude",
+      "schema_common_block": "contact.exclude"
+    },
+
+    "keyframe": {
+      "layout": "no_subclasses",
+      "_note": "qpos/qvel/etc are mjDoubleVec* on mjsKey, handled by the mjs_double_vec_attrs rule in element_rules.keyframe. Time + the override toggles are codegen-owned. RegisterToSpec hand-rolls the freejoint padding (which post-mutates Element->qpos/qvel after ExportTo).",
+      "base_class_name": "UMjKeyframe",
+      "base_class_header": "MuJoCo/Components/Keyframes/MjKeyframe.h",
+      "mjs_struct": "mjsKey",
+      "schema_common_block": "keyframe.key"
+    }
+  },
+
+  "views": {
+    "BodyView": {
+      "obj_type": "mjOBJ_BODY",
+      "owner_count_var": "nbody",
+      "include_blocks": ["MJMODEL_POINTERS_BODY", "MJMODEL_POINTERS_TREE"],
+      "field_renames": {},
+      "data_fields": {
+        "xpos":   {"index_var": "id",          "stride": "3"},
+        "xquat":  {"index_var": "id",          "stride": "4"},
+        "xmat":   {"index_var": "id",          "stride": "9"},
+        "cvel":   {"index_var": "id",          "stride": "6"},
+        "cinert": {"index_var": "id",          "stride": "10"},
+        "xfrc_applied": {"index_var": "id",    "stride": "6"}
+      }
+    },
+    "JointView": {
+      "obj_type": "mjOBJ_JOINT",
+      "owner_count_var": "njnt",
+      "include_blocks": ["MJMODEL_POINTERS_JOINT", "MJMODEL_POINTERS_DOF"],
+      "derived_index_vars": {
+        "qpos_adr": "m->jnt_qposadr[id]",
+        "dof_adr":  "m->jnt_dofadr[id]"
+      },
+      "block_index_var": {
+        "MJMODEL_POINTERS_JOINT": "id",
+        "MJMODEL_POINTERS_DOF":   "dof_adr"
+      },
+      "field_renames": {},
+      "data_fields": {
+        "qpos":    {"index_var": "qpos_adr", "stride": "1"},
+        "qvel":    {"index_var": "dof_adr",  "stride": "1"},
+        "qacc":    {"index_var": "dof_adr",  "stride": "1"},
+        "xanchor": {"index_var": "id",       "stride": "3"},
+        "xaxis":   {"index_var": "id",       "stride": "3"}
+      }
+    },
+    "GeomView": {
+      "obj_type": "mjOBJ_GEOM",
+      "owner_count_var": "ngeom",
+      "include_blocks": ["MJMODEL_POINTERS_GEOM"],
+      "field_renames": {},
+      "data_fields": {
+        "geom_xpos": {"index_var": "id", "stride": "3"},
+        "geom_xmat": {"index_var": "id", "stride": "9"}
+      }
+    },
+    "SiteView": {
+      "obj_type": "mjOBJ_SITE",
+      "owner_count_var": "nsite",
+      "include_blocks": ["MJMODEL_POINTERS_SITE"],
+      "field_renames": {},
+      "data_fields": {
+        "site_xpos": {"index_var": "id", "stride": "3"},
+        "site_xmat": {"index_var": "id", "stride": "9"}
+      }
+    },
+    "ActuatorView": {
+      "obj_type": "mjOBJ_ACTUATOR",
+      "owner_count_var": "nu",
+      "include_blocks": ["MJMODEL_POINTERS_ACTUATOR"],
+      "field_renames": {},
+      "data_fields": {
+        "ctrl":          {"index_var": "id", "stride": "1"},
+        "actuator_force":{"index_var": "id", "stride": "1"},
+        "actuator_length":{"index_var": "id", "stride": "1"},
+        "actuator_velocity":{"index_var": "id", "stride": "1"}
+      }
+    },
+    "TendonView": {
+      "obj_type": "mjOBJ_TENDON",
+      "owner_count_var": "ntendon",
+      "include_blocks": ["MJMODEL_POINTERS_TENDON"],
+      "field_renames": {},
+      "data_fields": {
+        "ten_length":   {"index_var": "id", "stride": "1"},
+        "ten_velocity": {"index_var": "id", "stride": "1"}
+      }
+    },
+    "SensorView": {
+      "obj_type": "mjOBJ_SENSOR",
+      "owner_count_var": "nsensor",
+      "include_blocks": ["MJMODEL_POINTERS_SENSOR"],
+      "field_renames": {},
+      "data_fields": {
+        "sensordata": {"index_var": "m->sensor_adr[id]", "stride": "m->sensor_dim[id]"}
+      }
+    }
+  }
+}

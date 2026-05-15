@@ -25,38 +25,33 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjVelocityActuator::UMjVelocityActuator()
 {
     Type = EMjActuatorType::Velocity;
 }
 
-void UMjVelocityActuator::ParseSpecifics(const FXmlNode* Node)
+
+
+void UMjVelocityActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    MjXmlUtils::ReadAttrDouble(Node, TEXT("kv"), Kv, bOverride_Kv);
+    if (!Element) return;
+
+    Super::ExportTo(Element, def);
+
+    // --- CODEGEN_EXPORT_START ---
+    mjs_setToVelocity(Element, bOverride_kv ? (double)kv : -1.0);
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjVelocityActuator::ExtractSpecifics(const mjsActuator* act)
+void UMjVelocityActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    // mjs_setToVelocity sets:
-    // gainprm[0] = kv
-    // biasprm[2] = -kv
-    if (BiasPrm.Num() > 2)
-    {
-        Kv = -BiasPrm[2];
-        bOverride_Kv = true;
-    }
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("kv"), kv, bOverride_kv);
+    // --- CODEGEN_IMPORT_END ---
 }
 
-void UMjVelocityActuator::ExportTo(mjsActuator* act, mjsDefault* def)
-{
-    if (!act) return;
-
-    Super::ExportTo(act, def); // 1. Common attributes (populates act from default via mjs_addActuator)
-
-    // Mirror OneActuator: kv = act->gainprm[0] as inherited default, override only if explicitly set.
-    double kv = bOverride_Kv ? (double)Kv : act->gainprm[0];
-
-    mjs_setToVelocity(act, kv);  // 2. Type preset
-    ApplyRawOverrides(act, def); // 3. Raw prm overrides
-}

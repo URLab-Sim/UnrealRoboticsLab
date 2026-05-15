@@ -35,7 +35,17 @@ class URLAB_API UMjGeneralActuator : public UMjActuator
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_actearly = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_actearly"))
+    bool actearly = false;
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjGeneralActuator();
 
-    virtual void ExportTo(mjsActuator* act, mjsDefault* def = nullptr) override;
+    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

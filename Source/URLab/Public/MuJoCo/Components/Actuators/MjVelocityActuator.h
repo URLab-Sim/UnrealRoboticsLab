@@ -35,17 +35,19 @@ class URLAB_API UMjVelocityActuator : public UMjActuator
 {
     GENERATED_BODY()
 public:
+    // --- CODEGEN_PROPERTIES_START ---
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    bool bOverride_kv = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_kv"))
+    float kv = 0.0f;
+    // --- CODEGEN_PROPERTIES_END ---
+
     UMjVelocityActuator();
 
-    /** @brief Override toggle for Kv. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Kv = false;
 
-    /** @brief Derivative gain (Kv) for velocity damping. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kv"))
-    double Kv = 0.0f;
 
-    virtual void ParseSpecifics(const class FXmlNode* Node) override;
-    virtual void ExtractSpecifics(const mjsActuator* act) override;
-    virtual void ExportTo(mjsActuator* act, mjsDefault* def = nullptr) override;
+    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+
+    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

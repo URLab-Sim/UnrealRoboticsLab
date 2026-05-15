@@ -20,7 +20,7 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/Input/MjPerturbation.h"
+#include "MuJoCo/input/MjPerturbation.h"
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
@@ -255,9 +255,9 @@ void UMjPerturbation::StartTranslate(const FVector& CursorOrigin, const FVector&
         Perturb.active = mjPERT_TRANSLATE;
     }
 
-    // Anchor click reference onto the cursor ray at the body's depth, so the
+    // anchor click reference onto the cursor ray at the body's depth, so the
     // first UpdateDrag tick produces DeltaUE = 0 (no snap-under-cursor if
-    // the mouse moved between select and Ctrl+RMB, or the body drifted).
+    // the mouse moved between select and ctrl+RMB, or the body drifted).
     const FVector SelWorldUE(
         static_cast<float>(Perturb.refselpos[0]) * 100.0f,
         -static_cast<float>(Perturb.refselpos[1]) * 100.0f,

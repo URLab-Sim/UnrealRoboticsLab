@@ -25,7 +25,7 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Components/MjComponent.h"
-#include "MuJoCo/Input/MjTwistController.h"
+#include "MuJoCo/input/MjTwistController.h"
 #include "Serialization/BufferArchive.h"
 #include "Utils/URLabLogging.h"
 

@@ -62,7 +62,7 @@ CoACD_Mesh ConvertToCoACDMesh(const Chaos::TArrayCollectionArray<VertexType>& Ve
 
     return coacdMesh;
 }
-void SaveCoACDMeshAsOBJ(CoACD_Mesh& Mesh, const FString& FilePath) ;
+void SaveCoACDMeshAsOBJ(CoACD_Mesh& mesh, const FString& FilePath) ;
 
 void SaveCoACDMeshArrayAsOBJ(CoACD_MeshArray& MeshArray, const FString& BaseFilePath) ;
 }

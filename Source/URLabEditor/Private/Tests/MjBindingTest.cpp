@@ -70,8 +70,8 @@ bool FMjBindingIntegrationTest::RunTest(const FString& Parameters)
     RootBody->AttachToComponent(WorldBody, FAttachmentTransformRules::KeepRelativeTransform);
 
     UMjGeom* Geom = NewObject<UMjGeom>(Robot, TEXT("TestGeom"));
-    Geom->Size = FVector(0.1f, 0.1f, 0.1f);  // Sphere radius 0.1m — must be non-zero for MuJoCo to accept
-    Geom->bOverride_Size = true;              // ExportTo only writes size when this is true
+    Geom->size = { 0.1f, 0.1f, 0.1f };  // Sphere radius 0.1m — must be non-zero for MuJoCo to accept
+    Geom->bOverride_size = true;        // ExportTo only writes size when this is true
     Geom->RegisterComponent();
     Geom->AttachToComponent(RootBody, FAttachmentTransformRules::KeepRelativeTransform);
 

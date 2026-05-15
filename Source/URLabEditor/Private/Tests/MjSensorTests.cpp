@@ -209,8 +209,8 @@ bool FMjSensorMultipleSensorsAllBind::RunTest(const FString& Parameters)
         Joint2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
 
         UMjGeom* Geom2 = NewObject<UMjGeom>(Sess.Robot, TEXT("Geom2"));
-        Geom2->Size = FVector(0.1f, 0.1f, 0.1f);
-        Geom2->bOverride_Size = true;
+        Geom2->size = { 0.1f, 0.1f, 0.1f };
+        Geom2->bOverride_size = true;
         Geom2->RegisterComponent();
         Geom2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
 

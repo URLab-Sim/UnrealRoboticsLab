@@ -33,6 +33,7 @@
 #include "MuJoCo/Components/Geometry/MjSite.h"
 #include "MuJoCo/Components/Tendons/MjTendon.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjSensor::UMjSensor()
 {
@@ -42,8 +43,8 @@ UMjSensor::UMjSensor()
     ObjType = EMjObjType::Site;
     RefType = EMjObjType::Unknown;
     Dim = 3;
-    Noise = 0.0f;
-    Cutoff = 0.0f;
+    noise = 0.0f;
+    cutoff = 0.0f;
 }
 
 static EMjObjType MjObjToEnum(int obj) {
@@ -105,112 +106,133 @@ static int EnumToMjObj(EMjObjType Type) {
 }
 
 
-void UMjSensor::ExportTo(mjsSensor* Sensor, mjsDefault* Default)
+void UMjSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
 {
-    if (!Sensor) return;
+    if (!Element) return;
 
-    if (!TargetName.IsEmpty()) mjs_setString(Sensor->objname, TCHAR_TO_UTF8(*TargetName));
-    if (!ReferenceName.IsEmpty()) mjs_setString(Sensor->refname, TCHAR_TO_UTF8(*ReferenceName));
+    if (!TargetName.IsEmpty()) mjs_setString(Element->objname, TCHAR_TO_UTF8(*TargetName));
+    if (!ReferenceName.IsEmpty()) mjs_setString(Element->refname, TCHAR_TO_UTF8(*ReferenceName));
 
-    Sensor->dim = Dim;
+    // Most built-in sensor types have `dim` derived from the sensor type
+    // during mj_compile (e.g. accelerometer dim=3). Writing 0 here zeros
+    // out the spec's compiler-derived value. Only write when the user has
+    // explicitly overridden it (custom user/plugin sensors, or sensors
+    // where dim is genuinely user-controlled).
+    if (Dim > 0) Element->dim = Dim;
     
-    if (bOverride_Noise) Sensor->noise = Noise;
-    if (bOverride_Cutoff) Sensor->cutoff = Cutoff;
     // UserAdr is read-only runtime data (mjModel::sensor_adr), not writable via mjsSensor.
 
-    for(int i=0; i<IntParams.Num() && i<3; i++) Sensor->intprm[i] = IntParams[i];
+    for(int i=0; i<IntParams.Num() && i<3; i++) Element->intprm[i] = IntParams[i];
     
     switch(Type)
     {
-        case EMjSensorType::Touch:          Sensor->type = mjSENS_TOUCH;         Sensor->objtype = mjOBJ_SITE; break;
-        case EMjSensorType::Accelerometer:  Sensor->type = mjSENS_ACCELEROMETER; Sensor->objtype = mjOBJ_SITE; break;
-        case EMjSensorType::Velocimeter:    Sensor->type = mjSENS_VELOCIMETER;   Sensor->objtype = mjOBJ_SITE; break;
-        case EMjSensorType::Gyro:           Sensor->type = mjSENS_GYRO;          Sensor->objtype = mjOBJ_SITE; break;
-        case EMjSensorType::Force:          Sensor->type = mjSENS_FORCE;         Sensor->objtype = mjOBJ_SITE; break;
-        case EMjSensorType::Torque:         Sensor->type = mjSENS_TORQUE;        Sensor->objtype = mjOBJ_SITE; break;
-        case EMjSensorType::Magnetometer:   Sensor->type = mjSENS_MAGNETOMETER;  Sensor->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Touch:          Element->type = mjSENS_TOUCH;         Element->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Accelerometer:  Element->type = mjSENS_ACCELEROMETER; Element->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Velocimeter:    Element->type = mjSENS_VELOCIMETER;   Element->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Gyro:           Element->type = mjSENS_GYRO;          Element->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Force:          Element->type = mjSENS_FORCE;         Element->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Torque:         Element->type = mjSENS_TORQUE;        Element->objtype = mjOBJ_SITE; break;
+        case EMjSensorType::Magnetometer:   Element->type = mjSENS_MAGNETOMETER;  Element->objtype = mjOBJ_SITE; break;
 
         case EMjSensorType::CamProjection:
-            Sensor->type = mjSENS_CAMPROJECTION;
-            Sensor->objtype = mjOBJ_SITE;
-            Sensor->reftype = mjOBJ_CAMERA;
+            Element->type = mjSENS_CAMPROJECTION;
+            Element->objtype = mjOBJ_SITE;
+            Element->reftype = mjOBJ_CAMERA;
             break;
 
         case EMjSensorType::RangeFinder:
-            Sensor->type = mjSENS_RANGEFINDER;
-            Sensor->objtype = (ObjType == EMjObjType::Camera) ? mjOBJ_CAMERA : mjOBJ_SITE;
+            Element->type = mjSENS_RANGEFINDER;
+            Element->objtype = (ObjType == EMjObjType::Camera) ? mjOBJ_CAMERA : mjOBJ_SITE;
             break;
 
-        case EMjSensorType::JointPos:        Sensor->type = mjSENS_JOINTPOS;      Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::JointVel:        Sensor->type = mjSENS_JOINTVEL;      Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::JointActFrc:     Sensor->type = mjSENS_JOINTACTFRC;   Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::BallQuat:        Sensor->type = mjSENS_BALLQUAT;      Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::BallAngVel:      Sensor->type = mjSENS_BALLANGVEL;    Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::JointLimitPos:   Sensor->type = mjSENS_JOINTLIMITPOS; Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::JointLimitVel:   Sensor->type = mjSENS_JOINTLIMITVEL; Sensor->objtype = mjOBJ_JOINT; break;
-        case EMjSensorType::JointLimitFrc:   Sensor->type = mjSENS_JOINTLIMITFRC; Sensor->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::JointPos:        Element->type = mjSENS_JOINTPOS;      Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::JointVel:        Element->type = mjSENS_JOINTVEL;      Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::JointActFrc:     Element->type = mjSENS_JOINTACTFRC;   Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::BallQuat:        Element->type = mjSENS_BALLQUAT;      Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::BallAngVel:      Element->type = mjSENS_BALLANGVEL;    Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::JointLimitPos:   Element->type = mjSENS_JOINTLIMITPOS; Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::JointLimitVel:   Element->type = mjSENS_JOINTLIMITVEL; Element->objtype = mjOBJ_JOINT; break;
+        case EMjSensorType::JointLimitFrc:   Element->type = mjSENS_JOINTLIMITFRC; Element->objtype = mjOBJ_JOINT; break;
 
-        case EMjSensorType::TendonPos:       Sensor->type = mjSENS_TENDONPOS;      Sensor->objtype = mjOBJ_TENDON; break;
-        case EMjSensorType::TendonVel:       Sensor->type = mjSENS_TENDONVEL;      Sensor->objtype = mjOBJ_TENDON; break;
-        case EMjSensorType::TendonActFrc:    Sensor->type = mjSENS_TENDONACTFRC;   Sensor->objtype = mjOBJ_TENDON; break;
-        case EMjSensorType::TendonLimitPos:  Sensor->type = mjSENS_TENDONLIMITPOS; Sensor->objtype = mjOBJ_TENDON; break;
-        case EMjSensorType::TendonLimitVel:  Sensor->type = mjSENS_TENDONLIMITVEL; Sensor->objtype = mjOBJ_TENDON; break;
-        case EMjSensorType::TendonLimitFrc:  Sensor->type = mjSENS_TENDONLIMITFRC; Sensor->objtype = mjOBJ_TENDON; break;
+        case EMjSensorType::TendonPos:       Element->type = mjSENS_TENDONPOS;      Element->objtype = mjOBJ_TENDON; break;
+        case EMjSensorType::TendonVel:       Element->type = mjSENS_TENDONVEL;      Element->objtype = mjOBJ_TENDON; break;
+        case EMjSensorType::TendonActFrc:    Element->type = mjSENS_TENDONACTFRC;   Element->objtype = mjOBJ_TENDON; break;
+        case EMjSensorType::TendonLimitPos:  Element->type = mjSENS_TENDONLIMITPOS; Element->objtype = mjOBJ_TENDON; break;
+        case EMjSensorType::TendonLimitVel:  Element->type = mjSENS_TENDONLIMITVEL; Element->objtype = mjOBJ_TENDON; break;
+        case EMjSensorType::TendonLimitFrc:  Element->type = mjSENS_TENDONLIMITFRC; Element->objtype = mjOBJ_TENDON; break;
 
-        case EMjSensorType::ActuatorPos:     Sensor->type = mjSENS_ACTUATORPOS; Sensor->objtype = mjOBJ_ACTUATOR; break;
-        case EMjSensorType::ActuatorVel:     Sensor->type = mjSENS_ACTUATORVEL; Sensor->objtype = mjOBJ_ACTUATOR; break;
-        case EMjSensorType::ActuatorFrc:     Sensor->type = mjSENS_ACTUATORFRC; Sensor->objtype = mjOBJ_ACTUATOR; break;
+        case EMjSensorType::ActuatorPos:     Element->type = mjSENS_ACTUATORPOS; Element->objtype = mjOBJ_ACTUATOR; break;
+        case EMjSensorType::ActuatorVel:     Element->type = mjSENS_ACTUATORVEL; Element->objtype = mjOBJ_ACTUATOR; break;
+        case EMjSensorType::ActuatorFrc:     Element->type = mjSENS_ACTUATORFRC; Element->objtype = mjOBJ_ACTUATOR; break;
 
-        case EMjSensorType::FramePos:       Sensor->type = mjSENS_FRAMEPOS;    break;
-        case EMjSensorType::FrameQuat:      Sensor->type = mjSENS_FRAMEQUAT;   break;
-        case EMjSensorType::FrameXAxis:     Sensor->type = mjSENS_FRAMEXAXIS;  break;
-        case EMjSensorType::FrameYAxis:     Sensor->type = mjSENS_FRAMEYAXIS;  break;
-        case EMjSensorType::FrameZAxis:     Sensor->type = mjSENS_FRAMEZAXIS;  break;
-        case EMjSensorType::FrameLinVel:    Sensor->type = mjSENS_FRAMELINVEL; break;
-        case EMjSensorType::FrameAngVel:    Sensor->type = mjSENS_FRAMEANGVEL; break;
-        case EMjSensorType::FrameLinAcc:    Sensor->type = mjSENS_FRAMELINACC; break;
-        case EMjSensorType::FrameAngAcc:    Sensor->type = mjSENS_FRAMEANGACC; break;
+        case EMjSensorType::FramePos:       Element->type = mjSENS_FRAMEPOS;    break;
+        case EMjSensorType::FrameQuat:      Element->type = mjSENS_FRAMEQUAT;   break;
+        case EMjSensorType::FrameXAxis:     Element->type = mjSENS_FRAMEXAXIS;  break;
+        case EMjSensorType::FrameYAxis:     Element->type = mjSENS_FRAMEYAXIS;  break;
+        case EMjSensorType::FrameZAxis:     Element->type = mjSENS_FRAMEZAXIS;  break;
+        case EMjSensorType::FrameLinVel:    Element->type = mjSENS_FRAMELINVEL; break;
+        case EMjSensorType::FrameAngVel:    Element->type = mjSENS_FRAMEANGVEL; break;
+        case EMjSensorType::FrameLinAcc:    Element->type = mjSENS_FRAMELINACC; break;
+        case EMjSensorType::FrameAngAcc:    Element->type = mjSENS_FRAMEANGACC; break;
 
-        case EMjSensorType::InsideSite:     Sensor->type = mjSENS_INSIDESITE;  Sensor->objtype = (mjtObj)EnumToMjObj(ObjType); Sensor->reftype = mjOBJ_SITE; break;
-        case EMjSensorType::SubtreeCom:     Sensor->type = mjSENS_SUBTREECOM;  Sensor->objtype = mjOBJ_BODY; break;
-        case EMjSensorType::SubtreeLinVel:  Sensor->type = mjSENS_SUBTREELINVEL; Sensor->objtype = mjOBJ_BODY; break;
-        case EMjSensorType::SubtreeAngMom:  Sensor->type = mjSENS_SUBTREEANGMOM; Sensor->objtype = mjOBJ_BODY; break;
+        case EMjSensorType::InsideSite:     Element->type = mjSENS_INSIDESITE;  Element->objtype = (mjtObj)EnumToMjObj(ObjType); Element->reftype = mjOBJ_SITE; break;
+        case EMjSensorType::SubtreeCom:     Element->type = mjSENS_SUBTREECOM;  Element->objtype = mjOBJ_BODY; break;
+        case EMjSensorType::SubtreeLinVel:  Element->type = mjSENS_SUBTREELINVEL; Element->objtype = mjOBJ_BODY; break;
+        case EMjSensorType::SubtreeAngMom:  Element->type = mjSENS_SUBTREEANGMOM; Element->objtype = mjOBJ_BODY; break;
 
-        case EMjSensorType::GeomDist:       Sensor->type = mjSENS_GEOMDIST;   break;
-        case EMjSensorType::GeomNormal:     Sensor->type = mjSENS_GEOMNORMAL; break;
-        case EMjSensorType::GeomFromTo:     Sensor->type = mjSENS_GEOMFROMTO; break;
+        case EMjSensorType::GeomDist:       Element->type = mjSENS_GEOMDIST;   break;
+        case EMjSensorType::GeomNormal:     Element->type = mjSENS_GEOMNORMAL; break;
+        case EMjSensorType::GeomFromTo:     Element->type = mjSENS_GEOMFROMTO; break;
 
-        case EMjSensorType::Contact:        Sensor->type = mjSENS_CONTACT; break;
-        case EMjSensorType::EPotential:     Sensor->type = mjSENS_E_POTENTIAL; break;
-        case EMjSensorType::EKinetic:      Sensor->type = mjSENS_E_KINETIC;   break;
-        case EMjSensorType::Clock:         Sensor->type = mjSENS_CLOCK;       break;
+        case EMjSensorType::Contact:        Element->type = mjSENS_CONTACT; break;
+        case EMjSensorType::EPotential:     Element->type = mjSENS_E_POTENTIAL; break;
+        case EMjSensorType::EKinetic:      Element->type = mjSENS_E_KINETIC;   break;
+        case EMjSensorType::Clock:         Element->type = mjSENS_CLOCK;       break;
 
-        case EMjSensorType::Tactile:        Sensor->type = mjSENS_TACTILE; Sensor->objtype = mjOBJ_MESH; Sensor->reftype = mjOBJ_GEOM; break;
-        case EMjSensorType::Plugin:         Sensor->type = mjSENS_PLUGIN; break;
-        case EMjSensorType::User:           Sensor->type = mjSENS_USER;   break;
+        case EMjSensorType::Tactile:        Element->type = mjSENS_TACTILE; Element->objtype = mjOBJ_MESH; Element->reftype = mjOBJ_GEOM; break;
+        case EMjSensorType::Plugin:         Element->type = mjSENS_PLUGIN; break;
+        case EMjSensorType::User:           Element->type = mjSENS_USER;   break;
 
-        default:                            Sensor->type = mjSENS_ACCELEROMETER; Sensor->objtype = mjOBJ_SITE; break;
+        default:                            Element->type = mjSENS_ACCELEROMETER; Element->objtype = mjOBJ_SITE; break;
     }
 
-    if (Sensor->type >= mjSENS_FRAMEPOS && Sensor->type <= mjSENS_FRAMEANGACC)
+    if (Element->type >= mjSENS_FRAMEPOS && Element->type <= mjSENS_FRAMEANGACC)
     {
-        Sensor->objtype = (mjtObj)EnumToMjObj(ObjType);
-        if (RefType != EMjObjType::Unknown) Sensor->reftype = (mjtObj)EnumToMjObj(RefType);
+        Element->objtype = (mjtObj)EnumToMjObj(ObjType);
+        if (RefType != EMjObjType::Unknown) Element->reftype = (mjtObj)EnumToMjObj(RefType);
     }
     else if (Type == EMjSensorType::GeomDist || Type == EMjSensorType::GeomNormal || Type == EMjSensorType::GeomFromTo || Type == EMjSensorType::Contact || Type == EMjSensorType::Plugin)
     {
-        Sensor->objtype = (mjtObj)EnumToMjObj(ObjType);
-        Sensor->reftype = (mjtObj)EnumToMjObj(RefType);
+        Element->objtype = (mjtObj)EnumToMjObj(ObjType);
+        Element->reftype = (mjtObj)EnumToMjObj(RefType);
     }
     else if (Type == EMjSensorType::User)
     {
-        Sensor->objtype = (mjtObj)EnumToMjObj(ObjType);
+        Element->objtype = (mjtObj)EnumToMjObj(ObjType);
     }
+
+        // --- CODEGEN_EXPORT_START ---
+    if (bOverride_nsample) Element->nsample = nsample;
+    if (bOverride_interp) Element->interp = interp;
+    if (bOverride_delay) Element->delay = delay;
+    if (bOverride_interval) { for (int32 i = 0; i < interval.Num(); ++i) Element->interval[i] = interval[i]; }
+    if (bOverride_cutoff) Element->cutoff = cutoff;
+    if (bOverride_noise) Element->noise = noise;
+    // --- CODEGEN_EXPORT_END ---
 }
 
-void UMjSensor::ImportFromXml(const FXmlNode* Node)
+void UMjSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
     if (!Node) return;
+
+        // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrInt(Node, TEXT("nsample"), nsample, bOverride_nsample);
+    MjXmlUtils::ReadAttrInt(Node, TEXT("interp"), interp, bOverride_interp);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("delay"), delay, bOverride_delay);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("interval"), interval, bOverride_interval);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("cutoff"), cutoff, bOverride_cutoff);
+    MjXmlUtils::ReadAttrFloat(Node, TEXT("noise"), noise, bOverride_noise);
+    // --- CODEGEN_IMPORT_END ---
 
     // Determine sensor type from the XML tag name
     static const TMap<FString, EMjSensorType> TagToType = {
@@ -268,8 +290,6 @@ void UMjSensor::ImportFromXml(const FXmlNode* Node)
     const EMjSensorType* Found = TagToType.Find(Tag);
     if (Found) Type = *Found;
 
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("noise"), Noise, bOverride_Noise);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("cutoff"), Cutoff, bOverride_Cutoff);
 
     // Object name: try each attribute in priority order
     TargetName = Node->GetAttribute(TEXT("site"));

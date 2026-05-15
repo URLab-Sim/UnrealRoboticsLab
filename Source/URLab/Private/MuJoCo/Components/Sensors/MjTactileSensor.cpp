@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjTactileSensor.h"
+#include "MuJoCo/Utils/MjOrientationUtils.h"
 
 UMjTactileSensor::UMjTactileSensor()
 {
@@ -35,3 +36,25 @@ void UMjTactileSensor::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
     // geometry of the attached site and cannot be known at spec-build time.
     Dim = GetDimension();
 }
+
+void UMjTactileSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
+{
+    if (!Element) return;
+
+    Super::ExportTo(Element, Default);
+
+    // --- CODEGEN_EXPORT_START ---
+
+    // --- CODEGEN_EXPORT_END ---
+}
+
+void UMjTactileSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
+{
+    Super::ImportFromXml(Node, CompilerSettings);
+    if (!Node) return;
+
+    // --- CODEGEN_IMPORT_START ---
+
+    // --- CODEGEN_IMPORT_END ---
+}
+

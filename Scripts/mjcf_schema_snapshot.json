@@ -1,6 +1,6 @@
 {
   "_meta": {
-    "mujoco_version": "3.7.0",
+    "mujoco_version": "3.8.1",
     "snapshot_date": "2026-05-15",
     "source": "https://github.com/google-deepmind/mujoco/blob/main/src/xml/xml_native_reader.cc",
     "description": "MJCF schema snapshot, auto-extracted by Scripts/codegen/build_mjcf_schema_snapshot.py from the MuJoCo submodule's xml_native_reader.cc."
@@ -475,6 +475,7 @@
       "name",
       "class",
       "flex",
+      "cell",
       "active",
       "solref",
       "solimp"
@@ -718,7 +719,9 @@
       "element",
       "texcoord",
       "elemtexcoord",
-      "node"
+      "node",
+      "cellcount",
+      "dof"
     ],
     "children": [
       "contact",
@@ -750,6 +753,7 @@
       "dim",
       "dof",
       "count",
+      "cellcount",
       "spacing",
       "radius",
       "rigid",

@@ -87,6 +87,7 @@ void UMjFlexcomp::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     MjXmlUtils::ReadAttrInt(Node, TEXT("dim"), dim, bOverride_dim);
     MjXmlUtils::ReadAttrIntArray(Node, TEXT("count"), count, bOverride_count);
+    MjXmlUtils::ReadAttrIntArray(Node, TEXT("cellcount"), cellcount, bOverride_cellcount);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("spacing"), spacing, bOverride_spacing);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("radius"), radius, bOverride_radius);
     MjXmlUtils::ReadAttrBool(Node, TEXT("rigid"), rigid, bOverride_rigid);
@@ -371,6 +372,16 @@ FString UMjFlexcomp::BuildSchemaAttrsXml() const
         {
             if (i > 0) Out += TEXT(" ");
             Out += FString::Printf(TEXT("%d"), count[i]);
+        }
+        Out += TEXT("\"");
+    }
+    if (bOverride_cellcount && cellcount.Num() > 0)
+    {
+        Out += TEXT(" cellcount=\"");
+        for (int32 i = 0; i < cellcount.Num(); ++i)
+        {
+            if (i > 0) Out += TEXT(" ");
+            Out += FString::Printf(TEXT("%d"), cellcount[i]);
         }
         Out += TEXT("\"");
     }

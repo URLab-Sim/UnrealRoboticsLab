@@ -34,17 +34,22 @@ namespace
     // we can add our own explicit <equality><flex ... /> entries.
     FString MakeFlexEqualityXml(const FString& EqualityChildTag)
     {
-        // Trilinear flexes can't self-collide, so disable via the flexcomp
-        // contact block. The equality on the flex is the whole point of the
-        // test — flexcomp's own edge equality is disabled so we're the
-        // single source of a flex-referencing equality in the spec.
+        // The equality on the flex is the whole point of the test — the
+        // flexcomp's own edge equality is disabled so we're the single
+        // source of a flex-referencing equality in the spec.
+        //
+        // Topology: 2x2 grid of nodes laid out flat in XY (z count = 1).
+        // MuJoCo 3.8 added a stricter orthonormal check on flex grid edge
+        // vectors and rejects degenerate z dimensions when dof="trilinear"
+        // (the third edge has zero length). A 2D cloth uses default dof,
+        // which handles a flat grid fine.
         return FString::Printf(TEXT(R"(<mujoco>
   <worldbody>
     <body name="anchor" pos="0 0 0">
       <geom size=".05"/>
     </body>
     <flexcomp name="cloth" type="grid" count="2 2 1" spacing="0.1 0.1 0.1"
-              pos="0 0 0.3" dof="trilinear">
+              pos="0 0 0.3">
       <contact selfcollide="none"/>
       <edge equality="false"/>
     </flexcomp>

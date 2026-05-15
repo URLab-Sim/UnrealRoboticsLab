@@ -102,6 +102,12 @@ public:
     TArray<int32> count = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    bool bOverride_cellcount = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_cellcount"))
+    TArray<int32> cellcount = {};
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_spacing = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_spacing"))

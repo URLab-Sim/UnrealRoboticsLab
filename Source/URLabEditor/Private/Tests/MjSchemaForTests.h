@@ -83,7 +83,7 @@ namespace URLabCodegenSchemaForTests
 
     inline const TArray<FString>& FlexcompProps()
     {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("group"), TEXT("dim"), TEXT("FlexcompDof"), TEXT("count"), TEXT("spacing"), TEXT("radius"), TEXT("rigid"), TEXT("mass"), TEXT("inertiabox"), TEXT("scale"), TEXT("file"), TEXT("point"), TEXT("element"), TEXT("texcoord"), TEXT("material"), TEXT("rgba"), TEXT("flatskin"), TEXT("origin")};
+        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("group"), TEXT("dim"), TEXT("FlexcompDof"), TEXT("count"), TEXT("cellcount"), TEXT("spacing"), TEXT("radius"), TEXT("rigid"), TEXT("mass"), TEXT("inertiabox"), TEXT("scale"), TEXT("file"), TEXT("point"), TEXT("element"), TEXT("texcoord"), TEXT("material"), TEXT("rgba"), TEXT("flatskin"), TEXT("origin")};
         return P;
     }
 

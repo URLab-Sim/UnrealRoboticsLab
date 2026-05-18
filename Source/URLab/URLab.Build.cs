@@ -45,7 +45,8 @@ public class URLab : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new string[]
 			{
 				"UnrealEd",
-				"AssetTools"
+				"AssetTools",
+				"ToolWidgets"
 			});
 		}
 

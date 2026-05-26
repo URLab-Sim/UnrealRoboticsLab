@@ -162,6 +162,27 @@ TArray<FMjReplayFrame>& AMjReplayManager::GetLiveFrames()
     return Sessions.FindOrAdd(LiveSessionName).Frames;
 }
 
+int32 AMjReplayManager::GetLiveFrameCount() const
+{
+    if (const FReplaySession* S = Sessions.Find(LiveSessionName))
+    {
+        return S->Frames.Num();
+    }
+    return 0;
+}
+
+double AMjReplayManager::GetLiveSimDurationS() const
+{
+    if (const FReplaySession* S = Sessions.Find(LiveSessionName))
+    {
+        if (S->Frames.Num() >= 2)
+        {
+            return static_cast<double>(S->Frames.Last().Timestamp - S->Frames[0].Timestamp);
+        }
+    }
+    return 0.0;
+}
+
 TArray<FString> AMjReplayManager::GetSessionNames() const
 {
     TArray<FString> Names;
@@ -283,7 +304,17 @@ void AMjReplayManager::StartRecording()
     ActiveSessionName = LiveSessionName;
     bIsRecording = true;
     bCacheValid = false;
+    bFirstFrameLogged = false;
     CachedJointNames.Empty();
+
+    // Refetch Manager if BeginPlay's fetch lost the race against
+    // AAMjManager::Instance being set. Without this, recording
+    // silently captures zero frames because the OnPostStep hook
+    // below never installs.
+    if (!Manager)
+    {
+        Manager = AAMjManager::GetManager();
+    }
 
     // Re-register the PostStep callback (it gets cleared by StopRecording)
     // Sets OnPostStep directly rather than RegisterPostStepCallback -- replay
@@ -293,6 +324,11 @@ void AMjReplayManager::StartRecording()
         Manager->PhysicsEngine->OnPostStep = [this](mjModel* m, mjData* d) {
             this->OnPostStep(m, d);
         };
+    }
+    else
+    {
+        UE_LOG(LogURLabReplay, Warning,
+            TEXT("ReplayManager: StartRecording called but no Manager / PhysicsEngine — frames will not be captured."));
     }
 
     UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: Started Recording"));
@@ -789,6 +825,17 @@ bool AMjReplayManager::BrowseAndSaveRecording()
 void AMjReplayManager::OnPostStep(mjModel* m, mjData* d)
 {
     if (!bIsRecording || !m || !d || !d->qpos || !d->qvel) return;
+
+    // One-shot log per recording session so we can confirm at runtime
+    // whether the OnPostStep hook is actually firing. Reset in
+    // StartRecording.
+    if (!bFirstFrameLogged)
+    {
+        bFirstFrameLogged = true;
+        UE_LOG(LogURLabReplay, Log,
+            TEXT("ReplayManager::OnPostStep first frame: nq=%d nv=%d time=%.4f"),
+            m->nq, m->nv, d->time);
+    }
 
     if (!bCacheValid || CachedJointNames.Num() != m->njnt)
     {

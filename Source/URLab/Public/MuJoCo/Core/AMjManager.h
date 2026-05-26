@@ -26,6 +26,11 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "Bridge/RpcDispatcher.h"
+#include "Bridge/BridgeServer.h"
+#include "Transport/SnapshotPublisher.h"
+#include <atomic>
 #include "AMjManager.generated.h"
 
 // Forward declarations
@@ -36,6 +41,29 @@ class UMjNetworkManager;
 class UMjInputHandler;
 class UMjPerturbation;
 class UMjSimulationState;
+class UMjBody;
+
+/**
+ * @struct FMjEntityRecord
+ * @brief Cached non-articulation entity metadata: a UMjBody whose owner is
+ *        not an AMjArticulation (props, free-jointed scene objects, ...).
+ *        Built once at session start (PostCompile) and consumed by
+ *        UURLabZmqPublishTransport for "scene/<name>/state" PUB topics and by
+ *        the step server for the `entities` block in step replies.
+ *        Articulations have their own typed cache; this struct is for
+ *        everything else dynamic in the world.
+ */
+struct FMjEntityRecord
+{
+    /** UMjBody MjID after compile. */
+    int32 MjId = -1;
+    /** Compiled name (the same string mj_id2name returns). */
+    FString Name;
+    /** True if the body owns a single mjJNT_FREE joint (qpos[7]/qvel[6]). */
+    bool bHasFreeBase = false;
+    /** Weak ref kept for diagnostics; consumers should index by MjId. */
+    TWeakObjectPtr<UMjBody> BodyComp;
+};
 
 /**
  * @class AAMjManager
@@ -55,157 +83,178 @@ class URLAB_API AAMjManager : public AActor
 	GENERATED_BODY()
 
 public:
-	/**
-     * @brief Default constructor.
-     */
 	AAMjManager();
 
-    // --- Physics Engine Component (Phase 1 extraction) ---
-    /** @brief Core physics engine component that owns the MuJoCo simulation lifecycle. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
     UMjPhysicsEngine* PhysicsEngine;
 
-    // --- Debug Visualizer Component (Phase 2 extraction) ---
-    /** @brief Debug visualization component for contact forces, collision wireframes, etc. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
     UMjDebugVisualizer* DebugVisualizer;
 
-    // --- Network Manager Component (Phase 3 extraction) ---
-    /** @brief Network component managing ZMQ discovery and camera streaming. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
     UMjNetworkManager* NetworkManager;
 
-    // --- Input Handler Component (Phase 4 extraction) ---
-    /** @brief Input handler component for keyboard hotkeys. */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
     UMjInputHandler* InputHandler;
 
-    /** @brief Mouse-driven body perturbation (simulate-style Ctrl+LMB/RMB drag). */
+    /** Mouse-driven body perturbation (simulate-style Ctrl+LMB/RMB drag). */
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
     UMjPerturbation* Perturbation;
-    
-    // --- Global Access ---
-    /** 
-     * @brief Singleton instance pointer. Set in BeginPlay, cleared in EndPlay. 
-     * Use GetManager() to access safely from Blueprints.
-     */
+
+    /** Set in BeginPlay, cleared in EndPlay. Use GetManager() from Blueprints. */
     static AAMjManager* Instance;
 
-    /** 
-     * @brief Gets the active MuJoCo Manager instance.
-     * @return Pointer to the manager, or nullptr if not existing.
-     */
     UFUNCTION(BlueprintPure, Category = "MuJoCo|Global", meta=(DisplayName="Get MuJoCo Manager"))
     static AAMjManager* GetManager();
 
     // --- State Control (delegates to PhysicsEngine) ---
 
-    /** @brief Pauses or Resumes the physics simulation. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Control")
     void SetPaused(bool bPaused);
 
-    /** @brief Checks if the simulation is currently running (initialized and not paused). */
     UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
     bool IsRunning() const;
 
-    /** @brief Checks if the MuJoCo model is compiled and data is allocated. */
     UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
     bool IsInitialized() const;
 
     // --- Articulation Access ---
 
-    /** @brief Gets a registered articulation by its Actor name. Returns nullptr if not found. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Global")
     AMjArticulation* GetArticulation(const FString& ActorName) const;
 
-    /** @brief Gets all registered articulations. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
     TArray<AMjArticulation*> GetAllArticulations() const;
 
-    /** @brief Gets all registered QuickConvert components. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
     TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
 
-    /** @brief Gets all registered Heightfield actors. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
     TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 
-    /** @brief Gets the current MuJoCo simulation time (m_data->time) in seconds. */
+    /** Non-articulation entity table built in PostCompile; empty until then. */
+    const TArray<FMjEntityRecord>& GetEntities() const { return EntityCache; }
+
+    /** Refresh the entity cache; called from PostCompile. */
+    void BuildEntityCache();
+
     UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
     float GetSimTime() const;
 
-    /** @brief Gets the simulation timestep from Options (dt). */
     UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
     float GetTimestep() const;
 
-    /** @brief If true, automatically creates and adds the MjSimulate dashboard widget to the viewport on BeginPlay. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|UI")
     bool bAutoCreateSimulateWidget = true;
 
-    /** @brief Toggles visibility of the MjSimulate dashboard widget. Bound to Tab key. */
+    // --- Remote Stepping ---
+
+    /**
+     * @brief Step mode for the simulation.
+     *
+     * Auto (default) lets the Python client promote to Direct or Puppet on hello.
+     * Pinning to Live / Direct / Puppet locks the engine and rejects
+     * mode-switch RPCs with error("mode_locked_by_server").
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
+    EStepMode StepMode = EStepMode::Auto;
+
+    /**
+     * @brief Deterministic seed written to m->opt.seed before compile.
+     *
+     * Also writable at runtime via the reset RPC for episode-level reseeding.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
+    int32 Seed = 0;
+
+    /**
+     * @brief Single source of truth for "publishers should pause".
+     *
+     * FURLabRpcDispatcher flips this to true on entering Direct/Puppet so the
+     * sensor broadcaster, control subscriber, and camera workers all idle.
+     * Flipped back to false on exit.
+     */
+    std::atomic<bool> bPublishersPaused{false};
+
+    /** Owns the FURLabRpcDispatcher + transports. Created in BeginPlay, destroyed in EndPlay. */
+    UPROPERTY()
+    TObjectPtr<UURLabBridgeServer> BridgeServer;
+
+    FURLabRpcDispatcher* GetStepDispatcher() const
+    {
+        return BridgeServer ? BridgeServer->GetDispatcher() : nullptr;
+    }
+
+    /** Snapshot publishers share one per-step state_full payload — each
+     *  wire transport (ZMQ PUB, SHM ring) avoids re-serialising the same
+     *  data. OwnerObj may be any UObject; parameter name avoids shadowing
+     *  AActor::Owner. */
+    void RegisterSnapshotPublisher(IMjSnapshotPublisher* Publisher,
+                                   class UObject* OwnerObj);
+    void UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher);
+
+    /** Bound to Tab key. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
     void ToggleSimulateWidget();
 
-    /** @brief Reference to the auto-created simulate widget (if any). */
     UPROPERTY()
     UUserWidget* SimulateWidget = nullptr;
 
 protected:
 
-    /** @brief O(1) articulation lookup built in PostCompile(). Key = actor name. */
+    /** O(1) articulation lookup built in PostCompile. Key = actor name. */
     TMap<FString, AMjArticulation*> m_ArticulationMap;
 
-	/**
-     * @brief Called when the game starts or when spawned.
-     * Initiates the compilation and starts the async simulation loop.
-     */
-	virtual void BeginPlay() override;
+    TArray<FMjEntityRecord> EntityCache;
 
-    /**
-     * @brief Called when the game ends or the actor is destroyed.
-     * Handles cleanup of MuJoCo resources and stops the async task.
-     * @param EndPlayReason The reason for end of play.
-     */
+public:
+    /** Manager-owned UObject publish transports
+     *  (UURLabShmPublishTransport + UURLabZmqPublishTransport).
+     *  UPROPERTY(Transient) keeps GC alive across PIE without
+     *  serialising. EndPlay calls TransportShutdown on each before
+     *  clearing. Public so the dispatcher can iterate to find specific
+     *  publishers (e.g. SHM state path for hello reply). */
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<class UURLabPublishTransport>> ManagerOwnedPublishTransports;
+
+    /** Manager-owned UObject subscribe transports
+     *  (UURLabZmqSubscribeTransport). Same lifetime contract as the publish
+     *  array; same per-step iteration contract via PreStep callback. */
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<class UURLabSubscribeTransport>> ManagerOwnedSubscribeTransports;
+
+protected:
+
+    struct FRegisteredSnapshotPublisher
+    {
+        TWeakObjectPtr<UObject> Owner;
+        IMjSnapshotPublisher* Publisher = nullptr;
+    };
+    /** Snapshot publishers registered by their owning components. Read on
+     *  the physics async thread, mutated on the game thread (BeginPlay /
+     *  EndPlay) -- protect with SnapshotPublishersMutex. */
+    TArray<FRegisteredSnapshotPublisher> SnapshotPublishers;
+    mutable FCriticalSection SnapshotPublishersMutex;
+
+	virtual void BeginPlay() override;
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-public:	
-	/**
-     * @brief Called every frame.
-     * Manages synchronization of control inputs on the Game Thread.
-     * @param DeltaTime Time since the last frame.
-     */
+public:
 	virtual void Tick(float DeltaTime) override;
-    
-    /** @brief List of custom physics components registered with this manager. */
+
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
     TArray<UMjQuickConvertComponent*> m_MujocoComponents;
 
-    /** @brief List of articulations (multi-body structures) registered with this manager. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
 	TArray<AMjArticulation*> m_articulations;
 
-    /** @brief List of heightfield actors registered with this manager. */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
     TArray<AMjHeightfieldActor*> m_heightfieldActors;
 
-    /**
-     * @brief Compiles the aggregated mjSpec into an mjModel and initializes mjData.
-     * Calls PreCompile and PostCompile during the process.
-     */
     void Compile();
-
-    /**
-     * @brief Scans the scene for Mujoco components and Articulations to populate m_spec.
-     * Finds attached ZmqComponents.
-     */
     void PreCompile();
-
-    /**
-     * @brief Finalizes setup after compilation, such as initializing actuator maps.
-     * Calls PostSetup on all registered components.
-     */
     void PostCompile();
-    
+
     // --- Replay ---
 
     UFUNCTION(CallInEditor, Category = "MuJoCo|Replay")
@@ -220,34 +269,25 @@ public:
     UFUNCTION(CallInEditor, Category = "MuJoCo|Replay")
     void StopReplay();
 
+    // --- Delegating Methods (thin wrappers around PhysicsEngine) ---
 
-    // --- Simulation Management ---
-
-    /** 
-     * @brief Resets the MuJoCo simulation data (qpos, qvel, time) to initial keyframe (or zero).
-     */
     UFUNCTION(BlueprintCallable, CallInEditor, Category = "MuJoCo|Control")
     void ResetSimulation();
 
-    // --- Delegating Methods (thin wrappers around PhysicsEngine) ---
-
-    /** @brief Returns the error string from the most recent failed compile, or empty if last compile succeeded. */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Status")
     FString GetLastCompileError() const;
 
-    /** @brief Pauses the async loop, steps N times synchronously, then restores pause state. */
+    /** Pauses the async loop, steps N times synchronously, then restores pause state. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Control")
     void StepSync(int32 NumSteps);
 
-    /** @brief Re-runs Compile() and restarts the async simulation loop. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Control")
     bool CompileModel();
 
-    /** @brief Captures a full state snapshot of the current simulation. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Snapshot")
     UMjSimulationState* CaptureSnapshot();
 
-    /** @brief Schedules a simulation state restore for the next physics step. */
+    /** Restore is scheduled for the next physics step (not applied immediately). */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Snapshot")
     void RestoreSnapshot(UMjSimulationState* Snapshot);
 };

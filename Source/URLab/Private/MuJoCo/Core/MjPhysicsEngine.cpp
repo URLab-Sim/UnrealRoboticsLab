@@ -338,14 +338,15 @@ void UMjPhysicsEngine::RunMujocoAsync()
     }
 
     bShouldStopTask = false;
-    float TargetInterval = (float)m_model->opt.timestep;
 
-    AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [TargetInterval, this]() {
+    AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [this]() {
         FPlatformProcess::Sleep(0.0f);
 
         while (true)
         {
             const double LoopStartTime = FPlatformTime::Seconds();
+            // Re-read per iteration so set_sim_options retunes the pacer live.
+            const float TargetInterval = m_model ? (float)m_model->opt.timestep : 0.002f;
 
             if (bShouldStopTask)
                 break;
@@ -396,9 +397,20 @@ void UMjPhysicsEngine::RunMujocoAsync()
                     Cb(m_model, m_data);
                 }
 
-                for (AMjArticulation* Art : m_articulations)
+                // Puppet mode: client pushes qpos/qvel/ctrl directly, so
+                // ApplyControls (NetworkValue → d->ctrl) would clobber the
+                // snapshot. Skip the controller pass.
+                bool bSkipApplyControls = false;
+                if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
                 {
-                    if (Art) Art->ApplyControls();
+                    bSkipApplyControls = (OwnerMgr->StepMode == EStepMode::Puppet);
+                }
+                if (!bSkipApplyControls)
+                {
+                    for (AMjArticulation* Art : m_articulations)
+                    {
+                        if (Art) Art->ApplyControls();
+                    }
                 }
 
                 DrainCommands();
@@ -607,16 +619,21 @@ void UMjPhysicsEngine::RestoreSnapshot(UMjSimulationState* Snapshot)
 
 void UMjPhysicsEngine::RegisterPreStepCallback(FPhysicsCallback Callback)
 {
+    // Lock matches the iteration in RunMujocoAsync — TArray realloc during
+    // a concurrent Add would invalidate the buffer the physics thread holds.
+    FScopeLock Lock(&CallbackMutex);
     PreStepCallbacks.Add(MoveTemp(Callback));
 }
 
 void UMjPhysicsEngine::RegisterPostStepCallback(FPhysicsCallback Callback)
 {
+    FScopeLock Lock(&CallbackMutex);
     PostStepCallbacks.Add(MoveTemp(Callback));
 }
 
 void UMjPhysicsEngine::ClearCallbacks()
 {
+    FScopeLock Lock(&CallbackMutex);
     PreStepCallbacks.Empty();
     PostStepCallbacks.Empty();
 }

@@ -31,6 +31,7 @@
 #include "Containers/Queue.h"
 #include "MuJoCo/Components/Sensors/MjCameraTypes.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
+#include <atomic>
 #include "MjCamera.generated.h"
 
 /**
@@ -49,7 +50,12 @@ public:
     virtual void Exit() override;
 
     void PushFrame(const TArray<FColor>& FrameData);
+    void PushFrame(const TArray<float>& FrameData);
     FString GetBoundEndpoint() const { return BoundEndpoint; }
+
+    /** Process-wide pause gate. Workers drain without sending while set,
+     *  to bound RT memory in Direct/Puppet mode. */
+    static URLAB_API std::atomic<bool> bPublishersPaused;
 
 private:
     FString RequestedEndpoint;
@@ -61,7 +67,13 @@ private:
     void* ZmqPublisher = nullptr;
 
     FThreadSafeBool bStopThread;
+    // Two queues -- one per pixel format. Real / seg cameras drive the
+    // FColor queue, depth cameras drive the float queue. The Run() loop
+    // drains both and ships whatever it finds. Per-camera CaptureMode
+    // never changes after streaming starts, so only one queue is ever
+    // active per worker instance.
     TQueue<TArray<FColor>, EQueueMode::Spsc> FrameQueue;
+    TQueue<TArray<float>, EQueueMode::Spsc> FloatFrameQueue;
 };
 
 /**
@@ -184,14 +196,7 @@ public:
 
     UMjCamera();
 
-    // ---- Identification ----
-
-
-    // ---- Camera Intrinsics ----
-
-
-
-    /** @brief What this camera captures. Read at SetStreamingEnabled(true) time —
+    /** What this camera captures. Read at SetStreamingEnabled(true) time —
      *  toggle streaming off/on after changing. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera")
     EMjCameraMode CaptureMode = EMjCameraMode::Real;
@@ -224,14 +229,22 @@ public:
     UTextureRenderTarget2D* RenderTarget = nullptr;
 
     // ---- ZeroMQ Streaming ----
-    
+
     /** @brief If true, the camera will automatically broadcast its frames over ZeroMQ when streaming is enabled. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Network")
     bool bEnableZmqBroadcast = false;
 
     /** @brief The ZMQ Endpoint for this specific camera (e.g., tcp://0.0.0.0:5558). Must be unique per camera. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Network")
-    FString ZmqEndpoint = TEXT("tcp://*:5558");
+    FString ZmqEndpoint = TEXT("tcp://0.0.0.0:5558");
+
+    // ---- Shared-memory streaming ----
+
+    /** @brief If true, the camera also writes each frame into a per-camera
+     *  SHM region (`<Saved>/URLabShm/<session>/cam_<owner>_<name>.shm`). The
+     *  ZMQ broadcast is unaffected -- both transports can run in parallel. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Network")
+    bool bEnableShmBroadcast = false;
 
     // ---- Public API ----
 
@@ -241,6 +254,13 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
     void SetStreamingEnabled(bool bEnable);
+
+    /** @brief Returns true once SetStreamingEnabled(true) has set up the
+     *  RT and the capture component. Cheap, lock-free read intended for
+     *  best-effort gating from the bridge worker thread (a stale read is
+     *  benign — at worst we marshal an extra idempotent
+     *  SetStreamingEnabled to the game thread). */
+    bool IsStreamingActive() const { return bStreamingEnabled; }
 
     /**
      * @brief Enqueues a non-blocking asynchronous GPU→CPU pixel readback.
@@ -261,6 +281,11 @@ public:
      */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
     TArray<FColor> ConsumePixels();
+
+    /** Depth-mode counterpart to ConsumePixels. Returns single-channel
+     *  float32 pixels in row-major (h, w) order. Empty if Depth readback
+     *  isn't ready or the camera isn't in Depth mode. */
+    TArray<float> ConsumeFloatPixels();
 
     /**
      * @brief Returns the ZMQ endpoint actually bound (may differ from ZmqEndpoint if auto-incremented).
@@ -300,13 +325,34 @@ private:
     void SetupRenderTarget();
     void RegisterWithStreamingManager();
 
-    /** For non-seg modes: rebuild HiddenComponents from the currently-live seg pools.
-     *  Cheap (N siblings pointer copies), called each tick so a late-starting seg
-     *  camera doesn't contaminate an already-streaming RGB/Depth camera. */
+    /** Refresh HiddenComponents from live seg pools so a late-starting seg
+     *  camera doesn't contaminate an already-streaming RGB/Depth capture. */
     void RefreshHiddenComponentsFromSegPools();
 
     // ---- Readback state ----
+    // CaptureMode picks which Pending/Ready pair is used: BGRA8 (Real /
+    // SemSeg / InstanceSeg) drives PendingPixels/ReadyPixels, Depth
+    // drives PendingFloatPixels/ReadyFloatPixels. Only one mode is in
+    // flight at a time.
+    //
+    // Pending* is the render-thread destination. RequestReadback
+    // Emplaces a fresh TArray, SetNumUninitialized's it, and enqueues a
+    // render command capturing a pointer into it. The render thread
+    // writes to that pointer. Only the game thread touches Pending*,
+    // and only RequestReadback (gated by !bReadbackPending) and
+    // TickComponent's fence-complete handler do so, so the captured
+    // pointer stays valid until the fence completes.
+    //
+    // Ready* is the consumer-facing buffer. TickComponent moves
+    // Pending* into Ready* once the fence completes (workers PushFrame
+    // a copy first). ConsumePixels / ConsumeFloatPixels move out of
+    // Ready*. FrameLock serialises Ready* access between the game
+    // thread (move-in) and the bridge worker thread (move-out).
+    FCriticalSection          FrameLock;
     TOptional<TArray<FColor>> PendingPixels;
+    TOptional<TArray<float>>  PendingFloatPixels;
+    TOptional<TArray<FColor>> ReadyPixels;
+    TOptional<TArray<float>>  ReadyFloatPixels;
     FRenderCommandFence       ReadbackFence;
     bool                      bReadbackPending  = false;
     bool                      bReadbackComplete = false;
@@ -317,4 +363,8 @@ private:
     // ---- ZMQ Worker ----
     FCameraZmqWorker* ZmqWorker = nullptr;
     FRunnableThread* WorkerThread = nullptr;
+
+    // ---- SHM Writer ----
+    // Forward-declared to keep the header light; full type pulled in by the cpp.
+    class FCameraShmWriter* ShmWriter = nullptr;
 };

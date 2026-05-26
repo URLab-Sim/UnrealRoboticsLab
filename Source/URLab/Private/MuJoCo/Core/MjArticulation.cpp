@@ -73,17 +73,19 @@ bool AMjArticulation::ShouldTickIfViewportsOnly() const
     return bDrawDebugJoints || bDrawDebugCollision || bDrawDebugSites;
 }
 
-void AMjArticulation::BeginPlay()
+void AMjArticulation::PostInitializeComponents()
 {
-    Super::BeginPlay();
-    UpdateGroup3Visibility();
+    Super::PostInitializeComponents();
 
-    // Auto-create TwistController if none exists
+    // Auto-attach the twist controller now (not in BeginPlay) so its
+    // presence is observable by every other actor's BeginPlay -- notably
+    // AAMjManager's, which constructs the simulate widget that scans
+    // articulations for a UMjTwistController. UE guarantees this hook
+    // runs on every actor before any BeginPlay fires.
     if (!FindComponentByClass<UMjTwistController>())
     {
         UMjTwistController* TwistCtrl = NewObject<UMjTwistController>(this, TEXT("TwistController"));
 
-        // Load default input assets from plugin content
         static UInputMappingContext* DefaultIMC = LoadObject<UInputMappingContext>(
             nullptr, TEXT("/UnrealRoboticsLab/Input/IMC_TwistControl.IMC_TwistControl"));
         static UInputAction* DefaultMove = LoadObject<UInputAction>(
@@ -102,6 +104,12 @@ void AMjArticulation::BeginPlay()
             DefaultMove ? TEXT("OK") : TEXT("MISSING"),
             DefaultTurn ? TEXT("OK") : TEXT("MISSING"));
     }
+}
+
+void AMjArticulation::BeginPlay()
+{
+    Super::BeginPlay();
+    UpdateGroup3Visibility();
 }
 
 void AMjArticulation::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -623,7 +631,7 @@ void AMjArticulation::PostSetup(mjModel* Model, mjData* Data)
     }
 }
 
-void AMjArticulation::ApplyControls()
+void AMjArticulation::ApplyControls(bool bSkipController)
 {
     // Thread safety: ActuatorIdMap is built during PostSetup (game thread) and
     // only read here (physics thread). The map is never modified after construction.
@@ -672,7 +680,12 @@ void AMjArticulation::ApplyControls()
     // Delegate to custom controller if present and active. Use the cached
     // pointer from PostSetup — iterating OwnedComponents on the physics
     // thread races against game-thread mutations and corrupts nearby heap.
-    if (CachedController && CachedController->bEnabled && CachedController->IsBound())
+    // The bridge can opt this articulation out for the current sub-step
+    // by setting `bSkipController=true` (mirrors a per-step
+    // `control_mode="raw"` from the wire); the staged `NetworkValue`
+    // then lands directly on `d->ctrl` without controller transformation.
+    if (!bSkipController
+        && CachedController && CachedController->bEnabled && CachedController->IsBound())
     {
         CachedController->ComputeAndApply(m_model, m_data, ControlSource);
         return;

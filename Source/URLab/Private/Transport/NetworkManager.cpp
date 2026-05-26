@@ -20,9 +20,8 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/Net/MjNetworkManager.h"
+#include "Transport/NetworkManager.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Net/MjZmqComponent.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "Utils/URLabLogging.h"
 
@@ -42,6 +41,7 @@ void UMjNetworkManager::UpdateCameraStreamingState()
         if (Cam)
         {
             Cam->bEnableZmqBroadcast = bEnableAllCameras;
+            Cam->bEnableShmBroadcast = bEnableAllCameras;
             Cam->SetStreamingEnabled(bEnableAllCameras);
             Count++;
             UE_LOG(LogURLabNet, Log, TEXT(" - %s Camera: %s on Actor: %s"), bEnableAllCameras ? TEXT("Enabled") : TEXT("Disabled"), *Cam->GetName(), Cam->GetOwner() ? *Cam->GetOwner()->GetName() : TEXT("None"));
@@ -58,6 +58,7 @@ void UMjNetworkManager::RegisterCamera(UMjCamera* Cam)
 
     // Sync newly registered camera to the current global toggle state
     Cam->bEnableZmqBroadcast = bEnableAllCameras;
+    Cam->bEnableShmBroadcast = bEnableAllCameras;
     Cam->SetStreamingEnabled(bEnableAllCameras);
 
     UE_LOG(LogURLabNet, Log, TEXT("UMjNetworkManager: Registered Camera %s. Total: %d"), *Cam->GetName(), ActiveCameras.Num());
@@ -75,21 +76,4 @@ TArray<UMjCamera*> UMjNetworkManager::GetActiveCameras()
 {
     FScopeLock Lock(&CameraMutex);
     return ActiveCameras;
-}
-
-void UMjNetworkManager::DiscoverZmqComponents()
-{
-    AActor* Owner = GetOwner();
-    if (!Owner) return;
-
-    ZmqComponents.Empty();
-    TArray<UActorComponent*> Components;
-    Owner->GetComponents(UMjZmqComponent::StaticClass(), Components);
-    for (UActorComponent* Comp : Components)
-    {
-        if (UMjZmqComponent* ZmqComp = Cast<UMjZmqComponent>(Comp))
-        {
-            ZmqComponents.Add(ZmqComp);
-        }
-    }
 }

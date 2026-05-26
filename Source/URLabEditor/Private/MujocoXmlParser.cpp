@@ -285,7 +285,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             BodyComp->ImportFromXml(Node, CompilerSettings);
             BodyComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) BodyComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                BodyComp->MjName = NameAttr;
+                BodyComp->OriginalMjName = NameAttr;
+            }
         }
     }
     // --- FRAME ---
@@ -306,7 +310,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
         {
             FrameComp->ImportFromXml(Node, CompilerSettings);
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) FrameComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                FrameComp->MjName = NameAttr;
+                FrameComp->OriginalMjName = NameAttr;
+            }
         }
 
         // Attach the frame node to its parent, then recurse its children onto it
@@ -395,7 +403,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             // geom, contact pairs referencing it) can resolve by the original
             // name, not our auto-generated SCS variable name.
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) GeomComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                GeomComp->MjName = NameAttr;
+                GeomComp->OriginalMjName = NameAttr;
+            }
 
             // Resolve DefaultClass from the class attribute
             {
@@ -647,7 +659,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             // spec name would be the disambiguated UE name and the actuator's
             // joint="waist" reference would fail at compile.
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) JointComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                JointComp->MjName = NameAttr;
+                JointComp->OriginalMjName = NameAttr;
+            }
 
             FString ClassAttr = Node->GetAttribute(TEXT("class"));
             if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
@@ -671,7 +687,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             // We skip ImportFromXml to avoid any unwanted movement or axis overrides.
             JointComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) JointComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                JointComp->MjName = NameAttr;
+                JointComp->OriginalMjName = NameAttr;
+            }
         }
     }
     // --- FLEXCOMP ---
@@ -775,7 +795,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             SiteComp->ImportFromXml(Node, CompilerSettings);
             SiteComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) SiteComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                SiteComp->MjName = NameAttr;
+                SiteComp->OriginalMjName = NameAttr;
+            }
 
             FString ClassAttr = Node->GetAttribute(TEXT("class"));
             if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
@@ -795,7 +819,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             InertialComp->ImportFromXml(Node, CompilerSettings);
             InertialComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) InertialComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                InertialComp->MjName = NameAttr;
+                InertialComp->OriginalMjName = NameAttr;
+            }
         }
     }
     // --- SENSOR ---
@@ -881,7 +909,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             SensComp->ImportFromXml(Node);
             SensComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) SensComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                SensComp->MjName = NameAttr;
+                SensComp->OriginalMjName = NameAttr;
+            }
 
             FString ClassAttr = Node->GetAttribute(TEXT("class"));
             if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
@@ -904,7 +936,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
              CamComp->ImportFromXml(Node, CompilerSettings);
              CamComp->bIsDefault = bIsDefaultContext;
              FString NameAttr = Node->GetAttribute(TEXT("name"));
-             if (!NameAttr.IsEmpty()) CamComp->MjName = NameAttr;
+             if (!NameAttr.IsEmpty())
+             {
+                 CamComp->MjName = NameAttr;
+                 CamComp->OriginalMjName = NameAttr;
+             }
          }
     }
     // --- ACTUATOR ---
@@ -947,7 +983,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             ActComp->ImportFromXml(Node);
             ActComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) ActComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                ActComp->MjName = NameAttr;
+                ActComp->OriginalMjName = NameAttr;
+            }
 
             FString ClassAttr = Node->GetAttribute(TEXT("class"));
             if (!ClassAttr.IsEmpty() && CreatedDefaultNodes.Contains(ClassAttr))
@@ -984,7 +1024,11 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             TendonComp->ImportFromXml(Node);
             TendonComp->bIsDefault = bIsDefaultContext;
             FString NameAttr = Node->GetAttribute(TEXT("name"));
-            if (!NameAttr.IsEmpty()) TendonComp->MjName = NameAttr;
+            if (!NameAttr.IsEmpty())
+            {
+                TendonComp->MjName = NameAttr;
+                TendonComp->OriginalMjName = NameAttr;
+            }
          }
     }
 
@@ -1559,7 +1603,11 @@ void UMujocoGenerationAction::ParseEqualitySection(const FXmlNode* Node, UBluepr
                 {
                     EqComp->ImportFromXml(Child);
                     FString NameAttr = Child->GetAttribute(TEXT("name"));
-                    if (!NameAttr.IsEmpty()) EqComp->MjName = NameAttr;
+                    if (!NameAttr.IsEmpty())
+                    {
+                        EqComp->MjName = NameAttr;
+                        EqComp->OriginalMjName = NameAttr;
+                    }
                 }
             }
         }
@@ -1609,7 +1657,11 @@ void UMujocoGenerationAction::ParseKeyframeSection(const FXmlNode* Node, UBluepr
                 {
                     KeyComp->ImportFromXml(Child);
                     FString NameAttr = Child->GetAttribute(TEXT("name"));
-                    if (!NameAttr.IsEmpty()) KeyComp->MjName = NameAttr;
+                    if (!NameAttr.IsEmpty())
+                    {
+                        KeyComp->MjName = NameAttr;
+                        KeyComp->OriginalMjName = NameAttr;
+                    }
                 }
             }
         }

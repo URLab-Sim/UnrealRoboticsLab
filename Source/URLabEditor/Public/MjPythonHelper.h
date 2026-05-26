@@ -53,10 +53,10 @@ public:
 	/** @brief Validate a Python binary by running --version. */
 	static bool ValidatePythonBinary(const FString& PythonPath);
 
-	/** @brief Check if trimesh and numpy are importable. */
+	/** @brief Check if trimesh, numpy, scipy, and PIL (Pillow) are importable. */
 	static bool CheckPythonPackages(const FString& PythonPath);
 
-	/** @brief Run pip install trimesh numpy. Returns true on success. */
+	/** @brief Run pip install trimesh numpy scipy Pillow. Returns true on success. */
 	static bool InstallPythonPackages(const FString& PythonPath, FString& OutLog);
 
 	/**

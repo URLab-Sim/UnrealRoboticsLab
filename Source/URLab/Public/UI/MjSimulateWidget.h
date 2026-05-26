@@ -162,60 +162,44 @@ protected:
     UFUNCTION()
     void OnIntegratorSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    /** @brief Fills the manager settings panel with rows. */
     void PopulateManagerSettings();
-
-    /** @brief Updates the articulation controls and monitors when selection changes. */
     void RefreshArticulationControls();
-
-    /** @brief Updates monitor values (Joints/Sensors) from public API. */
     void UpdateMonitorValues();
 
-    /** @brief Specific handler for manager property changes. */
     UFUNCTION()
     void HandleManagerOptionChanged(float NewValue, const FString& OptionName);
 
-    /** @brief Specific handler for actuator control changes. */
     UFUNCTION()
     void HandleActuatorChanged(float NewValue, const FString& ActuatorName);
 
-    /** @brief Handles possess/release button click. */
     UFUNCTION()
     void OnPossessClicked();
 
-    /** @brief Handles twist velocity slider changes. */
     UFUNCTION()
     void HandleTwistOptionChanged(float NewValue, const FString& OptionName);
 
-    /** @brief Handles replay session dropdown selection. */
     UFUNCTION()
     void OnReplaySessionSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    /** @brief Handles Load CSV button click. */
     UFUNCTION()
     void OnLoadCSVClicked();
 
-    /** @brief Handles Save Recording button click. */
     UFUNCTION()
     void OnSaveRecordingClicked();
 
-    /** @brief Refreshes the replay session dropdown options. */
     void RefreshReplaySessionDropdown();
-
-    /** @brief Rebuilds the articulation binding checkboxes in the replay section. */
     void RebuildReplayBindingUI(UVerticalBox* ReplayBox);
 
     virtual void NativeConstruct() override;
 
 private:
-    /** @brief Tracks whether the mouse is currently visible and allowed to interact with the UI. */
     bool bIsMouseEnabled = false;
 
-    /** @brief Dropdown for selecting replay sessions (dynamically created). */
+    /** Dynamically created. */
     UPROPERTY()
     UComboBoxString* ReplaySessionSelector = nullptr;
 
-    /** @brief Load CSV button (dynamically created). */
+    /** Dynamically created. */
     UPROPERTY()
     UButton* LoadCSVButton = nullptr;
 

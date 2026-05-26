@@ -1,5 +1,24 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+// Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// --- LEGAL DISCLAIMER ---
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
+// trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
+//
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
+// CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 using System;
 using System.Diagnostics;
@@ -12,8 +31,25 @@ public class URLab : ModuleRules
 	public URLab(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-		//bUseRTTI = true;  // Required for type info
-		//bEnableExceptions = true;
+
+		// rpclib's msgpack-cxx headers throw on parse errors; enable so the
+		// try/catch in MjMsgpackHelpers.cpp compiles. C4530 was already
+		// the only warning that would have surfaced; it's harmless under
+		// /EHsc which UBT injects when bEnableExceptions is set.
+		bEnableExceptions = true;
+
+		// zmq.h includes windows.h transitively, whose
+		// `GetObject` macro pollutes any TU that also includes Chaos
+		// engine headers (`FImplicitObject::GetObject` becomes
+		// `GetObjectW` and the lookup fails). Wrapping `#include "zmq.h"`
+		// in `Windows/AllowWindowsPlatformTypes` /
+		// `HideWindowsPlatformTypes` guards is necessary but not
+		// sufficient under unity batching — UBT puts ZMQ/SHM .cpp files
+		// in the same unity TU as Chaos-using neighbours, so the macro
+		// leak crosses .cpp boundaries. Disabling unity for this module
+		// keeps every .cpp in its own TU; Live Coding (the per-file
+		// path) is unaffected, full rebuild is ~2x slower.
+		bUseUnity = false;
 
 		PublicDependencyModuleNames.AddRange(new string[]
 		{
@@ -57,7 +93,12 @@ public class URLab : ModuleRules
 			"Chaos",
 			"Landscape",
 			"Eigen",
-			"DesktopPlatform"
+			"DesktopPlatform",
+			// rpclib: msgpack-cxx headers (clmdep_msgpack namespace) +
+			// pre-built static rpc.lib. Used by MjMsgpackHelpers for
+			// the step server's binary wire format. JSON fallback is
+			// kept for debugging via the hello "encoding" flag.
+			"RPCLib"
 		});
 
 		DynamicallyLoadedModuleNames.AddRange(new string[]
@@ -81,13 +122,9 @@ public class URLab : ModuleRules
 			});
 		}
 
-		if (Target.Platform == UnrealTargetPlatform.Linux)
-		{
-			// Don't define _WIN32 on Linux: `#if defined _WIN32` is true even
-			// when _WIN32 is 0, which sends MuJoCo's mjexport.h down the
-			// __declspec(dllimport) branch and breaks clang on Linux.
-		}
-
+		// Don't define _WIN32 on Linux: `#if defined _WIN32` is true even
+		// when _WIN32 is 0, which sends MuJoCo's mjexport.h down the
+		// __declspec(dllimport) branch and breaks clang on Linux.
 
 		VerifyThirdPartyInstalls();
 

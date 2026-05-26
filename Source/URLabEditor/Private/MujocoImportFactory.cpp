@@ -50,19 +50,35 @@ bool UMujocoImportFactory::FactoryCanImport(const FString& Filename)
 
 UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled)
 {
-    // Warn user if we are importing something large?
-    // For now silent.
-
     // Create blueprint based on AMjArticulation
     UClass* ParentClass = AMjArticulation::StaticClass();
-    
+
+    // Defensive: FKismetEditorUtilities::CreateBlueprint asserts when
+    // an existing UBlueprint with the same name is still in memory
+    // (Kismet2.cpp:424 -- FindObject<UBlueprint>(Outer, Name) == 0).
+    // Callers that want to overwrite should drive ImportXmlSync with
+    // force_reimport=true, which destroys the existing asset first; if
+    // we get here with a stale BP anyway, bail with a logged error
+    // rather than crashing the editor.
+    if (UBlueprint* Existing = FindObject<UBlueprint>(InParent, *InName.ToString()))
+    {
+        UE_LOG(LogURLabEditor, Error,
+            TEXT("MujocoImportFactory: refusing to overwrite existing Blueprint '%s' in '%s'. "
+                 "Call ImportXmlSync with force_reimport=true (which destroys the existing asset) "
+                 "before importing again."),
+            *InName.ToString(),
+            InParent ? *InParent->GetPathName() : TEXT("<no outer>"));
+        bOutOperationCanceled = true;
+        return nullptr;
+    }
+
     // Create the Blueprint Asset
     UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
-        ParentClass, 
-        InParent, 
-        InName, 
-        BPTYPE_Normal, 
-        UBlueprint::StaticClass(), 
+        ParentClass,
+        InParent,
+        InName,
+        BPTYPE_Normal,
+        UBlueprint::StaticClass(),
         UBlueprintGeneratedClass::StaticClass()
     );
 

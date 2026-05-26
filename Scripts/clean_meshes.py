@@ -28,7 +28,7 @@ resolves naming conflicts (e.g., link1.obj and link1.stl both becoming link1.glb
 and writes an updated XML ready for drag-and-drop import into Unreal.
 
 Installation:
-    pip install trimesh numpy
+    pip install trimesh numpy scipy Pillow
 
 Usage:
     python clean_meshes_trimesh.py <path_to_xml>

@@ -19,12 +19,26 @@ The plugin gives you research-grade contact dynamics alongside Unreal's renderin
 
 ---
 
-## Guides
+## Python (driving URLab from Python)
 
-| Guide | What it covers |
-|-------|---------------|
-| [Getting Started](getting_started.md) | Installation, first simulation, control methods |
+| Doc | What it covers |
+|-----|----------------|
+| [Getting Started](python/getting_started.md) | Connect, author a scene, run PIE, send control, tune gains, work with cameras, add a policy |
+| [API Reference](python/api.md) | Full reference for `URLabClient` and the `scene` / `sim` / `runtime` / `outliner` / `debug` / `viewport` / `recording` / `replay` namespaces |
+| [Bridge install + dashboard](python/bridge.md) | Python middleware: install, DearPyGui dashboard, pretrained policies, ROS 2 bridge |
+| [Gym Environment](python/gym_environment.md) | `URLabEnv(gym.Env)` wrapper for users integrating with their own training pipelines |
+| [Policy Registry](python/policy_registry.md) | Bundled pretrained policies; adding new ones to the registry |
+| [Controllers and Gains](python/controllers_and_gains.md) | `ue_controller` vs `raw`, decimation, PD gain updates from Python |
+| [Recording and Replay](python/recording_replay.md) | Capture episodes, save to disk, play back at wall-clock speed |
+| [Entities](python/entities.md) | Non-articulation dynamic objects in step replies and PUB streams |
+
+## URLab Plugin (Unreal-side)
+
+| Doc | What it covers |
+|-----|----------------|
+| [Getting Started](getting_started.md) | UE plugin installation, first simulation, in-editor control methods |
 | [Features](features.md) | Complete feature reference |
+| [Architecture](architecture.md) | Subsystem design, threading model, compilation pipeline |
 | [MJCF Import](guides/mujoco_import.md) | Importing MuJoCo XML models into Unreal |
 | [Geometry & Collision](guides/geometry_authoring.md) | Primitives, mesh geoms, Quick Convert, heightfields |
 | [Controller Framework](guides/controller_framework.md) | PD, keyframe, and custom controllers |
@@ -33,15 +47,8 @@ The plugin gives you research-grade contact dynamics alongside Unreal's renderin
 | [Camera Capture Modes](guides/camera_capture_modes.md) | Per-camera RGB / depth / semantic + instance segmentation |
 | [Possession & Twist Control](guides/possession_twist.md) | WASD control, spring arm camera |
 | [Scripting with Blueprints](guides/blueprint_reference.md) | Hotkeys, API usage, scripting workflows |
-| [ZMQ Networking & ROS 2](guides/zmq_networking.md) | ZMQ transport, topics, camera streaming |
-| [URLab Bridge](guides/policy_bridge.md) | Python middleware, RL policies, remote control |
-| [Architecture](architecture.md) | Subsystem design, threading model, compilation pipeline |
-
----
-
-## API Reference
-
-The [API Reference](api/index.md) is auto-generated from C++ headers on each build. It covers every class, struct, and enum in the plugin.
+| [Networking](guides/networking.md) | UE-side architecture: step modes (`live` / `direct` / `puppet`), transports (ZMQ / SHM), streaming wire format, ROS 2 bridge |
+| [Step Server Protocol](reference/step_server.md) | Wire-protocol reference for the REP socket on port 5559 |
 
 ---
 

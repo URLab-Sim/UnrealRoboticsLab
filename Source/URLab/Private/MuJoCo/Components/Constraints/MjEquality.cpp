@@ -97,7 +97,7 @@ void UMjEquality::ExportTo(mjsEquality* Element)
     // mjsEquality.objtype tells MuJoCo what kind of object name1/name2 refer
     // to (body / site / joint / tendon / flex). Without this set, mjs_attach's
     // CopyList step can't resolve the references and silently drops the
-    // equality — that was the franka_scene gripper failure mode.
+    // equality.
     //
     // Connect / Weld are dual-mode: either body-to-body (with optional
     // anchor) or site-to-site. URLab's parser collates site1/site2 into

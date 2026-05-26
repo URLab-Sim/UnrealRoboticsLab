@@ -243,8 +243,8 @@ URLab's components are already covered.
 - [ ] `micromamba run -n mj python -m pytest Scripts/codegen/tests/` is green.
 - [ ] `UnrealBuildTool` compiles `url_projEditor Win64 Development` without warnings new to this branch.
 - [ ] Editor automation: `Automation RunTests URLab` is all-green.
-- [ ] Open a known-good model in the editor (e.g. `franka_scene/test_scene_import.xml`)
-      and verify it still loads + simulates.
+- [ ] Open a representative imported model in the editor and verify it
+      still loads + simulates.
 - [ ] `git diff --stat` for the bump: expect changes in the three snapshot
       JSONs, the submodule pointer, optionally a handful of codegen-emitted
       `.h`/`.cpp` files, and only any rule edits the diagnostics asked for.

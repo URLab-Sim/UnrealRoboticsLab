@@ -1077,8 +1077,8 @@ bool FTest_MjImport_URLab_WeldTorqueScale::RunTest(const FString&)
 // URLab.Import.URLab_ConnectAnchor
 //   <connect anchor="0.1 -0.2 0.3"/> reads as TArray<float> in UE cm
 //   (m_to_cm conversion on import) and bOverride_anchor=true.
-//   Reproduces the franka_scene gripper miss — anchor used to be FString and
-//   wasn't being written to mjsEquality.data[] on export.
+//   Regression: anchor used to be FString and wasn't being written to
+//   mjsEquality.data[] on export.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_ConnectAnchor,
     "URLab.Import.URLab_ConnectAnchor",
@@ -1155,20 +1155,17 @@ bool FTest_MjImport_RoundTrip_ConnectAnchor::RunTest(const FString&)
 // URLab.Import.E2E_GripperConnectAnchor
 //   Full URLab pipeline test: hinge-jointed gripper-like linkage with a
 //   <connect> equality. After Compile(), the model must have neq==1 and the
-//   anchor must survive into eq_data[0..2] in metres (XML m units), exactly
-//   matching what the user's franka_scene gripper needs.
+//   anchor must survive into eq_data[0..2] in metres (XML m units).
 //
 //   Uses hinge joints (no freejoint) because mjs_attach errors out on
-//   free-joint child bodies — and the franka_scene gripper itself uses
-//   pure hinges anyway, so this matches the real-world topology.
+//   free-joint child bodies, which matches a real 2F-85-style topology.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_E2E_GripperConnectAnchor,
     "URLab.Import.E2E_GripperConnectAnchor",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_E2E_GripperConnectAnchor::RunTest(const FString&)
 {
-    // Minimal Robotiq-2F85-style 4-bar linkage extracted from
-    // franka_scene/test_scene_import.xml (right finger pair only).
+    // Minimal Robotiq-2F85-style 4-bar linkage (right finger pair only).
     static const TCHAR* Xml = TEXT(R"(
         <mujoco>
           <compiler angle="radian"/>
@@ -1365,8 +1362,8 @@ bool FTest_MjImport_RoundTrip_FlexEqualityObjType::RunTest(const FString&)
 // URLab.Import.E2E_JointEqualityCoupling
 //   Joint coupling equality (joint1=ja, joint2=jb, polycoef="0 1 0 0 0")
 //   must survive the URLab end-to-end pipeline and resolve both joint refs
-//   in the compiled mjModel. This is the left/right driver coupling from
-//   the franka_scene 2F-85 gripper.
+//   in the compiled mjModel. Matches the left/right driver coupling of a
+//   2F-85-style gripper.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_E2E_JointEqualityCoupling,
     "URLab.Import.E2E_JointEqualityCoupling",
@@ -1688,9 +1685,9 @@ bool FTest_MjImport_DefaultClassJointNameCollision::RunTest(const FString&)
 // =============================================================================
 // CAMERA + GEOM EXPORT-GAP REGRESSION TESTS
 //
-// These cover the audit findings that landed alongside the franka_scene
-// gripper fix: schema attrs that were imported into UPROPERTYs but silently
-// dropped on export because MuJoCo renames the underlying mjsX field
+// These cover the audit findings that landed alongside the gripper-attach
+// fix: schema attrs that were imported into UPROPERTYs but silently dropped
+// on export because MuJoCo renames the underlying mjsX field
 // (target -> targetbody, focal -> focal_length, shellinertia -> typeinertia,
 // fluidshape -> fluid_ellipsoid, etc.). Without these tests the gaps would
 // regress every time codegen_rules.json is touched.

@@ -119,7 +119,7 @@ PythonPath=C:/Users/you/miniconda3/envs/myenv/python.exe
 
 ## Debugging Import Issues
 
-Enable `bSaveDebugXml` on the `AAMjManager` to save `scene_compiled.xml` and `scene_compiled.mjb` to `Saved/URLab/` after compilation. Diff the original MJCF against the compiled XML to identify import/export mismatches (missing elements, wrong property values, broken default inheritance). The compiled XML can also be loaded into native MuJoCo for verification. See [Developer Tools](developer_tools.md) for more.
+Enable `bSaveDebugXml` on the `AAMjManager` to save `scene_compiled.xml` and `scene_compiled.mjb` to `Saved/URLab/` after compilation. Diff the original MJCF against the compiled XML to identify import/export mismatches (missing elements, wrong property values, broken default inheritance). The compiled XML can also be loaded into native MuJoCo for verification.
 
 ## After Import
 

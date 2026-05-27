@@ -205,6 +205,7 @@ private:
     TSharedPtr<FJsonObject> HandleMeta(const TSharedPtr<FJsonObject>& Req);
     TSharedPtr<FJsonObject> HandleStep(const TSharedPtr<FJsonObject>& Req);
     TSharedPtr<FJsonObject> HandleReset(const TSharedPtr<FJsonObject>& Req);
+    TSharedPtr<FJsonObject> HandleForward(const TSharedPtr<FJsonObject>& Req);
     TSharedPtr<FJsonObject> HandleSetMode(const TSharedPtr<FJsonObject>& Req);
     TSharedPtr<FJsonObject> HandleSetPaused(const TSharedPtr<FJsonObject>& Req);
     TSharedPtr<FJsonObject> HandleConfigureController(const TSharedPtr<FJsonObject>& Req);

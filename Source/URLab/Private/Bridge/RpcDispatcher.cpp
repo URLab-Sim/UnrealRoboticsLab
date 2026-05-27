@@ -155,6 +155,9 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
     Reg(TEXT("reset"),                 EOpCategory::ManagerRequired, TEXT(""),
         [this](auto& R){ return HandleReset(R); },
         {TEXT("op:string"), TEXT("time:float"), TEXT("step:int")});
+    Reg(TEXT("forward"),               EOpCategory::ManagerRequired, TEXT("runtime"),
+        [this](auto& R){ return HandleForward(R); },
+        {TEXT("op:string"), TEXT("time:float"), TEXT("step:int"), TEXT("per_articulation:object")});
     Reg(TEXT("set_mode"),              EOpCategory::ManagerRequired, TEXT("runtime"),
         [this](auto& R){ return HandleSetMode(R); },
         {TEXT("op:string"), TEXT("previous_mode:string"), TEXT("current_mode:string")});
@@ -1648,6 +1651,35 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
     return Reply;
 }
 
+// Run mj_forward (kinematics + dynamics, no integration) and return
+// observations. Lets a client write qpos / qvel then read consistent
+// derived state (xpos, sensors, contacts, ...) without advancing time.
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleForward(const TSharedPtr<FJsonObject>& /*Req*/)
+{
+    AAMjManager* Mgr = OwnerMgr.Get();
+    if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
+    {
+        return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+    }
+
+    mjModel* m = Mgr->PhysicsEngine->GetModel();
+    mjData*  d = Mgr->PhysicsEngine->GetData();
+
+    {
+        FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
+        mj_forward(m, d);
+    }
+
+    TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+    Reply->SetStringField(TEXT("op"),   TEXT("forward_ok"));
+    Reply->SetNumberField(TEXT("time"), d->time);
+    Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
+    AppendClockFields(Reply, d->time);
+    TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
+    if (Obs.IsValid()) Reply->SetObjectField(TEXT("per_articulation"), Obs);
+    return Reply;
+}
+
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJsonObject>& Req)
 {
     AAMjManager* Mgr = OwnerMgr.Get();
@@ -2000,6 +2032,16 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
     if (Opts->TryGetBoolField(TEXT("enable_sleep"),    BNum)) { O.bEnableSleep    = BNum; }
     if (Opts->TryGetNumberField(TEXT("sleep_tolerance"), DNum)) { O.SleepTolerance = (float)DNum; }
 
+    // Raw disable / enable bit masks. Values are bitwise-ORs of
+    // mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.
+    // Applied BEFORE FMuJoCoOptions::ApplyOverridesToModel so any named
+    // bits the caller also set (enable_sleep / enable_multiccd) win on
+    // top of the raw mask. Treat the raw masks as a coarse baseline.
+    int32 DisableMask = 0;
+    if (Opts->TryGetNumberField(TEXT("disableflags"), DisableMask)) { m->opt.disableflags = DisableMask; }
+    int32 EnableMask = 0;
+    if (Opts->TryGetNumberField(TEXT("enableflags"),  EnableMask))  { m->opt.enableflags  = EnableMask; }
+
     O.ApplyOverridesToModel(m);
 
     UE_LOG(LogURLabNet, Log,
@@ -2047,6 +2089,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
     Out->SetBoolField(TEXT("enable_multiccd"), (m->opt.enableflags & MJ_ENBL_MULTICCD) != 0);
     Out->SetBoolField(TEXT("enable_sleep"),    (m->opt.enableflags & MJ_ENBL_SLEEP) != 0);
     Out->SetNumberField(TEXT("sleep_tolerance"), m->opt.sleep_tolerance);
+
+    // Echo the raw bit masks so callers using disableflags / enableflags
+    // can verify the final composed state (named overrides + raw mask).
+    Out->SetNumberField(TEXT("disableflags"), (int32)m->opt.disableflags);
+    Out->SetNumberField(TEXT("enableflags"),  (int32)m->opt.enableflags);
 
     Reply->SetObjectField(TEXT("options"), Out);
     return Reply;

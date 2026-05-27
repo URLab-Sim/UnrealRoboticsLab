@@ -24,6 +24,7 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "MuJoCo/Components/QuickConvert/AMjHeightfieldActor.h"
+#include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Core/MjSimulationState.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -178,18 +179,26 @@ void UMjPhysicsEngine::PreCompile()
     TArray<AActor*> FoundActors;
     UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), FoundActors);
 
+    ActiveAssetPaths.Empty();
     for (auto actor : FoundActors)
     {
-        if (actor->FindComponentByClass<UMjQuickConvertComponent>())
+        if (UMjQuickConvertComponent* QC = actor->FindComponentByClass<UMjQuickConvertComponent>())
         {
-            UMjQuickConvertComponent* CustomPhysicsComponent = actor->FindComponentByClass<UMjQuickConvertComponent>();
-            m_MujocoComponents.Add(CustomPhysicsComponent);
-            CustomPhysicsComponent->Setup(m_spec, &m_vfs);
+            m_MujocoComponents.Add(QC);
+            QC->Setup(m_spec, &m_vfs);
+            if (FMujocoSpecWrapper* W = QC->GetWrapper())
+            {
+                for (const FString& Path : W->ActiveAssetPaths) ActiveAssetPaths.AddUnique(Path);
+            }
         }
         if (AMjArticulation* Articulation = Cast<AMjArticulation>(actor))
         {
             Articulation->Setup(m_spec, &m_vfs);
             m_articulations.Add(Articulation);
+            if (FMujocoSpecWrapper* W = Articulation->GetWrapper())
+            {
+                for (const FString& Path : W->ActiveAssetPaths) ActiveAssetPaths.AddUnique(Path);
+            }
         }
         if (AMjHeightfieldActor* HFA = Cast<AMjHeightfieldActor>(actor))
         {

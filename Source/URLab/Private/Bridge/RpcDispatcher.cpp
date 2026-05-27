@@ -315,6 +315,13 @@ void FURLabRpcDispatcher::EnqueueStepRequestForTest(FMjStepRequest&& Req)
     TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
     Cmd->Request = MoveTemp(Req);
     StepQueue.Enqueue(Cmd);
+    if (AAMjManager* Mgr = OwnerMgr.Get())
+    {
+        if (Mgr->PhysicsEngine && Mgr->PhysicsEngine->StepRequestEvent)
+        {
+            Mgr->PhysicsEngine->StepRequestEvent->Trigger();
+        }
+    }
 }
 
 void FURLabRpcDispatcher::EnqueuePushStateRequestForTest(FMjPushStateRequest&& Req)
@@ -1086,6 +1093,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 
     const bool bAsyncRunning = Mgr->PhysicsEngine->AsyncPhysicsFuture.IsValid();
     StepQueue.Enqueue(Cmd);
+    if (Mgr->PhysicsEngine->StepRequestEvent)
+    {
+        Mgr->PhysicsEngine->StepRequestEvent->Trigger();
+    }
 
     if (!bAsyncRunning)
     {

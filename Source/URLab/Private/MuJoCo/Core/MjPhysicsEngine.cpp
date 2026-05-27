@@ -150,7 +150,20 @@ UMjPhysicsEngine::UMjPhysicsEngine()
     Options.Integrator = EMjIntegrator::ImplicitFast;
     ControlSource = EControlSource::ZMQ;
 
+    // Auto-reset so each Trigger arms exactly one Wait; coalesces bursts.
+    StepRequestEvent = FPlatformProcess::GetSynchEventFromPool(false);
+
     URLab_InstallMujocoCallbacks();
+}
+
+void UMjPhysicsEngine::BeginDestroy()
+{
+    if (StepRequestEvent)
+    {
+        FPlatformProcess::ReturnSynchEventToPool(StepRequestEvent);
+        StepRequestEvent = nullptr;
+    }
+    Super::BeginDestroy();
 }
 
 void UMjPhysicsEngine::PreCompile()
@@ -439,12 +452,33 @@ void UMjPhysicsEngine::RunMujocoAsync()
                 PushRenderState();
             } // FScopeLock released here
 
-            // Spin-wait for precise timing at small timesteps
-            const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
-            const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
-            while (FPlatformTime::Seconds() < TargetTime)
+            // End-of-iteration pacing.
+            //
+            // Live mode: UE owns the clock. Spin-wait to TargetInterval so
+            //   the loop runs at real-time physics rate.
+            // Direct / Puppet: the client owns the clock. Block on
+            //   StepRequestEvent (signalled by the dispatcher on enqueue)
+            //   so we drain commands at the rate Python sends them rather
+            //   than capping at 1 / timestep Hz. Short timeout keeps the
+            //   bShouldStopTask check responsive on shutdown.
+            bool bUseRealTimePacing = true;
+            if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
             {
-                FPlatformProcess::YieldThread();
+                bUseRealTimePacing = (OwnerMgr->StepMode == EStepMode::Live);
+            }
+            if (bUseRealTimePacing)
+            {
+                const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
+                const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
+                while (FPlatformTime::Seconds() < TargetTime)
+                {
+                    FPlatformProcess::YieldThread();
+                }
+            }
+            else if (StepRequestEvent)
+            {
+                // 100ms timeout: cap shutdown latency without polling hot.
+                StepRequestEvent->Wait(100);
             }
         }
     });
@@ -506,6 +540,9 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 bool UMjPhysicsEngine::CompileModel()
 {
     bShouldStopTask = true;
+    // Wake the worker if it's parked on the step-request event so it
+    // observes bShouldStopTask without waiting out the Wait timeout.
+    if (StepRequestEvent) StepRequestEvent->Trigger();
     {
         FScopeLock Lock(&CallbackMutex);
         if (m_data)  { mj_deleteData(m_data);   m_data  = nullptr; }

@@ -39,7 +39,7 @@
 #include "Components/SizeBox.h"
 #include "Components/Spacer.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/input/MjTwistController.h"
+#include "MuJoCo/Input/MjTwistController.h"
 #include "Styling/SlateTypes.h"
 #include "Fonts/SlateFontInfo.h"
 #include "MuJoCo/Utils/MjUtils.h"

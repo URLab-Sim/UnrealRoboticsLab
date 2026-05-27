@@ -20,11 +20,11 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/input/MjInputHandler.h"
+#include "MuJoCo/Input/MjInputHandler.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/input/MjPerturbation.h"
+#include "MuJoCo/Input/MjPerturbation.h"
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "InputCoreTypes.h"

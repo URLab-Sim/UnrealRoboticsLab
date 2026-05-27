@@ -40,6 +40,8 @@
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Base64.h"
 #include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "Internationalization/Regex.h"
 #include "HAL/FileManager.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
@@ -579,12 +581,16 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleHello(const TSharedPtr<FJsonO
     }
     StepCounter.store(0, std::memory_order_relaxed);
 
-    return BuildHandshakePayload(Mgr, NewSessionId, URLabVersion);
+    bool bIncludeAssets = false;
+    if (Req.IsValid()) Req->TryGetBoolField(TEXT("include_assets"), bIncludeAssets);
+
+    return BuildHandshakePayload(Mgr, NewSessionId, URLabVersion, bIncludeAssets);
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* Manager,
                                                               const FString& SessionId,
-                                                              const FString& URLabVer)
+                                                              const FString& URLabVer,
+                                                              bool bIncludeAssets)
 {
     TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
     Reply->SetStringField(TEXT("op"),         TEXT("hello_ok"));
@@ -650,6 +656,88 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
         FString B64 = FBase64::Encode(Buf.GetData(), Sz);
         Reply->SetStringField(TEXT("mjb_base64"), B64);
         Reply->SetNumberField(TEXT("mjb_size"),   Sz);
+    }
+
+    // Optional: ship the compiled MJCF + every VFS-registered asset so
+    // the client can reload the model offline (MJX, custom integrators,
+    // headless renderers). Opt-in because the payload can be tens of MB
+    // for typical robots.
+    if (bIncludeAssets && m && Manager->PhysicsEngine->m_spec)
+    {
+        // Two-pass XML serialise. mj_saveXMLString returns -1 on buffer
+        // overflow; start at 256 KB (covers most robots, including G1)
+        // and double up to 32 MB before giving up.
+        TArray<uint8> XmlBuf;
+        FString XmlContent;
+        for (int32 Cap = 256 * 1024; Cap <= 32 * 1024 * 1024; Cap *= 2)
+        {
+            XmlBuf.SetNumUninitialized(Cap);
+            FMemory::Memzero(XmlBuf.GetData(), Cap);
+            char SaveError[1024] = "";
+            const int XmlResult = mj_saveXMLString(
+                Manager->PhysicsEngine->m_spec,
+                reinterpret_cast<char*>(XmlBuf.GetData()), Cap,
+                SaveError, sizeof(SaveError));
+            if (XmlResult == 0)
+            {
+                XmlContent = UTF8_TO_TCHAR(reinterpret_cast<const char*>(XmlBuf.GetData()));
+                break;
+            }
+            // Overflow or another fault. Grow + retry. The error string
+            // distinguishes "buffer too small" from real failures; for
+            // any non-overflow we still break to avoid silent corruption.
+            const FString Err = UTF8_TO_TCHAR(SaveError);
+            if (!Err.Contains(TEXT("buffer"), ESearchCase::IgnoreCase))
+            {
+                UE_LOG(LogURLabNet, Warning,
+                    TEXT("BuildHandshake: mj_saveXMLString failed (%s); skipping mjcf_compiled"),
+                    *Err);
+                XmlContent.Reset();
+                break;
+            }
+        }
+        if (!XmlContent.IsEmpty())
+        {
+            // Flatten file="dir/sub/foo.STL" -> file="foo.STL" so a VFS
+            // keyed by bare filename (which is what mj_addFileVFS does)
+            // can resolve the references on the client side.
+            FRegexPattern Pattern(TEXT("file=\"([^\"]*?)([^/\\\\\"]+)\""));
+            FRegexMatcher Matcher(Pattern, XmlContent);
+            FString Rewritten;
+            int32 Cursor = 0;
+            while (Matcher.FindNext())
+            {
+                const int32 MatchStart = Matcher.GetMatchBeginning();
+                const int32 MatchEnd   = Matcher.GetMatchEnding();
+                const FString Filename = Matcher.GetCaptureGroup(2);
+                Rewritten += XmlContent.Mid(Cursor, MatchStart - Cursor);
+                Rewritten += FString::Printf(TEXT("file=\"%s\""), *Filename);
+                Cursor = MatchEnd;
+            }
+            Rewritten += XmlContent.Mid(Cursor);
+            Reply->SetStringField(TEXT("mjcf_compiled"), Rewritten);
+        }
+
+        // Asset bytes: one msgpack-bin field per file, keyed by bare
+        // filename (matches the flattened file= refs above). No base64
+        // duplicate — clients should use the msgpack decoder.
+        TSharedPtr<FJsonObject> VfsAssets = MakeShared<FJsonObject>();
+        int64 TotalBytes = 0;
+        for (const FString& FilePath : Manager->PhysicsEngine->ActiveAssetPaths)
+        {
+            TArray<uint8> FileData;
+            if (FFileHelper::LoadFileToArray(FileData, *FilePath))
+            {
+                const FString Filename = FPaths::GetCleanFilename(FilePath);
+                FURLabMsgpackUtil::SetBinaryField(VfsAssets, *Filename,
+                    FileData.GetData(), FileData.Num());
+                TotalBytes += FileData.Num();
+            }
+        }
+        Reply->SetObjectField(TEXT("vfs_assets"), VfsAssets);
+        UE_LOG(LogURLabNet, Log,
+            TEXT("BuildHandshake: shipped %d assets (%lld bytes) + mjcf_compiled (%d chars)"),
+            VfsAssets->Values.Num(), TotalBytes, XmlContent.Len());
     }
 
     // Articulations block.

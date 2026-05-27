@@ -154,4 +154,9 @@ public:
 
     /** @brief storage of created body names for view reconstruction. */
     TArray<FString> CreatedBodyNames;
+
+    /** Absolute paths of every mesh / texture asset registered to the
+     *  MuJoCo VFS during Setup. Used by the bridge handshake (opt-in)
+     *  to ship the model + its assets to a remote client. */
+    TArray<FString> ActiveAssetPaths;
 };

@@ -385,6 +385,10 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "MuJoCo|Status")
     bool bAttachFailed = false;
 
+    /** Engine queries this during PreCompile to aggregate every
+     *  articulation's VFS asset paths into a single ship-list. */
+    class FMujocoSpecWrapper* GetWrapper() const { return m_wrapper; }
+
 protected:
     mjVFS* m_vfs = nullptr;
     mjSpec* m_spec = nullptr;

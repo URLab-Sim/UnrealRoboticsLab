@@ -164,6 +164,14 @@ public:
     /** Error string from the most recent Compile(); empty on success. */
     FString m_LastCompileError;
 
+    /** Absolute paths of every mesh / texture asset registered to the
+     *  MuJoCo VFS during the last Compile. Aggregated from each
+     *  articulation's / quick-convert's spec wrapper in PreCompile.
+     *  Used by the bridge handshake (opt-in) to ship the model and
+     *  its assets to a remote client. */
+    UPROPERTY()
+    TArray<FString> ActiveAssetPaths;
+
     // --- Compilation ---
 
     void Compile();

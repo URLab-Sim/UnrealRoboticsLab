@@ -51,6 +51,13 @@ private:
 
     FMujocoSpecWrapper* wrapper = nullptr;
 
+public:
+    /** Engine queries this during PreCompile to aggregate every
+     *  component's VFS asset paths into a single ship-list. */
+    class FMujocoSpecWrapper* GetWrapper() const { return wrapper; }
+
+private:
+
     FString m_BodyName;
 
     mjModel* m_model = nullptr;

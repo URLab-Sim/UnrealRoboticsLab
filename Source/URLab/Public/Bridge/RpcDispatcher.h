@@ -116,9 +116,20 @@ public:
 
     // --- Static helpers (transport-agnostic, callable from anywhere) ---
 
+    /** Build the hello-reply payload. When bIncludeAssets is true (caller
+     *  asked via hello.include_assets=true), the payload also carries:
+     *    - mjcf_compiled (string): the compiled MJCF re-serialised via
+     *      mj_saveXMLString, with all mesh file= paths flattened to the
+     *      bare filename so a VFS keyed by clean filename resolves them.
+     *    - vfs_assets (msgpack-bin object): each VFS-registered asset
+     *      shipped as a raw binary field (key = filename).
+     *  Without the flag, none of that is sent. Asset payloads can be
+     *  multi-MB for typical robots; the legacy bridge handshake stays
+     *  light by default. */
     static TSharedPtr<FJsonObject> BuildHandshakePayload(AAMjManager* Manager,
                                                           const FString& SessionId,
-                                                          const FString& URLabVer);
+                                                          const FString& URLabVer,
+                                                          bool bIncludeAssets = false);
 
     static void ApplyStepCtrl(AAMjManager* Manager, const FMjStepRequest& Req,
                               mjModel* m, mjData* d);

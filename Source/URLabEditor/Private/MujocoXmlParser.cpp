@@ -333,6 +333,44 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
             TypeStr = TEXT("mesh");
         }
 
+        // Resolve type inherited from a class default. MJCF allows
+        // <default class="foo"><geom type="box"/></default>
+        // then bare <geom class="foo"/> or <geom/> inside a body with
+        // childclass="foo". Without this, the parser picked the URLab
+        // base UMjGeom (no primitive subclass) and the wrong renderer.
+        if (TypeStr.IsEmpty())
+        {
+            FString SearchClass = Node->GetAttribute(TEXT("class"));
+            if (SearchClass.IsEmpty() && ParentNode)
+            {
+                if (UMjBody* ParentBody = Cast<UMjBody>(ParentNode->ComponentTemplate))
+                {
+                    SearchClass = ParentBody->childclass;
+                }
+            }
+            if (!SearchClass.IsEmpty() && CreatedDefaultNodes.Contains(SearchClass))
+            {
+                if (USCS_Node* DefNode = CreatedDefaultNodes[SearchClass])
+                {
+                    for (USCS_Node* DefChild : DefNode->ChildNodes)
+                    {
+                        UMjGeom* DefGeom = Cast<UMjGeom>(DefChild->ComponentTemplate);
+                        if (!DefGeom) continue;
+                        switch (DefGeom->Type)
+                        {
+                            case EMjGeomType::Box:      TypeStr = TEXT("box"); break;
+                            case EMjGeomType::Sphere:   TypeStr = TEXT("sphere"); break;
+                            case EMjGeomType::Capsule:  TypeStr = TEXT("capsule"); break;
+                            case EMjGeomType::Cylinder: TypeStr = TEXT("cylinder"); break;
+                            case EMjGeomType::Plane:    TypeStr = TEXT("plane"); break;
+                            default: break;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
         if (Name.IsEmpty())
         {
             FString GeomTypeName = TypeStr.IsEmpty() ? TEXT("Sphere") : TypeStr;

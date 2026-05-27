@@ -96,11 +96,12 @@ void FURLabModule::StartupModule()
     bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq-*-mt-*.dll"), TEXT("libzmq"), TEXT("bin"));
     bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.dll"), TEXT("CoACD"), TEXT("bin"));
 #elif PLATFORM_LINUX
-    // Linux .so layout: third_party/install/<pkg>/lib/. Names are SONAMEs
-    // produced by the upstream cmake builds.
-    bAllDepsLoaded &= LoadDependencyDLL(TEXT("libmujoco.so.3.7.0"), TEXT("MuJoCo"), TEXT("lib"));
-    bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq.so.5"), TEXT("libzmq"), TEXT("lib"));
-    bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.so"), TEXT("CoACD"), TEXT("lib"));
+    // Linux .so layout: third_party/install/<pkg>/lib/. Glob the SONAME
+    // suffix so a MuJoCo bump (or any minor version bump) doesn't require
+    // tracking the literal version in the loader.
+    bAllDepsLoaded &= LoadDependencyDLL(TEXT("libmujoco.so*"), TEXT("MuJoCo"), TEXT("lib"));
+    bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq.so*"), TEXT("libzmq"), TEXT("lib"));
+    bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.so*"), TEXT("CoACD"), TEXT("lib"));
 #endif
 
     if (!bAllDepsLoaded) {

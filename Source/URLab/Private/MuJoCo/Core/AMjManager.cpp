@@ -388,6 +388,9 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
     if (PhysicsEngine)
     {
         PhysicsEngine->bShouldStopTask = true;
+        // Wake the worker if parked on the step-request event so it
+        // observes bShouldStopTask without burning the Wait timeout.
+        if (PhysicsEngine->StepRequestEvent) PhysicsEngine->StepRequestEvent->Trigger();
         if (PhysicsEngine->AsyncPhysicsFuture.IsValid())
         {
             constexpr double kShutdownTimeoutSec = 3.0;

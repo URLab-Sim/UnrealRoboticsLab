@@ -82,6 +82,7 @@ class URLAB_API UMjPhysicsEngine : public UActorComponent
 
 public:
     UMjPhysicsEngine();
+    virtual void BeginDestroy() override;
 
     // --- MuJoCo Core Pointers ---
 
@@ -99,6 +100,13 @@ public:
     FCriticalSection CallbackMutex;
     std::atomic<bool> bShouldStopTask{false};
     TFuture<void> AsyncPhysicsFuture;
+
+    /** Wakes the async physics worker when a step request lands in
+     *  direct/puppet mode. Dispatcher Triggers on enqueue; worker
+     *  Waits on this in lieu of the real-time spin pacer when the
+     *  client owns the clock. Allocated when the worker starts,
+     *  returned to the pool on shutdown. */
+    FEvent* StepRequestEvent = nullptr;
 
     // --- Step Callbacks ---
 

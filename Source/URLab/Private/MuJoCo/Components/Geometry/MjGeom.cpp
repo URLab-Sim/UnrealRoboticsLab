@@ -161,7 +161,6 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     }
     MeshName = mesh;
 
-    // Mark this geom as having been produced by XML import.
     bWasImported = true;
 }
 

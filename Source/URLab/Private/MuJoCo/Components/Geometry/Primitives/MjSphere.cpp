@@ -93,10 +93,13 @@ void UMjSphere::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
 
 void UMjSphere::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // For user-authored spheres, derive radius from the Unreal scale.
-    // Unreal Sphere is 100 units diameter; MuJoCo sphere size is radius in metres.
-    // 1.0 Unreal scale -> 50cm radius -> 0.5 size.
-    if (!bWasImported)
+    // Derive size from RelativeScale3D when (a) user-authored, or
+    // (b) imported with an explicit size attr. The second condition lets
+    // a user rescale an imported sphere in the viewport and have the
+    // change reach the physics geom. Imported-with-inherited-size geoms
+    // (bOverride_size=false) skip this so MuJoCo's class-default
+    // inheritance still applies on compile.
+    if (!bWasImported || bOverride_size)
     {
         const FVector scale = GetRelativeScale3D();
         size = { (float)scale.X * 0.5f };

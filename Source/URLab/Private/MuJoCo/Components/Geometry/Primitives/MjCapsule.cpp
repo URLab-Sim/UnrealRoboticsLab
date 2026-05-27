@@ -163,10 +163,8 @@ void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& 
 
 void UMjCapsule::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // For user-authored capsules, derive (radius, half-length) from the
-    // Unreal scale. Base cylinder is 100cm diameter (radius 50cm) → scale
-    // 1.0 = 50cm radius = 0.5 m.
-    if (!bWasImported)
+    // See UMjSphere::ExportTo for the guard rationale.
+    if (!bWasImported || bOverride_size)
     {
         const FVector scale = GetRelativeScale3D();
         size = { (float)scale.X * 0.5f, (float)scale.Z * 0.5f };

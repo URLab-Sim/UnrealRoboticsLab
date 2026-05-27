@@ -102,10 +102,8 @@ void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
 
 void UMjCylinder::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // For user-authored cylinders, derive (radius, half-length) from the
-    // Unreal scale. Unreal Cylinder: diameter=100, Height=100. MuJoCo
-    // cylinder size: [radius, half-length] in metres.
-    if (!bWasImported)
+    // See UMjSphere::ExportTo for the guard rationale.
+    if (!bWasImported || bOverride_size)
     {
         const FVector scale = GetRelativeScale3D();
         size = { (float)scale.X * 0.5f, (float)scale.Z * 0.5f };

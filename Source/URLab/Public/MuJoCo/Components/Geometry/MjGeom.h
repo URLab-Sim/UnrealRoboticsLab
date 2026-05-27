@@ -323,25 +323,13 @@ public:
 	 * fromto canonicalisation writes into size[1]/[2] depending on shape.
 	 */
 
-    /**
-     * @brief True when this component was created via ImportFromXml (i.e. loaded from a .xml file).
-     * False for components that are manually authored by the user in the editor.
-     * Used by ShouldOverrideSize() to distinguish "inherit-from-default" intent
-     * (imported, bOverride_size=false) from "use my UE scale" intent (user-authored).
-     */
+    /** True when this component was created via ImportFromXml. Lets export
+     *  preserve "size inherited from default class" semantics: for an
+     *  imported geom with no explicit size attr (bOverride_size=false) we
+     *  must NOT derive size from RelativeScale3D on export, otherwise
+     *  MuJoCo's default-class inheritance won't fire. */
     UPROPERTY()
     bool bWasImported = false;
-
-    /**
-     * @brief Returns true if the geom's size should be written to MuJoCo on export
-     * and the UE scale should NOT be overwritten from the MuJoCo default on Bind.
-     *
-     * Semantics:
-     *  - Imported geom, explicit size in XML  (bWasImported=true,  bOverride_size=true)  -> true
-     *  - Imported geom, no size in XML        (bWasImported=true,  bOverride_size=false) -> false (inherit default)
-     *  - User-authored geom                   (bWasImported=false, bOverride_size=any)   -> true (use UE scale)
-     */
-    bool ShouldOverrideSize() const { return bOverride_size || !bWasImported; }
 
     /** @brief Name of the mesh asset if Type is mesh. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Geom")

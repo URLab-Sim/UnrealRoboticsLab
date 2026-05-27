@@ -113,10 +113,10 @@ void UMjBox::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Comp
 
 void UMjBox::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // For user-authored boxes, derive size from the Unreal scale.
-    // Unreal Cube is 100 units; MuJoCo box size is half-extents in metres.
-    // 1.0 Unreal scale -> 50cm half-extent -> 0.5 size.
-    if (!bWasImported)
+    // See UMjSphere::ExportTo for the guard rationale: derive from scale
+    // when user-authored or when imported with an explicit size attr; skip
+    // when imported with inherited size so MuJoCo's class default applies.
+    if (!bWasImported || bOverride_size)
     {
         const FVector scale = GetRelativeScale3D();
         size = { (float)scale.X * 0.5f, (float)scale.Y * 0.5f, (float)scale.Z * 0.5f };

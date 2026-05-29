@@ -1163,9 +1163,27 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
     // <texture>
     else if (Tag.Equals(TEXT("texture")))
     {
-        FString TexName = Node->GetAttribute(TEXT("name"));
-        FString TexFile = Node->GetAttribute(TEXT("file"));
-        if (TexFile.IsEmpty()) TexFile = TexName;
+        FString TexName    = Node->GetAttribute(TEXT("name"));
+        FString TexFile    = Node->GetAttribute(TEXT("file"));
+        FString TexBuiltin = Node->GetAttribute(TEXT("builtin"));
+
+        // Procedural / builtin textures (``builtin="checker"`` etc.) have no
+        // backing file — MuJoCo generates them at compile time. UE can't
+        // import them, so we drop them here rather than letting the path
+        // resolution fall through to TexName and end up trying to read
+        // ``<xmldir>/<bogus name>`` as if it were a file. They still come
+        // through ``mj_loadXML`` in M->ntex, so callers that compare counts
+        // need to subtract the procedural ones themselves.
+        if (TexFile.IsEmpty())
+        {
+            if (!TexBuiltin.IsEmpty())
+            {
+                UE_LOG(LogURLabEditor, Verbose,
+                    TEXT("Skipping procedural texture '%s' (builtin='%s')"),
+                    *TexName, *TexBuiltin);
+            }
+            return;
+        }
 
         if (!TexFile.IsEmpty())
         {
@@ -1247,9 +1265,40 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
                 MatData.MetallicTextureName = MetallicTex;
             }
 
+            // MJCF 3.x layered-material form:
+            //   <material name="...">
+            //     <layer texture="..." role="rgb"    />
+            //     <layer texture="..." role="normal" />
+            //     <layer texture="..." role="orm"    />
+            //   </material>
+            // Each child binds one texture to a PBR slot. Layer wins over the
+            // legacy single-`texture` attribute when both are present (3.x
+            // promotes layers to the canonical form).
+            for (const FXmlNode* ChildNode : Node->GetChildrenNodes())
+            {
+                if (!ChildNode || !ChildNode->GetTag().Equals(TEXT("layer"))) continue;
+                FString LayerTex  = ChildNode->GetAttribute(TEXT("texture"));
+                FString LayerRole = ChildNode->GetAttribute(TEXT("role"));
+                if (LayerTex.IsEmpty() || LayerRole.IsEmpty()) continue;
+                LayerRole = LayerRole.ToLower();
+                if      (LayerRole == TEXT("rgb")         ) MatData.BaseColorTextureName = LayerTex;
+                else if (LayerRole == TEXT("normal")      ) MatData.NormalTextureName    = LayerTex;
+                else if (LayerRole == TEXT("orm")         ) MatData.ORMTextureName       = LayerTex;
+                else if (LayerRole == TEXT("roughness")   ) MatData.RoughnessTextureName = LayerTex;
+                else if (LayerRole == TEXT("metallic")    ) MatData.MetallicTextureName  = LayerTex;
+                else if (LayerRole == TEXT("occlusion")   ) MatData.ORMTextureName       = LayerTex; // best-effort
+                else
+                {
+                    UE_LOG(LogURLabEditor, Warning,
+                        TEXT("Material '%s': unsupported layer role '%s' (texture '%s' ignored)"),
+                        *MatName, *LayerRole, *LayerTex);
+                }
+            }
+
             OutMaterialData.Add(MatName, MatData);
-            UE_LOG(LogURLabEditor, Log, TEXT("Found Material: %s (RGBA: %s, Texture: %s)"),
-                *MatName, *MatData.Rgba.ToString(), *MatData.BaseColorTextureName);
+            UE_LOG(LogURLabEditor, Log, TEXT("Found Material: %s (RGBA: %s, RGB: %s, Normal: %s, ORM: %s)"),
+                *MatName, *MatData.Rgba.ToString(),
+                *MatData.BaseColorTextureName, *MatData.NormalTextureName, *MatData.ORMTextureName);
         }
     }
     // Recurse for top-level containers (excluding tags handled above like include/asset)

@@ -539,61 +539,84 @@ UMaterialInstanceConstant* UMujocoGenerationAction::CreateMaterialInstance(
         }
     }
 
-    // Set bUseTexture as a static switch parameter — the master material uses
-    // a StaticSwitchParameter to completely eliminate the texture sample branch
-    // when false, preventing null texture crashes (UE-23902).
+    // Bind each PBR slot if a texture was parsed for it. We bind all four
+    // (Normal, ORM, Roughness, Metallic) eagerly — the static-switch pass
+    // below tells the master material which ones are actually live.
+    //
+    // ORM is the packed-channel workflow MuJoCo materials normally use
+    // (R=AO, G=Roughness, B=Metallic). When ORM is present, separate
+    // Roughness / Metallic textures are typically redundant; we still bind
+    // them so a master-material variant that wants them can opt-in via its
+    // own switch wiring.
+    bool bHasNormalTex    = false;
+    bool bHasORMTex       = false;
+    bool bHasRoughnessTex = false;
+    bool bHasMetallicTex  = false;
+
+    if (!MaterialData.NormalTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.NormalTextureName))
+    {
+        if (UTexture2D* Tex = TextureAssets[MaterialData.NormalTextureName])
+        {
+            SetTexture(TEXT("NormalTexture"), Tex);
+            bHasNormalTex = true;
+        }
+    }
+    if (!MaterialData.ORMTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.ORMTextureName))
+    {
+        if (UTexture2D* Tex = TextureAssets[MaterialData.ORMTextureName])
+        {
+            SetTexture(TEXT("ORMTexture"), Tex);
+            bHasORMTex = true;
+        }
+    }
+    if (!MaterialData.RoughnessTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.RoughnessTextureName))
+    {
+        if (UTexture2D* Tex = TextureAssets[MaterialData.RoughnessTextureName])
+        {
+            SetTexture(TEXT("RoughnessTexture"), Tex);
+            bHasRoughnessTex = true;
+        }
+    }
+    if (!MaterialData.MetallicTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.MetallicTextureName))
+    {
+        if (UTexture2D* Tex = TextureAssets[MaterialData.MetallicTextureName])
+        {
+            SetTexture(TEXT("MetallicTexture"), Tex);
+            bHasMetallicTex = true;
+        }
+    }
+
+    // Static-switch update. Each `bUse*Texture` switch lets the master
+    // material gate one of the PBR slots so the sample/branch is compiled
+    // out when no texture was bound — same trick as ``bUseTexture`` for
+    // BaseColor, which prevents the null-texture render-thread crash
+    // (UE-23902). Switches the master material doesn't declare are silently
+    // skipped, so this is forward-compatible with the master being
+    // re-wired incrementally.
     {
         FStaticParameterSet StaticParams;
         MaterialInstance->GetStaticParameterValues(StaticParams);
 
-        for (FStaticSwitchParameter& Param : StaticParams.StaticSwitchParameters)
+        auto SetSwitch = [&](const TCHAR* Name, bool Value)
         {
-            if (Param.ParameterInfo.Name == TEXT("bUseTexture"))
+            for (FStaticSwitchParameter& Param : StaticParams.StaticSwitchParameters)
             {
-                Param.Value = bHasBaseColorTexture;
-                Param.bOverride = true;
-                break;
+                if (Param.ParameterInfo.Name == Name)
+                {
+                    Param.Value = Value;
+                    Param.bOverride = true;
+                    return;
+                }
             }
-        }
+        };
+
+        SetSwitch(TEXT("bUseTexture"),          bHasBaseColorTexture);
+        SetSwitch(TEXT("bUseNormalTexture"),    bHasNormalTex);
+        SetSwitch(TEXT("bUseORMTexture"),       bHasORMTex);
+        SetSwitch(TEXT("bUseRoughnessTexture"), bHasRoughnessTex);
+        SetSwitch(TEXT("bUseMetallicTexture"),  bHasMetallicTex);
+
         MaterialInstance->UpdateStaticPermutation(StaticParams);
-    }
-
-    // Set normal texture if available
-    if (!MaterialData.NormalTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.NormalTextureName))
-    {
-        UTexture2D* NormalTex = TextureAssets[MaterialData.NormalTextureName];
-        if (NormalTex)
-        {
-            FMaterialParameterInfo NormalParamInfo(TEXT("NormalTexture"));
-            MaterialInstance->SetTextureParameterValueEditorOnly(NormalParamInfo, NormalTex);
-        }
-    }
-
-    // Set ORM texture if available
-    if (!MaterialData.ORMTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.ORMTextureName))
-    {
-        UTexture2D* ORMTex = TextureAssets[MaterialData.ORMTextureName];
-        if (ORMTex)
-        {
-            FMaterialParameterInfo ORMParamInfo(TEXT("ORMTexture"));
-            MaterialInstance->SetTextureParameterValueEditorOnly(ORMParamInfo, ORMTex);
-        }
-    }
-    // Otherwise set individual roughness/metallic textures
-    else
-    {
-        if (!MaterialData.RoughnessTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.RoughnessTextureName))
-        {
-            // Note: If master material doesn't have separate roughness texture parameter, this will be ignored
-            // For now, we'll just log it
-            UE_LOG(LogURLabEditor, Log, TEXT("Roughness texture found but master material uses ORM workflow"));
-        }
-
-        if (!MaterialData.MetallicTextureName.IsEmpty() && TextureAssets.Contains(MaterialData.MetallicTextureName))
-        {
-            // Note: If master material doesn't have separate metallic texture parameter, this will be ignored
-            UE_LOG(LogURLabEditor, Log, TEXT("Metallic texture found but master material uses ORM workflow"));
-        }
     }
 
     // Force update and save

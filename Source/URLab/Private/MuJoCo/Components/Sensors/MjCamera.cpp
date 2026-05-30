@@ -21,9 +21,13 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Components/Sensors/CameraShmWriter.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
-#include "MuJoCo/Net/MjNetworkManager.h"
+#include "Transport/NetworkManager.h"
+#include "Transport/ShmPublishTransport.h"  // ResolveSessionDir
+#include "Misc/Paths.h"
+#include "HAL/FileManager.h"
 #include "Engine/PostProcessVolume.h"
 #include "EngineUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
@@ -41,6 +45,8 @@
 // ---------------------------------------------------------------------------
 // FCameraZmqWorker
 // ---------------------------------------------------------------------------
+
+std::atomic<bool> FCameraZmqWorker::bPublishersPaused{false};
 
 FCameraZmqWorker::FCameraZmqWorker(const FString& InEndpoint, const FString& InTopic, FIntPoint InRes)
     : RequestedEndpoint(InEndpoint), Topic(InTopic), resolution(InRes), bStopThread(false)
@@ -65,7 +71,7 @@ bool FCameraZmqWorker::Init()
     // Simple port increment logic if port is busy
     FString TryEndpoint = RequestedEndpoint;
     int32 Port = 5558;
-    FString BaseAddr = TEXT("tcp://*:");
+    FString BaseAddr = TEXT("tcp://0.0.0.0:");
 
     // Extract port from requested if it's not the default format
     if (RequestedEndpoint.Contains(TEXT(":")))
@@ -103,29 +109,43 @@ bool FCameraZmqWorker::Init()
 
 uint32 FCameraZmqWorker::Run()
 {
+    auto SendBinary = [this](const void* Data, size_t Size)
+    {
+        if (bPublishersPaused.load(std::memory_order_acquire)) return;
+        const FString TopicSpace = Topic + TEXT(" ");
+        const FTCHARToUTF8 TopicUtf8(*TopicSpace);
+        zmq_send(ZmqPublisher, TopicUtf8.Get(), TopicUtf8.Length(), ZMQ_SNDMORE);
+        zmq_send(ZmqPublisher, Data, Size, 0);
+    };
+
     while (!bStopThread)
     {
-        TArray<FColor> FrameData;
-        
-        // Blockingly wait for the next frame (using a small sleep to avoid spinning)
-        // A proper implementation might use FEvent, but a tight sleep is fine for this queue.
-        if (FrameQueue.Dequeue(FrameData))
+        const int32 ExpectedPixels = resolution.X * resolution.Y;
+        bool bSent = false;
+
+        TArray<FColor> ColorFrame;
+        if (FrameQueue.Dequeue(ColorFrame))
         {
-            if (FrameData.Num() != resolution[0] * resolution[1]) continue;
-
-            // FColor is BGRA (4 bytes per pixel)
-            size_t PayloadSize = FrameData.Num() * sizeof(FColor);
-
-            // Send Topic (ZMQ_SNDMORE)
-            FString TopicSpace = Topic + TEXT(" ");
-            zmq_send(ZmqPublisher, TCHAR_TO_UTF8(*TopicSpace), TopicSpace.Len(), ZMQ_SNDMORE);
-            
-            // Send Binary Payload
-            zmq_send(ZmqPublisher, FrameData.GetData(), PayloadSize, 0);
+            if (ColorFrame.Num() == ExpectedPixels)
+            {
+                SendBinary(ColorFrame.GetData(), ColorFrame.Num() * sizeof(FColor));
+            }
+            bSent = true;
         }
-        else
+
+        TArray<float> FloatFrame;
+        if (FloatFrameQueue.Dequeue(FloatFrame))
         {
-            FPlatformProcess::Sleep(0.002f); // 2ms sleep when idle
+            if (FloatFrame.Num() == ExpectedPixels)
+            {
+                SendBinary(FloatFrame.GetData(), FloatFrame.Num() * sizeof(float));
+            }
+            bSent = true;
+        }
+
+        if (!bSent)
+        {
+            FPlatformProcess::Sleep(0.002f);
         }
     }
     return 0;
@@ -152,10 +172,15 @@ void FCameraZmqWorker::Exit()
 
 void FCameraZmqWorker::PushFrame(const TArray<FColor>& FrameData)
 {
-    // If the queue gets backed up (network is slow), we should probably drop old frames.
-    // TQueue doesn't have an easy Count(), so we just push for now. 
-    // The HWM on the ZMQ socket handles drops.
+    // ZMQ HWM on the socket handles network-side backpressure if the
+    // queue grows. TQueue lacks a cheap Count(), so don't try to drop
+    // here.
     FrameQueue.Enqueue(FrameData);
+}
+
+void FCameraZmqWorker::PushFrame(const TArray<float>& FrameData)
+{
+    FloatFrameQueue.Enqueue(FrameData);
 }
 
 // ---------------------------------------------------------------------------
@@ -324,22 +349,44 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
         // command submission can leave RHI frame breadcrumbs unbalanced.
     }
 
-    // Check if an in-flight readback has completed
+    // Check if an in-flight readback has completed. After the fence,
+    // copy the buffer to the always-on workers, then move it into
+    // Ready* for the bridge consumer. Pending* is left empty so the
+    // next RequestReadback can Emplace fresh without disturbing data
+    // the bridge is about to MoveTemp.
     if (bReadbackPending && ReadbackFence.IsFenceComplete())
     {
-        bReadbackPending  = false;
-        bReadbackComplete = true;
-
-        if (bEnableZmqBroadcast && ZmqWorker && PendingPixels.IsSet())
+        bReadbackPending = false;
+        if (PendingPixels.IsSet())
         {
-            ZmqWorker->PushFrame(PendingPixels.GetValue());
+            if (bEnableZmqBroadcast && ZmqWorker)
+                ZmqWorker->PushFrame(PendingPixels.GetValue());
+            if (bEnableShmBroadcast && ShmWriter)
+                ShmWriter->PushFrame(PendingPixels.GetValue());
+            {
+                FScopeLock Lock(&FrameLock);
+                ReadyPixels.Emplace(MoveTemp(PendingPixels.GetValue()));
+            }
+            PendingPixels.Reset();
         }
+        if (PendingFloatPixels.IsSet())
+        {
+            if (bEnableZmqBroadcast && ZmqWorker)
+                ZmqWorker->PushFrame(PendingFloatPixels.GetValue());
+            if (bEnableShmBroadcast && ShmWriter)
+                ShmWriter->PushFrame(PendingFloatPixels.GetValue());
+            {
+                FScopeLock Lock(&FrameLock);
+                ReadyFloatPixels.Emplace(MoveTemp(PendingFloatPixels.GetValue()));
+            }
+            PendingFloatPixels.Reset();
+        }
+        bReadbackComplete = true;
     }
 
-    // Auto-request the next frame if ZMQ is enabled to maintain the stream.
-    // Depth mode doesn't have a float-capable ZMQ path yet (P5 follow-up), so skip.
-    if (bStreamingEnabled && bEnableZmqBroadcast && !bReadbackPending
-        && CaptureMode != EMjCameraMode::Depth)
+    // Always refresh PendingPixels while streaming; include_cameras consumes it
+    // without enabling ZMQ/SHM broadcast (those flags only gate the workers below).
+    if (bStreamingEnabled && !bReadbackPending)
     {
         RequestReadback();
     }
@@ -385,13 +432,9 @@ void UMjCamera::SetupRenderTarget()
 
     case EMjCameraMode::SemanticSegmentation:
     case EMjCameraMode::InstanceSegmentation:
-        // Use the standard final-tone-curve pipeline — this is what the viewport
-        // overlay uses and is known to render the MID tint correctly.
-        // SCS_BaseColor was attempted but BasicShapeMaterial's `Color` vector
-        // parameter isn't wired directly to the BaseColor G-buffer output,
-        // so nothing appeared in the RT. Tints end up lit here (not pure flat
-        // masks); a future pass that ships a dedicated unlit material would
-        // give pixel-exact ground-truth colours.
+        // FinalToneCurveHDR (not SCS_BaseColor): BasicShapeMaterial's `Color` param
+        // isn't wired to the BaseColor G-buffer, so SCS_BaseColor renders empty.
+        // Tints end up lit (not pure flat masks) until a dedicated unlit material lands.
         CaptureComponent->CaptureSource       = ESceneCaptureSource::SCS_FinalToneCurveHDR;
         CaptureComponent->PrimitiveRenderMode = ESceneCapturePrimitiveRenderMode::PRM_UseShowOnlyList;
         break;
@@ -431,9 +474,8 @@ void UMjCamera::RefreshHiddenComponentsFromSegPools()
 
 void UMjCamera::RegisterWithStreamingManager()
 {
-    // Inform the texture streaming system that this camera is an active viewpoint.
-    // This ensures textures are streamed for the camera's frustum even when the
-    // player pawn is far away. Mirrors the IStreamingManager call in old_camera.h.
+    // Register as an active viewpoint so textures stream for the camera's frustum
+    // even when the player pawn is far away.
     const float HFov     = CaptureComponent ? CaptureComponent->FOVAngle : fovy;
     const float Distance = (HFov > 0.0f)
         ? resolution[0] / FMath::Tan(FMath::DegreesToRadians(HFov * 0.5f))
@@ -495,21 +537,43 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 
         if (bEnableZmqBroadcast && !ZmqWorker)
         {
-            if (CaptureMode == EMjCameraMode::Depth)
+            AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
+            FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
+            FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetName());
+
+            const FIntPoint Res(resolution.Num() > 0 ? resolution[0] : 0,
+                                resolution.Num() > 1 ? resolution[1] : 0);
+            ZmqWorker = new FCameraZmqWorker(ZmqEndpoint, Topic, Res);
+            WorkerThread = FRunnableThread::Create(ZmqWorker, TEXT("CameraZmqWorkerThread"), 0, TPri_BelowNormal);
+        }
+
+        // SHM publisher: opens an mmap'd file under the live URLab session
+        // dir. Slot stride is `pixels * 4 bytes` -- works for BGRA8 (Real /
+        // seg modes) and float32 single-channel (Depth) alike.
+        if (bEnableShmBroadcast && !ShmWriter)
+        {
+            AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
+            const FString Prefix = Articulation ? Articulation->GetName()
+                : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
+            const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(TEXT("live"));
+            IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
+            const FString FileName = FString::Printf(
+                TEXT("cam_%s_%s.shm"), *Prefix, *GetName());
+            const FString FullPath = FPaths::Combine(Dir, FileName);
+
+            const FIntPoint ShmRes(resolution.Num() > 0 ? resolution[0] : 0,
+                                   resolution.Num() > 1 ? resolution[1] : 0);
+            ShmWriter = new FCameraShmWriter();
+            if (!ShmWriter->Open(FullPath, ShmRes))
             {
-                UE_LOG(LogURLabNet, Warning,
-                    TEXT("[MjCamera] '%s' ZMQ broadcast skipped — Depth mode transports floats, the BGRA worker is RGB-only."),
-                    *MjName);
+                delete ShmWriter;
+                ShmWriter = nullptr;
             }
             else
             {
-                AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
-                FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
-                FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetName());
-
-                FIntPoint ResolutionPt(resolution.Num() > 0 ? resolution[0] : 0, resolution.Num() > 1 ? resolution[1] : 0);
-                ZmqWorker = new FCameraZmqWorker(ZmqEndpoint, Topic, ResolutionPt);
-                WorkerThread = FRunnableThread::Create(ZmqWorker, TEXT("CameraZmqWorkerThread"), 0, TPri_BelowNormal);
+                UE_LOG(LogURLabNet, Log,
+                    TEXT("[MjCamera] '%s' SHM broadcast at %s"),
+                    *MjName, *FullPath);
             }
         }
         if (CaptureComponent)
@@ -577,6 +641,13 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
             ZmqWorker = nullptr;
         }
 
+        if (ShmWriter)
+        {
+            ShmWriter->Close(/*bDeleteFile=*/true);
+            delete ShmWriter;
+            ShmWriter = nullptr;
+        }
+
         UE_LOG(LogURLabImport, Log, TEXT("[MjCamera] '%s' streaming DISABLED."), *MjName);
     }
 }
@@ -599,22 +670,72 @@ void UMjCamera::RequestReadback()
         return;
     }
 
-    bReadbackComplete = false;
-    bReadbackPending  = true;
-    PendingPixels.Emplace();  // Allocate output array
+    const FIntRect Rect(0, 0, Resource->GetSizeXY().X, Resource->GetSizeXY().Y);
+    if (Rect.Width() <= 0 || Rect.Height() <= 0)
+    {
+        // RT not yet sized (allocation in flight on the render thread).
+        // Skip this tick; auto-readback will retry next frame.
+        return;
+    }
 
-    TArray<FColor>* PixelsPtr = &PendingPixels.GetValue();
-    const FIntRect  Rect(0, 0, Resource->GetSizeXY().X, Resource->GetSizeXY().Y);
+    // No lock needed -- Pending* is touched only by the game thread
+    // (this function and TickComponent's fence-complete handler), and
+    // the bReadbackPending guard at the top of this function blocks
+    // concurrent RequestReadback re-entry while a render command is in
+    // flight. Ready* is what the bridge consumer touches; it's separate
+    // and managed under FrameLock in TickComponent / ConsumePixels.
+    TArray<FColor>* PixelsPtr = nullptr;
+    TArray<float>*  FloatPtr  = nullptr;
+    bReadbackPending = true;
+    if (CaptureMode == EMjCameraMode::Depth)
+    {
+        PendingFloatPixels.Emplace();
+        FloatPtr = &PendingFloatPixels.GetValue();
+        FloatPtr->SetNumUninitialized(Rect.Width() * Rect.Height());
+    }
+    else
+    {
+        PendingPixels.Emplace();
+        PixelsPtr = &PendingPixels.GetValue();
+        PixelsPtr->SetNumUninitialized(Rect.Width() * Rect.Height());
+    }
 
-    ENQUEUE_RENDER_COMMAND(MjCameraReadback)(
-        [Resource, PixelsPtr, Rect](FRHICommandListImmediate& RHICmdList)
-        {
-            RHICmdList.ReadSurfaceData(
-                Resource->GetRenderTargetTexture(),
-                Rect,
-                *PixelsPtr,
-                FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX));
-        });
+    if (CaptureMode == EMjCameraMode::Depth)
+    {
+        // PF_R32_FLOAT render target: ReadSurfaceFData lands a 4-channel
+        // FLinearColor per pixel; we keep just the R channel post-fence.
+        // Slightly wasteful at readback (4x temp memory) but uses the
+        // stock UE async API.
+        ENQUEUE_RENDER_COMMAND(MjCameraReadbackDepth)(
+            [Resource, FloatPtr, Rect](FRHICommandListImmediate& RHICmdList)
+            {
+                TArray<FLinearColor> Scratch;
+                RHICmdList.ReadSurfaceData(
+                    Resource->GetRenderTargetTexture(),
+                    Rect,
+                    Scratch,
+                    FReadSurfaceDataFlags(RCM_MinMax, CubeFace_MAX));
+                if (Scratch.Num() == FloatPtr->Num())
+                {
+                    for (int32 i = 0; i < Scratch.Num(); ++i)
+                    {
+                        (*FloatPtr)[i] = Scratch[i].R;
+                    }
+                }
+            });
+    }
+    else
+    {
+        ENQUEUE_RENDER_COMMAND(MjCameraReadback)(
+            [Resource, PixelsPtr, Rect](FRHICommandListImmediate& RHICmdList)
+            {
+                RHICmdList.ReadSurfaceData(
+                    Resource->GetRenderTargetTexture(),
+                    Rect,
+                    *PixelsPtr,
+                    FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX));
+            });
+    }
 
     ReadbackFence.BeginFence();
 }
@@ -626,14 +747,28 @@ bool UMjCamera::IsReadbackReady() const
 
 TArray<FColor> UMjCamera::ConsumePixels()
 {
-    if (PendingPixels.IsSet())
+    FScopeLock Lock(&FrameLock);
+    if (ReadyPixels.IsSet())
     {
-        TArray<FColor> Result = MoveTemp(PendingPixels.GetValue());
-        PendingPixels.Reset();
-        bReadbackComplete = false;
+        TArray<FColor> Result = MoveTemp(ReadyPixels.GetValue());
+        ReadyPixels.Reset();
+        bReadbackComplete = ReadyFloatPixels.IsSet();
         return Result;
     }
     return TArray<FColor>();
+}
+
+TArray<float> UMjCamera::ConsumeFloatPixels()
+{
+    FScopeLock Lock(&FrameLock);
+    if (ReadyFloatPixels.IsSet())
+    {
+        TArray<float> Result = MoveTemp(ReadyFloatPixels.GetValue());
+        ReadyFloatPixels.Reset();
+        bReadbackComplete = ReadyPixels.IsSet();
+        return Result;
+    }
+    return TArray<float>();
 }
 
 FString UMjCamera::GetActualZmqEndpoint() const

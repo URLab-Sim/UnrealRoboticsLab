@@ -45,6 +45,30 @@ enum class EControlSource : uint8
 };
 
 /**
+ * @enum EStepMode
+ * @brief Controls how the physics engine advances the simulation.
+ *
+ * - Live: physics thread advances at Options.Timestep on its own. Publishers
+ *   stream state, control subscriber writes ctrl. Live / streaming workflows.
+ * - Direct: physics thread blocks on a step-request queue fed by UURLabZmqRpcTransport.
+ *   RPC writes ctrl, calls mj_step n times, returns observations. Deterministic
+ *   RL training where UE owns the integrator.
+ * - Puppet: physics thread blocks on a push-state queue fed by UURLabZmqRpcTransport.
+ *   RPC writes qpos/qvel, calls mj_forward, returns observations. MJX / Jax-owned
+ *   rollouts where the client owns the integrator.
+ * - Auto: starts Live, hello RPC promotes to Direct or Puppet on first
+ *   client connection, demotes back when client disconnects.
+ */
+UENUM(BlueprintType)
+enum class EStepMode : uint8
+{
+    Live   UMETA(DisplayName = "Live (streaming)"),
+    Direct UMETA(DisplayName = "Direct (RPC step)"),
+    Puppet UMETA(DisplayName = "Puppet (RPC push-state)"),
+    Auto   UMETA(DisplayName = "Auto (client picks)")
+};
+
+/**
  * @class UMjPhysicsEngine
  * @brief Core physics engine component that owns the MuJoCo simulation lifecycle.
  *
@@ -58,22 +82,14 @@ class URLAB_API UMjPhysicsEngine : public UActorComponent
 
 public:
     UMjPhysicsEngine();
+    virtual void BeginDestroy() override;
 
     // --- MuJoCo Core Pointers ---
 
-    /** @brief Pointer to the MuJoCo specification structure. */
     mjSpec* m_spec = nullptr;
-
-    /** @brief MuJoCo Virtual File System instance. */
     mjVFS m_vfs;
-
-    /** @brief Pointer to the compiled MuJoCo model. */
     mjModel* m_model = nullptr;
-
-    /** @brief Pointer to the active MuJoCo simulation data. */
     mjData* m_data = nullptr;
-
-    // --- Public Getters ---
 
     mjModel* GetModel() const { return m_model; }
     mjData* GetData() const { return m_data; }
@@ -82,26 +98,23 @@ public:
     // --- Thread Synchronization ---
 
     FCriticalSection CallbackMutex;
-
-    /** @brief Flag to signal the async task to stop. Atomic for thread safety. */
     std::atomic<bool> bShouldStopTask{false};
-
-    /** @brief Future for the async physics thread, used to wait for exit in EndPlay. */
     TFuture<void> AsyncPhysicsFuture;
+
+    /** Wakes the async physics worker when a step request lands in
+     *  direct/puppet mode. Dispatcher Triggers on enqueue; worker
+     *  Waits on this in lieu of the real-time spin pacer when the
+     *  client owns the clock. Allocated when the worker starts,
+     *  returned to the pool on shutdown. */
+    FEvent* StepRequestEvent = nullptr;
 
     // --- Step Callbacks ---
 
-    /**
-     * @brief Delegate for custom physics stepping.
-     * If bound, this replaces the default mj_step(). Used by Replay System.
-     */
+    /** If bound, replaces mj_step (used by replay). */
     using FMujocoStepCallback = std::function<void(mjModel*, mjData*)>;
     FMujocoStepCallback CustomStepHandler;
 
-    /**
-     * @brief Delegate called immediately after mj_step (or custom step).
-     * Used for Recording State.
-     */
+    /** Called after mj_step (or custom step); used for recording. */
     using FMujocoPostStepCallback = std::function<void(mjModel*, mjData*)>;
     FMujocoPostStepCallback OnPostStep;
 
@@ -110,141 +123,92 @@ public:
 
     // --- Pending State (Thread-Safe Atomics) ---
 
-    /** @brief Thread-safe flag to trigger a reset on the next physics step. */
     std::atomic<bool> bPendingReset{false};
-
-    /** @brief Thread-safe flag to trigger a restore on the next physics step. */
     std::atomic<bool> bPendingRestore{false};
-
-    /** @brief Plain-data copy of the state to restore. */
     TArray<double> PendingStateVector;
     int32 PendingStateMask = 0;
 
     // --- Simulation Options ---
 
-    /** @brief Simulation Options (Timestep, Gravity, etc.). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options")
     FMuJoCoOptions Options;
 
-    /** @brief Simulation speed percentage (0-100). 100 = realtime, 50 = half speed. */
+    /** 100 = realtime, 50 = half speed. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options", meta=(ClampMin="5", ClampMax="100"))
     float SimSpeedPercent = 100.0f;
 
-    /** @brief If true, the simulation loop skips stepping the physics. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Status")
     bool bIsPaused = true;
 
-    /** @brief If true, saves compiled scene XML and MJB to Saved/URLab/ on each compile. */
+    /** Saves compiled scene XML and MJB to Saved/URLab/ on each compile. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
     bool bSaveDebugXml = false;
 
-    /** @brief Global default control source (ZMQ or UI). */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Runtime")
     EControlSource ControlSource;
 
     // --- Registered Scene Objects ---
 
-    /** @brief List of custom physics components registered with this manager. */
     UPROPERTY()
     TArray<UMjQuickConvertComponent*> m_MujocoComponents;
 
-    /** @brief List of articulations (multi-body structures) registered with this manager. */
     UPROPERTY()
     TArray<AMjArticulation*> m_articulations;
 
-    /** @brief List of heightfield actors registered with this manager. */
     UPROPERTY()
     TArray<AMjHeightfieldActor*> m_heightfieldActors;
 
-    /** @brief O(1) articulation lookup. Key = actor name. */
+    /** O(1) articulation lookup. Key = actor name. */
     TMap<FString, AMjArticulation*> m_ArticulationMap;
 
-    // --- Error Reporting ---
-
-    /** @brief Error string from the most recent Compile() call. Empty on success. */
+    /** Error string from the most recent Compile(); empty on success. */
     FString m_LastCompileError;
+
+    /** Absolute paths of every mesh / texture asset registered to the
+     *  MuJoCo VFS during the last Compile. Aggregated from each
+     *  articulation's / quick-convert's spec wrapper in PreCompile.
+     *  Used by the bridge handshake (opt-in) to ship the model and
+     *  its assets to a remote client. */
+    UPROPERTY()
+    TArray<FString> ActiveAssetPaths;
 
     // --- Compilation ---
 
-    /** @brief Compiles the aggregated mjSpec into an mjModel and initializes mjData. */
     void Compile();
-
-    /** @brief Scans the scene for MuJoCo components and articulations to populate m_spec. */
     void PreCompile();
-
-    /** @brief Finalizes setup after compilation (actuator maps, PostSetup calls). */
     void PostCompile();
-
-    /** @brief Applies the settings from Options to m_model->opt. */
     void ApplyOptions();
 
     // --- Runtime ---
 
-    /** @brief Starts the asynchronous thread for stepping the MuJoCo simulation. */
     void RunMujocoAsync();
-
-    /** @brief Pauses or Resumes the physics simulation. */
     void SetPaused(bool bPaused);
-
-    /** @brief Checks if the simulation is currently running (initialized and not paused). */
     bool IsRunning() const;
-
-    /** @brief Checks if the MuJoCo model is compiled and data is allocated. */
     bool IsInitialized() const;
-
-    /** @brief Gets the current MuJoCo simulation time in seconds. */
     float GetSimTime() const;
-
-    /** @brief Gets the simulation timestep from Options (dt). */
     float GetTimestep() const;
-
-    /** @brief Resets the MuJoCo simulation data to initial state. */
     void ResetSimulation();
-
-    /** @brief Steps the simulation synchronously on the calling thread. */
     void StepSync(int32 NumSteps);
-
-    /** @brief Re-runs Compile() and restarts the async simulation loop. */
     bool CompileModel();
-
-    /** @brief Captures a full state snapshot of the current simulation. */
     UMjSimulationState* CaptureSnapshot();
-
-    /** @brief Schedules a simulation state restore for the next physics step. */
+    /** Restore is scheduled for the next physics step. */
     void RestoreSnapshot(UMjSimulationState* Snapshot);
-
-    /** @brief Sets the global default control source. */
     void SetControlSource(EControlSource NewSource);
-
-    /** @brief Gets the current control source. */
     EControlSource GetControlSource() const;
-
-    /** @brief Gets a registered articulation by its Actor name. */
     AMjArticulation* GetArticulation(const FString& ActorName) const;
-
-    /** @brief Gets all registered articulations. */
     TArray<AMjArticulation*> GetAllArticulations() const;
-
-    /** @brief Gets all registered QuickConvert components. */
     TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
-
-    /** @brief Gets all registered Heightfield actors. */
     TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
-
-    /** @brief Returns the error string from the most recent failed compile. */
     FString GetLastCompileError() const;
 
     // --- Callback Registration ---
 
-    using FPhysicsCallback = std::function<void(mjModel*, mjData*)>;
+    // TFunction (not std::function): TArray-safe move semantics. Storing
+    // std::function in TArray here corrupted captures across reallocation.
+    using FPhysicsCallback = TFunction<void(mjModel*, mjData*)>;
 
-    /** @brief Register a callback to be invoked before each physics step. */
     void RegisterPreStepCallback(FPhysicsCallback Callback);
-
-    /** @brief Register a callback to be invoked after each physics step. */
     void RegisterPostStepCallback(FPhysicsCallback Callback);
-
-    /** @brief Clear all registered pre/post step callbacks. */
     void ClearCallbacks();
 
 private:

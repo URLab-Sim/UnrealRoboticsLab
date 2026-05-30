@@ -22,6 +22,17 @@
 #include "URLabEditor.h"
 #include "URLabEditorLogging.h"
 #include "MjEditorStyle.h"
+#include "MjBridgeServerSubsystem.h"
+#include "MjEditorOpHandlers.h"
+#include "Bridge/BridgeServerProvider.h"
+#include "SMjStepModeIndicator.h"
+#include "SMjBridgeServerToggle.h"
+#include "Editor.h"
+#include "ToolMenus.h"
+#include "ToolMenuContext.h"
+#include "ToolMenuEntry.h"
+#include "ToolMenuSection.h"
+#include "ToolMenuMisc.h"
 
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
@@ -56,6 +67,25 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 void FURLabEditorModule::StartupModule()
 {
     FMjEditorStyle::Initialize();
+
+    // Install the bridge-server resolver so AAMjManager (URLab module) can
+    // discover the editor-time server without depending on URLabEditor.
+    // The resolver lazy-starts the subsystem's server so a PIE BeginPlay
+    // that fires before the user toggles AutoStart still gets a server.
+    URLabBridgeProvider::RegisterResolver([]() -> UURLabBridgeServer*
+    {
+        if (!GEditor) return nullptr;
+        UURLabBridgeServerSubsystem* Sub =
+            GEditor->GetEditorSubsystem<UURLabBridgeServerSubsystem>();
+        if (!Sub) return nullptr;
+        Sub->StartServer();  // idempotent; honours INI auto-start
+        return Sub->GetBridgeServer();
+    });
+
+    // Editor-only op handlers (import_xml, create_level, spawn_*, ...).
+    // The dispatcher in URLab forwards editor-only ops through
+    // URLabOpRegistry, which these handlers populate.
+    URLabEditorOpHandlers::RegisterAll();
 
     FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
     // Register geom customization on all subclasses
@@ -141,6 +171,29 @@ void FURLabEditorModule::StartupModule()
     // Register auto-parenting hook for MuJoCo components
     OnObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddRaw(this, &FURLabEditorModule::OnObjectModified);
 
+    // Register the StepMode status indicator into the level editor toolbar.
+    // The indicator is a small Slate widget that polls AAMjManager::Instance
+    // every 0.5s and shows a coloured pill: green=Live, amber=Direct,
+    // blue=Puppet, grey=Auto/none. No asset deps; pure code.
+    UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]()
+    {
+        UToolMenu* ToolBar = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.PlayToolBar");
+        if (!ToolBar) return;
+        FToolMenuSection& Section = ToolBar->FindOrAddSection("URLab");
+        Section.AddEntry(FToolMenuEntry::InitWidget(
+            "URLabStepModeIndicator",
+            SNew(SMjStepModeIndicator),
+            FText::GetEmpty(),
+            /*bNoIndent=*/true,
+            /*bSearchable=*/false));
+        Section.AddEntry(FToolMenuEntry::InitWidget(
+            "URLabBridgeServerToggle",
+            SNew(SURLabBridgeServerToggle),
+            FText::GetEmpty(),
+            /*bNoIndent=*/true,
+            /*bSearchable=*/false));
+    }));
+
     // Register MuJoCo Outliner tab (guard against double registration on hot-reload)
     FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
     FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
@@ -164,6 +217,9 @@ void FURLabEditorModule::StartupModule()
 void FURLabEditorModule::ShutdownModule()
 {
     FMjEditorStyle::Shutdown();
+
+    URLabBridgeProvider::RegisterResolver(nullptr);
+    URLabEditorOpHandlers::UnregisterAll();
 
     FCoreUObjectDelegates::OnObjectModified.Remove(OnObjectModifiedHandle);
 

@@ -24,6 +24,7 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "MuJoCo/Components/QuickConvert/AMjHeightfieldActor.h"
+#include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Core/MjSimulationState.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "Kismet/GameplayStatics.h"
@@ -150,7 +151,20 @@ UMjPhysicsEngine::UMjPhysicsEngine()
     Options.Integrator = EMjIntegrator::ImplicitFast;
     ControlSource = EControlSource::ZMQ;
 
+    // Auto-reset so each Trigger arms exactly one Wait; coalesces bursts.
+    StepRequestEvent = FPlatformProcess::GetSynchEventFromPool(false);
+
     URLab_InstallMujocoCallbacks();
+}
+
+void UMjPhysicsEngine::BeginDestroy()
+{
+    if (StepRequestEvent)
+    {
+        FPlatformProcess::ReturnSynchEventToPool(StepRequestEvent);
+        StepRequestEvent = nullptr;
+    }
+    Super::BeginDestroy();
 }
 
 void UMjPhysicsEngine::PreCompile()
@@ -165,18 +179,26 @@ void UMjPhysicsEngine::PreCompile()
     TArray<AActor*> FoundActors;
     UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), FoundActors);
 
+    ActiveAssetPaths.Empty();
     for (auto actor : FoundActors)
     {
-        if (actor->FindComponentByClass<UMjQuickConvertComponent>())
+        if (UMjQuickConvertComponent* QC = actor->FindComponentByClass<UMjQuickConvertComponent>())
         {
-            UMjQuickConvertComponent* CustomPhysicsComponent = actor->FindComponentByClass<UMjQuickConvertComponent>();
-            m_MujocoComponents.Add(CustomPhysicsComponent);
-            CustomPhysicsComponent->Setup(m_spec, &m_vfs);
+            m_MujocoComponents.Add(QC);
+            QC->Setup(m_spec, &m_vfs);
+            if (FMujocoSpecWrapper* W = QC->GetWrapper())
+            {
+                for (const FString& Path : W->ActiveAssetPaths) ActiveAssetPaths.AddUnique(Path);
+            }
         }
         if (AMjArticulation* Articulation = Cast<AMjArticulation>(actor))
         {
             Articulation->Setup(m_spec, &m_vfs);
             m_articulations.Add(Articulation);
+            if (FMujocoSpecWrapper* W = Articulation->GetWrapper())
+            {
+                for (const FString& Path : W->ActiveAssetPaths) ActiveAssetPaths.AddUnique(Path);
+            }
         }
         if (AMjHeightfieldActor* HFA = Cast<AMjHeightfieldActor>(actor))
         {
@@ -338,14 +360,15 @@ void UMjPhysicsEngine::RunMujocoAsync()
     }
 
     bShouldStopTask = false;
-    float TargetInterval = (float)m_model->opt.timestep;
 
-    AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [TargetInterval, this]() {
+    AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [this]() {
         FPlatformProcess::Sleep(0.0f);
 
         while (true)
         {
             const double LoopStartTime = FPlatformTime::Seconds();
+            // Re-read per iteration so set_sim_options retunes the pacer live.
+            const float TargetInterval = m_model ? (float)m_model->opt.timestep : 0.002f;
 
             if (bShouldStopTask)
                 break;
@@ -396,9 +419,20 @@ void UMjPhysicsEngine::RunMujocoAsync()
                     Cb(m_model, m_data);
                 }
 
-                for (AMjArticulation* Art : m_articulations)
+                // Puppet mode: client pushes qpos/qvel/ctrl directly, so
+                // ApplyControls (NetworkValue → d->ctrl) would clobber the
+                // snapshot. Skip the controller pass.
+                bool bSkipApplyControls = false;
+                if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
                 {
-                    if (Art) Art->ApplyControls();
+                    bSkipApplyControls = (OwnerMgr->StepMode == EStepMode::Puppet);
+                }
+                if (!bSkipApplyControls)
+                {
+                    for (AMjArticulation* Art : m_articulations)
+                    {
+                        if (Art) Art->ApplyControls();
+                    }
                 }
 
                 if (!bIsPaused)
@@ -420,12 +454,33 @@ void UMjPhysicsEngine::RunMujocoAsync()
                 }
             } // FScopeLock released here
 
-            // Spin-wait for precise timing at small timesteps
-            const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
-            const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
-            while (FPlatformTime::Seconds() < TargetTime)
+            // End-of-iteration pacing.
+            //
+            // Live mode: UE owns the clock. Spin-wait to TargetInterval so
+            //   the loop runs at real-time physics rate.
+            // Direct / Puppet: the client owns the clock. Block on
+            //   StepRequestEvent (signalled by the dispatcher on enqueue)
+            //   so we drain commands at the rate Python sends them rather
+            //   than capping at 1 / timestep Hz. Short timeout keeps the
+            //   bShouldStopTask check responsive on shutdown.
+            bool bUseRealTimePacing = true;
+            if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
             {
-                FPlatformProcess::YieldThread();
+                bUseRealTimePacing = (OwnerMgr->StepMode == EStepMode::Live);
+            }
+            if (bUseRealTimePacing)
+            {
+                const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
+                const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
+                while (FPlatformTime::Seconds() < TargetTime)
+                {
+                    FPlatformProcess::YieldThread();
+                }
+            }
+            else if (StepRequestEvent)
+            {
+                // 100ms timeout: cap shutdown latency without polling hot.
+                StepRequestEvent->Wait(100);
             }
         }
     });
@@ -481,6 +536,9 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 bool UMjPhysicsEngine::CompileModel()
 {
     bShouldStopTask = true;
+    // Wake the worker if it's parked on the step-request event so it
+    // observes bShouldStopTask without waiting out the Wait timeout.
+    if (StepRequestEvent) StepRequestEvent->Trigger();
     {
         FScopeLock Lock(&CallbackMutex);
         if (m_data)  { mj_deleteData(m_data);   m_data  = nullptr; }
@@ -594,16 +652,21 @@ void UMjPhysicsEngine::RestoreSnapshot(UMjSimulationState* Snapshot)
 
 void UMjPhysicsEngine::RegisterPreStepCallback(FPhysicsCallback Callback)
 {
+    // Lock matches the iteration in RunMujocoAsync — TArray realloc during
+    // a concurrent Add would invalidate the buffer the physics thread holds.
+    FScopeLock Lock(&CallbackMutex);
     PreStepCallbacks.Add(MoveTemp(Callback));
 }
 
 void UMjPhysicsEngine::RegisterPostStepCallback(FPhysicsCallback Callback)
 {
+    FScopeLock Lock(&CallbackMutex);
     PostStepCallbacks.Add(MoveTemp(Callback));
 }
 
 void UMjPhysicsEngine::ClearCallbacks()
 {
+    FScopeLock Lock(&CallbackMutex);
     PreStepCallbacks.Empty();
     PostStepCallbacks.Empty();
 }

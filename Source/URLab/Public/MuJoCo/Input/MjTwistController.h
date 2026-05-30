@@ -88,6 +88,10 @@ public:
 	/** Zero all twist state. Called when unpossessed. */
 	void ResetTwist();
 
+	/** Inject twist directly (m/s, m/s, rad/s). Bypasses input mapping; used by
+	 *  the bridge's `set_twist` RPC for headless / Python-driven runs. Thread-safe. */
+	void SetTwist(float InVx, float InVy, float InYawRate);
+
 private:
 	// Input handlers
 	void OnMove(const FInputActionValue& Value);

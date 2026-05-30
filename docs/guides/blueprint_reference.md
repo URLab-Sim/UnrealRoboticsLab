@@ -2,7 +2,7 @@
 
 Every MuJoCo component in Unreal Robotics Lab is a regular Unreal component. Articulations are actors. You interact with them the same way you would with any other actor or component — get references, call functions, bind events. No need to touch MuJoCo directly unless you want to.
 
-For the full class-by-class API listing, see the [auto-generated API Reference](../api/index.md).
+For the full class-by-class API listing, see the auto-generated API Reference (rebuilt by CI from the plugin's C++ headers on each release; not present in local doc builds).
 
 ---
 

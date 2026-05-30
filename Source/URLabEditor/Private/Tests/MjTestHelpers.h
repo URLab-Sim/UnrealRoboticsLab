@@ -41,6 +41,7 @@
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "MuJoCo/Components/Joints/MjJoint.h"
+#include "Bridge/RpcDispatcher.h"
 #include "MujocoGenerationAction.h"
 
 /**
@@ -266,6 +267,18 @@ struct FMjUESession
             LastError = TEXT("Manager->Compile() failed — model not initialized");
             return false;
         }
+
+        // Stand the bridge server (and its dispatcher) up here too.
+        // AAMjManager::BeginPlay normally does this; tests bypass BeginPlay
+        // and drive Compile() directly, so any test that exercises
+        // step-server semantics needs the dispatcher available.
+        Manager->BridgeServer = NewObject<UURLabBridgeServer>(Manager, TEXT("BridgeServer"));
+        Manager->BridgeServer->SetOwnedByManager(true);
+        // Tests don't need a real socket; pass empty endpoint to skip
+        // the ZMQ bind. Multiple tests would fight over the default
+        // port otherwise.
+        Manager->BridgeServer->Start(TEXT(""));
+        Manager->BridgeServer->RegisterManager(Manager);
         return true;
     }
 
@@ -280,7 +293,19 @@ struct FMjUESession
     /** Free world and engine context. */
     void Cleanup()
     {
-        if (Manager) Manager->PhysicsEngine->bShouldStopTask = true;
+        if (Manager)
+        {
+            // Tear the dispatcher down before the world goes away so its
+            // CustomStepHandler is uninstalled while PhysicsEngine is still
+            // valid.
+            if (Manager->BridgeServer)
+            {
+                Manager->BridgeServer->UnregisterManager(Manager);
+                Manager->BridgeServer->Stop();
+                Manager->BridgeServer = nullptr;
+            }
+            Manager->PhysicsEngine->bShouldStopTask = true;
+        }
         if (World)
         {
             World->DestroyWorld(false);

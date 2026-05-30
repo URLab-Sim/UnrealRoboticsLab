@@ -2,7 +2,7 @@
 
 URLab supports Linux against Unreal Engine 5.7+. The plugin builds and the full automation suite (`URLab.*`) passes 177/177 with a working editor — but the build flow is more involved than on Windows because UE's bundled clang + libc++ require the third-party dependencies to be ABI-compatible.
 
-This page is a **one-time setup** walkthrough. Jump to [Day-to-day workflow](#day-to-day-workflow) once you have a working build; the [Troubleshooting / Advanced](#troubleshooting--advanced) section covers debugging tips and the build flags applied internally by `build_all.sh --engine`.
+This page is a **one-time setup** walkthrough. Jump to [Day-to-day workflow](#day-to-day-workflow) once you have a working build; the [Troubleshooting / Advanced](#troubleshooting-advanced) section covers debugging tips and the build flags applied internally by `build_all.sh --engine`.
 
 If you hit anything not covered here please open an issue.
 

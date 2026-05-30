@@ -77,7 +77,15 @@ public:
 	virtual void Bind(mjModel* m, mjData* d, const TMap<int32, UMjActuator*>& ActuatorIdMap) override;
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
 
+	virtual FString GetKindName() const override { return TEXT("pd"); }
+	virtual void    GetConfigSchema(TSharedPtr<FJsonObject>& OutSchema) const override;
+	virtual void    GetCurrentConfig(TSharedPtr<FJsonObject>& OutParams) const override;
+	virtual void    ApplyConfig(const TSharedPtr<FJsonObject>& InParams) override;
+
 	/** Set all gains at once. Arrays must match binding count. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|PD Controller")
 	void SetGains(const TArray<float>& NewKp, const TArray<float>& NewKv, const TArray<float>& NewTorqueLimits);
+
+	/** Look up the local (prefix-stripped) joint name for a binding index. */
+	FString GetBindingLocalJointName(int32 Index) const;
 };

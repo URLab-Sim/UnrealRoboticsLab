@@ -28,6 +28,7 @@
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
+#include "MuJoCo/Utils/MjXmlUtils.h"
 
 UMjContactExclude::UMjContactExclude()
 {

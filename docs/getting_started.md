@@ -33,7 +33,7 @@ This will, for each of MuJoCo / CoACD / libzmq:
 
 *(If you encounter a compiler stack overflow error here, see the [Troubleshooting](#troubleshooting) section below).*
 
-If you are iterating on a dep locally and want to keep your changes in `third_party/<dep>/src/`, pass the opt-out flag (see [Updating & Iterating on Deps](#updating--iterating-on-deps)).
+If you are iterating on a dep locally and want to keep your changes in `third_party/<dep>/src/`, pass the opt-out flag (see [Updating & Iterating on Deps](#updating-iterating-on-deps)).
 
 3. **Compile:** Right-click your `.uproject` file, select **Generate Visual Studio project files**, then open the solution and **Build** your project in your IDE.
 
@@ -81,8 +81,10 @@ This is **not required** if you only use the plugin through the editor, Blueprin
 
 1. `cd` into `urlab_bridge/`.
 2. Install: `uv sync` (or `pip install -e .`).
-3. Run a policy: `uv run src/run_policy.py --policy unitree_12dof`
-4. Or use the GUI: `uv run src/urlab_policy/policy_gui.py`
+3. Run a policy: `uv run urlab-policy --policy unitree_12dof --prefix g1`
+   (or `uv run src/run.py --policy unitree_12dof --prefix g1`).
+4. Or launch the dashboard: `uv run urlab-ui`
+   (or `uv run src/run.py --ui`).
 5. Select your articulation and policy, click Start.
 
 ### From Blueprint
@@ -103,7 +105,7 @@ All functions are `BlueprintCallable`.
 
 ## Debug Visualization
 
-See the [Debug Visualization guide](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/debug_visualization.md) for the full set of PIE overlays — contact forces, collision wireframes, joint axes, constraint islands, instance/semantic segmentation, and muscle/tendon tubes — plus the hotkeys that drive them.
+See the [Debug Visualization guide](guides/debug_visualization.md) for the full set of PIE overlays — contact forces, collision wireframes, joint axes, constraint islands, instance/semantic segmentation, and muscle/tendon tubes — plus the hotkeys that drive them.
 
 ## Updating & Iterating on Deps
 
@@ -143,15 +145,38 @@ private static readonly bool SkipThirdPartyDriftChecks = true;
 
 Remember to flip it back before committing; otherwise your teammates lose the safety net.
 
+## Remote Stepping Quick-Start
+
+The Python client can drive the sim step-by-step over a ZMQ REQ/REP socket on port `5559`. Start URLab in PIE, then on the Python side:
+
+```python
+from urlab_client import URLabClient
+
+with URLabClient("tcp://localhost", step_mode="direct") as client:
+    client.discover()
+    art = client.articulations["vx300s"]
+    for _ in range(1000):
+        art.set_ctrl({"waist": 0.5})
+        client.step(n_steps=5)        # 5 physics substeps per policy step
+```
+
+This is the primary path for Python control: scene authoring, scripted control, running pretrained policies, recording episodes. See:
+
+- [Python Getting Started](python/getting_started.md) — the full Python walkthrough: connect, author a scene, run PIE, send control, tune gains, work with cameras, add a new policy.
+- [Python API Reference](python/api.md) — every method on `URLabClient` and the `scene` / `sim` / `runtime` / `outliner` / `debug` / `viewport` / `recording` / `replay` namespaces.
+- [Networking](guides/networking.md) — UE-side architecture and the three step modes (live, direct, puppet).
+- [Policy Registry](python/policy_registry.md) — bundled pretrained policies and how to add new ones.
+
 ## Next Steps
 
-* [features.md](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/features.md) -- complete feature reference
-* [MJCF Import](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/mujoco_import.md) -- import pipeline details
-* [Blueprint Reference](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/blueprint_reference.md) -- all Blueprint-callable functions and hotkeys
-* [Debug Visualization](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/debug_visualization.md) -- PIE overlays, segmentation, island colouring, muscle/tendon tubes
-* [ZMQ Networking](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/zmq_networking.md) -- protocol, topics, and Python examples
-* [Policy Bridge](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/policy_bridge.md) -- RL policy deployment
-* [Developer Tools](/URLab-Sim/UnrealRoboticsLab/blob/main/docs/guides/developer_tools.md) -- schema tracking, debug XML, build/test skills
+* [Python Getting Started](python/getting_started.md) -- drive URLab from Python end-to-end
+* [Python API Reference](python/api.md) -- full client + namespace reference
+* [features.md](features.md) -- complete feature reference
+* [MJCF Import](guides/mujoco_import.md) -- import pipeline details
+* [Blueprint Reference](guides/blueprint_reference.md) -- all Blueprint-callable functions and hotkeys
+* [Debug Visualization](guides/debug_visualization.md) -- PIE overlays, segmentation, island colouring, muscle/tendon tubes
+* [Networking](guides/networking.md) -- UE-side networking: step modes, transports, legacy streaming wire format, ROS 2 bridge
+* [URLab Bridge](python/bridge.md) -- bridge install, dashboard, pretrained policies
 
 ---
 

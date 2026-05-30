@@ -20,10 +20,11 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "MuJoCo/Net/ZmqControlSubscriber.h"
+#include "Transport/ZmqSubscribeTransport.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Net/MjNetworkManager.h"
+#include "Transport/NetworkManager.h"
+#include "MuJoCo/Components/Controllers/MjArticulationController.h"
 #include "MuJoCo/Components/Controllers/MjPDController.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "zmq.h"
@@ -34,12 +35,24 @@
 #include "Utils/URLabLogging.h"
 
 
-UZmqControlSubscriber::UZmqControlSubscriber()
+
+void UURLabZmqSubscribeTransport::SetOwningManager(AAMjManager* InMgr)
 {
-	PrimaryComponentTick.bCanEverTick = false;
+	OwningManager = InMgr;
 }
 
-void UZmqControlSubscriber::InitZmq()
+bool UURLabZmqSubscribeTransport::TransportInit()
+{
+	InitZmqSocket();
+	return bIsInitialized;
+}
+
+void UURLabZmqSubscribeTransport::TransportShutdown()
+{
+	ShutdownZmqSocket();
+}
+
+void UURLabZmqSubscribeTransport::InitZmqSocket()
 {
 	if (bIsInitialized) return;
 
@@ -58,7 +71,7 @@ void UZmqControlSubscriber::InitZmq()
 		}
 	}
 	
-	AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+	AAMjManager* Manager = OwningManager.Get();
 	if (Manager)
 	{
 		for (AMjArticulation* Artic : Manager->GetAllArticulations())
@@ -66,11 +79,17 @@ void UZmqControlSubscriber::InitZmq()
 			if (Artic)
 			{
 				FString ControlFilter = FString::Printf(TEXT("%s/control "), *Artic->GetName());
-				zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, TCHAR_TO_UTF8(*ControlFilter), ControlFilter.Len());
+				{
+					const FTCHARToUTF8 FilterUtf8(*ControlFilter);
+					zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, FilterUtf8.Get(), FilterUtf8.Length());
+				}
 				UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Subscribed to: %s"), *ControlFilter);
 
 				FString GainsFilter = FString::Printf(TEXT("%s/set_gains "), *Artic->GetName());
-				zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, TCHAR_TO_UTF8(*GainsFilter), GainsFilter.Len());
+				{
+					const FTCHARToUTF8 FilterUtf8(*GainsFilter);
+					zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, FilterUtf8.Get(), FilterUtf8.Length());
+				}
 				UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Subscribed to: %s"), *GainsFilter);
 			}
 		}
@@ -99,7 +118,7 @@ void UZmqControlSubscriber::InitZmq()
 	UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Initialized."));
 }
 
-void UZmqControlSubscriber::ShutdownZmq()
+void UURLabZmqSubscribeTransport::ShutdownZmqSocket()
 {
 	if (!bIsInitialized) return;
 
@@ -113,12 +132,12 @@ void UZmqControlSubscriber::ShutdownZmq()
 	bIsInitialized = false;
 }
 
-void UZmqControlSubscriber::BuildCache(mjModel* m)
+void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 {
 	ActuatorCache.Empty();
 	if (!m) return;
 
-	AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+	AAMjManager* Manager = OwningManager.Get();
 	if (!Manager) return;
 
 	for (AMjArticulation* Articulation : Manager->GetAllArticulations())
@@ -143,12 +162,12 @@ void UZmqControlSubscriber::BuildCache(mjModel* m)
 	UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber: Built cache for %d actuators"), ActuatorCache.Num());
 }
 
-void UZmqControlSubscriber::BroadcastInfo(mjModel* m)
+void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 {
 	if (!InfoPublisher) return;
 
 
-	AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+	AAMjManager* Manager = OwningManager.Get();
 	if (!Manager) return;
 
 	// Broadcast an info message per robot
@@ -221,8 +240,9 @@ void UZmqControlSubscriber::BroadcastInfo(mjModel* m)
 		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&JsonString);
 		FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
 
-		// Send via ZMQ
-		int rc = zmq_send(InfoPublisher, TCHAR_TO_UTF8(*JsonString), JsonString.Len(), 0);
+		// Send via ZMQ. UTF-8 byte count, not TCHAR count.
+		const FTCHARToUTF8 JsonUtf8(*JsonString);
+		int rc = zmq_send(InfoPublisher, JsonUtf8.Get(), JsonUtf8.Length(), 0);
 		if (rc == -1)
 		{
 			UE_LOG(LogURLabNet, Error, TEXT("ZmqControlSubscriber: FAILED to broadcast Info JSON!"));
@@ -230,17 +250,36 @@ void UZmqControlSubscriber::BroadcastInfo(mjModel* m)
 	}
 }
 
-void UZmqControlSubscriber::PreStep(mjModel* m, mjData* d)
+void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 {
 	if (!bIsInitialized)
 	{
-		InitZmq();
+		InitZmqSocket();
 		if (!bIsInitialized) return;
 	}
 
 	if (!bCacheBuilt)
 	{
 		BuildCache(m);
+	}
+
+	// Step server owns the ctrl write path while paused — drain any inbound
+	// SUB messages but do NOT broadcast actuator info or apply control. Drain
+	// avoids a backlog blowing up the queue while we're in stepped mode.
+	if (AAMjManager* Mgr = OwningManager.Get())
+	{
+		if (Mgr->bPublishersPaused.load(std::memory_order_acquire))
+		{
+			while (true)
+			{
+				zmq_msg_t Drain;
+				zmq_msg_init(&Drain);
+				int rc = zmq_msg_recv(&Drain, ControlSubscriber, ZMQ_DONTWAIT);
+				zmq_msg_close(&Drain);
+				if (rc == -1) break;
+			}
+			return;
+		}
 	}
 
 	// Broadcast Info: frequently at startup (every 50 steps for first 5s),
@@ -307,55 +346,36 @@ void UZmqControlSubscriber::PreStep(mjModel* m, mjData* d)
 			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
 			if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
 			{
-				AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+				// Legacy `{prefix}/set_gains` topic shape: { "<joint>": {kp, kv, torque_limit}, ... }.
+				// Reshape into the unified ApplyConfig schema: { "kp": {<joint>: v}, "kv": {...}, "torque_limit": {...} }.
+				TSharedPtr<FJsonObject> Reshaped = MakeShared<FJsonObject>();
+				TSharedPtr<FJsonObject> KpMap = MakeShared<FJsonObject>();
+				TSharedPtr<FJsonObject> KvMap = MakeShared<FJsonObject>();
+				TSharedPtr<FJsonObject> TlMap = MakeShared<FJsonObject>();
+				for (const auto& Entry : Json->Values)
+				{
+					const TSharedPtr<FJsonObject>* JointObj = nullptr;
+					if (!Entry.Value->TryGetObject(JointObj) || !JointObj || !JointObj->IsValid()) continue;
+					double V = 0.0;
+					if ((*JointObj)->TryGetNumberField(TEXT("kp"), V))           KpMap->SetNumberField(Entry.Key, V);
+					if ((*JointObj)->TryGetNumberField(TEXT("kv"), V))           KvMap->SetNumberField(Entry.Key, V);
+					if ((*JointObj)->TryGetNumberField(TEXT("torque_limit"), V)) TlMap->SetNumberField(Entry.Key, V);
+				}
+				if (KpMap->Values.Num() > 0) Reshaped->SetObjectField(TEXT("kp"),           KpMap);
+				if (KvMap->Values.Num() > 0) Reshaped->SetObjectField(TEXT("kv"),           KvMap);
+				if (TlMap->Values.Num() > 0) Reshaped->SetObjectField(TEXT("torque_limit"), TlMap);
+
+				AAMjManager* Manager = OwningManager.Get();
 				if (Manager)
 				{
 					for (AMjArticulation* Art : Manager->GetAllArticulations())
 					{
 						if (!Art || !Topic.Contains(Art->GetName())) continue;
-						UMjPDController* PDCtrl = Art->FindComponentByClass<UMjPDController>();
-						if (!PDCtrl) continue;
-
-						int32 NumBindings = PDCtrl->GetNumBindings();
-						TArray<float> NewKp, NewKv, NewTorqueLimits;
-						NewKp.SetNum(NumBindings);
-						NewKv.SetNum(NumBindings);
-						NewTorqueLimits.SetNum(NumBindings);
-						for (int32 idx = 0; idx < NumBindings; ++idx)
-						{
-							NewKp[idx] = PDCtrl->DefaultKp;
-							NewKv[idx] = PDCtrl->DefaultKv;
-							NewTorqueLimits[idx] = PDCtrl->DefaultTorqueLimit;
-						}
-
-						int32 Matched = 0;
-						const auto& Bindings = PDCtrl->GetBindings();
-						for (int32 idx = 0; idx < Bindings.Num(); ++idx)
-						{
-							if (!Bindings[idx].Component) continue;
-							FString ActName = Bindings[idx].Component->GetMjName();
-							FString ShortName = ActName;
-							FString Prefix = Art->GetName() + TEXT("_");
-							if (ShortName.StartsWith(Prefix))
-								ShortName = ShortName.Mid(Prefix.Len());
-
-							const TSharedPtr<FJsonObject>* JointObj = nullptr;
-							if (Json->TryGetObjectField(ShortName, JointObj) ||
-								Json->TryGetObjectField(ActName, JointObj))
-							{
-								if ((*JointObj)->HasField(TEXT("kp")))
-									NewKp[idx] = (float)(*JointObj)->GetNumberField(TEXT("kp"));
-								if ((*JointObj)->HasField(TEXT("kv")))
-									NewKv[idx] = (float)(*JointObj)->GetNumberField(TEXT("kv"));
-								if ((*JointObj)->HasField(TEXT("torque_limit")))
-									NewTorqueLimits[idx] = (float)(*JointObj)->GetNumberField(TEXT("torque_limit"));
-								Matched++;
-							}
-						}
-						PDCtrl->SetGains(NewKp, NewKv, NewTorqueLimits);
-						PDCtrl->bEnabled = true;
-						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: Set PD gains on '%s' — matched %d/%d joints"),
-							*Art->GetName(), Matched, NumBindings);
+						UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
+						if (!Ctrl) continue;
+						Ctrl->ApplyConfig(Reshaped);
+						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: ApplyConfig on '%s' (kind=%s)"),
+							*Art->GetName(), *Ctrl->GetKindName());
 					}
 				}
 			}
@@ -366,7 +386,7 @@ void UZmqControlSubscriber::PreStep(mjModel* m, mjData* d)
 		// --- Handle control messages ---
 		if (size >= 4)
 		{
-			AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+			AAMjManager* Manager = OwningManager.Get();
 			if (Manager)
 			{
 				// Assumes x86-64 alignment and little-endian. For cross-platform, use memcpy + ntohl.

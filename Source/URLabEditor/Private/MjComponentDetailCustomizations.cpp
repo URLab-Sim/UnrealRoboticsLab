@@ -40,10 +40,8 @@
 #include "MuJoCo/Components/Tendons/MjTendon.h"
 
 // Detail customizations that hide internal properties from the editor UI.
-
-// ============================================================================
-// Actuator — hide DefaultClass pointer
-// ============================================================================
+// Most just call HideProperty(DefaultClass) — the SCS hierarchy sets these.
+// FMjGeomDetailCustomization (below) adds CoACD decomposition buttons.
 
 TSharedRef<IDetailCustomization> FMjActuatorDetailCustomization::MakeInstance()
 {
@@ -55,10 +53,6 @@ void FMjActuatorDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& Deta
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjActuator, DefaultClass)));
 }
 
-// ============================================================================
-// Sensor — hide DefaultClass pointer
-// ============================================================================
-
 TSharedRef<IDetailCustomization> FMjSensorDetailCustomization::MakeInstance()
 {
     return MakeShareable(new FMjSensorDetailCustomization);
@@ -68,10 +62,6 @@ void FMjSensorDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& Detail
 {
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjSensor, DefaultClass)));
 }
-
-// ============================================================================
-// Contact Pair — hide Name
-// ============================================================================
 
 TSharedRef<IDetailCustomization> FMjContactPairDetailCustomization::MakeInstance()
 {
@@ -83,10 +73,6 @@ void FMjContactPairDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& D
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjContactPair, Name)));
 }
 
-// ============================================================================
-// Contact Exclude — hide Name
-// ============================================================================
-
 TSharedRef<IDetailCustomization> FMjContactExcludeDetailCustomization::MakeInstance()
 {
     return MakeShareable(new FMjContactExcludeDetailCustomization);
@@ -97,10 +83,6 @@ void FMjContactExcludeDetailCustomization::CustomizeDetails(IDetailLayoutBuilder
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjContactExclude, Name)));
 }
 
-// ============================================================================
-// Equality
-// ============================================================================
-
 TSharedRef<IDetailCustomization> FMjEqualityDetailCustomization::MakeInstance()
 {
     return MakeShareable(new FMjEqualityDetailCustomization);
@@ -109,10 +91,6 @@ TSharedRef<IDetailCustomization> FMjEqualityDetailCustomization::MakeInstance()
 void FMjEqualityDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 {
 }
-
-// ============================================================================
-// Joint — hide DefaultClass pointer
-// ============================================================================
 
 TSharedRef<IDetailCustomization> FMjJointDetailCustomization::MakeInstance()
 {
@@ -124,10 +102,6 @@ void FMjJointDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailB
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjJoint, DefaultClass)));
 }
 
-// ============================================================================
-// Body
-// ============================================================================
-
 TSharedRef<IDetailCustomization> FMjBodyDetailCustomization::MakeInstance()
 {
     return MakeShareable(new FMjBodyDetailCustomization);
@@ -136,10 +110,6 @@ TSharedRef<IDetailCustomization> FMjBodyDetailCustomization::MakeInstance()
 void FMjBodyDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 {
 }
-
-// ============================================================================
-// Default — hide ClassName and ParentClassName (synced from SCS hierarchy)
-// ============================================================================
 
 TSharedRef<IDetailCustomization> FMjDefaultDetailCustomization::MakeInstance()
 {
@@ -152,10 +122,6 @@ void FMjDefaultDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& Detai
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjDefault, ParentClassName)));
 }
 
-// ============================================================================
-// Site — hide DefaultClass pointer
-// ============================================================================
-
 TSharedRef<IDetailCustomization> FMjSiteDetailCustomization::MakeInstance()
 {
     return MakeShareable(new FMjSiteDetailCustomization);
@@ -165,10 +131,6 @@ void FMjSiteDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBu
 {
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjSite, DefaultClass)));
 }
-
-// ============================================================================
-// Tendon — hide DefaultClass pointer
-// ============================================================================
 
 TSharedRef<IDetailCustomization> FMjTendonDetailCustomization::MakeInstance()
 {
@@ -180,9 +142,8 @@ void FMjTendonDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& Detail
     DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjTendon, DefaultClass)));
 }
 
-// ============================================================================
-// Geom — hide DefaultClass pointer + CoACD decomposition buttons
-// ============================================================================
+// FMjGeomDetailCustomization adds CoACD decomposition controls beyond the
+// simple HideProperty(DefaultClass).
 
 TSharedRef<IDetailCustomization> FMjGeomDetailCustomization::MakeInstance()
 {

@@ -26,9 +26,28 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include <atomic>
 #include "MjPerturbation.generated.h"
 
 class AAMjManager;
+
+/**
+ * @struct FMjPerturbationSample
+ * @brief One captured perturbation snapshot. In puppet mode the editor
+ *        click-drag widget stores the latest per-body xfrc here rather
+ *        than writing directly to d->xfrc_applied -- the step server
+ *        pulls samples on each reply so the client applies them to its
+ *        own authoritative MjData. Non-puppet modes use direct-write.
+ */
+struct FMjPerturbationSample
+{
+    /** MuJoCo body id the force is applied to. -1 = no active perturbation. */
+    int32 BodyId = -1;
+    /** [fx, fy, fz, tx, ty, tz] in MuJoCo world space. */
+    double Xfrc[6] = { 0, 0, 0, 0, 0, 0 };
+    /** Monotonic version stamp; client compares to its last-seen to detect updates. */
+    int64 Version = 0;
+};
 
 /**
  * @class UMjPerturbation
@@ -80,6 +99,12 @@ public:
     /** Is a drag currently active (LMB/RMB held)? */
     bool IsDragging() const { return Perturb.active != 0; }
 
+    /** Read the latest puppet-mode perturbation sample. The step server
+     *  calls this after mj_forward to include the perturbation in the
+     *  reply when StepMode == Puppet. Thread-safe (atomic version load
+     *  + critical-section read of the body / xfrc fields). */
+    FMjPerturbationSample GetLatestPerturbationSample() const;
+
 private:
     friend class UMjInputHandler;
 
@@ -105,4 +130,11 @@ private:
 
     /** Draw a debug line from the world selection point to the ref target. */
     void DrawDebugSpring() const;
+
+    /** Latest puppet-mode perturbation snapshot. Updated on the physics
+     *  thread under LatestSampleMutex; readers take the same mutex.
+     *  `LatestSample.Version` increments on each write so consumers can
+     *  detect duplicate samples between polls. */
+    mutable FCriticalSection LatestSampleMutex;
+    FMjPerturbationSample LatestSample;
 };

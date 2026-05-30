@@ -24,7 +24,9 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
-#include "MuJoCo/Net/MjNetworkManager.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "EngineUtils.h"
+#include "Transport/NetworkManager.h"
 #include "MuJoCo/Input/MjInputHandler.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "Replay/MjReplayManager.h"
@@ -32,11 +34,16 @@
 
 #include "Kismet/GameplayStatics.h"
 #include "Blueprint/UserWidget.h"
-#include "MuJoCo/Net/MjZmqComponent.h"
-#include "MuJoCo/Net/ZmqSensorBroadcaster.h"
-#include "MuJoCo/Net/ZmqControlSubscriber.h"
+#include "Transport/ZmqPublishTransport.h"
+#include "Transport/ZmqSubscribeTransport.h"
+#include "Transport/ZmqRpcTransport.h"
+#include "Bridge/RpcDispatcher.h"
+#include "Transport/SnapshotProducer.h"
+#include "Transport/ShmPublishTransport.h"
+#include "Transport/ShmRpcTransport.h"
 #include "MuJoCo/Core/MjSimulationState.h"
 #include "Utils/URLabLogging.h"
+#include "Bridge/BridgeServerProvider.h"
 #if WITH_EDITOR
 #include "Misc/MessageDialog.h"
 #endif
@@ -59,19 +66,62 @@ AAMjManager::AAMjManager() {
 void AAMjManager::PreCompile()
 {
     if (PhysicsEngine) PhysicsEngine->PreCompile();
-    if (NetworkManager) NetworkManager->DiscoverZmqComponents();
 }
 
 void AAMjManager::PostCompile()
 {
     if (PhysicsEngine) PhysicsEngine->PostCompile();
+    BuildEntityCache();
+}
+
+void AAMjManager::BuildEntityCache()
+{
+    EntityCache.Reset();
+    if (!PhysicsEngine || !PhysicsEngine->m_model) return;
+    UWorld* World = GetWorld();
+    if (!World) return;
+
+    mjModel* m = PhysicsEngine->m_model;
+
+    TSet<AMjArticulation*> ArticSet;
+    for (AMjArticulation* A : PhysicsEngine->m_articulations)
+        if (A) ArticSet.Add(A);
+
+    for (TActorIterator<AActor> It(World); It; ++It)
+    {
+        AActor* Actor = *It;
+        if (!Actor) continue;
+        if (AMjArticulation* AsArt = Cast<AMjArticulation>(Actor))
+        {
+            if (ArticSet.Contains(AsArt)) continue;
+        }
+        TArray<UMjBody*> Bodies;
+        Actor->GetComponents<UMjBody>(Bodies);
+        for (UMjBody* B : Bodies)
+        {
+            if (!B || B->bIsDefault) continue;
+            int32 Id = B->GetMjID();
+            if (Id < 0 || Id >= m->nbody) continue;
+
+            FMjEntityRecord Rec;
+            Rec.MjId = Id;
+            Rec.Name = B->GetMjName();
+            Rec.BodyComp = B;
+            if (m->body_jntnum && m->body_jntadr)
+            {
+                int FirstJnt = m->body_jntadr[Id];
+                int NumJnt   = m->body_jntnum[Id];
+                Rec.bHasFreeBase = (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt &&
+                                    m->jnt_type[FirstJnt] == mjJNT_FREE);
+            }
+            EntityCache.Add(Rec);
+        }
+    }
 }
 
 void AAMjManager::Compile()
 {
     if (!PhysicsEngine) return;
-
-    if (NetworkManager) NetworkManager->DiscoverZmqComponents();
 
     PhysicsEngine->Compile();
 
@@ -94,31 +144,9 @@ void AAMjManager::BeginPlay() {
     }
     Instance = this;
 
-    // Auto-create ZMQ components if none exist on this actor
-    {
-        TArray<UActorComponent*> ExistingZmq;
-        GetComponents(UMjZmqComponent::StaticClass(), ExistingZmq);
-        if (ExistingZmq.Num() == 0)
-        {
-            UE_LOG(LogURLab, Log, TEXT("[AAMjManager] No ZMQ components found — auto-creating SensorBroadcaster and ControlSubscriber"));
-
-            UZmqSensorBroadcaster* Broadcaster = NewObject<UZmqSensorBroadcaster>(this, TEXT("AutoZmqBroadcaster"));
-            if (Broadcaster)
-            {
-                Broadcaster->RegisterComponent();
-                UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Created UZmqSensorBroadcaster (tcp://*:5555)"));
-            }
-
-            UZmqControlSubscriber* Subscriber = NewObject<UZmqControlSubscriber>(this, TEXT("AutoZmqSubscriber"));
-            if (Subscriber)
-            {
-                Subscriber->RegisterComponent();
-                UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Created UZmqControlSubscriber (tcp://127.0.0.1:5556)"));
-            }
-        }
-    }
-
-    // Auto-create ReplayManager if none exists in the scene
+    // Auto-create ReplayManager BEFORE the dispatcher / ZMQ components so the
+    // dispatcher's Init can cache its pointer. (Transport worker threads later
+    // read this cache to avoid TActorIterator, which asserts IsInGameThread.)
     {
         AMjReplayManager* ExistingReplay = Cast<AMjReplayManager>(
             UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
@@ -133,26 +161,113 @@ void AAMjManager::BeginPlay() {
         }
     }
 
+    // Resolve a bridge server. In editor builds the URLabEditor module
+    // installs a resolver via URLabBridgeProvider that hands back the
+    // subsystem's server (lifetime spans PIE sessions). Cooked builds
+    // have no resolver, fall through to creating our own and marking it
+    // as owned-by-manager so EndPlay tears it down.
+    UURLabBridgeServer* ResolvedServer = URLabBridgeProvider::ResolveEditorServer();
+    if (ResolvedServer)
+    {
+        BridgeServer = ResolvedServer;
+        // Don't claim ownership — subsystem controls lifetime.
+    }
+    else
+    {
+        // Cooked path: no editor subsystem. Manager owns its bridge and
+        // brings up both RPC transports inline. Bridge owns all RPC
+        // transports; manager only owns publish/subscribe streams.
+        BridgeServer = NewObject<UURLabBridgeServer>(this, TEXT("BridgeServer"));
+        BridgeServer->SetOwnedByManager(true);
+        BridgeServer->Start();              // ZMQ on tcp://0.0.0.0:5559
+        BridgeServer->EnsureShmBound();     // SHM under "live"
+    }
+    BridgeServer->RegisterManager(this);
+
+    // Auto-create the streaming transports (PIE-only producers — they
+    // tap PhysicsEngine pre/post-step callbacks). Bridge-style UObject
+    // lifecycle: NewObject + SetOwningManager + TransportInit. Manager
+    // owns streaming; bridge owns RPC.
+    {
+        UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Creating manager-owned streaming transports"));
+
+        UURLabZmqPublishTransport* Broadcaster = NewObject<UURLabZmqPublishTransport>(
+            this, TEXT("AutoZmqBroadcaster"));
+        if (Broadcaster)
+        {
+            Broadcaster->SetOwningManager(this);
+            if (Broadcaster->TransportInit())
+            {
+                ManagerOwnedPublishTransports.Add(Broadcaster);
+                UE_LOG(LogURLab, Log,
+                    TEXT("[AAMjManager] Created UURLabZmqPublishTransport (tcp://0.0.0.0:5555)"));
+            }
+        }
+
+        UURLabShmPublishTransport* SmPub = NewObject<UURLabShmPublishTransport>(
+            this, TEXT("AutoSmSnapshotPublisher"));
+        if (SmPub)
+        {
+            SmPub->SetOwningManager(this);
+            if (SmPub->TransportInit())
+            {
+                ManagerOwnedPublishTransports.Add(SmPub);
+                UE_LOG(LogURLab, Log,
+                    TEXT("[AAMjManager] Created UURLabShmPublishTransport (state.shm)"));
+            }
+        }
+
+        UURLabZmqSubscribeTransport* Subscriber = NewObject<UURLabZmqSubscribeTransport>(
+            this, TEXT("AutoZmqSubscriber"));
+        if (Subscriber)
+        {
+            Subscriber->SetOwningManager(this);
+            if (Subscriber->TransportInit())
+            {
+                ManagerOwnedSubscribeTransports.Add(Subscriber);
+                UE_LOG(LogURLab, Log,
+                    TEXT("[AAMjManager] Created UURLabZmqSubscribeTransport (tcp://127.0.0.1:5556)"));
+            }
+        }
+    }
+
     // Compile via PhysicsEngine (also discovers ZMQ components in PreCompile)
     Compile();
     if (NetworkManager) NetworkManager->UpdateCameraStreamingState();
 
-    // Register ZMQ callbacks on PhysicsEngine
-    if (PhysicsEngine && NetworkManager)
+    // Register ONE PreStep + ONE PostStep callback that walks both
+    // manager-owned transport arrays.
+    if (PhysicsEngine)
     {
-        UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Registering %d ZMQ callbacks on PhysicsEngine"), NetworkManager->ZmqComponents.Num());
-        for (UMjZmqComponent* ZmqComp : NetworkManager->ZmqComponents)
-        {
-            if (ZmqComp)
+        TWeakObjectPtr<AAMjManager> WeakSelf(this);
+        PhysicsEngine->RegisterPreStepCallback(
+            [WeakSelf](mjModel* m, mjData* d)
             {
-                PhysicsEngine->RegisterPreStepCallback([ZmqComp](mjModel* m, mjData* d) {
-                    ZmqComp->PreStep(m, d);
-                });
-                PhysicsEngine->RegisterPostStepCallback([ZmqComp](mjModel* m, mjData* d) {
-                    ZmqComp->PostStep(m, d);
-                });
-            }
-        }
+                AAMjManager* Self = WeakSelf.Get();
+                if (!Self) return;
+                for (const TObjectPtr<UURLabSubscribeTransport>& T : Self->ManagerOwnedSubscribeTransports)
+                {
+                    if (T) T->PreStep(m, d);
+                }
+                for (const TObjectPtr<UURLabPublishTransport>& T : Self->ManagerOwnedPublishTransports)
+                {
+                    if (T) T->PreStep(m, d);
+                }
+            });
+        PhysicsEngine->RegisterPostStepCallback(
+            [WeakSelf](mjModel* m, mjData* d)
+            {
+                AAMjManager* Self = WeakSelf.Get();
+                if (!Self) return;
+                for (const TObjectPtr<UURLabPublishTransport>& T : Self->ManagerOwnedPublishTransports)
+                {
+                    if (T) T->PostStep(m, d);
+                }
+                for (const TObjectPtr<UURLabSubscribeTransport>& T : Self->ManagerOwnedSubscribeTransports)
+                {
+                    if (T) T->PostStep(m, d);
+                }
+            });
     }
 
     if (PhysicsEngine)
@@ -171,6 +286,37 @@ void AAMjManager::BeginPlay() {
                 DebugVisualizer->CaptureDebugData();
             }
         });
+
+        // Build the state_full snapshot once per physics step and fan it
+        // out to every IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). This
+        // is the only place BuildStateSnapshot runs per step.
+        TWeakObjectPtr<AAMjManager> WeakSelf(this);
+        PhysicsEngine->RegisterPostStepCallback(
+            [WeakSelf](mjModel* m, mjData* d)
+            {
+                AAMjManager* Self = WeakSelf.Get();
+                if (!Self) return;
+
+                TArray<IMjSnapshotPublisher*> Pubs;
+                {
+                    FScopeLock Lock(&Self->SnapshotPublishersMutex);
+                    Pubs.Reserve(Self->SnapshotPublishers.Num());
+                    for (const FRegisteredSnapshotPublisher& R : Self->SnapshotPublishers)
+                    {
+                        if (R.Publisher && R.Owner.IsValid())
+                            Pubs.Add(R.Publisher);
+                    }
+                }
+                if (Pubs.Num() == 0) return;
+
+                FURLabRpcDispatcher* Disp = Self->GetStepDispatcher();
+                const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
+                TArray<uint8> Buf = FMjSnapshotProducer::BuildStateSnapshot(
+                    Self, m, d, StepIdx);
+                if (Buf.Num() == 0) return;
+                for (IMjSnapshotPublisher* Pub : Pubs)
+                    Pub->PublishSnapshot(Buf);
+            });
 
         PhysicsEngine->RunMujocoAsync();
     }
@@ -210,22 +356,41 @@ void AAMjManager::ToggleSimulateWidget()
     }
 }
 
-void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
-    Super::EndPlay(EndPlayReason);
-    if (Instance == this) Instance = nullptr;
+void AAMjManager::RegisterSnapshotPublisher(IMjSnapshotPublisher* Publisher,
+                                            UObject* OwnerObj)
+{
+    if (!Publisher || !OwnerObj) return;
+    FScopeLock Lock(&SnapshotPublishersMutex);
+    for (const FRegisteredSnapshotPublisher& R : SnapshotPublishers)
+    {
+        if (R.Publisher == Publisher) return; // already registered
+    }
+    SnapshotPublishers.Add({OwnerObj, Publisher});
+}
 
-    // Signal the async thread to stop and wait for it to exit — but bound the
-    // wait. If mj_step is mid-call on a pathological flex state, the step can
-    // take many seconds (or effectively hang). An unbounded Wait() here would
-    // freeze the editor's PIE-stop; the user sees UE never coming back. With
-    // the timeout we instead detach: the async thread keeps running in the
-    // background until its current mj_step returns, then finds bShouldStopTask
-    // set and exits cleanly on its own. Cost is a one-time memory leak (we
-    // can't delete m_model / m_data while the thread may still read them).
+void AAMjManager::UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher)
+{
+    if (!Publisher) return;
+    FScopeLock Lock(&SnapshotPublishersMutex);
+    SnapshotPublishers.RemoveAll([Publisher](const FRegisteredSnapshotPublisher& R) {
+        return R.Publisher == Publisher;
+    });
+}
+
+void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
+    // Stop the physics async thread BEFORE Super::EndPlay so PostStep
+    // callbacks don't race into resources child components tear down.
+    // Bounded wait: a pathological mj_step can take many seconds; an
+    // unbounded Wait() would freeze PIE-stop. On timeout we detach and
+    // leak m_model/m_data to avoid use-after-free in the still-running
+    // step (one-time per session).
     bool bAsyncExited = true;
     if (PhysicsEngine)
     {
         PhysicsEngine->bShouldStopTask = true;
+        // Wake the worker if parked on the step-request event so it
+        // observes bShouldStopTask without burning the Wait timeout.
+        if (PhysicsEngine->StepRequestEvent) PhysicsEngine->StepRequestEvent->Trigger();
         if (PhysicsEngine->AsyncPhysicsFuture.IsValid())
         {
             constexpr double kShutdownTimeoutSec = 3.0;
@@ -243,19 +408,38 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
         PhysicsEngine->ClearCallbacks();
     }
 
+    // Manager-owned transports aren't UActorComponents, so EndPlay
+    // doesn't propagate to them; explicit TransportShutdown required.
+    for (TObjectPtr<UURLabSubscribeTransport>& T : ManagerOwnedSubscribeTransports)
+    {
+        if (T) T->TransportShutdown();
+    }
+    ManagerOwnedSubscribeTransports.Reset();
+    for (TObjectPtr<UURLabPublishTransport>& T : ManagerOwnedPublishTransports)
+    {
+        if (T) T->TransportShutdown();
+    }
+    ManagerOwnedPublishTransports.Reset();
+
+    Super::EndPlay(EndPlayReason);
+    if (Instance == this) Instance = nullptr;
+
+    // Manager-owned servers also tear down the dispatcher itself;
+    // subsystem-owned servers stay alive across PIE cycles.
+    if (BridgeServer)
+    {
+        BridgeServer->UnregisterManager(this);
+        if (BridgeServer->IsOwnedByManager())
+        {
+            BridgeServer->Stop();
+        }
+        BridgeServer = nullptr;
+    }
+
     // Clear tracked actors to prevent dangling pointers on level restart
     m_heightfieldActors.Empty();
     m_articulations.Empty();
     m_MujocoComponents.Empty();
-
-    // Cleanup ZMQ Components
-    if (NetworkManager)
-    {
-        for (UMjZmqComponent* Comp : NetworkManager->ZmqComponents)
-        {
-            if (Comp) Comp->ShutdownZmq();
-        }
-    }
 
     // Only touch MuJoCo resources if the async thread actually exited — a
     // detached thread may still be executing mj_step and reading these.
@@ -365,7 +549,7 @@ float AAMjManager::GetTimestep() const
     return PhysicsEngine ? PhysicsEngine->GetTimestep() : 0.002f;
 }
 
-// --- Replay Testing ---
+// --- Recording / replay ---
 
 void AAMjManager::StartRecording()
 {
@@ -373,11 +557,11 @@ void AAMjManager::StartRecording()
     if (ReplayMgr)
     {
         ReplayMgr->StartRecording();
-        UE_LOG(LogURLab, Log, TEXT("Test: Called StartRecording on ReplayManager."));
+        UE_LOG(LogURLab, Log, TEXT("StartRecording called on ReplayManager."));
     }
     else
     {
-        UE_LOG(LogURLab, Warning, TEXT("Test: ReplayManager not found in scene!"));
+        UE_LOG(LogURLab, Warning, TEXT("ReplayManager not found in scene!"));
     }
 }
 
@@ -387,10 +571,10 @@ void AAMjManager::StopRecording()
     if (ReplayMgr)
     {
         ReplayMgr->StopRecording();
-        UE_LOG(LogURLab, Log, TEXT("Test: Called StopRecording on ReplayManager."));
+        UE_LOG(LogURLab, Log, TEXT("StopRecording called on ReplayManager."));
     }
-    // NOTE: OnPostStep callback is kept alive — the replay manager gates recording with bIsRecording.
-    // The callback must remain set so recording can be restarted without re-registering.
+    // OnPostStep callback stays registered; the replay manager gates
+    // recording with bIsRecording so it can be restarted without re-registering.
 }
 
 void AAMjManager::StartReplay()
@@ -399,7 +583,7 @@ void AAMjManager::StartReplay()
     if (ReplayMgr)
     {
         ReplayMgr->StartReplay();
-        UE_LOG(LogURLab, Log, TEXT("Test: Called StartReplay on ReplayManager."));
+        UE_LOG(LogURLab, Log, TEXT("StartReplay called on ReplayManager."));
     }
 }
 
@@ -409,7 +593,7 @@ void AAMjManager::StopReplay()
     if (ReplayMgr)
     {
         ReplayMgr->StopReplay();
-        UE_LOG(LogURLab, Log, TEXT("Test: Called StopReplay on ReplayManager."));
+        UE_LOG(LogURLab, Log, TEXT("StopReplay called on ReplayManager."));
     }
 }
 

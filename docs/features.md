@@ -95,18 +95,32 @@ See [Interactive Perturbation](guides/perturbation.md) for gesture mapping, gizm
 
 See [Camera Capture Modes](guides/camera_capture_modes.md) for per-mode behaviour and the simulate-widget preview, and [Blueprint Reference](guides/blueprint_reference.md#mjkeyframecameraactor) for camera API details.
 
-## Networking (ZMQ)
+## Networking
 
-Binary pub/sub protocol broadcasting joint state, sensors, and camera images. Receives actuator targets and PD gains. Prefix-based filtering for multi-articulation scenes.
-
-See [ZMQ Networking](guides/zmq_networking.md) for details.
+- **Remote-stepping client (default)**: typed Python `URLabClient` over
+  REQ/REP on port 5559, with optional shared-memory transport. Scene
+  authoring, PIE control, runtime mutation, and recording / replay all
+  go through this. See [Python Getting Started](python/getting_started.md).
+- **Streaming (PUB/SUB)**: binary streams on ports 5555 (state) / 5556
+  (ctrl) / 5557 (info) / 5558 (cameras). What `live` mode consumes;
+  also what the ROS 2 bridge and cross-language consumers talk to.
+- See [Networking](guides/networking.md) for the UE-side architecture,
+  wire format, and ROS 2 bridge details.
 
 ## Python Integration (urlab_bridge)
 
-- **Policy GUI**: DearPyGui dashboard for policy selection, articulation targeting, force twist override, motion/gait preset selection
-- **UnrealEnv**: RoboJuDo-compatible environment over ZMQ with auto-detection, forward kinematics, born-place alignment
-- Pre-integrated policies: Unitree G1 locomotion (12/29 DOF), BeyondMimic (dance/violin/waltz/jump), Walk-These-Ways Go2, AMO, H2H, Smooth, ASAP
-- **ROS 2 bridge**: republishes ZMQ streams to standard ROS 2 topics
+- **Typed `URLabClient`**: scene authoring, PIE lifecycle, runtime
+  mutators, world introspection, debug visualisation, perspective-
+  viewport control, recording / replay; see
+  [Python API Reference](python/api.md).
+- **Policy GUI**: DearPyGui dashboard for policy selection, articulation
+  targeting, force twist override, motion/gait preset selection
+- **URLabEnv**: gymnasium-compatible environment for users integrating
+  URLab with their own training pipelines
+- Pre-integrated pretrained policies: Unitree G1 locomotion (12/29 DOF),
+  BeyondMimic (dance/violin/waltz/jump), Walk-These-Ways Go2, AMO, H2H,
+  Smooth, ASAP
+- **ROS 2 bridge**: republishes the legacy ZMQ streams to standard ROS 2 topics
 
 ## Replay System
 

@@ -130,20 +130,20 @@ struct URLAB_API FMjsCompilerOptions
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.autolimits = (decltype(Dst.autolimits))Autolimits;
-    Dst.boundmass = (decltype(Dst.boundmass))Boundmass;
-    Dst.boundinertia = (decltype(Dst.boundinertia))Boundinertia;
-    Dst.settotalmass = (decltype(Dst.settotalmass))Settotalmass;
-    Dst.balanceinertia = (decltype(Dst.balanceinertia))Balanceinertia;
-    Dst.fitaabb = (decltype(Dst.fitaabb))Fitaabb;
-    Dst.degree = (decltype(Dst.degree))Degree;
-    Dst.discardvisual = (decltype(Dst.discardvisual))Discardvisual;
-    Dst.usethread = (decltype(Dst.usethread))Usethread;
-    Dst.fusestatic = (decltype(Dst.fusestatic))Fusestatic;
-    Dst.inertiafromgeom = (decltype(Dst.inertiafromgeom))Inertiafromgeom;
+    Dst.autolimits = static_cast<decltype(Dst.autolimits)>(Autolimits);
+    Dst.boundmass = static_cast<decltype(Dst.boundmass)>(Boundmass);
+    Dst.boundinertia = static_cast<decltype(Dst.boundinertia)>(Boundinertia);
+    Dst.settotalmass = static_cast<decltype(Dst.settotalmass)>(Settotalmass);
+    Dst.balanceinertia = static_cast<decltype(Dst.balanceinertia)>(Balanceinertia);
+    Dst.fitaabb = static_cast<decltype(Dst.fitaabb)>(Fitaabb);
+    Dst.degree = static_cast<decltype(Dst.degree)>(Degree);
+    Dst.discardvisual = static_cast<decltype(Dst.discardvisual)>(Discardvisual);
+    Dst.usethread = static_cast<decltype(Dst.usethread)>(Usethread);
+    Dst.fusestatic = static_cast<decltype(Dst.fusestatic)>(Fusestatic);
+    Dst.inertiafromgeom = static_cast<decltype(Dst.inertiafromgeom)>(Inertiafromgeom);
     for (int32 I = 0; I < Inertiagrouprange.Num() && I < 2; ++I)
-        Dst.inertiagrouprange[I] = (decltype(Dst.inertiagrouprange[0]))Inertiagrouprange[I];
-    Dst.saveinertial = (decltype(Dst.saveinertial))Saveinertial;
-    Dst.alignfree = (decltype(Dst.alignfree))Alignfree;
+        Dst.inertiagrouprange[I] = static_cast<decltype(Dst.inertiagrouprange[0])>(Inertiagrouprange[I]);
+    Dst.saveinertial = static_cast<decltype(Dst.saveinertial)>(Saveinertial);
+    Dst.alignfree = static_cast<decltype(Dst.alignfree)>(Alignfree);
     }
 };

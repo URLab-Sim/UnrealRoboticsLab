@@ -46,11 +46,12 @@ void UMjJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Co
     { // xml_enum: type -> EMjJointType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
-        if      (S == TEXT("hinge")) Type = EMjJointType::Hinge;
-        else if (S == TEXT("slide")) Type = EMjJointType::Slide;
-        else if (S == TEXT("ball")) Type = EMjJointType::Ball;
-        else if (S == TEXT("free")) Type = EMjJointType::Free;
-        if (!S.IsEmpty()) bOverride_Type = true;
+        bool bMatched = false;
+        if      (S == TEXT("hinge")) { Type = EMjJointType::Hinge; bMatched = true; }
+        else if (S == TEXT("slide")) { Type = EMjJointType::Slide; bMatched = true; }
+        else if (S == TEXT("ball")) { Type = EMjJointType::Ball; bMatched = true; }
+        else if (S == TEXT("free")) { Type = EMjJointType::Free; bMatched = true; }
+        if (bMatched) bOverride_Type = true;
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     MjXmlUtils::ReadAttrVec3(Node, TEXT("axis"), Axis, bOverride_Axis);

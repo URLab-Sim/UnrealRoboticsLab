@@ -69,9 +69,9 @@ def test_synthetic_struct_emits_uproperty_per_field():
     assert "FVector Gravity" in h
     # Category labels use the rule's category_label.
     assert 'Category = "MuJoCo|Test"' in h
-    # ApplyTo body assigns each field with a decltype cast.
-    assert "Dst.timestep = (decltype(Dst.timestep))Timestep;" in h
-    assert "Dst.gravity[0] = (decltype(Dst.gravity[0]))Gravity.X;" in h
+    # ApplyTo body assigns each field with a static_cast<decltype(...)>.
+    assert "Dst.timestep = static_cast<decltype(Dst.timestep)>(Timestep);" in h
+    assert "Dst.gravity[0] = static_cast<decltype(Dst.gravity[0])>(Gravity.X);" in h
 
 
 def test_synthetic_struct_skips_excluded_fields():
@@ -125,8 +125,8 @@ def test_synthetic_struct_field_rename_overrides_default():
 def test_synthetic_struct_skips_when_mjxmacro_block_missing():
     """Defensive: a typo in mjxmacro_block produces a diagnostic, not a
     crash, and emits no file."""
-    from generate_ue_components import _DIAGS_BUFFER
-    _DIAGS_BUFFER.pending.clear()
+    from generate_ue_components import _DIAGS_BUFFER, _reset_diags
+    _reset_diags()
     mjxmacro = {"struct_fields": {}}
     def_ = {
         "ue_struct_name": "F", "mjxmacro_block": "NONEXISTENT",
@@ -136,7 +136,7 @@ def test_synthetic_struct_skips_when_mjxmacro_block_missing():
     writes = _emit_synthetic_struct_files("M", def_, mjxmacro, "/tmp/pub", "/tmp/priv")
     assert writes == []
     assert any("NONEXISTENT" in d.message for d in _DIAGS_BUFFER.pending)
-    _DIAGS_BUFFER.pending.clear()
+    _reset_diags()
 
 
 def test_generated_enum_emits_uenum_per_entry():
@@ -167,8 +167,8 @@ def test_generated_enum_emits_uenum_per_entry():
 
 
 def test_generated_enum_skips_when_mj_enum_missing():
-    from generate_ue_components import _emit_generated_enum_file, _DIAGS_BUFFER
-    _DIAGS_BUFFER.pending.clear()
+    from generate_ue_components import _emit_generated_enum_file, _DIAGS_BUFFER, _reset_diags
+    _reset_diags()
     mjspec = {"enums": {}}
     def_ = {
         "public_header": "P/H.h",
@@ -177,7 +177,7 @@ def test_generated_enum_skips_when_mj_enum_missing():
     writes = _emit_generated_enum_file("X", def_, mjspec, "/tmp/pub")
     assert writes == []
     assert any("mjtMissing" in d.message for d in _DIAGS_BUFFER.pending)
-    _DIAGS_BUFFER.pending.clear()
+    _reset_diags()
 
 
 def test_generated_enum_member_without_mapping_silently_skipped():

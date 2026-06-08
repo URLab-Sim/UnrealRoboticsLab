@@ -1359,13 +1359,13 @@
         "solver":     "EMjSolver"
       },
       "field_defaults": {
-        "Timestep":         "0.002f",
-        "Impratio":         "1.0f",
-        "Tolerance":        "1e-8f",
+        "Timestep":         "0.002",
+        "Impratio":         "1.0",
+        "Tolerance":        "1e-8",
         "Iterations":       "100",
         "LsIterations":     "50",
-        "NoslipTolerance":  "1e-6f",
-        "CCD_Tolerance":    "1e-6f",
+        "NoslipTolerance":  "1e-6",
+        "CCD_Tolerance":    "1e-6",
         "Gravity":          "FVector(0.0f, 0.0f, -981.0f)",
         "Magnetic":         "FVector(0.0f, -0.5f, 0.0f)",
         "Integrator":       "EMjIntegrator::Euler",

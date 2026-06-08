@@ -1,10 +1,10 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """
 clang.cindex-based scrape of MuJoCo headers (mjspec.h + mjmodel.h +
-optionally the vendored mjspecmacro.h) into ``Scripts/introspect_snapshot.json``.
-
-The richer counterpart to mjspec_snapshot.json's regex scrape; the
-generator reads both and prefers introspect where they overlap.
+optionally the vendored mjspecmacro.h) into
+``Scripts/codegen/snapshots/introspect_snapshot.json``. The codegen
+consumes this snapshot as its single source of truth for the MuJoCo C
+API surface.
 
 Captures:
 - function signatures (every MJAPI-tagged declaration in the headers)
@@ -15,7 +15,7 @@ Captures:
 Usage:
     python Scripts/codegen/build_introspect_snapshot.py
         [--mujoco-include /path/to/mujoco/include]
-        [--output Scripts/introspect_snapshot.json]
+        [--output Scripts/codegen/snapshots/introspect_snapshot.json]
         [--libclang /path/to/libclang.dll]      (only if not auto-found)
 
 libclang resolution: respects ``$LIBCLANG_LIBRARY_FILE`` env var; falls

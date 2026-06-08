@@ -118,18 +118,18 @@ struct URLAB_API FMjVisualMap
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.stiffness = (decltype(Dst.stiffness))Stiffness;
-    Dst.stiffnessrot = (decltype(Dst.stiffnessrot))Stiffnessrot;
-    Dst.force = (decltype(Dst.force))Force;
-    Dst.torque = (decltype(Dst.torque))Torque;
-    Dst.alpha = (decltype(Dst.alpha))Alpha;
-    Dst.fogstart = (decltype(Dst.fogstart))Fogstart;
-    Dst.fogend = (decltype(Dst.fogend))Fogend;
-    Dst.znear = (decltype(Dst.znear))Znear;
-    Dst.zfar = (decltype(Dst.zfar))Zfar;
-    Dst.haze = (decltype(Dst.haze))Haze;
-    Dst.shadowclip = (decltype(Dst.shadowclip))Shadowclip;
-    Dst.shadowscale = (decltype(Dst.shadowscale))Shadowscale;
-    Dst.actuatortendon = (decltype(Dst.actuatortendon))Actuatortendon;
+    Dst.stiffness = static_cast<decltype(Dst.stiffness)>(Stiffness);
+    Dst.stiffnessrot = static_cast<decltype(Dst.stiffnessrot)>(Stiffnessrot);
+    Dst.force = static_cast<decltype(Dst.force)>(Force);
+    Dst.torque = static_cast<decltype(Dst.torque)>(Torque);
+    Dst.alpha = static_cast<decltype(Dst.alpha)>(Alpha);
+    Dst.fogstart = static_cast<decltype(Dst.fogstart)>(Fogstart);
+    Dst.fogend = static_cast<decltype(Dst.fogend)>(Fogend);
+    Dst.znear = static_cast<decltype(Dst.znear)>(Znear);
+    Dst.zfar = static_cast<decltype(Dst.zfar)>(Zfar);
+    Dst.haze = static_cast<decltype(Dst.haze)>(Haze);
+    Dst.shadowclip = static_cast<decltype(Dst.shadowclip)>(Shadowclip);
+    Dst.shadowscale = static_cast<decltype(Dst.shadowscale)>(Shadowscale);
+    Dst.actuatortendon = static_cast<decltype(Dst.actuatortendon)>(Actuatortendon);
     }
 };

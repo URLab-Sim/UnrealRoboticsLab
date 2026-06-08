@@ -224,33 +224,33 @@ void UMjSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     { // xml_enum: objtype -> EMjObjType
         FString S = Node->GetAttribute(TEXT("objtype"));
         S = S.ToLower();
-        if      (S == TEXT("body")) ObjType = EMjObjType::Body;
-        else if (S == TEXT("xbody")) ObjType = EMjObjType::XBody;
-        else if (S == TEXT("joint")) ObjType = EMjObjType::Joint;
-        else if (S == TEXT("dof")) ObjType = EMjObjType::DoF;
-        else if (S == TEXT("geom")) ObjType = EMjObjType::Geom;
-        else if (S == TEXT("site")) ObjType = EMjObjType::Site;
-        else if (S == TEXT("camera")) ObjType = EMjObjType::Camera;
-        else if (S == TEXT("light")) ObjType = EMjObjType::Light;
-        else if (S == TEXT("mesh")) ObjType = EMjObjType::Mesh;
-        else if (S == TEXT("hfield")) ObjType = EMjObjType::HField;
-        else if (S == TEXT("texture")) ObjType = EMjObjType::Texture;
-        else if (S == TEXT("material")) ObjType = EMjObjType::Material;
-        else if (S == TEXT("pair")) ObjType = EMjObjType::Pair;
-        else if (S == TEXT("exclude")) ObjType = EMjObjType::Exclude;
-        else if (S == TEXT("equality")) ObjType = EMjObjType::Equality;
-        else if (S == TEXT("tendon")) ObjType = EMjObjType::Tendon;
-        else if (S == TEXT("actuator")) ObjType = EMjObjType::Actuator;
+        if      (S == TEXT("body")) { ObjType = EMjObjType::Body; }
+        else if (S == TEXT("xbody")) { ObjType = EMjObjType::XBody; }
+        else if (S == TEXT("joint")) { ObjType = EMjObjType::Joint; }
+        else if (S == TEXT("dof")) { ObjType = EMjObjType::DoF; }
+        else if (S == TEXT("geom")) { ObjType = EMjObjType::Geom; }
+        else if (S == TEXT("site")) { ObjType = EMjObjType::Site; }
+        else if (S == TEXT("camera")) { ObjType = EMjObjType::Camera; }
+        else if (S == TEXT("light")) { ObjType = EMjObjType::Light; }
+        else if (S == TEXT("mesh")) { ObjType = EMjObjType::Mesh; }
+        else if (S == TEXT("hfield")) { ObjType = EMjObjType::HField; }
+        else if (S == TEXT("texture")) { ObjType = EMjObjType::Texture; }
+        else if (S == TEXT("material")) { ObjType = EMjObjType::Material; }
+        else if (S == TEXT("pair")) { ObjType = EMjObjType::Pair; }
+        else if (S == TEXT("exclude")) { ObjType = EMjObjType::Exclude; }
+        else if (S == TEXT("equality")) { ObjType = EMjObjType::Equality; }
+        else if (S == TEXT("tendon")) { ObjType = EMjObjType::Tendon; }
+        else if (S == TEXT("actuator")) { ObjType = EMjObjType::Actuator; }
     }
     { // xml_enum: reftype -> EMjObjType
         FString S = Node->GetAttribute(TEXT("reftype"));
         S = S.ToLower();
-        if      (S == TEXT("body")) RefType = EMjObjType::Body;
-        else if (S == TEXT("xbody")) RefType = EMjObjType::XBody;
-        else if (S == TEXT("joint")) RefType = EMjObjType::Joint;
-        else if (S == TEXT("geom")) RefType = EMjObjType::Geom;
-        else if (S == TEXT("site")) RefType = EMjObjType::Site;
-        else if (S == TEXT("camera")) RefType = EMjObjType::Camera;
+        if      (S == TEXT("body")) { RefType = EMjObjType::Body; }
+        else if (S == TEXT("xbody")) { RefType = EMjObjType::XBody; }
+        else if (S == TEXT("joint")) { RefType = EMjObjType::Joint; }
+        else if (S == TEXT("geom")) { RefType = EMjObjType::Geom; }
+        else if (S == TEXT("site")) { RefType = EMjObjType::Site; }
+        else if (S == TEXT("camera")) { RefType = EMjObjType::Camera; }
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("nsample"), nsample, bOverride_nsample);
     MjXmlUtils::ReadAttrInt(Node, TEXT("interp"), interp, bOverride_interp);

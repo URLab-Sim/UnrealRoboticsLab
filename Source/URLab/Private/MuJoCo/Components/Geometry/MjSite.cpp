@@ -91,13 +91,13 @@ void UMjSite::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     { // xml_enum: type -> EMjSiteType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
-        if      (S == TEXT("sphere")) Type = EMjSiteType::Sphere;
-        else if (S == TEXT("capsule")) Type = EMjSiteType::Capsule;
-        else if (S == TEXT("ellipsoid")) Type = EMjSiteType::Ellipsoid;
-        else if (S == TEXT("cylinder")) Type = EMjSiteType::Cylinder;
-        else if (S == TEXT("box")) Type = EMjSiteType::Box;
-        else if (S == TEXT("mesh")) Type = EMjSiteType::Mesh;
-        else if (S == TEXT("hfield")) Type = EMjSiteType::Hfield;
+        if      (S == TEXT("sphere")) { Type = EMjSiteType::Sphere; }
+        else if (S == TEXT("capsule")) { Type = EMjSiteType::Capsule; }
+        else if (S == TEXT("ellipsoid")) { Type = EMjSiteType::Ellipsoid; }
+        else if (S == TEXT("cylinder")) { Type = EMjSiteType::Cylinder; }
+        else if (S == TEXT("box")) { Type = EMjSiteType::Box; }
+        else if (S == TEXT("mesh")) { Type = EMjSiteType::Mesh; }
+        else if (S == TEXT("hfield")) { Type = EMjSiteType::Hfield; }
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;

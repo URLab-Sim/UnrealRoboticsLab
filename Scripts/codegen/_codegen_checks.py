@@ -122,8 +122,8 @@ def _check_hand_enum_drift(
     element_rules = rules.get("element_rules", {})
     mjspec_enums = (mjspec or {}).get("enums", {})
     intentional_skips = rules.get("intentionally_unmapped_mj_enum_values", {})
-    for elem, elem_rule in element_rules.items():
-        for attr, enum_def in elem_rule.get("xml_enum_attrs", {}).items():
+    for elem, elem_rules in element_rules.items():
+        for attr, enum_def in elem_rules.get("xml_enum_attrs", {}).items():
             ue_enum_type = enum_def.get("ue_enum_type") or enum_def.get("ue_enum")
             value_map = enum_def.get("value_map", {})
             if not ue_enum_type or ue_enum_type not in hand_enums:
@@ -279,20 +279,20 @@ def _check_new_attr_typing(
 
     flagged: set = set()
     for cat_name, cat_rules in rules.get("categories", {}).items():
-        elem_rule = element_rules.get(cat_name, {})
-        elem_excl = set(elem_rule.get("exclude_attrs", []))
-        xml_enum_attrs = set(elem_rule.get("xml_enum_attrs", {}).keys())
-        renames = set(elem_rule.get("property_renames", {}).keys())
-        collations = set(elem_rule.get("target_collations", {}).keys())
-        export_skip = set(elem_rule.get("export_skip_attrs", []))
+        elem_rules = element_rules.get(cat_name, {})
+        elem_excl = set(elem_rules.get("exclude_attrs", []))
+        xml_enum_attrs = set(elem_rules.get("xml_enum_attrs", {}).keys())
+        renames = set(elem_rules.get("property_renames", {}).keys())
+        collations = set(elem_rules.get("target_collations", {}).keys())
+        export_skip = set(elem_rules.get("export_skip_attrs", []))
         common_imports = set()
-        for entry in elem_rule.get("common_imports", []):
+        for entry in elem_rules.get("common_imports", []):
             if isinstance(entry, str):
                 common_imports.add(entry)
             elif isinstance(entry, dict):
                 common_imports.add(entry.get("attr"))
         canon_absorbed: set = compute_canon_absorbed(
-            elem_rule.get("applies_canonicalizations", []),
+            elem_rules.get("applies_canonicalizations", []),
             canonicalizations,
         )
         for attr in _collect_attrs(cat_rules):
@@ -373,9 +373,9 @@ def _check_orphan_rule_entries(
         "export_skip_attrs",
         "mjs_data_packed_attrs",
     )
-    for elem, elem_rule in rules.get("element_rules", {}).items():
+    for elem, elem_rules in rules.get("element_rules", {}).items():
         for key in PER_ELEM_KEYS:
-            block = elem_rule.get(key, {})
+            block = elem_rules.get(key, {})
             if isinstance(block, dict):
                 rule_attrs = list(block.keys())
             elif isinstance(block, list):
@@ -478,8 +478,8 @@ def _check_embedded_cpp_references(
             known_consts.update(members.keys())
     if not known_consts:
         return
-    for elem, elem_rule in rules.get("element_rules", {}).items():
-        for attr, enum_def in elem_rule.get("xml_enum_attrs", {}).items():
+    for elem, elem_rules in rules.get("element_rules", {}).items():
+        for attr, enum_def in elem_rules.get("xml_enum_attrs", {}).items():
             for xml_val, mapping in enum_def.get("value_map", {}).items():
                 pair = _value_map_pair(mapping)
                 if pair is None:
@@ -536,8 +536,10 @@ def _check_allowlist_staleness(
     schema: Dict[str, Any], rules: Dict[str, Any],
     mjspec: Optional[Dict[str, Any]],
 ) -> None:
-    """Surface allowlist entries the codebase no longer needs. Narrows
-    to 4 of 6 allowlists per the rule design."""
+    """Surface allowlist entries the codebase no longer needs. Covers
+    4 of the 5 ``intentionally_*`` allowlists; the fifth
+    (intentionally_unmodeled_compiler_attrs) is policed indirectly via
+    _check_compiler_attrs_coverage."""
     unmodeled_elems: Dict[str, str] = rules.get("intentionally_unmodeled_elements", {})
     schema_keys = set(schema.keys())
     for key in unmodeled_elems:
@@ -602,8 +604,8 @@ def _check_property_units_validity(
 ) -> None:
     """Diagnose property_units entries that use an unrecognised UE
     display unit, or target a UE type that UHT rejects Units meta on."""
-    for elem, elem_rule in rules.get("element_rules", {}).items():
-        units = elem_rule.get("property_units", {})
+    for elem, elem_rules in rules.get("element_rules", {}).items():
+        units = elem_rules.get("property_units", {})
         if not isinstance(units, dict):
             continue
         for attr, unit in units.items():
@@ -659,8 +661,8 @@ def _check_value_map_stale_mj_consts(
             known.update(members.keys())
     if not known:
         return
-    for elem, elem_rule in rules.get("element_rules", {}).items():
-        for attr, enum_def in elem_rule.get("xml_enum_attrs", {}).items():
+    for elem, elem_rules in rules.get("element_rules", {}).items():
+        for attr, enum_def in elem_rules.get("xml_enum_attrs", {}).items():
             value_map = enum_def.get("value_map", {})
             for xml_val, mapping in value_map.items():
                 pair = _value_map_pair(mapping)

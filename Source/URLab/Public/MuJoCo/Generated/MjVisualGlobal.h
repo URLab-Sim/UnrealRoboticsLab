@@ -118,18 +118,18 @@ struct URLAB_API FMjVisualGlobal
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.cameraid = (decltype(Dst.cameraid))Cameraid;
-    Dst.orthographic = (decltype(Dst.orthographic))Orthographic;
-    Dst.fovy = (decltype(Dst.fovy))Fovy;
-    Dst.ipd = (decltype(Dst.ipd))Ipd;
-    Dst.azimuth = (decltype(Dst.azimuth))Azimuth;
-    Dst.elevation = (decltype(Dst.elevation))Elevation;
-    Dst.linewidth = (decltype(Dst.linewidth))Linewidth;
-    Dst.glow = (decltype(Dst.glow))Glow;
-    Dst.realtime = (decltype(Dst.realtime))Realtime;
-    Dst.offwidth = (decltype(Dst.offwidth))Offwidth;
-    Dst.offheight = (decltype(Dst.offheight))Offheight;
-    Dst.ellipsoidinertia = (decltype(Dst.ellipsoidinertia))Ellipsoidinertia;
-    Dst.bvactive = (decltype(Dst.bvactive))Bvactive;
+    Dst.cameraid = static_cast<decltype(Dst.cameraid)>(Cameraid);
+    Dst.orthographic = static_cast<decltype(Dst.orthographic)>(Orthographic);
+    Dst.fovy = static_cast<decltype(Dst.fovy)>(Fovy);
+    Dst.ipd = static_cast<decltype(Dst.ipd)>(Ipd);
+    Dst.azimuth = static_cast<decltype(Dst.azimuth)>(Azimuth);
+    Dst.elevation = static_cast<decltype(Dst.elevation)>(Elevation);
+    Dst.linewidth = static_cast<decltype(Dst.linewidth)>(Linewidth);
+    Dst.glow = static_cast<decltype(Dst.glow)>(Glow);
+    Dst.realtime = static_cast<decltype(Dst.realtime)>(Realtime);
+    Dst.offwidth = static_cast<decltype(Dst.offwidth)>(Offwidth);
+    Dst.offheight = static_cast<decltype(Dst.offheight)>(Offheight);
+    Dst.ellipsoidinertia = static_cast<decltype(Dst.ellipsoidinertia)>(Ellipsoidinertia);
+    Dst.bvactive = static_cast<decltype(Dst.bvactive)>(Bvactive);
     }
 };

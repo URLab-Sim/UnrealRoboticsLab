@@ -142,22 +142,22 @@ struct URLAB_API FMjVisualScale
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.forcewidth = (decltype(Dst.forcewidth))Forcewidth;
-    Dst.contactwidth = (decltype(Dst.contactwidth))Contactwidth;
-    Dst.contactheight = (decltype(Dst.contactheight))Contactheight;
-    Dst.connect = (decltype(Dst.connect))Connect;
-    Dst.com = (decltype(Dst.com))Com;
-    Dst.camera = (decltype(Dst.camera))Camera;
-    Dst.light = (decltype(Dst.light))Light;
-    Dst.selectpoint = (decltype(Dst.selectpoint))Selectpoint;
-    Dst.jointlength = (decltype(Dst.jointlength))Jointlength;
-    Dst.jointwidth = (decltype(Dst.jointwidth))Jointwidth;
-    Dst.actuatorlength = (decltype(Dst.actuatorlength))Actuatorlength;
-    Dst.actuatorwidth = (decltype(Dst.actuatorwidth))Actuatorwidth;
-    Dst.framelength = (decltype(Dst.framelength))Framelength;
-    Dst.framewidth = (decltype(Dst.framewidth))Framewidth;
-    Dst.constraint = (decltype(Dst.constraint))Constraint;
-    Dst.slidercrank = (decltype(Dst.slidercrank))Slidercrank;
-    Dst.frustum = (decltype(Dst.frustum))Frustum;
+    Dst.forcewidth = static_cast<decltype(Dst.forcewidth)>(Forcewidth);
+    Dst.contactwidth = static_cast<decltype(Dst.contactwidth)>(Contactwidth);
+    Dst.contactheight = static_cast<decltype(Dst.contactheight)>(Contactheight);
+    Dst.connect = static_cast<decltype(Dst.connect)>(Connect);
+    Dst.com = static_cast<decltype(Dst.com)>(Com);
+    Dst.camera = static_cast<decltype(Dst.camera)>(Camera);
+    Dst.light = static_cast<decltype(Dst.light)>(Light);
+    Dst.selectpoint = static_cast<decltype(Dst.selectpoint)>(Selectpoint);
+    Dst.jointlength = static_cast<decltype(Dst.jointlength)>(Jointlength);
+    Dst.jointwidth = static_cast<decltype(Dst.jointwidth)>(Jointwidth);
+    Dst.actuatorlength = static_cast<decltype(Dst.actuatorlength)>(Actuatorlength);
+    Dst.actuatorwidth = static_cast<decltype(Dst.actuatorwidth)>(Actuatorwidth);
+    Dst.framelength = static_cast<decltype(Dst.framelength)>(Framelength);
+    Dst.framewidth = static_cast<decltype(Dst.framewidth)>(Framewidth);
+    Dst.constraint = static_cast<decltype(Dst.constraint)>(Constraint);
+    Dst.slidercrank = static_cast<decltype(Dst.slidercrank)>(Slidercrank);
+    Dst.frustum = static_cast<decltype(Dst.frustum)>(Frustum);
     }
 };

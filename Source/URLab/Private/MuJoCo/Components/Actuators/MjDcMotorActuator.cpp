@@ -79,10 +79,11 @@ void UMjDcMotorActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSe
     { // xml_enum: input -> EMjDcMotorInput
         FString S = Node->GetAttribute(TEXT("input"));
         S = S.ToLower();
-        if      (S == TEXT("voltage")) input = EMjDcMotorInput::Voltage;
-        else if (S == TEXT("position")) input = EMjDcMotorInput::Position;
-        else if (S == TEXT("velocity")) input = EMjDcMotorInput::Velocity;
-        if (!S.IsEmpty()) bOverride_input = true;
+        bool bMatched = false;
+        if      (S == TEXT("voltage")) { input = EMjDcMotorInput::Voltage; bMatched = true; }
+        else if (S == TEXT("position")) { input = EMjDcMotorInput::Position; bMatched = true; }
+        else if (S == TEXT("velocity")) { input = EMjDcMotorInput::Velocity; bMatched = true; }
+        if (bMatched) bOverride_input = true;
     }
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("motorconst"), motorconst, bOverride_motorconst);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("resistance"), resistance, bOverride_resistance);

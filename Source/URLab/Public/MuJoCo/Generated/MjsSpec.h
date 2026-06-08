@@ -130,20 +130,20 @@ struct URLAB_API FMjsSpec
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.nemax = (decltype(Dst.nemax))Nemax;
-    Dst.nuserdata = (decltype(Dst.nuserdata))Nuserdata;
-    Dst.nuser_body = (decltype(Dst.nuser_body))NuserBody;
-    Dst.nuser_jnt = (decltype(Dst.nuser_jnt))NuserJnt;
-    Dst.nuser_geom = (decltype(Dst.nuser_geom))NuserGeom;
-    Dst.nuser_site = (decltype(Dst.nuser_site))NuserSite;
-    Dst.nuser_cam = (decltype(Dst.nuser_cam))NuserCam;
-    Dst.nuser_tendon = (decltype(Dst.nuser_tendon))NuserTendon;
-    Dst.nuser_actuator = (decltype(Dst.nuser_actuator))NuserActuator;
-    Dst.nuser_sensor = (decltype(Dst.nuser_sensor))NuserSensor;
-    Dst.nkey = (decltype(Dst.nkey))Nkey;
-    Dst.njmax = (decltype(Dst.njmax))Njmax;
-    Dst.nconmax = (decltype(Dst.nconmax))Nconmax;
-    Dst.nstack = (decltype(Dst.nstack))Nstack;
-    Dst.hasImplicitPluginElem = (decltype(Dst.hasImplicitPluginElem))HasImplicitPluginElem;
+    Dst.nemax = static_cast<decltype(Dst.nemax)>(Nemax);
+    Dst.nuserdata = static_cast<decltype(Dst.nuserdata)>(Nuserdata);
+    Dst.nuser_body = static_cast<decltype(Dst.nuser_body)>(NuserBody);
+    Dst.nuser_jnt = static_cast<decltype(Dst.nuser_jnt)>(NuserJnt);
+    Dst.nuser_geom = static_cast<decltype(Dst.nuser_geom)>(NuserGeom);
+    Dst.nuser_site = static_cast<decltype(Dst.nuser_site)>(NuserSite);
+    Dst.nuser_cam = static_cast<decltype(Dst.nuser_cam)>(NuserCam);
+    Dst.nuser_tendon = static_cast<decltype(Dst.nuser_tendon)>(NuserTendon);
+    Dst.nuser_actuator = static_cast<decltype(Dst.nuser_actuator)>(NuserActuator);
+    Dst.nuser_sensor = static_cast<decltype(Dst.nuser_sensor)>(NuserSensor);
+    Dst.nkey = static_cast<decltype(Dst.nkey)>(Nkey);
+    Dst.njmax = static_cast<decltype(Dst.njmax)>(Njmax);
+    Dst.nconmax = static_cast<decltype(Dst.nconmax)>(Nconmax);
+    Dst.nstack = static_cast<decltype(Dst.nstack)>(Nstack);
+    Dst.hasImplicitPluginElem = static_cast<decltype(Dst.hasImplicitPluginElem)>(HasImplicitPluginElem);
     }
 };

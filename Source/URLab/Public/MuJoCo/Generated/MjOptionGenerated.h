@@ -46,19 +46,19 @@ struct URLAB_API FMjOptionGenerated
     bool bOverride_Timestep = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Timestep"))
-    float Timestep = 0.002f;
+    float Timestep = 0.002;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
     bool bOverride_Impratio = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Impratio"))
-    double Impratio = 1.0f;
+    double Impratio = 1.0;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
     bool bOverride_Tolerance = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Tolerance"))
-    double Tolerance = 1e-8f;
+    double Tolerance = 1e-8;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
     bool bOverride_LsTolerance = false;
@@ -70,13 +70,13 @@ struct URLAB_API FMjOptionGenerated
     bool bOverride_NoslipTolerance = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_NoslipTolerance"))
-    double NoslipTolerance = 1e-6f;
+    double NoslipTolerance = 1e-6;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
     bool bOverride_CCD_Tolerance = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_CCD_Tolerance"))
-    double CCD_Tolerance = 1e-6f;
+    double CCD_Tolerance = 1e-6;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
     bool bOverride_SleepToleranceMj = false;

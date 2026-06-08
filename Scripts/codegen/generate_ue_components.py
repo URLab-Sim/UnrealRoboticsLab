@@ -9,9 +9,12 @@
 URLab UE component codegen, schema-driven.
 
 Inputs:
-  - Scripts/mjcf_schema_snapshot.json       (MJCF schema attrs)
-  - Scripts/mjxmacro_snapshot.json          (mjModel/mjData pointer table)
-  - Scripts/codegen/codegen_rules.json      (per-category layout, rules)
+  - Scripts/codegen/snapshots/mjcf_schema_snapshot.json   (MJCF schema attrs)
+  - Scripts/codegen/snapshots/mjxmacro_snapshot.json      (mjModel/mjData pointer table)
+  - Scripts/codegen/snapshots/introspect_snapshot.json    (libclang-scraped C API:
+                                                          mjsX struct fields, mjt*
+                                                          enums, mjs_setTo* signatures)
+  - Scripts/codegen/codegen_rules.json                    (per-category layout, rules)
 
 Outputs:
   - Component .h / .cpp files in Source/URLab/Public|Private/MuJoCo/Components/
@@ -223,6 +226,34 @@ class EmissionContext:
             xml_enum_attr_names=set(elem_rules.get("xml_enum_attrs", {}).keys()),
         )
 
+
+
+def _inject_or_diag(
+    text: str,
+    tag: str,
+    body: str,
+    *,
+    host_path: str,
+    host_kind: str,
+    block_label: str,
+    diag_source: str,
+) -> Tuple[str, bool]:
+    """Inject ``body`` between the ``CODEGEN_<tag>`` markers in ``text``.
+    When the markers are missing AND the body is non-empty, fire a
+    diagnostic that names the host kind (e.g. 'subclass header'), the
+    path, the tag, and what didn't land. Returns (new_text, ok).
+
+    This collapses ~12 near-identical try-inject-then-diag stanzas
+    that used to live in the emit_*_class_injection callers."""
+    new_text, ok = inject_between_tags(text, tag, body, balance_source=diag_source)
+    if not ok and body.strip():
+        _diag_add(
+            f"[diagnostic] {host_kind} '{host_path}' is missing the "
+            f"CODEGEN_{tag}_START/END marker pair; {block_label} was "
+            f"NOT injected.",
+            source=diag_source,
+        )
+    return new_text, ok
 
 
 def _guarded_export(toggle: str, body: str,
@@ -696,18 +727,25 @@ def _emit_xml_enum_import(attr: str, enum_def: Dict[str, Any]) -> str:
     lines.append(f'    {{ // xml_enum: {attr} -> {ue_enum_type or ue_prop}')
     lines.append(f'        FString S = Node->GetAttribute(TEXT("{attr}"));')
     lines.append("        S = S.ToLower();")
+    # Toggle fires only when a known XML value matched. A typo'd value
+    # (e.g. ``type="hindge"``) used to silently set the toggle on the
+    # UE-default enum value — misleadingly signalling "user overrode this"
+    # while actually masking the typo.
+    if has_toggle:
+        lines.append("        bool bMatched = false;")
     branches: List[str] = []
     for xml_val, mapping in value_map.items():
         ue_enum_member = mapping[0]
         prefix = "else if " if branches else "if      "
+        match_assign = " bMatched = true;" if has_toggle else ""
         branches.append(
-            f'        {prefix}(S == TEXT("{xml_val}")) {ue_prop} = '
-            f'{ue_enum_type}::{ue_enum_member};'
+            f'        {prefix}(S == TEXT("{xml_val}")) '
+            f'{{ {ue_prop} = {ue_enum_type}::{ue_enum_member};{match_assign} }}'
         )
     lines.extend(branches)
     if has_toggle:
         toggle = override_toggle_name(ue_prop)
-        lines.append(f"        if (!S.IsEmpty()) {toggle} = true;")
+        lines.append(f"        if (bMatched) {toggle} = true;")
     lines.append("    }")
     return "\n".join(lines) + "\n"
 
@@ -862,20 +900,24 @@ def _canon_import_actuator_transmission(canon_def, element_name) -> str:
         '            TransmissionType = EMjActuatorTrnType::Tendon;\n'
         '            TargetName = TrnTarget;\n'
         '        }\n'
-        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))\n'
-        '        {\n'
-        '            TransmissionType = EMjActuatorTrnType::SliderCrank;\n'
-        '        }\n'
         '        if (MjXmlUtils::ReadAttrString(Node, TEXT("site"), TrnTarget))\n'
         '        {\n'
         '            TransmissionType = EMjActuatorTrnType::Site;\n'
         '            TargetName = TrnTarget;\n'
         '        }\n'
-        '        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);\n'
         '        if (MjXmlUtils::ReadAttrString(Node, TEXT("body"), TrnTarget))\n'
         '        {\n'
         '            TransmissionType = EMjActuatorTrnType::Body;\n'
         '            TargetName = TrnTarget;\n'
+        '        }\n'
+        '        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);\n'
+        '        // SliderSite must run AFTER the main-target reads so it\n'
+        '        // overrides the transmission type while preserving the\n'
+        '        // TargetName captured above (per MJCF: slider-crank carries\n'
+        '        // a main target attr PLUS slidersite).\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::SliderCrank;\n'
         '        }\n'
         '    }\n'
     )
@@ -1387,9 +1429,10 @@ def _emit_exports_block(ctx: EmissionContext) -> str:
         prop_name = renames.get(attr, attr)
         ue_type = type_map.get(attr, default_type)
         is_array = ue_type.startswith("TArray")
-        mjs_field = attr
         if mjs_fields:
             mjs_field = _resolve_mjs_field(attr, mjs_fields, attr_to_mjs_field)
+        else:
+            mjs_field = (attr_to_mjs_field or {}).get(attr, attr)
         exports += _emit_unit_conversion_export(
             prop_name, mjs_field, conv_list, is_array=is_array,
         )
@@ -1397,9 +1440,10 @@ def _emit_exports_block(ctx: EmissionContext) -> str:
     # 6c) Double-vec exports.
     for attr in double_vec_attrs:
         prop_name = renames.get(attr, attr)
-        mjs_field = attr
         if mjs_fields:
             mjs_field = _resolve_mjs_field(attr, mjs_fields, attr_to_mjs_field)
+        else:
+            mjs_field = (attr_to_mjs_field or {}).get(attr, attr)
         exports += _emit_double_vec_export(attr, prop_name, mjs_field)
 
     return exports
@@ -2173,35 +2217,29 @@ def emit_subclass_files(
             # surfaces here rather than as wrong runtime behaviour.
             with open(header_path, "r", encoding="utf-8") as f:
                 h_text = f.read()
-            h_text, ok_h = inject_between_tags(h_text, "PROPERTIES", emitted.properties_h)
-            if not ok_h and emitted.properties_h.strip():
-                _diag_add(
-                    f"[diagnostic] subclass header '{header_path}' is missing "
-                    f"the CODEGEN_PROPERTIES_START/END marker pair; codegen "
-                    f"left the file unchanged.",
-                    source="subclass_inject",
-                )
+            h_text, _ = _inject_or_diag(
+                h_text, "PROPERTIES", emitted.properties_h,
+                host_path=header_path, host_kind="subclass header",
+                block_label="per-subtype UPROPERTY block",
+                diag_source="subclass_inject",
+            )
             writes.append(FileWrite(path=header_path, content=h_text))
 
             if os.path.exists(source_path):
                 with open(source_path, "r", encoding="utf-8") as f:
                     c_text = f.read()
-                c_text, ok_i = inject_between_tags(c_text, "IMPORT", emitted.imports_cpp)
-                if not ok_i and emitted.imports_cpp.strip():
-                    _diag_add(
-                        f"[diagnostic] subclass source '{source_path}' is "
-                        f"missing the CODEGEN_IMPORT_START/END marker pair; "
-                        f"per-subtype import block was NOT injected.",
-                        source="subclass_inject",
-                    )
-                c_text, ok_e = inject_between_tags(c_text, "EXPORT", emitted.exports_cpp)
-                if not ok_e and emitted.exports_cpp.strip():
-                    _diag_add(
-                        f"[diagnostic] subclass source '{source_path}' is "
-                        f"missing the CODEGEN_EXPORT_START/END marker pair; "
-                        f"per-subtype export block was NOT injected.",
-                        source="subclass_inject",
-                    )
+                c_text, _ = _inject_or_diag(
+                    c_text, "IMPORT", emitted.imports_cpp,
+                    host_path=source_path, host_kind="subclass source",
+                    block_label="per-subtype import block",
+                    diag_source="subclass_inject",
+                )
+                c_text, _ = _inject_or_diag(
+                    c_text, "EXPORT", emitted.exports_cpp,
+                    host_path=source_path, host_kind="subclass source",
+                    block_label="per-subtype export block",
+                    diag_source="subclass_inject",
+                )
                 writes.append(FileWrite(path=source_path, content=c_text))
             else:
                 _diag_add(
@@ -2295,16 +2333,14 @@ def emit_base_class_injection(
     if os.path.exists(header_path):
         with open(header_path, "r", encoding="utf-8") as f:
             h_text = f.read()
-        new_h, ok = inject_between_tags(h_text, "PROPERTIES", emitted.properties_h)
+        new_h, ok = _inject_or_diag(
+            h_text, "PROPERTIES", emitted.properties_h,
+            host_path=header_path, host_kind="base header",
+            block_label=f"category '{category}' UPROPERTY block",
+            diag_source="base_inject",
+        )
         if ok:
             writes.append(FileWrite(path=header_path, content=new_h))
-        else:
-            _diag_add(
-                f"[diagnostic] base header '{header_path}' is missing the "
-                f"CODEGEN_PROPERTIES_START/END marker pair; category "
-                f"'{category}' UPROPERTY block was NOT injected.",
-                source="base_inject",
-            )
     else:
         _diag_add(
             f"[diagnostic] category '{category}' has a rule but base header "
@@ -2316,14 +2352,12 @@ def emit_base_class_injection(
     if os.path.exists(source_path):
         with open(source_path, "r", encoding="utf-8") as f:
             c_text = f.read()
-        c_text, ok_i = inject_between_tags(c_text, "IMPORT", emitted.imports_cpp)
-        if not ok_i and emitted.imports_cpp.strip():
-            _diag_add(
-                f"[diagnostic] base source '{source_path}' is missing the "
-                f"CODEGEN_IMPORT_START/END marker pair; category "
-                f"'{category}' import block was NOT injected.",
-                source="base_inject",
-            )
+        c_text, ok_i = _inject_or_diag(
+            c_text, "IMPORT", emitted.imports_cpp,
+            host_path=source_path, host_kind="base source",
+            block_label=f"category '{category}' import block",
+            diag_source="base_inject",
+        )
         # ``xml_passthrough_emission`` routes per-attr export through the
         # XML_PASSTHROUGH block, NOT the EXPORT block — the mjs-side
         # ``Element->field = ...`` writes don't apply (flexcomp).
@@ -2338,25 +2372,21 @@ def emit_base_class_injection(
         )
         ok_e = False
         if not skip_export:
-            c_text, ok_e = inject_between_tags(c_text, "EXPORT", emitted.exports_cpp)
-            if not ok_e and emitted.exports_cpp.strip():
-                _diag_add(
-                    f"[diagnostic] base source '{source_path}' is missing the "
-                    f"CODEGEN_EXPORT_START/END marker pair; category "
-                    f"'{category}' export block was NOT injected.",
-                    source="base_inject",
-                )
+            c_text, ok_e = _inject_or_diag(
+                c_text, "EXPORT", emitted.exports_cpp,
+                host_path=source_path, host_kind="base source",
+                block_label=f"category '{category}' export block",
+                diag_source="base_inject",
+            )
         ok_x = False
         if cat_rules.get("xml_passthrough_emission"):
             xml_body = emit_xml_passthrough_body(common_attrs, rules, element_name=category)
-            c_text, ok_x = inject_between_tags(c_text, "XML_PASSTHROUGH", xml_body)
-            if not ok_x:
-                _diag_add(
-                    f"[diagnostic] base source '{source_path}' opts into "
-                    f"xml_passthrough_emission but is missing the "
-                    f"CODEGEN_XML_PASSTHROUGH_START/END marker pair.",
-                    source="base_inject",
-                )
+            c_text, ok_x = _inject_or_diag(
+                c_text, "XML_PASSTHROUGH", xml_body,
+                host_path=source_path, host_kind="base source",
+                block_label=f"category '{category}' xml_passthrough block",
+                diag_source="base_inject",
+            )
         if ok_i or ok_e or ok_x:
             writes.append(FileWrite(path=source_path, content=c_text))
     else:
@@ -2434,40 +2464,25 @@ def emit_multi_uclass(
         # in the common set (or whose mjs export is handled elsewhere) emit
         # nothing per-subtype; not pre-prepping a marker pair for those is
         # legitimate, so suppress the diagnostic.
-        h_text, ok_h = inject_between_tags(
+        h_text, _ = _inject_or_diag(
             h_text, f"SUBCLASS_{type_tag}_PROPERTIES", emitted.properties_h,
+            host_path=header_path, host_kind="multi_uclass base header",
+            block_label=f"subtype '{sub_key}' UPROPERTY block",
+            diag_source="multi_uclass_inject",
         )
-        if not ok_h and emitted.properties_h.strip():
-            _diag_add(
-                f"[diagnostic] multi_uclass base header '{header_path}' is "
-                f"missing CODEGEN_SUBCLASS_{type_tag}_PROPERTIES_START/END "
-                f"markers for subtype '{sub_key}'; per-subtype UPROPERTY "
-                f"block was NOT injected.",
-                source="multi_uclass_inject",
-            )
         if c_text:
-            c_text, ok_i = inject_between_tags(
+            c_text, _ = _inject_or_diag(
                 c_text, f"SUBCLASS_{type_tag}_IMPORT", emitted.imports_cpp,
+                host_path=source_path, host_kind="multi_uclass base source",
+                block_label=f"subtype '{sub_key}' import block",
+                diag_source="multi_uclass_inject",
             )
-            if not ok_i and emitted.imports_cpp.strip():
-                _diag_add(
-                    f"[diagnostic] multi_uclass base source '{source_path}' "
-                    f"is missing CODEGEN_SUBCLASS_{type_tag}_IMPORT_START/END "
-                    f"markers for subtype '{sub_key}'; per-subtype import "
-                    f"block was NOT injected.",
-                    source="multi_uclass_inject",
-                )
-            c_text, ok_e = inject_between_tags(
+            c_text, _ = _inject_or_diag(
                 c_text, f"SUBCLASS_{type_tag}_EXPORT", emitted.exports_cpp,
+                host_path=source_path, host_kind="multi_uclass base source",
+                block_label=f"subtype '{sub_key}' export block",
+                diag_source="multi_uclass_inject",
             )
-            if not ok_e and emitted.exports_cpp.strip():
-                _diag_add(
-                    f"[diagnostic] multi_uclass base source '{source_path}' "
-                    f"is missing CODEGEN_SUBCLASS_{type_tag}_EXPORT_START/END "
-                    f"markers for subtype '{sub_key}'; per-subtype export "
-                    f"block was NOT injected.",
-                    source="multi_uclass_inject",
-                )
 
     # Rewrite the merged writes (drop stale base writes; replace with merged).
     writes = [w for w in writes if w.path != header_path and w.path != source_path]
@@ -2624,27 +2639,18 @@ def emit_bind_h_injection(
     views = emit_view_structs(rules, mjxmacro)
     new_text = text
     for view_name, (fields_block, bind_block) in views.items():
-        new_text, ok_f = inject_between_tags(
+        new_text, _ = _inject_or_diag(
             new_text, f"VIEW_{view_name}_FIELDS", fields_block,
+            host_path=bind_h_path, host_kind="MjBind.h",
+            block_label=f"view struct '{view_name}' fields block (struct will ship empty)",
+            diag_source="bind_inject",
         )
-        if not ok_f:
-            _diag_add(
-                f"[diagnostic] MjBind.h is missing the "
-                f"CODEGEN_VIEW_{view_name}_FIELDS_START/END marker pair; "
-                f"view struct '{view_name}' fields block was NOT injected "
-                f"and the struct will ship empty.",
-                source="bind_inject",
-            )
-        new_text, ok_b = inject_between_tags(
+        new_text, _ = _inject_or_diag(
             new_text, f"VIEW_{view_name}_BIND", bind_block,
+            host_path=bind_h_path, host_kind="MjBind.h",
+            block_label=f"view '{view_name}' Bind() body",
+            diag_source="bind_inject",
         )
-        if not ok_b:
-            _diag_add(
-                f"[diagnostic] MjBind.h is missing the "
-                f"CODEGEN_VIEW_{view_name}_BIND_START/END marker pair; "
-                f"view '{view_name}' Bind() body was NOT injected.",
-                source="bind_inject",
-            )
 
     with open(bind_h_path, "r", encoding="utf-8") as f:
         original = f.read()
@@ -2837,7 +2843,16 @@ def _emit_synth_mirror_properties(
         ue_name = field_renames.get(c_name, _ue_field_name(c_name))
         c_type = f["type"]
         is_vec = f.get("is_vec", False)
-        count = int(f.get("count", "1") if isinstance(f.get("count"), str) and f["count"].isdigit() else 1)
+        # Accept both str ("3") and int (3) — the mjxmacro snapshot
+        # currently emits strings, but a future shape bump that yields
+        # ints must NOT silently collapse vec3 fields to ``TArray<float>``.
+        raw_count = f.get("count", 1)
+        if isinstance(raw_count, int):
+            count = raw_count
+        elif isinstance(raw_count, str) and raw_count.isdigit():
+            count = int(raw_count)
+        else:
+            count = 1
 
         if c_name in field_types:
             ue_type = field_types[c_name]
@@ -2939,24 +2954,24 @@ def _emit_synth_inline_apply_template(
             continue
         if fm["ue_type"] == "FLinearColor":
             apply_lines.append(
-                f"    Dst.{c_name}[0] = (decltype(Dst.{c_name}[0])){ue_name}.R;\n"
-                f"    Dst.{c_name}[1] = (decltype(Dst.{c_name}[1])){ue_name}.G;\n"
-                f"    Dst.{c_name}[2] = (decltype(Dst.{c_name}[2])){ue_name}.B;\n"
-                f"    Dst.{c_name}[3] = (decltype(Dst.{c_name}[3])){ue_name}.A;"
+                f"    Dst.{c_name}[0] = static_cast<decltype(Dst.{c_name}[0])>({ue_name}.R);\n"
+                f"    Dst.{c_name}[1] = static_cast<decltype(Dst.{c_name}[1])>({ue_name}.G);\n"
+                f"    Dst.{c_name}[2] = static_cast<decltype(Dst.{c_name}[2])>({ue_name}.B);\n"
+                f"    Dst.{c_name}[3] = static_cast<decltype(Dst.{c_name}[3])>({ue_name}.A);"
             )
         elif fm["ue_type"] == "FVector":
             apply_lines.append(
-                f"    Dst.{c_name}[0] = (decltype(Dst.{c_name}[0])){ue_name}.X;\n"
-                f"    Dst.{c_name}[1] = (decltype(Dst.{c_name}[1])){ue_name}.Y;\n"
-                f"    Dst.{c_name}[2] = (decltype(Dst.{c_name}[2])){ue_name}.Z;"
+                f"    Dst.{c_name}[0] = static_cast<decltype(Dst.{c_name}[0])>({ue_name}.X);\n"
+                f"    Dst.{c_name}[1] = static_cast<decltype(Dst.{c_name}[1])>({ue_name}.Y);\n"
+                f"    Dst.{c_name}[2] = static_cast<decltype(Dst.{c_name}[2])>({ue_name}.Z);"
             )
         elif fm["is_vec"]:
             apply_lines.append(
                 f"    for (int32 I = 0; I < {ue_name}.Num() && I < {fm['count']}; ++I)\n"
-                f"        Dst.{c_name}[I] = (decltype(Dst.{c_name}[0])){ue_name}[I];"
+                f"        Dst.{c_name}[I] = static_cast<decltype(Dst.{c_name}[0])>({ue_name}[I]);"
             )
         else:
-            apply_lines.append(f"    Dst.{c_name} = (decltype(Dst.{c_name})){ue_name};")
+            apply_lines.append(f"    Dst.{c_name} = static_cast<decltype(Dst.{c_name})>({ue_name});")
     return (
         f"    /** @brief Mirror every field into a runtime C struct. */\n"
         f"    template <typename TDst>\n"
@@ -2974,7 +2989,6 @@ def _emit_synthetic_struct_files(
     """Emit the .h + .cpp pair for one synthetic_categories entry.
 
     Currently supports the mjxmacro_block source (X-macro field list).
-    mjspecmacro_block is reserved for once mjspecmacro.h is vendored.
     """
     block_name = def_.get("mjxmacro_block")
     if not block_name:
@@ -3097,9 +3111,15 @@ def _emit_synth_apply_methods_cpp(
 ) -> str:
     """Emit the out-of-line ``ApplyToSpec`` and ``ApplyOverridesToModel``
     bodies for a synthetic struct whose mirror writes go through mjSpec
-    + mjModel (mjOption is the canonical case). ``field_apply_mode``
-    selects between unconditional / guarded / vec3-convert flavours
-    per field."""
+    + mjModel (mjOption is the canonical case).
+
+    Both methods gate every field write with ``bOverride_X``. The earlier
+    ``unconditional`` SPEC default silently clobbered MJCF-XML defaults
+    with whatever the UE struct happened to carry, even for fields the
+    user never authored. ``field_apply_mode`` now selects only the
+    per-FVector conversion flavour (``vec3_cm`` / ``vec3_y_flip`` /
+    ``pos``); the toggle guard is applied uniformly.
+    """
     apply_to_spec_lines: List[str] = ["    if (!Spec) return;"]
     apply_to_model_lines: List[str] = ["    if (!Model) return;"]
     for fm in fields_meta:
@@ -3109,37 +3129,37 @@ def _emit_synth_apply_methods_cpp(
         if c_name in field_skip_apply:
             continue
         toggle = override_toggle_name(ue_name)
-        spec_mode = field_apply_mode.get(c_name, "unconditional")
+        spec_mode = field_apply_mode.get(c_name, "")
         if ue_type == "FVector":
-            conv = spec_mode if spec_mode.startswith("vec3") or spec_mode == "pos" else "vec3_y_flip"
-            if spec_mode.startswith("guarded"):
-                conv = spec_mode.replace("guarded_", "") or "vec3_y_flip"
-            stmt_spec_inner = _VEC3_CONVERT_FMT.get(conv, _VEC3_CONVERT_FMT["vec3_y_flip"]).format(
+            # Strip a legacy "guarded_" prefix; the guard is now uniform.
+            conv = spec_mode.replace("guarded_", "") if spec_mode.startswith("guarded_") else spec_mode
+            if conv not in _VEC3_CONVERT_FMT:
+                conv = "vec3_y_flip"
+            stmt_spec_inner = _VEC3_CONVERT_FMT[conv].format(
                 c=f"Spec->option.{c_name}", ue=ue_name,
             )
-            stmt_model_inner = _VEC3_CONVERT_FMT.get(conv, _VEC3_CONVERT_FMT["vec3_y_flip"]).format(
+            stmt_model_inner = _VEC3_CONVERT_FMT[conv].format(
                 c=f"Model->opt.{c_name}", ue=ue_name,
             )
         elif ue_type.startswith("EMj"):
-            stmt_spec_inner = f"Spec->option.{c_name} = (int){ue_name};"
-            stmt_model_inner = f"Model->opt.{c_name} = (int){ue_name};"
+            stmt_spec_inner = f"Spec->option.{c_name} = static_cast<int>({ue_name});"
+            stmt_model_inner = f"Model->opt.{c_name} = static_cast<int>({ue_name});"
         else:
             stmt_spec_inner = f"Spec->option.{c_name} = {ue_name};"
             stmt_model_inner = f"Model->opt.{c_name} = {ue_name};"
 
-        if spec_mode.startswith("guarded") or spec_mode == "guarded":
-            apply_to_spec_lines.append(f"    if ({toggle}) {{ {stmt_spec_inner} }}")
-        else:
-            apply_to_spec_lines.append(f"    {stmt_spec_inner}")
-        # ApplyOverridesToModel is always guarded.
+        apply_to_spec_lines.append(f"    if ({toggle}) {{ {stmt_spec_inner} }}")
         apply_to_model_lines.append(f"    if ({toggle}) {{ {stmt_model_inner} }}")
 
     if apply_extras_function and urlab_extras:
+        # Spec / Model already null-checked by the early return at the
+        # top of each body, so the ternary is dead — pass the address
+        # directly.
         apply_to_spec_lines.append(
-            f"    {apply_extras_function}(Spec ? &Spec->option : nullptr, *this, Spec);"
+            f"    {apply_extras_function}(&Spec->option, *this, Spec);"
         )
         apply_to_model_lines.append(
-            f"    {apply_extras_function}(Model ? &Model->opt : nullptr, *this, nullptr, Model);"
+            f"    {apply_extras_function}(&Model->opt, *this, nullptr, Model);"
         )
 
     return (
@@ -3263,8 +3283,8 @@ def _emit_sensor_tag_to_type_block(cat_rules: Dict[str, Any]) -> str:
 #
 # Some MuJoCo C enums (mjtIntegrator/mjtCone/mjtSolver/...) map to URLab
 # UENUMs that are blueprint-exposed. Hand-written copies diverge from the
-# C source over time, so this emitter generates them from
-# ``mjspec_snapshot["enums"]``.
+# C source over time, so this emitter generates them from the projected
+# mjspec dict's ``enums`` table (sourced from the introspect snapshot).
 #
 # Rule shape (under top-level ``generated_enums`` in codegen_rules.json):
 #   "MjOptionEnums": {
@@ -3313,7 +3333,7 @@ def _emit_generated_enum_file(cat_name: str, def_: Dict[str, Any],
     if not mjspec or "enums" not in mjspec:
         _diag_add(
             f"[diagnostic] generated_enums['{cat_name}'] needs an mjspec "
-            f"snapshot with an 'enums' key — run build_mjspec_snapshot.py.",
+            f"snapshot with an 'enums' key — run build_introspect_snapshot.py.",
             source="generated_enums",
         )
         return []
@@ -3343,8 +3363,8 @@ def _emit_generated_enum_file(cat_name: str, def_: Dict[str, Any],
             if not c_enum:
                 _diag_add(
                     f"[diagnostic] generated_enums['{cat_name}']: C enum "
-                    f"'{mj_enum_name}' missing from mjspec_snapshot. Skipping "
-                    f"'{ue_name}'.",
+                    f"'{mj_enum_name}' missing from the introspect snapshot. "
+                    f"Skipping '{ue_name}'.",
                     source="generated_enums",
                 )
                 continue
@@ -3989,9 +4009,23 @@ def apply_writes(writes: List[FileWrite], dry_run: bool, check_only: bool) -> in
                 )
                 sys.stdout.writelines(diff)
         else:
+            # Atomic write: stage to a sibling tmp file, then os.replace.
+            # Without this, a Ctrl-C between truncate and write leaves a
+            # zero-/partial-byte file that UBT picks up, producing a UHT
+            # error far from "I interrupted codegen".
             os.makedirs(os.path.dirname(w.path), exist_ok=True)
-            with open(w.path, "wb") as f:
-                f.write(new_bytes)
+            tmp_path = w.path + ".codegen.tmp"
+            try:
+                with open(tmp_path, "wb") as f:
+                    f.write(new_bytes)
+                os.replace(tmp_path, w.path)
+            except BaseException:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+                raise
             print(f"WROTE {rel}")
     if check_only and changed:
         return 1
@@ -4118,9 +4152,27 @@ def main() -> int:
             f"(UBT will otherwise pick it up).",
             source="orphan_generated_file",
         )
+    # Snapshot the diag SOURCE tags before flushing, so we can detect
+    # destructive-overwrite warnings (banner_overwrite) and refuse to
+    # write under --strict — otherwise apply_writes would destroy the
+    # hand edits before the strict check fires.
+    banner_overwrite_pending = any(
+        d.source == "banner_overwrite" for d in _DIAGS_BUFFER.pending
+    )
     _diag_flush()
 
     fired = _DIAGS_BUFFER.fired_count
+    is_destructive_run = not args.dry_run and not args.check
+    if is_destructive_run and args.strict and banner_overwrite_pending:
+        print(
+            f"[codegen] --strict: banner_overwrite diagnostic fired — "
+            f"refusing to write (would destroy hand-edited content). "
+            f"Re-run with --no-strict to proceed, or run the audit "
+            f"helper at Scripts/codegen/_audit_banner_candidates.py.",
+            file=sys.stderr,
+        )
+        return 2
+
     rc = apply_writes(writes, args.dry_run, args.check)
     if args.check and orphans:
         print(

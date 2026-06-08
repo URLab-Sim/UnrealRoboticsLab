@@ -70,10 +70,10 @@ struct URLAB_API FMjVisualQuality
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.shadowsize = (decltype(Dst.shadowsize))Shadowsize;
-    Dst.offsamples = (decltype(Dst.offsamples))Offsamples;
-    Dst.numslices = (decltype(Dst.numslices))Numslices;
-    Dst.numstacks = (decltype(Dst.numstacks))Numstacks;
-    Dst.numquads = (decltype(Dst.numquads))Numquads;
+    Dst.shadowsize = static_cast<decltype(Dst.shadowsize)>(Shadowsize);
+    Dst.offsamples = static_cast<decltype(Dst.offsamples)>(Offsamples);
+    Dst.numslices = static_cast<decltype(Dst.numslices)>(Numslices);
+    Dst.numstacks = static_cast<decltype(Dst.numstacks)>(Numstacks);
+    Dst.numquads = static_cast<decltype(Dst.numquads)>(Numquads);
     }
 };

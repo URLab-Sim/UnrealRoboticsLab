@@ -29,27 +29,27 @@
 void FMjOptionGenerated::ApplyToSpec(mjSpec* Spec) const
 {
     if (!Spec) return;
-    Spec->option.timestep = Timestep;
-    Spec->option.impratio = Impratio;
-    Spec->option.tolerance = Tolerance;
-    Spec->option.ls_tolerance = LsTolerance;
+    if (bOverride_Timestep) { Spec->option.timestep = Timestep; }
+    if (bOverride_Impratio) { Spec->option.impratio = Impratio; }
+    if (bOverride_Tolerance) { Spec->option.tolerance = Tolerance; }
+    if (bOverride_LsTolerance) { Spec->option.ls_tolerance = LsTolerance; }
     if (bOverride_NoslipTolerance) { Spec->option.noslip_tolerance = NoslipTolerance; }
     if (bOverride_CCD_Tolerance) { Spec->option.ccd_tolerance = CCD_Tolerance; }
-    Spec->option.gravity[0] =  Gravity.X / 100.0; Spec->option.gravity[1] = -Gravity.Y / 100.0; Spec->option.gravity[2] =  Gravity.Z / 100.0;
-    Spec->option.wind[0] =  Wind.X / 100.0; Spec->option.wind[1] = -Wind.Y / 100.0; Spec->option.wind[2] =  Wind.Z / 100.0;
-    Spec->option.magnetic[0] =  Magnetic.X; Spec->option.magnetic[1] = -Magnetic.Y; Spec->option.magnetic[2] =  Magnetic.Z;
-    Spec->option.density = Density;
-    Spec->option.viscosity = Viscosity;
-    Spec->option.o_margin = OMargin;
-    if (bOverride_Integrator) { Spec->option.integrator = (int)Integrator; }
-    if (bOverride_Cone) { Spec->option.cone = (int)Cone; }
-    Spec->option.jacobian = Jacobian;
-    if (bOverride_Solver) { Spec->option.solver = (int)Solver; }
-    Spec->option.iterations = Iterations;
-    Spec->option.ls_iterations = LsIterations;
+    if (bOverride_Gravity) { Spec->option.gravity[0] =  Gravity.X / 100.0; Spec->option.gravity[1] = -Gravity.Y / 100.0; Spec->option.gravity[2] =  Gravity.Z / 100.0; }
+    if (bOverride_Wind) { Spec->option.wind[0] =  Wind.X / 100.0; Spec->option.wind[1] = -Wind.Y / 100.0; Spec->option.wind[2] =  Wind.Z / 100.0; }
+    if (bOverride_Magnetic) { Spec->option.magnetic[0] =  Magnetic.X; Spec->option.magnetic[1] = -Magnetic.Y; Spec->option.magnetic[2] =  Magnetic.Z; }
+    if (bOverride_Density) { Spec->option.density = Density; }
+    if (bOverride_Viscosity) { Spec->option.viscosity = Viscosity; }
+    if (bOverride_OMargin) { Spec->option.o_margin = OMargin; }
+    if (bOverride_Integrator) { Spec->option.integrator = static_cast<int>(Integrator); }
+    if (bOverride_Cone) { Spec->option.cone = static_cast<int>(Cone); }
+    if (bOverride_Jacobian) { Spec->option.jacobian = Jacobian; }
+    if (bOverride_Solver) { Spec->option.solver = static_cast<int>(Solver); }
+    if (bOverride_Iterations) { Spec->option.iterations = Iterations; }
+    if (bOverride_LsIterations) { Spec->option.ls_iterations = LsIterations; }
     if (bOverride_NoslipIterations) { Spec->option.noslip_iterations = NoslipIterations; }
     if (bOverride_CCD_Iterations) { Spec->option.ccd_iterations = CCD_Iterations; }
-    ApplyMjOptionExtras(Spec ? &Spec->option : nullptr, *this, Spec);
+    ApplyMjOptionExtras(&Spec->option, *this, Spec);
 }
 
 void FMjOptionGenerated::ApplyOverridesToModel(mjModel* Model) const
@@ -67,13 +67,13 @@ void FMjOptionGenerated::ApplyOverridesToModel(mjModel* Model) const
     if (bOverride_Density) { Model->opt.density = Density; }
     if (bOverride_Viscosity) { Model->opt.viscosity = Viscosity; }
     if (bOverride_OMargin) { Model->opt.o_margin = OMargin; }
-    if (bOverride_Integrator) { Model->opt.integrator = (int)Integrator; }
-    if (bOverride_Cone) { Model->opt.cone = (int)Cone; }
+    if (bOverride_Integrator) { Model->opt.integrator = static_cast<int>(Integrator); }
+    if (bOverride_Cone) { Model->opt.cone = static_cast<int>(Cone); }
     if (bOverride_Jacobian) { Model->opt.jacobian = Jacobian; }
-    if (bOverride_Solver) { Model->opt.solver = (int)Solver; }
+    if (bOverride_Solver) { Model->opt.solver = static_cast<int>(Solver); }
     if (bOverride_Iterations) { Model->opt.iterations = Iterations; }
     if (bOverride_LsIterations) { Model->opt.ls_iterations = LsIterations; }
     if (bOverride_NoslipIterations) { Model->opt.noslip_iterations = NoslipIterations; }
     if (bOverride_CCD_Iterations) { Model->opt.ccd_iterations = CCD_Iterations; }
-    ApplyMjOptionExtras(Model ? &Model->opt : nullptr, *this, nullptr, Model);
+    ApplyMjOptionExtras(&Model->opt, *this, nullptr, Model);
 }

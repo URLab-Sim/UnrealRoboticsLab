@@ -80,30 +80,33 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     { // xml_enum: type -> EMjGeomType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
-        if      (S == TEXT("plane")) Type = EMjGeomType::Plane;
-        else if (S == TEXT("hfield")) Type = EMjGeomType::Hfield;
-        else if (S == TEXT("sphere")) Type = EMjGeomType::Sphere;
-        else if (S == TEXT("capsule")) Type = EMjGeomType::Capsule;
-        else if (S == TEXT("ellipsoid")) Type = EMjGeomType::Ellipsoid;
-        else if (S == TEXT("cylinder")) Type = EMjGeomType::Cylinder;
-        else if (S == TEXT("box")) Type = EMjGeomType::Box;
-        else if (S == TEXT("mesh")) Type = EMjGeomType::Mesh;
-        else if (S == TEXT("sdf")) Type = EMjGeomType::SDF;
-        if (!S.IsEmpty()) bOverride_Type = true;
+        bool bMatched = false;
+        if      (S == TEXT("plane")) { Type = EMjGeomType::Plane; bMatched = true; }
+        else if (S == TEXT("hfield")) { Type = EMjGeomType::Hfield; bMatched = true; }
+        else if (S == TEXT("sphere")) { Type = EMjGeomType::Sphere; bMatched = true; }
+        else if (S == TEXT("capsule")) { Type = EMjGeomType::Capsule; bMatched = true; }
+        else if (S == TEXT("ellipsoid")) { Type = EMjGeomType::Ellipsoid; bMatched = true; }
+        else if (S == TEXT("cylinder")) { Type = EMjGeomType::Cylinder; bMatched = true; }
+        else if (S == TEXT("box")) { Type = EMjGeomType::Box; bMatched = true; }
+        else if (S == TEXT("mesh")) { Type = EMjGeomType::Mesh; bMatched = true; }
+        else if (S == TEXT("sdf")) { Type = EMjGeomType::SDF; bMatched = true; }
+        if (bMatched) bOverride_Type = true;
     }
     { // xml_enum: shellinertia -> EMjGeomInertia
         FString S = Node->GetAttribute(TEXT("shellinertia"));
         S = S.ToLower();
-        if      (S == TEXT("false")) ShellInertia = EMjGeomInertia::Volume;
-        else if (S == TEXT("true")) ShellInertia = EMjGeomInertia::Shell;
-        if (!S.IsEmpty()) bOverride_ShellInertia = true;
+        bool bMatched = false;
+        if      (S == TEXT("false")) { ShellInertia = EMjGeomInertia::Volume; bMatched = true; }
+        else if (S == TEXT("true")) { ShellInertia = EMjGeomInertia::Shell; bMatched = true; }
+        if (bMatched) bOverride_ShellInertia = true;
     }
     { // xml_enum: fluidshape -> EMjFluidShape
         FString S = Node->GetAttribute(TEXT("fluidshape"));
         S = S.ToLower();
-        if      (S == TEXT("none")) FluidShape = EMjFluidShape::None;
-        else if (S == TEXT("ellipsoid")) FluidShape = EMjFluidShape::Ellipsoid;
-        if (!S.IsEmpty()) bOverride_FluidShape = true;
+        bool bMatched = false;
+        if      (S == TEXT("none")) { FluidShape = EMjFluidShape::None; bMatched = true; }
+        else if (S == TEXT("ellipsoid")) { FluidShape = EMjFluidShape::Ellipsoid; bMatched = true; }
+        if (bMatched) bOverride_FluidShape = true;
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("contype"), contype, bOverride_contype);
     MjXmlUtils::ReadAttrInt(Node, TEXT("conaffinity"), conaffinity, bOverride_conaffinity);

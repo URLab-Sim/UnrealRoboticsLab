@@ -716,19 +716,21 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     { // xml_enum: mode -> EMjCameraTrackingMode
         FString S = Node->GetAttribute(TEXT("mode"));
         S = S.ToLower();
-        if      (S == TEXT("fixed")) TrackingMode = EMjCameraTrackingMode::Fixed;
-        else if (S == TEXT("track")) TrackingMode = EMjCameraTrackingMode::Track;
-        else if (S == TEXT("trackcom")) TrackingMode = EMjCameraTrackingMode::TrackCom;
-        else if (S == TEXT("targetbody")) TrackingMode = EMjCameraTrackingMode::TargetBody;
-        else if (S == TEXT("targetbodycom")) TrackingMode = EMjCameraTrackingMode::TargetBodyCom;
-        if (!S.IsEmpty()) bOverride_TrackingMode = true;
+        bool bMatched = false;
+        if      (S == TEXT("fixed")) { TrackingMode = EMjCameraTrackingMode::Fixed; bMatched = true; }
+        else if (S == TEXT("track")) { TrackingMode = EMjCameraTrackingMode::Track; bMatched = true; }
+        else if (S == TEXT("trackcom")) { TrackingMode = EMjCameraTrackingMode::TrackCom; bMatched = true; }
+        else if (S == TEXT("targetbody")) { TrackingMode = EMjCameraTrackingMode::TargetBody; bMatched = true; }
+        else if (S == TEXT("targetbodycom")) { TrackingMode = EMjCameraTrackingMode::TargetBodyCom; bMatched = true; }
+        if (bMatched) bOverride_TrackingMode = true;
     }
     { // xml_enum: projection -> EMjCameraProjection
         FString S = Node->GetAttribute(TEXT("projection"));
         S = S.ToLower();
-        if      (S == TEXT("orthographic")) Projection = EMjCameraProjection::Orthographic;
-        else if (S == TEXT("perspective")) Projection = EMjCameraProjection::Perspective;
-        if (!S.IsEmpty()) bOverride_Projection = true;
+        bool bMatched = false;
+        if      (S == TEXT("orthographic")) { Projection = EMjCameraProjection::Orthographic; bMatched = true; }
+        else if (S == TEXT("perspective")) { Projection = EMjCameraProjection::Perspective; bMatched = true; }
+        if (bMatched) bOverride_Projection = true;
     }
     MjXmlUtils::ReadAttrFloat(Node, TEXT("fovy"), fovy, bOverride_fovy);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("ipd"), ipd, bOverride_ipd);

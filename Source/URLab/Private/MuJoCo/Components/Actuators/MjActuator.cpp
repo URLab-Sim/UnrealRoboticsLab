@@ -140,31 +140,34 @@ void UMjActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
     { // xml_enum: gaintype -> EMjGainType
         FString S = Node->GetAttribute(TEXT("gaintype"));
         S = S.ToLower();
-        if      (S == TEXT("fixed")) GainType = EMjGainType::Fixed;
-        else if (S == TEXT("affine")) GainType = EMjGainType::Affine;
-        else if (S == TEXT("muscle")) GainType = EMjGainType::Muscle;
-        else if (S == TEXT("user")) GainType = EMjGainType::User;
-        if (!S.IsEmpty()) bOverride_GainType = true;
+        bool bMatched = false;
+        if      (S == TEXT("fixed")) { GainType = EMjGainType::Fixed; bMatched = true; }
+        else if (S == TEXT("affine")) { GainType = EMjGainType::Affine; bMatched = true; }
+        else if (S == TEXT("muscle")) { GainType = EMjGainType::Muscle; bMatched = true; }
+        else if (S == TEXT("user")) { GainType = EMjGainType::User; bMatched = true; }
+        if (bMatched) bOverride_GainType = true;
     }
     { // xml_enum: biastype -> EMjBiasType
         FString S = Node->GetAttribute(TEXT("biastype"));
         S = S.ToLower();
-        if      (S == TEXT("none")) BiasType = EMjBiasType::None;
-        else if (S == TEXT("affine")) BiasType = EMjBiasType::Affine;
-        else if (S == TEXT("muscle")) BiasType = EMjBiasType::Muscle;
-        else if (S == TEXT("user")) BiasType = EMjBiasType::User;
-        if (!S.IsEmpty()) bOverride_BiasType = true;
+        bool bMatched = false;
+        if      (S == TEXT("none")) { BiasType = EMjBiasType::None; bMatched = true; }
+        else if (S == TEXT("affine")) { BiasType = EMjBiasType::Affine; bMatched = true; }
+        else if (S == TEXT("muscle")) { BiasType = EMjBiasType::Muscle; bMatched = true; }
+        else if (S == TEXT("user")) { BiasType = EMjBiasType::User; bMatched = true; }
+        if (bMatched) bOverride_BiasType = true;
     }
     { // xml_enum: dyntype -> EMjDynType
         FString S = Node->GetAttribute(TEXT("dyntype"));
         S = S.ToLower();
-        if      (S == TEXT("none")) DynType = EMjDynType::None;
-        else if (S == TEXT("integrator")) DynType = EMjDynType::Integrator;
-        else if (S == TEXT("filter")) DynType = EMjDynType::Filter;
-        else if (S == TEXT("filterexact")) DynType = EMjDynType::FilterExact;
-        else if (S == TEXT("muscle")) DynType = EMjDynType::Muscle;
-        else if (S == TEXT("user")) DynType = EMjDynType::User;
-        if (!S.IsEmpty()) bOverride_DynType = true;
+        bool bMatched = false;
+        if      (S == TEXT("none")) { DynType = EMjDynType::None; bMatched = true; }
+        else if (S == TEXT("integrator")) { DynType = EMjDynType::Integrator; bMatched = true; }
+        else if (S == TEXT("filter")) { DynType = EMjDynType::Filter; bMatched = true; }
+        else if (S == TEXT("filterexact")) { DynType = EMjDynType::FilterExact; bMatched = true; }
+        else if (S == TEXT("muscle")) { DynType = EMjDynType::Muscle; bMatched = true; }
+        else if (S == TEXT("user")) { DynType = EMjDynType::User; bMatched = true; }
+        if (bMatched) bOverride_DynType = true;
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     MjXmlUtils::ReadAttrInt(Node, TEXT("nsample"), nsample, bOverride_nsample);
@@ -202,20 +205,24 @@ void UMjActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
             TransmissionType = EMjActuatorTrnType::Tendon;
             TargetName = TrnTarget;
         }
-        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))
-        {
-            TransmissionType = EMjActuatorTrnType::SliderCrank;
-        }
         if (MjXmlUtils::ReadAttrString(Node, TEXT("site"), TrnTarget))
         {
             TransmissionType = EMjActuatorTrnType::Site;
             TargetName = TrnTarget;
         }
-        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);
         if (MjXmlUtils::ReadAttrString(Node, TEXT("body"), TrnTarget))
         {
             TransmissionType = EMjActuatorTrnType::Body;
             TargetName = TrnTarget;
+        }
+        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);
+        // SliderSite must run AFTER the main-target reads so it
+        // overrides the transmission type while preserving the
+        // TargetName captured above (per MJCF: slider-crank carries
+        // a main target attr PLUS slidersite).
+        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))
+        {
+            TransmissionType = EMjActuatorTrnType::SliderCrank;
         }
     }
     // --- CODEGEN_IMPORT_END ---

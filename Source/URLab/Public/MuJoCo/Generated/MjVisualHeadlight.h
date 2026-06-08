@@ -64,15 +64,15 @@ struct URLAB_API FMjVisualHeadlight
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.ambient[0] = (decltype(Dst.ambient[0]))Ambient.X;
-    Dst.ambient[1] = (decltype(Dst.ambient[1]))Ambient.Y;
-    Dst.ambient[2] = (decltype(Dst.ambient[2]))Ambient.Z;
-    Dst.diffuse[0] = (decltype(Dst.diffuse[0]))Diffuse.X;
-    Dst.diffuse[1] = (decltype(Dst.diffuse[1]))Diffuse.Y;
-    Dst.diffuse[2] = (decltype(Dst.diffuse[2]))Diffuse.Z;
-    Dst.specular[0] = (decltype(Dst.specular[0]))Specular.X;
-    Dst.specular[1] = (decltype(Dst.specular[1]))Specular.Y;
-    Dst.specular[2] = (decltype(Dst.specular[2]))Specular.Z;
-    Dst.active = (decltype(Dst.active))Active;
+    Dst.ambient[0] = static_cast<decltype(Dst.ambient[0])>(Ambient.X);
+    Dst.ambient[1] = static_cast<decltype(Dst.ambient[1])>(Ambient.Y);
+    Dst.ambient[2] = static_cast<decltype(Dst.ambient[2])>(Ambient.Z);
+    Dst.diffuse[0] = static_cast<decltype(Dst.diffuse[0])>(Diffuse.X);
+    Dst.diffuse[1] = static_cast<decltype(Dst.diffuse[1])>(Diffuse.Y);
+    Dst.diffuse[2] = static_cast<decltype(Dst.diffuse[2])>(Diffuse.Z);
+    Dst.specular[0] = static_cast<decltype(Dst.specular[0])>(Specular.X);
+    Dst.specular[1] = static_cast<decltype(Dst.specular[1])>(Specular.Y);
+    Dst.specular[2] = static_cast<decltype(Dst.specular[2])>(Specular.Z);
+    Dst.active = static_cast<decltype(Dst.active)>(Active);
     }
 };

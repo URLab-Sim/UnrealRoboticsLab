@@ -78,12 +78,22 @@ def test_canonicalisations_referenced_by_element_rules_exist(real_rules):
 
 def test_xml_enum_attr_value_maps_have_correct_shape(real_rules):
     """Each ``value_map`` entry must be a 2-element ``[ue_member,
-    mj_const]`` list. Mistyped entries (string vs list) silently fail
-    to emit case labels in the codegen switch."""
+    mj_const]`` list, non-empty xml key, and the map itself non-empty.
+    An empty map silently emits a dead block that toggles the override
+    flag without ever assigning the enum; empty xml keys match every
+    missing attr at runtime via ``GetAttribute()`` returning ``""``."""
     for elem, elem_rule in real_rules.get("element_rules", {}).items():
         for attr, enum_def in elem_rule.get("xml_enum_attrs", {}).items():
             value_map = enum_def.get("value_map", {})
+            assert value_map, (
+                f"element_rules['{elem}'].xml_enum_attrs['{attr}']"
+                f".value_map is empty — emit would set the override "
+                f"toggle without ever assigning the enum.")
             for xml_val, mapping in value_map.items():
+                assert xml_val != "", (
+                    f"element_rules['{elem}'].xml_enum_attrs['{attr}']"
+                    f".value_map has an empty-string xml key — at "
+                    f"runtime this matches every missing attr.")
                 assert isinstance(mapping, (list, tuple)), (
                     f"element_rules['{elem}'].xml_enum_attrs['{attr}']"
                     f".value_map['{xml_val}'] must be a list, got "
@@ -260,6 +270,30 @@ def test_generated_enums_carry_ue_name_and_mapping(real_rules):
                 f"generated_enums['{group}'].enums[{i}] ({ue_name}): "
                 f"needs from_mj_enum or extra_members; otherwise emits "
                 f"nothing."
+            )
+
+
+def test_setto_param_defaults_are_finite_numeric_literals(real_rules):
+    """Values land VERBATIM in the generated C++ as a ternary's else
+    branch (see ``_emit_setto_call``). Allowed shapes: int / signed-or-
+    -unsigned float with optional decimal + exponent. Reject ``"inf"``,
+    ``"nan"``, hex, or empty strings — they compile to non-finite or
+    invalid C++."""
+    import re
+    finite_re = re.compile(r"^-?\d+(\.\d*)?([eE][+-]?\d+)?$")
+    defaults = real_rules.get("setto_param_defaults", {})
+    for fn_name, params in defaults.items():
+        if fn_name.startswith("_") or not isinstance(params, dict):
+            continue
+        for pname, value in params.items():
+            assert isinstance(value, str), (
+                f"setto_param_defaults['{fn_name}']['{pname}'] = "
+                f"{value!r}: must be a string (drops verbatim into C++)"
+            )
+            assert finite_re.match(value), (
+                f"setto_param_defaults['{fn_name}']['{pname}'] = "
+                f"'{value}': must be a finite decimal literal "
+                f"('inf' / 'nan' / hex / empty rejected)"
             )
 
 

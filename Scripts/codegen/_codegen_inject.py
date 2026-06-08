@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import os
 import re
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from _codegen_core import _diag_add, FileWrite
 
@@ -91,6 +91,21 @@ def _check_brace_balance(body: str, tag: str, source: str) -> None:
         )
 
 
+_TAG_PATTERN_CACHE: Dict[str, "re.Pattern[str]"] = {}
+
+
+def _tag_pattern(tag: str) -> "re.Pattern[str]":
+    pat = _TAG_PATTERN_CACHE.get(tag)
+    if pat is None:
+        start, end = _make_tag_pair(tag)
+        pat = re.compile(
+            r"([ \t]*)(" + re.escape(start) + r")(.*?)([ \t]*)(" + re.escape(end) + r")",
+            re.DOTALL,
+        )
+        _TAG_PATTERN_CACHE[tag] = pat
+    return pat
+
+
 def inject_between_tags(file_text: str, tag: str, new_inner: str,
                         *, balance_source: Optional[str] = None) -> Tuple[str, bool]:
     """Replace the content between ``// --- CODEGEN_<tag>_START ---``
@@ -104,11 +119,7 @@ def inject_between_tags(file_text: str, tag: str, new_inner: str,
 
     When ``balance_source`` is set, emit a diagnostic if the injected
     block has unbalanced braces."""
-    start, end = _make_tag_pair(tag)
-    pattern = re.compile(
-        r"([ \t]*)(" + re.escape(start) + r")(.*?)([ \t]*)(" + re.escape(end) + r")",
-        re.DOTALL,
-    )
+    pattern = _tag_pattern(tag)
     matched = [False]
 
     def repl(m: re.Match) -> str:
@@ -137,17 +148,35 @@ def _inject_tags_into_cpp(
     diag_source: str,
 ) -> None:
     """Open ``cpp_path`` once, inject every (tag, body) pair, surface
-    a diagnostic for each missing marker pair, append a single
-    FileWrite if any tag actually changed the text."""
-    if not os.path.exists(cpp_path):
+    a diagnostic for each missing marker pair, append (or update) a
+    single FileWrite if any tag actually changed the text.
+
+    Phase ordering: earlier phases (e.g. ``_phase_categories``) may have
+    queued a FileWrite for the same path. Reading from disk in that case
+    would be stale — the later phase would inject into the PRE-cleanup
+    text and the post-cleanup IMPORT/EXPORT block would be lost on
+    apply. Use the pending write's content when present, and replace
+    it in-place so duplicate FileWrites for the same path don't show
+    up in ``apply_writes``."""
+    pending_idx: Optional[int] = None
+    for i in range(len(writes) - 1, -1, -1):
+        if writes[i].path == cpp_path:
+            pending_idx = i
+            break
+
+    if pending_idx is not None:
+        text = writes[pending_idx].content
+    elif os.path.exists(cpp_path):
+        with open(cpp_path, "r", encoding="utf-8") as f:
+            text = f.read()
+    else:
         _diag_add(
             f"[diagnostic] {diag_source}: host .cpp '{cpp_path}' does "
             f"not exist; no blocks injected.",
             source=diag_source,
         )
         return
-    with open(cpp_path, "r", encoding="utf-8") as f:
-        text = f.read()
+
     new_text = text
     for tag, body in tagged_bodies:
         new_text, ok = inject_between_tags(
@@ -159,5 +188,9 @@ def _inject_tags_into_cpp(
                 f"the CODEGEN_{tag}_START/END marker pair.",
                 source=diag_source,
             )
-    if new_text != text:
+    if new_text == text:
+        return
+    if pending_idx is not None:
+        writes[pending_idx] = FileWrite(path=cpp_path, content=new_text)
+    else:
         writes.append(FileWrite(path=cpp_path, content=new_text))

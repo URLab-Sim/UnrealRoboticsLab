@@ -70,12 +70,12 @@ struct URLAB_API FMjStatistic
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
     {
-    Dst.meaninertia = (decltype(Dst.meaninertia))Meaninertia;
-    Dst.meanmass = (decltype(Dst.meanmass))Meanmass;
-    Dst.meansize = (decltype(Dst.meansize))Meansize;
-    Dst.extent = (decltype(Dst.extent))Extent;
-    Dst.center[0] = (decltype(Dst.center[0]))Center.X;
-    Dst.center[1] = (decltype(Dst.center[1]))Center.Y;
-    Dst.center[2] = (decltype(Dst.center[2]))Center.Z;
+    Dst.meaninertia = static_cast<decltype(Dst.meaninertia)>(Meaninertia);
+    Dst.meanmass = static_cast<decltype(Dst.meanmass)>(Meanmass);
+    Dst.meansize = static_cast<decltype(Dst.meansize)>(Meansize);
+    Dst.extent = static_cast<decltype(Dst.extent)>(Extent);
+    Dst.center[0] = static_cast<decltype(Dst.center[0])>(Center.X);
+    Dst.center[1] = static_cast<decltype(Dst.center[1])>(Center.Y);
+    Dst.center[2] = static_cast<decltype(Dst.center[2])>(Center.Z);
     }
 };

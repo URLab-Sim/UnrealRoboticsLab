@@ -55,12 +55,16 @@ public:
     /** @brief Default constructor. */
 	UMjDefault();
 
-    /** @brief Name of the default class. If empty, these defaults apply to the global scope. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Default")
+    /** @brief Name of the default class. If empty, these defaults apply to the global scope.
+     *  Hidden from the Details panel — synced from the SCS hierarchy. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Default",
+              meta=(EditCondition="false", EditConditionHides))
     FString ClassName;
 
-    /** @brief Name of the parent default class for inheritance. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Default")
+    /** @brief Name of the parent default class for inheritance. Hidden from the Details panel —
+     *  synced from the SCS hierarchy. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Default",
+              meta=(EditCondition="false", EditConditionHides))
     FString ParentClassName;
 
     /**

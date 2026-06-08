@@ -61,40 +61,40 @@ class URLAB_API UMjSite : public UMjComponent
 public:
 
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite|Spatial Pose", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
     FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite|Orientation", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site|Orientation", meta=(EditCondition="bOverride_Quat"))
     FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
     bool bOverride_group = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_group"))
     int32 group = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
     bool bOverride_material = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_material"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_material"))
     FString material = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
     bool bOverride_size = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_size"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_size"))
     TArray<float> size = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSite", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
     bool bOverride_rgba = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSite", meta=(EditCondition="bOverride_rgba"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_rgba"))
     FLinearColor rgba = FLinearColor::White;
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -145,8 +145,10 @@ public:
     TArray<FString> GetDefaultClassOptions() const;
 #endif
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
+    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+     *  Details panel — synced from MjClassName via the editor dropdown. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site",
+              meta=(EditCondition="false", EditConditionHides))
     UMjDefault* DefaultClass = nullptr;
 
     virtual FString GetMjClassName() const override

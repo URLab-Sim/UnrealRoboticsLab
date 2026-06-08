@@ -117,7 +117,7 @@ int32 UMjPerturbation::ResolveBodyIdFromActor(const AActor* Actor, const FVector
     if (!Actor) return -1;
 
     // Articulation path: find the nearest UMjGeom to the hit point (any geom
-    // on the actor belongs to a body via Geom->GetMj().body_id).
+    // on the actor belongs to a body via Geom->GetMj().geom_bodyid).
     TArray<UMjGeom*> Geoms;
     const_cast<AActor*>(Actor)->GetComponents<UMjGeom>(Geoms);
     if (Geoms.Num() > 0)
@@ -132,7 +132,7 @@ int32 UMjPerturbation::ResolveBodyIdFromActor(const AActor* Actor, const FVector
         }
         if (Best)
         {
-            return Best->GetMj().body_id;
+            return Best->GetMj().geom_bodyid;
         }
     }
 

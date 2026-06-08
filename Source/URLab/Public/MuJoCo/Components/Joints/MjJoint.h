@@ -59,112 +59,124 @@ class URLAB_API UMjJoint : public UMjComponent
 
 public:	
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Spatial Pose", meta=(InlineEditConditionToggle))
+    bool bOverride_Pos = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    FVector Pos = FVector::ZeroVector;
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_group = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_group"))
     int32 group = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
+    bool bOverride_Axis = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Axis"))
+    FVector Axis = FVector(0.0f, 0.0f, 1.0f);
+
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_springdamper = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_springdamper"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_springdamper"))
     TArray<float> springdamper = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_limited = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_limited"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_limited"))
     bool limited = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
-    bool bOverride_actuatorfrclimited = false;
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
+    bool bOverride_ActFrcLimited = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_actuatorfrclimited"))
-    bool actuatorfrclimited = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ActFrcLimited"))
+    bool ActFrcLimited = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_solreflimit = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_solreflimit"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_solreflimit"))
     TArray<float> solreflimit = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_solimplimit = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_solimplimit"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_solimplimit"))
     TArray<float> solimplimit = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_solreffriction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_solreffriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_solreffriction"))
     TArray<float> solreffriction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_solimpfriction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_solimpfriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_solimpfriction"))
     TArray<float> solimpfriction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_stiffness = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_stiffness"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_stiffness"))
     TArray<float> stiffness = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_range = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_range"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_range"))
     TArray<float> range = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
-    bool bOverride_actuatorfrcrange = false;
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
+    bool bOverride_ActFrcRange = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_actuatorfrcrange"))
-    TArray<float> actuatorfrcrange = {};
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ActFrcRange"))
+    TArray<float> ActFrcRange = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_actuatorgravcomp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_actuatorgravcomp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_actuatorgravcomp"))
     float actuatorgravcomp = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_margin"))
     float margin = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_ref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_ref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ref"))
     float ref = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_springref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_springref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_springref"))
     float springref = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_armature = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_armature"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_armature"))
     float armature = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_damping = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_damping"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_damping"))
     TArray<float> damping = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjJoint", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_frictionloss = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjJoint", meta=(EditCondition="bOverride_frictionloss"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_frictionloss"))
     float frictionloss = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -255,8 +267,10 @@ public:
     TArray<FString> GetDefaultClassOptions() const;
 #endif
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint")
+    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+     *  Details panel — synced from MjClassName via the editor dropdown. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint",
+              meta=(EditCondition="false", EditConditionHides))
     class UMjDefault* DefaultClass = nullptr;
 
     virtual FString GetMjClassName() const override
@@ -289,15 +303,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Type"))
     EMjJointType Type = EMjJointType::Hinge;
 
-    /** @brief Override toggle for Axis. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
-    bool bOverride_Axis = false;
-
-    /** @brief Local joint axis vector (relative to parent body). Ignored for Free/Ball joints. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Axis"))
-    FVector Axis = FVector(0.0f, 0.0f, 1.0f);
-
-
+    // Axis UPROPERTY is codegen-emitted (rules.joint.vec3_convert.axis =
+    // y_negate, property_renames.axis = "Axis", property_defaults.axis =
+    // FVector(0,0,1)). The Pos UPROPERTY is codegen-emitted via the
+    // spatial_pose canon.
 
     // --- Physics Properties (with override toggles) ---
 

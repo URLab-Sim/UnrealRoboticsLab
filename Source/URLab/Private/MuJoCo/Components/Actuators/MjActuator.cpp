@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MuJoCo/Core/AMjManager.h"
@@ -53,7 +54,7 @@ void UMjActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
     if (!Element) return;
 
     // --- CODEGEN_EXPORT_START ---
-    if (!TargetName.IsEmpty()) mjs_setString(Element->target, TCHAR_TO_UTF8(*TargetName));
+    MjSetString(Element->target, TargetName);
     switch (TransmissionType)
     {
         case EMjActuatorTrnType::Joint:          Element->trntype = mjTRN_JOINT;         break;
@@ -66,11 +67,11 @@ void UMjActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
     }
     if (TransmissionType == EMjActuatorTrnType::SliderCrank && !SliderSite.IsEmpty())
     {
-        mjs_setString(Element->slidersite, TCHAR_TO_UTF8(*SliderSite));
+        MjSetStringRaw(Element->slidersite, SliderSite);
     }
     if (TransmissionType == EMjActuatorTrnType::Site && !RefSite.IsEmpty())
     {
-        mjs_setString(Element->refsite, TCHAR_TO_UTF8(*RefSite));
+        MjSetStringRaw(Element->refsite, RefSite);
     }
     if (bOverride_GainType)
     {
@@ -135,6 +136,7 @@ void UMjActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
     if (!Node) return;
 
     // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
     { // xml_enum: gaintype -> EMjGainType
         FString S = Node->GetAttribute(TEXT("gaintype"));
         S = S.ToLower();
@@ -217,23 +219,12 @@ void UMjActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
         }
     }
     // --- CODEGEN_IMPORT_END ---
-
-    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
 }
 
 void UMjActuator::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 {
     Super::Bind(Model, Data, Prefix);
-    m_ActuatorView = BindToView<ActuatorView>(Prefix);
-
-    if (m_ActuatorView.id != -1)
-    {
-        m_ID = m_ActuatorView.id;
-    }
-    else
-    {
-        UE_LOG(LogURLabBind, Warning, TEXT("[MjActuator] Actuator '%s' could not bind! Prefix: %s"), *GetName(), *Prefix);
-    }
+    BindAndCacheView(m_ActuatorView, Prefix);
 }
 
 // ----------------------------------------------------------------------------------
@@ -288,38 +279,38 @@ float UMjActuator::ResolveDesiredControl(uint8 Source) const
 
 float UMjActuator::GetForce() const
 {
-    if (m_ActuatorView.id != -1 && m_ActuatorView.force)
+    if (m_ActuatorView.id != -1 && m_ActuatorView.actuator_force)
     {
-        return (float)m_ActuatorView.force[0];
+        return (float)m_ActuatorView.actuator_force[0];
     }
     return 0.0f;
 }
 
 float UMjActuator::GetLength() const
 {
-    if (m_ActuatorView.id != -1 && m_ActuatorView.length)
+    if (m_ActuatorView.id != -1 && m_ActuatorView.actuator_length)
     {
-        return (float)m_ActuatorView.length[0];
+        return (float)m_ActuatorView.actuator_length[0];
     }
     return 0.0f;
 }
 
 float UMjActuator::GetVelocity() const
 {
-    if (m_ActuatorView.id != -1 && m_ActuatorView.velocity)
+    if (m_ActuatorView.id != -1 && m_ActuatorView.actuator_velocity)
     {
-        return (float)m_ActuatorView.velocity[0];
+        return (float)m_ActuatorView.actuator_velocity[0];
     }
     return 0.0f;
 }
 
 void UMjActuator::SetGear(const TArray<float>& NewGear)
 {
-    if (m_ActuatorView.id != -1 && m_ActuatorView.gear)
+    if (m_ActuatorView.id != -1 && m_ActuatorView.actuator_gear)
     {
         for(int i=0; i<NewGear.Num() && i<6; ++i)
         {
-             m_ActuatorView.gear[i] = (mjtNum)NewGear[i];
+             m_ActuatorView.actuator_gear[i] = (mjtNum)NewGear[i];
         }
     }
 }
@@ -327,17 +318,17 @@ void UMjActuator::SetGear(const TArray<float>& NewGear)
 TArray<float> UMjActuator::GetGear() const
 {
     TArray<float> Res;
-    if (m_ActuatorView.id != -1 && m_ActuatorView.gear)
+    if (m_ActuatorView.id != -1 && m_ActuatorView.actuator_gear)
     {
-        for(int i=0; i<6; ++i) Res.Add((float)m_ActuatorView.gear[i]);
+        for(int i=0; i<6; ++i) Res.Add((float)m_ActuatorView.actuator_gear[i]);
     }
     return Res;
 }
 
 FVector2D UMjActuator::GetControlRange() const
 {
-    if (m_ActuatorView.id < 0 || !m_ActuatorView.ctrlrange) return FVector2D::ZeroVector;
-    return FVector2D((float)m_ActuatorView.ctrlrange[0], (float)m_ActuatorView.ctrlrange[1]);
+    if (m_ActuatorView.id < 0 || !m_ActuatorView.actuator_ctrlrange) return FVector2D::ZeroVector;
+    return FVector2D((float)m_ActuatorView.actuator_ctrlrange[0], (float)m_ActuatorView.actuator_ctrlrange[1]);
 }
 
 float UMjActuator::GetActivation() const
@@ -403,19 +394,10 @@ TArray<FString> UMjActuator::GetTargetNameOptions() const
     return GetSiblingComponentOptions(this, FilterClass);
 }
 
-TArray<FString> UMjActuator::GetSliderSiteOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjSite::StaticClass());
-}
-
-TArray<FString> UMjActuator::GetRefSiteOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjSite::StaticClass());
-}
-
-TArray<FString> UMjActuator::GetDefaultClassOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjActuator::GetSliderSiteOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjSite::StaticClass()); }
+TArray<FString> UMjActuator::GetRefSiteOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjSite::StaticClass()); }
+TArray<FString> UMjActuator::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+    // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 

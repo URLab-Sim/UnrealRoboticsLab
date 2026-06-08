@@ -243,7 +243,7 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
             AMjArticulation* CDO = Cast<AMjArticulation>(BP->GeneratedClass->GetDefaultObject());
             if (CDO)
             {
-                FMuJoCoOptions& Opts = CDO->SimOptions;
+                FMjOptionGenerated& Opts = CDO->SimOptions;
 
                 auto ParseVec3 = [](const FString& Raw, FVector& Out)
                 {

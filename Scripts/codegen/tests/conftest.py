@@ -24,7 +24,7 @@ import pytest
 @pytest.fixture(scope="session")
 def real_schema() -> Dict[str, Any]:
     """The actual MJCF schema snapshot shipped with the plugin."""
-    path = os.path.join(_PLUGIN_ROOT, "Scripts", "mjcf_schema_snapshot.json")
+    path = os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjcf_schema_snapshot.json")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -38,7 +38,7 @@ def real_rules() -> Dict[str, Any]:
 
 @pytest.fixture(scope="session")
 def real_mjxmacro() -> Dict[str, Any]:
-    path = os.path.join(_PLUGIN_ROOT, "Scripts", "mjxmacro_snapshot.json")
+    path = os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjxmacro_snapshot.json")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 

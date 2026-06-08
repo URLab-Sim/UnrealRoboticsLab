@@ -24,6 +24,7 @@
 #include "XmlNode.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
+#include "mujoco/mujoco.h"
 
 // ============================================================================
 // Compiler Settings
@@ -126,7 +127,7 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
             OutQuat[1] = (double)Parts[1];
             OutQuat[2] = (double)Parts[2];
             OutQuat[3] = (double)Parts[3];
-            QuatNormalize(OutQuat);
+            mju_normalize4(OutQuat);
             return true;
         }
     }
@@ -213,48 +214,18 @@ bool MjOrientationUtils::OrientationToMjQuat(const FXmlNode* Node, const FMjComp
 
 void MjOrientationUtils::AxisAngleToQuat(double x, double y, double z, double AngleRad, double OutQuat[4])
 {
-    // Normalize axis
-    double Len = FMath::Sqrt(x * x + y * y + z * z);
-    if (Len < 1e-10)
+    double Axis[3] = { x, y, z };
+    if (mju_normalize3(Axis) < 1e-10)
     {
         OutQuat[0] = 1.0; OutQuat[1] = 0.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
         return;
     }
-
-    double InvLen = 1.0 / Len;
-    double nx = x * InvLen;
-    double ny = y * InvLen;
-    double nz = z * InvLen;
-
-    double HalfAngle = AngleRad * 0.5;
-    double s = FMath::Sin(HalfAngle);
-    double c = FMath::Cos(HalfAngle);
-
-    OutQuat[0] = c;
-    OutQuat[1] = s * nx;
-    OutQuat[2] = s * ny;
-    OutQuat[3] = s * nz;
-    QuatNormalize(OutQuat);
+    mju_axisAngle2Quat(OutQuat, Axis, AngleRad);
 }
 
 // ============================================================================
 // Euler → Quaternion
 // ============================================================================
-
-void MjOrientationUtils::ElementalRotQuat(int AxisIndex, double AngleRad, double OutQuat[4])
-{
-    double HalfAngle = AngleRad * 0.5;
-    double s = FMath::Sin(HalfAngle);
-    double c = FMath::Cos(HalfAngle);
-
-    OutQuat[0] = c;
-    OutQuat[1] = 0.0;
-    OutQuat[2] = 0.0;
-    OutQuat[3] = 0.0;
-
-    // AxisIndex: 0=x, 1=y, 2=z
-    OutQuat[1 + AxisIndex] = s;
-}
 
 void MjOrientationUtils::EulerToQuat(double e1, double e2, double e3, const FString& EulerSeq, double OutQuat[4])
 {
@@ -265,62 +236,9 @@ void MjOrientationUtils::EulerToQuat(double e1, double e2, double e3, const FStr
         return;
     }
 
-    double Angles[3] = { e1, e2, e3 };
-    int AxisIndices[3];
-    bool bExtrinsic[3];
-
-    for (int i = 0; i < 3; ++i)
-    {
-        TCHAR Ch = EulerSeq[i];
-        switch (Ch)
-        {
-            case 'x': AxisIndices[i] = 0; bExtrinsic[i] = false; break;
-            case 'y': AxisIndices[i] = 1; bExtrinsic[i] = false; break;
-            case 'z': AxisIndices[i] = 2; bExtrinsic[i] = false; break;
-            case 'X': AxisIndices[i] = 0; bExtrinsic[i] = true;  break;
-            case 'Y': AxisIndices[i] = 1; bExtrinsic[i] = true;  break;
-            case 'Z': AxisIndices[i] = 2; bExtrinsic[i] = true;  break;
-            default:
-                UE_LOG(LogURLabImport, Warning, TEXT("[MjOrientationUtils] Invalid euler axis character '%c'"), Ch);
-                AxisIndices[i] = 0; bExtrinsic[i] = false;
-                break;
-        }
-    }
-
-    // Build three elemental rotation quaternions
-    double Q1[4], Q2[4], Q3[4];
-    ElementalRotQuat(AxisIndices[0], Angles[0], Q1);
-    ElementalRotQuat(AxisIndices[1], Angles[1], Q2);
-    ElementalRotQuat(AxisIndices[2], Angles[2], Q3);
-
-    // Per-axis composition following MuJoCo convention (user_objects.cc):
-    //   Lowercase (intrinsic): rotate in body-fixed frame → accumulate on the right: R = R_prev * Ri
-    //   Uppercase (extrinsic): rotate in world-fixed frame → accumulate on the left:  R = Ri * R_prev
-    // This handles pure intrinsic, pure extrinsic, and mixed sequences correctly.
-
-    const double* Qi[3] = { Q1, Q2, Q3 };
-    // Start with identity
-    double Result[4] = { 1.0, 0.0, 0.0, 0.0 };
-    double Temp[4];
-
-    for (int i = 0; i < 3; ++i)
-    {
-        if (bExtrinsic[i])
-        {
-            // Extrinsic: new = Qi * Result
-            QuatMul(Qi[i], Result, Temp);
-        }
-        else
-        {
-            // Intrinsic: new = Result * Qi
-            QuatMul(Result, Qi[i], Temp);
-        }
-        Result[0] = Temp[0]; Result[1] = Temp[1]; Result[2] = Temp[2]; Result[3] = Temp[3];
-    }
-
-    OutQuat[0] = Result[0]; OutQuat[1] = Result[1]; OutQuat[2] = Result[2]; OutQuat[3] = Result[3];
-
-    QuatNormalize(OutQuat);
+    double Euler[3] = { e1, e2, e3 };
+    const auto SeqAnsi = StringCast<ANSICHAR>(*EulerSeq);
+    mju_euler2Quat(OutQuat, Euler, SeqAnsi.Get());
 }
 
 // ============================================================================
@@ -329,43 +247,37 @@ void MjOrientationUtils::EulerToQuat(double e1, double e2, double e3, const FStr
 
 void MjOrientationUtils::XYAxesToQuat(const double XYAxes[6], double OutQuat[4])
 {
-    // X axis
-    double Xx = XYAxes[0], Xy = XYAxes[1], Xz = XYAxes[2];
-    double XLen = FMath::Sqrt(Xx * Xx + Xy * Xy + Xz * Xz);
-    if (XLen < 1e-10)
+    double X[3] = { XYAxes[0], XYAxes[1], XYAxes[2] };
+    if (mju_normalize3(X) < 1e-10)
     {
         OutQuat[0] = 1.0; OutQuat[1] = 0.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
         return;
     }
-    Xx /= XLen; Xy /= XLen; Xz /= XLen;
 
-    // Y axis (orthogonalize against X)
-    double Yx = XYAxes[3], Yy = XYAxes[4], Yz = XYAxes[5];
-    double Dot = Xx * Yx + Xy * Yy + Xz * Yz;
-    Yx -= Dot * Xx;
-    Yy -= Dot * Xy;
-    Yz -= Dot * Xz;
-    double YLen = FMath::Sqrt(Yx * Yx + Yy * Yy + Yz * Yz);
-    if (YLen < 1e-10)
+    double Y[3] = { XYAxes[3], XYAxes[4], XYAxes[5] };
+    const double Dot = X[0]*Y[0] + X[1]*Y[1] + X[2]*Y[2];
+    Y[0] -= Dot*X[0]; Y[1] -= Dot*X[1]; Y[2] -= Dot*X[2];
+    if (mju_normalize3(Y) < 1e-10)
     {
         OutQuat[0] = 1.0; OutQuat[1] = 0.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
         return;
     }
-    Yx /= YLen; Yy /= YLen; Yz /= YLen;
 
-    // Z axis = X cross Y
-    double Zx = Xy * Yz - Xz * Yy;
-    double Zy = Xz * Yx - Xx * Yz;
-    double Zz = Xx * Yy - Xy * Yx;
+    double Z[3];
+    mju_cross(Z, X, Y);
+    if (mju_normalize3(Z) < 1e-10)
+    {
+        OutQuat[0] = 1.0; OutQuat[1] = 0.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
+        return;
+    }
 
-    // Build rotation matrix (row-major): row 0 = X, row 1 = Y, row 2 = Z
-    double R[9] = {
-        Xx, Xy, Xz,
-        Yx, Yy, Yz,
-        Zx, Zy, Zz
+    // MuJoCo rotation matrix is row-major with COLUMNS = local axes (mjuu_frame2quat convention).
+    const double Mat[9] = {
+        X[0], Y[0], Z[0],
+        X[1], Y[1], Z[1],
+        X[2], Y[2], Z[2]
     };
-
-    RotMatToQuat(R, OutQuat);
+    mju_mat2Quat(OutQuat, Mat);
 }
 
 // ============================================================================
@@ -374,119 +286,27 @@ void MjOrientationUtils::XYAxesToQuat(const double XYAxes[6], double OutQuat[4])
 
 void MjOrientationUtils::ZAxisToQuat(const double ZAxis[3], double OutQuat[4])
 {
-    double Zx = ZAxis[0], Zy = ZAxis[1], Zz = ZAxis[2];
-    double Len = FMath::Sqrt(Zx * Zx + Zy * Zy + Zz * Zz);
-    if (Len < 1e-10)
+    double Vec[3] = { ZAxis[0], ZAxis[1], ZAxis[2] };
+    if (mju_normalize3(Vec) < 1e-10)
     {
         OutQuat[0] = 1.0; OutQuat[1] = 0.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
         return;
     }
-    Zx /= Len; Zy /= Len; Zz /= Len;
 
-    // Source direction: (0, 0, 1)
-    // target direction: (Zx, Zy, Zz)
-    // Rotation axis = cross(source, target), angle = acos(dot(source, target))
-
-    double DotVal = Zz; // dot((0,0,1), (Zx,Zy,Zz)) = Zz
-
-    if (DotVal > 0.9999999)
+    if (Vec[2] > 0.9999999)
     {
-        // Nearly identical — identity rotation
         OutQuat[0] = 1.0; OutQuat[1] = 0.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
         return;
     }
-
-    if (DotVal < -0.9999999)
+    if (Vec[2] < -0.9999999)
     {
-        // Nearly opposite — 180 degree rotation around any perpendicular axis
-        // Choose X axis as the rotation axis
         OutQuat[0] = 0.0; OutQuat[1] = 1.0; OutQuat[2] = 0.0; OutQuat[3] = 0.0;
         return;
     }
 
-    // cross((0,0,1), (Zx,Zy,Zz)) = (-Zy, Zx, 0)
-    double Ax = -Zy;
-    double Ay = Zx;
-    double Az = 0.0;
-
-    double Angle = FMath::Acos(FMath::Clamp(DotVal, -1.0, 1.0));
-    AxisAngleToQuat(Ax, Ay, Az, Angle, OutQuat);
-}
-
-// ============================================================================
-// Quaternion Helpers
-// ============================================================================
-
-void MjOrientationUtils::QuatMul(const double A[4], const double B[4], double Result[4])
-{
-    // Hamilton product: A * B  with layout [w, x, y, z]
-    Result[0] = A[0]*B[0] - A[1]*B[1] - A[2]*B[2] - A[3]*B[3];
-    Result[1] = A[0]*B[1] + A[1]*B[0] + A[2]*B[3] - A[3]*B[2];
-    Result[2] = A[0]*B[2] - A[1]*B[3] + A[2]*B[0] + A[3]*B[1];
-    Result[3] = A[0]*B[3] + A[1]*B[2] - A[2]*B[1] + A[3]*B[0];
-}
-
-void MjOrientationUtils::QuatNormalize(double Q[4])
-{
-    double Len = FMath::Sqrt(Q[0]*Q[0] + Q[1]*Q[1] + Q[2]*Q[2] + Q[3]*Q[3]);
-    if (Len < 1e-10)
-    {
-        Q[0] = 1.0; Q[1] = 0.0; Q[2] = 0.0; Q[3] = 0.0;
-        return;
-    }
-    double InvLen = 1.0 / Len;
-    Q[0] *= InvLen; Q[1] *= InvLen; Q[2] *= InvLen; Q[3] *= InvLen;
-}
-
-void MjOrientationUtils::RotMatToQuat(const double R[9], double OutQuat[4])
-{
-    // Rotation matrix in row-major order:
-    //   R[0] R[1] R[2]     =  row 0 (X axis)
-    //   R[3] R[4] R[5]     =  row 1 (Y axis)
-    //   R[6] R[7] R[8]     =  row 2 (Z axis)
-    //
-    // MuJoCo stores rotation matrices as 3x3 row-major where columns are frame axes.
-    // For xyaxes, we constructed R with rows = axes, so the rotation matrix for MuJoCo
-    // frame would have the columns as the axes. Since our R has rows as axes,
-    // the equivalent rotation matrix (transforms world to local) has columns as the axes.
-    // We need to convert from this rotation matrix to quaternion.
-    //
-    // Standard Shepperd method for robust matrix-to-quaternion conversion:
-
-    double Trace = R[0] + R[4] + R[8];
-
-    if (Trace > 0.0)
-    {
-        double s = FMath::Sqrt(Trace + 1.0) * 2.0; // s = 4*w
-        OutQuat[0] = 0.25 * s;
-        OutQuat[1] = (R[5] - R[7]) / s;  // (R[1][2] - R[2][1]) / s
-        OutQuat[2] = (R[6] - R[2]) / s;  // (R[2][0] - R[0][2]) / s
-        OutQuat[3] = (R[1] - R[3]) / s;  // (R[0][1] - R[1][0]) / s
-    }
-    else if (R[0] > R[4] && R[0] > R[8])
-    {
-        double s = FMath::Sqrt(1.0 + R[0] - R[4] - R[8]) * 2.0; // s = 4*x
-        OutQuat[0] = (R[5] - R[7]) / s;
-        OutQuat[1] = 0.25 * s;
-        OutQuat[2] = (R[1] + R[3]) / s;
-        OutQuat[3] = (R[2] + R[6]) / s;
-    }
-    else if (R[4] > R[8])
-    {
-        double s = FMath::Sqrt(1.0 + R[4] - R[0] - R[8]) * 2.0; // s = 4*y
-        OutQuat[0] = (R[6] - R[2]) / s;
-        OutQuat[1] = (R[1] + R[3]) / s;
-        OutQuat[2] = 0.25 * s;
-        OutQuat[3] = (R[5] + R[7]) / s;
-    }
-    else
-    {
-        double s = FMath::Sqrt(1.0 + R[8] - R[0] - R[4]) * 2.0; // s = 4*z
-        OutQuat[0] = (R[1] - R[3]) / s;
-        OutQuat[1] = (R[2] + R[6]) / s;
-        OutQuat[2] = (R[5] + R[7]) / s;
-        OutQuat[3] = 0.25 * s;
-    }
-
-    QuatNormalize(OutQuat);
+    // axis = cross((0,0,1), Vec) = (-Vec[1], Vec[0], 0)
+    double Axis[3] = { -Vec[1], Vec[0], 0.0 };
+    const double Angle = FMath::Acos(FMath::Clamp(Vec[2], -1.0, 1.0));
+    mju_normalize3(Axis);
+    mju_axisAngle2Quat(OutQuat, Axis, Angle);
 }

@@ -34,13 +34,20 @@
 
 /**
  * @enum EMjBodySleepPolicy
- * @brief Per-body sleep policy, matching MuJoCo's mjtSleepPolicy (user-settable subset).
+ * @brief Per-body sleep policy, matching MuJoCo's mjtSleepPolicy.
+ *
+ * The canonical way to opt out of per-body override is the
+ * bOverride_SleepPolicy toggle on UMjBody (toggle off => no per-body sleep
+ * value is written; mjsBody.sleep keeps the compiled default). The Auto
+ * entry exists because UHT requires UENUMs to have a 0-valued entry; it
+ * maps to mjSLEEP_AUTO so writing it explicitly is equivalent to not
+ * overriding at all.
  */
 UENUM(BlueprintType)
 enum class EMjBodySleepPolicy : uint8
 {
-    /** Let the compiler/global policy decide (mjSLEEP_AUTO). */
-    Default     = 0  UMETA(DisplayName="Default (Auto)"),
+    /** Use the global option (mjSLEEP_AUTO). Equivalent to leaving the override toggle off. */
+    Auto        = 0  UMETA(DisplayName="Auto (use global)"),
     /** This body's tree is never allowed to sleep (mjSLEEP_NEVER). */
     Never       = 3  UMETA(DisplayName="Never"),
     /** This body's tree is allowed to sleep (mjSLEEP_ALLOWED). */
@@ -56,34 +63,34 @@ class URLAB_API UMjBody : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody|Spatial Pose", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
     FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody|Orientation", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body|Orientation", meta=(EditCondition="bOverride_Quat"))
     FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta=(InlineEditConditionToggle))
     bool bOverride_childclass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody", meta=(EditCondition="bOverride_childclass", GetOptions="GetChildClassOptions"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body", meta=(EditCondition="bOverride_childclass", GetOptions="GetChildClassOptions"))
     FString childclass = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta=(InlineEditConditionToggle))
     bool bOverride_mocap = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody", meta=(EditCondition="bOverride_mocap", DisplayName="Driven By Unreal"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body", meta=(EditCondition="bOverride_mocap", DisplayName="Driven By Unreal"))
     bool mocap = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjBody", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta=(InlineEditConditionToggle))
     bool bOverride_gravcomp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjBody", meta=(EditCondition="bOverride_gravcomp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body", meta=(EditCondition="bOverride_gravcomp"))
     float gravcomp = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -97,10 +104,15 @@ public:
     TArray<FString> GetChildClassOptions() const;
 #endif
 
-    /** @brief Per-body sleep policy (MuJoCo 3.4+). Default lets the global option decide. */
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Body|sleep", meta=(InlineEditConditionToggle))
+    bool bOverride_SleepPolicy = false;
+
+    /** @brief Per-body sleep policy (MuJoCo 3.4+). When the override toggle is off,
+     *  the global option decides; when on, this value is written to mjsBody.sleep. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Body|sleep",
-        meta=(ToolTip="sleep policy for this body's kinematic tree. Only has effect when sleep is enabled in AMjManager Options."))
-    EMjBodySleepPolicy SleepPolicy = EMjBodySleepPolicy::Default;
+        meta=(EditCondition="bOverride_SleepPolicy",
+              ToolTip="sleep policy for this body's kinematic tree. Only has effect when sleep is enabled in AMjManager Options."))
+    EMjBodySleepPolicy SleepPolicy = EMjBodySleepPolicy::Never;
 
     /**
      * @brief Registers this body to the MuJoCo spec.

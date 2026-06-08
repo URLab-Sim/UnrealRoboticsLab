@@ -71,124 +71,124 @@ class URLAB_API UMjFlexcomp : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp|Spatial Pose", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
     FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp|Orientation", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Orientation", meta=(EditCondition="bOverride_Quat"))
     FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_group = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_group"))
     int32 group = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_dim = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_dim"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_dim"))
     int32 dim = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_count = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_count"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_count"))
     TArray<int32> count = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_cellcount = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_cellcount"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_cellcount"))
     TArray<int32> cellcount = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_spacing = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_spacing"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_spacing"))
     TArray<float> spacing = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_radius = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_radius"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_radius"))
     float radius = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_rigid = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_rigid"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_rigid"))
     bool rigid = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_mass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_mass"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_mass"))
     float mass = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_inertiabox = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_inertiabox"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_inertiabox"))
     float inertiabox = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_scale = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_scale"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_scale"))
     TArray<float> scale = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_file = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_file"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_file"))
     FString file = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_point = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_point"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_point"))
     TArray<float> point = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_element = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_element"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_element"))
     TArray<int32> element = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_texcoord = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_texcoord"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_texcoord"))
     TArray<float> texcoord = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_material = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_material"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_material"))
     FString material = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_rgba = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_rgba"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_rgba"))
     FLinearColor rgba = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_flatskin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_flatskin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_flatskin"))
     bool flatskin = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjFlexcomp", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_origin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjFlexcomp", meta=(EditCondition="bOverride_origin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_origin"))
     TArray<float> origin = {};
     // --- CODEGEN_PROPERTIES_END ---
 

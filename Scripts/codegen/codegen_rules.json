@@ -5,18 +5,21 @@
   },
 
   "global_exclusions": [
-    "user", "name", "class", "type"
+    "user", "name", "class", "type", "objtype", "reftype"
   ],
   "default_type": "float",
   "_note_property_renames": "Schema attr -> UPROPERTY identifier. Used when the UE-side identifier must differ from the verbatim schema attr (typically to avoid C++ keyword collisions or to keep PascalCase for legacy consumers). qpos/qvel/etc are PascalCase on UMjKeyframe because BP graphs / runtime accessors reference them that way.",
   "property_renames": {
-    "qpos":  "Qpos",
-    "qvel":  "Qvel",
-    "act":   "Act",
-    "ctrl":  "Ctrl",
-    "mpos":  "Mpos",
-    "mquat": "Mquat",
-    "time":  "Time"
+    "qpos":               "Qpos",
+    "qvel":               "Qvel",
+    "act":                "Act",
+    "ctrl":               "Ctrl",
+    "mpos":               "Mpos",
+    "mquat":              "Mquat",
+    "time":               "Time",
+    "actuatorfrclimited": "ActFrcLimited",
+    "actuatorfrcrange":   "ActFrcRange",
+    "axis":               "Axis"
   },
 
   "_note_setto_param_defaults": "MuJoCo's mjs_setTo* API treats specific scalar defaults as sentinels. These values are how URLab signals 'not overridden, use MuJoCo's default'. Most use -1.0; a few use 0.0 or 0.01 — encoded here as data, NOT as C++ string literals.",
@@ -36,6 +39,43 @@
     "light": "URLab doesn't model MJCF <light> as a UE component — UE has its own light primitives that override MJCF light placement.",
     "flex":  "Children of <deformable>. URLab generates flexes via UMjFlexcomp (which expands to a flex at parse time); the direct <flex> element is not a UE component.",
     "skin":  "Children of <asset>. URLab handles skinning via UE skeletal meshes; <skin> in MJCF would need a dedicated asset pipeline."
+  },
+
+  "_note_intentionally_unmodeled_mjs_fields": "Per-mjsX-struct list of fields URLab knows about but doesn't model via codegen. Silences the mjsX-field-drift diagnostic. Add entries for fields handled by a different UE component, by canon, or that we deliberately skip.",
+  "intentionally_unmodeled_mjs_fields": {
+    "mjsBody": [
+      "inertia", "ipos", "ialt", "mass", "iquat", "fullinertia", "alt",
+      "plugin"
+    ],
+    "mjsFrame": [
+      "pos", "quat", "childclass", "alt"
+    ],
+    "mjsFlex": [
+      "solimp", "solmix", "contype", "activelayers", "edgedamping", "elem",
+      "size", "passive", "condim", "order", "nodebody",
+      "vertbody", "elemtexcoord", "selfcollide", "poisson", "vert", "margin",
+      "conaffinity", "damping", "priority", "edgestiffness", "node",
+      "solref", "gap", "elastic2d", "young", "friction", "thickness", "internal"
+    ],
+    "mjsCamera": [
+      "intrinsic", "alt"
+    ],
+    "mjsGeom": [
+      "alt", "plugin"
+    ],
+    "mjsSite": [
+      "alt"
+    ],
+    "mjsActuator": [
+      "plugin"
+    ],
+    "mjsJoint": [
+      "align"
+    ],
+    "mjsSensor": [
+      "datatype", "dim", "intprm", "needstage", "objname", "plugin",
+      "refname", "reftype"
+    ]
   },
 
   "type_mappings": {
@@ -215,6 +255,7 @@
   "element_rules": {
     "actuator": {
       "_note_enums": "gaintype/biastype/dyntype are mjtGain/mjtBias/mjtDyn enums on mjsActuator. URLab declares EMjGainType/EMjBiasType/EMjDynType hand-side on UMjActuator; codegen owns the XML<->enum map via xml_enum_attrs. dcmotor 'input' is per-subtype (only on UMjDcMotorActuator) — emitter gates on attr-in-subtype-schema for that case.",
+      "common_imports": ["class"],
       "exclude_attrs": [],
       "applies_canonicalizations": ["actuator_transmission"],
       "xml_enum_attrs": {
@@ -223,6 +264,8 @@
           "ue_enum_type": "EMjGainType",
           "mjs_field":    "gaintype",
           "mjs_cast":     "mjtGain",
+          "emit_property_decl": true,
+          "property_default":   "Fixed",
           "value_map": {
             "fixed":  ["Fixed",  "mjGAIN_FIXED"],
             "affine": ["Affine", "mjGAIN_AFFINE"],
@@ -235,6 +278,8 @@
           "ue_enum_type": "EMjBiasType",
           "mjs_field":    "biastype",
           "mjs_cast":     "mjtBias",
+          "emit_property_decl": true,
+          "property_default":   "None",
           "value_map": {
             "none":   ["None",   "mjBIAS_NONE"],
             "affine": ["Affine", "mjBIAS_AFFINE"],
@@ -247,6 +292,8 @@
           "ue_enum_type": "EMjDynType",
           "mjs_field":    "dyntype",
           "mjs_cast":     "mjtDyn",
+          "emit_property_decl": true,
+          "property_default":   "None",
           "value_map": {
             "none":        ["None",        "mjDYN_NONE"],
             "integrator":  ["Integrator",  "mjDYN_INTEGRATOR"],
@@ -269,14 +316,66 @@
       }
     },
     "sensor": {
+      "_note": "Sensor reads its target name from one of several xor attrs depending on subtype (site for touch/accel/gyro, joint for jointpos, etc.). target_collations collapses them into UE FString TargetName. ReferenceName is direct from 'refname'. ObjType / RefType are EMjObjType enums with their own string<->enum mapping (xml_enum_attrs).",
+      "common_imports": ["class"],
+      "target_collations": {
+        "TargetName": {
+          "mjs_field": "objname",
+          "absorbs_attrs": ["site", "joint", "tendon", "actuator", "body", "geom", "objname", "camera", "mesh"]
+        },
+        "ReferenceName": {
+          "mjs_field": "refname",
+          "absorbs_attrs": ["refname"]
+        }
+      },
+      "xml_enum_attrs": {
+        "objtype": {
+          "ue_property":  "ObjType",
+          "ue_enum_type": "EMjObjType",
+          "has_override_toggle": false,
+          "value_map": {
+            "body":     ["Body",     "mjOBJ_BODY"],
+            "xbody":    ["XBody",    "mjOBJ_XBODY"],
+            "joint":    ["Joint",    "mjOBJ_JOINT"],
+            "dof":      ["DoF",      "mjOBJ_DOF"],
+            "geom":     ["Geom",     "mjOBJ_GEOM"],
+            "site":     ["Site",     "mjOBJ_SITE"],
+            "camera":   ["Camera",   "mjOBJ_CAMERA"],
+            "light":    ["Light",    "mjOBJ_LIGHT"],
+            "mesh":     ["Mesh",     "mjOBJ_MESH"],
+            "hfield":   ["HField",   "mjOBJ_HFIELD"],
+            "texture":  ["Texture",  "mjOBJ_TEXTURE"],
+            "material": ["Material", "mjOBJ_MATERIAL"],
+            "pair":     ["Pair",     "mjOBJ_PAIR"],
+            "exclude":  ["Exclude",  "mjOBJ_EXCLUDE"],
+            "equality": ["Equality", "mjOBJ_EQUALITY"],
+            "tendon":   ["Tendon",   "mjOBJ_TENDON"],
+            "actuator": ["Actuator", "mjOBJ_ACTUATOR"]
+          }
+        },
+        "reftype": {
+          "ue_property":  "RefType",
+          "ue_enum_type": "EMjObjType",
+          "has_override_toggle": false,
+          "value_map": {
+            "body":     ["Body",     "mjOBJ_BODY"],
+            "xbody":    ["XBody",    "mjOBJ_XBODY"],
+            "joint":    ["Joint",    "mjOBJ_JOINT"],
+            "geom":     ["Geom",     "mjOBJ_GEOM"],
+            "site":     ["Site",     "mjOBJ_SITE"],
+            "camera":   ["Camera",   "mjOBJ_CAMERA"]
+          }
+        }
+      },
       "exclude_attrs": []
     },
     "joint": {
-      "exclude_attrs": ["pos", "axis"],
-      "extra_property_inits": {
-        "Pos":  "FVector::ZeroVector",
-        "Axis": "FVector(0.0f, 0.0f, 1.0f)"
-      },
+      "_note_axis_pos": "axis: MuJoCo direction vector with opposite Y handedness vs UE; vec3_convert.axis = y_negate flips on import + export. pos: spatial_pose canon emits the Pos UPROPERTY pair + drives SetRelativeLocation on import.",
+      "common_imports": ["class"],
+      "applies_canonicalizations": ["spatial_pose"],
+      "vec3_convert": {"axis": "y_negate"},
+      "property_defaults": {"axis": "FVector(0.0f, 0.0f, 1.0f)"},
+      "exclude_attrs": [],
       "xml_enum_attrs": {
         "type": {
           "ue_property":  "Type",
@@ -315,6 +414,7 @@
     },
     "geom": {
       "_note": "size is codegen-owned TArray<float>; fromto-decomposed half-length is written into size[1]/[2] by the canon. material is codegen-owned for IMPORT (FString -> UE material lookup) but SKIPPED on export because URLab handles materials as UE assets and does not register them in the mjsSpec (mjs_setString on Element->material would reference a non-existent spec entry and fail mj_compile). Orientation cluster absorbed by `orientation`; fromto absorbed by `fromto_decompose`. type is an URLab enum (EMjGeomType); codegen owns the XML<->enum string map via xml_enum_attrs.",
+      "common_imports": ["class"],
       "exclude_attrs": [],
       "_note_hfield": "hfield references URLab's own hfield actor system, not a mjsHField spec entry. Codegen still imports the string for editor visibility but skips the spec write to avoid 'hfield not found' on compile.",
       "export_skip_attrs": ["material", "hfield"],
@@ -391,6 +491,7 @@
       }
     },
     "tendon": {
+      "common_imports": ["class"],
       "_note_material": "material codegen-owned for IMPORT but export-skipped — URLab handles materials as UE assets, not mjsMaterial spec entries.",
       "exclude_attrs": [],
       "export_skip_attrs": ["material"]
@@ -439,6 +540,8 @@
     },
     "camera": {
       "_note": "MJCF camera.mode is a tracking mode (mjtCamLight subset). URLab declares EMjCameraTrackingMode hand-side; codegen owns the XML<->enum map. NOT to be confused with URLab's EMjCameraMode which is a UE-side render-mode selector (RGB/Depth/Segmentation).",
+      "_note_common_imports": "Camera also reads name; the hand-written ImportFromXml has a fallback `if MjName empty -> 'Camera'` that runs AFTER this read.",
+      "common_imports": ["name"],
       "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
       "_note_attr_to_mjs_field": "MuJoCo renames a handful of camera attrs between the XML schema and the mjsCamera struct: target -> targetbody (mjString*), projection -> proj (mjtProjection enum), focal -> focal_length, principal -> principal_length. sensorsize auto-resolves to sensor_size via the underscore-normalise heuristic. Without this map the auto-resolver in _resolve_mjs_field can't bridge target/focal/principal and they were silently dropped on export.",
@@ -474,6 +577,7 @@
       }
     },
     "body": {
+      "common_imports": ["name"],
       "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation", "body_sleep_policy"],
       "_note_canon_export_skip": "Body's pos/quat are written by MjSpecWrapper::CreateBody from the UE component transform (the source of truth for body placement). The codegen-emitted spatial_pose/orientation export would overwrite those with the Pos/Quat UPROPERTYs, which are stale for any body not freshly imported from XML. Skip the export side for these two canons.",
@@ -538,9 +642,11 @@
       "exclude_attrs": []
     },
     "contact_pair": {
+      "common_imports": [{"attr": "name", "ue_field": "Name"}],
       "exclude_attrs": []
     },
     "contact_exclude": {
+      "common_imports": [{"attr": "name", "ue_field": "Name"}],
       "exclude_attrs": []
     },
     "keyframe": {
@@ -604,55 +710,57 @@
       "schema_subtypes_block": "sensor_types",
       "type_enum_name": "EMjSensorType",
       "subtypes": [
-        {"key": "touch",            "enum_value": "Touch",            "class_name": "UMjTouchSensor",          "header": "MjTouchSensor.h"},
-        {"key": "accelerometer",    "enum_value": "Accelerometer",    "class_name": "UMjAccelerometer",        "header": "MjAccelerometer.h"},
-        {"key": "velocimeter",      "enum_value": "Velocimeter",      "class_name": "UMjVelocimeter",          "header": "MjVelocimeter.h"},
-        {"key": "gyro",             "enum_value": "Gyro",             "class_name": "UMjGyro",                 "header": "MjGyro.h"},
-        {"key": "force",            "enum_value": "Force",            "class_name": "UMjForceSensor",          "header": "MjForceSensor.h"},
-        {"key": "torque",           "enum_value": "Torque",           "class_name": "UMjTorqueSensor",         "header": "MjTorqueSensor.h"},
-        {"key": "magnetometer",     "enum_value": "Magnetometer",     "class_name": "UMjMagnetometer",         "header": "MjMagnetometer.h"},
-        {"key": "camprojection",    "enum_value": "CamProjection",    "class_name": "UMjCamProjectionSensor",  "header": "MjCamProjectionSensor.h"},
-        {"key": "rangefinder",      "enum_value": "RangeFinder",      "class_name": "UMjRangeFinderSensor",    "header": "MjRangeFinderSensor.h"},
+        {"key": "touch",            "enum_value": "Touch",            "class_name": "UMjTouchSensor",          "header": "MjTouchSensor.h", "fully_emitted": true},
+        {"key": "accelerometer",    "enum_value": "Accelerometer",    "class_name": "UMjAccelerometer",        "header": "MjAccelerometer.h", "fully_emitted": true},
+        {"key": "velocimeter",      "enum_value": "Velocimeter",      "class_name": "UMjVelocimeter",          "header": "MjVelocimeter.h", "fully_emitted": true},
+        {"key": "gyro",             "enum_value": "Gyro",             "class_name": "UMjGyro",                 "header": "MjGyro.h", "fully_emitted": true},
+        {"key": "force",            "enum_value": "Force",            "class_name": "UMjForceSensor",          "header": "MjForceSensor.h", "fully_emitted": true},
+        {"key": "torque",           "enum_value": "Torque",           "class_name": "UMjTorqueSensor",         "header": "MjTorqueSensor.h", "fully_emitted": true},
+        {"key": "magnetometer",     "enum_value": "Magnetometer",     "class_name": "UMjMagnetometer",         "header": "MjMagnetometer.h", "fully_emitted": true},
+        {"key": "camprojection",    "enum_value": "CamProjection",    "class_name": "UMjCamProjectionSensor",  "header": "MjCamProjectionSensor.h", "fully_emitted": true},
+        {"key": "rangefinder",      "enum_value": "RangeFinder",      "class_name": "UMjRangeFinderSensor",    "header": "MjRangeFinderSensor.h",
+         "case_body_override": "Element->type = mjSENS_RANGEFINDER; Element->objtype = (ObjType == EMjObjType::Camera) ? mjOBJ_CAMERA : mjOBJ_SITE;",
+         "fully_emitted": true},
         {"key": "jointpos",         "enum_value": "JointPos",         "class_name": "UMjJointPosSensor",       "header": "MjJointPosSensor.h"},
-        {"key": "jointvel",         "enum_value": "JointVel",         "class_name": "UMjJointVelSensor",       "header": "MjJointVelSensor.h"},
-        {"key": "ballquat",         "enum_value": "BallQuat",         "class_name": "UMjBallQuatSensor",       "header": "MjBallQuatSensor.h"},
-        {"key": "ballangvel",       "enum_value": "BallAngVel",       "class_name": "UMjBallAngVelSensor",     "header": "MjBallAngVelSensor.h"},
-        {"key": "jointlimitpos",    "enum_value": "JointLimitPos",    "class_name": "UMjJointLimitPosSensor",  "header": "MjJointLimitPosSensor.h"},
-        {"key": "jointlimitvel",    "enum_value": "JointLimitVel",    "class_name": "UMjJointLimitVelSensor",  "header": "MjJointLimitVelSensor.h"},
-        {"key": "jointlimitfrc",    "enum_value": "JointLimitFrc",    "class_name": "UMjJointLimitFrcSensor",  "header": "MjJointLimitFrcSensor.h"},
-        {"key": "tendonpos",        "enum_value": "TendonPos",        "class_name": "UMjTendonPosSensor",      "header": "MjTendonPosSensor.h"},
-        {"key": "tendonvel",        "enum_value": "TendonVel",        "class_name": "UMjTendonVelSensor",      "header": "MjTendonVelSensor.h"},
-        {"key": "tendonlimitpos",   "enum_value": "TendonLimitPos",   "class_name": "UMjTendonLimitPosSensor", "header": "MjTendonLimitPosSensor.h"},
-        {"key": "tendonlimitvel",   "enum_value": "TendonLimitVel",   "class_name": "UMjTendonLimitVelSensor", "header": "MjTendonLimitVelSensor.h"},
-        {"key": "tendonlimitfrc",   "enum_value": "TendonLimitFrc",   "class_name": "UMjTendonLimitFrcSensor", "header": "MjTendonLimitFrcSensor.h"},
-        {"key": "actuatorpos",      "enum_value": "ActuatorPos",      "class_name": "UMjActuatorPosSensor",    "header": "MjActuatorPosSensor.h"},
-        {"key": "actuatorvel",      "enum_value": "ActuatorVel",      "class_name": "UMjActuatorVelSensor",    "header": "MjActuatorVelSensor.h"},
-        {"key": "actuatorfrc",      "enum_value": "ActuatorFrc",      "class_name": "UMjActuatorFrcSensor",    "header": "MjActuatorFrcSensor.h"},
-        {"key": "jointactuatorfrc", "enum_value": "JointActFrc",      "class_name": "UMjJointActFrcSensor",    "header": "MjJointActFrcSensor.h"},
-        {"key": "tendonactuatorfrc","enum_value": "TendonActFrc",     "class_name": "UMjTendonActFrcSensor",   "header": "MjTendonActFrcSensor.h"},
-        {"key": "framepos",         "enum_value": "FramePos",         "class_name": "UMjFramePosSensor",       "header": "MjFramePosSensor.h"},
-        {"key": "framequat",        "enum_value": "FrameQuat",        "class_name": "UMjFrameQuatSensor",      "header": "MjFrameQuatSensor.h"},
-        {"key": "framexaxis",       "enum_value": "FrameXAxis",       "class_name": "UMjFrameXAxisSensor",     "header": "MjFrameXAxisSensor.h"},
-        {"key": "frameyaxis",       "enum_value": "FrameYAxis",       "class_name": "UMjFrameYAxisSensor",     "header": "MjFrameYAxisSensor.h"},
-        {"key": "framezaxis",       "enum_value": "FrameZAxis",       "class_name": "UMjFrameZAxisSensor",     "header": "MjFrameZAxisSensor.h"},
-        {"key": "framelinvel",      "enum_value": "FrameLinVel",      "class_name": "UMjFrameLinVelSensor",    "header": "MjFrameLinVelSensor.h"},
-        {"key": "frameangvel",      "enum_value": "FrameAngVel",      "class_name": "UMjFrameAngVelSensor",    "header": "MjFrameAngVelSensor.h"},
-        {"key": "framelinacc",      "enum_value": "FrameLinAcc",      "class_name": "UMjFrameLinAccSensor",    "header": "MjFrameLinAccSensor.h"},
-        {"key": "frameangacc",      "enum_value": "FrameAngAcc",      "class_name": "UMjFrameAngAccSensor",    "header": "MjFrameAngAccSensor.h"},
-        {"key": "subtreecom",       "enum_value": "SubtreeCom",       "class_name": "UMjSubtreeComSensor",     "header": "MjSubtreeComSensor.h"},
-        {"key": "subtreelinvel",    "enum_value": "SubtreeLinVel",    "class_name": "UMjSubtreeLinVelSensor",  "header": "MjSubtreeLinVelSensor.h"},
-        {"key": "subtreeangmom",    "enum_value": "SubtreeAngMom",    "class_name": "UMjSubtreeAngMomSensor",  "header": "MjSubtreeAngMomSensor.h"},
-        {"key": "insidesite",       "enum_value": "InsideSite",       "class_name": "UMjInsideSiteSensor",     "header": "MjInsideSiteSensor.h"},
-        {"key": "distance",         "enum_value": "GeomDist",         "class_name": "UMjGeomDistSensor",       "header": "MjGeomDistSensor.h"},
-        {"key": "normal",           "enum_value": "GeomNormal",       "class_name": "UMjGeomNormalSensor",     "header": "MjGeomNormalSensor.h"},
-        {"key": "fromto",           "enum_value": "GeomFromTo",       "class_name": "UMjGeomFromToSensor",     "header": "MjGeomFromToSensor.h"},
-        {"key": "contact",          "enum_value": "Contact",          "class_name": "UMjContactSensor",        "header": "MjContactSensor.h"},
-        {"key": "e_potential",      "enum_value": "EPotential",       "class_name": "UMjEPotentialSensor",     "header": "MjEPotentialSensor.h"},
-        {"key": "e_kinetic",        "enum_value": "EKinetic",         "class_name": "UMjEKineticSensor",       "header": "MjEKineticSensor.h"},
-        {"key": "clock",            "enum_value": "Clock",            "class_name": "UMjClockSensor",          "header": "MjClockSensor.h"},
+        {"key": "jointvel",         "enum_value": "JointVel",         "class_name": "UMjJointVelSensor",       "header": "MjJointVelSensor.h", "fully_emitted": true},
+        {"key": "ballquat",         "enum_value": "BallQuat",         "class_name": "UMjBallQuatSensor",       "header": "MjBallQuatSensor.h", "fully_emitted": true},
+        {"key": "ballangvel",       "enum_value": "BallAngVel",       "class_name": "UMjBallAngVelSensor",     "header": "MjBallAngVelSensor.h", "fully_emitted": true},
+        {"key": "jointlimitpos",    "enum_value": "JointLimitPos",    "class_name": "UMjJointLimitPosSensor",  "header": "MjJointLimitPosSensor.h", "fully_emitted": true},
+        {"key": "jointlimitvel",    "enum_value": "JointLimitVel",    "class_name": "UMjJointLimitVelSensor",  "header": "MjJointLimitVelSensor.h", "fully_emitted": true},
+        {"key": "jointlimitfrc",    "enum_value": "JointLimitFrc",    "class_name": "UMjJointLimitFrcSensor",  "header": "MjJointLimitFrcSensor.h", "fully_emitted": true},
+        {"key": "tendonpos",        "enum_value": "TendonPos",        "class_name": "UMjTendonPosSensor",      "header": "MjTendonPosSensor.h", "fully_emitted": true},
+        {"key": "tendonvel",        "enum_value": "TendonVel",        "class_name": "UMjTendonVelSensor",      "header": "MjTendonVelSensor.h", "fully_emitted": true},
+        {"key": "tendonlimitpos",   "enum_value": "TendonLimitPos",   "class_name": "UMjTendonLimitPosSensor", "header": "MjTendonLimitPosSensor.h", "fully_emitted": true},
+        {"key": "tendonlimitvel",   "enum_value": "TendonLimitVel",   "class_name": "UMjTendonLimitVelSensor", "header": "MjTendonLimitVelSensor.h", "fully_emitted": true},
+        {"key": "tendonlimitfrc",   "enum_value": "TendonLimitFrc",   "class_name": "UMjTendonLimitFrcSensor", "header": "MjTendonLimitFrcSensor.h", "fully_emitted": true},
+        {"key": "actuatorpos",      "enum_value": "ActuatorPos",      "class_name": "UMjActuatorPosSensor",    "header": "MjActuatorPosSensor.h", "fully_emitted": true},
+        {"key": "actuatorvel",      "enum_value": "ActuatorVel",      "class_name": "UMjActuatorVelSensor",    "header": "MjActuatorVelSensor.h", "fully_emitted": true},
+        {"key": "actuatorfrc",      "enum_value": "ActuatorFrc",      "class_name": "UMjActuatorFrcSensor",    "header": "MjActuatorFrcSensor.h", "fully_emitted": true},
+        {"key": "jointactuatorfrc", "enum_value": "JointActFrc",      "class_name": "UMjJointActFrcSensor",    "header": "MjJointActFrcSensor.h", "fully_emitted": true},
+        {"key": "tendonactuatorfrc","enum_value": "TendonActFrc",     "class_name": "UMjTendonActFrcSensor",   "header": "MjTendonActFrcSensor.h", "fully_emitted": true},
+        {"key": "framepos",         "enum_value": "FramePos",         "class_name": "UMjFramePosSensor",       "header": "MjFramePosSensor.h", "fully_emitted": true},
+        {"key": "framequat",        "enum_value": "FrameQuat",        "class_name": "UMjFrameQuatSensor",      "header": "MjFrameQuatSensor.h", "fully_emitted": true},
+        {"key": "framexaxis",       "enum_value": "FrameXAxis",       "class_name": "UMjFrameXAxisSensor",     "header": "MjFrameXAxisSensor.h", "fully_emitted": true},
+        {"key": "frameyaxis",       "enum_value": "FrameYAxis",       "class_name": "UMjFrameYAxisSensor",     "header": "MjFrameYAxisSensor.h", "fully_emitted": true},
+        {"key": "framezaxis",       "enum_value": "FrameZAxis",       "class_name": "UMjFrameZAxisSensor",     "header": "MjFrameZAxisSensor.h", "fully_emitted": true},
+        {"key": "framelinvel",      "enum_value": "FrameLinVel",      "class_name": "UMjFrameLinVelSensor",    "header": "MjFrameLinVelSensor.h", "fully_emitted": true},
+        {"key": "frameangvel",      "enum_value": "FrameAngVel",      "class_name": "UMjFrameAngVelSensor",    "header": "MjFrameAngVelSensor.h", "fully_emitted": true},
+        {"key": "framelinacc",      "enum_value": "FrameLinAcc",      "class_name": "UMjFrameLinAccSensor",    "header": "MjFrameLinAccSensor.h", "fully_emitted": true},
+        {"key": "frameangacc",      "enum_value": "FrameAngAcc",      "class_name": "UMjFrameAngAccSensor",    "header": "MjFrameAngAccSensor.h", "fully_emitted": true},
+        {"key": "subtreecom",       "enum_value": "SubtreeCom",       "class_name": "UMjSubtreeComSensor",     "header": "MjSubtreeComSensor.h", "fully_emitted": true},
+        {"key": "subtreelinvel",    "enum_value": "SubtreeLinVel",    "class_name": "UMjSubtreeLinVelSensor",  "header": "MjSubtreeLinVelSensor.h", "fully_emitted": true},
+        {"key": "subtreeangmom",    "enum_value": "SubtreeAngMom",    "class_name": "UMjSubtreeAngMomSensor",  "header": "MjSubtreeAngMomSensor.h", "fully_emitted": true},
+        {"key": "insidesite",       "enum_value": "InsideSite",       "class_name": "UMjInsideSiteSensor",     "header": "MjInsideSiteSensor.h", "fully_emitted": true},
+        {"key": "distance",         "enum_value": "GeomDist",         "class_name": "UMjGeomDistSensor",       "header": "MjGeomDistSensor.h", "fully_emitted": true},
+        {"key": "normal",           "enum_value": "GeomNormal",       "class_name": "UMjGeomNormalSensor",     "header": "MjGeomNormalSensor.h", "fully_emitted": true},
+        {"key": "fromto",           "enum_value": "GeomFromTo",       "class_name": "UMjGeomFromToSensor",     "header": "MjGeomFromToSensor.h", "fully_emitted": true},
+        {"key": "contact",          "enum_value": "Contact",          "class_name": "UMjContactSensor",        "header": "MjContactSensor.h", "fully_emitted": true},
+        {"key": "e_potential",      "enum_value": "EPotential",       "class_name": "UMjEPotentialSensor",     "header": "MjEPotentialSensor.h", "fully_emitted": true},
+        {"key": "e_kinetic",        "enum_value": "EKinetic",         "class_name": "UMjEKineticSensor",       "header": "MjEKineticSensor.h", "fully_emitted": true},
+        {"key": "clock",            "enum_value": "Clock",            "class_name": "UMjClockSensor",          "header": "MjClockSensor.h", "fully_emitted": true},
         {"key": "tactile",          "enum_value": "Tactile",          "class_name": "UMjTactileSensor",        "header": "MjTactileSensor.h"},
-        {"key": "user",             "enum_value": "User",             "class_name": "UMjUserSensor",           "header": "MjUserSensor.h"},
-        {"key": "plugin",           "enum_value": "Plugin",           "class_name": "UMjPluginSensor",         "header": "MjPluginSensor.h"}
+        {"key": "user",             "enum_value": "User",             "class_name": "UMjUserSensor",           "header": "MjUserSensor.h", "fully_emitted": true},
+        {"key": "plugin",           "enum_value": "Plugin",           "class_name": "UMjPluginSensor",         "header": "MjPluginSensor.h", "fully_emitted": true}
       ]
     },
 
@@ -666,9 +774,13 @@
       "schema_common_block": "joint.attrs",
       "type_enum_name": "EMjJointType",
       "subtypes": [
-        {"key": "hinge", "enum_value": "Hinge", "class_name": "UMjHingeJoint", "header": "MjHingeJoint.h"},
-        {"key": "slide", "enum_value": "Slide", "class_name": "UMjSlideJoint", "header": "MjSlideJoint.h"},
-        {"key": "ball",  "enum_value": "Ball",  "class_name": "UMjBallJoint",  "header": "MjBallJoint.h"},
+        {"key": "hinge", "enum_value": "Hinge", "class_name": "UMjHingeJoint", "header": "MjHingeJoint.h", "fully_emitted": true,
+         "_note_extra_ctor": "UMjJoint::ExportTo only writes Element->type when bOverride_Type is true. Without this flag set in the subclass ctor, BP-spawned joints fall back to the mjsJoint default (mjJNT_HINGE), silently substituting Ball/Slide joints for Hinge.",
+         "extra_constructor": "bOverride_Type = true;"},
+        {"key": "slide", "enum_value": "Slide", "class_name": "UMjSlideJoint", "header": "MjSlideJoint.h", "fully_emitted": true,
+         "extra_constructor": "bOverride_Type = true;"},
+        {"key": "ball",  "enum_value": "Ball",  "class_name": "UMjBallJoint",  "header": "MjBallJoint.h", "fully_emitted": true,
+         "extra_constructor": "bOverride_Type = true;"},
         {"key": "free",  "enum_value": "Free",  "class_name": "UMjFreeJoint",  "header": "MjFreeJoint.h"}
       ]
     },
@@ -710,6 +822,18 @@
       "schema_common_block": "equality.weld",
       "schema_common_extra_attrs": ["polycoef"],
       "type_enum_name": "EMjEqualityType",
+      "_note_objtype_dispatch": "mjsEquality.objtype tells MuJoCo what kind of object name1/name2 refer to. Connect/Weld are dual-mode: site-to-site if site1 was specified, else body-to-body. Codegen emits a switch on EqualityType into the CODEGEN_OBJTYPE_DISPATCH markers in MjEquality.cpp.",
+      "objtype_dispatch": {
+        "discriminator": "EqualityType",
+        "target": "Element->objtype",
+        "default": "mjOBJ_UNKNOWN",
+        "cases": [
+          {"keys": ["Connect", "Weld"], "expr": "!site1.IsEmpty() ? mjOBJ_SITE : mjOBJ_BODY"},
+          {"keys": ["Joint"],   "expr": "mjOBJ_JOINT"},
+          {"keys": ["Tendon"],  "expr": "mjOBJ_TENDON"},
+          {"keys": ["Flex", "FlexVert", "FlexStrain"], "expr": "mjOBJ_FLEX"}
+        ]
+      },
       "subtypes": [
         {"key": "connect",    "enum_value": "Connect",    "class_name": "UMjConnectEquality",    "display_name": "MuJoCo Connect Equality"},
         {"key": "weld",       "enum_value": "Weld",       "class_name": "UMjWeldEquality",       "display_name": "MuJoCo Weld Equality"},
@@ -730,14 +854,25 @@
       "mjs_struct": "mjsGeom",
       "schema_common_block": "geom.attrs",
       "type_enum_name": "EMjGeomType",
+      "_note_geom_final_type": "Mesh-name export depends on the COMPILE-TIME geom type, which is either the UPROPERTY Type (if overridden) or the Default geom's type (otherwise). Codegen emits the resolution + the conditional mesh-name write into the CODEGEN_GEOM_FINAL_TYPE markers in MjGeom.cpp. The value_map is pulled from element_rules.geom.xml_enum_attrs.type so there's only one source of truth for the XML/UE/mj triplet.",
+      "geom_final_type": {
+        "xml_enum_ref":       "type",
+        "override_field":     "bOverride_Type",
+        "default_lookup":     "Default->geom->type",
+        "default_fallback":   "mjGEOM_MESH",
+        "name_field":         "MeshName",
+        "name_export_for":    "mjGEOM_MESH",
+        "name_target":        "Element->meshname",
+        "name_setter":        "MjSetStringRaw"
+      },
       "subtypes": [
         {"key": "box",       "enum_value": "Box",       "class_name": "UMjBox",       "header": "MjBox.h",       "is_hybrid": true},
         {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphere",    "header": "MjSphere.h",    "is_hybrid": true},
         {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsule",   "header": "MjCapsule.h",   "is_hybrid": true},
         {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinder",  "header": "MjCylinder.h",  "is_hybrid": true},
-        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoid", "header": "MjEllipsoid.h", "is_hybrid": false},
-        {"key": "plane",     "enum_value": "Plane",     "class_name": "UMjPlane",     "header": "MjPlane.h",     "is_hybrid": false},
-        {"key": "sdf",       "enum_value": "SDF",       "class_name": "UMjSdf",       "header": "MjSdf.h",       "is_hybrid": false}
+        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoid", "header": "MjEllipsoid.h", "is_hybrid": false, "fully_emitted": true},
+        {"key": "plane",     "enum_value": "Plane",     "class_name": "UMjPlane",     "header": "MjPlane.h",     "is_hybrid": false, "fully_emitted": true},
+        {"key": "sdf",       "enum_value": "SDF",       "class_name": "UMjSdf",       "header": "MjSdf.h",       "is_hybrid": false, "fully_emitted": true}
       ],
       "_note_skipped_subtypes": ["hfield (URLab has its own hfield actor system)", "mesh (existing UMjMeshGeom)"]
     },
@@ -817,7 +952,6 @@
       "obj_type": "mjOBJ_BODY",
       "owner_count_var": "nbody",
       "include_blocks": ["MJMODEL_POINTERS_BODY", "MJMODEL_POINTERS_TREE"],
-      "field_renames": {},
       "data_fields": {
         "xpos":   {"index_var": "id",          "stride": "3"},
         "xquat":  {"index_var": "id",          "stride": "4"},
@@ -839,7 +973,6 @@
         "MJMODEL_POINTERS_JOINT": "id",
         "MJMODEL_POINTERS_DOF":   "dof_adr"
       },
-      "field_renames": {},
       "data_fields": {
         "qpos":    {"index_var": "qpos_adr", "stride": "1"},
         "qvel":    {"index_var": "dof_adr",  "stride": "1"},
@@ -852,7 +985,6 @@
       "obj_type": "mjOBJ_GEOM",
       "owner_count_var": "ngeom",
       "include_blocks": ["MJMODEL_POINTERS_GEOM"],
-      "field_renames": {},
       "data_fields": {
         "geom_xpos": {"index_var": "id", "stride": "3"},
         "geom_xmat": {"index_var": "id", "stride": "9"}
@@ -862,7 +994,6 @@
       "obj_type": "mjOBJ_SITE",
       "owner_count_var": "nsite",
       "include_blocks": ["MJMODEL_POINTERS_SITE"],
-      "field_renames": {},
       "data_fields": {
         "site_xpos": {"index_var": "id", "stride": "3"},
         "site_xmat": {"index_var": "id", "stride": "9"}
@@ -872,19 +1003,21 @@
       "obj_type": "mjOBJ_ACTUATOR",
       "owner_count_var": "nu",
       "include_blocks": ["MJMODEL_POINTERS_ACTUATOR"],
-      "field_renames": {},
       "data_fields": {
-        "ctrl":          {"index_var": "id", "stride": "1"},
-        "actuator_force":{"index_var": "id", "stride": "1"},
+        "ctrl":           {"index_var": "id", "stride": "1"},
+        "actuator_force": {"index_var": "id", "stride": "1"},
         "actuator_length":{"index_var": "id", "stride": "1"},
-        "actuator_velocity":{"index_var": "id", "stride": "1"}
+        "actuator_velocity":{"index_var": "id", "stride": "1"},
+        "_note_moment": "Per-actuator row of the actuator_moment (nu x nv) matrix. Stride is m->nv, which is a valid stride expression — no bind_override needed.",
+        "actuator_moment": {"index_var": "id", "stride": "m->nv"},
+        "_note_act": "act lives in d->act indexed by m->actuator_actadr[id]. The adr can be -1 for actuators without an internal activation state; bind_override emits the nullable lookup so consumers can null-check ``act`` directly.",
+        "act": {"bind_override": "act = (m->actuator_actadr[id] >= 0) ? d->act + m->actuator_actadr[id] : nullptr;"}
       }
     },
     "TendonView": {
       "obj_type": "mjOBJ_TENDON",
       "owner_count_var": "ntendon",
       "include_blocks": ["MJMODEL_POINTERS_TENDON"],
-      "field_renames": {},
       "data_fields": {
         "ten_length":   {"index_var": "id", "stride": "1"},
         "ten_velocity": {"index_var": "id", "stride": "1"}
@@ -894,10 +1027,290 @@
       "obj_type": "mjOBJ_SENSOR",
       "owner_count_var": "nsensor",
       "include_blocks": ["MJMODEL_POINTERS_SENSOR"],
-      "field_renames": {},
       "data_fields": {
-        "sensordata": {"index_var": "m->sensor_adr[id]", "stride": "m->sensor_dim[id]"}
+        "_note_sensordata": "Bounds-checked slice — the default base+id*stride formula is wrong for sensordata (it would double-multiply adr*dim). bind_override is a verbatim C++ statement the codegen drops inside the BIND marker.",
+        "sensordata": {"bind_override": "sensordata = (sensor_adr >= 0 && sensor_adr < m->nsensordata) ? d->sensordata + sensor_adr : nullptr;"}
       }
+    }
+  },
+
+  "_note_editor_option_helpers": "Phase 3e.7. Codegens the trivial UMjX::GetYOptions() editor wrappers, injecting them between CODEGEN_EDITOR_OPTIONS_START/END markers inside each host .cpp's #if WITH_EDITOR block. Wrappers with real logic (TransmissionType / EqualityType / GetClassForObjType switches) stay hand-written in the same #if block.",
+  "editor_option_helpers": {
+    "wrappers": [
+      {"class": "UMjActuator", "host_cpp": "MuJoCo/Components/Actuators/MjActuator.cpp",
+       "method": "GetSliderSiteOptions",     "filter_class": "UMjSite"},
+      {"class": "UMjActuator", "host_cpp": "MuJoCo/Components/Actuators/MjActuator.cpp",
+       "method": "GetRefSiteOptions",        "filter_class": "UMjSite"},
+      {"class": "UMjActuator", "host_cpp": "MuJoCo/Components/Actuators/MjActuator.cpp",
+       "method": "GetDefaultClassOptions",   "filter_class": "UMjDefault", "include_defaults": true},
+      {"class": "UMjBody",          "host_cpp": "MuJoCo/Components/Bodies/MjBody.cpp",
+       "method": "GetChildClassOptions",     "filter_class": "UMjDefault", "include_defaults": true},
+      {"class": "UMjGeom",          "host_cpp": "MuJoCo/Components/Geometry/MjGeom.cpp",
+       "method": "GetDefaultClassOptions",   "filter_class": "UMjDefault", "include_defaults": true},
+      {"class": "UMjSite",          "host_cpp": "MuJoCo/Components/Geometry/MjSite.cpp",
+       "method": "GetDefaultClassOptions",   "filter_class": "UMjDefault", "include_defaults": true},
+      {"class": "UMjJoint",         "host_cpp": "MuJoCo/Components/Joints/MjJoint.cpp",
+       "method": "GetDefaultClassOptions",   "filter_class": "UMjDefault", "include_defaults": true},
+      {"class": "UMjContactExclude","host_cpp": "MuJoCo/Components/Physics/MjContactExclude.cpp",
+       "method": "GetBodyOptions",           "filter_class": "UMjBody"},
+      {"class": "UMjContactPair",   "host_cpp": "MuJoCo/Components/Physics/MjContactPair.cpp",
+       "method": "GetGeomOptions",           "filter_class": "UMjGeom"},
+      {"class": "UMjSensor",        "host_cpp": "MuJoCo/Components/Sensors/MjSensor.cpp",
+       "method": "GetDefaultClassOptions",   "filter_class": "UMjDefault", "include_defaults": true},
+      {"class": "UMjTendon",        "host_cpp": "MuJoCo/Components/Tendons/MjTendon.cpp",
+       "method": "GetDefaultClassOptions",   "filter_class": "UMjDefault", "include_defaults": true}
+    ]
+  },
+
+  "_note_generated_enums": "Phase 2e-finalize-a. Banner-mode .h with one or more UENUMs derived from mjspec_snapshot['enums']. Hand-edits get clobbered on next regen.",
+  "generated_enums": {
+    "MjOptionEnums": {
+      "public_header": "MuJoCo/Generated/MjOptionEnums.h",
+      "enums": [
+        {
+          "ue_name": "EMjIntegrator",
+          "from_mj_enum": "mjtIntegrator",
+          "ue_member_from_mj": {
+            "mjINT_EULER":        "Euler",
+            "mjINT_RK4":          "RK4",
+            "mjINT_IMPLICIT":     "Implicit",
+            "mjINT_IMPLICITFAST": "ImplicitFast"
+          }
+        },
+        {
+          "ue_name": "EMjCone",
+          "from_mj_enum": "mjtCone",
+          "ue_member_from_mj": {
+            "mjCONE_PYRAMIDAL": "Pyramidal",
+            "mjCONE_ELLIPTIC":  "Elliptic"
+          }
+        },
+        {
+          "ue_name": "EMjSolver",
+          "from_mj_enum": "mjtSolver",
+          "ue_member_from_mj": {
+            "mjSOL_PGS":    "PGS",
+            "mjSOL_CG":     "CG",
+            "mjSOL_NEWTON": "Newton"
+          }
+        }
+      ]
+    }
+  },
+
+  "_note_synthetic_categories": "Phase 2e pilot. Whole-file banner-mode emission for USTRUCTs mirroring C structs from mjxmacro_block. Hand-edits to generated files get clobbered on next regen. See generate_ue_components.py::_phase_synthetic_categories.",
+  "synthetic_categories": {
+    "MjStatistic": {
+      "ue_struct_name":   "FMjStatistic",
+      "mjxmacro_block":   "MJSTATISTIC_FIELDS",
+      "c_struct_type":    "mjStatistic",
+      "public_header":    "MuJoCo/Generated/MjStatistic.h",
+      "private_source":   "MuJoCo/Generated/MjStatistic.cpp",
+      "category_label":   "Statistic"
+    },
+
+    "_note_MjOption": "Codegen-emitted FMjOptionGenerated. Mirrors mjOption (MJOPTION_FIELDS) with URLab extras (MemoryMB, bEnableMultiCCD, bEnableSleep, SleepTolerance). Hand-written FMuJoCoOptions in MjSimOptions.h was removed in codegen(item-1); SimOptions on AMjArticulation and UMjPhysicsEngine now point at this struct directly.",
+    "MjOption": {
+      "ue_struct_name":   "FMjOptionGenerated",
+      "mjxmacro_block":   "MJOPTION_FIELDS",
+      "c_struct_type":    "mjOption",
+      "public_header":    "MuJoCo/Generated/MjOptionGenerated.h",
+      "private_source":   "MuJoCo/Generated/MjOptionGenerated.cpp",
+      "category_label":   "MjOption",
+      "include_directives": [
+        "mujoco/mujoco.h",
+        "MuJoCo/Generated/MjOptionEnums.h"
+      ],
+      "field_renames": {
+        "timestep":         "Timestep",
+        "impratio":         "Impratio",
+        "tolerance":        "Tolerance",
+        "ls_tolerance":     "LsTolerance",
+        "noslip_tolerance": "NoslipTolerance",
+        "ccd_tolerance":    "CCD_Tolerance",
+        "sdf_initpoints":   "SdfInitPoints",
+        "sdf_iterations":   "SdfIterations",
+        "iterations":       "Iterations",
+        "ls_iterations":    "LsIterations",
+        "noslip_iterations": "NoslipIterations",
+        "ccd_iterations":   "CCD_Iterations",
+        "disableflags":     "DisableFlags",
+        "enableflags":      "EnableFlags",
+        "disableactuator":  "DisableActuator",
+        "apirate":          "ApiRate",
+        "sleep_tolerance":  "SleepToleranceMj",
+        "rebuild_interval": "RebuildInterval"
+      },
+      "field_types": {
+        "timestep": "float",
+        "apirate":  "float",
+        "integrator": "EMjIntegrator",
+        "cone":       "EMjCone",
+        "solver":     "EMjSolver"
+      },
+      "field_defaults": {
+        "Timestep":         "0.002f",
+        "Impratio":         "1.0f",
+        "Tolerance":        "1e-8f",
+        "Iterations":       "100",
+        "LsIterations":     "50",
+        "NoslipTolerance":  "1e-6f",
+        "CCD_Tolerance":    "1e-6f",
+        "Gravity":          "FVector(0.0f, 0.0f, -981.0f)",
+        "Magnetic":         "FVector(0.0f, -0.5f, 0.0f)",
+        "Integrator":       "EMjIntegrator::Euler",
+        "Cone":             "EMjCone::Pyramidal",
+        "Solver":           "EMjSolver::Newton"
+      },
+      "field_apply_to_spec_mode": {
+        "gravity":  "vec3_cm",
+        "wind":     "vec3_cm",
+        "magnetic": "vec3_y_flip",
+        "integrator": "guarded",
+        "cone":       "guarded",
+        "solver":     "guarded",
+        "noslip_iterations": "guarded",
+        "noslip_tolerance":  "guarded",
+        "ccd_iterations":    "guarded",
+        "ccd_tolerance":     "guarded"
+      },
+      "_note_skip_vs_exclude": "field_skip_apply: emitted as UPROPERTY but not written to mjOption (apply body skips). exclude_fields: omitted from the struct entirely. exclude_fields takes precedence in iteration, so entries listed in both would be dead — keep them apart.",
+      "field_skip_apply": [
+        "disableflags", "enableflags", "disableactuator",
+        "sdf_initpoints", "sdf_iterations", "sleep_tolerance"
+      ],
+      "exclude_fields": ["apirate", "rebuild_interval", "o_solref", "o_solimp", "o_friction"],
+      "urlab_extra_fields": [
+        {
+          "name": "MemoryMB",
+          "type": "int32",
+          "default": "100",
+          "meta": "ClampMin=\"1\"",
+          "has_override": true
+        },
+        {
+          "name": "bEnableMultiCCD",
+          "type": "bool",
+          "default": "false",
+          "sub_category": "Collision",
+          "meta": "ToolTip=\"Enable multi-contact convex collision detection. Useful for flat surfaces (e.g. mesh-mesh) where single-point contact causes sliding or wobbling.\"",
+          "has_override": false
+        },
+        {
+          "name": "bEnableSleep",
+          "type": "bool",
+          "default": "false",
+          "sub_category": "Sleep",
+          "has_override": false
+        },
+        {
+          "name": "SleepTolerance",
+          "type": "float",
+          "default": "1e-4f",
+          "sub_category": "Sleep",
+          "edit_condition": "bEnableSleep",
+          "has_override": false
+        }
+      ],
+      "apply_extras_function": "ApplyMjOptionExtras",
+      "emit_apply_methods": true
+    },
+
+    "_note_MjVisualStructs": "Codegen-emitted FMjVisual{Global,Headlight,Quality,Map,Scale,Rgba} parallel to mjVisual sub-blocks. All six ship today; QUALITY/MAP/SCALE/RGBA were originally empty because build_mjxmacro_snapshot.py dropped at the first XNV macro, fixed in codegen(item-2).",
+    "MjVisualGlobal": {
+      "ue_struct_name":   "FMjVisualGlobal",
+      "mjxmacro_block":   "MJVISUAL_GLOBAL_FIELDS",
+      "c_struct_type":    "mjVisualGlobal",
+      "public_header":    "MuJoCo/Generated/MjVisualGlobal.h",
+      "private_source":   "MuJoCo/Generated/MjVisualGlobal.cpp",
+      "category_label":   "Visual|Global",
+      "field_defaults": {
+        "Fovy":       "45.0f",
+        "Ipd":        "0.068f",
+        "Realtime":   "1.0f"
+      }
+    },
+    "MjVisualHeadlight": {
+      "ue_struct_name":   "FMjVisualHeadlight",
+      "mjxmacro_block":   "MJVISUAL_HEADLIGHT_FIELDS",
+      "c_struct_type":    "mjVisualHeadlight",
+      "public_header":    "MuJoCo/Generated/MjVisualHeadlight.h",
+      "private_source":   "MuJoCo/Generated/MjVisualHeadlight.cpp",
+      "category_label":   "Visual|Headlight",
+      "field_defaults": {
+        "Ambient":  "FVector(0.1f, 0.1f, 0.1f)",
+        "Diffuse":  "FVector(0.4f, 0.4f, 0.4f)",
+        "Specular": "FVector(0.5f, 0.5f, 0.5f)",
+        "Active":   "1"
+      }
+    },
+    "MjVisualQuality": {
+      "ue_struct_name":   "FMjVisualQuality",
+      "mjxmacro_block":   "MJVISUAL_QUALITY_FIELDS",
+      "c_struct_type":    "mjVisualQuality",
+      "public_header":    "MuJoCo/Generated/MjVisualQuality.h",
+      "category_label":   "Visual|Quality",
+      "_note": "All quality fields are int in mjmodel.h (shadowsize=1024, offsamples=4, numslices=28, numstacks=16, numquads=4). mjxmacro carries no type info for these (bare X(name) form); explicit field_types override.",
+      "field_types": {
+        "shadowsize": "int32", "offsamples": "int32", "numslices": "int32",
+        "numstacks":  "int32", "numquads":   "int32"
+      },
+      "field_defaults": {
+        "Shadowsize": "1024", "Offsamples": "4", "Numslices": "28",
+        "Numstacks":  "16",   "Numquads":   "4"
+      }
+    },
+    "MjVisualMap": {
+      "ue_struct_name":   "FMjVisualMap",
+      "mjxmacro_block":   "MJVISUAL_MAP_FIELDS",
+      "c_struct_type":    "mjVisualMap",
+      "public_header":    "MuJoCo/Generated/MjVisualMap.h",
+      "category_label":   "Visual|Map",
+      "_note": "All map fields are float scalars in mjVisualMap (force, torque, stiffness, etc.). mjxmacro defaults them to mjtNum (double) which compiles cleanly via implicit conversion."
+    },
+    "MjVisualScale": {
+      "ue_struct_name":   "FMjVisualScale",
+      "mjxmacro_block":   "MJVISUAL_SCALE_FIELDS",
+      "c_struct_type":    "mjVisualScale",
+      "public_header":    "MuJoCo/Generated/MjVisualScale.h",
+      "category_label":   "Visual|Scale",
+      "_note": "Same as MjVisualMap — float scalars in mjmodel.h, mjxmacro defaults to mjtNum which compiles fine."
+    },
+    "MjVisualRgba": {
+      "ue_struct_name":   "FMjVisualRgba",
+      "mjxmacro_block":   "MJVISUAL_RGBA_FIELDS",
+      "c_struct_type":    "mjVisualRgba",
+      "public_header":    "MuJoCo/Generated/MjVisualRgba.h",
+      "category_label":   "Visual|Rgba",
+      "_note": "Every field is float[4] color in mjVisualRgba. mjxmacro's bare X(name) form drops that info; all_fields_type forces FLinearColor for the UPROPERTY + flips the ApplyTo emit to .R/.G/.B/.A writes.",
+      "all_fields_type":  "FLinearColor"
+    },
+    "_note_MjsCompilerOptions": "Mirror of mjsCompiler (MJSCOMPILER_FIELDS in mjspecmacro.h, vendored via Scripts/codegen/sync_vendored.py). Header-only USTRUCT — no .cpp emission today since URLab parses compiler settings via the legacy FMjCompilerSettings struct in MjOrientationUtils.h. Future migration: route MjArticulation through this struct + an ApplyToSpec method.",
+    "MjsCompilerOptions": {
+      "ue_struct_name":   "FMjsCompilerOptions",
+      "mjxmacro_block":   "MJSCOMPILER_FIELDS",
+      "c_struct_type":    "mjsCompiler",
+      "public_header":    "MuJoCo/Generated/MjsCompilerOptions.h",
+      "category_label":   "Spec|Compiler",
+      "_note_exclude": "LRopt is mjLROpt (nested struct, not mirror-able as a UPROPERTY); meshdir/texturedir are mjString* (different shape — handled by the existing MeshDir/AssetDir on FMjCompilerSettings). eulerseq is a char[3] vec — mirror as FString instead, but skip in ApplyTo since FString -> char[3] needs a copy not a cast.",
+      "exclude_fields":   ["LRopt", "meshdir", "texturedir"],
+      "field_skip_apply": ["eulerseq"],
+      "field_types":      {"eulerseq": "FString"},
+      "field_defaults":   {"Eulerseq": "TEXT(\"xyz\")"}
+    },
+    "_note_MjsSpec": "Mirror of mjSpec top-level fields (MJSPEC_FIELDS in mjspecmacro.h). Many entries are NESTED structs (mjsCompiler, mjOption, mjVisual, mjStatistic) — those are exposed via the dedicated FMjsCompilerOptions / FMjOptionGenerated / FMjVisual* / FMjStatistic structs. We only mirror the scalar + string fields here.",
+    "MjsSpec": {
+      "ue_struct_name":   "FMjsSpec",
+      "mjxmacro_block":   "MJSPEC_FIELDS",
+      "c_struct_type":    "mjSpec",
+      "public_header":    "MuJoCo/Generated/MjsSpec.h",
+      "category_label":   "Spec",
+      "_note_exclude": "element/compiler/option/visual/stat are nested structs already exposed via their own synthetic_categories. modelname / comment / modelfiledir / meshdir / texturedir are mjString* — distinct shape. memory is mjtSize (handle separately).",
+      "exclude_fields":   [
+        "element", "compiler", "option", "visual", "stat",
+        "modelname", "comment", "modelfiledir", "meshdir", "texturedir",
+        "memory", "strippath"
+      ]
     }
   }
 }

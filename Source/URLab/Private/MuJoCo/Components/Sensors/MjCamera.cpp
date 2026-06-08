@@ -692,7 +692,7 @@ void UMjCamera::ExportTo(mjsCamera* Element, mjsDefault* /*def*/)
     if (bOverride_ipd) Element->ipd = ipd;
     if (bOverride_resolution) { for (int32 i = 0; i < resolution.Num(); ++i) Element->resolution[i] = resolution[i]; }
     if (bOverride_output) Element->output = output;
-    if (bOverride_target && !target.IsEmpty()) mjs_setString(Element->targetbody, TCHAR_TO_UTF8(*target));
+    if (bOverride_target) MjSetString(Element->targetbody, target);
     if (bOverride_focal) { for (int32 i = 0; i < focal.Num(); ++i) Element->focal_length[i] = focal[i]; }
     if (bOverride_focalpixel) { for (int32 i = 0; i < focalpixel.Num(); ++i) Element->focal_pixel[i] = focalpixel[i]; }
     if (bOverride_principal) { for (int32 i = 0; i < principal.Num(); ++i) Element->principal_length[i] = principal[i]; }
@@ -712,6 +712,7 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     if (!Node) return;
 
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName);
     { // xml_enum: mode -> EMjCameraTrackingMode
         FString S = Node->GetAttribute(TEXT("mode"));
         S = S.ToLower();
@@ -752,9 +753,9 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     if (bOverride_Quat) SetRelativeRotation(Quat);
     // --- CODEGEN_IMPORT_END ---
 
-    // Name
-    if (!MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName))
-        MjName = TEXT("Camera");
+    // Name fallback (codegen above reads MjName from the "name" attribute;
+    // here we provide a sensible default if the user omitted it).
+    if (MjName.IsEmpty()) MjName = TEXT("Camera");
 
     // fovy
     FString FovyStr = Node->GetAttribute(TEXT("fovy"));

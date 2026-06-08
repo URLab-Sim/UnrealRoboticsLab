@@ -149,9 +149,9 @@ void UMjBox::SyncUnrealTransformFromMj()
         // MuJoCo box size is half-extents. Unreal Cube is 100 units.
         // Size 0.5 -> scale 1.0
         float r[3];
-        r[0] = m_GeomView.size[0];
-        r[1] = m_GeomView.size[1];
-        r[2] = m_GeomView.size[2];
+        r[0] = m_GeomView.geom_size[0];
+        r[1] = m_GeomView.geom_size[1];
+        r[2] = m_GeomView.geom_size[2];
 
         FVector NewScale = FVector(r[0], r[1], r[2]) * 2.0f;
         SetRelativeScale3D(NewScale);

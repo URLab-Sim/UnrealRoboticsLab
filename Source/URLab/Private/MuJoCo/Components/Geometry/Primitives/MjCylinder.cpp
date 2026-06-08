@@ -131,8 +131,8 @@ void UMjCylinder::SyncUnrealTransformFromMj()
     {
         // MuJoCo cylinder size: [radius, half-length]
         // Unreal Cylinder: diameter=100, Height=100
-        float RadiusVal = m_GeomView.size[0];
-        float HalfLengthVal = m_GeomView.size[1];
+        float RadiusVal = m_GeomView.geom_size[0];
+        float HalfLengthVal = m_GeomView.geom_size[1];
 
         FVector NewScale = FVector(RadiusVal * 2.0f, RadiusVal * 2.0f, HalfLengthVal * 2.0f);
         SetRelativeScale3D(NewScale);

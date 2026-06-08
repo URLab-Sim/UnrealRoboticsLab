@@ -35,7 +35,7 @@ DEFAULT_MJSPEC = os.path.join(
 DEFAULT_MUJOCO_H = os.path.join(
     PLUGIN_ROOT, "third_party", "install", "MuJoCo", "include", "mujoco", "mujoco.h"
 )
-DEFAULT_OUTPUT = os.path.join(PLUGIN_ROOT, "Scripts", "mjspec_snapshot.json")
+DEFAULT_OUTPUT = os.path.join(PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjspec_snapshot.json")
 
 # Matches `typedef struct mjsName_ { ... } mjsName;` blocks.
 _STRUCT_RE = re.compile(
@@ -98,6 +98,68 @@ _PARAM_RE = re.compile(
 )
 
 
+# Phase 2d-1: per-MuJoCo-enum value extraction.
+#
+# Captures ``typedef enum mjtX_ { mjFOO = 0, mjBAR, mjBAZ = 100, ... } mjtX;``
+# blocks. Auto-increment honoured: a bare entry inherits prev value + 1.
+# Explicit ``= N`` resets the counter. Trailing comments are stripped per-line.
+#
+# Output shape (added under top-level ``"enums"`` key in mjspec_snapshot.json):
+#   {
+#     "mjtJoint": {"mjJNT_FREE": 0, "mjJNT_BALL": 1, "mjJNT_SLIDE": 2, "mjJNT_HINGE": 3},
+#     "mjtGeom":  {"mjGEOM_PLANE": 0, "mjGEOM_HFIELD": 1, ..., "mjGEOM_NONE": 1001},
+#     ...
+#   }
+#
+# Phase 2c's ``value_map_from_enum`` resolver consumes this to populate
+# xml_enum value maps without a hand-listed table in codegen_rules.json.
+_ENUM_BLOCK_RE = re.compile(
+    r"typedef\s+enum\s+(?P<name>mjt\w+)_\s*\{(?P<body>[^}]*)\}\s*\1\s*;",
+    re.DOTALL,
+)
+# Inside the body, each entry: `<NAME>` or `<NAME> = <VALUE>` (decimal/hex/
+# arithmetic). Stop at comma or newline. We strip comments first.
+_ENUM_ENTRY_RE = re.compile(
+    r"\b(?P<name>\w+)\b(?:\s*=\s*(?P<value>[^,\n]+?))?\s*(?:,|$)",
+    re.MULTILINE,
+)
+
+
+def parse_enums(text: str) -> dict[str, dict[str, int]]:
+    """Scrape MuJoCo C enum blocks. Skips non-mjt prefixes (the snapshot
+    is scoped to enums URLab might map to UE enums via xml_enum_attrs)."""
+    out: dict[str, dict[str, int]] = {}
+    for m in _ENUM_BLOCK_RE.finditer(text):
+        name = m.group("name")
+        body = m.group("body")
+        # Strip line-end + block comments before tokenising.
+        body_clean = re.sub(r"//[^\n]*", "", body)
+        body_clean = re.sub(r"/\*.*?\*/", "", body_clean, flags=re.DOTALL)
+        members: dict[str, int] = {}
+        next_value = 0
+        for em in _ENUM_ENTRY_RE.finditer(body_clean):
+            ename = em.group("name")
+            evalue_raw = (em.group("value") or "").strip()
+            if evalue_raw:
+                # Resolve common shapes: decimal, hex, simple arithmetic.
+                try:
+                    next_value = int(evalue_raw, 0)
+                except ValueError:
+                    # Fallback for things like "1 << 0"; eval'd in a sandbox.
+                    try:
+                        next_value = int(eval(evalue_raw, {"__builtins__": {}}, {}))
+                    except Exception:
+                        # Unresolved expression — skip the member rather than
+                        # crash; codegen rules can hand-list the value if
+                        # this enum is referenced.
+                        continue
+            members[ename] = next_value
+            next_value += 1
+        if members:
+            out[name] = members
+    return out
+
+
 def parse_setto_functions(text: str) -> dict[str, dict]:
     """Scrape ``mjs_setTo*`` function declarations from mujoco.h. Skips the
     first ``mjsActuator* actuator`` parameter; returns the remaining
@@ -145,7 +207,8 @@ def main() -> int:
 
     # Also scrape mjs_setTo* signatures from mujoco.h so codegen can emit
     # the actuator preset calls from introspection instead of hand-written
-    # C++ literals in codegen_rules.json.
+    # C++ literals in codegen_rules.json. mjmodel.h has the typedef enum
+    # declarations URLab maps through xml_enum_attrs.value_map_from_enum.
     if os.path.exists(args.mujoco_h):
         with open(args.mujoco_h, "r", encoding="utf-8") as f:
             mj_text = f.read()
@@ -154,13 +217,25 @@ def main() -> int:
         print(f"WARN: mujoco.h not found at {args.mujoco_h} — skipping setto functions", file=sys.stderr)
         out["setto_functions"] = {}
 
+    # mjmodel.h sits alongside mujoco.h; reuse the path resolution.
+    mjmodel_h = os.path.join(os.path.dirname(args.mujoco_h), "mjmodel.h")
+    if os.path.exists(mjmodel_h):
+        with open(mjmodel_h, "r", encoding="utf-8") as f:
+            model_text = f.read()
+        out["enums"] = parse_enums(model_text)
+    else:
+        print(f"WARN: mjmodel.h not found at {mjmodel_h} — skipping enum scrape", file=sys.stderr)
+        out["enums"] = {}
+
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(out, f, indent=2)
 
     total_fields = sum(len(v) for v in structs.values())
+    total_enum_members = sum(len(v) for v in out["enums"].values())
     print(f"wrote {args.output}: {len(structs)} structs, {total_fields} fields, "
-          f"{len(out['setto_functions'])} setto functions")
+          f"{len(out['setto_functions'])} setto functions, "
+          f"{len(out['enums'])} enums ({total_enum_members} members)")
     return 0
 
 

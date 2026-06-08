@@ -1,7 +1,7 @@
 {
   "_meta": {
     "mujoco_version": "3.8.1",
-    "snapshot_date": "2026-05-15",
+    "snapshot_date": "2026-05-28",
     "source": "https://github.com/google-deepmind/mujoco/blob/main/src/xml/xml_native_reader.cc",
     "description": "MJCF schema snapshot, auto-extracted by Scripts/codegen/build_mjcf_schema_snapshot.py from the MuJoCo submodule's xml_native_reader.cc."
   },
@@ -350,6 +350,400 @@
       "noise",
       "user"
     ]
+  },
+  "sensor_per_type": {
+    "touch": {
+      "mj_type": "mjSENS_TOUCH",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "accelerometer": {
+      "mj_type": "mjSENS_ACCELEROMETER",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "velocimeter": {
+      "mj_type": "mjSENS_VELOCIMETER",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "gyro": {
+      "mj_type": "mjSENS_GYRO",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "force": {
+      "mj_type": "mjSENS_FORCE",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "torque": {
+      "mj_type": "mjSENS_TORQUE",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "magnetometer": {
+      "mj_type": "mjSENS_MAGNETOMETER",
+      "objtype": "mjOBJ_SITE",
+      "reftype": null,
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": false
+    },
+    "camprojection": {
+      "mj_type": "mjSENS_CAMPROJECTION",
+      "objtype": "mjOBJ_SITE",
+      "reftype": "mjOBJ_CAMERA",
+      "obj_attr": "site",
+      "ref_attr": "camera",
+      "computed": false
+    },
+    "rangefinder": {
+      "mj_type": "mjSENS_RANGEFINDER",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "site",
+      "ref_attr": null,
+      "computed": true
+    },
+    "jointpos": {
+      "mj_type": "mjSENS_JOINTPOS",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "jointvel": {
+      "mj_type": "mjSENS_JOINTVEL",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "tendonpos": {
+      "mj_type": "mjSENS_TENDONPOS",
+      "objtype": "mjOBJ_TENDON",
+      "reftype": null,
+      "obj_attr": "tendon",
+      "ref_attr": null,
+      "computed": false
+    },
+    "tendonvel": {
+      "mj_type": "mjSENS_TENDONVEL",
+      "objtype": "mjOBJ_TENDON",
+      "reftype": null,
+      "obj_attr": "tendon",
+      "ref_attr": null,
+      "computed": false
+    },
+    "actuatorpos": {
+      "mj_type": "mjSENS_ACTUATORPOS",
+      "objtype": "mjOBJ_ACTUATOR",
+      "reftype": null,
+      "obj_attr": "actuator",
+      "ref_attr": null,
+      "computed": false
+    },
+    "actuatorvel": {
+      "mj_type": "mjSENS_ACTUATORVEL",
+      "objtype": "mjOBJ_ACTUATOR",
+      "reftype": null,
+      "obj_attr": "actuator",
+      "ref_attr": null,
+      "computed": false
+    },
+    "actuatorfrc": {
+      "mj_type": "mjSENS_ACTUATORFRC",
+      "objtype": "mjOBJ_ACTUATOR",
+      "reftype": null,
+      "obj_attr": "actuator",
+      "ref_attr": null,
+      "computed": false
+    },
+    "jointactuatorfrc": {
+      "mj_type": "mjSENS_JOINTACTFRC",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "tendonactuatorfrc": {
+      "mj_type": "mjSENS_TENDONACTFRC",
+      "objtype": "mjOBJ_TENDON",
+      "reftype": null,
+      "obj_attr": "tendon",
+      "ref_attr": null,
+      "computed": false
+    },
+    "ballquat": {
+      "mj_type": "mjSENS_BALLQUAT",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "ballangvel": {
+      "mj_type": "mjSENS_BALLANGVEL",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "jointlimitpos": {
+      "mj_type": "mjSENS_JOINTLIMITPOS",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "jointlimitvel": {
+      "mj_type": "mjSENS_JOINTLIMITVEL",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "jointlimitfrc": {
+      "mj_type": "mjSENS_JOINTLIMITFRC",
+      "objtype": "mjOBJ_JOINT",
+      "reftype": null,
+      "obj_attr": "joint",
+      "ref_attr": null,
+      "computed": false
+    },
+    "tendonlimitpos": {
+      "mj_type": "mjSENS_TENDONLIMITPOS",
+      "objtype": "mjOBJ_TENDON",
+      "reftype": null,
+      "obj_attr": "tendon",
+      "ref_attr": null,
+      "computed": false
+    },
+    "tendonlimitvel": {
+      "mj_type": "mjSENS_TENDONLIMITVEL",
+      "objtype": "mjOBJ_TENDON",
+      "reftype": null,
+      "obj_attr": "tendon",
+      "ref_attr": null,
+      "computed": false
+    },
+    "tendonlimitfrc": {
+      "mj_type": "mjSENS_TENDONLIMITFRC",
+      "objtype": "mjOBJ_TENDON",
+      "reftype": null,
+      "obj_attr": "tendon",
+      "ref_attr": null,
+      "computed": false
+    },
+    "framepos": {
+      "mj_type": "mjSENS_FRAMEPOS",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "framequat": {
+      "mj_type": "mjSENS_FRAMEQUAT",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "framexaxis": {
+      "mj_type": "mjSENS_FRAMEXAXIS",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "frameyaxis": {
+      "mj_type": "mjSENS_FRAMEYAXIS",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "framezaxis": {
+      "mj_type": "mjSENS_FRAMEZAXIS",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "framelinvel": {
+      "mj_type": "mjSENS_FRAMELINVEL",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "frameangvel": {
+      "mj_type": "mjSENS_FRAMEANGVEL",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": false
+    },
+    "framelinacc": {
+      "mj_type": "mjSENS_FRAMELINACC",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": null,
+      "computed": false
+    },
+    "frameangacc": {
+      "mj_type": "mjSENS_FRAMEANGACC",
+      "objtype": "from_xml",
+      "reftype": null,
+      "obj_attr": "objname",
+      "ref_attr": null,
+      "computed": false
+    },
+    "subtreecom": {
+      "mj_type": "mjSENS_SUBTREECOM",
+      "objtype": "mjOBJ_BODY",
+      "reftype": null,
+      "obj_attr": "body",
+      "ref_attr": null,
+      "computed": false
+    },
+    "subtreelinvel": {
+      "mj_type": "mjSENS_SUBTREELINVEL",
+      "objtype": "mjOBJ_BODY",
+      "reftype": null,
+      "obj_attr": "body",
+      "ref_attr": null,
+      "computed": false
+    },
+    "subtreeangmom": {
+      "mj_type": "mjSENS_SUBTREEANGMOM",
+      "objtype": "mjOBJ_BODY",
+      "reftype": null,
+      "obj_attr": "body",
+      "ref_attr": null,
+      "computed": false
+    },
+    "insidesite": {
+      "mj_type": "mjSENS_INSIDESITE",
+      "objtype": "from_xml",
+      "reftype": "mjOBJ_SITE",
+      "obj_attr": "objname",
+      "ref_attr": "site",
+      "computed": false
+    },
+    "distance": {
+      "mj_type": "mjSENS_GEOMDIST",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "body1",
+      "ref_attr": "body2",
+      "computed": true
+    },
+    "normal": {
+      "mj_type": "mjSENS_GEOMNORMAL",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "body1",
+      "ref_attr": "body2",
+      "computed": true
+    },
+    "fromto": {
+      "mj_type": "mjSENS_GEOMFROMTO",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "body1",
+      "ref_attr": "body2",
+      "computed": true
+    },
+    "contact": {
+      "mj_type": "mjSENS_CONTACT",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "site",
+      "ref_attr": "body2",
+      "computed": true
+    },
+    "e_potential": {
+      "mj_type": "mjSENS_E_POTENTIAL",
+      "objtype": "mjOBJ_UNKNOWN",
+      "reftype": null,
+      "obj_attr": null,
+      "ref_attr": null,
+      "computed": false
+    },
+    "e_kinetic": {
+      "mj_type": "mjSENS_E_KINETIC",
+      "objtype": "mjOBJ_UNKNOWN",
+      "reftype": null,
+      "obj_attr": null,
+      "ref_attr": null,
+      "computed": false
+    },
+    "clock": {
+      "mj_type": "mjSENS_CLOCK",
+      "objtype": "mjOBJ_UNKNOWN",
+      "reftype": null,
+      "obj_attr": null,
+      "ref_attr": null,
+      "computed": false
+    },
+    "tactile": {
+      "mj_type": "mjSENS_TACTILE",
+      "objtype": "mjOBJ_MESH",
+      "reftype": "mjOBJ_GEOM",
+      "obj_attr": "mesh",
+      "ref_attr": "geom",
+      "computed": false
+    },
+    "user": {
+      "mj_type": "mjSENS_USER",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "objname",
+      "ref_attr": null,
+      "computed": true
+    },
+    "plugin": {
+      "mj_type": "mjSENS_PLUGIN",
+      "objtype": "computed",
+      "reftype": "computed",
+      "obj_attr": "objname",
+      "ref_attr": "refname",
+      "computed": true
+    }
   },
   "tendon": {
     "spatial": {

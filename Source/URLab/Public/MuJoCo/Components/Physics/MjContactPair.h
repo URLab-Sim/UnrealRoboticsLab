@@ -44,66 +44,67 @@ class URLAB_API UMjContactPair : public USceneComponent, public IMjSpecElement
 
 public:	
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_geom1 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_geom1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_geom1"))
     FString geom1 = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_geom2 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_geom2"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_geom2"))
     FString geom2 = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_condim = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_condim"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_condim"))
     int32 condim = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_friction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_friction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_friction"))
     TArray<float> friction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_solref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_solref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_solref"))
     TArray<float> solref = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_solreffriction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_solreffriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_solreffriction"))
     TArray<float> solreffriction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_solimp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_solimp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_solimp"))
     TArray<float> solimp = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_gap = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_gap"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_gap"))
     float gap = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactPair", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactPair", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_margin"))
     float margin = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 
     /** @brief Default constructor. */
 	UMjContactPair();
 
-    /** @brief Name of the contact pair (optional). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair")
+    /** @brief Name of the contact pair (optional). Hidden from the Details panel — synced from MjName. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Pair",
+              meta=(EditCondition="false", EditConditionHides))
     FString Name;
 
 
@@ -133,7 +134,8 @@ public:
      */
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
+    /** No-op: contact pairs are global static data, no per-instance runtime binding. Required by IMjSpecElement. */
+    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override {}
 
 #if WITH_EDITOR
     UFUNCTION()

@@ -44,7 +44,7 @@ public:
     UMjPluginSensor();
 
     // --- CODEGEN_PROPERTIES_START ---
-
+    // (no type-specific schema attrs)
     // --- CODEGEN_PROPERTIES_END ---
 
     virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;

@@ -86,76 +86,76 @@ class URLAB_API UMjCamera : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera|Spatial Pose", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
     FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera|Orientation", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Orientation", meta=(EditCondition="bOverride_Quat"))
     FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_fovy = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_fovy"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_fovy"))
     float fovy = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_ipd = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_ipd"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_ipd"))
     float ipd = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_resolution = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_resolution"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_resolution"))
     TArray<int32> resolution = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_output = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_output"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_output"))
     float output = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_target = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_target"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_target"))
     FString target = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_focal = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_focal"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_focal"))
     TArray<float> focal = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_focalpixel = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_focalpixel"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_focalpixel"))
     TArray<int32> focalpixel = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_principal = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_principal"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_principal"))
     TArray<float> principal = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_principalpixel = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_principalpixel"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_principalpixel"))
     TArray<int32> principalpixel = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjCamera", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta=(InlineEditConditionToggle))
     bool bOverride_sensorsize = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjCamera", meta=(EditCondition="bOverride_sensorsize"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta=(EditCondition="bOverride_sensorsize"))
     TArray<float> sensorsize = {};
     // --- CODEGEN_PROPERTIES_END ---
 

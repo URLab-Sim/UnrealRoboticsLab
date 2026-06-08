@@ -58,58 +58,58 @@ class URLAB_API UMjEquality : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_relpose = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_relpose"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_relpose"))
     TArray<float> relpose = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_anchor = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_anchor"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_anchor"))
     TArray<float> anchor = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_site1 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_site1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_site1"))
     FString site1 = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_site2 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_site2"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_site2"))
     FString site2 = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_active = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_active"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_active"))
     float active = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_solref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_solref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_solref"))
     TArray<float> solref = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_solimp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_solimp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_solimp"))
     TArray<float> solimp = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_torquescale = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_torquescale"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_torquescale"))
     float torquescale = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjEquality", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_polycoef = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjEquality", meta=(EditCondition="bOverride_polycoef"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_polycoef"))
     TArray<float> polycoef = {};
     // --- CODEGEN_PROPERTIES_END ---
 

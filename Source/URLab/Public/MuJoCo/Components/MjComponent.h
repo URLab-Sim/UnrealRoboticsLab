@@ -105,10 +105,14 @@ public:
             return ViewType();
         }
 
-        // 1. Try ID based binding via spec element
-        // NOTE: mjs_getId can return stale/garbage IDs after mjs_attach merges
-        // a child spec into the root. We validate the ID against model bounds
-        // before using it.
+        // 1. Try ID based binding via spec element (the primary path)
+        // EMPIRICAL (probe test 2026-05-27, MjBindingPathProbeTest):
+        // mjs_getId returns the correct compiled-model id after mjs_attach
+        // in current MuJoCo (mj=6882095). Path 1 == Path 2 == Bind in every
+        // tested scenario. We keep the bounds check + Path 2 fallback as
+        // safety nets for edge cases not yet observed (recompile mid-PIE,
+        // multi-attach order, runtime component churn). The old v0.1-alpha
+        // comment claiming "stale/garbage IDs after mjs_attach" is obsolete.
         if (m_SpecElement)
         {
             int id = mjs_getId(m_SpecElement);
@@ -150,6 +154,39 @@ public:
         return ViewType();
     }
 
+    /**
+     * @brief Bind a typed view AND cache the resulting mjId on the component.
+     *
+     * Collapses the 4-line pattern that 16 base components currently hand-roll:
+     *   Super::Bind(model, data, prefix);
+     *   m_<X>View = BindToView<XView>(prefix);
+     *   if (m_<X>View.id != -1) m_ID = m_<X>View.id;
+     *   else UE_LOG warning;
+     *
+     * After v8 the per-category Bind() override becomes:
+     *   Super::Bind(model, data, prefix);
+     *   BindAndCacheView(m_<X>View, prefix);
+     *
+     * 3 components keep their own Bind() override for real work
+     * (MjTactileSensor runtime Dim sync, MjPDController, MjFlexcomp); they
+     * are free to call this helper too if they want.
+     */
+    template <typename ViewType>
+    void BindAndCacheView(ViewType& OutView, const FString& Prefix)
+    {
+        OutView = BindToView<ViewType>(Prefix);
+        if (OutView.id != -1)
+        {
+            m_ID = OutView.id;
+        }
+        else
+        {
+            UE_LOG(LogURLabBind, Warning,
+                TEXT("[BindAndCacheView] '%s' — failed to bind (Prefix='%s', type=%d). m_ID stays -1."),
+                *GetName(), *Prefix, ViewType::obj_type);
+        }
+    }
+
     /** @brief Checks if the component is successfully bound to MuJoCo runtime. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
     bool IsBound() const;
@@ -157,6 +194,9 @@ public:
     /** @brief Returns the MuJoCo ID of this component. Returns -1 if not bound. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
     int GetMjID() const { return m_ID; }
+
+    /** @brief Diagnostic-only accessor for the spec element pointer. Used by binding-path probes. */
+    mjsElement* GetSpecElementForDiagnostics() const { return m_SpecElement; }
 
     /** @brief If true, this component is a template in a <default> block. Auto-resolved in Setup(). */
     UPROPERTY()

@@ -502,6 +502,7 @@ bool FMjPhysicsSleep_BodySleepPolicyAllowed::RunTest(const FString& Parameters)
     {
         Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
         Sess.Body->SleepPolicy = EMjBodySleepPolicy::Allowed;
+        Sess.Body->bOverride_SleepPolicy = true;  // v8: explicit toggle required to write per-body policy
     }))
     {
         AddError(S.LastError);

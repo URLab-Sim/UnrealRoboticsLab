@@ -30,7 +30,7 @@ PLUGIN_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 DEFAULT_MJXMACRO = os.path.join(
     PLUGIN_ROOT, "third_party", "install", "MuJoCo", "include", "mujoco", "mjxmacro.h"
 )
-DEFAULT_OUTPUT = os.path.join(PLUGIN_ROOT, "Scripts", "mjxmacro_snapshot.json")
+DEFAULT_OUTPUT = os.path.join(PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjxmacro_snapshot.json")
 
 # Block names we care about. Categorized so the consumer knows the
 # kind of data (per-element pointer table vs flat struct fields).
@@ -79,6 +79,8 @@ POINTER_BLOCKS_MJDATA = [
 ]
 
 # Flat struct field blocks (no outer dimension — just type + name + size).
+# Lives across both mjxmacro.h (the mjmodel-side struct fields) and
+# mjspecmacro.h (the mjspec-side struct fields).
 STRUCT_FIELD_BLOCKS = [
     "MJOPTION_FIELDS",
     "MJSTATISTIC_FIELDS",
@@ -88,13 +90,26 @@ STRUCT_FIELD_BLOCKS = [
     "MJVISUAL_MAP_FIELDS",
     "MJVISUAL_SCALE_FIELDS",
     "MJVISUAL_RGBA_FIELDS",
+    "MJSCOMPILER_FIELDS",
+    "MJSPEC_FIELDS",
 ]
+
+DEFAULT_MJSPECMACRO = os.path.join(
+    SCRIPT_DIR, "_vendored", "mjspecmacro.h",
+)
 
 # Regexes
 _BLOCK_START_RE = re.compile(r"^\s*#define\s+(\w+)\s*(?:\(\s*\w+\s*\))?\s*\\?\s*$")
+# Single source of truth for the X-macro tag set. Accepts X / XVEC / XNV.
+# XNV ("X No Vec") is structurally identical to X (same 4-tuple shape);
+# MuJoCo uses the tag so its own codegen knows to skip the vectorised
+# emission path. URLab doesn't care about that distinction — we just want
+# the entry shape. Add new tags here whenever MuJoCo introduces one;
+# duplicating the list in a sibling regex is the bug class that bit XNV.
+_X_TAG_RE = r"X(?:VEC|NV)?"
 # X-macro entry. Tolerates 4 or 3-tuple forms (pointer vs flat field).
 # Captures parenthesised contents; field split below trims/normalizes.
-_X_ENTRY_RE = re.compile(r"^\s*X(?:VEC)?\s*\(\s*(.*?)\s*\)\s*\\?\s*$")
+_X_ENTRY_RE = re.compile(rf"^\s*{_X_TAG_RE}\s*\(\s*(.*?)\s*\)\s*\\?\s*$")
 
 
 def _strip_comments(text: str) -> str:
@@ -104,13 +119,7 @@ def _strip_comments(text: str) -> str:
     return text
 
 
-def _join_continued_lines(text: str) -> str:
-    # mjxmacro spreads multi-line macros via backslash continuation; preserve
-    # individual entries on their own lines for downstream parsing.
-    return text
-
-
-_BODY_ENTRY_RE = re.compile(r"^\s*(X|XVEC)\s*\(")
+_BODY_ENTRY_RE = re.compile(rf"^\s*{_X_TAG_RE}\s*\(")
 
 
 def _parse_block_body(lines: List[str], start_idx: int) -> List[str]:
@@ -170,12 +179,16 @@ def _parse_pointer_entry(raw: str) -> Optional[Dict[str, Any]]:
 
 
 def _parse_struct_field_entry(raw: str) -> Optional[Dict[str, Any]]:
-    """Parse `X(type, name, count)` or `X(name, count)` or `XVEC(...)`.
+    """Parse `X(type, name, count)` or `X(name, count)` or `X(name)` or `XVEC(...)`.
 
     mjxmacro flat-struct blocks have a few shapes:
     - `X(type, name, count)` (mjOption)
     - `X(name, count)` (mjStatistic — no type, defaults to mjtNum)
     - `X(type, name)` (mjVisual fields — no explicit count, treated as scalar)
+    - `X(name)` (mjVisualQuality/Map/Scale/Rgba — bare field name; type is
+      whatever the corresponding ``struct mjVisualX`` member is. URLab
+      defaults to mjtNum since these structs are float/int in practice and
+      consumers can override via ``field_types``.)
     - `XVEC(type, name, count)` (vec3 / vec5 / etc.)
     """
     m = _X_ENTRY_RE.match(raw)
@@ -193,6 +206,9 @@ def _parse_struct_field_entry(raw: str) -> Optional[Dict[str, Any]]:
             ctype, name, count = fields[0], fields[1], "1"
         else:
             ctype, name, count = "mjtNum", fields[0], fields[1]
+    elif len(fields) == 1:
+        # Bare field name — type defaults to mjtNum, scalar.
+        ctype, name, count = "mjtNum", fields[0], "1"
     else:
         return None
     return {
@@ -249,6 +265,32 @@ def main() -> int:
         print(f"error: mjxmacro.h not found at {src}", file=sys.stderr)
         return 1
     snapshot = parse_mjxmacro(src)
+    # Track which source each struct-field block came from so a snapshot
+    # reader can tell mjmodel-side (mjxmacro.h) blocks apart from mjspec-side
+    # (mjspecmacro.h) blocks without re-parsing the headers.
+    block_sources: Dict[str, str] = {}
+    for block_name in snapshot["struct_fields"]:
+        block_sources[block_name] = snapshot["_meta"]["source"]
+    # Also fold in the vendored mjspecmacro.h (MJSCOMPILER_FIELDS +
+    # MJSPEC_FIELDS) — both live in the same ``struct_fields`` dict so
+    # synthetic_categories rules can reference either by block name.
+    if os.path.isfile(DEFAULT_MJSPECMACRO):
+        spec_snapshot = parse_mjxmacro(DEFAULT_MJSPECMACRO)
+        spec_rel = os.path.relpath(DEFAULT_MJSPECMACRO, PLUGIN_ROOT)
+        for block_name, entries in spec_snapshot["struct_fields"].items():
+            snapshot["struct_fields"][block_name] = entries
+            block_sources[block_name] = spec_rel
+    else:
+        # Loud rather than silent — MJSCOMPILER_FIELDS / MJSPEC_FIELDS
+        # blocks WILL be missing if the vendored header was removed, and
+        # that surfaces only as a downstream KeyError much later in
+        # generate_ue_components.py.
+        print(
+            f"warning: vendored mjspecmacro.h not found at {DEFAULT_MJSPECMACRO}; "
+            f"MJSCOMPILER_FIELDS + MJSPEC_FIELDS will be absent from the snapshot.",
+            file=sys.stderr,
+        )
+    snapshot["_meta"]["struct_field_sources"] = block_sources
     # Stats for sanity.
     total_model = sum(len(v) for v in snapshot["mjmodel_pointers"].values())
     total_data = sum(len(v) for v in snapshot["mjdata_pointers"].values())

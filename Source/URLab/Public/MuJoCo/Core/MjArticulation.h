@@ -25,7 +25,7 @@
 #include "CoreMinimal.h"
 #include <mujoco/mjspec.h>
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
-#include "MuJoCo/Core/MjSimOptions.h"
+#include "MuJoCo/Generated/MjOptionGenerated.h"
 #include "GameFramework/Pawn.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Components/Joints/MjJoint.h"
@@ -207,8 +207,8 @@ public:
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Discovery")
     TArray<USceneComponent*> GetRuntimeComponentsOfClass(TSubclassOf<USceneComponent> ComponentClass) const;
 
-    /** 
-     * @brief Templated helper to find all components of type T belonging to this articulation 
+    /**
+     * @brief Templated helper to find all components of type T belonging to this articulation
      * that are NOT marked as 'bIsDefault'. This is the standard way to find simulation-active components.
      */
     template<typename T>
@@ -229,6 +229,51 @@ public:
                 OutComponents.Add(Comp);
             }
         }
+    }
+
+    // ============================================================================
+    // Templated map-lookup helpers — collapse the 9 hand-rolled `Get<X>Names` /
+    // `Get<X>s` / `Get<X>ByMjId` methods into 1-line BP wrappers per category.
+    // Equality and Keyframe getters do NOT use these (name-keyed maps + dedup +
+    // different name-source) — they stay hand-rolled. See deviation D-future.
+    // ============================================================================
+
+    /** Return all values from an id-keyed component map. */
+    template <typename T>
+    TArray<T*> GetComponentsFromMap(const TMap<int, T*>& IdMap) const
+    {
+        TArray<T*> Out;
+        IdMap.GenerateValueArray(Out);
+        return Out;
+    }
+
+    /** Return MuJoCo names of all components in an id-keyed map (skipping null values). */
+    template <typename T>
+    TArray<FString> GetComponentNamesFromMap(const TMap<int, T*>& IdMap) const
+    {
+        TArray<FString> Names;
+        Names.Reserve(IdMap.Num());
+        for (const auto& Pair : IdMap)
+        {
+            if (Pair.Value) Names.Add(Pair.Value->GetMjName());
+        }
+        return Names;
+    }
+
+    /** Lookup a component by its compiled mjId in an id-keyed map. Returns nullptr if absent. */
+    template <typename T>
+    T* GetComponentByIdInMap(int Id, const TMap<int, T*>& IdMap) const
+    {
+        if (T* const* Found = IdMap.Find(Id)) return *Found;
+        return nullptr;
+    }
+
+    /** Lookup a component by name in a name-keyed map. Returns nullptr if absent. */
+    template <typename T>
+    T* GetComponentByNameInMap(const FString& Name, const TMap<FString, T*>& NameMap) const
+    {
+        if (T* const* Found = NameMap.Find(Name)) return *Found;
+        return nullptr;
     }
 
     // =========================================================================
@@ -370,6 +415,9 @@ public:
     UPROPERTY(BlueprintReadOnly, Category = "MuJoCo|Status")
     bool bAttachFailed = false;
 
+    /** @brief Diagnostic-only accessor for the articulation prefix used by mjs_attach. */
+    FString GetPrefixForDiagnostics() const { return m_prefix; }
+
 protected:
     mjVFS* m_vfs = nullptr;
     mjSpec* m_spec = nullptr;
@@ -417,7 +465,7 @@ public:
      * Parsed from the MJCF <option> element during import.
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options")
-    FMuJoCoOptions SimOptions;
+    FMjOptionGenerated SimOptions;
     
     /**
      * @brief Initializes the articulation, adding its components to the provided mjSpec.

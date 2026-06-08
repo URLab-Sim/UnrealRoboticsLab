@@ -66,6 +66,24 @@ $cmd = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 if (-not (Test-Path $bat)) { Write-Error "Build.bat not found: $bat";          exit 3 }
 if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   exit 3 }
 
+# --- Codegen drift gate ----------------------------------------------------
+# Phase 5 (D7 follow-up): refuse to build if codegen output drifted from
+# the committed Source/. Catches the D4-class bug where hand-edits to
+# CODEGEN-managed regions slip past the emitters. Skip silently if Python
+# isn't on PATH (offline / CI without Python) — the gate is best-effort
+# locally; CI enforces it strictly.
+$pluginRoot = Split-Path -Parent $PSScriptRoot
+$generator = Join-Path $pluginRoot 'Scripts/codegen/generate_ue_components.py'
+$py = (Get-Command python -ErrorAction SilentlyContinue)
+if ($py -and (Test-Path $generator)) {
+    Write-Host '>>> Codegen drift gate: python generate_ue_components.py --check'
+    & $py.Source $generator --check
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Codegen drift detected. Re-run 'python Scripts/codegen/generate_ue_components.py' to regenerate, then re-run this script."
+        exit 4
+    }
+}
+
 # Truncate the test log up-front so a build failure (or any early exit
 # before UnrealEditor-Cmd writes to it) doesn't leave the SHA-256 in the
 # summary pointing at a previous run's file.

@@ -495,7 +495,7 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
         for (UMjGeom* Geom : Geoms)
         {
             if (!Geom || !Geom->IsBound()) continue;
-            const int32 BodyId = Geom->GetMj().body_id;
+            const int32 BodyId = Geom->GetMj().geom_bodyid;
 
             ApplyToMesh(Geom->GetVisualizerMesh(), BodyId, ArtHash);
 
@@ -654,7 +654,7 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
         for (UMjGeom* Geom : Geoms)
         {
             if (!Geom || !Geom->IsBound()) continue;
-            const int32 BodyId = Geom->GetMj().body_id;
+            const int32 BodyId = Geom->GetMj().geom_bodyid;
 
             AddSibling(Geom->GetVisualizerMesh(), BodyId, ArtHash);
 

@@ -46,11 +46,12 @@ void UMjTendon::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     if (!Node) return;
 
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), limited, bOverride_limited);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("actuatorfrclimited"), actuatorfrclimited, bOverride_actuatorfrclimited);
+    MjXmlUtils::ReadAttrBool(Node, TEXT("actuatorfrclimited"), ActFrcLimited, bOverride_ActFrcLimited);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), range, bOverride_range);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), actuatorfrcrange, bOverride_actuatorfrcrange);
+    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), ActFrcRange, bOverride_ActFrcRange);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), solreflimit, bOverride_solreflimit);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), solimplimit, bOverride_solimplimit);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), solreffriction, bOverride_solreffriction);
@@ -65,15 +66,6 @@ void UMjTendon::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
     MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
     // --- CODEGEN_IMPORT_END ---
-
-    // Class name
-    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
-
-    // --- Physics ---
-
-    // --- Limits ---
-    MjXmlUtils::ReadAttrBool(Node, TEXT("actfrclimited"), bActFrcLimited, bOverride_ActFrcLimited);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actfrcrange"), ActFrcRange, bOverride_ActFrcRange);
 
     // --- Solver ---
 
@@ -131,25 +123,12 @@ void UMjTendon::ExportTo(mjsTendon* Element, mjsDefault* def)
 
     // --- Physics properties ---
 
-    // --- Limits ---
-
-    if (bOverride_ActFrcLimited) Element->actfrclimited = bActFrcLimited ? mjLIMITED_TRUE : mjLIMITED_FALSE;
-    if (bOverride_ActFrcRange)
-    {
-        for (int i = 0; i < ActFrcRange.Num() && i < 2; ++i)
-            Element->actfrcrange[i] = ActFrcRange[i];
-    }
-
-    // --- Solver ---
-
-    // --- Visuals ---
-
-        // --- CODEGEN_EXPORT_START ---
+    // --- CODEGEN_EXPORT_START ---
     if (bOverride_group) Element->group = group;
     if (bOverride_limited) Element->limited = limited ? 1 : 0;
-    if (bOverride_actuatorfrclimited) Element->actfrclimited = actuatorfrclimited ? 1 : 0;
+    if (bOverride_ActFrcLimited) Element->actfrclimited = ActFrcLimited ? 1 : 0;
     if (bOverride_range) { for (int32 i = 0; i < range.Num(); ++i) Element->range[i] = range[i]; }
-    if (bOverride_actuatorfrcrange) { for (int32 i = 0; i < actuatorfrcrange.Num(); ++i) Element->actfrcrange[i] = actuatorfrcrange[i]; }
+    if (bOverride_ActFrcRange) { for (int32 i = 0; i < ActFrcRange.Num(); ++i) Element->actfrcrange[i] = ActFrcRange[i]; }
     if (bOverride_solreflimit) { for (int32 i = 0; i < solreflimit.Num(); ++i) Element->solref_limit[i] = solreflimit[i]; }
     if (bOverride_solimplimit) { for (int32 i = 0; i < solimplimit.Num(); ++i) Element->solimp_limit[i] = solimplimit[i]; }
     if (bOverride_solreffriction) { for (int32 i = 0; i < solreffriction.Num(); ++i) Element->solref_friction[i] = solreffriction[i]; }
@@ -248,16 +227,7 @@ void UMjTendon::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 void UMjTendon::Bind(mjModel* model, mjData* data, const FString& Prefix)
 {
     Super::Bind(model, data, Prefix);
-    m_TendonView = BindToView<TendonView>(Prefix);
-    if (m_TendonView.id != -1)
-    {
-        m_ID = m_TendonView.id;
-    }
-    else
-    {
-        UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] Failed to bind tendon '%s' (prefix='%s')"),
-            *GetName(), *Prefix);
-    }
+    BindAndCacheView(m_TendonView, Prefix);
 }
 
 float UMjTendon::GetLength() const
@@ -277,10 +247,9 @@ FString UMjTendon::GetMjName() const
 }
 
 #if WITH_EDITOR
-TArray<FString> UMjTendon::GetDefaultClassOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjTendon::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+    // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 
 // --- Multi-UCLASS subclass constructors --------------------------------------

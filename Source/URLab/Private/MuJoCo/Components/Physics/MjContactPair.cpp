@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Physics/MjContactPair.h"
+#include "MuJoCo/Utils/MjUtils.h"
 #include "XmlFile.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
@@ -43,6 +44,7 @@ void UMjContactPair::BeginPlay()
 void UMjContactPair::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("geom1"), geom1)) bOverride_geom1 = true;
     if (MjXmlUtils::ReadAttrString(Node, TEXT("geom2"), geom2)) bOverride_geom2 = true;
     MjXmlUtils::ReadAttrInt(Node, TEXT("condim"), condim, bOverride_condim);
@@ -59,23 +61,6 @@ void UMjContactPair::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettin
         return;
     }
 
-    // Required attributes
-
-    // Optional attributes
-    MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
-
-    {
-        bool bCondimOverride = false;
-    }
-
-    // Parse friction/solref/solimp arrays
-    {
-        bool bFrictionOverride = false, bSolrefOverride = false, bSolimpOverride = false;
-    }
-
-    {
-        bool bGapOverride = false, bMarginOverride = false;
-    }
 }
 
 void UMjContactPair::ExportTo(mjsPair* Element)
@@ -83,8 +68,8 @@ void UMjContactPair::ExportTo(mjsPair* Element)
     if (!Element) return;
 
     // --- CODEGEN_EXPORT_START ---
-    if (bOverride_geom1 && !geom1.IsEmpty()) mjs_setString(Element->geomname1, TCHAR_TO_UTF8(*geom1));
-    if (bOverride_geom2 && !geom2.IsEmpty()) mjs_setString(Element->geomname2, TCHAR_TO_UTF8(*geom2));
+    if (bOverride_geom1) MjSetString(Element->geomname1, geom1);
+    if (bOverride_geom2) MjSetString(Element->geomname2, geom2);
     if (bOverride_condim) Element->condim = condim;
     if (bOverride_friction) { for (int32 i = 0; i < friction.Num(); ++i) Element->friction[i] = friction[i]; }
     if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
@@ -106,14 +91,8 @@ void UMjContactPair::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* Parent
     UE_LOG(LogURLabWrapper, Log, TEXT("Added contact pair: %s->%s"), *geom1, *geom2);
 }
 
-void UMjContactPair::Bind(mjModel* model, mjData* data, const FString& Prefix)
-{
-    // Contact pairs are global static data in MuJoCo, usually not bound to runtime indices easily or needed for runtime update.
-}
-
 #if WITH_EDITOR
-TArray<FString> UMjContactPair::GetGeomOptions() const
-{
-    return UMjComponent::GetSiblingComponentOptions(this, UMjGeom::StaticClass());
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjContactPair::GetGeomOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjGeom::StaticClass()); }
+    // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

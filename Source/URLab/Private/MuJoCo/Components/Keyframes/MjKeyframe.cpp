@@ -26,6 +26,7 @@
 #include "MuJoCo/Components/Joints/MjFreeJoint.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
+#include "MuJoCo/Utils/MjUtils.h"
 #include "XmlNode.h"
 #include "Utils/URLabLogging.h"
 
@@ -58,36 +59,12 @@ void UMjKeyframe::ExportTo(mjsKey* Element, mjsDefault* Default)
 
     // --- CODEGEN_EXPORT_START ---
     if (bOverride_Time) Element->time = Time;
-    if (bOverride_Qpos && Element->qpos)
-    {
-        Element->qpos->clear();
-        for (float V : Qpos) Element->qpos->push_back((double)V);
-    }
-    if (bOverride_Qvel && Element->qvel)
-    {
-        Element->qvel->clear();
-        for (float V : Qvel) Element->qvel->push_back((double)V);
-    }
-    if (bOverride_Act && Element->act)
-    {
-        Element->act->clear();
-        for (float V : Act) Element->act->push_back((double)V);
-    }
-    if (bOverride_Ctrl && Element->ctrl)
-    {
-        Element->ctrl->clear();
-        for (float V : Ctrl) Element->ctrl->push_back((double)V);
-    }
-    if (bOverride_Mpos && Element->mpos)
-    {
-        Element->mpos->clear();
-        for (float V : Mpos) Element->mpos->push_back((double)V);
-    }
-    if (bOverride_Mquat && Element->mquat)
-    {
-        Element->mquat->clear();
-        for (float V : Mquat) Element->mquat->push_back((double)V);
-    }
+    if (bOverride_Qpos) MjSetDoubleVec(Element->qpos, Qpos);
+    if (bOverride_Qvel) MjSetDoubleVec(Element->qvel, Qvel);
+    if (bOverride_Act) MjSetDoubleVec(Element->act, Act);
+    if (bOverride_Ctrl) MjSetDoubleVec(Element->ctrl, Ctrl);
+    if (bOverride_Mpos) MjSetDoubleVec(Element->mpos, Mpos);
+    if (bOverride_Mquat) MjSetDoubleVec(Element->mquat, Mquat);
     // --- CODEGEN_EXPORT_END ---
 }
 
@@ -153,16 +130,8 @@ static FKeyframeDimensions CountDimensions(AActor* Owner)
     return D;
 }
 
-namespace
-{
-    // Helper for overwriting an mjDoubleVec* with a TArray<float>.
-    void SetVec(mjDoubleVec* Dest, const TArray<float>& Src)
-    {
-        if (!Dest) return;
-        Dest->clear();
-        for (float V : Src) Dest->push_back((double)V);
-    }
-}
+// Helper consolidated into MjUtils::MjSetDoubleVec (Phase 3e.8). Kept
+// here as a thin alias so the padding paths below stay readable.
 
 void UMjKeyframe::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
@@ -199,7 +168,7 @@ void UMjKeyframe::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
             Padded.Append({0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f});
         }
         Padded.Append(Qpos);
-        SetVec(Key->qpos, Padded);
+        MjSetDoubleVec(Key->qpos, Padded);
         UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] '%s': padded qpos %d -> %d (%d free joints)"),
             *TName, Qpos.Num(), Padded.Num(), Dims.NumFreeJoints);
     }
@@ -218,7 +187,7 @@ void UMjKeyframe::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
             Padded.Append({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f});
         }
         Padded.Append(Qvel);
-        SetVec(Key->qvel, Padded);
+        MjSetDoubleVec(Key->qvel, Padded);
         UE_LOG(LogURLabImport, Log, TEXT("[MjKeyframe] '%s': padded qvel %d -> %d"),
             *TName, Qvel.Num(), Padded.Num());
     }

@@ -175,7 +175,210 @@ _SENSOR_COMMON_ATTRS = [
 ]
 
 
-def _build_snapshot(root: SchemaNode, mujoco_version: str) -> Dict:
+# ----------------------------------------------------------------------------
+# Per-sensor objtype/reftype extraction
+# ----------------------------------------------------------------------------
+#
+# The static MJCF[nMJCF] schema only carries attr lists — not the per-sensor
+# mapping between the XML element name and the mjsSensor objtype/reftype the
+# compiler expects. That logic lives in xml_native_reader.cc's `Sensor()`
+# method (a giant if/else cascade, one branch per sensor type). Phase 2b
+# scrapes those branches so codegen rules don't have to hand-list them
+# (Phase 2c wires this into the emitter).
+
+# Inside Sensor(), each "regular" branch follows:
+#   if (type == "<NAME>") {
+#     sensor->type    = mjSENS_X;
+#     sensor->objtype = mjOBJ_Y;            // OPTIONAL: literal default
+#     ReadAttrTxt(elem, "<attr>", objname, true);   // OPTIONAL: name source
+#     sensor->reftype = mjOBJ_Z;            // OPTIONAL
+#     ReadAttrTxt(elem, "<attr>", refname, true);   // OPTIONAL: ref name source
+#   }
+#
+# "Computed" branches (rangefinder, distance/normal/fromto, contact, user,
+# plugin) derive objtype/reftype from attribute presence at parse time;
+# those get marked computed=True so codegen rules keep their explicit
+# overrides for them.
+# Matches the open of a sensor branch, capturing the parenthesised condition
+# string. We post-process the condition to pull out every ``type == "NAME"``
+# clause so ``else if (type == "distance" || type == "normal" || type ==
+# "fromto") { ... }`` produces three entries that share the branch body.
+_SENSOR_BRANCH_RE = re.compile(
+    r'(?:if|else if)\s*\((?P<cond>[^{]*?type\s*==\s*"[^"]+"[^{]*)\)\s*\{',
+    re.DOTALL,
+)
+_SENSOR_NAMES_IN_COND_RE = re.compile(r'type\s*==\s*"([^"]+)"')
+_TYPE_LITERAL_RE     = re.compile(r'sensor->type\s*=\s*(mjSENS_\w+)\s*;')
+_OBJTYPE_LITERAL_RE  = re.compile(r'sensor->objtype\s*=\s*(mjOBJ_\w+)\s*;')
+_REFTYPE_LITERAL_RE  = re.compile(r'sensor->reftype\s*=\s*(mjOBJ_\w+)\s*;')
+_OBJTYPE_FROM_XML_RE = re.compile(
+    r'ReadAttrTxt\s*\(\s*elem\s*,\s*"objtype"\s*,\s*text'
+)
+_NAME_READ_RE = re.compile(
+    r'ReadAttrTxt\s*\(\s*elem\s*,\s*"([^"]+)"\s*,\s*(objname|refname)\b'
+)
+
+
+def _slice_balanced_braces(src: str, open_idx: int) -> str:
+    """Given an index pointing AT '{', return the substring up to the
+    matching close (exclusive of both braces). Tracks string literals and
+    line/block comments so braces inside ``"..."``, ``//`` or ``/* */`` are
+    ignored. Returns "" if no matching close found."""
+    assert src[open_idx] == "{"
+    n = len(src)
+    depth = 0
+    i = open_idx
+    in_str = False
+    str_q = ""
+    in_line_comment = False
+    in_block_comment = False
+    while i < n:
+        c = src[i]
+        c2 = src[i:i+2]
+        if in_line_comment:
+            if c == "\n":
+                in_line_comment = False
+            i += 1
+            continue
+        if in_block_comment:
+            if c2 == "*/":
+                in_block_comment = False
+                i += 2
+                continue
+            i += 1
+            continue
+        if in_str:
+            if c == "\\":
+                i += 2
+                continue
+            if c == str_q:
+                in_str = False
+            i += 1
+            continue
+        if c2 == "//":
+            in_line_comment = True
+            i += 2
+            continue
+        if c2 == "/*":
+            in_block_comment = True
+            i += 2
+            continue
+        if c in ('"', "'"):
+            in_str = True
+            str_q = c
+            i += 1
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return src[open_idx+1:i]
+        i += 1
+    return ""
+
+
+# Branches where objtype/reftype are derived from attribute presence at
+# parse time (multiple ReadAttrTxt + sensor->objtype = X ? mjOBJ_A : mjOBJ_B
+# pattern). Codegen rules keep explicit overrides for these; the extractor
+# marks them computed=True so the generated codegen doesn't pretend to know.
+_COMPUTED_OBJTYPE_SENSORS = {
+    "rangefinder", "distance", "normal", "fromto", "contact",
+    "user", "plugin",
+}
+
+
+def _extract_sensor_per_type(src_text: str) -> Dict[str, Dict[str, object]]:
+    """Scrape ``Sensor()``'s per-type if/else cascade. Returns a dict
+    keyed by XML element name; each entry has:
+
+        objtype:    "mjOBJ_X" | "from_xml" | "computed" | None
+        reftype:    "mjOBJ_Y" | "computed" | None
+        obj_attr:   "site"/"joint"/.../None    (XML attr name carrying objname)
+        ref_attr:   "camera"/"site"/.../None   (XML attr name carrying refname)
+        computed:   True iff objtype/reftype are derived from attr presence
+    """
+    # Slice out the Sensor() method body so we don't pick up branches from
+    # other methods that happen to share regex shapes.
+    sig_re = re.compile(r"void\s+mjXReader::Sensor\s*\(")
+    m = sig_re.search(src_text)
+    if not m:
+        return {}
+    open_idx = src_text.find("{", m.end())
+    if open_idx < 0:
+        return {}
+    body = _slice_balanced_braces(src_text, open_idx)
+    if not body:
+        return {}
+
+    result: Dict[str, Dict[str, object]] = {}
+    # Some outer branches (distance/normal/fromto, contact, plugin) contain
+    # an inner ``if (type == "X")`` that toggles ->type. Those inner matches
+    # would otherwise overwrite the outer-branch entry with a stripped-down
+    # body. Track the [start, end) of each outer-branch body and skip
+    # matches whose '{' falls inside.
+    consumed_ranges: List[tuple] = []
+    for bm in _SENSOR_BRANCH_RE.finditer(body):
+        names = _SENSOR_NAMES_IN_COND_RE.findall(bm.group("cond"))
+        if not names:
+            continue
+        brace_idx = bm.end() - 1
+        if brace_idx < 0 or body[brace_idx] != "{":
+            continue
+        if any(s < brace_idx < e for s, e in consumed_ranges):
+            continue
+        branch = _slice_balanced_braces(body, brace_idx)
+        consumed_ranges.append((brace_idx, brace_idx + 1 + len(branch)))
+
+        obj_literal = _OBJTYPE_LITERAL_RE.search(branch)
+        ref_literal = _REFTYPE_LITERAL_RE.search(branch)
+        obj_from_xml = bool(_OBJTYPE_FROM_XML_RE.search(branch)) and not obj_literal
+
+        obj_attr: Optional[str] = None
+        ref_attr: Optional[str] = None
+        for nm in _NAME_READ_RE.finditer(branch):
+            attr, target = nm.group(1), nm.group(2)
+            if attr == "objtype":
+                continue   # the literal "objtype" attr selector, not a name source
+            if target == "objname" and obj_attr is None:
+                obj_attr = attr
+            elif target == "refname" and ref_attr is None:
+                ref_attr = attr
+
+        # Capture the mjSENS_X assigned in this branch. Multi-name branches
+        # (distance/normal/fromto) carry an inner positional switch with
+        # one ->type per name. Single-name branches (touch, framepos, ...)
+        # have exactly one mjSENS_X.
+        mj_types = [m.group(1) for m in _TYPE_LITERAL_RE.finditer(branch)]
+        if len(mj_types) == len(names):
+            name_to_mj_type = dict(zip(names, mj_types))
+        elif mj_types:
+            # Single-type branch — every name shares it.
+            name_to_mj_type = {n: mj_types[0] for n in names}
+        else:
+            name_to_mj_type = {n: None for n in names}
+
+        # Multi-name branches (distance/normal/fromto share one block,
+        # routed inside by `if (type == ...)` to set ->type). All share
+        # the same objtype/reftype derivation, so emit one entry per name.
+        for name in names:
+            computed = name in _COMPUTED_OBJTYPE_SENSORS
+            result[name] = {
+                "mj_type":  name_to_mj_type.get(name),
+                "objtype":  ("computed" if computed
+                             else ("from_xml" if obj_from_xml
+                                   else (obj_literal.group(1) if obj_literal else None))),
+                "reftype":  ("computed" if computed
+                             else (ref_literal.group(1) if ref_literal else None)),
+                "obj_attr": obj_attr,
+                "ref_attr": ref_attr,
+                "computed": computed,
+            }
+    return result
+
+
+def _build_snapshot(root: SchemaNode, mujoco_version: str, *,
+                    src_text: str = "") -> Dict:
     """Walk the parsed MJCF tree and project it onto URLab's curated shape."""
     out: Dict = {
         "_meta": {
@@ -237,11 +440,22 @@ def _build_snapshot(root: SchemaNode, mujoco_version: str) -> Dict:
     # Sensor section: per-type attr declarations. URLab tracks:
     #   sensor_types = list of names
     #   sensor_common = shared attrs (_SENSOR_COMMON_ATTRS, URLab convention)
+    #   sensor_per_type = per-sensor objtype/reftype/attr defaults scraped
+    #     from xml_native_reader.cc's Sensor() method body
     sensor = _find_child(mujoco, "sensor")
     if sensor is not None:
         sensor_attrs = {c.name: list(c.attrs) for c in sensor.children}
         out["sensor_types"] = list(sensor_attrs.keys())
         out["sensor_common"] = {"attrs": list(_SENSOR_COMMON_ATTRS)}
+        if src_text:
+            per_type = _extract_sensor_per_type(src_text)
+            # Only emit per-type rows for sensors that exist in the static
+            # MJCF schema — keeps the snapshot in sync if MuJoCo adds a
+            # parser branch but not a schema entry (or vice versa).
+            out["sensor_per_type"] = {
+                name: per_type[name] for name in sensor_attrs
+                if name in per_type
+            }
 
     # Tendon section: spatial vs fixed, plus wrap types.
     tendon = _find_child(mujoco, "tendon")
@@ -348,7 +562,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         plugin_root, "third_party", "MuJoCo", "src", "src", "xml",
         "xml_native_reader.cc",
     )
-    default_output = os.path.join(plugin_root, "Scripts", "mjcf_schema_snapshot.json")
+    default_output = os.path.join(plugin_root, "Scripts", "codegen", "snapshots", "mjcf_schema_snapshot.json")
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", default=default_src,
@@ -367,7 +581,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     blocks = _tokenise_blocks(body)
     root = _parse_tree(blocks)
     version = _detect_mujoco_version(args.src)
-    snapshot = _build_snapshot(root, mujoco_version=version)
+    snapshot = _build_snapshot(root, mujoco_version=version, src_text=src_text)
 
     os.makedirs(os.path.dirname(args.output), exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as f:

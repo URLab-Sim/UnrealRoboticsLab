@@ -17,7 +17,7 @@ _PLUGIN_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 
 @pytest.fixture(scope="session")
 def real_mjspec():
-    with open(os.path.join(_PLUGIN_ROOT, "Scripts", "mjspec_snapshot.json"), "r") as f:
+    with open(os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjspec_snapshot.json"), "r") as f:
         return json.load(f)
 
 

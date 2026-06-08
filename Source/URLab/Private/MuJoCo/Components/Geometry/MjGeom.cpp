@@ -76,6 +76,7 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     // on Type to pick size[1] vs size[2] for the half-length write.
 
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
     { // xml_enum: type -> EMjGeomType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
@@ -150,9 +151,6 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     if (bOverride_Quat) SetRelativeRotation(Quat);
     // --- CODEGEN_IMPORT_END ---
 
-    // MuJoCo class inheritance
-    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
-
     // Implicit mesh-type detection (mesh attr present but type wasn't set)
     if (!bOverride_Type && !mesh.IsEmpty())
     {
@@ -179,29 +177,30 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
     // Type isn't overridden locally, fall back to the default's geom type.
     // (The codegen-owned xml_enum export below writes Element->type only when
     // bOverride_Type is true — exactly the desired behavior.)
+    // --- CODEGEN_GEOM_FINAL_TYPE_START ---
     int FinalType = bOverride_Type
-        ? static_cast<int>(Type) /* placeholder; remapped below */
+        ? mjGEOM_PLANE  /* placeholder; remapped below */
         : (Default ? Default->geom->type : mjGEOM_MESH);
     if (bOverride_Type)
     {
-        switch(Type)
+        switch (Type)
         {
-            case EMjGeomType::Plane:    FinalType = mjGEOM_PLANE;    break;
-            case EMjGeomType::Hfield:   FinalType = mjGEOM_HFIELD;   break;
-            case EMjGeomType::Sphere:   FinalType = mjGEOM_SPHERE;   break;
-            case EMjGeomType::Capsule:  FinalType = mjGEOM_CAPSULE;  break;
-            case EMjGeomType::Ellipsoid:FinalType = mjGEOM_ELLIPSOID;break;
+            case EMjGeomType::Plane: FinalType = mjGEOM_PLANE; break;
+            case EMjGeomType::Hfield: FinalType = mjGEOM_HFIELD; break;
+            case EMjGeomType::Sphere: FinalType = mjGEOM_SPHERE; break;
+            case EMjGeomType::Capsule: FinalType = mjGEOM_CAPSULE; break;
+            case EMjGeomType::Ellipsoid: FinalType = mjGEOM_ELLIPSOID; break;
             case EMjGeomType::Cylinder: FinalType = mjGEOM_CYLINDER; break;
-            case EMjGeomType::Box:      FinalType = mjGEOM_BOX;      break;
-            case EMjGeomType::Mesh:     FinalType = mjGEOM_MESH;     break;
-            case EMjGeomType::SDF:      FinalType = mjGEOM_SDF;      break;
+            case EMjGeomType::Box: FinalType = mjGEOM_BOX; break;
+            case EMjGeomType::Mesh: FinalType = mjGEOM_MESH; break;
+            case EMjGeomType::SDF: FinalType = mjGEOM_SDF; break;
         }
     }
-
     if (FinalType == mjGEOM_MESH && !MeshName.IsEmpty())
     {
-        mjs_setString(Element->meshname, TCHAR_TO_UTF8(*MeshName));
+        MjSetStringRaw(Element->meshname, MeshName);
     }
+    // --- CODEGEN_GEOM_FINAL_TYPE_END ---
 
     // size: codegen-owned TArray<float>; the default per-attr export writes
     // Element->size[i] = size[i] up to size.Num(). Clamped to 3 by mjsGeom's
@@ -269,7 +268,7 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
     if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
     if (bOverride_margin) Element->margin = margin;
     if (bOverride_gap) Element->gap = gap;
-    if (bOverride_mesh && !mesh.IsEmpty()) mjs_setString(Element->meshname, TCHAR_TO_UTF8(*mesh));
+    if (bOverride_mesh) MjSetString(Element->meshname, mesh);
     if (bOverride_fitscale) Element->fitscale = fitscale ? 1 : 0;
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
     if (bOverride_fluidcoef) { for (int32 i = 0; i < fluidcoef.Num(); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
@@ -279,18 +278,10 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
 void UMjGeom::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 {
     Super::Bind(Model, Data, Prefix);
-    m_GeomView = BindToView<GeomView>(Prefix);
-
+    BindAndCacheView(m_GeomView, Prefix);
     if (m_GeomView.id != -1)
     {
-        m_ID = m_GeomView.id;
         SyncUnrealTransformFromMj();
-        UE_LOG(LogURLabBind, Log, TEXT("[MjGeom] Successfully bound '%s' to ID %d (MjName: %s)"), *GetName(), m_ID, *MjName);
-    }
-    else
-    {
-        UE_LOG(LogURLabBind, Warning, TEXT("[MjGeom] Geom '%s' FAILED bind. Prefix: %s, MjName: %s"), 
-            *GetName(), *Prefix, *MjName);
     }
 }
 
@@ -299,10 +290,10 @@ void UMjGeom::UpdateGlobalTransform()
     if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0)
     {
         // Get world position from MuJoCo
-        FVector WorldPos = MjUtils::MjToUEPosition(m_GeomView.xpos);
+        FVector WorldPos = MjUtils::MjToUEPosition(m_GeomView.geom_xpos);
         FQuat WorldRot;
         mjtNum quat[4];
-        mju_mat2Quat(quat, m_GeomView.xmat);
+        mju_mat2Quat(quat, m_GeomView.geom_xmat);
         WorldRot = MjUtils::MjToUERotation(quat);
         
         SetWorldLocation(WorldPos);
@@ -314,7 +305,7 @@ FVector UMjGeom::GetWorldLocation() const
 {
     if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0)
     {
-        return MjUtils::MjToUEPosition(m_GeomView.xpos);
+        return MjUtils::MjToUEPosition(m_GeomView.geom_xpos);
     }
     return GetComponentLocation();
 }
@@ -325,9 +316,9 @@ void UMjGeom::SetFriction(float NewFriction)
     bOverride_friction = true;
     
     // Update runtime model if bound
-    if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0 && m_GeomView.friction)
+    if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0 && m_GeomView.geom_friction)
     {
-        m_GeomView.friction[0] = NewFriction;
+        m_GeomView.geom_friction[0] = NewFriction;
     }
 }
 
@@ -935,8 +926,7 @@ void UMjGeom::RemoveDecomposition() {}
 #endif
 
 #if WITH_EDITOR
-TArray<FString> UMjGeom::GetDefaultClassOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjGeom::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+    // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

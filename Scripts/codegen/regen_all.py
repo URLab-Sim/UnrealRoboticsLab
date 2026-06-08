@@ -4,9 +4,10 @@
 Runs every codegen step in order:
 
   1. Rebuild snapshots from the installed MuJoCo headers + submodule source:
-     - Scripts/mjspec_snapshot.json   (mjsX struct fields + mjs_setTo* sigs)
-     - Scripts/mjxmacro_snapshot.json (model/data array layouts)
-     - Scripts/mjcf_schema_snapshot.json (MJCF schema, per element)
+     - Scripts/codegen/snapshots/mjspec_snapshot.json   (mjsX struct fields + mjs_setTo* sigs + mjt* enums)
+     - Scripts/codegen/snapshots/mjxmacro_snapshot.json (model/data array layouts)
+     - Scripts/codegen/snapshots/mjcf_schema_snapshot.json (MJCF schema + per-sensor objtype scrape)
+     - Scripts/codegen/snapshots/introspect_snapshot.json (clang-AST scrape — optional, requires libclang)
   2. Run the C++ generator (generate_ue_components.py) against the fresh
      snapshots. Emits / updates the per-component .h/.cpp files in Source/.
 

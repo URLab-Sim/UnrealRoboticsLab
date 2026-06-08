@@ -126,7 +126,7 @@ void UMjSphere::SyncUnrealTransformFromMj()
     if (!bOverride_size)
     {
         // MuJoCo sphere size is radius. Unreal Sphere is 100 units diameter.
-        float RadiusVal = m_GeomView.size[0];
+        float RadiusVal = m_GeomView.geom_size[0];
         FVector NewScale = FVector(RadiusVal * 2.0f);
         SetRelativeScale3D(NewScale);
 

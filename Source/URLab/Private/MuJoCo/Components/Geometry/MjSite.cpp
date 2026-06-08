@@ -142,24 +142,13 @@ void UMjSite::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 void UMjSite::Bind(mjModel* model, mjData* data, const FString& Prefix)
 {
     Super::Bind(model, data, Prefix);
-    m_SiteView = BindToView<SiteView>(Prefix);
-
-    if (m_SiteView.id != -1)
-    {
-        m_ID = m_SiteView.id;
-        UE_LOG(LogURLabBind, Log, TEXT("[MjSite] Successfully bound '%s' to ID %d (MjName: %s)"), *GetName(), m_ID, *MjName);
-    }
-    else
-    {
-        UE_LOG(LogURLabBind, Warning, TEXT("[MjSite] Site '%s' FAILED bind. Prefix: %s, MjName: %s"), *GetName(), *Prefix, *MjName);
-    }
+    BindAndCacheView(m_SiteView, Prefix);
 }
 
 #if WITH_EDITOR
-TArray<FString> UMjSite::GetDefaultClassOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjSite::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+    // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 
 // --- Multi-UCLASS subclass constructors --------------------------------------

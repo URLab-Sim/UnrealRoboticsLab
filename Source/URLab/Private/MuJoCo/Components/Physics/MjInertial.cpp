@@ -86,6 +86,3 @@ void UMjInertial::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
     MjUtils::UEToMjRotation(RelTrans.GetRotation(), ParentBody->iquat);
 }
 
-void UMjInertial::Bind(mjModel* model, mjData* data, const FString& Prefix)
-{
-}

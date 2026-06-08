@@ -44,24 +44,25 @@ class URLAB_API UMjContactExclude : public USceneComponent, public IMjSpecElemen
 
 public:	
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactExclude", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactExclude", meta=(InlineEditConditionToggle))
     bool bOverride_body1 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactExclude", meta=(EditCondition="bOverride_body1"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactExclude", meta=(EditCondition="bOverride_body1"))
     FString body1 = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjContactExclude", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactExclude", meta=(InlineEditConditionToggle))
     bool bOverride_body2 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjContactExclude", meta=(EditCondition="bOverride_body2"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactExclude", meta=(EditCondition="bOverride_body2"))
     FString body2 = TEXT("");
     // --- CODEGEN_PROPERTIES_END ---
 
     /** @brief Default constructor. */
 	UMjContactExclude();
 
-    /** @brief Name of the contact exclusion (optional). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude")
+    /** @brief Name of the contact exclusion (optional). Hidden from the Details panel — synced from MjName. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude",
+              meta=(EditCondition="false", EditConditionHides))
     FString Name;
 
 
@@ -85,7 +86,8 @@ public:
      */
     virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
+    /** No-op: contact excludes are global static data, no per-instance runtime binding. Required by IMjSpecElement. */
+    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override {}
 
 #if WITH_EDITOR
     UFUNCTION()

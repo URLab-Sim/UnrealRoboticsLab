@@ -56,31 +56,35 @@ struct GeomView {
     int id;
     const char* name;
 
-    // --- Config ---
-    int type;
-    mjtNum* size;
-    mjtNum* pos_offset;
-    mjtNum* quat_offset;
-    float* rgba;
-    int mat_id;
-    int body_id;
-    int dataid;
-    mjtNum* friction;
-    mjtNum* solref;
-    mjtNum* solimp;
-    mjtNum* solmix;
-    mjtNum* margin;
-    mjtNum* gap;
-    int contype;
-    int conaffinity;
-    int priority;
-    mjtNum* fluid_coef;
-    mjtNum* user;
-
-    // --- State ---
-    mjtNum* xpos;
-    mjtNum* xmat;
-
+    // --- CODEGEN_VIEW_GeomView_FIELDS_START ---
+    int geom_type;
+    int geom_contype;
+    int geom_conaffinity;
+    int geom_condim;
+    int geom_bodyid;
+    int geom_dataid;
+    int geom_matid;
+    int geom_group;
+    int geom_priority;
+    int geom_plugin;
+    mjtByte* geom_sameframe;
+    mjtNum* geom_solmix;
+    mjtNum* geom_solref;
+    mjtNum* geom_solimp;
+    mjtNum* geom_size;
+    mjtNum* geom_aabb;
+    mjtNum* geom_rbound;
+    mjtNum* geom_pos;
+    mjtNum* geom_quat;
+    mjtNum* geom_friction;
+    mjtNum* geom_margin;
+    mjtNum* geom_gap;
+    mjtNum* geom_fluid;
+    mjtNum* geom_user;
+    float* geom_rgba;
+    mjtNum* geom_xpos;
+    mjtNum* geom_xmat;
+    // --- CODEGEN_VIEW_GeomView_FIELDS_END ---
 
     GeomView() : _m(nullptr), _d(nullptr), id(-1) {}
 
@@ -88,56 +92,63 @@ struct GeomView {
         check(id >= 0 && id < m->ngeom);
         name = (m->name_geomadr[id] >= 0) ? m->names + m->name_geomadr[id] : nullptr;
 
-        type        = m->geom_type[id];
-        size        = m->geom_size + (id * 3);
-        pos_offset  = m->geom_pos + (id * 3);
-        quat_offset = m->geom_quat + (id * 4);
-        rgba        = m->geom_rgba + (id * 4);
-        mat_id      = m->geom_matid[id];
-        body_id     = m->geom_bodyid[id];
-        friction    = m->geom_friction + (id * 3);
-        solref      = m->geom_solref + (id * mjNREF);
-        solimp      = m->geom_solimp + (id * mjNIMP);
-        solmix      = m->geom_solmix + id;
-        margin      = m->geom_margin + id;
-        gap         = m->geom_gap + id;
-        contype     = m->geom_contype[id];
-        conaffinity = m->geom_conaffinity[id];
-        priority    = m->geom_priority[id];
-        fluid_coef  = m->geom_fluid + (id * mjNFLUID);
-        user        = m->geom_user + (id * m->nuser_geom);
-        dataid     = m->geom_dataid[id];
-
-        xpos = d->geom_xpos + (id * 3);
-        xmat = d->geom_xmat + (id * 9);
+    // --- CODEGEN_VIEW_GeomView_BIND_START ---
+    geom_type = m->geom_type[id];
+    geom_contype = m->geom_contype[id];
+    geom_conaffinity = m->geom_conaffinity[id];
+    geom_condim = m->geom_condim[id];
+    geom_bodyid = m->geom_bodyid[id];
+    geom_dataid = m->geom_dataid[id];
+    geom_matid = m->geom_matid[id];
+    geom_group = m->geom_group[id];
+    geom_priority = m->geom_priority[id];
+    geom_plugin = m->geom_plugin[id];
+    geom_sameframe = m->geom_sameframe + id * 1;
+    geom_solmix = m->geom_solmix + id * 1;
+    geom_solref = m->geom_solref + id * mjNREF;
+    geom_solimp = m->geom_solimp + id * mjNIMP;
+    geom_size = m->geom_size + id * 3;
+    geom_aabb = m->geom_aabb + id * 6;
+    geom_rbound = m->geom_rbound + id * 1;
+    geom_pos = m->geom_pos + id * 3;
+    geom_quat = m->geom_quat + id * 4;
+    geom_friction = m->geom_friction + id * 3;
+    geom_margin = m->geom_margin + id * 1;
+    geom_gap = m->geom_gap + id * 1;
+    geom_fluid = m->geom_fluid + id * mjNFLUID;
+    geom_user = m->geom_user + id * m->nuser_geom;
+    geom_rgba = m->geom_rgba + id * 4;
+    geom_xpos = d->geom_xpos + id * 3;
+    geom_xmat = d->geom_xmat + id * 9;
+    // --- CODEGEN_VIEW_GeomView_BIND_END ---
     }
 
     /** @brief Sets the friction coefficient (tangential) for this geom. */
     void SetFriction(float Value) {
-        if (friction) friction[0] = (mjtNum)Value;
+        if (geom_friction) geom_friction[0] = (mjtNum)Value;
     }
 
     /** @brief Sets the contact solver reference parameters (time constant, damping ratio). */
     void SetSolRef(float TimeConst, float DampRatio) {
-        if (solref) {
-            solref[0] = (mjtNum)TimeConst;
-            solref[1] = (mjtNum)DampRatio;
+        if (geom_solref) {
+            geom_solref[0] = (mjtNum)TimeConst;
+            geom_solref[1] = (mjtNum)DampRatio;
         }
     }
 
     /** @brief Sets the contact solver impedance parameters. */
     void SetSolImp(float Dmin, float Dmax, float Width) {
-        if (solimp) {
-            solimp[0] = (mjtNum)Dmin;
-            solimp[1] = (mjtNum)Dmax;
-            solimp[2] = (mjtNum)Width;
+        if (geom_solimp) {
+            geom_solimp[0] = (mjtNum)Dmin;
+            geom_solimp[1] = (mjtNum)Dmax;
+            geom_solimp[2] = (mjtNum)Width;
         }
     }
 
     FString ToString() const {
         FString Info = FString::Printf(TEXT("=== Geom ID: %d (%s) ===\n"), id, name ? *MjUtils::MjToString(name) : TEXT("None"));
-        Info += FString::Printf(TEXT("    Type: %d | Size: %s\n"), type, *FormatVec3(size));
-        Info += FString::Printf(TEXT("    World Pos: %s\n"), *FormatVec3(xpos));
+        Info += FString::Printf(TEXT("    Type: %d | Size: %s\n"), geom_type, *FormatVec3(geom_size));
+        Info += FString::Printf(TEXT("    World Pos: %s\n"), *FormatVec3(geom_xpos));
         return Info;
     }
 };
@@ -153,65 +164,98 @@ struct JointView {
     mjData* _d;
     int id;
     const char* name;
-    int type;
 
-    // --- Config ---
-    mjtNum* pos_offset;
-    mjtNum* axis_local;
-    mjtNum* stiffness;
-    mjtNum* stiffnesspoly;   // high-order stiffness coefficients (mjNPOLY values)
-    mjtNum* range;
-    mjtNum* margin;
-    mjtNum* solref_limit;
-    mjtNum* solimp_limit;
-    mjtNum* damping;
-    mjtNum* dampingpoly;     // high-order damping coefficients (mjNPOLY values)
-    mjtNum* armature;
-    mjtNum* frictionloss;
-    mjtNum* solref_friction;
-    mjtNum* solimp_friction;
-    mjtNum* user;
-
-    // --- State ---
+    // --- CODEGEN_VIEW_JointView_FIELDS_START ---
+    int jnt_type;
+    int jnt_qposadr;
+    int jnt_dofadr;
+    int jnt_bodyid;
+    int jnt_actuatorid;
+    int jnt_group;
+    mjtByte* jnt_limited;
+    mjtByte* jnt_actfrclimited;
+    mjtByte* jnt_actgravcomp;
+    mjtNum* jnt_solref;
+    mjtNum* jnt_solimp;
+    mjtNum* jnt_pos;
+    mjtNum* jnt_axis;
+    mjtNum* jnt_stiffness;
+    mjtNum* jnt_stiffnesspoly;
+    mjtNum* jnt_range;
+    mjtNum* jnt_actfrcrange;
+    mjtNum* jnt_margin;
+    mjtNum* jnt_user;
+    int dof_bodyid;
+    int dof_jntid;
+    int dof_parentid;
+    int dof_treeid;
+    int dof_Madr;
+    int dof_simplenum;
+    mjtNum* dof_solref;
+    mjtNum* dof_solimp;
+    mjtNum* dof_frictionloss;
+    mjtNum* dof_armature;
+    mjtNum* dof_damping;
+    mjtNum* dof_dampingpoly;
+    mjtNum* dof_invweight0;
+    mjtNum* dof_M0;
+    mjtNum* dof_length;
     mjtNum* qpos;
     mjtNum* qvel;
     mjtNum* qacc;
     mjtNum* xanchor;
     mjtNum* xaxis;
-
+    // --- CODEGEN_VIEW_JointView_FIELDS_END ---
 
     JointView() : _m(nullptr), _d(nullptr), id(-1) {}
 
     JointView(const mjModel* m, mjData* d, int id_in) : _m(m), _d(d), id(id_in) {
         check(id >= 0 && id < m->njnt);
         name = (m->name_jntadr[id] >= 0) ? m->names + m->name_jntadr[id] : nullptr;
-        type = m->jnt_type[id];
 
-        int qpos_adr = m->jnt_qposadr[id];
-        int dof_adr  = m->jnt_dofadr[id];
-
-        pos_offset  = m->jnt_pos + (id * 3);
-        axis_local  = m->jnt_axis + (id * 3);
-        stiffness       = m->jnt_stiffness + id;
-        stiffnesspoly   = m->jnt_stiffnesspoly + (id * mjNPOLY);
-        range           = m->jnt_range + (id * 2);
-        margin      = m->jnt_margin + id;
-        solref_limit= m->jnt_solref + (id * mjNREF);
-        solimp_limit= m->jnt_solimp + (id * mjNIMP);
-        user        = m->jnt_user + (id * m->nuser_jnt);
-
-        damping         = m->dof_damping + dof_adr;
-        dampingpoly     = m->dof_dampingpoly + (dof_adr * mjNPOLY);
-        armature        = m->dof_armature + dof_adr;
-        frictionloss    = m->dof_frictionloss + dof_adr;
-        solref_friction = m->dof_solref + (dof_adr * mjNREF);
-        solimp_friction = m->dof_solimp + (dof_adr * mjNIMP);
-
-        qpos    = d->qpos + qpos_adr;
-        qvel    = d->qvel + dof_adr;
-        qacc    = d->qacc + dof_adr;
-        xanchor = d->xanchor + (id * 3);
-        xaxis   = d->xaxis + (id * 3);
+    // --- CODEGEN_VIEW_JointView_BIND_START ---
+    const int qpos_adr = m->jnt_qposadr[id];
+    const int dof_adr = m->jnt_dofadr[id];
+    jnt_type = m->jnt_type[id];
+    jnt_qposadr = m->jnt_qposadr[id];
+    jnt_dofadr = m->jnt_dofadr[id];
+    jnt_bodyid = m->jnt_bodyid[id];
+    jnt_actuatorid = m->jnt_actuatorid[id];
+    jnt_group = m->jnt_group[id];
+    jnt_limited = m->jnt_limited + id * 1;
+    jnt_actfrclimited = m->jnt_actfrclimited + id * 1;
+    jnt_actgravcomp = m->jnt_actgravcomp + id * 1;
+    jnt_solref = m->jnt_solref + id * mjNREF;
+    jnt_solimp = m->jnt_solimp + id * mjNIMP;
+    jnt_pos = m->jnt_pos + id * 3;
+    jnt_axis = m->jnt_axis + id * 3;
+    jnt_stiffness = m->jnt_stiffness + id * 1;
+    jnt_stiffnesspoly = m->jnt_stiffnesspoly + id * mjNPOLY;
+    jnt_range = m->jnt_range + id * 2;
+    jnt_actfrcrange = m->jnt_actfrcrange + id * 2;
+    jnt_margin = m->jnt_margin + id * 1;
+    jnt_user = m->jnt_user + id * m->nuser_jnt;
+    dof_bodyid = m->dof_bodyid[dof_adr];
+    dof_jntid = m->dof_jntid[dof_adr];
+    dof_parentid = m->dof_parentid[dof_adr];
+    dof_treeid = m->dof_treeid[dof_adr];
+    dof_Madr = m->dof_Madr[dof_adr];
+    dof_simplenum = m->dof_simplenum[dof_adr];
+    dof_solref = m->dof_solref + dof_adr * mjNREF;
+    dof_solimp = m->dof_solimp + dof_adr * mjNIMP;
+    dof_frictionloss = m->dof_frictionloss + dof_adr * 1;
+    dof_armature = m->dof_armature + dof_adr * 1;
+    dof_damping = m->dof_damping + dof_adr * 1;
+    dof_dampingpoly = m->dof_dampingpoly + dof_adr * mjNPOLY;
+    dof_invweight0 = m->dof_invweight0 + dof_adr * 1;
+    dof_M0 = m->dof_M0 + dof_adr * 1;
+    dof_length = m->dof_length + dof_adr * 1;
+    qpos = d->qpos + qpos_adr * 1;
+    qvel = d->qvel + dof_adr * 1;
+    qacc = d->qacc + dof_adr * 1;
+    xanchor = d->xanchor + id * 3;
+    xaxis = d->xaxis + id * 3;
+    // --- CODEGEN_VIEW_JointView_BIND_END ---
     }
 
     /** @brief Gets the current joint position (radians for hinges, meters for sliders). */
@@ -225,7 +269,7 @@ struct JointView {
     }
 
     FString ToString() const {
-        return FString::Printf(TEXT("=== Joint ID: %d (%s) Type: %d ===\n"), id, name ? *MjUtils::MjToString(name) : TEXT("None"), type);
+        return FString::Printf(TEXT("=== Joint ID: %d (%s) Type: %d ===\n"), id, name ? *MjUtils::MjToString(name) : TEXT("None"), jnt_type);
     }
 };
 
@@ -241,30 +285,45 @@ struct ActuatorView {
     int id;
     const char* name;
 
-    // --- Config (mjModel) ---
-    int trntype;
-    int dyntype;
-    int gaintype;
-    int biastype;
-    mjtNum* gear;
-    mjtNum* cranklength;
-    mjtNum* acc0;
-    mjtNum* length0;
-    mjtNum* lengthrange;
-    mjtNum* ctrlrange;
-    mjtNum* forcerange;
-    mjtNum* actrange;
-    mjtNum* gainprm;
-    mjtNum* biasprm;
-    mjtNum* dynprm;
-    
-    // --- State (mjData) ---
+    // --- CODEGEN_VIEW_ActuatorView_FIELDS_START ---
+    int actuator_trntype;
+    int actuator_dyntype;
+    int actuator_gaintype;
+    int actuator_biastype;
+    int* actuator_trnid;
+    mjtNum* actuator_damping;
+    mjtNum* actuator_dampingpoly;
+    mjtNum* actuator_armature;
+    int actuator_actadr;
+    int actuator_actnum;
+    int actuator_group;
+    int* actuator_history;
+    int actuator_historyadr;
+    mjtNum* actuator_delay;
+    mjtByte* actuator_ctrllimited;
+    mjtByte* actuator_forcelimited;
+    mjtByte* actuator_actlimited;
+    mjtNum* actuator_dynprm;
+    mjtNum* actuator_gainprm;
+    mjtNum* actuator_biasprm;
+    mjtByte* actuator_actearly;
+    mjtNum* actuator_ctrlrange;
+    mjtNum* actuator_forcerange;
+    mjtNum* actuator_actrange;
+    mjtNum* actuator_gear;
+    mjtNum* actuator_cranklength;
+    mjtNum* actuator_acc0;
+    mjtNum* actuator_length0;
+    mjtNum* actuator_lengthrange;
+    mjtNum* actuator_user;
+    int actuator_plugin;
     mjtNum* ctrl;
-    mjtNum* force;
-    mjtNum* length;
-    mjtNum* moment; // output: actuator moment
-    mjtNum* velocity;
-    mjtNum* act;    // internal state (activation)
+    mjtNum* actuator_force;
+    mjtNum* actuator_length;
+    mjtNum* actuator_velocity;
+    mjtNum* actuator_moment;
+    mjtNum* act;
+    // --- CODEGEN_VIEW_ActuatorView_FIELDS_END ---
 
     ActuatorView() : _m(nullptr), _d(nullptr), id(-1) {}
 
@@ -272,36 +331,45 @@ struct ActuatorView {
         check(id >= 0 && id < m->nu);
         name = (m->name_actuatoradr[id] >= 0) ? m->names + m->name_actuatoradr[id] : nullptr;
 
-        // Config
-        trntype = m->actuator_trntype[id];
-        dyntype = m->actuator_dyntype[id];
-        gaintype = m->actuator_gaintype[id];
-        biastype = m->actuator_biastype[id];
-        
-        gear = m->actuator_gear + (id * 6);
-        cranklength = m->actuator_cranklength + id;
-        acc0 = m->actuator_acc0 + id;
-        length0 = m->actuator_length0 + id;
-        lengthrange = m->actuator_lengthrange + (id * 2);
-        ctrlrange = m->actuator_ctrlrange + (id * 2);
-        forcerange = m->actuator_forcerange + (id * 2);
-        actrange = m->actuator_actrange + (id * 2);
-        
-        gainprm = m->actuator_gainprm + (id * mjNGAIN);
-        biasprm = m->actuator_biasprm + (id * mjNBIAS);
-        dynprm = m->actuator_dynprm + (id * mjNDYN);
-
-        // State
-        ctrl = d->ctrl + id;
-        force = d->actuator_force + id;
-        length = d->actuator_length + id;
-        moment = d->actuator_moment + (id * m->nv); // nactuator x nv matrix, row for this actuator
-        velocity = d->actuator_velocity + id;
-        int act_adr = m->actuator_actadr[id];
-        if (act_adr >= 0)
-            act = d->act + act_adr;
-        else
-            act = nullptr;
+    // --- CODEGEN_VIEW_ActuatorView_BIND_START ---
+    actuator_trntype = m->actuator_trntype[id];
+    actuator_dyntype = m->actuator_dyntype[id];
+    actuator_gaintype = m->actuator_gaintype[id];
+    actuator_biastype = m->actuator_biastype[id];
+    actuator_trnid = m->actuator_trnid + id * 2;
+    actuator_damping = m->actuator_damping + id * 1;
+    actuator_dampingpoly = m->actuator_dampingpoly + id * mjNPOLY;
+    actuator_armature = m->actuator_armature + id * 1;
+    actuator_actadr = m->actuator_actadr[id];
+    actuator_actnum = m->actuator_actnum[id];
+    actuator_group = m->actuator_group[id];
+    actuator_history = m->actuator_history + id * 2;
+    actuator_historyadr = m->actuator_historyadr[id];
+    actuator_delay = m->actuator_delay + id * 1;
+    actuator_ctrllimited = m->actuator_ctrllimited + id * 1;
+    actuator_forcelimited = m->actuator_forcelimited + id * 1;
+    actuator_actlimited = m->actuator_actlimited + id * 1;
+    actuator_dynprm = m->actuator_dynprm + id * mjNDYN;
+    actuator_gainprm = m->actuator_gainprm + id * mjNGAIN;
+    actuator_biasprm = m->actuator_biasprm + id * mjNBIAS;
+    actuator_actearly = m->actuator_actearly + id * 1;
+    actuator_ctrlrange = m->actuator_ctrlrange + id * 2;
+    actuator_forcerange = m->actuator_forcerange + id * 2;
+    actuator_actrange = m->actuator_actrange + id * 2;
+    actuator_gear = m->actuator_gear + id * 6;
+    actuator_cranklength = m->actuator_cranklength + id * 1;
+    actuator_acc0 = m->actuator_acc0 + id * 1;
+    actuator_length0 = m->actuator_length0 + id * 1;
+    actuator_lengthrange = m->actuator_lengthrange + id * 2;
+    actuator_user = m->actuator_user + id * m->nuser_actuator;
+    actuator_plugin = m->actuator_plugin[id];
+    ctrl = d->ctrl + id * 1;
+    actuator_force = d->actuator_force + id * 1;
+    actuator_length = d->actuator_length + id * 1;
+    actuator_velocity = d->actuator_velocity + id * 1;
+    actuator_moment = d->actuator_moment + id * m->nv;
+    act = (m->actuator_actadr[id] >= 0) ? d->act + m->actuator_actadr[id] : nullptr;
+    // --- CODEGEN_VIEW_ActuatorView_BIND_END ---
     }
 };
 
@@ -317,63 +385,93 @@ struct TendonView {
     int id;
     const char* name;
 
-    // --- Config (mjModel) ---
-    mjtNum* stiffness;
-    mjtNum* stiffnesspoly;   // high-order stiffness coefficients (mjNPOLY values)
-    mjtNum* damping;
-    mjtNum* dampingpoly;     // high-order damping coefficients (mjNPOLY values)
-    mjtNum* frictionloss;
-    mjtNum* armature;
-    mjtNum* range;
-    mjtNum* margin;
-    mjtNum* solref_limit;
-    mjtNum* solimp_limit;
-    mjtNum* solref_friction;
-    mjtNum* solimp_friction;
+    // --- CODEGEN_VIEW_TendonView_FIELDS_START ---
+    int tendon_adr;
+    int tendon_num;
+    int tendon_matid;
+    int tendon_actuatorid;
+    int tendon_group;
+    int tendon_treenum;
+    int* tendon_treeid;
+    int ten_J_rownnz;
+    int ten_J_rowadr;
+    int ten_J_colind;
+    mjtByte* tendon_limited;
+    mjtByte* tendon_actfrclimited;
+    mjtNum* tendon_width;
+    mjtNum* tendon_solref_lim;
+    mjtNum* tendon_solimp_lim;
+    mjtNum* tendon_solref_fri;
+    mjtNum* tendon_solimp_fri;
+    mjtNum* tendon_range;
+    mjtNum* tendon_actfrcrange;
+    mjtNum* tendon_margin;
+    mjtNum* tendon_stiffness;
+    mjtNum* tendon_stiffnesspoly;
+    mjtNum* tendon_damping;
+    mjtNum* tendon_dampingpoly;
+    mjtNum* tendon_armature;
+    mjtNum* tendon_frictionloss;
+    mjtNum* tendon_lengthspring;
+    mjtNum* tendon_length0;
+    mjtNum* tendon_invweight0;
+    mjtNum* tendon_user;
+    float* tendon_rgba;
+    mjtNum* ten_length;
+    mjtNum* ten_velocity;
+    // --- CODEGEN_VIEW_TendonView_FIELDS_END ---
 
-    // --- State (mjData) ---
-    mjtNum* length;     // ten_length[id]
-    mjtNum* velocity;   // ten_velocity[id]
-
-    TendonView() : _m(nullptr), _d(nullptr), id(-1),
-        name(nullptr), stiffness(nullptr), stiffnesspoly(nullptr),
-        damping(nullptr), dampingpoly(nullptr),
-        frictionloss(nullptr), armature(nullptr), range(nullptr),
-        margin(nullptr), solref_limit(nullptr), solimp_limit(nullptr),
-        solref_friction(nullptr), solimp_friction(nullptr),
-        length(nullptr), velocity(nullptr) {}
+    TendonView() : _m(nullptr), _d(nullptr), id(-1), name(nullptr) {}
 
     TendonView(const mjModel* m, mjData* d, int id_in) : _m(m), _d(d), id(id_in) {
         check(id >= 0 && id < m->ntendon);
         name = (m->name_tendonadr[id] >= 0) ? m->names + m->name_tendonadr[id] : nullptr;
 
-        // Config
-        stiffness       = m->tendon_stiffness + id;
-        stiffnesspoly   = m->tendon_stiffnesspoly + (id * mjNPOLY);
-        damping         = m->tendon_damping + id;
-        dampingpoly     = m->tendon_dampingpoly + (id * mjNPOLY);
-        frictionloss    = m->tendon_frictionloss + id;
-        armature        = m->tendon_armature + id;
-        range           = m->tendon_range + (id * 2);
-        margin          = m->tendon_margin + id;
-        solref_limit    = m->tendon_solref_lim + (id * mjNREF);
-        solimp_limit    = m->tendon_solimp_lim + (id * mjNIMP);
-        solref_friction = m->tendon_solref_fri + (id * mjNREF);
-        solimp_friction = m->tendon_solimp_fri + (id * mjNIMP);
-
-        // State
-        length   = d->ten_length   + id;
-        velocity = d->ten_velocity + id;
+    // --- CODEGEN_VIEW_TendonView_BIND_START ---
+    tendon_adr = m->tendon_adr[id];
+    tendon_num = m->tendon_num[id];
+    tendon_matid = m->tendon_matid[id];
+    tendon_actuatorid = m->tendon_actuatorid[id];
+    tendon_group = m->tendon_group[id];
+    tendon_treenum = m->tendon_treenum[id];
+    tendon_treeid = m->tendon_treeid + id * 2;
+    ten_J_rownnz = m->ten_J_rownnz[id];
+    ten_J_rowadr = m->ten_J_rowadr[id];
+    ten_J_colind = m->ten_J_colind[id];
+    tendon_limited = m->tendon_limited + id * 1;
+    tendon_actfrclimited = m->tendon_actfrclimited + id * 1;
+    tendon_width = m->tendon_width + id * 1;
+    tendon_solref_lim = m->tendon_solref_lim + id * mjNREF;
+    tendon_solimp_lim = m->tendon_solimp_lim + id * mjNIMP;
+    tendon_solref_fri = m->tendon_solref_fri + id * mjNREF;
+    tendon_solimp_fri = m->tendon_solimp_fri + id * mjNIMP;
+    tendon_range = m->tendon_range + id * 2;
+    tendon_actfrcrange = m->tendon_actfrcrange + id * 2;
+    tendon_margin = m->tendon_margin + id * 1;
+    tendon_stiffness = m->tendon_stiffness + id * 1;
+    tendon_stiffnesspoly = m->tendon_stiffnesspoly + id * mjNPOLY;
+    tendon_damping = m->tendon_damping + id * 1;
+    tendon_dampingpoly = m->tendon_dampingpoly + id * mjNPOLY;
+    tendon_armature = m->tendon_armature + id * 1;
+    tendon_frictionloss = m->tendon_frictionloss + id * 1;
+    tendon_lengthspring = m->tendon_lengthspring + id * 2;
+    tendon_length0 = m->tendon_length0 + id * 1;
+    tendon_invweight0 = m->tendon_invweight0 + id * 1;
+    tendon_user = m->tendon_user + id * m->nuser_tendon;
+    tendon_rgba = m->tendon_rgba + id * 4;
+    ten_length = d->ten_length + id * 1;
+    ten_velocity = d->ten_velocity + id * 1;
+    // --- CODEGEN_VIEW_TendonView_BIND_END ---
     }
 
     /** @brief Gets the current tendon length (meters). */
     float GetLength() const {
-        return length ? (float)*length : 0.0f;
+        return ten_length ? (float)*ten_length : 0.0f;
     }
 
     /** @brief Gets the current tendon velocity (m/s). */
     float GetVelocity() const {
-        return velocity ? (float)*velocity : 0.0f;
+        return ten_velocity ? (float)*ten_velocity : 0.0f;
     }
 };
 
@@ -389,19 +487,27 @@ struct SensorView {
     int id;
     const char* name;
 
-    // --- Config ---
-    int type;
-    int objtype;
-    int objid;
-    int reftype;
-    int refid;
-    int dim;
-    int adr;
-    mjtNum* cutoff;
-    mjtNum* noise;
-
-    // --- State ---
-    mjtNum* data; // Pointer to start of this sensor's data in sensordata
+    // --- CODEGEN_VIEW_SensorView_FIELDS_START ---
+    int sensor_type;
+    int sensor_datatype;
+    int sensor_needstage;
+    int sensor_objtype;
+    int sensor_objid;
+    int sensor_reftype;
+    int sensor_refid;
+    int* sensor_intprm;
+    int sensor_dim;
+    int sensor_adr;
+    mjtNum* sensor_cutoff;
+    mjtNum* sensor_noise;
+    int* sensor_history;
+    int sensor_historyadr;
+    mjtNum* sensor_delay;
+    mjtNum* sensor_interval;
+    mjtNum* sensor_user;
+    int sensor_plugin;
+    mjtNum* sensordata;
+    // --- CODEGEN_VIEW_SensorView_FIELDS_END ---
 
     SensorView() : _m(nullptr), _d(nullptr), id(-1) {}
 
@@ -409,21 +515,27 @@ struct SensorView {
         check(id >= 0 && id < m->nsensor);
         name = (m->name_sensoradr[id] >= 0) ? m->names + m->name_sensoradr[id] : nullptr;
 
-        type = m->sensor_type[id];
-        objtype = m->sensor_objtype[id];
-        objid = m->sensor_objid[id];
-        reftype = m->sensor_reftype[id];
-        refid = m->sensor_refid[id];
-        dim = m->sensor_dim[id];
-        adr = m->sensor_adr[id];
-        cutoff = m->sensor_cutoff + id;
-        noise = m->sensor_noise + id;
-
-        // State
-        if (adr >= 0 && adr < m->nsensordata)
-             data = d->sensordata + adr;
-        else
-             data = nullptr;
+    // --- CODEGEN_VIEW_SensorView_BIND_START ---
+    sensor_type = m->sensor_type[id];
+    sensor_datatype = m->sensor_datatype[id];
+    sensor_needstage = m->sensor_needstage[id];
+    sensor_objtype = m->sensor_objtype[id];
+    sensor_objid = m->sensor_objid[id];
+    sensor_reftype = m->sensor_reftype[id];
+    sensor_refid = m->sensor_refid[id];
+    sensor_intprm = m->sensor_intprm + id * mjNSENS;
+    sensor_dim = m->sensor_dim[id];
+    sensor_adr = m->sensor_adr[id];
+    sensor_cutoff = m->sensor_cutoff + id * 1;
+    sensor_noise = m->sensor_noise + id * 1;
+    sensor_history = m->sensor_history + id * 2;
+    sensor_historyadr = m->sensor_historyadr[id];
+    sensor_delay = m->sensor_delay + id * 1;
+    sensor_interval = m->sensor_interval + id * 2;
+    sensor_user = m->sensor_user + id * m->nuser_sensor;
+    sensor_plugin = m->sensor_plugin[id];
+    sensordata = (sensor_adr >= 0 && sensor_adr < m->nsensordata) ? d->sensordata + sensor_adr : nullptr;
+    // --- CODEGEN_VIEW_SensorView_BIND_END ---
     }
 };
 /**
@@ -438,52 +550,51 @@ struct SiteView {
     int id;
     const char* name;
 
-    // --- Config (mjModel) ---
-    int type;
-    mjtNum* size;
-    mjtNum* pos_offset;
-    mjtNum* quat_offset;
-    float* rgba;
-    int body_id;
-    int group;
-    mjtNum* user;
+    // --- CODEGEN_VIEW_SiteView_FIELDS_START ---
+    int site_type;
+    int site_bodyid;
+    int site_matid;
+    int site_group;
+    mjtByte* site_sameframe;
+    mjtNum* site_size;
+    mjtNum* site_pos;
+    mjtNum* site_quat;
+    mjtNum* site_user;
+    float* site_rgba;
+    mjtNum* site_xpos;
+    mjtNum* site_xmat;
+    // --- CODEGEN_VIEW_SiteView_FIELDS_END ---
 
-    // --- State (mjData) ---
-    mjtNum* xpos;
-    mjtNum* xmat;
-
-    SiteView() : _m(nullptr), _d(nullptr), id(-1), name(nullptr),
-        type(0), size(nullptr), pos_offset(nullptr), quat_offset(nullptr),
-        rgba(nullptr), body_id(-1), group(0), user(nullptr),
-        xpos(nullptr), xmat(nullptr) {}
+    SiteView() : _m(nullptr), _d(nullptr), id(-1), name(nullptr) {}
 
     SiteView(const mjModel* m, mjData* d, int id_in) : _m(m), _d(d), id(id_in) {
         check(id >= 0 && id < m->nsite);
         name = (m->name_siteadr[id] >= 0) ? m->names + m->name_siteadr[id] : nullptr;
 
-        // Config
-        type        = m->site_type[id];
-        size        = m->site_size + (id * 3);
-        pos_offset  = m->site_pos + (id * 3);
-        quat_offset = m->site_quat + (id * 4);
-        rgba        = m->site_rgba + (id * 4);
-        body_id     = m->site_bodyid[id];
-        group       = m->site_group[id];
-        user        = m->site_user + (id * m->nuser_site);
-
-        // State
-        xpos = d->site_xpos + (id * 3);
-        xmat = d->site_xmat + (id * 9);
+    // --- CODEGEN_VIEW_SiteView_BIND_START ---
+    site_type = m->site_type[id];
+    site_bodyid = m->site_bodyid[id];
+    site_matid = m->site_matid[id];
+    site_group = m->site_group[id];
+    site_sameframe = m->site_sameframe + id * 1;
+    site_size = m->site_size + id * 3;
+    site_pos = m->site_pos + id * 3;
+    site_quat = m->site_quat + id * 4;
+    site_user = m->site_user + id * m->nuser_site;
+    site_rgba = m->site_rgba + id * 4;
+    site_xpos = d->site_xpos + id * 3;
+    site_xmat = d->site_xmat + id * 9;
+    // --- CODEGEN_VIEW_SiteView_BIND_END ---
     }
 
     FVector GetWorldPosition() const {
-        return MjUtils::MjToUEPosition(xpos);
+        return MjUtils::MjToUEPosition(site_xpos);
     }
 
     FString ToString() const {
         FString Info = FString::Printf(TEXT("=== Site ID: %d (%s) ===\n"), id, name ? *MjUtils::MjToString(name) : TEXT("None"));
-        Info += FString::Printf(TEXT("    Type: %d | Size: %s\n"), type, *FormatVec3(size));
-        Info += FString::Printf(TEXT("    World Pos: %s\n"), *FormatVec3(xpos));
+        Info += FString::Printf(TEXT("    Type: %d | Size: %s\n"), site_type, *FormatVec3(site_size));
+        Info += FString::Printf(TEXT("    World Pos: %s\n"), *FormatVec3(site_xpos));
         return Info;
     }
 };
@@ -504,57 +615,99 @@ struct BodyView {
     // --- Identification ---
     const char* name;
 
-    // --- Configuration (mjModel) ---
-    mjtNum* mass;
-    mjtNum* inertia;
-    mjtNum* ipos;
-    mjtNum* iquat;
-    mjtNum* gravcomp;
-    mjtNum* pos_offset;
-    mjtNum* quat_offset;
-    mjtNum* user;
-    int mocap_id;
-
-    // --- State (mjData) ---
+    // --- CODEGEN_VIEW_BodyView_FIELDS_START ---
+    int body_parentid;
+    int body_rootid;
+    int body_weldid;
+    int body_mocapid;
+    int body_jntnum;
+    int body_jntadr;
+    int body_dofnum;
+    int body_dofadr;
+    int body_treeid;
+    int body_geomnum;
+    int body_geomadr;
+    mjtByte* body_simple;
+    mjtByte* body_sameframe;
+    mjtNum* body_pos;
+    mjtNum* body_quat;
+    mjtNum* body_ipos;
+    mjtNum* body_iquat;
+    mjtNum* body_mass;
+    mjtNum* body_subtreemass;
+    mjtNum* body_inertia;
+    mjtNum* body_invweight0;
+    mjtNum* body_gravcomp;
+    mjtNum* body_margin;
+    mjtNum* body_user;
+    int body_plugin;
+    int body_contype;
+    int body_conaffinity;
+    int body_bvhadr;
+    int body_bvhnum;
+    int tree_bodyadr;
+    int tree_bodynum;
+    int tree_dofadr;
+    int tree_dofnum;
+    int tree_sleep_policy;
     mjtNum* xpos;
     mjtNum* xquat;
-    mjtNum* xipos;
-    mjtNum* ximat;
+    mjtNum* xmat;
     mjtNum* cvel;
-    mjtNum* cacc;
+    mjtNum* cinert;
     mjtNum* xfrc_applied;
-    
+    // --- CODEGEN_VIEW_BodyView_FIELDS_END ---
+
     // Initialize critical members to safe defaults so a failed bind doesn't cause a crash later
-    BodyView() : _m(nullptr), _d(nullptr), id(-1), name(nullptr),
-        mass(nullptr), inertia(nullptr), ipos(nullptr), iquat(nullptr), gravcomp(nullptr),
-        pos_offset(nullptr), quat_offset(nullptr), user(nullptr), mocap_id(-1),
-        xpos(nullptr), xquat(nullptr), xipos(nullptr), ximat(nullptr),
-        cvel(nullptr), cacc(nullptr), xfrc_applied(nullptr) {}
+    BodyView() : _m(nullptr), _d(nullptr), id(-1), name(nullptr) {}
 
     BodyView(const mjModel* m, mjData* d, int id_in) : _m(m), _d(d), id(id_in) {
         check(id >= 0 && id < m->nbody);
         // Name resolution
         name = (m->name_bodyadr[id] >= 0) ? m->names + m->name_bodyadr[id] : nullptr;
 
-        // Model (Const params)
-        mass        = m->body_mass + id;
-        inertia     = m->body_inertia + (id * 3);
-        ipos        = m->body_ipos + (id * 3);
-        iquat       = m->body_iquat + (id * 4);
-        gravcomp    = m->body_gravcomp + id;
-        pos_offset  = m->body_pos + (id * 3);
-        quat_offset = m->body_quat + (id * 4);
-        user        = m->body_user + (id * m->nuser_body);
-        mocap_id    = m->body_mocapid[id];
-
-        // Data (Dynamic state)
-        xpos         = d->xpos + (id * 3);
-        xquat        = d->xquat + (id * 4);
-        xipos        = d->xipos + (id * 3);
-        ximat        = d->ximat + (id * 9);
-        cvel         = d->cvel + (id * 6);
-        cacc         = d->cacc + (id * 6);
-        xfrc_applied = d->xfrc_applied + (id * 6);
+    // --- CODEGEN_VIEW_BodyView_BIND_START ---
+    body_parentid = m->body_parentid[id];
+    body_rootid = m->body_rootid[id];
+    body_weldid = m->body_weldid[id];
+    body_mocapid = m->body_mocapid[id];
+    body_jntnum = m->body_jntnum[id];
+    body_jntadr = m->body_jntadr[id];
+    body_dofnum = m->body_dofnum[id];
+    body_dofadr = m->body_dofadr[id];
+    body_treeid = m->body_treeid[id];
+    body_geomnum = m->body_geomnum[id];
+    body_geomadr = m->body_geomadr[id];
+    body_simple = m->body_simple + id * 1;
+    body_sameframe = m->body_sameframe + id * 1;
+    body_pos = m->body_pos + id * 3;
+    body_quat = m->body_quat + id * 4;
+    body_ipos = m->body_ipos + id * 3;
+    body_iquat = m->body_iquat + id * 4;
+    body_mass = m->body_mass + id * 1;
+    body_subtreemass = m->body_subtreemass + id * 1;
+    body_inertia = m->body_inertia + id * 3;
+    body_invweight0 = m->body_invweight0 + id * 2;
+    body_gravcomp = m->body_gravcomp + id * 1;
+    body_margin = m->body_margin + id * 1;
+    body_user = m->body_user + id * m->nuser_body;
+    body_plugin = m->body_plugin[id];
+    body_contype = m->body_contype[id];
+    body_conaffinity = m->body_conaffinity[id];
+    body_bvhadr = m->body_bvhadr[id];
+    body_bvhnum = m->body_bvhnum[id];
+    tree_bodyadr = m->tree_bodyadr[id];
+    tree_bodynum = m->tree_bodynum[id];
+    tree_dofadr = m->tree_dofadr[id];
+    tree_dofnum = m->tree_dofnum[id];
+    tree_sleep_policy = m->tree_sleep_policy[id];
+    xpos = d->xpos + id * 3;
+    xquat = d->xquat + id * 4;
+    xmat = d->xmat + id * 9;
+    cvel = d->cvel + id * 6;
+    cinert = d->cinert + id * 10;
+    xfrc_applied = d->xfrc_applied + id * 6;
+    // --- CODEGEN_VIEW_BodyView_BIND_END ---
     }
 
     FVector GetWorldPosition() const {
@@ -578,7 +731,7 @@ struct BodyView {
     /** @brief Applies a world-space wrench (Force and Torque) to this body. */
     void ApplyWrench(FVector UEForce, FVector UETorque) {
         if (!xfrc_applied) return;
-        
+
         // Force: Convert and add to indices 3, 4, 5
         mjtNum MjForce[3];
         MjUtils::UEToMjPosition(UEForce, MjForce);
@@ -587,11 +740,9 @@ struct BodyView {
         xfrc_applied[5] += MjForce[2];
 
         // Torque: Convert and add to indices 0, 1, 2
-        // Note: Torque doesn't require the 0.01 scale factor (cm->m) in the same way, 
+        // Note: Torque doesn't require the 0.01 scale factor (cm->m) in the same way,
         // but it does require the Y-flip and coordinate mapping.
-        // UEToMjRotation handles the flip/mapping part if treated as a vector.
-        // However, torque is often just a vector. 
-        // Looking at UMjBody::ApplyForce, it uses Torque.X, -Torque.Y, Torque.Z.
+        // UMjBody::ApplyForce uses Torque.X, -Torque.Y, Torque.Z.
         xfrc_applied[0] += (mjtNum)UETorque.X;
         xfrc_applied[1] += (mjtNum)-UETorque.Y;
         xfrc_applied[2] += (mjtNum)UETorque.Z;
@@ -604,10 +755,10 @@ struct BodyView {
 
     FString ToString() const {
         FString Info = FString::Printf(TEXT("=== Body ID: %d (%s) ===\n"), id, name ? *MjUtils::MjToString(name) : TEXT("None"));
-        
+
         Info += TEXT("  [Config]\n");
-        Info += FString::Printf(TEXT("    Mass: %.4f\n"), *mass);
-        Info += FString::Printf(TEXT("    Rel Pos: %s\n"), *FormatVec3(pos_offset));
+        Info += FString::Printf(TEXT("    Mass: %.4f\n"), *body_mass);
+        Info += FString::Printf(TEXT("    Rel Pos: %s\n"), *FormatVec3(body_pos));
 
         Info += TEXT("  [State]\n");
         Info += FString::Printf(TEXT("    World Pos: %s\n"), *FormatVec3(xpos));
@@ -677,8 +828,8 @@ inline void LogBodyHierarchy(const BodyView& RootBody, int IndentLevel = 0) {
         FString GeomLog = FString::Printf(TEXT("%s  - (Geom ID: %d) Type: %d | Size: %s"), 
             *IndentString, 
             Geom.id, 
-            Geom.type, 
-            *FormatVec3(Geom.size)); // Uses the FormatVec3 helper defined previously
+            Geom.geom_type,
+            *FormatVec3(Geom.geom_size)); // Uses the FormatVec3 helper defined previously
         
         UE_LOG(LogURLabBind, Verbose, TEXT("%s"), *GeomLog);
     }

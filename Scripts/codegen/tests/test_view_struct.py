@@ -63,3 +63,59 @@ def test_view_has_one_field_per_mjxmacro_entry(real_rules, real_mjxmacro):
         name = entry["name"]
         view_name = field_renames.get(name, name)
         assert f" {view_name};" in fields, f"missing view field for {name} (-> {view_name})"
+
+
+def test_stride_one_int_entries_emit_as_dereferenced_scalars():
+    """Single-int entries (stride=="1", type=="int") emit as ``int X``
+    with ``X = m->src[id]`` in the bind body — value semantics, not pointer.
+    Regression guard for the codegen feature added in codegen(item-2)."""
+    rules = {"views": {"FooView": {
+        "obj_type": "mjOBJ_BODY",
+        "include_blocks": ["FOO_BLOCK"],
+    }}}
+    mjxmacro = {"mjmodel_pointers": {"FOO_BLOCK": [
+        {"type": "int",    "name": "foo_kind",     "outer_dim": "nfoo", "stride": "1"},
+        {"type": "int",    "name": "foo_size_arr", "outer_dim": "nfoo", "stride": "3"},
+        {"type": "mjtNum", "name": "foo_pos",      "outer_dim": "nfoo", "stride": "3"},
+    ]}}
+    views = emit_view_structs(rules, mjxmacro)
+    fields, bind = views["FooView"]
+    # Scalar int — dereferenced, not pointer.
+    assert "    int foo_kind;" in fields
+    assert "    foo_kind = m->foo_kind[id];" in bind
+    # Int but stride>1 — stays a pointer.
+    assert "    int* foo_size_arr;" in fields
+    assert "    foo_size_arr = m->foo_size_arr + id * 3;" in bind
+    # mjtNum stride>1 — pointer.
+    assert "    mjtNum* foo_pos;" in fields
+    assert "    foo_pos = m->foo_pos + id * 3;" in bind
+
+
+def test_data_fields_bind_override():
+    """``data_fields[name].bind_override`` short-circuits the standard
+    ``base + index_var * stride`` emit and drops the override verbatim
+    inside the BIND marker. Used by SensorView::sensordata (bounds-checked
+    slice) and ActuatorView::act (nullable lookup)."""
+    rules = {"views": {"BarView": {
+        "obj_type": "mjOBJ_GEOM",
+        "include_blocks": [],
+        "data_fields": {
+            "_note_skip_me": "comment-only; codegen must skip _note_* keys",
+            "plain":        {"index_var": "id", "stride": "1"},
+            "bounds_check": {"bind_override":
+                "bounds_check = (id < m->nfoo) ? d->bounds_check + id : nullptr;"},
+        },
+    }}}
+    mjxmacro = {"mjmodel_pointers": {}}
+    views = emit_view_structs(rules, mjxmacro)
+    fields, bind = views["BarView"]
+    # Standard data_field bind emitted.
+    assert "    mjtNum* plain;" in fields
+    assert "    plain = d->plain + id * 1;" in bind
+    # bind_override field still declared at the standard cpp_type.
+    assert "    mjtNum* bounds_check;" in fields
+    # bind_override body dropped verbatim — no base+id*stride.
+    assert "    bounds_check = (id < m->nfoo) ? d->bounds_check + id : nullptr;" in bind
+    # _note_* keys are documentation, not data fields.
+    assert "_note_skip_me" not in fields
+    assert "_note_skip_me" not in bind

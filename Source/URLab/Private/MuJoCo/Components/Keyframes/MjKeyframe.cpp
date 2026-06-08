@@ -130,8 +130,8 @@ static FKeyframeDimensions CountDimensions(AActor* Owner)
     return D;
 }
 
-// Helper consolidated into MjUtils::MjSetDoubleVec (Phase 3e.8). Kept
-// here as a thin alias so the padding paths below stay readable.
+// SetVec is a thin alias for MjUtils::MjSetDoubleVec; kept here so the
+// freejoint padding paths below read cleanly.
 
 void UMjKeyframe::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {

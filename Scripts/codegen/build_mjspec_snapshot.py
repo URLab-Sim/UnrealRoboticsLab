@@ -98,21 +98,13 @@ _PARAM_RE = re.compile(
 )
 
 
-# Phase 2d-1: per-MuJoCo-enum value extraction.
-#
-# Captures ``typedef enum mjtX_ { mjFOO = 0, mjBAR, mjBAZ = 100, ... } mjtX;``
-# blocks. Auto-increment honoured: a bare entry inherits prev value + 1.
-# Explicit ``= N`` resets the counter. Trailing comments are stripped per-line.
-#
-# Output shape (added under top-level ``"enums"`` key in mjspec_snapshot.json):
-#   {
-#     "mjtJoint": {"mjJNT_FREE": 0, "mjJNT_BALL": 1, "mjJNT_SLIDE": 2, "mjJNT_HINGE": 3},
-#     "mjtGeom":  {"mjGEOM_PLANE": 0, "mjGEOM_HFIELD": 1, ..., "mjGEOM_NONE": 1001},
-#     ...
-#   }
-#
-# Phase 2c's ``value_map_from_enum`` resolver consumes this to populate
-# xml_enum value maps without a hand-listed table in codegen_rules.json.
+# Per-MuJoCo-enum value extraction. Captures
+# ``typedef enum mjtX_ { mjFOO = 0, mjBAR, mjBAZ = 100, ... } mjtX;`` blocks.
+# Auto-increment honoured (bare entry inherits prev value + 1); explicit
+# ``= N`` resets the counter. Output shape under ``"enums"``:
+#   {"mjtJoint": {"mjJNT_FREE": 0, "mjJNT_BALL": 1, ...}, ...}
+# The ``value_map_from_enum`` rule resolver consumes this to populate
+# xml_enum value maps without hand-listing the table in codegen_rules.json.
 _ENUM_BLOCK_RE = re.compile(
     r"typedef\s+enum\s+(?P<name>mjt\w+)_\s*\{(?P<body>[^}]*)\}\s*\1\s*;",
     re.DOTALL,

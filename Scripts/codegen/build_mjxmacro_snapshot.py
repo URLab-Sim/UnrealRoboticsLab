@@ -76,6 +76,7 @@ POINTER_BLOCKS_MJDATA = [
     "MJDATA_ARENA_POINTERS_DUAL",
     "MJDATA_ARENA_POINTERS_ISLAND",
     "MJDATA_ARENA_POINTERS_SOLVER",
+    "MJDATA_ARENA_POINTERS_CONTACT",
 ]
 
 # Flat struct field blocks (no outer dimension — just type + name + size).
@@ -219,6 +220,24 @@ def _parse_struct_field_entry(raw: str) -> Optional[Dict[str, Any]]:
     }
 
 
+# Block names from MuJoCo's X-macro headers that we KNOWINGLY do not
+# consume — additions are still flagged at parse time so a new block
+# can't disappear silently, but listed names produce no warning.
+KNOWN_UNCONSUMED_BLOCKS = {
+    # Sentinels / size constants — defined as #define X foo without a body.
+    "MJMODEL_POINTERS_PREAMBLE",
+    "MJMODEL_POINTERS",  # meta-aggregator (re-includes all POINTERS_* blocks)
+    "MJMODEL_SIZES",     # int field counts
+    "MJMODEL_INTS",
+    "MJMODEL_INTS_PREAMBLE",
+    "MJMODEL_INTS_NUMERIC",
+    "MJMODEL_FLOATS",
+    "MJDATA_VECTOR",
+    "MJDATA_SCALAR",
+    "MJDATA_SCALAR_PREAMBLE",
+}
+
+
 def parse_mjxmacro(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         raw_text = f.read()
@@ -235,6 +254,12 @@ def parse_mjxmacro(path: str) -> Dict[str, Any]:
         "struct_fields": {},
     }
 
+    expected = (
+        set(POINTER_BLOCKS_MJMODEL) | set(POINTER_BLOCKS_MJDATA)
+        | set(STRUCT_FIELD_BLOCKS) | KNOWN_UNCONSUMED_BLOCKS
+    )
+    seen_blocks: set = set()
+
     i = 0
     while i < len(lines):
         line = lines[i]
@@ -243,8 +268,27 @@ def parse_mjxmacro(path: str) -> Dict[str, Any]:
             i += 1
             continue
         block_name = m.group(1)
+        seen_blocks.add(block_name)
         # Collect block body — entries on subsequent lines.
         entries = _parse_block_body(lines, i + 1)
+        # Defensive sentinel: a non-entry, non-empty line ended body
+        # collection inside an EXPECTED block. The XNV regression was
+        # exactly this — surface it so the next new X-tag bumps cause a
+        # loud warning rather than silently truncating the snapshot.
+        end_idx = i + 1 + len(entries)
+        if (block_name in expected and end_idx < len(lines)
+                and lines[end_idx].strip()
+                and not _BODY_ENTRY_RE.match(lines[end_idx].strip())):
+            # If the very next line was also an entry-shaped token we
+            # missed (i.e. it has parens), warn loudly.
+            tail = lines[end_idx].strip()
+            if "(" in tail and tail.endswith(")") or tail.endswith(") \\"):
+                print(
+                    f"warning: body collector stopped INSIDE block "
+                    f"{block_name} at line {end_idx + 1}: '{tail[:80]}' — "
+                    f"new X-macro tag? Update _X_TAG_RE in this script.",
+                    file=sys.stderr,
+                )
         if block_name in POINTER_BLOCKS_MJMODEL:
             parsed = [e for e in (_parse_pointer_entry(r) for r in entries) if e]
             out["mjmodel_pointers"][block_name] = parsed
@@ -255,6 +299,29 @@ def parse_mjxmacro(path: str) -> Dict[str, Any]:
             parsed = [e for e in (_parse_struct_field_entry(r) for r in entries) if e]
             out["struct_fields"][block_name] = parsed
         i += 1
+
+    # New-block tripwire: surface any #define block whose name we have
+    # never seen before. Catches scenarios like a new
+    # MJMODEL_POINTERS_PLUGIN_SUB landing upstream — without this, the
+    # snapshot silently drops the block.
+    unexpected = {
+        b for b in seen_blocks
+        if b not in expected and (b.startswith("MJMODEL_") or
+                                  b.startswith("MJDATA_") or
+                                  b.startswith("MJOPTION_") or
+                                  b.startswith("MJSTATISTIC_") or
+                                  b.startswith("MJVISUAL_") or
+                                  b.startswith("MJSCOMPILER_") or
+                                  b.startswith("MJSPEC_"))
+    }
+    if unexpected:
+        print(
+            f"warning: parsed {len(unexpected)} unrecognised X-macro "
+            f"block(s) — add to POINTER_BLOCKS_MJMODEL/MJDATA, "
+            f"STRUCT_FIELD_BLOCKS, or KNOWN_UNCONSUMED_BLOCKS in this "
+            f"script: {sorted(unexpected)}",
+            file=sys.stderr,
+        )
     return out
 
 

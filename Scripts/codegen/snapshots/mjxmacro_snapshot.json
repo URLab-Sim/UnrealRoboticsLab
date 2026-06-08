@@ -2994,6 +2994,14 @@
         "stride": "6"
       }
     ],
+    "MJDATA_ARENA_POINTERS_CONTACT": [
+      {
+        "type": "mjContact",
+        "name": "contact",
+        "outer_dim": "MJ_D(ncon)",
+        "stride": "1"
+      }
+    ],
     "MJDATA_ARENA_POINTERS_SOLVER": [
       {
         "type": "int",

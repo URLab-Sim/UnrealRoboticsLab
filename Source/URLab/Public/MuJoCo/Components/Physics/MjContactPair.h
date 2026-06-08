@@ -89,13 +89,13 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_gap = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_gap"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_gap", Units="m"))
     float gap = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactPair", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactPair", meta=(EditCondition="bOverride_margin", Units="m"))
     float margin = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 

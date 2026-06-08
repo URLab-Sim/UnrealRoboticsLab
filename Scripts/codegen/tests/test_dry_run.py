@@ -15,12 +15,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _PLUGIN_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 
 
-@pytest.fixture(scope="session")
-def real_mjspec():
-    with open(os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjspec_snapshot.json"), "r") as f:
-        return json.load(f)
-
-
 def test_collect_all_writes_includes_expected_categories(real_schema, real_rules, real_mjxmacro, real_mjspec):
     from generate_ue_components import collect_all_writes
     # The plugin's actual Public/Private roots (read-only — we don't write).

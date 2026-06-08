@@ -74,13 +74,13 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
     FVector Pos = FVector::ZeroVector;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp|Orientation", meta=(EditCondition="false", EditConditionHides))
     FQuat Quat = FQuat::Identity;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
@@ -110,13 +110,13 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_spacing = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_spacing"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_spacing", MjUnit="m"))
     TArray<float> spacing = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))
     bool bOverride_radius = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_radius"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Flexcomp", meta=(EditCondition="bOverride_radius", Units="m"))
     float radius = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta=(InlineEditConditionToggle))

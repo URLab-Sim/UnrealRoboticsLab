@@ -100,13 +100,13 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
     FVector Pos = FVector::ZeroVector;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Orientation", meta=(EditCondition="false", EditConditionHides))
     FQuat Quat = FQuat::Identity;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
@@ -142,7 +142,7 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_size = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_size"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="false", EditConditionHides))
     TArray<float> size = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
@@ -190,13 +190,13 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_margin", Units="m"))
     float margin = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_gap = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_gap"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_gap", Units="m"))
     float gap = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))

@@ -41,6 +41,53 @@
     "skin":  "Children of <asset>. URLab handles skinning via UE skeletal meshes; <skin> in MJCF would need a dedicated asset pipeline."
   },
 
+  "_note_hand_vs_generated_enums": "URLab keeps every EMj*Type enum hand-rolled. Subtype-driving enums (EMjJointType, EMjGeomType, etc.) must stay hand-rolled because each member drives a UClass subclass — adding one is a product decision, not mechanical. Pure-mapping enums (EMjGainType, EMjBiasType, ...) are mechanically codegenable but live next to their parent UClass; moving them to Generated/ would require include reordering for no functional gain. The hand_enum_drift phase in generate_ue_components.py provides the equivalent forward-maintainability guarantee: any new mjt* value upstream surfaces as a diagnostic instead of a silent runtime fallthrough.",
+
+  "_note_compiler_attr_field_map": "MJCF <compiler attr=...> XML attrs URLab honours, mapped to their FMjCompilerSettings field name. The field is hand-rolled in MuJoCo/Utils/MjOrientationUtils.h; the drift check uses this map purely as an allowlist. New MuJoCo compiler flags surface as a diagnostic until added here or to intentionally_unmodeled_compiler_attrs.",
+  "compiler_attr_field_map": {
+    "angle":      "bAngleInDegrees",
+    "eulerseq":   "EulerSeq",
+    "meshdir":    "MeshDir",
+    "assetdir":   "AssetDir",
+    "autolimits": "bAutoLimits"
+  },
+
+  "_note_intentionally_unmodeled_compiler_attrs": "<compiler> XML attrs that don't affect URLab's UE-side parsing — physics tuning knobs, compiler-only optimisations, paths URLab supersedes with UE asset routing. Listed explicitly so the compiler-coverage diagnostic stays clean while remaining loud on additions.",
+  "intentionally_unmodeled_compiler_attrs": [
+    "boundmass", "boundinertia", "settotalmass", "balanceinertia",
+    "strippath", "coordinate", "fitaabb", "discardvisual",
+    "usethread", "fusestatic", "inertiafromgeom", "inertiagrouprange",
+    "saveinertial", "texturedir", "alignfree"
+  ],
+
+  "_note_intentionally_default_typed_attrs": "Attrs that legitimately want default_type ('float') — single scalar floats whose UE shape happens to match the rule fallback. Listed explicitly so the new_attr_typing diagnostic stays clean. Any new MuJoCo XML attr added in a future version that ISN'T a scalar float will surface as a diagnostic.",
+  "intentionally_default_typed_attrs": [
+    "active", "actuatorgravcomp", "area", "armature", "bias",
+    "cranklength", "cutoff", "dampratio", "density", "diameter",
+    "force", "fovy", "fpmax", "frictionloss", "fvmax",
+    "gain", "gap", "gravcomp", "inheritrange", "ipd",
+    "kp", "kv", "lmax", "lmin", "margin",
+    "mass", "noise", "output", "radius", "ref",
+    "resistance", "solmix", "springref", "tausmooth", "torquescale",
+    "vmax", "width"
+  ],
+
+  "_note_intentionally_unmapped_mj_enum_values": "MuJoCo enum constants the codegen knowingly does NOT expose as URLab enum members. Silences the hand_enum_drift diagnostic. Two scopes: top-level keys are mjt* enum names whose entries apply to EVERY element using that enum (visualizer-only types, sentinel counts, alternative-class subsumption); '__per_element__' carries per-(element, attr) overrides for cases where the same mjt* enum admits a different subset depending on the host (e.g. <site> rejects mjGEOM_PLANE/HFIELD/MESH but <geom> accepts them).",
+  "intentionally_unmapped_mj_enum_values": {
+    "mjtGain":  ["mjGAIN_DCMOTOR"],
+    "mjtBias":  ["mjBIAS_DCMOTOR"],
+    "mjtDyn":   ["mjDYN_DCMOTOR"],
+    "mjtGeom":  [
+      "mjNGEOMTYPES",
+      "mjGEOM_ARROW", "mjGEOM_ARROW1", "mjGEOM_ARROW2",
+      "mjGEOM_LINE", "mjGEOM_LINEBOX", "mjGEOM_LABEL", "mjGEOM_TRIANGLE",
+      "mjGEOM_FLEX", "mjGEOM_SKIN", "mjGEOM_SDF", "mjGEOM_NONE"
+    ],
+    "__per_element__": {
+      "site.type": ["mjGEOM_PLANE", "mjGEOM_HFIELD", "mjGEOM_MESH"]
+    }
+  },
+
   "_note_intentionally_unmodeled_mjs_fields": "Per-mjsX-struct list of fields URLab knows about but doesn't model via codegen. Silences the mjsX-field-drift diagnostic. Add entries for fields handled by a different UE component, by canon, or that we deliberately skip.",
   "intentionally_unmodeled_mjs_fields": {
     "mjsBody": [
@@ -99,9 +146,7 @@
     "origin":            "TArray<float>",
     "dim":               "int32",
     "rgba":              "FLinearColor",
-    "rgba2":             "FLinearColor",
     "range":             "TArray<float>",
-    "actfrcrange":       "TArray<float>",
     "actuatorfrcrange":  "TArray<float>",
     "ctrlrange":         "TArray<float>",
     "forcerange":        "TArray<float>",
@@ -120,9 +165,7 @@
     "thermal":           "TArray<float>",
     "lugre":             "TArray<float>",
     "stiffness":         "TArray<float>",
-    "stiffnesspoly":     "TArray<float>",
     "damping":           "TArray<float>",
-    "dampingpoly":       "TArray<float>",
     "friction":          "TArray<float>",
     "fullinertia":       "TArray<float>",
     "diaginertia":       "TArray<float>",
@@ -139,24 +182,18 @@
     "biasprm":           "TArray<float>",
     "dynprm":            "TArray<float>",
     "polycoef":          "TArray<float>",
-    "intprm":            "TArray<int32>",
     "limited":           "bool",
     "mocap":             "bool",
     "actlimited":        "bool",
     "ctrllimited":       "bool",
     "forcelimited":      "bool",
     "actuatorfrclimited":"bool",
-    "actgravcomp":       "bool",
     "actearly":          "bool",
     "shellinertia":      "bool",
     "fitscale":          "bool",
     "fitaabb":           "bool",
     "discardvisual":     "bool",
-    "needstage":         "FString",
-    "datatype":          "FString",
-    "objtype":           "FString",
     "objname":           "FString",
-    "reftype":           "FString",
     "refname":           "FString",
     "gaintype":          "FString",
     "biastype":          "FString",
@@ -186,7 +223,6 @@
     "file":              "FString",
     "target":            "FString",
     "mode":              "FString",
-    "side":              "FString",
     "anchor":            "TArray<float>",
     "relpose":           "TArray<float>",
     "ctrl":              "TArray<float>",
@@ -375,6 +411,24 @@
       "applies_canonicalizations": ["spatial_pose"],
       "vec3_convert": {"axis": "y_negate"},
       "property_defaults": {"axis": "FVector(0.0f, 0.0f, 1.0f)"},
+      "_note_hidden": "Pos is the joint anchor offset — derived from the UE component's RelativeLocation. Axis stays visible as a direction (not a position) and is the user-authored joint hinge direction.",
+      "hidden_canon_properties": ["spatial_pose"],
+      "_note_property_meta": "Joint fields whose unit semantics shift with the joint Type get a tooltip that spells out the per-type interpretation, so a user reading the Details panel knows whether the number is metres or degrees. UE's Units meta is intentionally NOT used here — a static label would be wrong for the other Type.",
+      "property_meta": {
+        "axis":             "ToolTip=\"Joint axis in the parent body's local frame. Hinge: rotation axis. Slide: translation direction. Ignored for Ball and Free.\"",
+        "range":            "ToolTip=\"Joint position bounds [min, max]. Hinge/Ball: degrees. Slide: centimetres. Ignored when 'limited' is false.\"",
+        "ref":              "ToolTip=\"Reference (zero) position. Hinge/Ball: degrees. Slide: centimetres.\"",
+        "springref":        "ToolTip=\"Equilibrium position for the joint spring. Hinge/Ball: degrees. Slide: centimetres.\"",
+        "stiffness":        "ToolTip=\"Per-axis spring stiffness. Hinge/Ball: N·m/rad. Slide: N/m.\"",
+        "damping":          "ToolTip=\"Per-axis damping. Hinge/Ball: N·m·s/rad. Slide: N·s/m.\"",
+        "springdamper":     "ToolTip=\"Compact spring spec [stiffness, damping]; populated when MJCF used <joint springdamper='...'>. Overrides stiffness + damping when set.\"",
+        "armature":         "ToolTip=\"Added rotor inertia for hinges (kg·m²) or added mass for slides (kg). Models reflected inertia of the actuator.\"",
+        "frictionloss":     "ToolTip=\"Dry-friction loss. Hinge/Ball: N·m. Slide: N.\"",
+        "actuatorgravcomp": "ToolTip=\"Gravity compensation factor passed to actuators on this joint. 0 = no compensation, 1 = full gravity cancelled.\"",
+        "actuatorfrcrange": "ToolTip=\"Actuator force bounds [min, max] when 'ActFrcLimited' is true. Hinge/Ball: N·m. Slide: N.\"",
+        "margin":           "ToolTip=\"Contact-detection margin (m). Joints inherit this when computing limit constraints.\"",
+        "group":            "ToolTip=\"Visualisation group 0–5. MuJoCo viewer uses this to toggle visibility.\""
+      },
       "exclude_attrs": [],
       "xml_enum_attrs": {
         "type": {
@@ -421,6 +475,14 @@
       "applies_canonicalizations": ["spatial_pose", "orientation", "fromto_decompose"],
       "_note_sentinel": "fromto-only XML inputs leave the radius slot unset; the canon writes -1.0f as the sentinel and the per-attr size export skips those slots so the parent default's radius is preserved.",
       "sentinel_skip_export": {"size": "-1.0f"},
+      "_note_property_units": "Scalar lengths exposed in mjsGeom carry meta=(Units=\"m\") so the editor shows a 'm' suffix or auto-converts to cm/mm when 'Display Units' is enabled. Storage stays raw MJ metres; export path unaffected. size is hidden (Scale3D is canonical) — see hidden_attrs.",
+      "property_units": {
+        "margin": "m",
+        "gap":    "m"
+      },
+      "_note_hidden": "Pos/Quat/size are stored in the UE Transform widget (RelativeLocation/Rotation/Scale3D) and authored there. The codegen still emits the UPROPERTYs so the import path can seed them and BPs can read them, but EditConditionHides keeps them off the Details panel.",
+      "hidden_canon_properties": ["spatial_pose", "orientation"],
+      "hidden_attrs": ["size"],
       "_note_attr_to_mjs_field": "MuJoCo renames fluidcoef -> fluid_coefs on the mjsGeom struct. shellinertia and fluidshape are handled by xml_enum_attrs below (they need string<->enum + field-rename together).",
       "attr_to_mjs_field": {
         "fluidcoef": "fluid_coefs"
@@ -473,6 +535,9 @@
       "export_skip_attrs": ["material"],
       "applies_canonicalizations": ["spatial_pose", "orientation", "fromto_decompose"],
       "sentinel_skip_export": {"size": "-1.0f"},
+      "_note_hidden": "Same policy as geom: Pos/Quat/size live in the UE Transform widget. UPROPERTYs exist for the import seed + BP access but are EditConditionHides-hidden from the Details panel.",
+      "hidden_canon_properties": ["spatial_pose", "orientation"],
+      "hidden_attrs": ["size"],
       "xml_enum_attrs": {
         "type": {
           "ue_property":  "Type",
@@ -494,7 +559,11 @@
       "common_imports": ["class"],
       "_note_material": "material codegen-owned for IMPORT but export-skipped — URLab handles materials as UE assets, not mjsMaterial spec entries.",
       "exclude_attrs": [],
-      "export_skip_attrs": ["material"]
+      "export_skip_attrs": ["material"],
+      "_note_property_units": "springlength is unambiguously a length in metres. range is intentionally NOT tagged — it can be a length (slide-mode tendon) or an angle (rare hinge-coupled tendon) and labelling it with one unit would be wrong as often as right.",
+      "property_units": {
+        "springlength": "m"
+      }
     },
     "equality": {
       "_note_target_collation": "MJCF equality elements address one or two of {body, site, joint, tendon, flex} per the equality kind. URLab collapses to FString Obj1/Obj2 (hand-declared UPROPERTYs with dynamic GetOptions based on EqualityType). Excluded from codegen so they don't appear as separate UPROPERTYs; target_collations rule emits the import collation + mjs_setString export. site1/site2 stay as their own UPROPERTYs (codegen-owned) so the objtype switch in ExportTo can detect site-mode connects/welds and pick mjOBJ_SITE.",
@@ -516,6 +585,10 @@
           {"condition": "(EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)",
            "import_op": "m_to_cm"}
         ]
+      },
+      "_note_property_units": "anchor is stored in UE centimetres (post unit_conversion). Tagging the field with Units=\"cm\" so the editor shows the suffix that matches the actual stored value — no auto-conversion needed.",
+      "property_units": {
+        "anchor": "cm"
       },
       "mjs_data_packed_attrs": {
         "anchor": {
@@ -544,11 +617,21 @@
       "common_imports": ["name"],
       "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
+      "_note_hidden": "Camera Pos/Quat are the camera transform — authored via the UE Transform widget. The intrinsics (fovy, ipd, focal, etc.) stay visible.",
+      "hidden_canon_properties": ["spatial_pose", "orientation"],
       "_note_attr_to_mjs_field": "MuJoCo renames a handful of camera attrs between the XML schema and the mjsCamera struct: target -> targetbody (mjString*), projection -> proj (mjtProjection enum), focal -> focal_length, principal -> principal_length. sensorsize auto-resolves to sensor_size via the underscore-normalise heuristic. Without this map the auto-resolver in _resolve_mjs_field can't bridge target/focal/principal and they were silently dropped on export.",
       "attr_to_mjs_field": {
         "target": "targetbody",
         "focal": "focal_length",
         "principal": "principal_length"
+      },
+      "_note_property_units": "Camera lengths (ipd, focal, principal, sensorsize) stay in raw MJ metres on the UE side; tagging them with Units=\"m\" gives the editor a suffix and lets Display Units convert to mm/cm. fovy is degrees per the MJCF spec. focalpixel / principalpixel are pixel counts (not lengths) and are intentionally untagged.",
+      "property_units": {
+        "ipd":        "m",
+        "focal":      "m",
+        "principal":  "m",
+        "sensorsize": "m",
+        "fovy":       "deg"
       },
       "xml_enum_attrs": {
         "mode": {
@@ -582,6 +665,8 @@
       "applies_canonicalizations": ["spatial_pose", "orientation", "body_sleep_policy"],
       "_note_canon_export_skip": "Body's pos/quat are written by MjSpecWrapper::CreateBody from the UE component transform (the source of truth for body placement). The codegen-emitted spatial_pose/orientation export would overwrite those with the Pos/Quat UPROPERTYs, which are stale for any body not freshly imported from XML. Skip the export side for these two canons.",
       "canon_export_skip": ["spatial_pose", "orientation"],
+      "_note_hidden": "Pos/Quat are stale after import (canon_export_skip routes the write through the UE transform). Hidden from the Details panel so users author placement only via the Transform widget.",
+      "hidden_canon_properties": ["spatial_pose", "orientation"],
       "property_meta": {
         "mocap":      "DisplayName=\"Driven By Unreal\"",
         "childclass": "GetOptions=\"GetChildClassOptions\""
@@ -589,13 +674,16 @@
     },
     "inertial": {
       "exclude_attrs": [],
-      "applies_canonicalizations": ["spatial_pose", "orientation"]
+      "applies_canonicalizations": ["spatial_pose", "orientation"],
+      "_note_hidden": "Inertial Pos/Quat are written from the UE component transform by UMjInertial::RegisterToSpec (hand-rolled, writes ParentBody->ipos/iquat). UPROPERTYs hidden so users don't author them in parallel with the transform.",
+      "hidden_canon_properties": ["spatial_pose", "orientation"]
     },
     "frame": {
       "_note": "Like body: the UE component transform is the source of truth for placement. Codegen imports XML pos/quat into Pos/Quat UPROPERTYs (UE units / UE frame) and the cpp drives SetRelativeLocation/SetRelativeRotation from them. Spec export is skipped for the canon Pos/Quat because MjSpecWrapper::CreateFrame writes pos/quat from the UE transform.",
       "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
-      "canon_export_skip": ["spatial_pose", "orientation"]
+      "canon_export_skip": ["spatial_pose", "orientation"],
+      "hidden_canon_properties": ["spatial_pose", "orientation"]
     },
     "flexcomp": {
       "_note": "Flexcomp doesn't register via mjs_addX — at spec time UMjFlexcomp builds a tiny standalone MJCF fragment and re-parses it via mj_parseXMLString + mjs_attach (the flexcomp macro is expanded by MuJoCo's XML parser, not the spec API). Codegen still owns the UPROPERTY surface so new MJCF attrs auto-appear; BuildFlexcompXml in MjFlexcomp.cpp reads from those codegen-owned fields. Sub-elements (<contact>/<edge>/<elasticity>/<pin>) remain hand-rolled because the codegen doesn't have per-sub-element UPROPERTY support yet.",
@@ -604,6 +692,11 @@
       "export_skip_attrs": ["material"],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
       "canon_export_skip": ["spatial_pose", "orientation"],
+      "hidden_canon_properties": ["spatial_pose", "orientation"],
+      "property_units": {
+        "radius":  "m",
+        "spacing": "m"
+      },
       "xml_enum_attrs": {
         "type": {
           "ue_property":  "FlexcompType",
@@ -643,7 +736,11 @@
     },
     "contact_pair": {
       "common_imports": [{"attr": "name", "ue_field": "Name"}],
-      "exclude_attrs": []
+      "exclude_attrs": [],
+      "property_units": {
+        "margin": "m",
+        "gap":    "m"
+      }
     },
     "contact_exclude": {
       "common_imports": [{"attr": "name", "ue_field": "Name"}],
@@ -914,11 +1011,13 @@
     },
 
     "inertial": {
+      "_note_export": "MJCF <inertial> has no corresponding mjsInertial struct; the export path writes to ParentBody->{mass,inertia,fullinertia,ipos,iquat} in a hand-rolled UMjInertial::RegisterToSpec. disable_mjs_export_emission suppresses the codegen-emitted Element->* export block so the hand-rolled path stays canonical.",
       "layout": "no_subclasses",
       "base_class_name": "UMjInertial",
       "base_class_header": "MuJoCo/Components/Physics/MjInertial.h",
       "mjs_struct": "mjsInertial",
-      "schema_common_block": "inertial.attrs"
+      "schema_common_block": "inertial.attrs",
+      "disable_mjs_export_emission": true
     },
 
     "contact_pair": {
@@ -1034,7 +1133,7 @@
     }
   },
 
-  "_note_editor_option_helpers": "Phase 3e.7. Codegens the trivial UMjX::GetYOptions() editor wrappers, injecting them between CODEGEN_EDITOR_OPTIONS_START/END markers inside each host .cpp's #if WITH_EDITOR block. Wrappers with real logic (TransmissionType / EqualityType / GetClassForObjType switches) stay hand-written in the same #if block.",
+  "_note_editor_option_helpers": "Codegens trivial UMjX::GetYOptions() editor wrappers, injecting them between CODEGEN_EDITOR_OPTIONS_START/END markers inside each host .cpp's #if WITH_EDITOR block. Wrappers with real logic (TransmissionType / EqualityType / GetClassForObjType switches) stay hand-written in the same #if block.",
   "editor_option_helpers": {
     "wrappers": [
       {"class": "UMjActuator", "host_cpp": "MuJoCo/Components/Actuators/MjActuator.cpp",
@@ -1062,7 +1161,7 @@
     ]
   },
 
-  "_note_generated_enums": "Phase 2e-finalize-a. Banner-mode .h with one or more UENUMs derived from mjspec_snapshot['enums']. Hand-edits get clobbered on next regen.",
+  "_note_generated_enums": "Banner-mode .h with one or more UENUMs derived from mjspec_snapshot['enums']. Hand-edits get clobbered on next regen. ``extra_members`` appends URLab-specific values that have no mjt counterpart (e.g. DcMotor). ``disabled: true`` skips an entry — used during Camp-B migration so the rule lands in JSON before the hand-rolled enums are swapped out.",
   "generated_enums": {
     "MjOptionEnums": {
       "public_header": "MuJoCo/Generated/MjOptionEnums.h",
@@ -1095,10 +1194,154 @@
           }
         }
       ]
+    },
+    "_note_MjArticulationEnums": "Camp B (pure value-mapping) enums migrating from hand-rolled UENUMs in Components/ headers. Disabled on land so the rule + values + extras are reviewable without breaking the build; the follow-up flip removes ``disabled: true``, deletes the hand-rolled blocks, and routes consumers' includes through MuJoCo/Generated/MjArticulationEnums.h.",
+    "MjArticulationEnums": {
+      "disabled": true,
+      "public_header": "MuJoCo/Generated/MjArticulationEnums.h",
+      "enums": [
+        {
+          "ue_name": "EMjGainType",
+          "from_mj_enum": "mjtGain",
+          "ue_member_from_mj": {
+            "mjGAIN_FIXED":  "Fixed",
+            "mjGAIN_AFFINE": "Affine",
+            "mjGAIN_MUSCLE": "Muscle",
+            "mjGAIN_USER":   "User"
+          },
+          "extra_members": [
+            {"name": "DcMotor"}
+          ]
+        },
+        {
+          "ue_name": "EMjBiasType",
+          "from_mj_enum": "mjtBias",
+          "ue_member_from_mj": {
+            "mjBIAS_NONE":   "None",
+            "mjBIAS_AFFINE": "Affine",
+            "mjBIAS_MUSCLE": "Muscle",
+            "mjBIAS_USER":   "User"
+          },
+          "extra_members": [
+            {"name": "DcMotor"}
+          ]
+        },
+        {
+          "ue_name": "EMjDynType",
+          "from_mj_enum": "mjtDyn",
+          "ue_member_from_mj": {
+            "mjDYN_NONE":        "None",
+            "mjDYN_INTEGRATOR":  "Integrator",
+            "mjDYN_FILTER":      "Filter",
+            "mjDYN_FILTEREXACT": "FilterExact",
+            "mjDYN_MUSCLE":      "Muscle",
+            "mjDYN_USER":        "User"
+          },
+          "extra_members": [
+            {"name": "DcMotor"}
+          ]
+        },
+        {
+          "_note_EMjGeomInertia": "No mjt counterpart; MJCF geom inertia kind is parser-side enum string-mapped on import. Pure extra_members.",
+          "ue_name": "EMjGeomInertia",
+          "extra_members": [
+            {"name": "Volume", "value": 0},
+            {"name": "Shell",  "value": 1}
+          ]
+        },
+        {
+          "_note_EMjFluidShape": "URLab-only; MuJoCo fluid shape is a runtime computation, not a public enum. Pure extra_members.",
+          "ue_name": "EMjFluidShape",
+          "extra_members": [
+            {"name": "None",      "value": 0},
+            {"name": "Ellipsoid", "value": 1}
+          ]
+        },
+        {
+          "_note_EMjCameraTrackingMode": "Mirrors mjtCamLight but only the camera-side subset; values come from mjCAMLIGHT_* keyed by URLab member name.",
+          "ue_name": "EMjCameraTrackingMode",
+          "from_mj_enum": "mjtCamLight",
+          "ue_member_from_mj": {
+            "mjCAMLIGHT_FIXED":         "Fixed",
+            "mjCAMLIGHT_TRACK":         "Track",
+            "mjCAMLIGHT_TRACKCOM":      "TrackCom",
+            "mjCAMLIGHT_TARGETBODY":    "TargetBody",
+            "mjCAMLIGHT_TARGETBODYCOM": "TargetBodyCom"
+          }
+        },
+        {
+          "ue_name": "EMjCameraProjection",
+          "from_mj_enum": "mjtProjection",
+          "ue_member_from_mj": {
+            "mjPROJ_PERSPECTIVE":  "Perspective",
+            "mjPROJ_ORTHOGRAPHIC": "Orthographic"
+          }
+        },
+        {
+          "ue_name": "EMjObjType",
+          "from_mj_enum": "mjtObj",
+          "ue_member_from_mj": {
+            "mjOBJ_UNKNOWN":  "Unknown",
+            "mjOBJ_BODY":     "Body",
+            "mjOBJ_XBODY":    "XBody",
+            "mjOBJ_JOINT":    "Joint",
+            "mjOBJ_GEOM":     "Geom",
+            "mjOBJ_SITE":     "Site",
+            "mjOBJ_CAMERA":   "Camera",
+            "mjOBJ_LIGHT":    "Light",
+            "mjOBJ_FLEX":     "Flex",
+            "mjOBJ_MESH":     "Mesh",
+            "mjOBJ_SKIN":     "Skin",
+            "mjOBJ_HFIELD":   "HField",
+            "mjOBJ_TEXTURE":  "Texture",
+            "mjOBJ_MATERIAL": "Material",
+            "mjOBJ_PAIR":     "Pair",
+            "mjOBJ_EXCLUDE":  "Exclude",
+            "mjOBJ_EQUALITY": "Equality",
+            "mjOBJ_TENDON":   "Tendon",
+            "mjOBJ_ACTUATOR": "Actuator",
+            "mjOBJ_SENSOR":   "Sensor",
+            "mjOBJ_NUMERIC":  "Numeric",
+            "mjOBJ_TEXT":     "Text",
+            "mjOBJ_TUPLE":    "Tuple",
+            "mjOBJ_KEY":      "Key",
+            "mjOBJ_PLUGIN":   "Plugin",
+            "mjOBJ_FRAME":    "Frame"
+          }
+        },
+        {
+          "ue_name": "EMjActuatorTrnType",
+          "from_mj_enum": "mjtTrn",
+          "ue_member_from_mj": {
+            "mjTRN_JOINT":         "Joint",
+            "mjTRN_JOINTINPARENT": "JointInParent",
+            "mjTRN_SLIDERCRANK":   "SliderCrank",
+            "mjTRN_TENDON":        "Tendon",
+            "mjTRN_SITE":          "Site",
+            "mjTRN_BODY":          "Body"
+          },
+          "extra_members": [
+            {"name": "Undefined"}
+          ]
+        },
+        {
+          "_note_EMjFlexcompDof": "URLab-only flex-component DoF reduction kind; no mjt counterpart (the MJCF attr is `dof` and parsed string-side). Pure extra_members.",
+          "ue_name": "EMjFlexcompDof",
+          "extra_members": [
+            {"name": "Default",   "value": 0},
+            {"name": "Full",      "value": 1},
+            {"name": "Free",      "value": 2},
+            {"name": "Pinned",    "value": 3},
+            {"name": "Plane",     "value": 4},
+            {"name": "Radial",    "value": 5},
+            {"name": "Trilinear", "value": 6}
+          ]
+        }
+      ]
     }
   },
 
-  "_note_synthetic_categories": "Phase 2e pilot. Whole-file banner-mode emission for USTRUCTs mirroring C structs from mjxmacro_block. Hand-edits to generated files get clobbered on next regen. See generate_ue_components.py::_phase_synthetic_categories.",
+  "_note_synthetic_categories": "Whole-file banner-mode emission for USTRUCTs mirroring C structs from mjxmacro_block. Hand-edits to generated files get clobbered on next regen. See generate_ue_components.py::_phase_synthetic_categories.",
   "synthetic_categories": {
     "MjStatistic": {
       "ue_struct_name":   "FMjStatistic",
@@ -1109,7 +1352,7 @@
       "category_label":   "Statistic"
     },
 
-    "_note_MjOption": "Codegen-emitted FMjOptionGenerated. Mirrors mjOption (MJOPTION_FIELDS) with URLab extras (MemoryMB, bEnableMultiCCD, bEnableSleep, SleepTolerance). Hand-written FMuJoCoOptions in MjSimOptions.h was removed in codegen(item-1); SimOptions on AMjArticulation and UMjPhysicsEngine now point at this struct directly.",
+    "_note_MjOption": "Codegen-emitted FMjOptionGenerated mirrors mjOption (MJOPTION_FIELDS) with URLab extras (MemoryMB, bEnableMultiCCD, bEnableSleep, SleepTolerance). AMjArticulation::SimOptions and UMjPhysicsEngine::SimOptions point at this struct directly.",
     "MjOption": {
       "ue_struct_name":   "FMjOptionGenerated",
       "mjxmacro_block":   "MJOPTION_FIELDS",
@@ -1216,7 +1459,7 @@
       "emit_apply_methods": true
     },
 
-    "_note_MjVisualStructs": "Codegen-emitted FMjVisual{Global,Headlight,Quality,Map,Scale,Rgba} parallel to mjVisual sub-blocks. All six ship today; QUALITY/MAP/SCALE/RGBA were originally empty because build_mjxmacro_snapshot.py dropped at the first XNV macro, fixed in codegen(item-2).",
+    "_note_MjVisualStructs": "Codegen-emitted FMjVisual{Global,Headlight,Quality,Map,Scale,Rgba} parallel to mjVisual sub-blocks.",
     "MjVisualGlobal": {
       "ue_struct_name":   "FMjVisualGlobal",
       "mjxmacro_block":   "MJVISUAL_GLOBAL_FIELDS",

@@ -238,9 +238,9 @@ void AMjArticulation::UnPossessed()
 }
 
 
-// Local helper for Phase 3e.9: collapses the 7 identical "GetComponents +
-// for-loop + RegisterToSpec" blocks below into a one-liner per category.
-// Flex stays special (needs ParentSpecBody resolution).
+// Collapses 7 identical "GetComponents + for-loop + RegisterToSpec"
+// category blocks into one call. Flex stays separate — it needs
+// ParentSpecBody resolution.
 template <typename T>
 static void RegisterAllOf(AActor* Owner, FMujocoSpecWrapper& Wrapper,
                           bool bSkipDefaults = true)

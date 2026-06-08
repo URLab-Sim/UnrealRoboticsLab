@@ -175,7 +175,7 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_springlength = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_springlength"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_springlength", MjUnit="m"))
     TArray<float> springlength = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))

@@ -34,7 +34,7 @@ is hand-written.
 | `CODEGEN_IMPORT_*` / `CODEGEN_EXPORT_*`| Most files under `Source/URLab/Private/MuJoCo/Components/`              |
 | `CODEGEN_SENSOR_TYPE_SWITCH_*`         | `Source/URLab/Private/MuJoCo/Components/Sensors/MjSensor.cpp`           |
 | `CODEGEN_SENSOR_TAG_TO_TYPE_*`         | `Source/URLab/Private/MuJoCo/Components/Sensors/MjSensor.cpp`           |
-| `CODEGEN_VIEW_*_FIELDS_*` / `CODEGEN_VIEW_*_BIND_*` | *(planned for Phase 3c follow-up — not yet active in MjBind.h)*            |
+| `CODEGEN_VIEW_*_FIELDS_*` / `CODEGEN_VIEW_*_BIND_*` | `Source/URLab/Public/MuJoCo/Utils/MjBind.h`                             |
 
 ## How to refresh after editing rules
 

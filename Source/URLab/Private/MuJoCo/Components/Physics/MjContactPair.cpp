@@ -71,10 +71,10 @@ void UMjContactPair::ExportTo(mjsPair* Element)
     if (bOverride_geom1) MjSetString(Element->geomname1, geom1);
     if (bOverride_geom2) MjSetString(Element->geomname2, geom2);
     if (bOverride_condim) Element->condim = condim;
-    if (bOverride_friction) { for (int32 i = 0; i < friction.Num(); ++i) Element->friction[i] = friction[i]; }
-    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
-    if (bOverride_solreffriction) { for (int32 i = 0; i < solreffriction.Num(); ++i) Element->solreffriction[i] = solreffriction[i]; }
-    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_friction) { for (int32 i = 0; i < FMath::Min(friction.Num(), 5); ++i) Element->friction[i] = friction[i]; }
+    if (bOverride_solref) { for (int32 i = 0; i < FMath::Min(solref.Num(), 2); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solreffriction) { for (int32 i = 0; i < FMath::Min(solreffriction.Num(), 2); ++i) Element->solreffriction[i] = solreffriction[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < FMath::Min(solimp.Num(), 5); ++i) Element->solimp[i] = solimp[i]; }
     if (bOverride_gap) Element->gap = gap;
     if (bOverride_margin) Element->margin = margin;
     // --- CODEGEN_EXPORT_END ---

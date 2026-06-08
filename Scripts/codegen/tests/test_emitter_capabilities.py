@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """
-Phase 2c added four opt-in capabilities to generate_ue_components.py:
+Tests for four opt-in emitter capabilities in generate_ue_components.py:
 
 1. ``value_map_from_enum``: snapshot-driven enum-to-value-map resolver.
 2. ``xml_enum_attrs.emit_property_decl: true``: codegen emits the UE
@@ -10,9 +10,7 @@ Phase 2c added four opt-in capabilities to generate_ue_components.py:
 4. ``export_if`` per-attr conditional: a C++ predicate that ANDs with
    the override toggle before the write fires.
 
-No current rule opts in — these are scaffolding for Phase 2d / 2e / 5
-consumers. These tests use synthetic rules to verify each capability
-works in isolation.
+Each test uses synthetic rules to exercise its capability in isolation.
 """
 
 from __future__ import annotations
@@ -41,7 +39,7 @@ from generate_ue_components import (  # noqa: E402
 
 def test_value_map_explicit_takes_precedence():
     """If a rule has both ``value_map`` and ``value_map_from_enum``, the
-    explicit map wins. Preserves the pre-2c convention exactly."""
+    explicit map wins."""
     enum_def = {
         "ue_property": "Type",
         "ue_enum_type": "EMjJointType",
@@ -79,9 +77,8 @@ def test_value_map_resolver_errors_when_neither_path_works():
 
 
 def test_xml_enum_import_emits_byte_identical_with_resolver():
-    """Emit through the resolver produces the SAME C++ as the old
-    direct-value_map path. This is the byte-identity guarantee Phase 2c
-    promised the gate."""
+    """Emit through the resolver produces the SAME C++ as the
+    direct-value_map path — byte-identity is the gate guarantee."""
     enum_def = {
         "ue_property": "Type",
         "ue_enum_type": "EMjJointType",

@@ -67,8 +67,7 @@ def test_view_has_one_field_per_mjxmacro_entry(real_rules, real_mjxmacro):
 
 def test_stride_one_int_entries_emit_as_dereferenced_scalars():
     """Single-int entries (stride=="1", type=="int") emit as ``int X``
-    with ``X = m->src[id]`` in the bind body — value semantics, not pointer.
-    Regression guard for the codegen feature added in codegen(item-2)."""
+    with ``X = m->src[id]`` in the bind body — value semantics, not pointer."""
     rules = {"views": {"FooView": {
         "obj_type": "mjOBJ_BODY",
         "include_blocks": ["FOO_BLOCK"],

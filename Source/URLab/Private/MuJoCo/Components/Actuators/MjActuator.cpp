@@ -115,17 +115,17 @@ void UMjActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
     if (bOverride_ctrllimited) Element->ctrllimited = ctrllimited ? 1 : 0;
     if (bOverride_forcelimited) Element->forcelimited = forcelimited ? 1 : 0;
     if (bOverride_actlimited) Element->actlimited = actlimited ? 1 : 0;
-    if (bOverride_ctrlrange) { for (int32 i = 0; i < ctrlrange.Num(); ++i) Element->ctrlrange[i] = ctrlrange[i]; }
-    if (bOverride_forcerange) { for (int32 i = 0; i < forcerange.Num(); ++i) Element->forcerange[i] = forcerange[i]; }
-    if (bOverride_actrange) { for (int32 i = 0; i < actrange.Num(); ++i) Element->actrange[i] = actrange[i]; }
-    if (bOverride_lengthrange) { for (int32 i = 0; i < lengthrange.Num(); ++i) Element->lengthrange[i] = lengthrange[i]; }
-    if (bOverride_gear) { for (int32 i = 0; i < gear.Num(); ++i) Element->gear[i] = gear[i]; }
-    if (bOverride_damping) { for (int32 i = 0; i < damping.Num(); ++i) Element->damping[i] = damping[i]; }
+    if (bOverride_ctrlrange) { for (int32 i = 0; i < FMath::Min(ctrlrange.Num(), 2); ++i) Element->ctrlrange[i] = ctrlrange[i]; }
+    if (bOverride_forcerange) { for (int32 i = 0; i < FMath::Min(forcerange.Num(), 2); ++i) Element->forcerange[i] = forcerange[i]; }
+    if (bOverride_actrange) { for (int32 i = 0; i < FMath::Min(actrange.Num(), 2); ++i) Element->actrange[i] = actrange[i]; }
+    if (bOverride_lengthrange) { for (int32 i = 0; i < FMath::Min(lengthrange.Num(), 2); ++i) Element->lengthrange[i] = lengthrange[i]; }
+    if (bOverride_gear) { for (int32 i = 0; i < FMath::Min(gear.Num(), 6); ++i) Element->gear[i] = gear[i]; }
+    if (bOverride_damping) { for (int32 i = 0; i < FMath::Min(damping.Num(), 3); ++i) Element->damping[i] = damping[i]; }
     if (bOverride_armature) Element->armature = armature;
     if (bOverride_cranklength) Element->cranklength = cranklength;
-    if (bOverride_gainprm) { for (int32 i = 0; i < gainprm.Num(); ++i) Element->gainprm[i] = gainprm[i]; }
-    if (bOverride_biasprm) { for (int32 i = 0; i < biasprm.Num(); ++i) Element->biasprm[i] = biasprm[i]; }
-    if (bOverride_dynprm) { for (int32 i = 0; i < dynprm.Num(); ++i) Element->dynprm[i] = dynprm[i]; }
+    if (bOverride_gainprm) { for (int32 i = 0; i < FMath::Min(gainprm.Num(), 10); ++i) Element->gainprm[i] = gainprm[i]; }
+    if (bOverride_biasprm) { for (int32 i = 0; i < FMath::Min(biasprm.Num(), 10); ++i) Element->biasprm[i] = biasprm[i]; }
+    if (bOverride_dynprm) { for (int32 i = 0; i < FMath::Min(dynprm.Num(), 10); ++i) Element->dynprm[i] = dynprm[i]; }
     if (bOverride_actdim) Element->actdim = actdim;
     // --- CODEGEN_EXPORT_END ---
 }

@@ -126,3 +126,41 @@ def test_shipped_snapshot_attributes_mjoption_blocks_to_mjxmacro(real_mjxmacro):
         assert "mjxmacro.h" in sources[block], (
             f"{block} should be sourced from mjxmacro.h, got {sources[block]!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Defensive block-coverage tripwire
+# ---------------------------------------------------------------------------
+
+def test_shipped_snapshot_includes_arena_pointers_contact(real_mjxmacro):
+    """MJDATA_ARENA_POINTERS_CONTACT must round-trip. It was previously
+    dropped silently because POINTER_BLOCKS_MJDATA omitted it; the
+    unrecognised-block warning in build_mjxmacro_snapshot.py catches
+    similar gaps at parse time, and this test pins the result."""
+    blocks = real_mjxmacro["mjdata_pointers"]
+    assert "MJDATA_ARENA_POINTERS_CONTACT" in blocks, (
+        "MJDATA_ARENA_POINTERS_CONTACT was previously silently dropped — "
+        "if this fails again, check POINTER_BLOCKS_MJDATA in "
+        "build_mjxmacro_snapshot.py."
+    )
+    assert blocks["MJDATA_ARENA_POINTERS_CONTACT"], (
+        "block recognised but body collection produced 0 entries"
+    )
+
+
+def test_parse_mjxmacro_warns_on_unrecognised_block(tmp_path, capsys):
+    """An MJ-prefixed block not in any allow-list AND not in
+    KNOWN_UNCONSUMED_BLOCKS must print a stderr warning, NOT silently
+    appear in the snapshot output."""
+    from build_mjxmacro_snapshot import parse_mjxmacro
+    fake = tmp_path / "fake_mjxmacro.h"
+    fake.write_text(
+        "#define MJMODEL_POINTERS_FROBNOZ \\\n"
+        "    X   ( int, frob_a, nfrob, 1 ) \\\n"
+        "    X   ( int, frob_b, nfrob, 1 )\n",
+        encoding="utf-8",
+    )
+    parse_mjxmacro(str(fake))
+    captured = capsys.readouterr()
+    assert "MJMODEL_POINTERS_FROBNOZ" in captured.err
+    assert "unrecognised" in captured.err.lower()

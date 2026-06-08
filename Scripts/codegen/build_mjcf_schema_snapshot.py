@@ -182,9 +182,8 @@ _SENSOR_COMMON_ATTRS = [
 # The static MJCF[nMJCF] schema only carries attr lists — not the per-sensor
 # mapping between the XML element name and the mjsSensor objtype/reftype the
 # compiler expects. That logic lives in xml_native_reader.cc's `Sensor()`
-# method (a giant if/else cascade, one branch per sensor type). Phase 2b
-# scrapes those branches so codegen rules don't have to hand-list them
-# (Phase 2c wires this into the emitter).
+# method (a giant if/else cascade, one branch per sensor type). The codegen
+# scrapes those branches here so rules don't have to hand-list them.
 
 # Inside Sensor(), each "regular" branch follows:
 #   if (type == "<NAME>") {

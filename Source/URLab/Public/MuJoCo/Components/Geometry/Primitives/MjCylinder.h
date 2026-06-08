@@ -43,11 +43,14 @@ public:
 	UMjCylinder();
 	virtual void OnRegister() override;
 
-	/** @brief Radius of the cylinder. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive")
+	/** @brief Cylinder radius in MJ metres. Hidden — authored via Scale handle. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+	          meta=(EditCondition="false", EditConditionHides))
 	float Radius = 0.0f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive")
+	/** @brief Cylinder half-length in MJ metres. Hidden — authored via Scale handle. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+	          meta=(EditCondition="false", EditConditionHides))
 	float HalfLength = 0.0f;
 
     /** @brief Internal-only visual mesh for the editor. */

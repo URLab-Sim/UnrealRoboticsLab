@@ -43,6 +43,24 @@ def real_mjxmacro() -> Dict[str, Any]:
         return json.load(f)
 
 
+@pytest.fixture(scope="session")
+def real_mjspec() -> Dict[str, Any]:
+    path = os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjspec_snapshot.json")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+@pytest.fixture(autouse=True)
+def _clear_diags():
+    """Each test starts with a clean diagnostics buffer + strict counter.
+    Module-level state survives across tests otherwise — autouse keeps
+    drift-check tests from leaking state into one another."""
+    import generate_ue_components as gen  # noqa: E402, local import
+    gen._reset_diags()
+    yield
+    gen._reset_diags()
+
+
 @pytest.fixture
 def minimal_rules() -> Dict[str, Any]:
     """A small synthetic rules block, useful for unit-testing emission

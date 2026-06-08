@@ -129,8 +129,8 @@ void UMjEquality::ExportTo(mjsEquality* Element)
 
     // --- CODEGEN_EXPORT_START ---
     if (bOverride_active) Element->active = active;
-    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
-    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_solref) { for (int32 i = 0; i < FMath::Min(solref.Num(), 2); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < FMath::Min(solimp.Num(), 5); ++i) Element->solimp[i] = solimp[i]; }
     if (((EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)) && bOverride_anchor)
     {
         for (int32 i = 0; i < anchor.Num() && i < 3; ++i)

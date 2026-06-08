@@ -207,7 +207,7 @@ void UMjSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
     if (bOverride_nsample) Element->nsample = nsample;
     if (bOverride_interp) Element->interp = interp;
     if (bOverride_delay) Element->delay = delay;
-    if (bOverride_interval) { for (int32 i = 0; i < interval.Num(); ++i) Element->interval[i] = interval[i]; }
+    if (bOverride_interval) { for (int32 i = 0; i < FMath::Min(interval.Num(), 2); ++i) Element->interval[i] = interval[i]; }
     if (bOverride_cutoff) Element->cutoff = cutoff;
     if (bOverride_noise) Element->noise = noise;
     MjSetString(Element->objname, TargetName);

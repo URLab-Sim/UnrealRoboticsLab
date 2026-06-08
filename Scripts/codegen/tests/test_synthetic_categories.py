@@ -1,12 +1,10 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """
-Tests for the Phase 2e synthetic_categories emitter.
+Tests for the synthetic_categories emitter.
 
-Pilot scope per D9: emits one banner-mode .h file per entry from an
-mjxmacro X-macro field list. mjStatistic ships as the proof-of-concept;
-FMuJoCoOptions and the 6 mjVisual_* structs are follow-ups since they
-need URLab pseudo-fields / mixed conditional writes / unit-conversion
-hooks the pilot doesn't expose yet.
+Emits one banner-mode .h file per entry from an mjxmacro X-macro field
+list. Covers MjStatistic, MjOption, the 6 MjVisual_* structs, plus
+MjsCompilerOptions and MjsSpec.
 """
 
 from __future__ import annotations

@@ -2,12 +2,9 @@
 """
 Tests for the typedef-enum extractor in build_mjspec_snapshot.py.
 
-Phase 2d-1: regex scrape of mjmodel.h ``typedef enum mjtX_ { ... } mjtX;``
-blocks. Output lands under ``"enums"`` in mjspec_snapshot.json and feeds
-Phase 2c's ``value_map_from_enum`` resolver.
-
-Vendored mjspecmacro.h, clang AST traversal, and per-field doc comments
-are deferred to Phase 2d-2 / 2d-3 (only if Phase 2e actually needs them).
+Regex scrape of mjmodel.h ``typedef enum mjtX_ { ... } mjtX;`` blocks.
+Output lands under ``"enums"`` in mjspec_snapshot.json and feeds the
+``value_map_from_enum`` resolver in generate_ue_components.py.
 """
 
 from __future__ import annotations
@@ -98,9 +95,8 @@ def test_non_mjt_enums_skipped():
 
 
 def test_real_snapshot_has_expected_enums():
-    """End-to-end: the shipped mjspec_snapshot.json should carry the enums
-    Phase 2c's value_map_from_enum needs. These are the enums likely to be
-    referenced by xml_enum_attrs rules in Phase 2e / 5."""
+    """The shipped mjspec_snapshot.json must carry the enums codegen rules
+    reference via xml_enum_attrs / value_map_from_enum."""
     import json
     plugin_root = os.path.normpath(os.path.join(_HERE, "..", "..", ".."))
     snap = json.load(open(os.path.join(plugin_root, "Scripts", "codegen", "snapshots", "mjspec_snapshot.json")))
@@ -111,7 +107,7 @@ def test_real_snapshot_has_expected_enums():
         "mjtSensor",     # sensor types
         "mjtObj",        # objtype / reftype
         "mjtTrn",        # actuator transmission
-        "mjtIntegrator", # mjOption.integrator (Phase 2e synthetic_categories)
+        "mjtIntegrator", # mjOption.integrator
         "mjtCone",       # mjOption.cone
         "mjtSolver",     # mjOption.solver
     ):

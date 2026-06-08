@@ -66,6 +66,15 @@ def main(argv: list[str] | None = None) -> int:
         ("MJCF schema snapshot",
             [py, os.path.join(HERE, "build_mjcf_schema_snapshot.py")]),
     ]
+    # Introspect snapshot needs libclang — optional, but if absent the
+    # codegen falls back to the stale on-disk JSON. Run it AFTER the
+    # other snapshots so its failure (e.g. missing libclang) doesn't
+    # block the rest.
+    introspect_step = (
+        "introspect snapshot (clang AST — optional)",
+        [py, os.path.join(HERE, "build_introspect_snapshot.py")],
+    )
+    steps.append(introspect_step)
     if not args.skip_codegen:
         steps.append(("UE component codegen",
             [py, os.path.join(HERE, "generate_ue_components.py")]))
@@ -73,6 +82,16 @@ def main(argv: list[str] | None = None) -> int:
     for label, cmd in steps:
         rc = _run(label, cmd)
         if rc != 0:
+            # Introspect is optional — warn but continue when it's the
+            # one that failed (most commonly: libclang not on PATH).
+            if label.startswith("introspect snapshot"):
+                print(
+                    "    (introspect is optional; codegen will use the "
+                    "existing snapshot — type-shape drift may be stale "
+                    "until you install libclang.)",
+                    flush=True,
+                )
+                continue
             return rc
 
     print("\nAll regen steps completed.", flush=True)

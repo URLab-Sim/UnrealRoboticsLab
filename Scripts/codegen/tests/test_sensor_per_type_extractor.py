@@ -124,7 +124,7 @@ def test_missing_sensor_method_returns_empty():
     assert _extract_sensor_per_type("// no Sensor method here") == {}
 
 
-# ---------- Phase 5/D7: sensor switch + TagToType codegen ----------------
+# ---------- sensor switch + TagToType codegen ----------------------------
 
 def test_sensor_switch_body_emits_static_objtype_when_present():
     from generate_ue_components import _emit_sensor_switch_block  # noqa

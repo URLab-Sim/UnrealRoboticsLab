@@ -690,14 +690,14 @@ void UMjCamera::ExportTo(mjsCamera* Element, mjsDefault* /*def*/)
     }
     if (bOverride_fovy) Element->fovy = fovy;
     if (bOverride_ipd) Element->ipd = ipd;
-    if (bOverride_resolution) { for (int32 i = 0; i < resolution.Num(); ++i) Element->resolution[i] = resolution[i]; }
+    if (bOverride_resolution) { for (int32 i = 0; i < FMath::Min(resolution.Num(), 2); ++i) Element->resolution[i] = resolution[i]; }
     if (bOverride_output) Element->output = output;
     if (bOverride_target) MjSetString(Element->targetbody, target);
-    if (bOverride_focal) { for (int32 i = 0; i < focal.Num(); ++i) Element->focal_length[i] = focal[i]; }
-    if (bOverride_focalpixel) { for (int32 i = 0; i < focalpixel.Num(); ++i) Element->focal_pixel[i] = focalpixel[i]; }
-    if (bOverride_principal) { for (int32 i = 0; i < principal.Num(); ++i) Element->principal_length[i] = principal[i]; }
-    if (bOverride_principalpixel) { for (int32 i = 0; i < principalpixel.Num(); ++i) Element->principal_pixel[i] = principalpixel[i]; }
-    if (bOverride_sensorsize) { for (int32 i = 0; i < sensorsize.Num(); ++i) Element->sensor_size[i] = sensorsize[i]; }
+    if (bOverride_focal) { for (int32 i = 0; i < FMath::Min(focal.Num(), 2); ++i) Element->focal_length[i] = focal[i]; }
+    if (bOverride_focalpixel) { for (int32 i = 0; i < FMath::Min(focalpixel.Num(), 2); ++i) Element->focal_pixel[i] = focalpixel[i]; }
+    if (bOverride_principal) { for (int32 i = 0; i < FMath::Min(principal.Num(), 2); ++i) Element->principal_length[i] = principal[i]; }
+    if (bOverride_principalpixel) { for (int32 i = 0; i < FMath::Min(principalpixel.Num(), 2); ++i) Element->principal_pixel[i] = principalpixel[i]; }
+    if (bOverride_sensorsize) { for (int32 i = 0; i < FMath::Min(sensorsize.Num(), 2); ++i) Element->sensor_size[i] = sensorsize[i]; }
     // --- CODEGEN_EXPORT_END ---
 }
 

@@ -67,19 +67,18 @@ if (-not (Test-Path $bat)) { Write-Error "Build.bat not found: $bat";          e
 if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   exit 3 }
 
 # --- Codegen drift gate ----------------------------------------------------
-# Phase 5 (D7 follow-up): refuse to build if codegen output drifted from
-# the committed Source/. Catches the D4-class bug where hand-edits to
-# CODEGEN-managed regions slip past the emitters. Skip silently if Python
-# isn't on PATH (offline / CI without Python) — the gate is best-effort
-# locally; CI enforces it strictly.
+# Refuse to build if codegen output drifted from the committed Source/, or
+# if any drift diagnostic (--strict) fires, or if the clang-AST introspect
+# snapshot is missing (--require-introspect). Skipped silently when Python
+# isn't on PATH — the gate is best-effort locally; CI enforces it strictly.
 $pluginRoot = Split-Path -Parent $PSScriptRoot
 $generator = Join-Path $pluginRoot 'Scripts/codegen/generate_ue_components.py'
 $py = (Get-Command python -ErrorAction SilentlyContinue)
 if ($py -and (Test-Path $generator)) {
-    Write-Host '>>> Codegen drift gate: python generate_ue_components.py --check'
-    & $py.Source $generator --check
+    Write-Host '>>> Codegen drift gate: python generate_ue_components.py --check --strict --require-introspect'
+    & $py.Source $generator --check --strict --require-introspect
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Codegen drift detected. Re-run 'python Scripts/codegen/generate_ue_components.py' to regenerate, then re-run this script."
+        Write-Error "Codegen drift detected (exit $LASTEXITCODE). Re-run 'python Scripts/codegen/generate_ue_components.py' to regenerate, then re-run this script."
         exit 4
     }
 }

@@ -50,14 +50,17 @@ public:
     UMjCapsule();
     virtual void OnRegister() override;
 
-    /** @brief Capsule radius. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive")
+    /** @brief Capsule radius in MJ metres. Authored via the UE Transform's
+     *  Scale handle; hidden from the Details panel. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+              meta=(EditCondition="false", EditConditionHides))
     float Radius = 0.0f;
 
-    /** @brief Capsule half-length measured along the component's local Z
-     *         axis. Total axial length from tip-to-tip is `2 * (Radius + HalfLength)`;
-     *         the shaft length (between the cap centres) is `2 * HalfLength`. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive")
+    /** @brief Capsule half-length along the component's local Z axis.
+     *  Shaft length = ``2 * HalfLength``; tip-to-tip = ``2 * (Radius + HalfLength)``.
+     *  Authored via the Scale handle; hidden from the Details panel. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+              meta=(EditCondition="false", EditConditionHides))
     float HalfLength = 0.0f;
 
     // UPROPERTY-decorated so Unreal's GC tracks these sub-component pointers.

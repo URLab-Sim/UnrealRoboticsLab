@@ -127,18 +127,18 @@ void UMjTendon::ExportTo(mjsTendon* Element, mjsDefault* def)
     if (bOverride_group) Element->group = group;
     if (bOverride_limited) Element->limited = limited ? 1 : 0;
     if (bOverride_ActFrcLimited) Element->actfrclimited = ActFrcLimited ? 1 : 0;
-    if (bOverride_range) { for (int32 i = 0; i < range.Num(); ++i) Element->range[i] = range[i]; }
-    if (bOverride_ActFrcRange) { for (int32 i = 0; i < ActFrcRange.Num(); ++i) Element->actfrcrange[i] = ActFrcRange[i]; }
-    if (bOverride_solreflimit) { for (int32 i = 0; i < solreflimit.Num(); ++i) Element->solref_limit[i] = solreflimit[i]; }
-    if (bOverride_solimplimit) { for (int32 i = 0; i < solimplimit.Num(); ++i) Element->solimp_limit[i] = solimplimit[i]; }
-    if (bOverride_solreffriction) { for (int32 i = 0; i < solreffriction.Num(); ++i) Element->solref_friction[i] = solreffriction[i]; }
-    if (bOverride_solimpfriction) { for (int32 i = 0; i < solimpfriction.Num(); ++i) Element->solimp_friction[i] = solimpfriction[i]; }
+    if (bOverride_range) { for (int32 i = 0; i < FMath::Min(range.Num(), 2); ++i) Element->range[i] = range[i]; }
+    if (bOverride_ActFrcRange) { for (int32 i = 0; i < FMath::Min(ActFrcRange.Num(), 2); ++i) Element->actfrcrange[i] = ActFrcRange[i]; }
+    if (bOverride_solreflimit) { for (int32 i = 0; i < FMath::Min(solreflimit.Num(), 2); ++i) Element->solref_limit[i] = solreflimit[i]; }
+    if (bOverride_solimplimit) { for (int32 i = 0; i < FMath::Min(solimplimit.Num(), 5); ++i) Element->solimp_limit[i] = solimplimit[i]; }
+    if (bOverride_solreffriction) { for (int32 i = 0; i < FMath::Min(solreffriction.Num(), 2); ++i) Element->solref_friction[i] = solreffriction[i]; }
+    if (bOverride_solimpfriction) { for (int32 i = 0; i < FMath::Min(solimpfriction.Num(), 5); ++i) Element->solimp_friction[i] = solimpfriction[i]; }
     if (bOverride_frictionloss) Element->frictionloss = frictionloss;
-    if (bOverride_springlength) { for (int32 i = 0; i < springlength.Num(); ++i) Element->springlength[i] = springlength[i]; }
+    if (bOverride_springlength) { for (int32 i = 0; i < FMath::Min(springlength.Num(), 2); ++i) Element->springlength[i] = springlength[i]; }
     if (bOverride_width) Element->width = width;
     if (bOverride_margin) Element->margin = margin;
-    if (bOverride_stiffness) { for (int32 i = 0; i < stiffness.Num(); ++i) Element->stiffness[i] = stiffness[i]; }
-    if (bOverride_damping) { for (int32 i = 0; i < damping.Num(); ++i) Element->damping[i] = damping[i]; }
+    if (bOverride_stiffness) { for (int32 i = 0; i < FMath::Min(stiffness.Num(), 3); ++i) Element->stiffness[i] = stiffness[i]; }
+    if (bOverride_damping) { for (int32 i = 0; i < FMath::Min(damping.Num(), 3); ++i) Element->damping[i] = damping[i]; }
     if (bOverride_armature) Element->armature = armature;
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
     // --- CODEGEN_EXPORT_END ---

@@ -259,19 +259,19 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
     if (bOverride_condim) Element->condim = condim;
     if (bOverride_group) Element->group = group;
     if (bOverride_priority) Element->priority = priority;
-    if (bOverride_size) { for (int32 i = 0; i < size.Num(); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
-    if (bOverride_friction) { for (int32 i = 0; i < friction.Num(); ++i) Element->friction[i] = friction[i]; }
+    if (bOverride_size) { for (int32 i = 0; i < FMath::Min(size.Num(), 3); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
+    if (bOverride_friction) { for (int32 i = 0; i < FMath::Min(friction.Num(), 3); ++i) Element->friction[i] = friction[i]; }
     if (bOverride_mass) Element->mass = mass;
     if (bOverride_density) Element->density = density;
     if (bOverride_solmix) Element->solmix = solmix;
-    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
-    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_solref) { for (int32 i = 0; i < FMath::Min(solref.Num(), 2); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < FMath::Min(solimp.Num(), 5); ++i) Element->solimp[i] = solimp[i]; }
     if (bOverride_margin) Element->margin = margin;
     if (bOverride_gap) Element->gap = gap;
     if (bOverride_mesh) MjSetString(Element->meshname, mesh);
     if (bOverride_fitscale) Element->fitscale = fitscale ? 1 : 0;
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
-    if (bOverride_fluidcoef) { for (int32 i = 0; i < fluidcoef.Num(); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
+    if (bOverride_fluidcoef) { for (int32 i = 0; i < FMath::Min(fluidcoef.Num(), 5); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
     // --- CODEGEN_EXPORT_END ---
 }
 

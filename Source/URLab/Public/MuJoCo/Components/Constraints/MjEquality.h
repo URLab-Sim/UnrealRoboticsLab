@@ -67,7 +67,7 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))
     bool bOverride_anchor = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_anchor"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Equality", meta=(EditCondition="bOverride_anchor", MjUnit="cm"))
     TArray<float> anchor = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Equality", meta=(InlineEditConditionToggle))

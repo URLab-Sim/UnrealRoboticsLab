@@ -62,25 +62,25 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
     FVector Pos = FVector::ZeroVector;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_group = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_group", ToolTip="Visualisation group 0–5. MuJoCo viewer uses this to toggle visibility."))
     int32 group = 0;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_Axis = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Axis"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_Axis", ToolTip="Joint axis in the parent body's local frame. Hinge: rotation axis. Slide: translation direction. Ignored for Ball and Free."))
     FVector Axis = FVector(0.0f, 0.0f, 1.0f);
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_springdamper = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_springdamper"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_springdamper", ToolTip="Compact spring spec [stiffness, damping]; populated when MJCF used <joint springdamper='...'>. Overrides stiffness + damping when set."))
     TArray<float> springdamper = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
@@ -122,61 +122,61 @@ public:
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_stiffness = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_stiffness"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_stiffness", ToolTip="Per-axis spring stiffness. Hinge/Ball: N·m/rad. Slide: N/m."))
     TArray<float> stiffness = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_range = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_range"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_range", ToolTip="Joint position bounds [min, max]. Hinge/Ball: degrees. Slide: centimetres. Ignored when 'limited' is false."))
     TArray<float> range = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_ActFrcRange = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ActFrcRange"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ActFrcRange", ToolTip="Actuator force bounds [min, max] when 'ActFrcLimited' is true. Hinge/Ball: N·m. Slide: N."))
     TArray<float> ActFrcRange = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_actuatorgravcomp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_actuatorgravcomp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_actuatorgravcomp", ToolTip="Gravity compensation factor passed to actuators on this joint. 0 = no compensation, 1 = full gravity cancelled."))
     float actuatorgravcomp = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_margin", ToolTip="Contact-detection margin (m). Joints inherit this when computing limit constraints."))
     float margin = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_ref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_ref", ToolTip="Reference (zero) position. Hinge/Ball: degrees. Slide: centimetres."))
     float ref = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_springref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_springref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_springref", ToolTip="Equilibrium position for the joint spring. Hinge/Ball: degrees. Slide: centimetres."))
     float springref = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_armature = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_armature"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_armature", ToolTip="Added rotor inertia for hinges (kg·m²) or added mass for slides (kg). Models reflected inertia of the actuator."))
     float armature = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_damping = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_damping"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_damping", ToolTip="Per-axis damping. Hinge/Ball: N·m·s/rad. Slide: N·s/m."))
     TArray<float> damping = {};
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta=(InlineEditConditionToggle))
     bool bOverride_frictionloss = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_frictionloss"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Joint", meta=(EditCondition="bOverride_frictionloss", ToolTip="Dry-friction loss. Hinge/Ball: N·m. Slide: N."))
     float frictionloss = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 

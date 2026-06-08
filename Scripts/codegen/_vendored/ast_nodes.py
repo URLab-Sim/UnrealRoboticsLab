@@ -123,13 +123,19 @@ class CDefine:
 class IntrospectSnapshot:
     """Top-level container for the clang-AST scrape output. Serialised
     to ``Scripts/introspect_snapshot.json``. snapshot_version bumps on
-    schema-incompatible changes."""
+    schema-incompatible changes.
+
+    ``hand_enums`` mirrors ``enums`` but covers URLab's hand-rolled
+    ``EMj*`` enums under ``Source/URLab/Public``. They live in a
+    separate field so the MuJoCo mjt* lookup (value_map.mj_const drift
+    checks) doesn't accidentally collide with a future EMj* name."""
     snapshot_version: int = 1
     header_hash:      str = ""
     functions:        Dict[str, CFunction] = field(default_factory=dict)
     enums:            Dict[str, CEnum] = field(default_factory=dict)
     structs:          Dict[str, CStruct] = field(default_factory=dict)
     defines:          Dict[str, CDefine] = field(default_factory=dict)
+    hand_enums:       Dict[str, CEnum] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -137,11 +143,12 @@ class IntrospectSnapshot:
                 "snapshot_version": self.snapshot_version,
                 "header_hash":      self.header_hash,
             },
-            "functions": {n: f.to_dict() for n, f in self.functions.items()},
-            "enums":     {n: e.to_dict() for n, e in self.enums.items()},
-            "structs":   {n: s.to_dict() for n, s in self.structs.items()},
-            "defines":   {
+            "functions":  {n: f.to_dict() for n, f in self.functions.items()},
+            "enums":      {n: e.to_dict() for n, e in self.enums.items()},
+            "structs":    {n: s.to_dict() for n, s in self.structs.items()},
+            "defines":    {
                 n: {"value": d.value, "doc": d.doc, "file": d.file, "line": d.line}
                 for n, d in self.defines.items()
             },
+            "hand_enums": {n: e.to_dict() for n, e in self.hand_enums.items()},
         }

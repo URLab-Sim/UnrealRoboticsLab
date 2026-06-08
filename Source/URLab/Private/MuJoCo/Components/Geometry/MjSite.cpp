@@ -70,7 +70,7 @@ void UMjSite::ExportTo(mjsSite* Element, mjsDefault* def)
         default: break;
     }
     if (bOverride_group) Element->group = group;
-    if (bOverride_size) { for (int32 i = 0; i < size.Num(); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
+    if (bOverride_size) { for (int32 i = 0; i < FMath::Min(size.Num(), 3); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
     // --- CODEGEN_EXPORT_END ---
 }

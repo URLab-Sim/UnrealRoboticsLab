@@ -32,7 +32,11 @@
 
 /**
  * @enum EMjSiteType
- * @brief Defines the geometric shape of a MuJoCo site.
+ * @brief Defines the geometric shape of a MuJoCo site. Mirrors the geom-
+ * subset MuJoCo permits on <site>; Phase 4.6 extended this with Mesh and
+ * Hfield so attached visualisations can ride a real asset. Plane and SDF
+ * stay omitted (infinite extent / heavy data, not what a site spawn
+ * surface wants).
  */
 UENUM(BlueprintType)
 enum class EMjSiteType : uint8
@@ -42,6 +46,8 @@ enum class EMjSiteType : uint8
 	Ellipsoid	UMETA(DisplayName = "Ellipsoid"),
 	Cylinder	UMETA(DisplayName = "Cylinder"),
 	Box			UMETA(DisplayName = "Box"),
+	Mesh		UMETA(DisplayName = "Mesh"),
+	Hfield		UMETA(DisplayName = "Hfield"),
 };
 
 /**

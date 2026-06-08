@@ -45,9 +45,16 @@ def real_mjxmacro() -> Dict[str, Any]:
 
 @pytest.fixture(scope="session")
 def real_mjspec() -> Dict[str, Any]:
-    path = os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjspec_snapshot.json")
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """The mjspec snapshot file was retired in Phase 3; the runtime
+    now projects the introspect snapshot into the legacy mjspec shape.
+    The fixture mirrors that projection so tests stay isomorphic."""
+    import generate_ue_components as gen
+    introspect_path = os.path.join(
+        _PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "introspect_snapshot.json",
+    )
+    with open(introspect_path, "r", encoding="utf-8") as f:
+        introspect = json.load(f)
+    return gen._mjspec_from_introspect(introspect)
 
 
 @pytest.fixture(autouse=True)

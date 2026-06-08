@@ -45,15 +45,18 @@ def test_require_introspect_default_hard_fails_when_missing(tmp_path):
     assert "introspect snapshot missing" in proc.stderr
 
 
-def test_no_require_introspect_bypasses_missing_snapshot(tmp_path):
-    """The opt-out flag prints a warning but does not exit non-zero on
-    a missing snapshot alone — the rest of the run still has to be
-    clean for an exit-0."""
+def test_no_require_introspect_skips_the_exit_3_gate(tmp_path):
+    """``--no-require-introspect`` skips the up-front exit-3 hard-fail
+    so the run reaches the codegen loop. After Phase 3 retired the
+    legacy mjspec snapshot, the loop itself raises downstream once it
+    needs the setto sigs the introspect carries — that's the expected
+    contract. The flag isn't a way to make the codegen succeed
+    without introspect; it's a way to defer the failure for triage."""
     missing = str(tmp_path / "introspect_snapshot.json")
     proc = _run(["--no-require-introspect"], missing)
+    # The up-front gate didn't fire (exit 3), and the run reached the
+    # loop. Exit 1 (the downstream RuntimeError) is the documented
+    # failure mode.
+    assert proc.returncode != 3
     assert "warning" in proc.stderr.lower()
     assert "introspect snapshot missing" in proc.stderr
-    assert proc.returncode in (0, 2), (
-        f"expected exit 0 (clean) or 2 (strict diags), got {proc.returncode}\n"
-        f"stdout={proc.stdout!r}\nstderr={proc.stderr!r}"
-    )

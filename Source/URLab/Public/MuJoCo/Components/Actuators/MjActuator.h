@@ -29,6 +29,7 @@
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include <atomic>
 #include "MjActuator.generated.h"
@@ -51,67 +52,8 @@ enum class EMjActuatorType : uint8
     DcMotor
 };
 
-/**
- * @enum EMjActuatorTrnType
- * @brief Defines the type of transmission for the actuator.
- */
-UENUM(BlueprintType)
-enum class EMjActuatorTrnType : uint8
-{
-    Joint,
-    JointInParent,
-    SliderCrank,
-    Tendon,
-    Site,
-    Body,
-    Undefined
-};
-
-/**
- * @enum EMjGainType
- * @brief MJCF actuator gain function. Mirrors MuJoCo's mjtGain.
- *        Most actuator subtypes hardcode this via mjs_setToX; useful on
- *        ``<general>`` to express the raw gainprm formula directly.
- */
-UENUM(BlueprintType)
-enum class EMjGainType : uint8
-{
-    Fixed,
-    Affine,
-    Muscle,
-    User,
-    DcMotor
-};
-
-/**
- * @enum EMjBiasType
- * @brief MJCF actuator bias function. Mirrors MuJoCo's mjtBias.
- */
-UENUM(BlueprintType)
-enum class EMjBiasType : uint8
-{
-    None,
-    Affine,
-    Muscle,
-    User,
-    DcMotor
-};
-
-/**
- * @enum EMjDynType
- * @brief MJCF actuator activation dynamics. Mirrors MuJoCo's mjtDyn.
- */
-UENUM(BlueprintType)
-enum class EMjDynType : uint8
-{
-    None,
-    Integrator,
-    Filter,
-    FilterExact,
-    Muscle,
-    User,
-    DcMotor
-};
+// EMjActuatorTrnType, EMjGainType, EMjBiasType, EMjDynType moved to
+// MuJoCo/Generated/MjArticulationEnums.h (codegen-owned).
 
 /**
  * @class UMjActuator

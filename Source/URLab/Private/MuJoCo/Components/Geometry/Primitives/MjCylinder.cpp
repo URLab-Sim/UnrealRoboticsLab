@@ -78,8 +78,7 @@ void UMjCylinder::OnRegister()
 void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
-
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
 	// Clamp -1.0f sentinels (set by the fromto canon when slot is unset).
@@ -113,8 +112,7 @@ void UMjCylinder::ExportTo(mjsGeom* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
         // --- CODEGEN_EXPORT_START ---
-
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCylinder::ApplyOverrideMaterial(UMaterialInterface* Material)

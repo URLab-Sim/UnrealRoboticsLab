@@ -54,7 +54,7 @@ void UMjContactPair::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettin
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimp"), solimp, bOverride_solimp);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"), gap, bOverride_gap);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     if (!Node)
     {
@@ -94,5 +94,5 @@ void UMjContactPair::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* Parent
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjContactPair::GetGeomOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjGeom::StaticClass()); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

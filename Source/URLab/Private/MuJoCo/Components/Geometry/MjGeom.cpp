@@ -122,7 +122,7 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"), gap, bOverride_gap);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("hfield"), hfield)) bOverride_hfield = true;
     if (MjXmlUtils::ReadAttrString(Node, TEXT("mesh"), mesh)) bOverride_mesh = true;
-    MjXmlUtils::ReadAttrBool(Node, TEXT("fitscale"), fitscale, bOverride_fitscale);
+    MjXmlUtils::ReadAttrDouble(Node, TEXT("fitscale"), fitscale, bOverride_fitscale);
     MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("fluidcoef"), fluidcoef, bOverride_fluidcoef);
     MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
@@ -149,7 +149,7 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     // Implicit mesh-type detection (mesh attr present but type wasn't set)
     if (!bOverride_Type && !mesh.IsEmpty())
@@ -269,10 +269,10 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
     if (bOverride_margin) Element->margin = margin;
     if (bOverride_gap) Element->gap = gap;
     if (bOverride_mesh) MjSetString(Element->meshname, mesh);
-    if (bOverride_fitscale) Element->fitscale = fitscale ? 1 : 0;
+    if (bOverride_fitscale) Element->fitscale = fitscale;
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
     if (bOverride_fluidcoef) { for (int32 i = 0; i < FMath::Min(fluidcoef.Num(), 5); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjGeom::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
@@ -928,5 +928,5 @@ void UMjGeom::RemoveDecomposition() {}
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjGeom::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

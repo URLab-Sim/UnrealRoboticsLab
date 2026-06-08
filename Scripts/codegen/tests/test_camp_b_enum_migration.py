@@ -172,15 +172,29 @@ def test_camp_b_rule_resolves_against_real_mjspec(real_rules, real_mjspec):
             )
 
 
-def test_camp_b_rule_is_disabled_pending_flip(real_rules):
-    """The migration rule must ship with ``disabled: true`` until the
-    follow-up flip lands. Catches a premature un-toggling that would
-    duplicate the hand-rolled UENUM decls and break the UE build."""
+def test_camp_b_rule_post_flip_state(real_rules):
+    """After the flip, the rule no longer carries ``disabled: true``
+    and the hand-rolled UENUM decls under
+    ``Source/URLab/Public/MuJoCo/Components/`` have been replaced
+    with includes of the generated header."""
     camp_b = real_rules.get("generated_enums", {}).get("MjArticulationEnums")
     if not camp_b or not isinstance(camp_b, dict):
         return
-    assert camp_b.get("disabled") is True, (
-        "MjArticulationEnums lost its 'disabled' guard. Removing it "
-        "must coincide with deleting the hand-rolled EMj* decls under "
-        "Source/URLab/Public/MuJoCo/Components/."
+    assert not camp_b.get("disabled"), (
+        "MjArticulationEnums should be enabled after the Camp B flip."
+    )
+
+
+def test_camp_b_generated_header_exists():
+    """Sanity: the codegen-emitted ``MjArticulationEnums.h`` lives in
+    the expected location."""
+    import os
+    _here = os.path.dirname(os.path.abspath(__file__))
+    _root = os.path.abspath(os.path.join(_here, "..", "..", ".."))
+    expected = os.path.join(
+        _root, "Source", "URLab", "Public", "MuJoCo", "Generated",
+        "MjArticulationEnums.h",
+    )
+    assert os.path.exists(expected), (
+        f"Camp B generated header missing: {expected}"
     )

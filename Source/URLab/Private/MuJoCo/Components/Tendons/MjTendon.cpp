@@ -65,7 +65,7 @@ void UMjTendon::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), damping, bOverride_damping);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
     MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     // --- Solver ---
 
@@ -249,7 +249,7 @@ FString UMjTendon::GetMjName() const
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjTendon::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 
 // --- Multi-UCLASS subclass constructors --------------------------------------

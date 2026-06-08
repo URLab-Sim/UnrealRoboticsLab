@@ -250,7 +250,7 @@ void UMjBody::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 }
 
 void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
@@ -423,5 +423,5 @@ void UMjBody::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjBody::GetChildClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

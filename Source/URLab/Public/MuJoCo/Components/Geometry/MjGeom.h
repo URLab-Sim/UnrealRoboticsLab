@@ -27,11 +27,9 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Utils/MjBind.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjGeom.generated.h"
-
-
-
 
 /**
  * @enum EMjGeomType
@@ -51,35 +49,7 @@ enum class EMjGeomType : uint8
 	SDF			UMETA(DisplayName = "SDF")
 };
 
-/**
- * @enum EMjGeomInertia
- * @brief MJCF ``<geom shellinertia="...">``. Mirrors MuJoCo's mjtGeomInertia.
- *
- *  - Volume: inertia computed from solid volume (MuJoCo default).
- *  - Shell:  inertia computed from a thin shell (mass distributed on surface).
- */
-UENUM(BlueprintType)
-enum class EMjGeomInertia : uint8
-{
-	Volume UMETA(DisplayName = "Volume"),
-	Shell  UMETA(DisplayName = "Shell"),
-};
-
-/**
- * @enum EMjFluidShape
- * @brief MJCF ``<geom fluidshape="...">``. Selects the ellipsoid-fluid
- *        interaction model in MuJoCo. Stored as 0.0/1.0 in
- *        mjsGeom.fluid_ellipsoid.
- *
- *  - None:      no ellipsoid fluid model (MuJoCo default).
- *  - Ellipsoid: enable the ellipsoid-fluid interaction model.
- */
-UENUM(BlueprintType)
-enum class EMjFluidShape : uint8
-{
-	None      UMETA(DisplayName = "None"),
-	Ellipsoid UMETA(DisplayName = "Ellipsoid"),
-};
+// EMjGeomInertia, EMjFluidShape moved to MuJoCo/Generated/MjArticulationEnums.h.
 
 /**
  * @class UMjGeom
@@ -215,7 +185,7 @@ public:
     bool bOverride_fitscale = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_fitscale"))
-    bool fitscale = false;
+    double fitscale = 0.0;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_rgba = false;

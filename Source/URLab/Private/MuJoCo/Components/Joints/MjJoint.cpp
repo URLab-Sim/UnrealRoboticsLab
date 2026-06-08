@@ -89,7 +89,7 @@ void UMjJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Co
         if      (Type == EMjJointType::Slide) { springref *= 100.0f; }
         else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { if (!CompilerSettings.bAngleInDegrees) { springref = FMath::RadiansToDegrees(springref); } }
     }
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     // axis (Y-negate vec3_convert) + pos (spatial_pose canon) are
     // codegen-owned via the joint rule in codegen_rules.json.
@@ -171,7 +171,7 @@ void UMjJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
         else if ((Type == EMjJointType::Hinge) || (Type == EMjJointType::Ball)) { V = FMath::DegreesToRadians(V); }
         Element->springref = (mjtNum)V;
     }
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjJoint::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
@@ -467,5 +467,5 @@ FString UMjJoint::GetTelemetryTopicName() const
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjJoint::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

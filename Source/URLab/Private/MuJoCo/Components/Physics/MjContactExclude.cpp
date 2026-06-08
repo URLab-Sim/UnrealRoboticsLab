@@ -46,7 +46,7 @@ void UMjContactExclude::ImportFromXml(const FXmlNode* Node, const FMjCompilerSet
     MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("body1"), body1)) bOverride_body1 = true;
     if (MjXmlUtils::ReadAttrString(Node, TEXT("body2"), body2)) bOverride_body2 = true;
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     if (!Node)
     {
@@ -74,5 +74,5 @@ void UMjContactExclude::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* Par
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjContactExclude::GetBodyOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjBody::StaticClass()); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

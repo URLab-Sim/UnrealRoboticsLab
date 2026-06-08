@@ -4,12 +4,15 @@
 Runs every codegen step in order:
 
   1. Rebuild snapshots from the installed MuJoCo headers + submodule source:
-     - Scripts/codegen/snapshots/mjspec_snapshot.json   (mjsX struct fields + mjs_setTo* sigs + mjt* enums)
      - Scripts/codegen/snapshots/mjxmacro_snapshot.json (model/data array layouts)
      - Scripts/codegen/snapshots/mjcf_schema_snapshot.json (MJCF schema + per-sensor objtype scrape)
-     - Scripts/codegen/snapshots/introspect_snapshot.json (clang-AST scrape — optional, requires libclang)
+     - Scripts/codegen/snapshots/introspect_snapshot.json (clang-AST scrape — mjsX struct fields, mjt* enums, mjs_setTo* sigs, EMj* hand enums)
   2. Run the C++ generator (generate_ue_components.py) against the fresh
      snapshots. Emits / updates the per-component .h/.cpp files in Source/.
+
+The clang-AST introspect snapshot now supersedes the old
+``mjspec_snapshot.json`` — the runtime projects introspect into the
+legacy mjspec shape, so build_mjspec_snapshot.py is retired.
 
 Day-to-day this is the script developers run after either:
   - bumping the third_party/MuJoCo submodule pointer + rebuilding the
@@ -59,19 +62,19 @@ def main(argv: list[str] | None = None) -> int:
     py = sys.executable
 
     steps: list[tuple[str, list[str]]] = [
-        ("mjspec snapshot",
-            [py, os.path.join(HERE, "build_mjspec_snapshot.py")]),
         ("mjxmacro snapshot",
             [py, os.path.join(HERE, "build_mjxmacro_snapshot.py")]),
         ("MJCF schema snapshot",
             [py, os.path.join(HERE, "build_mjcf_schema_snapshot.py")]),
     ]
-    # Introspect snapshot needs libclang — optional, but if absent the
-    # codegen falls back to the stale on-disk JSON. Run it AFTER the
-    # other snapshots so its failure (e.g. missing libclang) doesn't
-    # block the rest.
+    # Introspect snapshot needs libclang and now also supplies the data
+    # build_mjspec_snapshot.py used to scrape via regex (mjsX struct
+    # fields, mjt* enums, mjs_setTo* sigs). Optional only in the sense
+    # that a stale on-disk snapshot still drives the codegen — the
+    # --require-introspect default in generate_ue_components.py makes
+    # the gate fatal at next run if the snapshot really is missing.
     introspect_step = (
-        "introspect snapshot (clang AST — optional)",
+        "introspect snapshot (clang AST — supersedes mjspec snapshot)",
         [py, os.path.join(HERE, "build_introspect_snapshot.py")],
     )
     steps.append(introspect_step)

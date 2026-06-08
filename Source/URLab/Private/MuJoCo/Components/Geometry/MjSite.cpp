@@ -67,6 +67,8 @@ void UMjSite::ExportTo(mjsSite* Element, mjsDefault* def)
         case EMjSiteType::Ellipsoid: Element->type = (mjtGeom)mjGEOM_ELLIPSOID; break;
         case EMjSiteType::Cylinder: Element->type = (mjtGeom)mjGEOM_CYLINDER; break;
         case EMjSiteType::Box: Element->type = (mjtGeom)mjGEOM_BOX; break;
+        case EMjSiteType::Mesh: Element->type = (mjtGeom)mjGEOM_MESH; break;
+        case EMjSiteType::Hfield: Element->type = (mjtGeom)mjGEOM_HFIELD; break;
         default: break;
     }
     if (bOverride_group) Element->group = group;
@@ -94,6 +96,8 @@ void UMjSite::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
         else if (S == TEXT("ellipsoid")) Type = EMjSiteType::Ellipsoid;
         else if (S == TEXT("cylinder")) Type = EMjSiteType::Cylinder;
         else if (S == TEXT("box")) Type = EMjSiteType::Box;
+        else if (S == TEXT("mesh")) Type = EMjSiteType::Mesh;
+        else if (S == TEXT("hfield")) Type = EMjSiteType::Hfield;
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;
@@ -123,7 +127,7 @@ void UMjSite::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 }
 
 void UMjSite::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
@@ -148,7 +152,7 @@ void UMjSite::Bind(mjModel* model, mjData* data, const FString& Prefix)
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjSite::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 
 // --- Multi-UCLASS subclass constructors --------------------------------------

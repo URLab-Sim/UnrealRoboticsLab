@@ -84,7 +84,8 @@
       "mjGEOM_FLEX", "mjGEOM_SKIN", "mjGEOM_SDF", "mjGEOM_NONE"
     ],
     "__per_element__": {
-      "site.type": ["mjGEOM_PLANE", "mjGEOM_HFIELD", "mjGEOM_MESH"]
+      "_note_site_type": "Site now exposes Mesh + Hfield (Phase 4.6). Plane stays omitted because a site is a point/extent surface, not an infinite plane; SDF stays omitted because it carries heavy resource data the spawn-surface UX doesn't need.",
+      "site.type": ["mjGEOM_PLANE"]
     }
   },
 
@@ -190,7 +191,7 @@
     "actuatorfrclimited":"bool",
     "actearly":          "bool",
     "shellinertia":      "bool",
-    "fitscale":          "bool",
+    "fitscale":          "double",
     "fitaabb":           "bool",
     "discardvisual":     "bool",
     "objname":           "FString",
@@ -550,7 +551,9 @@
             "capsule":   ["Capsule",   "mjGEOM_CAPSULE"],
             "ellipsoid": ["Ellipsoid", "mjGEOM_ELLIPSOID"],
             "cylinder":  ["Cylinder",  "mjGEOM_CYLINDER"],
-            "box":       ["Box",       "mjGEOM_BOX"]
+            "box":       ["Box",       "mjGEOM_BOX"],
+            "mesh":      ["Mesh",      "mjGEOM_MESH"],
+            "hfield":    ["Hfield",    "mjGEOM_HFIELD"]
           }
         }
       }
@@ -777,7 +780,7 @@
         {"key": "adhesion",    "enum_value": "Adhesion",   "class_name": "UMjAdhesionActuator",    "header": "MjAdhesionActuator.h"},
         {"key": "dcmotor",     "enum_value": "DcMotor",    "class_name": "UMjDcMotorActuator",     "header": "MjDcMotorActuator.h"}
       ],
-      "_note_subtype_setto": "Codegen-driven mjs_setTo* call config. Function signatures are scraped into Scripts/mjspec_snapshot.json by build_mjspec_snapshot.py; the generator emits the call from the signature + the per-subtype config below. NO hand-written C++ literals in this file.",
+      "_note_subtype_setto": "Codegen-driven mjs_setTo* call config. Function signatures come from the clang-AST introspect snapshot (Scripts/codegen/snapshots/introspect_snapshot.json), projected into the legacy mjspec shape by _mjspec_from_introspect; the generator emits the call from the signature + the per-subtype config below. NO hand-written C++ literals in this file.",
       "subtype_setto": {
         "general":     null,
         "motor":       {"call": "mjs_setToMotor"},
@@ -1161,7 +1164,7 @@
     ]
   },
 
-  "_note_generated_enums": "Banner-mode .h with one or more UENUMs derived from mjspec_snapshot['enums']. Hand-edits get clobbered on next regen. ``extra_members`` appends URLab-specific values that have no mjt counterpart (e.g. DcMotor). ``disabled: true`` skips an entry — used during Camp-B migration so the rule lands in JSON before the hand-rolled enums are swapped out.",
+  "_note_generated_enums": "Banner-mode .h with one or more UENUMs derived from the introspect snapshot's mjt* enums (projected into mjspec.enums by _mjspec_from_introspect). Hand-edits get clobbered on next regen. ``extra_members`` appends URLab-specific values that have no mjt counterpart (e.g. DcMotor). ``disabled: true`` skips an entry — used during Camp-B migration so the rule lands in JSON before the hand-rolled enums are swapped out.",
   "generated_enums": {
     "MjOptionEnums": {
       "public_header": "MuJoCo/Generated/MjOptionEnums.h",
@@ -1195,36 +1198,31 @@
         }
       ]
     },
-    "_note_MjArticulationEnums": "Camp B (pure value-mapping) enums migrating from hand-rolled UENUMs in Components/ headers. Disabled on land so the rule + values + extras are reviewable without breaking the build; the follow-up flip removes ``disabled: true``, deletes the hand-rolled blocks, and routes consumers' includes through MuJoCo/Generated/MjArticulationEnums.h.",
+    "_note_MjArticulationEnums": "Camp B (pure value-mapping) enums migrating from hand-rolled UENUMs in Components/ headers. The flip enabled this rule; codegen now emits MuJoCo/Generated/MjArticulationEnums.h, the hand-rolled blocks under Components/ are gone, and consumers route through the generated header.",
     "MjArticulationEnums": {
-      "disabled": true,
       "public_header": "MuJoCo/Generated/MjArticulationEnums.h",
       "enums": [
         {
           "ue_name": "EMjGainType",
           "from_mj_enum": "mjtGain",
           "ue_member_from_mj": {
-            "mjGAIN_FIXED":  "Fixed",
-            "mjGAIN_AFFINE": "Affine",
-            "mjGAIN_MUSCLE": "Muscle",
-            "mjGAIN_USER":   "User"
-          },
-          "extra_members": [
-            {"name": "DcMotor"}
-          ]
+            "mjGAIN_FIXED":   "Fixed",
+            "mjGAIN_AFFINE":  "Affine",
+            "mjGAIN_MUSCLE":  "Muscle",
+            "mjGAIN_DCMOTOR": "DcMotor",
+            "mjGAIN_USER":    "User"
+          }
         },
         {
           "ue_name": "EMjBiasType",
           "from_mj_enum": "mjtBias",
           "ue_member_from_mj": {
-            "mjBIAS_NONE":   "None",
-            "mjBIAS_AFFINE": "Affine",
-            "mjBIAS_MUSCLE": "Muscle",
-            "mjBIAS_USER":   "User"
-          },
-          "extra_members": [
-            {"name": "DcMotor"}
-          ]
+            "mjBIAS_NONE":    "None",
+            "mjBIAS_AFFINE":  "Affine",
+            "mjBIAS_MUSCLE":  "Muscle",
+            "mjBIAS_DCMOTOR": "DcMotor",
+            "mjBIAS_USER":    "User"
+          }
         },
         {
           "ue_name": "EMjDynType",
@@ -1235,11 +1233,9 @@
             "mjDYN_FILTER":      "Filter",
             "mjDYN_FILTEREXACT": "FilterExact",
             "mjDYN_MUSCLE":      "Muscle",
+            "mjDYN_DCMOTOR":     "DcMotor",
             "mjDYN_USER":        "User"
-          },
-          "extra_members": [
-            {"name": "DcMotor"}
-          ]
+          }
         },
         {
           "_note_EMjGeomInertia": "No mjt counterpart; MJCF geom inertia kind is parser-side enum string-mapped on import. Pure extra_members.",
@@ -1280,11 +1276,13 @@
         {
           "ue_name": "EMjObjType",
           "from_mj_enum": "mjtObj",
+          "exclude_mj_members": ["mjNOBJECT", "mjOBJ_DEFAULT", "mjOBJ_MODEL"],
           "ue_member_from_mj": {
             "mjOBJ_UNKNOWN":  "Unknown",
             "mjOBJ_BODY":     "Body",
             "mjOBJ_XBODY":    "XBody",
             "mjOBJ_JOINT":    "Joint",
+            "mjOBJ_DOF":      "DoF",
             "mjOBJ_GEOM":     "Geom",
             "mjOBJ_SITE":     "Site",
             "mjOBJ_CAMERA":   "Camera",
@@ -1310,8 +1308,10 @@
           }
         },
         {
+          "_note_EMjActuatorTrnType": "mjTRN_UNDEFINED has C value 1000 (way out of uint8 range), so it can't be a direct ue_member_from_mj entry. Excluded from the snapshot pass and reintroduced as an extra_member with the next contiguous slot (6).",
           "ue_name": "EMjActuatorTrnType",
           "from_mj_enum": "mjtTrn",
+          "exclude_mj_members": ["mjTRN_UNDEFINED"],
           "ue_member_from_mj": {
             "mjTRN_JOINT":         "Joint",
             "mjTRN_JOINTINPARENT": "JointInParent",
@@ -1321,20 +1321,18 @@
             "mjTRN_BODY":          "Body"
           },
           "extra_members": [
-            {"name": "Undefined"}
+            {"name": "Undefined", "value": 6}
           ]
         },
         {
-          "_note_EMjFlexcompDof": "URLab-only flex-component DoF reduction kind; no mjt counterpart (the MJCF attr is `dof` and parsed string-side). Pure extra_members.",
+          "_note_EMjFlexcompDof": "URLab-only flex-component DoF reduction kind; no mjt counterpart (the MJCF attr is `dof` and parsed string-side). Pure extra_members; matches the pre-migration hand-rolled set.",
           "ue_name": "EMjFlexcompDof",
           "extra_members": [
-            {"name": "Default",   "value": 0},
-            {"name": "Full",      "value": 1},
-            {"name": "Free",      "value": 2},
-            {"name": "Pinned",    "value": 3},
-            {"name": "Plane",     "value": 4},
-            {"name": "Radial",    "value": 5},
-            {"name": "Trilinear", "value": 6}
+            {"name": "Full",      "value": 0},
+            {"name": "Radial",    "value": 1},
+            {"name": "Trilinear", "value": 2},
+            {"name": "Quadratic", "value": 3},
+            {"name": "TwoD",      "value": 4}
           ]
         }
       ]

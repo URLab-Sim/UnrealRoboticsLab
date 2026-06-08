@@ -123,10 +123,14 @@ def test_inject_tags_into_cpp_diagnoses_missing_marker(tmp_path):
 
 def test_inject_tags_into_cpp_skips_write_when_unchanged(tmp_path):
     """Idempotency: re-injecting the same body must not append a
-    FileWrite. The codegen --check gate relies on this."""
+    FileWrite. The codegen --check gate relies on this.
+
+    Phase 4.3 changed inject_between_tags so the END marker's indent
+    mirrors the START marker's. When START sits at column 0 (this
+    test's case), END also lands at column 0."""
     body = (
         "// --- CODEGEN_FOO_START ---\n"
-        "same body\n    "  # match the helper's output indentation
+        "same body\n"
         "// --- CODEGEN_FOO_END ---\n"
     )
     cpp_path = _write(tmp_path, "host.cpp", body)
@@ -135,3 +139,25 @@ def test_inject_tags_into_cpp_skips_write_when_unchanged(tmp_path):
         cpp_path, [("FOO", "same body")], writes, diag_source="unit_test",
     )
     assert writes == []
+
+
+def test_inject_between_tags_normalises_end_indent_to_match_start(tmp_path):
+    """Phase 4.3 fix: a hand-prepped source where START is at 8 spaces
+    but END is at 4 spaces (or any mismatch) gets its END normalised
+    to match START. Previously the helper hardcoded a 4-space END
+    indent — that locked in the mismatch on every regen."""
+    text = (
+        "        // --- CODEGEN_FOO_START ---\n"
+        "        body content\n"
+        "    // --- CODEGEN_FOO_END ---\n"
+    )
+    new_text, ok = gen.inject_between_tags(text, "FOO", "new body")
+    assert ok is True
+    # Both marker lines now sit at the START's 8-space indent — assert
+    # the END's leading whitespace exactly so we don't accidentally
+    # match a substring of a deeper indent.
+    import re
+    match = re.search(r"^(\s*)// --- CODEGEN_FOO_END ---$", new_text,
+                      re.MULTILINE)
+    assert match is not None
+    assert match.group(1) == "        ", repr(match.group(1))

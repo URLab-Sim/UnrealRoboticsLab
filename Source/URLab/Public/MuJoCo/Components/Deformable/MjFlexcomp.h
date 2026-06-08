@@ -24,6 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include <mujoco/mjspec.h>
 #include <mujoco/mujoco.h>
 #include "MuJoCo/Utils/MjOrientationUtils.h"
@@ -46,15 +47,7 @@ enum class EMjFlexcompType : uint8
     Direct     UMETA(DisplayName = "Direct (manual point + element)"),
 };
 
-UENUM(BlueprintType)
-enum class EMjFlexcompDof : uint8
-{
-    Full       UMETA(DisplayName = "Full"),
-    Radial     UMETA(DisplayName = "Radial"),
-    Trilinear  UMETA(DisplayName = "Trilinear"),
-    Quadratic  UMETA(DisplayName = "Quadratic"),
-    TwoD       UMETA(DisplayName = "2D"),
-};
+// EMjFlexcompDof moved to MuJoCo/Generated/MjArticulationEnums.h.
 
 /**
  * @class UMjFlexcomp

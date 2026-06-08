@@ -79,7 +79,6 @@ void UMjFreeJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
     Super::ExportTo(Element, Default);
 
     // --- CODEGEN_EXPORT_START ---
-
     // --- CODEGEN_EXPORT_END ---
 }
 
@@ -89,7 +88,6 @@ void UMjFreeJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings
     if (!Node) return;
 
     // --- CODEGEN_IMPORT_START ---
-
     // --- CODEGEN_IMPORT_END ---
 }
 

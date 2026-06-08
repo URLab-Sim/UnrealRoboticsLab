@@ -135,8 +135,7 @@ void UMjCapsule::UpdateCapTransforms()
 void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
-
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     Super::ImportFromXml(Node, CompilerSettings);
 
@@ -174,8 +173,7 @@ void UMjCapsule::ExportTo(mjsGeom* Element, mjsDefault* def)
     Super::ExportTo(Element, def);
 
         // --- CODEGEN_EXPORT_START ---
-
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCapsule::SyncUnrealTransformFromMj()

@@ -36,7 +36,6 @@ class URLAB_API UMjFreeJoint : public UMjJoint
     GENERATED_BODY()
 public:
     // --- CODEGEN_PROPERTIES_START ---
-
     // --- CODEGEN_PROPERTIES_END ---
 
     UMjFreeJoint();

@@ -398,6 +398,6 @@ TArray<FString> UMjActuator::GetTargetNameOptions() const
 TArray<FString> UMjActuator::GetSliderSiteOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjSite::StaticClass()); }
 TArray<FString> UMjActuator::GetRefSiteOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjSite::StaticClass()); }
 TArray<FString> UMjActuator::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 

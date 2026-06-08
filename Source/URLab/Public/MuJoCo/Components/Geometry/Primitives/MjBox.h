@@ -37,7 +37,6 @@ class URLAB_API UMjBox : public UMjGeom
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-
     // --- CODEGEN_PROPERTIES_END ---
 
 	UMjBox();

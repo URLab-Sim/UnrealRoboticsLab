@@ -29,6 +29,7 @@
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include "MuJoCo/Utils/MjBind.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjSensor.generated.h"
@@ -112,38 +113,7 @@ enum class EMjSensorType : uint8
     User
 };
 
-/**
- * @enum EMjObjType
- * @brief Mirror of mjtObj for specifying sensor attachment/reference types.
- */
-UENUM(BlueprintType)
-enum class EMjObjType : uint8
-{
-    Unknown,
-    Body,
-    XBody,
-    Joint,
-    DoF,
-    Geom,
-    Site,
-    Camera,
-    Light,
-    Mesh,
-    HField,
-    Texture,
-    Material,
-    Pair,
-    Exclude,
-    Equality,
-    Tendon,
-    Actuator,
-    Sensor,
-    Numeric,
-    Text,
-    Tuple,
-    Key,
-    Plugin,
-};
+// EMjObjType moved to MuJoCo/Generated/MjArticulationEnums.h.
 
 /**
  * @class UMjSensor

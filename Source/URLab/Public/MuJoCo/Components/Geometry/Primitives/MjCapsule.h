@@ -44,7 +44,6 @@ class URLAB_API UMjCapsule : public UMjGeom
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-
     // --- CODEGEN_PROPERTIES_END ---
 
     UMjCapsule();

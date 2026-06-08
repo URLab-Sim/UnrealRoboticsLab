@@ -26294,71 +26294,7 @@
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/actuators/mjactuator.h",
-      "line": 41
-    },
-    "EMjActuatorTrnType": {
-      "name": "EMjActuatorTrnType",
-      "members": {
-        "Joint": 0,
-        "JointInParent": 1,
-        "SliderCrank": 2,
-        "Tendon": 3,
-        "Site": 4,
-        "Body": 5,
-        "Undefined": 6
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/actuators/mjactuator.h",
-      "line": 59
-    },
-    "EMjGainType": {
-      "name": "EMjGainType",
-      "members": {
-        "Fixed": 0,
-        "Affine": 1,
-        "Muscle": 2,
-        "User": 3,
-        "DcMotor": 4
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/actuators/mjactuator.h",
-      "line": 77
-    },
-    "EMjBiasType": {
-      "name": "EMjBiasType",
-      "members": {
-        "None": 0,
-        "Affine": 1,
-        "Muscle": 2,
-        "User": 3,
-        "DcMotor": 4
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/actuators/mjactuator.h",
-      "line": 91
-    },
-    "EMjDynType": {
-      "name": "EMjDynType",
-      "members": {
-        "None": 0,
-        "Integrator": 1,
-        "Filter": 2,
-        "FilterExact": 3,
-        "Muscle": 4,
-        "User": 5,
-        "DcMotor": 6
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/actuators/mjactuator.h",
-      "line": 105
+      "line": 42
     },
     "EMjDcMotorInput": {
       "name": "EMjDcMotorInput",
@@ -26422,22 +26358,7 @@
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/deformable/mjflexcomp.h",
-      "line": 35
-    },
-    "EMjFlexcompDof": {
-      "name": "EMjFlexcompDof",
-      "members": {
-        "Full": 0,
-        "Radial": 1,
-        "Trilinear": 2,
-        "Quadratic": 3,
-        "TwoD": 4
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/deformable/mjflexcomp.h",
-      "line": 50
+      "line": 36
     },
     "EMjGeomType": {
       "name": "EMjGeomType",
@@ -26456,31 +26377,7 @@
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/geometry/mjgeom.h",
-      "line": 41
-    },
-    "EMjGeomInertia": {
-      "name": "EMjGeomInertia",
-      "members": {
-        "Volume": 0,
-        "Shell": 1
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/geometry/mjgeom.h",
-      "line": 62
-    },
-    "EMjFluidShape": {
-      "name": "EMjFluidShape",
-      "members": {
-        "None": 0,
-        "Ellipsoid": 1
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/geometry/mjgeom.h",
-      "line": 78
+      "line": 39
     },
     "EMjSiteType": {
       "name": "EMjSiteType",
@@ -26489,13 +26386,15 @@
         "Capsule": 1,
         "Ellipsoid": 2,
         "Cylinder": 3,
-        "Box": 4
+        "Box": 4,
+        "Mesh": 5,
+        "Hfield": 6
       },
       "member_docs": {},
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/geometry/mjsite.h",
-      "line": 38
+      "line": 42
     },
     "EMjJointType": {
       "name": "EMjJointType",
@@ -26523,34 +26422,7 @@
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/sensors/mjcameratypes.h",
-      "line": 34
-    },
-    "EMjCameraTrackingMode": {
-      "name": "EMjCameraTrackingMode",
-      "members": {
-        "Fixed": 0,
-        "Track": 1,
-        "TrackCom": 2,
-        "TargetBody": 3,
-        "TargetBodyCom": 4
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/sensors/mjcameratypes.h",
-      "line": 56
-    },
-    "EMjCameraProjection": {
-      "name": "EMjCameraProjection",
-      "members": {
-        "Perspective": 0,
-        "Orthographic": 1
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/sensors/mjcameratypes.h",
-      "line": 73
+      "line": 35
     },
     "EMjSensorType": {
       "name": "EMjSensorType",
@@ -26609,41 +26481,7 @@
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/sensors/mjsensor.h",
-      "line": 41
-    },
-    "EMjObjType": {
-      "name": "EMjObjType",
-      "members": {
-        "Unknown": 0,
-        "Body": 1,
-        "XBody": 2,
-        "Joint": 3,
-        "DoF": 4,
-        "Geom": 5,
-        "Site": 6,
-        "Camera": 7,
-        "Light": 8,
-        "Mesh": 9,
-        "HField": 10,
-        "Texture": 11,
-        "Material": 12,
-        "Pair": 13,
-        "Exclude": 14,
-        "Equality": 15,
-        "Tendon": 16,
-        "Actuator": 17,
-        "Sensor": 18,
-        "Numeric": 19,
-        "Text": 20,
-        "Tuple": 21,
-        "Key": 22,
-        "Plugin": 23
-      },
-      "member_docs": {},
-      "underlying_type": "uint8",
-      "doc": "",
-      "file": "source/urlab/public/mujoco/components/sensors/mjsensor.h",
-      "line": 120
+      "line": 42
     },
     "EMjTendonWrapType": {
       "name": "EMjTendonWrapType",
@@ -26672,6 +26510,173 @@
       "doc": "",
       "file": "source/urlab/public/mujoco/core/mjdebugvisualizer.h",
       "line": 39
+    },
+    "EMjGainType": {
+      "name": "EMjGainType",
+      "members": {
+        "Fixed": 0,
+        "Affine": 1,
+        "Muscle": 2,
+        "DcMotor": 3,
+        "User": 4
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 33
+    },
+    "EMjBiasType": {
+      "name": "EMjBiasType",
+      "members": {
+        "None": 0,
+        "Affine": 1,
+        "Muscle": 2,
+        "DcMotor": 3,
+        "User": 4
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 44
+    },
+    "EMjDynType": {
+      "name": "EMjDynType",
+      "members": {
+        "None": 0,
+        "Integrator": 1,
+        "Filter": 2,
+        "FilterExact": 3,
+        "Muscle": 4,
+        "DcMotor": 5,
+        "User": 6
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 55
+    },
+    "EMjGeomInertia": {
+      "name": "EMjGeomInertia",
+      "members": {
+        "Volume": 0,
+        "Shell": 1
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 68
+    },
+    "EMjFluidShape": {
+      "name": "EMjFluidShape",
+      "members": {
+        "None": 0,
+        "Ellipsoid": 1
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 76
+    },
+    "EMjCameraTrackingMode": {
+      "name": "EMjCameraTrackingMode",
+      "members": {
+        "Fixed": 0,
+        "Track": 1,
+        "TrackCom": 2,
+        "TargetBody": 3,
+        "TargetBodyCom": 4
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 84
+    },
+    "EMjCameraProjection": {
+      "name": "EMjCameraProjection",
+      "members": {
+        "Perspective": 0,
+        "Orthographic": 1
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 95
+    },
+    "EMjObjType": {
+      "name": "EMjObjType",
+      "members": {
+        "Unknown": 0,
+        "Body": 1,
+        "XBody": 2,
+        "Joint": 3,
+        "DoF": 4,
+        "Geom": 5,
+        "Site": 6,
+        "Camera": 7,
+        "Light": 8,
+        "Flex": 9,
+        "Mesh": 10,
+        "Skin": 11,
+        "HField": 12,
+        "Texture": 13,
+        "Material": 14,
+        "Pair": 15,
+        "Exclude": 16,
+        "Equality": 17,
+        "Tendon": 18,
+        "Actuator": 19,
+        "Sensor": 20,
+        "Numeric": 21,
+        "Text": 22,
+        "Tuple": 23,
+        "Key": 24,
+        "Plugin": 25,
+        "Frame": 100
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 103
+    },
+    "EMjActuatorTrnType": {
+      "name": "EMjActuatorTrnType",
+      "members": {
+        "Joint": 0,
+        "JointInParent": 1,
+        "SliderCrank": 2,
+        "Tendon": 3,
+        "Site": 4,
+        "Body": 5,
+        "Undefined": 6
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 136
+    },
+    "EMjFlexcompDof": {
+      "name": "EMjFlexcompDof",
+      "members": {
+        "Full": 0,
+        "Radial": 1,
+        "Trilinear": 2,
+        "Quadratic": 3,
+        "TwoD": 4
+      },
+      "member_docs": {},
+      "underlying_type": "uint8",
+      "doc": "",
+      "file": "source/urlab/public/mujoco/generated/mjarticulationenums.h",
+      "line": 149
     },
     "EMjIntegrator": {
       "name": "EMjIntegrator",

@@ -178,7 +178,7 @@ void UMjSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
         case EMjSensorType::User: Element->type = mjSENS_USER; break;
         case EMjSensorType::Plugin: Element->type = mjSENS_PLUGIN; break;
         default: Element->type = mjSENS_ACCELEROMETER; Element->objtype = mjOBJ_SITE; break;
-    // --- CODEGEN_SENSOR_TYPE_SWITCH_END ---
+        // --- CODEGEN_SENSOR_TYPE_SWITCH_END ---
     }
 
     // Variable objtype / reftype handling. The codegen switch above sets
@@ -212,7 +212,7 @@ void UMjSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
     if (bOverride_noise) Element->noise = noise;
     MjSetString(Element->objname, TargetName);
     MjSetString(Element->refname, ReferenceName);
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
@@ -270,7 +270,7 @@ void UMjSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     if (TargetName.IsEmpty()) TargetName = Node->GetAttribute(TEXT("mesh"));
     // target_collation: -> ReferenceName
     ReferenceName = Node->GetAttribute(TEXT("refname"));
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     // Determine sensor type from the XML tag name
     static const TMap<FString, EMjSensorType> TagToType = {
@@ -324,7 +324,7 @@ void UMjSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
         {TEXT("tactile"), EMjSensorType::Tactile},
         {TEXT("user"), EMjSensorType::User},
         {TEXT("plugin"), EMjSensorType::Plugin},
-    // --- CODEGEN_SENSOR_TAG_TO_TYPE_END ---
+        // --- CODEGEN_SENSOR_TAG_TO_TYPE_END ---
     };
     const FString Tag = Node->GetTag().ToLower();
     const EMjSensorType* Found = TagToType.Find(Tag);
@@ -536,5 +536,5 @@ TArray<FString> UMjSensor::GetReferenceNameOptions() const
 
 // --- CODEGEN_EDITOR_OPTIONS_START ---
 TArray<FString> UMjSensor::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
-    // --- CODEGEN_EDITOR_OPTIONS_END ---
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

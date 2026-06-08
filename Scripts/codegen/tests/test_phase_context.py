@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""Tests for the ``PhaseContext`` introduced by Phase 1.6. Every
+"""Tests for the ``PhaseContext``. Every
 emission phase used to take 7 (or 8) positional args; they now take
 one ``PhaseContext`` so adding a new field to the pipeline doesn't
 touch a dozen signatures."""
@@ -36,13 +36,4 @@ def test_phase_context_is_dataclass_with_writes_list():
     assert ctx.writes == ["sentinel"]
 
 
-def test_phase_categories_via_ctx_emits_unknown_layout_diag():
-    ctx = gen.PhaseContext(
-        schema={}, rules={"categories": {"bogus": {"layout": "typo"}}},
-        mjxmacro={}, mjspec={},
-        public_root="", private_root="", bind_h_path="", writes=[],
-    )
-    gen._phase_categories(ctx)
-    assert any("unknown layout" in d.message and "bogus" in d.message
-               for d in gen._DIAGS)
-    assert ctx.writes == []
+# Unknown-layout diagnostic is pinned in test_inject_helpers::test_layout_dispatch_diagnoses_unknown_layout.

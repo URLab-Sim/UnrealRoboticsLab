@@ -25,7 +25,7 @@ def test_audit_banner_safety_silent_on_template_only(tmp_path):
     )
     subtype = {"class_name": "UMjBoxGeom"}
     _audit_banner_safety(str(p), subtype)
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_audit_banner_safety_flags_extra_include(tmp_path):
@@ -44,7 +44,7 @@ def test_audit_banner_safety_flags_extra_include(tmp_path):
     )
     subtype = {"class_name": "UMjBoxGeom"}
     _audit_banner_safety(str(p), subtype)
-    assert any("SomeOther/Header.h" in d.message for d in gen._DIAGS)
+    assert any("SomeOther/Header.h" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_audit_banner_safety_flags_extra_ctor_body(tmp_path):
@@ -68,7 +68,7 @@ def test_audit_banner_safety_flags_extra_ctor_body(tmp_path):
     _audit_banner_safety(str(p), subtype)
     assert any("non-template ctor content" in d.message
                and "HandRolledHelperCall" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 # ---------- inject-guard diagnostics ----------------------------------------
@@ -90,28 +90,8 @@ def test_layout_dispatch_diagnoses_unknown_layout():
     gen._phase_categories(ctx)
     assert any("unknown layout" in d.message and "bogus" in d.message
                and "single_uclass" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
     assert writes == []
 
 
-def test_canon_import_block_diagnoses_unknown_canon():
-    """An unknown canonicalisation name produces an empty string AND a
-    diagnostic — silent skip would let a new canon rule in JSON ship
-    UPROPERTYs with no import."""
-    out = gen._canon_import_block(
-        "made_up_canon",
-        {"emits_property": {"name": "P", "type": "FVector"},
-         "import_helper": "Foo::Bar"},
-    )
-    assert out == ""
-    assert any("made_up_canon" in d.message for d in gen._DIAGS)
-
-
-def test_canon_export_block_diagnoses_unknown_canon():
-    out = gen._canon_export_block(
-        "made_up_canon",
-        {"emits_property": {"name": "P", "type": "FVector"},
-         "export_helper": "Foo::Baz"},
-    )
-    assert out == ""
-    assert any("made_up_canon" in d.message for d in gen._DIAGS)
+# Unknown-canon diagnostic is pinned in test_canon_registry.py.

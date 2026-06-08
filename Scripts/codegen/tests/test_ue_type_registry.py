@@ -7,6 +7,10 @@ gates each declared their own type list and drifted apart."""
 from __future__ import annotations
 
 import generate_ue_components as gen
+import _codegen_core as _core
+gen._UE_TYPE_INFO = _core._UE_TYPE_INFO
+gen._UE_TYPE_FAMILY = _core._UE_TYPE_FAMILY
+gen._UE_TYPES_ACCEPTING_UNITS_META = _core._UE_TYPES_ACCEPTING_UNITS_META
 
 
 def test_ue_type_family_is_view_over_registry():

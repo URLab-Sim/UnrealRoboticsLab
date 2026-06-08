@@ -1,15 +1,14 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""URLab codegen — drift checks (Phase 5 module split, step 2).
+"""URLab codegen — drift checks.
 
 Every ``_check_*`` function that scans rules + snapshots for drift
-lives here. The orchestrator (``generate_ue_components``) imports the
-dispatcher functions (``_emit_drift_diagnostics``, ``_check_*``) and
-wires them into ``_phase_diagnostics``.
+lives here. The orchestrator imports the dispatcher functions
+(``_emit_drift_diagnostics``, ``_check_*``) and wires them into
+``_phase_diagnostics``.
 
-Dependencies are strictly downward: this module imports from
-``_codegen_core`` only. No emit logic, no .cpp injection — drift checks
-read the rules + snapshots and route diagnostics through
-``_codegen_core._diag_add``.
+Dependencies are strictly downward: imports from ``_codegen_core``
+only. No emit logic, no .cpp injection — drift checks read the
+rules + snapshots and route diagnostics through ``_diag_add``.
 """
 
 from __future__ import annotations
@@ -20,11 +19,11 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 from _codegen_core import (
     _diag_add,
-    _UE_TYPE_FAMILY, _ue_type_accepts_units_meta, _KNOWN_UE_UNITS,
+    _UE_TYPE_INFO, _UE_TYPE_FAMILY, _ue_type_accepts_units_meta, _KNOWN_UE_UNITS,
     _classify_c_type, _shapes_compatible, _VEC3_CONVERT_FMT,
     schema_attrs, schema_subtype_attrs,
     compute_canon_absorbed,
-    _resolve_mjs_field, _resolve_value_map,
+    _resolve_mjs_field, _resolve_value_map, _value_map_pair,
 )
 
 
@@ -131,9 +130,10 @@ def _check_hand_enum_drift(
                 continue
             members = set(hand_enums[ue_enum_type])
             for xml_val, mapping in value_map.items():
-                if not isinstance(mapping, (list, tuple)) or not mapping:
+                pair = _value_map_pair(mapping)
+                if pair is None:
                     continue
-                ue_member = mapping[0]
+                ue_member, _ = pair
                 if ue_member not in members:
                     _diag_add(
                         f"[diagnostic] element '{elem}' xml_enum '{attr}' "
@@ -151,9 +151,9 @@ def _check_hand_enum_drift(
                 mj_values = mjspec_enums[from_mj_enum]
                 covered_mj: set = set()
                 for mapping in value_map.values():
-                    if isinstance(mapping, (list, tuple)) and len(mapping) >= 2:
-                        covered_mj.add(mapping[1])
-                covered_mj.update(enum_def.get("xml_from_mj", {}).keys())
+                    pair = _value_map_pair(mapping)
+                    if pair is not None:
+                        covered_mj.add(pair[1])
                 skips = set(intentional_skips.get(from_mj_enum, []))
                 per_elem = intentional_skips.get("__per_element__", {})
                 skips |= set(per_elem.get(f"{elem}.{attr}", []))
@@ -223,13 +223,41 @@ def _check_new_attr_typing(
     rules: Dict[str, Any],
 ) -> None:
     """Every schema attr that lands as a UPROPERTY but has no explicit
-    type_mappings entry silently inherits ``default_type`` ('float')."""
+    type_mappings entry silently inherits ``default_type`` ('float').
+    Also surfaces type_mappings entries whose UE type does not resolve
+    to a known shape — the codegen would otherwise fall back to a
+    default emit and hide the typo (e.g. ``TArray<flot>``)."""
     type_map = rules.get("type_mappings", {})
     default_type = rules.get("default_type", "float")
     global_excl = set(rules.get("global_exclusions", []))
     intentional_float = set(rules.get("intentionally_default_typed_attrs", []))
     element_rules = rules.get("element_rules", {})
     canonicalizations = rules.get("canonicalizations", {})
+
+    def _ue_type_known(ue_type: str) -> bool:
+        if ue_type in _UE_TYPE_INFO:
+            return True
+        if ue_type.startswith("EMj"):
+            return True
+        if ue_type.startswith("TArray<") and ue_type.endswith(">"):
+            inner = ue_type[len("TArray<"):-1]
+            return inner in _UE_TYPE_INFO or inner.startswith("EMj") or inner.startswith("U")
+        return False
+
+    bad_typed: set = set()
+    for attr, ue_type in type_map.items():
+        if attr.startswith("_"):
+            continue
+        if not _ue_type_known(ue_type):
+            bad_typed.add(attr)
+            _diag_add(
+                f"[diagnostic] type_mappings['{attr}'] = '{ue_type}' is "
+                f"not a recognised UE type. The codegen will fall back "
+                f"to default_type ('{default_type}') for downstream "
+                f"emits, hiding the typo. Fix the type or add the entry "
+                f"to _UE_TYPE_INFO.",
+                source="new_attr_typing",
+            )
 
     def _collect_attrs(cat_rules: Dict[str, Any]) -> set:
         out: set = set(schema_attrs(schema, cat_rules.get("schema_common_block", "")))
@@ -448,16 +476,15 @@ def _check_embedded_cpp_references(
     for members in mjspec["enums"].values():
         if isinstance(members, dict):
             known_consts.update(members.keys())
-        elif isinstance(members, list):
-            known_consts.update(members)
     if not known_consts:
         return
     for elem, elem_rule in rules.get("element_rules", {}).items():
         for attr, enum_def in elem_rule.get("xml_enum_attrs", {}).items():
             for xml_val, mapping in enum_def.get("value_map", {}).items():
-                if not isinstance(mapping, (list, tuple)) or len(mapping) < 2:
+                pair = _value_map_pair(mapping)
+                if pair is None:
                     continue
-                mj_const = mapping[1]
+                mj_const = pair[1]
                 if not isinstance(mj_const, str):
                     continue
                 if not mj_const.startswith("mj"):
@@ -510,7 +537,7 @@ def _check_allowlist_staleness(
     mjspec: Optional[Dict[str, Any]],
 ) -> None:
     """Surface allowlist entries the codebase no longer needs. Narrows
-    to 4 of 6 allowlists per the locked plan."""
+    to 4 of 6 allowlists per the rule design."""
     unmodeled_elems: Dict[str, str] = rules.get("intentionally_unmodeled_elements", {})
     schema_keys = set(schema.keys())
     for key in unmodeled_elems:
@@ -628,9 +655,7 @@ def _check_value_map_stale_mj_consts(
         return
     known: set = set()
     for members in enums.values():
-        if isinstance(members, list):
-            known.update(members)
-        elif isinstance(members, dict):
+        if isinstance(members, dict):
             known.update(members.keys())
     if not known:
         return
@@ -638,9 +663,10 @@ def _check_value_map_stale_mj_consts(
         for attr, enum_def in elem_rule.get("xml_enum_attrs", {}).items():
             value_map = enum_def.get("value_map", {})
             for xml_val, mapping in value_map.items():
-                if not isinstance(mapping, (list, tuple)) or len(mapping) < 2:
+                pair = _value_map_pair(mapping)
+                if pair is None:
                     continue
-                mj_const = mapping[1]
+                mj_const = pair[1]
                 if not isinstance(mj_const, str) or not mj_const.startswith("mj"):
                     continue
                 if mj_const not in known:
@@ -681,7 +707,8 @@ def _check_top_level_elements_coverage(
             f"Either add a category entry, list '{key}' in "
             f"container_keys, or add an "
             f"'intentionally_unmodeled_elements' entry explaining why "
-            f"it's skipped."
+            f"it's skipped.",
+            source="top_level_coverage",
         )
 
 
@@ -696,7 +723,8 @@ def _check_actuator_subtypes_coverage(
                 f"[diagnostic] schema actuator subtype '{name}' has no "
                 f"entry in categories.actuator.subtypes. Add a subtype "
                 f"+ subtype_setto rule pair so codegen emits the UMj"
-                f"{name.title()}Actuator class."
+                f"{name.title()}Actuator class.",
+                source="actuator_subtypes_coverage",
             )
 
 
@@ -710,7 +738,8 @@ def _check_sensor_subtypes_coverage(
             _diag_add(
                 f"[diagnostic] schema sensor type '{name}' has no entry "
                 f"in categories.sensor.subtypes. Add it so the per-sensor "
-                f"UMjXSensor subclass is emitted."
+                f"UMjXSensor subclass is emitted.",
+                source="sensor_subtypes_coverage",
             )
 
 
@@ -751,20 +780,9 @@ def _check_setto_param_coverage(
                     f"entry. Codegen passes the generic sentinel for "
                     f"it. If MuJoCo added this param, decide whether "
                     f"to expose it as a UE UPROPERTY (schema attr + "
-                    f"type_mapping) or pin its sentinel."
+                    f"type_mapping) or pin its sentinel.",
+                    source="setto_param_coverage",
                 )
-
-
-# Canonicalisation name -> set of mjs struct fields its export block
-# writes. The mjs-field-drift check uses this to recognise fields that
-# canon already covers as NOT drift.
-_CANON_MJS_FIELDS = {
-    "body_sleep_policy":     {"sleep"},
-    "actuator_transmission": {"target", "trntype", "slidersite", "refsite"},
-    "fromto_decompose":      set(),
-    "orientation":           {"quat"},
-    "spatial_pose":          {"pos"},
-}
 
 
 def _check_mjs_struct_field_drift(
@@ -812,8 +830,20 @@ def _check_mjs_struct_field_drift(
             for entry in conv_list if isinstance(conv_list, list) else []:
                 if isinstance(entry, dict) and entry.get("mjs_field"):
                     mapped_fields.add(entry["mjs_field"])
+        # Canonicalisation name -> set of mjs struct fields its export
+        # block writes. Lets the drift check treat canon-owned fields as
+        # covered. Inlined here because this is the only consumer; kept
+        # in lock-step with the inline canon emitters in
+        # generate_ue_components (_canon_export_*).
+        canon_mjs_fields = {
+            "body_sleep_policy":     {"sleep"},
+            "actuator_transmission": {"target", "trntype", "slidersite", "refsite"},
+            "fromto_decompose":      set(),
+            "orientation":           {"quat"},
+            "spatial_pose":          {"pos"},
+        }
         for canon in elem_rules.get("applies_canonicalizations", []):
-            mapped_fields |= _CANON_MJS_FIELDS.get(canon, set())
+            mapped_fields |= canon_mjs_fields.get(canon, set())
         structural = {
             "element", "info", "userdata", "user", "name", "classname",
             "parent", "frame", "explicitinertial",
@@ -861,8 +891,16 @@ def _check_generated_enum_coverage(
             mj_enum_name = entry.get("from_mj_enum")
             ue_member_from_mj = entry.get("ue_member_from_mj", {})
             exclude = set(entry.get("exclude_mj_members", []))
+            if not mj_enum_name:
+                continue
             c_enum = mjspec["enums"].get(mj_enum_name, {})
             if not c_enum:
+                _diag_add(
+                    f"[diagnostic] generated_enums['{gen_name}'].{entry.get('ue_name')}: "
+                    f"from_mj_enum '{mj_enum_name}' not found in the projected mjspec. "
+                    f"Rebuild the introspect snapshot, or correct the enum name.",
+                    source="enum_drift",
+                )
                 continue
             mapped = set(ue_member_from_mj) | exclude
             missing = [m for m in c_enum if m not in mapped]
@@ -880,7 +918,7 @@ def _emit_drift_diagnostics(schema: Dict[str, Any], rules: Dict[str, Any],
                             mjspec: Optional[Dict[str, Any]]) -> None:
     """Run every drift-coverage check. Each helper surfaces one class
     of drift. All diagnostics route through the module-level
-    ``_DIAGS`` collector and flush once at the end of
+    ``_DIAGS_BUFFER.pending`` collector and flush once at the end of
     ``collect_all_writes``."""
     _check_top_level_elements_coverage(schema, rules)
     _check_actuator_subtypes_coverage(schema, rules)

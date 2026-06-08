@@ -134,19 +134,19 @@ def test_sensor_switch_body_emits_static_objtype_when_present():
             {"key": "touch",     "enum_value": "Touch"},
             {"key": "framepos",  "enum_value": "FramePos"},
         ],
-        "default_subtype_key": "touch",
     }
     sensor_per_type = {
-        "touch":    {"mj_type": "mjSENS_TOUCH",    "objtype": "mjOBJ_SITE", "reftype": None},
-        "framepos": {"mj_type": "mjSENS_FRAMEPOS", "objtype": "from_xml",   "reftype": None},
+        "touch":         {"mj_type": "mjSENS_TOUCH",         "objtype": "mjOBJ_SITE", "reftype": None},
+        "framepos":      {"mj_type": "mjSENS_FRAMEPOS",      "objtype": "from_xml",   "reftype": None},
+        "accelerometer": {"mj_type": "mjSENS_ACCELEROMETER", "objtype": "mjOBJ_SITE", "reftype": None},
     }
     out = _emit_sensor_switch_block(cat_rules, sensor_per_type)
     # Touch gets static objtype literal.
     assert "case EMjSensorType::Touch: Element->type = mjSENS_TOUCH; Element->objtype = mjOBJ_SITE; break;" in out
     # framepos has objtype=from_xml -> NO static objtype emitted (handled in post-switch block).
     assert "case EMjSensorType::FramePos: Element->type = mjSENS_FRAMEPOS; break;" in out
-    # Default fallback matches the chosen subtype.
-    assert "default: Element->type = mjSENS_TOUCH; Element->objtype = mjOBJ_SITE; break;" in out
+    # Default fallback is hard-wired to accelerometer.
+    assert "default: Element->type = mjSENS_ACCELEROMETER; Element->objtype = mjOBJ_SITE; break;" in out
 
 
 def test_sensor_switch_body_honours_case_override():
@@ -157,7 +157,6 @@ def test_sensor_switch_body_honours_case_override():
             {"key": "rangefinder", "enum_value": "RangeFinder",
              "case_body_override": "Element->type = mjSENS_RANGEFINDER; Element->objtype = X;"},
         ],
-        "default_subtype_key": "rangefinder",
     }
     out = _emit_sensor_switch_block(cat_rules, {"rangefinder": {"mj_type": "mjSENS_RANGEFINDER"}})
     # Override appears verbatim; the emitter's automatic mj_type / objtype

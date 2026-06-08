@@ -1,14 +1,11 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """
-Tests for four opt-in emitter capabilities in generate_ue_components.py:
+Tests for opt-in emitter capabilities in generate_ue_components.py:
 
-1. ``value_map_from_enum``: snapshot-driven enum-to-value-map resolver.
+1. ``_resolve_value_map``: returns the rule's literal ``value_map``;
+   missing ``value_map`` raises.
 2. ``xml_enum_attrs.emit_property_decl: true``: codegen emits the UE
    enum UPROPERTY decl into the schema PROPERTIES block.
-3. Scalar-int view fields: views can declare ``scalar_int_fields`` for
-   derived integer values (not pointer slices).
-4. ``export_if`` per-attr conditional: a C++ predicate that ANDs with
-   the override toggle before the write fires.
 
 Each test uses synthetic rules to exercise its capability in isolation.
 """
@@ -28,63 +25,36 @@ import pytest  # noqa: E402
 from generate_ue_components import (  # noqa: E402
     _resolve_value_map,
     _emit_xml_enum_import,
-    _emit_xml_enum_export,
-    _emit_export_line,
     emit_schema_for_attrs,
-    emit_view_structs,
 )
 
 
-# ----- value_map_from_enum resolver ------------------------------------
+# ----- value_map resolver ----------------------------------------------
 
-def test_value_map_explicit_takes_precedence():
-    """If a rule has both ``value_map`` and ``value_map_from_enum``, the
-    explicit map wins."""
+def test_value_map_returned_verbatim():
+    """The resolver returns the rule's literal ``value_map`` unchanged."""
     enum_def = {
         "ue_property": "Type",
         "ue_enum_type": "EMjJointType",
         "value_map":   {"hinge": ["Hinge", "mjJNT_HINGE"]},
-        "value_map_from_enum": "mjtJoint",
     }
-    snap = {"enums": {"mjtJoint": {"mjJNT_HINGE": 0}}}
-    resolved = _resolve_value_map("type", enum_def, snap)
+    resolved = _resolve_value_map("type", enum_def)
     assert resolved == {"hinge": ["Hinge", "mjJNT_HINGE"]}
 
 
-def test_value_map_from_enum_resolves_from_snapshot():
-    """With only ``value_map_from_enum`` set, the resolver builds the
-    table from the snapshot's enum entries + the rule's xml_from_mj +
-    ue_member_from_mj cross-walks."""
-    enum_def = {
-        "ue_property": "Type",
-        "ue_enum_type": "EMjJointType",
-        "value_map_from_enum": "mjtJoint",
-        "ue_member_from_mj": {"mjJNT_HINGE": "Hinge", "mjJNT_SLIDE": "Slide"},
-        "xml_from_mj":        {"mjJNT_HINGE": "hinge", "mjJNT_SLIDE": "slide"},
-    }
-    snap = {"enums": {"mjtJoint": {"mjJNT_HINGE": 0, "mjJNT_SLIDE": 1}}}
-    resolved = _resolve_value_map("type", enum_def, snap)
-    assert resolved == {
-        "hinge": ["Hinge", "mjJNT_HINGE"],
-        "slide": ["Slide", "mjJNT_SLIDE"],
-    }
-
-
-def test_value_map_resolver_errors_when_neither_path_works():
+def test_value_map_resolver_errors_when_missing():
     enum_def = {"ue_property": "X", "ue_enum_type": "E"}
-    with pytest.raises(RuntimeError, match="no value_map and value_map_from_enum did not resolve"):
-        _resolve_value_map("attr", enum_def, mjspec=None)
+    with pytest.raises(RuntimeError, match="missing value_map"):
+        _resolve_value_map("attr", enum_def)
 
 
-def test_xml_enum_import_emits_byte_identical_with_resolver():
-    """Emit through the resolver produces the SAME C++ as the
-    direct-value_map path — byte-identity is the gate guarantee."""
+def test_xml_enum_import_emits_expected_blocks():
     enum_def = {
         "ue_property": "Type",
         "ue_enum_type": "EMjJointType",
         "value_map":   {"hinge": ["Hinge", "mjJNT_HINGE"], "slide": ["Slide", "mjJNT_SLIDE"]},
     }
-    out = _emit_xml_enum_import("type", enum_def, mjspec=None)
+    out = _emit_xml_enum_import("type", enum_def)
     assert "Type = EMjJointType::Hinge" in out
     assert "Type = EMjJointType::Slide" in out
     assert "bOverride_Type = true" in out
@@ -134,56 +104,3 @@ def test_emit_property_decl_on_emits_uproperty_pair():
     assert "bOverride_Type" in out.properties_h
 
 
-# ----- scalar-int views ------------------------------------------------
-
-def test_view_scalar_int_fields_emit_decl_and_bind():
-    rules = {
-        "views": {
-            "TestView": {
-                "scalar_int_fields": {
-                    "slot": "id * 2 + 1",
-                }
-            }
-        }
-    }
-    out = emit_view_structs(rules, mjxmacro={"mjmodel_pointers": {}})
-    fields_block, bind_block = out["TestView"]
-    assert "int slot;" in fields_block
-    assert "slot = id * 2 + 1;" in bind_block
-
-
-def test_view_scalar_int_unused_by_default():
-    """Views that don't set scalar_int_fields produce no extra lines."""
-    rules = {"views": {"TestView": {}}}
-    out = emit_view_structs(rules, mjxmacro={"mjmodel_pointers": {}})
-    fields_block, bind_block = out["TestView"]
-    assert fields_block == ""
-    assert bind_block == ""
-
-
-# ----- export_if per-attr conditional ----------------------------------
-
-def test_export_if_unset_keeps_simple_toggle():
-    out = _emit_export_line("kp", "kp", "float", export_if=None)
-    assert out == "    if (bOverride_kp) Element->kp = kp;\n"
-
-
-def test_export_if_set_combines_with_toggle():
-    out = _emit_export_line("kp", "kp", "float",
-                            export_if="Type == EMjActuatorType::Position")
-    assert out == "    if (bOverride_kp && Type == EMjActuatorType::Position) Element->kp = kp;\n"
-
-
-def test_export_if_threads_through_emit_schema_for_attrs():
-    rules = {
-        "default_type": "float",
-        "type_mappings": {"kp": "float"},
-        "element_rules": {
-            "actuator": {
-                "export_if": {"kp": "Type == EMjActuatorType::Position"},
-            }
-        },
-    }
-    out = emit_schema_for_attrs(["kp"], rules, element_name="actuator", category_label="Actuator")
-    assert "Type == EMjActuatorType::Position" in out.exports_cpp
-    assert "if (bOverride_kp && Type == EMjActuatorType::Position)" in out.exports_cpp

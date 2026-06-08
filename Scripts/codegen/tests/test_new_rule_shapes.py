@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""Residual unit tests for v8/v9 rule shapes that don't have a dedicated
+"""Residual unit tests for rule shapes that don't have a dedicated
 file: ``property_default`` (with value_map cross-check),
 ``_guarded_export(multiline=...)`` emission shapes, and the full-coverage
 drift checks (value_map stale, orphan type_mappings, compiler attrs,
@@ -86,7 +86,7 @@ def test_property_default_cross_check_diagnoses_bad_member():
         ["gaintype"], rules, "actuator", "Actuator",
         apply_canonicalizations=True,
     )
-    assert any("NotAMember" in d.message for d in gen._DIAGS)
+    assert any("NotAMember" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 # ---------- _guarded_export(multiline=True) --------------------------------
@@ -155,9 +155,9 @@ def test_value_map_stale_mj_const_flagged():
             },
         },
     }
-    mjspec = {"enums": {"mjtJoint": ["mjJNT_HINGE", "mjJNT_SLIDE"]}}
+    mjspec = {"enums": {"mjtJoint": {"mjJNT_HINGE": 0, "mjJNT_SLIDE": 1}}}
     gen._check_value_map_stale_mj_consts(rules, mjspec)
-    assert any("mjJNT_NONEXISTENT" in d.message for d in gen._DIAGS)
+    assert any("mjJNT_NONEXISTENT" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_orphan_type_mappings_flagged():
@@ -171,7 +171,7 @@ def test_orphan_type_mappings_flagged():
         "element_rules": {},
     }
     gen._check_orphan_rule_entries(schema, rules)
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("'vanishedattr'" in m for m in msgs)
     assert not any("'stiffness'" in m for m in msgs)
 
@@ -183,7 +183,7 @@ def test_compiler_attrs_coverage_flags_unhandled():
         "intentionally_unmodeled_compiler_attrs": [],
     }
     gen._check_compiler_attrs_coverage(schema, rules)
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("newflag2030" in m for m in msgs), msgs
     assert not any("'angle'" in m for m in msgs)
 
@@ -195,7 +195,7 @@ def test_compiler_attrs_coverage_respects_intentional_skip():
         "intentionally_unmodeled_compiler_attrs": ["balanceinertia"],
     }
     gen._check_compiler_attrs_coverage(schema, rules)
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_mjxmacro_block_coverage_forward():
@@ -211,7 +211,7 @@ def test_mjxmacro_block_coverage_forward():
         },
     }
     gen._check_mjxmacro_block_coverage(rules, mjxmacro)
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("MJNEW_FIELDS" in m for m in msgs)
     assert not any("MJOPTION_FIELDS" in m for m in msgs)
 
@@ -224,7 +224,7 @@ def test_mjxmacro_block_coverage_reverse():
     }
     mjxmacro = {"struct_fields": {}}
     gen._check_mjxmacro_block_coverage(rules, mjxmacro)
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("MJGHOST_FIELDS" in m and "MjGhost" in m for m in msgs)
 
 

@@ -1,19 +1,20 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""Tests for the libclang-backed EMj* hand-enum scrape added by Phase
-1.8 to ``build_introspect_snapshot.py`` (and the snapshot consumer
-``_hand_enums_from_snapshot`` in ``generate_ue_components.py``).
+"""Tests for the libclang-backed EMj* hand-enum scrape in
+``build_introspect_snapshot.py`` and the snapshot consumer
+``_hand_enums_from_snapshot``.
 
-The libclang scrape:
-  - extracts every ``enum class EMj* : uint8 { ... }`` block in the
-    URLab Public/ tree
-  - strips UE-only macros (UMETA / UENUM) so a minimal libclang TU can
-    parse the block — including nested parens like
-    ``UMETA(DisplayName="Track (Centre of Mass)")``
+The scrape:
+  - extracts every ``enum class EMj* : uint8 { ... }`` block under
+    ``Source/URLab/Public``;
+  - strips UE-only macros (UMETA / UENUM) so a minimal libclang TU
+    can parse the block — including nested parens like
+    ``UMETA(DisplayName="Track (Centre of Mass)")``;
   - lands the result under ``snapshot.hand_enums`` in
-    ``introspect_snapshot.json``
-The runtime drift check ``_check_hand_enum_drift`` prefers this over the
-fallback regex scrape — the snapshot is byte-stable across machines
-because the macro stripping is deterministic."""
+    ``introspect_snapshot.json``.
+
+The hand-enum drift check prefers this over the fallback regex
+scrape — the snapshot is byte-stable across machines because the
+macro stripping is deterministic."""
 
 from __future__ import annotations
 
@@ -22,6 +23,8 @@ import os
 
 import pytest
 import generate_ue_components as gen
+import _codegen_checks as _checks
+gen._hand_enums_from_snapshot = _checks._hand_enums_from_snapshot
 
 # build_introspect_snapshot lives alongside generate_ue_components but is
 # not always import-clean (it would try to load clang.cindex at import

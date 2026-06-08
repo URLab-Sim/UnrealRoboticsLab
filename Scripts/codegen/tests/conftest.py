@@ -45,7 +45,7 @@ def real_mjxmacro() -> Dict[str, Any]:
 
 @pytest.fixture(scope="session")
 def real_mjspec() -> Dict[str, Any]:
-    """The mjspec snapshot file was retired in Phase 3; the runtime
+    """The mjspec snapshot file was retired; the runtime
     now projects the introspect snapshot into the legacy mjspec shape.
     The fixture mirrors that projection so tests stay isomorphic."""
     import generate_ue_components as gen

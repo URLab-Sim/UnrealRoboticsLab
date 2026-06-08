@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 
 import generate_ue_components as gen
+import _codegen_inject as _inject
+gen._check_brace_balance = _inject._check_brace_balance
 
 
 def _write(tmp_path, name: str, body: str) -> str:
@@ -26,13 +28,13 @@ def test_brace_balance_flags_unbalanced_block():
     body = "if (x) { do_thing(); "  # missing close
     gen._check_brace_balance(body, "FOO", "unit_test")
     assert any("unbalanced braces" in d.message and "CODEGEN_FOO" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_brace_balance_quiet_on_balanced_block():
     body = "if (x) { do_thing(); }"
     gen._check_brace_balance(body, "FOO", "unit_test")
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_brace_balance_ignores_braces_in_strings_and_comments():
@@ -46,7 +48,7 @@ def test_brace_balance_ignores_braces_in_strings_and_comments():
         '}\n'
     )
     gen._check_brace_balance(body, "FOO", "unit_test")
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_inject_between_tags_with_balance_flag_fires_diag():
@@ -56,7 +58,7 @@ def test_inject_between_tags_with_balance_flag_fires_diag():
     _, ok = gen.inject_between_tags(file_text, "FOO", new_inner,
                                     balance_source="unit_test")
     assert ok is True
-    assert any("unbalanced braces" in d.message for d in gen._DIAGS)
+    assert any("unbalanced braces" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_inject_between_tags_default_skips_balance_check():
@@ -65,7 +67,7 @@ def test_inject_between_tags_default_skips_balance_check():
     opt out."""
     file_text = "// --- CODEGEN_FOO_START ---\nold\n// --- CODEGEN_FOO_END ---\n"
     gen.inject_between_tags(file_text, "FOO", "{ stray")
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 # ---------- _inject_tags_into_cpp -----------------------------------------
@@ -103,7 +105,7 @@ def test_inject_tags_into_cpp_diagnoses_missing_file(tmp_path):
         missing, [("FOO", "x")], writes, diag_source="unit_test",
     )
     assert writes == []
-    assert any("does not exist" in d.message for d in gen._DIAGS)
+    assert any("does not exist" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_inject_tags_into_cpp_diagnoses_missing_marker(tmp_path):
@@ -118,16 +120,14 @@ def test_inject_tags_into_cpp_diagnoses_missing_marker(tmp_path):
     )
     # The FOO write still landed; MISSING_TAG fires a diagnostic.
     assert len(writes) == 1
-    assert any("CODEGEN_MISSING_TAG" in d.message for d in gen._DIAGS)
+    assert any("CODEGEN_MISSING_TAG" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_inject_tags_into_cpp_skips_write_when_unchanged(tmp_path):
     """Idempotency: re-injecting the same body must not append a
-    FileWrite. The codegen --check gate relies on this.
-
-    Phase 4.3 changed inject_between_tags so the END marker's indent
-    mirrors the START marker's. When START sits at column 0 (this
-    test's case), END also lands at column 0."""
+    FileWrite. The ``--check`` gate relies on this. The END marker's
+    indent mirrors the START marker's, so a START at column 0 lands
+    END at column 0 too."""
     body = (
         "// --- CODEGEN_FOO_START ---\n"
         "same body\n"
@@ -142,10 +142,9 @@ def test_inject_tags_into_cpp_skips_write_when_unchanged(tmp_path):
 
 
 def test_inject_between_tags_normalises_end_indent_to_match_start(tmp_path):
-    """Phase 4.3 fix: a hand-prepped source where START is at 8 spaces
-    but END is at 4 spaces (or any mismatch) gets its END normalised
-    to match START. Previously the helper hardcoded a 4-space END
-    indent — that locked in the mismatch on every regen."""
+    """A hand-prepped source where START is at 8 spaces but END is
+    at 4 spaces (or any mismatch) gets its END normalised to match
+    START."""
     text = (
         "        // --- CODEGEN_FOO_START ---\n"
         "        body content\n"

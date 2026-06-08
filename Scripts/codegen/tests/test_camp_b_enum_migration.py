@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""Locks the generated_enums extensions added by Phase 1.12:
+"""Locks the generated_enums extensions:
 ``extra_members`` (URLab-extra members appended after mj-derived ones)
 and the ``disabled`` opt-out (skips emission so a rule can land before
 the corresponding hand-rolled enums are swapped out).
@@ -89,7 +89,7 @@ def test_extra_member_without_name_fires_diagnostic():
     gen._emit_generated_enum_file(
         "MjArticulationEnums", rules_def, mjspec, "/tmp/public",
     )
-    assert any("missing 'name'" in d.message for d in gen._DIAGS)
+    assert any("missing 'name'" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 # ---------- disabled opt-out -----------------------------------------------
@@ -185,16 +185,4 @@ def test_camp_b_rule_post_flip_state(real_rules):
     )
 
 
-def test_camp_b_generated_header_exists():
-    """Sanity: the codegen-emitted ``MjArticulationEnums.h`` lives in
-    the expected location."""
-    import os
-    _here = os.path.dirname(os.path.abspath(__file__))
-    _root = os.path.abspath(os.path.join(_here, "..", "..", ".."))
-    expected = os.path.join(
-        _root, "Source", "URLab", "Public", "MuJoCo", "Generated",
-        "MjArticulationEnums.h",
-    )
-    assert os.path.exists(expected), (
-        f"Camp B generated header missing: {expected}"
-    )
+# On-disk presence is covered by test_regen_no_diff.py::test_codegen_check_clean.

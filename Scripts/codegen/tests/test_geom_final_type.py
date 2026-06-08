@@ -51,12 +51,12 @@ def test_geom_final_type_emits_full_block():
     assert "case EMjGeomType::Box: FinalType = mjGEOM_BOX;" in out
     assert "case EMjGeomType::Mesh: FinalType = mjGEOM_MESH;" in out
     assert "MeshName" in out
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_geom_final_type_returns_none_when_no_rule():
     assert _emit_geom_final_type_block({}, {}) is None
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_geom_final_type_diagnoses_missing_enum_def():
@@ -73,7 +73,7 @@ def test_geom_final_type_diagnoses_missing_enum_def():
     }
     out = _emit_geom_final_type_block(cat_rules, {"xml_enum_attrs": {}})
     assert out is None
-    assert any("nonexistent" in d.message for d in gen._DIAGS)
+    assert any("nonexistent" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_geom_final_type_diagnoses_empty_value_map():
@@ -82,4 +82,4 @@ def test_geom_final_type_diagnoses_empty_value_map():
     element_rules["xml_enum_attrs"]["type"]["value_map"] = {}
     out = _emit_geom_final_type_block(cat_rules, element_rules)
     assert out is None
-    assert any("empty value_map" in d.message for d in gen._DIAGS)
+    assert any("empty value_map" in d.message for d in gen._DIAGS_BUFFER.pending)

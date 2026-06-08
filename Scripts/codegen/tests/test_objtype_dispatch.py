@@ -30,12 +30,12 @@ def test_objtype_dispatch_emits_switch_with_default():
     assert "Element->objtype = mjOBJ_JOINT;" in out
     assert "default:" in out
     assert "Element->objtype = mjOBJ_UNKNOWN;" in out
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_objtype_dispatch_returns_none_when_no_rule():
     assert _emit_objtype_dispatch_block({}) is None
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_objtype_dispatch_diagnoses_missing_type_enum_name():
@@ -47,7 +47,7 @@ def test_objtype_dispatch_diagnoses_missing_type_enum_name():
         },
     })
     assert out is None
-    assert any("type_enum_name" in d.message for d in gen._DIAGS)
+    assert any("type_enum_name" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_objtype_dispatch_diagnoses_empty_cases():
@@ -60,7 +60,7 @@ def test_objtype_dispatch_diagnoses_empty_cases():
         },
     })
     assert out is None
-    assert any("no cases" in d.message for d in gen._DIAGS)
+    assert any("no cases" in d.message for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_objtype_dispatch_diagnoses_empty_keys():
@@ -74,7 +74,7 @@ def test_objtype_dispatch_diagnoses_empty_keys():
     })
     assert out is None
     assert any("empty" in d.message and "keys" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_objtype_dispatch_diagnoses_missing_expr():
@@ -87,4 +87,4 @@ def test_objtype_dispatch_diagnoses_missing_expr():
         },
     })
     assert out is None
-    assert any("missing 'expr'" in d.message for d in gen._DIAGS)
+    assert any("missing 'expr'" in d.message for d in gen._DIAGS_BUFFER.pending)

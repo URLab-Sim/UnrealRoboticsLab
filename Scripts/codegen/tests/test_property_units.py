@@ -73,7 +73,7 @@ def test_property_units_validity_diagnoses_bad_unit():
     }
     gen._check_property_units_validity(rules)
     assert any("'meters'" in d.message and "geom" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_property_units_validity_silent_on_known_units():
@@ -83,7 +83,7 @@ def test_property_units_validity_silent_on_known_units():
         },
     }
     gen._check_property_units_validity(rules)
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_hidden_attrs_emits_edit_condition_hides():

@@ -7,6 +7,8 @@ cross-references them against MuJoCo's ``mjt*`` enums and the rules'
 from __future__ import annotations
 
 import generate_ue_components as gen
+import _codegen_checks as _checks
+gen._scan_hand_enums = _checks._scan_hand_enums
 
 
 def _write_enum_header(tmp_path, filename: str, enum_text: str):
@@ -73,7 +75,7 @@ def test_hand_enum_drift_diagnoses_subtype_enum_value_typo(tmp_path):
     }
     gen._check_hand_enum_drift({}, rules, None, str(tmp_path))
     assert any("Screwd" in d.message and "EMjJointType" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_hand_enum_drift_diagnoses_value_map_ue_member_typo(tmp_path):
@@ -98,7 +100,7 @@ def test_hand_enum_drift_diagnoses_value_map_ue_member_typo(tmp_path):
     }
     gen._check_hand_enum_drift({}, rules, None, str(tmp_path))
     assert any("Bxox" in d.message and "EMjGeomType" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_hand_enum_drift_surfaces_new_mj_enum_value(tmp_path):
@@ -132,7 +134,7 @@ def test_hand_enum_drift_surfaces_new_mj_enum_value(tmp_path):
         },
     }
     gen._check_hand_enum_drift({}, rules, mjspec, str(tmp_path))
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("mjJNT_SCREW" in m for m in msgs), msgs
     assert any("mjJNT_FREE" in m for m in msgs), msgs
 
@@ -169,7 +171,7 @@ def test_hand_enum_drift_respects_intentional_skips(tmp_path):
         },
     }
     gen._check_hand_enum_drift({}, rules, mjspec, str(tmp_path))
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     # DCMOTOR is in the skip list -> no diag.
     assert not any("mjGAIN_DCMOTOR" in m for m in msgs)
     # USER is not -> diag fires.
@@ -224,7 +226,7 @@ def test_hand_enum_drift_per_element_overrides(tmp_path):
     mjspec = {"enums": {"mjtGeom": ["mjGEOM_SPHERE", "mjGEOM_BOX",
                                       "mjGEOM_PLANE", "mjGEOM_MESH"]}}
     gen._check_hand_enum_drift({}, rules, mjspec, str(tmp_path))
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     # Geom has all 4 mapped -> no diag.
     assert not any("element 'geom'" in m for m in msgs)
     # Site skips Plane + Mesh -> no diag for those either.

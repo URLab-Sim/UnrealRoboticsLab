@@ -1,18 +1,15 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""URLab codegen — text-injection machinery (Phase 5 module split,
-step 3).
+"""URLab codegen — text-injection machinery.
 
 Pure text operations: locate ``// --- CODEGEN_<tag>_START/END ---``
 marker pairs in a source file, splice a body between them, and emit
 diagnostics when the body has unbalanced braces or the markers are
-missing. No knowledge of rules, schema, or mjspec — just file text in,
-file text out.
+missing.
 
 The brace-aware helpers (``_find_matching_brace``,
-``_strip_cpp_braces_in_strings``, ``_check_brace_balance``) also live
-here because the banner-overwrite audit + brace-balance gate both
-consume them — moving them keeps every text-aware operation in one
-module."""
+``_strip_cpp_braces_in_strings``, ``_check_brace_balance``) live
+here too because the banner-overwrite audit + the brace-balance
+gate both consume them."""
 
 from __future__ import annotations
 
@@ -101,9 +98,9 @@ def inject_between_tags(file_text: str, tag: str, new_inner: str,
     (new_text, was_found).
 
     The END marker's leading whitespace is rewritten to match the
-    START marker's indent. Phase 4.4 fix: when ``new_inner`` is empty
-    or whitespace-only, the helper collapses the block so START + END
-    sit on adjacent lines with no stray blank line between them.
+    START marker's indent. When ``new_inner`` is empty or
+    whitespace-only the block collapses so START + END sit on
+    adjacent lines with no stray blank line between them.
 
     When ``balance_source`` is set, emit a diagnostic if the injected
     block has unbalanced braces."""

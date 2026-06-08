@@ -28,7 +28,7 @@ def test_compound_expression_expands_and_keeps_other_tokens():
     derived per-element block sizes. The guard must NOT fire because
     the substitution removes the only MJ_ macro."""
     assert gen._expand_stride("MJ_M(nuser_geom)*3") == "m->nuser_geom*3"
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 def test_unknown_macro_fires_guard_diagnostic():
@@ -37,12 +37,12 @@ def test_unknown_macro_fires_guard_diagnostic():
     out = gen._expand_stride("MJ_D(foo)")
     assert "MJ_D(foo)" in out
     assert any("unhandled MuJoCo macro" in d.message and "MJ_D(foo)" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_multiple_unknown_macros_listed_together():
     gen._expand_stride("MJ_D(a) + MJ_V(b)")
-    diags = [d.message for d in gen._DIAGS]
+    diags = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("MJ_D(a)" in m and "MJ_V(b)" in m for m in diags), diags
 
 
@@ -51,4 +51,4 @@ def test_known_and_unknown_mixed_still_fires_for_unknown():
     out = gen._expand_stride("MJ_M(nuser_jnt) * MJ_D(foo)")
     assert "m->nuser_jnt" in out
     assert "MJ_D(foo)" in out
-    assert any("MJ_D(foo)" in d.message for d in gen._DIAGS)
+    assert any("MJ_D(foo)" in d.message for d in gen._DIAGS_BUFFER.pending)

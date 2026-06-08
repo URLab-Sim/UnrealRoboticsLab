@@ -1,27 +1,22 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""URLab codegen — core shared bits.
+"""URLab codegen — core shared data + helpers.
 
 Dependency root. Owns:
 
-- Diagnostics buffer (DiagBuffer + the _DIAGS / _STRICT_DIAGS_FIRED
-  legacy aliases).
-- UE type registry (_UE_TYPE_INFO + its three derived views).
-- Naming helpers (pascal_case, override_toggle_name).
-- Schema readers (schema_attrs, schema_subtype_attrs) — pure dict
-  walks against the MJCF schema snapshot.
-- Rule-iteration helpers (iter_canon_absorbed / compute_canon_absorbed
-  / iter_category_attrs) shared between emitters and drift checks.
-- C-type classifier (_classify_c_type / _shapes_compatible) and the
-  vec3 convert format table — both drift-check inputs, no emit
-  semantics.
-- mjs field resolver chain (the 5-strategy bridge between MJCF attr
-  names and mjs C struct field names).
-- xml_enum value-map resolver (literal + snapshot-driven shapes).
+- ``DiagBuffer`` — the diagnostics buffer the orchestrator + checks
+  share.
+- ``_UE_TYPE_INFO`` — single source of truth for every UE type
+  codegen can emit; ``_UE_TYPE_FAMILY`` and
+  ``_UE_TYPES_ACCEPTING_UNITS_META`` are derived views.
+- Naming helpers, schema readers, canon-iteration helpers.
+- The 5-strategy ``_resolve_mjs_field`` chain — the bridge between
+  MJCF attr names and the C struct field names MuJoCo picks.
+- ``_resolve_value_map`` — the xml_enum value-map reader.
+- ``FileWrite`` — the data class every emitter produces.
 
-Everything here is read-only against the rules/schema/snapshot —
-no file writes, no UPROPERTY emission, no .cpp injection. The
-orchestrator (``generate_ue_components``) and the drift-check module
-(``_codegen_checks``) both import from here.
+Read-only against rules / schema / snapshot. No file writes, no
+UPROPERTY emission, no .cpp injection. ``generate_ue_components``
+and ``_codegen_checks`` both import from here.
 """
 
 from __future__ import annotations
@@ -38,22 +33,16 @@ from typing import Any, Dict, Iterable, Iterator, List, Optional, Sequence, Set,
 
 @dataclass
 class Diagnostic:
-    """A non-fatal codegen warning. Collected by ``_diag_add`` during a run
-    and flushed once at the end via ``_diag_flush``."""
+    """A non-fatal codegen warning. Collected by ``_diag_add`` during a
+    run and flushed once at the end via ``_diag_flush``."""
     message:  str
     source:   str = ""    # short tag for grouping (e.g. "schema_drift")
 
 
 class DiagBuffer:
-    """Collects codegen diagnostics during a run. Encapsulates the
-    previous module-global ``_DIAGS`` list + ``_STRICT_DIAGS_FIRED``
-    counter behind one object so a future PhaseContext can pass a
-    buffer explicitly instead of every emitter mutating module state.
-
-    ``pending`` and ``fired_count`` are surfaced as attributes (not
-    properties) so the legacy module-globals can alias the underlying
-    list in-place and existing test fixtures keep working without an
-    indirection layer."""
+    """Collects codegen diagnostics during a run. ``pending`` is the
+    queue of unflushed entries; ``fired_count`` survives the flush so
+    ``main()`` can check whether ``--strict`` should exit non-zero."""
 
     def __init__(self) -> None:
         self.pending: List[Diagnostic] = []
@@ -64,9 +53,7 @@ class DiagBuffer:
 
     def flush(self) -> None:
         """Print collected diagnostics to stderr, advance ``fired_count``
-        by the number flushed, and clear the pending list. Format
-        matches the legacy ``_emit_drift_diagnostics`` output so log-
-        greppers keep working."""
+        by the number flushed, and clear the pending list."""
         if not self.pending:
             return
         print(f"\n--- codegen diagnostics ({len(self.pending)}) ---",
@@ -87,12 +74,6 @@ class DiagBuffer:
 
 
 _DIAGS_BUFFER = DiagBuffer()
-# Backward-compat aliases. ``_DIAGS`` is the buffer's own list so
-# ``_DIAGS.append(...)`` / ``_DIAGS.clear()`` in legacy code still
-# mutate the canonical state. ``_STRICT_DIAGS_FIRED[0]`` is a mirror
-# kept in sync by ``_diag_flush`` / ``_reset_diags``.
-_DIAGS: List[Diagnostic] = _DIAGS_BUFFER.pending
-_STRICT_DIAGS_FIRED: List[int] = [0]
 
 
 def _diag_add(message: str, *, source: str = "") -> None:
@@ -101,16 +82,13 @@ def _diag_add(message: str, *, source: str = "") -> None:
 
 def _diag_flush() -> None:
     _DIAGS_BUFFER.flush()
-    _STRICT_DIAGS_FIRED[0] = _DIAGS_BUFFER.fired_count
 
 
 def _reset_diags() -> None:
-    """Reset both the diag buffer and the legacy mirror counter. Used
-    at the top of ``collect_all_writes`` (so back-to-back runs in the
-    same process don't carry diagnostics from the previous invocation)
-    and by the pytest fixture in tests/conftest.py."""
+    """Reset the diag buffer between runs so back-to-back invocations
+    in the same Python process (test runners, integration shells)
+    don't carry stale state."""
     _DIAGS_BUFFER.reset()
-    _STRICT_DIAGS_FIRED[0] = 0
 
 
 # ---------------------------------------------------------------------------
@@ -134,22 +112,14 @@ _UE_TYPE_INFO: Dict[str, _UEType] = {
     "float":           _UEType("0.0f",                  ("scalar", "num"),    True),
     "double":          _UEType("0.0",                   ("scalar", "num"),    True),
     "int32":           _UEType("0",                     ("scalar", "int"),    True),
-    "uint8":           _UEType("0",                     ("scalar", "int"),    True),
-    "int16":           _UEType("0",                     ("scalar", "int"),    True),
-    "int64":           _UEType("0",                     ("scalar", "int"),    True),
+    "uint8":           _UEType("0",                     ("scalar", "int"),    True),  # synth-mirror only
     "bool":            _UEType("false",                 ("scalar", "bool"),   False),
     "FString":         _UEType('TEXT("")',              ("scalar", "string"), False),
     "FVector":         _UEType("FVector::ZeroVector",   ("vec", 3),           True),
-    "FVector2D":       _UEType("FVector2D::ZeroVector", ("vec", 2),           True),
-    "FIntPoint":       _UEType("FIntPoint(0, 0)",       ("vec", 2),           True),
-    "FRotator":        _UEType("FRotator::ZeroRotator", ("vec", 3),           True),
     "FQuat":           _UEType("FQuat::Identity",       ("vec", 4),           False),
     "FLinearColor":    _UEType("FLinearColor::White",   ("vec", 4),           False),
     "TArray<float>":   _UEType("{}",                    ("array", None),      False),
-    "TArray<double>":  _UEType("{}",                    ("array", None),      False),
     "TArray<int32>":   _UEType("{}",                    ("array", None),      False),
-    "TArray<uint8>":   _UEType("{}",                    ("array", None),      False),
-    "TArray<FString>": _UEType("{}",                    ("array", None),      False),
 }
 
 
@@ -157,11 +127,9 @@ def _attr_default_value(ue_type: str) -> str:
     info = _UE_TYPE_INFO.get(ue_type)
     if info is not None:
         return info.default_init
-    # Catch-all for novel TArray<...> shapes (e.g. TArray<UObject*>)
-    # the registry doesn't enumerate but which still default-construct
-    # empty.
-    if ue_type.startswith("TArray"):
-        return "{}"
+    # Unknown types fall through to the default-construct literal — same
+    # for novel TArray<...> entries (e.g. TArray<UObject*>) the registry
+    # doesn't enumerate.
     return "{}"
 
 
@@ -207,20 +175,10 @@ class FileWrite:
     content: str
 
 
-# ---------------------------------------------------------------------------
-# Naming helpers
-# ---------------------------------------------------------------------------
-
-
-def pascal_case(snake_or_camel: str) -> str:
-    """**Schema-verbatim** naming. We use MuJoCo's attribute name AS-IS
-    as the C++ UPROPERTY identifier — no PascalCase, no renames. This
-    keeps the codegen pure: schema name == C++ name == wire field name.
-    """
-    return snake_or_camel
-
-
 def override_toggle_name(prop_name: str) -> str:
+    """``bOverride_<X>`` is the codegen-emitted toggle field that
+    gates whether the corresponding UPROPERTY's value gets written
+    back to the mjs struct."""
     return f"bOverride_{prop_name}"
 
 
@@ -250,13 +208,16 @@ def compute_canon_absorbed(elem_canons: Iterable[str],
 def iter_category_attrs(attrs: Iterable[str], *,
                         global_excl: Set[str],
                         elem_excl: Set[str],
-                        canon_absorbed: Set[str]) -> Iterator[str]:
-    """Yield attrs that pass the three standard codegen exclusion
-    gates. Call sites layer additional skips after the helper
-    (xml_enum_attrs, target-collation-absorbed, etc) — those stay
-    local because the extra-skip sets differ per emission stage."""
+                        canon_absorbed: Set[str],
+                        extra_excl: Optional[Set[str]] = None) -> Iterator[str]:
+    """Yield attrs that pass the standard codegen exclusion gates plus
+    any site-specific ``extra_excl`` set the caller assembles
+    (xml_enum_attrs, target-collation-absorbed, etc — these vary per
+    emission stage)."""
     for attr in attrs:
         if attr in global_excl or attr in elem_excl or attr in canon_absorbed:
+            continue
+        if extra_excl is not None and attr in extra_excl:
             continue
         yield attr
 
@@ -503,36 +464,24 @@ def _resolve_mjs_field(attr: str, mjs_fields: set,
 # ---------------------------------------------------------------------------
 
 
-def _resolve_value_map(attr: str, enum_def: Dict[str, Any],
-                      mjspec: Optional[Dict[str, Any]] = None) -> Dict[str, Sequence[str]]:
-    """Return the ``{xml_val -> [UE_enum_member, mj_const]}`` table
-    for an xml_enum attr. Three sources, checked in order:
-
-      1) Explicit ``value_map`` in the rule.
-      2) ``value_map_from_enum: "mjtX"`` — looks up the C enum in the
-         introspect-projected mjspec and derives UE-side member names
-         from a sibling ``ue_member_from_mj`` table.
-      3) Error.
-    """
+def _resolve_value_map(attr: str, enum_def: Dict[str, Any]) -> Dict[str, Sequence[str]]:
+    """Return the ``{xml_val -> [UE_enum_member, mj_const]}`` table for
+    an xml_enum attr. The rule must carry an explicit ``value_map``."""
     if "value_map" in enum_def:
         return enum_def["value_map"]
-    enum_name = enum_def.get("value_map_from_enum")
-    if enum_name and mjspec:
-        c_enum = mjspec.get("enums", {}).get(enum_name)
-        ue_member_from_mj: Dict[str, str] = enum_def.get("ue_member_from_mj", {})
-        if c_enum:
-            out: Dict[str, Sequence[str]] = {}
-            for mj_const, _value in c_enum.items():
-                ue_member = ue_member_from_mj.get(mj_const)
-                if not ue_member:
-                    continue
-                xml_val = enum_def.get("xml_from_mj", {}).get(mj_const)
-                if not xml_val:
-                    continue
-                out[xml_val] = [ue_member, mj_const]
-            if out:
-                return out
-    raise RuntimeError(
-        f"xml_enum {attr}: no value_map and value_map_from_enum did not "
-        f"resolve (missing snapshot enum data or ue_member_from_mj rules)"
-    )
+    raise RuntimeError(f"xml_enum {attr}: rule is missing value_map")
+
+
+def _value_map_pair(mapping: Any) -> Optional[Tuple[str, str]]:
+    """Unpack a ``value_map`` entry into ``(ue_member, mj_const)`` or
+    return None when the shape is malformed. The 4 check sites that
+    used to inline ``isinstance(mapping, (list, tuple)) and len(mapping)
+    >= 2`` route through here so one shape contract covers all of
+    them. The corresponding emit-side path raises (see
+    ``_emit_xml_enum_export``) — the rule shape contract test
+    (test_rule_shape_contract.py::test_xml_enum_attr_value_maps_have_
+    correct_shape) is the canonical gate; this helper is the
+    runtime fallback for the drift checks."""
+    if not isinstance(mapping, (list, tuple)) or len(mapping) < 2:
+        return None
+    return mapping[0], mapping[1]

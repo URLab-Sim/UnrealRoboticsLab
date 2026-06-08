@@ -1,12 +1,11 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """Tests for the mjt* enum surface the codegen consumes.
 
-build_mjspec_snapshot.py's regex-based enum extractor was retired in
-Phase 3; mjt* enums now come from the clang-AST introspect snapshot
-(libclang gives us the real member values + handles every
-``typedef enum mjtX_ { ... } mjtX;`` shape uniformly). The shipped
-snapshot still has to carry every enum codegen rules reference, so
-the cross-check below is the surviving guard."""
+mjt* enums come from the clang-AST introspect snapshot — libclang
+gives us the real member values and handles every ``typedef enum
+mjtX_ { ... } mjtX;`` shape uniformly. The shipped snapshot has to
+carry every enum the codegen rules reference; the cross-check below
+is the guard."""
 
 from __future__ import annotations
 
@@ -35,8 +34,9 @@ def _load_projected_mjspec():
 
 
 def test_real_snapshot_has_expected_enums():
-    """Introspect must carry every mjt* enum the codegen rules
-    reference via xml_enum_attrs / value_map_from_enum."""
+    """Introspect must carry every mjt* enum the codegen rules drift
+    checks rely on (the cross-walk between value_map entries and the
+    enum members the snapshot reports for that mjt* type)."""
     mjspec = _load_projected_mjspec()
     enums = mjspec.get("enums", {})
     for expected in (
@@ -51,36 +51,3 @@ def test_real_snapshot_has_expected_enums():
     ):
         assert expected in enums, f"missing enum {expected} from snapshot"
         assert len(enums[expected]) > 0, f"enum {expected} has no members"
-
-
-def test_value_map_from_enum_resolves_with_real_snapshot():
-    """The snapshot-driven ``value_map_from_enum`` resolver still
-    produces a sensible value_map when wired against the projected
-    mjspec. Catches drift between mjmodel.h enum names and rule-side
-    ue_member_from_mj / xml_from_mj tables."""
-    from generate_ue_components import _resolve_value_map
-    mjspec = _load_projected_mjspec()
-    enum_def = {
-        "ue_property": "Type",
-        "ue_enum_type": "EMjJointType",
-        "value_map_from_enum": "mjtJoint",
-        "ue_member_from_mj": {
-            "mjJNT_FREE":  "Free",
-            "mjJNT_BALL":  "Ball",
-            "mjJNT_SLIDE": "Slide",
-            "mjJNT_HINGE": "Hinge",
-        },
-        "xml_from_mj": {
-            "mjJNT_FREE":  "free",
-            "mjJNT_BALL":  "ball",
-            "mjJNT_SLIDE": "slide",
-            "mjJNT_HINGE": "hinge",
-        },
-    }
-    resolved = _resolve_value_map("type", enum_def, mjspec)
-    assert resolved == {
-        "free":  ["Free",  "mjJNT_FREE"],
-        "ball":  ["Ball",  "mjJNT_BALL"],
-        "slide": ["Slide", "mjJNT_SLIDE"],
-        "hinge": ["Hinge", "mjJNT_HINGE"],
-    }

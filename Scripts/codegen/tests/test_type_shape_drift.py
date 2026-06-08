@@ -9,6 +9,17 @@ be typed or explicitly default-acknowledged)."""
 from __future__ import annotations
 
 import generate_ue_components as gen
+import _codegen_core as _core
+import _codegen_checks as _checks
+
+# Stitch test-only re-exports onto `gen` so the assertions below keep
+# their compact ``gen._classify_c_type`` form. The orchestrator's import
+# block intentionally no longer carries these — they're private to
+# _codegen_core / _codegen_checks.
+gen._classify_c_type = _core._classify_c_type
+gen._shapes_compatible = _core._shapes_compatible
+gen._check_type_shape_drift = _checks._check_type_shape_drift
+gen._check_new_attr_typing = _checks._check_new_attr_typing
 
 
 # ---------- _classify_c_type ------------------------------------------------
@@ -85,7 +96,7 @@ def test_type_shape_drift_flags_scalar_vs_array_mismatch():
     }
     gen._check_type_shape_drift({}, rules, mjspec)
     assert any("stiffness" in d.message and "mismatch" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_type_shape_drift_quiet_on_unmodeled_field():
@@ -113,7 +124,7 @@ def test_type_shape_drift_quiet_on_unmodeled_field():
         },
     }
     gen._check_type_shape_drift({}, rules, mjspec)
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0
 
 
 # ---------- _check_new_attr_typing -----------------------------------------
@@ -134,7 +145,7 @@ def test_new_attr_typing_flags_unmapped_attr():
         },
     }
     gen._check_new_attr_typing(schema, rules)
-    msgs = [d.message for d in gen._DIAGS]
+    msgs = [d.message for d in gen._DIAGS_BUFFER.pending]
     assert any("novel_attr" in m and "joint" in m for m in msgs), msgs
     # stiffness is typed -> no diag.
     assert not any("'stiffness'" in m for m in msgs)
@@ -154,4 +165,4 @@ def test_new_attr_typing_respects_intentional_default():
         },
     }
     gen._check_new_attr_typing(schema, rules)
-    assert len(gen._DIAGS) == 0
+    assert len(gen._DIAGS_BUFFER.pending) == 0

@@ -7,36 +7,30 @@ from generate_ue_components import emit_schema_for_attrs
 
 
 def test_orientation_absorbs_all_attrs(minimal_rules):
+    """Every orientation sibling (euler / axisangle / xyaxes / zaxis)
+    is absorbed into the canonical Quat UPROPERTY — none should leak
+    out as a standalone property."""
     attrs = ["quat", "euler", "axisangle", "xyaxes", "zaxis", "size"]
     out = emit_schema_for_attrs(attrs, minimal_rules, "geom", "Geom")
-    # Raw orientation attrs do NOT appear as per-attr properties.
-    for raw in ("Quat ", "Euler", "Axisangle", "Xyaxes", "Zaxis"):
-        # The canonical "Quat" property DOES appear once. Use the trailing
-        # space to disambiguate from `FQuat Quat`.
-        pass
-    # Canonical Quat is emitted once.
     assert "FQuat Quat" in out.properties_h
     assert "bOverride_Quat" in out.properties_h
-    # No per-attr Euler etc.
     assert "FQuat Euler" not in out.properties_h
     assert "AxisAngle " not in out.properties_h
     assert "Xyaxes " not in out.properties_h
 
 
-def test_orientation_import_uses_canonical_helper(minimal_rules):
+def test_orientation_roundtrips_through_canon_helpers(minimal_rules):
+    """A single ``quat`` schema attr drives both arms of the canon — the
+    import pulls through ``MjOrientationUtils::OrientationToMjQuat`` +
+    ``MjToUERotation``, and the export pushes through
+    ``UEToMjRotation``."""
     out = emit_schema_for_attrs(["quat"], minimal_rules, "geom", "Geom")
-    # Must invoke the canonicalisation helper, not a per-attr parser.
+    # Import arm.
     assert "MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat)" in out.imports_cpp
-    # Must route the result through MjUtils::MjToUERotation so the UPROPERTY
-    # lands in UE coordinate frame (X/Z sign-flipped) plus wxyz->xyzw reorder.
     assert "Quat = MjUtils::MjToUERotation(TmpQuat)" in out.imports_cpp
     assert "bOverride_Quat = true" in out.imports_cpp
-
-
-def test_orientation_export_uses_canonical_helper(minimal_rules):
-    out = emit_schema_for_attrs(["quat"], minimal_rules, "geom", "Geom")
+    # Export arm.
     assert "MjUtils::UEToMjRotation(Quat, TmpQuat)" in out.exports_cpp
-    # Writes to Element->quat[0..3].
     assert "Element->quat[0] = TmpQuat[0]" in out.exports_cpp
     assert "Element->quat[3] = TmpQuat[3]" in out.exports_cpp
 

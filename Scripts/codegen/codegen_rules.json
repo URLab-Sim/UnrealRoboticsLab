@@ -4,6 +4,8 @@
     "version": "5.0"
   },
 
+  "_doc_transform_widget_policy": "Categories whose Pos/Quat are authored via the UE Transform widget (geom/site/camera/frame/inertial) hide the canon Pos/Quat UPROPERTYs from the Details panel. The UPROPERTYs still exist for the import seed + BP read access, but EditConditionHides keeps them out of the user-facing surface so authoring stays in one place. Per-element _note_hidden entries point at this policy instead of restating it.",
+
   "global_exclusions": [
     "user", "name", "class", "type", "objtype", "reftype"
   ],
@@ -22,7 +24,7 @@
     "axis":               "Axis"
   },
 
-  "_note_setto_param_defaults": "MuJoCo's mjs_setTo* API treats specific scalar defaults as sentinels. These values are how URLab signals 'not overridden, use MuJoCo's default'. Most use -1.0; a few use 0.0 or 0.01 — encoded here as data, NOT as C++ string literals.",
+  "_note_setto_param_defaults": "MuJoCo's mjs_setTo* API treats specific scalar defaults as sentinels. These values are how URLab signals 'not overridden, use MuJoCo's default'. Most use -1.0; a few use 0.0 or 0.01. Values are stored as strings because the codegen drops them verbatim into the generated C++ call — typing them as JSON numbers would force a format choice (1 vs 1.0 vs 1.0f) and lose round-trip fidelity.",
   "setto_param_defaults": {
     "mjs_setToPosition":     {"inheritrange": "0.0"},
     "_note_mjs_setToIntVelocity": "intvelocity's mjs_setTo signature accepts a timeconst array param but MuJoCo's XML schema doesn't expose `timeconst` as an MJCF attr on <intvelocity> (unlike <position>/<cylinder>/<muscle>). Pin it to the -1.0 sentinel so the setto leaves the type-derived default alone.",
@@ -84,7 +86,7 @@
       "mjGEOM_FLEX", "mjGEOM_SKIN", "mjGEOM_SDF", "mjGEOM_NONE"
     ],
     "__per_element__": {
-      "_note_site_type": "Site now exposes Mesh + Hfield (Phase 4.6). Plane stays omitted because a site is a point/extent surface, not an infinite plane; SDF stays omitted because it carries heavy resource data the spawn-surface UX doesn't need.",
+      "_note_site_type": "Site exposes Mesh + Hfield. Plane stays omitted because a site is a point/extent surface, not an infinite plane; SDF stays omitted because it carries heavy resource data the spawn-surface UX doesn't need.",
       "site.type": ["mjGEOM_PLANE"]
     }
   },
@@ -260,18 +262,14 @@
       "export_helper":  "MjUtils::UEToMjRotation"
     },
     "actuator_transmission": {
-      "_note": "MJCF actuators encode their transmission via one of {joint, tendon, site, body, jointinparent} (the target name) plus optional {slidersite, refsite}. URLab collapses this to a single EMjActuatorTrnType enum + TargetName/SliderSite/RefSite strings. Codegen emits the parse+write blocks; the UPROPERTY declarations stay hand-side on UMjActuator.",
+      "_note": "MJCF actuators encode their transmission via one of {joint, tendon, site, body, jointinparent} (the target name) plus optional {slidersite, refsite}. URLab collapses this to a single EMjActuatorTrnType enum + TargetName/SliderSite/RefSite strings. Codegen emits the parse+write blocks inline (no rule-side helper); the UPROPERTY declarations stay hand-side on UMjActuator.",
       "absorbs_attrs": ["joint", "tendon", "site", "body", "jointinparent", "slidersite", "refsite"],
-      "emits_property": null,
-      "import_helper":  "(inline)",
-      "export_helper":  "(inline)"
+      "emits_property": null
     },
     "body_sleep_policy": {
-      "_note": "MJCF body.sleep is one of {'never','allowed','init'} or absent; mjsBody.sleep is the mjtSleepPolicy enum. URLab exposes EMjBodySleepPolicy SleepPolicy (with a Default entry that means 'let the global option decide'). Codegen emits the string<->enum mapping on both sides; the SleepPolicy UPROPERTY itself stays declared hand-side on UMjBody.",
+      "_note": "MJCF body.sleep is one of {'never','allowed','init'} or absent; mjsBody.sleep is the mjtSleepPolicy enum. URLab exposes EMjBodySleepPolicy SleepPolicy (with a Default entry that means 'let the global option decide'). Codegen emits the string<->enum mapping on both sides inline (no rule-side helper); the SleepPolicy UPROPERTY itself stays declared hand-side on UMjBody.",
       "absorbs_attrs": ["sleep"],
-      "emits_property": null,
-      "import_helper":  "(inline)",
-      "export_helper":  "(inline)"
+      "emits_property": null
     },
     "fromto_decompose": {
       "_note": "MJCF's `fromto` is an alternative form for capsule/cylinder/box/ellipsoid (an XY-XY segment). Decompose at import into Pos/Quat plus a half-length scalar written into size[1] (Y slot, e.g. capsule half-length) or size[2] (Z slot, e.g. box half-height) depending on shape Type. The codegen-owned size TArray<float> is grown as needed.",
@@ -293,7 +291,6 @@
     "actuator": {
       "_note_enums": "gaintype/biastype/dyntype are mjtGain/mjtBias/mjtDyn enums on mjsActuator. URLab declares EMjGainType/EMjBiasType/EMjDynType hand-side on UMjActuator; codegen owns the XML<->enum map via xml_enum_attrs. dcmotor 'input' is per-subtype (only on UMjDcMotorActuator) — emitter gates on attr-in-subtype-schema for that case.",
       "common_imports": ["class"],
-      "exclude_attrs": [],
       "applies_canonicalizations": ["actuator_transmission"],
       "xml_enum_attrs": {
         "gaintype": {
@@ -403,8 +400,7 @@
             "camera":   ["Camera",   "mjOBJ_CAMERA"]
           }
         }
-      },
-      "exclude_attrs": []
+      }
     },
     "joint": {
       "_note_axis_pos": "axis: MuJoCo direction vector with opposite Y handedness vs UE; vec3_convert.axis = y_negate flips on import + export. pos: spatial_pose canon emits the Pos UPROPERTY pair + drives SetRelativeLocation on import.",
@@ -430,7 +426,6 @@
         "margin":           "ToolTip=\"Contact-detection margin (m). Joints inherit this when computing limit constraints.\"",
         "group":            "ToolTip=\"Visualisation group 0–5. MuJoCo viewer uses this to toggle visibility.\""
       },
-      "exclude_attrs": [],
       "xml_enum_attrs": {
         "type": {
           "ue_property":  "Type",
@@ -470,7 +465,6 @@
     "geom": {
       "_note": "size is codegen-owned TArray<float>; fromto-decomposed half-length is written into size[1]/[2] by the canon. material is codegen-owned for IMPORT (FString -> UE material lookup) but SKIPPED on export because URLab handles materials as UE assets and does not register them in the mjsSpec (mjs_setString on Element->material would reference a non-existent spec entry and fail mj_compile). Orientation cluster absorbed by `orientation`; fromto absorbed by `fromto_decompose`. type is an URLab enum (EMjGeomType); codegen owns the XML<->enum string map via xml_enum_attrs.",
       "common_imports": ["class"],
-      "exclude_attrs": [],
       "_note_hfield": "hfield references URLab's own hfield actor system, not a mjsHField spec entry. Codegen still imports the string for editor visibility but skips the spec write to avoid 'hfield not found' on compile.",
       "export_skip_attrs": ["material", "hfield"],
       "applies_canonicalizations": ["spatial_pose", "orientation", "fromto_decompose"],
@@ -481,7 +475,7 @@
         "margin": "m",
         "gap":    "m"
       },
-      "_note_hidden": "Pos/Quat/size are stored in the UE Transform widget (RelativeLocation/Rotation/Scale3D) and authored there. The codegen still emits the UPROPERTYs so the import path can seed them and BPs can read them, but EditConditionHides keeps them off the Details panel.",
+      "_note_hidden": "See _doc_transform_widget_policy. size is hidden too — Scale3D is canonical.",
       "hidden_canon_properties": ["spatial_pose", "orientation"],
       "hidden_attrs": ["size"],
       "_note_attr_to_mjs_field": "MuJoCo renames fluidcoef -> fluid_coefs on the mjsGeom struct. shellinertia and fluidshape are handled by xml_enum_attrs below (they need string<->enum + field-rename together).",
@@ -532,11 +526,10 @@
     },
     "site": {
       "_note": "Same as geom: size codegen-owned TArray; material codegen-owned for IMPORT but export-skipped (UE-side materials); orientation + fromto canonicalized. mjsSite.type uses mjtGeom (sites are visual 'geoms'). Site has no bOverride_Type — Type always carries a value (default Sphere).",
-      "exclude_attrs": [],
       "export_skip_attrs": ["material"],
       "applies_canonicalizations": ["spatial_pose", "orientation", "fromto_decompose"],
       "sentinel_skip_export": {"size": "-1.0f"},
-      "_note_hidden": "Same policy as geom: Pos/Quat/size live in the UE Transform widget. UPROPERTYs exist for the import seed + BP access but are EditConditionHides-hidden from the Details panel.",
+      "_note_hidden": "See _doc_transform_widget_policy. size hidden too — Scale3D is canonical.",
       "hidden_canon_properties": ["spatial_pose", "orientation"],
       "hidden_attrs": ["size"],
       "xml_enum_attrs": {
@@ -561,7 +554,6 @@
     "tendon": {
       "common_imports": ["class"],
       "_note_material": "material codegen-owned for IMPORT but export-skipped — URLab handles materials as UE assets, not mjsMaterial spec entries.",
-      "exclude_attrs": [],
       "export_skip_attrs": ["material"],
       "_note_property_units": "springlength is unambiguously a length in metres. range is intentionally NOT tagged — it can be a length (slide-mode tendon) or an angle (rare hinge-coupled tendon) and labelling it with one unit would be wrong as often as right.",
       "property_units": {
@@ -618,9 +610,8 @@
       "_note": "MJCF camera.mode is a tracking mode (mjtCamLight subset). URLab declares EMjCameraTrackingMode hand-side; codegen owns the XML<->enum map. NOT to be confused with URLab's EMjCameraMode which is a UE-side render-mode selector (RGB/Depth/Segmentation).",
       "_note_common_imports": "Camera also reads name; the hand-written ImportFromXml has a fallback `if MjName empty -> 'Camera'` that runs AFTER this read.",
       "common_imports": ["name"],
-      "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
-      "_note_hidden": "Camera Pos/Quat are the camera transform — authored via the UE Transform widget. The intrinsics (fovy, ipd, focal, etc.) stay visible.",
+      "_note_hidden": "See _doc_transform_widget_policy. Intrinsics (fovy, ipd, focal, etc.) stay visible.",
       "hidden_canon_properties": ["spatial_pose", "orientation"],
       "_note_attr_to_mjs_field": "MuJoCo renames a handful of camera attrs between the XML schema and the mjsCamera struct: target -> targetbody (mjString*), projection -> proj (mjtProjection enum), focal -> focal_length, principal -> principal_length. sensorsize auto-resolves to sensor_size via the underscore-normalise heuristic. Without this map the auto-resolver in _resolve_mjs_field can't bridge target/focal/principal and they were silently dropped on export.",
       "attr_to_mjs_field": {
@@ -664,11 +655,10 @@
     },
     "body": {
       "common_imports": ["name"],
-      "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation", "body_sleep_policy"],
       "_note_canon_export_skip": "Body's pos/quat are written by MjSpecWrapper::CreateBody from the UE component transform (the source of truth for body placement). The codegen-emitted spatial_pose/orientation export would overwrite those with the Pos/Quat UPROPERTYs, which are stale for any body not freshly imported from XML. Skip the export side for these two canons.",
       "canon_export_skip": ["spatial_pose", "orientation"],
-      "_note_hidden": "Pos/Quat are stale after import (canon_export_skip routes the write through the UE transform). Hidden from the Details panel so users author placement only via the Transform widget.",
+      "_note_hidden": "See _doc_transform_widget_policy. canon_export_skip routes the write through the UE transform.",
       "hidden_canon_properties": ["spatial_pose", "orientation"],
       "property_meta": {
         "mocap":      "DisplayName=\"Driven By Unreal\"",
@@ -676,14 +666,12 @@
       }
     },
     "inertial": {
-      "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
-      "_note_hidden": "Inertial Pos/Quat are written from the UE component transform by UMjInertial::RegisterToSpec (hand-rolled, writes ParentBody->ipos/iquat). UPROPERTYs hidden so users don't author them in parallel with the transform.",
+      "_note_hidden": "See _doc_transform_widget_policy. UMjInertial::RegisterToSpec (hand-rolled) writes ParentBody->ipos/iquat from the UE transform.",
       "hidden_canon_properties": ["spatial_pose", "orientation"]
     },
     "frame": {
       "_note": "Like body: the UE component transform is the source of truth for placement. Codegen imports XML pos/quat into Pos/Quat UPROPERTYs (UE units / UE frame) and the cpp drives SetRelativeLocation/SetRelativeRotation from them. Spec export is skipped for the canon Pos/Quat because MjSpecWrapper::CreateFrame writes pos/quat from the UE transform.",
-      "exclude_attrs": [],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
       "canon_export_skip": ["spatial_pose", "orientation"],
       "hidden_canon_properties": ["spatial_pose", "orientation"]
@@ -691,7 +679,6 @@
     "flexcomp": {
       "_note": "Flexcomp doesn't register via mjs_addX — at spec time UMjFlexcomp builds a tiny standalone MJCF fragment and re-parses it via mj_parseXMLString + mjs_attach (the flexcomp macro is expanded by MuJoCo's XML parser, not the spec API). Codegen still owns the UPROPERTY surface so new MJCF attrs auto-appear; BuildFlexcompXml in MjFlexcomp.cpp reads from those codegen-owned fields. Sub-elements (<contact>/<edge>/<elasticity>/<pin>) remain hand-rolled because the codegen doesn't have per-sub-element UPROPERTY support yet.",
       "_note_material": "material codegen-owned for IMPORT but export-skipped — URLab handles materials as UE assets, not mjsMaterial spec entries.",
-      "exclude_attrs": [],
       "export_skip_attrs": ["material"],
       "applies_canonicalizations": ["spatial_pose", "orientation"],
       "canon_export_skip": ["spatial_pose", "orientation"],
@@ -735,23 +722,19 @@
       }
     },
     "freejoint": {
-      "exclude_attrs": []
     },
     "contact_pair": {
       "common_imports": [{"attr": "name", "ue_field": "Name"}],
-      "exclude_attrs": [],
       "property_units": {
         "margin": "m",
         "gap":    "m"
       }
     },
     "contact_exclude": {
-      "common_imports": [{"attr": "name", "ue_field": "Name"}],
-      "exclude_attrs": []
+      "common_imports": [{"attr": "name", "ue_field": "Name"}]
     },
     "keyframe": {
       "_note": "qpos/qvel/act/ctrl/mpos/mquat target mjsKey's mjDoubleVec* fields (std::vector<double>*) — require ->clear()+->push_back() rather than direct assignment. Codegen emits the import (TArray<float> read) + the mjs_double_vec-style export. RegisterToSpec hand-rolls freejoint-padding for qpos/qvel.",
-      "exclude_attrs": [],
       "mjs_double_vec_attrs": ["qpos", "qvel", "act", "ctrl", "mpos", "mquat"]
     }
   },
@@ -780,7 +763,7 @@
         {"key": "adhesion",    "enum_value": "Adhesion",   "class_name": "UMjAdhesionActuator",    "header": "MjAdhesionActuator.h"},
         {"key": "dcmotor",     "enum_value": "DcMotor",    "class_name": "UMjDcMotorActuator",     "header": "MjDcMotorActuator.h"}
       ],
-      "_note_subtype_setto": "Codegen-driven mjs_setTo* call config. Function signatures come from the clang-AST introspect snapshot (Scripts/codegen/snapshots/introspect_snapshot.json), projected into the legacy mjspec shape by _mjspec_from_introspect; the generator emits the call from the signature + the per-subtype config below. NO hand-written C++ literals in this file.",
+      "_note_subtype_setto": "Codegen-driven mjs_setTo* call config. Function signatures come from the clang-AST introspect snapshot, projected by _mjspec_from_introspect; the generator emits the call from the signature + the per-subtype config below. NO hand-written C++ literals in this file.",
       "subtype_setto": {
         "general":     null,
         "motor":       {"call": "mjs_setToMotor"},
@@ -893,11 +876,11 @@
       "schema_common_block": "site.attrs",
       "type_enum_name": "EMjSiteType",
       "subtypes": [
-        {"key": "box",       "enum_value": "Box",       "class_name": "UMjBoxSite",       "display_name": "MuJoCo Box Site"},
-        {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphereSite",    "display_name": "MuJoCo Sphere Site"},
-        {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsuleSite",   "display_name": "MuJoCo Capsule Site"},
-        {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinderSite",  "display_name": "MuJoCo Cylinder Site"},
-        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoidSite", "display_name": "MuJoCo Ellipsoid Site"}
+        {"key": "box",       "enum_value": "Box",       "class_name": "UMjBoxSite"},
+        {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphereSite"},
+        {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsuleSite"},
+        {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinderSite"},
+        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoidSite"}
       ]
     },
 
@@ -909,8 +892,8 @@
       "schema_common_block": "tendon.spatial.attrs",
       "type_enum_name": "EMjTendonType",
       "subtypes": [
-        {"key": "spatial", "enum_value": "Spatial", "class_name": "UMjSpatialTendon", "display_name": "MuJoCo Spatial Tendon"},
-        {"key": "fixed",   "enum_value": "Fixed",   "class_name": "UMjFixedTendon",   "display_name": "MuJoCo Fixed Tendon"}
+        {"key": "spatial", "enum_value": "Spatial", "class_name": "UMjSpatialTendon"},
+        {"key": "fixed",   "enum_value": "Fixed",   "class_name": "UMjFixedTendon"}
       ]
     },
 
@@ -935,13 +918,13 @@
         ]
       },
       "subtypes": [
-        {"key": "connect",    "enum_value": "Connect",    "class_name": "UMjConnectEquality",    "display_name": "MuJoCo Connect Equality"},
-        {"key": "weld",       "enum_value": "Weld",       "class_name": "UMjWeldEquality",       "display_name": "MuJoCo Weld Equality"},
-        {"key": "joint",      "enum_value": "Joint",      "class_name": "UMjJointEquality",      "display_name": "MuJoCo Joint Equality"},
-        {"key": "tendon",     "enum_value": "Tendon",     "class_name": "UMjTendonEquality",     "display_name": "MuJoCo Tendon Equality"},
-        {"key": "flex",       "enum_value": "Flex",       "class_name": "UMjFlexEquality",       "display_name": "MuJoCo Flex Equality"},
-        {"key": "flexvert",   "enum_value": "FlexVert",   "class_name": "UMjFlexVertEquality",   "display_name": "MuJoCo FlexVert Equality"},
-        {"key": "flexstrain", "enum_value": "FlexStrain", "class_name": "UMjFlexStrainEquality", "display_name": "MuJoCo FlexStrain Equality"}
+        {"key": "connect",    "enum_value": "Connect",    "class_name": "UMjConnectEquality"},
+        {"key": "weld",       "enum_value": "Weld",       "class_name": "UMjWeldEquality"},
+        {"key": "joint",      "enum_value": "Joint",      "class_name": "UMjJointEquality"},
+        {"key": "tendon",     "enum_value": "Tendon",     "class_name": "UMjTendonEquality"},
+        {"key": "flex",       "enum_value": "Flex",       "class_name": "UMjFlexEquality"},
+        {"key": "flexvert",   "enum_value": "FlexVert",   "class_name": "UMjFlexVertEquality"},
+        {"key": "flexstrain", "enum_value": "FlexStrain", "class_name": "UMjFlexStrainEquality"}
       ]
     },
 
@@ -966,13 +949,13 @@
         "name_setter":        "MjSetStringRaw"
       },
       "subtypes": [
-        {"key": "box",       "enum_value": "Box",       "class_name": "UMjBox",       "header": "MjBox.h",       "is_hybrid": true},
-        {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphere",    "header": "MjSphere.h",    "is_hybrid": true},
-        {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsule",   "header": "MjCapsule.h",   "is_hybrid": true},
-        {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinder",  "header": "MjCylinder.h",  "is_hybrid": true},
-        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoid", "header": "MjEllipsoid.h", "is_hybrid": false, "fully_emitted": true},
-        {"key": "plane",     "enum_value": "Plane",     "class_name": "UMjPlane",     "header": "MjPlane.h",     "is_hybrid": false, "fully_emitted": true},
-        {"key": "sdf",       "enum_value": "SDF",       "class_name": "UMjSdf",       "header": "MjSdf.h",       "is_hybrid": false, "fully_emitted": true}
+        {"key": "box",       "enum_value": "Box",       "class_name": "UMjBox",       "header": "MjBox.h"},
+        {"key": "sphere",    "enum_value": "Sphere",    "class_name": "UMjSphere",    "header": "MjSphere.h"},
+        {"key": "capsule",   "enum_value": "Capsule",   "class_name": "UMjCapsule",   "header": "MjCapsule.h"},
+        {"key": "cylinder",  "enum_value": "Cylinder",  "class_name": "UMjCylinder",  "header": "MjCylinder.h"},
+        {"key": "ellipsoid", "enum_value": "Ellipsoid", "class_name": "UMjEllipsoid", "header": "MjEllipsoid.h", "fully_emitted": true},
+        {"key": "plane",     "enum_value": "Plane",     "class_name": "UMjPlane",     "header": "MjPlane.h",     "fully_emitted": true},
+        {"key": "sdf",       "enum_value": "SDF",       "class_name": "UMjSdf",       "header": "MjSdf.h",       "fully_emitted": true}
       ],
       "_note_skipped_subtypes": ["hfield (URLab has its own hfield actor system)", "mesh (existing UMjMeshGeom)"]
     },
@@ -1051,8 +1034,6 @@
 
   "views": {
     "BodyView": {
-      "obj_type": "mjOBJ_BODY",
-      "owner_count_var": "nbody",
       "include_blocks": ["MJMODEL_POINTERS_BODY", "MJMODEL_POINTERS_TREE"],
       "data_fields": {
         "xpos":   {"index_var": "id",          "stride": "3"},
@@ -1064,8 +1045,6 @@
       }
     },
     "JointView": {
-      "obj_type": "mjOBJ_JOINT",
-      "owner_count_var": "njnt",
       "include_blocks": ["MJMODEL_POINTERS_JOINT", "MJMODEL_POINTERS_DOF"],
       "derived_index_vars": {
         "qpos_adr": "m->jnt_qposadr[id]",
@@ -1084,8 +1063,6 @@
       }
     },
     "GeomView": {
-      "obj_type": "mjOBJ_GEOM",
-      "owner_count_var": "ngeom",
       "include_blocks": ["MJMODEL_POINTERS_GEOM"],
       "data_fields": {
         "geom_xpos": {"index_var": "id", "stride": "3"},
@@ -1093,8 +1070,6 @@
       }
     },
     "SiteView": {
-      "obj_type": "mjOBJ_SITE",
-      "owner_count_var": "nsite",
       "include_blocks": ["MJMODEL_POINTERS_SITE"],
       "data_fields": {
         "site_xpos": {"index_var": "id", "stride": "3"},
@@ -1102,8 +1077,6 @@
       }
     },
     "ActuatorView": {
-      "obj_type": "mjOBJ_ACTUATOR",
-      "owner_count_var": "nu",
       "include_blocks": ["MJMODEL_POINTERS_ACTUATOR"],
       "data_fields": {
         "ctrl":           {"index_var": "id", "stride": "1"},
@@ -1117,8 +1090,6 @@
       }
     },
     "TendonView": {
-      "obj_type": "mjOBJ_TENDON",
-      "owner_count_var": "ntendon",
       "include_blocks": ["MJMODEL_POINTERS_TENDON"],
       "data_fields": {
         "ten_length":   {"index_var": "id", "stride": "1"},
@@ -1126,8 +1097,6 @@
       }
     },
     "SensorView": {
-      "obj_type": "mjOBJ_SENSOR",
-      "owner_count_var": "nsensor",
       "include_blocks": ["MJMODEL_POINTERS_SENSOR"],
       "data_fields": {
         "_note_sensordata": "Bounds-checked slice — the default base+id*stride formula is wrong for sensordata (it would double-multiply adr*dim). bind_override is a verbatim C++ statement the codegen drops inside the BIND marker.",
@@ -1164,7 +1133,7 @@
     ]
   },
 
-  "_note_generated_enums": "Banner-mode .h with one or more UENUMs derived from the introspect snapshot's mjt* enums (projected into mjspec.enums by _mjspec_from_introspect). Hand-edits get clobbered on next regen. ``extra_members`` appends URLab-specific values that have no mjt counterpart (e.g. DcMotor). ``disabled: true`` skips an entry — used during Camp-B migration so the rule lands in JSON before the hand-rolled enums are swapped out.",
+  "_note_generated_enums": "Banner-mode .h with one or more UENUMs derived from the introspect snapshot's mjt* enums (projected into mjspec.enums by _mjspec_from_introspect). Hand-edits get clobbered on next regen. ``extra_members`` appends URLab-specific values that have no mjt counterpart (e.g. DcMotor).",
   "generated_enums": {
     "MjOptionEnums": {
       "public_header": "MuJoCo/Generated/MjOptionEnums.h",
@@ -1198,7 +1167,7 @@
         }
       ]
     },
-    "_note_MjArticulationEnums": "Camp B (pure value-mapping) enums migrating from hand-rolled UENUMs in Components/ headers. The flip enabled this rule; codegen now emits MuJoCo/Generated/MjArticulationEnums.h, the hand-rolled blocks under Components/ are gone, and consumers route through the generated header.",
+    "_note_MjArticulationEnums": "Pure value-mapping enums emitted as MuJoCo/Generated/MjArticulationEnums.h. Components that need them (MjActuator.h, MjGeom.h, MjCameraTypes.h, MjSensor.h, MjFlexcomp.h) include this header.",
     "MjArticulationEnums": {
       "public_header": "MuJoCo/Generated/MjArticulationEnums.h",
       "enums": [

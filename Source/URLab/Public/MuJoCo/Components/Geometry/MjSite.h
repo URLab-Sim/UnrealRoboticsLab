@@ -32,11 +32,10 @@
 
 /**
  * @enum EMjSiteType
- * @brief Defines the geometric shape of a MuJoCo site. Mirrors the geom-
- * subset MuJoCo permits on <site>; Phase 4.6 extended this with Mesh and
- * Hfield so attached visualisations can ride a real asset. Plane and SDF
- * stay omitted (infinite extent / heavy data, not what a site spawn
- * surface wants).
+ * @brief Defines the geometric shape of a MuJoCo site. Mirrors the
+ * geom-subset MuJoCo permits on <site>. Plane and SDF stay omitted
+ * (infinite extent / heavy data, not what a site spawn surface
+ * wants).
  */
 UENUM(BlueprintType)
 enum class EMjSiteType : uint8

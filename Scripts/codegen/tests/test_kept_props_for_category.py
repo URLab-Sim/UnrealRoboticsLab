@@ -1,6 +1,6 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """Locks ``kept_props_for_category`` — the ordered prop-list helper
-extracted from emit_schema_for_tests in Phase 2.7. Used by the
+extracted from emit_schema_for_tests. Used by the
 schema-completeness header that drives URLab.Codegen.* automation
 tests, so the order + composition must stay deterministic."""
 

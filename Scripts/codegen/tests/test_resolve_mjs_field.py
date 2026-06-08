@@ -1,11 +1,11 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """Locks ``_resolve_mjs_field``'s 5-step resolution chain and the
-per-strategy helpers introduced by Phase 2.5. Each strategy lives in
+per-strategy helpers. Each strategy lives in
 its own function and is composed via ``_MJS_FIELD_RESOLVERS``."""
 
 from __future__ import annotations
 
-import generate_ue_components as gen
+import _codegen_core as gen  # private resolver surface lives in _codegen_core
 
 
 # ---------- per-strategy resolvers ----------------------------------------

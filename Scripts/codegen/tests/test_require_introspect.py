@@ -47,11 +47,10 @@ def test_require_introspect_default_hard_fails_when_missing(tmp_path):
 
 def test_no_require_introspect_skips_the_exit_3_gate(tmp_path):
     """``--no-require-introspect`` skips the up-front exit-3 hard-fail
-    so the run reaches the codegen loop. After Phase 3 retired the
-    legacy mjspec snapshot, the loop itself raises downstream once it
-    needs the setto sigs the introspect carries — that's the expected
-    contract. The flag isn't a way to make the codegen succeed
-    without introspect; it's a way to defer the failure for triage."""
+    so the run reaches the codegen loop. The loop itself raises
+    downstream once it needs the setto signatures the introspect
+    carries — the flag isn't a way to make the codegen succeed
+    without introspect, it's a way to defer the failure for triage."""
     missing = str(tmp_path / "introspect_snapshot.json")
     proc = _run(["--no-require-introspect"], missing)
     # The up-front gate didn't fire (exit 3), and the run reached the

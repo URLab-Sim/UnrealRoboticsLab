@@ -7,6 +7,8 @@ per-attr emission site used to inline."""
 from __future__ import annotations
 
 import generate_ue_components as gen
+import _codegen_core as _core
+gen.iter_canon_absorbed = _core.iter_canon_absorbed
 
 
 # ---------- iter_canon_absorbed / compute_canon_absorbed -------------------

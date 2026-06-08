@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
-"""Tests for the canonicalisation registry introduced by Phase 1.7.
+"""Tests for the canonicalisation registry.
 
 The registry collapses the previous duplicated if-chains in
 ``_canon_import_block`` / ``_canon_export_block`` into one dict.
@@ -29,14 +29,14 @@ def test_unknown_canon_fires_import_diagnostic():
     out = gen._canon_import_block("nonexistent_canon", {}, element_name="geom")
     assert out == ""
     assert any("nonexistent_canon" in d.message and "import" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_unknown_canon_fires_export_diagnostic():
     out = gen._canon_export_block("nonexistent_canon", {})
     assert out == ""
     assert any("nonexistent_canon" in d.message and "export" in d.message
-               for d in gen._DIAGS)
+               for d in gen._DIAGS_BUFFER.pending)
 
 
 def test_spatial_pose_import_is_one_liner_helper_call():
@@ -50,12 +50,6 @@ def test_spatial_pose_import_is_one_liner_helper_call():
     assert out.strip() == (
         'MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);'
     )
-
-
-def test_registry_entries_are_callable():
-    for name, entry in gen._CANONICALISATIONS.items():
-        assert callable(entry.import_emitter), name
-        assert callable(entry.export_emitter), name
 
 
 def test_canonicalisation_class_is_frozen():

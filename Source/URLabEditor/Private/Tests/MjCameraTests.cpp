@@ -112,8 +112,12 @@ bool FMjCameraDepthModeConfig::RunTest(const FString& Parameters)
             (int32)Cam->CaptureComponent->CaptureSource,
             (int32)ESceneCaptureSource::SCS_SceneDepth);
         TestTrue(TEXT("near clip overridden"), Cam->CaptureComponent->bOverride_CustomNearClippingPlane);
+        // Frustum near clip is fixed at 0.1 cm for every capture mode to
+        // stop internal robot geometry from intruding on the view. The
+        // DepthNearCm property now controls only the post-process depth
+        // normalisation (see MjCameraFeedEntry.cpp).
         TestEqual(TEXT("near clip value"),
-            Cam->CaptureComponent->CustomNearClippingPlane, Cam->DepthNearCm);
+            Cam->CaptureComponent->CustomNearClippingPlane, 0.1f);
     }
 
     S.Cleanup();

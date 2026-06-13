@@ -374,13 +374,16 @@ void UMjCamera::SetupRenderTarget()
     CaptureComponent->TextureTarget = RT;
     CaptureComponent->bAlwaysPersistRenderingState = true;
     CaptureComponent->MaxViewDistanceOverride = -1.0f;
+    // 1mm near clip on every capture mode — without this, robot-internal
+    // geometry can intrude on the frustum and produce black-on-black frames
+    // when the camera is mounted inside a body shell.
+    CaptureComponent->bOverride_CustomNearClippingPlane = true;
+    CaptureComponent->CustomNearClippingPlane = 0.1f;
 
     switch (CaptureMode)
     {
     case EMjCameraMode::Depth:
         CaptureComponent->CaptureSource = ESceneCaptureSource::SCS_SceneDepth;
-        CaptureComponent->bOverride_CustomNearClippingPlane = true;
-        CaptureComponent->CustomNearClippingPlane           = DepthNearCm;
         break;
 
     case EMjCameraMode::SemanticSegmentation:
@@ -756,15 +759,30 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     if (!MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName))
         MjName = TEXT("Camera");
 
-    // fovy
+    // fovy — direct attribute wins; otherwise derive from MJCF intrinsics.
+    // MuJoCo's compiler computes fovy from focal_pixel / focal_length when
+    // present, so we mirror that here so the imported UE FOV matches what
+    // mujoco itself would report.
     FString FovyStr = Node->GetAttribute(TEXT("fovy"));
     if (!FovyStr.IsEmpty())
     {
         fovy = FCString::Atof(*FovyStr);
-        if (CaptureComponent)
-        {
-            CaptureComponent->FOVAngle = fovy;
-        }
+    }
+    else if (bOverride_focalpixel && focalpixel.Num() >= 2 && resolution.Num() >= 2 && focalpixel[1] > 0)
+    {
+        fovy = 2.0f * FMath::Atan2(static_cast<float>(resolution[1]), 2.0f * static_cast<float>(focalpixel[1])) * (180.0f / PI);
+    }
+    else if (bOverride_focal && focal.Num() >= 2 && sensorsize.Num() >= 2 && focal[1] > 0.0f)
+    {
+        fovy = 2.0f * FMath::Atan2(static_cast<float>(sensorsize[1]), 2.0f * static_cast<float>(focal[1])) * (180.0f / PI);
+    }
+    else if (fovy <= 0.0f)
+    {
+        fovy = 45.0f;
     }
 
+    if (CaptureComponent)
+    {
+        CaptureComponent->FOVAngle = fovy;
+    }
 }

@@ -198,6 +198,83 @@ static FString ResolveMaterialFromDefaults(const UMjGeom* GeomComp, UBlueprint* 
     return FString();
 }
 
+/**
+ * Resolves a geom's rgba colour through the default class chain, mirroring
+ * ResolveMaterialFromDefaults. The geom's own UPROPERTY default
+ * (FLinearColor::White) is meaningless during import — if the geom didn't
+ * explicitly set rgba, the colour should come from <default><geom rgba="..."/>
+ * up the class chain. Returns false when no default chain entry sets rgba,
+ * so the caller can fall back to the geom's own value.
+ */
+static bool ResolveGeomRgbaFromDefaults(const UMjGeom* GeomComp, UBlueprint* BP, FLinearColor& OutRgba)
+{
+    if (!GeomComp || !BP || !BP->SimpleConstructionScript) return false;
+
+    if (GeomComp->bOverride_rgba)
+    {
+        OutRgba = GeomComp->rgba;
+        return true;
+    }
+
+    FString ClassName = GeomComp->MjClassName;
+    TArray<USCS_Node*> AllNodes = BP->SimpleConstructionScript->GetAllNodes();
+
+    if (ClassName.IsEmpty())
+    {
+        for (USCS_Node* Node : AllNodes)
+        {
+            if (Node->ComponentTemplate == GeomComp)
+            {
+                for (USCS_Node* Parent : AllNodes)
+                {
+                    if (Parent->ChildNodes.Contains(Node))
+                    {
+                        if (UMjBody* Body = Cast<UMjBody>(Parent->ComponentTemplate))
+                        {
+                            if (Body->bOverride_childclass && !Body->childclass.IsEmpty())
+                            {
+                                ClassName = Body->childclass;
+                            }
+                        }
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    if (ClassName.IsEmpty()) return false;
+
+    TSet<FString> Visited;
+    while (!ClassName.IsEmpty() && !Visited.Contains(ClassName))
+    {
+        Visited.Add(ClassName);
+        for (USCS_Node* Node : AllNodes)
+        {
+            UMjDefault* Def = Cast<UMjDefault>(Node->ComponentTemplate);
+            if (!Def || Def->ClassName != ClassName) continue;
+
+            for (USCS_Node* ChildNode : Node->ChildNodes)
+            {
+                if (UMjGeom* ChildGeom = Cast<UMjGeom>(ChildNode->ComponentTemplate))
+                {
+                    if (ChildGeom->bOverride_rgba)
+                    {
+                        OutRgba = ChildGeom->rgba;
+                        return true;
+                    }
+                }
+            }
+
+            ClassName = Def->ParentClassName;
+            break;
+        }
+    }
+
+    return false;
+}
+
 void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Node* ParentNode, UBlueprint* BP,
                                           const FString& XMLDir, const FString& AssetImportPath,
                                           const TMap<FString, FString>& MeshAssets,
@@ -541,7 +618,10 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
                                  // Create and assign material instance
                                  FMuJoCoMaterialData MatData;
-                                 MatData.Rgba = GeomComp->rgba; // Use geom color as default
+                                 FLinearColor ResolvedRgba;
+                                 MatData.Rgba = ResolveGeomRgbaFromDefaults(GeomComp, BP, ResolvedRgba)
+                                                  ? ResolvedRgba
+                                                  : GeomComp->rgba;
 
                                  // Key by material name (resolved through default chain) if referenced, else fall back to mesh name
                                  FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);
@@ -582,7 +662,10 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
                  // Create and assign material instance
                  FMuJoCoMaterialData MatData;
-                 MatData.Rgba = GeomComp->rgba; // Use geom color as default
+                 FLinearColor ResolvedRgba;
+                 MatData.Rgba = ResolveGeomRgbaFromDefaults(GeomComp, BP, ResolvedRgba)
+                                  ? ResolvedRgba
+                                  : GeomComp->rgba;
 
                  // Key by material name (resolved through default chain) if referenced, else fall back to geom name
                  FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);

@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Components/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjTwistController.h"
@@ -1080,7 +1081,7 @@ TArray<float> AMjArticulation::GetSensorReading(const FString& SensorName) const
 void AMjArticulation::Tick(float DeltaTime)
 {
     Super::Tick(DeltaTime);
-    
+
     if (bDrawDebugCollision)
     {
         DrawDebugCollision();
@@ -1092,6 +1093,19 @@ void AMjArticulation::Tick(float DeltaTime)
     if (bDrawDebugSites)
     {
         DrawDebugSites();
+    }
+}
+
+void AMjArticulation::ApplyRenderState(const FMjRenderSnapshot& Snap)
+{
+    TArray<UMjBody*> Bodies;
+    GetRuntimeComponents<UMjBody>(Bodies);
+    for (UMjBody* Body : Bodies)
+    {
+        if (Body)
+        {
+            Body->ApplyRenderState(Snap);
+        }
     }
 }
 

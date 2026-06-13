@@ -23,6 +23,7 @@
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Components/Joints/MjFreeJoint.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjUtils.h"
 
 #include "MuJoCo/Components/Geometry/MjGeom.h"
@@ -280,35 +281,38 @@ void UMjQuickConvertComponent::PostSetup(mjModel* model, mjData* data) {
 
 
 
-void UMjQuickConvertComponent::UpdateUETransform() {
-
-    if (!m_model || !m_data) {
-        return;
-    }
-
-    if (bDrivenByUnreal && MocapPos && MocapQuat)
-    {
-         MjUtils::UEToMjPosition(m_actor->GetActorLocation(), MocapPos);
-         MjUtils::UEToMjRotation(m_actor->GetActorQuat(), MocapQuat);
-         return;
-    }
-        FVector _pos = MjUtils::MjToUEPosition(m_CreatedBody->GetBodyView().xpos);
-        FQuat _quat = MjUtils::MjToUERotation(m_CreatedBody->GetBodyView().xquat);
-
-        m_actor->SetActorRotation(_quat);
-        m_actor->SetActorLocation(_pos);
-}
-
 void UMjQuickConvertComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    if (!bDrivenByUnreal && m_CreatedBody)
-    {
-        UpdateUETransform();
-    }
 
     if (m_debug_meshes)
     {
         DrawDebugCollision();
     }
+}
+
+void UMjQuickConvertComponent::ApplyRenderState(const FMjRenderSnapshot& Snap)
+{
+    if (!m_model || !m_data || !m_CreatedBody || !m_actor || bDrivenByUnreal)
+    {
+        return;
+    }
+
+    const int32 Id = m_CreatedBody->GetBodyView().id;
+    if (Id < 0)
+    {
+        return;
+    }
+
+    const int32 PosIdx  = Id * 3;
+    const int32 QuatIdx = Id * 4;
+    if (Snap.XPos.Num() <= PosIdx + 2 || Snap.XQuat.Num() <= QuatIdx + 3)
+    {
+        return;
+    }
+
+    const FVector Pos  = MjUtils::MjToUEPosition(&Snap.XPos[PosIdx]);
+    const FQuat   Quat = MjUtils::MjToUERotation(&Snap.XQuat[QuatIdx]);
+
+    m_actor->SetActorRotation(Quat);
+    m_actor->SetActorLocation(Pos);
 }

@@ -403,8 +403,12 @@ protected:
     UPROPERTY(Transient)
     class UMjArticulationController* CachedController = nullptr;
 
-public:    
+public:
     virtual void Tick(float DeltaTime) override;
+
+    /** @brief Forwards the engine snapshot to every UMjBody under this
+     *  articulation so they all observe one coherent physics frame. */
+    void ApplyRenderState(const struct FMjRenderSnapshot& Snap);
 
     /** @brief Optional: Path to an existing MuJoCo XML to import. */
     UPROPERTY(EditAnywhere, Category = "MuJoCo Import")

@@ -23,6 +23,7 @@
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Net/MjNetworkManager.h"
 #include "MuJoCo/Input/MjInputHandler.h"
@@ -286,8 +287,32 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason) {
 
 void AAMjManager::Tick(float DeltaTime) {
     Super::Tick(DeltaTime);
-    // Hotkey processing handled by UMjInputHandler::TickComponent
-    // Debug drawing handled by UMjDebugVisualizer::TickComponent
+
+    if (!PhysicsEngine || !PhysicsEngine->IsInitialized())
+    {
+        return;
+    }
+
+    const TArray<AMjArticulation*> Arts          = PhysicsEngine->GetAllArticulations();
+    const TArray<UMjQuickConvertComponent*> Quicks = PhysicsEngine->GetAllQuickComponents();
+
+    PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& Snap)
+    {
+        for (AMjArticulation* Art : Arts)
+        {
+            if (Art)
+            {
+                Art->ApplyRenderState(Snap);
+            }
+        }
+        for (UMjQuickConvertComponent* Quick : Quicks)
+        {
+            if (Quick)
+            {
+                Quick->ApplyRenderState(Snap);
+            }
+        }
+    });
 }
 
 AAMjManager* AAMjManager::GetManager()

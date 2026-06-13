@@ -28,6 +28,7 @@
 #include "MuJoCo/Components/Geometry/MjSite.h"
 #include "MuJoCo/Components/Joints/MjJoint.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
@@ -52,43 +53,50 @@ void UMjBody::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponen
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    if (m_IsSetup)
+    if (m_IsSetup && mocap && m_MocapPos && m_MocapQuat)
     {
-        if (mocap && m_MocapPos && m_MocapQuat)
-        {
-        	MjUtils::UEToMjPosition(GetComponentLocation(), m_MocapPos);
-        	MjUtils::UEToMjRotation(GetComponentQuat(), m_MocapQuat);
-        }
-        else
-        {
-            if (!m_BodyView.xpos || !m_BodyView.xquat)
-            {
-                UE_LOG(LogURLabBind, Warning, TEXT("MjBody::TickComponent - Body '%s' has null xpos/xquat (bind failed). Disabling tick."), *GetName());
-                m_IsSetup = false;
-                SetComponentTickEnabled(false);
-                return;
-            }
-
-            // Thread safety: xpos/xquat reads are lock-free. On x86-64, aligned double
-            // reads are atomic (no tearing). Worst case is a 1-frame position/rotation
-            // desync which is visually imperceptible. This matches MuJoCo Simulate's
-            // own threading model.
-    	    FVector MuJoCoWorldPos = MjUtils::MjToUEPosition(m_BodyView.xpos);
-    	    FQuat MuJoCoWorldQuat = MjUtils::MjToUERotation(m_BodyView.xquat);
-    	    
-            FVector CorrectedPos = MuJoCoWorldPos;
-            
-            // Apply mesh pivot offset correction ONLY if QuickConverted (Unreal -> MuJoCo flow pivot issues)
-            if (bIsQuickConverted)
-            {
-    	        // MuJoCo's xpos is at body center, but UE mesh may have off-center pivot
-        	    FVector OffsetVector = MuJoCoWorldQuat.RotateVector(m_MeshPivotOffset);
-        	    CorrectedPos = MuJoCoWorldPos - OffsetVector;
-            }
-    
-    	    SetWorldLocationAndRotation(CorrectedPos, MuJoCoWorldQuat);
-        }
+        MjUtils::UEToMjPosition(GetComponentLocation(), m_MocapPos);
+        MjUtils::UEToMjRotation(GetComponentQuat(), m_MocapQuat);
     }
+}
+
+void UMjBody::ApplyRenderState(const FMjRenderSnapshot& Snap)
+{
+    if (!m_IsSetup || mocap)
+    {
+        return;
+    }
+
+    const int32 Id = m_BodyView.id;
+    if (Id < 0)
+    {
+        return;
+    }
+
+    const int32 PosIdx  = Id * 3;
+    const int32 QuatIdx = Id * 4;
+    if (Snap.XPos.Num() <= PosIdx + 2 || Snap.XQuat.Num() <= QuatIdx + 3)
+    {
+        UE_LOG(LogURLabBind, Warning,
+            TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) out of range "
+                 "of snapshot (XPos=%d, XQuat=%d). Disabling updates."),
+            *GetName(), Id, Snap.XPos.Num(), Snap.XQuat.Num());
+        m_IsSetup = false;
+        return;
+    }
+
+    const FVector MuJoCoWorldPos  = MjUtils::MjToUEPosition(&Snap.XPos[PosIdx]);
+    const FQuat   MuJoCoWorldQuat = MjUtils::MjToUERotation(&Snap.XQuat[QuatIdx]);
+
+    FVector CorrectedPos = MuJoCoWorldPos;
+
+    if (bIsQuickConverted)
+    {
+        const FVector OffsetVector = MuJoCoWorldQuat.RotateVector(m_MeshPivotOffset);
+        CorrectedPos = MuJoCoWorldPos - OffsetVector;
+    }
+
+    SetWorldLocationAndRotation(CorrectedPos, MuJoCoWorldQuat);
 }
 
 

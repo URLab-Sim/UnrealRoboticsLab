@@ -133,15 +133,16 @@ public:
 protected:
     /** @brief Called when the game starts. */
 	virtual void BeginPlay() override;
-    
+
     /** @brief Called when the game ends. */
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
     void DrawDebugCollision();
 
-    void UpdateUETransform();
-
-public:	
+public:
     /** @brief Called every frame. */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+    /** @brief Applies this body's transform from the engine snapshot to the owning actor. */
+    void ApplyRenderState(const struct FMjRenderSnapshot& Snap);
 };

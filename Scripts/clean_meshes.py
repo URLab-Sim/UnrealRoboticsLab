@@ -28,7 +28,7 @@ resolves naming conflicts (e.g., link1.obj and link1.stl both becoming link1.glb
 and writes an updated XML ready for drag-and-drop import into Unreal.
 
 Installation:
-    pip install trimesh numpy scipy Pillow
+    pip install trimesh numpy scipy Pillow networkx
 
 Usage:
     python clean_meshes_trimesh.py <path_to_xml>
@@ -51,7 +51,11 @@ def clean_mesh(mesh):
 
     mesh.merge_vertices(merge_tex=False, merge_norm=False)
     mesh.remove_unreferenced_vertices()
-    mesh.fix_normals()
+    try:
+        import networkx  # noqa: F401 - trimesh's fix_normals requires it
+        mesh.fix_normals()
+    except ImportError:
+        print("  Warning: networkx not installed, skipping fix_normals (GLB may have lighting issues)")
 
     # Rotate -90 degrees around X for GLTF Y-up -> Unreal Z-up
     rotation_matrix = trimesh.transformations.rotation_matrix(-np.radians(90), [1, 0, 0])

@@ -208,9 +208,6 @@ protected:
 
 private:
 	BodyView m_BodyView;
-    
-    mjtNum* m_MocapPos = nullptr;
-    mjtNum* m_MocapQuat = nullptr;
 
 	bool m_IsSetup = false;
     

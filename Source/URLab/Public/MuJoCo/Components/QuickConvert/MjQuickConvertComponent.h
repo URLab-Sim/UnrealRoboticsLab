@@ -90,9 +90,6 @@ public:
         meta=(ToolTip="When true, writes the actor's world transform to MuJoCo as a mocap body every tick. The physics simulation does not feed back into Unreal."))
     bool bDrivenByUnreal = false;
 
-    double* MocapPos = nullptr;
-    double* MocapQuat = nullptr;
-
     /** @brief Friction parameters (sliding, torsional, rolling). Applied to all geoms created by this component. */
     UPROPERTY(EditAnywhere, Category="MuJoCo|Physics")
     FVector3d friction = {1.0, 1, 1};

@@ -270,6 +270,35 @@ public:
      */
     void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor);
 
+    // --- Command channel (UE -> MuJoCo) --------------------------------
+    //
+    // Game-thread writers (mocap, wrench, sleep) enqueue under
+    // CommandMutex; the stepping thread drains the queue inside
+    // CallbackMutex immediately before mj_step. This keeps every
+    // mjData mutation on the physics thread and avoids lock-free
+    // races on xfrc_applied / mocap_pos / body_awake.
+    //
+    // Last-write-wins per body per drain: re-submitting in one game
+    // frame collapses to the final value applied for the next step.
+
+    /** World-frame mocap pose for a mocap body, in MuJoCo coordinates. */
+    void SubmitMocapPose(int32 BodyId, const double Pos[3], const double Quat[4]);
+
+    /** Set xfrc_applied[body] = [tx, ty, tz, fx, fy, fz] (MuJoCo order). */
+    void SubmitWrench(int32 BodyId, const double Xfrc[6]);
+
+    /** Zero xfrc_applied for the body on the next drain. */
+    void SubmitClearForce(int32 BodyId);
+
+    /** Wake the body and its kinematic tree synchronously. Takes
+     *  CallbackMutex briefly so the write is observable to the caller
+     *  immediately (matches the user-facing one-shot contract). */
+    void ApplyWakeBody(int32 BodyId);
+
+    /** Put the body and its kinematic tree to sleep synchronously.
+     *  Takes CallbackMutex briefly (see ApplyWakeBody). */
+    void ApplySleepBody(int32 BodyId);
+
 private:
     TArray<FPhysicsCallback> PreStepCallbacks;
     TArray<FPhysicsCallback> PostStepCallbacks;
@@ -282,4 +311,40 @@ private:
 
     /** Engine-owned snapshot buffer. Sized on model load. */
     FMjRenderSnapshot RenderSnapshot;
+
+    // --- Command channel plumbing --------------------------------------
+
+    struct FMocapPose
+    {
+        double Pos[3];
+        double Quat[4];
+    };
+
+    struct FWrench
+    {
+        double Xfrc[6];
+    };
+
+    struct FCommandQueue
+    {
+        TMap<int32, FMocapPose> MocapPoses;
+        TMap<int32, FWrench>    WrenchSets;
+        TSet<int32>             WrenchClears;
+
+        bool IsEmpty() const
+        {
+            return MocapPoses.Num()   == 0
+                && WrenchSets.Num()   == 0
+                && WrenchClears.Num() == 0;
+        }
+    };
+
+    /** Independent of CallbackMutex / RenderStateMutex. Held only
+     *  briefly by Submit* and by the drain swap. */
+    FCriticalSection CommandMutex;
+    FCommandQueue PendingCommands;
+
+    /** Drains PendingCommands into m_data. Must be called by the
+     *  stepping thread while it already holds CallbackMutex. */
+    void DrainCommands();
 };

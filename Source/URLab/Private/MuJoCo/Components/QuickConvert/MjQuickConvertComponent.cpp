@@ -23,8 +23,33 @@
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Components/Joints/MjFreeJoint.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjUtils.h"
+#include "EngineUtils.h"
+
+namespace
+{
+    UMjPhysicsEngine* GetEngine(const UObject* WorldCtx)
+    {
+        if (AAMjManager* Manager = AAMjManager::GetManager())
+        {
+            if (Manager->PhysicsEngine) return Manager->PhysicsEngine;
+        }
+        if (WorldCtx)
+        {
+            if (UWorld* World = WorldCtx->GetWorld())
+            {
+                for (TActorIterator<AAMjManager> It(World); It; ++It)
+                {
+                    if (It->PhysicsEngine) return It->PhysicsEngine;
+                }
+            }
+        }
+        return nullptr;
+    }
+}
 
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 
@@ -283,6 +308,20 @@ void UMjQuickConvertComponent::PostSetup(mjModel* model, mjData* data) {
 
 void UMjQuickConvertComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) {
     Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+    if (bDrivenByUnreal && m_CreatedBody && m_actor)
+    {
+        UMjPhysicsEngine* Engine = GetEngine(this);
+        const int32 BodyId = m_CreatedBody->GetBodyView().id;
+        if (Engine && BodyId >= 0)
+        {
+            double Pos[3];
+            double Quat[4];
+            MjUtils::UEToMjPosition(m_actor->GetActorLocation(), Pos);
+            MjUtils::UEToMjRotation(m_actor->GetActorQuat(), Quat);
+            Engine->SubmitMocapPose(BodyId, Pos, Quat);
+        }
+    }
 
     if (m_debug_meshes)
     {

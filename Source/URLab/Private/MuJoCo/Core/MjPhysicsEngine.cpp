@@ -418,6 +418,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
                 {
                     OnPostStep(m_model, m_data);
                 }
+
+                // Publish a coherent render snapshot for game-thread
+                // consumers. Inside the same CallbackMutex scope so the
+                // snapshot reflects the m_data that was just stepped.
+                PushRenderState();
             } // FScopeLock released here
 
             // Spin-wait for precise timing at small timesteps
@@ -474,6 +479,11 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
     {
         mj_step(m_model, m_data);
     }
+
+    // Publish a render snapshot for the sync step path too. Keeps the
+    // render flow uniform across async and sync stepping (RPC, replay
+    // scrub, custom step handlers).
+    PushRenderState();
 
     bIsPaused = bWasPaused;
 }
@@ -606,4 +616,106 @@ void UMjPhysicsEngine::ClearCallbacks()
 {
     PreStepCallbacks.Empty();
     PostStepCallbacks.Empty();
+}
+
+// =============================================================================
+// RenderState pump
+//
+// Producer (PushRenderState) runs on the stepping thread inside the
+// CallbackMutex region right after mj_step + OnPostStep, then briefly
+// takes RenderStateMutex to publish a fresh frame. Consumers
+// (WithRenderState) take RenderStateMutex for the duration of their
+// visitor, so every consumer in one UE frame sees the same coherent
+// physics frame.
+//
+// Lock ordering invariant: CallbackMutex (outer) -> RenderStateMutex
+// (inner). The consumer never takes CallbackMutex.
+// =============================================================================
+
+namespace
+{
+    template <typename T>
+    static void ResizeIfDifferent(TArray<T>& Array, int32 RequiredNum)
+    {
+        if (Array.Num() != RequiredNum)
+        {
+            Array.SetNumUninitialized(RequiredNum);
+        }
+    }
+
+    template <typename T>
+    static void CopyArray(TArray<T>& Dst, const void* Src, int32 Count)
+    {
+        // T is deduced from Dst only. Src is type-erased so MuJoCo's
+        // raw `int*` / `mjtNum*` pointers don't have to match T's
+        // typedef chain exactly; sizeof(T) drives the byte count.
+        if (!Src || Count <= 0)
+        {
+            Dst.Reset();
+            return;
+        }
+        ResizeIfDifferent(Dst, Count);
+        FMemory::Memcpy(Dst.GetData(), Src, sizeof(T) * static_cast<SIZE_T>(Count));
+    }
+}
+
+void UMjPhysicsEngine::PushRenderState()
+{
+    if (!m_model || !m_data)
+    {
+        return;
+    }
+
+    FScopeLock Lock(&RenderStateMutex);
+
+    const int32 NBody        = m_model->nbody;
+    const int32 NGeom        = m_model->ngeom;
+    const int32 NSite        = m_model->nsite;
+    const int32 NCam         = m_model->ncam;
+    const int32 NQ           = m_model->nq;
+    const int32 NV           = m_model->nv;
+    const int32 NU           = m_model->nu;
+    const int32 NSensorData  = m_model->nsensordata;
+    const int32 NTree        = m_model->ntree;
+    const int32 NFlexvert    = m_model->nflexvert;
+
+    // Body kinematics.
+    CopyArray(RenderSnapshot.XPos,        m_data->xpos,         NBody * 3);
+    CopyArray(RenderSnapshot.XQuat,       m_data->xquat,        NBody * 4);
+    CopyArray(RenderSnapshot.CVel,        m_data->cvel,         NBody * 6);
+    CopyArray(RenderSnapshot.XfrcApplied, m_data->xfrc_applied, NBody * 6);
+
+    // Geoms / sites / cameras.
+    CopyArray(RenderSnapshot.GeomXPos,    m_data->geom_xpos,    NGeom * 3);
+    CopyArray(RenderSnapshot.GeomXMat,    m_data->geom_xmat,    NGeom * 9);
+    CopyArray(RenderSnapshot.SiteXPos,    m_data->site_xpos,    NSite * 3);
+    CopyArray(RenderSnapshot.SiteXMat,    m_data->site_xmat,    NSite * 9);
+    CopyArray(RenderSnapshot.CamXPos,     m_data->cam_xpos,     NCam * 3);
+    CopyArray(RenderSnapshot.CamXMat,     m_data->cam_xmat,     NCam * 9);
+
+    // Joint / actuator / sensor state.
+    CopyArray(RenderSnapshot.QPos,          m_data->qpos,           NQ);
+    CopyArray(RenderSnapshot.QVel,          m_data->qvel,           NV);
+    CopyArray(RenderSnapshot.QAcc,          m_data->qacc,           NV);
+    CopyArray(RenderSnapshot.ActuatorForce, m_data->actuator_force, NU);
+    CopyArray(RenderSnapshot.SensorData,    m_data->sensordata,     NSensorData);
+
+    // Sleep state.
+    CopyArray(RenderSnapshot.BodyAwake,  m_data->body_awake,  NBody);
+    CopyArray(RenderSnapshot.TreeAsleep, m_data->tree_asleep, NTree);
+    CopyArray(RenderSnapshot.TreeAwake,  m_data->tree_awake,  NTree);
+
+    // Flex deformable state.
+    CopyArray(RenderSnapshot.FlexvertXPos, m_data->flexvert_xpos, NFlexvert * 3);
+
+    // Metadata.
+    RenderSnapshot.SimTime = m_data->time;
+    ++RenderSnapshot.FrameId;
+}
+
+void UMjPhysicsEngine::WithRenderState(
+    TFunctionRef<void(const FMjRenderSnapshot&)> Visitor)
+{
+    FScopeLock Lock(&RenderStateMutex);
+    Visitor(RenderSnapshot);
 }

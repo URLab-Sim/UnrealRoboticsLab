@@ -26,6 +26,7 @@
 #include "Components/ActorComponent.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/MjSimOptions.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include <functional>
 #include <atomic>
 #include "MjPhysicsEngine.generated.h"
@@ -247,7 +248,38 @@ public:
     /** @brief Clear all registered pre/post step callbacks. */
     void ClearCallbacks();
 
+    // --- RenderState pump (MuJoCo -> UE) -------------------------------
+
+    /**
+     * @brief Copies the live mjData into the engine-owned render
+     * snapshot. Bumps RenderSnapshot.FrameId. Must be called by the
+     * thread that just finished mj_step while it holds CallbackMutex.
+     *
+     * Lock ordering: CallbackMutex (outer) -> RenderStateMutex (inner).
+     * RenderStateMutex is taken inside this method only; callers must
+     * not hold it.
+     */
+    void PushRenderState();
+
+    /**
+     * @brief Runs the visitor against the latest render snapshot
+     * under RenderStateMutex. Holds the lock for the duration of the
+     * visitor, so the visitor must complete promptly and must not
+     * acquire CallbackMutex (or any lock that the producer takes
+     * under CallbackMutex).
+     */
+    void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor);
+
 private:
     TArray<FPhysicsCallback> PreStepCallbacks;
     TArray<FPhysicsCallback> PostStepCallbacks;
+
+    // --- RenderState plumbing ------------------------------------------
+
+    /** Guards RenderSnapshot. Inner to CallbackMutex on the producer
+     *  path; held alone on the consumer (game thread) path. */
+    FCriticalSection RenderStateMutex;
+
+    /** Engine-owned snapshot buffer. Sized on model load. */
+    FMjRenderSnapshot RenderSnapshot;
 };

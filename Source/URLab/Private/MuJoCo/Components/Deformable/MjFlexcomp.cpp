@@ -36,6 +36,9 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
+#include "EngineUtils.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeTryLock.h"
@@ -812,26 +815,42 @@ void UMjFlexcomp::UpdateProceduralMesh()
         ? DynamicMesh->GetAttachParent()->GetComponentTransform()
         : FTransform::Identity;
 
-    // Read welded flex positions under the physics mutex to avoid torn reads.
+    // Read welded flex positions from the engine snapshot — coherent across
+    // bodies in this UE frame and never blocks the physics step.
     TArray<FVector> WeldedPositions;
     WeldedPositions.SetNum(FlexVertNum);
 
-    AAMjManager* Manager = AAMjManager::GetManager();
-    UMjPhysicsEngine* Engine = Manager ? Manager->PhysicsEngine : nullptr;
-
+    UMjPhysicsEngine* Engine = nullptr;
+    if (AAMjManager* Manager = AAMjManager::GetManager())
     {
-        FScopeTryLock ScopeLock(Engine ? &Engine->CallbackMutex : nullptr);
-        if (Engine && !ScopeLock.IsLocked())
+        Engine = Manager->PhysicsEngine;
+    }
+    if (!Engine)
+    {
+        if (UWorld* World = GetWorld())
         {
-            return;
+            for (TActorIterator<AAMjManager> It(World); It; ++It)
+            {
+                if (It->PhysicsEngine) { Engine = It->PhysicsEngine; break; }
+            }
         }
+    }
+    if (!Engine) return;
+
+    bool bOk = false;
+    Engine->WithRenderState([&](const FMjRenderSnapshot& Snap)
+    {
+        const int32 NeededFloats = (FlexVertAdr + FlexVertNum) * 3;
+        if (Snap.FlexvertXPos.Num() < NeededFloats) return;
         for (int32 i = 0; i < FlexVertNum; i++)
         {
             const int32 Idx = (FlexVertAdr + i) * 3;
-            const FVector WorldPos = MjUtils::MjToUEPosition(&m_Data->flexvert_xpos[Idx]);
+            const FVector WorldPos = MjUtils::MjToUEPosition(&Snap.FlexvertXPos[Idx]);
             WeldedPositions[i] = ParentTransform.InverseTransformPosition(WorldPos);
         }
-    }
+        bOk = true;
+    });
+    if (!bOk) return;
 
     DynamicMesh->EditMesh([&](UE::Geometry::FDynamicMesh3& Mesh)
     {

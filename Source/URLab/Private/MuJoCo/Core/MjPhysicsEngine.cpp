@@ -401,6 +401,8 @@ void UMjPhysicsEngine::RunMujocoAsync()
                     if (Art) Art->ApplyControls();
                 }
 
+                DrainCommands();
+
                 if (!bIsPaused)
                 {
                     if (CustomStepHandler)
@@ -477,6 +479,7 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 
     for (int32 i = 0; i < NumSteps; ++i)
     {
+        DrainCommands();
         mj_step(m_model, m_data);
     }
 
@@ -718,4 +721,102 @@ void UMjPhysicsEngine::WithRenderState(
 {
     FScopeLock Lock(&RenderStateMutex);
     Visitor(RenderSnapshot);
+}
+
+// =============================================================================
+// Command channel (UE -> MuJoCo)
+//
+// Game-thread writers enqueue under CommandMutex; the stepping thread drains
+// inside CallbackMutex right before mj_step. Last-write-wins per body per
+// drain.
+// =============================================================================
+
+void UMjPhysicsEngine::SubmitMocapPose(int32 BodyId, const double Pos[3], const double Quat[4])
+{
+    if (BodyId < 0) return;
+    FScopeLock Lock(&CommandMutex);
+    FMocapPose& Slot = PendingCommands.MocapPoses.FindOrAdd(BodyId);
+    FMemory::Memcpy(Slot.Pos,  Pos,  sizeof(Slot.Pos));
+    FMemory::Memcpy(Slot.Quat, Quat, sizeof(Slot.Quat));
+}
+
+void UMjPhysicsEngine::SubmitWrench(int32 BodyId, const double Xfrc[6])
+{
+    if (BodyId < 0) return;
+    FScopeLock Lock(&CommandMutex);
+    FWrench& Slot = PendingCommands.WrenchSets.FindOrAdd(BodyId);
+    FMemory::Memcpy(Slot.Xfrc, Xfrc, sizeof(Slot.Xfrc));
+    PendingCommands.WrenchClears.Remove(BodyId);
+}
+
+void UMjPhysicsEngine::SubmitClearForce(int32 BodyId)
+{
+    if (BodyId < 0) return;
+    FScopeLock Lock(&CommandMutex);
+    PendingCommands.WrenchSets.Remove(BodyId);
+    PendingCommands.WrenchClears.Add(BodyId);
+}
+
+void UMjPhysicsEngine::ApplyWakeBody(int32 BodyId)
+{
+    if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody) return;
+    FScopeLock Lock(&CallbackMutex);
+    m_data->body_awake[BodyId] = 1;
+    const int32 TreeId = m_model->body_treeid[BodyId];
+    if (TreeId >= 0 && TreeId < m_model->ntree)
+    {
+        m_data->tree_asleep[TreeId] = -1;
+        m_data->tree_awake[TreeId]  = 1;
+    }
+}
+
+void UMjPhysicsEngine::ApplySleepBody(int32 BodyId)
+{
+    if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody) return;
+    FScopeLock Lock(&CallbackMutex);
+    m_data->body_awake[BodyId] = 0;
+    const int32 TreeId = m_model->body_treeid[BodyId];
+    if (TreeId >= 0 && TreeId < m_model->ntree)
+    {
+        if (m_data->tree_asleep[TreeId] < 0)
+            m_data->tree_asleep[TreeId] = 0;
+        m_data->tree_awake[TreeId] = 0;
+    }
+}
+
+void UMjPhysicsEngine::DrainCommands()
+{
+    if (!m_model || !m_data) return;
+
+    FCommandQueue Local;
+    {
+        FScopeLock Lock(&CommandMutex);
+        if (PendingCommands.IsEmpty()) return;
+        Local = MoveTemp(PendingCommands);
+        PendingCommands = FCommandQueue();
+    }
+
+    const int32 NBody = m_model->nbody;
+
+    for (const TPair<int32, FMocapPose>& Pair : Local.MocapPoses)
+    {
+        const int32 BodyId = Pair.Key;
+        if (BodyId < 0 || BodyId >= NBody) continue;
+        const int32 MocapId = m_model->body_mocapid[BodyId];
+        if (MocapId < 0) continue;
+        FMemory::Memcpy(m_data->mocap_pos  + 3 * MocapId, Pair.Value.Pos,  sizeof(Pair.Value.Pos));
+        FMemory::Memcpy(m_data->mocap_quat + 4 * MocapId, Pair.Value.Quat, sizeof(Pair.Value.Quat));
+    }
+
+    for (const TPair<int32, FWrench>& Pair : Local.WrenchSets)
+    {
+        const int32 BodyId = Pair.Key;
+        if (BodyId < 0 || BodyId >= NBody) continue;
+        FMemory::Memcpy(m_data->xfrc_applied + 6 * BodyId, Pair.Value.Xfrc, sizeof(Pair.Value.Xfrc));
+    }
+    for (int32 BodyId : Local.WrenchClears)
+    {
+        if (BodyId < 0 || BodyId >= NBody) continue;
+        FMemory::Memzero(m_data->xfrc_applied + 6 * BodyId, sizeof(double) * 6);
+    }
 }

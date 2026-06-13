@@ -27,6 +27,29 @@
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
+#include "EngineUtils.h"
+
+namespace
+{
+    UMjPhysicsEngine* ResolveEngine(const UObject* WorldCtx)
+    {
+        if (AAMjManager* Manager = AAMjManager::GetManager())
+        {
+            if (Manager->PhysicsEngine) return Manager->PhysicsEngine;
+        }
+        if (WorldCtx)
+        {
+            if (UWorld* World = WorldCtx->GetWorld())
+            {
+                for (TActorIterator<AAMjManager> It(World); It; ++It)
+                {
+                    if (It->PhysicsEngine) return It->PhysicsEngine;
+                }
+            }
+        }
+        return nullptr;
+    }
+}
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "XmlNode.h"
 #include "Utils/URLabLogging.h"
@@ -302,10 +325,10 @@ void UMjGeom::UpdateGlobalTransform()
     const int32 Id = m_GeomView.id;
     if (Id < 0) return;
 
-    AAMjManager* Manager = AAMjManager::GetManager();
-    if (!Manager || !Manager->PhysicsEngine) return;
+    UMjPhysicsEngine* Engine = ResolveEngine(this);
+    if (!Engine) return;
 
-    Manager->PhysicsEngine->WithRenderState([this, Id](const FMjRenderSnapshot& Snap)
+    Engine->WithRenderState([this, Id](const FMjRenderSnapshot& Snap)
     {
         const int32 PosIdx = Id * 3;
         const int32 MatIdx = Id * 9;
@@ -328,11 +351,11 @@ FVector UMjGeom::GetWorldLocation() const
     const int32 Id = m_GeomView.id;
     if (Id < 0) return GetComponentLocation();
 
-    AAMjManager* Manager = AAMjManager::GetManager();
-    if (!Manager || !Manager->PhysicsEngine) return GetComponentLocation();
+    UMjPhysicsEngine* Engine = ResolveEngine(this);
+    if (!Engine) return GetComponentLocation();
 
     FVector Out = GetComponentLocation();
-    Manager->PhysicsEngine->WithRenderState([Id, &Out](const FMjRenderSnapshot& Snap)
+    Engine->WithRenderState([Id, &Out](const FMjRenderSnapshot& Snap)
     {
         const int32 PosIdx = Id * 3;
         if (Snap.GeomXPos.Num() > PosIdx + 2)

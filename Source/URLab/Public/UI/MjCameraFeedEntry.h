@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -51,63 +51,63 @@ class UTexture2D;
 UCLASS()
 class URLAB_API UMjCameraFeedEntry : public UUserWidget
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    /**
-     * @brief Binds this entry to a camera.
-     *        Enables streaming on the camera, creates a MaterialInstanceDynamic,
-     *        and wires the render target into the FeedImage brush.
-     */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
-    void BindToCamera(UMjCamera* InCamera);
+	/**
+	 * @brief Binds this entry to a camera.
+	 *        Enables streaming on the camera, creates a MaterialInstanceDynamic,
+	 *        and wires the render target into the FeedImage brush.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
+	void BindToCamera(UMjCamera* InCamera);
 
-    /**
-     * @brief Disables streaming on the bound camera and clears internal state.
-     *        Call this before the entry is removed from the panel.
-     */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
-    void UnbindCamera();
+	/**
+	 * @brief Disables streaming on the bound camera and clears internal state.
+	 *        Call this before the entry is removed from the panel.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
+	void UnbindCamera();
 
-    /**
-     * @brief Called each tick by the owning widget to keep the image brush valid.
-     *        Currently a no-op (MID samples the RT automatically), kept for future use.
-     */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
-    void UpdateFeed();
+	/**
+	 * @brief Called each tick by the owning widget to keep the image brush valid.
+	 *        Currently a no-op (MID samples the RT automatically), kept for future use.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
+	void UpdateFeed();
 
-    /** @brief Returns the bound camera (for streaming teardown from the owning widget). */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
-    UMjCamera* GetBoundCamera() const { return BoundCamera; }
+	/** @brief Returns the bound camera (for streaming teardown from the owning widget). */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
+	UMjCamera* GetBoundCamera() const { return BoundCamera; }
 
 protected:
-    /** @brief Camera name label. Must exist in the UMG Blueprint. */
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* CameraNameText;
+	/** @brief Camera name label. Must exist in the UMG Blueprint. */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* CameraNameText;
 
-    /** @brief Live feed image. Must exist in the UMG Blueprint. */
-    UPROPERTY(meta = (BindWidget))
-    UImage* FeedImage;
+	/** @brief Live feed image. Must exist in the UMG Blueprint. */
+	UPROPERTY(meta = (BindWidget))
+	UImage* FeedImage;
 
 private:
-    /** @brief (Re-)applies the FSlateBrush to FeedImage using the current render target. */
-    void RefreshBrush();
+	/** @brief (Re-)applies the FSlateBrush to FeedImage using the current render target. */
+	void RefreshBrush();
 
-    /** @brief Depth mode: CPU-copy the R32f RT into DepthPreviewTexture as
-     *         grayscale, normalised by the camera's DepthNear/Far range. */
-    void UpdateDepthPreview();
+	/** @brief Depth mode: CPU-copy the R32f RT into DepthPreviewTexture as
+	 *         grayscale, normalised by the camera's DepthNear/Far range. */
+	void UpdateDepthPreview();
 
-    UPROPERTY()
-    UMjCamera* BoundCamera = nullptr;
+	UPROPERTY()
+	UMjCamera* BoundCamera = nullptr;
 
-    UPROPERTY()
-    UMaterialInstanceDynamic* FeedMID = nullptr;
+	UPROPERTY()
+	UMaterialInstanceDynamic* FeedMID = nullptr;
 
-    /** Slate-displayable BGRA texture used as the brush resource when the bound
-     *  camera is in Depth mode. Null for other modes. */
-    UPROPERTY(Transient)
-    UTexture2D* DepthPreviewTexture = nullptr;
+	/** Slate-displayable BGRA texture used as the brush resource when the bound
+	 *  camera is in Depth mode. Null for other modes. */
+	UPROPERTY(Transient)
+	UTexture2D* DepthPreviewTexture = nullptr;
 
-    /** Scratch buffer reused by the depth CPU readback to avoid per-tick allocation. */
-    TArray<FLinearColor> DepthReadbackScratch;
+	/** Scratch buffer reused by the depth CPU readback to avoid per-tick allocation. */
+	TArray<FLinearColor> DepthReadbackScratch;
 };

@@ -40,6 +40,8 @@ import difflib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
@@ -3995,6 +3997,59 @@ def _mjspec_from_introspect(
     }
 
 
+_CLANG_FORMAT_EXE: Optional[str] = None
+_CLANG_FORMAT_RESOLVED = False
+
+
+def _resolve_clang_format() -> Optional[str]:
+    """Locate clang-format: $CLANG_FORMAT, then PATH, then VS2022's LLVM."""
+    global _CLANG_FORMAT_EXE, _CLANG_FORMAT_RESOLVED
+    if _CLANG_FORMAT_RESOLVED:
+        return _CLANG_FORMAT_EXE
+    _CLANG_FORMAT_RESOLVED = True
+    cand = (os.environ.get("CLANG_FORMAT")
+            or shutil.which("clang-format-19")   # common on Linux
+            or shutil.which("clang-format"))
+    if not cand:
+        # Windows: VS2022's bundled LLVM.
+        vs = ("C:/Program Files/Microsoft Visual Studio/2022/Community/"
+              "VC/Tools/Llvm/bin/clang-format.exe")
+        if os.path.isfile(vs):
+            cand = vs
+    _CLANG_FORMAT_EXE = cand
+    return cand
+
+
+def _clang_format_content(content: str, path: str) -> str:
+    """Format emitted C++ with the project .clang-format so generated files
+    match a clang-format pass over the whole tree. clang-format is a hard
+    regen dependency (like libclang): the committed generated tree is
+    formatted, so emitting unformatted would trip the --check drift gate.
+    Use clang-format 19.x (VS2022 LLVM) to match what the tree was committed
+    with. Non-C++ artifacts (e.g. the test-only schema header) pass through."""
+    if not (path.endswith(".h") or path.endswith(".cpp")):
+        return content
+    exe = _resolve_clang_format()
+    if not exe:
+        raise RuntimeError(
+            "clang-format not found — set $CLANG_FORMAT or put it on PATH "
+            "(clang-format 19.x, e.g. VS2022's bundled LLVM). Required so the "
+            "codegen emits formatted files; without it the --check drift gate "
+            "will report spurious changes.")
+    # --assume-filename lets clang-format pick up the repo-root .clang-format
+    # by walking up from the (real) generated-file path.
+    proc = subprocess.run(
+        [exe, f"--assume-filename={path}", "--style=file"],
+        input=content.encode("utf-8"),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            f"clang-format failed on {path}: "
+            f"{proc.stderr.decode('utf-8', 'replace')}")
+    return proc.stdout.decode("utf-8")
+
+
 def apply_writes(writes: List[FileWrite], dry_run: bool, check_only: bool) -> int:
     """Either apply, print diff, or check. Returns process exit code.
 
@@ -4005,7 +4060,8 @@ def apply_writes(writes: List[FileWrite], dry_run: bool, check_only: bool) -> in
     matching read would normalize it back."""
     changed = 0
     for w in writes:
-        new_bytes = w.content.encode("utf-8")
+        content = _clang_format_content(w.content, w.path)
+        new_bytes = content.encode("utf-8")
         old_bytes: Optional[bytes] = None
         if os.path.exists(w.path):
             with open(w.path, "rb") as f:
@@ -4020,7 +4076,7 @@ def apply_writes(writes: List[FileWrite], dry_run: bool, check_only: bool) -> in
                 old_text = old_bytes.decode("utf-8", errors="replace")
                 diff = difflib.unified_diff(
                     old_text.splitlines(keepends=True),
-                    w.content.splitlines(keepends=True),
+                    content.splitlines(keepends=True),
                     fromfile=rel + " (current)",
                     tofile=rel + " (codegen)",
                     n=2,

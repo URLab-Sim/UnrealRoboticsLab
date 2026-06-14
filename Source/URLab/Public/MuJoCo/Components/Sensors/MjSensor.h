@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -41,76 +41,76 @@
 UENUM(BlueprintType)
 enum class EMjSensorType : uint8
 {
-    // Common robotic sensors (attached to site)
-    Touch,
-    Accelerometer,
-    Velocimeter,
-    Gyro,
-    Force,
-    Torque,
-    Magnetometer,
-    RangeFinder,
-    CamProjection,
+	// Common robotic sensors (attached to site)
+	Touch,
+	Accelerometer,
+	Velocimeter,
+	Gyro,
+	Force,
+	Torque,
+	Magnetometer,
+	RangeFinder,
+	CamProjection,
 
-    // Scalar joints, tendons, actuators
-    JointPos,
-    JointVel,
-    TendonPos,
-    TendonVel,
-    ActuatorPos,
-    ActuatorVel,
-    ActuatorFrc,
-    JointActFrc,
-    TendonActFrc,
+	// Scalar joints, tendons, actuators
+	JointPos,
+	JointVel,
+	TendonPos,
+	TendonVel,
+	ActuatorPos,
+	ActuatorVel,
+	ActuatorFrc,
+	JointActFrc,
+	TendonActFrc,
 
-    // Ball joints
-    BallQuat,
-    BallAngVel,
+	// Ball joints
+	BallQuat,
+	BallAngVel,
 
-    // Joint and Tendon limits
-    JointLimitPos,
-    JointLimitVel,
-    JointLimitFrc,
-    TendonLimitPos,
-    TendonLimitVel,
-    TendonLimitFrc,
+	// Joint and Tendon limits
+	JointLimitPos,
+	JointLimitVel,
+	JointLimitFrc,
+	TendonLimitPos,
+	TendonLimitVel,
+	TendonLimitFrc,
 
-    // Frame sensors (attached to body, geom, site, camera)
-    FramePos,
-    FrameQuat,
-    FrameXAxis,
-    FrameYAxis,
-    FrameZAxis,
-    FrameLinVel,
-    FrameAngVel,
-    FrameLinAcc,
-    FrameAngAcc,
+	// Frame sensors (attached to body, geom, site, camera)
+	FramePos,
+	FrameQuat,
+	FrameXAxis,
+	FrameYAxis,
+	FrameZAxis,
+	FrameLinVel,
+	FrameAngVel,
+	FrameLinAcc,
+	FrameAngAcc,
 
-    // Subtree sensors (attached to body)
-    SubtreeCom,
-    SubtreeLinVel,
-    SubtreeAngMom,
+	// Subtree sensors (attached to body)
+	SubtreeCom,
+	SubtreeLinVel,
+	SubtreeAngMom,
 
-    // Geometric relationships
-    InsideSite,
-    GeomDist,
-    GeomNormal,
-    GeomFromTo,
+	// Geometric relationships
+	InsideSite,
+	GeomDist,
+	GeomNormal,
+	GeomFromTo,
 
-    // Contact
-    Contact,
+	// Contact
+	Contact,
 
-    // Global
-    EPotential,
-    EKinetic,
-    Clock,
+	// Global
+	EPotential,
+	EKinetic,
+	Clock,
 
-    // SDF
-    Tactile,
+	// SDF
+	Tactile,
 
-    // Plugin/User
-    Plugin,
-    User
+	// Plugin/User
+	Plugin,
+	User
 };
 
 // EMjObjType moved to MuJoCo/Generated/MjArticulationEnums.h.
@@ -118,162 +118,156 @@ enum class EMjSensorType : uint8
 /**
  * @class UMjSensor
  * @brief Component representing a sensor in the MuJoCo model.
- * 
+ *
  * Sensors provide observation data from the simulation.
  * This component mirrors the `sensor` element in MuJoCo XML.
  */
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjSensor : public UMjComponent
 {
 	GENERATED_BODY()
 
-public:	
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_nsample = false;
+public:
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta = (InlineEditConditionToggle))
+	bool bOverride_nsample = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_nsample"))
-    int32 nsample = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (EditCondition = "bOverride_nsample"))
+	int32 nsample = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_interp = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta = (InlineEditConditionToggle))
+	bool bOverride_interp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_interp"))
-    int32 interp = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (EditCondition = "bOverride_interp"))
+	int32 interp = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_delay = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta = (InlineEditConditionToggle))
+	bool bOverride_delay = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_delay"))
-    float delay = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (EditCondition = "bOverride_delay"))
+	float delay = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_interval = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta = (InlineEditConditionToggle))
+	bool bOverride_interval = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_interval"))
-    TArray<float> interval = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (EditCondition = "bOverride_interval"))
+	TArray<float> interval = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_cutoff = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta = (InlineEditConditionToggle))
+	bool bOverride_cutoff = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_cutoff"))
-    float cutoff = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (EditCondition = "bOverride_cutoff"))
+	float cutoff = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
-    bool bOverride_noise = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta = (InlineEditConditionToggle))
+	bool bOverride_noise = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_noise"))
-    float noise = 0.0f;
-    // --- CODEGEN_PROPERTIES_END ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (EditCondition = "bOverride_noise"))
+	float noise = 0.0f;
+	// --- CODEGEN_PROPERTIES_END ---
 
 	UMjSensor();
 
-    /** @brief The type of sensor (Touch, Accelerometer, JointPos, etc.). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    EMjSensorType Type;
+	/** @brief The type of sensor (Touch, Accelerometer, JointPos, etc.). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	EMjSensorType Type;
 
-    /** @brief Name of the object this sensor is attached to or referencing (e.g. site name, joint name). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetTargetNameOptions"))
-    FString TargetName;
+	/** @brief Name of the object this sensor is attached to or referencing (e.g. site name, joint name). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (GetOptions = "GetTargetNameOptions"))
+	FString TargetName;
 
-    /** @brief Optional: Referenced object name (e.g. for reftype/refname pairs in MuJoCo). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetReferenceNameOptions"))
-    FString ReferenceName;
+	/** @brief Optional: Referenced object name (e.g. for reftype/refname pairs in MuJoCo). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (GetOptions = "GetReferenceNameOptions"))
+	FString ReferenceName;
 
-    /** @brief Dimension of the sensor output. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    int Dim;
+	/** @brief Dimension of the sensor output. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	int Dim;
 
+	/** @brief Output address override for user sensors (mjsSensor::adr). -1 = let MuJoCo assign. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	int32 UserAdr = -1;
 
+	/** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta = (GetOptions = "GetDefaultClassOptions"))
+	FString MjClassName;
 
+	/** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+	 *  Details panel — synced from MjClassName via the editor dropdown. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor",
+		meta = (EditCondition = "false", EditConditionHides))
+	UMjDefault* DefaultClass = nullptr;
 
+	virtual FString GetMjClassName() const override
+	{
+		return MjClassName;
+	}
 
-    /** @brief Output address override for user sensors (mjsSensor::adr). -1 = let MuJoCo assign. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    int32 UserAdr = -1;
+	/** @brief Type of object this sensor is attached to (e.g. Site, Joint, Body). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	EMjObjType ObjType;
 
-    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetDefaultClassOptions"))
-    FString MjClassName;
+	/** @brief Type of reference object (e.g. Camera for camprojection, Body/Geom for distance). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	EMjObjType RefType;
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
-     *  Details panel — synced from MjClassName via the editor dropdown. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor",
-              meta=(EditCondition="false", EditConditionHides))
-    UMjDefault* DefaultClass = nullptr;
+	/** @brief Integer parameters for sensor configuration (e.g. rangefinder flags, contact flags). Maps to sensor->intprm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	TArray<int32> IntParams;
 
-    virtual FString GetMjClassName() const override
-    {
-        return MjClassName;
-    }
-
-    /** @brief Type of object this sensor is attached to (e.g. Site, Joint, Body). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    EMjObjType ObjType;
-
-    /** @brief Type of reference object (e.g. Camera for camprojection, Body/Geom for distance). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    EMjObjType RefType;
-
-    /** @brief Integer parameters for sensor configuration (e.g. rangefinder flags, contact flags). Maps to sensor->intprm. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    TArray<int32> IntParams;
-
-    /** @brief User data for custom sensors. Maps to sensor->userdata. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
-    TArray<double> UserParams;
+	/** @brief User data for custom sensors. Maps to sensor->userdata. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+	TArray<double> UserParams;
 
 public:
+	virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr);
 
-    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr);
-    
-    /**
-     * @brief Imports properties and override flags directly from the raw XML node.
-     * @param Node Pointer to the corresponding FXmlNode.
-     */
-    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
+	/**
+	 * @brief Imports properties and override flags directly from the raw XML node.
+	 * @param Node Pointer to the corresponding FXmlNode.
+	 */
+	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
-    /**
-     * @brief Registers this sensor to the MuJoCo spec.
-     * @param Wrapper The spec wrapper instance.
-     */
-    virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
+	/**
+	 * @brief Registers this sensor to the MuJoCo spec.
+	 * @param Wrapper The spec wrapper instance.
+	 */
+	virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    // --- Runtime Binding ---
-    virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT("")) override;
+	// --- Runtime Binding ---
+	virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT("")) override;
 
-    /** @brief Gets the full array reading. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
-    TArray<float> GetReading() const;
+	/** @brief Gets the full array reading. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
+	TArray<float> GetReading() const;
 
-    virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const override;
-    virtual FString GetTelemetryTopicName() const override;
+	virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const override;
+	virtual FString GetTelemetryTopicName() const override;
 
-    /** @brief Gets the first scalar reading (index 0). */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
-    float GetScalarReading() const;
+	/** @brief Gets the first scalar reading (index 0). */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
+	float GetScalarReading() const;
 
-    /** @brief Gets the sensor output dimension (number of values in GetReading()). */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
-    int GetDimension() const;
+	/** @brief Gets the sensor output dimension (number of values in GetReading()). */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
+	int GetDimension() const;
 
-    /** @brief Gets the full prefixed name of this sensor as it appears in the compiled MuJoCo model. */
-    virtual FString GetMjName() const override;
+	/** @brief Gets the full prefixed name of this sensor as it appears in the compiled MuJoCo model. */
+	virtual FString GetMjName() const override;
 
 #if WITH_EDITOR
-    UFUNCTION()
-    TArray<FString> GetTargetNameOptions() const;
-    UFUNCTION()
-    TArray<FString> GetReferenceNameOptions() const;
-    UFUNCTION()
-    TArray<FString> GetDefaultClassOptions() const;
+	UFUNCTION()
+	TArray<FString> GetTargetNameOptions() const;
+	UFUNCTION()
+	TArray<FString> GetReferenceNameOptions() const;
+	UFUNCTION()
+	TArray<FString> GetDefaultClassOptions() const;
 #endif
 
-    /** @brief The runtime view of the MuJoCo sensor. */
-    SensorView m_SensorView;
+	/** @brief The runtime view of the MuJoCo sensor. */
+	SensorView m_SensorView;
 
-    /** @brief Semantic accessor for raw MuJoCo data and helper methods. */
-    SensorView& GetMj() { return m_SensorView; }
-    const SensorView& GetMj() const { return m_SensorView; }
-
+	/** @brief Semantic accessor for raw MuJoCo data and helper methods. */
+	SensorView& GetMj() { return m_SensorView; }
+	const SensorView& GetMj() const { return m_SensorView; }
 };

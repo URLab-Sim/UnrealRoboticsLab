@@ -34,26 +34,26 @@ class UMjCamera;
  *        bridge-style UObject transports owned by AAMjManager directly,
  *        not discovered through component iteration.)
  */
-UCLASS(ClassGroup=(MuJoCo), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (MuJoCo), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjNetworkManager : public UActorComponent
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UMjNetworkManager();
+	UMjNetworkManager();
 
-    /** Forces all UMjCameras to enable ZMQ broadcasting. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
-    bool bEnableAllCameras = true;
+	/** Forces all UMjCameras to enable ZMQ broadcasting. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
+	bool bEnableAllCameras = true;
 
-    void UpdateCameraStreamingState();
+	void UpdateCameraStreamingState();
 
-    // Thread-safe camera registry.
-    void RegisterCamera(UMjCamera* Cam);
-    void UnregisterCamera(UMjCamera* Cam);
-    TArray<UMjCamera*> GetActiveCameras();
+	// Thread-safe camera registry.
+	void RegisterCamera(UMjCamera* Cam);
+	void UnregisterCamera(UMjCamera* Cam);
+	TArray<UMjCamera*> GetActiveCameras();
 
 private:
-    TArray<UMjCamera*> ActiveCameras;
-    FCriticalSection CameraMutex;
+	TArray<UMjCamera*> ActiveCameras;
+	FCriticalSection CameraMutex;
 };

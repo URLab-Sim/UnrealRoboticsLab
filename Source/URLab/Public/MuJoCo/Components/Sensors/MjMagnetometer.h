@@ -35,18 +35,18 @@
  *
  * Subclass of UMjSensor. Sets Type = Magnetometer in the constructor.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjMagnetometer : public UMjSensor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UMjMagnetometer();
+	UMjMagnetometer();
 
-    // --- CODEGEN_PROPERTIES_START ---
-    // (no type-specific schema attrs)
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// (no type-specific schema attrs)
+	// --- CODEGEN_PROPERTIES_END ---
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
-    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
 };

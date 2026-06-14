@@ -33,94 +33,94 @@
 
 namespace URLabCodegenSchemaForTests
 {
-    inline const TArray<FString>& ActuatorProps()
-    {
-        static const TArray<FString> P{TEXT("group"), TEXT("nsample"), TEXT("interp"), TEXT("delay"), TEXT("ctrllimited"), TEXT("forcelimited"), TEXT("actlimited"), TEXT("ctrlrange"), TEXT("forcerange"), TEXT("actrange"), TEXT("lengthrange"), TEXT("gear"), TEXT("damping"), TEXT("armature"), TEXT("cranklength"), TEXT("gainprm"), TEXT("biasprm"), TEXT("dynprm"), TEXT("GainType"), TEXT("BiasType"), TEXT("DynType"), TEXT("actdim")};
-        return P;
-    }
-
-    inline const TArray<FString>& SensorProps()
-    {
-        static const TArray<FString> P{TEXT("nsample"), TEXT("interp"), TEXT("delay"), TEXT("interval"), TEXT("cutoff"), TEXT("noise")};
-        return P;
-    }
-
-    inline const TArray<FString>& JointProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("group"), TEXT("Axis"), TEXT("springdamper"), TEXT("limited"), TEXT("ActFrcLimited"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("stiffness"), TEXT("range"), TEXT("ActFrcRange"), TEXT("actuatorgravcomp"), TEXT("margin"), TEXT("ref"), TEXT("springref"), TEXT("armature"), TEXT("damping"), TEXT("frictionloss")};
-        return P;
-    }
-
-    inline const TArray<FString>& SiteProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("group"), TEXT("material"), TEXT("size"), TEXT("rgba")};
-        return P;
-    }
-
-    inline const TArray<FString>& TendonProps()
-    {
-        static const TArray<FString> P{TEXT("group"), TEXT("limited"), TEXT("ActFrcLimited"), TEXT("range"), TEXT("ActFrcRange"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("frictionloss"), TEXT("springlength"), TEXT("width"), TEXT("material"), TEXT("margin"), TEXT("stiffness"), TEXT("damping"), TEXT("armature"), TEXT("rgba")};
-        return P;
-    }
-
-    inline const TArray<FString>& EqualityProps()
-    {
-        static const TArray<FString> P{TEXT("relpose"), TEXT("anchor"), TEXT("site1"), TEXT("site2"), TEXT("active"), TEXT("solref"), TEXT("solimp"), TEXT("torquescale"), TEXT("polycoef")};
-        return P;
-    }
-
-    inline const TArray<FString>& GeomProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("contype"), TEXT("conaffinity"), TEXT("condim"), TEXT("group"), TEXT("priority"), TEXT("size"), TEXT("material"), TEXT("friction"), TEXT("mass"), TEXT("density"), TEXT("ShellInertia"), TEXT("solmix"), TEXT("solref"), TEXT("solimp"), TEXT("margin"), TEXT("gap"), TEXT("hfield"), TEXT("mesh"), TEXT("fitscale"), TEXT("rgba"), TEXT("FluidShape"), TEXT("fluidcoef")};
-        return P;
-    }
-
-    inline const TArray<FString>& CameraProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("Projection"), TEXT("fovy"), TEXT("ipd"), TEXT("resolution"), TEXT("output"), TEXT("TrackingMode"), TEXT("target"), TEXT("focal"), TEXT("focalpixel"), TEXT("principal"), TEXT("principalpixel"), TEXT("sensorsize")};
-        return P;
-    }
-
-    inline const TArray<FString>& FlexcompProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("group"), TEXT("dim"), TEXT("FlexcompDof"), TEXT("count"), TEXT("cellcount"), TEXT("spacing"), TEXT("radius"), TEXT("rigid"), TEXT("mass"), TEXT("inertiabox"), TEXT("scale"), TEXT("file"), TEXT("point"), TEXT("element"), TEXT("texcoord"), TEXT("material"), TEXT("rgba"), TEXT("flatskin"), TEXT("origin")};
-        return P;
-    }
-
-    inline const TArray<FString>& BodyProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("childclass"), TEXT("mocap"), TEXT("gravcomp")};
-        return P;
-    }
-
-    inline const TArray<FString>& FrameProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("childclass")};
-        return P;
-    }
-
-    inline const TArray<FString>& InertialProps()
-    {
-        static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("mass"), TEXT("diaginertia"), TEXT("fullinertia")};
-        return P;
-    }
-
-    inline const TArray<FString>& Contact_PairProps()
-    {
-        static const TArray<FString> P{TEXT("geom1"), TEXT("geom2"), TEXT("condim"), TEXT("friction"), TEXT("solref"), TEXT("solreffriction"), TEXT("solimp"), TEXT("gap"), TEXT("margin")};
-        return P;
-    }
-
-    inline const TArray<FString>& Contact_ExcludeProps()
-    {
-        static const TArray<FString> P{TEXT("body1"), TEXT("body2")};
-        return P;
-    }
-
-    inline const TArray<FString>& KeyframeProps()
-    {
-        static const TArray<FString> P{TEXT("Time"), TEXT("Qpos"), TEXT("Qvel"), TEXT("Act"), TEXT("Mpos"), TEXT("Mquat"), TEXT("Ctrl")};
-        return P;
-    }
-
+inline const TArray<FString>& ActuatorProps()
+{
+	static const TArray<FString> P{TEXT("group"), TEXT("nsample"), TEXT("interp"), TEXT("delay"), TEXT("ctrllimited"), TEXT("forcelimited"), TEXT("actlimited"), TEXT("ctrlrange"), TEXT("forcerange"), TEXT("actrange"), TEXT("lengthrange"), TEXT("gear"), TEXT("damping"), TEXT("armature"), TEXT("cranklength"), TEXT("gainprm"), TEXT("biasprm"), TEXT("dynprm"), TEXT("GainType"), TEXT("BiasType"), TEXT("DynType"), TEXT("actdim")};
+	return P;
 }
+
+inline const TArray<FString>& SensorProps()
+{
+	static const TArray<FString> P{TEXT("nsample"), TEXT("interp"), TEXT("delay"), TEXT("interval"), TEXT("cutoff"), TEXT("noise")};
+	return P;
+}
+
+inline const TArray<FString>& JointProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("group"), TEXT("Axis"), TEXT("springdamper"), TEXT("limited"), TEXT("ActFrcLimited"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("stiffness"), TEXT("range"), TEXT("ActFrcRange"), TEXT("actuatorgravcomp"), TEXT("margin"), TEXT("ref"), TEXT("springref"), TEXT("armature"), TEXT("damping"), TEXT("frictionloss")};
+	return P;
+}
+
+inline const TArray<FString>& SiteProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("group"), TEXT("material"), TEXT("size"), TEXT("rgba")};
+	return P;
+}
+
+inline const TArray<FString>& TendonProps()
+{
+	static const TArray<FString> P{TEXT("group"), TEXT("limited"), TEXT("ActFrcLimited"), TEXT("range"), TEXT("ActFrcRange"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("frictionloss"), TEXT("springlength"), TEXT("width"), TEXT("material"), TEXT("margin"), TEXT("stiffness"), TEXT("damping"), TEXT("armature"), TEXT("rgba")};
+	return P;
+}
+
+inline const TArray<FString>& EqualityProps()
+{
+	static const TArray<FString> P{TEXT("relpose"), TEXT("anchor"), TEXT("site1"), TEXT("site2"), TEXT("active"), TEXT("solref"), TEXT("solimp"), TEXT("torquescale"), TEXT("polycoef")};
+	return P;
+}
+
+inline const TArray<FString>& GeomProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("contype"), TEXT("conaffinity"), TEXT("condim"), TEXT("group"), TEXT("priority"), TEXT("size"), TEXT("material"), TEXT("friction"), TEXT("mass"), TEXT("density"), TEXT("ShellInertia"), TEXT("solmix"), TEXT("solref"), TEXT("solimp"), TEXT("margin"), TEXT("gap"), TEXT("hfield"), TEXT("mesh"), TEXT("fitscale"), TEXT("rgba"), TEXT("FluidShape"), TEXT("fluidcoef")};
+	return P;
+}
+
+inline const TArray<FString>& CameraProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("Projection"), TEXT("fovy"), TEXT("ipd"), TEXT("resolution"), TEXT("output"), TEXT("TrackingMode"), TEXT("target"), TEXT("focal"), TEXT("focalpixel"), TEXT("principal"), TEXT("principalpixel"), TEXT("sensorsize")};
+	return P;
+}
+
+inline const TArray<FString>& FlexcompProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("group"), TEXT("dim"), TEXT("FlexcompDof"), TEXT("count"), TEXT("cellcount"), TEXT("spacing"), TEXT("radius"), TEXT("rigid"), TEXT("mass"), TEXT("inertiabox"), TEXT("scale"), TEXT("file"), TEXT("point"), TEXT("element"), TEXT("texcoord"), TEXT("material"), TEXT("rgba"), TEXT("flatskin"), TEXT("origin")};
+	return P;
+}
+
+inline const TArray<FString>& BodyProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("childclass"), TEXT("mocap"), TEXT("gravcomp")};
+	return P;
+}
+
+inline const TArray<FString>& FrameProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("childclass")};
+	return P;
+}
+
+inline const TArray<FString>& InertialProps()
+{
+	static const TArray<FString> P{TEXT("Pos"), TEXT("Quat"), TEXT("mass"), TEXT("diaginertia"), TEXT("fullinertia")};
+	return P;
+}
+
+inline const TArray<FString>& Contact_PairProps()
+{
+	static const TArray<FString> P{TEXT("geom1"), TEXT("geom2"), TEXT("condim"), TEXT("friction"), TEXT("solref"), TEXT("solreffriction"), TEXT("solimp"), TEXT("gap"), TEXT("margin")};
+	return P;
+}
+
+inline const TArray<FString>& Contact_ExcludeProps()
+{
+	static const TArray<FString> P{TEXT("body1"), TEXT("body2")};
+	return P;
+}
+
+inline const TArray<FString>& KeyframeProps()
+{
+	static const TArray<FString> P{TEXT("Time"), TEXT("Qpos"), TEXT("Qvel"), TEXT("Act"), TEXT("Mpos"), TEXT("Mquat"), TEXT("Ctrl")};
+	return P;
+}
+
+} // namespace URLabCodegenSchemaForTests

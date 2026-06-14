@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Physics/MjInertial.h"
@@ -33,56 +33,57 @@ UMjInertial::UMjInertial()
 	PrimaryComponentTick.bCanEverTick = false;
 }
 
-
-
 void UMjInertial::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    if (!Node) return;
+	if (!Node)
+		return;
 
-        // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("mass"), mass, bOverride_mass);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("diaginertia"), diaginertia, bOverride_diaginertia);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("fullinertia"), fullinertia, bOverride_fullinertia);
-    MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
-    { // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
-        double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
-        if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
-        {
-            Quat = MjUtils::MjToUERotation(TmpQuat);
-            bOverride_Quat = true;
-        }
-    }
-    if (bOverride_Pos)  SetRelativeLocation(Pos);
-    if (bOverride_Quat) SetRelativeRotation(Quat);
-        // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("mass"), mass, bOverride_mass);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("diaginertia"), diaginertia, bOverride_diaginertia);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("fullinertia"), fullinertia, bOverride_fullinertia);
+	MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
+	{ // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)
+		double TmpQuat[4] = {1.0, 0.0, 0.0, 0.0};
+		if (MjOrientationUtils::OrientationToMjQuat(Node, CompilerSettings, TmpQuat))
+		{
+			Quat = MjUtils::MjToUERotation(TmpQuat);
+			bOverride_Quat = true;
+		}
+	}
+	if (bOverride_Pos)
+		SetRelativeLocation(Pos);
+	if (bOverride_Quat)
+		SetRelativeRotation(Quat);
+	// --- CODEGEN_IMPORT_END ---
 }
 
 void UMjInertial::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
-    if (!ParentBody) return;
+	if (!ParentBody)
+		return;
 
-    // Set explicit inertial
-    ParentBody->explicitinertial = 1;
+	// Set explicit inertial
+	ParentBody->explicitinertial = 1;
 
-    ParentBody->mass = mass;
-    if (diaginertia.Num() >= 3)
-    {
-        ParentBody->inertia[0] = diaginertia[0];
-        ParentBody->inertia[1] = diaginertia[1];
-        ParentBody->inertia[2] = diaginertia[2];
-    }
+	ParentBody->mass = mass;
+	if (diaginertia.Num() >= 3)
+	{
+		ParentBody->inertia[0] = diaginertia[0];
+		ParentBody->inertia[1] = diaginertia[1];
+		ParentBody->inertia[2] = diaginertia[2];
+	}
 
-    if (fullinertia.Num() == 6)
-    {
-        for (int i = 0; i < 6; i++)
-        {
-            ParentBody->fullinertia[i] = fullinertia[i];
-        }
-    }
-    
-    // Transform from Component (Relative to Parent Body)
-    FTransform RelTrans = GetRelativeTransform();
-    MjUtils::UEToMjPosition(RelTrans.GetLocation(), ParentBody->ipos);
-    MjUtils::UEToMjRotation(RelTrans.GetRotation(), ParentBody->iquat);
+	if (fullinertia.Num() == 6)
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			ParentBody->fullinertia[i] = fullinertia[i];
+		}
+	}
+
+	// Transform from Component (Relative to Parent Body)
+	FTransform RelTrans = GetRelativeTransform();
+	MjUtils::UEToMjPosition(RelTrans.GetLocation(), ParentBody->ipos);
+	MjUtils::UEToMjRotation(RelTrans.GetRotation(), ParentBody->iquat);
 }
-

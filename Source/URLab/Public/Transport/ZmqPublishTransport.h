@@ -45,8 +45,8 @@ class UMjTwistController;
  * game thread.
  */
 UCLASS()
-class URLAB_API UURLabZmqPublishTransport : public UURLabPublishTransport,
-                                          public IMjSnapshotPublisher
+class URLAB_API UURLabZmqPublishTransport : public UURLabPublishTransport
+	, public IMjSnapshotPublisher
 {
 	GENERATED_BODY()
 
@@ -66,7 +66,7 @@ public:
 	virtual void TransportShutdown() override;
 	virtual FString GetTransportName() const override { return TEXT("zmq-pub"); }
 	virtual void Publish(const FString& Topic,
-	                     const TArray<uint8>& Payload) override;
+		const TArray<uint8>& Payload) override;
 
 	// Per-step hook (Async / physics thread).
 	virtual void PostStep(struct mjModel_* m, struct mjData_* d) override;
@@ -105,8 +105,8 @@ private:
 	 *  refresh — broadcaster assumes articulations and their components are
 	 *  stable across a single play session. */
 	TArray<FArticulationBroadcastRecord> CachedRecords;
-	std::atomic<bool> bCacheBuilt { false };
-	std::atomic<bool> bCacheBuildScheduled { false };
+	std::atomic<bool> bCacheBuilt{false};
+	std::atomic<bool> bCacheBuildScheduled{false};
 
 	/** Schedule a one-shot AsyncTask(GameThread) to build the cache.
 	 *  Idempotent: only the first call goes through. */

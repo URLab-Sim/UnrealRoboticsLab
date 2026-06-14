@@ -43,65 +43,65 @@ class FRunnableThread;
 UCLASS()
 class URLAB_API UURLabShmRpcTransport : public UURLabRpcTransport
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UURLabShmRpcTransport();
+	UURLabShmRpcTransport();
 
-    /** Per-buffer slot size. Step replies are tiny (~few KB) but the
-     *  hello reply embeds the MJB, which can be many MB for mesh-heavy
-     *  scenes. 1 MiB is a workable default; bump higher for large MJBs.
-     *  Replies that exceed the stride get a `reply_too_large` error so
-     *  the bridge can fall back to ZMQ for that specific RPC. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
-    int32 BufferStride = 1024 * 1024;
+	/** Per-buffer slot size. Step replies are tiny (~few KB) but the
+	 *  hello reply embeds the MJB, which can be many MB for mesh-heavy
+	 *  scenes. 1 MiB is a workable default; bump higher for large MJBs.
+	 *  Replies that exceed the stride get a `reply_too_large` error so
+	 *  the bridge can fall back to ZMQ for that specific RPC. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	int32 BufferStride = 1024 * 1024;
 
-    /** Optional explicit session id (defaults to "live"; mirrors the
-     *  publisher's path scheme). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
-    FString SessionId;
+	/** Optional explicit session id (defaults to "live"; mirrors the
+	 *  publisher's path scheme). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	FString SessionId;
 
-    /** How long the worker thread waits between sequence checks
-     *  (microseconds). On Windows the worker waits on a named event, so
-     *  this only matters when the event isn't usable (other platforms,
-     *  bridge running w/o event support); it then becomes a poll
-     *  interval. 200 us strikes a balance between latency and idle CPU. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
-    int32 PollIntervalUs = 200;
+	/** How long the worker thread waits between sequence checks
+	 *  (microseconds). On Windows the worker waits on a named event, so
+	 *  this only matters when the event isn't usable (other platforms,
+	 *  bridge running w/o event support); it then becomes a poll
+	 *  interval. 200 us strikes a balance between latency and idle CPU. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	int32 PollIntervalUs = 200;
 
-    // UURLabRpcTransport contract
-    virtual bool TransportInit() override;
-    virtual void TransportShutdown() override;
-    virtual FString GetTransportName() const override { return TEXT("shm"); }
-    /** SHM scope narrowing: editor ops never reach the dispatcher on
-     *  this transport. */
-    virtual bool AcceptsEditorOps() const override { return false; }
+	// UURLabRpcTransport contract
+	virtual bool TransportInit() override;
+	virtual void TransportShutdown() override;
+	virtual FString GetTransportName() const override { return TEXT("shm"); }
+	/** SHM scope narrowing: editor ops never reach the dispatcher on
+	 *  this transport. */
+	virtual bool AcceptsEditorOps() const override { return false; }
 
-    /** Resolved on-disk paths (set after TransportInit). */
-    FString GetReqPath() const { return ReqPath; }
-    FString GetRepPath() const { return RepPath; }
+	/** Resolved on-disk paths (set after TransportInit). */
+	FString GetReqPath() const { return ReqPath; }
+	FString GetRepPath() const { return RepPath; }
 
 private:
-    FMjShmRegion ReqRegion;  // bridge writes, UE reads
-    FMjShmRegion RepRegion;  // UE writes, bridge reads
+	FMjShmRegion ReqRegion; // bridge writes, UE reads
+	FMjShmRegion RepRegion; // UE writes, bridge reads
 
-    FString ReqPath;
-    FString RepPath;
+	FString ReqPath;
+	FString RepPath;
 
-    /** Named-event handles for kernel-wakeup signalling. Bridge calls
-     *  SetEvent on `ReqReadyEvent` after writing req.shm; UE's worker
-     *  waits on it. Symmetric for `RepReadyEvent`. Stored as void* to
-     *  keep <windows.h> out of the public header. nullptr on platforms
-     *  without named-event support; the worker falls back to polling. */
-    void* ReqReadyEvent = nullptr;
-    void* RepReadyEvent = nullptr;
+	/** Named-event handles for kernel-wakeup signalling. Bridge calls
+	 *  SetEvent on `ReqReadyEvent` after writing req.shm; UE's worker
+	 *  waits on it. Symmetric for `RepReadyEvent`. Stored as void* to
+	 *  keep <windows.h> out of the public header. nullptr on platforms
+	 *  without named-event support; the worker falls back to polling. */
+	void* ReqReadyEvent = nullptr;
+	void* RepReadyEvent = nullptr;
 
-    FRunnableThread* WorkerThread = nullptr;
-    std::atomic<bool> bStop{false};
-    bool bInitialized = false;
+	FRunnableThread* WorkerThread = nullptr;
+	std::atomic<bool> bStop{false};
+	bool bInitialized = false;
 
-    /** Worker-thread loop: wait for a request (event or poll), dispatch,
-     *  write rep.shm, signal the bridge. */
-    void RunPollLoop();
-    friend class FSmStepTransportRunnable;
+	/** Worker-thread loop: wait for a request (event or poll), dispatch,
+	 *  write rep.shm, signal the bridge. */
+	void RunPollLoop();
+	friend class FSmStepTransportRunnable;
 };

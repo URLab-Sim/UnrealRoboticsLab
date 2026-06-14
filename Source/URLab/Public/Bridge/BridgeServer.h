@@ -27,57 +27,57 @@ class UURLabRpcTransport;
 UCLASS()
 class URLAB_API UURLabBridgeServer : public UObject
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UURLabBridgeServer();
-    virtual void BeginDestroy() override;
+	UURLabBridgeServer();
+	virtual void BeginDestroy() override;
 
-    /** Construct the dispatcher and optionally bind a ZMQ REP listener.
-     *  Empty endpoint skips binding (test path). Idempotent. */
-    void Start(const FString& StepEndpoint = TEXT("tcp://0.0.0.0:5559"));
+	/** Construct the dispatcher and optionally bind a ZMQ REP listener.
+	 *  Empty endpoint skips binding (test path). Idempotent. */
+	void Start(const FString& StepEndpoint = TEXT("tcp://0.0.0.0:5559"));
 
-    /** Tear down the dispatcher and every transport. Idempotent. */
-    void Stop();
+	/** Tear down the dispatcher and every transport. Idempotent. */
+	void Stop();
 
-    bool IsRunning() const { return Dispatcher.IsValid(); }
+	bool IsRunning() const { return Dispatcher.IsValid(); }
 
-    bool HasBoundRpcTransport() const { return RpcTransports.Num() > 0; }
+	bool HasBoundRpcTransport() const { return RpcTransports.Num() > 0; }
 
-    /** Bind a ZMQ REP listener if not already bound on `Endpoint`. */
-    bool EnsureZmqBound(const FString& Endpoint);
+	/** Bind a ZMQ REP listener if not already bound on `Endpoint`. */
+	bool EnsureZmqBound(const FString& Endpoint);
 
-    /** Open req.shm / rep.shm under `SessionId` if not already open.
-     *  Empty string means "live". */
-    bool EnsureShmBound(const FString& SessionId = TEXT(""));
+	/** Open req.shm / rep.shm under `SessionId` if not already open.
+	 *  Empty string means "live". */
+	bool EnsureShmBound(const FString& SessionId = TEXT(""));
 
-    /** Dispatcher when running, nullptr otherwise. */
-    FURLabRpcDispatcher* GetDispatcher() const { return Dispatcher.Get(); }
+	/** Dispatcher when running, nullptr otherwise. */
+	FURLabRpcDispatcher* GetDispatcher() const { return Dispatcher.Get(); }
 
-    /** True when AAMjManager owns this server (cooked path, or editor
-     *  without subsystem auto-start). EndPlay tears it down only when so. */
-    bool IsOwnedByManager() const { return bOwnedByManager; }
-    void SetOwnedByManager(bool b) { bOwnedByManager = b; }
+	/** True when AAMjManager owns this server (cooked path, or editor
+	 *  without subsystem auto-start). EndPlay tears it down only when so. */
+	bool IsOwnedByManager() const { return bOwnedByManager; }
+	void SetOwnedByManager(bool b) { bOwnedByManager = b; }
 
-    /** Called from AAMjManager BeginPlay / EndPlay so the dispatcher can
-     *  resolve the live PIE manager regardless of who owns the server. */
-    void RegisterManager(AAMjManager* InManager);
-    void UnregisterManager(AAMjManager* InManager);
+	/** Called from AAMjManager BeginPlay / EndPlay so the dispatcher can
+	 *  resolve the live PIE manager regardless of who owns the server. */
+	void RegisterManager(AAMjManager* InManager);
+	void UnregisterManager(AAMjManager* InManager);
 
-    /** Live PIE manager when one is registered, nullptr otherwise. */
-    AAMjManager* GetActiveManager() const { return ActiveManager.Get(); }
+	/** Live PIE manager when one is registered, nullptr otherwise. */
+	AAMjManager* GetActiveManager() const { return ActiveManager.Get(); }
 
-    /** Bridge-owned RPC transports. Exposed for tests; production code
-     *  doesn't need to inspect these directly. */
-    const TArray<TObjectPtr<UURLabRpcTransport>>& GetRpcTransports() const { return RpcTransports; }
+	/** Bridge-owned RPC transports. Exposed for tests; production code
+	 *  doesn't need to inspect these directly. */
+	const TArray<TObjectPtr<UURLabRpcTransport>>& GetRpcTransports() const { return RpcTransports; }
 
 private:
-    TUniquePtr<FURLabRpcDispatcher> Dispatcher;
-    TWeakObjectPtr<AAMjManager> ActiveManager;
-    bool bOwnedByManager = false;
+	TUniquePtr<FURLabRpcDispatcher> Dispatcher;
+	TWeakObjectPtr<AAMjManager> ActiveManager;
+	bool bOwnedByManager = false;
 
-    /** Every bound RPC transport. Survives PIE transitions. Transient so
-     *  UE GC won't try to serialise these alongside the bridge UObject. */
-    UPROPERTY(Transient)
-    TArray<TObjectPtr<UURLabRpcTransport>> RpcTransports;
+	/** Every bound RPC transport. Survives PIE transitions. Transient so
+	 *  UE GC won't try to serialise these alongside the bridge UObject. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UURLabRpcTransport>> RpcTransports;
 };

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -33,21 +33,21 @@
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjTactileSensor : public UMjSensor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// --- CODEGEN_PROPERTIES_END ---
 
-    UMjTactileSensor();
+	UMjTactileSensor();
 
-    /**
-     * @brief Override Bind to sync Dim from the compiled model.
-     * Tactile sensor dimension depends on contact geometry and is assigned by the
-     * MuJoCo compiler, not statically known at spec time.
-     */
-    virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix) override;
+	/**
+	 * @brief Override Bind to sync Dim from the compiled model.
+	 * Tactile sensor dimension depends on contact geometry and is assigned by the
+	 * MuJoCo compiler, not statically known at spec time.
+	 */
+	virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix) override;
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 
-    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
+	virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
 };

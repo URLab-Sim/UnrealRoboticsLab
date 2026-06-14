@@ -35,18 +35,18 @@
  *
  * Subclass of UMjGeom. Sets Type = SDF in the constructor.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjSdf : public UMjGeom
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UMjSdf();
+	UMjSdf();
 
-    // --- CODEGEN_PROPERTIES_START ---
-    // (no type-specific schema attrs)
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// (no type-specific schema attrs)
+	// --- CODEGEN_PROPERTIES_END ---
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
-    virtual void ExportTo(mjsGeom* Element, mjsDefault* Default = nullptr) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ExportTo(mjsGeom* Element, mjsDefault* Default = nullptr) override;
 };

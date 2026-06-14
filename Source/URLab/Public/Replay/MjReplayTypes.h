@@ -34,15 +34,15 @@
 USTRUCT(BlueprintType)
 struct FMjBodyKinematics
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    /** @brief Joint positions (qpos). Size depends on joint type (1 for hinge, 7 for free). */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    TArray<double> QPos;
+	/** @brief Joint positions (qpos). Size depends on joint type (1 for hinge, 7 for free). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<double> QPos;
 
-    /** @brief Joint velocities (qvel). */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    TArray<double> QVel;
+	/** @brief Joint velocities (qvel). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<double> QVel;
 };
 
 /**
@@ -52,31 +52,31 @@ struct FMjBodyKinematics
 USTRUCT(BlueprintType)
 struct FMjReplayFrame
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    /** @brief Simulation time in seconds. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    double Timestamp = 0.0;
+	/** @brief Simulation time in seconds. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	double Timestamp = 0.0;
 
-    /**
-     * @brief Map of Joint Name -> Kinematics.
-     * Name-based storage allows replaying motion even if the scene hierarchy changes
-     * (e.g. new obstacles added), as long as the robot joints remain named the same.
-     */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    TMap<FString, FMjBodyKinematics> JointStates;
+	/**
+	 * @brief Map of Joint Name -> Kinematics.
+	 * Name-based storage allows replaying motion even if the scene hierarchy changes
+	 * (e.g. new obstacles added), as long as the robot joints remain named the same.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TMap<FString, FMjBodyKinematics> JointStates;
 
-    /** @brief Camera world position at this frame (zero if no camera was recording). */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    FVector CameraPosition = FVector::ZeroVector;
+	/** @brief Camera world position at this frame (zero if no camera was recording). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FVector CameraPosition = FVector::ZeroVector;
 
-    /** @brief Camera world rotation at this frame. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    FRotator CameraRotation = FRotator::ZeroRotator;
+	/** @brief Camera world rotation at this frame. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FRotator CameraRotation = FRotator::ZeroRotator;
 
-    /** @brief Whether this frame has valid camera data. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    bool bHasCameraData = false;
+	/** @brief Whether this frame has valid camera data. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	bool bHasCameraData = false;
 };
 
 /**
@@ -86,15 +86,15 @@ struct FMjReplayFrame
 USTRUCT(BlueprintType)
 struct FReplaySession
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    /** @brief The replay frames for this session. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    TArray<FMjReplayFrame> Frames;
+	/** @brief The replay frames for this session. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	TArray<FMjReplayFrame> Frames;
 
-    /** @brief Source file path (empty for live recording). */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
-    FString SourceFile;
+	/** @brief Source file path (empty for live recording). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly)
+	FString SourceFile;
 };
 
 /**
@@ -104,31 +104,31 @@ struct FReplaySession
 USTRUCT()
 struct FReplayArticulationBinding
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY()
-    TWeakObjectPtr<AMjArticulation> Articulation;
+	UPROPERTY()
+	TWeakObjectPtr<AMjArticulation> Articulation;
 
-    /** @brief Whether this articulation participates in the replay. */
-    UPROPERTY()
-    bool bEnabled = true;
+	/** @brief Whether this articulation participates in the replay. */
+	UPROPERTY()
+	bool bEnabled = true;
 
-    /** @brief If true, free joint position is applied relative to the actor's placed position. */
-    UPROPERTY()
-    bool bRelativePosition = true;
+	/** @brief If true, free joint position is applied relative to the actor's placed position. */
+	UPROPERTY()
+	bool bRelativePosition = true;
 
-    /** @brief The model joint name prefix for this articulation (e.g. "g1_29dof_C_UAID_..._"). */
-    FString JointPrefix;
+	/** @brief The model joint name prefix for this articulation (e.g. "g1_29dof_C_UAID_..._"). */
+	FString JointPrefix;
 
-    /** @brief Cached initial position when replay starts (editor-placed). */
-    FVector InitialPosition = FVector::ZeroVector;
+	/** @brief Cached initial position when replay starts (editor-placed). */
+	FVector InitialPosition = FVector::ZeroVector;
 
-    /** @brief Cached CSV start position (from first frame's free joint qpos, in MuJoCo meters). */
-    FVector CsvStartPosition = FVector::ZeroVector;
+	/** @brief Cached CSV start position (from first frame's free joint qpos, in MuJoCo meters). */
+	FVector CsvStartPosition = FVector::ZeroVector;
 
-    /** @brief Cached initial MuJoCo qpos position at replay start (in MuJoCo meters). */
-    FVector InitialMjPosition = FVector::ZeroVector;
+	/** @brief Cached initial MuJoCo qpos position at replay start (in MuJoCo meters). */
+	FVector InitialMjPosition = FVector::ZeroVector;
 
-    /** @brief Whether initial positions have been captured. */
-    bool bInitialsCaptured = false;
+	/** @brief Whether initial positions have been captured. */
+	bool bInitialsCaptured = false;
 };

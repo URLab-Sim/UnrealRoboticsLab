@@ -36,56 +36,56 @@ class AAMjManager;
  * is the standard double-buffer + sequence fence.
  */
 UCLASS()
-class URLAB_API UURLabShmPublishTransport : public UURLabPublishTransport,
-                                              public IMjSnapshotPublisher
+class URLAB_API UURLabShmPublishTransport : public UURLabPublishTransport
+	, public IMjSnapshotPublisher
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UURLabShmPublishTransport() = default;
+	UURLabShmPublishTransport() = default;
 
-    /** Per-buffer slot size, default 16 KiB. State snapshots for normal
-     *  scenes are well under 4 KiB; 16 KiB gives generous headroom for
-     *  full-observation level + many articulations. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
-    int32 BufferStride = 16 * 1024;
+	/** Per-buffer slot size, default 16 KiB. State snapshots for normal
+	 *  scenes are well under 4 KiB; 16 KiB gives generous headroom for
+	 *  full-observation level + many articulations. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	int32 BufferStride = 16 * 1024;
 
-    /** Optional explicit session id. If empty (default), the publisher
-     *  uses the manager's `StepDispatcher` session id when available, or
-     *  falls back to "live" so a single-instance install Just Works. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
-    FString SessionId;
+	/** Optional explicit session id. If empty (default), the publisher
+	 *  uses the manager's `StepDispatcher` session id when available, or
+	 *  falls back to "live" so a single-instance install Just Works. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	FString SessionId;
 
-    /** AAMjManager that owns this transport. Used to resolve the session
-     *  id and to register/unregister the snapshot fan-out. Set by the
-     *  manager via `SetOwningManager` before TransportInit. Body lives
-     *  in the .cpp so the header only needs a forward decl of
-     *  AAMjManager (TWeakObjectPtr assignment needs the full type). */
-    void SetOwningManager(AAMjManager* InMgr);
+	/** AAMjManager that owns this transport. Used to resolve the session
+	 *  id and to register/unregister the snapshot fan-out. Set by the
+	 *  manager via `SetOwningManager` before TransportInit. Body lives
+	 *  in the .cpp so the header only needs a forward decl of
+	 *  AAMjManager (TWeakObjectPtr assignment needs the full type). */
+	void SetOwningManager(AAMjManager* InMgr);
 
-    // UURLabPublishTransport contract.
-    virtual bool TransportInit() override;
-    virtual void TransportShutdown() override;
-    virtual FString GetTransportName() const override { return TEXT("shm-snapshot"); }
-    virtual void Publish(const FString& Topic,
-                         const TArray<uint8>& Payload) override;
+	// UURLabPublishTransport contract.
+	virtual bool TransportInit() override;
+	virtual void TransportShutdown() override;
+	virtual FString GetTransportName() const override { return TEXT("shm-snapshot"); }
+	virtual void Publish(const FString& Topic,
+		const TArray<uint8>& Payload) override;
 
-    // IMjSnapshotPublisher: route through to Publish("state/full", bytes)
-    // so the manager's existing fan-out keeps working without a separate
-    // code path.
-    virtual void PublishSnapshot(const TArray<uint8>& Bytes) override
-    {
-        Publish(TEXT("state/full"), Bytes);
-    }
+	// IMjSnapshotPublisher: route through to Publish("state/full", bytes)
+	// so the manager's existing fan-out keeps working without a separate
+	// code path.
+	virtual void PublishSnapshot(const TArray<uint8>& Bytes) override
+	{
+		Publish(TEXT("state/full"), Bytes);
+	}
 
-    /** Resolved on-disk path for the state region (full path, after TransportInit). */
-    FString GetStatePath() const { return ResolvedPath; }
+	/** Resolved on-disk path for the state region (full path, after TransportInit). */
+	FString GetStatePath() const { return ResolvedPath; }
 
-    /** Convenience: directory holding all SHM files for this session. */
-    static FString ResolveSessionDir(const FString& InSessionId);
+	/** Convenience: directory holding all SHM files for this session. */
+	static FString ResolveSessionDir(const FString& InSessionId);
 
 private:
-    TWeakObjectPtr<AAMjManager> OwningManager;
-    FMjShmRegion StateRegion;
-    FString ResolvedPath;
+	TWeakObjectPtr<AAMjManager> OwningManager;
+	FMjShmRegion StateRegion;
+	FString ResolvedPath;
 };

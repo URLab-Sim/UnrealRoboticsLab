@@ -9,5 +9,5 @@
 
 void UURLabPublishTransport::SetOwningBridge(UURLabBridgeServer* Bridge)
 {
-    OwningBridge = Bridge;
+	OwningBridge = Bridge;
 }

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -29,8 +29,8 @@
 /**
  * @class UMjSimulationState
  * @brief Container for a complete MuJoCo simulation state snapshot.
- * 
- * This object stores a serialized physics state which can be restored later to 
+ *
+ * This object stores a serialized physics state which can be restored later to
  * return the simulation to an exact point in time.
  */
 UCLASS(BlueprintType)
@@ -39,14 +39,14 @@ class URLAB_API UMjSimulationState : public UObject
 	GENERATED_BODY()
 
 public:
-    /** @brief The raw state vector captured via mj_getState. */
-    TArray<double> StateVector;
+	/** @brief The raw state vector captured via mj_getState. */
+	TArray<double> StateVector;
 
-    /** @brief The mjtState bitmask used to capture this state. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Snapshot")
-    int32 StateMask = 0;
+	/** @brief The mjtState bitmask used to capture this state. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Snapshot")
+	int32 StateMask = 0;
 
-    /** @brief The simulation time when the snapshot was taken. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Snapshot")
-    float SimTime = 0.0f;
+	/** @brief The simulation time when the snapshot was taken. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Snapshot")
+	float SimTime = 0.0f;
 };

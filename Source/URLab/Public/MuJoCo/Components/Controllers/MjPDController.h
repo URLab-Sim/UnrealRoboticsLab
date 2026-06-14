@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -78,9 +78,9 @@ public:
 	virtual void ComputeAndApply(mjModel* m, mjData* d, uint8 Source) override;
 
 	virtual FString GetKindName() const override { return TEXT("pd"); }
-	virtual void    GetConfigSchema(TSharedPtr<FJsonObject>& OutSchema) const override;
-	virtual void    GetCurrentConfig(TSharedPtr<FJsonObject>& OutParams) const override;
-	virtual void    ApplyConfig(const TSharedPtr<FJsonObject>& InParams) override;
+	virtual void GetConfigSchema(TSharedPtr<FJsonObject>& OutSchema) const override;
+	virtual void GetCurrentConfig(TSharedPtr<FJsonObject>& OutParams) const override;
+	virtual void ApplyConfig(const TSharedPtr<FJsonObject>& InParams) override;
 
 	/** Set all gains at once. Arrays must match binding count. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|PD Controller")

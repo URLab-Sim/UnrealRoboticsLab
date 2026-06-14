@@ -28,34 +28,34 @@
 UCLASS()
 class URLABEDITOR_API UURLabBridgeServerSubsystem : public UEditorSubsystem
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    /** Editor lifecycle. */
-    virtual void Initialize(FSubsystemCollectionBase& Collection) override;
-    virtual void Deinitialize() override;
+	/** Editor lifecycle. */
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
-    /** Bring the server online with the current config. Idempotent. */
-    void StartServer();
+	/** Bring the server online with the current config. Idempotent. */
+	void StartServer();
 
-    /** Tear the server down. Idempotent. */
-    void StopServer();
+	/** Tear the server down. Idempotent. */
+	void StopServer();
 
-    bool IsRunning() const;
+	bool IsRunning() const;
 
-    /** Active server, may be null when stopped. */
-    UURLabBridgeServer* GetBridgeServer() const { return Server; }
+	/** Active server, may be null when stopped. */
+	UURLabBridgeServer* GetBridgeServer() const { return Server; }
 
-    /** Current config (in-memory). To persist edits, write to the INI via
-     *  URLabBridgeServerConfigUtils::SaveToIni and call ReloadConfig. */
-    const FURLabBridgeServerConfig& GetConfig() const { return Config; }
+	/** Current config (in-memory). To persist edits, write to the INI via
+	 *  URLabBridgeServerConfigUtils::SaveToIni and call ReloadConfig. */
+	const FURLabBridgeServerConfig& GetConfig() const { return Config; }
 
-    /** Re-read the INI. Does NOT restart the server; caller decides. */
-    void ReloadConfig();
+	/** Re-read the INI. Does NOT restart the server; caller decides. */
+	void ReloadConfig();
 
 private:
-    UPROPERTY()
-    TObjectPtr<UURLabBridgeServer> Server;
+	UPROPERTY()
+	TObjectPtr<UURLabBridgeServer> Server;
 
-    FURLabBridgeServerConfig Config;
+	FURLabBridgeServerConfig Config;
 };

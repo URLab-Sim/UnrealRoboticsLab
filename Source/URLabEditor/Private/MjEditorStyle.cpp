@@ -35,7 +35,8 @@ FName FMjEditorStyle::GetStyleSetName()
 
 void FMjEditorStyle::Initialize()
 {
-	if (StyleInstance.IsValid()) return;
+	if (StyleInstance.IsValid())
+		return;
 
 	StyleInstance = MakeShareable(new FSlateStyleSet(GetStyleSetName()));
 
@@ -50,8 +51,7 @@ void FMjEditorStyle::Initialize()
 	const FVector2D IconSize(16.0f, 16.0f);
 
 	// Helper lambda: register icon if PNG exists, otherwise use an existing engine brush
-	auto RegisterIcon = [&](const FName& PropertyName, const FString& PngName, const FName& FallbackBrush)
-	{
+	auto RegisterIcon = [&](const FName& PropertyName, const FString& PngName, const FName& FallbackBrush) {
 		FString PngPath = IconsDir / PngName;
 		if (FPaths::FileExists(PngPath))
 		{
@@ -72,31 +72,31 @@ void FMjEditorStyle::Initialize()
 	// UE looks for "ClassIcon.<ClassName>" in registered style sets.
 	// If custom PNGs are placed in Resources/Icons/, they will be used.
 	// Otherwise, built-in editor icons serve as placeholders.
-	RegisterIcon("ClassIcon.MjBody",            TEXT("MjBody.png"),            "ClassIcon.SceneComponent");
-	RegisterIcon("ClassIcon.MjWorldBody",       TEXT("MjWorldBody.png"),       "ClassIcon.SceneComponent");
-	RegisterIcon("ClassIcon.MjGeom",            TEXT("MjGeom.png"),            "ClassIcon.StaticMeshComponent");
-	RegisterIcon("ClassIcon.MjBox",             TEXT("MjBox.png"),             "ClassIcon.StaticMeshComponent");
-	RegisterIcon("ClassIcon.MjSphere",          TEXT("MjSphere.png"),          "ClassIcon.StaticMeshComponent");
-	RegisterIcon("ClassIcon.MjCylinder",        TEXT("MjCylinder.png"),        "ClassIcon.StaticMeshComponent");
-	RegisterIcon("ClassIcon.MjCapsule",         TEXT("MjCapsule.png"),         "ClassIcon.StaticMeshComponent");
-	RegisterIcon("ClassIcon.MjMeshGeom",        TEXT("MjMeshGeom.png"),        "ClassIcon.StaticMeshComponent");
-	RegisterIcon("ClassIcon.MjFlexcomp",        TEXT("MjFlexcomp.png"),        "ClassIcon.SkeletalMeshComponent");
-	RegisterIcon("ClassIcon.MjHingeJoint",      TEXT("MjHingeJoint.png"),      "ClassIcon.PhysicsConstraintComponent");
-	RegisterIcon("ClassIcon.MjSlideJoint",      TEXT("MjSlideJoint.png"),      "ClassIcon.PhysicsConstraintComponent");
-	RegisterIcon("ClassIcon.MjBallJoint",       TEXT("MjBallJoint.png"),       "ClassIcon.PhysicsConstraintComponent");
-	RegisterIcon("ClassIcon.MjFreeJoint",       TEXT("MjFreeJoint.png"),       "ClassIcon.PhysicsConstraintComponent");
-	RegisterIcon("ClassIcon.MjJoint",           TEXT("MjJoint.png"),           "ClassIcon.PhysicsConstraintComponent");
-	RegisterIcon("ClassIcon.MjSensor",          TEXT("MjSensor.png"),          "ClassIcon.SphereComponent");
-	RegisterIcon("ClassIcon.MjActuator",        TEXT("MjActuator.png"),        "ClassIcon.MovementComponent");
-	RegisterIcon("ClassIcon.MjDefault",         TEXT("MjDefault.png"),         "ClassIcon.BlueprintCore");
-	RegisterIcon("ClassIcon.MjSite",            TEXT("MjSite.png"),            "ClassIcon.TargetPoint");
-	RegisterIcon("ClassIcon.MjTendon",          TEXT("MjTendon.png"),          "ClassIcon.CableComponent");
-	RegisterIcon("ClassIcon.MjCamera",          TEXT("MjCamera.png"),          "ClassIcon.CameraComponent");
-	RegisterIcon("ClassIcon.MjInertial",        TEXT("MjInertial.png"),        "ClassIcon.SphereComponent");
-	RegisterIcon("ClassIcon.MjContactPair",     TEXT("MjContactPair.png"),     "ClassIcon.SphereComponent");
-	RegisterIcon("ClassIcon.MjContactExclude",  TEXT("MjContactExclude.png"),  "ClassIcon.SphereComponent");
-	RegisterIcon("ClassIcon.MjEquality",        TEXT("MjEquality.png"),        "ClassIcon.SphereComponent");
-	RegisterIcon("ClassIcon.MjKeyframe",        TEXT("MjKeyframe.png"),        "ClassIcon.SphereComponent");
+	RegisterIcon("ClassIcon.MjBody", TEXT("MjBody.png"), "ClassIcon.SceneComponent");
+	RegisterIcon("ClassIcon.MjWorldBody", TEXT("MjWorldBody.png"), "ClassIcon.SceneComponent");
+	RegisterIcon("ClassIcon.MjGeom", TEXT("MjGeom.png"), "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjBox", TEXT("MjBox.png"), "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjSphere", TEXT("MjSphere.png"), "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjCylinder", TEXT("MjCylinder.png"), "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjCapsule", TEXT("MjCapsule.png"), "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjMeshGeom", TEXT("MjMeshGeom.png"), "ClassIcon.StaticMeshComponent");
+	RegisterIcon("ClassIcon.MjFlexcomp", TEXT("MjFlexcomp.png"), "ClassIcon.SkeletalMeshComponent");
+	RegisterIcon("ClassIcon.MjHingeJoint", TEXT("MjHingeJoint.png"), "ClassIcon.PhysicsConstraintComponent");
+	RegisterIcon("ClassIcon.MjSlideJoint", TEXT("MjSlideJoint.png"), "ClassIcon.PhysicsConstraintComponent");
+	RegisterIcon("ClassIcon.MjBallJoint", TEXT("MjBallJoint.png"), "ClassIcon.PhysicsConstraintComponent");
+	RegisterIcon("ClassIcon.MjFreeJoint", TEXT("MjFreeJoint.png"), "ClassIcon.PhysicsConstraintComponent");
+	RegisterIcon("ClassIcon.MjJoint", TEXT("MjJoint.png"), "ClassIcon.PhysicsConstraintComponent");
+	RegisterIcon("ClassIcon.MjSensor", TEXT("MjSensor.png"), "ClassIcon.SphereComponent");
+	RegisterIcon("ClassIcon.MjActuator", TEXT("MjActuator.png"), "ClassIcon.MovementComponent");
+	RegisterIcon("ClassIcon.MjDefault", TEXT("MjDefault.png"), "ClassIcon.BlueprintCore");
+	RegisterIcon("ClassIcon.MjSite", TEXT("MjSite.png"), "ClassIcon.TargetPoint");
+	RegisterIcon("ClassIcon.MjTendon", TEXT("MjTendon.png"), "ClassIcon.CableComponent");
+	RegisterIcon("ClassIcon.MjCamera", TEXT("MjCamera.png"), "ClassIcon.CameraComponent");
+	RegisterIcon("ClassIcon.MjInertial", TEXT("MjInertial.png"), "ClassIcon.SphereComponent");
+	RegisterIcon("ClassIcon.MjContactPair", TEXT("MjContactPair.png"), "ClassIcon.SphereComponent");
+	RegisterIcon("ClassIcon.MjContactExclude", TEXT("MjContactExclude.png"), "ClassIcon.SphereComponent");
+	RegisterIcon("ClassIcon.MjEquality", TEXT("MjEquality.png"), "ClassIcon.SphereComponent");
+	RegisterIcon("ClassIcon.MjKeyframe", TEXT("MjKeyframe.png"), "ClassIcon.SphereComponent");
 
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleInstance);
 }

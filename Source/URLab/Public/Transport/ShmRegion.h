@@ -56,13 +56,13 @@ inline constexpr uint32 URLAB_SHM_PROTOCOL_VERSION = 1;
  */
 struct FMjShmHeader
 {
-    uint32 Magic = 0;
-    uint32 ProtocolVersion = 0;
-    uint32 BufferStride = 0;
-    uint32 NBuffers = 0;
-    std::atomic<uint64_t> Sequence{0};
-    std::atomic<uint32_t> LatestIdx{0};
-    uint8 Reserved[36] = {};
+	uint32 Magic = 0;
+	uint32 ProtocolVersion = 0;
+	uint32 BufferStride = 0;
+	uint32 NBuffers = 0;
+	std::atomic<uint64_t> Sequence{0};
+	std::atomic<uint32_t> LatestIdx{0};
+	uint8 Reserved[36] = {};
 };
 static_assert(sizeof(FMjShmHeader) == 64, "FMjShmHeader must fit one cache line");
 
@@ -80,44 +80,44 @@ static_assert(sizeof(FMjShmHeader) == 64, "FMjShmHeader must fit one cache line"
 class URLAB_API FMjShmRegion
 {
 public:
-    FMjShmRegion() = default;
-    ~FMjShmRegion();
+	FMjShmRegion() = default;
+	~FMjShmRegion();
 
-    FMjShmRegion(const FMjShmRegion&) = delete;
-    FMjShmRegion& operator=(const FMjShmRegion&) = delete;
+	FMjShmRegion(const FMjShmRegion&) = delete;
+	FMjShmRegion& operator=(const FMjShmRegion&) = delete;
 
-    /** Create / truncate the file at `Path`, mmap header + n_buffers slots,
-     *  and initialise the header. Returns false on platform / IO error.
-     *
-     *  Total mapped size = sizeof(FMjShmHeader) + NBuffers * BufferStride.
-     */
-    bool Open(const FString& Path, uint32 BufferStride, uint32 NBuffers);
+	/** Create / truncate the file at `Path`, mmap header + n_buffers slots,
+	 *  and initialise the header. Returns false on platform / IO error.
+	 *
+	 *  Total mapped size = sizeof(FMjShmHeader) + NBuffers * BufferStride.
+	 */
+	bool Open(const FString& Path, uint32 BufferStride, uint32 NBuffers);
 
-    /** Unmap, close handles, optionally remove the backing file. */
-    void Close(bool bDeleteFile = false);
+	/** Unmap, close handles, optionally remove the backing file. */
+	void Close(bool bDeleteFile = false);
 
-    bool IsOpen() const { return MappedAddr != nullptr; }
+	bool IsOpen() const { return MappedAddr != nullptr; }
 
-    /** Pointer to the start of the mapped region (header lives at offset 0). */
-    void* GetData() const { return MappedAddr; }
+	/** Pointer to the start of the mapped region (header lives at offset 0). */
+	void* GetData() const { return MappedAddr; }
 
-    /** Pointer to buffer slot index `Idx` (0 .. NBuffers-1). */
-    uint8* GetSlot(uint32 Idx) const;
+	/** Pointer to buffer slot index `Idx` (0 .. NBuffers-1). */
+	uint8* GetSlot(uint32 Idx) const;
 
-    uint32 GetBufferStride() const { return BufferStride; }
-    uint32 GetNumBuffers() const { return NumBuffers; }
+	uint32 GetBufferStride() const { return BufferStride; }
+	uint32 GetNumBuffers() const { return NumBuffers; }
 
-    FString GetPath() const { return FilePath; }
+	FString GetPath() const { return FilePath; }
 
 private:
-    FString FilePath;
-    void* MappedAddr = nullptr;
-    uint64 MappedSize = 0;
-    uint32 BufferStride = 0;
-    uint32 NumBuffers = 0;
+	FString FilePath;
+	void* MappedAddr = nullptr;
+	uint64 MappedSize = 0;
+	uint32 BufferStride = 0;
+	uint32 NumBuffers = 0;
 
-    // Platform-specific handles. Stored as void* so the header doesn't drag
-    // <windows.h> / <sys/mman.h> into every TU that includes us.
-    void* PlatformFileHandle = nullptr;     // Win: HANDLE; Posix: int (cast)
-    void* PlatformMappingHandle = nullptr;  // Win: HANDLE; Posix: unused
+	// Platform-specific handles. Stored as void* so the header doesn't drag
+	// <windows.h> / <sys/mman.h> into every TU that includes us.
+	void* PlatformFileHandle = nullptr;    // Win: HANDLE; Posix: int (cast)
+	void* PlatformMappingHandle = nullptr; // Win: HANDLE; Posix: unused
 };

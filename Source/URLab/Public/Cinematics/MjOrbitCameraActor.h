@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 #pragma once
 
@@ -46,146 +46,146 @@ class AMjReplayManager;
 UCLASS(Blueprintable)
 class URLAB_API AMjOrbitCameraActor : public AActor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    AMjOrbitCameraActor();
+	AMjOrbitCameraActor();
 
-    virtual void Tick(float DeltaTime) override;
+	virtual void Tick(float DeltaTime) override;
 
 protected:
-    virtual void BeginPlay() override;
+	virtual void BeginPlay() override;
 
-    // --- Components ---
+	// --- Components ---
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
-    UBoxComponent* DetectionBox;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
+	UBoxComponent* DetectionBox;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
-    UCineCameraComponent* CineCamera;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
+	UCineCameraComponent* CineCamera;
 
-    // --- Orbit Parameters ---
+	// --- Orbit Parameters ---
 
-    /** @brief Optional: manually assign the target articulation. If empty, auto-detects from overlap. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|target")
-    AMjArticulation* ManualTarget = nullptr;
+	/** @brief Optional: manually assign the target articulation. If empty, auto-detects from overlap. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|target")
+	AMjArticulation* ManualTarget = nullptr;
 
-    /** @brief Orbit radius (distance from target) in cm. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
-    float OrbitRadius = 300.0f;
+	/** @brief Orbit radius (distance from target) in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
+	float OrbitRadius = 300.0f;
 
-    /** @brief Orbit speed in degrees per second. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
-    float OrbitSpeed = 30.0f;
+	/** @brief Orbit speed in degrees per second. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
+	float OrbitSpeed = 30.0f;
 
-    /** @brief Base height offset above the target's origin in cm. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
-    float HeightOffset = 80.0f;
+	/** @brief Base height offset above the target's origin in cm. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
+	float HeightOffset = 80.0f;
 
-    /** @brief Amplitude of vertical oscillation in cm (0 = no bobbing). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
-    float HeightOscillationAmplitude = 20.0f;
+	/** @brief Amplitude of vertical oscillation in cm (0 = no bobbing). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
+	float HeightOscillationAmplitude = 20.0f;
 
-    /** @brief Speed of vertical oscillation in cycles per orbit. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
-    float HeightOscillationFrequency = 2.0f;
+	/** @brief Speed of vertical oscillation in cycles per orbit. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
+	float HeightOscillationFrequency = 2.0f;
 
-    /** @brief How quickly the camera lerps to its target position (higher = snappier). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit", meta=(ClampMin="0.5", ClampMax="20.0"))
-    float SmoothingSpeed = 5.0f;
+	/** @brief How quickly the camera lerps to its target position (higher = snappier). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit", meta = (ClampMin = "0.5", ClampMax = "20.0"))
+	float SmoothingSpeed = 5.0f;
 
-    /** @brief Vertical look offset — how far above the target root to aim (cm). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
-    float LookAtHeightOffset = 50.0f;
+	/** @brief Vertical look offset — how far above the target root to aim (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Orbit")
+	float LookAtHeightOffset = 50.0f;
 
-    /** @brief Auto-adjusts orbit radius to keep the full robot in frame. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Framing")
-    bool bAutoFrameRobot = true;
+	/** @brief Auto-adjusts orbit radius to keep the full robot in frame. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Framing")
+	bool bAutoFrameRobot = true;
 
-    /** @brief Padding multiplier for auto-framing (1.0 = tight, 1.5 = 50% padding). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Framing", meta=(ClampMin="1.0", ClampMax="3.0"))
-    float FramingPadding = 1.4f;
+	/** @brief Padding multiplier for auto-framing (1.0 = tight, 1.5 = 50% padding). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Framing", meta = (ClampMin = "1.0", ClampMax = "3.0"))
+	float FramingPadding = 1.4f;
 
-    /** @brief Minimum orbit radius even when auto-framing (cm). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Framing")
-    float MinOrbitRadius = 150.0f;
+	/** @brief Minimum orbit radius even when auto-framing (cm). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Framing")
+	float MinOrbitRadius = 150.0f;
 
-    // --- Lens ---
+	// --- Lens ---
 
-    /** @brief focal length in mm. 35mm = wide, 85mm = portrait, 135mm = telephoto. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Lens")
-    float FocalLength = 50.0f;
+	/** @brief focal length in mm. 35mm = wide, 85mm = portrait, 135mm = telephoto. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Lens")
+	float FocalLength = 50.0f;
 
-    /** @brief Aperture (f-stop). Lower = more bokeh. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Lens")
-    float Aperture = 2.8f;
+	/** @brief Aperture (f-stop). Lower = more bokeh. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Lens")
+	float Aperture = 2.8f;
 
-    // --- Activation ---
+	// --- Activation ---
 
-    /** @brief Whether to activate this camera as the player's view on BeginPlay. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera")
-    bool bAutoActivate = false;
+	/** @brief Whether to activate this camera as the player's view on BeginPlay. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera")
+	bool bAutoActivate = false;
 
-    /** @brief If true, writes camera transforms to replay frames during recording. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Replay")
-    bool bRecordCameraPath = true;
+	/** @brief If true, writes camera transforms to replay frames during recording. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Replay")
+	bool bRecordCameraPath = true;
 
-    /** @brief If true, reads camera transforms from replay frames during playback instead of orbiting live. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Replay")
-    bool bPlaybackCameraPath = true;
+	/** @brief If true, reads camera transforms from replay frames during playback instead of orbiting live. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Orbit Camera|Replay")
+	bool bPlaybackCameraPath = true;
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
-    bool bIsOrbiting = false;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Orbit Camera")
+	bool bIsOrbiting = false;
 
 public:
-    // --- Public API ---
+	// --- Public API ---
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Orbit Camera")
-    void SetTarget(AMjArticulation* NewTarget);
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Orbit Camera")
+	void SetTarget(AMjArticulation* NewTarget);
 
-    /** @brief Toggle orbit on/off. */
-    UFUNCTION(BlueprintCallable, CallInEditor, Category = "MuJoCo|Orbit Camera")
-    void ToggleOrbit() { bIsOrbiting = !bIsOrbiting; }
+	/** @brief Toggle orbit on/off. */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "MuJoCo|Orbit Camera")
+	void ToggleOrbit() { bIsOrbiting = !bIsOrbiting; }
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Orbit Camera")
-    void ActivateCamera();
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Orbit Camera")
+	void ActivateCamera();
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Orbit Camera")
-    void DeactivateCamera();
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Orbit Camera")
+	void DeactivateCamera();
 
-    /** @brief Get the current computed camera position (for external use). */
-    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Orbit Camera")
-    FVector GetCurrentCameraPosition() const;
+	/** @brief Get the current computed camera position (for external use). */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Orbit Camera")
+	FVector GetCurrentCameraPosition() const;
 
-    /** @brief Get the current computed camera rotation. */
-    UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Orbit Camera")
-    FRotator GetCurrentCameraRotation() const;
+	/** @brief Get the current computed camera rotation. */
+	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Orbit Camera")
+	FRotator GetCurrentCameraRotation() const;
 
 private:
-    UFUNCTION()
-    void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-        UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+	UFUNCTION()
+	void OnBoxBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+		UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
 
-    UPROPERTY()
-    AMjArticulation* CurrentTarget = nullptr;
+	UPROPERTY()
+	AMjArticulation* CurrentTarget = nullptr;
 
-    UPROPERTY()
-    UMjBody* TrackedBody = nullptr;
+	UPROPERTY()
+	UMjBody* TrackedBody = nullptr;
 
-    UPROPERTY()
-    AMjReplayManager* ReplayMgr = nullptr;
+	UPROPERTY()
+	AMjReplayManager* ReplayMgr = nullptr;
 
-    float CurrentAngle = 0.0f;
+	float CurrentAngle = 0.0f;
 
-    UPROPERTY()
-    APlayerController* CachedPC = nullptr;
+	UPROPERTY()
+	APlayerController* CachedPC = nullptr;
 
-    /** @brief Computes the desired orbit radius to keep the articulation fully in frame. */
-    float ComputeAutoFrameRadius() const;
+	/** @brief Computes the desired orbit radius to keep the articulation fully in frame. */
+	float ComputeAutoFrameRadius() const;
 
-    /** @brief Writes current camera transform to the replay manager's latest live frame. */
-    void WriteCameraToReplayFrame();
+	/** @brief Writes current camera transform to the replay manager's latest live frame. */
+	void WriteCameraToReplayFrame();
 
-    /** @brief Tracks the last replay frame index written to, to avoid duplicate writes. */
-    int32 LastCameraWriteFrameIdx = 0;
+	/** @brief Tracks the last replay frame index written to, to avoid duplicate writes. */
+	int32 LastCameraWriteFrameIdx = 0;
 };

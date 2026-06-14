@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -59,11 +59,11 @@ public:
 	 */
 	virtual void RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) = 0;
 
-    /**
-     * @brief Binds the component to the runtime MuJoCo simulation data.
-     * @param model Pointer to the compiled mjModel.
-     * @param data Pointer to the active mjData.
-     * @param Prefix Optional prefix applied to names during lookup.
-     */
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) = 0;
+	/**
+	 * @brief Binds the component to the runtime MuJoCo simulation data.
+	 * @param model Pointer to the compiled mjModel.
+	 * @param data Pointer to the active mjData.
+	 * @param Prefix Optional prefix applied to names during lookup.
+	 */
+	virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) = 0;
 };

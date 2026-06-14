@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -30,7 +30,7 @@ struct GeomView;
 /**
  * @class MjUtils
  * @brief Static utility class for common MuJoCo <-> Unreal Engine conversions and helper functions.
- * 
+ *
  * This class provides standardized methods for:
  * - Coordinate system conversion (Right-Handed Z-up <-> Left-Handed Z-up)
  * - String conversions (char* <-> FString)
@@ -39,142 +39,142 @@ struct GeomView;
 class URLAB_API MjUtils
 {
 public:
-    /**
-     * @brief Converts a MuJoCo position array (double[3]) to an Unreal Engine FVector.
-     * Applies scaling (*100) and coordinate axis swizzling (Y-inversion) to match UE's coordinate system.
-     * 
-     * @param pos Pointer to the MuJoCo position array (size 3).
-     * @return FVector The corresponding Unreal Engine position in centimeters.
-     */
-    static FVector MjToUEPosition(const double* pos);
-    static FVector MjToUEPosition(const float* pos);
+	/**
+	 * @brief Converts a MuJoCo position array (double[3]) to an Unreal Engine FVector.
+	 * Applies scaling (*100) and coordinate axis swizzling (Y-inversion) to match UE's coordinate system.
+	 *
+	 * @param pos Pointer to the MuJoCo position array (size 3).
+	 * @return FVector The corresponding Unreal Engine position in centimeters.
+	 */
+	static FVector MjToUEPosition(const double* pos);
+	static FVector MjToUEPosition(const float* pos);
 
-    /**
-     * @brief Converts an Unreal Engine FVector to a MuJoCo position array.
-     * Applies scaling (/100) and coordinate axis swizzling (Y-inversion).
-     * 
-     * @param pos The Unreal Engine position in centimeters.
-     * @param outPos Pointer to the output MuJoCo position array (size 3).
-     */
-    static void UEToMjPosition(const FVector& pos, double* outPos);
+	/**
+	 * @brief Converts an Unreal Engine FVector to a MuJoCo position array.
+	 * Applies scaling (/100) and coordinate axis swizzling (Y-inversion).
+	 *
+	 * @param pos The Unreal Engine position in centimeters.
+	 * @param outPos Pointer to the output MuJoCo position array (size 3).
+	 */
+	static void UEToMjPosition(const FVector& pos, double* outPos);
 
-    /**
-     * @brief Converts a MuJoCo quaternion array (double[4]: w, x, y, z) to an Unreal Engine FQuat.
-     * Applies necessary axis flips to account for coordinate system differences.
-     * 
-     * @param quat Pointer to the MuJoCo quaternion array (size 4).
-     * @return FQuat The corresponding Unreal Engine quaternion.
-     */
-    static FQuat MjToUERotation(const double* quat);
+	/**
+	 * @brief Converts a MuJoCo quaternion array (double[4]: w, x, y, z) to an Unreal Engine FQuat.
+	 * Applies necessary axis flips to account for coordinate system differences.
+	 *
+	 * @param quat Pointer to the MuJoCo quaternion array (size 4).
+	 * @return FQuat The corresponding Unreal Engine quaternion.
+	 */
+	static FQuat MjToUERotation(const double* quat);
 
-    /**
-     * @brief Converts an Unreal Engine FQuat to a MuJoCo quaternion array.
-     * Applies necessary axis flips.
-     * 
-     * @param quat The Unreal Engine quaternion.
-     * @param outQuat Pointer to the output MuJoCo quaternion array (size 4).
-     */
-    static void UEToMjRotation(const FQuat& quat, double* outQuat);
+	/**
+	 * @brief Converts an Unreal Engine FQuat to a MuJoCo quaternion array.
+	 * Applies necessary axis flips.
+	 *
+	 * @param quat The Unreal Engine quaternion.
+	 * @param outQuat Pointer to the output MuJoCo quaternion array (size 4).
+	 */
+	static void UEToMjRotation(const FQuat& quat, double* outQuat);
 
-    /**
-     * @brief Read a position attribute from XML (in MJ metres) and convert
-     * to Unreal Engine centimetres + Y-flip. Sets ``bOverride=true`` when
-     * the attribute is present. Codegen-driven thin wrapper used by the
-     * spatial_pose canonicalisation in URLab components.
-     *
-     * @param Node XML element.
-     * @param Attr Attribute name (typically TEXT("pos")).
-     * @param Out UE-space output vector.
-     * @param bOverride Set to true when the attribute is present.
-     * @return true if the attribute was present and parsed.
-     */
-    static bool ReadVec3InMeters(const class FXmlNode* Node, const TCHAR* Attr,
-                                  FVector& Out, bool& bOverride);
+	/**
+	 * @brief Read a position attribute from XML (in MJ metres) and convert
+	 * to Unreal Engine centimetres + Y-flip. Sets ``bOverride=true`` when
+	 * the attribute is present. Codegen-driven thin wrapper used by the
+	 * spatial_pose canonicalisation in URLab components.
+	 *
+	 * @param Node XML element.
+	 * @param Attr Attribute name (typically TEXT("pos")).
+	 * @param Out UE-space output vector.
+	 * @param bOverride Set to true when the attribute is present.
+	 * @return true if the attribute was present and parsed.
+	 */
+	static bool ReadVec3InMeters(const class FXmlNode* Node, const TCHAR* Attr,
+		FVector& Out, bool& bOverride);
 
-    /**
-     * @brief Converts a C-style string (possibly null) to an Unreal Engine FString.
-     * 
-     * @param text Pointer to the C-string.
-     * @return FString The converted string, or empty if input is null.
-     */
-    static FString MjToString(const char* text);
+	/**
+	 * @brief Converts a C-style string (possibly null) to an Unreal Engine FString.
+	 *
+	 * @param text Pointer to the C-string.
+	 * @return FString The converted string, or empty if input is null.
+	 */
+	static FString MjToString(const char* text);
 
-    /**
-     * @brief Copies an Unreal Engine FString into a fixed-size char buffer.
-     * Ensures null-termination.
-     * 
-     * @param text The Unreal Engine string to convert.
-     * @param buffer Pointer to the destination char buffer.
-     * @param bufferSize The size of the destination buffer.
-     */
-    static void StringToMj(const FString& text, char* buffer, int bufferSize);
-    /**
-     * @brief Parses a "fromto" string ("x1 y1 z1 x2 y2 z2") into Start and End vectors.
-     * 
-     * @param FromToStr The string containing 6 float values.
-     * @param OutStart The output start vector.
-     * @param OutEnd The output end vector.
-     * @return true if successful (6 values parsed), false otherwise.
-     */
-    static bool ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& OutEnd);
+	/**
+	 * @brief Copies an Unreal Engine FString into a fixed-size char buffer.
+	 * Ensures null-termination.
+	 *
+	 * @param text The Unreal Engine string to convert.
+	 * @param buffer Pointer to the destination char buffer.
+	 * @param bufferSize The size of the destination buffer.
+	 */
+	static void StringToMj(const FString& text, char* buffer, int bufferSize);
+	/**
+	 * @brief Parses a "fromto" string ("x1 y1 z1 x2 y2 z2") into Start and End vectors.
+	 *
+	 * @param FromToStr The string containing 6 float values.
+	 * @param OutStart The output start vector.
+	 * @param OutEnd The output end vector.
+	 * @return true if successful (6 values parsed), false otherwise.
+	 */
+	static bool ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& OutEnd);
 
-    /**
-     * @brief Decompose a MuJoCo `fromto` XML attribute into URLab's canonical
-     * Pos/Quat representation plus a half-length scalar.
-     *
-     * MJCF's ``fromto="x1 y1 z1 x2 y2 z2"`` is an alternative way to specify
-     * pos+quat+size[1 or 2] for capsule/cylinder/box/ellipsoid primitives. We
-     * always normalise to (Pos = midpoint, Quat aligns +Z with the segment
-     * direction, HalfLength = half the segment length in metres). The caller
-     * decides which Size slot to write the half-length into.
-     *
-     * @param Node           XML node to read the `fromto` attribute from.
-     * @param OutPos         Receives the midpoint in UE world units (cm).
-     * @param OutQuat        Receives the orientation aligning local +Z with fromto.
-     * @param OutHalfLength  Receives the half-distance in MuJoCo metres.
-     * @return true iff `fromto` was present and successfully parsed.
-     */
-    static bool DecomposeFromTo(const class FXmlNode* Node,
-                                FVector& OutPos, FQuat& OutQuat,
-                                float& OutHalfLength);
+	/**
+	 * @brief Decompose a MuJoCo `fromto` XML attribute into URLab's canonical
+	 * Pos/Quat representation plus a half-length scalar.
+	 *
+	 * MJCF's ``fromto="x1 y1 z1 x2 y2 z2"`` is an alternative way to specify
+	 * pos+quat+size[1 or 2] for capsule/cylinder/box/ellipsoid primitives. We
+	 * always normalise to (Pos = midpoint, Quat aligns +Z with the segment
+	 * direction, HalfLength = half the segment length in metres). The caller
+	 * decides which Size slot to write the half-length into.
+	 *
+	 * @param Node           XML node to read the `fromto` attribute from.
+	 * @param OutPos         Receives the midpoint in UE world units (cm).
+	 * @param OutQuat        Receives the orientation aligning local +Z with fromto.
+	 * @param OutHalfLength  Receives the half-distance in MuJoCo metres.
+	 * @return true iff `fromto` was present and successfully parsed.
+	 */
+	static bool DecomposeFromTo(const class FXmlNode* Node,
+		FVector& OutPos, FQuat& OutQuat,
+		float& OutHalfLength);
 
-    /**
-     * @brief Renders the collision geometries for a specific MuJoCo Geom (Primitives and Convex Hulls).
-     * 
-     * @param World The UWorld context.
-     * @param m The MuJoCo model.
-     * @param geom_view The geometry view containing state and configuration.
-     * @param DrawColor The color to draw the wireframes.
-     * @param Multiplier Scaling factor for coordinate conversion.
-     */
-    static void DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geom_view, const FColor& DrawColor = FColor::Magenta, float Multiplier = 100.0f);
+	/**
+	 * @brief Renders the collision geometries for a specific MuJoCo Geom (Primitives and Convex Hulls).
+	 *
+	 * @param World The UWorld context.
+	 * @param m The MuJoCo model.
+	 * @param geom_view The geometry view containing state and configuration.
+	 * @param DrawColor The color to draw the wireframes.
+	 * @param Multiplier Scaling factor for coordinate conversion.
+	 */
+	static void DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geom_view, const FColor& DrawColor = FColor::Magenta, float Multiplier = 100.0f);
 
-    /**
-     * @brief Draws joint range arc (hinge) or range bar (slide) with position indicator.
-     *
-     * @param World The UE world.
-     * @param Anchor World-space anchor position (UE coordinates, cm).
-     * @param Axis World-space axis direction (unit vector, UE coordinates).
-     * @param JointType MuJoCo joint type (mjJNT_HINGE or mjJNT_SLIDE).
-     * @param bLimited Whether the joint has limits enabled.
-     * @param RangeMin Lower limit (radians for hinge, meters for slide).
-     * @param RangeMax Upper limit (radians for hinge, meters for slide).
-     * @param CurrentPos Current joint position (radians or meters). Use NaN to skip.
-     * @param RefPos Reference position (qpos0). Use NaN to skip.
-     * @param ArcRadius Radius of the range arc in cm (default 10cm).
-     */
-    static void DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector& Axis,
-        int JointType, bool bLimited, float RangeMin, float RangeMax,
-        float CurrentPos = NAN, float RefPos = NAN, float ArcRadius = 10.0f);
+	/**
+	 * @brief Draws joint range arc (hinge) or range bar (slide) with position indicator.
+	 *
+	 * @param World The UE world.
+	 * @param Anchor World-space anchor position (UE coordinates, cm).
+	 * @param Axis World-space axis direction (unit vector, UE coordinates).
+	 * @param JointType MuJoCo joint type (mjJNT_HINGE or mjJNT_SLIDE).
+	 * @param bLimited Whether the joint has limits enabled.
+	 * @param RangeMin Lower limit (radians for hinge, meters for slide).
+	 * @param RangeMax Upper limit (radians for hinge, meters for slide).
+	 * @param CurrentPos Current joint position (radians or meters). Use NaN to skip.
+	 * @param RefPos Reference position (qpos0). Use NaN to skip.
+	 * @param ArcRadius Radius of the range arc in cm (default 10cm).
+	 */
+	static void DrawDebugJoint(UWorld* World, const FVector& Anchor, const FVector& Axis,
+		int JointType, bool bLimited, float RangeMin, float RangeMax,
+		float CurrentPos = NAN, float RefPos = NAN, float ArcRadius = 10.0f);
 
-    /**
-     * @brief Prettifies an Unreal/MuJoCo name by stripping common unique ID suffixes (like _UAID_).
-     * 
-     * @param Name The original raw name.
-     * @param PrefixToStrip Optional prefix (e.g. robot name) to also remove.
-     * @return FString The cleaned, human-readable name.
-     */
-    static FString PrettifyName(const FString& Name, const FString& PrefixToStrip = TEXT(""));
+	/**
+	 * @brief Prettifies an Unreal/MuJoCo name by stripping common unique ID suffixes (like _UAID_).
+	 *
+	 * @param Name The original raw name.
+	 * @param PrefixToStrip Optional prefix (e.g. robot name) to also remove.
+	 * @return FString The cleaned, human-readable name.
+	 */
+	static FString PrettifyName(const FString& Name, const FString& PrefixToStrip = TEXT(""));
 };
 
 // ---------------------------------------------------------------------------
@@ -196,10 +196,10 @@ public:
  */
 inline void MjSetString(mjString* Field, const FString& Value)
 {
-    if (!Value.IsEmpty())
-    {
-        mjs_setString(Field, TCHAR_TO_UTF8(*Value));
-    }
+	if (!Value.IsEmpty())
+	{
+		mjs_setString(Field, TCHAR_TO_UTF8(*Value));
+	}
 }
 
 /**
@@ -214,7 +214,7 @@ inline void MjSetString(mjString* Field, const FString& Value)
  */
 inline void MjSetStringRaw(mjString* Field, const FString& Value)
 {
-    mjs_setString(Field, TCHAR_TO_UTF8(*Value));
+	mjs_setString(Field, TCHAR_TO_UTF8(*Value));
 }
 
 /**
@@ -231,13 +231,13 @@ inline void MjSetStringRaw(mjString* Field, const FString& Value)
  */
 inline void MjSetDoubleVec(mjDoubleVec* Dest, const TArray<float>& Src)
 {
-    if (!Dest)
-    {
-        return;
-    }
-    Dest->clear();
-    for (float V : Src)
-    {
-        Dest->push_back(static_cast<double>(V));
-    }
+	if (!Dest)
+	{
+		return;
+	}
+	Dest->clear();
+	for (float V : Src)
+	{
+		Dest->push_back(static_cast<double>(V));
+	}
 }

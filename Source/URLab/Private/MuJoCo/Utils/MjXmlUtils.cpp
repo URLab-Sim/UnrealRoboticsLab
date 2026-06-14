@@ -13,159 +13,170 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Utils/MjXmlUtils.h"
 
 FVector MjXmlUtils::ParseVector(const FString& S)
 {
-    TArray<FString> Parts;
-    S.ParseIntoArray(Parts, TEXT(" "), true);
-    if (Parts.Num() >= 3)
-    {
-        return FVector(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]));
-    }
-    return FVector::ZeroVector;
+	TArray<FString> Parts;
+	S.ParseIntoArray(Parts, TEXT(" "), true);
+	if (Parts.Num() >= 3)
+	{
+		return FVector(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]));
+	}
+	return FVector::ZeroVector;
 }
 
 FVector2D MjXmlUtils::ParseVector2D(const FString& S)
 {
-    TArray<FString> Parts;
-    S.ParseIntoArray(Parts, TEXT(" "), true);
-    if (Parts.Num() >= 2)
-    {
-        return FVector2D(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]));
-    }
-    return FVector2D::ZeroVector;
+	TArray<FString> Parts;
+	S.ParseIntoArray(Parts, TEXT(" "), true);
+	if (Parts.Num() >= 2)
+	{
+		return FVector2D(FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]));
+	}
+	return FVector2D::ZeroVector;
 }
 
 void MjXmlUtils::ParseFloatArray(const FString& S, TArray<float>& OutArray)
 {
-    TArray<FString> Parts;
-    S.ParseIntoArray(Parts, TEXT(" "), true);
-    OutArray.Empty(Parts.Num());
-    for (const FString& P : Parts)
-    {
-        OutArray.Add(FCString::Atof(*P));
-    }
+	TArray<FString> Parts;
+	S.ParseIntoArray(Parts, TEXT(" "), true);
+	OutArray.Empty(Parts.Num());
+	for (const FString& P : Parts)
+	{
+		OutArray.Add(FCString::Atof(*P));
+	}
 }
 
 bool MjXmlUtils::ParseBool(const FString& S, bool bDefault)
 {
-    if (S.IsEmpty()) return bDefault;
-    return S.Equals(TEXT("true"), ESearchCase::IgnoreCase) || S.Equals(TEXT("1"));
+	if (S.IsEmpty())
+		return bDefault;
+	return S.Equals(TEXT("true"), ESearchCase::IgnoreCase) || S.Equals(TEXT("1"));
 }
 
 // ---- Attribute-from-Node helpers ----
 
 bool MjXmlUtils::ReadAttrFloat(const FXmlNode* Node, const TCHAR* Attr, float& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out = FCString::Atof(*Str);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out = FCString::Atof(*Str);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrDouble(const FXmlNode* Node, const TCHAR* Attr, double& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out = FCString::Atod(*Str);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out = FCString::Atod(*Str);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrInt(const FXmlNode* Node, const TCHAR* Attr, int32& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out = FCString::Atoi(*Str);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out = FCString::Atoi(*Str);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrFloatArray(const FXmlNode* Node, const TCHAR* Attr, TArray<float>& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    ParseFloatArray(Str, Out);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	ParseFloatArray(Str, Out);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrBool(const FXmlNode* Node, const TCHAR* Attr, bool& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out = ParseBool(Str);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out = ParseBool(Str);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrString(const FXmlNode* Node, const TCHAR* Attr, FString& Out)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    Out = Str;
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	Out = Str;
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrVec3(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out = ParseVector(Str);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out = ParseVector(Str);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrColor(const FXmlNode* Node, const TCHAR* Attr, FLinearColor& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    TArray<float> Vals;
-    ParseFloatArray(Str, Vals);
-    Out = FLinearColor(
-        Vals.Num() > 0 ? Vals[0] : 1.0f,
-        Vals.Num() > 1 ? Vals[1] : 1.0f,
-        Vals.Num() > 2 ? Vals[2] : 1.0f,
-        Vals.Num() > 3 ? Vals[3] : 1.0f);
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	TArray<float> Vals;
+	ParseFloatArray(Str, Vals);
+	Out = FLinearColor(
+		Vals.Num() > 0 ? Vals[0] : 1.0f,
+		Vals.Num() > 1 ? Vals[1] : 1.0f,
+		Vals.Num() > 2 ? Vals[2] : 1.0f,
+		Vals.Num() > 3 ? Vals[3] : 1.0f);
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrIntArray(const FXmlNode* Node, const TCHAR* Attr, TArray<int32>& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out.Reset();
-    TArray<FString> Parts;
-    Str.ParseIntoArray(Parts, TEXT(" "), true);
-    for (const FString& P : Parts)
-    {
-        Out.Add(FCString::Atoi(*P));
-    }
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out.Reset();
+	TArray<FString> Parts;
+	Str.ParseIntoArray(Parts, TEXT(" "), true);
+	for (const FString& P : Parts)
+	{
+		Out.Add(FCString::Atoi(*P));
+	}
+	return true;
 }
 
 bool MjXmlUtils::ReadAttrDoubleArray(const FXmlNode* Node, const TCHAR* Attr, TArray<double>& Out, bool& bOverride)
 {
-    FString Str = Node->GetAttribute(Attr);
-    if (Str.IsEmpty()) return false;
-    bOverride = true;
-    Out.Reset();
-    TArray<FString> Parts;
-    Str.ParseIntoArray(Parts, TEXT(" "), true);
-    for (const FString& P : Parts)
-    {
-        Out.Add(FCString::Atod(*P));
-    }
-    return true;
+	FString Str = Node->GetAttribute(Attr);
+	if (Str.IsEmpty())
+		return false;
+	bOverride = true;
+	Out.Reset();
+	TArray<FString> Parts;
+	Str.ParseIntoArray(Parts, TEXT(" "), true);
+	for (const FString& P : Parts)
+	{
+		Out.Add(FCString::Atod(*P));
+	}
+	return true;
 }

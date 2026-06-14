@@ -31,44 +31,43 @@
 //   A 2D grid flexcomp should compile and produce a flex in the model.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompGrid2DCompiles,
-    "URLab.Flexcomp.Grid2D_Compiles",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.Grid2D_Compiles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompGrid2DCompiles::RunTest(const FString& Parameters)
 {
-    FMjUESession S;
-    bool bOk = S.Init([](FMjUESession& Session)
-    {
-        UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-        Flex->bOverride_FlexcompType = true;
-        Flex->FlexcompType = EMjFlexcompType::Grid;
-        Flex->bOverride_dim = true;
-        Flex->dim = 2;
-        Flex->bOverride_count = true;
-        Flex->count = { 4, 4, 1 };
-        Flex->bOverride_spacing = true;
-        Flex->spacing = { 0.05, 0.05, 0.05 };
-        Flex->bOverride_mass = true;
-        Flex->mass = 0.5f;
-        Flex->bOverride_radius = true;
-        Flex->radius = 0.005f;
-        Flex->MjName = TEXT("testgrid");
-        Flex->RegisterComponent();
-        Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
-    });
+	FMjUESession S;
+	bool bOk = S.Init([](FMjUESession& Session) {
+		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
+		Flex->bOverride_FlexcompType = true;
+		Flex->FlexcompType = EMjFlexcompType::Grid;
+		Flex->bOverride_dim = true;
+		Flex->dim = 2;
+		Flex->bOverride_count = true;
+		Flex->count = {4, 4, 1};
+		Flex->bOverride_spacing = true;
+		Flex->spacing = {0.05, 0.05, 0.05};
+		Flex->bOverride_mass = true;
+		Flex->mass = 0.5f;
+		Flex->bOverride_radius = true;
+		Flex->radius = 0.005f;
+		Flex->MjName = TEXT("testgrid");
+		Flex->RegisterComponent();
+		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	});
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    mjModel* M = S.Manager->PhysicsEngine->m_model;
-    TestTrue(TEXT("Model should have at least 1 flex"), M->nflex >= 1);
+	mjModel* M = S.Manager->PhysicsEngine->m_model;
+	TestTrue(TEXT("Model should have at least 1 flex"), M->nflex >= 1);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
@@ -76,45 +75,44 @@ bool FMjFlexcompGrid2DCompiles::RunTest(const FString& Parameters)
 //   A 1D grid (rope) should compile.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompGrid1DCompiles,
-    "URLab.Flexcomp.Grid1D_Compiles",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.Grid1D_Compiles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompGrid1DCompiles::RunTest(const FString& Parameters)
 {
-    FMjUESession S;
-    bool bOk = S.Init([](FMjUESession& Session)
-    {
-        UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestRope"));
-        Flex->bOverride_FlexcompType = true;
-        Flex->FlexcompType = EMjFlexcompType::Grid;
-        Flex->bOverride_dim = true;
-        Flex->dim = 1;
-        Flex->bOverride_count = true;
-        Flex->count = { 8, 1, 1 };
-        Flex->bOverride_spacing = true;
-        Flex->spacing = { 0.1, 0.1, 0.1 };
-        Flex->bOverride_mass = true;
-        Flex->mass = 0.2f;
-        Flex->bOverride_radius = true;
-        Flex->radius = 0.01f;
-        Flex->MjName = TEXT("testrope");
-        Flex->RegisterComponent();
-        Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
-    });
+	FMjUESession S;
+	bool bOk = S.Init([](FMjUESession& Session) {
+		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestRope"));
+		Flex->bOverride_FlexcompType = true;
+		Flex->FlexcompType = EMjFlexcompType::Grid;
+		Flex->bOverride_dim = true;
+		Flex->dim = 1;
+		Flex->bOverride_count = true;
+		Flex->count = {8, 1, 1};
+		Flex->bOverride_spacing = true;
+		Flex->spacing = {0.1, 0.1, 0.1};
+		Flex->bOverride_mass = true;
+		Flex->mass = 0.2f;
+		Flex->bOverride_radius = true;
+		Flex->radius = 0.01f;
+		Flex->MjName = TEXT("testrope");
+		Flex->RegisterComponent();
+		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	});
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    mjModel* M = S.Manager->PhysicsEngine->m_model;
-    TestTrue(TEXT("Model should have at least 1 flex"), M->nflex >= 1);
-    TestTrue(TEXT("Flex dim should be 1"), M->flex_dim[0] == 1);
+	mjModel* M = S.Manager->PhysicsEngine->m_model;
+	TestTrue(TEXT("Model should have at least 1 flex"), M->nflex >= 1);
+	TestTrue(TEXT("Flex dim should be 1"), M->flex_dim[0] == 1);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
@@ -122,45 +120,44 @@ bool FMjFlexcompGrid1DCompiles::RunTest(const FString& Parameters)
 //   A 3D grid (volumetric) should compile.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompGrid3DCompiles,
-    "URLab.Flexcomp.Grid3D_Compiles",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.Grid3D_Compiles",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompGrid3DCompiles::RunTest(const FString& Parameters)
 {
-    FMjUESession S;
-    bool bOk = S.Init([](FMjUESession& Session)
-    {
-        UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestVol"));
-        Flex->bOverride_FlexcompType = true;
-        Flex->FlexcompType = EMjFlexcompType::Grid;
-        Flex->bOverride_dim = true;
-        Flex->dim = 3;
-        Flex->bOverride_count = true;
-        Flex->count = { 3, 3, 3 };
-        Flex->bOverride_spacing = true;
-        Flex->spacing = { 0.05, 0.05, 0.05 };
-        Flex->bOverride_mass = true;
-        Flex->mass = 1.0f;
-        Flex->bOverride_radius = true;
-        Flex->radius = 0.005f;
-        Flex->MjName = TEXT("testvol");
-        Flex->RegisterComponent();
-        Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
-    });
+	FMjUESession S;
+	bool bOk = S.Init([](FMjUESession& Session) {
+		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestVol"));
+		Flex->bOverride_FlexcompType = true;
+		Flex->FlexcompType = EMjFlexcompType::Grid;
+		Flex->bOverride_dim = true;
+		Flex->dim = 3;
+		Flex->bOverride_count = true;
+		Flex->count = {3, 3, 3};
+		Flex->bOverride_spacing = true;
+		Flex->spacing = {0.05, 0.05, 0.05};
+		Flex->bOverride_mass = true;
+		Flex->mass = 1.0f;
+		Flex->bOverride_radius = true;
+		Flex->radius = 0.005f;
+		Flex->MjName = TEXT("testvol");
+		Flex->RegisterComponent();
+		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	});
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    mjModel* M = S.Manager->PhysicsEngine->m_model;
-    TestTrue(TEXT("Model should have at least 1 flex"), M->nflex >= 1);
-    TestTrue(TEXT("Flex dim should be 3"), M->flex_dim[0] == 3);
+	mjModel* M = S.Manager->PhysicsEngine->m_model;
+	TestTrue(TEXT("Model should have at least 1 flex"), M->nflex >= 1);
+	TestTrue(TEXT("Flex dim should be 3"), M->flex_dim[0] == 3);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
@@ -168,46 +165,45 @@ bool FMjFlexcompGrid3DCompiles::RunTest(const FString& Parameters)
 //   4x4 grid = 16 vertices = 16 child bodies (all unpinned).
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompGrid2DBodyCount,
-    "URLab.Flexcomp.Grid2D_CorrectBodyCount",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.Grid2D_CorrectBodyCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompGrid2DBodyCount::RunTest(const FString& Parameters)
 {
-    FMjUESession S;
-    bool bOk = S.Init([](FMjUESession& Session)
-    {
-        UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-        Flex->bOverride_FlexcompType = true;
-        Flex->FlexcompType = EMjFlexcompType::Grid;
-        Flex->bOverride_dim = true;
-        Flex->dim = 2;
-        Flex->bOverride_count = true;
-        Flex->count = { 4, 4, 1 };
-        Flex->bOverride_spacing = true;
-        Flex->spacing = { 0.05, 0.05, 0.05 };
-        Flex->bOverride_mass = true;
-        Flex->mass = 0.5f;
-        Flex->bOverride_radius = true;
-        Flex->radius = 0.005f;
-        Flex->MjName = TEXT("counttest");
-        Flex->RegisterComponent();
-        Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
-    });
+	FMjUESession S;
+	bool bOk = S.Init([](FMjUESession& Session) {
+		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
+		Flex->bOverride_FlexcompType = true;
+		Flex->FlexcompType = EMjFlexcompType::Grid;
+		Flex->bOverride_dim = true;
+		Flex->dim = 2;
+		Flex->bOverride_count = true;
+		Flex->count = {4, 4, 1};
+		Flex->bOverride_spacing = true;
+		Flex->spacing = {0.05, 0.05, 0.05};
+		Flex->bOverride_mass = true;
+		Flex->mass = 0.5f;
+		Flex->bOverride_radius = true;
+		Flex->radius = 0.005f;
+		Flex->MjName = TEXT("counttest");
+		Flex->RegisterComponent();
+		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	});
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    mjModel* M = S.Manager->PhysicsEngine->m_model;
-    // 4x4 grid = 16 flex vertices
-    TestTrue(TEXT("Should have at least 1 flex"), M->nflex >= 1);
-    TestEqual(TEXT("Flex should have 16 vertices"), (int32)M->flex_vertnum[0], 16);
+	mjModel* M = S.Manager->PhysicsEngine->m_model;
+	// 4x4 grid = 16 flex vertices
+	TestTrue(TEXT("Should have at least 1 flex"), M->nflex >= 1);
+	TestEqual(TEXT("Flex should have 16 vertices"), (int32)M->flex_vertnum[0], 16);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
@@ -215,47 +211,46 @@ bool FMjFlexcompGrid2DBodyCount::RunTest(const FString& Parameters)
 //   Pinning vertices should reduce the number of created bodies.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompPinnedVertices,
-    "URLab.Flexcomp.PinnedVertices",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.PinnedVertices",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompPinnedVertices::RunTest(const FString& Parameters)
 {
-    FMjUESession S;
-    bool bOk = S.Init([](FMjUESession& Session)
-    {
-        UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-        Flex->bOverride_FlexcompType = true;
-        Flex->FlexcompType = EMjFlexcompType::Grid;
-        Flex->bOverride_dim = true;
-        Flex->dim = 1;
-        Flex->bOverride_count = true;
-        Flex->count = { 5, 1, 1 };
-        Flex->bOverride_spacing = true;
-        Flex->spacing = { 0.1, 0.1, 0.1 };
-        Flex->bOverride_mass = true;
-        Flex->mass = 0.2f;
-        Flex->bOverride_radius = true;
-        Flex->radius = 0.01f;
-        Flex->MjName = TEXT("pintest");
-        Flex->PinIds = {0, 4}; // Pin first and last
-        Flex->RegisterComponent();
-        Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
-    });
+	FMjUESession S;
+	bool bOk = S.Init([](FMjUESession& Session) {
+		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
+		Flex->bOverride_FlexcompType = true;
+		Flex->FlexcompType = EMjFlexcompType::Grid;
+		Flex->bOverride_dim = true;
+		Flex->dim = 1;
+		Flex->bOverride_count = true;
+		Flex->count = {5, 1, 1};
+		Flex->bOverride_spacing = true;
+		Flex->spacing = {0.1, 0.1, 0.1};
+		Flex->bOverride_mass = true;
+		Flex->mass = 0.2f;
+		Flex->bOverride_radius = true;
+		Flex->radius = 0.01f;
+		Flex->MjName = TEXT("pintest");
+		Flex->PinIds = {0, 4}; // Pin first and last
+		Flex->RegisterComponent();
+		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	});
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    mjModel* M = S.Manager->PhysicsEngine->m_model;
-    TestTrue(TEXT("Should have at least 1 flex"), M->nflex >= 1);
-    // 5 vertices in the flex regardless of pinning
-    TestEqual(TEXT("Flex should have 5 vertices"), (int32)M->flex_vertnum[0], 5);
+	mjModel* M = S.Manager->PhysicsEngine->m_model;
+	TestTrue(TEXT("Should have at least 1 flex"), M->nflex >= 1);
+	// 5 vertices in the flex regardless of pinning
+	TestEqual(TEXT("Flex should have 5 vertices"), (int32)M->flex_vertnum[0], 5);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
@@ -263,48 +258,48 @@ bool FMjFlexcompPinnedVertices::RunTest(const FString& Parameters)
 //   Importing a flexcomp XML should create a UMjFlexcomp template.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompImportGrid2D,
-    "URLab.Flexcomp.Import_Grid2D",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.Import_Grid2D",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompImportGrid2D::RunTest(const FString& Parameters)
 {
-    FMjXmlImportSession S;
-    bool bOk = S.Init(TEXT(
-        "<mujoco>"
-        "  <worldbody>"
-        "    <body name=\"parent\">"
-        "      <geom size=\"1\"/>"
-        "      <flexcomp name=\"myflex\" type=\"grid\" dim=\"2\" count=\"3 3 1\" spacing=\"0.1 0.1 0.1\" mass=\"0.5\" radius=\"0.01\">"
-        "        <elasticity young=\"100\" damping=\"0.5\"/>"
-        "        <pin id=\"0 1 2\"/>"
-        "      </flexcomp>"
-        "    </body>"
-        "  </worldbody>"
-        "</mujoco>"));
+	FMjXmlImportSession S;
+	bool bOk = S.Init(TEXT(
+		"<mujoco>"
+		"  <worldbody>"
+		"    <body name=\"parent\">"
+		"      <geom size=\"1\"/>"
+		"      <flexcomp name=\"myflex\" type=\"grid\" dim=\"2\" count=\"3 3 1\" spacing=\"0.1 0.1 0.1\" mass=\"0.5\" radius=\"0.01\">"
+		"        <elasticity young=\"100\" damping=\"0.5\"/>"
+		"        <pin id=\"0 1 2\"/>"
+		"      </flexcomp>"
+		"    </body>"
+		"  </worldbody>"
+		"</mujoco>"));
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Import Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Import Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    UMjFlexcomp* Flex = S.FindTemplate<UMjFlexcomp>(TEXT("myflex"));
-    TestNotNull(TEXT("Should find flexcomp template"), Flex);
+	UMjFlexcomp* Flex = S.FindTemplate<UMjFlexcomp>(TEXT("myflex"));
+	TestNotNull(TEXT("Should find flexcomp template"), Flex);
 
-    if (Flex)
-    {
-        TestEqual(TEXT("Type should be Grid"), Flex->FlexcompType, EMjFlexcompType::Grid);
-        TestEqual(TEXT("Dim should be 2"), Flex->dim, 2);
-        TestEqual(TEXT("count[0] should be 3"), Flex->count.Num() >= 1 ? Flex->count[0] : -1, 3);
-        TestEqual(TEXT("count[1] should be 3"), Flex->count.Num() >= 2 ? Flex->count[1] : -1, 3);
-        TestTrue(TEXT("Young should be 100"), MjTestMath::NearlyEqual(Flex->Young, 100.0f));
-        TestTrue(TEXT("Damping should be 0.5"), MjTestMath::NearlyEqual(Flex->Damping, 0.5f));
-        TestEqual(TEXT("Should have 3 pin IDs"), Flex->PinIds.Num(), 3);
-    }
+	if (Flex)
+	{
+		TestEqual(TEXT("Type should be Grid"), Flex->FlexcompType, EMjFlexcompType::Grid);
+		TestEqual(TEXT("Dim should be 2"), Flex->dim, 2);
+		TestEqual(TEXT("count[0] should be 3"), Flex->count.Num() >= 1 ? Flex->count[0] : -1, 3);
+		TestEqual(TEXT("count[1] should be 3"), Flex->count.Num() >= 2 ? Flex->count[1] : -1, 3);
+		TestTrue(TEXT("Young should be 100"), MjTestMath::NearlyEqual(Flex->Young, 100.0f));
+		TestTrue(TEXT("Damping should be 0.5"), MjTestMath::NearlyEqual(Flex->Damping, 0.5f));
+		TestEqual(TEXT("Should have 3 pin IDs"), Flex->PinIds.Num(), 3);
+	}
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
@@ -312,41 +307,41 @@ bool FMjFlexcompImportGrid2D::RunTest(const FString& Parameters)
 //   Elasticity sub-element attributes should be parsed.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjFlexcompElasticityImported,
-    "URLab.Flexcomp.Elasticity_Imported",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Flexcomp.Elasticity_Imported",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjFlexcompElasticityImported::RunTest(const FString& Parameters)
 {
-    FMjXmlImportSession S;
-    bool bOk = S.Init(TEXT(
-        "<mujoco>"
-        "  <worldbody>"
-        "    <body name=\"parent\">"
-        "      <geom size=\"1\"/>"
-        "      <flexcomp name=\"elastic\" type=\"grid\" dim=\"2\" count=\"3 3 1\" spacing=\"0.1 0.1 0.1\" mass=\"0.5\" radius=\"0.01\">"
-        "        <elasticity young=\"1000\" poisson=\"0.3\" damping=\"0.01\"/>"
-        "      </flexcomp>"
-        "    </body>"
-        "  </worldbody>"
-        "</mujoco>"));
+	FMjXmlImportSession S;
+	bool bOk = S.Init(TEXT(
+		"<mujoco>"
+		"  <worldbody>"
+		"    <body name=\"parent\">"
+		"      <geom size=\"1\"/>"
+		"      <flexcomp name=\"elastic\" type=\"grid\" dim=\"2\" count=\"3 3 1\" spacing=\"0.1 0.1 0.1\" mass=\"0.5\" radius=\"0.01\">"
+		"        <elasticity young=\"1000\" poisson=\"0.3\" damping=\"0.01\"/>"
+		"      </flexcomp>"
+		"    </body>"
+		"  </worldbody>"
+		"</mujoco>"));
 
-    if (!bOk)
-    {
-        AddError(FString::Printf(TEXT("Import Init failed: %s"), *S.LastError));
-        S.Cleanup();
-        return false;
-    }
+	if (!bOk)
+	{
+		AddError(FString::Printf(TEXT("Import Init failed: %s"), *S.LastError));
+		S.Cleanup();
+		return false;
+	}
 
-    UMjFlexcomp* Flex = S.FindTemplate<UMjFlexcomp>(TEXT("elastic"));
-    TestNotNull(TEXT("Should find flexcomp template"), Flex);
+	UMjFlexcomp* Flex = S.FindTemplate<UMjFlexcomp>(TEXT("elastic"));
+	TestNotNull(TEXT("Should find flexcomp template"), Flex);
 
-    if (Flex)
-    {
-        TestTrue(TEXT("Young should be 1000"), MjTestMath::NearlyEqual(Flex->Young, 1000.0f));
-        TestTrue(TEXT("Poisson should be 0.3"), MjTestMath::NearlyEqual(Flex->Poisson, 0.3f));
-        TestTrue(TEXT("Damping should be 0.01"), MjTestMath::NearlyEqual(Flex->Damping, 0.01f));
-    }
+	if (Flex)
+	{
+		TestTrue(TEXT("Young should be 1000"), MjTestMath::NearlyEqual(Flex->Young, 1000.0f));
+		TestTrue(TEXT("Poisson should be 0.3"), MjTestMath::NearlyEqual(Flex->Poisson, 0.3f));
+		TestTrue(TEXT("Damping should be 0.01"), MjTestMath::NearlyEqual(Flex->Damping, 0.01f));
+	}
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }

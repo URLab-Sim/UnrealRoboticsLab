@@ -13,13 +13,12 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
-
 
 #pragma once
 
@@ -28,58 +27,64 @@
 #include <functional>
 #include <mujoco/mjexport.h>
 #include <mujoco/mujoco.h>
-namespace MJHelper {
+namespace MJHelper
+{
 
-struct PhysicsObject {
-    FString ObjectName; // class name for cache
-    AActor* Actor;
-    USceneComponent* SceneComponent;
-    UStaticMeshComponent* MeshComponent;
-    FTransform Transform;
-    FRotator Rotation;
-    FVector Scale;
-    FString ObjectPathOrPrimitive;
-    int SubObjectCount;
-    bool Duplicate;
-    bool DrawDebug = false;
-    FVector OffsetPos;
-    FQuat OffsetQuat;
-    bool Static;
-    bool RobotPart;
-    bool SyncTransformToUnreal = true;
+struct PhysicsObject
+{
+	FString ObjectName; // class name for cache
+	AActor* Actor;
+	USceneComponent* SceneComponent;
+	UStaticMeshComponent* MeshComponent;
+	FTransform Transform;
+	FRotator Rotation;
+	FVector Scale;
+	FString ObjectPathOrPrimitive;
+	int SubObjectCount;
+	bool Duplicate;
+	bool DrawDebug = false;
+	FVector OffsetPos;
+	FQuat OffsetQuat;
+	bool Static;
+	bool RobotPart;
+	bool SyncTransformToUnreal = true;
 };
-struct HeightFieldData {
+struct HeightFieldData
+{
 
-    bool valid = false;
-    float mjXSize;
-    float mjYSize;
-    float mjHeight;
-    float mjBase;
+	bool valid = false;
+	float mjXSize;
+	float mjYSize;
+	float mjHeight;
+	float mjBase;
 
-    float mjXPos;
-    float mjYPos;
-    float mjZPos;
+	float mjXPos;
+	float mjYPos;
+	float mjZPos;
 };
-struct IMUData {
-    float time;
-    FVector LinearAcceleration;
-    FVector AngularVelocity;
-    FQuat Orientation;
+struct IMUData
+{
+	float time;
+	FVector LinearAcceleration;
+	FVector AngularVelocity;
+	FQuat Orientation;
 };
 
-struct GlobalPoseData {
-    float time;
-    FVector Position;
-    FQuat Orientation;
+struct GlobalPoseData
+{
+	float time;
+	FVector Position;
+	FQuat Orientation;
 };
-struct MujocoPrimitive {
+struct MujocoPrimitive
+{
 
-    int mjType;
-    FString objectName;
-    FTransform Transform;
-    FRotator Rotation;
-    FVector Scale;
-    FVector PivotOffset;
+	int mjType;
+	FString objectName;
+	FTransform Transform;
+	FRotator Rotation;
+	FVector Scale;
+	FVector PivotOffset;
 };
 URLAB_API FQuat MJQuatToUE(mjtNum* MjQuat);
 URLAB_API FQuat MJQuatToUE(mjtNum* MjQuat, int Offset);

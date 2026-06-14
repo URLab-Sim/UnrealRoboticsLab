@@ -31,31 +31,31 @@
 // Codegen-owned — driven by codegen_rules.json[categories].
 namespace MjArticulationRegistry
 {
-    struct CategoryEntry
-    {
-        const TCHAR* Name;          // schema element name, e.g. "body"
-        const TCHAR* BaseClassName; // UE base UClass, e.g. "UMjBody"
-        const TCHAR* MjsStruct;     // MuJoCo spec struct, e.g. "mjsBody"
-        const TCHAR* Layout;        // "single_uclass_per_file" / "multi_uclass" / "no_subclasses"
-        int          NumSubtypes;
-    };
+struct CategoryEntry
+{
+	const TCHAR* Name;          // schema element name, e.g. "body"
+	const TCHAR* BaseClassName; // UE base UClass, e.g. "UMjBody"
+	const TCHAR* MjsStruct;     // MuJoCo spec struct, e.g. "mjsBody"
+	const TCHAR* Layout;        // "single_uclass_per_file" / "multi_uclass" / "no_subclasses"
+	int NumSubtypes;
+};
 
-    inline constexpr CategoryEntry kCategories[] = {
-    { TEXT("actuator"), TEXT("UMjActuator"), TEXT("mjsActuator"), TEXT("single_uclass_per_file"), 10 },
-    { TEXT("body"), TEXT("UMjBody"), TEXT("mjsBody"), TEXT("no_subclasses"), 0 },
-    { TEXT("camera"), TEXT("UMjCamera"), TEXT("mjsCamera"), TEXT("no_subclasses"), 0 },
-    { TEXT("contact_exclude"), TEXT("UMjContactExclude"), TEXT("mjsExclude"), TEXT("no_subclasses"), 0 },
-    { TEXT("contact_pair"), TEXT("UMjContactPair"), TEXT("mjsPair"), TEXT("no_subclasses"), 0 },
-    { TEXT("equality"), TEXT("UMjEquality"), TEXT("mjsEquality"), TEXT("multi_uclass"), 7 },
-    { TEXT("flexcomp"), TEXT("UMjFlexcomp"), TEXT("mjsFlex"), TEXT("no_subclasses"), 0 },
-    { TEXT("frame"), TEXT("UMjFrame"), TEXT("mjsFrame"), TEXT("no_subclasses"), 0 },
-    { TEXT("geom"), TEXT("UMjGeom"), TEXT("mjsGeom"), TEXT("single_uclass_per_file"), 7 },
-    { TEXT("inertial"), TEXT("UMjInertial"), TEXT("mjsInertial"), TEXT("no_subclasses"), 0 },
-    { TEXT("joint"), TEXT("UMjJoint"), TEXT("mjsJoint"), TEXT("single_uclass_per_file"), 4 },
-    { TEXT("keyframe"), TEXT("UMjKeyframe"), TEXT("mjsKey"), TEXT("no_subclasses"), 0 },
-    { TEXT("sensor"), TEXT("UMjSensor"), TEXT("mjsSensor"), TEXT("single_uclass_per_file"), 49 },
-    { TEXT("site"), TEXT("UMjSite"), TEXT("mjsSite"), TEXT("multi_uclass"), 5 },
-    { TEXT("tendon"), TEXT("UMjTendon"), TEXT("mjsTendon"), TEXT("multi_uclass"), 2 },
-    };
-    inline constexpr int kNumCategories = sizeof(kCategories) / sizeof(kCategories[0]);
-}
+inline constexpr CategoryEntry kCategories[] = {
+	{	   TEXT("actuator"),       TEXT("UMjActuator"), TEXT("mjsActuator"), TEXT("single_uclass_per_file"), 10},
+	{		   TEXT("body"),           TEXT("UMjBody"),     TEXT("mjsBody"),          TEXT("no_subclasses"),  0},
+	{		 TEXT("camera"),         TEXT("UMjCamera"),   TEXT("mjsCamera"),          TEXT("no_subclasses"),  0},
+	{TEXT("contact_exclude"), TEXT("UMjContactExclude"),  TEXT("mjsExclude"),          TEXT("no_subclasses"),  0},
+	{   TEXT("contact_pair"),    TEXT("UMjContactPair"),     TEXT("mjsPair"),          TEXT("no_subclasses"),  0},
+	{	   TEXT("equality"),       TEXT("UMjEquality"), TEXT("mjsEquality"),           TEXT("multi_uclass"),  7},
+	{	   TEXT("flexcomp"),       TEXT("UMjFlexcomp"),     TEXT("mjsFlex"),          TEXT("no_subclasses"),  0},
+	{		  TEXT("frame"),          TEXT("UMjFrame"),    TEXT("mjsFrame"),          TEXT("no_subclasses"),  0},
+	{		   TEXT("geom"),           TEXT("UMjGeom"),     TEXT("mjsGeom"), TEXT("single_uclass_per_file"),  7},
+	{	   TEXT("inertial"),       TEXT("UMjInertial"), TEXT("mjsInertial"),          TEXT("no_subclasses"),  0},
+	{		  TEXT("joint"),          TEXT("UMjJoint"),    TEXT("mjsJoint"), TEXT("single_uclass_per_file"),  4},
+	{	   TEXT("keyframe"),       TEXT("UMjKeyframe"),      TEXT("mjsKey"),          TEXT("no_subclasses"),  0},
+	{		 TEXT("sensor"),         TEXT("UMjSensor"),   TEXT("mjsSensor"), TEXT("single_uclass_per_file"), 49},
+	{		   TEXT("site"),           TEXT("UMjSite"),     TEXT("mjsSite"),           TEXT("multi_uclass"),  5},
+	{		 TEXT("tendon"),         TEXT("UMjTendon"),   TEXT("mjsTendon"),           TEXT("multi_uclass"),  2},
+};
+inline constexpr int kNumCategories = sizeof(kCategories) / sizeof(kCategories[0]);
+} // namespace MjArticulationRegistry

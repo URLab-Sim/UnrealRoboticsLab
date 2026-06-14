@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -37,226 +37,235 @@ class UMjDefault;
 /**
  * @class UMjComponent
  * @brief Base class for all MuJoCo-related components in Unreal Engine.
- * 
+ *
  * Provides centralized logic for:
  * 1. Spec Element registration and tracking.
  * 2. Runtime binding to MuJoCo data (mjModel/mjData) via ID or Name.
  * 3. Common properties and accessors.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
-class URLAB_API UMjComponent : public USceneComponent, public IMjSpecElement
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
+class URLAB_API UMjComponent : public USceneComponent
+	, public IMjSpecElement
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	UMjComponent();
 
 protected:
 	virtual void BeginPlay() override;
 
-public:	
+public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-    // --- IMjSpecElement Interface ---
-    /** 
-     * @brief Registers this component to the MuJoCo spec. 
-     * Subclasses must implement this to create their specific mjsElement.
-     */
-    virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
+	// --- IMjSpecElement Interface ---
+	/**
+	 * @brief Registers this component to the MuJoCo spec.
+	 * Subclasses must implement this to create their specific mjsElement.
+	 */
+	virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    /**
-     * @brief Binds this component to the runtime MuJoCo simulation.
-     * Base implementation caches Model/Data and attempts to resolve ID.
-     */
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
+	/**
+	 * @brief Binds this component to the runtime MuJoCo simulation.
+	 * Base implementation caches Model/Data and attempts to resolve ID.
+	 */
+	virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
 
-    /** @brief Serializes the component's runtime state into a binary buffer for network transmission. */
-    virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const {}
+	/** @brief Serializes the component's runtime state into a binary buffer for network transmission. */
+	virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const {}
 
-    /** @brief Gets the topic name used for broadcasting this component's data. */
-    virtual FString GetTelemetryTopicName() const { return FString(); }
+	/** @brief Gets the topic name used for broadcasting this component's data. */
+	virtual FString GetTelemetryTopicName() const { return FString(); }
 
-    /** @brief Returns the number of objects of a given type in the compiled model. */
-    static int GetMjObjectCount(const mjModel* M, mjtObj ObjType)
-    {
-        switch (ObjType)
-        {
-            case mjOBJ_BODY:     return M->nbody;
-            case mjOBJ_JOINT:    return M->njnt;
-            case mjOBJ_GEOM:     return M->ngeom;
-            case mjOBJ_SITE:     return M->nsite;
-            case mjOBJ_ACTUATOR: return M->nu;
-            case mjOBJ_SENSOR:   return M->nsensor;
-            case mjOBJ_TENDON:   return M->ntendon;
-            default:             return 0;
-        }
-    }
+	/** @brief Returns the number of objects of a given type in the compiled model. */
+	static int GetMjObjectCount(const mjModel* M, mjtObj ObjType)
+	{
+		switch (ObjType)
+		{
+			case mjOBJ_BODY:
+				return M->nbody;
+			case mjOBJ_JOINT:
+				return M->njnt;
+			case mjOBJ_GEOM:
+				return M->ngeom;
+			case mjOBJ_SITE:
+				return M->nsite;
+			case mjOBJ_ACTUATOR:
+				return M->nu;
+			case mjOBJ_SENSOR:
+				return M->nsensor;
+			case mjOBJ_TENDON:
+				return M->ntendon;
+			default:
+				return 0;
+		}
+	}
 
-    /**
-     * @brief Helper to create a specific View struct for this component.
-     * Uses generic ID binding if possible, falling back to name.
-     */
-    template <typename ViewType>
-    ViewType BindToView(const FString& Prefix)
-    {
-        if (!m_Model || !m_Data)
-        {
-            UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — m_Model or m_Data is null, cannot bind."), *GetName());
-            return ViewType();
-        }
+	/**
+	 * @brief Helper to create a specific View struct for this component.
+	 * Uses generic ID binding if possible, falling back to name.
+	 */
+	template <typename ViewType>
+	ViewType BindToView(const FString& Prefix)
+	{
+		if (!m_Model || !m_Data)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — m_Model or m_Data is null, cannot bind."), *GetName());
+			return ViewType();
+		}
 
-        // 1. Try ID based binding via spec element (the primary path)
-        // EMPIRICAL (probe test 2026-05-27, MjBindingPathProbeTest):
-        // mjs_getId returns the correct compiled-model id after mjs_attach
-        // in current MuJoCo (mj=6882095). Path 1 == Path 2 == Bind in every
-        // tested scenario. We keep the bounds check + Path 2 fallback as
-        // safety nets for edge cases not yet observed (recompile mid-PIE,
-        // multi-attach order, runtime component churn). The old v0.1-alpha
-        // comment claiming "stale/garbage IDs after mjs_attach" is obsolete.
-        if (m_SpecElement)
-        {
-            int id = mjs_getId(m_SpecElement);
-            int maxCount = GetMjObjectCount(m_Model, ViewType::obj_type);
-            if (id >= 0 && id < maxCount)
-            {
-                UE_LOG(LogURLabBind, Verbose, TEXT("[BindToView] '%s' — Path 1 SUCCESS: mjs_getId returned %d (max=%d, SpecElement=%p)"), *GetName(), id, maxCount, m_SpecElement);
-                return ViewType(m_Model, m_Data, id);
-            }
-            else if (id >= 0)
-            {
-                UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 1 REJECTED: mjs_getId returned %d but max for type %d is %d (stale spec element). Falling back to name lookup."), *GetName(), id, ViewType::obj_type, maxCount);
-            }
-            else
-            {
-                UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 1 FAILED: mjs_getId returned -1 (SpecElement=%p). Falling back to name lookup."), *GetName(), m_SpecElement);
-            }
-        }
-        else
-        {
-            UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 1 SKIPPED: m_SpecElement is null. Falling back to name lookup."), *GetName());
-        }
+		// 1. Try ID based binding via spec element (the primary path)
+		// EMPIRICAL (probe test 2026-05-27, MjBindingPathProbeTest):
+		// mjs_getId returns the correct compiled-model id after mjs_attach
+		// in current MuJoCo (mj=6882095). Path 1 == Path 2 == Bind in every
+		// tested scenario. We keep the bounds check + Path 2 fallback as
+		// safety nets for edge cases not yet observed (recompile mid-PIE,
+		// multi-attach order, runtime component churn). The old v0.1-alpha
+		// comment claiming "stale/garbage IDs after mjs_attach" is obsolete.
+		if (m_SpecElement)
+		{
+			int id = mjs_getId(m_SpecElement);
+			int maxCount = GetMjObjectCount(m_Model, ViewType::obj_type);
+			if (id >= 0 && id < maxCount)
+			{
+				UE_LOG(LogURLabBind, Verbose, TEXT("[BindToView] '%s' — Path 1 SUCCESS: mjs_getId returned %d (max=%d, SpecElement=%p)"), *GetName(), id, maxCount, m_SpecElement);
+				return ViewType(m_Model, m_Data, id);
+			}
+			else if (id >= 0)
+			{
+				UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 1 REJECTED: mjs_getId returned %d but max for type %d is %d (stale spec element). Falling back to name lookup."), *GetName(), id, ViewType::obj_type, maxCount);
+			}
+			else
+			{
+				UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 1 FAILED: mjs_getId returned -1 (SpecElement=%p). Falling back to name lookup."), *GetName(), m_SpecElement);
+			}
+		}
+		else
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 1 SKIPPED: m_SpecElement is null. Falling back to name lookup."), *GetName());
+		}
 
-        // 2. Fallback: Name based binding
-        FString NameToLookup = MjName.IsEmpty() ? GetName() : MjName;
-        FString PrefixedName = Prefix + NameToLookup;
-        int id = mj_name2id(m_Model, ViewType::obj_type, TCHAR_TO_UTF8(*PrefixedName));
-        if (id >= 0)
-        {
-            UE_LOG(LogURLabBind, Verbose, TEXT("[BindToView] '%s' — Path 2 SUCCESS: mj_name2id('%s', type=%d) returned %d"), *GetName(), *PrefixedName, ViewType::obj_type, id);
-            return ViewType(m_Model, m_Data, id);
-        }
-        else
-        {
-            UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 2 FAILED: mj_name2id('%s', type=%d) returned -1. MjName='%s', Prefix='%s', UEName='%s'"),
-                *GetName(), *PrefixedName, ViewType::obj_type, *MjName, *Prefix, *GetName());
-        }
+		// 2. Fallback: Name based binding
+		FString NameToLookup = MjName.IsEmpty() ? GetName() : MjName;
+		FString PrefixedName = Prefix + NameToLookup;
+		int id = mj_name2id(m_Model, ViewType::obj_type, TCHAR_TO_UTF8(*PrefixedName));
+		if (id >= 0)
+		{
+			UE_LOG(LogURLabBind, Verbose, TEXT("[BindToView] '%s' — Path 2 SUCCESS: mj_name2id('%s', type=%d) returned %d"), *GetName(), *PrefixedName, ViewType::obj_type, id);
+			return ViewType(m_Model, m_Data, id);
+		}
+		else
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("[BindToView] '%s' — Path 2 FAILED: mj_name2id('%s', type=%d) returned -1. MjName='%s', Prefix='%s', UEName='%s'"),
+				*GetName(), *PrefixedName, ViewType::obj_type, *MjName, *Prefix, *GetName());
+		}
 
-        return ViewType();
-    }
+		return ViewType();
+	}
 
-    /**
-     * @brief Bind a typed view AND cache the resulting mjId on the component.
-     *
-     * Collapses the 4-line pattern that 16 base components currently hand-roll:
-     *   Super::Bind(model, data, prefix);
-     *   m_<X>View = BindToView<XView>(prefix);
-     *   if (m_<X>View.id != -1) m_ID = m_<X>View.id;
-     *   else UE_LOG warning;
-     *
-     * After v8 the per-category Bind() override becomes:
-     *   Super::Bind(model, data, prefix);
-     *   BindAndCacheView(m_<X>View, prefix);
-     *
-     * 3 components keep their own Bind() override for real work
-     * (MjTactileSensor runtime Dim sync, MjPDController, MjFlexcomp); they
-     * are free to call this helper too if they want.
-     */
-    template <typename ViewType>
-    void BindAndCacheView(ViewType& OutView, const FString& Prefix)
-    {
-        OutView = BindToView<ViewType>(Prefix);
-        if (OutView.id != -1)
-        {
-            m_ID = OutView.id;
-        }
-        else
-        {
-            UE_LOG(LogURLabBind, Warning,
-                TEXT("[BindAndCacheView] '%s' — failed to bind (Prefix='%s', type=%d). m_ID stays -1."),
-                *GetName(), *Prefix, ViewType::obj_type);
-        }
-    }
+	/**
+	 * @brief Bind a typed view AND cache the resulting mjId on the component.
+	 *
+	 * Collapses the 4-line pattern that 16 base components currently hand-roll:
+	 *   Super::Bind(model, data, prefix);
+	 *   m_<X>View = BindToView<XView>(prefix);
+	 *   if (m_<X>View.id != -1) m_ID = m_<X>View.id;
+	 *   else UE_LOG warning;
+	 *
+	 * After v8 the per-category Bind() override becomes:
+	 *   Super::Bind(model, data, prefix);
+	 *   BindAndCacheView(m_<X>View, prefix);
+	 *
+	 * 3 components keep their own Bind() override for real work
+	 * (MjTactileSensor runtime Dim sync, MjPDController, MjFlexcomp); they
+	 * are free to call this helper too if they want.
+	 */
+	template <typename ViewType>
+	void BindAndCacheView(ViewType& OutView, const FString& Prefix)
+	{
+		OutView = BindToView<ViewType>(Prefix);
+		if (OutView.id != -1)
+		{
+			m_ID = OutView.id;
+		}
+		else
+		{
+			UE_LOG(LogURLabBind, Warning,
+				TEXT("[BindAndCacheView] '%s' — failed to bind (Prefix='%s', type=%d). m_ID stays -1."),
+				*GetName(), *Prefix, ViewType::obj_type);
+		}
+	}
 
-    /** @brief Checks if the component is successfully bound to MuJoCo runtime. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
-    bool IsBound() const;
+	/** @brief Checks if the component is successfully bound to MuJoCo runtime. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
+	bool IsBound() const;
 
-    /** @brief Returns the MuJoCo ID of this component. Returns -1 if not bound. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
-    int GetMjID() const { return m_ID; }
+	/** @brief Returns the MuJoCo ID of this component. Returns -1 if not bound. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
+	int GetMjID() const { return m_ID; }
 
-    /** @brief Diagnostic-only accessor for the spec element pointer. Used by binding-path probes. */
-    mjsElement* GetSpecElementForDiagnostics() const { return m_SpecElement; }
+	/** @brief Diagnostic-only accessor for the spec element pointer. Used by binding-path probes. */
+	mjsElement* GetSpecElementForDiagnostics() const { return m_SpecElement; }
 
-    /** @brief If true, this component is a template in a <default> block. Auto-resolved in Setup(). */
-    UPROPERTY()
-    bool bIsDefault = false;
+	/** @brief If true, this component is a template in a <default> block. Auto-resolved in Setup(). */
+	UPROPERTY()
+	bool bIsDefault = false;
 
-    /** @brief Gets the full prefixed name of this component as it appears in the compiled MuJoCo model. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
-    virtual FString GetMjName() const;
+	/** @brief Gets the full prefixed name of this component as it appears in the compiled MuJoCo model. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Base")
+	virtual FString GetMjName() const;
 
-    /** @brief The original name of this element in the MuJoCo Spec (from XML). */
-    UPROPERTY()
-    FString MjName;
+	/** @brief The original name of this element in the MuJoCo Spec (from XML). */
+	UPROPERTY()
+	FString MjName;
 
-    /** @brief Immutable copy of MjName captured at XML import time, before any user
-     *  rename or spec-time disambiguation. The bridge maps policy-side names against
-     *  this so mjlab patterns keep resolving even when MjName drifts. Empty for
-     *  components that had no XML `name` attribute, and for components on Default
-     *  templates (those don't map to spec instances). */
-    UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Base")
-    FString OriginalMjName;
+	/** @brief Immutable copy of MjName captured at XML import time, before any user
+	 *  rename or spec-time disambiguation. The bridge maps policy-side names against
+	 *  this so mjlab patterns keep resolving even when MjName drifts. Empty for
+	 *  components that had no XML `name` attribute, and for components on Default
+	 *  templates (those don't map to spec instances). */
+	UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Base")
+	FString OriginalMjName;
 
 #if WITH_EDITOR
-    /** Returns names of sibling components of the given class in the same Blueprint SCS tree.
-     *  Static so non-UMjComponent classes (ContactPair, etc.) can also use it. */
-    static TArray<FString> GetSiblingComponentOptions(const UObject* CallerComponent, UClass* FilterClass, bool bIncludeDefaults = false);
+	/** Returns names of sibling components of the given class in the same Blueprint SCS tree.
+	 *  Static so non-UMjComponent classes (ContactPair, etc.) can also use it. */
+	static TArray<FString> GetSiblingComponentOptions(const UObject* CallerComponent, UClass* FilterClass, bool bIncludeDefaults = false);
 #endif
 
 protected:
-    /** Resolves the MuJoCo default class for a given class name.
-     * Looks up ClassName; falls back to the spec's global default. */
-    static mjsDefault* ResolveDefault(mjSpec* Spec, const FString& ClassName);
+	/** Resolves the MuJoCo default class for a given class name.
+	 * Looks up ClassName; falls back to the spec's global default. */
+	static mjsDefault* ResolveDefault(mjSpec* Spec, const FString& ClassName);
 
-    // --- Editor-time default resolution ---
+	// --- Editor-time default resolution ---
 
-    /**
-     * Finds the effective UMjDefault for this component at editor time (no mjSpec needed).
-     * Checks the component's MjClassName first (subclass must expose it).
-     * Falls back to walking up attachment parents to find the nearest UMjBody
-     * with ChildClassName set. Returns nullptr if no default class applies.
-     */
-    UMjDefault* FindEditorDefault() const;
+	/**
+	 * Finds the effective UMjDefault for this component at editor time (no mjSpec needed).
+	 * Checks the component's MjClassName first (subclass must expose it).
+	 * Falls back to walking up attachment parents to find the nearest UMjBody
+	 * with ChildClassName set. Returns nullptr if no default class applies.
+	 */
+	UMjDefault* FindEditorDefault() const;
 
-    /**
-     * Returns this component's MjClassName for editor-time default resolution.
-     * Base returns empty string. Subclasses with MjClassName override this.
-     */
-    virtual FString GetMjClassName() const { return FString(); }
+	/**
+	 * Returns this component's MjClassName for editor-time default resolution.
+	 * Base returns empty string. Subclasses with MjClassName override this.
+	 */
+	virtual FString GetMjClassName() const { return FString(); }
 
-    /** Finds a UMjDefault component by ClassName on the owning actor. */
-    static UMjDefault* FindDefaultByClassName(const AActor* Owner, const FString& ClassName);
+	/** Finds a UMjDefault component by ClassName on the owning actor. */
+	static UMjDefault* FindDefaultByClassName(const AActor* Owner, const FString& ClassName);
 
-    /** Sets the spec element name using GetUniqueName for deduplication. */
-    void SetSpecElementName(class FMujocoSpecWrapper& Wrapper, mjsElement* Elem, mjtObj ObjType);
+	/** Sets the spec element name using GetUniqueName for deduplication. */
+	void SetSpecElementName(class FMujocoSpecWrapper& Wrapper, mjsElement* Elem, mjtObj ObjType);
 
-    /**Pointer to the MuJoCo spec element created during RegisterToSpec. */
-    mjsElement* m_SpecElement = nullptr;
+	/**Pointer to the MuJoCo spec element created during RegisterToSpec. */
+	mjsElement* m_SpecElement = nullptr;
 
-    /** Generic ID of this element in the compiled model (body_id, joint_id, etc.). */
-    int m_ID = -1;
+	/** Generic ID of this element in the compiled model (body_id, joint_id, etc.). */
+	int m_ID = -1;
 
-    mjModel* m_Model = nullptr;
-    mjData* m_Data = nullptr;
+	mjModel* m_Model = nullptr;
+	mjData* m_Data = nullptr;
 };

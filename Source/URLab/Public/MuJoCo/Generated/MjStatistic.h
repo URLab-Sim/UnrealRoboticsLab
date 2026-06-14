@@ -34,48 +34,48 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FMjStatistic
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta=(InlineEditConditionToggle))
-    bool bOverride_Meaninertia = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (InlineEditConditionToggle))
+	bool bOverride_Meaninertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta=(EditCondition="bOverride_Meaninertia"))
-    double Meaninertia = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta = (EditCondition = "bOverride_Meaninertia"))
+	double Meaninertia = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta=(InlineEditConditionToggle))
-    bool bOverride_Meanmass = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (InlineEditConditionToggle))
+	bool bOverride_Meanmass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta=(EditCondition="bOverride_Meanmass"))
-    double Meanmass = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta = (EditCondition = "bOverride_Meanmass"))
+	double Meanmass = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta=(InlineEditConditionToggle))
-    bool bOverride_Meansize = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (InlineEditConditionToggle))
+	bool bOverride_Meansize = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta=(EditCondition="bOverride_Meansize"))
-    double Meansize = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta = (EditCondition = "bOverride_Meansize"))
+	double Meansize = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta=(InlineEditConditionToggle))
-    bool bOverride_Extent = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (InlineEditConditionToggle))
+	bool bOverride_Extent = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta=(EditCondition="bOverride_Extent"))
-    double Extent = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta = (EditCondition = "bOverride_Extent"))
+	double Extent = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta=(InlineEditConditionToggle))
-    bool bOverride_Center = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (InlineEditConditionToggle))
+	bool bOverride_Center = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta=(EditCondition="bOverride_Center"))
-    FVector Center = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Statistic", meta = (EditCondition = "bOverride_Center"))
+	FVector Center = FVector::ZeroVector;
 
-    /** @brief Mirror every field into a runtime C struct. */
-    template <typename TDst>
-    void ApplyTo(TDst& Dst) const
-    {
-    Dst.meaninertia = static_cast<decltype(Dst.meaninertia)>(Meaninertia);
-    Dst.meanmass = static_cast<decltype(Dst.meanmass)>(Meanmass);
-    Dst.meansize = static_cast<decltype(Dst.meansize)>(Meansize);
-    Dst.extent = static_cast<decltype(Dst.extent)>(Extent);
-    Dst.center[0] = static_cast<decltype(Dst.center[0])>(Center.X);
-    Dst.center[1] = static_cast<decltype(Dst.center[1])>(Center.Y);
-    Dst.center[2] = static_cast<decltype(Dst.center[2])>(Center.Z);
-    }
+	/** @brief Mirror every field into a runtime C struct. */
+	template <typename TDst>
+	void ApplyTo(TDst& Dst) const
+	{
+		Dst.meaninertia = static_cast<decltype(Dst.meaninertia)>(Meaninertia);
+		Dst.meanmass = static_cast<decltype(Dst.meanmass)>(Meanmass);
+		Dst.meansize = static_cast<decltype(Dst.meansize)>(Meansize);
+		Dst.extent = static_cast<decltype(Dst.extent)>(Extent);
+		Dst.center[0] = static_cast<decltype(Dst.center[0])>(Center.X);
+		Dst.center[1] = static_cast<decltype(Dst.center[1])>(Center.Y);
+		Dst.center[2] = static_cast<decltype(Dst.center[2])>(Center.Z);
+	}
 };

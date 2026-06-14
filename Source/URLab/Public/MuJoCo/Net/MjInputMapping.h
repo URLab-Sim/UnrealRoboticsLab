@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -35,31 +35,31 @@ struct FInputActionInstance;
 
 struct FCachedMjBinding
 {
-    TWeakObjectPtr<UMjActuator> Actuator;
-    float Scale;
-    bool bAccumulate;
+	TWeakObjectPtr<UMjActuator> Actuator;
+	float Scale;
+	bool bAccumulate;
 };
 
 USTRUCT(BlueprintType)
 struct FMjInputBinding
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    /** @brief The Input Action to listen for (e.g. MoveForward). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    UInputAction* Action = nullptr;
+	/** @brief The Input Action to listen for (e.g. MoveForward). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	UInputAction* Action = nullptr;
 
-    /** @brief Map this action to a specific MuJoCo Actuator by name. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FString ActuatorName;
+	/** @brief Map this action to a specific MuJoCo Actuator by name. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FString ActuatorName;
 
-    /** @brief Scale the input value before applying to the actuator. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    float Scale = 1.0f;
-    
-    /** @brief If true, adds to existing control signal. If false, overwrites. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    bool bAccumulate = false;
+	/** @brief Scale the input value before applying to the actuator. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	float Scale = 1.0f;
+
+	/** @brief If true, adds to existing control signal. If false, overwrites. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	bool bAccumulate = false;
 };
 
 /**
@@ -67,43 +67,43 @@ struct FMjInputBinding
  * @brief Binds Enhanced Input Actions directly to MuJoCo Actuators.
  * Attach this to a Pawn or Character that possesses an MjArticulation.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjInputMapping : public UActorComponent
 {
 	GENERATED_BODY()
 
-public:	
+public:
 	UMjInputMapping();
 
 protected:
 	virtual void BeginPlay() override;
 
-public:	
-    /** @brief The Mapping Context to add to the Player Controller (optional). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
-    UInputMappingContext* DefaultMappingContext = nullptr;
+public:
+	/** @brief The Mapping Context to add to the Player Controller (optional). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
+	UInputMappingContext* DefaultMappingContext = nullptr;
 
-    /** @brief Priority for the mapping context. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
-    int32 Priority = 0;
+	/** @brief Priority for the mapping context. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
+	int32 Priority = 0;
 
-    /** @brief List of bindings to setup. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
-    TArray<FMjInputBinding> Bindings;
+	/** @brief List of bindings to setup. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
+	TArray<FMjInputBinding> Bindings;
 
-    /**
-     * @brief The articulation this input mapping drives.
-     * If set, actuator lookup is scoped to this articulation only.
-     * If null, all articulations registered with AMuJoCoManager are searched.
-     */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
-    AMjArticulation* TargetArticulation = nullptr;
+	/**
+	 * @brief The articulation this input mapping drives.
+	 * If set, actuator lookup is scoped to this articulation only.
+	 * If null, all articulations registered with AMuJoCoManager are searched.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Input")
+	AMjArticulation* TargetArticulation = nullptr;
 
 private:
-    void SetupBindings();
-    
-    // Handler that accepts Instance to identify source action
-    void GenericInputHandler(const FInputActionInstance& Instance);
+	void SetupBindings();
 
-    TMap<const UInputAction*, FCachedMjBinding> ActionCache;
+	// Handler that accepts Instance to identify source action
+	void GenericInputHandler(const FInputActionInstance& Instance);
+
+	TMap<const UInputAction*, FCachedMjBinding> ActionCache;
 };

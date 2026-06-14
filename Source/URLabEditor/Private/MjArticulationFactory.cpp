@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MjArticulationFactory.h"
@@ -30,44 +30,43 @@
 
 UMjArticulationFactory::UMjArticulationFactory()
 {
-    SupportedClass = UBlueprint::StaticClass();
-    bCreateNew = true;
-    bEditAfterNew = true;
+	SupportedClass = UBlueprint::StaticClass();
+	bCreateNew = true;
+	bEditAfterNew = true;
 }
 
 UObject* UMjArticulationFactory::FactoryCreateNew(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
 {
-    UClass* ParentClass = AMjArticulation::StaticClass();
+	UClass* ParentClass = AMjArticulation::StaticClass();
 
-    // Create the Blueprint Asset using AMjArticulation as base
-    UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
-        ParentClass,
-        InParent,
-        InName,
-        BPTYPE_Normal,
-        UBlueprint::StaticClass(),
-        UBlueprintGeneratedClass::StaticClass()
-    );
+	// Create the Blueprint Asset using AMjArticulation as base
+	UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
+		ParentClass,
+		InParent,
+		InName,
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass());
 
-    if (NewBP)
-    {
-        // Pre-populate with organizational roots and a main body
-        UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
-        Generator->SetupEmptyArticulation(NewBP);
-        
-        // Final compile
-        FKismetEditorUtilities::CompileBlueprint(NewBP);
-    }
+	if (NewBP)
+	{
+		// Pre-populate with organizational roots and a main body
+		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
+		Generator->SetupEmptyArticulation(NewBP);
 
-    return NewBP;
+		// Final compile
+		FKismetEditorUtilities::CompileBlueprint(NewBP);
+	}
+
+	return NewBP;
 }
 
 uint32 UMjArticulationFactory::GetMenuCategories() const
 {
-    return FURLabModule::Get().GetMujocoAssetCategory();
+	return FURLabModule::Get().GetMujocoAssetCategory();
 }
 
 FText UMjArticulationFactory::GetDisplayName() const
 {
-    return NSLOCTEXT("FURLabModule", "MjArticulationFactoryDisplayName", "MuJoCo Articulation");
+	return NSLOCTEXT("FURLabModule", "MjArticulationFactoryDisplayName", "MuJoCo Articulation");
 }

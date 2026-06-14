@@ -34,102 +34,102 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FMjVisualGlobal
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Cameraid = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Cameraid = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Cameraid"))
-    int32 Cameraid = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Cameraid"))
+	int32 Cameraid = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Orthographic = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Orthographic = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Orthographic"))
-    int32 Orthographic = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Orthographic"))
+	int32 Orthographic = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Fovy = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Fovy = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Fovy"))
-    float Fovy = 45.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Fovy"))
+	float Fovy = 45.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Ipd = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Ipd = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Ipd"))
-    float Ipd = 0.068f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Ipd"))
+	float Ipd = 0.068f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Azimuth = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Azimuth = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Azimuth"))
-    float Azimuth = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Azimuth"))
+	float Azimuth = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Elevation = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Elevation = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Elevation"))
-    float Elevation = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Elevation"))
+	float Elevation = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Linewidth = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Linewidth = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Linewidth"))
-    float Linewidth = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Linewidth"))
+	float Linewidth = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Glow = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Glow = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Glow"))
-    float Glow = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Glow"))
+	float Glow = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Realtime = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Realtime = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Realtime"))
-    float Realtime = 1.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Realtime"))
+	float Realtime = 1.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Offwidth = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Offwidth = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Offwidth"))
-    int32 Offwidth = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Offwidth"))
+	int32 Offwidth = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Offheight = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Offheight = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Offheight"))
-    int32 Offheight = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Offheight"))
+	int32 Offheight = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Ellipsoidinertia = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Ellipsoidinertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Ellipsoidinertia"))
-    int32 Ellipsoidinertia = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Ellipsoidinertia"))
+	int32 Ellipsoidinertia = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta=(InlineEditConditionToggle))
-    bool bOverride_Bvactive = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Global", meta = (InlineEditConditionToggle))
+	bool bOverride_Bvactive = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta=(EditCondition="bOverride_Bvactive"))
-    int32 Bvactive = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Global", meta = (EditCondition = "bOverride_Bvactive"))
+	int32 Bvactive = 0;
 
-    /** @brief Mirror every field into a runtime C struct. */
-    template <typename TDst>
-    void ApplyTo(TDst& Dst) const
-    {
-    Dst.cameraid = static_cast<decltype(Dst.cameraid)>(Cameraid);
-    Dst.orthographic = static_cast<decltype(Dst.orthographic)>(Orthographic);
-    Dst.fovy = static_cast<decltype(Dst.fovy)>(Fovy);
-    Dst.ipd = static_cast<decltype(Dst.ipd)>(Ipd);
-    Dst.azimuth = static_cast<decltype(Dst.azimuth)>(Azimuth);
-    Dst.elevation = static_cast<decltype(Dst.elevation)>(Elevation);
-    Dst.linewidth = static_cast<decltype(Dst.linewidth)>(Linewidth);
-    Dst.glow = static_cast<decltype(Dst.glow)>(Glow);
-    Dst.realtime = static_cast<decltype(Dst.realtime)>(Realtime);
-    Dst.offwidth = static_cast<decltype(Dst.offwidth)>(Offwidth);
-    Dst.offheight = static_cast<decltype(Dst.offheight)>(Offheight);
-    Dst.ellipsoidinertia = static_cast<decltype(Dst.ellipsoidinertia)>(Ellipsoidinertia);
-    Dst.bvactive = static_cast<decltype(Dst.bvactive)>(Bvactive);
-    }
+	/** @brief Mirror every field into a runtime C struct. */
+	template <typename TDst>
+	void ApplyTo(TDst& Dst) const
+	{
+		Dst.cameraid = static_cast<decltype(Dst.cameraid)>(Cameraid);
+		Dst.orthographic = static_cast<decltype(Dst.orthographic)>(Orthographic);
+		Dst.fovy = static_cast<decltype(Dst.fovy)>(Fovy);
+		Dst.ipd = static_cast<decltype(Dst.ipd)>(Ipd);
+		Dst.azimuth = static_cast<decltype(Dst.azimuth)>(Azimuth);
+		Dst.elevation = static_cast<decltype(Dst.elevation)>(Elevation);
+		Dst.linewidth = static_cast<decltype(Dst.linewidth)>(Linewidth);
+		Dst.glow = static_cast<decltype(Dst.glow)>(Glow);
+		Dst.realtime = static_cast<decltype(Dst.realtime)>(Realtime);
+		Dst.offwidth = static_cast<decltype(Dst.offwidth)>(Offwidth);
+		Dst.offheight = static_cast<decltype(Dst.offheight)>(Offheight);
+		Dst.ellipsoidinertia = static_cast<decltype(Dst.ellipsoidinertia)>(Ellipsoidinertia);
+		Dst.bvactive = static_cast<decltype(Dst.bvactive)>(Bvactive);
+	}
 };

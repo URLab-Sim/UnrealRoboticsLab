@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
@@ -36,365 +36,364 @@
 #include "MuJoCo/Components/Bodies/MjBody.h"
 
 FMujocoSpecWrapper::FMujocoSpecWrapper(mjSpec* InSpec, mjVFS* InVFS)
-    : Spec(InSpec), VFS(InVFS)
+	: Spec(InSpec), VFS(InVFS)
 {
 }
 
-
 mjsBody* FMujocoSpecWrapper::CreateBody(const FString& Name, const FString& ParentName, const FTransform& WorldTransform)
 {
-    mjsBody* ParentBody = mjs_findBody(Spec, TCHAR_TO_UTF8(*ParentName));
-    if (!ParentBody) {
-        ParentBody = mjs_findBody(Spec, "world");
-    }
+	mjsBody* ParentBody = mjs_findBody(Spec, TCHAR_TO_UTF8(*ParentName));
+	if (!ParentBody)
+	{
+		ParentBody = mjs_findBody(Spec, "world");
+	}
 
-    mjsBody* NewBody = mjs_addBody(ParentBody, nullptr);
-    mjs_setName(NewBody->element, TCHAR_TO_UTF8(*Name));
+	mjsBody* NewBody = mjs_addBody(ParentBody, nullptr);
+	mjs_setName(NewBody->element, TCHAR_TO_UTF8(*Name));
 
-    MjUtils::UEToMjPosition(WorldTransform.GetLocation(), NewBody->pos);
-    MjUtils::UEToMjRotation(WorldTransform.GetRotation(), NewBody->quat);
+	MjUtils::UEToMjPosition(WorldTransform.GetLocation(), NewBody->pos);
+	MjUtils::UEToMjRotation(WorldTransform.GetRotation(), NewBody->quat);
 
-    CreatedBodyNames.Add(Name);
+	CreatedBodyNames.Add(Name);
 
-    return NewBody;
+	return NewBody;
 }
 
 mjsBody* FMujocoSpecWrapper::CreateBody(const FString& Name, mjsBody* ParentBody, const FTransform& WorldTransform)
 {
-    if (!ParentBody) {
-        ParentBody = mjs_findBody(Spec, "world");
-    }
+	if (!ParentBody)
+	{
+		ParentBody = mjs_findBody(Spec, "world");
+	}
 
-    mjsBody* NewBody = mjs_addBody(ParentBody, nullptr);
-    mjs_setName(NewBody->element, TCHAR_TO_UTF8(*Name));
+	mjsBody* NewBody = mjs_addBody(ParentBody, nullptr);
+	mjs_setName(NewBody->element, TCHAR_TO_UTF8(*Name));
 
-    MjUtils::UEToMjPosition(WorldTransform.GetLocation(), NewBody->pos);
-    MjUtils::UEToMjRotation(WorldTransform.GetRotation(), NewBody->quat); 
+	MjUtils::UEToMjPosition(WorldTransform.GetLocation(), NewBody->pos);
+	MjUtils::UEToMjRotation(WorldTransform.GetRotation(), NewBody->quat);
 
-    CreatedBodyNames.Add(Name);
+	CreatedBodyNames.Add(Name);
 
-    return NewBody;
+	return NewBody;
 }
 
 mjsFrame* FMujocoSpecWrapper::CreateFrame(const FString& Name, mjsBody* ParentBody, const FTransform& WorldTransform)
 {
-    if (!ParentBody) {
-        ParentBody = mjs_findBody(Spec, "world");
-    }
+	if (!ParentBody)
+	{
+		ParentBody = mjs_findBody(Spec, "world");
+	}
 
-    mjsFrame* NewFrame = mjs_addFrame(ParentBody, nullptr);
-    mjs_setName(NewFrame->element, TCHAR_TO_UTF8(*Name));
+	mjsFrame* NewFrame = mjs_addFrame(ParentBody, nullptr);
+	mjs_setName(NewFrame->element, TCHAR_TO_UTF8(*Name));
 
-    MjUtils::UEToMjPosition(WorldTransform.GetLocation(), NewFrame->pos);
-    MjUtils::UEToMjRotation(WorldTransform.GetRotation(), NewFrame->quat);
+	MjUtils::UEToMjPosition(WorldTransform.GetLocation(), NewFrame->pos);
+	MjUtils::UEToMjRotation(WorldTransform.GetRotation(), NewFrame->quat);
 
-    return NewFrame;
+	return NewFrame;
 }
 
 FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString& FilePath, const FVector& scale)
 {
-    FString UniqueMeshName = GetUniqueName(MeshName, mjOBJ_MESH, nullptr);
+	FString UniqueMeshName = GetUniqueName(MeshName, mjOBJ_MESH, nullptr);
 
-    mjsMesh* MeshAsset = mjs_addMesh(Spec, nullptr);
-    mjs_setName(MeshAsset->element, TCHAR_TO_UTF8(*UniqueMeshName));
-    MjSetStringRaw(MeshAsset->file, FilePath);
+	mjsMesh* MeshAsset = mjs_addMesh(Spec, nullptr);
+	mjs_setName(MeshAsset->element, TCHAR_TO_UTF8(*UniqueMeshName));
+	MjSetStringRaw(MeshAsset->file, FilePath);
 
-    MeshAsset->scale[0] = scale.X;
-    MeshAsset->scale[1] = scale.Y;
-    MeshAsset->scale[2] = scale.Z;
+	MeshAsset->scale[0] = scale.X;
+	MeshAsset->scale[1] = scale.Y;
+	MeshAsset->scale[2] = scale.Z;
 
-    FString Directory = FPaths::GetPath(FilePath);
-    FString FileName = FPaths::GetCleanFilename(FilePath);
+	FString Directory = FPaths::GetPath(FilePath);
+	FString FileName = FPaths::GetCleanFilename(FilePath);
 
-    UE_LOG(LogURLabWrapper, Log, TEXT("MuJoCo VFS: Loading %s from %s with name %s"), *FileName, *Directory, *UniqueMeshName);
+	UE_LOG(LogURLabWrapper, Log, TEXT("MuJoCo VFS: Loading %s from %s with name %s"), *FileName, *Directory, *UniqueMeshName);
 
-    int Result = mj_addFileVFS(VFS, TCHAR_TO_UTF8(*Directory), TCHAR_TO_UTF8(*FileName));
-    if (Result != 0) {
-        UE_LOG(LogURLabWrapper, Error, TEXT("MuJoCo VFS Error: Failed to load %s (Code %d)"), *FilePath, Result);
-    }
-    else {
-        ActiveAssetPaths.AddUnique(FilePath);
-    }
+	int Result = mj_addFileVFS(VFS, TCHAR_TO_UTF8(*Directory), TCHAR_TO_UTF8(*FileName));
+	if (Result != 0)
+	{
+		UE_LOG(LogURLabWrapper, Error, TEXT("MuJoCo VFS Error: Failed to load %s (Code %d)"), *FilePath, Result);
+	}
+	else
+	{
+		ActiveAssetPaths.AddUnique(FilePath);
+	}
 
-    return UniqueMeshName;
+	return UniqueMeshName;
 }
 
 mjsGeom* FMujocoSpecWrapper::AddPrimitiveGeom(mjsBody* Body, mjtGeom Type, const FVector& Size, const FVector4& RGBA, double density)
 {
-    if (!Body) return nullptr;
+	if (!Body)
+		return nullptr;
 
-    mjsGeom* Geom = mjs_addGeom(Body, nullptr);
-    Geom->type = Type;
-    
-    Geom->size[0] = Size.X;
-    Geom->size[1] = Size.Y;
-    Geom->size[2] = Size.Z;
+	mjsGeom* Geom = mjs_addGeom(Body, nullptr);
+	Geom->type = Type;
 
-    Geom->rgba[0] = RGBA.X;
-    Geom->rgba[1] = RGBA.Y;
-    Geom->rgba[2] = RGBA.Z;
-    Geom->rgba[3] = RGBA.W;
+	Geom->size[0] = Size.X;
+	Geom->size[1] = Size.Y;
+	Geom->size[2] = Size.Z;
 
-    Geom->density = density;
+	Geom->rgba[0] = RGBA.X;
+	Geom->rgba[1] = RGBA.Y;
+	Geom->rgba[2] = RGBA.Z;
+	Geom->rgba[3] = RGBA.W;
 
-    return Geom;
+	Geom->density = density;
+
+	return Geom;
 }
 
 void FMujocoSpecWrapper::AddFreeJoint(mjsBody* Body, const FString& JointName)
 {
-    if (!Body) return;
+	if (!Body)
+		return;
 
-    mjsJoint* Jnt = mjs_addJoint(Body, nullptr);
-    Jnt->type = mjJNT_FREE;
+	mjsJoint* Jnt = mjs_addJoint(Body, nullptr);
+	Jnt->type = mjJNT_FREE;
 
-    Jnt->pos[0] = 0.0;
-    Jnt->pos[1] = 0.0;
-    Jnt->pos[2] = 0.0;
+	Jnt->pos[0] = 0.0;
+	Jnt->pos[1] = 0.0;
+	Jnt->pos[2] = 0.0;
 
-    Jnt->damping[0] = 0.1;
-    mjs_setName(Jnt->element, TCHAR_TO_UTF8(*JointName));
+	Jnt->damping[0] = 0.1;
+	mjs_setName(Jnt->element, TCHAR_TO_UTF8(*JointName));
 }
-
-
-
 
 void FMujocoSpecWrapper::AddDefault(UMjDefault* DefaultComp)
 {
-    if (!DefaultComp) return;
+	if (!DefaultComp)
+		return;
 
-    // TCHAR_TO_UTF8 returns a pointer into a temporary that dies at the end of
-    // the full expression. Storing it in a long-lived variable produces a
-    // dangling pointer; on Linux/clang the stack is reclaimed before the value
-    // is used and the class registers under a garbage name, breaking
-    // childclass / inheritance resolution. Use FTCHARToUTF8 with explicit
-    // function-scope lifetime instead.
-    FTCHARToUTF8 ClassNameConv(*DefaultComp->ClassName);
-    const char* ClassName = DefaultComp->ClassName.IsEmpty() ? nullptr : ClassNameConv.Get();
+	// TCHAR_TO_UTF8 returns a pointer into a temporary that dies at the end of
+	// the full expression. Storing it in a long-lived variable produces a
+	// dangling pointer; on Linux/clang the stack is reclaimed before the value
+	// is used and the class registers under a garbage name, breaking
+	// childclass / inheritance resolution. Use FTCHARToUTF8 with explicit
+	// function-scope lifetime instead.
+	FTCHARToUTF8 ClassNameConv(*DefaultComp->ClassName);
+	const char* ClassName = DefaultComp->ClassName.IsEmpty() ? nullptr : ClassNameConv.Get();
 
-    mjsDefault* parentDef = nullptr;
-    if (!DefaultComp->ParentClassName.IsEmpty())
-    {
-        FTCHARToUTF8 ParentNameConv(*DefaultComp->ParentClassName);
-        parentDef = mjs_findDefault(Spec, ParentNameConv.Get());
-        if (parentDef)
-        {
-             UE_LOG(LogURLabWrapper, Log, TEXT("[AddDefault] Linked Class '%s' to Parent '%s'"), *DefaultComp->ClassName, *DefaultComp->ParentClassName);
-        }
-        else
-        {
-             UE_LOG(LogURLabWrapper, Warning, TEXT("[AddDefault] Could not find Parent Class '%s' for '%s'"), *DefaultComp->ParentClassName, *DefaultComp->ClassName);
-        }
-    }
+	mjsDefault* parentDef = nullptr;
+	if (!DefaultComp->ParentClassName.IsEmpty())
+	{
+		FTCHARToUTF8 ParentNameConv(*DefaultComp->ParentClassName);
+		parentDef = mjs_findDefault(Spec, ParentNameConv.Get());
+		if (parentDef)
+		{
+			UE_LOG(LogURLabWrapper, Log, TEXT("[AddDefault] Linked Class '%s' to Parent '%s'"), *DefaultComp->ClassName, *DefaultComp->ParentClassName);
+		}
+		else
+		{
+			UE_LOG(LogURLabWrapper, Warning, TEXT("[AddDefault] Could not find Parent Class '%s' for '%s'"), *DefaultComp->ParentClassName, *DefaultComp->ClassName);
+		}
+	}
 
-    mjsDefault* def = nullptr;
+	mjsDefault* def = nullptr;
 
-    if (DefaultComp->ClassName.IsEmpty() || DefaultComp->ClassName == TEXT("main"))
-    {
-        if (parentDef == nullptr)
-        {
-            // This is the root default — use the spec's built-in default
-            def = mjs_getSpecDefault(Spec);
-            UE_LOG(LogURLabWrapper, Log, TEXT("[AddDefault] Using root default for class '%s'"), *DefaultComp->ClassName);
-        }
-        else
-        {
-            def = mjs_addDefault(Spec, ClassName, parentDef);
-        }
-    }
-    else
-    {
-        def = mjs_addDefault(Spec, ClassName, parentDef);
-    }
+	if (DefaultComp->ClassName.IsEmpty() || DefaultComp->ClassName == TEXT("main"))
+	{
+		if (parentDef == nullptr)
+		{
+			// This is the root default — use the spec's built-in default
+			def = mjs_getSpecDefault(Spec);
+			UE_LOG(LogURLabWrapper, Log, TEXT("[AddDefault] Using root default for class '%s'"), *DefaultComp->ClassName);
+		}
+		else
+		{
+			def = mjs_addDefault(Spec, ClassName, parentDef);
+		}
+	}
+	else
+	{
+		def = mjs_addDefault(Spec, ClassName, parentDef);
+	}
 
-    if (!def) return;
+	if (!def)
+		return;
 
-    DefaultComp->ExportTo(def);
+	DefaultComp->ExportTo(def);
 }
 
 TArray<BodyView> FMujocoSpecWrapper::ReconstructViews(const mjModel* m, mjData* d, const FString& Prefix)
 {
-    TArray<BodyView> Views;
-    UE_LOG(LogURLabWrapper, Warning, TEXT("ReconstructViews: %i bodies, prefix='%s'"), CreatedBodyNames.Num(), *Prefix);
-    Views.Reserve(CreatedBodyNames.Num());
+	TArray<BodyView> Views;
+	UE_LOG(LogURLabWrapper, Warning, TEXT("ReconstructViews: %i bodies, prefix='%s'"), CreatedBodyNames.Num(), *Prefix);
+	Views.Reserve(CreatedBodyNames.Num());
 
-    for (const FString& Name : CreatedBodyNames)
-    {
-        FString PrefixedName = Prefix + Name;
-        BodyView View = bind<BodyView>(m, d, TCHAR_TO_UTF8(*PrefixedName));
-        if (View.id >= 0)
-        {
-            Views.Add(View);
-        }
-        else
-        {
-            UE_LOG(LogURLabWrapper, Warning, TEXT("MuJoCo SpecWrapper: Failed to bind view for body '%s'."), *PrefixedName);
-        }
-    }
+	for (const FString& Name : CreatedBodyNames)
+	{
+		FString PrefixedName = Prefix + Name;
+		BodyView View = bind<BodyView>(m, d, TCHAR_TO_UTF8(*PrefixedName));
+		if (View.id >= 0)
+		{
+			Views.Add(View);
+		}
+		else
+		{
+			UE_LOG(LogURLabWrapper, Warning, TEXT("MuJoCo SpecWrapper: Failed to bind view for body '%s'."), *PrefixedName);
+		}
+	}
 
-    return Views;
+	return Views;
 }
 
 TArray<FString> FMujocoSpecWrapper::PrepareMeshForMuJoCo(UStaticMeshComponent* SMC, bool bComplexMeshRequired, float CoACDThreshold)
 {
-    TArray<FString> ResultNames;
-    if (!SMC || !SMC->GetStaticMesh()) return ResultNames;
+	TArray<FString> ResultNames;
+	if (!SMC || !SMC->GetStaticMesh())
+		return ResultNames;
 
-    UStaticMesh* mesh = SMC->GetStaticMesh();
-    UBodySetup* BodySetup = mesh->GetBodySetup();
-    if (!BodySetup || BodySetup->TriMeshGeometries.Num() == 0) return ResultNames;
+	UStaticMesh* mesh = SMC->GetStaticMesh();
+	UBodySetup* BodySetup = mesh->GetBodySetup();
+	if (!BodySetup || BodySetup->TriMeshGeometries.Num() == 0)
+		return ResultNames;
 
-    FString MeshType = bComplexMeshRequired ? "Complex" : "Simple";
-    UStaticMesh* StaticMesh = Cast<UStaticMesh>(BodySetup->GetOuter());
-    FString BaseAssetName = StaticMesh ? StaticMesh->GetName() : SMC->GetName();
-    FVector scale = SMC->GetComponentScale();
+	FString MeshType = bComplexMeshRequired ? "Complex" : "Simple";
+	UStaticMesh* StaticMesh = Cast<UStaticMesh>(BodySetup->GetOuter());
+	FString BaseAssetName = StaticMesh ? StaticMesh->GetName() : SMC->GetName();
+	FVector scale = SMC->GetComponentScale();
 
-    FString AssetName = BaseAssetName;
-    if (!scale.Equals(FVector::OneVector, 0.001f))
-    {
-        AssetName = FString::Printf(TEXT("%s_s%.3f_%.3f_%.3f"), *BaseAssetName,
-            scale.X, scale.Y, scale.Z);
-    }
+	FString AssetName = BaseAssetName;
+	if (!scale.Equals(FVector::OneVector, 0.001f))
+	{
+		AssetName = FString::Printf(TEXT("%s_s%.3f_%.3f_%.3f"), *BaseAssetName,
+			scale.X, scale.Y, scale.Z);
+	}
 
-    FString SubDir = MeshCacheSubDir.IsEmpty() ? TEXT("Shared") : MeshCacheSubDir;
-    FString FilePath = FString::Printf(
-        TEXT("%s/URLab/ConvertedMeshes/%s/%s_%s.obj"),
-        *FPaths::ProjectSavedDir(),
-        *SubDir,
-        *MeshType,
-        *AssetName
-    );
-    FString FullFilePath = FPaths::ConvertRelativePathToFull(FilePath);
+	FString SubDir = MeshCacheSubDir.IsEmpty() ? TEXT("Shared") : MeshCacheSubDir;
+	FString FilePath = FString::Printf(
+		TEXT("%s/URLab/ConvertedMeshes/%s/%s_%s.obj"),
+		*FPaths::ProjectSavedDir(),
+		*SubDir,
+		*MeshType,
+		*AssetName);
+	FString FullFilePath = FPaths::ConvertRelativePathToFull(FilePath);
 
-    if (!bComplexMeshRequired)
-    {
-        if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*AssetName)))
-        {
-            UE_LOG(LogURLabWrapper, Log, TEXT("mesh Asset '%s' already exists in Spec. Reusing."), *AssetName);
-            ResultNames.Add(AssetName);
-            return ResultNames;
-        }
-    }
-    else
-    {
-        FString FirstSubMeshName = FString::Printf(TEXT("%s_0"), *AssetName);
-        if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*FirstSubMeshName)))
-        {
-            UE_LOG(LogURLabWrapper, Log, TEXT("Complex mesh Asset '%s' already exists in Spec. Reusing all parts."), *AssetName);
-            int i = 0;
-            while (true)
-            {
-                FString SubMeshName = FString::Printf(TEXT("%s_%d"), *AssetName, i);
-                if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*SubMeshName)))
-                {
-                    ResultNames.Add(SubMeshName);
-                    i++;
-                }
-                else
-                {
-                    break;
-                }
-            }
-            return ResultNames;
-        }
-    }
+	if (!bComplexMeshRequired)
+	{
+		if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*AssetName)))
+		{
+			UE_LOG(LogURLabWrapper, Log, TEXT("mesh Asset '%s' already exists in Spec. Reusing."), *AssetName);
+			ResultNames.Add(AssetName);
+			return ResultNames;
+		}
+	}
+	else
+	{
+		FString FirstSubMeshName = FString::Printf(TEXT("%s_0"), *AssetName);
+		if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*FirstSubMeshName)))
+		{
+			UE_LOG(LogURLabWrapper, Log, TEXT("Complex mesh Asset '%s' already exists in Spec. Reusing all parts."), *AssetName);
+			int i = 0;
+			while (true)
+			{
+				FString SubMeshName = FString::Printf(TEXT("%s_%d"), *AssetName, i);
+				if (mjs_findElement(Spec, mjOBJ_MESH, TCHAR_TO_UTF8(*SubMeshName)))
+				{
+					ResultNames.Add(SubMeshName);
+					i++;
+				}
+				else
+				{
+					break;
+				}
+			}
+			return ResultNames;
+		}
+	}
 
-    const int32 GeometryIndex = 0;
-    auto& TriGeom = BodySetup->TriMeshGeometries[GeometryIndex];
-    auto& Vertices = TriGeom.GetReference()->Particles().X();
+	const int32 GeometryIndex = 0;
+	auto& TriGeom = BodySetup->TriMeshGeometries[GeometryIndex];
+	auto& Vertices = TriGeom.GetReference()->Particles().X();
 
-    FString CurrentHash;
-    bool bLargeIndices = TriGeom.GetReference()->Elements().RequiresLargeIndices();
-    if (bLargeIndices)
-    {
-        const auto& Indices = TriGeom.GetReference()->Elements().GetLargeIndexBuffer();
-        CurrentHash = IO::ComputeMeshHash(Vertices, Indices);
-    }
-    else
-    {
-        const auto& Indices = TriGeom.GetReference()->Elements().GetSmallIndexBuffer();
-        CurrentHash = IO::ComputeMeshHash(Vertices, Indices);
-    }
-    CurrentHash += bComplexMeshRequired ? TEXT("_complex") : TEXT("_simple");
-    if (bComplexMeshRequired)
-    {
-        CurrentHash += FString::Printf(TEXT("_t%.4f"), CoACDThreshold);
-    }
+	FString CurrentHash;
+	bool bLargeIndices = TriGeom.GetReference()->Elements().RequiresLargeIndices();
+	if (bLargeIndices)
+	{
+		const auto& Indices = TriGeom.GetReference()->Elements().GetLargeIndexBuffer();
+		CurrentHash = IO::ComputeMeshHash(Vertices, Indices);
+	}
+	else
+	{
+		const auto& Indices = TriGeom.GetReference()->Elements().GetSmallIndexBuffer();
+		CurrentHash = IO::ComputeMeshHash(Vertices, Indices);
+	}
+	CurrentHash += bComplexMeshRequired ? TEXT("_complex") : TEXT("_simple");
+	if (bComplexMeshRequired)
+	{
+		CurrentHash += FString::Printf(TEXT("_t%.4f"), CoACDThreshold);
+	}
 
-    int MeshCount = IO::NumFilesExist(FullFilePath, bComplexMeshRequired);
-    if (MeshCount > 0)
-    {
-        FString CachedHash = IO::LoadMeshHash(FullFilePath);
-        if (CachedHash != CurrentHash)
-        {
-            UE_LOG(LogURLabWrapper, Log, TEXT("mesh '%s' has changed (hash mismatch). Re-exporting."), *AssetName);
-            IO::DeleteMeshCache(FullFilePath, bComplexMeshRequired);
-            MeshCount = 0;
-        }
-    }
+	int MeshCount = IO::NumFilesExist(FullFilePath, bComplexMeshRequired);
+	if (MeshCount > 0)
+	{
+		FString CachedHash = IO::LoadMeshHash(FullFilePath);
+		if (CachedHash != CurrentHash)
+		{
+			UE_LOG(LogURLabWrapper, Log, TEXT("mesh '%s' has changed (hash mismatch). Re-exporting."), *AssetName);
+			IO::DeleteMeshCache(FullFilePath, bComplexMeshRequired);
+			MeshCount = 0;
+		}
+	}
 
-    if (MeshCount == 0)
-    {
-        UE_LOG(LogURLabWrapper, Log, TEXT("Saving mesh geometry for: %s"), *AssetName);
+	if (MeshCount == 0)
+	{
+		UE_LOG(LogURLabWrapper, Log, TEXT("Saving mesh geometry for: %s"), *AssetName);
 
-        if (bLargeIndices)
-        {
-            const auto& Indices = TriGeom.GetReference()->Elements().GetLargeIndexBuffer();
-            MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, bComplexMeshRequired, CoACDThreshold);
-        }
-        else
-        {
-            const auto& Indices = TriGeom.GetReference()->Elements().GetSmallIndexBuffer();
-            MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, bComplexMeshRequired, CoACDThreshold);
-        }
+		if (bLargeIndices)
+		{
+			const auto& Indices = TriGeom.GetReference()->Elements().GetLargeIndexBuffer();
+			MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, bComplexMeshRequired, CoACDThreshold);
+		}
+		else
+		{
+			const auto& Indices = TriGeom.GetReference()->Elements().GetSmallIndexBuffer();
+			MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, bComplexMeshRequired, CoACDThreshold);
+		}
 
-        if (MeshCount == 0)
-        {
-            UE_LOG(LogURLabWrapper, Error, TEXT("MeshUtils::SaveMesh failed to save any meshes for %s."), *AssetName);
-            return ResultNames;
-        }
+		if (MeshCount == 0)
+		{
+			UE_LOG(LogURLabWrapper, Error, TEXT("MeshUtils::SaveMesh failed to save any meshes for %s."), *AssetName);
+			return ResultNames;
+		}
 
-        IO::SaveMeshHash(FullFilePath, CurrentHash);
-    }
-    
-    FString BaseName = FPaths::GetBaseFilename(FilePath);
-    FString Directory = FPaths::GetPath(FilePath);
-    
-    if (!bComplexMeshRequired) 
-    {
-        FString sub_file_path = FString::Printf(TEXT("%s/%s.obj"), *Directory, *BaseName);
-        ResultNames.Add(AddMeshAsset(AssetName, sub_file_path, scale));
-    } 
-    else
-    {
-        for (int i = 0; i < MeshCount; i++) 
-        {
-            FString sub_file_path = FString::Printf(TEXT("%s/%s_sub_%d.obj"), *Directory, *BaseName, i);
-            FString SubMeshName = FString::Printf(TEXT("%s_%d"), *AssetName, i);
-            ResultNames.Add(AddMeshAsset(SubMeshName, sub_file_path, scale));
-        }
-    }
-    
-    return ResultNames; 
+		IO::SaveMeshHash(FullFilePath, CurrentHash);
+	}
+
+	FString BaseName = FPaths::GetBaseFilename(FilePath);
+	FString Directory = FPaths::GetPath(FilePath);
+
+	if (!bComplexMeshRequired)
+	{
+		FString sub_file_path = FString::Printf(TEXT("%s/%s.obj"), *Directory, *BaseName);
+		ResultNames.Add(AddMeshAsset(AssetName, sub_file_path, scale));
+	}
+	else
+	{
+		for (int i = 0; i < MeshCount; i++)
+		{
+			FString sub_file_path = FString::Printf(TEXT("%s/%s_sub_%d.obj"), *Directory, *BaseName, i);
+			FString SubMeshName = FString::Printf(TEXT("%s_%d"), *AssetName, i);
+			ResultNames.Add(AddMeshAsset(SubMeshName, sub_file_path, scale));
+		}
+	}
+
+	return ResultNames;
 }
-
-
-
-
 
 FString FMujocoSpecWrapper::GetUniqueName(const FString& BaseName, mjtObj Type, const AActor* ContextActor)
 {
-    FString Candidate = BaseName;
-    
-    FString TestName = Candidate;
-    int32 Counter = 0;
-    while (mjs_findElement(Spec, Type, TCHAR_TO_UTF8(*TestName)))
-    {
-        ++Counter;
-        TestName = FString::Printf(TEXT("%s_%d"), *Candidate, Counter);
-    }
-    
-    return TestName;
+	FString Candidate = BaseName;
+
+	FString TestName = Candidate;
+	int32 Counter = 0;
+	while (mjs_findElement(Spec, Type, TCHAR_TO_UTF8(*TestName)))
+	{
+		++Counter;
+		TestName = FString::Printf(TEXT("%s_%d"), *Candidate, Counter);
+	}
+
+	return TestName;
 }
-
-
-

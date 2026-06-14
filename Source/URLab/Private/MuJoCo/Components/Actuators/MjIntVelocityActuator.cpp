@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjIntVelocityActuator.h"
@@ -29,38 +29,38 @@
 
 UMjIntVelocityActuator::UMjIntVelocityActuator()
 {
-    Type = EMjActuatorType::IntVelocity;
+	Type = EMjActuatorType::IntVelocity;
 }
-
-
 
 void UMjIntVelocityActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    Super::ExportTo(Element, def);
+	Super::ExportTo(Element, def);
 
-    // --- CODEGEN_EXPORT_START ---
-    {
-        double kvBuf[1] = { bOverride_kv ? (double)kv : -1.0 };
-        double dampratioBuf[1] = { bOverride_dampratio ? (double)dampratio : -1.0 };
-        double timeconstBuf[1] = { -1.0 };
-        mjs_setToIntVelocity(Element, bOverride_kp ? (double)kp : -1.0, kvBuf, dampratioBuf, timeconstBuf, bOverride_inheritrange ? (double)inheritrange : 0.0);
-    }
-    if (bOverride_inheritrange) Element->inheritrange = inheritrange;
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	{
+		double kvBuf[1] = {bOverride_kv ? (double)kv : -1.0};
+		double dampratioBuf[1] = {bOverride_dampratio ? (double)dampratio : -1.0};
+		double timeconstBuf[1] = {-1.0};
+		mjs_setToIntVelocity(Element, bOverride_kp ? (double)kp : -1.0, kvBuf, dampratioBuf, timeconstBuf, bOverride_inheritrange ? (double)inheritrange : 0.0);
+	}
+	if (bOverride_inheritrange)
+		Element->inheritrange = inheritrange;
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjIntVelocityActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("inheritrange"), inheritrange, bOverride_inheritrange);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("kp"), kp, bOverride_kp);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("kv"), kv, bOverride_kv);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("dampratio"), dampratio, bOverride_dampratio);
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("inheritrange"), inheritrange, bOverride_inheritrange);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("kp"), kp, bOverride_kp);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("kv"), kv, bOverride_kv);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("dampratio"), dampratio, bOverride_dampratio);
+	// --- CODEGEN_IMPORT_END ---
 }
-

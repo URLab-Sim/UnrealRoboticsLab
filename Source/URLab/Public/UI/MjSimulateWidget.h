@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -38,7 +38,7 @@ class UCheckBox;
 /**
  * @class UMjSimulateWidget
  * @brief Main dashboard mimicking MuJoCo's "simulate" UI.
- * 
+ *
  * Features:
  * - Top Bar: Time, Step, Real-time factor.
  * - Sidebars: Physics options, Articulation controls.
@@ -46,208 +46,208 @@ class UCheckBox;
 UCLASS()
 class URLAB_API UMjSimulateWidget : public UUserWidget
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    /** @brief Initializes the widget with a reference to the manager. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
-    void SetupDashboard(AAMjManager* InManager);
+	/** @brief Initializes the widget with a reference to the manager. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
+	void SetupDashboard(AAMjManager* InManager);
 
-    virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
 
 protected:
-    /** --- Widgets (BindWidget) --- */
+	/** --- Widgets (BindWidget) --- */
 
-    /** @brief Container for manager-wide physics settings. */
-    UPROPERTY(meta = (BindWidget))
-    UVerticalBox* ManagerSettingsList;
+	/** @brief Container for manager-wide physics settings. */
+	UPROPERTY(meta = (BindWidget))
+	UVerticalBox* ManagerSettingsList;
 
-    /** @brief Container for the selected articulation's actuators. */
-    UPROPERTY(meta = (BindWidget))
-    UVerticalBox* ArticulationControlList;
+	/** @brief Container for the selected articulation's actuators. */
+	UPROPERTY(meta = (BindWidget))
+	UVerticalBox* ArticulationControlList;
 
-    /** @brief Dropdown to select which articulation to control. */
-    UPROPERTY(meta = (BindWidget))
-    UComboBoxString* ArticulationSelector;
+	/** @brief Dropdown to select which articulation to control. */
+	UPROPERTY(meta = (BindWidget))
+	UComboBoxString* ArticulationSelector;
 
-    /** @brief Text block for simulation time. */
-    UPROPERTY(meta = (BindWidget))
-    UTextBlock* TimeText;
+	/** @brief Text block for simulation time. */
+	UPROPERTY(meta = (BindWidget))
+	UTextBlock* TimeText;
 
-    /** @brief Button to Play/Pause simulation. */
-    UPROPERTY(meta = (BindWidget))
-    UButton* PlayPauseButton;
+	/** @brief Button to Play/Pause simulation. */
+	UPROPERTY(meta = (BindWidget))
+	UButton* PlayPauseButton;
 
-    /** @brief Button to Reset simulation. */
-    UPROPERTY(meta = (BindWidget))
-    UButton* ResetButton;
+	/** @brief Button to Reset simulation. */
+	UPROPERTY(meta = (BindWidget))
+	UButton* ResetButton;
 
-    /** @brief Button to Start Recording. */
-    UPROPERTY(meta = (BindWidget))
-    UButton* RecordButton;
+	/** @brief Button to Start Recording. */
+	UPROPERTY(meta = (BindWidget))
+	UButton* RecordButton;
 
-    /** @brief Button to Start Replay. */
-    UPROPERTY(meta = (BindWidget))
-    UButton* ReplayButton;
+	/** @brief Button to Start Replay. */
+	UPROPERTY(meta = (BindWidget))
+	UButton* ReplayButton;
 
-    /** @brief Button to Capture Simulation Snapshot. */
-    UPROPERTY(meta = (BindWidget))
-    UButton* SnapshotButton;
+	/** @brief Button to Capture Simulation Snapshot. */
+	UPROPERTY(meta = (BindWidget))
+	UButton* SnapshotButton;
 
-    /** @brief Button to Restore Simulation Snapshot. */
-    UPROPERTY(meta = (BindWidget))
-    UButton* RestoreButton;
+	/** @brief Button to Restore Simulation Snapshot. */
+	UPROPERTY(meta = (BindWidget))
+	UButton* RestoreButton;
 
-    /** --- Blueprint Subclass Refs --- */
+	/** --- Blueprint Subclass Refs --- */
 
-    /** @brief The MjPropertyRow class to spawn for each setting. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|UI")
-    TSubclassOf<UMjPropertyRow> PropertyRowClass;
+	/** @brief The MjPropertyRow class to spawn for each setting. */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|UI")
+	TSubclassOf<UMjPropertyRow> PropertyRowClass;
 
-    /** @brief Blueprint class for a single camera feed entry row.
-     *  Set this in BP class defaults to WBP_MjCameraFeedEntry. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|UI")
-    TSubclassOf<UMjCameraFeedEntry> CameraFeedEntryClass;
+	/** @brief Blueprint class for a single camera feed entry row.
+	 *  Set this in BP class defaults to WBP_MjCameraFeedEntry. */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|UI")
+	TSubclassOf<UMjCameraFeedEntry> CameraFeedEntryClass;
 
-    /** @brief Button to Possess/Release the selected articulation. */
-    UPROPERTY(meta = (BindWidgetOptional))
-    UButton* PossessButton;
+	/** @brief Button to Possess/Release the selected articulation. */
+	UPROPERTY(meta = (BindWidgetOptional))
+	UButton* PossessButton;
 
-    /** --- Internal State --- */
+	/** --- Internal State --- */
 
-    UPROPERTY()
-    AAMjManager* ManagerRef;
+	UPROPERTY()
+	AAMjManager* ManagerRef;
 
-    UPROPERTY()
-    AMjArticulation* SelectedArticulation;
+	UPROPERTY()
+	AMjArticulation* SelectedArticulation;
 
-    /** @brief Whether we're currently possessing an articulation. */
-    bool bIsPossessing = false;
+	/** @brief Whether we're currently possessing an articulation. */
+	bool bIsPossessing = false;
 
-    /** @brief The pawn we were controlling before possession. */
-    UPROPERTY()
-    APawn* OriginalPawn = nullptr;
+	/** @brief The pawn we were controlling before possession. */
+	UPROPERTY()
+	APawn* OriginalPawn = nullptr;
 
-    /** @brief Cache of active camera feed entries for tick updates and teardown. */
-    UPROPERTY()
-    TArray<UMjCameraFeedEntry*> ActiveCameraFeeds;
+	/** @brief Cache of active camera feed entries for tick updates and teardown. */
+	UPROPERTY()
+	TArray<UMjCameraFeedEntry*> ActiveCameraFeeds;
 
-    /** @brief The most recently captured simulation snapshot. */
-    UPROPERTY()
-    class UMjSimulationState* LastSnapshot;
+	/** @brief The most recently captured simulation snapshot. */
+	UPROPERTY()
+	class UMjSimulationState* LastSnapshot;
 
-    /** --- Handlers --- */
+	/** --- Handlers --- */
 
-    UFUNCTION()
-    void OnPlayPauseClicked();
+	UFUNCTION()
+	void OnPlayPauseClicked();
 
-    UFUNCTION()
-    void OnResetClicked();
+	UFUNCTION()
+	void OnResetClicked();
 
-    UFUNCTION()
-    void OnRecordClicked();
+	UFUNCTION()
+	void OnRecordClicked();
 
-    UFUNCTION()
-    void OnReplayClicked();
+	UFUNCTION()
+	void OnReplayClicked();
 
-    UFUNCTION()
-    void OnSnapshotClicked();
+	UFUNCTION()
+	void OnSnapshotClicked();
 
-    UFUNCTION()
-    void OnRestoreClicked();
+	UFUNCTION()
+	void OnRestoreClicked();
 
-    UFUNCTION()
-    void OnArticulationSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION()
+	void OnArticulationSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    UFUNCTION()
-    void OnIntegratorSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION()
+	void OnIntegratorSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    void PopulateManagerSettings();
-    void RefreshArticulationControls();
-    void UpdateMonitorValues();
+	void PopulateManagerSettings();
+	void RefreshArticulationControls();
+	void UpdateMonitorValues();
 
-    UFUNCTION()
-    void HandleManagerOptionChanged(float NewValue, const FString& OptionName);
+	UFUNCTION()
+	void HandleManagerOptionChanged(float NewValue, const FString& OptionName);
 
-    UFUNCTION()
-    void HandleActuatorChanged(float NewValue, const FString& ActuatorName);
+	UFUNCTION()
+	void HandleActuatorChanged(float NewValue, const FString& ActuatorName);
 
-    UFUNCTION()
-    void OnPossessClicked();
+	UFUNCTION()
+	void OnPossessClicked();
 
-    UFUNCTION()
-    void HandleTwistOptionChanged(float NewValue, const FString& OptionName);
+	UFUNCTION()
+	void HandleTwistOptionChanged(float NewValue, const FString& OptionName);
 
-    UFUNCTION()
-    void OnReplaySessionSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
+	UFUNCTION()
+	void OnReplaySessionSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    UFUNCTION()
-    void OnLoadCSVClicked();
+	UFUNCTION()
+	void OnLoadCSVClicked();
 
-    UFUNCTION()
-    void OnSaveRecordingClicked();
+	UFUNCTION()
+	void OnSaveRecordingClicked();
 
-    void RefreshReplaySessionDropdown();
-    void RebuildReplayBindingUI(UVerticalBox* ReplayBox);
+	void RefreshReplaySessionDropdown();
+	void RebuildReplayBindingUI(UVerticalBox* ReplayBox);
 
-    virtual void NativeConstruct() override;
+	virtual void NativeConstruct() override;
 
 private:
-    bool bIsMouseEnabled = false;
+	bool bIsMouseEnabled = false;
 
-    /** Dynamically created. */
-    UPROPERTY()
-    UComboBoxString* ReplaySessionSelector = nullptr;
+	/** Dynamically created. */
+	UPROPERTY()
+	UComboBoxString* ReplaySessionSelector = nullptr;
 
-    /** Dynamically created. */
-    UPROPERTY()
-    UButton* LoadCSVButton = nullptr;
+	/** Dynamically created. */
+	UPROPERTY()
+	UButton* LoadCSVButton = nullptr;
 
-    /** @brief Save Recording button (dynamically created). */
-    UPROPERTY()
-    UButton* SaveRecordingButton = nullptr;
+	/** @brief Save Recording button (dynamically created). */
+	UPROPERTY()
+	UButton* SaveRecordingButton = nullptr;
 
-    /** @brief Dropdown for selecting keyframes on the current articulation. */
-    UPROPERTY()
-    UComboBoxString* KeyframeSelector = nullptr;
+	/** @brief Dropdown for selecting keyframes on the current articulation. */
+	UPROPERTY()
+	UComboBoxString* KeyframeSelector = nullptr;
 
-    /** @brief Reset to Keyframe button. */
-    UPROPERTY()
-    UButton* ResetToKeyframeButton = nullptr;
+	/** @brief Reset to Keyframe button. */
+	UPROPERTY()
+	UButton* ResetToKeyframeButton = nullptr;
 
-    /** @brief Hold/Stop Hold toggle button. */
-    UPROPERTY()
-    UButton* HoldKeyframeButton = nullptr;
+	/** @brief Hold/Stop Hold toggle button. */
+	UPROPERTY()
+	UButton* HoldKeyframeButton = nullptr;
 
-    /** @brief Handles keyframe dropdown selection. */
-    UFUNCTION()
-    void OnKeyframeSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
+	/** @brief Handles keyframe dropdown selection. */
+	UFUNCTION()
+	void OnKeyframeSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
 
-    /** @brief Refreshes keyframe dropdown for the current articulation. */
-    void RefreshKeyframeDropdown();
+	/** @brief Refreshes keyframe dropdown for the current articulation. */
+	void RefreshKeyframeDropdown();
 
-    /** @brief Handles Reset to Keyframe button click. */
-    UFUNCTION()
-    void HandleResetToKeyframe();
+	/** @brief Handles Reset to Keyframe button click. */
+	UFUNCTION()
+	void HandleResetToKeyframe();
 
-    /** @brief Handles Hold Keyframe button click. */
-    UFUNCTION()
-    void HandleHoldKeyframe();
+	/** @brief Handles Hold Keyframe button click. */
+	UFUNCTION()
+	void HandleHoldKeyframe();
 
-    /** @brief Cached session count for detecting changes in NativeTick. */
-    int32 CachedSessionCount = 0;
+	/** @brief Cached session count for detecting changes in NativeTick. */
+	int32 CachedSessionCount = 0;
 
-    /** @brief Parallel arrays of checkboxes for replay articulation bindings. */
-    UPROPERTY()
-    TArray<UCheckBox*> ReplayEnabledCheckBoxes;
-    UPROPERTY()
-    TArray<UCheckBox*> ReplayRelPosCheckBoxes;
+	/** @brief Parallel arrays of checkboxes for replay articulation bindings. */
+	UPROPERTY()
+	TArray<UCheckBox*> ReplayEnabledCheckBoxes;
+	UPROPERTY()
+	TArray<UCheckBox*> ReplayRelPosCheckBoxes;
 
-    /** @brief Handles Enabled checkbox changes for replay bindings. */
-    UFUNCTION()
-    void HandleReplayBindingEnabledChanged(bool bIsChecked);
+	/** @brief Handles Enabled checkbox changes for replay bindings. */
+	UFUNCTION()
+	void HandleReplayBindingEnabledChanged(bool bIsChecked);
 
-    /** @brief Handles RelPos checkbox changes for replay bindings. */
-    UFUNCTION()
-    void HandleReplayBindingRelPosChanged(bool bIsChecked);
+	/** @brief Handles RelPos checkbox changes for replay bindings. */
+	UFUNCTION()
+	void HandleReplayBindingRelPosChanged(bool bIsChecked);
 };

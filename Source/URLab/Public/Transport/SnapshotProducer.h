@@ -34,19 +34,19 @@ typedef mjData_ mjData;
 class URLAB_API FMjSnapshotProducer
 {
 public:
-    /**
-     * Build a msgpack-encoded `state_full` snapshot for the current step.
-     *
-     * The reply shape mirrors the step server's direct/puppet replies:
-     *   { op: "state_full", time, step, per_articulation, entities }
-     *
-     * @param Manager    Manager owning the articulation list / scene cache.
-     * @param m          Compiled mjModel (read only here).
-     * @param d          Live mjData (read only here).
-     * @param StepIndex  Monotonic frame counter to embed in the reply.
-     * @return msgpack bytes; empty if Manager / m / d are not ready.
-     */
-    static TArray<uint8> BuildStateSnapshot(AAMjManager* Manager,
-                                            mjModel* m, mjData* d,
-                                            int64 StepIndex);
+	/**
+	 * Build a msgpack-encoded `state_full` snapshot for the current step.
+	 *
+	 * The reply shape mirrors the step server's direct/puppet replies:
+	 *   { op: "state_full", time, step, per_articulation, entities }
+	 *
+	 * @param Manager    Manager owning the articulation list / scene cache.
+	 * @param m          Compiled mjModel (read only here).
+	 * @param d          Live mjData (read only here).
+	 * @param StepIndex  Monotonic frame counter to embed in the reply.
+	 * @return msgpack bytes; empty if Manager / m / d are not ready.
+	 */
+	static TArray<uint8> BuildStateSnapshot(AAMjManager* Manager,
+		mjModel* m, mjData* d,
+		int64 StepIndex);
 };

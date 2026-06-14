@@ -30,9 +30,9 @@
 class URLAB_API IMjSnapshotPublisher
 {
 public:
-    virtual ~IMjSnapshotPublisher() = default;
+	virtual ~IMjSnapshotPublisher() = default;
 
-    /** Ship the snapshot. Must be safe to call from the physics PostStep
-     *  callback (i.e. fast and non-blocking). */
-    virtual void PublishSnapshot(const TArray<uint8>& Bytes) = 0;
+	/** Ship the snapshot. Must be safe to call from the physics PostStep
+	 *  callback (i.e. fast and non-blocking). */
+	virtual void PublishSnapshot(const TArray<uint8>& Bytes) = 0;
 };

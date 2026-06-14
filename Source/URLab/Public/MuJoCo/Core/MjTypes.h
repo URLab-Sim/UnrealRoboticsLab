@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -32,13 +32,13 @@
 USTRUCT(BlueprintType)
 struct FMuJoCoSpatialVelocity
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
-    FVector Linear = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+	FVector Linear = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
-    FVector Angular = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+	FVector Angular = FVector::ZeroVector;
 };
 
 /**
@@ -48,14 +48,14 @@ struct FMuJoCoSpatialVelocity
 USTRUCT(BlueprintType)
 struct FMuJoCoJointState
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
-    float Position = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+	float Position = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
-    float Velocity = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+	float Velocity = 0.0f;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
-    float Acceleration = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo")
+	float Acceleration = 0.0f;
 };

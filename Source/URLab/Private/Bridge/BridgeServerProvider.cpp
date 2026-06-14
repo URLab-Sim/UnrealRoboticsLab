@@ -7,18 +7,18 @@
 
 namespace
 {
-    URLabBridgeProvider::FResolverFn GResolver;
+URLabBridgeProvider::FResolverFn GResolver;
 }
 
 namespace URLabBridgeProvider
 {
-    void RegisterResolver(FResolverFn Fn)
-    {
-        GResolver = MoveTemp(Fn);
-    }
-
-    UURLabBridgeServer* ResolveEditorServer()
-    {
-        return GResolver ? GResolver() : nullptr;
-    }
+void RegisterResolver(FResolverFn Fn)
+{
+	GResolver = MoveTemp(Fn);
 }
+
+UURLabBridgeServer* ResolveEditorServer()
+{
+	return GResolver ? GResolver() : nullptr;
+}
+} // namespace URLabBridgeProvider

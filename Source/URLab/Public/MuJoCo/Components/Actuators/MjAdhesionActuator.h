@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -33,27 +33,27 @@
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjAdhesionActuator : public UMjActuator
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_gain = false;
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_gain = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_gain"))
-    float gain = 0.0f;
-    // --- CODEGEN_PROPERTIES_END ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_gain"))
+	float gain = 0.0f;
+	// --- CODEGEN_PROPERTIES_END ---
 
-    UMjAdhesionActuator();
+	UMjAdhesionActuator();
 
-    /** @brief Override toggle for Kp. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_Kp = false;
+	/** @brief Override toggle for Kp. */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_Kp = false;
 
-    /** @brief Proportional gain (Kp) for position servos. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta=(EditCondition="bOverride_Kp"))
-    float Kp = 1.0f;
+	/** @brief Proportional gain (Kp) for position servos. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator|Parameters", meta = (EditCondition = "bOverride_Kp"))
+	float Kp = 1.0f;
 
-    virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
+	virtual void ExportTo(mjsActuator* Element, mjsDefault* def = nullptr) override;
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

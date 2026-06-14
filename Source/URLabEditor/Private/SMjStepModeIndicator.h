@@ -36,20 +36,20 @@
 class SMjStepModeIndicator : public SCompoundWidget
 {
 public:
-    SLATE_BEGIN_ARGS(SMjStepModeIndicator) {}
-    SLATE_END_ARGS()
+	SLATE_BEGIN_ARGS(SMjStepModeIndicator) {}
+	SLATE_END_ARGS()
 
-    void Construct(const FArguments& InArgs);
+	void Construct(const FArguments& InArgs);
 
 private:
-    /** Per-tick handler: re-resolve manager + step mode, update brush colour. */
-    EActiveTimerReturnType OnPoll(double InCurrentTime, float InDeltaTime);
+	/** Per-tick handler: re-resolve manager + step mode, update brush colour. */
+	EActiveTimerReturnType OnPoll(double InCurrentTime, float InDeltaTime);
 
-    /** Cached label, updated on poll. */
-    FText CachedLabel;
-    /** Cached fill colour, updated on poll. */
-    FLinearColor CachedColor = FLinearColor(0.4f, 0.4f, 0.4f, 1.0f);
+	/** Cached label, updated on poll. */
+	FText CachedLabel;
+	/** Cached fill colour, updated on poll. */
+	FLinearColor CachedColor = FLinearColor(0.4f, 0.4f, 0.4f, 1.0f);
 
-    FText GetLabel() const { return CachedLabel; }
-    FSlateColor GetFillColor() const { return CachedColor; }
+	FText GetLabel() const { return CachedLabel; }
+	FSlateColor GetFillColor() const { return CachedColor; }
 };

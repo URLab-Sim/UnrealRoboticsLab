@@ -37,55 +37,50 @@
 
 TSharedRef<IDetailCustomization> FMjGeomDetailCustomization::MakeInstance()
 {
-    return MakeShareable(new FMjGeomDetailCustomization);
+	return MakeShareable(new FMjGeomDetailCustomization);
 }
 
 void FMjGeomDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 {
-    TArray<TWeakObjectPtr<UObject>> Objects;
-    DetailBuilder.GetObjectsBeingCustomized(Objects);
+	TArray<TWeakObjectPtr<UObject>> Objects;
+	DetailBuilder.GetObjectsBeingCustomized(Objects);
 
-    if (Objects.Num() != 1) return;
-    TWeakObjectPtr<UMjGeom> WeakGeom = Cast<UMjGeom>(Objects[0].Get());
-    if (!WeakGeom.IsValid()) return;
+	if (Objects.Num() != 1)
+		return;
+	TWeakObjectPtr<UMjGeom> WeakGeom = Cast<UMjGeom>(Objects[0].Get());
+	if (!WeakGeom.IsValid())
+		return;
 
-    // Decomposition buttons (only for mesh geoms).
-    if (WeakGeom->Type != EMjGeomType::Mesh) return;
+	// Decomposition buttons (only for mesh geoms).
+	if (WeakGeom->Type != EMjGeomType::Mesh)
+		return;
 
-    IDetailCategoryBuilder& DecompCategory = DetailBuilder.EditCategory("MuJoCo|Geom|Decomposition");
+	IDetailCategoryBuilder& DecompCategory = DetailBuilder.EditCategory("MuJoCo|Geom|Decomposition");
 
-    DecompCategory.AddCustomRow(FText::FromString("Decompose"))
-        .NameContent()
-        [
-            SNew(STextBlock).Text(FText::FromString("CoACD Decomposition"))
-        ]
-        .ValueContent()
-        .MaxDesiredWidth(300.f)
-        [
-            SNew(SHorizontalBox)
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.f)
-            [
-                SNew(SButton)
-                .Text(FText::FromString("Decompose Mesh"))
-                .OnClicked_Lambda([WeakGeom]() -> FReply
-                {
-                    if (WeakGeom.IsValid()) WeakGeom->DecomposeMesh();
-                    return FReply::Handled();
-                })
-            ]
-            + SHorizontalBox::Slot()
-            .AutoWidth()
-            .Padding(2.f)
-            [
-                SNew(SButton)
-                .Text(FText::FromString("Remove Decomposition"))
-                .OnClicked_Lambda([WeakGeom]() -> FReply
-                {
-                    if (WeakGeom.IsValid()) WeakGeom->RemoveDecomposition();
-                    return FReply::Handled();
-                })
-            ]
-        ];
+	DecompCategory.AddCustomRow(FText::FromString("Decompose"))
+		.NameContent()
+			[SNew(STextBlock).Text(FText::FromString("CoACD Decomposition"))]
+		.ValueContent()
+		.MaxDesiredWidth(300.f)
+			[SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(2.f)
+						[SNew(SButton)
+								.Text(FText::FromString("Decompose Mesh"))
+								.OnClicked_Lambda([WeakGeom]() -> FReply {
+									if (WeakGeom.IsValid())
+										WeakGeom->DecomposeMesh();
+									return FReply::Handled();
+								})]
+				+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(2.f)
+						[SNew(SButton)
+								.Text(FText::FromString("Remove Decomposition"))
+								.OnClicked_Lambda([WeakGeom]() -> FReply {
+									if (WeakGeom.IsValid())
+										WeakGeom->RemoveDecomposition();
+									return FReply::Handled();
+								})]];
 }

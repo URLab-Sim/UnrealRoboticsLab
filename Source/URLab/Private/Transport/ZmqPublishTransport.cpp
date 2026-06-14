@@ -33,14 +33,14 @@
 
 namespace
 {
-    // FString.Len() returns TCHAR count; the zmq frame needs UTF-8 byte
-    // count. Non-ASCII topics (any multibyte character) diverge.
-    inline int SendTopic(void* Socket, const FString& Topic, int Flags)
-    {
-        const FTCHARToUTF8 Utf8(*Topic);
-        return zmq_send(Socket, Utf8.Get(), Utf8.Length(), Flags);
-    }
+// FString.Len() returns TCHAR count; the zmq frame needs UTF-8 byte
+// count. Non-ASCII topics (any multibyte character) diverge.
+inline int SendTopic(void* Socket, const FString& Topic, int Flags)
+{
+	const FTCHARToUTF8 Utf8(*Topic);
+	return zmq_send(Socket, Utf8.Get(), Utf8.Length(), Flags);
 }
+} // namespace
 
 void UURLabZmqPublishTransport::SetOwningManager(AAMjManager* InMgr)
 {
@@ -50,7 +50,8 @@ void UURLabZmqPublishTransport::SetOwningManager(AAMjManager* InMgr)
 bool UURLabZmqPublishTransport::TransportInit()
 {
 	InitZmqSocket();
-	if (!bIsInitialized) return false;
+	if (!bIsInitialized)
+		return false;
 
 	if (AAMjManager* Mgr = OwningManager.Get())
 	{
@@ -73,7 +74,8 @@ void UURLabZmqPublishTransport::TransportShutdown()
 
 void UURLabZmqPublishTransport::InitZmqSocket()
 {
-	if (bIsInitialized) return;
+	if (bIsInitialized)
+		return;
 
 	ZmqContext = zmq_ctx_new();
 	ZmqPublisher = zmq_socket(ZmqContext, ZMQ_PUB);
@@ -90,14 +92,15 @@ void UURLabZmqPublishTransport::InitZmqSocket()
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
-			    FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *ZmqEndpoint));
+				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *ZmqEndpoint));
 		}
 	}
 }
 
 void UURLabZmqPublishTransport::ShutdownZmqSocket()
 {
-	if (!bIsInitialized) return;
+	if (!bIsInitialized)
+		return;
 	zmq_close(ZmqPublisher);
 	zmq_ctx_term(ZmqContext);
 	ZmqPublisher = nullptr;
@@ -109,13 +112,12 @@ void UURLabZmqPublishTransport::RequestGameThreadCacheBuild()
 {
 	bool Expected = false;
 	if (!bCacheBuildScheduled.compare_exchange_strong(Expected, true,
-	                                                  std::memory_order_acq_rel))
+			std::memory_order_acq_rel))
 	{
-		return;  // already scheduled
+		return; // already scheduled
 	}
 	TWeakObjectPtr<UURLabZmqPublishTransport> WeakSelf(this);
-	AsyncTask(ENamedThreads::GameThread, [WeakSelf]()
-	{
+	AsyncTask(ENamedThreads::GameThread, [WeakSelf]() {
 		if (UURLabZmqPublishTransport* Self = WeakSelf.Get())
 		{
 			Self->BuildBroadcastCacheGameThread();
@@ -127,26 +129,30 @@ void UURLabZmqPublishTransport::BuildBroadcastCacheGameThread()
 {
 	// Always reset the scheduled flag on exit so a future call can
 	// re-schedule (e.g. articulations were added after we ran).
-	ON_SCOPE_EXIT{
+	ON_SCOPE_EXIT
+	{
 		bCacheBuildScheduled.store(false, std::memory_order_release);
 	};
 
 	AAMjManager* Manager = OwningManager.Get();
-	if (!Manager) return;
+	if (!Manager)
+		return;
 
 	TArray<AMjArticulation*> Articulations = Manager->GetAllArticulations();
-	if (Articulations.Num() == 0) return;
+	if (Articulations.Num() == 0)
+		return;
 
 	CachedRecords.Reset(Articulations.Num());
 	for (AMjArticulation* Art : Articulations)
 	{
-		if (!Art) continue;
+		if (!Art)
+			continue;
 
 		FArticulationBroadcastRecord Rec;
 		Rec.Articulation = Art;
-		Rec.ArticPrefix  = Art->GetName();
+		Rec.ArticPrefix = Art->GetName();
 		Art->GetComponents<UMjComponent>(Rec.TelemetryComponents);
-		Rec.TwistCtrl    = Art->FindComponentByClass<UMjTwistController>();
+		Rec.TwistCtrl = Art->FindComponentByClass<UMjTwistController>();
 		CachedRecords.Add(MoveTemp(Rec));
 	}
 
@@ -162,7 +168,8 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 	static constexpr int32 kLogInterval = 500;
 	bool bShouldLog = (FrameCounter++ % kLogInterval == 0);
 
-	if (!bIsInitialized) return;
+	if (!bIsInitialized)
+		return;
 
 	// Single source of truth for "publishers paused" — flipped by
 	// UURLabZmqRpcTransport on Direct / Puppet mode entry so we don't
@@ -194,14 +201,17 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 
 	for (const FArticulationBroadcastRecord& Rec : CachedRecords)
 	{
-		if (!Rec.Articulation) continue;
+		if (!Rec.Articulation)
+			continue;
 
 		for (UMjComponent* Comp : Rec.TelemetryComponents)
 		{
-			if (!Comp || Comp->bIsDefault) continue;
+			if (!Comp || Comp->bIsDefault)
+				continue;
 
 			FString TopicSuffix = Comp->GetTelemetryTopicName();
-			if (TopicSuffix.IsEmpty()) continue;
+			if (TopicSuffix.IsEmpty())
+				continue;
 
 			FString FullTopic = FString::Printf(TEXT("%s/%s"), *Rec.ArticPrefix, *TopicSuffix);
 
@@ -220,7 +230,7 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 		{
 			FVector Twist = Rec.TwistCtrl->GetTwist();
 			FString TwistTopic = FString::Printf(TEXT("%s/twist"), *Rec.ArticPrefix);
-			float TwistData[3] = { (float)Twist.X, (float)Twist.Y, (float)Twist.Z };
+			float TwistData[3] = {(float)Twist.X, (float)Twist.Y, (float)Twist.Z};
 			SendTopic(ZmqPublisher, TwistTopic, ZMQ_SNDMORE);
 			zmq_send(ZmqPublisher, TwistData, sizeof(TwistData), 0);
 			BroadcastCount++;
@@ -242,7 +252,8 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 		const TArray<FMjEntityRecord>& Entities = Mgr->GetEntities();
 		for (const FMjEntityRecord& Rec : Entities)
 		{
-			if (Rec.MjId < 0 || Rec.MjId >= m->nbody) continue;
+			if (Rec.MjId < 0 || Rec.MjId >= m->nbody)
+				continue;
 
 			FString XposTopic = FString::Printf(TEXT("scene/%s/xpos"), *Rec.Name);
 			SendTopic(ZmqPublisher, XposTopic, ZMQ_SNDMORE);
@@ -254,13 +265,11 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 			zmq_send(ZmqPublisher, &d->xquat[Rec.MjId * 4], 4 * sizeof(mjtNum), 0);
 			BroadcastCount++;
 
-			if (Rec.bHasFreeBase && m->body_jntnum && m->body_jntadr &&
-			    m->jnt_type && m->jnt_qposadr && m->jnt_dofadr)
+			if (Rec.bHasFreeBase && m->body_jntnum && m->body_jntadr && m->jnt_type && m->jnt_qposadr && m->jnt_dofadr)
 			{
 				int FirstJnt = m->body_jntadr[Rec.MjId];
-				int NumJnt   = m->body_jntnum[Rec.MjId];
-				if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt &&
-				    m->jnt_type[FirstJnt] == mjJNT_FREE)
+				int NumJnt = m->body_jntnum[Rec.MjId];
+				if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
 				{
 					int QAddr = m->jnt_qposadr[FirstJnt];
 					int VAddr = m->jnt_dofadr[FirstJnt];
@@ -292,7 +301,8 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 
 void UURLabZmqPublishTransport::Publish(const FString& Topic, const TArray<uint8>& Payload)
 {
-	if (!ZmqPublisher || Payload.Num() == 0) return;
+	if (!ZmqPublisher || Payload.Num() == 0)
+		return;
 	SendTopic(ZmqPublisher, Topic, ZMQ_SNDMORE);
 	zmq_send(ZmqPublisher, Payload.GetData(), Payload.Num(), 0);
 }

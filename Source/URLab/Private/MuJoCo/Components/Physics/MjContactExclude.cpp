@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Physics/MjContactExclude.h"
@@ -43,37 +43,45 @@ void UMjContactExclude::BeginPlay()
 
 void UMjContactExclude::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-        // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("body1"), body1)) bOverride_body1 = true;
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("body2"), body2)) bOverride_body2 = true;
-        // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
+	if (MjXmlUtils::ReadAttrString(Node, TEXT("body1"), body1))
+		bOverride_body1 = true;
+	if (MjXmlUtils::ReadAttrString(Node, TEXT("body2"), body2))
+		bOverride_body2 = true;
+	// --- CODEGEN_IMPORT_END ---
 
-    if (!Node)
-    {
-        return;
-    }
+	if (!Node)
+	{
+		return;
+	}
 }
 
 void UMjContactExclude::ExportTo(mjsExclude* Element)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    // --- CODEGEN_EXPORT_START ---
-    if (bOverride_body1) MjSetString(Element->bodyname1, body1);
-    if (bOverride_body2) MjSetString(Element->bodyname2, body2);
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	if (bOverride_body1)
+		MjSetString(Element->bodyname1, body1);
+	if (bOverride_body2)
+		MjSetString(Element->bodyname2, body2);
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjContactExclude::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
-    mjsExclude* exclude = mjs_addExclude(Wrapper.Spec);
-    ExportTo(exclude);
-    UE_LOG(LogURLabWrapper, Log, TEXT("Added contact exclude: %s<->%s"), *body1, *body2);
+	mjsExclude* exclude = mjs_addExclude(Wrapper.Spec);
+	ExportTo(exclude);
+	UE_LOG(LogURLabWrapper, Log, TEXT("Added contact exclude: %s<->%s"), *body1, *body2);
 }
 
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
-TArray<FString> UMjContactExclude::GetBodyOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjBody::StaticClass()); }
+TArray<FString> UMjContactExclude::GetBodyOptions() const
+{
+	return UMjComponent::GetSiblingComponentOptions(this, UMjBody::StaticClass());
+}
 // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

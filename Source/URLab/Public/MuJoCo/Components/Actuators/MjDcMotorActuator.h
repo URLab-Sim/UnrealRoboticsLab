@@ -34,9 +34,9 @@
 UENUM(BlueprintType)
 enum class EMjDcMotorInput : uint8
 {
-    Voltage  = 0,
-    Position = 1,
-    Velocity = 2
+	Voltage = 0,
+	Position = 1,
+	Velocity = 2
 };
 
 /**
@@ -53,100 +53,80 @@ enum class EMjDcMotorInput : uint8
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjDcMotorActuator : public UMjActuator
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_motorconst = false;
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_motorconst = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_motorconst"))
-    TArray<float> motorconst = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_motorconst"))
+	TArray<float> motorconst = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_resistance = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_resistance = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_resistance"))
-    float resistance = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_resistance"))
+	float resistance = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_nominal = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_nominal = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_nominal"))
-    TArray<float> nominal = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_nominal"))
+	TArray<float> nominal = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_saturation = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_saturation = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_saturation"))
-    TArray<float> saturation = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_saturation"))
+	TArray<float> saturation = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_inductance = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_inductance = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_inductance"))
-    TArray<float> inductance = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_inductance"))
+	TArray<float> inductance = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_cogging = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_cogging = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_cogging"))
-    TArray<float> cogging = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_cogging"))
+	TArray<float> cogging = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_controller = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_controller = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_controller"))
-    TArray<float> controller = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_controller"))
+	TArray<float> controller = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_thermal = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_thermal = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_thermal"))
-    TArray<float> thermal = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_thermal"))
+	TArray<float> thermal = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
-    bool bOverride_lugre = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta = (InlineEditConditionToggle))
+	bool bOverride_lugre = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_lugre"))
-    TArray<float> lugre = {};
-    // --- CODEGEN_PROPERTIES_END ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta = (EditCondition = "bOverride_lugre"))
+	TArray<float> lugre = {};
+	// --- CODEGEN_PROPERTIES_END ---
 
-    // Hand-declared because the UPROPERTY type is a URLab enum (EMjDcMotorInput).
-    // Codegen owns the import (XML "voltage"/"position"/"velocity" -> enum) via
-    // xml_enum_attrs in codegen_rules.json. Export is via mjs_setToDCMotor's
-    // input_mode param (introspected setto call), not a direct Element field.
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
-    bool bOverride_input = false;
+	// Hand-declared because the UPROPERTY type is a URLab enum (EMjDcMotorInput).
+	// Codegen owns the import (XML "voltage"/"position"/"velocity" -> enum) via
+	// xml_enum_attrs in codegen_rules.json. Export is via mjs_setToDCMotor's
+	// input_mode param (introspected setto call), not a direct Element field.
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta = (InlineEditConditionToggle))
+	bool bOverride_input = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_input"))
-    EMjDcMotorInput input = EMjDcMotorInput::Voltage;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta = (EditCondition = "bOverride_input"))
+	EMjDcMotorInput input = EMjDcMotorInput::Voltage;
 
-    UMjDcMotorActuator();
+	UMjDcMotorActuator();
 
-    // --- DC motor parameters ---
+	// --- DC motor parameters ---
 
+	virtual void ExportTo(mjsActuator* Element, mjsDefault* Default = nullptr) override;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    virtual void ExportTo(mjsActuator* Element, mjsDefault* Default = nullptr) override;
-
-    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 };

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -36,19 +36,19 @@
 USTRUCT(BlueprintType)
 struct FMjCameraWaypoint
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    /** World-space position. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FVector Position = FVector::ZeroVector;
+	/** World-space position. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FVector Position = FVector::ZeroVector;
 
-    /** World-space rotation. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite)
-    FRotator Rotation = FRotator::ZeroRotator;
+	/** World-space rotation. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+	FRotator Rotation = FRotator::ZeroRotator;
 
-    /** time in seconds when the camera should arrive at this waypoint. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
-    float time = 0.0f;
+	/** time in seconds when the camera should arrive at this waypoint. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (ClampMin = "0.0"))
+	float time = 0.0f;
 };
 
 /**
@@ -61,88 +61,88 @@ struct FMjCameraWaypoint
  *
  * Hotkey: O toggles play/pause (shared with orbit camera).
  */
-UCLASS(ClassGroup=(Custom), meta=(DisplayName="MjKeyframeCamera"))
+UCLASS(ClassGroup = (Custom), meta = (DisplayName = "MjKeyframeCamera"))
 class URLAB_API AMjKeyframeCameraActor : public AActor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    AMjKeyframeCameraActor();
+	AMjKeyframeCameraActor();
 
 protected:
-    virtual void BeginPlay() override;
-    virtual void Tick(float DeltaTime) override;
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 
 #if WITH_EDITOR
-    virtual void OnConstruction(const FTransform& Transform) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
 #endif
 
 public:
-    // --- Camera ---
+	// --- Camera ---
 
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Keyframe Camera")
-    UCineCameraComponent* CineCamera;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Keyframe Camera")
+	UCineCameraComponent* CineCamera;
 
-    // --- Waypoints ---
+	// --- Waypoints ---
 
-    /** @brief Camera waypoints. Each defines a position, rotation, and arrival time. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
-    TArray<FMjCameraWaypoint> Waypoints;
+	/** @brief Camera waypoints. Each defines a position, rotation, and arrival time. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
+	TArray<FMjCameraWaypoint> Waypoints;
 
-    /** @brief If true, loops back to the first waypoint after the last. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
-    bool bLoop = false;
+	/** @brief If true, loops back to the first waypoint after the last. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
+	bool bLoop = false;
 
-    /** @brief If true, starts playing automatically on BeginPlay. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
-    bool bAutoPlay = true;
+	/** @brief If true, starts playing automatically on BeginPlay. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
+	bool bAutoPlay = true;
 
-    /** @brief delay before playback starts (seconds). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path",
-        meta = (ClampMin = "0.0", EditCondition = "bAutoPlay"))
-    float StartDelay = 0.0f;
+	/** @brief delay before playback starts (seconds). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path",
+		meta = (ClampMin = "0.0", EditCondition = "bAutoPlay"))
+	float StartDelay = 0.0f;
 
-    /** @brief If true, activates this camera as the player's view on BeginPlay. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
-    bool bAutoActivate = true;
+	/** @brief If true, activates this camera as the player's view on BeginPlay. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
+	bool bAutoActivate = true;
 
-    /** @brief Use cubic interpolation for smoother motion. If false, uses linear lerp. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
-    bool bSmoothInterp = true;
+	/** @brief Use cubic interpolation for smoother motion. If false, uses linear lerp. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe Camera|Path")
+	bool bSmoothInterp = true;
 
-    // --- Spline Preview ---
+	// --- Spline Preview ---
 
-    /** @brief Shows the camera path as a spline in the editor. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Keyframe Camera|Preview")
-    USplineComponent* PathSpline;
+	/** @brief Shows the camera path as a spline in the editor. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Keyframe Camera|Preview")
+	USplineComponent* PathSpline;
 
-    // --- Controls ---
+	// --- Controls ---
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
-    void Play();
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
+	void Play();
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
-    void Pause();
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
+	void Pause();
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
-    void TogglePlayPause();
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
+	void TogglePlayPause();
 
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
-    void Reset();
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframe Camera")
+	void Reset();
 
-    UFUNCTION(BlueprintPure, Category = "MuJoCo|Keyframe Camera")
-    bool IsPlaying() const { return bIsPlaying; }
+	UFUNCTION(BlueprintPure, Category = "MuJoCo|Keyframe Camera")
+	bool IsPlaying() const { return bIsPlaying; }
 
-    /** @brief Capture current viewport camera as a new waypoint at the given time. */
-    UFUNCTION(BlueprintCallable, CallInEditor, Category = "MuJoCo|Keyframe Camera")
-    void CaptureCurrentView();
+	/** @brief Capture current viewport camera as a new waypoint at the given time. */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "MuJoCo|Keyframe Camera")
+	void CaptureCurrentView();
 
 private:
-    bool bIsPlaying = false;
-    float PlaybackTime = 0.0f;
-    bool bDelayPending = false;
-    float DelayTimer = 0.0f;
+	bool bIsPlaying = false;
+	float PlaybackTime = 0.0f;
+	bool bDelayPending = false;
+	float DelayTimer = 0.0f;
 
-    void UpdateCameraTransform();
-    void RebuildSplinePreview();
+	void UpdateCameraTransform();
+	void RebuildSplinePreview();
 };

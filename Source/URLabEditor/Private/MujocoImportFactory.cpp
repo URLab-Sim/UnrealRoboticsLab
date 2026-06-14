@@ -13,13 +13,12 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
-
 
 #include "MujocoImportFactory.h"
 #include "MujocoGenerationAction.h"
@@ -37,141 +36,141 @@
 
 UMujocoImportFactory::UMujocoImportFactory()
 {
-    Formats.Add(TEXT("xml;MuJoCo XML File"));
-    SupportedClass = UBlueprint::StaticClass();
-    bCreateNew = false;
-    bEditorImport = true;
+	Formats.Add(TEXT("xml;MuJoCo XML File"));
+	SupportedClass = UBlueprint::StaticClass();
+	bCreateNew = false;
+	bEditorImport = true;
 }
 
 bool UMujocoImportFactory::FactoryCanImport(const FString& Filename)
 {
-    return FPaths::GetExtension(Filename).Equals(TEXT("xml"), ESearchCase::IgnoreCase);
+	return FPaths::GetExtension(Filename).Equals(TEXT("xml"), ESearchCase::IgnoreCase);
 }
 
 UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled)
 {
-    // Create blueprint based on AMjArticulation
-    UClass* ParentClass = AMjArticulation::StaticClass();
+	// Create blueprint based on AMjArticulation
+	UClass* ParentClass = AMjArticulation::StaticClass();
 
-    // Defensive: FKismetEditorUtilities::CreateBlueprint asserts when
-    // an existing UBlueprint with the same name is still in memory
-    // (Kismet2.cpp:424 -- FindObject<UBlueprint>(Outer, Name) == 0).
-    // Callers that want to overwrite should drive ImportXmlSync with
-    // force_reimport=true, which destroys the existing asset first; if
-    // we get here with a stale BP anyway, bail with a logged error
-    // rather than crashing the editor.
-    if (UBlueprint* Existing = FindObject<UBlueprint>(InParent, *InName.ToString()))
-    {
-        UE_LOG(LogURLabEditor, Error,
-            TEXT("MujocoImportFactory: refusing to overwrite existing Blueprint '%s' in '%s'. "
-                 "Call ImportXmlSync with force_reimport=true (which destroys the existing asset) "
-                 "before importing again."),
-            *InName.ToString(),
-            InParent ? *InParent->GetPathName() : TEXT("<no outer>"));
-        bOutOperationCanceled = true;
-        return nullptr;
-    }
+	// Defensive: FKismetEditorUtilities::CreateBlueprint asserts when
+	// an existing UBlueprint with the same name is still in memory
+	// (Kismet2.cpp:424 -- FindObject<UBlueprint>(Outer, Name) == 0).
+	// Callers that want to overwrite should drive ImportXmlSync with
+	// force_reimport=true, which destroys the existing asset first; if
+	// we get here with a stale BP anyway, bail with a logged error
+	// rather than crashing the editor.
+	if (UBlueprint* Existing = FindObject<UBlueprint>(InParent, *InName.ToString()))
+	{
+		UE_LOG(LogURLabEditor, Error,
+			TEXT("MujocoImportFactory: refusing to overwrite existing Blueprint '%s' in '%s'. "
+				 "Call ImportXmlSync with force_reimport=true (which destroys the existing asset) "
+				 "before importing again."),
+			*InName.ToString(),
+			InParent ? *InParent->GetPathName() : TEXT("<no outer>"));
+		bOutOperationCanceled = true;
+		return nullptr;
+	}
 
-    // Create the Blueprint Asset
-    UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
-        ParentClass,
-        InParent,
-        InName,
-        BPTYPE_Normal,
-        UBlueprint::StaticClass(),
-        UBlueprintGeneratedClass::StaticClass()
-    );
+	// Create the Blueprint Asset
+	UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
+		ParentClass,
+		InParent,
+		InName,
+		BPTYPE_Normal,
+		UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass());
 
-    if (NewBP)
-    {
-        FScopedSlowTask SlowTask(4.f, NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
-        SlowTask.MakeDialog(/*bShowCancelButton=*/false);
+	if (NewBP)
+	{
+		FScopedSlowTask SlowTask(4.f, NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
+		SlowTask.MakeDialog(/*bShowCancelButton=*/false);
 
-        // Step 0: Try to run clean_meshes_trimesh.py to prepare meshes
-        SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
+		// Step 0: Try to run clean_meshes_trimesh.py to prepare meshes
+		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
 
-        FString ActualXmlPath = Filename;
-        {
-            FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
-            FString ScriptPath = FPaths::Combine(PluginDir, TEXT("Scripts/clean_meshes.py"));
+		FString ActualXmlPath = Filename;
+		{
+			FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
+			FString ScriptPath = FPaths::Combine(PluginDir, TEXT("Scripts/clean_meshes.py"));
 
-            if (FPaths::FileExists(ScriptPath))
-            {
-                bool bCancelled = false;
-                FString PythonExe = FMjPythonHelper::EnsurePythonReady(bCancelled);
+			if (FPaths::FileExists(ScriptPath))
+			{
+				bool bCancelled = false;
+				FString PythonExe = FMjPythonHelper::EnsurePythonReady(bCancelled);
 
-                if (bCancelled)
-                {
-                    UE_LOG(LogURLabEditor, Log, TEXT("Import cancelled by user during Python setup."));
-                    return nullptr;
-                }
+				if (bCancelled)
+				{
+					UE_LOG(LogURLabEditor, Log, TEXT("Import cancelled by user during Python setup."));
+					return nullptr;
+				}
 
-                if (!PythonExe.IsEmpty())
-                {
-                    // Run the clean script
-                    int32 ReturnCode = -1;
-                    FString StdOut, StdErr;
-                    FString Args = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *Filename);
-                    UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
-                    FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
+				if (!PythonExe.IsEmpty())
+				{
+					// Run the clean script
+					int32 ReturnCode = -1;
+					FString StdOut, StdErr;
+					FString Args = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *Filename);
+					UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
+					FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
 
-                    if (ReturnCode == 0)
-                    {
-                        FString UeXmlPath = FPaths::Combine(
-                            FPaths::GetPath(Filename),
-                            FPaths::GetBaseFilename(Filename) + TEXT("_ue.xml"));
+					if (ReturnCode == 0)
+					{
+						FString UeXmlPath = FPaths::Combine(
+							FPaths::GetPath(Filename),
+							FPaths::GetBaseFilename(Filename) + TEXT("_ue.xml"));
 
-                        if (FPaths::FileExists(UeXmlPath))
-                        {
-                            UE_LOG(LogURLabEditor, Log, TEXT("Using prepared XML: %s"), *UeXmlPath);
-                            ActualXmlPath = UeXmlPath;
-                        }
-                    }
-                    else
-                    {
-                        UE_LOG(LogURLabEditor, Warning, TEXT("Mesh preparation script failed (code %d). Using original XML."), ReturnCode);
-                        if (!StdErr.IsEmpty()) UE_LOG(LogURLabEditor, Warning, TEXT("  stderr: %s"), *StdErr);
-                    }
-                }
-                else
-                {
-                    UE_LOG(LogURLabEditor, Log, TEXT("Python not configured — skipping mesh preparation."));
-                }
-            }
-        }
+						if (FPaths::FileExists(UeXmlPath))
+						{
+							UE_LOG(LogURLabEditor, Log, TEXT("Using prepared XML: %s"), *UeXmlPath);
+							ActualXmlPath = UeXmlPath;
+						}
+					}
+					else
+					{
+						UE_LOG(LogURLabEditor, Warning, TEXT("Mesh preparation script failed (code %d). Using original XML."), ReturnCode);
+						if (!StdErr.IsEmpty())
+							UE_LOG(LogURLabEditor, Warning, TEXT("  stderr: %s"), *StdErr);
+					}
+				}
+				else
+				{
+					UE_LOG(LogURLabEditor, Log, TEXT("Python not configured — skipping mesh preparation."));
+				}
+			}
+		}
 
-        SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep1", "Reading XML..."));
+		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep1", "Reading XML..."));
 
-        // Set XML Path in CDO so it persists (use original path, not _ue variant)
-        AMjArticulation* CDO = Cast<AMjArticulation>(NewBP->GeneratedClass->GetDefaultObject());
-        if (CDO)
-        {
-            CDO->MuJoCoXMLFile.FilePath = Filename;
-            CDO->MarkPackageDirty();
-        }
+		// Set XML Path in CDO so it persists (use original path, not _ue variant)
+		AMjArticulation* CDO = Cast<AMjArticulation>(NewBP->GeneratedClass->GetDefaultObject());
+		if (CDO)
+		{
+			CDO->MuJoCoXMLFile.FilePath = Filename;
+			CDO->MarkPackageDirty();
+		}
 
-        SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep2", "Building Blueprint components..."));
+		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep2", "Building Blueprint components..."));
 
-        // Generate Components using the (potentially prepared) XML
-        UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
-        Generator->GenerateForBlueprint(NewBP, ActualXmlPath);
+		// Generate Components using the (potentially prepared) XML
+		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
+		Generator->GenerateForBlueprint(NewBP, ActualXmlPath);
 
-        SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep3", "Compiling Blueprint..."));
+		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep3", "Compiling Blueprint..."));
 
-        // Compile to save changes and ensure components are valid
-        FKismetEditorUtilities::CompileBlueprint(NewBP);
+		// Compile to save changes and ensure components are valid
+		FKismetEditorUtilities::CompileBlueprint(NewBP);
 
-        // Wait for all shaders to finish compiling and flush render commands.
-        // Material instances created during import trigger async shader compilation.
-        // If the content browser renders thumbnails before shaders are ready,
-        // the render thread crashes (UE-23902).
-        if (GShaderCompilingManager)
-        {
-            GShaderCompilingManager->FinishAllCompilation();
-        }
-        FlushRenderingCommands();
-    }
-    
-    bOutOperationCanceled = false;
-    return NewBP;
+		// Wait for all shaders to finish compiling and flush render commands.
+		// Material instances created during import trigger async shader compilation.
+		// If the content browser renders thumbnails before shaders are ready,
+		// the render thread crashes (UE-23902).
+		if (GShaderCompilingManager)
+		{
+			GShaderCompilingManager->FinishAllCompilation();
+		}
+		FlushRenderingCommands();
+	}
+
+	bOutOperationCanceled = false;
+	return NewBP;
 }

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 #include "URLabEditor.h"
 #include "URLabEditorLogging.h"
@@ -66,336 +66,342 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 
 void FURLabEditorModule::StartupModule()
 {
-    FMjEditorStyle::Initialize();
+	FMjEditorStyle::Initialize();
 
-    // Install the bridge-server resolver so AAMjManager (URLab module) can
-    // discover the editor-time server without depending on URLabEditor.
-    // The resolver lazy-starts the subsystem's server so a PIE BeginPlay
-    // that fires before the user toggles AutoStart still gets a server.
-    URLabBridgeProvider::RegisterResolver([]() -> UURLabBridgeServer*
-    {
-        if (!GEditor) return nullptr;
-        UURLabBridgeServerSubsystem* Sub =
-            GEditor->GetEditorSubsystem<UURLabBridgeServerSubsystem>();
-        if (!Sub) return nullptr;
-        Sub->StartServer();  // idempotent; honours INI auto-start
-        return Sub->GetBridgeServer();
-    });
+	// Install the bridge-server resolver so AAMjManager (URLab module) can
+	// discover the editor-time server without depending on URLabEditor.
+	// The resolver lazy-starts the subsystem's server so a PIE BeginPlay
+	// that fires before the user toggles AutoStart still gets a server.
+	URLabBridgeProvider::RegisterResolver([]() -> UURLabBridgeServer* {
+		if (!GEditor)
+			return nullptr;
+		UURLabBridgeServerSubsystem* Sub =
+			GEditor->GetEditorSubsystem<UURLabBridgeServerSubsystem>();
+		if (!Sub)
+			return nullptr;
+		Sub->StartServer(); // idempotent; honours INI auto-start
+		return Sub->GetBridgeServer();
+	});
 
-    // Editor-only op handlers (import_xml, create_level, spawn_*, ...).
-    // The dispatcher in URLab forwards editor-only ops through
-    // URLabOpRegistry, which these handlers populate.
-    URLabEditorOpHandlers::RegisterAll();
+	// Editor-only op handlers (import_xml, create_level, spawn_*, ...).
+	// The dispatcher in URLab forwards editor-only ops through
+	// URLabOpRegistry, which these handlers populate.
+	URLabEditorOpHandlers::RegisterAll();
 
-    FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-    // Only Geom has non-hiding logic (the CoACD decomposition buttons).
-    // The other 9 components' simple "HideProperty(DefaultClass)" /
-    // "HideProperty(Name)" customizations were replaced by
-    // meta=(EditCondition="false", EditConditionHides) on the UPROPERTY
-    // decls themselves — see UMjActuator::DefaultClass et al.
-    {
-        TArray<UClass*> GeomClasses;
-        GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
-        GeomClasses.Add(UMjGeom::StaticClass());
-        for (UClass* Class : GeomClasses)
-        {
-            PropertyModule.RegisterCustomClassLayout(
-                Class->GetFName(),
-                FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
-        }
-    }
-    PropertyModule.NotifyCustomizationModuleChanged();
+	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+	// Only Geom has non-hiding logic (the CoACD decomposition buttons).
+	// The other 9 components' simple "HideProperty(DefaultClass)" /
+	// "HideProperty(Name)" customizations were replaced by
+	// meta=(EditCondition="false", EditConditionHides) on the UPROPERTY
+	// decls themselves — see UMjActuator::DefaultClass et al.
+	{
+		TArray<UClass*> GeomClasses;
+		GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
+		GeomClasses.Add(UMjGeom::StaticClass());
+		for (UClass* Class : GeomClasses)
+		{
+			PropertyModule.RegisterCustomClassLayout(
+				Class->GetFName(),
+				FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
+		}
+	}
+	PropertyModule.NotifyCustomizationModuleChanged();
 
-    // Register viewport actor context menu extender
-    FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
-    FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors MenuExtender =
-        FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors::CreateStatic(
-            &FURLabEditorModule::OnExtendActorContextMenu);
-    auto& Extenders = LevelEditorModule.GetAllLevelViewportContextMenuExtenders();
-    Extenders.Add(MenuExtender);
-    ViewportContextMenuExtenderHandle = Extenders.Last().GetHandle();
+	// Register viewport actor context menu extender
+	FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
+	FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors MenuExtender =
+		FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors::CreateStatic(
+			&FURLabEditorModule::OnExtendActorContextMenu);
+	auto& Extenders = LevelEditorModule.GetAllLevelViewportContextMenuExtenders();
+	Extenders.Add(MenuExtender);
+	ViewportContextMenuExtenderHandle = Extenders.Last().GetHandle();
 
-    // Register auto-parenting hook for MuJoCo components
-    OnObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddRaw(this, &FURLabEditorModule::OnObjectModified);
+	// Register auto-parenting hook for MuJoCo components
+	OnObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddRaw(this, &FURLabEditorModule::OnObjectModified);
 
-    // Register the StepMode status indicator into the level editor toolbar.
-    // The indicator is a small Slate widget that polls AAMjManager::Instance
-    // every 0.5s and shows a coloured pill: green=Live, amber=Direct,
-    // blue=Puppet, grey=Auto/none. No asset deps; pure code.
-    UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]()
-    {
-        UToolMenu* ToolBar = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.PlayToolBar");
-        if (!ToolBar) return;
-        FToolMenuSection& Section = ToolBar->FindOrAddSection("URLab");
-        Section.AddEntry(FToolMenuEntry::InitWidget(
-            "URLabStepModeIndicator",
-            SNew(SMjStepModeIndicator),
-            FText::GetEmpty(),
-            /*bNoIndent=*/true,
-            /*bSearchable=*/false));
-        Section.AddEntry(FToolMenuEntry::InitWidget(
-            "URLabBridgeServerToggle",
-            SNew(SURLabBridgeServerToggle),
-            FText::GetEmpty(),
-            /*bNoIndent=*/true,
-            /*bSearchable=*/false));
-    }));
+	// Register the StepMode status indicator into the level editor toolbar.
+	// The indicator is a small Slate widget that polls AAMjManager::Instance
+	// every 0.5s and shows a coloured pill: green=Live, amber=Direct,
+	// blue=Puppet, grey=Auto/none. No asset deps; pure code.
+	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]() {
+		UToolMenu* ToolBar = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.PlayToolBar");
+		if (!ToolBar)
+			return;
+		FToolMenuSection& Section = ToolBar->FindOrAddSection("URLab");
+		Section.AddEntry(FToolMenuEntry::InitWidget(
+			"URLabStepModeIndicator",
+			SNew(SMjStepModeIndicator),
+			FText::GetEmpty(),
+			/*bNoIndent=*/true,
+			/*bSearchable=*/false));
+		Section.AddEntry(FToolMenuEntry::InitWidget(
+			"URLabBridgeServerToggle",
+			SNew(SURLabBridgeServerToggle),
+			FText::GetEmpty(),
+			/*bNoIndent=*/true,
+			/*bSearchable=*/false));
+	}));
 
-    // Register MuJoCo Outliner tab (guard against double registration on hot-reload)
-    FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
-    FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
-        TEXT("MjArticulationOutliner"),
-        FOnSpawnTab::CreateLambda([](const FSpawnTabArgs& Args) -> TSharedRef<SDockTab>
-        {
-            TSharedRef<SMjArticulationOutliner> Outliner = SNew(SMjArticulationOutliner);
+	// Register MuJoCo Outliner tab (guard against double registration on hot-reload)
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+								TEXT("MjArticulationOutliner"),
+								FOnSpawnTab::CreateLambda([](const FSpawnTabArgs& Args) -> TSharedRef<SDockTab> {
+									TSharedRef<SMjArticulationOutliner> Outliner = SNew(SMjArticulationOutliner);
 
-            return SNew(SDockTab)
-                .TabRole(ETabRole::NomadTab)
-                .Label(FText::FromString(TEXT("MuJoCo Outliner")))
-                [
-                    Outliner
-                ];
-        }))
-        .SetDisplayName(FText::FromString(TEXT("MuJoCo Outliner")))
-        .SetTooltipText(FText::FromString(TEXT("Filtered view of MuJoCo articulation components")));
-
+									return SNew(SDockTab)
+										.TabRole(ETabRole::NomadTab)
+										.Label(FText::FromString(TEXT("MuJoCo Outliner")))
+											[Outliner];
+								}))
+		.SetDisplayName(FText::FromString(TEXT("MuJoCo Outliner")))
+		.SetTooltipText(FText::FromString(TEXT("Filtered view of MuJoCo articulation components")));
 }
 
 void FURLabEditorModule::ShutdownModule()
 {
-    FMjEditorStyle::Shutdown();
+	FMjEditorStyle::Shutdown();
 
-    URLabBridgeProvider::RegisterResolver(nullptr);
-    URLabEditorOpHandlers::UnregisterAll();
+	URLabBridgeProvider::RegisterResolver(nullptr);
+	URLabEditorOpHandlers::UnregisterAll();
 
-    FCoreUObjectDelegates::OnObjectModified.Remove(OnObjectModifiedHandle);
+	FCoreUObjectDelegates::OnObjectModified.Remove(OnObjectModifiedHandle);
 
-    FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
 
-    if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
-    {
-        FPropertyEditorModule& PropertyModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-        // Unregister all subclass customizations
-        auto UnregisterWithSubclasses = [&](UClass* BaseClass)
-        {
-            TArray<UClass*> Classes;
-            GetDerivedClasses(BaseClass, Classes, true);
-            Classes.Add(BaseClass);
-            for (UClass* Class : Classes)
-            {
-                PropertyModule.UnregisterCustomClassLayout(Class->GetFName());
-            }
-        };
-        UnregisterWithSubclasses(UMjGeom::StaticClass());
-    }
+	if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
+	{
+		FPropertyEditorModule& PropertyModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
+		// Unregister all subclass customizations
+		auto UnregisterWithSubclasses = [&](UClass* BaseClass) {
+			TArray<UClass*> Classes;
+			GetDerivedClasses(BaseClass, Classes, true);
+			Classes.Add(BaseClass);
+			for (UClass* Class : Classes)
+			{
+				PropertyModule.UnregisterCustomClassLayout(Class->GetFName());
+			}
+		};
+		UnregisterWithSubclasses(UMjGeom::StaticClass());
+	}
 
-    if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
-    {
-        FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-        LevelEditorModule.GetAllLevelViewportContextMenuExtenders().RemoveAll(
-            [this](const FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors& Delegate) {
-                return Delegate.GetHandle() == ViewportContextMenuExtenderHandle;
-            });
-    }
+	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
+	{
+		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
+		LevelEditorModule.GetAllLevelViewportContextMenuExtenders().RemoveAll(
+			[this](const FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors& Delegate) {
+				return Delegate.GetHandle() == ViewportContextMenuExtenderHandle;
+			});
+	}
 }
 
 TSharedRef<FExtender> FURLabEditorModule::OnExtendActorContextMenu(
-    const TSharedRef<FUICommandList> CommandList,
-    const TArray<AActor*> SelectedActors)
+	const TSharedRef<FUICommandList> CommandList,
+	const TArray<AActor*> SelectedActors)
 {
-    TSharedRef<FExtender> Extender = MakeShared<FExtender>();
+	TSharedRef<FExtender> Extender = MakeShared<FExtender>();
 
-    if (SelectedActors.Num() > 0)
-    {
-        Extender->AddMenuExtension(
-            "ActorControl",
-            EExtensionHook::After,
-            CommandList,
-            FMenuExtensionDelegate::CreateLambda([SelectedActors](FMenuBuilder& MenuBuilder)
-            {
-                MenuBuilder.AddSubMenu(
-                    FText::FromString("MuJoCo Quick Convert"),
-                    FText::FromString("Add MjQuickConvertComponent with preset configuration"),
-                    FNewMenuDelegate::CreateStatic(&FURLabEditorModule::BuildQuickConvertSubMenu, SelectedActors));
-            }));
-    }
+	if (SelectedActors.Num() > 0)
+	{
+		Extender->AddMenuExtension(
+			"ActorControl",
+			EExtensionHook::After,
+			CommandList,
+			FMenuExtensionDelegate::CreateLambda([SelectedActors](FMenuBuilder& MenuBuilder) {
+				MenuBuilder.AddSubMenu(
+					FText::FromString("MuJoCo Quick Convert"),
+					FText::FromString("Add MjQuickConvertComponent with preset configuration"),
+					FNewMenuDelegate::CreateStatic(&FURLabEditorModule::BuildQuickConvertSubMenu, SelectedActors));
+			}));
+	}
 
-    return Extender;
+	return Extender;
 }
 
 void FURLabEditorModule::BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TArray<AActor*> SelectedActors)
 {
-    // Capture actors as weak pointers so they survive across frames
-    TArray<TWeakObjectPtr<AActor>> WeakActors;
-    for (AActor* Actor : SelectedActors)
-    {
-        WeakActors.Add(Actor);
-    }
+	// Capture actors as weak pointers so they survive across frames
+	TArray<TWeakObjectPtr<AActor>> WeakActors;
+	for (AActor* Actor : SelectedActors)
+	{
+		WeakActors.Add(Actor);
+	}
 
-    MenuBuilder.AddMenuEntry(
-        FText::FromString("Simple Static"),
-        FText::FromString("Simple collision, fixed in place (no free joint)"),
-        FSlateIcon(),
-        FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, true, false)));
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Simple Static"),
+		FText::FromString("Simple collision, fixed in place (no free joint)"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, true, false)));
 
-    MenuBuilder.AddMenuEntry(
-        FText::FromString("Simple Dynamic"),
-        FText::FromString("Simple collision, free to move under physics"),
-        FSlateIcon(),
-        FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, false, false)));
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Simple Dynamic"),
+		FText::FromString("Simple collision, free to move under physics"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, false, false)));
 
-    MenuBuilder.AddMenuEntry(
-        FText::FromString("Complex Static"),
-        FText::FromString("CoACD decomposition, fixed in place (no free joint)"),
-        FSlateIcon(),
-        FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, true, true)));
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Complex Static"),
+		FText::FromString("CoACD decomposition, fixed in place (no free joint)"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, true, true)));
 
-    MenuBuilder.AddMenuEntry(
-        FText::FromString("Complex Dynamic"),
-        FText::FromString("CoACD decomposition, free to move under physics"),
-        FSlateIcon(),
-        FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, false, true)));
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Complex Dynamic"),
+		FText::FromString("CoACD decomposition, free to move under physics"),
+		FSlateIcon(),
+		FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, false, true)));
 }
 
 void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex)
 {
-    FScopedTransaction Transaction(FText::FromString("MuJoCo Quick Convert"));
+	FScopedTransaction Transaction(FText::FromString("MuJoCo Quick Convert"));
 
-    int32 Applied = 0;
-    for (const TWeakObjectPtr<AActor>& WeakActor : Actors)
-    {
-        AActor* Actor = WeakActor.Get();
-        if (!Actor) continue;
+	int32 Applied = 0;
+	for (const TWeakObjectPtr<AActor>& WeakActor : Actors)
+	{
+		AActor* Actor = WeakActor.Get();
+		if (!Actor)
+			continue;
 
-        // Skip if already has a QuickConvert component
-        if (Actor->FindComponentByClass<UMjQuickConvertComponent>())
-        {
-            UE_LOG(LogURLabEditor, Warning, TEXT("Actor '%s' already has MjQuickConvertComponent, skipping."), *Actor->GetName());
-            continue;
-        }
+		// Skip if already has a QuickConvert component
+		if (Actor->FindComponentByClass<UMjQuickConvertComponent>())
+		{
+			UE_LOG(LogURLabEditor, Warning, TEXT("Actor '%s' already has MjQuickConvertComponent, skipping."), *Actor->GetName());
+			continue;
+		}
 
-        Actor->Modify();
+		Actor->Modify();
 
-        // Set mobility to Movable (required for MuJoCo transform sync)
-        if (USceneComponent* Root = Actor->GetRootComponent())
-        {
-            Root->SetMobility(EComponentMobility::Movable);
-        }
+		// Set mobility to Movable (required for MuJoCo transform sync)
+		if (USceneComponent* Root = Actor->GetRootComponent())
+		{
+			Root->SetMobility(EComponentMobility::Movable);
+		}
 
-        // Create and configure the component
-        UMjQuickConvertComponent* Comp = NewObject<UMjQuickConvertComponent>(Actor, NAME_None, RF_Transactional);
-        Comp->Static = bStatic;
-        Comp->ComplexMeshRequired = bComplex;
+		// Create and configure the component
+		UMjQuickConvertComponent* Comp = NewObject<UMjQuickConvertComponent>(Actor, NAME_None, RF_Transactional);
+		Comp->Static = bStatic;
+		Comp->ComplexMeshRequired = bComplex;
 
-        Actor->AddInstanceComponent(Comp);
-        Comp->RegisterComponent();
+		Actor->AddInstanceComponent(Comp);
+		Comp->RegisterComponent();
 
-        Actor->GetPackage()->MarkPackageDirty();
-        Applied++;
-    }
+		Actor->GetPackage()->MarkPackageDirty();
+		Applied++;
+	}
 
-    UE_LOG(LogURLabEditor, Log, TEXT("MuJoCo Quick Convert applied to %d actor(s) [Static=%d, Complex=%d]"),
-        Applied, bStatic, bComplex);
+	UE_LOG(LogURLabEditor, Log, TEXT("MuJoCo Quick Convert applied to %d actor(s) [Static=%d, Complex=%d]"),
+		Applied, bStatic, bComplex);
 }
 
 void FURLabEditorModule::OnObjectModified(UObject* Object)
 {
-    if (bIsAutoParenting) return;
+	if (bIsAutoParenting)
+		return;
 
-    USimpleConstructionScript* SCS = Cast<USimpleConstructionScript>(Object);
-    if (!SCS) return;
+	USimpleConstructionScript* SCS = Cast<USimpleConstructionScript>(Object);
+	if (!SCS)
+		return;
 
-    UBlueprint* BP = SCS->GetBlueprint();
-    if (!BP || !BP->GeneratedClass || !BP->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
-        return;
+	UBlueprint* BP = SCS->GetBlueprint();
+	if (!BP || !BP->GeneratedClass || !BP->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
+		return;
 
-    // Defer to next tick so the SCS tree is fully updated before we scan
-    TWeakObjectPtr<USimpleConstructionScript> WeakSCS = SCS;
-    TWeakObjectPtr<UBlueprint> WeakBP = BP;
-    GEditor->GetTimerManager()->SetTimerForNextTick([this, WeakSCS, WeakBP]()
-    {
-        if (bIsAutoParenting) return;
-        USimpleConstructionScript* SCSPtr = WeakSCS.Get();
-        UBlueprint* BPPtr = WeakBP.Get();
-        if (!SCSPtr || !BPPtr) return;
+	// Defer to next tick so the SCS tree is fully updated before we scan
+	TWeakObjectPtr<USimpleConstructionScript> WeakSCS = SCS;
+	TWeakObjectPtr<UBlueprint> WeakBP = BP;
+	GEditor->GetTimerManager()->SetTimerForNextTick([this, WeakSCS, WeakBP]() {
+		if (bIsAutoParenting)
+			return;
+		USimpleConstructionScript* SCSPtr = WeakSCS.Get();
+		UBlueprint* BPPtr = WeakBP.Get();
+		if (!SCSPtr || !BPPtr)
+			return;
 
-        TArray<USCS_Node*> AllNodes = SCSPtr->GetAllNodes();
-        bIsAutoParenting = true;
-        bool bMoved = false;
+		TArray<USCS_Node*> AllNodes = SCSPtr->GetAllNodes();
+		bIsAutoParenting = true;
+		bool bMoved = false;
 
-        for (USCS_Node* Node : AllNodes)
-        {
-            bMoved |= AutoParentSCSNode(Node, SCSPtr);
+		for (USCS_Node* Node : AllNodes)
+		{
+			bMoved |= AutoParentSCSNode(Node, SCSPtr);
+		}
+		bIsAutoParenting = false;
 
-        }
-        bIsAutoParenting = false;
-
-        if (bMoved)
-        {
-            FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BPPtr);
-        }
-    });
+		if (bMoved)
+		{
+			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BPPtr);
+		}
+	});
 }
 
 bool FURLabEditorModule::AutoParentSCSNode(USCS_Node* Node, USimpleConstructionScript* SCS)
 {
-    if (!Node || !Node->ComponentTemplate) return false;
+	if (!Node || !Node->ComponentTemplate)
+		return false;
 
-    // Determine the correct parent folder name for this component type
-    FString TargetParentName;
-    if (Node->ComponentTemplate->IsA<UMjSensor>())        TargetParentName = TEXT("SensorsRoot");
-    else if (Node->ComponentTemplate->IsA<UMjActuator>())  TargetParentName = TEXT("ActuatorsRoot");
-    else if (Node->ComponentTemplate->IsA<UMjDefault>())   TargetParentName = TEXT("DefaultsRoot");
-    else if (Node->ComponentTemplate->IsA<UMjTendon>())    TargetParentName = TEXT("TendonsRoot");
-    else if (Node->ComponentTemplate->IsA<UMjContactPair>() || Node->ComponentTemplate->IsA<UMjContactExclude>())
-        TargetParentName = TEXT("ContactsRoot");
-    else if (Node->ComponentTemplate->IsA<UMjEquality>())  TargetParentName = TEXT("EqualitiesRoot");
-    else return false;
+	// Determine the correct parent folder name for this component type
+	FString TargetParentName;
+	if (Node->ComponentTemplate->IsA<UMjSensor>())
+		TargetParentName = TEXT("SensorsRoot");
+	else if (Node->ComponentTemplate->IsA<UMjActuator>())
+		TargetParentName = TEXT("ActuatorsRoot");
+	else if (Node->ComponentTemplate->IsA<UMjDefault>())
+		TargetParentName = TEXT("DefaultsRoot");
+	else if (Node->ComponentTemplate->IsA<UMjTendon>())
+		TargetParentName = TEXT("TendonsRoot");
+	else if (Node->ComponentTemplate->IsA<UMjContactPair>() || Node->ComponentTemplate->IsA<UMjContactExclude>())
+		TargetParentName = TEXT("ContactsRoot");
+	else if (Node->ComponentTemplate->IsA<UMjEquality>())
+		TargetParentName = TEXT("EqualitiesRoot");
+	else
+		return false;
 
-    // Check if already correctly parented
-    USCS_Node* CurrentParent = SCS->FindParentNode(Node);
-    if (CurrentParent && CurrentParent->GetVariableName().ToString() == TargetParentName)
-        return false;
+	// Check if already correctly parented
+	USCS_Node* CurrentParent = SCS->FindParentNode(Node);
+	if (CurrentParent && CurrentParent->GetVariableName().ToString() == TargetParentName)
+		return false;
 
-    // Skip components that are under DefaultsRoot — they are default templates
-    // and must not be moved to organizational folders
-    {
-        USCS_Node* Ancestor = CurrentParent;
-        while (Ancestor)
-        {
-            if (Ancestor->GetVariableName().ToString() == TEXT("DefaultsRoot"))
-                return false;
-            Ancestor = SCS->FindParentNode(Ancestor);
-        }
-    }
+	// Skip components that are under DefaultsRoot — they are default templates
+	// and must not be moved to organizational folders
+	{
+		USCS_Node* Ancestor = CurrentParent;
+		while (Ancestor)
+		{
+			if (Ancestor->GetVariableName().ToString() == TEXT("DefaultsRoot"))
+				return false;
+			Ancestor = SCS->FindParentNode(Ancestor);
+		}
+	}
 
-    // Find the target parent node
-    USCS_Node* TargetParent = nullptr;
-    for (USCS_Node* SearchNode : SCS->GetAllNodes())
-    {
-        if (SearchNode->GetVariableName().ToString() == TargetParentName)
-        {
-            TargetParent = SearchNode;
-            break;
-        }
-    }
+	// Find the target parent node
+	USCS_Node* TargetParent = nullptr;
+	for (USCS_Node* SearchNode : SCS->GetAllNodes())
+	{
+		if (SearchNode->GetVariableName().ToString() == TargetParentName)
+		{
+			TargetParent = SearchNode;
+			break;
+		}
+	}
 
-    if (!TargetParent) return false;
+	if (!TargetParent)
+		return false;
 
-    // Reparent
-    if (CurrentParent)
-    {
-        CurrentParent->RemoveChildNode(Node);
-    }
-    else
-    {
-        SCS->RemoveNode(Node, /*bNotify=*/false);
-    }
-    TargetParent->AddChildNode(Node);
+	// Reparent
+	if (CurrentParent)
+	{
+		CurrentParent->RemoveChildNode(Node);
+	}
+	else
+	{
+		SCS->RemoveNode(Node, /*bNotify=*/false);
+	}
+	TargetParent->AddChildNode(Node);
 
-    FString CompName = Node->GetVariableName().ToString();
-    UE_LOG(LogURLabEditor, Log, TEXT("[Auto-Parent] Moved '%s' to '%s'"), *CompName, *TargetParentName);
-    return true;
+	FString CompName = Node->GetVariableName().ToString();
+	UE_LOG(LogURLabEditor, Log, TEXT("[Auto-Parent] Moved '%s' to '%s'"), *CompName, *TargetParentName);
+	return true;
 }
 
 IMPLEMENT_MODULE(FURLabEditorModule, URLabEditor)

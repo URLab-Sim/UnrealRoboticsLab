@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -33,68 +33,67 @@
 /**
  * @class UMjContactExclude
  * @brief Component representing a MuJoCo contact exclusion.
- * 
+ *
  * Prevents collision checking between all geoms of two bodies.
  * Corresponds to the <exclude> element in MuJoCo XML.
  */
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
-class URLAB_API UMjContactExclude : public USceneComponent, public IMjSpecElement
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
+class URLAB_API UMjContactExclude : public USceneComponent
+	, public IMjSpecElement
 {
 	GENERATED_BODY()
 
-public:	
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactExclude", meta=(InlineEditConditionToggle))
-    bool bOverride_body1 = false;
+public:
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactExclude", meta = (InlineEditConditionToggle))
+	bool bOverride_body1 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactExclude", meta=(EditCondition="bOverride_body1"))
-    FString body1 = TEXT("");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactExclude", meta = (EditCondition = "bOverride_body1"))
+	FString body1 = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactExclude", meta=(InlineEditConditionToggle))
-    bool bOverride_body2 = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ContactExclude", meta = (InlineEditConditionToggle))
+	bool bOverride_body2 = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactExclude", meta=(EditCondition="bOverride_body2"))
-    FString body2 = TEXT("");
-    // --- CODEGEN_PROPERTIES_END ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|ContactExclude", meta = (EditCondition = "bOverride_body2"))
+	FString body2 = TEXT("");
+	// --- CODEGEN_PROPERTIES_END ---
 
-    /** @brief Default constructor. */
+	/** @brief Default constructor. */
 	UMjContactExclude();
 
-    /** @brief Name of the contact exclusion (optional). Hidden from the Details panel — synced from MjName. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude",
-              meta=(EditCondition="false", EditConditionHides))
-    FString Name;
+	/** @brief Name of the contact exclusion (optional). Hidden from the Details panel — synced from MjName. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Contact Exclude",
+		meta = (EditCondition = "false", EditConditionHides))
+	FString Name;
 
+	/**
+	 * @brief Imports contact exclusion settings from a MuJoCo XML <exclude> node.
+	 * @param Node Pointer to the FXmlNode representing the <exclude> element.
+	 */
+	void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
+	/**
+	 * @brief Exports contact exclusion settings to a MuJoCo mjsExclude structure.
+	 * @param exclude Pointer to the mjsExclude structure to populate.
+	 */
 
-    /**
-     * @brief Imports contact exclusion settings from a MuJoCo XML <exclude> node.
-     * @param Node Pointer to the FXmlNode representing the <exclude> element.
-     */
-    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
+	void ExportTo(mjsExclude* Element);
 
-    /**
-     * @brief Exports contact exclusion settings to a MuJoCo mjsExclude structure.
-     * @param exclude Pointer to the mjsExclude structure to populate.
-     */
+	/**
+	 * @brief Registers this contact exclusion to the MuJoCo spec.
+	 * @param Wrapper The spec wrapper instance.
+	 */
+	virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    void ExportTo(mjsExclude* Element);
-
-    /**
-     * @brief Registers this contact exclusion to the MuJoCo spec.
-     * @param Wrapper The spec wrapper instance.
-     */
-    virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
-
-    /** No-op: contact excludes are global static data, no per-instance runtime binding. Required by IMjSpecElement. */
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override {}
+	/** No-op: contact excludes are global static data, no per-instance runtime binding. Required by IMjSpecElement. */
+	virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override {}
 
 #if WITH_EDITOR
-    UFUNCTION()
-    TArray<FString> GetBodyOptions() const;
+	UFUNCTION()
+	TArray<FString> GetBodyOptions() const;
 #endif
 
 protected:
-    /** @brief Called when the game starts. */
+	/** @brief Called when the game starts. */
 	virtual void BeginPlay() override;
 };

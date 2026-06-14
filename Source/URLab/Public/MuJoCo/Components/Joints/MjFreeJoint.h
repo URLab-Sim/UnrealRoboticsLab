@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -33,20 +33,20 @@
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjFreeJoint : public UMjJoint
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// --- CODEGEN_PROPERTIES_END ---
 
-    UMjFreeJoint();
+	UMjFreeJoint();
 
-    /** Broadcasts full free joint state: pos[3], quat[4], linvel[3], angvel[3] = 13 floats. */
-    virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const override;
+	/** Broadcasts full free joint state: pos[3], quat[4], linvel[3], angvel[3] = 13 floats. */
+	virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const override;
 
-    /** Returns base_state/<name> to distinguish from scalar hinge joints. */
-    virtual FString GetTelemetryTopicName() const override;
+	/** Returns base_state/<name> to distinguish from scalar hinge joints. */
+	virtual FString GetTelemetryTopicName() const override;
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 
-    virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;
+	virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;
 };

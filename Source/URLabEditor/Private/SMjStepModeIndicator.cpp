@@ -33,63 +33,59 @@
 
 void SMjStepModeIndicator::Construct(const FArguments& InArgs)
 {
-    CachedLabel = FText::FromString(TEXT("URLab: -"));
-    CachedColor = FLinearColor(0.35f, 0.35f, 0.35f, 1.0f);
+	CachedLabel = FText::FromString(TEXT("URLab: -"));
+	CachedColor = FLinearColor(0.35f, 0.35f, 0.35f, 1.0f);
 
-    ChildSlot
-    [
-        SNew(SBorder)
-        .BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-        .BorderBackgroundColor(this, &SMjStepModeIndicator::GetFillColor)
-        .Padding(FMargin(6.f, 2.f))
-        [
-            SNew(STextBlock)
-            .Text(this, &SMjStepModeIndicator::GetLabel)
-            .ColorAndOpacity(FLinearColor::White)
-        ]
-    ];
+	ChildSlot
+		[SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+				.BorderBackgroundColor(this, &SMjStepModeIndicator::GetFillColor)
+				.Padding(FMargin(6.f, 2.f))
+					[SNew(STextBlock)
+							.Text(this, &SMjStepModeIndicator::GetLabel)
+							.ColorAndOpacity(FLinearColor::White)]];
 
-    // Poll every 0.5s — manager is sticky, no need for per-frame work.
-    RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SMjStepModeIndicator::OnPoll));
+	// Poll every 0.5s — manager is sticky, no need for per-frame work.
+	RegisterActiveTimer(0.5f, FWidgetActiveTimerDelegate::CreateSP(this, &SMjStepModeIndicator::OnPoll));
 }
 
 EActiveTimerReturnType SMjStepModeIndicator::OnPoll(double, float)
 {
-    AAMjManager* Mgr = AAMjManager::Instance;
-    if (!Mgr)
-    {
-        CachedLabel = FText::FromString(TEXT("URLab: -"));
-        CachedColor = FLinearColor(0.35f, 0.35f, 0.35f, 1.0f);
-        return EActiveTimerReturnType::Continue;
-    }
+	AAMjManager* Mgr = AAMjManager::Instance;
+	if (!Mgr)
+	{
+		CachedLabel = FText::FromString(TEXT("URLab: -"));
+		CachedColor = FLinearColor(0.35f, 0.35f, 0.35f, 1.0f);
+		return EActiveTimerReturnType::Continue;
+	}
 
-    // Read the live runtime mode from the dispatcher, not the static
-    // UPROPERTY default (Mgr->StepMode is the configured pin, not the
-    // currently-active mode after a client set_mode promotion).
-    EStepMode Mode = Mgr->StepMode;
-    if (FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher())
-    {
-        Mode = Disp->GetActiveStepMode();
-    }
+	// Read the live runtime mode from the dispatcher, not the static
+	// UPROPERTY default (Mgr->StepMode is the configured pin, not the
+	// currently-active mode after a client set_mode promotion).
+	EStepMode Mode = Mgr->StepMode;
+	if (FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher())
+	{
+		Mode = Disp->GetActiveStepMode();
+	}
 
-    switch (Mode)
-    {
-    case EStepMode::Live:
-        CachedLabel = FText::FromString(TEXT("URLab: live"));
-        CachedColor = FLinearColor(0.18f, 0.55f, 0.20f, 1.0f);  // green
-        break;
-    case EStepMode::Direct:
-        CachedLabel = FText::FromString(TEXT("URLab: direct"));
-        CachedColor = FLinearColor(0.85f, 0.55f, 0.10f, 1.0f);  // amber
-        break;
-    case EStepMode::Puppet:
-        CachedLabel = FText::FromString(TEXT("URLab: puppet"));
-        CachedColor = FLinearColor(0.20f, 0.45f, 0.85f, 1.0f);  // blue
-        break;
-    case EStepMode::Auto:
-        CachedLabel = FText::FromString(TEXT("URLab: auto"));
-        CachedColor = FLinearColor(0.40f, 0.40f, 0.40f, 1.0f);  // grey
-        break;
-    }
-    return EActiveTimerReturnType::Continue;
+	switch (Mode)
+	{
+		case EStepMode::Live:
+			CachedLabel = FText::FromString(TEXT("URLab: live"));
+			CachedColor = FLinearColor(0.18f, 0.55f, 0.20f, 1.0f); // green
+			break;
+		case EStepMode::Direct:
+			CachedLabel = FText::FromString(TEXT("URLab: direct"));
+			CachedColor = FLinearColor(0.85f, 0.55f, 0.10f, 1.0f); // amber
+			break;
+		case EStepMode::Puppet:
+			CachedLabel = FText::FromString(TEXT("URLab: puppet"));
+			CachedColor = FLinearColor(0.20f, 0.45f, 0.85f, 1.0f); // blue
+			break;
+		case EStepMode::Auto:
+			CachedLabel = FText::FromString(TEXT("URLab: auto"));
+			CachedColor = FLinearColor(0.40f, 0.40f, 0.40f, 1.0f); // grey
+			break;
+	}
+	return EActiveTimerReturnType::Continue;
 }

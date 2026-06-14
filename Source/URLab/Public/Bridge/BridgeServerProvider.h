@@ -20,12 +20,12 @@ class UURLabBridgeServer;
  */
 namespace URLabBridgeProvider
 {
-    using FResolverFn = TFunction<UURLabBridgeServer*()>;
+using FResolverFn = TFunction<UURLabBridgeServer*()>;
 
-    /** Install a resolver. Replaces any previous one. Pass nullptr to clear. */
-    URLAB_API void RegisterResolver(FResolverFn Fn);
+/** Install a resolver. Replaces any previous one. Pass nullptr to clear. */
+URLAB_API void RegisterResolver(FResolverFn Fn);
 
-    /** Returns the editor server if a resolver is installed and finds one,
-     *  else nullptr. */
-    URLAB_API UURLabBridgeServer* ResolveEditorServer();
-}
+/** Returns the editor server if a resolver is installed and finds one,
+ *  else nullptr. */
+URLAB_API UURLabBridgeServer* ResolveEditorServer();
+} // namespace URLabBridgeProvider

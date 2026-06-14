@@ -40,69 +40,69 @@
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjCapsule : public UMjGeom
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// --- CODEGEN_PROPERTIES_END ---
 
-    UMjCapsule();
-    virtual void OnRegister() override;
+	UMjCapsule();
+	virtual void OnRegister() override;
 
-    /** @brief Capsule radius in MJ metres. Authored via the UE Transform's
-     *  Scale handle; hidden from the Details panel. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
-              meta=(EditCondition="false", EditConditionHides))
-    float Radius = 0.0f;
+	/** @brief Capsule radius in MJ metres. Authored via the UE Transform's
+	 *  Scale handle; hidden from the Details panel. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+		meta = (EditCondition = "false", EditConditionHides))
+	float Radius = 0.0f;
 
-    /** @brief Capsule half-length along the component's local Z axis.
-     *  Shaft length = ``2 * HalfLength``; tip-to-tip = ``2 * (Radius + HalfLength)``.
-     *  Authored via the Scale handle; hidden from the Details panel. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
-              meta=(EditCondition="false", EditConditionHides))
-    float HalfLength = 0.0f;
+	/** @brief Capsule half-length along the component's local Z axis.
+	 *  Shaft length = ``2 * HalfLength``; tip-to-tip = ``2 * (Radius + HalfLength)``.
+	 *  Authored via the Scale handle; hidden from the Details panel. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+		meta = (EditCondition = "false", EditConditionHides))
+	float HalfLength = 0.0f;
 
-    // UPROPERTY-decorated so Unreal's GC tracks these sub-component pointers.
-    // Editing RelativeScale3D from the Details panel triggers a component
-    // reconstruction; without UPROPERTY, the raw pointers dangle after the
-    // old sub-components are collected, and UpdateCapTransforms crashes with
-    // EXCEPTION_ACCESS_VIOLATION on the stale pointer.
+	// UPROPERTY-decorated so Unreal's GC tracks these sub-component pointers.
+	// Editing RelativeScale3D from the Details panel triggers a component
+	// reconstruction; without UPROPERTY, the raw pointers dangle after the
+	// old sub-components are collected, and UpdateCapTransforms crashes with
+	// EXCEPTION_ACCESS_VIOLATION on the stale pointer.
 
-    /** @brief Internal shaft cylinder. */
-    UPROPERTY(Transient)
-    class UStaticMeshComponent* VisualizerShaft = nullptr;
+	/** @brief Internal shaft cylinder. */
+	UPROPERTY(Transient)
+	class UStaticMeshComponent* VisualizerShaft = nullptr;
 
-    /** @brief Internal top cap (positive Z). */
-    UPROPERTY(Transient)
-    class UStaticMeshComponent* VisualizerCapTop = nullptr;
+	/** @brief Internal top cap (positive Z). */
+	UPROPERTY(Transient)
+	class UStaticMeshComponent* VisualizerCapTop = nullptr;
 
-    /** @brief Internal bottom cap (negative Z). */
-    UPROPERTY(Transient)
-    class UStaticMeshComponent* VisualizerCapBottom = nullptr;
+	/** @brief Internal bottom cap (negative Z). */
+	UPROPERTY(Transient)
+	class UStaticMeshComponent* VisualizerCapBottom = nullptr;
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings) override;
-    virtual void ExportTo(mjsGeom* Element, mjsDefault* def = nullptr) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings) override;
+	virtual void ExportTo(mjsGeom* Element, mjsDefault* def = nullptr) override;
 
-    virtual void SyncUnrealTransformFromMj() override;
-    virtual void SetGeomVisibility(bool bNewVisibility) override;
+	virtual void SyncUnrealTransformFromMj() override;
+	virtual void SetGeomVisibility(bool bNewVisibility) override;
 
 #if WITH_EDITOR
-    virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
-    /** Returns the shaft cylinder so the overlay/debug-viz paths that grep
-     *  for a `UStaticMeshComponent` find *something*. The caps are covered
-     *  by the polymorphic attached-children walk in debug-viz. */
-    virtual class UStaticMeshComponent* GetVisualizerMesh() const override
-    {
-        const_cast<UMjCapsule*>(this)->EnsureVisualizerMesh();
-        return VisualizerShaft;
-    }
+	/** Returns the shaft cylinder so the overlay/debug-viz paths that grep
+	 *  for a `UStaticMeshComponent` find *something*. The caps are covered
+	 *  by the polymorphic attached-children walk in debug-viz. */
+	virtual class UStaticMeshComponent* GetVisualizerMesh() const override
+	{
+		const_cast<UMjCapsule*>(this)->EnsureVisualizerMesh();
+		return VisualizerShaft;
+	}
 
-    void EnsureVisualizerMesh();
+	void EnsureVisualizerMesh();
 
 private:
-    /** Position + counter-scale the caps so they sit at the shaft endpoints
-     *  and stay spherical regardless of parent non-uniform scale. */
-    void UpdateCapTransforms();
+	/** Position + counter-scale the caps so they sit at the shaft endpoints
+	 *  and stay spherical regardless of parent non-uniform scale. */
+	void UpdateCapTransforms();
 };

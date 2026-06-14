@@ -10,17 +10,17 @@
 
 namespace URLabBridgeServerConfigUtils
 {
-    /** Resolve the absolute path of LocalUnrealRoboticsLab.ini. */
-    URLAB_API FString GetIniPath();
+/** Resolve the absolute path of LocalUnrealRoboticsLab.ini. */
+URLAB_API FString GetIniPath();
 
-    /** Read the [BridgeServer] section into Out. Missing keys keep their
-     *  default value from the struct. Missing file is treated as all-default. */
-    URLAB_API void LoadFromIni(FURLabBridgeServerConfig& Out);
+/** Read the [BridgeServer] section into Out. Missing keys keep their
+ *  default value from the struct. Missing file is treated as all-default. */
+URLAB_API void LoadFromIni(FURLabBridgeServerConfig& Out);
 
-    /** Write the full [BridgeServer] section to the INI. Creates the file /
-     *  parent directories if missing. */
-    URLAB_API void SaveToIni(const FURLabBridgeServerConfig& In);
+/** Write the full [BridgeServer] section to the INI. Creates the file /
+ *  parent directories if missing. */
+URLAB_API void SaveToIni(const FURLabBridgeServerConfig& In);
 
-    /** Section name used in the INI. Exposed for tests. */
-    URLAB_API extern const TCHAR* SectionName;
-}
+/** Section name used in the INI. Exposed for tests. */
+URLAB_API extern const TCHAR* SectionName;
+} // namespace URLabBridgeServerConfigUtils

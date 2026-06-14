@@ -32,125 +32,125 @@
 UENUM(BlueprintType)
 enum class EMjGainType : uint8
 {
-    Fixed = 0,
-    Affine = 1,
-    Muscle = 2,
-    DcMotor = 3,
-    User = 4
+	Fixed = 0,
+	Affine = 1,
+	Muscle = 2,
+	DcMotor = 3,
+	User = 4
 };
 
 /** EMjBiasType — mirror of MuJoCo's mjtBias. */
 UENUM(BlueprintType)
 enum class EMjBiasType : uint8
 {
-    None = 0,
-    Affine = 1,
-    Muscle = 2,
-    DcMotor = 3,
-    User = 4
+	None = 0,
+	Affine = 1,
+	Muscle = 2,
+	DcMotor = 3,
+	User = 4
 };
 
 /** EMjDynType — mirror of MuJoCo's mjtDyn. */
 UENUM(BlueprintType)
 enum class EMjDynType : uint8
 {
-    None = 0,
-    Integrator = 1,
-    Filter = 2,
-    FilterExact = 3,
-    Muscle = 4,
-    DcMotor = 5,
-    User = 6
+	None = 0,
+	Integrator = 1,
+	Filter = 2,
+	FilterExact = 3,
+	Muscle = 4,
+	DcMotor = 5,
+	User = 6
 };
 
 /** EMjGeomInertia — URLab editorial enum (no mjt counterpart). */
 UENUM(BlueprintType)
 enum class EMjGeomInertia : uint8
 {
-    Volume = 0,
-    Shell = 1
+	Volume = 0,
+	Shell = 1
 };
 
 /** EMjFluidShape — URLab editorial enum (no mjt counterpart). */
 UENUM(BlueprintType)
 enum class EMjFluidShape : uint8
 {
-    None = 0,
-    Ellipsoid = 1
+	None = 0,
+	Ellipsoid = 1
 };
 
 /** EMjCameraTrackingMode — mirror of MuJoCo's mjtCamLight. */
 UENUM(BlueprintType)
 enum class EMjCameraTrackingMode : uint8
 {
-    Fixed = 0,
-    Track = 1,
-    TrackCom = 2,
-    TargetBody = 3,
-    TargetBodyCom = 4
+	Fixed = 0,
+	Track = 1,
+	TrackCom = 2,
+	TargetBody = 3,
+	TargetBodyCom = 4
 };
 
 /** EMjCameraProjection — mirror of MuJoCo's mjtProjection. */
 UENUM(BlueprintType)
 enum class EMjCameraProjection : uint8
 {
-    Perspective = 0,
-    Orthographic = 1
+	Perspective = 0,
+	Orthographic = 1
 };
 
 /** EMjObjType — mirror of MuJoCo's mjtObj. */
 UENUM(BlueprintType)
 enum class EMjObjType : uint8
 {
-    Unknown = 0,
-    Body = 1,
-    XBody = 2,
-    Joint = 3,
-    DoF = 4,
-    Geom = 5,
-    Site = 6,
-    Camera = 7,
-    Light = 8,
-    Flex = 9,
-    Mesh = 10,
-    Skin = 11,
-    HField = 12,
-    Texture = 13,
-    Material = 14,
-    Pair = 15,
-    Exclude = 16,
-    Equality = 17,
-    Tendon = 18,
-    Actuator = 19,
-    Sensor = 20,
-    Numeric = 21,
-    Text = 22,
-    Tuple = 23,
-    Key = 24,
-    Plugin = 25,
-    Frame = 100
+	Unknown = 0,
+	Body = 1,
+	XBody = 2,
+	Joint = 3,
+	DoF = 4,
+	Geom = 5,
+	Site = 6,
+	Camera = 7,
+	Light = 8,
+	Flex = 9,
+	Mesh = 10,
+	Skin = 11,
+	HField = 12,
+	Texture = 13,
+	Material = 14,
+	Pair = 15,
+	Exclude = 16,
+	Equality = 17,
+	Tendon = 18,
+	Actuator = 19,
+	Sensor = 20,
+	Numeric = 21,
+	Text = 22,
+	Tuple = 23,
+	Key = 24,
+	Plugin = 25,
+	Frame = 100
 };
 
 /** EMjActuatorTrnType — mirror of MuJoCo's mjtTrn. */
 UENUM(BlueprintType)
 enum class EMjActuatorTrnType : uint8
 {
-    Joint = 0,
-    JointInParent = 1,
-    SliderCrank = 2,
-    Tendon = 3,
-    Site = 4,
-    Body = 5,
-    Undefined = 6
+	Joint = 0,
+	JointInParent = 1,
+	SliderCrank = 2,
+	Tendon = 3,
+	Site = 4,
+	Body = 5,
+	Undefined = 6
 };
 
 /** EMjFlexcompDof — URLab editorial enum (no mjt counterpart). */
 UENUM(BlueprintType)
 enum class EMjFlexcompDof : uint8
 {
-    Full = 0,
-    Radial = 1,
-    Trilinear = 2,
-    Quadratic = 3,
-    TwoD = 4
+	Full = 0,
+	Radial = 1,
+	Trilinear = 2,
+	Quadratic = 3,
+	TwoD = 4
 };

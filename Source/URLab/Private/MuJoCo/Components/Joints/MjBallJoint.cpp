@@ -32,27 +32,29 @@
 
 UMjBallJoint::UMjBallJoint()
 {
-    Type = EMjJointType::Ball;
-    bOverride_Type = true;
+	Type = EMjJointType::Ball;
+	bOverride_Type = true;
 }
 
 void UMjBallJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    // (no type-specific schema imports)
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	// (no type-specific schema imports)
+	// --- CODEGEN_IMPORT_END ---
 }
 
 void UMjBallJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    Super::ExportTo(Element, Default);
+	Super::ExportTo(Element, Default);
 
-    // --- CODEGEN_EXPORT_START ---
-    // (no type-specific schema exports)
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	// (no type-specific schema exports)
+	// --- CODEGEN_EXPORT_END ---
 }

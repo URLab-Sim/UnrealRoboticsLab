@@ -61,7 +61,8 @@ void UMjTwistController::SetTwist(float InVx, float InVy, float InYawRate)
 
 void UMjTwistController::BindInput(UEnhancedInputComponent* EIC)
 {
-	if (!EIC) return;
+	if (!EIC)
+		return;
 
 	if (MoveAction)
 	{
@@ -118,14 +119,16 @@ void UMjTwistController::OnTurnCompleted(const FInputActionValue& Value)
 
 void UMjTwistController::OnActionPressed(const FInputActionValue& Value, int32 Index)
 {
-	if (Index < 0 || Index >= 10) return;
+	if (Index < 0 || Index >= 10)
+		return;
 	FScopeLock Lock(&TwistMutex);
 	ActionBitmask |= (1 << Index);
 }
 
 void UMjTwistController::OnActionReleased(const FInputActionValue& Value, int32 Index)
 {
-	if (Index < 0 || Index >= 10) return;
+	if (Index < 0 || Index >= 10)
+		return;
 	FScopeLock Lock(&TwistMutex);
 	ActionBitmask &= ~(1 << Index);
 }

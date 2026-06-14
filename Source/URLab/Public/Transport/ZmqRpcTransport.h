@@ -40,15 +40,15 @@ class FRunnableThread;
  */
 struct FMjStepRequest
 {
-    int32 NSteps = 1;
-    /** prefix -> array of (actuator_name, value). Names are local (no prefix). */
-    TMap<FString, TArray<TPair<FString, float>>> PerArticulationCtrl;
-    /** Per-articulation control mode: "ue_controller" (default) or "raw". */
-    TMap<FString, FString> PerArticulationControlMode;
-    /** Per-articulation xfrc_applied: prefix -> body_name -> [fx,fy,fz,tx,ty,tz]. */
-    TMap<FString, TMap<FString, TArray<double>>> PerArticulationXfrc;
-    /** Echo'd request envelope for downstream reply building. */
-    FString Op;
+	int32 NSteps = 1;
+	/** prefix -> array of (actuator_name, value). Names are local (no prefix). */
+	TMap<FString, TArray<TPair<FString, float>>> PerArticulationCtrl;
+	/** Per-articulation control mode: "ue_controller" (default) or "raw". */
+	TMap<FString, FString> PerArticulationControlMode;
+	/** Per-articulation xfrc_applied: prefix -> body_name -> [fx,fy,fz,tx,ty,tz]. */
+	TMap<FString, TMap<FString, TArray<double>>> PerArticulationXfrc;
+	/** Echo'd request envelope for downstream reply building. */
+	FString Op;
 };
 
 /**
@@ -61,25 +61,25 @@ struct FMjStepRequest
  */
 struct FMjDirectStepCommand
 {
-    FMjStepRequest Request;
-    /** Set true by the handler when mj_step has completed. */
-    bool bDone = false;
-    /** Observations captured under the engine's CallbackMutex. */
-    TSharedPtr<FJsonObject> Observations;
-    TSharedPtr<FJsonObject> Entities;
-    double ResultTime = 0.0;
-    int64  ResultStep = 0;
-    /** Physics thread signals this when the step has completed. */
-    FEvent* Completion = nullptr;
+	FMjStepRequest Request;
+	/** Set true by the handler when mj_step has completed. */
+	bool bDone = false;
+	/** Observations captured under the engine's CallbackMutex. */
+	TSharedPtr<FJsonObject> Observations;
+	TSharedPtr<FJsonObject> Entities;
+	double ResultTime = 0.0;
+	int64 ResultStep = 0;
+	/** Physics thread signals this when the step has completed. */
+	FEvent* Completion = nullptr;
 
-    ~FMjDirectStepCommand()
-    {
-        if (Completion)
-        {
-            FPlatformProcess::ReturnSynchEventToPool(Completion);
-            Completion = nullptr;
-        }
-    }
+	~FMjDirectStepCommand()
+	{
+		if (Completion)
+		{
+			FPlatformProcess::ReturnSynchEventToPool(Completion);
+			Completion = nullptr;
+		}
+	}
 };
 
 /**
@@ -89,12 +89,12 @@ struct FMjDirectStepCommand
  */
 struct FMjPushStateRequest
 {
-    TArray<double> QPos;
-    TArray<double> QVel;
-    TArray<double> Ctrl;     // optional informational ctrl
-    bool bIncludeCtrl = false;
-    double Time = 0.0;
-    int32 NSteps = 1;        // informational only in puppet
+	TArray<double> QPos;
+	TArray<double> QVel;
+	TArray<double> Ctrl; // optional informational ctrl
+	bool bIncludeCtrl = false;
+	double Time = 0.0;
+	int32 NSteps = 1; // informational only in puppet
 };
 
 /**
@@ -106,33 +106,33 @@ struct FMjPushStateRequest
 UCLASS()
 class URLAB_API UURLabZmqRpcTransport : public UURLabRpcTransport
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UURLabZmqRpcTransport();
+	UURLabZmqRpcTransport();
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
-    FString StepEndpoint = TEXT("tcp://0.0.0.0:5559");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
+	FString StepEndpoint = TEXT("tcp://0.0.0.0:5559");
 
-    /** Polling interval for the REP socket in milliseconds. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
-    int32 PollTimeoutMs = 50;
+	/** Polling interval for the REP socket in milliseconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
+	int32 PollTimeoutMs = 50;
 
-    // --- UURLabRpcTransport contract ---
-    virtual bool TransportInit() override;
-    virtual void TransportShutdown() override;
-    virtual FString GetTransportName() const override { return TEXT("zmq"); }
-    /** ZMQ accepts every op; SHM is the only transport that refuses. */
-    virtual bool AcceptsEditorOps() const override { return true; }
+	// --- UURLabRpcTransport contract ---
+	virtual bool TransportInit() override;
+	virtual void TransportShutdown() override;
+	virtual FString GetTransportName() const override { return TEXT("zmq"); }
+	/** ZMQ accepts every op; SHM is the only transport that refuses. */
+	virtual bool AcceptsEditorOps() const override { return true; }
 
 private:
-    void* ZmqContext = nullptr;
-    void* ZmqRep = nullptr;
-    FRunnableThread* WorkerThread = nullptr;
-    std::atomic<bool> bStop{false};
-    bool bIsInitialized = false;
+	void* ZmqContext = nullptr;
+	void* ZmqRep = nullptr;
+	FRunnableThread* WorkerThread = nullptr;
+	std::atomic<bool> bStop{false};
+	bool bIsInitialized = false;
 
-    /** Worker thread loop. Runs zmq_poll on the REP socket and forwards each
-     *  parsed request to the dispatcher; sends the reply back to the wire. */
-    void RunPollLoop();
+	/** Worker thread loop. Runs zmq_poll on the REP socket and forwards each
+	 *  parsed request to the dispatcher; sends the reply back to the wire. */
+	void RunPollLoop();
 };

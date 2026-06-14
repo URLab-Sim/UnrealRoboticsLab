@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjMotorActuator.h"
@@ -25,25 +25,26 @@
 
 UMjMotorActuator::UMjMotorActuator()
 {
-    Type = EMjActuatorType::Motor;
+	Type = EMjActuatorType::Motor;
 }
 
 void UMjMotorActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!Element) return;
-    Super::ExportTo(Element, def);
+	if (!Element)
+		return;
+	Super::ExportTo(Element, def);
 
-    // --- CODEGEN_EXPORT_START ---
-    mjs_setToMotor(Element);
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	mjs_setToMotor(Element);
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjMotorActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	// --- CODEGEN_IMPORT_END ---
 }
-

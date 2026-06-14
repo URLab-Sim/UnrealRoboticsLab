@@ -33,45 +33,45 @@ class UURLabBridgeServer;
 UCLASS(Abstract)
 class URLAB_API UURLabPublishTransport : public UObject
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    void SetOwningBridge(UURLabBridgeServer* Bridge);
-    UURLabBridgeServer* GetOwningBridge() const { return OwningBridge.Get(); }
+	void SetOwningBridge(UURLabBridgeServer* Bridge);
+	UURLabBridgeServer* GetOwningBridge() const { return OwningBridge.Get(); }
 
-    /** Publish `Payload` on `Topic`. Backends interpret the topic in
-     *  their own world (ZMQ topic frame, SHM region key, ROS topic
-     *  name). Called from N producer threads — each concrete transport
-     *  serialises internally. */
-    virtual void Publish(const FString& Topic,
-                         const TArray<uint8>& Payload) PURE_VIRTUAL(UURLabPublishTransport::Publish, );
+	/** Publish `Payload` on `Topic`. Backends interpret the topic in
+	 *  their own world (ZMQ topic frame, SHM region key, ROS topic
+	 *  name). Called from N producer threads — each concrete transport
+	 *  serialises internally. */
+	virtual void Publish(const FString& Topic,
+		const TArray<uint8>& Payload) PURE_VIRTUAL(UURLabPublishTransport::Publish, );
 
-    /** Optional advance-advertise hook. ROS publishers need to be
-     *  created up front via `rclcpp::create_publisher`; ZMQ / SHM
-     *  default to no-op. */
-    virtual void RegisterTopic(const FString& /*Topic*/,
-                               const FString& /*Schema*/) {}
+	/** Optional advance-advertise hook. ROS publishers need to be
+	 *  created up front via `rclcpp::create_publisher`; ZMQ / SHM
+	 *  default to no-op. */
+	virtual void RegisterTopic(const FString& /*Topic*/,
+		const FString& /*Schema*/) {}
 
-    /** Bind / open backend handles. Returns false on failure. */
-    virtual bool TransportInit() PURE_VIRTUAL(UURLabPublishTransport::TransportInit, return false;);
+	/** Bind / open backend handles. Returns false on failure. */
+	virtual bool TransportInit() PURE_VIRTUAL(UURLabPublishTransport::TransportInit, return false;);
 
-    /** Stop producers, release handles. Idempotent. */
-    virtual void TransportShutdown() PURE_VIRTUAL(UURLabPublishTransport::TransportShutdown, );
+	/** Stop producers, release handles. Idempotent. */
+	virtual void TransportShutdown() PURE_VIRTUAL(UURLabPublishTransport::TransportShutdown, );
 
-    virtual FString GetTransportName() const PURE_VIRTUAL(UURLabPublishTransport::GetTransportName, return FString(); );
+	virtual FString GetTransportName() const PURE_VIRTUAL(UURLabPublishTransport::GetTransportName, return FString(););
 
-    // --- Per-step physics hooks (Async thread) ----------------------------
-    // Default-empty so transports that don't tie to the physics step (e.g.
-    // sensor-shaped publishers that publish on demand) don't need to opt in.
-    // Manager iterates `ManagerOwnedPublishTransports` and calls these on
-    // the engine's pre/post-step callbacks.
+	// --- Per-step physics hooks (Async thread) ----------------------------
+	// Default-empty so transports that don't tie to the physics step (e.g.
+	// sensor-shaped publishers that publish on demand) don't need to opt in.
+	// Manager iterates `ManagerOwnedPublishTransports` and calls these on
+	// the engine's pre/post-step callbacks.
 
-    /** Runs before mj_step() on the physics thread. */
-    virtual void PreStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
+	/** Runs before mj_step() on the physics thread. */
+	virtual void PreStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
 
-    /** Runs after mj_step() on the physics thread. */
-    virtual void PostStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
+	/** Runs after mj_step() on the physics thread. */
+	virtual void PostStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
 
 protected:
-    TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
+	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
 };

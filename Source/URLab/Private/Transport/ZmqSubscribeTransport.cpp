@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Transport/ZmqSubscribeTransport.h"
@@ -33,8 +33,6 @@
 #include "Dom/JsonObject.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Utils/URLabLogging.h"
-
-
 
 void UURLabZmqSubscribeTransport::SetOwningManager(AAMjManager* InMgr)
 {
@@ -54,7 +52,8 @@ void UURLabZmqSubscribeTransport::TransportShutdown()
 
 void UURLabZmqSubscribeTransport::InitZmqSocket()
 {
-	if (bIsInitialized) return;
+	if (bIsInitialized)
+		return;
 
 	ZmqContext = zmq_ctx_new();
 
@@ -67,10 +66,10 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
-			    FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *ControlEndpoint));
+				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *ControlEndpoint));
 		}
 	}
-	
+
 	AAMjManager* Manager = OwningManager.Get();
 	if (Manager)
 	{
@@ -110,7 +109,7 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
-			    FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *InfoEndpoint));
+				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *InfoEndpoint));
 		}
 	}
 
@@ -120,12 +119,13 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 
 void UURLabZmqSubscribeTransport::ShutdownZmqSocket()
 {
-	if (!bIsInitialized) return;
+	if (!bIsInitialized)
+		return;
 
 	zmq_close(ControlSubscriber);
 	zmq_close(InfoPublisher);
 	zmq_ctx_term(ZmqContext);
-	
+
 	ControlSubscriber = nullptr;
 	InfoPublisher = nullptr;
 	ZmqContext = nullptr;
@@ -135,14 +135,17 @@ void UURLabZmqSubscribeTransport::ShutdownZmqSocket()
 void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 {
 	ActuatorCache.Empty();
-	if (!m) return;
+	if (!m)
+		return;
 
 	AAMjManager* Manager = OwningManager.Get();
-	if (!Manager) return;
+	if (!Manager)
+		return;
 
 	for (AMjArticulation* Articulation : Manager->GetAllArticulations())
 	{
-		if (!Articulation) continue;
+		if (!Articulation)
+			continue;
 
 		TArray<UMjActuator*> ArticActuators = Articulation->GetActuators();
 		for (UMjActuator* Actuator : ArticActuators)
@@ -164,16 +167,18 @@ void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 
 void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 {
-	if (!InfoPublisher) return;
-
+	if (!InfoPublisher)
+		return;
 
 	AAMjManager* Manager = OwningManager.Get();
-	if (!Manager) return;
+	if (!Manager)
+		return;
 
 	// Broadcast an info message per robot
 	for (AMjArticulation* Articulation : Manager->GetAllArticulations())
 	{
-		if (!Articulation) continue;
+		if (!Articulation)
+			continue;
 
 		FString ArticName = Articulation->GetName();
 		FString Prefix = ArticName + "_";
@@ -186,7 +191,7 @@ void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 		TArray<TSharedPtr<FJsonValue>> IdsArray;
 		TArray<TSharedPtr<FJsonValue>> MinsArray;
 		TArray<TSharedPtr<FJsonValue>> MaxsArray;
-		
+
 		for (auto& Pair : ActuatorCache)
 		{
 			// Only include actuators for this specific robot
@@ -196,20 +201,20 @@ void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 				IdsArray.Add(MakeShareable(new FJsonValueNumber(Pair.Value)));
 
 				static constexpr float kDefaultCtrlMin = -100.0f;
-				static constexpr float kDefaultCtrlMax =  100.0f;
+				static constexpr float kDefaultCtrlMax = 100.0f;
 				int id = Pair.Value;
 				float min_val = kDefaultCtrlMin; // Default reasonable fallback if not limited
 				float max_val = kDefaultCtrlMax;
 				if (m->actuator_ctrllimited[id])
 				{
-					min_val = (float)m->actuator_ctrlrange[id*2];
-					max_val = (float)m->actuator_ctrlrange[id*2+1];
+					min_val = (float)m->actuator_ctrlrange[id * 2];
+					max_val = (float)m->actuator_ctrlrange[id * 2 + 1];
 				}
 				MinsArray.Add(MakeShareable(new FJsonValueNumber(min_val)));
 				MaxsArray.Add(MakeShareable(new FJsonValueNumber(max_val)));
 			}
 		}
-		
+
 		RootObject->SetArrayField("names", NamesArray);
 		RootObject->SetArrayField("ids", IdsArray);
 		RootObject->SetArrayField("mins", MinsArray);
@@ -217,7 +222,7 @@ void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 
 		// NEW: Include all Cameras for discovery
 		TArray<TSharedPtr<FJsonValue>> CameraArray;
-		
+
 		TArray<UMjCamera*> ActiveCameras = Manager->NetworkManager ? Manager->NetworkManager->GetActiveCameras() : TArray<UMjCamera*>();
 		for (UMjCamera* Cam : ActiveCameras)
 		{
@@ -225,12 +230,12 @@ void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 			{
 				TSharedPtr<FJsonObject> CamObj = MakeShareable(new FJsonObject);
 				CamObj->SetStringField("name", Cam->GetName());
-				
+
 				FString Endpoint = Cam->GetActualZmqEndpoint();
 				// Convert wildcard bind address back to local loopback for the Python client
 				Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
 				CamObj->SetStringField("endpoint", Endpoint);
-				
+
 				CameraArray.Add(MakeShareable(new FJsonValueObject(CamObj)));
 			}
 		}
@@ -255,7 +260,8 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 	if (!bIsInitialized)
 	{
 		InitZmqSocket();
-		if (!bIsInitialized) return;
+		if (!bIsInitialized)
+			return;
 	}
 
 	if (!bCacheBuilt)
@@ -276,7 +282,8 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 				zmq_msg_init(&Drain);
 				int rc = zmq_msg_recv(&Drain, ControlSubscriber, ZMQ_DONTWAIT);
 				zmq_msg_close(&Drain);
-				if (rc == -1) break;
+				if (rc == -1)
+					break;
 			}
 			return;
 		}
@@ -300,7 +307,7 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 		zmq_msg_t msg;
 		zmq_msg_init(&msg);
 		int rc = zmq_msg_recv(&msg, ControlSubscriber, ZMQ_DONTWAIT);
-		
+
 		if (rc == -1)
 		{
 			zmq_msg_close(&msg);
@@ -322,13 +329,18 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 		zmq_getsockopt(ControlSubscriber, ZMQ_RCVMORE, &more, &more_size);
 		zmq_msg_close(&msg);
 
-		if (!more) continue;
+		if (!more)
+			continue;
 
 		// Receive Payload Frame
 		zmq_msg_t payload_msg;
 		zmq_msg_init(&payload_msg);
 		rc = zmq_msg_recv(&payload_msg, ControlSubscriber, 0);
-		if (rc == -1) { zmq_msg_close(&payload_msg); break; }
+		if (rc == -1)
+		{
+			zmq_msg_close(&payload_msg);
+			break;
+		}
 
 		int size = zmq_msg_size(&payload_msg);
 		char* data = (char*)zmq_msg_data(&payload_msg);
@@ -355,24 +367,33 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 				for (const auto& Entry : Json->Values)
 				{
 					const TSharedPtr<FJsonObject>* JointObj = nullptr;
-					if (!Entry.Value->TryGetObject(JointObj) || !JointObj || !JointObj->IsValid()) continue;
+					if (!Entry.Value->TryGetObject(JointObj) || !JointObj || !JointObj->IsValid())
+						continue;
 					double V = 0.0;
-					if ((*JointObj)->TryGetNumberField(TEXT("kp"), V))           KpMap->SetNumberField(Entry.Key, V);
-					if ((*JointObj)->TryGetNumberField(TEXT("kv"), V))           KvMap->SetNumberField(Entry.Key, V);
-					if ((*JointObj)->TryGetNumberField(TEXT("torque_limit"), V)) TlMap->SetNumberField(Entry.Key, V);
+					if ((*JointObj)->TryGetNumberField(TEXT("kp"), V))
+						KpMap->SetNumberField(Entry.Key, V);
+					if ((*JointObj)->TryGetNumberField(TEXT("kv"), V))
+						KvMap->SetNumberField(Entry.Key, V);
+					if ((*JointObj)->TryGetNumberField(TEXT("torque_limit"), V))
+						TlMap->SetNumberField(Entry.Key, V);
 				}
-				if (KpMap->Values.Num() > 0) Reshaped->SetObjectField(TEXT("kp"),           KpMap);
-				if (KvMap->Values.Num() > 0) Reshaped->SetObjectField(TEXT("kv"),           KvMap);
-				if (TlMap->Values.Num() > 0) Reshaped->SetObjectField(TEXT("torque_limit"), TlMap);
+				if (KpMap->Values.Num() > 0)
+					Reshaped->SetObjectField(TEXT("kp"), KpMap);
+				if (KvMap->Values.Num() > 0)
+					Reshaped->SetObjectField(TEXT("kv"), KvMap);
+				if (TlMap->Values.Num() > 0)
+					Reshaped->SetObjectField(TEXT("torque_limit"), TlMap);
 
 				AAMjManager* Manager = OwningManager.Get();
 				if (Manager)
 				{
 					for (AMjArticulation* Art : Manager->GetAllArticulations())
 					{
-						if (!Art || !Topic.Contains(Art->GetName())) continue;
+						if (!Art || !Topic.Contains(Art->GetName()))
+							continue;
 						UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
-						if (!Ctrl) continue;
+						if (!Ctrl)
+							continue;
 						Ctrl->ApplyConfig(Reshaped);
 						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: ApplyConfig on '%s' (kind=%s)"),
 							*Art->GetName(), *Ctrl->GetKindName());
@@ -408,7 +429,8 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 
 						if (UMjActuator** ActuatorPtr = ActuatorComponentCache.Find(Idx))
 						{
-							if (*ActuatorPtr) (*ActuatorPtr)->SetNetworkControl(Value);
+							if (*ActuatorPtr)
+								(*ActuatorPtr)->SetNetworkControl(Value);
 						}
 						else if (bShouldLog)
 						{

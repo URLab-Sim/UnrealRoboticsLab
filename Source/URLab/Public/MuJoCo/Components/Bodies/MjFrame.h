@@ -41,60 +41,60 @@
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjFrame : public UMjComponent
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame|Spatial Pose", meta=(InlineEditConditionToggle))
-    bool bOverride_Pos = false;
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame|Spatial Pose", meta = (InlineEditConditionToggle))
+	bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Frame|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
-    FVector Pos = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Frame|Spatial Pose", meta = (EditCondition = "false", EditConditionHides))
+	FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame|Orientation", meta=(InlineEditConditionToggle))
-    bool bOverride_Quat = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame|Orientation", meta = (InlineEditConditionToggle))
+	bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Frame|Orientation", meta=(EditCondition="false", EditConditionHides))
-    FQuat Quat = FQuat::Identity;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Frame|Orientation", meta = (EditCondition = "false", EditConditionHides))
+	FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame", meta=(InlineEditConditionToggle))
-    bool bOverride_childclass = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame", meta = (InlineEditConditionToggle))
+	bool bOverride_childclass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Frame", meta=(EditCondition="bOverride_childclass"))
-    FString childclass = TEXT("");
-    // --- CODEGEN_PROPERTIES_END ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Frame", meta = (EditCondition = "bOverride_childclass"))
+	FString childclass = TEXT("");
+	// --- CODEGEN_PROPERTIES_END ---
 
-    UMjFrame();
+	UMjFrame();
 
-    /**
-     * @brief Recursive spec registration entry point for frames. Creates the
-     *        mjsFrame from the UE relative transform (the source of truth)
-     *        and dispatches RegisterToSpec on the frame's child components.
-     */
-    virtual void Setup(USceneComponent* Parent, mjsBody* ParentBody, class FMujocoSpecWrapper* Wrapper);
+	/**
+	 * @brief Recursive spec registration entry point for frames. Creates the
+	 *        mjsFrame from the UE relative transform (the source of truth)
+	 *        and dispatches RegisterToSpec on the frame's child components.
+	 */
+	virtual void Setup(USceneComponent* Parent, mjsBody* ParentBody, class FMujocoSpecWrapper* Wrapper);
 
-    /**
-     * @brief Codegen-owned: writes the frame's hand-rolled childclass and any
-     *        future per-attr fields. Pos/Quat come from the UE transform via
-     *        MjSpecWrapper::CreateFrame and are deliberately skipped here.
-     */
-    virtual void ExportTo(mjsFrame* Element, mjsDefault* Default = nullptr);
+	/**
+	 * @brief Codegen-owned: writes the frame's hand-rolled childclass and any
+	 *        future per-attr fields. Pos/Quat come from the UE transform via
+	 *        MjSpecWrapper::CreateFrame and are deliberately skipped here.
+	 */
+	virtual void ExportTo(mjsFrame* Element, mjsDefault* Default = nullptr);
 
-    /** @brief Empty: frames are compiled away. */
-    virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT("")) override;
+	/** @brief Empty: frames are compiled away. */
+	virtual void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT("")) override;
 
-    /** @brief Frame registration is driven by Setup (called from UMjBody). */
-    virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
+	/** @brief Frame registration is driven by Setup (called from UMjBody). */
+	virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    /**
-     * @brief Codegen-owned: imports pos/orientation/childclass from <frame>.
-     *        Drives SetRelativeLocation/SetRelativeRotation from the codegen-
-     *        emitted Pos/Quat UPROPERTYs so the UE editor matches the data.
-     */
-    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
+	/**
+	 * @brief Codegen-owned: imports pos/orientation/childclass from <frame>.
+	 *        Drives SetRelativeLocation/SetRelativeRotation from the codegen-
+	 *        emitted Pos/Quat UPROPERTYs so the UE editor matches the data.
+	 */
+	void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 
 private:
-    /** @brief Cached list of child elements for registration. */
-    UPROPERTY()
-    TArray<TScriptInterface<IMjSpecElement>> m_SpecElements;
+	/** @brief Cached list of child elements for registration. */
+	UPROPERTY()
+	TArray<TScriptInterface<IMjSpecElement>> m_SpecElements;
 };

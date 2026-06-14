@@ -34,80 +34,80 @@
  *
  * Keyframes store simulation state (time, qpos, qvel, act, ctrl, mocap) at a specific moment.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjKeyframe : public UMjComponent
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Time = false;
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Time = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Time"))
-    float Time = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Time"))
+	float Time = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Qpos = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Qpos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qpos"))
-    TArray<float> Qpos = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Qpos"))
+	TArray<float> Qpos = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Qvel = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Qvel = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qvel"))
-    TArray<float> Qvel = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Qvel"))
+	TArray<float> Qvel = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Act = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Act = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Act"))
-    TArray<float> Act = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Act"))
+	TArray<float> Act = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Mpos = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Mpos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mpos"))
-    TArray<float> Mpos = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Mpos"))
+	TArray<float> Mpos = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Mquat = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Mquat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mquat"))
-    TArray<float> Mquat = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Mquat"))
+	TArray<float> Mquat = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
-    bool bOverride_Ctrl = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta = (InlineEditConditionToggle))
+	bool bOverride_Ctrl = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Ctrl"))
-    TArray<float> Ctrl = {};
-    // --- CODEGEN_PROPERTIES_END ---
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta = (EditCondition = "bOverride_Ctrl"))
+	TArray<float> Ctrl = {};
+	// --- CODEGEN_PROPERTIES_END ---
 
-    UMjKeyframe();
+	UMjKeyframe();
 
-    /**
-     * @brief Exports properties to a pre-created MuJoCo spec keyframe structure.
-     *        Codegen-owned: writes Time + the six mjDoubleVec* fields (qpos/
-     *        qvel/act/ctrl/mpos/mquat) from the UPROPERTY values. RegisterToSpec
-     *        applies freejoint-aware padding for qpos/qvel on top.
-     * @param Key  Pointer to the target mjsKey structure.
-     */
-    void ExportTo(mjsKey* Element, mjsDefault* Default = nullptr);
+	/**
+	 * @brief Exports properties to a pre-created MuJoCo spec keyframe structure.
+	 *        Codegen-owned: writes Time + the six mjDoubleVec* fields (qpos/
+	 *        qvel/act/ctrl/mpos/mquat) from the UPROPERTY values. RegisterToSpec
+	 *        applies freejoint-aware padding for qpos/qvel on top.
+	 * @param Key  Pointer to the target mjsKey structure.
+	 */
+	void ExportTo(mjsKey* Element, mjsDefault* Default = nullptr);
 
-    /**
-     * @brief Registers this keyframe to the MuJoCo spec.
-     * @param Wrapper The spec wrapper instance.
-     * @param ParentBody Unused (keyframes are global).
-     */
-    virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
+	/**
+	 * @brief Registers this keyframe to the MuJoCo spec.
+	 * @param Wrapper The spec wrapper instance.
+	 * @param ParentBody Unused (keyframes are global).
+	 */
+	virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody = nullptr) override;
 
-    /**
-     * @brief Imports properties from a raw XML node. Codegen-owned.
-     * @param Node             The <key> XML node inside <keyframe>.
-     * @param CompilerSettings MJCF compiler-level settings (unused here, but
-     *                         matches the standard signature so codegen can
-     *                         emit a tagged import block).
-     */
-    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
+	/**
+	 * @brief Imports properties from a raw XML node. Codegen-owned.
+	 * @param Node             The <key> XML node inside <keyframe>.
+	 * @param CompilerSettings MJCF compiler-level settings (unused here, but
+	 *                         matches the standard signature so codegen can
+	 *                         emit a tagged import block).
+	 */
+	void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{});
 };

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjTactileSensor.h"
@@ -25,34 +25,35 @@
 
 UMjTactileSensor::UMjTactileSensor()
 {
-    Type = EMjSensorType::Tactile;
+	Type = EMjSensorType::Tactile;
 }
 
 void UMjTactileSensor::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 {
-    Super::Bind(Model, Data, Prefix);
-    // Sync Dim from the compiled model so Blueprint inspection shows the real count.
-    // Tactile sensor dimension is set by the MuJoCo compiler based on the contact
-    // geometry of the attached site and cannot be known at spec-build time.
-    Dim = GetDimension();
+	Super::Bind(Model, Data, Prefix);
+	// Sync Dim from the compiled model so Blueprint inspection shows the real count.
+	// Tactile sensor dimension is set by the MuJoCo compiler based on the contact
+	// geometry of the attached site and cannot be known at spec-build time.
+	Dim = GetDimension();
 }
 
 void UMjTactileSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    Super::ExportTo(Element, Default);
+	Super::ExportTo(Element, Default);
 
-    // --- CODEGEN_EXPORT_START ---
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjTactileSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	// --- CODEGEN_IMPORT_END ---
 }
-

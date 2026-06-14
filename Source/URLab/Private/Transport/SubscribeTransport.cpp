@@ -9,5 +9,5 @@
 
 void UURLabSubscribeTransport::SetOwningBridge(UURLabBridgeServer* Bridge)
 {
-    OwningBridge = Bridge;
+	OwningBridge = Bridge;
 }

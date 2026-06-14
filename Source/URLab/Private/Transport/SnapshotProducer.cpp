@@ -19,25 +19,28 @@
 #include "mujoco/mujoco.h"
 
 TArray<uint8> FMjSnapshotProducer::BuildStateSnapshot(AAMjManager* Manager,
-                                                      mjModel* m, mjData* d,
-                                                      int64 StepIndex)
+	mjModel* m, mjData* d,
+	int64 StepIndex)
 {
-    if (!Manager || !m || !d) return {};
+	if (!Manager || !m || !d)
+		return {};
 
-    TSharedPtr<FJsonObject> Snapshot = MakeShared<FJsonObject>();
-    Snapshot->SetStringField(TEXT("op"),    TEXT("state_full"));
-    Snapshot->SetNumberField(TEXT("time"),  d->time);
-    Snapshot->SetNumberField(TEXT("step"),  static_cast<double>(StepIndex));
-    FURLabRpcDispatcher::AppendClockFields(Snapshot, d->time);
+	TSharedPtr<FJsonObject> Snapshot = MakeShared<FJsonObject>();
+	Snapshot->SetStringField(TEXT("op"), TEXT("state_full"));
+	Snapshot->SetNumberField(TEXT("time"), d->time);
+	Snapshot->SetNumberField(TEXT("step"), static_cast<double>(StepIndex));
+	FURLabRpcDispatcher::AppendClockFields(Snapshot, d->time);
 
-    TSharedPtr<FJsonObject> Obs = FURLabRpcDispatcher::BuildStepObservations(
-        Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Standard);
-    if (Obs.IsValid())   Snapshot->SetObjectField(TEXT("per_articulation"), Obs);
+	TSharedPtr<FJsonObject> Obs = FURLabRpcDispatcher::BuildStepObservations(
+		Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Standard);
+	if (Obs.IsValid())
+		Snapshot->SetObjectField(TEXT("per_articulation"), Obs);
 
-    TSharedPtr<FJsonObject> Entities = FURLabRpcDispatcher::BuildEntitiesBlock(Manager, m, d);
-    if (Entities.IsValid()) Snapshot->SetObjectField(TEXT("entities"), Entities);
+	TSharedPtr<FJsonObject> Entities = FURLabRpcDispatcher::BuildEntitiesBlock(Manager, m, d);
+	if (Entities.IsValid())
+		Snapshot->SetObjectField(TEXT("entities"), Entities);
 
-    TArray<uint8> Buf;
-    FURLabMsgpackUtil::PackJsonObject(Snapshot, Buf);
-    return Buf;
+	TArray<uint8> Buf;
+	FURLabMsgpackUtil::PackJsonObject(Snapshot, Buf);
+	return Buf;
 }

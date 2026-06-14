@@ -27,23 +27,23 @@
 
 namespace
 {
-    // Minimal MJCF that compiles: one free body with a capsule geom, plus a
-    // flexcomp that produces a real <flex> asset. The generated flex is named
-    // "cloth" because flexcomp's name becomes the flex name when the flex
-    // section is absent. The flexcomp is authored with edge equality off so
-    // we can add our own explicit <equality><flex ... /> entries.
-    FString MakeFlexEqualityXml(const FString& EqualityChildTag)
-    {
-        // The equality on the flex is the whole point of the test — the
-        // flexcomp's own edge equality is disabled so we're the single
-        // source of a flex-referencing equality in the spec.
-        //
-        // Topology: 2x2 grid of nodes laid out flat in XY (z count = 1).
-        // MuJoCo 3.8 added a stricter orthonormal check on flex grid edge
-        // vectors and rejects degenerate z dimensions when dof="trilinear"
-        // (the third edge has zero length). A 2D cloth uses default dof,
-        // which handles a flat grid fine.
-        return FString::Printf(TEXT(R"(<mujoco>
+// Minimal MJCF that compiles: one free body with a capsule geom, plus a
+// flexcomp that produces a real <flex> asset. The generated flex is named
+// "cloth" because flexcomp's name becomes the flex name when the flex
+// section is absent. The flexcomp is authored with edge equality off so
+// we can add our own explicit <equality><flex ... /> entries.
+FString MakeFlexEqualityXml(const FString& EqualityChildTag)
+{
+	// The equality on the flex is the whole point of the test — the
+	// flexcomp's own edge equality is disabled so we're the single
+	// source of a flex-referencing equality in the spec.
+	//
+	// Topology: 2x2 grid of nodes laid out flat in XY (z count = 1).
+	// MuJoCo 3.8 added a stricter orthonormal check on flex grid edge
+	// vectors and rejects degenerate z dimensions when dof="trilinear"
+	// (the third edge has zero length). A 2D cloth uses default dof,
+	// which handles a flat grid fine.
+	return FString::Printf(TEXT(R"(<mujoco>
   <worldbody>
     <body name="anchor" pos="0 0 0">
       <geom size=".05"/>
@@ -58,57 +58,58 @@ namespace
   <equality>
     <%s flex="cloth" active="true"/>
   </equality>
-</mujoco>)"), *EqualityChildTag);
-    }
+</mujoco>)"),
+		*EqualityChildTag);
 }
+} // namespace
 
 // Parametrised helper: run the parser on a flex-equality child tag and verify
 // the generated UMjEquality uses the expected enum value.
 static bool CheckFlexEqualityVariant(FAutomationTestBase& Tester,
-                                     const FString& Tag,
-                                     EMjEqualityType Expected)
+	const FString& Tag,
+	EMjEqualityType Expected)
 {
-    FMjXmlImportSession S;
-    const FString Xml = MakeFlexEqualityXml(Tag);
-    if (!S.Init(Xml))
-    {
-        Tester.AddError(FString::Printf(TEXT("Init failed (%s): %s"), *Tag, *S.LastError));
-        return false;
-    }
+	FMjXmlImportSession S;
+	const FString Xml = MakeFlexEqualityXml(Tag);
+	if (!S.Init(Xml))
+	{
+		Tester.AddError(FString::Printf(TEXT("Init failed (%s): %s"), *Tag, *S.LastError));
+		return false;
+	}
 
-    UMjEquality* Eq = S.FindFirstTemplate<UMjEquality>();
-    if (!Tester.TestNotNull(TEXT("equality component"), Eq))
-    {
-        return false;
-    }
+	UMjEquality* Eq = S.FindFirstTemplate<UMjEquality>();
+	if (!Tester.TestNotNull(TEXT("equality component"), Eq))
+	{
+		return false;
+	}
 
-    Tester.TestTrue(FString::Printf(TEXT("<%s> → EqualityType matches"), *Tag),
-        Eq->EqualityType == Expected);
-    Tester.TestEqual(FString::Printf(TEXT("<%s>: flex attribute captured as Obj1"), *Tag),
-        Eq->Obj1, FString(TEXT("cloth")));
-    return true;
+	Tester.TestTrue(FString::Printf(TEXT("<%s> → EqualityType matches"), *Tag),
+		Eq->EqualityType == Expected);
+	Tester.TestEqual(FString::Printf(TEXT("<%s>: flex attribute captured as Obj1"), *Tag),
+		Eq->Obj1, FString(TEXT("cloth")));
+	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlex,
-    "URLab.Equality.Flex",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Equality.Flex",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FMjEqualityFlex::RunTest(const FString&)
 {
-    return CheckFlexEqualityVariant(*this, TEXT("flex"), EMjEqualityType::Flex);
+	return CheckFlexEqualityVariant(*this, TEXT("flex"), EMjEqualityType::Flex);
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlexVert,
-    "URLab.Equality.FlexVert",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Equality.FlexVert",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FMjEqualityFlexVert::RunTest(const FString&)
 {
-    return CheckFlexEqualityVariant(*this, TEXT("flexvert"), EMjEqualityType::FlexVert);
+	return CheckFlexEqualityVariant(*this, TEXT("flexvert"), EMjEqualityType::FlexVert);
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlexStrain,
-    "URLab.Equality.FlexStrain",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Equality.FlexStrain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FMjEqualityFlexStrain::RunTest(const FString&)
 {
-    return CheckFlexEqualityVariant(*this, TEXT("flexstrain"), EMjEqualityType::FlexStrain);
+	return CheckFlexEqualityVariant(*this, TEXT("flexstrain"), EMjEqualityType::FlexStrain);
 }

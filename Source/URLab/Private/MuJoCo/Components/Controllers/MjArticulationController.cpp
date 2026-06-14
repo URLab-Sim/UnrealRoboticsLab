@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Controllers/MjArticulationController.h"
@@ -37,11 +37,11 @@ void UMjArticulationController::Bind(mjModel* m, mjData* d, const TMap<int32, UM
 	{
 		int32 ActId = Elem.Key;
 		UMjActuator* Actuator = Elem.Value;
-		if (!Actuator || ActId < 0 || ActId >= m->nu) continue;
+		if (!Actuator || ActId < 0 || ActId >= m->nu)
+			continue;
 
 		// Only handle joint-transmission actuators (hinge, slide)
-		if (m->actuator_trntype[ActId] != mjTRN_JOINT &&
-		    m->actuator_trntype[ActId] != mjTRN_JOINTINPARENT)
+		if (m->actuator_trntype[ActId] != mjTRN_JOINT && m->actuator_trntype[ActId] != mjTRN_JOINTINPARENT)
 		{
 			UE_LOG(LogURLab, Warning, TEXT("[ArticulationController] Actuator %d has non-joint transmission type %d, skipping"),
 				ActId, m->actuator_trntype[ActId]);
@@ -49,7 +49,8 @@ void UMjArticulationController::Bind(mjModel* m, mjData* d, const TMap<int32, UM
 		}
 
 		int32 JointId = m->actuator_trnid[ActId * 2];
-		if (JointId < 0 || JointId >= m->njnt) continue;
+		if (JointId < 0 || JointId >= m->njnt)
+			continue;
 
 		// Skip free and ball joints (multi-DOF)
 		int32 JointType = m->jnt_type[JointId];

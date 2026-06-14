@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -40,135 +40,132 @@
 UENUM(BlueprintType)
 enum class EMjSiteType : uint8
 {
-	Sphere		UMETA(DisplayName = "Sphere"),
-	Capsule		UMETA(DisplayName = "Capsule"),
-	Ellipsoid	UMETA(DisplayName = "Ellipsoid"),
-	Cylinder	UMETA(DisplayName = "Cylinder"),
-	Box			UMETA(DisplayName = "Box"),
-	Mesh		UMETA(DisplayName = "Mesh"),
-	Hfield		UMETA(DisplayName = "Hfield"),
+	Sphere UMETA(DisplayName = "Sphere"),
+	Capsule UMETA(DisplayName = "Capsule"),
+	Ellipsoid UMETA(DisplayName = "Ellipsoid"),
+	Cylinder UMETA(DisplayName = "Cylinder"),
+	Box UMETA(DisplayName = "Box"),
+	Mesh UMETA(DisplayName = "Mesh"),
+	Hfield UMETA(DisplayName = "Hfield"),
 };
 
 /**
  * @class UMjSite
  * @brief Represents a MuJoCo site element within Unreal Engine.
- * 
+ *
  * Sites are interesting locations on a body, used for sensor attachment, constraint definition, or visualization.
  * This component mirrors the `site` element in MuJoCo XML.
  */
-UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjSite : public UMjComponent
 {
 	GENERATED_BODY()
 
+public:
+	// --- CODEGEN_PROPERTIES_START ---
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site|Spatial Pose", meta = (InlineEditConditionToggle))
+	bool bOverride_Pos = false;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site|Spatial Pose", meta = (EditCondition = "false", EditConditionHides))
+	FVector Pos = FVector::ZeroVector;
+
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site|Orientation", meta = (InlineEditConditionToggle))
+	bool bOverride_Quat = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site|Orientation", meta = (EditCondition = "false", EditConditionHides))
+	FQuat Quat = FQuat::Identity;
+
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (InlineEditConditionToggle))
+	bool bOverride_group = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta = (EditCondition = "bOverride_group"))
+	int32 group = 0;
+
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (InlineEditConditionToggle))
+	bool bOverride_material = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta = (EditCondition = "bOverride_material"))
+	FString material = TEXT("");
+
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (InlineEditConditionToggle))
+	bool bOverride_size = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta = (EditCondition = "false", EditConditionHides))
+	TArray<float> size = {};
+
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (InlineEditConditionToggle))
+	bool bOverride_rgba = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta = (EditCondition = "bOverride_rgba"))
+	FLinearColor rgba = FLinearColor::White;
+	// --- CODEGEN_PROPERTIES_END ---
+
+	/**
+	 * @brief Exports properties to a MuJoCo spec site structure.
+	 * @param site Pointer to the target mjsSite structure.
+	 * @param def Optional default structure for optimized export.
+	 */
+	void ExportTo(mjsSite* Element, mjsDefault* def = nullptr);
+
+	/**
+	 * @brief Binds this component to the live MuJoCo simulation.
+	 */
+	virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
+
+	/**
+	 * @brief Registers this site to the MuJoCo spec.
+	 * @param Wrapper The spec wrapper instance.
+	 * @param ParentBody The parent body to attach to.
+	 */
+	virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody) override;
+
+	/**
+	 * @brief Imports properties from a MuJoCo XML node.
+	 * @param Node Pointer to the XML node.
+	 */
+	void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings);
 
 public:
-
-    // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site|Spatial Pose", meta=(InlineEditConditionToggle))
-    bool bOverride_Pos = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
-    FVector Pos = FVector::ZeroVector;
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site|Orientation", meta=(InlineEditConditionToggle))
-    bool bOverride_Quat = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site|Orientation", meta=(EditCondition="false", EditConditionHides))
-    FQuat Quat = FQuat::Identity;
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
-    bool bOverride_group = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_group"))
-    int32 group = 0;
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
-    bool bOverride_material = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_material"))
-    FString material = TEXT("");
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
-    bool bOverride_size = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="false", EditConditionHides))
-    TArray<float> size = {};
-
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta=(InlineEditConditionToggle))
-    bool bOverride_rgba = false;
-
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(EditCondition="bOverride_rgba"))
-    FLinearColor rgba = FLinearColor::White;
-    // --- CODEGEN_PROPERTIES_END ---
-
-    /**
-     * @brief Exports properties to a MuJoCo spec site structure.
-     * @param site Pointer to the target mjsSite structure.
-     * @param def Optional default structure for optimized export.
-     */
-    void ExportTo(mjsSite* Element, mjsDefault* def = nullptr);
-    
-    /**
-     * @brief Binds this component to the live MuJoCo simulation.
-     */
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
-
-    /**
-     * @brief Registers this site to the MuJoCo spec.
-     * @param Wrapper The spec wrapper instance.
-     * @param ParentBody The parent body to attach to.
-     */
-    virtual void RegisterToSpec(class FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody) override;
-
-    /**
-     * @brief Imports properties from a MuJoCo XML node.
-     * @param Node Pointer to the XML node.
-     */
-    void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings);
-
-public:	
-    /** @brief Default constructor. */
+	/** @brief Default constructor. */
 	UMjSite();
 
-public:	
+public:
 	// --- Geometric Properties ---
-    /** @brief The geometric shape type of the site. */
+	/** @brief The geometric shape type of the site. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site")
 	EMjSiteType Type = EMjSiteType::Sphere;
 
 	// size is codegen-owned (TArray<float>) — see CODEGEN_PROPERTIES block.
 	// Interpretation depends on Type (sphere: size[0]; capsule: [0]+[1]; box: [0..2]).
 
-    /** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta=(GetOptions="GetDefaultClassOptions"))
-    FString MjClassName;
+	/** @brief Optional MuJoCo class name to inherit defaults from (string fallback). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site", meta = (GetOptions = "GetDefaultClassOptions"))
+	FString MjClassName;
 
 #if WITH_EDITOR
-    UFUNCTION()
-    TArray<FString> GetDefaultClassOptions() const;
+	UFUNCTION()
+	TArray<FString> GetDefaultClassOptions() const;
 #endif
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
-     *  Details panel — synced from MjClassName via the editor dropdown. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site",
-              meta=(EditCondition="false", EditConditionHides))
-    UMjDefault* DefaultClass = nullptr;
+	/** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+	 *  Details panel — synced from MjClassName via the editor dropdown. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Site",
+		meta = (EditCondition = "false", EditConditionHides))
+	UMjDefault* DefaultClass = nullptr;
 
-    virtual FString GetMjClassName() const override
-    {
-        return MjClassName;
-    }
+	virtual FString GetMjClassName() const override
+	{
+		return MjClassName;
+	}
 
 	// --- Visuals ---
 
-    /** @brief The runtime view of the MuJoCo site. Valid only after Bind() is called. */
-    SiteView m_SiteView;
+	/** @brief The runtime view of the MuJoCo site. Valid only after Bind() is called. */
+	SiteView m_SiteView;
 
-    /** @brief Semantic accessor for raw MuJoCo data and helper methods. */
-    SiteView& GetMj() { return m_SiteView; }
-    const SiteView& GetMj() const { return m_SiteView; }
+	/** @brief Semantic accessor for raw MuJoCo data and helper methods. */
+	SiteView& GetMj() { return m_SiteView; }
+	const SiteView& GetMj() const { return m_SiteView; }
 };
 
 // --- Multi-UCLASS subclasses --------------------------------------------------
@@ -178,42 +175,42 @@ public:
 // All schema attrs (group/material/rgba/Pos/Quat/size) live on the base
 // UMjSite via codegen — the subclasses only set the Type enum.
 
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Box Site"))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent, DisplayName = "MuJoCo Box Site"))
 class URLAB_API UMjBoxSite : public UMjSite
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    UMjBoxSite();
+	UMjBoxSite();
 };
 
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Sphere Site"))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent, DisplayName = "MuJoCo Sphere Site"))
 class URLAB_API UMjSphereSite : public UMjSite
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    UMjSphereSite();
+	UMjSphereSite();
 };
 
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Capsule Site"))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent, DisplayName = "MuJoCo Capsule Site"))
 class URLAB_API UMjCapsuleSite : public UMjSite
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    UMjCapsuleSite();
+	UMjCapsuleSite();
 };
 
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Cylinder Site"))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent, DisplayName = "MuJoCo Cylinder Site"))
 class URLAB_API UMjCylinderSite : public UMjSite
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    UMjCylinderSite();
+	UMjCylinderSite();
 };
 
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent, DisplayName="MuJoCo Ellipsoid Site"))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent, DisplayName = "MuJoCo Ellipsoid Site"))
 class URLAB_API UMjEllipsoidSite : public UMjSite
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 public:
-    UMjEllipsoidSite();
+	UMjEllipsoidSite();
 };

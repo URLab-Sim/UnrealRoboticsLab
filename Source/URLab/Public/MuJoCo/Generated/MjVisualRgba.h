@@ -34,261 +34,261 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FMjVisualRgba
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Fog = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Fog = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Fog"))
-    FLinearColor Fog = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Fog"))
+	FLinearColor Fog = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Haze = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Haze = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Haze"))
-    FLinearColor Haze = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Haze"))
+	FLinearColor Haze = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Force = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Force = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Force"))
-    FLinearColor Force = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Force"))
+	FLinearColor Force = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Inertia = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Inertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Inertia"))
-    FLinearColor Inertia = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Inertia"))
+	FLinearColor Inertia = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Joint = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Joint = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Joint"))
-    FLinearColor Joint = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Joint"))
+	FLinearColor Joint = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Actuator = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Actuator = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Actuator"))
-    FLinearColor Actuator = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Actuator"))
+	FLinearColor Actuator = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Actuatornegative = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Actuatornegative = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Actuatornegative"))
-    FLinearColor Actuatornegative = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Actuatornegative"))
+	FLinearColor Actuatornegative = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Actuatorpositive = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Actuatorpositive = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Actuatorpositive"))
-    FLinearColor Actuatorpositive = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Actuatorpositive"))
+	FLinearColor Actuatorpositive = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Com = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Com = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Com"))
-    FLinearColor Com = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Com"))
+	FLinearColor Com = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Camera = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Camera = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Camera"))
-    FLinearColor Camera = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Camera"))
+	FLinearColor Camera = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Light = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Light = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Light"))
-    FLinearColor Light = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Light"))
+	FLinearColor Light = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Selectpoint = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Selectpoint = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Selectpoint"))
-    FLinearColor Selectpoint = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Selectpoint"))
+	FLinearColor Selectpoint = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Connect = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Connect = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Connect"))
-    FLinearColor Connect = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Connect"))
+	FLinearColor Connect = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Contactpoint = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Contactpoint = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Contactpoint"))
-    FLinearColor Contactpoint = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Contactpoint"))
+	FLinearColor Contactpoint = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Contactforce = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Contactforce = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Contactforce"))
-    FLinearColor Contactforce = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Contactforce"))
+	FLinearColor Contactforce = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Contactfriction = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Contactfriction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Contactfriction"))
-    FLinearColor Contactfriction = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Contactfriction"))
+	FLinearColor Contactfriction = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Contacttorque = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Contacttorque = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Contacttorque"))
-    FLinearColor Contacttorque = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Contacttorque"))
+	FLinearColor Contacttorque = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Contactgap = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Contactgap = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Contactgap"))
-    FLinearColor Contactgap = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Contactgap"))
+	FLinearColor Contactgap = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Rangefinder = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Rangefinder = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Rangefinder"))
-    FLinearColor Rangefinder = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Rangefinder"))
+	FLinearColor Rangefinder = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Constraint = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Constraint = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Constraint"))
-    FLinearColor Constraint = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Constraint"))
+	FLinearColor Constraint = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Slidercrank = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Slidercrank = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Slidercrank"))
-    FLinearColor Slidercrank = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Slidercrank"))
+	FLinearColor Slidercrank = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Crankbroken = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Crankbroken = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Crankbroken"))
-    FLinearColor Crankbroken = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Crankbroken"))
+	FLinearColor Crankbroken = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Frustum = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Frustum = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Frustum"))
-    FLinearColor Frustum = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Frustum"))
+	FLinearColor Frustum = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Bv = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Bv = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Bv"))
-    FLinearColor Bv = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Bv"))
+	FLinearColor Bv = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta=(InlineEditConditionToggle))
-    bool bOverride_Bvactive = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Rgba", meta = (InlineEditConditionToggle))
+	bool bOverride_Bvactive = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta=(EditCondition="bOverride_Bvactive"))
-    FLinearColor Bvactive = FLinearColor::White;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Rgba", meta = (EditCondition = "bOverride_Bvactive"))
+	FLinearColor Bvactive = FLinearColor::White;
 
-    /** @brief Mirror every field into a runtime C struct. */
-    template <typename TDst>
-    void ApplyTo(TDst& Dst) const
-    {
-    Dst.fog[0] = static_cast<decltype(Dst.fog[0])>(Fog.R);
-    Dst.fog[1] = static_cast<decltype(Dst.fog[1])>(Fog.G);
-    Dst.fog[2] = static_cast<decltype(Dst.fog[2])>(Fog.B);
-    Dst.fog[3] = static_cast<decltype(Dst.fog[3])>(Fog.A);
-    Dst.haze[0] = static_cast<decltype(Dst.haze[0])>(Haze.R);
-    Dst.haze[1] = static_cast<decltype(Dst.haze[1])>(Haze.G);
-    Dst.haze[2] = static_cast<decltype(Dst.haze[2])>(Haze.B);
-    Dst.haze[3] = static_cast<decltype(Dst.haze[3])>(Haze.A);
-    Dst.force[0] = static_cast<decltype(Dst.force[0])>(Force.R);
-    Dst.force[1] = static_cast<decltype(Dst.force[1])>(Force.G);
-    Dst.force[2] = static_cast<decltype(Dst.force[2])>(Force.B);
-    Dst.force[3] = static_cast<decltype(Dst.force[3])>(Force.A);
-    Dst.inertia[0] = static_cast<decltype(Dst.inertia[0])>(Inertia.R);
-    Dst.inertia[1] = static_cast<decltype(Dst.inertia[1])>(Inertia.G);
-    Dst.inertia[2] = static_cast<decltype(Dst.inertia[2])>(Inertia.B);
-    Dst.inertia[3] = static_cast<decltype(Dst.inertia[3])>(Inertia.A);
-    Dst.joint[0] = static_cast<decltype(Dst.joint[0])>(Joint.R);
-    Dst.joint[1] = static_cast<decltype(Dst.joint[1])>(Joint.G);
-    Dst.joint[2] = static_cast<decltype(Dst.joint[2])>(Joint.B);
-    Dst.joint[3] = static_cast<decltype(Dst.joint[3])>(Joint.A);
-    Dst.actuator[0] = static_cast<decltype(Dst.actuator[0])>(Actuator.R);
-    Dst.actuator[1] = static_cast<decltype(Dst.actuator[1])>(Actuator.G);
-    Dst.actuator[2] = static_cast<decltype(Dst.actuator[2])>(Actuator.B);
-    Dst.actuator[3] = static_cast<decltype(Dst.actuator[3])>(Actuator.A);
-    Dst.actuatornegative[0] = static_cast<decltype(Dst.actuatornegative[0])>(Actuatornegative.R);
-    Dst.actuatornegative[1] = static_cast<decltype(Dst.actuatornegative[1])>(Actuatornegative.G);
-    Dst.actuatornegative[2] = static_cast<decltype(Dst.actuatornegative[2])>(Actuatornegative.B);
-    Dst.actuatornegative[3] = static_cast<decltype(Dst.actuatornegative[3])>(Actuatornegative.A);
-    Dst.actuatorpositive[0] = static_cast<decltype(Dst.actuatorpositive[0])>(Actuatorpositive.R);
-    Dst.actuatorpositive[1] = static_cast<decltype(Dst.actuatorpositive[1])>(Actuatorpositive.G);
-    Dst.actuatorpositive[2] = static_cast<decltype(Dst.actuatorpositive[2])>(Actuatorpositive.B);
-    Dst.actuatorpositive[3] = static_cast<decltype(Dst.actuatorpositive[3])>(Actuatorpositive.A);
-    Dst.com[0] = static_cast<decltype(Dst.com[0])>(Com.R);
-    Dst.com[1] = static_cast<decltype(Dst.com[1])>(Com.G);
-    Dst.com[2] = static_cast<decltype(Dst.com[2])>(Com.B);
-    Dst.com[3] = static_cast<decltype(Dst.com[3])>(Com.A);
-    Dst.camera[0] = static_cast<decltype(Dst.camera[0])>(Camera.R);
-    Dst.camera[1] = static_cast<decltype(Dst.camera[1])>(Camera.G);
-    Dst.camera[2] = static_cast<decltype(Dst.camera[2])>(Camera.B);
-    Dst.camera[3] = static_cast<decltype(Dst.camera[3])>(Camera.A);
-    Dst.light[0] = static_cast<decltype(Dst.light[0])>(Light.R);
-    Dst.light[1] = static_cast<decltype(Dst.light[1])>(Light.G);
-    Dst.light[2] = static_cast<decltype(Dst.light[2])>(Light.B);
-    Dst.light[3] = static_cast<decltype(Dst.light[3])>(Light.A);
-    Dst.selectpoint[0] = static_cast<decltype(Dst.selectpoint[0])>(Selectpoint.R);
-    Dst.selectpoint[1] = static_cast<decltype(Dst.selectpoint[1])>(Selectpoint.G);
-    Dst.selectpoint[2] = static_cast<decltype(Dst.selectpoint[2])>(Selectpoint.B);
-    Dst.selectpoint[3] = static_cast<decltype(Dst.selectpoint[3])>(Selectpoint.A);
-    Dst.connect[0] = static_cast<decltype(Dst.connect[0])>(Connect.R);
-    Dst.connect[1] = static_cast<decltype(Dst.connect[1])>(Connect.G);
-    Dst.connect[2] = static_cast<decltype(Dst.connect[2])>(Connect.B);
-    Dst.connect[3] = static_cast<decltype(Dst.connect[3])>(Connect.A);
-    Dst.contactpoint[0] = static_cast<decltype(Dst.contactpoint[0])>(Contactpoint.R);
-    Dst.contactpoint[1] = static_cast<decltype(Dst.contactpoint[1])>(Contactpoint.G);
-    Dst.contactpoint[2] = static_cast<decltype(Dst.contactpoint[2])>(Contactpoint.B);
-    Dst.contactpoint[3] = static_cast<decltype(Dst.contactpoint[3])>(Contactpoint.A);
-    Dst.contactforce[0] = static_cast<decltype(Dst.contactforce[0])>(Contactforce.R);
-    Dst.contactforce[1] = static_cast<decltype(Dst.contactforce[1])>(Contactforce.G);
-    Dst.contactforce[2] = static_cast<decltype(Dst.contactforce[2])>(Contactforce.B);
-    Dst.contactforce[3] = static_cast<decltype(Dst.contactforce[3])>(Contactforce.A);
-    Dst.contactfriction[0] = static_cast<decltype(Dst.contactfriction[0])>(Contactfriction.R);
-    Dst.contactfriction[1] = static_cast<decltype(Dst.contactfriction[1])>(Contactfriction.G);
-    Dst.contactfriction[2] = static_cast<decltype(Dst.contactfriction[2])>(Contactfriction.B);
-    Dst.contactfriction[3] = static_cast<decltype(Dst.contactfriction[3])>(Contactfriction.A);
-    Dst.contacttorque[0] = static_cast<decltype(Dst.contacttorque[0])>(Contacttorque.R);
-    Dst.contacttorque[1] = static_cast<decltype(Dst.contacttorque[1])>(Contacttorque.G);
-    Dst.contacttorque[2] = static_cast<decltype(Dst.contacttorque[2])>(Contacttorque.B);
-    Dst.contacttorque[3] = static_cast<decltype(Dst.contacttorque[3])>(Contacttorque.A);
-    Dst.contactgap[0] = static_cast<decltype(Dst.contactgap[0])>(Contactgap.R);
-    Dst.contactgap[1] = static_cast<decltype(Dst.contactgap[1])>(Contactgap.G);
-    Dst.contactgap[2] = static_cast<decltype(Dst.contactgap[2])>(Contactgap.B);
-    Dst.contactgap[3] = static_cast<decltype(Dst.contactgap[3])>(Contactgap.A);
-    Dst.rangefinder[0] = static_cast<decltype(Dst.rangefinder[0])>(Rangefinder.R);
-    Dst.rangefinder[1] = static_cast<decltype(Dst.rangefinder[1])>(Rangefinder.G);
-    Dst.rangefinder[2] = static_cast<decltype(Dst.rangefinder[2])>(Rangefinder.B);
-    Dst.rangefinder[3] = static_cast<decltype(Dst.rangefinder[3])>(Rangefinder.A);
-    Dst.constraint[0] = static_cast<decltype(Dst.constraint[0])>(Constraint.R);
-    Dst.constraint[1] = static_cast<decltype(Dst.constraint[1])>(Constraint.G);
-    Dst.constraint[2] = static_cast<decltype(Dst.constraint[2])>(Constraint.B);
-    Dst.constraint[3] = static_cast<decltype(Dst.constraint[3])>(Constraint.A);
-    Dst.slidercrank[0] = static_cast<decltype(Dst.slidercrank[0])>(Slidercrank.R);
-    Dst.slidercrank[1] = static_cast<decltype(Dst.slidercrank[1])>(Slidercrank.G);
-    Dst.slidercrank[2] = static_cast<decltype(Dst.slidercrank[2])>(Slidercrank.B);
-    Dst.slidercrank[3] = static_cast<decltype(Dst.slidercrank[3])>(Slidercrank.A);
-    Dst.crankbroken[0] = static_cast<decltype(Dst.crankbroken[0])>(Crankbroken.R);
-    Dst.crankbroken[1] = static_cast<decltype(Dst.crankbroken[1])>(Crankbroken.G);
-    Dst.crankbroken[2] = static_cast<decltype(Dst.crankbroken[2])>(Crankbroken.B);
-    Dst.crankbroken[3] = static_cast<decltype(Dst.crankbroken[3])>(Crankbroken.A);
-    Dst.frustum[0] = static_cast<decltype(Dst.frustum[0])>(Frustum.R);
-    Dst.frustum[1] = static_cast<decltype(Dst.frustum[1])>(Frustum.G);
-    Dst.frustum[2] = static_cast<decltype(Dst.frustum[2])>(Frustum.B);
-    Dst.frustum[3] = static_cast<decltype(Dst.frustum[3])>(Frustum.A);
-    Dst.bv[0] = static_cast<decltype(Dst.bv[0])>(Bv.R);
-    Dst.bv[1] = static_cast<decltype(Dst.bv[1])>(Bv.G);
-    Dst.bv[2] = static_cast<decltype(Dst.bv[2])>(Bv.B);
-    Dst.bv[3] = static_cast<decltype(Dst.bv[3])>(Bv.A);
-    Dst.bvactive[0] = static_cast<decltype(Dst.bvactive[0])>(Bvactive.R);
-    Dst.bvactive[1] = static_cast<decltype(Dst.bvactive[1])>(Bvactive.G);
-    Dst.bvactive[2] = static_cast<decltype(Dst.bvactive[2])>(Bvactive.B);
-    Dst.bvactive[3] = static_cast<decltype(Dst.bvactive[3])>(Bvactive.A);
-    }
+	/** @brief Mirror every field into a runtime C struct. */
+	template <typename TDst>
+	void ApplyTo(TDst& Dst) const
+	{
+		Dst.fog[0] = static_cast<decltype(Dst.fog[0])>(Fog.R);
+		Dst.fog[1] = static_cast<decltype(Dst.fog[1])>(Fog.G);
+		Dst.fog[2] = static_cast<decltype(Dst.fog[2])>(Fog.B);
+		Dst.fog[3] = static_cast<decltype(Dst.fog[3])>(Fog.A);
+		Dst.haze[0] = static_cast<decltype(Dst.haze[0])>(Haze.R);
+		Dst.haze[1] = static_cast<decltype(Dst.haze[1])>(Haze.G);
+		Dst.haze[2] = static_cast<decltype(Dst.haze[2])>(Haze.B);
+		Dst.haze[3] = static_cast<decltype(Dst.haze[3])>(Haze.A);
+		Dst.force[0] = static_cast<decltype(Dst.force[0])>(Force.R);
+		Dst.force[1] = static_cast<decltype(Dst.force[1])>(Force.G);
+		Dst.force[2] = static_cast<decltype(Dst.force[2])>(Force.B);
+		Dst.force[3] = static_cast<decltype(Dst.force[3])>(Force.A);
+		Dst.inertia[0] = static_cast<decltype(Dst.inertia[0])>(Inertia.R);
+		Dst.inertia[1] = static_cast<decltype(Dst.inertia[1])>(Inertia.G);
+		Dst.inertia[2] = static_cast<decltype(Dst.inertia[2])>(Inertia.B);
+		Dst.inertia[3] = static_cast<decltype(Dst.inertia[3])>(Inertia.A);
+		Dst.joint[0] = static_cast<decltype(Dst.joint[0])>(Joint.R);
+		Dst.joint[1] = static_cast<decltype(Dst.joint[1])>(Joint.G);
+		Dst.joint[2] = static_cast<decltype(Dst.joint[2])>(Joint.B);
+		Dst.joint[3] = static_cast<decltype(Dst.joint[3])>(Joint.A);
+		Dst.actuator[0] = static_cast<decltype(Dst.actuator[0])>(Actuator.R);
+		Dst.actuator[1] = static_cast<decltype(Dst.actuator[1])>(Actuator.G);
+		Dst.actuator[2] = static_cast<decltype(Dst.actuator[2])>(Actuator.B);
+		Dst.actuator[3] = static_cast<decltype(Dst.actuator[3])>(Actuator.A);
+		Dst.actuatornegative[0] = static_cast<decltype(Dst.actuatornegative[0])>(Actuatornegative.R);
+		Dst.actuatornegative[1] = static_cast<decltype(Dst.actuatornegative[1])>(Actuatornegative.G);
+		Dst.actuatornegative[2] = static_cast<decltype(Dst.actuatornegative[2])>(Actuatornegative.B);
+		Dst.actuatornegative[3] = static_cast<decltype(Dst.actuatornegative[3])>(Actuatornegative.A);
+		Dst.actuatorpositive[0] = static_cast<decltype(Dst.actuatorpositive[0])>(Actuatorpositive.R);
+		Dst.actuatorpositive[1] = static_cast<decltype(Dst.actuatorpositive[1])>(Actuatorpositive.G);
+		Dst.actuatorpositive[2] = static_cast<decltype(Dst.actuatorpositive[2])>(Actuatorpositive.B);
+		Dst.actuatorpositive[3] = static_cast<decltype(Dst.actuatorpositive[3])>(Actuatorpositive.A);
+		Dst.com[0] = static_cast<decltype(Dst.com[0])>(Com.R);
+		Dst.com[1] = static_cast<decltype(Dst.com[1])>(Com.G);
+		Dst.com[2] = static_cast<decltype(Dst.com[2])>(Com.B);
+		Dst.com[3] = static_cast<decltype(Dst.com[3])>(Com.A);
+		Dst.camera[0] = static_cast<decltype(Dst.camera[0])>(Camera.R);
+		Dst.camera[1] = static_cast<decltype(Dst.camera[1])>(Camera.G);
+		Dst.camera[2] = static_cast<decltype(Dst.camera[2])>(Camera.B);
+		Dst.camera[3] = static_cast<decltype(Dst.camera[3])>(Camera.A);
+		Dst.light[0] = static_cast<decltype(Dst.light[0])>(Light.R);
+		Dst.light[1] = static_cast<decltype(Dst.light[1])>(Light.G);
+		Dst.light[2] = static_cast<decltype(Dst.light[2])>(Light.B);
+		Dst.light[3] = static_cast<decltype(Dst.light[3])>(Light.A);
+		Dst.selectpoint[0] = static_cast<decltype(Dst.selectpoint[0])>(Selectpoint.R);
+		Dst.selectpoint[1] = static_cast<decltype(Dst.selectpoint[1])>(Selectpoint.G);
+		Dst.selectpoint[2] = static_cast<decltype(Dst.selectpoint[2])>(Selectpoint.B);
+		Dst.selectpoint[3] = static_cast<decltype(Dst.selectpoint[3])>(Selectpoint.A);
+		Dst.connect[0] = static_cast<decltype(Dst.connect[0])>(Connect.R);
+		Dst.connect[1] = static_cast<decltype(Dst.connect[1])>(Connect.G);
+		Dst.connect[2] = static_cast<decltype(Dst.connect[2])>(Connect.B);
+		Dst.connect[3] = static_cast<decltype(Dst.connect[3])>(Connect.A);
+		Dst.contactpoint[0] = static_cast<decltype(Dst.contactpoint[0])>(Contactpoint.R);
+		Dst.contactpoint[1] = static_cast<decltype(Dst.contactpoint[1])>(Contactpoint.G);
+		Dst.contactpoint[2] = static_cast<decltype(Dst.contactpoint[2])>(Contactpoint.B);
+		Dst.contactpoint[3] = static_cast<decltype(Dst.contactpoint[3])>(Contactpoint.A);
+		Dst.contactforce[0] = static_cast<decltype(Dst.contactforce[0])>(Contactforce.R);
+		Dst.contactforce[1] = static_cast<decltype(Dst.contactforce[1])>(Contactforce.G);
+		Dst.contactforce[2] = static_cast<decltype(Dst.contactforce[2])>(Contactforce.B);
+		Dst.contactforce[3] = static_cast<decltype(Dst.contactforce[3])>(Contactforce.A);
+		Dst.contactfriction[0] = static_cast<decltype(Dst.contactfriction[0])>(Contactfriction.R);
+		Dst.contactfriction[1] = static_cast<decltype(Dst.contactfriction[1])>(Contactfriction.G);
+		Dst.contactfriction[2] = static_cast<decltype(Dst.contactfriction[2])>(Contactfriction.B);
+		Dst.contactfriction[3] = static_cast<decltype(Dst.contactfriction[3])>(Contactfriction.A);
+		Dst.contacttorque[0] = static_cast<decltype(Dst.contacttorque[0])>(Contacttorque.R);
+		Dst.contacttorque[1] = static_cast<decltype(Dst.contacttorque[1])>(Contacttorque.G);
+		Dst.contacttorque[2] = static_cast<decltype(Dst.contacttorque[2])>(Contacttorque.B);
+		Dst.contacttorque[3] = static_cast<decltype(Dst.contacttorque[3])>(Contacttorque.A);
+		Dst.contactgap[0] = static_cast<decltype(Dst.contactgap[0])>(Contactgap.R);
+		Dst.contactgap[1] = static_cast<decltype(Dst.contactgap[1])>(Contactgap.G);
+		Dst.contactgap[2] = static_cast<decltype(Dst.contactgap[2])>(Contactgap.B);
+		Dst.contactgap[3] = static_cast<decltype(Dst.contactgap[3])>(Contactgap.A);
+		Dst.rangefinder[0] = static_cast<decltype(Dst.rangefinder[0])>(Rangefinder.R);
+		Dst.rangefinder[1] = static_cast<decltype(Dst.rangefinder[1])>(Rangefinder.G);
+		Dst.rangefinder[2] = static_cast<decltype(Dst.rangefinder[2])>(Rangefinder.B);
+		Dst.rangefinder[3] = static_cast<decltype(Dst.rangefinder[3])>(Rangefinder.A);
+		Dst.constraint[0] = static_cast<decltype(Dst.constraint[0])>(Constraint.R);
+		Dst.constraint[1] = static_cast<decltype(Dst.constraint[1])>(Constraint.G);
+		Dst.constraint[2] = static_cast<decltype(Dst.constraint[2])>(Constraint.B);
+		Dst.constraint[3] = static_cast<decltype(Dst.constraint[3])>(Constraint.A);
+		Dst.slidercrank[0] = static_cast<decltype(Dst.slidercrank[0])>(Slidercrank.R);
+		Dst.slidercrank[1] = static_cast<decltype(Dst.slidercrank[1])>(Slidercrank.G);
+		Dst.slidercrank[2] = static_cast<decltype(Dst.slidercrank[2])>(Slidercrank.B);
+		Dst.slidercrank[3] = static_cast<decltype(Dst.slidercrank[3])>(Slidercrank.A);
+		Dst.crankbroken[0] = static_cast<decltype(Dst.crankbroken[0])>(Crankbroken.R);
+		Dst.crankbroken[1] = static_cast<decltype(Dst.crankbroken[1])>(Crankbroken.G);
+		Dst.crankbroken[2] = static_cast<decltype(Dst.crankbroken[2])>(Crankbroken.B);
+		Dst.crankbroken[3] = static_cast<decltype(Dst.crankbroken[3])>(Crankbroken.A);
+		Dst.frustum[0] = static_cast<decltype(Dst.frustum[0])>(Frustum.R);
+		Dst.frustum[1] = static_cast<decltype(Dst.frustum[1])>(Frustum.G);
+		Dst.frustum[2] = static_cast<decltype(Dst.frustum[2])>(Frustum.B);
+		Dst.frustum[3] = static_cast<decltype(Dst.frustum[3])>(Frustum.A);
+		Dst.bv[0] = static_cast<decltype(Dst.bv[0])>(Bv.R);
+		Dst.bv[1] = static_cast<decltype(Dst.bv[1])>(Bv.G);
+		Dst.bv[2] = static_cast<decltype(Dst.bv[2])>(Bv.B);
+		Dst.bv[3] = static_cast<decltype(Dst.bv[3])>(Bv.A);
+		Dst.bvactive[0] = static_cast<decltype(Dst.bvactive[0])>(Bvactive.R);
+		Dst.bvactive[1] = static_cast<decltype(Dst.bvactive[1])>(Bvactive.G);
+		Dst.bvactive[2] = static_cast<decltype(Dst.bvactive[2])>(Bvactive.B);
+		Dst.bvactive[3] = static_cast<decltype(Dst.bvactive[3])>(Bvactive.A);
+	}
 };

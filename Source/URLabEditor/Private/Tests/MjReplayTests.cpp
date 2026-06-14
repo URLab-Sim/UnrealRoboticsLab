@@ -45,14 +45,14 @@
 // ---------------------------------------------------------------------------
 static FMjReplayFrame MakeTestFrame(double Timestamp, const FString& JointName, double QPos)
 {
-    FMjReplayFrame Frame;
-    Frame.Timestamp = Timestamp;
+	FMjReplayFrame Frame;
+	Frame.Timestamp = Timestamp;
 
-    FMjBodyKinematics K;
-    K.QPos.Add(QPos);
-    K.QVel.Add(0.0);
-    Frame.JointStates.Add(JointName, K);
-    return Frame;
+	FMjBodyKinematics K;
+	K.QPos.Add(QPos);
+	K.QVel.Add(0.0);
+	Frame.JointStates.Add(JointName, K);
+	return Frame;
 }
 
 // ---------------------------------------------------------------------------
@@ -60,211 +60,212 @@ static FMjReplayFrame MakeTestFrame(double Timestamp, const FString& JointName, 
 // ---------------------------------------------------------------------------
 struct FReplayTestSession
 {
-    UWorld*            World   = nullptr;
-    AMjReplayManager*  Replay  = nullptr;
+	UWorld* World = nullptr;
+	AMjReplayManager* Replay = nullptr;
 
-    bool Init()
-    {
-        World = UWorld::CreateWorld(EWorldType::Game, false);
-        if (!World) return false;
+	bool Init()
+	{
+		World = UWorld::CreateWorld(EWorldType::Game, false);
+		if (!World)
+			return false;
 
-        FWorldContext& C = GEngine->CreateNewWorldContext(EWorldType::Game);
-        C.SetCurrentWorld(World);
+		FWorldContext& C = GEngine->CreateNewWorldContext(EWorldType::Game);
+		C.SetCurrentWorld(World);
 
-        FActorSpawnParameters P;
-        Replay = World->SpawnActor<AMjReplayManager>(P);
-        if (Replay)
-        {
-            // Ensure live session exists (normally done in BeginPlay)
-            Replay->Sessions.FindOrAdd(AMjReplayManager::LiveSessionName);
-            Replay->ActiveSessionName = AMjReplayManager::LiveSessionName;
-        }
-        return Replay != nullptr;
-    }
+		FActorSpawnParameters P;
+		Replay = World->SpawnActor<AMjReplayManager>(P);
+		if (Replay)
+		{
+			// Ensure live session exists (normally done in BeginPlay)
+			Replay->Sessions.FindOrAdd(AMjReplayManager::LiveSessionName);
+			Replay->ActiveSessionName = AMjReplayManager::LiveSessionName;
+		}
+		return Replay != nullptr;
+	}
 
-    TArray<FMjReplayFrame>& GetLiveFrames()
-    {
-        return Replay->Sessions.FindOrAdd(AMjReplayManager::LiveSessionName).Frames;
-    }
+	TArray<FMjReplayFrame>& GetLiveFrames()
+	{
+		return Replay->Sessions.FindOrAdd(AMjReplayManager::LiveSessionName).Frames;
+	}
 
-    void Cleanup()
-    {
-        if (World)
-        {
-            World->DestroyWorld(false);
-            GEngine->DestroyWorldContext(World);
-            World  = nullptr;
-            Replay = nullptr;
-        }
-    }
+	void Cleanup()
+	{
+		if (World)
+		{
+			World->DestroyWorld(false);
+			GEngine->DestroyWorldContext(World);
+			World = nullptr;
+			Replay = nullptr;
+		}
+	}
 
-    ~FReplayTestSession() { Cleanup(); }
+	~FReplayTestSession() { Cleanup(); }
 };
 
 // ============================================================================
 // URLab.Replay.InitialState
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjReplayInitialState,
-    "URLab.Replay.InitialState",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Replay.InitialState",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjReplayInitialState::RunTest(const FString& Parameters)
 {
-    FReplayTestSession S;
-    if (!S.Init())
-    {
-        AddError(TEXT("Failed to spawn AMjReplayManager"));
-        return false;
-    }
+	FReplayTestSession S;
+	if (!S.Init())
+	{
+		AddError(TEXT("Failed to spawn AMjReplayManager"));
+		return false;
+	}
 
-    TestFalse(TEXT("bIsRecording should be false initially"),    S.Replay->bIsRecording);
-    TestFalse(TEXT("bIsReplaying should be false initially"),    S.Replay->bIsReplaying);
-    TestEqual(TEXT("Live session should be empty initially"), S.GetLiveFrames().Num(), 0);
+	TestFalse(TEXT("bIsRecording should be false initially"), S.Replay->bIsRecording);
+	TestFalse(TEXT("bIsReplaying should be false initially"), S.Replay->bIsReplaying);
+	TestEqual(TEXT("Live session should be empty initially"), S.GetLiveFrames().Num(), 0);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
 // URLab.Replay.StartStopRecording
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjReplayStartStopRecording,
-    "URLab.Replay.StartStopRecording",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Replay.StartStopRecording",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjReplayStartStopRecording::RunTest(const FString& Parameters)
 {
-    FReplayTestSession S;
-    if (!S.Init())
-    {
-        AddError(TEXT("Failed to spawn AMjReplayManager"));
-        return false;
-    }
+	FReplayTestSession S;
+	if (!S.Init())
+	{
+		AddError(TEXT("Failed to spawn AMjReplayManager"));
+		return false;
+	}
 
-    TestFalse(TEXT("bIsRecording should be false before StartRecording()"), S.Replay->bIsRecording);
+	TestFalse(TEXT("bIsRecording should be false before StartRecording()"), S.Replay->bIsRecording);
 
-    S.Replay->StartRecording();
-    TestTrue(TEXT("bIsRecording should be true after StartRecording()"), S.Replay->bIsRecording);
+	S.Replay->StartRecording();
+	TestTrue(TEXT("bIsRecording should be true after StartRecording()"), S.Replay->bIsRecording);
 
-    S.Replay->StopRecording();
-    TestFalse(TEXT("bIsRecording should be false after StopRecording()"), S.Replay->bIsRecording);
+	S.Replay->StopRecording();
+	TestFalse(TEXT("bIsRecording should be false after StopRecording()"), S.Replay->bIsRecording);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
 // URLab.Replay.ClearRecording
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjReplayClearRecording,
-    "URLab.Replay.ClearRecording",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Replay.ClearRecording",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjReplayClearRecording::RunTest(const FString& Parameters)
 {
-    FReplayTestSession S;
-    if (!S.Init())
-    {
-        AddError(TEXT("Failed to spawn AMjReplayManager"));
-        return false;
-    }
+	FReplayTestSession S;
+	if (!S.Init())
+	{
+		AddError(TEXT("Failed to spawn AMjReplayManager"));
+		return false;
+	}
 
-    // Populate live session directly
-    TArray<FMjReplayFrame>& LiveFrames = S.GetLiveFrames();
-    LiveFrames.Add(MakeTestFrame(0.0,  TEXT("joint0"), 0.0));
-    LiveFrames.Add(MakeTestFrame(0.1,  TEXT("joint0"), 0.1));
-    LiveFrames.Add(MakeTestFrame(0.2,  TEXT("joint0"), 0.2));
-    S.Replay->PlaybackTime = 0.15f;
+	// Populate live session directly
+	TArray<FMjReplayFrame>& LiveFrames = S.GetLiveFrames();
+	LiveFrames.Add(MakeTestFrame(0.0, TEXT("joint0"), 0.0));
+	LiveFrames.Add(MakeTestFrame(0.1, TEXT("joint0"), 0.1));
+	LiveFrames.Add(MakeTestFrame(0.2, TEXT("joint0"), 0.2));
+	S.Replay->PlaybackTime = 0.15f;
 
-    TestEqual(TEXT("Buffer should have 3 frames before clear"), LiveFrames.Num(), 3);
+	TestEqual(TEXT("Buffer should have 3 frames before clear"), LiveFrames.Num(), 3);
 
-    S.Replay->ClearRecording();
+	S.Replay->ClearRecording();
 
-    TestEqual(TEXT("Live session should be empty after ClearRecording()"),
-        S.GetLiveFrames().Num(), 0);
-    TestTrue(TEXT("PlaybackTime should be 0.0f after ClearRecording()"),
-        FMath::Abs(S.Replay->PlaybackTime) < 1e-6f);
+	TestEqual(TEXT("Live session should be empty after ClearRecording()"),
+		S.GetLiveFrames().Num(), 0);
+	TestTrue(TEXT("PlaybackTime should be 0.0f after ClearRecording()"),
+		FMath::Abs(S.Replay->PlaybackTime) < 1e-6f);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }
 
 // ============================================================================
 // URLab.Replay.SaveAndLoadFile
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjReplaySaveAndLoadFile,
-    "URLab.Replay.SaveAndLoadFile",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Replay.SaveAndLoadFile",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjReplaySaveAndLoadFile::RunTest(const FString& Parameters)
 {
-    FReplayTestSession S;
-    if (!S.Init())
-    {
-        AddError(TEXT("Failed to spawn AMjReplayManager"));
-        return false;
-    }
+	FReplayTestSession S;
+	if (!S.Init())
+	{
+		AddError(TEXT("Failed to spawn AMjReplayManager"));
+		return false;
+	}
 
-    const int NumFrames = 5;
-    const FString TestFileName = TEXT("__test_replay_save_load__.json");
+	const int NumFrames = 5;
+	const FString TestFileName = TEXT("__test_replay_save_load__.json");
 
-    // Populate live session with known frames
-    TArray<FMjReplayFrame>& LiveFrames = S.GetLiveFrames();
-    for (int i = 0; i < NumFrames; ++i)
-    {
-        LiveFrames.Add(
-            MakeTestFrame(i * 0.01, TEXT("joint0"), (double)i * 0.1));
-    }
+	// Populate live session with known frames
+	TArray<FMjReplayFrame>& LiveFrames = S.GetLiveFrames();
+	for (int i = 0; i < NumFrames; ++i)
+	{
+		LiveFrames.Add(
+			MakeTestFrame(i * 0.01, TEXT("joint0"), (double)i * 0.1));
+	}
 
-    TestEqual(TEXT("Buffer should have NumFrames before save"),
-        LiveFrames.Num(), NumFrames);
+	TestEqual(TEXT("Buffer should have NumFrames before save"),
+		LiveFrames.Num(), NumFrames);
 
-    // Save (saves the active session, which is Live Recording)
-    const bool bSaved = S.Replay->SaveRecordingToFile(TestFileName);
-    TestTrue(TEXT("SaveRecordingToFile should return true"), bSaved);
+	// Save (saves the active session, which is Live Recording)
+	const bool bSaved = S.Replay->SaveRecordingToFile(TestFileName);
+	TestTrue(TEXT("SaveRecordingToFile should return true"), bSaved);
 
-    if (!bSaved)
-    {
-        AddInfo(TEXT("Skipping load test because save failed"));
-        S.Cleanup();
-        return false;
-    }
+	if (!bSaved)
+	{
+		AddInfo(TEXT("Skipping load test because save failed"));
+		S.Cleanup();
+		return false;
+	}
 
-    // Clear live session and verify empty
-    S.Replay->ClearRecording();
-    TestEqual(TEXT("Live session should be empty after ClearRecording()"),
-        S.GetLiveFrames().Num(), 0);
+	// Clear live session and verify empty
+	S.Replay->ClearRecording();
+	TestEqual(TEXT("Live session should be empty after ClearRecording()"),
+		S.GetLiveFrames().Num(), 0);
 
-    // Load — creates a new session named after the file
-    const bool bLoaded = S.Replay->LoadRecordingFromFile(TestFileName);
-    TestTrue(TEXT("LoadRecordingFromFile should return true"), bLoaded);
+	// Load — creates a new session named after the file
+	const bool bLoaded = S.Replay->LoadRecordingFromFile(TestFileName);
+	TestTrue(TEXT("LoadRecordingFromFile should return true"), bLoaded);
 
-    if (bLoaded)
-    {
-        // The loaded session is named after the file basename
-        FString SessionName = FPaths::GetBaseFilename(TestFileName);
-        FReplaySession* LoadedSession = S.Replay->Sessions.Find(SessionName);
-        TestTrue(TEXT("Loaded session should exist"), LoadedSession != nullptr);
+	if (bLoaded)
+	{
+		// The loaded session is named after the file basename
+		FString SessionName = FPaths::GetBaseFilename(TestFileName);
+		FReplaySession* LoadedSession = S.Replay->Sessions.Find(SessionName);
+		TestTrue(TEXT("Loaded session should exist"), LoadedSession != nullptr);
 
-        if (LoadedSession)
-        {
-            TestEqual(TEXT("Loaded session frame count should equal NumFrames"),
-                LoadedSession->Frames.Num(), NumFrames);
+		if (LoadedSession)
+		{
+			TestEqual(TEXT("Loaded session frame count should equal NumFrames"),
+				LoadedSession->Frames.Num(), NumFrames);
 
-            if (LoadedSession->Frames.Num() == NumFrames)
-            {
-                TestTrue(TEXT("Frame[0].Timestamp should be ~0.0"),
-                    FMath::Abs(LoadedSession->Frames[0].Timestamp) < 1e-9);
-                TestTrue(TEXT("Frame[last].Timestamp should be ~(NumFrames-1)*0.01"),
-                    FMath::Abs(LoadedSession->Frames.Last().Timestamp - (NumFrames - 1) * 0.01) < 1e-9);
-            }
-        }
-    }
+			if (LoadedSession->Frames.Num() == NumFrames)
+			{
+				TestTrue(TEXT("Frame[0].Timestamp should be ~0.0"),
+					FMath::Abs(LoadedSession->Frames[0].Timestamp) < 1e-9);
+				TestTrue(TEXT("Frame[last].Timestamp should be ~(NumFrames-1)*0.01"),
+					FMath::Abs(LoadedSession->Frames.Last().Timestamp - (NumFrames - 1) * 0.01) < 1e-9);
+			}
+		}
+	}
 
-    // Clean up the temp file
-    const FString FilePath = FPaths::ProjectSavedDir() / TEXT("Replays") / TestFileName;
-    IFileManager::Get().Delete(*FilePath);
+	// Clean up the temp file
+	const FString FilePath = FPaths::ProjectSavedDir() / TEXT("Replays") / TestFileName;
+	IFileManager::Get().Delete(*FilePath);
 
-    S.Cleanup();
-    return true;
+	S.Cleanup();
+	return true;
 }

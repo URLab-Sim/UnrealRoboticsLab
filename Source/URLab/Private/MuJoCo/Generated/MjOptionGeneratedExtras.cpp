@@ -19,28 +19,31 @@
 // Bit positions in mjOption.enableflags. Match mjENBL_MULTICCD / mjENBL_SLEEP
 // from mjmodel.h; hardcoded to avoid pulling mjtEnableBit into the header.
 static constexpr int MJ_ENBL_MULTICCD = 1 << 4;
-static constexpr int MJ_ENBL_SLEEP    = 1 << 5;
+static constexpr int MJ_ENBL_SLEEP = 1 << 5;
 
 void ApplyMjOptionExtras(mjOption* Opt, const FMjOptionGenerated& Self,
-                         mjSpec* Spec, mjModel* /*Model*/)
+	mjSpec* Spec, mjModel* /*Model*/)
 {
-    if (!Opt) return;
+	if (!Opt)
+		return;
 
-    if (Spec && Self.bOverride_MemoryMB)
-    {
-        Spec->memory = static_cast<mjtSize>(Self.MemoryMB) * 1024 * 1024;
-    }
+	if (Spec && Self.bOverride_MemoryMB)
+	{
+		Spec->memory = static_cast<mjtSize>(Self.MemoryMB) * 1024 * 1024;
+	}
 
-    if (Self.bEnableMultiCCD) Opt->enableflags |=  MJ_ENBL_MULTICCD;
-    else                      Opt->enableflags &= ~MJ_ENBL_MULTICCD;
+	if (Self.bEnableMultiCCD)
+		Opt->enableflags |= MJ_ENBL_MULTICCD;
+	else
+		Opt->enableflags &= ~MJ_ENBL_MULTICCD;
 
-    if (Self.bEnableSleep)
-    {
-        Opt->enableflags |= MJ_ENBL_SLEEP;
-        Opt->sleep_tolerance = Self.SleepTolerance;
-    }
-    else
-    {
-        Opt->enableflags &= ~MJ_ENBL_SLEEP;
-    }
+	if (Self.bEnableSleep)
+	{
+		Opt->enableflags |= MJ_ENBL_SLEEP;
+		Opt->sleep_tolerance = Self.SleepTolerance;
+	}
+	else
+	{
+		Opt->enableflags &= ~MJ_ENBL_SLEEP;
+	}
 }

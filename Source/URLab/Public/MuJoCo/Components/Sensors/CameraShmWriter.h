@@ -40,38 +40,38 @@
 class URLAB_API FCameraShmWriter
 {
 public:
-    FCameraShmWriter() = default;
+	FCameraShmWriter() = default;
 
-    /** Open / truncate the SHM file. The slot stride is sized to hold
-     *  Resolution.X * Resolution.Y * 4 bytes plus the size prefix --
-     *  works for BGRA8 and float32 single-channel alike. */
-    bool Open(const FString& Path, FIntPoint Resolution);
+	/** Open / truncate the SHM file. The slot stride is sized to hold
+	 *  Resolution.X * Resolution.Y * 4 bytes plus the size prefix --
+	 *  works for BGRA8 and float32 single-channel alike. */
+	bool Open(const FString& Path, FIntPoint Resolution);
 
-    /** Unmap; optionally remove the backing file. */
-    void Close(bool bDeleteFile = true);
+	/** Unmap; optionally remove the backing file. */
+	void Close(bool bDeleteFile = true);
 
-    bool IsOpen() const { return Region.IsOpen(); }
+	bool IsOpen() const { return Region.IsOpen(); }
 
-    /** Push one frame's raw bytes. Silently drops if `ByteCount` doesn't
-     *  match the configured pixel count * 4 -- a partial frame can't be
-     *  decoded by the consumer anyway. */
-    void PushFrame(const void* Data, uint32 ByteCount);
+	/** Push one frame's raw bytes. Silently drops if `ByteCount` doesn't
+	 *  match the configured pixel count * 4 -- a partial frame can't be
+	 *  decoded by the consumer anyway. */
+	void PushFrame(const void* Data, uint32 ByteCount);
 
-    /** Convenience overload for color frames. */
-    void PushFrame(const TArray<FColor>& Pixels)
-    {
-        PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(FColor));
-    }
+	/** Convenience overload for color frames. */
+	void PushFrame(const TArray<FColor>& Pixels)
+	{
+		PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(FColor));
+	}
 
-    /** Convenience overload for single-channel float frames (depth). */
-    void PushFrame(const TArray<float>& Pixels)
-    {
-        PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(float));
-    }
+	/** Convenience overload for single-channel float frames (depth). */
+	void PushFrame(const TArray<float>& Pixels)
+	{
+		PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(float));
+	}
 
-    FString GetPath() const { return Region.GetPath(); }
+	FString GetPath() const { return Region.GetPath(); }
 
 private:
-    FMjShmRegion Region;
-    int32 ExpectedPixels = 0;
+	FMjShmRegion Region;
+	int32 ExpectedPixels = 0;
 };

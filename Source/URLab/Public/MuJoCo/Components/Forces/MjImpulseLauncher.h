@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 #pragma once
 
@@ -45,82 +45,81 @@ class AMjArticulation;
 UCLASS(Blueprintable)
 class URLAB_API AMjImpulseLauncher : public AActor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    AMjImpulseLauncher();
+	AMjImpulseLauncher();
 
-    virtual void BeginPlay() override;
-    virtual void Tick(float DeltaTime) override;
+	virtual void BeginPlay() override;
+	virtual void Tick(float DeltaTime) override;
 
-    // --- Configuration ---
+	// --- Configuration ---
 
-    /** The target actor to apply the impulse to. Must be an MjArticulation or have an MjQuickConvertComponent.
-     *  The impulse is applied to the first MjBody found on the actor (or TargetBodyName if specified). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
-    AActor* TargetActor = nullptr;
+	/** The target actor to apply the impulse to. Must be an MjArticulation or have an MjQuickConvertComponent.
+	 *  The impulse is applied to the first MjBody found on the actor (or TargetBodyName if specified). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
+	AActor* TargetActor = nullptr;
 
-    /** Optional: name of a specific MjBody component on the target actor. If empty, uses the first MjBody found. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
-    FName TargetBodyName;
+	/** Optional: name of a specific MjBody component on the target actor. If empty, uses the first MjBody found. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
+	FName TargetBodyName;
 
-    /** Launch speed in m/s. Sets the body's velocity directly (like throwing it). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
-        meta = (ClampMin = "0.1", ClampMax = "100.0"))
-    float LaunchSpeed = 10.0f;
+	/** Launch speed in m/s. Sets the body's velocity directly (like throwing it). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
+		meta = (ClampMin = "0.1", ClampMax = "100.0"))
+	float LaunchSpeed = 10.0f;
 
-    /** Direction override. If zero, uses the actor's forward vector. In Unreal world space. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
-        meta = (EditCondition = "!LaunchTarget"))
-    FVector DirectionOverride = FVector::ZeroVector;
+	/** Direction override. If zero, uses the actor's forward vector. In Unreal world space. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
+		meta = (EditCondition = "!LaunchTarget"))
+	FVector DirectionOverride = FVector::ZeroVector;
 
-    /** Optional: an actor to launch AT. Overrides direction — computes a ballistic arc toward this target.
-     *  Can be an MjArticulation, Quick Convert actor, or any actor with a world position. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
-    AActor* LaunchTarget = nullptr;
+	/** Optional: an actor to launch AT. Overrides direction — computes a ballistic arc toward this target.
+	 *  Can be an MjArticulation, Quick Convert actor, or any actor with a world position. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
+	AActor* LaunchTarget = nullptr;
 
-    /** Arc height as a fraction of the distance to target. 0 = flat, 0.5 = high lob. Only used with LaunchTarget. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
-        meta = (ClampMin = "0.0", ClampMax = "2.0", EditCondition = "LaunchTarget != nullptr"))
-    float ArcHeight = 0.3f;
+	/** Arc height as a fraction of the distance to target. 0 = flat, 0.5 = high lob. Only used with LaunchTarget. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
+		meta = (ClampMin = "0.0", ClampMax = "2.0", EditCondition = "LaunchTarget != nullptr"))
+	float ArcHeight = 0.3f;
 
-    /** If true, fires automatically on BeginPlay after the delay. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
-    bool bAutoFire = false;
+	/** If true, fires automatically on BeginPlay after the delay. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse")
+	bool bAutoFire = false;
 
-    /** Delay in seconds before auto-fire (only used if bAutoFire is true). */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
-        meta = (ClampMin = "0.0", EditCondition = "bAutoFire"))
-    float AutoFireDelay = 2.0f;
+	/** Delay in seconds before auto-fire (only used if bAutoFire is true). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
+		meta = (ClampMin = "0.0", EditCondition = "bAutoFire"))
+	float AutoFireDelay = 2.0f;
 
-    // --- Actions ---
+	// --- Actions ---
 
-    /** Fire the impulse. Can be called from Blueprint, input binding, or Sequencer event track. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Impulse")
-    void FireImpulse();
+	/** Fire the impulse. Can be called from Blueprint, input binding, or Sequencer event track. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Impulse")
+	void FireImpulse();
 
-    /** Teleport the projectile back to the launcher's position and fire.
-     *  Use this in PIE — tick the bool in the Details panel to reset and re-launch. */
-    UFUNCTION(BlueprintCallable, Category = "MuJoCo|Impulse")
-    void ResetAndFire();
+	/** Teleport the projectile back to the launcher's position and fire.
+	 *  Use this in PIE — tick the bool in the Details panel to reset and re-launch. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Impulse")
+	void ResetAndFire();
 
-    /** Tick this in the editor Details panel during PIE to reset + fire. Auto-clears. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
-        meta = (DisplayName = "Reset & Fire (click to launch)"))
-    bool bResetAndFire = false;
+	/** Tick this in the editor Details panel during PIE to reset + fire. Auto-clears. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Impulse",
+		meta = (DisplayName = "Reset & Fire (click to launch)"))
+	bool bResetAndFire = false;
 
 protected:
-
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Impulse")
-    UArrowComponent* DirectionArrow;
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Impulse")
+	UArrowComponent* DirectionArrow;
 
 private:
-    /** Resolve TargetActor into an MjBody pointer. Called once on first fire. */
-    UMjBody* ResolveTargetBody();
+	/** Resolve TargetActor into an MjBody pointer. Called once on first fire. */
+	UMjBody* ResolveTargetBody();
 
-    UPROPERTY()
-    UMjBody* ResolvedBody = nullptr;
+	UPROPERTY()
+	UMjBody* ResolvedBody = nullptr;
 
-    bool bAutoFirePending = false;
-    float AutoFireTimer = 0.0f;
+	bool bAutoFirePending = false;
+	float AutoFireTimer = 0.0f;
 };

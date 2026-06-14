@@ -17,43 +17,47 @@
 
 bool FCameraShmWriter::Open(const FString& Path, FIntPoint Resolution)
 {
-    ExpectedPixels = Resolution.X * Resolution.Y;
-    if (ExpectedPixels <= 0)
-    {
-        UE_LOG(LogURLabNet, Warning,
-            TEXT("FCameraShmWriter::Open: bad resolution %dx%d"),
-            Resolution.X, Resolution.Y);
-        return false;
-    }
+	ExpectedPixels = Resolution.X * Resolution.Y;
+	if (ExpectedPixels <= 0)
+	{
+		UE_LOG(LogURLabNet, Warning,
+			TEXT("FCameraShmWriter::Open: bad resolution %dx%d"),
+			Resolution.X, Resolution.Y);
+		return false;
+	}
 
-    // 4 bytes per pixel (FColor) + 4-byte size prefix per slot.
-    const uint32 Stride = static_cast<uint32>(ExpectedPixels) * 4u + sizeof(uint32);
-    return Region.Open(Path, Stride, /*NBuffers=*/2);
+	// 4 bytes per pixel (FColor) + 4-byte size prefix per slot.
+	const uint32 Stride = static_cast<uint32>(ExpectedPixels) * 4u + sizeof(uint32);
+	return Region.Open(Path, Stride, /*NBuffers=*/2);
 }
 
 void FCameraShmWriter::Close(bool bDeleteFile)
 {
-    Region.Close(bDeleteFile);
-    ExpectedPixels = 0;
+	Region.Close(bDeleteFile);
+	ExpectedPixels = 0;
 }
 
 void FCameraShmWriter::PushFrame(const void* Data, uint32 ByteCount)
 {
-    if (!Region.IsOpen() || !Data) return;
-    if (ByteCount != static_cast<uint32>(ExpectedPixels) * 4u) return;
+	if (!Region.IsOpen() || !Data)
+		return;
+	if (ByteCount != static_cast<uint32>(ExpectedPixels) * 4u)
+		return;
 
-    FMjShmHeader* Hdr = static_cast<FMjShmHeader*>(Region.GetData());
-    if (!Hdr) return;
+	FMjShmHeader* Hdr = static_cast<FMjShmHeader*>(Region.GetData());
+	if (!Hdr)
+		return;
 
-    const uint32 CurrentLatest = Hdr->LatestIdx.load(std::memory_order_acquire);
-    const uint32 NBuffers = Hdr->NBuffers > 0 ? Hdr->NBuffers : 1;
-    const uint32 Target = (CurrentLatest + 1) % NBuffers;
-    uint8* Slot = Region.GetSlot(Target);
-    if (!Slot) return;
+	const uint32 CurrentLatest = Hdr->LatestIdx.load(std::memory_order_acquire);
+	const uint32 NBuffers = Hdr->NBuffers > 0 ? Hdr->NBuffers : 1;
+	const uint32 Target = (CurrentLatest + 1) % NBuffers;
+	uint8* Slot = Region.GetSlot(Target);
+	if (!Slot)
+		return;
 
-    FMemory::Memcpy(Slot, &ByteCount, sizeof(uint32));
-    FMemory::Memcpy(Slot + sizeof(uint32), Data, ByteCount);
+	FMemory::Memcpy(Slot, &ByteCount, sizeof(uint32));
+	FMemory::Memcpy(Slot + sizeof(uint32), Data, ByteCount);
 
-    Hdr->LatestIdx.store(Target, std::memory_order_release);
-    Hdr->Sequence.fetch_add(1, std::memory_order_release);
+	Hdr->LatestIdx.store(Target, std::memory_order_release);
+	Hdr->Sequence.fetch_add(1, std::memory_order_release);
 }

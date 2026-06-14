@@ -49,672 +49,706 @@
 // deduplicated + throttled so pathological per-step errors can't flood the
 // log at step rate.
 static FCriticalSection GMujocoLogMutex;
-static TMap<FString, int64> GMujocoMsgHistory;  // message text -> next step count at which to log
-static std::atomic<int64>   GMujocoMsgStepCounter{0};
+static TMap<FString, int64> GMujocoMsgHistory; // message text -> next step count at which to log
+static std::atomic<int64> GMujocoMsgStepCounter{0};
 
 static void URLab_LogMujocoMessage(const TCHAR* Severity, const char* Msg, ELogVerbosity::Type Verbosity)
 {
-    const FString Text = Msg ? FString(UTF8_TO_TCHAR(Msg)) : FString(TEXT("(null)"));
-    const int64 Step = GMujocoMsgStepCounter.fetch_add(1, std::memory_order_relaxed);
+	const FString Text = Msg ? FString(UTF8_TO_TCHAR(Msg)) : FString(TEXT("(null)"));
+	const int64 Step = GMujocoMsgStepCounter.fetch_add(1, std::memory_order_relaxed);
 
-    int64 FirstHitStep = -1;
-    int64 HitCountSinceLastLog = 0;
-    {
-        FScopeLock Lock(&GMujocoLogMutex);
-        int64* NextLog = GMujocoMsgHistory.Find(Text);
-        if (!NextLog)
-        {
-            // First occurrence — log it and start counting future hits.
-            GMujocoMsgHistory.Add(Text, Step + 500);  // log again after 500 more messages
-            FirstHitStep = Step;
-        }
-        else if (Step >= *NextLog)
-        {
-            HitCountSinceLastLog = 500;  // approx — we don't track exact
-            *NextLog = Step + 500;
-            FirstHitStep = Step;
-        }
-    }
+	int64 FirstHitStep = -1;
+	int64 HitCountSinceLastLog = 0;
+	{
+		FScopeLock Lock(&GMujocoLogMutex);
+		int64* NextLog = GMujocoMsgHistory.Find(Text);
+		if (!NextLog)
+		{
+			// First occurrence — log it and start counting future hits.
+			GMujocoMsgHistory.Add(Text, Step + 500); // log again after 500 more messages
+			FirstHitStep = Step;
+		}
+		else if (Step >= *NextLog)
+		{
+			HitCountSinceLastLog = 500; // approx — we don't track exact
+			*NextLog = Step + 500;
+			FirstHitStep = Step;
+		}
+	}
 
-    if (FirstHitStep >= 0)
-    {
-        if (HitCountSinceLastLog > 0)
-        {
-            UE_LOG(LogURLab, Warning, TEXT("[MuJoCo %s x~%lld] %s"), Severity, (long long)HitCountSinceLastLog, *Text);
-        }
-        else
-        {
-            if (Verbosity == ELogVerbosity::Error)
-            {
-                UE_LOG(LogURLab, Error, TEXT("[MuJoCo %s] %s"), Severity, *Text);
-            }
-            else
-            {
-                UE_LOG(LogURLab, Warning, TEXT("[MuJoCo %s] %s"), Severity, *Text);
-            }
-        }
-    }
+	if (FirstHitStep >= 0)
+	{
+		if (HitCountSinceLastLog > 0)
+		{
+			UE_LOG(LogURLab, Warning, TEXT("[MuJoCo %s x~%lld] %s"), Severity, (long long)HitCountSinceLastLog, *Text);
+		}
+		else
+		{
+			if (Verbosity == ELogVerbosity::Error)
+			{
+				UE_LOG(LogURLab, Error, TEXT("[MuJoCo %s] %s"), Severity, *Text);
+			}
+			else
+			{
+				UE_LOG(LogURLab, Warning, TEXT("[MuJoCo %s] %s"), Severity, *Text);
+			}
+		}
+	}
 }
 
 static void URLab_OnMujocoError(const char* Msg)
 {
-    URLab_LogMujocoMessage(TEXT("fatal"), Msg, ELogVerbosity::Error);
+	URLab_LogMujocoMessage(TEXT("fatal"), Msg, ELogVerbosity::Error);
 }
 
 static void URLab_OnMujocoWarning(const char* Msg)
 {
-    URLab_LogMujocoMessage(TEXT("warn"), Msg, ELogVerbosity::Warning);
+	URLab_LogMujocoMessage(TEXT("warn"), Msg, ELogVerbosity::Warning);
 }
 
 static bool GMujocoCallbacksInstalled = false;
 static void URLab_InstallMujocoCallbacks()
 {
-    if (GMujocoCallbacksInstalled) return;
+	if (GMujocoCallbacksInstalled)
+		return;
 
 #if PLATFORM_WINDOWS
-    // mujoco.dll is delay-loaded on Windows (URLab.Build.cs adds it via
-    // PublicDelayLoadDLLs), and the linker refuses to bind data symbols
-    // through a delayed import. Resolve the two mju_user_* function
-    // pointers manually via GetDllExport.
-    void* Handle = FPlatformProcess::GetDllHandle(TEXT("mujoco.dll"));
-    if (!Handle)
-    {
-        UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve mujoco.dll to install error callbacks"));
-        return;
-    }
+	// mujoco.dll is delay-loaded on Windows (URLab.Build.cs adds it via
+	// PublicDelayLoadDLLs), and the linker refuses to bind data symbols
+	// through a delayed import. Resolve the two mju_user_* function
+	// pointers manually via GetDllExport.
+	void* Handle = FPlatformProcess::GetDllHandle(TEXT("mujoco.dll"));
+	if (!Handle)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("[URLab] Could not resolve mujoco.dll to install error callbacks"));
+		return;
+	}
 
-    using ErrorFnPtr = void(*)(const char*);
-    // GetDllExport(hMod, "mju_user_error") returns the address of the
-    // exported variable itself — i.e. an ErrorFnPtr*.
-    ErrorFnPtr* PErr  = reinterpret_cast<ErrorFnPtr*>(FPlatformProcess::GetDllExport(Handle, TEXT("mju_user_error")));
-    ErrorFnPtr* PWarn = reinterpret_cast<ErrorFnPtr*>(FPlatformProcess::GetDllExport(Handle, TEXT("mju_user_warning")));
-    if (PErr)  { *PErr  = &URLab_OnMujocoError;   }
-    if (PWarn) { *PWarn = &URLab_OnMujocoWarning; }
-    UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (err=%p warn=%p)"), (void*)PErr, (void*)PWarn);
+	using ErrorFnPtr = void (*)(const char*);
+	// GetDllExport(hMod, "mju_user_error") returns the address of the
+	// exported variable itself — i.e. an ErrorFnPtr*.
+	ErrorFnPtr* PErr = reinterpret_cast<ErrorFnPtr*>(FPlatformProcess::GetDllExport(Handle, TEXT("mju_user_error")));
+	ErrorFnPtr* PWarn = reinterpret_cast<ErrorFnPtr*>(FPlatformProcess::GetDllExport(Handle, TEXT("mju_user_warning")));
+	if (PErr)
+	{
+		*PErr = &URLab_OnMujocoError;
+	}
+	if (PWarn)
+	{
+		*PWarn = &URLab_OnMujocoWarning;
+	}
+	UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (err=%p warn=%p)"), (void*)PErr, (void*)PWarn);
 #else
-    // On Linux/macOS the lib is linked directly (no delay-load), so
-    // mju_user_error / mju_user_warning are resolvable as ordinary BSS
-    // data symbols at link time. Direct assignment is enough — no
-    // GetDllHandle / GetDllExport, no hardcoded SONAME literal needed.
-    mju_user_error   = &URLab_OnMujocoError;
-    mju_user_warning = &URLab_OnMujocoWarning;
-    UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (direct)"));
+	// On Linux/macOS the lib is linked directly (no delay-load), so
+	// mju_user_error / mju_user_warning are resolvable as ordinary BSS
+	// data symbols at link time. Direct assignment is enough — no
+	// GetDllHandle / GetDllExport, no hardcoded SONAME literal needed.
+	mju_user_error = &URLab_OnMujocoError;
+	mju_user_warning = &URLab_OnMujocoWarning;
+	UE_LOG(LogURLab, Log, TEXT("[URLab] MuJoCo error callbacks installed (direct)"));
 #endif
 
-    GMujocoCallbacksInstalled = true;
+	GMujocoCallbacksInstalled = true;
 }
 
 UMjPhysicsEngine::UMjPhysicsEngine()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = false;
 
-    Options.bOverride_Integrator = true;
-    Options.Integrator = EMjIntegrator::ImplicitFast;
-    ControlSource = EControlSource::ZMQ;
+	Options.bOverride_Integrator = true;
+	Options.Integrator = EMjIntegrator::ImplicitFast;
+	ControlSource = EControlSource::ZMQ;
 
-    // Auto-reset so each Trigger arms exactly one Wait; coalesces bursts.
-    StepRequestEvent = FPlatformProcess::GetSynchEventFromPool(false);
+	// Auto-reset so each Trigger arms exactly one Wait; coalesces bursts.
+	StepRequestEvent = FPlatformProcess::GetSynchEventFromPool(false);
 
-    URLab_InstallMujocoCallbacks();
+	URLab_InstallMujocoCallbacks();
 }
 
 void UMjPhysicsEngine::BeginDestroy()
 {
-    if (StepRequestEvent)
-    {
-        FPlatformProcess::ReturnSynchEventToPool(StepRequestEvent);
-        StepRequestEvent = nullptr;
-    }
-    Super::BeginDestroy();
+	if (StepRequestEvent)
+	{
+		FPlatformProcess::ReturnSynchEventToPool(StepRequestEvent);
+		StepRequestEvent = nullptr;
+	}
+	Super::BeginDestroy();
 }
 
 void UMjPhysicsEngine::PreCompile()
 {
-    m_spec = mj_makeSpec();
-    m_spec->compiler.degree = false;
-    mj_defaultVFS(&m_vfs);
+	m_spec = mj_makeSpec();
+	m_spec->compiler.degree = false;
+	mj_defaultVFS(&m_vfs);
 
-    UWorld* World = GetWorld();
-    if (!World) return;
+	UWorld* World = GetWorld();
+	if (!World)
+		return;
 
-    TArray<AActor*> FoundActors;
-    UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), FoundActors);
+	TArray<AActor*> FoundActors;
+	UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), FoundActors);
 
-    ActiveAssetPaths.Empty();
-    for (auto actor : FoundActors)
-    {
-        if (UMjQuickConvertComponent* QC = actor->FindComponentByClass<UMjQuickConvertComponent>())
-        {
-            m_MujocoComponents.Add(QC);
-            QC->Setup(m_spec, &m_vfs);
-            if (FMujocoSpecWrapper* W = QC->GetWrapper())
-            {
-                for (const FString& Path : W->ActiveAssetPaths) ActiveAssetPaths.AddUnique(Path);
-            }
-        }
-        if (AMjArticulation* Articulation = Cast<AMjArticulation>(actor))
-        {
-            Articulation->Setup(m_spec, &m_vfs);
-            m_articulations.Add(Articulation);
-            if (FMujocoSpecWrapper* W = Articulation->GetWrapper())
-            {
-                for (const FString& Path : W->ActiveAssetPaths) ActiveAssetPaths.AddUnique(Path);
-            }
-        }
-        if (AMjHeightfieldActor* HFA = Cast<AMjHeightfieldActor>(actor))
-        {
-            HFA->Setup(m_spec, &m_vfs);
-            m_heightfieldActors.Add(HFA);
-        }
-    }
+	ActiveAssetPaths.Empty();
+	for (auto actor : FoundActors)
+	{
+		if (UMjQuickConvertComponent* QC = actor->FindComponentByClass<UMjQuickConvertComponent>())
+		{
+			m_MujocoComponents.Add(QC);
+			QC->Setup(m_spec, &m_vfs);
+			if (FMujocoSpecWrapper* W = QC->GetWrapper())
+			{
+				for (const FString& Path : W->ActiveAssetPaths)
+					ActiveAssetPaths.AddUnique(Path);
+			}
+		}
+		if (AMjArticulation* Articulation = Cast<AMjArticulation>(actor))
+		{
+			Articulation->Setup(m_spec, &m_vfs);
+			m_articulations.Add(Articulation);
+			if (FMujocoSpecWrapper* W = Articulation->GetWrapper())
+			{
+				for (const FString& Path : W->ActiveAssetPaths)
+					ActiveAssetPaths.AddUnique(Path);
+			}
+		}
+		if (AMjHeightfieldActor* HFA = Cast<AMjHeightfieldActor>(actor))
+		{
+			HFA->Setup(m_spec, &m_vfs);
+			m_heightfieldActors.Add(HFA);
+		}
+	}
 }
 
 void UMjPhysicsEngine::PostCompile()
 {
-    if (!m_model || !m_data)
-    {
-        UE_LOG(LogURLab, Error, TEXT("Skipping PostCompile: m_model or m_data is invalid."));
-        return;
-    }
+	if (!m_model || !m_data)
+	{
+		UE_LOG(LogURLab, Error, TEXT("Skipping PostCompile: m_model or m_data is invalid."));
+		return;
+	}
 
-    for (UMjQuickConvertComponent* mujocoComponent : m_MujocoComponents)
-    {
-        UE_LOG(LogURLab, Verbose, TEXT("Running PostSetup for component '%s'"), *mujocoComponent->GetName());
-        mujocoComponent->PostSetup(m_model, m_data);
-    }
+	for (UMjQuickConvertComponent* mujocoComponent : m_MujocoComponents)
+	{
+		UE_LOG(LogURLab, Verbose, TEXT("Running PostSetup for component '%s'"), *mujocoComponent->GetName());
+		mujocoComponent->PostSetup(m_model, m_data);
+	}
 
-    m_ArticulationMap.Empty();
-    for (AMjArticulation* Art : m_articulations)
-    {
-        if (Art) m_ArticulationMap.Add(Art->GetName(), Art);
-    }
+	m_ArticulationMap.Empty();
+	for (AMjArticulation* Art : m_articulations)
+	{
+		if (Art)
+			m_ArticulationMap.Add(Art->GetName(), Art);
+	}
 
-    for (auto articulation : m_articulations)
-        articulation->PostSetup(m_model, m_data);
-    for (auto hfa : m_heightfieldActors)
-        hfa->PostSetup(m_model, m_data);
+	for (auto articulation : m_articulations)
+		articulation->PostSetup(m_model, m_data);
+	for (auto hfa : m_heightfieldActors)
+		hfa->PostSetup(m_model, m_data);
 }
 
 void UMjPhysicsEngine::Compile()
 {
-    PreCompile();
+	PreCompile();
 
-    UE_LOG(LogURLab, Log, TEXT("Compiling MuJoCo model"));
-    m_LastCompileError.Empty();
-    m_model = mj_compile(m_spec, &m_vfs);
+	UE_LOG(LogURLab, Log, TEXT("Compiling MuJoCo model"));
+	m_LastCompileError.Empty();
+	m_model = mj_compile(m_spec, &m_vfs);
 
-    if (!m_model)
-    {
-        const char* spec_error = mjs_getError(m_spec);
-        m_LastCompileError = spec_error ? UTF8_TO_TCHAR(spec_error) : TEXT("Unknown compile error");
-        UE_LOG(LogURLab, Error, TEXT("Model compilation failed: %s"), *m_LastCompileError);
+	if (!m_model)
+	{
+		const char* spec_error = mjs_getError(m_spec);
+		m_LastCompileError = spec_error ? UTF8_TO_TCHAR(spec_error) : TEXT("Unknown compile error");
+		UE_LOG(LogURLab, Error, TEXT("Model compilation failed: %s"), *m_LastCompileError);
 #if WITH_EDITOR
-        FMessageDialog::Open(EAppMsgType::Ok,
-            FText::Format(NSLOCTEXT("URLab","CompileError","MuJoCo compile failed:\n\n{0}"), FText::FromString(m_LastCompileError)));
+		FMessageDialog::Open(EAppMsgType::Ok,
+			FText::Format(NSLOCTEXT("URLab", "CompileError", "MuJoCo compile failed:\n\n{0}"), FText::FromString(m_LastCompileError)));
 #endif
-        return;
-    }
+		return;
+	}
 
-    if (bSaveDebugXml)
-    {
-        FString CacheDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"));
-        IFileManager::Get().MakeDirectory(*CacheDir, true);
+	if (bSaveDebugXml)
+	{
+		FString CacheDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"));
+		IFileManager::Get().MakeDirectory(*CacheDir, true);
 
-        int model_size = mj_sizeModel(m_model);
-        FString MjbPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.mjb"));
-        mj_saveModel(m_model, TCHAR_TO_UTF8(*MjbPath), nullptr, model_size);
+		int model_size = mj_sizeModel(m_model);
+		FString MjbPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.mjb"));
+		mj_saveModel(m_model, TCHAR_TO_UTF8(*MjbPath), nullptr, model_size);
 
-        static constexpr int32 kXmlBufferSize = 100 * 1024 * 1024;
-        static constexpr int32 kSaveErrorBufferSize = 10000;
-        char* xmlBuf = (char*)FMemory::Malloc(kXmlBufferSize);
-        if (xmlBuf)
-        {
-            FMemory::Memzero(xmlBuf, kXmlBufferSize);
-            char saveError[kSaveErrorBufferSize] = "";
-            int xmlResult = mj_saveXMLString(m_spec, xmlBuf, kXmlBufferSize, saveError, sizeof(saveError));
-            int xmlLen = FCStringAnsi::Strlen(xmlBuf);
-            if (xmlResult == 0 && xmlLen > 0)
-            {
-                FString XmlPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.xml"));
-                FString XmlContent = UTF8_TO_TCHAR(xmlBuf);
+		static constexpr int32 kXmlBufferSize = 100 * 1024 * 1024;
+		static constexpr int32 kSaveErrorBufferSize = 10000;
+		char* xmlBuf = (char*)FMemory::Malloc(kXmlBufferSize);
+		if (xmlBuf)
+		{
+			FMemory::Memzero(xmlBuf, kXmlBufferSize);
+			char saveError[kSaveErrorBufferSize] = "";
+			int xmlResult = mj_saveXMLString(m_spec, xmlBuf, kXmlBufferSize, saveError, sizeof(saveError));
+			int xmlLen = FCStringAnsi::Strlen(xmlBuf);
+			if (xmlResult == 0 && xmlLen > 0)
+			{
+				FString XmlPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.xml"));
+				FString XmlContent = UTF8_TO_TCHAR(xmlBuf);
 
-                XmlContent.ReplaceInline(TEXT("//"), TEXT("/"));
+				XmlContent.ReplaceInline(TEXT("//"), TEXT("/"));
 
-                {
-                    bool bChanged = true;
-                    while (bChanged)
-                    {
-                        int32 Prev = XmlContent.Len();
-                        XmlContent.ReplaceInline(TEXT("file=\"../"), TEXT("file=\""), ESearchCase::CaseSensitive);
-                        bChanged = (XmlContent.Len() != Prev);
-                    }
-                }
+				{
+					bool bChanged = true;
+					while (bChanged)
+					{
+						int32 Prev = XmlContent.Len();
+						XmlContent.ReplaceInline(TEXT("file=\"../"), TEXT("file=\""), ESearchCase::CaseSensitive);
+						bChanged = (XmlContent.Len() != Prev);
+					}
+				}
 
-                XmlContent.ReplaceInline(TEXT("\\"), TEXT("/"));
+				XmlContent.ReplaceInline(TEXT("\\"), TEXT("/"));
 
-                {
-                    FRegexPattern Pattern(TEXT("file=\"[^\"]*?Saved/URLab/"));
-                    FRegexMatcher Matcher(Pattern, XmlContent);
+				{
+					FRegexPattern Pattern(TEXT("file=\"[^\"]*?Saved/URLab/"));
+					FRegexMatcher Matcher(Pattern, XmlContent);
 
-                    TArray<TPair<int32, int32>> Matches;
-                    while (Matcher.FindNext())
-                    {
-                        Matches.Add(TPair<int32, int32>(Matcher.GetMatchBeginning(), Matcher.GetMatchEnding()));
-                    }
+					TArray<TPair<int32, int32>> Matches;
+					while (Matcher.FindNext())
+					{
+						Matches.Add(TPair<int32, int32>(Matcher.GetMatchBeginning(), Matcher.GetMatchEnding()));
+					}
 
-                    for (int32 i = Matches.Num() - 1; i >= 0; --i)
-                    {
-                        int32 Start = Matches[i].Key;
-                        int32 End = Matches[i].Value;
-                        FString Before = XmlContent.Left(Start);
-                        FString After = XmlContent.Mid(End);
-                        XmlContent = Before + TEXT("file=\"") + After;
-                    }
-                }
+					for (int32 i = Matches.Num() - 1; i >= 0; --i)
+					{
+						int32 Start = Matches[i].Key;
+						int32 End = Matches[i].Value;
+						FString Before = XmlContent.Left(Start);
+						FString After = XmlContent.Mid(End);
+						XmlContent = Before + TEXT("file=\"") + After;
+					}
+				}
 
-                FFileHelper::SaveStringToFile(XmlContent, *XmlPath);
-                UE_LOG(LogURLab, Log, TEXT("Debug XML saved to: %s (%d bytes, paths relativized)"), *XmlPath, xmlLen);
-            }
-            FMemory::Free(xmlBuf);
-        }
-    }
+				FFileHelper::SaveStringToFile(XmlContent, *XmlPath);
+				UE_LOG(LogURLab, Log, TEXT("Debug XML saved to: %s (%d bytes, paths relativized)"), *XmlPath, xmlLen);
+			}
+			FMemory::Free(xmlBuf);
+		}
+	}
 
-    int version = mj_version();
-    UE_LOG(LogURLab, Log, TEXT("Model successfully compiled on version %i"), version);
-    m_data = mj_makeData(m_model);
+	int version = mj_version();
+	UE_LOG(LogURLab, Log, TEXT("Model successfully compiled on version %i"), version);
+	m_data = mj_makeData(m_model);
 
-    if (!m_data)
-    {
-        UE_LOG(LogURLab, Error, TEXT("Data creation failed! m_data is NULL."));
-        return;
-    }
+	if (!m_data)
+	{
+		UE_LOG(LogURLab, Error, TEXT("Data creation failed! m_data is NULL."));
+		return;
+	}
 
-    UE_LOG(LogURLab, Log, TEXT("Data successfully made"));
+	UE_LOG(LogURLab, Log, TEXT("Data successfully made"));
 
-    ApplyThreadPool();
-    ApplyOptions();
-    PostCompile();
+	ApplyThreadPool();
+	ApplyOptions();
+	PostCompile();
 
-    // Step once then reset to ensure all derived quantities (contacts,
-    // constraints, sensor data) are fully computed and synced before the
-    // user sees the paused scene.
-    mj_step(m_model, m_data);
-    mj_resetData(m_model, m_data);
-    mj_forward(m_model, m_data);
+	// Step once then reset to ensure all derived quantities (contacts,
+	// constraints, sensor data) are fully computed and synced before the
+	// user sees the paused scene.
+	mj_step(m_model, m_data);
+	mj_resetData(m_model, m_data);
+	mj_forward(m_model, m_data);
 }
 
 int32 UMjPhysicsEngine::MaxWorkerThreads()
 {
-    // Cross-platform (Windows/Linux/Mac) logical-core count — the ceiling on
-    // useful MuJoCo worker threads. Floor of 1 so callers always get a sane cap.
-    return FMath::Max(1, FPlatformMisc::NumberOfCoresIncludingHyperthreads());
+	// Cross-platform (Windows/Linux/Mac) logical-core count — the ceiling on
+	// useful MuJoCo worker threads. Floor of 1 so callers always get a sane cap.
+	return FMath::Max(1, FPlatformMisc::NumberOfCoresIncludingHyperthreads());
 }
 
 void UMjPhysicsEngine::ApplyThreadPool()
 {
-    if (!m_data) return;
+	if (!m_data)
+		return;
 
-    // mju_threadpool is idempotent: same worker count is a no-op, a different
-    // count rebuilds the pool, and 0 frees it. So this is safe to call at
-    // mjData creation and again at runtime (e.g. from the set_sim_options RPC).
-    // The pool is owned by mjData and auto-freed in mj_deleteData.
-    const int32 Cap = MaxWorkerThreads();
-    const int32 N = FMath::Clamp(NumWorkerThreads, 0, Cap);
-    if (NumWorkerThreads > Cap)
-    {
-        UE_LOG(LogURLab, Warning,
-            TEXT("NumWorkerThreads=%d exceeds %d available cores; capping to %d."),
-            NumWorkerThreads, Cap, Cap);
-    }
-    // mju_threadpool is the only public threadpool entry point; mju_numThread
-    // lives in MuJoCo's internal engine_thread.h, so don't depend on it here.
-    mju_threadpool(m_data, N);
-    UE_LOG(LogURLab, Log,
-        TEXT("MuJoCo thread pool: %s (%d worker(s) requested)."),
-        N > 0 ? TEXT("enabled") : TEXT("disabled"), N);
+	// mju_threadpool is idempotent: same worker count is a no-op, a different
+	// count rebuilds the pool, and 0 frees it. So this is safe to call at
+	// mjData creation and again at runtime (e.g. from the set_sim_options RPC).
+	// The pool is owned by mjData and auto-freed in mj_deleteData.
+	const int32 Cap = MaxWorkerThreads();
+	const int32 N = FMath::Clamp(NumWorkerThreads, 0, Cap);
+	if (NumWorkerThreads > Cap)
+	{
+		UE_LOG(LogURLab, Warning,
+			TEXT("NumWorkerThreads=%d exceeds %d available cores; capping to %d."),
+			NumWorkerThreads, Cap, Cap);
+	}
+	// mju_threadpool is the only public threadpool entry point; mju_numThread
+	// lives in MuJoCo's internal engine_thread.h, so don't depend on it here.
+	mju_threadpool(m_data, N);
+	UE_LOG(LogURLab, Log,
+		TEXT("MuJoCo thread pool: %s (%d worker(s) requested)."),
+		N > 0 ? TEXT("enabled") : TEXT("disabled"), N);
 }
 
 void UMjPhysicsEngine::ApplyOptions()
 {
-    if (!m_model) return;
+	if (!m_model)
+		return;
 
-    Options.ApplyOverridesToModel(m_model);
+	Options.ApplyOverridesToModel(m_model);
 
-    UE_LOG(LogURLab, Log, TEXT("Applied manager option overrides (timestep=%.4f from model)"),
-        m_model->opt.timestep);
+	UE_LOG(LogURLab, Log, TEXT("Applied manager option overrides (timestep=%.4f from model)"),
+		m_model->opt.timestep);
 }
 
 void UMjPhysicsEngine::RunMujocoAsync()
 {
-    if (!m_model || !m_data)
-    {
-        UE_LOG(LogURLab, Error, TEXT("Skipping RunMuJoCoAsync: m_model or m_data is invalid."));
-        return;
-    }
+	if (!m_model || !m_data)
+	{
+		UE_LOG(LogURLab, Error, TEXT("Skipping RunMuJoCoAsync: m_model or m_data is invalid."));
+		return;
+	}
 
-    bShouldStopTask = false;
+	bShouldStopTask = false;
 
-    AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [this]() {
-        FPlatformProcess::Sleep(0.0f);
+	AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [this]() {
+		FPlatformProcess::Sleep(0.0f);
 
-        while (true)
-        {
-            const double LoopStartTime = FPlatformTime::Seconds();
-            // Re-read per iteration so set_sim_options retunes the pacer live.
-            const float TargetInterval = m_model ? (float)m_model->opt.timestep : 0.002f;
+		while (true)
+		{
+			const double LoopStartTime = FPlatformTime::Seconds();
+			// Re-read per iteration so set_sim_options retunes the pacer live.
+			const float TargetInterval = m_model ? (float)m_model->opt.timestep : 0.002f;
 
-            if (bShouldStopTask)
-                break;
+			if (bShouldStopTask)
+				break;
 
-            {
-                FScopeLock Lock(&CallbackMutex);
+			{
+				FScopeLock Lock(&CallbackMutex);
 
-                if (!m_model || !m_data || bShouldStopTask)
-                    break;
+				if (!m_model || !m_data || bShouldStopTask)
+					break;
 
-                if (bPendingReset)
-                {
-                    mj_resetData(m_model, m_data);
-                    mj_forward(m_model, m_data);
-                    bPendingReset = false;
+				if (bPendingReset)
+				{
+					mj_resetData(m_model, m_data);
+					mj_forward(m_model, m_data);
+					bPendingReset = false;
 
-                    // Zero all actuator control values so stale commands
-                    // don't persist after reset.
-                    for (AMjArticulation* Art : m_articulations)
-                    {
-                        if (!Art) continue;
-                        for (UMjActuator* Act : Art->GetActuators())
-                        {
-                            if (Act) Act->ResetControl();
-                        }
-                    }
+					// Zero all actuator control values so stale commands
+					// don't persist after reset.
+					for (AMjArticulation* Art : m_articulations)
+					{
+						if (!Art)
+							continue;
+						for (UMjActuator* Act : Art->GetActuators())
+						{
+							if (Act)
+								Act->ResetControl();
+						}
+					}
 
-                    AsyncTask(ENamedThreads::GameThread, [this]() {
-                        for (AMjArticulation* Art : m_articulations)
-                        {
-                            if (Art) Art->OnSimulationReset.Broadcast();
-                        }
-                    });
-                }
+					AsyncTask(ENamedThreads::GameThread, [this]() {
+						for (AMjArticulation* Art : m_articulations)
+						{
+							if (Art)
+								Art->OnSimulationReset.Broadcast();
+						}
+					});
+				}
 
-                if (bPendingRestore)
-                {
-                    bPendingRestore = false;
-                    if (PendingStateVector.Num() > 0)
-                    {
-                        mj_setState(m_model, m_data, PendingStateVector.GetData(), PendingStateMask);
-                        mj_forward(m_model, m_data);
-                    }
-                }
+				if (bPendingRestore)
+				{
+					bPendingRestore = false;
+					if (PendingStateVector.Num() > 0)
+					{
+						mj_setState(m_model, m_data, PendingStateVector.GetData(), PendingStateMask);
+						mj_forward(m_model, m_data);
+					}
+				}
 
-                for (const FPhysicsCallback& Cb : PreStepCallbacks)
-                {
-                    Cb(m_model, m_data);
-                }
+				for (const FPhysicsCallback& Cb : PreStepCallbacks)
+				{
+					Cb(m_model, m_data);
+				}
 
-                // Puppet mode: client pushes qpos/qvel/ctrl directly, so
-                // ApplyControls (NetworkValue → d->ctrl) would clobber the
-                // snapshot. Skip the controller pass.
-                bool bSkipApplyControls = false;
-                if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
-                {
-                    bSkipApplyControls = (OwnerMgr->StepMode == EStepMode::Puppet);
-                }
-                if (!bSkipApplyControls)
-                {
-                    for (AMjArticulation* Art : m_articulations)
-                    {
-                        if (Art) Art->ApplyControls();
-                    }
-                }
+				// Puppet mode: client pushes qpos/qvel/ctrl directly, so
+				// ApplyControls (NetworkValue → d->ctrl) would clobber the
+				// snapshot. Skip the controller pass.
+				bool bSkipApplyControls = false;
+				if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
+				{
+					bSkipApplyControls = (OwnerMgr->StepMode == EStepMode::Puppet);
+				}
+				if (!bSkipApplyControls)
+				{
+					for (AMjArticulation* Art : m_articulations)
+					{
+						if (Art)
+							Art->ApplyControls();
+					}
+				}
 
-                DrainCommands();
+				DrainCommands();
 
-                if (!bIsPaused)
-                {
-                    if (CustomStepHandler)
-                        CustomStepHandler(m_model, m_data);
-                    else
-                        mj_step(m_model, m_data);
-                }
+				if (!bIsPaused)
+				{
+					if (CustomStepHandler)
+						CustomStepHandler(m_model, m_data);
+					else
+						mj_step(m_model, m_data);
+				}
 
-                for (const FPhysicsCallback& Cb : PostStepCallbacks)
-                {
-                    Cb(m_model, m_data);
-                }
+				for (const FPhysicsCallback& Cb : PostStepCallbacks)
+				{
+					Cb(m_model, m_data);
+				}
 
-                if (OnPostStep)
-                {
-                    OnPostStep(m_model, m_data);
-                }
+				if (OnPostStep)
+				{
+					OnPostStep(m_model, m_data);
+				}
 
-                // Publish a coherent render snapshot for game-thread
-                // consumers. Inside the same CallbackMutex scope so the
-                // snapshot reflects the m_data that was just stepped.
-                PushRenderState();
-            } // FScopeLock released here
+				// Publish a coherent render snapshot for game-thread
+				// consumers. Inside the same CallbackMutex scope so the
+				// snapshot reflects the m_data that was just stepped.
+				PushRenderState();
+			} // FScopeLock released here
 
-            // End-of-iteration pacing.
-            //
-            // Live mode: UE owns the clock. Spin-wait to TargetInterval so
-            //   the loop runs at real-time physics rate.
-            // Direct / Puppet: the client owns the clock. Block on
-            //   StepRequestEvent (signalled by the dispatcher on enqueue)
-            //   so we drain commands at the rate Python sends them rather
-            //   than capping at 1 / timestep Hz. Short timeout keeps the
-            //   bShouldStopTask check responsive on shutdown.
-            bool bUseRealTimePacing = true;
-            if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
-            {
-                bUseRealTimePacing = (OwnerMgr->StepMode == EStepMode::Live);
-            }
-            if (bUseRealTimePacing)
-            {
-                const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
-                const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
-                while (FPlatformTime::Seconds() < TargetTime)
-                {
-                    FPlatformProcess::YieldThread();
-                }
-            }
-            else if (StepRequestEvent)
-            {
-                // 100ms timeout: cap shutdown latency without polling hot.
-                StepRequestEvent->Wait(100);
-            }
-        }
-    });
+			// End-of-iteration pacing.
+			//
+			// Live mode: UE owns the clock. Spin-wait to TargetInterval so
+			//   the loop runs at real-time physics rate.
+			// Direct / Puppet: the client owns the clock. Block on
+			//   StepRequestEvent (signalled by the dispatcher on enqueue)
+			//   so we drain commands at the rate Python sends them rather
+			//   than capping at 1 / timestep Hz. Short timeout keeps the
+			//   bShouldStopTask check responsive on shutdown.
+			bool bUseRealTimePacing = true;
+			if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
+			{
+				bUseRealTimePacing = (OwnerMgr->StepMode == EStepMode::Live);
+			}
+			if (bUseRealTimePacing)
+			{
+				const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
+				const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
+				while (FPlatformTime::Seconds() < TargetTime)
+				{
+					FPlatformProcess::YieldThread();
+				}
+			}
+			else if (StepRequestEvent)
+			{
+				// 100ms timeout: cap shutdown latency without polling hot.
+				StepRequestEvent->Wait(100);
+			}
+		}
+	});
 }
 
 void UMjPhysicsEngine::SetControlSource(EControlSource NewSource)
 {
-    ControlSource = NewSource;
+	ControlSource = NewSource;
 }
 
 EControlSource UMjPhysicsEngine::GetControlSource() const
 {
-    return ControlSource;
+	return ControlSource;
 }
 
 void UMjPhysicsEngine::SetPaused(bool bPaused)
 {
-    bIsPaused = bPaused;
+	bIsPaused = bPaused;
 }
 
 bool UMjPhysicsEngine::IsRunning() const
 {
-    return IsInitialized() && !bIsPaused;
+	return IsInitialized() && !bIsPaused;
 }
 
 bool UMjPhysicsEngine::IsInitialized() const
 {
-    return (m_model != nullptr && m_data != nullptr);
+	return (m_model != nullptr && m_data != nullptr);
 }
 
 FString UMjPhysicsEngine::GetLastCompileError() const
 {
-    return m_LastCompileError;
+	return m_LastCompileError;
 }
 
 void UMjPhysicsEngine::StepSync(int32 NumSteps)
 {
-    if (!IsInitialized()) return;
+	if (!IsInitialized())
+		return;
 
-    bool bWasPaused = bIsPaused;
-    bIsPaused = true;
+	bool bWasPaused = bIsPaused;
+	bIsPaused = true;
 
-    FScopeLock Lock(&CallbackMutex);
+	FScopeLock Lock(&CallbackMutex);
 
-    for (int32 i = 0; i < NumSteps; ++i)
-    {
-        DrainCommands();
-        mj_step(m_model, m_data);
-    }
+	for (int32 i = 0; i < NumSteps; ++i)
+	{
+		DrainCommands();
+		mj_step(m_model, m_data);
+	}
 
-    // Publish a render snapshot for the sync step path too. Keeps the
-    // render flow uniform across async and sync stepping (RPC, replay
-    // scrub, custom step handlers).
-    PushRenderState();
+	// Publish a render snapshot for the sync step path too. Keeps the
+	// render flow uniform across async and sync stepping (RPC, replay
+	// scrub, custom step handlers).
+	PushRenderState();
 
-    bIsPaused = bWasPaused;
+	bIsPaused = bWasPaused;
 }
 
 bool UMjPhysicsEngine::CompileModel()
 {
-    bShouldStopTask = true;
-    // Wake the worker if it's parked on the step-request event so it
-    // observes bShouldStopTask without waiting out the Wait timeout.
-    if (StepRequestEvent) StepRequestEvent->Trigger();
-    {
-        FScopeLock Lock(&CallbackMutex);
-        if (m_data)  { mj_deleteData(m_data);   m_data  = nullptr; }
-        if (m_model) { mj_deleteModel(m_model); m_model = nullptr; }
-    }
-    if (m_spec)  { mj_deleteSpec(m_spec);   m_spec  = nullptr; }
+	bShouldStopTask = true;
+	// Wake the worker if it's parked on the step-request event so it
+	// observes bShouldStopTask without waiting out the Wait timeout.
+	if (StepRequestEvent)
+		StepRequestEvent->Trigger();
+	{
+		FScopeLock Lock(&CallbackMutex);
+		if (m_data)
+		{
+			mj_deleteData(m_data);
+			m_data = nullptr;
+		}
+		if (m_model)
+		{
+			mj_deleteModel(m_model);
+			m_model = nullptr;
+		}
+	}
+	if (m_spec)
+	{
+		mj_deleteSpec(m_spec);
+		m_spec = nullptr;
+	}
 
-    // Clear registered scene objects for re-scan
-    m_MujocoComponents.Empty();
-    m_articulations.Empty();
-    m_heightfieldActors.Empty();
+	// Clear registered scene objects for re-scan
+	m_MujocoComponents.Empty();
+	m_articulations.Empty();
+	m_heightfieldActors.Empty();
 
-    Compile();
+	Compile();
 
-    if (!IsInitialized())
-    {
-        return false;
-    }
+	if (!IsInitialized())
+	{
+		return false;
+	}
 
-    RunMujocoAsync();
-    return true;
+	RunMujocoAsync();
+	return true;
 }
 
 AMjArticulation* UMjPhysicsEngine::GetArticulation(const FString& ActorName) const
 {
-    if (const AMjArticulation* const* Found = m_ArticulationMap.Find(ActorName))
-        return const_cast<AMjArticulation*>(*Found);
-    for (AMjArticulation* Art : m_articulations)
-    {
-        if (Art && Art->GetName() == ActorName)
-            return Art;
-    }
-    return nullptr;
+	if (const AMjArticulation* const* Found = m_ArticulationMap.Find(ActorName))
+		return const_cast<AMjArticulation*>(*Found);
+	for (AMjArticulation* Art : m_articulations)
+	{
+		if (Art && Art->GetName() == ActorName)
+			return Art;
+	}
+	return nullptr;
 }
 
 TArray<AMjArticulation*> UMjPhysicsEngine::GetAllArticulations() const
 {
-    return m_articulations;
+	return m_articulations;
 }
 
 TArray<UMjQuickConvertComponent*> UMjPhysicsEngine::GetAllQuickComponents() const
 {
-    return m_MujocoComponents;
+	return m_MujocoComponents;
 }
 
 TArray<AMjHeightfieldActor*> UMjPhysicsEngine::GetAllHeightfields() const
 {
-    return m_heightfieldActors;
+	return m_heightfieldActors;
 }
 
 float UMjPhysicsEngine::GetSimTime() const
 {
-    if (m_data) return (float)m_data->time;
-    return 0.0f;
+	if (m_data)
+		return (float)m_data->time;
+	return 0.0f;
 }
 
 float UMjPhysicsEngine::GetTimestep() const
 {
-    return m_model ? (float)m_model->opt.timestep : 0.002f;
+	return m_model ? (float)m_model->opt.timestep : 0.002f;
 }
 
 void UMjPhysicsEngine::ResetSimulation()
 {
-    bPendingReset = true;
-    UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Reset requested."));
+	bPendingReset = true;
+	UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Reset requested."));
 }
 
 void UMjPhysicsEngine::SetCustomStepHandler(FMujocoStepCallback Handler)
 {
-    FScopeLock Lock(&CallbackMutex);
-    CustomStepHandler = Handler;
+	FScopeLock Lock(&CallbackMutex);
+	CustomStepHandler = Handler;
 }
 
 void UMjPhysicsEngine::ClearCustomStepHandler()
 {
-    FScopeLock Lock(&CallbackMutex);
-    CustomStepHandler = nullptr;
+	FScopeLock Lock(&CallbackMutex);
+	CustomStepHandler = nullptr;
 }
 
 UMjSimulationState* UMjPhysicsEngine::CaptureSnapshot()
 {
-    if (!m_model || !m_data) return nullptr;
+	if (!m_model || !m_data)
+		return nullptr;
 
-    UMjSimulationState* NewSnapshot = NewObject<UMjSimulationState>(GetOwner());
+	UMjSimulationState* NewSnapshot = NewObject<UMjSimulationState>(GetOwner());
 
-    uint32 Mask = mjSTATE_INTEGRATION;
+	uint32 Mask = mjSTATE_INTEGRATION;
 
-    int nState = mj_stateSize(m_model, Mask);
-    NewSnapshot->StateVector.SetNum(nState);
-    NewSnapshot->StateMask = (int32)Mask;
-    NewSnapshot->SimTime = (float)m_data->time;
+	int nState = mj_stateSize(m_model, Mask);
+	NewSnapshot->StateVector.SetNum(nState);
+	NewSnapshot->StateMask = (int32)Mask;
+	NewSnapshot->SimTime = (float)m_data->time;
 
-    {
-        mj_getState(m_model, m_data, NewSnapshot->StateVector.GetData(), Mask);
-    }
+	{
+		mj_getState(m_model, m_data, NewSnapshot->StateVector.GetData(), Mask);
+	}
 
-    UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Snapshot captured at t=%f (Size: %d)"), NewSnapshot->SimTime, nState);
-    return NewSnapshot;
+	UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Snapshot captured at t=%f (Size: %d)"), NewSnapshot->SimTime, nState);
+	return NewSnapshot;
 }
 
 void UMjPhysicsEngine::RestoreSnapshot(UMjSimulationState* Snapshot)
 {
-    if (!Snapshot) return;
+	if (!Snapshot)
+		return;
 
-    PendingStateVector = Snapshot->StateVector;
-    PendingStateMask   = Snapshot->StateMask;
-    bPendingRestore    = true;
+	PendingStateVector = Snapshot->StateVector;
+	PendingStateMask = Snapshot->StateMask;
+	bPendingRestore = true;
 
-    UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Restore requested for snapshot t=%f"), Snapshot->SimTime);
+	UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Restore requested for snapshot t=%f"), Snapshot->SimTime);
 }
 
 void UMjPhysicsEngine::RegisterPreStepCallback(FPhysicsCallback Callback)
 {
-    // Lock matches the iteration in RunMujocoAsync — TArray realloc during
-    // a concurrent Add would invalidate the buffer the physics thread holds.
-    FScopeLock Lock(&CallbackMutex);
-    PreStepCallbacks.Add(MoveTemp(Callback));
+	// Lock matches the iteration in RunMujocoAsync — TArray realloc during
+	// a concurrent Add would invalidate the buffer the physics thread holds.
+	FScopeLock Lock(&CallbackMutex);
+	PreStepCallbacks.Add(MoveTemp(Callback));
 }
 
 void UMjPhysicsEngine::RegisterPostStepCallback(FPhysicsCallback Callback)
 {
-    FScopeLock Lock(&CallbackMutex);
-    PostStepCallbacks.Add(MoveTemp(Callback));
+	FScopeLock Lock(&CallbackMutex);
+	PostStepCallbacks.Add(MoveTemp(Callback));
 }
 
 void UMjPhysicsEngine::ClearCallbacks()
 {
-    FScopeLock Lock(&CallbackMutex);
-    PreStepCallbacks.Empty();
-    PostStepCallbacks.Empty();
+	FScopeLock Lock(&CallbackMutex);
+	PreStepCallbacks.Empty();
+	PostStepCallbacks.Empty();
 }
 
 // =============================================================================
@@ -733,90 +767,90 @@ void UMjPhysicsEngine::ClearCallbacks()
 
 namespace
 {
-    template <typename T>
-    static void ResizeIfDifferent(TArray<T>& Array, int32 RequiredNum)
-    {
-        if (Array.Num() != RequiredNum)
-        {
-            Array.SetNumUninitialized(RequiredNum);
-        }
-    }
-
-    template <typename T>
-    static void CopyArray(TArray<T>& Dst, const void* Src, int32 Count)
-    {
-        // T is deduced from Dst only. Src is type-erased so MuJoCo's
-        // raw `int*` / `mjtNum*` pointers don't have to match T's
-        // typedef chain exactly; sizeof(T) drives the byte count.
-        if (!Src || Count <= 0)
-        {
-            Dst.Reset();
-            return;
-        }
-        ResizeIfDifferent(Dst, Count);
-        FMemory::Memcpy(Dst.GetData(), Src, sizeof(T) * static_cast<SIZE_T>(Count));
-    }
+template <typename T>
+static void ResizeIfDifferent(TArray<T>& Array, int32 RequiredNum)
+{
+	if (Array.Num() != RequiredNum)
+	{
+		Array.SetNumUninitialized(RequiredNum);
+	}
 }
+
+template <typename T>
+static void CopyArray(TArray<T>& Dst, const void* Src, int32 Count)
+{
+	// T is deduced from Dst only. Src is type-erased so MuJoCo's
+	// raw `int*` / `mjtNum*` pointers don't have to match T's
+	// typedef chain exactly; sizeof(T) drives the byte count.
+	if (!Src || Count <= 0)
+	{
+		Dst.Reset();
+		return;
+	}
+	ResizeIfDifferent(Dst, Count);
+	FMemory::Memcpy(Dst.GetData(), Src, sizeof(T) * static_cast<SIZE_T>(Count));
+}
+} // namespace
 
 void UMjPhysicsEngine::PushRenderState()
 {
-    if (!m_model || !m_data)
-    {
-        return;
-    }
+	if (!m_model || !m_data)
+	{
+		return;
+	}
 
-    FScopeLock Lock(&RenderStateMutex);
+	FScopeLock Lock(&RenderStateMutex);
 
-    const int32 NBody        = m_model->nbody;
-    const int32 NGeom        = m_model->ngeom;
-    const int32 NSite        = m_model->nsite;
-    const int32 NCam         = m_model->ncam;
-    const int32 NQ           = m_model->nq;
-    const int32 NV           = m_model->nv;
-    const int32 NU           = m_model->nu;
-    const int32 NSensorData  = m_model->nsensordata;
-    const int32 NTree        = m_model->ntree;
-    const int32 NFlexvert    = m_model->nflexvert;
+	const int32 NBody = m_model->nbody;
+	const int32 NGeom = m_model->ngeom;
+	const int32 NSite = m_model->nsite;
+	const int32 NCam = m_model->ncam;
+	const int32 NQ = m_model->nq;
+	const int32 NV = m_model->nv;
+	const int32 NU = m_model->nu;
+	const int32 NSensorData = m_model->nsensordata;
+	const int32 NTree = m_model->ntree;
+	const int32 NFlexvert = m_model->nflexvert;
 
-    // Body kinematics.
-    CopyArray(RenderSnapshot.XPos,        m_data->xpos,         NBody * 3);
-    CopyArray(RenderSnapshot.XQuat,       m_data->xquat,        NBody * 4);
-    CopyArray(RenderSnapshot.CVel,        m_data->cvel,         NBody * 6);
-    CopyArray(RenderSnapshot.XfrcApplied, m_data->xfrc_applied, NBody * 6);
+	// Body kinematics.
+	CopyArray(RenderSnapshot.XPos, m_data->xpos, NBody * 3);
+	CopyArray(RenderSnapshot.XQuat, m_data->xquat, NBody * 4);
+	CopyArray(RenderSnapshot.CVel, m_data->cvel, NBody * 6);
+	CopyArray(RenderSnapshot.XfrcApplied, m_data->xfrc_applied, NBody * 6);
 
-    // Geoms / sites / cameras.
-    CopyArray(RenderSnapshot.GeomXPos,    m_data->geom_xpos,    NGeom * 3);
-    CopyArray(RenderSnapshot.GeomXMat,    m_data->geom_xmat,    NGeom * 9);
-    CopyArray(RenderSnapshot.SiteXPos,    m_data->site_xpos,    NSite * 3);
-    CopyArray(RenderSnapshot.SiteXMat,    m_data->site_xmat,    NSite * 9);
-    CopyArray(RenderSnapshot.CamXPos,     m_data->cam_xpos,     NCam * 3);
-    CopyArray(RenderSnapshot.CamXMat,     m_data->cam_xmat,     NCam * 9);
+	// Geoms / sites / cameras.
+	CopyArray(RenderSnapshot.GeomXPos, m_data->geom_xpos, NGeom * 3);
+	CopyArray(RenderSnapshot.GeomXMat, m_data->geom_xmat, NGeom * 9);
+	CopyArray(RenderSnapshot.SiteXPos, m_data->site_xpos, NSite * 3);
+	CopyArray(RenderSnapshot.SiteXMat, m_data->site_xmat, NSite * 9);
+	CopyArray(RenderSnapshot.CamXPos, m_data->cam_xpos, NCam * 3);
+	CopyArray(RenderSnapshot.CamXMat, m_data->cam_xmat, NCam * 9);
 
-    // Joint / actuator / sensor state.
-    CopyArray(RenderSnapshot.QPos,          m_data->qpos,           NQ);
-    CopyArray(RenderSnapshot.QVel,          m_data->qvel,           NV);
-    CopyArray(RenderSnapshot.QAcc,          m_data->qacc,           NV);
-    CopyArray(RenderSnapshot.ActuatorForce, m_data->actuator_force, NU);
-    CopyArray(RenderSnapshot.SensorData,    m_data->sensordata,     NSensorData);
+	// Joint / actuator / sensor state.
+	CopyArray(RenderSnapshot.QPos, m_data->qpos, NQ);
+	CopyArray(RenderSnapshot.QVel, m_data->qvel, NV);
+	CopyArray(RenderSnapshot.QAcc, m_data->qacc, NV);
+	CopyArray(RenderSnapshot.ActuatorForce, m_data->actuator_force, NU);
+	CopyArray(RenderSnapshot.SensorData, m_data->sensordata, NSensorData);
 
-    // Sleep state.
-    CopyArray(RenderSnapshot.BodyAwake,  m_data->body_awake,  NBody);
-    CopyArray(RenderSnapshot.TreeAsleep, m_data->tree_asleep, NTree);
-    CopyArray(RenderSnapshot.TreeAwake,  m_data->tree_awake,  NTree);
+	// Sleep state.
+	CopyArray(RenderSnapshot.BodyAwake, m_data->body_awake, NBody);
+	CopyArray(RenderSnapshot.TreeAsleep, m_data->tree_asleep, NTree);
+	CopyArray(RenderSnapshot.TreeAwake, m_data->tree_awake, NTree);
 
-    // Flex deformable state.
-    CopyArray(RenderSnapshot.FlexvertXPos, m_data->flexvert_xpos, NFlexvert * 3);
+	// Flex deformable state.
+	CopyArray(RenderSnapshot.FlexvertXPos, m_data->flexvert_xpos, NFlexvert * 3);
 
-    // Metadata.
-    RenderSnapshot.SimTime = m_data->time;
-    ++RenderSnapshot.FrameId;
+	// Metadata.
+	RenderSnapshot.SimTime = m_data->time;
+	++RenderSnapshot.FrameId;
 }
 
 void UMjPhysicsEngine::WithRenderState(
-    TFunctionRef<void(const FMjRenderSnapshot&)> Visitor)
+	TFunctionRef<void(const FMjRenderSnapshot&)> Visitor)
 {
-    FScopeLock Lock(&RenderStateMutex);
-    Visitor(RenderSnapshot);
+	FScopeLock Lock(&RenderStateMutex);
+	Visitor(RenderSnapshot);
 }
 
 // =============================================================================
@@ -829,90 +863,101 @@ void UMjPhysicsEngine::WithRenderState(
 
 void UMjPhysicsEngine::SubmitMocapPose(int32 BodyId, const double Pos[3], const double Quat[4])
 {
-    if (BodyId < 0) return;
-    FScopeLock Lock(&CommandMutex);
-    FMocapPose& Slot = PendingCommands.MocapPoses.FindOrAdd(BodyId);
-    FMemory::Memcpy(Slot.Pos,  Pos,  sizeof(Slot.Pos));
-    FMemory::Memcpy(Slot.Quat, Quat, sizeof(Slot.Quat));
+	if (BodyId < 0)
+		return;
+	FScopeLock Lock(&CommandMutex);
+	FMocapPose& Slot = PendingCommands.MocapPoses.FindOrAdd(BodyId);
+	FMemory::Memcpy(Slot.Pos, Pos, sizeof(Slot.Pos));
+	FMemory::Memcpy(Slot.Quat, Quat, sizeof(Slot.Quat));
 }
 
 void UMjPhysicsEngine::SubmitWrench(int32 BodyId, const double Xfrc[6])
 {
-    if (BodyId < 0) return;
-    FScopeLock Lock(&CommandMutex);
-    FWrench& Slot = PendingCommands.WrenchSets.FindOrAdd(BodyId);
-    FMemory::Memcpy(Slot.Xfrc, Xfrc, sizeof(Slot.Xfrc));
-    PendingCommands.WrenchClears.Remove(BodyId);
+	if (BodyId < 0)
+		return;
+	FScopeLock Lock(&CommandMutex);
+	FWrench& Slot = PendingCommands.WrenchSets.FindOrAdd(BodyId);
+	FMemory::Memcpy(Slot.Xfrc, Xfrc, sizeof(Slot.Xfrc));
+	PendingCommands.WrenchClears.Remove(BodyId);
 }
 
 void UMjPhysicsEngine::SubmitClearForce(int32 BodyId)
 {
-    if (BodyId < 0) return;
-    FScopeLock Lock(&CommandMutex);
-    PendingCommands.WrenchSets.Remove(BodyId);
-    PendingCommands.WrenchClears.Add(BodyId);
+	if (BodyId < 0)
+		return;
+	FScopeLock Lock(&CommandMutex);
+	PendingCommands.WrenchSets.Remove(BodyId);
+	PendingCommands.WrenchClears.Add(BodyId);
 }
 
 void UMjPhysicsEngine::ApplyWakeBody(int32 BodyId)
 {
-    if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody) return;
-    FScopeLock Lock(&CallbackMutex);
-    m_data->body_awake[BodyId] = 1;
-    const int32 TreeId = m_model->body_treeid[BodyId];
-    if (TreeId >= 0 && TreeId < m_model->ntree)
-    {
-        m_data->tree_asleep[TreeId] = -1;
-        m_data->tree_awake[TreeId]  = 1;
-    }
+	if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_data->body_awake[BodyId] = 1;
+	const int32 TreeId = m_model->body_treeid[BodyId];
+	if (TreeId >= 0 && TreeId < m_model->ntree)
+	{
+		m_data->tree_asleep[TreeId] = -1;
+		m_data->tree_awake[TreeId] = 1;
+	}
 }
 
 void UMjPhysicsEngine::ApplySleepBody(int32 BodyId)
 {
-    if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody) return;
-    FScopeLock Lock(&CallbackMutex);
-    m_data->body_awake[BodyId] = 0;
-    const int32 TreeId = m_model->body_treeid[BodyId];
-    if (TreeId >= 0 && TreeId < m_model->ntree)
-    {
-        if (m_data->tree_asleep[TreeId] < 0)
-            m_data->tree_asleep[TreeId] = 0;
-        m_data->tree_awake[TreeId] = 0;
-    }
+	if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_data->body_awake[BodyId] = 0;
+	const int32 TreeId = m_model->body_treeid[BodyId];
+	if (TreeId >= 0 && TreeId < m_model->ntree)
+	{
+		if (m_data->tree_asleep[TreeId] < 0)
+			m_data->tree_asleep[TreeId] = 0;
+		m_data->tree_awake[TreeId] = 0;
+	}
 }
 
 void UMjPhysicsEngine::DrainCommands()
 {
-    if (!m_model || !m_data) return;
+	if (!m_model || !m_data)
+		return;
 
-    FCommandQueue Local;
-    {
-        FScopeLock Lock(&CommandMutex);
-        if (PendingCommands.IsEmpty()) return;
-        Local = MoveTemp(PendingCommands);
-        PendingCommands = FCommandQueue();
-    }
+	FCommandQueue Local;
+	{
+		FScopeLock Lock(&CommandMutex);
+		if (PendingCommands.IsEmpty())
+			return;
+		Local = MoveTemp(PendingCommands);
+		PendingCommands = FCommandQueue();
+	}
 
-    const int32 NBody = m_model->nbody;
+	const int32 NBody = m_model->nbody;
 
-    for (const TPair<int32, FMocapPose>& Pair : Local.MocapPoses)
-    {
-        const int32 BodyId = Pair.Key;
-        if (BodyId < 0 || BodyId >= NBody) continue;
-        const int32 MocapId = m_model->body_mocapid[BodyId];
-        if (MocapId < 0) continue;
-        FMemory::Memcpy(m_data->mocap_pos  + 3 * MocapId, Pair.Value.Pos,  sizeof(Pair.Value.Pos));
-        FMemory::Memcpy(m_data->mocap_quat + 4 * MocapId, Pair.Value.Quat, sizeof(Pair.Value.Quat));
-    }
+	for (const TPair<int32, FMocapPose>& Pair : Local.MocapPoses)
+	{
+		const int32 BodyId = Pair.Key;
+		if (BodyId < 0 || BodyId >= NBody)
+			continue;
+		const int32 MocapId = m_model->body_mocapid[BodyId];
+		if (MocapId < 0)
+			continue;
+		FMemory::Memcpy(m_data->mocap_pos + 3 * MocapId, Pair.Value.Pos, sizeof(Pair.Value.Pos));
+		FMemory::Memcpy(m_data->mocap_quat + 4 * MocapId, Pair.Value.Quat, sizeof(Pair.Value.Quat));
+	}
 
-    for (const TPair<int32, FWrench>& Pair : Local.WrenchSets)
-    {
-        const int32 BodyId = Pair.Key;
-        if (BodyId < 0 || BodyId >= NBody) continue;
-        FMemory::Memcpy(m_data->xfrc_applied + 6 * BodyId, Pair.Value.Xfrc, sizeof(Pair.Value.Xfrc));
-    }
-    for (int32 BodyId : Local.WrenchClears)
-    {
-        if (BodyId < 0 || BodyId >= NBody) continue;
-        FMemory::Memzero(m_data->xfrc_applied + 6 * BodyId, sizeof(double) * 6);
-    }
+	for (const TPair<int32, FWrench>& Pair : Local.WrenchSets)
+	{
+		const int32 BodyId = Pair.Key;
+		if (BodyId < 0 || BodyId >= NBody)
+			continue;
+		FMemory::Memcpy(m_data->xfrc_applied + 6 * BodyId, Pair.Value.Xfrc, sizeof(Pair.Value.Xfrc));
+	}
+	for (int32 BodyId : Local.WrenchClears)
+	{
+		if (BodyId < 0 || BodyId >= NBody)
+			continue;
+		FMemory::Memzero(m_data->xfrc_applied + 6 * BodyId, sizeof(double) * 6);
+	}
 }

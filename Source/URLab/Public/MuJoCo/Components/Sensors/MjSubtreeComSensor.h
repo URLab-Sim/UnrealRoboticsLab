@@ -35,18 +35,18 @@
  *
  * Subclass of UMjSensor. Sets Type = SubtreeCom in the constructor.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjSubtreeComSensor : public UMjSensor
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UMjSubtreeComSensor();
+	UMjSubtreeComSensor();
 
-    // --- CODEGEN_PROPERTIES_START ---
-    // (no type-specific schema attrs)
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// (no type-specific schema attrs)
+	// --- CODEGEN_PROPERTIES_END ---
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
-    virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ExportTo(mjsSensor* Element, mjsDefault* Default = nullptr) override;
 };

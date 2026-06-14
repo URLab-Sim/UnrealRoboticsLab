@@ -26,20 +26,23 @@
 #include "Landscape.h"
 #include "Utils/URLabLogging.h"
 
+ALandscape* MeshUtils::FindLandscapeActor(UWorld* World)
+{
+	if (!World)
+	{
+		UE_LOG(LogURLabGenerator, Warning, TEXT("World is null!"));
+		return nullptr;
+	}
 
-ALandscape* MeshUtils::FindLandscapeActor(UWorld* World) {
-    if (!World) {
-        UE_LOG(LogURLabGenerator, Warning, TEXT("World is null!"));
-        return nullptr;
-    }
+	for (TActorIterator<ALandscape> It(World); It; ++It)
+	{
+		ALandscape* Landscape = *It;
+		if (Landscape)
+		{
+			UE_LOG(LogURLabGenerator, Log, TEXT("Found a landscape actor: %s"), *Landscape->GetName());
+			return Landscape;
+		}
+	}
 
-    for (TActorIterator<ALandscape> It(World); It; ++It) {
-        ALandscape* Landscape = *It;
-        if (Landscape) {
-            UE_LOG(LogURLabGenerator, Log, TEXT("Found a landscape actor: %s"), *Landscape->GetName());
-            return Landscape;
-        }
-    }
-
-    return nullptr;
+	return nullptr;
 }

@@ -22,9 +22,9 @@
 
 namespace
 {
-    // Verbatim arm26.xml (model/tendon_arm/arm26.xml) from the MuJoCo repo —
-    // 2-link arm, 6 spatial tendons, 6 muscles with a <default><muscle/> block.
-    static const TCHAR* ARM26_XML = TEXT(R"(
+// Verbatim arm26.xml (model/tendon_arm/arm26.xml) from the MuJoCo repo —
+// 2-link arm, 6 spatial tendons, 6 muscles with a <default><muscle/> block.
+static const TCHAR* ARM26_XML = TEXT(R"(
         <mujoco model="2-link 6-muscle arm">
           <option timestep="0.005" iterations="50" solver="Newton" tolerance="1e-10"/>
           <default>
@@ -101,109 +101,124 @@ namespace
         </mujoco>
     )");
 
-    bool ActuatorParamsMatch(
-        FAutomationTestBase& Test, const TCHAR* Label,
-        const mjModel* Ref, const mjModel* Got, int32 ActuatorId)
-    {
-        const float Eps = 1e-5f;
-        bool bOk = true;
+bool ActuatorParamsMatch(
+	FAutomationTestBase& Test, const TCHAR* Label,
+	const mjModel* Ref, const mjModel* Got, int32 ActuatorId)
+{
+	const float Eps = 1e-5f;
+	bool bOk = true;
 
-        if (Ref->actuator_dyntype[ActuatorId] != Got->actuator_dyntype[ActuatorId])
-        {
-            Test.AddError(FString::Printf(
-                TEXT("%s: actuator_dyntype[%d] ref=%d got=%d"),
-                Label, ActuatorId,
-                Ref->actuator_dyntype[ActuatorId], Got->actuator_dyntype[ActuatorId]));
-            bOk = false;
-        }
-        if (Ref->actuator_gaintype[ActuatorId] != Got->actuator_gaintype[ActuatorId])
-        {
-            Test.AddError(FString::Printf(
-                TEXT("%s: actuator_gaintype[%d] ref=%d got=%d"),
-                Label, ActuatorId,
-                Ref->actuator_gaintype[ActuatorId], Got->actuator_gaintype[ActuatorId]));
-            bOk = false;
-        }
-        if (Ref->actuator_biastype[ActuatorId] != Got->actuator_biastype[ActuatorId])
-        {
-            Test.AddError(FString::Printf(
-                TEXT("%s: actuator_biastype[%d] ref=%d got=%d"),
-                Label, ActuatorId,
-                Ref->actuator_biastype[ActuatorId], Got->actuator_biastype[ActuatorId]));
-            bOk = false;
-        }
+	if (Ref->actuator_dyntype[ActuatorId] != Got->actuator_dyntype[ActuatorId])
+	{
+		Test.AddError(FString::Printf(
+			TEXT("%s: actuator_dyntype[%d] ref=%d got=%d"),
+			Label, ActuatorId,
+			Ref->actuator_dyntype[ActuatorId], Got->actuator_dyntype[ActuatorId]));
+		bOk = false;
+	}
+	if (Ref->actuator_gaintype[ActuatorId] != Got->actuator_gaintype[ActuatorId])
+	{
+		Test.AddError(FString::Printf(
+			TEXT("%s: actuator_gaintype[%d] ref=%d got=%d"),
+			Label, ActuatorId,
+			Ref->actuator_gaintype[ActuatorId], Got->actuator_gaintype[ActuatorId]));
+		bOk = false;
+	}
+	if (Ref->actuator_biastype[ActuatorId] != Got->actuator_biastype[ActuatorId])
+	{
+		Test.AddError(FString::Printf(
+			TEXT("%s: actuator_biastype[%d] ref=%d got=%d"),
+			Label, ActuatorId,
+			Ref->actuator_biastype[ActuatorId], Got->actuator_biastype[ActuatorId]));
+		bOk = false;
+	}
 
-        for (int p = 0; p < mjNDYN; ++p)
-        {
-            const float R = (float)Ref->actuator_dynprm[ActuatorId * mjNDYN + p];
-            const float G = (float)Got->actuator_dynprm[ActuatorId * mjNDYN + p];
-            if (FMath::Abs(R - G) > Eps)
-            {
-                Test.AddError(FString::Printf(
-                    TEXT("%s: actuator_dynprm[%d][%d] ref=%f got=%f"),
-                    Label, ActuatorId, p, R, G));
-                bOk = false;
-            }
-        }
-        for (int p = 0; p < mjNGAIN; ++p)
-        {
-            const float R = (float)Ref->actuator_gainprm[ActuatorId * mjNGAIN + p];
-            const float G = (float)Got->actuator_gainprm[ActuatorId * mjNGAIN + p];
-            if (FMath::Abs(R - G) > Eps)
-            {
-                Test.AddError(FString::Printf(
-                    TEXT("%s: actuator_gainprm[%d][%d] ref=%f got=%f"),
-                    Label, ActuatorId, p, R, G));
-                bOk = false;
-            }
-        }
-        for (int p = 0; p < mjNBIAS; ++p)
-        {
-            const float R = (float)Ref->actuator_biasprm[ActuatorId * mjNBIAS + p];
-            const float G = (float)Got->actuator_biasprm[ActuatorId * mjNBIAS + p];
-            if (FMath::Abs(R - G) > Eps)
-            {
-                Test.AddError(FString::Printf(
-                    TEXT("%s: actuator_biasprm[%d][%d] ref=%f got=%f"),
-                    Label, ActuatorId, p, R, G));
-                bOk = false;
-            }
-        }
-        return bOk;
-    }
+	for (int p = 0; p < mjNDYN; ++p)
+	{
+		const float R = (float)Ref->actuator_dynprm[ActuatorId * mjNDYN + p];
+		const float G = (float)Got->actuator_dynprm[ActuatorId * mjNDYN + p];
+		if (FMath::Abs(R - G) > Eps)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("%s: actuator_dynprm[%d][%d] ref=%f got=%f"),
+				Label, ActuatorId, p, R, G));
+			bOk = false;
+		}
+	}
+	for (int p = 0; p < mjNGAIN; ++p)
+	{
+		const float R = (float)Ref->actuator_gainprm[ActuatorId * mjNGAIN + p];
+		const float G = (float)Got->actuator_gainprm[ActuatorId * mjNGAIN + p];
+		if (FMath::Abs(R - G) > Eps)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("%s: actuator_gainprm[%d][%d] ref=%f got=%f"),
+				Label, ActuatorId, p, R, G));
+			bOk = false;
+		}
+	}
+	for (int p = 0; p < mjNBIAS; ++p)
+	{
+		const float R = (float)Ref->actuator_biasprm[ActuatorId * mjNBIAS + p];
+		const float G = (float)Got->actuator_biasprm[ActuatorId * mjNBIAS + p];
+		if (FMath::Abs(R - G) > Eps)
+		{
+			Test.AddError(FString::Printf(
+				TEXT("%s: actuator_biasprm[%d][%d] ref=%f got=%f"),
+				Label, ActuatorId, p, R, G));
+			bOk = false;
+		}
+	}
+	return bOk;
 }
+} // namespace
 
 // Arm26 compiles through the URLab pipeline and produces the same body /
 // tendon / actuator counts as mj_loadXML. If this fails, we've either lost
 // elements (missing import) or added duplicates.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjMuscle_Arm26_Counts,
-    "URLab.Muscle.Arm26_Counts",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Muscle.Arm26_Counts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjMuscle_Arm26_Counts::RunTest(const FString&)
 {
-    FMjTestSession Ref;
-    if (!Ref.CompileXml(ARM26_XML)) { AddError(Ref.LastError); return false; }
+	FMjTestSession Ref;
+	if (!Ref.CompileXml(ARM26_XML))
+	{
+		AddError(Ref.LastError);
+		return false;
+	}
 
-    FMjXmlImportSession S;
-    if (!S.Init(ARM26_XML))  { AddError(S.LastError); Ref.Cleanup(); return false; }
+	FMjXmlImportSession S;
+	if (!S.Init(ARM26_XML))
+	{
+		AddError(S.LastError);
+		Ref.Cleanup();
+		return false;
+	}
 
-    // Pre-compile diagnostic: how many component templates did the importer create?
-    AddInfo(FString::Printf(TEXT("templates: UMjMuscleActuator=%d, UMjTendon=%d, UMjSite=%d"),
-        S.CountTemplates<class UMjMuscleActuator>(),
-        S.CountTemplates<class UMjTendon>(),
-        S.CountTemplates<class UMjSite>()));
+	// Pre-compile diagnostic: how many component templates did the importer create?
+	AddInfo(FString::Printf(TEXT("templates: UMjMuscleActuator=%d, UMjTendon=%d, UMjSite=%d"),
+		S.CountTemplates<class UMjMuscleActuator>(),
+		S.CountTemplates<class UMjTendon>(),
+		S.CountTemplates<class UMjSite>()));
 
-    if (!S.Compile())        { AddError(S.LastError); S.Cleanup(); Ref.Cleanup(); return false; }
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		Ref.Cleanup();
+		return false;
+	}
 
-    TestEqual(TEXT("nbody"),   (int)S.Model()->nbody,   (int)Ref.m->nbody);
-    TestEqual(TEXT("ngeom"),   (int)S.Model()->ngeom,   (int)Ref.m->ngeom);
-    TestEqual(TEXT("ntendon"), (int)S.Model()->ntendon, (int)Ref.m->ntendon);
-    TestEqual(TEXT("nu"),      (int)S.Model()->nu,      (int)Ref.m->nu);
-    TestEqual(TEXT("nsite"),   (int)S.Model()->nsite,   (int)Ref.m->nsite);
+	TestEqual(TEXT("nbody"), (int)S.Model()->nbody, (int)Ref.m->nbody);
+	TestEqual(TEXT("ngeom"), (int)S.Model()->ngeom, (int)Ref.m->ngeom);
+	TestEqual(TEXT("ntendon"), (int)S.Model()->ntendon, (int)Ref.m->ntendon);
+	TestEqual(TEXT("nu"), (int)S.Model()->nu, (int)Ref.m->nu);
+	TestEqual(TEXT("nsite"), (int)S.Model()->nsite, (int)Ref.m->nsite);
 
-    S.Cleanup();
-    Ref.Cleanup();
-    return true;
+	S.Cleanup();
+	Ref.Cleanup();
+	return true;
 }
 
 // For every muscle in arm26, verify dyntype / gaintype / biastype and the
@@ -211,33 +226,48 @@ bool FTest_MjMuscle_Arm26_Counts::RunTest(const FString&)
 // bit-for-bit. Catches any divergence in our mjs_setToMuscle invocation or
 // default-propagation path.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjMuscle_Arm26_ActuatorParams,
-    "URLab.Muscle.Arm26_ActuatorParams",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.Muscle.Arm26_ActuatorParams",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjMuscle_Arm26_ActuatorParams::RunTest(const FString&)
 {
-    FMjTestSession Ref;
-    if (!Ref.CompileXml(ARM26_XML)) { AddError(Ref.LastError); return false; }
+	FMjTestSession Ref;
+	if (!Ref.CompileXml(ARM26_XML))
+	{
+		AddError(Ref.LastError);
+		return false;
+	}
 
-    FMjXmlImportSession S;
-    if (!S.Init(ARM26_XML))  { AddError(S.LastError); Ref.Cleanup(); return false; }
-    if (!S.Compile())        { AddError(S.LastError); S.Cleanup(); Ref.Cleanup(); return false; }
+	FMjXmlImportSession S;
+	if (!S.Init(ARM26_XML))
+	{
+		AddError(S.LastError);
+		Ref.Cleanup();
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		Ref.Cleanup();
+		return false;
+	}
 
-    if (S.Model()->nu != Ref.m->nu)
-    {
-        AddError(FString::Printf(
-            TEXT("nu mismatch before param compare: ref=%d got=%d"),
-            (int)Ref.m->nu, (int)S.Model()->nu));
-    }
-    else
-    {
-        for (int32 a = 0; a < Ref.m->nu; ++a)
-        {
-            const FString Label = FString::Printf(TEXT("arm26 actuator %d"), a);
-            ActuatorParamsMatch(*this, *Label, Ref.m, S.Model(), a);
-        }
-    }
+	if (S.Model()->nu != Ref.m->nu)
+	{
+		AddError(FString::Printf(
+			TEXT("nu mismatch before param compare: ref=%d got=%d"),
+			(int)Ref.m->nu, (int)S.Model()->nu));
+	}
+	else
+	{
+		for (int32 a = 0; a < Ref.m->nu; ++a)
+		{
+			const FString Label = FString::Printf(TEXT("arm26 actuator %d"), a);
+			ActuatorParamsMatch(*this, *Label, Ref.m, S.Model(), a);
+		}
+	}
 
-    S.Cleanup();
-    Ref.Cleanup();
-    return true;
+	S.Cleanup();
+	Ref.Cleanup();
+	return true;
 }

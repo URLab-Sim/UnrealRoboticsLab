@@ -10,10 +10,10 @@
 
 namespace URLabEditorOpHandlers
 {
-    /** Register all editor-op handlers with URLabOpRegistry. Called from
-     *  URLabEditor's StartupModule. */
-    void RegisterAll();
+/** Register all editor-op handlers with URLabOpRegistry. Called from
+ *  URLabEditor's StartupModule. */
+void RegisterAll();
 
-    /** Mirror — called from ShutdownModule. */
-    void UnregisterAll();
-}
+/** Mirror — called from ShutdownModule. */
+void UnregisterAll();
+} // namespace URLabEditorOpHandlers

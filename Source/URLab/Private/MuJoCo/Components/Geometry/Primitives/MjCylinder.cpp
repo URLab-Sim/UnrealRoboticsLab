@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Geometry/Primitives/MjCylinder.h"
@@ -36,108 +36,109 @@ UMjCylinder::UMjCylinder()
 
 void UMjCylinder::EnsureVisualizerMesh()
 {
-    if (VisualizerMesh) return;
+	if (VisualizerMesh)
+		return;
 
-    VisualizerMesh = NewObject<UStaticMeshComponent>(this, TEXT("VisualizerMesh"));
-    if (VisualizerMesh)
-    {
-        VisualizerMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-        VisualizerMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
+	VisualizerMesh = NewObject<UStaticMeshComponent>(this, TEXT("VisualizerMesh"));
+	if (VisualizerMesh)
+	{
+		VisualizerMesh->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+		VisualizerMesh->SetCollisionResponseToAllChannels(ECR_Overlap);
 
-        UStaticMesh* LoadedMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-        if (LoadedMesh) VisualizerMesh->SetStaticMesh(LoadedMesh);
+		UStaticMesh* LoadedMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
+		if (LoadedMesh)
+			VisualizerMesh->SetStaticMesh(LoadedMesh);
 
-        if (IsRegistered())
-        {
-            VisualizerMesh->SetupAttachment(this);
-            VisualizerMesh->RegisterComponent();
-        }
-    }
+		if (IsRegistered())
+		{
+			VisualizerMesh->SetupAttachment(this);
+			VisualizerMesh->RegisterComponent();
+		}
+	}
 }
 
 void UMjCylinder::OnRegister()
 {
-    Super::OnRegister();
-    EnsureVisualizerMesh();
+	Super::OnRegister();
+	EnsureVisualizerMesh();
 
-    if (VisualizerMesh && !VisualizerMesh->IsRegistered())
-    {
-        VisualizerMesh->SetupAttachment(this);
-        VisualizerMesh->RegisterComponent();
-    }
+	if (VisualizerMesh && !VisualizerMesh->IsRegistered())
+	{
+		VisualizerMesh->SetupAttachment(this);
+		VisualizerMesh->RegisterComponent();
+	}
 
-    if (VisualizerMesh && OverrideMaterial && IsValid(OverrideMaterial) && GetOwner())
-    {
-        VisualizerMesh->SetMaterial(0, OverrideMaterial);
-    }
+	if (VisualizerMesh && OverrideMaterial && IsValid(OverrideMaterial) && GetOwner())
+	{
+		VisualizerMesh->SetMaterial(0, OverrideMaterial);
+	}
 }
-
-
-
 
 void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-        // --- CODEGEN_IMPORT_START ---
-        // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	// --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
 	// Clamp -1.0f sentinels (set by the fromto canon when slot is unset).
-	auto ReadSlot = [this](int32 i) -> float
-	{
-		if (size.Num() <= i) return 0.0f;
+	auto ReadSlot = [this](int32 i) -> float {
+		if (size.Num() <= i)
+			return 0.0f;
 		return size[i] < 0.0f ? 0.0f : size[i];
 	};
-	Radius     = ReadSlot(0);
+	Radius = ReadSlot(0);
 	HalfLength = ReadSlot(1);
 
-    // Sync Unreal scale immediately on import so the editor visual matches the data
-    const float BaseSize = 50.0f;
-    const float UnitScale = 100.0f;
-    FVector NewScale;
-    NewScale.X = NewScale.Y = (Radius * UnitScale) / BaseSize;
-    NewScale.Z = (HalfLength * UnitScale) / BaseSize;
-    SetRelativeScale3D(NewScale);
+	// Sync Unreal scale immediately on import so the editor visual matches the data
+	const float BaseSize = 50.0f;
+	const float UnitScale = 100.0f;
+	FVector NewScale;
+	NewScale.X = NewScale.Y = (Radius * UnitScale) / BaseSize;
+	NewScale.Z = (HalfLength * UnitScale) / BaseSize;
+	SetRelativeScale3D(NewScale);
 }
 
 void UMjCylinder::ExportTo(mjsGeom* Element, mjsDefault* def)
 {
-    // See UMjSphere::ExportTo for the guard rationale.
-    if (!bWasImported || bOverride_size)
-    {
-        const FVector scale = GetRelativeScale3D();
-        size = { (float)scale.X * 0.5f, (float)scale.Z * 0.5f };
-        bOverride_size = true;
-    }
+	// See UMjSphere::ExportTo for the guard rationale.
+	if (!bWasImported || bOverride_size)
+	{
+		const FVector scale = GetRelativeScale3D();
+		size = {(float)scale.X * 0.5f, (float)scale.Z * 0.5f};
+		bOverride_size = true;
+	}
 
 	Super::ExportTo(Element, def);
 
-        // --- CODEGEN_EXPORT_START ---
-        // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCylinder::ApplyOverrideMaterial(UMaterialInterface* Material)
 {
-    EnsureVisualizerMesh();
-    if (VisualizerMesh && Material && IsValid(Material)) VisualizerMesh->SetMaterial(0, Material);
+	EnsureVisualizerMesh();
+	if (VisualizerMesh && Material && IsValid(Material))
+		VisualizerMesh->SetMaterial(0, Material);
 }
 
 void UMjCylinder::SyncUnrealTransformFromMj()
 {
-    if (m_GeomView.id == -1) return;
+	if (m_GeomView.id == -1)
+		return;
 
-    if (!bOverride_size)
-    {
-        // MuJoCo cylinder size: [radius, half-length]
-        // Unreal Cylinder: diameter=100, Height=100
-        float RadiusVal = m_GeomView.geom_size[0];
-        float HalfLengthVal = m_GeomView.geom_size[1];
+	if (!bOverride_size)
+	{
+		// MuJoCo cylinder size: [radius, half-length]
+		// Unreal Cylinder: diameter=100, Height=100
+		float RadiusVal = m_GeomView.geom_size[0];
+		float HalfLengthVal = m_GeomView.geom_size[1];
 
-        FVector NewScale = FVector(RadiusVal * 2.0f, RadiusVal * 2.0f, HalfLengthVal * 2.0f);
-        SetRelativeScale3D(NewScale);
+		FVector NewScale = FVector(RadiusVal * 2.0f, RadiusVal * 2.0f, HalfLengthVal * 2.0f);
+		SetRelativeScale3D(NewScale);
 
-        UE_LOG(LogURLabBind, Log, TEXT("[MjCylinder] Syncing scale for '%s' from MuJoCo radius: %f, half-length: %f -> NewScale: %s"), 
-            *GetName(), RadiusVal, HalfLengthVal, *NewScale.ToString());
-    }
+		UE_LOG(LogURLabBind, Log, TEXT("[MjCylinder] Syncing scale for '%s' from MuJoCo radius: %f, half-length: %f -> NewScale: %s"),
+			*GetName(), RadiusVal, HalfLengthVal, *NewScale.ToString());
+	}
 }
 
 #if WITH_EDITOR
@@ -145,35 +146,34 @@ void UMjCylinder::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedE
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-    FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
-    FName MemberPropertyName = (PropertyChangedEvent.MemberProperty != nullptr) ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
+	FName PropertyName = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
+	FName MemberPropertyName = (PropertyChangedEvent.MemberProperty != nullptr) ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
 
-    // Enforce uniform radius (X/Y) scaling for Cylinder
-    if (PropertyName == FName(TEXT("RelativeScale3D")) || MemberPropertyName == FName(TEXT("RelativeScale3D")))
-    {
-        FVector scale = GetRelativeScale3D();
-        if (!FMath::IsNearlyEqual(scale.X, scale.Y))
-        {
-            // force Y to match X
-            scale.Y = scale.X;
-            SetRelativeScale3D(scale);
-        }
-    }
+	// Enforce uniform radius (X/Y) scaling for Cylinder
+	if (PropertyName == FName(TEXT("RelativeScale3D")) || MemberPropertyName == FName(TEXT("RelativeScale3D")))
+	{
+		FVector scale = GetRelativeScale3D();
+		if (!FMath::IsNearlyEqual(scale.X, scale.Y))
+		{
+			// force Y to match X
+			scale.Y = scale.X;
+			SetRelativeScale3D(scale);
+		}
+	}
 }
 #endif
 
 void UMjCylinder::SetGeomVisibility(bool bNewVisibility)
 {
-    if (VisualizerMesh)
-    {
-        VisualizerMesh->SetVisibility(bNewVisibility, false);
-        VisualizerMesh->bHiddenInGame = !bNewVisibility;
-        
-#if WITH_EDITOR
-        VisualizerMesh->Modify();
-        VisualizerMesh->MarkRenderStateDirty();
-        VisualizerMesh->RecreateRenderState_Concurrent();
-#endif
-    }
-}
+	if (VisualizerMesh)
+	{
+		VisualizerMesh->SetVisibility(bNewVisibility, false);
+		VisualizerMesh->bHiddenInGame = !bNewVisibility;
 
+#if WITH_EDITOR
+		VisualizerMesh->Modify();
+		VisualizerMesh->MarkRenderStateDirty();
+		VisualizerMesh->RecreateRenderState_Concurrent();
+#endif
+	}
+}

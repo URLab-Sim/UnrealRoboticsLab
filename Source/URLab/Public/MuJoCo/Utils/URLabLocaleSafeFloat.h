@@ -27,50 +27,50 @@
 // ============================================================================
 
 #ifndef URLAB_USE_LOCALE_SAFE_FLOAT
-    #define URLAB_USE_LOCALE_SAFE_FLOAT 0
+#define URLAB_USE_LOCALE_SAFE_FLOAT 0
 #endif
 
 namespace URLabLocaleSafeFloat
 {
-    /** @brief Format ``InValue`` with ``Precision`` fractional digits
-     *  using ``.`` as the decimal separator regardless of the host
-     *  C locale. Returns an FString suitable for concatenation into
-     *  MJCF attr strings. */
-    FORCEINLINE FString Format(double InValue, int32 Precision = 6)
-    {
-        // FString::SanitizeFloat respects locale; build the formatter
-        // ourselves: integer part + "." + fractional part. Negative
-        // numbers carry their sign through the integer part.
-        if (FMath::IsNaN(InValue))
-        {
-            return TEXT("nan");
-        }
-        if (!FMath::IsFinite(InValue))
-        {
-            return InValue < 0.0 ? TEXT("-inf") : TEXT("inf");
-        }
-        const bool bNegative = InValue < 0.0;
-        const double Abs = FMath::Abs(InValue);
-        const int64 IntPart = static_cast<int64>(Abs);
-        double FracPart = Abs - static_cast<double>(IntPart);
-        // Round the fractional part to ``Precision`` digits before
-        // emitting so trailing 0.999999... doesn't print 1 too many.
-        const double Scale = FMath::Pow(10.0, static_cast<double>(Precision));
-        FracPart = FMath::RoundToDouble(FracPart * Scale) / Scale;
-        const int64 FracDigits = static_cast<int64>(FracPart * Scale);
-        return FString::Printf(
-            TEXT("%s%lld.%0*lld"),
-            bNegative ? TEXT("-") : TEXT(""),
-            IntPart,
-            Precision,
-            FracDigits);
-    }
+/** @brief Format ``InValue`` with ``Precision`` fractional digits
+ *  using ``.`` as the decimal separator regardless of the host
+ *  C locale. Returns an FString suitable for concatenation into
+ *  MJCF attr strings. */
+FORCEINLINE FString Format(double InValue, int32 Precision = 6)
+{
+	// FString::SanitizeFloat respects locale; build the formatter
+	// ourselves: integer part + "." + fractional part. Negative
+	// numbers carry their sign through the integer part.
+	if (FMath::IsNaN(InValue))
+	{
+		return TEXT("nan");
+	}
+	if (!FMath::IsFinite(InValue))
+	{
+		return InValue < 0.0 ? TEXT("-inf") : TEXT("inf");
+	}
+	const bool bNegative = InValue < 0.0;
+	const double Abs = FMath::Abs(InValue);
+	const int64 IntPart = static_cast<int64>(Abs);
+	double FracPart = Abs - static_cast<double>(IntPart);
+	// Round the fractional part to ``Precision`` digits before
+	// emitting so trailing 0.999999... doesn't print 1 too many.
+	const double Scale = FMath::Pow(10.0, static_cast<double>(Precision));
+	FracPart = FMath::RoundToDouble(FracPart * Scale) / Scale;
+	const int64 FracDigits = static_cast<int64>(FracPart * Scale);
+	return FString::Printf(
+		TEXT("%s%lld.%0*lld"),
+		bNegative ? TEXT("-") : TEXT(""),
+		IntPart,
+		Precision,
+		FracDigits);
+}
 
-    /** @brief Append a single attr-key=value pair using locale-safe
-     *  float emission. Used by the codegen xml_passthrough body
-     *  emitters when the rule sets ``locale_safe: true`` on the attr. */
-    FORCEINLINE FString Attr(const TCHAR* Name, double InValue, int32 Precision = 6)
-    {
-        return FString::Printf(TEXT(" %s=\"%s\""), Name, *Format(InValue, Precision));
-    }
+/** @brief Append a single attr-key=value pair using locale-safe
+ *  float emission. Used by the codegen xml_passthrough body
+ *  emitters when the rule sets ``locale_safe: true`` on the attr. */
+FORCEINLINE FString Attr(const TCHAR* Name, double InValue, int32 Precision = 6)
+{
+	return FString::Printf(TEXT(" %s=\"%s\""), Name, *Format(InValue, Precision));
+}
 } // namespace URLabLocaleSafeFloat

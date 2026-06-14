@@ -1,56 +1,73 @@
-# Unreal Engine compatible clang-format configuration
-# Based on UE coding standards with project-specific adjustments
-
+# Unreal Engine canonical clang-format configuration.
+#
+# Copied verbatim from Epic's own config shipped in the engine
+# (Engine/Source/Runtime/CorePreciseFP/.clang-format and the identical
+# CoreUObject/Public/VerseVM/.clang-format), with ONE deliberate deviation:
+#
+#   SortIncludes: false
+#
+# Epic ships SortIncludes: true, but those engine subsystems have no
+# reflection/generated headers. URLab's UPROPERTY modules require the
+# "X.generated.h" include to be LAST, which include-sorting would break.
+# So we keep sorting off. (The 'v' StatementMacro from Epic's config is a
+# Verse-ism and is dropped here.)
+#
+# Use clang-format 19.x (ships with VS2022's bundled LLVM). The codegen
+# emits files through this same config, so the version must match what the
+# generated tree was committed with or the codegen drift gate will flag noise.
+---
+AccessModifierOffset: -4
+AlignAfterOpenBracket: DontAlign
+AlignArrayOfStructures: Right
+AlignConsecutiveAssignments: None
+AlignConsecutiveBitFields: None
+AlignConsecutiveDeclarations: None
+AlignEscapedNewlines: Left
+AlignOperands: AlignAfterOperator
+AlignTrailingComments: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortLambdasOnASingleLine: Inline
 BasedOnStyle: LLVM
-
-# Indentation
-IndentWidth: 4
-TabWidth: 4
-UseTab: ForIndentation
-IndentCaseLabels: false
-NamespaceIndentation: None
-
-# Braces
-BreakBeforeBraces: Allman
 BraceWrapping:
+  AfterCaseLabel: true
   AfterClass: true
   AfterControlStatement: true
   AfterEnum: true
   AfterFunction: true
   AfterNamespace: true
+  AfterObjCDeclaration: true
   AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: true
   BeforeCatch: true
   BeforeElse: true
-
-# Line length
-ColumnLimit: 140
-
-# Alignment
-AlignAfterOpenBracket: Align
-AlignConsecutiveAssignments: false
-AlignConsecutiveDeclarations: false
-AlignTrailingComments: true
-
-# Includes
-# NOTE: .generated.h must be the LAST include in each header file.
-# clang-format cannot enforce this rule — it must be maintained manually.
-SortIncludes: false
+  BeforeLambdaBody: false
+  BeforeWhile: true
+  IndentBraces: false
+BreakBeforeBinaryOperators: NonAssignment
+BreakBeforeBraces: Custom
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeComma
+BreakInheritanceList: BeforeComma
+BreakStringLiterals: true
+ColumnLimit: 0
+Cpp11BracedListStyle: true
+EmptyLineBeforeAccessModifier: LogicalBlock
+FixNamespaceComments: true
 IncludeBlocks: Preserve
-
-# Spaces
-SpaceAfterCStyleCast: false
-SpaceBeforeParens: ControlStatements
-SpacesInAngles: false
-SpacesInParentheses: false
-
-# Other
-AllowShortFunctionsOnASingleLine: Inline
-AllowShortIfStatementsOnASingleLine: false
-AllowShortLoopsOnASingleLine: false
+IndentCaseBlocks: false
+IndentCaseLabels: true
+IndentPPDirectives: None
+IndentWidth: 4
+Language: Cpp
+NamespaceIndentation: None
+PackConstructorInitializers: CurrentLine
 PointerAlignment: Left
-DerivePointerAlignment: false
-
-# UE-specific: keep UPROPERTY/UFUNCTION macros on their own line
-# These are handled as macros by clang-format
-MacroBlockBegin: ""
-MacroBlockEnd: ""
+SortIncludes: false
+SpaceBeforeCaseColon: false
+Standard: Cpp11
+StatementMacros: ['UPROPERTY', 'UFUNCTION', 'UCLASS', 'USTRUCT', 'UENUM', 'UINTERFACE', 'GENERATED_BODY']
+TabWidth: 4
+UseTab: ForContinuationAndIndentation

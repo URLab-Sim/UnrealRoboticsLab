@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Defaults/MjDefault.h"
@@ -38,74 +38,76 @@ UMjDefault::UMjDefault()
 
 void UMjDefault::ImportFromXml(const FXmlNode* Node)
 {
-    if (!Node) return;
+	if (!Node)
+		return;
 
-    UE_LOG(LogURLabWrapper, Verbose, TEXT("[UMjDefault::ImportFromXml] Importing Default Class '%s' (Parent: '%s')"), *ClassName, *ParentClassName);
-    FString ClassAttr = Node->GetAttribute(TEXT("class"));
-    if (!ClassAttr.IsEmpty()) ClassName = ClassAttr;
-    else ClassName = TEXT("main");
+	UE_LOG(LogURLabWrapper, Verbose, TEXT("[UMjDefault::ImportFromXml] Importing Default Class '%s' (Parent: '%s')"), *ClassName, *ParentClassName);
+	FString ClassAttr = Node->GetAttribute(TEXT("class"));
+	if (!ClassAttr.IsEmpty())
+		ClassName = ClassAttr;
+	else
+		ClassName = TEXT("main");
 }
 
 #if WITH_EDITOR
 void UMjDefault::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-    Super::PostEditChangeProperty(PropertyChangedEvent);
+	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-    // If ClassName is empty after any edit, auto-populate from component name
-    if (ClassName.IsEmpty())
-    {
-        ClassName = GetName();
-        ClassName.ReplaceInline(TEXT("_GEN_VARIABLE"), TEXT(""));
-    }
+	// If ClassName is empty after any edit, auto-populate from component name
+	if (ClassName.IsEmpty())
+	{
+		ClassName = GetName();
+		ClassName.ReplaceInline(TEXT("_GEN_VARIABLE"), TEXT(""));
+	}
 }
 #endif
 
-
-
 void UMjDefault::ExportTo(mjsDefault* def)
 {
-    if (!def) return;
+	if (!def)
+		return;
 
-    UE_LOG(LogURLabWrapper, Verbose, TEXT("[UMjDefault::ExportTo] Exporting Default Class '%s' (Parent: '%s')"), *ClassName, *ParentClassName);
+	UE_LOG(LogURLabWrapper, Verbose, TEXT("[UMjDefault::ExportTo] Exporting Default Class '%s' (Parent: '%s')"), *ClassName, *ParentClassName);
 
-    // Iterate over attached children to find default definitions
-    TArray<USceneComponent*> Children;
-    GetChildrenComponents(false, Children); // Use false to get direct children only
+	// Iterate over attached children to find default definitions
+	TArray<USceneComponent*> Children;
+	GetChildrenComponents(false, Children); // Use false to get direct children only
 
-    for (USceneComponent* Child : Children)
-    {
-        if (UMjGeom* GeomComp = Cast<UMjGeom>(Child))
-        {
-            // Export to def->geom
-            // We pass nullptr as the second argument because we are defining the default itself, not using one.
-            GeomComp->ExportTo(def->geom, nullptr);
-            UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Geom] Exported geometry defaults from %s"), *GeomComp->GetName());
-        }
-        else if (UMjJoint* JointComp = Cast<UMjJoint>(Child))
-        {
-            // Export to def->joint
-            JointComp->ExportTo(def->joint, nullptr);
-            UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Joint] Exported joint defaults from %s"), *JointComp->GetName());
-        }
-        else if (UMjActuator* ActuatorComp = Cast<UMjActuator>(Child))
-        {
-            ActuatorComp->ExportTo(def->actuator, nullptr);
-            UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Actuator] Exported actuator defaults from %s"), *ActuatorComp->GetName());
-        }
-        else if (UMjTendon* TendonComp = Cast<UMjTendon>(Child))
-        {
-            TendonComp->ExportTo(def->tendon, nullptr);
-            UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Tendon] Exported tendon defaults from %s"), *TendonComp->GetName());
-        }
-        else if (UMjSite* SiteComp = Cast<UMjSite>(Child))
-        {
-            SiteComp->ExportTo(def->site, nullptr);
-            UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Site] Exported site defaults from %s"), *SiteComp->GetName());
-        }
-        else if (UMjCamera* CameraComp = Cast<UMjCamera>(Child))
-        {
-            CameraComp->ExportTo(def->camera, nullptr);
-            UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Camera] Exported camera defaults from %s"), *CameraComp->GetName());
-        }
-    }
+	for (USceneComponent* Child : Children)
+	{
+		if (UMjGeom* GeomComp = Cast<UMjGeom>(Child))
+		{
+			// Export to def->geom
+			// We pass nullptr as the second argument because we are defining the default itself, not using one.
+			GeomComp->ExportTo(def->geom, nullptr);
+			UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Geom] Exported geometry defaults from %s"), *GeomComp->GetName());
+		}
+		else if (UMjJoint* JointComp = Cast<UMjJoint>(Child))
+		{
+			// Export to def->joint
+			JointComp->ExportTo(def->joint, nullptr);
+			UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Joint] Exported joint defaults from %s"), *JointComp->GetName());
+		}
+		else if (UMjActuator* ActuatorComp = Cast<UMjActuator>(Child))
+		{
+			ActuatorComp->ExportTo(def->actuator, nullptr);
+			UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Actuator] Exported actuator defaults from %s"), *ActuatorComp->GetName());
+		}
+		else if (UMjTendon* TendonComp = Cast<UMjTendon>(Child))
+		{
+			TendonComp->ExportTo(def->tendon, nullptr);
+			UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Tendon] Exported tendon defaults from %s"), *TendonComp->GetName());
+		}
+		else if (UMjSite* SiteComp = Cast<UMjSite>(Child))
+		{
+			SiteComp->ExportTo(def->site, nullptr);
+			UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Site] Exported site defaults from %s"), *SiteComp->GetName());
+		}
+		else if (UMjCamera* CameraComp = Cast<UMjCamera>(Child))
+		{
+			CameraComp->ExportTo(def->camera, nullptr);
+			UE_LOG(LogURLabWrapper, Verbose, TEXT("  - [Camera] Exported camera defaults from %s"), *CameraComp->GetName());
+		}
+	}
 }

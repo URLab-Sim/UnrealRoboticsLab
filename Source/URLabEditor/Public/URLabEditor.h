@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 #pragma once
 
@@ -27,18 +27,18 @@
 class FURLabEditorModule : public IModuleInterface
 {
 public:
-    virtual void StartupModule() override;
-    virtual void ShutdownModule() override;
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
 
 private:
-    FDelegateHandle ViewportContextMenuExtenderHandle;
-    FDelegateHandle OnObjectModifiedHandle;
-    bool bIsAutoParenting = false;
+	FDelegateHandle ViewportContextMenuExtenderHandle;
+	FDelegateHandle OnObjectModifiedHandle;
+	bool bIsAutoParenting = false;
 
-    static TSharedRef<FExtender> OnExtendActorContextMenu(const TSharedRef<FUICommandList> CommandList, const TArray<AActor*> SelectedActors);
-    static void BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TArray<AActor*> SelectedActors);
-    static void ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex);
+	static TSharedRef<FExtender> OnExtendActorContextMenu(const TSharedRef<FUICommandList> CommandList, const TArray<AActor*> SelectedActors);
+	static void BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TArray<AActor*> SelectedActors);
+	static void ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex);
 
-    void OnObjectModified(UObject* Object);
-    static bool AutoParentSCSNode(class USCS_Node* Node, class USimpleConstructionScript* SCS);
+	void OnObjectModified(UObject* Object);
+	static bool AutoParentSCSNode(class USCS_Node* Node, class USimpleConstructionScript* SCS);
 };

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Tendons/MjTendon.h"
@@ -30,225 +30,283 @@
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 
-
 UMjTendon::UMjTendon()
 {
-    PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bCanEverTick = false;
 }
 
 void UMjTendon::BeginPlay()
 {
-    Super::BeginPlay();
+	Super::BeginPlay();
 }
 
 void UMjTendon::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    if (!Node) return;
+	if (!Node)
+		return;
 
-        // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
-    MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), limited, bOverride_limited);
-    MjXmlUtils::ReadAttrBool(Node, TEXT("actuatorfrclimited"), ActFrcLimited, bOverride_ActFrcLimited);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), range, bOverride_range);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), ActFrcRange, bOverride_ActFrcRange);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), solreflimit, bOverride_solreflimit);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), solimplimit, bOverride_solimplimit);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), solreffriction, bOverride_solreffriction);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimpfriction"), solimpfriction, bOverride_solimpfriction);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("frictionloss"), frictionloss, bOverride_frictionloss);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("springlength"), springlength, bOverride_springlength);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("width"), width, bOverride_width);
-    if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("stiffness"), stiffness, bOverride_stiffness);
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), damping, bOverride_damping);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
-    MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
-        // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
+	MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
+	MjXmlUtils::ReadAttrBool(Node, TEXT("limited"), limited, bOverride_limited);
+	MjXmlUtils::ReadAttrBool(Node, TEXT("actuatorfrclimited"), ActFrcLimited, bOverride_ActFrcLimited);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("range"), range, bOverride_range);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("actuatorfrcrange"), ActFrcRange, bOverride_ActFrcRange);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreflimit"), solreflimit, bOverride_solreflimit);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimplimit"), solimplimit, bOverride_solimplimit);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solreffriction"), solreffriction, bOverride_solreffriction);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("solimpfriction"), solimpfriction, bOverride_solimpfriction);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("frictionloss"), frictionloss, bOverride_frictionloss);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("springlength"), springlength, bOverride_springlength);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("width"), width, bOverride_width);
+	if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material))
+		bOverride_material = true;
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("margin"), margin, bOverride_margin);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("stiffness"), stiffness, bOverride_stiffness);
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("damping"), damping, bOverride_damping);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("armature"), armature, bOverride_armature);
+	MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
+	// --- CODEGEN_IMPORT_END ---
 
-    // --- Solver ---
+	// --- Solver ---
 
-    // --- Visual ---
-    TArray<float> RgbaParts;
+	// --- Visual ---
+	TArray<float> RgbaParts;
 
-    // --- Wrap entries (child nodes of the fixed/spatial element) ---
-    Wraps.Empty();
-    for (const FXmlNode* Child : Node->GetChildrenNodes())
-    {
-        if (!Child) continue;
-        FString ChildTag = Child->GetTag();
+	// --- Wrap entries (child nodes of the fixed/spatial element) ---
+	Wraps.Empty();
+	for (const FXmlNode* Child : Node->GetChildrenNodes())
+	{
+		if (!Child)
+			continue;
+		FString ChildTag = Child->GetTag();
 
-        FMjTendonWrap Wrap;
+		FMjTendonWrap Wrap;
 
-        if (ChildTag.Equals(TEXT("joint"), ESearchCase::IgnoreCase))
-        {
-            Wrap.Type = EMjTendonWrapType::Joint;
-            Wrap.TargetName = Child->GetAttribute(TEXT("joint"));
-            FString CoefStr = Child->GetAttribute(TEXT("coef"));
-            if (!CoefStr.IsEmpty()) Wrap.Coef = FCString::Atof(*CoefStr);
-        }
-        else if (ChildTag.Equals(TEXT("site"), ESearchCase::IgnoreCase))
-        {
-            Wrap.Type = EMjTendonWrapType::Site;
-            Wrap.TargetName = Child->GetAttribute(TEXT("site"));
-        }
-        else if (ChildTag.Equals(TEXT("geom"), ESearchCase::IgnoreCase))
-        {
-            Wrap.Type = EMjTendonWrapType::Geom;
-            Wrap.TargetName = Child->GetAttribute(TEXT("geom"));
-            Wrap.SideSite = Child->GetAttribute(TEXT("sidesite"));
-        }
-        else if (ChildTag.Equals(TEXT("pulley"), ESearchCase::IgnoreCase))
-        {
-            Wrap.Type = EMjTendonWrapType::Pulley;
-            FString DivisorStr = Child->GetAttribute(TEXT("divisor"));
-            if (!DivisorStr.IsEmpty()) Wrap.Divisor = FCString::Atof(*DivisorStr);
-        }
-        else
-        {
-            UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon XML Import] Unknown wrap tag: '%s'"), *ChildTag);
-            continue;
-        }
+		if (ChildTag.Equals(TEXT("joint"), ESearchCase::IgnoreCase))
+		{
+			Wrap.Type = EMjTendonWrapType::Joint;
+			Wrap.TargetName = Child->GetAttribute(TEXT("joint"));
+			FString CoefStr = Child->GetAttribute(TEXT("coef"));
+			if (!CoefStr.IsEmpty())
+				Wrap.Coef = FCString::Atof(*CoefStr);
+		}
+		else if (ChildTag.Equals(TEXT("site"), ESearchCase::IgnoreCase))
+		{
+			Wrap.Type = EMjTendonWrapType::Site;
+			Wrap.TargetName = Child->GetAttribute(TEXT("site"));
+		}
+		else if (ChildTag.Equals(TEXT("geom"), ESearchCase::IgnoreCase))
+		{
+			Wrap.Type = EMjTendonWrapType::Geom;
+			Wrap.TargetName = Child->GetAttribute(TEXT("geom"));
+			Wrap.SideSite = Child->GetAttribute(TEXT("sidesite"));
+		}
+		else if (ChildTag.Equals(TEXT("pulley"), ESearchCase::IgnoreCase))
+		{
+			Wrap.Type = EMjTendonWrapType::Pulley;
+			FString DivisorStr = Child->GetAttribute(TEXT("divisor"));
+			if (!DivisorStr.IsEmpty())
+				Wrap.Divisor = FCString::Atof(*DivisorStr);
+		}
+		else
+		{
+			UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon XML Import] Unknown wrap tag: '%s'"), *ChildTag);
+			continue;
+		}
 
-        Wraps.Add(Wrap);
-    }
+		Wraps.Add(Wrap);
+	}
 
-    UE_LOG(LogURLabImport, Log, TEXT("[MjTendon XML Import] '%s' -> %d wrap entries"), *GetName(), Wraps.Num());
+	UE_LOG(LogURLabImport, Log, TEXT("[MjTendon XML Import] '%s' -> %d wrap entries"), *GetName(), Wraps.Num());
 }
 
 void UMjTendon::ExportTo(mjsTendon* Element, mjsDefault* def)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    // --- Physics properties ---
+	// --- Physics properties ---
 
-    // --- CODEGEN_EXPORT_START ---
-    if (bOverride_group) Element->group = group;
-    if (bOverride_limited) Element->limited = limited ? 1 : 0;
-    if (bOverride_ActFrcLimited) Element->actfrclimited = ActFrcLimited ? 1 : 0;
-    if (bOverride_range) { for (int32 i = 0; i < FMath::Min(range.Num(), 2); ++i) Element->range[i] = range[i]; }
-    if (bOverride_ActFrcRange) { for (int32 i = 0; i < FMath::Min(ActFrcRange.Num(), 2); ++i) Element->actfrcrange[i] = ActFrcRange[i]; }
-    if (bOverride_solreflimit) { for (int32 i = 0; i < FMath::Min(solreflimit.Num(), 2); ++i) Element->solref_limit[i] = solreflimit[i]; }
-    if (bOverride_solimplimit) { for (int32 i = 0; i < FMath::Min(solimplimit.Num(), 5); ++i) Element->solimp_limit[i] = solimplimit[i]; }
-    if (bOverride_solreffriction) { for (int32 i = 0; i < FMath::Min(solreffriction.Num(), 2); ++i) Element->solref_friction[i] = solreffriction[i]; }
-    if (bOverride_solimpfriction) { for (int32 i = 0; i < FMath::Min(solimpfriction.Num(), 5); ++i) Element->solimp_friction[i] = solimpfriction[i]; }
-    if (bOverride_frictionloss) Element->frictionloss = frictionloss;
-    if (bOverride_springlength) { for (int32 i = 0; i < FMath::Min(springlength.Num(), 2); ++i) Element->springlength[i] = springlength[i]; }
-    if (bOverride_width) Element->width = width;
-    if (bOverride_margin) Element->margin = margin;
-    if (bOverride_stiffness) { for (int32 i = 0; i < FMath::Min(stiffness.Num(), 3); ++i) Element->stiffness[i] = stiffness[i]; }
-    if (bOverride_damping) { for (int32 i = 0; i < FMath::Min(damping.Num(), 3); ++i) Element->damping[i] = damping[i]; }
-    if (bOverride_armature) Element->armature = armature;
-    if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	if (bOverride_group)
+		Element->group = group;
+	if (bOverride_limited)
+		Element->limited = limited ? 1 : 0;
+	if (bOverride_ActFrcLimited)
+		Element->actfrclimited = ActFrcLimited ? 1 : 0;
+	if (bOverride_range)
+	{
+		for (int32 i = 0; i < FMath::Min(range.Num(), 2); ++i)
+			Element->range[i] = range[i];
+	}
+	if (bOverride_ActFrcRange)
+	{
+		for (int32 i = 0; i < FMath::Min(ActFrcRange.Num(), 2); ++i)
+			Element->actfrcrange[i] = ActFrcRange[i];
+	}
+	if (bOverride_solreflimit)
+	{
+		for (int32 i = 0; i < FMath::Min(solreflimit.Num(), 2); ++i)
+			Element->solref_limit[i] = solreflimit[i];
+	}
+	if (bOverride_solimplimit)
+	{
+		for (int32 i = 0; i < FMath::Min(solimplimit.Num(), 5); ++i)
+			Element->solimp_limit[i] = solimplimit[i];
+	}
+	if (bOverride_solreffriction)
+	{
+		for (int32 i = 0; i < FMath::Min(solreffriction.Num(), 2); ++i)
+			Element->solref_friction[i] = solreffriction[i];
+	}
+	if (bOverride_solimpfriction)
+	{
+		for (int32 i = 0; i < FMath::Min(solimpfriction.Num(), 5); ++i)
+			Element->solimp_friction[i] = solimpfriction[i];
+	}
+	if (bOverride_frictionloss)
+		Element->frictionloss = frictionloss;
+	if (bOverride_springlength)
+	{
+		for (int32 i = 0; i < FMath::Min(springlength.Num(), 2); ++i)
+			Element->springlength[i] = springlength[i];
+	}
+	if (bOverride_width)
+		Element->width = width;
+	if (bOverride_margin)
+		Element->margin = margin;
+	if (bOverride_stiffness)
+	{
+		for (int32 i = 0; i < FMath::Min(stiffness.Num(), 3); ++i)
+			Element->stiffness[i] = stiffness[i];
+	}
+	if (bOverride_damping)
+	{
+		for (int32 i = 0; i < FMath::Min(damping.Num(), 3); ++i)
+			Element->damping[i] = damping[i];
+	}
+	if (bOverride_armature)
+		Element->armature = armature;
+	if (bOverride_rgba)
+	{
+		Element->rgba[0] = rgba.R;
+		Element->rgba[1] = rgba.G;
+		Element->rgba[2] = rgba.B;
+		Element->rgba[3] = rgba.A;
+	}
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjTendon::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 {
-    mjsDefault* effectiveDefault = ResolveDefault(Wrapper.Spec, MjClassName);
+	mjsDefault* effectiveDefault = ResolveDefault(Wrapper.Spec, MjClassName);
 
-    // Create tendon in the spec
-    mjsTendon* Tendon = mjs_addTendon(Wrapper.Spec, effectiveDefault);
-    if (!Tendon)
-    {
-        UE_LOG(LogURLabImport, Error, TEXT("[MjTendon] mjs_addTendon failed for '%s'"), *GetName());
-        return;
-    }
+	// Create tendon in the spec
+	mjsTendon* Tendon = mjs_addTendon(Wrapper.Spec, effectiveDefault);
+	if (!Tendon)
+	{
+		UE_LOG(LogURLabImport, Error, TEXT("[MjTendon] mjs_addTendon failed for '%s'"), *GetName());
+		return;
+	}
 
-    m_SpecElement = Tendon->element;
+	m_SpecElement = Tendon->element;
 
-    // Set name
-    FString TName = MjName.IsEmpty() ? GetName() : MjName;
-    mjs_setName(Tendon->element, TCHAR_TO_UTF8(*TName));
+	// Set name
+	FString TName = MjName.IsEmpty() ? GetName() : MjName;
+	mjs_setName(Tendon->element, TCHAR_TO_UTF8(*TName));
 
-    // Export properties
-    ExportTo(Tendon, effectiveDefault);
+	// Export properties
+	ExportTo(Tendon, effectiveDefault);
 
-    // --- Wrap entries ---
-    for (const FMjTendonWrap& Wrap : Wraps)
-    {
-        switch (Wrap.Type)
-        {
-        case EMjTendonWrapType::Joint:
-            {
-                mjsWrap* W = mjs_wrapJoint(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName), (double)Wrap.Coef);
-                if (!W)
-                {
-                    UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapJoint failed for joint '%s' in tendon '%s'"),
-                        *Wrap.TargetName, *TName);
-                }
-            }
-            break;
+	// --- Wrap entries ---
+	for (const FMjTendonWrap& Wrap : Wraps)
+	{
+		switch (Wrap.Type)
+		{
+			case EMjTendonWrapType::Joint:
+			{
+				mjsWrap* W = mjs_wrapJoint(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName), (double)Wrap.Coef);
+				if (!W)
+				{
+					UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapJoint failed for joint '%s' in tendon '%s'"),
+						*Wrap.TargetName, *TName);
+				}
+			}
+			break;
 
-        case EMjTendonWrapType::Site:
-            {
-                mjsWrap* W = mjs_wrapSite(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName));
-                if (!W)
-                {
-                    UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapSite failed for site '%s' in tendon '%s'"),
-                        *Wrap.TargetName, *TName);
-                }
-            }
-            break;
+			case EMjTendonWrapType::Site:
+			{
+				mjsWrap* W = mjs_wrapSite(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName));
+				if (!W)
+				{
+					UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapSite failed for site '%s' in tendon '%s'"),
+						*Wrap.TargetName, *TName);
+				}
+			}
+			break;
 
-        case EMjTendonWrapType::Geom:
-            {
-                // FTCHARToUTF8 keeps the converted string alive for the
-                // duration of the wrapGeom call. Storing TCHAR_TO_UTF8 macro
-                // output in a const char* would dangle on Linux (see
-                // MjSpecWrapper::AddDefault for the same fix).
-                FTCHARToUTF8 SideSiteConv(*Wrap.SideSite);
-                const char* SideSiteStr = Wrap.SideSite.IsEmpty() ? "" : SideSiteConv.Get();
-                mjsWrap* W = mjs_wrapGeom(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName), SideSiteStr);
-                if (!W)
-                {
-                    UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapGeom failed for geom '%s' in tendon '%s'"),
-                        *Wrap.TargetName, *TName);
-                }
-            }
-            break;
+			case EMjTendonWrapType::Geom:
+			{
+				// FTCHARToUTF8 keeps the converted string alive for the
+				// duration of the wrapGeom call. Storing TCHAR_TO_UTF8 macro
+				// output in a const char* would dangle on Linux (see
+				// MjSpecWrapper::AddDefault for the same fix).
+				FTCHARToUTF8 SideSiteConv(*Wrap.SideSite);
+				const char* SideSiteStr = Wrap.SideSite.IsEmpty() ? "" : SideSiteConv.Get();
+				mjsWrap* W = mjs_wrapGeom(Tendon, TCHAR_TO_UTF8(*Wrap.TargetName), SideSiteStr);
+				if (!W)
+				{
+					UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapGeom failed for geom '%s' in tendon '%s'"),
+						*Wrap.TargetName, *TName);
+				}
+			}
+			break;
 
-        case EMjTendonWrapType::Pulley:
-            {
-                mjsWrap* W = mjs_wrapPulley(Tendon, (double)Wrap.Divisor);
-                if (!W)
-                {
-                    UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapPulley failed in tendon '%s'"), *TName);
-                }
-            }
-            break;
-        }
-    }
+			case EMjTendonWrapType::Pulley:
+			{
+				mjsWrap* W = mjs_wrapPulley(Tendon, (double)Wrap.Divisor);
+				if (!W)
+				{
+					UE_LOG(LogURLabImport, Warning, TEXT("[MjTendon] mjs_wrapPulley failed in tendon '%s'"), *TName);
+				}
+			}
+			break;
+		}
+	}
 
-    UE_LOG(LogURLabImport, Log, TEXT("[MjTendon] Registered '%s' with %d wraps"), *TName, Wraps.Num());
+	UE_LOG(LogURLabImport, Log, TEXT("[MjTendon] Registered '%s' with %d wraps"), *TName, Wraps.Num());
 }
 
 void UMjTendon::Bind(mjModel* model, mjData* data, const FString& Prefix)
 {
-    Super::Bind(model, data, Prefix);
-    BindAndCacheView(m_TendonView, Prefix);
+	Super::Bind(model, data, Prefix);
+	BindAndCacheView(m_TendonView, Prefix);
 }
 
 float UMjTendon::GetLength() const
 {
-    return m_TendonView.GetLength();
+	return m_TendonView.GetLength();
 }
 
 float UMjTendon::GetVelocity() const
 {
-    return m_TendonView.GetVelocity();
+	return m_TendonView.GetVelocity();
 }
 
 FString UMjTendon::GetMjName() const
 {
-    if (m_TendonView.id < 0 || !m_TendonView.name) return FString();
-    return MjUtils::MjToString(m_TendonView.name);
+	if (m_TendonView.id < 0 || !m_TendonView.name)
+		return FString();
+	return MjUtils::MjToString(m_TendonView.name);
 }
 
 #if WITH_EDITOR
 // --- CODEGEN_EDITOR_OPTIONS_START ---
-TArray<FString> UMjTendon::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+TArray<FString> UMjTendon::GetDefaultClassOptions() const
+{
+	return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
+}
 // --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 

@@ -34,46 +34,46 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FMjVisualQuality
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta=(InlineEditConditionToggle))
-    bool bOverride_Shadowsize = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta = (InlineEditConditionToggle))
+	bool bOverride_Shadowsize = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta=(EditCondition="bOverride_Shadowsize"))
-    int32 Shadowsize = 1024;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta = (EditCondition = "bOverride_Shadowsize"))
+	int32 Shadowsize = 1024;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta=(InlineEditConditionToggle))
-    bool bOverride_Offsamples = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta = (InlineEditConditionToggle))
+	bool bOverride_Offsamples = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta=(EditCondition="bOverride_Offsamples"))
-    int32 Offsamples = 4;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta = (EditCondition = "bOverride_Offsamples"))
+	int32 Offsamples = 4;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta=(InlineEditConditionToggle))
-    bool bOverride_Numslices = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta = (InlineEditConditionToggle))
+	bool bOverride_Numslices = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta=(EditCondition="bOverride_Numslices"))
-    int32 Numslices = 28;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta = (EditCondition = "bOverride_Numslices"))
+	int32 Numslices = 28;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta=(InlineEditConditionToggle))
-    bool bOverride_Numstacks = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta = (InlineEditConditionToggle))
+	bool bOverride_Numstacks = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta=(EditCondition="bOverride_Numstacks"))
-    int32 Numstacks = 16;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta = (EditCondition = "bOverride_Numstacks"))
+	int32 Numstacks = 16;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta=(InlineEditConditionToggle))
-    bool bOverride_Numquads = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Quality", meta = (InlineEditConditionToggle))
+	bool bOverride_Numquads = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta=(EditCondition="bOverride_Numquads"))
-    int32 Numquads = 4;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Quality", meta = (EditCondition = "bOverride_Numquads"))
+	int32 Numquads = 4;
 
-    /** @brief Mirror every field into a runtime C struct. */
-    template <typename TDst>
-    void ApplyTo(TDst& Dst) const
-    {
-    Dst.shadowsize = static_cast<decltype(Dst.shadowsize)>(Shadowsize);
-    Dst.offsamples = static_cast<decltype(Dst.offsamples)>(Offsamples);
-    Dst.numslices = static_cast<decltype(Dst.numslices)>(Numslices);
-    Dst.numstacks = static_cast<decltype(Dst.numstacks)>(Numstacks);
-    Dst.numquads = static_cast<decltype(Dst.numquads)>(Numquads);
-    }
+	/** @brief Mirror every field into a runtime C struct. */
+	template <typename TDst>
+	void ApplyTo(TDst& Dst) const
+	{
+		Dst.shadowsize = static_cast<decltype(Dst.shadowsize)>(Shadowsize);
+		Dst.offsamples = static_cast<decltype(Dst.offsamples)>(Offsamples);
+		Dst.numslices = static_cast<decltype(Dst.numslices)>(Numslices);
+		Dst.numstacks = static_cast<decltype(Dst.numstacks)>(Numstacks);
+		Dst.numquads = static_cast<decltype(Dst.numquads)>(Numquads);
+	}
 };

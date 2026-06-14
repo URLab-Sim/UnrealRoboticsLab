@@ -17,23 +17,23 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FURLabBridgeServerConfig
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    /** Start the bridge server when the editor opens. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
-    bool bAutoStart = true;
+	/** Start the bridge server when the editor opens. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	bool bAutoStart = true;
 
-    /** TCP port for the request/reply step RPC channel. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
-    int32 StepPort = 5559;
+	/** TCP port for the request/reply step RPC channel. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	int32 StepPort = 5559;
 
-    /** TCP port for the state PUB channel. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
-    int32 StatePort = 5555;
+	/** TCP port for the state PUB channel. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	int32 StatePort = 5555;
 
-    /** When true, EndPlay tears the server down even if it was started by
-     *  the editor subsystem. Default false: an editor-spawned server stays
-     *  up across PIE cycles. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
-    bool bStopOnPIEEnd = false;
+	/** When true, EndPlay tears the server down even if it was started by
+	 *  the editor subsystem. Default false: an editor-spawned server stays
+	 *  up across PIE cycles. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	bool bStopOnPIEEnd = false;
 };

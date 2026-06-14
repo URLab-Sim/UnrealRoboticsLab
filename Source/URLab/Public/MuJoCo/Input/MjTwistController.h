@@ -38,7 +38,7 @@ class UEnhancedInputComponent;
  * Thread-safe: game thread writes twist state via input callbacks,
  * physics thread reads via GetTwist() for ZMQ broadcast.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjTwistController : public UActorComponent
 {
 	GENERATED_BODY()

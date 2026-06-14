@@ -34,102 +34,102 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FMjVisualMap
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Stiffness = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Stiffness = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Stiffness"))
-    float Stiffness = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Stiffness"))
+	float Stiffness = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Stiffnessrot = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Stiffnessrot = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Stiffnessrot"))
-    float Stiffnessrot = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Stiffnessrot"))
+	float Stiffnessrot = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Force = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Force = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Force"))
-    float Force = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Force"))
+	float Force = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Torque = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Torque = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Torque"))
-    float Torque = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Torque"))
+	float Torque = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Alpha = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Alpha = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Alpha"))
-    float Alpha = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Alpha"))
+	float Alpha = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Fogstart = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Fogstart = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Fogstart"))
-    float Fogstart = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Fogstart"))
+	float Fogstart = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Fogend = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Fogend = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Fogend"))
-    float Fogend = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Fogend"))
+	float Fogend = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Znear = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Znear = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Znear"))
-    float Znear = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Znear"))
+	float Znear = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Zfar = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Zfar = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Zfar"))
-    float Zfar = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Zfar"))
+	float Zfar = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Haze = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Haze = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Haze"))
-    float Haze = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Haze"))
+	float Haze = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Shadowclip = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Shadowclip = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Shadowclip"))
-    float Shadowclip = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Shadowclip"))
+	float Shadowclip = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Shadowscale = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Shadowscale = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Shadowscale"))
-    float Shadowscale = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Shadowscale"))
+	float Shadowscale = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
-    bool bOverride_Actuatortendon = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta = (InlineEditConditionToggle))
+	bool bOverride_Actuatortendon = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Actuatortendon"))
-    float Actuatortendon = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta = (EditCondition = "bOverride_Actuatortendon"))
+	float Actuatortendon = 0.0f;
 
-    /** @brief Mirror every field into a runtime C struct. */
-    template <typename TDst>
-    void ApplyTo(TDst& Dst) const
-    {
-    Dst.stiffness = static_cast<decltype(Dst.stiffness)>(Stiffness);
-    Dst.stiffnessrot = static_cast<decltype(Dst.stiffnessrot)>(Stiffnessrot);
-    Dst.force = static_cast<decltype(Dst.force)>(Force);
-    Dst.torque = static_cast<decltype(Dst.torque)>(Torque);
-    Dst.alpha = static_cast<decltype(Dst.alpha)>(Alpha);
-    Dst.fogstart = static_cast<decltype(Dst.fogstart)>(Fogstart);
-    Dst.fogend = static_cast<decltype(Dst.fogend)>(Fogend);
-    Dst.znear = static_cast<decltype(Dst.znear)>(Znear);
-    Dst.zfar = static_cast<decltype(Dst.zfar)>(Zfar);
-    Dst.haze = static_cast<decltype(Dst.haze)>(Haze);
-    Dst.shadowclip = static_cast<decltype(Dst.shadowclip)>(Shadowclip);
-    Dst.shadowscale = static_cast<decltype(Dst.shadowscale)>(Shadowscale);
-    Dst.actuatortendon = static_cast<decltype(Dst.actuatortendon)>(Actuatortendon);
-    }
+	/** @brief Mirror every field into a runtime C struct. */
+	template <typename TDst>
+	void ApplyTo(TDst& Dst) const
+	{
+		Dst.stiffness = static_cast<decltype(Dst.stiffness)>(Stiffness);
+		Dst.stiffnessrot = static_cast<decltype(Dst.stiffnessrot)>(Stiffnessrot);
+		Dst.force = static_cast<decltype(Dst.force)>(Force);
+		Dst.torque = static_cast<decltype(Dst.torque)>(Torque);
+		Dst.alpha = static_cast<decltype(Dst.alpha)>(Alpha);
+		Dst.fogstart = static_cast<decltype(Dst.fogstart)>(Fogstart);
+		Dst.fogend = static_cast<decltype(Dst.fogend)>(Fogend);
+		Dst.znear = static_cast<decltype(Dst.znear)>(Znear);
+		Dst.zfar = static_cast<decltype(Dst.zfar)>(Zfar);
+		Dst.haze = static_cast<decltype(Dst.haze)>(Haze);
+		Dst.shadowclip = static_cast<decltype(Dst.shadowclip)>(Shadowclip);
+		Dst.shadowscale = static_cast<decltype(Dst.shadowscale)>(Shadowscale);
+		Dst.actuatortendon = static_cast<decltype(Dst.actuatortendon)>(Actuatortendon);
+	}
 };

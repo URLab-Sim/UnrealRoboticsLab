@@ -28,9 +28,9 @@
 
 namespace
 {
-    // Based on MuJoCo upstream test/engine/testdata/derivative/dcmotor.xml (3.7.0).
-    // Covers the range of dcmotor configurations used in the reference test.
-    const TCHAR* kDcMotorArmXml = TEXT(R"(<mujoco>
+// Based on MuJoCo upstream test/engine/testdata/derivative/dcmotor.xml (3.7.0).
+// Covers the range of dcmotor configurations used in the reference test.
+const TCHAR* kDcMotorArmXml = TEXT(R"(<mujoco>
   <worldbody>
     <body name="motor1" pos="0 0.1 0">
       <joint name="slide1" type="slide" axis="0 0 1"/>
@@ -48,55 +48,55 @@ namespace
              damping="0.001" lugre="1e4 100 0.005 0.008 0.1"/>
   </actuator>
 </mujoco>)");
-}
+} // namespace
 
 // ============================================================================
 // URLab.DcMotor.Import_CreatesDcMotorComponents
 //   The XML parser maps <dcmotor> elements onto UMjDcMotorActuator components.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjDcMotorImportCreatesComponents,
-    "URLab.DcMotor.Import_CreatesDcMotorComponents",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.DcMotor.Import_CreatesDcMotorComponents",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjDcMotorImportCreatesComponents::RunTest(const FString& Parameters)
 {
-    FMjXmlImportSession S;
-    if (!S.Init(kDcMotorArmXml))
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        return false;
-    }
+	FMjXmlImportSession S;
+	if (!S.Init(kDcMotorArmXml))
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		return false;
+	}
 
-    UMjDcMotorActuator* DcBias  = S.FindTemplate<UMjDcMotorActuator>(TEXT("dc_bias"));
-    UMjDcMotorActuator* DcLugre = S.FindTemplate<UMjDcMotorActuator>(TEXT("dc_lugre"));
+	UMjDcMotorActuator* DcBias = S.FindTemplate<UMjDcMotorActuator>(TEXT("dc_bias"));
+	UMjDcMotorActuator* DcLugre = S.FindTemplate<UMjDcMotorActuator>(TEXT("dc_lugre"));
 
-    TestNotNull(TEXT("dc_bias component"),  DcBias);
-    TestNotNull(TEXT("dc_lugre component"), DcLugre);
+	TestNotNull(TEXT("dc_bias component"), DcBias);
+	TestNotNull(TEXT("dc_lugre component"), DcLugre);
 
-    if (DcBias)
-    {
-        TestTrue(TEXT("dc_bias: Type == DcMotor"), DcBias->Type == EMjActuatorType::DcMotor);
-        TestTrue(TEXT("dc_bias: motorconst overridden"), DcBias->bOverride_motorconst);
-        if (DcBias->bOverride_motorconst && DcBias->motorconst.Num() >= 1)
-        {
-            TestEqual(TEXT("dc_bias: motorconst[0]"), DcBias->motorconst[0], 2.0f);
-        }
-        TestTrue(TEXT("dc_bias: resistance overridden"), DcBias->bOverride_resistance);
-        TestEqual(TEXT("dc_bias: resistance"), DcBias->resistance, 0.5f);
-    }
+	if (DcBias)
+	{
+		TestTrue(TEXT("dc_bias: Type == DcMotor"), DcBias->Type == EMjActuatorType::DcMotor);
+		TestTrue(TEXT("dc_bias: motorconst overridden"), DcBias->bOverride_motorconst);
+		if (DcBias->bOverride_motorconst && DcBias->motorconst.Num() >= 1)
+		{
+			TestEqual(TEXT("dc_bias: motorconst[0]"), DcBias->motorconst[0], 2.0f);
+		}
+		TestTrue(TEXT("dc_bias: resistance overridden"), DcBias->bOverride_resistance);
+		TestEqual(TEXT("dc_bias: resistance"), DcBias->resistance, 0.5f);
+	}
 
-    if (DcLugre)
-    {
-        TestTrue(TEXT("dc_lugre: lugre overridden"), DcLugre->bOverride_lugre);
-        TestEqual(TEXT("dc_lugre: lugre length"), DcLugre->lugre.Num(), 5);
-        if (DcLugre->lugre.Num() == 5)
-        {
-            TestEqual(TEXT("dc_lugre: lugre[0]"), DcLugre->lugre[0], 1.0e4f);
-            TestEqual(TEXT("dc_lugre: lugre[4]"), DcLugre->lugre[4], 0.1f);
-        }
-    }
+	if (DcLugre)
+	{
+		TestTrue(TEXT("dc_lugre: lugre overridden"), DcLugre->bOverride_lugre);
+		TestEqual(TEXT("dc_lugre: lugre length"), DcLugre->lugre.Num(), 5);
+		if (DcLugre->lugre.Num() == 5)
+		{
+			TestEqual(TEXT("dc_lugre: lugre[0]"), DcLugre->lugre[0], 1.0e4f);
+			TestEqual(TEXT("dc_lugre: lugre[4]"), DcLugre->lugre[4], 0.1f);
+		}
+	}
 
-    return true;
+	return true;
 }
 
 // ============================================================================
@@ -105,35 +105,36 @@ bool FMjDcMotorImportCreatesComponents::RunTest(const FString& Parameters)
 //   a model with 2 actuators, each with gaintype mjGAIN_DCMOTOR.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjDcMotorCompile,
-    "URLab.DcMotor.Compile_MatchesNativeActuatorCount",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+	"URLab.DcMotor.Compile_MatchesNativeActuatorCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 bool FMjDcMotorCompile::RunTest(const FString& Parameters)
 {
-    FMjXmlImportSession S;
-    if (!S.Init(kDcMotorArmXml))
-    {
-        AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
-        return false;
-    }
-    if (!S.Compile())
-    {
-        AddError(FString::Printf(TEXT("Compile failed: %s"), *S.LastError));
-        return false;
-    }
+	FMjXmlImportSession S;
+	if (!S.Init(kDcMotorArmXml))
+	{
+		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(FString::Printf(TEXT("Compile failed: %s"), *S.LastError));
+		return false;
+	}
 
-    const mjModel* M = S.Model();
-    if (!TestNotNull(TEXT("compiled model"), (void*)M)) return false;
+	const mjModel* M = S.Model();
+	if (!TestNotNull(TEXT("compiled model"), (void*)M))
+		return false;
 
-    TestEqual(TEXT("nu (actuator count)"), (int32)M->nu, (int32)2);
-    for (int i = 0; i < M->nu; ++i)
-    {
-        TestEqual(FString::Printf(TEXT("actuator %d gaintype"), i),
-            (int32)M->actuator_gaintype[i], (int32)mjGAIN_DCMOTOR);
-        TestEqual(FString::Printf(TEXT("actuator %d biastype"), i),
-            (int32)M->actuator_biastype[i], (int32)mjBIAS_DCMOTOR);
-        TestEqual(FString::Printf(TEXT("actuator %d dyntype"), i),
-            (int32)M->actuator_dyntype[i], (int32)mjDYN_DCMOTOR);
-    }
-    return true;
+	TestEqual(TEXT("nu (actuator count)"), (int32)M->nu, (int32)2);
+	for (int i = 0; i < M->nu; ++i)
+	{
+		TestEqual(FString::Printf(TEXT("actuator %d gaintype"), i),
+			(int32)M->actuator_gaintype[i], (int32)mjGAIN_DCMOTOR);
+		TestEqual(FString::Printf(TEXT("actuator %d biastype"), i),
+			(int32)M->actuator_biastype[i], (int32)mjBIAS_DCMOTOR);
+		TestEqual(FString::Printf(TEXT("actuator %d dyntype"), i),
+			(int32)M->actuator_dyntype[i], (int32)mjDYN_DCMOTOR);
+	}
+	return true;
 }

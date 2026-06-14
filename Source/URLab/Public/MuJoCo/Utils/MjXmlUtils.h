@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -32,67 +32,67 @@
 class URLAB_API MjXmlUtils
 {
 public:
-    /**
-     * @brief Parses an FVector from a space-separated string "x y z".
-     * @param S The input string.
-     * @return The parsed FVector, or ZeroVector if invalid.
-     */
-    static FVector ParseVector(const FString& S);
+	/**
+	 * @brief Parses an FVector from a space-separated string "x y z".
+	 * @param S The input string.
+	 * @return The parsed FVector, or ZeroVector if invalid.
+	 */
+	static FVector ParseVector(const FString& S);
 
-    /**
-     * @brief Parses an FVector2D from a space-separated string "x y".
-     * @param S The input string.
-     * @return The parsed FVector2D, or ZeroVector if invalid.
-     */
-    static FVector2D ParseVector2D(const FString& S);
+	/**
+	 * @brief Parses an FVector2D from a space-separated string "x y".
+	 * @param S The input string.
+	 * @return The parsed FVector2D, or ZeroVector if invalid.
+	 */
+	static FVector2D ParseVector2D(const FString& S);
 
-    /**
-     * @brief Parses a list of floats from a space-separated string.
-     * @param S The input string.
-     * @param OutArray The resulting array of floats.
-     */
-    static void ParseFloatArray(const FString& S, TArray<float>& OutArray);
+	/**
+	 * @brief Parses a list of floats from a space-separated string.
+	 * @param S The input string.
+	 * @param OutArray The resulting array of floats.
+	 */
+	static void ParseFloatArray(const FString& S, TArray<float>& OutArray);
 
-    /**
-     * @brief Parses a boolean from an XML attribute ("true"/"false" or "1"/"0").
-     * @param S The input string.
-     * @param bDefault The default value if the string is empty.
-     * @return The parsed boolean.
-     */
-    static bool ParseBool(const FString& S, bool bDefault = false);
+	/**
+	 * @brief Parses a boolean from an XML attribute ("true"/"false" or "1"/"0").
+	 * @param S The input string.
+	 * @param bDefault The default value if the string is empty.
+	 * @return The parsed boolean.
+	 */
+	static bool ParseBool(const FString& S, bool bDefault = false);
 
-    // ---- Attribute-from-Node helpers ----
-    // Each reads an attribute by name, sets bOverride=true and writes the value
-    // if the attribute is present. Returns true if the attribute was found.
-    // These eliminate the repeated GetAttribute→IsEmpty→Parse→bOverride pattern.
+	// ---- Attribute-from-Node helpers ----
+	// Each reads an attribute by name, sets bOverride=true and writes the value
+	// if the attribute is present. Returns true if the attribute was found.
+	// These eliminate the repeated GetAttribute→IsEmpty→Parse→bOverride pattern.
 
-    /** @brief Read a float attribute. Returns true if present. */
-    static bool ReadAttrFloat(const FXmlNode* Node, const TCHAR* Attr, float& Out, bool& bOverride);
+	/** @brief Read a float attribute. Returns true if present. */
+	static bool ReadAttrFloat(const FXmlNode* Node, const TCHAR* Attr, float& Out, bool& bOverride);
 
-    /** @brief Read a double attribute. Returns true if present. */
-    static bool ReadAttrDouble(const FXmlNode* Node, const TCHAR* Attr, double& Out, bool& bOverride);
+	/** @brief Read a double attribute. Returns true if present. */
+	static bool ReadAttrDouble(const FXmlNode* Node, const TCHAR* Attr, double& Out, bool& bOverride);
 
-    /** @brief Read an int32 attribute. Returns true if present. */
-    static bool ReadAttrInt(const FXmlNode* Node, const TCHAR* Attr, int32& Out, bool& bOverride);
+	/** @brief Read an int32 attribute. Returns true if present. */
+	static bool ReadAttrInt(const FXmlNode* Node, const TCHAR* Attr, int32& Out, bool& bOverride);
 
-    /** @brief Read a space-separated float array attribute (partial OK — MuJoCo style). Returns true if present. */
-    static bool ReadAttrFloatArray(const FXmlNode* Node, const TCHAR* Attr, TArray<float>& Out, bool& bOverride);
+	/** @brief Read a space-separated float array attribute (partial OK — MuJoCo style). Returns true if present. */
+	static bool ReadAttrFloatArray(const FXmlNode* Node, const TCHAR* Attr, TArray<float>& Out, bool& bOverride);
 
-    /** @brief Read a boolean attribute ("true"/"false"/"1"/"0"). Returns true if present. */
-    static bool ReadAttrBool(const FXmlNode* Node, const TCHAR* Attr, bool& Out, bool& bOverride);
+	/** @brief Read a boolean attribute ("true"/"false"/"1"/"0"). Returns true if present. */
+	static bool ReadAttrBool(const FXmlNode* Node, const TCHAR* Attr, bool& Out, bool& bOverride);
 
-    /** @brief Read a string attribute. Returns true if present (non-empty). */
-    static bool ReadAttrString(const FXmlNode* Node, const TCHAR* Attr, FString& Out);
+	/** @brief Read a string attribute. Returns true if present (non-empty). */
+	static bool ReadAttrString(const FXmlNode* Node, const TCHAR* Attr, FString& Out);
 
-    /** @brief Read a 3-component vector attribute "x y z". Returns true if present. */
-    static bool ReadAttrVec3(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride);
+	/** @brief Read a 3-component vector attribute "x y z". Returns true if present. */
+	static bool ReadAttrVec3(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride);
 
-    /** @brief Read a colour attribute "r g b" or "r g b a" into FLinearColor. Returns true if present. */
-    static bool ReadAttrColor(const FXmlNode* Node, const TCHAR* Attr, FLinearColor& Out, bool& bOverride);
+	/** @brief Read a colour attribute "r g b" or "r g b a" into FLinearColor. Returns true if present. */
+	static bool ReadAttrColor(const FXmlNode* Node, const TCHAR* Attr, FLinearColor& Out, bool& bOverride);
 
-    /** @brief Read a space-separated int array attribute. Returns true if present. */
-    static bool ReadAttrIntArray(const FXmlNode* Node, const TCHAR* Attr, TArray<int32>& Out, bool& bOverride);
+	/** @brief Read a space-separated int array attribute. Returns true if present. */
+	static bool ReadAttrIntArray(const FXmlNode* Node, const TCHAR* Attr, TArray<int32>& Out, bool& bOverride);
 
-    /** @brief Read a space-separated double array attribute. Returns true if present. */
-    static bool ReadAttrDoubleArray(const FXmlNode* Node, const TCHAR* Attr, TArray<double>& Out, bool& bOverride);
+	/** @brief Read a space-separated double array attribute. Returns true if present. */
+	static bool ReadAttrDoubleArray(const FXmlNode* Node, const TCHAR* Attr, TArray<double>& Out, bool& bOverride);
 };

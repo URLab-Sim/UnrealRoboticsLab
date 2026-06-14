@@ -36,7 +36,7 @@ class USCS_Node;
 struct FMjOutlinerEntry
 {
 	FString Name;
-	FString TypeLabel;   // e.g. "Body", "HingeJoint", "Sensor"
+	FString TypeLabel; // e.g. "Body", "HingeJoint", "Sensor"
 	TWeakObjectPtr<UObject> ComponentTemplate;
 	USCS_Node* SCSNode = nullptr;
 	TArray<TSharedPtr<FMjOutlinerEntry>> Children;
@@ -69,7 +69,7 @@ private:
 	bool bShowJoints = true;
 	bool bShowSensors = true;
 	bool bShowActuators = true;
-	bool bShowDefaults = false;  // Off by default — usually not what you're navigating
+	bool bShowDefaults = false; // Off by default — usually not what you're navigating
 	bool bShowSites = true;
 	bool bShowOther = false;
 

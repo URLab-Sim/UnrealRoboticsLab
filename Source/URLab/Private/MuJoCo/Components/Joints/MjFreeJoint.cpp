@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Joints/MjFreeJoint.h"
@@ -26,68 +26,69 @@
 
 UMjFreeJoint::UMjFreeJoint()
 {
-    bOverride_Type = true;
-    Type = EMjJointType::Free;
+	bOverride_Type = true;
+	Type = EMjJointType::Free;
 }
 
 void UMjFreeJoint::BuildBinaryPayload(FBufferArchive& OutBuffer) const
 {
-    // Free joint: qpos has 7 values (pos[3] + quat[4]), qvel has 6 values (linvel[3] + angvel[3])
-    if (!m_JointView._d || !m_JointView.qpos || !m_JointView.qvel)
-    {
-        return;
-    }
+	// Free joint: qpos has 7 values (pos[3] + quat[4]), qvel has 6 values (linvel[3] + angvel[3])
+	if (!m_JointView._d || !m_JointView.qpos || !m_JointView.qvel)
+	{
+		return;
+	}
 
-    // pos[3]
-    for (int i = 0; i < 3; ++i)
-    {
-        float Val = (float)m_JointView.qpos[i];
-        OutBuffer << Val;
-    }
-    // quat[4] — MuJoCo stores as (w,x,y,z), send as (x,y,z,w)
-    float qx = (float)m_JointView.qpos[4];
-    float qy = (float)m_JointView.qpos[5];
-    float qz = (float)m_JointView.qpos[6];
-    float qw = (float)m_JointView.qpos[3];
-    OutBuffer << qx;
-    OutBuffer << qy;
-    OutBuffer << qz;
-    OutBuffer << qw;
-    // linvel[3]
-    for (int i = 0; i < 3; ++i)
-    {
-        float Val = (float)m_JointView.qvel[i];
-        OutBuffer << Val;
-    }
-    // angvel[3]
-    for (int i = 3; i < 6; ++i)
-    {
-        float Val = (float)m_JointView.qvel[i];
-        OutBuffer << Val;
-    }
+	// pos[3]
+	for (int i = 0; i < 3; ++i)
+	{
+		float Val = (float)m_JointView.qpos[i];
+		OutBuffer << Val;
+	}
+	// quat[4] — MuJoCo stores as (w,x,y,z), send as (x,y,z,w)
+	float qx = (float)m_JointView.qpos[4];
+	float qy = (float)m_JointView.qpos[5];
+	float qz = (float)m_JointView.qpos[6];
+	float qw = (float)m_JointView.qpos[3];
+	OutBuffer << qx;
+	OutBuffer << qy;
+	OutBuffer << qz;
+	OutBuffer << qw;
+	// linvel[3]
+	for (int i = 0; i < 3; ++i)
+	{
+		float Val = (float)m_JointView.qvel[i];
+		OutBuffer << Val;
+	}
+	// angvel[3]
+	for (int i = 3; i < 6; ++i)
+	{
+		float Val = (float)m_JointView.qvel[i];
+		OutBuffer << Val;
+	}
 }
 
 FString UMjFreeJoint::GetTelemetryTopicName() const
 {
-    return FString::Printf(TEXT("base_state/%s"), *GetName());
+	return FString::Printf(TEXT("base_state/%s"), *GetName());
 }
 
 void UMjFreeJoint::ExportTo(mjsJoint* Element, mjsDefault* Default)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    Super::ExportTo(Element, Default);
+	Super::ExportTo(Element, Default);
 
-    // --- CODEGEN_EXPORT_START ---
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjFreeJoint::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	// --- CODEGEN_IMPORT_END ---
 }
-

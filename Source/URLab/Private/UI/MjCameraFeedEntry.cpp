@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "UI/MjCameraFeedEntry.h"
@@ -33,138 +33,148 @@
 
 void UMjCameraFeedEntry::BindToCamera(UMjCamera* InCamera)
 {
-    if (!InCamera) return;
-    BoundCamera = InCamera;
+	if (!InCamera)
+		return;
+	BoundCamera = InCamera;
 
-    InCamera->SetStreamingEnabled(true);
+	InCamera->SetStreamingEnabled(true);
 
-    if (CameraNameText)
-    {
-        CameraNameText->SetText(FText::FromString(InCamera->MjName));
-        FSlateFontInfo FontInfo = CameraNameText->GetFont();
-        FontInfo.Size = 12;
-        FontInfo.TypefaceFontName = TEXT("Bold");
-        CameraNameText->SetFont(FontInfo);
-        CameraNameText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.9f, 1.0f, 1.0f)));
-    }
+	if (CameraNameText)
+	{
+		CameraNameText->SetText(FText::FromString(InCamera->MjName));
+		FSlateFontInfo FontInfo = CameraNameText->GetFont();
+		FontInfo.Size = 12;
+		FontInfo.TypefaceFontName = TEXT("Bold");
+		CameraNameText->SetFont(FontInfo);
+		CameraNameText->SetColorAndOpacity(FSlateColor(FLinearColor(0.8f, 0.9f, 1.0f, 1.0f)));
+	}
 
-    RefreshBrush();
+	RefreshBrush();
 }
 
 void UMjCameraFeedEntry::RefreshBrush()
 {
-    if (!BoundCamera || !FeedImage) return;
+	if (!BoundCamera || !FeedImage)
+		return;
 
-    UTextureRenderTarget2D* RT = BoundCamera->RenderTarget;
-    if (!RT) return;
+	UTextureRenderTarget2D* RT = BoundCamera->RenderTarget;
+	if (!RT)
+		return;
 
-    const float W = 320.f;
-    const float H = (BoundCamera->resolution[0] > 0)
-        ? W * static_cast<float>(BoundCamera->resolution[1]) / static_cast<float>(BoundCamera->resolution[0])
-        : W * 0.75f;
+	const float W = 320.f;
+	const float H = (BoundCamera->resolution[0] > 0)
+					  ? W * static_cast<float>(BoundCamera->resolution[1]) / static_cast<float>(BoundCamera->resolution[0])
+					  : W * 0.75f;
 
-    // Depth RT is R32f — slate can't display it directly. Build (or reuse)
-    // a BGRA UTexture2D preview and bind THAT as the brush. For all other
-    // modes the RT is BGRA8 and we can bind it directly.
-    UObject* BrushResource = nullptr;
-    if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
-    {
-        if (!DepthPreviewTexture
-            || DepthPreviewTexture->GetSizeX() != BoundCamera->resolution[0]
-            || DepthPreviewTexture->GetSizeY() != BoundCamera->resolution[1])
-        {
-            DepthPreviewTexture = UTexture2D::CreateTransient(
-                BoundCamera->resolution[0], BoundCamera->resolution[1], PF_B8G8R8A8,
-                TEXT("URLabDepthPreview"));
-            DepthPreviewTexture->CompressionSettings = TC_VectorDisplacementmap;
-            DepthPreviewTexture->SRGB = false;
-            DepthPreviewTexture->UpdateResource();
-        }
-        BrushResource = DepthPreviewTexture;
-    }
-    else
-    {
-        DepthPreviewTexture = nullptr;
-        BrushResource = RT;
-    }
+	// Depth RT is R32f — slate can't display it directly. Build (or reuse)
+	// a BGRA UTexture2D preview and bind THAT as the brush. For all other
+	// modes the RT is BGRA8 and we can bind it directly.
+	UObject* BrushResource = nullptr;
+	if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
+	{
+		if (!DepthPreviewTexture
+			|| DepthPreviewTexture->GetSizeX() != BoundCamera->resolution[0]
+			|| DepthPreviewTexture->GetSizeY() != BoundCamera->resolution[1])
+		{
+			DepthPreviewTexture = UTexture2D::CreateTransient(
+				BoundCamera->resolution[0], BoundCamera->resolution[1], PF_B8G8R8A8,
+				TEXT("URLabDepthPreview"));
+			DepthPreviewTexture->CompressionSettings = TC_VectorDisplacementmap;
+			DepthPreviewTexture->SRGB = false;
+			DepthPreviewTexture->UpdateResource();
+		}
+		BrushResource = DepthPreviewTexture;
+	}
+	else
+	{
+		DepthPreviewTexture = nullptr;
+		BrushResource = RT;
+	}
 
-    FeedImage->SetBrushResourceObject(BrushResource);
+	FeedImage->SetBrushResourceObject(BrushResource);
 
-    FSlateBrush Brush = FeedImage->GetBrush();
-    Brush.DrawAs    = ESlateBrushDrawType::Image;
-    Brush.ImageType = ESlateBrushImageType::FullColor;
-    Brush.Tiling    = ESlateBrushTileType::NoTile;
-    Brush.ImageSize = FVector2D(W, H);
-    FeedImage->SetBrush(Brush);
+	FSlateBrush Brush = FeedImage->GetBrush();
+	Brush.DrawAs = ESlateBrushDrawType::Image;
+	Brush.ImageType = ESlateBrushImageType::FullColor;
+	Brush.Tiling = ESlateBrushTileType::NoTile;
+	Brush.ImageSize = FVector2D(W, H);
+	FeedImage->SetBrush(Brush);
 
-    UE_LOG(LogURLab, Log,
-        TEXT("[MjCameraFeedEntry] Brush set: '%s' mode=%s RT=%dx%d display=%.0fx%.0f"),
-        *BoundCamera->MjName, *UEnum::GetValueAsString(BoundCamera->CaptureMode),
-        RT->SizeX, RT->SizeY, W, H);
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjCameraFeedEntry] Brush set: '%s' mode=%s RT=%dx%d display=%.0fx%.0f"),
+		*BoundCamera->MjName, *UEnum::GetValueAsString(BoundCamera->CaptureMode),
+		RT->SizeX, RT->SizeY, W, H);
 }
 
 void UMjCameraFeedEntry::UpdateDepthPreview()
 {
-    if (!BoundCamera || !DepthPreviewTexture) return;
-    UTextureRenderTarget2D* RT = BoundCamera->RenderTarget;
-    if (!RT) return;
+	if (!BoundCamera || !DepthPreviewTexture)
+		return;
+	UTextureRenderTarget2D* RT = BoundCamera->RenderTarget;
+	if (!RT)
+		return;
 
-    FTextureRenderTargetResource* Res = RT->GameThread_GetRenderTargetResource();
-    if (!Res) return;
+	FTextureRenderTargetResource* Res = RT->GameThread_GetRenderTargetResource();
+	if (!Res)
+		return;
 
-    // Read the depth RT into FLinearColor pixels. The R channel holds linear
-    // scene depth in centimetres (Unreal's world units).
-    if (!Res->ReadLinearColorPixels(DepthReadbackScratch)) return;
+	// Read the depth RT into FLinearColor pixels. The R channel holds linear
+	// scene depth in centimetres (Unreal's world units).
+	if (!Res->ReadLinearColorPixels(DepthReadbackScratch))
+		return;
 
-    const int32 SizeX = RT->SizeX;
-    const int32 SizeY = RT->SizeY;
-    if (DepthReadbackScratch.Num() != SizeX * SizeY) return;
+	const int32 SizeX = RT->SizeX;
+	const int32 SizeY = RT->SizeY;
+	if (DepthReadbackScratch.Num() != SizeX * SizeY)
+		return;
 
-    const float Near = FMath::Max(0.1f, BoundCamera->DepthNearCm);
-    const float Far  = FMath::Max(Near + 1.0f, BoundCamera->DepthFarCm);
-    const float InvRange = 1.0f / (Far - Near);
+	const float Near = FMath::Max(0.1f, BoundCamera->DepthNearCm);
+	const float Far = FMath::Max(Near + 1.0f, BoundCamera->DepthFarCm);
+	const float InvRange = 1.0f / (Far - Near);
 
-    // Update the platform texture's mip0 pixels. BGRA byte order.
-    FTexture2DMipMap& Mip = DepthPreviewTexture->GetPlatformData()->Mips[0];
-    uint8* Dst = (uint8*)Mip.BulkData.Lock(LOCK_READ_WRITE);
-    for (int32 i = 0; i < DepthReadbackScratch.Num(); ++i)
-    {
-        const float Depth = DepthReadbackScratch[i].R;
-        const float Norm  = FMath::Clamp((Depth - Near) * InvRange, 0.0f, 1.0f);
-        const uint8 Gray  = (uint8)FMath::RoundToInt(Norm * 255.0f);
-        Dst[i * 4 + 0] = Gray;  // B
-        Dst[i * 4 + 1] = Gray;  // G
-        Dst[i * 4 + 2] = Gray;  // R
-        Dst[i * 4 + 3] = 255;   // A
-    }
-    Mip.BulkData.Unlock();
-    DepthPreviewTexture->UpdateResource();
+	// Update the platform texture's mip0 pixels. BGRA byte order.
+	FTexture2DMipMap& Mip = DepthPreviewTexture->GetPlatformData()->Mips[0];
+	uint8* Dst = (uint8*)Mip.BulkData.Lock(LOCK_READ_WRITE);
+	for (int32 i = 0; i < DepthReadbackScratch.Num(); ++i)
+	{
+		const float Depth = DepthReadbackScratch[i].R;
+		const float Norm = FMath::Clamp((Depth - Near) * InvRange, 0.0f, 1.0f);
+		const uint8 Gray = (uint8)FMath::RoundToInt(Norm * 255.0f);
+		Dst[i * 4 + 0] = Gray; // B
+		Dst[i * 4 + 1] = Gray; // G
+		Dst[i * 4 + 2] = Gray; // R
+		Dst[i * 4 + 3] = 255;  // A
+	}
+	Mip.BulkData.Unlock();
+	DepthPreviewTexture->UpdateResource();
 }
 
 void UMjCameraFeedEntry::UnbindCamera()
 {
-    if (BoundCamera)
-    {
-        BoundCamera->SetStreamingEnabled(false);
-        BoundCamera = nullptr;
-    }
-    FeedMID = nullptr;
-    DepthPreviewTexture = nullptr;
-    DepthReadbackScratch.Reset();
-    if (FeedImage) FeedImage->SetBrush(FSlateBrush());
+	if (BoundCamera)
+	{
+		BoundCamera->SetStreamingEnabled(false);
+		BoundCamera = nullptr;
+	}
+	FeedMID = nullptr;
+	DepthPreviewTexture = nullptr;
+	DepthReadbackScratch.Reset();
+	if (FeedImage)
+		FeedImage->SetBrush(FSlateBrush());
 }
 
 void UMjCameraFeedEntry::UpdateFeed()
 {
-    if (!BoundCamera || !FeedImage || !BoundCamera->RenderTarget) return;
+	if (!BoundCamera || !FeedImage || !BoundCamera->RenderTarget)
+		return;
 
-    if (!FeedImage->GetBrush().GetResourceObject())
-    {
-        RefreshBrush();
-    }
+	if (!FeedImage->GetBrush().GetResourceObject())
+	{
+		RefreshBrush();
+	}
 
-    if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
-    {
-        UpdateDepthPreview();
-    }
+	if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
+	{
+		UpdateDepthPreview();
+	}
 }

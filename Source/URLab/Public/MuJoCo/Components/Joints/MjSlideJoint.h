@@ -35,18 +35,18 @@
  *
  * Subclass of UMjJoint. Sets Type = Slide in the constructor.
  */
-UCLASS(ClassGroup=(Custom), meta=(BlueprintSpawnableComponent))
+UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjSlideJoint : public UMjJoint
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UMjSlideJoint();
+	UMjSlideJoint();
 
-    // --- CODEGEN_PROPERTIES_START ---
-    // (no type-specific schema attrs)
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// (no type-specific schema attrs)
+	// --- CODEGEN_PROPERTIES_END ---
 
-    virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
-    virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;
+	virtual void ImportFromXml(const class FXmlNode* Node, const FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
+	virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;
 };

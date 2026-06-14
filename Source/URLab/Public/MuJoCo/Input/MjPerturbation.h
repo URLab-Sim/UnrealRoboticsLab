@@ -41,12 +41,12 @@ class AAMjManager;
  */
 struct FMjPerturbationSample
 {
-    /** MuJoCo body id the force is applied to. -1 = no active perturbation. */
-    int32 BodyId = -1;
-    /** [fx, fy, fz, tx, ty, tz] in MuJoCo world space. */
-    double Xfrc[6] = { 0, 0, 0, 0, 0, 0 };
-    /** Monotonic version stamp; client compares to its last-seen to detect updates. */
-    int64 Version = 0;
+	/** MuJoCo body id the force is applied to. -1 = no active perturbation. */
+	int32 BodyId = -1;
+	/** [fx, fy, fz, tx, ty, tz] in MuJoCo world space. */
+	double Xfrc[6] = {0, 0, 0, 0, 0, 0};
+	/** Monotonic version stamp; client compares to its last-seen to detect updates. */
+	int64 Version = 0;
 };
 
 /**
@@ -67,74 +67,74 @@ struct FMjPerturbationSample
 UCLASS(ClassGroup = (MuJoCo), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjPerturbation : public UActorComponent
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
 public:
-    UMjPerturbation();
+	UMjPerturbation();
 
-    virtual void BeginPlay() override;
-    virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+	virtual void BeginPlay() override;
+	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-    /** Line-trace from the cursor and, if a body is hit, latch selection.
-     *  Called on double-click LMB (without Ctrl). */
-    void HandleSelect(const FVector& CursorOrigin, const FVector& CursorDirection);
+	/** Line-trace from the cursor and, if a body is hit, latch selection.
+	 *  Called on double-click LMB (without Ctrl). */
+	void HandleSelect(const FVector& CursorOrigin, const FVector& CursorDirection);
 
-    /** Begin a translate drag (Ctrl+RMB press with a body selected). */
-    void StartTranslate(const FVector& CursorOrigin, const FVector& CursorDirection);
+	/** Begin a translate drag (Ctrl+RMB press with a body selected). */
+	void StartTranslate(const FVector& CursorOrigin, const FVector& CursorDirection);
 
-    /** Begin a rotate drag (Ctrl+LMB press with a body selected). */
-    void StartRotate();
+	/** Begin a rotate drag (Ctrl+LMB press with a body selected). */
+	void StartRotate();
 
-    /** Update drag refpos/refselpos/refquat from current cursor + per-frame
-     *  mouse delta. Safe to call every game-tick while active. */
-    void UpdateDrag(const FVector& CursorOrigin, const FVector& CursorDirection,
-                    float MouseDx, float MouseDy);
+	/** Update drag refpos/refselpos/refquat from current cursor + per-frame
+	 *  mouse delta. Safe to call every game-tick while active. */
+	void UpdateDrag(const FVector& CursorOrigin, const FVector& CursorDirection,
+		float MouseDx, float MouseDy);
 
-    /** Stop the current drag (mouse release). Selection persists. */
-    void StopDrag();
+	/** Stop the current drag (mouse release). Selection persists. */
+	void StopDrag();
 
-    /** Is a body currently latched (pert.select > 0)? */
-    bool HasSelection() const { return Perturb.select > 0; }
+	/** Is a body currently latched (pert.select > 0)? */
+	bool HasSelection() const { return Perturb.select > 0; }
 
-    /** Is a drag currently active (LMB/RMB held)? */
-    bool IsDragging() const { return Perturb.active != 0; }
+	/** Is a drag currently active (LMB/RMB held)? */
+	bool IsDragging() const { return Perturb.active != 0; }
 
-    /** Read the latest puppet-mode perturbation sample. The step server
-     *  calls this after mj_forward to include the perturbation in the
-     *  reply when StepMode == Puppet. Thread-safe (atomic version load
-     *  + critical-section read of the body / xfrc fields). */
-    FMjPerturbationSample GetLatestPerturbationSample() const;
+	/** Read the latest puppet-mode perturbation sample. The step server
+	 *  calls this after mj_forward to include the perturbation in the
+	 *  reply when StepMode == Puppet. Thread-safe (atomic version load
+	 *  + critical-section read of the body / xfrc fields). */
+	FMjPerturbationSample GetLatestPerturbationSample() const;
 
 private:
-    friend class UMjInputHandler;
+	friend class UMjInputHandler;
 
-    /** Cached manager (owner). */
-    UPROPERTY(Transient)
-    AAMjManager* Manager = nullptr;
+	/** Cached manager (owner). */
+	UPROPERTY(Transient)
+	AAMjManager* Manager = nullptr;
 
-    /** The actual mjv perturb struct passed to mjv_applyPerturbForce. */
-    mjvPerturb Perturb{};
+	/** The actual mjv perturb struct passed to mjv_applyPerturbForce. */
+	mjvPerturb Perturb{};
 
-    /** Click-time state used to re-derive refpos each frame. */
-    FVector ClickHitWorldUE = FVector::ZeroVector;   // hit point in UE world space
-    float   ClickDepthCm    = 0.0f;                  // distance from camera to hit along ray
-    FVector ClickCamForward = FVector::ForwardVector;// UE-space at click time
-    FVector ClickCamUp      = FVector::UpVector;
-    FVector ClickCamRight   = FVector::RightVector;
-    mjtNum  BaseRefPos[3]   = {0, 0, 0};
-    mjtNum  BaseRefSelPos[3]= {0, 0, 0};
-    mjtNum  BaseRefQuat[4]  = {1, 0, 0, 0};
+	/** Click-time state used to re-derive refpos each frame. */
+	FVector ClickHitWorldUE = FVector::ZeroVector;    // hit point in UE world space
+	float ClickDepthCm = 0.0f;                        // distance from camera to hit along ray
+	FVector ClickCamForward = FVector::ForwardVector; // UE-space at click time
+	FVector ClickCamUp = FVector::UpVector;
+	FVector ClickCamRight = FVector::RightVector;
+	mjtNum BaseRefPos[3] = {0, 0, 0};
+	mjtNum BaseRefSelPos[3] = {0, 0, 0};
+	mjtNum BaseRefQuat[4] = {1, 0, 0, 0};
 
-    /** Resolve a hit actor to a MuJoCo body_id. Returns <=0 if no match. */
-    int32 ResolveBodyIdFromActor(const class AActor* Actor, const FVector& HitWorldUE) const;
+	/** Resolve a hit actor to a MuJoCo body_id. Returns <=0 if no match. */
+	int32 ResolveBodyIdFromActor(const class AActor* Actor, const FVector& HitWorldUE) const;
 
-    /** Draw a debug line from the world selection point to the ref target. */
-    void DrawDebugSpring() const;
+	/** Draw a debug line from the world selection point to the ref target. */
+	void DrawDebugSpring() const;
 
-    /** Latest puppet-mode perturbation snapshot. Updated on the physics
-     *  thread under LatestSampleMutex; readers take the same mutex.
-     *  `LatestSample.Version` increments on each write so consumers can
-     *  detect duplicate samples between polls. */
-    mutable FCriticalSection LatestSampleMutex;
-    FMjPerturbationSample LatestSample;
+	/** Latest puppet-mode perturbation snapshot. Updated on the physics
+	 *  thread under LatestSampleMutex; readers take the same mutex.
+	 *  `LatestSample.Version` increments on each write so consumers can
+	 *  detect duplicate samples between polls. */
+	mutable FCriticalSection LatestSampleMutex;
+	FMjPerturbationSample LatestSample;
 };

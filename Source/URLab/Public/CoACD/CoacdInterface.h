@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -30,39 +30,42 @@
 #include "CoACD/coacd.h"
 
 #include "Misc/FileHelper.h"
-namespace CoacdInterface {
-   
+namespace CoacdInterface
+{
 
 template <typename VertexType, typename IndexType>
-CoACD_Mesh ConvertToCoACDMesh(const Chaos::TArrayCollectionArray<VertexType>& Vertices, const TArray<Chaos::TVector<IndexType, 3>>& Indices) {
+CoACD_Mesh ConvertToCoACDMesh(const Chaos::TArrayCollectionArray<VertexType>& Vertices, const TArray<Chaos::TVector<IndexType, 3>>& Indices)
+{
 
-    CoACD_Mesh coacdMesh;
+	CoACD_Mesh coacdMesh;
 
-    // Allocate memory for vertices
-    coacdMesh.vertices_count = Vertices.Num();
-    coacdMesh.vertices_ptr = new double[coacdMesh.vertices_count * 3];
+	// Allocate memory for vertices
+	coacdMesh.vertices_count = Vertices.Num();
+	coacdMesh.vertices_ptr = new double[coacdMesh.vertices_count * 3];
 
-    // Copy vertex data (FVector to double array)
-    for (int i = 0; i < Vertices.Num(); ++i) {
-        coacdMesh.vertices_ptr[3 * i] = Vertices[i].X;
-        coacdMesh.vertices_ptr[3 * i + 1] = Vertices[i].Y;
-        coacdMesh.vertices_ptr[3 * i + 2] = Vertices[i].Z;
-    }
+	// Copy vertex data (FVector to double array)
+	for (int i = 0; i < Vertices.Num(); ++i)
+	{
+		coacdMesh.vertices_ptr[3 * i] = Vertices[i].X;
+		coacdMesh.vertices_ptr[3 * i + 1] = Vertices[i].Y;
+		coacdMesh.vertices_ptr[3 * i + 2] = Vertices[i].Z;
+	}
 
-    // Allocate memory for indices
-    coacdMesh.triangles_count = Indices.Num();
-    coacdMesh.triangles_ptr = new int[coacdMesh.triangles_count * 3];
+	// Allocate memory for indices
+	coacdMesh.triangles_count = Indices.Num();
+	coacdMesh.triangles_ptr = new int[coacdMesh.triangles_count * 3];
 
-    // Copy index data (int32 array)
-    for (int i = 0; i < Indices.Num(); ++i) {
-        coacdMesh.triangles_ptr[3 * i] = Indices[i][0];
-        coacdMesh.triangles_ptr[3 * i + 1] = Indices[i][1];
-        coacdMesh.triangles_ptr[3 * i + 2] = Indices[i][2];
-    }
+	// Copy index data (int32 array)
+	for (int i = 0; i < Indices.Num(); ++i)
+	{
+		coacdMesh.triangles_ptr[3 * i] = Indices[i][0];
+		coacdMesh.triangles_ptr[3 * i + 1] = Indices[i][1];
+		coacdMesh.triangles_ptr[3 * i + 2] = Indices[i][2];
+	}
 
-    return coacdMesh;
+	return coacdMesh;
 }
-void SaveCoACDMeshAsOBJ(CoACD_Mesh& mesh, const FString& FilePath) ;
+void SaveCoACDMeshAsOBJ(CoACD_Mesh& mesh, const FString& FilePath);
 
-void SaveCoACDMeshArrayAsOBJ(CoACD_MeshArray& MeshArray, const FString& BaseFilePath) ;
-}
+void SaveCoACDMeshArrayAsOBJ(CoACD_MeshArray& MeshArray, const FString& BaseFilePath);
+} // namespace CoacdInterface

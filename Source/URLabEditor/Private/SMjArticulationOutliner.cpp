@@ -45,113 +45,89 @@
 
 void SMjArticulationOutliner::Construct(const FArguments& InArgs)
 {
-	auto MakeFilterToggle = [this](const FString& Label, bool& bFilterVar) -> TSharedRef<SWidget>
-	{
+	auto MakeFilterToggle = [this](const FString& Label, bool& bFilterVar) -> TSharedRef<SWidget> {
 		return SNew(SCheckBox)
 			.IsChecked_Lambda([&bFilterVar]() { return bFilterVar ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-			.OnCheckStateChanged_Lambda([this, &bFilterVar](ECheckBoxState NewState)
-			{
+			.OnCheckStateChanged_Lambda([this, &bFilterVar](ECheckBoxState NewState) {
 				bFilterVar = (NewState == ECheckBoxState::Checked);
 				ApplyFilters();
 			})
-			[
-				SNew(STextBlock).Text(FText::FromString(Label))
-			];
+				[SNew(STextBlock).Text(FText::FromString(Label))];
 	};
 
 	ChildSlot
-	[
-		SNew(SVerticalBox)
+		[SNew(SVerticalBox)
 
-		// Header: BP selector dropdown
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(4.f)
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0.f, 0.f, 4.f, 0.f)
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("Articulation:")))
-				.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))
-			]
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			[
-				SAssignNew(BPComboBox, SComboBox<TSharedPtr<FString>>)
-				.OptionsSource(&AvailableBPNames)
-				.OnSelectionChanged(this, &SMjArticulationOutliner::OnBPSelected)
-				.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) -> TSharedRef<SWidget>
-				{
-					return SNew(STextBlock).Text(FText::FromString(*Item));
-				})
-				.Content()
-				[
-					SNew(STextBlock)
-					.Text_Lambda([this]() -> FText
-					{
-						if (SelectedBPName.IsValid()) return FText::FromString(*SelectedBPName);
-						return FText::FromString(TEXT("No articulation BPs open"));
-					})
-				]
-			]
-		]
+			// Header: BP selector dropdown
+			+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4.f)
+					[SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.VAlign(VAlign_Center)
+							.Padding(0.f, 0.f, 4.f, 0.f)
+								[SNew(STextBlock)
+										.Text(FText::FromString(TEXT("Articulation:")))
+										.Font(FCoreStyle::GetDefaultFontStyle("Bold", 10))]
+						+ SHorizontalBox::Slot()
+							.FillWidth(1.0f)
+								[SAssignNew(BPComboBox, SComboBox<TSharedPtr<FString>>)
+										.OptionsSource(&AvailableBPNames)
+										.OnSelectionChanged(this, &SMjArticulationOutliner::OnBPSelected)
+										.OnGenerateWidget_Lambda([](TSharedPtr<FString> Item) -> TSharedRef<SWidget> {
+											return SNew(STextBlock).Text(FText::FromString(*Item));
+										})
+										.Content()
+											[SNew(STextBlock)
+													.Text_Lambda([this]() -> FText {
+														if (SelectedBPName.IsValid())
+															return FText::FromString(*SelectedBPName);
+														return FText::FromString(TEXT("No articulation BPs open"));
+													})]]]
 
-		// Search bar
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(4.f)
-		[
-			SNew(SSearchBox)
-			.HintText(FText::FromString(TEXT("Search components...")))
-			.OnTextChanged_Lambda([this](const FText& NewText)
-			{
-				SearchText = NewText.ToString();
-				ApplyFilters();
-			})
-		]
+			// Search bar
+			+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4.f)
+					[SNew(SSearchBox)
+							.HintText(FText::FromString(TEXT("Search components...")))
+							.OnTextChanged_Lambda([this](const FText& NewText) {
+								SearchText = NewText.ToString();
+								ApplyFilters();
+							})]
 
-		// Filter toggles
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(4.f)
-		[
-			SNew(SWrapBox)
-			.UseAllottedSize(true)
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Bodies"), bShowBodies) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Geoms"), bShowGeoms) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Joints"), bShowJoints) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Sensors"), bShowSensors) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Actuators"), bShowActuators) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Defaults"), bShowDefaults) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Sites"), bShowSites) ]
-			+ SWrapBox::Slot().Padding(2.f) [ MakeFilterToggle(TEXT("Other"), bShowOther) ]
-		]
+			// Filter toggles
+			+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4.f)
+					[SNew(SWrapBox)
+							.UseAllottedSize(true)
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Bodies"), bShowBodies)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Geoms"), bShowGeoms)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Joints"), bShowJoints)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Sensors"), bShowSensors)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Actuators"), bShowActuators)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Defaults"), bShowDefaults)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Sites"), bShowSites)]
+						+ SWrapBox::Slot().Padding(2.f)[MakeFilterToggle(TEXT("Other"), bShowOther)]]
 
-		// Tree view
-		+ SVerticalBox::Slot()
-		.FillHeight(1.0f)
-		[
-			SAssignNew(TreeView, STreeView<TSharedPtr<FMjOutlinerEntry>>)
-			.TreeItemsSource(&FilteredRootEntries)
-			.OnGenerateRow(this, &SMjArticulationOutliner::OnGenerateRow)
-			.OnGetChildren(this, &SMjArticulationOutliner::OnGetChildren)
-			.OnSelectionChanged(this, &SMjArticulationOutliner::OnSelectionChanged)
-		]
+			// Tree view
+			+ SVerticalBox::Slot()
+				.FillHeight(1.0f)
+					[SAssignNew(TreeView, STreeView<TSharedPtr<FMjOutlinerEntry>>)
+							.TreeItemsSource(&FilteredRootEntries)
+							.OnGenerateRow(this, &SMjArticulationOutliner::OnGenerateRow)
+							.OnGetChildren(this, &SMjArticulationOutliner::OnGetChildren)
+							.OnSelectionChanged(this, &SMjArticulationOutliner::OnSelectionChanged)]
 
-		// Summary bar
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(4.f)
-		[
-			SNew(STextBlock)
-			.Text(this, &SMjArticulationOutliner::GetSummaryText)
-			.ColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)))
-		]
-	];
+			// Summary bar
+			+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(4.f)
+					[SNew(STextBlock)
+							.Text(this, &SMjArticulationOutliner::GetSummaryText)
+							.ColorAndOpacity(FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f)))]];
 }
 
 void SMjArticulationOutliner::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
@@ -159,7 +135,8 @@ void SMjArticulationOutliner::Tick(const FGeometry& AllottedGeometry, const doub
 	SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
 	TimeSinceLastRefresh += InDeltaTime;
-	if (TimeSinceLastRefresh < 1.0f) return;
+	if (TimeSinceLastRefresh < 1.0f)
+		return;
 	TimeSinceLastRefresh = 0.f;
 
 	RefreshAvailableBPs();
@@ -169,7 +146,8 @@ void SMjArticulationOutliner::Tick(const FGeometry& AllottedGeometry, const doub
 	{
 		RefreshFromBlueprint(AvailableBPs[0].Get());
 		SelectedBPName = AvailableBPNames[0];
-		if (BPComboBox.IsValid()) BPComboBox->SetSelectedItem(SelectedBPName);
+		if (BPComboBox.IsValid())
+			BPComboBox->SetSelectedItem(SelectedBPName);
 	}
 }
 
@@ -199,7 +177,11 @@ void SMjArticulationOutliner::RefreshAvailableBPs()
 	{
 		for (int32 i = 0; i < NewBPs.Num(); i++)
 		{
-			if (NewBPs[i] != AvailableBPs[i]) { bChanged = true; break; }
+			if (NewBPs[i] != AvailableBPs[i])
+			{
+				bChanged = true;
+				break;
+			}
 		}
 	}
 
@@ -212,14 +194,16 @@ void SMjArticulationOutliner::RefreshAvailableBPs()
 			if (UBlueprint* BP = WBP.Get())
 				AvailableBPNames.Add(MakeShared<FString>(BP->GetName()));
 		}
-		if (BPComboBox.IsValid()) BPComboBox->RefreshOptions();
+		if (BPComboBox.IsValid())
+			BPComboBox->RefreshOptions();
 	}
 }
 
 void SMjArticulationOutliner::OnBPSelected(TSharedPtr<FString> Selected, ESelectInfo::Type SelectInfo)
 {
 	SelectedBPName = Selected;
-	if (!Selected.IsValid()) return;
+	if (!Selected.IsValid())
+		return;
 
 	for (const auto& WBP : AvailableBPs)
 	{
@@ -243,7 +227,8 @@ void SMjArticulationOutliner::RebuildTree()
 	RootEntries.Empty();
 
 	UBlueprint* BP = CurrentBP.Get();
-	if (!BP || !BP->SimpleConstructionScript) return;
+	if (!BP || !BP->SimpleConstructionScript)
+		return;
 
 	for (USCS_Node* RootNode : BP->SimpleConstructionScript->GetRootNodes())
 	{
@@ -307,26 +292,35 @@ void SMjArticulationOutliner::ApplyFilters()
 bool SMjArticulationOutliner::PassesFilter(const TSharedPtr<FMjOutlinerEntry>& Entry) const
 {
 	UObject* Comp = Entry->ComponentTemplate.Get();
-	if (!Comp) return false;
+	if (!Comp)
+		return false;
 
 	// Type filter
 	bool bPassType = false;
-	if (IsBody(Comp))         bPassType = bShowBodies;
-	else if (IsGeom(Comp))    bPassType = bShowGeoms;
-	else if (IsJoint(Comp))   bPassType = bShowJoints;
-	else if (IsSensor(Comp))  bPassType = bShowSensors;
-	else if (IsActuator(Comp)) bPassType = bShowActuators;
-	else if (IsDefault(Comp)) bPassType = bShowDefaults;
-	else if (IsSite(Comp))    bPassType = bShowSites;
-	else                      bPassType = bShowOther;
+	if (IsBody(Comp))
+		bPassType = bShowBodies;
+	else if (IsGeom(Comp))
+		bPassType = bShowGeoms;
+	else if (IsJoint(Comp))
+		bPassType = bShowJoints;
+	else if (IsSensor(Comp))
+		bPassType = bShowSensors;
+	else if (IsActuator(Comp))
+		bPassType = bShowActuators;
+	else if (IsDefault(Comp))
+		bPassType = bShowDefaults;
+	else if (IsSite(Comp))
+		bPassType = bShowSites;
+	else
+		bPassType = bShowOther;
 
-	if (!bPassType) return false;
+	if (!bPassType)
+		return false;
 
 	// Text search
 	if (!SearchText.IsEmpty())
 	{
-		if (!Entry->Name.Contains(SearchText, ESearchCase::IgnoreCase) &&
-			!Entry->TypeLabel.Contains(SearchText, ESearchCase::IgnoreCase))
+		if (!Entry->Name.Contains(SearchText, ESearchCase::IgnoreCase) && !Entry->TypeLabel.Contains(SearchText, ESearchCase::IgnoreCase))
 		{
 			return false;
 		}
@@ -372,35 +366,36 @@ TSharedRef<ITableRow> SMjArticulationOutliner::OnGenerateRow(
 	UObject* Comp = Entry->ComponentTemplate.Get();
 	if (Comp)
 	{
-		if (IsBody(Comp))         TypeColor = FLinearColor(0.9f, 0.7f, 0.3f);
-		else if (IsGeom(Comp))    TypeColor = FLinearColor(0.5f, 0.8f, 0.5f);
-		else if (IsJoint(Comp))   TypeColor = FLinearColor(0.5f, 0.6f, 1.0f);
-		else if (IsSensor(Comp))  TypeColor = FLinearColor(0.8f, 0.5f, 0.8f);
-		else if (IsActuator(Comp)) TypeColor = FLinearColor(1.0f, 0.5f, 0.4f);
-		else if (IsDefault(Comp)) TypeColor = FLinearColor(0.6f, 0.6f, 0.6f);
-		else if (IsSite(Comp))    TypeColor = FLinearColor(0.4f, 0.9f, 0.9f);
+		if (IsBody(Comp))
+			TypeColor = FLinearColor(0.9f, 0.7f, 0.3f);
+		else if (IsGeom(Comp))
+			TypeColor = FLinearColor(0.5f, 0.8f, 0.5f);
+		else if (IsJoint(Comp))
+			TypeColor = FLinearColor(0.5f, 0.6f, 1.0f);
+		else if (IsSensor(Comp))
+			TypeColor = FLinearColor(0.8f, 0.5f, 0.8f);
+		else if (IsActuator(Comp))
+			TypeColor = FLinearColor(1.0f, 0.5f, 0.4f);
+		else if (IsDefault(Comp))
+			TypeColor = FLinearColor(0.6f, 0.6f, 0.6f);
+		else if (IsSite(Comp))
+			TypeColor = FLinearColor(0.4f, 0.9f, 0.9f);
 	}
 
 	return SNew(STableRow<TSharedPtr<FMjOutlinerEntry>>, OwnerTable)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(2.f, 1.f)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(FString::Printf(TEXT("[%s]"), *Entry->TypeLabel)))
-			.ColorAndOpacity(FSlateColor(TypeColor))
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-		]
-		+ SHorizontalBox::Slot()
-		.FillWidth(1.0f)
-		.Padding(4.f, 1.f)
-		[
-			SNew(STextBlock)
-			.Text(FText::FromString(Entry->Name))
-		]
-	];
+		[SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(2.f, 1.f)
+					[SNew(STextBlock)
+							.Text(FText::FromString(FString::Printf(TEXT("[%s]"), *Entry->TypeLabel)))
+							.ColorAndOpacity(FSlateColor(TypeColor))
+							.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))]
+			+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.Padding(4.f, 1.f)
+					[SNew(STextBlock)
+							.Text(FText::FromString(Entry->Name))]];
 }
 
 void SMjArticulationOutliner::OnGetChildren(
@@ -413,14 +408,17 @@ void SMjArticulationOutliner::OnGetChildren(
 void SMjArticulationOutliner::OnSelectionChanged(
 	TSharedPtr<FMjOutlinerEntry> Entry, ESelectInfo::Type SelectInfo)
 {
-	if (!Entry.IsValid() || !Entry->SCSNode || !GEditor) return;
+	if (!Entry.IsValid() || !Entry->SCSNode || !GEditor)
+		return;
 
 	UBlueprint* BP = CurrentBP.Get();
-	if (!BP) return;
+	if (!BP)
+		return;
 
 	// Open/focus the BP editor and select the SCS node
 	UAssetEditorSubsystem* Sub = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-	if (!Sub) return;
+	if (!Sub)
+		return;
 
 	IAssetEditorInstance* EditorInstance = Sub->FindEditorForAsset(BP, /*bFocusIfOpen=*/true);
 	if (!EditorInstance)
@@ -438,7 +436,8 @@ void SMjArticulationOutliner::OnSelectionChanged(
 
 FString SMjArticulationOutliner::GetTypeLabel(UObject* Comp)
 {
-	if (!Comp) return TEXT("Unknown");
+	if (!Comp)
+		return TEXT("Unknown");
 
 	// Use the specific class name for joints/geoms
 	if (IsJoint(Comp))
@@ -451,25 +450,52 @@ FString SMjArticulationOutliner::GetTypeLabel(UObject* Comp)
 	{
 		FString ClassName = Comp->GetClass()->GetName();
 		ClassName.RemoveFromStart(TEXT("Mj"));
-		if (ClassName == TEXT("Geom")) return TEXT("Geom");
+		if (ClassName == TEXT("Geom"))
+			return TEXT("Geom");
 		return ClassName;
 	}
 
-	if (IsBody(Comp))     return TEXT("Body");
-	if (IsSensor(Comp))   return TEXT("Sensor");
-	if (IsActuator(Comp)) return TEXT("Actuator");
-	if (IsDefault(Comp))  return TEXT("Default");
-	if (IsSite(Comp))     return TEXT("Site");
+	if (IsBody(Comp))
+		return TEXT("Body");
+	if (IsSensor(Comp))
+		return TEXT("Sensor");
+	if (IsActuator(Comp))
+		return TEXT("Actuator");
+	if (IsDefault(Comp))
+		return TEXT("Default");
+	if (IsSite(Comp))
+		return TEXT("Site");
 	return Comp->GetClass()->GetName();
 }
 
-bool SMjArticulationOutliner::IsBody(UObject* Comp)     { return Comp && Comp->IsA<UMjBody>(); }
-bool SMjArticulationOutliner::IsGeom(UObject* Comp)     { return Comp && Comp->IsA<UMjGeom>(); }
-bool SMjArticulationOutliner::IsJoint(UObject* Comp)    { return Comp && Comp->IsA<UMjJoint>(); }
-bool SMjArticulationOutliner::IsSensor(UObject* Comp)   { return Comp && Comp->IsA<UMjSensor>(); }
-bool SMjArticulationOutliner::IsActuator(UObject* Comp) { return Comp && Comp->IsA<UMjActuator>(); }
-bool SMjArticulationOutliner::IsDefault(UObject* Comp)  { return Comp && Comp->IsA<UMjDefault>(); }
-bool SMjArticulationOutliner::IsSite(UObject* Comp)     { return Comp && Comp->IsA<UMjSite>(); }
+bool SMjArticulationOutliner::IsBody(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjBody>();
+}
+bool SMjArticulationOutliner::IsGeom(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjGeom>();
+}
+bool SMjArticulationOutliner::IsJoint(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjJoint>();
+}
+bool SMjArticulationOutliner::IsSensor(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjSensor>();
+}
+bool SMjArticulationOutliner::IsActuator(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjActuator>();
+}
+bool SMjArticulationOutliner::IsDefault(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjDefault>();
+}
+bool SMjArticulationOutliner::IsSite(UObject* Comp)
+{
+	return Comp && Comp->IsA<UMjSite>();
+}
 
 FText SMjArticulationOutliner::GetSummaryText() const
 {
@@ -477,22 +503,26 @@ FText SMjArticulationOutliner::GetSummaryText() const
 
 	// Count from the unfiltered tree
 	TFunction<void(const TArray<TSharedPtr<FMjOutlinerEntry>>&)> CountAll =
-		[&](const TArray<TSharedPtr<FMjOutlinerEntry>>& Entries)
-	{
-		for (const auto& Entry : Entries)
-		{
-			UObject* Comp = Entry->ComponentTemplate.Get();
-			if (Comp)
+		[&](const TArray<TSharedPtr<FMjOutlinerEntry>>& Entries) {
+			for (const auto& Entry : Entries)
 			{
-				if (IsBody(Comp))          Bodies++;
-				else if (IsGeom(Comp))     Geoms++;
-				else if (IsJoint(Comp))    Joints++;
-				else if (IsSensor(Comp))   Sensors++;
-				else if (IsActuator(Comp)) Actuators++;
+				UObject* Comp = Entry->ComponentTemplate.Get();
+				if (Comp)
+				{
+					if (IsBody(Comp))
+						Bodies++;
+					else if (IsGeom(Comp))
+						Geoms++;
+					else if (IsJoint(Comp))
+						Joints++;
+					else if (IsSensor(Comp))
+						Sensors++;
+					else if (IsActuator(Comp))
+						Actuators++;
+				}
+				CountAll(Entry->Children);
 			}
-			CountAll(Entry->Children);
-		}
-	};
+		};
 	CountAll(RootEntries);
 
 	return FText::FromString(FString::Printf(

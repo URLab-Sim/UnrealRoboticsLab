@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjCylinderActuator.h"
@@ -29,32 +29,31 @@
 
 UMjCylinderActuator::UMjCylinderActuator()
 {
-    Type = EMjActuatorType::Cylinder;
+	Type = EMjActuatorType::Cylinder;
 }
-
-
 
 void UMjCylinderActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    Super::ExportTo(Element, def);
+	Super::ExportTo(Element, def);
 
-    // --- CODEGEN_EXPORT_START ---
-    mjs_setToCylinder(Element, (bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0, bOverride_bias ? (double)bias : -1.0, bOverride_area ? (double)area : -1.0, bOverride_diameter ? (double)diameter : -1.0);
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	mjs_setToCylinder(Element, (bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0, bOverride_bias ? (double)bias : -1.0, bOverride_area ? (double)area : -1.0, bOverride_diameter ? (double)diameter : -1.0);
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCylinderActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrFloatArray(Node, TEXT("timeconst"), timeconst, bOverride_timeconst);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("area"), area, bOverride_area);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("diameter"), diameter, bOverride_diameter);
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("bias"), bias, bOverride_bias);
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrFloatArray(Node, TEXT("timeconst"), timeconst, bOverride_timeconst);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("area"), area, bOverride_area);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("diameter"), diameter, bOverride_diameter);
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("bias"), bias, bOverride_bias);
+	// --- CODEGEN_IMPORT_END ---
 }
-

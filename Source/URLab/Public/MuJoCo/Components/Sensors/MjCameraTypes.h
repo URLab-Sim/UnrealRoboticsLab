@@ -34,10 +34,10 @@
 UENUM(BlueprintType)
 enum class EMjCameraMode : uint8
 {
-    Real                 UMETA(DisplayName = "Photoreal RGB"),
-    Depth                UMETA(DisplayName = "Depth"),
-    SemanticSegmentation UMETA(DisplayName = "Semantic Segmentation"),
-    InstanceSegmentation UMETA(DisplayName = "Instance Segmentation"),
+	Real UMETA(DisplayName = "Photoreal RGB"),
+	Depth UMETA(DisplayName = "Depth"),
+	SemanticSegmentation UMETA(DisplayName = "Semantic Segmentation"),
+	InstanceSegmentation UMETA(DisplayName = "Instance Segmentation"),
 };
 
 // EMjCameraTrackingMode, EMjCameraProjection moved to

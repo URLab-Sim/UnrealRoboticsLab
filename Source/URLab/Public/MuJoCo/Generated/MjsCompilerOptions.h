@@ -34,123 +34,123 @@
 USTRUCT(BlueprintType)
 struct URLAB_API FMjsCompilerOptions
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Autolimits = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Autolimits = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Autolimits"))
-    uint8 Autolimits = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Autolimits"))
+	uint8 Autolimits = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Boundmass = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Boundmass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Boundmass"))
-    float Boundmass = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Boundmass"))
+	float Boundmass = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Boundinertia = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Boundinertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Boundinertia"))
-    float Boundinertia = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Boundinertia"))
+	float Boundinertia = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Settotalmass = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Settotalmass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Settotalmass"))
-    float Settotalmass = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Settotalmass"))
+	float Settotalmass = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Balanceinertia = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Balanceinertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Balanceinertia"))
-    uint8 Balanceinertia = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Balanceinertia"))
+	uint8 Balanceinertia = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Fitaabb = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Fitaabb = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Fitaabb"))
-    uint8 Fitaabb = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Fitaabb"))
+	uint8 Fitaabb = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Degree = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Degree = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Degree"))
-    uint8 Degree = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Degree"))
+	uint8 Degree = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Eulerseq = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Eulerseq = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Eulerseq"))
-    FString Eulerseq = TEXT("xyz");
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Eulerseq"))
+	FString Eulerseq = TEXT("xyz");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Discardvisual = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Discardvisual = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Discardvisual"))
-    uint8 Discardvisual = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Discardvisual"))
+	uint8 Discardvisual = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Usethread = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Usethread = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Usethread"))
-    uint8 Usethread = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Usethread"))
+	uint8 Usethread = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Fusestatic = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Fusestatic = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Fusestatic"))
-    uint8 Fusestatic = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Fusestatic"))
+	uint8 Fusestatic = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Inertiafromgeom = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Inertiafromgeom = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Inertiafromgeom"))
-    int32 Inertiafromgeom = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Inertiafromgeom"))
+	int32 Inertiafromgeom = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Inertiagrouprange = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Inertiagrouprange = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Inertiagrouprange"))
-    TArray<float> Inertiagrouprange = {};
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Inertiagrouprange"))
+	TArray<float> Inertiagrouprange = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Saveinertial = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Saveinertial = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Saveinertial"))
-    uint8 Saveinertial = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Saveinertial"))
+	uint8 Saveinertial = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Alignfree = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Alignfree = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Alignfree"))
-    int32 Alignfree = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Alignfree"))
+	int32 Alignfree = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
-    bool bOverride_Authored = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta = (InlineEditConditionToggle))
+	bool bOverride_Authored = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Authored"))
-    float Authored = 0.0f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta = (EditCondition = "bOverride_Authored"))
+	float Authored = 0.0f;
 
-    /** @brief Mirror every field into a runtime C struct. */
-    template <typename TDst>
-    void ApplyTo(TDst& Dst) const
-    {
-    Dst.autolimits = static_cast<decltype(Dst.autolimits)>(Autolimits);
-    Dst.boundmass = static_cast<decltype(Dst.boundmass)>(Boundmass);
-    Dst.boundinertia = static_cast<decltype(Dst.boundinertia)>(Boundinertia);
-    Dst.settotalmass = static_cast<decltype(Dst.settotalmass)>(Settotalmass);
-    Dst.balanceinertia = static_cast<decltype(Dst.balanceinertia)>(Balanceinertia);
-    Dst.fitaabb = static_cast<decltype(Dst.fitaabb)>(Fitaabb);
-    Dst.degree = static_cast<decltype(Dst.degree)>(Degree);
-    Dst.discardvisual = static_cast<decltype(Dst.discardvisual)>(Discardvisual);
-    Dst.usethread = static_cast<decltype(Dst.usethread)>(Usethread);
-    Dst.fusestatic = static_cast<decltype(Dst.fusestatic)>(Fusestatic);
-    Dst.inertiafromgeom = static_cast<decltype(Dst.inertiafromgeom)>(Inertiafromgeom);
-    for (int32 I = 0; I < Inertiagrouprange.Num() && I < 2; ++I)
-        Dst.inertiagrouprange[I] = static_cast<decltype(Dst.inertiagrouprange[0])>(Inertiagrouprange[I]);
-    Dst.saveinertial = static_cast<decltype(Dst.saveinertial)>(Saveinertial);
-    Dst.alignfree = static_cast<decltype(Dst.alignfree)>(Alignfree);
-    Dst.authored = static_cast<decltype(Dst.authored)>(Authored);
-    }
+	/** @brief Mirror every field into a runtime C struct. */
+	template <typename TDst>
+	void ApplyTo(TDst& Dst) const
+	{
+		Dst.autolimits = static_cast<decltype(Dst.autolimits)>(Autolimits);
+		Dst.boundmass = static_cast<decltype(Dst.boundmass)>(Boundmass);
+		Dst.boundinertia = static_cast<decltype(Dst.boundinertia)>(Boundinertia);
+		Dst.settotalmass = static_cast<decltype(Dst.settotalmass)>(Settotalmass);
+		Dst.balanceinertia = static_cast<decltype(Dst.balanceinertia)>(Balanceinertia);
+		Dst.fitaabb = static_cast<decltype(Dst.fitaabb)>(Fitaabb);
+		Dst.degree = static_cast<decltype(Dst.degree)>(Degree);
+		Dst.discardvisual = static_cast<decltype(Dst.discardvisual)>(Discardvisual);
+		Dst.usethread = static_cast<decltype(Dst.usethread)>(Usethread);
+		Dst.fusestatic = static_cast<decltype(Dst.fusestatic)>(Fusestatic);
+		Dst.inertiafromgeom = static_cast<decltype(Dst.inertiafromgeom)>(Inertiafromgeom);
+		for (int32 I = 0; I < Inertiagrouprange.Num() && I < 2; ++I)
+			Dst.inertiagrouprange[I] = static_cast<decltype(Dst.inertiagrouprange[0])>(Inertiagrouprange[I]);
+		Dst.saveinertial = static_cast<decltype(Dst.saveinertial)>(Saveinertial);
+		Dst.alignfree = static_cast<decltype(Dst.alignfree)>(Alignfree);
+		Dst.authored = static_cast<decltype(Dst.authored)>(Authored);
+	}
 };

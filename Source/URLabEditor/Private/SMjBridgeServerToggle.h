@@ -21,20 +21,20 @@
 class SURLabBridgeServerToggle : public SCompoundWidget
 {
 public:
-    SLATE_BEGIN_ARGS(SURLabBridgeServerToggle) {}
-    SLATE_END_ARGS()
+	SLATE_BEGIN_ARGS(SURLabBridgeServerToggle) {}
+	SLATE_END_ARGS()
 
-    void Construct(const FArguments& InArgs);
+	void Construct(const FArguments& InArgs);
 
 private:
-    EActiveTimerReturnType OnPoll(double, float);
-    FReply OnButtonClicked();
+	EActiveTimerReturnType OnPoll(double, float);
+	FReply OnButtonClicked();
 
-    FText GetLabelText() const { return CachedLabel; }
-    FSlateColor GetFillColor() const { return CachedColor; }
-    FText GetButtonText() const { return CachedButtonText; }
+	FText GetLabelText() const { return CachedLabel; }
+	FSlateColor GetFillColor() const { return CachedColor; }
+	FText GetButtonText() const { return CachedButtonText; }
 
-    FText CachedLabel;
-    FText CachedButtonText;
-    FLinearColor CachedColor = FLinearColor(0.4f, 0.4f, 0.4f, 1.0f);
+	FText CachedLabel;
+	FText CachedButtonText;
+	FLinearColor CachedColor = FLinearColor(0.4f, 0.4f, 0.4f, 1.0f);
 };

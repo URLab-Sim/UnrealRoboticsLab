@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjAdhesionActuator.h"
@@ -29,29 +29,28 @@
 
 UMjAdhesionActuator::UMjAdhesionActuator()
 {
-    Type = EMjActuatorType::Adhesion;
+	Type = EMjActuatorType::Adhesion;
 }
-
-
 
 void UMjAdhesionActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    Super::ExportTo(Element, def);
+	Super::ExportTo(Element, def);
 
-    // --- CODEGEN_EXPORT_START ---
-    mjs_setToAdhesion(Element, bOverride_gain ? (double)gain : 0.0);
-    // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	mjs_setToAdhesion(Element, bOverride_gain ? (double)gain : 0.0);
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjAdhesionActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrFloat(Node, TEXT("gain"), gain, bOverride_gain);
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrFloat(Node, TEXT("gain"), gain, bOverride_gain);
+	// --- CODEGEN_IMPORT_END ---
 }
-

@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Actuators/MjGeneralActuator.h"
@@ -26,32 +26,34 @@
 
 UMjGeneralActuator::UMjGeneralActuator()
 {
-    // A general actuator may default to type Motor initially if unspecified, but we map it directly without internal overrides.
-    Type = EMjActuatorType::Motor;
+	// A general actuator may default to type Motor initially if unspecified, but we map it directly without internal overrides.
+	Type = EMjActuatorType::Motor;
 }
 
 void UMjGeneralActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 {
-    if (!Element) return;
+	if (!Element)
+		return;
 
-    // General actuator has no mjs_setTo* — it is configured entirely via explicit
-    // dyntype/gaintype/biastype and the raw gainprm/biasprm/dynprm arrays.
-    // Super sets common attributes (transmission, gear, ranges, group, etc.),
-    // then ApplyRawOverrides applies any explicit prm overrides.
-    Super::ExportTo(Element, def);
+	// General actuator has no mjs_setTo* — it is configured entirely via explicit
+	// dyntype/gaintype/biastype and the raw gainprm/biasprm/dynprm arrays.
+	// Super sets common attributes (transmission, gear, ranges, group, etc.),
+	// then ApplyRawOverrides applies any explicit prm overrides.
+	Super::ExportTo(Element, def);
 
-        // --- CODEGEN_EXPORT_START ---
-    if (bOverride_actearly) Element->actearly = actearly ? 1 : 0;
-        // --- CODEGEN_EXPORT_END ---
+	// --- CODEGEN_EXPORT_START ---
+	if (bOverride_actearly)
+		Element->actearly = actearly ? 1 : 0;
+	// --- CODEGEN_EXPORT_END ---
 }
 
 void UMjGeneralActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
-    Super::ImportFromXml(Node, CompilerSettings);
-    if (!Node) return;
+	Super::ImportFromXml(Node, CompilerSettings);
+	if (!Node)
+		return;
 
-    // --- CODEGEN_IMPORT_START ---
-    MjXmlUtils::ReadAttrBool(Node, TEXT("actearly"), actearly, bOverride_actearly);
-    // --- CODEGEN_IMPORT_END ---
+	// --- CODEGEN_IMPORT_START ---
+	MjXmlUtils::ReadAttrBool(Node, TEXT("actearly"), actearly, bOverride_actearly);
+	// --- CODEGEN_IMPORT_END ---
 }
-

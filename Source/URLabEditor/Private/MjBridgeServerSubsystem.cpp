@@ -10,58 +10,60 @@
 
 void UURLabBridgeServerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
-    Super::Initialize(Collection);
+	Super::Initialize(Collection);
 
-    ReloadConfig();
-    UE_LOG(LogURLabEditor, Log,
-        TEXT("[BridgeServer] config: AutoStart=%s StepPort=%d StatePort=%d StopOnPIEEnd=%s"),
-        Config.bAutoStart ? TEXT("true") : TEXT("false"),
-        Config.StepPort, Config.StatePort,
-        Config.bStopOnPIEEnd ? TEXT("true") : TEXT("false"));
+	ReloadConfig();
+	UE_LOG(LogURLabEditor, Log,
+		TEXT("[BridgeServer] config: AutoStart=%s StepPort=%d StatePort=%d StopOnPIEEnd=%s"),
+		Config.bAutoStart ? TEXT("true") : TEXT("false"),
+		Config.StepPort, Config.StatePort,
+		Config.bStopOnPIEEnd ? TEXT("true") : TEXT("false"));
 
-    if (Config.bAutoStart)
-    {
-        StartServer();
-    }
+	if (Config.bAutoStart)
+	{
+		StartServer();
+	}
 }
 
 void UURLabBridgeServerSubsystem::Deinitialize()
 {
-    StopServer();
-    Super::Deinitialize();
+	StopServer();
+	Super::Deinitialize();
 }
 
 void UURLabBridgeServerSubsystem::StartServer()
 {
-    if (Server && Server->IsRunning()) return;
+	if (Server && Server->IsRunning())
+		return;
 
-    if (!Server)
-    {
-        Server = NewObject<UURLabBridgeServer>(this, TEXT("EditorBridgeServer"));
-    }
-    const FString Endpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), Config.StepPort);
-    Server->Start(Endpoint);
-    Server->EnsureShmBound();  // open req.shm/rep.shm under "live"
-    UE_LOG(LogURLabEditor, Log,
-        TEXT("[BridgeServer] started on %s (rpc_transports=%d)"),
-        *Endpoint, Server->GetRpcTransports().Num());
+	if (!Server)
+	{
+		Server = NewObject<UURLabBridgeServer>(this, TEXT("EditorBridgeServer"));
+	}
+	const FString Endpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), Config.StepPort);
+	Server->Start(Endpoint);
+	Server->EnsureShmBound(); // open req.shm/rep.shm under "live"
+	UE_LOG(LogURLabEditor, Log,
+		TEXT("[BridgeServer] started on %s (rpc_transports=%d)"),
+		*Endpoint, Server->GetRpcTransports().Num());
 }
 
 void UURLabBridgeServerSubsystem::StopServer()
 {
-    if (!Server) return;
-    Server->Stop();
-    Server = nullptr;
-    UE_LOG(LogURLabEditor, Log, TEXT("[BridgeServer] stopped"));
+	if (!Server)
+		return;
+	Server->Stop();
+	Server = nullptr;
+	UE_LOG(LogURLabEditor, Log, TEXT("[BridgeServer] stopped"));
 }
 
 bool UURLabBridgeServerSubsystem::IsRunning() const
 {
-    return Server && Server->IsRunning();
+	return Server && Server->IsRunning();
 }
 
 void UURLabBridgeServerSubsystem::ReloadConfig()
 {
-    Config = FURLabBridgeServerConfig{};  // reset to defaults
-    URLabBridgeServerConfigUtils::LoadFromIni(Config);
+	Config = FURLabBridgeServerConfig{}; // reset to defaults
+	URLabBridgeServerConfigUtils::LoadFromIni(Config);
 }

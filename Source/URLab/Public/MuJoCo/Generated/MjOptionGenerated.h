@@ -40,182 +40,182 @@ void ApplyMjOptionExtras(mjOption* Opt, const FMjOptionGenerated& Self, mjSpec* 
 USTRUCT(BlueprintType)
 struct URLAB_API FMjOptionGenerated
 {
-    GENERATED_BODY()
+	GENERATED_BODY()
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Timestep = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Timestep = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Timestep"))
-    float Timestep = 0.002;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Timestep"))
+	float Timestep = 0.002;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Impratio = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Impratio = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Impratio"))
-    double Impratio = 1.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Impratio"))
+	double Impratio = 1.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Tolerance = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Tolerance = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Tolerance"))
-    double Tolerance = 1e-8;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Tolerance"))
+	double Tolerance = 1e-8;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_LsTolerance = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_LsTolerance = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_LsTolerance"))
-    double LsTolerance = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_LsTolerance"))
+	double LsTolerance = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_NoslipTolerance = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_NoslipTolerance = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_NoslipTolerance"))
-    double NoslipTolerance = 1e-6;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_NoslipTolerance"))
+	double NoslipTolerance = 1e-6;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_CCD_Tolerance = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_CCD_Tolerance = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_CCD_Tolerance"))
-    double CCD_Tolerance = 1e-6;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_CCD_Tolerance"))
+	double CCD_Tolerance = 1e-6;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_SleepToleranceMj = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_SleepToleranceMj = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_SleepToleranceMj"))
-    double SleepToleranceMj = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_SleepToleranceMj"))
+	double SleepToleranceMj = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Gravity = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Gravity = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Gravity"))
-    FVector Gravity = FVector(0.0f, 0.0f, -981.0f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Gravity"))
+	FVector Gravity = FVector(0.0f, 0.0f, -981.0f);
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Wind = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Wind = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Wind"))
-    FVector Wind = FVector::ZeroVector;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Wind"))
+	FVector Wind = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Magnetic = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Magnetic = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Magnetic"))
-    FVector Magnetic = FVector(0.0f, -0.5f, 0.0f);
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Magnetic"))
+	FVector Magnetic = FVector(0.0f, -0.5f, 0.0f);
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Density = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Density = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Density"))
-    double Density = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Density"))
+	double Density = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Viscosity = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Viscosity = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Viscosity"))
-    double Viscosity = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Viscosity"))
+	double Viscosity = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_OMargin = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_OMargin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_OMargin"))
-    double OMargin = 0.0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_OMargin"))
+	double OMargin = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Integrator = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Integrator = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Integrator"))
-    EMjIntegrator Integrator = EMjIntegrator::Euler;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Integrator"))
+	EMjIntegrator Integrator = EMjIntegrator::Euler;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Cone = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Cone = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Cone"))
-    EMjCone Cone = EMjCone::Pyramidal;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Cone"))
+	EMjCone Cone = EMjCone::Pyramidal;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Jacobian = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Jacobian = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Jacobian"))
-    int32 Jacobian = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Jacobian"))
+	int32 Jacobian = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Solver = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Solver = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Solver"))
-    EMjSolver Solver = EMjSolver::Newton;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Solver"))
+	EMjSolver Solver = EMjSolver::Newton;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_Iterations = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_Iterations = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_Iterations"))
-    int32 Iterations = 100;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_Iterations"))
+	int32 Iterations = 100;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_LsIterations = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_LsIterations = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_LsIterations"))
-    int32 LsIterations = 50;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_LsIterations"))
+	int32 LsIterations = 50;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_NoslipIterations = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_NoslipIterations = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_NoslipIterations"))
-    int32 NoslipIterations = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_NoslipIterations"))
+	int32 NoslipIterations = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_CCD_Iterations = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_CCD_Iterations = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_CCD_Iterations"))
-    int32 CCD_Iterations = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_CCD_Iterations"))
+	int32 CCD_Iterations = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_DisableFlags = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_DisableFlags = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_DisableFlags"))
-    int32 DisableFlags = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_DisableFlags"))
+	int32 DisableFlags = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_EnableFlags = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_EnableFlags = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_EnableFlags"))
-    int32 EnableFlags = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_EnableFlags"))
+	int32 EnableFlags = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_DisableActuator = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_DisableActuator = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_DisableActuator"))
-    int32 DisableActuator = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_DisableActuator"))
+	int32 DisableActuator = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_SdfInitPoints = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_SdfInitPoints = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_SdfInitPoints"))
-    int32 SdfInitPoints = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_SdfInitPoints"))
+	int32 SdfInitPoints = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_SdfIterations = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_SdfIterations = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_SdfIterations"))
-    int32 SdfIterations = 0;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_SdfIterations"))
+	int32 SdfIterations = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta=(InlineEditConditionToggle))
-    bool bOverride_MemoryMB = false;
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MjOption", meta = (InlineEditConditionToggle))
+	bool bOverride_MemoryMB = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta=(EditCondition="bOverride_MemoryMB", ClampMin="1"))
-    int32 MemoryMB = 100;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption", meta = (EditCondition = "bOverride_MemoryMB", ClampMin = "1"))
+	int32 MemoryMB = 100;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption|Collision", meta=(ToolTip="Enable multi-contact convex collision detection. Useful for flat surfaces (e.g. mesh-mesh) where single-point contact causes sliding or wobbling."))
-    bool bEnableMultiCCD = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption|Collision", meta = (ToolTip = "Enable multi-contact convex collision detection. Useful for flat surfaces (e.g. mesh-mesh) where single-point contact causes sliding or wobbling."))
+	bool bEnableMultiCCD = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption|Sleep")
-    bool bEnableSleep = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption|Sleep")
+	bool bEnableSleep = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption|Sleep", meta=(EditCondition="bEnableSleep"))
-    float SleepTolerance = 1e-4f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjOption|Sleep", meta = (EditCondition = "bEnableSleep"))
+	float SleepTolerance = 1e-4f;
 
-    /** @brief Writes every mirror field plus URLab extras into the runtime spec. Used by articulations to set child spec options. */
-    void ApplyToSpec(mjSpec* Spec) const;
+	/** @brief Writes every mirror field plus URLab extras into the runtime spec. Used by articulations to set child spec options. */
+	void ApplyToSpec(mjSpec* Spec) const;
 
-    /** @brief Applies only override-toggled mirror fields to a compiled model (post-compile override path). */
-    void ApplyOverridesToModel(mjModel* Model) const;
+	/** @brief Applies only override-toggled mirror fields to a compiled model (post-compile override path). */
+	void ApplyOverridesToModel(mjModel* Model) const;
 };

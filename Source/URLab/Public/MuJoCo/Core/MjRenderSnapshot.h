@@ -42,60 +42,60 @@
  */
 struct FMjRenderSnapshot
 {
-    // --- Body kinematics (visual update + APIs) -----------------------
+	// --- Body kinematics (visual update + APIs) -----------------------
 
-    /** Body world position. 3 * nbody (mjtNum). */
-    TArray<mjtNum> XPos;
+	/** Body world position. 3 * nbody (mjtNum). */
+	TArray<mjtNum> XPos;
 
-    /** Body world rotation (unit quaternion, mjtNum order w, x, y, z). 4 * nbody. */
-    TArray<mjtNum> XQuat;
+	/** Body world rotation (unit quaternion, mjtNum order w, x, y, z). 4 * nbody. */
+	TArray<mjtNum> XQuat;
 
-    /** Body spatial velocity (angular xyz, linear xyz, body frame). 6 * nbody. */
-    TArray<mjtNum> CVel;
+	/** Body spatial velocity (angular xyz, linear xyz, body frame). 6 * nbody. */
+	TArray<mjtNum> CVel;
 
-    /** Applied wrench on each body (linear xyz, angular xyz). 6 * nbody. */
-    TArray<mjtNum> XfrcApplied;
+	/** Applied wrench on each body (linear xyz, angular xyz). 6 * nbody. */
+	TArray<mjtNum> XfrcApplied;
 
-    // --- Geoms / sites (debug viz, on-demand transform queries) -------
+	// --- Geoms / sites (debug viz, on-demand transform queries) -------
 
-    TArray<mjtNum> GeomXPos;       // 3 * ngeom
-    TArray<mjtNum> GeomXMat;       // 9 * ngeom
-    TArray<mjtNum> SiteXPos;       // 3 * nsite
-    TArray<mjtNum> SiteXMat;       // 9 * nsite
+	TArray<mjtNum> GeomXPos; // 3 * ngeom
+	TArray<mjtNum> GeomXMat; // 9 * ngeom
+	TArray<mjtNum> SiteXPos; // 3 * nsite
+	TArray<mjtNum> SiteXMat; // 9 * nsite
 
-    // --- Cameras (tracking modes, RPC camera lookups) -----------------
+	// --- Cameras (tracking modes, RPC camera lookups) -----------------
 
-    TArray<mjtNum> CamXPos;        // 3 * ncam
-    TArray<mjtNum> CamXMat;        // 9 * ncam
+	TArray<mjtNum> CamXPos; // 3 * ncam
+	TArray<mjtNum> CamXMat; // 9 * ncam
 
-    // --- Joint / actuator / sensor state ------------------------------
+	// --- Joint / actuator / sensor state ------------------------------
 
-    TArray<mjtNum> QPos;           // nq
-    TArray<mjtNum> QVel;           // nv
-    TArray<mjtNum> QAcc;           // nv
-    TArray<mjtNum> ActuatorForce;  // nu
-    TArray<mjtNum> SensorData;     // nsensordata
+	TArray<mjtNum> QPos;          // nq
+	TArray<mjtNum> QVel;          // nv
+	TArray<mjtNum> QAcc;          // nv
+	TArray<mjtNum> ActuatorForce; // nu
+	TArray<mjtNum> SensorData;    // nsensordata
 
-    // --- Sleep state (IsAwake + debug viz) ----------------------------
-    //
-    // Stored as int because MuJoCo's body_awake is `int*` carrying
-    // mjtSleepState values (0 = asleep, 1 = awake). tree_asleep stores
-    // a signed sleep-cycle index (<0 = awake). tree_awake is 0/1.
+	// --- Sleep state (IsAwake + debug viz) ----------------------------
+	//
+	// Stored as int because MuJoCo's body_awake is `int*` carrying
+	// mjtSleepState values (0 = asleep, 1 = awake). tree_asleep stores
+	// a signed sleep-cycle index (<0 = awake). tree_awake is 0/1.
 
-    TArray<int32>  BodyAwake;      // nbody
-    TArray<int32>  TreeAsleep;     // ntree
-    TArray<int32>  TreeAwake;      // ntree
+	TArray<int32> BodyAwake;  // nbody
+	TArray<int32> TreeAsleep; // ntree
+	TArray<int32> TreeAwake;  // ntree
 
-    // --- Flex deformable state (UMjFlexcomp) --------------------------
+	// --- Flex deformable state (UMjFlexcomp) --------------------------
 
-    TArray<mjtNum> FlexvertXPos;   // 3 * nflexvert
+	TArray<mjtNum> FlexvertXPos; // 3 * nflexvert
 
-    // --- Metadata -----------------------------------------------------
+	// --- Metadata -----------------------------------------------------
 
-    /** MuJoCo simulation time at the moment of the snapshot. */
-    mjtNum SimTime = 0.0;
+	/** MuJoCo simulation time at the moment of the snapshot. */
+	mjtNum SimTime = 0.0;
 
-    /** Monotonic frame counter. Incremented every successful push.
-     *  Consumers can skip on a stale snapshot via equality test. */
-    uint64 FrameId = 0;
+	/** Monotonic frame counter. Incremented every successful push.
+	 *  Consumers can skip on a stale snapshot via equality test. */
+	uint64 FrameId = 0;
 };

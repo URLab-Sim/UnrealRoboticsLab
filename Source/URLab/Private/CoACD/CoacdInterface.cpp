@@ -13,52 +13,60 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "CoACD/CoacdInterface.h"
 #include "Utils/URLabLogging.h"
-void CoacdInterface::SaveCoACDMeshAsOBJ(CoACD_Mesh& mesh, const FString& FilePath) {
-    FString OutputString;
+void CoacdInterface::SaveCoACDMeshAsOBJ(CoACD_Mesh& mesh, const FString& FilePath)
+{
+	FString OutputString;
 
-    // Write vertices
-    for (uint64_t i = 0; i < mesh.vertices_count; ++i) {
-        double X = mesh.vertices_ptr[3 * i];
-        double Y = mesh.vertices_ptr[3 * i + 1];
-        double Z = mesh.vertices_ptr[3 * i + 2];
+	// Write vertices
+	for (uint64_t i = 0; i < mesh.vertices_count; ++i)
+	{
+		double X = mesh.vertices_ptr[3 * i];
+		double Y = mesh.vertices_ptr[3 * i + 1];
+		double Z = mesh.vertices_ptr[3 * i + 2];
 
-        // Adjust Unreal Engine coordinates and scale (divide by 100)
-        OutputString += FString::Printf(TEXT("v %f %f %f\n"), X / 100.0, -Y / 100.0, Z / 100.0);
-    }
+		// Adjust Unreal Engine coordinates and scale (divide by 100)
+		OutputString += FString::Printf(TEXT("v %f %f %f\n"), X / 100.0, -Y / 100.0, Z / 100.0);
+	}
 
-    // Write faces (indices are 1-based in OBJ format)
-    for (uint64_t i = 0; i < mesh.triangles_count; ++i) {
-        int32 A = mesh.triangles_ptr[3 * i] + 1;
-        int32 B = mesh.triangles_ptr[3 * i + 1] + 1;
-        int32 C = mesh.triangles_ptr[3 * i + 2] + 1;
+	// Write faces (indices are 1-based in OBJ format)
+	for (uint64_t i = 0; i < mesh.triangles_count; ++i)
+	{
+		int32 A = mesh.triangles_ptr[3 * i] + 1;
+		int32 B = mesh.triangles_ptr[3 * i + 1] + 1;
+		int32 C = mesh.triangles_ptr[3 * i + 2] + 1;
 
-        OutputString += FString::Printf(TEXT("f %d %d %d\n"), C, B, A);
-    }
+		OutputString += FString::Printf(TEXT("f %d %d %d\n"), C, B, A);
+	}
 
-    // Save the OBJ string to a file
-    if (FFileHelper::SaveStringToFile(OutputString, *FilePath)) {
-        UE_LOG(LogURLab, Log, TEXT("Successfully saved mesh to %s"), *FilePath);
-    } else {
-        UE_LOG(LogURLab, Error, TEXT("Failed to save mesh to %s"), *FilePath);
-    }
+	// Save the OBJ string to a file
+	if (FFileHelper::SaveStringToFile(OutputString, *FilePath))
+	{
+		UE_LOG(LogURLab, Log, TEXT("Successfully saved mesh to %s"), *FilePath);
+	}
+	else
+	{
+		UE_LOG(LogURLab, Error, TEXT("Failed to save mesh to %s"), *FilePath);
+	}
 }
 
-void CoacdInterface::SaveCoACDMeshArrayAsOBJ(CoACD_MeshArray& MeshArray, const FString& BaseFilePath) {
-    FString BaseName = FPaths::GetBaseFilename(BaseFilePath);
-    FString Directory = FPaths::GetPath(BaseFilePath);
+void CoacdInterface::SaveCoACDMeshArrayAsOBJ(CoACD_MeshArray& MeshArray, const FString& BaseFilePath)
+{
+	FString BaseName = FPaths::GetBaseFilename(BaseFilePath);
+	FString Directory = FPaths::GetPath(BaseFilePath);
 
-    for (int32 i = 0; i < MeshArray.meshes_count; ++i) {
-        // Construct the new file path with "_sub_n.obj" format
-        FString FilePath = FString::Printf(TEXT("%s/%s_sub_%d.obj"), *Directory, *BaseName, i);
-        SaveCoACDMeshAsOBJ(MeshArray.meshes_ptr[i], FilePath);
-    }
+	for (int32 i = 0; i < MeshArray.meshes_count; ++i)
+	{
+		// Construct the new file path with "_sub_n.obj" format
+		FString FilePath = FString::Printf(TEXT("%s/%s_sub_%d.obj"), *Directory, *BaseName, i);
+		SaveCoACDMeshAsOBJ(MeshArray.meshes_ptr[i], FilePath);
+	}
 }

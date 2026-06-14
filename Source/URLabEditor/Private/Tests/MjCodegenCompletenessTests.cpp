@@ -40,58 +40,58 @@
 
 namespace
 {
-    bool CheckPropList(FAutomationTestBase& Test, UClass* Cls, const TArray<FString>& Props, const TCHAR* CategoryLabel)
-    {
-        bool bAllOk = true;
-        for (const FString& Prop : Props)
-        {
-            FName PropName(*Prop);
-            if (Cls->FindPropertyByName(PropName) == nullptr)
-            {
-                Test.AddError(FString::Printf(TEXT("[%s] missing UPROPERTY '%s' on %s"),
-                    CategoryLabel, *Prop, *Cls->GetName()));
-                bAllOk = false;
-            }
+bool CheckPropList(FAutomationTestBase& Test, UClass* Cls, const TArray<FString>& Props, const TCHAR* CategoryLabel)
+{
+	bool bAllOk = true;
+	for (const FString& Prop : Props)
+	{
+		FName PropName(*Prop);
+		if (Cls->FindPropertyByName(PropName) == nullptr)
+		{
+			Test.AddError(FString::Printf(TEXT("[%s] missing UPROPERTY '%s' on %s"),
+				CategoryLabel, *Prop, *Cls->GetName()));
+			bAllOk = false;
+		}
 
-            const FString ToggleName = FString::Printf(TEXT("bOverride_%s"), *Prop);
-            FName ToggleFName(*ToggleName);
-            // Canonicalised properties (Pos / Quat) have bOverride_Pos / bOverride_Quat;
-            // others have bOverride_<lowercase>. Either way, the toggle must exist.
-            if (Cls->FindPropertyByName(ToggleFName) == nullptr)
-            {
-                Test.AddError(FString::Printf(TEXT("[%s] missing toggle '%s' on %s"),
-                    CategoryLabel, *ToggleName, *Cls->GetName()));
-                bAllOk = false;
-            }
-        }
-        return bAllOk;
-    }
+		const FString ToggleName = FString::Printf(TEXT("bOverride_%s"), *Prop);
+		FName ToggleFName(*ToggleName);
+		// Canonicalised properties (Pos / Quat) have bOverride_Pos / bOverride_Quat;
+		// others have bOverride_<lowercase>. Either way, the toggle must exist.
+		if (Cls->FindPropertyByName(ToggleFName) == nullptr)
+		{
+			Test.AddError(FString::Printf(TEXT("[%s] missing toggle '%s' on %s"),
+				CategoryLabel, *ToggleName, *Cls->GetName()));
+			bAllOk = false;
+		}
+	}
+	return bAllOk;
 }
+} // namespace
 
-#define URLAB_CODEGEN_COMPLETENESS_TEST(TestName, ClsName, PropFnName, Label) \
-    IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCodegenCompleteness_##TestName, \
-        "URLab.Codegen.Completeness." #TestName, \
-        EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter) \
-    bool FCodegenCompleteness_##TestName::RunTest(const FString&) \
-    { \
-        UClass* Cls = ClsName::StaticClass(); \
-        const TArray<FString>& Props = URLabCodegenSchemaForTests::PropFnName(); \
-        return CheckPropList(*this, Cls, Props, TEXT(Label)); \
-    }
+#define URLAB_CODEGEN_COMPLETENESS_TEST(TestName, ClsName, PropFnName, Label)     \
+	IMPLEMENT_SIMPLE_AUTOMATION_TEST(FCodegenCompleteness_##TestName,             \
+		"URLab.Codegen.Completeness." #TestName,                                  \
+		EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter) \
+	bool FCodegenCompleteness_##TestName::RunTest(const FString&)                 \
+	{                                                                             \
+		UClass* Cls = ClsName::StaticClass();                                     \
+		const TArray<FString>& Props = URLabCodegenSchemaForTests::PropFnName();  \
+		return CheckPropList(*this, Cls, Props, TEXT(Label));                     \
+	}
 
-URLAB_CODEGEN_COMPLETENESS_TEST(Actuator,       UMjActuator,       ActuatorProps,        "actuator")
-URLAB_CODEGEN_COMPLETENESS_TEST(Sensor,         UMjSensor,         SensorProps,          "sensor")
-URLAB_CODEGEN_COMPLETENESS_TEST(Joint,          UMjJoint,          JointProps,           "joint")
-URLAB_CODEGEN_COMPLETENESS_TEST(Site,           UMjSite,           SiteProps,            "site")
-URLAB_CODEGEN_COMPLETENESS_TEST(Tendon,         UMjTendon,         TendonProps,          "tendon")
-URLAB_CODEGEN_COMPLETENESS_TEST(Equality,       UMjEquality,       EqualityProps,        "equality")
-URLAB_CODEGEN_COMPLETENESS_TEST(Geom,           UMjGeom,           GeomProps,            "geom")
-URLAB_CODEGEN_COMPLETENESS_TEST(Camera,         UMjCamera,         CameraProps,          "camera")
-URLAB_CODEGEN_COMPLETENESS_TEST(Flexcomp,       UMjFlexcomp,       FlexcompProps,        "flexcomp")
-URLAB_CODEGEN_COMPLETENESS_TEST(Body,           UMjBody,           BodyProps,            "body")
-URLAB_CODEGEN_COMPLETENESS_TEST(Frame,          UMjFrame,          FrameProps,           "frame")
-URLAB_CODEGEN_COMPLETENESS_TEST(Inertial,       UMjInertial,       InertialProps,        "inertial")
-URLAB_CODEGEN_COMPLETENESS_TEST(ContactPair,    UMjContactPair,    Contact_PairProps,    "contact.pair")
+URLAB_CODEGEN_COMPLETENESS_TEST(Actuator, UMjActuator, ActuatorProps, "actuator")
+URLAB_CODEGEN_COMPLETENESS_TEST(Sensor, UMjSensor, SensorProps, "sensor")
+URLAB_CODEGEN_COMPLETENESS_TEST(Joint, UMjJoint, JointProps, "joint")
+URLAB_CODEGEN_COMPLETENESS_TEST(Site, UMjSite, SiteProps, "site")
+URLAB_CODEGEN_COMPLETENESS_TEST(Tendon, UMjTendon, TendonProps, "tendon")
+URLAB_CODEGEN_COMPLETENESS_TEST(Equality, UMjEquality, EqualityProps, "equality")
+URLAB_CODEGEN_COMPLETENESS_TEST(Geom, UMjGeom, GeomProps, "geom")
+URLAB_CODEGEN_COMPLETENESS_TEST(Camera, UMjCamera, CameraProps, "camera")
+URLAB_CODEGEN_COMPLETENESS_TEST(Flexcomp, UMjFlexcomp, FlexcompProps, "flexcomp")
+URLAB_CODEGEN_COMPLETENESS_TEST(Body, UMjBody, BodyProps, "body")
+URLAB_CODEGEN_COMPLETENESS_TEST(Frame, UMjFrame, FrameProps, "frame")
+URLAB_CODEGEN_COMPLETENESS_TEST(Inertial, UMjInertial, InertialProps, "inertial")
+URLAB_CODEGEN_COMPLETENESS_TEST(ContactPair, UMjContactPair, Contact_PairProps, "contact.pair")
 URLAB_CODEGEN_COMPLETENESS_TEST(ContactExclude, UMjContactExclude, Contact_ExcludeProps, "contact.exclude")
 
 #undef URLAB_CODEGEN_COMPLETENESS_TEST

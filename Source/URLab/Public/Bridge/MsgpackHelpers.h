@@ -41,18 +41,18 @@
 class URLAB_API FURLabMsgpackUtil
 {
 public:
-    /** Pack an FJsonObject into a binary msgpack buffer. Caller owns OutBuf. */
-    static void PackJsonObject(const TSharedPtr<FJsonObject>& Object, TArray<uint8>& OutBuf);
+	/** Pack an FJsonObject into a binary msgpack buffer. Caller owns OutBuf. */
+	static void PackJsonObject(const TSharedPtr<FJsonObject>& Object, TArray<uint8>& OutBuf);
 
-    /** Unpack a binary msgpack buffer into an FJsonObject. Returns false on
-     *  parse error. The unpack treats msgpack `bin` as base64-encoded
-     *  strings inside the resulting JSON tree, so existing handlers don't
-     *  need a separate code path for binary fields. */
-    static bool UnpackToJsonObject(const uint8* Data, int32 Size, TSharedPtr<FJsonObject>& OutObject);
+	/** Unpack a binary msgpack buffer into an FJsonObject. Returns false on
+	 *  parse error. The unpack treats msgpack `bin` as base64-encoded
+	 *  strings inside the resulting JSON tree, so existing handlers don't
+	 *  need a separate code path for binary fields. */
+	static bool UnpackToJsonObject(const uint8* Data, int32 Size, TSharedPtr<FJsonObject>& OutObject);
 
-    /** Pack-and-set a binary blob under a JSON object's field. Stores as
-     *  base64 string with a `__b64__` suffix on the key so PackJsonObject
-     *  knows to re-emit it as a real msgpack `bin` rather than a string.
-     *  Used by handshake (MJB) and camera replies (pixel buffers). */
-    static void SetBinaryField(TSharedPtr<FJsonObject>& Obj, const FString& Field, const uint8* Data, int32 Size);
+	/** Pack-and-set a binary blob under a JSON object's field. Stores as
+	 *  base64 string with a `__b64__` suffix on the key so PackJsonObject
+	 *  knows to re-emit it as a real msgpack `bin` rather than a string.
+	 *  Used by handshake (MJB) and camera replies (pixel buffers). */
+	static void SetBinaryField(TSharedPtr<FJsonObject>& Obj, const FString& Field, const uint8* Data, int32 Size);
 };

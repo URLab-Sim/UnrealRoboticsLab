@@ -32,25 +32,25 @@
 UENUM(BlueprintType)
 enum class EMjIntegrator : uint8
 {
-    Euler = 0,
-    RK4 = 1,
-    Implicit = 2,
-    ImplicitFast = 3
+	Euler = 0,
+	RK4 = 1,
+	Implicit = 2,
+	ImplicitFast = 3
 };
 
 /** EMjCone — mirror of MuJoCo's mjtCone. */
 UENUM(BlueprintType)
 enum class EMjCone : uint8
 {
-    Pyramidal = 0,
-    Elliptic = 1
+	Pyramidal = 0,
+	Elliptic = 1
 };
 
 /** EMjSolver — mirror of MuJoCo's mjtSolver. */
 UENUM(BlueprintType)
 enum class EMjSolver : uint8
 {
-    PGS = 0,
-    CG = 1,
-    Newton = 2
+	PGS = 0,
+	CG = 1,
+	Newton = 2
 };

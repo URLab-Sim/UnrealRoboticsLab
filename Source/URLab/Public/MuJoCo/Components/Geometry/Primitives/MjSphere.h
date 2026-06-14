@@ -13,11 +13,11 @@
 // limitations under the License.
 //
 // --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with, 
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are 
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
 // trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
 //
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0), 
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
@@ -36,8 +36,8 @@ class URLAB_API UMjSphere : public UMjGeom
 	GENERATED_BODY()
 
 public:
-    // --- CODEGEN_PROPERTIES_START ---
-    // --- CODEGEN_PROPERTIES_END ---
+	// --- CODEGEN_PROPERTIES_START ---
+	// --- CODEGEN_PROPERTIES_END ---
 
 	UMjSphere();
 	virtual void OnRegister() override;
@@ -45,24 +45,27 @@ public:
 	/** @brief Sphere radius in MJ metres. Authored via the UE Transform's
 	 *  Scale handle; hidden from the Details panel widget. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
-	          meta=(EditCondition="false", EditConditionHides))
+		meta = (EditCondition = "false", EditConditionHides))
 	float Radius = 0.0f;
 
-    /** @brief Internal-only visual mesh for the editor. */
-    class UStaticMeshComponent* VisualizerMesh = nullptr;
-
+	/** @brief Internal-only visual mesh for the editor. */
+	class UStaticMeshComponent* VisualizerMesh = nullptr;
 
 	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings) override;
 	virtual void ExportTo(mjsGeom* Element, mjsDefault* def = nullptr) override;
 
-    virtual void SyncUnrealTransformFromMj() override;
-    virtual void SetGeomVisibility(bool bNewVisibility) override;
+	virtual void SyncUnrealTransformFromMj() override;
+	virtual void SetGeomVisibility(bool bNewVisibility) override;
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 
-	virtual class UStaticMeshComponent* GetVisualizerMesh() const override { const_cast<UMjSphere*>(this)->EnsureVisualizerMesh(); return VisualizerMesh; }
+	virtual class UStaticMeshComponent* GetVisualizerMesh() const override
+	{
+		const_cast<UMjSphere*>(this)->EnsureVisualizerMesh();
+		return VisualizerMesh;
+	}
 	virtual void ApplyOverrideMaterial(class UMaterialInterface* Material) override;
 	void EnsureVisualizerMesh();
 };

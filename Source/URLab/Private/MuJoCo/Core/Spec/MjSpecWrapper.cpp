@@ -97,7 +97,7 @@ FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString&
 
     mjsMesh* MeshAsset = mjs_addMesh(Spec, nullptr);
     mjs_setName(MeshAsset->element, TCHAR_TO_UTF8(*UniqueMeshName));
-    mjs_setString(MeshAsset->file, TCHAR_TO_UTF8(*FilePath));
+    MjSetStringRaw(MeshAsset->file, FilePath);
 
     MeshAsset->scale[0] = scale.X;
     MeshAsset->scale[1] = scale.Y;

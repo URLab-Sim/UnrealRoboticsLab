@@ -37,13 +37,15 @@ class URLAB_API UMjSphere : public UMjGeom
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-
     // --- CODEGEN_PROPERTIES_END ---
 
 	UMjSphere();
 	virtual void OnRegister() override;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive")
+	/** @brief Sphere radius in MJ metres. Authored via the UE Transform's
+	 *  Scale handle; hidden from the Details panel widget. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Primitive",
+	          meta=(EditCondition="false", EditConditionHides))
 	float Radius = 0.0f;
 
     /** @brief Internal-only visual mesh for the editor. */

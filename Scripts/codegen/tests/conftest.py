@@ -24,7 +24,7 @@ import pytest
 @pytest.fixture(scope="session")
 def real_schema() -> Dict[str, Any]:
     """The actual MJCF schema snapshot shipped with the plugin."""
-    path = os.path.join(_PLUGIN_ROOT, "Scripts", "mjcf_schema_snapshot.json")
+    path = os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjcf_schema_snapshot.json")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -38,9 +38,34 @@ def real_rules() -> Dict[str, Any]:
 
 @pytest.fixture(scope="session")
 def real_mjxmacro() -> Dict[str, Any]:
-    path = os.path.join(_PLUGIN_ROOT, "Scripts", "mjxmacro_snapshot.json")
+    path = os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "mjxmacro_snapshot.json")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+@pytest.fixture(scope="session")
+def real_mjspec() -> Dict[str, Any]:
+    """The mjspec snapshot file was retired; the runtime
+    now projects the introspect snapshot into the legacy mjspec shape.
+    The fixture mirrors that projection so tests stay isomorphic."""
+    import generate_ue_components as gen
+    introspect_path = os.path.join(
+        _PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "introspect_snapshot.json",
+    )
+    with open(introspect_path, "r", encoding="utf-8") as f:
+        introspect = json.load(f)
+    return gen._mjspec_from_introspect(introspect)
+
+
+@pytest.fixture(autouse=True)
+def _clear_diags():
+    """Each test starts with a clean diagnostics buffer + strict counter.
+    Module-level state survives across tests otherwise — autouse keeps
+    drift-check tests from leaking state into one another."""
+    import generate_ue_components as gen  # noqa: E402, local import
+    gen._reset_diags()
+    yield
+    gen._reset_diags()
 
 
 @pytest.fixture

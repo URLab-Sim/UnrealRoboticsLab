@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/QuickConvert/AMjHeightfieldActor.h"
+#include "MuJoCo/Utils/MjUtils.h"
 
 #include "DrawDebugHelpers.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
@@ -340,7 +341,7 @@ void AMjHeightfieldActor::Setup(mjSpec* Spec, mjVFS* /*VFS*/)
     mjs_setName(Geom->element, TCHAR_TO_UTF8(*GeomName));
 
     Geom->type = mjGEOM_HFIELD;
-    mjs_setString(Geom->hfieldname, TCHAR_TO_UTF8(*HFieldName));
+    MjSetStringRaw(Geom->hfieldname, HFieldName);
 
     Geom->pos[0] =  (Bounds.Min.X + Bounds.Max.X) / 200.0;
     Geom->pos[1] = -(Bounds.Min.Y + Bounds.Max.Y) / 200.0;

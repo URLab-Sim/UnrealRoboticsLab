@@ -16,13 +16,6 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _PLUGIN_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 
 
-@pytest.fixture(scope="session")
-def real_mjspec():
-    """The mjspec snapshot (structs + setto_functions) shipped with the plugin."""
-    with open(os.path.join(_PLUGIN_ROOT, "Scripts", "mjspec_snapshot.json"), "r") as f:
-        return json.load(f)
-
-
 def _find_writes(writes, suffix):
     return [w for w in writes if w.path.endswith(suffix)]
 

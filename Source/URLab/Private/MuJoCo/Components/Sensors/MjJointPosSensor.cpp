@@ -36,7 +36,6 @@ void UMjJointPosSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
     Super::ExportTo(Element, Default);
 
     // --- CODEGEN_EXPORT_START ---
-
     // --- CODEGEN_EXPORT_END ---
 }
 
@@ -46,7 +45,6 @@ void UMjJointPosSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSet
     if (!Node) return;
 
     // --- CODEGEN_IMPORT_START ---
-
     // --- CODEGEN_IMPORT_END ---
 }
 

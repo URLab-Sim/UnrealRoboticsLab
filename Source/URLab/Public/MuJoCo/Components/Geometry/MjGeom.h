@@ -27,11 +27,9 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Utils/MjBind.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjGeom.generated.h"
-
-
-
 
 /**
  * @enum EMjGeomType
@@ -51,35 +49,7 @@ enum class EMjGeomType : uint8
 	SDF			UMETA(DisplayName = "SDF")
 };
 
-/**
- * @enum EMjGeomInertia
- * @brief MJCF ``<geom shellinertia="...">``. Mirrors MuJoCo's mjtGeomInertia.
- *
- *  - Volume: inertia computed from solid volume (MuJoCo default).
- *  - Shell:  inertia computed from a thin shell (mass distributed on surface).
- */
-UENUM(BlueprintType)
-enum class EMjGeomInertia : uint8
-{
-	Volume UMETA(DisplayName = "Volume"),
-	Shell  UMETA(DisplayName = "Shell"),
-};
-
-/**
- * @enum EMjFluidShape
- * @brief MJCF ``<geom fluidshape="...">``. Selects the ellipsoid-fluid
- *        interaction model in MuJoCo. Stored as 0.0/1.0 in
- *        mjsGeom.fluid_ellipsoid.
- *
- *  - None:      no ellipsoid fluid model (MuJoCo default).
- *  - Ellipsoid: enable the ellipsoid-fluid interaction model.
- */
-UENUM(BlueprintType)
-enum class EMjFluidShape : uint8
-{
-	None      UMETA(DisplayName = "None"),
-	Ellipsoid UMETA(DisplayName = "Ellipsoid"),
-};
+// EMjGeomInertia, EMjFluidShape moved to MuJoCo/Generated/MjArticulationEnums.h.
 
 /**
  * @class UMjGeom
@@ -97,136 +67,136 @@ class URLAB_API UMjGeom : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom|Spatial Pose", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
     FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom|Orientation", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom|Orientation", meta=(EditCondition="false", EditConditionHides))
     FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_contype = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_contype"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_contype"))
     int32 contype = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_conaffinity = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_conaffinity"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_conaffinity"))
     int32 conaffinity = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_condim = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_condim"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_condim"))
     int32 condim = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_group = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_group"))
     int32 group = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_priority = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_priority"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_priority"))
     int32 priority = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_size = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_size"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="false", EditConditionHides))
     TArray<float> size = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_material = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_material"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_material"))
     FString material = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_friction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_friction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_friction"))
     TArray<float> friction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_mass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_mass"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_mass"))
     float mass = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_density = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_density"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_density"))
     float density = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_solmix = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_solmix"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_solmix"))
     float solmix = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_solref = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_solref"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_solref"))
     TArray<float> solref = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_solimp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_solimp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_solimp"))
     TArray<float> solimp = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_margin", Units="m"))
     float margin = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_gap = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_gap"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_gap", Units="m"))
     float gap = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_hfield = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_hfield"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_hfield"))
     FString hfield = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_mesh = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_mesh"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_mesh"))
     FString mesh = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_fitscale = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_fitscale"))
-    bool fitscale = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_fitscale"))
+    double fitscale = 0.0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_rgba = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_rgba"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_rgba"))
     FLinearColor rgba = FLinearColor::White;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjGeom", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Geom", meta=(InlineEditConditionToggle))
     bool bOverride_fluidcoef = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjGeom", meta=(EditCondition="bOverride_fluidcoef"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom", meta=(EditCondition="bOverride_fluidcoef"))
     TArray<float> fluidcoef = {};
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -418,9 +388,11 @@ public:
         meta=(EditCondition="Type != EMjGeomType::Mesh", EditConditionHides))
     TObjectPtr<UMaterialInterface> OverrideMaterial;
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. Set via detail customization dropdown. */
-	UPROPERTY(BlueprintReadWrite, Category = "MuJoCo|Geom")
-	UMjDefault* DefaultClass;
+    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+     *  Details panel — synced from MjClassName via the editor dropdown. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Geom",
+              meta=(EditCondition="false", EditConditionHides))
+    UMjDefault* DefaultClass = nullptr;
 
     /**
      * @brief Registers this geom to the MuJoCo spec.

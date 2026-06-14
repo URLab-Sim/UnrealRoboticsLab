@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Physics/MjContactExclude.h"
+#include "MuJoCo/Utils/MjUtils.h"
 #include "XmlFile.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
@@ -43,21 +44,15 @@ void UMjContactExclude::BeginPlay()
 void UMjContactExclude::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("name"), Name);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("body1"), body1)) bOverride_body1 = true;
     if (MjXmlUtils::ReadAttrString(Node, TEXT("body2"), body2)) bOverride_body2 = true;
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     if (!Node)
     {
         return;
     }
-
-    // Required attributes
-    body1 = Node->GetAttribute(TEXT("body1"));
-    body2 = Node->GetAttribute(TEXT("body2"));
-
-    // Optional attributes
-    Name = Node->GetAttribute(TEXT("name"));
 }
 
 void UMjContactExclude::ExportTo(mjsExclude* Element)
@@ -65,8 +60,8 @@ void UMjContactExclude::ExportTo(mjsExclude* Element)
     if (!Element) return;
 
     // --- CODEGEN_EXPORT_START ---
-    if (bOverride_body1 && !body1.IsEmpty()) mjs_setString(Element->bodyname1, TCHAR_TO_UTF8(*body1));
-    if (bOverride_body2 && !body2.IsEmpty()) mjs_setString(Element->bodyname2, TCHAR_TO_UTF8(*body2));
+    if (bOverride_body1) MjSetString(Element->bodyname1, body1);
+    if (bOverride_body2) MjSetString(Element->bodyname2, body2);
     // --- CODEGEN_EXPORT_END ---
 }
 
@@ -77,14 +72,8 @@ void UMjContactExclude::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* Par
     UE_LOG(LogURLabWrapper, Log, TEXT("Added contact exclude: %s<->%s"), *body1, *body2);
 }
 
-void UMjContactExclude::Bind(mjModel* model, mjData* data, const FString& Prefix)
-{
-    // Contact excludes are global static data.
-}
-
 #if WITH_EDITOR
-TArray<FString> UMjContactExclude::GetBodyOptions() const
-{
-    return UMjComponent::GetSiblingComponentOptions(this, UMjBody::StaticClass());
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjContactExclude::GetBodyOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjBody::StaticClass()); }
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

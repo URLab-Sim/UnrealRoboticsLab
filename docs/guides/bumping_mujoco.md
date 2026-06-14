@@ -32,21 +32,30 @@ If step 3 printed no diagnostics and step 5 ran green, you are done.
 
 ## The pipeline
 
-`Scripts/codegen/regen_all.py` runs four scripts in order:
+`Scripts/codegen/regen_all.py` runs four scripts in order and writes all
+snapshots under `Scripts/codegen/snapshots/`:
 
-1. **`build_mjspec_snapshot.py`** parses `third_party/install/MuJoCo/include/mujoco/mjspec.h`
-   and writes `Scripts/mjspec_snapshot.json` — every `mjsX` struct's field
-   list plus every `mjs_setTo*` function signature.
+1. **`build_mjxmacro_snapshot.py`** parses `mjxmacro.h` and writes
+   `Scripts/codegen/snapshots/mjxmacro_snapshot.json` — the `mjModel` /
+   `mjData` array layouts (outer dim + per-row stride) URLab needs for
+   `MjBind.h` views.
 
-2. **`build_mjxmacro_snapshot.py`** parses `mjxmacro.h` and writes
-   `Scripts/mjxmacro_snapshot.json` — the `mjModel` / `mjData` array
-   layouts (outer dim + per-row stride) URLab needs for `MjBind.h` views.
-
-3. **`build_mjcf_schema_snapshot.py`** parses
+2. **`build_mjcf_schema_snapshot.py`** parses
    `third_party/MuJoCo/src/src/xml/xml_native_reader.cc` and writes
-   `Scripts/mjcf_schema_snapshot.json` — every MJCF element with its
-   attribute list and child structure. Auto-detects the MuJoCo version
-   from `mjVERSION_HEADER`.
+   `Scripts/codegen/snapshots/mjcf_schema_snapshot.json` — every MJCF
+   element with its attribute list and child structure. Auto-detects the
+   MuJoCo version from `mjVERSION_HEADER`.
+
+3. **`build_introspect_snapshot.py`** does a libclang (clang-AST) scrape of
+   `mjspec.h` + `mjmodel.h` and writes
+   `Scripts/codegen/snapshots/introspect_snapshot.json` — every `mjsX`
+   struct's field list, the `mjt*` enums, and every `mjs_setTo*` function
+   signature. This **supersedes** the retired `build_mjspec_snapshot.py`
+   (the runtime projects introspect into the legacy mjspec shape). This step
+   needs `clang.cindex` + a loadable libclang; it is *optional* in
+   `regen_all.py` and falls back to the committed snapshot if libclang is
+   missing — so run regen in an env that HAS libclang or a header change will
+   be silently skipped (see Environment below).
 
 4. **`generate_ue_components.py`** reads all three snapshots plus
    `codegen_rules.json` and emits `Source/URLab/{Public,Private}/MuJoCo/Components/**/*.{h,cpp}`
@@ -227,9 +236,9 @@ URLab's components are already covered.
 
 | File | Owned by | Touch on a bump? |
 |------|---------|------------------|
-| `Scripts/mjspec_snapshot.json`           | `build_mjspec_snapshot.py`        | regen_all.py rewrites it; commit the result |
-| `Scripts/mjxmacro_snapshot.json`         | `build_mjxmacro_snapshot.py`      | same |
-| `Scripts/mjcf_schema_snapshot.json`      | `build_mjcf_schema_snapshot.py`   | same |
+| `Scripts/codegen/snapshots/introspect_snapshot.json`   | `build_introspect_snapshot.py` (libclang) | regen_all.py rewrites it; commit the result |
+| `Scripts/codegen/snapshots/mjxmacro_snapshot.json`     | `build_mjxmacro_snapshot.py`      | same |
+| `Scripts/codegen/snapshots/mjcf_schema_snapshot.json`  | `build_mjcf_schema_snapshot.py`   | same |
 | `Scripts/codegen/codegen_rules.json`     | hand-written                      | only when diagnostics ask for it |
 | `Scripts/codegen/generate_ue_components.py` | hand-written                   | only when MuJoCo changes the C-API shape |
 | `Source/URLab/.../*.{h,cpp}` between `// --- CODEGEN_*_START ---` / `// --- CODEGEN_*_END ---` | regen_all.py | DO NOT hand-edit |
@@ -237,10 +246,20 @@ URLab's components are already covered.
 | `third_party/MuJoCo/src/`                | submodule pointer                 | `git checkout <newtag>` in submodule, then re-run `build.sh`/`.ps1` |
 | `Source/URLab/URLab.Build.cs` `SkipThirdPartyDriftChecks` | hand-written | leave `false` in commits; flip to `true` only locally if you need to build before committing the submodule pointer |
 
+## Environment
+
+`regen_all.py`'s introspect step (`build_introspect_snapshot.py`) imports
+`clang.cindex` and loads libclang. Run regen and the codegen tests in an env
+that HAS libclang — on this machine that is the `base` micromamba env, NOT `mj`
+(`mj` lacks the `clang` package). If libclang is missing the introspect step
+fails *silently* and `regen_all.py` falls back to the committed snapshot, so a
+header change in the bump is quietly skipped. Override the library path with
+`$LIBCLANG_LIBRARY_FILE` or `--libclang` if auto-detection fails.
+
 ## Smoke-test checklist after a bump
 
-- [ ] `python Scripts/codegen/regen_all.py` prints no diagnostics.
-- [ ] `micromamba run -n mj python -m pytest Scripts/codegen/tests/` is green.
+- [ ] `micromamba run -n base python Scripts/codegen/regen_all.py` prints no diagnostics.
+- [ ] `micromamba run -n base python -m pytest Scripts/codegen/tests/` is green.
 - [ ] `UnrealBuildTool` compiles `url_projEditor Win64 Development` without warnings new to this branch.
 - [ ] Editor automation: `Automation RunTests URLab` is all-green.
 - [ ] Open a representative imported model in the editor and verify it

@@ -24,87 +24,18 @@
 
 #include "IDetailCustomization.h"
 
-/** Detail customization for UMjActuator — hides internal properties. */
-class FMjActuatorDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjSensor — hides internal properties. */
-class FMjSensorDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjContactPair — hides internal properties. */
-class FMjContactPairDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjContactExclude — hides internal properties. */
-class FMjContactExcludeDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjEquality. */
-class FMjEqualityDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjJoint — hides string properties. */
-class FMjJointDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjBody. */
-class FMjBodyDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjDefault — hides string properties synced at compile time. */
-class FMjDefaultDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjSite — hides string properties. */
-class FMjSiteDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjTendon — hides string properties. */
-class FMjTendonDetailCustomization : public IDetailCustomization
-{
-public:
-    static TSharedRef<IDetailCustomization> MakeInstance();
-    virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-};
-
-/** Detail customization for UMjGeom — hides internal properties and adds CoACD decomposition buttons. */
+/**
+ * @class FMjGeomDetailCustomization
+ * @brief Adds CoACD decomposition buttons to the UMjGeom Details panel.
+ *
+ * All other URLab components used to have parallel customizations that
+ * existed only to ``HideProperty`` on a single internal UPROPERTY
+ * (DefaultClass / ClassName / Name etc). Those were removed in the
+ * MjComponentDetailCustomizations cleanup — the same hiding now lives on
+ * the UPROPERTY decls themselves via
+ * ``meta=(EditCondition="false", EditConditionHides)``. This file
+ * keeps the one customization with real Slate-button logic.
+ */
 class FMjGeomDetailCustomization : public IDetailCustomization
 {
 public:

@@ -25,7 +25,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "mujoco/mujoco.h"
-#include "MuJoCo/Core/MjSimOptions.h"
+#include "MuJoCo/Generated/MjOptionGenerated.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include <functional>
 #include <atomic>
@@ -132,7 +132,7 @@ public:
     // --- Simulation Options ---
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options")
-    FMuJoCoOptions Options;
+    FMjOptionGenerated Options;
 
     /** 100 = realtime, 50 = half speed. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options", meta=(ClampMin="5", ClampMax="100"))

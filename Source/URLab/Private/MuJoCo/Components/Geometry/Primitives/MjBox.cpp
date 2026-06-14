@@ -94,8 +94,7 @@ void UMjBox::SetGeomVisibility(bool bNewVisibility)
 void UMjBox::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
-
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
 	// MuJoCo box size is 3 half-extents in metres.
@@ -126,8 +125,7 @@ void UMjBox::ExportTo(mjsGeom* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
         // --- CODEGEN_EXPORT_START ---
-
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjBox::ApplyOverrideMaterial(UMaterialInterface* Material)
@@ -149,9 +147,9 @@ void UMjBox::SyncUnrealTransformFromMj()
         // MuJoCo box size is half-extents. Unreal Cube is 100 units.
         // Size 0.5 -> scale 1.0
         float r[3];
-        r[0] = m_GeomView.size[0];
-        r[1] = m_GeomView.size[1];
-        r[2] = m_GeomView.size[2];
+        r[0] = m_GeomView.geom_size[0];
+        r[1] = m_GeomView.geom_size[1];
+        r[2] = m_GeomView.geom_size[2];
 
         FVector NewScale = FVector(r[0], r[1], r[2]) * 2.0f;
         SetRelativeScale3D(NewScale);

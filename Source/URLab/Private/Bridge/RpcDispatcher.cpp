@@ -2053,7 +2053,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
         return MakeError(TEXT("missing_field"), TEXT("set_sim_options requires 'options' object"));
     const TSharedPtr<FJsonObject>& Opts = *OptsPtr;
 
-    FMuJoCoOptions& O = Mgr->PhysicsEngine->Options;
+    FMjOptionGenerated& O = Mgr->PhysicsEngine->Options;
 
     double DNum = 0.0;
     if (Opts->TryGetNumberField(TEXT("timestep"), DNum))
@@ -2062,7 +2062,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
         O.bOverride_Timestep = true;
     }
 
-    // Wire is MJ-native SI; FMuJoCoOptions stores UE cm/s² with Y-flip and
+    // Wire is MJ-native SI; FMjOptionGenerated stores UE cm/s² with Y-flip and
     // ApplyOverridesToModel reverses that, so pre-bake the inverse here.
     double V3[3];
     if (TryReadVec3(Opts, TEXT("gravity"), V3))
@@ -2122,7 +2122,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 
     // Raw disable / enable bit masks. Values are bitwise-ORs of
     // mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.
-    // Applied BEFORE FMuJoCoOptions::ApplyOverridesToModel so any named
+    // Applied BEFORE FMjOptionGenerated::ApplyOverridesToModel so any named
     // bits the caller also set (enable_sleep / enable_multiccd) win on
     // top of the raw mask. Treat the raw masks as a coarse baseline.
     int32 DisableMask = 0;

@@ -105,7 +105,7 @@ bool FMjBindingIntegrationTest::RunTest(const FString& Parameters)
     {
         float InitialFriction = 0.5f;
         Geom->SetFriction(InitialFriction);
-        TestEqual(TEXT("Geom friction should be updated"), Geom->m_GeomView.friction[0], (double)InitialFriction);
+        TestEqual(TEXT("Geom friction should be updated"), Geom->m_GeomView.geom_friction[0], (double)InitialFriction);
     }
 
     // 9. Cleanup

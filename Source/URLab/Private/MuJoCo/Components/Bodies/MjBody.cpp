@@ -135,11 +135,11 @@ void UMjBody::ExportTo(mjsBody* Element, mjsDefault* Default)
     if (!Element) return;
 
     // --- CODEGEN_EXPORT_START ---
-    if (SleepPolicy != EMjBodySleepPolicy::Default)
+    if (bOverride_SleepPolicy)
     {
         Element->sleep = static_cast<mjtSleepPolicy>(static_cast<uint8>(SleepPolicy));
     }
-    if (bOverride_childclass && !childclass.IsEmpty()) mjs_setString(Element->childclass, TCHAR_TO_UTF8(*childclass));
+    if (bOverride_childclass) MjSetString(Element->childclass, childclass);
     if (bOverride_mocap) Element->mocap = mocap ? 1 : 0;
     if (bOverride_gravcomp) Element->gravcomp = gravcomp;
     // --- CODEGEN_EXPORT_END ---
@@ -266,6 +266,7 @@ void UMjBody::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     if (!Node) return;
 
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("childclass"), childclass)) bOverride_childclass = true;
     MjXmlUtils::ReadAttrBool(Node, TEXT("mocap"), mocap, bOverride_mocap);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("gravcomp"), gravcomp, bOverride_gravcomp);
@@ -278,19 +279,16 @@ void UMjBody::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
             bOverride_Quat = true;
         }
     }
-    { // canonicalize body.sleep -> EMjBodySleepPolicy
+    { // canonicalize body.sleep -> EMjBodySleepPolicy + bOverride_SleepPolicy
         FString S = Node->GetAttribute(TEXT("sleep"));
         S = S.ToLower();
-        if      (S == TEXT("never"))   SleepPolicy = EMjBodySleepPolicy::Never;
-        else if (S == TEXT("allowed")) SleepPolicy = EMjBodySleepPolicy::Allowed;
-        else if (S == TEXT("init"))    SleepPolicy = EMjBodySleepPolicy::InitAsleep;
+        if      (S == TEXT("never"))   { SleepPolicy = EMjBodySleepPolicy::Never;      bOverride_SleepPolicy = true; }
+        else if (S == TEXT("allowed")) { SleepPolicy = EMjBodySleepPolicy::Allowed;    bOverride_SleepPolicy = true; }
+        else if (S == TEXT("init"))    { SleepPolicy = EMjBodySleepPolicy::InitAsleep; bOverride_SleepPolicy = true; }
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
-
-    // name attribute → store in MjName for explicit override
-    MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName);
+        // --- CODEGEN_IMPORT_END ---
 }
 
 void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
@@ -299,20 +297,11 @@ void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 
 	if (Model && Data)
     {
-        m_BodyView = BindToView<BodyView>(Prefix);
+        BindAndCacheView(m_BodyView, Prefix);
 
-        if (m_BodyView.id != -1)
-        {
-            m_ID = m_BodyView.id;
-            m_IsSetup = true;
-            SetComponentTickEnabled(true);
-        }
-        else
-        {
-            UE_LOG(LogURLabBind, Warning, TEXT("MjBody::Bind() - FAILED to find body '%s'"), *GetName());
-            m_IsSetup = false;
-            SetComponentTickEnabled(false);
-        }
+        const bool bBound = m_BodyView.id != -1;
+        m_IsSetup = bBound;
+        SetComponentTickEnabled(bBound);
 
     }
 
@@ -448,8 +437,7 @@ void UMjBody::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 }
 
 #if WITH_EDITOR
-TArray<FString> UMjBody::GetChildClassOptions() const
-{
-    return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjBody::GetChildClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

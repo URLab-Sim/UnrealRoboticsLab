@@ -42,7 +42,7 @@ void UMjGeneralActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 
         // --- CODEGEN_EXPORT_START ---
     if (bOverride_actearly) Element->actearly = actearly ? 1 : 0;
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjGeneralActuator::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)

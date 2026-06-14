@@ -67,10 +67,12 @@ void UMjSite::ExportTo(mjsSite* Element, mjsDefault* def)
         case EMjSiteType::Ellipsoid: Element->type = (mjtGeom)mjGEOM_ELLIPSOID; break;
         case EMjSiteType::Cylinder: Element->type = (mjtGeom)mjGEOM_CYLINDER; break;
         case EMjSiteType::Box: Element->type = (mjtGeom)mjGEOM_BOX; break;
+        case EMjSiteType::Mesh: Element->type = (mjtGeom)mjGEOM_MESH; break;
+        case EMjSiteType::Hfield: Element->type = (mjtGeom)mjGEOM_HFIELD; break;
         default: break;
     }
     if (bOverride_group) Element->group = group;
-    if (bOverride_size) { for (int32 i = 0; i < size.Num(); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
+    if (bOverride_size) { for (int32 i = 0; i < FMath::Min(size.Num(), 3); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
     // --- CODEGEN_EXPORT_END ---
 }
@@ -89,11 +91,13 @@ void UMjSite::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     { // xml_enum: type -> EMjSiteType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
-        if      (S == TEXT("sphere")) Type = EMjSiteType::Sphere;
-        else if (S == TEXT("capsule")) Type = EMjSiteType::Capsule;
-        else if (S == TEXT("ellipsoid")) Type = EMjSiteType::Ellipsoid;
-        else if (S == TEXT("cylinder")) Type = EMjSiteType::Cylinder;
-        else if (S == TEXT("box")) Type = EMjSiteType::Box;
+        if      (S == TEXT("sphere")) { Type = EMjSiteType::Sphere; }
+        else if (S == TEXT("capsule")) { Type = EMjSiteType::Capsule; }
+        else if (S == TEXT("ellipsoid")) { Type = EMjSiteType::Ellipsoid; }
+        else if (S == TEXT("cylinder")) { Type = EMjSiteType::Cylinder; }
+        else if (S == TEXT("box")) { Type = EMjSiteType::Box; }
+        else if (S == TEXT("mesh")) { Type = EMjSiteType::Mesh; }
+        else if (S == TEXT("hfield")) { Type = EMjSiteType::Hfield; }
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("material"), material)) bOverride_material = true;
@@ -123,7 +127,7 @@ void UMjSite::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 }
 
 void UMjSite::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
@@ -142,24 +146,13 @@ void UMjSite::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 void UMjSite::Bind(mjModel* model, mjData* data, const FString& Prefix)
 {
     Super::Bind(model, data, Prefix);
-    m_SiteView = BindToView<SiteView>(Prefix);
-
-    if (m_SiteView.id != -1)
-    {
-        m_ID = m_SiteView.id;
-        UE_LOG(LogURLabBind, Log, TEXT("[MjSite] Successfully bound '%s' to ID %d (MjName: %s)"), *GetName(), m_ID, *MjName);
-    }
-    else
-    {
-        UE_LOG(LogURLabBind, Warning, TEXT("[MjSite] Site '%s' FAILED bind. Prefix: %s, MjName: %s"), *GetName(), *Prefix, *MjName);
-    }
+    BindAndCacheView(m_SiteView, Prefix);
 }
 
 #if WITH_EDITOR
-TArray<FString> UMjSite::GetDefaultClassOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjSite::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif
 
 // --- Multi-UCLASS subclass constructors --------------------------------------

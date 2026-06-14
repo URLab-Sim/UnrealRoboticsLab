@@ -135,8 +135,7 @@ void UMjCapsule::UpdateCapTransforms()
 void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
-
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
     Super::ImportFromXml(Node, CompilerSettings);
 
@@ -174,8 +173,7 @@ void UMjCapsule::ExportTo(mjsGeom* Element, mjsDefault* def)
     Super::ExportTo(Element, def);
 
         // --- CODEGEN_EXPORT_START ---
-
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCapsule::SyncUnrealTransformFromMj()
@@ -184,8 +182,8 @@ void UMjCapsule::SyncUnrealTransformFromMj()
 
     if (!bOverride_size)
     {
-        const float RadiusVal     = m_GeomView.size[0];
-        const float HalfLengthVal = m_GeomView.size[1];
+        const float RadiusVal     = m_GeomView.geom_size[0];
+        const float HalfLengthVal = m_GeomView.geom_size[1];
 
         const FVector NewScale = FVector(RadiusVal * 2.0f, RadiusVal * 2.0f, HalfLengthVal * 2.0f);
         SetRelativeScale3D(NewScale);

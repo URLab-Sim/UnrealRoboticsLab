@@ -36,28 +36,28 @@ class URLAB_API UMjIntVelocityActuator : public UMjActuator
     GENERATED_BODY()
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_inheritrange = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_inheritrange"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_inheritrange"))
     float inheritrange = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_kp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_kp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_kp"))
     float kp = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_kv = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_kv"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_kv"))
     float kv = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_dampratio = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_dampratio"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_dampratio"))
     float dampratio = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 

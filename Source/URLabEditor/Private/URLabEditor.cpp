@@ -88,7 +88,11 @@ void FURLabEditorModule::StartupModule()
     URLabEditorOpHandlers::RegisterAll();
 
     FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-    // Register geom customization on all subclasses
+    // Only Geom has non-hiding logic (the CoACD decomposition buttons).
+    // The other 9 components' simple "HideProperty(DefaultClass)" /
+    // "HideProperty(Name)" customizations were replaced by
+    // meta=(EditCondition="false", EditConditionHides) on the UPROPERTY
+    // decls themselves — see UMjActuator::DefaultClass et al.
     {
         TArray<UClass*> GeomClasses;
         GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
@@ -100,63 +104,6 @@ void FURLabEditorModule::StartupModule()
                 FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
         }
     }
-    // Register actuator customization on all subclasses
-    {
-        TArray<UClass*> ActuatorClasses;
-        GetDerivedClasses(UMjActuator::StaticClass(), ActuatorClasses, true);
-        ActuatorClasses.Add(UMjActuator::StaticClass());
-        for (UClass* Class : ActuatorClasses)
-        {
-            PropertyModule.RegisterCustomClassLayout(
-                Class->GetFName(),
-                FOnGetDetailCustomizationInstance::CreateStatic(&FMjActuatorDetailCustomization::MakeInstance));
-        }
-    }
-    // Register sensor customization on all subclasses
-    {
-        TArray<UClass*> SensorClasses;
-        GetDerivedClasses(UMjSensor::StaticClass(), SensorClasses, true);
-        SensorClasses.Add(UMjSensor::StaticClass());
-        for (UClass* Class : SensorClasses)
-        {
-            PropertyModule.RegisterCustomClassLayout(
-                Class->GetFName(),
-                FOnGetDetailCustomizationInstance::CreateStatic(&FMjSensorDetailCustomization::MakeInstance));
-        }
-    }
-    PropertyModule.RegisterCustomClassLayout(
-        UMjContactPair::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjContactPairDetailCustomization::MakeInstance));
-    PropertyModule.RegisterCustomClassLayout(
-        UMjContactExclude::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjContactExcludeDetailCustomization::MakeInstance));
-    PropertyModule.RegisterCustomClassLayout(
-        UMjEquality::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjEqualityDetailCustomization::MakeInstance));
-    // Register joint customization on all subclasses
-    {
-        TArray<UClass*> JointClasses;
-        GetDerivedClasses(UMjJoint::StaticClass(), JointClasses, true);
-        JointClasses.Add(UMjJoint::StaticClass());
-        for (UClass* Class : JointClasses)
-        {
-            PropertyModule.RegisterCustomClassLayout(
-                Class->GetFName(),
-                FOnGetDetailCustomizationInstance::CreateStatic(&FMjJointDetailCustomization::MakeInstance));
-        }
-    }
-    PropertyModule.RegisterCustomClassLayout(
-        UMjBody::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjBodyDetailCustomization::MakeInstance));
-    PropertyModule.RegisterCustomClassLayout(
-        UMjDefault::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjDefaultDetailCustomization::MakeInstance));
-    PropertyModule.RegisterCustomClassLayout(
-        UMjSite::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjSiteDetailCustomization::MakeInstance));
-    PropertyModule.RegisterCustomClassLayout(
-        UMjTendon::StaticClass()->GetFName(),
-        FOnGetDetailCustomizationInstance::CreateStatic(&FMjTendonDetailCustomization::MakeInstance));
     PropertyModule.NotifyCustomizationModuleChanged();
 
     // Register viewport actor context menu extender
@@ -240,16 +187,6 @@ void FURLabEditorModule::ShutdownModule()
             }
         };
         UnregisterWithSubclasses(UMjGeom::StaticClass());
-        UnregisterWithSubclasses(UMjActuator::StaticClass());
-        UnregisterWithSubclasses(UMjSensor::StaticClass());
-        UnregisterWithSubclasses(UMjJoint::StaticClass());
-        PropertyModule.UnregisterCustomClassLayout(UMjContactPair::StaticClass()->GetFName());
-        PropertyModule.UnregisterCustomClassLayout(UMjContactExclude::StaticClass()->GetFName());
-        PropertyModule.UnregisterCustomClassLayout(UMjEquality::StaticClass()->GetFName());
-        PropertyModule.UnregisterCustomClassLayout(UMjBody::StaticClass()->GetFName());
-        PropertyModule.UnregisterCustomClassLayout(UMjDefault::StaticClass()->GetFName());
-        PropertyModule.UnregisterCustomClassLayout(UMjSite::StaticClass()->GetFName());
-        PropertyModule.UnregisterCustomClassLayout(UMjTendon::StaticClass()->GetFName());
     }
 
     if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))

@@ -9,9 +9,12 @@
 URLab UE component codegen, schema-driven.
 
 Inputs:
-  - Scripts/mjcf_schema_snapshot.json       (MJCF schema attrs)
-  - Scripts/mjxmacro_snapshot.json          (mjModel/mjData pointer table)
-  - Scripts/codegen/codegen_rules.json      (per-category layout, rules)
+  - Scripts/codegen/snapshots/mjcf_schema_snapshot.json   (MJCF schema attrs)
+  - Scripts/codegen/snapshots/mjxmacro_snapshot.json      (mjModel/mjData pointer table)
+  - Scripts/codegen/snapshots/introspect_snapshot.json    (libclang-scraped C API:
+                                                          mjsX struct fields, mjt*
+                                                          enums, mjs_setTo* signatures)
+  - Scripts/codegen/codegen_rules.json                    (per-category layout, rules)
 
 Outputs:
   - Component .h / .cpp files in Source/URLab/Public|Private/MuJoCo/Components/
@@ -38,15 +41,45 @@ import json
 import os
 import re
 import sys
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
+
+# Sibling modules. Only names actually consumed by this orchestrator's
+# body are imported here. Test files import private helpers (e.g.
+# _resolve_direct, _classify_c_type, _check_brace_balance) directly from
+# their owning module — the orchestrator is not a re-export surface.
+from _codegen_core import (
+    _DIAGS_BUFFER, _diag_add, _diag_flush, _reset_diags,
+    _ue_type_accepts_units_meta, _attr_default_value,
+    override_toggle_name,
+    schema_attrs, schema_subtype_attrs,
+    compute_canon_absorbed, iter_category_attrs,
+    _VEC3_CONVERT_FMT,
+    _resolve_mjs_field, _resolve_value_map,
+    FileWrite,
+)
+from _codegen_inject import (
+    _find_matching_brace,
+    inject_between_tags, _inject_tags_into_cpp,
+)
+from _codegen_checks import (
+    _check_hand_enum_drift, _check_type_shape_drift,
+    _check_new_attr_typing, _check_orphan_rule_entries,
+    _check_mjxmacro_block_coverage, _check_apply_mode_validity,
+    _check_embedded_cpp_references,
+    _check_allowlist_staleness,
+    _check_property_units_validity, _check_compiler_attrs_coverage,
+    _check_value_map_stale_mj_consts,
+    _emit_drift_diagnostics,
+)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PLUGIN_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 
-DEFAULT_SCHEMA      = os.path.join(PLUGIN_ROOT, "Scripts", "mjcf_schema_snapshot.json")
-DEFAULT_MJXMACRO    = os.path.join(PLUGIN_ROOT, "Scripts", "mjxmacro_snapshot.json")
-DEFAULT_MJSPEC      = os.path.join(PLUGIN_ROOT, "Scripts", "mjspec_snapshot.json")
+_SNAPSHOT_DIR       = os.path.join(PLUGIN_ROOT, "Scripts", "codegen", "snapshots")
+DEFAULT_SCHEMA      = os.path.join(_SNAPSHOT_DIR, "mjcf_schema_snapshot.json")
+DEFAULT_MJXMACRO    = os.path.join(_SNAPSHOT_DIR, "mjxmacro_snapshot.json")
+DEFAULT_INTROSPECT  = os.path.join(_SNAPSHOT_DIR, "introspect_snapshot.json")
 DEFAULT_RULES       = os.path.join(SCRIPT_DIR, "codegen_rules.json")
 DEFAULT_PUBLIC_ROOT = os.path.join(PLUGIN_ROOT, "Source", "URLab", "Public")
 DEFAULT_PRIVATE_ROOT= os.path.join(PLUGIN_ROOT, "Source", "URLab", "Private")
@@ -80,95 +113,31 @@ COPYRIGHT_BLOCK = """// Copyright (c) 2026 Jonathan Embley-Riches. All rights re
 """
 
 
-# ---------------------------------------------------------------------------
-# Naming helpers
-# ---------------------------------------------------------------------------
+def _should_emit_xml_enum_at_this_layer(
+    attr: str,
+    attrs: Sequence[str],
+    global_excl: Set[str],
+    *,
+    apply_canonicalizations: bool,
+) -> bool:
+    """Whether this codegen layer owns the xml_enum import/export for
+    ``attr``. Two cases fire:
 
-def pascal_case(snake_or_camel: str) -> str:
-    """**Schema-verbatim** naming. We use MuJoCo's attribute name AS-IS
-    as the C++ UPROPERTY identifier — no PascalCase, no renames. This
-    keeps the codegen pure: schema name == C++ name == wire field name.
-
-    Future-proof for MuJoCo bumps: a new attr appears in MJCF → it
-    flows through without any rename table to maintain.
+      - The attr appears in this layer's attrs list — subtype-specific
+        case, e.g. ``dcmotor.input`` fires on the DCMotor subtype's
+        emission.
+      - The base-class layer (apply_canonicalizations=True) AND the
+        attr is in global_exclusions — always-emit-at-base case, e.g.
+        ``joint.type`` is globally excluded from per-attr UPROPERTY
+        emission but xml_enum_attrs still owns its import/export at
+        the base.
     """
-    return snake_or_camel
+    if attr in attrs:
+        return True
+    return apply_canonicalizations and attr in global_excl
 
 
-def override_toggle_name(prop_name: str) -> str:
-    return f"bOverride_{prop_name}"
-
-
-# ---------------------------------------------------------------------------
-# Schema access
-# ---------------------------------------------------------------------------
-
-def schema_attrs(schema: Dict[str, Any], path: str) -> List[str]:
-    """Read an attribute list at a dotted path, e.g. ``actuator_common.attrs``
-    or ``camera.attrs`` or ``tendon.spatial.attrs``. Returns [] if missing."""
-    cur: Any = schema
-    for piece in path.split("."):
-        if isinstance(cur, dict) and piece in cur:
-            cur = cur[piece]
-        else:
-            return []
-    if isinstance(cur, list):
-        # Could be list of strings OR list of dicts {name, attrs}; normalise.
-        if cur and isinstance(cur[0], str):
-            return list(cur)
-        attrs: List[str] = []
-        for entry in cur:
-            if isinstance(entry, dict):
-                # equality types are dicts with key/attrs nested under
-                # the type name (e.g. {"connect": [...]}, or {"name": ..., "attrs": [...]})
-                if "attrs" in entry and isinstance(entry["attrs"], list):
-                    attrs.extend([str(x) for x in entry["attrs"]])
-                else:
-                    for v in entry.values():
-                        if isinstance(v, list):
-                            attrs.extend([str(x) for x in v])
-        # de-dupe preserving order
-        seen = set()
-        out = []
-        for a in attrs:
-            if a not in seen:
-                seen.add(a)
-                out.append(a)
-        return out
-    if isinstance(cur, dict):
-        # E.g. equality.weld is a list inside a dict — handle by walking
-        # all string-list values one level deeper.
-        attrs2: List[str] = []
-        for v in cur.values():
-            if isinstance(v, list):
-                attrs2.extend([str(x) for x in v if isinstance(x, str)])
-        return attrs2
-    return []
-
-
-def schema_subtype_attrs(schema: Dict[str, Any], category: str, subtype_key: str) -> List[str]:
-    """Look up per-subtype attrs from schema['actuator_types'][key] /
-    schema['sensor_types'] (list-of-dict). Returns [] if not found."""
-    if category == "actuator":
-        block = schema.get("actuator_types", {})
-        if isinstance(block, dict):
-            entry = block.get(subtype_key)
-            if isinstance(entry, list):
-                return [str(x) for x in entry]
-            if isinstance(entry, dict) and "attrs" in entry:
-                return [str(x) for x in entry["attrs"]]
-        return []
-    if category == "sensor":
-        block = schema.get("sensor_types", [])
-        if isinstance(block, list):
-            for entry in block:
-                if isinstance(entry, dict) and entry.get("name") == subtype_key:
-                    attrs = entry.get("attrs", [])
-                    return [str(x) for x in attrs] if isinstance(attrs, list) else []
-                if isinstance(entry, str) and entry == subtype_key:
-                    return []  # name-only entry, no extra attrs
-        return []
-    return []
+# `schema_attrs` and `schema_subtype_attrs` live in `_codegen_core`.
 
 
 # ---------------------------------------------------------------------------
@@ -183,33 +152,171 @@ class EmittedSchema:
     exports_cpp:  str   # ExportTo body (between codegen tags)
 
 
-def _attr_default_value(ue_type: str) -> str:
-    if ue_type == "float":      return "0.0f"
-    if ue_type == "int32":      return "0"
-    if ue_type == "bool":       return "false"
-    if ue_type == "FString":    return "TEXT(\"\")"
-    if ue_type == "FVector":    return "FVector::ZeroVector"
-    if ue_type == "FQuat":      return "FQuat::Identity"
-    if ue_type == "FLinearColor": return "FLinearColor::White"
-    if ue_type.startswith("TArray"): return "{}"
-    return "{}"
+@dataclass
+class EmissionContext:
+    """Cross-cutting rules / element / call-site state threaded through
+    ``emit_schema_for_attrs`` and its helpers. Built once via ``from_call``.
+
+    Carries every shared computation the property/import/export helpers
+    need (canon_absorbed, xml_enum_attr_names, elem_canons, the various
+    rule dicts) so the helpers take one ``ctx`` arg instead of 15
+    positional parameters."""
+    # --- caller-provided ---
+    attrs:                Sequence[str]
+    rules:                Dict[str, Any]
+    element_name:         str
+    apply_canonicalizations: bool = True
+    mjs_fields:           Optional[set] = None
+    consumed_by_setto:    Optional[set] = None
+    mjs_array_caps:       Optional[Dict[str, int]] = None
+    # --- derived from rules (cached on construct) ---
+    global_excl:          set = field(default_factory=set)
+    type_map:             Dict[str, str] = field(default_factory=dict)
+    default_type:         str = "float"
+    renames:              Dict[str, str] = field(default_factory=dict)
+    elem_rules:           Dict[str, Any] = field(default_factory=dict)
+    elem_excl:            set = field(default_factory=set)
+    canonicalizations:    Dict[str, Any] = field(default_factory=dict)
+    attr_to_mjs_field:    Dict[str, str] = field(default_factory=dict)
+    # --- derived in from_call but parameterised by apply_canonicalizations ---
+    elem_canons:          List[str] = field(default_factory=list)
+    canon_absorbed:       set = field(default_factory=set)
+    xml_enum_attr_names:  set = field(default_factory=set)
+
+    @classmethod
+    def from_call(cls,
+                  attrs: Sequence[str],
+                  rules: Dict[str, Any],
+                  element_name: str,
+                  *,
+                  apply_canonicalizations: bool = True,
+                  mjs_fields: Optional[set] = None,
+                  consumed_by_setto: Optional[set] = None,
+                  mjs_array_caps: Optional[Dict[str, int]] = None) -> "EmissionContext":
+        elem_rules = rules.get("element_rules", {}).get(element_name, {})
+        canonicalizations = rules.get("canonicalizations", {})
+        # ``elem_canons`` is the raw applied-canon list; the helpers
+        # clear it when apply_canonicalizations is False, but
+        # ``canon_absorbed`` keeps the raw absorbed set so per-attr
+        # emission still excludes them at the subtype layer.
+        elem_canons: List[str] = list(
+            elem_rules.get("applies_canonicalizations", [])
+        )
+        canon_absorbed = compute_canon_absorbed(elem_canons, canonicalizations)
+        if not apply_canonicalizations:
+            elem_canons = []
+        return cls(
+            attrs=attrs,
+            rules=rules,
+            element_name=element_name,
+            apply_canonicalizations=apply_canonicalizations,
+            mjs_fields=mjs_fields,
+            consumed_by_setto=consumed_by_setto,
+            mjs_array_caps=mjs_array_caps,
+            global_excl=set(rules.get("global_exclusions", [])),
+            type_map=rules.get("type_mappings", {}),
+            default_type=rules.get("default_type", "float"),
+            renames=rules.get("property_renames", {}),
+            elem_rules=elem_rules,
+            elem_excl=set(elem_rules.get("exclude_attrs", [])),
+            canonicalizations=canonicalizations,
+            attr_to_mjs_field=elem_rules.get("attr_to_mjs_field", {}),
+            elem_canons=elem_canons,
+            canon_absorbed=canon_absorbed,
+            xml_enum_attr_names=set(elem_rules.get("xml_enum_attrs", {}).keys()),
+        )
+
+
+
+def _inject_or_diag(
+    text: str,
+    tag: str,
+    body: str,
+    *,
+    host_path: str,
+    host_kind: str,
+    block_label: str,
+    diag_source: str,
+) -> Tuple[str, bool]:
+    """Inject ``body`` between the ``CODEGEN_<tag>`` markers in ``text``.
+    When the markers are missing AND the body is non-empty, fire a
+    diagnostic that names the host kind (e.g. 'subclass header'), the
+    path, the tag, and what didn't land. Returns (new_text, ok).
+
+    This collapses ~12 near-identical try-inject-then-diag stanzas
+    that used to live in the emit_*_class_injection callers."""
+    new_text, ok = inject_between_tags(text, tag, body, balance_source=diag_source)
+    if not ok and body.strip():
+        _diag_add(
+            f"[diagnostic] {host_kind} '{host_path}' is missing the "
+            f"CODEGEN_{tag}_START/END marker pair; {block_label} was "
+            f"NOT injected.",
+            source=diag_source,
+        )
+    return new_text, ok
+
+
+def _guarded_export(toggle: str, body: str,
+                    extra_cond: Optional[str] = None,
+                    extra_cond_first: bool = False,
+                    multiline: bool = False) -> str:
+    """Wrap ``body`` in an ``if ({toggle})`` guard and return the indented
+    emission.
+
+    ``extra_cond=None``:                 ``if ({toggle}) {body}``
+    ``extra_cond`` + first=False:        ``if ({toggle} && {extra_cond}) {body}``
+    ``extra_cond`` + first=True:         ``if (({extra_cond}) && {toggle}) {body}``
+
+    ``multiline=True``: emit a braced block. ``body`` is dropped verbatim
+    inside the braces (caller controls inner indent — the helper does
+    NOT auto-indent each line so existing multi-line bodies migrate
+    byte-identically). Use for blocks that were previously hand-rolled
+    as ``if ({toggle})\\n{{\\n<body>\\n}}\\n``.
+    """
+    if extra_cond is None:
+        cond = toggle
+    elif extra_cond_first:
+        cond = f"({extra_cond}) && {toggle}"
+    else:
+        cond = f"{toggle} && {extra_cond}"
+    if multiline:
+        return f"    if ({cond})\n    {{\n{body}    }}\n"
+    return f"    if ({cond}) {body}\n"
+
+
+# `_UEType`, `_UE_TYPE_INFO`, and `_attr_default_value` live in
+# `_codegen_core` (re-exported at the top of this file).
 
 
 def _emit_uproperty(prop_name: str, ue_type: str, category_label: str,
                     sub_category: Optional[str] = None,
-                    extra_meta: Optional[str] = None) -> str:
+                    extra_meta: Optional[str] = None,
+                    default_override: Optional[str] = None,
+                    hide_from_details: bool = False) -> str:
     """Emit the toggle + value UPROPERTY pair for a schema-driven attr.
 
     ``extra_meta`` appends to the value UPROPERTY's meta=() block — used to
     inject ``DisplayName``, ``GetOptions``, etc. via per-attr rules in
     ``codegen_rules.json#element_rules.<cat>.property_meta.<attr>``.
+
+    ``hide_from_details=True`` keeps the field as a C++ member (so codegen
+    import paths can still seed it and BPs can still read/write it) but
+    suppresses the Details-panel widget via
+    ``EditCondition="false", EditConditionHides``. Used for properties whose
+    canonical authoring surface is the UE Transform widget (Pos/Quat ->
+    RelativeLocation/Rotation, size -> RelativeScale3D).
     """
     cat = f"MuJoCo|{category_label}"
     if sub_category:
         cat = f"{cat}|{sub_category}"
     toggle = override_toggle_name(prop_name)
-    default = _attr_default_value(ue_type)
-    meta_inner = f'EditCondition="{toggle}"'
+    default = default_override if default_override else _attr_default_value(ue_type)
+    if hide_from_details:
+        # EditConditionHides on the value also collapses the InlineEditConditionToggle
+        # toggle bool above it because UE renders them as a single merged row.
+        meta_inner = 'EditCondition="false", EditConditionHides'
+    else:
+        meta_inner = f'EditCondition="{toggle}"'
     if extra_meta:
         meta_inner = f'{meta_inner}, {extra_meta}'
     return (
@@ -221,11 +328,14 @@ def _emit_uproperty(prop_name: str, ue_type: str, category_label: str,
     )
 
 
-def _emit_import_line(attr: str, prop_name: str, ue_type: str) -> str:
+def _emit_import_line(attr: str, prop_name: str, ue_type: str,
+                      vec3_convert: Optional[str] = None) -> str:
     toggle = override_toggle_name(prop_name)
     key = f'TEXT("{attr}")'
     if ue_type == "float":
         return f'    MjXmlUtils::ReadAttrFloat(Node, {key}, {prop_name}, {toggle});\n'
+    if ue_type == "double":
+        return f'    MjXmlUtils::ReadAttrDouble(Node, {key}, {prop_name}, {toggle});\n'
     if ue_type == "int32":
         return f'    MjXmlUtils::ReadAttrInt(Node, {key}, {prop_name}, {toggle});\n'
     if ue_type == "bool":
@@ -234,7 +344,12 @@ def _emit_import_line(attr: str, prop_name: str, ue_type: str) -> str:
         return (f'    if (MjXmlUtils::ReadAttrString(Node, {key}, {prop_name}))'
                 f' {toggle} = true;\n')
     if ue_type == "FVector":
-        return f'    MjXmlUtils::ReadAttrVec3(Node, {key}, {prop_name}, {toggle});\n'
+        out = f'    MjXmlUtils::ReadAttrVec3(Node, {key}, {prop_name}, {toggle});\n'
+        # MuJoCo direction vectors don't carry units but DO use opposite Y
+        # handedness vs UE. Apply Y-negate post-read when configured.
+        if vec3_convert == "y_negate":
+            out += f'    if ({toggle}) {prop_name}.Y = -{prop_name}.Y;\n'
+        return out
     if ue_type == "FLinearColor":
         return f'    MjXmlUtils::ReadAttrColor(Node, {key}, {prop_name}, {toggle});\n'
     if ue_type.startswith("TArray<float"):
@@ -247,61 +362,23 @@ def _emit_import_line(attr: str, prop_name: str, ue_type: str) -> str:
     return f'    MjXmlUtils::ReadAttrFloat(Node, {key}, {prop_name}, {toggle});\n'
 
 
-def _resolve_mjs_field(attr: str, mjs_fields: set,
-                       attr_to_mjs_field: Dict[str, str] | None = None) -> str:
-    """Pick the correct C field name on a category's mjs struct for a
-    given schema attribute. Per-element ``attr_to_mjs_field`` overrides
-    apply first; otherwise we capture MuJoCo's own naming conventions:
+# Per-strategy resolvers for the schema-attr -> mjs-field name mapper.
+# Each takes (attr, mjs_fields) and returns ``Optional[str]`` — the
+# winning field name, or None to fall through to the next strategy.
+# Order in _MJS_FIELD_RESOLVERS matters: more specific rules first.
 
-      0. Per-element ``attr_to_mjs_field`` override   (target -> targetbody,
-                                                       focal  -> focal_length)
-      1. ``attr`` itself                (condim -> mjsPair.condim)
-      2. ``attr + "name"``              (body1 -> bodyname1, mesh -> meshname)
-      3. ``<root>name<digits>``         (geom1 -> geomname1, body2 -> bodyname2)
-      4. Underscore-normalised match    (solreflimit -> solref_limit)
-      5. ``actuator`` prefix compressed (actuatorfrclimited -> actfrclimited,
-                                         actuatorgravcomp -> actgravcomp)
 
-    Falls back to ``attr`` if nothing matches — the build will then
-    surface the mismatch loudly."""
-    if attr_to_mjs_field and attr in attr_to_mjs_field:
-        return attr_to_mjs_field[attr]
-    if not mjs_fields:
-        return attr
-    if attr in mjs_fields:
-        return attr
-    if (attr + "name") in mjs_fields:
-        return attr + "name"
-    m = re.match(r"^(.*?)(\d+)$", attr)
-    if m:
-        root = m.group(1)
-        digits = m.group(2)
-        for candidate in (f"{root}name{digits}", f"{root}_name{digits}"):
-            if candidate in mjs_fields:
-                return candidate
-    # Underscore-normalised match — strip all underscores and look for the
-    # same letters. E.g. mjsJoint.solref_limit <- schema solreflimit.
-    norm = attr.replace("_", "")
-    for f in mjs_fields:
-        if f.replace("_", "") == norm:
-            return f
-    # `actuator`-prefix compression: schema spells it out, mjs trims to `act`.
-    if attr.startswith("actuator"):
-        cand = "act" + attr[len("actuator"):]
-        if cand in mjs_fields:
-            return cand
-        cand_norm = cand.replace("_", "")
-        for f in mjs_fields:
-            if f.replace("_", "") == cand_norm:
-                return f
-    return attr
+# The 5-strategy mjs-field resolver chain (+ ``_resolve_mjs_field``)
+# lives in `_codegen_core`.
 
 
 def _emit_export_line(attr: str, prop_name: str, ue_type: str,
                       mjs_fields: set | None = None,
                       slot_sentinel: str | None = None,
                       attr_to_mjs_field: Dict[str, str] | None = None,
-                      consumed_by_setto: set | None = None) -> str:
+                      consumed_by_setto: set | None = None,
+                      vec3_convert: Optional[str] = None,
+                      array_cap: Optional[int] = None) -> str:
     toggle = override_toggle_name(prop_name)
     # If we have an mjs field set and the attr can't be resolved to one of
     # them, this attr isn't directly assignable on the mjs struct (e.g.
@@ -322,31 +399,51 @@ def _emit_export_line(attr: str, prop_name: str, ue_type: str,
     else:
         field = attr_to_mjs_field.get(attr, attr) if attr_to_mjs_field else attr
     if ue_type.startswith("TArray<float") or ue_type.startswith("TArray<int") or ue_type.startswith("TArray<double"):
+        # When the destination C field is a fixed-size array, cap the
+        # loop count against the C array dim so a future MuJoCo shrink
+        # (gainprm[10] -> gainprm[6]) doesn't memory-overrun. Dynamic
+        # vec destinations (mjFloatVec*, mjDoubleVec*) pass array_cap=None
+        # and use the raw prop.Num() — the dynamic vec resizes itself.
+        upper = f"FMath::Min({prop_name}.Num(), {array_cap})" if array_cap else f"{prop_name}.Num()"
         if slot_sentinel is not None:
             # Per-slot sentinel guard: skip slots whose value equals the
             # sentinel (used for `size` so fromto-only imports don't
             # clobber the inherited default radius / earlier slots).
-            return (
-                f'    if ({toggle}) {{ for (int32 i = 0; i < {prop_name}.Num(); ++i)'
-                f' {{ if ({prop_name}[i] != {slot_sentinel}) Element->{field}[i] = {prop_name}[i]; }} }}\n'
+            return _guarded_export(toggle,
+                f'{{ for (int32 i = 0; i < {upper}; ++i)'
+                f' {{ if ({prop_name}[i] != {slot_sentinel}) Element->{field}[i] = {prop_name}[i]; }} }}',
             )
-        return (f'    if ({toggle}) {{ for (int32 i = 0; i < {prop_name}.Num(); ++i)'
-                f' Element->{field}[i] = {prop_name}[i]; }}\n')
+        return _guarded_export(toggle,
+            f'{{ for (int32 i = 0; i < {upper}; ++i)'
+            f' Element->{field}[i] = {prop_name}[i]; }}',
+        )
     if ue_type == "FVector":
-        return (f'    if ({toggle}) {{ Element->{field}[0] = {prop_name}.X;'
-                f' Element->{field}[1] = {prop_name}.Y;'
-                f' Element->{field}[2] = {prop_name}.Z; }}\n')
+        if vec3_convert == "y_negate":
+            return _guarded_export(toggle,
+                f'{{ Element->{field}[0] = {prop_name}.X;'
+                f' Element->{field}[1] = -{prop_name}.Y;'
+                f' Element->{field}[2] = {prop_name}.Z; }}',
+            )
+        return _guarded_export(toggle,
+            f'{{ Element->{field}[0] = {prop_name}.X;'
+            f' Element->{field}[1] = {prop_name}.Y;'
+            f' Element->{field}[2] = {prop_name}.Z; }}',
+        )
     if ue_type == "FLinearColor":
-        return (f'    if ({toggle}) {{ Element->{field}[0] = {prop_name}.R;'
-                f' Element->{field}[1] = {prop_name}.G;'
-                f' Element->{field}[2] = {prop_name}.B;'
-                f' Element->{field}[3] = {prop_name}.A; }}\n')
+        return _guarded_export(toggle,
+            f'{{ Element->{field}[0] = {prop_name}.R;'
+            f' Element->{field}[1] = {prop_name}.G;'
+            f' Element->{field}[2] = {prop_name}.B;'
+            f' Element->{field}[3] = {prop_name}.A; }}',
+        )
     if ue_type == "FString":
-        return (f'    if ({toggle} && !{prop_name}.IsEmpty())'
-                f' mjs_setString(Element->{field}, TCHAR_TO_UTF8(*{prop_name}));\n')
+        # MjSetString (Public/MuJoCo/Utils/MjUtils.h) internally skips empty
+        # FStrings, so the previous `!X.IsEmpty()` guard collapses into the
+        # helper. Toggle-guard stays.
+        return _guarded_export(toggle, f'MjSetString(Element->{field}, {prop_name});')
     if ue_type == "bool":
-        return f'    if ({toggle}) Element->{field} = {prop_name} ? 1 : 0;\n'
-    return f'    if ({toggle}) Element->{field} = {prop_name};\n'
+        return _guarded_export(toggle, f'Element->{field} = {prop_name} ? 1 : 0;')
+    return _guarded_export(toggle, f'Element->{field} = {prop_name};')
 
 
 # --- unit conversion ----------------------------------------------------------
@@ -425,25 +522,21 @@ def _emit_unit_conversion_export(
         return ""
     inner = "\n".join(branches)
     if is_array:
-        return (
-            f"    if ({toggle})\n"
-            f"    {{\n"
+        body = (
             f"        for (int32 i = 0; i < {prop_name}.Num(); ++i)\n"
             f"        {{\n"
             f"            float V = {prop_name}[i];\n"
             f"{inner}\n"
             f"            Element->{mjs_field}[i] = (mjtNum)V;\n"
             f"        }}\n"
-            f"    }}\n"
         )
-    return (
-        f"    if ({toggle})\n"
-        f"    {{\n"
-        f"        float V = {prop_name};\n"
-        f"{inner}\n"
-        f"        Element->{mjs_field} = (mjtNum)V;\n"
-        f"    }}\n"
-    )
+    else:
+        body = (
+            f"        float V = {prop_name};\n"
+            f"{inner}\n"
+            f"        Element->{mjs_field} = (mjtNum)V;\n"
+        )
+    return _guarded_export(toggle, body, multiline=True)
 
 
 def _emit_unit_conversion_block(
@@ -493,12 +586,7 @@ def _emit_unit_conversion_block(
     if not branches:
         return ""
     body_lines = "\n".join(branches)
-    return (
-        f"    if ({toggle})\n"
-        f"    {{\n"
-        f"{body_lines}\n"
-        f"    }}\n"
-    )
+    return _guarded_export(toggle, f"{body_lines}\n", multiline=True)
 
 
 def _emit_target_collation_import(prop_name: str, absorbs_attrs: Sequence[str]) -> str:
@@ -524,28 +612,22 @@ def _emit_target_collation_import(prop_name: str, absorbs_attrs: Sequence[str]) 
 
 
 def _emit_target_collation_export(prop_name: str, mjs_field: str) -> str:
-    return (
-        f'    if (!{prop_name}.IsEmpty()) '
-        f'mjs_setString(Element->{mjs_field}, TCHAR_TO_UTF8(*{prop_name}));\n'
-    )
+    # MjSetString skips empty FStrings internally; preserves the existing
+    # "only write when set" semantics without the explicit guard.
+    return f'    MjSetString(Element->{mjs_field}, {prop_name});\n'
 
 
 def _emit_double_vec_export(attr: str, prop_name: str, mjs_field: str) -> str:
     """Emit export for an attr whose mjs counterpart is a ``mjDoubleVec*``
     (std::vector<double>*) — used by mjsKey for qpos/qvel/act/ctrl/mpos/mquat.
 
-    The mjs side requires ``->clear()`` + ``->push_back()`` per element, not
-    the standard ``Element->X[i] = X[i]`` pattern. Pre-condition: Element
-    field is non-null (mjs allocates the vector pointers on element create).
+    Delegates to ``MjSetDoubleVec`` (Public/MuJoCo/Utils/MjUtils.h) which
+    handles the ``clear() + push_back`` boilerplate. The helper accepts
+    a null Dest so we don't need the ``&& Element->X`` guard at the
+    call site.
     """
     toggle = override_toggle_name(prop_name)
-    return (
-        f"    if ({toggle} && Element->{mjs_field})\n"
-        f"    {{\n"
-        f"        Element->{mjs_field}->clear();\n"
-        f"        for (float V : {prop_name}) Element->{mjs_field}->push_back((double)V);\n"
-        f"    }}\n"
-    )
+    return f"    if ({toggle}) MjSetDoubleVec(Element->{mjs_field}, {prop_name});\n"
 
 
 def _emit_data_packed_export(attr: str, packed_def: Dict[str, Any],
@@ -568,7 +650,6 @@ def _emit_data_packed_export(attr: str, packed_def: Dict[str, Any],
     target = packed_def.get("target", "data")
     condition = packed_def.get("condition")
     toggle = override_toggle_name(prop_name)
-    inner_cond = toggle if condition is None else f"({condition}) && {toggle}"
 
     export_op_name = packed_def.get("export_op")
     op_body = ""
@@ -580,23 +661,23 @@ def _emit_data_packed_export(attr: str, packed_def: Dict[str, Any],
             )
         op_body = op["per_elem"]
 
+    def _wrap(body: str) -> str:
+        return _guarded_export(toggle, body,
+                               extra_cond=condition,
+                               extra_cond_first=True,
+                               multiline=True)
+
     if "slot" in packed_def:
         slot = packed_def["slot"]
         if op_body:
-            return (
-                f"    if ({inner_cond})\n"
-                f"    {{\n"
+            body = (
                 f"        float V = (float){prop_name};\n"
                 f"        {op_body}\n"
                 f"        Element->{target}[{slot}] = (mjtNum)V;\n"
-                f"    }}\n"
             )
-        return (
-            f"    if ({inner_cond})\n"
-            f"    {{\n"
-            f"        Element->{target}[{slot}] = (mjtNum){prop_name};\n"
-            f"    }}\n"
-        )
+            return _wrap(body)
+        body = f"        Element->{target}[{slot}] = (mjtNum){prop_name};\n"
+        return _wrap(body)
     if "slot_range" in packed_def:
         start, end = packed_def["slot_range"]
         count = end - start
@@ -605,25 +686,24 @@ def _emit_data_packed_export(attr: str, packed_def: Dict[str, Any],
                 f"mjs_data_packed_attrs '{attr}': slot_range requires UE TArray; got {ue_type}"
             )
         if op_body:
-            return (
-                f"    if ({inner_cond})\n"
-                f"    {{\n"
+            body = (
                 f"        for (int32 i = 0; i < {prop_name}.Num() && i < {count}; ++i)\n"
                 f"        {{\n"
                 f"            float V = {prop_name}[i];\n"
                 f"            {op_body}\n"
                 f"            Element->{target}[{start} + i] = (mjtNum)V;\n"
                 f"        }}\n"
-                f"    }}\n"
             )
-        return (
-            f"    if ({inner_cond})\n"
-            f"    {{\n"
+            return _wrap(body)
+        body = (
             f"        for (int32 i = 0; i < {prop_name}.Num() && i < {count}; ++i)\n"
             f"            Element->{target}[{start} + i] = (mjtNum){prop_name}[i];\n"
-            f"    }}\n"
         )
+        return _wrap(body)
     raise RuntimeError(f"mjs_data_packed_attrs '{attr}': must specify either 'slot' or 'slot_range'")
+
+
+# `_resolve_value_map` lives in `_codegen_core`.
 
 
 def _emit_xml_enum_import(attr: str, enum_def: Dict[str, Any]) -> str:
@@ -640,26 +720,87 @@ def _emit_xml_enum_import(attr: str, enum_def: Dict[str, Any]) -> str:
         }
     """
     ue_prop = enum_def["ue_property"]
-    value_map: Dict[str, Sequence[str]] = enum_def["value_map"]
+    value_map: Dict[str, Sequence[str]] = _resolve_value_map(attr, enum_def)
     has_toggle = enum_def.get("has_override_toggle", True)
     ue_enum_type = enum_def.get("ue_enum_type", "")
     lines: List[str] = []
     lines.append(f'    {{ // xml_enum: {attr} -> {ue_enum_type or ue_prop}')
     lines.append(f'        FString S = Node->GetAttribute(TEXT("{attr}"));')
     lines.append("        S = S.ToLower();")
+    # Toggle fires only when a known XML value matched. A typo'd value
+    # (e.g. ``type="hindge"``) used to silently set the toggle on the
+    # UE-default enum value — misleadingly signalling "user overrode this"
+    # while actually masking the typo.
+    if has_toggle:
+        lines.append("        bool bMatched = false;")
     branches: List[str] = []
     for xml_val, mapping in value_map.items():
-        ue_enum_member = mapping[0] if isinstance(mapping, list) else mapping
+        ue_enum_member = mapping[0]
         prefix = "else if " if branches else "if      "
+        match_assign = " bMatched = true;" if has_toggle else ""
         branches.append(
-            f'        {prefix}(S == TEXT("{xml_val}")) {ue_prop} = '
-            f'{ue_enum_type}::{ue_enum_member};'
+            f'        {prefix}(S == TEXT("{xml_val}")) '
+            f'{{ {ue_prop} = {ue_enum_type}::{ue_enum_member};{match_assign} }}'
         )
     lines.extend(branches)
     if has_toggle:
         toggle = override_toggle_name(ue_prop)
-        lines.append(f"        if (!S.IsEmpty()) {toggle} = true;")
+        lines.append(f"        if (bMatched) {toggle} = true;")
     lines.append("    }")
+    return "\n".join(lines) + "\n"
+
+
+def emit_enum_switch(
+    discriminator: str,
+    enum_name: str,
+    cases: Sequence[Tuple[Any, str]],
+    *,
+    indent: str = "    ",
+    default_break: bool = False,
+    default_body: Optional[str] = None,
+) -> str:
+    """Emit ``switch (discriminator) { case Enum::M: <body>; break; ... }``.
+
+    ``cases`` is a sequence of ``(member_or_members, body)`` pairs:
+      - When ``member_or_members`` is a ``str``, the case label + body +
+        break collapse onto one line: ``case Enum::M: <body>; break;``.
+      - When it is a sequence of strings (multi-key group, e.g. objtype
+        dispatch's BODY/XBODY → ``mjOBJ_BODY``), the case labels stack
+        and the body / break go on separate indented lines:
+          ``case Enum::A:``
+          ``case Enum::B:``
+          ``    <body>;``
+          ``    break;``
+
+    ``default_break=True`` appends a single-line ``default: break;``.
+    ``default_body`` (when set) appends a multi-line ``default:`` arm
+    with that body. ``default_break`` is ignored if ``default_body`` is
+    given.
+
+    All lines are prefixed with ``indent``; case labels use
+    ``indent + 4 spaces``; multi-line bodies use ``indent + 8 spaces``.
+    Result ends with a trailing newline.
+    """
+    inner = indent + "    "
+    body_indent = inner + "    "
+    lines: List[str] = []
+    lines.append(f"{indent}switch ({discriminator})")
+    lines.append(f"{indent}{{")
+    for members, body in cases:
+        if isinstance(members, str):
+            lines.append(f"{inner}case {enum_name}::{members}: {body}; break;")
+            continue
+        for m in members:
+            lines.append(f"{inner}case {enum_name}::{m}:")
+        lines.append(f"{body_indent}{body};")
+        lines.append(f"{body_indent}break;")
+    if default_body is not None:
+        lines.append(f"{inner}default:")
+        lines.append(f"{body_indent}{default_body};")
+        lines.append(f"{body_indent}break;")
+    elif default_break:
+        lines.append(f"{inner}default: break;")
+    lines.append(f"{indent}}}")
     return "\n".join(lines) + "\n"
 
 
@@ -677,213 +818,635 @@ def _emit_xml_enum_export(attr: str, enum_def: Dict[str, Any]) -> str:
     """
     ue_prop = enum_def["ue_property"]
     ue_enum_type = enum_def.get("ue_enum_type", "")
-    value_map: Dict[str, Sequence[str]] = enum_def["value_map"]
+    value_map: Dict[str, Sequence[str]] = _resolve_value_map(attr, enum_def)
     mjs_field = enum_def.get("mjs_field")
     if not mjs_field:
         return ""
     mjs_cast = enum_def.get("mjs_cast", "")
     has_toggle = enum_def.get("has_override_toggle", True)
     indent = "        " if has_toggle else "    "
-    lines: List[str] = []
-    if has_toggle:
-        toggle = override_toggle_name(ue_prop)
-        lines.append(f"    if ({toggle})")
-        lines.append("    {")
-    lines.append(f"{indent}switch ({ue_prop})")
-    lines.append(f"{indent}{{")
+    cases: List[Tuple[Any, str]] = []
     for _, mapping in value_map.items():
         if not isinstance(mapping, list) or len(mapping) < 2:
             raise RuntimeError(
                 f"xml_enum {attr}: value_map entries must be [UE_enum, mj_const]; got {mapping!r}"
             )
         ue_enum_member, mj_const = mapping[0], mapping[1]
-        cast_lhs = f"Element->{mjs_field}"
         cast_expr = f"({mjs_cast}){mj_const}" if mjs_cast else mj_const
-        lines.append(
-            f"{indent}    case {ue_enum_type}::{ue_enum_member}: {cast_lhs} = {cast_expr}; break;"
-        )
-    lines.append(f"{indent}    default: break;")
-    lines.append(f"{indent}}}")
+        cases.append((ue_enum_member, f"Element->{mjs_field} = {cast_expr}"))
+    switch_body = emit_enum_switch(
+        ue_prop, ue_enum_type, cases,
+        indent=indent, default_break=True,
+    )
     if has_toggle:
-        lines.append("    }")
-    return "\n".join(lines) + "\n"
+        toggle = override_toggle_name(ue_prop)
+        return _guarded_export(toggle, switch_body, multiline=True)
+    return switch_body
 
 
-def _canon_property_block(canon_name: str, canon_def: Dict[str, Any], category_label: str) -> str:
+def _canon_property_block(canon_name: str, canon_def: Dict[str, Any],
+                          category_label: str,
+                          hide_from_details: bool = False) -> str:
     prop = canon_def.get("emits_property")
     if not prop:
         return ""
     return _emit_uproperty(prop["name"], prop["type"], category_label,
-                           sub_category=canon_name.replace("_", " ").title())
+                           sub_category=canon_name.replace("_", " ").title(),
+                           hide_from_details=hide_from_details)
+
+
+# ---------------------------------------------------------------------------
+# Canonicalisation registry
+#
+# Five canonicalisations collapse multiple raw MJCF attrs into one URLab
+# property: spatial_pose (pos -> Pos), orientation (quat/euler/etc -> Quat),
+# fromto_decompose (fromto -> Pos/Quat/size), body_sleep_policy (sleep ->
+# SleepPolicy enum), actuator_transmission (joint/tendon/site/... ->
+# TransmissionType + names). The previous design hard-coded each as an
+# if-branch in _canon_import_block / _canon_export_block; a new rule
+# entry without a matching branch silently dropped its emission. The
+# registry below is the single source of truth.
+# ---------------------------------------------------------------------------
+
+
+def _canon_import_body_sleep_policy(canon_def, element_name) -> str:
+    return (
+        '    { // canonicalize body.sleep -> EMjBodySleepPolicy + bOverride_SleepPolicy\n'
+        '        FString S = Node->GetAttribute(TEXT("sleep"));\n'
+        '        S = S.ToLower();\n'
+        '        if      (S == TEXT("never"))   { SleepPolicy = EMjBodySleepPolicy::Never;      bOverride_SleepPolicy = true; }\n'
+        '        else if (S == TEXT("allowed")) { SleepPolicy = EMjBodySleepPolicy::Allowed;    bOverride_SleepPolicy = true; }\n'
+        '        else if (S == TEXT("init"))    { SleepPolicy = EMjBodySleepPolicy::InitAsleep; bOverride_SleepPolicy = true; }\n'
+        '    }\n'
+    )
+
+
+def _canon_import_actuator_transmission(canon_def, element_name) -> str:
+    return (
+        '    { // canonicalize actuator transmission attrs\n'
+        '        FString TrnTarget;\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("joint"), TrnTarget))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::Joint;\n'
+        '            TargetName = TrnTarget;\n'
+        '        }\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("jointinparent"), TrnTarget))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::JointInParent;\n'
+        '            TargetName = TrnTarget;\n'
+        '        }\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("tendon"), TrnTarget))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::Tendon;\n'
+        '            TargetName = TrnTarget;\n'
+        '        }\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("site"), TrnTarget))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::Site;\n'
+        '            TargetName = TrnTarget;\n'
+        '        }\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("body"), TrnTarget))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::Body;\n'
+        '            TargetName = TrnTarget;\n'
+        '        }\n'
+        '        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);\n'
+        '        // SliderSite must run AFTER the main-target reads so it\n'
+        '        // overrides the transmission type while preserving the\n'
+        '        // TargetName captured above (per MJCF: slider-crank carries\n'
+        '        // a main target attr PLUS slidersite).\n'
+        '        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))\n'
+        '        {\n'
+        '            TransmissionType = EMjActuatorTrnType::SliderCrank;\n'
+        '        }\n'
+        '    }\n'
+    )
+
+
+def _canon_import_fromto_decompose(canon_def, element_name) -> str:
+    helper = canon_def["import_helper"]
+    cat_spec = canon_def.get("category_specifics", {}).get(element_name, {})
+    z_slot_check = cat_spec.get("z_slot_check", "false")
+    return (
+        f'    {{ // canonicalize fromto -> Pos/Quat/size half-length\n'
+        f'        FVector FTPos; FQuat FTQuat; float FTHalf = 0.f;\n'
+        f'        if ({helper}(Node, FTPos, FTQuat, FTHalf))\n'
+        f'        {{\n'
+        f'            Pos = FTPos; bOverride_Pos = true;\n'
+        f'            Quat = FTQuat; bOverride_Quat = true;\n'
+        f'            const bool bFTZSlot = {z_slot_check};\n'
+        f'            const int32 FTSlot = bFTZSlot ? 2 : 1;\n'
+        f'            while (size.Num() <= FTSlot) {{ size.Add(-1.0f); }}\n'
+        f'            size[FTSlot] = FTHalf;\n'
+        f'            bOverride_size = true;\n'
+        f'        }}\n'
+        f'    }}\n'
+    )
+
+
+def _canon_import_orientation(canon_def, element_name) -> str:
+    prop = canon_def.get("emits_property")
+    helper = canon_def["import_helper"]
+    return (
+        f'    {{ // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)\n'
+        f'        double TmpQuat[4] = {{1.0, 0.0, 0.0, 0.0}};\n'
+        f'        if ({helper}(Node, CompilerSettings, TmpQuat))\n'
+        f'        {{\n'
+        f'            {prop["name"]} = MjUtils::MjToUERotation(TmpQuat);\n'
+        f'            {override_toggle_name(prop["name"])} = true;\n'
+        f'        }}\n'
+        f'    }}\n'
+    )
+
+
+def _canon_import_spatial_pose(canon_def, element_name) -> str:
+    prop = canon_def.get("emits_property")
+    helper = canon_def["import_helper"]
+    return (
+        f'    {helper}(Node, TEXT("pos"), {prop["name"]}, {override_toggle_name(prop["name"])});\n'
+    )
+
+
+def _canon_export_body_sleep_policy(canon_def) -> str:
+    return _guarded_export(
+        "bOverride_SleepPolicy",
+        "        Element->sleep = static_cast<mjtSleepPolicy>(static_cast<uint8>(SleepPolicy));\n",
+        multiline=True,
+    )
+
+
+def _canon_export_actuator_transmission(canon_def) -> str:
+    return (
+        '    MjSetString(Element->target, TargetName);\n'
+        '    switch (TransmissionType)\n'
+        '    {\n'
+        '        case EMjActuatorTrnType::Joint:          Element->trntype = mjTRN_JOINT;         break;\n'
+        '        case EMjActuatorTrnType::JointInParent:  Element->trntype = mjTRN_JOINTINPARENT; break;\n'
+        '        case EMjActuatorTrnType::SliderCrank:    Element->trntype = mjTRN_SLIDERCRANK;   break;\n'
+        '        case EMjActuatorTrnType::Tendon:         Element->trntype = mjTRN_TENDON;        break;\n'
+        '        case EMjActuatorTrnType::Site:           Element->trntype = mjTRN_SITE;          break;\n'
+        '        case EMjActuatorTrnType::Body:           Element->trntype = mjTRN_BODY;          break;\n'
+        '        default:                                 Element->trntype = mjTRN_UNDEFINED;     break;\n'
+        '    }\n'
+        '    if (TransmissionType == EMjActuatorTrnType::SliderCrank && !SliderSite.IsEmpty())\n'
+        '    {\n'
+        '        MjSetStringRaw(Element->slidersite, SliderSite);\n'
+        '    }\n'
+        '    if (TransmissionType == EMjActuatorTrnType::Site && !RefSite.IsEmpty())\n'
+        '    {\n'
+        '        MjSetStringRaw(Element->refsite, RefSite);\n'
+        '    }\n'
+    )
+
+
+def _canon_export_fromto_decompose(canon_def) -> str:
+    # fromto resolves to Pos/Quat/Size on import — those properties carry
+    # the values through to export via their own canonicalisations.
+    return ""
+
+
+def _canon_export_orientation(canon_def) -> str:
+    prop = canon_def.get("emits_property")
+    helper = canon_def.get("export_helper")
+    return _guarded_export(
+        override_toggle_name(prop["name"]),
+        f'        double TmpQuat[4];\n'
+        f'        {helper}({prop["name"]}, TmpQuat);\n'
+        f'        Element->quat[0] = TmpQuat[0]; Element->quat[1] = TmpQuat[1];\n'
+        f'        Element->quat[2] = TmpQuat[2]; Element->quat[3] = TmpQuat[3];\n',
+        multiline=True,
+    )
+
+
+def _canon_export_spatial_pose(canon_def) -> str:
+    prop = canon_def.get("emits_property")
+    helper = canon_def.get("export_helper")
+    return _guarded_export(
+        override_toggle_name(prop["name"]),
+        f'        double TmpPos[3];\n'
+        f'        {helper}({prop["name"]}, TmpPos);\n'
+        f'        Element->pos[0] = TmpPos[0]; Element->pos[1] = TmpPos[1]; Element->pos[2] = TmpPos[2];\n',
+        multiline=True,
+    )
+
+
+@dataclass(frozen=True)
+class Canonicalisation:
+    """One canonicalisation's import + export emitters. Looked up by
+    canon name from `codegen_rules.json[canonicalizations]`. The
+    importer takes (canon_def, element_name) and returns C++ text;
+    the exporter takes (canon_def) and returns C++ text."""
+    name:   str
+    import_emitter: Callable[[Dict[str, Any], str], str]
+    export_emitter: Callable[[Dict[str, Any]], str]
+
+
+_CANONICALISATIONS: Dict[str, Canonicalisation] = {
+    c.name: c for c in [
+        Canonicalisation("body_sleep_policy",
+                         _canon_import_body_sleep_policy,
+                         _canon_export_body_sleep_policy),
+        Canonicalisation("actuator_transmission",
+                         _canon_import_actuator_transmission,
+                         _canon_export_actuator_transmission),
+        Canonicalisation("fromto_decompose",
+                         _canon_import_fromto_decompose,
+                         _canon_export_fromto_decompose),
+        Canonicalisation("orientation",
+                         _canon_import_orientation,
+                         _canon_export_orientation),
+        Canonicalisation("spatial_pose",
+                         _canon_import_spatial_pose,
+                         _canon_export_spatial_pose),
+    ]
+}
 
 
 def _canon_import_block(canon_name: str, canon_def: Dict[str, Any], element_name: str = "") -> str:
-    prop = canon_def.get("emits_property")
-    helper = canon_def["import_helper"]
-    if canon_name == "body_sleep_policy":
-        # MJCF body.sleep is a string ("never"/"allowed"/"init"); map to URLab's
-        # EMjBodySleepPolicy. Absent attr leaves SleepPolicy at its default
-        # (Default = let the global option decide).
-        return (
-            '    { // canonicalize body.sleep -> EMjBodySleepPolicy\n'
-            '        FString S = Node->GetAttribute(TEXT("sleep"));\n'
-            '        S = S.ToLower();\n'
-            '        if      (S == TEXT("never"))   SleepPolicy = EMjBodySleepPolicy::Never;\n'
-            '        else if (S == TEXT("allowed")) SleepPolicy = EMjBodySleepPolicy::Allowed;\n'
-            '        else if (S == TEXT("init"))    SleepPolicy = EMjBodySleepPolicy::InitAsleep;\n'
-            '    }\n'
+    entry = _CANONICALISATIONS.get(canon_name)
+    if entry is None:
+        _diag_add(
+            f"[diagnostic] canonicalization '{canon_name}' has a rule entry "
+            f"but no registry entry in _CANONICALISATIONS; per-element XML "
+            f"import for absorbed attrs will be silently dropped.",
+            source="canon_dispatch",
         )
-    if canon_name == "actuator_transmission":
-        # MJCF actuators encode transmission via {joint,tendon,site,body,
-        # jointinparent} (target name) + optional {slidersite, refsite}.
-        # Collapse into URLab's TransmissionType enum + Target/Slider/RefSite
-        # strings. First match wins (matches the legacy ordering).
-        return (
-            '    { // canonicalize actuator transmission attrs\n'
-            '        FString TrnTarget;\n'
-            '        if (MjXmlUtils::ReadAttrString(Node, TEXT("joint"), TrnTarget))\n'
-            '        {\n'
-            '            TransmissionType = EMjActuatorTrnType::Joint;\n'
-            '            TargetName = TrnTarget;\n'
-            '        }\n'
-            '        if (MjXmlUtils::ReadAttrString(Node, TEXT("jointinparent"), TrnTarget))\n'
-            '        {\n'
-            '            TransmissionType = EMjActuatorTrnType::JointInParent;\n'
-            '            TargetName = TrnTarget;\n'
-            '        }\n'
-            '        if (MjXmlUtils::ReadAttrString(Node, TEXT("tendon"), TrnTarget))\n'
-            '        {\n'
-            '            TransmissionType = EMjActuatorTrnType::Tendon;\n'
-            '            TargetName = TrnTarget;\n'
-            '        }\n'
-            '        if (MjXmlUtils::ReadAttrString(Node, TEXT("slidersite"), SliderSite))\n'
-            '        {\n'
-            '            TransmissionType = EMjActuatorTrnType::SliderCrank;\n'
-            '        }\n'
-            '        if (MjXmlUtils::ReadAttrString(Node, TEXT("site"), TrnTarget))\n'
-            '        {\n'
-            '            TransmissionType = EMjActuatorTrnType::Site;\n'
-            '            TargetName = TrnTarget;\n'
-            '        }\n'
-            '        MjXmlUtils::ReadAttrString(Node, TEXT("refsite"), RefSite);\n'
-            '        if (MjXmlUtils::ReadAttrString(Node, TEXT("body"), TrnTarget))\n'
-            '        {\n'
-            '            TransmissionType = EMjActuatorTrnType::Body;\n'
-            '            TargetName = TrnTarget;\n'
-            '        }\n'
-            '    }\n'
-        )
-    if canon_name == "fromto_decompose":
-        # MJCF's `fromto="x1 y1 z1 x2 y2 z2"` is decomposed into URLab's
-        # canonical Pos/Quat plus a half-length scalar that lands in either
-        # size[1] or size[2] of the codegen-owned TArray, depending on shape
-        # Type. Slots before the half-length slot are filled with the
-        # ``-1.0f`` sentinel so the per-attr export skips them (preserves
-        # the parent default class's radius / earlier-slot defaults — the
-        # fromto-only XML form does NOT specify the radius).
-        cat_spec = canon_def.get("category_specifics", {}).get(element_name, {})
-        z_slot_check = cat_spec.get("z_slot_check", "false")
-        return (
-            f'    {{ // canonicalize fromto -> Pos/Quat/size half-length\n'
-            f'        FVector FTPos; FQuat FTQuat; float FTHalf = 0.f;\n'
-            f'        if ({helper}(Node, FTPos, FTQuat, FTHalf))\n'
-            f'        {{\n'
-            f'            Pos = FTPos; bOverride_Pos = true;\n'
-            f'            Quat = FTQuat; bOverride_Quat = true;\n'
-            f'            const bool bFTZSlot = {z_slot_check};\n'
-            f'            const int32 FTSlot = bFTZSlot ? 2 : 1;\n'
-            f'            while (size.Num() <= FTSlot) {{ size.Add(-1.0f); }}\n'
-            f'            size[FTSlot] = FTHalf;\n'
-            f'            bOverride_size = true;\n'
-            f'        }}\n'
-            f'    }}\n'
-        )
-    if canon_name == "orientation":
-        # OrientationToMjQuat(Node, CompilerSettings, double OutQuat[4]) -> bool
-        # MjToUERotation applies the wxyz->xyzw reorder AND the X/Z sign-flip
-        # for the RHS-to-LHS handedness conversion. Storing the result in the
-        # UPROPERTY gives a valid UE-frame rotation usable by SetRelativeRotation
-        # and visible in the details panel.
-        return (
-            f'    {{ // canonicalize orientation (quat/euler/axisangle/xyaxes/zaxis)\n'
-            f'        double TmpQuat[4] = {{1.0, 0.0, 0.0, 0.0}};\n'
-            f'        if ({helper}(Node, CompilerSettings, TmpQuat))\n'
-            f'        {{\n'
-            f'            {prop["name"]} = MjUtils::MjToUERotation(TmpQuat);\n'
-            f'            {override_toggle_name(prop["name"])} = true;\n'
-            f'        }}\n'
-            f'    }}\n'
-        )
-    if canon_name == "spatial_pose":
-        # ReadVec3InMeters(Node, key, OutVec, bOutHasField)
-        return (
-            f'    {helper}(Node, TEXT("pos"), {prop["name"]}, {override_toggle_name(prop["name"])});\n'
-        )
-    return ""
+        return ""
+    return entry.import_emitter(canon_def, element_name)
 
 
 def _canon_export_block(canon_name: str, canon_def: Dict[str, Any]) -> str:
-    prop = canon_def.get("emits_property")
-    helper = canon_def.get("export_helper")
-    if canon_name == "body_sleep_policy":
-        # Only write to mjsBody.sleep when the user chose a non-Default policy.
-        # Default lets the global AAMjManager option decide.
-        return (
-            '    if (SleepPolicy != EMjBodySleepPolicy::Default)\n'
-            '    {\n'
-            '        Element->sleep = static_cast<mjtSleepPolicy>(static_cast<uint8>(SleepPolicy));\n'
-            '    }\n'
+    entry = _CANONICALISATIONS.get(canon_name)
+    if entry is None:
+        _diag_add(
+            f"[diagnostic] canonicalization '{canon_name}' has a rule entry "
+            f"but no registry entry in _CANONICALISATIONS; per-element mjs "
+            f"export for absorbed attrs will be silently dropped.",
+            source="canon_dispatch",
         )
-    if canon_name == "actuator_transmission":
-        # Write the URLab transmission state back to mjsActuator fields. Strings
-        # are only written when non-empty (mjs_setString must not be called on
-        # an empty FString — its TCHAR_TO_UTF8 buffer would dangle).
-        return (
-            '    if (!TargetName.IsEmpty()) mjs_setString(Element->target, TCHAR_TO_UTF8(*TargetName));\n'
-            '    switch (TransmissionType)\n'
-            '    {\n'
-            '        case EMjActuatorTrnType::Joint:          Element->trntype = mjTRN_JOINT;         break;\n'
-            '        case EMjActuatorTrnType::JointInParent:  Element->trntype = mjTRN_JOINTINPARENT; break;\n'
-            '        case EMjActuatorTrnType::SliderCrank:    Element->trntype = mjTRN_SLIDERCRANK;   break;\n'
-            '        case EMjActuatorTrnType::Tendon:         Element->trntype = mjTRN_TENDON;        break;\n'
-            '        case EMjActuatorTrnType::Site:           Element->trntype = mjTRN_SITE;          break;\n'
-            '        case EMjActuatorTrnType::Body:           Element->trntype = mjTRN_BODY;          break;\n'
-            '        default:                                 Element->trntype = mjTRN_UNDEFINED;     break;\n'
-            '    }\n'
-            '    if (TransmissionType == EMjActuatorTrnType::SliderCrank && !SliderSite.IsEmpty())\n'
-            '    {\n'
-            '        mjs_setString(Element->slidersite, TCHAR_TO_UTF8(*SliderSite));\n'
-            '    }\n'
-            '    if (TransmissionType == EMjActuatorTrnType::Site && !RefSite.IsEmpty())\n'
-            '    {\n'
-            '        mjs_setString(Element->refsite, TCHAR_TO_UTF8(*RefSite));\n'
-            '    }\n'
-        )
-    if canon_name == "fromto_decompose":
-        # fromto resolves to Pos/Quat/Size on import — those properties carry
-        # the values through to export via their own canonicalisations. No
-        # export-side emission needed here.
         return ""
-    if canon_name == "orientation":
-        return (
-            f'    if ({override_toggle_name(prop["name"])})\n'
-            f'    {{\n'
-            f'        double TmpQuat[4];\n'
-            f'        {helper}({prop["name"]}, TmpQuat);\n'
-            f'        Element->quat[0] = TmpQuat[0]; Element->quat[1] = TmpQuat[1];\n'
-            f'        Element->quat[2] = TmpQuat[2]; Element->quat[3] = TmpQuat[3];\n'
-            f'    }}\n'
+    return entry.export_emitter(canon_def)
+
+
+# ---------------------------------------------------------------------------
+# Property-block emitters
+#
+# emit_schema_for_attrs used to inline both the canonicalisation property
+# loop and the per-attr property loop. They're factored out here so the
+# orchestration in emit_schema_for_attrs reads as "props + imports +
+# exports" instead of one 400-line function.
+# ---------------------------------------------------------------------------
+
+
+def _emit_canon_property_block(
+    elem_canons: List[str],
+    canonicalizations: Dict[str, Any],
+    category_label: str,
+    hidden_canons: Set[str],
+) -> str:
+    """Emit canonicalisation-owned UPROPERTY blocks at the top of the
+    component so the canonical authoring surface (Pos / Quat / etc)
+    appears first in the Details panel."""
+    out = ""
+    for c in elem_canons:
+        cd = canonicalizations.get(c)
+        if not cd:
+            continue
+        out += _canon_property_block(
+            c, cd, category_label,
+            hide_from_details=(c in hidden_canons),
         )
-    if canon_name == "spatial_pose":
-        return (
-            f'    if ({override_toggle_name(prop["name"])})\n'
-            f'    {{\n'
-            f'        double TmpPos[3];\n'
-            f'        {helper}({prop["name"]}, TmpPos);\n'
-            f'        Element->pos[0] = TmpPos[0]; Element->pos[1] = TmpPos[1]; Element->pos[2] = TmpPos[2];\n'
-            f'    }}\n'
+    return out
+
+
+def _emit_per_attr_property_block(
+    attrs: Sequence[str],
+    elem_rules: Dict[str, Any],
+    type_map: Dict[str, str],
+    default_type: str,
+    renames: Dict[str, str],
+    category_label: str,
+    *,
+    global_excl: Set[str],
+    elem_excl: Set[str],
+    canon_absorbed: Set[str],
+    xml_enum_attr_names: Set[str],
+    hidden_attrs: Set[str],
+) -> str:
+    """Emit per-attr UPROPERTY blocks (the bulk of the component's
+    Details panel). Attrs handled by xml_enum_attrs are skipped — those
+    use a hand-declared URLab enum UPROPERTY; codegen owns only the
+    import/export mapping.
+
+    ``property_units`` lowers to UE-native ``Units="m"`` meta on numeric
+    scalars/structs; on TArray/FString/FLinearColor it lowers to a
+    custom ``MjUnit="m"`` meta tag the URLab detail customization reads
+    at runtime (UHT rejects Units on those types)."""
+    prop_meta: Dict[str, str] = elem_rules.get("property_meta", {})
+    property_defaults: Dict[str, str] = elem_rules.get("property_defaults", {})
+    property_units: Dict[str, str] = elem_rules.get("property_units", {})
+    out = ""
+    for attr in iter_category_attrs(attrs, global_excl=global_excl,
+                                     elem_excl=elem_excl,
+                                     canon_absorbed=canon_absorbed,
+                                     extra_excl=xml_enum_attr_names):
+        ue_type = type_map.get(attr, default_type)
+        prop_name = renames.get(attr, attr)
+        attr_meta_parts: List[str] = []
+        if prop_meta.get(attr):
+            attr_meta_parts.append(prop_meta[attr])
+        unit = property_units.get(attr) or property_units.get(prop_name)
+        if unit:
+            if _ue_type_accepts_units_meta(ue_type):
+                attr_meta_parts.append(f'Units="{unit}"')
+            else:
+                attr_meta_parts.append(f'MjUnit="{unit}"')
+        out += _emit_uproperty(
+            prop_name, ue_type, category_label,
+            extra_meta=", ".join(attr_meta_parts) if attr_meta_parts else None,
+            default_override=property_defaults.get(attr) or property_defaults.get(prop_name),
+            hide_from_details=(attr in hidden_attrs or prop_name in hidden_attrs),
         )
-    return ""
+    return out
+
+
+def _emit_xml_enum_property_decls(
+    elem_rules: Dict[str, Any],
+    category_label: str,
+    *,
+    apply_canonicalizations: bool,
+) -> str:
+    """Emit UPROPERTY decls for xml_enum_attrs entries that opt in via
+    ``emit_property_decl: true``. URLab usually hand-declares the
+    UE-side enum properties (e.g. ``EMjJointType Type`` in MjJoint.h);
+    the codegen-owned path is reserved for cases where the rule author
+    wants the decl + initializer to live in the rule JSON. Only fires
+    on the BASE class emission (subclasses would shadow the base decl
+    and fail UHT).
+
+    Per-rule ``property_default`` lets the enum decl take a real
+    initializer like ``EMjGainType::Fixed`` instead of the ``{}``
+    fallback. A typo'd default (``"Fxed"``) surfaces as a codegen
+    diagnostic, not a misleading UHT compile error far downstream."""
+    if not apply_canonicalizations:
+        return ""
+    out = ""
+    for attr, enum_def in elem_rules.get("xml_enum_attrs", {}).items():
+        if not enum_def.get("emit_property_decl"):
+            continue
+        ue_prop = enum_def.get("ue_property")
+        ue_enum_type = enum_def.get("ue_enum_type")
+        if not ue_prop or not ue_enum_type:
+            continue
+        prop_default = enum_def.get("property_default")
+        if prop_default:
+            value_map = enum_def.get("value_map", {})
+            valid_members = {m[0] for m in value_map.values()
+                             if isinstance(m, (list, tuple)) and m}
+            if valid_members and prop_default not in valid_members:
+                _diag_add(
+                    f"[diagnostic] xml_enum '{attr}' property_default "
+                    f"'{prop_default}' is not in value_map UE members "
+                    f"({sorted(valid_members)}); UPROPERTY default will "
+                    f"fail UHT compile.",
+                    source="property_default",
+                )
+        full_default = (
+            f"{ue_enum_type}::{prop_default}" if prop_default else None
+        )
+        out += _emit_uproperty(
+            ue_prop, ue_enum_type, category_label,
+            extra_meta=enum_def.get("property_meta"),
+            default_override=full_default,
+        )
+    return out
+
+
+def _emit_imports_block(ctx: EmissionContext) -> str:
+    """Emit the ``ImportFromXml`` body — every read-from-XML line. Order:
+    common imports prefix (name/class), xml_enum imports, per-attr
+    imports, canon imports, SetRelativeTransform driver, target-
+    collation imports, unit-conversion imports."""
+    attrs            = ctx.attrs
+    elem_rules       = ctx.elem_rules
+    type_map         = ctx.type_map
+    default_type     = ctx.default_type
+    renames          = ctx.renames
+    global_excl      = ctx.global_excl
+    elem_excl        = ctx.elem_excl
+    canon_absorbed   = ctx.canon_absorbed
+    elem_canons      = ctx.elem_canons
+    canonicalizations = ctx.canonicalizations
+    apply_canon      = ctx.apply_canonicalizations
+    xml_enum_attr_names = ctx.xml_enum_attr_names
+
+    imports = ""
+
+    # 2a) Common imports prefix (name / class) — emits at the top.
+    _COMMON_IMPORT_FIELDS = {"name": "MjName", "class": "MjClassName"}
+    common_imports_list = elem_rules.get("common_imports", []) if apply_canon else []
+    if common_imports_list:
+        common_block = ""
+        for entry in common_imports_list:
+            if isinstance(entry, str):
+                attr = entry
+                ue_field = _COMMON_IMPORT_FIELDS.get(attr, attr)
+            else:
+                attr = entry["attr"]
+                ue_field = entry.get("ue_field", _COMMON_IMPORT_FIELDS.get(attr, attr))
+            common_block += (
+                f'    MjXmlUtils::ReadAttrString(Node, TEXT("{attr}"), {ue_field});\n'
+            )
+        imports = common_block + imports
+
+    # 3a) XML enum imports first (downstream emission can depend on the
+    # resolved enum value, e.g. fromto_decompose reads Type).
+    xml_enum_attrs: Dict[str, Any] = elem_rules.get("xml_enum_attrs", {})
+    for attr, enum_def in xml_enum_attrs.items():
+        if _should_emit_xml_enum_at_this_layer(
+            attr, attrs, global_excl, apply_canonicalizations=apply_canon,
+        ):
+            imports += _emit_xml_enum_import(attr, enum_def)
+
+    # 3b) Per-attr imports.
+    vec3_convert_map: Dict[str, str] = elem_rules.get("vec3_convert", {})
+    for attr in iter_category_attrs(attrs, global_excl=global_excl,
+                                     elem_excl=elem_excl,
+                                     canon_absorbed=canon_absorbed,
+                                     extra_excl=xml_enum_attr_names):
+        ue_type = type_map.get(attr, default_type)
+        prop_name = renames.get(attr, attr)
+        imports += _emit_import_line(attr, prop_name, ue_type,
+                                     vec3_convert=vec3_convert_map.get(attr))
+
+    # 3c) Canon imports run AFTER per-attr so canons (fromto) can
+    # override individual slots.
+    for c in elem_canons:
+        cd = canonicalizations.get(c)
+        if cd:
+            imports += _canon_import_block(c, cd, element_name=ctx.element_name)
+
+    # 3d) Drive the UE component transform from the codegen-owned
+    # Pos/Quat UPROPERTYs.
+    if apply_canon:
+        if "spatial_pose" in elem_canons:
+            imports += "    if (bOverride_Pos)  SetRelativeLocation(Pos);\n"
+        if "orientation" in elem_canons:
+            imports += "    if (bOverride_Quat) SetRelativeRotation(Quat);\n"
+
+    # 4c) Target-collation imports.
+    target_collations: Dict[str, Any] = elem_rules.get("target_collations", {})
+    if apply_canon:
+        for prop_name, coll_def in target_collations.items():
+            imports += _emit_target_collation_import(
+                prop_name, coll_def.get("absorbs_attrs", [])
+            )
+
+    # 4d) Unit-conversion imports.
+    unit_conversions: Dict[str, Any] = elem_rules.get("unit_conversion", {})
+    for attr, conv_list in unit_conversions.items():
+        if attr not in attrs and not apply_canon:
+            continue
+        prop_name = renames.get(attr, attr)
+        ue_type = type_map.get(attr, default_type)
+        is_array = ue_type.startswith("TArray")
+        imports += _emit_unit_conversion_block(
+            prop_name, conv_list, side="import", is_array=is_array,
+        )
+
+    return imports
+
+
+def _emit_exports_block(ctx: EmissionContext) -> str:
+    """Emit the ``ExportTo`` body — every write-back-to-mjs line. Order:
+    canon exports, xml_enum exports, per-attr exports, data-packed
+    exports, target-collation exports, unit-conversion exports, double-
+    vec exports."""
+    attrs            = ctx.attrs
+    elem_rules       = ctx.elem_rules
+    type_map         = ctx.type_map
+    default_type     = ctx.default_type
+    renames          = ctx.renames
+    global_excl      = ctx.global_excl
+    elem_excl        = ctx.elem_excl
+    canon_absorbed   = ctx.canon_absorbed
+    elem_canons      = ctx.elem_canons
+    canonicalizations = ctx.canonicalizations
+    apply_canon      = ctx.apply_canonicalizations
+    xml_enum_attr_names = ctx.xml_enum_attr_names
+    mjs_fields       = ctx.mjs_fields
+    mjs_array_caps   = ctx.mjs_array_caps or {}
+    consumed_by_setto = ctx.consumed_by_setto
+    attr_to_mjs_field = ctx.attr_to_mjs_field
+
+    exports = ""
+    target_collations: Dict[str, Any] = elem_rules.get("target_collations", {})
+    unit_conversions: Dict[str, Any] = elem_rules.get("unit_conversion", {})
+    vec3_convert_map: Dict[str, str] = elem_rules.get("vec3_convert", {})
+
+    # 5) Canon exports first (set canonical mjs fields before per-attr
+    # tweaks). canon_export_skip opts an element out per-canon (e.g.
+    # body's pos/quat are written by MjSpecWrapper from the transform).
+    canon_export_skip = set(elem_rules.get("canon_export_skip", []))
+    for c in elem_canons:
+        if c in canon_export_skip:
+            continue
+        cd = canonicalizations.get(c)
+        if cd:
+            exports += _canon_export_block(c, cd)
+
+    # 5b) XML enum exports — same layer policy as imports (3a).
+    xml_enum_attrs: Dict[str, Any] = elem_rules.get("xml_enum_attrs", {})
+    for attr, enum_def in xml_enum_attrs.items():
+        if _should_emit_xml_enum_at_this_layer(
+            attr, attrs, global_excl, apply_canonicalizations=apply_canon,
+        ):
+            exports += _emit_xml_enum_export(attr, enum_def)
+
+    # 6) Per-attr exports.
+    data_packed_attrs: Dict[str, Any] = elem_rules.get("mjs_data_packed_attrs", {})
+    double_vec_attrs: List[str] = elem_rules.get("mjs_double_vec_attrs", [])
+    double_vec_set: set = set(double_vec_attrs)
+    sentinel_skip: Dict[str, str] = elem_rules.get("sentinel_skip_export", {})
+    export_skip_attrs: set = set(elem_rules.get("export_skip_attrs", []))
+    unit_convert_export_attrs: set = {
+        a for a, convs in unit_conversions.items()
+        if any(cv.get("export_op") for cv in convs)
+    }
+    target_collation_absorbed: set = set()
+    if apply_canon:
+        for prop_name, coll_def in target_collations.items():
+            target_collation_absorbed.update(coll_def.get("absorbs_attrs", []))
+    export_extra_excl: set = set(xml_enum_attr_names)
+    export_extra_excl |= double_vec_set
+    export_extra_excl |= unit_convert_export_attrs
+    export_extra_excl |= export_skip_attrs
+    export_extra_excl |= target_collation_absorbed
+    if apply_canon:
+        export_extra_excl |= set(data_packed_attrs.keys())
+    for attr in iter_category_attrs(attrs, global_excl=global_excl,
+                                     elem_excl=elem_excl,
+                                     canon_absorbed=canon_absorbed,
+                                     extra_excl=export_extra_excl):
+        ue_type = type_map.get(attr, default_type)
+        prop_name = renames.get(attr, attr)
+        # Cap export loops against the destination C array size so a
+        # narrower mjs field can't overrun.
+        resolved_field = _resolve_mjs_field(
+            attr, mjs_fields, attr_to_mjs_field,
+        ) if mjs_fields else (attr_to_mjs_field or {}).get(attr, attr)
+        array_cap = mjs_array_caps.get(resolved_field)
+        exports += _emit_export_line(
+            attr, prop_name, ue_type,
+            mjs_fields=mjs_fields,
+            slot_sentinel=sentinel_skip.get(attr),
+            attr_to_mjs_field=attr_to_mjs_field,
+            consumed_by_setto=consumed_by_setto,
+            vec3_convert=vec3_convert_map.get(attr),
+            array_cap=array_cap,
+        )
+
+    # 6b) Data-packed exports.
+    if apply_canon:
+        for attr, packed_def in data_packed_attrs.items():
+            ue_type = type_map.get(attr, default_type)
+            prop_name = renames.get(attr, attr)
+            exports += _emit_data_packed_export(
+                attr, packed_def, ue_type, prop_name,
+            )
+
+    # 6d) Target-collation exports.
+    if apply_canon:
+        for prop_name, coll_def in target_collations.items():
+            exports += _emit_target_collation_export(
+                prop_name, coll_def["mjs_field"],
+            )
+
+    # 6e) Unit-conversion exports.
+    for attr, conv_list in unit_conversions.items():
+        if attr not in attrs and not apply_canon:
+            continue
+        prop_name = renames.get(attr, attr)
+        ue_type = type_map.get(attr, default_type)
+        is_array = ue_type.startswith("TArray")
+        if mjs_fields:
+            mjs_field = _resolve_mjs_field(attr, mjs_fields, attr_to_mjs_field)
+        else:
+            mjs_field = (attr_to_mjs_field or {}).get(attr, attr)
+        exports += _emit_unit_conversion_export(
+            prop_name, mjs_field, conv_list, is_array=is_array,
+        )
+
+    # 6c) Double-vec exports.
+    for attr in double_vec_attrs:
+        prop_name = renames.get(attr, attr)
+        if mjs_fields:
+            mjs_field = _resolve_mjs_field(attr, mjs_fields, attr_to_mjs_field)
+        else:
+            mjs_field = (attr_to_mjs_field or {}).get(attr, attr)
+        exports += _emit_double_vec_export(attr, prop_name, mjs_field)
+
+    return exports
 
 
 def emit_schema_for_attrs(
@@ -895,6 +1458,7 @@ def emit_schema_for_attrs(
     apply_canonicalizations: bool = True,
     mjs_fields: set | None = None,
     consumed_by_setto: set | None = None,
+    mjs_array_caps: Dict[str, int] | None = None,
 ) -> EmittedSchema:
     """Emit UPROPERTY + import/export blocks for a list of schema attrs.
 
@@ -914,317 +1478,51 @@ def emit_schema_for_attrs(
     fallback "(skipped: mjs has no field)" comment to keep the emitted
     file uncluttered.
     """
-    global_excl = set(rules.get("global_exclusions", []))
-    type_map: Dict[str, str] = rules.get("type_mappings", {})
-    default_type: str = rules.get("default_type", "float")
-    renames: Dict[str, str] = rules.get("property_renames", {})
+    ctx = EmissionContext.from_call(
+        attrs, rules, element_name,
+        apply_canonicalizations=apply_canonicalizations,
+        mjs_fields=mjs_fields,
+        consumed_by_setto=consumed_by_setto,
+        mjs_array_caps=mjs_array_caps,
+    )
+    elem_rules = ctx.elem_rules
+    hidden_canons: set = set(elem_rules.get("hidden_canon_properties", []))
+    hidden_attrs:  set = set(elem_rules.get("hidden_attrs", []))
 
-    elem_rules: Dict[str, Any] = rules.get("element_rules", {}).get(element_name, {})
-    elem_excl = set(elem_rules.get("exclude_attrs", []))
-    elem_canons: List[str] = elem_rules.get("applies_canonicalizations", [])
-    canonicalizations: Dict[str, Any] = rules.get("canonicalizations", {})
-
-    # All attrs absorbed by an applied canonicalisation are silently excluded
-    # from per-attr emission (the canonicalisation owns them collectively).
-    canon_absorbed: set = set()
-    for c in elem_canons:
-        cd = canonicalizations.get(c)
-        if cd:
-            canon_absorbed.update(cd.get("absorbs_attrs", []))
-
-    # If we're emitting a subtype and the base already owns the
-    # canonicalisations, suppress the canonicalised property block here.
-    # Raw absorbed attrs still excluded so they don't fall through to
-    # per-attr emission.
-    if not apply_canonicalizations:
-        elem_canons = []
-
-    props = ""
-    imports = ""
-    exports = ""
-
-    # 1) Canonicalisations first (so canonical properties appear at the top).
-    for c in elem_canons:
-        cd = canonicalizations.get(c)
-        if not cd:
-            continue
-        props += _canon_property_block(c, cd, category_label)
-
-    # 2) Per-attribute properties. Attrs handled by xml_enum_attrs use a hand-
-    # declared URLab enum UPROPERTY; skip default per-attr UPROPERTY emission
-    # for those (codegen only owns the import/export mapping, not the decl).
-    xml_enum_attr_names: set = set(elem_rules.get("xml_enum_attrs", {}).keys())
-    prop_meta: Dict[str, str] = elem_rules.get("property_meta", {})
-    for attr in attrs:
-        if attr in global_excl or attr in elem_excl or attr in canon_absorbed:
-            continue
-        if attr in xml_enum_attr_names:
-            continue
-        ue_type = type_map.get(attr, default_type)
-        prop_name = renames.get(attr, pascal_case(attr))
-        props += _emit_uproperty(
-            prop_name, ue_type, category_label,
-            extra_meta=prop_meta.get(attr),
+    props = (
+        _emit_canon_property_block(
+            ctx.elem_canons, ctx.canonicalizations,
+            category_label, hidden_canons,
         )
-
-    # 3a) XML enum attr imports run FIRST so downstream emission can depend
-    # on the resolved enum value (e.g. fromto_decompose reads Type to pick
-    # the size[] slot for the half-length write). URLab enums (EMjGeomType,
-    # EMjJointType, etc.) are hand-declared; codegen owns the string<->enum
-    # string map.
-    #
-    # Emission policy: emit xml_enum_attrs[attr] at this level if
-    #   - attr is in the current attrs list (subtype-specific case like
-    #     dcmotor.input — fires on the subtype's emission), OR
-    #   - apply_canonicalizations=True (base-class emission) AND attr is in
-    #     global_exclusions (always-emit-at-base case like joint.type — the
-    #     attr is excluded from per-attr UPROPERTY emission but xml_enum
-    #     owns its import/export).
-    xml_enum_attrs: Dict[str, Any] = elem_rules.get("xml_enum_attrs", {})
-    def _should_emit_xml_enum(attr: str) -> bool:
-        if attr in attrs:
-            return True
-        if apply_canonicalizations and attr in global_excl:
-            return True
-        return False
-    for attr, enum_def in xml_enum_attrs.items():
-        if _should_emit_xml_enum(attr):
-            imports += _emit_xml_enum_import(attr, enum_def)
-
-    # 3b) Per-attribute import lines run BEFORE the canonicalisations so a
-    # canon like fromto_decompose can override individual slots (e.g.
-    # ``size[1] = halflength``) on top of the XML-provided values without
-    # being clobbered by a later per-attr read.
-    for attr in attrs:
-        if attr in global_excl or attr in elem_excl or attr in canon_absorbed:
-            continue
-        if attr in xml_enum_attr_names:
-            continue
-        ue_type = type_map.get(attr, default_type)
-        prop_name = renames.get(attr, pascal_case(attr))
-        imports += _emit_import_line(attr, prop_name, ue_type)
-
-    # 3c) Canonicalisations now run AFTER per-attr imports.
-    for c in elem_canons:
-        cd = canonicalizations.get(c)
-        if cd:
-            imports += _canon_import_block(c, cd, element_name=element_name)
-
-    # 3d) Drive the UE component transform from the codegen-owned Pos/Quat
-    # UPROPERTYs. Every category that applies spatial_pose / orientation is
-    # USceneComponent-derived (body, frame, geom, site, camera, inertial,
-    # flexcomp) — pushing the just-read Pos/Quat onto the relative transform
-    # is what makes the SCS component visible in the right place. Pos is
-    # already in UE cm (ReadVec3InMeters applies MjToUEPosition) and Quat is
-    # already in UE frame (orientation canon applies MjToUERotation), so a
-    # straight assign is the right call. Skipped when apply_canonicalizations
-    # is False (subclass emission — base class already drove the transform).
-    if apply_canonicalizations:
-        if "spatial_pose" in elem_canons:
-            imports += "    if (bOverride_Pos)  SetRelativeLocation(Pos);\n"
-        if "orientation" in elem_canons:
-            imports += "    if (bOverride_Quat) SetRelativeRotation(Quat);\n"
-
-    # 4c) Target collations (e.g. mjsEquality.name1 absorbs body1/joint1/
-    # tendon1/flex on the XML side). UE property is hand-declared (Obj1/Obj2
-    # with dynamic GetOptions); codegen owns the first-non-empty import +
-    # mjs_setString export.
-    target_collations: Dict[str, Any] = elem_rules.get("target_collations", {})
-    if apply_canonicalizations:
-        for prop_name, coll_def in target_collations.items():
-            imports += _emit_target_collation_import(
-                prop_name, coll_def.get("absorbs_attrs", [])
-            )
-
-    # 4d) Unit conversions (e.g. joint.range: XML deg/m -> UPROPERTY UE
-    # deg/cm). Runs AFTER the default per-attr ReadAttr* so the converter
-    # operates on the freshly-read value. Each conversion entry is a
-    # data-driven dict; the converter ops live in _UNIT_CONVERT_OPS in the
-    # generator. Adding a new conversion is one Python dict entry — schema/
-    # rules edits stay data-only.
-    unit_conversions: Dict[str, Any] = elem_rules.get("unit_conversion", {})
-    for attr, conv_list in unit_conversions.items():
-        if attr not in attrs and not apply_canonicalizations:
-            continue
-        prop_name = renames.get(attr, pascal_case(attr))
-        ue_type = type_map.get(attr, default_type)
-        is_array = ue_type.startswith("TArray")
-        imports += _emit_unit_conversion_block(prop_name, conv_list, side="import", is_array=is_array)
-
-    # 5) Canonicalisation export lines (first — so they set the canonical
-    # MJ struct fields before any per-attr tweaks). Some elements opt out of
-    # specific canon exports via ``canon_export_skip`` (e.g. body's pos/quat
-    # are written by MjSpecWrapper::CreateBody from the UE transform, not
-    # from the Pos/Quat UPROPERTYs, so the spatial_pose/orientation export
-    # for body would overwrite the transform-based values with stale data).
-    canon_export_skip = set(elem_rules.get("canon_export_skip", []))
-    for c in elem_canons:
-        if c in canon_export_skip:
-            continue
-        cd = canonicalizations.get(c)
-        if cd:
-            exports += _canon_export_block(c, cd)
-
-    # 5b) XML enum attr exports (URLab enum -> mjt* via switch). Same emission
-    # policy as imports (see 3a): subtype-only attrs emit on the subtype that
-    # actually has the attr, globally-excluded "type"-like attrs emit on base.
-    for attr, enum_def in xml_enum_attrs.items():
-        if _should_emit_xml_enum(attr):
-            exports += _emit_xml_enum_export(attr, enum_def)
-
-    # 6) Per-attribute export lines. Attrs handled by mjs_data_packed_attrs,
-    # mjs_double_vec_attrs, xml_enum_attrs, or unit_conversion are suppressed
-    # from the default per-attr emission — they each get their own
-    # specialised export block above or below.
-    data_packed_attrs: Dict[str, Any] = elem_rules.get("mjs_data_packed_attrs", {})
-    double_vec_attrs: List[str] = elem_rules.get("mjs_double_vec_attrs", [])
-    double_vec_set: set = set(double_vec_attrs)
-    # Per-attr export-side slot sentinels. Used by the fromto canon for `size`
-    # — slots set to the sentinel value are skipped so the parent default's
-    # radius / earlier-slot value is preserved.
-    sentinel_skip: Dict[str, str] = elem_rules.get("sentinel_skip_export", {})
-    # Per-attr "import but don't export to mjs" list. Used when an mjsX
-    # field exists for an attr but URLab never registers the referenced
-    # asset in the spec (e.g. geom.material -> mjsGeom.material; URLab
-    # materials are UE-side assets, NOT mjsMaterial spec elements). The
-    # codegen import still populates the UPROPERTY so consumers can read
-    # the name for UE-side material lookups.
-    export_skip_attrs: set = set(elem_rules.get("export_skip_attrs", []))
-    unit_convert_export_attrs: set = {
-        a for a, convs in unit_conversions.items()
-        if any(c.get("export_op") for c in convs)
-    }
-    # Per-element mjs field-name overrides. Used when MuJoCo's struct field
-    # name differs enough from the schema attr name that the auto-resolver
-    # in _resolve_mjs_field can't bridge it (e.g. camera "target" ->
-    # mjsCamera.targetbody, geom "shellinertia" -> mjsGeom.typeinertia).
-    attr_to_mjs_field: Dict[str, str] = elem_rules.get("attr_to_mjs_field", {})
-    # Attrs absorbed by target_collations get a per-attr UPROPERTY on the
-    # import side (so the user can read them e.g. for the site-mode
-    # discriminator in equality), but on the export side their value
-    # already flows into the target spec via the collated Obj1/Obj2 ->
-    # name1/name2 writes. Skip per-attr export emission to avoid a
-    # misleading "(skipped: mjs has no field)" comment.
-    target_collation_absorbed: set = set()
-    if apply_canonicalizations:
-        for prop_name, coll_def in target_collations.items():
-            target_collation_absorbed.update(coll_def.get("absorbs_attrs", []))
-    for attr in attrs:
-        if attr in global_excl or attr in elem_excl or attr in canon_absorbed:
-            continue
-        if attr in xml_enum_attr_names:
-            continue
-        if attr in data_packed_attrs and apply_canonicalizations:
-            continue
-        if attr in double_vec_set:
-            continue
-        if attr in unit_convert_export_attrs:
-            continue
-        if attr in export_skip_attrs:
-            continue
-        if attr in target_collation_absorbed:
-            continue
-        ue_type = type_map.get(attr, default_type)
-        prop_name = renames.get(attr, pascal_case(attr))
-        exports += _emit_export_line(
-            attr, prop_name, ue_type,
-            mjs_fields=mjs_fields,
-            slot_sentinel=sentinel_skip.get(attr),
-            attr_to_mjs_field=attr_to_mjs_field,
-            consumed_by_setto=consumed_by_setto,
+        + _emit_per_attr_property_block(
+            attrs, elem_rules, ctx.type_map, ctx.default_type, ctx.renames,
+            category_label,
+            global_excl=ctx.global_excl, elem_excl=ctx.elem_excl,
+            canon_absorbed=ctx.canon_absorbed,
+            xml_enum_attr_names=ctx.xml_enum_attr_names,
+            hidden_attrs=hidden_attrs,
         )
+        + _emit_xml_enum_property_decls(
+            elem_rules, category_label,
+            apply_canonicalizations=apply_canonicalizations,
+        )
+    )
 
-    # 6b) Data-packed exports (e.g. mjsEquality.data[]). Run AFTER per-attr
-    # so any earlier mjsField writes are in place when these pack values in.
-    if apply_canonicalizations:
-        for attr, packed_def in data_packed_attrs.items():
-            ue_type = type_map.get(attr, default_type)
-            prop_name = renames.get(attr, pascal_case(attr))
-            exports += _emit_data_packed_export(attr, packed_def, ue_type, prop_name)
-
-    # 6d) Target collation exports (e.g. Obj1 -> mjs_setString(name1)).
-    if apply_canonicalizations:
-        for prop_name, coll_def in target_collations.items():
-            exports += _emit_target_collation_export(prop_name, coll_def["mjs_field"])
-
-    # 6e) Unit-conversion exports (replace default per-attr export with a
-    # converting write — e.g. joint.range: UE deg -> mjs rad).
-    for attr, conv_list in unit_conversions.items():
-        if attr not in attrs and not apply_canonicalizations:
-            continue
-        prop_name = renames.get(attr, pascal_case(attr))
-        ue_type = type_map.get(attr, default_type)
-        is_array = ue_type.startswith("TArray")
-        # Resolve mjs field name (e.g. attr "solreflimit" -> "solref_limit").
-        mjs_field = attr
-        if mjs_fields:
-            mjs_field = _resolve_mjs_field(attr, mjs_fields, attr_to_mjs_field)
-        exports += _emit_unit_conversion_export(prop_name, mjs_field, conv_list, is_array=is_array)
-
-    # 6c) Double-vec exports (mjsKey.qpos/qvel/etc — mjDoubleVec* not
-    # directly assignable, requires ->clear()+->push_back()).
-    for attr in double_vec_attrs:
-        prop_name = renames.get(attr, pascal_case(attr))
-        # mjs_field default = attr name; resolved via _resolve_mjs_field if mjs_fields is known.
-        mjs_field = attr
-        if mjs_fields:
-            mjs_field = _resolve_mjs_field(attr, mjs_fields, attr_to_mjs_field)
-        exports += _emit_double_vec_export(attr, prop_name, mjs_field)
+    imports = _emit_imports_block(ctx)
+    exports = _emit_exports_block(ctx)
 
     return EmittedSchema(properties_h=props, imports_cpp=imports, exports_cpp=exports)
 
 
-def emit_xml_passthrough_body(
-    attrs: Sequence[str],
-    rules: Dict[str, Any],
-    element_name: str,
-) -> str:
-    """Emit the body of a `BuildSchemaAttrsXml() const -> FString` method.
-
-    For categories with ``xml_passthrough_emission: true`` in their codegen
-    rule, the spec-registration path goes through an MJCF re-parse
-    (mj_parseXMLString + mjs_attach) instead of the mjs_addX API — flexcomp
-    is the canonical example because MuJoCo expands the flexcomp macro in
-    the XML parser, not the spec compiler. To keep new schema attrs
-    flowing end-to-end without hand-edits, the codegen emits a single
-    method that walks every override-tracked UPROPERTY and writes its
-    value as an ``name="value"`` XML attribute string. The hand-rolled
-    BuildFlexcompXml just calls this helper for the main attrs and
-    handles sub-elements (which the codegen doesn't model yet) itself.
-
-    Attribute emission rules per UE type:
-      - float   -> ` X="%f"`
-      - int     -> ` X="%d"`
-      - bool    -> ` X="true"` / ` X="false"`
-      - FString -> ` X="..."` (skipped when empty)
-      - TArray<float/int/double> -> space-separated joined list
-      - FLinearColor -> ` X="r g b a"`
-    Canonicalised attrs (pos/quat) round-trip through MjUtils::UEToMjPosition
-    + ::UEToMjRotation (matching their export_helper in canonicalizations).
-    xml_enum_attrs write the XML-side string value selected by the enum.
-
-    Output is the indented C++ statements (no signature, no braces) — the
-    caller wraps them in a method body.
-    """
-    global_excl = set(rules.get("global_exclusions", []))
-    elem_rules = rules.get("element_rules", {}).get(element_name, {})
-    elem_excl = set(elem_rules.get("exclude_attrs", []))
-    elem_canons: List[str] = elem_rules.get("applies_canonicalizations", [])
-    canonicalizations = rules.get("canonicalizations", {})
-    canon_absorbed: set = set()
-    for c in elem_canons:
-        cd = canonicalizations.get(c)
-        if cd:
-            canon_absorbed.update(cd.get("absorbs_attrs", []))
-    xml_enum_attrs: Dict[str, Any] = elem_rules.get("xml_enum_attrs", {})
-    type_map: Dict[str, str] = rules.get("type_mappings", {})
-    default_type: str = rules.get("default_type", "float")
-    renames: Dict[str, str] = rules.get("property_renames", {})
-
+def _emit_passthrough_canon_lines(
+    elem_canons: List[str],
+    canonicalizations: Dict[str, Any],
+) -> List[str]:
+    """Emit ``pos="x y z"`` / ``quat="w x y z"`` formatters for the
+    canonicalisation-owned UPROPERTYs. Round-trips through the same
+    UEToMjPosition / UEToMjRotation helpers the canon export blocks
+    use, so the XML matches the spec write exactly."""
     lines: List[str] = []
-    lines.append("    FString Out;")
-
-    # Canonicalisations first (pos -> "pos=\"x y z\"", quat -> "quat=...")
     for c in elem_canons:
         cd = canonicalizations.get(c)
         if not cd:
@@ -1249,78 +1547,135 @@ def emit_xml_passthrough_body(
             lines.append(f"        MjUtils::UEToMjRotation({prop}, Tmp);")
             lines.append('        Out += FString::Printf(TEXT(" quat=\\"%f %f %f %f\\""), Tmp[0], Tmp[1], Tmp[2], Tmp[3]);')
             lines.append("    }")
+    return lines
 
-    # xml_enum_attrs: emit the XML attribute string for the chosen enum value.
+
+def _emit_passthrough_xml_enum_lines(
+    xml_enum_attrs: Dict[str, Any],
+) -> List[str]:
+    """Emit the per-attr if/else-if chain that picks the XML string for
+    the chosen enum value."""
+    lines: List[str] = []
     for attr, enum_def in xml_enum_attrs.items():
         ue_prop = enum_def["ue_property"]
         ue_enum = enum_def["ue_enum_type"]
-        value_map = enum_def["value_map"]
+        value_map = _resolve_value_map(attr, enum_def)
         toggle = override_toggle_name(ue_prop)
         lines.append(f"    if ({toggle})")
         lines.append("    {")
         first = True
         for xml_val, mapping in value_map.items():
-            ue_member = mapping[0] if isinstance(mapping, list) else mapping
+            ue_member = mapping[0]
             prefix = "if      " if first else "else if "
             first = False
             lines.append(f'        {prefix}({ue_prop} == {ue_enum}::{ue_member}) '
                          f'Out += TEXT(" {attr}=\\"{xml_val}\\"");')
         lines.append("    }")
+    return lines
 
-    # Per-attr lines
-    for attr in attrs:
-        if attr in global_excl or attr in elem_excl or attr in canon_absorbed:
-            continue
-        if attr in xml_enum_attrs:
-            continue
-        if attr == "name":
-            # Name is written by the caller (it knows the prefix/MjName logic).
-            continue
-        prop_name = renames.get(attr, pascal_case(attr))
+
+def _emit_passthrough_attr_line(
+    attr: str, prop_name: str, ue_type: str, toggle: str,
+) -> List[str]:
+    """Emit the per-type XML-attr formatter line(s) for a single attr.
+    Returns a list of indented C++ lines (one for scalars, multiple
+    for TArray loops). Unknown types fall through with a TODO comment
+    so the build still compiles."""
+    if ue_type == "FString":
+        return [f'    if ({toggle} && !{prop_name}.IsEmpty()) '
+                f'Out += FString::Printf(TEXT(" {attr}=\\"%s\\""), *{prop_name});']
+    if ue_type == "bool":
+        return [f'    if ({toggle}) '
+                f'Out += FString::Printf(TEXT(" {attr}=\\"%s\\""), '
+                f'{prop_name} ? TEXT("true") : TEXT("false"));']
+    if ue_type == "int32":
+        return [f'    if ({toggle}) '
+                f'Out += FString::Printf(TEXT(" {attr}=\\"%d\\""), {prop_name});']
+    if ue_type == "float":
+        return [f'    if ({toggle}) '
+                f'Out += FString::Printf(TEXT(" {attr}=\\"%f\\""), {prop_name});']
+    if ue_type == "FLinearColor":
+        return [f"    if ({toggle}) "
+                f'Out += FString::Printf(TEXT(" {attr}=\\"%f %f %f %f\\""), '
+                f'{prop_name}.R, {prop_name}.G, {prop_name}.B, {prop_name}.A);']
+    if ue_type.startswith("TArray<float") or ue_type.startswith("TArray<double"):
+        return [
+            f"    if ({toggle} && {prop_name}.Num() > 0)",
+            "    {",
+            f'        Out += TEXT(" {attr}=\\"");',
+            f"        for (int32 i = 0; i < {prop_name}.Num(); ++i)",
+            "        {",
+            '            if (i > 0) Out += TEXT(" ");',
+            f'            Out += FString::Printf(TEXT("%f"), {prop_name}[i]);',
+            "        }",
+            '        Out += TEXT("\\"");',
+            "    }",
+        ]
+    if ue_type.startswith("TArray<int"):
+        return [
+            f"    if ({toggle} && {prop_name}.Num() > 0)",
+            "    {",
+            f'        Out += TEXT(" {attr}=\\"");',
+            f"        for (int32 i = 0; i < {prop_name}.Num(); ++i)",
+            "        {",
+            '            if (i > 0) Out += TEXT(" ");',
+            f'            Out += FString::Printf(TEXT("%d"), {prop_name}[i]);',
+            "        }",
+            '        Out += TEXT("\\"");',
+            "    }",
+        ]
+    return [f'    // TODO(xml_passthrough): unsupported UE type "{ue_type}" for attr "{attr}"']
+
+
+def emit_xml_passthrough_body(
+    attrs: Sequence[str],
+    rules: Dict[str, Any],
+    element_name: str,
+) -> str:
+    """Emit the body of a `BuildSchemaAttrsXml() const -> FString` method.
+
+    For categories with ``xml_passthrough_emission: true`` in their codegen
+    rule, the spec-registration path goes through an MJCF re-parse
+    (mj_parseXMLString + mjs_attach) instead of the mjs_addX API — flexcomp
+    is the canonical example because MuJoCo expands the flexcomp macro in
+    the XML parser, not the spec compiler. To keep new schema attrs
+    flowing end-to-end without hand-edits, the codegen emits a single
+    method that walks every override-tracked UPROPERTY and writes its
+    value as an ``name="value"`` XML attribute string. The hand-rolled
+    BuildFlexcompXml just calls this helper for the main attrs and
+    handles sub-elements (which the codegen doesn't model yet) itself.
+
+    Output is the indented C++ statements (no signature, no braces) —
+    the caller wraps them in a method body. Per-type emission lives in
+    ``_emit_passthrough_attr_line``; canon + xml_enum live in their own
+    helpers.
+    """
+    global_excl = set(rules.get("global_exclusions", []))
+    elem_rules = rules.get("element_rules", {}).get(element_name, {})
+    elem_excl = set(elem_rules.get("exclude_attrs", []))
+    elem_canons: List[str] = elem_rules.get("applies_canonicalizations", [])
+    canonicalizations = rules.get("canonicalizations", {})
+    canon_absorbed: set = compute_canon_absorbed(elem_canons, canonicalizations)
+    xml_enum_attrs: Dict[str, Any] = elem_rules.get("xml_enum_attrs", {})
+    type_map: Dict[str, str] = rules.get("type_mappings", {})
+    default_type: str = rules.get("default_type", "float")
+    renames: Dict[str, str] = rules.get("property_renames", {})
+
+    lines: List[str] = ["    FString Out;"]
+    lines.extend(_emit_passthrough_canon_lines(elem_canons, canonicalizations))
+    lines.extend(_emit_passthrough_xml_enum_lines(xml_enum_attrs))
+
+    # ``name`` is written by the caller (it knows the prefix / MjName
+    # logic).
+    passthrough_extra_excl = set(xml_enum_attrs) | {"name"}
+    for attr in iter_category_attrs(attrs, global_excl=global_excl,
+                                     elem_excl=elem_excl,
+                                     canon_absorbed=canon_absorbed,
+                                     extra_excl=passthrough_extra_excl):
+        prop_name = renames.get(attr, attr)
         ue_type = type_map.get(attr, default_type)
         toggle = override_toggle_name(prop_name)
-
-        if ue_type == "FString":
-            lines.append(f'    if ({toggle} && !{prop_name}.IsEmpty()) '
-                         f'Out += FString::Printf(TEXT(" {attr}=\\"%s\\""), *{prop_name});')
-        elif ue_type == "bool":
-            lines.append(f'    if ({toggle}) '
-                         f'Out += FString::Printf(TEXT(" {attr}=\\"%s\\""), '
-                         f'{prop_name} ? TEXT("true") : TEXT("false"));')
-        elif ue_type == "int32":
-            lines.append(f'    if ({toggle}) '
-                         f'Out += FString::Printf(TEXT(" {attr}=\\"%d\\""), {prop_name});')
-        elif ue_type == "float":
-            lines.append(f'    if ({toggle}) '
-                         f'Out += FString::Printf(TEXT(" {attr}=\\"%f\\""), {prop_name});')
-        elif ue_type == "FLinearColor":
-            lines.append(f"    if ({toggle}) "
-                         f'Out += FString::Printf(TEXT(" {attr}=\\"%f %f %f %f\\""), '
-                         f'{prop_name}.R, {prop_name}.G, {prop_name}.B, {prop_name}.A);')
-        elif ue_type.startswith("TArray<float") or ue_type.startswith("TArray<double"):
-            lines.append(f"    if ({toggle} && {prop_name}.Num() > 0)")
-            lines.append("    {")
-            lines.append(f'        Out += TEXT(" {attr}=\\"");')
-            lines.append(f"        for (int32 i = 0; i < {prop_name}.Num(); ++i)")
-            lines.append("        {")
-            lines.append('            if (i > 0) Out += TEXT(" ");')
-            lines.append(f'            Out += FString::Printf(TEXT("%f"), {prop_name}[i]);')
-            lines.append("        }")
-            lines.append('        Out += TEXT("\\"");')
-            lines.append("    }")
-        elif ue_type.startswith("TArray<int"):
-            lines.append(f"    if ({toggle} && {prop_name}.Num() > 0)")
-            lines.append("    {")
-            lines.append(f'        Out += TEXT(" {attr}=\\"");')
-            lines.append(f"        for (int32 i = 0; i < {prop_name}.Num(); ++i)")
-            lines.append("        {")
-            lines.append('            if (i > 0) Out += TEXT(" ");')
-            lines.append(f'            Out += FString::Printf(TEXT("%d"), {prop_name}[i]);')
-            lines.append("        }")
-            lines.append('        Out += TEXT("\\"");')
-            lines.append("    }")
-        else:
-            lines.append(f'    // TODO(xml_passthrough): unsupported UE type "{ue_type}" for attr "{attr}"')
+        lines.extend(_emit_passthrough_attr_line(attr, prop_name, ue_type, toggle))
 
     lines.append("    return Out;")
     return "\n".join(lines) + "\n"
@@ -1398,31 +1753,11 @@ void {ClassName}::ExportTo({MjsStruct}* Element, mjsDefault* Default)
 # Boundary-tag injection
 # ---------------------------------------------------------------------------
 
-def _make_tag_pair(tag: str) -> Tuple[str, str]:
-    return (f"// --- CODEGEN_{tag}_START ---", f"// --- CODEGEN_{tag}_END ---")
-
-
-def inject_between_tags(file_text: str, tag: str, new_inner: str) -> Tuple[str, bool]:
-    """Replace the content between ``// --- CODEGEN_<tag>_START ---`` and
-    ``// --- CODEGEN_<tag>_END ---`` with ``new_inner``. Returns
-    (new_text, was_found). If the tags are missing, returns the input
-    unchanged with was_found=False — callers decide whether that's
-    fatal."""
-    start, end = _make_tag_pair(tag)
-    pattern = re.compile(
-        r"(" + re.escape(start) + r")(.*?)(" + re.escape(end) + r")",
-        re.DOTALL,
-    )
-    matched = [False]
-
-    def repl(m: re.Match) -> str:
-        matched[0] = True
-        # Preserve the start/end lines with a newline before the content.
-        body = "\n" + new_inner.rstrip() + "\n    "
-        return m.group(1) + body + m.group(3)
-
-    new_text = pattern.sub(repl, file_text)
-    return new_text, matched[0]
+# Text-injection machinery lives in `_codegen_inject`. The symbols
+# (`_make_tag_pair`, `_strip_cpp_braces_in_strings`,
+# `_find_matching_brace`, `_check_brace_balance`,
+# `inject_between_tags`, `_inject_tags_into_cpp`) are re-exported
+# through the import block at the top of this file.
 
 
 # ---------------------------------------------------------------------------
@@ -1446,35 +1781,28 @@ def codegen_owned_property_names(category: str, attrs: List[str], rules: Dict[st
     elem_excl = set(elem_rules.get("exclude_attrs", []))
     elem_canons: List[str] = elem_rules.get("applies_canonicalizations", [])
     canonicalizations: Dict[str, Any] = rules.get("canonicalizations", {})
-    canon_absorbed: set = set()
+    canon_absorbed: set = compute_canon_absorbed(elem_canons, canonicalizations)
     owned: set = set()
     for c in elem_canons:
         cdef = canonicalizations.get(c)
         if cdef:
-            canon_absorbed.update(cdef.get("absorbs_attrs", []))
             prop = cdef.get("emits_property")
             if prop:
                 owned.add(prop["name"])
-    for a in attrs:
-        if a in global_excl or a in elem_excl or a in canon_absorbed:
-            continue
-        owned.add(renames.get(a, pascal_case(a)))
+    for a in iter_category_attrs(attrs, global_excl=global_excl,
+                                  elem_excl=elem_excl,
+                                  canon_absorbed=canon_absorbed):
+        owned.add(renames.get(a, a))
     return owned
 
 
-def all_owned_decl_names(props: set) -> set:
-    """Codegen-owned property names plus their ``bOverride_X`` toggles."""
-    return props | {f"bOverride_{p}" for p in props}
 
 
 # ---------------------------------------------------------------------------
 # Pipeline: emit subclass files
 # ---------------------------------------------------------------------------
 
-@dataclass
-class FileWrite:
-    path: str
-    content: str
+# `FileWrite` lives in `_codegen_core`.
 
 
 def _resolve_include_path(public_root: str, file_relpath: str) -> str:
@@ -1484,6 +1812,91 @@ def _resolve_include_path(public_root: str, file_relpath: str) -> str:
     # include strips the leading public_root.
     rel = os.path.relpath(file_relpath, public_root)
     return rel.replace(os.sep, "/")
+
+
+_BANNER_TEMPLATE_INCLUDES = {
+    "MuJoCo/Utils/MjXmlUtils.h",
+    "MuJoCo/Utils/MjOrientationUtils.h",
+    "MuJoCo/Utils/MjUtils.h",
+    "XmlNode.h",
+    "mujoco/mjspec.h",
+}
+
+
+def _audit_banner_safety(source_path: str, subtype: Dict[str, Any]) -> None:
+    """Scan an existing source file the codegen is ABOUT to overwrite via
+    ``fully_emitted: true`` and emit a diagnostic if it carries content
+    the template wouldn't reproduce (extra includes beyond the template
+    set, extra method definitions, ctor extras not in ``extra_constructor``).
+
+    Non-fatal — the rewrite still proceeds. The diagnostic exists so a
+    rule author who flips ``fully_emitted: true`` without running the
+    audit helper sees a loud warning the next time the codegen runs.
+    """
+    try:
+        with open(source_path, "r", encoding="utf-8") as f:
+            text = f.read()
+    except FileNotFoundError:
+        return
+    except OSError as e:
+        _diag_add(
+            f"[diagnostic] banner_overwrite: could not read '{source_path}' "
+            f"({e}) — skipping the pre-overwrite audit. The rewrite still "
+            f"proceeds, but any hand-edits in the existing file may be lost "
+            f"unnoticed.",
+            source="banner_overwrite",
+        )
+        return
+
+    rel = os.path.basename(source_path)
+    own_h = os.path.splitext(rel)[0] + ".h"
+
+    # Extra includes beyond the template set.
+    extras = []
+    for inc in re.findall(r'#include\s+"([^"]+)"', text):
+        if inc.endswith(own_h) or inc in _BANNER_TEMPLATE_INCLUDES:
+            continue
+        extras.append(inc)
+    if extras:
+        _diag_add(
+            f"[diagnostic] fully_emitted: true on '{subtype.get('class_name', rel)}' "
+            f"is about to OVERWRITE {rel} which has non-template includes "
+            f"{extras}. Run Scripts/codegen/_audit_banner_candidates.py "
+            f"before flipping, or revert fully_emitted on this subtype.",
+            source="banner_overwrite",
+        )
+
+    # Extra ctor lines beyond what the rule provides via extra_constructor.
+    # The ctor body can contain its own brace-bearing statements (range-for
+    # loops, init lists, nested ifs); use the brace-aware extractor so the
+    # diagnostic doesn't truncate at the first inner ``}`` and report a
+    # spurious "non-template ctor content".
+    expected = {subtype.get("extra_constructor", "").strip()}
+    expected.discard("")
+    class_name = subtype.get("class_name", "")
+    if class_name:
+        sig = re.search(
+            rf'{re.escape(class_name)}::{re.escape(class_name)}\(\)\s*\{{',
+            text,
+        )
+        if sig:
+            open_idx = sig.end() - 1
+            close_idx = _find_matching_brace(text, open_idx)
+            if close_idx is not None:
+                body = text[open_idx + 1:close_idx]
+                stripped = re.sub(r"(Type\s*=\s*EMj\w+::\w+;|//[^\n]*|\s+)", "", body)
+                for e in expected:
+                    # The expected extras may themselves contain whitespace —
+                    # strip to compare.
+                    stripped = stripped.replace(re.sub(r"\s+", "", e), "")
+                if stripped:
+                    _diag_add(
+                        f"[diagnostic] fully_emitted: true on "
+                        f"'{class_name}' is about to OVERWRITE the ctor in "
+                        f"{rel} — non-template ctor content remains after "
+                        f"stripping Type+extra_constructor: {stripped!r}.",
+                        source="banner_overwrite",
+                    )
 
 
 def _subclass_constructor_body(
@@ -1558,8 +1971,9 @@ def _emit_setto_call(
         return ""
     if not mjspec or fn_name not in mjspec.get("setto_functions", {}):
         raise RuntimeError(
-            f"mjs_setTo* function '{fn_name}' not found in mjspec snapshot. "
-            f"Rebuild Scripts/mjspec_snapshot.json."
+            f"mjs_setTo* function '{fn_name}' not found in the projected "
+            f"mjspec. Rebuild the introspect snapshot via "
+            f"`python Scripts/codegen/build_introspect_snapshot.py`."
         )
     sig = mjspec["setto_functions"][fn_name]
     if not sig["params"]:
@@ -1684,6 +2098,32 @@ def _mjs_fields_for(cat_rules: Dict[str, Any], mjspec: Dict[str, Any] | None) ->
     return set(mjspec.get("structs", {}).get(struct_name, []))
 
 
+def _mjs_array_caps_for(
+    cat_rules: Dict[str, Any],
+    mjspec: Dict[str, Any] | None,
+) -> Dict[str, int]:
+    """Pull {field_name: c_array_dim} for a category's mjs_struct from the
+    introspect snapshot, scoped to fixed-size C arrays only (skips scalars,
+    dynamic vectors, pointers). The TArray export loop uses these caps to
+    emit ``FMath::Min(prop.Num(), cap)`` so a future MuJoCo array-shrink
+    (e.g. ``gainprm[10]`` → ``gainprm[6]``) doesn't overrun memory.
+    """
+    if not mjspec:
+        return {}
+    struct_name = cat_rules.get("mjs_struct")
+    if not struct_name:
+        return {}
+    introspect = mjspec.get("introspect") or {}
+    struct_table = introspect.get("structs", {})
+    fields = struct_table.get(struct_name, {}).get("fields", [])
+    caps: Dict[str, int] = {}
+    for f in fields:
+        dim = f.get("array_dim")
+        if isinstance(dim, int) and dim > 1:
+            caps[f["name"]] = dim
+    return caps
+
+
 def emit_subclass_files(
     category: str,
     cat_rules: Dict[str, Any],
@@ -1705,6 +2145,7 @@ def emit_subclass_files(
     base_header_relpath = cat_rules["base_class_header"]
     mjs_struct = cat_rules["mjs_struct"]
     mjs_fields = _mjs_fields_for(cat_rules, mjspec)
+    mjs_array_caps = _mjs_array_caps_for(cat_rules, mjspec)
     type_enum = cat_rules.get("type_enum_name")
     pub_dir = os.path.join(public_root, cat_rules.get("subclass_directory_pub", ""))
     priv_dir = os.path.join(private_root, cat_rules.get("subclass_directory_priv", ""))
@@ -1726,12 +2167,12 @@ def emit_subclass_files(
 
         emitted = emit_schema_for_attrs(
             attrs, rules, element_name=category,
-            category_label=base_class.removeprefix("U"),
+            category_label=base_class.removeprefix("UMj"),
             apply_canonicalizations=False,  # base owns the canon block
             mjs_fields=mjs_fields,
             consumed_by_setto=setto_consumed,
+            mjs_array_caps=mjs_array_caps,
         )
-        owned = codegen_owned_property_names(category, attrs, rules)
 
         # Per-subtype ``mjs_setTo*`` preset call. Codegen owns this snippet — it
         # lands at the TOP of the CODEGEN_EXPORT block so every regeneration
@@ -1760,21 +2201,69 @@ def emit_subclass_files(
         header_path = os.path.join(pub_dir, header_filename)
         source_path = os.path.join(priv_dir, class_file_stem + ".cpp")
 
-        if os.path.exists(header_path):
+        # ``fully_emitted: true`` on a subtype rule means codegen owns the
+        # entire file (header + source). Existing files get overwritten
+        # from the template every regen — equivalent to "delete and let
+        # the codegen recreate", but stable across runs. Use this for
+        # pure-stub subclasses (no extra includes, no extra methods, ctor
+        # only sets Type). The ``Scripts/codegen/_audit_banner_candidates.py``
+        # helper identifies the safe subset.
+        fully_emitted = bool(subtype.get("fully_emitted"))
+
+        if os.path.exists(header_path) and not fully_emitted:
             # Existing subclass file — inject between pre-prepped tags.
+            # Diagnose missing markers loudly so a typo in the marker pair
+            # (or a forgotten pre-prep step on a hand-rolled subclass)
+            # surfaces here rather than as wrong runtime behaviour.
             with open(header_path, "r", encoding="utf-8") as f:
                 h_text = f.read()
-            h_text, _ = inject_between_tags(h_text, "PROPERTIES", emitted.properties_h)
+            h_text, _ = _inject_or_diag(
+                h_text, "PROPERTIES", emitted.properties_h,
+                host_path=header_path, host_kind="subclass header",
+                block_label="per-subtype UPROPERTY block",
+                diag_source="subclass_inject",
+            )
             writes.append(FileWrite(path=header_path, content=h_text))
 
             if os.path.exists(source_path):
                 with open(source_path, "r", encoding="utf-8") as f:
                     c_text = f.read()
-                c_text, _ = inject_between_tags(c_text, "IMPORT", emitted.imports_cpp)
-                c_text, _ = inject_between_tags(c_text, "EXPORT", emitted.exports_cpp)
+                c_text, _ = _inject_or_diag(
+                    c_text, "IMPORT", emitted.imports_cpp,
+                    host_path=source_path, host_kind="subclass source",
+                    block_label="per-subtype import block",
+                    diag_source="subclass_inject",
+                )
+                c_text, _ = _inject_or_diag(
+                    c_text, "EXPORT", emitted.exports_cpp,
+                    host_path=source_path, host_kind="subclass source",
+                    block_label="per-subtype export block",
+                    diag_source="subclass_inject",
+                )
                 writes.append(FileWrite(path=source_path, content=c_text))
+            else:
+                _diag_add(
+                    f"[diagnostic] subclass source '{source_path}' does not "
+                    f"exist alongside its header; import + export blocks "
+                    f"could not be injected.",
+                    source="subclass_inject",
+                )
         else:
-            # Brand-new subclass file — emit from template.
+            # Brand-new file OR ``fully_emitted: true`` → write the whole
+            # file from the template.
+            #
+            # Safety check on the ``fully_emitted`` overwrite path: if the
+            # existing file carries non-template content (extra includes
+            # beyond the template, hand-written methods, ctor extras not
+            # covered by ``extra_constructor``), the rewrite would silently
+            # destroy it. The audit-helper script
+            # (Scripts/codegen/_audit_banner_candidates.py) is the
+            # expected pre-flip gate; this is a defence-in-depth diagnostic
+            # for cases where someone flips ``fully_emitted: true`` without
+            # running the helper first.
+            if fully_emitted and os.path.exists(source_path):
+                _audit_banner_safety(source_path, subtype)
+
             include_path = _resolve_include_path(public_root, header_path)
             ctor_body = _subclass_constructor_body(category, subtype, type_enum)
 
@@ -1825,24 +2314,17 @@ def emit_base_class_injection(
     base_class = cat_rules["base_class_name"]
     base_header_relpath = cat_rules["base_class_header"]
     mjs_fields = _mjs_fields_for(cat_rules, mjspec)
-    # Categories that opt out of schema-driven UPROPERTY/import/export
-    # emission entirely. Used for hand-rolled components that aren't yet
-    # ready for full codegen ownership (e.g. UMjFlexcomp). The snapshot
-    # still includes the element's schema attrs so the rest of the
-    # pipeline (e.g. completeness tests) can see them, but no C++ is
-    # emitted from this rule.
-    if cat_rules.get("disable_schema_emission"):
-        return writes
+    mjs_array_caps = _mjs_array_caps_for(cat_rules, mjspec)
     common_attrs = schema_attrs(schema, cat_rules["schema_common_block"])
     # Extras: attrs that URLab puts on the base class even though MJCF
     # schema lists them per-subtype (e.g. gainprm/biasprm/dynprm).
     common_attrs = list(common_attrs) + cat_rules.get("schema_common_extra_attrs", [])
 
     emitted = emit_schema_for_attrs(
-        common_attrs, rules, element_name=category, category_label=base_class.removeprefix("U"),
+        common_attrs, rules, element_name=category, category_label=base_class.removeprefix("UMj"),
         mjs_fields=mjs_fields,
+        mjs_array_caps=mjs_array_caps,
     )
-    owned = codegen_owned_property_names(category, common_attrs, rules)
 
     header_path = os.path.join(public_root, base_header_relpath)
     rel = os.path.relpath(header_path, public_root)
@@ -1851,21 +2333,68 @@ def emit_base_class_injection(
     if os.path.exists(header_path):
         with open(header_path, "r", encoding="utf-8") as f:
             h_text = f.read()
-        new_h, ok = inject_between_tags(h_text, "PROPERTIES", emitted.properties_h)
+        new_h, ok = _inject_or_diag(
+            h_text, "PROPERTIES", emitted.properties_h,
+            host_path=header_path, host_kind="base header",
+            block_label=f"category '{category}' UPROPERTY block",
+            diag_source="base_inject",
+        )
         if ok:
             writes.append(FileWrite(path=header_path, content=new_h))
+    else:
+        _diag_add(
+            f"[diagnostic] category '{category}' has a rule but base header "
+            f"'{header_path}' does not exist; codegen emitted no writes for "
+            f"this category.",
+            source="base_inject",
+        )
 
     if os.path.exists(source_path):
         with open(source_path, "r", encoding="utf-8") as f:
             c_text = f.read()
-        c_text, ok_i = inject_between_tags(c_text, "IMPORT", emitted.imports_cpp)
-        c_text, ok_e = inject_between_tags(c_text, "EXPORT", emitted.exports_cpp)
+        c_text, ok_i = _inject_or_diag(
+            c_text, "IMPORT", emitted.imports_cpp,
+            host_path=source_path, host_kind="base source",
+            block_label=f"category '{category}' import block",
+            diag_source="base_inject",
+        )
+        # ``xml_passthrough_emission`` routes per-attr export through the
+        # XML_PASSTHROUGH block, NOT the EXPORT block — the mjs-side
+        # ``Element->field = ...`` writes don't apply (flexcomp).
+        # ``disable_mjs_export_emission`` covers categories that have no
+        # corresponding mjs struct so the export block can't compile even
+        # if injected (inertial — writes through ParentBody->ipos/iquat
+        # in a hand-rolled RegisterToSpec). Both flags suppress EXPORT
+        # injection AND its missing-marker diagnostic.
+        skip_export = (
+            cat_rules.get("xml_passthrough_emission")
+            or cat_rules.get("disable_mjs_export_emission")
+        )
+        ok_e = False
+        if not skip_export:
+            c_text, ok_e = _inject_or_diag(
+                c_text, "EXPORT", emitted.exports_cpp,
+                host_path=source_path, host_kind="base source",
+                block_label=f"category '{category}' export block",
+                diag_source="base_inject",
+            )
         ok_x = False
         if cat_rules.get("xml_passthrough_emission"):
             xml_body = emit_xml_passthrough_body(common_attrs, rules, element_name=category)
-            c_text, ok_x = inject_between_tags(c_text, "XML_PASSTHROUGH", xml_body)
+            c_text, ok_x = _inject_or_diag(
+                c_text, "XML_PASSTHROUGH", xml_body,
+                host_path=source_path, host_kind="base source",
+                block_label=f"category '{category}' xml_passthrough block",
+                diag_source="base_inject",
+            )
         if ok_i or ok_e or ok_x:
             writes.append(FileWrite(path=source_path, content=c_text))
+    else:
+        _diag_add(
+            f"[diagnostic] category '{category}' base source '{source_path}' "
+            f"does not exist; import + export blocks could not be injected.",
+            source="base_inject",
+        )
 
     return writes
 
@@ -1914,6 +2443,7 @@ def emit_multi_uclass(
 
     base_class = cat_rules["base_class_name"]
     mjs_fields = _mjs_fields_for(cat_rules, mjspec)
+    mjs_array_caps = _mjs_array_caps_for(cat_rules, mjspec)
     common_attrs = set(schema_attrs(schema, cat_rules["schema_common_block"]))
     common_attrs |= set(cat_rules.get("schema_common_extra_attrs", []))
 
@@ -1923,15 +2453,36 @@ def emit_multi_uclass(
         attrs = [a for a in per_type_attrs if a not in common_attrs]
         emitted = emit_schema_for_attrs(
             attrs, rules, element_name=category,
-            category_label=base_class.removeprefix("U"),
+            category_label=base_class.removeprefix("UMj"),
             apply_canonicalizations=False,  # base owns the canon block
             mjs_fields=mjs_fields,
+            mjs_array_caps=mjs_array_caps,
         )
         type_tag = subtype["enum_value"]
-        h_text, _ = inject_between_tags(h_text, f"SUBCLASS_{type_tag}_PROPERTIES", emitted.properties_h)
+        # Diagnose missing per-subtype marker pairs ONLY when there's a
+        # non-empty body to inject. Subtypes whose schema attrs are entirely
+        # in the common set (or whose mjs export is handled elsewhere) emit
+        # nothing per-subtype; not pre-prepping a marker pair for those is
+        # legitimate, so suppress the diagnostic.
+        h_text, _ = _inject_or_diag(
+            h_text, f"SUBCLASS_{type_tag}_PROPERTIES", emitted.properties_h,
+            host_path=header_path, host_kind="multi_uclass base header",
+            block_label=f"subtype '{sub_key}' UPROPERTY block",
+            diag_source="multi_uclass_inject",
+        )
         if c_text:
-            c_text, _ = inject_between_tags(c_text, f"SUBCLASS_{type_tag}_IMPORT", emitted.imports_cpp)
-            c_text, _ = inject_between_tags(c_text, f"SUBCLASS_{type_tag}_EXPORT", emitted.exports_cpp)
+            c_text, _ = _inject_or_diag(
+                c_text, f"SUBCLASS_{type_tag}_IMPORT", emitted.imports_cpp,
+                host_path=source_path, host_kind="multi_uclass base source",
+                block_label=f"subtype '{sub_key}' import block",
+                diag_source="multi_uclass_inject",
+            )
+            c_text, _ = _inject_or_diag(
+                c_text, f"SUBCLASS_{type_tag}_EXPORT", emitted.exports_cpp,
+                host_path=source_path, host_kind="multi_uclass base source",
+                block_label=f"subtype '{sub_key}' export block",
+                diag_source="multi_uclass_inject",
+            )
 
     # Rewrite the merged writes (drop stale base writes; replace with merged).
     writes = [w for w in writes if w.path != header_path and w.path != source_path]
@@ -1945,18 +2496,55 @@ def emit_multi_uclass(
 # Pipeline: view structs
 # ---------------------------------------------------------------------------
 
-def _view_field_type_cpp(c_type: str) -> str:
-    return {"int": "int*", "mjtByte": "mjtByte*", "mjtNum": "mjtNum*",
-            "float": "float*", "char": "char*"}.get(c_type, "mjtNum*")
+_VIEW_FIELD_TYPE_MAP = {
+    "int": "int*", "mjtByte": "mjtByte*", "mjtBool": "mjtBool*",
+    "mjtNum": "mjtNum*", "float": "float*", "char": "char*",
+}
+
+
+def _view_field_type_cpp(c_type: str, field_name: str = "") -> str:
+    mapped = _VIEW_FIELD_TYPE_MAP.get(c_type)
+    if mapped is None:
+        # Don't silently default a new MuJoCo scalar type to mjtNum* — that
+        # ships a wrong (often 8-byte-over-1-byte) pointer with no warning.
+        # A bump that introduces a new type should surface here loudly.
+        _diag_add(
+            f"[diagnostic] view field '{field_name or '?'}' has unmapped C "
+            f"type '{c_type}'; defaulting to 'mjtNum*'. A MuJoCo bump likely "
+            f"introduced a new scalar type; add it to _VIEW_FIELD_TYPE_MAP.",
+            source="view_field_type",
+        )
+        return "mjtNum*"
+    return mapped
 
 
 _MJ_M_MACRO_RE = re.compile(r"MJ_M\(\s*(\w+)\s*\)")
+# Any MJ_*( ... ) macro that survives _expand_stride is an unhandled
+# stride shape — emit invalid C++ in MjBind.h. The guard fires a
+# diagnostic so a MuJoCo bump that introduces new stride macros (e.g.
+# MJ_D(...) for mjData, MJ_V(...) for variable-size views) surfaces
+# loudly rather than landing as a compile error far downstream.
+_RESIDUAL_MJ_MACRO_RE = re.compile(r"\bMJ_[A-Z]\(\s*\w+\s*\)")
 
 
 def _expand_stride(stride: str) -> str:
     """Convert mjxmacro stride expressions to plain C++ expressions usable
-    in MjBind.h. ``MJ_M(nuser_jnt)`` -> ``m->nuser_jnt``."""
-    return _MJ_M_MACRO_RE.sub(r"m->\1", stride)
+    in MjBind.h. ``MJ_M(nuser_jnt)`` -> ``m->nuser_jnt``.
+
+    Fires a diagnostic if any ``MJ_*(...)`` macro survives the
+    substitution — that's an unhandled stride shape we'd otherwise
+    silently emit into MjBind.h verbatim."""
+    expanded = _MJ_M_MACRO_RE.sub(r"m->\1", stride)
+    residual = _RESIDUAL_MJ_MACRO_RE.findall(expanded)
+    if residual:
+        _diag_add(
+            f"[diagnostic] _expand_stride saw stride '{stride}' with "
+            f"unhandled MuJoCo macro(s) {residual}. Result '{expanded}' "
+            f"will land in MjBind.h verbatim and likely fail to compile. "
+            f"Teach _expand_stride about the new macro shape.",
+            source="expand_stride",
+        )
+    return expanded
 
 
 def emit_view_structs(rules: Dict[str, Any], mjxmacro: Dict[str, Any]) -> Dict[str, Tuple[str, str]]:
@@ -1993,27 +2581,58 @@ def emit_view_structs(rules: Dict[str, Any], mjxmacro: Dict[str, Any]) -> Dict[s
             bind_lines.append(f"    const int {var} = {expr};")
 
         # mjModel pointer fields.
+        #
+        # Stride-1 ``int`` entries (e.g. ``geom_type``, ``body_mocapid``,
+        # ``actuator_trntype``) are emitted as DEREFERENCED scalars rather
+        # than pointers — there's exactly one int per element, and the
+        # consumer always wants the value, not the pointer. Matches the
+        # ergonomic shape the hand-written MjBind.h had before activation.
+        # Mat-vec entries (``geom_size`` stride 3, ``jnt_solref`` stride
+        # mjNREF, etc.) stay as pointers since consumers index into them.
         for block in include_blocks:
             entries = mjxmacro["mjmodel_pointers"].get(block, [])
             index_var = block_index_var.get(block, "id")
             for entry in entries:
                 name = entry["name"]
-                cpp_type = _view_field_type_cpp(entry["type"])
                 view_field = renames.get(name, name)
                 stride = _expand_stride(entry["stride"])
-                fields_lines.append(f"    {cpp_type} {view_field};")
-                bind_lines.append(
-                    f"    {view_field} = m->{name} + {index_var} * {stride};"
-                )
+                is_scalar_int = (entry["type"] == "int" and entry["stride"] == "1")
+                if is_scalar_int:
+                    fields_lines.append(f"    int {view_field};")
+                    bind_lines.append(
+                        f"    {view_field} = m->{name}[{index_var}];"
+                    )
+                else:
+                    cpp_type = _view_field_type_cpp(entry["type"], name)
+                    fields_lines.append(f"    {cpp_type} {view_field};")
+                    bind_lines.append(
+                        f"    {view_field} = m->{name} + {index_var} * {stride};"
+                    )
 
         # mjData fields (explicitly listed per view).
+        #
+        # Each spec dict has ``index_var`` + ``stride``. Some fields don't
+        # fit the simple ``d->src + index_var * stride`` formula — e.g.
+        # SensorView::sensordata, where the right slice depends on a
+        # bounds-checked sensor_adr lookup. For those, set ``bind_override``
+        # in the rule to a C++ statement that assigns the field; the field
+        # decl is still emitted at the standard cpp_type. This kills the
+        # fragile "codegen emits wrong code, hand-written override after
+        # the marker" pattern.
         for data_name, spec in data_fields.items():
+            # ``_note_*`` keys document the data_fields entries; skip them.
+            if data_name.startswith("_note_"):
+                continue
             cpp_type = "mjtNum*"
             view_field = renames.get(data_name, data_name)
-            index_var = spec.get("index_var", "id")
-            stride = _expand_stride(spec.get("stride", "1"))
             fields_lines.append(f"    {cpp_type} {view_field};")
-            bind_lines.append(f"    {view_field} = d->{data_name} + {index_var} * {stride};")
+            bind_override = spec.get("bind_override")
+            if bind_override:
+                bind_lines.append(f"    {bind_override}")
+            else:
+                index_var = spec.get("index_var", "id")
+                stride = _expand_stride(spec.get("stride", "1"))
+                bind_lines.append(f"    {view_field} = d->{data_name} + {index_var} * {stride};")
 
         fields_block = "\n".join(fields_lines) + ("\n" if fields_lines else "")
         bind_block = "\n".join(bind_lines) + ("\n" if bind_lines else "")
@@ -2037,8 +2656,18 @@ def emit_bind_h_injection(
     views = emit_view_structs(rules, mjxmacro)
     new_text = text
     for view_name, (fields_block, bind_block) in views.items():
-        new_text, _ = inject_between_tags(new_text, f"VIEW_{view_name}_FIELDS", fields_block)
-        new_text, _ = inject_between_tags(new_text, f"VIEW_{view_name}_BIND", bind_block)
+        new_text, _ = _inject_or_diag(
+            new_text, f"VIEW_{view_name}_FIELDS", fields_block,
+            host_path=bind_h_path, host_kind="MjBind.h",
+            block_label=f"view struct '{view_name}' fields block (struct will ship empty)",
+            diag_source="bind_inject",
+        )
+        new_text, _ = _inject_or_diag(
+            new_text, f"VIEW_{view_name}_BIND", bind_block,
+            host_path=bind_h_path, host_kind="MjBind.h",
+            block_label=f"view '{view_name}' Bind() body",
+            diag_source="bind_inject",
+        )
 
     with open(bind_h_path, "r", encoding="utf-8") as f:
         original = f.read()
@@ -2048,12 +2677,55 @@ def emit_bind_h_injection(
 
 
 # ---------------------------------------------------------------------------
-# Pipeline: schema-for-tests header (T3)
+# Pipeline: schema-for-tests header
 # ---------------------------------------------------------------------------
+
+def kept_props_for_category(
+    cat: str, cat_rules: Dict[str, Any],
+    schema: Dict[str, Any], rules: Dict[str, Any],
+) -> List[str]:
+    """Return the ordered prop names the codegen will emit for one
+    category. Order matches the canonical emission order: canon-
+    owned properties first, then per-attr in schema order. xml_enum
+    attrs lower to their ``ue_property`` because that's the hand-
+    declared UPROPERTY the completeness test resolves against."""
+    elem_rules = rules.get("element_rules", {}).get(cat, {})
+    elem_excl = set(elem_rules.get("exclude_attrs", []))
+    elem_canons: List[str] = elem_rules.get("applies_canonicalizations", [])
+    canonicalizations = rules.get("canonicalizations", {})
+    canon_absorbed: set = compute_canon_absorbed(elem_canons, canonicalizations)
+    global_excl = set(rules.get("global_exclusions", []))
+    renames: Dict[str, str] = rules.get("property_renames", {})
+    xml_enum_attrs = elem_rules.get("xml_enum_attrs", {})
+
+    attrs = list(schema_attrs(schema, cat_rules["schema_common_block"]))
+    # ``schema_common_extra_attrs`` covers UPROPERTYs schema attrs miss
+    # (frame's pos/quat/childclass come via this path because frame.attrs
+    # is empty in the snapshot).
+    for a in cat_rules.get("schema_common_extra_attrs", []):
+        if a not in attrs:
+            attrs.append(a)
+
+    kept: List[str] = []
+    for c in elem_canons:
+        cd = canonicalizations.get(c)
+        if cd and cd.get("emits_property"):
+            kept.append(cd["emits_property"]["name"])
+    for a in iter_category_attrs(attrs, global_excl=global_excl,
+                                   elem_excl=elem_excl,
+                                   canon_absorbed=canon_absorbed):
+        if a in xml_enum_attrs:
+            kept.append(xml_enum_attrs[a]["ue_property"])
+            continue
+        kept.append(renames.get(a, a))
+    return kept
+
 
 def emit_schema_for_tests(schema: Dict[str, Any], rules: Dict[str, Any]) -> FileWrite:
     """Generate a C++ header that exposes schema attribute lists per
-    category to URLab automation tests."""
+    category to URLab automation tests. Every category emits a
+    ``CatProps()`` accessor returning a static ``TArray<FString>`` of
+    the codegen-owned UPROPERTY names."""
     lines: List[str] = [
         COPYRIGHT_BLOCK,
         "#pragma once",
@@ -2068,64 +2740,8 @@ def emit_schema_for_tests(schema: Dict[str, Any], rules: Dict[str, Any]) -> File
         "{",
     ]
 
-    categories: Dict[str, Any] = rules.get("categories", {})
-    global_excl = set(rules.get("global_exclusions", []))
-    type_map = rules.get("type_mappings", {})
-    default_type = rules.get("default_type", "float")
-    renames: Dict[str, str] = rules.get("property_renames", {})
-
-    for cat, cat_rules in categories.items():
-        elem_rules = rules.get("element_rules", {}).get(cat, {})
-        elem_excl = set(elem_rules.get("exclude_attrs", []))
-        elem_canons: List[str] = elem_rules.get("applies_canonicalizations", [])
-        canonicalizations = rules.get("canonicalizations", {})
-        canon_absorbed: set = set()
-        for c in elem_canons:
-            cd = canonicalizations.get(c)
-            if cd:
-                canon_absorbed.update(cd.get("absorbs_attrs", []))
-
-        # If schema emission is disabled for this category, the codegen
-        # produces no UPROPERTYs from the schema — so the completeness
-        # test shouldn't expect any. Emit an empty list and skip the
-        # rest of the per-attr accumulation. The category is still
-        # tracked (entry function still emitted) so call sites compile.
-        if cat_rules.get("disable_schema_emission"):
-            ident = cat.replace(".", "_")
-            lines.append(f"    inline const TArray<FString>& {ident.title()}Props()")
-            lines.append("    {")
-            lines.append("        static const TArray<FString> P{};")
-            lines.append("        return P;")
-            lines.append("    }")
-            lines.append("")
-            continue
-
-        attrs = list(schema_attrs(schema, cat_rules["schema_common_block"]))
-        # Extras live outside the schema block (e.g. frame.attrs doesn't
-        # exist in the snapshot; we provide pos/quat/childclass via
-        # schema_common_extra_attrs). Include them so the T3 completeness
-        # test asserts on the full property surface.
-        for a in cat_rules.get("schema_common_extra_attrs", []):
-            if a not in attrs:
-                attrs.append(a)
-        # xml_enum_attrs map schema-attr -> hand-declared UE enum UPROPERTY
-        # (e.g. camera.mode -> TrackingMode). Use the ue_property name in
-        # the schema-for-tests output so the completeness test resolves
-        # the actual UPROPERTY on the class.
-        xml_enum_attrs = elem_rules.get("xml_enum_attrs", {})
-        kept_props: List[str] = []
-        for c in elem_canons:
-            cd = canonicalizations.get(c)
-            if cd and cd.get("emits_property"):
-                kept_props.append(cd["emits_property"]["name"])
-        for a in attrs:
-            if a in global_excl or a in elem_excl or a in canon_absorbed:
-                continue
-            if a in xml_enum_attrs:
-                kept_props.append(xml_enum_attrs[a]["ue_property"])
-                continue
-            kept_props.append(renames.get(a, pascal_case(a)))
-
+    for cat, cat_rules in rules.get("categories", {}).items():
+        kept_props = kept_props_for_category(cat, cat_rules, schema, rules)
         ident = cat.replace(".", "_")
         joined = ", ".join(f'TEXT("{p}")' for p in kept_props)
         lines.append(f"    inline const TArray<FString>& {ident.title()}Props()")
@@ -2147,6 +2763,1153 @@ def emit_schema_for_tests(schema: Dict[str, Any], rules: Dict[str, Any]) -> File
 # Top-level orchestration
 # ---------------------------------------------------------------------------
 
+@dataclass
+class PhaseContext:
+    """All state a codegen emission phase needs. Phases mutate
+    ``writes`` and surface diagnostics through ``_diag_add``."""
+    schema:        Dict[str, Any]
+    rules:         Dict[str, Any]
+    mjxmacro:      Dict[str, Any]
+    mjspec:        Optional[Dict[str, Any]]
+    public_root:   str
+    private_root:  str
+    bind_h_path:   str
+    writes:        List["FileWrite"]
+
+
+@dataclass
+class EmissionPhase:
+    """One step in the codegen pipeline. Phases are run in order; each
+    either appends to ``ctx.writes`` (emit phases) or has side effects
+    only (the diagnostics phase). The registry below makes adding a
+    phase a one-line insert rather than another `writes.extend(...)`
+    block in ``collect_all_writes``.
+    """
+    name: str
+    fn:   Callable[["PhaseContext"], None]
+
+
+# ---------------------------------------------------------------------------
+# Synthetic categories: whole-file banner-mode emission
+# ---------------------------------------------------------------------------
+#
+# "Synthetic" because the USTRUCT doesn't correspond to one entry in the
+# MJCF schema (which describes XML element shapes). Instead it mirrors a
+# C struct laid out in mjxmacro.h (MJOPTION_FIELDS, MJSTATISTIC_FIELDS,
+# MJVISUAL_*_FIELDS) — the runtime-only state URLab exposes as USTRUCT
+# blueprint properties.
+#
+# Files are emitted in BANNER mode (no // --- CODEGEN_*_START/END ---
+# tags). The whole .h / .cpp pair is codegen-owned; hand-edits get
+# clobbered on next regen.
+#
+# Rule shape (under top-level ``synthetic_categories`` in codegen_rules.json):
+#   "MjStatistic": {
+#       "ue_struct_name":   "FMjStatistic",
+#       "mjxmacro_block":   "MJSTATISTIC_FIELDS",
+#       "public_header":    "MuJoCo/Generated/MjStatistic.h",
+#       "private_source":   "MuJoCo/Generated/MjStatistic.cpp",
+#       "category_label":   "MuJoCo|Statistic",
+#       "exclude_fields":   [],
+#       "per_field_meta":   { "extent": "ClampMin=0.0" },
+#       "urlab_extra_fields": [],   // empty for pure mirrors
+#   }
+
+
+_CPP_TO_UE_TYPE = {
+    "int":     "int32",
+    "float":   "float",
+    "mjtNum":  "double",
+    "mjtByte": "uint8",
+    "mjtBool": "bool",
+}
+
+
+def _ue_field_name(c_name: str) -> str:
+    """snake_case mjxmacro name -> PascalCase UE field. Preserves URLab's
+    naming convention from the hand-written MjSimOptions.h (ls_iterations
+    -> LsIterations, ccd_iterations -> CCD_Iterations is a deliberate
+    one-off — synthetic_categories rules can override via field_renames)."""
+    parts = c_name.split("_")
+    return "".join(p[:1].upper() + p[1:] for p in parts if p)
+
+
+# `_VEC3_CONVERT_FMT` lives in `_codegen_core`.
+
+
+def _emit_synth_mirror_properties(
+    fields: List[Dict[str, Any]],
+    def_: Dict[str, Any],
+    category_label: str,
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """Emit the UPROPERTY block for the mjxmacro mirror fields and
+    return the parallel ``fields_meta`` list. ``fields_meta`` carries
+    the per-field shape (c_name, ue_name, ue_type, is_vec, count) the
+    out-of-line ApplyTo emitters need."""
+    exclude = set(def_.get("exclude_fields", []))
+    field_renames: Dict[str, str] = def_.get("field_renames", {})
+    field_types: Dict[str, str] = def_.get("field_types", {})
+    all_fields_type: Optional[str] = def_.get("all_fields_type")
+    field_defaults: Dict[str, str] = def_.get("field_defaults", {})
+
+    prop_lines: List[str] = []
+    fields_meta: List[Dict[str, Any]] = []
+    for f in fields:
+        c_name = f["name"]
+        if c_name in exclude:
+            continue
+        ue_name = field_renames.get(c_name, _ue_field_name(c_name))
+        c_type = f["type"]
+        is_vec = f.get("is_vec", False)
+        # Accept both str ("3") and int (3) — the mjxmacro snapshot
+        # currently emits strings, but a future shape bump that yields
+        # ints must NOT silently collapse vec3 fields to ``TArray<float>``.
+        raw_count = f.get("count", 1)
+        if isinstance(raw_count, int):
+            count = raw_count
+        elif isinstance(raw_count, str) and raw_count.isdigit():
+            count = int(raw_count)
+        else:
+            count = 1
+
+        if c_name in field_types:
+            ue_type = field_types[c_name]
+        elif all_fields_type:
+            ue_type = all_fields_type
+        elif is_vec and count == 3:
+            ue_type = "FVector"
+        elif is_vec and count == 4:
+            ue_type = "FLinearColor"
+        elif is_vec:
+            ue_type = "TArray<float>"
+        else:
+            ue_type = _CPP_TO_UE_TYPE.get(c_type, "float")
+
+        default_override = field_defaults.get(ue_name) or field_defaults.get(c_name)
+
+        cat = f"MuJoCo|{category_label}"
+        toggle = override_toggle_name(ue_name)
+        default = default_override if default_override else _attr_default_value(ue_type)
+        prop_lines.append(
+            f'    UPROPERTY(EditAnywhere, Category = "{cat}", meta=(InlineEditConditionToggle))\n'
+            f'    bool {toggle} = false;\n\n'
+            f'    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "{cat}", meta=(EditCondition="{toggle}"))\n'
+            f'    {ue_type} {ue_name} = {default};\n\n'
+        )
+        fields_meta.append({
+            "c_name":   c_name,
+            "ue_name":  ue_name,
+            "ue_type":  ue_type,
+            "is_vec":   is_vec,
+            "count":    count,
+        })
+    return prop_lines, fields_meta
+
+
+def _emit_synth_extras_properties(
+    urlab_extras: List[Dict[str, Any]],
+    category_label: str,
+) -> Tuple[List[str], List[Dict[str, Any]]]:
+    """Emit UPROPERTY blocks for the URLab-extra fields (non-mjxmacro
+    additions like ``MemoryMB`` on MjOption). Returns prop_lines +
+    extras_meta. Each extra carries optional ``has_override``,
+    ``edit_condition``, ``meta`` knobs that the mirror loop above
+    doesn't surface."""
+    prop_lines: List[str] = []
+    extras_meta: List[Dict[str, Any]] = []
+    for extra in urlab_extras:
+        ue_name = extra["name"]
+        ue_type = extra["type"]
+        default = extra.get("default", _attr_default_value(ue_type))
+        sub_category = extra.get("sub_category")
+        has_override = extra.get("has_override", True)
+        edit_condition = extra.get("edit_condition")
+        meta_extra = extra.get("meta")
+        cat = f"MuJoCo|{category_label}"
+        if sub_category:
+            cat = f"{cat}|{sub_category}"
+        if has_override:
+            toggle = override_toggle_name(ue_name)
+            meta_inner = f'EditCondition="{toggle}"'
+            if meta_extra:
+                meta_inner = f'{meta_inner}, {meta_extra}'
+            prop_lines.append(
+                f'    UPROPERTY(EditAnywhere, Category = "{cat}", meta=(InlineEditConditionToggle))\n'
+                f'    bool {toggle} = false;\n\n'
+                f'    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "{cat}", meta=({meta_inner}))\n'
+                f'    {ue_type} {ue_name} = {default};\n\n'
+            )
+        else:
+            meta_parts = []
+            if edit_condition:
+                meta_parts.append(f'EditCondition="{edit_condition}"')
+            if meta_extra:
+                meta_parts.append(meta_extra)
+            meta_str = ", ".join(meta_parts)
+            meta_clause = f', meta=({meta_str})' if meta_str else ""
+            prop_lines.append(
+                f'    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "{cat}"{meta_clause})\n'
+                f'    {ue_type} {ue_name} = {default};\n\n'
+            )
+        extras_meta.append({"ue_name": ue_name, "type": ue_type,
+                            "has_override": has_override})
+    return prop_lines, extras_meta
+
+
+def _emit_synth_inline_apply_template(
+    fields_meta: List[Dict[str, Any]],
+    field_skip_apply: Set[str],
+) -> str:
+    """Emit the templated inline ``ApplyTo`` body for pure-mirror
+    synthetic structs (mjStatistic etc.). The shape mirrors the
+    out-of-line ApplyToSpec but lives in the header so it's reusable
+    against any compatible C struct (mjStatistic, mjVisualRgba)."""
+    apply_lines: List[str] = []
+    for fm in fields_meta:
+        c_name = fm["c_name"]
+        ue_name = fm["ue_name"]
+        if c_name in field_skip_apply:
+            continue
+        if fm["ue_type"] == "FLinearColor":
+            apply_lines.append(
+                f"    Dst.{c_name}[0] = static_cast<decltype(Dst.{c_name}[0])>({ue_name}.R);\n"
+                f"    Dst.{c_name}[1] = static_cast<decltype(Dst.{c_name}[1])>({ue_name}.G);\n"
+                f"    Dst.{c_name}[2] = static_cast<decltype(Dst.{c_name}[2])>({ue_name}.B);\n"
+                f"    Dst.{c_name}[3] = static_cast<decltype(Dst.{c_name}[3])>({ue_name}.A);"
+            )
+        elif fm["ue_type"] == "FVector":
+            apply_lines.append(
+                f"    Dst.{c_name}[0] = static_cast<decltype(Dst.{c_name}[0])>({ue_name}.X);\n"
+                f"    Dst.{c_name}[1] = static_cast<decltype(Dst.{c_name}[1])>({ue_name}.Y);\n"
+                f"    Dst.{c_name}[2] = static_cast<decltype(Dst.{c_name}[2])>({ue_name}.Z);"
+            )
+        elif fm["is_vec"]:
+            apply_lines.append(
+                f"    for (int32 I = 0; I < {ue_name}.Num() && I < {fm['count']}; ++I)\n"
+                f"        Dst.{c_name}[I] = static_cast<decltype(Dst.{c_name}[0])>({ue_name}[I]);"
+            )
+        else:
+            apply_lines.append(f"    Dst.{c_name} = static_cast<decltype(Dst.{c_name})>({ue_name});")
+    return (
+        f"    /** @brief Mirror every field into a runtime C struct. */\n"
+        f"    template <typename TDst>\n"
+        f"    void ApplyTo(TDst& Dst) const\n"
+        f"    {{\n"
+        f"{chr(10).join(apply_lines)}\n"
+        f"    }}\n"
+    )
+
+
+def _emit_synthetic_struct_files(
+    cat_name: str, def_: Dict[str, Any], mjxmacro: Dict[str, Any],
+    public_root: str, private_root: str,
+) -> List["FileWrite"]:
+    """Emit the .h + .cpp pair for one synthetic_categories entry.
+
+    Currently supports the mjxmacro_block source (X-macro field list).
+    """
+    block_name = def_.get("mjxmacro_block")
+    if not block_name:
+        return []
+    fields = mjxmacro.get("struct_fields", {}).get(block_name, [])
+    if not fields:
+        _diag_add(
+            f"[diagnostic] synthetic_categories['{cat_name}'] references "
+            f"mjxmacro_block='{block_name}' which is empty or missing in "
+            f"the snapshot. Skipping emission.",
+            source="synthetic_categories",
+        )
+        return []
+
+    ue_struct = def_["ue_struct_name"]
+    category_label = def_.get("category_label", "MuJoCo")
+    field_apply_mode: Dict[str, str] = def_.get("field_apply_to_spec_mode", {})
+    field_skip_apply: set = set(def_.get("field_skip_apply", []))
+    public_relpath = def_["public_header"]
+    private_relpath = def_.get("private_source")
+    extra_includes: List[str] = def_.get("include_directives", [])
+    urlab_extras: List[Dict[str, Any]] = def_.get("urlab_extra_fields", [])
+    apply_extras_function: Optional[str] = def_.get("apply_extras_function")
+    emit_apply_methods: bool = bool(def_.get("emit_apply_methods", False))
+
+    mirror_lines, fields_meta = _emit_synth_mirror_properties(
+        fields, def_, category_label,
+    )
+    extras_lines, _extras_meta = _emit_synth_extras_properties(
+        urlab_extras, category_label,
+    )
+    properties_block = "".join(mirror_lines + extras_lines)
+    c_struct = def_.get("c_struct_type", block_name.lower().replace("_fields", ""))
+
+    # ---------- header content ----------
+    extra_includes_block = "".join(f'#include "{inc}"\n' for inc in extra_includes)
+    header_basename = os.path.basename(public_relpath).replace('.h', '')
+    public_path = os.path.join(public_root, public_relpath.replace("/", os.sep))
+
+    # Method decls in the header. If emit_apply_methods=True, declare
+    # ApplyToSpec / ApplyOverridesToModel as forward decls (definitions
+    # land in the .cpp). Otherwise emit an inline-templated ApplyTo for
+    # pure-mirror structs (mjStatistic etc.).
+    if emit_apply_methods:
+        method_decls = (
+            f"    /** @brief Writes every mirror field plus URLab extras into the "
+            f"runtime spec. Used by articulations to set child spec options. */\n"
+            f"    void ApplyToSpec(mjSpec* Spec) const;\n\n"
+            f"    /** @brief Applies only override-toggled mirror fields to a "
+            f"compiled model (post-compile override path). */\n"
+            f"    void ApplyOverridesToModel(mjModel* Model) const;\n"
+        )
+    else:
+        method_decls = _emit_synth_inline_apply_template(
+            fields_meta, field_skip_apply,
+        )
+
+    # Forward-decl the extras function so the codegen-emitted .cpp can
+    # call it without #including a hand-written header. Operator writes
+    # the body in *Extras.cpp.
+    extras_forward_decl = ""
+    if apply_extras_function and urlab_extras:
+        extras_forward_decl = (
+            f"// Forward-decl: hand-written body lives in "
+            f"{os.path.basename(public_relpath).replace('.h', '')}Extras.cpp.\n"
+            f"struct {ue_struct};\n"
+            f"void {apply_extras_function}("
+            f"mjOption* Opt, const {ue_struct}& Self, "
+            f"mjSpec* Spec, mjModel* Model = nullptr);\n\n"
+        )
+
+    header_content = (
+        f"{COPYRIGHT_BLOCK}\n"
+        f"#pragma once\n\n"
+        f"#include \"CoreMinimal.h\"\n"
+        f"{extra_includes_block}"
+        f"#include \"{header_basename}.generated.h\"\n\n"
+        f"{extras_forward_decl}"
+        f"// Mirror of MuJoCo's ``{c_struct}`` ({block_name}). Codegen-owned —\n"
+        f"// hand-edits get clobbered on next regen. Add fields by editing\n"
+        f"// codegen_rules.json[synthetic_categories.{cat_name}].\n"
+        f"USTRUCT(BlueprintType)\n"
+        f"struct URLAB_API {ue_struct}\n"
+        f"{{\n"
+        f"    GENERATED_BODY()\n\n"
+        f"{properties_block}"
+        f"{method_decls}"
+        f"}};\n"
+    )
+
+    writes: List[FileWrite] = [FileWrite(path=public_path, content=header_content)]
+
+    if emit_apply_methods and private_relpath:
+        cpp_content = _emit_synth_apply_methods_cpp(
+            ue_struct=ue_struct,
+            fields_meta=fields_meta,
+            field_apply_mode=field_apply_mode,
+            field_skip_apply=field_skip_apply,
+            apply_extras_function=apply_extras_function,
+            urlab_extras=urlab_extras,
+            public_relpath=public_relpath,
+            header_basename=header_basename,
+        )
+        private_path = os.path.join(private_root, private_relpath.replace("/", os.sep))
+        writes.append(FileWrite(path=private_path, content=cpp_content))
+
+    return writes
+
+
+def _emit_synth_apply_methods_cpp(
+    *,
+    ue_struct: str,
+    fields_meta: List[Dict[str, Any]],
+    field_apply_mode: Dict[str, str],
+    field_skip_apply: Set[str],
+    apply_extras_function: Optional[str],
+    urlab_extras: List[Dict[str, Any]],
+    public_relpath: str,
+    header_basename: str,
+) -> str:
+    """Emit the out-of-line ``ApplyToSpec`` and ``ApplyOverridesToModel``
+    bodies for a synthetic struct whose mirror writes go through mjSpec
+    + mjModel (mjOption is the canonical case).
+
+    Both methods gate every field write with ``bOverride_X``. The earlier
+    ``unconditional`` SPEC default silently clobbered MJCF-XML defaults
+    with whatever the UE struct happened to carry, even for fields the
+    user never authored. ``field_apply_mode`` now selects only the
+    per-FVector conversion flavour (``vec3_cm`` / ``vec3_y_flip`` /
+    ``pos``); the toggle guard is applied uniformly.
+    """
+    apply_to_spec_lines: List[str] = ["    if (!Spec) return;"]
+    apply_to_model_lines: List[str] = ["    if (!Model) return;"]
+    for fm in fields_meta:
+        c_name = fm["c_name"]
+        ue_name = fm["ue_name"]
+        ue_type = fm["ue_type"]
+        if c_name in field_skip_apply:
+            continue
+        toggle = override_toggle_name(ue_name)
+        spec_mode = field_apply_mode.get(c_name, "")
+        if ue_type == "FVector":
+            # Strip a legacy "guarded_" prefix; the guard is now uniform.
+            conv = spec_mode.replace("guarded_", "") if spec_mode.startswith("guarded_") else spec_mode
+            if conv not in _VEC3_CONVERT_FMT:
+                conv = "vec3_y_flip"
+            stmt_spec_inner = _VEC3_CONVERT_FMT[conv].format(
+                c=f"Spec->option.{c_name}", ue=ue_name,
+            )
+            stmt_model_inner = _VEC3_CONVERT_FMT[conv].format(
+                c=f"Model->opt.{c_name}", ue=ue_name,
+            )
+        elif ue_type.startswith("EMj"):
+            stmt_spec_inner = f"Spec->option.{c_name} = static_cast<int>({ue_name});"
+            stmt_model_inner = f"Model->opt.{c_name} = static_cast<int>({ue_name});"
+        else:
+            stmt_spec_inner = f"Spec->option.{c_name} = {ue_name};"
+            stmt_model_inner = f"Model->opt.{c_name} = {ue_name};"
+
+        apply_to_spec_lines.append(f"    if ({toggle}) {{ {stmt_spec_inner} }}")
+        apply_to_model_lines.append(f"    if ({toggle}) {{ {stmt_model_inner} }}")
+
+    if apply_extras_function and urlab_extras:
+        # Spec / Model already null-checked by the early return at the
+        # top of each body, so the ternary is dead — pass the address
+        # directly.
+        apply_to_spec_lines.append(
+            f"    {apply_extras_function}(&Spec->option, *this, Spec);"
+        )
+        apply_to_model_lines.append(
+            f"    {apply_extras_function}(&Model->opt, *this, nullptr, Model);"
+        )
+
+    return (
+        f"{COPYRIGHT_BLOCK}\n"
+        f"#include \"{os.path.dirname(public_relpath).replace(os.sep, '/')}/{header_basename}.h\"\n"
+        f"#include <mujoco/mujoco.h>\n\n"
+        f"void {ue_struct}::ApplyToSpec(mjSpec* Spec) const\n"
+        f"{{\n"
+        + "\n".join(apply_to_spec_lines) + "\n"
+        f"}}\n\n"
+        f"void {ue_struct}::ApplyOverridesToModel(mjModel* Model) const\n"
+        f"{{\n"
+        + "\n".join(apply_to_model_lines) + "\n"
+        f"}}\n"
+    )
+
+
+def _phase_synthetic_categories(ctx: PhaseContext) -> None:
+    """Run after the main category walk; emits whole-file synthetic structs."""
+    synth = ctx.rules.get("synthetic_categories", {})
+    for cat_name, def_ in synth.items():
+        # Skip _note_* sibling keys used for inline documentation.
+        if cat_name.startswith("_") or not isinstance(def_, dict):
+            continue
+        ctx.writes.extend(_emit_synthetic_struct_files(
+            cat_name, def_, ctx.mjxmacro, ctx.public_root, ctx.private_root,
+        ))
+
+
+# ---------------------------------------------------------------------------
+# Sensor switch + TagToType codegen
+# ---------------------------------------------------------------------------
+#
+# Replaces the hand-written switch + map in MjSensor.cpp with codegen
+# output driven by:
+#   - codegen_rules.json[categories.sensor.subtypes] for XML key + enum
+#     value + (optional) case_body_override
+#   - sensor_per_type (from build_mjcf_schema_snapshot.py's Sensor()
+#     scrape) for mj_type + static objtype/reftype literals
+#
+# Variable-objtype/reftype branches (frame*, geomdist, contact, plugin,
+# user) stay hand-written in the post-switch block — that block reads
+# UE-side ObjType / RefType properties and applies them after the
+# codegen case fires.
+
+def _emit_sensor_switch_block(cat_rules: Dict[str, Any],
+                             sensor_per_type: Dict[str, Any]) -> str:
+    """One ``case EMjSensorType::X: ...`` per subtype + the default fallback.
+    Lives between ``CODEGEN_SENSOR_TYPE_SWITCH_*`` markers in MjSensor.cpp.
+    """
+    lines: List[str] = []
+    type_enum = cat_rules.get("type_enum_name", "EMjSensorType")
+    for subtype in cat_rules.get("subtypes", []):
+        key = subtype["key"]
+        enum_value = subtype["enum_value"]
+        override = subtype.get("case_body_override")
+        if override:
+            lines.append(f"        case {type_enum}::{enum_value}:")
+            lines.append(f"            {override} break;")
+            continue
+        per = sensor_per_type.get(key, {})
+        mj_type = per.get("mj_type")
+        if not mj_type:
+            # The sensor switch will fall through to ``default:`` for this
+            # subtype at runtime — i.e. all framejerk/whatever sensors get
+            # the default mjSENS_ACCELEROMETER + mjOBJ_SITE substitution.
+            # Loud diagnostic so a regression in build_mjcf_schema_snapshot's
+            # _extract_sensor_per_type regex doesn't silently miscompile.
+            _diag_add(
+                f"[diagnostic] sensor subtype '{key}' has no entry in "
+                f"sensor_per_type snapshot — runtime will fall through to "
+                f"the default mjSENS_ACCELEROMETER + mjOBJ_SITE branch. "
+                f"Check the _extract_sensor_per_type regex against "
+                f"mujoco/src/user/user_objects.cc.",
+                source="sensor_scrape_miss",
+            )
+            lines.append(f"        // (skipped: no mj_type for '{key}' in sensor_per_type)")
+            continue
+        stmts = [f"Element->type = {mj_type};"]
+        # Only emit static objtype/reftype when sensor_per_type carries a
+        # literal mjOBJ_X. "from_xml" and "computed" entries are handled
+        # by the post-switch block reading UE-side ObjType/RefType.
+        objtype = per.get("objtype")
+        if isinstance(objtype, str) and objtype.startswith("mjOBJ_"):
+            stmts.append(f"Element->objtype = {objtype};")
+        reftype = per.get("reftype")
+        if isinstance(reftype, str) and reftype.startswith("mjOBJ_"):
+            stmts.append(f"Element->reftype = {reftype};")
+        lines.append(f"        case {type_enum}::{enum_value}: "
+                     f"{' '.join(stmts)} break;")
+    default_per = sensor_per_type.get("accelerometer", {})
+    default_type = default_per.get("mj_type", "mjSENS_ACCELEROMETER")
+    default_objtype = default_per.get("objtype") or "mjOBJ_SITE"
+    if not (isinstance(default_objtype, str) and default_objtype.startswith("mjOBJ_")):
+        default_objtype = "mjOBJ_SITE"
+    lines.append(f"        default: Element->type = {default_type}; "
+                 f"Element->objtype = {default_objtype}; break;")
+    return "\n".join(lines) + "\n"
+
+
+def _emit_sensor_tag_to_type_block(cat_rules: Dict[str, Any]) -> str:
+    """One ``{TEXT(""), EMjSensorType::X}`` per subtype. Lives between
+    ``CODEGEN_SENSOR_TAG_TO_TYPE_*`` markers in MjSensor.cpp.
+    """
+    lines: List[str] = []
+    type_enum = cat_rules.get("type_enum_name", "EMjSensorType")
+    for subtype in cat_rules.get("subtypes", []):
+        # Some subtype XML keys collide with C++ enum members that diverge
+        # (e.g. `key=tendonactuatorfrc`, `enum_value=TendonActFrc`,
+        # mjSENS_TENDONACTFRC). The tag-to-type map uses the XML key
+        # verbatim so MJCF lookups match.
+        key = subtype["key"]
+        enum_value = subtype["enum_value"]
+        lines.append(f'        {{TEXT("{key}"), {type_enum}::{enum_value}}},')
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------------------
+# Generated enum headers
+# ---------------------------------------------------------------------------
+#
+# Some MuJoCo C enums (mjtIntegrator/mjtCone/mjtSolver/...) map to URLab
+# UENUMs that are blueprint-exposed. Hand-written copies diverge from the
+# C source over time, so this emitter generates them from the projected
+# mjspec dict's ``enums`` table (sourced from the introspect snapshot).
+#
+# Rule shape (under top-level ``generated_enums`` in codegen_rules.json):
+#   "MjOptionEnums": {
+#       "public_header": "MuJoCo/Generated/MjOptionEnums.h",
+#       "enums": [
+#         {
+#           "ue_name": "EMjIntegrator",
+#           "from_mj_enum": "mjtIntegrator",
+#           "underlying_type": "uint8",      // optional, defaults uint8
+#           "ue_member_from_mj": {
+#             "mjINT_EULER":        "Euler",
+#             "mjINT_RK4":          "RK4",
+#             ...
+#           },
+#           // Optional: members from C enum to skip in UE (e.g. internal
+#           // sentinels that aren't blueprint-meaningful).
+#           "exclude_mj_members": []
+#         }
+#       ]
+#   }
+
+
+def _emit_generated_enum_file(cat_name: str, def_: Dict[str, Any],
+                              mjspec: Optional[Dict[str, Any]],
+                              public_root: str) -> List["FileWrite"]:
+    """Emit a single banner-mode .h carrying one or more UENUMs.
+
+    Rule shape (per enum entry):
+      ``ue_name``           — UE enum class name (e.g. ``EMjGainType``)
+      ``from_mj_enum``      — MuJoCo source enum (e.g. ``mjtGain``)
+      ``ue_member_from_mj`` — opt-in mapping mj_const → UE member name
+      ``exclude_mj_members``— optional skip list within the source enum
+      ``extra_members``     — list of {"name": ...} URLab-extra
+                              members appended AFTER the mj-derived
+                              ones. Used by Camp B enums that carry
+                              URLab-specific values without a mjt
+                              counterpart (e.g. ``DcMotor`` for
+                              ``EMjGainType``).
+
+    Rule entries with ``"disabled": true`` are skipped entirely — used
+    while a hand-rolled enum is being staged for migration so the rule
+    can land in JSON without breaking the build.
+    """
+    if def_.get("disabled"):
+        return []
+    if not mjspec or "enums" not in mjspec:
+        _diag_add(
+            f"[diagnostic] generated_enums['{cat_name}'] needs an mjspec "
+            f"snapshot with an 'enums' key — run build_introspect_snapshot.py.",
+            source="generated_enums",
+        )
+        return []
+    enums = def_.get("enums", [])
+    if not enums:
+        return []
+
+    public_relpath = def_["public_header"]
+    header_basename = os.path.basename(public_relpath).replace(".h", "")
+
+    enum_blocks: List[str] = []
+    for entry in enums:
+        if entry.get("disabled"):
+            continue
+        ue_name = entry["ue_name"]
+        # ``from_mj_enum`` is optional when the URLab enum has no mjt
+        # counterpart at all (EMjFluidShape, EMjGeomInertia, etc) — the
+        # rule populates extra_members and skips the mjspec lookup.
+        mj_enum_name: Optional[str] = entry.get("from_mj_enum")
+        underlying = entry.get("underlying_type", "uint8")
+        ue_member_from_mj: Dict[str, str] = entry.get("ue_member_from_mj", {})
+        exclude: set = set(entry.get("exclude_mj_members", []))
+        extra_members: List[Dict[str, Any]] = entry.get("extra_members", [])
+        c_enum: Dict[str, int] = {}
+        if mj_enum_name:
+            c_enum = mjspec["enums"].get(mj_enum_name, {})
+            if not c_enum:
+                _diag_add(
+                    f"[diagnostic] generated_enums['{cat_name}']: C enum "
+                    f"'{mj_enum_name}' missing from the introspect snapshot. "
+                    f"Skipping '{ue_name}'.",
+                    source="generated_enums",
+                )
+                continue
+        elif not extra_members:
+            _diag_add(
+                f"[diagnostic] generated_enums['{cat_name}']: '{ue_name}' "
+                f"has neither from_mj_enum nor extra_members; nothing to "
+                f"emit.",
+                source="generated_enums",
+            )
+            continue
+        member_lines: List[str] = []
+        used_values: set = set()
+        # Iterate by (value, mj_const) so the emitted UENUM order is stable
+        # across libclang scrapes — the snapshot's dict insertion order is
+        # whatever the AST walk produced, which can drift on header edits.
+        for mj_const, value in sorted(c_enum.items(), key=lambda kv: (kv[1], kv[0])):
+            if mj_const in exclude:
+                continue
+            ue_member = ue_member_from_mj.get(mj_const)
+            if not ue_member:
+                continue  # silently skip; rule author opts in per-const
+            member_lines.append(f"    {ue_member} = {value},")
+            used_values.add(value)
+        # URLab-extra members run AFTER the mj-derived block. Values
+        # auto-increment past the highest used mj value so the resulting
+        # uint8 sequence stays contiguous + reproducible.
+        next_value = (max(used_values) + 1) if used_values else 0
+        for extra in extra_members:
+            name = extra.get("name")
+            if not name:
+                _diag_add(
+                    f"[diagnostic] generated_enums['{cat_name}'] '{ue_name}'"
+                    f" extra_members entry {extra!r} missing 'name'.",
+                    source="generated_enums",
+                )
+                continue
+            value = extra.get("value", next_value)
+            member_lines.append(f"    {name} = {value},")
+            next_value = value + 1
+        if not member_lines:
+            continue
+        # Strip the trailing comma on the last member for cleaner C++.
+        member_lines[-1] = member_lines[-1].rstrip(",")
+        # Doc line: only mention the mj source when the rule pinned
+        # one. Pure-extras enums (no mjt counterpart) get a one-liner
+        # naming them as URLab-side.
+        doc = (
+            f"/** {ue_name} — mirror of MuJoCo's {mj_enum_name}. */\n"
+            if mj_enum_name
+            else f"/** {ue_name} — URLab editorial enum (no mjt counterpart). */\n"
+        )
+        enum_blocks.append(
+            doc
+            + f"UENUM(BlueprintType)\n"
+            f"enum class {ue_name} : {underlying}\n"
+            f"{{\n"
+            + "\n".join(member_lines) + "\n"
+            f"}};\n"
+        )
+
+    if not enum_blocks:
+        return []
+
+    content = (
+        f"{COPYRIGHT_BLOCK}\n"
+        f"#pragma once\n\n"
+        f"#include \"CoreMinimal.h\"\n"
+        f"#include \"{header_basename}.generated.h\"\n\n"
+        + "\n".join(enum_blocks)
+    )
+    public_path = os.path.join(public_root, public_relpath.replace("/", os.sep))
+    return [FileWrite(path=public_path, content=content)]
+
+
+def _phase_generated_enums(ctx: PhaseContext) -> None:
+    gen = ctx.rules.get("generated_enums", {})
+    for cat_name, def_ in gen.items():
+        # _note_* sibling keys document the surrounding entries; they
+        # appear as strings, not dicts, and must skip the emit path.
+        if cat_name.startswith("_") or not isinstance(def_, dict):
+            continue
+        ctx.writes.extend(_emit_generated_enum_file(
+            cat_name, def_, ctx.mjspec, ctx.public_root,
+        ))
+
+
+# ---------------------------------------------------------------------------
+# Articulation category registry
+# ---------------------------------------------------------------------------
+#
+# Emits a header with a compile-time table of every URLab-managed MuJoCo
+# category, listing the schema element name, UE base class, mjs struct,
+# and the layout shape. Consumers (diagnostic dumps, BP iteration,
+# test-time category enumeration) can iterate constexpr instead of
+# duplicating the category list in C++ source.
+
+# ---------------------------------------------------------------------------
+# Editor option helpers
+# ---------------------------------------------------------------------------
+#
+# Codegens the trivial ``TArray<FString> UMjX::GetYOptions() const`` editor
+# helpers that just forward to ``UMjComponent::GetSiblingComponentOptions``.
+# Wrappers with real per-class logic (UMjActuator::GetTargetNameOptions,
+# UMjSensor::Get(Target|Reference)NameOptions, UMjEquality::GetObjOptions)
+# stay hand-written in their owning .cpp files.
+#
+# Emission shape: each host .cpp file has a CODEGEN_EDITOR_OPTIONS_START/END
+# marker pair inside its ``#if WITH_EDITOR`` block. The phase injects the
+# class's wrappers between those markers — output stays INSIDE the host
+# .cpp, not a separate file. (Avoids the ``.gen.cpp`` UHT-collision name.)
+#
+# Rule shape (top-level ``editor_option_helpers.wrappers``):
+#   [
+#     {
+#       "class": "UMjActuator",
+#       "host_cpp": "MuJoCo/Components/Actuators/MjActuator.cpp",
+#       "method": "GetSliderSiteOptions",
+#       "filter_class": "UMjSite",
+#       "include_defaults": false
+#     },
+#     ...
+#   ]
+
+def _phase_editor_option_helpers(ctx: PhaseContext) -> None:
+    def_ = ctx.rules.get("editor_option_helpers")
+    if not def_:
+        return
+    wrappers = def_.get("wrappers", [])
+    if not wrappers:
+        return
+    # Group by host_cpp.
+    by_host: Dict[str, List[Dict[str, Any]]] = {}
+    for w in wrappers:
+        host = w.get("host_cpp")
+        if not host:
+            _diag_add(
+                f"[diagnostic] editor_option_helpers: missing host_cpp on "
+                f"wrapper {w!r}. Skipping.",
+                source="editor_option_helpers",
+            )
+            continue
+        by_host.setdefault(host, []).append(w)
+    # Inject per-file.
+    for host_relpath, group in by_host.items():
+        host_path = os.path.join(ctx.private_root, host_relpath.replace("/", os.sep))
+        if not os.path.exists(host_path):
+            _diag_add(
+                f"[diagnostic] editor_option_helpers: host_cpp '{host_relpath}' "
+                f"not found on disk. Skipping injection.",
+                source="editor_option_helpers",
+            )
+            continue
+        with open(host_path, "r", encoding="utf-8") as f:
+            text = f.read()
+        lines: List[str] = []
+        for w in group:
+            cls = w["class"]
+            method = w["method"]
+            filt = w["filter_class"]
+            inc_def = bool(w.get("include_defaults", False))
+            defaults_arg = ", true" if inc_def else ""
+            lines.append(
+                f"TArray<FString> {cls}::{method}() const {{ return "
+                f"UMjComponent::GetSiblingComponentOptions(this, "
+                f"{filt}::StaticClass(){defaults_arg}); }}"
+            )
+        body = "\n".join(lines) + "\n"
+        new_text, ok = inject_between_tags(text, "EDITOR_OPTIONS", body)
+        if not ok:
+            _diag_add(
+                f"[diagnostic] editor_option_helpers: host_cpp '{host_relpath}' "
+                f"missing the CODEGEN_EDITOR_OPTIONS_START/END marker pair. "
+                f"Add the markers inside the host's #if WITH_EDITOR block "
+                f"or remove the wrapper entries.",
+                source="editor_option_helpers",
+            )
+            continue
+        if new_text != text:
+            ctx.writes.append(FileWrite(path=host_path, content=new_text))
+
+
+def _phase_articulation_registry(ctx: PhaseContext) -> None:
+    cats = ctx.rules.get("categories", {})
+    if not cats:
+        return
+    out_relpath = "MuJoCo/Generated/MjArticulationRegistry.h"
+    entries: List[str] = []
+    for name in sorted(cats):
+        cat = cats[name]
+        base = cat.get("base_class_name", "")
+        mjs  = cat.get("mjs_struct", "")
+        layout = cat.get("layout", "no_subclasses")
+        n_subtypes = len(cat.get("subtypes", []))
+        entries.append(
+            f'    {{ TEXT("{name}"), TEXT("{base}"), TEXT("{mjs}"), '
+            f'TEXT("{layout}"), {n_subtypes} }},'
+        )
+    content = (
+        f"{COPYRIGHT_BLOCK}\n"
+        f"#pragma once\n\n"
+        f"#include \"CoreMinimal.h\"\n\n"
+        f"// Compile-time registry of every URLab-managed MuJoCo category.\n"
+        f"// Codegen-owned — driven by codegen_rules.json[categories].\n"
+        f"namespace MjArticulationRegistry\n"
+        f"{{\n"
+        f"    struct CategoryEntry\n"
+        f"    {{\n"
+        f"        const TCHAR* Name;          // schema element name, e.g. \"body\"\n"
+        f"        const TCHAR* BaseClassName; // UE base UClass, e.g. \"UMjBody\"\n"
+        f"        const TCHAR* MjsStruct;     // MuJoCo spec struct, e.g. \"mjsBody\"\n"
+        f"        const TCHAR* Layout;        // \"single_uclass_per_file\" / \"multi_uclass\" / \"no_subclasses\"\n"
+        f"        int          NumSubtypes;\n"
+        f"    }};\n\n"
+        f"    inline constexpr CategoryEntry kCategories[] = {{\n"
+        + "\n".join(entries) + "\n"
+        f"    }};\n"
+        f"    inline constexpr int kNumCategories = sizeof(kCategories) / sizeof(kCategories[0]);\n"
+        f"}}\n"
+    )
+    out_path = os.path.join(ctx.public_root, out_relpath.replace("/", os.sep))
+    ctx.writes.append(FileWrite(path=out_path, content=content))
+
+
+def _emit_objtype_dispatch_block(cat_rules: Dict[str, Any]) -> Optional[str]:
+    """Emit a switch on ``cat_rules['objtype_dispatch']`` that assigns
+    each case's ``expr`` to ``target``. Used by categories where mjs's
+    objtype field varies by enum value (today: MjEquality)."""
+    dispatch = cat_rules.get("objtype_dispatch")
+    if not dispatch:
+        return None
+    enum_name = cat_rules.get("type_enum_name")
+    if not enum_name:
+        _diag_add(
+            "[diagnostic] objtype_dispatch on category missing "
+            "'type_enum_name'; cannot emit case labels.",
+            source="objtype_dispatch",
+        )
+        return None
+    discriminator = dispatch["discriminator"]
+    target = dispatch["target"]
+    default_expr = dispatch.get("default", "mjOBJ_UNKNOWN")
+    cases = dispatch.get("cases", [])
+    if not cases:
+        _diag_add(
+            f"[diagnostic] objtype_dispatch '{discriminator}' has no cases; "
+            f"only the default branch would emit.",
+            source="objtype_dispatch",
+        )
+        return None
+
+    switch_cases: List[Tuple[Any, str]] = []
+    for i, case in enumerate(cases):
+        keys = case.get("keys", [])
+        if not keys:
+            _diag_add(
+                f"[diagnostic] objtype_dispatch case #{i} has empty "
+                f"'keys' list; would emit a body with no case label.",
+                source="objtype_dispatch",
+            )
+            return None
+        if "expr" not in case:
+            _diag_add(
+                f"[diagnostic] objtype_dispatch case #{i} (keys={keys}) "
+                f"missing 'expr'.",
+                source="objtype_dispatch",
+            )
+            return None
+        switch_cases.append((list(keys), f"{target} = {case['expr']}"))
+    return emit_enum_switch(
+        discriminator, enum_name, switch_cases,
+        indent="    ",
+        default_body=f"{target} = {default_expr}",
+    )
+
+
+def _inject_into_category_cpp(
+    rules: Dict[str, Any],
+    private_root: str,
+    writes: List["FileWrite"],
+    tag: str,
+    emit_fn,
+    *,
+    diag_source: str,
+) -> None:
+    """Shared scaffolding: walk every category, call ``emit_fn(cat_rules)``,
+    inject the result between ``CODEGEN_<tag>_START/END`` markers in the
+    category's base-class .cpp. ``emit_fn`` returns ``None`` to skip
+    (already diagnosed inside the emit_fn). Missing-file / missing-marker
+    diagnostics + the brace-balance check come from
+    ``_inject_tags_into_cpp`` so every injection path shares the same
+    safety net."""
+    for cat_name, cat_rules in rules.get("categories", {}).items():
+        body = emit_fn(cat_rules)
+        if body is None:
+            continue
+        base_header = cat_rules.get("base_class_header")
+        if not base_header:
+            _diag_add(
+                f"[diagnostic] category '{cat_name}' has codegen rule for "
+                f"{diag_source} but no 'base_class_header'; block not emitted.",
+                source=diag_source,
+            )
+            continue
+        cpp_path = os.path.join(
+            private_root, base_header.replace(".h", ".cpp"),
+        )
+        _inject_tags_into_cpp(
+            cpp_path, [(tag, body)], writes, diag_source=diag_source,
+        )
+
+
+def _phase_objtype_dispatch(ctx: PhaseContext) -> None:
+    """Inject objtype dispatch block; host .cpp must carry
+    ``CODEGEN_OBJTYPE_DISPATCH_START/END`` markers."""
+    _inject_into_category_cpp(
+        ctx.rules, ctx.private_root, ctx.writes,
+        tag="OBJTYPE_DISPATCH",
+        emit_fn=_emit_objtype_dispatch_block,
+        diag_source="objtype_dispatch",
+    )
+
+
+def _emit_geom_final_type_block(cat_rules: Dict[str, Any],
+                                element_rules: Dict[str, Any],
+                                mjspec: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    """Emit MjGeom's FinalType resolution + mesh-name export. Specific
+    to geom because the mesh-name write depends on the COMPILE-TIME geom
+    type (UPROPERTY Type if overridden, else Default's type).
+
+    The value_map is pulled from ``element_rules[xml_enum_ref]`` via
+    ``_resolve_value_map``. Returns None (with a diagnostic) when the
+    xml_enum_ref entry is missing — silent failure here would drop the
+    block from MjGeom.cpp and only surface as a runtime mesh-bind error.
+    """
+    final = cat_rules.get("geom_final_type")
+    if not final:
+        return None
+    xml_enum_attrs = element_rules.get("xml_enum_attrs", {})
+    attr_key = final["xml_enum_ref"]
+    enum_def = xml_enum_attrs.get(attr_key)
+    if not enum_def:
+        _diag_add(
+            f"[diagnostic] geom_final_type references xml_enum '{attr_key}' "
+            f"that doesn't exist in element_rules; FinalType block will be "
+            f"empty and mesh-name export will not fire.",
+            source="geom_final_type",
+        )
+        return None
+    value_map = _resolve_value_map(attr_key, enum_def)
+    if not value_map:
+        _diag_add(
+            f"[diagnostic] geom_final_type xml_enum '{attr_key}' resolved "
+            f"to an empty value_map; FinalType switch would have no cases.",
+            source="geom_final_type",
+        )
+        return None
+    ue_prop = enum_def["ue_property"]
+    ue_enum = enum_def["ue_enum_type"]
+
+    override = final["override_field"]
+    default_lookup = final["default_lookup"]
+    fallback = final["default_fallback"]
+    name_field = final["name_field"]
+    name_for = final["name_export_for"]
+    name_target = final["name_target"]
+    name_setter = final["name_setter"]
+
+    # Placeholder for the FinalType init when override=true: any mj_const
+    # works because the switch below remaps. Pick the value_map's first
+    # entry for stability.
+    first_mj = next(iter(value_map.values()))[1]
+
+    switch_cases: List[Tuple[Any, str]] = [
+        (mapping[0], f"FinalType = {mapping[1]}")
+        for mapping in value_map.values()
+    ]
+    switch_body = emit_enum_switch(
+        ue_prop, ue_enum, switch_cases, indent="        ",
+    ).rstrip("\n")
+    lines: List[str] = []
+    lines.append(f"    int FinalType = {override}")
+    lines.append(f"        ? {first_mj}  /* placeholder; remapped below */")
+    lines.append(f"        : (Default ? {default_lookup} : {fallback});")
+    lines.append(f"    if ({override})")
+    lines.append("    {")
+    lines.append(switch_body)
+    lines.append("    }")
+    lines.append(f"    if (FinalType == {name_for} && !{name_field}.IsEmpty())")
+    lines.append("    {")
+    lines.append(f"        {name_setter}({name_target}, {name_field});")
+    lines.append("    }")
+    return "\n".join(lines) + "\n"
+
+
+def _phase_geom_final_type(ctx: PhaseContext) -> None:
+    """Inject geom_final_type block into MjGeom.cpp between the
+    CODEGEN_GEOM_FINAL_TYPE markers."""
+    element_rules_all = ctx.rules.get("element_rules", {})
+
+    def emit_fn(cat_rules):
+        # Look up element_rules entry via the category key already used by
+        # rules.categories. The shared helper passes cat_rules through;
+        # we recover the category name from the dict identity.
+        cat_name = next(
+            (k for k, v in ctx.rules.get("categories", {}).items()
+             if v is cat_rules),
+            None,
+        )
+        if cat_name is None:
+            return None
+        return _emit_geom_final_type_block(
+            cat_rules, element_rules_all.get(cat_name, {}), ctx.mjspec,
+        )
+
+    _inject_into_category_cpp(
+        ctx.rules, ctx.private_root, ctx.writes,
+        tag="GEOM_FINAL_TYPE",
+        emit_fn=emit_fn,
+        diag_source="geom_final_type",
+    )
+
+
+def _phase_sensor_codegen(ctx: PhaseContext) -> None:
+    """Inject codegen-emitted sensor switch + TagToType into MjSensor.cpp."""
+    sensor_rules = ctx.rules.get("categories", {}).get("sensor")
+    if not sensor_rules:
+        return
+    sensor_per_type = ctx.schema.get("sensor_per_type", {})
+    if not sensor_per_type:
+        _diag_add(
+            "[diagnostic] sensor_per_type missing from schema snapshot; "
+            "skipping sensor switch codegen (run "
+            "build_mjcf_schema_snapshot.py).",
+            source="sensor_codegen",
+        )
+        return
+    cpp_path = os.path.join(
+        ctx.private_root, "MuJoCo", "Components", "Sensors", "MjSensor.cpp",
+    )
+    _inject_tags_into_cpp(
+        cpp_path,
+        [
+            ("SENSOR_TYPE_SWITCH", _emit_sensor_switch_block(sensor_rules, sensor_per_type)),
+            ("SENSOR_TAG_TO_TYPE", _emit_sensor_tag_to_type_block(sensor_rules)),
+        ],
+        ctx.writes,
+        diag_source="sensor_codegen",
+    )
+
+
+_KNOWN_LAYOUTS = {"single_uclass_per_file", "multi_uclass", "no_subclasses"}
+
+
+def _phase_categories(ctx: PhaseContext) -> None:
+    rules, schema = ctx.rules, ctx.schema
+    public_root, private_root = ctx.public_root, ctx.private_root
+    mjspec = ctx.mjspec
+    categories: Dict[str, Any] = rules.get("categories", {})
+    for cat, cat_rules in categories.items():
+        layout = cat_rules.get("layout", "no_subclasses")
+        if layout == "single_uclass_per_file":
+            ctx.writes.extend(emit_base_class_injection(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
+            ctx.writes.extend(emit_subclass_files(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
+        elif layout == "multi_uclass":
+            ctx.writes.extend(emit_multi_uclass(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
+        elif layout == "no_subclasses":
+            ctx.writes.extend(emit_base_class_injection(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
+        else:
+            _diag_add(
+                f"[diagnostic] category '{cat}' has unknown layout "
+                f"'{layout}'; expected one of {sorted(_KNOWN_LAYOUTS)}. "
+                f"Category emitted no writes.",
+                source="category_layout",
+            )
+
+
+def _phase_bind_h(ctx: PhaseContext) -> None:
+    bind_write = emit_bind_h_injection(ctx.rules, ctx.mjxmacro, ctx.bind_h_path)
+    if bind_write:
+        ctx.writes.append(bind_write)
+
+
+def _phase_schema_tests(ctx: PhaseContext) -> None:
+    ctx.writes.append(emit_schema_for_tests(ctx.schema, ctx.rules))
+
+
+# The 17 drift checks, _emit_drift_diagnostics, the hand-enum regexes,
+# _scan_hand_enums, _hand_enums_from_snapshot, _all_schema_attrs,
+# _collect_every_schema_attr, and _VALID_APPLY_MODES live in
+# _codegen_checks. The orchestrator re-exports them through the import
+# block at the top of this file.
+
+
+def _phase_diagnostics(ctx: PhaseContext) -> None:
+    rules, schema, mjspec, mjxmacro = ctx.rules, ctx.schema, ctx.mjspec, ctx.mjxmacro
+    _emit_drift_diagnostics(schema, rules, mjspec)
+    _check_hand_enum_drift(schema, rules, mjspec, ctx.public_root)
+    _check_type_shape_drift(schema, rules, mjspec)
+    _check_new_attr_typing(schema, rules)
+    _check_value_map_stale_mj_consts(rules, mjspec)
+    _check_orphan_rule_entries(schema, rules)
+    _check_compiler_attrs_coverage(schema, rules)
+    _check_mjxmacro_block_coverage(rules, mjxmacro)
+    _check_property_units_validity(rules)
+    _check_apply_mode_validity(rules)
+    _check_embedded_cpp_references(rules, mjspec)
+    _check_allowlist_staleness(schema, rules, mjspec)
+
+
+# Order matters: emit phases collect writes; diagnostics runs last and
+# scans the final rule set.
+EMISSION_PHASES: List[EmissionPhase] = [
+    EmissionPhase(name="categories",            fn=_phase_categories),
+    EmissionPhase(name="synthetic_categories",  fn=_phase_synthetic_categories),
+    EmissionPhase(name="generated_enums",       fn=_phase_generated_enums),
+    EmissionPhase(name="editor_option_helpers", fn=_phase_editor_option_helpers),
+    EmissionPhase(name="articulation_registry", fn=_phase_articulation_registry),
+    EmissionPhase(name="sensor_codegen",        fn=_phase_sensor_codegen),
+    EmissionPhase(name="objtype_dispatch",      fn=_phase_objtype_dispatch),
+    EmissionPhase(name="geom_final_type",       fn=_phase_geom_final_type),
+    EmissionPhase(name="bind_h",                fn=_phase_bind_h),
+    EmissionPhase(name="schema_tests",          fn=_phase_schema_tests),
+    EmissionPhase(name="diagnostics",           fn=_phase_diagnostics),
+]
+
+
 def collect_all_writes(
     schema: Dict[str, Any],
     rules: Dict[str, Any],
@@ -2156,211 +3919,131 @@ def collect_all_writes(
     bind_h_path: str,
     mjspec: Dict[str, Any] | None = None,
 ) -> List[FileWrite]:
-    """Walk every category in `codegen_rules.json` and produce the full set
-    of file writes the codegen would perform. No I/O side effects."""
+    """Drive every phase in ``EMISSION_PHASES`` and return the full set
+    of file writes the codegen would perform. No I/O side effects on
+    disk — diagnostics print to stderr at the end."""
+    _reset_diags()
     writes: List[FileWrite] = []
-    categories: Dict[str, Any] = rules.get("categories", {})
-
-    for cat, cat_rules in categories.items():
-        layout = cat_rules.get("layout", "no_subclasses")
-        if layout == "single_uclass_per_file":
-            # Base class injection + N subclass files.
-            writes.extend(emit_base_class_injection(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
-            writes.extend(emit_subclass_files(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
-        elif layout == "multi_uclass":
-            writes.extend(emit_multi_uclass(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
-        elif layout == "no_subclasses":
-            writes.extend(emit_base_class_injection(cat, cat_rules, schema, rules, public_root, private_root, mjspec=mjspec))
-
-    bind_write = emit_bind_h_injection(rules, mjxmacro, bind_h_path)
-    if bind_write:
-        writes.append(bind_write)
-
-    writes.append(emit_schema_for_tests(schema, rules))
-
-    # Diagnostics: surface schema/snapshot drift that the rules don't yet
-    # account for. Stdout, not fatal — the codegen has emitted what it can;
-    # the operator reads these to know what manual rule edits are needed.
-    _emit_drift_diagnostics(schema, rules, mjspec)
-
+    ctx = PhaseContext(
+        schema=schema, rules=rules, mjxmacro=mjxmacro, mjspec=mjspec,
+        public_root=public_root, private_root=private_root,
+        bind_h_path=bind_h_path, writes=writes,
+    )
+    for phase in EMISSION_PHASES:
+        phase.fn(ctx)
+    _diag_flush()
     return writes
 
 
-def _emit_drift_diagnostics(schema: Dict[str, Any], rules: Dict[str, Any],
-                            mjspec: Dict[str, Any] | None) -> None:
-    """Print diagnostics that flag schema or mjspec drift the rules don't
-    cover. Run after every codegen pass so a MuJoCo version bump or a
-    schema-snapshot regen surfaces:
+def _mjspec_from_introspect(
+    introspect: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Project the libclang-scraped introspect snapshot into the
+    shape downstream code expects:
 
-      - new top-level schema elements with no category in codegen_rules.json
-      - new actuator subtypes (entries in schema['actuator_types']) with no
-        rule under categories.actuator.subtypes
-      - new sensor subtypes ditto
-      - new mjs_setTo* function parameters not mapped by subtype_setto rules
-      - schema attrs whose UE type would fall back to default_type ("float")
-        because they're missing from type_mappings (catches when MuJoCo
-        adds a new attr like ``cellcount`` that we want a richer type for)
+      ``structs``: ``{struct_name: [field_name, ...]}``
+      ``enums``:   ``{enum_name: {member_name: int_value}}``
+      ``setto_functions``: ``{fn_name: {"params": [...], "return_type": ...}}``
+      ``introspect``: passthrough of the richer per-field tables for
+                      the drift checks that need them.
 
-    Each item prints a one-line ``[diagnostic] ...`` hint with the file +
-    rule path the operator should edit. None of these are fatal because
-    the codegen is still useful in the partially-covered state.
-    """
-    categories = rules.get("categories", {})
-    msgs: List[str] = []
+    Every ``mjs_setTo*`` C signature takes the spec element as its
+    first arg; the codegen emit path always passes ``Element`` there,
+    so the projection drops that arg from the param list and the
+    downstream emitter enumerates only the schema-attr-bound trailing
+    args."""
+    structs_in = introspect.get("structs", {}) or {}
+    structs_out: Dict[str, List[str]] = {}
+    for name, entry in structs_in.items():
+        if isinstance(entry, dict):
+            fields = entry.get("fields", [])
+            structs_out[name] = [
+                f["name"] for f in fields
+                if isinstance(f, dict) and isinstance(f.get("name"), str)
+            ]
 
-    # 1) Top-level schema elements with no category coverage.
-    known_blocks = {c.get("schema_common_block", "").split(".", 1)[0]
-                    for c in categories.values()}
-    known_blocks.discard("")
-    # Items like asset/contact/equality are nested containers that aren't
-    # categories themselves but whose children are bucketed elsewhere — they
-    # don't need their own category, so we ignore them here.
-    container_keys = {
-        "_meta", "actuator_common", "actuator_types", "sensor_common",
-        "sensor_types", "sensor_extras", "tendon", "equality", "contact",
-        "asset", "compiler", "option", "keyframe", "default",
+    enums_in = introspect.get("enums", {}) or {}
+    enums_out: Dict[str, Dict[str, int]] = {}
+    for name, entry in enums_in.items():
+        if isinstance(entry, dict):
+            members = entry.get("members", {})
+            if isinstance(members, dict):
+                enums_out[name] = dict(members)
+
+    fns_in = introspect.get("functions", {}) or {}
+    setto_out: Dict[str, Dict[str, Any]] = {}
+    for name, sig in fns_in.items():
+        if not name.startswith("mjs_setTo"):
+            continue
+        if isinstance(sig, dict):
+            params = sig.get("params", [])
+            setto_out[name] = {
+                "params": params[1:] if params else [],
+                "return_type": sig.get("return_type", ""),
+            }
+
+    return {
+        "structs":          structs_out,
+        "enums":            enums_out,
+        "setto_functions":  setto_out,
+        "introspect": {
+            "functions":  fns_in,
+            "structs":    structs_in,
+            "defines":    introspect.get("defines", {}),
+            "hand_enums": introspect.get("hand_enums", {}),
+        },
     }
-    # Schema elements URLab intentionally does NOT codegen (yet). Each
-    # entry comes with a one-line reason so the rule-file reader knows
-    # why it's silenced. New MuJoCo elements that aren't here will trigger
-    # a diagnostic.
-    unmodeled: Dict[str, str] = rules.get("intentionally_unmodeled_elements", {})
-    for key in schema:
-        if key.startswith("_") or key in container_keys or key in known_blocks:
-            continue
-        if key in unmodeled:
-            continue
-        msgs.append(
-            f"[diagnostic] schema has top-level element '{key}' but no "
-            f"category in codegen_rules.json (rules['categories']). "
-            f"Either add a category entry, list '{key}' in "
-            f"container_keys, or add an "
-            f"'intentionally_unmodeled_elements' entry explaining why "
-            f"it's skipped."
-        )
-
-    # 2) Actuator subtypes not mapped.
-    act_cat = categories.get("actuator", {})
-    known_act_subs = {s.get("key") for s in act_cat.get("subtypes", [])}
-    for name in schema.get("actuator_types", {}):
-        if name not in known_act_subs:
-            msgs.append(
-                f"[diagnostic] schema actuator subtype '{name}' has no "
-                f"entry in categories.actuator.subtypes. Add a subtype "
-                f"+ subtype_setto rule pair so codegen emits the UMj"
-                f"{name.title()}Actuator class."
-            )
-
-    # 3) Sensor subtypes not mapped.
-    sens_cat = categories.get("sensor", {})
-    known_sens_subs = {s.get("key") for s in sens_cat.get("subtypes", [])}
-    for name in schema.get("sensor_types", []):
-        if name not in known_sens_subs:
-            msgs.append(
-                f"[diagnostic] schema sensor type '{name}' has no entry "
-                f"in categories.sensor.subtypes. Add it so the per-sensor "
-                f"UMjXSensor subclass is emitted."
-            )
-
-    # 4) mjs_setTo* params with no UE-side mapping AND no explicit
-    # sentinel override. Params that have an entry in setto_param_defaults
-    # are intentionally non-schema-driven (the rule pins their value);
-    # skip them.
-    if mjspec and "setto_functions" in mjspec:
-        setto_defaults = rules.get("setto_param_defaults", {})
-        for cat_name, cat_rules in categories.items():
-            setto_block = cat_rules.get("subtype_setto") or {}
-            common_attrs = set(schema_attrs(
-                schema, cat_rules.get("schema_common_block", "")))
-            for sub_key, setto_def in setto_block.items():
-                if not isinstance(setto_def, dict):
-                    continue
-                fn_name = setto_def.get("call")
-                if not fn_name or fn_name not in mjspec["setto_functions"]:
-                    continue
-                sig = mjspec["setto_functions"][fn_name]
-                renames = setto_def.get("param_renames", {})
-                fn_defaults = set(setto_defaults.get(fn_name, {}).keys())
-                sub_attrs = set(schema_subtype_attrs(schema, cat_name, sub_key))
-                schema_attr_set = common_attrs | sub_attrs
-                for p in sig.get("params", []):
-                    pname = p["name"]
-                    ue_prop = renames.get(pname, pname)
-                    if ue_prop in schema_attr_set or pname in fn_defaults:
-                        continue
-                    msgs.append(
-                        f"[diagnostic] {fn_name} param '{pname}' is not "
-                        f"in the {cat_name}.{sub_key} schema attrs and "
-                        f"has no param_renames or setto_param_defaults "
-                        f"entry. Codegen passes the generic sentinel for "
-                        f"it. If MuJoCo added this param, decide whether "
-                        f"to expose it as a UE UPROPERTY (schema attr + "
-                        f"type_mapping) or pin its sentinel."
-                    )
-
-    # 5) Attrs that fall back to default_type. Cosmetic — works but the
-    # UPROPERTY shape may be wrong (e.g. float for an int).
-    type_map = rules.get("type_mappings", {})
-    default_type = rules.get("default_type", "float")
-    seen_untyped: set = set()
-    for cat_name, cat_rules in categories.items():
-        block = cat_rules.get("schema_common_block", "")
-        for attr in schema_attrs(schema, block):
-            if attr in type_map or attr in seen_untyped:
-                continue
-            # Only warn for attrs likely meant to be array/int/bool — the
-            # heuristic: numeric-shaped names with a plural or ending in
-            # "count"/"range"/"limit" probably aren't a float scalar.
-            if any(s in attr for s in ("count", "range", "limit", "coef",
-                                       "data", "params", "vert", "elem",
-                                       "size", "list", "ids")):
-                msgs.append(
-                    f"[diagnostic] attr '{attr}' (used by {cat_name}) "
-                    f"falls back to default_type ('{default_type}') — "
-                    f"add it to type_mappings if it should be TArray<...> "
-                    f"or int32."
-                )
-                seen_untyped.add(attr)
-
-    if msgs:
-        print(f"\n--- codegen diagnostics ({len(msgs)}) ---", file=sys.stderr)
-        for m in msgs:
-            print(m, file=sys.stderr)
-        print(
-            "(diagnostics are non-fatal; the codegen has emitted what it "
-            "can — fix the rules to silence them.)",
-            file=sys.stderr,
-        )
 
 
 def apply_writes(writes: List[FileWrite], dry_run: bool, check_only: bool) -> int:
-    """Either apply, print diff, or check. Returns process exit code."""
+    """Either apply, print diff, or check. Returns process exit code.
+
+    Writes use ``newline="\\n"`` and a binary compare so a codegen run on
+    Windows produces the same bytes as one on Linux — otherwise Python's
+    default newline translation would silently bake ``\\r\\n`` into the
+    on-disk artifacts and ``--check`` would still pass because the
+    matching read would normalize it back."""
     changed = 0
     for w in writes:
-        new = w.content
-        old = None
+        new_bytes = w.content.encode("utf-8")
+        old_bytes: Optional[bytes] = None
         if os.path.exists(w.path):
-            with open(w.path, "r", encoding="utf-8") as f:
-                old = f.read()
-        if old == new:
+            with open(w.path, "rb") as f:
+                old_bytes = f.read()
+        if old_bytes == new_bytes:
             continue
         changed += 1
         rel = os.path.relpath(w.path, PLUGIN_ROOT)
         if dry_run or check_only:
-            print(f"==> WOULD WRITE: {rel} ({len(new)} bytes)")
-            if old is not None and dry_run:
+            print(f"==> WOULD WRITE: {rel} ({len(new_bytes)} bytes)")
+            if old_bytes is not None and dry_run:
+                old_text = old_bytes.decode("utf-8", errors="replace")
                 diff = difflib.unified_diff(
-                    old.splitlines(keepends=True),
-                    new.splitlines(keepends=True),
+                    old_text.splitlines(keepends=True),
+                    w.content.splitlines(keepends=True),
                     fromfile=rel + " (current)",
                     tofile=rel + " (codegen)",
                     n=2,
                 )
                 sys.stdout.writelines(diff)
         else:
+            # Atomic write: stage to a sibling tmp file, then os.replace.
+            # Without this, a Ctrl-C between truncate and write leaves a
+            # zero-/partial-byte file that UBT picks up, producing a UHT
+            # error far from "I interrupted codegen".
             os.makedirs(os.path.dirname(w.path), exist_ok=True)
-            with open(w.path, "w", encoding="utf-8") as f:
-                f.write(new)
+            tmp_path = w.path + ".codegen.tmp"
+            try:
+                with open(tmp_path, "wb") as f:
+                    f.write(new_bytes)
+                os.replace(tmp_path, w.path)
+            except BaseException:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.remove(tmp_path)
+                    except OSError:
+                        pass
+                raise
             print(f"WROTE {rel}")
     if check_only and changed:
         return 1
@@ -2368,17 +4051,68 @@ def apply_writes(writes: List[FileWrite], dry_run: bool, check_only: bool) -> in
     return 0
 
 
+# Hand-written companion files that legitimately live in MuJoCo/Generated/
+# (their banner explicitly says "NOT codegen-managed"). Listed here so the
+# orphan walk doesn't flag them — anything else in Generated/ that the
+# codegen doesn't plan to write IS a real orphan.
+_HAND_WRITTEN_IN_GENERATED = {
+    "MjOptionGeneratedExtras.cpp",
+}
+
+
+def find_orphan_generated_files(
+    writes: List[FileWrite], public_root: str, private_root: str,
+) -> List[str]:
+    """Walk ``MuJoCo/Generated/`` under public + private roots and return
+    any file the codegen no longer plans to emit. A category removed from
+    rules leaves a stale ``Generated/MjFoo.h`` that UBT will pick up — the
+    user sees a confusing UHT error far from the JSON edit."""
+    expected = {os.path.normcase(os.path.abspath(w.path)) for w in writes}
+    orphans: List[str] = []
+    for root in (public_root, private_root):
+        gen_dir = os.path.join(root, "MuJoCo", "Generated")
+        if not os.path.isdir(gen_dir):
+            continue
+        for dirpath, _dirs, files in os.walk(gen_dir):
+            for fname in files:
+                if not (fname.endswith(".h") or fname.endswith(".cpp")):
+                    continue
+                if fname in _HAND_WRITTEN_IN_GENERATED:
+                    continue
+                p = os.path.normcase(os.path.abspath(os.path.join(dirpath, fname)))
+                if p not in expected:
+                    orphans.append(os.path.join(dirpath, fname))
+    return sorted(orphans)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="URLab UE component codegen.")
     parser.add_argument("--schema", default=DEFAULT_SCHEMA)
     parser.add_argument("--mjxmacro", default=DEFAULT_MJXMACRO)
-    parser.add_argument("--mjspec", default=DEFAULT_MJSPEC)
+    parser.add_argument("--introspect", default=DEFAULT_INTROSPECT,
+                        help="Clang-AST scrape carrying mjsX struct fields, "
+                             "mjt* enums, mjs_setTo* signatures, and EMj* "
+                             "hand-enum members. Built by "
+                             "build_introspect_snapshot.py (requires libclang).")
     parser.add_argument("--rules", default=DEFAULT_RULES)
     parser.add_argument("--public-root", default=DEFAULT_PUBLIC_ROOT)
     parser.add_argument("--private-root", default=DEFAULT_PRIVATE_ROOT)
     parser.add_argument("--bind-h", default=DEFAULT_BIND_H)
-    parser.add_argument("--dry-run", action="store_true", help="print diffs, write nothing")
-    parser.add_argument("--check", action="store_true", help="non-zero exit if writes would change anything")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="print diffs, write nothing")
+    parser.add_argument("--check", action="store_true",
+                        help="non-zero exit if writes would change anything")
+    parser.add_argument("--strict", dest="strict",
+                        action=argparse.BooleanOptionalAction, default=True,
+                        help="treat drift diagnostics as fatal (exit 2). "
+                             "Default on; --no-strict makes diagnostics "
+                             "print but not fail the run.")
+    parser.add_argument("--require-introspect", dest="require_introspect",
+                        action=argparse.BooleanOptionalAction, default=True,
+                        help="hard-fail when the clang-AST introspect "
+                             "snapshot is missing. Default on; "
+                             "--no-require-introspect lets the codegen run "
+                             "against an existing (possibly stale) snapshot.")
     args = parser.parse_args()
 
     with open(args.schema, "r", encoding="utf-8") as f:
@@ -2387,13 +4121,90 @@ def main() -> int:
         mjxmacro = json.load(f)
     with open(args.rules, "r", encoding="utf-8") as f:
         rules = json.load(f)
-    mjspec: Dict[str, Any] | None = None
-    if os.path.exists(args.mjspec):
-        with open(args.mjspec, "r", encoding="utf-8") as f:
-            mjspec = json.load(f)
 
-    writes = collect_all_writes(schema, rules, mjxmacro, args.public_root, args.private_root, args.bind_h, mjspec=mjspec)
-    return apply_writes(writes, args.dry_run, args.check)
+    mjspec: Dict[str, Any] | None = None
+    if not os.path.exists(args.introspect):
+        msg = (
+            f"[codegen] introspect snapshot missing at {args.introspect}. "
+            f"Run `python Scripts/codegen/build_introspect_snapshot.py` "
+            f"(requires libclang). Pass --no-require-introspect to bypass."
+        )
+        if args.require_introspect:
+            print(msg, file=sys.stderr)
+            return 3
+        print(f"[codegen] warning: {msg}", file=sys.stderr)
+    else:
+        with open(args.introspect, "r", encoding="utf-8") as f:
+            introspect = json.load(f)
+        mjspec = _mjspec_from_introspect(introspect)
+        # Post-projection invariants: a libclang scrape shape change can
+        # silently empty the projection, which would neuter the type-shape
+        # drift check and drop TArray array-cap clamps from emitted code.
+        # Fail loud rather than ship a degraded but green-on---check run.
+        if args.require_introspect:
+            for key in ("enums", "structs", "setto_functions"):
+                if not mjspec.get(key):
+                    print(
+                        f"[codegen] introspect projection produced empty "
+                        f"'{key}'. The libclang scrape shape may have "
+                        f"drifted — rebuild the snapshot or fix "
+                        f"_mjspec_from_introspect.",
+                        file=sys.stderr,
+                    )
+                    return 3
+
+    writes = collect_all_writes(
+        schema, rules, mjxmacro,
+        args.public_root, args.private_root, args.bind_h, mjspec=mjspec,
+    )
+
+    orphans = find_orphan_generated_files(
+        writes, args.public_root, args.private_root,
+    )
+    for orphan in orphans:
+        rel = os.path.relpath(orphan, PLUGIN_ROOT)
+        _diag_add(
+            f"[diagnostic] orphan generated file: {rel}. The codegen no "
+            f"longer plans to emit this path — a category or subtype was "
+            f"likely removed from codegen_rules.json. Delete the file "
+            f"(UBT will otherwise pick it up).",
+            source="orphan_generated_file",
+        )
+    # Snapshot the diag SOURCE tags before flushing, so we can detect
+    # destructive-overwrite warnings (banner_overwrite) and refuse to
+    # write under --strict — otherwise apply_writes would destroy the
+    # hand edits before the strict check fires.
+    banner_overwrite_pending = any(
+        d.source == "banner_overwrite" for d in _DIAGS_BUFFER.pending
+    )
+    _diag_flush()
+
+    fired = _DIAGS_BUFFER.fired_count
+    is_destructive_run = not args.dry_run and not args.check
+    if is_destructive_run and args.strict and banner_overwrite_pending:
+        print(
+            f"[codegen] --strict: banner_overwrite diagnostic fired — "
+            f"refusing to write (would destroy hand-edited content). "
+            f"Re-run with --no-strict to proceed, or run the audit "
+            f"helper at Scripts/codegen/_audit_banner_candidates.py.",
+            file=sys.stderr,
+        )
+        return 2
+
+    rc = apply_writes(writes, args.dry_run, args.check)
+    if args.check and orphans:
+        print(
+            f"[codegen] --check: {len(orphans)} orphan generated file(s); "
+            f"exiting non-zero.", file=sys.stderr,
+        )
+        return 1
+    if args.strict and fired:
+        print(
+            f"[codegen] --strict: {fired} diagnostic(s) flushed; "
+            f"exiting non-zero.", file=sys.stderr,
+        )
+        return 2
+    return rc
 
 
 if __name__ == "__main__":

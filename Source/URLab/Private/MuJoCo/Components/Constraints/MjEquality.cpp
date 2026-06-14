@@ -103,6 +103,7 @@ void UMjEquality::ExportTo(mjsEquality* Element)
     // anchor) or site-to-site. URLab's parser collates site1/site2 into
     // Obj1/Obj2 alongside body1/body2; we use the non-empty site1
     // UPROPERTY as the discriminator for "this was a site-mode equality".
+    // --- CODEGEN_OBJTYPE_DISPATCH_START ---
     switch (EqualityType)
     {
         case EMjEqualityType::Connect:
@@ -124,11 +125,12 @@ void UMjEquality::ExportTo(mjsEquality* Element)
             Element->objtype = mjOBJ_UNKNOWN;
             break;
     }
+    // --- CODEGEN_OBJTYPE_DISPATCH_END ---
 
     // --- CODEGEN_EXPORT_START ---
     if (bOverride_active) Element->active = active;
-    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
-    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_solref) { for (int32 i = 0; i < FMath::Min(solref.Num(), 2); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < FMath::Min(solimp.Num(), 5); ++i) Element->solimp[i] = solimp[i]; }
     if (((EqualityType == EMjEqualityType::Connect) || (EqualityType == EMjEqualityType::Weld)) && bOverride_anchor)
     {
         for (int32 i = 0; i < anchor.Num() && i < 3; ++i)
@@ -152,8 +154,8 @@ void UMjEquality::ExportTo(mjsEquality* Element)
     {
         Element->data[10] = (mjtNum)torquescale;
     }
-    if (!Obj1.IsEmpty()) mjs_setString(Element->name1, TCHAR_TO_UTF8(*Obj1));
-    if (!Obj2.IsEmpty()) mjs_setString(Element->name2, TCHAR_TO_UTF8(*Obj2));
+    MjSetString(Element->name1, Obj1);
+    MjSetString(Element->name2, Obj2);
     // --- CODEGEN_EXPORT_END ---
 }
 

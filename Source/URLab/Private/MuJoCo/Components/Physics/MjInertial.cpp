@@ -54,7 +54,7 @@ void UMjInertial::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 }
 
 void UMjInertial::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
@@ -86,6 +86,3 @@ void UMjInertial::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBod
     MjUtils::UEToMjRotation(RelTrans.GetRotation(), ParentBody->iquat);
 }
 
-void UMjInertial::Bind(mjModel* model, mjData* data, const FString& Prefix)
-{
-}

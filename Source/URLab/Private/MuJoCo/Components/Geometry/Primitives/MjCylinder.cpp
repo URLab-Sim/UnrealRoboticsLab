@@ -78,8 +78,7 @@ void UMjCylinder::OnRegister()
 void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
-
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
 	// Clamp -1.0f sentinels (set by the fromto canon when slot is unset).
@@ -113,8 +112,7 @@ void UMjCylinder::ExportTo(mjsGeom* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
         // --- CODEGEN_EXPORT_START ---
-
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjCylinder::ApplyOverrideMaterial(UMaterialInterface* Material)
@@ -131,8 +129,8 @@ void UMjCylinder::SyncUnrealTransformFromMj()
     {
         // MuJoCo cylinder size: [radius, half-length]
         // Unreal Cylinder: diameter=100, Height=100
-        float RadiusVal = m_GeomView.size[0];
-        float HalfLengthVal = m_GeomView.size[1];
+        float RadiusVal = m_GeomView.geom_size[0];
+        float HalfLengthVal = m_GeomView.geom_size[1];
 
         FVector NewScale = FVector(RadiusVal * 2.0f, RadiusVal * 2.0f, HalfLengthVal * 2.0f);
         SetRelativeScale3D(NewScale);

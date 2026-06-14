@@ -36,7 +36,6 @@ class URLAB_API UMjTactileSensor : public UMjSensor
     GENERATED_BODY()
 public:
     // --- CODEGEN_PROPERTIES_START ---
-
     // --- CODEGEN_PROPERTIES_END ---
 
     UMjTactileSensor();

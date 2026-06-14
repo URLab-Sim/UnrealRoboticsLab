@@ -47,7 +47,7 @@ namespace URLabCodegenSchemaForTests
 
     inline const TArray<FString>& JointProps()
     {
-        static const TArray<FString> P{TEXT("group"), TEXT("springdamper"), TEXT("limited"), TEXT("actuatorfrclimited"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("stiffness"), TEXT("range"), TEXT("actuatorfrcrange"), TEXT("actuatorgravcomp"), TEXT("margin"), TEXT("ref"), TEXT("springref"), TEXT("armature"), TEXT("damping"), TEXT("frictionloss")};
+        static const TArray<FString> P{TEXT("Pos"), TEXT("group"), TEXT("Axis"), TEXT("springdamper"), TEXT("limited"), TEXT("ActFrcLimited"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("stiffness"), TEXT("range"), TEXT("ActFrcRange"), TEXT("actuatorgravcomp"), TEXT("margin"), TEXT("ref"), TEXT("springref"), TEXT("armature"), TEXT("damping"), TEXT("frictionloss")};
         return P;
     }
 
@@ -59,7 +59,7 @@ namespace URLabCodegenSchemaForTests
 
     inline const TArray<FString>& TendonProps()
     {
-        static const TArray<FString> P{TEXT("group"), TEXT("limited"), TEXT("actuatorfrclimited"), TEXT("range"), TEXT("actuatorfrcrange"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("frictionloss"), TEXT("springlength"), TEXT("width"), TEXT("material"), TEXT("margin"), TEXT("stiffness"), TEXT("damping"), TEXT("armature"), TEXT("rgba")};
+        static const TArray<FString> P{TEXT("group"), TEXT("limited"), TEXT("ActFrcLimited"), TEXT("range"), TEXT("ActFrcRange"), TEXT("solreflimit"), TEXT("solimplimit"), TEXT("solreffriction"), TEXT("solimpfriction"), TEXT("frictionloss"), TEXT("springlength"), TEXT("width"), TEXT("material"), TEXT("margin"), TEXT("stiffness"), TEXT("damping"), TEXT("armature"), TEXT("rgba")};
         return P;
     }
 

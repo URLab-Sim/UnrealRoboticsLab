@@ -36,10 +36,10 @@ class URLAB_API UMjAdhesionActuator : public UMjActuator
     GENERATED_BODY()
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjActuator", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuator", meta=(InlineEditConditionToggle))
     bool bOverride_gain = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjActuator", meta=(EditCondition="bOverride_gain"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Actuator", meta=(EditCondition="bOverride_gain"))
     float gain = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 

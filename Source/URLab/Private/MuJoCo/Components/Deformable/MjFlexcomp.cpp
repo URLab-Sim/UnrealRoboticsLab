@@ -65,27 +65,29 @@ void UMjFlexcomp::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
     { // xml_enum: type -> EMjFlexcompType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
-        if      (S == TEXT("grid")) FlexcompType = EMjFlexcompType::Grid;
-        else if (S == TEXT("box")) FlexcompType = EMjFlexcompType::Box;
-        else if (S == TEXT("cylinder")) FlexcompType = EMjFlexcompType::Cylinder;
-        else if (S == TEXT("ellipsoid")) FlexcompType = EMjFlexcompType::Ellipsoid;
-        else if (S == TEXT("square")) FlexcompType = EMjFlexcompType::Square;
-        else if (S == TEXT("disc")) FlexcompType = EMjFlexcompType::Disc;
-        else if (S == TEXT("circle")) FlexcompType = EMjFlexcompType::Circle;
-        else if (S == TEXT("mesh")) FlexcompType = EMjFlexcompType::Mesh;
-        else if (S == TEXT("gmsh")) FlexcompType = EMjFlexcompType::Gmsh;
-        else if (S == TEXT("direct")) FlexcompType = EMjFlexcompType::Direct;
-        if (!S.IsEmpty()) bOverride_FlexcompType = true;
+        bool bMatched = false;
+        if      (S == TEXT("grid")) { FlexcompType = EMjFlexcompType::Grid; bMatched = true; }
+        else if (S == TEXT("box")) { FlexcompType = EMjFlexcompType::Box; bMatched = true; }
+        else if (S == TEXT("cylinder")) { FlexcompType = EMjFlexcompType::Cylinder; bMatched = true; }
+        else if (S == TEXT("ellipsoid")) { FlexcompType = EMjFlexcompType::Ellipsoid; bMatched = true; }
+        else if (S == TEXT("square")) { FlexcompType = EMjFlexcompType::Square; bMatched = true; }
+        else if (S == TEXT("disc")) { FlexcompType = EMjFlexcompType::Disc; bMatched = true; }
+        else if (S == TEXT("circle")) { FlexcompType = EMjFlexcompType::Circle; bMatched = true; }
+        else if (S == TEXT("mesh")) { FlexcompType = EMjFlexcompType::Mesh; bMatched = true; }
+        else if (S == TEXT("gmsh")) { FlexcompType = EMjFlexcompType::Gmsh; bMatched = true; }
+        else if (S == TEXT("direct")) { FlexcompType = EMjFlexcompType::Direct; bMatched = true; }
+        if (bMatched) bOverride_FlexcompType = true;
     }
     { // xml_enum: dof -> EMjFlexcompDof
         FString S = Node->GetAttribute(TEXT("dof"));
         S = S.ToLower();
-        if      (S == TEXT("full")) FlexcompDof = EMjFlexcompDof::Full;
-        else if (S == TEXT("radial")) FlexcompDof = EMjFlexcompDof::Radial;
-        else if (S == TEXT("trilinear")) FlexcompDof = EMjFlexcompDof::Trilinear;
-        else if (S == TEXT("quadratic")) FlexcompDof = EMjFlexcompDof::Quadratic;
-        else if (S == TEXT("2d")) FlexcompDof = EMjFlexcompDof::TwoD;
-        if (!S.IsEmpty()) bOverride_FlexcompDof = true;
+        bool bMatched = false;
+        if      (S == TEXT("full")) { FlexcompDof = EMjFlexcompDof::Full; bMatched = true; }
+        else if (S == TEXT("radial")) { FlexcompDof = EMjFlexcompDof::Radial; bMatched = true; }
+        else if (S == TEXT("trilinear")) { FlexcompDof = EMjFlexcompDof::Trilinear; bMatched = true; }
+        else if (S == TEXT("quadratic")) { FlexcompDof = EMjFlexcompDof::Quadratic; bMatched = true; }
+        else if (S == TEXT("2d")) { FlexcompDof = EMjFlexcompDof::TwoD; bMatched = true; }
+        if (bMatched) bOverride_FlexcompDof = true;
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("group"), group, bOverride_group);
     MjXmlUtils::ReadAttrInt(Node, TEXT("dim"), dim, bOverride_dim);

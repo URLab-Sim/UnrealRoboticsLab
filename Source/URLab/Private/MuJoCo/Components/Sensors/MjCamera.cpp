@@ -828,14 +828,14 @@ void UMjCamera::ExportTo(mjsCamera* Element, mjsDefault* /*def*/)
     }
     if (bOverride_fovy) Element->fovy = fovy;
     if (bOverride_ipd) Element->ipd = ipd;
-    if (bOverride_resolution) { for (int32 i = 0; i < resolution.Num(); ++i) Element->resolution[i] = resolution[i]; }
+    if (bOverride_resolution) { for (int32 i = 0; i < FMath::Min(resolution.Num(), 2); ++i) Element->resolution[i] = resolution[i]; }
     if (bOverride_output) Element->output = output;
-    if (bOverride_target && !target.IsEmpty()) mjs_setString(Element->targetbody, TCHAR_TO_UTF8(*target));
-    if (bOverride_focal) { for (int32 i = 0; i < focal.Num(); ++i) Element->focal_length[i] = focal[i]; }
-    if (bOverride_focalpixel) { for (int32 i = 0; i < focalpixel.Num(); ++i) Element->focal_pixel[i] = focalpixel[i]; }
-    if (bOverride_principal) { for (int32 i = 0; i < principal.Num(); ++i) Element->principal_length[i] = principal[i]; }
-    if (bOverride_principalpixel) { for (int32 i = 0; i < principalpixel.Num(); ++i) Element->principal_pixel[i] = principalpixel[i]; }
-    if (bOverride_sensorsize) { for (int32 i = 0; i < sensorsize.Num(); ++i) Element->sensor_size[i] = sensorsize[i]; }
+    if (bOverride_target) MjSetString(Element->targetbody, target);
+    if (bOverride_focal) { for (int32 i = 0; i < FMath::Min(focal.Num(), 2); ++i) Element->focal_length[i] = focal[i]; }
+    if (bOverride_focalpixel) { for (int32 i = 0; i < FMath::Min(focalpixel.Num(), 2); ++i) Element->focal_pixel[i] = focalpixel[i]; }
+    if (bOverride_principal) { for (int32 i = 0; i < FMath::Min(principal.Num(), 2); ++i) Element->principal_length[i] = principal[i]; }
+    if (bOverride_principalpixel) { for (int32 i = 0; i < FMath::Min(principalpixel.Num(), 2); ++i) Element->principal_pixel[i] = principalpixel[i]; }
+    if (bOverride_sensorsize) { for (int32 i = 0; i < FMath::Min(sensorsize.Num(), 2); ++i) Element->sensor_size[i] = sensorsize[i]; }
     // --- CODEGEN_EXPORT_END ---
 }
 
@@ -850,22 +850,25 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     if (!Node) return;
 
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName);
     { // xml_enum: mode -> EMjCameraTrackingMode
         FString S = Node->GetAttribute(TEXT("mode"));
         S = S.ToLower();
-        if      (S == TEXT("fixed")) TrackingMode = EMjCameraTrackingMode::Fixed;
-        else if (S == TEXT("track")) TrackingMode = EMjCameraTrackingMode::Track;
-        else if (S == TEXT("trackcom")) TrackingMode = EMjCameraTrackingMode::TrackCom;
-        else if (S == TEXT("targetbody")) TrackingMode = EMjCameraTrackingMode::TargetBody;
-        else if (S == TEXT("targetbodycom")) TrackingMode = EMjCameraTrackingMode::TargetBodyCom;
-        if (!S.IsEmpty()) bOverride_TrackingMode = true;
+        bool bMatched = false;
+        if      (S == TEXT("fixed")) { TrackingMode = EMjCameraTrackingMode::Fixed; bMatched = true; }
+        else if (S == TEXT("track")) { TrackingMode = EMjCameraTrackingMode::Track; bMatched = true; }
+        else if (S == TEXT("trackcom")) { TrackingMode = EMjCameraTrackingMode::TrackCom; bMatched = true; }
+        else if (S == TEXT("targetbody")) { TrackingMode = EMjCameraTrackingMode::TargetBody; bMatched = true; }
+        else if (S == TEXT("targetbodycom")) { TrackingMode = EMjCameraTrackingMode::TargetBodyCom; bMatched = true; }
+        if (bMatched) bOverride_TrackingMode = true;
     }
     { // xml_enum: projection -> EMjCameraProjection
         FString S = Node->GetAttribute(TEXT("projection"));
         S = S.ToLower();
-        if      (S == TEXT("orthographic")) Projection = EMjCameraProjection::Orthographic;
-        else if (S == TEXT("perspective")) Projection = EMjCameraProjection::Perspective;
-        if (!S.IsEmpty()) bOverride_Projection = true;
+        bool bMatched = false;
+        if      (S == TEXT("orthographic")) { Projection = EMjCameraProjection::Orthographic; bMatched = true; }
+        else if (S == TEXT("perspective")) { Projection = EMjCameraProjection::Perspective; bMatched = true; }
+        if (bMatched) bOverride_Projection = true;
     }
     MjXmlUtils::ReadAttrFloat(Node, TEXT("fovy"), fovy, bOverride_fovy);
     MjXmlUtils::ReadAttrFloat(Node, TEXT("ipd"), ipd, bOverride_ipd);
@@ -888,11 +891,11 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
-    // Name
-    if (!MjXmlUtils::ReadAttrString(Node, TEXT("name"), MjName))
-        MjName = TEXT("Camera");
+    // Name fallback (codegen above reads MjName from the "name" attribute;
+    // here we provide a sensible default if the user omitted it).
+    if (MjName.IsEmpty()) MjName = TEXT("Camera");
 
     // fovy — direct attribute wins; otherwise derive from MJCF intrinsics.
     // MuJoCo's compiler computes fovy from focal_pixel / focal_length when

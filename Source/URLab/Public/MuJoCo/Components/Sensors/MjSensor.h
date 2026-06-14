@@ -29,6 +29,7 @@
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include "MuJoCo/Utils/MjBind.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "MjSensor.generated.h"
@@ -112,38 +113,7 @@ enum class EMjSensorType : uint8
     User
 };
 
-/**
- * @enum EMjObjType
- * @brief Mirror of mjtObj for specifying sensor attachment/reference types.
- */
-UENUM(BlueprintType)
-enum class EMjObjType : uint8
-{
-    Unknown,
-    Body,
-    XBody,
-    Joint,
-    DoF,
-    Geom,
-    Site,
-    Camera,
-    Light,
-    Mesh,
-    HField,
-    Texture,
-    Material,
-    Pair,
-    Exclude,
-    Equality,
-    Tendon,
-    Actuator,
-    Sensor,
-    Numeric,
-    Text,
-    Tuple,
-    Key,
-    Plugin,
-};
+// EMjObjType moved to MuJoCo/Generated/MjArticulationEnums.h.
 
 /**
  * @class UMjSensor
@@ -159,40 +129,40 @@ class URLAB_API UMjSensor : public UMjComponent
 
 public:	
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_nsample = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_nsample"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_nsample"))
     int32 nsample = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_interp = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_interp"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_interp"))
     int32 interp = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_delay = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_delay"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_delay"))
     float delay = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_interval = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_interval"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_interval"))
     TArray<float> interval = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_cutoff = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_cutoff"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_cutoff"))
     float cutoff = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjSensor", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Sensor", meta=(InlineEditConditionToggle))
     bool bOverride_noise = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjSensor", meta=(EditCondition="bOverride_noise"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(EditCondition="bOverride_noise"))
     float noise = 0.0f;
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -226,8 +196,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor")
+    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+     *  Details panel — synced from MjClassName via the editor dropdown. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Sensor",
+              meta=(EditCondition="false", EditConditionHides))
     UMjDefault* DefaultClass = nullptr;
 
     virtual FString GetMjClassName() const override

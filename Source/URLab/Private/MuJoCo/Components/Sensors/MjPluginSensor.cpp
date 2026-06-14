@@ -41,7 +41,7 @@ void UMjPluginSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSetti
     if (!Node) return;
 
     // --- CODEGEN_IMPORT_START ---
-
+    // (no type-specific schema imports)
     // --- CODEGEN_IMPORT_END ---
 }
 
@@ -52,6 +52,6 @@ void UMjPluginSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
     Super::ExportTo(Element, Default);
 
     // --- CODEGEN_EXPORT_START ---
-
+    // (no type-specific schema exports)
     // --- CODEGEN_EXPORT_END ---
 }

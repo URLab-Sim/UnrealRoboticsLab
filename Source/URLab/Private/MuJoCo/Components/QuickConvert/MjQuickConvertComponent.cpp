@@ -102,10 +102,10 @@ void UMjQuickConvertComponent::DrawDebugCollision() {
     if (!World) return;
 
     for (auto geom_view : m_CreatedBody->GetMj().Geoms()) {
-        int meshId = geom_view.dataid;
+        int meshId = geom_view.geom_dataid;
 
-        mjtNum* pos = geom_view.xpos; 
-        mjtNum* mat = geom_view.xmat;
+        mjtNum* pos = geom_view.geom_xpos; 
+        mjtNum* mat = geom_view.geom_xmat;
 
         FVector Position = FVector(pos[0], -pos[1], pos[2]);
         Position *= Multiplier;

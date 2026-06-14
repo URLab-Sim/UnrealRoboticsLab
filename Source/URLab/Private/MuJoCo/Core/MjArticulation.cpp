@@ -247,11 +247,30 @@ void AMjArticulation::UnPossessed()
 }
 
 
+// Collapses 7 identical "GetComponents + for-loop + RegisterToSpec"
+// category blocks into one call. Flex stays separate — it needs
+// ParentSpecBody resolution.
+template <typename T>
+static void RegisterAllOf(AActor* Owner, FMujocoSpecWrapper& Wrapper,
+                          bool bSkipDefaults = true)
+{
+    if (!Owner) return;
+    TArray<T*> All;
+    Owner->GetComponents<T>(All);
+    for (T* C : All)
+    {
+        if (!C) continue;
+        if (bSkipDefaults && C->bIsDefault) continue;
+        C->RegisterToSpec(Wrapper);
+    }
+}
+
+
 void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
 {
     m_spec = Spec;
     m_vfs = VFS;
-    
+
     m_ChildSpec = mj_makeSpec();
     m_ChildSpec->compiler.degree = false;
 
@@ -419,60 +438,30 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
     }
 
     // 4. Add Tendons (into child spec, after bodies so joint names are set)
-    TArray<UMjTendon*> Tendons;
-    GetComponents<UMjTendon>(Tendons);
-    for (UMjTendon* Tendon : Tendons)
+    RegisterAllOf<UMjTendon>(this, *m_wrapper);
+
+    // 5. Add Sensors / Actuators (after tendons so tendon names resolve).
+    RegisterAllOf<UMjSensor>(this, *m_wrapper);
+    RegisterAllOf<UMjActuator>(this, *m_wrapper);
+
+    // 6. Contact pairs / excludes inherit from IMjSpecElement (not
+    //    UMjComponent) so they have no bIsDefault field — register all.
     {
-        if (Tendon && !Tendon->bIsDefault)
-            Tendon->RegisterToSpec(*m_wrapper);
+        TArray<UMjContactPair*> Pairs;
+        GetComponents<UMjContactPair>(Pairs);
+        for (UMjContactPair* Pair : Pairs)
+            if (Pair) Pair->RegisterToSpec(*m_wrapper);
+    }
+    {
+        TArray<UMjContactExclude*> Excludes;
+        GetComponents<UMjContactExclude>(Excludes);
+        for (UMjContactExclude* Excl : Excludes)
+            if (Excl) Excl->RegisterToSpec(*m_wrapper);
     }
 
-    // 5. Add Sensors and Actuators (into child spec, after tendons strings might be referenced)
-    TArray<UMjSensor*> Sensors;
-    GetComponents<UMjSensor>(Sensors);
-    for (UMjSensor* Sensor : Sensors)
-    {
-        if (Sensor && !Sensor->bIsDefault)
-            Sensor->RegisterToSpec(*m_wrapper);
-    }
-
-    TArray<UMjActuator*> Actuators;
-    GetComponents<UMjActuator>(Actuators);
-    for (UMjActuator* Actuator : Actuators)
-    {
-        if (Actuator && !Actuator->bIsDefault)
-            Actuator->RegisterToSpec(*m_wrapper);
-    }
-
-    TArray<UMjContactPair*> ContactPairs;
-    GetComponents<UMjContactPair>(ContactPairs);
-    for (UMjContactPair* Pair : ContactPairs)
-    {
-        Pair->RegisterToSpec(*m_wrapper);
-    }
-
-    TArray<UMjContactExclude*> ContactExcludes;
-    GetComponents<UMjContactExclude>(ContactExcludes);
-    for (UMjContactExclude* Exclude : ContactExcludes)
-    {
-        Exclude->RegisterToSpec(*m_wrapper);
-    }
-
-    TArray<UMjEquality*> Equalities;
-    GetComponents<UMjEquality>(Equalities);
-    for (UMjEquality* Equality : Equalities)
-    {
-        if (Equality && !Equality->bIsDefault)
-            Equality->RegisterToSpec(*m_wrapper);
-    }
-
-    TArray<UMjKeyframe*> Keyframes;
-    GetComponents<UMjKeyframe>(Keyframes);
-    for (UMjKeyframe* Keyframe : Keyframes)
-    {
-        if (Keyframe && !Keyframe->bIsDefault)
-            Keyframe->RegisterToSpec(*m_wrapper);
-    }
+    // 7. Equalities + Keyframes.
+    RegisterAllOf<UMjEquality>(this, *m_wrapper);
+    RegisterAllOf<UMjKeyframe>(this, *m_wrapper);
     
     mjsBody* parentWorld = mjs_findBody(Spec, "world");
     mjsFrame* attachmentFrame = mjs_addFrame(parentWorld, 0);
@@ -709,73 +698,16 @@ void AMjArticulation::ApplyControls(bool bSkipController)
 // Blueprint Runtime API — Discovery
 // =========================================================================
 
-TArray<FString> AMjArticulation::GetActuatorNames() const
-{
-    TArray<FString> Names;
-    for (auto& Elem : ActuatorIdMap)
-    {
-        if (Elem.Value) Names.Add(Elem.Value->GetMjName());
-    }
-    return Names;
-}
+// --- Templated map-lookup wrappers (v8: implementations in MjArticulation.h templates) ---
 
-TArray<UMjActuator*> AMjArticulation::GetActuators() const
-{
-    TArray<UMjActuator*> Components;
-    ActuatorIdMap.GenerateValueArray(Components);
-    return Components;
-}
-
-TArray<FString> AMjArticulation::GetJointNames() const
-{
-    TArray<FString> Names;
-    for (auto& Elem : JointIdMap)
-    {
-        if (Elem.Value) Names.Add(Elem.Value->GetMjName());
-    }
-    return Names;
-}
-
-TArray<UMjJoint*> AMjArticulation::GetJoints() const
-{
-    TArray<UMjJoint*> Components;
-    JointIdMap.GenerateValueArray(Components);
-    return Components;
-}
-
-TArray<FString> AMjArticulation::GetSensorNames() const
-{
-    TArray<FString> Names;
-    for (auto& Elem : SensorIdMap)
-    {
-        if (Elem.Value) Names.Add(Elem.Value->GetMjName());
-    }
-    return Names;
-}
-
-TArray<UMjSensor*> AMjArticulation::GetSensors() const
-{
-    TArray<UMjSensor*> Components;
-    SensorIdMap.GenerateValueArray(Components);
-    return Components;
-}
-
-TArray<FString> AMjArticulation::GetBodyNames() const
-{
-    TArray<FString> Names;
-    for (auto& Elem : BodyIdMap)
-    {
-        if (Elem.Value) Names.Add(Elem.Value->GetMjName());
-    }
-    return Names;
-}
-
-TArray<UMjBody*> AMjArticulation::GetBodies() const
-{
-    TArray<UMjBody*> Components;
-    BodyIdMap.GenerateValueArray(Components);
-    return Components;
-}
+TArray<FString>      AMjArticulation::GetActuatorNames() const { return GetComponentNamesFromMap(ActuatorIdMap); }
+TArray<UMjActuator*> AMjArticulation::GetActuators()    const { return GetComponentsFromMap(ActuatorIdMap); }
+TArray<FString>      AMjArticulation::GetJointNames()   const { return GetComponentNamesFromMap(JointIdMap); }
+TArray<UMjJoint*>    AMjArticulation::GetJoints()       const { return GetComponentsFromMap(JointIdMap); }
+TArray<FString>      AMjArticulation::GetSensorNames()  const { return GetComponentNamesFromMap(SensorIdMap); }
+TArray<UMjSensor*>   AMjArticulation::GetSensors()      const { return GetComponentsFromMap(SensorIdMap); }
+TArray<FString>      AMjArticulation::GetBodyNames()    const { return GetComponentNamesFromMap(BodyIdMap); }
+TArray<UMjBody*>     AMjArticulation::GetBodies()       const { return GetComponentsFromMap(BodyIdMap); }
 
 void AMjArticulation::WakeAll()
 {
@@ -800,60 +732,15 @@ TArray<UMjFrame*> AMjArticulation::GetFrames() const
     return Components;
 }
 
-TArray<UMjGeom*> AMjArticulation::GetGeoms() const
-{
-    TArray<UMjGeom*> Components;
-    GeomIdMap.GenerateValueArray(Components);
-    return Components;
-}
+TArray<UMjGeom*>     AMjArticulation::GetGeoms()        const { return GetComponentsFromMap(GeomIdMap); }
+TArray<UMjTendon*>   AMjArticulation::GetTendons()      const { return GetComponentsFromMap(TendonIdMap); }
+TArray<FString>      AMjArticulation::GetTendonNames()  const { return GetComponentNamesFromMap(TendonIdMap); }
 
-
-UMjActuator* AMjArticulation::GetActuator(const FString& Name) const
-{
-    if (const auto* Ptr = ActuatorComponentMap.Find(Name)) return *Ptr;
-    return nullptr;
-}
-
-UMjJoint* AMjArticulation::GetJoint(const FString& Name) const
-{
-    if (const auto* Ptr = JointComponentMap.Find(Name)) return *Ptr;
-    return nullptr;
-}
-
-UMjSensor* AMjArticulation::GetSensor(const FString& Name) const
-{
-    if (const auto* Ptr = SensorComponentMap.Find(Name)) return *Ptr;
-    return nullptr;
-}
-
-UMjBody* AMjArticulation::GetBody(const FString& Name) const
-{
-    if (const auto* Ptr = BodyComponentMap.Find(Name)) return *Ptr;
-    return nullptr;
-}
-
-TArray<UMjTendon*> AMjArticulation::GetTendons() const
-{
-    TArray<UMjTendon*> Components;
-    TendonIdMap.GenerateValueArray(Components);
-    return Components;
-}
-
-TArray<FString> AMjArticulation::GetTendonNames() const
-{
-    TArray<FString> Names;
-    for (auto& Elem : TendonIdMap)
-    {
-        if (Elem.Value) Names.Add(Elem.Value->GetMjName());
-    }
-    return Names;
-}
-
-UMjTendon* AMjArticulation::GetTendon(const FString& Name) const
-{
-    if (const auto* Ptr = TendonComponentMap.Find(Name)) return *Ptr;
-    return nullptr;
-}
+UMjActuator* AMjArticulation::GetActuator(const FString& Name) const { return GetComponentByNameInMap(Name, ActuatorComponentMap); }
+UMjJoint*    AMjArticulation::GetJoint   (const FString& Name) const { return GetComponentByNameInMap(Name, JointComponentMap); }
+UMjSensor*   AMjArticulation::GetSensor  (const FString& Name) const { return GetComponentByNameInMap(Name, SensorComponentMap); }
+UMjBody*     AMjArticulation::GetBody    (const FString& Name) const { return GetComponentByNameInMap(Name, BodyComponentMap); }
+UMjTendon*   AMjArticulation::GetTendon  (const FString& Name) const { return GetComponentByNameInMap(Name, TendonComponentMap); }
 
 TArray<UMjEquality*> AMjArticulation::GetEqualities() const
 {
@@ -1027,28 +914,22 @@ void AMjArticulation::StopHoldKeyframe()
 
 UMjComponent* AMjArticulation::GetComponentByMjId(mjtObj type, int32 id) const
 {
+    // Single-lookup dispatch via GetComponentByIdInMap<T> (v8). Each branch
+    // is a single Map.Find + nullptr-return, matching the standalone Get*ByMjId
+    // helpers below.
     switch (type)
     {
-        case mjOBJ_BODY:     return GetBodyByMjId(id);
-        case mjOBJ_GEOM:     return GetGeomByMjId(id);
-        case mjOBJ_JOINT:    return JointIdMap.Contains(id) ? JointIdMap[id] : nullptr;
-        case mjOBJ_SENSOR:   return SensorIdMap.Contains(id) ? SensorIdMap[id] : nullptr;
-        case mjOBJ_ACTUATOR: return ActuatorIdMap.Contains(id) ? ActuatorIdMap[id] : nullptr;
+        case mjOBJ_BODY:     return GetComponentByIdInMap(id, BodyIdMap);
+        case mjOBJ_GEOM:     return GetComponentByIdInMap(id, GeomIdMap);
+        case mjOBJ_JOINT:    return GetComponentByIdInMap(id, JointIdMap);
+        case mjOBJ_SENSOR:   return GetComponentByIdInMap(id, SensorIdMap);
+        case mjOBJ_ACTUATOR: return GetComponentByIdInMap(id, ActuatorIdMap);
         default:             return nullptr;
     }
 }
 
-UMjBody* AMjArticulation::GetBodyByMjId(int32 id) const
-{
-    if (const auto* Ptr = BodyIdMap.Find(id)) return *Ptr;
-    return nullptr;
-}
-
-UMjGeom* AMjArticulation::GetGeomByMjId(int32 id) const
-{
-    if (const auto* Ptr = GeomIdMap.Find(id)) return *Ptr;
-    return nullptr;
-}
+UMjBody* AMjArticulation::GetBodyByMjId(int32 id) const { return GetComponentByIdInMap(id, BodyIdMap); }
+UMjGeom* AMjArticulation::GetGeomByMjId(int32 id) const { return GetComponentByIdInMap(id, GeomIdMap); }
 
 bool AMjArticulation::SetActuatorControl(const FString& ActuatorName, float Value)
 {
@@ -1167,14 +1048,14 @@ void AMjArticulation::DrawDebugJoints()
         {
             // Runtime mode: use compiled model data
             const JointView& JV = Joint->GetMj();
-            MjType = JV.type;
+            MjType = JV.jnt_type;
             Anchor = Joint->GetWorldAnchor();
             Axis = Joint->GetWorldAxis();
 
-            if (JV.range)
+            if (JV.jnt_range)
             {
-                RangeMin = (float)JV.range[0];
-                RangeMax = (float)JV.range[1];
+                RangeMin = (float)JV.jnt_range[0];
+                RangeMax = (float)JV.jnt_range[1];
                 bLimited = (RangeMin != 0.0f || RangeMax != 0.0f);
             }
             else
@@ -1256,13 +1137,13 @@ void AMjArticulation::DrawDebugSites()
         {
             // Runtime: use compiled model data
             const SiteView& SV = Site->GetMj();
-            if (!SV.xpos) continue;
+            if (!SV.site_xpos) continue;
 
-            Pos = MjUtils::MjToUEPosition(SV.xpos);
-            Radius = (SV.size) ? (float)SV.size[0] * 100.0f : 1.0f; // meters → cm
-            Color = (SV.rgba) ? FColor(
-                (uint8)(SV.rgba[0] * 255), (uint8)(SV.rgba[1] * 255),
-                (uint8)(SV.rgba[2] * 255), 200) : FColor(128, 128, 128, 200);
+            Pos = MjUtils::MjToUEPosition(SV.site_xpos);
+            Radius = (SV.site_size) ? (float)SV.site_size[0] * 100.0f : 1.0f; // meters → cm
+            Color = (SV.site_rgba) ? FColor(
+                (uint8)(SV.site_rgba[0] * 255), (uint8)(SV.site_rgba[1] * 255),
+                (uint8)(SV.site_rgba[2] * 255), 200) : FColor(128, 128, 128, 200);
         }
         else
         {

@@ -41,46 +41,46 @@ class URLAB_API UMjKeyframe : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Time = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Time"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Time"))
     float Time = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Qpos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Qpos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qpos"))
     TArray<float> Qpos = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Qvel = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Qvel"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Qvel"))
     TArray<float> Qvel = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Act = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Act"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Act"))
     TArray<float> Act = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Mpos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Mpos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mpos"))
     TArray<float> Mpos = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Mquat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Mquat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Mquat"))
     TArray<float> Mquat = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjKeyframe", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Keyframe", meta=(InlineEditConditionToggle))
     bool bOverride_Ctrl = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjKeyframe", meta=(EditCondition="bOverride_Ctrl"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Keyframe", meta=(EditCondition="bOverride_Ctrl"))
     TArray<float> Ctrl = {};
     // --- CODEGEN_PROPERTIES_END ---
 

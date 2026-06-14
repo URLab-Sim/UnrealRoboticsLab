@@ -36,7 +36,6 @@ class URLAB_API UMjJointPosSensor : public UMjSensor
     GENERATED_BODY()
 public:
     // --- CODEGEN_PROPERTIES_START ---
-
     // --- CODEGEN_PROPERTIES_END ---
 
     UMjJointPosSensor();

@@ -114,17 +114,4 @@ public:
 
     /** Convert zaxis (3 values) to quaternion via minimal rotation from (0,0,1). */
     static void ZAxisToQuat(const double ZAxis[3], double OutQuat[4]);
-
-private:
-    /** Create a quaternion for rotation around a single axis (0=x, 1=y, 2=z) by AngleRad. */
-    static void ElementalRotQuat(int AxisIndex, double AngleRad, double OutQuat[4]);
-
-    /** Multiply two quaternions: Result = A * B (Hamilton product). All in w,x,y,z order. */
-    static void QuatMul(const double A[4], const double B[4], double Result[4]);
-
-    /** Normalize a quaternion in-place. */
-    static void QuatNormalize(double Q[4]);
-
-    /** Convert a 3x3 rotation matrix (row-major) to quaternion (w,x,y,z). */
-    static void RotMatToQuat(const double R[9], double OutQuat[4]);
 };

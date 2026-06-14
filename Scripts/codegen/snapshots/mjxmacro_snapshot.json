@@ -1,7 +1,19 @@
 {
   "_meta": {
     "source": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
-    "schema_kind": "mjxmacro"
+    "schema_kind": "mjxmacro",
+    "struct_field_sources": {
+      "MJOPTION_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJSTATISTIC_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJVISUAL_GLOBAL_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJVISUAL_QUALITY_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJVISUAL_HEADLIGHT_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJVISUAL_MAP_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJVISUAL_SCALE_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJVISUAL_RGBA_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
+      "MJSCOMPILER_FIELDS": "Scripts\\codegen\\_vendored\\mjspecmacro.h",
+      "MJSPEC_FIELDS": "Scripts\\codegen\\_vendored\\mjspecmacro.h"
+    }
   },
   "mjmodel_pointers": {
     "MJMODEL_POINTERS_BODY": [
@@ -552,6 +564,24 @@
         "name": "geom_gap",
         "outer_dim": "ngeom",
         "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_fluid",
+        "outer_dim": "ngeom",
+        "stride": "mjNFLUID"
+      },
+      {
+        "type": "mjtNum",
+        "name": "geom_user",
+        "outer_dim": "ngeom",
+        "stride": "MJ_M(nuser_geom)"
+      },
+      {
+        "type": "float",
+        "name": "geom_rgba",
+        "outer_dim": "ngeom",
+        "stride": "4"
       }
     ],
     "MJMODEL_POINTERS_SITE": [
@@ -1396,6 +1426,126 @@
         "name": "mesh_graphadr",
         "outer_dim": "nmesh",
         "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "mesh_vert",
+        "outer_dim": "nmeshvert",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "mesh_normal",
+        "outer_dim": "nmeshnormal",
+        "stride": "3"
+      },
+      {
+        "type": "float",
+        "name": "mesh_texcoord",
+        "outer_dim": "nmeshtexcoord",
+        "stride": "2"
+      },
+      {
+        "type": "int",
+        "name": "mesh_face",
+        "outer_dim": "nmeshface",
+        "stride": "3"
+      },
+      {
+        "type": "int",
+        "name": "mesh_facenormal",
+        "outer_dim": "nmeshface",
+        "stride": "3"
+      },
+      {
+        "type": "int",
+        "name": "mesh_facetexcoord",
+        "outer_dim": "nmeshface",
+        "stride": "3"
+      },
+      {
+        "type": "int",
+        "name": "mesh_graph",
+        "outer_dim": "nmeshgraph",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "mesh_scale",
+        "outer_dim": "nmesh",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "mesh_pos",
+        "outer_dim": "nmesh",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "mesh_quat",
+        "outer_dim": "nmesh",
+        "stride": "4"
+      },
+      {
+        "type": "int",
+        "name": "mesh_pathadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polynum",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polyadr",
+        "outer_dim": "nmesh",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "mesh_polynormal",
+        "outer_dim": "nmeshpoly",
+        "stride": "3"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polyvertadr",
+        "outer_dim": "nmeshpoly",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polyvertnum",
+        "outer_dim": "nmeshpoly",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polyvert",
+        "outer_dim": "nmeshpolyvert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polymapadr",
+        "outer_dim": "nmeshvert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polymapnum",
+        "outer_dim": "nmeshvert",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "mesh_polymap",
+        "outer_dim": "nmeshpolymap",
+        "stride": "1"
       }
     ],
     "MJMODEL_POINTERS_SKIN": [
@@ -1556,6 +1706,18 @@
         "name": "hfield_adr",
         "outer_dim": "nhfield",
         "stride": "1"
+      },
+      {
+        "type": "float",
+        "name": "hfield_data",
+        "outer_dim": "nhfielddata",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "hfield_pathadr",
+        "outer_dim": "nhfield",
+        "stride": "1"
       }
     ],
     "MJMODEL_POINTERS_TEXTURE": [
@@ -1592,6 +1754,18 @@
       {
         "type": "mjtSize",
         "name": "tex_adr",
+        "outer_dim": "ntex",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "tex_data",
+        "outer_dim": "ntexdata",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tex_pathadr",
         "outer_dim": "ntex",
         "stride": "1"
       }
@@ -2596,6 +2770,236 @@
         "name": "actuator_moment",
         "outer_dim": "nJmom",
         "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "crb",
+        "outer_dim": "nbody",
+        "stride": "10"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qM",
+        "outer_dim": "nM",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "M",
+        "outer_dim": "nC",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qLD",
+        "outer_dim": "nC",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qLDiagInv",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtByte",
+        "name": "bvh_active",
+        "outer_dim": "nbvh",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tree_awake",
+        "outer_dim": "ntree",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_awake",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "body_awake_ind",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "parent_awake_ind",
+        "outer_dim": "nbody",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "dof_awake_ind",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "flexedge_velocity",
+        "outer_dim": "nflexedge",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ten_velocity",
+        "outer_dim": "ntendon",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_velocity",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cvel",
+        "outer_dim": "nbody",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cdof_dot",
+        "outer_dim": "nv",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_bias",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_spring",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_damper",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_gravcomp",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_fluid",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_passive",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "subtree_linvel",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "subtree_angmom",
+        "outer_dim": "nbody",
+        "stride": "3"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qH",
+        "outer_dim": "nC",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qHDiagInv",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qDeriv",
+        "outer_dim": "nD",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qLU",
+        "outer_dim": "nD",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator_force",
+        "outer_dim": "nu",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_actuator",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_smooth",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qacc_smooth",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_constraint",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "qfrc_inverse",
+        "outer_dim": "nv",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cacc",
+        "outer_dim": "nbody",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cfrc_int",
+        "outer_dim": "nbody",
+        "stride": "6"
+      },
+      {
+        "type": "mjtNum",
+        "name": "cfrc_ext",
+        "outer_dim": "nbody",
+        "stride": "6"
+      }
+    ],
+    "MJDATA_ARENA_POINTERS_CONTACT": [
+      {
+        "type": "mjContact",
+        "name": "contact",
+        "outer_dim": "MJ_D(ncon)",
+        "stride": "1"
       }
     ],
     "MJDATA_ARENA_POINTERS_SOLVER": [
@@ -2610,9 +3014,142 @@
         "name": "efc_id",
         "outer_dim": "MJ_D(nefc)",
         "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_J_rownnz",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_J_rowadr",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_J_rowsuper",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_J_colind",
+        "outer_dim": "MJ_D(nJ)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_J",
+        "outer_dim": "MJ_D(nJ)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_pos",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_margin",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_frictionloss",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_diagApprox",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_KBIP",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "4"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_D",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_R",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "tendon_efcadr",
+        "outer_dim": "MJ_M(ntendon)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_vel",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_aref",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_b",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_state",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_force",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
       }
     ],
-    "MJDATA_ARENA_POINTERS_DUAL": [],
+    "MJDATA_ARENA_POINTERS_DUAL": [
+      {
+        "type": "int",
+        "name": "efc_AR_rownnz",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_AR_rowadr",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_AR_colind",
+        "outer_dim": "MJ_D(nA)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_AR",
+        "outer_dim": "MJ_D(nA)",
+        "stride": "1"
+      }
+    ],
     "MJDATA_ARENA_POINTERS_ISLAND": [
       {
         "type": "int",
@@ -2683,6 +3220,174 @@
       {
         "type": "mjtNum",
         "name": "iacc_smooth",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iM_rownnz",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iM_rowadr",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iM_colind",
+        "outer_dim": "MJ_M(nC)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iM",
+        "outer_dim": "MJ_M(nC)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iLD",
+        "outer_dim": "MJ_M(nC)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iLDiagInv",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iacc",
+        "outer_dim": "MJ_D(nidof)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_island",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_ne",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_nf",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_nefc",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "island_iefcadr",
+        "outer_dim": "MJ_D(nisland)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "map_efc2iefc",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "map_iefc2efc",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_type",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_id",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_J_rownnz",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_J_rowadr",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_J_rowsuper",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_J_colind",
+        "outer_dim": "MJ_D(nJ)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iefc_J",
+        "outer_dim": "MJ_D(nJ)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iefc_frictionloss",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iefc_D",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iefc_R",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iefc_aref",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "iefc_state",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "iefc_force",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "ifrc_constraint",
         "outer_dim": "MJ_D(nidof)",
         "stride": "1"
       }
@@ -2978,7 +3683,38 @@
         "is_vec": false
       }
     ],
-    "MJVISUAL_QUALITY_FIELDS": [],
+    "MJVISUAL_QUALITY_FIELDS": [
+      {
+        "type": "mjtNum",
+        "name": "shadowsize",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "offsamples",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "numslices",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "numstacks",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "numquads",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
     "MJVISUAL_HEADLIGHT_FIELDS": [
       {
         "type": "float",
@@ -3005,8 +3741,603 @@
         "is_vec": false
       }
     ],
-    "MJVISUAL_MAP_FIELDS": [],
-    "MJVISUAL_SCALE_FIELDS": [],
-    "MJVISUAL_RGBA_FIELDS": []
+    "MJVISUAL_MAP_FIELDS": [
+      {
+        "type": "mjtNum",
+        "name": "stiffness",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "stiffnessrot",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "force",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "torque",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "alpha",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "fogstart",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "fogend",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "znear",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "zfar",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "haze",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "shadowclip",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "shadowscale",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuatortendon",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJVISUAL_SCALE_FIELDS": [
+      {
+        "type": "mjtNum",
+        "name": "forcewidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contactwidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contactheight",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "connect",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "com",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "camera",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "light",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "selectpoint",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "jointlength",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "jointwidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuatorlength",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuatorwidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "framelength",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "framewidth",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "constraint",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "slidercrank",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "frustum",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJVISUAL_RGBA_FIELDS": [
+      {
+        "type": "mjtNum",
+        "name": "fog",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "haze",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "force",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "inertia",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "joint",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuator",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuatornegative",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "actuatorpositive",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "com",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "camera",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "light",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "selectpoint",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "connect",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contactpoint",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contactforce",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contactfriction",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contacttorque",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "contactgap",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "rangefinder",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "constraint",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "slidercrank",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "crankbroken",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "frustum",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "bv",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtNum",
+        "name": "bvactive",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJSCOMPILER_FIELDS": [
+      {
+        "type": "mjtByte",
+        "name": "autolimits",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "double",
+        "name": "boundmass",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "double",
+        "name": "boundinertia",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "double",
+        "name": "settotalmass",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "balanceinertia",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "fitaabb",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "degree",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "char",
+        "name": "eulerseq",
+        "count": "3",
+        "is_vec": true
+      },
+      {
+        "type": "mjtByte",
+        "name": "discardvisual",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "usethread",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "fusestatic",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "inertiafromgeom",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "inertiagrouprange",
+        "count": "2",
+        "is_vec": true
+      },
+      {
+        "type": "mjtByte",
+        "name": "saveinertial",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "alignfree",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjLROpt",
+        "name": "LRopt",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjString*",
+        "name": "meshdir",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjString*",
+        "name": "texturedir",
+        "count": "1",
+        "is_vec": false
+      }
+    ],
+    "MJSPEC_FIELDS": [
+      {
+        "type": "mjsElement*",
+        "name": "element",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjString*",
+        "name": "modelname",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjsCompiler",
+        "name": "compiler",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "strippath",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjOption",
+        "name": "option",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjVisual",
+        "name": "visual",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjStatistic",
+        "name": "stat",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtSize",
+        "name": "memory",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nemax",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuserdata",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_body",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_jnt",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_geom",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_site",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_cam",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_tendon",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_actuator",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nuser_sensor",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nkey",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "njmax",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "int",
+        "name": "nconmax",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtSize",
+        "name": "nstack",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjString*",
+        "name": "comment",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjString*",
+        "name": "modelfiledir",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "mjtByte",
+        "name": "hasImplicitPluginElem",
+        "count": "1",
+        "is_vec": false
+      }
+    ]
   }
 }

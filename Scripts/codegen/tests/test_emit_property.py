@@ -8,22 +8,12 @@ import pytest
 from generate_ue_components import (
     EmittedSchema,
     emit_schema_for_attrs,
-    pascal_case,
-    override_toggle_name,
 )
 
 
-def test_schema_verbatim_name():
-    """Codegen uses MuJoCo schema names AS-IS (no PascalCase, no renames)."""
-    assert pascal_case("limited") == "limited"
-    assert pascal_case("ctrlrange") == "ctrlrange"
-    assert pascal_case("solreflimit") == "solreflimit"
-    assert pascal_case("springref") == "springref"
-
-
-def test_override_toggle_name():
-    assert override_toggle_name("limited") == "bOverride_limited"
-    assert override_toggle_name("ctrlrange") == "bOverride_ctrlrange"
+# override_toggle_name is exercised everywhere emit_schema_for_attrs runs;
+# the cross-category guarantee is pinned in
+# test_behavioral_emit_guarantees::test_override_toggle_name_matches_uproperty_for_all_categories.
 
 
 def test_emit_basic_property(minimal_rules):

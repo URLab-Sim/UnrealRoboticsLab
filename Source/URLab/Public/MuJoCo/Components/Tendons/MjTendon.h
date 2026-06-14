@@ -112,112 +112,112 @@ class URLAB_API UMjTendon : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_group = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_group"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_group"))
     int32 group = 0;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_limited = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_limited"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_limited"))
     bool limited = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
-    bool bOverride_actuatorfrclimited = false;
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
+    bool bOverride_ActFrcLimited = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_actuatorfrclimited"))
-    bool actuatorfrclimited = false;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_ActFrcLimited"))
+    bool ActFrcLimited = false;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_range = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_range"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_range"))
     TArray<float> range = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
-    bool bOverride_actuatorfrcrange = false;
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
+    bool bOverride_ActFrcRange = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_actuatorfrcrange"))
-    TArray<float> actuatorfrcrange = {};
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_ActFrcRange"))
+    TArray<float> ActFrcRange = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_solreflimit = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_solreflimit"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_solreflimit"))
     TArray<float> solreflimit = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_solimplimit = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_solimplimit"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_solimplimit"))
     TArray<float> solimplimit = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_solreffriction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_solreffriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_solreffriction"))
     TArray<float> solreffriction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_solimpfriction = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_solimpfriction"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_solimpfriction"))
     TArray<float> solimpfriction = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_frictionloss = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_frictionloss"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_frictionloss"))
     float frictionloss = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_springlength = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_springlength"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_springlength", MjUnit="m"))
     TArray<float> springlength = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_width = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_width"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_width"))
     float width = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_material = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_material"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_material"))
     FString material = TEXT("");
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_margin = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_margin"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_margin"))
     float margin = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_stiffness = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_stiffness"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_stiffness"))
     TArray<float> stiffness = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_damping = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_damping"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_damping"))
     TArray<float> damping = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_armature = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_armature"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_armature"))
     float armature = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjTendon", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon", meta=(InlineEditConditionToggle))
     bool bOverride_rgba = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjTendon", meta=(EditCondition="bOverride_rgba"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(EditCondition="bOverride_rgba"))
     FLinearColor rgba = FLinearColor::White;
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -290,8 +290,10 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon", meta=(GetOptions="GetDefaultClassOptions"))
     FString MjClassName;
 
-    /** @brief Reference to a UMjDefault component for default class inheritance. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon")
+    /** @brief Reference to a UMjDefault component for default class inheritance. Hidden from the
+     *  Details panel — synced from MjClassName via the editor dropdown. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon",
+              meta=(EditCondition="false", EditConditionHides))
     UMjDefault* DefaultClass = nullptr;
 
     virtual FString GetMjClassName() const override
@@ -328,23 +330,10 @@ public:
 
 
 
-    // --- Actuator Limits ---
-
-    /** @brief Override toggle for bActFrcLimited. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon|Limits", meta=(InlineEditConditionToggle))
-    bool bOverride_ActFrcLimited = false;
-
-    /** @brief Whether the tendon has actuator force limits. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon|Limits", meta=(EditCondition="bOverride_ActFrcLimited"))
-    bool bActFrcLimited = false;
-
-    /** @brief Override toggle for ActFrcRange. */
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendon|Limits", meta=(InlineEditConditionToggle))
-    bool bOverride_ActFrcRange = false;
-
-    /** @brief Tendon actuator force limits [min, max]. */
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Tendon|Limits", meta=(EditCondition="bOverride_ActFrcRange"))
-    TArray<float> ActFrcRange = {0.0f, 0.0f};
+    // ActFrcLimited / ActFrcRange UPROPERTYs are codegen-emitted in the
+    // CODEGEN_PROPERTIES block above (driven by codegen_rules.json's
+    // property_renames: actuatorfrclimited -> ActFrcLimited / actuatorfrcrange
+    // -> ActFrcRange).
 
     // --- Solver Parameters ---
 

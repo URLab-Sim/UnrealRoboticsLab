@@ -44,7 +44,6 @@ void UMjTactileSensor::ExportTo(mjsSensor* Element, mjsDefault* Default)
     Super::ExportTo(Element, Default);
 
     // --- CODEGEN_EXPORT_START ---
-
     // --- CODEGEN_EXPORT_END ---
 }
 
@@ -54,7 +53,6 @@ void UMjTactileSensor::ImportFromXml(const FXmlNode* Node, const FMjCompilerSett
     if (!Node) return;
 
     // --- CODEGEN_IMPORT_START ---
-
     // --- CODEGEN_IMPORT_END ---
 }
 

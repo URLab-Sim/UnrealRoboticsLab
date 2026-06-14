@@ -20,6 +20,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "MuJoCo/Generated/MjArticulationEnums.h"
 #include "MjCameraTypes.generated.h"
 
 /**
@@ -39,39 +40,5 @@ enum class EMjCameraMode : uint8
     InstanceSegmentation UMETA(DisplayName = "Instance Segmentation"),
 };
 
-/**
- * @enum EMjCameraTrackingMode
- * @brief MJCF ``<camera mode="...">`` tracking mode. Mirrors MuJoCo's
- *        mjtCamLight subset that applies to cameras. Distinct from
- *        ``EMjCameraMode`` above (which is URLab's render-mode selector,
- *        not a MuJoCo concept).
- *
- *  - Fixed:          camera attached to its body with a fixed transform.
- *  - Track:          camera follows the body's world position, keeps own rotation.
- *  - TrackCom:       like Track but follows the subtree centre of mass.
- *  - TargetBody:     camera stays at its own position; rotates to look at target body.
- *  - TargetBodyCom:  like TargetBody but aims at the target's subtree CoM.
- */
-UENUM(BlueprintType)
-enum class EMjCameraTrackingMode : uint8
-{
-    Fixed         UMETA(DisplayName = "Fixed"),
-    Track         UMETA(DisplayName = "Track"),
-    TrackCom      UMETA(DisplayName = "Track (Centre of Mass)"),
-    TargetBody    UMETA(DisplayName = "Target Body"),
-    TargetBodyCom UMETA(DisplayName = "Target Body (Centre of Mass)"),
-};
-
-/**
- * @enum EMjCameraProjection
- * @brief MJCF ``<camera projection="...">``. Mirrors MuJoCo's mjtProjection.
- *
- *  - Perspective:  standard pinhole camera (default).
- *  - Orthographic: parallel projection, no perspective foreshortening.
- */
-UENUM(BlueprintType)
-enum class EMjCameraProjection : uint8
-{
-    Perspective  UMETA(DisplayName = "Perspective"),
-    Orthographic UMETA(DisplayName = "Orthographic"),
-};
+// EMjCameraTrackingMode, EMjCameraProjection moved to
+// MuJoCo/Generated/MjArticulationEnums.h.

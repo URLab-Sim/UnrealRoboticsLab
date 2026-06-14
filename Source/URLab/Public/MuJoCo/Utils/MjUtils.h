@@ -176,3 +176,68 @@ public:
      */
     static FString PrettifyName(const FString& Name, const FString& PrefixToStrip = TEXT(""));
 };
+
+// ---------------------------------------------------------------------------
+// Free inline helpers for the most common MuJoCo-side write patterns.
+// These collapse the `if (!X.IsEmpty()) mjs_setString(Field, TCHAR_TO_UTF8(*X));`
+// boilerplate that appears in ~13 places across URLab components.
+// ---------------------------------------------------------------------------
+
+/**
+ * @brief Write a UE FString to an mjString* field, but only if non-empty.
+ *
+ * Replaces the gated pattern:
+ *   if (!Name.IsEmpty()) mjs_setString(Element->name, TCHAR_TO_UTF8(*Name));
+ * with:
+ *   MjSetString(Element->name, Name);
+ *
+ * @param Field  The mjString* field (e.g. Element->childclass).
+ * @param Value  The UE FString to write. No-op if empty.
+ */
+inline void MjSetString(mjString* Field, const FString& Value)
+{
+    if (!Value.IsEmpty())
+    {
+        mjs_setString(Field, TCHAR_TO_UTF8(*Value));
+    }
+}
+
+/**
+ * @brief Unconditionally write a UE FString to an mjString* field.
+ *
+ * Use when the caller has already verified the value should be written
+ * (e.g. registered mesh asset name, attached body identifier). Does NOT
+ * skip empty strings — the caller's responsibility.
+ *
+ * @param Field  The mjString* field.
+ * @param Value  The UE FString to write.
+ */
+inline void MjSetStringRaw(mjString* Field, const FString& Value)
+{
+    mjs_setString(Field, TCHAR_TO_UTF8(*Value));
+}
+
+/**
+ * @brief Overwrite an mjDoubleVec* with the contents of a TArray<float>.
+ *
+ * The mjs spec exposes mjsKey::qpos / qvel / ... as ``mjDoubleVec*``
+ * (a std::vector<double>* in disguise). The standard write pattern is
+ * ``clear() + push_back per element``; this helper packages that.
+ * Used both by codegen-emitted exports and by URLab's hand-written
+ * freejoint-padding path in MjKeyframe.
+ *
+ * @param Dest  The mjDoubleVec* destination. No-op if null.
+ * @param Src   The float source array. Each element is widened to double.
+ */
+inline void MjSetDoubleVec(mjDoubleVec* Dest, const TArray<float>& Src)
+{
+    if (!Dest)
+    {
+        return;
+    }
+    Dest->clear();
+    for (float V : Src)
+    {
+        Dest->push_back(static_cast<double>(V));
+    }
+}

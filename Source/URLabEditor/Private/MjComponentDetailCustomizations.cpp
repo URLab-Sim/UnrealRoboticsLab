@@ -21,129 +21,19 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MjComponentDetailCustomizations.h"
+
 #include "DetailLayoutBuilder.h"
 #include "DetailCategoryBuilder.h"
 #include "DetailWidgetRow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Physics/MjContactPair.h"
-#include "MuJoCo/Components/Physics/MjContactExclude.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Defaults/MjDefault.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Geometry/MjSite.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
 
-// Detail customizations that hide internal properties from the editor UI.
-// Most just call HideProperty(DefaultClass) — the SCS hierarchy sets these.
-// FMjGeomDetailCustomization (below) adds CoACD decomposition buttons.
-
-TSharedRef<IDetailCustomization> FMjActuatorDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjActuatorDetailCustomization);
-}
-
-void FMjActuatorDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjActuator, DefaultClass)));
-}
-
-TSharedRef<IDetailCustomization> FMjSensorDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjSensorDetailCustomization);
-}
-
-void FMjSensorDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjSensor, DefaultClass)));
-}
-
-TSharedRef<IDetailCustomization> FMjContactPairDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjContactPairDetailCustomization);
-}
-
-void FMjContactPairDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjContactPair, Name)));
-}
-
-TSharedRef<IDetailCustomization> FMjContactExcludeDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjContactExcludeDetailCustomization);
-}
-
-void FMjContactExcludeDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjContactExclude, Name)));
-}
-
-TSharedRef<IDetailCustomization> FMjEqualityDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjEqualityDetailCustomization);
-}
-
-void FMjEqualityDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-}
-
-TSharedRef<IDetailCustomization> FMjJointDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjJointDetailCustomization);
-}
-
-void FMjJointDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjJoint, DefaultClass)));
-}
-
-TSharedRef<IDetailCustomization> FMjBodyDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjBodyDetailCustomization);
-}
-
-void FMjBodyDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-}
-
-TSharedRef<IDetailCustomization> FMjDefaultDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjDefaultDetailCustomization);
-}
-
-void FMjDefaultDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjDefault, ClassName)));
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjDefault, ParentClassName)));
-}
-
-TSharedRef<IDetailCustomization> FMjSiteDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjSiteDetailCustomization);
-}
-
-void FMjSiteDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjSite, DefaultClass)));
-}
-
-TSharedRef<IDetailCustomization> FMjTendonDetailCustomization::MakeInstance()
-{
-    return MakeShareable(new FMjTendonDetailCustomization);
-}
-
-void FMjTendonDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
-{
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjTendon, DefaultClass)));
-}
-
-// FMjGeomDetailCustomization adds CoACD decomposition controls beyond the
-// simple HideProperty(DefaultClass).
+// ============================================================================
+// Geom — adds CoACD decomposition buttons (the only non-hiding logic).
+// DefaultClass hiding now lives on the UPROPERTY itself.
+// ============================================================================
 
 TSharedRef<IDetailCustomization> FMjGeomDetailCustomization::MakeInstance()
 {
@@ -159,9 +49,7 @@ void FMjGeomDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBu
     TWeakObjectPtr<UMjGeom> WeakGeom = Cast<UMjGeom>(Objects[0].Get());
     if (!WeakGeom.IsValid()) return;
 
-    DetailBuilder.HideProperty(DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UMjGeom, DefaultClass)));
-
-    // Decomposition buttons (only for mesh geoms)
+    // Decomposition buttons (only for mesh geoms).
     if (WeakGeom->Type != EMjGeomType::Mesh) return;
 
     IDetailCategoryBuilder& DecompCategory = DetailBuilder.EditCategory("MuJoCo|Geom|Decomposition");

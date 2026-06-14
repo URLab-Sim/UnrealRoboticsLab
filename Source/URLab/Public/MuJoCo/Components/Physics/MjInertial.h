@@ -38,34 +38,34 @@ class URLAB_API UMjInertial : public UMjComponent
 
 public:
     // --- CODEGEN_PROPERTIES_START ---
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjInertial|Spatial Pose", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial|Spatial Pose", meta=(InlineEditConditionToggle))
     bool bOverride_Pos = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjInertial|Spatial Pose", meta=(EditCondition="bOverride_Pos"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Inertial|Spatial Pose", meta=(EditCondition="false", EditConditionHides))
     FVector Pos = FVector::ZeroVector;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjInertial|Orientation", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial|Orientation", meta=(InlineEditConditionToggle))
     bool bOverride_Quat = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjInertial|Orientation", meta=(EditCondition="bOverride_Quat"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Inertial|Orientation", meta=(EditCondition="false", EditConditionHides))
     FQuat Quat = FQuat::Identity;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjInertial", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta=(InlineEditConditionToggle))
     bool bOverride_mass = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjInertial", meta=(EditCondition="bOverride_mass"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Inertial", meta=(EditCondition="bOverride_mass"))
     float mass = 0.0f;
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjInertial", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta=(InlineEditConditionToggle))
     bool bOverride_diaginertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjInertial", meta=(EditCondition="bOverride_diaginertia"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Inertial", meta=(EditCondition="bOverride_diaginertia"))
     TArray<float> diaginertia = {};
 
-    UPROPERTY(EditAnywhere, Category = "MuJoCo|MjInertial", meta=(InlineEditConditionToggle))
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta=(InlineEditConditionToggle))
     bool bOverride_fullinertia = false;
 
-    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|MjInertial", meta=(EditCondition="bOverride_fullinertia"))
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Inertial", meta=(EditCondition="bOverride_fullinertia"))
     TArray<float> fullinertia = {};
     // --- CODEGEN_PROPERTIES_END ---
 
@@ -87,12 +87,6 @@ public:
     // Note: Inertial usually doesn't have a direct 'mjsInertial' struct in mjspec.h same as others,
     // it's often part of body or explicit inertial element. 
     // mjsBody has 'mass', 'inertia', 'fullinertia'.
-    
-    /**
-     * @brief Binds this component to the live MuJoCo simulation.
-     */
-    virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
-
     /**
      * @brief Registers/Applies this inertial to the parent body in the spec.
      * @param Wrapper The spec wrapper instance.

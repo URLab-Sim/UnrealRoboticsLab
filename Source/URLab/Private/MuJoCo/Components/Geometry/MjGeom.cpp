@@ -102,33 +102,37 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     // on Type to pick size[1] vs size[2] for the half-length write.
 
         // --- CODEGEN_IMPORT_START ---
+    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
     { // xml_enum: type -> EMjGeomType
         FString S = Node->GetAttribute(TEXT("type"));
         S = S.ToLower();
-        if      (S == TEXT("plane")) Type = EMjGeomType::Plane;
-        else if (S == TEXT("hfield")) Type = EMjGeomType::Hfield;
-        else if (S == TEXT("sphere")) Type = EMjGeomType::Sphere;
-        else if (S == TEXT("capsule")) Type = EMjGeomType::Capsule;
-        else if (S == TEXT("ellipsoid")) Type = EMjGeomType::Ellipsoid;
-        else if (S == TEXT("cylinder")) Type = EMjGeomType::Cylinder;
-        else if (S == TEXT("box")) Type = EMjGeomType::Box;
-        else if (S == TEXT("mesh")) Type = EMjGeomType::Mesh;
-        else if (S == TEXT("sdf")) Type = EMjGeomType::SDF;
-        if (!S.IsEmpty()) bOverride_Type = true;
+        bool bMatched = false;
+        if      (S == TEXT("plane")) { Type = EMjGeomType::Plane; bMatched = true; }
+        else if (S == TEXT("hfield")) { Type = EMjGeomType::Hfield; bMatched = true; }
+        else if (S == TEXT("sphere")) { Type = EMjGeomType::Sphere; bMatched = true; }
+        else if (S == TEXT("capsule")) { Type = EMjGeomType::Capsule; bMatched = true; }
+        else if (S == TEXT("ellipsoid")) { Type = EMjGeomType::Ellipsoid; bMatched = true; }
+        else if (S == TEXT("cylinder")) { Type = EMjGeomType::Cylinder; bMatched = true; }
+        else if (S == TEXT("box")) { Type = EMjGeomType::Box; bMatched = true; }
+        else if (S == TEXT("mesh")) { Type = EMjGeomType::Mesh; bMatched = true; }
+        else if (S == TEXT("sdf")) { Type = EMjGeomType::SDF; bMatched = true; }
+        if (bMatched) bOverride_Type = true;
     }
     { // xml_enum: shellinertia -> EMjGeomInertia
         FString S = Node->GetAttribute(TEXT("shellinertia"));
         S = S.ToLower();
-        if      (S == TEXT("false")) ShellInertia = EMjGeomInertia::Volume;
-        else if (S == TEXT("true")) ShellInertia = EMjGeomInertia::Shell;
-        if (!S.IsEmpty()) bOverride_ShellInertia = true;
+        bool bMatched = false;
+        if      (S == TEXT("false")) { ShellInertia = EMjGeomInertia::Volume; bMatched = true; }
+        else if (S == TEXT("true")) { ShellInertia = EMjGeomInertia::Shell; bMatched = true; }
+        if (bMatched) bOverride_ShellInertia = true;
     }
     { // xml_enum: fluidshape -> EMjFluidShape
         FString S = Node->GetAttribute(TEXT("fluidshape"));
         S = S.ToLower();
-        if      (S == TEXT("none")) FluidShape = EMjFluidShape::None;
-        else if (S == TEXT("ellipsoid")) FluidShape = EMjFluidShape::Ellipsoid;
-        if (!S.IsEmpty()) bOverride_FluidShape = true;
+        bool bMatched = false;
+        if      (S == TEXT("none")) { FluidShape = EMjFluidShape::None; bMatched = true; }
+        else if (S == TEXT("ellipsoid")) { FluidShape = EMjFluidShape::Ellipsoid; bMatched = true; }
+        if (bMatched) bOverride_FluidShape = true;
     }
     MjXmlUtils::ReadAttrInt(Node, TEXT("contype"), contype, bOverride_contype);
     MjXmlUtils::ReadAttrInt(Node, TEXT("conaffinity"), conaffinity, bOverride_conaffinity);
@@ -147,7 +151,7 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     MjXmlUtils::ReadAttrFloat(Node, TEXT("gap"), gap, bOverride_gap);
     if (MjXmlUtils::ReadAttrString(Node, TEXT("hfield"), hfield)) bOverride_hfield = true;
     if (MjXmlUtils::ReadAttrString(Node, TEXT("mesh"), mesh)) bOverride_mesh = true;
-    MjXmlUtils::ReadAttrBool(Node, TEXT("fitscale"), fitscale, bOverride_fitscale);
+    MjXmlUtils::ReadAttrDouble(Node, TEXT("fitscale"), fitscale, bOverride_fitscale);
     MjXmlUtils::ReadAttrColor(Node, TEXT("rgba"), rgba, bOverride_rgba);
     MjXmlUtils::ReadAttrFloatArray(Node, TEXT("fluidcoef"), fluidcoef, bOverride_fluidcoef);
     MjUtils::ReadVec3InMeters(Node, TEXT("pos"), Pos, bOverride_Pos);
@@ -174,10 +178,7 @@ void UMjGeom::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Com
     }
     if (bOverride_Pos)  SetRelativeLocation(Pos);
     if (bOverride_Quat) SetRelativeRotation(Quat);
-    // --- CODEGEN_IMPORT_END ---
-
-    // MuJoCo class inheritance
-    MjXmlUtils::ReadAttrString(Node, TEXT("class"), MjClassName);
+        // --- CODEGEN_IMPORT_END ---
 
     // Implicit mesh-type detection (mesh attr present but type wasn't set)
     if (!bOverride_Type && !mesh.IsEmpty())
@@ -205,29 +206,30 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
     // Type isn't overridden locally, fall back to the default's geom type.
     // (The codegen-owned xml_enum export below writes Element->type only when
     // bOverride_Type is true — exactly the desired behavior.)
+    // --- CODEGEN_GEOM_FINAL_TYPE_START ---
     int FinalType = bOverride_Type
-        ? static_cast<int>(Type) /* placeholder; remapped below */
+        ? mjGEOM_PLANE  /* placeholder; remapped below */
         : (Default ? Default->geom->type : mjGEOM_MESH);
     if (bOverride_Type)
     {
-        switch(Type)
+        switch (Type)
         {
-            case EMjGeomType::Plane:    FinalType = mjGEOM_PLANE;    break;
-            case EMjGeomType::Hfield:   FinalType = mjGEOM_HFIELD;   break;
-            case EMjGeomType::Sphere:   FinalType = mjGEOM_SPHERE;   break;
-            case EMjGeomType::Capsule:  FinalType = mjGEOM_CAPSULE;  break;
-            case EMjGeomType::Ellipsoid:FinalType = mjGEOM_ELLIPSOID;break;
+            case EMjGeomType::Plane: FinalType = mjGEOM_PLANE; break;
+            case EMjGeomType::Hfield: FinalType = mjGEOM_HFIELD; break;
+            case EMjGeomType::Sphere: FinalType = mjGEOM_SPHERE; break;
+            case EMjGeomType::Capsule: FinalType = mjGEOM_CAPSULE; break;
+            case EMjGeomType::Ellipsoid: FinalType = mjGEOM_ELLIPSOID; break;
             case EMjGeomType::Cylinder: FinalType = mjGEOM_CYLINDER; break;
-            case EMjGeomType::Box:      FinalType = mjGEOM_BOX;      break;
-            case EMjGeomType::Mesh:     FinalType = mjGEOM_MESH;     break;
-            case EMjGeomType::SDF:      FinalType = mjGEOM_SDF;      break;
+            case EMjGeomType::Box: FinalType = mjGEOM_BOX; break;
+            case EMjGeomType::Mesh: FinalType = mjGEOM_MESH; break;
+            case EMjGeomType::SDF: FinalType = mjGEOM_SDF; break;
         }
     }
-
     if (FinalType == mjGEOM_MESH && !MeshName.IsEmpty())
     {
-        mjs_setString(Element->meshname, TCHAR_TO_UTF8(*MeshName));
+        MjSetStringRaw(Element->meshname, MeshName);
     }
+    // --- CODEGEN_GEOM_FINAL_TYPE_END ---
 
     // size: codegen-owned TArray<float>; the default per-attr export writes
     // Element->size[i] = size[i] up to size.Num(). Clamped to 3 by mjsGeom's
@@ -286,37 +288,29 @@ void UMjGeom::ExportTo(mjsGeom* Element, mjsDefault* Default)
     if (bOverride_condim) Element->condim = condim;
     if (bOverride_group) Element->group = group;
     if (bOverride_priority) Element->priority = priority;
-    if (bOverride_size) { for (int32 i = 0; i < size.Num(); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
-    if (bOverride_friction) { for (int32 i = 0; i < friction.Num(); ++i) Element->friction[i] = friction[i]; }
+    if (bOverride_size) { for (int32 i = 0; i < FMath::Min(size.Num(), 3); ++i) { if (size[i] != -1.0f) Element->size[i] = size[i]; } }
+    if (bOverride_friction) { for (int32 i = 0; i < FMath::Min(friction.Num(), 3); ++i) Element->friction[i] = friction[i]; }
     if (bOverride_mass) Element->mass = mass;
     if (bOverride_density) Element->density = density;
     if (bOverride_solmix) Element->solmix = solmix;
-    if (bOverride_solref) { for (int32 i = 0; i < solref.Num(); ++i) Element->solref[i] = solref[i]; }
-    if (bOverride_solimp) { for (int32 i = 0; i < solimp.Num(); ++i) Element->solimp[i] = solimp[i]; }
+    if (bOverride_solref) { for (int32 i = 0; i < FMath::Min(solref.Num(), 2); ++i) Element->solref[i] = solref[i]; }
+    if (bOverride_solimp) { for (int32 i = 0; i < FMath::Min(solimp.Num(), 5); ++i) Element->solimp[i] = solimp[i]; }
     if (bOverride_margin) Element->margin = margin;
     if (bOverride_gap) Element->gap = gap;
-    if (bOverride_mesh && !mesh.IsEmpty()) mjs_setString(Element->meshname, TCHAR_TO_UTF8(*mesh));
-    if (bOverride_fitscale) Element->fitscale = fitscale ? 1 : 0;
+    if (bOverride_mesh) MjSetString(Element->meshname, mesh);
+    if (bOverride_fitscale) Element->fitscale = fitscale;
     if (bOverride_rgba) { Element->rgba[0] = rgba.R; Element->rgba[1] = rgba.G; Element->rgba[2] = rgba.B; Element->rgba[3] = rgba.A; }
-    if (bOverride_fluidcoef) { for (int32 i = 0; i < fluidcoef.Num(); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
-    // --- CODEGEN_EXPORT_END ---
+    if (bOverride_fluidcoef) { for (int32 i = 0; i < FMath::Min(fluidcoef.Num(), 5); ++i) Element->fluid_coefs[i] = fluidcoef[i]; }
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjGeom::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 {
     Super::Bind(Model, Data, Prefix);
-    m_GeomView = BindToView<GeomView>(Prefix);
-
+    BindAndCacheView(m_GeomView, Prefix);
     if (m_GeomView.id != -1)
     {
-        m_ID = m_GeomView.id;
         SyncUnrealTransformFromMj();
-        UE_LOG(LogURLabBind, Log, TEXT("[MjGeom] Successfully bound '%s' to ID %d (MjName: %s)"), *GetName(), m_ID, *MjName);
-    }
-    else
-    {
-        UE_LOG(LogURLabBind, Warning, TEXT("[MjGeom] Geom '%s' FAILED bind. Prefix: %s, MjName: %s"), 
-            *GetName(), *Prefix, *MjName);
     }
 }
 
@@ -372,9 +366,9 @@ void UMjGeom::SetFriction(float NewFriction)
     bOverride_friction = true;
     
     // Update runtime model if bound
-    if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0 && m_GeomView.friction)
+    if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0 && m_GeomView.geom_friction)
     {
-        m_GeomView.friction[0] = NewFriction;
+        m_GeomView.geom_friction[0] = NewFriction;
     }
 }
 
@@ -982,8 +976,7 @@ void UMjGeom::RemoveDecomposition() {}
 #endif
 
 #if WITH_EDITOR
-TArray<FString> UMjGeom::GetDefaultClassOptions() const
-{
-    return GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true);
-}
+// --- CODEGEN_EDITOR_OPTIONS_START ---
+TArray<FString> UMjGeom::GetDefaultClassOptions() const { return UMjComponent::GetSiblingComponentOptions(this, UMjDefault::StaticClass(), true); }
+// --- CODEGEN_EDITOR_OPTIONS_END ---
 #endif

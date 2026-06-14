@@ -78,8 +78,7 @@ void UMjSphere::OnRegister()
 void UMjSphere::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& CompilerSettings)
 {
         // --- CODEGEN_IMPORT_START ---
-
-    // --- CODEGEN_IMPORT_END ---
+        // --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
 	Radius = size.Num() > 0 ? size[0] : 0.0f;
@@ -109,8 +108,7 @@ void UMjSphere::ExportTo(mjsGeom* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
         // --- CODEGEN_EXPORT_START ---
-
-    // --- CODEGEN_EXPORT_END ---
+        // --- CODEGEN_EXPORT_END ---
 }
 
 void UMjSphere::ApplyOverrideMaterial(UMaterialInterface* Material)
@@ -126,7 +124,7 @@ void UMjSphere::SyncUnrealTransformFromMj()
     if (!bOverride_size)
     {
         // MuJoCo sphere size is radius. Unreal Sphere is 100 units diameter.
-        float RadiusVal = m_GeomView.size[0];
+        float RadiusVal = m_GeomView.geom_size[0];
         FVector NewScale = FVector(RadiusVal * 2.0f);
         SetRelativeScale3D(NewScale);
 

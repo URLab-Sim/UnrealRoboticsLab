@@ -142,9 +142,9 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
 {
     if (!World || !m) return;
 
-    mjtNum* pos = geom_view.xpos;
-    mjtNum* mat = geom_view.xmat;
-    mjtNum* size = geom_view.size;
+    mjtNum* pos = geom_view.geom_xpos;
+    mjtNum* mat = geom_view.geom_xmat;
+    mjtNum* size = geom_view.geom_size;
     
     // Draw if group 3 (collision convention) OR if both contype and conaffinity are non-zero (active collider)
     int group = geom_view._m->geom_group[geom_view.id];
@@ -163,7 +163,7 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
     mju_mat2Quat(_quat, mat);
     FQuat Rotation = MjToUERotation(_quat);
 
-    switch (geom_view.type) {
+    switch (geom_view.geom_type) {
         case mjGEOM_BOX:
         {
             FColor Color = DrawColor != FColor::Magenta ? DrawColor : FColor::Cyan;
@@ -200,7 +200,7 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
         case mjGEOM_MESH:
         {
             FColor Color = DrawColor != FColor::Magenta ? DrawColor : FColor::Magenta;
-            int meshId = geom_view.dataid;
+            int meshId = geom_view.geom_dataid;
             if (meshId < 0) break;
 
             float* vertices = m->mesh_vert + m->mesh_vertadr[meshId] * 3;

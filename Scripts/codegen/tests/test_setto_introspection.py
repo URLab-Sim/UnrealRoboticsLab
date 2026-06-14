@@ -3,17 +3,16 @@
 
 The 9 hand-written C++ literal blocks that used to live in
 ``codegen_rules.json`` were replaced by ``_emit_setto_call``, which derives
-the call body from the parsed mjs_setTo* signature in
-``mjspec_snapshot.json``. This test makes sure the emission keeps producing
-functional output for every actuator subtype that has a setTo rule.
-"""
+the call body from the parsed mjs_setTo* signature. The signature now
+comes from the clang-AST introspect snapshot, projected into the
+legacy mjspec shape via ``_mjspec_from_introspect``."""
 
 from __future__ import annotations
 
 import json
 import os
 
-from generate_ue_components import _emit_setto_call
+from generate_ue_components import _emit_setto_call, _mjspec_from_introspect
 
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -21,8 +20,8 @@ _PLUGIN_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 
 
 def _load_mjspec():
-    with open(os.path.join(_PLUGIN_ROOT, "Scripts", "mjspec_snapshot.json"), "r") as f:
-        return json.load(f)
+    with open(os.path.join(_PLUGIN_ROOT, "Scripts", "codegen", "snapshots", "introspect_snapshot.json"), "r") as f:
+        return _mjspec_from_introspect(json.load(f))
 
 
 def _setto_for(subtype_key, real_rules, real_schema, mjspec):

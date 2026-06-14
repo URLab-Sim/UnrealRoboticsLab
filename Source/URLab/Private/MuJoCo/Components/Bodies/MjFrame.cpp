@@ -64,7 +64,7 @@ void UMjFrame::ExportTo(mjsFrame* Element, mjsDefault* Default)
     if (!Element) return;
 
     // --- CODEGEN_EXPORT_START ---
-    if (bOverride_childclass && !childclass.IsEmpty()) mjs_setString(Element->childclass, TCHAR_TO_UTF8(*childclass));
+    if (bOverride_childclass) MjSetString(Element->childclass, childclass);
     // --- CODEGEN_EXPORT_END ---
 }
 

@@ -1,0 +1,8 @@
+# Commits to skip in `git blame` (mechanical, whitespace-only reformats).
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# GitHub honours this file automatically.
+
+# style: adopt Epic clang-format + codegen format-step + repo reformat
+1a57be12debd08eb60a2db0a5503b0a64c8ad678

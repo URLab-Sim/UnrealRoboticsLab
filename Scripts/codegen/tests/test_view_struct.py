@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import generate_ue_components as gen
 from generate_ue_components import emit_view_structs
 
 
@@ -118,3 +119,41 @@ def test_data_fields_bind_override():
     # _note_* keys are documentation, not data fields.
     assert "_note_skip_me" not in fields
     assert "_note_skip_me" not in bind
+
+
+def test_mjtbool_field_emits_mjtbool_pointer():
+    """A field typed ``mjtBool`` (MuJoCo 3.9.0's selective mjtByte->mjtBool
+    migration of boolean fields like jnt_limited) must emit ``mjtBool*``,
+    not the silent ``mjtNum*`` fallback (an 8-byte stride over 1-byte data)."""
+    rules = {"views": {"BoolView": {
+        "obj_type": "mjOBJ_JOINT",
+        "include_blocks": ["BOOL_BLOCK"],
+    }}}
+    mjxmacro = {"mjmodel_pointers": {"BOOL_BLOCK": [
+        {"type": "mjtBool", "name": "jnt_limited", "outer_dim": "njnt", "stride": "1"},
+    ]}}
+    views = emit_view_structs(rules, mjxmacro)
+    fields, _ = views["BoolView"]
+    assert "    mjtBool* jnt_limited;" in fields
+    assert "    mjtNum* jnt_limited;" not in fields
+
+
+def test_unmapped_view_field_type_fires_diagnostic():
+    """An unknown C type must fire a diagnostic (while still falling back to
+    ``mjtNum*``), never default silently — a silent fallback is exactly how the
+    3.9.0 ``mjtBool`` gap shipped a wrong pointer type with no warning."""
+    gen._reset_diags()
+    rules = {"views": {"OddView": {
+        "obj_type": "mjOBJ_GEOM",
+        "include_blocks": ["ODD_BLOCK"],
+    }}}
+    mjxmacro = {"mjmodel_pointers": {"ODD_BLOCK": [
+        {"type": "mjFutureType", "name": "geom_whatever",
+         "outer_dim": "ngeom", "stride": "3"},
+    ]}}
+    views = gen.emit_view_structs(rules, mjxmacro)
+    fields, _ = views["OddView"]
+    assert "    mjtNum* geom_whatever;" in fields  # fallback still applies
+    assert any(d.source == "view_field_type" for d in gen._DIAGS_BUFFER.pending), \
+        "unmapped view field type should fire a diagnostic, not default silently"
+    gen._reset_diags()

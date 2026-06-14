@@ -325,7 +325,7 @@ def _classify_c_type(c_type: str, array_dim) -> Optional[tuple]:
         fam = "num"
     elif base in ("int", "mjtByte", "unsigned char", "uint8_t", "uchar"):
         fam = "int"
-    elif base in ("bool", "_Bool"):
+    elif base in ("bool", "_Bool", "mjtBool"):
         fam = "bool"
     else:
         return None

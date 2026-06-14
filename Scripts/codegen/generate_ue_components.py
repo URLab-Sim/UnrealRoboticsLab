@@ -2496,9 +2496,26 @@ def emit_multi_uclass(
 # Pipeline: view structs
 # ---------------------------------------------------------------------------
 
-def _view_field_type_cpp(c_type: str) -> str:
-    return {"int": "int*", "mjtByte": "mjtByte*", "mjtNum": "mjtNum*",
-            "float": "float*", "char": "char*"}.get(c_type, "mjtNum*")
+_VIEW_FIELD_TYPE_MAP = {
+    "int": "int*", "mjtByte": "mjtByte*", "mjtBool": "mjtBool*",
+    "mjtNum": "mjtNum*", "float": "float*", "char": "char*",
+}
+
+
+def _view_field_type_cpp(c_type: str, field_name: str = "") -> str:
+    mapped = _VIEW_FIELD_TYPE_MAP.get(c_type)
+    if mapped is None:
+        # Don't silently default a new MuJoCo scalar type to mjtNum* — that
+        # ships a wrong (often 8-byte-over-1-byte) pointer with no warning.
+        # A bump that introduces a new type should surface here loudly.
+        _diag_add(
+            f"[diagnostic] view field '{field_name or '?'}' has unmapped C "
+            f"type '{c_type}'; defaulting to 'mjtNum*'. A MuJoCo bump likely "
+            f"introduced a new scalar type; add it to _VIEW_FIELD_TYPE_MAP.",
+            source="view_field_type",
+        )
+        return "mjtNum*"
+    return mapped
 
 
 _MJ_M_MACRO_RE = re.compile(r"MJ_M\(\s*(\w+)\s*\)")
@@ -2586,7 +2603,7 @@ def emit_view_structs(rules: Dict[str, Any], mjxmacro: Dict[str, Any]) -> Dict[s
                         f"    {view_field} = m->{name}[{index_var}];"
                     )
                 else:
-                    cpp_type = _view_field_type_cpp(entry["type"])
+                    cpp_type = _view_field_type_cpp(entry["type"], name)
                     fields_lines.append(f"    {cpp_type} {view_field};")
                     bind_lines.append(
                         f"    {view_field} = m->{name} + {index_var} * {stride};"
@@ -2804,6 +2821,7 @@ _CPP_TO_UE_TYPE = {
     "float":   "float",
     "mjtNum":  "double",
     "mjtByte": "uint8",
+    "mjtBool": "bool",
 }
 
 

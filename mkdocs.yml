@@ -70,6 +70,7 @@ extra_css:
 
 nav:
   - Home: index.md
+  - Roadmap: roadmap.md
   - Guides:
     - Getting Started: getting_started.md
     - Linux Setup: linux_setup.md

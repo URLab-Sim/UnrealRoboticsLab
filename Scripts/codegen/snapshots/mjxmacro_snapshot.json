@@ -230,19 +230,19 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "jnt_limited",
         "outer_dim": "njnt",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "jnt_actfrclimited",
         "outer_dim": "njnt",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "jnt_actgravcomp",
         "outer_dim": "njnt",
         "stride": "1"
@@ -776,7 +776,7 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "light_castshadow",
         "outer_dim": "nlight",
         "stride": "1"
@@ -800,7 +800,7 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "light_active",
         "outer_dim": "nlight",
         "stride": "1"
@@ -934,7 +934,7 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "flex_internal",
         "outer_dim": "nflex",
         "stride": "1"
@@ -978,12 +978,6 @@
       {
         "type": "int",
         "name": "flex_interp",
-        "outer_dim": "nflex",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "flex_bandwidth",
         "outer_dim": "nflex",
         "stride": "1"
       },
@@ -1264,25 +1258,25 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "flex_rigid",
         "outer_dim": "nflex",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "flexedge_rigid",
         "outer_dim": "nflexedge",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "flex_centered",
         "outer_dim": "nflex",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "flex_flatskin",
         "outer_dim": "nflex",
         "stride": "1"
@@ -1778,7 +1772,7 @@
         "stride": "mjNTEXROLE"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "mat_texuniform",
         "outer_dim": "nmat",
         "stride": "1"
@@ -1928,7 +1922,7 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "eq_active0",
         "outer_dim": "neq",
         "stride": "1"
@@ -2014,13 +2008,13 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "tendon_limited",
         "outer_dim": "ntendon",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "tendon_actfrclimited",
         "outer_dim": "ntendon",
         "stride": "1"
@@ -2226,19 +2220,19 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "actuator_ctrllimited",
         "outer_dim": "nu",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "actuator_forcelimited",
         "outer_dim": "nu",
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "actuator_actlimited",
         "outer_dim": "nu",
         "stride": "1"
@@ -2262,7 +2256,7 @@
         "stride": "mjNBIAS"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "actuator_actearly",
         "outer_dim": "nu",
         "stride": "1"
@@ -2496,7 +2490,7 @@
         "stride": "6"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "eq_active",
         "outer_dim": "neq",
         "stride": "1"
@@ -2802,7 +2796,7 @@
         "stride": "1"
       },
       {
-        "type": "mjtByte",
+        "type": "mjtBool",
         "name": "bvh_active",
         "outer_dim": "nbvh",
         "stride": "1"
@@ -3125,6 +3119,30 @@
       }
     ],
     "MJDATA_ARENA_POINTERS_DUAL": [
+      {
+        "type": "int",
+        "name": "efc_Y_rownnz",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_Y_rowadr",
+        "outer_dim": "MJ_D(nefc)",
+        "stride": "1"
+      },
+      {
+        "type": "int",
+        "name": "efc_Y_colind",
+        "outer_dim": "MJ_D(nY)",
+        "stride": "1"
+      },
+      {
+        "type": "mjtNum",
+        "name": "efc_Y",
+        "outer_dim": "MJ_D(nY)",
+        "stride": "1"
+      },
       {
         "type": "int",
         "name": "efc_AR_rownnz",

@@ -1,0 +1,5 @@
+# Docs preview environment (matches the GitHub Pages CI: mkdocs-material + pymdown-extensions).
+# Set up with Scripts/docs.ps1 / Scripts/docs.sh, or manually:
+#   python -m venv .venv-docs && .venv-docs/Scripts/pip install -r requirements-docs.txt
+mkdocs-material>=9.5,<10
+pymdown-extensions>=10

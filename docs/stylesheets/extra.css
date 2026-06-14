@@ -105,3 +105,13 @@
 html {
   scroll-behavior: smooth;
 }
+
+/* --- Single-control OS tabs (Installation page) ---
+   With content.tabs.link the Windows/Linux/macOS tabs stay in sync across the
+   whole page. On a page carrying the .os-tabs-linked marker we hide the label
+   row on every tab group except the first, so one strip at the top drives them
+   all. The `~` combinator matches any tab set preceded by another, i.e. all but
+   the first. */
+.md-content__inner:has(.os-tabs-linked) .tabbed-set ~ .tabbed-set > .tabbed-labels {
+  display: none;
+}

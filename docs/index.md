@@ -1,70 +1,58 @@
-# Unreal Robotics Lab
+# UnrealRoboticsLab
 
-Welcome to the documentation for **Unreal Robotics Lab (URLab)** — an Unreal Engine plugin that embeds the [MuJoCo](https://github.com/google-deepmind/mujoco) physics engine directly into the editor and runtime.
+UnrealRoboticsLab (URLab) embeds the [MuJoCo](https://github.com/google-deepmind/mujoco)
+physics engine directly inside Unreal Engine 5. You author and simulate robots
+with MuJoCo's accurate contact dynamics, and render them with Unreal's lighting,
+materials, and cameras.
 
-The plugin gives you research-grade contact dynamics alongside Unreal's rendering, Blueprint scripting, and editor tooling. Import a robot from MJCF XML (or build one in the component hierarchy), press Play, and MuJoCo handles the physics on a dedicated thread while Unreal handles everything visual.
+![URLab simulating a robot in Unreal Engine](images/hero.png)
 
-> **Paper:** [Unreal Robotics Lab: A High-Fidelity Robotics Simulator with Advanced Physics and Rendering](https://arxiv.org/abs/2504.14135) — ICRA 2026
+## What you can do
 
-??? note "BibTeX Citation"
-    ```bibtex
-    @inproceedings{embleyriches2026urlab,
-      title     = {Unreal Robotics Lab: A High-Fidelity Robotics Simulator with Advanced Physics and Rendering},
-      author    = {Embley-Riches, Jonathan and Liu, Jianwei and Julier, Simon and Kanoulas, Dimitrios},
-      booktitle = {IEEE International Conference on Robotics and Automation (ICRA)},
-      year      = {2026},
-      url       = {https://arxiv.org/abs/2504.14135}
-    }
-    ```
+- **Bring MuJoCo models into Unreal.** Drag an MJCF `.xml` file into the Content
+  Browser and URLab builds a ready-to-simulate Blueprint, or turn any static
+  mesh into a physics body with one component.
+- **Simulate with MuJoCo, render with Unreal.** Physics runs on MuJoCo on its
+  own thread; Unreal handles rendering, so you get accurate contacts and
+  photorealistic output at the same time.
+- **Control robots however you like.** Drive actuators from Blueprints, from the
+  in-editor dashboard, or from Python and ROS 2 over the network.
+- **Capture data.** Render RGB, depth, and segmentation from robot cameras, and
+  record and replay full simulation episodes.
 
----
+## Who it is for
 
-## Python (driving URLab from Python)
+URLab pairs MuJoCo physics with what Unreal does well: photorealistic rendering,
+scene generation, NPCs, and the rest of the editor toolset. It is built for
+evaluation, data generation, experimentation, and simulation.
 
-| Doc | What it covers |
-|-----|----------------|
-| [Getting Started](python/getting_started.md) | Connect, author a scene, run PIE, send control, tune gains, work with cameras, add a policy |
-| [API Reference](python/api.md) | Full reference for `URLabClient` and the `scene` / `sim` / `runtime` / `outliner` / `debug` / `viewport` / `recording` / `replay` namespaces |
-| [Bridge install + dashboard](python/bridge.md) | Python middleware: install, DearPyGui dashboard, pretrained policies, ROS 2 bridge |
-| [Gym Environment](python/gym_environment.md) | `URLabEnv(gym.Env)` wrapper for users integrating with their own training pipelines |
-| [Policy Registry](python/policy_registry.md) | Bundled pretrained policies; adding new ones to the registry |
-| [Controllers and Gains](python/controllers_and_gains.md) | `ue_controller` vs `raw`, decimation, PD gain updates from Python |
-| [Recording and Replay](python/recording_replay.md) | Capture episodes, save to disk, play back at wall-clock speed |
-| [Entities](python/entities.md) | Non-articulation dynamic objects in step replies and PUB streams |
+You can train in URLab, but it runs one simulation at a time rather than
+parallelising across thousands of environments on the GPU, so it is not the
+fastest route for large-scale reinforcement learning. For that, train with a
+dedicated massively parallel MuJoCo framework such as
+[mjlab](https://github.com/mujocolab/mjlab) or
+[mujoco_warp](https://github.com/google-deepmind/mujoco_warp), then evaluate the
+resulting policies directly in URLab. Because both use MuJoCo, the
+[Python bridge](python/index.md) lets you move between training there and
+evaluating, recording, and visualising here.
 
-## URLab Plugin (Unreal-side)
+## Get started
 
-| Doc | What it covers |
-|-----|----------------|
-| [Getting Started](getting_started.md) | UE plugin installation, first simulation, in-editor control methods |
-| [Features](features.md) | Complete feature reference |
-| [Roadmap](roadmap.md) | Planned features, known gaps, and future direction |
-| [Architecture](architecture.md) | Subsystem design, threading model, compilation pipeline |
-| [MJCF Import](guides/mujoco_import.md) | Importing MuJoCo XML models into Unreal |
-| [Geometry & Collision](guides/geometry_authoring.md) | Primitives, mesh geoms, Quick Convert, heightfields |
-| [Controller Framework](guides/controller_framework.md) | PD, keyframe, and custom controllers |
-| [Debug Visualization](guides/debug_visualization.md) | Hotkey-driven overlays: contacts, joints, islands, segmentation, muscle/tendon tubes |
-| [Interactive Perturbation](guides/perturbation.md) | Mouse-driven body drag: select, translate, rotate — simulate-compatible gestures |
-| [Camera Capture Modes](guides/camera_capture_modes.md) | Per-camera RGB / depth / semantic + instance segmentation |
-| [Possession & Twist Control](guides/possession_twist.md) | WASD control, spring arm camera |
-| [Scripting with Blueprints](guides/blueprint_reference.md) | Hotkeys, API usage, scripting workflows |
-| [Networking](guides/networking.md) | UE-side architecture: step modes (`live` / `direct` / `puppet`), transports (ZMQ / SHM), streaming wire format, ROS 2 bridge |
-| [Step Server Protocol](reference/step_server.md) | Wire-protocol reference for the REP socket on port 5559 |
+<div class="grid cards" markdown>
 
----
+- **[Install URLab](installation.md)** sets up the plugin and its dependencies on
+  Windows or Linux.
+- **[Quickstart](quickstart.md)** imports a robot and runs your first simulation
+  in a few minutes.
+- **[Python & External Control](python/index.md)** drives the simulation from
+  Python, for scripted control and running policies.
+- **[Architecture](concepts/architecture.md)** explains how the pieces fit
+  together under the hood.
 
-## Third-Party Software
+</div>
 
-| Library | License | Role |
-|---------|---------|------|
-| [MuJoCo](https://github.com/google-deepmind/mujoco) | Apache 2.0 | Physics simulation engine |
-| [CoACD](https://github.com/SarahWeiii/CoACD) | MIT | Convex approximate decomposition |
-| [libzmq](https://zeromq.org) | MPL 2.0 | High-performance messaging |
+## Project
 
-Full license texts are in `ThirdPartyNotices.txt`.
-
----
-
-## Contributing
-
-URLab welcomes contributions. See the repo's [CONTRIBUTING.md](https://github.com/URLab-Sim/UnrealRoboticsLab/blob/main/CONTRIBUTING.md) for the workflow, and use the [issue templates](https://github.com/URLab-Sim/UnrealRoboticsLab/issues/new/choose) for bug reports and feature requests.
+URLab is open source under the Apache 2.0 license. See the
+[Roadmap](roadmap.md) for where it is headed. If you use URLab in research,
+please cite the [ICRA 2026 paper](https://arxiv.org/abs/2504.14135).

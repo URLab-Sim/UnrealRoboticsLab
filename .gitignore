@@ -140,3 +140,7 @@ MUJOCO_LOG.TXT
 *.log
 url_proj_crash.log
 build.log
+
+# Local docs preview env + build output (Scripts/docs.ps1 / docs.sh)
+.venv-docs/
+/site/

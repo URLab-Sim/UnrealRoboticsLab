@@ -4,9 +4,8 @@ Where UnrealRoboticsLab is headed. This is direction, not a commitment or a
 schedule, and priorities shift. If you want to take one on, open an issue or
 discussion so we can point you at the code.
 
-- **Documentation refresh.** Bring the guides back in line with the current
-  codegen, render-snapshot, and RPC surface, and add the guides that exist but
-  are not yet in the site navigation.
+- **Real screenshots and media.** Replace the placeholder images across the docs
+  with real captures, and add short clips of the editor workflow.
 - **Build and release automation.** Add CI that builds the plugin, runs the
   URLab test suite, and checks formatting on pull requests. Ship precompiled
   Windows and Linux binaries so the plugin can be installed without building

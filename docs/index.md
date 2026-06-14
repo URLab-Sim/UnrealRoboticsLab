@@ -38,6 +38,7 @@ The plugin gives you research-grade contact dynamics alongside Unreal's renderin
 |-----|----------------|
 | [Getting Started](getting_started.md) | UE plugin installation, first simulation, in-editor control methods |
 | [Features](features.md) | Complete feature reference |
+| [Roadmap](roadmap.md) | Planned features, known gaps, and future direction |
 | [Architecture](architecture.md) | Subsystem design, threading model, compilation pipeline |
 | [MJCF Import](guides/mujoco_import.md) | Importing MuJoCo XML models into Unreal |
 | [Geometry & Collision](guides/geometry_authoring.md) | Primitives, mesh geoms, Quick Convert, heightfields |

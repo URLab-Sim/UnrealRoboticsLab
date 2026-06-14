@@ -126,6 +126,12 @@ struct URLAB_API FMjsCompilerOptions
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Alignfree"))
     int32 Alignfree = 0;
 
+    UPROPERTY(EditAnywhere, Category = "MuJoCo|Spec|Compiler", meta=(InlineEditConditionToggle))
+    bool bOverride_Authored = false;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Spec|Compiler", meta=(EditCondition="bOverride_Authored"))
+    float Authored = 0.0f;
+
     /** @brief Mirror every field into a runtime C struct. */
     template <typename TDst>
     void ApplyTo(TDst& Dst) const
@@ -145,5 +151,6 @@ struct URLAB_API FMjsCompilerOptions
         Dst.inertiagrouprange[I] = static_cast<decltype(Dst.inertiagrouprange[0])>(Inertiagrouprange[I]);
     Dst.saveinertial = static_cast<decltype(Dst.saveinertial)>(Saveinertial);
     Dst.alignfree = static_cast<decltype(Dst.alignfree)>(Alignfree);
+    Dst.authored = static_cast<decltype(Dst.authored)>(Authored);
     }
 };

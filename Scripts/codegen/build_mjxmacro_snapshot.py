@@ -95,8 +95,11 @@ STRUCT_FIELD_BLOCKS = [
     "MJSPEC_FIELDS",
 ]
 
+# mjspecmacro.h ships in the installed MuJoCo headers (added upstream after
+# 3.9.0; present from our main-pinned build onward), so we read it from the
+# install like mjxmacro.h — no longer vendored.
 DEFAULT_MJSPECMACRO = os.path.join(
-    SCRIPT_DIR, "_vendored", "mjspecmacro.h",
+    PLUGIN_ROOT, "third_party", "install", "MuJoCo", "include", "mujoco", "mjspecmacro.h"
 )
 
 # Regexes
@@ -338,8 +341,8 @@ def main() -> int:
     block_sources: Dict[str, str] = {}
     for block_name in snapshot["struct_fields"]:
         block_sources[block_name] = snapshot["_meta"]["source"]
-    # Also fold in the vendored mjspecmacro.h (MJSCOMPILER_FIELDS +
-    # MJSPEC_FIELDS) — both live in the same ``struct_fields`` dict so
+    # Also fold in mjspecmacro.h (MJSCOMPILER_FIELDS + MJSPEC_FIELDS) from the
+    # installed MuJoCo headers — both live in the same ``struct_fields`` dict so
     # synthetic_categories rules can reference either by block name.
     if os.path.isfile(DEFAULT_MJSPECMACRO):
         spec_snapshot = parse_mjxmacro(DEFAULT_MJSPECMACRO)
@@ -348,13 +351,14 @@ def main() -> int:
             snapshot["struct_fields"][block_name] = entries
             block_sources[block_name] = spec_rel
     else:
-        # Loud rather than silent — MJSCOMPILER_FIELDS / MJSPEC_FIELDS
-        # blocks WILL be missing if the vendored header was removed, and
+        # Loud rather than silent — MJSCOMPILER_FIELDS / MJSPEC_FIELDS blocks
+        # WILL be missing if the installed headers predate mjspecmacro.h, and
         # that surfaces only as a downstream KeyError much later in
         # generate_ue_components.py.
         print(
-            f"warning: vendored mjspecmacro.h not found at {DEFAULT_MJSPECMACRO}; "
-            f"MJSCOMPILER_FIELDS + MJSPEC_FIELDS will be absent from the snapshot.",
+            f"warning: mjspecmacro.h not found at {DEFAULT_MJSPECMACRO}; "
+            f"MJSCOMPILER_FIELDS + MJSPEC_FIELDS will be absent from the snapshot. "
+            f"Rebuild the MuJoCo install (needs a version that ships mjspecmacro.h).",
             file=sys.stderr,
         )
     snapshot["_meta"]["struct_field_sources"] = block_sources

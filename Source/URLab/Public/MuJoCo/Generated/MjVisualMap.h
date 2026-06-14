@@ -40,79 +40,79 @@ struct URLAB_API FMjVisualMap
     bool bOverride_Stiffness = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Stiffness"))
-    double Stiffness = 0.0;
+    float Stiffness = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Stiffnessrot = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Stiffnessrot"))
-    double Stiffnessrot = 0.0;
+    float Stiffnessrot = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Force = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Force"))
-    double Force = 0.0;
+    float Force = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Torque = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Torque"))
-    double Torque = 0.0;
+    float Torque = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Alpha = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Alpha"))
-    double Alpha = 0.0;
+    float Alpha = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Fogstart = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Fogstart"))
-    double Fogstart = 0.0;
+    float Fogstart = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Fogend = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Fogend"))
-    double Fogend = 0.0;
+    float Fogend = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Znear = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Znear"))
-    double Znear = 0.0;
+    float Znear = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Zfar = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Zfar"))
-    double Zfar = 0.0;
+    float Zfar = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Haze = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Haze"))
-    double Haze = 0.0;
+    float Haze = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Shadowclip = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Shadowclip"))
-    double Shadowclip = 0.0;
+    float Shadowclip = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Shadowscale = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Shadowscale"))
-    double Shadowscale = 0.0;
+    float Shadowscale = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Map", meta=(InlineEditConditionToggle))
     bool bOverride_Actuatortendon = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Map", meta=(EditCondition="bOverride_Actuatortendon"))
-    double Actuatortendon = 0.0;
+    float Actuatortendon = 0.0f;
 
     /** @brief Mirror every field into a runtime C struct. */
     template <typename TDst>

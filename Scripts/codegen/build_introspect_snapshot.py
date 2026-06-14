@@ -1,7 +1,6 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """
-clang.cindex-based scrape of MuJoCo headers (mjspec.h + mjmodel.h +
-optionally the vendored mjspecmacro.h) into
+clang.cindex-based scrape of MuJoCo headers (mjspec.h + mjmodel.h) into
 ``Scripts/codegen/snapshots/introspect_snapshot.json``. The codegen
 consumes this snapshot as its single source of truth for the MuJoCo C
 API surface.
@@ -413,9 +412,9 @@ def main(argv: List[str] | None = None) -> int:
     mjmodel_h = os.path.join(mujoco_include, "mujoco", "mjmodel.h")
     mjxmacro_h = os.path.join(mujoco_include, "mujoco", "mjxmacro.h")
 
-    # Vendored mjspecmacro.h (only used if non-stub; sync_vendored.py
-    # fills it from upstream).
-    vendored_mjspecmacro = os.path.join(_HERE, "_vendored", "mjspecmacro.h")
+    # mjspecmacro.h ships in the installed MuJoCo headers (post-3.9.0); hashed
+    # alongside the others so the snapshot invalidates when it changes.
+    mjspecmacro_h = os.path.join(mujoco_include, "mujoco", "mjspecmacro.h")
 
     # Synthesize a small dispatch source that #includes the headers we
     # care about. Letting clang chew on a real .c lets it resolve types
@@ -456,7 +455,7 @@ def main(argv: List[str] | None = None) -> int:
     snapshot = IntrospectSnapshot(
         snapshot_version=1,
         header_hash=_header_hash([mjspec_h, mjmodel_h, mjxmacro_h,
-                                  vendored_mjspecmacro]),
+                                  mjspecmacro_h]),
     )
     _walk(tu, mujoco_include, snapshot)
 

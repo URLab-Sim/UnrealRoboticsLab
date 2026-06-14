@@ -1495,7 +1495,7 @@
       "_note": "Every field is float[4] color in mjVisualRgba. mjxmacro's bare X(name) form drops that info; all_fields_type forces FLinearColor for the UPROPERTY + flips the ApplyTo emit to .R/.G/.B/.A writes.",
       "all_fields_type":  "FLinearColor"
     },
-    "_note_MjsCompilerOptions": "Mirror of mjsCompiler (MJSCOMPILER_FIELDS in mjspecmacro.h, vendored via Scripts/codegen/sync_vendored.py). Header-only USTRUCT — no .cpp emission today since URLab parses compiler settings via the legacy FMjCompilerSettings struct in MjOrientationUtils.h. Future migration: route MjArticulation through this struct + an ApplyToSpec method.",
+    "_note_MjsCompilerOptions": "Mirror of mjsCompiler (MJSCOMPILER_FIELDS in mjspecmacro.h, read from the installed MuJoCo headers). Header-only USTRUCT — no .cpp emission today since URLab parses compiler settings via the legacy FMjCompilerSettings struct in MjOrientationUtils.h. Future migration: route MjArticulation through this struct + an ApplyToSpec method.",
     "MjsCompilerOptions": {
       "ue_struct_name":   "FMjsCompilerOptions",
       "mjxmacro_block":   "MJSCOMPILER_FIELDS",
@@ -1508,7 +1508,7 @@
       "field_types":      {"eulerseq": "FString"},
       "field_defaults":   {"Eulerseq": "TEXT(\"xyz\")"}
     },
-    "_note_MjsSpec": "Mirror of mjSpec top-level fields (MJSPEC_FIELDS in mjspecmacro.h). Many entries are NESTED structs (mjsCompiler, mjOption, mjVisual, mjStatistic) — those are exposed via the dedicated FMjsCompilerOptions / FMjOptionGenerated / FMjVisual* / FMjStatistic structs. We only mirror the scalar + string fields here.",
+    "_note_MjsSpec": "Mirror of mjSpec top-level fields (MJSPEC_FIELDS in mjspecmacro.h, read from the installed MuJoCo headers). Many entries are NESTED structs (mjsCompiler, mjOption, mjVisual, mjStatistic) — those are exposed via the dedicated FMjsCompilerOptions / FMjOptionGenerated / FMjVisual* / FMjStatistic structs. We only mirror the scalar + string fields here.",
     "MjsSpec": {
       "ue_struct_name":   "FMjsSpec",
       "mjxmacro_block":   "MJSPEC_FIELDS",

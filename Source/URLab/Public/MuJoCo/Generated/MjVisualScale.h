@@ -40,103 +40,103 @@ struct URLAB_API FMjVisualScale
     bool bOverride_Forcewidth = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Forcewidth"))
-    double Forcewidth = 0.0;
+    float Forcewidth = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Contactwidth = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Contactwidth"))
-    double Contactwidth = 0.0;
+    float Contactwidth = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Contactheight = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Contactheight"))
-    double Contactheight = 0.0;
+    float Contactheight = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Connect = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Connect"))
-    double Connect = 0.0;
+    float Connect = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Com = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Com"))
-    double Com = 0.0;
+    float Com = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Camera = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Camera"))
-    double Camera = 0.0;
+    float Camera = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Light = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Light"))
-    double Light = 0.0;
+    float Light = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Selectpoint = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Selectpoint"))
-    double Selectpoint = 0.0;
+    float Selectpoint = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Jointlength = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Jointlength"))
-    double Jointlength = 0.0;
+    float Jointlength = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Jointwidth = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Jointwidth"))
-    double Jointwidth = 0.0;
+    float Jointwidth = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Actuatorlength = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Actuatorlength"))
-    double Actuatorlength = 0.0;
+    float Actuatorlength = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Actuatorwidth = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Actuatorwidth"))
-    double Actuatorwidth = 0.0;
+    float Actuatorwidth = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Framelength = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Framelength"))
-    double Framelength = 0.0;
+    float Framelength = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Framewidth = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Framewidth"))
-    double Framewidth = 0.0;
+    float Framewidth = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Constraint = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Constraint"))
-    double Constraint = 0.0;
+    float Constraint = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Slidercrank = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Slidercrank"))
-    double Slidercrank = 0.0;
+    float Slidercrank = 0.0f;
 
     UPROPERTY(EditAnywhere, Category = "MuJoCo|Visual|Scale", meta=(InlineEditConditionToggle))
     bool bOverride_Frustum = false;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Visual|Scale", meta=(EditCondition="bOverride_Frustum"))
-    double Frustum = 0.0;
+    float Frustum = 0.0f;
 
     /** @brief Mirror every field into a runtime C struct. */
     template <typename TDst>

@@ -11,8 +11,8 @@
       "MJVISUAL_MAP_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
       "MJVISUAL_SCALE_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
       "MJVISUAL_RGBA_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjxmacro.h",
-      "MJSCOMPILER_FIELDS": "Scripts\\codegen\\_vendored\\mjspecmacro.h",
-      "MJSPEC_FIELDS": "Scripts\\codegen\\_vendored\\mjspecmacro.h"
+      "MJSCOMPILER_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjspecmacro.h",
+      "MJSPEC_FIELDS": "third_party\\install\\MuJoCo\\include\\mujoco\\mjspecmacro.h"
     }
   },
   "mjmodel_pointers": {
@@ -3059,7 +3059,7 @@
       },
       {
         "type": "mjtNum",
-        "name": "efc_diagApprox",
+        "name": "efc_diagA",
         "outer_dim": "MJ_D(nefc)",
         "stride": "1"
       },
@@ -3242,42 +3242,6 @@
         "stride": "1"
       },
       {
-        "type": "int",
-        "name": "iM_rownnz",
-        "outer_dim": "MJ_D(nidof)",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "iM_rowadr",
-        "outer_dim": "MJ_D(nidof)",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "iM_colind",
-        "outer_dim": "MJ_M(nC)",
-        "stride": "1"
-      },
-      {
-        "type": "mjtNum",
-        "name": "iM",
-        "outer_dim": "MJ_M(nC)",
-        "stride": "1"
-      },
-      {
-        "type": "mjtNum",
-        "name": "iLD",
-        "outer_dim": "MJ_M(nC)",
-        "stride": "1"
-      },
-      {
-        "type": "mjtNum",
-        "name": "iLDiagInv",
-        "outer_dim": "MJ_D(nidof)",
-        "stride": "1"
-      },
-      {
         "type": "mjtNum",
         "name": "iacc",
         "outer_dim": "MJ_D(nidof)",
@@ -3335,36 +3299,6 @@
         "type": "int",
         "name": "iefc_id",
         "outer_dim": "MJ_D(nefc)",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "iefc_J_rownnz",
-        "outer_dim": "MJ_D(nefc)",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "iefc_J_rowadr",
-        "outer_dim": "MJ_D(nefc)",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "iefc_J_rowsuper",
-        "outer_dim": "MJ_D(nefc)",
-        "stride": "1"
-      },
-      {
-        "type": "int",
-        "name": "iefc_J_colind",
-        "outer_dim": "MJ_D(nJ)",
-        "stride": "1"
-      },
-      {
-        "type": "mjtNum",
-        "name": "iefc_J",
-        "outer_dim": "MJ_D(nJ)",
         "stride": "1"
       },
       {
@@ -3703,31 +3637,31 @@
     ],
     "MJVISUAL_QUALITY_FIELDS": [
       {
-        "type": "mjtNum",
+        "type": "int",
         "name": "shadowsize",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "int",
         "name": "offsamples",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "int",
         "name": "numslices",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "int",
         "name": "numstacks",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "int",
         "name": "numquads",
         "count": "1",
         "is_vec": false
@@ -3761,79 +3695,79 @@
     ],
     "MJVISUAL_MAP_FIELDS": [
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "stiffness",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "stiffnessrot",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "force",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "torque",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "alpha",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "fogstart",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "fogend",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "znear",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "zfar",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "haze",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "shadowclip",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "shadowscale",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "actuatortendon",
         "count": "1",
         "is_vec": false
@@ -3841,103 +3775,103 @@
     ],
     "MJVISUAL_SCALE_FIELDS": [
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "forcewidth",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contactwidth",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contactheight",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "connect",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "com",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "camera",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "light",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "selectpoint",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "jointlength",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "jointwidth",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "actuatorlength",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "actuatorwidth",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "framelength",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "framewidth",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "constraint",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "slidercrank",
         "count": "1",
         "is_vec": false
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "frustum",
         "count": "1",
         "is_vec": false
@@ -3945,154 +3879,154 @@
     ],
     "MJVISUAL_RGBA_FIELDS": [
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "fog",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "haze",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "force",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "inertia",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "joint",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "actuator",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "actuatornegative",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "actuatorpositive",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "com",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "camera",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "light",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "selectpoint",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "connect",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contactpoint",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contactforce",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contactfriction",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contacttorque",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "contactgap",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "rangefinder",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "constraint",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "slidercrank",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "crankbroken",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "frustum",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "bv",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       },
       {
-        "type": "mjtNum",
+        "type": "float",
         "name": "bvactive",
-        "count": "1",
-        "is_vec": false
+        "count": "4",
+        "is_vec": true
       }
     ],
     "MJSCOMPILER_FIELDS": [
@@ -4201,6 +4135,12 @@
       {
         "type": "mjString*",
         "name": "texturedir",
+        "count": "1",
+        "is_vec": false
+      },
+      {
+        "type": "uint64_t",
+        "name": "authored",
         "count": "1",
         "is_vec": false
       }

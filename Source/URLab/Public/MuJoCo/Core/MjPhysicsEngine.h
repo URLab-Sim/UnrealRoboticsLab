@@ -138,6 +138,20 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options", meta=(ClampMin="5", ClampMax="100"))
     float SimSpeedPercent = 100.0f;
 
+    /**
+     * Worker threads for MuJoCo's per-step thread pool (mju_threadpool).
+     * 0 = off (single-threaded, the default). >=1 parallelises collision
+     * detection and island constraint solving inside mj_step; the benefit
+     * scales with contact count / number of constraint islands, so it helps
+     * large scenes and is usually a no-op for a single small articulation.
+     * Clamped at runtime to the machine's logical CPU core count
+     * (MaxWorkerThreads(), cross-platform). Applied to the live mjData on
+     * change (idempotent) so it can be set at edit time or at runtime via the
+     * set_sim_options RPC.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options", meta=(ClampMin="0", UIMax="32"))
+    int32 NumWorkerThreads = 0;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Status")
     bool bIsPaused = true;
 
@@ -179,6 +193,14 @@ public:
     void PreCompile();
     void PostCompile();
     void ApplyOptions();
+
+    /** (Re)build or free MuJoCo's per-step worker thread pool on the live
+     *  mjData from NumWorkerThreads. Idempotent; safe at setup or runtime. */
+    void ApplyThreadPool();
+
+    /** Max useful worker threads = logical CPU cores (cross-platform).
+     *  Used to clamp NumWorkerThreads. */
+    static int32 MaxWorkerThreads();
 
     // --- Runtime ---
 

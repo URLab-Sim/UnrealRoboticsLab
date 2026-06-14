@@ -1,7 +1,7 @@
 {
   "_meta": {
     "mujoco_version": "3.8.1",
-    "snapshot_date": "2026-05-28",
+    "snapshot_date": "2026-06-14",
     "source": "https://github.com/google-deepmind/mujoco/blob/main/src/xml/xml_native_reader.cc",
     "description": "MJCF schema snapshot, auto-extracted by Scripts/codegen/build_mjcf_schema_snapshot.py from the MuJoCo submodule's xml_native_reader.cc."
   },

@@ -51,6 +51,13 @@ private:
 
     FMujocoSpecWrapper* wrapper = nullptr;
 
+public:
+    /** Engine queries this during PreCompile to aggregate every
+     *  component's VFS asset paths into a single ship-list. */
+    class FMujocoSpecWrapper* GetWrapper() const { return wrapper; }
+
+private:
+
     FString m_BodyName;
 
     mjModel* m_model = nullptr;
@@ -89,9 +96,6 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="MuJoCo|Physics",
         meta=(ToolTip="When true, writes the actor's world transform to MuJoCo as a mocap body every tick. The physics simulation does not feed back into Unreal."))
     bool bDrivenByUnreal = false;
-
-    double* MocapPos = nullptr;
-    double* MocapQuat = nullptr;
 
     /** @brief Friction parameters (sliding, torsional, rolling). Applied to all geoms created by this component. */
     UPROPERTY(EditAnywhere, Category="MuJoCo|Physics")
@@ -133,15 +137,16 @@ public:
 protected:
     /** @brief Called when the game starts. */
 	virtual void BeginPlay() override;
-    
+
     /** @brief Called when the game ends. */
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
     void DrawDebugCollision();
 
-    void UpdateUETransform();
-
-public:	
+public:
     /** @brief Called every frame. */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
+
+    /** @brief Applies this body's transform from the engine snapshot to the owning actor. */
+    void ApplyRenderState(const struct FMjRenderSnapshot& Snap);
 };

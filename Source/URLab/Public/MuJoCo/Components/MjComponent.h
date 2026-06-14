@@ -210,6 +210,14 @@ public:
     UPROPERTY()
     FString MjName;
 
+    /** @brief Immutable copy of MjName captured at XML import time, before any user
+     *  rename or spec-time disambiguation. The bridge maps policy-side names against
+     *  this so mjlab patterns keep resolving even when MjName drifts. Empty for
+     *  components that had no XML `name` attribute, and for components on Default
+     *  templates (those don't map to spec instances). */
+    UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Base")
+    FString OriginalMjName;
+
 #if WITH_EDITOR
     /** Returns names of sibling components of the given class in the same Blueprint SCS tree.
      *  Static so non-UMjComponent classes (ContactPair, etc.) can also use it. */

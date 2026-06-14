@@ -22,6 +22,7 @@
 
 #include "MuJoCo/Components/Actuators/MjGeneralActuator.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
+#include "MuJoCo/Utils/MjXmlUtils.h"
 
 UMjGeneralActuator::UMjGeneralActuator()
 {

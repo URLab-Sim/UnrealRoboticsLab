@@ -111,11 +111,6 @@ public:
     mjsGeom* AddMeshGeom(mjsBody* Body, FTransform RelTrans, const FString& MeshAssetName, const FString& GeomNameSuffix, const FVector4& RGBA = FVector4(1,1,1,1), double Density = 1000.0);
     
     // --- Joint Creation ---
-    /**
-     * @brief Adds a legacy free joint.
-     * @param Body Target body.
-     * @param JointName Optional name.
-     */
     void AddFreeJoint(mjsBody* Body, const FString& JointName = "root_free");
     
     // --- Default Creation ---
@@ -159,4 +154,9 @@ public:
 
     /** @brief storage of created body names for view reconstruction. */
     TArray<FString> CreatedBodyNames;
+
+    /** Absolute paths of every mesh / texture asset registered to the
+     *  MuJoCo VFS during Setup. Used by the bridge handshake (opt-in)
+     *  to ship the model + its assets to a remote client. */
+    TArray<FString> ActiveAssetPaths;
 };

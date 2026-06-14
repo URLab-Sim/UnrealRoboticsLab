@@ -26,7 +26,8 @@
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
-#include "MuJoCo/Net/MjNetworkManager.h"
+#include "Transport/NetworkManager.h"
+#include "Bridge/RpcDispatcher.h"
 #include "Utils/URLabLogging.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -306,6 +307,24 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 
     if (TimeText)
     {
+        // Read active step mode from the dispatcher (if present). Surfaces
+        // live / direct / puppet in packaged builds where the editor
+        // toolbar pill (SMjStepModeIndicator) isn't visible.
+        FString ModeStr;
+        if (FURLabRpcDispatcher* Disp = ManagerRef->GetStepDispatcher())
+        {
+            switch (Disp->GetActiveStepMode())
+            {
+            case EStepMode::Live:   ModeStr = TEXT("live");   break;
+            case EStepMode::Direct: ModeStr = TEXT("direct"); break;
+            case EStepMode::Puppet: ModeStr = TEXT("puppet"); break;
+            case EStepMode::Auto:   ModeStr = TEXT("auto");   break;
+            }
+        }
+        const FString ModeSuffix = ModeStr.IsEmpty()
+            ? FString()
+            : FString::Printf(TEXT("  [%s]"), *ModeStr);
+
         // Show replay time if replaying, otherwise sim time
         AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
             UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
@@ -313,12 +332,13 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
         {
             TArray<FMjReplayFrame>& Frames = ReplayMgr->Sessions.FindOrAdd(ReplayMgr->ActiveSessionName).Frames;
             float Duration = Frames.Num() > 0 ? Frames.Last().Timestamp - Frames[0].Timestamp : 0.0f;
-            TimeText->SetText(FText::FromString(FString::Printf(TEXT("REPLAY: %.2f / %.2f s  [%s]"),
-                ReplayMgr->PlaybackTime, Duration, *ReplayMgr->ActiveSessionName)));
+            TimeText->SetText(FText::FromString(FString::Printf(TEXT("REPLAY: %.2f / %.2f s  [%s]%s"),
+                ReplayMgr->PlaybackTime, Duration, *ReplayMgr->ActiveSessionName, *ModeSuffix)));
         }
         else
         {
-            TimeText->SetText(FText::FromString(FString::Printf(TEXT("time: %.3f s"), ManagerRef->GetSimTime())));
+            TimeText->SetText(FText::FromString(FString::Printf(TEXT("Time: %.3f s%s"),
+                ManagerRef->GetSimTime(), *ModeSuffix)));
         }
     }
 

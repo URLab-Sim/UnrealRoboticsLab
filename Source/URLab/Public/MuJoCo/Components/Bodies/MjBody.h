@@ -132,10 +132,14 @@ public:
 
 
 public:
-    /** @brief Called every frame. */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
-    
+
+    /** @brief Applies the body's world transform from the engine's
+     *  per-step render snapshot. Driven by AAMjManager so every body
+     *  in one UE frame samples the same physics frame. */
+    void ApplyRenderState(const struct FMjRenderSnapshot& Snap);
+
 	void Setup(USceneComponent* Parent, mjsBody* ParentBody, FMujocoSpecWrapper* Wrapper);
     
     /**
@@ -216,9 +220,6 @@ protected:
 
 private:
 	BodyView m_BodyView;
-    
-    mjtNum* m_MocapPos = nullptr;
-    mjtNum* m_MocapQuat = nullptr;
 
 	bool m_IsSetup = false;
     

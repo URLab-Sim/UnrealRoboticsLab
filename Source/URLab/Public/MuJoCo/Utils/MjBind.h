@@ -718,36 +718,6 @@ struct BodyView {
         return MjUtils::MjToUERotation(xquat);
     }
 
-    /** @brief Applies a world-space force (Unreal units/direction) to this body. */
-    void ApplyForce(FVector UEForce) {
-        if (!xfrc_applied) return;
-        mjtNum MjForce[3];
-        MjUtils::UEToMjPosition(UEForce, MjForce); // This handles cm->m and Y-flip
-        xfrc_applied[3] += MjForce[0];
-        xfrc_applied[4] += MjForce[1];
-        xfrc_applied[5] += MjForce[2];
-    }
-
-    /** @brief Applies a world-space wrench (Force and Torque) to this body. */
-    void ApplyWrench(FVector UEForce, FVector UETorque) {
-        if (!xfrc_applied) return;
-
-        // Force: Convert and add to indices 3, 4, 5
-        mjtNum MjForce[3];
-        MjUtils::UEToMjPosition(UEForce, MjForce);
-        xfrc_applied[3] += MjForce[0];
-        xfrc_applied[4] += MjForce[1];
-        xfrc_applied[5] += MjForce[2];
-
-        // Torque: Convert and add to indices 0, 1, 2
-        // Note: Torque doesn't require the 0.01 scale factor (cm->m) in the same way,
-        // but it does require the Y-flip and coordinate mapping.
-        // UMjBody::ApplyForce uses Torque.X, -Torque.Y, Torque.Z.
-        xfrc_applied[0] += (mjtNum)UETorque.X;
-        xfrc_applied[1] += (mjtNum)-UETorque.Y;
-        xfrc_applied[2] += (mjtNum)UETorque.Z;
-    }
-
     // Traversal Methods (Declared here, Implemented at the bottom)
     TArray<BodyView> Bodies() const;
     TArray<GeomView> Geoms() const;

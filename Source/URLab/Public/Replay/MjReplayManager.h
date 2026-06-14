@@ -80,32 +80,26 @@ public:
     UFUNCTION(BlueprintCallable, CallInEditor, Category = "URLab|Replay")
     bool BrowseAndLoadCSV(float Timestep = 0.002f);
 
-    /** @brief Opens a save dialog and saves the active session to a JSON file. */
     UFUNCTION(BlueprintCallable, CallInEditor, Category = "URLab|Replay")
     bool BrowseAndSaveRecording();
 
     // --- Session Management ---
 
-    /** @brief Get names of all loaded replay sessions. */
     UFUNCTION(BlueprintCallable, Category = "URLab|Replay")
     TArray<FString> GetSessionNames() const;
 
-    /** @brief Set the active session for playback. */
     UFUNCTION(BlueprintCallable, Category = "URLab|Replay")
     void SetActiveSession(const FString& Name);
 
-    /** @brief Get the currently active session name. */
     UFUNCTION(BlueprintCallable, Category = "URLab|Replay")
     FString GetActiveSessionName() const { return ActiveSessionName; }
 
-    /** @brief Get the number of loaded sessions. */
     UFUNCTION(BlueprintCallable, Category = "URLab|Replay")
     int32 GetSessionCount() const { return Sessions.Num(); }
 
-    /** @brief Rebuild articulation bindings by matching scene articulations against active session. */
+    /** Matches scene articulations against the active session. */
     void RebuildArticulationBindings();
 
-    /** @brief Get the articulation bindings for UI display. */
     TArray<FReplayArticulationBinding>& GetArticulationBindings() { return ArticulationBindings; }
 
     // --- Settings ---
@@ -152,6 +146,17 @@ public:
     // Ptr to Global Manager
     AAMjManager* Manager = nullptr;
 
+    /** @brief Number of frames captured in the live recording buffer.
+     *  Used by the bridge's recording_stop reply to populate
+     *  RecordingSummary.frame_count. Reads the live session frame
+     *  count; safe to call after StopRecording. */
+    int32 GetLiveFrameCount() const;
+
+    /** @brief Wall-clock-aligned sim duration of the live recording in
+     *  seconds (last frame timestamp minus first). Returns 0 when
+     *  fewer than 2 frames are captured. */
+    double GetLiveSimDurationS() const;
+
 private:
     // --- Accessors ---
     TArray<FMjReplayFrame>& GetActiveFrames();
@@ -168,6 +173,11 @@ private:
 
     /** @brief Tracks whether the current replay has emitted its first frame. Reset on StartReplay(). */
     bool bFirstReplayFrame = true;
+
+    /** @brief One-shot diagnostic flag: logs the first OnPostStep frame after
+     *  each StartRecording() so we can confirm at runtime that the hook is
+     *  firing. Reset in StartRecording(). */
+    bool bFirstFrameLogged = false;
 
     /** @brief Throttles periodic replay logging to once per second. */
     double LastReplayLogTime = 0.0;

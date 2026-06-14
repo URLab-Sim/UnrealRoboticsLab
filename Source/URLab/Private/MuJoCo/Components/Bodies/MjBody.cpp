@@ -27,12 +27,38 @@
 #include "MuJoCo/Components/Physics/MjInertial.h"
 #include "MuJoCo/Components/Geometry/MjSite.h"
 #include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "XmlNode.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "EngineUtils.h"
+
+namespace
+{
+    UMjPhysicsEngine* GetEngine(const UObject* WorldCtx)
+    {
+        if (AAMjManager* Manager = AAMjManager::GetManager())
+        {
+            if (Manager->PhysicsEngine) return Manager->PhysicsEngine;
+        }
+        if (WorldCtx)
+        {
+            if (UWorld* World = WorldCtx->GetWorld())
+            {
+                for (TActorIterator<AAMjManager> It(World); It; ++It)
+                {
+                    if (It->PhysicsEngine) return It->PhysicsEngine;
+                }
+            }
+        }
+        return nullptr;
+    }
+}
 
 UMjBody::UMjBody()
 {
@@ -52,43 +78,55 @@ void UMjBody::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponen
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-    if (m_IsSetup)
-    {
-        if (mocap && m_MocapPos && m_MocapQuat)
-        {
-        	MjUtils::UEToMjPosition(GetComponentLocation(), m_MocapPos);
-        	MjUtils::UEToMjRotation(GetComponentQuat(), m_MocapQuat);
-        }
-        else
-        {
-            if (!m_BodyView.xpos || !m_BodyView.xquat)
-            {
-                UE_LOG(LogURLabBind, Warning, TEXT("MjBody::TickComponent - Body '%s' has null xpos/xquat (bind failed). Disabling tick."), *GetName());
-                m_IsSetup = false;
-                SetComponentTickEnabled(false);
-                return;
-            }
+    if (!m_IsSetup || !mocap || m_BodyView.id < 0) return;
 
-            // Thread safety: xpos/xquat reads are lock-free. On x86-64, aligned double
-            // reads are atomic (no tearing). Worst case is a 1-frame position/rotation
-            // desync which is visually imperceptible. This matches MuJoCo Simulate's
-            // own threading model.
-    	    FVector MuJoCoWorldPos = MjUtils::MjToUEPosition(m_BodyView.xpos);
-    	    FQuat MuJoCoWorldQuat = MjUtils::MjToUERotation(m_BodyView.xquat);
-    	    
-            FVector CorrectedPos = MuJoCoWorldPos;
-            
-            // Apply mesh pivot offset correction ONLY if QuickConverted (Unreal -> MuJoCo flow pivot issues)
-            if (bIsQuickConverted)
-            {
-    	        // MuJoCo's xpos is at body center, but UE mesh may have off-center pivot
-        	    FVector OffsetVector = MuJoCoWorldQuat.RotateVector(m_MeshPivotOffset);
-        	    CorrectedPos = MuJoCoWorldPos - OffsetVector;
-            }
-    
-    	    SetWorldLocationAndRotation(CorrectedPos, MuJoCoWorldQuat);
-        }
+    UMjPhysicsEngine* Engine = GetEngine(this);
+    if (!Engine) return;
+
+    double MjPos[3];
+    double MjQuat[4];
+    MjUtils::UEToMjPosition(GetComponentLocation(), MjPos);
+    MjUtils::UEToMjRotation(GetComponentQuat(), MjQuat);
+    Engine->SubmitMocapPose(m_BodyView.id, MjPos, MjQuat);
+}
+
+void UMjBody::ApplyRenderState(const FMjRenderSnapshot& Snap)
+{
+    if (!m_IsSetup || mocap)
+    {
+        return;
     }
+
+    const int32 Id = m_BodyView.id;
+    if (Id < 0)
+    {
+        return;
+    }
+
+    const int32 PosIdx  = Id * 3;
+    const int32 QuatIdx = Id * 4;
+    if (Snap.XPos.Num() <= PosIdx + 2 || Snap.XQuat.Num() <= QuatIdx + 3)
+    {
+        UE_LOG(LogURLabBind, Warning,
+            TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) out of range "
+                 "of snapshot (XPos=%d, XQuat=%d). Disabling updates."),
+            *GetName(), Id, Snap.XPos.Num(), Snap.XQuat.Num());
+        m_IsSetup = false;
+        return;
+    }
+
+    const FVector MuJoCoWorldPos  = MjUtils::MjToUEPosition(&Snap.XPos[PosIdx]);
+    const FQuat   MuJoCoWorldQuat = MjUtils::MjToUERotation(&Snap.XQuat[QuatIdx]);
+
+    FVector CorrectedPos = MuJoCoWorldPos;
+
+    if (bIsQuickConverted)
+    {
+        const FVector OffsetVector = MuJoCoWorldQuat.RotateVector(m_MeshPivotOffset);
+        CorrectedPos = MuJoCoWorldPos - OffsetVector;
+    }
+
+    SetWorldLocationAndRotation(CorrectedPos, MuJoCoWorldQuat);
 }
 
 
@@ -265,15 +303,6 @@ void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
         m_IsSetup = bBound;
         SetComponentTickEnabled(bBound);
 
-        if (bBound && mocap)
-        {
-            int mocapid = Model->body_mocapid[m_ID];
-            if (mocapid >= 0)
-            {
-                 m_MocapPos = Data->mocap_pos + 3 * mocapid;
-                 m_MocapQuat = Data->mocap_quat + 4 * mocapid;
-            }
-        }
     }
 
 	TArray<USceneComponent*> AllChildren;
@@ -347,64 +376,51 @@ FMuJoCoSpatialVelocity UMjBody::GetSpatialVelocity() const
 
 void UMjBody::ApplyForce(FVector force, FVector Torque)
 {
-    if (m_BodyView.id < 0 || !m_BodyView.xfrc_applied) return;
-    // xfrc_applied layout: [torque_x, torque_y, torque_z, force_x, force_y, force_z] in MuJoCo frame
-    // Convert UE (cm, Y-flip) -> MuJoCo (m, right-hand)
-    const float InvScale = 0.01f; // cm -> m
-    mjtNum* xfrc = m_BodyView.xfrc_applied;
-    // Torque: UE X -> Mj X, UE Y -> -Mj Y, UE Z -> Mj Z
-    xfrc[0] = (mjtNum)(Torque.X);
-    xfrc[1] = (mjtNum)(-Torque.Y);
-    xfrc[2] = (mjtNum)(Torque.Z);
-    // force: same convention
-    xfrc[3] = (mjtNum)(force.X * InvScale);
-    xfrc[4] = (mjtNum)(-force.Y * InvScale);
-    xfrc[5] = (mjtNum)(force.Z * InvScale);
+    if (m_BodyView.id < 0) return;
+    UMjPhysicsEngine* Engine = GetEngine(this);
+    if (!Engine) return;
+
+    const double InvScale = 0.01; // cm -> m
+    double Xfrc[6];
+    Xfrc[0] = static_cast<double>(Torque.X);
+    Xfrc[1] = static_cast<double>(-Torque.Y);
+    Xfrc[2] = static_cast<double>(Torque.Z);
+    Xfrc[3] = static_cast<double>(force.X) * InvScale;
+    Xfrc[4] = static_cast<double>(-force.Y) * InvScale;
+    Xfrc[5] = static_cast<double>(force.Z) * InvScale;
+    Engine->SubmitWrench(m_BodyView.id, Xfrc);
 }
 
 void UMjBody::ClearForce()
 {
-    if (m_BodyView.id < 0 || !m_BodyView.xfrc_applied) return;
-    for (int i = 0; i < 6; ++i)
-        m_BodyView.xfrc_applied[i] = 0.0;
+    if (m_BodyView.id < 0) return;
+    if (UMjPhysicsEngine* Engine = GetEngine(this))
+    {
+        Engine->SubmitClearForce(m_BodyView.id);
+    }
 }
 
 bool UMjBody::IsAwake() const
 {
-    // body_awake: mjtSleepState — mjS_ASLEEP=0, mjS_AWAKE=1
-    if (m_BodyView.id < 0 || !m_BodyView._d) return true;  // unbound → treat as awake
+    if (m_BodyView.id < 0 || !m_BodyView._d) return true;
     return m_BodyView._d->body_awake[m_BodyView.id] != 0;
 }
 
 void UMjBody::Wake()
 {
-    if (m_BodyView.id < 0 || !m_BodyView._d || !m_BodyView._m) return;
-
-    m_BodyView._d->body_awake[m_BodyView.id] = 1;  // mjS_AWAKE
-
-    // Also wake the kinematic tree so the physics step propagates the wake.
-    int32 TreeId = m_BodyView._m->body_treeid[m_BodyView.id];
-    if (TreeId >= 0 && TreeId < m_BodyView._m->ntree)
+    if (m_BodyView.id < 0) return;
+    if (UMjPhysicsEngine* Engine = GetEngine(this))
     {
-        m_BodyView._d->tree_asleep[TreeId] = -1;  // <0 → awake
-        m_BodyView._d->tree_awake[TreeId]  = 1;
+        Engine->ApplyWakeBody(m_BodyView.id);
     }
 }
 
 void UMjBody::PutToSleep()
 {
-    if (m_BodyView.id < 0 || !m_BodyView._d || !m_BodyView._m) return;
-
-    m_BodyView._d->body_awake[m_BodyView.id] = 0;  // mjS_ASLEEP
-
-    // Also mark the kinematic tree as sleeping.
-    int32 TreeId = m_BodyView._m->body_treeid[m_BodyView.id];
-    if (TreeId >= 0 && TreeId < m_BodyView._m->ntree)
+    if (m_BodyView.id < 0) return;
+    if (UMjPhysicsEngine* Engine = GetEngine(this))
     {
-        // tree_asleep >= 0 means the tree is sleeping (value is an index in the sleep cycle).
-        if (m_BodyView._d->tree_asleep[TreeId] < 0)
-            m_BodyView._d->tree_asleep[TreeId] = 0;
-        m_BodyView._d->tree_awake[TreeId] = 0;
+        Engine->ApplySleepBody(m_BodyView.id);
     }
 }
 

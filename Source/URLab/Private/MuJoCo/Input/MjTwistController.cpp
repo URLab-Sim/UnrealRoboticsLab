@@ -51,6 +51,14 @@ void UMjTwistController::ResetTwist()
 	ActionBitmask = 0;
 }
 
+void UMjTwistController::SetTwist(float InVx, float InVy, float InYawRate)
+{
+	FScopeLock Lock(&TwistMutex);
+	Vx = InVx;
+	Vy = InVy;
+	YawRate = InYawRate;
+}
+
 void UMjTwistController::BindInput(UEnhancedInputComponent* EIC)
 {
 	if (!EIC) return;

@@ -24,15 +24,15 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "MjNetworkManager.generated.h"
+#include "NetworkManager.generated.h"
 
-// Forward declarations
-class UMjZmqComponent;
 class UMjCamera;
 
 /**
  * @class UMjNetworkManager
- * @brief Manages network-related functionality: ZMQ component discovery and camera streaming.
+ * @brief Manages camera streaming. (ZMQ broadcaster + subscriber are
+ *        bridge-style UObject transports owned by AAMjManager directly,
+ *        not discovered through component iteration.)
  */
 UCLASS(ClassGroup=(MuJoCo), meta=(BlueprintSpawnableComponent))
 class URLAB_API UMjNetworkManager : public UActorComponent
@@ -42,28 +42,16 @@ class URLAB_API UMjNetworkManager : public UActorComponent
 public:
     UMjNetworkManager();
 
-    /** @brief List of ZMQ components discovered on the owner actor. */
-    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Network")
-    TArray<UMjZmqComponent*> ZmqComponents;
-
-    /** @brief If true, forces all UMjCameras to enable ZMQ broadcasting. */
+    /** Forces all UMjCameras to enable ZMQ broadcasting. */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
     bool bEnableAllCameras = true;
 
-    /** @brief Updates the camera streaming state for all cameras according to bEnableAllCameras. */
     void UpdateCameraStreamingState();
 
-    /** @brief Thread-safe camera registration. */
+    // Thread-safe camera registry.
     void RegisterCamera(UMjCamera* Cam);
-
-    /** @brief Thread-safe camera unregistration. */
     void UnregisterCamera(UMjCamera* Cam);
-
-    /** @brief Thread-safe access to active cameras. */
     TArray<UMjCamera*> GetActiveCameras();
-
-    /** @brief Discovers ZMQ components attached to the owner actor. */
-    void DiscoverZmqComponents();
 
 private:
     TArray<UMjCamera*> ActiveCameras;

@@ -256,15 +256,11 @@ void UMjActuator::ResetControl()
 
 float UMjActuator::GetControl() const
 {
+    // Source-of-truth lives on the owning articulation. Out-of-tree spawns
+    // (no articulation owner) fall back to InternalValue.
     if (AMjArticulation* Art = Cast<AMjArticulation>(GetOwner()))
     {
         return ResolveDesiredControl(Art->ControlSource);
-    }
-
-    if (AAMjManager* Mgr = AAMjManager::GetManager())
-    {
-        if (Mgr->PhysicsEngine)
-            return ResolveDesiredControl((uint8)Mgr->PhysicsEngine->ControlSource);
     }
     return InternalValue.load();
 }

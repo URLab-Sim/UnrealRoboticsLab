@@ -22,8 +22,34 @@
 
 #include "MuJoCo/Components/Geometry/MjGeom.h"
 #include "Components/StaticMeshComponent.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
+#include "EngineUtils.h"
+
+namespace
+{
+    UMjPhysicsEngine* ResolveEngine(const UObject* WorldCtx)
+    {
+        if (AAMjManager* Manager = AAMjManager::GetManager())
+        {
+            if (Manager->PhysicsEngine) return Manager->PhysicsEngine;
+        }
+        if (WorldCtx)
+        {
+            if (UWorld* World = WorldCtx->GetWorld())
+            {
+                for (TActorIterator<AAMjManager> It(World); It; ++It)
+                {
+                    if (It->PhysicsEngine) return It->PhysicsEngine;
+                }
+            }
+        }
+        return nullptr;
+    }
+}
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "XmlNode.h"
 #include "Utils/URLabLogging.h"
@@ -290,27 +316,48 @@ void UMjGeom::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 
 void UMjGeom::UpdateGlobalTransform()
 {
-    if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0)
+    const int32 Id = m_GeomView.id;
+    if (Id < 0) return;
+
+    UMjPhysicsEngine* Engine = ResolveEngine(this);
+    if (!Engine) return;
+
+    Engine->WithRenderState([this, Id](const FMjRenderSnapshot& Snap)
     {
-        // Get world position from MuJoCo
-        FVector WorldPos = MjUtils::MjToUEPosition(m_GeomView.geom_xpos);
-        FQuat WorldRot;
+        const int32 PosIdx = Id * 3;
+        const int32 MatIdx = Id * 9;
+        if (Snap.GeomXPos.Num() <= PosIdx + 2 || Snap.GeomXMat.Num() <= MatIdx + 8)
+        {
+            return;
+        }
+        const FVector WorldPos = MjUtils::MjToUEPosition(&Snap.GeomXPos[PosIdx]);
         mjtNum quat[4];
-        mju_mat2Quat(quat, m_GeomView.geom_xmat);
-        WorldRot = MjUtils::MjToUERotation(quat);
-        
+        mju_mat2Quat(quat, const_cast<mjtNum*>(&Snap.GeomXMat[MatIdx]));
+        const FQuat WorldRot = MjUtils::MjToUERotation(quat);
+
         SetWorldLocation(WorldPos);
         SetWorldRotation(WorldRot);
-    }
+    });
 }
 
 FVector UMjGeom::GetWorldLocation() const
 {
-    if (m_GeomView._m && m_GeomView._d && m_GeomView.id >= 0)
+    const int32 Id = m_GeomView.id;
+    if (Id < 0) return GetComponentLocation();
+
+    UMjPhysicsEngine* Engine = ResolveEngine(this);
+    if (!Engine) return GetComponentLocation();
+
+    FVector Out = GetComponentLocation();
+    Engine->WithRenderState([Id, &Out](const FMjRenderSnapshot& Snap)
     {
-        return MjUtils::MjToUEPosition(m_GeomView.geom_xpos);
-    }
-    return GetComponentLocation();
+        const int32 PosIdx = Id * 3;
+        if (Snap.GeomXPos.Num() > PosIdx + 2)
+        {
+            Out = MjUtils::MjToUEPosition(&Snap.GeomXPos[PosIdx]);
+        }
+    });
+    return Out;
 }
 void UMjGeom::SetFriction(float NewFriction)
 {

@@ -130,20 +130,28 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Runtime")
     uint8 ControlSource = 0; // 0 = ZMQ, 1 = UI. Using uint8 to avoid circular dependency with AMuJoCoManager header in some contexts, but can cast to EControlSource.
 
+    /** @brief Bridge-owned identifier echoed in the handshake. Set by the
+     *  bridge at spawn_actor time so policy code can resolve a stable
+     *  handle that survives UE's volatile actor naming (`*_C_UAID_*`).
+     *  Empty when unset; bridge falls back to actor name. */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Identity")
+    FString ActorId;
+
     /** @brief Fires when the simulation is reset (qpos/qvel cleared). Use this to reset robot logic. */
     UPROPERTY(BlueprintAssignable, Category = "MuJoCo|Events")
     FOnMjSimulationReset OnSimulationReset;
 
-    /** @brief Fires when a collision occurs involving geoms of this articulation. */
+    /** Fires when a collision occurs involving geoms of this articulation. */
     UPROPERTY(BlueprintAssignable, Category = "MuJoCo|Events")
     FOnMjCollision OnCollision;
-    
-    // Internal cache for name->id mapping
+
     TMap<FString, int> ActuatorIndices;
-    
-    /** @brief Applies values from ActuatorControls map to the running m_data->ctrl buffer. */
+
+    /** Applies ActuatorControls to m_data->ctrl. bSkipController=true bypasses
+     *  the cached UMjArticulationController and writes NetworkValue/InternalValue
+     *  straight to d->ctrl. Holding-keyframe state always wins. */
     UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
-    void ApplyControls();
+    void ApplyControls(bool bSkipController = false);
 
     // =========================================================================
     // Blueprint Runtime API — Discovery
@@ -395,6 +403,13 @@ public:
 protected:
     virtual void BeginPlay() override;
 
+    /** UE guarantees `PostInitializeComponents` fires for every actor before
+     *  any `BeginPlay` starts. We use it to auto-attach UMjTwistController
+     *  so consumers built during a sibling actor's BeginPlay (the simulate
+     *  widget's LOCOMOTION section, the step dispatcher's twist block)
+     *  see the controller as soon as they look. */
+    virtual void PostInitializeComponents() override;
+
     /** @brief Called when the game ends or actor is destroyed. */
     virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -417,6 +432,10 @@ public:
 
     /** @brief Diagnostic-only accessor for the articulation prefix used by mjs_attach. */
     FString GetPrefixForDiagnostics() const { return m_prefix; }
+
+    /** Engine queries this during PreCompile to aggregate every
+     *  articulation's VFS asset paths into a single ship-list. */
+    class FMujocoSpecWrapper* GetWrapper() const { return m_wrapper; }
 
 protected:
     mjVFS* m_vfs = nullptr;
@@ -451,8 +470,12 @@ protected:
     UPROPERTY(Transient)
     class UMjArticulationController* CachedController = nullptr;
 
-public:    
+public:
     virtual void Tick(float DeltaTime) override;
+
+    /** @brief Forwards the engine snapshot to every UMjBody under this
+     *  articulation so they all observe one coherent physics frame. */
+    void ApplyRenderState(const struct FMjRenderSnapshot& Snap);
 
     /** @brief Optional: Path to an existing MuJoCo XML to import. */
     UPROPERTY(EditAnywhere, Category = "MuJoCo Import")

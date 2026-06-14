@@ -454,8 +454,11 @@ UMaterialInstanceConstant* UMujocoGenerationAction::CreateMaterialInstance(
         return nullptr;
     }
 
-    // Create material instance package
+    // Create material instance package. Strip path separators from the
+    // instance name — Unreal FNames don't tolerate '/', which corrupts the
+    // asset path for namespaced MJCF materials (e.g. "obstacles/box1").
     FString InstanceName = FString::Printf(TEXT("MI_%s"), *MeshName);
+    InstanceName = InstanceName.Replace(TEXT("/"), TEXT("_"));
     FString PackageName = FPaths::Combine(DestinationPath, InstanceName);
     PackageName = UPackageTools::SanitizePackageName(PackageName);
 

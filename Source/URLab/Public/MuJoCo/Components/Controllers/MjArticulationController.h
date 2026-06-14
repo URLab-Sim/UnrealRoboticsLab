@@ -24,6 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "Dom/JsonObject.h"
 #include <mujoco/mujoco.h>
 #include "MjArticulationController.generated.h"
 
@@ -123,6 +124,25 @@ public:
 
 	/** Access bindings (for gain configuration by name). */
 	const TArray<FActuatorBinding>& GetBindings() const { return Bindings; }
+
+	// =========================================================================
+	// Config surface — used by both UURLabZmqRpcTransport's configure_controller RPC
+	// and the legacy `{prefix}/set_gains` topic on UURLabZmqSubscribeTransport.
+	// Subclasses override to plug their schema and apply path into the unified
+	// JSON-driven controller-config flow.
+	// =========================================================================
+
+	/** Short kind name reported in the handshake (e.g. "pd", "passthrough"). */
+	virtual FString GetKindName() const { return TEXT("base"); }
+
+	/** Fill @p OutSchema with the JSON schema for this controller's params. */
+	virtual void GetConfigSchema(TSharedPtr<FJsonObject>& OutSchema) const {}
+
+	/** Fill @p OutParams with the controller's current parameter values. */
+	virtual void GetCurrentConfig(TSharedPtr<FJsonObject>& OutParams) const {}
+
+	/** Apply a partial JSON config to this controller. Missing fields keep their current value. */
+	virtual void ApplyConfig(const TSharedPtr<FJsonObject>& InParams) {}
 
 protected:
 	/** Actuator→DOF bindings, populated by Bind(). */

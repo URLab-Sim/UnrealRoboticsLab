@@ -112,7 +112,10 @@ FString FMujocoSpecWrapper::AddMeshAsset(const FString& MeshName, const FString&
     if (Result != 0) {
         UE_LOG(LogURLabWrapper, Error, TEXT("MuJoCo VFS Error: Failed to load %s (Code %d)"), *FilePath, Result);
     }
-    
+    else {
+        ActiveAssetPaths.AddUnique(FilePath);
+    }
+
     return UniqueMeshName;
 }
 

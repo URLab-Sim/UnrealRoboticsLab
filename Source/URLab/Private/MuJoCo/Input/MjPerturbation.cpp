@@ -76,6 +76,54 @@ void UMjPerturbation::BeginPlay()
         {
             if (!m || !d || !Manager || !Manager->PhysicsEngine) return;
             const bool bRunning = Manager->PhysicsEngine->IsRunning();
+            const bool bPuppet  = (Manager->StepMode == EStepMode::Puppet);
+
+            if (bPuppet)
+            {
+                // In puppet mode the client owns d, so directly writing
+                // xfrc_applied here would clobber whatever the client's
+                // own MjData has and never reach the integrator (puppet
+                // runs mj_forward only, no integration step). Sample the
+                // perturbation force into a snapshot the step server
+                // includes in the next step reply, and let the client
+                // apply it locally.
+                if (Perturb.select > 0 && Perturb.active != 0)
+                {
+                    // Compute the perturbation xfrc into a scratch buffer
+                    // sized to one body (avoid touching d->xfrc_applied).
+                    // We reuse mjv_applyPerturbForce but on a fresh
+                    // zero buffer, then read out only the selected body.
+                    static thread_local TArray<mjtNum> Scratch;
+                    if (Scratch.Num() < 6 * m->nbody) Scratch.SetNum(6 * m->nbody);
+                    FMemory::Memzero(Scratch.GetData(), 6 * m->nbody * sizeof(mjtNum));
+
+                    // mjv_applyPerturbForce writes into d->xfrc_applied.
+                    // To avoid mutating d, swap the pointer. If MuJoCo
+                    // ever changes which buffer it writes to we'd need to
+                    // re-evaluate; for now this is the cheapest sample.
+                    mjtNum* SavedX = d->xfrc_applied;
+                    d->xfrc_applied = Scratch.GetData();
+                    mjv_applyPerturbForce(m, d, &Perturb);
+                    d->xfrc_applied = SavedX;
+
+                    FScopeLock Lock(&LatestSampleMutex);
+                    LatestSample.BodyId = Perturb.select;
+                    for (int i = 0; i < 6; ++i)
+                        LatestSample.Xfrc[i] = (double)Scratch[6 * Perturb.select + i];
+                    ++LatestSample.Version;
+                }
+                else
+                {
+                    FScopeLock Lock(&LatestSampleMutex);
+                    if (LatestSample.BodyId != -1)
+                    {
+                        LatestSample.BodyId = -1;
+                        for (int i = 0; i < 6; ++i) LatestSample.Xfrc[i] = 0.0;
+                        ++LatestSample.Version;
+                    }
+                }
+                return;
+            }
 
             if (bRunning)
             {
@@ -96,6 +144,12 @@ void UMjPerturbation::BeginPlay()
                 }
             }
         });
+}
+
+FMjPerturbationSample UMjPerturbation::GetLatestPerturbationSample() const
+{
+    FScopeLock Lock(&LatestSampleMutex);
+    return LatestSample;
 }
 
 void UMjPerturbation::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)

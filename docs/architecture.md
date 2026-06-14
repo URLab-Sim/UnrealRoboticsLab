@@ -2,7 +2,7 @@
 
 ## Overview
 
-UnrealRoboticsLab (URLab) integrates MuJoCo physics into Unreal Engine 5 as an editor plugin. `AAMjManager` is the top-level coordinator actor, but delegates core responsibilities to four `UActorComponent` subsystems: `UMjPhysicsEngine` (simulation), `UMjDebugVisualizer` (debug rendering), `UMjNetworkManager` (ZMQ discovery), and `UMjInputHandler` (hotkeys). The component system mirrors the MJCF element hierarchy -- each XML element type maps to a `UMjComponent` subclass attached to an `AMjArticulation` Blueprint. Physics runs on a dedicated async thread; the game thread reads results for rendering. ZMQ networking provides external control and sensor broadcasting.
+UnrealRoboticsLab (URLab) integrates MuJoCo physics into Unreal Engine 5 as an editor plugin. `AAMjManager` is the top-level coordinator actor, but delegates core responsibilities to four `UActorComponent` subsystems: `UMjPhysicsEngine` (simulation), `UMjDebugVisualizer` (debug rendering), `UMjNetworkManager` (camera streaming state), and `UMjInputHandler` (hotkeys). The component system mirrors the MJCF element hierarchy -- each XML element type maps to a `UMjComponent` subclass attached to an `AMjArticulation` Blueprint. Physics runs on a dedicated async thread; the game thread reads results for rendering. The bridge (`UURLabBridgeServer`) owns the request/reply transports (ZMQ on `tcp:5559`, SHM `req.shm` / `rep.shm`); the manager owns the per-PIE streaming transports (state PUB, state SHM, control SUB) and the per-camera writers.
 
 ---
 
@@ -14,7 +14,7 @@ UnrealRoboticsLab (URLab) integrates MuJoCo physics into Unreal Engine 5 as an e
 AAMjManager (thin coordinator)
 ├── UMjPhysicsEngine       — simulation core
 ├── UMjDebugVisualizer      — debug rendering
-├── UMjNetworkManager       — ZMQ discovery & cameras
+├── UMjNetworkManager       — camera streaming state
 └── UMjInputHandler         — hotkey processing
 ```
 
@@ -32,9 +32,9 @@ Owns `DebugData` (`FMuJoCoDebugData` from `MjDebugTypes.h`) and `DebugMutex`. `C
 
 ### UMjNetworkManager
 
-**File:** `Source/URLab/Public/MuJoCo/Net/MjNetworkManager.h`
+**File:** `Source/URLab/Public/Transport/NetworkManager.h`
 
-Owns `ZmqComponents` discovery and camera registration/streaming. `DiscoverZmqComponents()` is called during BeginPlay to collect all `UMjZmqComponent` subcomponents on the manager actor.
+Owns camera registration / streaming state. `UpdateCameraStreamingState()` runs at BeginPlay and whenever the global camera-streaming toggle flips, fanning the new state out to every `UMjCamera` on every articulation.
 
 ### UMjInputHandler
 
@@ -48,6 +48,105 @@ Subsystems communicate through:
 - **Callbacks:** `UMjPhysicsEngine` exposes `RegisterPreStepCallback`/`RegisterPostStepCallback`. Other subsystems register lambdas during BeginPlay.
 - **`GetOwner()` traversal:** Subsystems access siblings via `GetOwner()->FindComponentByClass<T>()` (e.g., `UMjInputHandler` finds `UMjPhysicsEngine` to call `Reset()`).
 - **Direct access:** External code accesses subsystem state directly via `Manager->PhysicsEngine->Options`, `Manager->DebugVisualizer->bShowDebug`, etc. `AAMjManager` has no duplicate properties — it is a pure coordinator. Blueprint-callable convenience methods like `SetPaused()`, `StepSync()`, and `ResetSimulation()` delegate to `PhysicsEngine`.
+
+---
+
+## Remote Stepping Subsystem
+
+The remote-stepping path lets external Python clients drive physics over a wire. It's split into a transport-agnostic dispatcher plus pluggable transports, mirrored on the bridge side by `URLabClient`.
+
+```mermaid
+flowchart TB
+    subgraph Bridge["UURLabBridgeServer (PIE-spanning, owns RPC)"]
+        BridgeObj["UURLabBridgeServer"]
+        Disp["FURLabRpcDispatcher<br/>session, handlers, RPC ops"]
+        BridgeObj --> Disp
+    end
+
+    subgraph CoreUE["AAMjManager (per-PIE, owns streaming)"]
+        Mgr["AAMjManager (coordinator)"]
+        Phys["UMjPhysicsEngine"]
+        Mgr --> Phys
+    end
+
+    subgraph Transports["RPC transports (UObject, bridge-owned)"]
+        ZmqStep["UURLabZmqRpcTransport<br/>tcp:5559 REQ/REP"]
+        ShmStep["UURLabShmRpcTransport<br/>req/rep.shm + kernel events"]
+    end
+
+    subgraph SnapPubs["Snapshot publishers (IMjSnapshotPublisher, manager-owned)"]
+        ZmqPub["UURLabZmqPublishTransport<br/>tcp:5555 PUB state/full + per-topic"]
+        ShmPub["UURLabShmPublishTransport<br/>state.shm ring"]
+    end
+
+    subgraph Cams["Per-camera publishers"]
+        CamZmq["FCameraZmqWorker<br/>tcp:5558+ PUB"]
+        CamShm["FCameraShmWriter<br/>cam_*.shm ring"]
+    end
+
+    ZmqStep <--> Disp
+    ShmStep <--> Disp
+    Disp -.->|resolves live manager| Mgr
+    Phys -->|PostStep, once per tick| Mgr
+    Mgr -->|fan-out| ZmqPub
+    Mgr -->|fan-out| ShmPub
+    Phys -->|capture readback| Cams
+```
+
+### Component split
+
+| Class | Role | Notes |
+|---|---|---|
+| `UURLabBridgeServer` | UObject that owns the dispatcher and every RPC transport. Survives PIE transitions — the editor subsystem keeps one instance across PIE cycles; cooked builds spawn a manager-owned bridge in `AAMjManager::BeginPlay`. | Manages `EnsureZmqBound` / `EnsureShmBound`, registers the live PIE manager via `RegisterManager`, and drains in-flight handlers on `Stop()`. |
+| `FURLabRpcDispatcher` | All business logic for the wire protocol — handshake, step, reset, set_mode, configure_controller, recording, replay, PIE / scene / outliner ops. | Owns `ActiveSessionId`, `bUseJsonEncoding`, request queues for direct/puppet, custom step handlers. Plain C++ (not a UObject) so multiple transports can share one instance. Lives on the bridge, not on the manager. |
+| `UURLabRpcTransport` | Abstract base for request/reply transports (UObject, NOT `UActorComponent`). | Concrete: `UURLabZmqRpcTransport` (REQ/REP over TCP/IPC), `UURLabShmRpcTransport` (SHM ring + kernel events on Windows). Both feed raw bytes into the shared `ProcessRequestBytes` and hand the result back to the wire. |
+| `UURLabPublishTransport` | Abstract base for server -> client streaming transports. Manager-owned. | Concrete: `UURLabZmqPublishTransport` (PUB on `tcp:5555`), `UURLabShmPublishTransport` (SHM ring). Both implement `IMjSnapshotPublisher` so the manager fans state_full out to them once per physics step. |
+| `UURLabSubscribeTransport` | Abstract base for client -> server streaming transports. Manager-owned. | Concrete: `UURLabZmqSubscribeTransport` (xfrc / external-control SUB channel on `tcp:5556`). |
+| `IMjSnapshotPublisher` | Plain C++ abstract class (NOT a UE UINTERFACE) implemented by publish transports that want the `state_full` fan-out. | `UURLabZmqPublishTransport` and `UURLabShmPublishTransport` both inherit it. The manager keeps `SnapshotPublishers` and walks the list inside the registered PostStep callback. |
+| `FMjSnapshotProducer` | Pure builder — turns `(Manager, m, d, step_idx)` into msgpack bytes for the `state_full` snapshot. | Called once per physics tick by `AAMjManager`'s registered `PostStep` callback; bytes are fanned out to every registered `IMjSnapshotPublisher`. No double-build. |
+| `FMjShmRegion` | Cross-platform mmap helper (`MapViewOfFile` on Windows, `mmap` on Linux/macOS). Header + N buffer slots + sequence counter. | Used by both state and per-camera SHM publishers, and by the SHM RPC transport for req/rep regions. |
+
+### Step-mode semantics
+
+`AAMjManager.StepMode` (UPROPERTY) pins the server to one of `Auto / Live / Direct / Puppet`. `Auto` lets the bridge promote on `hello`. The dispatcher installs the appropriate custom step handler:
+
+- **Direct**: dispatcher consumes per-articulation `ctrl` from a SPSC queue inside the physics thread's pre-step. UE `mj_step` integrates. Publishers paused via `bPublishersPaused`.
+- **Puppet**: dispatcher writes pushed `qpos`/`qvel` into `m_data` and calls `mj_forward` instead of `mj_step`. UE never integrates. Custom step handler bypasses the integrator.
+- **Live**: no custom handler; UE's normal physics loop runs at `Options.Timestep`. Snapshot publishers fire every tick. Step RPC waits on the SUB-side cache for `n_steps` new snapshots.
+
+The dispatcher serializes concurrent transport access through a single mutex on `Dispatch()`, so ZMQ + SHM can coexist without races.
+
+### Wire compat between transports
+
+ZMQ and SHM carry **the same msgpack frames** for `step_ok`, `state_full`, etc. The transport choice is invisible at the application layer. The bridge picks a transport at construction, runs `hello` over ZMQ regardless (the MJB usually exceeds the SHM slot), and swaps to SHM after the handshake. The handshake includes `shm_session_dir` so the bridge can find the regions without hardcoding `<ProjectSavedDir>`.
+
+### Per-camera publishers
+
+`UMjCamera` owns its own ZMQ worker thread and SHM writer when streaming is enabled. Both run in parallel; the bridge picks which one to subscribe to based on `transport=`. All four `EMjCameraMode` values (Real / Depth / SemanticSegmentation / InstanceSegmentation) use the same 4-bytes-per-pixel wire stride, so the SHM region size is independent of mode. See [Camera Capture Modes](guides/camera_capture_modes.md) for the full pipeline.
+
+### File layout
+
+| Path | Contents |
+|---|---|
+| `Source/URLab/Public/Bridge/BridgeServer.h` | `UURLabBridgeServer` — owns dispatcher + RPC transports |
+| `Source/URLab/Public/Bridge/RpcDispatcher.h` | `FURLabRpcDispatcher` — class + observation level enum |
+| `Source/URLab/Public/Bridge/OpRegistry.h` | Op decl / registry used by the dispatcher |
+| `Source/URLab/Public/Bridge/OpHelpers.h` | Shared helpers for individual op handlers |
+| `Source/URLab/Public/Bridge/MsgpackHelpers.h` | Msgpack <-> `FJsonObject` round-trip |
+| `Source/URLab/Public/Transport/RpcTransport.h` | `UURLabRpcTransport` abstract base |
+| `Source/URLab/Public/Transport/PublishTransport.h` | `UURLabPublishTransport` abstract base |
+| `Source/URLab/Public/Transport/SubscribeTransport.h` | `UURLabSubscribeTransport` abstract base |
+| `Source/URLab/Public/Transport/SnapshotPublisher.h` | `IMjSnapshotPublisher` (plain C++ interface) |
+| `Source/URLab/Public/Transport/SnapshotProducer.h` | `FMjSnapshotProducer` — pure msgpack builder |
+| `Source/URLab/Public/Transport/ShmRegion.h` | `FMjShmRegion` — cross-platform SHM region wrapper |
+| `Source/URLab/Public/Transport/ShmRpcTransport.h` | SHM RPC transport |
+| `Source/URLab/Public/Transport/ShmPublishTransport.h` | SHM state-stream publisher |
+| `Source/URLab/Public/Transport/ZmqRpcTransport.h` | ZMQ RPC transport |
+| `Source/URLab/Public/Transport/ZmqPublishTransport.h` | ZMQ state-stream publisher |
+| `Source/URLab/Public/Transport/ZmqSubscribeTransport.h` | ZMQ external-control SUB channel |
+| `Source/URLab/Public/Transport/NetworkManager.h` | `UMjNetworkManager` — camera registration / streaming state |
+
+User-facing references: [Networking guide](guides/networking.md), [Step Server protocol](reference/step_server.md).
 
 ---
 
@@ -75,14 +174,13 @@ In editor builds, the module also registers a "MuJoCo" asset category via `IAsse
 
 1. **Singleton enforcement.** If `AAMjManager::Instance` is already set to a different actor, this instance logs an error and returns. Only one `AAMjManager` per level is supported.
 2. **Subsystem creation.** The four subsystems (`UMjPhysicsEngine`, `UMjDebugVisualizer`, `UMjNetworkManager`, `UMjInputHandler`) are created via `CreateDefaultSubobject` in the constructor.
-3. **Auto-create ZMQ components.** If no `UMjZmqComponent` subclasses exist on the manager actor, it creates a `UZmqSensorBroadcaster` (tcp://*:5555) and `UZmqControlSubscriber` (tcp://127.0.0.1:5556).
-4. **ZMQ discovery.** `UMjNetworkManager::DiscoverZmqComponents()` collects all ZMQ components on the manager actor.
-5. **Auto-create replay manager.** If no `AMjReplayManager` exists in the level, one is spawned.
-6. **`Compile()`** -- delegates to `UMjPhysicsEngine` for spec construction and `mj_compile()` (see below).
-7. **Callback registration.** Registers `UMjDebugVisualizer::CaptureDebugData` as a post-step callback on `UMjPhysicsEngine`.
-8. **`UpdateCameraStreamingState()`** -- applies global camera broadcast toggle.
-9. **`RunMujocoAsync()`** -- delegates to `UMjPhysicsEngine` to launch the physics thread.
-10. **Auto-create MjSimulate widget.** Loads `/UnrealRoboticsLab/WBP_MjSimulate` Blueprint and adds it to the viewport (controlled by `bAutoCreateSimulateWidget`).
+3. **Auto-create replay manager.** If no `AMjReplayManager` exists in the level, one is spawned. Done before resolving the bridge so the dispatcher's `Init` can cache the pointer.
+4. **Resolve a bridge server.** In editor builds the `URLabEditor` module installs a resolver via `URLabBridgeProvider` that hands back the subsystem's `UURLabBridgeServer` (lifetime spans PIE). Cooked builds fall through and `NewObject` their own bridge with `bOwnedByManager = true`, then call `Start()` (binds `tcp://0.0.0.0:5559`) and `EnsureShmBound()` (opens `req.shm` / `rep.shm` under `live`).
+5. **Auto-create streaming transports.** Manager-owned, lifetime-tied to PIE: `UURLabZmqPublishTransport` (`tcp://0.0.0.0:5555`), `UURLabShmPublishTransport` (`state.shm`), `UURLabZmqSubscribeTransport` (`tcp://127.0.0.1:5556`). Each follows the same `NewObject` + `SetOwningManager` + `TransportInit` pattern. RPC transports stay on the bridge; only publish/subscribe streams live on the manager.
+6. **`Compile()`** — delegates to `UMjPhysicsEngine` for spec construction and `mj_compile()` (see below). `UMjNetworkManager::UpdateCameraStreamingState()` then applies the global camera-streaming toggle.
+7. **Callback registration.** Registers two PreStep/PostStep callbacks that walk the manager-owned publish/subscribe arrays, plus dedicated post-step callbacks for debug capture and the `IMjSnapshotPublisher` fan-out (`FMjSnapshotProducer::BuildStateSnapshot` runs once per tick and the bytes are shipped to every registered publisher).
+8. **`RunMujocoAsync()`** — delegates to `UMjPhysicsEngine` to launch the physics thread.
+9. **Auto-create MjSimulate widget.** Loads `/UnrealRoboticsLab/WBP_MjSimulate` Blueprint and adds it to the viewport (controlled by `bAutoCreateSimulateWidget`).
 
 ### Spec Construction (PreCompile)
 
@@ -95,7 +193,7 @@ In editor builds, the module also registers a "MuJoCo" asset category via `IAsse
    - **Quick Convert:** Any actor with `UMjQuickConvertComponent` calls `Setup(spec, vfs)`.
    - **Articulations:** Any `AMjArticulation` calls `Setup(spec, vfs)`.
    - **Heightfields:** Any `AMjHeightfieldActor` calls `Setup(spec, vfs)`.
-5. ZMQ component discovery is handled separately by `UMjNetworkManager::DiscoverZmqComponents()` during BeginPlay.
+5. Transport setup runs separately in `AAMjManager::BeginPlay` — RPC transports come up via the bridge (`EnsureZmqBound` / `EnsureShmBound`), publish/subscribe streams via direct `NewObject` + `TransportInit` on the manager.
 
 Note: The discovery loop iterates all actors once. Quick Convert components and Articulations on the same actor are both processed (they are not mutually exclusive in the loop logic, though in practice they exist on separate actors).
 
@@ -179,13 +277,13 @@ Each iteration (under `CallbackMutex` lock, owned by `UMjPhysicsEngine`):
 
 1. **Check `bPendingReset`** -> `mj_resetData()` + `mj_forward()`. Broadcasts `OnSimulationReset` on game thread.
 2. **Check `bPendingRestore`** -> `mj_setState()` with `PendingStateVector` + `mj_forward()`.
-3. **Registered pre-step callbacks** (replaces direct ZMQ PreStep calls). ZMQ components register via `RegisterPreStepCallback()`.
+3. **Registered pre-step callbacks.** `AAMjManager` registers one callback that walks `ManagerOwnedSubscribeTransports` (xfrc / external-control SUB) and `ManagerOwnedPublishTransports` (pre-step hook is a no-op for most publishers).
 4. **ApplyControls** on each articulation (writes `d->ctrl` from actuator values).
 5. **Physics step:**
    - If `bIsPaused`: skip.
-   - If `CustomStepHandler` is bound: call it instead of `mj_step()` (used by replay playback).
+   - If `CustomStepHandler` is bound: call it instead of `mj_step()` (used by replay playback + Direct/Puppet modes).
    - Otherwise: `mj_step(m_model, m_data)`.
-6. **Registered post-step callbacks** (replaces direct ZMQ PostStep and debug capture calls). ZMQ components and `UMjDebugVisualizer::CaptureDebugData` register via `RegisterPostStepCallback()`.
+6. **Registered post-step callbacks.** `AAMjManager` registers one callback that fans state through the `IMjSnapshotPublisher` list, plus dedicated callbacks for `UMjDebugVisualizer::CaptureDebugData` and the publish/subscribe transport PostStep hooks. All callers register via `RegisterPostStepCallback()`.
 7. **`OnPostStep` delegate** (replay recording captures state here).
 
 **Timing:** After releasing the mutex, the loop spin-waits (`FPlatformProcess::YieldThread()`) until `TargetInterval / SpeedFactor` has elapsed. `SimSpeedPercent` (5-100) controls the speed factor.
@@ -409,7 +507,7 @@ Geoms with `bFromToResolvedHalfLength == true`:
 
 ## ZMQ Networking
 
-**Files:** `Source/URLab/Private/MuJoCo/Net/ZmqSensorBroadcaster.cpp`, `ZmqControlSubscriber.cpp`
+**Files:** `Source/URLab/Private/Transport/ZmqPublishTransport.cpp`, `ZmqSubscribeTransport.cpp`
 
 Binary pub/sub protocol for minimal latency.
 
@@ -676,7 +774,7 @@ The XML undergoes path relativization: absolute paths like `C:/Users/.../Saved/U
 | `Source/URLab/Public/MuJoCo/Core/MjPhysicsEngine.h` | Physics engine subsystem (spec, model, data, async loop) |
 | `Source/URLab/Public/MuJoCo/Core/MjDebugVisualizer.h` | Debug visualization subsystem |
 | `Source/URLab/Public/MuJoCo/Core/MjDebugTypes.h` | `FMuJoCoDebugData` shared struct |
-| `Source/URLab/Public/MuJoCo/Net/MjNetworkManager.h` | Network/ZMQ discovery subsystem |
+| `Source/URLab/Public/Transport/NetworkManager.h` | Camera registration / streaming-state subsystem |
 | `Source/URLab/Public/MuJoCo/Input/MjInputHandler.h` | Input/hotkey subsystem |
 | `Source/URLab/Public/MuJoCo/Core/MjArticulation.h` | Articulation actor header |
 | `Source/URLab/Private/MuJoCo/Core/MjArticulation.cpp` | Articulation setup, attach |
@@ -688,4 +786,7 @@ The XML undergoes path relativization: absolute paths like `C:/Users/.../Saved/U
 | `Source/URLabEditor/Private/MujocoImportFactory.cpp` | MJCF import pipeline |
 | `Source/URLabEditor/Private/MjArticulationFactory.cpp` | Blueprint generation |
 | `Source/URLab/Public/Replay/MjReplayTypes.h` | Replay data structures |
-| `Source/URLab/Public/MuJoCo/Net/MjZmqComponent.h` | ZMQ base component |
+| `Source/URLab/Public/Bridge/BridgeServer.h` | `UURLabBridgeServer` — dispatcher + RPC transport owner |
+| `Source/URLab/Public/Bridge/RpcDispatcher.h` | `FURLabRpcDispatcher` — wire-protocol business logic |
+| `Source/URLab/Public/Transport/RpcTransport.h` | `UURLabRpcTransport` — RPC transport base class |
+| `Source/URLab/Public/Transport/PublishTransport.h` | `UURLabPublishTransport` — streaming publisher base class |

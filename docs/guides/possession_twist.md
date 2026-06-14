@@ -67,8 +67,9 @@ The camera follows the actual physics body position, not the static actor root.
 The Python policy bridge reads twist commands via the `UnrealTwistCtrl` controller class:
 
 ```python
-# In policy_gui.py — twist controller masquerades as JoystickCtrl
-# so the Unitree policy's _get_commands() finds the axes data
+# urlab_policy/adapters/robojudo/twist_ctrl.py — twist controller
+# masquerades as JoystickCtrl so the Unitree policy's _get_commands()
+# finds the axes data.
 ctrl_list = [UnrealTwistCtrlCfg()]
 ```
 

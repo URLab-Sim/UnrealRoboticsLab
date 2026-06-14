@@ -26394,7 +26394,7 @@
       "underlying_type": "uint8",
       "doc": "",
       "file": "source/urlab/public/mujoco/components/geometry/mjsite.h",
-      "line": 42
+      "line": 41
     },
     "EMjJointType": {
       "name": "EMjJointType",

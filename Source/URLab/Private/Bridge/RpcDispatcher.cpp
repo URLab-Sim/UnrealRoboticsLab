@@ -2132,6 +2132,17 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 
     O.ApplyOverridesToModel(m);
 
+    // Worker thread pool (mju_threadpool). Not a MuJoCo option-struct field —
+    // it's a URLab engine setting applied to the live mjData. Clamped to the
+    // detected CPU core count; ApplyThreadPool is idempotent.
+    int32 NumThreads = 0;
+    if (Opts->TryGetNumberField(TEXT("num_worker_threads"), NumThreads))
+    {
+        Mgr->PhysicsEngine->NumWorkerThreads =
+            FMath::Clamp(NumThreads, 0, UMjPhysicsEngine::MaxWorkerThreads());
+        Mgr->PhysicsEngine->ApplyThreadPool();
+    }
+
     UE_LOG(LogURLabNet, Log,
         TEXT("FURLabRpcDispatcher: set_sim_options applied (timestep=%.5fs, gravity=[%.3f %.3f %.3f] m/s²)"),
         m->opt.timestep, m->opt.gravity[0], m->opt.gravity[1], m->opt.gravity[2]);
@@ -2141,6 +2152,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 
     TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
     Out->SetNumberField(TEXT("timestep"), m->opt.timestep);
+    Out->SetNumberField(TEXT("num_worker_threads"), Mgr->PhysicsEngine->NumWorkerThreads);
+    Out->SetNumberField(TEXT("max_worker_threads"), UMjPhysicsEngine::MaxWorkerThreads());
     {
         TArray<TSharedPtr<FJsonValue>> G;
         G.Add(MakeShared<FJsonValueNumber>(m->opt.gravity[0]));

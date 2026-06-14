@@ -29,6 +29,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformMisc.h"
 #include "Async/Future.h"
 #include "Misc/Paths.h"
 #include "XmlFile.h"
@@ -330,6 +331,7 @@ void UMjPhysicsEngine::Compile()
 
     UE_LOG(LogURLab, Log, TEXT("Data successfully made"));
 
+    ApplyThreadPool();
     ApplyOptions();
     PostCompile();
 
@@ -339,6 +341,37 @@ void UMjPhysicsEngine::Compile()
     mj_step(m_model, m_data);
     mj_resetData(m_model, m_data);
     mj_forward(m_model, m_data);
+}
+
+int32 UMjPhysicsEngine::MaxWorkerThreads()
+{
+    // Cross-platform (Windows/Linux/Mac) logical-core count — the ceiling on
+    // useful MuJoCo worker threads. Floor of 1 so callers always get a sane cap.
+    return FMath::Max(1, FPlatformMisc::NumberOfCoresIncludingHyperthreads());
+}
+
+void UMjPhysicsEngine::ApplyThreadPool()
+{
+    if (!m_data) return;
+
+    // mju_threadpool is idempotent: same worker count is a no-op, a different
+    // count rebuilds the pool, and 0 frees it. So this is safe to call at
+    // mjData creation and again at runtime (e.g. from the set_sim_options RPC).
+    // The pool is owned by mjData and auto-freed in mj_deleteData.
+    const int32 Cap = MaxWorkerThreads();
+    const int32 N = FMath::Clamp(NumWorkerThreads, 0, Cap);
+    if (NumWorkerThreads > Cap)
+    {
+        UE_LOG(LogURLab, Warning,
+            TEXT("NumWorkerThreads=%d exceeds %d available cores; capping to %d."),
+            NumWorkerThreads, Cap, Cap);
+    }
+    // mju_threadpool is the only public threadpool entry point; mju_numThread
+    // lives in MuJoCo's internal engine_thread.h, so don't depend on it here.
+    mju_threadpool(m_data, N);
+    UE_LOG(LogURLab, Log,
+        TEXT("MuJoCo thread pool: %s (%d worker(s) requested)."),
+        N > 0 ? TEXT("enabled") : TEXT("disabled"), N);
 }
 
 void UMjPhysicsEngine::ApplyOptions()

@@ -1,7 +1,7 @@
 {
   "_meta": {
     "snapshot_version": 1,
-    "header_hash": "6d4a5d6de0c988898a2b7fee4e723b798275d3391a9f16f376c6949f14b809ca"
+    "header_hash": "fdebcce03a83af579b82cd49d8c908c70242a54f852ce9e13a98f4bf69e15d6d"
   },
   "functions": {
     "mj_defaultVFS": {
@@ -16,7 +16,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 80
+      "line": 82
     },
     "mj_mountVFS": {
       "name": "mj_mountVFS",
@@ -40,7 +40,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 84
+      "line": 86
     },
     "mj_unmountVFS": {
       "name": "mj_unmountVFS",
@@ -59,7 +59,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 87
+      "line": 89
     },
     "mj_addFileVFS": {
       "name": "mj_addFileVFS",
@@ -83,7 +83,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 90
+      "line": 92
     },
     "mj_addBufferVFS": {
       "name": "mj_addBufferVFS",
@@ -112,7 +112,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 93
+      "line": 95
     },
     "mj_deleteFileVFS": {
       "name": "mj_deleteFileVFS",
@@ -131,7 +131,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 96
+      "line": 98
     },
     "mj_containsBufferVFS": {
       "name": "mj_containsBufferVFS",
@@ -150,7 +150,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 99
+      "line": 101
     },
     "mj_containsFileVFS": {
       "name": "mj_containsFileVFS",
@@ -174,7 +174,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 102
+      "line": 104
     },
     "mj_deleteVFS": {
       "name": "mj_deleteVFS",
@@ -188,7 +188,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 105
+      "line": 107
     },
     "mj_getCacheSize": {
       "name": "mj_getCacheSize",
@@ -202,7 +202,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 110
+      "line": 112
     },
     "mj_getCacheCapacity": {
       "name": "mj_getCacheCapacity",
@@ -216,7 +216,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 113
+      "line": 115
     },
     "mj_setCacheCapacity": {
       "name": "mj_setCacheCapacity",
@@ -235,7 +235,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 116
+      "line": 118
     },
     "mj_getCache": {
       "name": "mj_getCache",
@@ -243,7 +243,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 119
+      "line": 121
     },
     "mj_clearCache": {
       "name": "mj_clearCache",
@@ -257,7 +257,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 122
+      "line": 124
     },
     "mj_loadXML": {
       "name": "mj_loadXML",
@@ -286,7 +286,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 130
+      "line": 132
     },
     "mj_parseXML": {
       "name": "mj_parseXML",
@@ -315,7 +315,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 134
+      "line": 136
     },
     "mj_parseXMLString": {
       "name": "mj_parseXMLString",
@@ -344,7 +344,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 138
+      "line": 140
     },
     "mj_parse": {
       "name": "mj_parse",
@@ -378,7 +378,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 142
+      "line": 144
     },
     "mj_encode": {
       "name": "mj_encode",
@@ -422,7 +422,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 148
+      "line": 150
     },
     "mj_compile": {
       "name": "mj_compile",
@@ -441,7 +441,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 154
+      "line": 156
     },
     "mj_copyBack": {
       "name": "mj_copyBack",
@@ -460,7 +460,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 157
+      "line": 159
     },
     "mj_recompile": {
       "name": "mj_recompile",
@@ -489,7 +489,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 161
+      "line": 163
     },
     "mj_saveLastXML": {
       "name": "mj_saveLastXML",
@@ -518,7 +518,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 166
+      "line": 168
     },
     "mj_freeLastXML": {
       "name": "mj_freeLastXML",
@@ -526,7 +526,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 169
+      "line": 171
     },
     "mj_saveXMLString": {
       "name": "mj_saveXMLString",
@@ -560,7 +560,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 174
+      "line": 176
     },
     "mj_saveXML": {
       "name": "mj_saveXML",
@@ -589,7 +589,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 178
+      "line": 180
     },
     "mju_getXMLDependencies": {
       "name": "mju_getXMLDependencies",
@@ -608,7 +608,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 182
+      "line": 184
     },
     "mj_step": {
       "name": "mj_step",
@@ -627,7 +627,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 187
+      "line": 189
     },
     "mj_step1": {
       "name": "mj_step1",
@@ -646,7 +646,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 190
+      "line": 192
     },
     "mj_step2": {
       "name": "mj_step2",
@@ -665,7 +665,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 193
+      "line": 195
     },
     "mj_forward": {
       "name": "mj_forward",
@@ -684,7 +684,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 196
+      "line": 198
     },
     "mj_inverse": {
       "name": "mj_inverse",
@@ -703,7 +703,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 199
+      "line": 201
     },
     "mj_forwardSkip": {
       "name": "mj_forwardSkip",
@@ -732,7 +732,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 202
+      "line": 204
     },
     "mj_inverseSkip": {
       "name": "mj_inverseSkip",
@@ -761,7 +761,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 205
+      "line": 207
     },
     "mj_defaultLROpt": {
       "name": "mj_defaultLROpt",
@@ -775,7 +775,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 211
+      "line": 213
     },
     "mj_defaultSolRefImp": {
       "name": "mj_defaultSolRefImp",
@@ -794,7 +794,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 215
+      "line": 217
     },
     "mj_defaultOption": {
       "name": "mj_defaultOption",
@@ -808,7 +808,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 218
+      "line": 220
     },
     "mj_defaultVisual": {
       "name": "mj_defaultVisual",
@@ -822,7 +822,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 221
+      "line": 223
     },
     "mj_copyModel": {
       "name": "mj_copyModel",
@@ -841,7 +841,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 225
+      "line": 227
     },
     "mj_saveModel": {
       "name": "mj_saveModel",
@@ -870,7 +870,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 229
+      "line": 231
     },
     "mj_loadModel": {
       "name": "mj_loadModel",
@@ -889,7 +889,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 234
+      "line": 236
     },
     "mj_loadModelBuffer": {
       "name": "mj_loadModelBuffer",
@@ -908,7 +908,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 237
+      "line": 239
     },
     "mj_deleteModel": {
       "name": "mj_deleteModel",
@@ -922,7 +922,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 240
+      "line": 242
     },
     "mj_sizeModel": {
       "name": "mj_sizeModel",
@@ -936,7 +936,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 243
+      "line": 245
     },
     "mj_makeData": {
       "name": "mj_makeData",
@@ -950,7 +950,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 247
+      "line": 249
     },
     "mj_copyData": {
       "name": "mj_copyData",
@@ -974,7 +974,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 251
+      "line": 253
     },
     "mjv_copyData": {
       "name": "mjv_copyData",
@@ -998,7 +998,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 254
+      "line": 256
     },
     "mj_resetData": {
       "name": "mj_resetData",
@@ -1017,7 +1017,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 257
+      "line": 259
     },
     "mj_resetDataDebug": {
       "name": "mj_resetDataDebug",
@@ -1041,7 +1041,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 260
+      "line": 262
     },
     "mj_resetDataKeyframe": {
       "name": "mj_resetDataKeyframe",
@@ -1065,7 +1065,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 263
+      "line": 265
     },
     "mj_markStack": {
       "name": "mj_markStack",
@@ -1079,7 +1079,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 268
+      "line": 270
     },
     "mj_freeStack": {
       "name": "mj_freeStack",
@@ -1093,7 +1093,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 272
+      "line": 274
     },
     "mj_stackAllocByte": {
       "name": "mj_stackAllocByte",
@@ -1117,7 +1117,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 278
+      "line": 280
     },
     "mj_stackAllocNum": {
       "name": "mj_stackAllocNum",
@@ -1136,7 +1136,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 281
+      "line": 283
     },
     "mj_stackAllocInt": {
       "name": "mj_stackAllocInt",
@@ -1155,7 +1155,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 284
+      "line": 286
     },
     "mj_deleteData": {
       "name": "mj_deleteData",
@@ -1169,7 +1169,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 287
+      "line": 289
     },
     "mj_resetCallbacks": {
       "name": "mj_resetCallbacks",
@@ -1177,7 +1177,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 290
+      "line": 292
     },
     "mj_setConst": {
       "name": "mj_setConst",
@@ -1196,7 +1196,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 293
+      "line": 295
     },
     "mj_setLengthRange": {
       "name": "mj_setLengthRange",
@@ -1235,7 +1235,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 297
+      "line": 299
     },
     "mj_makeSpec": {
       "name": "mj_makeSpec",
@@ -1243,7 +1243,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 301
+      "line": 303
     },
     "mj_copySpec": {
       "name": "mj_copySpec",
@@ -1257,7 +1257,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 304
+      "line": 306
     },
     "mj_deleteSpec": {
       "name": "mj_deleteSpec",
@@ -1271,7 +1271,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 307
+      "line": 309
     },
     "mjs_activatePlugin": {
       "name": "mjs_activatePlugin",
@@ -1290,7 +1290,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 310
+      "line": 312
     },
     "mjs_setDeepCopy": {
       "name": "mjs_setDeepCopy",
@@ -1309,7 +1309,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 313
+      "line": 315
     },
     "mj_printFormattedModel": {
       "name": "mj_printFormattedModel",
@@ -1333,7 +1333,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 320
+      "line": 322
     },
     "mj_printModel": {
       "name": "mj_printModel",
@@ -1352,7 +1352,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 323
+      "line": 325
     },
     "mj_printFormattedData": {
       "name": "mj_printFormattedData",
@@ -1381,7 +1381,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 327
+      "line": 329
     },
     "mj_printData": {
       "name": "mj_printData",
@@ -1405,7 +1405,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 331
+      "line": 333
     },
     "mju_printMat": {
       "name": "mju_printMat",
@@ -1429,7 +1429,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 334
+      "line": 336
     },
     "mju_printMatSparse": {
       "name": "mju_printMatSparse",
@@ -1463,7 +1463,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 337
+      "line": 339
     },
     "mj_printSchema": {
       "name": "mj_printSchema",
@@ -1497,7 +1497,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 341
+      "line": 343
     },
     "mj_printScene": {
       "name": "mj_printScene",
@@ -1516,7 +1516,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 345
+      "line": 347
     },
     "mj_printFormattedScene": {
       "name": "mj_printFormattedScene",
@@ -1540,7 +1540,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 349
+      "line": 351
     },
     "mj_fwdKinematics": {
       "name": "mj_fwdKinematics",
@@ -1559,7 +1559,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 356
+      "line": 358
     },
     "mj_fwdPosition": {
       "name": "mj_fwdPosition",
@@ -1578,7 +1578,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 359
+      "line": 361
     },
     "mj_fwdVelocity": {
       "name": "mj_fwdVelocity",
@@ -1597,7 +1597,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 362
+      "line": 364
     },
     "mj_fwdActuation": {
       "name": "mj_fwdActuation",
@@ -1616,7 +1616,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 365
+      "line": 367
     },
     "mj_fwdAcceleration": {
       "name": "mj_fwdAcceleration",
@@ -1635,7 +1635,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 368
+      "line": 370
     },
     "mj_fwdConstraint": {
       "name": "mj_fwdConstraint",
@@ -1654,7 +1654,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 371
+      "line": 373
     },
     "mj_Euler": {
       "name": "mj_Euler",
@@ -1673,7 +1673,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 374
+      "line": 376
     },
     "mj_RungeKutta": {
       "name": "mj_RungeKutta",
@@ -1697,7 +1697,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 377
+      "line": 379
     },
     "mj_implicit": {
       "name": "mj_implicit",
@@ -1716,7 +1716,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 380
+      "line": 382
     },
     "mj_invPosition": {
       "name": "mj_invPosition",
@@ -1735,7 +1735,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 383
+      "line": 385
     },
     "mj_invVelocity": {
       "name": "mj_invVelocity",
@@ -1754,7 +1754,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 386
+      "line": 388
     },
     "mj_invConstraint": {
       "name": "mj_invConstraint",
@@ -1773,7 +1773,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 389
+      "line": 391
     },
     "mj_compareFwdInv": {
       "name": "mj_compareFwdInv",
@@ -1792,7 +1792,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 392
+      "line": 394
     },
     "mj_sensorPos": {
       "name": "mj_sensorPos",
@@ -1811,7 +1811,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 398
+      "line": 400
     },
     "mj_sensorVel": {
       "name": "mj_sensorVel",
@@ -1830,7 +1830,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 401
+      "line": 403
     },
     "mj_sensorAcc": {
       "name": "mj_sensorAcc",
@@ -1849,7 +1849,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 404
+      "line": 406
     },
     "mj_energyPos": {
       "name": "mj_energyPos",
@@ -1868,7 +1868,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 407
+      "line": 409
     },
     "mj_energyVel": {
       "name": "mj_energyVel",
@@ -1887,7 +1887,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 410
+      "line": 412
     },
     "mj_checkPos": {
       "name": "mj_checkPos",
@@ -1906,7 +1906,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 413
+      "line": 415
     },
     "mj_checkVel": {
       "name": "mj_checkVel",
@@ -1925,7 +1925,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 416
+      "line": 418
     },
     "mj_checkAcc": {
       "name": "mj_checkAcc",
@@ -1944,7 +1944,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 419
+      "line": 421
     },
     "mj_kinematics": {
       "name": "mj_kinematics",
@@ -1963,7 +1963,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 422
+      "line": 424
     },
     "mj_comPos": {
       "name": "mj_comPos",
@@ -1982,7 +1982,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 425
+      "line": 427
     },
     "mj_camlight": {
       "name": "mj_camlight",
@@ -2001,7 +2001,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 428
+      "line": 430
     },
     "mj_flex": {
       "name": "mj_flex",
@@ -2020,7 +2020,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 431
+      "line": 433
     },
     "mj_tendon": {
       "name": "mj_tendon",
@@ -2039,7 +2039,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 434
+      "line": 436
     },
     "mj_transmission": {
       "name": "mj_transmission",
@@ -2058,7 +2058,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 437
+      "line": 439
     },
     "mj_crb": {
       "name": "mj_crb",
@@ -2077,7 +2077,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 440
+      "line": 442
     },
     "mj_makeM": {
       "name": "mj_makeM",
@@ -2096,7 +2096,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 443
+      "line": 445
     },
     "mj_factorM": {
       "name": "mj_factorM",
@@ -2115,7 +2115,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 446
+      "line": 448
     },
     "mj_solveM": {
       "name": "mj_solveM",
@@ -2149,7 +2149,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 449
+      "line": 451
     },
     "mj_solveM2": {
       "name": "mj_solveM2",
@@ -2188,7 +2188,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 452
+      "line": 454
     },
     "mj_comVel": {
       "name": "mj_comVel",
@@ -2207,7 +2207,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 456
+      "line": 458
     },
     "mj_passive": {
       "name": "mj_passive",
@@ -2226,7 +2226,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 459
+      "line": 461
     },
     "mj_subtreeVel": {
       "name": "mj_subtreeVel",
@@ -2245,7 +2245,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 462
+      "line": 464
     },
     "mj_rne": {
       "name": "mj_rne",
@@ -2274,7 +2274,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 465
+      "line": 467
     },
     "mj_rnePostConstraint": {
       "name": "mj_rnePostConstraint",
@@ -2293,7 +2293,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 468
+      "line": 470
     },
     "mj_maxContact": {
       "name": "mj_maxContact",
@@ -2322,7 +2322,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 473
+      "line": 475
     },
     "mj_collision": {
       "name": "mj_collision",
@@ -2341,7 +2341,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 476
+      "line": 478
     },
     "mj_makeConstraint": {
       "name": "mj_makeConstraint",
@@ -2360,7 +2360,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 479
+      "line": 481
     },
     "mj_island": {
       "name": "mj_island",
@@ -2379,7 +2379,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 482
+      "line": 484
     },
     "mj_projectConstraint": {
       "name": "mj_projectConstraint",
@@ -2398,7 +2398,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 485
+      "line": 487
     },
     "mj_referenceConstraint": {
       "name": "mj_referenceConstraint",
@@ -2417,7 +2417,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 488
+      "line": 490
     },
     "mj_constraintUpdate": {
       "name": "mj_constraintUpdate",
@@ -2451,7 +2451,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 493
+      "line": 495
     },
     "mj_stateSize": {
       "name": "mj_stateSize",
@@ -2470,7 +2470,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 500
+      "line": 502
     },
     "mj_getState": {
       "name": "mj_getState",
@@ -2499,7 +2499,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 503
+      "line": 505
     },
     "mj_extractState": {
       "name": "mj_extractState",
@@ -2533,7 +2533,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 506
+      "line": 508
     },
     "mj_setState": {
       "name": "mj_setState",
@@ -2562,7 +2562,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 510
+      "line": 512
     },
     "mj_copyState": {
       "name": "mj_copyState",
@@ -2591,7 +2591,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 513
+      "line": 515
     },
     "mj_readCtrl": {
       "name": "mj_readCtrl",
@@ -2625,7 +2625,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 518
+      "line": 520
     },
     "mj_readSensor": {
       "name": "mj_readSensor",
@@ -2664,7 +2664,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 524
+      "line": 526
     },
     "mj_initCtrlHistory": {
       "name": "mj_initCtrlHistory",
@@ -2698,7 +2698,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 529
+      "line": 531
     },
     "mj_initSensorHistory": {
       "name": "mj_initSensorHistory",
@@ -2737,7 +2737,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 535
+      "line": 537
     },
     "mj_setKeyframe": {
       "name": "mj_setKeyframe",
@@ -2761,7 +2761,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 539
+      "line": 541
     },
     "mj_addContact": {
       "name": "mj_addContact",
@@ -2785,7 +2785,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 542
+      "line": 544
     },
     "mj_isPyramidal": {
       "name": "mj_isPyramidal",
@@ -2799,7 +2799,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 545
+      "line": 547
     },
     "mj_isSparse": {
       "name": "mj_isSparse",
@@ -2813,7 +2813,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 548
+      "line": 550
     },
     "mj_isDual": {
       "name": "mj_isDual",
@@ -2827,7 +2827,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 551
+      "line": 553
     },
     "mj_mulJacVec": {
       "name": "mj_mulJacVec",
@@ -2856,7 +2856,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 554
+      "line": 556
     },
     "mj_mulJacTVec": {
       "name": "mj_mulJacTVec",
@@ -2885,7 +2885,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 557
+      "line": 559
     },
     "mj_jac": {
       "name": "mj_jac",
@@ -2924,7 +2924,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 561
+      "line": 563
     },
     "mj_jacBody": {
       "name": "mj_jacBody",
@@ -2958,7 +2958,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 566
+      "line": 568
     },
     "mj_jacBodyCom": {
       "name": "mj_jacBodyCom",
@@ -2992,7 +2992,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 570
+      "line": 572
     },
     "mj_jacSubtreeCom": {
       "name": "mj_jacSubtreeCom",
@@ -3021,7 +3021,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 573
+      "line": 575
     },
     "mj_jacGeom": {
       "name": "mj_jacGeom",
@@ -3055,7 +3055,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 577
+      "line": 579
     },
     "mj_jacSite": {
       "name": "mj_jacSite",
@@ -3089,7 +3089,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 581
+      "line": 583
     },
     "mj_jacPointAxis": {
       "name": "mj_jacPointAxis",
@@ -3133,7 +3133,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 585
+      "line": 587
     },
     "mj_jacDot": {
       "name": "mj_jacDot",
@@ -3172,7 +3172,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 590
+      "line": 592
     },
     "mj_angmomMat": {
       "name": "mj_angmomMat",
@@ -3201,7 +3201,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 594
+      "line": 596
     },
     "mj_name2id": {
       "name": "mj_name2id",
@@ -3225,7 +3225,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 597
+      "line": 599
     },
     "mj_id2name": {
       "name": "mj_id2name",
@@ -3249,7 +3249,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 600
+      "line": 602
     },
     "mj_fullM": {
       "name": "mj_fullM",
@@ -3261,19 +3261,19 @@
           "array_dim": null
         },
         {
-          "name": "dst",
-          "c_type": "mjtNum *",
+          "name": "d",
+          "c_type": "const mjData *",
           "array_dim": null
         },
         {
-          "name": "M",
-          "c_type": "const mjtNum *",
+          "name": "dst",
+          "c_type": "mjtNum *",
           "array_dim": null
         }
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 603
+      "line": 605
     },
     "mj_mulM": {
       "name": "mj_mulM",
@@ -3302,7 +3302,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 606
+      "line": 608
     },
     "mj_mulM2": {
       "name": "mj_mulM2",
@@ -3331,7 +3331,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 609
+      "line": 611
     },
     "mj_addM": {
       "name": "mj_addM",
@@ -3370,7 +3370,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 614
+      "line": 616
     },
     "mj_applyFT": {
       "name": "mj_applyFT",
@@ -3414,7 +3414,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 618
+      "line": 620
     },
     "mj_objectVelocity": {
       "name": "mj_objectVelocity",
@@ -3453,7 +3453,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 622
+      "line": 624
     },
     "mj_objectAcceleration": {
       "name": "mj_objectAcceleration",
@@ -3492,7 +3492,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 626
+      "line": 628
     },
     "mj_geomDistance": {
       "name": "mj_geomDistance",
@@ -3531,7 +3531,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 631
+      "line": 633
     },
     "mj_contactForce": {
       "name": "mj_contactForce",
@@ -3560,7 +3560,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 635
+      "line": 637
     },
     "mj_differentiatePos": {
       "name": "mj_differentiatePos",
@@ -3594,7 +3594,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 638
+      "line": 640
     },
     "mj_integratePos": {
       "name": "mj_integratePos",
@@ -3623,7 +3623,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 642
+      "line": 644
     },
     "mj_normalizeQuat": {
       "name": "mj_normalizeQuat",
@@ -3642,7 +3642,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 645
+      "line": 647
     },
     "mj_local2Global": {
       "name": "mj_local2Global",
@@ -3686,7 +3686,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 648
+      "line": 650
     },
     "mj_getTotalmass": {
       "name": "mj_getTotalmass",
@@ -3700,7 +3700,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 652
+      "line": 654
     },
     "mj_setTotalmass": {
       "name": "mj_setTotalmass",
@@ -3719,7 +3719,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 655
+      "line": 657
     },
     "mj_getPluginConfig": {
       "name": "mj_getPluginConfig",
@@ -3743,7 +3743,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 659
+      "line": 661
     },
     "mj_loadPluginLibrary": {
       "name": "mj_loadPluginLibrary",
@@ -3757,7 +3757,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 662
+      "line": 664
     },
     "mj_loadAllPluginLibraries": {
       "name": "mj_loadAllPluginLibraries",
@@ -3776,7 +3776,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 667
+      "line": 669
     },
     "mj_version": {
       "name": "mj_version",
@@ -3784,7 +3784,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 670
+      "line": 672
     },
     "mj_versionString": {
       "name": "mj_versionString",
@@ -3792,7 +3792,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 673
+      "line": 675
     },
     "mj_ray": {
       "name": "mj_ray",
@@ -3846,7 +3846,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 682
+      "line": 684
     },
     "mj_multiRay": {
       "name": "mj_multiRay",
@@ -3915,7 +3915,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 690
+      "line": 692
     },
     "mj_rayHfield": {
       "name": "mj_rayHfield",
@@ -3954,7 +3954,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 696
+      "line": 698
     },
     "mj_rayMesh": {
       "name": "mj_rayMesh",
@@ -3993,7 +3993,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 701
+      "line": 703
     },
     "mju_rayGeom": {
       "name": "mju_rayGeom",
@@ -4037,7 +4037,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 706
+      "line": 708
     },
     "mj_rayFlex": {
       "name": "mj_rayFlex",
@@ -4106,7 +4106,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 713
+      "line": 715
     },
     "mju_raySkin": {
       "name": "mju_raySkin",
@@ -4150,7 +4150,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 721
+      "line": 723
     },
     "mjv_defaultCamera": {
       "name": "mjv_defaultCamera",
@@ -4164,7 +4164,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 727
+      "line": 729
     },
     "mjv_defaultFreeCamera": {
       "name": "mjv_defaultFreeCamera",
@@ -4183,7 +4183,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 730
+      "line": 732
     },
     "mjv_defaultPerturb": {
       "name": "mjv_defaultPerturb",
@@ -4197,7 +4197,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 733
+      "line": 735
     },
     "mjv_room2model": {
       "name": "mjv_room2model",
@@ -4231,7 +4231,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 736
+      "line": 738
     },
     "mjv_model2room": {
       "name": "mjv_model2room",
@@ -4265,7 +4265,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 740
+      "line": 742
     },
     "mjv_cameraInModel": {
       "name": "mjv_cameraInModel",
@@ -4294,7 +4294,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 744
+      "line": 746
     },
     "mjv_cameraInRoom": {
       "name": "mjv_cameraInRoom",
@@ -4323,7 +4323,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 748
+      "line": 750
     },
     "mjv_frustumHeight": {
       "name": "mjv_frustumHeight",
@@ -4337,7 +4337,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 752
+      "line": 754
     },
     "mjv_alignToCamera": {
       "name": "mjv_alignToCamera",
@@ -4361,7 +4361,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 755
+      "line": 757
     },
     "mjv_moveCamera": {
       "name": "mjv_moveCamera",
@@ -4400,7 +4400,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 758
+      "line": 760
     },
     "mjv_movePerturb": {
       "name": "mjv_movePerturb",
@@ -4444,7 +4444,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 762
+      "line": 764
     },
     "mjv_moveModel": {
       "name": "mjv_moveModel",
@@ -4483,7 +4483,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 766
+      "line": 768
     },
     "mjv_initPerturb": {
       "name": "mjv_initPerturb",
@@ -4512,7 +4512,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 770
+      "line": 772
     },
     "mjv_applyPerturbPose": {
       "name": "mjv_applyPerturbPose",
@@ -4541,7 +4541,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 774
+      "line": 776
     },
     "mjv_applyPerturbForce": {
       "name": "mjv_applyPerturbForce",
@@ -4565,7 +4565,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 778
+      "line": 780
     },
     "mjv_averageCamera": {
       "name": "mjv_averageCamera",
@@ -4584,7 +4584,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 781
+      "line": 783
     },
     "mjv_select": {
       "name": "mjv_select",
@@ -4648,7 +4648,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 785
+      "line": 787
     },
     "mjv_defaultOption": {
       "name": "mjv_defaultOption",
@@ -4662,7 +4662,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 794
+      "line": 796
     },
     "mjv_defaultFigure": {
       "name": "mjv_defaultFigure",
@@ -4676,7 +4676,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 797
+      "line": 799
     },
     "mjv_initGeom": {
       "name": "mjv_initGeom",
@@ -4715,7 +4715,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 801
+      "line": 803
     },
     "mjv_connector": {
       "name": "mjv_connector",
@@ -4749,7 +4749,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 807
+      "line": 809
     },
     "mjv_defaultScene": {
       "name": "mjv_defaultScene",
@@ -4763,7 +4763,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 811
+      "line": 813
     },
     "mjv_makeScene": {
       "name": "mjv_makeScene",
@@ -4787,7 +4787,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 814
+      "line": 816
     },
     "mjv_freeScene": {
       "name": "mjv_freeScene",
@@ -4801,7 +4801,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 817
+      "line": 819
     },
     "mjv_updateScene": {
       "name": "mjv_updateScene",
@@ -4845,7 +4845,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 820
+      "line": 822
     },
     "mjv_copyModel": {
       "name": "mjv_copyModel",
@@ -4864,7 +4864,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 825
+      "line": 827
     },
     "mjv_addGeoms": {
       "name": "mjv_addGeoms",
@@ -4903,7 +4903,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 828
+      "line": 830
     },
     "mjv_makeLights": {
       "name": "mjv_makeLights",
@@ -4927,7 +4927,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 832
+      "line": 834
     },
     "mjv_updateCamera": {
       "name": "mjv_updateCamera",
@@ -4956,7 +4956,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 835
+      "line": 837
     },
     "mjv_updateSkin": {
       "name": "mjv_updateSkin",
@@ -4980,7 +4980,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 838
+      "line": 840
     },
     "mjv_cameraFrame": {
       "name": "mjv_cameraFrame",
@@ -5019,7 +5019,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 842
+      "line": 844
     },
     "mjv_cameraFrustum": {
       "name": "mjv_cameraFrustum",
@@ -5053,7 +5053,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 847
+      "line": 849
     },
     "mjr_defaultContext": {
       "name": "mjr_defaultContext",
@@ -5067,7 +5067,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 854
+      "line": 856
     },
     "mjr_makeContext": {
       "name": "mjr_makeContext",
@@ -5091,7 +5091,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 857
+      "line": 859
     },
     "mjr_changeFont": {
       "name": "mjr_changeFont",
@@ -5110,7 +5110,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 860
+      "line": 862
     },
     "mjr_addAux": {
       "name": "mjr_addAux",
@@ -5144,7 +5144,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 863
+      "line": 865
     },
     "mjr_freeContext": {
       "name": "mjr_freeContext",
@@ -5158,7 +5158,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 866
+      "line": 868
     },
     "mjr_resizeOffscreen": {
       "name": "mjr_resizeOffscreen",
@@ -5182,7 +5182,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 869
+      "line": 871
     },
     "mjr_uploadTexture": {
       "name": "mjr_uploadTexture",
@@ -5206,7 +5206,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 872
+      "line": 874
     },
     "mjr_uploadMesh": {
       "name": "mjr_uploadMesh",
@@ -5230,7 +5230,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 875
+      "line": 877
     },
     "mjr_uploadHField": {
       "name": "mjr_uploadHField",
@@ -5254,7 +5254,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 878
+      "line": 880
     },
     "mjr_restoreBuffer": {
       "name": "mjr_restoreBuffer",
@@ -5268,7 +5268,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 881
+      "line": 883
     },
     "mjr_setBuffer": {
       "name": "mjr_setBuffer",
@@ -5287,7 +5287,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 885
+      "line": 887
     },
     "mjr_readPixels": {
       "name": "mjr_readPixels",
@@ -5316,7 +5316,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 889
+      "line": 891
     },
     "mjr_drawPixels": {
       "name": "mjr_drawPixels",
@@ -5345,7 +5345,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 894
+      "line": 896
     },
     "mjr_blitBuffer": {
       "name": "mjr_blitBuffer",
@@ -5379,7 +5379,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 899
+      "line": 901
     },
     "mjr_setAux": {
       "name": "mjr_setAux",
@@ -5398,7 +5398,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 903
+      "line": 905
     },
     "mjr_blitAux": {
       "name": "mjr_blitAux",
@@ -5432,7 +5432,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 906
+      "line": 908
     },
     "mjr_text": {
       "name": "mjr_text",
@@ -5481,7 +5481,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 909
+      "line": 911
     },
     "mjr_overlay": {
       "name": "mjr_overlay",
@@ -5520,7 +5520,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 913
+      "line": 915
     },
     "mjr_maxViewport": {
       "name": "mjr_maxViewport",
@@ -5534,7 +5534,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 917
+      "line": 919
     },
     "mjr_rectangle": {
       "name": "mjr_rectangle",
@@ -5568,7 +5568,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 920
+      "line": 922
     },
     "mjr_label": {
       "name": "mjr_label",
@@ -5632,7 +5632,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 923
+      "line": 925
     },
     "mjr_figure": {
       "name": "mjr_figure",
@@ -5656,7 +5656,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 928
+      "line": 930
     },
     "mjr_render": {
       "name": "mjr_render",
@@ -5680,7 +5680,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 931
+      "line": 933
     },
     "mjr_finish": {
       "name": "mjr_finish",
@@ -5688,7 +5688,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 934
+      "line": 936
     },
     "mjr_getError": {
       "name": "mjr_getError",
@@ -5696,7 +5696,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 937
+      "line": 939
     },
     "mjr_findRect": {
       "name": "mjr_findRect",
@@ -5725,7 +5725,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 940
+      "line": 942
     },
     "mjui_themeSpacing": {
       "name": "mjui_themeSpacing",
@@ -5739,7 +5739,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 946
+      "line": 948
     },
     "mjui_themeColor": {
       "name": "mjui_themeColor",
@@ -5753,7 +5753,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 949
+      "line": 951
     },
     "mjui_add": {
       "name": "mjui_add",
@@ -5772,7 +5772,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 952
+      "line": 954
     },
     "mjui_addToSection": {
       "name": "mjui_addToSection",
@@ -5796,7 +5796,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 955
+      "line": 957
     },
     "mjui_resize": {
       "name": "mjui_resize",
@@ -5815,7 +5815,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 958
+      "line": 960
     },
     "mjui_update": {
       "name": "mjui_update",
@@ -5849,7 +5849,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 961
+      "line": 963
     },
     "mjui_event": {
       "name": "mjui_event",
@@ -5873,7 +5873,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 965
+      "line": 967
     },
     "mjui_render": {
       "name": "mjui_render",
@@ -5897,7 +5897,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 968
+      "line": 970
     },
     "mju_error": {
       "name": "mju_error",
@@ -5911,45 +5911,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 974
-    },
-    "mju_error_i": {
-      "name": "mju_error_i",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "msg",
-          "c_type": "const char *",
-          "array_dim": null
-        },
-        {
-          "name": "i",
-          "c_type": "int",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 977
-    },
-    "mju_error_s": {
-      "name": "mju_error_s",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "msg",
-          "c_type": "const char *",
-          "array_dim": null
-        },
-        {
-          "name": "text",
-          "c_type": "const char *",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 980
+      "line": 976
     },
     "mju_warning": {
       "name": "mju_warning",
@@ -5963,45 +5925,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 983
-    },
-    "mju_warning_i": {
-      "name": "mju_warning_i",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "msg",
-          "c_type": "const char *",
-          "array_dim": null
-        },
-        {
-          "name": "i",
-          "c_type": "int",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 986
-    },
-    "mju_warning_s": {
-      "name": "mju_warning_s",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "msg",
-          "c_type": "const char *",
-          "array_dim": null
-        },
-        {
-          "name": "text",
-          "c_type": "const char *",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 989
+      "line": 979
     },
     "mju_clearHandlers": {
       "name": "mju_clearHandlers",
@@ -6009,7 +5933,76 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
+      "line": 982
+    },
+    "mju_setLogHandler": {
+      "name": "mju_setLogHandler",
+      "return_type": "mjfLogHandler",
+      "params": [
+        {
+          "name": "handler",
+          "c_type": "mjfLogHandler",
+          "array_dim": null
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
+      "line": 986
+    },
+    "mju_getLogConfig": {
+      "name": "mju_getLogConfig",
+      "return_type": "mjLogConfig",
+      "params": [],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
+      "line": 989
+    },
+    "mju_setLogConfig": {
+      "name": "mju_setLogConfig",
+      "return_type": "void",
+      "params": [
+        {
+          "name": "config",
+          "c_type": "mjLogConfig",
+          "array_dim": null
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
       "line": 992
+    },
+    "mju_info": {
+      "name": "mju_info",
+      "return_type": "void",
+      "params": [
+        {
+          "name": "topic",
+          "c_type": "int",
+          "array_dim": null
+        },
+        {
+          "name": "msg",
+          "c_type": "const char *",
+          "array_dim": null
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
+      "line": 995
+    },
+    "mju_message": {
+      "name": "mju_message",
+      "return_type": "void",
+      "params": [
+        {
+          "name": "msg",
+          "c_type": "const mjLogMessage *",
+          "array_dim": null
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
+      "line": 998
     },
     "mju_malloc": {
       "name": "mju_malloc",
@@ -6023,7 +6016,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 995
+      "line": 1001
     },
     "mju_free": {
       "name": "mju_free",
@@ -6037,7 +6030,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 998
+      "line": 1004
     },
     "mj_warning": {
       "name": "mj_warning",
@@ -6061,7 +6054,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1001
+      "line": 1007
     },
     "mju_writeLog": {
       "name": "mju_writeLog",
@@ -6080,7 +6073,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1004
+      "line": 1010
     },
     "mjs_getError": {
       "name": "mjs_getError",
@@ -6094,7 +6087,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1007
+      "line": 1013
     },
     "mjs_getTimer": {
       "name": "mjs_getTimer",
@@ -6108,7 +6101,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1010
+      "line": 1016
     },
     "mjs_isWarning": {
       "name": "mjs_isWarning",
@@ -6122,7 +6115,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1013
+      "line": 1019
     },
     "mju_zero3": {
       "name": "mju_zero3",
@@ -6136,7 +6129,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1057
+      "line": 1063
     },
     "mju_copy3": {
       "name": "mju_copy3",
@@ -6155,7 +6148,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1060
+      "line": 1066
     },
     "mju_scl3": {
       "name": "mju_scl3",
@@ -6179,7 +6172,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1063
+      "line": 1069
     },
     "mju_add3": {
       "name": "mju_add3",
@@ -6203,7 +6196,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1066
+      "line": 1072
     },
     "mju_sub3": {
       "name": "mju_sub3",
@@ -6227,7 +6220,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1069
+      "line": 1075
     },
     "mju_addTo3": {
       "name": "mju_addTo3",
@@ -6246,7 +6239,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1072
+      "line": 1078
     },
     "mju_subFrom3": {
       "name": "mju_subFrom3",
@@ -6265,7 +6258,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1075
+      "line": 1081
     },
     "mju_addToScl3": {
       "name": "mju_addToScl3",
@@ -6289,7 +6282,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1078
+      "line": 1084
     },
     "mju_addScl3": {
       "name": "mju_addScl3",
@@ -6318,7 +6311,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1081
+      "line": 1087
     },
     "mju_normalize3": {
       "name": "mju_normalize3",
@@ -6332,7 +6325,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1084
+      "line": 1090
     },
     "mju_norm3": {
       "name": "mju_norm3",
@@ -6346,7 +6339,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1087
+      "line": 1093
     },
     "mju_dot3": {
       "name": "mju_dot3",
@@ -6365,7 +6358,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1090
+      "line": 1096
     },
     "mju_dist3": {
       "name": "mju_dist3",
@@ -6384,7 +6377,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1093
+      "line": 1099
     },
     "mju_mulMatVec3": {
       "name": "mju_mulMatVec3",
@@ -6408,7 +6401,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1096
+      "line": 1102
     },
     "mju_mulMatTVec3": {
       "name": "mju_mulMatTVec3",
@@ -6432,7 +6425,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1099
+      "line": 1105
     },
     "mju_cross": {
       "name": "mju_cross",
@@ -6456,7 +6449,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1102
+      "line": 1108
     },
     "mju_zero4": {
       "name": "mju_zero4",
@@ -6470,7 +6463,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1105
+      "line": 1111
     },
     "mju_unit4": {
       "name": "mju_unit4",
@@ -6484,7 +6477,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1108
+      "line": 1114
     },
     "mju_copy4": {
       "name": "mju_copy4",
@@ -6503,7 +6496,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1111
+      "line": 1117
     },
     "mju_normalize4": {
       "name": "mju_normalize4",
@@ -6517,7 +6510,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1114
+      "line": 1120
     },
     "mju_zero": {
       "name": "mju_zero",
@@ -6536,7 +6529,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1117
+      "line": 1123
     },
     "mju_fill": {
       "name": "mju_fill",
@@ -6560,7 +6553,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1120
+      "line": 1126
     },
     "mju_copy": {
       "name": "mju_copy",
@@ -6584,7 +6577,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1123
+      "line": 1129
     },
     "mju_sum": {
       "name": "mju_sum",
@@ -6603,7 +6596,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1126
+      "line": 1132
     },
     "mju_L1": {
       "name": "mju_L1",
@@ -6622,7 +6615,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1129
+      "line": 1135
     },
     "mju_scl": {
       "name": "mju_scl",
@@ -6651,7 +6644,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1132
+      "line": 1138
     },
     "mju_add": {
       "name": "mju_add",
@@ -6680,7 +6673,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1135
+      "line": 1141
     },
     "mju_sub": {
       "name": "mju_sub",
@@ -6709,7 +6702,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1138
+      "line": 1144
     },
     "mju_addTo": {
       "name": "mju_addTo",
@@ -6733,7 +6726,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1141
+      "line": 1147
     },
     "mju_subFrom": {
       "name": "mju_subFrom",
@@ -6757,7 +6750,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1144
+      "line": 1150
     },
     "mju_addToScl": {
       "name": "mju_addToScl",
@@ -6786,7 +6779,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1147
+      "line": 1153
     },
     "mju_addScl": {
       "name": "mju_addScl",
@@ -6820,7 +6813,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1150
+      "line": 1156
     },
     "mju_normalize": {
       "name": "mju_normalize",
@@ -6839,7 +6832,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1153
+      "line": 1159
     },
     "mju_norm": {
       "name": "mju_norm",
@@ -6858,7 +6851,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1156
+      "line": 1162
     },
     "mju_dot": {
       "name": "mju_dot",
@@ -6882,7 +6875,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1159
+      "line": 1165
     },
     "mju_mulMatVec": {
       "name": "mju_mulMatVec",
@@ -6916,7 +6909,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1162
+      "line": 1168
     },
     "mju_mulMatTVec": {
       "name": "mju_mulMatTVec",
@@ -6950,7 +6943,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1165
+      "line": 1171
     },
     "mju_mulVecMatVec": {
       "name": "mju_mulVecMatVec",
@@ -6979,7 +6972,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1168
+      "line": 1174
     },
     "mju_transpose": {
       "name": "mju_transpose",
@@ -7008,7 +7001,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1171
+      "line": 1177
     },
     "mju_symmetrize": {
       "name": "mju_symmetrize",
@@ -7032,7 +7025,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1174
+      "line": 1180
     },
     "mju_eye": {
       "name": "mju_eye",
@@ -7051,7 +7044,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1177
+      "line": 1183
     },
     "mju_mulMatMat": {
       "name": "mju_mulMatMat",
@@ -7090,7 +7083,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1180
+      "line": 1186
     },
     "mju_mulMatMatT": {
       "name": "mju_mulMatMatT",
@@ -7129,7 +7122,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1184
+      "line": 1190
     },
     "mju_mulMatTMat": {
       "name": "mju_mulMatTMat",
@@ -7168,7 +7161,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1188
+      "line": 1194
     },
     "mju_sqrMatTD": {
       "name": "mju_sqrMatTD",
@@ -7202,7 +7195,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1192
+      "line": 1198
     },
     "mju_transformSpatial": {
       "name": "mju_transformSpatial",
@@ -7241,7 +7234,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1197
+      "line": 1203
     },
     "mju_dense2sparse": {
       "name": "mju_dense2sparse",
@@ -7290,7 +7283,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1206
+      "line": 1212
     },
     "mju_sparse2dense": {
       "name": "mju_sparse2dense",
@@ -7334,7 +7327,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1210
+      "line": 1216
     },
     "mju_sym2dense": {
       "name": "mju_sym2dense",
@@ -7373,7 +7366,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1214
+      "line": 1220
     },
     "mju_rotVecQuat": {
       "name": "mju_rotVecQuat",
@@ -7397,7 +7390,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1221
+      "line": 1227
     },
     "mju_negQuat": {
       "name": "mju_negQuat",
@@ -7416,7 +7409,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1224
+      "line": 1230
     },
     "mju_mulQuat": {
       "name": "mju_mulQuat",
@@ -7440,7 +7433,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1227
+      "line": 1233
     },
     "mju_mulQuatAxis": {
       "name": "mju_mulQuatAxis",
@@ -7464,7 +7457,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1230
+      "line": 1236
     },
     "mju_axisAngle2Quat": {
       "name": "mju_axisAngle2Quat",
@@ -7488,7 +7481,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1233
+      "line": 1239
     },
     "mju_quat2Vel": {
       "name": "mju_quat2Vel",
@@ -7512,7 +7505,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1236
+      "line": 1242
     },
     "mju_subQuat": {
       "name": "mju_subQuat",
@@ -7536,7 +7529,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1239
+      "line": 1245
     },
     "mju_quat2Mat": {
       "name": "mju_quat2Mat",
@@ -7555,7 +7548,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1242
+      "line": 1248
     },
     "mju_mat2Quat": {
       "name": "mju_mat2Quat",
@@ -7574,7 +7567,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1245
+      "line": 1251
     },
     "mju_derivQuat": {
       "name": "mju_derivQuat",
@@ -7598,7 +7591,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1248
+      "line": 1254
     },
     "mju_quatIntegrate": {
       "name": "mju_quatIntegrate",
@@ -7622,7 +7615,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1251
+      "line": 1257
     },
     "mju_quatZ2Vec": {
       "name": "mju_quatZ2Vec",
@@ -7641,7 +7634,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1254
+      "line": 1260
     },
     "mju_mat2Rot": {
       "name": "mju_mat2Rot",
@@ -7660,7 +7653,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1258
+      "line": 1264
     },
     "mju_euler2Quat": {
       "name": "mju_euler2Quat",
@@ -7684,7 +7677,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1262
+      "line": 1268
     },
     "mju_mulPose": {
       "name": "mju_mulPose",
@@ -7723,7 +7716,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1268
+      "line": 1274
     },
     "mju_negPose": {
       "name": "mju_negPose",
@@ -7752,7 +7745,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1273
+      "line": 1279
     },
     "mju_trnVecPose": {
       "name": "mju_trnVecPose",
@@ -7781,7 +7774,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1277
+      "line": 1283
     },
     "mju_cholFactor": {
       "name": "mju_cholFactor",
@@ -7805,7 +7798,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1284
+      "line": 1290
     },
     "mju_cholSolve": {
       "name": "mju_cholSolve",
@@ -7834,7 +7827,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1287
+      "line": 1293
     },
     "mju_cholUpdate": {
       "name": "mju_cholUpdate",
@@ -7863,7 +7856,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1290
+      "line": 1296
     },
     "mju_cholFactorBand": {
       "name": "mju_cholFactorBand",
@@ -7902,7 +7895,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1298
+      "line": 1304
     },
     "mju_cholSolveBand": {
       "name": "mju_cholSolveBand",
@@ -7941,7 +7934,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1302
+      "line": 1308
     },
     "mju_band2Dense": {
       "name": "mju_band2Dense",
@@ -7980,7 +7973,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1306
+      "line": 1312
     },
     "mju_dense2Band": {
       "name": "mju_dense2Band",
@@ -8014,7 +8007,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1310
+      "line": 1316
     },
     "mju_bandMulMatVec": {
       "name": "mju_bandMulMatVec",
@@ -8063,7 +8056,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1313
+      "line": 1319
     },
     "mju_bandDiag": {
       "name": "mju_bandDiag",
@@ -8092,7 +8085,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1317
+      "line": 1323
     },
     "mju_eig3": {
       "name": "mju_eig3",
@@ -8121,7 +8114,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1320
+      "line": 1326
     },
     "mju_boxQP": {
       "name": "mju_boxQP",
@@ -8170,7 +8163,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1344
+      "line": 1350
     },
     "mju_boxQPmalloc": {
       "name": "mju_boxQPmalloc",
@@ -8219,7 +8212,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1350
+      "line": 1356
     },
     "mju_muscleGain": {
       "name": "mju_muscleGain",
@@ -8253,7 +8246,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1357
+      "line": 1363
     },
     "mju_muscleBias": {
       "name": "mju_muscleBias",
@@ -8282,7 +8275,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1361
+      "line": 1367
     },
     "mju_muscleDynamics": {
       "name": "mju_muscleDynamics",
@@ -8306,7 +8299,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1365
+      "line": 1371
     },
     "mju_encodePyramid": {
       "name": "mju_encodePyramid",
@@ -8335,7 +8328,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1368
+      "line": 1374
     },
     "mju_decodePyramid": {
       "name": "mju_decodePyramid",
@@ -8364,7 +8357,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1371
+      "line": 1377
     },
     "mju_springDamper": {
       "name": "mju_springDamper",
@@ -8398,7 +8391,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1374
+      "line": 1380
     },
     "mju_min": {
       "name": "mju_min",
@@ -8417,7 +8410,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1377
+      "line": 1383
     },
     "mju_max": {
       "name": "mju_max",
@@ -8436,7 +8429,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1380
+      "line": 1386
     },
     "mju_clip": {
       "name": "mju_clip",
@@ -8460,7 +8453,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1383
+      "line": 1389
     },
     "mju_sign": {
       "name": "mju_sign",
@@ -8474,7 +8467,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1386
+      "line": 1392
     },
     "mju_round": {
       "name": "mju_round",
@@ -8488,7 +8481,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1389
+      "line": 1395
     },
     "mju_type2Str": {
       "name": "mju_type2Str",
@@ -8502,7 +8495,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1392
+      "line": 1398
     },
     "mju_str2Type": {
       "name": "mju_str2Type",
@@ -8516,7 +8509,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1395
+      "line": 1401
     },
     "mju_writeNumBytes": {
       "name": "mju_writeNumBytes",
@@ -8530,7 +8523,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1398
+      "line": 1404
     },
     "mju_warningText": {
       "name": "mju_warningText",
@@ -8549,7 +8542,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1401
+      "line": 1407
     },
     "mju_isBad": {
       "name": "mju_isBad",
@@ -8563,7 +8556,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1404
+      "line": 1410
     },
     "mju_isZero": {
       "name": "mju_isZero",
@@ -8582,7 +8575,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1407
+      "line": 1413
     },
     "mju_standardNormal": {
       "name": "mju_standardNormal",
@@ -8596,7 +8589,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1410
+      "line": 1416
     },
     "mju_f2n": {
       "name": "mju_f2n",
@@ -8620,7 +8613,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1413
+      "line": 1419
     },
     "mju_n2f": {
       "name": "mju_n2f",
@@ -8644,7 +8637,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1416
+      "line": 1422
     },
     "mju_d2n": {
       "name": "mju_d2n",
@@ -8668,7 +8661,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1419
+      "line": 1425
     },
     "mju_n2d": {
       "name": "mju_n2d",
@@ -8692,7 +8685,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1422
+      "line": 1428
     },
     "mju_insertionSort": {
       "name": "mju_insertionSort",
@@ -8711,7 +8704,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1425
+      "line": 1431
     },
     "mju_insertionSortInt": {
       "name": "mju_insertionSortInt",
@@ -8730,7 +8723,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1428
+      "line": 1434
     },
     "mju_Halton": {
       "name": "mju_Halton",
@@ -8749,7 +8742,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1431
+      "line": 1437
     },
     "mju_strncpy": {
       "name": "mju_strncpy",
@@ -8773,7 +8766,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1434
+      "line": 1440
     },
     "mju_sigmoid": {
       "name": "mju_sigmoid",
@@ -8787,7 +8780,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1437
+      "line": 1443
     },
     "mjc_getSDF": {
       "name": "mjc_getSDF",
@@ -8806,7 +8799,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1443
+      "line": 1449
     },
     "mjc_distance": {
       "name": "mjc_distance",
@@ -8835,7 +8828,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1446
+      "line": 1452
     },
     "mjc_gradient": {
       "name": "mjc_gradient",
@@ -8869,7 +8862,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1449
+      "line": 1455
     },
     "mjd_transitionFD": {
       "name": "mjd_transitionFD",
@@ -8918,7 +8911,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1464
+      "line": 1470
     },
     "mjd_inverseFD": {
       "name": "mjd_inverseFD",
@@ -8982,7 +8975,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1483
+      "line": 1489
     },
     "mjd_subQuat": {
       "name": "mjd_subQuat",
@@ -9011,7 +9004,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1490
+      "line": 1496
     },
     "mjd_quatIntegrate": {
       "name": "mjd_quatIntegrate",
@@ -9045,7 +9038,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1494
+      "line": 1500
     },
     "mjp_defaultPlugin": {
       "name": "mjp_defaultPlugin",
@@ -9059,7 +9052,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1501
+      "line": 1507
     },
     "mjp_registerPlugin": {
       "name": "mjp_registerPlugin",
@@ -9073,7 +9066,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1509
+      "line": 1515
     },
     "mjp_pluginCount": {
       "name": "mjp_pluginCount",
@@ -9081,7 +9074,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1512
+      "line": 1518
     },
     "mjp_getPlugin": {
       "name": "mjp_getPlugin",
@@ -9100,7 +9093,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1515
+      "line": 1521
     },
     "mjp_getPluginAtSlot": {
       "name": "mjp_getPluginAtSlot",
@@ -9114,7 +9107,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1518
+      "line": 1524
     },
     "mjp_defaultResourceProvider": {
       "name": "mjp_defaultResourceProvider",
@@ -9128,7 +9121,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1521
+      "line": 1527
     },
     "mjp_registerResourceProvider": {
       "name": "mjp_registerResourceProvider",
@@ -9142,7 +9135,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1526
+      "line": 1532
     },
     "mjp_resourceProviderCount": {
       "name": "mjp_resourceProviderCount",
@@ -9150,7 +9143,7 @@
       "params": [],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1529
+      "line": 1535
     },
     "mjp_getResourceProvider": {
       "name": "mjp_getResourceProvider",
@@ -9164,7 +9157,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1533
+      "line": 1539
     },
     "mjp_getResourceProviderAtSlot": {
       "name": "mjp_getResourceProviderAtSlot",
@@ -9178,7 +9171,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1537
+      "line": 1543
     },
     "mjp_registerDecoder": {
       "name": "mjp_registerDecoder",
@@ -9192,7 +9185,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1542
+      "line": 1548
     },
     "mjp_defaultDecoder": {
       "name": "mjp_defaultDecoder",
@@ -9206,7 +9199,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1545
+      "line": 1551
     },
     "mjp_findDecoder": {
       "name": "mjp_findDecoder",
@@ -9225,7 +9218,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1549
+      "line": 1555
     },
     "mjp_registerEncoder": {
       "name": "mjp_registerEncoder",
@@ -9239,7 +9232,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1554
+      "line": 1560
     },
     "mjp_defaultEncoder": {
       "name": "mjp_defaultEncoder",
@@ -9253,7 +9246,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1557
+      "line": 1563
     },
     "mjp_findEncoder": {
       "name": "mjp_findEncoder",
@@ -9272,7 +9265,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1561
+      "line": 1567
     },
     "mju_openResource": {
       "name": "mju_openResource",
@@ -9306,7 +9299,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1570
+      "line": 1576
     },
     "mju_closeResource": {
       "name": "mju_closeResource",
@@ -9320,7 +9313,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1574
+      "line": 1580
     },
     "mju_readResource": {
       "name": "mju_readResource",
@@ -9339,7 +9332,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1578
+      "line": 1584
     },
     "mju_getResourceDir": {
       "name": "mju_getResourceDir",
@@ -9363,7 +9356,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1581
+      "line": 1587
     },
     "mju_isModifiedResource": {
       "name": "mju_isModifiedResource",
@@ -9382,7 +9375,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1585
+      "line": 1591
     },
     "mju_decodeResource": {
       "name": "mju_decodeResource",
@@ -9406,24 +9399,10 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1590
+      "line": 1596
     },
-    "mju_threadPoolCreate": {
-      "name": "mju_threadPoolCreate",
-      "return_type": "mjThreadPool *",
-      "params": [
-        {
-          "name": "number_of_threads",
-          "c_type": "size_t",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1597
-    },
-    "mju_bindThreadPool": {
-      "name": "mju_bindThreadPool",
+    "mju_threadpool": {
+      "name": "mju_threadpool",
       "return_type": "void",
       "params": [
         {
@@ -9432,75 +9411,14 @@
           "array_dim": null
         },
         {
-          "name": "thread_pool",
-          "c_type": "void *",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1600
-    },
-    "mju_threadPoolEnqueue": {
-      "name": "mju_threadPoolEnqueue",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "thread_pool",
-          "c_type": "mjThreadPool *",
-          "array_dim": null
-        },
-        {
-          "name": "task",
-          "c_type": "mjTask *",
+          "name": "nthread",
+          "c_type": "int",
           "array_dim": null
         }
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
       "line": 1603
-    },
-    "mju_threadPoolDestroy": {
-      "name": "mju_threadPoolDestroy",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "thread_pool",
-          "c_type": "mjThreadPool *",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1606
-    },
-    "mju_defaultTask": {
-      "name": "mju_defaultTask",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "task",
-          "c_type": "mjTask *",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1609
-    },
-    "mju_taskJoin": {
-      "name": "mju_taskJoin",
-      "return_type": "void",
-      "params": [
-        {
-          "name": "task",
-          "c_type": "mjTask *",
-          "array_dim": null
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1612
     },
     "mjs_attach": {
       "name": "mjs_attach",
@@ -9529,7 +9447,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1618
+      "line": 1609
     },
     "mjs_addBody": {
       "name": "mjs_addBody",
@@ -9548,7 +9466,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1626
+      "line": 1617
     },
     "mjs_addSite": {
       "name": "mjs_addSite",
@@ -9567,7 +9485,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1630
+      "line": 1621
     },
     "mjs_addJoint": {
       "name": "mjs_addJoint",
@@ -9586,7 +9504,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1634
+      "line": 1625
     },
     "mjs_addFreeJoint": {
       "name": "mjs_addFreeJoint",
@@ -9600,7 +9518,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1637
+      "line": 1628
     },
     "mjs_addGeom": {
       "name": "mjs_addGeom",
@@ -9619,7 +9537,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1641
+      "line": 1632
     },
     "mjs_addCamera": {
       "name": "mjs_addCamera",
@@ -9638,7 +9556,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1645
+      "line": 1636
     },
     "mjs_addLight": {
       "name": "mjs_addLight",
@@ -9657,7 +9575,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1649
+      "line": 1640
     },
     "mjs_addFrame": {
       "name": "mjs_addFrame",
@@ -9676,7 +9594,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1652
+      "line": 1643
     },
     "mjs_delete": {
       "name": "mjs_delete",
@@ -9695,7 +9613,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1655
+      "line": 1646
     },
     "mjs_addActuator": {
       "name": "mjs_addActuator",
@@ -9714,7 +9632,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1662
+      "line": 1653
     },
     "mjs_addSensor": {
       "name": "mjs_addSensor",
@@ -9728,7 +9646,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1665
+      "line": 1656
     },
     "mjs_addFlex": {
       "name": "mjs_addFlex",
@@ -9742,7 +9660,121 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1668
+      "line": 1659
+    },
+    "mjs_makeFlex": {
+      "name": "mjs_makeFlex",
+      "return_type": "mjsFlex *",
+      "params": [
+        {
+          "name": "body",
+          "c_type": "mjsBody *",
+          "array_dim": null
+        },
+        {
+          "name": "name",
+          "c_type": "const char *",
+          "array_dim": null
+        },
+        {
+          "name": "type",
+          "c_type": "const char *",
+          "array_dim": null
+        },
+        {
+          "name": "dim",
+          "c_type": "int",
+          "array_dim": null
+        },
+        {
+          "name": "dof",
+          "c_type": "const char *",
+          "array_dim": null
+        },
+        {
+          "name": "count",
+          "c_type": "const int [3]",
+          "array_dim": 3
+        },
+        {
+          "name": "cellcount",
+          "c_type": "const int [3]",
+          "array_dim": 3
+        },
+        {
+          "name": "spacing",
+          "c_type": "const double [3]",
+          "array_dim": 3
+        },
+        {
+          "name": "scale",
+          "c_type": "const double [3]",
+          "array_dim": 3
+        },
+        {
+          "name": "radius",
+          "c_type": "double",
+          "array_dim": null
+        },
+        {
+          "name": "mass",
+          "c_type": "double",
+          "array_dim": null
+        },
+        {
+          "name": "inertiabox",
+          "c_type": "double",
+          "array_dim": null
+        },
+        {
+          "name": "equality",
+          "c_type": "int",
+          "array_dim": null
+        },
+        {
+          "name": "rigid",
+          "c_type": "int",
+          "array_dim": null
+        },
+        {
+          "name": "flatskin",
+          "c_type": "int",
+          "array_dim": null
+        },
+        {
+          "name": "elastic2d",
+          "c_type": "int",
+          "array_dim": null
+        },
+        {
+          "name": "pos",
+          "c_type": "const double [3]",
+          "array_dim": 3
+        },
+        {
+          "name": "quat",
+          "c_type": "const double [4]",
+          "array_dim": 4
+        },
+        {
+          "name": "origin",
+          "c_type": "const double [3]",
+          "array_dim": 3
+        },
+        {
+          "name": "file",
+          "c_type": "const char *",
+          "array_dim": null
+        },
+        {
+          "name": "vfs",
+          "c_type": "const mjVFS *",
+          "array_dim": null
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
+      "line": 1663
     },
     "mjs_addPair": {
       "name": "mjs_addPair",
@@ -12720,6 +12752,35 @@
       "file": "third_party/install/mujoco/include/mujoco/mjtype.h",
       "line": 573
     },
+    "mjtLogLevel": {
+      "name": "mjtLogLevel",
+      "members": {
+        "mjLOG_DEBUG": 0,
+        "mjLOG_INFO": 1,
+        "mjLOG_WARNING": 2,
+        "mjLOG_ERROR": 3
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjtype.h",
+      "line": 583
+    },
+    "mjtLogTopic": {
+      "name": "mjtLogTopic",
+      "members": {
+        "mjTOPIC_NONE": 0,
+        "mjTOPIC_TIME_STP": 1,
+        "mjTOPIC_TIME_CMP": 2,
+        "mjTOPIC_SLEEP": 3,
+        "mjNTOPIC": 3
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjtype.h",
+      "line": 590
+    },
     "mjtGeomInertia": {
       "name": "mjtGeomInertia",
       "members": {
@@ -12865,19 +12926,6 @@
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
       "line": 132
-    },
-    "mjtTaskStatus": {
-      "name": "mjtTaskStatus",
-      "members": {
-        "mjTASK_NEW": 0,
-        "mjTASK_QUEUED": 1,
-        "mjTASK_COMPLETED": 2
-      },
-      "member_docs": {},
-      "underlying_type": "int",
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mjthread.h",
-      "line": 20
     },
     "mjtCatBit": {
       "name": "mjtCatBit",
@@ -13073,7 +13121,7 @@
       "underlying_type": "int",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 107
+      "line": 110
     },
     "mjtGridPos": {
       "name": "mjtGridPos",
@@ -13091,7 +13139,7 @@
       "underlying_type": "int",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 30
+      "line": 31
     },
     "mjtFramebuffer": {
       "name": "mjtFramebuffer",
@@ -13103,7 +13151,7 @@
       "underlying_type": "int",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 42
+      "line": 43
     },
     "mjtDepthMap": {
       "name": "mjtDepthMap",
@@ -13115,7 +13163,7 @@
       "underlying_type": "int",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 47
+      "line": 49
     },
     "mjtFontScale": {
       "name": "mjtFontScale",
@@ -13131,7 +13179,7 @@
       "underlying_type": "int",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 52
+      "line": 55
     },
     "mjtFont": {
       "name": "mjtFont",
@@ -13144,7 +13192,77 @@
       "underlying_type": "int",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 62
+      "line": 65
+    },
+    "mjrPixelFormat": {
+      "name": "mjrPixelFormat",
+      "members": {
+        "mjPIXEL_FORMAT_UNKNOWN": 0,
+        "mjPIXEL_FORMAT_R8": 1,
+        "mjPIXEL_FORMAT_RGB8": 2,
+        "mjPIXEL_FORMAT_RGBA8": 3,
+        "mjPIXEL_FORMAT_R32F": 4,
+        "mjPIXEL_FORMAT_DEPTH32F": 5,
+        "mjPIXEL_FORMAT_KTX": 6
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
+      "line": 72
+    },
+    "mjrVertexAttributeUsage": {
+      "name": "mjrVertexAttributeUsage",
+      "members": {
+        "mjVERTEX_ATTRIBUTE_USAGE_POSITION": 0,
+        "mjVERTEX_ATTRIBUTE_USAGE_NORMAL": 1,
+        "mjVERTEX_ATTRIBUTE_USAGE_TANGENTS": 2,
+        "mjVERTEX_ATTRIBUTE_USAGE_UV": 3,
+        "mjVERTEX_ATTRIBUTE_USAGE_COLOR": 4
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
+      "line": 83
+    },
+    "mjrVertexAttributeType": {
+      "name": "mjrVertexAttributeType",
+      "members": {
+        "mjVERTEX_ATTRIBUTE_TYPE_FLOAT2": 0,
+        "mjVERTEX_ATTRIBUTE_TYPE_FLOAT3": 1,
+        "mjVERTEX_ATTRIBUTE_TYPE_FLOAT4": 2,
+        "mjVERTEX_ATTRIBUTE_TYPE_UBYTE4": 3
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
+      "line": 92
+    },
+    "mjrIndexType": {
+      "name": "mjrIndexType",
+      "members": {
+        "mjINDEX_TYPE_U16": 0,
+        "mjINDEX_TYPE_U32": 1
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
+      "line": 100
+    },
+    "mjrMeshPrimitiveType": {
+      "name": "mjrMeshPrimitiveType",
+      "members": {
+        "mjMESH_PRIMITIVE_TYPE_TRIANGLES": 0,
+        "mjMESH_PRIMITIVE_TYPE_LINES": 1
+      },
+      "member_docs": {},
+      "underlying_type": "int",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
+      "line": 106
     },
     "mjtButton": {
       "name": "mjtButton",
@@ -13221,6 +13339,106 @@
     }
   },
   "structs": {
+    "mjLogMessage": {
+      "name": "mjLogMessage",
+      "fields": [
+        {
+          "name": "level",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "topic",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "subject",
+          "c_type": "char [1024]",
+          "array_dim": 1024,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "body",
+          "c_type": "const char *",
+          "array_dim": null,
+          "is_pointer": true,
+          "doc": ""
+        },
+        {
+          "name": "func",
+          "c_type": "const char *",
+          "array_dim": null,
+          "is_pointer": true,
+          "doc": ""
+        },
+        {
+          "name": "file",
+          "c_type": "const char *",
+          "array_dim": null,
+          "is_pointer": true,
+          "doc": ""
+        },
+        {
+          "name": "line",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "timestamp",
+          "c_type": "mjtBool",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjtype.h",
+      "line": 601
+    },
+    "mjLogConfig": {
+      "name": "mjLogConfig",
+      "fields": [
+        {
+          "name": "logto_console",
+          "c_type": "mjtBool",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "logto_file",
+          "c_type": "mjtBool",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "logfile",
+          "c_type": "char [1024]",
+          "array_dim": 1024,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "topics",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjtype.h",
+      "line": 612
+    },
     "mjLROpt": {
       "name": "mjLROpt",
       "fields": [
@@ -17767,11 +17985,96 @@
           "array_dim": null,
           "is_pointer": true,
           "doc": ""
+        },
+        {
+          "name": "authored",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
         }
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
       "line": 158
+    },
+    "mjsAuthored": {
+      "name": "mjsAuthored",
+      "fields": [
+        {
+          "name": "option",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "disableflags",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "enableflags",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "disableactuator",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "visual_global",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "visual_quality",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "visual_headlight",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "visual_map",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "visual_scale",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "visual_rgba",
+          "c_type": "uint64_t",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
+      "line": 181
     },
     "mjSpec": {
       "name": "mjSpec",
@@ -17950,11 +18253,18 @@
           "array_dim": null,
           "is_pointer": false,
           "doc": ""
+        },
+        {
+          "name": "authored",
+          "c_type": "mjsAuthored",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
         }
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 180
+      "line": 195
     },
     "mjsOrientation": {
       "name": "mjsOrientation",
@@ -17997,7 +18307,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 219
+      "line": 237
     },
     "mjsPlugin": {
       "name": "mjsPlugin",
@@ -18040,7 +18350,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 228
+      "line": 246
     },
     "mjsBody": {
       "name": "mjsBody",
@@ -18174,7 +18484,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 237
+      "line": 255
     },
     "mjsFrame": {
       "name": "mjsFrame",
@@ -18224,7 +18534,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 265
+      "line": 283
     },
     "mjsJoint": {
       "name": "mjsJoint",
@@ -18407,7 +18717,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 275
+      "line": 293
     },
     "mjsGeom": {
       "name": "mjsGeom",
@@ -18632,7 +18942,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 314
+      "line": 332
     },
     "mjsSite": {
       "name": "mjsSite",
@@ -18724,7 +19034,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 361
+      "line": 379
     },
     "mjsCamera": {
       "name": "mjsCamera",
@@ -18865,7 +19175,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 383
+      "line": 401
     },
     "mjsLight": {
       "name": "mjsLight",
@@ -19006,7 +19316,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 412
+      "line": 430
     },
     "mjsFlex": {
       "name": "mjsFlex",
@@ -19287,7 +19597,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 441
+      "line": 459
     },
     "mjsMesh": {
       "name": "mjsMesh",
@@ -19435,7 +19745,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 492
+      "line": 510
     },
     "mjsHField": {
       "name": "mjsHField",
@@ -19499,7 +19809,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 516
+      "line": 534
     },
     "mjsSkin": {
       "name": "mjsSkin",
@@ -19612,7 +19922,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 529
+      "line": 547
     },
     "mjsTexture": {
       "name": "mjsTexture",
@@ -19767,7 +20077,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 554
+      "line": 572
     },
     "mjsMaterial": {
       "name": "mjsMaterial",
@@ -19859,7 +20169,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 591
+      "line": 609
     },
     "mjsPair": {
       "name": "mjsPair",
@@ -19944,7 +20254,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 607
+      "line": 625
     },
     "mjsExclude": {
       "name": "mjsExclude",
@@ -19980,7 +20290,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 624
+      "line": 642
     },
     "mjsEquality": {
       "name": "mjsEquality",
@@ -20058,7 +20368,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 632
+      "line": 650
     },
     "mjsTendon": {
       "name": "mjsTendon",
@@ -20213,7 +20523,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 646
+      "line": 664
     },
     "mjsWrap": {
       "name": "mjsWrap",
@@ -20242,7 +20552,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 679
+      "line": 697
     },
     "mjsActuator": {
       "name": "mjsActuator",
@@ -20474,7 +20784,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 686
+      "line": 704
     },
     "mjsSensor": {
       "name": "mjsSensor",
@@ -20615,7 +20925,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 732
+      "line": 750
     },
     "mjsNumeric": {
       "name": "mjsNumeric",
@@ -20651,7 +20961,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 765
+      "line": 783
     },
     "mjsText": {
       "name": "mjsText",
@@ -20680,7 +20990,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 773
+      "line": 791
     },
     "mjsTuple": {
       "name": "mjsTuple",
@@ -20723,7 +21033,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 780
+      "line": 798
     },
     "mjsKey": {
       "name": "mjsKey",
@@ -20794,7 +21104,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 789
+      "line": 807
     },
     "mjsDefault": {
       "name": "mjsDefault",
@@ -20893,51 +21203,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjspec.h",
-      "line": 802
-    },
-    "mjThreadPool": {
-      "name": "mjThreadPool",
-      "fields": [
-        {
-          "name": "nworker",
-          "c_type": "int",
-          "array_dim": null,
-          "is_pointer": false,
-          "doc": ""
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mjthread.h",
-      "line": 30
-    },
-    "mjTask": {
-      "name": "mjTask",
-      "fields": [
-        {
-          "name": "func",
-          "c_type": "mjfTask",
-          "array_dim": null,
-          "is_pointer": false,
-          "doc": ""
-        },
-        {
-          "name": "args",
-          "c_type": "void *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "status",
-          "c_type": "volatile int",
-          "array_dim": null,
-          "is_pointer": false,
-          "doc": ""
-        }
-      ],
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mjthread.h",
-      "line": 35
+      "line": 820
     },
     "mjPreContact": {
       "name": "mjPreContact",
@@ -21263,16 +21529,23 @@
           "doc": ""
         },
         {
-          "name": "maxuse_stack",
-          "c_type": "mjtSize",
+          "name": "threadpool",
+          "c_type": "uintptr_t",
           "array_dim": null,
           "is_pointer": false,
           "doc": ""
         },
         {
-          "name": "maxuse_threadstack",
-          "c_type": "mjtSize [128]",
-          "array_dim": 128,
+          "name": "threadlock",
+          "c_type": "mjtBool",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "maxuse_stack",
+          "c_type": "mjtSize",
+          "array_dim": null,
           "is_pointer": false,
           "doc": ""
         },
@@ -22215,7 +22488,7 @@
           "doc": ""
         },
         {
-          "name": "efc_diagApprox",
+          "name": "efc_diagA",
           "c_type": "mjtNum *",
           "array_dim": null,
           "is_pointer": true,
@@ -22334,48 +22607,6 @@
           "doc": ""
         },
         {
-          "name": "iM_rownnz",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iM_rowadr",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iM_colind",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iM",
-          "c_type": "mjtNum *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iLD",
-          "c_type": "mjtNum *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iLDiagInv",
-          "c_type": "mjtNum *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
           "name": "iacc",
           "c_type": "mjtNum *",
           "array_dim": null,
@@ -22441,41 +22672,6 @@
         {
           "name": "iefc_id",
           "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iefc_J_rownnz",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iefc_J_rowadr",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iefc_J_rowsuper",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iefc_J_colind",
-          "c_type": "int *",
-          "array_dim": null,
-          "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "iefc_J",
-          "c_type": "mjtNum *",
           "array_dim": null,
           "is_pointer": true,
           "doc": ""
@@ -22618,13 +22814,6 @@
           "c_type": "mjtNum *",
           "array_dim": null,
           "is_pointer": true,
-          "doc": ""
-        },
-        {
-          "name": "threadpool",
-          "c_type": "uintptr_t",
-          "array_dim": null,
-          "is_pointer": false,
           "doc": ""
         },
         {
@@ -23851,7 +24040,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 60
+      "line": 63
     },
     "mjpDecoder": {
       "name": "mjpDecoder",
@@ -23887,7 +24076,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 81
+      "line": 84
     },
     "mjpEncoder": {
       "name": "mjpEncoder",
@@ -23923,7 +24112,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 97
+      "line": 100
     },
     "mjpPlugin": {
       "name": "mjpPlugin",
@@ -24071,7 +24260,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 114
+      "line": 117
     },
     "mjSDF": {
       "name": "mjSDF",
@@ -24121,7 +24310,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 175
+      "line": 178
     },
     "mjrRect": {
       "name": "mjrRect",
@@ -24157,7 +24346,36 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 69
+      "line": 112
+    },
+    "mjrVertexAttribute": {
+      "name": "mjrVertexAttribute",
+      "fields": [
+        {
+          "name": "bytes",
+          "c_type": "const void *",
+          "array_dim": null,
+          "is_pointer": true,
+          "doc": ""
+        },
+        {
+          "name": "usage",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        },
+        {
+          "name": "type",
+          "c_type": "int",
+          "array_dim": null,
+          "is_pointer": false,
+          "doc": ""
+        }
+      ],
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
+      "line": 121
     },
     "mjrContext": {
       "name": "mjrContext",
@@ -24592,7 +24810,7 @@
       ],
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 80
+      "line": 138
     },
     "mjuiState": {
       "name": "mjuiState",
@@ -25691,13 +25909,13 @@
       "line": 58
     },
     "MJVISUAL_GLOBAL_FIELDS": {
-      "value": "X ( int , cameraid ) X ( int , orthographic ) X ( float , fovy ) X ( float , ipd ) X ( float , azimuth ) X ( float , elevation ) X ( float , linewidth ) X ( float , glow ) X ( float , realtime ) X ( int , offwidth ) X ( int , offheight ) X ( int , ellipsoidinertia ) X ( int , bvactive )",
+      "value": "X ( int , cameraid , 1 ) X ( int , orthographic , 1 ) X ( float , fovy , 1 ) X ( float , ipd , 1 ) X ( float , azimuth , 1 ) X ( float , elevation , 1 ) X ( float , linewidth , 1 ) X ( float , glow , 1 ) X ( float , realtime , 1 ) X ( int , offwidth , 1 ) X ( int , offheight , 1 ) X ( int , ellipsoidinertia , 1 ) X ( int , bvactive , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 69
     },
     "MJVISUAL_QUALITY_FIELDS": {
-      "value": "X ( shadowsize ) X ( offsamples ) X ( numslices ) X ( numstacks ) X ( numquads )",
+      "value": "X ( int , shadowsize , 1 ) X ( int , offsamples , 1 ) X ( int , numslices , 1 ) X ( int , numstacks , 1 ) X ( int , numquads , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 84
@@ -25709,19 +25927,19 @@
       "line": 91
     },
     "MJVISUAL_MAP_FIELDS": {
-      "value": "X ( stiffness ) X ( stiffnessrot ) X ( force ) X ( torque ) X ( alpha ) X ( fogstart ) X ( fogend ) X ( znear ) X ( zfar ) X ( haze ) X ( shadowclip ) X ( shadowscale ) X ( actuatortendon )",
+      "value": "X ( float , stiffness , 1 ) X ( float , stiffnessrot , 1 ) X ( float , force , 1 ) X ( float , torque , 1 ) X ( float , alpha , 1 ) X ( float , fogstart , 1 ) X ( float , fogend , 1 ) X ( float , znear , 1 ) X ( float , zfar , 1 ) X ( float , haze , 1 ) X ( float , shadowclip , 1 ) X ( float , shadowscale , 1 ) X ( float , actuatortendon , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 97
     },
     "MJVISUAL_SCALE_FIELDS": {
-      "value": "X ( forcewidth ) X ( contactwidth ) X ( contactheight ) X ( connect ) X ( com ) X ( camera ) X ( light ) X ( selectpoint ) X ( jointlength ) X ( jointwidth ) X ( actuatorlength ) X ( actuatorwidth ) X ( framelength ) X ( framewidth ) X ( constraint ) X ( slidercrank ) X ( frustum )",
+      "value": "X ( float , forcewidth , 1 ) X ( float , contactwidth , 1 ) X ( float , contactheight , 1 ) X ( float , connect , 1 ) X ( float , com , 1 ) X ( float , camera , 1 ) X ( float , light , 1 ) X ( float , selectpoint , 1 ) X ( float , jointlength , 1 ) X ( float , jointwidth , 1 ) X ( float , actuatorlength , 1 ) X ( float , actuatorwidth , 1 ) X ( float , framelength , 1 ) X ( float , framewidth , 1 ) X ( float , constraint , 1 ) X ( float , slidercrank , 1 ) X ( float , frustum , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 112
     },
     "MJVISUAL_RGBA_FIELDS": {
-      "value": "X ( fog ) X ( haze ) X ( force ) X ( inertia ) X ( joint ) X ( actuator ) X ( actuatornegative ) X ( actuatorpositive ) X ( com ) X ( camera ) X ( light ) X ( selectpoint ) X ( connect ) X ( contactpoint ) X ( contactforce ) X ( contactfriction ) X ( contacttorque ) X ( contactgap ) X ( rangefinder ) X ( constraint ) X ( slidercrank ) X ( crankbroken ) X ( frustum ) X ( bv ) X ( bvactive )",
+      "value": "XVEC ( float , fog , 4 ) XVEC ( float , haze , 4 ) XVEC ( float , force , 4 ) XVEC ( float , inertia , 4 ) XVEC ( float , joint , 4 ) XVEC ( float , actuator , 4 ) XVEC ( float , actuatornegative , 4 ) XVEC ( float , actuatorpositive , 4 ) XVEC ( float , com , 4 ) XVEC ( float , camera , 4 ) XVEC ( float , light , 4 ) XVEC ( float , selectpoint , 4 ) XVEC ( float , connect , 4 ) XVEC ( float , contactpoint , 4 ) XVEC ( float , contactforce , 4 ) XVEC ( float , contactfriction , 4 ) XVEC ( float , contacttorque , 4 ) XVEC ( float , contactgap , 4 ) XVEC ( float , rangefinder , 4 ) XVEC ( float , constraint , 4 ) XVEC ( float , slidercrank , 4 ) XVEC ( float , crankbroken , 4 ) XVEC ( float , frustum , 4 ) XVEC ( float , bv , 4 ) XVEC ( float , bvactive , 4 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 131
@@ -25889,7 +26107,7 @@
       "line": 921
     },
     "MJDATA_ARENA_POINTERS_SOLVER": {
-      "value": "X ( int , efc_type , MJ_D ( nefc ) , 1 ) X ( int , efc_id , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_rownnz , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_rowadr , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_rowsuper , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_colind , MJ_D ( nJ ) , 1 ) XNV ( mjtNum , efc_J , MJ_D ( nJ ) , 1 ) X ( mjtNum , efc_pos , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_margin , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_frictionloss , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_diagApprox , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_KBIP , MJ_D ( nefc ) , 4 ) X ( mjtNum , efc_D , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_R , MJ_D ( nefc ) , 1 ) X ( int , tendon_efcadr , MJ_M ( ntendon ) , 1 ) X ( mjtNum , efc_vel , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_aref , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_b , MJ_D ( nefc ) , 1 ) X ( int , efc_state , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_force , MJ_D ( nefc ) , 1 )",
+      "value": "X ( int , efc_type , MJ_D ( nefc ) , 1 ) X ( int , efc_id , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_rownnz , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_rowadr , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_rowsuper , MJ_D ( nefc ) , 1 ) XNV ( int , efc_J_colind , MJ_D ( nJ ) , 1 ) XNV ( mjtNum , efc_J , MJ_D ( nJ ) , 1 ) X ( mjtNum , efc_pos , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_margin , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_frictionloss , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_diagA , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_KBIP , MJ_D ( nefc ) , 4 ) X ( mjtNum , efc_D , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_R , MJ_D ( nefc ) , 1 ) X ( int , tendon_efcadr , MJ_M ( ntendon ) , 1 ) X ( mjtNum , efc_vel , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_aref , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_b , MJ_D ( nefc ) , 1 ) X ( int , efc_state , MJ_D ( nefc ) , 1 ) X ( mjtNum , efc_force , MJ_D ( nefc ) , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 925
@@ -25901,7 +26119,7 @@
       "line": 948
     },
     "MJDATA_ARENA_POINTERS_ISLAND": {
-      "value": "X ( int , tree_island , MJ_M ( ntree ) , 1 ) X ( int , island_ntree , MJ_D ( nisland ) , 1 ) X ( int , island_itreeadr , MJ_D ( nisland ) , 1 ) X ( int , map_itree2tree , MJ_M ( ntree ) , 1 ) X ( int , dof_island , MJ_M ( nv ) , 1 ) X ( int , island_nv , MJ_D ( nisland ) , 1 ) X ( int , island_idofadr , MJ_D ( nisland ) , 1 ) X ( int , island_dofadr , MJ_D ( nisland ) , 1 ) X ( int , map_dof2idof , MJ_M ( nv ) , 1 ) X ( int , map_idof2dof , MJ_M ( nv ) , 1 ) X ( mjtNum , ifrc_smooth , MJ_D ( nidof ) , 1 ) X ( mjtNum , iacc_smooth , MJ_D ( nidof ) , 1 ) XNV ( int , iM_rownnz , MJ_D ( nidof ) , 1 ) XNV ( int , iM_rowadr , MJ_D ( nidof ) , 1 ) XNV ( int , iM_colind , MJ_M ( nC ) , 1 ) XNV ( mjtNum , iM , MJ_M ( nC ) , 1 ) XNV ( mjtNum , iLD , MJ_M ( nC ) , 1 ) X ( mjtNum , iLDiagInv , MJ_D ( nidof ) , 1 ) X ( mjtNum , iacc , MJ_D ( nidof ) , 1 ) X ( int , efc_island , MJ_D ( nefc ) , 1 ) X ( int , island_ne , MJ_D ( nisland ) , 1 ) X ( int , island_nf , MJ_D ( nisland ) , 1 ) X ( int , island_nefc , MJ_D ( nisland ) , 1 ) X ( int , island_iefcadr , MJ_D ( nisland ) , 1 ) X ( int , map_efc2iefc , MJ_D ( nefc ) , 1 ) X ( int , map_iefc2efc , MJ_D ( nefc ) , 1 ) X ( int , iefc_type , MJ_D ( nefc ) , 1 ) X ( int , iefc_id , MJ_D ( nefc ) , 1 ) XNV ( int , iefc_J_rownnz , MJ_D ( nefc ) , 1 ) XNV ( int , iefc_J_rowadr , MJ_D ( nefc ) , 1 ) XNV ( int , iefc_J_rowsuper , MJ_D ( nefc ) , 1 ) XNV ( int , iefc_J_colind , MJ_D ( nJ ) , 1 ) XNV ( mjtNum , iefc_J , MJ_D ( nJ ) , 1 ) X ( mjtNum , iefc_frictionloss , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_D , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_R , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_aref , MJ_D ( nefc ) , 1 ) X ( int , iefc_state , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_force , MJ_D ( nefc ) , 1 ) X ( mjtNum , ifrc_constraint , MJ_D ( nidof ) , 1 )",
+      "value": "X ( int , tree_island , MJ_M ( ntree ) , 1 ) X ( int , island_ntree , MJ_D ( nisland ) , 1 ) X ( int , island_itreeadr , MJ_D ( nisland ) , 1 ) X ( int , map_itree2tree , MJ_M ( ntree ) , 1 ) X ( int , dof_island , MJ_M ( nv ) , 1 ) X ( int , island_nv , MJ_D ( nisland ) , 1 ) X ( int , island_idofadr , MJ_D ( nisland ) , 1 ) X ( int , island_dofadr , MJ_D ( nisland ) , 1 ) X ( int , map_dof2idof , MJ_M ( nv ) , 1 ) X ( int , map_idof2dof , MJ_M ( nv ) , 1 ) X ( mjtNum , ifrc_smooth , MJ_D ( nidof ) , 1 ) X ( mjtNum , iacc_smooth , MJ_D ( nidof ) , 1 ) X ( mjtNum , iacc , MJ_D ( nidof ) , 1 ) X ( int , efc_island , MJ_D ( nefc ) , 1 ) X ( int , island_ne , MJ_D ( nisland ) , 1 ) X ( int , island_nf , MJ_D ( nisland ) , 1 ) X ( int , island_nefc , MJ_D ( nisland ) , 1 ) X ( int , island_iefcadr , MJ_D ( nisland ) , 1 ) X ( int , map_efc2iefc , MJ_D ( nefc ) , 1 ) X ( int , map_iefc2efc , MJ_D ( nefc ) , 1 ) X ( int , iefc_type , MJ_D ( nefc ) , 1 ) X ( int , iefc_id , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_frictionloss , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_D , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_R , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_aref , MJ_D ( nefc ) , 1 ) X ( int , iefc_state , MJ_D ( nefc ) , 1 ) X ( mjtNum , iefc_force , MJ_D ( nefc ) , 1 ) X ( mjtNum , ifrc_constraint , MJ_D ( nidof ) , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
       "line": 959
@@ -25910,37 +26128,31 @@
       "value": "MJDATA_ARENA_POINTERS_CONTACT MJDATA_ARENA_POINTERS_SOLVER MJDATA_ARENA_POINTERS_DUAL MJDATA_ARENA_POINTERS_ISLAND",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
-      "line": 1002
+      "line": 991
     },
     "MJDATA_SCALAR": {
-      "value": "X ( size_t , narena ) X ( size_t , nbuffer ) X ( int , nplugin ) X ( size_t , pstack ) X ( size_t , pbase ) X ( size_t , parena ) X ( size_t , maxuse_stack ) X ( size_t , maxuse_arena ) X ( int , maxuse_con ) X ( int , maxuse_efc ) X ( int , ncon ) X ( int , ne ) X ( int , nf ) X ( int , nl ) X ( int , nefc ) X ( int , nJ ) X ( int , nY ) X ( int , nA ) X ( int , nisland ) X ( int , nidof ) X ( int , ntree_awake ) X ( int , nbody_awake ) X ( int , nparent_awake ) X ( int , nv_awake ) X ( mjtBool , flg_energypos ) X ( mjtBool , flg_energyvel ) X ( mjtBool , flg_subtreevel ) X ( mjtBool , flg_rnepost ) X ( mjtNum , time ) X ( uintptr_t , threadpool )",
+      "value": "X ( size_t , narena ) X ( size_t , nbuffer ) X ( int , nplugin ) X ( size_t , pstack ) X ( size_t , pbase ) X ( size_t , parena ) X ( uintptr_t , threadpool ) X ( size_t , maxuse_stack ) X ( size_t , maxuse_arena ) X ( int , maxuse_con ) X ( int , maxuse_efc ) X ( int , ncon ) X ( int , ne ) X ( int , nf ) X ( int , nl ) X ( int , nefc ) X ( int , nJ ) X ( int , nY ) X ( int , nA ) X ( int , nisland ) X ( int , nidof ) X ( int , ntree_awake ) X ( int , nbody_awake ) X ( int , nparent_awake ) X ( int , nv_awake ) X ( mjtBool , flg_energypos ) X ( mjtBool , flg_energyvel ) X ( mjtBool , flg_subtreevel ) X ( mjtBool , flg_rnepost ) X ( mjtNum , time )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
-      "line": 1010
+      "line": 999
     },
     "MJDATA_VECTOR": {
-      "value": "X ( size_t , maxuse_threadstack , mjMAXTHREAD , 1 ) X ( mjSolverStat , solver , mjNISLAND , mjNSOLVER ) X ( int , solver_niter , mjNISLAND , 1 ) X ( int , solver_nnz , mjNISLAND , 1 ) X ( mjtNum , solver_fwdinv , 2 , 1 ) X ( mjWarningStat , warning , mjNWARNING , 1 ) X ( mjTimerStat , timer , mjNTIMER , 1 ) X ( mjtNum , energy , 2 , 1 )",
+      "value": "X ( mjSolverStat , solver , mjNISLAND , mjNSOLVER ) X ( int , solver_niter , mjNISLAND , 1 ) X ( int , solver_nnz , mjNISLAND , 1 ) X ( mjtNum , solver_fwdinv , 2 , 1 ) X ( mjWarningStat , warning , mjNWARNING , 1 ) X ( mjTimerStat , timer , mjNTIMER , 1 ) X ( mjtNum , energy , 2 , 1 )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
-      "line": 1044
+      "line": 1033
     },
     "XNV": {
       "value": "X",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjxmacro.h",
-      "line": 1057
+      "line": 1045
     },
     "mjVERSION_HEADER": {
-      "value": "3009000",
+      "value": "3010000",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
       "line": 19
-    },
-    "mjMAXTHREAD": {
-      "value": "128",
-      "doc": "",
-      "file": "third_party/install/mujoco/include/mujoco/mjthread.h",
-      "line": 18
     },
     "MUJOCO_HELPER_DLL_IMPORT": {
       "value": "__declspec ( dllimport )",
@@ -26030,25 +26242,25 @@
       "value": "( n ) static void _mj_init_ ## n ( void ) __attribute__ ( ( constructor ) ) ; static void _mj_init_ ## n ( void )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjplugin.h",
-      "line": 189
+      "line": 192
     },
     "mjNAUX": {
       "value": "10",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 24
+      "line": 25
     },
     "mjMAXTEXTURE": {
       "value": "1000",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 25
+      "line": 26
     },
     "mjMAXMATERIAL": {
       "value": "1000",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjrender.h",
-      "line": 26
+      "line": 27
     },
     "ASAN_POISON_MEMORY_REGION": {
       "value": "( addr , size )",
@@ -26284,101 +26496,299 @@
       "file": "third_party/install/mujoco/include/mujoco/mjui.h",
       "line": 60
     },
+    "MJSELEMENT_FIELDS": {
+      "value": "X ( mjtObj , elemtype , 1 ) X ( uint64_t , signature , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 21
+    },
+    "MJSCOMPILER_FIELDS": {
+      "value": "X ( mjtByte , autolimits , 1 ) X ( double , boundmass , 1 ) X ( double , boundinertia , 1 ) X ( double , settotalmass , 1 ) X ( mjtByte , balanceinertia , 1 ) X ( mjtByte , fitaabb , 1 ) X ( mjtByte , degree , 1 ) XVEC ( char , eulerseq , 3 ) X ( mjtByte , discardvisual , 1 ) X ( mjtByte , usethread , 1 ) X ( mjtByte , fusestatic , 1 ) X ( int , inertiafromgeom , 1 ) XVEC ( int , inertiagrouprange , 2 ) X ( mjtByte , saveinertial , 1 ) X ( int , alignfree , 1 ) X ( mjLROpt , LRopt , 1 ) X ( mjString * , meshdir , 1 ) X ( mjString * , texturedir , 1 ) X ( uint64_t , authored , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 28
+    },
+    "MJSPEC_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , modelname , 1 ) X ( mjsCompiler , compiler , 1 ) X ( mjtByte , strippath , 1 ) X ( mjOption , option , 1 ) X ( mjVisual , visual , 1 ) X ( mjStatistic , stat , 1 ) X ( mjtSize , memory , 1 ) X ( int , nemax , 1 ) X ( int , nuserdata , 1 ) X ( int , nuser_body , 1 ) X ( int , nuser_jnt , 1 ) X ( int , nuser_geom , 1 ) X ( int , nuser_site , 1 ) X ( int , nuser_cam , 1 ) X ( int , nuser_tendon , 1 ) X ( int , nuser_actuator , 1 ) X ( int , nuser_sensor , 1 ) X ( int , nkey , 1 ) X ( int , njmax , 1 ) X ( int , nconmax , 1 ) X ( mjtSize , nstack , 1 ) X ( mjString * , comment , 1 ) X ( mjString * , modelfiledir , 1 ) X ( mjtByte , hasImplicitPluginElem , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 52
+    },
+    "MJSORIENTATION_FIELDS": {
+      "value": "X ( mjtOrientation , type , 1 ) XVEC ( double , axisangle , 4 ) XVEC ( double , xyaxes , 6 ) XVEC ( double , zaxis , 3 ) XVEC ( double , euler , 3 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 82
+    },
+    "MJSPLUGIN_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , name , 1 ) X ( mjString * , plugin_name , 1 ) X ( mjtByte , active , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 92
+    },
+    "MJSBODY_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , childclass , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , quat , 4 ) X ( mjsOrientation , alt , 1 ) X ( double , mass , 1 ) XVEC ( double , ipos , 3 ) XVEC ( double , iquat , 4 ) XVEC ( double , inertia , 3 ) X ( mjsOrientation , ialt , 1 ) XVEC ( double , fullinertia , 6 ) X ( mjtByte , mocap , 1 ) X ( double , gravcomp , 1 ) X ( mjtSleepPolicy , sleep , 1 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjtByte , explicitinertial , 1 ) X ( mjsPlugin , plugin , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 102
+    },
+    "MJSFRAME_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , childclass , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , quat , 4 ) X ( mjsOrientation , alt , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 125
+    },
+    "MJSJOINT_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtJoint , type , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , axis , 3 ) X ( double , ref , 1 ) X ( int , align , 1 ) XVEC ( double , stiffness , mjNPOLY + 1 ) X ( double , springref , 1 ) XVEC ( double , springdamper , 2 ) X ( int , limited , 1 ) XVEC ( double , range , 2 ) X ( double , margin , 1 ) XVEC ( mjtNum , solref_limit , mjNREF ) XVEC ( mjtNum , solimp_limit , mjNIMP ) X ( int , actfrclimited , 1 ) XVEC ( double , actfrcrange , 2 ) X ( double , armature , 1 ) XVEC ( double , damping , mjNPOLY + 1 ) X ( double , frictionloss , 1 ) XVEC ( mjtNum , solref_friction , mjNREF ) XVEC ( mjtNum , solimp_friction , mjNIMP ) X ( int , group , 1 ) X ( mjtByte , actgravcomp , 1 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 136
+    },
+    "MJSGEOM_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtGeom , type , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , quat , 4 ) X ( mjsOrientation , alt , 1 ) XVEC ( double , fromto , 6 ) XVEC ( double , size , 3 ) X ( int , contype , 1 ) X ( int , conaffinity , 1 ) X ( int , condim , 1 ) X ( int , priority , 1 ) XVEC ( double , friction , 3 ) X ( double , solmix , 1 ) XVEC ( mjtNum , solref , mjNREF ) XVEC ( mjtNum , solimp , mjNIMP ) X ( double , margin , 1 ) X ( double , gap , 1 ) X ( double , mass , 1 ) X ( double , density , 1 ) X ( mjtGeomInertia , typeinertia , 1 ) X ( mjtNum , fluid_ellipsoid , 1 ) XVEC ( mjtNum , fluid_coefs , 5 ) X ( mjString * , material , 1 ) XVEC ( float , rgba , 4 ) X ( int , group , 1 ) X ( mjString * , hfieldname , 1 ) X ( mjString * , meshname , 1 ) X ( double , fitscale , 1 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjsPlugin , plugin , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 166
+    },
+    "MJSSITE_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , quat , 4 ) X ( mjsOrientation , alt , 1 ) XVEC ( double , fromto , 6 ) XVEC ( double , size , 3 ) X ( mjtGeom , type , 1 ) X ( mjString * , material , 1 ) X ( int , group , 1 ) XVEC ( float , rgba , 4 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 202
+    },
+    "MJSCAMERA_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , quat , 4 ) X ( mjsOrientation , alt , 1 ) X ( mjtCamLight , mode , 1 ) X ( mjString * , targetbody , 1 ) X ( mjtProjection , proj , 1 ) XVEC ( int , resolution , 2 ) X ( int , output , 1 ) X ( double , fovy , 1 ) X ( double , ipd , 1 ) XVEC ( float , intrinsic , 4 ) XVEC ( float , sensor_size , 2 ) XVEC ( float , focal_length , 2 ) XVEC ( float , focal_pixel , 2 ) XVEC ( float , principal_length , 2 ) XVEC ( float , principal_pixel , 2 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 219
+    },
+    "MJSLIGHT_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) XVEC ( double , pos , 3 ) XVEC ( double , dir , 3 ) X ( mjtCamLight , mode , 1 ) X ( mjString * , targetbody , 1 ) X ( mjtByte , active , 1 ) X ( mjtLightType , type , 1 ) X ( mjString * , texture , 1 ) X ( mjtByte , castshadow , 1 ) X ( float , bulbradius , 1 ) X ( float , intensity , 1 ) X ( float , range , 1 ) XVEC ( float , attenuation , 3 ) X ( float , cutoff , 1 ) X ( float , exponent , 1 ) XVEC ( float , ambient , 3 ) XVEC ( float , diffuse , 3 ) XVEC ( float , specular , 3 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 243
+    },
+    "MJSFLEX_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( int , contype , 1 ) X ( int , conaffinity , 1 ) X ( int , condim , 1 ) X ( int , priority , 1 ) XVEC ( double , friction , 3 ) X ( double , solmix , 1 ) XVEC ( mjtNum , solref , mjNREF ) XVEC ( mjtNum , solimp , mjNIMP ) X ( double , margin , 1 ) X ( double , gap , 1 ) X ( int , dim , 1 ) X ( double , radius , 1 ) XVEC ( double , size , 3 ) X ( mjtByte , internal , 1 ) X ( mjtByte , flatskin , 1 ) X ( int , selfcollide , 1 ) X ( int , passive , 1 ) X ( int , activelayers , 1 ) X ( int , group , 1 ) X ( double , edgestiffness , 1 ) X ( double , edgedamping , 1 ) XVEC ( float , rgba , 4 ) X ( mjString * , material , 1 ) X ( double , young , 1 ) X ( double , poisson , 1 ) X ( double , damping , 1 ) X ( double , thickness , 1 ) X ( int , elastic2d , 1 ) XVEC ( int , cellcount , 3 ) X ( int , order , 1 ) X ( mjStringVec * , nodebody , 1 ) X ( mjStringVec * , vertbody , 1 ) X ( mjDoubleVec * , node , 1 ) X ( mjDoubleVec * , vert , 1 ) X ( mjIntVec * , elem , 1 ) X ( mjFloatVec * , texcoord , 1 ) X ( mjIntVec * , elemtexcoord , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 267
+    },
+    "MJSMESH_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , content_type , 1 ) X ( mjString * , file , 1 ) XVEC ( double , refpos , 3 ) XVEC ( double , refquat , 4 ) XVEC ( double , scale , 3 ) X ( mjtMeshInertia , inertia , 1 ) X ( mjtByte , smoothnormal , 1 ) X ( mjtByte , needsdf , 1 ) X ( int , maxhullvert , 1 ) X ( mjFloatVec * , uservert , 1 ) X ( mjFloatVec * , usernormal , 1 ) X ( mjFloatVec * , usertexcoord , 1 ) X ( mjIntVec * , userface , 1 ) X ( mjIntVec * , userfacenormal , 1 ) X ( mjIntVec * , userfacetexcoord , 1 ) X ( mjsPlugin , plugin , 1 ) X ( mjString * , material , 1 ) X ( int , octree_maxdepth , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 311
+    },
+    "MJSHFIELD_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , content_type , 1 ) X ( mjString * , file , 1 ) XVEC ( double , size , 4 ) X ( int , nrow , 1 ) X ( int , ncol , 1 ) X ( mjFloatVec * , userdata , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 336
+    },
+    "MJSSKIN_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , file , 1 ) X ( mjString * , material , 1 ) XVEC ( float , rgba , 4 ) X ( float , inflate , 1 ) X ( int , group , 1 ) X ( mjFloatVec * , vert , 1 ) X ( mjFloatVec * , texcoord , 1 ) X ( mjIntVec * , face , 1 ) X ( mjStringVec * , bodyname , 1 ) X ( mjFloatVec * , bindpos , 1 ) X ( mjFloatVec * , bindquat , 1 ) X ( mjIntVecVec * , vertid , 1 ) X ( mjFloatVecVec * , vertweight , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 349
+    },
+    "MJSTEXTURE_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtTexture , type , 1 ) X ( mjtColorSpace , colorspace , 1 ) X ( int , builtin , 1 ) X ( int , mark , 1 ) XVEC ( double , rgb1 , 3 ) XVEC ( double , rgb2 , 3 ) XVEC ( double , markrgb , 3 ) X ( double , random , 1 ) X ( int , height , 1 ) X ( int , width , 1 ) X ( int , nchannel , 1 ) X ( mjString * , content_type , 1 ) X ( mjString * , file , 1 ) XVEC ( int , gridsize , 2 ) XVEC ( char , gridlayout , 12 ) X ( mjStringVec * , cubefiles , 1 ) X ( mjByteVec * , data , 1 ) X ( mjtByte , hflip , 1 ) X ( mjtByte , vflip , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 369
+    },
+    "MJSMATERIAL_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjStringVec * , textures , 1 ) X ( mjtByte , texuniform , 1 ) XVEC ( float , texrepeat , 2 ) X ( float , emission , 1 ) X ( float , specular , 1 ) X ( float , shininess , 1 ) X ( float , reflectance , 1 ) X ( float , metallic , 1 ) X ( float , roughness , 1 ) XVEC ( float , rgba , 4 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 395
+    },
+    "MJSPAIR_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , geomname1 , 1 ) X ( mjString * , geomname2 , 1 ) X ( int , condim , 1 ) XVEC ( mjtNum , solref , mjNREF ) XVEC ( mjtNum , solreffriction , mjNREF ) XVEC ( mjtNum , solimp , mjNIMP ) X ( double , margin , 1 ) X ( double , gap , 1 ) XVEC ( double , friction , 5 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 412
+    },
+    "MJSEXCLUDE_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , bodyname1 , 1 ) X ( mjString * , bodyname2 , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 428
+    },
+    "MJSEQUALITY_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtEq , type , 1 ) XVEC ( double , data , mjNEQDATA ) X ( mjtByte , active , 1 ) X ( mjString * , name1 , 1 ) X ( mjString * , name2 , 1 ) X ( mjtObj , objtype , 1 ) XVEC ( mjtNum , solref , mjNREF ) XVEC ( mjtNum , solimp , mjNIMP ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 437
+    },
+    "MJSTENDON_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) XVEC ( double , stiffness , mjNPOLY + 1 ) XVEC ( double , springlength , 2 ) XVEC ( double , damping , mjNPOLY + 1 ) X ( double , frictionloss , 1 ) XVEC ( mjtNum , solref_friction , mjNREF ) XVEC ( mjtNum , solimp_friction , mjNIMP ) X ( double , armature , 1 ) X ( int , limited , 1 ) X ( int , actfrclimited , 1 ) XVEC ( double , range , 2 ) XVEC ( double , actfrcrange , 2 ) X ( double , margin , 1 ) XVEC ( mjtNum , solref_limit , mjNREF ) XVEC ( mjtNum , solimp_limit , mjNIMP ) X ( mjString * , material , 1 ) X ( double , width , 1 ) XVEC ( float , rgba , 4 ) X ( int , group , 1 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 452
+    },
+    "MJSWRAP_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtWrap , type , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 478
+    },
+    "MJSACTUATOR_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtGain , gaintype , 1 ) XVEC ( double , gainprm , mjNGAIN ) X ( mjtBias , biastype , 1 ) XVEC ( double , biasprm , mjNGAIN ) X ( mjtDyn , dyntype , 1 ) XVEC ( double , dynprm , mjNDYN ) X ( int , actdim , 1 ) X ( mjtByte , actearly , 1 ) X ( mjtTrn , trntype , 1 ) XVEC ( double , gear , 6 ) X ( mjString * , target , 1 ) X ( mjString * , refsite , 1 ) X ( mjString * , slidersite , 1 ) X ( double , cranklength , 1 ) XVEC ( double , lengthrange , 2 ) X ( double , inheritrange , 1 ) XVEC ( double , damping , mjNPOLY + 1 ) X ( double , armature , 1 ) X ( int , ctrllimited , 1 ) XVEC ( double , ctrlrange , 2 ) X ( int , forcelimited , 1 ) XVEC ( double , forcerange , 2 ) X ( int , actlimited , 1 ) XVEC ( double , actrange , 2 ) X ( int , group , 1 ) X ( int , nsample , 1 ) X ( int , interp , 1 ) X ( double , delay , 1 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjsPlugin , plugin , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 486
+    },
+    "MJSSENSOR_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjtSensor , type , 1 ) X ( mjtObj , objtype , 1 ) X ( mjString * , objname , 1 ) X ( mjtObj , reftype , 1 ) X ( mjString * , refname , 1 ) XVEC ( int , intprm , mjNSENS ) X ( mjtDataType , datatype , 1 ) X ( mjtStage , needstage , 1 ) X ( int , dim , 1 ) X ( double , cutoff , 1 ) X ( double , noise , 1 ) X ( int , nsample , 1 ) X ( int , interp , 1 ) X ( double , delay , 1 ) XVEC ( double , interval , 2 ) X ( mjDoubleVec * , userdata , 1 ) X ( mjsPlugin , plugin , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 523
+    },
+    "MJSNUMERIC_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjDoubleVec * , data , 1 ) X ( int , size , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 547
+    },
+    "MJSTEXT_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjString * , data , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 556
+    },
+    "MJSTUPLE_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjIntVec * , objtype , 1 ) X ( mjStringVec * , objname , 1 ) X ( mjDoubleVec * , objprm , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 564
+    },
+    "MJSKEY_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( double , time , 1 ) X ( mjDoubleVec * , qpos , 1 ) X ( mjDoubleVec * , qvel , 1 ) X ( mjDoubleVec * , act , 1 ) X ( mjDoubleVec * , mpos , 1 ) X ( mjDoubleVec * , mquat , 1 ) X ( mjDoubleVec * , ctrl , 1 ) X ( mjString * , info , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 574
+    },
+    "MJSDEFAULT_FIELDS": {
+      "value": "X ( mjsElement * , element , 1 ) X ( mjsJoint * , joint , 1 ) X ( mjsGeom * , geom , 1 ) X ( mjsSite * , site , 1 ) X ( mjsCamera * , camera , 1 ) X ( mjsLight * , light , 1 ) X ( mjsFlex * , flex , 1 ) X ( mjsMesh * , mesh , 1 ) X ( mjsMaterial * , material , 1 ) X ( mjsPair * , pair , 1 ) X ( mjsEquality * , equality , 1 ) X ( mjsTendon * , tendon , 1 ) X ( mjsActuator * , actuator , 1 )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjspecmacro.h",
+      "line": 588
+    },
     "MJ_ASSERT_SIZE": {
       "value": "( type , size ) _Static_assert ( sizeof ( type ) == ( size ) , # type \" must be \" # size \" bytes for MuJoCo ABI stability\" )",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mjassert.h",
-      "line": 32
+      "line": 34
+    },
+    "MJ_STATIC_ASSERT": {
+      "value": "( expr ) _Static_assert ( expr , # expr )",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjassert.h",
+      "line": 36
+    },
+    "X": {
+      "value": "( type , name , dim ) + 1",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjassert.h",
+      "line": 135
+    },
+    "XVEC": {
+      "value": "( type , name , dim ) + 1",
+      "doc": "",
+      "file": "third_party/install/mujoco/include/mujoco/mjassert.h",
+      "line": 136
     },
     "mju_sqrt": {
       "value": "sqrt",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1019
+      "line": 1025
     },
     "mju_exp": {
       "value": "exp",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1020
+      "line": 1026
     },
     "mju_sin": {
       "value": "sin",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1021
+      "line": 1027
     },
     "mju_cos": {
       "value": "cos",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1022
+      "line": 1028
     },
     "mju_tan": {
       "value": "tan",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1023
+      "line": 1029
     },
     "mju_asin": {
       "value": "asin",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1024
+      "line": 1030
     },
     "mju_acos": {
       "value": "acos",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1025
+      "line": 1031
     },
     "mju_atan2": {
       "value": "atan2",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1026
+      "line": 1032
     },
     "mju_tanh": {
       "value": "tanh",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1027
+      "line": 1033
     },
     "mju_pow": {
       "value": "pow",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1028
+      "line": 1034
     },
     "mju_abs": {
       "value": "fabs",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1029
+      "line": 1035
     },
     "mju_log": {
       "value": "log",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1030
+      "line": 1036
     },
     "mju_log10": {
       "value": "log10",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1031
+      "line": 1037
     },
     "mju_floor": {
       "value": "floor",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1032
+      "line": 1038
     },
     "mju_ceil": {
       "value": "ceil",
       "doc": "",
       "file": "third_party/install/mujoco/include/mujoco/mujoco.h",
-      "line": 1033
+      "line": 1039
     }
   },
   "hand_enums": {

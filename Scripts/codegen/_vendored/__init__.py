@@ -1,12 +1,9 @@
 # Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 """
-Vendored third-party source files needed by URLab codegen.
+Local support modules for URLab codegen.
 
-Files here are auto-fetched by ``Scripts/codegen/sync_vendored.py`` from
-the URLs listed in ``_VENDORED_FROM.md``. Edit those source URLs / SHAs
-in the manifest; the script downloads + writes them verbatim.
-
-DO NOT edit the .h / .cc files in this directory by hand — they get
-clobbered on the next ``sync_vendored.py`` run. URLab-side changes go
-in the codegen modules that consume them.
+Currently holds ``ast_nodes.py`` (clang-AST node dataclasses used by
+``build_introspect_snapshot.py``). MuJoCo headers are no longer vendored
+here — ``mjspecmacro.h`` ships in the installed MuJoCo headers and is read
+from ``third_party/install`` like the other headers.
 """

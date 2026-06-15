@@ -1134,6 +1134,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 
 			if (Mgr->PhysicsEngine->OnPostStep)
 				Mgr->PhysicsEngine->OnPostStep(m, d);
+
+			// Publish the just-pushed pose to the render snapshot now, while
+			// we still hold CallbackMutex (lock order CallbackMutex ->
+			// RenderStateMutex). Without this the snapshot only refreshes on
+			// the physics loop's idle timeout, so cameras and any render
+			// consumer would lag the pushed state. The synchronous camera
+			// path below relies on this snapshot being current.
+			Mgr->PhysicsEngine->PushRenderState();
 		}
 
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
@@ -1583,9 +1591,21 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 	if (!World)
 		return Cams;
 
-	// Build a name -> camera lookup using the canonical "<articulation>/<camera>"
-	// form the handshake exposes plus the bare camera name as a fallback.
+	// Build a name -> camera lookup. Register every form a client may key on:
+	//   - "<art>/<camera>"        (qualified)
+	//   - "<art>/camera/<camera>" (matches the zmq_topic the hello handshake
+	//                              advertises, so a client that reuses that
+	//                              string resolves instead of being dropped)
+	//   - "<camera>"              (bare, fallback)
+	// First writer wins per key, so a second camera that happens to share a
+	// bare name cannot overwrite (and hide) an already-registered distinct
+	// camera; it stays reachable via its qualified keys.
 	TMap<FString, UMjCamera*> ByName;
+	auto AddName = [&ByName](const FString& Key, UMjCamera* C) {
+		UMjCamera*& Slot = ByName.FindOrAdd(Key);
+		if (Slot == nullptr)
+			Slot = C;
+	};
 	for (AMjArticulation* Art : Manager->GetAllArticulations())
 	{
 		if (!Art)
@@ -1596,61 +1616,96 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 		{
 			if (!C || C->bIsDefault)
 				continue;
-			FString Qualified = Art->GetName() + TEXT("/") + C->GetName();
-			ByName.Add(Qualified, C);
-			ByName.Add(C->GetName(), C);
+			const FString ArtName = Art->GetName();
+			const FString CamName = C->GetName();
+			AddName(ArtName + TEXT("/") + CamName, C);
+			AddName(ArtName + TEXT("/camera/") + CamName, C);
+			AddName(CamName, C);
 		}
 	}
+
+	// Shared result for the synchronous "sync" capture below. Ref-counted so a
+	// (rare) game-thread timeout can't leave the marshalled task writing into
+	// freed stack memory.
+	struct FSyncCaptureResult
+	{
+		FEvent* Done = nullptr;
+		TArray<FColor> Color;
+		TArray<float> Float;
+		bool bOk = false;
+	};
 
 	for (const TPair<FString, ECameraInclude>& Spec : CameraSpec)
 	{
 		UMjCamera** Found = ByName.Find(Spec.Key);
 		if (!Found || !*Found)
 		{
-			UE_LOG(LogURLabNet, Verbose,
-				TEXT("[BuildCamerasBlock] camera '%s' not found"), *Spec.Key);
+			// Warning, not Verbose: a key that never resolves means the client
+			// keeps showing the last frame it ever received for this camera
+			// (typically the discover-time image), which presents as a
+			// permanently stale camera. Make it visible.
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("[BuildCamerasBlock] camera '%s' not found; dropped from reply"),
+				*Spec.Key);
 			continue;
 		}
 		UMjCamera* Cam = *Found;
 
-		// Streaming auto-enables in UMjCamera::BeginPlay via
-		// UMjNetworkManager::RegisterCamera (bEnableAllCameras=true by
-		// default), so by the time we hit this path the camera is
-		// already streaming. The earlier worker-thread
-		// SetStreamingEnabled call here was dead code; left only the
-		// game-thread RequestReadback marshalling below, which is
-		// the actual fix — RenderTarget->GameThread_GetRenderTargetResource
-		// returns null on non-game threads and silently bails the
-		// readback, which is why include_cameras saw empty frames.
+		TArray<FColor> ColorPixels;
+		TArray<float> FloatPixels;
 
-		// For "sync" we kick a readback and poll. RequestReadback
-		// must run on the game thread (it touches
-		// RenderTarget->GameThread_GetRenderTargetResource and enqueues
-		// a render command); calling it from the bridge worker thread
-		// makes Resource null and the readback never lands. We marshal
-		// here and wait briefly; the per-tick auto-readback in
-		// UMjCamera::TickComponent keeps PendingPixels fresh for the
-		// "latest" path so consumers without an explicit sync call
-		// still get frames.
 		if (Spec.Value == ECameraInclude::Sync)
 		{
-			FEvent* ReqDone = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
-			TWeakObjectPtr<UMjCamera> WeakCam(Cam);
-			AsyncTask(ENamedThreads::GameThread, [WeakCam, ReqDone]() {
-				if (UMjCamera* C = WeakCam.Get())
-				{
-					C->RequestReadback();
-				}
-				ReqDone->Trigger();
-			});
-			ReqDone->Wait(2000);
-			FPlatformProcess::ReturnSynchEventToPool(ReqDone);
+			// Deterministic frame: marshal to the game thread, apply the
+			// latest physics snapshot onto the actors (the puppet step has
+			// already published it), then force a CaptureScene + blocking
+			// readback. This guarantees the frame reflects the pose pushed by
+			// this step rather than whatever the free-running per-tick capture
+			// last produced. The same frame is also handed to the ZMQ / SHM
+			// publishers inside CaptureAndReadbackBlocking, so streaming
+			// consumers see the identical image.
+			TSharedPtr<FSyncCaptureResult, ESPMode::ThreadSafe> Result =
+				MakeShared<FSyncCaptureResult, ESPMode::ThreadSafe>();
+			Result->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
 
-			const double DeadlineSec = FPlatformTime::Seconds() + (TimeoutMs / 1000.0);
-			while (!Cam->IsReadbackReady() && FPlatformTime::Seconds() < DeadlineSec)
+			TWeakObjectPtr<UMjCamera> WeakCam(Cam);
+			TWeakObjectPtr<AAMjManager> WeakMgr(Manager);
+			AsyncTask(ENamedThreads::GameThread, [Result, WeakCam, WeakMgr]() {
+				if (AAMjManager* M = WeakMgr.Get())
+					M->ApplyLatestRenderState();
+				if (UMjCamera* C = WeakCam.Get())
+					Result->bOk = C->CaptureAndReadbackBlocking(Result->Color, Result->Float);
+				Result->Done->Trigger();
+			});
+
+			const uint32 WaitMs = TimeoutMs > 0 ? static_cast<uint32>(TimeoutMs) : 2000;
+			if (Result->Done->Wait(WaitMs))
 			{
-				FPlatformProcess::Sleep(0.001f);
+				FPlatformProcess::ReturnSynchEventToPool(Result->Done);
+				Result->Done = nullptr;
+				ColorPixels = MoveTemp(Result->Color);
+				FloatPixels = MoveTemp(Result->Float);
 			}
+			else
+			{
+				// Timed out. Leave the event un-pooled — the game-thread task
+				// still holds a ref to Result and will Trigger a valid event.
+				// Fall through with empty pixels so the camera is omitted this
+				// step rather than wedging the RPC.
+				UE_LOG(LogURLabNet, Warning,
+					TEXT("[BuildCamerasBlock] sync capture for '%s' timed out after %ums"),
+					*Spec.Key, WaitMs);
+			}
+		}
+		else
+		{
+			// "latest": consume whatever the per-tick auto-readback last
+			// produced. Cheap (no game-thread round trip) but not guaranteed
+			// to postdate this step.
+			if (Cam->CaptureMode == EMjCameraMode::Depth)
+				FloatPixels = Cam->ConsumeFloatPixels();
+			else
+				ColorPixels = Cam->ConsumePixels();
 		}
 
 		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
@@ -1659,25 +1714,23 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 
 		if (Cam->CaptureMode == EMjCameraMode::Depth)
 		{
-			TArray<float> Pixels = Cam->ConsumeFloatPixels();
-			if (Pixels.Num() == 0)
+			if (FloatPixels.Num() == 0)
 				continue;
 			CamObj->SetStringField(TEXT("dtype"), TEXT("float32"));
 			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(Pixels.GetData()),
-				Pixels.Num() * sizeof(float));
+				reinterpret_cast<const uint8*>(FloatPixels.GetData()),
+				FloatPixels.Num() * sizeof(float));
 		}
 		else
 		{
-			TArray<FColor> Pixels = Cam->ConsumePixels();
-			if (Pixels.Num() == 0)
+			if (ColorPixels.Num() == 0)
 				continue;
 			// Real / SemSeg / InstanceSeg all ship 4-byte BGRA. Bridge
 			// discriminates the seg modes by the camera_topics handshake.
 			CamObj->SetStringField(TEXT("dtype"), TEXT("bgra8"));
 			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(Pixels.GetData()),
-				Pixels.Num() * sizeof(FColor));
+				reinterpret_cast<const uint8*>(ColorPixels.GetData()),
+				ColorPixels.Num() * sizeof(FColor));
 		}
 		Cams->SetObjectField(Spec.Key, CamObj);
 	}

@@ -240,6 +240,13 @@ protected:
 public:
 	virtual void Tick(float DeltaTime) override;
 
+	/** Pull the latest physics render snapshot and push it onto the UE
+	 *  actor/component transforms. Normally driven once per frame from Tick;
+	 *  also called explicitly from the puppet-mode synchronous camera capture
+	 *  so a freshly pushed pose is reflected on the actors before CaptureScene.
+	 *  Game thread only. */
+	void ApplyLatestRenderState();
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
 	TArray<UMjQuickConvertComponent*> m_MujocoComponents;
 

@@ -500,6 +500,16 @@ void AAMjManager::Tick(float DeltaTime)
 		return;
 	}
 
+	ApplyLatestRenderState();
+}
+
+void AAMjManager::ApplyLatestRenderState()
+{
+	if (!PhysicsEngine || !PhysicsEngine->IsInitialized())
+	{
+		return;
+	}
+
 	const TArray<AMjArticulation*> Arts = PhysicsEngine->GetAllArticulations();
 	const TArray<UMjQuickConvertComponent*> Quicks = PhysicsEngine->GetAllQuickComponents();
 

@@ -288,6 +288,21 @@ public:
 	TArray<float> ConsumeFloatPixels();
 
 	/**
+	 * @brief Game-thread, synchronous capture + GPU->CPU readback.
+	 *
+	 * Forces a fresh SceneCapture of the current scene (so the frame reflects
+	 * whatever actor transforms are applied at call time) and blocks on the
+	 * readback via FlushRenderingCommands. Fills OutColor for Real/seg modes
+	 * or OutFloat for Depth. Also feeds the ZMQ / SHM publishers with the same
+	 * frame so streaming consumers see the identical post-step image.
+	 *
+	 * Used by the puppet-mode "sync" camera path, which needs a frame that
+	 * provably postdates the pushed state rather than the latest free-running
+	 * frame. Must be called on the game thread. Returns true on success.
+	 */
+	bool CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<float>& OutFloat);
+
+	/**
 	 * @brief Returns the ZMQ endpoint actually bound (may differ from ZmqEndpoint if auto-incremented).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")

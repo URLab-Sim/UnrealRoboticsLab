@@ -15,6 +15,7 @@
 #include "Transport/ShmRpcTransport.h"
 #include "Transport/ShmPublishTransport.h" // ResolveSessionDir
 #include "Bridge/BridgeServer.h"
+#include "Bridge/RpcDispatcher.h" // MakeError
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "HAL/RunnableThread.h"
@@ -75,7 +76,7 @@ bool UURLabShmRpcTransport::TransportInit()
 			TEXT("UURLabShmRpcTransport: failed to open req.shm at %s"), *ReqPath);
 		return false;
 	}
-	if (!RepRegion.Open(RepPath, static_cast<uint32>(BufferStride), /*NBuffers=*/2))
+	if (!RepRegion.Open(RepPath, static_cast<uint32>(ReplyBufferStride), /*NBuffers=*/2))
 	{
 		UE_LOG(LogURLabNet, Error,
 			TEXT("UURLabShmRpcTransport: failed to open rep.shm at %s"), *RepPath);
@@ -259,15 +260,34 @@ void UURLabShmRpcTransport::RunPollLoop()
 
 		if (static_cast<uint32>(RepBytes.Num()) + sizeof(uint32) > RepStride)
 		{
+			// Reply doesn't fit the fixed SHM reply slot — e.g. a multi-camera
+			// include_cameras frame or a large hello MJB. By design SHM hands
+			// oversize replies to ZMQ. Return an explicit `wrong_transport`
+			// reply NOW so the bridge re-routes this one request to ZMQ
+			// immediately, instead of dropping it and forcing the client to
+			// wait out its full recv timeout (the 5s stall). The fast image
+			// path for SHM consumers is the per-camera cam_*.shm streams, not
+			// this RPC reply slot; raise ReplyBufferStride only if you want
+			// large inline replies carried over SHM.
 			UE_LOG(LogURLabNet, Warning,
-				TEXT("UURLabShmRpcTransport: reply payload %d bytes exceeds slot stride %u; dropping"),
+				TEXT("UURLabShmRpcTransport: reply %d bytes exceeds reply slot %u; routing to zmq "
+					 "(raise ReplyBufferStride to carry it over shm)"),
 				RepBytes.Num(), RepStride);
-			// Manager-required ops have bounded reply sizes (step replies,
-			// sensor readouts, qpos snapshots) — overflow here means a
-			// bug in the dispatcher's reply construction. Drop the reply
-			// rather than corrupting the slot; the bridge times out, which
-			// is the correct signal that something is wrong.
-			continue;
+
+			TSharedPtr<FJsonObject> Err = FURLabRpcDispatcher::MakeError(
+				TEXT("wrong_transport"),
+				FString::Printf(
+					TEXT("reply %d bytes exceeds shm reply slot %u; use zmq for this request"),
+					RepBytes.Num(), RepStride));
+			TArray<uint8> ErrBytes;
+			EncodeReply(Err, ErrBytes);
+			if (static_cast<uint32>(ErrBytes.Num()) + sizeof(uint32) > RepStride)
+			{
+				// Error envelope itself won't fit (pathologically tiny stride).
+				// Nothing safe to write; skip and let the bridge time out.
+				continue;
+			}
+			RepBytes = MoveTemp(ErrBytes);
 		}
 
 		const uint32 CurLatest = RepHdr->LatestIdx.load(std::memory_order_acquire);

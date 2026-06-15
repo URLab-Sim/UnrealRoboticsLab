@@ -80,6 +80,14 @@ public:
 	 *  caller should ship a `not_ready` error reply. */
 	FURLabRpcDispatcher* ResolveDispatcher() const;
 
+	/** Encode a reply object to wire bytes using the live session's encoding
+	 *  (msgpack by default, JSON when the handshake selected it). For
+	 *  transports that synthesize a reply outside the normal
+	 *  ProcessRequestBytes path — e.g. a fixed-size transport rejecting an
+	 *  oversize reply with a fast `wrong_transport`/`reply_too_large` error
+	 *  instead of dropping it. */
+	void EncodeReply(const TSharedPtr<class FJsonObject>& Reply, TArray<uint8>& OutBytes) const;
+
 protected:
 	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
 };

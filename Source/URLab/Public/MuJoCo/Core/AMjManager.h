@@ -176,6 +176,12 @@ public:
 	 */
 	std::atomic<bool> bPublishersPaused{false};
 
+	/** Post-step render-snapshot id / sim time last applied to the actors.
+	 *  Written on the game thread in ApplyLatestRenderState; read (atomically)
+	 *  by cameras when stamping readbacks. */
+	std::atomic<uint64> LastAppliedRenderFrameId{0};
+	std::atomic<double> LastAppliedRenderSimTime{0.0};
+
 	/** Owns the FURLabRpcDispatcher + transports. Created in BeginPlay, destroyed in EndPlay. */
 	UPROPERTY()
 	TObjectPtr<UURLabBridgeServer> BridgeServer;
@@ -241,11 +247,24 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	/** Pull the latest physics render snapshot and push it onto the UE
-	 *  actor/component transforms. Normally driven once per frame from Tick;
-	 *  also called explicitly from the puppet-mode synchronous camera capture
-	 *  so a freshly pushed pose is reflected on the actors before CaptureScene.
-	 *  Game thread only. */
+	 *  actor/component transforms. Normally driven once per frame from Tick.
+	 *  Records the applied snapshot's FrameId / SimTime so cameras can tag
+	 *  their readbacks with the post-step state they show. Game thread only. */
 	void ApplyLatestRenderState();
+
+	/** Render-snapshot id last applied to the actors (post-step state id that
+	 *  the currently-rendered scene reflects). Cameras stamp readbacks with
+	 *  this; the bridge associates an image with a step by frame_id. */
+	uint64 GetLastAppliedFrameId() const
+	{
+		return LastAppliedRenderFrameId.load(std::memory_order_acquire);
+	}
+
+	/** MuJoCo sim time of the snapshot last applied to the actors. */
+	double GetLastAppliedSimTime() const
+	{
+		return LastAppliedRenderSimTime.load(std::memory_order_acquire);
+	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
 	TArray<UMjQuickConvertComponent*> m_MujocoComponents;

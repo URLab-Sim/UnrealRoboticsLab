@@ -256,6 +256,11 @@ public:
 	 */
 	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor);
 
+	/** Current render-snapshot frame id (monotonic, bumped each PushRenderState
+	 *  i.e. each step's post-step state). Returned in step replies so a client
+	 *  can fetch the matching camera frame by id. Thread-safe. */
+	uint64 GetRenderFrameId();
+
 	// --- Command channel (UE -> MuJoCo) --------------------------------
 	//
 	// Game-thread writers (mocap, wrench, sleep) enqueue under

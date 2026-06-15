@@ -1047,24 +1047,45 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 			ActiveObservationLevel = EObservationLevel::Standard;
 	}
 
-	// Parse include_cameras: accepts either
-	//   - object: { "<cam_name>": "sync"|"latest" } -- per-camera mode
-	//   - bool true: all registered cameras at "latest" mode (legacy form)
-	//   - false/absent: no cameras
+	// Parse include_cameras. Per-camera value forms:
+	//   "latest" / "sync"   -> latest available frame from the camera's history
+	//   <number>            -> the frame showing post-step state >= that frame_id
+	//   { "frame_id": N }   -> same as <number>
+	// Or include_cameras: true  -> all registered cameras, latest.
+	// Retrieval is non-blocking: a frame that isn't ready yet is omitted and
+	// the client retries (or passes the step's frame_id to wait client-side).
 	TMap<FString, ECameraInclude> CameraSpec;
+	TMap<FString, uint64> CameraMinFrameIds;
 	{
 		const TSharedPtr<FJsonObject>* CamObj = nullptr;
 		if (Req->TryGetObjectField(TEXT("include_cameras"), CamObj) && CamObj && CamObj->IsValid())
 		{
 			for (const auto& Kv : (*CamObj)->Values)
 			{
+				if (!Kv.Value.IsValid())
+					continue;
 				FString Mode;
-				if (Kv.Value.IsValid() && Kv.Value->TryGetString(Mode))
+				double Num = 0.0;
+				const TSharedPtr<FJsonObject>* Obj = nullptr;
+				if (Kv.Value->TryGetString(Mode))
 				{
-					ECameraInclude E = ECameraInclude::Latest;
-					if (Mode.Equals(TEXT("sync"), ESearchCase::IgnoreCase))
-						E = ECameraInclude::Sync;
+					ECameraInclude E = Mode.Equals(TEXT("sync"), ESearchCase::IgnoreCase)
+										 ? ECameraInclude::Sync
+										 : ECameraInclude::Latest;
 					CameraSpec.Add(Kv.Key, E);
+				}
+				else if (Kv.Value->TryGetNumber(Num))
+				{
+					CameraSpec.Add(Kv.Key, ECameraInclude::Latest);
+					if (Num > 0.0)
+						CameraMinFrameIds.Add(Kv.Key, static_cast<uint64>(Num));
+				}
+				else if (Kv.Value->TryGetObject(Obj) && Obj && Obj->IsValid())
+				{
+					CameraSpec.Add(Kv.Key, ECameraInclude::Latest);
+					double Fid = 0.0;
+					if ((*Obj)->TryGetNumberField(TEXT("frame_id"), Fid) && Fid > 0.0)
+						CameraMinFrameIds.Add(Kv.Key, static_cast<uint64>(Fid));
 				}
 			}
 		}
@@ -1083,7 +1104,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 					{
 						if (!C || C->bIsDefault)
 							continue;
-						CameraSpec.Add(C->GetName(), ECameraInclude::Latest);
+						CameraSpec.Add(C->GetCanonicalName(), ECameraInclude::Latest);
 					}
 				}
 			}
@@ -1150,6 +1171,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		Reply->SetNumberField(TEXT("time"), d->time);
 		Reply->SetNumberField(TEXT("step"), StepCounter.fetch_add(1, std::memory_order_relaxed) + 1);
 		AppendClockFields(Reply, d->time);
+		// Post-step state id: the client passes this back as a camera frame_id
+		// to fetch the image that shows this exact step's state.
+		Reply->SetNumberField(TEXT("frame_id"),
+			static_cast<double>(Mgr->PhysicsEngine->GetRenderFrameId()));
 		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
 		if (Obs.IsValid())
 			Reply->SetObjectField(TEXT("per_articulation"), Obs);
@@ -1158,7 +1183,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 			Reply->SetObjectField(TEXT("entities"), Scene);
 		if (CameraSpec.Num() > 0)
 		{
-			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec);
+			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
 			if (Cams.IsValid() && Cams->Values.Num() > 0)
 				Reply->SetObjectField(TEXT("cameras"), Cams);
 		}
@@ -1309,6 +1334,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		Reply->SetNumberField(TEXT("time"), Cmd->ResultTime);
 		Reply->SetNumberField(TEXT("step"), Cmd->ResultStep);
 		AppendClockFields(Reply, Cmd->ResultTime);
+		Reply->SetNumberField(TEXT("frame_id"),
+			static_cast<double>(Mgr->PhysicsEngine->GetRenderFrameId()));
 		if (Cmd->Observations.IsValid())
 			Reply->SetObjectField(TEXT("per_articulation"), Cmd->Observations);
 		if (Cmd->Entities.IsValid())
@@ -1316,7 +1343,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 
 		if (CameraSpec.Num() > 0)
 		{
-			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec);
+			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
 			if (Cams.IsValid() && Cams->Values.Num() > 0)
 				Reply->SetObjectField(TEXT("cameras"), Cams);
 		}
@@ -1582,8 +1609,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepObservations(AAMjManager* 
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Manager,
-	const TMap<FString, ECameraInclude>& CameraSpec, int32 TimeoutMs)
+	const TMap<FString, ECameraInclude>& CameraSpec,
+	const TMap<FString, uint64>& MinFrameIds, int32 TimeoutMs)
 {
+	(void)TimeoutMs; // retrieval is non-blocking; param kept for ABI compatibility
 	TSharedPtr<FJsonObject> Cams = MakeShared<FJsonObject>();
 	if (!Manager || CameraSpec.Num() == 0)
 		return Cams;
@@ -1639,156 +1668,65 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 		}
 	}
 
-	// Resolve every requested camera up front, then batch ALL sync captures
-	// into a single game-thread round trip with ONE FlushRenderingCommands.
-	// (The previous per-camera blocking flush serialised and dominated step
-	// latency — each flush waited out the whole render backlog, multiplied by
-	// the number of requested cameras.)
-	struct FResolvedCam
-	{
-		FString Key;
-		UMjCamera* Cam = nullptr;
-		ECameraInclude Mode = ECameraInclude::Latest;
-		TArray<FColor> Color;
-		TArray<float> Float;
-	};
-	TArray<FResolvedCam> Reqs;
-	Reqs.Reserve(CameraSpec.Num());
+	// Non-blocking retrieval from each camera's frame-history ring. No capture,
+	// no FlushRenderingCommands — the per-tick async readback (decoupled from
+	// the step, like MuJoCo simulate's render thread) keeps the ring fresh.
+	// A client gets the frame for a specific step by passing its frame_id
+	// (MinFrameIds); otherwise it gets the latest available frame.
 	for (const TPair<FString, ECameraInclude>& Spec : CameraSpec)
 	{
 		UMjCamera** Found = ByName.Find(Spec.Key);
 		if (!Found || !*Found)
 		{
-			// Warning, not Verbose: a key that never resolves means the client
-			// keeps showing the last frame it ever received for this camera
-			// (typically the discover-time image), which presents as a
-			// permanently stale camera. Make it visible.
 			UE_LOG(LogURLabNet, Warning,
 				TEXT("[BuildCamerasBlock] camera '%s' not found; dropped from reply"),
 				*Spec.Key);
 			continue;
 		}
-		FResolvedCam R;
-		R.Key = Spec.Key;
-		R.Cam = *Found;
-		R.Mode = Spec.Value;
-		Reqs.Add(MoveTemp(R));
-	}
+		UMjCamera* Cam = *Found;
 
-	TArray<int32> SyncIdx;
-	for (int32 i = 0; i < Reqs.Num(); ++i)
-	{
-		if (Reqs[i].Mode == ECameraInclude::Sync)
-			SyncIdx.Add(i);
-	}
+		// Mark consumed so per-camera capture gating keeps this camera live.
+		Cam->TouchRequested();
 
-	if (SyncIdx.Num() > 0)
-	{
-		// Ref-counted so a (rare) timeout can't leave the game-thread task
-		// writing into freed memory. One color+float buffer per sync camera.
-		struct FSyncBatch
+		const uint64* MinIdPtr = MinFrameIds.Find(Spec.Key);
+		const uint64 MinId = MinIdPtr ? *MinIdPtr : 0;
+
+		FMjCameraFrame Frame;
+		if (!Cam->GetFrame(MinId, Frame))
 		{
-			FEvent* Done = nullptr;
-			TArray<UMjCamera*> Cams;
-			TArray<TArray<FColor>> Color;
-			TArray<TArray<float>> Float;
-		};
-		TSharedPtr<FSyncBatch, ESPMode::ThreadSafe> Batch =
-			MakeShared<FSyncBatch, ESPMode::ThreadSafe>();
-		Batch->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
-		Batch->Cams.Reserve(SyncIdx.Num());
-		for (int32 Idx : SyncIdx)
-			Batch->Cams.Add(Reqs[Idx].Cam);
-		Batch->Color.SetNum(SyncIdx.Num());
-		Batch->Float.SetNum(SyncIdx.Num());
-
-		TWeakObjectPtr<AAMjManager> WeakMgr(Manager);
-		AsyncTask(ENamedThreads::GameThread, [Batch, WeakMgr]() {
-			// Apply the just-pushed physics snapshot to the actors once, then
-			// enqueue a fresh CaptureScene + readback for every camera, then a
-			// SINGLE FlushRenderingCommands for the whole batch.
-			if (AAMjManager* M = WeakMgr.Get())
-				M->ApplyLatestRenderState();
-			TArray<bool> Ok;
-			Ok.Init(false, Batch->Cams.Num());
-			for (int32 j = 0; j < Batch->Cams.Num(); ++j)
-			{
-				if (UMjCamera* C = Batch->Cams[j])
-					Ok[j] = C->EnqueueSyncCapture(Batch->Color[j], Batch->Float[j]);
-			}
-			FlushRenderingCommands();
-			for (int32 j = 0; j < Batch->Cams.Num(); ++j)
-			{
-				if (Ok[j] && Batch->Cams[j])
-					Batch->Cams[j]->PublishFrame(Batch->Color[j], Batch->Float[j]);
-			}
-			Batch->Done->Trigger();
-		});
-
-		const uint32 WaitMs = TimeoutMs > 0 ? static_cast<uint32>(TimeoutMs) : 2000;
-		if (Batch->Done->Wait(WaitMs))
-		{
-			FPlatformProcess::ReturnSynchEventToPool(Batch->Done);
-			Batch->Done = nullptr;
-			for (int32 j = 0; j < SyncIdx.Num(); ++j)
-			{
-				Reqs[SyncIdx[j]].Color = MoveTemp(Batch->Color[j]);
-				Reqs[SyncIdx[j]].Float = MoveTemp(Batch->Float[j]);
-			}
-		}
-		else
-		{
-			// Timed out — leave the event un-pooled (the task still holds a ref
-			// and will Trigger a valid event). Sync cameras get omitted this step.
-			UE_LOG(LogURLabNet, Warning,
-				TEXT("[BuildCamerasBlock] batched sync capture (%d cams) timed out after %ums"),
-				SyncIdx.Num(), WaitMs);
-		}
-	}
-
-	// "latest" cameras: consume whatever the per-tick auto-readback last
-	// produced (cheap, no game-thread round trip; not guaranteed to postdate
-	// this step).
-	for (FResolvedCam& R : Reqs)
-	{
-		if (R.Mode != ECameraInclude::Sync && R.Cam)
-		{
-			if (R.Cam->CaptureMode == EMjCameraMode::Depth)
-				R.Float = R.Cam->ConsumeFloatPixels();
-			else
-				R.Color = R.Cam->ConsumePixels();
-		}
-	}
-
-	for (const FResolvedCam& R : Reqs)
-	{
-		if (!R.Cam)
+			// Not ready yet (camera just activated, or the requested step's
+			// frame hasn't been rendered/read back). Omit; the client retries
+			// on a later step. First request of a dormant camera always misses.
 			continue;
-		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
-		CamObj->SetNumberField(TEXT("width"), R.Cam->resolution.Num() > 0 ? R.Cam->resolution[0] : 0);
-		CamObj->SetNumberField(TEXT("height"), R.Cam->resolution.Num() > 1 ? R.Cam->resolution[1] : 0);
+		}
 
-		if (R.Cam->CaptureMode == EMjCameraMode::Depth)
+		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
+		CamObj->SetNumberField(TEXT("width"), Frame.Width);
+		CamObj->SetNumberField(TEXT("height"), Frame.Height);
+		CamObj->SetNumberField(TEXT("frame_id"), static_cast<double>(Frame.FrameId));
+		CamObj->SetNumberField(TEXT("sim_time"), Frame.SimTime);
+
+		if (Cam->CaptureMode == EMjCameraMode::Depth)
 		{
-			if (R.Float.Num() == 0)
+			if (Frame.Depth.Num() == 0)
 				continue;
 			CamObj->SetStringField(TEXT("dtype"), TEXT("float32"));
 			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(R.Float.GetData()),
-				R.Float.Num() * sizeof(float));
+				reinterpret_cast<const uint8*>(Frame.Depth.GetData()),
+				Frame.Depth.Num() * sizeof(float));
 		}
 		else
 		{
-			if (R.Color.Num() == 0)
-				continue;
 			// Real / SemSeg / InstanceSeg all ship 4-byte BGRA. Bridge
 			// discriminates the seg modes by the camera_topics handshake.
+			if (Frame.Color.Num() == 0)
+				continue;
 			CamObj->SetStringField(TEXT("dtype"), TEXT("bgra8"));
 			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(R.Color.GetData()),
-				R.Color.Num() * sizeof(FColor));
+				reinterpret_cast<const uint8*>(Frame.Color.GetData()),
+				Frame.Color.Num() * sizeof(FColor));
 		}
-		Cams->SetObjectField(R.Key, CamObj);
+		Cams->SetObjectField(Spec.Key, CamObj);
 	}
 	return Cams;
 }

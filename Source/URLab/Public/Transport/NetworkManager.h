@@ -42,9 +42,12 @@ class URLAB_API UMjNetworkManager : public UActorComponent
 public:
 	UMjNetworkManager();
 
-	/** Forces all UMjCameras to enable ZMQ broadcasting. */
+	/** Forces every UMjCamera to broadcast (legacy "stream all"). Default
+	 *  false: cameras stream only if their own bEnableZmqBroadcast /
+	 *  bEnableShmBroadcast is set, or once a client requests them
+	 *  (per-camera capture gating keeps idle cameras off the GPU). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Network")
-	bool bEnableAllCameras = true;
+	bool bEnableAllCameras = false;
 
 	void UpdateCameraStreamingState();
 

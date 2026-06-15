@@ -853,6 +853,12 @@ void UMjPhysicsEngine::WithRenderState(
 	Visitor(RenderSnapshot);
 }
 
+uint64 UMjPhysicsEngine::GetRenderFrameId()
+{
+	FScopeLock Lock(&RenderStateMutex);
+	return RenderSnapshot.FrameId;
+}
+
 // =============================================================================
 // Command channel (UE -> MuJoCo)
 //

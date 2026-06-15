@@ -77,6 +77,21 @@ private:
 };
 
 /**
+ * @struct FMjCameraFrame
+ * @brief One retained camera frame, tagged with the post-step physics state it
+ *        shows. CaptureMode decides which pixel buffer is populated.
+ */
+struct FMjCameraFrame
+{
+	uint64 FrameId = 0; // post-step render-snapshot id this frame shows
+	double SimTime = 0.0;
+	int32 Width = 0;
+	int32 Height = 0;
+	TArray<FColor> Color; // Real / seg modes (BGRA8)
+	TArray<float> Depth;  // Depth mode (float32)
+};
+
+/**
  * @class UMjCamera
  * @brief Represents a MuJoCo <camera> element as an Unreal sensor component.
  *
@@ -88,8 +103,11 @@ private:
  *  - No ExportTo / RegisterToSpec — camera is UE-side only, not fed back to MuJoCo.
  *  - SetStreamingEnabled() allocates the RT and calls IStreamingManager::AddViewInformation
  *    so textures load correctly even when the player pawn is far away.
- *  - RequestReadback() enqueues a non-blocking GPU→CPU copy; check IsReadbackReady()
- *    on a subsequent tick, then consume with ConsumePixels().
+ *  - The per-tick readback is decoupled from stepping: completed frames land
+ *    in a history ring tagged with the post-step FrameId/SimTime they show.
+ *    Consumers fetch by step (GetFrame(frameId)) or latest (GetFrame(0)).
+ *  - Per-camera capture gating: a camera only captures while broadcast-enabled
+ *    or recently requested (TouchRequested), so idle cameras cost no GPU.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjCamera : public UMjComponent
@@ -264,52 +282,38 @@ public:
 
 	/**
 	 * @brief Enqueues a non-blocking asynchronous GPU→CPU pixel readback.
-	 *        No-op if streaming is not enabled or a readback is already in flight.
+	 *        No-op if streaming is not enabled or a readback is already in
+	 *        flight. Completed readbacks land in the frame-history ring
+	 *        (see GetFrame), tagged with the post-step state id they show.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void RequestReadback();
 
 	/**
-	 * @brief Returns true when the GPU→CPU copy started by RequestReadback() is complete.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
-	bool IsReadbackReady() const;
-
-	/**
-	 * @brief Consumes and returns the pixel array from the last completed readback.
-	 *        Returns an empty array if not ready. Clears the pending state.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
-	TArray<FColor> ConsumePixels();
-
-	/** Depth-mode counterpart to ConsumePixels. Returns single-channel
-	 *  float32 pixels in row-major (h, w) order. Empty if Depth readback
-	 *  isn't ready or the camera isn't in Depth mode. */
-	TArray<float> ConsumeFloatPixels();
-
-	/**
-	 * @brief Game-thread. Enqueue a fresh CaptureScene + GPU->CPU readback.
+	 * @brief Fetch a frame from this camera's history ring (thread-safe).
 	 *
-	 * Captures the scene as it stands now (reflecting whatever actor transforms
-	 * are applied at call time) and enqueues a readback into the caller-owned
-	 * OutColor (Real/seg) or OutFloat (Depth). Does NOT flush — the caller is
-	 * expected to issue ONE FlushRenderingCommands across a whole batch of
-	 * cameras, after which the Out* buffers are valid. The Out* arrays must
-	 * outlive that flush. Returns true if a readback was enqueued.
-	 *
-	 * This split (vs a per-camera blocking flush) lets the include_cameras path
-	 * capture N cameras with a single flush instead of N, which is what makes
-	 * multi-camera step replies cheap.
+	 * MinFrameId == 0 returns the most recent retained frame. Otherwise returns
+	 * the oldest retained frame whose FrameId >= MinFrameId — i.e. the frame
+	 * showing the state at/after that step. Returns false if no matching frame
+	 * is retained yet (caller can retry on a later step). Fills Out.Color for
+	 * Real/seg modes or Out.Depth for Depth; FrameId / SimTime identify which
+	 * post-step state the frame shows.
 	 */
-	bool EnqueueSyncCapture(TArray<FColor>& OutColor, TArray<float>& OutFloat);
+	bool GetFrame(uint64 MinFrameId, FMjCameraFrame& Out) const;
 
-	/**
-	 * @brief Hand an already-read frame to this camera's ZMQ / SHM publishers
-	 *        (if enabled) so streaming consumers see the same post-step image.
-	 *        Pass the buffer matching this camera's CaptureMode; the other is
-	 *        ignored.
-	 */
-	void PublishFrame(const TArray<FColor>& Color, const TArray<float>& FloatPixels);
+	/** Most recent frame id retained in history (0 if none). */
+	uint64 GetLatestFrameId() const;
+
+	/** Mark this camera as actively consumed right now (called when a client
+	 *  requests it via include_cameras / get_frame). Per-camera capture gating
+	 *  keeps a camera capturing only while it is broadcast-enabled or has been
+	 *  touched within RequestActiveTtlSeconds, so idle cameras cost no GPU.
+	 *  Thread-safe (atomic store); safe to call from the bridge worker. */
+	void TouchRequested();
+
+	/** True if this camera should be capturing right now: it has a streaming
+	 *  broadcast enabled, or was requested within the active TTL. */
+	bool IsCaptureActive() const;
 
 	/**
 	 * @brief Returns the ZMQ endpoint actually bound (may differ from ZmqEndpoint if auto-incremented).
@@ -368,36 +372,73 @@ private:
 	 *  camera doesn't contaminate an already-streaming RGB/Depth capture. */
 	void RefreshHiddenComponentsFromSegPools();
 
+	/** Push a completed frame into the history ring under HistoryLock, evicting
+	 *  the oldest beyond HistoryCapacity. Exposed (not UFUNCTION) so automation
+	 *  tests can drive the ring with synthetic frames without a live GPU. */
+public:
+	void PushFrameToHistory(FMjCameraFrame&& Frame);
+
+private:
+
 	// ---- Readback state ----
-	// CaptureMode picks which Pending/Ready pair is used: BGRA8 (Real /
-	// SemSeg / InstanceSeg) drives PendingPixels/ReadyPixels, Depth
-	// drives PendingFloatPixels/ReadyFloatPixels. Only one mode is in
-	// flight at a time.
+	// CaptureMode picks which Pending buffer is used: BGRA8 (Real / SemSeg /
+	// InstanceSeg) drives PendingPixels, Depth drives PendingFloatPixels.
+	// Only one mode is in flight at a time.
 	//
-	// Pending* is the render-thread destination. RequestReadback
-	// Emplaces a fresh TArray, SetNumUninitialized's it, and enqueues a
-	// render command capturing a pointer into it. The render thread
-	// writes to that pointer. Only the game thread touches Pending*,
-	// and only RequestReadback (gated by !bReadbackPending) and
-	// TickComponent's fence-complete handler do so, so the captured
-	// pointer stays valid until the fence completes.
+	// Pending* is the render-thread destination. RequestReadback Emplaces a
+	// fresh TArray, SetNumUninitialized's it, and enqueues a render command
+	// capturing a pointer into it. The render thread writes to that pointer.
+	// Only the game thread touches Pending* (RequestReadback, gated by
+	// !bReadbackPending, and TickComponent's fence-complete handler), so the
+	// captured pointer stays valid until the fence completes.
 	//
-	// Ready* is the consumer-facing buffer. TickComponent moves
-	// Pending* into Ready* once the fence completes (workers PushFrame
-	// a copy first). ConsumePixels / ConsumeFloatPixels move out of
-	// Ready*. FrameLock serialises Ready* access between the game
-	// thread (move-in) and the bridge worker thread (move-out).
-	FCriticalSection FrameLock;
+	// On fence completion TickComponent feeds the streaming workers a copy and
+	// MOVES the frame into the History ring (below), tagged with the post-step
+	// FrameId/SimTime that was applied when the readback was issued.
 	TOptional<TArray<FColor>> PendingPixels;
 	TOptional<TArray<float>> PendingFloatPixels;
-	TOptional<TArray<FColor>> ReadyPixels;
-	TOptional<TArray<float>> ReadyFloatPixels;
 	FRenderCommandFence ReadbackFence;
 	bool bReadbackPending = false;
-	bool bReadbackComplete = false;
+
+	// Post-step state id + sim time captured at RequestReadback time (game
+	// thread), carried through to the harvested frame so consumers can ask
+	// "the frame for step N".
+	uint64 PendingFrameId = 0;
+	double PendingSimTime = 0.0;
+
+	// ---- Frame history ring ----
+	// Retains the last HistoryCapacity frames so a client can fetch the frame
+	// for a specific post-step state (by FrameId) or the latest. HistoryLock
+	// serialises between the game thread (push) and the bridge worker thread
+	// (GetFrame). Oldest-first; newest is Last().
+	mutable FCriticalSection HistoryLock;
+	TArray<FMjCameraFrame> History;
+
+public:
+	/** How many recent frames to retain for by-id retrieval. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta = (ClampMin = "1", ClampMax = "64"))
+	int32 HistoryCapacity = 8;
+
+private:
 
 	// ---- Streaming state ----
 	bool bStreamingEnabled = false;
+
+	// ---- Per-camera capture gating ----
+	// A camera captures only while "active": a streaming broadcast is enabled,
+	// or it was requested within RequestActiveTtlSeconds. LastRequestedSeconds
+	// is an FPlatformTime::Seconds() stamp, stored atomically so TouchRequested
+	// is callable from the bridge worker thread. TickComponent gates the
+	// per-tick capture/readback on IsCaptureActive() so idle cameras cost no
+	// GPU even when many are registered.
+	std::atomic<double> LastRequestedSeconds{0.0};
+
+public:
+	/** How long after a request a camera keeps capturing before going dormant. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera", meta = (ClampMin = "0.0"))
+	float RequestActiveTtlSeconds = 2.0f;
+
+private:
 
 	// ---- ZMQ Worker ----
 	FCameraZmqWorker* ZmqWorker = nullptr;

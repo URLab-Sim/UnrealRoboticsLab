@@ -1639,17 +1639,21 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 		}
 	}
 
-	// Shared result for the synchronous "sync" capture below. Ref-counted so a
-	// (rare) game-thread timeout can't leave the marshalled task writing into
-	// freed stack memory.
-	struct FSyncCaptureResult
+	// Resolve every requested camera up front, then batch ALL sync captures
+	// into a single game-thread round trip with ONE FlushRenderingCommands.
+	// (The previous per-camera blocking flush serialised and dominated step
+	// latency — each flush waited out the whole render backlog, multiplied by
+	// the number of requested cameras.)
+	struct FResolvedCam
 	{
-		FEvent* Done = nullptr;
+		FString Key;
+		UMjCamera* Cam = nullptr;
+		ECameraInclude Mode = ECameraInclude::Latest;
 		TArray<FColor> Color;
 		TArray<float> Float;
-		bool bOk = false;
 	};
-
+	TArray<FResolvedCam> Reqs;
+	Reqs.Reserve(CameraSpec.Num());
 	for (const TPair<FString, ECameraInclude>& Spec : CameraSpec)
 	{
 		UMjCamera** Found = ByName.Find(Spec.Key);
@@ -1664,90 +1668,127 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 				*Spec.Key);
 			continue;
 		}
-		UMjCamera* Cam = *Found;
+		FResolvedCam R;
+		R.Key = Spec.Key;
+		R.Cam = *Found;
+		R.Mode = Spec.Value;
+		Reqs.Add(MoveTemp(R));
+	}
 
-		TArray<FColor> ColorPixels;
-		TArray<float> FloatPixels;
+	TArray<int32> SyncIdx;
+	for (int32 i = 0; i < Reqs.Num(); ++i)
+	{
+		if (Reqs[i].Mode == ECameraInclude::Sync)
+			SyncIdx.Add(i);
+	}
 
-		if (Spec.Value == ECameraInclude::Sync)
+	if (SyncIdx.Num() > 0)
+	{
+		// Ref-counted so a (rare) timeout can't leave the game-thread task
+		// writing into freed memory. One color+float buffer per sync camera.
+		struct FSyncBatch
 		{
-			// Deterministic frame: marshal to the game thread, apply the
-			// latest physics snapshot onto the actors (the puppet step has
-			// already published it), then force a CaptureScene + blocking
-			// readback. This guarantees the frame reflects the pose pushed by
-			// this step rather than whatever the free-running per-tick capture
-			// last produced. The same frame is also handed to the ZMQ / SHM
-			// publishers inside CaptureAndReadbackBlocking, so streaming
-			// consumers see the identical image.
-			TSharedPtr<FSyncCaptureResult, ESPMode::ThreadSafe> Result =
-				MakeShared<FSyncCaptureResult, ESPMode::ThreadSafe>();
-			Result->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
+			FEvent* Done = nullptr;
+			TArray<UMjCamera*> Cams;
+			TArray<TArray<FColor>> Color;
+			TArray<TArray<float>> Float;
+		};
+		TSharedPtr<FSyncBatch, ESPMode::ThreadSafe> Batch =
+			MakeShared<FSyncBatch, ESPMode::ThreadSafe>();
+		Batch->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
+		Batch->Cams.Reserve(SyncIdx.Num());
+		for (int32 Idx : SyncIdx)
+			Batch->Cams.Add(Reqs[Idx].Cam);
+		Batch->Color.SetNum(SyncIdx.Num());
+		Batch->Float.SetNum(SyncIdx.Num());
 
-			TWeakObjectPtr<UMjCamera> WeakCam(Cam);
-			TWeakObjectPtr<AAMjManager> WeakMgr(Manager);
-			AsyncTask(ENamedThreads::GameThread, [Result, WeakCam, WeakMgr]() {
-				if (AAMjManager* M = WeakMgr.Get())
-					M->ApplyLatestRenderState();
-				if (UMjCamera* C = WeakCam.Get())
-					Result->bOk = C->CaptureAndReadbackBlocking(Result->Color, Result->Float);
-				Result->Done->Trigger();
-			});
-
-			const uint32 WaitMs = TimeoutMs > 0 ? static_cast<uint32>(TimeoutMs) : 2000;
-			if (Result->Done->Wait(WaitMs))
+		TWeakObjectPtr<AAMjManager> WeakMgr(Manager);
+		AsyncTask(ENamedThreads::GameThread, [Batch, WeakMgr]() {
+			// Apply the just-pushed physics snapshot to the actors once, then
+			// enqueue a fresh CaptureScene + readback for every camera, then a
+			// SINGLE FlushRenderingCommands for the whole batch.
+			if (AAMjManager* M = WeakMgr.Get())
+				M->ApplyLatestRenderState();
+			TArray<bool> Ok;
+			Ok.Init(false, Batch->Cams.Num());
+			for (int32 j = 0; j < Batch->Cams.Num(); ++j)
 			{
-				FPlatformProcess::ReturnSynchEventToPool(Result->Done);
-				Result->Done = nullptr;
-				ColorPixels = MoveTemp(Result->Color);
-				FloatPixels = MoveTemp(Result->Float);
+				if (UMjCamera* C = Batch->Cams[j])
+					Ok[j] = C->EnqueueSyncCapture(Batch->Color[j], Batch->Float[j]);
 			}
-			else
+			FlushRenderingCommands();
+			for (int32 j = 0; j < Batch->Cams.Num(); ++j)
 			{
-				// Timed out. Leave the event un-pooled — the game-thread task
-				// still holds a ref to Result and will Trigger a valid event.
-				// Fall through with empty pixels so the camera is omitted this
-				// step rather than wedging the RPC.
-				UE_LOG(LogURLabNet, Warning,
-					TEXT("[BuildCamerasBlock] sync capture for '%s' timed out after %ums"),
-					*Spec.Key, WaitMs);
+				if (Ok[j] && Batch->Cams[j])
+					Batch->Cams[j]->PublishFrame(Batch->Color[j], Batch->Float[j]);
+			}
+			Batch->Done->Trigger();
+		});
+
+		const uint32 WaitMs = TimeoutMs > 0 ? static_cast<uint32>(TimeoutMs) : 2000;
+		if (Batch->Done->Wait(WaitMs))
+		{
+			FPlatformProcess::ReturnSynchEventToPool(Batch->Done);
+			Batch->Done = nullptr;
+			for (int32 j = 0; j < SyncIdx.Num(); ++j)
+			{
+				Reqs[SyncIdx[j]].Color = MoveTemp(Batch->Color[j]);
+				Reqs[SyncIdx[j]].Float = MoveTemp(Batch->Float[j]);
 			}
 		}
 		else
 		{
-			// "latest": consume whatever the per-tick auto-readback last
-			// produced. Cheap (no game-thread round trip) but not guaranteed
-			// to postdate this step.
-			if (Cam->CaptureMode == EMjCameraMode::Depth)
-				FloatPixels = Cam->ConsumeFloatPixels();
-			else
-				ColorPixels = Cam->ConsumePixels();
+			// Timed out — leave the event un-pooled (the task still holds a ref
+			// and will Trigger a valid event). Sync cameras get omitted this step.
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("[BuildCamerasBlock] batched sync capture (%d cams) timed out after %ums"),
+				SyncIdx.Num(), WaitMs);
 		}
+	}
 
-		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
-		CamObj->SetNumberField(TEXT("width"), Cam->resolution.Num() > 0 ? Cam->resolution[0] : 0);
-		CamObj->SetNumberField(TEXT("height"), Cam->resolution.Num() > 1 ? Cam->resolution[1] : 0);
-
-		if (Cam->CaptureMode == EMjCameraMode::Depth)
+	// "latest" cameras: consume whatever the per-tick auto-readback last
+	// produced (cheap, no game-thread round trip; not guaranteed to postdate
+	// this step).
+	for (FResolvedCam& R : Reqs)
+	{
+		if (R.Mode != ECameraInclude::Sync && R.Cam)
 		{
-			if (FloatPixels.Num() == 0)
+			if (R.Cam->CaptureMode == EMjCameraMode::Depth)
+				R.Float = R.Cam->ConsumeFloatPixels();
+			else
+				R.Color = R.Cam->ConsumePixels();
+		}
+	}
+
+	for (const FResolvedCam& R : Reqs)
+	{
+		if (!R.Cam)
+			continue;
+		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
+		CamObj->SetNumberField(TEXT("width"), R.Cam->resolution.Num() > 0 ? R.Cam->resolution[0] : 0);
+		CamObj->SetNumberField(TEXT("height"), R.Cam->resolution.Num() > 1 ? R.Cam->resolution[1] : 0);
+
+		if (R.Cam->CaptureMode == EMjCameraMode::Depth)
+		{
+			if (R.Float.Num() == 0)
 				continue;
 			CamObj->SetStringField(TEXT("dtype"), TEXT("float32"));
 			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(FloatPixels.GetData()),
-				FloatPixels.Num() * sizeof(float));
+				reinterpret_cast<const uint8*>(R.Float.GetData()),
+				R.Float.Num() * sizeof(float));
 		}
 		else
 		{
-			if (ColorPixels.Num() == 0)
+			if (R.Color.Num() == 0)
 				continue;
 			// Real / SemSeg / InstanceSeg all ship 4-byte BGRA. Bridge
 			// discriminates the seg modes by the camera_topics handshake.
 			CamObj->SetStringField(TEXT("dtype"), TEXT("bgra8"));
 			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(ColorPixels.GetData()),
-				ColorPixels.Num() * sizeof(FColor));
+				reinterpret_cast<const uint8*>(R.Color.GetData()),
+				R.Color.Num() * sizeof(FColor));
 		}
-		Cams->SetObjectField(Spec.Key, CamObj);
+		Cams->SetObjectField(R.Key, CamObj);
 	}
 	return Cams;
 }

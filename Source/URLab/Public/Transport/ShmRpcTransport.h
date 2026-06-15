@@ -48,13 +48,24 @@ class URLAB_API UURLabShmRpcTransport : public UURLabRpcTransport
 public:
 	UURLabShmRpcTransport();
 
-	/** Per-buffer slot size. Step replies are tiny (~few KB) but the
-	 *  hello reply embeds the MJB, which can be many MB for mesh-heavy
-	 *  scenes. 1 MiB is a workable default; bump higher for large MJBs.
-	 *  Replies that exceed the stride get a `reply_too_large` error so
-	 *  the bridge can fall back to ZMQ for that specific RPC. */
+	/** Request-slot size (bridge -> UE). Step requests are small (qpos /
+	 *  qvel / ctrl arrays), so 1 MiB is ample. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
 	int32 BufferStride = 1024 * 1024;
+
+	/** Reply-slot size (UE -> bridge). The ring is a fixed mmap sized once at
+	 *  open. Replies that exceed it are NOT dropped — they get an immediate
+	 *  `wrong_transport` reply so the bridge re-routes that request to ZMQ
+	 *  (the designed fallback for oversize replies). 16 MiB comfortably holds
+	 *  the hello MJB and a single HD frame over SHM; multi-camera or 4K
+	 *  `include_cameras` replies exceed it and fall back to ZMQ. Note the
+	 *  fast image path is the per-camera cam_*.shm / ZMQ streams, NOT this
+	 *  reply slot. Raise this only if you specifically want large inline
+	 *  camera replies carried over the SHM RPC channel. The bridge reads the
+	 *  actual stride from the SHM header (offset 8), so it adapts without a
+	 *  hardcoded size. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	int32 ReplyBufferStride = 16 * 1024 * 1024;
 
 	/** Optional explicit session id (defaults to "live"; mirrors the
 	 *  publisher's path scheme). */

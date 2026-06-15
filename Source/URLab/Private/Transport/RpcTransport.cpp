@@ -39,6 +39,25 @@ FURLabRpcDispatcher* UURLabRpcTransport::ResolveDispatcher() const
 	return Bridge ? Bridge->GetDispatcher() : nullptr;
 }
 
+void UURLabRpcTransport::EncodeReply(const TSharedPtr<FJsonObject>& Reply,
+	TArray<uint8>& OutBytes) const
+{
+	OutBytes.Reset();
+	FURLabRpcDispatcher* Disp = ResolveDispatcher();
+	const bool bUseJson = Disp ? Disp->GetUseJsonEncoding() : false;
+	if (!bUseJson)
+	{
+		FURLabMsgpackUtil::PackJsonObject(Reply, OutBytes);
+	}
+	else
+	{
+		const FString Out = SerializeRpcReplyJson(Reply);
+		FTCHARToUTF8 OutUtf8(*Out);
+		OutBytes.SetNumUninitialized(OutUtf8.Length());
+		FMemory::Memcpy(OutBytes.GetData(), OutUtf8.Get(), OutUtf8.Length());
+	}
+}
+
 bool UURLabRpcTransport::ProcessRequestBytes(const TArray<uint8>& InBytes,
 	TArray<uint8>& OutReplyBytes)
 {

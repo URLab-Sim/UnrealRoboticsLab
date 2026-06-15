@@ -235,7 +235,8 @@ client.runtime.set_mocap_pose(body, *, pos=None, quat=None) -> MocapPose
 client.runtime.read_mocap_pose(body) -> MocapPose
 client.runtime.get_contacts(*, body1=None, body2=None, geom1=None, geom2=None, max_contacts=64) -> ContactsResult
 client.runtime.list_keyframes() -> List[KeyframeInfo]
-client.runtime.set_sim_options(**opts) -> SimOptions           # timestep, gravity, ...
+client.runtime.set_sim_options(**opts) -> SimOptions           # timestep, gravity, num_worker_threads, ...
+client.runtime.set_camera_streaming(cameras) -> dict           # {canon: True|False|{"zmq":b,"shm":b}}
 client.runtime.set_mode(mode) -> StepMode
 client.runtime.forward() -> dict                               # mj_forward, no integration
 ```
@@ -581,13 +582,25 @@ cam.fovy           # vertical FOV in degrees
 cam.dtype          # uint8 (real / segm) or float32 (depth)
 cam.latest_frame   # np.ndarray | None
 cam.sim_time       # float | None
+cam.frame_id       # int | None — post-step state id this frame shows
 ```
 
-Frames populate on demand via `client.step(include_cameras=...)`, or
-continuously from per-camera SUB threads in `live` mode.
-`include_cameras` accepts `True` / `False`, or a mapping such as
-`{"head": "sync"}` (block for a fresh frame) or `{"head": "latest"}`
-(ship the cached frame).
+Camera capture is decoupled from stepping; `include_cameras` retrieval is
+non-blocking (reads a per-camera history ring). `include_cameras` accepts
+`True` / `False`, or a mapping whose per-camera value is `"latest"`, an int
+`frame_id`, or `{"frame_id": N}`. For the post-step image, read `frame_id`
+off the step reply and request it (pipeline one step to keep full rate):
+
+```python
+r = client.step()                                   # r["frame_id"]
+r2 = client.step(include_cameras={"wrist": r["frame_id"]})
+frame = robot.cameras["wrist"].latest_frame
+```
+
+Dedicated ZMQ/SHM pub streams must be enabled per camera (UE's
+`bEnableAllCameras` defaults off):
+`client.runtime.set_camera_streaming({"wrist": {"zmq": True}})`. In `live`
+mode the client enables + subscribes to them automatically.
 
 | Mode | Shape | Channels |
 |---|---|---|

@@ -528,6 +528,10 @@ void AAMjManager::ApplyLatestRenderState()
 				Quick->ApplyRenderState(Snap);
 			}
 		}
+		// Record which post-step state the actors now reflect so cameras can
+		// tag their readbacks with it (frame_id association for the bridge).
+		LastAppliedRenderFrameId.store(Snap.FrameId, std::memory_order_release);
+		LastAppliedRenderSimTime.store(Snap.SimTime, std::memory_order_release);
 	});
 }
 

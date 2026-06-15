@@ -151,8 +151,17 @@ public:
 	static TSharedPtr<FJsonObject> BuildEntitiesBlock(AAMjManager* Manager,
 		mjModel* m, mjData* d);
 
+	/**
+	 * Non-blocking camera retrieval from each camera's frame-history ring.
+	 * CameraSpec selects the cameras; MinFrameIds optionally requests, per
+	 * camera, the frame showing state >= that id (0 / absent = latest
+	 * available). Requested cameras are touched so per-camera capture gating
+	 * keeps them live. Each emitted camera carries its frame's `frame_id` /
+	 * `sim_time` so the bridge can associate an image with a step.
+	 */
 	static TSharedPtr<FJsonObject> BuildCamerasBlock(AAMjManager* Manager,
 		const TMap<FString, ECameraInclude>& CameraSpec,
+		const TMap<FString, uint64>& MinFrameIds = TMap<FString, uint64>(),
 		int32 TimeoutMs = 1000);
 
 	static TSharedPtr<FJsonObject> MakeError(const FString& Code, const FString& Message);

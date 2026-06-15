@@ -65,6 +65,11 @@ bool UURLabShmRpcTransport::TransportInit()
 	FString Sid = SessionId;
 	if (Sid.IsEmpty())
 		Sid = TEXT("live");
+	ResolvedSessionId = Sid;
+	// Event names match what the worker creates below; advertised in hello so
+	// the bridge opens the exact objects rather than assuming "live".
+	ReqEventName = MakeEventName(Sid, TEXT("req"));
+	RepEventName = MakeEventName(Sid, TEXT("rep"));
 	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(Sid);
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 	ReqPath = FPaths::Combine(Dir, TEXT("req.shm"));

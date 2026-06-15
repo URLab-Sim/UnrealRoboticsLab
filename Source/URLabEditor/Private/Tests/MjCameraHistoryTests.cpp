@@ -29,6 +29,10 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "Bridge/RpcDispatcher.h"
+#include "Tests/MjTestHelpers.h"
+#include "Dom/JsonObject.h"
 
 namespace
 {
@@ -135,6 +139,76 @@ bool FMjCameraCaptureGating::RunTest(const FString& Parameters)
 	Cam->RequestActiveTtlSeconds = 3600.0f;
 	Cam->TouchRequested();
 	TestTrue(TEXT("touched within TTL -> active"), Cam->IsCaptureActive());
+
+	return true;
+}
+
+// ============================================================================
+// URLab.CameraHistory.StreamingApply
+//   set_camera_streaming helpers: name resolution (canonical) and the
+//   game-thread apply (disable path — flags cleared, keyed by canonical name,
+//   unknown cameras omitted). The enable path binds real ZMQ sockets, covered
+//   by the existing MjCamera streaming tests.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraStreamingApply,
+	"URLab.CameraHistory.StreamingApply",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraStreamingApply::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("StreamCam"));
+	if (!TestNotNull(TEXT("camera"), Cam))
+		return false;
+	Cam->MjName = TEXT("stream_cam");
+	Cam->CaptureMode = EMjCameraMode::Real;
+	Cam->RegisterComponent();
+	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+
+	// Name resolution: canonical bare name resolves to this camera.
+	TMap<FString, UMjCamera*> ByName;
+	FURLabRpcDispatcher::BuildCameraNameMap(S.Manager, ByName);
+	TestTrue(TEXT("canonical name registered"), ByName.Contains(TEXT("stream_cam")));
+	if (UMjCamera** F = ByName.Find(TEXT("stream_cam")))
+	{
+		TestEqual(TEXT("resolves to the camera"), *F, Cam);
+	}
+
+	// Pre-set the flags so the disable path has something to clear.
+	Cam->bEnableZmqBroadcast = true;
+	Cam->bEnableShmBroadcast = true;
+
+	TMap<FString, TPair<bool, bool>> Reqs;
+	Reqs.Add(TEXT("stream_cam"), TPair<bool, bool>(false, false));
+	TSharedPtr<FJsonObject> Cams =
+		FURLabRpcDispatcher::ApplyCameraStreamingGameThread(S.Manager, Reqs);
+	if (!TestTrue(TEXT("reply valid"), Cams.IsValid()))
+		return false;
+
+	const TSharedPtr<FJsonObject>* CamReply = nullptr;
+	TestTrue(TEXT("camera keyed by canonical name in reply"),
+		Cams->TryGetObjectField(TEXT("stream_cam"), CamReply));
+	bool bStreaming = true;
+	if (CamReply && CamReply->IsValid())
+	{
+		(*CamReply)->TryGetBoolField(TEXT("streaming"), bStreaming);
+	}
+	TestFalse(TEXT("disabled -> not streaming"), bStreaming);
+	TestFalse(TEXT("zmq flag cleared"), Cam->bEnableZmqBroadcast);
+	TestFalse(TEXT("shm flag cleared"), Cam->bEnableShmBroadcast);
+
+	// Unknown camera key is omitted from the reply.
+	TMap<FString, TPair<bool, bool>> Unknown;
+	Unknown.Add(TEXT("nope_not_a_camera"), TPair<bool, bool>(false, false));
+	TSharedPtr<FJsonObject> Cams2 =
+		FURLabRpcDispatcher::ApplyCameraStreamingGameThread(S.Manager, Unknown);
+	TestEqual(TEXT("unknown camera omitted"), Cams2->Values.Num(), 0);
 
 	return true;
 }

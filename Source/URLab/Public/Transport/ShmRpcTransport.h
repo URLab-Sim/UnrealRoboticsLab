@@ -92,12 +92,31 @@ public:
 	FString GetReqPath() const { return ReqPath; }
 	FString GetRepPath() const { return RepPath; }
 
+	// --- Explicit contract for the hello handshake ---
+	// The bridge must use these verbatim instead of guessing: the req/rep
+	// file paths, the per-direction Windows event names, the slot strides and
+	// buffer count. With these it can open exactly the regions UE created and
+	// poll the rep sequence as a fallback if the named-event wakeup doesn't
+	// cross its process/session boundary (see project_shm_rpc_5s_followup).
+	FString GetSessionId() const { return ResolvedSessionId; }
+	FString GetReqEventName() const { return ReqEventName; }
+	FString GetRepEventName() const { return RepEventName; }
+	int32 GetReqStride() const { return BufferStride; }
+	int32 GetRepStride() const { return ReplyBufferStride; }
+	int32 GetNumBuffers() const { return 2; }
+
 private:
 	FMjShmRegion ReqRegion; // bridge writes, UE reads
 	FMjShmRegion RepRegion; // UE writes, bridge reads
 
 	FString ReqPath;
 	FString RepPath;
+
+	/** Session id actually used (defaults to "live") and the resolved Windows
+	 *  event names, captured in TransportInit so the hello can advertise them. */
+	FString ResolvedSessionId;
+	FString ReqEventName;
+	FString RepEventName;
 
 	/** Named-event handles for kernel-wakeup signalling. Bridge calls
 	 *  SetEvent on `ReqReadyEvent` after writing req.shm; UE's worker

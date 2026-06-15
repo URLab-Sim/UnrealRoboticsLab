@@ -37,6 +37,7 @@
 #include "ContentStreaming.h"
 #include "XmlNode.h"
 #include "RHICommandList.h"
+#include "RenderingThread.h"
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
@@ -776,6 +777,95 @@ TArray<float> UMjCamera::ConsumeFloatPixels()
 		return Result;
 	}
 	return TArray<float>();
+}
+
+bool UMjCamera::CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<float>& OutFloat)
+{
+	// Render-target access and CaptureScene must run on the game thread:
+	// RenderTarget->GameThread_GetRenderTargetResource() returns null off it.
+	check(IsInGameThread());
+
+	OutColor.Reset();
+	OutFloat.Reset();
+
+	if (!bStreamingEnabled || !CaptureComponent || !RenderTarget)
+	{
+		return false;
+	}
+
+	FTextureRenderTargetResource* Resource =
+		RenderTarget->GameThread_GetRenderTargetResource();
+	if (!Resource)
+	{
+		return false;
+	}
+
+	const FIntRect Rect(0, 0, Resource->GetSizeXY().X, Resource->GetSizeXY().Y);
+	if (Rect.Width() <= 0 || Rect.Height() <= 0)
+	{
+		return false;
+	}
+
+	// Force a capture of the scene as it stands right now. Unlike the
+	// per-tick bCaptureEveryFrame path this is synchronous w.r.t. the
+	// caller, so the readback below sees this exact frame.
+	CaptureComponent->CaptureScene();
+
+	if (CaptureMode == EMjCameraMode::Depth)
+	{
+		OutFloat.SetNumUninitialized(Rect.Width() * Rect.Height());
+		TArray<float>* FloatPtr = &OutFloat;
+		ENQUEUE_RENDER_COMMAND(MjCameraSyncReadbackDepth)(
+			[Resource, FloatPtr, Rect](FRHICommandListImmediate& RHICmdList) {
+				TArray<FLinearColor> Scratch;
+				RHICmdList.ReadSurfaceData(
+					Resource->GetRenderTargetTexture(),
+					Rect,
+					Scratch,
+					FReadSurfaceDataFlags(RCM_MinMax, CubeFace_MAX));
+				if (Scratch.Num() == FloatPtr->Num())
+				{
+					for (int32 i = 0; i < Scratch.Num(); ++i)
+					{
+						(*FloatPtr)[i] = Scratch[i].R;
+					}
+				}
+			});
+		// Block until the capture + readback above have completed.
+		FlushRenderingCommands();
+		if (OutFloat.Num() == 0)
+		{
+			return false;
+		}
+		// Feed the streaming transports with the same frame so ZMQ / SHM
+		// consumers see the identical post-step image.
+		if (bEnableZmqBroadcast && ZmqWorker)
+			ZmqWorker->PushFrame(OutFloat);
+		if (bEnableShmBroadcast && ShmWriter)
+			ShmWriter->PushFrame(OutFloat);
+		return true;
+	}
+
+	OutColor.SetNumUninitialized(Rect.Width() * Rect.Height());
+	TArray<FColor>* PixelsPtr = &OutColor;
+	ENQUEUE_RENDER_COMMAND(MjCameraSyncReadback)(
+		[Resource, PixelsPtr, Rect](FRHICommandListImmediate& RHICmdList) {
+			RHICmdList.ReadSurfaceData(
+				Resource->GetRenderTargetTexture(),
+				Rect,
+				*PixelsPtr,
+				FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX));
+		});
+	FlushRenderingCommands();
+	if (OutColor.Num() == 0)
+	{
+		return false;
+	}
+	if (bEnableZmqBroadcast && ZmqWorker)
+		ZmqWorker->PushFrame(OutColor);
+	if (bEnableShmBroadcast && ShmWriter)
+		ShmWriter->PushFrame(OutColor);
+	return true;
 }
 
 FString UMjCamera::GetActualZmqEndpoint() const

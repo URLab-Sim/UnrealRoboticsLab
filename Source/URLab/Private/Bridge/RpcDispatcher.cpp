@@ -36,6 +36,10 @@
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
 #include "Transport/ShmPublishTransport.h"
+#include "Transport/ShmRpcTransport.h"
+#include "Transport/RpcTransport.h"
+#include "Transport/ShmRegion.h" // FMjShmHeader (header_size in shm_rpc block)
+#include "Bridge/BridgeServer.h"
 #include "Replay/MjReplayManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Base64.h"
@@ -192,6 +196,10 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleSetPaused(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("paused:bool")},
 		/*Required=*/{TEXT("paused")});
+	Reg(TEXT("set_camera_streaming"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetCameraStreaming(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("cameras:object")},
+		/*Required=*/{TEXT("cameras")});
 	Reg(TEXT("configure_controller"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleConfigureController(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("params:object")},
@@ -678,6 +686,36 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		}
 		Reply->SetStringField(TEXT("shm_session_dir"),
 			FPaths::ConvertRelativePathToFull(ShmDir));
+	}
+
+	// Explicit SHM RPC contract. The bridge must use these verbatim instead of
+	// assuming session="live" / re-deriving paths or event names — a mismatch
+	// is the likely cause of the SHM 5s-per-step stall. Also gives the bridge
+	// everything it needs (rep_path + strides + n_buffers) to POLL the rep
+	// sequence as a fallback when the named-event wakeup doesn't cross its
+	// process/session boundary, instead of blocking out its full recv timeout.
+	if (Manager->BridgeServer)
+	{
+		for (const TObjectPtr<UURLabRpcTransport>& T : Manager->BridgeServer->GetRpcTransports())
+		{
+			UURLabShmRpcTransport* ShmRpc = Cast<UURLabShmRpcTransport>(T.Get());
+			if (!ShmRpc)
+				continue;
+			TSharedPtr<FJsonObject> Rpc = MakeShared<FJsonObject>();
+			Rpc->SetStringField(TEXT("session"), ShmRpc->GetSessionId());
+			Rpc->SetStringField(TEXT("req_path"),
+				FPaths::ConvertRelativePathToFull(ShmRpc->GetReqPath()));
+			Rpc->SetStringField(TEXT("rep_path"),
+				FPaths::ConvertRelativePathToFull(ShmRpc->GetRepPath()));
+			Rpc->SetStringField(TEXT("req_event"), ShmRpc->GetReqEventName());
+			Rpc->SetStringField(TEXT("rep_event"), ShmRpc->GetRepEventName());
+			Rpc->SetNumberField(TEXT("req_stride"), ShmRpc->GetReqStride());
+			Rpc->SetNumberField(TEXT("rep_stride"), ShmRpc->GetRepStride());
+			Rpc->SetNumberField(TEXT("n_buffers"), ShmRpc->GetNumBuffers());
+			Rpc->SetNumberField(TEXT("header_size"), static_cast<double>(sizeof(FMjShmHeader)));
+			Reply->SetObjectField(TEXT("shm_rpc"), Rpc);
+			break;
+		}
 	}
 
 	// MJB bytes: real msgpack bin under "mjb" for msgpack clients;
@@ -1608,31 +1646,21 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepObservations(AAMjManager* 
 	return PerArt;
 }
 
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Manager,
-	const TMap<FString, ECameraInclude>& CameraSpec,
-	const TMap<FString, uint64>& MinFrameIds, int32 TimeoutMs)
+void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
+	TMap<FString, UMjCamera*>& OutByName)
 {
-	(void)TimeoutMs; // retrieval is non-blocking; param kept for ABI compatibility
-	TSharedPtr<FJsonObject> Cams = MakeShared<FJsonObject>();
-	if (!Manager || CameraSpec.Num() == 0)
-		return Cams;
-
-	UWorld* World = Manager->GetWorld();
-	if (!World)
-		return Cams;
-
-	// Build a name -> camera lookup. Register every form a client may key on:
-	//   - "<art>/<camera>"        (qualified)
+	if (!Manager)
+		return;
+	// Register every form a client may key on:
 	//   - "<art>/camera/<camera>" (matches the zmq_topic the hello handshake
-	//                              advertises, so a client that reuses that
-	//                              string resolves instead of being dropped)
-	//   - "<camera>"              (bare, fallback)
-	// First writer wins per key, so a second camera that happens to share a
-	// bare name cannot overwrite (and hide) an already-registered distinct
-	// camera; it stays reachable via its qualified keys.
-	TMap<FString, UMjCamera*> ByName;
-	auto AddName = [&ByName](const FString& Key, UMjCamera* C) {
-		UMjCamera*& Slot = ByName.FindOrAdd(Key);
+	//                              advertises)
+	//   - "<art>/<camera>"        (qualified)
+	//   - "<camera>"              (bare, canonical)
+	//   - raw UE component / MJCF name (back-compat)
+	// First writer wins per key, so a second camera sharing a bare name cannot
+	// hide an already-registered distinct camera (still reachable via qualified).
+	auto AddName = [&OutByName](const FString& Key, UMjCamera* C) {
+		UMjCamera*& Slot = OutByName.FindOrAdd(Key);
 		if (Slot == nullptr)
 			Slot = C;
 	};
@@ -1647,15 +1675,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 			if (!C || C->bIsDefault)
 				continue;
 			const FString ArtName = Art->GetName();
-			// Canonical identity — matches the hello handshake key and the
-			// SHM / ZMQ transport names.
 			const FString Canon = C->GetCanonicalName();
 			AddName(Canon, C);
 			AddName(ArtName + TEXT("/") + Canon, C);
 			AddName(ArtName + TEXT("/camera/") + Canon, C);
-			// Back-compat: also accept the raw UE component name and the raw
-			// MJCF name (with original separators), in case a client still
-			// keys on an older form.
 			const FString CompName = C->GetName();
 			const FString MjNameRaw = C->GetMjName();
 			AddName(CompName, C);
@@ -1667,6 +1690,155 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 			}
 		}
 	}
+}
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::ApplyCameraStreamingGameThread(
+	AAMjManager* Manager, const TMap<FString, TPair<bool, bool>>& Requests)
+{
+	// Game thread: render target + ZMQ/SHM workers must be set up here.
+	check(IsInGameThread());
+	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+	if (!Manager)
+		return Out;
+
+	TMap<FString, UMjCamera*> ByName;
+	BuildCameraNameMap(Manager, ByName);
+
+	for (const TPair<FString, TPair<bool, bool>>& Req : Requests)
+	{
+		UMjCamera** Found = ByName.Find(Req.Key);
+		if (!Found || !*Found)
+		{
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("[set_camera_streaming] camera '%s' not found"), *Req.Key);
+			continue;
+		}
+		UMjCamera* Cam = *Found;
+		const bool bZmq = Req.Value.Key;
+		const bool bShm = Req.Value.Value;
+
+		Cam->bEnableZmqBroadcast = bZmq;
+		Cam->bEnableShmBroadcast = bShm;
+		// Toggle off/on so the workers are (re)built to match the new flags.
+		Cam->SetStreamingEnabled(false);
+		const bool bStream = bZmq || bShm;
+		if (bStream)
+			Cam->SetStreamingEnabled(true);
+
+		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
+		CamObj->SetBoolField(TEXT("streaming"), bStream);
+		CamObj->SetBoolField(TEXT("zmq"), bZmq);
+		CamObj->SetBoolField(TEXT("shm"), bShm);
+		if (bZmq)
+		{
+			FString Endpoint = Cam->GetActualZmqEndpoint();
+			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
+			CamObj->SetStringField(TEXT("zmq_endpoint"), Endpoint);
+			AMjArticulation* Art = Cast<AMjArticulation>(Cam->GetOwner());
+			const FString Prefix = Art ? Art->GetName()
+									   : (Cam->GetOwner() ? Cam->GetOwner()->GetName() : TEXT("unknown"));
+			CamObj->SetStringField(TEXT("zmq_topic"),
+				FString::Printf(TEXT("%s/camera/%s"), *Prefix, *Cam->GetCanonicalName()));
+		}
+		// Key the reply by the canonical name so the bridge always gets a
+		// stable identity back regardless of which alias it requested.
+		Out->SetObjectField(Cam->GetCanonicalName(), CamObj);
+	}
+	return Out;
+}
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraStreaming(
+	const TSharedPtr<FJsonObject>& Req)
+{
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr)
+		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+
+	const TSharedPtr<FJsonObject>* CamObj = nullptr;
+	if (!Req->TryGetObjectField(TEXT("cameras"), CamObj) || !CamObj || !CamObj->IsValid())
+		return MakeError(TEXT("missing_field"),
+			TEXT("set_camera_streaming requires a 'cameras' object"));
+
+	// Parse per-camera requests. Value forms:
+	//   true / false           -> both transports on / off
+	//   { "zmq": b, "shm": b }  -> per-transport; an omitted sub-field is off
+	//                              UNLESS both are omitted, which means "both on"
+	TMap<FString, TPair<bool, bool>> Requests; // key -> {zmq, shm}
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Kv : (*CamObj)->Values)
+	{
+		if (!Kv.Value.IsValid())
+			continue;
+		bool bZmq = true;
+		bool bShm = true;
+		bool bBool = false;
+		const TSharedPtr<FJsonObject>* Sub = nullptr;
+		if (Kv.Value->TryGetBool(bBool))
+		{
+			bZmq = bBool;
+			bShm = bBool;
+		}
+		else if (Kv.Value->TryGetObject(Sub) && Sub && Sub->IsValid())
+		{
+			bool z = false, s = false;
+			const bool bHasZ = (*Sub)->TryGetBoolField(TEXT("zmq"), z);
+			const bool bHasS = (*Sub)->TryGetBoolField(TEXT("shm"), s);
+			if (bHasZ || bHasS)
+			{
+				bZmq = bHasZ ? z : false;
+				bShm = bHasS ? s : false;
+			}
+			// else leave both true (default = enable both)
+		}
+		Requests.Add(Kv.Key, TPair<bool, bool>(bZmq, bShm));
+	}
+
+	if (Requests.Num() == 0)
+		return MakeError(TEXT("bad_request"), TEXT("'cameras' had no usable entries"));
+
+	// Camera RT / worker setup is game-thread only; marshal and wait.
+	struct FResult
+	{
+		FEvent* Done = nullptr;
+		TSharedPtr<FJsonObject> Cameras;
+	};
+	TSharedPtr<FResult, ESPMode::ThreadSafe> Res = MakeShared<FResult, ESPMode::ThreadSafe>();
+	Res->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
+	TWeakObjectPtr<AAMjManager> WeakMgr(Mgr);
+	AsyncTask(ENamedThreads::GameThread, [Res, WeakMgr, Requests]() {
+		if (AAMjManager* M = WeakMgr.Get())
+			Res->Cameras = ApplyCameraStreamingGameThread(M, Requests);
+		Res->Done->Trigger();
+	});
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	if (Res->Done->Wait(5000))
+	{
+		FPlatformProcess::ReturnSynchEventToPool(Res->Done);
+		Res->Done = nullptr;
+		Reply->SetStringField(TEXT("op"), TEXT("set_camera_streaming_ok"));
+		Reply->SetObjectField(TEXT("cameras"),
+			Res->Cameras.IsValid() ? Res->Cameras : MakeShared<FJsonObject>());
+		return Reply;
+	}
+	// Timed out — leave the event un-pooled (the task still references it).
+	return MakeError(TEXT("timeout"), TEXT("set_camera_streaming game-thread apply timed out"));
+}
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Manager,
+	const TMap<FString, ECameraInclude>& CameraSpec,
+	const TMap<FString, uint64>& MinFrameIds, int32 TimeoutMs)
+{
+	(void)TimeoutMs; // retrieval is non-blocking; param kept for ABI compatibility
+	TSharedPtr<FJsonObject> Cams = MakeShared<FJsonObject>();
+	if (!Manager || CameraSpec.Num() == 0)
+		return Cams;
+
+	UWorld* World = Manager->GetWorld();
+	if (!World)
+		return Cams;
+
+	TMap<FString, UMjCamera*> ByName;
+	BuildCameraNameMap(Manager, ByName);
 
 	// Non-blocking retrieval from each camera's frame-history ring. No capture,
 	// no FlushRenderingCommands — the per-tick async readback (decoupled from

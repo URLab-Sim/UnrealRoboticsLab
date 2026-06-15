@@ -164,6 +164,19 @@ public:
 		const TMap<FString, uint64>& MinFrameIds = TMap<FString, uint64>(),
 		int32 TimeoutMs = 1000);
 
+	/** Build the name->camera lookup used to resolve include_cameras /
+	 *  set_camera_streaming keys: canonical "<art>/camera/<cam>", "<art>/<cam>",
+	 *  bare canonical, plus raw component / MJCF-name back-compat. First writer
+	 *  wins per key so a shared bare name can't hide a distinct camera. */
+	static void BuildCameraNameMap(AAMjManager* Manager,
+		TMap<FString, class UMjCamera*>& OutByName);
+
+	/** Game-thread: apply per-camera streaming requests (key -> {zmq, shm}),
+	 *  toggling the broadcast flags + SetStreamingEnabled, and return the
+	 *  per-camera reply object (streaming flag + bound zmq endpoint/topic). */
+	static TSharedPtr<FJsonObject> ApplyCameraStreamingGameThread(AAMjManager* Manager,
+		const TMap<FString, TPair<bool, bool>>& Requests);
+
 	static TSharedPtr<FJsonObject> MakeError(const FString& Code, const FString& Message);
 
 	/** Stamps `sim_time` + `wall_time` blocks (ROS `builtin_interfaces/Time`
@@ -238,6 +251,7 @@ private:
 	TSharedPtr<FJsonObject> HandleForward(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetMode(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetPaused(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleSetCameraStreaming(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleConfigureController(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimOptions(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimSpeed(const TSharedPtr<FJsonObject>& Req);

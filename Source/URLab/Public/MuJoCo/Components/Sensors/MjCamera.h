@@ -288,19 +288,28 @@ public:
 	TArray<float> ConsumeFloatPixels();
 
 	/**
-	 * @brief Game-thread, synchronous capture + GPU->CPU readback.
+	 * @brief Game-thread. Enqueue a fresh CaptureScene + GPU->CPU readback.
 	 *
-	 * Forces a fresh SceneCapture of the current scene (so the frame reflects
-	 * whatever actor transforms are applied at call time) and blocks on the
-	 * readback via FlushRenderingCommands. Fills OutColor for Real/seg modes
-	 * or OutFloat for Depth. Also feeds the ZMQ / SHM publishers with the same
-	 * frame so streaming consumers see the identical post-step image.
+	 * Captures the scene as it stands now (reflecting whatever actor transforms
+	 * are applied at call time) and enqueues a readback into the caller-owned
+	 * OutColor (Real/seg) or OutFloat (Depth). Does NOT flush — the caller is
+	 * expected to issue ONE FlushRenderingCommands across a whole batch of
+	 * cameras, after which the Out* buffers are valid. The Out* arrays must
+	 * outlive that flush. Returns true if a readback was enqueued.
 	 *
-	 * Used by the puppet-mode "sync" camera path, which needs a frame that
-	 * provably postdates the pushed state rather than the latest free-running
-	 * frame. Must be called on the game thread. Returns true on success.
+	 * This split (vs a per-camera blocking flush) lets the include_cameras path
+	 * capture N cameras with a single flush instead of N, which is what makes
+	 * multi-camera step replies cheap.
 	 */
-	bool CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<float>& OutFloat);
+	bool EnqueueSyncCapture(TArray<FColor>& OutColor, TArray<float>& OutFloat);
+
+	/**
+	 * @brief Hand an already-read frame to this camera's ZMQ / SHM publishers
+	 *        (if enabled) so streaming consumers see the same post-step image.
+	 *        Pass the buffer matching this camera's CaptureMode; the other is
+	 *        ignored.
+	 */
+	void PublishFrame(const TArray<FColor>& Color, const TArray<float>& FloatPixels);
 
 	/**
 	 * @brief Returns the ZMQ endpoint actually bound (may differ from ZmqEndpoint if auto-incremented).

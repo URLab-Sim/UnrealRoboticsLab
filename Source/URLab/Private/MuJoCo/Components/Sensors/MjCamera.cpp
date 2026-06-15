@@ -779,7 +779,7 @@ TArray<float> UMjCamera::ConsumeFloatPixels()
 	return TArray<float>();
 }
 
-bool UMjCamera::CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<float>& OutFloat)
+bool UMjCamera::EnqueueSyncCapture(TArray<FColor>& OutColor, TArray<float>& OutFloat)
 {
 	// Render-target access and CaptureScene must run on the game thread:
 	// RenderTarget->GameThread_GetRenderTargetResource() returns null off it.
@@ -806,9 +806,9 @@ bool UMjCamera::CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<floa
 		return false;
 	}
 
-	// Force a capture of the scene as it stands right now. Unlike the
-	// per-tick bCaptureEveryFrame path this is synchronous w.r.t. the
-	// caller, so the readback below sees this exact frame.
+	// Capture the scene as it stands now, then enqueue the readback right
+	// behind it (same render queue, so it reads this exact capture). No flush
+	// here — the caller batches one FlushRenderingCommands across all cameras.
 	CaptureComponent->CaptureScene();
 
 	if (CaptureMode == EMjCameraMode::Depth)
@@ -831,18 +831,6 @@ bool UMjCamera::CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<floa
 					}
 				}
 			});
-		// Block until the capture + readback above have completed.
-		FlushRenderingCommands();
-		if (OutFloat.Num() == 0)
-		{
-			return false;
-		}
-		// Feed the streaming transports with the same frame so ZMQ / SHM
-		// consumers see the identical post-step image.
-		if (bEnableZmqBroadcast && ZmqWorker)
-			ZmqWorker->PushFrame(OutFloat);
-		if (bEnableShmBroadcast && ShmWriter)
-			ShmWriter->PushFrame(OutFloat);
 		return true;
 	}
 
@@ -856,16 +844,29 @@ bool UMjCamera::CaptureAndReadbackBlocking(TArray<FColor>& OutColor, TArray<floa
 				*PixelsPtr,
 				FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX));
 		});
-	FlushRenderingCommands();
-	if (OutColor.Num() == 0)
-	{
-		return false;
-	}
-	if (bEnableZmqBroadcast && ZmqWorker)
-		ZmqWorker->PushFrame(OutColor);
-	if (bEnableShmBroadcast && ShmWriter)
-		ShmWriter->PushFrame(OutColor);
 	return true;
+}
+
+void UMjCamera::PublishFrame(const TArray<FColor>& Color, const TArray<float>& FloatPixels)
+{
+	if (CaptureMode == EMjCameraMode::Depth)
+	{
+		if (FloatPixels.Num() == 0)
+			return;
+		if (bEnableZmqBroadcast && ZmqWorker)
+			ZmqWorker->PushFrame(FloatPixels);
+		if (bEnableShmBroadcast && ShmWriter)
+			ShmWriter->PushFrame(FloatPixels);
+	}
+	else
+	{
+		if (Color.Num() == 0)
+			return;
+		if (bEnableZmqBroadcast && ZmqWorker)
+			ZmqWorker->PushFrame(Color);
+		if (bEnableShmBroadcast && ShmWriter)
+			ShmWriter->PushFrame(Color);
+	}
 }
 
 FString UMjCamera::GetActualZmqEndpoint() const

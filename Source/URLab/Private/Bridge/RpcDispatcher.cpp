@@ -907,9 +907,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			FString Endpoint = Cam->GetActualZmqEndpoint();
 			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
 			CamObj->SetStringField(TEXT("zmq_endpoint"), Endpoint);
+			const FString CamCanon = Cam->GetCanonicalName();
 			CamObj->SetStringField(TEXT("zmq_topic"),
-				FString::Printf(TEXT("%s/camera/%s"), *Art->GetName(), *Cam->GetName()));
-			CamMap->SetObjectField(Cam->GetName(), CamObj);
+				FString::Printf(TEXT("%s/camera/%s"), *Art->GetName(), *CamCanon));
+			CamMap->SetObjectField(CamCanon, CamObj);
 		}
 		ArtObj->SetObjectField(TEXT("camera_topics"), CamMap);
 
@@ -1617,10 +1618,24 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 			if (!C || C->bIsDefault)
 				continue;
 			const FString ArtName = Art->GetName();
-			const FString CamName = C->GetName();
-			AddName(ArtName + TEXT("/") + CamName, C);
-			AddName(ArtName + TEXT("/camera/") + CamName, C);
-			AddName(CamName, C);
+			// Canonical identity — matches the hello handshake key and the
+			// SHM / ZMQ transport names.
+			const FString Canon = C->GetCanonicalName();
+			AddName(Canon, C);
+			AddName(ArtName + TEXT("/") + Canon, C);
+			AddName(ArtName + TEXT("/camera/") + Canon, C);
+			// Back-compat: also accept the raw UE component name and the raw
+			// MJCF name (with original separators), in case a client still
+			// keys on an older form.
+			const FString CompName = C->GetName();
+			const FString MjNameRaw = C->GetMjName();
+			AddName(CompName, C);
+			AddName(ArtName + TEXT("/") + CompName, C);
+			if (!MjNameRaw.IsEmpty())
+			{
+				AddName(MjNameRaw, C);
+				AddName(ArtName + TEXT("/") + MjNameRaw, C);
+			}
 		}
 	}
 

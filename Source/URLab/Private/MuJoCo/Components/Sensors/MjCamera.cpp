@@ -549,7 +549,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 		{
 			AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
 			FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
-			FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetName());
+			FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetCanonicalName());
 
 			const FIntPoint Res(resolution.Num() > 0 ? resolution[0] : 0,
 				resolution.Num() > 1 ? resolution[1] : 0);
@@ -568,7 +568,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(TEXT("live"));
 			IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 			const FString FileName = FString::Printf(
-				TEXT("cam_%s_%s.shm"), *Prefix, *GetName());
+				TEXT("cam_%s_%s.shm"), *Prefix, *GetCanonicalName());
 			const FString FullPath = FPaths::Combine(Dir, FileName);
 
 			const FIntPoint ShmRes(resolution.Num() > 0 ? resolution[0] : 0,
@@ -875,6 +875,19 @@ FString UMjCamera::GetActualZmqEndpoint() const
 		return ZmqWorker->GetBoundEndpoint();
 	}
 	return ZmqEndpoint;
+}
+
+FString UMjCamera::GetCanonicalName() const
+{
+	FString Name = GetMjName();
+	if (Name.IsEmpty())
+		Name = GetName();
+	// '/' (MJCF body paths) and '\\' are path separators — collapse them so
+	// the same identity is valid as a SHM filename, a ZMQ topic leaf, and a
+	// handshake key.
+	Name.ReplaceInline(TEXT("/"), TEXT("_"));
+	Name.ReplaceInline(TEXT("\\"), TEXT("_"));
+	return Name;
 }
 
 // ---------------------------------------------------------------------------

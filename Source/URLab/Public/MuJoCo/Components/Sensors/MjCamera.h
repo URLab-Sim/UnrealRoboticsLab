@@ -309,6 +309,21 @@ public:
 	FString GetActualZmqEndpoint() const;
 
 	/**
+	 * @brief Canonical transport identity for this camera.
+	 *
+	 * The MJCF name (GetMjName(), the identity the rest of the handshake keys
+	 * on) with path separators collapsed to '_', falling back to the UE
+	 * component name if MjName is unset. Body-qualified MJCF cameras carry a
+	 * '/' (e.g. "left_arm/wrist_camera") which is illegal in a filename, so
+	 * this single sanitized string is what every transport site uses: the SHM
+	 * filename, the ZMQ topic leaf, the hello handshake key, and the
+	 * include_cameras lookup. UE writer and bridge reader must apply the same
+	 * rule so both ends rendezvous on the same name.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
+	FString GetCanonicalName() const;
+
+	/**
 	 * @brief Returns the bound camera component pointer (for UI wiring).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")

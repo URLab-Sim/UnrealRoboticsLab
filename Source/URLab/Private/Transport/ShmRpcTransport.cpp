@@ -279,8 +279,11 @@ void UURLabShmRpcTransport::RunPollLoop()
 					 "(raise ReplyBufferStride to carry it over shm)"),
 				RepBytes.Num(), RepStride);
 
+			// `reply_too_large` is the code the bridge's ShmTransport already
+			// sticky-routes to its ZMQ fallback. (Distinct from the editor-op
+			// `wrong_transport` rejection.)
 			TSharedPtr<FJsonObject> Err = FURLabRpcDispatcher::MakeError(
-				TEXT("wrong_transport"),
+				TEXT("reply_too_large"),
 				FString::Printf(
 					TEXT("reply %d bytes exceeds shm reply slot %u; use zmq for this request"),
 					RepBytes.Num(), RepStride));

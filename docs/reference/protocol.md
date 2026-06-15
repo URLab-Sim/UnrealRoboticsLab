@@ -96,6 +96,12 @@ Reply (`hello_ok`), notable fields:
   "mujoco_version_int": 3xy,
   "manager_present": true,
   "shm_session_dir": "C:/.../Saved/URLabShm/<session_id>",
+  "shm_rpc": {
+    "session": "live",
+    "req_path": "C:/.../live/req.shm", "rep_path": "C:/.../live/rep.shm",
+    "req_event": "Local\\URLab_live_req_ready", "rep_event": "Local\\URLab_live_rep_ready",
+    "req_stride": 1048576, "rep_stride": 16777216, "n_buffers": 2, "header_size": 64
+  },
   "mjb": "<bytes>",
   "articulations": [ ... ],
   "entities": { ... },
@@ -114,6 +120,14 @@ Reply (`hello_ok`), notable fields:
   `mjb_base64` / `mjb_size` for JSON clients). Load it via a temp-file
   round-trip into `mujoco.MjModel`.
 - `shm_session_dir` is the absolute SHM region directory.
+- `shm_rpc` is the explicit SHM RPC contract — use it verbatim instead of
+  assuming `session="live"` or re-deriving names. It carries the `req`/`rep`
+  file paths, the Windows wake-up event names, the per-direction slot
+  `stride`, the buffer count, and the 64-byte header size. The bridge should
+  **poll the rep `sequence`** (header: `buffer_stride`@8, `n_buffers`@12,
+  `sequence` u64@16, `latest_idx` u32@24; slots start at `header_size`) as a
+  fallback — the `Local\` event doesn't cross logon-session/elevation, so an
+  event-only wait can stall out the recv timeout.
 
 ### Articulations block
 
@@ -282,6 +296,7 @@ request uses the same `per_articulation` shape as direct.
   "op": "step_ok",
   "time": 0.042,
   "step": 21,
+  "frame_id": 21,
   "sim_time": { "sec": 0, "nsec": 42000000 },
   "wall_time": { "sec": 1714125000, "nsec": 123000000 },
   "per_articulation": {
@@ -309,26 +324,59 @@ request uses the same `per_articulation` shape as direct.
   bitfield.
 - The fields present per articulation follow the observation level (see
   [Observation levels](#observation-levels)).
+- `frame_id` is the post-step render-snapshot id (monotonic, bumped once
+  per step). It is the key for camera association: the frame that shows
+  *this* step's state is tagged with this `frame_id`. Pass it back as a
+  camera `frame_id` request (below) to fetch the matching image.
 
 ### Camera observations
 
-When `include_cameras` is non-false, the reply gains a `cameras` block:
+Camera capture is **decoupled from stepping** (like MuJoCo `simulate`): UE
+captures asynchronously into a per-camera history ring and the step never
+blocks on rendering. `include_cameras` retrieval is **non-blocking** — it
+reads from the ring; a frame that isn't ready yet is simply omitted and the
+client retries (or fetches by `frame_id` on a later step).
+
+When `include_cameras` resolves a frame, the reply gains a `cameras` block:
 
 ```json
 "cameras": {
-  "head_rgbd": { "width": 848, "height": 480, "dtype": "float32", "data": "<bytes>" },
-  "wrist_rgb": { "width": 640, "height": 480, "dtype": "bgra8",   "data": "<bytes>" }
+  "head_rgbd":       { "width": 848, "height": 480, "frame_id": 21, "sim_time": 0.042, "dtype": "float32", "data": "<bytes>" },
+  "base_wrist_rgb":  { "width": 640, "height": 480, "frame_id": 21, "sim_time": 0.042, "dtype": "bgra8",   "data": "<bytes>" }
 }
 ```
 
-`dtype` is `bgra8` (4 bytes/pixel) for Real / Semantic / Instance and
-`float32` for Depth. The bridge swaps Real to RGBA on receive and keeps
-seg modes BGRA so consumers can map color to class id.
+Each camera carries the `frame_id` / `sim_time` of the state it shows, so a
+client can confirm it got the post-step frame. `dtype` is `bgra8` (4
+bytes/pixel) for Real / Semantic / Instance and `float32` for Depth. The
+bridge swaps Real to RGBA on receive and keeps seg modes BGRA so consumers
+can map color to class id.
 
-`include_cameras` accepts `true` (every camera, latest cached frame),
-`false`, or a per-camera object like `{"head_rgbd": "sync"}`. `"sync"`
-blocks the step until UE captures a fresh frame; `"latest"` returns the
-cached one.
+**Camera keys are canonical**: the MJCF camera name with path separators
+collapsed to `_` (e.g. `base/wrist` → `base_wrist`). These are the exact
+keys the `hello` `camera_topics` advertises and the SHM/ZMQ transports use.
+
+`include_cameras` accepts:
+
+- `true` — every registered camera, latest available frame.
+- `false` — no cameras.
+- a per-camera object, where each value is one of:
+  - `"latest"` (or legacy `"sync"`) — latest available frame from the ring.
+  - a number `N` — the frame showing post-step state `>= N` (pass the step
+    reply's `frame_id`). The deterministic "image for this step" path.
+  - `{ "frame_id": N }` — same, explicit.
+
+Typical downstream flow (post-step image, full step rate via one-step
+pipelining): `result = step(...)` then on the *next* step request
+`include_cameras = { "<cam>": result.frame_id }`.
+
+**Capture gating / streaming:** a camera captures only while it is
+broadcast-enabled or has been requested recently. UE's `bEnableAllCameras`
+now defaults **off**, so dedicated ZMQ/SHM pub streams must be turned on per
+camera via [`set_camera_streaming`](#set_camera_streaming) (or rely on
+`include_cameras`, which auto-activates capture). Oversize replies on the
+SHM RPC transport (e.g. large multi-camera frames) return a
+`reply_too_large` error so the bridge re-routes that one request to ZMQ.
 
 ## `reset`
 
@@ -510,8 +558,29 @@ m/s^2, magnetic in gauss. Accepted fields: `timestep`, `gravity`,
 `solver` (`pgs` / `cg` / `newton`), `noslip_iterations`,
 `noslip_tolerance`, `ccd_iterations`, `ccd_tolerance`,
 `enable_multiccd`, `enable_sleep`, `sleep_tolerance`, plus the raw
-`disableflags` / `enableflags` masks and `num_worker_threads`. An
-unknown integrator / cone / solver string returns `bad_value`.
+`disableflags` / `enableflags` masks and `num_worker_threads` (the
+`mju_threadpool` worker count; the reply also echoes the read-only
+`max_worker_threads` CPU-core clamp). An unknown integrator / cone /
+solver string returns `bad_value`.
+
+### `set_camera_streaming`
+
+Enables/disables per-camera ZMQ/SHM broadcast streams at runtime. Needed
+because `bEnableAllCameras` now defaults off: a camera only runs its pub
+streams while broadcast-enabled (here) or requested via `include_cameras`.
+Keys are canonical camera names. Each value is `true` / `false` (both
+transports) or `{ "zmq": bool, "shm": bool }` (per-transport; omitting both
+sub-fields enables both).
+
+```json
+{ "op": "set_camera_streaming", "session_id": "uuid-v4",
+  "cameras": { "base_wrist_rgb": { "zmq": true, "shm": false },
+               "head_rgbd": true } }
+```
+
+The reply is keyed by canonical name; each entry carries `streaming`,
+`zmq`, `shm`, and (when ZMQ is on) the bound `zmq_endpoint` / `zmq_topic`
+to subscribe to.
 
 ## Recording
 

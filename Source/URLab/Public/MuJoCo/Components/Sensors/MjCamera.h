@@ -31,6 +31,7 @@
 #include "Containers/Queue.h"
 #include "MuJoCo/Components/Sensors/MjCameraTypes.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
+#include "RHIGPUReadback.h"
 #include <atomic>
 #include "MjCamera.generated.h"
 
@@ -395,31 +396,26 @@ public:
 
 private:
 
-	// ---- Readback state ----
-	// CaptureMode picks which Pending buffer is used: BGRA8 (Real / SemSeg /
-	// InstanceSeg) drives PendingPixels, Depth drives PendingFloatPixels.
-	// Only one mode is in flight at a time.
-	//
-	// Pending* is the render-thread destination. RequestReadback Emplaces a
-	// fresh TArray, SetNumUninitialized's it, and enqueues a render command
-	// capturing a pointer into it. The render thread writes to that pointer.
-	// Only the game thread touches Pending* (RequestReadback, gated by
-	// !bReadbackPending, and TickComponent's fence-complete handler), so the
-	// captured pointer stays valid until the fence completes.
-	//
-	// On fence completion TickComponent feeds the streaming workers a copy and
-	// MOVES the frame into the History ring (below), tagged with the post-step
-	// FrameId/SimTime that was applied when the readback was issued.
-	TOptional<TArray<FColor>> PendingPixels;
-	TOptional<TArray<float>> PendingFloatPixels;
-	FRenderCommandFence ReadbackFence;
-	bool bReadbackPending = false;
-
-	// Post-step state id + sim time captured at RequestReadback time (game
-	// thread), carried through to the harvested frame so consumers can ask
-	// "the frame for step N".
-	uint64 PendingFrameId = 0;
-	double PendingSimTime = 0.0;
+	// ---- Async readback pipeline ----
+	// GPU->CPU pixel readback uses FRHIGPUTextureReadback (async, non-stalling)
+	// rather than a synchronous RHICmdList.ReadSurfaceData. The sync read forces
+	// a render-thread flush + GPU wait, so its rate collapses to 1/(GPU render
+	// time) on a heavy scene -- the camera feed throttles to ~10fps even though
+	// the editor renders at realtime. EnqueueCopy schedules the copy without
+	// blocking; we poll IsReady() and pipeline several deep so the readback rate
+	// tracks the render rate. Each entry carries the post-step FrameId/SimTime
+	// applied when it was issued, so consumers can still ask for "the frame for
+	// step N". FIFO: harvested oldest-first into the History ring (below).
+	struct FInFlightReadback
+	{
+		TUniquePtr<FRHIGPUTextureReadback> Gpu;
+		uint64 FrameId = 0;
+		double SimTime = 0.0;
+		int32 Width = 0;
+		int32 Height = 0;
+	};
+	TArray<FInFlightReadback> InFlightReadbacks;
+	static constexpr int32 MaxInFlightReadbacks = 3;
 
 	// ---- Frame history ring ----
 	// Retains the last HistoryCapacity frames so a client can fetch the frame

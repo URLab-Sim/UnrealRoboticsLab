@@ -1063,6 +1063,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 			Reply->SetNumberField(TEXT("time"), d->time);
 			Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
 			AppendClockFields(Reply, d->time);
+			// Latest render-snapshot id so the client can run a "fresh" camera
+			// query in live mode too (wait for a streamed frame >= this id).
+			// UE's autonomous physics owns stepping here, so this is the id of
+			// the most recently published snapshot rather than a stepped one.
+			Reply->SetNumberField(TEXT("frame_id"),
+				static_cast<double>(Mgr->PhysicsEngine->GetRenderFrameId()));
 			TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
 			if (Obs.IsValid())
 				Reply->SetObjectField(TEXT("per_articulation"), Obs);
@@ -1373,7 +1379,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		Reply->SetNumberField(TEXT("step"), Cmd->ResultStep);
 		AppendClockFields(Reply, Cmd->ResultTime);
 		Reply->SetNumberField(TEXT("frame_id"),
-			static_cast<double>(Mgr->PhysicsEngine->GetRenderFrameId()));
+			static_cast<double>(Cmd->ResultFrameId));
 		if (Cmd->Observations.IsValid())
 			Reply->SetObjectField(TEXT("per_articulation"), Cmd->Observations);
 		if (Cmd->Entities.IsValid())
@@ -2279,6 +2285,14 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 						+ Cmd->Request.NSteps;
 		Cmd->Observations = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
 		Cmd->Entities = BuildEntitiesBlock(Mgr, m, d);
+		// Publish the just-stepped state to the render snapshot now, while this
+		// handler still owns d (it runs inside the engine's CallbackMutex), and
+		// capture the resulting frame_id for the reply. Without this the RPC
+		// thread would read GetRenderFrameId() after we Trigger() below but
+		// before the physics loop's own PushRenderState() runs, returning the
+		// previous step's id and breaking camera frame association.
+		Engine->PushRenderState();
+		Cmd->ResultFrameId = Engine->GetRenderFrameId();
 		Cmd->bDone = true;
 		if (Cmd->Completion)
 			Cmd->Completion->Trigger();

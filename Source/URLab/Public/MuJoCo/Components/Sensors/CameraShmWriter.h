@@ -16,6 +16,7 @@
 
 #include "CoreMinimal.h"
 #include "Transport/ShmRegion.h"
+#include "MuJoCo/Components/Sensors/MjCameraTypes.h"
 
 /**
  * @class FCameraShmWriter
@@ -27,8 +28,12 @@
  * background thread -- the camera readback callback feeds this directly
  * on the game / render-thread sidecar.
  *
- * Wire layout per slot: `[u32 size][bytes...]`. The byte format depends
- * on the camera mode and is documented out-of-band via the handshake:
+ * Wire layout per slot: `[u32 size][FMjCameraFrameMeta][pixels...]`, where
+ * `size` is the byte count of `meta + pixels` (i.e. it includes the 32-byte
+ * header). The consumer reads `size`, parses the leading 32 bytes as the
+ * frame metadata (frame_id / sim_time / w / h), and treats the remainder as
+ * pixels. The pixel byte format depends on the camera mode and is documented
+ * out-of-band via the handshake:
  *  - Real: width * height * 4 bytes BGRA8 (FColor).
  *  - Depth: width * height * 4 bytes float32 (single channel).
  *  - Semantic / Instance: width * height * 4 bytes BGRA8 with a
@@ -52,21 +57,21 @@ public:
 
 	bool IsOpen() const { return Region.IsOpen(); }
 
-	/** Push one frame's raw bytes. Silently drops if `ByteCount` doesn't
-	 *  match the configured pixel count * 4 -- a partial frame can't be
-	 *  decoded by the consumer anyway. */
-	void PushFrame(const void* Data, uint32 ByteCount);
+	/** Push one frame's raw bytes plus its metadata header. Silently drops if
+	 *  `ByteCount` doesn't match the configured pixel count * 4 -- a partial
+	 *  frame can't be decoded by the consumer anyway. */
+	void PushFrame(const void* Data, uint32 ByteCount, const FMjCameraFrameMeta& Meta);
 
 	/** Convenience overload for color frames. */
-	void PushFrame(const TArray<FColor>& Pixels)
+	void PushFrame(const TArray<FColor>& Pixels, const FMjCameraFrameMeta& Meta)
 	{
-		PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(FColor));
+		PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(FColor), Meta);
 	}
 
 	/** Convenience overload for single-channel float frames (depth). */
-	void PushFrame(const TArray<float>& Pixels)
+	void PushFrame(const TArray<float>& Pixels, const FMjCameraFrameMeta& Meta)
 	{
-		PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(float));
+		PushFrame(Pixels.GetData(), static_cast<uint32>(Pixels.Num()) * sizeof(float), Meta);
 	}
 
 	FString GetPath() const { return Region.GetPath(); }

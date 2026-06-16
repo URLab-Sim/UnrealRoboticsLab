@@ -26,8 +26,9 @@ bool FCameraShmWriter::Open(const FString& Path, FIntPoint Resolution)
 		return false;
 	}
 
-	// 4 bytes per pixel (FColor) + 4-byte size prefix per slot.
-	const uint32 Stride = static_cast<uint32>(ExpectedPixels) * 4u + sizeof(uint32);
+	// 4 bytes per pixel (FColor) + 4-byte size prefix + 32-byte frame meta per slot.
+	const uint32 Stride = static_cast<uint32>(ExpectedPixels) * 4u
+		+ sizeof(uint32) + sizeof(FMjCameraFrameMeta);
 	return Region.Open(Path, Stride, /*NBuffers=*/2);
 }
 
@@ -37,7 +38,7 @@ void FCameraShmWriter::Close(bool bDeleteFile)
 	ExpectedPixels = 0;
 }
 
-void FCameraShmWriter::PushFrame(const void* Data, uint32 ByteCount)
+void FCameraShmWriter::PushFrame(const void* Data, uint32 ByteCount, const FMjCameraFrameMeta& Meta)
 {
 	if (!Region.IsOpen() || !Data)
 		return;
@@ -55,8 +56,12 @@ void FCameraShmWriter::PushFrame(const void* Data, uint32 ByteCount)
 	if (!Slot)
 		return;
 
-	FMemory::Memcpy(Slot, &ByteCount, sizeof(uint32));
-	FMemory::Memcpy(Slot + sizeof(uint32), Data, ByteCount);
+	// Slot layout: [u32 payload_size][FMjCameraFrameMeta][pixels]. payload_size
+	// covers meta + pixels so the consumer reads one length then splits.
+	const uint32 PayloadSize = sizeof(FMjCameraFrameMeta) + ByteCount;
+	FMemory::Memcpy(Slot, &PayloadSize, sizeof(uint32));
+	FMemory::Memcpy(Slot + sizeof(uint32), &Meta, sizeof(FMjCameraFrameMeta));
+	FMemory::Memcpy(Slot + sizeof(uint32) + sizeof(FMjCameraFrameMeta), Data, ByteCount);
 
 	Hdr->LatestIdx.store(Target, std::memory_order_release);
 	Hdr->Sequence.fetch_add(1, std::memory_order_release);

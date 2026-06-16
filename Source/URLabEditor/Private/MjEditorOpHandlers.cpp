@@ -112,6 +112,96 @@ TSharedPtr<FJsonObject> RunOnGameThreadSync(Lambda&& Body)
 	return State->Result;
 }
 
+// ---- async editor jobs -------------------------------------------------
+// Long editor ops (import_xml, spawn, create/load/save level) block the game
+// thread for seconds. Running them synchronously also blocks the single RPC
+// worker thread (no other RPC is served until they finish). Instead we kick
+// the work onto a game-thread ticker, return a `op_started` + job_id
+// immediately, and let the client poll `op_status` (a fast worker-thread read)
+// until the job is done -- freeing the worker thread and giving the client a
+// liveness signal. The python client tolerates BOTH this async form and a
+// direct synchronous reply.
+struct FEditorJob
+{
+	FString State = TEXT("running"); // running | done | failed
+	FString Progress;
+	TSharedPtr<FJsonObject> Result;  // the original handler reply once done
+};
+static FCriticalSection GEditorJobLock;
+static TMap<FString, FEditorJob> GEditorJobs;
+static std::atomic<uint64> GEditorJobCounter{0};
+
+template <typename Lambda>
+TSharedPtr<FJsonObject> RunEditorJobAsync(Lambda&& Body)
+{
+	const FString JobId = FString::Printf(
+		TEXT("job_%llu"), GEditorJobCounter.fetch_add(1, std::memory_order_relaxed) + 1);
+	{
+		FScopeLock Lock(&GEditorJobLock);
+		GEditorJobs.Add(JobId, FEditorJob{});
+	}
+	// Run the body on the game thread next tick; store the result in the job
+	// registry. The ticker (game thread) is the only writer of Result/State.
+	FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateLambda(
+			[JobId, BodyCopy = Forward<Lambda>(Body)](float /*Dt*/) mutable -> bool {
+				TSharedPtr<FJsonObject> Res = BodyCopy();
+				FString ReplyOp;
+				if (Res.IsValid())
+					Res->TryGetStringField(TEXT("op"), ReplyOp);
+				FScopeLock Lock(&GEditorJobLock);
+				if (FEditorJob* Job = GEditorJobs.Find(JobId))
+				{
+					Job->Result = Res;
+					Job->State = (ReplyOp == TEXT("error")) ? TEXT("failed") : TEXT("done");
+				}
+				return false; // one-shot
+			}));
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("op_started"));
+	Reply->SetStringField(TEXT("job_id"), JobId);
+	Reply->SetStringField(TEXT("state"), TEXT("running"));
+	return Reply;
+}
+
+// Fast, worker-thread read of a job's state. Pops the job once it is reported
+// terminal (done/failed) so the registry doesn't grow unbounded.
+TSharedPtr<FJsonObject> HandleOpStatus(const TSharedPtr<FJsonObject>& Req)
+{
+	FString JobId;
+	if (!Req->TryGetStringField(TEXT("job_id"), JobId) || JobId.IsEmpty())
+		return URLabOpHelpers::MakeError(TEXT("bad_request"),
+			TEXT("op_status requires a non-empty 'job_id'"));
+
+	FString State, Progress;
+	TSharedPtr<FJsonObject> Result;
+	bool bTerminal = false;
+	{
+		FScopeLock Lock(&GEditorJobLock);
+		FEditorJob* Job = GEditorJobs.Find(JobId);
+		if (!Job)
+			return URLabOpHelpers::MakeError(TEXT("unknown_job"),
+				FString::Printf(TEXT("no job %s (already collected or never existed)"), *JobId));
+		State = Job->State;
+		Progress = Job->Progress;
+		Result = Job->Result;
+		bTerminal = (State != TEXT("running"));
+		if (bTerminal)
+			GEditorJobs.Remove(JobId);
+	}
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("op_status_ok"));
+	Reply->SetStringField(TEXT("job_id"), JobId);
+	Reply->SetStringField(TEXT("state"), State);
+	if (!Progress.IsEmpty())
+		Reply->SetStringField(TEXT("progress"), Progress);
+	if (bTerminal && Result.IsValid())
+		Reply->SetObjectField(TEXT("result"), Result);
+	return Reply;
+}
+
 // ---- import_xml --------------------------------------------------------
 TSharedPtr<FJsonObject> HandleImportXml(const TSharedPtr<FJsonObject>& Req)
 {
@@ -272,7 +362,7 @@ TSharedPtr<FJsonObject> HandleSaveLevel(const TSharedPtr<FJsonObject>& /*Req*/)
 	return Reply;
 }
 
-// ---- spawn_actor / destroy_actor ---------------------------------------
+// ---- spawn_actor / remove_actor ---------------------------------------
 
 TSharedPtr<FJsonObject> HandleSpawnActor(const TSharedPtr<FJsonObject>& Req)
 {
@@ -1041,21 +1131,21 @@ TSharedPtr<FJsonObject> HandleRemoveQuickConvert(const TSharedPtr<FJsonObject>& 
 	return Reply;
 }
 
-TSharedPtr<FJsonObject> HandleDestroyActor(const TSharedPtr<FJsonObject>& Req)
+TSharedPtr<FJsonObject> HandleRemoveActor(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Id, Err;
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Id, bByName, Err))
 	{
 		return MakeJsonError(TEXT("missing_field"),
-			FString::Printf(TEXT("destroy_actor: %s"), *Err));
+			FString::Printf(TEXT("remove_actor: %s"), *Err));
 	}
 	if (!URLabLevelOps::DestroyActorSync(Id, Err))
 	{
 		return MakeJsonError(TEXT("destroy_failed"), Err);
 	}
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("destroy_actor_ok"));
+	Reply->SetStringField(TEXT("op"), TEXT("remove_actor_ok"));
 	Reply->SetBoolField(TEXT("requires_pie_restart"),
 		GEditor ? GEditor->IsPlayingSessionInEditor() : false);
 	return Reply;
@@ -1639,6 +1729,17 @@ static URLabOpRegistry::FHandler GameThreadHandler(
 	};
 }
 
+// Async variant for long-running editor ops: returns op_started + job_id
+// immediately and runs the body on a game-thread ticker; the client polls
+// op_status. Req is copied (TSharedPtr) so the deferred body owns it safely.
+static URLabOpRegistry::FHandler GameThreadHandlerAsync(
+	TSharedPtr<FJsonObject> (*Inner)(const TSharedPtr<FJsonObject>&))
+{
+	return [Inner](const TSharedPtr<FJsonObject>& Req) {
+		return RunEditorJobAsync([Inner, Req]() { return Inner(Req); });
+	};
+}
+
 /** Each editor op carries its category + namespace metadata so the
  *  bridge can synthesise method bindings from the `meta` payload. */
 void RegEditor(const TCHAR* Name, const TCHAR* Ns,
@@ -1662,11 +1763,11 @@ void RegisterAll()
 {
 	// scene namespace: level / asset import + spawn ops.
 	RegEditor(TEXT("import_xml"), TEXT("scene"),
-		GameThreadHandler(&HandleImportXml),
+		GameThreadHandlerAsync(&HandleImportXml),
 		/*Reply=*/{TEXT("op:string"), TEXT("blueprint_class_path:string"), TEXT("blueprint_short_name:string"), TEXT("imported_now:bool")},
 		/*Required=*/{TEXT("path")});
 	RegEditor(TEXT("create_level"), TEXT("scene"),
-		GameThreadHandler(&HandleCreateLevel),
+		GameThreadHandlerAsync(&HandleCreateLevel),
 		/*Reply=*/{TEXT("op:string"), TEXT("level_path:string")},
 		/*Required=*/{TEXT("name")});
 	RegEditor(TEXT("ensure_manager"), TEXT("scene"),
@@ -1685,7 +1786,7 @@ void RegisterAll()
 		{TEXT("op:string"), TEXT("actors:array"),
 			TEXT("in_pie:bool"), TEXT("level_path:string")});
 	RegEditor(TEXT("duplicate_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleDuplicateActor),
+		GameThreadHandlerAsync(&HandleDuplicateActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("actor_id:string"), TEXT("actor_name:string"), TEXT("actor_path:string"), TEXT("blueprint_class_path:string")},
 		/*Required=*/{TEXT("target"), TEXT("new_actor_id")});
 	RegEditor(TEXT("actor_hierarchy"), TEXT("scene"),
@@ -1693,34 +1794,42 @@ void RegisterAll()
 		/*Reply=*/{TEXT("op:string"), TEXT("root:object")},
 		/*Required=*/{TEXT("target")});
 	RegEditor(TEXT("load_level"), TEXT("scene"),
-		GameThreadHandler(&HandleLoadLevel),
+		GameThreadHandlerAsync(&HandleLoadLevel),
 		/*Reply=*/{TEXT("op:string"), TEXT("level_path:string")},
 		/*Required=*/{TEXT("level_path")});
 	RegEditor(TEXT("save_level"), TEXT("scene"),
-		GameThreadHandler(&HandleSaveLevel),
+		GameThreadHandlerAsync(&HandleSaveLevel),
 		{TEXT("op:string"), TEXT("level_path:string")});
 	RegEditor(TEXT("spawn_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleSpawnActor),
+		GameThreadHandlerAsync(&HandleSpawnActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("actor_id:string"), TEXT("actor_name:string"), TEXT("actor_path:string"), TEXT("blueprint_class_path:string"), TEXT("location:array"), TEXT("rotation_quat:array"), TEXT("was_existing:bool"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("blueprint")});
 	RegEditor(TEXT("spawn_grid"), TEXT("scene"),
-		GameThreadHandler(&HandleSpawnGrid),
+		GameThreadHandlerAsync(&HandleSpawnGrid),
 		/*Reply=*/{TEXT("op:string"), TEXT("count:int"), TEXT("blueprint_class_path:string"), TEXT("actors:array"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("blueprint"), TEXT("base_actor_id"), TEXT("count_x"), TEXT("count_y")});
 	RegEditor(TEXT("spawn_light"), TEXT("scene"),
-		GameThreadHandler(&HandleSpawnLight),
+		GameThreadHandlerAsync(&HandleSpawnLight),
 		{TEXT("op:string"), TEXT("actor_id:string"), TEXT("actor_name:string"),
 			TEXT("actor_path:string"), TEXT("kind:string"),
 			TEXT("intensity:float"), TEXT("color:array"),
 			TEXT("location:array"), TEXT("requires_pie_restart:bool")});
-	RegEditor(TEXT("destroy_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleDestroyActor),
+	RegEditor(TEXT("remove_actor"), TEXT("scene"),
+		GameThreadHandlerAsync(&HandleRemoveActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("target")});
 	RegEditor(TEXT("set_actor_transform"), TEXT("scene"),
 		GameThreadHandler(&HandleSetActorTransform),
 		/*Reply=*/{TEXT("op:string"), TEXT("target:string"), TEXT("actor_name:string"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("target")});
+	// Poll an async editor job (import_xml / spawn / create / save). NOT
+	// game-thread-wrapped: it's a fast worker-thread read of the job registry,
+	// so it stays responsive while the game thread runs the actual op.
+	RegEditor(TEXT("op_status"), TEXT("scene"),
+		[](const TSharedPtr<FJsonObject>& Req) { return HandleOpStatus(Req); },
+		/*Reply=*/{TEXT("op:string"), TEXT("job_id:string"), TEXT("state:string"),
+			TEXT("progress:string?"), TEXT("result:object?")},
+		/*Required=*/{TEXT("job_id")});
 
 	// sim namespace: PIE lifecycle. Per the plan §5.1 the Python
 	// wrappers expose these as client.sim.start / sim.stop /
@@ -1839,7 +1948,8 @@ void UnregisterAll()
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_actor"));
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_grid"));
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_light"));
-	URLabOpRegistry::UnregisterHandler(TEXT("destroy_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("remove_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("op_status"));
 	URLabOpRegistry::UnregisterHandler(TEXT("set_actor_transform"));
 	URLabOpRegistry::UnregisterHandler(TEXT("begin_pie"));
 	URLabOpRegistry::UnregisterHandler(TEXT("stop_pie"));

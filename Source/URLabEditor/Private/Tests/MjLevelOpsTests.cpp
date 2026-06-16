@@ -9,6 +9,7 @@
 #include "Misc/FileHelper.h"
 #include "HAL/FileManager.h"
 #include "Dom/JsonObject.h"
+#include "Containers/Ticker.h"
 
 #include "Bridge/OpRegistry.h"
 #include "MjLevelOps.h"
@@ -559,19 +560,51 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjLevelOpsImportXmlErrors,
 bool FMjLevelOpsImportXmlErrors::RunTest(const FString& Parameters)
 {
 	auto Handler = URLabOpRegistry::GetHandler(TEXT("import_xml"));
-	if (!Handler)
+	auto StatusHandler = URLabOpRegistry::GetHandler(TEXT("op_status"));
+	if (!Handler || !StatusHandler)
 	{
-		AddError(TEXT("import_xml handler not installed"));
+		AddError(TEXT("import_xml / op_status handler not installed"));
 		return false;
 	}
+
+	// import_xml is async now: the handler returns op_started + job_id and the
+	// real work (plus its error reply) runs on the next game-thread tick, read
+	// back via op_status. Drive that to the terminal result here.
+	auto RunToResult = [&](TSharedPtr<FJsonObject> Req) -> TSharedPtr<FJsonObject>
+	{
+		TSharedPtr<FJsonObject> Started = Handler(Req);
+		FString JobId;
+		Started->TryGetStringField(TEXT("job_id"), JobId);
+		if (JobId.IsEmpty())
+			return Started; // synchronous reply (no job) -> use directly
+		for (int32 i = 0; i < 100; ++i)
+		{
+			FTSTicker::GetCoreTicker().Tick(0.05f);
+			TSharedPtr<FJsonObject> SReq = MakeShared<FJsonObject>();
+			SReq->SetStringField(TEXT("op"), TEXT("op_status"));
+			SReq->SetStringField(TEXT("job_id"), JobId);
+			TSharedPtr<FJsonObject> SRep = StatusHandler(SReq);
+			FString State;
+			SRep->TryGetStringField(TEXT("state"), State);
+			if (State != TEXT("running"))
+			{
+				const TSharedPtr<FJsonObject>* Res = nullptr;
+				if (SRep->TryGetObjectField(TEXT("result"), Res) && Res)
+					return *Res;
+				return SRep;
+			}
+		}
+		return nullptr;
+	};
 
 	// Missing 'path' field.
 	{
 		TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 		Req->SetStringField(TEXT("op"), TEXT("import_xml"));
-		TSharedPtr<FJsonObject> Reply = Handler(Req);
+		TSharedPtr<FJsonObject> Reply = RunToResult(Req);
 		FString Code;
-		Reply->TryGetStringField(TEXT("code"), Code);
+		if (Reply.IsValid())
+			Reply->TryGetStringField(TEXT("code"), Code);
 		TestEqual(TEXT("missing path -> missing_field"),
 			Code, FString(TEXT("missing_field")));
 	}
@@ -581,9 +614,10 @@ bool FMjLevelOpsImportXmlErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 		Req->SetStringField(TEXT("op"), TEXT("import_xml"));
 		Req->SetStringField(TEXT("path"), TEXT("C:/no/such/path/never.xml"));
-		TSharedPtr<FJsonObject> Reply = Handler(Req);
+		TSharedPtr<FJsonObject> Reply = RunToResult(Req);
 		FString Code;
-		Reply->TryGetStringField(TEXT("code"), Code);
+		if (Reply.IsValid())
+			Reply->TryGetStringField(TEXT("code"), Code);
 		TestEqual(TEXT("missing file -> import_failed"),
 			Code, FString(TEXT("import_failed")));
 	}

@@ -376,57 +376,75 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		}
 	}
 
-	// Drain a completed readback: feed the streaming workers a copy, then MOVE
-	// the frame into the history ring tagged with the post-step FrameId/SimTime
-	// captured when the readback was issued.
-	if (bReadbackPending && ReadbackFence.IsFenceComplete())
+	// Drain completed async readbacks in FIFO order. Non-stalling: each is a
+	// GPU->staging copy that finishes a few frames after EnqueueCopy, so the
+	// harvest rate tracks the render rate instead of serialising on a sync
+	// ReadSurfaceData stall. Stop at the first not-ready entry to keep order.
+	while (InFlightReadbacks.Num() > 0)
 	{
-		bReadbackPending = false;
+		FInFlightReadback& Front = InFlightReadbacks[0];
+		if (!Front.Gpu.IsValid() || !Front.Gpu->IsReady())
+		{
+			break;
+		}
+		const int32 W = Front.Width;
+		const int32 H = Front.Height;
 
 		FMjCameraFrame Frame;
-		Frame.FrameId = PendingFrameId;
-		Frame.SimTime = PendingSimTime;
-		Frame.Width = resolution.Num() > 0 ? resolution[0] : 0;
-		Frame.Height = resolution.Num() > 1 ? resolution[1] : 0;
-		bool bHaveFrame = false;
+		Frame.FrameId = Front.FrameId;
+		Frame.SimTime = Front.SimTime;
+		Frame.Width = W;
+		Frame.Height = H;
 
-		// Metadata carried alongside the streamed pixels on both transports so
-		// the client can match a frame to the step that produced it.
 		FMjCameraFrameMeta Meta;
-		Meta.FrameId = Frame.FrameId;
-		Meta.SimTime = Frame.SimTime;
-		Meta.Width = static_cast<uint32>(Frame.Width);
-		Meta.Height = static_cast<uint32>(Frame.Height);
+		Meta.FrameId = Front.FrameId;
+		Meta.SimTime = Front.SimTime;
+		Meta.Width = static_cast<uint32>(W);
+		Meta.Height = static_cast<uint32>(H);
 
-		if (PendingPixels.IsSet())
+		// Lock the staging buffer. RowPitch is in PIXELS and is >= width (GPU
+		// rows are padded), so copy row-by-row into a tightly-packed array.
+		int32 RowPitchPixels = 0;
+		void* Data = Front.Gpu->Lock(RowPitchPixels);
+		if (Data && W > 0 && H > 0)
 		{
-			if (bEnableZmqBroadcast && ZmqWorker)
-				ZmqWorker->PushFrame(PendingPixels.GetValue(), Meta);
-			if (bEnableShmBroadcast && ShmWriter)
-				ShmWriter->PushFrame(PendingPixels.GetValue(), Meta);
-			Frame.Color = MoveTemp(PendingPixels.GetValue());
-			PendingPixels.Reset();
-			bHaveFrame = true;
-		}
-		if (PendingFloatPixels.IsSet())
-		{
-			if (bEnableZmqBroadcast && ZmqWorker)
-				ZmqWorker->PushFrame(PendingFloatPixels.GetValue(), Meta);
-			if (bEnableShmBroadcast && ShmWriter)
-				ShmWriter->PushFrame(PendingFloatPixels.GetValue(), Meta);
-			Frame.Depth = MoveTemp(PendingFloatPixels.GetValue());
-			PendingFloatPixels.Reset();
-			bHaveFrame = true;
-		}
-
-		if (bHaveFrame)
-		{
+			if (CaptureMode == EMjCameraMode::Depth)
+			{
+				// PF_R32_FLOAT: one float per pixel.
+				TArray<float> Px;
+				Px.SetNumUninitialized(W * H);
+				const float* Src = static_cast<const float*>(Data);
+				for (int32 y = 0; y < H; ++y)
+					FMemory::Memcpy(&Px[y * W], &Src[y * RowPitchPixels], W * sizeof(float));
+				if (bEnableZmqBroadcast && ZmqWorker)
+					ZmqWorker->PushFrame(Px, Meta);
+				if (bEnableShmBroadcast && ShmWriter)
+					ShmWriter->PushFrame(Px, Meta);
+				Frame.Depth = MoveTemp(Px);
+			}
+			else
+			{
+				// BGRA8 (FColor) for real / seg modes.
+				TArray<FColor> Px;
+				Px.SetNumUninitialized(W * H);
+				const FColor* Src = static_cast<const FColor*>(Data);
+				for (int32 y = 0; y < H; ++y)
+					FMemory::Memcpy(&Px[y * W], &Src[y * RowPitchPixels], W * sizeof(FColor));
+				if (bEnableZmqBroadcast && ZmqWorker)
+					ZmqWorker->PushFrame(Px, Meta);
+				if (bEnableShmBroadcast && ShmWriter)
+					ShmWriter->PushFrame(Px, Meta);
+				Frame.Color = MoveTemp(Px);
+			}
+			Front.Gpu->Unlock();
 			PushFrameToHistory(MoveTemp(Frame));
 		}
+		InFlightReadbacks.RemoveAt(0);
 	}
 
-	// Issue the next readback only while active.
-	if (bStreamingEnabled && bActive && !bReadbackPending)
+	// Keep the pipeline full while active (RequestReadback self-caps at
+	// MaxInFlightReadbacks).
+	if (bStreamingEnabled && bActive)
 	{
 		RequestReadback();
 	}
@@ -673,6 +691,16 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			CaptureComponent->TextureTarget = nullptr;
 		}
 
+		// Drain in-flight async readbacks before dropping the RT. Their
+		// EnqueueCopy render commands hold raw pointers into these objects, so
+		// flush the render thread first, then free them -- otherwise a queued
+		// copy could run against freed memory.
+		if (InFlightReadbacks.Num() > 0)
+		{
+			FlushRenderingCommands();
+			InFlightReadbacks.Empty();
+		}
+
 		// Drop the RT so the next enable rebuilds it in the current CaptureMode.
 		RenderTarget = nullptr;
 
@@ -705,7 +733,8 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 
 void UMjCamera::RequestReadback()
 {
-	if (bReadbackPending || !RenderTarget)
+	// Pipeline cap: keep at most MaxInFlightReadbacks async copies outstanding.
+	if (!RenderTarget || InFlightReadbacks.Num() >= MaxInFlightReadbacks)
 	{
 		return;
 	}
@@ -717,80 +746,36 @@ void UMjCamera::RequestReadback()
 		return;
 	}
 
-	const FIntRect Rect(0, 0, Resource->GetSizeXY().X, Resource->GetSizeXY().Y);
-	if (Rect.Width() <= 0 || Rect.Height() <= 0)
+	const FIntPoint Size = Resource->GetSizeXY();
+	if (Size.X <= 0 || Size.Y <= 0)
 	{
 		// RT not yet sized (allocation in flight on the render thread).
-		// Skip this tick; auto-readback will retry next frame.
 		return;
 	}
 
+	FInFlightReadback Entry;
+	Entry.Gpu = MakeUnique<FRHIGPUTextureReadback>(TEXT("MjCameraReadback"));
+	Entry.Width = Size.X;
+	Entry.Height = Size.Y;
 	// Stamp the post-step state this readback will show: the render snapshot id
-	// the game thread last applied to the actors. Carried through the fence to
-	// the harvested history frame so a client can ask for "the frame for step N".
+	// the game thread last applied to the actors. Carried to the harvested
+	// frame so a client can ask for "the frame for step N".
 	if (AAMjManager* Mgr = AAMjManager::GetManager())
 	{
-		PendingFrameId = Mgr->GetLastAppliedFrameId();
-		PendingSimTime = Mgr->GetLastAppliedSimTime();
+		Entry.FrameId = Mgr->GetLastAppliedFrameId();
+		Entry.SimTime = Mgr->GetLastAppliedSimTime();
 	}
 
-	// No lock needed -- Pending* is touched only by the game thread (this
-	// function and TickComponent's fence-complete handler), and the
-	// bReadbackPending guard blocks concurrent re-entry while a render command
-	// is in flight. The harvested frame goes into the History ring (guarded by
-	// HistoryLock) for the bridge worker to read.
-	TArray<FColor>* PixelsPtr = nullptr;
-	TArray<float>* FloatPtr = nullptr;
-	bReadbackPending = true;
-	if (CaptureMode == EMjCameraMode::Depth)
-	{
-		PendingFloatPixels.Emplace();
-		FloatPtr = &PendingFloatPixels.GetValue();
-		FloatPtr->SetNumUninitialized(Rect.Width() * Rect.Height());
-	}
-	else
-	{
-		PendingPixels.Emplace();
-		PixelsPtr = &PendingPixels.GetValue();
-		PixelsPtr->SetNumUninitialized(Rect.Width() * Rect.Height());
-	}
+	// Schedule the GPU->staging copy without stalling the render thread. The
+	// copy completes asynchronously; TickComponent polls IsReady() to harvest.
+	FRHIGPUTextureReadback* Readback = Entry.Gpu.Get();
+	FRHITexture* SourceTexture = Resource->GetRenderTargetTexture();
+	ENQUEUE_RENDER_COMMAND(MjCameraEnqueueReadback)(
+		[Readback, SourceTexture](FRHICommandListImmediate& RHICmdList) {
+			Readback->EnqueueCopy(RHICmdList, SourceTexture);
+		});
 
-	if (CaptureMode == EMjCameraMode::Depth)
-	{
-		// PF_R32_FLOAT render target: ReadSurfaceFData lands a 4-channel
-		// FLinearColor per pixel; we keep just the R channel post-fence.
-		// Slightly wasteful at readback (4x temp memory) but uses the
-		// stock UE async API.
-		ENQUEUE_RENDER_COMMAND(MjCameraReadbackDepth)(
-			[Resource, FloatPtr, Rect](FRHICommandListImmediate& RHICmdList) {
-				TArray<FLinearColor> Scratch;
-				RHICmdList.ReadSurfaceData(
-					Resource->GetRenderTargetTexture(),
-					Rect,
-					Scratch,
-					FReadSurfaceDataFlags(RCM_MinMax, CubeFace_MAX));
-				if (Scratch.Num() == FloatPtr->Num())
-				{
-					for (int32 i = 0; i < Scratch.Num(); ++i)
-					{
-						(*FloatPtr)[i] = Scratch[i].R;
-					}
-				}
-			});
-	}
-	else
-	{
-		ENQUEUE_RENDER_COMMAND(MjCameraReadback)(
-			[Resource, PixelsPtr, Rect](FRHICommandListImmediate& RHICmdList) {
-				RHICmdList.ReadSurfaceData(
-					Resource->GetRenderTargetTexture(),
-					Rect,
-					*PixelsPtr,
-					FReadSurfaceDataFlags(RCM_UNorm, CubeFace_MAX));
-			});
-	}
-
-	ReadbackFence.BeginFence();
+	InFlightReadbacks.Add(MoveTemp(Entry));
 }
 
 void UMjCamera::PushFrameToHistory(FMjCameraFrame&& Frame)

@@ -168,7 +168,10 @@ void UMjCameraFeedEntry::UpdateFeed()
 	if (!BoundCamera || !FeedImage || !BoundCamera->RenderTarget)
 		return;
 
-	if (!FeedImage->GetBrush().GetResourceObject())
+	// Rebind whenever the camera's RenderTarget changes identity, not just when
+	// the brush is empty -- set_camera_streaming can rebuild the RenderTarget,
+	// and a stale brush would otherwise freeze on the last frame.
+	if (FeedImage->GetBrush().GetResourceObject() != BoundCamera->RenderTarget)
 	{
 		RefreshBrush();
 	}

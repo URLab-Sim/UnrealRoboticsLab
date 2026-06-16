@@ -1723,13 +1723,23 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::ApplyCameraStreamingGameThread(
 		const bool bZmq = Req.Value.Key;
 		const bool bShm = Req.Value.Value;
 
-		Cam->bEnableZmqBroadcast = bZmq;
-		Cam->bEnableShmBroadcast = bShm;
-		// Toggle off/on so the workers are (re)built to match the new flags.
-		Cam->SetStreamingEnabled(false);
 		const bool bStream = bZmq || bShm;
-		if (bStream)
-			Cam->SetStreamingEnabled(true);
+		// Idempotent: only (re)build when the requested flags actually change.
+		// SetStreamingEnabled(false) destroys the RenderTarget, so toggling on
+		// every call orphans any consumer bound to it -- the editor Simulate
+		// camera-feed widget then freezes on its last frame. Clients call this
+		// on every discover/set_mode, so unchanged requests MUST be no-ops.
+		const bool bUnchanged = (Cam->bEnableZmqBroadcast == bZmq)
+			&& (Cam->bEnableShmBroadcast == bShm)
+			&& (Cam->IsStreamingActive() == bStream);
+		if (!bUnchanged)
+		{
+			Cam->bEnableZmqBroadcast = bZmq;
+			Cam->bEnableShmBroadcast = bShm;
+			Cam->SetStreamingEnabled(false);
+			if (bStream)
+				Cam->SetStreamingEnabled(true);
+		}
 
 		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
 		CamObj->SetBoolField(TEXT("streaming"), bStream);
@@ -2168,8 +2178,12 @@ void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
 
 	ActiveStepMode.store(NewMode, std::memory_order_release);
 	const bool bPaused = (NewMode != EStepMode::Live);
+	// State / ctrl transports are still live-only (clients read state from the
+	// step reply in direct/puppet). Camera publishers, however, now stream in
+	// EVERY mode -- frames are decoupled from the step reply -- so they must
+	// NOT be paused by mode, or puppet/direct clients get no camera feed.
 	Mgr->bPublishersPaused.store(bPaused, std::memory_order_release);
-	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);
+	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 
 	if (NewMode == EStepMode::Puppet)
 		InstallPuppetHandler();

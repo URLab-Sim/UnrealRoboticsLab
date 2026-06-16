@@ -255,9 +255,11 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 	}
 
 	Disp->SetActiveStepMode(EStepMode::Direct);
-	TestTrue(TEXT("Direct mode flips manager pause flag true"),
+	TestTrue(TEXT("Direct mode flips manager (state/ctrl) pause flag true"),
 		S.Manager->bPublishersPaused.load());
-	TestTrue(TEXT("Direct mode flips camera pause flag true"),
+	// Cameras stream in EVERY step mode now (decoupled from the step reply),
+	// so the camera publisher pause flag must stay false regardless of mode.
+	TestFalse(TEXT("Direct mode keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 	TestEqual(TEXT("ActiveStepMode reflects the switch"),
 		(int)Disp->GetActiveStepMode(), (int)EStepMode::Direct);
@@ -265,12 +267,14 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 	Disp->SetActiveStepMode(EStepMode::Live);
 	TestFalse(TEXT("Live resets manager pause flag"),
 		S.Manager->bPublishersPaused.load());
-	TestFalse(TEXT("Live resets camera pause flag"),
+	TestFalse(TEXT("Live keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 
 	Disp->SetActiveStepMode(EStepMode::Puppet);
-	TestTrue(TEXT("Puppet mode flips pause flag true"),
+	TestTrue(TEXT("Puppet mode flips manager pause flag true"),
 		S.Manager->bPublishersPaused.load());
+	TestFalse(TEXT("Puppet mode keeps camera publishers live"),
+		FCameraZmqWorker::bPublishersPaused.load());
 
 	// Cleanup: leave the camera worker pause flag reset for downstream tests.
 	Disp->SetActiveStepMode(EStepMode::Live);

@@ -110,13 +110,21 @@ bool FCameraZmqWorker::Init()
 
 uint32 FCameraZmqWorker::Run()
 {
-	auto SendBinary = [this](const void* Data, size_t Size) {
+	// Publish one message as [topic][meta + pixels]. The 32-byte metadata
+	// header is prepended to the pixel bytes in a single payload frame so the
+	// ZMQ and SHM consumers parse an identical (meta, pixels) layout.
+	auto SendFrame = [this](const FMjCameraFrameMeta& Meta, const void* Pixels, size_t PixelBytes) {
 		if (bPublishersPaused.load(std::memory_order_acquire))
 			return;
+		TArray<uint8> Payload;
+		Payload.SetNumUninitialized(sizeof(FMjCameraFrameMeta) + static_cast<int32>(PixelBytes));
+		FMemory::Memcpy(Payload.GetData(), &Meta, sizeof(FMjCameraFrameMeta));
+		FMemory::Memcpy(Payload.GetData() + sizeof(FMjCameraFrameMeta), Pixels, PixelBytes);
+
 		const FString TopicSpace = Topic + TEXT(" ");
 		const FTCHARToUTF8 TopicUtf8(*TopicSpace);
 		zmq_send(ZmqPublisher, TopicUtf8.Get(), TopicUtf8.Length(), ZMQ_SNDMORE);
-		zmq_send(ZmqPublisher, Data, Size, 0);
+		zmq_send(ZmqPublisher, Payload.GetData(), Payload.Num(), 0);
 	};
 
 	while (!bStopThread)
@@ -124,22 +132,24 @@ uint32 FCameraZmqWorker::Run()
 		const int32 ExpectedPixels = resolution.X * resolution.Y;
 		bool bSent = false;
 
-		TArray<FColor> ColorFrame;
+		FQueuedColorFrame ColorFrame;
 		if (FrameQueue.Dequeue(ColorFrame))
 		{
-			if (ColorFrame.Num() == ExpectedPixels)
+			if (ColorFrame.Pixels.Num() == ExpectedPixels)
 			{
-				SendBinary(ColorFrame.GetData(), ColorFrame.Num() * sizeof(FColor));
+				SendFrame(ColorFrame.Meta, ColorFrame.Pixels.GetData(),
+					ColorFrame.Pixels.Num() * sizeof(FColor));
 			}
 			bSent = true;
 		}
 
-		TArray<float> FloatFrame;
+		FQueuedFloatFrame FloatFrame;
 		if (FloatFrameQueue.Dequeue(FloatFrame))
 		{
-			if (FloatFrame.Num() == ExpectedPixels)
+			if (FloatFrame.Pixels.Num() == ExpectedPixels)
 			{
-				SendBinary(FloatFrame.GetData(), FloatFrame.Num() * sizeof(float));
+				SendFrame(FloatFrame.Meta, FloatFrame.Pixels.GetData(),
+					FloatFrame.Pixels.Num() * sizeof(float));
 			}
 			bSent = true;
 		}
@@ -171,17 +181,17 @@ void FCameraZmqWorker::Exit()
 	}
 }
 
-void FCameraZmqWorker::PushFrame(const TArray<FColor>& FrameData)
+void FCameraZmqWorker::PushFrame(const TArray<FColor>& FrameData, const FMjCameraFrameMeta& Meta)
 {
 	// ZMQ HWM on the socket handles network-side backpressure if the
 	// queue grows. TQueue lacks a cheap Count(), so don't try to drop
 	// here.
-	FrameQueue.Enqueue(FrameData);
+	FrameQueue.Enqueue(FQueuedColorFrame{Meta, FrameData});
 }
 
-void FCameraZmqWorker::PushFrame(const TArray<float>& FrameData)
+void FCameraZmqWorker::PushFrame(const TArray<float>& FrameData, const FMjCameraFrameMeta& Meta)
 {
-	FloatFrameQueue.Enqueue(FrameData);
+	FloatFrameQueue.Enqueue(FQueuedFloatFrame{Meta, FrameData});
 }
 
 // ---------------------------------------------------------------------------
@@ -380,12 +390,20 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		Frame.Height = resolution.Num() > 1 ? resolution[1] : 0;
 		bool bHaveFrame = false;
 
+		// Metadata carried alongside the streamed pixels on both transports so
+		// the client can match a frame to the step that produced it.
+		FMjCameraFrameMeta Meta;
+		Meta.FrameId = Frame.FrameId;
+		Meta.SimTime = Frame.SimTime;
+		Meta.Width = static_cast<uint32>(Frame.Width);
+		Meta.Height = static_cast<uint32>(Frame.Height);
+
 		if (PendingPixels.IsSet())
 		{
 			if (bEnableZmqBroadcast && ZmqWorker)
-				ZmqWorker->PushFrame(PendingPixels.GetValue());
+				ZmqWorker->PushFrame(PendingPixels.GetValue(), Meta);
 			if (bEnableShmBroadcast && ShmWriter)
-				ShmWriter->PushFrame(PendingPixels.GetValue());
+				ShmWriter->PushFrame(PendingPixels.GetValue(), Meta);
 			Frame.Color = MoveTemp(PendingPixels.GetValue());
 			PendingPixels.Reset();
 			bHaveFrame = true;
@@ -393,9 +411,9 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		if (PendingFloatPixels.IsSet())
 		{
 			if (bEnableZmqBroadcast && ZmqWorker)
-				ZmqWorker->PushFrame(PendingFloatPixels.GetValue());
+				ZmqWorker->PushFrame(PendingFloatPixels.GetValue(), Meta);
 			if (bEnableShmBroadcast && ShmWriter)
-				ShmWriter->PushFrame(PendingFloatPixels.GetValue());
+				ShmWriter->PushFrame(PendingFloatPixels.GetValue(), Meta);
 			Frame.Depth = MoveTemp(PendingFloatPixels.GetValue());
 			PendingFloatPixels.Reset();
 			bHaveFrame = true;

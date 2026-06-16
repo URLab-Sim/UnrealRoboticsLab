@@ -49,8 +49,8 @@ public:
 	virtual void Stop() override;
 	virtual void Exit() override;
 
-	void PushFrame(const TArray<FColor>& FrameData);
-	void PushFrame(const TArray<float>& FrameData);
+	void PushFrame(const TArray<FColor>& FrameData, const FMjCameraFrameMeta& Meta);
+	void PushFrame(const TArray<float>& FrameData, const FMjCameraFrameMeta& Meta);
 	FString GetBoundEndpoint() const { return BoundEndpoint; }
 
 	/** Process-wide pause gate. Workers drain without sending while set,
@@ -67,13 +67,28 @@ private:
 	void* ZmqPublisher = nullptr;
 
 	FThreadSafeBool bStopThread;
+
+	// Each queued frame carries its metadata header so the Run() loop can
+	// prepend it to the published bytes (the client associates the streamed
+	// frame with the step that produced it via Meta.FrameId).
+	struct FQueuedColorFrame
+	{
+		FMjCameraFrameMeta Meta;
+		TArray<FColor> Pixels;
+	};
+	struct FQueuedFloatFrame
+	{
+		FMjCameraFrameMeta Meta;
+		TArray<float> Pixels;
+	};
+
 	// Two queues -- one per pixel format. Real / seg cameras drive the
 	// FColor queue, depth cameras drive the float queue. The Run() loop
 	// drains both and ships whatever it finds. Per-camera CaptureMode
 	// never changes after streaming starts, so only one queue is ever
 	// active per worker instance.
-	TQueue<TArray<FColor>, EQueueMode::Spsc> FrameQueue;
-	TQueue<TArray<float>, EQueueMode::Spsc> FloatFrameQueue;
+	TQueue<FQueuedColorFrame, EQueueMode::Spsc> FrameQueue;
+	TQueue<FQueuedFloatFrame, EQueueMode::Spsc> FloatFrameQueue;
 };
 
 /**

@@ -69,6 +69,11 @@ struct FMjDirectStepCommand
 	TSharedPtr<FJsonObject> Entities;
 	double ResultTime = 0.0;
 	int64 ResultStep = 0;
+	/** Post-step render-snapshot id, captured by the handler under
+	 *  CallbackMutex right after the step. The reply returns this as the
+	 *  camera frame_id; reading the engine's live counter from the RPC thread
+	 *  would race the physics loop and yield the previous step's id. */
+	uint64 ResultFrameId = 0;
 	/** Physics thread signals this when the step has completed. */
 	FEvent* Completion = nullptr;
 

@@ -65,8 +65,17 @@ bool FCameraZmqWorker::Init()
 	ZmqContext = zmq_ctx_new();
 	ZmqPublisher = zmq_socket(ZmqContext, ZMQ_PUB);
 
-	// Optimize for High Bandwidth (large HWM)
-	int hwm = 10;
+	// A live camera feed only cares about the FRESHEST frame, so keep the
+	// PUB send queue shallow. A large HWM lets ZMQ buffer many frames per
+	// subscriber and -- because PUB drops the NEWEST frames once the queue is
+	// full and delivers the buffered OLD ones FIFO -- a consumer that can't
+	// keep up receives a persistently stale frame (seconds of latency). With
+	// HWM=1 the PUB holds at most one frame in flight, so a slow consumer
+	// always gets a near-latest frame instead of draining a backlog. The
+	// worker also drains its own TQueue to the latest frame before sending
+	// (see Run), and the SUB drains to latest on receive, so every buffer in
+	// the chain stays one frame deep.
+	int hwm = 1;
 	zmq_setsockopt(ZmqPublisher, ZMQ_SNDHWM, &hwm, sizeof(hwm));
 
 	// Simple port increment logic if port is busy
@@ -132,8 +141,16 @@ uint32 FCameraZmqWorker::Run()
 		const int32 ExpectedPixels = resolution.X * resolution.Y;
 		bool bSent = false;
 
+		// Drain to the FRESHEST frame: a live feed only wants the latest, so
+		// if the producer outran us, skip the backlog rather than send stale
+		// frames in FIFO order (which is what caused seconds of UI latency).
 		FQueuedColorFrame ColorFrame;
-		if (FrameQueue.Dequeue(ColorFrame))
+		bool bHaveColor = false;
+		while (FrameQueue.Dequeue(ColorFrame))
+		{
+			bHaveColor = true;
+		}
+		if (bHaveColor)
 		{
 			if (ColorFrame.Pixels.Num() == ExpectedPixels)
 			{
@@ -144,7 +161,12 @@ uint32 FCameraZmqWorker::Run()
 		}
 
 		FQueuedFloatFrame FloatFrame;
-		if (FloatFrameQueue.Dequeue(FloatFrame))
+		bool bHaveFloat = false;
+		while (FloatFrameQueue.Dequeue(FloatFrame))
+		{
+			bHaveFloat = true;
+		}
+		if (bHaveFloat)
 		{
 			if (FloatFrame.Pixels.Num() == ExpectedPixels)
 			{
@@ -183,9 +205,9 @@ void FCameraZmqWorker::Exit()
 
 void FCameraZmqWorker::PushFrame(const TArray<FColor>& FrameData, const FMjCameraFrameMeta& Meta)
 {
-	// ZMQ HWM on the socket handles network-side backpressure if the
-	// queue grows. TQueue lacks a cheap Count(), so don't try to drop
-	// here.
+	// Enqueue unconditionally; the worker drains this queue to the latest
+	// frame before sending (and the PUB socket runs HWM=1), so a backlog
+	// here is collapsed to the freshest frame rather than streamed FIFO.
 	FrameQueue.Enqueue(FQueuedColorFrame{Meta, FrameData});
 }
 
@@ -387,6 +409,27 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		{
 			break;
 		}
+		// Diagnostic: readback-pipeline latency = how long this GPU copy took to
+		// become ready since it was requested. If this is ~seconds, the readback
+		// (not transport/display) is the camera-feed delay. Logged ~1/s.
+		{
+			const double NowSec = FPlatformTime::Seconds();
+			const double ReadbackMs = (NowSec - Front.EnqueueSeconds) * 1000.0;
+			ReadbackLatencyAccumMs += ReadbackMs;
+			ReadbackLatencyMaxMs = FMath::Max(ReadbackLatencyMaxMs, ReadbackMs);
+			++ReadbackLatencySamples;
+			if (NowSec - ReadbackLatencyLastLogSec >= 1.0 && ReadbackLatencySamples > 0)
+			{
+				UE_LOG(LogURLabNet, Log,
+					TEXT("[camlat] %s: readback enqueue->ready avg=%.0fms max=%.0fms inflight=%d n=%d"),
+					*GetName(), ReadbackLatencyAccumMs / ReadbackLatencySamples,
+					ReadbackLatencyMaxMs, InFlightReadbacks.Num(), ReadbackLatencySamples);
+				ReadbackLatencyAccumMs = 0.0;
+				ReadbackLatencyMaxMs = 0.0;
+				ReadbackLatencySamples = 0;
+				ReadbackLatencyLastLogSec = NowSec;
+			}
+		}
 		const int32 W = Front.Width;
 		const int32 H = Front.Height;
 
@@ -401,6 +444,7 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		Meta.SimTime = Front.SimTime;
 		Meta.Width = static_cast<uint32>(W);
 		Meta.Height = static_cast<uint32>(H);
+		Meta.CaptureUnixTime = Front.CaptureUnixSeconds;
 
 		// Lock the staging buffer. RowPitch is in PIXELS and is >= width (GPU
 		// rows are padded), so copy row-by-row into a tightly-packed array.
@@ -757,6 +801,9 @@ void UMjCamera::RequestReadback()
 	Entry.Gpu = MakeUnique<FRHIGPUTextureReadback>(TEXT("MjCameraReadback"));
 	Entry.Width = Size.X;
 	Entry.Height = Size.Y;
+	Entry.EnqueueSeconds = FPlatformTime::Seconds();
+	// Unix-epoch capture time for the wire meta (matches state wall_time / py time.time()).
+	Entry.CaptureUnixSeconds = (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
 	// Stamp the post-step state this readback will show: the render snapshot id
 	// the game thread last applied to the actors. Carried to the harvested
 	// frame so a client can ask for "the frame for step N".

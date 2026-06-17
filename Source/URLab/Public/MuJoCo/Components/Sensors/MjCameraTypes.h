@@ -47,7 +47,10 @@ enum class EMjCameraMode : uint8
  *  reads as the ASCII bytes "UCM1" in a little-endian hexdump, so the C++ and
  *  Python sides agree by inspection. */
 inline constexpr uint32 URLAB_CAMERA_META_MAGIC = 0x314D4355u; // 'UCM1'
-inline constexpr uint32 URLAB_CAMERA_META_VERSION = 1u;
+// v2 appends CaptureUnixTime (Unix-epoch seconds when the frame's readback was
+// requested) so a client can measure true content latency. v1 consumers that
+// stop reading after Height still parse correctly (the field is appended).
+inline constexpr uint32 URLAB_CAMERA_META_VERSION = 2u;
 
 /**
  * @struct FMjCameraFrameMeta
@@ -60,8 +63,8 @@ inline constexpr uint32 URLAB_CAMERA_META_VERSION = 1u;
  * frame with the step that produced it (FrameId) so a "fresh" query can wait
  * for FrameId >= the step's post-state id.
  *
- * Fixed 32-byte POD, little-endian, no padding (verified by static_assert).
- * The Python consumer parses the identical layout: "<IIQdII".
+ * Fixed 40-byte POD, little-endian, no padding (verified by static_assert).
+ * The Python consumer parses the identical layout: "<IIQdIId".
  *
  * Layout (offsets in bytes):
  *   0  uint32 magic
@@ -70,6 +73,7 @@ inline constexpr uint32 URLAB_CAMERA_META_VERSION = 1u;
  *   16 double sim_time
  *   24 uint32 width
  *   28 uint32 height
+ *   32 double capture_unix_time   (v2+; seconds since 1970-01-01 UTC)
  */
 struct FMjCameraFrameMeta
 {
@@ -79,6 +83,11 @@ struct FMjCameraFrameMeta
 	double SimTime = 0.0;
 	uint32 Width = 0;
 	uint32 Height = 0;
+	// Unix-epoch seconds (FDateTime::UtcNow) when this frame's GPU readback was
+	// requested -- same clock as the state stream's wall_time and Python's
+	// time.time(), so content latency = time.time() - CaptureUnixTime with no
+	// cross-process clock sync.
+	double CaptureUnixTime = 0.0;
 };
-static_assert(sizeof(FMjCameraFrameMeta) == 32,
-	"FMjCameraFrameMeta must be exactly 32 bytes for cross-language ABI");
+static_assert(sizeof(FMjCameraFrameMeta) == 40,
+	"FMjCameraFrameMeta must be exactly 40 bytes for cross-language ABI");

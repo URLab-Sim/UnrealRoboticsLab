@@ -228,6 +228,22 @@ bool IsSegMode(EMjCameraMode mode)
 		|| mode == EMjCameraMode::InstanceSegmentation;
 }
 
+// MuJoCo `fovy` is the VERTICAL field of view; UE SceneCaptureComponent2D
+// `FOVAngle` is the HORIZONTAL FOV. Copying fovy->FOVAngle verbatim over-narrows
+// the view on non-square render targets (looks "zoomed in"). Convert via the RT
+// aspect so UE's derived vertical FOV matches MuJoCo fovy exactly. Identity when
+// the RT is square.
+float HorizontalFOVFromFovy(float Fovy, const TArray<int32>& Resolution)
+{
+	if (Resolution.Num() < 2 || Resolution[0] <= 0 || Resolution[1] <= 0)
+	{
+		return Fovy;
+	}
+	const float Aspect = static_cast<float>(Resolution[0]) / static_cast<float>(Resolution[1]);
+	const float FovyRad = FMath::DegreesToRadians(Fovy);
+	return FMath::RadiansToDegrees(2.0f * FMath::Atan(FMath::Tan(FovyRad * 0.5f) * Aspect));
+}
+
 UMjDebugVisualizer* FindDebugVisualizer(UWorld* FallbackWorld = nullptr)
 {
 	if (AAMjManager* Manager = AAMjManager::GetManager())
@@ -294,7 +310,7 @@ void UMjCamera::OnRegister()
 	Super::OnRegister();
 	if (CaptureComponent)
 	{
-		CaptureComponent->FOVAngle = fovy;
+		CaptureComponent->FOVAngle = HorizontalFOVFromFovy(fovy, resolution);
 	}
 }
 
@@ -687,7 +703,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 		}
 		if (CaptureComponent)
 		{
-			CaptureComponent->FOVAngle = fovy;
+			CaptureComponent->FOVAngle = HorizontalFOVFromFovy(fovy, resolution);
 
 			// CRITICAL: SetVisibility(true) must be called to allow the component
 			// to dispatch scene capture updates. bHiddenInGame alone is not sufficient —
@@ -1131,6 +1147,6 @@ void UMjCamera::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
 
 	if (CaptureComponent)
 	{
-		CaptureComponent->FOVAngle = fovy;
+		CaptureComponent->FOVAngle = HorizontalFOVFromFovy(fovy, resolution);
 	}
 }

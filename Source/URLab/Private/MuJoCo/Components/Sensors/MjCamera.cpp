@@ -393,11 +393,13 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 
 	if (bStreamingEnabled && CaptureComponent && CaptureComponent->TextureTarget)
 	{
-		// Gate the per-frame scene capture on activeness. Idle cameras stop
-		// rendering entirely (no GPU cost) until requested again.
-		if (CaptureComponent->bCaptureEveryFrame != bActive)
+		// bCaptureOnStateChange drives capture manually (in the tail below), so the
+		// automatic per-frame capture is disabled; otherwise gate it on activeness
+		// as before. Idle cameras stop rendering entirely (no GPU cost).
+		const bool bWantEveryFrame = bActive && !bCaptureOnStateChange;
+		if (CaptureComponent->bCaptureEveryFrame != bWantEveryFrame)
 		{
-			CaptureComponent->bCaptureEveryFrame = bActive;
+			CaptureComponent->bCaptureEveryFrame = bWantEveryFrame;
 		}
 		if (bActive)
 		{
@@ -454,13 +456,17 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		Frame.SimTime = Front.SimTime;
 		Frame.Width = W;
 		Frame.Height = H;
+		Frame.CaptureUnixTime = Front.CaptureUnixSeconds;
+		Frame.Seq = ++HarvestSeq;
+		// Reveal time = capture clock + sampled latency. Stamped here so the
+		// delayed publish can select by it; unused when no delay is configured.
+		Frame.RevealValue = FrameClock(Frame) + SampleDelaySeconds();
 
-		FMjCameraFrameMeta Meta;
-		Meta.FrameId = Front.FrameId;
-		Meta.SimTime = Front.SimTime;
-		Meta.Width = static_cast<uint32>(W);
-		Meta.Height = static_cast<uint32>(H);
-		Meta.CaptureUnixTime = Front.CaptureUnixSeconds;
+		// No-delay path publishes the instant the frame is harvested (legacy
+		// behaviour, byte-for-byte). With latency emulation on, harvested frames
+		// go to History only and are published later by the reveal-time selection
+		// in this tick's tail, so the stream lags by the configured delay.
+		const bool bPublishInline = !IsDelayActive();
 
 		// Lock the staging buffer. RowPitch is in PIXELS and is >= width (GPU
 		// rows are padded), so copy row-by-row into a tightly-packed array.
@@ -476,10 +482,6 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 				const float* Src = static_cast<const float*>(Data);
 				for (int32 y = 0; y < H; ++y)
 					FMemory::Memcpy(&Px[y * W], &Src[y * RowPitchPixels], W * sizeof(float));
-				if (bEnableZmqBroadcast && ZmqWorker)
-					ZmqWorker->PushFrame(Px, Meta);
-				if (bEnableShmBroadcast && ShmWriter)
-					ShmWriter->PushFrame(Px, Meta);
 				Frame.Depth = MoveTemp(Px);
 			}
 			else
@@ -490,23 +492,58 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 				const FColor* Src = static_cast<const FColor*>(Data);
 				for (int32 y = 0; y < H; ++y)
 					FMemory::Memcpy(&Px[y * W], &Src[y * RowPitchPixels], W * sizeof(FColor));
-				if (bEnableZmqBroadcast && ZmqWorker)
-					ZmqWorker->PushFrame(Px, Meta);
-				if (bEnableShmBroadcast && ShmWriter)
-					ShmWriter->PushFrame(Px, Meta);
 				Frame.Color = MoveTemp(Px);
 			}
 			Front.Gpu->Unlock();
+			if (bPublishInline)
+				PublishFrameToWorkers(Frame);
 			PushFrameToHistory(MoveTemp(Frame));
 		}
 		InFlightReadbacks.RemoveAt(0);
 	}
 
-	// Keep the pipeline full while active (RequestReadback self-caps at
-	// MaxInFlightReadbacks).
+	// Drive capture + readback. Two resource savers (see header):
+	//  - bCaptureOnStateChange: only when the applied physics state advanced
+	//    (the rendered scene actually changed) -- skips redundant renders +
+	//    GPU readbacks between steps. Auto-capture is off in this mode, so issue
+	//    the scene render manually here right before the readback copy (both go
+	//    to the render thread in order). No-op in live (state moves every frame).
+	//  - CaptureMaxFps: an optional wall-clock cap on top.
 	if (bStreamingEnabled && bActive)
 	{
-		RequestReadback();
+		AAMjManager* Mgr = AAMjManager::GetManager();
+		const uint64 AppliedId = Mgr ? Mgr->GetLastAppliedFrameId() : 0;
+		const double NowWall = FPlatformTime::Seconds();
+		const bool bFpsOk = (CaptureMaxFps <= 0.0f)
+			|| (NowWall - LastCaptureWallSeconds) >= (1.0 / static_cast<double>(CaptureMaxFps));
+		const bool bStateAdvanced = !bCaptureOnStateChange || (AppliedId != LastCapturedFrameId);
+
+		if (bFpsOk && bStateAdvanced)
+		{
+			if (bCaptureOnStateChange && CaptureComponent)
+			{
+				CaptureComponent->CaptureScene();
+			}
+			RequestReadback();
+			LastCapturedFrameId = AppliedId;
+			LastCaptureWallSeconds = NowWall;
+		}
+
+		// Latency emulation: publish the delayed selection (newest frame whose
+		// reveal time <= now), each Seq exactly once, so the stream lags by the
+		// configured delay. The no-delay path already published inline at harvest.
+		if (IsDelayActive())
+		{
+			const double NowVal = bDelayUseWallClock
+				? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
+				: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
+			FMjCameraFrame Selected;
+			if (SelectDelayedFrame(NowVal, LastPublishedSeq, Selected))
+			{
+				PublishFrameToWorkers(Selected);
+				LastPublishedSeq = Selected.Seq;
+			}
+		}
 	}
 }
 
@@ -845,10 +882,39 @@ void UMjCamera::PushFrameToHistory(FMjCameraFrame&& Frame)
 {
 	FScopeLock Lock(&HistoryLock);
 	History.Add(MoveTemp(Frame));
-	const int32 Cap = FMath::Max(1, HistoryCapacity);
-	while (History.Num() > Cap)
+
+	// Hard memory ceiling regardless of mode -- a single frame can be MBs, and
+	// many cameras share the budget. Bounds worst-case retention.
+	constexpr int32 HardCap = 256;
+
+	if (!IsDelayActive())
 	{
-		History.RemoveAt(0);
+		// Legacy: keep the last HistoryCapacity frames for by-id retrieval.
+		const int32 Cap = FMath::Clamp(HistoryCapacity, 1, HardCap);
+		while (History.Num() > Cap)
+		{
+			History.RemoveAt(0);
+		}
+		return;
+	}
+
+	// Latency emulation: retain enough history to cover the delay window so the
+	// reveal-time selection always has the frame it needs. Evict a front frame
+	// only once it is older than the window behind the newest -- self-sizing and
+	// fps-independent -- still capped by the memory ceiling.
+	const double RetainWindow = static_cast<double>(DelaySeconds + DelayJitterSeconds) + 0.10;
+	const double NewestClock = FrameClock(History.Last());
+	while (History.Num() > 1)
+	{
+		const bool bExpired = (NewestClock - FrameClock(History[0])) > RetainWindow;
+		if (History.Num() > HardCap || bExpired)
+		{
+			History.RemoveAt(0);
+		}
+		else
+		{
+			break;
+		}
 	}
 }
 
@@ -882,6 +948,96 @@ uint64 UMjCamera::GetLatestFrameId() const
 {
 	FScopeLock Lock(&HistoryLock);
 	return History.Num() > 0 ? History.Last().FrameId : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Camera latency emulation + capture-rate control
+// ---------------------------------------------------------------------------
+
+double UMjCamera::FrameClock(const FMjCameraFrame& Frame) const
+{
+	return bDelayUseWallClock ? Frame.CaptureUnixTime : Frame.SimTime;
+}
+
+double UMjCamera::SampleDelaySeconds()
+{
+	double D = static_cast<double>(DelaySeconds);
+	if (DelayJitterSeconds > 0.0f)
+	{
+		// Only draw from the RNG when jitter is configured, so a fixed delay stays
+		// deterministic and doesn't advance the stream.
+		const double J = static_cast<double>(DelayJitterSeconds);
+		D += DelayRng.FRandRange(-J, J);
+	}
+	return FMath::Max(0.0, D);
+}
+
+void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
+{
+	FMjCameraFrameMeta Meta;
+	Meta.FrameId = Frame.FrameId;
+	Meta.SimTime = Frame.SimTime;
+	Meta.Width = static_cast<uint32>(Frame.Width);
+	Meta.Height = static_cast<uint32>(Frame.Height);
+	// Original capture time -- so a delayed frame reports the moment it was taken,
+	// and the client's content-age reflects the injected latency.
+	Meta.CaptureUnixTime = Frame.CaptureUnixTime;
+
+	if (CaptureMode == EMjCameraMode::Depth)
+	{
+		if (Frame.Depth.Num() == 0)
+			return;
+		if (bEnableZmqBroadcast && ZmqWorker)
+			ZmqWorker->PushFrame(Frame.Depth, Meta);
+		if (bEnableShmBroadcast && ShmWriter)
+			ShmWriter->PushFrame(Frame.Depth, Meta);
+	}
+	else
+	{
+		if (Frame.Color.Num() == 0)
+			return;
+		if (bEnableZmqBroadcast && ZmqWorker)
+			ZmqWorker->PushFrame(Frame.Color, Meta);
+		if (bEnableShmBroadcast && ShmWriter)
+			ShmWriter->PushFrame(Frame.Color, Meta);
+	}
+}
+
+bool UMjCamera::SelectDelayedFrame(double NowValue, uint64 AfterSeq, FMjCameraFrame& Out) const
+{
+	FScopeLock Lock(&HistoryLock);
+	for (int32 i = History.Num() - 1; i >= 0; --i)
+	{
+		if (History[i].RevealValue <= NowValue)
+		{
+			// Newest eligible frame. Deliver it only if it is newer than the last
+			// one published -- monotonic, so the stream never repeats or rewinds.
+			if (History[i].Seq > AfterSeq)
+			{
+				Out = History[i];
+				return true;
+			}
+			return false;
+		}
+	}
+	return false;
+}
+
+void UMjCamera::SetCameraDelay(float InDelaySeconds, float InJitterSeconds, bool bInUseWallClock, int32 InSeed)
+{
+	DelaySeconds = FMath::Max(0.0f, InDelaySeconds);
+	DelayJitterSeconds = FMath::Max(0.0f, InJitterSeconds);
+	bDelayUseWallClock = bInUseWallClock;
+	const int32 Seed = (InSeed != 0) ? InSeed : static_cast<int32>(GetTypeHash(GetCanonicalName()));
+	DelayRng.Initialize(Seed);
+	// Re-arm the publish dedup so the new policy re-selects cleanly.
+	LastPublishedSeq = 0;
+}
+
+void UMjCamera::SetCaptureRate(bool bInOnStateChange, float InMaxFps)
+{
+	bCaptureOnStateChange = bInOnStateChange;
+	CaptureMaxFps = FMath::Max(0.0f, InMaxFps);
 }
 
 void UMjCamera::TouchRequested()

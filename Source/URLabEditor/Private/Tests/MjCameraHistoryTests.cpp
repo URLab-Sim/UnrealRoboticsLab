@@ -53,6 +53,14 @@ FMjCameraFrame MakeColorFrame(uint64 FrameId, double SimTime)
 	F.Color.Init(FColor(static_cast<uint8>(FrameId & 0xFF), 0, 0, 255), 2);
 	return F;
 }
+
+FMjCameraFrame MakeDelayFrame(uint64 FrameId, double SimTime, double RevealValue, uint64 Seq)
+{
+	FMjCameraFrame F = MakeColorFrame(FrameId, SimTime);
+	F.RevealValue = RevealValue;
+	F.Seq = Seq;
+	return F;
+}
 } // namespace
 
 // ============================================================================
@@ -102,6 +110,96 @@ bool FMjCameraHistoryRing::RunTest(const FString& Parameters)
 	TestEqual(TEXT("width preserved"), Out.Width, 2);
 	TestEqual(TEXT("pixel count preserved"), Out.Color.Num(), 2);
 	TestTrue(TEXT("sim_time preserved"), FMath::IsNearlyEqual(Out.SimTime, 0.05, 1e-9));
+
+	return true;
+}
+
+// ============================================================================
+// URLab.CameraHistory.DelayedFrameSelection
+//   Latency emulation: SelectDelayedFrame returns the newest frame whose
+//   RevealValue <= now, but only when its Seq advances past the last published
+//   (monotonic, no repeats), and nothing when no frame is yet eligible.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraDelayedSelection,
+	"URLab.CameraHistory.DelayedFrameSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraDelayedSelection::RunTest(const FString& Parameters)
+{
+	UMjCamera* Cam = MakeBareCamera();
+	if (!TestNotNull(TEXT("camera"), Cam))
+		return false;
+
+	// Arm latency emulation so PushFrameToHistory uses the time-windowed
+	// retention path. A large delay keeps the retain window wide; the SimTime
+	// spread here is tiny so nothing is evicted and selection sees all 4 frames.
+	Cam->DelaySeconds = 1.0f;
+	Cam->bDelayUseWallClock = false;
+
+	// FrameId, SimTime, RevealValue, Seq
+	Cam->PushFrameToHistory(MakeDelayFrame(10, 0.00, 0.05, 1));
+	Cam->PushFrameToHistory(MakeDelayFrame(20, 0.01, 0.06, 2));
+	Cam->PushFrameToHistory(MakeDelayFrame(30, 0.02, 0.07, 3));
+	Cam->PushFrameToHistory(MakeDelayFrame(40, 0.03, 0.08, 4));
+
+	FMjCameraFrame Out;
+
+	// Nothing revealed yet at now=0.04 (earliest reveal is 0.05).
+	TestFalse(TEXT("nothing eligible yet"), Cam->SelectDelayedFrame(0.04, 0, Out));
+
+	// now=0.065 -> newest with reveal <= 0.065 is frame 20 (reveal 0.06).
+	TestTrue(TEXT("selects newest eligible"), Cam->SelectDelayedFrame(0.065, 0, Out));
+	TestEqual(TEXT("picked frame 20"), Out.FrameId, (uint64)20);
+	TestEqual(TEXT("picked seq 2"), Out.Seq, (uint64)2);
+
+	// Same instant, but we've already published seq 2 -> nothing new.
+	TestFalse(TEXT("no repeat past AfterSeq"), Cam->SelectDelayedFrame(0.065, 2, Out));
+
+	// Far future reveals everything; newest past seq 2 is frame 40.
+	TestTrue(TEXT("advances to newest"), Cam->SelectDelayedFrame(10.0, 2, Out));
+	TestEqual(TEXT("picked frame 40"), Out.FrameId, (uint64)40);
+
+	return true;
+}
+
+// ============================================================================
+// URLab.CameraHistory.DelayConfig
+//   SetCameraDelay / SetCaptureRate set + clamp the latency / capture-rate
+//   knobs; defaults match the resource-smart, zero-latency baseline.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraDelayConfig,
+	"URLab.CameraHistory.DelayConfig",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraDelayConfig::RunTest(const FString& Parameters)
+{
+	UMjCamera* Cam = MakeBareCamera();
+	if (!TestNotNull(TEXT("camera"), Cam))
+		return false;
+
+	// Defaults: no latency, capture-on-state-change on, no fps cap.
+	TestEqual(TEXT("default delay 0"), Cam->DelaySeconds, 0.0f);
+	TestEqual(TEXT("default jitter 0"), Cam->DelayJitterSeconds, 0.0f);
+	TestFalse(TEXT("default sim clock"), Cam->bDelayUseWallClock);
+	TestTrue(TEXT("default state-change capture"), Cam->bCaptureOnStateChange);
+	TestEqual(TEXT("default uncapped"), Cam->CaptureMaxFps, 0.0f);
+
+	Cam->SetCameraDelay(0.05f, 0.01f, /*wall=*/true, /*seed=*/123);
+	TestTrue(TEXT("delay set"), FMath::IsNearlyEqual(Cam->DelaySeconds, 0.05f));
+	TestTrue(TEXT("jitter set"), FMath::IsNearlyEqual(Cam->DelayJitterSeconds, 0.01f));
+	TestTrue(TEXT("wall clock set"), Cam->bDelayUseWallClock);
+
+	// Negative inputs clamp to zero.
+	Cam->SetCameraDelay(-1.0f, -1.0f, /*wall=*/false, /*seed=*/0);
+	TestEqual(TEXT("delay clamps >=0"), Cam->DelaySeconds, 0.0f);
+	TestEqual(TEXT("jitter clamps >=0"), Cam->DelayJitterSeconds, 0.0f);
+
+	Cam->SetCaptureRate(/*on_state_change=*/false, /*max_fps=*/30.0f);
+	TestFalse(TEXT("state-change off"), Cam->bCaptureOnStateChange);
+	TestTrue(TEXT("fps set"), FMath::IsNearlyEqual(Cam->CaptureMaxFps, 30.0f));
+
+	Cam->SetCaptureRate(true, -5.0f);
+	TestEqual(TEXT("fps clamps >=0"), Cam->CaptureMaxFps, 0.0f);
 
 	return true;
 }

@@ -32,6 +32,7 @@
 #include "MuJoCo/Components/Sensors/MjCameraTypes.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "RHIGPUReadback.h"
+#include "Math/RandomStream.h"
 #include <atomic>
 #include "MjCamera.generated.h"
 
@@ -105,6 +106,19 @@ struct FMjCameraFrame
 	int32 Height = 0;
 	TArray<FColor> Color; // Real / seg modes (BGRA8)
 	TArray<float> Depth;  // Depth mode (float32)
+	// Unix-epoch capture time (FDateTime::UtcNow at readback request). Carried
+	// here so a delayed re-publish can rebuild the v2 wire meta with the
+	// ORIGINAL capture time, so the client's content-age math reflects the
+	// injected latency rather than the moment we re-sent the bytes.
+	double CaptureUnixTime = 0.0;
+	// Camera-latency emulation bookkeeping (see UMjCamera delay API).
+	//  - RevealValue: the clock value (SimTime or CaptureUnixTime, per
+	//    bDelayUseWallClock) at which this frame becomes eligible to publish,
+	//    i.e. capture_clock + sampled_delay.
+	//  - Seq: monotonic per-harvest counter so each delayed frame publishes
+	//    exactly once (FrameId can repeat across intra-step captures).
+	double RevealValue = 0.0;
+	uint64 Seq = 0;
 };
 
 /**
@@ -280,6 +294,56 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Network")
 	bool bEnableShmBroadcast = false;
 
+	// ---- Camera latency emulation + capture-rate control ----
+
+	/** Simulated camera latency (seconds). The streamed / served frame is the
+	 *  newest whose reveal time <= now, where reveal = capture_clock +
+	 *  sampled_delay. 0 = no delay (frames published as soon as harvested, the
+	 *  legacy path). Measured in SimTime by default, or wall-clock when
+	 *  bDelayUseWallClock is set. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Delay", meta = (ClampMin = "0.0"))
+	float DelaySeconds = 0.0f;
+
+	/** Symmetric uniform jitter half-range (seconds): per-frame effective delay
+	 *  ~ U(DelaySeconds - this, DelaySeconds + this), clamped >= 0. 0 = a fixed
+	 *  delay. Sampled from a seeded per-camera RNG so jittered latency is
+	 *  reproducible across runs. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Delay", meta = (ClampMin = "0.0"))
+	float DelayJitterSeconds = 0.0f;
+
+	/** If true, delay / jitter / reveal selection use wall-clock (frame capture
+	 *  unix time) instead of SimTime. Wall-clock suits real-latency emulation in
+	 *  live mode; SimTime is deterministic for stepped runs. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Delay")
+	bool bDelayUseWallClock = false;
+
+	/** Capture + read back only when the applied physics state advances (the
+	 *  manager's FrameId changes). Between steps the world is unchanged, so a
+	 *  re-render + GPU readback is wasted work. No-op in live (state advances
+	 *  every frame); a large GPU saving while stepping, and zero capture cost
+	 *  while paused. Disable to force a capture every engine frame. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Capture")
+	bool bCaptureOnStateChange = true;
+
+	/** Optional hard cap on capture rate (frames/sec, wall-clock). 0 = uncapped.
+	 *  Applied on top of bCaptureOnStateChange to further throttle a high-rate
+	 *  feed when the consumer needs fewer frames than the sim emits. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Capture", meta = (ClampMin = "0.0"))
+	float CaptureMaxFps = 0.0f;
+
+	/** Configure latency emulation at runtime (RPC-driven; applied on the game
+	 *  thread alongside the per-tick capture, so no extra locking is needed).
+	 *  Seed 0 derives a stable seed from the canonical name. */
+	void SetCameraDelay(float InDelaySeconds, float InJitterSeconds, bool bInUseWallClock, int32 InSeed);
+
+	/** Configure capture-rate control at runtime. */
+	void SetCaptureRate(bool bInOnStateChange, float InMaxFps);
+
+	/** Select the newest history frame eligible at NowValue (clock chosen per
+	 *  bDelayUseWallClock) whose Seq > AfterSeq. Returns false if none. Thread-
+	 *  safe; public so automation tests can drive the selection directly. */
+	bool SelectDelayedFrame(double NowValue, uint64 AfterSeq, FMjCameraFrame& Out) const;
+
 	// ---- Public API ----
 
 	/**
@@ -388,6 +452,21 @@ private:
 	 *  camera doesn't contaminate an already-streaming RGB/Depth capture. */
 	void RefreshHiddenComponentsFromSegPools();
 
+	/** Sample an effective delay (seconds) from DelaySeconds +/- jitter via the
+	 *  seeded RNG, clamped >= 0. */
+	double SampleDelaySeconds();
+
+	/** Clock value (SimTime or CaptureUnixTime) used for delay maths on Frame,
+	 *  per bDelayUseWallClock. */
+	double FrameClock(const FMjCameraFrame& Frame) const;
+
+	/** Push one frame onto both streaming transports (ZMQ + SHM), reconstructing
+	 *  the v2 wire meta. Shared by the no-delay (inline) and delayed publish. */
+	void PublishFrameToWorkers(const FMjCameraFrame& Frame);
+
+	/** True when latency emulation is configured (delay or jitter > 0). */
+	bool IsDelayActive() const { return DelaySeconds > 0.0f || DelayJitterSeconds > 0.0f; }
+
 	/** Push a completed frame into the history ring under HistoryLock, evicting
 	 *  the oldest beyond HistoryCapacity. Exposed (not UFUNCTION) so automation
 	 *  tests can drive the ring with synthetic frames without a live GPU. */
@@ -437,6 +516,22 @@ private:
 	// (GetFrame). Oldest-first; newest is Last().
 	mutable FCriticalSection HistoryLock;
 	TArray<FMjCameraFrame> History;
+
+	// ---- Camera latency emulation state ----
+	// DelayRng seeds the per-frame jitter sample; HarvestSeq tags each harvested
+	// frame so the streaming publish emits each delayed frame exactly once
+	// (LastPublishedSeq is the last Seq sent). All touched only on the game
+	// thread (harvest + RPC apply marshalled to GameThread).
+	FRandomStream DelayRng;
+	uint64 HarvestSeq = 0;
+	uint64 LastPublishedSeq = 0;
+
+	// ---- Capture-rate gating state ----
+	// LastCapturedFrameId is the applied FrameId at the last capture; a capture
+	// fires only when it changes (bCaptureOnStateChange). LastCaptureWallSeconds
+	// backs the optional CaptureMaxFps cap.
+	uint64 LastCapturedFrameId = 0;
+	double LastCaptureWallSeconds = 0.0;
 
 public:
 	/** How many recent frames to retain for by-id retrieval. */

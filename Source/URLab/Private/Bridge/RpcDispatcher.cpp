@@ -200,6 +200,10 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleSetCameraStreaming(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("cameras:object")},
 		/*Required=*/{TEXT("cameras")});
+	Reg(TEXT("set_camera_delay"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetCameraDelay(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("cameras:object")},
+		/*Required=*/{TEXT("cameras")});
 	Reg(TEXT("configure_controller"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleConfigureController(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("params:object")},
@@ -1841,6 +1845,140 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraStreaming(
 	}
 	// Timed out — leave the event un-pooled (the task still references it).
 	return MakeError(TEXT("timeout"), TEXT("set_camera_streaming game-thread apply timed out"));
+}
+
+namespace
+{
+// Parsed per-camera latency + capture-rate request. bSetCapture marks whether
+// the on_state_change / max_fps capture knobs were present (so we only override
+// them when the caller actually sent them).
+struct FCameraDelayReq
+{
+	float DelaySeconds = 0.0f;
+	float JitterSeconds = 0.0f;
+	bool bWallClock = false;
+	int32 Seed = 0;
+	bool bOnStateChange = true;
+	float MaxFps = 0.0f;
+	bool bSetCapture = false;
+};
+} // namespace
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraDelay(
+	const TSharedPtr<FJsonObject>& Req)
+{
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr)
+		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+
+	const TSharedPtr<FJsonObject>* CamObj = nullptr;
+	if (!Req->TryGetObjectField(TEXT("cameras"), CamObj) || !CamObj || !CamObj->IsValid())
+		return MakeError(TEXT("missing_field"),
+			TEXT("set_camera_delay requires a 'cameras' object"));
+
+	// Parse per-camera requests. A bare number means delay_s with defaults; an
+	// object carries delay_s / jitter_s / clock / seed / on_state_change / max_fps.
+	TMap<FString, FCameraDelayReq> Requests;
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Kv : (*CamObj)->Values)
+	{
+		if (!Kv.Value.IsValid())
+			continue;
+		FCameraDelayReq R;
+		double Num = 0.0;
+		const TSharedPtr<FJsonObject>* Sub = nullptr;
+		if (Kv.Value->TryGetNumber(Num))
+		{
+			R.DelaySeconds = static_cast<float>(Num);
+		}
+		else if (Kv.Value->TryGetObject(Sub) && Sub && Sub->IsValid())
+		{
+			double D = 0.0;
+			if ((*Sub)->TryGetNumberField(TEXT("delay_s"), D))
+				R.DelaySeconds = static_cast<float>(D);
+			double J = 0.0;
+			if ((*Sub)->TryGetNumberField(TEXT("jitter_s"), J))
+				R.JitterSeconds = static_cast<float>(J);
+			FString Clock;
+			if ((*Sub)->TryGetStringField(TEXT("clock"), Clock))
+				R.bWallClock = Clock.Equals(TEXT("wall"), ESearchCase::IgnoreCase);
+			int32 Seed = 0;
+			if ((*Sub)->TryGetNumberField(TEXT("seed"), Seed))
+				R.Seed = Seed;
+			bool bOnState = true;
+			if ((*Sub)->TryGetBoolField(TEXT("on_state_change"), bOnState))
+			{
+				R.bOnStateChange = bOnState;
+				R.bSetCapture = true;
+			}
+			double Fps = 0.0;
+			if ((*Sub)->TryGetNumberField(TEXT("max_fps"), Fps))
+			{
+				R.MaxFps = static_cast<float>(Fps);
+				R.bSetCapture = true;
+			}
+		}
+		Requests.Add(Kv.Key, R);
+	}
+
+	if (Requests.Num() == 0)
+		return MakeError(TEXT("bad_request"), TEXT("'cameras' had no usable entries"));
+
+	// SetCameraDelay / SetCaptureRate touch state the game thread reads each tick;
+	// marshal and wait, like set_camera_streaming.
+	struct FResult
+	{
+		FEvent* Done = nullptr;
+		TSharedPtr<FJsonObject> Cameras;
+	};
+	TSharedPtr<FResult, ESPMode::ThreadSafe> Res = MakeShared<FResult, ESPMode::ThreadSafe>();
+	Res->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
+	TWeakObjectPtr<AAMjManager> WeakMgr(Mgr);
+	AsyncTask(ENamedThreads::GameThread, [Res, WeakMgr, Requests]() {
+		TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
+		if (AAMjManager* M = WeakMgr.Get())
+		{
+			TMap<FString, UMjCamera*> ByName;
+			FURLabRpcDispatcher::BuildCameraNameMap(M, ByName);
+			for (const TPair<FString, FCameraDelayReq>& Req : Requests)
+			{
+				UMjCamera** Found = ByName.Find(Req.Key);
+				if (!Found || !*Found)
+				{
+					UE_LOG(LogURLabNet, Warning,
+						TEXT("[set_camera_delay] camera '%s' not found"), *Req.Key);
+					continue;
+				}
+				UMjCamera* Cam = *Found;
+				const FCameraDelayReq& V = Req.Value;
+				Cam->SetCameraDelay(V.DelaySeconds, V.JitterSeconds, V.bWallClock, V.Seed);
+				if (V.bSetCapture)
+					Cam->SetCaptureRate(V.bOnStateChange, V.MaxFps);
+
+				TSharedPtr<FJsonObject> CamOut = MakeShared<FJsonObject>();
+				CamOut->SetNumberField(TEXT("delay_s"), Cam->DelaySeconds);
+				CamOut->SetNumberField(TEXT("jitter_s"), Cam->DelayJitterSeconds);
+				CamOut->SetStringField(TEXT("clock"),
+					Cam->bDelayUseWallClock ? TEXT("wall") : TEXT("sim"));
+				CamOut->SetBoolField(TEXT("on_state_change"), Cam->bCaptureOnStateChange);
+				CamOut->SetNumberField(TEXT("max_fps"), Cam->CaptureMaxFps);
+				Out->SetObjectField(Cam->GetCanonicalName(), CamOut);
+			}
+		}
+		Res->Cameras = Out;
+		Res->Done->Trigger();
+	});
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	if (Res->Done->Wait(5000))
+	{
+		FPlatformProcess::ReturnSynchEventToPool(Res->Done);
+		Res->Done = nullptr;
+		Reply->SetStringField(TEXT("op"), TEXT("set_camera_delay_ok"));
+		Reply->SetObjectField(TEXT("cameras"),
+			Res->Cameras.IsValid() ? Res->Cameras : MakeShared<FJsonObject>());
+		return Reply;
+	}
+	return MakeError(TEXT("timeout"), TEXT("set_camera_delay game-thread apply timed out"));
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Manager,

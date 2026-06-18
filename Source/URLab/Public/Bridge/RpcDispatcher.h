@@ -252,6 +252,7 @@ private:
 	TSharedPtr<FJsonObject> HandleSetMode(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetPaused(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetCameraStreaming(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleSetCameraDelay(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleConfigureController(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimOptions(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimSpeed(const TSharedPtr<FJsonObject>& Req);

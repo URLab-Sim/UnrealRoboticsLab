@@ -16,6 +16,26 @@ discussion so we can point you at the code.
   path. Also finish wiring the imported camera intrinsics into the Unreal
   capture: principal-point offset, sensor-size-driven focal length, and
   orthographic projection (only field of view is applied today).
+- **Camera latency emulation.** Inject a configurable per-camera delay (with
+  optional jitter) into the streamed feed so a simulated camera matches the
+  latency of a real sensor. Served entirely server-side so every client and
+  transport inherits an already-delayed stream, with a choice of reference clock
+  (simulation or wall) and capture gated to state changes so the GPU only does
+  work when the scene actually advances.
+- **Native MuJoCo sensor and control delay.** Expose MuJoCo's own sensor and
+  actuator delay so latency can be modelled inside the physics step rather than
+  only on the streamed feed. This complements the camera latency above: cameras
+  are delayed server-side after capture, whereas sensor and control delay belong
+  in the model so policies and controllers see the same delayed signals MuJoCo
+  computes.
+- **Simulation-time and Unreal world-time syncing.** Keep Unreal's time-driven
+  visuals (Niagara effects, animation, material time) advancing at the
+  simulation's rate rather than the wall clock, so effects stay coherent when
+  physics runs slower or faster than real time, including under the sim-speed
+  slider. Drive Unreal's global time dilation from a running average of the
+  measured simulation-versus-wall rate. A complementary lockstep capture mode
+  would tie one camera frame to each step for deterministic, reproducible
+  datasets.
 - **Sensor device library.** A collection of preconfigured, drop-in real-world
   sensors as concrete instances: cameras such as the Intel RealSense D435i, and
   lidars such as Ouster. Adding a new device should be a small subclass that sets

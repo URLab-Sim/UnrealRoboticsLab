@@ -8,9 +8,11 @@ page follows.
 
 **Before you start, you will need:**
 
-- **Unreal Engine 5.7+.** The plugin code builds on earlier UE5 versions, but the
-  bundled assets (dashboard UI, materials, input mappings) were saved in 5.7 and
-  do not load on older versions.
+- **Unreal Engine 5.7.** This is the only tested and supported version. The
+  plugin code builds on earlier UE5 versions, but the bundled assets (dashboard
+  UI, materials, input mappings) were saved in 5.7 and do not load on older
+  versions. **Avoid 5.8 for now** — it has regressions with the Vulkan drivers on
+  Linux that break rendering; stay on 5.7 until that is resolved.
 - **CMake 3.24+** to build URLab's native dependencies (MuJoCo, CoACD, libzmq).
 - **Python 3.11+** (optional), only if you drive URLab from Python.
 
@@ -23,15 +25,21 @@ page follows.
 
 === "Windows"
 
-    Install Unreal Engine 5.7 or newer through the Epic Games Launcher. You also
+    Install Unreal Engine 5.7 through the Epic Games Launcher. You also
     need **Visual Studio 2022 (17.10+) or 2025**, or **JetBrains Rider**, with the
     *Game development with C++* workload, to compile the plugin.
 
 === "Linux"
 
-    Download the precompiled Linux engine from your Epic account at
-    <https://www.unrealengine.com/linux> and extract it. This guide refers to the
-    extract root as `$UE_ROOT`.
+    Download the precompiled **Unreal Engine 5.7** Linux engine from your Epic
+    account at <https://www.unrealengine.com/linux> and extract it. This guide
+    refers to the extract root as `$UE_ROOT`.
+
+    Alternatively, build from source via the
+    [EpicGames/UnrealEngine](https://github.com/EpicGames/UnrealEngine) GitHub
+    repository (checkout the `5.7` branch). Access requires
+    [linking your Epic and GitHub accounts](https://www.unrealengine.com/en-US/ue-on-github).
+    Do not use the `5.8` or `release` branches — see the version note above.
 
     !!! warning "The precompiled Linux engine omits some build scripts"
         As of UE 5.7.4 the Linux binary does not ship

@@ -52,6 +52,8 @@
 #include "MuJoCo/Components/Defaults/MjDefault.h"
 #include "MuJoCo/Components/Physics/MjContactPair.h"
 #include "MuJoCo/Components/Physics/MjContactExclude.h"
+#include "MuJoCo/Components/Control/MjArmIKComponent.h"
+#include "MuJoCo/Components/Control/MjFloatingBaseComponent.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "Utils/MeshUtils.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
@@ -471,6 +473,14 @@ void AMjArticulation::Setup(mjSpec* Spec, mjVFS* VFS)
 
 	// 7. Equalities + Keyframes.
 	RegisterAllOf<UMjEquality>(this, *m_wrapper);
+
+	// 7b. Fake-IK + floating-base helpers. These create their own mocap bodies /
+	//     weld equalities and tweak gravcomp on existing bodies, so they must run
+	//     after the body hierarchy is built (above) — but before keyframes, whose
+	//     qpos is unaffected by the jointless mocap bodies these add.
+	RegisterAllOf<UMjArmIKComponent>(this, *m_wrapper);
+	RegisterAllOf<UMjFloatingBaseComponent>(this, *m_wrapper);
+
 	RegisterAllOf<UMjKeyframe>(this, *m_wrapper);
 
 	mjsBody* parentWorld = mjs_findBody(Spec, "world");

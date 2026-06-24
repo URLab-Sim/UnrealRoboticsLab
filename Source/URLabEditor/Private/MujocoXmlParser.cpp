@@ -328,10 +328,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 	{
 		if (Tag.Equals(TEXT("worldbody")))
 		{
-			USCS_Node* WorldBodyNode = BP->SimpleConstructionScript->CreateNode(UMjWorldBody::StaticClass(), TEXT("worldbody"));
-			WorldBodyNode->SetVariableName(TEXT("worldbody"));
-			if (ParentNode)
-				ParentNode->AddChildNode(WorldBodyNode);
+			// Reuse the single shared worldbody node. Multiple <worldbody> sections
+			// (e.g. an included scene file plus the model's own) merge into one;
+			// creating a second and renaming it onto the existing one is fatal (issue #72).
+			USCS_Node* WorldBodyNode = GetOrCreateWorldBodyNode(BP);
+			if (!WorldBodyNode)
+				return;
 
 			UMjWorldBody* WorldBodyComp = Cast<UMjWorldBody>(WorldBodyNode->ComponentTemplate);
 			if (WorldBodyComp)
@@ -1216,11 +1218,52 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 	}
 }
 
-void UMujocoGenerationAction::CollectDefaultMeshScales(const FXmlNode* Node, const FString& CurrentClass)
+bool UMujocoGenerationAction::IsModelContainerTag(const FString& Tag)
+{
+	// <mujocoinclude> is the root of an MJCF include fragment; it holds the same
+	// top-level sections as <mujoco> and must be traversed identically.
+	return Tag.Equals(TEXT("mujoco")) || Tag.Equals(TEXT("mujocoinclude"));
+}
+
+USCS_Node* UMujocoGenerationAction::GetOrCreateWorldBodyNode(UBlueprint* BP)
+{
+	if (!BP || !BP->SimpleConstructionScript)
+		return nullptr;
+
+	// Reuse an existing worldbody node if one was already created (e.g. by an
+	// included scene file's <worldbody> processed via ImportNodeRecursive).
+	for (USCS_Node* Node : BP->SimpleConstructionScript->GetAllNodes())
+	{
+		if (Node && Cast<UMjWorldBody>(Node->ComponentTemplate))
+			return Node;
+	}
+
+	USCS_Node* WorldBodyNode = BP->SimpleConstructionScript->CreateNode(UMjWorldBody::StaticClass(), TEXT("worldbody"));
+	WorldBodyNode->SetVariableName(TEXT("worldbody"));
+	BP->SimpleConstructionScript->AddNode(WorldBodyNode);
+	return WorldBodyNode;
+}
+
+void UMujocoGenerationAction::CollectDefaultMeshScales(const FXmlNode* Node, const FString& CurrentClass, const FString& XMLDir)
 {
 	if (!Node)
 		return;
 	const FString Tag = Node->GetTag();
+
+	// Follow <include> fragments so default mesh scales declared in an included
+	// file are collected too.
+	if (Tag.Equals(TEXT("include")))
+	{
+		const FString FileAttr = Node->GetAttribute(TEXT("file"));
+		if (!FileAttr.IsEmpty() && !XMLDir.IsEmpty())
+		{
+			const FString IncludePath = FPaths::Combine(XMLDir, FileAttr);
+			FXmlFile IncludedFile(IncludePath);
+			if (IncludedFile.IsValid())
+				CollectDefaultMeshScales(IncludedFile.GetRootNode(), CurrentClass, FPaths::GetPath(IncludePath));
+		}
+		return;
+	}
 
 	if (Tag.Equals(TEXT("default")))
 	{
@@ -1247,7 +1290,7 @@ void UMujocoGenerationAction::CollectDefaultMeshScales(const FXmlNode* Node, con
 			}
 			else if (Child->GetTag().Equals(TEXT("default")))
 			{
-				CollectDefaultMeshScales(Child, ClassName);
+				CollectDefaultMeshScales(Child, ClassName, XMLDir);
 			}
 		}
 	}
@@ -1255,7 +1298,7 @@ void UMujocoGenerationAction::CollectDefaultMeshScales(const FXmlNode* Node, con
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{
-			CollectDefaultMeshScales(Child, CurrentClass);
+			CollectDefaultMeshScales(Child, CurrentClass, XMLDir);
 		}
 	}
 }
@@ -1272,7 +1315,7 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
 	FString CurrentAssetDir = AssetDir;
 
 	// If this is a container, look for compiler tag among immediate children to set directory overrides for all siblings
-	if (Tag.Equals(TEXT("mujoco")) || Tag.Equals(TEXT("include")) || Tag.Equals(TEXT("asset")))
+	if (IsModelContainerTag(Tag) || Tag.Equals(TEXT("include")) || Tag.Equals(TEXT("asset")))
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{
@@ -1529,7 +1572,7 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
 		}
 	}
 	// Recurse for top-level containers (excluding tags handled above like include/asset)
-	else if (Tag.Equals(TEXT("mujoco")))
+	else if (IsModelContainerTag(Tag))
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{
@@ -1702,7 +1745,7 @@ void UMujocoGenerationAction::ParseDefaultsRecursive(const FXmlNode* Node, UBlue
 		}
 	}
 	// Recurse through root/mujoco
-	else if (Tag.Equals(TEXT("mujoco")))
+	else if (IsModelContainerTag(Tag))
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{
@@ -1791,7 +1834,7 @@ void UMujocoGenerationAction::ParseContactSection(const FXmlNode* Node, UBluepri
 		}
 	}
 	// Recurse through root/mujoco to find <contact>
-	else if (Tag.Equals(TEXT("mujoco")))
+	else if (IsModelContainerTag(Tag))
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{
@@ -1854,7 +1897,7 @@ void UMujocoGenerationAction::ParseEqualitySection(const FXmlNode* Node, UBluepr
 			}
 		}
 	}
-	else if (Tag.Equals(TEXT("mujoco")))
+	else if (IsModelContainerTag(Tag))
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{
@@ -1910,7 +1953,7 @@ void UMujocoGenerationAction::ParseKeyframeSection(const FXmlNode* Node, UBluepr
 			}
 		}
 	}
-	else if (Tag.Equals(TEXT("mujoco")))
+	else if (IsModelContainerTag(Tag))
 	{
 		for (const FXmlNode* Child : Node->GetChildrenNodes())
 		{

@@ -280,6 +280,56 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// 1b. EffectiveStepMode mirrors the resolved mode (regression: live 10 Hz lock)
+//     The physics loop paces off Manager->EffectiveStepMode. StepMode defaults
+//     to Auto; if that does not resolve to Live the loop falls into the
+//     step-request wait path and ticks at the 100 ms timeout (~10 Hz) instead
+//     of running real-time.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerEffectiveMode,
+	"URLab.StepServer.EffectiveStepMode",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	// StepMode is Auto by default; RegisterManager must resolve+mirror it to Live.
+	TestEqual(TEXT("configured StepMode is Auto"),
+		(int)S.Manager->StepMode, (int)EStepMode::Auto);
+	TestEqual(TEXT("EffectiveStepMode resolves Auto -> Live"),
+		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Live);
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		S.Cleanup();
+		return false;
+	}
+
+	Disp->SetActiveStepMode(EStepMode::Direct);
+	TestEqual(TEXT("EffectiveStepMode tracks Direct"),
+		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Direct);
+
+	Disp->SetActiveStepMode(EStepMode::Puppet);
+	TestEqual(TEXT("EffectiveStepMode tracks Puppet"),
+		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Puppet);
+
+	Disp->SetActiveStepMode(EStepMode::Live);
+	TestEqual(TEXT("EffectiveStepMode tracks Live"),
+		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Live);
+
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // 2. UMjPDController ApplyConfig round-trip
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerControllerConfig,

@@ -474,7 +474,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				bool bSkipApplyControls = false;
 				if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
 				{
-					bSkipApplyControls = (OwnerMgr->StepMode == EStepMode::Puppet);
+					bSkipApplyControls = (OwnerMgr->EffectiveStepMode.load(std::memory_order_acquire) == EStepMode::Puppet);
 				}
 				if (!bSkipApplyControls)
 				{
@@ -523,7 +523,10 @@ void UMjPhysicsEngine::RunMujocoAsync()
 			bool bUseRealTimePacing = true;
 			if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
 			{
-				bUseRealTimePacing = (OwnerMgr->StepMode == EStepMode::Live);
+				// Pace off the resolved mode, not the configured StepMode (which
+				// defaults to Auto). Auto resolves to Live, so a freshly-started
+				// live session runs real-time instead of blocking at ~10 Hz.
+				bUseRealTimePacing = (OwnerMgr->EffectiveStepMode.load(std::memory_order_acquire) == EStepMode::Live);
 			}
 			if (bUseRealTimePacing)
 			{

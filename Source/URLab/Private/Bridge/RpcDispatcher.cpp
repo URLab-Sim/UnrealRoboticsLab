@@ -273,6 +273,9 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 								 ? EStepMode::Live
 								 : OwnerMgr->StepMode;
 	ActiveStepMode.store(InitMode, std::memory_order_release);
+	// Mirror onto the manager so the physics loop paces off the resolved mode
+	// (Auto -> Live), not the configured StepMode which would stay Auto.
+	OwnerMgr->EffectiveStepMode.store(InitMode, std::memory_order_release);
 	const bool bPaused = (InitMode != EStepMode::Live);
 	OwnerMgr->bPublishersPaused.store(bPaused, std::memory_order_release);
 	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);
@@ -1942,6 +1945,7 @@ void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
 	DrainQueuesForTest();
 
 	ActiveStepMode.store(NewMode, std::memory_order_release);
+	Mgr->EffectiveStepMode.store(NewMode, std::memory_order_release);
 	const bool bPaused = (NewMode != EStepMode::Live);
 	Mgr->bPublishersPaused.store(bPaused, std::memory_order_release);
 	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);

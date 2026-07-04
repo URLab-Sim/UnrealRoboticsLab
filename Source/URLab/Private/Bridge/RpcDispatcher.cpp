@@ -288,6 +288,8 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 	// Mirror onto the manager so the physics loop paces off the resolved mode
 	// (Auto -> Live), not the configured StepMode which would stay Auto.
 	OwnerMgr->EffectiveStepMode.store(InitMode, std::memory_order_release);
+	if (OwnerMgr->PhysicsEngine)
+		OwnerMgr->PhysicsEngine->SetResolvedStepMode(InitMode);
 	const bool bPaused = (InitMode != EStepMode::Live);
 	OwnerMgr->bPublishersPaused.store(bPaused, std::memory_order_release);
 	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);
@@ -316,6 +318,8 @@ void FURLabRpcDispatcher::OnManagerGone()
 	if (OwnerMgr.IsValid())
 	{
 		OwnerMgr->bPublishersPaused.store(false, std::memory_order_release);
+		if (OwnerMgr->PhysicsEngine)
+			OwnerMgr->PhysicsEngine->SetResolvedStepMode(EStepMode::Live);
 	}
 	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 	OwnerMgr.Reset();
@@ -2319,6 +2323,8 @@ void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
 
 	ActiveStepMode.store(NewMode, std::memory_order_release);
 	Mgr->EffectiveStepMode.store(NewMode, std::memory_order_release);
+	if (Mgr->PhysicsEngine)
+		Mgr->PhysicsEngine->SetResolvedStepMode(NewMode);
 	const bool bPaused = (NewMode != EStepMode::Live);
 	// State / ctrl transports are still live-only (clients read state from the
 	// step reply in direct/puppet). Camera publishers, however, now stream in
@@ -2856,7 +2862,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimSpeed(const TSharedPtr<
 		return MakeError(TEXT("missing_field"), TEXT("set_sim_speed requires 'percent'"));
 
 	// Engine clamps internally (5..100); echo back so the caller sees what stuck.
-	Mgr->PhysicsEngine->SimSpeedPercent = (float)Pct;
+	Mgr->PhysicsEngine->SetSimSpeed((float)Pct);
 	const float Effective = FMath::Clamp((float)Pct, 5.0f, 100.0f);
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();

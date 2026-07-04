@@ -142,13 +142,13 @@ bool FMjThreadPauseResume::RunTest(const FString& Parameters)
 	}
 
 	// Pause
-	S.Manager->PhysicsEngine->bIsPaused = true;
+	S.Manager->PhysicsEngine->SetPaused(true);
 
 	// Direct steps still execute; the async loop would honour the flag
 	S.Step(10);
 
 	// Resume
-	S.Manager->PhysicsEngine->bIsPaused = false;
+	S.Manager->PhysicsEngine->SetPaused(false);
 
 	TestTrue(TEXT("Manager should be running after unpause"), S.Manager->IsRunning());
 	TestTrue(TEXT("Manager should be initialized after unpause"), S.Manager->IsInitialized());

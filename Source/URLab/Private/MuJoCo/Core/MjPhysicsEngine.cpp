@@ -187,6 +187,17 @@ void UMjPhysicsEngine::BeginDestroy()
 	Super::BeginDestroy();
 }
 
+#if WITH_EDITOR
+void UMjPhysicsEngine::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+	// Keep the worker's lock-free shadows in step with details-panel edits
+	// of bIsPaused / SimSpeedPercent.
+	bPausedAtomic.store(bIsPaused, std::memory_order_release);
+	SimSpeedAtomic.store(SimSpeedPercent, std::memory_order_release);
+}
+#endif
+
 void UMjPhysicsEngine::PreCompile()
 {
 	m_spec = mj_makeSpec();
@@ -419,6 +430,16 @@ void UMjPhysicsEngine::RunMujocoAsync()
 
 	bShouldStopTask = false;
 
+	// Seed the worker's lock-free shadow state from the current config so it
+	// never reads UPROPERTYs or the owning actor from the physics thread.
+	bPausedAtomic.store(bIsPaused, std::memory_order_release);
+	SimSpeedAtomic.store(SimSpeedPercent, std::memory_order_release);
+	if (AAMjManager* Mgr = Cast<AAMjManager>(GetOwner()))
+	{
+		const EStepMode Init = (Mgr->StepMode == EStepMode::Auto) ? EStepMode::Live : Mgr->StepMode;
+		ResolvedStepMode.store(Init, std::memory_order_release);
+	}
+
 	AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [this]() {
 		FPlatformProcess::Sleep(0.0f);
 
@@ -430,6 +451,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
 
 			if (bShouldStopTask)
 				break;
+
+			// Runtime-resolved step mode, owned by the RPC dispatcher and
+			// seeded from config. Drives the controller pass and the pacer
+			// without a per-iteration actor cast.
+			const EStepMode Mode = ResolvedStepMode.load(std::memory_order_acquire);
 
 			{
 				FScopeLock Lock(&CallbackMutex);
@@ -491,11 +517,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// Puppet mode: client pushes qpos/qvel/ctrl directly, so
 				// ApplyControls (NetworkValue → d->ctrl) would clobber the
 				// snapshot. Skip the controller pass.
-				bool bSkipApplyControls = false;
-				if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
-				{
-					bSkipApplyControls = (OwnerMgr->EffectiveStepMode.load(std::memory_order_acquire) == EStepMode::Puppet);
-				}
+				const bool bSkipApplyControls = (Mode == EStepMode::Puppet);
 				if (!bSkipApplyControls)
 				{
 					for (AMjArticulation* Art : m_articulations)
@@ -509,7 +531,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// counts as an advance (publish it).
 				bAdvanced |= DrainCommands();
 
-				if (!bIsPaused)
+				if (!bPausedAtomic.load(std::memory_order_acquire))
 				{
 					if (CustomStepHandler)
 					{
@@ -561,17 +583,13 @@ void UMjPhysicsEngine::RunMujocoAsync()
 			//   so we drain commands at the rate Python sends them rather
 			//   than capping at 1 / timestep Hz. Short timeout keeps the
 			//   bShouldStopTask check responsive on shutdown.
-			bool bUseRealTimePacing = true;
-			if (AAMjManager* OwnerMgr = Cast<AAMjManager>(GetOwner()))
-			{
-				// Pace off the resolved mode, not the configured StepMode (which
-				// defaults to Auto). Auto resolves to Live, so a freshly-started
-				// live session runs real-time instead of blocking at ~10 Hz.
-				bUseRealTimePacing = (OwnerMgr->EffectiveStepMode.load(std::memory_order_acquire) == EStepMode::Live);
-			}
+			// Pace off the resolved mode, not the configured StepMode (which
+			// defaults to Auto). Auto resolves to Live, so a freshly-started
+			// live session runs real-time instead of blocking at ~10 Hz.
+			const bool bUseRealTimePacing = (Mode == EStepMode::Live);
 			if (bUseRealTimePacing)
 			{
-				const float SpeedFactor = FMath::Clamp(SimSpeedPercent, 5.0f, 100.0f) / 100.0f;
+				const float SpeedFactor = FMath::Clamp(SimSpeedAtomic.load(std::memory_order_acquire), 5.0f, 100.0f) / 100.0f;
 				const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
 				while (FPlatformTime::Seconds() < TargetTime)
 				{
@@ -600,6 +618,19 @@ EControlSource UMjPhysicsEngine::GetControlSource() const
 void UMjPhysicsEngine::SetPaused(bool bPaused)
 {
 	bIsPaused = bPaused;
+	bPausedAtomic.store(bPaused, std::memory_order_release);
+}
+
+void UMjPhysicsEngine::SetSimSpeed(float Percent)
+{
+	SimSpeedPercent = Percent;
+	SimSpeedAtomic.store(Percent, std::memory_order_release);
+}
+
+void UMjPhysicsEngine::SetResolvedStepMode(EStepMode Mode)
+{
+	const EStepMode Resolved = (Mode == EStepMode::Auto) ? EStepMode::Live : Mode;
+	ResolvedStepMode.store(Resolved, std::memory_order_release);
 }
 
 bool UMjPhysicsEngine::IsRunning() const
@@ -622,8 +653,8 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 	if (!IsInitialized())
 		return;
 
-	bool bWasPaused = bIsPaused;
-	bIsPaused = true;
+	const bool bWasPaused = bIsPaused;
+	SetPaused(true);
 
 	FScopeLock Lock(&CallbackMutex);
 
@@ -638,7 +669,7 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 	// scrub, custom step handlers).
 	PushRenderState();
 
-	bIsPaused = bWasPaused;
+	SetPaused(bWasPaused);
 }
 
 bool UMjPhysicsEngine::CompileModel()

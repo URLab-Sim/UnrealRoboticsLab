@@ -84,6 +84,9 @@ class URLAB_API UMjPhysicsEngine : public UActorComponent
 public:
 	UMjPhysicsEngine();
 	virtual void BeginDestroy() override;
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
 	// --- MuJoCo Core Pointers ---
 
@@ -108,6 +111,17 @@ public:
 	 *  client owns the clock. Allocated when the worker starts,
 	 *  returned to the pool on shutdown. */
 	FEvent* StepRequestEvent = nullptr;
+
+	// --- Worker shadow state (lock-free reads on the physics thread) ---
+	//
+	// The physics worker must not read UPROPERTYs (torn cross-thread) or
+	// reach into the owning actor for the step mode. These mirror the
+	// authoritative values: SetPaused / SetSimSpeed / SetResolvedStepMode
+	// (plus PostEditChangeProperty for details-panel edits) keep them in
+	// sync, and RunMujocoAsync seeds them when the worker starts.
+	std::atomic<bool> bPausedAtomic{true};
+	std::atomic<float> SimSpeedAtomic{100.0f};
+	std::atomic<EStepMode> ResolvedStepMode{EStepMode::Live};
 
 	// --- Step Callbacks ---
 
@@ -211,6 +225,15 @@ public:
 
 	void RunMujocoAsync();
 	void SetPaused(bool bPaused);
+
+	/** Set the real-time speed target (percent). Writes the UPROPERTY (for
+	 *  the details panel) and the worker's lock-free shadow. */
+	void SetSimSpeed(float Percent);
+
+	/** Set the runtime-resolved step mode the worker honours for pacing and
+	 *  whether it runs the UE controller pass. Auto resolves to Live. The
+	 *  RPC dispatcher is the runtime owner; call this on every mode change. */
+	void SetResolvedStepMode(EStepMode Mode);
 	bool IsRunning() const;
 	bool IsInitialized() const;
 	float GetSimTime() const;

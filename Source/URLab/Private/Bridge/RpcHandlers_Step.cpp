@@ -95,6 +95,24 @@ bool StepModeFromString(const FString& Str, EStepMode& OutMode)
 	}
 	return false;
 }
+
+/** Write a client-pushed integration state (qpos/qvel/ctrl/time) into
+ *  (m,d), recompute derived quantities, and fire OnPostStep. Shared by the
+ *  puppet inline path and the puppet step handler. The caller must hold the
+ *  engine's CallbackMutex. */
+void ApplyPushedState(UMjPhysicsEngine* Engine, const FMjPushStateRequest& Push, mjModel* m, mjData* d)
+{
+	if (Push.QPos.Num() == m->nq)
+		FMemory::Memcpy(d->qpos, Push.QPos.GetData(), m->nq * sizeof(mjtNum));
+	if (Push.QVel.Num() == m->nv)
+		FMemory::Memcpy(d->qvel, Push.QVel.GetData(), m->nv * sizeof(mjtNum));
+	if (Push.bIncludeCtrl && Push.Ctrl.Num() == m->nu)
+		FMemory::Memcpy(d->ctrl, Push.Ctrl.GetData(), m->nu * sizeof(mjtNum));
+	d->time = Push.Time;
+	mj_forward(m, d);
+	if (Engine->OnPostStep)
+		Engine->OnPostStep(m, d);
+}
 } // namespace
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJsonObject>& Req)
@@ -312,17 +330,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		double PostTime = 0.0;
 		{
 			FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-			if (Push.QPos.Num() == m->nq)
-				FMemory::Memcpy(d->qpos, Push.QPos.GetData(), m->nq * sizeof(mjtNum));
-			if (Push.QVel.Num() == m->nv)
-				FMemory::Memcpy(d->qvel, Push.QVel.GetData(), m->nv * sizeof(mjtNum));
-			if (Push.bIncludeCtrl && Push.Ctrl.Num() == m->nu)
-				FMemory::Memcpy(d->ctrl, Push.Ctrl.GetData(), m->nu * sizeof(mjtNum));
-			d->time = Push.Time;
-			mj_forward(m, d);
-
-			if (Mgr->PhysicsEngine->OnPostStep)
-				Mgr->PhysicsEngine->OnPostStep(m, d);
+			ApplyPushedState(Mgr->PhysicsEngine, Push, m, d);
 
 			// Publish the just-pushed pose to the render snapshot now, while
 			// we still hold CallbackMutex (lock order CallbackMutex ->
@@ -1084,16 +1092,7 @@ void FURLabRpcDispatcher::InstallPuppetHandler()
 		FMjPushStateRequest Req;
 		if (!PushStateQueue.Dequeue(Req))
 			return false; // idle wake, nothing pushed — no advance
-		if (Req.QPos.Num() == m->nq)
-			FMemory::Memcpy(d->qpos, Req.QPos.GetData(), m->nq * sizeof(mjtNum));
-		if (Req.QVel.Num() == m->nv)
-			FMemory::Memcpy(d->qvel, Req.QVel.GetData(), m->nv * sizeof(mjtNum));
-		if (Req.bIncludeCtrl && Req.Ctrl.Num() == m->nu)
-			FMemory::Memcpy(d->ctrl, Req.Ctrl.GetData(), m->nu * sizeof(mjtNum));
-		d->time = Req.Time;
-		mj_forward(m, d);
-		if (Engine->OnPostStep)
-			Engine->OnPostStep(m, d);
+		ApplyPushedState(Engine, Req, m, d);
 		return true;
 	};
 	Engine->SetCustomStepHandler(PuppetStepHandler);

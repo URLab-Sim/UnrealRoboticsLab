@@ -9,8 +9,57 @@
 #include "Transport/ShmRpcTransport.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "Utils/URLabLogging.h"
+#include "HAL/IConsoleManager.h"
+#include "Engine/Engine.h"
 
 UURLabBridgeServer::UURLabBridgeServer() = default;
+
+void UURLabBridgeServer::ApplyPerformanceOverrides()
+{
+	if (bPacingOverridden || !GEngine)
+		return;
+
+	auto Override = [](const TCHAR* Name, const TCHAR* Command, float& OutSaved, bool& OutHad)
+	{
+		if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Name))
+		{
+			OutHad = true;
+			OutSaved = CVar->GetFloat();
+		}
+		GEngine->Exec(nullptr, Command);
+	};
+
+	Override(TEXT("r.VSync"), TEXT("r.VSync 0"), SavedVSync, bHadVSync);
+#if WITH_EDITOR
+	Override(TEXT("r.VSyncEditor"), TEXT("r.VSyncEditor 0"), SavedVSyncEditor, bHadVSyncEditor);
+#endif
+	Override(TEXT("t.MaxFPS"), TEXT("t.MaxFPS 240"), SavedMaxFPS, bHadMaxFPS);
+
+	bPacingOverridden = true;
+	UE_LOG(LogURLabNet, Log,
+		TEXT("UURLabBridgeServer: disabled editor frame pacing while serving (VSync off, MaxFPS 240)"));
+}
+
+void UURLabBridgeServer::RestorePerformanceOverrides()
+{
+	if (!bPacingOverridden || !GEngine)
+		return;
+
+	auto Restore = [](const TCHAR* Name, float Value, bool bHad)
+	{
+		if (bHad)
+			GEngine->Exec(nullptr, *FString::Printf(TEXT("%s %g"), Name, Value));
+	};
+
+	Restore(TEXT("r.VSync"), SavedVSync, bHadVSync);
+#if WITH_EDITOR
+	Restore(TEXT("r.VSyncEditor"), SavedVSyncEditor, bHadVSyncEditor);
+#endif
+	Restore(TEXT("t.MaxFPS"), SavedMaxFPS, bHadMaxFPS);
+
+	bPacingOverridden = false;
+	UE_LOG(LogURLabNet, Log, TEXT("UURLabBridgeServer: restored editor frame pacing"));
+}
 
 void UURLabBridgeServer::BeginDestroy()
 {
@@ -59,6 +108,7 @@ bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
 		return false;
 	}
 	RpcTransports.Add(Zmq);
+	ApplyPerformanceOverrides();
 	UE_LOG(LogURLabNet, Log,
 		TEXT("UURLabBridgeServer: ZMQ REP bound at %s"), *Endpoint);
 	return true;
@@ -96,6 +146,7 @@ bool UURLabBridgeServer::EnsureShmBound(const FString& SessionId)
 		return false;
 	}
 	RpcTransports.Add(Shm);
+	ApplyPerformanceOverrides();
 	UE_LOG(LogURLabNet, Log,
 		TEXT("UURLabBridgeServer: SHM RPC bound (session=%s)"), *Sid);
 	return true;
@@ -117,6 +168,7 @@ void UURLabBridgeServer::Stop()
 			T->TransportShutdown();
 	}
 	RpcTransports.Reset();
+	RestorePerformanceOverrides();
 
 	if (!Dispatcher.IsValid())
 		return;

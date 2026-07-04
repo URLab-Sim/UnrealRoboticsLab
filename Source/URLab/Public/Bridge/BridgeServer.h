@@ -76,6 +76,20 @@ private:
 	TWeakObjectPtr<AAMjManager> ActiveManager;
 	bool bOwnedByManager = false;
 
+	// Disable editor frame pacing (VSync + FPS cap) while a real transport is
+	// bound, so camera frame delivery isn't capped at the monitor refresh.
+	// Prior cvar values are saved and restored on Stop.
+	void ApplyPerformanceOverrides();
+	void RestorePerformanceOverrides();
+
+	bool bPacingOverridden = false;
+	bool bHadVSync = false;
+	bool bHadVSyncEditor = false;
+	bool bHadMaxFPS = false;
+	float SavedVSync = 1.0f;
+	float SavedVSyncEditor = 1.0f;
+	float SavedMaxFPS = 0.0f;
+
 	/** Every bound RPC transport. Survives PIE transitions. Transient so
 	 *  UE GC won't try to serialise these alongside the bridge UObject. */
 	UPROPERTY(Transient)

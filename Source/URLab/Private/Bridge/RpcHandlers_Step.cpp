@@ -1053,59 +1053,101 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 	return Reply;
 }
 
+namespace
+{
+// Per-mode lifecycle. OnEnter pauses/unpauses the state+ctrl publishers, sets
+// the engine step mode (which unpauses the worker for client-driven modes), and
+// installs the step handler; OnExit uninstalls it. Camera publishers stream in
+// every mode, so the caller clears FCameraZmqWorker::bPublishersPaused.
+struct FLiveStepMode : FStepModeStrategy
+{
+	EStepMode Mode() const override { return EStepMode::Live; }
+	void OnEnter(FURLabRpcDispatcher& /*D*/, AAMjManager& Mgr) override
+	{
+		Mgr.bPublishersPaused.store(false, std::memory_order_release);
+		if (Mgr.PhysicsEngine)
+			Mgr.PhysicsEngine->SetStepMode(EStepMode::Live);
+	}
+	void OnExit(FURLabRpcDispatcher& /*D*/, AAMjManager& /*Mgr*/) override {}
+};
+
+struct FDirectStepMode : FStepModeStrategy
+{
+	EStepMode Mode() const override { return EStepMode::Direct; }
+	void OnEnter(FURLabRpcDispatcher& D, AAMjManager& Mgr) override
+	{
+		Mgr.bPublishersPaused.store(true, std::memory_order_release);
+		if (Mgr.PhysicsEngine)
+			Mgr.PhysicsEngine->SetStepMode(EStepMode::Direct);
+		D.InstallDirectHandler();
+	}
+	void OnExit(FURLabRpcDispatcher& D, AAMjManager& /*Mgr*/) override
+	{
+		D.UninstallDirectHandler();
+	}
+};
+
+struct FPuppetStepMode : FStepModeStrategy
+{
+	EStepMode Mode() const override { return EStepMode::Puppet; }
+	void OnEnter(FURLabRpcDispatcher& D, AAMjManager& Mgr) override
+	{
+		Mgr.bPublishersPaused.store(true, std::memory_order_release);
+		if (Mgr.PhysicsEngine)
+			Mgr.PhysicsEngine->SetStepMode(EStepMode::Puppet);
+		D.InstallPuppetHandler();
+	}
+	void OnExit(FURLabRpcDispatcher& D, AAMjManager& /*Mgr*/) override
+	{
+		D.UninstallPuppetHandler();
+	}
+};
+} // namespace
+
+TUniquePtr<FStepModeStrategy> FURLabRpcDispatcher::MakeStepStrategy(EStepMode Mode)
+{
+	switch (Mode)
+	{
+		case EStepMode::Direct:
+			return MakeUnique<FDirectStepMode>();
+		case EStepMode::Puppet:
+			return MakeUnique<FPuppetStepMode>();
+		case EStepMode::Live:
+		case EStepMode::Auto:
+		default:
+			return MakeUnique<FLiveStepMode>();
+	}
+}
+
 void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
 {
-	// Serialises install/uninstall side effects against concurrent
-	// set_mode calls; Dispatch releases DispatchMutex before handlers.
+	// Serialises install/uninstall side effects against concurrent set_mode
+	// calls; Dispatch releases DispatchMutex before handlers.
 	FScopeLock Lock(&DispatchMutex);
 
+	const EStepMode Mode = (NewMode == EStepMode::Auto) ? EStepMode::Live : NewMode;
 	const EStepMode CurMode = ActiveStepMode.load(std::memory_order_acquire);
-	if (NewMode == CurMode)
+	if (Mode == CurMode)
 		return;
 
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
 		return;
 
-	if (CurMode == EStepMode::Puppet)
-		UninstallPuppetHandler();
-	if (CurMode == EStepMode::Direct)
-		UninstallDirectHandler();
+	if (CurrentStepStrategy)
+		CurrentStepStrategy->OnExit(*this, *Mgr);
 	DrainQueuesForTest();
 
-	ActiveStepMode.store(NewMode, std::memory_order_release);
-	if (Mgr->PhysicsEngine)
-		Mgr->PhysicsEngine->SetResolvedStepMode(NewMode);
-	const bool bPaused = (NewMode != EStepMode::Live);
-	// State / ctrl transports are still live-only (clients read state from the
-	// step reply in direct/puppet). Camera publishers, however, now stream in
-	// EVERY mode -- frames are decoupled from the step reply -- so they must
-	// NOT be paused by mode, or puppet/direct clients get no camera feed.
-	Mgr->bPublishersPaused.store(bPaused, std::memory_order_release);
+	ActiveStepMode.store(Mode, std::memory_order_release);
+	// Camera publishers stream in every mode (frames are decoupled from the
+	// step reply), so they are never paused by mode.
 	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 
-	if (NewMode == EStepMode::Puppet)
-		InstallPuppetHandler();
-	else if (NewMode == EStepMode::Direct)
-		InstallDirectHandler();
+	CurrentStepStrategy = MakeStepStrategy(Mode);
+	CurrentStepStrategy->OnEnter(*this, *Mgr);
 
-	// Engine defaults bIsPaused=true and is normally unpaused via the editor
-	// UI / hotkey. A remote client has no UI handle, so entering Direct or
-	// Direct/Puppet imply "client drives physics" — force unpause so the
-	// async loop calls CustomStepHandler and the request queue drains.
-	if (Mgr->PhysicsEngine && NewMode != EStepMode::Live)
-	{
-		if (Mgr->PhysicsEngine->bIsPaused)
-		{
-			Mgr->PhysicsEngine->SetPaused(false);
-			UE_LOG(LogURLabNet, Log,
-				TEXT("FURLabRpcDispatcher: unpaused PhysicsEngine for %s mode"),
-				*StepModeToString(NewMode));
-		}
-	}
-
-	UE_LOG(LogURLabNet, Log, TEXT("FURLabRpcDispatcher: step mode -> %s (publishers_paused=%s)"),
-		*StepModeToString(NewMode), bPaused ? TEXT("true") : TEXT("false"));
+	UE_LOG(LogURLabNet, Log, TEXT("FURLabRpcDispatcher: step mode -> %s"),
+		*StepModeToString(Mode));
 }
 
 void FURLabRpcDispatcher::InstallPuppetHandler()

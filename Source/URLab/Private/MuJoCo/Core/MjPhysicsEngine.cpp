@@ -661,10 +661,17 @@ void UMjPhysicsEngine::SetSimSpeed(float Percent)
 	SimSpeedAtomic.store(Percent, std::memory_order_release);
 }
 
-void UMjPhysicsEngine::SetResolvedStepMode(EStepMode Mode)
+void UMjPhysicsEngine::SetStepMode(EStepMode Mode)
 {
 	const EStepMode Resolved = (Mode == EStepMode::Auto) ? EStepMode::Live : Mode;
 	ResolvedStepMode.store(Resolved, std::memory_order_release);
+	// Client-driven modes need the worker unpaused so the async loop calls the
+	// step handler and drains the request queue; the engine otherwise defaults
+	// to paused until the editor UI unpauses.
+	if (Resolved != EStepMode::Live && bIsPaused)
+	{
+		SetPaused(false);
+	}
 }
 
 bool UMjPhysicsEngine::IsRunning() const

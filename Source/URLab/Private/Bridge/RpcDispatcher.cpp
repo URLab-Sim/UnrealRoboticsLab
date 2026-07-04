@@ -222,19 +222,11 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 								 ? EStepMode::Live
 								 : OwnerMgr->StepMode;
 	ActiveStepMode.store(InitMode, std::memory_order_release);
-	// Mirror onto the manager so the physics loop paces off the resolved mode
-	// (Auto -> Live), not the configured StepMode which would stay Auto.
-	OwnerMgr->EffectiveStepMode.store(InitMode, std::memory_order_release);
-	if (OwnerMgr->PhysicsEngine)
-		OwnerMgr->PhysicsEngine->SetResolvedStepMode(InitMode);
-	const bool bPaused = (InitMode != EStepMode::Live);
-	OwnerMgr->bPublishersPaused.store(bPaused, std::memory_order_release);
-	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);
-
-	if (InitMode == EStepMode::Puppet)
-		InstallPuppetHandler();
-	else if (InitMode == EStepMode::Direct)
-		InstallDirectHandler();
+	// Camera publishers stream in every mode; the strategy's OnEnter handles the
+	// state/ctrl publishers, the engine step mode, and the handler install.
+	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
+	CurrentStepStrategy = MakeStepStrategy(InitMode);
+	CurrentStepStrategy->OnEnter(*this, *OwnerMgr);
 
 	// Cached on the game thread; worker threads later use Get() (TActorIterator
 	// asserts IsInGameThread).
@@ -250,13 +242,14 @@ void FURLabRpcDispatcher::OnManagerGone()
 {
 	UninstallPuppetHandler();
 	UninstallDirectHandler();
+	CurrentStepStrategy.Reset();
 	DrainQueuesForTest();
 
 	if (OwnerMgr.IsValid())
 	{
 		OwnerMgr->bPublishersPaused.store(false, std::memory_order_release);
 		if (OwnerMgr->PhysicsEngine)
-			OwnerMgr->PhysicsEngine->SetResolvedStepMode(EStepMode::Live);
+			OwnerMgr->PhysicsEngine->SetStepMode(EStepMode::Live);
 	}
 	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 	OwnerMgr.Reset();

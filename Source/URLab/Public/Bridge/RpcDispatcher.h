@@ -260,10 +260,18 @@ private:
 	bool bPuppetHandlerInstalled = false;
 	bool bDirectHandlerInstalled = false;
 
+public:
+	// Public so the per-mode strategy objects can drive them on enter/exit.
 	void InstallPuppetHandler();
 	void UninstallPuppetHandler();
 	void InstallDirectHandler();
 	void UninstallDirectHandler();
+
+private:
+	/** Per-mode lifecycle strategy: OnEnter installs the handler + sets pause /
+	 *  publisher state, OnExit uninstalls. Swapped by SetActiveStepMode. */
+	TUniquePtr<struct FStepModeStrategy> CurrentStepStrategy;
+	static TUniquePtr<struct FStepModeStrategy> MakeStepStrategy(EStepMode Mode);
 
 	/** Register every dispatcher-owned op (manager-required +
 	 *  no-manager) on the URLabOpRegistry with the right Category and
@@ -299,4 +307,16 @@ private:
 	TSharedPtr<FJsonObject> HandleListKeyframes(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleRecording(const FString& Op, const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleReplay(const FString& Op, const TSharedPtr<FJsonObject>& Req);
+};
+
+/** Per-mode step lifecycle. Concrete Live/Direct/Puppet strategies (in
+ *  RpcHandlers_Step.cpp) install/uninstall the step handler and set the engine
+ *  pause + publisher state on transition, so the mode logic isn't a growing
+ *  if-chain in SetActiveStepMode. */
+struct FStepModeStrategy
+{
+	virtual ~FStepModeStrategy() = default;
+	virtual EStepMode Mode() const = 0;
+	virtual void OnEnter(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
+	virtual void OnExit(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
 };

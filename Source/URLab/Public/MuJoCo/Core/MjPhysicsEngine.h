@@ -116,7 +116,7 @@ public:
 	//
 	// The physics worker must not read UPROPERTYs (torn cross-thread) or
 	// reach into the owning actor for the step mode. These mirror the
-	// authoritative values: SetPaused / SetSimSpeed / SetResolvedStepMode
+	// authoritative values: SetPaused / SetSimSpeed / SetStepMode
 	// (plus PostEditChangeProperty for details-panel edits) keep them in
 	// sync, and RunMujocoAsync seeds them when the worker starts.
 	std::atomic<bool> bPausedAtomic{true};
@@ -242,10 +242,13 @@ public:
 	 *  the details panel) and the worker's lock-free shadow. */
 	void SetSimSpeed(float Percent);
 
-	/** Set the runtime-resolved step mode the worker honours for pacing and
-	 *  whether it runs the UE controller pass. Auto resolves to Live. The
-	 *  RPC dispatcher is the runtime owner; call this on every mode change. */
-	void SetResolvedStepMode(EStepMode Mode);
+	/** Single entry point for the runtime step mode. Stores the resolved mode
+	 *  the worker honours (pacing + whether it runs the UE controller pass;
+	 *  Auto resolves to Live) and unpauses the worker for client-driven modes
+	 *  (direct/puppet) so the async loop calls the step handler and drains the
+	 *  request queue. The RPC dispatcher is the runtime owner; call on every
+	 *  mode change. */
+	void SetStepMode(EStepMode Mode);
 	bool IsRunning() const;
 	bool IsInitialized() const;
 	float GetSimTime() const;

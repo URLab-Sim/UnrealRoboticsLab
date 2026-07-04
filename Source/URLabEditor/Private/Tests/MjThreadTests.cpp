@@ -217,7 +217,7 @@ bool FMjThreadLivePacing::RunTest(const FString& Parameters)
 	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
 
 	// Live mode, full speed, unpaused, worker running.
-	Engine->SetResolvedStepMode(EStepMode::Live);
+	Engine->SetStepMode(EStepMode::Live);
 	Engine->SetSimSpeed(100.0f);
 	Engine->SetPaused(false);
 	Engine->RunMujocoAsync();
@@ -269,7 +269,7 @@ bool FMjThreadLiveSnapshotGating::RunTest(const FString& Parameters)
 	}
 
 	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
-	Engine->SetResolvedStepMode(EStepMode::Live);
+	Engine->SetStepMode(EStepMode::Live);
 	Engine->SetSimSpeed(100.0f);
 	Engine->SetPaused(false);
 	Engine->RunMujocoAsync();

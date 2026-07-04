@@ -164,6 +164,16 @@ public:
 		const TMap<FString, uint64>& MinFrameIds = TMap<FString, uint64>(),
 		int32 TimeoutMs = 1000);
 
+	/** Assemble the shared step_ok reply (op/time/step/clock/frame_id plus
+	 *  per_articulation, entities, and any requested cameras). Callers add
+	 *  mode-specific fields (e.g. puppet perturbation) afterwards. */
+	TSharedPtr<FJsonObject> BuildStepReply(double TimeSec, int64 StepIdx, uint64 FrameId,
+		const TSharedPtr<FJsonObject>& Observations,
+		const TSharedPtr<FJsonObject>& Entities,
+		AAMjManager* Mgr,
+		const TMap<FString, ECameraInclude>& CameraSpec,
+		const TMap<FString, uint64>& CameraMinFrameIds);
+
 	/** Build the name->camera lookup used to resolve include_cameras /
 	 *  set_camera_streaming keys: canonical "<art>/camera/<cam>", "<art>/<cam>",
 	 *  bare canonical, plus raw component / MJCF-name back-compat. First writer

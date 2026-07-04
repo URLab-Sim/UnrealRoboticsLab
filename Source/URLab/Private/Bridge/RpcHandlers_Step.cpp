@@ -342,24 +342,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 			Scene = BuildEntitiesBlock(Mgr, m, d);
 		}
 
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-		Reply->SetNumberField(TEXT("time"), PostTime);
-		Reply->SetNumberField(TEXT("step"), StepCounter.fetch_add(1, std::memory_order_relaxed) + 1);
-		AppendClockFields(Reply, PostTime);
-		// Post-step state id: the client passes this back as a camera frame_id
-		// to fetch the image that shows this exact step's state.
-		Reply->SetNumberField(TEXT("frame_id"), static_cast<double>(PostFrameId));
-		if (Obs.IsValid())
-			Reply->SetObjectField(TEXT("per_articulation"), Obs);
-		if (Scene.IsValid())
-			Reply->SetObjectField(TEXT("entities"), Scene);
-		if (CameraSpec.Num() > 0)
-		{
-			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
-			if (Cams.IsValid() && Cams->Values.Num() > 0)
-				Reply->SetObjectField(TEXT("cameras"), Cams);
-		}
+		// frame_id is the post-step state id: the client passes it back as a
+		// camera frame_id to fetch the image showing this exact step's state.
+		const int64 StepIdx = StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+		TSharedPtr<FJsonObject> Reply = BuildStepReply(PostTime, StepIdx, PostFrameId,
+			Obs, Scene, Mgr, CameraSpec, CameraMinFrameIds);
 		// Puppet-mode perturbation: include the latest sample so the client
 		// can apply the editor click-drag widget's force to its own MjData.
 		if (Mgr->Perturbation)
@@ -500,26 +487,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		}
 	}
 
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	TSharedPtr<FJsonObject> Reply;
 	if (bSignaled && Cmd->bDone)
 	{
-		Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-		Reply->SetNumberField(TEXT("time"), Cmd->ResultTime);
-		Reply->SetNumberField(TEXT("step"), Cmd->ResultStep);
-		AppendClockFields(Reply, Cmd->ResultTime);
-		Reply->SetNumberField(TEXT("frame_id"),
-			static_cast<double>(Cmd->ResultFrameId));
-		if (Cmd->Observations.IsValid())
-			Reply->SetObjectField(TEXT("per_articulation"), Cmd->Observations);
-		if (Cmd->Entities.IsValid())
-			Reply->SetObjectField(TEXT("entities"), Cmd->Entities);
-
-		if (CameraSpec.Num() > 0)
-		{
-			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
-			if (Cams.IsValid() && Cams->Values.Num() > 0)
-				Reply->SetObjectField(TEXT("cameras"), Cams);
-		}
+		Reply = BuildStepReply(Cmd->ResultTime, Cmd->ResultStep, Cmd->ResultFrameId,
+			Cmd->Observations, Cmd->Entities, Mgr, CameraSpec, CameraMinFrameIds);
 	}
 	else
 	{
@@ -535,6 +507,32 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		}
 	}
 
+	return Reply;
+}
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepReply(double TimeSec, int64 StepIdx, uint64 FrameId,
+	const TSharedPtr<FJsonObject>& Observations,
+	const TSharedPtr<FJsonObject>& Entities,
+	AAMjManager* Mgr,
+	const TMap<FString, ECameraInclude>& CameraSpec,
+	const TMap<FString, uint64>& CameraMinFrameIds)
+{
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
+	Reply->SetNumberField(TEXT("time"), TimeSec);
+	Reply->SetNumberField(TEXT("step"), static_cast<double>(StepIdx));
+	AppendClockFields(Reply, TimeSec);
+	Reply->SetNumberField(TEXT("frame_id"), static_cast<double>(FrameId));
+	if (Observations.IsValid())
+		Reply->SetObjectField(TEXT("per_articulation"), Observations);
+	if (Entities.IsValid())
+		Reply->SetObjectField(TEXT("entities"), Entities);
+	if (CameraSpec.Num() > 0)
+	{
+		TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
+		if (Cams.IsValid() && Cams->Values.Num() > 0)
+			Reply->SetObjectField(TEXT("cameras"), Cams);
+	}
 	return Reply;
 }
 

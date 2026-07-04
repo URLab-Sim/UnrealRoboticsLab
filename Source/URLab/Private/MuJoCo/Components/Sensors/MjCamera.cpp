@@ -235,6 +235,12 @@ bool IsSegMode(EMjCameraMode mode)
 // the RT is square.
 float HorizontalFOVFromFovy(float Fovy, const TArray<int32>& Resolution)
 {
+	// A camera with no fovy set (0) produces a degenerate zero-FOV frustum that
+	// renders pure black. Fall back to MuJoCo's default vertical fov (45 deg).
+	if (Fovy <= 0.0f)
+	{
+		Fovy = 45.0f;
+	}
 	if (Resolution.Num() < 2 || Resolution[0] <= 0 || Resolution[1] <= 0)
 	{
 		return Fovy;

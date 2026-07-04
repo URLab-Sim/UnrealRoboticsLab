@@ -51,6 +51,86 @@
 #include "Engine/World.h"
 #include "Misc/Guid.h"
 #include "Utils/URLabLogging.h"
+#include "Async/Async.h"
+#include "RenderingThread.h"
+
+namespace
+{
+// Pool-owned FEvent with shared lifetime: the render task and the RPC thread
+// each hold a ref, so the event returns to the pool only once both are done —
+// safe even if the RPC thread times out while the task is still running.
+struct FSharedPooledEvent
+{
+	FEvent* E = FPlatformProcess::GetSynchEventFromPool();
+	~FSharedPooledEvent()
+	{
+		if (E)
+			FPlatformProcess::ReturnSynchEventToPool(E);
+	}
+};
+} // namespace
+
+bool FURLabRpcDispatcher::RenderCamerasSync(AAMjManager* Mgr,
+	const TMap<FString, ECameraInclude>& CameraSpec,
+	uint64 MinFrameId, int32 TimeoutMs,
+	TMap<FString, uint64>& CameraMinFrameIds)
+{
+	if (MinFrameId == 0 || CameraSpec.Num() == 0 || !Mgr)
+		return true;
+
+	TArray<FString> Keys;
+	CameraSpec.GetKeys(Keys);
+
+	// Keys that reached MinFrameId. Written on the game thread before Trigger,
+	// read here only after a successful Wait (the event gives happens-before).
+	TSharedRef<TArray<FString>, ESPMode::ThreadSafe> Ready =
+		MakeShared<TArray<FString>, ESPMode::ThreadSafe>();
+	TSharedRef<FSharedPooledEvent, ESPMode::ThreadSafe> Ev =
+		MakeShared<FSharedPooledEvent, ESPMode::ThreadSafe>();
+
+	AsyncTask(ENamedThreads::GameThread, [Mgr, Keys, MinFrameId, Ev, Ready]()
+	{
+		TMap<FString, UMjCamera*> ByName;
+		BuildCameraNameMap(Mgr, ByName);
+
+		// Apply the just-produced physics snapshot so the captures render this
+		// step's state, then capture + read back every requested camera.
+		Mgr->ApplyLatestRenderState();
+
+		TArray<UMjCamera*> Cams;
+		for (const FString& K : Keys)
+		{
+			if (UMjCamera* Cam = ByName.FindRef(K))
+			{
+				Cam->IssueSyncCapture();
+				Cams.Add(Cam);
+			}
+		}
+
+		// One flush completes every capture + readback copy.
+		FlushRenderingCommands();
+
+		for (UMjCamera* Cam : Cams)
+			Cam->HarvestCompletedReadbacks();
+
+		for (const FString& K : Keys)
+		{
+			UMjCamera* Cam = ByName.FindRef(K);
+			if (Cam && Cam->GetLatestFrameId() >= MinFrameId)
+				Ready->Add(K);
+		}
+		if (Ev->E)
+			Ev->E->Trigger();
+	});
+
+	const bool bDone = Ev->E && Ev->E->Wait(FMath::Max(1, TimeoutMs));
+	if (!bDone)
+		return false; // task still running — don't read Ready; cameras return latest
+
+	for (const FString& K : *Ready)
+		CameraMinFrameIds.Add(K, MinFrameId);
+	return Ready->Num() == CameraSpec.Num();
+}
 
 bool FURLabRpcDispatcher::WaitForCameraFrames(AAMjManager* Mgr,
 	const TMap<FString, ECameraInclude>& CameraSpec,

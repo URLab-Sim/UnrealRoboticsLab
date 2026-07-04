@@ -186,6 +186,18 @@ public:
 		uint64 MinFrameId, int32 TimeoutMs,
 		TMap<FString, uint64>& CameraMinFrameIds);
 
+	/** Render-on-demand: on the game thread, apply the latest physics snapshot,
+	 *  capture + read back every requested camera, flush the render thread once,
+	 *  and harvest — so the frame for MinFrameId exists within a single pump
+	 *  instead of over several ticks. Blocks the RPC thread until done or
+	 *  TimeoutMs elapses. Records MinFrameId as the floor for cameras that
+	 *  produced it. Opt-in (`render: "sync"`); flushes the game thread, so it is
+	 *  for eval, not interactive use. */
+	bool RenderCamerasSync(AAMjManager* Mgr,
+		const TMap<FString, ECameraInclude>& CameraSpec,
+		uint64 MinFrameId, int32 TimeoutMs,
+		TMap<FString, uint64>& CameraMinFrameIds);
+
 	/** Build the name->camera lookup used to resolve include_cameras /
 	 *  set_camera_streaming keys: canonical "<art>/camera/<cam>", "<art>/<cam>",
 	 *  bare canonical, plus raw component / MJCF-name back-compat. First writer

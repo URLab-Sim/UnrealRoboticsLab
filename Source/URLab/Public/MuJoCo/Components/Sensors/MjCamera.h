@@ -369,6 +369,17 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void RequestReadback();
 
+	/** Render-on-demand: capture the scene and enqueue a readback right now for
+	 *  the current applied state. Pair with HarvestCompletedReadbacks after a
+	 *  FlushRenderingCommands to pull the frame into history synchronously. */
+	void IssueSyncCapture();
+
+	/** Drain completed async readbacks (FIFO) into pixel frames and the history
+	 *  ring; publishes inline when no delay is configured. Stops at the first
+	 *  not-ready entry. Called each tick and by the synchronous render path
+	 *  (after a render-thread flush). */
+	void HarvestCompletedReadbacks();
+
 	/**
 	 * @brief Fetch a frame from this camera's history ring (thread-safe).
 	 *
@@ -447,12 +458,6 @@ private:
 	// ---- Internal helpers ----
 	void SetupRenderTarget();
 	void RegisterWithStreamingManager();
-
-	/** Drain completed async readbacks (FIFO) into pixel frames: publish
-	 *  inline when no delay is configured and push each to the history ring.
-	 *  Stops at the first not-ready entry. Reusable by the tick and by any
-	 *  synchronous capture path that flushes the render thread first. */
-	void HarvestCompletedReadbacks();
 
 	/** Issue a scene capture + readback for the current applied state when the
 	 *  fps cap and state-change gate allow it. */

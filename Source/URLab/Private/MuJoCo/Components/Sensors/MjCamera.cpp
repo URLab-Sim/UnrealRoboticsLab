@@ -516,6 +516,22 @@ void UMjCamera::HarvestCompletedReadbacks()
 	}
 }
 
+void UMjCamera::IssueSyncCapture()
+{
+	// Bring capture resources up if a client asks an otherwise-idle camera for
+	// a synchronous frame (RequestReadback no-ops while streaming is disabled).
+	if (!bStreamingEnabled)
+	{
+		SetStreamingEnabled(true);
+	}
+	TouchRequested();
+	if (CaptureComponent && CaptureComponent->TextureTarget)
+	{
+		CaptureComponent->CaptureScene();
+	}
+	RequestReadback();
+}
+
 void UMjCamera::MaybeCapture(AAMjManager* Mgr)
 {
 	// Two resource savers (see header):

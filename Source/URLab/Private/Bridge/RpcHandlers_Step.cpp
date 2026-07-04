@@ -303,6 +303,15 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		if (Req->TryGetNumberField(TEXT("camera_timeout_ms"), T) && T > 0.0)
 			CameraTimeoutMs = static_cast<int32>(T);
 	}
+	// render: "sync" is the stronger form of wait_cameras — instead of polling
+	// for the natural tick to produce the frame, drive an immediate game-thread
+	// render pass. Flushes the game thread, so it is for eval, not interactive.
+	bool bRenderSync = false;
+	{
+		FString R;
+		if (Req->TryGetStringField(TEXT("render"), R))
+			bRenderSync = R.Equals(TEXT("sync"), ESearchCase::IgnoreCase);
+	}
 
 	if (ActiveStepMode == EStepMode::Puppet)
 	{
@@ -364,7 +373,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 
 		// frame_id is the post-step state id: the client passes it back as a
 		// camera frame_id to fetch the image showing this exact step's state.
-		if (bWaitCameras && CameraSpec.Num() > 0)
+		if (bRenderSync && CameraSpec.Num() > 0)
+			RenderCamerasSync(Mgr, CameraSpec, PostFrameId, CameraTimeoutMs, CameraMinFrameIds);
+		else if (bWaitCameras && CameraSpec.Num() > 0)
 			WaitForCameraFrames(Mgr, CameraSpec, PostFrameId, CameraTimeoutMs, CameraMinFrameIds);
 		const int64 StepIdx = StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
 		TSharedPtr<FJsonObject> Reply = BuildStepReply(PostTime, StepIdx, PostFrameId,
@@ -512,7 +523,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	TSharedPtr<FJsonObject> Reply;
 	if (bSignaled && Cmd->bDone)
 	{
-		if (bWaitCameras && CameraSpec.Num() > 0)
+		if (bRenderSync && CameraSpec.Num() > 0)
+			RenderCamerasSync(Mgr, CameraSpec, Cmd->ResultFrameId, CameraTimeoutMs, CameraMinFrameIds);
+		else if (bWaitCameras && CameraSpec.Num() > 0)
 			WaitForCameraFrames(Mgr, CameraSpec, Cmd->ResultFrameId, CameraTimeoutMs, CameraMinFrameIds);
 		Reply = BuildStepReply(Cmd->ResultTime, Cmd->ResultStep, Cmd->ResultFrameId,
 			Cmd->Observations, Cmd->Entities, Mgr, CameraSpec, CameraMinFrameIds);

@@ -292,6 +292,18 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		}
 	}
 
+	// wait_cameras: block the reply server-side until the requested cameras
+	// have the frame this step produced, instead of the client polling with a
+	// min_frame_id and eating a round trip per miss.
+	bool bWaitCameras = false;
+	Req->TryGetBoolField(TEXT("wait_cameras"), bWaitCameras);
+	int32 CameraTimeoutMs = 200;
+	{
+		double T = 0.0;
+		if (Req->TryGetNumberField(TEXT("camera_timeout_ms"), T) && T > 0.0)
+			CameraTimeoutMs = static_cast<int32>(T);
+	}
+
 	if (ActiveStepMode == EStepMode::Puppet)
 	{
 		FMjPushStateRequest Push;
@@ -352,6 +364,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 
 		// frame_id is the post-step state id: the client passes it back as a
 		// camera frame_id to fetch the image showing this exact step's state.
+		if (bWaitCameras && CameraSpec.Num() > 0)
+			WaitForCameraFrames(Mgr, CameraSpec, PostFrameId, CameraTimeoutMs, CameraMinFrameIds);
 		const int64 StepIdx = StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
 		TSharedPtr<FJsonObject> Reply = BuildStepReply(PostTime, StepIdx, PostFrameId,
 			Obs, Scene, Mgr, CameraSpec, CameraMinFrameIds);
@@ -498,6 +512,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	TSharedPtr<FJsonObject> Reply;
 	if (bSignaled && Cmd->bDone)
 	{
+		if (bWaitCameras && CameraSpec.Num() > 0)
+			WaitForCameraFrames(Mgr, CameraSpec, Cmd->ResultFrameId, CameraTimeoutMs, CameraMinFrameIds);
 		Reply = BuildStepReply(Cmd->ResultTime, Cmd->ResultStep, Cmd->ResultFrameId,
 			Cmd->Observations, Cmd->Entities, Mgr, CameraSpec, CameraMinFrameIds);
 	}

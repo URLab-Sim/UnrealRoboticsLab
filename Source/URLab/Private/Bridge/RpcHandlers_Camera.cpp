@@ -52,6 +52,43 @@
 #include "Misc/Guid.h"
 #include "Utils/URLabLogging.h"
 
+bool FURLabRpcDispatcher::WaitForCameraFrames(AAMjManager* Mgr,
+	const TMap<FString, ECameraInclude>& CameraSpec,
+	uint64 MinFrameId, int32 TimeoutMs,
+	TMap<FString, uint64>& CameraMinFrameIds)
+{
+	if (MinFrameId == 0 || CameraSpec.Num() == 0)
+		return true;
+
+	TMap<FString, UMjCamera*> ByName;
+	BuildCameraNameMap(Mgr, ByName);
+
+	const double Deadline = FPlatformTime::Seconds() + FMath::Max(0, TimeoutMs) / 1000.0;
+	bool bAllReady = true;
+	for (const TPair<FString, ECameraInclude>& Spec : CameraSpec)
+	{
+		UMjCamera* Cam = ByName.FindRef(Spec.Key);
+		if (!Cam)
+		{
+			bAllReady = false;
+			continue;
+		}
+		// Mark it consumed so per-camera capture gating keeps it live.
+		Cam->TouchRequested();
+		while (Cam->GetLatestFrameId() < MinFrameId
+			   && FPlatformTime::Seconds() < Deadline
+			   && !bDraining.load(std::memory_order_acquire))
+		{
+			FPlatformProcess::SleepNoStats(0.002f);
+		}
+		if (Cam->GetLatestFrameId() >= MinFrameId)
+			CameraMinFrameIds.Add(Spec.Key, MinFrameId);
+		else
+			bAllReady = false;
+	}
+	return bAllReady;
+}
+
 void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
 	TMap<FString, UMjCamera*>& OutByName)
 {

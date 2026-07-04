@@ -174,6 +174,18 @@ public:
 		const TMap<FString, ECameraInclude>& CameraSpec,
 		const TMap<FString, uint64>& CameraMinFrameIds);
 
+	/** Block the calling (RPC) thread until each requested camera has a frame
+	 *  with id >= MinFrameId, or the timeout elapses, or the bridge drains.
+	 *  For cameras that reach it, records MinFrameId as their floor in
+	 *  CameraMinFrameIds so the reply returns the frame showing this step's
+	 *  state; cameras that time out are left to return their latest frame
+	 *  (its smaller frame_id signals staleness to the client). Returns true if
+	 *  every requested camera reached MinFrameId. */
+	bool WaitForCameraFrames(AAMjManager* Mgr,
+		const TMap<FString, ECameraInclude>& CameraSpec,
+		uint64 MinFrameId, int32 TimeoutMs,
+		TMap<FString, uint64>& CameraMinFrameIds);
+
 	/** Build the name->camera lookup used to resolve include_cameras /
 	 *  set_camera_streaming keys: canonical "<art>/camera/<cam>", "<art>/<cam>",
 	 *  bare canonical, plus raw component / MJCF-name back-compat. First writer

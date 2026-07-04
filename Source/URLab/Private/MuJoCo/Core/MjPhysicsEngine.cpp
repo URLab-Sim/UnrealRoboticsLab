@@ -597,8 +597,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
 
 			// End-of-iteration pacing.
 			//
-			// Live mode: UE owns the clock. Spin-wait to TargetInterval so
-			//   the loop runs at real-time physics rate.
+			// Live mode: UE owns the clock. Pace to TargetInterval so the loop
+			//   runs at real-time physics rate. Sleep off the bulk of the wait
+			//   (relies on UE's ~1ms process timer resolution) and spin only the
+			//   final sub-millisecond for accuracy, rather than spinning the
+			//   whole interval and pinning a CPU core.
 			// Direct / Puppet: the client owns the clock. Block on
 			//   StepRequestEvent (signalled by the dispatcher on enqueue)
 			//   so we drain commands at the rate Python sends them rather
@@ -612,6 +615,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
 			{
 				const float SpeedFactor = FMath::Clamp(SimSpeedAtomic.load(std::memory_order_acquire), 5.0f, 100.0f) / 100.0f;
 				const double TargetTime = LoopStartTime + (TargetInterval / SpeedFactor);
+				const double Remaining = TargetTime - FPlatformTime::Seconds();
+				if (Remaining > 0.0015)
+				{
+					FPlatformProcess::SleepNoStats((float)(Remaining - 0.0005));
+				}
 				while (FPlatformTime::Seconds() < TargetTime)
 				{
 					FPlatformProcess::YieldThread();

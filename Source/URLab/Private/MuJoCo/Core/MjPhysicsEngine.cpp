@@ -167,6 +167,18 @@ UMjPhysicsEngine::UMjPhysicsEngine()
 
 void UMjPhysicsEngine::BeginDestroy()
 {
+	// Stop and JOIN the async worker before tearing anything down. The
+	// worker captures `this` and dereferences m_model / m_data /
+	// m_articulations every iteration, and it may be parked on
+	// StepRequestEvent — returning that event to the pool (below) while
+	// the worker still waits on it is a use-after-free. Wait() outside any
+	// lock the worker takes so it can reach its bShouldStopTask check.
+	bShouldStopTask = true;
+	if (StepRequestEvent)
+		StepRequestEvent->Trigger();
+	if (AsyncPhysicsFuture.IsValid())
+		AsyncPhysicsFuture.Wait();
+
 	if (StepRequestEvent)
 	{
 		FPlatformProcess::ReturnSynchEventToPool(StepRequestEvent);
@@ -607,6 +619,16 @@ bool UMjPhysicsEngine::CompileModel()
 	// observes bShouldStopTask without waiting out the Wait timeout.
 	if (StepRequestEvent)
 		StepRequestEvent->Trigger();
+
+	// JOIN the old worker before teardown. Without this, the worker can be
+	// mid-iteration (between its flag check and its CallbackMutex acquire)
+	// while we delete m_data/m_model and Empty() the arrays it iterates;
+	// worse, RunMujocoAsync() below resets bShouldStopTask=false, so a
+	// stalled old worker could resume against the NEW model. Wait() here,
+	// outside CallbackMutex, so the worker can reach its stop check.
+	if (AsyncPhysicsFuture.IsValid())
+		AsyncPhysicsFuture.Wait();
+
 	{
 		FScopeLock Lock(&CallbackMutex);
 		if (m_data)

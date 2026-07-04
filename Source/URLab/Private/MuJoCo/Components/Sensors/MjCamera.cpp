@@ -416,6 +416,19 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		}
 	}
 
+	HarvestCompletedReadbacks();
+
+	// Drive capture + readback and any delayed publish while active.
+	if (bStreamingEnabled && bActive)
+	{
+		AAMjManager* Mgr = AAMjManager::GetManager();
+		MaybeCapture(Mgr);
+		PublishDueDelayedFrames(Mgr);
+	}
+}
+
+void UMjCamera::HarvestCompletedReadbacks()
+{
 	// Drain completed async readbacks in FIFO order. Non-stalling: each is a
 	// GPU->staging copy that finishes a few frames after EnqueueCopy, so the
 	// harvest rate tracks the render rate instead of serialising on a sync
@@ -501,49 +514,51 @@ void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
 		}
 		InFlightReadbacks.RemoveAt(0);
 	}
+}
 
-	// Drive capture + readback. Two resource savers (see header):
+void UMjCamera::MaybeCapture(AAMjManager* Mgr)
+{
+	// Two resource savers (see header):
 	//  - bCaptureOnStateChange: only when the applied physics state advanced
 	//    (the rendered scene actually changed) -- skips redundant renders +
 	//    GPU readbacks between steps. Auto-capture is off in this mode, so issue
 	//    the scene render manually here right before the readback copy (both go
 	//    to the render thread in order). No-op in live (state moves every frame).
 	//  - CaptureMaxFps: an optional wall-clock cap on top.
-	if (bStreamingEnabled && bActive)
+	const uint64 AppliedId = Mgr ? Mgr->GetLastAppliedFrameId() : 0;
+	const double NowWall = FPlatformTime::Seconds();
+	const bool bFpsOk = (CaptureMaxFps <= 0.0f)
+		|| (NowWall - LastCaptureWallSeconds) >= (1.0 / static_cast<double>(CaptureMaxFps));
+	const bool bStateAdvanced = !bCaptureOnStateChange || (AppliedId != LastCapturedFrameId);
+
+	if (bFpsOk && bStateAdvanced)
 	{
-		AAMjManager* Mgr = AAMjManager::GetManager();
-		const uint64 AppliedId = Mgr ? Mgr->GetLastAppliedFrameId() : 0;
-		const double NowWall = FPlatformTime::Seconds();
-		const bool bFpsOk = (CaptureMaxFps <= 0.0f)
-			|| (NowWall - LastCaptureWallSeconds) >= (1.0 / static_cast<double>(CaptureMaxFps));
-		const bool bStateAdvanced = !bCaptureOnStateChange || (AppliedId != LastCapturedFrameId);
-
-		if (bFpsOk && bStateAdvanced)
+		if (bCaptureOnStateChange && CaptureComponent)
 		{
-			if (bCaptureOnStateChange && CaptureComponent)
-			{
-				CaptureComponent->CaptureScene();
-			}
-			RequestReadback();
-			LastCapturedFrameId = AppliedId;
-			LastCaptureWallSeconds = NowWall;
+			CaptureComponent->CaptureScene();
 		}
+		RequestReadback();
+		LastCapturedFrameId = AppliedId;
+		LastCaptureWallSeconds = NowWall;
+	}
+}
 
-		// Latency emulation: publish the delayed selection (newest frame whose
-		// reveal time <= now), each Seq exactly once, so the stream lags by the
-		// configured delay. The no-delay path already published inline at harvest.
-		if (IsDelayActive())
-		{
-			const double NowVal = bDelayUseWallClock
-				? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
-				: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
-			FMjCameraFrame Selected;
-			if (SelectDelayedFrame(NowVal, LastPublishedSeq, Selected))
-			{
-				PublishFrameToWorkers(Selected);
-				LastPublishedSeq = Selected.Seq;
-			}
-		}
+void UMjCamera::PublishDueDelayedFrames(AAMjManager* Mgr)
+{
+	// Publish the delayed selection (newest frame whose reveal time <= now),
+	// each Seq exactly once, so the stream lags by the configured delay. The
+	// no-delay path already published inline at harvest.
+	if (!IsDelayActive())
+		return;
+
+	const double NowVal = bDelayUseWallClock
+		? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
+		: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
+	FMjCameraFrame Selected;
+	if (SelectDelayedFrame(NowVal, LastPublishedSeq, Selected))
+	{
+		PublishFrameToWorkers(Selected);
+		LastPublishedSeq = Selected.Seq;
 	}
 }
 

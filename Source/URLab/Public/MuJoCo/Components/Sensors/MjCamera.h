@@ -448,6 +448,20 @@ private:
 	void SetupRenderTarget();
 	void RegisterWithStreamingManager();
 
+	/** Drain completed async readbacks (FIFO) into pixel frames: publish
+	 *  inline when no delay is configured and push each to the history ring.
+	 *  Stops at the first not-ready entry. Reusable by the tick and by any
+	 *  synchronous capture path that flushes the render thread first. */
+	void HarvestCompletedReadbacks();
+
+	/** Issue a scene capture + readback for the current applied state when the
+	 *  fps cap and state-change gate allow it. */
+	void MaybeCapture(class AAMjManager* Mgr);
+
+	/** With latency emulation on, publish the newest frame whose reveal time
+	 *  has passed (each Seq once). No-op when no delay is configured. */
+	void PublishDueDelayedFrames(class AAMjManager* Mgr);
+
 	/** Refresh HiddenComponents from live seg pools so a late-starting seg
 	 *  camera doesn't contaminate an already-streaming RGB/Depth capture. */
 	void RefreshHiddenComponentsFromSegPools();

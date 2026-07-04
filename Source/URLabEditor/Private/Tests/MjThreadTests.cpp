@@ -248,3 +248,57 @@ bool FMjThreadLivePacing::RunTest(const FString& Parameters)
 	S.Cleanup();
 	return true;
 }
+
+// ============================================================================
+// URLab.Thread.LiveSnapshotGating
+//   In live mode the worker steps continuously but should publish a render
+//   snapshot (bump FrameId) only when the game thread has asked for one, so the
+//   full-state copy runs at consumer rate rather than physics rate.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjThreadLiveSnapshotGating,
+	"URLab.Thread.LiveSnapshotGating",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjThreadLiveSnapshotGating::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("Init() failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+	Engine->SetResolvedStepMode(EStepMode::Live);
+	Engine->SetSimSpeed(100.0f);
+	Engine->SetPaused(false);
+	Engine->RunMujocoAsync();
+
+	// Let the worker flush the initial pending publish (bSnapshotWanted defaults
+	// true), then clear it: with no consumer asking, FrameId must hold steady
+	// even though the worker keeps stepping.
+	FPlatformProcess::Sleep(0.05f);
+	Engine->bSnapshotWanted.store(false, std::memory_order_release);
+	const uint64 IdIdle0 = Engine->GetRenderFrameId();
+	FPlatformProcess::Sleep(0.1f);
+	const uint64 IdIdle1 = Engine->GetRenderFrameId();
+
+	// Ask for one; the next step should publish.
+	Engine->bSnapshotWanted.store(true, std::memory_order_release);
+	FPlatformProcess::Sleep(0.05f);
+	const uint64 IdAfterRequest = Engine->GetRenderFrameId();
+
+	Engine->bShouldStopTask = true;
+	if (Engine->StepRequestEvent)
+		Engine->StepRequestEvent->Trigger();
+	if (Engine->AsyncPhysicsFuture.IsValid())
+		Engine->AsyncPhysicsFuture.Wait();
+
+	TestEqual(TEXT("FrameId holds steady while no consumer requests a snapshot"),
+		(int64)IdIdle1, (int64)IdIdle0);
+	TestTrue(TEXT("FrameId advances once a consumer requests a snapshot"),
+		IdAfterRequest > IdIdle1);
+
+	S.Cleanup();
+	return true;
+}

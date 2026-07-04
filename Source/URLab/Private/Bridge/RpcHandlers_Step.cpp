@@ -1199,6 +1199,7 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		// before the physics loop's own PushRenderState() runs, returning the
 		// previous step's id and breaking camera frame association.
 		Engine->PushRenderState();
+		Engine->bRenderStatePublishedThisStep = true; // loop tail must not republish
 		Cmd->ResultFrameId = Engine->GetRenderFrameId();
 		Cmd->bDone = true;
 		if (Cmd->Completion)

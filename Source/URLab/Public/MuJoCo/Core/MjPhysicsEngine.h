@@ -129,6 +129,12 @@ public:
 	 *  physics rate. Direct/puppet publish every step (frame association). */
 	std::atomic<bool> bSnapshotWanted{true};
 
+	/** Worker-thread only. Reset at the top of each worker iteration; a step
+	 *  handler that publishes the render snapshot itself (direct mode captures
+	 *  its exact frame id for the reply) sets this so the loop tail does not
+	 *  publish again and bump the id past what the step reported. */
+	bool bRenderStatePublishedThisStep = false;
+
 	// --- Step Callbacks ---
 
 	/** If bound, replaces mj_step (direct/puppet stepping and replay).

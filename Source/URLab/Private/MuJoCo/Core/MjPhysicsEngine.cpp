@@ -469,6 +469,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// direct/puppet wakes leave this false.
 				bool bAdvanced = false;
 
+				// A step handler that self-publishes (direct mode) sets this so
+				// the tail below doesn't publish a second time and advance the
+				// id past what the step reported.
+				bRenderStatePublishedThisStep = false;
+
 				if (bPendingReset)
 				{
 					mj_resetData(m_model, m_data);
@@ -584,7 +589,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// publish only when it asked (bSnapshotWanted) instead of
 				// copying the full snapshot every physics step; direct/puppet
 				// publish every step because the client associates frames by id.
-				if (bAdvanced)
+				if (bAdvanced && !bRenderStatePublishedThisStep)
 				{
 					const bool bWantPublish = (Mode != EStepMode::Live)
 						|| bSnapshotWanted.exchange(false, std::memory_order_acq_rel);

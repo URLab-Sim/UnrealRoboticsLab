@@ -510,7 +510,11 @@ void AAMjManager::ApplyLatestRenderState()
 		return;
 	}
 
-	const TArray<AMjArticulation*> Arts = PhysicsEngine->GetAllArticulations();
+	// Ask the live-mode worker to publish a fresh snapshot; it copies the
+	// full state only when a consumer (this tick) has requested one.
+	PhysicsEngine->bSnapshotWanted.store(true, std::memory_order_release);
+
+	const TArray<AMjArticulation*>& Arts = PhysicsEngine->GetAllArticulations();
 	const TArray<UMjQuickConvertComponent*> Quicks = PhysicsEngine->GetAllQuickComponents();
 
 	PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& Snap) {

@@ -580,9 +580,18 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// just stepped. Gated on bAdvanced: bumping FrameId on an
 				// unchanged frame re-triggers state-change camera capture on
 				// identical pixels and inflates FrameId at the idle wake rate.
+				// In live mode the game thread consumes at frame rate, so
+				// publish only when it asked (bSnapshotWanted) instead of
+				// copying the full snapshot every physics step; direct/puppet
+				// publish every step because the client associates frames by id.
 				if (bAdvanced)
 				{
-					PushRenderState();
+					const bool bWantPublish = (Mode != EStepMode::Live)
+						|| bSnapshotWanted.exchange(false, std::memory_order_acq_rel);
+					if (bWantPublish)
+					{
+						PushRenderState();
+					}
 				}
 			} // FScopeLock released here
 

@@ -123,6 +123,12 @@ public:
 	std::atomic<float> SimSpeedAtomic{100.0f};
 	std::atomic<EStepMode> ResolvedStepMode{EStepMode::Live};
 
+	/** Set by the game thread each time it consumes the render snapshot; the
+	 *  live-mode worker publishes a new snapshot only when it is set, so the
+	 *  full-state copy runs at the consumer's frame rate rather than the
+	 *  physics rate. Direct/puppet publish every step (frame association). */
+	std::atomic<bool> bSnapshotWanted{true};
+
 	// --- Step Callbacks ---
 
 	/** If bound, replaces mj_step (direct/puppet stepping and replay).

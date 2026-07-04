@@ -306,6 +306,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		mjModel* m = Mgr->PhysicsEngine->GetModel();
 		mjData* d = Mgr->PhysicsEngine->GetData();
 
+		TSharedPtr<FJsonObject> Obs;
+		TSharedPtr<FJsonObject> Scene;
+		uint64 PostFrameId = 0;
+		double PostTime = 0.0;
 		{
 			FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
 			if (Push.QPos.Num() == m->nq)
@@ -327,21 +331,27 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 			// consumer would lag the pushed state. The synchronous camera
 			// path below relies on this snapshot being current.
 			Mgr->PhysicsEngine->PushRenderState();
+
+			// Read observations/entities and the reply's time + frame id from d
+			// while still holding the lock. The puppet-mode worker wakes on its
+			// idle timeout and can mutate d (mocap/wrench drain), which would
+			// tear a read done after the lock releases.
+			PostFrameId = Mgr->PhysicsEngine->GetRenderFrameId();
+			PostTime = d->time;
+			Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
+			Scene = BuildEntitiesBlock(Mgr, m, d);
 		}
 
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 		Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-		Reply->SetNumberField(TEXT("time"), d->time);
+		Reply->SetNumberField(TEXT("time"), PostTime);
 		Reply->SetNumberField(TEXT("step"), StepCounter.fetch_add(1, std::memory_order_relaxed) + 1);
-		AppendClockFields(Reply, d->time);
+		AppendClockFields(Reply, PostTime);
 		// Post-step state id: the client passes this back as a camera frame_id
 		// to fetch the image that shows this exact step's state.
-		Reply->SetNumberField(TEXT("frame_id"),
-			static_cast<double>(Mgr->PhysicsEngine->GetRenderFrameId()));
-		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
+		Reply->SetNumberField(TEXT("frame_id"), static_cast<double>(PostFrameId));
 		if (Obs.IsValid())
 			Reply->SetObjectField(TEXT("per_articulation"), Obs);
-		TSharedPtr<FJsonObject> Scene = BuildEntitiesBlock(Mgr, m, d);
 		if (Scene.IsValid())
 			Reply->SetObjectField(TEXT("entities"), Scene);
 		if (CameraSpec.Num() > 0)

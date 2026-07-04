@@ -516,14 +516,34 @@ void UMjCamera::HarvestCompletedReadbacks()
 	}
 }
 
+void UMjCamera::WaitAndHarvestReadbacks(double TimeoutSeconds)
+{
+	const double Deadline = FPlatformTime::Seconds() + TimeoutSeconds;
+	while (InFlightReadbacks.Num() > 0)
+	{
+		const FInFlightReadback& Front = InFlightReadbacks[0];
+		const bool bReady = Front.Gpu.IsValid() && Front.Gpu->IsReady();
+		if (bReady)
+		{
+			HarvestCompletedReadbacks(); // drains the ready prefix
+		}
+		else if (FPlatformTime::Seconds() < Deadline)
+		{
+			FPlatformProcess::SleepNoStats(0.0005f);
+		}
+		else
+		{
+			break; // timed out waiting on the GPU copy
+		}
+	}
+}
+
 void UMjCamera::IssueSyncCapture()
 {
-	// Bring capture resources up if a client asks an otherwise-idle camera for
-	// a synchronous frame (RequestReadback no-ops while streaming is disabled).
-	if (!bStreamingEnabled)
-	{
-		SetStreamingEnabled(true);
-	}
+	// Assumes streaming is enabled and the render target is allocated: a
+	// freshly-enabled camera's RT is sized by a render-thread round trip, so
+	// the caller must flush once after enabling before the first capture, or
+	// RequestReadback no-ops on the not-yet-sized target.
 	TouchRequested();
 	if (CaptureComponent && CaptureComponent->TextureTarget)
 	{

@@ -94,24 +94,38 @@ bool FURLabRpcDispatcher::RenderCamerasSync(AAMjManager* Mgr,
 		BuildCameraNameMap(Mgr, ByName);
 
 		// Apply the just-produced physics snapshot so the captures render this
-		// step's state, then capture + read back every requested camera.
+		// step's state.
 		Mgr->ApplyLatestRenderState();
 
+		// Ensure every requested camera is streaming; a freshly-enabled RT is
+		// sized by a render-thread round trip, so flush once before capturing
+		// or the first readback no-ops on the not-yet-sized target.
 		TArray<UMjCamera*> Cams;
+		bool bWarmupNeeded = false;
 		for (const FString& K : Keys)
 		{
 			if (UMjCamera* Cam = ByName.FindRef(K))
 			{
-				Cam->IssueSyncCapture();
+				if (!Cam->IsStreamingActive())
+				{
+					Cam->SetStreamingEnabled(true);
+					bWarmupNeeded = true;
+				}
 				Cams.Add(Cam);
 			}
 		}
+		if (bWarmupNeeded)
+			FlushRenderingCommands();
 
-		// One flush completes every capture + readback copy.
+		for (UMjCamera* Cam : Cams)
+			Cam->IssueSyncCapture();
+
+		// Submit the captures + readback copies, then block on the GPU fence
+		// (a flush only submits; it does not wait for the copy to finish).
 		FlushRenderingCommands();
 
 		for (UMjCamera* Cam : Cams)
-			Cam->HarvestCompletedReadbacks();
+			Cam->WaitAndHarvestReadbacks(0.25);
 
 		for (const FString& K : Keys)
 		{

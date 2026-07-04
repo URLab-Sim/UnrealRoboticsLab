@@ -370,8 +370,10 @@ public:
 	void RequestReadback();
 
 	/** Render-on-demand: capture the scene and enqueue a readback right now for
-	 *  the current applied state. Pair with HarvestCompletedReadbacks after a
-	 *  FlushRenderingCommands to pull the frame into history synchronously. */
+	 *  the current applied state. Requires streaming already enabled with the
+	 *  render target allocated (flush once after enabling a cold camera). Pair
+	 *  with HarvestCompletedReadbacks after a FlushRenderingCommands to pull the
+	 *  frame into history synchronously. */
 	void IssueSyncCapture();
 
 	/** Drain completed async readbacks (FIFO) into pixel frames and the history
@@ -379,6 +381,15 @@ public:
 	 *  not-ready entry. Called each tick and by the synchronous render path
 	 *  (after a render-thread flush). */
 	void HarvestCompletedReadbacks();
+
+	/** Block (up to TimeoutSeconds) for the in-flight readbacks' GPU copies to
+	 *  finish, harvesting each as it becomes ready. FlushRenderingCommands only
+	 *  guarantees the copy is submitted, not that the GPU has completed it, so
+	 *  the synchronous render path waits on the fence here before reading. */
+	void WaitAndHarvestReadbacks(double TimeoutSeconds);
+
+	/** Count of async readbacks currently awaiting harvest (diagnostics). */
+	int32 NumInFlightReadbacks() const { return InFlightReadbacks.Num(); }
 
 	/**
 	 * @brief Fetch a frame from this camera's history ring (thread-safe).

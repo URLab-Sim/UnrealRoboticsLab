@@ -227,7 +227,7 @@ void UMjPhysicsEngine::PreCompile()
 		if (AMjArticulation* Articulation = Cast<AMjArticulation>(actor))
 		{
 			Articulation->Setup(m_spec, &m_vfs);
-			m_articulations.Add(Articulation);
+			RegisterArticulation(Articulation);
 			if (FMujocoSpecWrapper* W = Articulation->GetWrapper())
 			{
 				for (const FString& Path : W->ActiveAssetPaths)
@@ -768,6 +768,24 @@ AMjArticulation* UMjPhysicsEngine::GetArticulation(const FString& ActorName) con
 			return Art;
 	}
 	return nullptr;
+}
+
+void UMjPhysicsEngine::RegisterArticulation(AMjArticulation* Articulation)
+{
+	if (!Articulation)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_articulations.AddUnique(Articulation);
+	m_ArticulationMap.Add(Articulation->GetName(), Articulation);
+}
+
+void UMjPhysicsEngine::RemoveArticulation(AMjArticulation* Articulation)
+{
+	if (!Articulation)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_articulations.Remove(Articulation);
+	m_ArticulationMap.Remove(Articulation->GetName());
 }
 
 const TArray<AMjArticulation*>& UMjPhysicsEngine::GetAllArticulations() const

@@ -260,6 +260,14 @@ public:
 	EControlSource GetControlSource() const;
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
 	const TArray<AMjArticulation*>& GetAllArticulations() const;
+
+	/** Add / remove an articulation from the registry the physics worker
+	 *  iterates (ApplyControls). Both take CallbackMutex so a spawn/despawn
+	 *  can't tear the array or the name map out from under a running step.
+	 *  Registration currently happens in bulk at compile time; RemoveArticulation
+	 *  is the entry point for dynamic despawn. */
+	void RegisterArticulation(AMjArticulation* Articulation);
+	void RemoveArticulation(AMjArticulation* Articulation);
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 	FString GetLastCompileError() const;

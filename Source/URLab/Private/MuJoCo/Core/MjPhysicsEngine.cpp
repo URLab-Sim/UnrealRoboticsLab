@@ -500,10 +500,22 @@ void UMjPhysicsEngine::RunMujocoAsync()
 
 				if (bPendingRestore)
 				{
-					bPendingRestore = false;
-					if (PendingStateVector.Num() > 0)
+					TArray<double> RestoreState;
+					int32 RestoreMask = 0;
 					{
-						mj_setState(m_model, m_data, PendingStateVector.GetData(), PendingStateMask);
+						// Swap the pending vector out under CommandMutex so a
+						// concurrent RestoreSnapshot can't tear it mid-read.
+						FScopeLock CmdLock(&CommandMutex);
+						if (bPendingRestore)
+						{
+							RestoreState = MoveTemp(PendingStateVector);
+							RestoreMask = PendingStateMask;
+							bPendingRestore = false;
+						}
+					}
+					if (RestoreState.Num() > 0)
+					{
+						mj_setState(m_model, m_data, RestoreState.GetData(), RestoreMask);
 						mj_forward(m_model, m_data);
 						bAdvanced = true;
 					}
@@ -783,19 +795,22 @@ void UMjPhysicsEngine::ClearCustomStepHandler()
 
 UMjSimulationState* UMjPhysicsEngine::CaptureSnapshot()
 {
+	check(IsInGameThread()); // NewObject must run on the game thread
 	if (!m_model || !m_data)
 		return nullptr;
 
 	UMjSimulationState* NewSnapshot = NewObject<UMjSimulationState>(GetOwner());
 
-	uint32 Mask = mjSTATE_INTEGRATION;
-
-	int nState = mj_stateSize(m_model, Mask);
+	const uint32 Mask = mjSTATE_INTEGRATION;
+	const int nState = mj_stateSize(m_model, Mask);
 	NewSnapshot->StateVector.SetNum(nState);
 	NewSnapshot->StateMask = (int32)Mask;
-	NewSnapshot->SimTime = (float)m_data->time;
 
 	{
+		// Read the live state under the step lock so the capture can't tear
+		// against the physics worker mid-step.
+		FScopeLock Lock(&CallbackMutex);
+		NewSnapshot->SimTime = (float)m_data->time;
 		mj_getState(m_model, m_data, NewSnapshot->StateVector.GetData(), Mask);
 	}
 
@@ -808,9 +823,14 @@ void UMjPhysicsEngine::RestoreSnapshot(UMjSimulationState* Snapshot)
 	if (!Snapshot)
 		return;
 
-	PendingStateVector = Snapshot->StateVector;
-	PendingStateMask = Snapshot->StateMask;
-	bPendingRestore = true;
+	{
+		// Match the worker's guarded swap so two restores (or a restore vs the
+		// worker's read) can't tear the vector.
+		FScopeLock Lock(&CommandMutex);
+		PendingStateVector = Snapshot->StateVector;
+		PendingStateMask = Snapshot->StateMask;
+		bPendingRestore = true;
+	}
 
 	UE_LOG(LogURLab, Log, TEXT("MuJoCo PhysicsEngine: Restore requested for snapshot t=%f"), Snapshot->SimTime);
 }

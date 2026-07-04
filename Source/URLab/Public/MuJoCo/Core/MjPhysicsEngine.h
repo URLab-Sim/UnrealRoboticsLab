@@ -247,7 +247,7 @@ public:
 	void SetControlSource(EControlSource NewSource);
 	EControlSource GetControlSource() const;
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
-	TArray<AMjArticulation*> GetAllArticulations() const;
+	const TArray<AMjArticulation*>& GetAllArticulations() const;
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 	FString GetLastCompileError() const;

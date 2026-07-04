@@ -588,7 +588,7 @@ AMjArticulation* AAMjManager::GetArticulation(const FString& ActorName) const
 	return PhysicsEngine ? PhysicsEngine->GetArticulation(ActorName) : nullptr;
 }
 
-TArray<AMjArticulation*> AAMjManager::GetAllArticulations() const
+const TArray<AMjArticulation*>& AAMjManager::GetAllArticulations() const
 {
 	return PhysicsEngine ? PhysicsEngine->GetAllArticulations() : m_articulations;
 }

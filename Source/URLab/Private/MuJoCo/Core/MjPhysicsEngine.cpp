@@ -736,7 +736,7 @@ AMjArticulation* UMjPhysicsEngine::GetArticulation(const FString& ActorName) con
 	return nullptr;
 }
 
-TArray<AMjArticulation*> UMjPhysicsEngine::GetAllArticulations() const
+const TArray<AMjArticulation*>& UMjPhysicsEngine::GetAllArticulations() const
 {
 	return m_articulations;
 }

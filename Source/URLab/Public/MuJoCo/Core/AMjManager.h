@@ -124,7 +124,7 @@ public:
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
-	TArray<AMjArticulation*> GetAllArticulations() const;
+	const TArray<AMjArticulation*>& GetAllArticulations() const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;

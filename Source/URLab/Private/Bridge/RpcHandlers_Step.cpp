@@ -1125,9 +1125,11 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 
 		// control_mode="raw" per articulation bypasses the UE controller
 		// (NetworkValue treated as direct ctrl setpoint). Name-keyed so
-		// adding/removing articulations doesn't shift the mapping.
+		// adding/removing articulations doesn't shift the mapping. The set is
+		// fixed for this command (registration is compile-time), so read it once.
+		const TArray<AMjArticulation*>& Arts = Mgr->GetAllArticulations();
 		TMap<AMjArticulation*, bool> SkipController;
-		for (AMjArticulation* Art : Mgr->GetAllArticulations())
+		for (AMjArticulation* Art : Arts)
 		{
 			if (!Art)
 				continue;
@@ -1138,7 +1140,7 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 
 		for (int32 i = 0; i < Cmd->Request.NSteps; ++i)
 		{
-			for (AMjArticulation* Art : Mgr->GetAllArticulations())
+			for (AMjArticulation* Art : Arts)
 			{
 				if (!Art)
 					continue;

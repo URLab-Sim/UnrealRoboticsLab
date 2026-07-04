@@ -517,6 +517,8 @@ void UMjCamera::HarvestCompletedReadbacks()
 			if (bPublishInline)
 				PublishFrameToWorkers(Frame);
 			PushFrameToHistory(MoveTemp(Frame));
+			// Recycle the readback object (clean after Unlock) for reuse.
+			FreeReadbacks.Add(MoveTemp(Front.Gpu));
 		}
 		InFlightReadbacks.RemoveAt(0);
 	}
@@ -854,6 +856,8 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			FlushRenderingCommands();
 			InFlightReadbacks.Empty();
 		}
+		// Recycled objects have no pending copy; safe to drop after the flush.
+		FreeReadbacks.Empty();
 
 		// Drop the RT so the next enable rebuilds it in the current CaptureMode.
 		RenderTarget = nullptr;
@@ -908,7 +912,14 @@ void UMjCamera::RequestReadback()
 	}
 
 	FInFlightReadback Entry;
-	Entry.Gpu = MakeUnique<FRHIGPUTextureReadback>(TEXT("MjCameraReadback"));
+	if (FreeReadbacks.Num() > 0)
+	{
+		Entry.Gpu = FreeReadbacks.Pop(EAllowShrinking::No); // recycle
+	}
+	else
+	{
+		Entry.Gpu = MakeUnique<FRHIGPUTextureReadback>(TEXT("MjCameraReadback"));
+	}
 	Entry.Width = Size.X;
 	Entry.Height = Size.Y;
 	Entry.EnqueueSeconds = FPlatformTime::Seconds();

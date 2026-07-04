@@ -533,6 +533,11 @@ private:
 	TArray<FInFlightReadback> InFlightReadbacks;
 	static constexpr int32 MaxInFlightReadbacks = 3;
 
+	// Recycle pool for the readback objects. FRHIGPUTextureReadback owns a
+	// staging texture, so reuse them (EnqueueCopy re-arms in place) rather than
+	// allocating one per request -- at 6 cams x 30 Hz that was ~180 allocs/s.
+	TArray<TUniquePtr<FRHIGPUTextureReadback>> FreeReadbacks;
+
 	// Diagnostic accumulators for the readback enqueue->ready latency log (~1/s).
 	double ReadbackLatencyAccumMs = 0.0;
 	double ReadbackLatencyMaxMs = 0.0;

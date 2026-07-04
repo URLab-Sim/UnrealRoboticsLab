@@ -192,3 +192,59 @@ bool FMjThreadModelIntegrity::RunTest(const FString& Parameters)
 	S.Cleanup();
 	return true;
 }
+
+// ============================================================================
+// URLab.Thread.LivePacing
+//   Runs the async worker in live mode for a wall-clock window and checks that
+//   sim time advances at ~real time. Guards two runtime behaviours the headless
+//   suite otherwise can't see: the resolved-step-mode fix (a default Auto scene
+//   used to fall through to the ~10Hz step-event timeout instead of the pacer)
+//   and the hybrid-sleep pacer (must hold the rate, not overshoot into slow-mo).
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjThreadLivePacing,
+	"URLab.Thread.LivePacing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjThreadLivePacing::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("Init() failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+
+	// Live mode, full speed, unpaused, worker running.
+	Engine->SetResolvedStepMode(EStepMode::Live);
+	Engine->SetSimSpeed(100.0f);
+	Engine->SetPaused(false);
+	Engine->RunMujocoAsync();
+
+	const double SimStart = Engine->GetSimTime();
+	const double WallStart = FPlatformTime::Seconds();
+	FPlatformProcess::Sleep(0.5f);
+	const double WallElapsed = FPlatformTime::Seconds() - WallStart;
+	const double SimElapsed = Engine->GetSimTime() - SimStart;
+
+	// Stop and join the worker before the session tears the engine down.
+	Engine->bShouldStopTask = true;
+	if (Engine->StepRequestEvent)
+		Engine->StepRequestEvent->Trigger();
+	if (Engine->AsyncPhysicsFuture.IsValid())
+		Engine->AsyncPhysicsFuture.Wait();
+
+	const double Ratio = (WallElapsed > 0.0) ? (SimElapsed / WallElapsed) : 0.0;
+	AddInfo(FString::Printf(TEXT("LivePacing: sim=%.3fs wall=%.3fs ratio=%.2f"),
+		SimElapsed, WallElapsed, Ratio));
+
+	// Real-time pacing at 100%: sim advances ~= wall (ratio ~1). The old ~10Hz
+	// lock gives ratio ~0.02; a pacer that oversleeps gives ratio well under 1;
+	// no pacing at all gives ratio well over 1. Wide window to stay non-flaky.
+	TestTrue(FString::Printf(TEXT("Live sim advances ~ real time (ratio=%.2f, want 0.5-1.5)"), Ratio),
+		Ratio > 0.5 && Ratio < 1.5);
+
+	S.Cleanup();
+	return true;
+}

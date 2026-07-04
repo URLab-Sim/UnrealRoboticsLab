@@ -437,11 +437,18 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				if (!m_model || !m_data || bShouldStopTask)
 					break;
 
+				// Did mjData actually change this iteration? Only then do we
+				// publish a render snapshot (which bumps FrameId and drives
+				// state-change camera capture). Paused iterations and idle
+				// direct/puppet wakes leave this false.
+				bool bAdvanced = false;
+
 				if (bPendingReset)
 				{
 					mj_resetData(m_model, m_data);
 					mj_forward(m_model, m_data);
 					bPendingReset = false;
+					bAdvanced = true;
 
 					// Zero all actuator control values so stale commands
 					// don't persist after reset.
@@ -472,6 +479,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					{
 						mj_setState(m_model, m_data, PendingStateVector.GetData(), PendingStateMask);
 						mj_forward(m_model, m_data);
+						bAdvanced = true;
 					}
 				}
 
@@ -497,30 +505,51 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					}
 				}
 
-				DrainCommands();
+				// A mocap/wrench edit mutates m_data even while paused, so it
+				// counts as an advance (publish it).
+				bAdvanced |= DrainCommands();
 
 				if (!bIsPaused)
 				{
 					if (CustomStepHandler)
-						CustomStepHandler(m_model, m_data);
+					{
+						// Direct/puppet/replay handler. It owns its own
+						// OnPostStep notification and returns true iff it
+						// dequeued work and stepped this call.
+						bAdvanced |= CustomStepHandler(m_model, m_data);
+					}
 					else
+					{
 						mj_step(m_model, m_data);
+						// Live/streaming path has no custom handler, so the loop
+						// owns the single post-step notification here. Handlers
+						// call OnPostStep themselves, so the loop must not — that
+						// would double-fire recorders in direct mode.
+						if (OnPostStep)
+							OnPostStep(m_model, m_data);
+						bAdvanced = true;
+					}
 				}
 
+				// Streaming publishers / debug capture, left unconditional:
+				// they broadcast on their own channels and the puppet inline
+				// push path (RPC thread) doesn't route through this loop, so
+				// gating them on bAdvanced here would change puppet-mode
+				// streaming cadence.
 				for (const FPhysicsCallback& Cb : PostStepCallbacks)
 				{
 					Cb(m_model, m_data);
 				}
 
-				if (OnPostStep)
+				// Publish a coherent render snapshot for game-thread consumers,
+				// inside the same CallbackMutex scope so it reflects the m_data
+				// just stepped. Gated on bAdvanced: bumping FrameId on an
+				// unchanged frame re-triggers state-change camera capture on
+				// identical pixels and inflates FrameId at the idle wake rate.
+				if (bAdvanced)
 				{
-					OnPostStep(m_model, m_data);
+					PushRenderState();
 				}
-
-				// Publish a coherent render snapshot for game-thread
-				// consumers. Inside the same CallbackMutex scope so the
-				// snapshot reflects the m_data that was just stepped.
-				PushRenderState();
 			} // FScopeLock released here
 
 			// End-of-iteration pacing.
@@ -950,16 +979,16 @@ void UMjPhysicsEngine::ApplySleepBody(int32 BodyId)
 	}
 }
 
-void UMjPhysicsEngine::DrainCommands()
+bool UMjPhysicsEngine::DrainCommands()
 {
 	if (!m_model || !m_data)
-		return;
+		return false;
 
 	FCommandQueue Local;
 	{
 		FScopeLock Lock(&CommandMutex);
 		if (PendingCommands.IsEmpty())
-			return;
+			return false;
 		Local = MoveTemp(PendingCommands);
 		PendingCommands = FCommandQueue();
 	}
@@ -991,4 +1020,6 @@ void UMjPhysicsEngine::DrainCommands()
 			continue;
 		FMemory::Memzero(m_data->xfrc_applied + 6 * BodyId, sizeof(double) * 6);
 	}
+
+	return true;
 }

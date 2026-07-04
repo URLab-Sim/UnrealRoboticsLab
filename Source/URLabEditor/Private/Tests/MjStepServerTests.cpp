@@ -1087,6 +1087,64 @@ bool FMjStepServerDirectHandler::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// 12b. Render frame id advances only when the sim state actually advances.
+//      An idle worker wake (step handler dequeues nothing) must report no
+//      advance and leave the frame id unchanged; a real step bumps it by one.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerFrameIdGating,
+	"URLab.StepServer.FrameIdGating",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjStepServerFrameIdGating::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		S.Cleanup();
+		return false;
+	}
+	Disp->SetActiveStepMode(EStepMode::Direct);
+
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+	mjModel* m = Engine->GetModel();
+	mjData* d = Engine->GetData();
+	if (!m || !d || !Engine->CustomStepHandler)
+	{
+		AddError(TEXT("Direct mode did not install a CustomStepHandler"));
+		S.Cleanup();
+		return false;
+	}
+
+	// Idle wake: empty queue -> no advance, frame id frozen.
+	const int64 IdBefore = (int64)Engine->GetRenderFrameId();
+	const bool bAdvancedIdle = Engine->CustomStepHandler(m, d);
+	TestFalse(TEXT("Empty-queue step reports no advance"), bAdvancedIdle);
+	TestEqual(TEXT("FrameId unchanged on idle wake"),
+		(int64)Engine->GetRenderFrameId(), IdBefore);
+
+	// Real step: a queued request advances and bumps the frame id once.
+	FMjStepRequest Req;
+	Req.NSteps = 1;
+	Disp->EnqueueStepRequestForTest(MoveTemp(Req));
+	const bool bAdvancedStep = Engine->CustomStepHandler(m, d);
+	TestTrue(TEXT("Queued step reports advance"), bAdvancedStep);
+	TestEqual(TEXT("FrameId +1 after a real step"),
+		(int64)Engine->GetRenderFrameId(), IdBefore + 1);
+
+	Disp->SetActiveStepMode(EStepMode::Live);
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // 13. Perturbation snapshot is reachable from the step server (Puppet path)
 // ---------------------------------------------------------------------------
 #include "MuJoCo/Input/MjPerturbation.h"

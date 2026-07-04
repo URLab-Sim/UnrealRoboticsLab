@@ -2360,10 +2360,10 @@ void FURLabRpcDispatcher::InstallPuppetHandler()
 		return;
 
 	UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
-	PuppetStepHandler = [this, Engine](mjModel* m, mjData* d) {
+	PuppetStepHandler = [this, Engine](mjModel* m, mjData* d) -> bool {
 		FMjPushStateRequest Req;
 		if (!PushStateQueue.Dequeue(Req))
-			return;
+			return false; // idle wake, nothing pushed — no advance
 		if (Req.QPos.Num() == m->nq)
 			FMemory::Memcpy(d->qpos, Req.QPos.GetData(), m->nq * sizeof(mjtNum));
 		if (Req.QVel.Num() == m->nv)
@@ -2374,6 +2374,7 @@ void FURLabRpcDispatcher::InstallPuppetHandler()
 		mj_forward(m, d);
 		if (Engine->OnPostStep)
 			Engine->OnPostStep(m, d);
+		return true;
 	};
 	Engine->SetCustomStepHandler(PuppetStepHandler);
 	bPuppetHandlerInstalled = true;
@@ -2401,12 +2402,12 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		return;
 
 	UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
-	DirectStepHandler = [this, Engine, Mgr](mjModel* m, mjData* d) {
+	DirectStepHandler = [this, Engine, Mgr](mjModel* m, mjData* d) -> bool {
 		// Only the physics-engine async worker thread runs this handler,
 		// so d is exclusively owned for its duration.
 		TSharedPtr<FMjDirectStepCommand> Cmd;
 		if (!StepQueue.Dequeue(Cmd) || !Cmd.IsValid())
-			return;
+			return false; // idle wake, no step requested — no advance
 
 		ApplyStepCtrl(Mgr, Cmd->Request, m, d);
 
@@ -2452,6 +2453,7 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		Cmd->bDone = true;
 		if (Cmd->Completion)
 			Cmd->Completion->Trigger();
+		return true;
 	};
 	Engine->SetCustomStepHandler(DirectStepHandler);
 	bDirectHandlerInstalled = true;

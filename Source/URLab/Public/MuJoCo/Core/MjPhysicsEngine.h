@@ -111,8 +111,13 @@ public:
 
 	// --- Step Callbacks ---
 
-	/** If bound, replaces mj_step (used by replay). */
-	using FMujocoStepCallback = std::function<void(mjModel*, mjData*)>;
+	/** If bound, replaces mj_step (direct/puppet stepping and replay).
+	 *  Returns true iff it advanced sim state this call (dequeued work and
+	 *  stepped); false on an idle wake with nothing to do, so the worker
+	 *  loop can skip the render-snapshot publish instead of inflating
+	 *  FrameId on unchanged state. A handler that steps owns its own
+	 *  OnPostStep notification (per sub-step for direct mode). */
+	using FMujocoStepCallback = std::function<bool(mjModel*, mjData*)>;
 	FMujocoStepCallback CustomStepHandler;
 
 	/** Called after mj_step (or custom step); used for recording. */
@@ -336,6 +341,8 @@ private:
 	FCommandQueue PendingCommands;
 
 	/** Drains PendingCommands into m_data. Must be called by the
-	 *  stepping thread while it already holds CallbackMutex. */
-	void DrainCommands();
+	 *  stepping thread while it already holds CallbackMutex. Returns true
+	 *  iff it applied at least one command, so the caller can treat a mocap
+	 *  / wrench edit as a state advance (publish it) even while paused. */
+	bool DrainCommands();
 };

@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Components/Sensors/MjCameraSubsystem.h"
 #include "MuJoCo/Components/Sensors/CameraShmWriter.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
@@ -273,8 +274,10 @@ UMjDebugVisualizer* FindDebugVisualizer(UWorld* FallbackWorld = nullptr)
 
 UMjCamera::UMjCamera()
 {
-	PrimaryComponentTick.bCanEverTick = true;
-	PrimaryComponentTick.bStartWithTickEnabled = true;
+	// The capture pipeline is driven once per frame by UMjCameraSubsystem, not a
+	// per-component tick.
+	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
 
 	// Default resolution: codegen emits resolution as TArray<int32>{} (empty); seed [w,h].
 	resolution = {640, 480};
@@ -351,10 +354,27 @@ void UMjCamera::BeginPlay()
 	{
 		SetStreamingEnabled(true);
 	}
+
+	// Register with the world subsystem that drives the per-frame capture pass.
+	if (UWorld* World = GetWorld())
+	{
+		if (UMjCameraSubsystem* Sub = World->GetSubsystem<UMjCameraSubsystem>())
+		{
+			Sub->RegisterCamera(this);
+		}
+	}
 }
 
 void UMjCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UWorld* World = GetWorld())
+	{
+		if (UMjCameraSubsystem* Sub = World->GetSubsystem<UMjCameraSubsystem>())
+		{
+			Sub->UnregisterCamera(this);
+		}
+	}
+
 	if (AAMjManager* Manager = AAMjManager::GetManager())
 	{
 		if (Manager->NetworkManager)
@@ -381,11 +401,8 @@ void UMjCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UMjCamera::TickComponent(float DeltaTime, ELevelTick TickType,
-	FActorComponentTickFunction* ThisTickFunction)
+void UMjCamera::UpdateCapturePipeline()
 {
-	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
 	const bool bActive = IsCaptureActive();
 
 	// Per-camera capture gating: lazily start capturing when a camera becomes
@@ -634,6 +651,7 @@ void UMjCamera::SetupRenderTarget()
 
 	CaptureComponent->TextureTarget = RT;
 	CaptureComponent->bAlwaysPersistRenderingState = true;
+	CaptureComponent->bRenderInMainRenderer = bRenderInMainRenderer;
 	CaptureComponent->MaxViewDistanceOverride = -1.0f;
 	// 1mm near clip on every capture mode — without this, robot-internal
 	// geometry can intrude on the frustum and produce black-on-black frames

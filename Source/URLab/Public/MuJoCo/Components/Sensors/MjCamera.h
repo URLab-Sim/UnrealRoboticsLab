@@ -266,6 +266,15 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Streaming")
 	float StreamingBoost = 1.0f;
 
+	/** Render this capture as nested passes of the main renderer (UE 5.3+),
+	 *  sharing visibility/GPU-scene setup, instead of a standalone scene render
+	 *  -- cheaper with many live cameras. Off by default: it renders on the main
+	 *  render cadence, so it is NOT compatible with the render:sync fast path
+	 *  (which captures + flushes on demand). Enable only for pure live-streaming
+	 *  cameras that are never requested with render:"sync". */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera|Streaming")
+	bool bRenderInMainRenderer = false;
+
 	// ---- Capture Components ----
 
 	/** @brief The underlying SceneCaptureComponent2D. Capture is disabled by default. */
@@ -369,6 +378,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void RequestReadback();
 
+	/** One per-frame capture pass: capture gating (lazy streaming enable /
+	 *  bCaptureEveryFrame), harvest completed readbacks, and (while active)
+	 *  issue a capture + publish any due delayed frames. Driven by
+	 *  UMjCameraSubsystem once per frame rather than a per-component tick. */
+	void UpdateCapturePipeline();
+
 	/** Render-on-demand: capture the scene and enqueue a readback right now for
 	 *  the current applied state. Requires streaming already enabled with the
 	 *  render target allocated (flush once after enabling a cold camera). Pair
@@ -460,8 +475,6 @@ public:
 
 protected:
 	virtual void BeginPlay() override;
-	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
-		FActorComponentTickFunction* ThisTickFunction) override;
 	virtual void OnRegister() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 

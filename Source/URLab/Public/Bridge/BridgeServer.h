@@ -86,9 +86,13 @@ private:
 	bool bHadVSync = false;
 	bool bHadVSyncEditor = false;
 	bool bHadMaxFPS = false;
+	bool bHadSlateThrottle = false;
+	bool bHadIdleWhenNotForeground = false;
 	float SavedVSync = 1.0f;
 	float SavedVSyncEditor = 1.0f;
 	float SavedMaxFPS = 0.0f;
+	float SavedSlateThrottle = 1.0f;
+	float SavedIdleWhenNotForeground = 0.0f;
 
 	/** Every bound RPC transport. Survives PIE transitions. Transient so
 	 *  UE GC won't try to serialise these alongside the bridge UObject. */

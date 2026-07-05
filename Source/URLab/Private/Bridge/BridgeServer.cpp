@@ -35,9 +35,19 @@ void UURLabBridgeServer::ApplyPerformanceOverrides()
 #endif
 	Override(TEXT("t.MaxFPS"), TEXT("t.MaxFPS 240"), SavedMaxFPS, bHadMaxFPS);
 
+	// Keep rendering when the editor is not the foreground window. Without this
+	// Slate throttles the whole app to a few FPS in the background, which starves
+	// camera capture/readback -- a headless RPC client then sees near-zero frame
+	// throughput even though the bridge is serving.
+	Override(TEXT("Slate.bAllowThrottling"), TEXT("Slate.bAllowThrottling 0"),
+		SavedSlateThrottle, bHadSlateThrottle);
+	Override(TEXT("t.IdleWhenNotForeground"), TEXT("t.IdleWhenNotForeground 0"),
+		SavedIdleWhenNotForeground, bHadIdleWhenNotForeground);
+
 	bPacingOverridden = true;
 	UE_LOG(LogURLabNet, Log,
-		TEXT("UURLabBridgeServer: disabled editor frame pacing while serving (VSync off, MaxFPS 240)"));
+		TEXT("UURLabBridgeServer: disabled editor frame pacing + background throttling "
+			 "while serving (VSync off, MaxFPS 240, Slate throttling off)"));
 }
 
 void UURLabBridgeServer::RestorePerformanceOverrides()
@@ -56,6 +66,8 @@ void UURLabBridgeServer::RestorePerformanceOverrides()
 	Restore(TEXT("r.VSyncEditor"), SavedVSyncEditor, bHadVSyncEditor);
 #endif
 	Restore(TEXT("t.MaxFPS"), SavedMaxFPS, bHadMaxFPS);
+	Restore(TEXT("Slate.bAllowThrottling"), SavedSlateThrottle, bHadSlateThrottle);
+	Restore(TEXT("t.IdleWhenNotForeground"), SavedIdleWhenNotForeground, bHadIdleWhenNotForeground);
 
 	bPacingOverridden = false;
 	UE_LOG(LogURLabNet, Log, TEXT("UURLabBridgeServer: restored editor frame pacing"));

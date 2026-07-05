@@ -225,6 +225,10 @@ private:
 	// instead of every frame.
 	bool m_bWarnedDegenerateXform = false;
 
+	// One-shot guard so a genuine snapshot/index mismatch warns once instead of
+	// every frame.
+	bool m_bWarnedSnapshotRange = false;
+
 	FVector m_MeshPivotOffset = FVector::ZeroVector;
 
 	UPROPERTY()

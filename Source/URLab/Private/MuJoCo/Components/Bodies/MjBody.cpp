@@ -110,11 +110,20 @@ void UMjBody::ApplyRenderState(const FMjRenderSnapshot& Snap)
 	const int32 QuatIdx = Id * 4;
 	if (Snap.XPos.Num() <= PosIdx + 2 || Snap.XQuat.Num() <= QuatIdx + 3)
 	{
-		UE_LOG(LogURLabBind, Warning,
-			TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) out of range "
-				 "of snapshot (XPos=%d, XQuat=%d). Disabling updates."),
-			*GetName(), Id, Snap.XPos.Num(), Snap.XQuat.Num());
-		m_IsSetup = false;
+		// An empty snapshot means the physics worker has not published one yet
+		// (the first ticks after BeginPlay, before the consumer-rate publish
+		// fills it). Skip this frame and retry next tick -- do NOT disable, or
+		// the body freezes permanently once the snapshot does fill. Warn only
+		// when the snapshot is populated yet still too small for this id (a real
+		// model/index mismatch), and only once.
+		if (Snap.XPos.Num() > 0 && !m_bWarnedSnapshotRange)
+		{
+			UE_LOG(LogURLabBind, Warning,
+				TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) out of range "
+					 "of a populated snapshot (XPos=%d, XQuat=%d)."),
+				*GetName(), Id, Snap.XPos.Num(), Snap.XQuat.Num());
+			m_bWarnedSnapshotRange = true;
+		}
 		return;
 	}
 

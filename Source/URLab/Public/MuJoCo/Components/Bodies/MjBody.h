@@ -221,6 +221,10 @@ private:
 
 	bool m_IsSetup = false;
 
+	// One-shot guard so a degenerate (zero/NaN) snapshot transform warns once
+	// instead of every frame.
+	bool m_bWarnedDegenerateXform = false;
+
 	FVector m_MeshPivotOffset = FVector::ZeroVector;
 
 	UPROPERTY()

@@ -121,6 +121,27 @@ void UMjBody::ApplyRenderState(const FMjRenderSnapshot& Snap)
 	const FVector MuJoCoWorldPos = MjUtils::MjToUEPosition(&Snap.XPos[PosIdx]);
 	const FQuat MuJoCoWorldQuat = MjUtils::MjToUERotation(&Snap.XQuat[QuatIdx]);
 
+	// A zero or non-finite snapshot row would write a degenerate transform
+	// that NaN-floods the renderer (NIL LocalToWorld in the distance-field
+	// pass) for every mesh under this body. Skip the frame and name the
+	// offender once.
+	if (MuJoCoWorldPos.ContainsNaN() || MuJoCoWorldQuat.ContainsNaN()
+		|| MuJoCoWorldQuat.SizeSquared() < KINDA_SMALL_NUMBER)
+	{
+		if (!m_bWarnedDegenerateXform)
+		{
+			UE_LOG(LogURLabBind, Warning,
+				TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) got a "
+					 "degenerate snapshot transform (pos=%s quat=[%f %f %f %f]); "
+					 "skipping."),
+				*GetName(), Id, *MuJoCoWorldPos.ToString(),
+				Snap.XQuat[QuatIdx], Snap.XQuat[QuatIdx + 1],
+				Snap.XQuat[QuatIdx + 2], Snap.XQuat[QuatIdx + 3]);
+			m_bWarnedDegenerateXform = true;
+		}
+		return;
+	}
+
 	FVector CorrectedPos = MuJoCoWorldPos;
 
 	if (bIsQuickConverted)

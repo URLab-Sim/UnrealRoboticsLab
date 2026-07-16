@@ -140,7 +140,11 @@ void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& 
 	// --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
+	SyncEditorScaleFromSize();
+}
 
+void UMjCapsule::SyncEditorScaleFromSize()
+{
 	// Super already resolves any `fromto` into pos/quat + size[1] (half-length).
 	// Capsule's MJCF `size` is [radius, halflength] — same layout as cylinder.
 	// The codegen fromto canon writes -1.0f sentinels for slots not set
@@ -152,6 +156,13 @@ void UMjCapsule::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& 
 	};
 	Radius = ReadSlot(0);
 	HalfLength = ReadSlot(1);
+
+	if (Radius <= 0.0f || HalfLength <= 0.0f)
+	{
+		// Size not resolvable yet (inherited from a default class); keep the
+		// current scale rather than baking a degenerate zero into the template.
+		return;
+	}
 
 	// Map (radius, halflength) → parent scale, mirroring UMjCylinder.
 	FVector NewScale;

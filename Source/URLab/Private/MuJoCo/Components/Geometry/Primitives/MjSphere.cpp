@@ -80,13 +80,22 @@ void UMjSphere::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& C
 	// --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
-	Radius = size.Num() > 0 ? size[0] : 0.0f;
+	SyncEditorScaleFromSize();
+}
 
-	// Sync Unreal scale immediately on import so the editor visual matches the data
+void UMjSphere::SyncEditorScaleFromSize()
+{
+	Radius = size.Num() > 0 ? FMath::Max(size[0], 0.0f) : 0.0f;
+	if (Radius <= 0.0f)
+	{
+		// Size not resolvable yet (inherited from a default class); keep the
+		// current scale rather than baking a degenerate zero into the template.
+		return;
+	}
+
 	const float BaseSize = 50.0f;
 	const float UnitScale = 100.0f;
-	FVector NewScale = FVector((Radius * UnitScale) / BaseSize);
-	SetRelativeScale3D(NewScale);
+	SetRelativeScale3D(FVector((Radius * UnitScale) / BaseSize));
 }
 
 void UMjSphere::ExportTo(mjsGeom* Element, mjsDefault* def)

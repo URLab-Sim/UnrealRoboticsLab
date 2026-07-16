@@ -96,17 +96,30 @@ void UMjBox::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings& Comp
 	// --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
-	// MuJoCo box size is 3 half-extents in metres.
-	Extents = FVector(
-		size.Num() > 0 ? size[0] : 0.0f,
-		size.Num() > 1 ? size[1] : 0.0f,
-		size.Num() > 2 ? size[2] : 0.0f);
+	SyncEditorScaleFromSize();
+}
 
-	// Sync Unreal scale immediately on import so the editor visual matches the data
+void UMjBox::SyncEditorScaleFromSize()
+{
+	// MuJoCo box size is 3 half-extents in metres. Sentinel -1 marks a slot
+	// the fromto canon left unset; treat it like a missing slot.
+	auto ReadSlot = [this](int32 i) -> float {
+		if (size.Num() <= i)
+			return 0.0f;
+		return size[i] < 0.0f ? 0.0f : size[i];
+	};
+	Extents = FVector(ReadSlot(0), ReadSlot(1), ReadSlot(2));
+
+	if (Extents.GetMin() <= 0.0f)
+	{
+		// Size not resolvable yet (inherited from a default class); keep the
+		// current scale rather than baking a degenerate zero into the template.
+		return;
+	}
+
 	const float BaseSize = 50.0f;
 	const float UnitScale = 100.0f;
-	FVector NewScale = (Extents * UnitScale) / BaseSize;
-	SetRelativeScale3D(NewScale);
+	SetRelativeScale3D((Extents * UnitScale) / BaseSize);
 }
 
 void UMjBox::ExportTo(mjsGeom* Element, mjsDefault* def)

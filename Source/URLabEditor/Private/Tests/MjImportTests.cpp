@@ -46,6 +46,8 @@
 // Component types for FindTemplate<>
 #include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "MuJoCo/Components/Geometry/Primitives/MjSphere.h"
+#include "MuJoCo/Components/Geometry/Primitives/MjPlane.h"
 #include "MuJoCo/Components/Joints/MjJoint.h"
 #include "MuJoCo/Components/Sensors/MjSensor.h"
 #include "MuJoCo/Components/Sensors/MjJointPosSensor.h"
@@ -421,6 +423,127 @@ bool FTest_MjImport_URLab_BodyIdentityQuat::RunTest(const FString&)
 
 	FQuat Q = B->GetRelativeRotationCache().GetCachedQuat();
 	TestTrue(TEXT("identity quat"), Q.Equals(FQuat::Identity, 0.01f));
+
+	S.Cleanup();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_TypelessGeomIsSphere,
+	"URLab.Import.URLab_TypelessGeomIsSphere",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_URLab_TypelessGeomIsSphere::RunTest(const FString&)
+{
+	// MJCF's global default geom type is sphere: a bare <geom size="..."/>
+	// must import as UMjSphere with a real (non-zero) editor scale, not as
+	// the base UMjGeom with no renderer.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body>
+              <geom name="g1" size="0.005"/>
+            </body>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	UMjSphere* G = S.FindTemplate<UMjSphere>(TEXT("g1"));
+	if (!G)
+	{
+		AddError(TEXT("typeless geom 'g1' did not import as UMjSphere"));
+		S.Cleanup();
+		return false;
+	}
+
+	const FVector Scale = G->GetRelativeScale3D();
+	TestNearlyEqual(TEXT("scale.X = radius*2 (m->UE units)"), (float)Scale.X, 0.01f, 1e-4f);
+	TestTrue(TEXT("uniform scale"), Scale.AllComponentsEqual(1e-6f));
+
+	S.Cleanup();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_ClassInheritedSizeScale,
+	"URLab.Import.URLab_ClassInheritedSizeScale",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_URLab_ClassInheritedSizeScale::RunTest(const FString&)
+{
+	// A geom whose size comes entirely from its default class must not bake a
+	// zero RelativeScale3D into the component template (the source of the
+	// "Scale3D is (nearly) zero" warnings and NIL render matrices), and must
+	// keep bOverride_size=false so compile-time inheritance still applies.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <default>
+            <default class="col">
+              <geom type="sphere" size="0.06"/>
+            </default>
+          </default>
+          <worldbody>
+            <body>
+              <geom name="g1" class="col"/>
+            </body>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	UMjSphere* G = S.FindTemplate<UMjSphere>(TEXT("g1"));
+	if (!G)
+	{
+		AddError(TEXT("class-typed geom 'g1' did not import as UMjSphere"));
+		S.Cleanup();
+		return false;
+	}
+
+	const FVector Scale = G->GetRelativeScale3D();
+	TestNearlyEqual(TEXT("scale.X from class size 0.06"), (float)Scale.X, 0.12f, 1e-4f);
+	TestFalse(TEXT("size stays class-inherited (no explicit override)"), G->bOverride_size);
+
+	S.Cleanup();
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_PlaneGeomClass,
+	"URLab.Import.URLab_PlaneGeomClass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_URLab_PlaneGeomClass::RunTest(const FString&)
+{
+	// type="plane" must map to UMjPlane (it previously fell through to the
+	// base UMjGeom). A MuJoCo plane's size can legitimately be "0 0 s"
+	// (infinite extent), which must not zero the component scale.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <geom name="floor" type="plane" size="0 0 0.05"/>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	UMjPlane* G = S.FindTemplate<UMjPlane>(TEXT("floor"));
+	if (!G)
+	{
+		AddError(TEXT("plane geom 'floor' did not import as UMjPlane"));
+		S.Cleanup();
+		return false;
+	}
+
+	const FVector Scale = G->GetRelativeScale3D();
+	TestTrue(TEXT("plane scale not degenerate"),
+		FMath::Min3(Scale.X, Scale.Y, Scale.Z) > 1e-4);
 
 	S.Cleanup();
 	return true;

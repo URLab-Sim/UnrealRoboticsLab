@@ -214,6 +214,15 @@ public:
 	 */
 	virtual void SyncUnrealTransformFromMj();
 
+	/**
+	 * @brief Recomputes the editor-preview RelativeScale3D from `size`.
+	 * No-op when the needed size slots are missing or non-positive, so a geom
+	 * whose size is inherited from a default class keeps its current scale
+	 * instead of collapsing to zero. Primitive subclasses override this with
+	 * their size-to-scale mapping.
+	 */
+	virtual void SyncEditorScaleFromSize() {}
+
 	/** @brief Sets visibility for this geom and its child visual components. */
 	virtual void SetGeomVisibility(bool bNewVisibility);
 
@@ -298,6 +307,10 @@ public:
 	 *  MuJoCo's default-class inheritance won't fire. */
 	UPROPERTY()
 	bool bWasImported = false;
+
+	/** One-shot guard so a degenerate snapshot transform warns once per geom
+	 *  instead of every frame. */
+	bool m_bWarnedDegenerateXform = false;
 
 	/** @brief Name of the mesh asset if Type is mesh. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Geom")

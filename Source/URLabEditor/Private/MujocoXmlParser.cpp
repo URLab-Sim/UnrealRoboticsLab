@@ -108,6 +108,9 @@
 #include "MuJoCo/Components/Geometry/Primitives/MjSphere.h"
 #include "MuJoCo/Components/Geometry/Primitives/MjCylinder.h"
 #include "MuJoCo/Components/Geometry/Primitives/MjCapsule.h"
+#include "MuJoCo/Components/Geometry/Primitives/MjEllipsoid.h"
+#include "MuJoCo/Components/Geometry/Primitives/MjPlane.h"
+#include "MuJoCo/Components/Geometry/Primitives/MjSdf.h"
 #include "MuJoCo/Components/Geometry/MjMeshGeom.h"
 #include "MuJoCo/Components/Physics/MjInertial.h"
 #include "MuJoCo/Components/Constraints/MjEquality.h"
@@ -480,9 +483,20 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 			}
 		}
 
+		// MJCF's global default geom type is sphere. Without this, a bare
+		// <geom size="..."/> (no type anywhere in its class chain) lands on
+		// the abstract-ish base UMjGeom and gets no primitive renderer.
+		// Geom templates inside <default> blocks are exempt: primitive
+		// subclasses force bOverride_Type, which would bake type=sphere
+		// into the default class and clobber inheritance.
+		if (TypeStr.IsEmpty() && !bIsDefaultContext)
+		{
+			TypeStr = TEXT("sphere");
+		}
+
 		if (Name.IsEmpty())
 		{
-			FString GeomTypeName = TypeStr.IsEmpty() ? TEXT("Sphere") : TypeStr;
+			FString GeomTypeName = TypeStr;
 			GeomTypeName[0] = FChar::ToUpper(GeomTypeName[0]);
 			Name = TEXT("Geom_") + GeomTypeName;
 		}
@@ -495,6 +509,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 			Class = UMjCylinder::StaticClass();
 		else if (TypeStr == "capsule")
 			Class = UMjCapsule::StaticClass();
+		else if (TypeStr == "ellipsoid")
+			Class = UMjEllipsoid::StaticClass();
+		else if (TypeStr == "plane")
+			Class = UMjPlane::StaticClass();
+		else if (TypeStr == "sdf")
+			Class = UMjSdf::StaticClass();
 		else if (TypeStr == "mesh")
 			Class = UMjMeshGeom::StaticClass();
 
@@ -528,6 +548,66 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 						GeomComp->DefaultClass = DefComp;
 					}
 				}
+			}
+
+			// Resolve `size` through the default-class chain for the editor
+			// visual. A geom that inherits size from its class imports with an
+			// empty (or sentinel-holed) size array; the primitive subclasses
+			// would otherwise bake a zero RelativeScale3D into the component
+			// template — the source of the "Scale3D is (nearly) zero" physics
+			// warnings and NIL render matrices. bOverride_size stays false so
+			// the MuJoCo compile still resolves size through class inheritance.
+			{
+				const bool bSizeIncomplete =
+					GeomComp->size.Num() == 0 || GeomComp->size.Contains(-1.0f);
+				FString SearchClassName = Node->GetAttribute(TEXT("class"));
+				if (SearchClassName.IsEmpty() && ParentNode)
+				{
+					if (UMjBody* ParentBody = Cast<UMjBody>(ParentNode->ComponentTemplate))
+						SearchClassName = ParentBody->childclass;
+				}
+				if (SearchClassName.IsEmpty())
+					SearchClassName = TEXT("main");
+
+				while (bSizeIncomplete && !SearchClassName.IsEmpty()
+					&& CreatedDefaultNodes.Contains(SearchClassName))
+				{
+					USCS_Node* DefNode = CreatedDefaultNodes[SearchClassName];
+					if (!DefNode)
+						break;
+
+					const UMjGeom* DefGeom = nullptr;
+					for (USCS_Node* DefChild : DefNode->GetChildNodes())
+					{
+						DefGeom = Cast<UMjGeom>(DefChild->ComponentTemplate);
+						if (DefGeom)
+							break;
+					}
+					if (DefGeom && DefGeom->size.Num() > 0)
+					{
+						if (GeomComp->size.Num() == 0)
+						{
+							GeomComp->size = DefGeom->size;
+						}
+						else
+						{
+							for (int32 i = 0; i < GeomComp->size.Num(); ++i)
+							{
+								if (GeomComp->size[i] < 0.0f && DefGeom->size.Num() > i)
+									GeomComp->size[i] = DefGeom->size[i];
+							}
+						}
+						break;
+					}
+
+					UMjDefault* DefComp = Cast<UMjDefault>(DefNode->ComponentTemplate);
+					if (DefComp && !DefComp->ParentClassName.IsEmpty())
+						SearchClassName = DefComp->ParentClassName;
+					else
+						break;
+				}
+
+				GeomComp->SyncEditorScaleFromSize();
 			}
 
 			// Resolve default class transform for visual mesh placement.

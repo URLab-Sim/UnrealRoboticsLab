@@ -54,9 +54,18 @@ def clean_mesh(mesh):
     mesh.remove_unreferenced_vertices()
     try:
         import networkx  # noqa: F401 - trimesh's fix_normals requires it
-        mesh.fix_normals()
     except ImportError:
-        print("  Warning: networkx not installed, skipping fix_normals (GLB may have lighting issues)")
+        # A GLB exported without fixed normals imports into Unreal with
+        # degenerate normals/tangents on every mesh. Failing here makes
+        # convert_mesh() skip the GLB entirely, so the importer falls back
+        # to the source mesh and Unreal computes clean normals itself.
+        raise RuntimeError(
+            "networkx is not installed (required by trimesh.fix_normals); "
+            "skipping GLB conversion so the source mesh is imported instead. "
+            "Install it via the plugin's Python-dependency prompt or "
+            "'python -m pip install networkx'."
+        )
+    mesh.fix_normals()
 
     # Rotate -90 degrees around X for GLTF Y-up -> Unreal Z-up
     rotation_matrix = trimesh.transformations.rotation_matrix(-np.radians(90), [1, 0, 0])
@@ -64,6 +73,19 @@ def clean_mesh(mesh):
 
     print(f"  Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
     return mesh
+
+
+_SCRIPT_MTIME = Path(__file__).stat().st_mtime
+
+
+def glb_up_to_date(output_glb: Path, source_path: Path) -> bool:
+    """A GLB is stale when older than its source mesh OR older than this
+    script -- conversion fixes ship with the script, so GLBs produced by an
+    older version must be regenerated."""
+    if not output_glb.exists():
+        return False
+    mtime = output_glb.stat().st_mtime
+    return mtime > source_path.stat().st_mtime and mtime > _SCRIPT_MTIME
 
 
 def convert_mesh(input_path: Path, output_path: Path) -> bool:
@@ -99,7 +121,10 @@ def convert_mesh(input_path: Path, output_path: Path) -> bool:
         if np.allclose(size, 0):
             print(f"  Warning: Mesh has zero size!")
 
-        cleaned_mesh.export(str(output_path))
+        # include_normals: trimesh omits the NORMAL accessor by default and
+        # Unreal then builds the mesh with zero normals ("degenerate tangent
+        # bases" / "nearly zero normals" on every import).
+        cleaned_mesh.export(str(output_path), include_normals=True)
         print(f"  -> Saved: {output_path.name}")
         return True
 
@@ -346,9 +371,11 @@ def process_xml(xml_path: Path):
             source_path = mesh_base / file_attr
             if source_path.exists():
                 output_glb = source_path.with_suffix(".glb")
-                if not output_glb.exists() or output_glb.stat().st_mtime < source_path.stat().st_mtime:
+                if not glb_up_to_date(output_glb, source_path):
                     print(f"\n[flexcomp] Converting mesh: {source_path.name} -> {output_glb.name}")
-                    convert_mesh(source_path, output_glb)
+                    if not convert_mesh(source_path, output_glb) and output_glb.exists():
+                        output_glb.unlink()
+                        print(f"[flexcomp] Removed stale GLB: {output_glb.name}")
                 else:
                     print(f"\n[flexcomp] Mesh up to date: {output_glb.name}")
 
@@ -446,8 +473,7 @@ def process_xml(xml_path: Path):
             print(f"\n  x Source not found: {actual_source}")
             continue
 
-        # Skip if GLB already exists and is newer than source
-        if output_glb.exists() and output_glb.stat().st_mtime > actual_source.stat().st_mtime:
+        if glb_up_to_date(output_glb, actual_source):
             print(f"\n  Skipping '{mesh_name}' (GLB up to date): {output_glb.name}")
             success_count += 1
             continue
@@ -457,6 +483,13 @@ def process_xml(xml_path: Path):
             success_count += 1
         else:
             print(f"  x FAILED to convert {actual_source.name}")
+            # Never leave a stale or partial GLB behind: the importer
+            # prefers .glb over the source mesh, so a leftover here would
+            # silently ship the very data the conversion just refused to
+            # produce.
+            if output_glb.exists():
+                output_glb.unlink()
+                print(f"  -> Removed stale GLB: {output_glb.name}")
 
     # Phase 4: Write updated XML
     output_xml = xml_path.parent / f"{xml_path.stem}_ue.xml"

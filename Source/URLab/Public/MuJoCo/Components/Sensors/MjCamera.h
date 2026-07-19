@@ -517,7 +517,6 @@ public:
 	void PushFrameToHistory(FMjCameraFrame&& Frame);
 
 private:
-
 	// ---- Async readback pipeline ----
 	// GPU->CPU pixel readback uses FRHIGPUTextureReadback (async, non-stalling)
 	// rather than a synchronous RHICmdList.ReadSurfaceData. The sync read forces
@@ -587,7 +586,6 @@ public:
 	int32 HistoryCapacity = 8;
 
 private:
-
 	// ---- Streaming state ----
 	bool bStreamingEnabled = false;
 
@@ -606,7 +604,6 @@ public:
 	float RequestActiveTtlSeconds = 2.0f;
 
 private:
-
 	// ---- ZMQ Worker ----
 	FCameraZmqWorker* ZmqWorker = nullptr;
 	FRunnableThread* WorkerThread = nullptr;

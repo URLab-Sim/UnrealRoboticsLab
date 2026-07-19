@@ -589,7 +589,7 @@ void UMjCamera::MaybeCapture(AAMjManager* Mgr)
 	const uint64 AppliedId = Mgr ? Mgr->GetLastAppliedFrameId() : 0;
 	const double NowWall = FPlatformTime::Seconds();
 	const bool bFpsOk = (CaptureMaxFps <= 0.0f)
-		|| (NowWall - LastCaptureWallSeconds) >= (1.0 / static_cast<double>(CaptureMaxFps));
+					 || (NowWall - LastCaptureWallSeconds) >= (1.0 / static_cast<double>(CaptureMaxFps));
 	const bool bStateAdvanced = !bCaptureOnStateChange || (AppliedId != LastCapturedFrameId);
 
 	if (bFpsOk && bStateAdvanced)
@@ -613,8 +613,8 @@ void UMjCamera::PublishDueDelayedFrames(AAMjManager* Mgr)
 		return;
 
 	const double NowVal = bDelayUseWallClock
-		? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
-		: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
+							? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
+							: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
 	FMjCameraFrame Selected;
 	if (SelectDelayedFrame(NowVal, LastPublishedSeq, Selected))
 	{

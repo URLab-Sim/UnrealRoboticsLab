@@ -458,11 +458,18 @@ void UMjCamera::HarvestCompletedReadbacks()
 	// ReadSurfaceData stall. Stop at the first not-ready entry to keep order.
 	while (InFlightReadbacks.Num() > 0)
 	{
-		FInFlightReadback& Front = InFlightReadbacks[0];
-		if (!Front.Gpu.IsValid() || !Front.Gpu->IsReady())
+		if (!InFlightReadbacks[0].Gpu.IsValid() || !InFlightReadbacks[0].Gpu->IsReady())
 		{
 			break;
 		}
+		// Claim the entry by moving it out of the shared list BEFORE the render
+		// sync below. FlushRenderingCommands pumps the game thread, which can
+		// re-enter this harvest (a render:sync request drives a game-thread render
+		// pass); popping first means the re-entrant call never sees this entry, so
+		// there is no double-process and no RemoveAt on an already-emptied array.
+		FInFlightReadback Front = MoveTemp(InFlightReadbacks[0]);
+		InFlightReadbacks.RemoveAt(0);
+
 		const int32 W = Front.Width;
 		const int32 H = Front.Height;
 
@@ -536,7 +543,6 @@ void UMjCamera::HarvestCompletedReadbacks()
 			// Recycle the readback object (clean after Unlock) for reuse.
 			FreeReadbacks.Add(MoveTemp(Front.Gpu));
 		}
-		InFlightReadbacks.RemoveAt(0);
 	}
 }
 

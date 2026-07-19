@@ -335,6 +335,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 		O.SleepTolerance = (float)DNum;
 	}
 
+	// The physics worker may be mid mj_step on this same m/d on another thread.
+	// Serialise every live-model write below (disable/enable flags,
+	// ApplyOverridesToModel) and the threadpool rebuild against it under the
+	// worker's step lock, and hold the lock across the reply's m->opt reads so
+	// the echoed snapshot is coherent. Rebuilding mju_threadpool while a step is
+	// in flight is otherwise a crash.
+	FScopeLock ModelLock(&Mgr->PhysicsEngine->CallbackMutex);
+
 	// Raw disable / enable bit masks. Values are bitwise-ORs of
 	// mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.
 	// Applied BEFORE FMjOptionGenerated::ApplyOverridesToModel so any named

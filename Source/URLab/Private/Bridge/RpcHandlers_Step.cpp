@@ -139,6 +139,85 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJ
 // step
 // =============================================================================
 
+// Parse the per_articulation control payload -- control_mode, positional ctrl
+// array, named ctrl_map, and xfrc_applied -- into an FMjStepRequest. Shared by
+// the live and direct step paths so both apply the full payload; the live
+// branch previously parsed only the positional ctrl array and silently dropped
+// ctrl_map / xfrc_applied.
+static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req,
+	AAMjManager* Mgr, FMjStepRequest& Out)
+{
+	const TSharedPtr<FJsonObject>* PerArt = nullptr;
+	if (!Req->TryGetObjectField(TEXT("per_articulation"), PerArt) || !PerArt || !PerArt->IsValid())
+	{
+		return;
+	}
+	for (auto& Pair : (*PerArt)->Values)
+	{
+		const TSharedPtr<FJsonObject>* ArtObj = nullptr;
+		if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
+			continue;
+
+		// control_mode override
+		FString CtlMode;
+		if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
+		{
+			Out.PerArticulationControlMode.Add(Pair.Key, CtlMode);
+		}
+
+		// Positional ctrl array: indexed in articulation actuator order.
+		const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
+		if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
+		{
+			if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
+			{
+				TArray<UMjActuator*> Acts = Art->GetActuators();
+				for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
+				{
+					UMjActuator* A = Acts[i];
+					if (!A)
+						continue;
+					FString LocalName = A->GetMjName();
+					FString Prefix = Art->GetName() + TEXT("_");
+					if (LocalName.StartsWith(Prefix))
+						LocalName = LocalName.Mid(Prefix.Len());
+					Out.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
+						{LocalName, (float)(*CtrlList)[i]->AsNumber()});
+				}
+			}
+		}
+
+		// Named ctrl map alternative.
+		const TSharedPtr<FJsonObject>* CtrlMap = nullptr;
+		if ((*ArtObj)->TryGetObjectField(TEXT("ctrl_map"), CtrlMap) && CtrlMap && CtrlMap->IsValid())
+		{
+			for (auto& KV : (*CtrlMap)->Values)
+			{
+				Out.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
+					{KV.Key, (float)KV.Value->AsNumber()});
+			}
+		}
+
+		// xfrc_applied: { body_name: [fx,fy,fz,tx,ty,tz] }. Cleared after step.
+		const TSharedPtr<FJsonObject>* XfrcMap = nullptr;
+		if ((*ArtObj)->TryGetObjectField(TEXT("xfrc_applied"), XfrcMap) && XfrcMap && XfrcMap->IsValid())
+		{
+			TMap<FString, TArray<double>>& BodyMap = Out.PerArticulationXfrc.FindOrAdd(Pair.Key);
+			for (auto& KV : (*XfrcMap)->Values)
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
+				if (KV.Value->TryGetArray(Arr) && Arr && Arr->Num() == 6)
+				{
+					TArray<double>& Six = BodyMap.FindOrAdd(KV.Key);
+					Six.SetNum(6);
+					for (int i = 0; i < 6; ++i)
+						Six[i] = (*Arr)[i]->AsNumber();
+				}
+			}
+		}
+	}
+}
+
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonObject>& Req)
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
@@ -156,41 +235,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		mjData* d = Mgr->PhysicsEngine->GetData();
 
 		FMjStepRequest TmpReq;
-		const TSharedPtr<FJsonObject>* PerArt = nullptr;
-		if (Req->TryGetObjectField(TEXT("per_articulation"), PerArt) && PerArt && PerArt->IsValid())
-		{
-			for (auto& Pair : (*PerArt)->Values)
-			{
-				const TSharedPtr<FJsonObject>* ArtObj = nullptr;
-				if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
-					continue;
-
-				FString CtlMode;
-				if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
-					TmpReq.PerArticulationControlMode.Add(Pair.Key, CtlMode);
-
-				const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
-				if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
-				{
-					if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
-					{
-						TArray<UMjActuator*> Acts = Art->GetActuators();
-						for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
-						{
-							UMjActuator* A = Acts[i];
-							if (!A)
-								continue;
-							FString Local = A->GetMjName();
-							FString Prefix = Art->GetName() + TEXT("_");
-							if (Local.StartsWith(Prefix))
-								Local = Local.Mid(Prefix.Len());
-							TmpReq.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-								{Local, (float)(*CtrlList)[i]->AsNumber()});
-						}
-					}
-				}
-			}
-		}
+		ParseStepPerArticulation(Req, Mgr, TmpReq);
 
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 		{
@@ -406,74 +451,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	Req->TryGetNumberField(TEXT("n_steps"), NSteps);
 	Cmd->Request.NSteps = NSteps > 0 ? NSteps : 1;
 
-	const TSharedPtr<FJsonObject>* PerArt = nullptr;
-	if (Req->TryGetObjectField(TEXT("per_articulation"), PerArt) && PerArt && PerArt->IsValid())
-	{
-		for (auto& Pair : (*PerArt)->Values)
-		{
-			const TSharedPtr<FJsonObject>* ArtObj = nullptr;
-			if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
-				continue;
-
-			// control_mode override
-			FString CtlMode;
-			if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
-			{
-				Cmd->Request.PerArticulationControlMode.Add(Pair.Key, CtlMode);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
-			if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
-			{
-				// Positional ctrl array: indexed in articulation actuator order.
-				if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
-				{
-					TArray<UMjActuator*> Acts = Art->GetActuators();
-					for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
-					{
-						UMjActuator* A = Acts[i];
-						if (!A)
-							continue;
-						FString LocalName = A->GetMjName();
-						FString Prefix = Art->GetName() + TEXT("_");
-						if (LocalName.StartsWith(Prefix))
-							LocalName = LocalName.Mid(Prefix.Len());
-						Cmd->Request.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-							{LocalName, (float)(*CtrlList)[i]->AsNumber()});
-					}
-				}
-			}
-
-			// Named ctrl map alternative.
-			const TSharedPtr<FJsonObject>* CtrlMap = nullptr;
-			if ((*ArtObj)->TryGetObjectField(TEXT("ctrl_map"), CtrlMap) && CtrlMap && CtrlMap->IsValid())
-			{
-				for (auto& KV : (*CtrlMap)->Values)
-				{
-					Cmd->Request.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-						{KV.Key, (float)KV.Value->AsNumber()});
-				}
-			}
-
-			// xfrc_applied: { body_name: [fx,fy,fz,tx,ty,tz] }. Cleared after step.
-			const TSharedPtr<FJsonObject>* XfrcMap = nullptr;
-			if ((*ArtObj)->TryGetObjectField(TEXT("xfrc_applied"), XfrcMap) && XfrcMap && XfrcMap->IsValid())
-			{
-				TMap<FString, TArray<double>>& BodyMap = Cmd->Request.PerArticulationXfrc.FindOrAdd(Pair.Key);
-				for (auto& KV : (*XfrcMap)->Values)
-				{
-					const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
-					if (KV.Value->TryGetArray(Arr) && Arr && Arr->Num() == 6)
-					{
-						TArray<double>& Six = BodyMap.FindOrAdd(KV.Key);
-						Six.SetNum(6);
-						for (int i = 0; i < 6; ++i)
-							Six[i] = (*Arr)[i]->AsNumber();
-					}
-				}
-			}
-		}
-	}
+	ParseStepPerArticulation(Req, Mgr, Cmd->Request);
 
 	// Submit to physics-thread custom handler (no race) then wait. If the
 	// engine isn't running its async loop (test path), fall back to inline.
@@ -532,6 +510,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	}
 	else
 	{
+		// We stop waiting but the command is still queued. Mark it abandoned so
+		// the handler discards it instead of stepping physics for a request the
+		// client already saw fail (and may retry) -- otherwise the step executes
+		// twice.
+		Cmd->bAbandoned.store(true, std::memory_order_release);
 		if (bDraining.load(std::memory_order_acquire))
 		{
 			Reply = MakeError(TEXT("shutting_down"),
@@ -1198,6 +1181,12 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		TSharedPtr<FMjDirectStepCommand> Cmd;
 		if (!StepQueue.Dequeue(Cmd) || !Cmd.IsValid())
 			return false; // idle wake, no step requested — no advance
+
+		// The RPC thread gave up on this command (timeout / draining) before we
+		// got to it. Discard without stepping so a request the client already saw
+		// fail does not also advance physics here (double step).
+		if (Cmd->bAbandoned.load(std::memory_order_acquire))
+			return false;
 
 		ApplyStepCtrl(Mgr, Cmd->Request, m, d);
 

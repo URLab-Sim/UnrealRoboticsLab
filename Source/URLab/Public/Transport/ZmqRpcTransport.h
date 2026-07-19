@@ -64,6 +64,11 @@ struct FMjDirectStepCommand
 	FMjStepRequest Request;
 	/** Set true by the handler when mj_step has completed. */
 	bool bDone = false;
+	/** Set true by the RPC thread if it gives up (timeout / draining) before the
+	 *  handler ran this command. The handler checks it after dequeue and discards
+	 *  the command instead of stepping, so a timed-out request the client will
+	 *  retry does not also execute here -- avoiding a double physics step. */
+	std::atomic<bool> bAbandoned{false};
 	/** Observations captured under the engine's CallbackMutex. */
 	TSharedPtr<FJsonObject> Observations;
 	TSharedPtr<FJsonObject> Entities;

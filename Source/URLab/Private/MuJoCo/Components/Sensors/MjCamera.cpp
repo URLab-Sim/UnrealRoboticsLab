@@ -463,27 +463,6 @@ void UMjCamera::HarvestCompletedReadbacks()
 		{
 			break;
 		}
-		// Diagnostic: readback-pipeline latency = how long this GPU copy took to
-		// become ready since it was requested. If this is ~seconds, the readback
-		// (not transport/display) is the camera-feed delay. Logged ~1/s.
-		{
-			const double NowSec = FPlatformTime::Seconds();
-			const double ReadbackMs = (NowSec - Front.EnqueueSeconds) * 1000.0;
-			ReadbackLatencyAccumMs += ReadbackMs;
-			ReadbackLatencyMaxMs = FMath::Max(ReadbackLatencyMaxMs, ReadbackMs);
-			++ReadbackLatencySamples;
-			if (NowSec - ReadbackLatencyLastLogSec >= 1.0 && ReadbackLatencySamples > 0)
-			{
-				UE_LOG(LogURLabNet, Log,
-					TEXT("[camlat] %s: readback enqueue->ready avg=%.0fms max=%.0fms inflight=%d n=%d"),
-					*GetName(), ReadbackLatencyAccumMs / ReadbackLatencySamples,
-					ReadbackLatencyMaxMs, InFlightReadbacks.Num(), ReadbackLatencySamples);
-				ReadbackLatencyAccumMs = 0.0;
-				ReadbackLatencyMaxMs = 0.0;
-				ReadbackLatencySamples = 0;
-				ReadbackLatencyLastLogSec = NowSec;
-			}
-		}
 		const int32 W = Front.Width;
 		const int32 H = Front.Height;
 
@@ -504,33 +483,53 @@ void UMjCamera::HarvestCompletedReadbacks()
 		// in this tick's tail, so the stream lags by the configured delay.
 		const bool bPublishInline = !IsDelayActive();
 
-		// Lock the staging buffer. RowPitch is in PIXELS and is >= width (GPU
-		// rows are padded), so copy row-by-row into a tightly-packed array.
-		int32 RowPitchPixels = 0;
-		void* Data = Front.Gpu->Lock(RowPitchPixels);
-		if (Data && W > 0 && H > 0)
+		// Map + copy the staging buffer on the render thread. FRHIGPUTextureReadback::Lock
+		// routes to RHIMapStagingSurface_RenderThread, which asserts IsInRenderingThread();
+		// this harvest runs on the game thread (the camera subsystem tick), so the
+		// map/copy/unlock must be marshalled to the render thread. The readback is already
+		// Ready(), so this is a CPU memcpy from mapped staging memory with no GPU wait, and
+		// FlushRenderingCommands blocks only until that quick command drains. RowPitch is in
+		// PIXELS and is >= width (GPU rows are padded), so copy row-by-row into a
+		// tightly-packed array.
+		FRHIGPUTextureReadback* GpuPtr = Front.Gpu.Get();
+		const EMjCameraMode Mode = CaptureMode;
+		TArray<FColor> ColorPx;
+		TArray<float> DepthPx;
+		bool bCopied = false;
+		ENQUEUE_RENDER_COMMAND(MjCameraHarvestReadback)(
+			[GpuPtr, W, H, Mode, &ColorPx, &DepthPx, &bCopied](FRHICommandListImmediate&) {
+				int32 RowPitchPixels = 0;
+				void* Data = GpuPtr->Lock(RowPitchPixels);
+				if (Data && W > 0 && H > 0)
+				{
+					if (Mode == EMjCameraMode::Depth)
+					{
+						// PF_R32_FLOAT: one float per pixel.
+						DepthPx.SetNumUninitialized(W * H);
+						const float* Src = static_cast<const float*>(Data);
+						for (int32 y = 0; y < H; ++y)
+							FMemory::Memcpy(&DepthPx[y * W], &Src[y * RowPitchPixels], W * sizeof(float));
+					}
+					else
+					{
+						// BGRA8 (FColor) for real / seg modes.
+						ColorPx.SetNumUninitialized(W * H);
+						const FColor* Src = static_cast<const FColor*>(Data);
+						for (int32 y = 0; y < H; ++y)
+							FMemory::Memcpy(&ColorPx[y * W], &Src[y * RowPitchPixels], W * sizeof(FColor));
+					}
+					bCopied = true;
+				}
+				GpuPtr->Unlock();
+			});
+		FlushRenderingCommands();
+
+		if (bCopied)
 		{
-			if (CaptureMode == EMjCameraMode::Depth)
-			{
-				// PF_R32_FLOAT: one float per pixel.
-				TArray<float> Px;
-				Px.SetNumUninitialized(W * H);
-				const float* Src = static_cast<const float*>(Data);
-				for (int32 y = 0; y < H; ++y)
-					FMemory::Memcpy(&Px[y * W], &Src[y * RowPitchPixels], W * sizeof(float));
-				Frame.Depth = MoveTemp(Px);
-			}
+			if (Mode == EMjCameraMode::Depth)
+				Frame.Depth = MoveTemp(DepthPx);
 			else
-			{
-				// BGRA8 (FColor) for real / seg modes.
-				TArray<FColor> Px;
-				Px.SetNumUninitialized(W * H);
-				const FColor* Src = static_cast<const FColor*>(Data);
-				for (int32 y = 0; y < H; ++y)
-					FMemory::Memcpy(&Px[y * W], &Src[y * RowPitchPixels], W * sizeof(FColor));
-				Frame.Color = MoveTemp(Px);
-			}
-			Front.Gpu->Unlock();
+				Frame.Color = MoveTemp(ColorPx);
 			if (bPublishInline)
 				PublishFrameToWorkers(Frame);
 			PushFrameToHistory(MoveTemp(Frame));
@@ -940,7 +939,6 @@ void UMjCamera::RequestReadback()
 	}
 	Entry.Width = Size.X;
 	Entry.Height = Size.Y;
-	Entry.EnqueueSeconds = FPlatformTime::Seconds();
 	// Unix-epoch capture time for the wire meta (matches state wall_time / py time.time()).
 	Entry.CaptureUnixSeconds = (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
 	// Stamp the post-step state this readback will show: the render snapshot id

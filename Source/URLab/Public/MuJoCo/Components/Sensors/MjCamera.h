@@ -534,10 +534,6 @@ private:
 		double SimTime = 0.0;
 		int32 Width = 0;
 		int32 Height = 0;
-		// Game-thread wall clock (FPlatformTime::Seconds) when this readback was
-		// requested. Diagnostic: latency = harvest time - this, i.e. how long
-		// the GPU copy took to become ready -- the readback-pipeline delay.
-		double EnqueueSeconds = 0.0;
 		// Unix-epoch seconds (FDateTime::UtcNow) at request time, stamped into
 		// the streamed frame's meta so clients can measure content latency.
 		double CaptureUnixSeconds = 0.0;
@@ -549,12 +545,6 @@ private:
 	// staging texture, so reuse them (EnqueueCopy re-arms in place) rather than
 	// allocating one per request -- at 6 cams x 30 Hz that was ~180 allocs/s.
 	TArray<TUniquePtr<FRHIGPUTextureReadback>> FreeReadbacks;
-
-	// Diagnostic accumulators for the readback enqueue->ready latency log (~1/s).
-	double ReadbackLatencyAccumMs = 0.0;
-	double ReadbackLatencyMaxMs = 0.0;
-	int32 ReadbackLatencySamples = 0;
-	double ReadbackLatencyLastLogSec = 0.0;
 
 	// ---- Frame history ring ----
 	// Retains the last HistoryCapacity frames so a client can fetch the frame

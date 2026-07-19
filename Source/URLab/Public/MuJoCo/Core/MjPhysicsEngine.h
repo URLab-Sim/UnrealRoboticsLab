@@ -249,6 +249,13 @@ public:
 	 *  request queue. The RPC dispatcher is the runtime owner; call on every
 	 *  mode change. */
 	void SetStepMode(EStepMode Mode);
+
+	/** The resolved step mode the physics worker is currently pacing off
+	 *  (Auto already collapsed to Live). This is the authoritative value the
+	 *  loop reads, so it is what regression coverage for the live 10 Hz lock
+	 *  should assert. */
+	EStepMode GetStepMode() const { return ResolvedStepMode.load(std::memory_order_acquire); }
+
 	bool IsRunning() const;
 	bool IsInitialized() const;
 	float GetSimTime() const;

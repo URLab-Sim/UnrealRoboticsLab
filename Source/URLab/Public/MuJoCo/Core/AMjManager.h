@@ -176,19 +176,6 @@ public:
 	 */
 	std::atomic<bool> bPublishersPaused{false};
 
-	/**
-	 * @brief The resolved, authoritative step mode the physics loop runs under.
-	 *
-	 * `StepMode` above is the *configured* value and may be `Auto`, which the
-	 * dispatcher resolves to a concrete mode (Auto starts Live). The physics
-	 * loop must pace off the resolved mode, not the configured one — reading
-	 * `StepMode == Live` directly leaves `Auto` (the default) pacing as if it
-	 * were Direct, blocking on the step-request timeout at ~10 Hz. The
-	 * dispatcher mirrors its `ActiveStepMode` here whenever it changes; defaults
-	 * to Live so a bridge-less PIE session runs real-time.
-	 */
-	std::atomic<EStepMode> EffectiveStepMode{EStepMode::Live};
-
 	/** Post-step render-snapshot id / sim time last applied to the actors.
 	 *  Written on the game thread in ApplyLatestRenderState; read (atomically)
 	 *  by cameras when stamping readbacks. */

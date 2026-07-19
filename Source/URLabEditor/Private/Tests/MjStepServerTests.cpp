@@ -284,14 +284,15 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 1b. EffectiveStepMode mirrors the resolved mode (regression: live 10 Hz lock)
-//     The physics loop paces off Manager->EffectiveStepMode. StepMode defaults
-//     to Auto; if that does not resolve to Live the loop falls into the
-//     step-request wait path and ticks at the 100 ms timeout (~10 Hz) instead
-//     of running real-time.
+// 1b. The engine's resolved step mode tracks the dispatcher (regression: live
+//     10 Hz lock). The physics loop paces off PhysicsEngine->GetStepMode().
+//     StepMode defaults to Auto; if that does not resolve to Live the loop
+//     falls into the step-request wait path and ticks at the 100 ms timeout
+//     (~10 Hz) instead of running real-time. Each SetActiveStepMode must push
+//     the resolved mode down to the engine via the step strategy's OnEnter.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerEffectiveMode,
-	"URLab.StepServer.EffectiveStepMode",
+	"URLab.StepServer.ResolvedStepMode",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
@@ -303,11 +304,12 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// StepMode is Auto by default; RegisterManager must resolve+mirror it to Live.
+	// StepMode is Auto by default; RegisterManager must resolve it to Live and
+	// push that down to the engine the physics worker paces off.
 	TestEqual(TEXT("configured StepMode is Auto"),
 		(int)S.Manager->StepMode, (int)EStepMode::Auto);
-	TestEqual(TEXT("EffectiveStepMode resolves Auto -> Live"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Live);
+	TestEqual(TEXT("engine resolves Auto -> Live"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Live);
 
 	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
 	if (!Disp)
@@ -318,16 +320,16 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 	}
 
 	Disp->SetActiveStepMode(EStepMode::Direct);
-	TestEqual(TEXT("EffectiveStepMode tracks Direct"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Direct);
+	TestEqual(TEXT("engine tracks Direct"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Direct);
 
 	Disp->SetActiveStepMode(EStepMode::Puppet);
-	TestEqual(TEXT("EffectiveStepMode tracks Puppet"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Puppet);
+	TestEqual(TEXT("engine tracks Puppet"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Puppet);
 
 	Disp->SetActiveStepMode(EStepMode::Live);
-	TestEqual(TEXT("EffectiveStepMode tracks Live"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Live);
+	TestEqual(TEXT("engine tracks Live"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Live);
 
 	S.Cleanup();
 	return true;

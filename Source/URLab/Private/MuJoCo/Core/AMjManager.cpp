@@ -42,6 +42,9 @@
 #include "Bridge/BridgeServerConfigUtils.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
+#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
+#include "Transport/RosPublishTransport.h"
+#endif
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
 #include "MuJoCo/Core/MjSimulationState.h"
@@ -408,9 +411,22 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
 	// Build the state IR once per physics step, encode it to the canonical
 	// msgpack `state_full` snapshot, and fan the bytes out to every
-	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). Runs inside the engine's
+	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). The same IR feeds the ROS
+	// publisher, which is its own encoder. Runs inside the engine's
 	// CallbackMutex, so the collector's persistent snapshot buffer never races
 	// an on-demand Collect from an RPC step reply.
+#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
+	UURLabRosPublishTransport* RosPublisher = nullptr;
+	for (const TObjectPtr<UURLabPublishTransport>& Transport : ManagerOwnedPublishTransports)
+	{
+		if (UURLabRosPublishTransport* Ros = Cast<UURLabRosPublishTransport>(Transport))
+		{
+			RosPublisher = Ros;
+			break;
+		}
+	}
+#endif
+
 	TArray<IMjSnapshotPublisher*> Pubs;
 	{
 		FScopeLock Lock(&SnapshotPublishersMutex);
@@ -421,19 +437,33 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 				Pubs.Add(R.Publisher);
 		}
 	}
-	if (Pubs.Num() == 0)
-		return;
 
 	// bPublishersPaused gates the msgpack byte fan-out only: it is set on
 	// Direct / Puppet mode entry so the step reply is the sole delivery to the
-	// stepping client (no double-write). The IR build and, in a later phase,
-	// the ROS hand-off run regardless.
-	if (bPublishersPaused.load(std::memory_order_acquire))
+	// stepping client (no double-write). ROS is a distinct consumer, so it
+	// receives the IR every step in all modes regardless of the pause.
+	const bool bByteFanOut = Pubs.Num() > 0
+		&& !bPublishersPaused.load(std::memory_order_acquire);
+
+	bool bNeedSnapshot = bByteFanOut;
+#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
+	bNeedSnapshot = bNeedSnapshot || (RosPublisher != nullptr);
+#endif
+	if (!bNeedSnapshot)
 		return;
 
 	FURLabRpcDispatcher* Disp = GetStepDispatcher();
 	const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
 	const FMjStateSnapshot& Snap = StateCollector.Collect(m, d, StepIdx);
+
+#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
+	if (RosPublisher)
+		RosPublisher->PublishState(Snap);
+#endif
+
+	if (!bByteFanOut)
+		return;
+
 	TArray<uint8> Buf = FMjMsgpackEncoder::EncodeSnapshotBytes(
 		Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
 	if (Buf.Num() == 0)

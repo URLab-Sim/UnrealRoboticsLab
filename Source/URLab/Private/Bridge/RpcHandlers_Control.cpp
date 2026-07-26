@@ -23,6 +23,70 @@
 #include "Bridge/RpcDispatcher.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjStateTypes.h"
+
+namespace
+{
+// Parse one inbound user-channel value into an IR channel. The inferred kind only
+// distinguishes the text family from the numeric family; the declaring component
+// stores the value under its own declared kind. Returns false with a reason for a
+// shape no input kind accepts. A bare object without pos/quat (a generic struct)
+// is rejected: only declared typed channels accept input.
+bool JsonValueToUserChannel(const TSharedPtr<FJsonValue>& Value, FMjUserChannel& Out,
+	FString& OutReason)
+{
+	if (!Value.IsValid())
+	{
+		OutReason = TEXT("null_value");
+		return false;
+	}
+	switch (Value->Type)
+	{
+		case EJson::Boolean:
+			Out.Kind = EMjUserChannelKind::Bool;
+			Out.Values = {Value->AsBool() ? 1.0 : 0.0};
+			return true;
+		case EJson::Number:
+			Out.Kind = EMjUserChannelKind::Scalar;
+			Out.Values = {Value->AsNumber()};
+			return true;
+		case EJson::String:
+			Out.Kind = EMjUserChannelKind::String;
+			Out.Text = Value->AsString();
+			return true;
+		case EJson::Array:
+		{
+			Out.Kind = EMjUserChannelKind::Array;
+			for (const TSharedPtr<FJsonValue>& E : Value->AsArray())
+				Out.Values.Add(E.IsValid() ? E->AsNumber() : 0.0);
+			return true;
+		}
+		case EJson::Object:
+		{
+			// {pos:[3], quat:[4]} is a transform; anything else is unsupported input.
+			const TSharedPtr<FJsonObject> Obj = Value->AsObject();
+			const TArray<TSharedPtr<FJsonValue>>* Pos = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* Quat = nullptr;
+			if (Obj.IsValid() && Obj->TryGetArrayField(TEXT("pos"), Pos)
+				&& Obj->TryGetArrayField(TEXT("quat"), Quat))
+			{
+				Out.Kind = EMjUserChannelKind::Transform;
+				Out.Values.SetNumZeroed(7);
+				for (int32 i = 0; i < 3 && i < Pos->Num(); ++i)
+					Out.Values[i] = (*Pos)[i].IsValid() ? (*Pos)[i]->AsNumber() : 0.0;
+				for (int32 i = 0; i < 4 && i < Quat->Num(); ++i)
+					Out.Values[3 + i] = (*Quat)[i].IsValid() ? (*Quat)[i]->AsNumber() : 0.0;
+				return true;
+			}
+			OutReason = TEXT("unsupported_object");
+			return false;
+		}
+		default:
+			OutReason = TEXT("unsupported_value");
+			return false;
+	}
+}
+} // namespace
 
 FString FURLabRpcDispatcher::ResolveControlSource(const TSharedPtr<FJsonObject>& Req) const
 {
@@ -122,5 +186,61 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReleaseControl(const TSharedP
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("release_control_ok"));
 	Reply->SetStringField(TEXT("articulation"), Art->GetName());
+	return Reply;
+}
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetUserChannels(const TSharedPtr<FJsonObject>& Req)
+{
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr)
+		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+
+	int32 Applied = 0;
+	TSharedPtr<FJsonObject> Rejected = MakeShared<FJsonObject>();
+
+	// One scope's channel map: {channel: value}. ArtOrNone is the canonical art
+	// segment (None for scene). Undeclared names and unparseable / kind-mismatched
+	// values land in `rejected` rather than failing the whole batch.
+	auto ApplyScope = [&](const TSharedPtr<FJsonObject>& Channels, FName ArtOrNone,
+						  const FString& RejectPrefix) {
+		if (!Channels.IsValid())
+			return;
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Channels->Values)
+		{
+			const FName Channel(*Pair.Key);
+			FMjUserChannel Value;
+			FString Reason;
+			if (!JsonValueToUserChannel(Pair.Value, Value, Reason))
+			{
+				Rejected->SetStringField(RejectPrefix + Pair.Key, Reason);
+				continue;
+			}
+			if (Mgr->ApplyUserChannelInput(ArtOrNone, Channel, Value))
+				++Applied;
+			else
+				Rejected->SetStringField(RejectPrefix + Pair.Key,
+					TEXT("undeclared_or_kind_mismatch"));
+		}
+	};
+
+	const TSharedPtr<FJsonObject>* ArtsObj = nullptr;
+	if (Req->TryGetObjectField(TEXT("arts"), ArtsObj))
+	{
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& ArtPair : (*ArtsObj)->Values)
+		{
+			const TSharedPtr<FJsonObject>* ArtChannels = nullptr;
+			if (ArtPair.Value.IsValid() && ArtPair.Value->TryGetObject(ArtChannels))
+				ApplyScope(*ArtChannels, FName(*ArtPair.Key), ArtPair.Key + TEXT("/"));
+		}
+	}
+
+	const TSharedPtr<FJsonObject>* SceneObj = nullptr;
+	if (Req->TryGetObjectField(TEXT("scene"), SceneObj))
+		ApplyScope(*SceneObj, NAME_None, TEXT("scene/"));
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("set_user_channels_ok"));
+	Reply->SetNumberField(TEXT("applied"), Applied);
+	Reply->SetObjectField(TEXT("rejected"), Rejected);
 	return Reply;
 }

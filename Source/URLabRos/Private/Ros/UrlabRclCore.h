@@ -64,8 +64,14 @@ struct UrlabRclFloat64MultiArrayPub;
 struct UrlabRclOdometryPub;
 struct UrlabRclPoseWithCovariancePub;
 struct UrlabRclCameraInfoPub;
+struct UrlabRclBoolPub;
+struct UrlabRclFloat64Pub;
+struct UrlabRclVector3Pub;
+struct UrlabRclPoseStampedPub;
 struct UrlabRclCtrlSub;
 struct UrlabRclTwistSub;
+struct UrlabRclJointStateSub;
+struct UrlabRclTriggerService;
 
 // --- Context ---------------------------------------------------------------
 // DomainId -1 = use the ROS_DOMAIN_ID environment variable. Returns null on
@@ -208,6 +214,32 @@ struct UrlabRclCameraInfoPub* UrlabRcl_CreateCameraInfoPub(struct UrlabRclContex
 int UrlabRcl_PublishCameraInfo(struct UrlabRclCameraInfoPub* Pub, int64_t SimTimeNs);
 void UrlabRcl_DestroyCameraInfoPub(struct UrlabRclCameraInfoPub* Pub);
 
+// --- Typed user-channel publishers -----------------------------------------
+// One triple per rosidl type the user-channel routing maps kinds to:
+// Bool -> std_msgs/Bool, Int/Scalar -> std_msgs/Float64, Vec3 ->
+// geometry_msgs/Vector3, Quat/Transform -> geometry_msgs/PoseStamped. Array /
+// String / Struct reuse the Float64MultiArray / String triples above.
+
+struct UrlabRclBoolPub* UrlabRcl_CreateBoolPub(struct UrlabRclContext* Ctx, const char* Topic);
+int UrlabRcl_PublishBool(struct UrlabRclBoolPub* Pub, int32_t bValue);   // bValue != 0
+void UrlabRcl_DestroyBoolPub(struct UrlabRclBoolPub* Pub);
+
+struct UrlabRclFloat64Pub* UrlabRcl_CreateFloat64Pub(struct UrlabRclContext* Ctx, const char* Topic);
+int UrlabRcl_PublishFloat64(struct UrlabRclFloat64Pub* Pub, double Value);
+void UrlabRcl_DestroyFloat64Pub(struct UrlabRclFloat64Pub* Pub);
+
+struct UrlabRclVector3Pub* UrlabRcl_CreateVector3Pub(struct UrlabRclContext* Ctx, const char* Topic);
+int UrlabRcl_PublishVector3(struct UrlabRclVector3Pub* Pub, const double Xyz[3]);
+void UrlabRcl_DestroyVector3Pub(struct UrlabRclVector3Pub* Pub);
+
+// geometry_msgs/PoseStamped. FrameId is fixed at create; publish sets position
+// + orientation (xyzw; the provider reorders MuJoCo wxyz) and the stamp.
+struct UrlabRclPoseStampedPub* UrlabRcl_CreatePoseStampedPub(struct UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId);
+int UrlabRcl_PublishPoseStamped(struct UrlabRclPoseStampedPub* Pub,
+    const double PositionXyz[3], const double OrientationXyzw[4], int64_t SimTimeNs);
+void UrlabRcl_DestroyPoseStampedPub(struct UrlabRclPoseStampedPub* Pub);
+
 // --- Subscriptions ---------------------------------------------------------
 // Callbacks fire inside UrlabRcl_SpinSome on its caller's thread; the core does
 // no queuing beyond what the rmw layer holds.
@@ -225,7 +257,30 @@ struct UrlabRclTwistSub* UrlabRcl_CreateTwistSub(struct UrlabRclContext* Ctx,
     // geometry_msgs/Twist, the /<art>/cmd_vel shape
 void UrlabRcl_DestroyTwistSub(struct UrlabRclTwistSub* Sub);
 
+// sensor_msgs/JointState, the /<art>/joint_command jog shape. Names and the
+// paired position slice are handed to the callback; velocity / effort are
+// ignored. Names point into the taken message and are valid only for the
+// duration of the callback.
+typedef void (*UrlabRclJointStateCallback)(const char** Names,
+    const double* Positions, int32_t Count, void* User);
+struct UrlabRclJointStateSub* UrlabRcl_CreateJointStateSub(struct UrlabRclContext* Ctx,
+    const char* Topic, UrlabRclJointStateCallback Callback, void* User);
+void UrlabRcl_DestroyJointStateSub(struct UrlabRclJointStateSub* Sub);
+
 int UrlabRcl_SpinSome(struct UrlabRclContext* Ctx, int64_t TimeoutNs);
+
+// --- Services --------------------------------------------------------------
+// A std_srvs/Trigger service (empty request; response {bool success, string
+// message}), the standard type the claim_control / release_control services use
+// so no custom .srv package is needed. The callback fills success + message on
+// each request; the core sends the response. Callbacks fire inside
+// UrlabRcl_SpinSome on its caller's thread, like subscriptions. This service
+// area is kept separate from the message-publisher area of the seam.
+typedef void (*UrlabRclTriggerCallback)(void* User, int32_t* OutSuccess,
+    char* OutMessage, int32_t OutMessageCap);
+struct UrlabRclTriggerService* UrlabRcl_CreateTriggerService(struct UrlabRclContext* Ctx,
+    const char* ServiceName, UrlabRclTriggerCallback Callback, void* User);
+void UrlabRcl_DestroyTriggerService(struct UrlabRclTriggerService* Srv);
 
 // --- Zero-copy (only Clock is loanable in our message set) -----------------
 // CanLoan wraps rcl_publisher_can_loan_messages. The loaned publish borrows,

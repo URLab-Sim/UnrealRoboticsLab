@@ -28,10 +28,12 @@
 #include <rcl/rcl.h>
 #include <rcl/error_handling.h>
 #include <rcl/subscription.h>
+#include <rcl/service.h>
 #include <rcl/wait.h>
 #include <rmw/qos_profiles.h>
 
 #include <rosidl_runtime_c/message_type_support_struct.h>
+#include <rosidl_runtime_c/service_type_support_struct.h>
 #include <rosidl_runtime_c/string_functions.h>
 #include <rosidl_runtime_c/primitives_sequence_functions.h>
 
@@ -49,9 +51,14 @@
 #include <geometry_msgs/msg/pose_with_covariance_stamped.h>
 #include <std_msgs/msg/float64_multi_array.h>
 #include <std_msgs/msg/string.h>
+#include <std_msgs/msg/bool.h>
+#include <std_msgs/msg/float64.h>
+#include <geometry_msgs/msg/vector3.h>
+#include <geometry_msgs/msg/pose_stamped.h>
 #include <tf2_msgs/msg/tf_message.h>
 #include <nav_msgs/msg/odometry.h>
 #include <rosgraph_msgs/msg/clock.h>
+#include <std_srvs/srv/trigger.h>
 
 #ifndef URLAB_ROS_DISTRO_NAME
 #define URLAB_ROS_DISTRO_NAME "humble"
@@ -85,7 +92,8 @@ void FillStamp(builtin_interfaces__msg__Time& Stamp, int64_t SimTimeNs)
 enum class ESubKind : uint8_t
 {
     Ctrl,
-    Twist
+    Twist,
+    JointState
 };
 
 struct FSubRecord
@@ -95,9 +103,22 @@ struct FSubRecord
     UrlabRclContext* Ctx;
     UrlabRclCtrlCallback CtrlCallback;
     UrlabRclTwistCallback TwistCallback;
+    UrlabRclJointStateCallback JointStateCallback;
     void* User;
     std_msgs__msg__Float64MultiArray CtrlMsg;
     geometry_msgs__msg__Twist TwistMsg;
+    sensor_msgs__msg__JointState JointStateMsg;
+};
+
+// Service record; SpinSome takes the request, runs the callback, sends the reply.
+struct FSrvRecord
+{
+    rcl_service_t Srv;
+    UrlabRclContext* Ctx;
+    UrlabRclTriggerCallback Callback;
+    void* User;
+    std_srvs__srv__Trigger_Request Request;
+    std_srvs__srv__Trigger_Response Response;
 };
 }  // namespace
 
@@ -112,6 +133,8 @@ struct UrlabRclContext
     bool bNodeValid;
     // Subscriptions registered against this context, spun by UrlabRcl_SpinSome.
     std::vector<FSubRecord*> Subs;
+    // Services registered against this context, also served by UrlabRcl_SpinSome.
+    std::vector<FSrvRecord*> Srvs;
 };
 
 struct UrlabRclJointStatePub
@@ -221,6 +244,34 @@ struct UrlabRclCameraInfoPub
     sensor_msgs__msg__CameraInfo Msg;
 };
 
+struct UrlabRclBoolPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    std_msgs__msg__Bool Msg;
+};
+
+struct UrlabRclFloat64Pub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    std_msgs__msg__Float64 Msg;
+};
+
+struct UrlabRclVector3Pub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    geometry_msgs__msg__Vector3 Msg;
+};
+
+struct UrlabRclPoseStampedPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    geometry_msgs__msg__PoseStamped Msg;
+};
+
 struct UrlabRclCtrlSub
 {
     FSubRecord Rec;
@@ -229,6 +280,16 @@ struct UrlabRclCtrlSub
 struct UrlabRclTwistSub
 {
     FSubRecord Rec;
+};
+
+struct UrlabRclJointStateSub
+{
+    FSubRecord Rec;
+};
+
+struct UrlabRclTriggerService
+{
+    FSrvRecord Rec;
 };
 
 namespace
@@ -263,6 +324,23 @@ void DetachSub(FSubRecord* Rec)
         return;
     }
     std::vector<FSubRecord*>& List = Rec->Ctx->Subs;
+    for (size_t i = 0; i < List.size(); ++i)
+    {
+        if (List[i] == Rec)
+        {
+            List.erase(List.begin() + i);
+            break;
+        }
+    }
+}
+
+void DetachSrv(FSrvRecord* Rec)
+{
+    if (!Rec || !Rec->Ctx)
+    {
+        return;
+    }
+    std::vector<FSrvRecord*>& List = Rec->Ctx->Srvs;
     for (size_t i = 0; i < List.size(); ++i)
     {
         if (List[i] == Rec)
@@ -346,14 +424,30 @@ void UrlabRcl_Shutdown(UrlabRclContext* Ctx)
             {
                 std_msgs__msg__Float64MultiArray__fini(&Rec->CtrlMsg);
             }
-            else
+            else if (Rec->Kind == ESubKind::Twist)
             {
                 geometry_msgs__msg__Twist__fini(&Rec->TwistMsg);
+            }
+            else
+            {
+                sensor_msgs__msg__JointState__fini(&Rec->JointStateMsg);
             }
             delete Rec;
         }
     }
     Ctx->Subs.clear();
+
+    for (FSrvRecord* Rec : Ctx->Srvs)
+    {
+        if (Rec)
+        {
+            rcl_service_fini(&Rec->Srv, &Ctx->Node);
+            std_srvs__srv__Trigger_Request__fini(&Rec->Request);
+            std_srvs__srv__Trigger_Response__fini(&Rec->Response);
+            delete Rec;
+        }
+    }
+    Ctx->Srvs.clear();
 
     if (Ctx->bNodeValid)
     {
@@ -1492,6 +1586,228 @@ void UrlabRcl_DestroyCameraInfoPub(UrlabRclCameraInfoPub* Pub)
     delete Pub;
 }
 
+// --- Bool (typed user channel) ---------------------------------------------
+
+UrlabRclBoolPub* UrlabRcl_CreateBoolPub(UrlabRclContext* Ctx, const char* Topic)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclBoolPub* Pub = new UrlabRclBoolPub();
+    Pub->Ctx = Ctx;
+    std_msgs__msg__Bool__init(&Pub->Msg);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        std_msgs__msg__Bool__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishBool(UrlabRclBoolPub* Pub, int32_t bValue)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    Pub->Msg.data = bValue != 0;
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyBoolPub(UrlabRclBoolPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    std_msgs__msg__Bool__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- Float64 (typed user channel) ------------------------------------------
+
+UrlabRclFloat64Pub* UrlabRcl_CreateFloat64Pub(UrlabRclContext* Ctx, const char* Topic)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclFloat64Pub* Pub = new UrlabRclFloat64Pub();
+    Pub->Ctx = Ctx;
+    std_msgs__msg__Float64__init(&Pub->Msg);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        std_msgs__msg__Float64__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishFloat64(UrlabRclFloat64Pub* Pub, double Value)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    Pub->Msg.data = Value;
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyFloat64Pub(UrlabRclFloat64Pub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    std_msgs__msg__Float64__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- Vector3 (typed user channel) ------------------------------------------
+
+UrlabRclVector3Pub* UrlabRcl_CreateVector3Pub(UrlabRclContext* Ctx, const char* Topic)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclVector3Pub* Pub = new UrlabRclVector3Pub();
+    Pub->Ctx = Ctx;
+    geometry_msgs__msg__Vector3__init(&Pub->Msg);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Vector3);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        geometry_msgs__msg__Vector3__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishVector3(UrlabRclVector3Pub* Pub, const double Xyz[3])
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    Pub->Msg.x = Xyz ? Xyz[0] : 0.0;
+    Pub->Msg.y = Xyz ? Xyz[1] : 0.0;
+    Pub->Msg.z = Xyz ? Xyz[2] : 0.0;
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyVector3Pub(UrlabRclVector3Pub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    geometry_msgs__msg__Vector3__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- PoseStamped (typed user channel) --------------------------------------
+
+UrlabRclPoseStampedPub* UrlabRcl_CreatePoseStampedPub(UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclPoseStampedPub* Pub = new UrlabRclPoseStampedPub();
+    Pub->Ctx = Ctx;
+    geometry_msgs__msg__PoseStamped__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, PoseStamped);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        geometry_msgs__msg__PoseStamped__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishPoseStamped(UrlabRclPoseStampedPub* Pub, const double PositionXyz[3],
+    const double OrientationXyzw[4], int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    geometry_msgs__msg__Pose& P = Pub->Msg.pose;
+    P.position.x = PositionXyz ? PositionXyz[0] : 0.0;
+    P.position.y = PositionXyz ? PositionXyz[1] : 0.0;
+    P.position.z = PositionXyz ? PositionXyz[2] : 0.0;
+    P.orientation.x = OrientationXyzw ? OrientationXyzw[0] : 0.0;
+    P.orientation.y = OrientationXyzw ? OrientationXyzw[1] : 0.0;
+    P.orientation.z = OrientationXyzw ? OrientationXyzw[2] : 0.0;
+    P.orientation.w = OrientationXyzw ? OrientationXyzw[3] : 1.0;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyPoseStampedPub(UrlabRclPoseStampedPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    geometry_msgs__msg__PoseStamped__fini(&Pub->Msg);
+    delete Pub;
+}
+
 // --- Subscriptions ---------------------------------------------------------
 
 UrlabRclCtrlSub* UrlabRcl_CreateCtrlSub(UrlabRclContext* Ctx, const char* Topic,
@@ -1582,6 +1898,98 @@ void UrlabRcl_DestroyTwistSub(UrlabRclTwistSub* Sub)
     delete Sub;
 }
 
+UrlabRclJointStateSub* UrlabRcl_CreateJointStateSub(UrlabRclContext* Ctx, const char* Topic,
+    UrlabRclJointStateCallback Callback, void* User)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclJointStateSub* Sub = new UrlabRclJointStateSub();
+    Sub->Rec.Kind = ESubKind::JointState;
+    Sub->Rec.Ctx = Ctx;
+    Sub->Rec.CtrlCallback = nullptr;
+    Sub->Rec.TwistCallback = nullptr;
+    Sub->Rec.JointStateCallback = Callback;
+    Sub->Rec.User = User;
+    sensor_msgs__msg__JointState__init(&Sub->Rec.JointStateMsg);
+
+    Sub->Rec.Sub = rcl_get_zero_initialized_subscription();
+    rcl_subscription_options_t Options = rcl_subscription_get_default_options();
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, JointState);
+    const rcl_ret_t Ret = rcl_subscription_init(&Sub->Rec.Sub, &Ctx->Node, Ts, Topic, &Options);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        sensor_msgs__msg__JointState__fini(&Sub->Rec.JointStateMsg);
+        delete Sub;
+        return nullptr;
+    }
+    Ctx->Subs.push_back(&Sub->Rec);
+    return Sub;
+}
+
+void UrlabRcl_DestroyJointStateSub(UrlabRclJointStateSub* Sub)
+{
+    if (!Sub)
+    {
+        return;
+    }
+    DetachSub(&Sub->Rec);
+    rcl_subscription_fini(&Sub->Rec.Sub, &Sub->Rec.Ctx->Node);
+    sensor_msgs__msg__JointState__fini(&Sub->Rec.JointStateMsg);
+    delete Sub;
+}
+
+// --- Services --------------------------------------------------------------
+
+UrlabRclTriggerService* UrlabRcl_CreateTriggerService(UrlabRclContext* Ctx,
+    const char* ServiceName, UrlabRclTriggerCallback Callback, void* User)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclTriggerService* Srv = new UrlabRclTriggerService();
+    Srv->Rec.Ctx = Ctx;
+    Srv->Rec.Callback = Callback;
+    Srv->Rec.User = User;
+    std_srvs__srv__Trigger_Request__init(&Srv->Rec.Request);
+    std_srvs__srv__Trigger_Response__init(&Srv->Rec.Response);
+
+    Srv->Rec.Srv = rcl_get_zero_initialized_service();
+    rcl_service_options_t Options = rcl_service_get_default_options();
+    const rosidl_service_type_support_t* Ts =
+        ROSIDL_GET_SRV_TYPE_SUPPORT(std_srvs, srv, Trigger);
+    const rcl_ret_t Ret = rcl_service_init(&Srv->Rec.Srv, &Ctx->Node, Ts, ServiceName, &Options);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        std_srvs__srv__Trigger_Request__fini(&Srv->Rec.Request);
+        std_srvs__srv__Trigger_Response__fini(&Srv->Rec.Response);
+        delete Srv;
+        return nullptr;
+    }
+    Ctx->Srvs.push_back(&Srv->Rec);
+    return Srv;
+}
+
+void UrlabRcl_DestroyTriggerService(UrlabRclTriggerService* Srv)
+{
+    if (!Srv)
+    {
+        return;
+    }
+    DetachSrv(&Srv->Rec);
+    rcl_service_fini(&Srv->Rec.Srv, &Srv->Rec.Ctx->Node);
+    std_srvs__srv__Trigger_Request__fini(&Srv->Rec.Request);
+    std_srvs__srv__Trigger_Response__fini(&Srv->Rec.Response);
+    delete Srv;
+}
+
 int UrlabRcl_SpinSome(UrlabRclContext* Ctx, int64_t TimeoutNs)
 {
     ClearError();
@@ -1589,14 +1997,16 @@ int UrlabRcl_SpinSome(UrlabRclContext* Ctx, int64_t TimeoutNs)
     {
         return -1;
     }
-    const size_t N = Ctx->Subs.size();
-    if (N == 0)
+    const size_t NSubs = Ctx->Subs.size();
+    const size_t NSrvs = Ctx->Srvs.size();
+    if (NSubs == 0 && NSrvs == 0)
     {
         return 0;
     }
 
     rcl_wait_set_t WaitSet = rcl_get_zero_initialized_wait_set();
-    rcl_ret_t Ret = rcl_wait_set_init(&WaitSet, N, 0, 0, 0, 0, 0, &Ctx->Context, Ctx->Allocator);
+    rcl_ret_t Ret = rcl_wait_set_init(&WaitSet, NSubs, 0, 0, 0, NSrvs, 0,
+        &Ctx->Context, Ctx->Allocator);
     if (Ret != RCL_RET_OK)
     {
         CaptureError();
@@ -1614,6 +2024,10 @@ int UrlabRcl_SpinSome(UrlabRclContext* Ctx, int64_t TimeoutNs)
     {
         rcl_wait_set_add_subscription(&WaitSet, &Rec->Sub, nullptr);
     }
+    for (FSrvRecord* Rec : Ctx->Srvs)
+    {
+        rcl_wait_set_add_service(&WaitSet, &Rec->Srv, nullptr);
+    }
 
     Ret = rcl_wait(&WaitSet, TimeoutNs);
     if (Ret == RCL_RET_TIMEOUT)
@@ -1628,7 +2042,7 @@ int UrlabRcl_SpinSome(UrlabRclContext* Ctx, int64_t TimeoutNs)
         return -static_cast<int>(Ret);
     }
 
-    for (size_t i = 0; i < N; ++i)
+    for (size_t i = 0; i < NSubs; ++i)
     {
         if (WaitSet.subscriptions[i] == nullptr)
         {
@@ -1645,7 +2059,7 @@ int UrlabRcl_SpinSome(UrlabRclContext* Ctx, int64_t TimeoutNs)
                     static_cast<int32_t>(Rec->CtrlMsg.data.size), Rec->User);
             }
         }
-        else
+        else if (Rec->Kind == ESubKind::Twist)
         {
             rmw_message_info_t Info = rmw_get_zero_initialized_message_info();
             const rcl_ret_t Take = rcl_take(&Rec->Sub, &Rec->TwistMsg, &Info, nullptr);
@@ -1657,6 +2071,55 @@ int UrlabRcl_SpinSome(UrlabRclContext* Ctx, int64_t TimeoutNs)
                     Rec->TwistMsg.angular.x, Rec->TwistMsg.angular.y, Rec->TwistMsg.angular.z};
                 Rec->TwistCallback(Linear, Angular, Rec->User);
             }
+        }
+        else  // ESubKind::JointState
+        {
+            rmw_message_info_t Info = rmw_get_zero_initialized_message_info();
+            const rcl_ret_t Take = rcl_take(&Rec->Sub, &Rec->JointStateMsg, &Info, nullptr);
+            if (Take == RCL_RET_OK && Rec->JointStateCallback)
+            {
+                const sensor_msgs__msg__JointState& Msg = Rec->JointStateMsg;
+                const size_t Count = Msg.name.size < Msg.position.size
+                    ? Msg.name.size : Msg.position.size;
+                std::vector<const char*> Names(Count);
+                for (size_t j = 0; j < Count; ++j)
+                {
+                    Names[j] = Msg.name.data[j].data ? Msg.name.data[j].data : "";
+                }
+                Rec->JointStateCallback(Count > 0 ? Names.data() : nullptr,
+                    Count > 0 ? Msg.position.data : nullptr,
+                    static_cast<int32_t>(Count), Rec->User);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < NSrvs; ++i)
+    {
+        if (WaitSet.services[i] == nullptr)
+        {
+            continue;
+        }
+        FSrvRecord* Rec = Ctx->Srvs[i];
+        rmw_request_id_t Header;
+        std::memset(&Header, 0, sizeof(Header));
+        const rcl_ret_t Take = rcl_take_request(&Rec->Srv, &Header, &Rec->Request);
+        if (Take != RCL_RET_OK)
+        {
+            continue;
+        }
+        int32_t bSuccess = 0;
+        char MessageBuf[512] = {0};
+        if (Rec->Callback)
+        {
+            Rec->Callback(Rec->User, &bSuccess, MessageBuf, static_cast<int32_t>(sizeof(MessageBuf)));
+        }
+        MessageBuf[sizeof(MessageBuf) - 1] = '\0';
+        Rec->Response.success = bSuccess != 0;
+        SetString(Rec->Response.message, MessageBuf);
+        const rcl_ret_t Send = rcl_send_response(&Rec->Srv, &Header, &Rec->Response);
+        if (Send != RCL_RET_OK)
+        {
+            CaptureError();
         }
     }
 

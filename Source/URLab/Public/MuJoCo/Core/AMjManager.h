@@ -45,6 +45,23 @@ class UMjInputHandler;
 class UMjPerturbation;
 class UMjSimulationState;
 class UMjBody;
+class UMjUserChannelComponent;
+struct FMjUserChannel;
+enum class EMjUserChannelKind : uint8;
+
+/**
+ * @struct FMjUserInputChannelInfo
+ * @brief One declared user-input channel and its scope, enumerated for the
+ *        transports that create per-channel input subscriptions (ROS) or route
+ *        writes to it (the set_user_channels RPC op). ArtSegment is the canonical
+ *        art segment for art scope, or empty for scene scope.
+ */
+struct FMjUserInputChannelInfo
+{
+	FString ArtSegment;
+	FName Channel;
+	EMjUserChannelKind Kind;
+};
 
 /**
  * @struct FMjEntityRecord
@@ -240,6 +257,20 @@ public:
 	/** Copy the registered state producers out under the registry lock. Called by
 	 *  the collector's game-thread cache rebuild. */
 	void GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const;
+
+	/** Route an inbound user-channel value to the declaring component. ArtOrNone is
+	 *  the canonical art segment for art scope, or None/empty for scene scope. The
+	 *  transport (the set_user_channels RPC op, or a ROS subscription) builds the
+	 *  value; the component validates it against the declared kind and stores it.
+	 *  Returns true when a declaring component accepted the write. Thread-safe;
+	 *  callable from any transport thread. This is the input mirror of the state
+	 *  consumer seam. */
+	bool ApplyUserChannelInput(FName ArtOrNone, FName Channel, const FMjUserChannel& Value);
+
+	/** Enumerate every declared user-input channel across registered components,
+	 *  with its scope. Used by ROS to create one subscription per input channel and
+	 *  rebuild the set on a StructureVersion change. Thread-safe. */
+	void GetUserInputChannels(TArray<FMjUserInputChannelInfo>& Out) const;
 
 	/** Build the per-step IR, encode the canonical `state_full` msgpack, and fan
 	 *  the bytes to every registered snapshot publisher. Bound to the physics

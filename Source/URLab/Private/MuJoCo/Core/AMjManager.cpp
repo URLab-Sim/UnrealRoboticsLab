@@ -43,6 +43,7 @@
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
 #include "State/MjCanonicalName.h"
+#include "UserChannels/MjUserChannelComponent.h"
 #include "Urdf/UrdfExporter.h"
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
@@ -477,6 +478,70 @@ void AAMjManager::GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const
 {
 	FScopeLock Lock(&StateProducersMutex);
 	Out = StateProducers;
+}
+
+namespace
+{
+// The canonical art segment a user-channel component contributes under, or empty
+// for scene scope. Mirrors the collector's producer scope resolution.
+FString UserChannelScopeSegment(const UMjUserChannelComponent* Comp)
+{
+	if (!Comp)
+		return FString();
+	AActor* Owner = Comp->GetOwner();
+	if (const AMjArticulation* Art = Cast<AMjArticulation>(Owner))
+		return FMjCanonicalName::ArtSegment(Art).ToString();
+	return FString();
+}
+} // namespace
+
+bool AAMjManager::ApplyUserChannelInput(FName ArtOrNone, FName Channel,
+	const FMjUserChannel& Value)
+{
+	const FString TargetScope = ArtOrNone.IsNone() ? FString() : ArtOrNone.ToString();
+
+	TArray<TWeakObjectPtr<UObject>> Producers;
+	GetStateProducers(Producers);
+
+	bool bApplied = false;
+	for (const TWeakObjectPtr<UObject>& Weak : Producers)
+	{
+		UMjUserChannelComponent* Comp = Cast<UMjUserChannelComponent>(Weak.Get());
+		if (!Comp)
+			continue;
+		if (UserChannelScopeSegment(Comp) != TargetScope)
+			continue;
+		EMjUserChannelKind Declared;
+		if (!Comp->GetDeclaredInputKind(Channel, Declared))
+			continue;
+		if (Comp->ApplyInput(Channel, Value))
+			bApplied = true;
+	}
+	return bApplied;
+}
+
+void AAMjManager::GetUserInputChannels(TArray<FMjUserInputChannelInfo>& Out) const
+{
+	TArray<TWeakObjectPtr<UObject>> Producers;
+	GetStateProducers(Producers);
+
+	for (const TWeakObjectPtr<UObject>& Weak : Producers)
+	{
+		UMjUserChannelComponent* Comp = Cast<UMjUserChannelComponent>(Weak.Get());
+		if (!Comp)
+			continue;
+		const FString Scope = UserChannelScopeSegment(Comp);
+		TArray<TPair<FName, EMjUserChannelKind>> Declared;
+		Comp->GetDeclaredInputChannels(Declared);
+		for (const TPair<FName, EMjUserChannelKind>& Pair : Declared)
+		{
+			FMjUserInputChannelInfo Info;
+			Info.ArtSegment = Scope;
+			Info.Channel = Pair.Key;
+			Info.Kind = Pair.Value;
+			Out.Add(MoveTemp(Info));
+		}
+	}
 }
 
 void AAMjManager::RegisterStateConsumer(IMjStateConsumer* Consumer, UObject* OwnerObj)

@@ -93,13 +93,19 @@ public:
 	void PublishPoseWithCovariance(const double Position3[3],
 		const double OrientationXyzw4[4], int64 SimTimeNs);
 	void PublishCameraInfo(int64 SimTimeNs);
+	void PublishBool(bool bValue);
+	void PublishFloat64(double Value);
+	void PublishVector3(const double Xyz3[3]);
+	void PublishPoseStamped(const double Position3[3], const double OrientationXyzw4[4],
+		int64 SimTimeNs);
 
 private:
 	enum class EKind : uint8
 	{
 		None, JointState, Imu, Tf, TwistStamped, Clock, String,
 		Wrench, Range, MagneticField, MultiArray,
-		Odometry, PoseWithCovariance, CameraInfo
+		Odometry, PoseWithCovariance, CameraInfo,
+		Bool, Float64, Vector3, PoseStamped
 	};
 
 	FMjRosPub(void* InHandle, EKind InKind) : Handle(InHandle), Kind(InKind) {}
@@ -147,6 +153,10 @@ public:
 	FMjRosPub CreatePoseWithCovariance(const FString& Topic, const FString& FrameId);
 	FMjRosPub CreateCameraInfo(const FString& Topic, const FString& FrameId,
 		int32 Width, int32 Height, const double K9[9]);
+	FMjRosPub CreateBool(const FString& Topic);
+	FMjRosPub CreateFloat64(const FString& Topic);
+	FMjRosPub CreateVector3(const FString& Topic);
+	FMjRosPub CreatePoseStamped(const FString& Topic, const FString& FrameId);
 
 private:
 	UrlabRclContext* Context = nullptr;

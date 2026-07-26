@@ -360,6 +360,7 @@ private:
 	TSharedPtr<FJsonObject> HandleSetControlSource(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleClaimControl(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleReleaseControl(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleSetUserChannels(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetTwist(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetQpos(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetMocapPose(const TSharedPtr<FJsonObject>& Req);

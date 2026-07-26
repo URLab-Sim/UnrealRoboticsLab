@@ -30,6 +30,24 @@
 
 class AAMjManager;
 
+/** Blueprint-facing kind selector for declaring an input channel. Maps 1:1 onto
+ *  the IR's EMjUserChannelKind (Struct is not an input kind in v1). */
+UENUM(BlueprintType)
+enum class EMjUserInputKind : uint8
+{
+	Bool,
+	Int,
+	Scalar,
+	Vec3,
+	Quat,
+	Transform,
+	Array,
+	String
+};
+
+/** Fires on the game thread when a declared input channel receives a value. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMjUserInputReceived, FName, Channel);
+
 /**
  * The single authoring surface for user-declared payload channels, for Blueprint
  * and convenience C++ alike. Drop it on an actor and call a Publish* node; the
@@ -92,6 +110,53 @@ public:
 	 *  packing via FJsonObjectConverter) is the P8 follow-up. */
 	void PublishStructBytes(FName Channel, const TArray<uint8>& PackedMsgpackMap);
 
+	// --- Input: declare + read a named channel (game thread typical) ---
+
+	/** Declare an input channel so its topic / RPC allowlist entry exists before
+	 *  data can flow. Input channels must be declared (unlike lazy outputs): ROS
+	 *  needs the kind to create a subscription, and the declaration is the allowlist
+	 *  that stops writes into undeclared names. Redeclaring updates the kind. */
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	void DeclareInputChannel(FName Channel, EMjUserInputKind Kind);
+
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	bool GetInputBool(FName Channel, bool bDefault = false) const;
+
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	double GetInputFloat(FName Channel, double Default = 0.0) const;
+
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	FVector GetInputVector(FName Channel, bool bConvertToUESpace = true) const;
+
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	FTransform GetInputTransform(FName Channel, bool bConvertToUESpace = true) const;
+
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	TArray<double> GetInputFloatArray(FName Channel) const;
+
+	UFUNCTION(BlueprintCallable, Category = "URLab|User Channels")
+	FString GetInputString(FName Channel) const;
+
+	/** Broadcast on the game thread whenever a declared input channel is written by
+	 *  any transport (the set_user_channels RPC op or a ROS subscription). */
+	UPROPERTY(BlueprintAssignable, Category = "URLab|User Channels")
+	FMjUserInputReceived OnUserInput;
+
+	/** Look up a declared input channel's kind. Returns false if not declared.
+	 *  Thread-safe; used by the manager's input router and the ROS subscription
+	 *  builder. */
+	bool GetDeclaredInputKind(FName Channel, EMjUserChannelKind& OutKind) const;
+
+	/** Copy the declared input channels out (thread-safe). */
+	void GetDeclaredInputChannels(TArray<TPair<FName, EMjUserChannelKind>>& Out) const;
+
+	/** Apply an inbound value to a declared input channel from any transport thread.
+	 *  Validates the channel is declared and the value is compatible with its
+	 *  declared kind, stores it in the input mailbox under the declared kind, and
+	 *  queues an OnUserInput broadcast on the game thread. Returns false when the
+	 *  channel is undeclared or the value's kind is incompatible. */
+	bool ApplyInput(FName Channel, const FMjUserChannel& Value);
+
 	// --- IMjStateProducer: physics thread, under the engine CallbackMutex ---
 	virtual void DescribeState(FMjArticulationState& Out) const override;
 	virtual void DescribeSceneState(FMjStateSnapshot& Out) const override;
@@ -115,4 +180,11 @@ private:
 	mutable FCriticalSection MailboxMutex;
 	TMap<FName, FMjUserChannel> Mailbox;
 	TWeakObjectPtr<AAMjManager> CachedManager;
+
+	/** Declared input channels (allowlist + kind) and the latest received value per
+	 *  channel. Guarded by InputMutex; written by transport threads, read on the
+	 *  game thread by the GetInput* nodes. */
+	mutable FCriticalSection InputMutex;
+	TMap<FName, EMjUserChannelKind> InputDecls;
+	TMap<FName, FMjUserChannel> InputMailbox;
 };

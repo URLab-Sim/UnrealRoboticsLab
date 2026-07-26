@@ -24,6 +24,34 @@
 #include "State/MjCanonicalName.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
+#include "Async/Async.h"
+
+namespace
+{
+/** Map the Blueprint-facing input kind onto the IR kind (1:1). */
+EMjUserChannelKind ToChannelKind(EMjUserInputKind Kind)
+{
+	switch (Kind)
+	{
+		case EMjUserInputKind::Bool: return EMjUserChannelKind::Bool;
+		case EMjUserInputKind::Int: return EMjUserChannelKind::Int;
+		case EMjUserInputKind::Scalar: return EMjUserChannelKind::Scalar;
+		case EMjUserInputKind::Vec3: return EMjUserChannelKind::Vec3;
+		case EMjUserInputKind::Quat: return EMjUserChannelKind::Quat;
+		case EMjUserInputKind::Transform: return EMjUserChannelKind::Transform;
+		case EMjUserInputKind::Array: return EMjUserChannelKind::Array;
+		case EMjUserInputKind::String: return EMjUserChannelKind::String;
+	}
+	return EMjUserChannelKind::Scalar;
+}
+
+/** String and Struct are the text family; everything else is numeric. An input's
+ *  provided kind must share a family with its declared kind to be accepted. */
+bool IsTextKind(EMjUserChannelKind Kind)
+{
+	return Kind == EMjUserChannelKind::String || Kind == EMjUserChannelKind::Struct;
+}
+} // namespace
 
 UMjUserChannelComponent::UMjUserChannelComponent()
 {
@@ -194,6 +222,144 @@ void UMjUserChannelComponent::PublishStructBytes(FName Channel, const TArray<uin
 	C.Kind = EMjUserChannelKind::Struct;
 	C.Packed = PackedMsgpackMap;
 	StoreChannel(MoveTemp(C));
+}
+
+void UMjUserChannelComponent::DeclareInputChannel(FName Channel, EMjUserInputKind Kind)
+{
+	const FName Key = MakeChannelName(Channel);
+	bool bChanged = false;
+	{
+		FScopeLock Lock(&InputMutex);
+		const EMjUserChannelKind NewKind = ToChannelKind(Kind);
+		if (const EMjUserChannelKind* Existing = InputDecls.Find(Key))
+			bChanged = (*Existing != NewKind);
+		else
+			bChanged = true;
+		InputDecls.Add(Key, NewKind);
+	}
+	// A new declared input is a structure change: ROS rebuilds its per-channel
+	// subscriptions on the StructureVersion bump.
+	if (bChanged)
+	{
+		if (AAMjManager* Mgr = ResolveManager())
+			Mgr->GetStateCollector().MarkProducerCacheDirty();
+	}
+}
+
+bool UMjUserChannelComponent::GetDeclaredInputKind(FName Channel, EMjUserChannelKind& OutKind) const
+{
+	const FName Key = MakeChannelName(Channel);
+	FScopeLock Lock(&InputMutex);
+	if (const EMjUserChannelKind* Found = InputDecls.Find(Key))
+	{
+		OutKind = *Found;
+		return true;
+	}
+	return false;
+}
+
+void UMjUserChannelComponent::GetDeclaredInputChannels(
+	TArray<TPair<FName, EMjUserChannelKind>>& Out) const
+{
+	FScopeLock Lock(&InputMutex);
+	Out.Reserve(Out.Num() + InputDecls.Num());
+	for (const TPair<FName, EMjUserChannelKind>& Pair : InputDecls)
+		Out.Add(Pair);
+}
+
+bool UMjUserChannelComponent::ApplyInput(FName Channel, const FMjUserChannel& Value)
+{
+	const FName Key = MakeChannelName(Channel);
+	EMjUserChannelKind Declared;
+	{
+		FScopeLock Lock(&InputMutex);
+		const EMjUserChannelKind* Found = InputDecls.Find(Key);
+		if (!Found)
+			return false;  // undeclared: not on the allowlist
+		Declared = *Found;
+	}
+
+	// Kind-family check: a text value cannot fill a numeric channel or vice versa.
+	if (IsTextKind(Declared) != IsTextKind(Value.Kind))
+		return false;
+
+	FMjUserChannel Stored;
+	Stored.Name = Key;
+	Stored.Kind = Declared;
+	if (IsTextKind(Declared))
+		Stored.Text = Value.Text;
+	else
+		Stored.Values = Value.Values;
+
+	{
+		FScopeLock Lock(&InputMutex);
+		InputMailbox.Add(Key, MoveTemp(Stored));
+	}
+
+	// OnUserInput is a Blueprint delegate; broadcast on the game thread so graphs
+	// never run on a transport thread.
+	TWeakObjectPtr<UMjUserChannelComponent> WeakThis(this);
+	AsyncTask(ENamedThreads::GameThread, [WeakThis, Key]() {
+		if (UMjUserChannelComponent* Self = WeakThis.Get())
+			Self->OnUserInput.Broadcast(Key);
+	});
+	return true;
+}
+
+bool UMjUserChannelComponent::GetInputBool(FName Channel, bool bDefault) const
+{
+	FScopeLock Lock(&InputMutex);
+	if (const FMjUserChannel* C = InputMailbox.Find(MakeChannelName(Channel)))
+		return C->Values.Num() > 0 && C->Values[0] != 0.0;
+	return bDefault;
+}
+
+double UMjUserChannelComponent::GetInputFloat(FName Channel, double Default) const
+{
+	FScopeLock Lock(&InputMutex);
+	if (const FMjUserChannel* C = InputMailbox.Find(MakeChannelName(Channel)))
+		return C->Values.Num() > 0 ? C->Values[0] : Default;
+	return Default;
+}
+
+FVector UMjUserChannelComponent::GetInputVector(FName Channel, bool bConvertToUESpace) const
+{
+	FScopeLock Lock(&InputMutex);
+	const FMjUserChannel* C = InputMailbox.Find(MakeChannelName(Channel));
+	if (!C || C->Values.Num() < 3)
+		return FVector::ZeroVector;
+	const double V[3] = {C->Values[0], C->Values[1], C->Values[2]};
+	return bConvertToUESpace ? URLabAxisConv::MjPositionToUe(V)
+							 : FVector(V[0], V[1], V[2]);
+}
+
+FTransform UMjUserChannelComponent::GetInputTransform(FName Channel, bool bConvertToUESpace) const
+{
+	FScopeLock Lock(&InputMutex);
+	const FMjUserChannel* C = InputMailbox.Find(MakeChannelName(Channel));
+	if (!C || C->Values.Num() < 7)
+		return FTransform::Identity;
+	const double P[3] = {C->Values[0], C->Values[1], C->Values[2]};
+	const double Q[4] = {C->Values[3], C->Values[4], C->Values[5], C->Values[6]}; // wxyz
+	if (bConvertToUESpace)
+		return FTransform(URLabAxisConv::MjQuatToUe(Q), URLabAxisConv::MjPositionToUe(P));
+	return FTransform(FQuat(Q[1], Q[2], Q[3], Q[0]), FVector(P[0], P[1], P[2]));
+}
+
+TArray<double> UMjUserChannelComponent::GetInputFloatArray(FName Channel) const
+{
+	FScopeLock Lock(&InputMutex);
+	if (const FMjUserChannel* C = InputMailbox.Find(MakeChannelName(Channel)))
+		return C->Values;
+	return TArray<double>();
+}
+
+FString UMjUserChannelComponent::GetInputString(FName Channel) const
+{
+	FScopeLock Lock(&InputMutex);
+	if (const FMjUserChannel* C = InputMailbox.Find(MakeChannelName(Channel)))
+		return C->Text;
+	return FString();
 }
 
 void UMjUserChannelComponent::DescribeState(FMjArticulationState& Out) const

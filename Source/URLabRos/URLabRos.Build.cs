@@ -59,7 +59,11 @@ public class URLabRos : ModuleRules
 		// here for this module's own translation units.
 		PrivateDependencyModuleNames.AddRange(new string[]
 		{
-			"EnhancedInput"
+			"EnhancedInput",
+			// The user-channel provider inflates a Struct channel's packed msgpack
+			// map (via URLab's FURLabMsgpackUtil) and re-serialises it as JSON text
+			// for its std_msgs/String topic.
+			"Json"
 		});
 
 		if (Target.Platform == UnrealTargetPlatform.Linux)
@@ -138,6 +142,7 @@ public class URLabRos : ModuleRules
 			"rcl", "rcutils", "rmw", "rosidl_runtime_c",
 			"builtin_interfaces__rosidl_generator_c", "builtin_interfaces__rosidl_typesupport_c",
 			"std_msgs__rosidl_generator_c", "std_msgs__rosidl_typesupport_c",
+			"std_srvs__rosidl_generator_c", "std_srvs__rosidl_typesupport_c",
 			"geometry_msgs__rosidl_generator_c", "geometry_msgs__rosidl_typesupport_c",
 			"sensor_msgs__rosidl_generator_c", "sensor_msgs__rosidl_typesupport_c",
 			"tf2_msgs__rosidl_generator_c", "tf2_msgs__rosidl_typesupport_c",

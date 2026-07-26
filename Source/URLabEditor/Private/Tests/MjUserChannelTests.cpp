@@ -27,9 +27,12 @@
 #include "State/MjStateTypes.h"
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
+#include "State/MjCanonicalName.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
 #include "GameFramework/Actor.h"
 
 namespace
@@ -213,6 +216,119 @@ bool FMjUserChannelSceneScope::RunTest(const FString& Parameters)
 		double PhaseVal = 0.0;
 		TestTrue(TEXT("encoded episode_phase readable"), (*UserObj)->TryGetNumberField(TEXT("episode_phase"), PhaseVal));
 		TestTrue(TEXT("encoded episode_phase value"), FMath::IsNearlyEqual(PhaseVal, 2.0));
+	}
+
+	S.Cleanup();
+	return true;
+}
+
+// ============================================================================
+// URLab.UserChannels.InputRoundTrip
+//   A component on an art declares a Bool + a Transform input channel; the
+//   set_user_channels RPC op routes values to them through ApplyUserChannelInput,
+//   the GetInput* nodes read them back, undeclared names are rejected, and a
+//   kind-family mismatch is rejected.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjUserChannelInputRoundTrip,
+	"URLab.UserChannels.InputRoundTrip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjUserChannelInputRoundTrip::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjUserChannelComponent* Comp = NewObject<UMjUserChannelComponent>(S.Robot, TEXT("UserInput"));
+	Comp->RegisterComponent();
+	S.Manager->RegisterStateProducer(Comp);
+	Comp->DeclareInputChannel(TEXT("go"), EMjUserInputKind::Bool);
+	Comp->DeclareInputChannel(TEXT("reset_goal"), EMjUserInputKind::Transform);
+
+	const AMjArticulation* Art = Cast<AMjArticulation>(S.Robot);
+	const FName Segment = FMjCanonicalName::ArtSegment(Art);
+
+	// Direct manager routing: a Bool value lands and reads back true.
+	{
+		FMjUserChannel V;
+		V.Name = FName(TEXT("go"));
+		V.Kind = EMjUserChannelKind::Bool;
+		V.Values = {1.0};
+		TestTrue(TEXT("declared bool input applied"),
+			S.Manager->ApplyUserChannelInput(Segment, FName(TEXT("go")), V));
+		TestTrue(TEXT("GetInputBool reads the applied value"),
+			Comp->GetInputBool(TEXT("go"), false));
+	}
+
+	// Undeclared channel is rejected.
+	{
+		FMjUserChannel V;
+		V.Kind = EMjUserChannelKind::Bool;
+		V.Values = {1.0};
+		TestFalse(TEXT("undeclared input rejected"),
+			S.Manager->ApplyUserChannelInput(Segment, FName(TEXT("bogus")), V));
+	}
+
+	// Kind-family mismatch (a string into a numeric channel) is rejected.
+	{
+		FMjUserChannel V;
+		V.Kind = EMjUserChannelKind::String;
+		V.Text = TEXT("nope");
+		TestFalse(TEXT("kind-family mismatch rejected"),
+			S.Manager->ApplyUserChannelInput(Segment, FName(TEXT("go")), V));
+	}
+
+	// The set_user_channels RPC op routes a transform value end-to-end.
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		S.Cleanup();
+		return false;
+	}
+	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
+
+	{
+		TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
+		Req->SetStringField(TEXT("op"), TEXT("set_user_channels"));
+		Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
+
+		TSharedPtr<FJsonObject> Xform = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> Pos;
+		Pos.Add(MakeShared<FJsonValueNumber>(1.0));
+		Pos.Add(MakeShared<FJsonValueNumber>(2.0));
+		Pos.Add(MakeShared<FJsonValueNumber>(3.0));
+		Xform->SetArrayField(TEXT("pos"), Pos);
+		TArray<TSharedPtr<FJsonValue>> Quat;
+		Quat.Add(MakeShared<FJsonValueNumber>(1.0));
+		Quat.Add(MakeShared<FJsonValueNumber>(0.0));
+		Quat.Add(MakeShared<FJsonValueNumber>(0.0));
+		Quat.Add(MakeShared<FJsonValueNumber>(0.0));
+		Xform->SetArrayField(TEXT("quat"), Quat);
+
+		TSharedPtr<FJsonObject> Channels = MakeShared<FJsonObject>();
+		Channels->SetObjectField(TEXT("reset_goal"), Xform);
+		TSharedPtr<FJsonObject> Arts = MakeShared<FJsonObject>();
+		Arts->SetObjectField(Segment.ToString(), Channels);
+		Req->SetObjectField(TEXT("arts"), Arts);
+
+		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
+		FString ReplyOp;
+		if (Reply.IsValid())
+			Reply->TryGetStringField(TEXT("op"), ReplyOp);
+		TestEqual(TEXT("set_user_channels_ok"), ReplyOp, FString(TEXT("set_user_channels_ok")));
+		double Applied = 0.0;
+		if (Reply.IsValid())
+			Reply->TryGetNumberField(TEXT("applied"), Applied);
+		TestEqual(TEXT("one channel applied"), (int32)Applied, 1);
+
+		// Read the transform back in raw MuJoCo space (no UE conversion).
+		const FTransform T = Comp->GetInputTransform(TEXT("reset_goal"), /*bConvertToUESpace=*/false);
+		TestTrue(TEXT("reset_goal pos x"), FMath::IsNearlyEqual(T.GetLocation().X, 1.0));
+		TestTrue(TEXT("reset_goal pos z"), FMath::IsNearlyEqual(T.GetLocation().Z, 3.0));
 	}
 
 	S.Cleanup();

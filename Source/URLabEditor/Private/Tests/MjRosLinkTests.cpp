@@ -43,6 +43,7 @@
 #include "Transport/RosContext.h"
 #include "Transport/RosPublishTransport.h"
 #include "Transport/RosRpcTransport.h"
+#include "Transport/RosOutputProvider.h"
 #include "Transport/SnapshotPublisher.h"
 #include "State/MjStateTypes.h"
 #include "State/MjCanonicalName.h"
@@ -51,10 +52,12 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "UserChannels/MjUserChannelComponent.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/ControlOwnership.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Dom/JsonValue.h"
+#include "Dom/JsonObject.h"
 #include <atomic>
 
 namespace
@@ -800,6 +803,225 @@ bool FMjRosStateEstimationWire::RunTest(const FString& Parameters)
 		FURLabRosContext::Get().IsAvailable());
 
 	Transport->TransportShutdown();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 13. User channels over ROS: the "user_channels" provider is registered, and a
+//     snapshot carrying a Bool + a Transform art channel plus a scene channel
+//     builds + publishes its typed topics (std_msgs/Bool, geometry_msgs/Pose
+//     Stamped, ...) against real rcl without tearing the context down.
+//     Registry check runs unconditionally; the wire check is availability-gated.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosUserChannelsWire,
+	"URLab.Ros.UserChannelsWire",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosUserChannelsWire::RunTest(const FString& Parameters)
+{
+	// Registry: the provider self-registers in every configuration.
+	TestTrue(TEXT("user_channels provider registered"),
+		FMjRosOutputRegistry::Get().GetRegisteredNames().Contains(FName(TEXT("user_channels"))));
+
+	FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().IsAvailable())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("URLab.Ros.UserChannelsWire: no live ROS context; skipping wire check."));
+		return true;
+	}
+
+	FMjStateSnapshot Snap;
+	Snap.StructureVersion = 1;
+
+	FMjArticulationState Art;
+	Art.Name = FName(TEXT("go2"));
+
+	FMjUserChannel Done;
+	Done.Name = FName(TEXT("task_done"));
+	Done.Kind = EMjUserChannelKind::Bool;
+	Done.Values = {1.0};
+	Art.UserChannels.Add(Done);
+
+	FMjUserChannel Target;
+	Target.Name = FName(TEXT("target"));
+	Target.Kind = EMjUserChannelKind::Transform;
+	Target.Values = {1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0};  // pos + quat wxyz
+	Art.UserChannels.Add(Target);
+
+	Snap.Articulations.Add(Art);
+
+	FMjUserChannel Phase;
+	Phase.Name = FName(TEXT("episode_phase"));
+	Phase.Kind = EMjUserChannelKind::Scalar;
+	Phase.Values = {2.0};
+	Snap.UserChannels.Add(Phase);
+
+	UURLabRosPublishTransport* Transport = NewObject<UURLabRosPublishTransport>();
+	TestTrue(TEXT("transport init"), Transport->TransportInit());
+
+	Transport->PublishState(Snap);
+	Transport->PublishState(Snap);
+
+	TestEqual(TEXT("all registered providers built"),
+		Transport->GetProviderCountForTest(), FMjRosOutputRegistry::Get().Num());
+	TestTrue(TEXT("context still available after user-channel publish"),
+		FURLabRosContext::Get().IsAvailable());
+
+	Transport->TransportShutdown();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 14. claim_control as a ROS service: a service-sourced claim (routed through
+//     Dispatch with the ROS source preset) claims the art, an RPC-session write
+//     is then rejected naming the ROS owner, and once the RPC session owns it a
+//     second ROS service claim fails. Drives Dispatch only; no live ROS runtime.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosClaimService,
+	"URLab.Ros.ClaimService",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosClaimService::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		S.Cleanup();
+		return false;
+	}
+	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
+
+	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+	const FString ArtName = Art->GetName();
+	const FString RosSrc = UURLabRosRpcTransport::RosControlSourceId();
+	const FString RpcSrc = TEXT("rpc-session-src");
+
+	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
+	Ros->SetOwningBridge(S.Manager->BridgeServer);
+
+	auto SetTwist = [Disp, &ArtName](const FString& Source) {
+		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
+		R->SetStringField(TEXT("op"), TEXT("set_twist"));
+		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
+		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("articulation"), ArtName);
+		TArray<TSharedPtr<FJsonValue>> Lin;
+		Lin.Add(MakeShared<FJsonValueNumber>(1.0));
+		Lin.Add(MakeShared<FJsonValueNumber>(0.0));
+		R->SetArrayField(TEXT("linear"), Lin);
+		return Disp->Dispatch(R);
+	};
+
+	// The ROS claim_control service claims the art.
+	TestTrue(TEXT("ROS claim service succeeds"),
+		Ros->ApplyRosClaimReleaseForTest(ArtName, /*bClaim=*/true));
+
+	// An RPC-session write is now rejected, naming the ROS owner.
+	{
+		TSharedPtr<FJsonObject> R = SetTwist(RpcSrc);
+		TestEqual(TEXT("RPC write rejected while ROS service owns"),
+			RosReplyField(R, TEXT("code")), FString(TEXT("not_control_owner")));
+		TestEqual(TEXT("rejection names the ROS owner"),
+			RosReplyField(R, TEXT("owner")), RosSrc);
+	}
+
+	// The ROS release service frees it; the RPC session then claims it.
+	TestTrue(TEXT("ROS release service succeeds"),
+		Ros->ApplyRosClaimReleaseForTest(ArtName, /*bClaim=*/false));
+	{
+		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
+		R->SetStringField(TEXT("op"), TEXT("claim_control"));
+		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
+		R->SetStringField(TEXT("source"), RpcSrc);
+		R->SetStringField(TEXT("articulation"), ArtName);
+		TestEqual(TEXT("RPC claim ok"), RosReplyField(Disp->Dispatch(R), TEXT("op")),
+			FString(TEXT("claim_control_ok")));
+	}
+
+	// A second ROS service claim now fails: the RPC session owns the art.
+	TestFalse(TEXT("ROS claim service fails when RPC owns"),
+		Ros->ApplyRosClaimReleaseForTest(ArtName, /*bClaim=*/true));
+
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 15. JointState jog input: a joint_command naming an actuator's canonical joint
+//     is dropped outside Live mode and stages the actuator's position target in
+//     Live mode. Ownership is granted first so mode is the only gate; drives
+//     HandleRosJointCommand directly (no live ROS runtime needed).
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosJointCommandJog,
+	"URLab.Ros.JointCommandJog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init([](FMjUESession& Sess) {
+			Sess.Joint->Type = EMjJointType::Slide;
+			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
+			A->Type = EMjActuatorType::Position;
+			A->TargetName = Sess.Joint->GetName();
+			A->RegisterComponent();
+			A->AttachToComponent(Sess.Robot->GetRootComponent(),
+				FAttachmentTransformRules::KeepRelativeTransform);
+		}))
+	{
+		AddInfo(FString::Printf(TEXT("Skipping JointCommandJog: %s"), *S.LastError));
+		return true;
+	}
+
+	mjModel* m = S.Manager->PhysicsEngine->GetModel();
+	mjData* d = S.Manager->PhysicsEngine->GetData();
+	if (!m || !d || m->nu == 0)
+	{
+		AddInfo(TEXT("Skipping JointCommandJog: no actuators in compiled model"));
+		S.Cleanup();
+		return true;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+	const FString ArtName = Art->GetName();
+	const FName Key(*ArtName);
+	const FString RosSrc = UURLabRosRpcTransport::RosControlSourceId();
+
+	// The jog names the joint the actuator drives, resolved through the same
+	// canonical-name convention JointState output uses.
+	UMjActuator* Act = Art->GetActuators()[0];
+	const FString JointName = FMjCanonicalName::PartSegment(Art, Act->GetMjName()).ToString();
+
+	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
+	Ros->SetOwningBridge(S.Manager->BridgeServer);
+
+	// Grant ROS ownership so the mode is the only gate.
+	FString Cur;
+	Disp->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
+
+	// Direct mode: the jog is dropped, so d->ctrl stays at its initial value.
+	Disp->SetActiveStepMode(EStepMode::Direct);
+	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
+	Art->ApplyControls(/*bSkipController=*/true);
+	TestEqual(TEXT("direct-mode joint_command dropped"), (double)d->ctrl[0], 0.0, 1e-6);
+
+	// Live mode: the same jog stages the actuator's position target.
+	Disp->SetActiveStepMode(EStepMode::Live);
+	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
+	Art->ApplyControls(/*bSkipController=*/true);
+	TestEqual(TEXT("live-mode joint_command applies"), (double)d->ctrl[0], 0.5, 1e-6);
+
+	S.Cleanup();
 	return true;
 }
 

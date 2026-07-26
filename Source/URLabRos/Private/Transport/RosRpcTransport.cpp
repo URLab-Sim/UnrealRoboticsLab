@@ -40,6 +40,8 @@ FString UURLabRosRpcTransport::RosControlSourceId()
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "State/MjCanonicalName.h"
+#include "State/MjStateTypes.h"
+#include "Dom/JsonObject.h"
 #include "HAL/RunnableThread.h"
 #include "HAL/Runnable.h"
 #include "HAL/PlatformProcess.h"
@@ -55,15 +57,30 @@ constexpr float RosIdleSleepSeconds = 0.02f;
 }
 
 // Per-articulation command binding. Holds the identity used to resolve + gate the
-// write (Art->GetName(), the GetArticulation + ownership key) and the two
-// subscription handles. The stable heap address is handed to the core as the
-// callback User pointer.
+// write (Art->GetName(), the GetArticulation + ownership key) and the per-art
+// subscription + service handles. The stable heap address is handed to the core as
+// the callback / service User pointer.
 struct FRosArtCommand
 {
 	UURLabRosRpcTransport* Transport = nullptr;
 	FString ArtName;
 	UrlabRclCtrlSub* CtrlSub = nullptr;
 	UrlabRclTwistSub* TwistSub = nullptr;
+	UrlabRclJointStateSub* JointCommandSub = nullptr;
+	UrlabRclTriggerService* ClaimSrv = nullptr;
+	UrlabRclTriggerService* ReleaseSrv = nullptr;
+};
+
+// Per declared user-input-channel binding. Carries the routing identity
+// (canonical art segment or None for scene, the channel name, its kind) and its
+// Float64MultiArray subscription handle.
+struct FRosUserInputSub
+{
+	UURLabRosRpcTransport* Transport = nullptr;
+	FName ArtOrNone;
+	FName Channel;
+	EMjUserChannelKind Kind = EMjUserChannelKind::Scalar;
+	UrlabRclCtrlSub* Sub = nullptr;
 };
 
 namespace
@@ -83,6 +100,47 @@ void RosTwistTrampoline(const double Linear[3], const double Angular[3], void* U
 	if (Cmd && Cmd->Transport)
 	{
 		Cmd->Transport->HandleRosTwist(Cmd->ArtName, Linear, Angular);
+	}
+}
+
+void RosJointCommandTrampoline(const char** Names, const double* Positions,
+	int32_t Count, void* User)
+{
+	FRosArtCommand* Cmd = static_cast<FRosArtCommand*>(User);
+	if (Cmd && Cmd->Transport)
+	{
+		Cmd->Transport->HandleRosJointCommand(Cmd->ArtName, Names, Positions,
+			static_cast<int32>(Count));
+	}
+}
+
+void RosClaimTrampoline(void* User, int32_t* OutSuccess, char* OutMessage, int32_t Cap)
+{
+	FRosArtCommand* Cmd = static_cast<FRosArtCommand*>(User);
+	if (Cmd && Cmd->Transport)
+	{
+		Cmd->Transport->HandleRosClaimRelease(Cmd->ArtName, /*bClaim=*/true,
+			OutSuccess, OutMessage, Cap);
+	}
+}
+
+void RosReleaseTrampoline(void* User, int32_t* OutSuccess, char* OutMessage, int32_t Cap)
+{
+	FRosArtCommand* Cmd = static_cast<FRosArtCommand*>(User);
+	if (Cmd && Cmd->Transport)
+	{
+		Cmd->Transport->HandleRosClaimRelease(Cmd->ArtName, /*bClaim=*/false,
+			OutSuccess, OutMessage, Cap);
+	}
+}
+
+void RosUserInputTrampoline(const double* Values, int32_t Count, void* User)
+{
+	FRosUserInputSub* Sub = static_cast<FRosUserInputSub*>(User);
+	if (Sub && Sub->Transport)
+	{
+		Sub->Transport->HandleRosUserChannel(Sub->ArtOrNone, Sub->Channel, Sub->Kind,
+			Values, static_cast<int32>(Count));
 	}
 }
 }  // namespace
@@ -233,12 +291,75 @@ void UURLabRosRpcTransport::RebuildCommandSubscriptions(UrlabRclContext* Ctx)
 				*VelTopic, UrlabRcl_LastError());
 		}
 
-		if (Cmd->CtrlSub == nullptr && Cmd->TwistSub == nullptr)
+		// JointState jog input: standard joint_state_publisher_gui publishes here.
+		const FString JogTopic = FString::Printf(TEXT("/%s/joint_command"), *Segment);
+		Cmd->JointCommandSub = UrlabRcl_CreateJointStateSub(Ctx, TCHAR_TO_UTF8(*JogTopic),
+			&RosJointCommandTrampoline, Cmd);
+		if (Cmd->JointCommandSub == nullptr)
+		{
+			UE_LOG(LogURLabRos, Warning, TEXT("ROS: joint_command subscription failed for %s (%hs)"),
+				*JogTopic, UrlabRcl_LastError());
+		}
+
+		// claim_control / release_control as std_srvs/Trigger services; the art is
+		// encoded in the service name.
+		const FString ClaimName = FString::Printf(TEXT("/%s/claim_control"), *Segment);
+		Cmd->ClaimSrv = UrlabRcl_CreateTriggerService(Ctx, TCHAR_TO_UTF8(*ClaimName),
+			&RosClaimTrampoline, Cmd);
+		if (Cmd->ClaimSrv == nullptr)
+		{
+			UE_LOG(LogURLabRos, Warning, TEXT("ROS: claim_control service failed for %s (%hs)"),
+				*ClaimName, UrlabRcl_LastError());
+		}
+		const FString ReleaseName = FString::Printf(TEXT("/%s/release_control"), *Segment);
+		Cmd->ReleaseSrv = UrlabRcl_CreateTriggerService(Ctx, TCHAR_TO_UTF8(*ReleaseName),
+			&RosReleaseTrampoline, Cmd);
+		if (Cmd->ReleaseSrv == nullptr)
+		{
+			UE_LOG(LogURLabRos, Warning, TEXT("ROS: release_control service failed for %s (%hs)"),
+				*ReleaseName, UrlabRcl_LastError());
+		}
+
+		if (Cmd->CtrlSub == nullptr && Cmd->TwistSub == nullptr
+			&& Cmd->JointCommandSub == nullptr && Cmd->ClaimSrv == nullptr
+			&& Cmd->ReleaseSrv == nullptr)
 		{
 			delete Cmd;
 			continue;
 		}
 		ArtCommands.Add(Cmd);
+	}
+
+	// One subscription per declared user-input channel. Numeric kinds ride the
+	// Float64MultiArray (cmd_ctrl) sub shape; text-family channels take input over
+	// the byte transports (set_user_channels), not over ROS.
+	TArray<FMjUserInputChannelInfo> InputChannels;
+	Mgr->GetUserInputChannels(InputChannels);
+	for (const FMjUserInputChannelInfo& Info : InputChannels)
+	{
+		if (Info.Kind == EMjUserChannelKind::String || Info.Kind == EMjUserChannelKind::Struct)
+		{
+			continue;  // text-family channels have no ROS input subscription
+		}
+		const FString Topic = Info.ArtSegment.IsEmpty()
+			? FString::Printf(TEXT("/urlab/user/%s"), *Info.Channel.ToString())
+			: FString::Printf(TEXT("/%s/user/%s"), *Info.ArtSegment, *Info.Channel.ToString());
+
+		FRosUserInputSub* Binding = new FRosUserInputSub();
+		Binding->Transport = this;
+		Binding->ArtOrNone = Info.ArtSegment.IsEmpty() ? NAME_None : FName(*Info.ArtSegment);
+		Binding->Channel = Info.Channel;
+		Binding->Kind = Info.Kind;
+		Binding->Sub = UrlabRcl_CreateCtrlSub(Ctx, TCHAR_TO_UTF8(*Topic),
+			&RosUserInputTrampoline, Binding);
+		if (Binding->Sub == nullptr)
+		{
+			UE_LOG(LogURLabRos, Warning, TEXT("ROS: user input subscription failed for %s (%hs)"),
+				*Topic, UrlabRcl_LastError());
+			delete Binding;
+			continue;
+		}
+		UserInputSubs.Add(Binding);
 	}
 
 	SubscribedManager = Mgr;
@@ -256,9 +377,24 @@ void UURLabRosRpcTransport::TeardownCommandSubscriptions()
 		}
 		UrlabRcl_DestroyCtrlSub(Cmd->CtrlSub);
 		UrlabRcl_DestroyTwistSub(Cmd->TwistSub);
+		UrlabRcl_DestroyJointStateSub(Cmd->JointCommandSub);
+		UrlabRcl_DestroyTriggerService(Cmd->ClaimSrv);
+		UrlabRcl_DestroyTriggerService(Cmd->ReleaseSrv);
 		delete Cmd;
 	}
 	ArtCommands.Reset();
+
+	for (FRosUserInputSub* Binding : UserInputSubs)
+	{
+		if (!Binding)
+		{
+			continue;
+		}
+		UrlabRcl_DestroyCtrlSub(Binding->Sub);
+		delete Binding;
+	}
+	UserInputSubs.Reset();
+
 	SubscribedManager = nullptr;
 	SubscribedStructureVersion = 0;
 	bHaveSubscriptions = false;
@@ -363,10 +499,201 @@ void UURLabRosRpcTransport::HandleRosTwist(const FString& ArtName, const double 
 		static_cast<float>(Angular[2]));
 }
 
+void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
+	const char** Names, const double* Positions, int32 Count)
+{
+	++RosJointCommandCallbackCount;
+
+	FURLabRpcDispatcher* Disp = ResolveDispatcher();
+	if (!Disp)
+	{
+		return;
+	}
+
+	// Same gating as cmd_ctrl: ownership first (also heartbeats the claim), then
+	// Live mode only.
+	const FName ArtKey(*ArtName);
+	FString CurrentOwner;
+	if (Disp->GetControlOwnership().CheckWrite(ArtKey, RosControlSourceId(), CurrentOwner)
+		!= FMjControlOwnership::EWriteCheck::Ok)
+	{
+		return;
+	}
+	if (Disp->GetActiveStepMode() != EStepMode::Live)
+	{
+		return;
+	}
+
+	UURLabBridgeServer* Bridge = GetOwningBridge();
+	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
+	if (!Mgr)
+	{
+		return;
+	}
+	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
+	if (!Art || !Names || !Positions)
+	{
+		return;
+	}
+
+	// Map each actuator by the canonical part segment of the joint it drives (the
+	// 1:1 transmission convention, matching JointState output names), then stage the
+	// commanded position on the actuator that drives each named joint.
+	TMap<FString, UMjActuator*> ByJoint;
+	TArray<UMjActuator*> Acts = Art->GetActuators();
+	ByJoint.Reserve(Acts.Num());
+	for (UMjActuator* Act : Acts)
+	{
+		if (!Act)
+		{
+			continue;
+		}
+		const FString Canon = FMjCanonicalName::PartSegment(Art, Act->GetMjName()).ToString();
+		ByJoint.Add(Canon, Act);
+	}
+
+	for (int32 i = 0; i < Count; ++i)
+	{
+		if (!Names[i])
+		{
+			continue;
+		}
+		const FString JointName = UTF8_TO_TCHAR(Names[i]);
+		if (UMjActuator** Found = ByJoint.Find(JointName))
+		{
+			if (*Found)
+			{
+				(*Found)->SetNetworkControl(static_cast<float>(Positions[i]));
+			}
+		}
+	}
+}
+
+void UURLabRosRpcTransport::HandleRosUserChannel(FName ArtOrNone, FName Channel,
+	EMjUserChannelKind Kind, const double* Values, int32 Count)
+{
+	++RosUserChannelCallbackCount;
+
+	UURLabBridgeServer* Bridge = GetOwningBridge();
+	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
+	if (!Mgr)
+	{
+		return;
+	}
+
+	// User-channel input is app-level data owned by user logic: no ownership gate
+	// and no Live-mode gate (unlike control writes, which fight the physics
+	// authority). The declaring component validates the value against its declared
+	// kind.
+	FMjUserChannel Value;
+	Value.Name = Channel;
+	Value.Kind = Kind;
+	if (Values && Count > 0)
+	{
+		Value.Values.Append(Values, Count);
+	}
+	Mgr->ApplyUserChannelInput(ArtOrNone, Channel, Value);
+}
+
+void UURLabRosRpcTransport::HandleRosClaimRelease(const FString& ArtName, bool bClaim,
+	int32* OutSuccess, char* OutMessage, int32 OutMessageCap)
+{
+	auto WriteMessage = [OutMessage, OutMessageCap](const FString& Msg) {
+		if (OutMessage && OutMessageCap > 0)
+		{
+			FCStringAnsi::Strncpy(OutMessage, TCHAR_TO_UTF8(*Msg), OutMessageCap);
+		}
+	};
+	if (OutSuccess)
+	{
+		*OutSuccess = 0;
+	}
+
+	FURLabRpcDispatcher* Disp = ResolveDispatcher();
+	if (!Disp)
+	{
+		WriteMessage(TEXT("no active dispatcher"));
+		return;
+	}
+
+	// Build the request the ZMQ/SHM path builds: source preset to the ROS node id,
+	// session preset to the active session so Dispatch's session gate passes. TTL is
+	// not settable over the Trigger service, so the default TTL applies.
+	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
+	Req->SetStringField(TEXT("op"), bClaim ? TEXT("claim_control") : TEXT("release_control"));
+	Req->SetStringField(TEXT("articulation"), ArtName);
+	Req->SetStringField(TEXT("source"), RosControlSourceId());
+	Req->SetStringField(TEXT("session_id"), Disp->GetActiveSessionId());
+
+	const TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
+	FString ReplyOp;
+	if (Reply.IsValid())
+	{
+		Reply->TryGetStringField(TEXT("op"), ReplyOp);
+	}
+
+	const bool bOk = ReplyOp.Equals(bClaim ? TEXT("claim_control_ok") : TEXT("release_control_ok"));
+	if (OutSuccess)
+	{
+		*OutSuccess = bOk ? 1 : 0;
+	}
+	if (bOk)
+	{
+		FString Owner;
+		if (Reply.IsValid())
+		{
+			Reply->TryGetStringField(TEXT("owner"), Owner);
+		}
+		WriteMessage(bClaim
+			? FString::Printf(TEXT("%s claimed by %s"), *ArtName,
+				Owner.IsEmpty() ? *RosControlSourceId() : *Owner)
+			: FString::Printf(TEXT("%s released"), *ArtName));
+	}
+	else
+	{
+		FString Code, Message;
+		if (Reply.IsValid())
+		{
+			Reply->TryGetStringField(TEXT("code"), Code);
+			Reply->TryGetStringField(TEXT("message"), Message);
+		}
+		WriteMessage(Message.IsEmpty() ? Code : Message);
+	}
+}
+
 void UURLabRosRpcTransport::ApplyRosCtrlForTest(const FString& ArtName,
 	const TArray<double>& Values)
 {
 	HandleRosCtrl(ArtName, Values.GetData(), Values.Num());
+}
+
+void UURLabRosRpcTransport::ApplyRosJointCommandForTest(const FString& ArtName,
+	const TArray<FString>& Names, const TArray<double>& Positions)
+{
+	// Build the stable UTF-8 pointer array the wire callback would hand in.
+	TArray<TArray<ANSICHAR>> NameBytes;
+	NameBytes.Reserve(Names.Num());
+	TArray<const char*> NamePtrs;
+	NamePtrs.Reserve(Names.Num());
+	for (const FString& Name : Names)
+	{
+		FTCHARToUTF8 Conv(*Name);
+		TArray<ANSICHAR>& Bytes = NameBytes.AddDefaulted_GetRef();
+		Bytes.Append(reinterpret_cast<const ANSICHAR*>(Conv.Get()), Conv.Length());
+		Bytes.Add('\0');
+		NamePtrs.Add(Bytes.GetData());
+	}
+	const int32 N = FMath::Min(Names.Num(), Positions.Num());
+	HandleRosJointCommand(ArtName, N > 0 ? NamePtrs.GetData() : nullptr,
+		N > 0 ? Positions.GetData() : nullptr, N);
+}
+
+bool UURLabRosRpcTransport::ApplyRosClaimReleaseForTest(const FString& ArtName, bool bClaim)
+{
+	int32 Success = 0;
+	char Message[256] = {0};
+	HandleRosClaimRelease(ArtName, bClaim, &Success, Message, sizeof(Message));
+	return Success != 0;
 }
 
 bool UURLabRosRpcTransport::PublishAndPumpCtrlForTest(const FString& Topic,
@@ -420,7 +747,12 @@ void UURLabRosRpcTransport::RebuildCommandSubscriptions(UrlabRclContext*) {}
 void UURLabRosRpcTransport::TeardownCommandSubscriptions() {}
 void UURLabRosRpcTransport::HandleRosCtrl(const FString&, const double*, int32) {}
 void UURLabRosRpcTransport::HandleRosTwist(const FString&, const double[3], const double[3]) {}
+void UURLabRosRpcTransport::HandleRosJointCommand(const FString&, const char**, const double*, int32) {}
+void UURLabRosRpcTransport::HandleRosUserChannel(FName, FName, EMjUserChannelKind, const double*, int32) {}
+void UURLabRosRpcTransport::HandleRosClaimRelease(const FString&, bool, int32*, char*, int32) {}
 void UURLabRosRpcTransport::ApplyRosCtrlForTest(const FString&, const TArray<double>&) {}
+void UURLabRosRpcTransport::ApplyRosJointCommandForTest(const FString&, const TArray<FString>&, const TArray<double>&) {}
+bool UURLabRosRpcTransport::ApplyRosClaimReleaseForTest(const FString&, bool) { return false; }
 bool UURLabRosRpcTransport::PublishAndPumpCtrlForTest(const FString&, const TArray<double>&)
 {
 	return false;

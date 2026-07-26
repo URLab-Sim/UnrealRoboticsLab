@@ -188,6 +188,9 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	Reg(TEXT("set_twist"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetTwist(R); },
 		{TEXT("op:string")});
+	Reg(TEXT("set_user_channels"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetUserChannels(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("applied:int"), TEXT("rejected:object")});
 	Reg(TEXT("set_qpos"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetQpos(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("target:string"), TEXT("actor_id:string?"), TEXT("actor_name:string?"), TEXT("qpos:array"), TEXT("free_base_shortcut:bool")},

@@ -135,6 +135,18 @@ void FMjRosPub::Reset()
 	case EKind::CameraInfo:
 		UrlabRcl_DestroyCameraInfoPub(static_cast<UrlabRclCameraInfoPub*>(Handle));
 		break;
+	case EKind::Bool:
+		UrlabRcl_DestroyBoolPub(static_cast<UrlabRclBoolPub*>(Handle));
+		break;
+	case EKind::Float64:
+		UrlabRcl_DestroyFloat64Pub(static_cast<UrlabRclFloat64Pub*>(Handle));
+		break;
+	case EKind::Vector3:
+		UrlabRcl_DestroyVector3Pub(static_cast<UrlabRclVector3Pub*>(Handle));
+		break;
+	case EKind::PoseStamped:
+		UrlabRcl_DestroyPoseStampedPub(static_cast<UrlabRclPoseStampedPub*>(Handle));
+		break;
 	case EKind::None:
 		break;
 	}
@@ -289,6 +301,40 @@ void FMjRosPub::PublishCameraInfo(int64 SimTimeNs)
 	if (Kind == EKind::CameraInfo && Handle)
 	{
 		UrlabRcl_PublishCameraInfo(static_cast<UrlabRclCameraInfoPub*>(Handle), SimTimeNs);
+	}
+}
+
+void FMjRosPub::PublishBool(bool bValue)
+{
+	if (Kind == EKind::Bool && Handle)
+	{
+		UrlabRcl_PublishBool(static_cast<UrlabRclBoolPub*>(Handle), bValue ? 1 : 0);
+	}
+}
+
+void FMjRosPub::PublishFloat64(double Value)
+{
+	if (Kind == EKind::Float64 && Handle)
+	{
+		UrlabRcl_PublishFloat64(static_cast<UrlabRclFloat64Pub*>(Handle), Value);
+	}
+}
+
+void FMjRosPub::PublishVector3(const double Xyz3[3])
+{
+	if (Kind == EKind::Vector3 && Handle)
+	{
+		UrlabRcl_PublishVector3(static_cast<UrlabRclVector3Pub*>(Handle), Xyz3);
+	}
+}
+
+void FMjRosPub::PublishPoseStamped(const double Position3[3], const double OrientationXyzw4[4],
+	int64 SimTimeNs)
+{
+	if (Kind == EKind::PoseStamped && Handle)
+	{
+		UrlabRcl_PublishPoseStamped(static_cast<UrlabRclPoseStampedPub*>(Handle),
+			Position3, OrientationXyzw4, SimTimeNs);
 	}
 }
 
@@ -534,6 +580,71 @@ FMjRosPub FMjRosPublisherFactory::CreateCameraInfo(const FString& Topic, const F
 	return FMjRosPub(Pub, FMjRosPub::EKind::CameraInfo);
 }
 
+FMjRosPub FMjRosPublisherFactory::CreateBool(const FString& Topic)
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclBoolPub* Pub = UrlabRcl_CreateBoolPub(Context, TCHAR_TO_UTF8(*Topic));
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: Bool publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::Bool);
+}
+
+FMjRosPub FMjRosPublisherFactory::CreateFloat64(const FString& Topic)
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclFloat64Pub* Pub = UrlabRcl_CreateFloat64Pub(Context, TCHAR_TO_UTF8(*Topic));
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: Float64 publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::Float64);
+}
+
+FMjRosPub FMjRosPublisherFactory::CreateVector3(const FString& Topic)
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclVector3Pub* Pub = UrlabRcl_CreateVector3Pub(Context, TCHAR_TO_UTF8(*Topic));
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: Vector3 publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::Vector3);
+}
+
+FMjRosPub FMjRosPublisherFactory::CreatePoseStamped(const FString& Topic, const FString& FrameId)
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclPoseStampedPub* Pub = UrlabRcl_CreatePoseStampedPub(Context, TCHAR_TO_UTF8(*Topic),
+		TCHAR_TO_UTF8(*FrameId));
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: PoseStamped publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::PoseStamped);
+}
+
 #else  // URLAB_WITH_ROS2
 
 // Absent-ROS stubs: handles are never created (Create* return an invalid handle),
@@ -556,6 +667,10 @@ void FMjRosPub::PublishOdometry(const double[3], const double[4], const double[3
 	const double[3], int64) {}
 void FMjRosPub::PublishPoseWithCovariance(const double[3], const double[4], int64) {}
 void FMjRosPub::PublishCameraInfo(int64) {}
+void FMjRosPub::PublishBool(bool) {}
+void FMjRosPub::PublishFloat64(double) {}
+void FMjRosPub::PublishVector3(const double[3]) {}
+void FMjRosPub::PublishPoseStamped(const double[3], const double[4], int64) {}
 
 FMjRosPub FMjRosPublisherFactory::CreateJointState(const FString&, const TArray<FString>&) { return FMjRosPub(); }
 FMjRosPub FMjRosPublisherFactory::CreateImu(const FString&, const FString&) { return FMjRosPub(); }
@@ -570,5 +685,9 @@ FMjRosPub FMjRosPublisherFactory::CreateFloat64MultiArray(const FString&) { retu
 FMjRosPub FMjRosPublisherFactory::CreateOdometry(const FString&, const FString&, const FString&) { return FMjRosPub(); }
 FMjRosPub FMjRosPublisherFactory::CreatePoseWithCovariance(const FString&, const FString&) { return FMjRosPub(); }
 FMjRosPub FMjRosPublisherFactory::CreateCameraInfo(const FString&, const FString&, int32, int32, const double[9]) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreateBool(const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreateFloat64(const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreateVector3(const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreatePoseStamped(const FString&, const FString&) { return FMjRosPub(); }
 
 #endif  // URLAB_WITH_ROS2

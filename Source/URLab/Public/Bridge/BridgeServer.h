@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/BridgeServerConfig.h"
 #include "BridgeServer.generated.h"
 
 class AAMjManager;
@@ -54,6 +55,12 @@ public:
 	/** Dispatcher when running, nullptr otherwise. */
 	FURLabRpcDispatcher* GetDispatcher() const { return Dispatcher.Get(); }
 
+	/** Resolved per-instance config (ports, bind address, instance identity).
+	 *  Set by the owner before Start so the handshake `instance` block and the
+	 *  manager-owned state/camera endpoints read one source of truth. */
+	void SetInstanceConfig(const FURLabBridgeServerConfig& InConfig) { InstanceConfig = InConfig; }
+	const FURLabBridgeServerConfig& GetInstanceConfig() const { return InstanceConfig; }
+
 	/** True when AAMjManager owns this server (cooked path, or editor
 	 *  without subsystem auto-start). EndPlay tears it down only when so. */
 	bool IsOwnedByManager() const { return bOwnedByManager; }
@@ -71,10 +78,66 @@ public:
 	 *  doesn't need to inspect these directly. */
 	const TArray<TObjectPtr<UURLabRpcTransport>>& GetRpcTransports() const { return RpcTransports; }
 
+	// --- Cooperative render-farm lease (not a security boundary) ---
+	// One lease per process. A pool client claims this instance so the pool
+	// won't hand the same editor process to a second client. Guarded by
+	// LeaseMutex since RPC threads on multiple transports may touch it.
+
+	/** Claim the lease if free. On success returns true and fills OutLeaseId
+	 *  with a fresh id; when already held returns false and fills
+	 *  OutExistingLeaseId with the current holder's id. Lazily expires an idle
+	 *  lease past its TTL before deciding. */
+	bool TryAcquireLease(const FString& Owner, double TtlSeconds,
+		FString& OutLeaseId, FString& OutExistingLeaseId);
+
+	/** Release the lease when InLeaseId matches the current holder. Returns
+	 *  false when no lease is held or the id doesn't match. */
+	bool ReleaseLease(const FString& InLeaseId);
+
+	/** Refresh the activity timestamp so an active client keeps its lease.
+	 *  No-op when no lease is held. */
+	void TouchLease();
+
+	/** True when a lease is currently held. Performs lazy TTL expiry: an idle
+	 *  lease past its TTL is auto-released before the state is reported. */
+	bool IsLeaseHeld();
+
+	/** Current lease id, or empty when none is held. */
+	FString GetLeaseId() const;
+
+	/** Test seam: pin the lease clock to a fixed value so TTL expiry is
+	 *  deterministic without sleeping. Every lease op consults it — including
+	 *  TouchLease on the dispatch path — so a driven Dispatch() sees injected
+	 *  time. A negative value restores the wall clock. */
+	void SetLeaseClockForTest(double NowSeconds);
+
 private:
+	/** Construct the dispatcher if needed and wire its back-pointer to this
+	 *  server so no-manager ops (e.g. leasing) can reach per-instance state. */
+	void EnsureDispatcher();
+
+	/** Current lease clock: the test override when set (>= 0), else the wall
+	 *  clock. Callers hold LeaseMutex. */
+	double LeaseNow() const;
+
+	/** Lazy-expire then report lease state. Assumes LeaseMutex is held. */
+	bool IsLeaseHeldInternal(double NowSeconds);
+
+	mutable FCriticalSection LeaseMutex;
+	bool bLeaseHeld = false;
+	FString LeaseId;
+	FString LeaseOwner;
+	double LeaseTtlSeconds = 0.0;
+	double LeaseLastActivitySeconds = 0.0;
+	double LeaseClockOverrideForTest = -1.0;
+
 	TUniquePtr<FURLabRpcDispatcher> Dispatcher;
 	TWeakObjectPtr<AAMjManager> ActiveManager;
 	bool bOwnedByManager = false;
+
+	/** Resolved config, set via SetInstanceConfig. Defaults reproduce the
+	 *  single-editor behaviour when no owner supplies one. */
+	FURLabBridgeServerConfig InstanceConfig;
 
 	// Disable editor frame pacing (VSync + FPS cap) while a real transport is
 	// bound, so camera frame delivery isn't capped at the monitor refresh.

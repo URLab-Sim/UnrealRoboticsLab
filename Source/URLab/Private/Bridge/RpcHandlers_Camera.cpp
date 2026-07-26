@@ -54,96 +54,104 @@
 #include "Async/Async.h"
 #include "RenderingThread.h"
 
-namespace
-{
-// Pool-owned FEvent with shared lifetime: the render task and the RPC thread
-// each hold a ref, so the event returns to the pool only once both are done —
-// safe even if the RPC thread times out while the task is still running.
-struct FSharedPooledEvent
-{
-	FEvent* E = FPlatformProcess::GetSynchEventFromPool();
-	~FSharedPooledEvent()
-	{
-		if (E)
-			FPlatformProcess::ReturnSynchEventToPool(E);
-	}
-};
-} // namespace
-
 bool FURLabRpcDispatcher::RenderCamerasSync(AAMjManager* Mgr,
 	const TMap<FString, ECameraInclude>& CameraSpec,
 	uint64 MinFrameId, int32 TimeoutMs,
-	TMap<FString, uint64>& CameraMinFrameIds)
+	TMap<FString, uint64>& CameraMinFrameIds,
+	bool bWait)
 {
-	if (MinFrameId == 0 || CameraSpec.Num() == 0 || !Mgr)
+	if (CameraSpec.Num() == 0 || !Mgr)
+		return true;
+	if (bWait && MinFrameId == 0)
 		return true;
 
 	TArray<FString> Keys;
 	CameraSpec.GetKeys(Keys);
 
-	// Keys that reached MinFrameId. Written on the game thread before Trigger,
-	// read here only after a successful Wait (the event gives happens-before).
-	TSharedRef<TArray<FString>, ESPMode::ThreadSafe> Ready =
-		MakeShared<TArray<FString>, ESPMode::ThreadSafe>();
-	TSharedRef<FSharedPooledEvent, ESPMode::ThreadSafe> Ev =
-		MakeShared<FSharedPooledEvent, ESPMode::ThreadSafe>();
-
-	AsyncTask(ENamedThreads::GameThread, [Mgr, Keys, MinFrameId, Ev, Ready]()
+	// Kick the render on the game thread: apply the just-produced physics snapshot,
+	// ensure each requested camera is streaming, and force an immediate capture.
+	// For the fresh (bWait) path the task then drives the readback to completion so
+	// the frame lands in ~render+readback time rather than waiting for the next
+	// editor tick to harvest it (that tick is background-throttled when the editor
+	// is unfocused, which added ~a full frame of latency). IssueSyncCapture submits
+	// the GPU copy to the RHI thread immediately, so the readback fence signals
+	// without a frame boundary and this pump finishes quickly; it takes no
+	// render-thread flush and is bounded by the request timeout (the worker wait
+	// below is the real deadline), so it cannot wedge the game thread the way the
+	// earlier sole-path, non-submitting poll did. Pipelined mode (!bWait) never
+	// pumps: it returns at once and serves the most-recently-completed frame.
+	TWeakObjectPtr<AAMjManager> WeakMgr(Mgr);
+	AsyncTask(ENamedThreads::GameThread, [WeakMgr, Keys, MinFrameId, TimeoutMs, bWait]()
 	{
+		AAMjManager* M = WeakMgr.Get();
+		if (!M)
+			return;
+
+		M->ApplyLatestRenderState();
+
 		TMap<FString, UMjCamera*> ByName;
-		BuildCameraNameMap(Mgr, ByName);
-
-		// Apply the just-produced physics snapshot so the captures render this
-		// step's state.
-		Mgr->ApplyLatestRenderState();
-
-		// Ensure every requested camera is streaming; a freshly-enabled RT is
-		// sized by a render-thread round trip, so flush once before capturing
-		// or the first readback no-ops on the not-yet-sized target.
+		BuildCameraNameMap(M, ByName);
 		TArray<UMjCamera*> Cams;
-		bool bWarmupNeeded = false;
 		for (const FString& K : Keys)
 		{
 			if (UMjCamera* Cam = ByName.FindRef(K))
 			{
 				if (!Cam->IsStreamingActive())
-				{
 					Cam->SetStreamingEnabled(true);
-					bWarmupNeeded = true;
-				}
 				Cams.Add(Cam);
 			}
 		}
-		if (bWarmupNeeded)
-			FlushRenderingCommands();
 
 		for (UMjCamera* Cam : Cams)
 			Cam->IssueSyncCapture();
 
-		// Submit the captures + readback copies, then block on the GPU fence
-		// (a flush only submits; it does not wait for the copy to finish).
-		FlushRenderingCommands();
+		if (!bWait)
+			return; // pipelined: kick only, no pump
 
-		for (UMjCamera* Cam : Cams)
-			Cam->WaitAndHarvestReadbacks(0.25);
-
-		for (const FString& K : Keys)
+		// Bound the game-thread pump under the request timeout: it needs to cover
+		// render + readback (and a cold RT's one-time warm-up) for every requested
+		// camera, and capping it means a genuinely stuck frame frees the game thread
+		// rather than freezing it for the whole timeout. The budget scales with the
+		// camera count -- each camera is a separate scene render + readback, so a
+		// single fixed cap (tuned for one camera) starved multi-camera requests and
+		// dropped their tail onto the slow off-thread wait, inflating latency under
+		// load. The worker wait below, off the game thread, remains the real deadline
+		// for anything the pump does not finish.
+		const int32 MaxPumpMs = FMath::Max(60, Cams.Num() * 50);
+		const double Deadline =
+			FPlatformTime::Seconds() + FMath::Min(FMath::Max(1, TimeoutMs), MaxPumpMs) / 1000.0;
+		for (;;)
 		{
-			UMjCamera* Cam = ByName.FindRef(K);
-			if (Cam && Cam->GetLatestFrameId() >= MinFrameId)
-				Ready->Add(K);
+			bool bAllReady = true;
+			for (UMjCamera* Cam : Cams)
+			{
+				Cam->HarvestCompletedReadbacks();
+				if (Cam->GetLatestFrameId() < MinFrameId)
+				{
+					bAllReady = false;
+					// Re-issue only while nothing is outstanding, so a cold RT that
+					// was not renderable on the first attempt retries without piling
+					// captures behind an in-flight one.
+					if (!Cam->HasPendingReadbacks())
+						Cam->IssueSyncCapture();
+				}
+			}
+			if (bAllReady || FPlatformTime::Seconds() >= Deadline)
+				break;
+			FPlatformProcess::SleepNoStats(0.0002f);
 		}
-		if (Ev->E)
-			Ev->E->Trigger();
 	});
 
-	const bool bDone = Ev->E && Ev->E->Wait(FMath::Max(1, TimeoutMs));
-	if (!bDone)
-		return false; // task still running — don't read Ready; cameras return latest
+	// Pipelined mode serves the most-recently-completed frame (up to one step
+	// stale), so it does not wait for the kicked frame.
+	if (!bWait)
+		return true;
 
-	for (const FString& K : *Ready)
-		CameraMinFrameIds.Add(K, MinFrameId);
-	return Ready->Num() == CameraSpec.Num();
+	// Fresh mode: record the reached cameras so BuildCamerasBlock serves this step's
+	// frame. WaitForCameraFrames reads the thread-safe history and returns as soon
+	// as the frame is present, which the game-thread pump above has already made
+	// true for a warm camera.
+	return WaitForCameraFrames(Mgr, CameraSpec, MinFrameId, TimeoutMs, CameraMinFrameIds);
 }
 
 bool FURLabRpcDispatcher::WaitForCameraFrames(AAMjManager* Mgr,
@@ -226,6 +234,22 @@ void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
 				AddName(ArtName + TEXT("/") + MjNameRaw, C);
 			}
 		}
+	}
+	// Manager-owned (global) cameras: not attached to any articulation, so they
+	// register under their bare / canonical / component / MJCF names only. Kept
+	// in sync with the include_cameras:true walk in ParseStepCommon so a global
+	// camera the client asks for actually resolves here instead of being dropped.
+	TArray<UMjCamera*> GlobalCameras;
+	Manager->GetComponents<UMjCamera>(GlobalCameras);
+	for (UMjCamera* C : GlobalCameras)
+	{
+		if (!C || C->bIsDefault)
+			continue;
+		AddName(C->GetCanonicalName(), C);
+		AddName(C->GetName(), C);
+		const FString MjNameRaw = C->GetMjName();
+		if (!MjNameRaw.IsEmpty())
+			AddName(MjNameRaw, C);
 	}
 }
 
@@ -544,8 +568,15 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 		const uint64* MinIdPtr = MinFrameIds.Find(Spec.Key);
 		const uint64 MinId = MinIdPtr ? *MinIdPtr : 0;
 
-		FMjCameraFrame Frame;
-		if (!Cam->GetFrame(MinId, Frame))
+		// A camera requested in "sync" mode wants the freshest rendered (ground
+		// truth) frame; a plain "latest" request should instead agree with what
+		// the stream is publishing, which under latency emulation is the delayed
+		// past. GetFrameForRequest routes both correctly and hands the retained
+		// frame back by refcount, so no multi-MB pixel copy happens under the
+		// history lock.
+		const bool bIgnoreDelay = (Spec.Value == ECameraInclude::Sync);
+		TSharedPtr<const FMjCameraFrame> Frame = Cam->GetFrameForRequest(MinId, bIgnoreDelay);
+		if (!Frame.IsValid())
 		{
 			// Not ready yet (camera just activated, or the requested step's
 			// frame hasn't been rendered/read back). Omit; the client retries
@@ -554,30 +585,33 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 		}
 
 		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
-		CamObj->SetNumberField(TEXT("width"), Frame.Width);
-		CamObj->SetNumberField(TEXT("height"), Frame.Height);
-		CamObj->SetNumberField(TEXT("frame_id"), static_cast<double>(Frame.FrameId));
-		CamObj->SetNumberField(TEXT("sim_time"), Frame.SimTime);
+		CamObj->SetNumberField(TEXT("width"), Frame->Width);
+		CamObj->SetNumberField(TEXT("height"), Frame->Height);
+		CamObj->SetNumberField(TEXT("frame_id"), static_cast<double>(Frame->FrameId));
+		CamObj->SetNumberField(TEXT("sim_time"), Frame->SimTime);
 
 		if (Cam->CaptureMode == EMjCameraMode::Depth)
 		{
-			if (Frame.Depth.Num() == 0)
+			if (Frame->Depth.Num() == 0)
 				continue;
 			CamObj->SetStringField(TEXT("dtype"), TEXT("float32"));
-			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(Frame.Depth.GetData()),
-				Frame.Depth.Num() * sizeof(float));
+			// Zero-copy: pack the pixel bytes straight from the shared frame (no
+			// base64, no intermediate FString). The frame is retained as the keeper
+			// until the reply is packed, so the buffer stays valid.
+			FURLabMsgpackUtil::SetBinaryFieldShared(CamObj, TEXT("data"),
+				reinterpret_cast<const uint8*>(Frame->Depth.GetData()),
+				Frame->Depth.Num() * sizeof(float), Frame);
 		}
 		else
 		{
 			// Real / SemSeg / InstanceSeg all ship 4-byte BGRA. Bridge
 			// discriminates the seg modes by the camera_topics handshake.
-			if (Frame.Color.Num() == 0)
+			if (Frame->Color.Num() == 0)
 				continue;
 			CamObj->SetStringField(TEXT("dtype"), TEXT("bgra8"));
-			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(Frame.Color.GetData()),
-				Frame.Color.Num() * sizeof(FColor));
+			FURLabMsgpackUtil::SetBinaryFieldShared(CamObj, TEXT("data"),
+				reinterpret_cast<const uint8*>(Frame->Color.GetData()),
+				Frame->Color.Num() * sizeof(FColor), Frame);
 		}
 		Cams->SetObjectField(Spec.Key, CamObj);
 	}

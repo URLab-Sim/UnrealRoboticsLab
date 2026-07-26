@@ -218,59 +218,22 @@ static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req,
 	}
 }
 
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonObject>& Req)
+void FURLabRpcDispatcher::ParseStepCommon(const TSharedPtr<FJsonObject>& Req,
+	AAMjManager* Mgr, FStepRequestCommon& Out) const
 {
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
-	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-	}
-
-	if (ActiveStepMode == EStepMode::Live)
-	{
-		// Live mode: UE drives its own physics. step() applies ctrl and
-		// returns current state. n_steps is ignored (UE steps at its own
-		// rate). Same per_articulation shape as direct mode.
-		mjModel* m = Mgr->PhysicsEngine->GetModel();
-		mjData* d = Mgr->PhysicsEngine->GetData();
-
-		FMjStepRequest TmpReq;
-		ParseStepPerArticulation(Req, Mgr, TmpReq);
-
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		{
-			FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-			ApplyStepCtrl(Mgr, TmpReq, m, d);
-			Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-			Reply->SetNumberField(TEXT("time"), d->time);
-			Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
-			AppendClockFields(Reply, d->time);
-			// Latest render-snapshot id so the client can run a "fresh" camera
-			// query in live mode too (wait for a streamed frame >= this id).
-			// UE's autonomous physics owns stepping here, so this is the id of
-			// the most recently published snapshot rather than a stepped one.
-			Reply->SetNumberField(TEXT("frame_id"),
-				static_cast<double>(Mgr->PhysicsEngine->GetRenderFrameId()));
-			TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-			if (Obs.IsValid())
-				Reply->SetObjectField(TEXT("per_articulation"), Obs);
-			TSharedPtr<FJsonObject> Scene = BuildEntitiesBlock(Mgr, m, d);
-			if (Scene.IsValid())
-				Reply->SetObjectField(TEXT("entities"), Scene);
-		}
-		return Reply;
-	}
-
-	// Per-step observations override (does not change the session default).
+	// Per-step observations override: applies to THIS request only. Defaults to
+	// the session level; the session default is only changed at hello, never
+	// per-step, so a one-off `observations` field can't leak into later steps.
+	Out.ObservationLevel = ActiveObservationLevel.load(std::memory_order_acquire);
 	FString StepObs;
 	if (Req->TryGetStringField(TEXT("observations"), StepObs))
 	{
 		if (StepObs.Equals(TEXT("minimal"), ESearchCase::IgnoreCase))
-			ActiveObservationLevel = EObservationLevel::Minimal;
+			Out.ObservationLevel = EObservationLevel::Minimal;
 		else if (StepObs.Equals(TEXT("full"), ESearchCase::IgnoreCase))
-			ActiveObservationLevel = EObservationLevel::Full;
+			Out.ObservationLevel = EObservationLevel::Full;
 		else if (StepObs.Equals(TEXT("standard"), ESearchCase::IgnoreCase))
-			ActiveObservationLevel = EObservationLevel::Standard;
+			Out.ObservationLevel = EObservationLevel::Standard;
 	}
 
 	// Parse include_cameras. Per-camera value forms:
@@ -280,8 +243,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	// Or include_cameras: true  -> all registered cameras, latest.
 	// Retrieval is non-blocking: a frame that isn't ready yet is omitted and
 	// the client retries (or passes the step's frame_id to wait client-side).
-	TMap<FString, ECameraInclude> CameraSpec;
-	TMap<FString, uint64> CameraMinFrameIds;
 	{
 		const TSharedPtr<FJsonObject>* CamObj = nullptr;
 		if (Req->TryGetObjectField(TEXT("include_cameras"), CamObj) && CamObj && CamObj->IsValid())
@@ -298,28 +259,33 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 					ECameraInclude E = Mode.Equals(TEXT("sync"), ESearchCase::IgnoreCase)
 										 ? ECameraInclude::Sync
 										 : ECameraInclude::Latest;
-					CameraSpec.Add(Kv.Key, E);
+					Out.CameraSpec.Add(Kv.Key, E);
 				}
 				else if (Kv.Value->TryGetNumber(Num))
 				{
-					CameraSpec.Add(Kv.Key, ECameraInclude::Latest);
+					Out.CameraSpec.Add(Kv.Key, ECameraInclude::Latest);
 					if (Num > 0.0)
-						CameraMinFrameIds.Add(Kv.Key, static_cast<uint64>(Num));
+						Out.CameraMinFrameIds.Add(Kv.Key, static_cast<uint64>(Num));
 				}
 				else if (Kv.Value->TryGetObject(Obj) && Obj && Obj->IsValid())
 				{
-					CameraSpec.Add(Kv.Key, ECameraInclude::Latest);
+					Out.CameraSpec.Add(Kv.Key, ECameraInclude::Latest);
 					double Fid = 0.0;
 					if ((*Obj)->TryGetNumberField(TEXT("frame_id"), Fid) && Fid > 0.0)
-						CameraMinFrameIds.Add(Kv.Key, static_cast<uint64>(Fid));
+						Out.CameraMinFrameIds.Add(Kv.Key, static_cast<uint64>(Fid));
 				}
 			}
 		}
 		else
 		{
 			bool bAll = false;
-			if (Req->TryGetBoolField(TEXT("include_cameras"), bAll) && bAll)
+			if (Req->TryGetBoolField(TEXT("include_cameras"), bAll) && bAll && Mgr)
 			{
+				auto AddCamera = [&Out](UMjCamera* C) {
+					if (!C || C->bIsDefault)
+						return;
+					Out.CameraSpec.Add(C->GetCanonicalName(), ECameraInclude::Latest);
+				};
 				for (AMjArticulation* Art : Mgr->GetAllArticulations())
 				{
 					if (!Art)
@@ -327,12 +293,16 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 					TArray<UMjCamera*> Cams;
 					Art->GetComponents<UMjCamera>(Cams);
 					for (UMjCamera* C : Cams)
-					{
-						if (!C || C->bIsDefault)
-							continue;
-						CameraSpec.Add(C->GetCanonicalName(), ECameraInclude::Latest);
-					}
+						AddCamera(C);
 				}
+				// Global / manager-level cameras: components attached directly to
+				// the manager actor rather than an articulation. The per-art walk
+				// alone dropped these, so `include_cameras: true` covered only
+				// robot-mounted cameras.
+				TArray<UMjCamera*> GlobalCams;
+				Mgr->GetComponents<UMjCamera>(GlobalCams);
+				for (UMjCamera* C : GlobalCams)
+					AddCamera(C);
 			}
 		}
 	}
@@ -340,194 +310,50 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	// wait_cameras: block the reply server-side until the requested cameras
 	// have the frame this step produced, instead of the client polling with a
 	// min_frame_id and eating a round trip per miss.
-	bool bWaitCameras = false;
-	Req->TryGetBoolField(TEXT("wait_cameras"), bWaitCameras);
-	int32 CameraTimeoutMs = 200;
+	Req->TryGetBoolField(TEXT("wait_cameras"), Out.bWaitCameras);
 	{
 		double T = 0.0;
 		if (Req->TryGetNumberField(TEXT("camera_timeout_ms"), T) && T > 0.0)
-			CameraTimeoutMs = static_cast<int32>(T);
+			Out.CameraTimeoutMs = static_cast<int32>(T);
 	}
-	// render: "sync" is the stronger form of wait_cameras — instead of polling
-	// for the natural tick to produce the frame, drive an immediate game-thread
-	// render pass. Flushes the game thread, so it is for eval, not interactive.
-	bool bRenderSync = false;
+	// render: "sync" drives an immediate capture and waits for the fresh frame
+	// (frame_id == this step). render: "async" kicks the capture but returns the
+	// most-recently-completed frame instead of waiting, so back-to-back requests
+	// overlap render and readback for higher throughput at the cost of a
+	// one-step-stale frame. Both are for eval, not interactive use.
 	{
 		FString R;
 		if (Req->TryGetStringField(TEXT("render"), R))
-			bRenderSync = R.Equals(TEXT("sync"), ESearchCase::IgnoreCase);
+		{
+			Out.bRenderSync = R.Equals(TEXT("sync"), ESearchCase::IgnoreCase);
+			Out.bRenderAsync = R.Equals(TEXT("async"), ESearchCase::IgnoreCase);
+		}
 	}
+}
 
-	if (ActiveStepMode == EStepMode::Puppet)
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonObject>& Req)
+{
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
 	{
-		FMjPushStateRequest Push;
-		const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
-		const TArray<TSharedPtr<FJsonValue>>* QVelArr = nullptr;
-		const TArray<TSharedPtr<FJsonValue>>* CtrlArr = nullptr;
-		if (Req->TryGetArrayField(TEXT("qpos"), QPosArr))
-		{
-			Push.QPos.Reserve(QPosArr->Num());
-			for (auto& V : *QPosArr)
-				Push.QPos.Add(V->AsNumber());
-		}
-		if (Req->TryGetArrayField(TEXT("qvel"), QVelArr))
-		{
-			Push.QVel.Reserve(QVelArr->Num());
-			for (auto& V : *QVelArr)
-				Push.QVel.Add(V->AsNumber());
-		}
-		if (Req->TryGetArrayField(TEXT("ctrl"), CtrlArr))
-		{
-			Push.bIncludeCtrl = true;
-			Push.Ctrl.Reserve(CtrlArr->Num());
-			for (auto& V : *CtrlArr)
-				Push.Ctrl.Add(V->AsNumber());
-		}
-		double TimeVal = 0.0;
-		Req->TryGetNumberField(TEXT("time"), TimeVal);
-		Push.Time = TimeVal;
-
-		mjModel* m = Mgr->PhysicsEngine->GetModel();
-		mjData* d = Mgr->PhysicsEngine->GetData();
-
-		TSharedPtr<FJsonObject> Obs;
-		TSharedPtr<FJsonObject> Scene;
-		uint64 PostFrameId = 0;
-		double PostTime = 0.0;
-		{
-			FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-			ApplyPushedState(Mgr->PhysicsEngine, Push, m, d);
-
-			// Publish the just-pushed pose to the render snapshot now, while
-			// we still hold CallbackMutex (lock order CallbackMutex ->
-			// RenderStateMutex). Without this the snapshot only refreshes on
-			// the physics loop's idle timeout, so cameras and any render
-			// consumer would lag the pushed state. The synchronous camera
-			// path below relies on this snapshot being current.
-			Mgr->PhysicsEngine->PushRenderState();
-
-			// Read observations/entities and the reply's time + frame id from d
-			// while still holding the lock. The puppet-mode worker wakes on its
-			// idle timeout and can mutate d (mocap/wrench drain), which would
-			// tear a read done after the lock releases.
-			PostFrameId = Mgr->PhysicsEngine->GetRenderFrameId();
-			PostTime = d->time;
-			Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-			Scene = BuildEntitiesBlock(Mgr, m, d);
-		}
-
-		// frame_id is the post-step state id: the client passes it back as a
-		// camera frame_id to fetch the image showing this exact step's state.
-		if (bRenderSync && CameraSpec.Num() > 0)
-			RenderCamerasSync(Mgr, CameraSpec, PostFrameId, CameraTimeoutMs, CameraMinFrameIds);
-		else if (bWaitCameras && CameraSpec.Num() > 0)
-			WaitForCameraFrames(Mgr, CameraSpec, PostFrameId, CameraTimeoutMs, CameraMinFrameIds);
-		const int64 StepIdx = StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
-		TSharedPtr<FJsonObject> Reply = BuildStepReply(PostTime, StepIdx, PostFrameId,
-			Obs, Scene, Mgr, CameraSpec, CameraMinFrameIds);
-		// Puppet-mode perturbation: include the latest sample so the client
-		// can apply the editor click-drag widget's force to its own MjData.
-		if (Mgr->Perturbation)
-		{
-			FMjPerturbationSample Sample = Mgr->Perturbation->GetLatestPerturbationSample();
-			if (Sample.BodyId > 0)
-			{
-				TSharedPtr<FJsonObject> Pert = MakeShared<FJsonObject>();
-				Pert->SetNumberField(TEXT("body_id"), Sample.BodyId);
-				Pert->SetNumberField(TEXT("version"), Sample.Version);
-				TArray<TSharedPtr<FJsonValue>> Six;
-				for (int i = 0; i < 6; ++i)
-					Six.Add(MakeShared<FJsonValueNumber>(Sample.Xfrc[i]));
-				Pert->SetArrayField(TEXT("xfrc"), Six);
-				Reply->SetObjectField(TEXT("perturbation"), Pert);
-			}
-		}
-		return Reply;
+		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 	}
 
-	// Direct mode.
-	TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
-	int32 NSteps = 1;
-	Req->TryGetNumberField(TEXT("n_steps"), NSteps);
-	Cmd->Request.NSteps = NSteps > 0 ? NSteps : 1;
+	FStepRequestCommon Common;
+	ParseStepCommon(Req, Mgr, Common);
 
-	ParseStepPerArticulation(Req, Mgr, Cmd->Request);
-
-	// Submit to physics-thread custom handler (no race) then wait. If the
-	// engine isn't running its async loop (test path), fall back to inline.
-	Cmd->Completion = FPlatformProcess::GetSynchEventFromPool(true);
-
-	const bool bAsyncRunning = Mgr->PhysicsEngine->AsyncPhysicsFuture.IsValid();
-	StepQueue.Enqueue(Cmd);
-	if (Mgr->PhysicsEngine->StepRequestEvent)
+	// Snapshot the strategy under DispatchMutex, then dispatch outside it. The
+	// TSharedPtr copy keeps the strategy alive even if a concurrent set_mode
+	// swaps CurrentStepStrategy mid-step; strategies are stateless, so an
+	// in-flight step finishing on the prior strategy is correct.
+	TSharedPtr<FStepModeStrategy> Strategy;
 	{
-		Mgr->PhysicsEngine->StepRequestEvent->Trigger();
+		FScopeLock Lock(&DispatchMutex);
+		Strategy = CurrentStepStrategy;
 	}
-
-	if (!bAsyncRunning)
-	{
-		// Test / editor path: pump the handler synchronously so we don't
-		// block forever waiting for an engine that isn't ticking.
-		if (Mgr->PhysicsEngine->CustomStepHandler)
-		{
-			Mgr->PhysicsEngine->CustomStepHandler(
-				Mgr->PhysicsEngine->GetModel(),
-				Mgr->PhysicsEngine->GetData());
-		}
-	}
-
-	// 5-second hard cap so a wedged engine returns an error rather than
-	// wedging the RPC thread. Polled in 50ms slices so the bDraining
-	// flag (set when the bridge is being stopped) can short-circuit the
-	// wait without forcing the user to sit through the full 5s while
-	// the editor closes.
-	bool bSignaled = false;
-	{
-		const double Deadline = FPlatformTime::Seconds() + 5.0;
-		while (FPlatformTime::Seconds() < Deadline)
-		{
-			if (bDraining.load(std::memory_order_acquire))
-			{
-				break;
-			}
-			if (Cmd->Completion->Wait(FTimespan::FromMilliseconds(50)))
-			{
-				bSignaled = true;
-				break;
-			}
-		}
-	}
-
-	TSharedPtr<FJsonObject> Reply;
-	if (bSignaled && Cmd->bDone)
-	{
-		if (bRenderSync && CameraSpec.Num() > 0)
-			RenderCamerasSync(Mgr, CameraSpec, Cmd->ResultFrameId, CameraTimeoutMs, CameraMinFrameIds);
-		else if (bWaitCameras && CameraSpec.Num() > 0)
-			WaitForCameraFrames(Mgr, CameraSpec, Cmd->ResultFrameId, CameraTimeoutMs, CameraMinFrameIds);
-		Reply = BuildStepReply(Cmd->ResultTime, Cmd->ResultStep, Cmd->ResultFrameId,
-			Cmd->Observations, Cmd->Entities, Mgr, CameraSpec, CameraMinFrameIds);
-	}
-	else
-	{
-		// We stop waiting but the command is still queued. Mark it abandoned so
-		// the handler discards it instead of stepping physics for a request the
-		// client already saw fail (and may retry) -- otherwise the step executes
-		// twice.
-		Cmd->bAbandoned.store(true, std::memory_order_release);
-		if (bDraining.load(std::memory_order_acquire))
-		{
-			Reply = MakeError(TEXT("shutting_down"),
-				TEXT("Bridge stopping; Direct-mode step abandoned"));
-		}
-		else
-		{
-			Reply = MakeError(TEXT("step_timeout"),
-				TEXT("Direct-mode step did not complete within 5s"));
-		}
-	}
-
-	return Reply;
+	if (!Strategy)
+		return MakeError(TEXT("not_ready"), TEXT("no active step strategy"));
+	return Strategy->HandleStep(*this, Req, Common);
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepReply(double TimeSec, int64 StepIdx, uint64 FrameId,
@@ -852,11 +678,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildEntitiesBlock(AAMjManager* Man
 	}
 
 	// Fallback: walk the world via TActorIterator. ONLY safe from the game
-	// thread -- the iterator asserts IsInGameThread(). DirectStepHandler /
-	// PuppetStepHandler run on the physics async thread, so when called from
-	// there with an empty cache (no scene bodies were registered), return an
-	// empty block rather than crashing. Tests / pre-cache callers on the
-	// game thread still use the fallback path.
+	// thread -- the iterator asserts IsInGameThread(). DirectStepHandler runs
+	// on the physics async thread, so when called from there with an empty
+	// cache (no scene bodies were registered), return an empty block rather
+	// than crashing. Tests / pre-cache callers on the game thread still use the
+	// fallback path.
 	if (!IsInGameThread())
 		return Scene;
 
@@ -902,9 +728,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 	}
 
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-
 	int32 SeedVal = 0;
 	if (Req->TryGetNumberField(TEXT("seed"), SeedVal))
 	{
@@ -917,8 +740,16 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 		// does not reseed the integrator here.
 	}
 
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	{
 		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
+
+		// Fetch model/data under the lock: a concurrent CompileModel frees them
+		// under CallbackMutex.
+		mjModel* m = Mgr->PhysicsEngine->GetModel();
+		mjData* d = Mgr->PhysicsEngine->GetData();
+		if (!m || !d)
+			return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 
 		FString KfName;
 		if (Req->TryGetStringField(TEXT("keyframe_name"), KfName) && !KfName.IsEmpty())
@@ -961,18 +792,19 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 			}
 		}
 		mj_forward(m, d);
+
+		StepCounter.store(0, std::memory_order_relaxed);
+
+		// Build the reply fields under the lock: the worker wakes on its idle
+		// timeout and can mutate d, tearing reads done after the lock releases.
+		Reply->SetStringField(TEXT("op"), TEXT("reset_ok"));
+		Reply->SetNumberField(TEXT("time"), d->time);
+		Reply->SetNumberField(TEXT("step"), 0);
+		AppendClockFields(Reply, d->time);
+		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
+		if (Obs.IsValid())
+			Reply->SetObjectField(TEXT("per_articulation"), Obs);
 	}
-
-	StepCounter.store(0, std::memory_order_relaxed);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("reset_ok"));
-	Reply->SetNumberField(TEXT("time"), d->time);
-	Reply->SetNumberField(TEXT("step"), 0);
-	AppendClockFields(Reply, d->time);
-	TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-	if (Obs.IsValid())
-		Reply->SetObjectField(TEXT("per_articulation"), Obs);
 	return Reply;
 }
 
@@ -987,22 +819,27 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleForward(const TSharedPtr<FJso
 		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 	}
 
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	{
 		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
+		// Fetch model/data under the lock: a concurrent CompileModel frees them
+		// under CallbackMutex.
+		mjModel* m = Mgr->PhysicsEngine->GetModel();
+		mjData* d = Mgr->PhysicsEngine->GetData();
+		if (!m || !d)
+			return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 		mj_forward(m, d);
-	}
 
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("forward_ok"));
-	Reply->SetNumberField(TEXT("time"), d->time);
-	Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
-	AppendClockFields(Reply, d->time);
-	TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-	if (Obs.IsValid())
-		Reply->SetObjectField(TEXT("per_articulation"), Obs);
+		// Build the reply fields under the lock so the worker's idle-timeout
+		// drain can't tear a read done after the lock releases.
+		Reply->SetStringField(TEXT("op"), TEXT("forward_ok"));
+		Reply->SetNumberField(TEXT("time"), d->time);
+		Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
+		AppendClockFields(Reply, d->time);
+		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
+		if (Obs.IsValid())
+			Reply->SetObjectField(TEXT("per_articulation"), Obs);
+	}
 	return Reply;
 }
 
@@ -1036,12 +873,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 	return Reply;
 }
 
-namespace
-{
-// Per-mode lifecycle. OnEnter pauses/unpauses the state+ctrl publishers, sets
-// the engine step mode (which unpauses the worker for client-driven modes), and
-// installs the step handler; OnExit uninstalls it. Camera publishers stream in
-// every mode, so the caller clears FCameraZmqWorker::bPublishersPaused.
+// Per-mode lifecycle + step body. OnEnter pauses/unpauses the state+ctrl
+// publishers, sets the engine step mode (which unpauses the worker for
+// client-driven modes), and installs the step handler; OnExit uninstalls it.
+// HandleStep runs the per-step work. Camera publishers stream in every mode, so
+// the caller clears FCameraZmqWorker::bPublishersPaused. These are named
+// (not anonymous) so RpcDispatcher.h can friend them for internal access.
 struct FLiveStepMode : FStepModeStrategy
 {
 	EStepMode Mode() const override { return EStepMode::Live; }
@@ -1052,6 +889,55 @@ struct FLiveStepMode : FStepModeStrategy
 			Mgr.PhysicsEngine->SetStepMode(EStepMode::Live);
 	}
 	void OnExit(FURLabRpcDispatcher& /*D*/, AAMjManager& /*Mgr*/) override {}
+
+	// UE drives its own physics: apply ctrl and read current state. n_steps is
+	// ignored (UE steps at its own rate). Cameras are served against the latest
+	// render snapshot id since live has no discrete stepped frame.
+	TSharedPtr<FJsonObject> HandleStep(FURLabRpcDispatcher& D,
+		const TSharedPtr<FJsonObject>& Req, const FStepRequestCommon& Common) override
+	{
+		AAMjManager* Mgr = D.OwnerMgr.Get();
+		if (!Mgr || !Mgr->PhysicsEngine)
+			return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
+
+		FMjStepRequest TmpReq;
+		ParseStepPerArticulation(Req, Mgr, TmpReq);
+
+		TSharedPtr<FJsonObject> Obs;
+		TSharedPtr<FJsonObject> Scene;
+		uint64 FrameId = 0;
+		double PostTime = 0.0;
+		{
+			// Fetch model/data AFTER acquiring CallbackMutex: a concurrent
+			// CompileModel frees them under this lock, so a fetch before it
+			// would dangle.
+			FScopeLock Lock(&Engine->CallbackMutex);
+			mjModel* m = Engine->GetModel();
+			mjData* d = Engine->GetData();
+			if (!m || !d)
+				return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			FURLabRpcDispatcher::ApplyStepCtrl(Mgr, TmpReq, m, d);
+			// Most recently published snapshot id (UE's autonomous physics owns
+			// stepping here), so the client can wait for a streamed frame >= this.
+			FrameId = Engine->GetRenderFrameId();
+			PostTime = d->time;
+			Obs = FURLabRpcDispatcher::BuildStepObservations(Mgr, m, d, Common.ObservationLevel);
+			Scene = FURLabRpcDispatcher::BuildEntitiesBlock(Mgr, m, d);
+		}
+
+		TMap<FString, uint64> CameraMinFrameIds = Common.CameraMinFrameIds;
+		if (Common.bRenderSync && Common.CameraSpec.Num() > 0)
+			D.RenderCamerasSync(Mgr, Common.CameraSpec, FrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
+		else if (Common.bRenderAsync && Common.CameraSpec.Num() > 0)
+			D.RenderCamerasSync(Mgr, Common.CameraSpec, 0, Common.CameraTimeoutMs, CameraMinFrameIds, /*bWait=*/false);
+		else if (Common.bWaitCameras && Common.CameraSpec.Num() > 0)
+			D.WaitForCameraFrames(Mgr, Common.CameraSpec, FrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
+
+		const int64 StepIdx = D.StepCounter.load(std::memory_order_relaxed);
+		return D.BuildStepReply(PostTime, StepIdx, FrameId, Obs, Scene, Mgr,
+			Common.CameraSpec, CameraMinFrameIds);
+	}
 };
 
 struct FDirectStepMode : FStepModeStrategy
@@ -1068,37 +954,215 @@ struct FDirectStepMode : FStepModeStrategy
 	{
 		D.UninstallDirectHandler();
 	}
+
+	// Enqueue an FMjDirectStepCommand for the physics worker's step handler and
+	// wait for completion. If the worker isn't running (test / editor path), pump
+	// the handler inline under the engine lock.
+	TSharedPtr<FJsonObject> HandleStep(FURLabRpcDispatcher& D,
+		const TSharedPtr<FJsonObject>& Req, const FStepRequestCommon& Common) override
+	{
+		AAMjManager* Mgr = D.OwnerMgr.Get();
+		if (!Mgr || !Mgr->PhysicsEngine)
+			return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
+
+		TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
+		int32 NSteps = 1;
+		Req->TryGetNumberField(TEXT("n_steps"), NSteps);
+		Cmd->Request.NSteps = NSteps > 0 ? NSteps : 1;
+		Cmd->ObservationLevel = Common.ObservationLevel;
+		ParseStepPerArticulation(Req, Mgr, Cmd->Request);
+
+		Cmd->Completion = FPlatformProcess::GetSynchEventFromPool(true);
+
+		const bool bWorkerRunning = Engine->bWorkerRunning.load(std::memory_order_acquire);
+		D.StepQueue.Enqueue(Cmd);
+		if (Engine->StepRequestEvent)
+			Engine->StepRequestEvent->Trigger();
+
+		if (!bWorkerRunning)
+		{
+			// Test / editor path: pump the handler synchronously so we don't
+			// block forever waiting for an engine that isn't ticking. The handler
+			// mutates mjData, so hold the engine lock the handler contract
+			// requires (the worker path already runs it under CallbackMutex).
+			if (Engine->CustomStepHandler)
+			{
+				FScopeLock Lock(&Engine->CallbackMutex);
+				Engine->CustomStepHandler(Engine->GetModel(), Engine->GetData());
+			}
+		}
+
+		// 5-second hard cap so a wedged engine returns an error rather than
+		// wedging the RPC thread. Polled in 50ms slices so the bDraining flag
+		// (set when the bridge is being stopped) can short-circuit the wait.
+		bool bSignaled = false;
+		{
+			const double Deadline = FPlatformTime::Seconds() + 5.0;
+			while (FPlatformTime::Seconds() < Deadline)
+			{
+				if (D.bDraining.load(std::memory_order_acquire))
+					break;
+				if (Cmd->Completion->Wait(FTimespan::FromMilliseconds(50)))
+				{
+					bSignaled = true;
+					break;
+				}
+			}
+		}
+
+		if (bSignaled && Cmd->bDone)
+		{
+			TMap<FString, uint64> CameraMinFrameIds = Common.CameraMinFrameIds;
+			if (Common.bRenderSync && Common.CameraSpec.Num() > 0)
+				D.RenderCamerasSync(Mgr, Common.CameraSpec, Cmd->ResultFrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
+			else if (Common.bRenderAsync && Common.CameraSpec.Num() > 0)
+				D.RenderCamerasSync(Mgr, Common.CameraSpec, 0, Common.CameraTimeoutMs, CameraMinFrameIds, /*bWait=*/false);
+			else if (Common.bWaitCameras && Common.CameraSpec.Num() > 0)
+				D.WaitForCameraFrames(Mgr, Common.CameraSpec, Cmd->ResultFrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
+			return D.BuildStepReply(Cmd->ResultTime, Cmd->ResultStep, Cmd->ResultFrameId,
+				Cmd->Observations, Cmd->Entities, Mgr, Common.CameraSpec, CameraMinFrameIds);
+		}
+
+		// We stop waiting but the command is still queued. Mark it abandoned so
+		// the handler discards it instead of stepping physics for a request the
+		// client already saw fail (and may retry) -- otherwise the step executes
+		// twice.
+		Cmd->bAbandoned.store(true, std::memory_order_release);
+		if (D.bDraining.load(std::memory_order_acquire))
+			return FURLabRpcDispatcher::MakeError(TEXT("shutting_down"),
+				TEXT("Bridge stopping; Direct-mode step abandoned"));
+		return FURLabRpcDispatcher::MakeError(TEXT("step_timeout"),
+			TEXT("Direct-mode step did not complete within 5s"));
+	}
 };
 
 struct FPuppetStepMode : FStepModeStrategy
 {
 	EStepMode Mode() const override { return EStepMode::Puppet; }
-	void OnEnter(FURLabRpcDispatcher& D, AAMjManager& Mgr) override
+	void OnEnter(FURLabRpcDispatcher& /*D*/, AAMjManager& Mgr) override
 	{
 		Mgr.bPublishersPaused.store(true, std::memory_order_release);
 		if (Mgr.PhysicsEngine)
 			Mgr.PhysicsEngine->SetStepMode(EStepMode::Puppet);
-		D.InstallPuppetHandler();
 	}
-	void OnExit(FURLabRpcDispatcher& D, AAMjManager& /*Mgr*/) override
+	void OnExit(FURLabRpcDispatcher& /*D*/, AAMjManager& /*Mgr*/) override {}
+
+	// Client owns the integrator: write the pushed qpos/qvel/ctrl/time into
+	// mjData, run mj_forward, and return the derived state.
+	TSharedPtr<FJsonObject> HandleStep(FURLabRpcDispatcher& D,
+		const TSharedPtr<FJsonObject>& Req, const FStepRequestCommon& Common) override
 	{
-		D.UninstallPuppetHandler();
+		AAMjManager* Mgr = D.OwnerMgr.Get();
+		if (!Mgr || !Mgr->PhysicsEngine)
+			return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
+
+		FMjPushStateRequest Push;
+		const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* QVelArr = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* CtrlArr = nullptr;
+		if (Req->TryGetArrayField(TEXT("qpos"), QPosArr))
+		{
+			Push.QPos.Reserve(QPosArr->Num());
+			for (auto& V : *QPosArr)
+				Push.QPos.Add(V->AsNumber());
+		}
+		if (Req->TryGetArrayField(TEXT("qvel"), QVelArr))
+		{
+			Push.QVel.Reserve(QVelArr->Num());
+			for (auto& V : *QVelArr)
+				Push.QVel.Add(V->AsNumber());
+		}
+		if (Req->TryGetArrayField(TEXT("ctrl"), CtrlArr))
+		{
+			Push.bIncludeCtrl = true;
+			Push.Ctrl.Reserve(CtrlArr->Num());
+			for (auto& V : *CtrlArr)
+				Push.Ctrl.Add(V->AsNumber());
+		}
+		double TimeVal = 0.0;
+		Req->TryGetNumberField(TEXT("time"), TimeVal);
+		Push.Time = TimeVal;
+
+		TSharedPtr<FJsonObject> Obs;
+		TSharedPtr<FJsonObject> Scene;
+		uint64 PostFrameId = 0;
+		double PostTime = 0.0;
+		{
+			// Fetch model/data AFTER the lock: a concurrent CompileModel frees
+			// them under CallbackMutex.
+			FScopeLock Lock(&Engine->CallbackMutex);
+			mjModel* m = Engine->GetModel();
+			mjData* d = Engine->GetData();
+			if (!m || !d)
+				return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			ApplyPushedState(Engine, Push, m, d);
+
+			// Publish the just-pushed pose to the render snapshot now, while we
+			// still hold CallbackMutex (lock order CallbackMutex ->
+			// RenderStateMutex). Without this the snapshot only refreshes on the
+			// physics loop's idle timeout, so cameras and any render consumer
+			// would lag the pushed state. The synchronous camera path below
+			// relies on this snapshot being current.
+			Engine->PushRenderState();
+
+			// Read observations/entities and the reply's time + frame id from d
+			// while still holding the lock. The puppet-mode worker wakes on its
+			// idle timeout and can mutate d (mocap/wrench drain), which would tear
+			// a read done after the lock releases.
+			PostFrameId = Engine->GetRenderFrameId();
+			PostTime = d->time;
+			Obs = FURLabRpcDispatcher::BuildStepObservations(Mgr, m, d, Common.ObservationLevel);
+			Scene = FURLabRpcDispatcher::BuildEntitiesBlock(Mgr, m, d);
+		}
+
+		// frame_id is the post-step state id: the client passes it back as a
+		// camera frame_id to fetch the image showing this exact step's state.
+		TMap<FString, uint64> CameraMinFrameIds = Common.CameraMinFrameIds;
+		if (Common.bRenderSync && Common.CameraSpec.Num() > 0)
+			D.RenderCamerasSync(Mgr, Common.CameraSpec, PostFrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
+		else if (Common.bRenderAsync && Common.CameraSpec.Num() > 0)
+			D.RenderCamerasSync(Mgr, Common.CameraSpec, 0, Common.CameraTimeoutMs, CameraMinFrameIds, /*bWait=*/false);
+		else if (Common.bWaitCameras && Common.CameraSpec.Num() > 0)
+			D.WaitForCameraFrames(Mgr, Common.CameraSpec, PostFrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
+
+		const int64 StepIdx = D.StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+		TSharedPtr<FJsonObject> Reply = D.BuildStepReply(PostTime, StepIdx, PostFrameId,
+			Obs, Scene, Mgr, Common.CameraSpec, CameraMinFrameIds);
+		// Puppet-mode perturbation: include the latest sample so the client can
+		// apply the editor click-drag widget's force to its own MjData.
+		if (Mgr->Perturbation)
+		{
+			FMjPerturbationSample Sample = Mgr->Perturbation->GetLatestPerturbationSample();
+			if (Sample.BodyId > 0)
+			{
+				TSharedPtr<FJsonObject> Pert = MakeShared<FJsonObject>();
+				Pert->SetNumberField(TEXT("body_id"), Sample.BodyId);
+				Pert->SetNumberField(TEXT("version"), Sample.Version);
+				TArray<TSharedPtr<FJsonValue>> Six;
+				for (int i = 0; i < 6; ++i)
+					Six.Add(MakeShared<FJsonValueNumber>(Sample.Xfrc[i]));
+				Pert->SetArrayField(TEXT("xfrc"), Six);
+				Reply->SetObjectField(TEXT("perturbation"), Pert);
+			}
+		}
+		return Reply;
 	}
 };
-} // namespace
 
-TUniquePtr<FStepModeStrategy> FURLabRpcDispatcher::MakeStepStrategy(EStepMode Mode)
+TSharedPtr<FStepModeStrategy> FURLabRpcDispatcher::MakeStepStrategy(EStepMode Mode)
 {
 	switch (Mode)
 	{
 		case EStepMode::Direct:
-			return MakeUnique<FDirectStepMode>();
+			return MakeShared<FDirectStepMode>();
 		case EStepMode::Puppet:
-			return MakeUnique<FPuppetStepMode>();
+			return MakeShared<FPuppetStepMode>();
 		case EStepMode::Live:
 		case EStepMode::Auto:
 		default:
-			return MakeUnique<FLiveStepMode>();
+			return MakeShared<FLiveStepMode>();
 	}
 }
 
@@ -1119,7 +1183,7 @@ void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
 
 	if (CurrentStepStrategy)
 		CurrentStepStrategy->OnExit(*this, *Mgr);
-	DrainQueuesForTest();
+	DrainQueues();
 
 	ActiveStepMode.store(Mode, std::memory_order_release);
 	// Camera publishers stream in every mode (frames are decoupled from the
@@ -1133,37 +1197,17 @@ void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
 		*StepModeToString(Mode));
 }
 
-void FURLabRpcDispatcher::InstallPuppetHandler()
+void FURLabRpcDispatcher::ReapplyActiveStepMode()
 {
+	FScopeLock Lock(&DispatchMutex);
 	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
+	if (!Mgr || !CurrentStepStrategy)
 		return;
-	if (bPuppetHandlerInstalled)
-		return;
-
-	UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
-	PuppetStepHandler = [this, Engine](mjModel* m, mjData* d) -> bool {
-		FMjPushStateRequest Req;
-		if (!PushStateQueue.Dequeue(Req))
-			return false; // idle wake, nothing pushed — no advance
-		ApplyPushedState(Engine, Req, m, d);
-		return true;
-	};
-	Engine->SetCustomStepHandler(PuppetStepHandler);
-	bPuppetHandlerInstalled = true;
-}
-
-void FURLabRpcDispatcher::UninstallPuppetHandler()
-{
-	if (!bPuppetHandlerInstalled)
-		return;
-	if (AAMjManager* Mgr = OwnerMgr.Get())
-	{
-		if (Mgr->PhysicsEngine)
-			Mgr->PhysicsEngine->ClearCustomStepHandler();
-	}
-	bPuppetHandlerInstalled = false;
-	PuppetStepHandler = nullptr;
+	// OnExit before OnEnter so the direct handler's install guard
+	// (bDirectHandlerInstalled) doesn't skip reinstalling onto the fresh engine
+	// handler slot after a recompile.
+	CurrentStepStrategy->OnExit(*this, *Mgr);
+	CurrentStepStrategy->OnEnter(*this, *Mgr);
 }
 
 void FURLabRpcDispatcher::InstallDirectHandler()
@@ -1221,7 +1265,7 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		Cmd->ResultTime = d->time;
 		Cmd->ResultStep = StepCounter.fetch_add(Cmd->Request.NSteps, std::memory_order_relaxed)
 						+ Cmd->Request.NSteps;
-		Cmd->Observations = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
+		Cmd->Observations = BuildStepObservations(Mgr, m, d, Cmd->ObservationLevel);
 		Cmd->Entities = BuildEntitiesBlock(Mgr, m, d);
 		// Publish the just-stepped state to the render snapshot now, while this
 		// handler still owns d (it runs inside the engine's CallbackMutex), and

@@ -21,6 +21,7 @@
 #include "ShmRpcTransport.generated.h"
 
 class FRunnableThread;
+class FSmStepTransportRunnable;
 
 /**
  * @class UURLabShmRpcTransport
@@ -37,8 +38,8 @@ class FRunnableThread;
  * inner-loop transport (1 kHz controller channels). Editor-only ops
  * (`import_xml`, `spawn_actor`, `list_actors`, etc.) get a
  * `wrong_transport: use_zmq` reply via the base class's
- * `AcceptsEditorOps()=false` short-circuit. The bridge-side client
- * auto-routes editor ops to ZMQ; nothing needs to be re-tried.
+ * `AcceptsEditorOps()=false` short-circuit. The request is never executed
+ * here, so the client can safely re-route such ops to ZMQ.
  */
 UCLASS()
 class URLAB_API UURLabShmRpcTransport : public UURLabRpcTransport
@@ -67,10 +68,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
 	int32 ReplyBufferStride = 16 * 1024 * 1024;
 
-	/** Optional explicit session id (defaults to "live"; mirrors the
-	 *  publisher's path scheme). */
+	/** Optional explicit session label. The resolved session id used for the
+	 *  SHM files and kernel event names is always made unique per editor
+	 *  process (see TransportInit), so many render-server instances on one
+	 *  host never collide; this label just prefixes that unique id. Defaults
+	 *  to "live". */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
 	FString SessionId;
+
+	/** Step-RPC port of the owning instance. Set by the bridge before
+	 *  TransportInit purely to keep the resolved session name traceable back
+	 *  to the instance; 0 means the name relies on the process id alone for
+	 *  uniqueness. */
+	int32 InstancePort = 0;
 
 	/** How long the worker thread waits between sequence checks
 	 *  (microseconds). On Windows the worker waits on a named event, so
@@ -127,6 +137,9 @@ private:
 	void* RepReadyEvent = nullptr;
 
 	FRunnableThread* WorkerThread = nullptr;
+	/** Runnable driving WorkerThread. FRunnableThread does not own it, so the
+	 *  transport keeps the pointer and deletes it at shutdown. */
+	FSmStepTransportRunnable* WorkerRunnable = nullptr;
 	std::atomic<bool> bStop{false};
 	bool bInitialized = false;
 

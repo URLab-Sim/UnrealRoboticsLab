@@ -184,6 +184,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 				TEXT("qpos length %d != articulation qpos dim %d (free-base shortcut requires len=7 with FREE root)"),
 				InN, ArtQDim));
 
+	// Read-back of the written qpos must stay inside the lock: a concurrent
+	// worker step (or a recompile) would otherwise tear the echoed values.
+	TArray<TSharedPtr<FJsonValue>> Out;
 	{
 		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
 		if (bFreeBaseShortcut)
@@ -202,20 +205,19 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 			}
 		}
 		mj_forward(m, d);
-	}
 
-	TArray<TSharedPtr<FJsonValue>> Out;
-	if (bFreeBaseShortcut)
-	{
-		const int32 Adr = Slots[0].Adr;
-		for (int32 i = 0; i < 7; ++i)
-			Out.Add(MakeShared<FJsonValueNumber>(d->qpos[Adr + i]));
-	}
-	else
-	{
-		for (const FJointSlot& S : Slots)
-			for (int32 i = 0; i < S.Size; ++i)
-				Out.Add(MakeShared<FJsonValueNumber>(d->qpos[S.Adr + i]));
+		if (bFreeBaseShortcut)
+		{
+			const int32 Adr = Slots[0].Adr;
+			for (int32 i = 0; i < 7; ++i)
+				Out.Add(MakeShared<FJsonValueNumber>(d->qpos[Adr + i]));
+		}
+		else
+		{
+			for (const FJointSlot& S : Slots)
+				for (int32 i = 0; i < S.Size; ++i)
+					Out.Add(MakeShared<FJsonValueNumber>(d->qpos[S.Adr + i]));
+		}
 	}
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
@@ -274,6 +276,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 		return MakeError(TEXT("missing_field"),
 			TEXT("set_mocap_pose requires at least one of pos[3] or quat[4]"));
 
+	// Read-back of the written mocap pose must stay inside the lock: a concurrent
+	// worker step (or a recompile) would otherwise tear the echoed values.
+	TArray<TSharedPtr<FJsonValue>> PosOut, QuatOut;
 	{
 		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
 		if (bHasPos)
@@ -286,13 +291,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 			for (int32 i = 0; i < 4; ++i)
 				d->mocap_quat[4 * MocapId + i] = (mjtNum)(*QuatArr)[i]->AsNumber();
 		}
-	}
 
-	TArray<TSharedPtr<FJsonValue>> PosOut, QuatOut;
-	for (int32 i = 0; i < 3; ++i)
-		PosOut.Add(MakeShared<FJsonValueNumber>(d->mocap_pos[3 * MocapId + i]));
-	for (int32 i = 0; i < 4; ++i)
-		QuatOut.Add(MakeShared<FJsonValueNumber>(d->mocap_quat[4 * MocapId + i]));
+		for (int32 i = 0; i < 3; ++i)
+			PosOut.Add(MakeShared<FJsonValueNumber>(d->mocap_pos[3 * MocapId + i]));
+		for (int32 i = 0; i < 4; ++i)
+			QuatOut.Add(MakeShared<FJsonValueNumber>(d->mocap_quat[4 * MocapId + i]));
+	}
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("set_mocap_pose_ok"));

@@ -53,7 +53,7 @@ UMjCamera* SpawnCameraAndStream(FMjUESession& Sess, EMjCameraMode Mode)
 
 // ============================================================================
 // URLab.Camera.RealMode_ConfiguresFinalColorBGRA
-//   Default Real mode → RT is RGBA8, CaptureSource is SCS_FinalToneCurveHDR.
+//   Default Real mode → RT is RGBA8, CaptureSource is SCS_FinalColorLDR.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraRealModeConfig,
 	"URLab.Camera.RealMode_ConfiguresFinalColorBGRA",
@@ -86,7 +86,7 @@ bool FMjCameraRealModeConfig::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("capture source"),
 			(int32)Cam->CaptureComponent->CaptureSource,
-			(int32)ESceneCaptureSource::SCS_FinalToneCurveHDR);
+			(int32)ESceneCaptureSource::SCS_FinalColorLDR);
 	}
 
 	S.Cleanup();

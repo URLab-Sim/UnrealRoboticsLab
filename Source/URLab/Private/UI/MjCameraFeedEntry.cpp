@@ -61,9 +61,12 @@ void UMjCameraFeedEntry::RefreshBrush()
 	if (!RT)
 		return;
 
+	// Read the resolution through the camera's validated accessor so a malformed
+	// `resolution` array can never index out of bounds here.
+	const FIntPoint Res = BoundCamera->GetResolution();
 	const float W = 320.f;
-	const float H = (BoundCamera->resolution[0] > 0)
-					  ? W * static_cast<float>(BoundCamera->resolution[1]) / static_cast<float>(BoundCamera->resolution[0])
+	const float H = (Res.X > 0)
+					  ? W * static_cast<float>(Res.Y) / static_cast<float>(Res.X)
 					  : W * 0.75f;
 
 	// Depth RT is R32f — slate can't display it directly. Build (or reuse)
@@ -73,11 +76,11 @@ void UMjCameraFeedEntry::RefreshBrush()
 	if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
 	{
 		if (!DepthPreviewTexture
-			|| DepthPreviewTexture->GetSizeX() != BoundCamera->resolution[0]
-			|| DepthPreviewTexture->GetSizeY() != BoundCamera->resolution[1])
+			|| DepthPreviewTexture->GetSizeX() != Res.X
+			|| DepthPreviewTexture->GetSizeY() != Res.Y)
 		{
 			DepthPreviewTexture = UTexture2D::CreateTransient(
-				BoundCamera->resolution[0], BoundCamera->resolution[1], PF_B8G8R8A8,
+				Res.X, Res.Y, PF_B8G8R8A8,
 				TEXT("URLabDepthPreview"));
 			DepthPreviewTexture->CompressionSettings = TC_VectorDisplacementmap;
 			DepthPreviewTexture->SRGB = false;

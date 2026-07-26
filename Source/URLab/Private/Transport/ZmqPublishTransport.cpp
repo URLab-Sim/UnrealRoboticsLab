@@ -40,6 +40,22 @@ inline int SendTopic(void* Socket, const FString& Topic, int Flags)
 	const FTCHARToUTF8 Utf8(*Topic);
 	return zmq_send(Socket, Utf8.Get(), Utf8.Length(), Flags);
 }
+
+// Pre-encode a topic to its UTF-8 wire bytes (no NUL terminator) once, at
+// cache-build time, so the per-step publish can send them without a TCHAR->UTF8
+// conversion on the physics thread.
+inline void EncodeTopic(const FString& Topic, TArray<uint8>& Out)
+{
+	const FTCHARToUTF8 Utf8(*Topic);
+	Out.SetNumUninitialized(Utf8.Length());
+	if (Utf8.Length() > 0)
+		FMemory::Memcpy(Out.GetData(), Utf8.Get(), Utf8.Length());
+}
+
+inline int SendTopicBytes(void* Socket, const TArray<uint8>& TopicUtf8, int Flags)
+{
+	return zmq_send(Socket, TopicUtf8.GetData(), TopicUtf8.Num(), Flags);
+}
 } // namespace
 
 void UURLabZmqPublishTransport::SetOwningManager(AAMjManager* InMgr)
@@ -67,8 +83,14 @@ void UURLabZmqPublishTransport::TransportShutdown()
 		Mgr->UnregisterSnapshotPublisher(this);
 	}
 	// Make sure the physics thread stops reading our cache before tear-down.
+	// bCacheBuilt=false makes a fresh PostStep bail early; CacheMutex waits out
+	// any iteration already in flight (a detached worker may still be stepping).
 	bCacheBuilt.store(false, std::memory_order_release);
-	CachedRecords.Reset();
+	{
+		FScopeLock CacheLock(&CacheMutex);
+		CachedRecords.Reset();
+		CachedEntities.Reset();
+	}
 	ShutdownZmqSocket();
 }
 
@@ -142,25 +164,79 @@ void UURLabZmqPublishTransport::BuildBroadcastCacheGameThread()
 	if (Articulations.Num() == 0)
 		return;
 
-	CachedRecords.Reset(Articulations.Num());
+	// Assemble into locals with no lock held; the physics thread keeps reading
+	// the previous cache meanwhile. Only the swap below is guarded.
+	TArray<FArticulationBroadcastRecord> NewRecords;
+	NewRecords.Reserve(Articulations.Num());
 	for (AMjArticulation* Art : Articulations)
 	{
 		if (!Art)
 			continue;
 
+		const FString ArticPrefix = Art->GetName();
+
 		FArticulationBroadcastRecord Rec;
 		Rec.Articulation = Art;
-		Rec.ArticPrefix = Art->GetName();
-		Art->GetComponents<UMjComponent>(Rec.TelemetryComponents);
-		Rec.TwistCtrl = Art->FindComponentByClass<UMjTwistController>();
-		CachedRecords.Add(MoveTemp(Rec));
+
+		TArray<UMjComponent*> Components;
+		Art->GetComponents<UMjComponent>(Components);
+		for (UMjComponent* Comp : Components)
+		{
+			if (!Comp || Comp->bIsDefault)
+				continue;
+			const FString TopicSuffix = Comp->GetTelemetryTopicName();
+			if (TopicSuffix.IsEmpty())
+				continue;
+			FBroadcastComponentEntry Entry;
+			Entry.Component = Comp;
+			EncodeTopic(FString::Printf(TEXT("%s/%s"), *ArticPrefix, *TopicSuffix), Entry.TopicUtf8);
+			Rec.Components.Add(MoveTemp(Entry));
+		}
+
+		if (UMjTwistController* TwistCtrl = Art->FindComponentByClass<UMjTwistController>())
+		{
+			Rec.TwistCtrl = TwistCtrl;
+			EncodeTopic(FString::Printf(TEXT("%s/twist"), *ArticPrefix), Rec.TwistTopicUtf8);
+			EncodeTopic(FString::Printf(TEXT("%s/actions"), *ArticPrefix), Rec.ActionsTopicUtf8);
+		}
+
+		NewRecords.Add(MoveTemp(Rec));
+	}
+
+	// Non-articulation dynamic bodies (free-jointed props, heightfields). Pull
+	// MjId + free-base flag from the manager's entity cache (built in
+	// PostCompile) and pre-encode the scene topics; only the raw mjData reads
+	// stay on the per-step path.
+	const TArray<FMjEntityRecord>& Entities = Manager->GetEntities();
+	TArray<FEntityBroadcastEntry> NewEntities;
+	NewEntities.Reserve(Entities.Num());
+	for (const FMjEntityRecord& Ent : Entities)
+	{
+		if (Ent.MjId < 0)
+			continue;
+		FEntityBroadcastEntry Out;
+		Out.MjId = Ent.MjId;
+		Out.bHasFreeBase = Ent.bHasFreeBase;
+		EncodeTopic(FString::Printf(TEXT("scene/%s/xpos"), *Ent.Name), Out.XposTopicUtf8);
+		EncodeTopic(FString::Printf(TEXT("scene/%s/xquat"), *Ent.Name), Out.XquatTopicUtf8);
+		EncodeTopic(FString::Printf(TEXT("scene/%s/qpos"), *Ent.Name), Out.QposTopicUtf8);
+		EncodeTopic(FString::Printf(TEXT("scene/%s/qvel"), *Ent.Name), Out.QvelTopicUtf8);
+		NewEntities.Add(MoveTemp(Out));
+	}
+
+	const int32 NumRecords = NewRecords.Num();
+	const int32 NumEntities = NewEntities.Num();
+	{
+		FScopeLock Lock(&CacheMutex);
+		CachedRecords = MoveTemp(NewRecords);
+		CachedEntities = MoveTemp(NewEntities);
 	}
 
 	bCacheBuilt.store(true, std::memory_order_release);
 
 	UE_LOG(LogURLabNet, Log,
-		TEXT("UURLabZmqPublishTransport: built broadcast cache (%d articulations)."),
-		CachedRecords.Num());
+		TEXT("UURLabZmqPublishTransport: built broadcast cache (%d articulations, %d entities)."),
+		NumRecords, NumEntities);
 }
 
 void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
@@ -191,7 +267,14 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 		return;
 	}
 
+	// Hold CacheMutex across the iteration so a concurrent rebuild (game thread)
+	// swaps the arrays only between steps, never mid-walk. Uncontended in the
+	// steady state (rebuilds fire only on a registry change), so this stays off
+	// the per-step cost that the pre-encoded topics + scratch buffer target.
+	FScopeLock CacheLock(&CacheMutex);
+
 	int BroadcastCount = 0;
+	bool bStaleRef = false;
 	if (bShouldLog)
 	{
 		UE_LOG(LogURLabNet, Verbose,
@@ -201,45 +284,53 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 
 	for (const FArticulationBroadcastRecord& Rec : CachedRecords)
 	{
-		if (!Rec.Articulation)
-			continue;
-
-		for (UMjComponent* Comp : Rec.TelemetryComponents)
+		if (!Rec.Articulation.IsValid())
 		{
-			if (!Comp || Comp->bIsDefault)
-				continue;
+			// Articulation despawned since the cache was built. Skip it and ask
+			// the game thread to rebuild so the cache drops the dead record.
+			bStaleRef = true;
+			continue;
+		}
 
-			FString TopicSuffix = Comp->GetTelemetryTopicName();
-			if (TopicSuffix.IsEmpty())
-				continue;
-
-			FString FullTopic = FString::Printf(TEXT("%s/%s"), *Rec.ArticPrefix, *TopicSuffix);
-
-			FBufferArchive Payload;
-			Comp->BuildBinaryPayload(Payload);
-
-			if (Payload.Num() > 0)
+		for (const FBroadcastComponentEntry& Entry : Rec.Components)
+		{
+			UMjComponent* Comp = Entry.Component.Get();
+			if (!Comp)
 			{
-				SendTopic(ZmqPublisher, FullTopic, ZMQ_SNDMORE);
-				zmq_send(ZmqPublisher, Payload.GetData(), Payload.Num(), 0);
+				bStaleRef = true;
+				continue;
+			}
+			if (Comp->bIsDefault)
+				continue;
+
+			// Reuse the scratch buffer: Seek(0) rewinds the write cursor and the
+			// serializer overwrites in place (growing only past the high-water
+			// mark), so the steady state does not reallocate. Tell() is the byte
+			// count written this pass; the array's Num() is the high-water mark.
+			ScratchPayload.Seek(0);
+			Comp->BuildBinaryPayload(ScratchPayload);
+			const int64 PayloadLen = ScratchPayload.Tell();
+
+			if (PayloadLen > 0)
+			{
+				SendTopicBytes(ZmqPublisher, Entry.TopicUtf8, ZMQ_SNDMORE);
+				zmq_send(ZmqPublisher, ScratchPayload.GetData(), PayloadLen, 0);
 				BroadcastCount++;
 			}
 		}
 
-		if (Rec.TwistCtrl)
+		if (UMjTwistController* TwistCtrl = Rec.TwistCtrl.Get())
 		{
-			FVector Twist = Rec.TwistCtrl->GetTwist();
-			FString TwistTopic = FString::Printf(TEXT("%s/twist"), *Rec.ArticPrefix);
+			FVector Twist = TwistCtrl->GetTwist();
 			float TwistData[3] = {(float)Twist.X, (float)Twist.Y, (float)Twist.Z};
-			SendTopic(ZmqPublisher, TwistTopic, ZMQ_SNDMORE);
+			SendTopicBytes(ZmqPublisher, Rec.TwistTopicUtf8, ZMQ_SNDMORE);
 			zmq_send(ZmqPublisher, TwistData, sizeof(TwistData), 0);
 			BroadcastCount++;
 
-			int32 Actions = Rec.TwistCtrl->GetActiveActions();
+			int32 Actions = TwistCtrl->GetActiveActions();
 			if (Actions != 0)
 			{
-				FString ActionTopic = FString::Printf(TEXT("%s/actions"), *Rec.ArticPrefix);
-				SendTopic(ZmqPublisher, ActionTopic, ZMQ_SNDMORE);
+				SendTopicBytes(ZmqPublisher, Rec.ActionsTopicUtf8, ZMQ_SNDMORE);
 				zmq_send(ZmqPublisher, &Actions, sizeof(Actions), 0);
 				BroadcastCount++;
 			}
@@ -247,43 +338,40 @@ void UURLabZmqPublishTransport::PostStep(mjModel* m, mjData* d)
 	}
 
 	// Non-articulation dynamic bodies (free-jointed props, heightfields, etc).
-	if (AAMjManager* Mgr = OwningManager.Get())
+	for (const FEntityBroadcastEntry& Ent : CachedEntities)
 	{
-		const TArray<FMjEntityRecord>& Entities = Mgr->GetEntities();
-		for (const FMjEntityRecord& Rec : Entities)
+		if (Ent.MjId < 0 || Ent.MjId >= m->nbody)
+			continue;
+
+		SendTopicBytes(ZmqPublisher, Ent.XposTopicUtf8, ZMQ_SNDMORE);
+		zmq_send(ZmqPublisher, &d->xpos[Ent.MjId * 3], 3 * sizeof(mjtNum), 0);
+		BroadcastCount++;
+
+		SendTopicBytes(ZmqPublisher, Ent.XquatTopicUtf8, ZMQ_SNDMORE);
+		zmq_send(ZmqPublisher, &d->xquat[Ent.MjId * 4], 4 * sizeof(mjtNum), 0);
+		BroadcastCount++;
+
+		if (Ent.bHasFreeBase && m->body_jntnum && m->body_jntadr && m->jnt_type && m->jnt_qposadr && m->jnt_dofadr)
 		{
-			if (Rec.MjId < 0 || Rec.MjId >= m->nbody)
-				continue;
-
-			FString XposTopic = FString::Printf(TEXT("scene/%s/xpos"), *Rec.Name);
-			SendTopic(ZmqPublisher, XposTopic, ZMQ_SNDMORE);
-			zmq_send(ZmqPublisher, &d->xpos[Rec.MjId * 3], 3 * sizeof(mjtNum), 0);
-			BroadcastCount++;
-
-			FString XquatTopic = FString::Printf(TEXT("scene/%s/xquat"), *Rec.Name);
-			SendTopic(ZmqPublisher, XquatTopic, ZMQ_SNDMORE);
-			zmq_send(ZmqPublisher, &d->xquat[Rec.MjId * 4], 4 * sizeof(mjtNum), 0);
-			BroadcastCount++;
-
-			if (Rec.bHasFreeBase && m->body_jntnum && m->body_jntadr && m->jnt_type && m->jnt_qposadr && m->jnt_dofadr)
+			int FirstJnt = m->body_jntadr[Ent.MjId];
+			int NumJnt = m->body_jntnum[Ent.MjId];
+			if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
 			{
-				int FirstJnt = m->body_jntadr[Rec.MjId];
-				int NumJnt = m->body_jntnum[Rec.MjId];
-				if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
-				{
-					int QAddr = m->jnt_qposadr[FirstJnt];
-					int VAddr = m->jnt_dofadr[FirstJnt];
-					FString QposTopic = FString::Printf(TEXT("scene/%s/qpos"), *Rec.Name);
-					SendTopic(ZmqPublisher, QposTopic, ZMQ_SNDMORE);
-					zmq_send(ZmqPublisher, &d->qpos[QAddr], 7 * sizeof(mjtNum), 0);
-					FString QvelTopic = FString::Printf(TEXT("scene/%s/qvel"), *Rec.Name);
-					SendTopic(ZmqPublisher, QvelTopic, ZMQ_SNDMORE);
-					zmq_send(ZmqPublisher, &d->qvel[VAddr], 6 * sizeof(mjtNum), 0);
-					BroadcastCount += 2;
-				}
+				int QAddr = m->jnt_qposadr[FirstJnt];
+				int VAddr = m->jnt_dofadr[FirstJnt];
+				SendTopicBytes(ZmqPublisher, Ent.QposTopicUtf8, ZMQ_SNDMORE);
+				zmq_send(ZmqPublisher, &d->qpos[QAddr], 7 * sizeof(mjtNum), 0);
+				SendTopicBytes(ZmqPublisher, Ent.QvelTopicUtf8, ZMQ_SNDMORE);
+				zmq_send(ZmqPublisher, &d->qvel[VAddr], 6 * sizeof(mjtNum), 0);
+				BroadcastCount += 2;
 			}
 		}
 	}
+
+	// A stale weak ref means the registry changed under us; rebuild once
+	// (idempotent) so the cache re-syncs to the live set.
+	if (bStaleRef)
+		RequestGameThreadCacheBuild();
 
 	// state/full snapshots are built once per step by AAMjManager and
 	// fanned out via PublishSnapshot to every IMjSnapshotPublisher.

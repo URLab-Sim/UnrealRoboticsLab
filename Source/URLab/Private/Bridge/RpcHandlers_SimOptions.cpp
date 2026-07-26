@@ -204,10 +204,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	if (!Mgr || !Mgr->PhysicsEngine)
 		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	if (!m)
-		return MakeError(TEXT("not_ready"), TEXT("mjModel not compiled"));
-
 	const TSharedPtr<FJsonObject>* OptsPtr = nullptr;
 	if (!Req->TryGetObjectField(TEXT("options"), OptsPtr) || !OptsPtr || !(*OptsPtr).IsValid())
 		return MakeError(TEXT("missing_field"), TEXT("set_sim_options requires 'options' object"));
@@ -342,6 +338,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	// the echoed snapshot is coherent. Rebuilding mju_threadpool while a step is
 	// in flight is otherwise a crash.
 	FScopeLock ModelLock(&Mgr->PhysicsEngine->CallbackMutex);
+
+	// Fetch the live model under the lock: a concurrent CompileModel frees and
+	// reallocates m/d, so a pointer captured before the lock could dangle.
+	mjModel* m = Mgr->PhysicsEngine->GetModel();
+	if (!m)
+		return MakeError(TEXT("not_ready"), TEXT("mjModel not compiled"));
 
 	// Raw disable / enable bit masks. Values are bitwise-ORs of
 	// mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.

@@ -63,7 +63,11 @@ void UMjNetworkManager::RegisterCamera(UMjCamera* Cam)
 	if (!Cam)
 		return;
 	FScopeLock Lock(&CameraMutex);
-	ActiveCameras.AddUnique(Cam);
+	const int32 PortIndex = ActiveCameras.AddUnique(Cam);
+	// Each camera seeds a distinct port upward from the instance's CamBasePort
+	// (CamBasePort + index), so co-located cameras and co-located editor render
+	// servers never share a port. Assigned before any SetStreamingEnabled below.
+	Cam->SetStreamPortIndex(PortIndex);
 
 	// bEnableAllCameras forces broadcast on (legacy "stream all"). Otherwise
 	// honour the camera's authored broadcast flags. A camera with no broadcast

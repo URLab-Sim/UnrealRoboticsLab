@@ -79,8 +79,13 @@ bool UURLabRpcTransport::ProcessRequestBytes(const TArray<uint8>& InBytes,
 		}
 		if (!Req.IsValid())
 		{
-			FString JsonStr = FString(InBytes.Num(),
-				UTF8_TO_TCHAR((const char*)InBytes.GetData()));
+			// The wire buffer is not NUL-terminated. Convert with an explicit
+			// byte length so the UTF-8 decode stops at the end of the request
+			// instead of reading past it (a heap overread on any JSON or
+			// otherwise-unparseable request).
+			FUTF8ToTCHAR Conv(reinterpret_cast<const ANSICHAR*>(InBytes.GetData()),
+				InBytes.Num());
+			FString JsonStr(Conv.Length(), Conv.Get());
 			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
 			if (!FJsonSerializer::Deserialize(Reader, Req))
 				Req.Reset();
@@ -98,9 +103,10 @@ bool UURLabRpcTransport::ProcessRequestBytes(const TArray<uint8>& InBytes,
 	}
 	else if (!AcceptsEditorOps() && Req.IsValid())
 	{
-		// SHM scope narrowing: editor-only ops never reach the
-		// dispatcher on a runtime-only transport. The bridge-side client
-		// re-routes such ops to ZMQ on receipt of `wrong_transport`.
+		// SHM scope narrowing: editor-only ops never reach the dispatcher on
+		// a runtime-only transport. They are rejected with `wrong_transport`
+		// so the client can re-route them to ZMQ. The request is never
+		// executed here, which is what makes re-routing safe.
 		FString Op;
 		Req->TryGetStringField(TEXT("op"), Op);
 		if (URLabOpRegistry::IsEditorOnlyOp(Op))

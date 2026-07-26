@@ -5,6 +5,7 @@
 
 #include "MuJoCo/Components/Sensors/MjCameraSubsystem.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Core/AMjManager.h"
 
 void UMjCameraSubsystem::RegisterCamera(UMjCamera* Camera)
 {
@@ -25,6 +26,8 @@ void UMjCameraSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Prune dead cameras and note whether any is actively capturing this tick.
+	bool bAnyActive = false;
 	for (int32 i = Cameras.Num() - 1; i >= 0; --i)
 	{
 		UMjCamera* Cam = Cameras[i].Get();
@@ -33,7 +36,32 @@ void UMjCameraSubsystem::Tick(float DeltaTime)
 			Cameras.RemoveAtSwap(i, EAllowShrinking::No);
 			continue;
 		}
-		Cam->UpdateCapturePipeline();
+		if (Cam->IsCaptureActive())
+		{
+			bAnyActive = true;
+		}
+	}
+
+	// Apply the latest physics snapshot once before any camera captures this tick,
+	// so a tick-driven capture (MaybeCapture) renders the same up-to-date,
+	// correctly-lit scene the synchronous render path does. Bridge-driven direct /
+	// puppet sessions do not otherwise apply the snapshot on the game thread every
+	// frame, which left the streamed capture rendering an unlit (dark) scene.
+	// Gated on an active camera so idle worlds pay nothing.
+	if (bAnyActive)
+	{
+		if (AAMjManager* Mgr = AAMjManager::GetManager())
+		{
+			Mgr->ApplyLatestRenderState();
+		}
+	}
+
+	for (const TWeakObjectPtr<UMjCamera>& CamPtr : Cameras)
+	{
+		if (UMjCamera* Cam = CamPtr.Get())
+		{
+			Cam->UpdateCapturePipeline();
+		}
 	}
 }
 

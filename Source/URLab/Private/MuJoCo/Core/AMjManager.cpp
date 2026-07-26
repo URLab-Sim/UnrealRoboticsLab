@@ -38,6 +38,8 @@
 #include "Transport/ZmqSubscribeTransport.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/BridgeServerConfig.h"
+#include "Bridge/BridgeServerConfigUtils.h"
 #include "Transport/SnapshotProducer.h"
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
@@ -186,12 +188,25 @@ void AAMjManager::BeginPlay()
 		// Cooked path: no editor subsystem. Manager owns its bridge and
 		// brings up both RPC transports inline. Bridge owns all RPC
 		// transports; manager only owns publish/subscribe streams.
+		FURLabBridgeServerConfig CookedConfig;
+		URLabBridgeServerConfigUtils::LoadFromIni(CookedConfig);
+		URLabBridgeServerConfigUtils::ApplyEnvAndCommandLineOverrides(CookedConfig);
+
 		BridgeServer = NewObject<UURLabBridgeServer>(this, TEXT("BridgeServer"));
 		BridgeServer->SetOwnedByManager(true);
-		BridgeServer->Start();          // ZMQ on tcp://0.0.0.0:5559
-		BridgeServer->EnsureShmBound(); // SHM under "live"
+		BridgeServer->SetInstanceConfig(CookedConfig);
+		const FString StepEndpoint = FString::Printf(TEXT("tcp://%s:%d"),
+			*CookedConfig.BindAddress, CookedConfig.StepPort);
+		BridgeServer->Start(StepEndpoint);
+		BridgeServer->EnsureShmBound(CookedConfig.InstanceId);
 	}
 	BridgeServer->RegisterManager(this);
+
+	// State PUB binds the configured address + port so farm instances don't
+	// collide; single-editor defaults reproduce tcp://0.0.0.0:5555.
+	const FURLabBridgeServerConfig& NetConfig = BridgeServer->GetInstanceConfig();
+	const FString StateEndpoint = FString::Printf(TEXT("tcp://%s:%d"),
+		*NetConfig.BindAddress, NetConfig.StatePort);
 
 	// Auto-create the streaming transports (PIE-only producers — they
 	// tap PhysicsEngine pre/post-step callbacks). Bridge-style UObject
@@ -204,12 +219,13 @@ void AAMjManager::BeginPlay()
 			this, TEXT("AutoZmqBroadcaster"));
 		if (Broadcaster)
 		{
+			Broadcaster->ZmqEndpoint = StateEndpoint;
 			Broadcaster->SetOwningManager(this);
 			if (Broadcaster->TransportInit())
 			{
 				ManagerOwnedPublishTransports.Add(Broadcaster);
 				UE_LOG(LogURLab, Log,
-					TEXT("[AAMjManager] Created UURLabZmqPublishTransport (tcp://0.0.0.0:5555)"));
+					TEXT("[AAMjManager] Created UURLabZmqPublishTransport (%s)"), *StateEndpoint);
 			}
 		}
 
@@ -425,7 +441,12 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 					kShutdownTimeoutSec);
 			}
 		}
-		PhysicsEngine->ClearCallbacks();
+		// Clearing callbacks takes CallbackMutex, which a wedged worker holds for
+		// its whole iteration. Only safe once the worker has provably exited;
+		// on the detach path the callbacks leak with the rest of the accepted
+		// leak rather than deadlock PIE-stop.
+		if (bAsyncExited)
+			PhysicsEngine->ClearCallbacks();
 	}
 
 	// Manager-owned transports aren't UActorComponents, so EndPlay

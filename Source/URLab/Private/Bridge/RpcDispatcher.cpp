@@ -38,8 +38,11 @@
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
 #include "Transport/RpcTransport.h"
-#include "Transport/ShmRegion.h" // FMjShmHeader (header_size in shm_rpc block)
 #include "Bridge/BridgeServer.h"
+#include "Bridge/BridgeServerConfig.h"
+#include "Bridge/InstanceRegistry.h"
+#include "HAL/PlatformProcess.h"
+#include "Transport/ShmRegion.h" // FMjShmHeader (header_size in shm_rpc block)
 #include "Replay/MjReplayManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Base64.h"
@@ -79,6 +82,25 @@ FString ActuatorTypeToString(EMjActuatorType T)
 			return TEXT("dcmotor");
 	}
 	return TEXT("motor");
+}
+
+/** Ops that do NOT count as lease-owner activity: discovery, bootstrap, and
+ *  lifecycle/status polls that a non-owner (e.g. a pool client probing for a
+ *  free instance) issues to inspect an instance. Refreshing the lease on these
+ *  would let steady discovery polling keep a held lease alive forever and
+ *  defeat TTL auto-release. Real owner activity (step / reset / forward / set_*
+ *  and every other state-advancing op) still refreshes. */
+bool OpRefreshesLease(const FString& Op)
+{
+	static const TSet<FString> NonActivityOps = {
+		TEXT("hello"),
+		TEXT("meta"),
+		TEXT("pie_status"),
+		TEXT("op_status"),
+		TEXT("acquire_lease"),
+		TEXT("release_lease"),
+	};
+	return !NonActivityOps.Contains(Op);
 }
 } // namespace
 
@@ -177,6 +199,39 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleListKeyframes(R); },
 		{TEXT("op:string"), TEXT("keyframes:array")});
 
+	// Cooperative render-farm lease. No-manager: a pool client claims the
+	// process itself, whether or not a scene is loaded.
+	Reg(TEXT("acquire_lease"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleAcquireLease(R); },
+		{TEXT("op:string"), TEXT("lease_id:string"), TEXT("ttl_s:float")});
+	// lease_id is validated in the handler (not declaratively) so a missing
+	// value returns `bad_request` per the schema, not the generic
+	// `missing_field`.
+	Reg(TEXT("release_lease"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleReleaseLease(R); },
+		/*Reply=*/{TEXT("op:string")});
+
+	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
+	// pure data staging (no manager, no editor). Commit drives the existing
+	// import_xml editor job on a materialised temp dir; it self-checks for the
+	// editor import handler, so it stays NoManager and returns `import_failed`
+	// when the editor module isn't loaded.
+	Reg(TEXT("upload_model_manifest"), EOpCategory::NoManager, TEXT("scene"),
+		[this](auto& R) { return HandleUploadModelManifest(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("upload_id:string"), TEXT("need_xml:bool"),
+			TEXT("need_assets:array"), TEXT("max_asset_bytes:int"), TEXT("max_total_bytes:int")},
+		/*Required=*/{TEXT("xml_sha256")});
+	Reg(TEXT("upload_model_chunk"), EOpCategory::NoManager, TEXT("scene"),
+		[this](auto& R) { return HandleUploadModelChunk(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("name:string"), TEXT("received:int"), TEXT("complete:bool")},
+		/*Required=*/{TEXT("upload_id"), TEXT("kind")});
+	Reg(TEXT("upload_model_commit"), EOpCategory::NoManager, TEXT("scene"),
+		[this](auto& R) { return HandleUploadModelCommit(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("imported:bool"), TEXT("nq:int?"), TEXT("nv:int?"),
+			TEXT("nu:int?"), TEXT("nbody:int?"), TEXT("ngeom:int?"), TEXT("mjb:object?"),
+			TEXT("warnings:array")},
+		/*Required=*/{TEXT("upload_id")});
+
 	auto RecBody = [this](auto& R) {
 		FString OpName;
 		R->TryGetStringField(TEXT("op"), OpName);
@@ -221,12 +276,17 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 	const EStepMode InitMode = (OwnerMgr->StepMode == EStepMode::Auto)
 								 ? EStepMode::Live
 								 : OwnerMgr->StepMode;
-	ActiveStepMode.store(InitMode, std::memory_order_release);
-	// Camera publishers stream in every mode; the strategy's OnEnter handles the
-	// state/ctrl publishers, the engine step mode, and the handler install.
-	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
-	CurrentStepStrategy = MakeStepStrategy(InitMode);
-	CurrentStepStrategy->OnEnter(*this, *OwnerMgr);
+	{
+		// Serialise strategy construction + OnEnter against a concurrent
+		// set_mode / OnManagerGone (PIE-end) touching the same members.
+		FScopeLock Lock(&DispatchMutex);
+		ActiveStepMode.store(InitMode, std::memory_order_release);
+		// Camera publishers stream in every mode; the strategy's OnEnter handles
+		// the state/ctrl publishers, the engine step mode, and the handler install.
+		FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
+		CurrentStepStrategy = MakeStepStrategy(InitMode);
+		CurrentStepStrategy->OnEnter(*this, *OwnerMgr);
+	}
 
 	// Cached on the game thread; worker threads later use Get() (TActorIterator
 	// asserts IsInGameThread).
@@ -240,10 +300,14 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 
 void FURLabRpcDispatcher::OnManagerGone()
 {
-	UninstallPuppetHandler();
+	// Serialise handler teardown + strategy reset against a concurrent set_mode
+	// racing PIE-end (would otherwise be a UAF on CurrentStepStrategy / the
+	// handler flags).
+	FScopeLock Lock(&DispatchMutex);
+
 	UninstallDirectHandler();
 	CurrentStepStrategy.Reset();
-	DrainQueuesForTest();
+	DrainQueues();
 
 	if (OwnerMgr.IsValid())
 	{
@@ -286,6 +350,13 @@ void FURLabRpcDispatcher::SetCachedReplayManager(AMjReplayManager* RM)
 	CachedReplayManager = RM;
 }
 
+// Out-of-line so the TWeakObjectPtr assignment sees the full UURLabBridgeServer
+// type (the header only forward-declares it to avoid an include cycle).
+void FURLabRpcDispatcher::SetOwningBridge(UURLabBridgeServer* InBridge)
+{
+	OwningBridge = InBridge;
+}
+
 void FURLabRpcDispatcher::EnqueueStepRequestForTest(FMjStepRequest&& Req)
 {
 	TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
@@ -300,20 +371,18 @@ void FURLabRpcDispatcher::EnqueueStepRequestForTest(FMjStepRequest&& Req)
 	}
 }
 
-void FURLabRpcDispatcher::EnqueuePushStateRequestForTest(FMjPushStateRequest&& Req)
-{
-	PushStateQueue.Enqueue(MoveTemp(Req));
-}
-
-void FURLabRpcDispatcher::DrainQueuesForTest()
+void FURLabRpcDispatcher::DrainQueues()
 {
 	TSharedPtr<FMjDirectStepCommand> Cmd;
 	while (StepQueue.Dequeue(Cmd))
 	{
-	} // shared_ptr deallocates on scope exit
-	FMjPushStateRequest P;
-	while (PushStateQueue.Dequeue(P))
-	{
+		if (!Cmd.IsValid())
+			continue;
+		// Abandon + wake any RPC thread blocked on this command so a mode switch
+		// / PIE-end returns immediately instead of eating the 5s step deadline.
+		Cmd->bAbandoned.store(true, std::memory_order_release);
+		if (Cmd->Completion)
+			Cmd->Completion->Trigger();
 	}
 }
 
@@ -363,6 +432,16 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	if (!Req->TryGetStringField(TEXT("op"), Op))
 	{
 		return MakeError(TEXT("missing_op"), TEXT("Request missing 'op' field"));
+	}
+
+	// Only real owner activity refreshes the lease. Discovery / bootstrap /
+	// status-poll ops (see OpRefreshesLease) must NOT, or a pool client's
+	// steady `hello`/status polling would keep a held lease alive forever and
+	// defeat TTL auto-release. No-op when no lease is held.
+	if (OpRefreshesLease(Op))
+	{
+		if (UURLabBridgeServer* Bridge = OwningBridge.Get())
+			Bridge->TouchLease();
 	}
 
 	// hello / meta are pre-session bootstrap endpoints.
@@ -566,6 +645,34 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 	const bool bManagerPresent = (Manager && Manager->PhysicsEngine);
 	Reply->SetBoolField(TEXT("manager_present"), bManagerPresent);
+
+	// Per-instance identity for render-farm discovery. Values come from the
+	// bridge server's resolved config (env / command line / INI), so a client
+	// learns exactly which instance answered and on which ports.
+	if (Manager && Manager->BridgeServer)
+	{
+		const FURLabBridgeServerConfig& Cfg = Manager->BridgeServer->GetInstanceConfig();
+		TSharedPtr<FJsonObject> Instance = MakeShared<FJsonObject>();
+		Instance->SetStringField(TEXT("instance_id"),
+			Cfg.InstanceId.IsEmpty() ? FString(TEXT("live")) : Cfg.InstanceId);
+		Instance->SetNumberField(TEXT("index"), Cfg.InstanceIndex);
+		Instance->SetNumberField(TEXT("pid"),
+			static_cast<double>(FPlatformProcess::GetCurrentProcessId()));
+		Instance->SetStringField(TEXT("host"), FPlatformProcess::ComputerName());
+		Instance->SetNumberField(TEXT("step_port"), Cfg.StepPort);
+		Instance->SetNumberField(TEXT("state_port"), Cfg.StatePort);
+		Instance->SetNumberField(TEXT("cam_base_port"), Cfg.CamBasePort);
+		Instance->SetBoolField(TEXT("manager_present"), bManagerPresent);
+		Instance->SetBoolField(TEXT("busy"), Manager->BridgeServer->IsLeaseHeld());
+		Instance->SetStringField(TEXT("urlab_version"), URLabVer);
+
+		TArray<TSharedPtr<FJsonValue>> Capabilities;
+		for (const FString& Cap : FURLabInstanceRegistry::Capabilities())
+			Capabilities.Add(MakeShared<FJsonValueString>(Cap));
+		Instance->SetArrayField(TEXT("capabilities"), Capabilities);
+
+		Reply->SetObjectField(TEXT("instance"), Instance);
+	}
 
 	if (!bManagerPresent)
 	{

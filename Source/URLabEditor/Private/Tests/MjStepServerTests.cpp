@@ -531,7 +531,9 @@ bool FMjStepServerSessionId::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 5. Puppet mode push-state writes qpos/qvel and fires OnPostStep
+// 5. Puppet mode: a step RPC pushes qpos/qvel/time inline and fires OnPostStep.
+//    Drives the real dispatch path (SetActiveStepMode(Puppet) + step op) rather
+//    than a dead test-only queue.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerPuppetHandler,
 	"URLab.StepServer.PuppetHandler",
@@ -554,6 +556,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 		return false;
 	}
 	Disp->SetActiveStepMode(EStepMode::Puppet);
+	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
 
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
@@ -569,28 +572,24 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 		OnPostStepCount++;
 	};
 
-	// Build a push-state request that sets qpos[0] and qvel[0] to known values.
-	FMjPushStateRequest Req;
-	Req.QPos.SetNum(m->nq);
-	Req.QVel.SetNum(m->nv);
-	if (m->nq > 0)
-		Req.QPos[0] = 0.42;
-	if (m->nv > 0)
-		Req.QVel[0] = 0.13;
-	Req.Time = 1.5;
+	// Build a step request that pushes a full qpos/qvel with known slot-0 values.
+	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
+	Req->SetStringField(TEXT("op"), TEXT("step"));
+	Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
+	TArray<TSharedPtr<FJsonValue>> QPos;
+	for (int i = 0; i < m->nq; ++i)
+		QPos.Add(MakeShared<FJsonValueNumber>(i == 0 ? 0.42 : 0.0));
+	TArray<TSharedPtr<FJsonValue>> QVel;
+	for (int i = 0; i < m->nv; ++i)
+		QVel.Add(MakeShared<FJsonValueNumber>(i == 0 ? 0.13 : 0.0));
+	Req->SetArrayField(TEXT("qpos"), QPos);
+	Req->SetArrayField(TEXT("qvel"), QVel);
+	Req->SetNumberField(TEXT("time"), 1.5);
 
-	Disp->EnqueuePushStateRequestForTest(MoveTemp(Req));
-
-	// Drive the engine's CustomStepHandler explicitly. The puppet handler
-	// dequeues, writes, calls mj_forward, and fires OnPostStep.
-	if (S.Manager->PhysicsEngine->CustomStepHandler)
-	{
-		S.Manager->PhysicsEngine->CustomStepHandler(m, d);
-	}
-	else
-	{
-		AddError(TEXT("CustomStepHandler not installed in Puppet mode"));
-	}
+	TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
+	FString Op;
+	Reply->TryGetStringField(TEXT("op"), Op);
+	TestEqual(TEXT("puppet step -> step_ok"), Op, FString(TEXT("step_ok")));
 
 	if (m->nq > 0)
 		TestEqual(TEXT("qpos[0] written"), (double)d->qpos[0], 0.42, 1e-9);
@@ -975,7 +974,10 @@ bool FMjStepServerXfrcApplied::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 11. ApplyControls is gated when StepMode == Puppet
+// 11. ApplyControls gate input: the physics worker skips its ApplyControls pass
+//     when the resolved step mode is Puppet (client pushes qpos/qvel directly).
+//     The worker reads ResolvedStepMode, surfaced by GetStepMode(); verify
+//     SetStepMode drives that authoritative value the gate keys off.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerApplyControlsGate,
 	"URLab.StepServer.ApplyControlsGate",
@@ -983,11 +985,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerApplyControlsGate,
 
 bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 {
-	// Verify that AAMjManager::StepMode == Puppet causes the engine's
-	// ApplyControls call site to be skipped. The engine's async loop is
-	// not running in tests, but the gate logic is observable through the
-	// StepMode property that the call site reads on each iteration. The
-	// critical invariant: StepMode is a UPROPERTY visible to the gate.
 	FMjUESession S;
 	if (!S.Init())
 	{
@@ -995,29 +992,29 @@ bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Initial mode is Auto.
-	TestEqual(TEXT("Default StepMode is Auto"),
-		(int)S.Manager->StepMode, (int)EStepMode::Auto);
-
-	// Puppet mode — the engine's ApplyControls gate should now report skip.
-	S.Manager->StepMode = EStepMode::Puppet;
-	TestEqual(TEXT("StepMode set to Puppet"),
-		(int)S.Manager->StepMode, (int)EStepMode::Puppet);
-
-	// The gate itself: in MjPhysicsEngine.cpp we call
-	//   if (Cast<AAMjManager>(GetOwner())->StepMode == EStepMode::Puppet) skip;
-	// This unit-level test verifies the property is reachable via Cast,
-	// mirroring the gate's own access pattern.
-	AAMjManager* OwnerMgr = Cast<AAMjManager>(S.Manager->PhysicsEngine->GetOwner());
-	TestNotNull(TEXT("PhysicsEngine owner is AAMjManager"), OwnerMgr);
-	if (OwnerMgr)
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+	if (!Engine)
 	{
-		TestEqual(TEXT("Engine sees Puppet StepMode through GetOwner()"),
-			(int)OwnerMgr->StepMode, (int)EStepMode::Puppet);
+		AddError(TEXT("Manager has no PhysicsEngine"));
+		S.Cleanup();
+		return false;
 	}
 
-	// Restore so other tests aren't affected.
-	S.Manager->StepMode = EStepMode::Auto;
+	// The gate in RunMujocoAsync is `bSkipApplyControls = (Mode == Puppet)`,
+	// where Mode == ResolvedStepMode. SetStepMode is the single writer.
+	Engine->SetStepMode(EStepMode::Puppet);
+	TestEqual(TEXT("resolved mode is Puppet (ApplyControls skipped)"),
+		(int)Engine->GetStepMode(), (int)EStepMode::Puppet);
+
+	Engine->SetStepMode(EStepMode::Direct);
+	TestEqual(TEXT("resolved mode is Direct (ApplyControls runs)"),
+		(int)Engine->GetStepMode(), (int)EStepMode::Direct);
+
+	// Auto resolves to Live, and Live runs the ApplyControls pass too.
+	Engine->SetStepMode(EStepMode::Auto);
+	TestEqual(TEXT("Auto resolves to Live (ApplyControls runs)"),
+		(int)Engine->GetStepMode(), (int)EStepMode::Live);
+
 	S.Cleanup();
 	return true;
 }

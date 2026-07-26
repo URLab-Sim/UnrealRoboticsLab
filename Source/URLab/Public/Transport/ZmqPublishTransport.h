@@ -25,6 +25,7 @@
 #include <atomic>
 
 #include "CoreMinimal.h"
+#include "Serialization/BufferArchive.h"
 #include "Transport/PublishTransport.h"
 #include "Transport/SnapshotPublisher.h"
 #include "ZmqPublishTransport.generated.h"
@@ -91,22 +92,54 @@ private:
 	 *  can mutate it during actor BeginPlay — e.g. auto-created twist
 	 *  controllers), and tripping the sparse-array range-for ensure
 	 *  corrupts nearby heap state, producing seemingly-unrelated RHI
-	 *  crashes further along. */
-	struct FArticulationBroadcastRecord
+	 *  crashes further along.
+	 *
+	 *  Object refs are weak: the physics thread resolves them per step, so a
+	 *  mid-play despawn yields null instead of a use-after-free. Wire topics are
+	 *  pre-encoded to UTF-8 at build time so the per-step publish (up to kHz on
+	 *  the physics thread) does no FString::Printf or TCHAR->UTF8 conversion. */
+	struct FBroadcastComponentEntry
 	{
-		AMjArticulation* Articulation = nullptr;
-		FString ArticPrefix;
-		TArray<UMjComponent*> TelemetryComponents;
-		UMjTwistController* TwistCtrl = nullptr;
+		TWeakObjectPtr<UMjComponent> Component;
+		TArray<uint8> TopicUtf8; // "<artic>/<suffix>", pre-encoded, no NUL
 	};
 
-	/** Populated once on the game thread. bCacheBuilt (with acquire/release
-	 *  ordering) publishes visibility to the physics thread. No mid-play
-	 *  refresh — broadcaster assumes articulations and their components are
-	 *  stable across a single play session. */
+	struct FArticulationBroadcastRecord
+	{
+		TWeakObjectPtr<AMjArticulation> Articulation;
+		TArray<FBroadcastComponentEntry> Components;
+		TWeakObjectPtr<UMjTwistController> TwistCtrl;
+		TArray<uint8> TwistTopicUtf8;
+		TArray<uint8> ActionsTopicUtf8;
+	};
+
+	/** Non-articulation dynamic body (free-jointed prop, heightfield). Indexed
+	 *  by MjId into live mjData each step; scene topics pre-encoded at build. */
+	struct FEntityBroadcastEntry
+	{
+		int32 MjId = -1;
+		bool bHasFreeBase = false;
+		TArray<uint8> XposTopicUtf8;
+		TArray<uint8> XquatTopicUtf8;
+		TArray<uint8> QposTopicUtf8;
+		TArray<uint8> QvelTopicUtf8;
+	};
+
+	/** Built on the game thread, read on the physics thread. bCacheBuilt
+	 *  (acquire/release) gates the first read cheaply; CacheMutex guards the
+	 *  arrays themselves so a rebuild (triggered when the physics thread sees a
+	 *  stale weak ref, i.e. the registry changed) can swap them in without
+	 *  tearing an in-flight iteration. The game thread assembles the new cache
+	 *  into locals first and only takes the lock for the O(1) swap. */
 	TArray<FArticulationBroadcastRecord> CachedRecords;
+	TArray<FEntityBroadcastEntry> CachedEntities;
+	FCriticalSection CacheMutex;
 	std::atomic<bool> bCacheBuilt{false};
 	std::atomic<bool> bCacheBuildScheduled{false};
+
+	/** Physics-thread-only scratch buffer reused across steps so per-component
+	 *  payload serialisation does not reallocate in the steady state. */
+	FBufferArchive ScratchPayload;
 
 	/** Schedule a one-shot AsyncTask(GameThread) to build the cache.
 	 *  Idempotent: only the first call goes through. */

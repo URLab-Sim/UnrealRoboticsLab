@@ -105,6 +105,13 @@ public:
 	std::atomic<bool> bShouldStopTask{false};
 	TFuture<void> AsyncPhysicsFuture;
 
+	/** True for exactly the lifetime of the async worker lambda. The direct-mode
+	 *  step body reads this to decide whether to submit to the worker or run the
+	 *  handler inline: unlike AsyncPhysicsFuture.IsValid() it is cleared the
+	 *  instant the worker returns, so a joined-but-not-yet-reset future can't be
+	 *  mistaken for a live worker. */
+	std::atomic<bool> bWorkerRunning{false};
+
 	/** Wakes the async physics worker when a step request lands in
 	 *  direct/puppet mode. Dispatcher Triggers on enqueue; worker
 	 *  Waits on this in lieu of the real-time spin pacer when the
@@ -269,15 +276,21 @@ public:
 	void SetControlSource(EControlSource NewSource);
 	EControlSource GetControlSource() const;
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
+	/** The live articulation registry. Registration happens in bulk at compile
+	 *  time (PreCompile) while the worker thread is stopped and joined, so the
+	 *  array is immutable for the duration of a play session. The returned
+	 *  reference is therefore stable to read on the game thread, but it is NOT a
+	 *  synchronised snapshot: it must not be retained across a recompile, and
+	 *  callers on other threads that need a stable copy must take one themselves.
+	 *  The physics worker iterates the underlying array directly, not through
+	 *  this accessor. */
 	const TArray<AMjArticulation*>& GetAllArticulations() const;
 
-	/** Add / remove an articulation from the registry the physics worker
-	 *  iterates (ApplyControls). Both take CallbackMutex so a spawn/despawn
-	 *  can't tear the array or the name map out from under a running step.
-	 *  Registration currently happens in bulk at compile time; RemoveArticulation
-	 *  is the entry point for dynamic despawn. */
+	/** Register an articulation into the registry the physics worker iterates
+	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the
+	 *  array or the name map out from under a step; in practice registration
+	 *  runs at compile time with the worker joined. */
 	void RegisterArticulation(AMjArticulation* Articulation);
-	void RemoveArticulation(AMjArticulation* Articulation);
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 	FString GetLastCompileError() const;

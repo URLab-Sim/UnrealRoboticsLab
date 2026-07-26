@@ -62,15 +62,24 @@ bool UURLabShmRpcTransport::TransportInit()
 	if (bInitialized)
 		return true;
 
-	FString Sid = SessionId;
-	if (Sid.IsEmpty())
-		Sid = TEXT("live");
-	ResolvedSessionId = Sid;
+	const FString BaseSid = SessionId.IsEmpty() ? FString(TEXT("live")) : SessionId;
+	// Make the session globally unique per editor process so many render-server
+	// instances on one host never share SHM files or Windows event names (a
+	// shared event name lets one instance eat another's wakeup and degrade to
+	// the 100 ms poll timeout). The process id guarantees uniqueness; the step
+	// port, when the bridge supplies it, keeps the name traceable to the
+	// instance. Every resolved name and path is advertised in the hello
+	// shm_rpc block, so the bridge opens exactly these objects instead of
+	// re-deriving them from a fixed "live" session.
+	const uint32 Pid = FPlatformProcess::GetCurrentProcessId();
+	ResolvedSessionId = InstancePort > 0
+							? FString::Printf(TEXT("%s_p%d_%u"), *BaseSid, InstancePort, Pid)
+							: FString::Printf(TEXT("%s_%u"), *BaseSid, Pid);
 	// Event names match what the worker creates below; advertised in hello so
 	// the bridge opens the exact objects rather than assuming "live".
-	ReqEventName = MakeEventName(Sid, TEXT("req"));
-	RepEventName = MakeEventName(Sid, TEXT("rep"));
-	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(Sid);
+	ReqEventName = MakeEventName(ResolvedSessionId, TEXT("req"));
+	RepEventName = MakeEventName(ResolvedSessionId, TEXT("rep"));
+	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(ResolvedSessionId);
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 	ReqPath = FPaths::Combine(Dir, TEXT("req.shm"));
 	RepPath = FPaths::Combine(Dir, TEXT("rep.shm"));
@@ -95,14 +104,26 @@ bool UURLabShmRpcTransport::TransportInit()
 	// means a single SetEvent unblocks exactly one waiter and self-clears.
 	// Initial state = unsignaled; the first signal comes from the producer.
 	{
-		const FString ReqName = MakeEventName(Sid, TEXT("req"));
-		const FString RepName = MakeEventName(Sid, TEXT("rep"));
 		// UE's Windows wrappers hide the TRUE/FALSE macros; pass integers
 		// directly (BOOL is int).
 		ReqReadyEvent = ::CreateEventW(nullptr, /*bManualReset=*/0,
-			/*bInitialState=*/0, *ReqName);
+			/*bInitialState=*/0, *ReqEventName);
+		const DWORD ReqErr = ::GetLastError();
 		RepReadyEvent = ::CreateEventW(nullptr, /*bManualReset=*/0,
-			/*bInitialState=*/0, *RepName);
+			/*bInitialState=*/0, *RepEventName);
+		const DWORD RepErr = ::GetLastError();
+		// Per-process naming should make a pre-existing event impossible. If one
+		// exists anyway, another instance resolved the same identity; warn
+		// rather than silently share a wake object, which would let that
+		// instance steal this one's request/reply signals.
+		if ((ReqReadyEvent && ReqErr == ERROR_ALREADY_EXISTS) ||
+			(RepReadyEvent && RepErr == ERROR_ALREADY_EXISTS))
+		{
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("UURLabShmRpcTransport: kernel event name collision (req=%s rep=%s); "
+					 "another instance may steal wakeups"),
+				*ReqEventName, *RepEventName);
+		}
 		if (!ReqReadyEvent || !RepReadyEvent)
 		{
 			UE_LOG(LogURLabNet, Warning,
@@ -125,8 +146,8 @@ bool UURLabShmRpcTransport::TransportInit()
 	bStop = false;
 	bInitialized = true;
 
-	FSmStepTransportRunnable* Runner = new FSmStepTransportRunnable(this);
-	WorkerThread = FRunnableThread::Create(Runner, TEXT("URLabSmStepTransport"));
+	WorkerRunnable = new FSmStepTransportRunnable(this);
+	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabSmStepTransport"));
 
 	UE_LOG(LogURLabNet, Log,
 		TEXT("UURLabShmRpcTransport: req=%s, rep=%s, sync=%s"),
@@ -155,6 +176,10 @@ void UURLabShmRpcTransport::TransportShutdown()
 		delete WorkerThread;
 		WorkerThread = nullptr;
 	}
+	// FRunnableThread never owns the runnable; delete it explicitly so the
+	// bind/unbind cycle does not leak one runnable each time.
+	delete WorkerRunnable;
+	WorkerRunnable = nullptr;
 
 #if PLATFORM_WINDOWS
 	if (ReqReadyEvent)
@@ -234,7 +259,11 @@ void UURLabShmRpcTransport::RunPollLoop()
 		}
 		uint32 Size = 0;
 		FMemory::Memcpy(&Size, Slot, sizeof(uint32));
-		if (Size == 0 || Size + sizeof(uint32) > ReqStride)
+		// Size is written by any local process that can map the region, so it
+		// is untrusted. Compare against the remaining slot space without adding
+		// to Size first: `Size + sizeof(uint32)` would wrap for a hostile Size
+		// near UINT32_MAX and pass the check, then over-read the slot.
+		if (Size == 0 || Size > ReqStride - sizeof(uint32))
 		{
 			UE_LOG(LogURLab, Warning,
 				TEXT("ShmRpcTransport: dropping request seq=%llu with invalid size=%u (stride=%u)"),
@@ -248,9 +277,11 @@ void UURLabShmRpcTransport::RunPollLoop()
 		FMemory::Memcpy(ReqBytes.GetData(), Slot + sizeof(uint32), Size);
 
 		const uint64 SeqAfter = ReqHdr->Sequence.load(std::memory_order_acquire);
-		if (SeqAfter - CurSeq > ReqHdr->NBuffers)
+		if (SeqAfter - CurSeq >= ReqHdr->NBuffers)
 		{
-			// Producer wrapped past our read. Skip.
+			// Producer advanced by at least NBuffers slots while we copied, so
+			// the slot we read has already been reused: the read is torn. Reject
+			// `== NBuffers` too, since that already reuses our slot exactly once.
 			LastSeenReqSeq = SeqAfter;
 			continue;
 		}

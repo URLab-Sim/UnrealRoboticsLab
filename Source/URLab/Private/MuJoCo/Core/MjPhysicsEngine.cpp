@@ -176,10 +176,27 @@ void UMjPhysicsEngine::BeginDestroy()
 	bShouldStopTask = true;
 	if (StepRequestEvent)
 		StepRequestEvent->Trigger();
-	if (AsyncPhysicsFuture.IsValid())
-		AsyncPhysicsFuture.Wait();
 
-	if (StepRequestEvent)
+	// Bounded join. BeginDestroy runs on the GC path, so an unbounded wait on a
+	// wedged mj_step would hang garbage collection (and with it the editor). If
+	// the worker does not exit in time we leak its sync event and MuJoCo state
+	// rather than block forever or free memory the still-running worker reads.
+	bool bWorkerExited = true;
+	if (AsyncPhysicsFuture.IsValid())
+	{
+		constexpr double kBeginDestroyWaitSec = 3.0;
+		bWorkerExited = AsyncPhysicsFuture.WaitFor(FTimespan::FromSeconds(kBeginDestroyWaitSec));
+		if (!bWorkerExited)
+		{
+			UE_LOG(LogURLab, Warning,
+				TEXT("Physics async worker still running at BeginDestroy after %.1fs; ")
+					TEXT("leaking its sync event to avoid a use-after-free in the stuck step."),
+				kBeginDestroyWaitSec);
+		}
+	}
+
+	// Only recycle the event once the worker has provably stopped waiting on it.
+	if (bWorkerExited && StepRequestEvent)
 	{
 		FPlatformProcess::ReturnSynchEventToPool(StepRequestEvent);
 		StepRequestEvent = nullptr;
@@ -434,20 +451,36 @@ void UMjPhysicsEngine::RunMujocoAsync()
 	// never reads UPROPERTYs or the owning actor from the physics thread.
 	bPausedAtomic.store(bIsPaused, std::memory_order_release);
 	SimSpeedAtomic.store(SimSpeedPercent, std::memory_order_release);
+
+	// Seed the resolved step mode from the RPC dispatcher, which is the runtime
+	// owner of the mode: a client hello promotes Live -> Direct/Puppet after
+	// startup, so the manager's configured StepMode is only the initial default.
+	// This path also runs on recompile (CompileModel restarts the worker); reading
+	// the configured StepMode here would revert a mid-session recompile back to
+	// Live while the Direct/Puppet handler stays installed, so the worker would
+	// pace real-time with the wrong controller pass. SetStepMode re-applies the
+	// engine-side effects of the strategy's OnEnter (pacing + unpausing client
+	// modes); the installed CustomStepHandler and the publisher-pause flag both
+	// survive the recompile, so the full invariant is restored. Fall back to the
+	// configured mode only before a dispatcher exists.
 	if (AAMjManager* Mgr = Cast<AAMjManager>(GetOwner()))
 	{
-		const EStepMode Init = (Mgr->StepMode == EStepMode::Auto) ? EStepMode::Live : Mgr->StepMode;
-		ResolvedStepMode.store(Init, std::memory_order_release);
+		FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher();
+		SetStepMode(Disp ? Disp->GetActiveStepMode() : Mgr->StepMode);
+		// A recompile rebuilt m_model/m_data under a live session; re-run the
+		// active strategy's OnEnter so its step handler is reinstalled onto the
+		// fresh engine and the pause / pacing invariants are restored.
+		if (Disp)
+			Disp->ReapplyActiveStepMode();
 	}
 
 	AsyncPhysicsFuture = Async(EAsyncExecution::Thread, [this]() {
+		bWorkerRunning.store(true, std::memory_order_release);
 		FPlatformProcess::Sleep(0.0f);
 
 		while (true)
 		{
 			const double LoopStartTime = FPlatformTime::Seconds();
-			// Re-read per iteration so set_sim_options retunes the pacer live.
-			const float TargetInterval = m_model ? (float)m_model->opt.timestep : 0.002f;
 
 			if (bShouldStopTask)
 				break;
@@ -457,11 +490,20 @@ void UMjPhysicsEngine::RunMujocoAsync()
 			// without a per-iteration actor cast.
 			const EStepMode Mode = ResolvedStepMode.load(std::memory_order_acquire);
 
+			// Real-time pacer interval. Read from the model under CallbackMutex
+			// below (a concurrent CompileModel frees m_model, so reading it
+			// outside the lock races the delete); re-read per iteration so
+			// set_sim_options retunes the pacer live. Defaulted so pacing stays
+			// sane if the model is momentarily absent.
+			float TargetInterval = 0.002f;
+
 			{
 				FScopeLock Lock(&CallbackMutex);
 
 				if (!m_model || !m_data || bShouldStopTask)
 					break;
+
+				TargetInterval = (float)m_model->opt.timestep;
 
 				// Did mjData actually change this iteration? Only then do we
 				// publish a render snapshot (which bumps FrameId and drives
@@ -494,10 +536,22 @@ void UMjPhysicsEngine::RunMujocoAsync()
 						}
 					}
 
-					AsyncTask(ENamedThreads::GameThread, [this]() {
-						for (AMjArticulation* Art : m_articulations)
+					// Snapshot the registry into weak refs under CallbackMutex.
+					// The broadcast runs later on the game thread and must not
+					// capture a raw `this` (the engine may be torn down before it
+					// runs) nor iterate the worker-owned m_articulations array
+					// off the worker thread.
+					TArray<TWeakObjectPtr<AMjArticulation>> ResetTargets;
+					ResetTargets.Reserve(m_articulations.Num());
+					for (AMjArticulation* Art : m_articulations)
+					{
+						if (Art)
+							ResetTargets.Add(Art);
+					}
+					AsyncTask(ENamedThreads::GameThread, [ResetTargets = MoveTemp(ResetTargets)]() {
+						for (const TWeakObjectPtr<AMjArticulation>& Target : ResetTargets)
 						{
-							if (Art)
+							if (AMjArticulation* Art = Target.Get())
 								Art->OnSimulationReset.Broadcast();
 						}
 					});
@@ -636,6 +690,8 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				StepRequestEvent->Wait(100);
 			}
 		}
+
+		bWorkerRunning.store(false, std::memory_order_release);
 	});
 }
 
@@ -784,15 +840,6 @@ void UMjPhysicsEngine::RegisterArticulation(AMjArticulation* Articulation)
 	FScopeLock Lock(&CallbackMutex);
 	m_articulations.AddUnique(Articulation);
 	m_ArticulationMap.Add(Articulation->GetName(), Articulation);
-}
-
-void UMjPhysicsEngine::RemoveArticulation(AMjArticulation* Articulation)
-{
-	if (!Articulation)
-		return;
-	FScopeLock Lock(&CallbackMutex);
-	m_articulations.Remove(Articulation);
-	m_ArticulationMap.Remove(Articulation->GetName());
 }
 
 const TArray<AMjArticulation*>& UMjPhysicsEngine::GetAllArticulations() const

@@ -10,9 +10,63 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "Utils/URLabLogging.h"
 #include "HAL/IConsoleManager.h"
+#include "HAL/PlatformMisc.h"
 #include "Engine/Engine.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Misc/Guid.h"
+#include "HAL/PlatformTime.h"
+
+namespace
+{
+/** Parse the trailing port from a "tcp://host:port" endpoint. Returns 0 when
+ *  no numeric port is present. */
+int32 ParseEndpointPort(const FString& Endpoint)
+{
+	int32 ColonIdx = INDEX_NONE;
+	if (Endpoint.FindLastChar(TEXT(':'), ColonIdx))
+	{
+		const FString PortStr = Endpoint.Mid(ColonIdx + 1);
+		if (!PortStr.IsEmpty() && PortStr.IsNumeric())
+			return FCString::Atoi(*PortStr);
+	}
+	return 0;
+}
+
+/** Resolve the step-RPC endpoint, letting an operator override the port per
+ *  editor instance without editing the project INI. Precedence: command-line
+ *  `-URLabStepPort=N`, then the `URLAB_STEP_PORT` environment variable, then
+ *  the requested endpoint unchanged. This is what lets many render-server
+ *  editors run side by side on one host, each on its own port. */
+FString ResolveStepEndpoint(const FString& Requested)
+{
+	int32 OverridePort = 0;
+	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabStepPort="), OverridePort))
+	{
+		const FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("URLAB_STEP_PORT"));
+		if (!Env.IsEmpty() && Env.IsNumeric())
+			OverridePort = FCString::Atoi(*Env);
+	}
+	if (OverridePort <= 0)
+		return Requested;
+
+	int32 ColonIdx = INDEX_NONE;
+	if (Requested.FindLastChar(TEXT(':'), ColonIdx))
+		return FString::Printf(TEXT("%s:%d"), *Requested.Left(ColonIdx), OverridePort);
+	return FString::Printf(TEXT("tcp://0.0.0.0:%d"), OverridePort);
+}
+} // namespace
 
 UURLabBridgeServer::UURLabBridgeServer() = default;
+
+void UURLabBridgeServer::EnsureDispatcher()
+{
+	if (!Dispatcher.IsValid())
+	{
+		Dispatcher = MakeUnique<FURLabRpcDispatcher>();
+		Dispatcher->SetOwningBridge(this);
+	}
+}
 
 void UURLabBridgeServer::ApplyPerformanceOverrides()
 {
@@ -81,16 +135,13 @@ void UURLabBridgeServer::BeginDestroy()
 
 void UURLabBridgeServer::Start(const FString& StepEndpoint)
 {
-	if (!Dispatcher.IsValid())
-	{
-		Dispatcher = MakeUnique<FURLabRpcDispatcher>();
-	}
+	EnsureDispatcher();
 
 	// Empty endpoint: dispatcher only, no transports (test path).
 	if (StepEndpoint.IsEmpty())
 		return;
 
-	EnsureZmqBound(StepEndpoint);
+	EnsureZmqBound(ResolveStepEndpoint(StepEndpoint));
 }
 
 bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
@@ -98,10 +149,7 @@ bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
 	if (Endpoint.IsEmpty())
 		return false;
 
-	if (!Dispatcher.IsValid())
-	{
-		Dispatcher = MakeUnique<FURLabRpcDispatcher>();
-	}
+	EnsureDispatcher();
 
 	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
 	{
@@ -110,7 +158,9 @@ bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
 			return true;
 	}
 
-	UURLabZmqRpcTransport* Zmq = NewObject<UURLabZmqRpcTransport>(this, TEXT("BridgeZmqTransport"));
+	// NAME_None: let UE pick a fresh unique name. A fixed name collides on
+	// rebind while the previous worker is still tearing down.
+	UURLabZmqRpcTransport* Zmq = NewObject<UURLabZmqRpcTransport>(this, NAME_None);
 	Zmq->StepEndpoint = Endpoint;
 	Zmq->SetOwningBridge(this);
 	if (!Zmq->TransportInit())
@@ -128,10 +178,7 @@ bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
 
 bool UURLabBridgeServer::EnsureShmBound(const FString& SessionId)
 {
-	if (!Dispatcher.IsValid())
-	{
-		Dispatcher = MakeUnique<FURLabRpcDispatcher>();
-	}
+	EnsureDispatcher();
 
 	const FString Sid = SessionId.IsEmpty() ? FString(TEXT("live")) : SessionId;
 
@@ -148,8 +195,23 @@ bool UURLabBridgeServer::EnsureShmBound(const FString& SessionId)
 		}
 	}
 
-	UURLabShmRpcTransport* Shm = NewObject<UURLabShmRpcTransport>(this, TEXT("BridgeShmTransport"));
+	// Fold the instance's step port into the SHM session name so the per-process
+	// unique id stays traceable back to the instance (the process id already
+	// guarantees uniqueness). Read it from the bound ZMQ transport rather than
+	// re-resolving, so both wire ends agree.
+	int32 StepPort = 0;
+	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
+	{
+		if (UURLabZmqRpcTransport* Zmq = Cast<UURLabZmqRpcTransport>(T))
+		{
+			StepPort = ParseEndpointPort(Zmq->StepEndpoint);
+			break;
+		}
+	}
+
+	UURLabShmRpcTransport* Shm = NewObject<UURLabShmRpcTransport>(this, NAME_None);
 	Shm->SessionId = SessionId; // empty -> defaults to "live" inside Init
+	Shm->InstancePort = StepPort;
 	Shm->SetOwningBridge(this);
 	if (!Shm->TransportInit())
 	{
@@ -211,4 +273,78 @@ void UURLabBridgeServer::UnregisterManager(AAMjManager* InManager)
 		Dispatcher->OnManagerGone();
 	}
 	ActiveManager.Reset();
+}
+
+double UURLabBridgeServer::LeaseNow() const
+{
+	return LeaseClockOverrideForTest >= 0.0 ? LeaseClockOverrideForTest : FPlatformTime::Seconds();
+}
+
+bool UURLabBridgeServer::IsLeaseHeldInternal(double NowSeconds)
+{
+	if (bLeaseHeld && (NowSeconds - LeaseLastActivitySeconds) > LeaseTtlSeconds)
+	{
+		// Idle past its TTL: auto-release so the next acquire succeeds.
+		bLeaseHeld = false;
+		LeaseId.Empty();
+		LeaseOwner.Empty();
+	}
+	return bLeaseHeld;
+}
+
+bool UURLabBridgeServer::TryAcquireLease(const FString& Owner, double TtlSeconds,
+	FString& OutLeaseId, FString& OutExistingLeaseId)
+{
+	FScopeLock Lock(&LeaseMutex);
+	const double Now = LeaseNow();
+	if (IsLeaseHeldInternal(Now))
+	{
+		OutExistingLeaseId = LeaseId;
+		return false;
+	}
+
+	bLeaseHeld = true;
+	LeaseId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
+	LeaseOwner = Owner;
+	LeaseTtlSeconds = TtlSeconds;
+	LeaseLastActivitySeconds = Now;
+	OutLeaseId = LeaseId;
+	return true;
+}
+
+bool UURLabBridgeServer::ReleaseLease(const FString& InLeaseId)
+{
+	FScopeLock Lock(&LeaseMutex);
+	if (!bLeaseHeld || !LeaseId.Equals(InLeaseId))
+		return false;
+
+	bLeaseHeld = false;
+	LeaseId.Empty();
+	LeaseOwner.Empty();
+	return true;
+}
+
+void UURLabBridgeServer::TouchLease()
+{
+	FScopeLock Lock(&LeaseMutex);
+	if (bLeaseHeld)
+		LeaseLastActivitySeconds = LeaseNow();
+}
+
+bool UURLabBridgeServer::IsLeaseHeld()
+{
+	FScopeLock Lock(&LeaseMutex);
+	return IsLeaseHeldInternal(LeaseNow());
+}
+
+FString UURLabBridgeServer::GetLeaseId() const
+{
+	FScopeLock Lock(&LeaseMutex);
+	return LeaseId;
+}
+
+void UURLabBridgeServer::SetLeaseClockForTest(double NowSeconds)
+{
+	FScopeLock Lock(&LeaseMutex);
+	LeaseClockOverrideForTest = NowSeconds;
 }

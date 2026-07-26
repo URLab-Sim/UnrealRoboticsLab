@@ -24,6 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "Transport/RpcTransport.h"
+#include "Bridge/RpcDispatcher.h" // FURLabRpcDispatcher::EObservationLevel
 #include "Dom/JsonObject.h"
 #include "HAL/Event.h"
 #include "HAL/PlatformProcess.h"
@@ -31,6 +32,7 @@
 #include "ZmqRpcTransport.generated.h"
 
 class FRunnableThread;
+class FRunnable;
 
 /**
  * @struct FMjStepRequest
@@ -53,9 +55,9 @@ struct FMjStepRequest
 
 /**
  * @struct FMjDirectStepCommand
- * @brief Heap-allocated wrapper passed by raw pointer through the SPSC queue
- *        in Direct mode. The RPC thread enqueues, the physics-thread custom
- *        step handler dequeues, drains the request, and signals via FEvent.
+ * @brief Heap-allocated command passed as a shared pointer through the SPSC
+ *        queue in Direct mode. The RPC thread enqueues, the physics-thread
+ *        custom step handler dequeues, drains the request, and signals via FEvent.
  *        Captures observations inline so the reply can be built off the
  *        physics thread without re-touching d.
  */
@@ -69,6 +71,11 @@ struct FMjDirectStepCommand
 	 *  the command instead of stepping, so a timed-out request the client will
 	 *  retry does not also execute here -- avoiding a double physics step. */
 	std::atomic<bool> bAbandoned{false};
+	/** Request-scoped observation verbosity. Threaded from the step request so
+	 *  the worker builds this command's observations at the level THIS step
+	 *  asked for, not whatever session level is current when the handler runs. */
+	FURLabRpcDispatcher::EObservationLevel ObservationLevel =
+		FURLabRpcDispatcher::EObservationLevel::Standard;
 	/** Observations captured under the engine's CallbackMutex. */
 	TSharedPtr<FJsonObject> Observations;
 	TSharedPtr<FJsonObject> Entities;
@@ -139,10 +146,20 @@ private:
 	void* ZmqContext = nullptr;
 	void* ZmqRep = nullptr;
 	FRunnableThread* WorkerThread = nullptr;
+	/** Runnable driving WorkerThread. FRunnableThread does not own it, so the
+	 *  transport keeps the pointer and deletes it at shutdown. */
+	FRunnable* WorkerRunnable = nullptr;
 	std::atomic<bool> bStop{false};
 	bool bIsInitialized = false;
+
+	/** Create the REP socket, apply timeouts + LINGER, and bind StepEndpoint.
+	 *  Shared by TransportInit and the send-error recovery path so a wedged
+	 *  REP state machine can be reset without duplicating socket setup. */
+	bool CreateAndBindRep();
 
 	/** Worker thread loop. Runs zmq_poll on the REP socket and forwards each
 	 *  parsed request to the dispatcher; sends the reply back to the wire. */
 	void RunPollLoop();
+
+	friend class FStepServerRunnable;
 };

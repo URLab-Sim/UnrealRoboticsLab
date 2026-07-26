@@ -180,7 +180,7 @@ client.scene.save_level() -> None
 client.scene.import_xml(xml_path, *, force_reimport=False) -> URLabBlueprint
 client.scene.spawn_actor(blueprint, actor_id, *, location=..., rotation_quat=..., rotation_euler=..., scale=...) -> URLabSpawnHandle
 client.scene.spawn_light(kind="directional", actor_id="", *, location=..., rotation_euler=..., intensity=5000.0, color=...) -> URLabLightHandle
-client.scene.destroy_actor(target, *, by_name=False) -> None
+client.scene.remove_actor(target, *, by_name=False) -> None
 client.scene.set_actor_transform(target, *, by_name=False, location=None, rotation_quat=None, rotation_euler=None) -> None
 client.scene.destroy_asset(asset_path) -> bool
 client.scene.current_level() -> str
@@ -237,6 +237,7 @@ client.runtime.get_contacts(*, body1=None, body2=None, geom1=None, geom2=None, m
 client.runtime.list_keyframes() -> List[KeyframeInfo]
 client.runtime.set_sim_options(**opts) -> SimOptions           # timestep, gravity, num_worker_threads, ...
 client.runtime.set_camera_streaming(cameras) -> dict           # {canon: True|False|{"zmq":b,"shm":b}}
+client.runtime.set_camera_delay(cameras) -> dict               # {canon: secs | {delay_s, jitter_s, clock, seed, ...}}
 client.runtime.set_mode(mode) -> StepMode
 client.runtime.forward() -> dict                               # mj_forward, no integration
 ```
@@ -583,6 +584,7 @@ cam.dtype          # uint8 (real / segm) or float32 (depth)
 cam.latest_frame   # np.ndarray | None
 cam.sim_time       # float | None
 cam.frame_id       # int | None — post-step state id this frame shows
+cam.capture_unix_time  # float | None — Unix secs the frame was captured (v2 header)
 ```
 
 Camera capture is decoupled from stepping; `include_cameras` retrieval is
@@ -601,6 +603,15 @@ Dedicated ZMQ/SHM pub streams must be enabled per camera (UE's
 `bEnableAllCameras` defaults off):
 `client.runtime.set_camera_streaming({"wrist": {"zmq": True}})`. In `live`
 mode the client enables + subscribes to them automatically.
+
+To emulate real-sensor latency, configure a server-side delay:
+`client.runtime.set_camera_delay({"wrist": 0.05})` (or an object with
+`delay_s` / `jitter_s` / `clock` / `seed` / `on_state_change` / `max_fps`).
+The delay is applied natively in UE, so every consumer sees the
+already-delayed stream and a delayed camera never blocks the step on the
+current render. Each streamed frame carries its own `frame_id` /
+`sim_time` / capture timestamp in the stream header (`cam.frame_id`,
+`cam.sim_time`, `cam.capture_unix_time`).
 
 | Mode | Shape | Channels |
 |---|---|---|

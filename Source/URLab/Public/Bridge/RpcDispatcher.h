@@ -22,9 +22,13 @@
 
 class AAMjManager;
 class AMjReplayManager;
+class UURLabBridgeServer;
 struct FMjStepRequest;
 struct FMjDirectStepCommand;
-struct FMjPushStateRequest;
+struct FStepModeStrategy;
+struct FLiveStepMode;
+struct FDirectStepMode;
+struct FPuppetStepMode;
 
 /**
  * @brief Transport-agnostic step-server core.
@@ -35,12 +39,20 @@ struct FMjPushStateRequest;
  * same dispatcher; they only differ in how bytes get from the wire to
  * `Dispatch()` and back.
  *
- * Lives on `AAMjManager` so all transports share one instance; the
- * dispatcher's serializing mutex makes concurrent dispatches from
- * multiple transports safe.
+ * Lives on `AAMjManager` so all transports share one instance. DispatchMutex
+ * serialises only the session / mode / step-handler mutation; it is released
+ * before the handler bodies, so those run concurrently across transports
+ * (ZMQ + SHM). The direct-mode step queue is therefore MPSC and each command's
+ * completion / abandon flag is atomic.
  */
 class URLAB_API FURLabRpcDispatcher
 {
+	// The per-mode strategies own the step body (RpcHandlers_Step.cpp) and reach
+	// into dispatcher internals (queue, counters, camera helpers) to run it.
+	friend struct FLiveStepMode;
+	friend struct FDirectStepMode;
+	friend struct FPuppetStepMode;
+
 public:
 	/** Observation verbosity. minimal=qpos+qvel; standard=+ctrl+act+sensors;
 	 *  full=+body xpos/xquat+actuator forces. */
@@ -63,6 +75,11 @@ public:
 
 	/** Bind the dispatcher to a manager (game thread, called from BeginPlay). */
 	void Init(AAMjManager* InManager);
+
+	/** Back-pointer to the owning bridge server, set once at construction so
+	 *  no-manager ops (leasing) can reach per-instance state even before a
+	 *  scene/manager exists. */
+	void SetOwningBridge(UURLabBridgeServer* InBridge);
 
 	/** Per-manager teardown: drop the manager pointer, uninstall step
 	 *  handlers, drain queues, reset per-PIE state (mode, step counter).
@@ -121,8 +138,11 @@ public:
 	// --- Test seams (lifted from UURLabZmqRpcTransport) ---
 
 	void EnqueueStepRequestForTest(FMjStepRequest&& Req);
-	void EnqueuePushStateRequestForTest(FMjPushStateRequest&& Req);
-	void DrainQueuesForTest();
+
+	/** Empty the direct-mode step queue, abandoning + waking every pending
+	 *  command so a blocked RPC thread returns at once. Called on mode switch,
+	 *  PIE-end, and from tests. */
+	void DrainQueues();
 
 	// --- Static helpers (transport-agnostic, callable from anywhere) ---
 
@@ -196,7 +216,8 @@ public:
 	bool RenderCamerasSync(AAMjManager* Mgr,
 		const TMap<FString, ECameraInclude>& CameraSpec,
 		uint64 MinFrameId, int32 TimeoutMs,
-		TMap<FString, uint64>& CameraMinFrameIds);
+		TMap<FString, uint64>& CameraMinFrameIds,
+		bool bWait = true);
 
 	/** Build the name->camera lookup used to resolve include_cameras /
 	 *  set_camera_streaming keys: canonical "<art>/camera/<cam>", "<art>/<cam>",
@@ -228,6 +249,11 @@ private:
 	 *  weak via TWeakObjectPtr rather than UPROPERTY. */
 	TWeakObjectPtr<AAMjManager> OwnerMgr;
 
+	/** Owning bridge server (set at construction). Weak so a torn-down
+	 *  server leaves this null rather than dangling. Reached by the lease
+	 *  ops, which are per-process and independent of any manager. */
+	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
+
 	/** Guards ActiveSessionId + step-handler install/uninstall. NOT held
 	 *  across handler bodies — Dispatch releases it before invoking. */
 	FCriticalSection DispatchMutex;
@@ -246,32 +272,41 @@ private:
 
 	TWeakObjectPtr<AMjReplayManager> CachedReplayManager;
 
-	/** SPSC. Shared ownership so both RPC + physics threads can drop their
-	 *  ref independently — avoids UAF on RPC-side timeout while the handler
-	 *  is still processing. */
-	TQueue<TSharedPtr<FMjDirectStepCommand>, EQueueMode::Spsc> StepQueue;
+	/** MPSC. Two transport threads (ZMQ + SHM) can be inside the direct-mode
+	 *  step body at once (DispatchMutex is released before handler bodies), so
+	 *  both may enqueue. Shared ownership so the RPC + physics threads can drop
+	 *  their ref independently — avoids UAF on an RPC-side timeout while the
+	 *  handler is still processing. */
+	TQueue<TSharedPtr<FMjDirectStepCommand>, EQueueMode::Mpsc> StepQueue;
 
-	/** Puppet-mode request queue. */
-	TQueue<FMjPushStateRequest, EQueueMode::Spsc> PushStateQueue;
-
-	/** Custom step handlers installed on the engine for Direct / Puppet. */
-	UMjPhysicsEngine::FMujocoStepCallback PuppetStepHandler;
+	/** Custom step handler installed on the engine for Direct mode. */
 	UMjPhysicsEngine::FMujocoStepCallback DirectStepHandler;
-	bool bPuppetHandlerInstalled = false;
 	bool bDirectHandlerInstalled = false;
 
 public:
 	// Public so the per-mode strategy objects can drive them on enter/exit.
-	void InstallPuppetHandler();
-	void UninstallPuppetHandler();
 	void InstallDirectHandler();
 	void UninstallDirectHandler();
 
+	/** After a mid-session recompile rebuilt mjModel/mjData, re-run the active
+	 *  strategy's OnEnter (under DispatchMutex) so its step handler is
+	 *  reinstalled onto the fresh engine and the pause / pacing invariants are
+	 *  restored. Called from the engine's recompile path. */
+	void ReapplyActiveStepMode();
+
 private:
-	/** Per-mode lifecycle strategy: OnEnter installs the handler + sets pause /
-	 *  publisher state, OnExit uninstalls. Swapped by SetActiveStepMode. */
-	TUniquePtr<struct FStepModeStrategy> CurrentStepStrategy;
-	static TUniquePtr<struct FStepModeStrategy> MakeStepStrategy(EStepMode Mode);
+	/** Per-mode lifecycle + step body strategy: OnEnter installs the handler +
+	 *  sets pause / publisher state, OnExit uninstalls, HandleStep runs the
+	 *  mode's per-step work. Swapped by SetActiveStepMode. Shared so an in-flight
+	 *  HandleStep keeps the strategy alive across a concurrent set_mode swap. */
+	TSharedPtr<struct FStepModeStrategy> CurrentStepStrategy;
+	static TSharedPtr<struct FStepModeStrategy> MakeStepStrategy(EStepMode Mode);
+
+	/** Parse the request-scoped step fields (observation override, camera spec,
+	 *  wait / render flags) shared by every mode into Out. Does NOT mutate any
+	 *  session-level state. */
+	void ParseStepCommon(const TSharedPtr<FJsonObject>& Req, AAMjManager* Mgr,
+		struct FStepRequestCommon& Out) const;
 
 	/** Register every dispatcher-owned op (manager-required +
 	 *  no-manager) on the URLabOpRegistry with the right Category and
@@ -288,6 +323,14 @@ private:
 	// Op handlers
 	TSharedPtr<FJsonObject> HandleHello(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleMeta(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleAcquireLease(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleReleaseLease(const TSharedPtr<FJsonObject>& Req);
+	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
+	// pure data staging on the RPC thread; commit materialises to a temp dir and
+	// drives the existing import_xml editor job.
+	TSharedPtr<FJsonObject> HandleUploadModelManifest(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleUploadModelChunk(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleUploadModelCommit(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleStep(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleReset(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleForward(const TSharedPtr<FJsonObject>& Req);
@@ -309,14 +352,31 @@ private:
 	TSharedPtr<FJsonObject> HandleReplay(const FString& Op, const TSharedPtr<FJsonObject>& Req);
 };
 
-/** Per-mode step lifecycle. Concrete Live/Direct/Puppet strategies (in
+/** Request-scoped step fields parsed once per step (ParseStepCommon) and handed
+ *  to the active strategy's HandleStep. Nothing here is session state — the
+ *  observation override applies to this step only. */
+struct FStepRequestCommon
+{
+	FURLabRpcDispatcher::EObservationLevel ObservationLevel = FURLabRpcDispatcher::EObservationLevel::Standard;
+	TMap<FString, FURLabRpcDispatcher::ECameraInclude> CameraSpec;
+	TMap<FString, uint64> CameraMinFrameIds;
+	bool bWaitCameras = false;
+	bool bRenderSync = false;
+	bool bRenderAsync = false;
+	int32 CameraTimeoutMs = 200;
+};
+
+/** Per-mode step lifecycle + body. Concrete Live/Direct/Puppet strategies (in
  *  RpcHandlers_Step.cpp) install/uninstall the step handler and set the engine
- *  pause + publisher state on transition, so the mode logic isn't a growing
- *  if-chain in SetActiveStepMode. */
+ *  pause + publisher state on transition, and own the per-step work in
+ *  HandleStep, so the mode logic isn't a growing if-chain in HandleStep /
+ *  SetActiveStepMode. */
 struct FStepModeStrategy
 {
 	virtual ~FStepModeStrategy() = default;
 	virtual EStepMode Mode() const = 0;
 	virtual void OnEnter(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
 	virtual void OnExit(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
+	virtual TSharedPtr<FJsonObject> HandleStep(FURLabRpcDispatcher& D,
+		const TSharedPtr<FJsonObject>& Req, const FStepRequestCommon& Common) = 0;
 };

@@ -151,6 +151,13 @@ struct UrlabRclImagePub
     int32_t Height;
 };
 
+struct UrlabRclCtrlPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    std_msgs__msg__Float64MultiArray Msg;
+};
+
 struct UrlabRclCtrlSub
 {
     FSubRecord Rec;
@@ -803,6 +810,70 @@ void UrlabRcl_DestroyImagePub(UrlabRclImagePub* Pub)
     }
     rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
     sensor_msgs__msg__Image__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- Ctrl publisher (control injection) ------------------------------------
+
+UrlabRclCtrlPub* UrlabRcl_CreateCtrlPub(UrlabRclContext* Ctx, const char* Topic)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclCtrlPub* Pub = new UrlabRclCtrlPub();
+    Pub->Ctx = Ctx;
+    std_msgs__msg__Float64MultiArray__init(&Pub->Msg);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64MultiArray);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        std_msgs__msg__Float64MultiArray__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishCtrl(UrlabRclCtrlPub* Pub, const double* Values, int32_t Count)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    const int32_t N = Count > 0 ? Count : 0;
+    // Resize the data sequence to exactly N.
+    if (static_cast<int32_t>(Pub->Msg.data.capacity) < N)
+    {
+        rosidl_runtime_c__double__Sequence__fini(&Pub->Msg.data);
+        rosidl_runtime_c__double__Sequence__init(&Pub->Msg.data, N);
+    }
+    if (Values && N > 0)
+    {
+        std::memcpy(Pub->Msg.data.data, Values, sizeof(double) * N);
+    }
+    Pub->Msg.data.size = N;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyCtrlPub(UrlabRclCtrlPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    std_msgs__msg__Float64MultiArray__fini(&Pub->Msg);
     delete Pub;
 }
 

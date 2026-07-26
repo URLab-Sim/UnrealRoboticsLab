@@ -55,6 +55,7 @@ struct UrlabRclTfPub;
 struct UrlabRclTwistStampedPub;
 struct UrlabRclClockPub;
 struct UrlabRclImagePub;
+struct UrlabRclCtrlPub;
 struct UrlabRclCtrlSub;
 struct UrlabRclTwistSub;
 
@@ -108,6 +109,15 @@ struct UrlabRclImagePub* UrlabRcl_CreateImagePub(struct UrlabRclContext* Ctx,
 int UrlabRcl_PublishImage(struct UrlabRclImagePub* Pub, const uint8_t* Data,
     int32_t StrideBytes, int64_t SimTimeNs);
 void UrlabRcl_DestroyImagePub(struct UrlabRclImagePub* Pub);
+
+// Control injection: the publish counterpart to the /<art>/cmd_ctrl
+// subscription below (std_msgs/Float64MultiArray). It exists so control can be
+// injected in-process for loopback and tests without a second ROS node.
+struct UrlabRclCtrlPub* UrlabRcl_CreateCtrlPub(struct UrlabRclContext* Ctx,
+    const char* Topic);
+int UrlabRcl_PublishCtrl(struct UrlabRclCtrlPub* Pub, const double* Values,
+    int32_t Count);
+void UrlabRcl_DestroyCtrlPub(struct UrlabRclCtrlPub* Pub);
 
 // --- Subscriptions ---------------------------------------------------------
 // Callbacks fire inside UrlabRcl_SpinSome on its caller's thread; the core does

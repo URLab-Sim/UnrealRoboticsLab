@@ -42,13 +42,19 @@
 #include "Misc/AutomationTest.h"
 #include "Transport/RosContext.h"
 #include "Transport/RosPublishTransport.h"
+#include "Transport/RosRpcTransport.h"
 #include "Transport/SnapshotPublisher.h"
 #include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
 #include "MjTestHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "Bridge/BridgeServer.h"
+#include "Bridge/ControlOwnership.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Dom/JsonValue.h"
 #include <atomic>
 
 namespace
@@ -427,6 +433,256 @@ bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
 	Disp->SetActiveStepMode(EStepMode::Live);
 	Ros->TransportShutdown();
 	S.Manager->UnregisterSnapshotPublisher(&Fake);
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 8. ROS control ownership across surfaces: a ROS-sourced claim blocks an
+//    RPC-session control write (and vice versa); a TTL frees the ROS claim.
+//    Drives FMjControlOwnership + Dispatch, so no live ROS runtime is needed.
+// ---------------------------------------------------------------------------
+namespace
+{
+FString RosReplyField(const TSharedPtr<FJsonObject>& Reply, const TCHAR* Field)
+{
+	FString Out;
+	if (Reply.IsValid())
+		Reply->TryGetStringField(Field, Out);
+	return Out;
+}
+}  // namespace
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosControlOwnershipAcrossSurfaces,
+	"URLab.Ros.ControlOwnershipAcrossSurfaces",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosControlOwnershipAcrossSurfaces::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		S.Cleanup();
+		return false;
+	}
+	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
+
+	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+	const FString ArtName = Art->GetName();
+	const FName Key(*ArtName);
+	const FString RosSrc = UURLabRosRpcTransport::RosControlSourceId();
+	const FString RpcSrc = TEXT("rpc-session-src");
+
+	auto Claim = [Disp, &ArtName](const FString& Source) {
+		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
+		R->SetStringField(TEXT("op"), TEXT("claim_control"));
+		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
+		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("articulation"), ArtName);
+		return Disp->Dispatch(R);
+	};
+	auto Release = [Disp, &ArtName](const FString& Source) {
+		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
+		R->SetStringField(TEXT("op"), TEXT("release_control"));
+		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
+		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("articulation"), ArtName);
+		return Disp->Dispatch(R);
+	};
+	auto SetTwist = [Disp, &ArtName](const FString& Source) {
+		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
+		R->SetStringField(TEXT("op"), TEXT("set_twist"));
+		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
+		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("articulation"), ArtName);
+		TArray<TSharedPtr<FJsonValue>> Lin;
+		Lin.Add(MakeShared<FJsonValueNumber>(1.0));
+		Lin.Add(MakeShared<FJsonValueNumber>(0.0));
+		R->SetArrayField(TEXT("linear"), Lin);
+		return Disp->Dispatch(R);
+	};
+
+	// ROS claims; an RPC-session control write is then rejected, naming ROS owner.
+	TestEqual(TEXT("ROS claim ok"), RosReplyField(Claim(RosSrc), TEXT("op")),
+		FString(TEXT("claim_control_ok")));
+	{
+		TSharedPtr<FJsonObject> R = SetTwist(RpcSrc);
+		TestEqual(TEXT("RPC write rejected while ROS owns"),
+			RosReplyField(R, TEXT("code")), FString(TEXT("not_control_owner")));
+		TestEqual(TEXT("rejection names the ROS owner"),
+			RosReplyField(R, TEXT("owner")), RosSrc);
+	}
+
+	// Hand the art to the RPC session; a ROS write is now the one rejected.
+	TestEqual(TEXT("ROS release ok"), RosReplyField(Release(RosSrc), TEXT("op")),
+		FString(TEXT("release_control_ok")));
+	TestEqual(TEXT("RPC claim ok"), RosReplyField(Claim(RpcSrc), TEXT("op")),
+		FString(TEXT("claim_control_ok")));
+	{
+		TSharedPtr<FJsonObject> R = SetTwist(RosSrc);
+		TestEqual(TEXT("ROS write rejected while RPC owns"),
+			RosReplyField(R, TEXT("code")), FString(TEXT("not_control_owner")));
+		TestEqual(TEXT("rejection names the RPC owner"),
+			RosReplyField(R, TEXT("owner")), RpcSrc);
+	}
+
+	// TTL frees a dropped ROS owner: past the TTL, another source can claim.
+	FMjControlOwnership& Own = Disp->GetControlOwnership();
+	Own.Reset();
+	Own.SetClockOverrideForTest(0.0);
+	FString Cur;
+	TestTrue(TEXT("ROS claims with a TTL"),
+		Own.Claim(Key, RosSrc, 5.0, false, Cur) == FMjControlOwnership::EClaimResult::Ok);
+	Own.SetClockOverrideForTest(10.0);
+	TestTrue(TEXT("TTL freed the ROS claim; RPC can claim"),
+		Own.Claim(Key, RpcSrc, 0.0, false, Cur) == FMjControlOwnership::EClaimResult::Ok);
+	Own.SetClockOverrideForTest(-1.0);
+
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 9. Mode gating: a marshalled ROS ctrl write is dropped outside Live mode and
+//    applies in Live mode. Ownership is granted first so mode is the only gate;
+//    no live ROS runtime is needed (HandleRosCtrl touches no rcl).
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosCtrlModeGating,
+	"URLab.Ros.CtrlModeGating",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosCtrlModeGating::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init([](FMjUESession& Sess) {
+			Sess.Joint->Type = EMjJointType::Slide;
+			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
+			A->Type = EMjActuatorType::Position;
+			A->TargetName = Sess.Joint->GetName();
+			A->RegisterComponent();
+			A->AttachToComponent(Sess.Robot->GetRootComponent(),
+				FAttachmentTransformRules::KeepRelativeTransform);
+		}))
+	{
+		AddInfo(FString::Printf(TEXT("Skipping CtrlModeGating: %s"), *S.LastError));
+		return true;
+	}
+
+	mjModel* m = S.Manager->PhysicsEngine->GetModel();
+	mjData* d = S.Manager->PhysicsEngine->GetData();
+	if (!m || !d || m->nu == 0)
+	{
+		AddInfo(TEXT("Skipping CtrlModeGating: no actuators in compiled model"));
+		S.Cleanup();
+		return true;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+	const FString ArtName = Art->GetName();
+	const FName Key(*ArtName);
+	const FString RosSrc = UURLabRosRpcTransport::RosControlSourceId();
+
+	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
+	Ros->SetOwningBridge(S.Manager->BridgeServer);
+
+	// Grant ROS ownership so ownership never blocks; the mode is the only gate.
+	FString Cur;
+	Disp->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
+
+	// Direct mode: the write is dropped, so d->ctrl stays at its initial value.
+	Disp->SetActiveStepMode(EStepMode::Direct);
+	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
+	Art->ApplyControls(/*bSkipController=*/true);
+	TestEqual(TEXT("direct-mode ROS ctrl dropped"), (double)d->ctrl[0], 0.0, 1e-6);
+
+	// Live mode: the same write reaches the actuator staging and lands.
+	Disp->SetActiveStepMode(EStepMode::Live);
+	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
+	Art->ApplyControls(/*bSkipController=*/true);
+	TestEqual(TEXT("live-mode ROS ctrl applies"), (double)d->ctrl[0], 0.5, 1e-6);
+
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 10. Availability-gated wire test: publish a Float64MultiArray on
+//     /<art>/cmd_ctrl via rcl and assert the staged ctrl value lands. Requires a
+//     live ROS context (skips otherwise) and a compiled actuator.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosCtrlWire,
+	"URLab.Ros.CtrlWire",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosCtrlWire::RunTest(const FString& Parameters)
+{
+	FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().IsAvailable())
+	{
+		UE_LOG(LogTemp, Display, TEXT("URLab.Ros.CtrlWire: no live ROS context; skipping."));
+		return true;
+	}
+
+	FMjUESession S;
+	if (!S.Init([](FMjUESession& Sess) {
+			Sess.Joint->Type = EMjJointType::Slide;
+			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
+			A->Type = EMjActuatorType::Position;
+			A->TargetName = Sess.Joint->GetName();
+			A->RegisterComponent();
+			A->AttachToComponent(Sess.Robot->GetRootComponent(),
+				FAttachmentTransformRules::KeepRelativeTransform);
+		}))
+	{
+		AddInfo(FString::Printf(TEXT("Skipping CtrlWire: %s"), *S.LastError));
+		return true;
+	}
+
+	mjModel* m = S.Manager->PhysicsEngine->GetModel();
+	mjData* d = S.Manager->PhysicsEngine->GetData();
+	if (!m || !d || m->nu == 0)
+	{
+		AddInfo(TEXT("Skipping CtrlWire: no actuators in compiled model"));
+		S.Cleanup();
+		return true;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+	const FString ArtName = Art->GetName();
+	const FName Key(*ArtName);
+	const FString RosSrc = UURLabRosRpcTransport::RosControlSourceId();
+
+	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
+	Ros->SetOwningBridge(S.Manager->BridgeServer);
+
+	// Own the art as the ROS source and stay in Live mode so the marshalled write
+	// is applied rather than dropped.
+	FString Cur;
+	Disp->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
+	Disp->SetActiveStepMode(EStepMode::Live);
+
+	const FString Segment = FMjCanonicalName::ArtSegment(Art).ToString();
+	const FString Topic = FString::Printf(TEXT("/%s/cmd_ctrl"), *Segment);
+
+	const bool bFired = Ros->PublishAndPumpCtrlForTest(Topic, {0.42});
+	TestTrue(TEXT("ROS cmd_ctrl delivered over the wire"), bFired);
+
+	// The callback staged the value on the actuator's NetworkValue; a step copies
+	// it into d->ctrl (mirroring the live physics tick).
+	Art->ApplyControls(/*bSkipController=*/true);
+	TestEqual(TEXT("wire ctrl landed in d->ctrl"), (double)d->ctrl[0], 0.42, 1e-6);
+
+	Ros->TransportShutdown();
 	S.Cleanup();
 	return true;
 }

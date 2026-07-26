@@ -27,9 +27,17 @@
 #if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
 #include "Transport/RosContext.h"
 #include "Ros/UrlabRclCore.h"
-#include "Utils/URLabLogging.h"
+#include "URLabRosLog.h"
 #include "MuJoCo/Core/AMjManager.h"
 #endif
+
+// ConsumeState is the IMjStateConsumer entry point the manager fan-out calls; it
+// forwards to PublishState (which has an absent-ROS no-op stub), so it links in
+// every configuration.
+void UURLabRosPublishTransport::ConsumeState(const FMjStateSnapshot& Snapshot)
+{
+	PublishState(Snapshot);
+}
 
 // The Fill* functions are pure IR -> arrays transforms with no rcl dependency, so
 // they compile in every configuration (and are exercised by the fill-correctness
@@ -187,11 +195,26 @@ int64 UURLabRosPublishTransport::FillClock(const FMjClock& Clock)
 
 bool UURLabRosPublishTransport::TransportInit()
 {
-	return FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().Initialize())
+	{
+		return false;
+	}
+	// Register with the owning manager as a typed state consumer so the post-step
+	// fan-out drives ConsumeState. Null-safe: a transport created without a manager
+	// outer (isolated publish test) simply is not registered and is driven directly.
+	if (AAMjManager* Manager = GetTypedOuter<AAMjManager>())
+	{
+		Manager->RegisterStateConsumer(this, this);
+	}
+	return true;
 }
 
 void UURLabRosPublishTransport::TransportShutdown()
 {
+	if (AAMjManager* Manager = GetTypedOuter<AAMjManager>())
+	{
+		Manager->UnregisterStateConsumer(this);
+	}
 	ReleasePublishers();
 }
 
@@ -256,7 +279,7 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 			TCHAR_TO_UTF8(*JointTopic), NamePtrs.GetData(), NamePtrs.Num());
 		if (Entry.JointStatePub == nullptr)
 		{
-			UE_LOG(LogURLab, Warning,
+			UE_LOG(LogURLabRos, Warning,
 				TEXT("ROS: JointState publisher create failed for %s (%hs)"),
 				*JointTopic, UrlabRcl_LastError());
 			continue;
@@ -274,7 +297,7 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 				TCHAR_TO_UTF8(*ArtName));
 			if (Entry.ImuPub == nullptr)
 			{
-				UE_LOG(LogURLab, Warning,
+				UE_LOG(LogURLabRos, Warning,
 					TEXT("ROS: Imu publisher create failed for %s (%hs)"),
 					*ImuTopic, UrlabRcl_LastError());
 			}
@@ -288,7 +311,7 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 				TCHAR_TO_UTF8(*TwistTopic), TCHAR_TO_UTF8(*ArtName));
 			if (Entry.TwistPub == nullptr)
 			{
-				UE_LOG(LogURLab, Warning,
+				UE_LOG(LogURLabRos, Warning,
 					TEXT("ROS: TwistStamped publisher create failed for %s (%hs)"),
 					*TwistTopic, UrlabRcl_LastError());
 			}
@@ -305,7 +328,7 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 				Entry.RobotDescriptionPub = UrlabRcl_CreateStringPub(Ctx, TCHAR_TO_UTF8(*DescTopic));
 				if (Entry.RobotDescriptionPub == nullptr)
 				{
-					UE_LOG(LogURLab, Warning,
+					UE_LOG(LogURLabRos, Warning,
 						TEXT("ROS: robot_description publisher create failed for %s (%hs)"),
 						*DescTopic, UrlabRcl_LastError());
 				}
@@ -323,13 +346,13 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 	TfPub = UrlabRcl_CreateTfPub(Ctx, /*bStatic=*/0);
 	if (TfPub == nullptr)
 	{
-		UE_LOG(LogURLab, Warning, TEXT("ROS: /tf publisher create failed (%hs)"),
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: /tf publisher create failed (%hs)"),
 			UrlabRcl_LastError());
 	}
 	ClockPub = UrlabRcl_CreateClockPub(Ctx);
 	if (ClockPub == nullptr)
 	{
-		UE_LOG(LogURLab, Warning, TEXT("ROS: /clock publisher create failed (%hs)"),
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: /clock publisher create failed (%hs)"),
 			UrlabRcl_LastError());
 	}
 

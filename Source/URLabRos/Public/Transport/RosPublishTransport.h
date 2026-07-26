@@ -24,6 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "Transport/PublishTransport.h"
+#include "State/MjStateConsumer.h"
 #include "RosPublishTransport.generated.h"
 
 // Opaque publisher handles from the rcl seam; defined in UrlabRclCore.cpp. Held
@@ -64,7 +65,7 @@ struct FMjClock;
  *  - `rosgraph_msgs/Clock` on `/clock`, from the IR sim time.
  */
 UCLASS()
-class URLAB_API UURLabRosPublishTransport : public UURLabPublishTransport
+class URLABROS_API UURLabRosPublishTransport : public UURLabPublishTransport, public IMjStateConsumer
 {
 	GENERATED_BODY()
 
@@ -77,9 +78,13 @@ public:
 	/** The byte path is unused: this transport encodes the IR itself. */
 	virtual void Publish(const FString& /*Topic*/, const TArray<uint8>& /*Payload*/) override {}
 
-	/** Encode the snapshot to typed ROS messages and publish. Called from the
-	 *  manager's post-step fan-out; safe to call when ROS is unavailable (no-op).
-	 *  Rebuilds the publisher set first if the structure version changed. */
+	/** IMjStateConsumer: the manager's post-step fan-out entry point. Forwards to
+	 *  PublishState so ROS receives the typed IR every step in all modes. */
+	virtual void ConsumeState(const FMjStateSnapshot& Snapshot) override;
+
+	/** Encode the snapshot to typed ROS messages and publish. Safe to call when
+	 *  ROS is unavailable (no-op). Rebuilds the publisher set first if the
+	 *  structure version changed. */
 	void PublishState(const FMjStateSnapshot& Snapshot);
 
 	/** Flatten one articulation's 1-DOF joints into the parallel arrays a

@@ -43,7 +43,7 @@
 #include "HAL/FileManager.h"
 
 #include "MjTestHelpers.h"
-#include "Ros/UrdfExporter.h"
+#include "Urdf/UrdfExporter.h"
 #include "Transport/RosContext.h"
 #include "Transport/RosPublishTransport.h"
 #include "State/MjStateTypes.h"

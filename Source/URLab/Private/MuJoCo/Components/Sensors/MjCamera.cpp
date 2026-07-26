@@ -22,6 +22,7 @@
 
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Components/Sensors/MjCameraSubsystem.h"
+#include "MuJoCo/Components/Sensors/MjCameraFrameBus.h"
 #include "MuJoCo/Components/Sensors/CameraShmWriter.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
@@ -48,11 +49,6 @@
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "State/MjCanonicalName.h"
 #include "zmq.h"
-
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-#include "Transport/RosContext.h"
-#include "Ros/UrlabRclCore.h"
-#endif
 
 namespace
 {
@@ -1027,10 +1023,6 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			}
 		}
 
-		// ROS image sink: parallel to the ZMQ / SHM broadcasts, gated only on a
-		// live ROS context (not the ZMQ / SHM enable flags).
-		SetupRosImagePublisher();
-
 		if (CaptureComponent)
 		{
 			CaptureComponent->FOVAngle = HorizontalFOVFromFovy(fovy, GetResolution());
@@ -1123,7 +1115,8 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			ShmWriter = nullptr;
 		}
 
-		TeardownRosImagePublisher();
+		// Tell any out-of-core image sink to release per-camera resources.
+		FMjCameraFrameBus::Get().OnStreamStopped.Broadcast(GetCanonicalName());
 
 		UE_LOG(LogURLabImport, Log, TEXT("[MjCamera] '%s' streaming DISABLED."), *MjName);
 	}
@@ -1365,6 +1358,16 @@ void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
 	// the client's content-age reflects the injected latency.
 	Meta.CaptureUnixTime = Frame.CaptureUnixTime;
 
+	// Broadcast the frame to any out-of-core image sink. The payload points at the
+	// frame's pixel buffer and is valid only for the duration of the broadcast.
+	FMjCameraFramePayload Payload;
+	Payload.CanonicalName = GetCanonicalName();
+	Payload.Width = Frame.Width;
+	Payload.Height = Frame.Height;
+	Payload.bDepth = (CaptureMode == EMjCameraMode::Depth);
+	Payload.SimTime = Frame.SimTime;
+	Payload.FrameId = Frame.FrameId;
+
 	if (CaptureMode == EMjCameraMode::Depth)
 	{
 		if (Frame.Depth.Num() == 0)
@@ -1373,15 +1376,10 @@ void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
 			ZmqWorker->PushFrame(Frame.Depth, Meta);
 		if (bEnableShmBroadcast && ShmWriter)
 			ShmWriter->PushFrame(Frame.Depth, Meta);
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-		if (RosImagePub)
-		{
-			const int64 SimTimeNs = static_cast<int64>(Frame.SimTime * 1.0e9);
-			UrlabRcl_PublishImage(RosImagePub,
-				reinterpret_cast<const uint8_t*>(Frame.Depth.GetData()),
-				Frame.Width * static_cast<int32>(sizeof(float)), SimTimeNs);
-		}
-#endif
+
+		Payload.Data = reinterpret_cast<const uint8*>(Frame.Depth.GetData());
+		Payload.DataNumBytes = Frame.Depth.Num() * static_cast<int32>(sizeof(float));
+		Payload.RowStrideBytes = Frame.Width * static_cast<int32>(sizeof(float));
 	}
 	else
 	{
@@ -1391,58 +1389,13 @@ void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
 			ZmqWorker->PushFrame(Frame.Color, Meta);
 		if (bEnableShmBroadcast && ShmWriter)
 			ShmWriter->PushFrame(Frame.Color, Meta);
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-		if (RosImagePub)
-		{
-			const int64 SimTimeNs = static_cast<int64>(Frame.SimTime * 1.0e9);
-			// FColor is BGRA8; the publisher was created with the matching encoding.
-			UrlabRcl_PublishImage(RosImagePub,
-				reinterpret_cast<const uint8_t*>(Frame.Color.GetData()),
-				Frame.Width * static_cast<int32>(sizeof(FColor)), SimTimeNs);
-		}
-#endif
-	}
-}
 
-void UMjCamera::SetupRosImagePublisher()
-{
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-	if (RosImagePub || !FURLabRosContext::Get().IsAvailable())
-		return;
-	UrlabRclContext* Ctx = FURLabRosContext::Get().GetHandle();
-	if (!Ctx)
-		return;
+		Payload.Data = reinterpret_cast<const uint8*>(Frame.Color.GetData());
+		Payload.DataNumBytes = Frame.Color.Num() * static_cast<int32>(sizeof(FColor));
+		Payload.RowStrideBytes = Frame.Width * static_cast<int32>(sizeof(FColor));
+	}
 
-	const FIntPoint Res = GetResolution();
-	const FString CanonName = GetCanonicalName();
-	const FString Topic = FString::Printf(TEXT("/%s/image"), *CanonName);
-	// FColor pixels are BGRA8; depth is single-channel float32.
-	const char* Encoding = (CaptureMode == EMjCameraMode::Depth) ? "32FC1" : "bgra8";
-	RosImagePub = UrlabRcl_CreateImagePub(Ctx, TCHAR_TO_UTF8(*Topic),
-		TCHAR_TO_UTF8(*CanonName), Res.X, Res.Y, Encoding);
-	if (!RosImagePub)
-	{
-		UE_LOG(LogURLabNet, Warning,
-			TEXT("[MjCamera] '%s' ROS image publisher create failed (%hs)"),
-			*MjName, UrlabRcl_LastError());
-	}
-	else
-	{
-		UE_LOG(LogURLabNet, Log, TEXT("[MjCamera] '%s' ROS image broadcast at %s"),
-			*MjName, *Topic);
-	}
-#endif
-}
-
-void UMjCamera::TeardownRosImagePublisher()
-{
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-	if (RosImagePub)
-	{
-		UrlabRcl_DestroyImagePub(RosImagePub);
-		RosImagePub = nullptr;
-	}
-#endif
+	FMjCameraFrameBus::Get().OnFrameReady.Broadcast(Payload);
 }
 
 TSharedPtr<const FMjCameraFrame> UMjCamera::SelectDelayedFrameShared(double NowValue, uint64 AfterSeq) const

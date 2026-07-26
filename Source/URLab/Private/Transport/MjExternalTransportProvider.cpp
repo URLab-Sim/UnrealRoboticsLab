@@ -20,45 +20,12 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-using UnrealBuildTool;
-using System.IO;
+#include "Transport/MjExternalTransportProvider.h"
 
-public class URLabEditor : ModuleRules
+FMjMakeExternalRpcTransport FMjExternalTransportProvider::MakeControlRpcTransport;
+FMjMakeExternalPublishTransport FMjExternalTransportProvider::MakeStatePublishTransport;
+
+bool FMjExternalTransportProvider::HasControlRpcTransport()
 {
-	public URLabEditor(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-
-		PublicDependencyModuleNames.AddRange(new string[]
-		{
-			"Core",
-			"CoreUObject",
-			"Engine",
-			"URLab",
-			"URLabRos",
-			"UnrealEd",
-			"EditorSubsystem",
-			"AssetTools",
-			"AssetRegistry",
-			"Blutility",
-			"EditorScriptingUtilities",
-			"PropertyEditor",
-			"Slate",
-			"SlateCore",
-			"XmlParser",
-			"Projects",
-			"LevelEditor",
-			"Json",
-			"JsonUtilities"
-		});
-
-		PrivateDependencyModuleNames.AddRange(new string[]
-		{
-			"InputCore",
-			"RenderCore",
-			"DesktopPlatform",
-			"Kismet",
-			"ToolMenus"
-		});
-	}
+	return MakeControlRpcTransport.IsBound();
 }

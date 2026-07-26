@@ -20,45 +20,10 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-using UnrealBuildTool;
-using System.IO;
+#include "MuJoCo/Components/Sensors/MjCameraFrameBus.h"
 
-public class URLabEditor : ModuleRules
+FMjCameraFrameBus& FMjCameraFrameBus::Get()
 {
-	public URLabEditor(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-
-		PublicDependencyModuleNames.AddRange(new string[]
-		{
-			"Core",
-			"CoreUObject",
-			"Engine",
-			"URLab",
-			"URLabRos",
-			"UnrealEd",
-			"EditorSubsystem",
-			"AssetTools",
-			"AssetRegistry",
-			"Blutility",
-			"EditorScriptingUtilities",
-			"PropertyEditor",
-			"Slate",
-			"SlateCore",
-			"XmlParser",
-			"Projects",
-			"LevelEditor",
-			"Json",
-			"JsonUtilities"
-		});
-
-		PrivateDependencyModuleNames.AddRange(new string[]
-		{
-			"InputCore",
-			"RenderCore",
-			"DesktopPlatform",
-			"Kismet",
-			"ToolMenus"
-		});
-	}
+	static FMjCameraFrameBus Instance;
+	return Instance;
 }

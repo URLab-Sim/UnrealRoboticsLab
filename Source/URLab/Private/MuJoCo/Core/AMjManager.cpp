@@ -43,10 +43,7 @@
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
 #include "State/MjCanonicalName.h"
-#include "Ros/UrdfExporter.h"
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-#include "Transport/RosPublishTransport.h"
-#endif
+#include "Urdf/UrdfExporter.h"
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
 #include "MuJoCo/Core/MjSimulationState.h"
@@ -92,7 +89,7 @@ void AAMjManager::RefreshStateCaches()
 	// cache (initial compile + every recompile). Both run on the game thread.
 	StateCollector.Init(this);
 	StateCollector.RebuildProducerCacheGameThread();
-	// Re-export the URDF(s) so the ROS robot_description matches the fresh model.
+	// Re-export the URDF(s) so the robot_description matches the fresh model.
 	ExportRobotDescriptions();
 }
 
@@ -103,7 +100,7 @@ void AAMjManager::ExportRobotDescriptions()
 		return;
 
 	const mjModel* Model = PhysicsEngine->m_model;
-	const FString RootDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("RosExport"));
+	const FString RootDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("UrdfExport"));
 	const FUrdfExportConfig Cfg;
 
 	for (AMjArticulation* Art : GetAllArticulations())
@@ -482,26 +479,37 @@ void AAMjManager::GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const
 	Out = StateProducers;
 }
 
+void AAMjManager::RegisterStateConsumer(IMjStateConsumer* Consumer, UObject* OwnerObj)
+{
+	if (!Consumer || !OwnerObj)
+		return;
+	FScopeLock Lock(&StateConsumersMutex);
+	for (const FRegisteredStateConsumer& R : StateConsumers)
+	{
+		if (R.Consumer == Consumer)
+			return; // already registered
+	}
+	StateConsumers.Add({OwnerObj, Consumer});
+}
+
+void AAMjManager::UnregisterStateConsumer(IMjStateConsumer* Consumer)
+{
+	if (!Consumer)
+		return;
+	FScopeLock Lock(&StateConsumersMutex);
+	StateConsumers.RemoveAll([Consumer](const FRegisteredStateConsumer& R) {
+		return R.Consumer == Consumer;
+	});
+}
+
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
 	// Build the state IR once per physics step, encode it to the canonical
 	// msgpack `state_full` snapshot, and fan the bytes out to every
-	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). The same IR feeds the ROS
-	// publisher, which is its own encoder. Runs inside the engine's
-	// CallbackMutex, so the collector's persistent snapshot buffer never races
-	// an on-demand Collect from an RPC step reply.
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-	UURLabRosPublishTransport* RosPublisher = nullptr;
-	for (const TObjectPtr<UURLabPublishTransport>& Transport : ManagerOwnedPublishTransports)
-	{
-		if (UURLabRosPublishTransport* Ros = Cast<UURLabRosPublishTransport>(Transport))
-		{
-			RosPublisher = Ros;
-			break;
-		}
-	}
-#endif
-
+	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). Registered IMjStateConsumers
+	// receive the same typed IR and run their own encoders. Runs inside the
+	// engine's CallbackMutex, so the collector's persistent snapshot buffer never
+	// races an on-demand Collect from an RPC step reply.
 	TArray<IMjSnapshotPublisher*> Pubs;
 	{
 		FScopeLock Lock(&SnapshotPublishersMutex);
@@ -513,28 +521,33 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 		}
 	}
 
+	TArray<IMjStateConsumer*> Consumers;
+	{
+		FScopeLock Lock(&StateConsumersMutex);
+		Consumers.Reserve(StateConsumers.Num());
+		for (const FRegisteredStateConsumer& R : StateConsumers)
+		{
+			if (R.Consumer && R.Owner.IsValid())
+				Consumers.Add(R.Consumer);
+		}
+	}
+
 	// bPublishersPaused gates the msgpack byte fan-out only: it is set on
 	// Direct / Puppet mode entry so the step reply is the sole delivery to the
-	// stepping client (no double-write). ROS is a distinct consumer, so it
-	// receives the IR every step in all modes regardless of the pause.
+	// stepping client (no double-write). A typed consumer is a distinct sink, so
+	// it receives the IR every step in all modes regardless of the pause.
 	const bool bByteFanOut = Pubs.Num() > 0
 		&& !bPublishersPaused.load(std::memory_order_acquire);
 
-	bool bNeedSnapshot = bByteFanOut;
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-	bNeedSnapshot = bNeedSnapshot || (RosPublisher != nullptr);
-#endif
-	if (!bNeedSnapshot)
+	if (!bByteFanOut && Consumers.Num() == 0)
 		return;
 
 	FURLabRpcDispatcher* Disp = GetStepDispatcher();
 	const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
 	const FMjStateSnapshot& Snap = StateCollector.Collect(m, d, StepIdx);
 
-#if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
-	if (RosPublisher)
-		RosPublisher->PublishState(Snap);
-#endif
+	for (IMjStateConsumer* Consumer : Consumers)
+		Consumer->ConsumeState(Snap);
 
 	if (!bByteFanOut)
 		return;

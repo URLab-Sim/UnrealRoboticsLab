@@ -393,7 +393,7 @@ bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
 	}
 
 	// Register a ROS publish transport into the manager's fan-out set, exactly as
-	// EnsureRosBound does at runtime.
+	// EnsureExternalTransportsBound does at runtime.
 	UURLabRosPublishTransport* Ros = NewObject<UURLabRosPublishTransport>(S.Manager);
 	TestTrue(TEXT("ros publish transport init"), Ros->TransportInit());
 	S.Manager->ManagerOwnedPublishTransports.Add(Ros);

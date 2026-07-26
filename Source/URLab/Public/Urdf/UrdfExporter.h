@@ -96,13 +96,13 @@ struct FUrdfModel
  *
  * This is a direct port of the Python prototype validated field-by-field against
  * the mujoco_menagerie Franka (see docs/plan_ros_urdf_port_spec.md). It is a
- * pure mjModel reader with no ROS dependency, so it compiles and runs whether or
- * not rcl is linked; only the /<art>/robot_description publisher is fenced.
+ * pure mjModel reader with no external-transport dependency, so it always
+ * compiles as part of the core module.
  *
  * Frame conventions (validated to ~1e-9 m against mjModel geom_xpos):
  *  - URDF joint limits are `jnt_range - qpos0`, so URDF q=0 is the MuJoCo
- *    reference pose (qpos == qpos0). The matched /joint_states shift lives in
- *    UURLabRosPublishTransport::FillJointState.
+ *    reference pose (qpos == qpos0). The matched joint_states shift lives in
+ *    the state publisher's FillJointState.
  *  - A single-joint body with `jnt_pos != 0` has its link frame moved to the
  *    joint anchor; every body-local origin is re-expressed accordingly.
  *  - A body with k>1 joints becomes k-1 zero-inertia dummy links chained by the

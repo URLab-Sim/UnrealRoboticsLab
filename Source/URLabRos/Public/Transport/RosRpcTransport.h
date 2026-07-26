@@ -44,7 +44,7 @@ struct FRosArtCommand;
  * @brief Request/reply + control-in surface for the in-process ROS 2 node.
  *
  * Sibling of the ZMQ / SHM RPC transports: owned by `UURLabBridgeServer`, bound
- * through `EnsureRosBound`. It owns a ROS executor thread (an `FRunnable`) that
+ * through `EnsureExternalTransportsBound`. It owns a ROS executor thread (an `FRunnable`) that
  * drives the core wait set through `UrlabRcl_SpinSome`, pumping the per-art
  * command subscriptions and marshalling them into the sim's control write paths.
  *
@@ -66,7 +66,7 @@ struct FRosArtCommand;
  * `CheckWrite`) are each already thread-safe.
  */
 UCLASS()
-class URLAB_API UURLabRosRpcTransport : public UURLabRpcTransport
+class URLABROS_API UURLabRosRpcTransport : public UURLabRpcTransport
 {
 	GENERATED_BODY()
 

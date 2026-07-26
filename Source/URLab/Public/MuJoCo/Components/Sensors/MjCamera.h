@@ -36,10 +36,6 @@
 #include <atomic>
 #include "MjCamera.generated.h"
 
-// Opaque ROS image publisher handle from the rcl seam; defined in
-// UrlabRclCore.cpp. Held by pointer so this header pulls in no ROS types.
-struct UrlabRclImagePub;
-
 /**
  * @class FCameraZmqWorker
  * @brief Background thread that publishes high-bandwidth camera frames over
@@ -560,8 +556,9 @@ private:
 	 *  per bDelayUseWallClock. */
 	double FrameClock(const FMjCameraFrame& Frame) const;
 
-	/** Push one frame onto both streaming transports (ZMQ + SHM), reconstructing
-	 *  the v2 wire meta. Shared by the no-delay (inline) and delayed publish. */
+	/** Push one frame onto the streaming transports (ZMQ + SHM) and broadcast it
+	 *  on FMjCameraFrameBus for any out-of-core image sink. Reconstructs the v2
+	 *  wire meta. Shared by the no-delay (inline) and delayed publish. */
 	void PublishFrameToWorkers(const FMjCameraFrame& Frame);
 
 	/** True when latency emulation is configured (delay or jitter > 0). */
@@ -662,14 +659,4 @@ private:
 	FRunnableThread* WorkerThread = nullptr;
 	// Forward-declared to keep the header light; full type pulled in by the cpp.
 	class FCameraShmWriter* ShmWriter = nullptr;
-
-	// Per-camera ROS `sensor_msgs/Image` publisher. Created alongside the ZMQ / SHM
-	// sinks when streaming is enabled and a ROS context is live; parallel to them
-	// and NOT part of the state fan-out. Null when ROS is unavailable.
-	UrlabRclImagePub* RosImagePub = nullptr;
-
-	/** Create / destroy the ROS image publisher. No-ops when ROS is unavailable
-	 *  (feature off or no live context). */
-	void SetupRosImagePublisher();
-	void TeardownRosImagePublisher();
 };

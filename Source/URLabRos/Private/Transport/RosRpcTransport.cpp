@@ -43,7 +43,7 @@ FString UURLabRosRpcTransport::RosControlSourceId()
 #include "HAL/RunnableThread.h"
 #include "HAL/Runnable.h"
 #include "HAL/PlatformProcess.h"
-#include "Utils/URLabLogging.h"
+#include "URLabRosLog.h"
 
 // Poll cadence for the executor loop. The wait set blocks up to this long when
 // subscriptions exist; the trailing sleep keeps the thread off a busy loop when
@@ -111,7 +111,7 @@ bool UURLabRosRpcTransport::TransportInit()
 	}
 	if (!FURLabRosContext::Get().Initialize())
 	{
-		UE_LOG(LogURLab, Warning,
+		UE_LOG(LogURLabRos, Warning,
 			TEXT("UURLabRosRpcTransport: ROS context unavailable; not binding."));
 		return false;
 	}
@@ -121,7 +121,7 @@ bool UURLabRosRpcTransport::TransportInit()
 	WorkerRunnable = new FRosExecutorRunnable(this);
 	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabRosExecutor"));
 
-	UE_LOG(LogURLab, Log, TEXT("UURLabRosRpcTransport initialised."));
+	UE_LOG(LogURLabRos, Log, TEXT("UURLabRosRpcTransport initialised."));
 	return true;
 }
 
@@ -220,7 +220,7 @@ void UURLabRosRpcTransport::RebuildCommandSubscriptions(UrlabRclContext* Ctx)
 			&RosCtrlTrampoline, Cmd);
 		if (Cmd->CtrlSub == nullptr)
 		{
-			UE_LOG(LogURLab, Warning, TEXT("ROS: cmd_ctrl subscription failed for %s (%hs)"),
+			UE_LOG(LogURLabRos, Warning, TEXT("ROS: cmd_ctrl subscription failed for %s (%hs)"),
 				*CtrlTopic, UrlabRcl_LastError());
 		}
 
@@ -229,7 +229,7 @@ void UURLabRosRpcTransport::RebuildCommandSubscriptions(UrlabRclContext* Ctx)
 			&RosTwistTrampoline, Cmd);
 		if (Cmd->TwistSub == nullptr)
 		{
-			UE_LOG(LogURLab, Warning, TEXT("ROS: cmd_vel subscription failed for %s (%hs)"),
+			UE_LOG(LogURLabRos, Warning, TEXT("ROS: cmd_vel subscription failed for %s (%hs)"),
 				*VelTopic, UrlabRcl_LastError());
 		}
 

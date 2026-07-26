@@ -20,45 +20,24 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-using UnrealBuildTool;
-using System.IO;
+#pragma once
 
-public class URLabEditor : ModuleRules
+#include "CoreMinimal.h"
+#include "Modules/ModuleInterface.h"
+
+/**
+ * @class FURLabRosModule
+ * @brief The optional ROS 2 integration module.
+ *
+ * On startup it installs the core's FMjExternalTransportProvider factory hooks
+ * (so the bridge can create the ROS control RPC + state publish transports
+ * without naming their types) and subscribes a camera image sink to
+ * FMjCameraFrameBus. All ROS-specific code lives in this module; the core URLab
+ * module has no dependency on it.
+ */
+class FURLabRosModule : public IModuleInterface
 {
-	public URLabEditor(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
-
-		PublicDependencyModuleNames.AddRange(new string[]
-		{
-			"Core",
-			"CoreUObject",
-			"Engine",
-			"URLab",
-			"URLabRos",
-			"UnrealEd",
-			"EditorSubsystem",
-			"AssetTools",
-			"AssetRegistry",
-			"Blutility",
-			"EditorScriptingUtilities",
-			"PropertyEditor",
-			"Slate",
-			"SlateCore",
-			"XmlParser",
-			"Projects",
-			"LevelEditor",
-			"Json",
-			"JsonUtilities"
-		});
-
-		PrivateDependencyModuleNames.AddRange(new string[]
-		{
-			"InputCore",
-			"RenderCore",
-			"DesktopPlatform",
-			"Kismet",
-			"ToolMenus"
-		});
-	}
-}
+public:
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
+};

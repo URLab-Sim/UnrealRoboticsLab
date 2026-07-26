@@ -27,7 +27,7 @@
 #if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
 
 #include "Transport/RosContext.h"
-#include "Utils/URLabLogging.h"
+#include "URLabRosLog.h"
 
 #include "Ros/UrlabRclCore.h"
 
@@ -54,13 +54,13 @@ bool FURLabRosContext::Initialize()
 	Context = UrlabRcl_Init("urlab", "", -1);
 	if (Context == nullptr)
 	{
-		UE_LOG(LogURLab, Warning,
+		UE_LOG(LogURLabRos, Warning,
 			TEXT("ROS 2 unavailable: rcl context init failed (%hs). ROS publishing is disabled."),
 			UrlabRcl_LastError());
 		return false;
 	}
 
-	UE_LOG(LogURLab, Log, TEXT("ROS 2 context up (distro %hs, node 'urlab')."),
+	UE_LOG(LogURLabRos, Log, TEXT("ROS 2 context up (distro %hs, node 'urlab')."),
 		UrlabRcl_DistroName());
 	return true;
 }

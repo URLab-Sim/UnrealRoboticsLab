@@ -32,6 +32,7 @@
 #include "Transport/SnapshotPublisher.h"
 #include "State/MjStateCollector.h"
 #include "State/MjStateProducer.h"
+#include "State/MjStateConsumer.h"
 #include <atomic>
 #include "AMjManager.generated.h"
 
@@ -150,14 +151,14 @@ public:
 	FMjStateCollector& GetStateCollector() { return StateCollector; }
 
 	/** Export a URDF + binary STL meshes for every articulation from the compiled
-	 *  mjModel, dumping each to <ProjectSaved>/URLab/RosExport/<art>/ and caching
-	 *  the URDF text for the ROS /<art>/robot_description publisher. Runs on the
+	 *  mjModel, dumping each to <ProjectSaved>/URLab/UrdfExport/<art>/ and caching
+	 *  the URDF text for the /<art>/robot_description publisher. Runs on the
 	 *  game thread; auto-invoked from RefreshStateCaches (every compile) and
 	 *  callable directly as the manual re-export trigger. No-op without a model. */
 	void ExportRobotDescriptions();
 
 	/** Cached URDF documents keyed by canonical art segment, filled by
-	 *  ExportRobotDescriptions and read by the ROS publish transport. */
+	 *  ExportRobotDescriptions and read by the state publish transport. */
 	const TMap<FName, FString>& GetRobotDescriptions() const { return RobotDescriptions; }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
@@ -221,6 +222,15 @@ public:
 		class UObject* OwnerObj);
 	void UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher);
 
+	/** Register a typed consumer of the per-step state IR. FanOutStateSnapshot
+	 *  calls ConsumeState on every registered consumer once per step, in all step
+	 *  modes (unlike the byte fan-out, which the Direct/Puppet pause suppresses).
+	 *  OwnerObj keeps the registration alive only while the owner is valid. This
+	 *  is the transport-agnostic seam an out-of-core encoder registers against so
+	 *  the manager never names a concrete consumer type. */
+	void RegisterStateConsumer(IMjStateConsumer* Consumer, class UObject* OwnerObj);
+	void UnregisterStateConsumer(IMjStateConsumer* Consumer);
+
 	/** Register an IMjStateProducer the collector cannot discover by walking
 	 *  articulations (scene-level actors, user channel components). Marks the
 	 *  producer cache dirty so scope is re-resolved. Game thread. */
@@ -282,6 +292,17 @@ protected:
 	 *  EndPlay) -- protect with SnapshotPublishersMutex. */
 	TArray<FRegisteredSnapshotPublisher> SnapshotPublishers;
 	mutable FCriticalSection SnapshotPublishersMutex;
+
+	struct FRegisteredStateConsumer
+	{
+		TWeakObjectPtr<UObject> Owner;
+		IMjStateConsumer* Consumer = nullptr;
+	};
+	/** Typed state consumers registered by their owning transports. Read on the
+	 *  physics async thread (fan-out), mutated on the game thread; guarded by
+	 *  StateConsumersMutex. */
+	TArray<FRegisteredStateConsumer> StateConsumers;
+	mutable FCriticalSection StateConsumersMutex;
 
 	/** IMjStateProducers registered by owners the collector cannot walk to.
 	 *  Read on the game thread (collector rebuild), mutated on the game thread

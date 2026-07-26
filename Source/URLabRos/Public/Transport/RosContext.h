@@ -51,7 +51,7 @@ struct UrlabRclContext;
  * (publish, spin) are serialized by their owning transport, per the core's
  * threading contract.
  */
-class URLAB_API FURLabRosContext
+class URLABROS_API FURLabRosContext
 {
 public:
 	/** The process-wide instance. */

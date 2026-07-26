@@ -22,10 +22,13 @@
 
 #include "State/MjStateCollector.h"
 #include "State/MjCanonicalName.h"
+#include "State/MjStateProducer.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/MjComponent.h"
 #include "MuJoCo/Input/MjTwistController.h"
+#include "Components/ActorComponent.h"
+#include "GameFramework/Actor.h"
 #include "Async/Async.h"
 #include "Misc/ScopeExit.h"
 #include "mujoco/mujoco.h"
@@ -96,9 +99,44 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 		NewCache.Add(MoveTemp(Rec));
 	}
 
+	// Registered IMjStateProducers the art walk cannot discover (user channel
+	// components, scene-level actors). Scope is resolved here on the game thread:
+	// a producer owned by an articulation caches under that art; everything else
+	// is a scene producer. The physics-thread step never does scope logic.
+	TArray<TWeakObjectPtr<UObject>> NewSceneProducers;
+	{
+		TArray<TWeakObjectPtr<UObject>> Registered;
+		Mgr->GetStateProducers(Registered);
+		for (const TWeakObjectPtr<UObject>& WeakProducer : Registered)
+		{
+			UObject* Obj = WeakProducer.Get();
+			if (!Obj)
+				continue;
+
+			AActor* OwnerActor = Cast<AActor>(Obj);
+			if (!OwnerActor)
+			{
+				if (UActorComponent* Comp = Cast<UActorComponent>(Obj))
+					OwnerActor = Comp->GetOwner();
+			}
+
+			AMjArticulation* OwningArt = Cast<AMjArticulation>(OwnerActor);
+			FCachedArticulation* Rec = OwningArt
+				? NewCache.FindByPredicate([OwningArt](const FCachedArticulation& R) {
+					  return R.Art.Get() == OwningArt;
+				  })
+				: nullptr;
+			if (Rec)
+				Rec->InterfaceProducers.Add(Obj);
+			else
+				NewSceneProducers.Add(Obj);
+		}
+	}
+
 	{
 		FScopeLock Lock(&CacheMutex);
 		Cache = MoveTemp(NewCache);
+		SceneProducers = MoveTemp(NewSceneProducers);
 	}
 	++StructureVersion;
 	bCacheValid.store(true, std::memory_order_release);
@@ -148,6 +186,19 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 			}
 			if (UMjTwistController* Twist = Rec.TwistCtrl.Get())
 				Twist->DescribeState(ArtState);
+			for (const TWeakObjectPtr<UObject>& WeakProducer : Rec.InterfaceProducers)
+			{
+				if (IMjStateProducer* Producer = Cast<IMjStateProducer>(WeakProducer.Get()))
+					Producer->DescribeState(ArtState);
+			}
+		}
+
+		// Scene-scoped producers fill the snapshot's own blocks (e.g. scene
+		// user channels), after the art loop but still under the cache lock.
+		for (const TWeakObjectPtr<UObject>& WeakProducer : SceneProducers)
+		{
+			if (IMjStateProducer* Producer = Cast<IMjStateProducer>(WeakProducer.Get()))
+				Producer->DescribeSceneState(Snapshot);
 		}
 	}
 

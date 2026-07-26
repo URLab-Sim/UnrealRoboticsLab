@@ -445,6 +445,43 @@ void AAMjManager::UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher)
 	});
 }
 
+void AAMjManager::RegisterStateProducer(TScriptInterface<IMjStateProducer> Producer)
+{
+	UObject* Obj = Producer.GetObject();
+	if (!Obj)
+		return;
+	{
+		FScopeLock Lock(&StateProducersMutex);
+		for (const TWeakObjectPtr<UObject>& P : StateProducers)
+		{
+			if (P.Get() == Obj)
+				return; // already registered
+		}
+		StateProducers.Add(Obj);
+	}
+	StateCollector.MarkProducerCacheDirty();
+}
+
+void AAMjManager::UnregisterStateProducer(TScriptInterface<IMjStateProducer> Producer)
+{
+	UObject* Obj = Producer.GetObject();
+	if (!Obj)
+		return;
+	{
+		FScopeLock Lock(&StateProducersMutex);
+		StateProducers.RemoveAll([Obj](const TWeakObjectPtr<UObject>& P) {
+			return P.Get() == Obj;
+		});
+	}
+	StateCollector.MarkProducerCacheDirty();
+}
+
+void AAMjManager::GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const
+{
+	FScopeLock Lock(&StateProducersMutex);
+	Out = StateProducers;
+}
+
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
 	// Build the state IR once per physics step, encode it to the canonical

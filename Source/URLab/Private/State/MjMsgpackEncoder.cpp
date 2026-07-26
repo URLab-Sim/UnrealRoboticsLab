@@ -46,6 +46,60 @@ TSharedPtr<FJsonValue> NumArrayN(const double* Values, int32 Count)
 	return MakeShared<FJsonValueArray>(Out);
 }
 
+/** Encode one user channel into its self-describing msgpack value. The shape is
+ *  keyed on Kind so a Python client reads typed values with no schema. */
+TSharedPtr<FJsonValue> EncodeUserValue(const FMjUserChannel& C)
+{
+	switch (C.Kind)
+	{
+		case EMjUserChannelKind::Bool:
+			return MakeShared<FJsonValueBoolean>(C.Values.Num() > 0 && C.Values[0] != 0.0);
+		case EMjUserChannelKind::Int:
+		case EMjUserChannelKind::Scalar:
+			return MakeShared<FJsonValueNumber>(C.Values.Num() > 0 ? C.Values[0] : 0.0);
+		case EMjUserChannelKind::Vec3:
+		case EMjUserChannelKind::Quat:
+		case EMjUserChannelKind::Array:
+			return NumArray(C.Values);
+		case EMjUserChannelKind::Transform:
+		{
+			TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+			const int32 N = C.Values.Num();
+			Obj->SetField(TEXT("pos"), NumArrayN(C.Values.GetData(), FMath::Min(3, N)));
+			Obj->SetField(TEXT("quat"), N > 3 ? NumArrayN(C.Values.GetData() + 3, FMath::Min(4, N - 3))
+											  : NumArrayN(nullptr, 0));
+			return MakeShared<FJsonValueObject>(Obj);
+		}
+		case EMjUserChannelKind::String:
+			return MakeShared<FJsonValueString>(C.Text);
+		case EMjUserChannelKind::Struct:
+		{
+			// Packed carries a pre-built msgpack map; re-inflate it so it splices
+			// into the snapshot as a nested object rather than an opaque blob.
+			TSharedPtr<FJsonObject> Parsed;
+			if (C.Packed.Num() > 0
+				&& FURLabMsgpackUtil::UnpackToJsonObject(C.Packed.GetData(), C.Packed.Num(), Parsed)
+				&& Parsed.IsValid())
+			{
+				return MakeShared<FJsonValueObject>(Parsed);
+			}
+			return MakeShared<FJsonValueObject>(MakeShared<FJsonObject>());
+		}
+	}
+	return MakeShared<FJsonValueNull>();
+}
+
+/** Emit a `user` map keyed by channel name, if any channels exist. */
+void EncodeUserChannels(const TArray<FMjUserChannel>& Channels, const TSharedPtr<FJsonObject>& Out)
+{
+	if (Channels.Num() == 0)
+		return;
+	TSharedPtr<FJsonObject> User = MakeShared<FJsonObject>();
+	for (const FMjUserChannel& C : Channels)
+		User->SetField(C.Name.ToString(), EncodeUserValue(C));
+	Out->SetObjectField(TEXT("user"), User);
+}
+
 /** Encode one articulation into the per-art block for the requested level. */
 TSharedPtr<FJsonObject> EncodeArticulation(const FMjArticulationState& Art, EObservationLevel Level)
 {
@@ -85,6 +139,9 @@ TSharedPtr<FJsonObject> EncodeArticulation(const FMjArticulationState& Art, EObs
 		for (const FMjSensorState& Sen : Art.Sensors)
 			Sensors->SetField(Sen.Name.ToString(), NumArray(Sen.Values));
 		Obj->SetObjectField(TEXT("sensors"), Sensors);
+
+		// User channels emit at Standard and Full, beside sensors.
+		EncodeUserChannels(Art.UserChannels, Obj);
 	}
 
 	if (bFull)
@@ -172,6 +229,8 @@ TSharedPtr<FJsonObject> FMjMsgpackEncoder::EncodeSnapshot(const FMjStateSnapshot
 	EncodeClock(S.Clock, Snap);
 	Snap->SetObjectField(TEXT("arts"), EncodeArts(S, Level));
 	Snap->SetObjectField(TEXT("scene"), EncodeScene(S));
+	// Scene-scoped user channels (producers not owned by any articulation).
+	EncodeUserChannels(S.UserChannels, Snap);
 	return Snap;
 }
 

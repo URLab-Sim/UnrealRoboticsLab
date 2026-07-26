@@ -79,10 +79,16 @@ private:
 		TWeakObjectPtr<AMjArticulation> Art;
 		TArray<TWeakObjectPtr<UMjComponent>> Producers;  // DescribeState per step
 		TWeakObjectPtr<UMjTwistController> TwistCtrl;     // UActorComponent; called separately
+		/** IMjStateProducer implementers registered under this art (e.g. user
+		 *  channel components). Any UObject; the collector Casts to the interface. */
+		TArray<TWeakObjectPtr<UObject>> InterfaceProducers;
 	};
 
 	TWeakObjectPtr<AAMjManager> Manager;
 	TArray<FCachedArticulation> Cache; // built game thread, read physics thread
+	/** Registered IMjStateProducers not owned by any articulation; their
+	 *  DescribeSceneState fills the snapshot's scene-scoped blocks. */
+	TArray<TWeakObjectPtr<UObject>> SceneProducers;
 	FCriticalSection CacheMutex;
 	std::atomic<bool> bCacheValid{false};
 	std::atomic<bool> bRebuildScheduled{false};

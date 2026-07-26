@@ -31,6 +31,7 @@
 #include "Bridge/BridgeServer.h"
 #include "Transport/SnapshotPublisher.h"
 #include "State/MjStateCollector.h"
+#include "State/MjStateProducer.h"
 #include <atomic>
 #include "AMjManager.generated.h"
 
@@ -220,6 +221,16 @@ public:
 		class UObject* OwnerObj);
 	void UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher);
 
+	/** Register an IMjStateProducer the collector cannot discover by walking
+	 *  articulations (scene-level actors, user channel components). Marks the
+	 *  producer cache dirty so scope is re-resolved. Game thread. */
+	void RegisterStateProducer(TScriptInterface<IMjStateProducer> Producer);
+	void UnregisterStateProducer(TScriptInterface<IMjStateProducer> Producer);
+
+	/** Copy the registered state producers out under the registry lock. Called by
+	 *  the collector's game-thread cache rebuild. */
+	void GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const;
+
 	/** Build the per-step IR, encode the canonical `state_full` msgpack, and fan
 	 *  the bytes to every registered snapshot publisher. Bound to the physics
 	 *  post-step callback; gated by bPublishersPaused (byte fan-out only). */
@@ -271,6 +282,12 @@ protected:
 	 *  EndPlay) -- protect with SnapshotPublishersMutex. */
 	TArray<FRegisteredSnapshotPublisher> SnapshotPublishers;
 	mutable FCriticalSection SnapshotPublishersMutex;
+
+	/** IMjStateProducers registered by owners the collector cannot walk to.
+	 *  Read on the game thread (collector rebuild), mutated on the game thread
+	 *  (BeginPlay / EndPlay); guarded by StateProducersMutex for safety. */
+	TArray<TWeakObjectPtr<UObject>> StateProducers;
+	mutable FCriticalSection StateProducersMutex;
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;

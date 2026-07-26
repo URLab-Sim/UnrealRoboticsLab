@@ -7,6 +7,9 @@
 #include "Bridge/RpcDispatcher.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Transport/ShmRpcTransport.h"
+#include "Transport/RosRpcTransport.h"
+#include "Transport/RosPublishTransport.h"
+#include "Transport/PublishTransport.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "Utils/URLabLogging.h"
 #include "HAL/IConsoleManager.h"
@@ -223,6 +226,73 @@ bool UURLabBridgeServer::EnsureShmBound(const FString& SessionId)
 	ApplyPerformanceOverrides();
 	UE_LOG(LogURLabNet, Log,
 		TEXT("UURLabBridgeServer: SHM RPC bound (session=%s)"), *Sid);
+	return true;
+}
+
+bool UURLabBridgeServer::EnsureRosBound()
+{
+	EnsureDispatcher();
+
+	// RPC / control leg: one ROS executor transport, persisting across PIE like
+	// the other RPC transports. Its TransportInit brings up the process-wide ROS
+	// context; a false return means ROS is unavailable (feature off or no live
+	// context), so there is nothing to bind.
+	bool bHaveRpc = false;
+	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
+	{
+		if (Cast<UURLabRosRpcTransport>(T))
+		{
+			bHaveRpc = true;
+			break;
+		}
+	}
+	if (!bHaveRpc)
+	{
+		UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(this, NAME_None);
+		Ros->SetOwningBridge(this);
+		if (!Ros->TransportInit())
+		{
+			UE_LOG(LogURLabNet, Log,
+				TEXT("UURLabBridgeServer: ROS unavailable; EnsureRosBound is a no-op."));
+			return false;
+		}
+		RpcTransports.Add(Ros);
+		ApplyPerformanceOverrides();
+		UE_LOG(LogURLabNet, Log, TEXT("UURLabBridgeServer: ROS RPC transport bound"));
+	}
+
+	// Publish / fan-out leg: registered with the live manager, which owns per-PIE
+	// publish transports and tears them down in EndPlay. When no manager is live
+	// yet the publish leg is deferred to the next EnsureRosBound with one present.
+	if (AAMjManager* Manager = GetActiveManager())
+	{
+		bool bHavePub = false;
+		for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
+		{
+			if (Cast<UURLabRosPublishTransport>(T))
+			{
+				bHavePub = true;
+				break;
+			}
+		}
+		if (!bHavePub)
+		{
+			UURLabRosPublishTransport* Pub = NewObject<UURLabRosPublishTransport>(Manager, NAME_None);
+			if (Pub->TransportInit())
+			{
+				Manager->ManagerOwnedPublishTransports.Add(Pub);
+				UE_LOG(LogURLabNet, Log,
+					TEXT("UURLabBridgeServer: ROS publish transport registered with manager"));
+			}
+		}
+	}
+	else
+	{
+		UE_LOG(LogURLabNet, Warning,
+			TEXT("UURLabBridgeServer: EnsureRosBound with no active manager; "
+				 "publish leg deferred until a manager is live."));
+	}
+
 	return true;
 }
 

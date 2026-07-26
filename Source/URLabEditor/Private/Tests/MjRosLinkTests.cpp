@@ -42,7 +42,14 @@
 #include "Misc/AutomationTest.h"
 #include "Transport/RosContext.h"
 #include "Transport/RosPublishTransport.h"
+#include "Transport/SnapshotPublisher.h"
 #include "State/MjStateTypes.h"
+#include "MjTestHelpers.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "Bridge/BridgeServer.h"
+#include "Bridge/RpcDispatcher.h"
+#include <atomic>
 
 namespace
 {
@@ -183,6 +190,244 @@ bool FMjRosFillJointState::RunTest(const FString& Parameters)
 	TestEqual(TEXT("position[0] is hip qpos"), Positions[0], 0.10);
 	TestEqual(TEXT("velocity[1] is knee qvel"), Velocities[1], 1.20);
 
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 4. FillImu: paired gyro+accel -> both fields; unpaired gyro -> angular only
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosFillImu,
+	"URLab.Ros.FillImu",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosFillImu::RunTest(const FString& Parameters)
+{
+	// Pure IR -> Imu components; no live ROS context needed.
+
+	// Paired gyro + accel on one art.
+	{
+		FMjArticulationState Art;
+		Art.Name = FName(TEXT("go2"));
+		FMjSensorState Gyro;
+		Gyro.Semantic = EMjSensorSemantic::Gyro;
+		Gyro.Values = {0.1, 0.2, 0.3};
+		Art.Sensors.Add(Gyro);
+		FMjSensorState Accel;
+		Accel.Semantic = EMjSensorSemantic::Accel;
+		Accel.Values = {1.0, 2.0, 3.0};
+		Art.Sensors.Add(Accel);
+
+		double Ang[3] = {0, 0, 0};
+		double Acc[3] = {0, 0, 0};
+		bool bHasAng = false;
+		bool bHasAcc = false;
+		const bool bHas = UURLabRosPublishTransport::FillImu(Art, Ang, bHasAng, Acc, bHasAcc);
+		TestTrue(TEXT("paired imu present"), bHas);
+		TestTrue(TEXT("paired has angular velocity"), bHasAng);
+		TestTrue(TEXT("paired has linear acceleration"), bHasAcc);
+		TestEqual(TEXT("gyro x"), Ang[0], 0.1);
+		TestEqual(TEXT("gyro z"), Ang[2], 0.3);
+		TestEqual(TEXT("accel z"), Acc[2], 3.0);
+	}
+
+	// Unpaired gyro: angular velocity only.
+	{
+		FMjArticulationState Art;
+		Art.Name = FName(TEXT("go2"));
+		FMjSensorState Gyro;
+		Gyro.Semantic = EMjSensorSemantic::Gyro;
+		Gyro.Values = {0.5, 0.6, 0.7};
+		Art.Sensors.Add(Gyro);
+
+		double Ang[3] = {0, 0, 0};
+		double Acc[3] = {0, 0, 0};
+		bool bHasAng = false;
+		bool bHasAcc = false;
+		const bool bHas = UURLabRosPublishTransport::FillImu(Art, Ang, bHasAng, Acc, bHasAcc);
+		TestTrue(TEXT("gyro-only imu present"), bHas);
+		TestTrue(TEXT("gyro-only has angular velocity"), bHasAng);
+		TestFalse(TEXT("gyro-only has no linear acceleration"), bHasAcc);
+		TestEqual(TEXT("gyro-only y"), Ang[1], 0.6);
+	}
+
+	// No imu sensors: nothing to publish.
+	{
+		FMjArticulationState Art;
+		Art.Name = FName(TEXT("go2"));
+		double Ang[3] = {0, 0, 0};
+		double Acc[3] = {0, 0, 0};
+		bool bHasAng = false;
+		bool bHasAcc = false;
+		const bool bHas = UURLabRosPublishTransport::FillImu(Art, Ang, bHasAng, Acc, bHasAcc);
+		TestFalse(TEXT("no imu when art has no gyro/accel"), bHas);
+	}
+
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 5. FillClock: sec/nsec split matches AppendClockFields for the same sim time
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosFillClock,
+	"URLab.Ros.FillClock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosFillClock::RunTest(const FString& Parameters)
+{
+	// AppendClockFields (RpcDispatcher.cpp) splits a sim-time double this way; the
+	// IR collector fills FMjClock identically and FillClock recombines to ns, so a
+	// round-trip through FillClock must reproduce the same sec/nsec pair.
+	const double SimTimeSec = 3.5;
+	const int32 ExpectedSec = static_cast<int32>(SimTimeSec);
+	const int32 ExpectedNsec = static_cast<int32>((SimTimeSec - ExpectedSec) * 1.0e9);
+
+	FMjClock Clock;
+	Clock.SimSec = ExpectedSec;
+	Clock.SimNsec = ExpectedNsec;
+
+	const int64 Ns = UURLabRosPublishTransport::FillClock(Clock);
+	TestEqual(TEXT("clock sec matches AppendClockFields"),
+		static_cast<int32>(Ns / 1000000000LL), ExpectedSec);
+	TestEqual(TEXT("clock nsec matches AppendClockFields"),
+		static_cast<int32>(Ns % 1000000000LL), ExpectedNsec);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 6. Publisher-set rebuild on StructureVersion change
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosPublisherRebuild,
+	"URLab.Ros.PublisherRebuild",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosPublisherRebuild::RunTest(const FString& Parameters)
+{
+	FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().IsAvailable())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("URLab.Ros.PublisherRebuild: no live ROS context; skipping."));
+		return true;
+	}
+
+	UURLabRosPublishTransport* Transport = NewObject<UURLabRosPublishTransport>();
+	TestTrue(TEXT("transport init"), Transport->TransportInit());
+
+	// One art, version 1: one per-art publisher entry.
+	const FMjStateSnapshot Snap1 = MakeSnapshot();
+	Transport->PublishState(Snap1);
+	TestEqual(TEXT("one art publisher after first publish"),
+		Transport->GetArtPublisherCountForTest(), 1);
+	TestEqual(TEXT("cached structure version tracks the snapshot"),
+		Transport->GetCachedStructureVersionForTest(), 1u);
+
+	// A same-version re-publish must NOT rebuild.
+	Transport->PublishState(Snap1);
+	TestEqual(TEXT("no rebuild on unchanged structure version"),
+		Transport->GetArtPublisherCountForTest(), 1);
+
+	// Add a second art and bump the version: the set rebuilds to match.
+	FMjStateSnapshot Snap2 = MakeSnapshot();
+	FMjArticulationState Art2;
+	Art2.Name = FName(TEXT("arm"));
+	FMjJointState J;
+	J.Name = FName(TEXT("j0"));
+	J.Type = EMjJointType::Hinge;
+	J.QPos = {0.0};
+	J.QVel = {0.0};
+	Art2.Joints.Add(J);
+	Snap2.Articulations.Add(Art2);
+	Snap2.StructureVersion = 2;
+
+	Transport->PublishState(Snap2);
+	TestEqual(TEXT("two art publishers after registry grows"),
+		Transport->GetArtPublisherCountForTest(), 2);
+	TestEqual(TEXT("cached structure version follows the bump"),
+		Transport->GetCachedStructureVersionForTest(), 2u);
+
+	Transport->TransportShutdown();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 7. Direct-mode fan-out: ROS publishes every step (distinct consumer) while the
+//    byte publishers stay paused (3.6 rule). A fake IMjSnapshotPublisher stands
+//    in for the ZMQ / SHM byte streams.
+// ---------------------------------------------------------------------------
+namespace
+{
+struct FCountingSnapshotPublisher : public IMjSnapshotPublisher
+{
+	std::atomic<int32> Count{0};
+	virtual void PublishSnapshot(const TArray<uint8>& /*Bytes*/) override
+	{
+		++Count;
+	}
+};
+}  // namespace
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosDirectModeFanOut,
+	"URLab.Ros.DirectModeFanOut",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
+{
+	FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().IsAvailable())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("URLab.Ros.DirectModeFanOut: no live ROS context; skipping."));
+		return true;
+	}
+
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	// Register a ROS publish transport into the manager's fan-out set, exactly as
+	// EnsureRosBound does at runtime.
+	UURLabRosPublishTransport* Ros = NewObject<UURLabRosPublishTransport>(S.Manager);
+	TestTrue(TEXT("ros publish transport init"), Ros->TransportInit());
+	S.Manager->ManagerOwnedPublishTransports.Add(Ros);
+
+	// A fake byte publisher standing in for ZMQ / SHM.
+	FCountingSnapshotPublisher Fake;
+	S.Manager->RegisterSnapshotPublisher(&Fake, S.Manager);
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		Ros->TransportShutdown();
+		S.Manager->UnregisterSnapshotPublisher(&Fake);
+		S.Cleanup();
+		return false;
+	}
+
+	// Direct mode pauses the byte fan-out (bPublishersPaused = true).
+	Disp->SetActiveStepMode(EStepMode::Direct);
+	TestTrue(TEXT("direct mode pauses byte publishers"),
+		S.Manager->bPublishersPaused.load());
+
+	mjModel* m = S.Manager->PhysicsEngine->m_model;
+	mjData* d = S.Manager->PhysicsEngine->m_data;
+	const int64 Before = Ros->GetPublishStateCountForTest();
+
+	S.Manager->FanOutStateSnapshot(m, d);
+
+	TestEqual(TEXT("ROS published once despite pause (distinct consumer)"),
+		Ros->GetPublishStateCountForTest() - Before, static_cast<int64>(1));
+	TestEqual(TEXT("byte publisher received nothing while paused"),
+		Fake.Count.load(), 0);
+
+	// Restore Live so downstream tests see a clean cadence, then tear down.
+	Disp->SetActiveStepMode(EStepMode::Live);
+	Ros->TransportShutdown();
+	S.Manager->UnregisterSnapshotPublisher(&Fake);
+	S.Cleanup();
 	return true;
 }
 

@@ -26,12 +26,17 @@
 #include "Transport/PublishTransport.h"
 #include "RosPublishTransport.generated.h"
 
-// Opaque publisher handle from the rcl seam; defined in UrlabRclCore.cpp. Held
+// Opaque publisher handles from the rcl seam; defined in UrlabRclCore.cpp. Held
 // by pointer so this Public header never includes the Private core header.
 struct UrlabRclJointStatePub;
+struct UrlabRclImuPub;
+struct UrlabRclTfPub;
+struct UrlabRclTwistStampedPub;
+struct UrlabRclClockPub;
 
 struct FMjStateSnapshot;
 struct FMjArticulationState;
+struct FMjClock;
 
 /**
  * @class UURLabRosPublishTransport
@@ -45,10 +50,17 @@ struct FMjArticulationState;
  *
  * The publisher set is rebuilt only when the IR's `StructureVersion` changes
  * (an articulation registry change), so the steady-state per-step cost is one
- * fill + `rcl_publish` per articulation.
+ * fill + `rcl_publish` per publisher.
  *
- * Publishes one `sensor_msgs/JointState` per articulation on
- * `/<art>/joint_states`.
+ * Per articulation, on `/<art>/...`:
+ *  - `sensor_msgs/JointState` on `joint_states` (always),
+ *  - `sensor_msgs/Imu` on `imu` (when the art carries a gyro and/or accel),
+ *  - `geometry_msgs/TwistStamped` on `cmd_twist` (when the art has a twist).
+ *
+ * Process-wide (one each):
+ *  - `tf2_msgs/TFMessage` on `/tf`, one transform per body (parent `world`,
+ *    child `<art>/<body>`),
+ *  - `rosgraph_msgs/Clock` on `/clock`, from the IR sim time.
  */
 UCLASS()
 class URLAB_API UURLabRosPublishTransport : public UURLabPublishTransport
@@ -77,19 +89,63 @@ public:
 		TArray<FString>& OutNames, TArray<double>& OutPositions,
 		TArray<double>& OutVelocities);
 
+	/** Collapse an articulation's gyro + accel sensors into the components a
+	 *  `sensor_msgs/Imu` carries: the first gyro's angular velocity and the first
+	 *  accel's linear acceleration. Either may be absent (the flags say which are
+	 *  present); an unpaired gyro still yields angular velocity only. Returns true
+	 *  when at least one component is present, i.e. an Imu is worth publishing.
+	 *  Pure function, exposed for the pairing test. */
+	static bool FillImu(const FMjArticulationState& Art,
+		double OutAngularVel[3], bool& bOutHasAngularVel,
+		double OutLinearAccel[3], bool& bOutHasLinearAccel);
+
+	/** Copy an articulation's twist command into the linear + angular vectors a
+	 *  `geometry_msgs/TwistStamped` carries. Returns false when the art has no
+	 *  twist. Pure function. */
+	static bool FillTwistStamped(const FMjArticulationState& Art,
+		double OutLinear[3], double OutAngular[3]);
+
+	/** Flatten every body across the snapshot into the parallel arrays a
+	 *  `tf2_msgs/TFMessage` carries: parent `world`, child `<art>/<body>`,
+	 *  translation from the body's world position, rotation reordered from MuJoCo
+	 *  wxyz to the xyzw the core expects. Pure function. */
+	static void FillTf(const FMjStateSnapshot& Snapshot,
+		TArray<FString>& OutParents, TArray<FString>& OutChildren,
+		TArray<double>& OutTranslations, TArray<double>& OutRotationsXyzw);
+
+	/** Project the IR clock's sim time to nanoseconds, matching the sec/nsec
+	 *  split `FURLabRpcDispatcher::AppendClockFields` uses for the msgpack wire.
+	 *  Pure function, exposed for the clock-parity test. */
+	static int64 FillClock(const FMjClock& Clock);
+
+	/** Test seams: inspect the rebuilt publisher set and the per-step publish
+	 *  count without a ROS runtime dependency. */
+	int32 GetArtPublisherCountForTest() const { return Publishers.Num(); }
+	uint32 GetCachedStructureVersionForTest() const { return CachedStructureVersion; }
+	int64 GetPublishStateCountForTest() const { return PublishStateCount; }
+
 private:
 	struct FArtPublishers
 	{
 		FName ArtSegment;
 		UrlabRclJointStatePub* JointStatePub = nullptr;
+		UrlabRclImuPub* ImuPub = nullptr;           // null when the art has no gyro/accel
+		UrlabRclTwistStampedPub* TwistPub = nullptr; // null when the art has no twist
 	};
 
 	TArray<FArtPublishers> Publishers;
+	UrlabRclTfPub* TfPub = nullptr;   // process-wide /tf tree
+	UrlabRclClockPub* ClockPub = nullptr; // process-wide /clock
 	uint32 CachedStructureVersion = 0;
 	bool bPublishersBuilt = false;
 
-	/** Destroy and recreate the per-articulation publishers from the snapshot's
-	 *  current structure. */
+	/** Counts PublishState invocations so a test can assert the fan-out drove ROS
+	 *  in a given mode; incremented before the availability short-circuit is not
+	 *  useful, so it counts only calls that reached the publish body. */
+	int64 PublishStateCount = 0;
+
+	/** Destroy and recreate the publisher set from the snapshot's current
+	 *  structure. */
 	void RebuildPublishers(const FMjStateSnapshot& Snapshot);
 
 	/** Destroy every publisher handle, in reverse order. */

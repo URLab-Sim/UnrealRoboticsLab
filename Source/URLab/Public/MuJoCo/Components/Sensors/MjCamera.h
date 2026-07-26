@@ -36,6 +36,10 @@
 #include <atomic>
 #include "MjCamera.generated.h"
 
+// Opaque ROS image publisher handle from the rcl seam; defined in
+// UrlabRclCore.cpp. Held by pointer so this header pulls in no ROS types.
+struct UrlabRclImagePub;
+
 /**
  * @class FCameraZmqWorker
  * @brief Background thread that publishes high-bandwidth camera frames over
@@ -658,4 +662,14 @@ private:
 	FRunnableThread* WorkerThread = nullptr;
 	// Forward-declared to keep the header light; full type pulled in by the cpp.
 	class FCameraShmWriter* ShmWriter = nullptr;
+
+	// Per-camera ROS `sensor_msgs/Image` publisher. Created alongside the ZMQ / SHM
+	// sinks when streaming is enabled and a ROS context is live; parallel to them
+	// and NOT part of the state fan-out. Null when ROS is unavailable.
+	UrlabRclImagePub* RosImagePub = nullptr;
+
+	/** Create / destroy the ROS image publisher. No-ops when ROS is unavailable
+	 *  (feature off or no live context). */
+	void SetupRosImagePublisher();
+	void TeardownRosImagePublisher();
 };

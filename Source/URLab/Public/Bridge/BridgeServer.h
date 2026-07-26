@@ -52,6 +52,12 @@ public:
 	 *  Empty string means "live". */
 	bool EnsureShmBound(const FString& SessionId = TEXT(""));
 
+	/** Bring up the in-process ROS 2 surface if not already up: the publish
+	 *  transport (registered with the active manager's fan-out) and the RPC /
+	 *  control transport (stored in `RpcTransports`). No-op returning false when
+	 *  ROS is unavailable (feature compiled out, or no live context). */
+	bool EnsureRosBound();
+
 	/** Dispatcher when running, nullptr otherwise. */
 	FURLabRpcDispatcher* GetDispatcher() const { return Dispatcher.Get(); }
 

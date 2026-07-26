@@ -41,13 +41,16 @@
 #include <sensor_msgs/msg/image.h>
 #include <sensor_msgs/msg/range.h>
 #include <sensor_msgs/msg/magnetic_field.h>
+#include <sensor_msgs/msg/camera_info.h>
 #include <geometry_msgs/msg/twist.h>
 #include <geometry_msgs/msg/twist_stamped.h>
 #include <geometry_msgs/msg/transform_stamped.h>
 #include <geometry_msgs/msg/wrench_stamped.h>
+#include <geometry_msgs/msg/pose_with_covariance_stamped.h>
 #include <std_msgs/msg/float64_multi_array.h>
 #include <std_msgs/msg/string.h>
 #include <tf2_msgs/msg/tf_message.h>
+#include <nav_msgs/msg/odometry.h>
 #include <rosgraph_msgs/msg/clock.h>
 
 #ifndef URLAB_ROS_DISTRO_NAME
@@ -195,6 +198,27 @@ struct UrlabRclFloat64MultiArrayPub
     UrlabRclContext* Ctx;
     rcl_publisher_t Pub;
     std_msgs__msg__Float64MultiArray Msg;
+};
+
+struct UrlabRclOdometryPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    nav_msgs__msg__Odometry Msg;
+};
+
+struct UrlabRclPoseWithCovariancePub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    geometry_msgs__msg__PoseWithCovarianceStamped Msg;
+};
+
+struct UrlabRclCameraInfoPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    sensor_msgs__msg__CameraInfo Msg;
 };
 
 struct UrlabRclCtrlSub
@@ -1223,6 +1247,248 @@ void UrlabRcl_DestroyFloat64MultiArrayPub(UrlabRclFloat64MultiArrayPub* Pub)
     }
     rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
     std_msgs__msg__Float64MultiArray__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- Odometry --------------------------------------------------------------
+
+namespace
+{
+// Ground-truth pose/twist is exact; a small nonzero diagonal keeps EKF consumers
+// (robot_localization) from rejecting the message while still reading as
+// "essentially certain".
+constexpr double GGroundTruthVariance = 1.0e-6;
+
+void SetCovarianceDiagonal(double Cov[36], double Value)
+{
+    std::memset(Cov, 0, sizeof(double) * 36);
+    for (int i = 0; i < 6; ++i)
+    {
+        Cov[i * 6 + i] = Value;
+    }
+}
+}  // namespace
+
+UrlabRclOdometryPub* UrlabRcl_CreateOdometryPub(UrlabRclContext* Ctx, const char* Topic,
+    const char* FrameId, const char* ChildFrameId)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclOdometryPub* Pub = new UrlabRclOdometryPub();
+    Pub->Ctx = Ctx;
+    nav_msgs__msg__Odometry__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+    SetString(Pub->Msg.child_frame_id, ChildFrameId);
+    SetCovarianceDiagonal(Pub->Msg.pose.covariance, GGroundTruthVariance);
+    SetCovarianceDiagonal(Pub->Msg.twist.covariance, GGroundTruthVariance);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        nav_msgs__msg__Odometry__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishOdometry(UrlabRclOdometryPub* Pub, const double PositionXyz[3],
+    const double OrientationXyzw[4], const double LinearBody[3],
+    const double AngularBody[3], int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    geometry_msgs__msg__Pose& P = Pub->Msg.pose.pose;
+    P.position.x = PositionXyz ? PositionXyz[0] : 0.0;
+    P.position.y = PositionXyz ? PositionXyz[1] : 0.0;
+    P.position.z = PositionXyz ? PositionXyz[2] : 0.0;
+    P.orientation.x = OrientationXyzw ? OrientationXyzw[0] : 0.0;
+    P.orientation.y = OrientationXyzw ? OrientationXyzw[1] : 0.0;
+    P.orientation.z = OrientationXyzw ? OrientationXyzw[2] : 0.0;
+    P.orientation.w = OrientationXyzw ? OrientationXyzw[3] : 1.0;
+    geometry_msgs__msg__Twist& T = Pub->Msg.twist.twist;
+    T.linear.x = LinearBody ? LinearBody[0] : 0.0;
+    T.linear.y = LinearBody ? LinearBody[1] : 0.0;
+    T.linear.z = LinearBody ? LinearBody[2] : 0.0;
+    T.angular.x = AngularBody ? AngularBody[0] : 0.0;
+    T.angular.y = AngularBody ? AngularBody[1] : 0.0;
+    T.angular.z = AngularBody ? AngularBody[2] : 0.0;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyOdometryPub(UrlabRclOdometryPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    nav_msgs__msg__Odometry__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- PoseWithCovarianceStamped ---------------------------------------------
+
+UrlabRclPoseWithCovariancePub* UrlabRcl_CreatePoseWithCovariancePub(UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclPoseWithCovariancePub* Pub = new UrlabRclPoseWithCovariancePub();
+    Pub->Ctx = Ctx;
+    geometry_msgs__msg__PoseWithCovarianceStamped__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+    SetCovarianceDiagonal(Pub->Msg.pose.covariance, GGroundTruthVariance);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, PoseWithCovarianceStamped);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        geometry_msgs__msg__PoseWithCovarianceStamped__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishPoseWithCovariance(UrlabRclPoseWithCovariancePub* Pub,
+    const double PositionXyz[3], const double OrientationXyzw[4], int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    geometry_msgs__msg__Pose& P = Pub->Msg.pose.pose;
+    P.position.x = PositionXyz ? PositionXyz[0] : 0.0;
+    P.position.y = PositionXyz ? PositionXyz[1] : 0.0;
+    P.position.z = PositionXyz ? PositionXyz[2] : 0.0;
+    P.orientation.x = OrientationXyzw ? OrientationXyzw[0] : 0.0;
+    P.orientation.y = OrientationXyzw ? OrientationXyzw[1] : 0.0;
+    P.orientation.z = OrientationXyzw ? OrientationXyzw[2] : 0.0;
+    P.orientation.w = OrientationXyzw ? OrientationXyzw[3] : 1.0;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyPoseWithCovariancePub(UrlabRclPoseWithCovariancePub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    geometry_msgs__msg__PoseWithCovarianceStamped__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- CameraInfo ------------------------------------------------------------
+
+UrlabRclCameraInfoPub* UrlabRcl_CreateCameraInfoPub(UrlabRclContext* Ctx, const char* Topic,
+    const char* FrameId, int32_t Width, int32_t Height, const double K9[9])
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclCameraInfoPub* Pub = new UrlabRclCameraInfoPub();
+    Pub->Ctx = Ctx;
+    sensor_msgs__msg__CameraInfo__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+    Pub->Msg.width = static_cast<uint32_t>(Width > 0 ? Width : 0);
+    Pub->Msg.height = static_cast<uint32_t>(Height > 0 ? Height : 0);
+
+    // Zero-distortion pinhole: plumb_bob with five zero coefficients.
+    SetString(Pub->Msg.distortion_model, "plumb_bob");
+    rosidl_runtime_c__double__Sequence__init(&Pub->Msg.d, 5);
+    for (int i = 0; i < 5; ++i)
+    {
+        Pub->Msg.d.data[i] = 0.0;
+    }
+
+    // K (row-major 3x3) straight from the caller; R = identity; P = K with a zero
+    // translation column (monocular, no baseline).
+    for (int i = 0; i < 9; ++i)
+    {
+        Pub->Msg.k[i] = K9 ? K9[i] : 0.0;
+    }
+    for (int i = 0; i < 9; ++i)
+    {
+        Pub->Msg.r[i] = 0.0;
+    }
+    Pub->Msg.r[0] = Pub->Msg.r[4] = Pub->Msg.r[8] = 1.0;
+    for (int i = 0; i < 12; ++i)
+    {
+        Pub->Msg.p[i] = 0.0;
+    }
+    Pub->Msg.p[0] = Pub->Msg.k[0];   // fx
+    Pub->Msg.p[2] = Pub->Msg.k[2];   // cx
+    Pub->Msg.p[5] = Pub->Msg.k[4];   // fy
+    Pub->Msg.p[6] = Pub->Msg.k[5];   // cy
+    Pub->Msg.p[10] = 1.0;
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, CameraInfo);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        sensor_msgs__msg__CameraInfo__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishCameraInfo(UrlabRclCameraInfoPub* Pub, int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyCameraInfoPub(UrlabRclCameraInfoPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    sensor_msgs__msg__CameraInfo__fini(&Pub->Msg);
     delete Pub;
 }
 

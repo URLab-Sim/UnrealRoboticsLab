@@ -54,8 +54,12 @@ struct FMjClock;
  *    `Range`, Magnetometer -> `MagneticField`, Velocimeter -> `TwistStamped`,
  *    everything else -> `std_msgs/Float64MultiArray` on `sensors/<name>`),
  *  - latched `robot_description` (exported URDF),
- * and process-wide: `tf2_msgs/TFMessage` on `/tf` and `rosgraph_msgs/Clock` on
- * `/clock`.
+ *  - `nav_msgs/Odometry` on `odom` and ground-truth
+ *    `geometry_msgs/PoseWithCovarianceStamped` on `pose` (free-base arts),
+ *  - `sensor_msgs/CameraInfo` on `<camera>/camera_info` (one per camera),
+ * and process-wide: `tf2_msgs/TFMessage` on `/tf`, `rosgraph_msgs/Clock` on
+ * `/clock`, and the REP-105 `map -> odom -> world` ground-truth static chain on
+ * `/tf_static`.
  *
  * The pure IR -> array fill helpers (`Fill*`) stay static here so they are
  * tested with no rcl dependency; the providers call them.

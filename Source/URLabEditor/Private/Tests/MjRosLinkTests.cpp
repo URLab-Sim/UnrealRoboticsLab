@@ -745,4 +745,62 @@ bool FMjRosSensorRoutingWire::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// 12. State-estimation outputs over the wire: a free-base art builds + publishes
+//     nav_msgs/Odometry (/<art>/odom) and geometry_msgs/PoseWithCovarianceStamped
+//     (/<art>/pose), and the REP-105 map->odom->world static chain publishes on
+//     /tf_static, all against real rcl without tearing the context down.
+//     Availability-gated.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosStateEstimationWire,
+	"URLab.Ros.StateEstimationWire",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosStateEstimationWire::RunTest(const FString& Parameters)
+{
+	FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().IsAvailable())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("URLab.Ros.StateEstimationWire: no live ROS context; skipping."));
+		return true;
+	}
+
+	// A free-base art with a matching base body and a genuinely asymmetric velocity
+	// (world linear, body angular) so the Odometry twist rotation path runs live.
+	FMjStateSnapshot Snap;
+	Snap.StructureVersion = 1;
+	FMjArticulationState Art;
+	Art.Name = FName(TEXT("go2"));
+
+	FMjBodyState Base;
+	Base.Name = FName(TEXT("trunk"));
+	Base.Xpos[0] = 0.0; Base.Xpos[1] = 0.0; Base.Xpos[2] = 0.5;
+	Base.Xquat[0] = 1.0;
+	Art.Bodies.Add(Base);
+
+	FMjJointState Free;
+	Free.Name = FName(TEXT("root"));
+	Free.Type = EMjJointType::Free;
+	Free.QPos = {0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0};
+	Free.QVel = {0.3, 0.0, 0.0, 0.0, 0.0, 0.5};
+	Art.Joints.Add(Free);
+
+	Snap.Articulations.Add(Art);
+
+	UURLabRosPublishTransport* Transport = NewObject<UURLabRosPublishTransport>();
+	TestTrue(TEXT("transport init"), Transport->TransportInit());
+
+	Transport->PublishState(Snap);
+	Transport->PublishState(Snap);
+
+	TestEqual(TEXT("all registered providers built"),
+		Transport->GetProviderCountForTest(), FMjRosOutputRegistry::Get().Num());
+	TestTrue(TEXT("context still available after state-estimation publish"),
+		FURLabRosContext::Get().IsAvailable());
+
+	Transport->TransportShutdown();
+	return true;
+}
+
 #endif  // URLAB_WITH_ROS2

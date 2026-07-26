@@ -61,6 +61,9 @@ struct UrlabRclWrenchStampedPub;
 struct UrlabRclRangePub;
 struct UrlabRclMagneticFieldPub;
 struct UrlabRclFloat64MultiArrayPub;
+struct UrlabRclOdometryPub;
+struct UrlabRclPoseWithCovariancePub;
+struct UrlabRclCameraInfoPub;
 struct UrlabRclCtrlSub;
 struct UrlabRclTwistSub;
 
@@ -170,6 +173,40 @@ struct UrlabRclFloat64MultiArrayPub* UrlabRcl_CreateFloat64MultiArrayPub(
 int UrlabRcl_PublishFloat64MultiArray(struct UrlabRclFloat64MultiArrayPub* Pub,
     const double* Values, int32_t Count);
 void UrlabRcl_DestroyFloat64MultiArrayPub(struct UrlabRclFloat64MultiArrayPub* Pub);
+
+// nav_msgs/Odometry, the ground-truth base odometry for a free-base articulation.
+// FrameId is the header frame (REP-105 "odom"); ChildFrameId is the base link
+// ("<art>/<base>"). Both are fixed at create. Per the MuJoCo free-joint
+// convention the caller passes position + orientation (world) and the twist
+// ALREADY resolved into the base frame (linear rotated world->body, angular is
+// native body-frame qvel). Covariance is a small fixed ground-truth diagonal set
+// at create so EKF consumers (robot_localization) accept the message.
+struct UrlabRclOdometryPub* UrlabRcl_CreateOdometryPub(struct UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId, const char* ChildFrameId);
+int UrlabRcl_PublishOdometry(struct UrlabRclOdometryPub* Pub,
+    const double PositionXyz[3], const double OrientationXyzw[4],
+    const double LinearBody[3], const double AngularBody[3], int64_t SimTimeNs);
+void UrlabRcl_DestroyOdometryPub(struct UrlabRclOdometryPub* Pub);
+
+// geometry_msgs/PoseWithCovarianceStamped, the ground-truth base pose in the map
+// frame (amcl_pose shape). FrameId is fixed at create ("map"); covariance is the
+// same fixed ground-truth diagonal.
+struct UrlabRclPoseWithCovariancePub* UrlabRcl_CreatePoseWithCovariancePub(
+    struct UrlabRclContext* Ctx, const char* Topic, const char* FrameId);
+int UrlabRcl_PublishPoseWithCovariance(struct UrlabRclPoseWithCovariancePub* Pub,
+    const double PositionXyz[3], const double OrientationXyzw[4], int64_t SimTimeNs);
+void UrlabRcl_DestroyPoseWithCovariancePub(struct UrlabRclPoseWithCovariancePub* Pub);
+
+// sensor_msgs/CameraInfo. Intrinsics are constant per camera, so the K matrix
+// (row-major 3x3), width/height, frame id, a zero plumb_bob distortion model, the
+// identity rectification R, and the projection matrix P (K with a zero 4th column)
+// are all filled at create; publish only restamps and sends. K carries fx,fy,cx,cy
+// at the standard pinhole slots (K[0]=fx, K[2]=cx, K[4]=fy, K[5]=cy, K[8]=1).
+struct UrlabRclCameraInfoPub* UrlabRcl_CreateCameraInfoPub(struct UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId, int32_t Width, int32_t Height,
+    const double K9[9]);
+int UrlabRcl_PublishCameraInfo(struct UrlabRclCameraInfoPub* Pub, int64_t SimTimeNs);
+void UrlabRcl_DestroyCameraInfoPub(struct UrlabRclCameraInfoPub* Pub);
 
 // --- Subscriptions ---------------------------------------------------------
 // Callbacks fire inside UrlabRcl_SpinSome on its caller's thread; the core does

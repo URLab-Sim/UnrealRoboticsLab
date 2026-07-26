@@ -126,6 +126,15 @@ void FMjRosPub::Reset()
 	case EKind::MultiArray:
 		UrlabRcl_DestroyFloat64MultiArrayPub(static_cast<UrlabRclFloat64MultiArrayPub*>(Handle));
 		break;
+	case EKind::Odometry:
+		UrlabRcl_DestroyOdometryPub(static_cast<UrlabRclOdometryPub*>(Handle));
+		break;
+	case EKind::PoseWithCovariance:
+		UrlabRcl_DestroyPoseWithCovariancePub(static_cast<UrlabRclPoseWithCovariancePub*>(Handle));
+		break;
+	case EKind::CameraInfo:
+		UrlabRcl_DestroyCameraInfoPub(static_cast<UrlabRclCameraInfoPub*>(Handle));
+		break;
 	case EKind::None:
 		break;
 	}
@@ -252,6 +261,34 @@ void FMjRosPub::PublishFloat64MultiArray(const double* Values, int32 Count)
 	{
 		UrlabRcl_PublishFloat64MultiArray(
 			static_cast<UrlabRclFloat64MultiArrayPub*>(Handle), Values, Count);
+	}
+}
+
+void FMjRosPub::PublishOdometry(const double Position3[3], const double OrientationXyzw4[4],
+	const double LinearBody3[3], const double AngularBody3[3], int64 SimTimeNs)
+{
+	if (Kind == EKind::Odometry && Handle)
+	{
+		UrlabRcl_PublishOdometry(static_cast<UrlabRclOdometryPub*>(Handle),
+			Position3, OrientationXyzw4, LinearBody3, AngularBody3, SimTimeNs);
+	}
+}
+
+void FMjRosPub::PublishPoseWithCovariance(const double Position3[3],
+	const double OrientationXyzw4[4], int64 SimTimeNs)
+{
+	if (Kind == EKind::PoseWithCovariance && Handle)
+	{
+		UrlabRcl_PublishPoseWithCovariance(static_cast<UrlabRclPoseWithCovariancePub*>(Handle),
+			Position3, OrientationXyzw4, SimTimeNs);
+	}
+}
+
+void FMjRosPub::PublishCameraInfo(int64 SimTimeNs)
+{
+	if (Kind == EKind::CameraInfo && Handle)
+	{
+		UrlabRcl_PublishCameraInfo(static_cast<UrlabRclCameraInfoPub*>(Handle), SimTimeNs);
 	}
 }
 
@@ -442,6 +479,61 @@ FMjRosPub FMjRosPublisherFactory::CreateFloat64MultiArray(const FString& Topic)
 	return FMjRosPub(Pub, FMjRosPub::EKind::MultiArray);
 }
 
+FMjRosPub FMjRosPublisherFactory::CreateOdometry(const FString& Topic, const FString& FrameId,
+	const FString& ChildFrameId)
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclOdometryPub* Pub = UrlabRcl_CreateOdometryPub(Context, TCHAR_TO_UTF8(*Topic),
+		TCHAR_TO_UTF8(*FrameId), TCHAR_TO_UTF8(*ChildFrameId));
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: Odometry publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::Odometry);
+}
+
+FMjRosPub FMjRosPublisherFactory::CreatePoseWithCovariance(const FString& Topic,
+	const FString& FrameId)
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclPoseWithCovariancePub* Pub = UrlabRcl_CreatePoseWithCovariancePub(Context,
+		TCHAR_TO_UTF8(*Topic), TCHAR_TO_UTF8(*FrameId));
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning,
+			TEXT("ROS: PoseWithCovarianceStamped publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::PoseWithCovariance);
+}
+
+FMjRosPub FMjRosPublisherFactory::CreateCameraInfo(const FString& Topic, const FString& FrameId,
+	int32 Width, int32 Height, const double K9[9])
+{
+	if (!Context)
+	{
+		return FMjRosPub();
+	}
+	UrlabRclCameraInfoPub* Pub = UrlabRcl_CreateCameraInfoPub(Context, TCHAR_TO_UTF8(*Topic),
+		TCHAR_TO_UTF8(*FrameId), Width, Height, K9);
+	if (!Pub)
+	{
+		UE_LOG(LogURLabRos, Warning, TEXT("ROS: CameraInfo publisher create failed for %s (%hs)"),
+			*Topic, UrlabRcl_LastError());
+		return FMjRosPub();
+	}
+	return FMjRosPub(Pub, FMjRosPub::EKind::CameraInfo);
+}
+
 #else  // URLAB_WITH_ROS2
 
 // Absent-ROS stubs: handles are never created (Create* return an invalid handle),
@@ -460,6 +552,10 @@ void FMjRosPub::PublishWrench(const double[3], const double[3], int64) {}
 void FMjRosPub::PublishRange(double, int64) {}
 void FMjRosPub::PublishMagneticField(const double[3], int64) {}
 void FMjRosPub::PublishFloat64MultiArray(const double*, int32) {}
+void FMjRosPub::PublishOdometry(const double[3], const double[4], const double[3],
+	const double[3], int64) {}
+void FMjRosPub::PublishPoseWithCovariance(const double[3], const double[4], int64) {}
+void FMjRosPub::PublishCameraInfo(int64) {}
 
 FMjRosPub FMjRosPublisherFactory::CreateJointState(const FString&, const TArray<FString>&) { return FMjRosPub(); }
 FMjRosPub FMjRosPublisherFactory::CreateImu(const FString&, const FString&) { return FMjRosPub(); }
@@ -471,5 +567,8 @@ FMjRosPub FMjRosPublisherFactory::CreateWrench(const FString&, const FString&) {
 FMjRosPub FMjRosPublisherFactory::CreateRange(const FString&, const FString&, uint8, float, float, float) { return FMjRosPub(); }
 FMjRosPub FMjRosPublisherFactory::CreateMagneticField(const FString&, const FString&) { return FMjRosPub(); }
 FMjRosPub FMjRosPublisherFactory::CreateFloat64MultiArray(const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreateOdometry(const FString&, const FString&, const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreatePoseWithCovariance(const FString&, const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreateCameraInfo(const FString&, const FString&, int32, int32, const double[9]) { return FMjRosPub(); }
 
 #endif  // URLAB_WITH_ROS2

@@ -141,6 +141,7 @@ public class URLabRos : ModuleRules
 			"geometry_msgs__rosidl_generator_c", "geometry_msgs__rosidl_typesupport_c",
 			"sensor_msgs__rosidl_generator_c", "sensor_msgs__rosidl_typesupport_c",
 			"tf2_msgs__rosidl_generator_c", "tf2_msgs__rosidl_typesupport_c",
+			"nav_msgs__rosidl_generator_c", "nav_msgs__rosidl_typesupport_c",
 			"rosgraph_msgs__rosidl_generator_c", "rosgraph_msgs__rosidl_typesupport_c"
 		};
 

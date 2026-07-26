@@ -88,12 +88,18 @@ public:
 	void PublishRange(double Range, int64 SimTimeNs);
 	void PublishMagneticField(const double Field3[3], int64 SimTimeNs);
 	void PublishFloat64MultiArray(const double* Values, int32 Count);
+	void PublishOdometry(const double Position3[3], const double OrientationXyzw4[4],
+		const double LinearBody3[3], const double AngularBody3[3], int64 SimTimeNs);
+	void PublishPoseWithCovariance(const double Position3[3],
+		const double OrientationXyzw4[4], int64 SimTimeNs);
+	void PublishCameraInfo(int64 SimTimeNs);
 
 private:
 	enum class EKind : uint8
 	{
 		None, JointState, Imu, Tf, TwistStamped, Clock, String,
-		Wrench, Range, MagneticField, MultiArray
+		Wrench, Range, MagneticField, MultiArray,
+		Odometry, PoseWithCovariance, CameraInfo
 	};
 
 	FMjRosPub(void* InHandle, EKind InKind) : Handle(InHandle), Kind(InKind) {}
@@ -136,6 +142,11 @@ public:
 		uint8 RadiationType, float FieldOfView, float MinRange, float MaxRange);
 	FMjRosPub CreateMagneticField(const FString& Topic, const FString& FrameId);
 	FMjRosPub CreateFloat64MultiArray(const FString& Topic);
+	FMjRosPub CreateOdometry(const FString& Topic, const FString& FrameId,
+		const FString& ChildFrameId);
+	FMjRosPub CreatePoseWithCovariance(const FString& Topic, const FString& FrameId);
+	FMjRosPub CreateCameraInfo(const FString& Topic, const FString& FrameId,
+		int32 Width, int32 Height, const double K9[9]);
 
 private:
 	UrlabRclContext* Context = nullptr;

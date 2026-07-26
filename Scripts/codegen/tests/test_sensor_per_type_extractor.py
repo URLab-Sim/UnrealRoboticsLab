@@ -124,63 +124,71 @@ def test_missing_sensor_method_returns_empty():
     assert _extract_sensor_per_type("// no Sensor method here") == {}
 
 
-# ---------- sensor switch + TagToType codegen ----------------------------
+# ---------- FMjSensorTypeInfo descriptor table ---------------------------
 
-def test_sensor_switch_body_emits_static_objtype_when_present():
-    from generate_ue_components import _emit_sensor_switch_block  # noqa
+def test_obj_ref_policy_derives_static_from_snapshot_literal():
+    from generate_ue_components import _sensor_obj_ref_policy
+    per = {"objtype": "mjOBJ_SITE", "reftype": None}
+    obj_source, obj_literal, ref_source, ref_literal = _sensor_obj_ref_policy(per, {})
+    assert (obj_source, obj_literal) == ("Static", "mjOBJ_SITE")
+    assert (ref_source, ref_literal) == ("None", "mjOBJ_UNKNOWN")
+
+
+def test_obj_ref_policy_frame_null_reftype_becomes_from_xml():
+    from generate_ue_components import _sensor_obj_ref_policy
+    # Frame sensors: objtype from_xml, reftype null -> both FromXml so the
+    # optional relative reference frame round-trips.
+    per = {"objtype": "from_xml", "reftype": None}
+    obj_source, _, ref_source, _ = _sensor_obj_ref_policy(per, {})
+    assert obj_source == "FromXml"
+    assert ref_source == "FromXml"
+
+
+def test_obj_ref_policy_honours_subtype_overrides():
+    from generate_ue_components import _sensor_obj_ref_policy
+    # Rangefinder: computed objtype in the snapshot, but the rule pins the
+    # camera-or-site Computed policy and suppresses the reftype.
+    per = {"objtype": "computed", "reftype": "computed"}
+    subtype = {"obj_source": "Computed", "ref_source": "None"}
+    obj_source, _, ref_source, _ = _sensor_obj_ref_policy(per, subtype)
+    assert obj_source == "Computed"
+    assert ref_source == "None"
+
+
+def test_type_info_files_emit_header_and_source_rows():
+    from generate_ue_components import _emit_sensor_type_info_files
     cat_rules = {
         "type_enum_name": "EMjSensorType",
         "subtypes": [
-            {"key": "touch",     "enum_value": "Touch"},
-            {"key": "framepos",  "enum_value": "FramePos"},
+            {"key": "touch", "enum_value": "Touch", "class_name": "UMjTouchSensor",
+             "header": "MjTouchSensor.h", "semantic": "Touch"},
+            {"key": "framequat", "enum_value": "FrameQuat", "class_name": "UMjFrameQuatSensor",
+             "header": "MjFrameQuatSensor.h", "semantic": "FrameQuat", "value_kind": "Quaternion"},
         ],
     }
     sensor_per_type = {
-        "touch":         {"mj_type": "mjSENS_TOUCH",         "objtype": "mjOBJ_SITE", "reftype": None},
-        "framepos":      {"mj_type": "mjSENS_FRAMEPOS",      "objtype": "from_xml",   "reftype": None},
-        "accelerometer": {"mj_type": "mjSENS_ACCELEROMETER", "objtype": "mjOBJ_SITE", "reftype": None},
+        "touch":     {"mj_type": "mjSENS_TOUCH",     "objtype": "mjOBJ_SITE", "reftype": None},
+        "framequat": {"mj_type": "mjSENS_FRAMEQUAT",  "objtype": "from_xml",   "reftype": None},
     }
-    out = _emit_sensor_switch_block(cat_rules, sensor_per_type)
-    # Touch gets static objtype literal.
-    assert "case EMjSensorType::Touch: Element->type = mjSENS_TOUCH; Element->objtype = mjOBJ_SITE; break;" in out
-    # framepos has objtype=from_xml -> NO static objtype emitted (handled in post-switch block).
-    assert "case EMjSensorType::FramePos: Element->type = mjSENS_FRAMEPOS; break;" in out
-    # Default fallback is hard-wired to accelerometer.
-    assert "default: Element->type = mjSENS_ACCELEROMETER; Element->objtype = mjOBJ_SITE; break;" in out
-
-
-def test_sensor_switch_body_honours_case_override():
-    from generate_ue_components import _emit_sensor_switch_block
-    cat_rules = {
-        "type_enum_name": "EMjSensorType",
-        "subtypes": [
-            {"key": "rangefinder", "enum_value": "RangeFinder",
-             "case_body_override": "Element->type = mjSENS_RANGEFINDER; Element->objtype = X;"},
-        ],
-    }
-    out = _emit_sensor_switch_block(cat_rules, {"rangefinder": {"mj_type": "mjSENS_RANGEFINDER"}})
-    # Override appears verbatim; the emitter's automatic mj_type / objtype
-    # lines are SKIPPED for this case.
-    assert "Element->objtype = X;" in out
-    assert out.count("RangeFinder") >= 1
-
-
-def test_sensor_tag_to_type_map_uses_xml_key_verbatim():
-    from generate_ue_components import _emit_sensor_tag_to_type_block
-    cat_rules = {
-        "type_enum_name": "EMjSensorType",
-        "subtypes": [
-            {"key": "touch",            "enum_value": "Touch"},
-            {"key": "e_potential",      "enum_value": "EPotential"},
-            {"key": "jointactuatorfrc", "enum_value": "JointActFrc"},
-        ],
-    }
-    out = _emit_sensor_tag_to_type_block(cat_rules)
-    assert '{TEXT("touch"), EMjSensorType::Touch},' in out
-    # Underscore-containing XML keys preserved literally.
-    assert '{TEXT("e_potential"), EMjSensorType::EPotential},' in out
-    # XML key and UE enum_value can diverge; map uses XML key.
-    assert '{TEXT("jointactuatorfrc"), EMjSensorType::JointActFrc},' in out
+    writes = _emit_sensor_type_info_files(cat_rules, sensor_per_type, "/pub", "/priv")
+    paths = {w.path.replace("\\", "/") for w in writes}
+    assert any(p.endswith("MuJoCo/Generated/MjSensorTypeInfo.h") for p in paths)
+    assert any(p.endswith("MuJoCo/Generated/MjSensorTypeInfo.cpp") for p in paths)
+    cpp = next(w.content for w in writes if w.path.endswith(".cpp"))
+    # touch: static site objtype, no reftype, scalar dim 1.
+    assert ("EMjSensorType::Touch, mjSENS_TOUCH, TEXT(\"touch\"), "
+            "EMjSensorObjSource::Static, mjOBJ_SITE, "
+            "EMjSensorObjSource::None, mjOBJ_UNKNOWN, "
+            "EMjSensorSemantic::Touch, EMjSensorValueKind::Scalar, 1, "
+            "UMjTouchSensor::StaticClass()") in cpp
+    # framequat: from_xml obj + ref, quaternion dim defaults to 4.
+    assert ("EMjSensorType::FrameQuat, mjSENS_FRAMEQUAT, TEXT(\"framequat\"), "
+            "EMjSensorObjSource::FromXml, mjOBJ_UNKNOWN, "
+            "EMjSensorObjSource::FromXml, mjOBJ_UNKNOWN, "
+            "EMjSensorSemantic::FrameQuat, EMjSensorValueKind::Quaternion, 4, "
+            "UMjFrameQuatSensor::StaticClass()") in cpp
+    # Source pulls in the concrete subclass headers.
+    assert '#include "MuJoCo/Components/Sensors/MjTouchSensor.h"' in cpp
 
 
 def test_real_snapshot_covers_every_schema_sensor():

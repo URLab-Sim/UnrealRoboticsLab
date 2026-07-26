@@ -37,53 +37,7 @@
 #include "MuJoCo/Components/Joints/MjFreeJoint.h"
 
 #include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjTouchSensor.h"
-#include "MuJoCo/Components/Sensors/MjAccelerometer.h"
-#include "MuJoCo/Components/Sensors/MjVelocimeter.h"
-#include "MuJoCo/Components/Sensors/MjGyro.h"
-#include "MuJoCo/Components/Sensors/MjForceSensor.h"
-#include "MuJoCo/Components/Sensors/MjTorqueSensor.h"
-#include "MuJoCo/Components/Sensors/MjMagnetometer.h"
-#include "MuJoCo/Components/Sensors/MjCamProjectionSensor.h"
-#include "MuJoCo/Components/Sensors/MjRangeFinderSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjTendonPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjTendonVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjActuatorPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjActuatorVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjActuatorFrcSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointActFrcSensor.h"
-#include "MuJoCo/Components/Sensors/MjTendonActFrcSensor.h"
-#include "MuJoCo/Components/Sensors/MjBallQuatSensor.h"
-#include "MuJoCo/Components/Sensors/MjBallAngVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointLimitPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointLimitVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointLimitFrcSensor.h"
-#include "MuJoCo/Components/Sensors/MjTendonLimitPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjTendonLimitVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjTendonLimitFrcSensor.h"
-#include "MuJoCo/Components/Sensors/MjFramePosSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameQuatSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameXAxisSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameYAxisSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameZAxisSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameLinVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameAngVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameLinAccSensor.h"
-#include "MuJoCo/Components/Sensors/MjFrameAngAccSensor.h"
-#include "MuJoCo/Components/Sensors/MjSubtreeComSensor.h"
-#include "MuJoCo/Components/Sensors/MjSubtreeLinVelSensor.h"
-#include "MuJoCo/Components/Sensors/MjSubtreeAngMomSensor.h"
-#include "MuJoCo/Components/Sensors/MjInsideSiteSensor.h"
-#include "MuJoCo/Components/Sensors/MjGeomDistSensor.h"
-#include "MuJoCo/Components/Sensors/MjGeomNormalSensor.h"
-#include "MuJoCo/Components/Sensors/MjGeomFromToSensor.h"
-#include "MuJoCo/Components/Sensors/MjContactSensor.h"
-#include "MuJoCo/Components/Sensors/MjEPotentialSensor.h"
-#include "MuJoCo/Components/Sensors/MjEKineticSensor.h"
-#include "MuJoCo/Components/Sensors/MjClockSensor.h"
-#include "MuJoCo/Components/Sensors/MjTactileSensor.h"
+#include "MuJoCo/Generated/MjSensorTypeInfo.h"
 
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Actuators/MjMotorActuator.h"
@@ -1028,7 +982,7 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 		}
 	}
 	// --- SENSOR ---
-	else if (Tag.Equals(TEXT("sensor")) || Tag.EndsWith(TEXT("sensor")) || Tag == "touch" || Tag == "accelerometer" || Tag == "velocimeter" || Tag == "gyro" || Tag == "force" || Tag == "torque" || Tag == "magnetometer" || Tag == "camprojection" || Tag == "rangefinder" || Tag == "jointpos" || Tag == "jointvel" || Tag == "tendonpos" || Tag == "tendonvel" || Tag == "actuatorpos" || Tag == "actuatorvel" || Tag == "actuatorfrc" || Tag == "jointactuatorfrc" || Tag == "tendonactuatorfrc" || Tag == "ballquat" || Tag == "ballangvel" || Tag == "jointlimitpos" || Tag == "jointlimitvel" || Tag == "jointlimitfrc" || Tag == "tendonlimitpos" || Tag == "tendonlimitvel" || Tag == "tendonlimitfrc" || Tag == "framepos" || Tag == "framequat" || Tag == "framexaxis" || Tag == "frameyaxis" || Tag == "framezaxis" || Tag == "framelinvel" || Tag == "frameangvel" || Tag == "framelinacc" || Tag == "frameangacc" || Tag == "insidesite" || Tag == "subtreecom" || Tag == "subtreelinvel" || Tag == "subtreeangmom" || Tag == "distance" || Tag == "normal" || Tag == "fromto" || Tag == "contact" || Tag == "e_potential" || Tag == "e_kinetic" || Tag == "clock" || Tag == "tactile" || Tag == "user" || Tag == "plugin")
+	else if (Tag.Equals(TEXT("sensor")) || Tag.EndsWith(TEXT("sensor")) || MjSensorTypeInfoForTag(Tag))
 	{
 		FString Name = Node->GetAttribute(TEXT("name"));
 		if (Name.IsEmpty())
@@ -1038,101 +992,15 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 			Name = SensorTag + TEXT("Sensor");
 		}
 
+		// Map the MJCF tag to its concrete UMj*Sensor subclass via the
+		// codegen-emitted descriptor table. Tags with no descriptor (the
+		// bare <sensor> container) fall back to the base UMjSensor.
 		UClass* Class = UMjSensor::StaticClass();
-		if (Tag == "touch")
-			Class = UMjTouchSensor::StaticClass();
-		else if (Tag == "accelerometer")
-			Class = UMjAccelerometer::StaticClass();
-		else if (Tag == "velocimeter")
-			Class = UMjVelocimeter::StaticClass();
-		else if (Tag == "gyro")
-			Class = UMjGyro::StaticClass();
-		else if (Tag == "force")
-			Class = UMjForceSensor::StaticClass();
-		else if (Tag == "torque")
-			Class = UMjTorqueSensor::StaticClass();
-		else if (Tag == "magnetometer")
-			Class = UMjMagnetometer::StaticClass();
-		else if (Tag == "camprojection")
-			Class = UMjCamProjectionSensor::StaticClass();
-		else if (Tag == "rangefinder")
-			Class = UMjRangeFinderSensor::StaticClass();
-		else if (Tag == "jointpos")
-			Class = UMjJointPosSensor::StaticClass();
-		else if (Tag == "jointvel")
-			Class = UMjJointVelSensor::StaticClass();
-		else if (Tag == "tendonpos")
-			Class = UMjTendonPosSensor::StaticClass();
-		else if (Tag == "tendonvel")
-			Class = UMjTendonVelSensor::StaticClass();
-		else if (Tag == "actuatorpos")
-			Class = UMjActuatorPosSensor::StaticClass();
-		else if (Tag == "actuatorvel")
-			Class = UMjActuatorVelSensor::StaticClass();
-		else if (Tag == "actuatorfrc")
-			Class = UMjActuatorFrcSensor::StaticClass();
-		else if (Tag == "jointactuatorfrc")
-			Class = UMjJointActFrcSensor::StaticClass();
-		else if (Tag == "tendonactuatorfrc")
-			Class = UMjTendonActFrcSensor::StaticClass();
-		else if (Tag == "ballquat")
-			Class = UMjBallQuatSensor::StaticClass();
-		else if (Tag == "ballangvel")
-			Class = UMjBallAngVelSensor::StaticClass();
-		else if (Tag == "jointlimitpos")
-			Class = UMjJointLimitPosSensor::StaticClass();
-		else if (Tag == "jointlimitvel")
-			Class = UMjJointLimitVelSensor::StaticClass();
-		else if (Tag == "jointlimitfrc")
-			Class = UMjJointLimitFrcSensor::StaticClass();
-		else if (Tag == "tendonlimitpos")
-			Class = UMjTendonLimitPosSensor::StaticClass();
-		else if (Tag == "tendonlimitvel")
-			Class = UMjTendonLimitVelSensor::StaticClass();
-		else if (Tag == "tendonlimitfrc")
-			Class = UMjTendonLimitFrcSensor::StaticClass();
-		else if (Tag == "framepos")
-			Class = UMjFramePosSensor::StaticClass();
-		else if (Tag == "framequat")
-			Class = UMjFrameQuatSensor::StaticClass();
-		else if (Tag == "framexaxis")
-			Class = UMjFrameXAxisSensor::StaticClass();
-		else if (Tag == "frameyaxis")
-			Class = UMjFrameYAxisSensor::StaticClass();
-		else if (Tag == "framezaxis")
-			Class = UMjFrameZAxisSensor::StaticClass();
-		else if (Tag == "framelinvel")
-			Class = UMjFrameLinVelSensor::StaticClass();
-		else if (Tag == "frameangvel")
-			Class = UMjFrameAngVelSensor::StaticClass();
-		else if (Tag == "framelinacc")
-			Class = UMjFrameLinAccSensor::StaticClass();
-		else if (Tag == "frameangacc")
-			Class = UMjFrameAngAccSensor::StaticClass();
-		else if (Tag == "insidesite")
-			Class = UMjInsideSiteSensor::StaticClass();
-		else if (Tag == "subtreecom")
-			Class = UMjSubtreeComSensor::StaticClass();
-		else if (Tag == "subtreelinvel")
-			Class = UMjSubtreeLinVelSensor::StaticClass();
-		else if (Tag == "subtreeangmom")
-			Class = UMjSubtreeAngMomSensor::StaticClass();
-		else if (Tag == "distance")
-			Class = UMjGeomDistSensor::StaticClass();
-		else if (Tag == "normal")
-			Class = UMjGeomNormalSensor::StaticClass();
-		else if (Tag == "fromto")
-			Class = UMjGeomFromToSensor::StaticClass();
-		else if (Tag == "contact")
-			Class = UMjContactSensor::StaticClass();
-		else if (Tag == "e_potential")
-			Class = UMjEPotentialSensor::StaticClass();
-		else if (Tag == "e_kinetic")
-			Class = UMjEKineticSensor::StaticClass();
-		else if (Tag == "clock")
-			Class = UMjClockSensor::StaticClass();
-		else if (Tag == "tactile")
-			Class = UMjTactileSensor::StaticClass();
+		if (const FMjSensorTypeInfo* Info = MjSensorTypeInfoForTag(Tag))
+		{
+			if (Info->SensorClass)
+				Class = Info->SensorClass;
+		}
 
 		CreatedNode = BP->SimpleConstructionScript->CreateNode(Class, *Name);
 		UMjSensor* SensComp = Cast<UMjSensor>(CreatedNode->ComponentTemplate);

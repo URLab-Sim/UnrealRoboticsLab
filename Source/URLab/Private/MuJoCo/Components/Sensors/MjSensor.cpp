@@ -839,20 +839,15 @@ void UMjSensor::DescribeState(FMjArticulationState& Out) const
 	if (V.id < 0 || !V.sensordata || V.sensor_dim <= 0)
 		return;
 
-	// Read the raw slots then apply the same coord/unit fixup GetReading() does,
-	// so streamed values equal accessor reads.
-	TArray<float> Reading;
-	Reading.SetNumUninitialized(V.sensor_dim);
-	for (int32 i = 0; i < V.sensor_dim; ++i)
-		Reading[i] = static_cast<float>(V.sensordata[i]);
-	TransformSensorReading(Reading, Type);
-
+	// The IR carries raw MuJoCo SI values (MuJoCo frame, double precision), like
+	// joints and bodies do. The MuJoCo -> UE coordinate/unit fixup lives on the
+	// display-facing accessor GetReading(), not on the serialization path.
 	FMjSensorState& S = Out.Sensors.AddDefaulted_GetRef();
 	S.Name = FMjCanonicalName::PartSegment(Cast<AMjArticulation>(GetOwner()), GetMjName());
 	S.Semantic = SensorSemanticFor(Type);
-	S.Values.SetNumUninitialized(Reading.Num());
-	for (int32 i = 0; i < Reading.Num(); ++i)
-		S.Values[i] = Reading[i];
+	S.Values.SetNumUninitialized(V.sensor_dim);
+	for (int32 i = 0; i < V.sensor_dim; ++i)
+		S.Values[i] = V.sensordata[i];
 }
 
 #if WITH_EDITOR

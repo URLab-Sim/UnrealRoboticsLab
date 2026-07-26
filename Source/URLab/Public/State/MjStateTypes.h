@@ -114,7 +114,10 @@ struct FMjActuatorState
 	double Force = 0.0;
 };
 
-/** One sensor's reading, in the same transformed units GetReading() returns. */
+/** One sensor's reading, as raw MuJoCo SI values (MuJoCo frame, double
+ *  precision) copied straight from d->sensordata. The MuJoCo -> UE coordinate/
+ *  unit transform lives on the display-facing UMjSensor::GetReading() accessor,
+ *  not here; encoders own their own target conventions. */
 struct FMjSensorState
 {
 	FName Name;

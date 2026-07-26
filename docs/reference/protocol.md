@@ -329,6 +329,9 @@ concerns. The streamed `state/full` snapshot uses the identical `arts` /
   `UMjTwistController`: `twist.linear` carries `(vx, vy, 0)`,
   `twist.angular` carries `(0, 0, yaw_rate)`; `actions` is a discrete
   bitfield.
+- `sensors` values are raw MuJoCo SI in the MuJoCo frame (`mjData->sensordata`
+  verbatim), consistent with `qpos` / `qvel` / body poses. No UE unit or
+  handedness transform is applied on the wire.
 - The fields present per articulation follow the observation level (see
   [Observation levels](#observation-levels)).
 - `frame_id` is the post-step render-snapshot id (monotonic, bumped once

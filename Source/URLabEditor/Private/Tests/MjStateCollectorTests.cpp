@@ -26,7 +26,7 @@
 // Unit tests for the state-serialization IR (Phase 0a):
 //  - FMjCanonicalName sanitize / part-segment stripping
 //  - FMjStateCollector produces the IR fields today's paths carried
-//  - Sensor values are emitted transformed (wire == GetReading())
+//  - Sensor values are emitted raw (IR == d->sensordata; GetReading == transform(IR))
 //  - FMjMsgpackEncoder canonical schema + observation-level filter
 //  - StructureVersion bumps on a producer-cache rebuild, not a plain collect
 // ============================================================================
@@ -46,6 +46,7 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Sensors/MjSensor.h"
+#include "Transport/RosPublishTransport.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
@@ -310,14 +311,16 @@ bool FMjStateActuatorParity::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 5. Sensor values are emitted transformed: IR Values == GetReading().
-//    (Section-7 bug: the transform used to be applied only in GetReading().)
+// 5. Sensor values are emitted raw: IR Values == d->sensordata (MuJoCo SI),
+//    while GetReading() applies the MuJoCo -> UE transform on top. For a
+//    framequat the quaternion reorder makes the two provably differ, proving the
+//    transform no longer contaminates the IR.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStateSensorTransformParity,
-	"URLab.State.SensorTransformParity",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStateSensorRawParity,
+	"URLab.State.SensorRawParity",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjStateSensorTransformParity::RunTest(const FString& Parameters)
+bool FMjStateSensorRawParity::RunTest(const FString& Parameters)
 {
 	// A framequat sensor exercises the quaternion reorder path in
 	// TransformSensorReading, so raw slots differ from the transformed reading.
@@ -375,7 +378,7 @@ bool FMjStateSensorTransformParity::RunTest(const FString& Parameters)
 	}
 	if (!Sensor)
 	{
-		AddInfo(TEXT("Skipping SensorTransformParity: no bound sensor"));
+		AddInfo(TEXT("Skipping SensorRawParity: no bound sensor"));
 		S.Cleanup();
 		return true;
 	}
@@ -406,12 +409,176 @@ bool FMjStateSensorTransformParity::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	TestEqual(TEXT("IR sensor dim == GetReading dim"), IRValues->Num(), Reading.Num());
-	if (IRValues->Num() == Reading.Num())
+	// The IR carries the raw MuJoCo sensordata slice verbatim (double precision).
+	const int SensorAdr = m->sensor_adr[Sensor->GetMjID()];
+	const int SensorDim = m->sensor_dim[Sensor->GetMjID()];
+	TestEqual(TEXT("IR sensor dim == model sensor_dim"), IRValues->Num(), SensorDim);
+	if (IRValues->Num() == SensorDim)
 	{
-		for (int32 i = 0; i < Reading.Num(); ++i)
-			TestEqual(*FString::Printf(TEXT("value[%d] transformed"), i),
-				(*IRValues)[i], (double)Reading[i], 1e-5);
+		for (int32 i = 0; i < SensorDim; ++i)
+			TestEqual(*FString::Printf(TEXT("IR value[%d] == raw d->sensordata"), i),
+				(*IRValues)[i], d->sensordata[SensorAdr + i], 1e-12);
+	}
+
+	// GetReading() applies the MuJoCo -> UE transform on top of the raw IR. For a
+	// framequat (wxyz -> UE xyzw with handedness flip) the two must differ, which
+	// proves the IR is genuinely raw and the transform lives only on the getter.
+	TestEqual(TEXT("GetReading dim == IR dim"), Reading.Num(), IRValues->Num());
+	if (Reading.Num() == 4 && IRValues->Num() == 4)
+	{
+		const double mj_w = (*IRValues)[0], mj_x = (*IRValues)[1],
+			mj_y = (*IRValues)[2], mj_z = (*IRValues)[3];
+		TestEqual(TEXT("GetReading[0] == -mjX"), (double)Reading[0], -mj_x, 1e-5);
+		TestEqual(TEXT("GetReading[1] == mjY"), (double)Reading[1], mj_y, 1e-5);
+		TestEqual(TEXT("GetReading[2] == -mjZ"), (double)Reading[2], -mj_z, 1e-5);
+		TestEqual(TEXT("GetReading[3] == mjW"), (double)Reading[3], mj_w, 1e-5);
+		// The reorder must actually move data: IR[0] is mjW, GetReading[0] is -mjX.
+		TestTrue(TEXT("IR differs from GetReading (transform is real)"),
+			FMath::Abs((*IRValues)[0] - (double)Reading[0]) > 1e-6);
+	}
+
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 5b. Gyro + accel raw values reach the IR unchanged (MuJoCo SI, no Y-negation),
+//     and FillImu emits them verbatim into the Imu components. MuJoCo's gyro/
+//     accel convention already equals ROS's, so a correct IMU needs the raw IR
+//     and no flip anywhere on the ROS path.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStateImuRawToFillImu,
+	"URLab.State.ImuRawToFillImu",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjStateImuRawToFillImu::RunTest(const FString& Parameters)
+{
+	const FString Xml = TEXT(
+		"<mujoco>"
+		"  <worldbody>"
+		"    <body name=\"b1\" pos=\"0 0 1\">"
+		"      <freejoint/>"
+		"      <geom type=\"box\" size=\"0.1 0.1 0.1\"/>"
+		"      <site name=\"s1\"/>"
+		"    </body>"
+		"  </worldbody>"
+		"  <sensor>"
+		"    <gyro name=\"g1\" site=\"s1\"/>"
+		"    <accelerometer name=\"a1\" site=\"s1\"/>"
+		"  </sensor>"
+		"</mujoco>");
+
+	FMjXmlImportSession S;
+	if (!S.Init(Xml) || !S.Compile())
+	{
+		AddInfo(FString::Printf(TEXT("Skipping ImuRawToFillImu: %s"), *S.LastError));
+		return true;
+	}
+
+	mjModel* m = S.Model();
+	mjData* d = S.Data();
+	if (!m || !d || !S.Robot)
+	{
+		AddInfo(TEXT("Skipping ImuRawToFillImu: no model/robot"));
+		S.Cleanup();
+		return true;
+	}
+
+	// Give the base a nonzero body angular velocity so the gyro reads a distinct,
+	// asymmetric value per axis (proving no accidental Y flip), then recompute so
+	// the vel/acc sensor stages populate d->sensordata.
+	if (m->nv >= 6)
+	{
+		d->qvel[3] = 0.3; // body wx
+		d->qvel[4] = 0.5; // body wy
+		d->qvel[5] = 0.7; // body wz
+	}
+	mj_forward(m, d);
+
+	// Locate the gyro and accel components by type so raw slices are read via the
+	// bound sensor id (compiled sensor names carry an articulation prefix, so a
+	// bare mj_name2id lookup would miss them).
+	auto RawSliceForType = [&](EMjSensorType Want) {
+		TArray<double> Out;
+		TArray<UMjSensor*> All;
+		S.Robot->GetComponents<UMjSensor>(All);
+		for (UMjSensor* Sen : All)
+		{
+			if (!Sen || Sen->bIsDefault || Sen->Type != Want || Sen->GetMjID() < 0)
+				continue;
+			const int Adr = m->sensor_adr[Sen->GetMjID()];
+			const int Dim = m->sensor_dim[Sen->GetMjID()];
+			for (int i = 0; i < Dim; ++i)
+				Out.Add(d->sensordata[Adr + i]);
+			break;
+		}
+		return Out;
+	};
+	const TArray<double> RawGyro = RawSliceForType(EMjSensorType::Gyro);
+	const TArray<double> RawAccel = RawSliceForType(EMjSensorType::Accelerometer);
+	if (RawGyro.Num() != 3 || RawAccel.Num() != 3)
+	{
+		AddInfo(TEXT("Skipping ImuRawToFillImu: gyro/accel did not bind"));
+		S.Cleanup();
+		return true;
+	}
+
+	FMjStateCollector& C = S.Manager->GetStateCollector();
+	C.Init(S.Manager);
+	C.RebuildProducerCacheGameThread();
+	const FMjStateSnapshot& Snap = C.Collect(m, d, 0);
+
+	// The IR must carry each sensor's raw slice verbatim under the right semantic.
+	const FMjSensorState* IRGyro = nullptr;
+	const FMjSensorState* IRAccel = nullptr;
+	for (const FMjArticulationState& AS : Snap.Articulations)
+	{
+		for (const FMjSensorState& Sen : AS.Sensors)
+		{
+			if (Sen.Semantic == EMjSensorSemantic::Gyro)
+				IRGyro = &Sen;
+			else if (Sen.Semantic == EMjSensorSemantic::Accel)
+				IRAccel = &Sen;
+		}
+	}
+
+	if (!IRGyro || !IRAccel)
+	{
+		AddError(TEXT("gyro/accel missing from the IR"));
+		S.Cleanup();
+		return false;
+	}
+
+	TestEqual(TEXT("IR gyro dim == 3"), IRGyro->Values.Num(), 3);
+	TestEqual(TEXT("IR accel dim == 3"), IRAccel->Values.Num(), 3);
+	if (IRGyro->Values.Num() == 3 && IRAccel->Values.Num() == 3)
+	{
+		for (int32 i = 0; i < 3; ++i)
+		{
+			TestEqual(*FString::Printf(TEXT("IR gyro[%d] == raw"), i),
+				IRGyro->Values[i], RawGyro[i], 1e-12);
+			TestEqual(*FString::Printf(TEXT("IR accel[%d] == raw"), i),
+				IRAccel->Values[i], RawAccel[i], 1e-12);
+		}
+	}
+
+	// FillImu (the ROS Imu producer, pure and compiled in every config) emits the
+	// IR values with no coordinate flip: the Imu carries raw MuJoCo == ROS SI.
+	const FMjArticulationState& Art = Snap.Articulations[0];
+	double Ang[3] = {0, 0, 0};
+	double Acc[3] = {0, 0, 0};
+	bool bHasAng = false;
+	bool bHasAcc = false;
+	const bool bHas = UURLabRosPublishTransport::FillImu(Art, Ang, bHasAng, Acc, bHasAcc);
+	TestTrue(TEXT("FillImu reports an Imu"), bHas);
+	TestTrue(TEXT("FillImu has angular velocity"), bHasAng);
+	TestTrue(TEXT("FillImu has linear acceleration"), bHasAcc);
+	for (int32 i = 0; i < 3; ++i)
+	{
+		TestEqual(*FString::Printf(TEXT("FillImu angular[%d] unflipped"), i),
+			Ang[i], RawGyro[i], 1e-12);
+		TestEqual(*FString::Printf(TEXT("FillImu linear[%d] unflipped"), i),
+			Acc[i], RawAccel[i], 1e-12);
 	}
 
 	S.Cleanup();

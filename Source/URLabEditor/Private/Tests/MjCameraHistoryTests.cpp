@@ -269,11 +269,12 @@ bool FMjCameraStreamingApply::RunTest(const FString& Parameters)
 	Cam->RegisterComponent();
 	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
 
-	// Name resolution: canonical bare name resolves to this camera.
+	// Name resolution: the canonical "<art>/<part>" name resolves to this camera.
+	const FString Canon = Cam->GetCanonicalName();
 	TMap<FString, UMjCamera*> ByName;
 	FURLabRpcDispatcher::BuildCameraNameMap(S.Manager, ByName);
-	TestTrue(TEXT("canonical name registered"), ByName.Contains(TEXT("stream_cam")));
-	if (UMjCamera** F = ByName.Find(TEXT("stream_cam")))
+	TestTrue(TEXT("canonical name registered"), ByName.Contains(Canon));
+	if (UMjCamera** F = ByName.Find(Canon))
 	{
 		TestEqual(TEXT("resolves to the camera"), *F, Cam);
 	}
@@ -283,7 +284,7 @@ bool FMjCameraStreamingApply::RunTest(const FString& Parameters)
 	Cam->bEnableShmBroadcast = true;
 
 	TMap<FString, TPair<bool, bool>> Reqs;
-	Reqs.Add(TEXT("stream_cam"), TPair<bool, bool>(false, false));
+	Reqs.Add(Canon, TPair<bool, bool>(false, false));
 	TSharedPtr<FJsonObject> Cams =
 		FURLabRpcDispatcher::ApplyCameraStreamingGameThread(S.Manager, Reqs);
 	if (!TestTrue(TEXT("reply valid"), Cams.IsValid()))
@@ -291,7 +292,7 @@ bool FMjCameraStreamingApply::RunTest(const FString& Parameters)
 
 	const TSharedPtr<FJsonObject>* CamReply = nullptr;
 	TestTrue(TEXT("camera keyed by canonical name in reply"),
-		Cams->TryGetObjectField(TEXT("stream_cam"), CamReply));
+		Cams->TryGetObjectField(Canon, CamReply));
 	bool bStreaming = true;
 	if (CamReply && CamReply->IsValid())
 	{

@@ -974,8 +974,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
 			CamObj->SetStringField(TEXT("zmq_endpoint"), Endpoint);
 			const FString CamCanon = Cam->GetCanonicalName();
-			CamObj->SetStringField(TEXT("zmq_topic"),
-				FString::Printf(TEXT("%s/camera/%s"), *Art->GetName(), *CamCanon));
+			CamObj->SetStringField(TEXT("zmq_topic"), CamCanon);
 			CamMap->SetObjectField(CamCanon, CamObj);
 		}
 		ArtObj->SetObjectField(TEXT("camera_topics"), CamMap);

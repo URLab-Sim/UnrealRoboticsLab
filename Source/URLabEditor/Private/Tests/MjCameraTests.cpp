@@ -26,6 +26,9 @@
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjCanonicalName.h"
+#include "Bridge/RpcDispatcher.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -440,6 +443,46 @@ bool FMjCameraRenderOnDemandSync::RunTest(const FString& Parameters)
 		TestEqual(TEXT("pixel count matches frame dimensions"),
 			Frame.Color.Num(), Frame.Width * Frame.Height);
 	}
+
+	S.Cleanup();
+	return true;
+}
+
+// ============================================================================
+// URLab.Camera.CanonicalName_ArtSlashPart
+//   A camera's canonical identity is the single "<art>/<part>" name (no
+//   "camera/" infix, no raw-name aliases), and BuildCameraNameMap resolves it
+//   by that name alone.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraCanonicalName,
+	"URLab.Camera.CanonicalName_ArtSlashPart",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraCanonicalName::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("WristCam"));
+	Cam->RegisterComponent();
+	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+
+	const FString ArtSeg = FMjCanonicalName::ArtSegment(S.Robot).ToString();
+	const FString Canon = Cam->GetCanonicalName();
+
+	TestEqual(TEXT("canonical is <art>/<part>"), Canon, ArtSeg + TEXT("/WristCam"));
+	TestFalse(TEXT("no camera/ infix"), Canon.Contains(TEXT("/camera/")));
+
+	TMap<FString, UMjCamera*> ByName;
+	FURLabRpcDispatcher::BuildCameraNameMap(S.Manager, ByName);
+	TestEqual(TEXT("canonical name resolves to the camera"), ByName.FindRef(Canon), Cam);
+	TestNull(TEXT("bare component-name alias dropped"), ByName.FindRef(TEXT("WristCam")));
+	TestNull(TEXT("camera/ infix alias dropped"),
+		ByName.FindRef(ArtSeg + TEXT("/camera/WristCam")));
 
 	S.Cleanup();
 	return true;

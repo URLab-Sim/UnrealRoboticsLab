@@ -153,12 +153,12 @@ model.
     "joints": {}, "sensors": {}, "bodies": {}
   },
   "camera_topics": {
-    "head_rgbd": {
+    "g1/head_rgbd": {
       "mode": "depth",
       "resolution": [848, 480],
       "fovy": 58.0,
       "zmq_endpoint": "tcp://127.0.0.1:5558",
-      "zmq_topic": "g1/camera/head_rgbd"
+      "zmq_topic": "g1/head_rgbd"
     }
   }
 }
@@ -359,9 +359,12 @@ bytes/pixel) for Real / Semantic / Instance and `float32` for Depth. The
 bridge swaps Real to RGBA on receive and keeps seg modes BGRA so consumers
 can map color to class id.
 
-**Camera keys are canonical**: the MJCF camera name with path separators
-collapsed to `_` (e.g. `base/wrist` → `base_wrist`). These are the exact
-keys the `hello` `camera_topics` advertises and the SHM/ZMQ transports use.
+**Camera keys are canonical**: the single `<art>/<part>` name, where `<art>`
+is the articulation name and `<part>` is the MJCF camera name with the art
+prefix stripped, both sanitized to `[A-Za-z0-9_]` (e.g. art `g1`, camera
+`g1_head_rgbd` → `g1/head_rgbd`). This one string is the `camera_topics` key,
+the `zmq_topic`, and the key the SHM/ZMQ transports and `include_cameras`
+requests use; the SHM file is `cam_<art>_<part>.shm`.
 
 `include_cameras` accepts:
 

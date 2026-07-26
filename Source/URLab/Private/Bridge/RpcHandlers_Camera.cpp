@@ -196,16 +196,14 @@ void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
 {
 	if (!Manager)
 		return;
-	// Register every form a client may key on:
-	//   - "<art>/camera/<camera>" (matches the zmq_topic the hello handshake
-	//                              advertises)
-	//   - "<art>/<camera>"        (qualified)
-	//   - "<camera>"              (bare, canonical)
-	//   - raw UE component / MJCF name (back-compat)
-	// First writer wins per key, so a second camera sharing a bare name cannot
-	// hide an already-registered distinct camera (still reachable via qualified).
-	auto AddName = [&OutByName](const FString& Key, UMjCamera* C) {
-		UMjCamera*& Slot = OutByName.FindOrAdd(Key);
+	// One canonical identity per camera: "<art>/<part>" from FMjCanonicalName,
+	// matching the zmq_topic the hello handshake advertises and the camera binds.
+	// First writer wins so a sanitize-collision can't hide an already-registered
+	// distinct camera.
+	auto AddCanonical = [&OutByName](UMjCamera* C) {
+		if (!C || C->bIsDefault)
+			return;
+		UMjCamera*& Slot = OutByName.FindOrAdd(C->GetCanonicalName());
 		if (Slot == nullptr)
 			Slot = C;
 	};
@@ -216,41 +214,17 @@ void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
 		TArray<UMjCamera*> Cameras;
 		Art->GetComponents<UMjCamera>(Cameras);
 		for (UMjCamera* C : Cameras)
-		{
-			if (!C || C->bIsDefault)
-				continue;
-			const FString ArtName = Art->GetName();
-			const FString Canon = C->GetCanonicalName();
-			AddName(Canon, C);
-			AddName(ArtName + TEXT("/") + Canon, C);
-			AddName(ArtName + TEXT("/camera/") + Canon, C);
-			const FString CompName = C->GetName();
-			const FString MjNameRaw = C->GetMjName();
-			AddName(CompName, C);
-			AddName(ArtName + TEXT("/") + CompName, C);
-			if (!MjNameRaw.IsEmpty())
-			{
-				AddName(MjNameRaw, C);
-				AddName(ArtName + TEXT("/") + MjNameRaw, C);
-			}
-		}
+			AddCanonical(C);
 	}
-	// Manager-owned (global) cameras: not attached to any articulation, so they
-	// register under their bare / canonical / component / MJCF names only. Kept
-	// in sync with the include_cameras:true walk in ParseStepCommon so a global
-	// camera the client asks for actually resolves here instead of being dropped.
+	// Manager-owned (global) cameras: not attached to any articulation. Their
+	// canonical name uses the owning actor name as the art segment (see
+	// UMjCamera::GetCanonicalName). Kept in sync with the include_cameras:true
+	// walk in ParseStepCommon so a global camera the client asks for resolves
+	// here instead of being dropped.
 	TArray<UMjCamera*> GlobalCameras;
 	Manager->GetComponents<UMjCamera>(GlobalCameras);
 	for (UMjCamera* C : GlobalCameras)
-	{
-		if (!C || C->bIsDefault)
-			continue;
-		AddName(C->GetCanonicalName(), C);
-		AddName(C->GetName(), C);
-		const FString MjNameRaw = C->GetMjName();
-		if (!MjNameRaw.IsEmpty())
-			AddName(MjNameRaw, C);
-	}
+		AddCanonical(C);
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::ApplyCameraStreamingGameThread(
@@ -305,11 +279,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::ApplyCameraStreamingGameThread(
 			FString Endpoint = Cam->GetActualZmqEndpoint();
 			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
 			CamObj->SetStringField(TEXT("zmq_endpoint"), Endpoint);
-			AMjArticulation* Art = Cast<AMjArticulation>(Cam->GetOwner());
-			const FString Prefix = Art ? Art->GetName()
-									   : (Cam->GetOwner() ? Cam->GetOwner()->GetName() : TEXT("unknown"));
-			CamObj->SetStringField(TEXT("zmq_topic"),
-				FString::Printf(TEXT("%s/camera/%s"), *Prefix, *Cam->GetCanonicalName()));
+			CamObj->SetStringField(TEXT("zmq_topic"), Cam->GetCanonicalName());
 		}
 		// Key the reply by the canonical name so the bridge always gets a
 		// stable identity back regardless of which alias it requested.

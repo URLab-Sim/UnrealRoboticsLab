@@ -218,9 +218,9 @@ public:
 		bool bWait = true);
 
 	/** Build the name->camera lookup used to resolve include_cameras /
-	 *  set_camera_streaming keys: canonical "<art>/camera/<cam>", "<art>/<cam>",
-	 *  bare canonical, plus raw component / MJCF-name back-compat. First writer
-	 *  wins per key so a shared bare name can't hide a distinct camera. */
+	 *  set_camera_streaming keys. Keyed solely by the canonical "<art>/<part>"
+	 *  name (FMjCanonicalName), matching the handshake zmq_topic. First writer
+	 *  wins per key so a sanitize-collision can't hide a distinct camera. */
 	static void BuildCameraNameMap(AAMjManager* Manager,
 		TMap<FString, class UMjCamera*>& OutByName);
 

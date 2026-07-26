@@ -459,15 +459,16 @@ public:
 	void SetStreamPortIndex(int32 InIndex) { StreamPortIndex = InIndex; }
 
 	/**
-	 * @brief Canonical transport identity for this camera.
+	 * @brief Canonical transport identity for this camera: "<art>/<part>".
 	 *
-	 * The MJCF name (GetMjName()) with path separators collapsed to '_', falling
-	 * back to the UE component name if MjName is unset. Body-qualified MJCF
-	 * cameras carry a '/' (e.g. "left_arm/wrist_camera") which is illegal in a
-	 * filename, so this single sanitized string is what every transport site uses:
-	 * the SHM filename, the ZMQ topic leaf, the hello handshake key, and the
-	 * include_cameras lookup. UE writer and bridge reader apply the same rule so
-	 * both ends rendezvous on the same name.
+	 * Routed through FMjCanonicalName (the single naming owner): the art segment
+	 * is the owning articulation's name (or the owning actor's name for a
+	 * manager-level global camera) and the part is the MJCF name (or UE component
+	 * name if unset) with the art prefix stripped, both sanitized to
+	 * [A-Za-z0-9_]. This one string is the ZMQ topic, the hello handshake key +
+	 * zmq_topic, the set_camera_streaming key, and the include_cameras lookup;
+	 * the SHM filename is "cam_<art>_<part>.shm". UE writer and bridge reader
+	 * apply the same scheme so both ends rendezvous on the same name.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	FString GetCanonicalName() const;

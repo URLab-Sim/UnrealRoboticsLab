@@ -46,7 +46,27 @@
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
+#include "State/MjCanonicalName.h"
 #include "zmq.h"
+
+namespace
+{
+// Resolve a camera's canonical <art>/<part> segments through the single naming
+// owner. The art segment is the owning articulation's name, or the owning
+// actor's name for a manager-level global camera; the part is the MJCF camera
+// name (or UE component name if unset) with the art prefix stripped.
+void ResolveCameraCanonical(const UMjCamera& Cam, FName& OutArt, FName& OutPart)
+{
+	const AActor* Owner = Cam.GetOwner();
+	const AMjArticulation* Art = Cast<AMjArticulation>(Owner);
+	OutArt = Art ? FMjCanonicalName::ArtSegment(Art)
+				 : FName(*FMjCanonicalName::Sanitize(Owner ? Owner->GetName() : TEXT("unknown")));
+	FString Source = Cam.GetMjName();
+	if (Source.IsEmpty())
+		Source = Cam.GetName();
+	OutPart = FMjCanonicalName::PartSegment(Art, Source);
+}
+} // namespace
 
 // ---------------------------------------------------------------------------
 // FCameraZmqWorker
@@ -956,9 +976,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 
 		if (bEnableZmqBroadcast && !ZmqWorker)
 		{
-			AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
-			FString Prefix = Articulation ? Articulation->GetName() : (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
-			FString Topic = FString::Printf(TEXT("%s/camera/%s"), *Prefix, *GetCanonicalName());
+			const FString Topic = GetCanonicalName();
 
 			// Bind in this instance's camera port block (CamBasePort + index) so
 			// multiple editors acting as render servers never fight over one port.
@@ -980,15 +998,14 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 		// SHM publisher: opens an mmap'd file under the live URLab session dir.
 		if (bEnableShmBroadcast && !ShmWriter)
 		{
-			AMjArticulation* Articulation = Cast<AMjArticulation>(GetOwner());
-			const FString Prefix = Articulation ? Articulation->GetName()
-												: (GetOwner() ? GetOwner()->GetName() : TEXT("unknown"));
 			// The "live" session segment is process-global on one host: parameterise
 			// it per instance before running several editors as render servers.
 			const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(TEXT("live"));
 			IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
+			FName CanonArt, CanonPart;
+			ResolveCameraCanonical(*this, CanonArt, CanonPart);
 			const FString FileName = FString::Printf(
-				TEXT("cam_%s_%s.shm"), *Prefix, *GetCanonicalName());
+				TEXT("cam_%s_%s.shm"), *CanonArt.ToString(), *CanonPart.ToString());
 			const FString FullPath = FPaths::Combine(Dir, FileName);
 
 			ShmWriter = new FCameraShmWriter();
@@ -1451,14 +1468,9 @@ FString UMjCamera::GetActualZmqEndpoint() const
 
 FString UMjCamera::GetCanonicalName() const
 {
-	FString Name = GetMjName();
-	if (Name.IsEmpty())
-		Name = GetName();
-	// '/' (MJCF body paths) and '\\' are path separators: collapse them so the same
-	// identity is valid as a SHM filename, a ZMQ topic leaf, and a handshake key.
-	Name.ReplaceInline(TEXT("/"), TEXT("_"));
-	Name.ReplaceInline(TEXT("\\"), TEXT("_"));
-	return Name;
+	FName Art, Part;
+	ResolveCameraCanonical(*this, Art, Part);
+	return FMjCanonicalName::Full(Art, Part);
 }
 
 // ---------------------------------------------------------------------------

@@ -633,6 +633,17 @@ void UMjJoint::DescribeState(FMjArticulationState& Out) const
 		J.QPos[i] = V.qpos[i];
 	for (int32 i = 0; i < VSize; ++i)
 		J.QVel[i] = V.qvel[i];
+
+	// Reference (qpos0) slice for the 1-DOF joints the URDF exposes, so the ROS
+	// /joint_states shift can emit qpos - qpos0 (URDF q=0 == MuJoCo qpos0). Free
+	// and ball joints are not URDF joints, so no shift is recorded for them.
+	if ((JType == EMjJointType::Hinge || JType == EMjJointType::Slide)
+		&& V._m && V.jnt_qposadr >= 0)
+	{
+		J.RefPos.SetNumUninitialized(QSize);
+		for (int32 i = 0; i < QSize; ++i)
+			J.RefPos[i] = V._m->qpos0[V.jnt_qposadr + i];
+	}
 }
 
 #if WITH_EDITOR

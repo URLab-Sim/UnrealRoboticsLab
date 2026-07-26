@@ -28,6 +28,7 @@
 #include "Transport/RosContext.h"
 #include "Ros/UrlabRclCore.h"
 #include "Utils/URLabLogging.h"
+#include "MuJoCo/Core/AMjManager.h"
 #endif
 
 // The Fill* functions are pure IR -> arrays transforms with no rcl dependency, so
@@ -45,7 +46,14 @@ void UURLabRosPublishTransport::FillJointState(const FMjArticulationState& Art,
 	for (const FMjJointState& Joint : Art.Joints)
 	{
 		OutNames.Add(Joint.Name.ToString());
-		OutPositions.Append(Joint.QPos);
+		// Emit qpos - qpos0 so the ROS zero pose matches the exported URDF (whose
+		// joint limits are shifted by qpos0). RefPos is filled only for the 1-DOF
+		// joints the URDF exposes; an empty slice means no shift.
+		for (int32 i = 0; i < Joint.QPos.Num(); ++i)
+		{
+			const double Ref = Joint.RefPos.IsValidIndex(i) ? Joint.RefPos[i] : 0.0;
+			OutPositions.Add(Joint.QPos[i] - Ref);
+		}
 		OutVelocities.Append(Joint.QVel);
 	}
 }
@@ -152,6 +160,7 @@ void UURLabRosPublishTransport::ReleasePublishers()
 {
 	for (int32 i = Publishers.Num() - 1; i >= 0; --i)
 	{
+		UrlabRcl_DestroyStringPub(Publishers[i].RobotDescriptionPub);
 		UrlabRcl_DestroyTwistStampedPub(Publishers[i].TwistPub);
 		UrlabRcl_DestroyImuPub(Publishers[i].ImuPub);
 		UrlabRcl_DestroyJointStatePub(Publishers[i].JointStatePub);
@@ -242,6 +251,28 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 				UE_LOG(LogURLab, Warning,
 					TEXT("ROS: TwistStamped publisher create failed for %s (%hs)"),
 					*TwistTopic, UrlabRcl_LastError());
+			}
+		}
+
+		// Latched /<art>/robot_description carrying the URDF the manager exported
+		// on compile. Created only when a document is cached for this art; the
+		// transient-local QoS delivers it to late-joining rviz / MoveIt clients.
+		if (const AAMjManager* Manager = GetTypedOuter<AAMjManager>())
+		{
+			if (const FString* Urdf = Manager->GetRobotDescriptions().Find(Art.Name))
+			{
+				const FString DescTopic = FString::Printf(TEXT("/%s/robot_description"), *ArtName);
+				Entry.RobotDescriptionPub = UrlabRcl_CreateStringPub(Ctx, TCHAR_TO_UTF8(*DescTopic));
+				if (Entry.RobotDescriptionPub == nullptr)
+				{
+					UE_LOG(LogURLab, Warning,
+						TEXT("ROS: robot_description publisher create failed for %s (%hs)"),
+						*DescTopic, UrlabRcl_LastError());
+				}
+				else
+				{
+					UrlabRcl_PublishString(Entry.RobotDescriptionPub, TCHAR_TO_UTF8(**Urdf));
+				}
 			}
 		}
 

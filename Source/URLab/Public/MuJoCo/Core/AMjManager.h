@@ -148,6 +148,17 @@ public:
 	 *  post-step snapshot fan-out and by the RPC step/reset/forward replies. */
 	FMjStateCollector& GetStateCollector() { return StateCollector; }
 
+	/** Export a URDF + binary STL meshes for every articulation from the compiled
+	 *  mjModel, dumping each to <ProjectSaved>/URLab/RosExport/<art>/ and caching
+	 *  the URDF text for the ROS /<art>/robot_description publisher. Runs on the
+	 *  game thread; auto-invoked from RefreshStateCaches (every compile) and
+	 *  callable directly as the manual re-export trigger. No-op without a model. */
+	void ExportRobotDescriptions();
+
+	/** Cached URDF documents keyed by canonical art segment, filled by
+	 *  ExportRobotDescriptions and read by the ROS publish transport. */
+	const TMap<FName, FString>& GetRobotDescriptions() const { return RobotDescriptions; }
+
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
 	float GetSimTime() const;
 
@@ -229,6 +240,9 @@ protected:
 
 	/** Builds the per-step state IR consumed by the msgpack encoder. */
 	FMjStateCollector StateCollector;
+
+	/** Per-art URDF documents, keyed by canonical art segment. */
+	TMap<FName, FString> RobotDescriptions;
 
 public:
 	/** Manager-owned UObject publish transports

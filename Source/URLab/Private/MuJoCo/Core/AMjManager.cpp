@@ -42,6 +42,8 @@
 #include "Bridge/BridgeServerConfigUtils.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
+#include "Ros/UrdfExporter.h"
 #if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
 #include "Transport/RosPublishTransport.h"
 #endif
@@ -90,6 +92,42 @@ void AAMjManager::RefreshStateCaches()
 	// cache (initial compile + every recompile). Both run on the game thread.
 	StateCollector.Init(this);
 	StateCollector.RebuildProducerCacheGameThread();
+	// Re-export the URDF(s) so the ROS robot_description matches the fresh model.
+	ExportRobotDescriptions();
+}
+
+void AAMjManager::ExportRobotDescriptions()
+{
+	RobotDescriptions.Reset();
+	if (!PhysicsEngine || !PhysicsEngine->m_model)
+		return;
+
+	const mjModel* Model = PhysicsEngine->m_model;
+	const FString RootDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("RosExport"));
+	const FUrdfExportConfig Cfg;
+
+	for (AMjArticulation* Art : GetAllArticulations())
+	{
+		if (!Art)
+			continue;
+		const FString RawName = Art->GetName();
+		const FName Segment = FMjCanonicalName::ArtSegment(Art);
+		const FString SegmentStr = Segment.ToString();
+		const FString OutDir = FPaths::Combine(RootDir, SegmentStr);
+
+		const FUrdfModel Urdf = FUrdfExporter::ExportToDir(
+			Model, SegmentStr, RawName, OutDir, Cfg);
+		if (Urdf.Links.Num() == 0)
+			continue;
+
+		RobotDescriptions.Add(Segment, Urdf.Xml);
+		for (const FString& W : Urdf.Warnings)
+			UE_LOG(LogURLab, Warning, TEXT("[URDF] %s: %s"), *SegmentStr, *W);
+		UE_LOG(LogURLab, Log,
+			TEXT("[URDF] %s: %d links, %d joints, %d meshes -> %s"),
+			*SegmentStr, Urdf.Links.Num(), Urdf.Joints.Num(), Urdf.MeshIds.Num(),
+			*FPaths::Combine(OutDir, TEXT("model.urdf")));
+	}
 }
 
 void AAMjManager::BuildEntityCache()

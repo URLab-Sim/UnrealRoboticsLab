@@ -56,6 +56,7 @@ struct UrlabRclTwistStampedPub;
 struct UrlabRclClockPub;
 struct UrlabRclImagePub;
 struct UrlabRclCtrlPub;
+struct UrlabRclStringPub;
 struct UrlabRclCtrlSub;
 struct UrlabRclTwistSub;
 
@@ -118,6 +119,15 @@ struct UrlabRclCtrlPub* UrlabRcl_CreateCtrlPub(struct UrlabRclContext* Ctx,
 int UrlabRcl_PublishCtrl(struct UrlabRclCtrlPub* Pub, const double* Values,
     int32_t Count);
 void UrlabRcl_DestroyCtrlPub(struct UrlabRclCtrlPub* Pub);
+
+// Latched std_msgs/String publisher, transient-local + reliable + keep-last
+// depth 1, for the per-art /<art>/robot_description URDF. The QoS matches
+// robot_state_publisher so late-joining subscribers (rviz, MoveIt) receive the
+// last published document. The text is copied on each publish.
+struct UrlabRclStringPub* UrlabRcl_CreateStringPub(struct UrlabRclContext* Ctx,
+    const char* Topic);
+int UrlabRcl_PublishString(struct UrlabRclStringPub* Pub, const char* Text);
+void UrlabRcl_DestroyStringPub(struct UrlabRclStringPub* Pub);
 
 // --- Subscriptions ---------------------------------------------------------
 // Callbacks fire inside UrlabRcl_SpinSome on its caller's thread; the core does

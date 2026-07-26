@@ -43,6 +43,7 @@
 #include <geometry_msgs/msg/twist_stamped.h>
 #include <geometry_msgs/msg/transform_stamped.h>
 #include <std_msgs/msg/float64_multi_array.h>
+#include <std_msgs/msg/string.h>
 #include <tf2_msgs/msg/tf_message.h>
 #include <rosgraph_msgs/msg/clock.h>
 
@@ -156,6 +157,13 @@ struct UrlabRclCtrlPub
     UrlabRclContext* Ctx;
     rcl_publisher_t Pub;
     std_msgs__msg__Float64MultiArray Msg;
+};
+
+struct UrlabRclStringPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    std_msgs__msg__String Msg;
 };
 
 struct UrlabRclCtrlSub
@@ -874,6 +882,66 @@ void UrlabRcl_DestroyCtrlPub(UrlabRclCtrlPub* Pub)
     }
     rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
     std_msgs__msg__Float64MultiArray__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- String publisher (latched robot_description) --------------------------
+
+UrlabRclStringPub* UrlabRcl_CreateStringPub(UrlabRclContext* Ctx, const char* Topic)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclStringPub* Pub = new UrlabRclStringPub();
+    Pub->Ctx = Ctx;
+    std_msgs__msg__String__init(&Pub->Msg);
+
+    // Latch the last document so late-joining subscribers (rviz, MoveIt) receive
+    // it without a re-publish, matching robot_state_publisher's QoS.
+    rmw_qos_profile_t Qos = rmw_qos_profile_default;
+    Qos.durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+    Qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+    Qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+    Qos.depth = 1;
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, Qos))
+    {
+        std_msgs__msg__String__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishString(UrlabRclStringPub* Pub, const char* Text)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    SetString(Pub->Msg.data, Text);
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyStringPub(UrlabRclStringPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    std_msgs__msg__String__fini(&Pub->Msg);
     delete Pub;
 }
 

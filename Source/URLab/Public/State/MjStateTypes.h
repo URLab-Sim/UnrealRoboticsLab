@@ -91,12 +91,17 @@ struct FMjJointState
 	EMjJointType Type = EMjJointType::Hinge;
 	TArray<double> QPos;
 	TArray<double> QVel;
+	/** The joint's qpos0 (reference) slice. Filled for 1-DOF joints (hinge/slide)
+	 *  so the ROS /joint_states shift can emit `qpos - qpos0`, matching the URDF
+	 *  zero pose (URDF q=0 == MuJoCo qpos0). Empty means no shift. */
+	TArray<double> RefPos;
 
 	void Reset()
 	{
 		Name = FName();
 		QPos.Reset();
 		QVel.Reset();
+		RefPos.Reset();
 	}
 };
 

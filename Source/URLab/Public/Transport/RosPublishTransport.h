@@ -33,6 +33,7 @@ struct UrlabRclImuPub;
 struct UrlabRclTfPub;
 struct UrlabRclTwistStampedPub;
 struct UrlabRclClockPub;
+struct UrlabRclStringPub;
 
 struct FMjStateSnapshot;
 struct FMjArticulationState;
@@ -131,6 +132,7 @@ private:
 		UrlabRclJointStatePub* JointStatePub = nullptr;
 		UrlabRclImuPub* ImuPub = nullptr;           // null when the art has no gyro/accel
 		UrlabRclTwistStampedPub* TwistPub = nullptr; // null when the art has no twist
+		UrlabRclStringPub* RobotDescriptionPub = nullptr; // null when no URDF cached
 	};
 
 	TArray<FArtPublishers> Publishers;

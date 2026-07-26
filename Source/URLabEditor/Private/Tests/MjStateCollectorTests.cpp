@@ -40,7 +40,9 @@
 #include "State/MjStateTypes.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
+#include "Transport/SnapshotPublisher.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Sensors/MjSensor.h"
@@ -507,6 +509,64 @@ bool FMjStateStepReplyArts::RunTest(const FString& Parameters)
 				(*ReplyArts)->HasField(Pair.Key));
 	}
 
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 8. Byte fan-out delivers snapshots to registered publishers, and the
+//    bPublishersPaused gate suppresses delivery (Path B replacement).
+// ---------------------------------------------------------------------------
+namespace
+{
+struct FFakeSnapshotPublisher : public IMjSnapshotPublisher
+{
+	int32 Count = 0;
+	int32 LastBytes = 0;
+	virtual void PublishSnapshot(const TArray<uint8>& Bytes) override
+	{
+		++Count;
+		LastBytes = Bytes.Num();
+	}
+};
+} // namespace
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStateByteFanOutPause,
+	"URLab.State.ByteFanOutPause",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjStateByteFanOutPause::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	mjModel* m = S.Manager->PhysicsEngine->GetModel();
+	mjData* d = S.Manager->PhysicsEngine->GetData();
+
+	FMjStateCollector& C = S.Manager->GetStateCollector();
+	C.Init(S.Manager);
+	C.RebuildProducerCacheGameThread();
+
+	FFakeSnapshotPublisher Fake;
+	S.Manager->RegisterSnapshotPublisher(&Fake, S.Manager);
+
+	// Live (unpaused): the fan-out encodes and delivers bytes to the publisher.
+	S.Manager->bPublishersPaused.store(false);
+	S.Manager->FanOutStateSnapshot(m, d);
+	TestTrue(TEXT("publisher receives bytes when live"), Fake.Count >= 1);
+	TestTrue(TEXT("delivered payload is non-empty"), Fake.LastBytes > 0);
+
+	// Paused (Direct/Puppet): the byte fan-out is suppressed.
+	const int32 Before = Fake.Count;
+	S.Manager->bPublishersPaused.store(true);
+	S.Manager->FanOutStateSnapshot(m, d);
+	TestEqual(TEXT("no byte delivery while paused"), Fake.Count, Before);
+
+	S.Manager->bPublishersPaused.store(false);
+	S.Manager->UnregisterSnapshotPublisher(&Fake);
 	S.Cleanup();
 	return true;
 }

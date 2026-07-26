@@ -592,25 +592,6 @@ void UMjJoint::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 	ExportTo(Jnt, effectiveDefault);
 }
 
-void UMjJoint::BuildBinaryPayload(FBufferArchive& OutBuffer) const
-{
-	int32 JointID = m_ID;
-	OutBuffer << JointID;
-
-	float JointPos = GetPosition();
-	float JointVel = GetVelocity();
-	float JointAcc = GetAcceleration();
-
-	OutBuffer << JointPos;
-	OutBuffer << JointVel;
-	OutBuffer << JointAcc;
-}
-
-FString UMjJoint::GetTelemetryTopicName() const
-{
-	return FString::Printf(TEXT("joint/%s"), *GetName());
-}
-
 void UMjJoint::DescribeState(FMjArticulationState& Out) const
 {
 	const JointView& V = m_JointView;

@@ -338,32 +338,8 @@ void AAMjManager::BeginPlay()
 		TWeakObjectPtr<AAMjManager> WeakSelf(this);
 		PhysicsEngine->RegisterPostStepCallback(
 			[WeakSelf](mjModel* m, mjData* d) {
-				AAMjManager* Self = WeakSelf.Get();
-				if (!Self)
-					return;
-
-				TArray<IMjSnapshotPublisher*> Pubs;
-				{
-					FScopeLock Lock(&Self->SnapshotPublishersMutex);
-					Pubs.Reserve(Self->SnapshotPublishers.Num());
-					for (const FRegisteredSnapshotPublisher& R : Self->SnapshotPublishers)
-					{
-						if (R.Publisher && R.Owner.IsValid())
-							Pubs.Add(R.Publisher);
-					}
-				}
-				if (Pubs.Num() == 0)
-					return;
-
-				FURLabRpcDispatcher* Disp = Self->GetStepDispatcher();
-				const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
-				const FMjStateSnapshot& Snap = Self->StateCollector.Collect(m, d, StepIdx);
-				TArray<uint8> Buf = FMjMsgpackEncoder::EncodeSnapshotBytes(
-					Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
-				if (Buf.Num() == 0)
-					return;
-				for (IMjSnapshotPublisher* Pub : Pubs)
-					Pub->PublishSnapshot(Buf);
+				if (AAMjManager* Self = WeakSelf.Get())
+					Self->FanOutStateSnapshot(m, d);
 			});
 
 		PhysicsEngine->RunMujocoAsync();
@@ -426,6 +402,44 @@ void AAMjManager::UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher)
 	SnapshotPublishers.RemoveAll([Publisher](const FRegisteredSnapshotPublisher& R) {
 		return R.Publisher == Publisher;
 	});
+}
+
+void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
+{
+	// Build the state IR once per physics step, encode it to the canonical
+	// msgpack `state_full` snapshot, and fan the bytes out to every
+	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). Runs inside the engine's
+	// CallbackMutex, so the collector's persistent snapshot buffer never races
+	// an on-demand Collect from an RPC step reply.
+	TArray<IMjSnapshotPublisher*> Pubs;
+	{
+		FScopeLock Lock(&SnapshotPublishersMutex);
+		Pubs.Reserve(SnapshotPublishers.Num());
+		for (const FRegisteredSnapshotPublisher& R : SnapshotPublishers)
+		{
+			if (R.Publisher && R.Owner.IsValid())
+				Pubs.Add(R.Publisher);
+		}
+	}
+	if (Pubs.Num() == 0)
+		return;
+
+	// bPublishersPaused gates the msgpack byte fan-out only: it is set on
+	// Direct / Puppet mode entry so the step reply is the sole delivery to the
+	// stepping client (no double-write). The IR build and, in a later phase,
+	// the ROS hand-off run regardless.
+	if (bPublishersPaused.load(std::memory_order_acquire))
+		return;
+
+	FURLabRpcDispatcher* Disp = GetStepDispatcher();
+	const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
+	const FMjStateSnapshot& Snap = StateCollector.Collect(m, d, StepIdx);
+	TArray<uint8> Buf = FMjMsgpackEncoder::EncodeSnapshotBytes(
+		Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
+	if (Buf.Num() == 0)
+		return;
+	for (IMjSnapshotPublisher* Pub : Pubs)
+		Pub->PublishSnapshot(Buf);
 }
 
 void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)

@@ -209,6 +209,11 @@ public:
 		class UObject* OwnerObj);
 	void UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher);
 
+	/** Build the per-step IR, encode the canonical `state_full` msgpack, and fan
+	 *  the bytes to every registered snapshot publisher. Bound to the physics
+	 *  post-step callback; gated by bPublishersPaused (byte fan-out only). */
+	void FanOutStateSnapshot(struct mjModel_* m, struct mjData_* d);
+
 	/** Bound to Tab key. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
 	void ToggleSimulateWidget();

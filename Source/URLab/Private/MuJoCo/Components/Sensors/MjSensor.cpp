@@ -771,29 +771,6 @@ void UMjSensor::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 	ExportTo(sensor, effectiveDefault);
 }
 
-void UMjSensor::BuildBinaryPayload(FBufferArchive& OutBuffer) const
-{
-	int32 SensorID = m_ID;
-	OutBuffer << SensorID;
-
-	int32 NumElements = GetDimension();
-	OutBuffer << NumElements;
-
-	if (m_SensorView.id != -1 && m_SensorView.sensordata && NumElements > 0)
-	{
-		for (int i = 0; i < NumElements; ++i)
-		{
-			float Val = (float)m_SensorView.sensordata[i];
-			OutBuffer << Val;
-		}
-	}
-}
-
-FString UMjSensor::GetTelemetryTopicName() const
-{
-	return FString::Printf(TEXT("sensor/%s"), *GetName());
-}
-
 // Coarse EMjSensorType -> EMjSensorSemantic grouping. Lets a later ROS publisher
 // pair gyro+accel into an Imu and route pose-like sensors to tf2; msgpack ignores
 // it. Unmapped types fall through to Generic.

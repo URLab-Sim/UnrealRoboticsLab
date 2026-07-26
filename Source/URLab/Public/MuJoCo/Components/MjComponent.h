@@ -29,7 +29,6 @@
 #include "MuJoCo/Core/Spec/MjSpecElement.h"
 #include "MuJoCo/Utils/MjBind.h"
 #include "Utils/URLabLogging.h"
-#include "Serialization/BufferArchive.h"
 class UMjDefault;
 struct FMjArticulationState;
 
@@ -71,12 +70,6 @@ public:
 	 * Base implementation caches Model/Data and attempts to resolve ID.
 	 */
 	virtual void Bind(mjModel* model, mjData* data, const FString& Prefix = TEXT("")) override;
-
-	/** @brief Serializes the component's runtime state into a binary buffer for network transmission. */
-	virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const {}
-
-	/** @brief Gets the topic name used for broadcasting this component's data. */
-	virtual FString GetTelemetryTopicName() const { return FString(); }
 
 	/** @brief Declares this component's per-step state into the articulation IR.
 	 *  Overridden by joints, sensors, actuators, and bodies; the base is a no-op

@@ -469,7 +469,8 @@ bool FMjUrdfJointStateShift::RunTest(const FString& Parameters)
 	TArray<FString> Names;
 	TArray<double> Positions;
 	TArray<double> Velocities;
-	UURLabRosPublishTransport::FillJointState(Art, Names, Positions, Velocities);
+	TArray<double> Efforts;
+	UURLabRosPublishTransport::FillJointState(Art, Names, Positions, Velocities, Efforts);
 
 	TestEqual(TEXT("two positions"), Positions.Num(), 2);
 	TestEqual(TEXT("hinge shifted by qpos0"), Positions[0], 0.75, 1e-9);

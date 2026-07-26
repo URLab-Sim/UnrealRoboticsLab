@@ -82,13 +82,19 @@ public:
 	 *  Rebuilds the publisher set first if the structure version changed. */
 	void PublishState(const FMjStateSnapshot& Snapshot);
 
-	/** Flatten one articulation's joints into the parallel arrays a
-	 *  `sensor_msgs/JointState` carries: one name per joint (the canonical part
-	 *  segment), and the joints' concatenated qpos / qvel slices. Pure function,
-	 *  exposed for the fill-correctness test. */
+	/** Flatten one articulation's 1-DOF joints into the parallel arrays a
+	 *  `sensor_msgs/JointState` carries: one entry per hinge / slide joint (the
+	 *  canonical part segment), each with a scalar position (`qpos - qpos0`),
+	 *  velocity, and effort. Free and ball joints are multi-slot and not scalar
+	 *  URDF joints, so they are skipped here (their pose reaches ROS via `/tf`);
+	 *  including them would misalign names against values and truncate the tail.
+	 *  Effort is the driving actuator's force, matched to the joint by shared
+	 *  canonical name (the 1:1 transmission case); `OutEfforts` is left empty when
+	 *  no actuator drives any of the joints. Pure function, exposed for the
+	 *  fill-correctness test. */
 	static void FillJointState(const FMjArticulationState& Art,
 		TArray<FString>& OutNames, TArray<double>& OutPositions,
-		TArray<double>& OutVelocities);
+		TArray<double>& OutVelocities, TArray<double>& OutEfforts);
 
 	/** Collapse an articulation's gyro + accel sensors into the components a
 	 *  `sensor_msgs/Imu` carries: the first gyro's angular velocity and the first

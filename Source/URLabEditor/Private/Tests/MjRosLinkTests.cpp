@@ -181,18 +181,17 @@ bool FMjRosFillJointState::RunTest(const FString& Parameters)
 	TArray<FString> Names;
 	TArray<double> Positions;
 	TArray<double> Velocities;
-	UURLabRosPublishTransport::FillJointState(Art, Names, Positions, Velocities);
+	TArray<double> Efforts;
+	UURLabRosPublishTransport::FillJointState(Art, Names, Positions, Velocities, Efforts);
 
-	// One name per joint, in order.
-	TestEqual(TEXT("name count == joint count"), Names.Num(), 3);
+	// Only 1-DoF joints are emitted; the free "root" joint is excluded so
+	// name[i] aligns 1:1 with position[i] / velocity[i].
+	TestEqual(TEXT("name count == 1-DoF joint count"), Names.Num(), 2);
 	TestEqual(TEXT("name[0]"), Names[0], FString(TEXT("fl_hip")));
 	TestEqual(TEXT("name[1]"), Names[1], FString(TEXT("fl_knee")));
-	TestEqual(TEXT("name[2]"), Names[2], FString(TEXT("root")));
 
-	// Positions / velocities are the joints' concatenated qpos / qvel slices:
-	// 1 + 1 + 7 qpos and 1 + 1 + 6 qvel.
-	TestEqual(TEXT("position length == total qpos"), Positions.Num(), 9);
-	TestEqual(TEXT("velocity length == total qvel"), Velocities.Num(), 8);
+	TestEqual(TEXT("positions aligned to names"), Positions.Num(), 2);
+	TestEqual(TEXT("velocities aligned to names"), Velocities.Num(), 2);
 	TestEqual(TEXT("position[0] is hip qpos"), Positions[0], 0.10);
 	TestEqual(TEXT("velocity[1] is knee qvel"), Velocities[1], 1.20);
 

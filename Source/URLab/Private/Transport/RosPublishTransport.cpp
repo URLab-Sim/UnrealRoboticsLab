@@ -37,24 +37,63 @@
 
 void UURLabRosPublishTransport::FillJointState(const FMjArticulationState& Art,
 	TArray<FString>& OutNames, TArray<double>& OutPositions,
-	TArray<double>& OutVelocities)
+	TArray<double>& OutVelocities, TArray<double>& OutEfforts)
 {
 	OutNames.Reset();
 	OutPositions.Reset();
 	OutVelocities.Reset();
+	OutEfforts.Reset();
 	OutNames.Reserve(Art.Joints.Num());
+	OutPositions.Reserve(Art.Joints.Num());
+	OutVelocities.Reserve(Art.Joints.Num());
+	OutEfforts.Reserve(Art.Joints.Num());
+
+	// The IR keys actuator force by the actuator's canonical name; a 1:1 transmission
+	// names its actuator after the joint it drives, so effort maps joint -> force by
+	// shared name. Joints with no matching actuator report zero.
+	TMap<FName, double> ForceByName;
+	ForceByName.Reserve(Art.Actuators.Num());
+	for (const FMjActuatorState& Actuator : Art.Actuators)
+	{
+		ForceByName.Add(Actuator.Name, Actuator.Force);
+	}
+
+	bool bAnyEffort = false;
 	for (const FMjJointState& Joint : Art.Joints)
 	{
+		// sensor_msgs/JointState is parallel scalar arrays. Only hinge / slide joints
+		// are scalar (1 qpos / 1 qvel); free (7/6) and ball (4/3) joints are not URDF
+		// joints and reach ROS through /tf, so they are not JointState entries.
+		if (Joint.Type != EMjJointType::Hinge && Joint.Type != EMjJointType::Slide)
+		{
+			continue;
+		}
+
 		OutNames.Add(Joint.Name.ToString());
 		// Emit qpos - qpos0 so the ROS zero pose matches the exported URDF (whose
 		// joint limits are shifted by qpos0). RefPos is filled only for the 1-DOF
 		// joints the URDF exposes; an empty slice means no shift.
-		for (int32 i = 0; i < Joint.QPos.Num(); ++i)
+		const double Pos = Joint.QPos.Num() > 0 ? Joint.QPos[0] : 0.0;
+		const double Ref = Joint.RefPos.Num() > 0 ? Joint.RefPos[0] : 0.0;
+		OutPositions.Add(Pos - Ref);
+		OutVelocities.Add(Joint.QVel.Num() > 0 ? Joint.QVel[0] : 0.0);
+
+		if (const double* Force = ForceByName.Find(Joint.Name))
 		{
-			const double Ref = Joint.RefPos.IsValidIndex(i) ? Joint.RefPos[i] : 0.0;
-			OutPositions.Add(Joint.QPos[i] - Ref);
+			OutEfforts.Add(*Force);
+			bAnyEffort = true;
 		}
-		OutVelocities.Append(Joint.QVel);
+		else
+		{
+			OutEfforts.Add(0.0);
+		}
+	}
+
+	// Distinguish "no effort data" (no actuator drives any joint) from a genuine
+	// all-zero effort by leaving the array empty in the former case.
+	if (!bAnyEffort)
+	{
+		OutEfforts.Reset();
 	}
 }
 
@@ -191,7 +230,8 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 		TArray<FString> Names;
 		TArray<double> Positions;
 		TArray<double> Velocities;
-		FillJointState(Art, Names, Positions, Velocities);
+		TArray<double> Efforts;
+		FillJointState(Art, Names, Positions, Velocities, Efforts);
 
 		// The core copies the name strings at create time; keep one UTF-8 buffer
 		// per name alive across the call and hand it a stable pointer array. The
@@ -322,9 +362,11 @@ void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& Snapshot)
 		TArray<FString> Names;
 		TArray<double> Positions;
 		TArray<double> Velocities;
-		FillJointState(Art, Names, Positions, Velocities);
-		UrlabRcl_PublishJointState(Pubs.JointStatePub,
-			Positions.GetData(), Velocities.GetData(), nullptr, Names.Num(), SimTimeNs);
+		TArray<double> Efforts;
+		FillJointState(Art, Names, Positions, Velocities, Efforts);
+		UrlabRcl_PublishJointState(Pubs.JointStatePub, Positions.GetData(),
+			Velocities.GetData(), Efforts.Num() > 0 ? Efforts.GetData() : nullptr,
+			Names.Num(), SimTimeNs);
 
 		if (Pubs.ImuPub)
 		{

@@ -57,6 +57,10 @@ struct UrlabRclClockPub;
 struct UrlabRclImagePub;
 struct UrlabRclCtrlPub;
 struct UrlabRclStringPub;
+struct UrlabRclWrenchStampedPub;
+struct UrlabRclRangePub;
+struct UrlabRclMagneticFieldPub;
+struct UrlabRclFloat64MultiArrayPub;
 struct UrlabRclCtrlSub;
 struct UrlabRclTwistSub;
 
@@ -128,6 +132,44 @@ struct UrlabRclStringPub* UrlabRcl_CreateStringPub(struct UrlabRclContext* Ctx,
     const char* Topic);
 int UrlabRcl_PublishString(struct UrlabRclStringPub* Pub, const char* Text);
 void UrlabRcl_DestroyStringPub(struct UrlabRclStringPub* Pub);
+
+// geometry_msgs/WrenchStamped, for MuJoCo force + torque sensors paired on a
+// site. Force and Torque are 3-vectors in the sensor frame; either may be null
+// (an unpaired force or torque publishes its half, the other left zero).
+struct UrlabRclWrenchStampedPub* UrlabRcl_CreateWrenchStampedPub(struct UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId);
+int UrlabRcl_PublishWrenchStamped(struct UrlabRclWrenchStampedPub* Pub,
+    const double Force[3], const double Torque[3], int64_t SimTimeNs);
+void UrlabRcl_DestroyWrenchStampedPub(struct UrlabRclWrenchStampedPub* Pub);
+
+// sensor_msgs/Range, for MuJoCo rangefinder sensors. The constant fields
+// (radiation type per sensor_msgs/Range: 0 = ultrasound, 1 = infrared; field of
+// view; min/max range) are fixed at create time; publish sets only the reading.
+struct UrlabRclRangePub* UrlabRcl_CreateRangePub(struct UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId, uint8_t RadiationType,
+    float FieldOfView, float MinRange, float MaxRange);
+int UrlabRcl_PublishRange(struct UrlabRclRangePub* Pub, float Range, int64_t SimTimeNs);
+void UrlabRcl_DestroyRangePub(struct UrlabRclRangePub* Pub);
+
+// sensor_msgs/MagneticField, for MuJoCo magnetometer sensors. The field is a
+// 3-vector in tesla; the covariance leading element is set to 0 (exact
+// ground truth) per REP 145.
+struct UrlabRclMagneticFieldPub* UrlabRcl_CreateMagneticFieldPub(struct UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId);
+int UrlabRcl_PublishMagneticField(struct UrlabRclMagneticFieldPub* Pub,
+    const double Field[3], int64_t SimTimeNs);
+void UrlabRcl_DestroyMagneticFieldPub(struct UrlabRclMagneticFieldPub* Pub);
+
+// std_msgs/Float64MultiArray, the total-coverage fallback for any sensor with no
+// standard typed message (touch, subtree, user, ...). The data sequence grows to
+// fit on publish. Distinct from the ctrl publisher above so the two roles read
+// clearly at the call site; it also serves the planned cmd_ctrl echo and typed
+// user-channel array topics.
+struct UrlabRclFloat64MultiArrayPub* UrlabRcl_CreateFloat64MultiArrayPub(
+    struct UrlabRclContext* Ctx, const char* Topic);
+int UrlabRcl_PublishFloat64MultiArray(struct UrlabRclFloat64MultiArrayPub* Pub,
+    const double* Values, int32_t Count);
+void UrlabRcl_DestroyFloat64MultiArrayPub(struct UrlabRclFloat64MultiArrayPub* Pub);
 
 // --- Subscriptions ---------------------------------------------------------
 // Callbacks fire inside UrlabRcl_SpinSome on its caller's thread; the core does

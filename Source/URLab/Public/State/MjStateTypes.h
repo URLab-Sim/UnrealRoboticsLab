@@ -123,14 +123,12 @@ struct FMjSensorState
 	FName Name;
 	EMjSensorSemantic Semantic = EMjSensorSemantic::Generic;
 	TArray<double> Values;
-	FName FrameId;
 
 	void Reset()
 	{
 		Name = FName();
 		Semantic = EMjSensorSemantic::Generic;
 		Values.Reset();
-		FrameId = FName();
 	}
 };
 

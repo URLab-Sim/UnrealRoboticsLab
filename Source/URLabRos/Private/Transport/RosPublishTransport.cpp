@@ -26,7 +26,7 @@
 
 #if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
 #include "Transport/RosContext.h"
-#include "Ros/UrlabRclCore.h"
+#include "Transport/RosOutputProvider.h"
 #include "URLabRosLog.h"
 #include "MuJoCo/Core/AMjManager.h"
 #endif
@@ -191,6 +191,21 @@ int64 UURLabRosPublishTransport::FillClock(const FMjClock& Clock)
 		+ static_cast<int64>(Clock.SimNsec);
 }
 
+// Reports the joint_state provider's per-articulation publisher count (one per
+// art), preserving the historical "art publisher count" test seam. Compiles in
+// every configuration; Providers is empty when ROS is not linked.
+int32 UURLabRosPublishTransport::GetArtPublisherCountForTest() const
+{
+	for (const TUniquePtr<IMjRosOutputProvider>& Provider : Providers)
+	{
+		if (Provider && Provider->GetProviderName() == TEXT("joint_state"))
+		{
+			return Provider->GetPublisherCountForTest();
+		}
+	}
+	return 0;
+}
+
 #if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2
 
 bool UURLabRosPublishTransport::TransportInit()
@@ -215,29 +230,17 @@ void UURLabRosPublishTransport::TransportShutdown()
 	{
 		Manager->UnregisterStateConsumer(this);
 	}
-	ReleasePublishers();
+	// Destroying each provider releases the publishers it owns.
+	Providers.Reset();
+	bProvidersBuilt = false;
 }
 
-void UURLabRosPublishTransport::ReleasePublishers()
+void UURLabRosPublishTransport::RebuildProviders(const FMjStateSnapshot& Snapshot)
 {
-	for (int32 i = Publishers.Num() - 1; i >= 0; --i)
-	{
-		UrlabRcl_DestroyStringPub(Publishers[i].RobotDescriptionPub);
-		UrlabRcl_DestroyTwistStampedPub(Publishers[i].TwistPub);
-		UrlabRcl_DestroyImuPub(Publishers[i].ImuPub);
-		UrlabRcl_DestroyJointStatePub(Publishers[i].JointStatePub);
-	}
-	Publishers.Reset();
-	UrlabRcl_DestroyClockPub(ClockPub);
-	ClockPub = nullptr;
-	UrlabRcl_DestroyTfPub(TfPub);
-	TfPub = nullptr;
-	bPublishersBuilt = false;
-}
-
-void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapshot)
-{
-	ReleasePublishers();
+	// Destroy the previous provider set (releasing its publishers) before building
+	// a fresh one for the current structure.
+	Providers.Reset();
+	bProvidersBuilt = false;
 
 	UrlabRclContext* Ctx = FURLabRosContext::Get().GetHandle();
 	if (Ctx == nullptr)
@@ -245,119 +248,18 @@ void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& Snapsh
 		return;
 	}
 
-	Publishers.Reserve(Snapshot.Articulations.Num());
-	for (const FMjArticulationState& Art : Snapshot.Articulations)
+	FMjRosPublisherFactory Factory(Ctx, GetTypedOuter<AAMjManager>());
+	FMjRosOutputRegistry::Get().InstantiateAll(Providers);
+	for (const TUniquePtr<IMjRosOutputProvider>& Provider : Providers)
 	{
-		const FString ArtName = Art.Name.ToString();
-
-		TArray<FString> Names;
-		TArray<double> Positions;
-		TArray<double> Velocities;
-		TArray<double> Efforts;
-		FillJointState(Art, Names, Positions, Velocities, Efforts);
-
-		// The core copies the name strings at create time; keep one UTF-8 buffer
-		// per name alive across the call and hand it a stable pointer array. The
-		// outer array is reserved so element pointers do not move.
-		TArray<TArray<ANSICHAR>> NameBytes;
-		NameBytes.Reserve(Names.Num());
-		TArray<const char*> NamePtrs;
-		NamePtrs.Reserve(Names.Num());
-		for (const FString& Name : Names)
+		if (Provider)
 		{
-			FTCHARToUTF8 Conv(*Name);
-			TArray<ANSICHAR>& Bytes = NameBytes.AddDefaulted_GetRef();
-			Bytes.Append(reinterpret_cast<const ANSICHAR*>(Conv.Get()), Conv.Length());
-			Bytes.Add('\0');
-			NamePtrs.Add(Bytes.GetData());
+			Provider->Build(Factory, Snapshot);
 		}
-
-		const FString JointTopic = FString::Printf(TEXT("/%s/joint_states"), *ArtName);
-		FArtPublishers Entry;
-		Entry.ArtSegment = Art.Name;
-		Entry.JointStatePub = UrlabRcl_CreateJointStatePub(Ctx,
-			TCHAR_TO_UTF8(*JointTopic), NamePtrs.GetData(), NamePtrs.Num());
-		if (Entry.JointStatePub == nullptr)
-		{
-			UE_LOG(LogURLabRos, Warning,
-				TEXT("ROS: JointState publisher create failed for %s (%hs)"),
-				*JointTopic, UrlabRcl_LastError());
-			continue;
-		}
-
-		// One Imu per art, created only when the art carries a gyro and/or accel.
-		double Ang[3];
-		double Acc[3];
-		bool bHasAng = false;
-		bool bHasAcc = false;
-		if (FillImu(Art, Ang, bHasAng, Acc, bHasAcc))
-		{
-			const FString ImuTopic = FString::Printf(TEXT("/%s/imu"), *ArtName);
-			Entry.ImuPub = UrlabRcl_CreateImuPub(Ctx, TCHAR_TO_UTF8(*ImuTopic),
-				TCHAR_TO_UTF8(*ArtName));
-			if (Entry.ImuPub == nullptr)
-			{
-				UE_LOG(LogURLabRos, Warning,
-					TEXT("ROS: Imu publisher create failed for %s (%hs)"),
-					*ImuTopic, UrlabRcl_LastError());
-			}
-		}
-
-		// One TwistStamped per art, created only when the art has a twist command.
-		if (Art.Twist.IsSet())
-		{
-			const FString TwistTopic = FString::Printf(TEXT("/%s/cmd_twist"), *ArtName);
-			Entry.TwistPub = UrlabRcl_CreateTwistStampedPub(Ctx,
-				TCHAR_TO_UTF8(*TwistTopic), TCHAR_TO_UTF8(*ArtName));
-			if (Entry.TwistPub == nullptr)
-			{
-				UE_LOG(LogURLabRos, Warning,
-					TEXT("ROS: TwistStamped publisher create failed for %s (%hs)"),
-					*TwistTopic, UrlabRcl_LastError());
-			}
-		}
-
-		// Latched /<art>/robot_description carrying the URDF the manager exported
-		// on compile. Created only when a document is cached for this art; the
-		// transient-local QoS delivers it to late-joining rviz / MoveIt clients.
-		if (const AAMjManager* Manager = GetTypedOuter<AAMjManager>())
-		{
-			if (const FString* Urdf = Manager->GetRobotDescriptions().Find(Art.Name))
-			{
-				const FString DescTopic = FString::Printf(TEXT("/%s/robot_description"), *ArtName);
-				Entry.RobotDescriptionPub = UrlabRcl_CreateStringPub(Ctx, TCHAR_TO_UTF8(*DescTopic));
-				if (Entry.RobotDescriptionPub == nullptr)
-				{
-					UE_LOG(LogURLabRos, Warning,
-						TEXT("ROS: robot_description publisher create failed for %s (%hs)"),
-						*DescTopic, UrlabRcl_LastError());
-				}
-				else
-				{
-					UrlabRcl_PublishString(Entry.RobotDescriptionPub, TCHAR_TO_UTF8(**Urdf));
-				}
-			}
-		}
-
-		Publishers.Add(Entry);
-	}
-
-	// Process-wide publishers: the whole-scene tf tree and the sim clock.
-	TfPub = UrlabRcl_CreateTfPub(Ctx, /*bStatic=*/0);
-	if (TfPub == nullptr)
-	{
-		UE_LOG(LogURLabRos, Warning, TEXT("ROS: /tf publisher create failed (%hs)"),
-			UrlabRcl_LastError());
-	}
-	ClockPub = UrlabRcl_CreateClockPub(Ctx);
-	if (ClockPub == nullptr)
-	{
-		UE_LOG(LogURLabRos, Warning, TEXT("ROS: /clock publisher create failed (%hs)"),
-			UrlabRcl_LastError());
 	}
 
 	CachedStructureVersion = Snapshot.StructureVersion;
-	bPublishersBuilt = true;
+	bProvidersBuilt = true;
 }
 
 void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& Snapshot)
@@ -366,93 +268,19 @@ void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& Snapshot)
 	{
 		return;
 	}
-	if (!bPublishersBuilt || Snapshot.StructureVersion != CachedStructureVersion)
+	if (!bProvidersBuilt || Snapshot.StructureVersion != CachedStructureVersion)
 	{
-		RebuildPublishers(Snapshot);
+		RebuildProviders(Snapshot);
 	}
 	++PublishStateCount;
 
 	const int64 SimTimeNs = FillClock(Snapshot.Clock);
-
-	// The publisher set and the snapshot's articulations share a StructureVersion
-	// and RebuildPublishers preserves order, so index i lines up in both.
-	const int32 N = FMath::Min(Publishers.Num(), Snapshot.Articulations.Num());
-	for (int32 i = 0; i < N; ++i)
+	for (const TUniquePtr<IMjRosOutputProvider>& Provider : Providers)
 	{
-		const FMjArticulationState& Art = Snapshot.Articulations[i];
-		const FArtPublishers& Pubs = Publishers[i];
-
-		TArray<FString> Names;
-		TArray<double> Positions;
-		TArray<double> Velocities;
-		TArray<double> Efforts;
-		FillJointState(Art, Names, Positions, Velocities, Efforts);
-		UrlabRcl_PublishJointState(Pubs.JointStatePub, Positions.GetData(),
-			Velocities.GetData(), Efforts.Num() > 0 ? Efforts.GetData() : nullptr,
-			Names.Num(), SimTimeNs);
-
-		if (Pubs.ImuPub)
+		if (Provider)
 		{
-			double Ang[3];
-			double Acc[3];
-			bool bHasAng = false;
-			bool bHasAcc = false;
-			FillImu(Art, Ang, bHasAng, Acc, bHasAcc);
-			UrlabRcl_PublishImu(Pubs.ImuPub, bHasAng ? Ang : nullptr,
-				bHasAcc ? Acc : nullptr, nullptr, SimTimeNs);
+			Provider->Publish(Snapshot, SimTimeNs);
 		}
-
-		if (Pubs.TwistPub)
-		{
-			double Lin[3];
-			double Ang[3];
-			if (FillTwistStamped(Art, Lin, Ang))
-			{
-				UrlabRcl_PublishTwistStamped(Pubs.TwistPub, Lin, Ang, SimTimeNs);
-			}
-		}
-	}
-
-	if (TfPub)
-	{
-		TArray<FString> Parents;
-		TArray<FString> Children;
-		TArray<double> Translations;
-		TArray<double> Rotations;
-		FillTf(Snapshot, Parents, Children, Translations, Rotations);
-		if (Parents.Num() > 0)
-		{
-			// The core copies the frame strings; hold stable UTF-8 buffers and
-			// pointer arrays alive across the call, as with the joint names above.
-			TArray<TArray<ANSICHAR>> ParentBytes;
-			TArray<TArray<ANSICHAR>> ChildBytes;
-			ParentBytes.Reserve(Parents.Num());
-			ChildBytes.Reserve(Children.Num());
-			TArray<const char*> ParentPtrs;
-			TArray<const char*> ChildPtrs;
-			ParentPtrs.Reserve(Parents.Num());
-			ChildPtrs.Reserve(Children.Num());
-			auto AppendUtf8 = [](TArray<TArray<ANSICHAR>>& Store, TArray<const char*>& Ptrs,
-				const FString& Value) {
-				FTCHARToUTF8 Conv(*Value);
-				TArray<ANSICHAR>& Bytes = Store.AddDefaulted_GetRef();
-				Bytes.Append(reinterpret_cast<const ANSICHAR*>(Conv.Get()), Conv.Length());
-				Bytes.Add('\0');
-				Ptrs.Add(Bytes.GetData());
-			};
-			for (const FString& P : Parents)
-				AppendUtf8(ParentBytes, ParentPtrs, P);
-			for (const FString& C : Children)
-				AppendUtf8(ChildBytes, ChildPtrs, C);
-
-			UrlabRcl_PublishTf(TfPub, ParentPtrs.GetData(), ChildPtrs.GetData(),
-				Translations.GetData(), Rotations.GetData(), ParentPtrs.Num(), SimTimeNs);
-		}
-	}
-
-	if (ClockPub)
-	{
-		UrlabRcl_PublishClock(ClockPub, SimTimeNs);
 	}
 }
 
@@ -462,7 +290,6 @@ void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& Snapshot)
 bool UURLabRosPublishTransport::TransportInit() { return false; }
 void UURLabRosPublishTransport::TransportShutdown() {}
 void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& /*Snapshot*/) {}
-void UURLabRosPublishTransport::RebuildPublishers(const FMjStateSnapshot& /*Snapshot*/) {}
-void UURLabRosPublishTransport::ReleasePublishers() {}
+void UURLabRosPublishTransport::RebuildProviders(const FMjStateSnapshot& /*Snapshot*/) {}
 
 #endif  // URLAB_WITH_ROS2

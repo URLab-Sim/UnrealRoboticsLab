@@ -39,9 +39,12 @@
 #include <sensor_msgs/msg/joint_state.h>
 #include <sensor_msgs/msg/imu.h>
 #include <sensor_msgs/msg/image.h>
+#include <sensor_msgs/msg/range.h>
+#include <sensor_msgs/msg/magnetic_field.h>
 #include <geometry_msgs/msg/twist.h>
 #include <geometry_msgs/msg/twist_stamped.h>
 #include <geometry_msgs/msg/transform_stamped.h>
+#include <geometry_msgs/msg/wrench_stamped.h>
 #include <std_msgs/msg/float64_multi_array.h>
 #include <std_msgs/msg/string.h>
 #include <tf2_msgs/msg/tf_message.h>
@@ -164,6 +167,34 @@ struct UrlabRclStringPub
     UrlabRclContext* Ctx;
     rcl_publisher_t Pub;
     std_msgs__msg__String Msg;
+};
+
+struct UrlabRclWrenchStampedPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    geometry_msgs__msg__WrenchStamped Msg;
+};
+
+struct UrlabRclRangePub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    sensor_msgs__msg__Range Msg;
+};
+
+struct UrlabRclMagneticFieldPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    sensor_msgs__msg__MagneticField Msg;
+};
+
+struct UrlabRclFloat64MultiArrayPub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    std_msgs__msg__Float64MultiArray Msg;
 };
 
 struct UrlabRclCtrlSub
@@ -942,6 +973,256 @@ void UrlabRcl_DestroyStringPub(UrlabRclStringPub* Pub)
     }
     rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
     std_msgs__msg__String__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- WrenchStamped ---------------------------------------------------------
+
+UrlabRclWrenchStampedPub* UrlabRcl_CreateWrenchStampedPub(UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclWrenchStampedPub* Pub = new UrlabRclWrenchStampedPub();
+    Pub->Ctx = Ctx;
+    geometry_msgs__msg__WrenchStamped__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, WrenchStamped);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        geometry_msgs__msg__WrenchStamped__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishWrenchStamped(UrlabRclWrenchStampedPub* Pub,
+    const double Force[3], const double Torque[3], int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    Pub->Msg.wrench.force.x = Force ? Force[0] : 0.0;
+    Pub->Msg.wrench.force.y = Force ? Force[1] : 0.0;
+    Pub->Msg.wrench.force.z = Force ? Force[2] : 0.0;
+    Pub->Msg.wrench.torque.x = Torque ? Torque[0] : 0.0;
+    Pub->Msg.wrench.torque.y = Torque ? Torque[1] : 0.0;
+    Pub->Msg.wrench.torque.z = Torque ? Torque[2] : 0.0;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyWrenchStampedPub(UrlabRclWrenchStampedPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    geometry_msgs__msg__WrenchStamped__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- Range -----------------------------------------------------------------
+
+UrlabRclRangePub* UrlabRcl_CreateRangePub(UrlabRclContext* Ctx, const char* Topic,
+    const char* FrameId, uint8_t RadiationType, float FieldOfView, float MinRange,
+    float MaxRange)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclRangePub* Pub = new UrlabRclRangePub();
+    Pub->Ctx = Ctx;
+    sensor_msgs__msg__Range__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+    // Constant fields; only the reading + stamp change per publish.
+    Pub->Msg.radiation_type = RadiationType;
+    Pub->Msg.field_of_view = FieldOfView;
+    Pub->Msg.min_range = MinRange;
+    Pub->Msg.max_range = MaxRange;
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Range);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        sensor_msgs__msg__Range__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishRange(UrlabRclRangePub* Pub, float Range, int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    Pub->Msg.range = Range;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyRangePub(UrlabRclRangePub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    sensor_msgs__msg__Range__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- MagneticField ---------------------------------------------------------
+
+UrlabRclMagneticFieldPub* UrlabRcl_CreateMagneticFieldPub(UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclMagneticFieldPub* Pub = new UrlabRclMagneticFieldPub();
+    Pub->Ctx = Ctx;
+    sensor_msgs__msg__MagneticField__init(&Pub->Msg);
+    SetString(Pub->Msg.header.frame_id, FrameId);
+    // Exact ground truth: leading covariance element 0 (not -1 "unknown").
+    Pub->Msg.magnetic_field_covariance[0] = 0.0;
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, MagneticField);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        sensor_msgs__msg__MagneticField__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishMagneticField(UrlabRclMagneticFieldPub* Pub, const double Field[3],
+    int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+    Pub->Msg.magnetic_field.x = Field ? Field[0] : 0.0;
+    Pub->Msg.magnetic_field.y = Field ? Field[1] : 0.0;
+    Pub->Msg.magnetic_field.z = Field ? Field[2] : 0.0;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyMagneticFieldPub(UrlabRclMagneticFieldPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    sensor_msgs__msg__MagneticField__fini(&Pub->Msg);
+    delete Pub;
+}
+
+// --- Float64MultiArray (total-coverage sensor fallback) --------------------
+
+UrlabRclFloat64MultiArrayPub* UrlabRcl_CreateFloat64MultiArrayPub(UrlabRclContext* Ctx,
+    const char* Topic)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclFloat64MultiArrayPub* Pub = new UrlabRclFloat64MultiArrayPub();
+    Pub->Ctx = Ctx;
+    std_msgs__msg__Float64MultiArray__init(&Pub->Msg);
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float64MultiArray);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        std_msgs__msg__Float64MultiArray__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishFloat64MultiArray(UrlabRclFloat64MultiArrayPub* Pub,
+    const double* Values, int32_t Count)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    const int32_t N = Count > 0 ? Count : 0;
+    if (static_cast<int32_t>(Pub->Msg.data.capacity) < N)
+    {
+        rosidl_runtime_c__double__Sequence__fini(&Pub->Msg.data);
+        rosidl_runtime_c__double__Sequence__init(&Pub->Msg.data, N);
+    }
+    if (Values && N > 0)
+    {
+        std::memcpy(Pub->Msg.data.data, Values, sizeof(double) * N);
+    }
+    Pub->Msg.data.size = N;
+
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyFloat64MultiArrayPub(UrlabRclFloat64MultiArrayPub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    std_msgs__msg__Float64MultiArray__fini(&Pub->Msg);
     delete Pub;
 }
 

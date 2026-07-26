@@ -686,4 +686,63 @@ bool FMjRosCtrlWire::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// 11. Total sensor routing over the wire: an art carrying one of each typed
+//     sensor plus an unmapped one builds and publishes through the provider set
+//     against real rcl without error (Wrench / Range / MagneticField / Twist /
+//     Float64MultiArray create + publish paths). Availability-gated.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosSensorRoutingWire,
+	"URLab.Ros.SensorRoutingWire",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRosSensorRoutingWire::RunTest(const FString& Parameters)
+{
+	FURLabRosContext::Get().Initialize();
+	if (!FURLabRosContext::Get().IsAvailable())
+	{
+		UE_LOG(LogTemp, Display,
+			TEXT("URLab.Ros.SensorRoutingWire: no live ROS context; skipping."));
+		return true;
+	}
+
+	auto AddSensor = [](FMjArticulationState& Art, const TCHAR* Name,
+		EMjSensorSemantic Sem, TArray<double> Values)
+	{
+		FMjSensorState S;
+		S.Name = FName(Name);
+		S.Semantic = Sem;
+		S.Values = MoveTemp(Values);
+		Art.Sensors.Add(S);
+	};
+
+	FMjStateSnapshot Snap;
+	Snap.StructureVersion = 1;
+	FMjArticulationState Art;
+	Art.Name = FName(TEXT("go2"));
+	AddSensor(Art, TEXT("ft_force"), EMjSensorSemantic::Force, {1.0, 2.0, 3.0});
+	AddSensor(Art, TEXT("ft_torque"), EMjSensorSemantic::Torque, {4.0, 5.0, 6.0});
+	AddSensor(Art, TEXT("front_range"), EMjSensorSemantic::Rangefinder, {0.42});
+	AddSensor(Art, TEXT("mag0"), EMjSensorSemantic::Magnetometer, {0.1, 0.2, 0.3});
+	AddSensor(Art, TEXT("base_vel"), EMjSensorSemantic::Velocity, {0.5, 0.0, 0.0});
+	AddSensor(Art, TEXT("belly_touch"), EMjSensorSemantic::Touch, {1.0});
+	Snap.Articulations.Add(Art);
+
+	UURLabRosPublishTransport* Transport = NewObject<UURLabRosPublishTransport>();
+	TestTrue(TEXT("transport init"), Transport->TransportInit());
+
+	Transport->PublishState(Snap);
+	Transport->PublishState(Snap);
+
+	// Every registered provider instantiated, and the run did not tear the context
+	// down (the wrench/range/mag/twist/multiarray wire paths all succeeded).
+	TestEqual(TEXT("all registered providers built"),
+		Transport->GetProviderCountForTest(), FMjRosOutputRegistry::Get().Num());
+	TestTrue(TEXT("context still available after routing publish"),
+		FURLabRosContext::Get().IsAvailable());
+
+	Transport->TransportShutdown();
+	return true;
+}
+
 #endif  // URLAB_WITH_ROS2

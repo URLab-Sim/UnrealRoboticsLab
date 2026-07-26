@@ -24,17 +24,9 @@
 
 #include "CoreMinimal.h"
 #include "Transport/PublishTransport.h"
+#include "Transport/RosOutputProvider.h"
 #include "State/MjStateConsumer.h"
 #include "RosPublishTransport.generated.h"
-
-// Opaque publisher handles from the rcl seam; defined in UrlabRclCore.cpp. Held
-// by pointer so this Public header never includes the Private core header.
-struct UrlabRclJointStatePub;
-struct UrlabRclImuPub;
-struct UrlabRclTfPub;
-struct UrlabRclTwistStampedPub;
-struct UrlabRclClockPub;
-struct UrlabRclStringPub;
 
 struct FMjStateSnapshot;
 struct FMjArticulationState;
@@ -45,24 +37,28 @@ struct FMjClock;
  * @brief Publishes the per-step state IR as typed ROS 2 messages.
  *
  * Unlike the ZMQ / SHM transports, this one does not move opaque bytes: it IS
- * the encoder. It owns one rcl publisher per articulation and fills the rosidl C
- * structs (through the UrlabRclCore seam) directly from `FMjStateSnapshot`. The
- * byte `Publish(topic, payload)` path is therefore a no-op; state flows in via
- * `PublishState`, called from the manager's post-step fan-out in every mode.
+ * the encoder. It does not, however, hard-code the message set. It drives a
+ * self-registering provider library (`FMjRosOutputRegistry`): on a
+ * `StructureVersion` change it instantiates one provider per registered output,
+ * calls `Build` to create that output's publishers for the current model, then
+ * calls `Publish` on every provider each step. Adding an output is dropping a
+ * self-registering provider file; there is no central switch here to edit. The
+ * byte `Publish(topic, payload)` path is a no-op; state flows in via
+ * `PublishState`, from the manager's post-step fan-out in every mode.
  *
- * The publisher set is rebuilt only when the IR's `StructureVersion` changes
- * (an articulation registry change), so the steady-state per-step cost is one
- * fill + `rcl_publish` per publisher.
+ * The built-in providers cover, per articulation on `/<art>/...`:
+ *  - `sensor_msgs/JointState` on `joint_states`,
+ *  - `sensor_msgs/Imu` on `imu` (gyro and/or accel),
+ *  - `geometry_msgs/TwistStamped` on `cmd_twist` (twist command),
+ *  - total sensor routing (Force+Torque -> `WrenchStamped`, Rangefinder ->
+ *    `Range`, Magnetometer -> `MagneticField`, Velocimeter -> `TwistStamped`,
+ *    everything else -> `std_msgs/Float64MultiArray` on `sensors/<name>`),
+ *  - latched `robot_description` (exported URDF),
+ * and process-wide: `tf2_msgs/TFMessage` on `/tf` and `rosgraph_msgs/Clock` on
+ * `/clock`.
  *
- * Per articulation, on `/<art>/...`:
- *  - `sensor_msgs/JointState` on `joint_states` (always),
- *  - `sensor_msgs/Imu` on `imu` (when the art carries a gyro and/or accel),
- *  - `geometry_msgs/TwistStamped` on `cmd_twist` (when the art has a twist).
- *
- * Process-wide (one each):
- *  - `tf2_msgs/TFMessage` on `/tf`, one transform per body (parent `world`,
- *    child `<art>/<body>`),
- *  - `rosgraph_msgs/Clock` on `/clock`, from the IR sim time.
+ * The pure IR -> array fill helpers (`Fill*`) stay static here so they are
+ * tested with no rcl dependency; the providers call them.
  */
 UCLASS()
 class URLABROS_API UURLabRosPublishTransport : public UURLabPublishTransport, public IMjStateConsumer
@@ -130,37 +126,26 @@ public:
 	 *  Pure function, exposed for the clock-parity test. */
 	static int64 FillClock(const FMjClock& Clock);
 
-	/** Test seams: inspect the rebuilt publisher set and the per-step publish
-	 *  count without a ROS runtime dependency. */
-	int32 GetArtPublisherCountForTest() const { return Publishers.Num(); }
+	/** Test seams: inspect the rebuilt provider set and the per-step publish count
+	 *  without a ROS runtime dependency. */
+	int32 GetArtPublisherCountForTest() const;
+	int32 GetProviderCountForTest() const { return Providers.Num(); }
 	uint32 GetCachedStructureVersionForTest() const { return CachedStructureVersion; }
 	int64 GetPublishStateCountForTest() const { return PublishStateCount; }
 
 private:
-	struct FArtPublishers
-	{
-		FName ArtSegment;
-		UrlabRclJointStatePub* JointStatePub = nullptr;
-		UrlabRclImuPub* ImuPub = nullptr;           // null when the art has no gyro/accel
-		UrlabRclTwistStampedPub* TwistPub = nullptr; // null when the art has no twist
-		UrlabRclStringPub* RobotDescriptionPub = nullptr; // null when no URDF cached
-	};
-
-	TArray<FArtPublishers> Publishers;
-	UrlabRclTfPub* TfPub = nullptr;   // process-wide /tf tree
-	UrlabRclClockPub* ClockPub = nullptr; // process-wide /clock
+	/** The registered output providers, instantiated on each structure change.
+	 *  Destroying an entry releases its publishers. */
+	TArray<TUniquePtr<IMjRosOutputProvider>> Providers;
 	uint32 CachedStructureVersion = 0;
-	bool bPublishersBuilt = false;
+	bool bProvidersBuilt = false;
 
 	/** Counts PublishState invocations so a test can assert the fan-out drove ROS
 	 *  in a given mode; incremented before the availability short-circuit is not
 	 *  useful, so it counts only calls that reached the publish body. */
 	int64 PublishStateCount = 0;
 
-	/** Destroy and recreate the publisher set from the snapshot's current
-	 *  structure. */
-	void RebuildPublishers(const FMjStateSnapshot& Snapshot);
-
-	/** Destroy every publisher handle, in reverse order. */
-	void ReleasePublishers();
+	/** Instantiate the registered providers and Build them against the snapshot's
+	 *  current structure, releasing the previous set first. */
+	void RebuildProviders(const FMjStateSnapshot& Snapshot);
 };

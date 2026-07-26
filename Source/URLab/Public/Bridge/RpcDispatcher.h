@@ -16,6 +16,7 @@
 
 #include "CoreMinimal.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "Bridge/ControlOwnership.h"
 #include "Dom/JsonObject.h"
 #include "Containers/Queue.h"
 #include <atomic>
@@ -131,6 +132,10 @@ public:
 	void SetUseJsonEncoding(bool bUse) { bUseJsonEncoding.store(bUse, std::memory_order_release); }
 
 	int64 GetStepCounter() const { return StepCounter.load(std::memory_order_acquire); }
+
+	/** Per-articulation control arbitration shared by every control write.
+	 *  Exposed so tests can drive claims and the deterministic clock seam. */
+	FMjControlOwnership& GetControlOwnership() { return ControlOwnership; }
 
 	/** Worker threads read the replay manager via this cache instead of
 	 *  TActorIterator (which asserts IsInGameThread). */
@@ -258,6 +263,9 @@ private:
 
 	FString ActiveSessionId;
 
+	/** Per-articulation control ownership. Reset per PIE from OnManagerGone. */
+	FMjControlOwnership ControlOwnership;
+
 	std::atomic<EStepMode> ActiveStepMode{EStepMode::Live};
 	std::atomic<EObservationLevel> ActiveObservationLevel{EObservationLevel::Standard};
 	std::atomic<int64> StepCounter{0};
@@ -318,6 +326,16 @@ private:
 	void UnregisterDispatcherOps();
 	TArray<FString> RegisteredOpNames;
 
+	/** The control source for a request: the optional `source` field, falling
+	 *  back to `session_id`. Lets one session act as several sources in tests. */
+	FString ResolveControlSource(const TSharedPtr<FJsonObject>& Req) const;
+
+	/** Consult the control gate for a write to `ArtKey`. Returns nullptr when
+	 *  the request's source owns it; otherwise a `not_control_owner` error reply
+	 *  carrying the current owner. */
+	TSharedPtr<FJsonObject> RejectIfNotControlOwner(FName ArtKey,
+		const TSharedPtr<FJsonObject>& Req);
+
 	// Op handlers
 	TSharedPtr<FJsonObject> HandleHello(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleMeta(const TSharedPtr<FJsonObject>& Req);
@@ -340,6 +358,8 @@ private:
 	TSharedPtr<FJsonObject> HandleSetSimOptions(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimSpeed(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetControlSource(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleClaimControl(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleReleaseControl(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetTwist(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetQpos(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetMocapPose(const TSharedPtr<FJsonObject>& Req);

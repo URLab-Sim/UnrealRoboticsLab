@@ -177,6 +177,14 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	Reg(TEXT("set_control_source"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetControlSource(R); },
 		{TEXT("op:string")});
+	Reg(TEXT("claim_control"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleClaimControl(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("owner:string"), TEXT("ttl_s:float")},
+		/*Required=*/{TEXT("articulation")});
+	Reg(TEXT("release_control"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleReleaseControl(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string")},
+		/*Required=*/{TEXT("articulation")});
 	Reg(TEXT("set_twist"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetTwist(R); },
 		{TEXT("op:string")});
@@ -308,6 +316,9 @@ void FURLabRpcDispatcher::OnManagerGone()
 	UninstallDirectHandler();
 	CurrentStepStrategy.Reset();
 	DrainQueues();
+
+	// Claims are per-PIE: the articulations die with the world.
+	ControlOwnership.Reset();
 
 	if (OwnerMgr.IsValid())
 	{

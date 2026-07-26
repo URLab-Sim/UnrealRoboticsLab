@@ -1233,6 +1233,11 @@ bool FMjStepServerSetQposByName::RunTest(const FString& Parameters)
 	int32 Jid = Art->GetJoints()[0]->GetMjID();
 	int32 QAddr = m->jnt_qposadr[Jid];
 
+	// Control writes require an explicit claim; the session owns the art.
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
+
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
 	Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
@@ -1279,6 +1284,11 @@ bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 
 	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
+
+	// The claim is keyed by the canonical art name, even when addressed by actor_id.
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
@@ -1364,6 +1374,10 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 	int32 HingeAdr = m->jnt_qposadr[JointsArr[1]->GetMjID()];
 	d->qpos[HingeAdr] = 1.5; // sentinel -- the shortcut must NOT touch this
 
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
+
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
 	Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
@@ -1414,6 +1428,11 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
 
 	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+
+	// Own the art so the dim_mismatch path is reached past the control gate.
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
 
 	// dim_mismatch: 3-vec into a 1-dim hinge articulation.
 	{

@@ -486,6 +486,20 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TShare
 
 	if (ArtName.IsEmpty())
 	{
+		// Global flip is a control write across every art, so the source must
+		// own each currently-claimed art (or none may be claimed).
+		const FString Source = ResolveControlSource(Req);
+		for (const auto& Owned : ControlOwnership.GetActiveOwners())
+		{
+			if (!Owned.Value.Equals(Source))
+			{
+				TSharedPtr<FJsonObject> Err = MakeError(TEXT("not_control_owner"),
+					FString::Printf(TEXT("%s owned by %s"), *Owned.Key.ToString(), *Owned.Value));
+				Err->SetStringField(TEXT("owner"), Owned.Value);
+				return Err;
+			}
+		}
+
 		// Global: update engine + every articulation so the per-actor field
 		// doesn't keep stale state after a global flip.
 		Mgr->PhysicsEngine->SetControlSource(NewSource);
@@ -501,6 +515,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TShare
 		AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 		if (!Art)
 			return MakeError(TEXT("unknown_articulation"), ArtName);
+		if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
+			return Denied;
 		Art->ControlSource = (uint8)NewSource;
 		Reply->SetStringField(TEXT("scope"), TEXT("articulation"));
 		Reply->SetStringField(TEXT("articulation"), ArtName);
@@ -525,6 +541,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJs
 	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 	if (!Art)
 		return MakeError(TEXT("unknown_articulation"), ArtName);
+
+	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
+		return Denied;
 
 	UMjTwistController* TC = Art->FindComponentByClass<UMjTwistController>();
 	if (!TC)

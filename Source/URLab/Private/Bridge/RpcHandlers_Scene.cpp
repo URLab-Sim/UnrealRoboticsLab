@@ -133,6 +133,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 		return MakeError(TEXT("unknown_articulation"), Target);
 	}
 
+	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
+		return Denied;
+
 	const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
 	if (!Req->TryGetArrayField(TEXT("qpos"), QPosArr) || !QPosArr)
 		return MakeError(TEXT("missing_field"), TEXT("set_qpos requires 'qpos' array"));
@@ -262,6 +265,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 	const int32 BodyId = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*Body));
 	if (BodyId < 0)
 		return MakeError(TEXT("unknown_body"), Body);
+
+	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Body), Req))
+		return Denied;
 
 	const int32 MocapId = m->body_mocapid[BodyId];
 	if (MocapId < 0)

@@ -342,6 +342,41 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
 	}
 
+	// Gate step-carried control: any articulation whose payload carries
+	// ctrl / ctrl_map / xfrc_applied must be owned by this request's control
+	// source. Observation-only steps (no control payload) are never gated.
+	{
+		const TSharedPtr<FJsonObject>* PerArt = nullptr;
+		if (Req->TryGetObjectField(TEXT("per_articulation"), PerArt) && PerArt && PerArt->IsValid())
+		{
+			const FString Source = ResolveControlSource(Req);
+			for (const auto& Pair : (*PerArt)->Values)
+			{
+				const TSharedPtr<FJsonObject>* ArtObj = nullptr;
+				if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
+					continue;
+				const bool bCarriesControl =
+					(*ArtObj)->HasField(TEXT("ctrl")) ||
+					(*ArtObj)->HasField(TEXT("ctrl_map")) ||
+					(*ArtObj)->HasField(TEXT("xfrc_applied"));
+				if (!bCarriesControl)
+					continue;
+
+				const AMjArticulation* Art = Mgr->GetArticulation(Pair.Key);
+				const FName Key(Art ? *Art->GetName() : *Pair.Key);
+				FString CurrentOwner;
+				if (ControlOwnership.CheckWrite(Key, Source, CurrentOwner)
+					!= FMjControlOwnership::EWriteCheck::Ok)
+				{
+					TSharedPtr<FJsonObject> Err = MakeError(TEXT("not_control_owner"),
+						FString::Printf(TEXT("%s owned by %s"), *Key.ToString(), *CurrentOwner));
+					Err->SetStringField(TEXT("owner"), CurrentOwner);
+					return Err;
+				}
+			}
+		}
+	}
+
 	FStepRequestCommon Common;
 	ParseStepCommon(Req, Mgr, Common);
 

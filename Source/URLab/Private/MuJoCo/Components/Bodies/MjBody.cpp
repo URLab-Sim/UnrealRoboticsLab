@@ -31,6 +31,8 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
+#include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
@@ -383,6 +385,21 @@ void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 BodyView UMjBody::GetBodyView() const
 {
 	return m_BodyView;
+}
+
+void UMjBody::DescribeState(FMjArticulationState& Out) const
+{
+	if (bIsDefault)
+		return;
+	const BodyView& V = m_BodyView;
+	if (V.id < 0 || !V.xpos || !V.xquat)
+		return;
+	FMjBodyState& B = Out.Bodies.AddDefaulted_GetRef();
+	B.Name = FMjCanonicalName::PartSegment(Cast<AMjArticulation>(GetOwner()), GetMjName());
+	for (int32 i = 0; i < 3; ++i)
+		B.Xpos[i] = V.xpos[i];
+	for (int32 i = 0; i < 4; ++i)
+		B.Xquat[i] = V.xquat[i];
 }
 
 FVector UMjBody::GetWorldPosition() const

@@ -34,6 +34,9 @@
 #include "MuJoCo/Components/Tendons/MjTendon.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
 
 UMjSensor::UMjSensor()
 {
@@ -789,6 +792,90 @@ void UMjSensor::BuildBinaryPayload(FBufferArchive& OutBuffer) const
 FString UMjSensor::GetTelemetryTopicName() const
 {
 	return FString::Printf(TEXT("sensor/%s"), *GetName());
+}
+
+// Coarse EMjSensorType -> EMjSensorSemantic grouping. Lets a later ROS publisher
+// pair gyro+accel into an Imu and route pose-like sensors to tf2; msgpack ignores
+// it. Unmapped types fall through to Generic.
+static EMjSensorSemantic SensorSemanticFor(EMjSensorType Type)
+{
+	switch (Type)
+	{
+		case EMjSensorType::Gyro:
+			return EMjSensorSemantic::Gyro;
+		case EMjSensorType::Accelerometer:
+			return EMjSensorSemantic::Accel;
+		case EMjSensorType::Velocimeter:
+			return EMjSensorSemantic::Velocity;
+		case EMjSensorType::Force:
+			return EMjSensorSemantic::Force;
+		case EMjSensorType::Torque:
+			return EMjSensorSemantic::Torque;
+		case EMjSensorType::Touch:
+			return EMjSensorSemantic::Touch;
+		case EMjSensorType::RangeFinder:
+			return EMjSensorSemantic::Rangefinder;
+		case EMjSensorType::Magnetometer:
+			return EMjSensorSemantic::Magnetometer;
+		case EMjSensorType::JointPos:
+			return EMjSensorSemantic::JointPos;
+		case EMjSensorType::JointVel:
+			return EMjSensorSemantic::JointVel;
+		case EMjSensorType::ActuatorPos:
+			return EMjSensorSemantic::ActuatorPos;
+		case EMjSensorType::ActuatorVel:
+			return EMjSensorSemantic::ActuatorVel;
+		case EMjSensorType::ActuatorFrc:
+			return EMjSensorSemantic::ActuatorFrc;
+		case EMjSensorType::FramePos:
+			return EMjSensorSemantic::FramePos;
+		case EMjSensorType::FrameQuat:
+			return EMjSensorSemantic::FrameQuat;
+		case EMjSensorType::FrameXAxis:
+		case EMjSensorType::FrameYAxis:
+		case EMjSensorType::FrameZAxis:
+			return EMjSensorSemantic::FrameAxis;
+		case EMjSensorType::FrameLinVel:
+			return EMjSensorSemantic::FrameLinVel;
+		case EMjSensorType::FrameAngVel:
+			return EMjSensorSemantic::FrameAngVel;
+		case EMjSensorType::FrameLinAcc:
+			return EMjSensorSemantic::FrameLinAcc;
+		case EMjSensorType::FrameAngAcc:
+			return EMjSensorSemantic::FrameAngAcc;
+		case EMjSensorType::SubtreeCom:
+			return EMjSensorSemantic::SubtreeCom;
+		case EMjSensorType::SubtreeLinVel:
+			return EMjSensorSemantic::SubtreeLinVel;
+		case EMjSensorType::SubtreeAngMom:
+			return EMjSensorSemantic::SubtreeAngMom;
+		case EMjSensorType::Clock:
+			return EMjSensorSemantic::Clock;
+		default:
+			return EMjSensorSemantic::Generic;
+	}
+}
+
+void UMjSensor::DescribeState(FMjArticulationState& Out) const
+{
+	const SensorView& V = m_SensorView;
+	if (V.id < 0 || !V.sensordata || V.sensor_dim <= 0)
+		return;
+
+	// Read the raw slots then apply the same coord/unit fixup GetReading() does,
+	// so streamed values equal accessor reads.
+	TArray<float> Reading;
+	Reading.SetNumUninitialized(V.sensor_dim);
+	for (int32 i = 0; i < V.sensor_dim; ++i)
+		Reading[i] = static_cast<float>(V.sensordata[i]);
+	TransformSensorReading(Reading, Type);
+
+	FMjSensorState& S = Out.Sensors.AddDefaulted_GetRef();
+	S.Name = FMjCanonicalName::PartSegment(Cast<AMjArticulation>(GetOwner()), GetMjName());
+	S.Semantic = SensorSemanticFor(Type);
+	S.Values.SetNumUninitialized(Reading.Num());
+	for (int32 i = 0; i < Reading.Num(); ++i)
+		S.Values[i] = Reading[i];
 }
 
 #if WITH_EDITOR

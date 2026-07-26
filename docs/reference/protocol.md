@@ -62,7 +62,7 @@ sequenceDiagram
     end
     loop policy
         C->>S: step { n_steps, observations, per_articulation }
-        S-->>C: step_ok { time, step, sim_time, wall_time, per_articulation, ... }
+        S-->>C: step_ok { time, step, sim_time, wall_time, arts, scene, ... }
     end
 ```
 
@@ -299,7 +299,7 @@ request uses the same `per_articulation` shape as direct.
   "frame_id": 21,
   "sim_time": { "sec": 0, "nsec": 42000000 },
   "wall_time": { "sec": 1714125000, "nsec": 123000000 },
-  "per_articulation": {
+  "arts": {
     "g1": {
       "qpos": ["..."], "qvel": ["..."], "ctrl": ["..."], "act": ["..."],
       "sensors": { "imu_gyro": ["..."] },
@@ -307,12 +307,19 @@ request uses the same `per_articulation` shape as direct.
       "actions": 0
     }
   },
-  "entities": {
+  "scene": {
     "pallet":    { "qpos": ["..."], "qvel": ["..."], "xpos": ["..."], "xquat": ["..."] },
     "terrain_a": { "xpos": ["..."], "xquat": ["..."] }
   }
 }
 ```
+
+The observation blocks are named on the output side by what they contain:
+`arts` is the per-articulation state (keyed by articulation name), `scene`
+is the non-articulation dynamic bodies. The `step` *request* still carries
+control input under `per_articulation` — input and output are separate
+concerns. The streamed `state/full` snapshot uses the identical `arts` /
+`scene` shape (plus `op: "state_full"`).
 
 - `time` is `mjData->time`. `sim_time` / `wall_time` are
   ROS-Time-aligned `{sec, nsec}` blocks: `sim_time` mirrors `time` at

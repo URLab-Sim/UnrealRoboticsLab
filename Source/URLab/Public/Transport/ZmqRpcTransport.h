@@ -76,9 +76,11 @@ struct FMjDirectStepCommand
 	 *  asked for, not whatever session level is current when the handler runs. */
 	FURLabRpcDispatcher::EObservationLevel ObservationLevel =
 		FURLabRpcDispatcher::EObservationLevel::Standard;
-	/** Observations captured under the engine's CallbackMutex. */
-	TSharedPtr<FJsonObject> Observations;
-	TSharedPtr<FJsonObject> Entities;
+	/** Base step reply (op/time/step/clock/frame_id/arts/scene) built by the
+	 *  handler under the engine's CallbackMutex from the state IR, so the reply's
+	 *  observations reflect the just-stepped mjData. The RPC thread appends any
+	 *  requested cameras before returning it. */
+	TSharedPtr<FJsonObject> Reply;
 	double ResultTime = 0.0;
 	int64 ResultStep = 0;
 	/** Post-step render-snapshot id, captured by the handler under

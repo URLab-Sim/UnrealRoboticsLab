@@ -23,9 +23,10 @@
  * with UCLASSes is straightforward. Implementations: UURLabZmqPublishTransport
  * (PUB on tcp://0.0.0.0:5555), UURLabShmPublishTransport (SHM ring buffer).
  *
- * The publisher does NOT decide what to ship -- `FMjSnapshotProducer`
- * builds the msgpack bytes once per step (in `AAMjManager`'s PostStep
- * callback); each publisher calls `PublishSnapshot(Bytes)` to fan out.
+ * The publisher does NOT decide what to ship -- the manager's PostStep
+ * callback builds the state IR via `FMjStateCollector` and encodes the msgpack
+ * bytes once via `FMjMsgpackEncoder`; each publisher calls
+ * `PublishSnapshot(Bytes)` to fan out.
  */
 class URLAB_API IMjSnapshotPublisher
 {

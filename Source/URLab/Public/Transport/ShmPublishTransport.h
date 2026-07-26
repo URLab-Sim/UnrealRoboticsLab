@@ -32,8 +32,8 @@ class AAMjManager;
  * via `TransportShutdown`.
  *
  * Wire layout (per slot): [u32 size][bytes payload]. Payload is the
- * msgpack-encoded snapshot built by FMjSnapshotProducer. Producer pattern
- * is the standard double-buffer + sequence fence.
+ * msgpack-encoded state IR built by FMjStateCollector + FMjMsgpackEncoder.
+ * Producer pattern is the standard double-buffer + sequence fence.
  */
 UCLASS()
 class URLAB_API UURLabShmPublishTransport : public UURLabPublishTransport

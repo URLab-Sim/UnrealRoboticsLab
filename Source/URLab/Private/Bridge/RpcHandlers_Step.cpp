@@ -24,6 +24,9 @@
 #include "Bridge/OpRegistry.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
+#include "State/MjStateCollector.h"
+#include "State/MjMsgpackEncoder.h"
+#include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
@@ -356,30 +359,29 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	return Strategy->HandleStep(*this, Req, Common);
 }
 
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepReply(double TimeSec, int64 StepIdx, uint64 FrameId,
-	const TSharedPtr<FJsonObject>& Observations,
-	const TSharedPtr<FJsonObject>& Entities,
-	AAMjManager* Mgr,
-	const TMap<FString, ECameraInclude>& CameraSpec,
-	const TMap<FString, uint64>& CameraMinFrameIds)
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepReply(const FMjStateSnapshot& Snapshot,
+	uint64 FrameId, EObservationLevel Level)
 {
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-	Reply->SetNumberField(TEXT("time"), TimeSec);
-	Reply->SetNumberField(TEXT("step"), static_cast<double>(StepIdx));
-	AppendClockFields(Reply, TimeSec);
+	Reply->SetNumberField(TEXT("time"), Snapshot.Time);
+	Reply->SetNumberField(TEXT("step"), static_cast<double>(Snapshot.Step));
+	AppendClockFields(Reply, Snapshot.Time);
 	Reply->SetNumberField(TEXT("frame_id"), static_cast<double>(FrameId));
-	if (Observations.IsValid())
-		Reply->SetObjectField(TEXT("per_articulation"), Observations);
-	if (Entities.IsValid())
-		Reply->SetObjectField(TEXT("entities"), Entities);
-	if (CameraSpec.Num() > 0)
-	{
-		TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
-		if (Cams.IsValid() && Cams->Values.Num() > 0)
-			Reply->SetObjectField(TEXT("cameras"), Cams);
-	}
+	Reply->SetObjectField(TEXT("arts"), FMjMsgpackEncoder::EncodeArts(Snapshot, Level));
+	Reply->SetObjectField(TEXT("scene"), FMjMsgpackEncoder::EncodeScene(Snapshot));
 	return Reply;
+}
+
+void FURLabRpcDispatcher::AppendCamerasBlock(TSharedPtr<FJsonObject>& Reply, AAMjManager* Mgr,
+	const TMap<FString, ECameraInclude>& CameraSpec,
+	const TMap<FString, uint64>& CameraMinFrameIds)
+{
+	if (!Reply.IsValid() || CameraSpec.Num() == 0)
+		return;
+	TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec, CameraMinFrameIds);
+	if (Cams.IsValid() && Cams->Values.Num() > 0)
+		Reply->SetObjectField(TEXT("cameras"), Cams);
 }
 
 void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepRequest& Req,
@@ -442,278 +444,6 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 			}
 		}
 	}
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepObservations(AAMjManager* Manager, mjModel* m, mjData* d,
-	EObservationLevel Level)
-{
-	TSharedPtr<FJsonObject> PerArt = MakeShared<FJsonObject>();
-	if (!Manager || !m || !d)
-		return PerArt;
-
-	const bool bWantStandard = (Level == EObservationLevel::Standard) || (Level == EObservationLevel::Full);
-	const bool bWantFull = (Level == EObservationLevel::Full);
-
-	for (AMjArticulation* Art : Manager->GetAllArticulations())
-	{
-		if (!Art)
-			continue;
-		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
-
-		// qpos / qvel — present at every level. Joints are emitted in the
-		// discovery order that GetJoints() returns, which matches the MjModel
-		// jnt_id order at compile time. Per-joint qpos/qvel slot widths follow
-		// jnt_type. Wire-side consumers should always rebuild full m.nq / m.nv
-		// arrays from per-articulation slices in this same order.
-		TArray<UMjJoint*> Joints = Art->GetJoints();
-		TArray<TSharedPtr<FJsonValue>> QPos;
-		TArray<TSharedPtr<FJsonValue>> QVel;
-		for (UMjJoint* J : Joints)
-		{
-			if (!J)
-				continue;
-			int32 Id = J->GetMjID();
-			if (Id < 0 || Id >= m->njnt)
-				continue;
-			int QAddr = m->jnt_qposadr[Id];
-			int VAddr = m->jnt_dofadr[Id];
-			int QSize = 1, VSize = 1;
-			switch (m->jnt_type[Id])
-			{
-				case mjJNT_FREE:
-					QSize = 7;
-					VSize = 6;
-					break;
-				case mjJNT_BALL:
-					QSize = 4;
-					VSize = 3;
-					break;
-				case mjJNT_SLIDE:
-				case mjJNT_HINGE:
-					QSize = 1;
-					VSize = 1;
-					break;
-			}
-			for (int i = 0; i < QSize; ++i)
-				QPos.Add(MakeShared<FJsonValueNumber>(d->qpos[QAddr + i]));
-			for (int i = 0; i < VSize; ++i)
-				QVel.Add(MakeShared<FJsonValueNumber>(d->qvel[VAddr + i]));
-		}
-		ArtObj->SetArrayField(TEXT("qpos"), QPos);
-		ArtObj->SetArrayField(TEXT("qvel"), QVel);
-
-		if (bWantStandard)
-		{
-			// ctrl positional array, same order as GetActuators().
-			TArray<TSharedPtr<FJsonValue>> Ctrl;
-			TArray<TSharedPtr<FJsonValue>> Act;
-			for (UMjActuator* A : Art->GetActuators())
-			{
-				if (!A)
-					continue;
-				int32 Id = A->GetMjID();
-				if (Id < 0 || Id >= m->nu)
-					continue;
-				Ctrl.Add(MakeShared<FJsonValueNumber>(d->ctrl[Id]));
-				// Each actuator's "act" slot, if it has one (intvelocity, muscle, ...)
-				int ActAddr = m->actuator_actadr ? m->actuator_actadr[Id] : -1;
-				if (ActAddr >= 0 && ActAddr < m->na)
-					Act.Add(MakeShared<FJsonValueNumber>(d->act[ActAddr]));
-				else
-					Act.Add(MakeShared<FJsonValueNumber>(0.0));
-			}
-			ArtObj->SetArrayField(TEXT("ctrl"), Ctrl);
-			ArtObj->SetArrayField(TEXT("act"), Act);
-
-			// sensors by name — use sensor MjID + dim.
-			TSharedPtr<FJsonObject> Sensors = MakeShared<FJsonObject>();
-			TArray<UMjSensor*> SensorComponents;
-			Art->GetComponents<UMjSensor>(SensorComponents);
-			FString Prefix = Art->GetName() + TEXT("_");
-			for (UMjSensor* S : SensorComponents)
-			{
-				if (!S)
-					continue;
-				int32 Sid = S->GetMjID();
-				if (Sid < 0 || Sid >= m->nsensor)
-					continue;
-				int Adr = m->sensor_adr[Sid];
-				int Dim = m->sensor_dim[Sid];
-				if (Adr < 0 || Dim <= 0 || (Adr + Dim) > m->nsensordata)
-					continue;
-				TArray<TSharedPtr<FJsonValue>> Vals;
-				for (int i = 0; i < Dim; ++i)
-					Vals.Add(MakeShared<FJsonValueNumber>(d->sensordata[Adr + i]));
-				FString LocalName = S->GetMjName();
-				if (LocalName.StartsWith(Prefix))
-					LocalName = LocalName.Mid(Prefix.Len());
-				Sensors->SetArrayField(LocalName, Vals);
-			}
-			ArtObj->SetObjectField(TEXT("sensors"), Sensors);
-		}
-
-		if (bWantFull)
-		{
-			// body xpos/xquat — discovered through articulation's MjBody components.
-			TSharedPtr<FJsonObject> Bodies = MakeShared<FJsonObject>();
-			TArray<UMjBody*> BodyComponents;
-			Art->GetComponents<UMjBody>(BodyComponents);
-			FString Prefix = Art->GetName() + TEXT("_");
-			for (UMjBody* B : BodyComponents)
-			{
-				if (!B || B->bIsDefault)
-					continue;
-				int32 Bid = B->GetMjID();
-				if (Bid < 0 || Bid >= m->nbody)
-					continue;
-				TSharedPtr<FJsonObject> Bo = MakeShared<FJsonObject>();
-				TArray<TSharedPtr<FJsonValue>> XPos, XQuat;
-				for (int i = 0; i < 3; ++i)
-					XPos.Add(MakeShared<FJsonValueNumber>(d->xpos[Bid * 3 + i]));
-				for (int i = 0; i < 4; ++i)
-					XQuat.Add(MakeShared<FJsonValueNumber>(d->xquat[Bid * 4 + i]));
-				Bo->SetArrayField(TEXT("xpos"), XPos);
-				Bo->SetArrayField(TEXT("xquat"), XQuat);
-				FString LocalName = B->GetMjName();
-				if (LocalName.StartsWith(Prefix))
-					LocalName = LocalName.Mid(Prefix.Len());
-				Bodies->SetObjectField(LocalName, Bo);
-			}
-			ArtObj->SetObjectField(TEXT("bodies"), Bodies);
-
-			// actuator_force per actuator (positional, same order as ctrl)
-			TArray<TSharedPtr<FJsonValue>> AForce;
-			for (UMjActuator* A : Art->GetActuators())
-			{
-				if (!A)
-					continue;
-				int32 Id = A->GetMjID();
-				if (Id < 0 || Id >= m->nu)
-					continue;
-				AForce.Add(MakeShared<FJsonValueNumber>(d->actuator_force[Id]));
-			}
-			ArtObj->SetArrayField(TEXT("actuator_force"), AForce);
-		}
-
-		// geometry_msgs/Twist-aligned: (linear.x, linear.y, angular.z)
-		// filled; rest stays zero. Only when a TwistController is attached.
-		if (UMjTwistController* TwistCtrl = Art->FindComponentByClass<UMjTwistController>())
-		{
-			const FVector Twist = TwistCtrl->GetTwist(); // (Vx, Vy, YawRate)
-
-			TArray<TSharedPtr<FJsonValue>> Linear;
-			Linear.Add(MakeShared<FJsonValueNumber>(Twist.X));
-			Linear.Add(MakeShared<FJsonValueNumber>(Twist.Y));
-			Linear.Add(MakeShared<FJsonValueNumber>(0.0));
-
-			TArray<TSharedPtr<FJsonValue>> Angular;
-			Angular.Add(MakeShared<FJsonValueNumber>(0.0));
-			Angular.Add(MakeShared<FJsonValueNumber>(0.0));
-			Angular.Add(MakeShared<FJsonValueNumber>(Twist.Z));
-
-			TSharedPtr<FJsonObject> TwistObj = MakeShared<FJsonObject>();
-			TwistObj->SetArrayField(TEXT("linear"), Linear);
-			TwistObj->SetArrayField(TEXT("angular"), Angular);
-			ArtObj->SetObjectField(TEXT("twist"), TwistObj);
-
-			ArtObj->SetNumberField(TEXT("actions"),
-				static_cast<double>(TwistCtrl->GetActiveActions()));
-		}
-
-		PerArt->SetObjectField(Art->GetName(), ArtObj);
-	}
-	return PerArt;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildEntitiesBlock(AAMjManager* Manager, mjModel* m, mjData* d)
-{
-	TSharedPtr<FJsonObject> Scene = MakeShared<FJsonObject>();
-	if (!Manager || !m || !d)
-		return Scene;
-
-	// Prefer the cached scene-body record table when populated. Avoids a
-	// per-call TActorIterator walk on the physics thread.
-	auto BuildFromBody = [&](int32 Id, const FString& Name) {
-		if (Id < 0 || Id >= m->nbody)
-			return;
-		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-		TArray<TSharedPtr<FJsonValue>> XPos, XQuat;
-		for (int i = 0; i < 3; ++i)
-			XPos.Add(MakeShared<FJsonValueNumber>(d->xpos[Id * 3 + i]));
-		for (int i = 0; i < 4; ++i)
-			XQuat.Add(MakeShared<FJsonValueNumber>(d->xquat[Id * 4 + i]));
-		Obj->SetArrayField(TEXT("xpos"), XPos);
-		Obj->SetArrayField(TEXT("xquat"), XQuat);
-
-		// Free-joint detection: a body with a single jntnum=1 of mjJNT_FREE
-		// owns a 7-vec qpos and 6-vec qvel. Stream both. Other joint types
-		// get xpos/xquat only — a kinematic-driven heightfield base, etc.
-		if (Id < m->nbody && m->body_jntnum && m->body_jntadr)
-		{
-			int FirstJnt = m->body_jntadr[Id];
-			int NumJnt = m->body_jntnum[Id];
-			if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
-			{
-				int QAddr = m->jnt_qposadr[FirstJnt];
-				int VAddr = m->jnt_dofadr[FirstJnt];
-				TArray<TSharedPtr<FJsonValue>> QPos, QVel;
-				for (int i = 0; i < 7; ++i)
-					QPos.Add(MakeShared<FJsonValueNumber>(d->qpos[QAddr + i]));
-				for (int i = 0; i < 6; ++i)
-					QVel.Add(MakeShared<FJsonValueNumber>(d->qvel[VAddr + i]));
-				Obj->SetArrayField(TEXT("qpos"), QPos);
-				Obj->SetArrayField(TEXT("qvel"), QVel);
-			}
-		}
-		Scene->SetObjectField(Name, Obj);
-	};
-
-	// Cache fast path.
-	const TArray<FMjEntityRecord>& Cache = Manager->GetEntities();
-	if (Cache.Num() > 0)
-	{
-		for (const FMjEntityRecord& R : Cache)
-			BuildFromBody(R.MjId, R.Name);
-		return Scene;
-	}
-
-	// Fallback: walk the world via TActorIterator. ONLY safe from the game
-	// thread -- the iterator asserts IsInGameThread(). DirectStepHandler runs
-	// on the physics async thread, so when called from there with an empty
-	// cache (no scene bodies were registered), return an empty block rather
-	// than crashing. Tests / pre-cache callers on the game thread still use the
-	// fallback path.
-	if (!IsInGameThread())
-		return Scene;
-
-	UWorld* World = Manager->GetWorld();
-	if (!World)
-		return Scene;
-
-	TSet<AMjArticulation*> ArticSet;
-	for (AMjArticulation* A : Manager->GetAllArticulations())
-		ArticSet.Add(A);
-
-	for (TActorIterator<AActor> It(World); It; ++It)
-	{
-		AActor* Actor = *It;
-		if (!Actor)
-			continue;
-		if (AMjArticulation* AsArt = Cast<AMjArticulation>(Actor))
-		{
-			if (ArticSet.Contains(AsArt))
-				continue;
-		}
-		TArray<UMjBody*> Bodies;
-		Actor->GetComponents<UMjBody>(Bodies);
-		for (UMjBody* B : Bodies)
-		{
-			if (!B || B->bIsDefault)
-				continue;
-			BuildFromBody(B->GetMjID(), B->GetMjName());
-		}
-	}
-	return Scene;
 }
 
 // =============================================================================
@@ -801,9 +531,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 		Reply->SetNumberField(TEXT("time"), d->time);
 		Reply->SetNumberField(TEXT("step"), 0);
 		AppendClockFields(Reply, d->time);
-		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-		if (Obs.IsValid())
-			Reply->SetObjectField(TEXT("per_articulation"), Obs);
+		const FMjStateSnapshot& Snap = Mgr->GetStateCollector().Collect(m, d, 0);
+		Reply->SetObjectField(TEXT("arts"),
+			FMjMsgpackEncoder::EncodeArts(Snap, ActiveObservationLevel.load(std::memory_order_acquire)));
 	}
 	return Reply;
 }
@@ -836,9 +566,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleForward(const TSharedPtr<FJso
 		Reply->SetNumberField(TEXT("time"), d->time);
 		Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
 		AppendClockFields(Reply, d->time);
-		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-		if (Obs.IsValid())
-			Reply->SetObjectField(TEXT("per_articulation"), Obs);
+		const FMjStateSnapshot& Snap =
+			Mgr->GetStateCollector().Collect(m, d, StepCounter.load(std::memory_order_relaxed));
+		Reply->SetObjectField(TEXT("arts"),
+			FMjMsgpackEncoder::EncodeArts(Snap, ActiveObservationLevel.load(std::memory_order_acquire)));
 	}
 	return Reply;
 }
@@ -904,10 +635,8 @@ struct FLiveStepMode : FStepModeStrategy
 		FMjStepRequest TmpReq;
 		ParseStepPerArticulation(Req, Mgr, TmpReq);
 
-		TSharedPtr<FJsonObject> Obs;
-		TSharedPtr<FJsonObject> Scene;
+		TSharedPtr<FJsonObject> Reply;
 		uint64 FrameId = 0;
-		double PostTime = 0.0;
 		{
 			// Fetch model/data AFTER acquiring CallbackMutex: a concurrent
 			// CompileModel frees them under this lock, so a fetch before it
@@ -921,9 +650,9 @@ struct FLiveStepMode : FStepModeStrategy
 			// Most recently published snapshot id (UE's autonomous physics owns
 			// stepping here), so the client can wait for a streamed frame >= this.
 			FrameId = Engine->GetRenderFrameId();
-			PostTime = d->time;
-			Obs = FURLabRpcDispatcher::BuildStepObservations(Mgr, m, d, Common.ObservationLevel);
-			Scene = FURLabRpcDispatcher::BuildEntitiesBlock(Mgr, m, d);
+			const int64 StepIdx = D.StepCounter.load(std::memory_order_relaxed);
+			const FMjStateSnapshot& Snap = Mgr->GetStateCollector().Collect(m, d, StepIdx);
+			Reply = D.BuildStepReply(Snap, FrameId, Common.ObservationLevel);
 		}
 
 		TMap<FString, uint64> CameraMinFrameIds = Common.CameraMinFrameIds;
@@ -934,9 +663,8 @@ struct FLiveStepMode : FStepModeStrategy
 		else if (Common.bWaitCameras && Common.CameraSpec.Num() > 0)
 			D.WaitForCameraFrames(Mgr, Common.CameraSpec, FrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
 
-		const int64 StepIdx = D.StepCounter.load(std::memory_order_relaxed);
-		return D.BuildStepReply(PostTime, StepIdx, FrameId, Obs, Scene, Mgr,
-			Common.CameraSpec, CameraMinFrameIds);
+		D.AppendCamerasBlock(Reply, Mgr, Common.CameraSpec, CameraMinFrameIds);
+		return Reply;
 	}
 };
 
@@ -1020,8 +748,11 @@ struct FDirectStepMode : FStepModeStrategy
 				D.RenderCamerasSync(Mgr, Common.CameraSpec, 0, Common.CameraTimeoutMs, CameraMinFrameIds, /*bWait=*/false);
 			else if (Common.bWaitCameras && Common.CameraSpec.Num() > 0)
 				D.WaitForCameraFrames(Mgr, Common.CameraSpec, Cmd->ResultFrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
-			return D.BuildStepReply(Cmd->ResultTime, Cmd->ResultStep, Cmd->ResultFrameId,
-				Cmd->Observations, Cmd->Entities, Mgr, Common.CameraSpec, CameraMinFrameIds);
+			// The base reply (arts/scene/time/step/frame_id) was built on the
+			// physics thread from the state IR while the just-stepped mjData was
+			// valid; append any requested cameras here.
+			D.AppendCamerasBlock(Cmd->Reply, Mgr, Common.CameraSpec, CameraMinFrameIds);
+			return Cmd->Reply;
 		}
 
 		// We stop waiting but the command is still queued. Mark it abandoned so
@@ -1085,10 +816,8 @@ struct FPuppetStepMode : FStepModeStrategy
 		Req->TryGetNumberField(TEXT("time"), TimeVal);
 		Push.Time = TimeVal;
 
-		TSharedPtr<FJsonObject> Obs;
-		TSharedPtr<FJsonObject> Scene;
+		TSharedPtr<FJsonObject> Reply;
 		uint64 PostFrameId = 0;
-		double PostTime = 0.0;
 		{
 			// Fetch model/data AFTER the lock: a concurrent CompileModel frees
 			// them under CallbackMutex.
@@ -1107,14 +836,13 @@ struct FPuppetStepMode : FStepModeStrategy
 			// relies on this snapshot being current.
 			Engine->PushRenderState();
 
-			// Read observations/entities and the reply's time + frame id from d
-			// while still holding the lock. The puppet-mode worker wakes on its
-			// idle timeout and can mutate d (mocap/wrench drain), which would tear
-			// a read done after the lock releases.
+			// Build the reply from the state IR while still holding the lock. The
+			// puppet-mode worker wakes on its idle timeout and can mutate d
+			// (mocap/wrench drain), which would tear a read done after release.
 			PostFrameId = Engine->GetRenderFrameId();
-			PostTime = d->time;
-			Obs = FURLabRpcDispatcher::BuildStepObservations(Mgr, m, d, Common.ObservationLevel);
-			Scene = FURLabRpcDispatcher::BuildEntitiesBlock(Mgr, m, d);
+			const int64 StepIdx = D.StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
+			const FMjStateSnapshot& Snap = Mgr->GetStateCollector().Collect(m, d, StepIdx);
+			Reply = D.BuildStepReply(Snap, PostFrameId, Common.ObservationLevel);
 		}
 
 		// frame_id is the post-step state id: the client passes it back as a
@@ -1127,9 +855,7 @@ struct FPuppetStepMode : FStepModeStrategy
 		else if (Common.bWaitCameras && Common.CameraSpec.Num() > 0)
 			D.WaitForCameraFrames(Mgr, Common.CameraSpec, PostFrameId, Common.CameraTimeoutMs, CameraMinFrameIds);
 
-		const int64 StepIdx = D.StepCounter.fetch_add(1, std::memory_order_relaxed) + 1;
-		TSharedPtr<FJsonObject> Reply = D.BuildStepReply(PostTime, StepIdx, PostFrameId,
-			Obs, Scene, Mgr, Common.CameraSpec, CameraMinFrameIds);
+		D.AppendCamerasBlock(Reply, Mgr, Common.CameraSpec, CameraMinFrameIds);
 		// Puppet-mode perturbation: include the latest sample so the client can
 		// apply the editor click-drag widget's force to its own MjData.
 		if (Mgr->Perturbation)
@@ -1265,8 +991,6 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		Cmd->ResultTime = d->time;
 		Cmd->ResultStep = StepCounter.fetch_add(Cmd->Request.NSteps, std::memory_order_relaxed)
 						+ Cmd->Request.NSteps;
-		Cmd->Observations = BuildStepObservations(Mgr, m, d, Cmd->ObservationLevel);
-		Cmd->Entities = BuildEntitiesBlock(Mgr, m, d);
 		// Publish the just-stepped state to the render snapshot now, while this
 		// handler still owns d (it runs inside the engine's CallbackMutex), and
 		// capture the resulting frame_id for the reply. Without this the RPC
@@ -1276,6 +1000,11 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		Engine->PushRenderState();
 		Engine->bRenderStatePublishedThisStep = true; // loop tail must not republish
 		Cmd->ResultFrameId = Engine->GetRenderFrameId();
+		// Build the base reply (arts/scene/time/step/frame_id) from the state IR
+		// here, where the just-stepped mjData is valid and the persistent snapshot
+		// buffer is not racing another Collect (all callers hold CallbackMutex).
+		const FMjStateSnapshot& Snap = Mgr->GetStateCollector().Collect(m, d, Cmd->ResultStep);
+		Cmd->Reply = BuildStepReply(Snap, Cmd->ResultFrameId, Cmd->ObservationLevel);
 		Cmd->bDone = true;
 		if (Cmd->Completion)
 			Cmd->Completion->Trigger();

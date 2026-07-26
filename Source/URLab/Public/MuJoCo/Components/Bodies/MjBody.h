@@ -154,6 +154,8 @@ public:
 
 	void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT(""));
 
+	virtual void DescribeState(FMjArticulationState& Out) const override;
+
 	BodyView GetBodyView() const;
 
 	/** @brief Semantic accessor for raw MuJoCo data and helper methods. */

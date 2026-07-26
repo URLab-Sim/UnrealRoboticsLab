@@ -30,6 +30,7 @@
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
 #include "Transport/SnapshotPublisher.h"
+#include "State/MjStateCollector.h"
 #include <atomic>
 #include "AMjManager.generated.h"
 
@@ -138,6 +139,15 @@ public:
 	/** Refresh the entity cache; called from PostCompile. */
 	void BuildEntityCache();
 
+	/** Rebuild the caches the state IR reads (entity table + producer cache) and
+	 *  (re)bind the collector to this manager. Run after every compile / recompile
+	 *  on the game thread. */
+	void RefreshStateCaches();
+
+	/** The per-step state-IR collector. Owned by the manager; used by the
+	 *  post-step snapshot fan-out and by the RPC step/reset/forward replies. */
+	FMjStateCollector& GetStateCollector() { return StateCollector; }
+
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
 	float GetSimTime() const;
 
@@ -211,6 +221,9 @@ protected:
 	TMap<FString, AMjArticulation*> m_ArticulationMap;
 
 	TArray<FMjEntityRecord> EntityCache;
+
+	/** Builds the per-step state IR consumed by the msgpack encoder. */
+	FMjStateCollector StateCollector;
 
 public:
 	/** Manager-owned UObject publish transports

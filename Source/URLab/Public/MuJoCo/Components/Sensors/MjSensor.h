@@ -244,6 +244,8 @@ public:
 	virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const override;
 	virtual FString GetTelemetryTopicName() const override;
 
+	virtual void DescribeState(FMjArticulationState& Out) const override;
+
 	/** @brief Gets the first scalar reading (index 0). */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
 	float GetScalarReading() const;

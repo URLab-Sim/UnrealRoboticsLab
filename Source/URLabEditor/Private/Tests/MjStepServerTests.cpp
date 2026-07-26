@@ -42,6 +42,10 @@
 #include "Bridge/BridgeServer.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
+#include "State/MjStateCollector.h"
+#include "State/MjMsgpackEncoder.h"
+#include "State/MjStateTypes.h"
+#include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Components/Controllers/MjPDController.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Bodies/MjBody.h"
@@ -824,9 +828,17 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// The IR is built once; the msgpack encoder applies the observation-level
+	// filter. RebuildProducerCacheGameThread runs at PostCompile, but call it
+	// explicitly so the test does not depend on that ordering.
+	FMjStateCollector& Collector = S.Manager->GetStateCollector();
+	Collector.Init(S.Manager);
+	Collector.RebuildProducerCacheGameThread();
+	const FMjStateSnapshot& Snap = Collector.Collect(m, d, 0);
+
 	// Minimal: qpos / qvel only.
-	TSharedPtr<FJsonObject> Min = FURLabRpcDispatcher::BuildStepObservations(
-		S.Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Minimal);
+	TSharedPtr<FJsonObject> Min = FMjMsgpackEncoder::EncodeArts(
+		Snap, FURLabRpcDispatcher::EObservationLevel::Minimal);
 	TestTrue(TEXT("Minimal returns object"), Min.IsValid());
 	if (Min.IsValid() && Min->Values.Num() > 0)
 	{
@@ -844,8 +856,8 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 	}
 
 	// Standard: minimal + ctrl + act + sensors.
-	TSharedPtr<FJsonObject> Std = FURLabRpcDispatcher::BuildStepObservations(
-		S.Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Standard);
+	TSharedPtr<FJsonObject> Std = FMjMsgpackEncoder::EncodeArts(
+		Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
 	if (Std.IsValid() && Std->Values.Num() > 0)
 	{
 		const TSharedPtr<FJsonObject>* Art = nullptr;
@@ -862,8 +874,8 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 	}
 
 	// Full: standard + bodies + actuator_force.
-	TSharedPtr<FJsonObject> Full = FURLabRpcDispatcher::BuildStepObservations(
-		S.Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Full);
+	TSharedPtr<FJsonObject> Full = FMjMsgpackEncoder::EncodeArts(
+		Snap, FURLabRpcDispatcher::EObservationLevel::Full);
 	if (Full.IsValid() && Full->Values.Num() > 0)
 	{
 		const TSharedPtr<FJsonObject>* Art = nullptr;

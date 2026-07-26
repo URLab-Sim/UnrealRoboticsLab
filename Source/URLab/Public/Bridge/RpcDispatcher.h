@@ -23,6 +23,7 @@
 class AAMjManager;
 class AMjReplayManager;
 class UURLabBridgeServer;
+struct FMjStateSnapshot;
 struct FMjStepRequest;
 struct FMjDirectStepCommand;
 struct FStepModeStrategy;
@@ -164,13 +165,6 @@ public:
 	static void ApplyStepCtrl(AAMjManager* Manager, const FMjStepRequest& Req,
 		mjModel* m, mjData* d);
 
-	static TSharedPtr<FJsonObject> BuildStepObservations(AAMjManager* Manager,
-		mjModel* m, mjData* d,
-		EObservationLevel Level = EObservationLevel::Standard);
-
-	static TSharedPtr<FJsonObject> BuildEntitiesBlock(AAMjManager* Manager,
-		mjModel* m, mjData* d);
-
 	/**
 	 * Non-blocking camera retrieval from each camera's frame-history ring.
 	 * CameraSpec selects the cameras; MinFrameIds optionally requests, per
@@ -184,13 +178,17 @@ public:
 		const TMap<FString, uint64>& MinFrameIds = TMap<FString, uint64>(),
 		int32 TimeoutMs = 1000);
 
-	/** Assemble the shared step_ok reply (op/time/step/clock/frame_id plus
-	 *  per_articulation, entities, and any requested cameras). Callers add
-	 *  mode-specific fields (e.g. puppet perturbation) afterwards. */
-	TSharedPtr<FJsonObject> BuildStepReply(double TimeSec, int64 StepIdx, uint64 FrameId,
-		const TSharedPtr<FJsonObject>& Observations,
-		const TSharedPtr<FJsonObject>& Entities,
-		AAMjManager* Mgr,
+	/** Assemble the base step_ok reply (op/time/step/clock/frame_id plus the
+	 *  encoded `arts` / `scene` blocks) from the state IR. Must be called while
+	 *  the snapshot is valid (under the engine's CallbackMutex). Cameras and any
+	 *  mode-specific fields (e.g. puppet perturbation) are appended by the caller
+	 *  after the lock is released. */
+	TSharedPtr<FJsonObject> BuildStepReply(const FMjStateSnapshot& Snapshot,
+		uint64 FrameId, EObservationLevel Level);
+
+	/** Append a `cameras` block to a step reply for the requested cameras, if any
+	 *  produced a frame. No-op when CameraSpec is empty. */
+	void AppendCamerasBlock(TSharedPtr<FJsonObject>& Reply, AAMjManager* Mgr,
 		const TMap<FString, ECameraInclude>& CameraSpec,
 		const TMap<FString, uint64>& CameraMinFrameIds);
 

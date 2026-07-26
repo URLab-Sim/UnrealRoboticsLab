@@ -40,7 +40,8 @@
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServerConfig.h"
 #include "Bridge/BridgeServerConfigUtils.h"
-#include "Transport/SnapshotProducer.h"
+#include "State/MjMsgpackEncoder.h"
+#include "State/MjStateTypes.h"
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
 #include "MuJoCo/Core/MjSimulationState.h"
@@ -76,7 +77,16 @@ void AAMjManager::PostCompile()
 {
 	if (PhysicsEngine)
 		PhysicsEngine->PostCompile();
+	RefreshStateCaches();
+}
+
+void AAMjManager::RefreshStateCaches()
+{
 	BuildEntityCache();
+	// Rebuild the state-IR producer cache off the same trigger as the entity
+	// cache (initial compile + every recompile). Both run on the game thread.
+	StateCollector.Init(this);
+	StateCollector.RebuildProducerCacheGameThread();
 }
 
 void AAMjManager::BuildEntityCache()
@@ -258,6 +268,10 @@ void AAMjManager::BeginPlay()
 
 	// Compile via PhysicsEngine (also discovers ZMQ components in PreCompile)
 	Compile();
+	// The engine runs its own PostCompile (component PostSetup) inside Compile();
+	// the manager's PostCompile shim is not on that path, so build the entity +
+	// producer caches the state IR reads here, after the articulation lists sync.
+	RefreshStateCaches();
 	if (NetworkManager)
 		NetworkManager->UpdateCameraStreamingState();
 
@@ -316,9 +330,11 @@ void AAMjManager::BeginPlay()
 			}
 		});
 
-		// Build the state_full snapshot once per physics step and fan it
-		// out to every IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). This
-		// is the only place BuildStateSnapshot runs per step.
+		// Build the state IR once per physics step, encode it to the canonical
+		// msgpack `state_full` snapshot, and fan the bytes out to every
+		// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). This runs inside the
+		// engine's CallbackMutex, so the collector's persistent snapshot buffer
+		// never races an on-demand Collect from an RPC step reply.
 		TWeakObjectPtr<AAMjManager> WeakSelf(this);
 		PhysicsEngine->RegisterPostStepCallback(
 			[WeakSelf](mjModel* m, mjData* d) {
@@ -341,8 +357,9 @@ void AAMjManager::BeginPlay()
 
 				FURLabRpcDispatcher* Disp = Self->GetStepDispatcher();
 				const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
-				TArray<uint8> Buf = FMjSnapshotProducer::BuildStateSnapshot(
-					Self, m, d, StepIdx);
+				const FMjStateSnapshot& Snap = Self->StateCollector.Collect(m, d, StepIdx);
+				TArray<uint8> Buf = FMjMsgpackEncoder::EncodeSnapshotBytes(
+					Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
 				if (Buf.Num() == 0)
 					return;
 				for (IMjSnapshotPublisher* Pub : Pubs)
@@ -604,6 +621,10 @@ bool AAMjManager::CompileModel()
 	m_articulations = PhysicsEngine->m_articulations;
 	m_heightfieldActors = PhysicsEngine->m_heightfieldActors;
 	m_ArticulationMap = PhysicsEngine->m_ArticulationMap;
+
+	// Component ids/views were re-bound; rebuild the state-IR caches so the
+	// collector's weak ptrs and entity table match the fresh model.
+	RefreshStateCaches();
 
 	return Result;
 }

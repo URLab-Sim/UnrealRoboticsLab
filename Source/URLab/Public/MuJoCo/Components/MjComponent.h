@@ -31,6 +31,7 @@
 #include "Utils/URLabLogging.h"
 #include "Serialization/BufferArchive.h"
 class UMjDefault;
+struct FMjArticulationState;
 
 #include "MjComponent.generated.h"
 
@@ -76,6 +77,11 @@ public:
 
 	/** @brief Gets the topic name used for broadcasting this component's data. */
 	virtual FString GetTelemetryTopicName() const { return FString(); }
+
+	/** @brief Declares this component's per-step state into the articulation IR.
+	 *  Overridden by joints, sensors, actuators, and bodies; the base is a no-op
+	 *  so the collector can call it on every component without a type switch. */
+	virtual void DescribeState(FMjArticulationState& Out) const {}
 
 	/** @brief Returns the number of objects of a given type in the compiled model. */
 	static int GetMjObjectCount(const mjModel* M, mjtObj ObjType)

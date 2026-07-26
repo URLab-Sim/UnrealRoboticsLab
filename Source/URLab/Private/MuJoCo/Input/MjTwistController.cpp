@@ -23,6 +23,7 @@
 #include "MuJoCo/Input/MjTwistController.h"
 #include "EnhancedInputComponent.h"
 #include "InputAction.h"
+#include "State/MjStateTypes.h"
 
 UMjTwistController::UMjTwistController()
 {
@@ -40,6 +41,19 @@ int32 UMjTwistController::GetActiveActions() const
 {
 	FScopeLock Lock(&TwistMutex);
 	return ActionBitmask;
+}
+
+void UMjTwistController::DescribeState(FMjArticulationState& Out) const
+{
+	// geometry_msgs/Twist layout: (linear.x, linear.y, angular.z) filled from
+	// (Vx, Vy, YawRate); the rest stays zero.
+	const FVector Twist = GetTwist();
+	FMjTwistState State;
+	State.Linear[0] = Twist.X;
+	State.Linear[1] = Twist.Y;
+	State.Angular[2] = Twist.Z;
+	State.Actions = GetActiveActions();
+	Out.Twist = State;
 }
 
 void UMjTwistController::ResetTwist()

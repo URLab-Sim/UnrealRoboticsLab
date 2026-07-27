@@ -66,6 +66,11 @@ def _setup(context, *args, **kwargs):
         "trajectory_execution.allowed_goal_duration_margin": 0.5,
         "trajectory_execution.allowed_start_tolerance": 0.05,
     }
+    # MuJoCo's soft joint limits let joints transiently overshoot the URDF hard
+    # limits (e.g. the Franka's razor-thin joint4 upper bound), which MoveIt's
+    # CheckStartStateBounds rejects. Clamp marginal start-state violations instead
+    # of failing the plan; the tight URDF limits still bound the planned motion.
+    start_state = {"start_state_max_bounds_error": 0.1}
     planning_scene_monitor = {
         "publish_planning_scene": True,
         "publish_geometry_updates": True,
@@ -85,6 +90,7 @@ def _setup(context, *args, **kwargs):
             joint_limits,
             planning_pipeline,
             trajectory_execution,
+            start_state,
             controllers,
             planning_scene_monitor,
             use_sim_time,

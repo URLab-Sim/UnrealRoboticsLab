@@ -155,7 +155,12 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 					RobotPrefixes.Add(Art->GetName() + TEXT("_"));
 			}
 
-			const double MaxWorldExtent = 5.0;
+			// Skip geoms whose (half-extent) box is large enough to be environment
+			// shell rather than a discrete object: as an AABB it would engulf the
+			// robot and flag every start state in collision. Discrete graspable /
+			// avoidable objects are well under this. (A future mesh path can carry
+			// the real concave geometry instead of a box.)
+			const double MaxWorldExtent = 1.0;
 			for (int g = 0; g < m->ngeom; ++g)
 			{
 				const int b = m->geom_bodyid[g];

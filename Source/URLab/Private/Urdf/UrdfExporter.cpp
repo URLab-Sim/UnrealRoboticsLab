@@ -337,8 +337,8 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 			else
 			{
 				const double Q0 = M->qpos0[M->jnt_qposadr[J]];
-				Joint.Lower = M->jnt_range[2 * J + 0] - Q0;
-				Joint.Upper = M->jnt_range[2 * J + 1] - Q0;
+				Joint.Lower = M->jnt_range[2 * J + 0] - Q0 - Cfg.LimitMargin;
+				Joint.Upper = M->jnt_range[2 * J + 1] - Q0 + Cfg.LimitMargin;
 				Joint.bHasLimit = true;
 				Lines.Add(FString::Printf(
 					TEXT("    <limit lower=\"%s\" upper=\"%s\" effort=\"%s\" velocity=\"%s\"/>"),

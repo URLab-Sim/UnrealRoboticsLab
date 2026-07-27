@@ -271,18 +271,20 @@ bool FMjUrdfExportCounts::RunTest(const FString& Parameters)
 	{
 		const int Jid = mj_name2id(m, mjOBJ_JOINT, "j1");
 		const double Q0 = m->qpos0[m->jnt_qposadr[Jid]];
+		const double Margin = FUrdfExportConfig().LimitMargin;
 		TestEqual(TEXT("j1 is revolute"), J1->Type, FString(TEXT("revolute")));
-		TestEqual(TEXT("j1 lower == range0 - qpos0"), J1->Lower, m->jnt_range[2 * Jid + 0] - Q0, 1e-9);
-		TestEqual(TEXT("j1 upper == range1 - qpos0"), J1->Upper, m->jnt_range[2 * Jid + 1] - Q0, 1e-9);
+		TestEqual(TEXT("j1 lower == range0 - qpos0 - margin"), J1->Lower, m->jnt_range[2 * Jid + 0] - Q0 - Margin, 1e-9);
+		TestEqual(TEXT("j1 upper == range1 - qpos0 + margin"), J1->Upper, m->jnt_range[2 * Jid + 1] - Q0 + Margin, 1e-9);
 		TestTrue(TEXT("j1 qpos0 non-zero (ref applied)"), FMath::Abs(Q0 - 0.5) < 1e-9);
 	}
 	if (J2)
 	{
 		const int Jid = mj_name2id(m, mjOBJ_JOINT, "j2");
 		const double Q0 = m->qpos0[m->jnt_qposadr[Jid]];
+		const double Margin = FUrdfExportConfig().LimitMargin;
 		TestEqual(TEXT("j2 is prismatic"), J2->Type, FString(TEXT("prismatic")));
-		TestEqual(TEXT("j2 lower == range0 - qpos0"), J2->Lower, m->jnt_range[2 * Jid + 0] - Q0, 1e-9);
-		TestEqual(TEXT("j2 upper == range1 - qpos0"), J2->Upper, m->jnt_range[2 * Jid + 1] - Q0, 1e-9);
+		TestEqual(TEXT("j2 lower == range0 - qpos0 - margin"), J2->Lower, m->jnt_range[2 * Jid + 0] - Q0 - Margin, 1e-9);
+		TestEqual(TEXT("j2 upper == range1 - qpos0 + margin"), J2->Upper, m->jnt_range[2 * Jid + 1] - Q0 + Margin, 1e-9);
 	}
 
 	// Mesh emitted, referenced and on disk.
@@ -411,7 +413,8 @@ bool FMjUrdfExportPanda::RunTest(const FString& Parameters)
 	TestEqual(TEXT("1 fixed"), CountJointType(Model, TEXT("fixed")), 1);
 	TestEqual(TEXT("67 meshes"), Model.MeshIds.Num(), 67);
 
-	// Every 1-DOF joint limit is jnt_range - qpos0.
+	// Every 1-DOF joint limit is jnt_range - qpos0, widened by the safety margin.
+	const double Margin = FUrdfExportConfig().LimitMargin;
 	bool bLimitsOk = true;
 	for (const FUrdfJoint& J : Model.Joints)
 	{
@@ -419,11 +422,11 @@ bool FMjUrdfExportPanda::RunTest(const FString& Parameters)
 			continue;
 		const int Jid = J.MjJointId;
 		const double Q0 = m->qpos0[m->jnt_qposadr[Jid]];
-		if (FMath::Abs(J.Lower - (m->jnt_range[2 * Jid + 0] - Q0)) > 1e-6
-			|| FMath::Abs(J.Upper - (m->jnt_range[2 * Jid + 1] - Q0)) > 1e-6)
+		if (FMath::Abs(J.Lower - (m->jnt_range[2 * Jid + 0] - Q0 - Margin)) > 1e-6
+			|| FMath::Abs(J.Upper - (m->jnt_range[2 * Jid + 1] - Q0 + Margin)) > 1e-6)
 			bLimitsOk = false;
 	}
-	TestTrue(TEXT("all limits == jnt_range - qpos0"), bLimitsOk);
+	TestTrue(TEXT("all limits == jnt_range - qpos0 +/- margin"), bLimitsOk);
 
 	// FK reproduces mjModel geom_xpos across the whole Franka.
 	TestTrue(TEXT("panda FK matches geom_xpos"),

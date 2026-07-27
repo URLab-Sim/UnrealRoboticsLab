@@ -41,6 +41,11 @@ struct FUrdfExportConfig
 	double DefaultVelocityLinear = 1.0;     // m/s, for slide joints
 	/** Per-joint (compiled joint name) velocity override, highest priority. */
 	TMap<FString, double> VelocityOverrides;
+	/** Widen exported position limits by this (rad / m) so MuJoCo's soft-limit
+	 *  overshoot stays inside the URDF hard limits. Without it a planner (MoveIt)
+	 *  rejects the sim's resting state as out of bounds on tight joints (the
+	 *  Franka's joint4). Small enough to be physically negligible. */
+	double LimitMargin = 0.02;
 };
 
 /** One emitted geom's frame data, kept for the forward-kinematics self-test.

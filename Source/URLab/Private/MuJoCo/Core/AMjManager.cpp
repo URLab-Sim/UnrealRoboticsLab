@@ -251,6 +251,12 @@ void AAMjManager::BeginPlay()
 	}
 	BridgeServer->RegisterManager(this);
 
+	// Bind external (ROS) transports if their module is present. No-op when
+	// URLabRos is not loaded (its factory hooks are unbound), so non-ROS builds
+	// and non-ROS users are unaffected. This is what starts in-process ROS
+	// publishing/services for a live session.
+	BridgeServer->EnsureExternalTransportsBound();
+
 	// State PUB binds the configured address + port so farm instances don't
 	// collide; single-editor defaults reproduce tcp://0.0.0.0:5555.
 	const FURLabBridgeServerConfig& NetConfig = BridgeServer->GetInstanceConfig();

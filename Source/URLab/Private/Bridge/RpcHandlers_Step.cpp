@@ -26,6 +26,7 @@
 #include "Bridge/MsgpackHelpers.h"
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
+#include "State/MjCanonicalName.h"
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -1005,7 +1006,12 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 		{
 			if (!Art)
 				continue;
-			const FString* Mode = Cmd->Request.PerArticulationControlMode.Find(Art->GetName());
+			// Clients key control mode by the public segment (ActorId-based); accept
+			// the raw UE name too for callers that still address by it.
+			const FString* Mode = Cmd->Request.PerArticulationControlMode.Find(
+				FMjCanonicalName::ArtSegment(Art).ToString());
+			if (!Mode)
+				Mode = Cmd->Request.PerArticulationControlMode.Find(Art->GetName());
 			const bool bRaw = Mode && Mode->Equals(TEXT("raw"), ESearchCase::IgnoreCase);
 			SkipController.Add(Art, bRaw);
 		}

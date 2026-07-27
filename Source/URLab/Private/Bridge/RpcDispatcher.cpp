@@ -26,6 +26,7 @@
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjCanonicalName.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Sensors/MjSensor.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
@@ -864,8 +865,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			continue;
 
 		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
-		ArtObj->SetStringField(TEXT("prefix"), Art->GetName());
+		// The public segment (ActorId-based) is the art's topic / observation
+		// namespace, matching the IR Art.Name the state stream keys arts under.
+		ArtObj->SetStringField(TEXT("prefix"), FMjCanonicalName::ArtSegment(Art).ToString());
 		ArtObj->SetStringField(TEXT("actor_id"), Art->ActorId);
+		ArtObj->SetStringField(TEXT("actor_name"), Art->GetName());
 
 		// Default control mode follows whether a controller is attached.
 		UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();

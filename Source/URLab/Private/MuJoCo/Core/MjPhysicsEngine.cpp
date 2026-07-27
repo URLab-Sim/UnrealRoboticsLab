@@ -22,6 +22,7 @@
 
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjCanonicalName.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "MuJoCo/Components/QuickConvert/AMjHeightfieldActor.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
@@ -825,9 +826,15 @@ AMjArticulation* UMjPhysicsEngine::GetArticulation(const FString& ActorName) con
 {
 	if (const AMjArticulation* const* Found = m_ArticulationMap.Find(ActorName))
 		return const_cast<AMjArticulation*>(*Found);
+	// Resolve by UE object name, the user-supplied ActorId, or the canonical public
+	// segment (ArtSegment) so a caller can address an art by its ROS/topic name
+	// ("franka") as well as its raw UE name.
 	for (AMjArticulation* Art : m_articulations)
 	{
-		if (Art && Art->GetName() == ActorName)
+		if (!Art)
+			continue;
+		if (Art->GetName() == ActorName || Art->ActorId == ActorName
+			|| FMjCanonicalName::ArtSegment(Art).ToString() == ActorName)
 			return Art;
 	}
 	return nullptr;

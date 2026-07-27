@@ -45,11 +45,19 @@ FName FMjCanonicalName::ArtSegment(const AMjArticulation* Art)
 {
 	if (!Art)
 		return FName();
-	return FName(*Sanitize(Art->GetName()));
+	// The art's public identity for topics, tf frames, and control-ownership keys.
+	// Prefer the stable, user-supplied ActorId ("franka") over the UE object name,
+	// which is auto-generated and regenerated per spawn (panda_C_UAID_...); the
+	// latter makes ROS topic/frame names unstable across runs. GetName() is the
+	// fallback for arts spawned without an ActorId (e.g. placed in-editor).
+	const FString Public = Art->ActorId.IsEmpty() ? Art->GetName() : Art->ActorId;
+	return FName(*Sanitize(Public));
 }
 
 FName FMjCanonicalName::PartSegment(const AMjArticulation* Art, const FString& MjName)
 {
+	// Child mj names are compiled with the UE object-name prefix (not ActorId), so
+	// prefix stripping stays keyed on GetName() even though ArtSegment is ActorId.
 	FString Local = MjName;
 	if (Art)
 	{

@@ -126,6 +126,8 @@ def main():
     ap.add_argument("--robot-name", default="franka")
     ap.add_argument("--arm-group", default="panda_arm")
     ap.add_argument("--hand-group", default="hand")
+    ap.add_argument("--hand-joints", default="finger_joint1,finger_joint2")
+    ap.add_argument("--finger-open", type=float, default=0.04)
     ap.add_argument("--base-link", default="link0")
     ap.add_argument("--flange-link", default="hand")
     ap.add_argument("--samples", type=int, default=20000)
@@ -176,6 +178,22 @@ def main():
 
     arm = ET.SubElement(robot, "group", name=args.arm_group)
     ET.SubElement(arm, "chain", base_link=args.base_link, tip_link=args.flange_link)
+
+    # Gripper group + end-effector. The finger joints are tendon-coupled in the
+    # sim (one actuator drives both); MoveIt treats them as the hand group and the
+    # gripper bridge maps the commanded opening onto that actuator.
+    hand_joints = [j for j in args.hand_joints.split(",") if j]
+    if hand_joints:
+        hand = ET.SubElement(robot, "group", name=args.hand_group)
+        for j in hand_joints:
+            ET.SubElement(hand, "joint", name=j)
+        ET.SubElement(robot, "end_effector", name="hand_ee",
+                      parent_link=args.flange_link, group=args.hand_group,
+                      parent_group=args.arm_group)
+        for state, val in (("open", args.finger_open), ("closed", 0.0)):
+            gs = ET.SubElement(robot, "group_state", name=state, group=args.hand_group)
+            for j in hand_joints:
+                ET.SubElement(gs, "joint", name=j, value=f"{val:.6g}")
 
     # Named states from keyframes (arm joints only).
     arm_joints = set(arm_joint_chain(m))

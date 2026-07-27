@@ -536,23 +536,25 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 		return;
 	}
 
-	// Map each actuator by the canonical segment of the joint it drives, which is
-	// the name JointState publishes that joint under (and thus the name a jog GUI
-	// echoes back on joint_command). An actuator's own name need not match the joint
-	// it drives, so keying by the target joint is what lets the command land. Only
-	// joint-transmission actuators map to a URDF joint; tendon/site/body transmissions
-	// have no 1-DoF joint target and are skipped.
-	TMap<FString, UMjActuator*> ByJoint;
+	// Resolve a commanded name to an actuator two ways: by the joint a
+	// joint-transmission actuator drives (the JointState / URDF joint name a jog
+	// GUI echoes back), and by the actuator's own name. The latter reaches
+	// actuators with no 1-DoF joint target -- e.g. a tendon-driven gripper
+	// actuator -- so a controller can command the gripper as "<actuator>".
+	TMap<FString, UMjActuator*> ByName;
 	TArray<UMjActuator*> Acts = Art->GetActuators();
-	ByJoint.Reserve(Acts.Num());
+	ByName.Reserve(Acts.Num() * 2);
 	for (UMjActuator* Act : Acts)
 	{
-		if (!Act || Act->TransmissionType != EMjActuatorTrnType::Joint || Act->TargetName.IsEmpty())
+		if (!Act)
 		{
 			continue;
 		}
-		const FString Canon = FMjCanonicalName::PartSegment(Art, Act->TargetName).ToString();
-		ByJoint.Add(Canon, Act);
+		if (Act->TransmissionType == EMjActuatorTrnType::Joint && !Act->TargetName.IsEmpty())
+		{
+			ByName.Add(FMjCanonicalName::PartSegment(Art, Act->TargetName).ToString(), Act);
+		}
+		ByName.Add(FMjCanonicalName::PartSegment(Art, Act->GetMjName()).ToString(), Act);
 	}
 
 	for (int32 i = 0; i < Count; ++i)
@@ -562,7 +564,7 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 			continue;
 		}
 		const FString JointName = UTF8_TO_TCHAR(Names[i]);
-		if (UMjActuator** Found = ByJoint.Find(JointName))
+		if (UMjActuator** Found = ByName.Find(JointName))
 		{
 			if (*Found)
 			{

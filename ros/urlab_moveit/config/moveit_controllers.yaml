@@ -7,6 +7,7 @@ moveit_controller_manager: moveit_simple_controller_manager/MoveItSimpleControll
 moveit_simple_controller_manager:
   controller_names:
     - panda_arm_controller
+    - hand_controller
   panda_arm_controller:
     type: FollowJointTrajectory
     action_ns: follow_joint_trajectory
@@ -19,3 +20,12 @@ moveit_simple_controller_manager:
       - joint5
       - joint6
       - joint7
+  # The gripper is one tendon actuator; the urlab gripper bridge serves this
+  # GripperCommand action and maps the commanded finger opening onto that actuator.
+  hand_controller:
+    type: GripperCommand
+    action_ns: gripper_cmd
+    default: true
+    joints:
+      - finger_joint1
+    command_joint: finger_joint1

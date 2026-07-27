@@ -4,6 +4,19 @@
   <group name="panda_arm">
     <chain base_link="link0" tip_link="hand" />
   </group>
+  <group name="hand">
+    <joint name="finger_joint1" />
+    <joint name="finger_joint2" />
+  </group>
+  <end_effector name="hand_ee" parent_link="hand" group="hand" parent_group="panda_arm" />
+  <group_state name="open" group="hand">
+    <joint name="finger_joint1" value="0.04" />
+    <joint name="finger_joint2" value="0.04" />
+  </group_state>
+  <group_state name="closed" group="hand">
+    <joint name="finger_joint1" value="0" />
+    <joint name="finger_joint2" value="0" />
+  </group_state>
   <group_state name="home" group="panda_arm">
     <joint name="joint1" value="0" />
     <joint name="joint2" value="0" />

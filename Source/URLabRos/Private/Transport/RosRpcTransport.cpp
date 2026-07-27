@@ -536,19 +536,22 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 		return;
 	}
 
-	// Map each actuator by the canonical part segment of the joint it drives (the
-	// 1:1 transmission convention, matching JointState output names), then stage the
-	// commanded position on the actuator that drives each named joint.
+	// Map each actuator by the canonical segment of the joint it drives, which is
+	// the name JointState publishes that joint under (and thus the name a jog GUI
+	// echoes back on joint_command). An actuator's own name need not match the joint
+	// it drives, so keying by the target joint is what lets the command land. Only
+	// joint-transmission actuators map to a URDF joint; tendon/site/body transmissions
+	// have no 1-DoF joint target and are skipped.
 	TMap<FString, UMjActuator*> ByJoint;
 	TArray<UMjActuator*> Acts = Art->GetActuators();
 	ByJoint.Reserve(Acts.Num());
 	for (UMjActuator* Act : Acts)
 	{
-		if (!Act)
+		if (!Act || Act->TransmissionType != EMjActuatorTrnType::Joint || Act->TargetName.IsEmpty())
 		{
 			continue;
 		}
-		const FString Canon = FMjCanonicalName::PartSegment(Art, Act->GetMjName()).ToString();
+		const FString Canon = FMjCanonicalName::PartSegment(Art, Act->TargetName).ToString();
 		ByJoint.Add(Canon, Act);
 	}
 

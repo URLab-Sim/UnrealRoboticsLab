@@ -31,8 +31,9 @@
 //    velocities (the free-base misalignment + truncation bug),
 //  - a fixed-base arm (all 1-DOF joints) is passed through unchanged,
 //  - the qpos - qpos0 shift is preserved,
-//  - effort is filled from the driving actuator's force by shared name, zero for
-//    undriven joints, and empty when the art has no actuators.
+//  - effort is filled from the force of the actuator that drives each joint (keyed
+//    by target joint, not by the actuator's own name), zero for undriven joints,
+//    and empty when the art has no actuators.
 // ============================================================================
 
 #include "CoreMinimal.h"
@@ -54,10 +55,13 @@ FMjJointState MakeJoint(const TCHAR* Name, EMjJointType Type,
 	return J;
 }
 
-FMjActuatorState MakeActuator(const TCHAR* Name, double Force)
+// Name and TargetJoint are deliberately distinct: an actuator's own name need not
+// match the joint it drives, and effort must map by the target joint, not the name.
+FMjActuatorState MakeActuator(const TCHAR* Name, const TCHAR* TargetJoint, double Force)
 {
 	FMjActuatorState A;
 	A.Name = FName(Name);
+	A.TargetJoint = FName(TargetJoint);
 	A.Force = Force;
 	return A;
 }
@@ -87,9 +91,10 @@ bool FMjJointStateFreeBaseAlignment::RunTest(const FString& Parameters)
 	Art.Joints.Add(MakeJoint(TEXT("fl_slide"), EMjJointType::Slide,
 		{0.30}, {1.30}, {0.05}));
 
-	// fl_hip and fl_knee are driven 1:1; fl_slide has no actuator.
-	Art.Actuators.Add(MakeActuator(TEXT("fl_hip"), 5.0));
-	Art.Actuators.Add(MakeActuator(TEXT("fl_knee"), -3.0));
+	// fl_hip and fl_knee are driven 1:1 by differently-named actuators; fl_slide has
+	// no actuator.
+	Art.Actuators.Add(MakeActuator(TEXT("act_fl_hip"), TEXT("fl_hip"), 5.0));
+	Art.Actuators.Add(MakeActuator(TEXT("act_fl_knee"), TEXT("fl_knee"), -3.0));
 
 	TArray<FString> Names;
 	TArray<double> Positions;
@@ -116,7 +121,8 @@ bool FMjJointStateFreeBaseAlignment::RunTest(const FString& Parameters)
 	TestEqual(TEXT("fl_knee velocity"), Velocities[1], 1.20, 1e-9);
 	TestEqual(TEXT("fl_slide velocity"), Velocities[2], 1.30, 1e-9);
 
-	// Effort follows the joint's actuator by shared name; undriven joints report 0.
+	// Effort follows the actuator that drives the joint (by target joint, not by
+	// the actuator's own name); undriven joints report 0.
 	TestEqual(TEXT("fl_hip effort from actuator force"), Efforts[0], 5.0, 1e-9);
 	TestEqual(TEXT("fl_knee effort from actuator force"), Efforts[1], -3.0, 1e-9);
 	TestEqual(TEXT("fl_slide effort zero (no actuator)"), Efforts[2], 0.0, 1e-9);
@@ -139,7 +145,7 @@ bool FMjJointStateFixedBaseUnchanged::RunTest(const FString& Parameters)
 	Art.Joints.Add(MakeJoint(TEXT("j0"), EMjJointType::Hinge, {0.1}, {0.01}));
 	Art.Joints.Add(MakeJoint(TEXT("j1"), EMjJointType::Hinge, {0.2}, {0.02}));
 	Art.Joints.Add(MakeJoint(TEXT("j2"), EMjJointType::Slide, {0.3}, {0.03}));
-	Art.Actuators.Add(MakeActuator(TEXT("j1"), 7.5));
+	Art.Actuators.Add(MakeActuator(TEXT("motor_j1"), TEXT("j1"), 7.5));
 
 	TArray<FString> Names;
 	TArray<double> Positions;

@@ -56,14 +56,19 @@ void UURLabRosPublishTransport::FillJointState(const FMjArticulationState& Art,
 	OutVelocities.Reserve(Art.Joints.Num());
 	OutEfforts.Reserve(Art.Joints.Num());
 
-	// The IR keys actuator force by the actuator's canonical name; a 1:1 transmission
-	// names its actuator after the joint it drives, so effort maps joint -> force by
-	// shared name. Joints with no matching actuator report zero.
-	TMap<FName, double> ForceByName;
-	ForceByName.Reserve(Art.Actuators.Num());
+	// Map joint -> actuator force by the joint each actuator drives (its target
+	// joint), which is the name JointState reports the joint under. An actuator's
+	// own name need not match the joint it drives (e.g. 'actuator1' drives 'joint1'),
+	// so keying by the target joint is what makes effort line up. Joints with no
+	// joint-transmission actuator report zero.
+	TMap<FName, double> ForceByJoint;
+	ForceByJoint.Reserve(Art.Actuators.Num());
 	for (const FMjActuatorState& Actuator : Art.Actuators)
 	{
-		ForceByName.Add(Actuator.Name, Actuator.Force);
+		if (!Actuator.TargetJoint.IsNone())
+		{
+			ForceByJoint.Add(Actuator.TargetJoint, Actuator.Force);
+		}
 	}
 
 	bool bAnyEffort = false;
@@ -86,7 +91,7 @@ void UURLabRosPublishTransport::FillJointState(const FMjArticulationState& Art,
 		OutPositions.Add(Pos - Ref);
 		OutVelocities.Add(Joint.QVel.Num() > 0 ? Joint.QVel[0] : 0.0);
 
-		if (const double* Force = ForceByName.Find(Joint.Name))
+		if (const double* Force = ForceByJoint.Find(Joint.Name))
 		{
 			OutEfforts.Add(*Force);
 			bAnyEffort = true;

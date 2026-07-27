@@ -109,6 +109,11 @@ struct FMjJointState
 struct FMjActuatorState
 {
 	FName Name;
+	// Canonical segment of the joint this actuator drives, for joint-transmission
+	// actuators; None for tendon/site/body transmissions. Lets consumers map an
+	// actuator to the URDF/JointState joint it commands without the actuator's own
+	// name having to match the joint's.
+	FName TargetJoint;
 	double Ctrl = 0.0;
 	double Act = 0.0;
 	double Force = 0.0;

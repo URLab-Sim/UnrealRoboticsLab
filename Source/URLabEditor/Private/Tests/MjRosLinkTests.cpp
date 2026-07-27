@@ -997,10 +997,10 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 	const FName Key(*ArtName);
 	const FString RosSrc = UURLabRosRpcTransport::RosControlSourceId();
 
-	// The jog names the joint the actuator drives, resolved through the same
-	// canonical-name convention JointState output uses.
+	// The jog names the joint the actuator drives (not the actuator's own name),
+	// resolved through the same canonical-name convention JointState output uses.
 	UMjActuator* Act = Art->GetActuators()[0];
-	const FString JointName = FMjCanonicalName::PartSegment(Art, Act->GetMjName()).ToString();
+	const FString JointName = FMjCanonicalName::PartSegment(Art, Act->TargetName).ToString();
 
 	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
 	Ros->SetOwningBridge(S.Manager->BridgeServer);

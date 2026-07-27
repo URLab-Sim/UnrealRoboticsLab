@@ -393,7 +393,12 @@ void UMjActuator::DescribeState(FMjArticulationState& Out) const
 	if (V.id < 0)
 		return;
 	FMjActuatorState& A = Out.Actuators.AddDefaulted_GetRef();
-	A.Name = FMjCanonicalName::PartSegment(Cast<AMjArticulation>(GetOwner()), GetMjName());
+	const AMjArticulation* Art = Cast<AMjArticulation>(GetOwner());
+	A.Name = FMjCanonicalName::PartSegment(Art, GetMjName());
+	if (TransmissionType == EMjActuatorTrnType::Joint && !TargetName.IsEmpty())
+	{
+		A.TargetJoint = FMjCanonicalName::PartSegment(Art, TargetName);
+	}
 	A.Ctrl = V.ctrl ? V.ctrl[0] : 0.0;
 	A.Act = V.act ? V.act[0] : 0.0; // null for stateless actuators
 	A.Force = V.actuator_force ? V.actuator_force[0] : 0.0;

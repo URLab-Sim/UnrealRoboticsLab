@@ -119,6 +119,7 @@ def _setup(context, *args, **kwargs):
     )
 
     bridge = _bridge_process(art)
+    gripper = _gripper_process(art)
 
     rviz = Node(
         package="rviz2",
@@ -134,7 +135,7 @@ def _setup(context, *args, **kwargs):
         ],
     )
 
-    return [move_group, rsp, world_to_root, bridge, rviz]
+    return [move_group, rsp, world_to_root, bridge, gripper, rviz]
 
 
 def _bridge_process(art):
@@ -142,6 +143,12 @@ def _bridge_process(art):
     # not an installed package), so `python trajectory_bridge.py` works anywhere.
     from launch.actions import ExecuteProcess
     script = os.path.normpath(os.path.join(_THIS, "..", "scripts", "trajectory_bridge.py"))
+    return ExecuteProcess(cmd=["python", script, f"--art={art}"], output="screen")
+
+
+def _gripper_process(art):
+    from launch.actions import ExecuteProcess
+    script = os.path.normpath(os.path.join(_THIS, "..", "scripts", "gripper_bridge.py"))
     return ExecuteProcess(cmd=["python", script, f"--art={art}"], output="screen")
 
 

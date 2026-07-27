@@ -84,8 +84,22 @@ private:
 		TArray<TWeakObjectPtr<UObject>> InterfaceProducers;
 	};
 
+	// A non-robot geom resolved once on the game thread (shape is static); the
+	// physics thread only reads the parent body's live pose each step.
+	struct FCachedWorldGeom
+	{
+		FName Name;
+		EMjWorldGeomShape Shape = EMjWorldGeomShape::Box;
+		double Size[3] = {0.0, 0.0, 0.0};
+		int32 BodyId = 0;
+		double LocalPos[3] = {0.0, 0.0, 0.0};
+		double LocalQuat[4] = {1.0, 0.0, 0.0, 0.0};
+		bool bStatic = true;
+	};
+
 	TWeakObjectPtr<AAMjManager> Manager;
 	TArray<FCachedArticulation> Cache; // built game thread, read physics thread
+	TArray<FCachedWorldGeom> WorldGeomCache; // built game thread, read physics thread
 	/** Registered IMjStateProducers not owned by any articulation; their
 	 *  DescribeSceneState fills the snapshot's scene-scoped blocks. */
 	TArray<TWeakObjectPtr<UObject>> SceneProducers;

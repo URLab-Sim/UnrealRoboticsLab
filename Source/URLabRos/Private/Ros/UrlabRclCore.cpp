@@ -53,6 +53,10 @@
 #include <std_msgs/msg/string.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/float64.h>
+#include <shape_msgs/msg/solid_primitive.h>
+#include <moveit_msgs/msg/planning_scene.h>
+#include <moveit_msgs/msg/collision_object.h>
+#include <geometry_msgs/msg/pose.h>
 #include <geometry_msgs/msg/vector3.h>
 #include <geometry_msgs/msg/pose_stamped.h>
 #include <tf2_msgs/msg/tf_message.h>
@@ -2169,6 +2173,108 @@ int UrlabRcl_PublishClockLoaned(UrlabRclClockPub* Pub, int64_t SimTimeNs)
         return -static_cast<int>(Ret);
     }
     return 0;
+}
+
+// --- moveit_msgs/PlanningScene --------------------------------------------
+struct UrlabRclPlanningScenePub
+{
+    UrlabRclContext* Ctx;
+    rcl_publisher_t Pub;
+    moveit_msgs__msg__PlanningScene Msg;
+};
+
+UrlabRclPlanningScenePub* UrlabRcl_CreatePlanningScenePub(UrlabRclContext* Ctx,
+    const char* Topic, const char* FrameId, const char** Ids,
+    const int32_t* PrimTypes, const double* Dims, int32_t Count)
+{
+    ClearError();
+    if (!Ctx)
+    {
+        return nullptr;
+    }
+    UrlabRclPlanningScenePub* Pub = new UrlabRclPlanningScenePub();
+    Pub->Ctx = Ctx;
+    moveit_msgs__msg__PlanningScene__init(&Pub->Msg);
+    Pub->Msg.is_diff = true;
+
+    const int32_t N = Count > 0 ? Count : 0;
+    moveit_msgs__msg__CollisionObject__Sequence__init(&Pub->Msg.world.collision_objects, N);
+    for (int32_t i = 0; i < N; ++i)
+    {
+        moveit_msgs__msg__CollisionObject* CO = &Pub->Msg.world.collision_objects.data[i];
+        SetString(CO->header.frame_id, FrameId ? FrameId : "world");
+        SetString(CO->id, (Ids && Ids[i]) ? Ids[i] : "");
+        CO->operation = 0;  // ADD
+        CO->pose.orientation.w = 1.0;  // object frame; placement filled per-publish
+
+        shape_msgs__msg__SolidPrimitive__Sequence__init(&CO->primitives, 1);
+        shape_msgs__msg__SolidPrimitive* P = &CO->primitives.data[0];
+        const uint8_t Type = PrimTypes ? (uint8_t)PrimTypes[i] : 1;
+        P->type = Type;
+        const int DimN = (Type == 1) ? 3 : (Type == 3 ? 2 : 1);  // BOX 3, CYL 2, SPH 1
+        rosidl_runtime_c__double__Sequence__init(&P->dimensions, DimN);
+        for (int k = 0; k < DimN; ++k)
+        {
+            P->dimensions.data[k] = Dims ? Dims[i * 3 + k] : 0.0;
+        }
+
+        geometry_msgs__msg__Pose__Sequence__init(&CO->primitive_poses, 1);
+        CO->primitive_poses.data[0].orientation.w = 1.0;  // identity vs the object pose
+    }
+
+    const rosidl_message_type_support_t* Ts =
+        ROSIDL_GET_MSG_TYPE_SUPPORT(moveit_msgs, msg, PlanningScene);
+    if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+    {
+        moveit_msgs__msg__PlanningScene__fini(&Pub->Msg);
+        delete Pub;
+        return nullptr;
+    }
+    return Pub;
+}
+
+int UrlabRcl_PublishPlanningScene(UrlabRclPlanningScenePub* Pub,
+    const double* Poses, int32_t Count, int64_t SimTimeNs)
+{
+    ClearError();
+    if (!Pub)
+    {
+        return -1;
+    }
+    const int32_t N = static_cast<int32_t>(Pub->Msg.world.collision_objects.size);
+    const int32_t M = Count < N ? Count : N;
+    for (int32_t i = 0; i < M; ++i)
+    {
+        moveit_msgs__msg__CollisionObject* CO = &Pub->Msg.world.collision_objects.data[i];
+        FillStamp(CO->header.stamp, SimTimeNs);
+        CO->operation = 0;  // ADD (re-add replaces, keeping the scene current)
+        const double* P = &Poses[i * 7];
+        CO->pose.position.x = P[0];
+        CO->pose.position.y = P[1];
+        CO->pose.position.z = P[2];
+        CO->pose.orientation.x = P[3];
+        CO->pose.orientation.y = P[4];
+        CO->pose.orientation.z = P[5];
+        CO->pose.orientation.w = P[6];
+    }
+    const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+    if (Ret != RCL_RET_OK)
+    {
+        CaptureError();
+        return -static_cast<int>(Ret);
+    }
+    return 0;
+}
+
+void UrlabRcl_DestroyPlanningScenePub(UrlabRclPlanningScenePub* Pub)
+{
+    if (!Pub)
+    {
+        return;
+    }
+    rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+    moveit_msgs__msg__PlanningScene__fini(&Pub->Msg);
+    delete Pub;
 }
 
 #endif  // URLAB_WITH_ROS2

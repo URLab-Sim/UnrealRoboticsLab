@@ -230,6 +230,27 @@ struct FMjEntityState
  * the producer set changes so consumers can cache derived state (key tables, ROS
  * publisher handles) and invalidate only on a registry change.
  */
+// A non-robot collision shape in the world (obstacle / table / manipulable
+// object). Poses are world-frame; shapes are collapsed to a primitive (mesh
+// geoms become their axis-aligned bounding box) so downstream transports stay
+// simple. Robot links are excluded (they reach ROS via the URDF).
+enum class EMjWorldGeomShape : uint8
+{
+	Box,       // Size = half-extents (x, y, z)
+	Sphere,    // Size = (radius, _, _)
+	Cylinder,  // Size = (radius, half-height, _)
+};
+
+struct FMjWorldGeom
+{
+	FName Name;
+	EMjWorldGeomShape Shape = EMjWorldGeomShape::Box;
+	double Size[3] = {0.0, 0.0, 0.0};
+	double Xpos[3] = {0.0, 0.0, 0.0};
+	double Xquat[4] = {1.0, 0.0, 0.0, 0.0};  // world orientation, wxyz
+	bool bStatic = true;                      // worldbody-fixed vs movable
+};
+
 struct FMjStateSnapshot
 {
 	double Time = 0.0;
@@ -239,6 +260,7 @@ struct FMjStateSnapshot
 	TArray<FMjArticulationState> Articulations;
 	TArray<FMjEntityState> Entities;
 	TArray<FMjUserChannel> UserChannels; // scene-scoped user payloads
+	TArray<FMjWorldGeom> WorldGeoms;     // non-robot collision geometry
 
 	/** Clears the payload while keeping the top-level array capacity so the
 	 *  steady-state per-step build does not reallocate the outer arrays. */
@@ -251,5 +273,6 @@ struct FMjStateSnapshot
 		Articulations.Reset();
 		Entities.Reset();
 		UserChannels.Reset();
+		WorldGeoms.Reset();
 	}
 };

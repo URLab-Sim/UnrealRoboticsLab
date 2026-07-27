@@ -68,6 +68,7 @@ struct UrlabRclBoolPub;
 struct UrlabRclFloat64Pub;
 struct UrlabRclVector3Pub;
 struct UrlabRclPoseStampedPub;
+struct UrlabRclPlanningScenePub;
 struct UrlabRclCtrlSub;
 struct UrlabRclTwistSub;
 struct UrlabRclJointStateSub;
@@ -106,6 +107,20 @@ int UrlabRcl_PublishTf(struct UrlabRclTfPub* Pub, const char** ParentFrameIds,
     const double* RotationsXyzw /* 4*Count */, int32_t Count,
     int64_t SimTimeNs);
 void UrlabRcl_DestroyTfPub(struct UrlabRclTfPub* Pub);
+
+// moveit_msgs/PlanningScene (is_diff) on /planning_scene: the world's non-robot
+// collision geometry as CollisionObjects. Create fixes the object set (ids +
+// primitive shapes); Publish updates their world poses each step. PrimTypes are
+// shape_msgs/SolidPrimitive.type constants (1=BOX, 2=SPHERE, 3=CYLINDER); Dims is
+// 3 per object (BOX: full extents x,y,z; SPHERE: [radius,_,_]; CYLINDER:
+// [height, radius, _]).
+struct UrlabRclPlanningScenePub* UrlabRcl_CreatePlanningScenePub(
+    struct UrlabRclContext* Ctx, const char* Topic, const char* FrameId,
+    const char** Ids, const int32_t* PrimTypes, const double* Dims, int32_t Count);
+int UrlabRcl_PublishPlanningScene(struct UrlabRclPlanningScenePub* Pub,
+    const double* Poses /* 7*Count: px,py,pz,qx,qy,qz,qw */, int32_t Count,
+    int64_t SimTimeNs);
+void UrlabRcl_DestroyPlanningScenePub(struct UrlabRclPlanningScenePub* Pub);
 
 struct UrlabRclTwistStampedPub* UrlabRcl_CreateTwistStampedPub(struct UrlabRclContext* Ctx,
     const char* Topic, const char* FrameId);

@@ -25,7 +25,9 @@
 #include "State/MjStateProducer.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Components/MjComponent.h"
+#include "MuJoCo/Components/Bodies/MjBody.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Components/ActorComponent.h"
 #include "GameFramework/Actor.h"
@@ -133,10 +135,116 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 		}
 	}
 
+	// World geometry cache: every geom not on a robot body, resolved once here
+	// (shapes are static) so the per-step physics-thread build only reads the
+	// parent body's live pose. Mesh geoms collapse to their AABB box; very large
+	// geoms (the ground / environment shell) and planes are skipped.
+	TArray<FCachedWorldGeom> NewWorldGeoms;
+	if (Mgr->PhysicsEngine)
+	{
+		if (const mjModel* m = Mgr->PhysicsEngine->GetModel())
+		{
+			// Robot bodies are compiled with the articulation's raw-name prefix; match
+			// by name (the actor name is stable on the game thread) rather than mj ids,
+			// which may not be bound yet when the cache first rebuilds.
+			TArray<FString> RobotPrefixes;
+			RobotPrefixes.Reserve(Arts.Num());
+			for (AMjArticulation* Art : Arts)
+			{
+				if (Art)
+					RobotPrefixes.Add(Art->GetName() + TEXT("_"));
+			}
+
+			const double MaxWorldExtent = 5.0;
+			for (int g = 0; g < m->ngeom; ++g)
+			{
+				const int b = m->geom_bodyid[g];
+				if (b <= 0)
+					continue;
+				const char* BodyRaw = mj_id2name(const_cast<mjModel*>(m), mjOBJ_BODY, b);
+				const FString BodyName = BodyRaw ? FString(UTF8_TO_TCHAR(BodyRaw)) : FString();
+				bool bRobot = false;
+				for (const FString& Prefix : RobotPrefixes)
+				{
+					if (BodyName.StartsWith(Prefix))
+					{
+						bRobot = true;
+						break;
+					}
+				}
+				if (bRobot)
+					continue;
+
+				FCachedWorldGeom W;
+				W.BodyId = b;
+				const char* Raw = mj_id2name(const_cast<mjModel*>(m), mjOBJ_GEOM, g);
+				W.Name = Raw ? FName(UTF8_TO_TCHAR(Raw))
+							 : FName(*FString::Printf(TEXT("geom%d"), g));
+				const mjtNum* Gp = &m->geom_pos[3 * g];
+				const mjtNum* Gq = &m->geom_quat[4 * g];
+				for (int k = 0; k < 3; ++k)
+					W.LocalPos[k] = Gp[k];
+				for (int k = 0; k < 4; ++k)
+					W.LocalQuat[k] = Gq[k];
+				W.bStatic = (m->body_dofnum[b] == 0);
+
+				const int gt = m->geom_type[g];
+				const mjtNum* Sz = &m->geom_size[3 * g];
+				if (gt == mjGEOM_SPHERE)
+				{
+					W.Shape = EMjWorldGeomShape::Sphere;
+					W.Size[0] = Sz[0];
+				}
+				else if (gt == mjGEOM_CYLINDER || gt == mjGEOM_CAPSULE)
+				{
+					W.Shape = EMjWorldGeomShape::Cylinder;
+					W.Size[0] = Sz[0];
+					W.Size[1] = Sz[1];
+				}
+				else if (gt == mjGEOM_BOX)
+				{
+					W.Shape = EMjWorldGeomShape::Box;
+					W.Size[0] = Sz[0];
+					W.Size[1] = Sz[1];
+					W.Size[2] = Sz[2];
+				}
+				else if (gt == mjGEOM_MESH)
+				{
+					// AABB of the (centered) mesh verts -> box half-extents.
+					W.Shape = EMjWorldGeomShape::Box;
+					const int did = m->geom_dataid[g];
+					if (did < 0)
+						continue;
+					const int va = m->mesh_vertadr[did];
+					const int vn = m->mesh_vertnum[did];
+					double mx[3] = {0.0, 0.0, 0.0};
+					for (int v = 0; v < vn; ++v)
+					{
+						const float* P = &m->mesh_vert[3 * (va + v)];
+						for (int k = 0; k < 3; ++k)
+							mx[k] = FMath::Max(mx[k], (double)FMath::Abs(P[k]));
+					}
+					W.Size[0] = mx[0];
+					W.Size[1] = mx[1];
+					W.Size[2] = mx[2];
+				}
+				else
+				{
+					continue;  // plane / hfield / ellipsoid: unsupported for now
+				}
+
+				if (FMath::Max3(W.Size[0], W.Size[1], W.Size[2]) > MaxWorldExtent)
+					continue;  // ground / environment shell
+				NewWorldGeoms.Add(W);
+			}
+		}
+	}
+
 	{
 		FScopeLock Lock(&CacheMutex);
 		Cache = MoveTemp(NewCache);
 		SceneProducers = MoveTemp(NewSceneProducers);
+		WorldGeomCache = MoveTemp(NewWorldGeoms);
 	}
 	++StructureVersion;
 	bCacheValid.store(true, std::memory_order_release);
@@ -199,6 +307,31 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 		{
 			if (IMjStateProducer* Producer = Cast<IMjStateProducer>(WeakProducer.Get()))
 				Producer->DescribeSceneState(Snapshot);
+		}
+
+		// World geometry: cached (static) shapes composed with the parent body's
+		// live world pose. World pose = body pose * geom-local offset.
+		Snapshot.WorldGeoms.Reserve(WorldGeomCache.Num());
+		for (const FCachedWorldGeom& W : WorldGeomCache)
+		{
+			if (W.BodyId < 0 || W.BodyId >= m->nbody)
+				continue;
+			FMjWorldGeom G;
+			G.Name = W.Name;
+			G.Shape = W.Shape;
+			G.Size[0] = W.Size[0];
+			G.Size[1] = W.Size[1];
+			G.Size[2] = W.Size[2];
+			G.bStatic = W.bStatic;
+			const mjtNum* Bp = &d->xpos[3 * W.BodyId];
+			const mjtNum* Bq = &d->xquat[4 * W.BodyId];
+			mjtNum Rotated[3];
+			mju_rotVecQuat(Rotated, W.LocalPos, Bq);
+			G.Xpos[0] = Bp[0] + Rotated[0];
+			G.Xpos[1] = Bp[1] + Rotated[1];
+			G.Xpos[2] = Bp[2] + Rotated[2];
+			mju_mulQuat(G.Xquat, Bq, W.LocalQuat);
+			Snapshot.WorldGeoms.Add(MoveTemp(G));
 		}
 	}
 

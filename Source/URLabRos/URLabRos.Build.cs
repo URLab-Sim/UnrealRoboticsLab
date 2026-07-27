@@ -147,7 +147,11 @@ public class URLabRos : ModuleRules
 			"sensor_msgs__rosidl_generator_c", "sensor_msgs__rosidl_typesupport_c",
 			"tf2_msgs__rosidl_generator_c", "tf2_msgs__rosidl_typesupport_c",
 			"nav_msgs__rosidl_generator_c", "nav_msgs__rosidl_typesupport_c",
-			"rosgraph_msgs__rosidl_generator_c", "rosgraph_msgs__rosidl_typesupport_c"
+			"rosgraph_msgs__rosidl_generator_c", "rosgraph_msgs__rosidl_typesupport_c",
+			"shape_msgs__rosidl_generator_c", "shape_msgs__rosidl_typesupport_c",
+			"moveit_msgs__rosidl_generator_c", "moveit_msgs__rosidl_typesupport_c",
+			"object_recognition_msgs__rosidl_generator_c", "object_recognition_msgs__rosidl_typesupport_c",
+			"octomap_msgs__rosidl_generator_c", "octomap_msgs__rosidl_typesupport_c"
 		};
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)

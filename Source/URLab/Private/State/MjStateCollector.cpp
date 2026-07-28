@@ -124,10 +124,10 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 
 			AMjArticulation* OwningArt = Cast<AMjArticulation>(OwnerActor);
 			FCachedArticulation* Rec = OwningArt
-				? NewCache.FindByPredicate([OwningArt](const FCachedArticulation& R) {
-					  return R.Art.Get() == OwningArt;
-				  })
-				: nullptr;
+										 ? NewCache.FindByPredicate([OwningArt](const FCachedArticulation& R) {
+											   return R.Art.Get() == OwningArt;
+										   })
+										 : nullptr;
 			if (Rec)
 				Rec->InterfaceProducers.Add(Obj);
 			else
@@ -215,31 +215,45 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 				}
 				else if (gt == mjGEOM_MESH)
 				{
-					// AABB of the (centered) mesh verts -> box half-extents.
-					W.Shape = EMjWorldGeomShape::Box;
+					// Real triangle geometry (same mesh_vert / mesh_face tables the
+					// URDF export uses), so concave obstacles reach MoveIt faithfully
+					// instead of an engulfing AABB.
 					const int did = m->geom_dataid[g];
 					if (did < 0)
 						continue;
 					const int va = m->mesh_vertadr[did];
 					const int vn = m->mesh_vertnum[did];
-					double mx[3] = {0.0, 0.0, 0.0};
+					const int fa = m->mesh_faceadr[did];
+					const int fn = m->mesh_facenum[did];
+					if (vn <= 0 || fn <= 0)
+						continue;
+					TSharedPtr<FMjWorldMesh> Mesh = MakeShared<FMjWorldMesh>();
+					Mesh->Verts.Reserve(vn);
 					for (int v = 0; v < vn; ++v)
 					{
 						const float* P = &m->mesh_vert[3 * (va + v)];
-						for (int k = 0; k < 3; ++k)
-							mx[k] = FMath::Max(mx[k], (double)FMath::Abs(P[k]));
+						Mesh->Verts.Emplace(P[0], P[1], P[2]);
 					}
-					W.Size[0] = mx[0];
-					W.Size[1] = mx[1];
-					W.Size[2] = mx[2];
+					Mesh->Tris.Reserve(fn * 3);
+					for (int f = 0; f < fn; ++f)
+					{
+						const int* T = &m->mesh_face[3 * (fa + f)];
+						Mesh->Tris.Add(T[0]);
+						Mesh->Tris.Add(T[1]);
+						Mesh->Tris.Add(T[2]);
+					}
+					W.Shape = EMjWorldGeomShape::Mesh;
+					W.Mesh = Mesh;
 				}
 				else
 				{
-					continue;  // plane / hfield / ellipsoid: unsupported for now
+					continue; // plane / hfield / ellipsoid: unsupported for now
 				}
 
-				if (FMath::Max3(W.Size[0], W.Size[1], W.Size[2]) > MaxWorldExtent)
-					continue;  // ground / environment shell
+				// Primitive extent cap skips the ground / environment shell, whose AABB
+				// would engulf the robot. Meshes carry real geometry, so they pass through.
+				if (W.Shape != EMjWorldGeomShape::Mesh && FMath::Max3(W.Size[0], W.Size[1], W.Size[2]) > MaxWorldExtent)
+					continue;
 				NewWorldGeoms.Add(W);
 			}
 		}
@@ -328,6 +342,7 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 			G.Size[1] = W.Size[1];
 			G.Size[2] = W.Size[2];
 			G.bStatic = W.bStatic;
+			G.Mesh = W.Mesh;
 			const mjtNum* Bp = &d->xpos[3 * W.BodyId];
 			const mjtNum* Bq = &d->xquat[4 * W.BodyId];
 			mjtNum Rotated[3];

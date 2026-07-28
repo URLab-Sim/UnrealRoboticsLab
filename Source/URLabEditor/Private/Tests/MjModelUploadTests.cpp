@@ -39,6 +39,7 @@
 #include "Bridge/AssetCache.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
@@ -186,7 +187,10 @@ bool FMjModelUploadManifestChunk::RunTest(const FString& Parameters)
 
 	// --- manifest: fresh hashes -> everything is needed. ---
 	TSharedPtr<FJsonObject> ManReply = Disp->Dispatch(MakeManifest(Session, XmlSha,
-		{{TEXT("mesh.STL"), MeshSha}}, {MeshBytes.Num()}, XmlBytes.Num() + MeshBytes.Num()));
+		{
+			{TEXT("mesh.STL"), MeshSha}
+    },
+		{MeshBytes.Num()}, XmlBytes.Num() + MeshBytes.Num()));
 	FString ManOp;
 	ManReply->TryGetStringField(TEXT("op"), ManOp);
 	TestEqual(TEXT("manifest ok"), ManOp, FString(TEXT("upload_model_manifest_ok")));
@@ -232,7 +236,10 @@ bool FMjModelUploadManifestChunk::RunTest(const FString& Parameters)
 
 	// --- re-manifest: both blobs now cached -> nothing needed (dedup). ---
 	TSharedPtr<FJsonObject> ReMan = Disp->Dispatch(MakeManifest(Session, XmlSha,
-		{{TEXT("mesh.STL"), MeshSha}}, {MeshBytes.Num()}, XmlBytes.Num() + MeshBytes.Num()));
+		{
+			{TEXT("mesh.STL"), MeshSha}
+    },
+		{MeshBytes.Num()}, XmlBytes.Num() + MeshBytes.Num()));
 	bool bNeedXml2 = true;
 	ReMan->TryGetBoolField(TEXT("need_xml"), bNeedXml2);
 	const TArray<TSharedPtr<FJsonValue>>* Need2 = nullptr;
@@ -242,12 +249,18 @@ bool FMjModelUploadManifestChunk::RunTest(const FString& Parameters)
 
 	// --- manifest: path-traversal asset name is rejected. ---
 	TSharedPtr<FJsonObject> Trav = Disp->Dispatch(MakeManifest(Session, XmlSha,
-		{{TEXT("../evil.STL"), MeshSha}}, {1}, 1));
-	TestEqual(TEXT("path traversal rejected"), ReplyCode(Trav), FString(TEXT("bad_request")));
+		{
+			{TEXT("../evil.STL"), MeshSha}
+    },
+		{1}, 1));
+	TestEqual(TEXT("path traversal rejected"), ReplyCode(Trav), FString(URLabError::BadRequest));
 
 	TSharedPtr<FJsonObject> Abs = Disp->Dispatch(MakeManifest(Session, XmlSha,
-		{{TEXT("C:\\evil.STL"), MeshSha}}, {1}, 1));
-	TestEqual(TEXT("drive-letter name rejected"), ReplyCode(Abs), FString(TEXT("bad_request")));
+		{
+			{TEXT("C:\\evil.STL"), MeshSha}
+    },
+		{1}, 1));
+	TestEqual(TEXT("drive-letter name rejected"), ReplyCode(Abs), FString(URLabError::BadRequest));
 
 	// --- chunk: oversize (total beyond max_asset_bytes) -> payload_too_large. ---
 	TSharedPtr<FJsonObject> Oversize = Disp->Dispatch(MakeChunk(Session, UploadId,

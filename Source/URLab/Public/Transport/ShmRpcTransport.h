@@ -97,6 +97,7 @@ public:
 	/** SHM scope narrowing: editor ops never reach the dispatcher on
 	 *  this transport. */
 	virtual bool AcceptsEditorOps() const override { return false; }
+	virtual void AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const override;
 
 	/** Resolved on-disk paths (set after TransportInit). */
 	FString GetReqPath() const { return ReqPath; }

@@ -179,11 +179,11 @@ enum class EMjUserChannelKind : uint8
  */
 struct FMjUserChannel
 {
-	FName Name;                                       // sanitized, unique within its scope
+	FName Name; // sanitized, unique within its scope
 	EMjUserChannelKind Kind = EMjUserChannelKind::Scalar;
-	TArray<double> Values;                            // numeric kinds
-	FString Text;                                     // String kind
-	TArray<uint8> Packed;                             // Struct kind: msgpack map bytes
+	TArray<double> Values; // numeric kinds
+	FString Text;          // String kind
+	TArray<uint8> Packed;  // Struct kind: msgpack map bytes
 };
 
 /** All per-step state for one articulation, grouped by element kind. */
@@ -231,14 +231,24 @@ struct FMjEntityState
  * publisher handles) and invalidate only on a registry change.
  */
 // A non-robot collision shape in the world (obstacle / table / manipulable
-// object). Poses are world-frame; shapes are collapsed to a primitive (mesh
-// geoms become their axis-aligned bounding box) so downstream transports stay
-// simple. Robot links are excluded (they reach ROS via the URDF).
+// object). Poses are world-frame; shapes are a primitive or a full mesh
+// (FMjWorldMesh). Robot links are excluded (they reach ROS via the URDF).
 enum class EMjWorldGeomShape : uint8
 {
-	Box,       // Size = half-extents (x, y, z)
-	Sphere,    // Size = (radius, _, _)
-	Cylinder,  // Size = (radius, half-height, _)
+	Box,      // Size = half-extents (x, y, z)
+	Sphere,   // Size = (radius, _, _)
+	Cylinder, // Size = (radius, half-height, _)
+	Mesh,     // triangle geometry in Mesh; Size unused
+};
+
+// Triangle mesh in the geom-local frame (vertices as stored by MuJoCo's compiled
+// mesh_vert, which already fold in the mesh centring so composing them with the
+// geom's world pose reproduces the authored shape). Shared so the per-step
+// snapshot carries only a ref-counted pointer, not a vertex copy.
+struct FMjWorldMesh
+{
+	TArray<FVector3f> Verts; // geom-local vertex positions
+	TArray<int32> Tris;      // 3 vertex indices per triangle, flattened
 };
 
 struct FMjWorldGeom
@@ -247,8 +257,9 @@ struct FMjWorldGeom
 	EMjWorldGeomShape Shape = EMjWorldGeomShape::Box;
 	double Size[3] = {0.0, 0.0, 0.0};
 	double Xpos[3] = {0.0, 0.0, 0.0};
-	double Xquat[4] = {1.0, 0.0, 0.0, 0.0};  // world orientation, wxyz
-	bool bStatic = true;                      // worldbody-fixed vs movable
+	double Xquat[4] = {1.0, 0.0, 0.0, 0.0}; // world orientation, wxyz
+	bool bStatic = true;                    // worldbody-fixed vs movable
+	TSharedPtr<const FMjWorldMesh> Mesh;    // set when Shape == Mesh
 };
 
 struct FMjStateSnapshot

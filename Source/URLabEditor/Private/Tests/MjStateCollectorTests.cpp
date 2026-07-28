@@ -38,6 +38,7 @@
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
+#include "State/MjObservationLevel.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
 #include "Transport/SnapshotPublisher.h"
@@ -50,7 +51,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 
-using EObs = FURLabRpcDispatcher::EObservationLevel;
+using EObs = EObservationLevel;
 
 // ---------------------------------------------------------------------------
 // 1. FMjCanonicalName::Sanitize + PartSegment
@@ -299,7 +300,8 @@ bool FMjStateActuatorParity::RunTest(const FString& Parameters)
 			TestEqual(TEXT("force matches d->actuator_force"),
 				Act.Force, (double)d->actuator_force[Aid], 1e-9);
 			const int ActAddr = (m->actuator_actadr && m->actuator_actadr[Aid] >= 0)
-									? m->actuator_actadr[Aid] : -1;
+								  ? m->actuator_actadr[Aid]
+								  : -1;
 			const double ExpectedAct = (ActAddr >= 0 && ActAddr < m->na) ? d->act[ActAddr] : 0.0;
 			TestEqual(TEXT("act matches d->act (0 when stateless)"), Act.Act, ExpectedAct, 1e-9);
 		}
@@ -427,7 +429,7 @@ bool FMjStateSensorRawParity::RunTest(const FString& Parameters)
 	if (Reading.Num() == 4 && IRValues->Num() == 4)
 	{
 		const double mj_w = (*IRValues)[0], mj_x = (*IRValues)[1],
-			mj_y = (*IRValues)[2], mj_z = (*IRValues)[3];
+					 mj_y = (*IRValues)[2], mj_z = (*IRValues)[3];
 		TestEqual(TEXT("GetReading[0] == -mjX"), (double)Reading[0], -mj_x, 1e-5);
 		TestEqual(TEXT("GetReading[1] == mjY"), (double)Reading[1], mj_y, 1e-5);
 		TestEqual(TEXT("GetReading[2] == -mjZ"), (double)Reading[2], -mj_z, 1e-5);

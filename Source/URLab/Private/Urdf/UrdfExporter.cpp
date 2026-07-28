@@ -176,6 +176,12 @@ double JointVelocity(const mjModel* M, int J, bool bIsSlide,
 		*JointName, *FmtNum(Default)));
 	return Default;
 }
+struct FMimicJointInfo
+{
+	FString LeaderName;
+	double Multiplier = 1.0;
+	double Offset = 0.0;
+};
 }  // namespace
 
 FString FUrdfExporter::MeshBaseName(const mjModel* M, int32 MeshId)
@@ -257,6 +263,52 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 			TEXT("%d world-rooted bodies; single-URDF export handles the first, a "
 				 "synthetic-root welded ensemble is needed for multi-root arts"),
 			RootCount));
+	}
+
+	// Build a map of follower joint -> mimic info from mjEQ_JOINT equality
+	// constraints. Only linear relationships (polycoef[2..4] == 0) map cleanly
+	// to a URDF <mimic>; anything higher-order is dropped with a warning.
+	TMap<int32, FMimicJointInfo> MimicMap;
+	for (int e = 0; e < M->neq; ++e)
+	{
+		if (M->eq_type[e] != mjEQ_JOINT)
+			continue;
+		const int FollowerMjId = M->eq_obj1id[e];
+		const int LeaderMjId = M->eq_obj2id[e];
+		const mjtNum* Data = &M->eq_data[e * mjNEQDATA];
+		const double Poly2 = (mjNEQDATA > 2) ? Data[2] : 0.0;
+		const double Poly3 = (mjNEQDATA > 3) ? Data[3] : 0.0;
+		const double Poly4 = (mjNEQDATA > 4) ? Data[4] : 0.0;
+		if (std::abs(Poly2) > 1e-12 || std::abs(Poly3) > 1e-12 || std::abs(Poly4) > 1e-12)
+		{
+			const char* Raw = mj_id2name(const_cast<mjModel*>(M), mjOBJ_JOINT, FollowerMjId);
+			Model.Warnings.Add(FString::Printf(
+				TEXT("joint equality '%s': higher-order polycoef dropped (URDF mimic "
+					 "is linear only)"),
+				Raw ? UTF8_TO_TCHAR(Raw) : TEXT("?")));
+			continue;
+		}
+		const char* LeaderRaw = mj_id2name(const_cast<mjModel*>(M), mjOBJ_JOINT, LeaderMjId);
+		FMimicJointInfo& Info = MimicMap.FindOrAdd(FollowerMjId);
+		Info.LeaderName = LocalName(LeaderRaw);
+		Info.Multiplier = Data[1];
+		Info.Offset = Data[0];
+	}
+
+	// Find the leaf body (no children in BodySet) for the optional tool0 frame.
+	int32 LeafBodyId = -1;
+	if (Cfg.bAppendTool0)
+	{
+		for (int32 i : BodyIds)
+		{
+			bool bHasChild = false;
+			for (int32 j : BodyIds)
+			{
+				if (M->body_parentid[j] == i) { bHasChild = true; break; }
+			}
+			if (!bHasChild)
+				LeafBodyId = i;
+		}
 	}
 
 	TArray<FString> LinkXml;
@@ -345,6 +397,11 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 					*FmtNum(Joint.Lower), *FmtNum(Joint.Upper),
 					*FmtNum(Joint.Effort), *FmtNum(Joint.Velocity)));
 			}
+		}
+		if (const FMimicJointInfo* Mimic = MimicMap.Find(J))
+		{
+			Lines.Add(FString::Printf(TEXT("    <mimic joint=\"%s\" multiplier=\"%s\" offset=\"%s\"/>"),
+				*Mimic->LeaderName, *FmtNum(Mimic->Multiplier), *FmtNum(Mimic->Offset)));
 		}
 		Lines.Add(TEXT("  </joint>"));
 		JointXml.Add(FString::Join(Lines, TEXT("\n")));
@@ -520,11 +577,63 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 		Model.Warnings.Add(FString::Printf(
 			TEXT("%d tendon(s) dropped (no URDF representation)"), M->ntendon));
 	}
-	if (M->neq > 0)
 	{
-		Model.Warnings.Add(FString::Printf(
-			TEXT("%d equality constraint(s) dropped (URDF is a tree; coupling like "
-				 "finger mimic is lost)"), M->neq));
+		int32 NonJointEq = 0;
+		for (int e = 0; e < M->neq; ++e)
+			if (M->eq_type[e] != mjEQ_JOINT)
+				++NonJointEq;
+		if (NonJointEq > 0)
+		{
+			Model.Warnings.Add(FString::Printf(
+				TEXT("%d non-joint equality constraint(s) dropped (weld, connect, "
+					 "tendon etc. have no URDF equivalent)"), NonJointEq));
+		}
+	}
+
+	// --- transmissions ---
+	TArray<FString> TransXml;
+	for (int A = 0; A < M->nu; ++A)
+	{
+		if (M->actuator_trntype[A] != mjTRN_JOINT)
+			continue;
+		const int JntId = M->actuator_trnid[2 * A + 0];
+		const FUrdfJoint* Found = nullptr;
+		for (const FUrdfJoint& J : Model.Joints)
+		{
+			if (J.MjJointId == JntId) { Found = &J; break; }
+		}
+		if (!Found)
+			continue;
+		const char* ActRaw = mj_id2name(const_cast<mjModel*>(M), mjOBJ_ACTUATOR, A);
+		if (!ActRaw)
+			continue;
+		const FString ActName = LocalName(ActRaw);
+		const double Gear = std::abs(M->actuator_gear[A * 6 + 0]);
+
+		TransXml.Add(FString::Printf(TEXT("  <transmission name=\"%s_trans\">"), *ActName));
+		TransXml.Add(TEXT("    <type>transmission_interface/SimpleTransmission</type>"));
+		TransXml.Add(FString::Printf(TEXT("    <joint name=\"%s\">"), *Found->Name));
+		TransXml.Add(TEXT("      <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>"));
+		TransXml.Add(TEXT("    </joint>"));
+		TransXml.Add(FString::Printf(TEXT("    <actuator name=\"%s\">"), *ActName));
+		TransXml.Add(FString::Printf(TEXT("      <mechanicalReduction>%s</mechanicalReduction>"), *FmtNum(Gear)));
+		TransXml.Add(TEXT("      <hardwareInterface>hardware_interface/EffortActuatorInterface</hardwareInterface>"));
+		TransXml.Add(TEXT("    </actuator>"));
+		TransXml.Add(TEXT("  </transmission>"));
+	}
+
+	// --- optional tool0 frame ---
+	if (Cfg.bAppendTool0 && LeafBodyId >= 0)
+	{
+		const FString LeafName = BodyName(LeafBodyId);
+		LinkXml.Add(FString::Printf(TEXT("  <link name=\"tool0\"/>")));
+		TArray<FString> T0J;
+		T0J.Add(TEXT("  <joint name=\"tool0_joint\" type=\"fixed\">"));
+		T0J.Add(TEXT("    <origin xyz=\"0 0 0\" rpy=\"0 0 0\"/>"));
+		T0J.Add(FString::Printf(TEXT("    <parent link=\"%s\"/>"), *LeafName));
+		T0J.Add(TEXT("    <child link=\"tool0\"/>"));
+		T0J.Add(TEXT("  </joint>"));
+		JointXml.Add(FString::Join(T0J, TEXT("\n")));
 	}
 
 	TArray<FString> Doc;
@@ -532,6 +641,7 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 	Doc.Add(FString::Printf(TEXT("<robot name=\"%s\">"), *RobotName));
 	Doc.Append(LinkXml);
 	Doc.Append(JointXml);
+	Doc.Append(TransXml);
 	Doc.Add(TEXT("</robot>"));
 	Model.Xml = FString::Join(Doc, TEXT("\n")) + TEXT("\n");
 	return Model;

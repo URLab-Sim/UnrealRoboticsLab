@@ -36,13 +36,13 @@
 #include "Blueprint/UserWidget.h"
 #include "Transport/ZmqPublishTransport.h"
 #include "Transport/ZmqSubscribeTransport.h"
-#include "Transport/ZmqRpcTransport.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServerConfig.h"
 #include "Bridge/BridgeServerConfigUtils.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
 #include "State/MjCanonicalName.h"
+#include "State/MjObservationLevel.h"
 #include "UserChannels/MjUserChannelComponent.h"
 #include "Urdf/UrdfExporter.h"
 #include "Transport/ShmPublishTransport.h"
@@ -608,7 +608,7 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 	// stepping client (no double-write). A typed consumer is a distinct sink, so
 	// it receives the IR every step in all modes regardless of the pause.
 	const bool bByteFanOut = Pubs.Num() > 0
-		&& !bPublishersPaused.load(std::memory_order_acquire);
+						  && !bPublishersPaused.load(std::memory_order_acquire);
 
 	if (!bByteFanOut && Consumers.Num() == 0)
 		return;
@@ -624,7 +624,7 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 		return;
 
 	TArray<uint8> Buf = FMjMsgpackEncoder::EncodeSnapshotBytes(
-		Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
+		Snap, EObservationLevel::Standard);
 	if (Buf.Num() == 0)
 		return;
 	for (IMjSnapshotPublisher* Pub : Pubs)

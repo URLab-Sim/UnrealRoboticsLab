@@ -54,9 +54,9 @@ public:
 	// Thread-safe camera registry.
 	void RegisterCamera(UMjCamera* Cam);
 	void UnregisterCamera(UMjCamera* Cam);
-	TArray<UMjCamera*> GetActiveCameras();
+	TArray<TObjectPtr<UMjCamera>> GetActiveCameras();
 
 private:
-	TArray<UMjCamera*> ActiveCameras;
+	TArray<TObjectPtr<UMjCamera>> ActiveCameras;
 	FCriticalSection CameraMutex;
 };

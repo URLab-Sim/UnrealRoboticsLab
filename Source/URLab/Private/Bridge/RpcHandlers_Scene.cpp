@@ -21,8 +21,8 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
-#include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -92,12 +92,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("Manager not initialised"));
 
 	mjModel* m = Mgr->PhysicsEngine->GetModel();
 	mjData* d = Mgr->PhysicsEngine->GetData();
 	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
+		return MakeError(URLabError::NotReady, TEXT("MjModel/MjData missing"));
 
 	// target/target_by wire shape. target_by="actor_name" looks up via
 	// the manager's GetArticulation (UE name match); default
@@ -107,7 +107,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	Req->TryGetStringField(TEXT("target_by"), By);
 	if (Target.IsEmpty())
 	{
-		return MakeError(TEXT("missing_field"),
+		return MakeError(URLabError::MissingField,
 			TEXT("set_qpos: missing 'target' field"));
 	}
 	const bool bByName = By.Equals(TEXT("actor_name"), ESearchCase::IgnoreCase);
@@ -130,7 +130,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	}
 	if (!Art)
 	{
-		return MakeError(TEXT("unknown_articulation"), Target);
+		return MakeError(URLabError::UnknownArticulation, Target);
 	}
 
 	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
@@ -138,7 +138,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 
 	const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
 	if (!Req->TryGetArrayField(TEXT("qpos"), QPosArr) || !QPosArr)
-		return MakeError(TEXT("missing_field"), TEXT("set_qpos requires 'qpos' array"));
+		return MakeError(URLabError::MissingField, TEXT("set_qpos requires 'qpos' array"));
 
 	struct FJointSlot
 	{
@@ -174,7 +174,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	}
 
 	if (Slots.Num() == 0)
-		return MakeError(TEXT("no_joints"),
+		return MakeError(URLabError::NoJoints,
 			TEXT("Articulation has no joints; nothing to write"));
 
 	const int32 InN = QPosArr->Num();
@@ -182,7 +182,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	if (InN == 7 && Slots[0].Type == mjJNT_FREE && ArtQDim != 7)
 		bFreeBaseShortcut = true;
 	else if (InN != ArtQDim)
-		return MakeError(TEXT("dim_mismatch"),
+		return MakeError(URLabError::DimMismatch,
 			FString::Printf(
 				TEXT("qpos length %d != articulation qpos dim %d (free-base shortcut requires len=7 with FREE root)"),
 				InN, ArtQDim));
@@ -250,28 +250,49 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("Manager not initialised"));
 
 	mjModel* m = Mgr->PhysicsEngine->GetModel();
 	mjData* d = Mgr->PhysicsEngine->GetData();
 	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
+		return MakeError(URLabError::NotReady, TEXT("MjModel/MjData missing"));
 
 	FString Body;
 	Req->TryGetStringField(TEXT("body"), Body);
 	if (Body.IsEmpty())
-		return MakeError(TEXT("missing_field"), TEXT("set_mocap_pose: missing 'body'"));
+		return MakeError(URLabError::MissingField, TEXT("set_mocap_pose: missing 'body'"));
 
 	const int32 BodyId = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*Body));
 	if (BodyId < 0)
-		return MakeError(TEXT("unknown_body"), Body);
+		return MakeError(URLabError::UnknownBody, Body);
 
-	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Body), Req))
-		return Denied;
+	{
+		FName ArtKey;
+		for (AMjArticulation* Art : Mgr->GetAllArticulations())
+		{
+			if (!Art)
+				continue;
+			for (UMjBody* B : Art->GetBodies())
+			{
+				if (B && B->GetMjName().Equals(Body))
+				{
+					ArtKey = FName(*Art->GetName());
+					break;
+				}
+			}
+			if (!ArtKey.IsNone())
+				break;
+		}
+		if (!ArtKey.IsNone())
+		{
+			if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(ArtKey, Req))
+				return Denied;
+		}
+	}
 
 	const int32 MocapId = m->body_mocapid[BodyId];
 	if (MocapId < 0)
-		return MakeError(TEXT("not_mocap_body"),
+		return MakeError(URLabError::NotMocapBody,
 			FString::Printf(TEXT("Body '%s' is not a mocap body"), *Body));
 
 	const TArray<TSharedPtr<FJsonValue>>* PosArr = nullptr;
@@ -279,7 +300,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 	const bool bHasPos = Req->TryGetArrayField(TEXT("pos"), PosArr) && PosArr && PosArr->Num() == 3;
 	const bool bHasQuat = Req->TryGetArrayField(TEXT("quat"), QuatArr) && QuatArr && QuatArr->Num() == 4;
 	if (!bHasPos && !bHasQuat)
-		return MakeError(TEXT("missing_field"),
+		return MakeError(URLabError::MissingField,
 			TEXT("set_mocap_pose requires at least one of pos[3] or quat[4]"));
 
 	// Read-back of the written mocap pose must stay inside the lock: a concurrent
@@ -316,25 +337,25 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReadMocapPose(const TSharedPt
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("Manager not initialised"));
 
 	mjModel* m = Mgr->PhysicsEngine->GetModel();
 	mjData* d = Mgr->PhysicsEngine->GetData();
 	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
+		return MakeError(URLabError::NotReady, TEXT("MjModel/MjData missing"));
 
 	FString Body;
 	Req->TryGetStringField(TEXT("body"), Body);
 	if (Body.IsEmpty())
-		return MakeError(TEXT("missing_field"), TEXT("read_mocap_pose: missing 'body'"));
+		return MakeError(URLabError::MissingField, TEXT("read_mocap_pose: missing 'body'"));
 
 	const int32 BodyId = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*Body));
 	if (BodyId < 0)
-		return MakeError(TEXT("unknown_body"), Body);
+		return MakeError(URLabError::UnknownBody, Body);
 
 	const int32 MocapId = m->body_mocapid[BodyId];
 	if (MocapId < 0)
-		return MakeError(TEXT("not_mocap_body"),
+		return MakeError(URLabError::NotMocapBody,
 			FString::Printf(TEXT("Body '%s' is not a mocap body"), *Body));
 
 	TArray<TSharedPtr<FJsonValue>> PosOut, QuatOut;
@@ -358,12 +379,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleGetContacts(const TSharedPtr<
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("Manager not initialised"));
 
 	mjModel* m = Mgr->PhysicsEngine->GetModel();
 	mjData* d = Mgr->PhysicsEngine->GetData();
 	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
+		return MakeError(URLabError::NotReady, TEXT("MjModel/MjData missing"));
 
 	int32 MaxContacts = 64;
 	{
@@ -464,11 +485,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleListKeyframes(const TSharedPt
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("Manager not initialised"));
 
 	mjModel* m = Mgr->PhysicsEngine->GetModel();
 	if (!m)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel missing"));
+		return MakeError(URLabError::NotReady, TEXT("MjModel missing"));
 
 	auto Slice = [](const mjtNum* src, int32 stride, int32 idx, int32 width) {
 		TArray<TSharedPtr<FJsonValue>> Out;
@@ -508,17 +529,17 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleRecording(const FString& Op, 
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 	// Use the game-thread-cached pointer; TActorIterator from this worker
 	// thread would assert IsInGameThread() and crash.
 	AMjReplayManager* RM = CachedReplayManager.Get();
 	if (!RM)
-		return MakeError(TEXT("not_ready"), TEXT("AMjReplayManager not present in scene"));
+		return MakeError(URLabError::NotReady, TEXT("AMjReplayManager not present in scene"));
 
 	if (Op.Equals(TEXT("recording_start")))
 	{
 		if (RM->bIsRecording)
-			return MakeError(TEXT("recording_already_active"), TEXT("Recording already active"));
+			return MakeError(URLabError::RecordingAlreadyActive, TEXT("Recording already active"));
 		double MaxDur = 0.0;
 		if (Req->TryGetNumberField(TEXT("max_duration_s"), MaxDur))
 			RM->MaxRecordDuration = (float)MaxDur;
@@ -534,7 +555,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleRecording(const FString& Op, 
 	if (Op.Equals(TEXT("recording_stop")))
 	{
 		if (!RM->bIsRecording)
-			return MakeError(TEXT("recording_not_active"), TEXT("Recording is not active"));
+			return MakeError(URLabError::RecordingNotActive, TEXT("Recording is not active"));
 		RM->StopRecording();
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 		Reply->SetStringField(TEXT("op"), TEXT("recording_stop_ok"));
@@ -563,7 +584,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleRecording(const FString& Op, 
 		Reply->SetStringField(TEXT("op"), bOk ? TEXT("recording_save_ok") : TEXT("error"));
 		Reply->SetStringField(TEXT("absolute_path"), Abs);
 		if (!bOk)
-			Reply->SetStringField(TEXT("code"), TEXT("path_not_writable"));
+			Reply->SetStringField(TEXT("code"), URLabError::PathNotWritable);
 		return Reply;
 	}
 	if (Op.Equals(TEXT("recording_clear")))
@@ -573,27 +594,27 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleRecording(const FString& Op, 
 		Reply->SetStringField(TEXT("op"), TEXT("recording_clear_ok"));
 		return Reply;
 	}
-	return MakeError(TEXT("unknown_op"), Op);
+	return MakeError(URLabError::UnknownOp, Op);
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReplay(const FString& Op, const TSharedPtr<FJsonObject>& Req)
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 	AMjReplayManager* RM = CachedReplayManager.Get();
 	if (!RM)
-		return MakeError(TEXT("not_ready"), TEXT("AMjReplayManager not present in scene"));
+		return MakeError(URLabError::NotReady, TEXT("AMjReplayManager not present in scene"));
 
 	if (Op.Equals(TEXT("replay_load")))
 	{
 		FString P;
 		if (!Req->TryGetStringField(TEXT("path"), P))
-			return MakeError(TEXT("missing_field"), TEXT("replay_load requires 'path'"));
+			return MakeError(URLabError::MissingField, TEXT("replay_load requires 'path'"));
 		FString FileName = FPaths::GetCleanFilename(P);
 		bool bOk = RM->LoadRecordingFromFile(FileName);
 		if (!bOk)
-			return MakeError(TEXT("path_not_readable"), P);
+			return MakeError(URLabError::PathNotReadable, P);
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 		Reply->SetStringField(TEXT("op"), TEXT("replay_load_ok"));
 		Reply->SetStringField(TEXT("name"), FPaths::GetBaseFilename(FileName));
@@ -613,9 +634,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReplay(const FString& Op, con
 	{
 		FString N;
 		if (!Req->TryGetStringField(TEXT("name"), N))
-			return MakeError(TEXT("missing_field"), TEXT("replay_set_active requires 'name'"));
+			return MakeError(URLabError::MissingField, TEXT("replay_set_active requires 'name'"));
 		if (!RM->Sessions.Contains(N))
-			return MakeError(TEXT("replay_session_not_found"), N);
+			return MakeError(URLabError::ReplaySessionNotFound, N);
 		RM->SetActiveSession(N);
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 		Reply->SetStringField(TEXT("op"), TEXT("replay_set_active_ok"));
@@ -624,7 +645,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReplay(const FString& Op, con
 	if (Op.Equals(TEXT("replay_start")))
 	{
 		if (ActiveStepMode == EStepMode::Live)
-			return MakeError(TEXT("replay_requires_stepped"),
+			return MakeError(URLabError::ReplayRequiresStepped,
 				TEXT("Switch to direct or puppet before starting replay"));
 		RM->StartReplay();
 		int32 Total = RM->Sessions.Contains(RM->GetActiveSessionName())
@@ -643,5 +664,5 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReplay(const FString& Op, con
 		Reply->SetStringField(TEXT("op"), TEXT("replay_stop_ok"));
 		return Reply;
 	}
-	return MakeError(TEXT("unknown_op"), Op);
+	return MakeError(URLabError::UnknownOp, Op);
 }

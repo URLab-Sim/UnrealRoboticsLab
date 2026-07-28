@@ -254,11 +254,11 @@ bool FMjUrdfExportCounts::RunTest(const FString& Parameters)
 	const FString OutDir = FPaths::Combine(FPaths::ProjectSavedDir(),
 		TEXT("URLab"), TEXT("Tests"), TEXT("urdf_chain"));
 	FUrdfExportConfig Cfg;
+	Cfg.bAppendTool0 = false; // test model has no single clear leaf body
 	const FUrdfModel Model = FUrdfExporter::ExportToDir(m, TEXT("chain"), FString(), OutDir, Cfg);
 
-	// Link count == non-world body count; joint count == joints exported.
-	TestEqual(TEXT("link count == nbody-1"), Model.Links.Num(), static_cast<int32>(m->nbody) - 1);
-	TestEqual(TEXT("two joints (root joint dropped)"), Model.Joints.Num(), 2);
+	TestEqual(TEXT("link count == nbody - 1 (excl. world)"), Model.Links.Num(), static_cast<int32>(m->nbody) - 1);
+	TestEqual(TEXT("two joints"), Model.Joints.Num(), 2);
 	TestEqual(TEXT("one revolute"), CountJointType(Model, TEXT("revolute")), 1);
 	TestEqual(TEXT("one prismatic"), CountJointType(Model, TEXT("prismatic")), 1);
 
@@ -351,6 +351,7 @@ bool FMjUrdfExportAnchorMultiJoint::RunTest(const FString& Parameters)
 	const FString MeshDir = FPaths::Combine(FPaths::ProjectSavedDir(),
 		TEXT("URLab"), TEXT("Tests"), TEXT("urdf_anchor"), TEXT("meshes"));
 	FUrdfExportConfig Cfg;
+	Cfg.bAppendTool0 = false; // single anchor+2joint wrist model, no clear leaf
 	const TArray<int32> Bodies = FUrdfExporter::BodyIdsForArt(S.m, FString());
 	const FUrdfModel Model = FUrdfExporter::Build(S.m, TEXT("anchor"), FString(), Bodies, MeshDir, Cfg);
 
@@ -402,6 +403,7 @@ bool FMjUrdfExportPanda::RunTest(const FString& Parameters)
 	const FString OutDir = FPaths::Combine(FPaths::ProjectSavedDir(),
 		TEXT("URLab"), TEXT("Tests"), TEXT("urdf_panda"));
 	FUrdfExportConfig Cfg;
+	Cfg.bAppendTool0 = false; // tool0 opt-in for the Panda reference test
 	const FUrdfModel Model = FUrdfExporter::ExportToDir(m, TEXT("panda"), FString(), OutDir, Cfg);
 
 	// The validated reference (docs/plan_ros_urdf_port_spec.md): 11 links, 10

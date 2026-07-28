@@ -142,7 +142,9 @@ private:
 			return nullptr;
 		}
 		const FString Topic = FString::Printf(TEXT("/%s/image"), *Frame.CanonicalName);
-		// FColor pixels are BGRA8; depth is single-channel float32.
+		// BGRA8 is the native Unreal FColor format. Downstream OpenCV consumers
+		// that need RGB8 should convert with cv::cvtColor(img, img, cv::COLOR_BGRA2RGBA).
+		// Depth frames are single-channel float32.
 		const char* Encoding = Frame.bDepth ? "32FC1" : "bgra8";
 		UrlabRclImagePub* Pub = UrlabRcl_CreateImagePub(Ctx, TCHAR_TO_UTF8(*Topic),
 			TCHAR_TO_UTF8(*Frame.CanonicalName), Frame.Width, Frame.Height, Encoding);

@@ -16,6 +16,7 @@
 #include "Transport/ShmPublishTransport.h" // ResolveSessionDir
 #include "Bridge/BridgeServer.h"
 #include "Bridge/RpcDispatcher.h" // MakeError
+#include "Bridge/RpcErrorCodes.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "HAL/RunnableThread.h"
@@ -73,8 +74,8 @@ bool UURLabShmRpcTransport::TransportInit()
 	// re-deriving them from a fixed "live" session.
 	const uint32 Pid = FPlatformProcess::GetCurrentProcessId();
 	ResolvedSessionId = InstancePort > 0
-							? FString::Printf(TEXT("%s_p%d_%u"), *BaseSid, InstancePort, Pid)
-							: FString::Printf(TEXT("%s_%u"), *BaseSid, Pid);
+						  ? FString::Printf(TEXT("%s_p%d_%u"), *BaseSid, InstancePort, Pid)
+						  : FString::Printf(TEXT("%s_%u"), *BaseSid, Pid);
 	// Event names match what the worker creates below; advertised in hello so
 	// the bridge opens the exact objects rather than assuming "live".
 	ReqEventName = MakeEventName(ResolvedSessionId, TEXT("req"));
@@ -116,8 +117,7 @@ bool UURLabShmRpcTransport::TransportInit()
 		// exists anyway, another instance resolved the same identity; warn
 		// rather than silently share a wake object, which would let that
 		// instance steal this one's request/reply signals.
-		if ((ReqReadyEvent && ReqErr == ERROR_ALREADY_EXISTS) ||
-			(RepReadyEvent && RepErr == ERROR_ALREADY_EXISTS))
+		if ((ReqReadyEvent && ReqErr == ERROR_ALREADY_EXISTS) || (RepReadyEvent && RepErr == ERROR_ALREADY_EXISTS))
 		{
 			UE_LOG(LogURLabNet, Warning,
 				TEXT("UURLabShmRpcTransport: kernel event name collision (req=%s rep=%s); "
@@ -314,7 +314,7 @@ void UURLabShmRpcTransport::RunPollLoop()
 			// sticky-routes to its ZMQ fallback. (Distinct from the editor-op
 			// `wrong_transport` rejection.)
 			TSharedPtr<FJsonObject> Err = FURLabRpcDispatcher::MakeError(
-				TEXT("reply_too_large"),
+				URLabError::ReplyTooLarge,
 				FString::Printf(
 					TEXT("reply %d bytes exceeds shm reply slot %u; use zmq for this request"),
 					RepBytes.Num(), RepStride));
@@ -351,4 +351,21 @@ void UURLabShmRpcTransport::RunPollLoop()
 			::SetEvent(static_cast<HANDLE>(RepReadyEvent));
 #endif
 	}
+}
+
+void UURLabShmRpcTransport::AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const
+{
+	TSharedPtr<FJsonObject> Rpc = MakeShared<FJsonObject>();
+	Rpc->SetStringField(TEXT("session"), GetSessionId());
+	Rpc->SetStringField(TEXT("req_path"),
+		FPaths::ConvertRelativePathToFull(GetReqPath()));
+	Rpc->SetStringField(TEXT("rep_path"),
+		FPaths::ConvertRelativePathToFull(GetRepPath()));
+	Rpc->SetStringField(TEXT("req_event"), GetReqEventName());
+	Rpc->SetStringField(TEXT("rep_event"), GetRepEventName());
+	Rpc->SetNumberField(TEXT("req_stride"), GetReqStride());
+	Rpc->SetNumberField(TEXT("rep_stride"), GetRepStride());
+	Rpc->SetNumberField(TEXT("n_buffers"), GetNumBuffers());
+	Rpc->SetNumberField(TEXT("header_size"), static_cast<double>(sizeof(FMjShmHeader)));
+	Reply->SetObjectField(TEXT("shm_rpc"), Rpc);
 }

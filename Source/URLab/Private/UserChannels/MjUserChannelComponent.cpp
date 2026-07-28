@@ -33,14 +33,22 @@ EMjUserChannelKind ToChannelKind(EMjUserInputKind Kind)
 {
 	switch (Kind)
 	{
-		case EMjUserInputKind::Bool: return EMjUserChannelKind::Bool;
-		case EMjUserInputKind::Int: return EMjUserChannelKind::Int;
-		case EMjUserInputKind::Scalar: return EMjUserChannelKind::Scalar;
-		case EMjUserInputKind::Vec3: return EMjUserChannelKind::Vec3;
-		case EMjUserInputKind::Quat: return EMjUserChannelKind::Quat;
-		case EMjUserInputKind::Transform: return EMjUserChannelKind::Transform;
-		case EMjUserInputKind::Array: return EMjUserChannelKind::Array;
-		case EMjUserInputKind::String: return EMjUserChannelKind::String;
+		case EMjUserInputKind::Bool:
+			return EMjUserChannelKind::Bool;
+		case EMjUserInputKind::Int:
+			return EMjUserChannelKind::Int;
+		case EMjUserInputKind::Scalar:
+			return EMjUserChannelKind::Scalar;
+		case EMjUserInputKind::Vec3:
+			return EMjUserChannelKind::Vec3;
+		case EMjUserInputKind::Quat:
+			return EMjUserChannelKind::Quat;
+		case EMjUserInputKind::Transform:
+			return EMjUserChannelKind::Transform;
+		case EMjUserInputKind::Array:
+			return EMjUserChannelKind::Array;
+		case EMjUserInputKind::String:
+			return EMjUserChannelKind::String;
 	}
 	return EMjUserChannelKind::Scalar;
 }
@@ -275,7 +283,7 @@ bool UMjUserChannelComponent::ApplyInput(FName Channel, const FMjUserChannel& Va
 		FScopeLock Lock(&InputMutex);
 		const EMjUserChannelKind* Found = InputDecls.Find(Key);
 		if (!Found)
-			return false;  // undeclared: not on the allowlist
+			return false; // undeclared: not on the allowlist
 		Declared = *Found;
 	}
 
@@ -364,18 +372,20 @@ FString UMjUserChannelComponent::GetInputString(FName Channel) const
 
 void UMjUserChannelComponent::DescribeState(FMjArticulationState& Out) const
 {
-	FScopeLock Lock(&MailboxMutex);
-	Out.UserChannels.Reserve(Out.UserChannels.Num() + Mailbox.Num());
-	for (const TPair<FName, FMjUserChannel>& Pair : Mailbox)
-		Out.UserChannels.Add(Pair.Value);
+	CopyMailboxInto(Out.UserChannels);
 }
 
 void UMjUserChannelComponent::DescribeSceneState(FMjStateSnapshot& Out) const
 {
+	CopyMailboxInto(Out.UserChannels);
+}
+
+void UMjUserChannelComponent::CopyMailboxInto(TArray<FMjUserChannel>& OutChannels) const
+{
 	FScopeLock Lock(&MailboxMutex);
-	Out.UserChannels.Reserve(Out.UserChannels.Num() + Mailbox.Num());
+	OutChannels.Reserve(OutChannels.Num() + Mailbox.Num());
 	for (const TPair<FName, FMjUserChannel>& Pair : Mailbox)
-		Out.UserChannels.Add(Pair.Value);
+		OutChannels.Add(Pair.Value);
 }
 
 AAMjManager* UMjUserChannelComponent::ResolveManager()

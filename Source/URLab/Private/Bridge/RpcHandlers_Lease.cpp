@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/BridgeServer.h"
 
 // Cooperative render-farm lease ops. A lease is a claim, not a security
@@ -34,7 +35,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleAcquireLease(const TSharedPtr
 	UURLabBridgeServer* Bridge = OwningBridge.Get();
 	if (!Bridge)
 	{
-		return MakeError(TEXT("not_ready"),
+		return MakeError(URLabError::NotReady,
 			TEXT("lease state is unavailable (no bridge server)"));
 	}
 
@@ -68,19 +69,19 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReleaseLease(const TSharedPtr
 	UURLabBridgeServer* Bridge = OwningBridge.Get();
 	if (!Bridge)
 	{
-		return MakeError(TEXT("not_ready"),
+		return MakeError(URLabError::NotReady,
 			TEXT("lease state is unavailable (no bridge server)"));
 	}
 
 	FString LeaseId;
 	if (!Req.IsValid() || !Req->TryGetStringField(TEXT("lease_id"), LeaseId) || LeaseId.IsEmpty())
 	{
-		return MakeError(TEXT("bad_request"), TEXT("release_lease requires a non-empty lease_id"));
+		return MakeError(URLabError::BadRequest, TEXT("release_lease requires a non-empty lease_id"));
 	}
 
 	if (!Bridge->ReleaseLease(LeaseId))
 	{
-		return MakeError(TEXT("bad_request"),
+		return MakeError(URLabError::BadRequest,
 			TEXT("lease_id does not match the held lease (or no lease is held)"));
 	}
 

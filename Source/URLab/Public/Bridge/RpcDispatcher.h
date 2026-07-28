@@ -17,6 +17,7 @@
 #include "CoreMinimal.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Bridge/ControlOwnership.h"
+#include "State/MjObservationLevel.h"
 #include "Dom/JsonObject.h"
 #include "Containers/Queue.h"
 #include <atomic>
@@ -58,13 +59,6 @@ class URLAB_API FURLabRpcDispatcher
 public:
 	/** Observation verbosity. minimal=qpos+qvel; standard=+ctrl+act+sensors;
 	 *  full=+body xpos/xquat+actuator forces. */
-	enum class EObservationLevel : uint8
-	{
-		Minimal,
-		Standard,
-		Full
-	};
-
 	/** Per-camera include mode for step replies. */
 	enum class ECameraInclude : uint8
 	{
@@ -102,7 +96,7 @@ public:
 	bool IsDraining() const { return bDraining.load(std::memory_order_acquire); }
 
 	/** Wire format echoed to the client as the urlab plugin version. */
-	FString URLabVersion = TEXT("urlab/0.1");
+	FString URLabVersion = TEXT("urlab/0.2");
 
 	// --- Top-level dispatch ---
 
@@ -376,7 +370,7 @@ private:
  *  observation override applies to this step only. */
 struct FStepRequestCommon
 {
-	FURLabRpcDispatcher::EObservationLevel ObservationLevel = FURLabRpcDispatcher::EObservationLevel::Standard;
+	EObservationLevel ObservationLevel = EObservationLevel::Standard;
 	TMap<FString, FURLabRpcDispatcher::ECameraInclude> CameraSpec;
 	TMap<FString, uint64> CameraMinFrameIds;
 	bool bWaitCameras = false;

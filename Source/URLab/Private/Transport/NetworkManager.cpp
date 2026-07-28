@@ -97,7 +97,7 @@ void UMjNetworkManager::UnregisterCamera(UMjCamera* Cam)
 	UE_LOG(LogURLabNet, Log, TEXT("UMjNetworkManager: Unregistered Camera %s. Total: %d"), *Cam->GetName(), ActiveCameras.Num());
 }
 
-TArray<UMjCamera*> UMjNetworkManager::GetActiveCameras()
+TArray<TObjectPtr<UMjCamera>> UMjNetworkManager::GetActiveCameras()
 {
 	FScopeLock Lock(&CameraMutex);
 	return ActiveCameras;

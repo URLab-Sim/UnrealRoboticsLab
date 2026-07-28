@@ -25,6 +25,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Base64.h"
+#include "Utils/URLabLogging.h"
 
 // rpclib's msgpack-cxx headers use member functions and templates named
 // `check`, which collides with UE's `check(cond)` assertion macro. Save
@@ -333,6 +334,7 @@ bool FURLabMsgpackUtil::UnpackToJsonObject(const uint8* Data, int32 Size,
 	}
 	catch (...)
 	{
+		UE_LOG(LogURLab, Warning, TEXT("MsgpackHelpers: parse failure in UnpackToJsonObject"));
 		return false;
 	}
 }

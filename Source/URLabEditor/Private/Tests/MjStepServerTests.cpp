@@ -43,6 +43,7 @@
 #include "Bridge/BridgeServer.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
@@ -118,7 +119,7 @@ bool FMjStepServerNoManagerGuard::RunTest(const FString& Parameters)
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
 		TestEqual(*FString::Printf(TEXT("op %s -> no_active_manager"), *Op),
-			Code, FString(TEXT("no_active_manager")));
+			Code, FString(URLabError::NoActiveManager));
 	};
 
 	AssertNoManager(TEXT("step"));
@@ -840,7 +841,7 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 
 	// Minimal: qpos / qvel only.
 	TSharedPtr<FJsonObject> Min = FMjMsgpackEncoder::EncodeArts(
-		Snap, FURLabRpcDispatcher::EObservationLevel::Minimal);
+		Snap, EObservationLevel::Minimal);
 	TestTrue(TEXT("Minimal returns object"), Min.IsValid());
 	if (Min.IsValid() && Min->Values.Num() > 0)
 	{
@@ -859,7 +860,7 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 
 	// Standard: minimal + ctrl + act + sensors.
 	TSharedPtr<FJsonObject> Std = FMjMsgpackEncoder::EncodeArts(
-		Snap, FURLabRpcDispatcher::EObservationLevel::Standard);
+		Snap, EObservationLevel::Standard);
 	if (Std.IsValid() && Std->Values.Num() > 0)
 	{
 		const TSharedPtr<FJsonObject>* Art = nullptr;
@@ -877,7 +878,7 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 
 	// Full: standard + bodies + actuator_force.
 	TSharedPtr<FJsonObject> Full = FMjMsgpackEncoder::EncodeArts(
-		Snap, FURLabRpcDispatcher::EObservationLevel::Full);
+		Snap, EObservationLevel::Full);
 	if (Full.IsValid() && Full->Values.Num() > 0)
 	{
 		const TSharedPtr<FJsonObject>* Art = nullptr;
@@ -1451,7 +1452,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
-		TestEqual(TEXT("dim_mismatch"), Code, FString(TEXT("dim_mismatch")));
+		TestEqual(TEXT("dim_mismatch"), Code, FString(URLabError::DimMismatch));
 	}
 
 	// unknown_articulation: target with no matching actor_id.
@@ -1466,7 +1467,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
-		TestEqual(TEXT("unknown_articulation"), Code, FString(TEXT("unknown_articulation")));
+		TestEqual(TEXT("unknown_articulation"), Code, FString(URLabError::UnknownArticulation));
 	}
 
 	// missing_field: no target field at all.
@@ -1480,7 +1481,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
-		TestEqual(TEXT("missing_field"), Code, FString(TEXT("missing_field")));
+		TestEqual(TEXT("missing_field"), Code, FString(URLabError::MissingField));
 	}
 
 	S.Cleanup();
@@ -1696,7 +1697,7 @@ bool FMjStepServerShmRejectsEditorOps::RunTest(const FString& Parameters)
 	Reply->TryGetStringField(TEXT("op"), Op);
 	Reply->TryGetStringField(TEXT("code"), Code);
 	TestEqual(TEXT("op == error"), Op, FString(TEXT("error")));
-	TestEqual(TEXT("code == wrong_transport"), Code, FString(TEXT("wrong_transport")));
+	TestEqual(TEXT("code == wrong_transport"), Code, FString(URLabError::WrongTransport));
 
 	// ZMQ stays universal — same payload through ZMQ transport invokes
 	// the dispatcher (which will return its own missing-fields error,
@@ -1711,7 +1712,7 @@ bool FMjStepServerShmRejectsEditorOps::RunTest(const FString& Parameters)
 	if (ZmqReply.IsValid())
 		ZmqReply->TryGetStringField(TEXT("code"), ZmqCode);
 	TestNotEqual(TEXT("ZMQ does not emit wrong_transport"),
-		ZmqCode, FString(TEXT("wrong_transport")));
+		ZmqCode, FString(URLabError::WrongTransport));
 
 	Server->Stop();
 	Server->RemoveFromRoot();
@@ -1928,7 +1929,7 @@ bool FMjStepServerUnknownOpVsNotInEditor::RunTest(const FString& Parameters)
 	FString Code;
 	Reply->TryGetStringField(TEXT("code"), Code);
 	TestEqual(TEXT("unknown_op for genuinely unknown name"),
-		Code, FString(TEXT("unknown_op")));
+		Code, FString(URLabError::UnknownOp));
 
 	Server->Stop();
 	Server->RemoveFromRoot();
@@ -1973,7 +1974,7 @@ bool FMjStepServerRequiredFieldsValidated::RunTest(const FString& Parameters)
 	// registry-level check is supposed to short-circuit BEFORE
 	// OwnerMgr is touched — i.e. this test passes even with no manager.
 	TestEqual(TEXT("missing_field on omitted required field"),
-		Code, FString(TEXT("missing_field")));
+		Code, FString(URLabError::MissingField));
 	TestTrue(TEXT("error message names the field"),
 		Msg.Contains(TEXT("paused")));
 

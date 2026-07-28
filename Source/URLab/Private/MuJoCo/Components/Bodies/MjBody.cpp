@@ -389,8 +389,6 @@ BodyView UMjBody::GetBodyView() const
 
 void UMjBody::DescribeState(FMjArticulationState& Out) const
 {
-	if (bIsDefault)
-		return;
 	const BodyView& V = m_BodyView;
 	if (V.id < 0 || !V.xpos || !V.xquat)
 		return;

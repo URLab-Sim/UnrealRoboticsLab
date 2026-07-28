@@ -63,6 +63,13 @@ public:
 
 	virtual void Publish(const FMjStateSnapshot& Snapshot, int64 SimTimeNs) override
 	{
+		static constexpr int64 PublishIntervalNs = 20'000'000; // 50 Hz
+		if (LastPublishNs != 0 && (SimTimeNs - LastPublishNs) < PublishIntervalNs)
+		{
+			return;
+		}
+		LastPublishNs = SimTimeNs;
+
 		for (FEntry& Entry : Entries)
 		{
 			if (!Snapshot.Articulations.IsValidIndex(Entry.ArtIndex))
@@ -88,6 +95,7 @@ private:
 		FMjRosPub Pub;
 	};
 	TArray<FEntry> Entries;
+	int64 LastPublishNs = 0;
 };
 
 REGISTER_MJ_ROS_OUTPUT_PROVIDER("odometry", FMjRosOdometryProvider);

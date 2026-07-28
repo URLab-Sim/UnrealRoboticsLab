@@ -33,6 +33,7 @@
 // bare-filename flatten convention of the DOWN handshake.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/AssetCache.h"
 #include "Bridge/OpRegistry.h"
 
@@ -54,8 +55,8 @@ namespace
 {
 // Security caps (plan 4.6). Advertised in the manifest reply and enforced on
 // every chunk.
-constexpr int64 kMaxAssetBytes = 64ll * 1024 * 1024;   // 64 MiB per blob
-constexpr int64 kMaxTotalBytes = 512ll * 1024 * 1024;  // 512 MiB per upload
+constexpr int64 kMaxAssetBytes = 64ll * 1024 * 1024;  // 64 MiB per blob
+constexpr int64 kMaxTotalBytes = 512ll * 1024 * 1024; // 512 MiB per upload
 constexpr int32 kMaxAssets = 4096;
 constexpr int32 kMaxOpenUploads = 16;
 constexpr double kUploadTtlSeconds = 300.0;
@@ -119,7 +120,7 @@ public:
  *  no NUL. */
 bool IsBareFilename(const FString& Name)
 {
-	if (Name.IsEmpty() || Name == TEXT(".") )
+	if (Name.IsEmpty() || Name == TEXT("."))
 		return false;
 	if (Name.Contains(TEXT("/")) || Name.Contains(TEXT("\\")))
 		return false;
@@ -157,7 +158,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelManifest(const TSh
 	if (!Req->TryGetStringField(TEXT("xml_sha256"), XmlSha)
 		|| !FURLabAssetCache::IsValidSha256Hex(XmlSha))
 	{
-		return MakeError(TEXT("bad_request"),
+		return MakeError(URLabError::BadRequest,
 			TEXT("upload_model_manifest requires a valid hex 'xml_sha256'"));
 	}
 
@@ -166,7 +167,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelManifest(const TSh
 	const int32 AssetCount = AssetsArr ? AssetsArr->Num() : 0;
 	if (AssetCount > kMaxAssets)
 	{
-		return MakeError(TEXT("bad_request"),
+		return MakeError(URLabError::BadRequest,
 			FString::Printf(TEXT("manifest lists %d assets; cap is %d"), AssetCount, kMaxAssets));
 	}
 
@@ -195,7 +196,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelManifest(const TSh
 		const TSharedPtr<FJsonObject>* AObj = nullptr;
 		if (!(*AssetsArr)[i]->TryGetObject(AObj) || !AObj)
 		{
-			return MakeError(TEXT("bad_request"),
+			return MakeError(URLabError::BadRequest,
 				FString::Printf(TEXT("manifest asset[%d] is not an object"), i));
 		}
 
@@ -207,12 +208,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelManifest(const TSh
 
 		if (!IsBareFilename(Name))
 		{
-			return MakeError(TEXT("bad_request"),
+			return MakeError(URLabError::BadRequest,
 				FString::Printf(TEXT("asset name '%s' is not a bare filename"), *Name));
 		}
 		if (!FURLabAssetCache::IsValidSha256Hex(Sha))
 		{
-			return MakeError(TEXT("bad_request"),
+			return MakeError(URLabError::BadRequest,
 				FString::Printf(TEXT("asset '%s' has an invalid sha256"), *Name));
 		}
 		if (static_cast<int64>(Size) > kMaxAssetBytes)
@@ -240,7 +241,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelManifest(const TSh
 		Staging.SweepExpired();
 		if (Staging.Entries.Num() >= kMaxOpenUploads)
 		{
-			return MakeError(TEXT("bad_request"),
+			return MakeError(URLabError::BadRequest,
 				FString::Printf(TEXT("too many concurrent uploads (cap %d); retry later"),
 					kMaxOpenUploads));
 		}
@@ -274,12 +275,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelChunk(const TShare
 
 	if (UploadId.IsEmpty() || (Kind != TEXT("xml") && Kind != TEXT("asset")))
 	{
-		return MakeError(TEXT("bad_request"),
+		return MakeError(URLabError::BadRequest,
 			TEXT("upload_model_chunk requires 'upload_id' and kind 'xml'|'asset'"));
 	}
 	if (Offset < 0 || Total < 0)
 	{
-		return MakeError(TEXT("bad_request"), TEXT("offset/total must be non-negative"));
+		return MakeError(URLabError::BadRequest, TEXT("offset/total must be non-negative"));
 	}
 	if (Total > kMaxAssetBytes)
 	{
@@ -291,11 +292,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelChunk(const TShare
 	TArray<uint8> Data;
 	if (!ReadBinField(Req, TEXT("data"), Data))
 	{
-		return MakeError(TEXT("bad_request"), TEXT("upload_model_chunk missing binary 'data'"));
+		return MakeError(URLabError::BadRequest, TEXT("upload_model_chunk missing binary 'data'"));
 	}
 	if (Offset + Data.Num() > Total)
 	{
-		return MakeError(TEXT("bad_request"),
+		return MakeError(URLabError::BadRequest,
 			TEXT("chunk offset+len exceeds declared total"));
 	}
 	if (Offset + Data.Num() > kMaxAssetBytes)
@@ -339,12 +340,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelChunk(const TShare
 		FAssetSlot* Slot = Entry->Assets.Find(Name);
 		if (!Slot)
 		{
-			return MakeError(TEXT("bad_request"),
+			return MakeError(URLabError::BadRequest,
 				FString::Printf(TEXT("asset '%s' was not declared in the manifest"), *Name));
 		}
 		if (Slot->DeclaredSize != Total)
 		{
-			return MakeError(TEXT("bad_request"),
+			return MakeError(URLabError::BadRequest,
 				FString::Printf(TEXT("asset '%s' chunk total %lld != manifest size %lld"),
 					*Name, Total, Slot->DeclaredSize));
 		}
@@ -411,7 +412,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelCommit(const TShar
 	FString UploadId;
 	Req->TryGetStringField(TEXT("upload_id"), UploadId);
 	if (UploadId.IsEmpty())
-		return MakeError(TEXT("bad_request"), TEXT("upload_model_commit requires 'upload_id'"));
+		return MakeError(URLabError::BadRequest, TEXT("upload_model_commit requires 'upload_id'"));
 
 	// Snapshot the staging entry (xml sha, asset name->sha, step mode) under the
 	// lock, verify completeness, then release before the slow materialise+import.
@@ -429,12 +430,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelCommit(const TShar
 				FString::Printf(TEXT("upload_id '%s' is unknown or expired"), *UploadId));
 		}
 		if (!Entry->bXmlComplete)
-			return MakeError(TEXT("bad_request"), TEXT("commit before the xml blob completed"));
+			return MakeError(URLabError::BadRequest, TEXT("commit before the xml blob completed"));
 		for (const TPair<FString, FAssetSlot>& Kv : Entry->Assets)
 		{
 			if (!Kv.Value.bComplete)
 			{
-				return MakeError(TEXT("bad_request"),
+				return MakeError(URLabError::BadRequest,
 					FString::Printf(TEXT("commit before asset '%s' completed"), *Kv.Key));
 			}
 			AssetShaByName.Add(Kv.Key, Kv.Value.Sha);
@@ -528,7 +529,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelCommit(const TShar
 			if (IsDraining())
 			{
 				Cleanup();
-				return MakeError(TEXT("shutting_down"),
+				return MakeError(URLabError::ShuttingDown,
 					TEXT("bridge draining; upload_model_commit abandoned"));
 			}
 			TSharedPtr<FJsonObject> StatusReq = MakeShared<FJsonObject>();

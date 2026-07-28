@@ -26,8 +26,6 @@
 
 namespace
 {
-using EObservationLevel = FURLabRpcDispatcher::EObservationLevel;
-
 TSharedPtr<FJsonValue> NumArray(const TArray<double>& Values)
 {
 	TArray<TSharedPtr<FJsonValue>> Out;

@@ -71,7 +71,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMjUserInputReceived, FName, Channel
  * consistent with every other pose in the snapshot.
  */
 UCLASS(ClassGroup = (URLab), meta = (BlueprintSpawnableComponent))
-class URLAB_API UMjUserChannelComponent : public UActorComponent, public IMjStateProducer
+class URLAB_API UMjUserChannelComponent : public UActorComponent
+	, public IMjStateProducer
 {
 	GENERATED_BODY()
 
@@ -173,6 +174,10 @@ private:
 	/** Store a channel into the mailbox; marks the producer cache dirty when the
 	 *  channel set changes (new name or kind change) so consumers rebuild. */
 	void StoreChannel(FMjUserChannel&& Channel);
+
+	/** Copy the mailbox into OutChannels under MailboxMutex. Shared by
+	 *  DescribeState (articulation-scoped) and DescribeSceneState (scene-scoped). */
+	void CopyMailboxInto(TArray<FMjUserChannel>& OutChannels) const;
 
 	/** Resolve (and cache) the owning MuJoCo manager. */
 	AAMjManager* ResolveManager();

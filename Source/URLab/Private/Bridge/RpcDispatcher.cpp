@@ -21,8 +21,9 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
-#include "Transport/ZmqRpcTransport.h"
+#include "Bridge/StepCommands.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -230,8 +231,7 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	// when the editor module isn't loaded.
 	Reg(TEXT("upload_model_manifest"), EOpCategory::NoManager, TEXT("scene"),
 		[this](auto& R) { return HandleUploadModelManifest(R); },
-		/*Reply=*/{TEXT("op:string"), TEXT("upload_id:string"), TEXT("need_xml:bool"),
-			TEXT("need_assets:array"), TEXT("max_asset_bytes:int"), TEXT("max_total_bytes:int")},
+		/*Reply=*/{TEXT("op:string"), TEXT("upload_id:string"), TEXT("need_xml:bool"), TEXT("need_assets:array"), TEXT("max_asset_bytes:int"), TEXT("max_total_bytes:int")},
 		/*Required=*/{TEXT("xml_sha256")});
 	Reg(TEXT("upload_model_chunk"), EOpCategory::NoManager, TEXT("scene"),
 		[this](auto& R) { return HandleUploadModelChunk(R); },
@@ -239,9 +239,7 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		/*Required=*/{TEXT("upload_id"), TEXT("kind")});
 	Reg(TEXT("upload_model_commit"), EOpCategory::NoManager, TEXT("scene"),
 		[this](auto& R) { return HandleUploadModelCommit(R); },
-		/*Reply=*/{TEXT("op:string"), TEXT("imported:bool"), TEXT("nq:int?"), TEXT("nv:int?"),
-			TEXT("nu:int?"), TEXT("nbody:int?"), TEXT("ngeom:int?"), TEXT("mjb:object?"),
-			TEXT("warnings:array")},
+		/*Reply=*/{TEXT("op:string"), TEXT("imported:bool"), TEXT("nq:int?"), TEXT("nv:int?"), TEXT("nu:int?"), TEXT("nbody:int?"), TEXT("ngeom:int?"), TEXT("mjb:object?"), TEXT("warnings:array")},
 		/*Required=*/{TEXT("upload_id")});
 
 	auto RecBody = [this](auto& R) {
@@ -440,13 +438,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	// holding the mutex across either wedges every other RPC.
 	if (!Req.IsValid())
 	{
-		return MakeError(TEXT("bad_request"), TEXT("Failed to parse request (json or msgpack)"));
+		return MakeError(URLabError::BadRequest, TEXT("Failed to parse request (json or msgpack)"));
 	}
 
 	FString Op;
 	if (!Req->TryGetStringField(TEXT("op"), Op))
 	{
-		return MakeError(TEXT("missing_op"), TEXT("Request missing 'op' field"));
+		return MakeError(URLabError::MissingOp, TEXT("Request missing 'op' field"));
 	}
 
 	// Only real owner activity refreshes the lease. Discovery / bootstrap /
@@ -459,7 +457,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 			Bridge->TouchLease();
 	}
 
-	// hello / meta are pre-session bootstrap endpoints.
+	// hello / meta are pre-session ops that run before a client has a
+	// session_id, so they bypass the registry. Both validate fields inline
+	// (all hello fields are optional with sensible defaults; meta takes none).
 	if (Op.Equals(TEXT("hello")))
 		return HandleHello(Req);
 	if (Op.Equals(TEXT("meta")))
@@ -471,7 +471,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 		Req->TryGetStringField(TEXT("session_id"), SessionId);
 		if (!ValidateSession(SessionId))
 		{
-			return MakeError(TEXT("session_expired"),
+			return MakeError(URLabError::SessionExpired,
 				FString::Printf(TEXT("Session id '%s' does not match active session"), *SessionId));
 		}
 	}
@@ -481,10 +481,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	{
 		if (URLabOpRegistry::IsEditorOnlyOp(Op))
 		{
-			return MakeError(TEXT("not_in_editor"),
+			return MakeError(URLabError::NotInEditor,
 				FString::Printf(TEXT("op '%s' is editor-only and has no registered handler"), *Op));
 		}
-		return MakeError(TEXT("unknown_op"), FString::Printf(TEXT("Unknown op '%s'"), *Op));
+		return MakeError(URLabError::UnknownOp, FString::Printf(TEXT("Unknown op '%s'"), *Op));
 	}
 
 	// RequiredFields runs before the manager-required check so malformed
@@ -493,7 +493,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	{
 		if (!Req->HasField(Field))
 		{
-			return MakeError(TEXT("missing_field"),
+			return MakeError(URLabError::MissingField,
 				FString::Printf(TEXT("op '%s' missing required field '%s'"),
 					*Op, *Field));
 		}
@@ -502,7 +502,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	if (Decl->Category == URLabOpRegistry::EOpCategory::ManagerRequired
 		&& !OwnerMgr.IsValid())
 	{
-		return MakeError(TEXT("no_active_manager"),
+		return MakeError(URLabError::NoActiveManager,
 			FString::Printf(
 				TEXT("op '%s' requires an active AAMjManager (PIE not running?)"),
 				*Op));
@@ -616,6 +616,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleHello(const TSharedPtr<FJsonO
 		ActiveSessionId = NewSessionId;
 	}
 
+	FString ClientVersion;
+	if (Req.IsValid())
+		Req->TryGetStringField(TEXT("client_version"), ClientVersion);
+	UE_LOG(LogURLabNet, Log, TEXT("URLab client connected: %s (server %s)"),
+		*ClientVersion, *URLabVersion);
+
 	// Reset to msgpack default on each handshake; per-session opt-in via encoding=json.
 	bUseJsonEncoding.store(false, std::memory_order_release);
 	FString Encoding;
@@ -702,62 +708,29 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 	mjModel* m = Manager->PhysicsEngine->GetModel();
 
-	// SHM session directory. Ship an absolute path so the bridge can
-	// open the SHM regions regardless of its own working directory --
-	// UE's path APIs return strings relative to the engine binary, which
-	// would mmap from the bridge's CWD otherwise.
+	// Let each bound transport append its own block to the handshake.
+	// SHM publish transport sets shm_session_dir; SHM RPC transport sets
+	// shm_rpc (paths/events/strides). Adding a third transport type
+	// requires no changes here — just override AppendHandshakeBlock.
+	for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
 	{
-		FString ShmDir;
-		// Snapshot publisher is a UObject in
-		// ManagerOwnedPublishTransports. Walk the manager's transport
-		// array to find it.
-		for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
-		{
-			if (UURLabShmPublishTransport* ShmPub = Cast<UURLabShmPublishTransport>(T.Get()))
-			{
-				const FString StatePath = ShmPub->GetStatePath();
-				if (!StatePath.IsEmpty())
-				{
-					ShmDir = FPaths::GetPath(StatePath);
-				}
-				break;
-			}
-		}
-		if (ShmDir.IsEmpty())
-		{
-			ShmDir = UURLabShmPublishTransport::ResolveSessionDir(SessionId);
-		}
+		T->AppendHandshakeBlock(Reply);
+	}
+
+	// Fall back to the static helper when no publish transport set
+	// shm_session_dir (e.g. no SHM transport bound).
+	if (!Reply->HasField(TEXT("shm_session_dir")))
+	{
+		const FString ShmDir = UURLabShmPublishTransport::ResolveSessionDir(SessionId);
 		Reply->SetStringField(TEXT("shm_session_dir"),
 			FPaths::ConvertRelativePathToFull(ShmDir));
 	}
 
-	// Explicit SHM RPC contract. The bridge must use these verbatim instead of
-	// assuming session="live" / re-deriving paths or event names — a mismatch
-	// is the likely cause of the SHM 5s-per-step stall. Also gives the bridge
-	// everything it needs (rep_path + strides + n_buffers) to POLL the rep
-	// sequence as a fallback when the named-event wakeup doesn't cross its
-	// process/session boundary, instead of blocking out its full recv timeout.
 	if (Manager->BridgeServer)
 	{
 		for (const TObjectPtr<UURLabRpcTransport>& T : Manager->BridgeServer->GetRpcTransports())
 		{
-			UURLabShmRpcTransport* ShmRpc = Cast<UURLabShmRpcTransport>(T.Get());
-			if (!ShmRpc)
-				continue;
-			TSharedPtr<FJsonObject> Rpc = MakeShared<FJsonObject>();
-			Rpc->SetStringField(TEXT("session"), ShmRpc->GetSessionId());
-			Rpc->SetStringField(TEXT("req_path"),
-				FPaths::ConvertRelativePathToFull(ShmRpc->GetReqPath()));
-			Rpc->SetStringField(TEXT("rep_path"),
-				FPaths::ConvertRelativePathToFull(ShmRpc->GetRepPath()));
-			Rpc->SetStringField(TEXT("req_event"), ShmRpc->GetReqEventName());
-			Rpc->SetStringField(TEXT("rep_event"), ShmRpc->GetRepEventName());
-			Rpc->SetNumberField(TEXT("req_stride"), ShmRpc->GetReqStride());
-			Rpc->SetNumberField(TEXT("rep_stride"), ShmRpc->GetRepStride());
-			Rpc->SetNumberField(TEXT("n_buffers"), ShmRpc->GetNumBuffers());
-			Rpc->SetNumberField(TEXT("header_size"), static_cast<double>(sizeof(FMjShmHeader)));
-			Reply->SetObjectField(TEXT("shm_rpc"), Rpc);
-			break;
+			T->AppendHandshakeBlock(Reply);
 		}
 	}
 
@@ -1042,4 +1015,3 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 	return Reply;
 }
-

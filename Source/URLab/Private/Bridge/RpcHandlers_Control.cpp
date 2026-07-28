@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "State/MjStateTypes.h"
@@ -118,23 +119,21 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleClaimControl(const TSharedPtr
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	FString ArtName;
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(TEXT("missing_field"), TEXT("claim_control requires 'articulation'"));
+		return MakeError(URLabError::MissingField, TEXT("claim_control requires 'articulation'"));
 
 	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 	if (!Art)
-		return MakeError(TEXT("unknown_articulation"), ArtName);
+		return MakeError(URLabError::UnknownArticulation, ArtName);
 
 	const FName Key(*Art->GetName());
 	const FString Source = ResolveControlSource(Req);
 
 	double Ttl = 0.0;
 	Req->TryGetNumberField(TEXT("ttl_s"), Ttl);
-	bool bExclusive = true;
-	Req->TryGetBoolField(TEXT("exclusive"), bExclusive);
 	bool bForce = false;
 	Req->TryGetBoolField(TEXT("force"), bForce);
 
@@ -160,15 +159,15 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReleaseControl(const TSharedP
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	FString ArtName;
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(TEXT("missing_field"), TEXT("release_control requires 'articulation'"));
+		return MakeError(URLabError::MissingField, TEXT("release_control requires 'articulation'"));
 
 	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 	if (!Art)
-		return MakeError(TEXT("unknown_articulation"), ArtName);
+		return MakeError(URLabError::UnknownArticulation, ArtName);
 
 	const FName Key(*Art->GetName());
 	const FString Source = ResolveControlSource(Req);
@@ -193,7 +192,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetUserChannels(const TShared
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	int32 Applied = 0;
 	TSharedPtr<FJsonObject> Rejected = MakeShared<FJsonObject>();

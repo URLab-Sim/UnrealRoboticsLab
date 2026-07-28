@@ -24,7 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "Dom/JsonObject.h"
-#include "Bridge/RpcDispatcher.h" // FURLabRpcDispatcher::EObservationLevel
+#include "State/MjObservationLevel.h"
 
 struct FMjStateSnapshot;
 
@@ -48,10 +48,10 @@ class URLAB_API FMjMsgpackEncoder
 {
 public:
 	static TSharedPtr<FJsonObject> EncodeSnapshot(const FMjStateSnapshot& S,
-		FURLabRpcDispatcher::EObservationLevel Level);
+		EObservationLevel Level);
 	static TSharedPtr<FJsonObject> EncodeArts(const FMjStateSnapshot& S,
-		FURLabRpcDispatcher::EObservationLevel Level);
+		EObservationLevel Level);
 	static TSharedPtr<FJsonObject> EncodeScene(const FMjStateSnapshot& S);
 	static TArray<uint8> EncodeSnapshotBytes(const FMjStateSnapshot& S,
-		FURLabRpcDispatcher::EObservationLevel Level);
+		EObservationLevel Level);
 };

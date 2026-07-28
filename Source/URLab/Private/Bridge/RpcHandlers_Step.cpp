@@ -21,8 +21,9 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
-#include "Transport/ZmqRpcTransport.h"
+#include "Bridge/StepCommands.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
@@ -123,11 +124,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJ
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 
 	bool bPause = false;
 	if (!Req->TryGetBoolField(TEXT("paused"), bPause))
-		return MakeError(TEXT("missing_field"), TEXT("set_paused requires 'paused' bool"));
+		return MakeError(URLabError::MissingField, TEXT("set_paused requires 'paused' bool"));
 
 	Mgr->PhysicsEngine->SetPaused(bPause);
 	UE_LOG(LogURLabNet, Log, TEXT("FURLabRpcDispatcher: set_paused -> %s"),
@@ -340,7 +341,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
 	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 	}
 
 	// Gate step-carried control: any articulation whose payload carries
@@ -357,9 +358,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 				if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
 					continue;
 				const bool bCarriesControl =
-					(*ArtObj)->HasField(TEXT("ctrl")) ||
-					(*ArtObj)->HasField(TEXT("ctrl_map")) ||
-					(*ArtObj)->HasField(TEXT("xfrc_applied"));
+					(*ArtObj)->HasField(TEXT("ctrl")) || (*ArtObj)->HasField(TEXT("ctrl_map")) || (*ArtObj)->HasField(TEXT("xfrc_applied"));
 				if (!bCarriesControl)
 					continue;
 
@@ -391,7 +390,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 		Strategy = CurrentStepStrategy;
 	}
 	if (!Strategy)
-		return MakeError(TEXT("not_ready"), TEXT("no active step strategy"));
+		return MakeError(URLabError::NotReady, TEXT("no active step strategy"));
 	return Strategy->HandleStep(*this, Req, Common);
 }
 
@@ -445,14 +444,32 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 		}
 
 		// Stage to actuator NetworkValue; AMjArticulation::ApplyControls
-		// copies it into d->ctrl every sub-step. Writing d->ctrl directly
-		// would be overwritten on the next sub-step.
+		// copies it into d->ctrl every sub-step. Raw-mode articulations
+		// bypass NetworkValue entirely: d->ctrl is written directly here
+		// and ApplyControls skips its default path for bSkipController.
+		bool bRaw = false;
+		{
+			const FString* Mode = Req.PerArticulationControlMode.Find(
+				FMjCanonicalName::ArtSegment(Art).ToString());
+			if (!Mode)
+				Mode = Req.PerArticulationControlMode.Find(Art->GetName());
+			bRaw = Mode && Mode->Equals(TEXT("raw"), ESearchCase::IgnoreCase);
+		}
 		for (const TPair<FString, float>& KV : Pair.Value)
 		{
 			UMjActuator** Found = ByName.Find(KV.Key);
 			if (!Found || !*Found)
 				continue;
-			(*Found)->SetNetworkControl(KV.Value);
+			if (bRaw && m && d)
+			{
+				int id = (*Found)->GetMjID();
+				if (id >= 0 && id < m->nu)
+					d->ctrl[id] = (mjtNum)KV.Value;
+			}
+			else
+			{
+				(*Found)->SetNetworkControl(KV.Value);
+			}
 		}
 	}
 
@@ -491,7 +508,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
 	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 	}
 
 	int32 SeedVal = 0;
@@ -515,14 +532,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 		mjModel* m = Mgr->PhysicsEngine->GetModel();
 		mjData* d = Mgr->PhysicsEngine->GetData();
 		if (!m || !d)
-			return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 
 		FString KfName;
 		if (Req->TryGetStringField(TEXT("keyframe_name"), KfName) && !KfName.IsEmpty())
 		{
 			int Kid = mj_name2id(m, mjOBJ_KEY, TCHAR_TO_UTF8(*KfName));
 			if (Kid < 0)
-				return MakeError(TEXT("unknown_keyframe"), KfName);
+				return MakeError(URLabError::UnknownKeyframe, KfName);
 			mj_resetDataKeyframe(m, d, Kid);
 		}
 		else
@@ -582,7 +599,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleForward(const TSharedPtr<FJso
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
 	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 	}
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
@@ -593,7 +610,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleForward(const TSharedPtr<FJso
 		mjModel* m = Mgr->PhysicsEngine->GetModel();
 		mjData* d = Mgr->PhysicsEngine->GetData();
 		if (!m || !d)
-			return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 		mj_forward(m, d);
 
 		// Build the reply fields under the lock so the worker's idle-timeout
@@ -614,21 +631,21 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	if (Mgr->StepMode != EStepMode::Auto)
 	{
-		return MakeError(TEXT("mode_locked_by_server"),
+		return MakeError(URLabError::ModeLockedByServer,
 			FString::Printf(TEXT("Project pinned StepMode to %s"), *StepModeToString(Mgr->StepMode)));
 	}
 
 	FString ModeStr;
 	if (!Req->TryGetStringField(TEXT("mode"), ModeStr))
-		return MakeError(TEXT("missing_field"), TEXT("set_mode requires 'mode'"));
+		return MakeError(URLabError::MissingField, TEXT("set_mode requires 'mode'"));
 
 	EStepMode NewMode;
 	if (!StepModeFromString(ModeStr, NewMode))
-		return MakeError(TEXT("bad_mode"), FString::Printf(TEXT("Unknown mode '%s'"), *ModeStr));
+		return MakeError(URLabError::BadMode, FString::Printf(TEXT("Unknown mode '%s'"), *ModeStr));
 
 	EStepMode Prev = ActiveStepMode;
 	SetActiveStepMode(NewMode);
@@ -665,7 +682,7 @@ struct FLiveStepMode : FStepModeStrategy
 	{
 		AAMjManager* Mgr = D.OwnerMgr.Get();
 		if (!Mgr || !Mgr->PhysicsEngine)
-			return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			return FURLabRpcDispatcher::MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 		UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
 
 		FMjStepRequest TmpReq;
@@ -681,7 +698,7 @@ struct FLiveStepMode : FStepModeStrategy
 			mjModel* m = Engine->GetModel();
 			mjData* d = Engine->GetData();
 			if (!m || !d)
-				return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+				return FURLabRpcDispatcher::MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 			FURLabRpcDispatcher::ApplyStepCtrl(Mgr, TmpReq, m, d);
 			// Most recently published snapshot id (UE's autonomous physics owns
 			// stepping here), so the client can wait for a streamed frame >= this.
@@ -727,7 +744,7 @@ struct FDirectStepMode : FStepModeStrategy
 	{
 		AAMjManager* Mgr = D.OwnerMgr.Get();
 		if (!Mgr || !Mgr->PhysicsEngine)
-			return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			return FURLabRpcDispatcher::MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 		UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
 
 		TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
@@ -797,9 +814,9 @@ struct FDirectStepMode : FStepModeStrategy
 		// twice.
 		Cmd->bAbandoned.store(true, std::memory_order_release);
 		if (D.bDraining.load(std::memory_order_acquire))
-			return FURLabRpcDispatcher::MakeError(TEXT("shutting_down"),
+			return FURLabRpcDispatcher::MakeError(URLabError::ShuttingDown,
 				TEXT("Bridge stopping; Direct-mode step abandoned"));
-		return FURLabRpcDispatcher::MakeError(TEXT("step_timeout"),
+		return FURLabRpcDispatcher::MakeError(URLabError::StepTimeout,
 			TEXT("Direct-mode step did not complete within 5s"));
 	}
 };
@@ -822,7 +839,7 @@ struct FPuppetStepMode : FStepModeStrategy
 	{
 		AAMjManager* Mgr = D.OwnerMgr.Get();
 		if (!Mgr || !Mgr->PhysicsEngine)
-			return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+			return FURLabRpcDispatcher::MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 		UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
 
 		FMjPushStateRequest Push;
@@ -861,7 +878,7 @@ struct FPuppetStepMode : FStepModeStrategy
 			mjModel* m = Engine->GetModel();
 			mjData* d = Engine->GetData();
 			if (!m || !d)
-				return FURLabRpcDispatcher::MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+				return FURLabRpcDispatcher::MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 			ApplyPushedState(Engine, Push, m, d);
 
 			// Publish the just-pushed pose to the render snapshot now, while we
@@ -1067,4 +1084,3 @@ void FURLabRpcDispatcher::UninstallDirectHandler()
 	bDirectHandlerInstalled = false;
 	DirectStepHandler = nullptr;
 }
-

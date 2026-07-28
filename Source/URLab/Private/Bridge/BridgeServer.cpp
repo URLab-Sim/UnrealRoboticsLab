@@ -76,8 +76,7 @@ void UURLabBridgeServer::ApplyPerformanceOverrides()
 	if (bPacingOverridden || !GEngine)
 		return;
 
-	auto Override = [](const TCHAR* Name, const TCHAR* Command, float& OutSaved, bool& OutHad)
-	{
+	auto Override = [](const TCHAR* Name, const TCHAR* Command, float& OutSaved, bool& OutHad) {
 		if (IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(Name))
 		{
 			OutHad = true;
@@ -112,8 +111,7 @@ void UURLabBridgeServer::RestorePerformanceOverrides()
 	if (!bPacingOverridden || !GEngine)
 		return;
 
-	auto Restore = [](const TCHAR* Name, float Value, bool bHad)
-	{
+	auto Restore = [](const TCHAR* Name, float Value, bool bHad) {
 		if (bHad)
 			GEngine->Exec(nullptr, *FString::Printf(TEXT("%s %g"), Name, Value));
 	};
@@ -198,10 +196,11 @@ bool UURLabBridgeServer::EnsureShmBound(const FString& SessionId)
 		}
 	}
 
-	// Fold the instance's step port into the SHM session name so the per-process
-	// unique id stays traceable back to the instance (the process id already
-	// guarantees uniqueness). Read it from the bound ZMQ transport rather than
-	// re-resolving, so both wire ends agree.
+	// SHM session naming includes the instance's step port for traceability.
+	// SHM currently depends on ZMQ being bound first: the step port is read from
+	// the ZMQ transport's bound endpoint. If ZMQ is not running (e.g. a
+	// same-host-only deployment that skips TCP), InstancePort stays 0 and the
+	// session name falls back to the bare session id.
 	int32 StepPort = 0;
 	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
 	{

@@ -135,6 +135,7 @@ void UURLabZmqSubscribeTransport::ShutdownZmqSocket()
 void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 {
 	ActuatorCache.Empty();
+	ActuatorToArticulationName.Empty();
 	if (!m)
 		return;
 
@@ -147,6 +148,7 @@ void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 		if (!Articulation)
 			continue;
 
+		const FName ArtName(*Articulation->GetName());
 		TArray<UMjActuator*> ArticActuators = Articulation->GetActuators();
 		for (UMjActuator* Actuator : ArticActuators)
 		{
@@ -157,6 +159,7 @@ void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 				{
 					ActuatorCache.Add(Actuator->GetMjName(), id);
 					ActuatorComponentCache.Add(id, Actuator);
+					ActuatorToArticulationName.Add(id, ArtName);
 				}
 			}
 		}
@@ -430,7 +433,20 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 						if (UMjActuator** ActuatorPtr = ActuatorComponentCache.Find(Idx))
 						{
 							if (*ActuatorPtr)
+							{
+								FURLabRpcDispatcher* Dispatcher = Manager->GetStepDispatcher();
+								if (Dispatcher)
+								{
+									const FName* ArtName = ActuatorToArticulationName.Find(Idx);
+									if (ArtName && Dispatcher->GetControlOwnership().GetActiveOwners().Contains(*ArtName))
+									{
+										IDPtr = (int32*)((char*)IDPtr + 8);
+										ValPtr = (float*)((char*)ValPtr + 8);
+										continue;
+									}
+								}
 								(*ActuatorPtr)->SetNetworkControl(Value);
+							}
 						}
 						else if (bShouldLog)
 						{

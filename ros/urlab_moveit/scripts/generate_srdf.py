@@ -131,7 +131,9 @@ def main():
     ap.add_argument("--base-link", default="link0")
     ap.add_argument("--flange-link", default="hand")
     ap.add_argument("--samples", type=int, default=20000)
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--passive-joints", default="",
+                    help="comma-separated joint names to exclude from arm group")
+    ap.add_argument("--seed", type=int, default=42)
     args = ap.parse_args()
 
     m = mujoco.MjModel.from_xml_path(args.xml)
@@ -171,13 +173,29 @@ def main():
             disabled.append((a, b, "Never"))
         # else: sometimes collides -> keep checking
 
+    # Auto-detect virtual joint type from the base link's joint.
+    vtype = "fixed"
+    bid = mujoco.mj_name2id(m, mujoco.mjtObj.mjOBJ_BODY, args.base_link)
+    if bid >= 0 and m.body_jntnum[bid] > 0:
+        if m.jnt_type[m.body_jntadr[bid]] == mujoco.mjtJoint.mjJNT_FREE:
+            vtype = "floating"
+
+    # Build active arm joint list (exclude passive joints).
+    passive = set(args.passive_joints.split(",")) if args.passive_joints else set()
+    arm_joints_all = arm_joint_chain(m)
+    arm_joints_active = [j for j in arm_joints_all if j not in passive]
+
     # --- Emit SRDF ---
     robot = ET.Element("robot", name=args.robot_name)
-    ET.SubElement(robot, "virtual_joint", name="virtual_joint", type="fixed",
+    ET.SubElement(robot, "virtual_joint", name="virtual_joint", type=vtype,
                   parent_frame="world", child_link=args.base_link)
 
     arm = ET.SubElement(robot, "group", name=args.arm_group)
-    ET.SubElement(arm, "chain", base_link=args.base_link, tip_link=args.flange_link)
+    if passive:
+        for j in arm_joints_active:
+            ET.SubElement(arm, "joint", name=j)
+    else:
+        ET.SubElement(arm, "chain", base_link=args.base_link, tip_link=args.flange_link)
 
     # Gripper group + end-effector. The finger joints are tendon-coupled in the
     # sim (one actuator drives both); MoveIt treats them as the hand group and the
@@ -195,8 +213,8 @@ def main():
             for j in hand_joints:
                 ET.SubElement(gs, "joint", name=j, value=f"{val:.6g}")
 
-    # Named states from keyframes (arm joints only).
-    arm_joints = set(arm_joint_chain(m))
+    # Named states from keyframes (active arm joints only).
+    arm_joints = set(arm_joints_active)
     for kname, joints in keyframe_states(m).items():
         gs = ET.SubElement(robot, "group_state", name=kname, group=args.arm_group)
         for jn, val in joints.items():
@@ -215,9 +233,13 @@ def main():
     by_reason = {}
     for _, _, r in disabled:
         by_reason[r] = by_reason.get(r, 0) + 1
-    print(f"links: {len(links)}  pairs: {len(all_pairs)}")
-    print(f"disabled: {len(disabled)}  {by_reason}")
-    print(f"kept (self-collision checked): {kept}")
+    print(f"Collision pairs summary:")
+    print(f"  Total pairs checked: {len(all_pairs)}")
+    print(f"  Pairs kept (self-collision checked): {kept}")
+    print(f"  Pairs disabled: {len(disabled)}")
+    for reason in ("Adjacent", "Default", "Always", "Never"):
+        if reason in by_reason:
+            print(f"    {reason}: {by_reason[reason]}")
     print(f"wrote {args.out}")
 
 

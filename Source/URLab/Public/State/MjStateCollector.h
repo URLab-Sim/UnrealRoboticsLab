@@ -77,8 +77,8 @@ private:
 	{
 		FName ArtSegment;
 		TWeakObjectPtr<AMjArticulation> Art;
-		TArray<TWeakObjectPtr<UMjComponent>> Producers;  // DescribeState per step
-		TWeakObjectPtr<UMjTwistController> TwistCtrl;     // UActorComponent; called separately
+		TArray<TWeakObjectPtr<UMjComponent>> Producers; // DescribeState per step
+		TWeakObjectPtr<UMjTwistController> TwistCtrl;   // UActorComponent; called separately
 		/** IMjStateProducer implementers registered under this art (e.g. user
 		 *  channel components). Any UObject; the collector Casts to the interface. */
 		TArray<TWeakObjectPtr<UObject>> InterfaceProducers;
@@ -95,10 +95,11 @@ private:
 		double LocalPos[3] = {0.0, 0.0, 0.0};
 		double LocalQuat[4] = {1.0, 0.0, 0.0, 0.0};
 		bool bStatic = true;
+		TSharedPtr<const FMjWorldMesh> Mesh; // set when Shape == Mesh
 	};
 
 	TWeakObjectPtr<AAMjManager> Manager;
-	TArray<FCachedArticulation> Cache; // built game thread, read physics thread
+	TArray<FCachedArticulation> Cache;       // built game thread, read physics thread
 	TArray<FCachedWorldGeom> WorldGeomCache; // built game thread, read physics thread
 	/** Registered IMjStateProducers not owned by any articulation; their
 	 *  DescribeSceneState fills the snapshot's scene-scoped blocks. */

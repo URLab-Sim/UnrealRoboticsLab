@@ -21,8 +21,8 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
-#include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -81,8 +81,7 @@ bool FURLabRpcDispatcher::RenderCamerasSync(AAMjManager* Mgr,
 	// earlier sole-path, non-submitting poll did. Pipelined mode (!bWait) never
 	// pumps: it returns at once and serves the most-recently-completed frame.
 	TWeakObjectPtr<AAMjManager> WeakMgr(Mgr);
-	AsyncTask(ENamedThreads::GameThread, [WeakMgr, Keys, MinFrameId, TimeoutMs, bWait]()
-	{
+	AsyncTask(ENamedThreads::GameThread, [WeakMgr, Keys, MinFrameId, TimeoutMs, bWait]() {
 		AAMjManager* M = WeakMgr.Get();
 		if (!M)
 			return;
@@ -259,8 +258,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::ApplyCameraStreamingGameThread(
 		// camera-feed widget then freezes on its last frame. Clients call this
 		// on every discover/set_mode, so unchanged requests MUST be no-ops.
 		const bool bUnchanged = (Cam->bEnableZmqBroadcast == bZmq)
-			&& (Cam->bEnableShmBroadcast == bShm)
-			&& (Cam->IsStreamingActive() == bStream);
+							 && (Cam->bEnableShmBroadcast == bShm)
+							 && (Cam->IsStreamingActive() == bStream);
 		if (!bUnchanged)
 		{
 			Cam->bEnableZmqBroadcast = bZmq;
@@ -293,11 +292,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraStreaming(
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	const TSharedPtr<FJsonObject>* CamObj = nullptr;
 	if (!Req->TryGetObjectField(TEXT("cameras"), CamObj) || !CamObj || !CamObj->IsValid())
-		return MakeError(TEXT("missing_field"),
+		return MakeError(URLabError::MissingField,
 			TEXT("set_camera_streaming requires a 'cameras' object"));
 
 	// Parse per-camera requests. Value forms:
@@ -334,7 +333,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraStreaming(
 	}
 
 	if (Requests.Num() == 0)
-		return MakeError(TEXT("bad_request"), TEXT("'cameras' had no usable entries"));
+		return MakeError(URLabError::BadRequest, TEXT("'cameras' had no usable entries"));
 
 	// Camera RT / worker setup is game-thread only; marshal and wait.
 	struct FResult
@@ -362,7 +361,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraStreaming(
 		return Reply;
 	}
 	// Timed out — leave the event un-pooled (the task still references it).
-	return MakeError(TEXT("timeout"), TEXT("set_camera_streaming game-thread apply timed out"));
+	return MakeError(URLabError::Timeout, TEXT("set_camera_streaming game-thread apply timed out"));
 }
 
 namespace
@@ -387,11 +386,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraDelay(
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	const TSharedPtr<FJsonObject>* CamObj = nullptr;
 	if (!Req->TryGetObjectField(TEXT("cameras"), CamObj) || !CamObj || !CamObj->IsValid())
-		return MakeError(TEXT("missing_field"),
+		return MakeError(URLabError::MissingField,
 			TEXT("set_camera_delay requires a 'cameras' object"));
 
 	// Parse per-camera requests. A bare number means delay_s with defaults; an
@@ -439,7 +438,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraDelay(
 	}
 
 	if (Requests.Num() == 0)
-		return MakeError(TEXT("bad_request"), TEXT("'cameras' had no usable entries"));
+		return MakeError(URLabError::BadRequest, TEXT("'cameras' had no usable entries"));
 
 	// SetCameraDelay / SetCaptureRate touch state the game thread reads each tick;
 	// marshal and wait, like set_camera_streaming.
@@ -496,7 +495,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraDelay(
 			Res->Cameras.IsValid() ? Res->Cameras : MakeShared<FJsonObject>());
 		return Reply;
 	}
-	return MakeError(TEXT("timeout"), TEXT("set_camera_delay game-thread apply timed out"));
+	return MakeError(URLabError::Timeout, TEXT("set_camera_delay game-thread apply timed out"));
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Manager,
@@ -587,4 +586,3 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 	}
 	return Cams;
 }
-

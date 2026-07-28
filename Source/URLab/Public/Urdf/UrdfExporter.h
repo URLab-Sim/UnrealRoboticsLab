@@ -46,6 +46,9 @@ struct FUrdfExportConfig
 	 *  rejects the sim's resting state as out of bounds on tight joints (the
 	 *  Franka's joint4). Small enough to be physically negligible. */
 	double LimitMargin = 0.02;
+	/** When true, append a fixed "tool0" link at the leaf body of the
+	 *  articulation tree so MoveIt can attach an end-effector. */
+	bool bAppendTool0 = true;
 };
 
 /** One emitted geom's frame data, kept for the forward-kinematics self-test.

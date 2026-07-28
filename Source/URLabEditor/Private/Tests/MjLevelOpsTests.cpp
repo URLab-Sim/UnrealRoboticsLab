@@ -12,6 +12,7 @@
 #include "Containers/Ticker.h"
 
 #include "Bridge/OpRegistry.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "MjLevelOps.h"
 
 namespace
@@ -570,8 +571,7 @@ bool FMjLevelOpsImportXmlErrors::RunTest(const FString& Parameters)
 	// import_xml is async now: the handler returns op_started + job_id and the
 	// real work (plus its error reply) runs on the next game-thread tick, read
 	// back via op_status. Drive that to the terminal result here.
-	auto RunToResult = [&](TSharedPtr<FJsonObject> Req) -> TSharedPtr<FJsonObject>
-	{
+	auto RunToResult = [&](TSharedPtr<FJsonObject> Req) -> TSharedPtr<FJsonObject> {
 		TSharedPtr<FJsonObject> Started = Handler(Req);
 		FString JobId;
 		Started->TryGetStringField(TEXT("job_id"), JobId);
@@ -606,7 +606,7 @@ bool FMjLevelOpsImportXmlErrors::RunTest(const FString& Parameters)
 		if (Reply.IsValid())
 			Reply->TryGetStringField(TEXT("code"), Code);
 		TestEqual(TEXT("missing path -> missing_field"),
-			Code, FString(TEXT("missing_field")));
+			Code, FString(URLabError::MissingField));
 	}
 
 	// Non-existent file.

@@ -29,8 +29,8 @@
  * on the game / render-thread sidecar.
  *
  * Wire layout per slot: `[u32 size][FMjCameraFrameMeta][pixels...]`, where
- * `size` is the byte count of `meta + pixels` (i.e. it includes the 32-byte
- * header). The consumer reads `size`, parses the leading 32 bytes as the
+ * `size` is the byte count of `meta + pixels` (i.e. it includes the 40-byte
+ * header). The consumer reads `size`, parses the leading 40 bytes as the
  * frame metadata (frame_id / sim_time / w / h), and treats the remainder as
  * pixels. The pixel byte format depends on the camera mode and is documented
  * out-of-band via the handshake:

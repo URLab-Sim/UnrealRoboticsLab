@@ -21,8 +21,8 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
-#include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -60,19 +60,19 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleConfigureController(const TSh
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	FString ArtName;
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(TEXT("missing_field"), TEXT("configure_controller requires 'articulation'"));
+		return MakeError(URLabError::MissingField, TEXT("configure_controller requires 'articulation'"));
 
 	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 	if (!Art)
-		return MakeError(TEXT("unknown_articulation"), ArtName);
+		return MakeError(URLabError::UnknownArticulation, ArtName);
 
 	UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
 	if (!Ctrl)
-		return MakeError(TEXT("no_controller"), FString::Printf(TEXT("Articulation '%s' has no controller"), *ArtName));
+		return MakeError(URLabError::NoController, FString::Printf(TEXT("Articulation '%s' has no controller"), *ArtName));
 
 	const TSharedPtr<FJsonObject>* Params = nullptr;
 	if (Req->TryGetObjectField(TEXT("params"), Params) && Params && Params->IsValid())
@@ -202,11 +202,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 
 	const TSharedPtr<FJsonObject>* OptsPtr = nullptr;
 	if (!Req->TryGetObjectField(TEXT("options"), OptsPtr) || !OptsPtr || !(*OptsPtr).IsValid())
-		return MakeError(TEXT("missing_field"), TEXT("set_sim_options requires 'options' object"));
+		return MakeError(URLabError::MissingField, TEXT("set_sim_options requires 'options' object"));
 	const TSharedPtr<FJsonObject>& Opts = *OptsPtr;
 
 	FMjOptionGenerated& O = Mgr->PhysicsEngine->Options;
@@ -275,7 +275,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	{
 		EMjIntegrator E;
 		if (!ParseIntegrator(SNum, E))
-			return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown integrator '%s'"), *SNum));
+			return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown integrator '%s'"), *SNum));
 		O.Integrator = E;
 		O.bOverride_Integrator = true;
 	}
@@ -283,7 +283,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	{
 		EMjCone E;
 		if (!ParseCone(SNum, E))
-			return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown cone '%s'"), *SNum));
+			return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown cone '%s'"), *SNum));
 		O.Cone = E;
 		O.bOverride_Cone = true;
 	}
@@ -291,7 +291,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	{
 		EMjSolver E;
 		if (!ParseSolver(SNum, E))
-			return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown solver '%s'"), *SNum));
+			return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown solver '%s'"), *SNum));
 		O.Solver = E;
 		O.bOverride_Solver = true;
 	}
@@ -343,7 +343,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	// reallocates m/d, so a pointer captured before the lock could dangle.
 	mjModel* m = Mgr->PhysicsEngine->GetModel();
 	if (!m)
-		return MakeError(TEXT("not_ready"), TEXT("mjModel not compiled"));
+		return MakeError(URLabError::NotReady, TEXT("mjModel not compiled"));
 
 	// Raw disable / enable bit masks. Values are bitwise-ORs of
 	// mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.
@@ -416,10 +416,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	Out->SetNumberField(TEXT("ccd_iterations"), m->opt.ccd_iterations);
 	Out->SetNumberField(TEXT("ccd_tolerance"), m->opt.ccd_tolerance);
 
-	constexpr int MJ_ENBL_MULTICCD = 1 << 4;
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
-	Out->SetBoolField(TEXT("enable_multiccd"), (m->opt.enableflags & MJ_ENBL_MULTICCD) != 0);
-	Out->SetBoolField(TEXT("enable_sleep"), (m->opt.enableflags & MJ_ENBL_SLEEP) != 0);
+	Out->SetBoolField(TEXT("enable_multiccd"), (m->opt.disableflags & mjDSBL_MULTICCD) == 0);
+	Out->SetBoolField(TEXT("enable_sleep"), (m->opt.enableflags & mjENBL_SLEEP) != 0);
 	Out->SetNumberField(TEXT("sleep_tolerance"), m->opt.sleep_tolerance);
 
 	// Echo the raw bit masks so callers using disableflags / enableflags
@@ -439,11 +437,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimSpeed(const TSharedPtr<
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 
 	double Pct = 0.0;
 	if (!Req->TryGetNumberField(TEXT("percent"), Pct))
-		return MakeError(TEXT("missing_field"), TEXT("set_sim_speed requires 'percent'"));
+		return MakeError(URLabError::MissingField, TEXT("set_sim_speed requires 'percent'"));
 
 	// Engine clamps internally (5..100); echo back so the caller sees what stuck.
 	Mgr->PhysicsEngine->SetSimSpeed((float)Pct);
@@ -463,11 +461,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TShare
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
+		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
 
 	FString SourceStr;
 	if (!Req->TryGetStringField(TEXT("source"), SourceStr))
-		return MakeError(TEXT("missing_field"), TEXT("set_control_source requires 'source' (\"zmq\" | \"ui\")"));
+		return MakeError(URLabError::MissingField, TEXT("set_control_source requires 'source' (\"zmq\" | \"ui\")"));
 
 	EControlSource NewSource;
 	if (SourceStr.Equals(TEXT("zmq"), ESearchCase::IgnoreCase))
@@ -475,7 +473,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TShare
 	else if (SourceStr.Equals(TEXT("ui"), ESearchCase::IgnoreCase))
 		NewSource = EControlSource::UI;
 	else
-		return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown source '%s'"), *SourceStr));
+		return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown source '%s'"), *SourceStr));
 
 	FString ArtName;
 	Req->TryGetStringField(TEXT("articulation"), ArtName);
@@ -514,7 +512,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TShare
 	{
 		AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 		if (!Art)
-			return MakeError(TEXT("unknown_articulation"), ArtName);
+			return MakeError(URLabError::UnknownArticulation, ArtName);
 		if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
 			return Denied;
 		Art->ControlSource = (uint8)NewSource;
@@ -532,22 +530,22 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJs
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
 	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
 	FString ArtName;
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(TEXT("missing_field"), TEXT("set_twist requires 'articulation'"));
+		return MakeError(URLabError::MissingField, TEXT("set_twist requires 'articulation'"));
 
 	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
 	if (!Art)
-		return MakeError(TEXT("unknown_articulation"), ArtName);
+		return MakeError(URLabError::UnknownArticulation, ArtName);
 
 	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
 		return Denied;
 
 	UMjTwistController* TC = Art->FindComponentByClass<UMjTwistController>();
 	if (!TC)
-		return MakeError(TEXT("no_twist_controller"),
+		return MakeError(URLabError::NoTwistController,
 			FString::Printf(TEXT("Articulation '%s' has no UMjTwistController"), *ArtName));
 
 	// Wire format mirrors how the bridge already reads twist: linear is
@@ -586,4 +584,3 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJs
 	}
 	return Reply;
 }
-

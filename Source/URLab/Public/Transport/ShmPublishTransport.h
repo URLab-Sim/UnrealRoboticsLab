@@ -84,6 +84,9 @@ public:
 	/** Convenience: directory holding all SHM files for this session. */
 	static FString ResolveSessionDir(const FString& InSessionId);
 
+	// UURLabPublishTransport contract
+	virtual void AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const override;
+
 private:
 	TWeakObjectPtr<AAMjManager> OwningManager;
 	FMjShmRegion StateRegion;

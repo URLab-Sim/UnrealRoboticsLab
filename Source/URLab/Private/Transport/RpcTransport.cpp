@@ -6,6 +6,7 @@
 #include "Transport/RpcTransport.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "Bridge/OpRegistry.h"
 #include "Serialization/JsonSerializer.h"
@@ -98,7 +99,7 @@ bool UURLabRpcTransport::ProcessRequestBytes(const TArray<uint8>& InBytes,
 	TSharedPtr<FJsonObject> Reply;
 	if (!Disp)
 	{
-		Reply = FURLabRpcDispatcher::MakeError(TEXT("not_ready"),
+		Reply = FURLabRpcDispatcher::MakeError(URLabError::NotReady,
 			TEXT("Bridge / dispatcher missing"));
 	}
 	else if (!AcceptsEditorOps() && Req.IsValid())
@@ -111,7 +112,7 @@ bool UURLabRpcTransport::ProcessRequestBytes(const TArray<uint8>& InBytes,
 		Req->TryGetStringField(TEXT("op"), Op);
 		if (URLabOpRegistry::IsEditorOnlyOp(Op))
 		{
-			Reply = FURLabRpcDispatcher::MakeError(TEXT("wrong_transport"),
+			Reply = FURLabRpcDispatcher::MakeError(URLabError::WrongTransport,
 				FString::Printf(TEXT("op '%s' not accepted on %s; use zmq"),
 					*Op, *GetTransportName()));
 		}

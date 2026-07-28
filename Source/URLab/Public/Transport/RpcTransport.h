@@ -61,6 +61,11 @@ public:
 	 *  Default true so new transports are universal unless they opt out. */
 	virtual bool AcceptsEditorOps() const { return true; }
 
+	/** Append transport-specific fields to the hello handshake reply.
+	 *  Called from BuildHandshakePayload for each bound transport.
+	 *  Default no-op; SHM overrides to advertise paths/events/strides. */
+	virtual void AppendHandshakeBlock(TSharedPtr<class FJsonObject>& Reply) const {}
+
 	/** Shared request handler. Concrete transports call this from their
 	 *  worker loop with raw inbound bytes; receives encoded reply bytes
 	 *  ready to ship back. Handles:

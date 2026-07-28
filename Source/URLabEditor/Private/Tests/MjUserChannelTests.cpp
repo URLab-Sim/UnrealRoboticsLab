@@ -26,6 +26,7 @@
 #include "UserChannels/MjUserChannelComponent.h"
 #include "State/MjStateTypes.h"
 #include "State/MjStateCollector.h"
+#include "State/MjObservationLevel.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjCanonicalName.h"
 #include "MuJoCo/Core/AMjManager.h"
@@ -37,8 +38,6 @@
 
 namespace
 {
-using EObservationLevel = FURLabRpcDispatcher::EObservationLevel;
-
 const FMjUserChannel* FindChannel(const TArray<FMjUserChannel>& Channels, const TCHAR* Name)
 {
 	const FName Target(Name);

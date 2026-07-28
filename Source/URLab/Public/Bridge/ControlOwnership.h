@@ -20,9 +20,8 @@
  *  the owner touched it. A zero TTL never expires. */
 struct FMjControlClaim
 {
-	FString Owner;                 // source id
-	bool bExclusive = true;
-	double TtlSeconds = 0.0;       // 0 = no expiry
+	FString Owner;           // source id
+	double TtlSeconds = 0.0; // 0 = no expiry
 	double LastActivitySeconds = 0.0;
 };
 
@@ -45,7 +44,11 @@ struct FMjControlClaim
 class URLAB_API FMjControlOwnership
 {
 public:
-	enum class EClaimResult : uint8 { Ok, AlreadyOwned };
+	enum class EClaimResult : uint8
+	{
+		Ok,
+		AlreadyOwned
+	};
 
 	/** Claim `Art` for `Source`. `bForce` steals an existing claim (operator
 	 *  override). Returns AlreadyOwned and fills OutCurrentOwner when the art is
@@ -57,7 +60,11 @@ public:
 	 *  not the current owner (including an already-expired or absent claim). */
 	bool Release(FName Art, const FString& Source);
 
-	enum class EWriteCheck : uint8 { Ok, NotOwner };
+	enum class EWriteCheck : uint8
+	{
+		Ok,
+		NotOwner
+	};
 
 	/** The gate for every control write. Ok refreshes LastActivity (the
 	 *  heartbeat). Unclaimed art => NotOwner (unclaimed = external control
@@ -85,7 +92,7 @@ private:
 	/** True when a claim has a live TTL and has been idle past it. */
 	static bool IsExpired(const FMjControlClaim& Claim, double NowSeconds);
 
-	FCriticalSection Mutex;             // RPC threads: ZMQ + SHM (+ ROS later)
+	FCriticalSection Mutex; // RPC threads: ZMQ + SHM (+ ROS later)
 	TMap<FName, FMjControlClaim> Claims;
 	double ClockOverrideForTest = -1.0;
 };

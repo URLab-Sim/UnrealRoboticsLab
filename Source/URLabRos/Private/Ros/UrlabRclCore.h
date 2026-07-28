@@ -70,6 +70,9 @@ extern "C"
 	struct UrlabRclVector3Pub;
 	struct UrlabRclPoseStampedPub;
 	struct UrlabRclPlanningScenePub;
+	struct UrlabRclPointCloud2Pub;
+	struct UrlabRclOccupancyGridPub;
+	struct UrlabRclOctomapPub;
 	struct UrlabRclCtrlSub;
 	struct UrlabRclTwistSub;
 	struct UrlabRclJointStateSub;
@@ -127,6 +130,31 @@ extern "C"
 		const double* Poses /* 7*Count: px,py,pz,qx,qy,qz,qw */, int32_t Count,
 		int64_t SimTimeNs);
 	void UrlabRcl_DestroyPlanningScenePub(struct UrlabRclPlanningScenePub* Pub);
+
+	// sensor_msgs/PointCloud2, unordered (height=1), frame_id set at create.
+	// max_points caps the pre-allocated data array; 0 uses a default (200 kpts).
+	struct UrlabRclPointCloud2Pub* UrlabRcl_CreatePointCloud2Pub(struct UrlabRclContext* Ctx,
+		const char* Topic, const char* FrameId, int32_t MaxPoints);
+	int UrlabRcl_PublishPointCloud2(struct UrlabRclPointCloud2Pub* Pub,
+		const float* Points, int32_t N, int64_t SimTimeNs);
+	void UrlabRcl_DestroyPointCloud2Pub(struct UrlabRclPointCloud2Pub* Pub);
+
+	// nav_msgs/OccupancyGrid, latched (transient-local), fixed grid at create.
+	// OriginX/Y are the world-frame coordinate of the grid's bottom-left cell centre.
+	struct UrlabRclOccupancyGridPub* UrlabRcl_CreateOccupancyGridPub(struct UrlabRclContext* Ctx,
+		const char* Topic, const char* FrameId, double Resolution,
+		int32_t Width, int32_t Height, double OriginX, double OriginY);
+	int UrlabRcl_PublishOccupancyGrid(struct UrlabRclOccupancyGridPub* Pub,
+		const int8_t* Data, int64_t SimTimeNs);
+	void UrlabRcl_DestroyOccupancyGridPub(struct UrlabRclOccupancyGridPub* Pub);
+
+	// octomap_msgs/Octomap (binary=true). Data is the serialised octree bytes;
+	// the tree id and resolution are fixed at create.
+	struct UrlabRclOctomapPub* UrlabRcl_CreateOctomapPub(struct UrlabRclContext* Ctx,
+		const char* Topic, const char* FrameId, double Resolution);
+	int UrlabRcl_PublishOctomap(struct UrlabRclOctomapPub* Pub,
+		const uint8_t* Data, int32_t Size, int64_t SimTimeNs);
+	void UrlabRcl_DestroyOctomapPub(struct UrlabRclOctomapPub* Pub);
 
 	struct UrlabRclTwistStampedPub* UrlabRcl_CreateTwistStampedPub(struct UrlabRclContext* Ctx,
 		const char* Topic, const char* FrameId);

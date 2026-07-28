@@ -66,6 +66,10 @@
 #include <nav_msgs/msg/odometry.h>
 #include <rosgraph_msgs/msg/clock.h>
 #include <std_srvs/srv/trigger.h>
+#include <sensor_msgs/msg/point_cloud2.h>
+#include <sensor_msgs/msg/detail/point_field__functions.h>
+#include <nav_msgs/msg/occupancy_grid.h>
+#include <octomap_msgs/msg/octomap.h>
 
 #ifndef URLAB_ROS_DISTRO_NAME
 #define URLAB_ROS_DISTRO_NAME "humble"
@@ -2187,6 +2191,28 @@ struct UrlabRclPlanningScenePub
 	moveit_msgs__msg__PlanningScene Msg;
 };
 
+struct UrlabRclPointCloud2Pub
+{
+	UrlabRclContext* Ctx;
+	rcl_publisher_t Pub;
+	sensor_msgs__msg__PointCloud2 Msg;
+	int32_t MaxPoints;
+};
+
+struct UrlabRclOccupancyGridPub
+{
+	UrlabRclContext* Ctx;
+	rcl_publisher_t Pub;
+	nav_msgs__msg__OccupancyGrid Msg;
+};
+
+struct UrlabRclOctomapPub
+{
+	UrlabRclContext* Ctx;
+	rcl_publisher_t Pub;
+	octomap_msgs__msg__Octomap Msg;
+};
+
 UrlabRclPlanningScenePub* UrlabRcl_CreatePlanningScenePub(UrlabRclContext* Ctx,
 	const char* Topic, const char* FrameId, const char** Ids,
 	const int32_t* PrimTypes, const double* Dims, const int32_t* MeshVertCounts,
@@ -2315,6 +2341,268 @@ void UrlabRcl_DestroyPlanningScenePub(UrlabRclPlanningScenePub* Pub)
 	}
 	rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
 	moveit_msgs__msg__PlanningScene__fini(&Pub->Msg);
+	delete Pub;
+}
+
+// --- PointCloud2 ----------------------------------------------------------
+
+namespace
+{
+constexpr int32_t GDefaultMaxPoints = 200'000;
+
+void InitPointField(sensor_msgs__msg__PointField& F, const char* Name,
+	uint32_t Offset, uint8_t DataType)
+{
+	SetString(F.name, Name);
+	F.offset = Offset;
+	F.datatype = DataType;
+	F.count = 1;
+}
+} // namespace
+
+UrlabRclPointCloud2Pub* UrlabRcl_CreatePointCloud2Pub(UrlabRclContext* Ctx,
+	const char* Topic, const char* FrameId, int32_t MaxPoints)
+{
+	ClearError();
+	if (!Ctx)
+	{
+		return nullptr;
+	}
+	UrlabRclPointCloud2Pub* Pub = new UrlabRclPointCloud2Pub();
+	Pub->Ctx = Ctx;
+	Pub->MaxPoints = MaxPoints > 0 ? MaxPoints : GDefaultMaxPoints;
+	sensor_msgs__msg__PointCloud2__init(&Pub->Msg);
+	SetString(Pub->Msg.header.frame_id, FrameId);
+	Pub->Msg.height = 1;
+	Pub->Msg.is_bigendian = false;
+	Pub->Msg.is_dense = true;
+	Pub->Msg.point_step = 12; // 3 * float32
+	sensor_msgs__msg__PointField__Sequence__init(&Pub->Msg.fields, 3);
+	InitPointField(Pub->Msg.fields.data[0], "x", 0, 7);
+	InitPointField(Pub->Msg.fields.data[1], "y", 4, 7);
+	InitPointField(Pub->Msg.fields.data[2], "z", 8, 7);
+	rosidl_runtime_c__uint8__Sequence__init(&Pub->Msg.data,
+		static_cast<size_t>(Pub->MaxPoints) * 12);
+
+	const rosidl_message_type_support_t* Ts =
+		ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, PointCloud2);
+	if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+	{
+		sensor_msgs__msg__PointCloud2__fini(&Pub->Msg);
+		delete Pub;
+		return nullptr;
+	}
+	return Pub;
+}
+
+int UrlabRcl_PublishPointCloud2(UrlabRclPointCloud2Pub* Pub,
+	const float* Points, int32_t N, int64_t SimTimeNs)
+{
+	ClearError();
+	if (!Pub)
+	{
+		return -1;
+	}
+	const int32_t Count = N > 0 ? N : 0;
+	const int32_t Capped = Count > Pub->MaxPoints ? Pub->MaxPoints : Count;
+	const size_t ByteSize = static_cast<size_t>(Capped) * 12;
+	FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+	Pub->Msg.width = static_cast<uint32_t>(Capped);
+	Pub->Msg.row_step = static_cast<uint32_t>(ByteSize);
+	if (Pub->Msg.data.capacity < ByteSize)
+	{
+		rosidl_runtime_c__uint8__Sequence__fini(&Pub->Msg.data);
+		rosidl_runtime_c__uint8__Sequence__init(&Pub->Msg.data, ByteSize);
+	}
+	if (Points && Capped > 0)
+	{
+		std::memcpy(Pub->Msg.data.data, Points, ByteSize);
+		Pub->Msg.data.size = ByteSize;
+	}
+	else
+	{
+		Pub->Msg.data.size = 0;
+		Pub->Msg.width = 0;
+		Pub->Msg.row_step = 0;
+	}
+	const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+	if (Ret != RCL_RET_OK)
+	{
+		CaptureError();
+		return -static_cast<int>(Ret);
+	}
+	return 0;
+}
+
+void UrlabRcl_DestroyPointCloud2Pub(UrlabRclPointCloud2Pub* Pub)
+{
+	if (!Pub)
+	{
+		return;
+	}
+	rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+	sensor_msgs__msg__PointCloud2__fini(&Pub->Msg);
+	delete Pub;
+}
+
+// --- OccupancyGrid --------------------------------------------------------
+
+UrlabRclOccupancyGridPub* UrlabRcl_CreateOccupancyGridPub(UrlabRclContext* Ctx,
+	const char* Topic, const char* FrameId, double Resolution,
+	int32_t Width, int32_t Height, double OriginX, double OriginY)
+{
+	ClearError();
+	if (!Ctx)
+	{
+		return nullptr;
+	}
+	UrlabRclOccupancyGridPub* Pub = new UrlabRclOccupancyGridPub();
+	Pub->Ctx = Ctx;
+	nav_msgs__msg__OccupancyGrid__init(&Pub->Msg);
+	SetString(Pub->Msg.header.frame_id, FrameId);
+	Pub->Msg.info.resolution = static_cast<float>(Resolution);
+	Pub->Msg.info.width = static_cast<uint32_t>(Width > 0 ? Width : 0);
+	Pub->Msg.info.height = static_cast<uint32_t>(Height > 0 ? Height : 0);
+	Pub->Msg.info.origin.position.x = OriginX;
+	Pub->Msg.info.origin.position.y = OriginY;
+	Pub->Msg.info.origin.position.z = 0.0;
+	Pub->Msg.info.origin.orientation.w = 1.0;
+	const size_t CellCount = static_cast<size_t>(Pub->Msg.info.width) *
+		static_cast<size_t>(Pub->Msg.info.height);
+	rosidl_runtime_c__int8__Sequence__init(&Pub->Msg.data, CellCount);
+	if (CellCount > 0)
+	{
+		std::memset(Pub->Msg.data.data, 0xFF, CellCount);
+		Pub->Msg.data.size = CellCount;
+	}
+
+	rmw_qos_profile_t Qos = rmw_qos_profile_default;
+	Qos.durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;
+	Qos.reliability = RMW_QOS_POLICY_RELIABILITY_RELIABLE;
+	Qos.history = RMW_QOS_POLICY_HISTORY_KEEP_LAST;
+	Qos.depth = 1;
+
+	const rosidl_message_type_support_t* Ts =
+		ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, OccupancyGrid);
+	if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, Qos))
+	{
+		nav_msgs__msg__OccupancyGrid__fini(&Pub->Msg);
+		delete Pub;
+		return nullptr;
+	}
+	return Pub;
+}
+
+int UrlabRcl_PublishOccupancyGrid(UrlabRclOccupancyGridPub* Pub,
+	const int8_t* Data, int64_t SimTimeNs)
+{
+	ClearError();
+	if (!Pub)
+	{
+		return -1;
+	}
+	FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+	const size_t CellCount = static_cast<size_t>(Pub->Msg.info.width) *
+		static_cast<size_t>(Pub->Msg.info.height);
+	if (Data && CellCount > 0)
+	{
+		std::memcpy(Pub->Msg.data.data, Data, CellCount);
+		Pub->Msg.data.size = CellCount;
+	}
+	else
+	{
+		Pub->Msg.data.size = 0;
+	}
+	const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+	if (Ret != RCL_RET_OK)
+	{
+		CaptureError();
+		return -static_cast<int>(Ret);
+	}
+	return 0;
+}
+
+void UrlabRcl_DestroyOccupancyGridPub(UrlabRclOccupancyGridPub* Pub)
+{
+	if (!Pub)
+	{
+		return;
+	}
+	rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+	nav_msgs__msg__OccupancyGrid__fini(&Pub->Msg);
+	delete Pub;
+}
+
+// --- Octomap --------------------------------------------------------------
+
+UrlabRclOctomapPub* UrlabRcl_CreateOctomapPub(UrlabRclContext* Ctx,
+	const char* Topic, const char* FrameId, double Resolution)
+{
+	ClearError();
+	if (!Ctx)
+	{
+		return nullptr;
+	}
+	UrlabRclOctomapPub* Pub = new UrlabRclOctomapPub();
+	Pub->Ctx = Ctx;
+	octomap_msgs__msg__Octomap__init(&Pub->Msg);
+	SetString(Pub->Msg.header.frame_id, FrameId);
+	Pub->Msg.binary = true;
+	SetString(Pub->Msg.id, "OcTree");
+	Pub->Msg.resolution = Resolution;
+
+	const rosidl_message_type_support_t* Ts =
+		ROSIDL_GET_MSG_TYPE_SUPPORT(octomap_msgs, msg, Octomap);
+	if (!InitPublisher(Ctx, Pub->Pub, Ts, Topic, rmw_qos_profile_default))
+	{
+		octomap_msgs__msg__Octomap__fini(&Pub->Msg);
+		delete Pub;
+		return nullptr;
+	}
+	return Pub;
+}
+
+int UrlabRcl_PublishOctomap(UrlabRclOctomapPub* Pub,
+	const uint8_t* Data, int32_t Size, int64_t SimTimeNs)
+{
+	ClearError();
+	if (!Pub)
+	{
+		return -1;
+	}
+	FillStamp(Pub->Msg.header.stamp, SimTimeNs);
+	const size_t S = static_cast<size_t>(Size > 0 ? Size : 0);
+	if (Pub->Msg.data.capacity < S)
+	{
+		rosidl_runtime_c__int8__Sequence__fini(&Pub->Msg.data);
+		rosidl_runtime_c__int8__Sequence__init(&Pub->Msg.data, S);
+	}
+	if (Data && S > 0)
+	{
+		std::memcpy(Pub->Msg.data.data, Data, S);
+		Pub->Msg.data.size = S;
+	}
+	else
+	{
+		Pub->Msg.data.size = 0;
+	}
+	const rcl_ret_t Ret = rcl_publish(&Pub->Pub, &Pub->Msg, nullptr);
+	if (Ret != RCL_RET_OK)
+	{
+		CaptureError();
+		return -static_cast<int>(Ret);
+	}
+	return 0;
+}
+
+void UrlabRcl_DestroyOctomapPub(UrlabRclOctomapPub* Pub)
+{
+	if (!Pub)
+	{
+		return;
+	}
+	rcl_publisher_fini(&Pub->Pub, &Pub->Ctx->Node);
+	octomap_msgs__msg__Octomap__fini(&Pub->Msg);
 	delete Pub;
 }
 

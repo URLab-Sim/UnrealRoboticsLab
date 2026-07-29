@@ -90,8 +90,12 @@ def main() -> None:
         "/urlab/obstacle_cloud already present before PIE — stale publishers?"
 
     print(f"Importing test scene: {scene_path}")
-    job = client.scene.import_xml(str(scene_path))
-    print(f"import_xml → {job.get('op', '?')}")
+    bp = client.scene.import_xml(str(scene_path))
+    print(f"import_xml → {bp.class_path}")
+
+    # Spawn it into the level so the model is in the world at PIE start.
+    client.scene.spawn_actor(bp, "ros_maps_test_actor")
+    print("spawn_actor OK")
 
     # Start PIE.
     print("Starting PIE...")

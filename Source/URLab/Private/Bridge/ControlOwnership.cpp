@@ -93,7 +93,7 @@ FMjControlOwnership::EWriteCheck FMjControlOwnership::CheckWrite(FName Art, cons
 
 	if (!Existing)
 	{
-		OutCurrentOwner.Empty();
+		OutCurrentOwner = TEXT("(unclaimed)");
 		return EWriteCheck::NotOwner;
 	}
 	if (!Existing->Owner.Equals(Source))

@@ -500,20 +500,17 @@ UMaterialInstanceConstant* UMujocoGenerationAction::CreateMaterialInstance(
 		MaterialInstance->SetVectorParameterValueEditorOnly(Info, Value);
 	};
 
-	// Helper lambda to set a texture parameter with override enabled
+	// Helper lambda to set a texture parameter with override enabled.
+	// SetTextureParameterValueEditorOnly alone records the override; the
+	// previous manual append to TextureParameterValues created a DUPLICATE
+	// entry with an invalid ExpressionGUID that shadowed the real one at
+	// parameter resolution, so the sampler fell back to its default —
+	// the engine checkerboard — for every textured material.
 	auto SetTexture = [&](const TCHAR* Name, UTexture* Tex) {
 		FMaterialParameterInfo Info(Name);
 		MaterialInstance->SetTextureParameterValueEditorOnly(Info, Tex);
-
-		// Also directly add to TextureParameterValues to ensure override is enabled
-		FTextureParameterValue TexParam;
-		TexParam.ParameterInfo = Info;
-		TexParam.ParameterValue = Tex;
-		TexParam.ExpressionGUID = FGuid(); // Will be resolved by UE
-		MaterialInstance->TextureParameterValues.Add(TexParam);
-
-		UE_LOG(LogURLabEditor, Log, TEXT("  [SetTexture] Set '%s' = '%s' (TextureParameterValues count: %d)"),
-			Name, *Tex->GetName(), MaterialInstance->TextureParameterValues.Num());
+		UE_LOG(LogURLabEditor, Log, TEXT("  [SetTexture] Set '%s' = '%s'"),
+			Name, *Tex->GetName());
 	};
 
 	// Set base color

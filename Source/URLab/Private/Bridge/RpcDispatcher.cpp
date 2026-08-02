@@ -1137,6 +1137,15 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 
 			if (Mgr->PhysicsEngine->OnPostStep)
 				Mgr->PhysicsEngine->OnPostStep(m, d);
+
+			// Publish the pushed state to the render snapshot immediately
+			// (contract allows it: CallbackMutex is held). Without this the
+			// snapshot only refreshes on the async loop's next wake (up to
+			// 100ms later), so a sync camera capture in this same request
+			// — or shortly after a burst of pushes — photographs a stale
+			// pose. Rapid puppet streams (>1kHz localhost) hit this
+			// reliably.
+			Mgr->PhysicsEngine->PushRenderState();
 		}
 
 		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
@@ -1639,9 +1648,43 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 		{
 			FEvent* ReqDone = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
 			TWeakObjectPtr<UMjCamera> WeakCam(Cam);
-			AsyncTask(ENamedThreads::GameThread, [WeakCam, ReqDone]() {
+			TWeakObjectPtr<AAMjManager> WeakMgr(Manager);
+			// Serial of the first readback issued after our CaptureScene;
+			// written on the game thread before ReqDone triggers, read here
+			// after the Wait (the event gives the happens-before edge).
+			TSharedRef<uint64, ESPMode::ThreadSafe> WantSerial =
+				MakeShared<uint64, ESPMode::ThreadSafe>(0);
+			AsyncTask(ENamedThreads::GameThread, [WeakCam, WeakMgr, WantSerial, ReqDone]() {
+				// Bring component transforms up to the freshest published
+				// snapshot before rendering. The capture task can run on
+				// the game thread ahead of the manager's next Tick, so
+				// without this the frame lags the state the client just
+				// pushed by up to a frame (plus the snapshot latency the
+				// producer side addresses at the puppet-apply site).
+				if (AAMjManager* M = WeakMgr.Get())
+				{
+					M->ApplyLatestRenderState();
+				}
 				if (UMjCamera* C = WeakCam.Get())
 				{
+					// Force a fresh render before the readback. With
+					// streaming off (e.g. puppet mode pauses publishers)
+					// bCaptureEveryFrame is false and the render target
+					// still holds the FIRST frame ever captured — a bare
+					// readback then returns that stale image (the robot
+					// at its spawn pose) no matter the current state.
+					if (C->CaptureComponent)
+					{
+						C->CaptureComponent->CaptureScene();
+					}
+					// Any readback issued from here on reads the frame we
+					// just rendered. Record its serial and wait for THAT
+					// below: RequestReadback no-ops while the per-tick
+					// auto-readback is still in flight, and that older
+					// readback was enqueued before CaptureScene — waiting
+					// on IsReadbackReady alone returns its stale pixels
+					// (off-by-one frame under rapid puppet streams).
+					*WantSerial = C->PeekNextReadbackSerial();
 					C->RequestReadback();
 				}
 				ReqDone->Trigger();
@@ -1650,7 +1693,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Mana
 			FPlatformProcess::ReturnSynchEventToPool(ReqDone);
 
 			const double DeadlineSec = FPlatformTime::Seconds() + (TimeoutMs / 1000.0);
-			while (!Cam->IsReadbackReady() && FPlatformTime::Seconds() < DeadlineSec)
+			while (Cam->GetCompletedReadbackSerial() < *WantSerial
+				&& FPlatformTime::Seconds() < DeadlineSec)
 			{
 				FPlatformProcess::Sleep(0.001f);
 			}

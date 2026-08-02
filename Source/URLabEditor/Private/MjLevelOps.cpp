@@ -15,6 +15,7 @@
 #include "Engine/World.h"
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/WorldSettings.h"
+#include "FileHelpers.h"
 #include "IAssetTools.h"
 #include "LevelEditorSubsystem.h"
 #include "Misc/Paths.h"
@@ -138,6 +139,24 @@ bool ImportXmlSync(
 		OutBlueprintClassPath = FString::Printf(
 			TEXT("%s/%s.%s_C"), *DestPath,
 			*OutBlueprintShortName, *OutBlueprintShortName);
+	}
+
+	// Persist the generated Blueprint. ImportAssetsAutomated leaves the
+	// BP package dirty in memory only (the mesh importer saves its own
+	// sub-assets, but nothing saved the Blueprint), so a level that
+	// references the class fails to reload it after an editor restart:
+	// every component logs "CreateExport: Failed to load Outer" and the
+	// spawned articulation silently vanishes from the level.
+	{
+		TArray<UPackage*> ToSave;
+		ToSave.Add(BP->GetOutermost());
+		if (!UEditorLoadingAndSavingUtils::SavePackages(ToSave, /*bOnlyDirty=*/false))
+		{
+			OutError = FString::Printf(
+				TEXT("imported Blueprint %s could not be saved to disk"),
+				*OutBlueprintClassPath);
+			return false;
+		}
 	}
 	bOutImportedNow = true;
 	return true;
@@ -294,6 +313,27 @@ bool SaveCurrentLevelSync(FString& OutLevelPath, FString& OutError)
 	{
 		OutError = TEXT("SaveCurrentLevel failed");
 		return false;
+	}
+	// The level references generated articulation Blueprints that can be
+	// re-dirtied after import (e.g. the deferred SCS auto-parent pass).
+	// Sweep them so the saved map never points at a class that only
+	// exists in memory. Scoped to /Game/MuJoCoImports so an unrelated
+	// dirty asset from a human session is never silently saved.
+	{
+		TArray<UPackage*> DirtyPackages;
+		FEditorFileUtils::GetDirtyContentPackages(DirtyPackages);
+		TArray<UPackage*> ToSave;
+		for (UPackage* Package : DirtyPackages)
+		{
+			if (Package && Package->GetName().StartsWith(TEXT("/Game/MuJoCoImports")))
+				ToSave.Add(Package);
+		}
+		if (ToSave.Num() > 0 &&
+			!UEditorLoadingAndSavingUtils::SavePackages(ToSave, /*bOnlyDirty=*/true))
+		{
+			OutError = TEXT("level saved but dirty MuJoCoImports packages failed to save");
+			return false;
+		}
 	}
 	// Best-effort report: editor's current world's package name.
 	if (UWorld* W = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr)

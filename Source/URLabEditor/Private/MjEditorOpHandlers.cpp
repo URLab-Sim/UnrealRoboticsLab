@@ -509,55 +509,80 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 	}
 
 	// Dispatcher runs on a worker thread; PIE start must fire on the
-	// game thread. Hop over and wait for the request to be queued.
-	FEvent* QueuedEvent = FPlatformProcess::GetSynchEventFromPool(false);
-	AsyncTask(ENamedThreads::GameThread, [LevelPath, QueuedEvent]() {
-		if (!GEditor)
-		{
-			QueuedEvent->Trigger();
-			return;
-		}
-		if (!LevelPath.IsEmpty())
-		{
-			if (ULevelEditorSubsystem* LSub =
-					GEditor->GetEditorSubsystem<ULevelEditorSubsystem>())
-			{
-				LSub->LoadLevel(LevelPath);
-			}
-		}
-		FRequestPlaySessionParams Params;
-		Params.WorldType = EPlaySessionWorldType::PlayInEditor;
-
-		// RequestPlaySession ignores "Selected Viewport" without an explicit
-		// DestinationSlateViewport — hand it the active one.
-		const ULevelEditorPlaySettings* PlaySettings =
-			GetDefault<ULevelEditorPlaySettings>();
-		if (PlaySettings && PlaySettings->LastExecutedPlayModeType == PlayMode_InViewPort)
-		{
-			FLevelEditorModule& LE =
-				FModuleManager::LoadModuleChecked<FLevelEditorModule>(
-					TEXT("LevelEditor"));
-			if (TSharedPtr<ILevelEditor> LevelEditor =
-					LE.GetFirstLevelEditor())
-			{
-				if (TSharedPtr<SLevelViewport> Vp =
-						LevelEditor->GetActiveViewportInterface())
+	// game thread. Hop over via FTSTicker, not AsyncTask — see
+	// RunOnGameThreadSync. An AsyncTask here gets drained by any nested
+	// ProcessTasksUntilIdle: deferred validate-on-save opening its
+	// progress dialog (AddModalWindow -> FlushRenderingCommands) pulled
+	// this handler's LoadLevel into the middle of modal-window setup and
+	// crashed Slate in Map_Load. Tickers only run from the engine loop
+	// proper, and GIsSlowTask re-defers past an in-flight slow task.
+	struct FPieQueueState
+	{
+		std::atomic<bool> bQueued{false};
+		std::atomic<bool> bAbandoned{false};
+	};
+	TSharedRef<FPieQueueState, ESPMode::ThreadSafe> QueueState =
+		MakeShared<FPieQueueState, ESPMode::ThreadSafe>();
+	FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateLambda(
+			[LevelPath, QueueState](float /*DeltaTime*/) -> bool {
+				if (QueueState->bAbandoned.load(std::memory_order_acquire))
 				{
-					Params.DestinationSlateViewport = Vp;
+					return false; // handler gave up waiting; do nothing
 				}
-			}
-		}
-		GEditor->RequestPlaySession(Params);
-		QueuedEvent->Trigger();
-	});
+				if (GIsSlowTask)
+				{
+					return true; // re-tick once the slow task finishes
+				}
+				if (!GEditor)
+				{
+					QueueState->bQueued.store(true, std::memory_order_release);
+					return false;
+				}
+				if (!LevelPath.IsEmpty())
+				{
+					if (ULevelEditorSubsystem* LSub =
+							GEditor->GetEditorSubsystem<ULevelEditorSubsystem>())
+					{
+						LSub->LoadLevel(LevelPath);
+					}
+				}
+				FRequestPlaySessionParams Params;
+				Params.WorldType = EPlaySessionWorldType::PlayInEditor;
+
+				// RequestPlaySession ignores "Selected Viewport" without an
+				// explicit DestinationSlateViewport — hand it the active one.
+				const ULevelEditorPlaySettings* PlaySettings =
+					GetDefault<ULevelEditorPlaySettings>();
+				if (PlaySettings &&
+					PlaySettings->LastExecutedPlayModeType == PlayMode_InViewPort)
+				{
+					FLevelEditorModule& LE =
+						FModuleManager::LoadModuleChecked<FLevelEditorModule>(
+							TEXT("LevelEditor"));
+					if (TSharedPtr<ILevelEditor> LevelEditor =
+							LE.GetFirstLevelEditor())
+					{
+						if (TSharedPtr<SLevelViewport> Vp =
+								LevelEditor->GetActiveViewportInterface())
+						{
+							Params.DestinationSlateViewport = Vp;
+						}
+					}
+				}
+				GEditor->RequestPlaySession(Params);
+				QueueState->bQueued.store(true, std::memory_order_release);
+				return false;
+			}));
 	// Bounded — a modal dialog (PIE recompile error / asset-in-use) blocks
-	// the game thread; unbounded Wait() would hang the worker.
+	// the ticker; an unbounded wait would hang the worker. 60s covers a
+	// validate-on-save pass plus a large synchronous level load.
 	bool bQueued = false;
 	{
-		const double QueueDeadline = FPlatformTime::Seconds() + 10.0;
+		const double QueueDeadline = FPlatformTime::Seconds() + 60.0;
 		while (FPlatformTime::Seconds() < QueueDeadline)
 		{
-			if (QueuedEvent->Wait(FTimespan::FromMilliseconds(50)))
+			if (QueueState->bQueued.load(std::memory_order_acquire))
 			{
 				bQueued = true;
 				break;
@@ -571,9 +596,13 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 						break;
 				}
 			}
+			FPlatformProcess::Sleep(0.05f);
 		}
 	}
-	FPlatformProcess::ReturnSynchEventToPool(QueuedEvent);
+	if (!bQueued)
+	{
+		QueueState->bAbandoned.store(true, std::memory_order_release);
+	}
 	if (!bQueued)
 	{
 		TSharedPtr<FJsonObject> TimeoutReply = MakeShared<FJsonObject>();

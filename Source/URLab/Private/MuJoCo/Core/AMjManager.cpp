@@ -495,6 +495,11 @@ void AAMjManager::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	ApplyLatestRenderState();
+}
+
+void AAMjManager::ApplyLatestRenderState()
+{
 	if (!PhysicsEngine || !PhysicsEngine->IsInitialized())
 	{
 		return;

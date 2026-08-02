@@ -749,10 +749,12 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 							// Key by material name (resolved through default chain) if referenced, else fall back to mesh name
 							FString ResolvedMat = ResolveMaterialFromDefaults(GeomComp, BP);
 							FString MaterialKey = MeshName;
+							bool bSharedMjcfMaterial = false;
 							if (!ResolvedMat.IsEmpty() && MaterialData.Contains(ResolvedMat))
 							{
 								MatData = MaterialData[ResolvedMat];
 								MaterialKey = ResolvedMat;
+								bSharedMjcfMaterial = true;
 								UE_LOG(LogURLabEditor, Log, TEXT("Using shared material '%s' for mesh '%s'"), *ResolvedMat, *MeshName);
 							}
 
@@ -765,8 +767,44 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 
 							if (MaterialInstance)
 							{
-								MeshTemplate->SetMaterial(0, MaterialInstance);
-								UE_LOG(LogURLabEditor, Log, TEXT("Assigned material instance to mesh '%s'"), *MeshName);
+								// Stamp the MJCF material onto the static-mesh ASSET too,
+								// across every slot. GLB imports arrive with embedded
+								// placeholder or null slot materials, and any consumer of
+								// the asset that does not carry this template's override
+								// renders those (null slots draw the WorldGrid checker).
+								// MuJoCo renders one material per geom, so all slots get
+								// the same instance.
+								//
+								// Asset-level stamping applies ONLY when the geom resolved
+								// a real MJCF material: meshes are shared between visual
+								// and collision geoms (and multiple instances), and a
+								// later import of the same mesh from a material-less geom
+								// otherwise clobbers the visual's material on the shared
+								// asset with the mesh-name-keyed fallback. Fallback
+								// instances still apply to this template's override.
+								const int32 SlotCount = NewMesh->GetStaticMaterials().Num();
+								if (bSharedMjcfMaterial)
+								{
+									if (SlotCount == 0)
+									{
+										NewMesh->GetStaticMaterials().Add(FStaticMaterial(MaterialInstance));
+										NewMesh->MarkPackageDirty();
+									}
+									else
+									{
+										for (int32 SlotIdx = 0; SlotIdx < SlotCount; ++SlotIdx)
+										{
+											NewMesh->SetMaterial(SlotIdx, MaterialInstance);
+										}
+									}
+								}
+								for (int32 SlotIdx = 0; SlotIdx < FMath::Max(SlotCount, 1); ++SlotIdx)
+								{
+									MeshTemplate->SetMaterial(SlotIdx, MaterialInstance);
+								}
+								UE_LOG(LogURLabEditor, Log,
+									TEXT("Assigned material instance to mesh '%s' (%d slot(s), shared=%d)"),
+									*MeshName, FMath::Max(SlotCount, 1), bSharedMjcfMaterial ? 1 : 0);
 							}
 						}
 					}
@@ -824,6 +862,52 @@ void UMujocoGenerationAction::ImportNodeRecursive(const FXmlNode* Node, USCS_Nod
 	{
 		FString Name = Node->GetAttribute(TEXT("name"));
 		FString TypeStr = Node->GetAttribute(TEXT("type"));
+
+		// Resolve type inherited from a class default, same contract as
+		// geoms above: <default class="finger"><joint type="slide"/></default>
+		// then bare <joint class="finger"/>. Without this the joint
+		// compiles as the fallback hinge and slide joints rotate instead
+		// of translating (caught by the puppet pose-parity gate on the
+		// FR3 finger sliders).
+		if (TypeStr.IsEmpty())
+		{
+			FString SearchClass = Node->GetAttribute(TEXT("class"));
+			if (SearchClass.IsEmpty() && ParentNode)
+			{
+				if (UMjBody* ParentBody = Cast<UMjBody>(ParentNode->ComponentTemplate))
+				{
+					SearchClass = ParentBody->childclass;
+				}
+			}
+			if (!SearchClass.IsEmpty() && CreatedDefaultNodes.Contains(SearchClass))
+			{
+				if (USCS_Node* DefNode = CreatedDefaultNodes[SearchClass])
+				{
+					for (USCS_Node* DefChild : DefNode->ChildNodes)
+					{
+						UMjJoint* DefJoint = Cast<UMjJoint>(DefChild->ComponentTemplate);
+						if (!DefJoint)
+							continue;
+						switch (DefJoint->Type)
+						{
+							case EMjJointType::Hinge:
+								TypeStr = TEXT("hinge");
+								break;
+							case EMjJointType::Slide:
+								TypeStr = TEXT("slide");
+								break;
+							case EMjJointType::Ball:
+								TypeStr = TEXT("ball");
+								break;
+							case EMjJointType::Free:
+								TypeStr = TEXT("free");
+								break;
+						}
+						break;
+					}
+				}
+			}
+		}
 		if (Name.IsEmpty())
 		{
 			FString JointTypeName = TypeStr.IsEmpty() ? TEXT("Hinge") : TypeStr;
@@ -1463,7 +1547,9 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
 				EffectiveMeshBase = FPaths::Combine(XMLDir, CurrentAssetDir);
 			}
 
-			FString FullPath = FPaths::Combine(EffectiveMeshBase, MeshFile);
+			const FString FullPath = FPaths::IsRelative(MeshFile)
+				? FPaths::Combine(EffectiveMeshBase, MeshFile)
+				: MeshFile;
 
 			if (!OutMeshAssets.Contains(MeshName))
 			{
@@ -1542,7 +1628,9 @@ void UMujocoGenerationAction::ParseAssetsRecursive(const FXmlNode* Node, const F
 				EffectiveTextureBase = FPaths::Combine(XMLDir, CurrentAssetDir);
 			}
 
-			FString FullPath = FPaths::Combine(EffectiveTextureBase, TexFile);
+			const FString FullPath = FPaths::IsRelative(TexFile)
+				? FPaths::Combine(EffectiveTextureBase, TexFile)
+				: TexFile;
 
 			if (!OutTextureAssets.Contains(TexName))
 			{

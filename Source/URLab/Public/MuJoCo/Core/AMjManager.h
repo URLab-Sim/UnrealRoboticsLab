@@ -253,6 +253,15 @@ protected:
 public:
 	virtual void Tick(float DeltaTime) override;
 
+	/**
+	 * @brief Applies the engine's latest render snapshot to every
+	 * articulation and quick-convert component. Tick calls this once
+	 * per frame; game-thread code that needs the visual scene coherent
+	 * with the freshest physics state *now* (e.g. a sync camera capture
+	 * right after a puppet push) may call it directly.
+	 */
+	void ApplyLatestRenderState();
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
 	TArray<UMjQuickConvertComponent*> m_MujocoComponents;
 

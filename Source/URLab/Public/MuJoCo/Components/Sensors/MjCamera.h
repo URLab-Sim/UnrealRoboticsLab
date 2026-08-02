@@ -288,6 +288,30 @@ public:
 	TArray<float> ConsumeFloatPixels();
 
 	/**
+	 * @brief Serial of the next readback that will actually be issued.
+	 *
+	 * Readbacks are numbered in issue order. A caller that just rendered
+	 * into the target (CaptureScene) can record this value, then wait for
+	 * GetCompletedReadbackSerial() to reach it: any readback with that
+	 * serial (or later) was enqueued after the render, so its pixels
+	 * cannot predate it. Waiting on IsReadbackReady() alone is not
+	 * enough — with streaming on, the per-tick auto-readback keeps
+	 * completing readbacks that were enqueued before the render and
+	 * therefore still hold the previous frame. Game or worker thread.
+	 */
+	uint64 PeekNextReadbackSerial() const
+	{
+		return ReadbackIssueSerial.load(std::memory_order_acquire) + 1;
+	}
+
+	/** Serial of the most recently completed readback (0 = none yet).
+	 *  See PeekNextReadbackSerial for the freshness-wait recipe. */
+	uint64 GetCompletedReadbackSerial() const
+	{
+		return ReadbackCompleteSerial.load(std::memory_order_acquire);
+	}
+
+	/**
 	 * @brief Returns the ZMQ endpoint actually bound (may differ from ZmqEndpoint if auto-incremented).
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
@@ -356,6 +380,14 @@ private:
 	FRenderCommandFence ReadbackFence;
 	bool bReadbackPending = false;
 	bool bReadbackComplete = false;
+
+	// Issue-order numbering for readbacks (see PeekNextReadbackSerial).
+	// IssueSerial/CompleteSerial are read from bridge worker threads;
+	// InFlight is game-thread only (set at issue, published at fence
+	// completion).
+	std::atomic<uint64> ReadbackIssueSerial{0};
+	std::atomic<uint64> ReadbackCompleteSerial{0};
+	uint64 InFlightReadbackSerial = 0;
 
 	// ---- Streaming state ----
 	bool bStreamingEnabled = false;

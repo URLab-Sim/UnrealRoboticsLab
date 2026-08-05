@@ -31,6 +31,8 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
+#include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
@@ -110,16 +112,46 @@ void UMjBody::ApplyRenderState(const FMjRenderSnapshot& Snap)
 	const int32 QuatIdx = Id * 4;
 	if (Snap.XPos.Num() <= PosIdx + 2 || Snap.XQuat.Num() <= QuatIdx + 3)
 	{
-		UE_LOG(LogURLabBind, Warning,
-			TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) out of range "
-				 "of snapshot (XPos=%d, XQuat=%d). Disabling updates."),
-			*GetName(), Id, Snap.XPos.Num(), Snap.XQuat.Num());
-		m_IsSetup = false;
+		// An empty snapshot means the physics worker has not published one yet
+		// (the first ticks after BeginPlay, before the consumer-rate publish
+		// fills it). Skip this frame and retry next tick -- do NOT disable, or
+		// the body freezes permanently once the snapshot does fill. Warn only
+		// when the snapshot is populated yet still too small for this id (a real
+		// model/index mismatch), and only once.
+		if (Snap.XPos.Num() > 0 && !m_bWarnedSnapshotRange)
+		{
+			UE_LOG(LogURLabBind, Warning,
+				TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) out of range "
+					 "of a populated snapshot (XPos=%d, XQuat=%d)."),
+				*GetName(), Id, Snap.XPos.Num(), Snap.XQuat.Num());
+			m_bWarnedSnapshotRange = true;
+		}
 		return;
 	}
 
 	const FVector MuJoCoWorldPos = MjUtils::MjToUEPosition(&Snap.XPos[PosIdx]);
 	const FQuat MuJoCoWorldQuat = MjUtils::MjToUERotation(&Snap.XQuat[QuatIdx]);
+
+	// A zero or non-finite snapshot row would write a degenerate transform
+	// that NaN-floods the renderer (NIL LocalToWorld in the distance-field
+	// pass) for every mesh under this body. Skip the frame and name the
+	// offender once.
+	if (MuJoCoWorldPos.ContainsNaN() || MuJoCoWorldQuat.ContainsNaN()
+		|| MuJoCoWorldQuat.SizeSquared() < KINDA_SMALL_NUMBER)
+	{
+		if (!m_bWarnedDegenerateXform)
+		{
+			UE_LOG(LogURLabBind, Warning,
+				TEXT("MjBody::ApplyRenderState - Body '%s' (id=%d) got a "
+					 "degenerate snapshot transform (pos=%s quat=[%f %f %f %f]); "
+					 "skipping."),
+				*GetName(), Id, *MuJoCoWorldPos.ToString(),
+				Snap.XQuat[QuatIdx], Snap.XQuat[QuatIdx + 1],
+				Snap.XQuat[QuatIdx + 2], Snap.XQuat[QuatIdx + 3]);
+			m_bWarnedDegenerateXform = true;
+		}
+		return;
+	}
 
 	FVector CorrectedPos = MuJoCoWorldPos;
 
@@ -353,6 +385,19 @@ void UMjBody::Bind(mjModel* Model, mjData* Data, const FString& Prefix)
 BodyView UMjBody::GetBodyView() const
 {
 	return m_BodyView;
+}
+
+void UMjBody::DescribeState(FMjArticulationState& Out) const
+{
+	const BodyView& V = m_BodyView;
+	if (V.id < 0 || !V.xpos || !V.xquat)
+		return;
+	FMjBodyState& B = Out.Bodies.AddDefaulted_GetRef();
+	B.Name = FMjCanonicalName::PartSegment(Cast<AMjArticulation>(GetOwner()), GetMjName());
+	for (int32 i = 0; i < 3; ++i)
+		B.Xpos[i] = V.xpos[i];
+	for (int32 i = 0; i < 4; ++i)
+		B.Xquat[i] = V.xquat[i];
 }
 
 FVector UMjBody::GetWorldPosition() const

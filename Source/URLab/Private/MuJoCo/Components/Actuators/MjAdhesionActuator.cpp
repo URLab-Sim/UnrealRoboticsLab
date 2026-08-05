@@ -40,7 +40,13 @@ void UMjAdhesionActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
 	// --- CODEGEN_EXPORT_START ---
-	mjs_setToAdhesion(Element, bOverride_gain ? (double)gain : 0.0);
+	{
+		const char* SetToErr = mjs_setToAdhesion(Element, bOverride_gain ? (double)gain : Element->gainprm[0]);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToAdhesion on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
+	}
 	// --- CODEGEN_EXPORT_END ---
 }
 

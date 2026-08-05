@@ -28,6 +28,9 @@
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Core/Spec/MjSpecWrapper.h"
 #include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
 
 UMjJoint::UMjJoint()
 {
@@ -589,23 +592,58 @@ void UMjJoint::RegisterToSpec(FMujocoSpecWrapper& Wrapper, mjsBody* ParentBody)
 	ExportTo(Jnt, effectiveDefault);
 }
 
-void UMjJoint::BuildBinaryPayload(FBufferArchive& OutBuffer) const
+void UMjJoint::DescribeState(FMjArticulationState& Out) const
 {
-	int32 JointID = m_ID;
-	OutBuffer << JointID;
+	const JointView& V = m_JointView;
+	if (V.id < 0 || !V.qpos || !V.qvel)
+		return;
 
-	float JointPos = GetPosition();
-	float JointVel = GetVelocity();
-	float JointAcc = GetAcceleration();
+	// Per-joint slot widths follow the joint type (free 7/6, ball 4/3,
+	// hinge/slide 1/1). V.qpos / V.qvel already point at this joint's first slot.
+	int32 QSize = 1;
+	int32 VSize = 1;
+	EMjJointType JType = EMjJointType::Hinge;
+	switch (V.jnt_type)
+	{
+		case mjJNT_FREE:
+			QSize = 7;
+			VSize = 6;
+			JType = EMjJointType::Free;
+			break;
+		case mjJNT_BALL:
+			QSize = 4;
+			VSize = 3;
+			JType = EMjJointType::Ball;
+			break;
+		case mjJNT_SLIDE:
+			JType = EMjJointType::Slide;
+			break;
+		case mjJNT_HINGE:
+		default:
+			JType = EMjJointType::Hinge;
+			break;
+	}
 
-	OutBuffer << JointPos;
-	OutBuffer << JointVel;
-	OutBuffer << JointAcc;
-}
+	FMjJointState& J = Out.Joints.AddDefaulted_GetRef();
+	J.Name = FMjCanonicalName::PartSegment(Cast<AMjArticulation>(GetOwner()), GetMjName());
+	J.Type = JType;
+	J.QPos.SetNumUninitialized(QSize);
+	J.QVel.SetNumUninitialized(VSize);
+	for (int32 i = 0; i < QSize; ++i)
+		J.QPos[i] = V.qpos[i];
+	for (int32 i = 0; i < VSize; ++i)
+		J.QVel[i] = V.qvel[i];
 
-FString UMjJoint::GetTelemetryTopicName() const
-{
-	return FString::Printf(TEXT("joint/%s"), *GetName());
+	// Reference (qpos0) slice for the 1-DOF joints the URDF exposes, so the ROS
+	// /joint_states shift can emit qpos - qpos0 (URDF q=0 == MuJoCo qpos0). Free
+	// and ball joints are not URDF joints, so no shift is recorded for them.
+	if ((JType == EMjJointType::Hinge || JType == EMjJointType::Slide)
+		&& V._m && V.jnt_qposadr >= 0)
+	{
+		J.RefPos.SetNumUninitialized(QSize);
+		for (int32 i = 0; i < QSize; ++i)
+			J.RefPos[i] = V._m->qpos0[V.jnt_qposadr + i];
+	}
 }
 
 #if WITH_EDITOR

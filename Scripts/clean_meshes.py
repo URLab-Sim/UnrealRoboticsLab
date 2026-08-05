@@ -41,6 +41,7 @@ import trimesh
 import numpy as np
 from pathlib import Path
 from xml.etree import ElementTree as ET
+import os
 import sys
 import copy
 
@@ -53,9 +54,18 @@ def clean_mesh(mesh):
     mesh.remove_unreferenced_vertices()
     try:
         import networkx  # noqa: F401 - trimesh's fix_normals requires it
-        mesh.fix_normals()
     except ImportError:
-        print("  Warning: networkx not installed, skipping fix_normals (GLB may have lighting issues)")
+        # A GLB exported without fixed normals imports into Unreal with
+        # degenerate normals/tangents on every mesh. Failing here makes
+        # convert_mesh() skip the GLB entirely, so the importer falls back
+        # to the source mesh and Unreal computes clean normals itself.
+        raise RuntimeError(
+            "networkx is not installed (required by trimesh.fix_normals); "
+            "skipping GLB conversion so the source mesh is imported instead. "
+            "Install it via the plugin's Python-dependency prompt or "
+            "'python -m pip install networkx'."
+        )
+    mesh.fix_normals()
 
     # Rotate -90 degrees around X for GLTF Y-up -> Unreal Z-up
     rotation_matrix = trimesh.transformations.rotation_matrix(-np.radians(90), [1, 0, 0])
@@ -63,6 +73,19 @@ def clean_mesh(mesh):
 
     print(f"  Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
     return mesh
+
+
+_SCRIPT_MTIME = Path(__file__).stat().st_mtime
+
+
+def glb_up_to_date(output_glb: Path, source_path: Path) -> bool:
+    """A GLB is stale when older than its source mesh OR older than this
+    script -- conversion fixes ship with the script, so GLBs produced by an
+    older version must be regenerated."""
+    if not output_glb.exists():
+        return False
+    mtime = output_glb.stat().st_mtime
+    return mtime > source_path.stat().st_mtime and mtime > _SCRIPT_MTIME
 
 
 def convert_mesh(input_path: Path, output_path: Path) -> bool:
@@ -98,7 +121,10 @@ def convert_mesh(input_path: Path, output_path: Path) -> bool:
         if np.allclose(size, 0):
             print(f"  Warning: Mesh has zero size!")
 
-        cleaned_mesh.export(str(output_path))
+        # include_normals: trimesh omits the NORMAL accessor by default and
+        # Unreal then builds the mesh with zero normals ("degenerate tangent
+        # bases" / "nearly zero normals" on every import).
+        cleaned_mesh.export(str(output_path), include_normals=True)
         print(f"  -> Saved: {output_path.name}")
         return True
 
@@ -110,6 +136,110 @@ def convert_mesh(input_path: Path, output_path: Path) -> bool:
 def _parse_floats(s: str) -> list:
     """Whitespace-tolerant float list parser for inline mesh attributes."""
     return [float(t) for t in s.replace(",", " ").split() if t]
+
+
+# Asset elements whose ``file=`` attribute is a path that must stay resolvable
+# after includes are flattened into a single file in a (possibly) different dir.
+_ASSET_FILE_TAGS = ("mesh", "texture", "hfield", "skin")
+# Tags that may legally be the root of an MJCF document or an include fragment.
+_MODEL_ROOT_TAGS = ("mujoco", "mujocoinclude")
+
+
+def _compiler_dirs(root) -> tuple:
+    """Return (meshdir, texturedir, assetdir) declared by any <compiler> directly
+    under ``root``. MuJoCo allows several compiler elements; later ones win for a
+    given attribute, matching the C++ importer's last-writer behaviour."""
+    md = txd = ad = ""
+    for comp in root.findall("compiler"):
+        md = comp.get("meshdir", md)
+        txd = comp.get("texturedir", txd)
+        ad = comp.get("assetdir", ad)
+    return md, txd, ad
+
+
+def _rewrite_asset_path(elem, src_dir: Path, root_dir: Path,
+                        meshdir: str, texturedir: str, assetdir: str):
+    """Rewrite an asset element's ``file=`` so it resolves from ``root_dir`` (the
+    output _ue.xml location) after the declaring file has been spliced in.
+
+    Paths are resolved relative to the *declaring* file's directory plus its
+    meshdir/texturedir/assetdir, matching how the C++ importer resolves includes,
+    then re-expressed relative to root_dir. The companion <compiler> dir
+    attributes are cleared by the caller so nothing double-prefixes them.
+    """
+    file_attr = elem.get("file")
+    if not file_attr:
+        return
+    if elem.tag == "texture":
+        subdir = texturedir or assetdir
+    else:  # mesh, hfield, skin
+        subdir = meshdir or assetdir
+    base = src_dir / subdir if subdir else src_dir
+    abs_path = (base / file_attr).resolve()
+    try:
+        rel = os.path.relpath(abs_path, root_dir)
+    except ValueError:
+        rel = str(abs_path)  # different drive on Windows — keep absolute
+    elem.set("file", rel.replace("\\", "/"))
+
+
+def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
+                     meshdir: str, texturedir: str, assetdir: str, visited: set):
+    """Copy ``elem`` into ``out_parent``, recursively expanding any <include>
+    descendants in place. Handles both <mujoco> and <mujocoinclude> include roots
+    and rewrites asset file= paths to stay valid from root_dir."""
+    if elem.tag == "include":
+        inc_file = elem.get("file")
+        if not inc_file:
+            return
+        inc_path = (src_dir / inc_file).resolve()
+        if inc_path in visited:
+            print(f"  [include] cycle/duplicate skipped: {inc_path}")
+            return
+        if not inc_path.exists():
+            print(f"  x [include] file not found, leaving unresolved: {inc_path}")
+            return
+        visited.add(inc_path)
+        inc_root = ET.parse(str(inc_path)).getroot()
+        inc_dir = inc_path.parent
+        imd, itxd, iad = _compiler_dirs(inc_root)
+        # Splice the included root's children directly into the current parent.
+        for child in list(inc_root):
+            _append_expanded(out_parent, child, inc_dir, root_dir, imd, itxd, iad, visited)
+        return
+
+    # Regular element: shallow-copy attributes, then recurse into children.
+    new_elem = ET.SubElement(out_parent, elem.tag, dict(elem.attrib))
+    new_elem.text = elem.text
+    new_elem.tail = elem.tail
+
+    if elem.tag in _ASSET_FILE_TAGS:
+        _rewrite_asset_path(new_elem, src_dir, root_dir, meshdir, texturedir, assetdir)
+    elif elem.tag == "compiler":
+        # Paths are now baked into each file=, so clear the dir prefixes.
+        for attr in ("meshdir", "texturedir", "assetdir"):
+            new_elem.attrib.pop(attr, None)
+
+    for child in list(elem):
+        _append_expanded(new_elem, child, src_dir, root_dir,
+                         meshdir, texturedir, assetdir, visited)
+
+
+def flatten_includes(root, root_dir: Path):
+    """Resolve every <include> into a single self-contained <mujoco> tree.
+
+    gym-aloha (and many MJCF models) split a robot across <include> fragments
+    rooted in <mujocoinclude>, including files referenced from inside <worldbody>.
+    Unreal's importer must see one flat document so all <asset>/<compiler>/body
+    content is visible and there is exactly one worldbody. Returns the new root
+    element (a <mujoco>). No-op-equivalent for files without includes.
+    """
+    md, txd, ad = _compiler_dirs(root)
+    visited = set()
+    new_root = ET.Element("mujoco", dict(root.attrib))
+    for child in list(root):
+        _append_expanded(new_root, child, root_dir, root_dir, md, txd, ad, visited)
+    return new_root
 
 
 def materialize_inline_meshes(root, mesh_base: Path) -> int:
@@ -202,6 +332,18 @@ def process_xml(xml_path: Path):
     tree = ET.parse(str(xml_path))
     root = tree.getroot()
 
+    # Phase -1: Flatten <include> fragments (gym-aloha and friends split robots
+    # across <mujocoinclude> files, some referenced from inside <worldbody>).
+    # After this the tree is a single self-contained <mujoco> with no includes,
+    # so mesh conversion below sees every mesh and Unreal imports one flat model.
+    include_count = sum(1 for _ in root.iter("include"))
+    if include_count:
+        print(f"Flattening {include_count} <include> fragment(s)...")
+        root = flatten_includes(root, xml_dir.resolve())
+        tree = ET.ElementTree(root)
+        remaining = sum(1 for _ in root.iter("include"))
+        print(f"  -> {remaining} include(s) remain after flatten")
+
     # Find meshdir from compiler
     meshdir = ""
     for compiler in root.iter("compiler"):
@@ -229,9 +371,11 @@ def process_xml(xml_path: Path):
             source_path = mesh_base / file_attr
             if source_path.exists():
                 output_glb = source_path.with_suffix(".glb")
-                if not output_glb.exists() or output_glb.stat().st_mtime < source_path.stat().st_mtime:
+                if not glb_up_to_date(output_glb, source_path):
                     print(f"\n[flexcomp] Converting mesh: {source_path.name} -> {output_glb.name}")
-                    convert_mesh(source_path, output_glb)
+                    if not convert_mesh(source_path, output_glb) and output_glb.exists():
+                        output_glb.unlink()
+                        print(f"[flexcomp] Removed stale GLB: {output_glb.name}")
                 else:
                     print(f"\n[flexcomp] Mesh up to date: {output_glb.name}")
 
@@ -329,8 +473,7 @@ def process_xml(xml_path: Path):
             print(f"\n  x Source not found: {actual_source}")
             continue
 
-        # Skip if GLB already exists and is newer than source
-        if output_glb.exists() and output_glb.stat().st_mtime > actual_source.stat().st_mtime:
+        if glb_up_to_date(output_glb, actual_source):
             print(f"\n  Skipping '{mesh_name}' (GLB up to date): {output_glb.name}")
             success_count += 1
             continue
@@ -340,6 +483,13 @@ def process_xml(xml_path: Path):
             success_count += 1
         else:
             print(f"  x FAILED to convert {actual_source.name}")
+            # Never leave a stale or partial GLB behind: the importer
+            # prefers .glb over the source mesh, so a leftover here would
+            # silently ship the very data the conversion just refused to
+            # produce.
+            if output_glb.exists():
+                output_glb.unlink()
+                print(f"  -> Removed stale GLB: {output_glb.name}")
 
     # Phase 4: Write updated XML
     output_xml = xml_path.parent / f"{xml_path.stem}_ue.xml"

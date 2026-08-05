@@ -22,6 +22,8 @@
 
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "XmlNode.h"
+#include "XmlFile.h"
+#include "Misc/Paths.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "Utils/URLabLogging.h"
 #include "mujoco/mujoco.h"
@@ -30,70 +32,75 @@
 // Compiler Settings
 // ============================================================================
 
-FMjCompilerSettings MjOrientationUtils::ParseCompilerSettings(const FXmlNode* RootNode)
+// Apply one <compiler> element's attributes onto Settings, overriding only the
+// attributes actually present so multiple compilers merge (later wins).
+static void ApplyCompilerNode(const FXmlNode* CompilerNode, FMjCompilerSettings& Settings)
+{
+	if (!CompilerNode)
+		return;
+
+	// angle: "degree" or "radian". MuJoCo's default is "degree" (Settings default).
+	const FString AngleStr = CompilerNode->GetAttribute(TEXT("angle"));
+	if (AngleStr.Equals(TEXT("radian"), ESearchCase::IgnoreCase))
+		Settings.bAngleInDegrees = false;
+	else if (AngleStr.Equals(TEXT("degree"), ESearchCase::IgnoreCase))
+		Settings.bAngleInDegrees = true;
+
+	// eulerseq: 3-character string (default "xyz")
+	const FString EulerSeqStr = CompilerNode->GetAttribute(TEXT("eulerseq"));
+	if (!EulerSeqStr.IsEmpty() && EulerSeqStr.Len() == 3)
+		Settings.EulerSeq = EulerSeqStr;
+
+	// meshdir: base directory for mesh file lookups
+	const FString MeshDirStr = CompilerNode->GetAttribute(TEXT("meshdir"));
+	if (!MeshDirStr.IsEmpty())
+		Settings.MeshDir = MeshDirStr;
+
+	// assetdir: base directory for all assets (overrides meshdir for mesh lookups)
+	const FString AssetDirStr = CompilerNode->GetAttribute(TEXT("assetdir"));
+	if (!AssetDirStr.IsEmpty())
+		Settings.AssetDir = AssetDirStr;
+
+	// autolimits: joints/tendons with range are automatically limited
+	const FString AutoLimitsStr = CompilerNode->GetAttribute(TEXT("autolimits"));
+	if (AutoLimitsStr.Equals(TEXT("true"), ESearchCase::IgnoreCase))
+		Settings.bAutoLimits = true;
+}
+
+// Walk a model/fragment root applying every <compiler> in document order,
+// descending into <include>d fragments (rooted in <mujocoinclude>).
+static void GatherCompilerSettings(const FXmlNode* Node, const FString& XMLDir, FMjCompilerSettings& Settings)
+{
+	if (!Node)
+		return;
+	for (const FXmlNode* Child : Node->GetChildrenNodes())
+	{
+		const FString Tag = Child->GetTag();
+		if (Tag.Equals(TEXT("compiler"), ESearchCase::IgnoreCase))
+		{
+			ApplyCompilerNode(Child, Settings);
+		}
+		else if (Tag.Equals(TEXT("include"), ESearchCase::IgnoreCase) && !XMLDir.IsEmpty())
+		{
+			const FString FileAttr = Child->GetAttribute(TEXT("file"));
+			if (!FileAttr.IsEmpty())
+			{
+				const FString IncludePath = FPaths::Combine(XMLDir, FileAttr);
+				FXmlFile IncludedFile(IncludePath);
+				if (IncludedFile.IsValid())
+					GatherCompilerSettings(IncludedFile.GetRootNode(), FPaths::GetPath(IncludePath), Settings);
+			}
+		}
+	}
+}
+
+FMjCompilerSettings MjOrientationUtils::ParseCompilerSettings(const FXmlNode* RootNode, const FString& XMLDir)
 {
 	FMjCompilerSettings Settings;
 	if (!RootNode)
 		return Settings;
 
-	// Search for <compiler> element among children of the root <mujoco> node
-	const FXmlNode* CompilerNode = nullptr;
-	for (const FXmlNode* Child : RootNode->GetChildrenNodes())
-	{
-		if (Child->GetTag().Equals(TEXT("compiler"), ESearchCase::IgnoreCase))
-		{
-			CompilerNode = Child;
-			break;
-		}
-		// Also check includes that might contain a compiler element at top level
-		if (Child->GetTag().Equals(TEXT("include"), ESearchCase::IgnoreCase))
-		{
-			// Includes are resolved elsewhere; compiler in includes would need
-			// the included file to be loaded. For now, we only check direct children.
-		}
-	}
-
-	if (!CompilerNode)
-		return Settings;
-
-	// angle: "degree" or "radian". MuJoCo's default is "degree" (Settings default).
-	FString AngleStr = CompilerNode->GetAttribute(TEXT("angle"));
-	if (AngleStr.Equals(TEXT("radian"), ESearchCase::IgnoreCase))
-	{
-		Settings.bAngleInDegrees = false;
-	}
-	else if (AngleStr.Equals(TEXT("degree"), ESearchCase::IgnoreCase))
-	{
-		Settings.bAngleInDegrees = true;
-	}
-
-	// eulerseq: 3-character string (default "xyz")
-	FString EulerSeqStr = CompilerNode->GetAttribute(TEXT("eulerseq"));
-	if (!EulerSeqStr.IsEmpty() && EulerSeqStr.Len() == 3)
-	{
-		Settings.EulerSeq = EulerSeqStr;
-	}
-
-	// meshdir: base directory for mesh file lookups
-	FString MeshDirStr = CompilerNode->GetAttribute(TEXT("meshdir"));
-	if (!MeshDirStr.IsEmpty())
-	{
-		Settings.MeshDir = MeshDirStr;
-	}
-
-	// assetdir: base directory for all assets (overrides meshdir for mesh lookups)
-	FString AssetDirStr = CompilerNode->GetAttribute(TEXT("assetdir"));
-	if (!AssetDirStr.IsEmpty())
-	{
-		Settings.AssetDir = AssetDirStr;
-	}
-
-	// autolimits: joints/tendons with range are automatically limited
-	FString AutoLimitsStr = CompilerNode->GetAttribute(TEXT("autolimits"));
-	if (AutoLimitsStr.Equals(TEXT("true"), ESearchCase::IgnoreCase))
-	{
-		Settings.bAutoLimits = true;
-	}
+	GatherCompilerSettings(RootNode, XMLDir, Settings);
 
 	UE_LOG(LogURLabImport, Log, TEXT("[MjOrientationUtils] Compiler settings: angle=%s, eulerseq=%s, meshdir=%s, assetdir=%s, autolimits=%s"),
 		Settings.bAngleInDegrees ? TEXT("degree") : TEXT("radian"),

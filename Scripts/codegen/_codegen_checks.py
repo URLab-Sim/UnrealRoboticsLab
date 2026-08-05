@@ -768,21 +768,25 @@ def _check_setto_param_coverage(
             sig = mjspec["setto_functions"][fn_name]
             renames = setto_def.get("param_renames", {})
             fn_defaults = set(setto_defaults.get(fn_name, {}).keys())
+            nullable = set(setto_def.get("nullable_params", []))
+            inherited = set(setto_def.get("inherit_fields", {}).keys())
             sub_attrs = set(schema_subtype_attrs(schema, cat_name, sub_key))
             schema_attr_set = common_attrs | sub_attrs
             for p in sig.get("params", []):
                 pname = p["name"]
                 ue_prop = renames.get(pname, pname)
-                if ue_prop in schema_attr_set or pname in fn_defaults:
+                if (ue_prop in schema_attr_set or pname in fn_defaults
+                        or pname in nullable or pname in inherited):
                     continue
                 _diag_add(
                     f"[diagnostic] {fn_name} param '{pname}' is not "
                     f"in the {cat_name}.{sub_key} schema attrs and "
-                    f"has no param_renames or setto_param_defaults "
-                    f"entry. Codegen passes the generic sentinel for "
-                    f"it. If MuJoCo added this param, decide whether "
-                    f"to expose it as a UE UPROPERTY (schema attr + "
-                    f"type_mapping) or pin its sentinel.",
+                    f"has no param_renames / setto_param_defaults / "
+                    f"nullable_params / inherit_fields entry. Codegen "
+                    f"passes the generic sentinel for it. If MuJoCo added "
+                    f"this param, decide whether to expose it as a UE "
+                    f"UPROPERTY (schema attr + type_mapping), pin its "
+                    f"sentinel, or mark it nullable/inherited.",
                     source="setto_param_coverage",
                 )
 

@@ -154,6 +154,8 @@ public:
 
 	void Bind(mjModel* Model, mjData* Data, const FString& Prefix = TEXT(""));
 
+	virtual void DescribeState(FMjArticulationState& Out) const override;
+
 	BodyView GetBodyView() const;
 
 	/** @brief Semantic accessor for raw MuJoCo data and helper methods. */
@@ -220,6 +222,14 @@ private:
 	BodyView m_BodyView;
 
 	bool m_IsSetup = false;
+
+	// One-shot guard so a degenerate (zero/NaN) snapshot transform warns once
+	// instead of every frame.
+	bool m_bWarnedDegenerateXform = false;
+
+	// One-shot guard so a genuine snapshot/index mismatch warns once instead of
+	// every frame.
+	bool m_bWarnedSnapshotRange = false;
 
 	FVector m_MeshPivotOffset = FVector::ZeroVector;
 

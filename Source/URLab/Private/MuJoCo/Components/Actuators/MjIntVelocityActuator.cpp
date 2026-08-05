@@ -43,8 +43,11 @@ void UMjIntVelocityActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	{
 		double kvBuf[1] = {bOverride_kv ? (double)kv : -1.0};
 		double dampratioBuf[1] = {bOverride_dampratio ? (double)dampratio : -1.0};
-		double timeconstBuf[1] = {-1.0};
-		mjs_setToIntVelocity(Element, bOverride_kp ? (double)kp : -1.0, kvBuf, dampratioBuf, timeconstBuf, bOverride_inheritrange ? (double)inheritrange : 0.0);
+		const char* SetToErr = mjs_setToIntVelocity(Element, bOverride_kp ? (double)kp : Element->gainprm[0], bOverride_kv ? kvBuf : nullptr, bOverride_dampratio ? dampratioBuf : nullptr, nullptr, bOverride_inheritrange ? (double)inheritrange : 0.0);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToIntVelocity on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
 	}
 	if (bOverride_inheritrange)
 		Element->inheritrange = inheritrange;

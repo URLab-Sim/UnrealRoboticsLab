@@ -40,12 +40,6 @@ public:
 
 	UMjFreeJoint();
 
-	/** Broadcasts full free joint state: pos[3], quat[4], linvel[3], angvel[3] = 13 floats. */
-	virtual void BuildBinaryPayload(FBufferArchive& OutBuffer) const override;
-
-	/** Returns base_state/<name> to distinguish from scalar hinge joints. */
-	virtual FString GetTelemetryTopicName() const override;
-
 	virtual void ImportFromXml(const class FXmlNode* Node, const struct FMjCompilerSettings& CompilerSettings = FMjCompilerSettings{}) override;
 
 	virtual void ExportTo(mjsJoint* Element, mjsDefault* Default = nullptr) override;

@@ -74,7 +74,11 @@ void UMjDcMotorActuator::ExportTo(mjsActuator* Element, mjsDefault* Default)
 		FillDouble(thermalBuf, thermal);
 		double lugreBuf[5];
 		FillDouble(lugreBuf, lugre);
-		mjs_setToDCMotor(Element, bOverride_motorconst ? motorconstBuf : nullptr, bOverride_resistance ? (double)resistance : 0.0, bOverride_nominal ? nominalBuf : nullptr, bOverride_saturation ? saturationBuf : nullptr, bOverride_inductance ? inductanceBuf : nullptr, bOverride_cogging ? coggingBuf : nullptr, bOverride_controller ? controllerBuf : nullptr, bOverride_thermal ? thermalBuf : nullptr, bOverride_lugre ? lugreBuf : nullptr, bOverride_input ? (int)input : 0);
+		const char* SetToErr = mjs_setToDCMotor(Element, bOverride_motorconst ? motorconstBuf : nullptr, bOverride_resistance ? (double)resistance : 0.0, bOverride_nominal ? nominalBuf : nullptr, bOverride_saturation ? saturationBuf : nullptr, bOverride_inductance ? inductanceBuf : nullptr, bOverride_cogging ? coggingBuf : nullptr, bOverride_controller ? controllerBuf : nullptr, bOverride_thermal ? thermalBuf : nullptr, bOverride_lugre ? lugreBuf : nullptr, bOverride_input ? (int)input : 0);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToDCMotor on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
 	}
 	// --- CODEGEN_EXPORT_END ---
 }

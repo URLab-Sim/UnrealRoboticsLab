@@ -40,7 +40,13 @@ void UMjCylinderActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
 	// --- CODEGEN_EXPORT_START ---
-	mjs_setToCylinder(Element, (bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0, bOverride_bias ? (double)bias : -1.0, bOverride_area ? (double)area : -1.0, bOverride_diameter ? (double)diameter : -1.0);
+	{
+		const char* SetToErr = mjs_setToCylinder(Element, (bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : Element->dynprm[0], bOverride_bias ? (double)bias : Element->biasprm[0], bOverride_area ? (double)area : Element->gainprm[0], bOverride_diameter ? (double)diameter : -1.0);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToCylinder on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
+	}
 	// --- CODEGEN_EXPORT_END ---
 }
 

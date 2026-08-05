@@ -80,6 +80,11 @@ void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
 	// --- CODEGEN_IMPORT_END ---
 
 	Super::ImportFromXml(Node, CompilerSettings);
+	SyncEditorScaleFromSize();
+}
+
+void UMjCylinder::SyncEditorScaleFromSize()
+{
 	// Clamp -1.0f sentinels (set by the fromto canon when slot is unset).
 	auto ReadSlot = [this](int32 i) -> float {
 		if (size.Num() <= i)
@@ -89,7 +94,13 @@ void UMjCylinder::ImportFromXml(const FXmlNode* Node, const FMjCompilerSettings&
 	Radius = ReadSlot(0);
 	HalfLength = ReadSlot(1);
 
-	// Sync Unreal scale immediately on import so the editor visual matches the data
+	if (Radius <= 0.0f || HalfLength <= 0.0f)
+	{
+		// Size not resolvable yet (inherited from a default class); keep the
+		// current scale rather than baking a degenerate zero into the template.
+		return;
+	}
+
 	const float BaseSize = 50.0f;
 	const float UnitScale = 100.0f;
 	FVector NewScale;

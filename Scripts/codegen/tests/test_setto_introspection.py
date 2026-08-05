@@ -45,20 +45,51 @@ def test_motor_call_minimal(real_rules, real_schema):
     assert "mjs_setToMotor(Element);" in out
 
 
-def test_position_uses_scalar_in_buffer_and_inheritrange_zero_sentinel(real_rules, real_schema):
-    """Position's kv/dampratio/timeconst are double[1] in C; UE side is float
-    (kv, dampratio) or TArray<float> (timeconst). All three become 1-elem buffers.
-    inheritrange uses the 0.0 sentinel (per setto_param_defaults), NOT -1.0."""
+def test_position_inherits_kp_and_nulls_unset_pointers(real_rules, real_schema):
+    """Position's kv/dampratio/timeconst are double[1] in C and nullable: the
+    buffer is built but passed only when overridden, else nullptr. kp is written
+    unconditionally by MuJoCo, so an unset kp re-asserts the inherited element
+    gain. inheritrange keeps its 0.0 sentinel (MuJoCo guards it with `> 0`)."""
     mjspec = _load_mjspec()
     out = _setto_for("position", real_rules, real_schema, mjspec)
     assert "double kvBuf[1] = { bOverride_kv ? (double)kv : -1.0 };" in out
     assert "double dampratioBuf[1] = { bOverride_dampratio ? (double)dampratio : -1.0 };" in out
-    # TArray UE side -> .Num() guard with [0] indexing.
-    assert "(bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0" in out
+    # kp is unconditional-by-value -> re-assert the inherited gain, not -1.0.
+    assert "bOverride_kp ? (double)kp : Element->gainprm[0]" in out
+    # Pointer params passed only when authored, else nullptr (MuJoCo's unset
+    # convention) so the class default survives.
+    assert "bOverride_kv ? kvBuf : nullptr" in out
+    assert "bOverride_dampratio ? dampratioBuf : nullptr" in out
+    # timeconst is TArray-backed: an authored-but-empty array is unset too.
+    assert "(bOverride_timeconst && timeconst.Num() > 0) ? timeconstBuf : nullptr" in out
     # inheritrange override sentinel from setto_param_defaults.
     assert "bOverride_inheritrange ? (double)inheritrange : 0.0" in out
-    # mjs_setToPosition uses the buffers, not raw scalars.
     assert "mjs_setToPosition(Element," in out
+
+
+def test_unconditional_gain_params_reassert_inherited_field(real_rules, real_schema):
+    """velocity/adhesion/damper each write a single gain slot unconditionally.
+    An unset param must re-assert the inherited element field so a class default
+    (e.g. <velocity kv=...> under a <default class>) is preserved, not clobbered
+    to a sentinel. damper's kv maps to -gainprm[2] (setToDamper does gainprm[2]
+    = -kv), so the re-assert carries the sign."""
+    mjspec = _load_mjspec()
+    assert "bOverride_kv ? (double)kv : Element->gainprm[0]" in \
+        _setto_for("velocity", real_rules, real_schema, mjspec)
+    assert "bOverride_gain ? (double)gain : Element->gainprm[0]" in \
+        _setto_for("adhesion", real_rules, real_schema, mjspec)
+    assert "bOverride_kv ? (double)kv : -Element->gainprm[2]" in \
+        _setto_for("damper", real_rules, real_schema, mjspec)
+
+
+def test_setto_call_surfaces_error_return(real_rules, real_schema):
+    """Every mjs_setTo* return string is checked and logged, not discarded —
+    that discarded return is what hid the gain-clobber bug for so long."""
+    mjspec = _load_mjspec()
+    for sub in ("position", "velocity", "cylinder", "motor"):
+        out = _setto_for(sub, real_rules, real_schema, mjspec)
+        assert "const char* SetToErr =" in out
+        assert "if (SetToErr && *SetToErr)" in out
 
 
 def test_muscle_scale_projection_and_tausmooth_zero(real_rules, real_schema):
@@ -88,22 +119,31 @@ def test_dcmotor_nullable_arrays_use_filldouble_and_input_rename(real_rules, rea
     assert "bOverride_resistance ? (double)resistance : 0.0" in out
 
 
-def test_intvelocity_drops_uninvolved_params_to_sentinels(real_rules, real_schema):
-    """IntVelocity exposes only kp/kv/dampratio in the schema. The C signature
-    still requires timeconst and inheritrange — they should default to
-    sentinel values via the 'param not in schema -> force sentinel' rule."""
+def test_intvelocity_inherits_kp_and_nulls_unset_pointers(real_rules, real_schema):
+    """IntVelocity writes gainprm[0] = kp unconditionally, so an unset kp must
+    re-assert the inherited element value, not a sentinel that clobbers it.
+    timeconst (not in the intvelocity schema) is a nullable pointer param, so it
+    passes nullptr — MuJoCo then leaves the type-derived default alone."""
     mjspec = _load_mjspec()
     out = _setto_for("intvelocity", real_rules, real_schema, mjspec)
     assert "double kvBuf[1]" in out
-    # timeconst not in intvelocity schema -> forced sentinel buffer.
-    assert "double timeconstBuf[1] = { -1.0 }" in out
-    # inheritrange not in intvelocity schema -> default override per setto_param_defaults (0.0).
-    assert "0.0);" in out or "0.0)" in out
+    # kp is unconditional-by-value -> re-assert the inherited gain, not -1.0.
+    assert "bOverride_kp ? (double)kp : Element->gainprm[0]" in out
+    # timeconst nullable + not authored -> bare nullptr, no sentinel buffer.
+    assert "double timeconstBuf" not in out
+    assert "nullptr" in out
+    # kv/dampratio are nullable too: buffer built, but passed only when set.
+    assert "bOverride_kv ? kvBuf : nullptr" in out
 
 
-def test_cylinder_timeconst_scalar_projection(real_rules, real_schema):
-    """Cylinder's timeconst C param is scalar (not [1]). UE side is
-    TArray<float>. The emitter must project to element [0]."""
+def test_cylinder_reasserts_inherited_gain_fields(real_rules, real_schema):
+    """Cylinder writes dynprm[0]/biasprm[0]/gainprm[0] unconditionally, so unset
+    timeconst/bias/area re-assert the inherited element field rather than a -1
+    sentinel that would clobber the class default. diameter keeps its sentinel
+    because MuJoCo guards it with `>= 0`."""
     mjspec = _load_mjspec()
     out = _setto_for("cylinder", real_rules, real_schema, mjspec)
-    assert "(bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0" in out
+    assert "(bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : Element->dynprm[0]" in out
+    assert "bOverride_bias ? (double)bias : Element->biasprm[0]" in out
+    assert "bOverride_area ? (double)area : Element->gainprm[0]" in out
+    assert "bOverride_diameter ? (double)diameter : -1.0" in out

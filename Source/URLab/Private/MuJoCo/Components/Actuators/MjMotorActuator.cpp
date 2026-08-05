@@ -35,7 +35,13 @@ void UMjMotorActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
 	// --- CODEGEN_EXPORT_START ---
-	mjs_setToMotor(Element);
+	{
+		const char* SetToErr = mjs_setToMotor(Element);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToMotor on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
+	}
 	// --- CODEGEN_EXPORT_END ---
 }
 

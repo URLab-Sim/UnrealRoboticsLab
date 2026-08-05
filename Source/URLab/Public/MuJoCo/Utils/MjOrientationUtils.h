@@ -82,11 +82,15 @@ class URLAB_API MjOrientationUtils
 {
 public:
 	/**
-	 * Parse the <compiler> element from an MJCF XML root and extract orientation-related settings.
+	 * Parse <compiler> settings from an MJCF XML root and extract orientation-related settings.
+	 * Compilers in <include>d fragments (rooted in <mujocoinclude>) are merged in
+	 * document order, later values overriding earlier, matching MuJoCo's splice.
 	 * @param RootNode  The root <mujoco> node of the XML document.
-	 * @return Parsed compiler settings (angle mode, euler sequence).
+	 * @param XMLDir    Directory of the XML file, used to resolve <include> paths.
+	 *                  Pass empty to skip include resolution (direct compilers only).
+	 * @return Parsed compiler settings (angle mode, euler sequence, dirs, autolimits).
 	 */
-	static FMjCompilerSettings ParseCompilerSettings(const FXmlNode* RootNode);
+	static FMjCompilerSettings ParseCompilerSettings(const FXmlNode* RootNode, const FString& XMLDir = TEXT(""));
 
 	/**
 	 * Read orientation attributes from an XML element and convert to a MuJoCo-frame quaternion.

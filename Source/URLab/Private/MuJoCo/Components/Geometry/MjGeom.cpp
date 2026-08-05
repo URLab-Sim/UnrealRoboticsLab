@@ -488,6 +488,25 @@ void UMjGeom::UpdateGlobalTransform()
 		mju_mat2Quat(quat, const_cast<mjtNum*>(&Snap.GeomXMat[MatIdx]));
 		const FQuat WorldRot = MjUtils::MjToUERotation(quat);
 
+		// A zero or non-finite snapshot row would write a degenerate
+		// transform that NaN-floods the renderer (NIL LocalToWorld in the
+		// distance-field pass). Skip the frame and name the offender once.
+		if (WorldPos.ContainsNaN() || WorldRot.ContainsNaN()
+			|| WorldRot.SizeSquared() < KINDA_SMALL_NUMBER)
+		{
+			if (!m_bWarnedDegenerateXform)
+			{
+				UE_LOG(LogURLabBind, Warning,
+					TEXT("MjGeom::UpdateGlobalTransform - geom '%s' (id=%d) got a "
+						 "degenerate snapshot transform (pos=%s quat=[%f %f %f %f]); "
+						 "skipping."),
+					*GetName(), Id, *WorldPos.ToString(),
+					quat[0], quat[1], quat[2], quat[3]);
+				m_bWarnedDegenerateXform = true;
+			}
+			return;
+		}
+
 		SetWorldLocation(WorldPos);
 		SetWorldRotation(WorldRot);
 	});

@@ -55,6 +55,8 @@ public:
 	virtual void ExportTo(mjsGeom* Element, mjsDefault* def = nullptr) override;
 
 	virtual void SyncUnrealTransformFromMj() override;
+
+	virtual void SyncEditorScaleFromSize() override;
 	virtual void SetGeomVisibility(bool bNewVisibility) override;
 
 #if WITH_EDITOR

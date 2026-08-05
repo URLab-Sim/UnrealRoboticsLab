@@ -40,7 +40,13 @@ void UMjDamperActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
 	// --- CODEGEN_EXPORT_START ---
-	mjs_setToDamper(Element, bOverride_kv ? (double)kv : 0.01);
+	{
+		const char* SetToErr = mjs_setToDamper(Element, bOverride_kv ? (double)kv : -Element->gainprm[2]);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToDamper on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
+	}
 	// --- CODEGEN_EXPORT_END ---
 }
 

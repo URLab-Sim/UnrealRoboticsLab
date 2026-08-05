@@ -363,6 +363,14 @@ void UMjQuickConvertComponent::ApplyRenderState(const FMjRenderSnapshot& Snap)
 	const FVector Pos = MjUtils::MjToUEPosition(&Snap.XPos[PosIdx]);
 	const FQuat Quat = MjUtils::MjToUERotation(&Snap.XQuat[QuatIdx]);
 
+	// Mirror UMjBody::ApplyRenderState: never apply a zero/NaN snapshot row --
+	// it writes a degenerate transform that NaN-floods the renderer.
+	if (Pos.ContainsNaN() || Quat.ContainsNaN()
+		|| Quat.SizeSquared() < KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+
 	m_actor->SetActorRotation(Quat);
 	m_actor->SetActorLocation(Pos);
 }

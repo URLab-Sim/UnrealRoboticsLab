@@ -46,7 +46,11 @@ void UMjMuscleActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	{
 		double timeconstBuf[2] = {(bOverride_timeconst && timeconst.Num() > 0) ? (double)timeconst[0] : -1.0, (bOverride_timeconst && timeconst.Num() > 1) ? (double)timeconst[1] : -1.0};
 		double rangeBuf[2] = {(bOverride_range && range.Num() > 0) ? (double)range[0] : -1.0, (bOverride_range && range.Num() > 1) ? (double)range[1] : -1.0};
-		mjs_setToMuscle(Element, timeconstBuf, bOverride_tausmooth ? (double)tausmooth : 0.0, rangeBuf, bOverride_force ? (double)force : -1.0, (bOverride_scale && scale.Num() > 0) ? (double)scale[0] : -1.0, bOverride_lmin ? (double)lmin : -1.0, bOverride_lmax ? (double)lmax : -1.0, bOverride_vmax ? (double)vmax : -1.0, bOverride_fpmax ? (double)fpmax : -1.0, bOverride_fvmax ? (double)fvmax : -1.0);
+		const char* SetToErr = mjs_setToMuscle(Element, timeconstBuf, bOverride_tausmooth ? (double)tausmooth : 0.0, rangeBuf, bOverride_force ? (double)force : -1.0, (bOverride_scale && scale.Num() > 0) ? (double)scale[0] : -1.0, bOverride_lmin ? (double)lmin : -1.0, bOverride_lmax ? (double)lmax : -1.0, bOverride_vmax ? (double)vmax : -1.0, bOverride_fpmax ? (double)fpmax : -1.0, bOverride_fvmax ? (double)fvmax : -1.0);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToMuscle on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
 	}
 	// --- CODEGEN_EXPORT_END ---
 }

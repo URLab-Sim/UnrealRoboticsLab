@@ -139,6 +139,9 @@ _CATEGORY_OPTIONAL = {
 _SUBTYPE_REQUIRED = {"key", "enum_value", "class_name"}
 _SUBTYPE_OPTIONAL = {
     "header", "fully_emitted", "case_body_override", "extra_constructor",
+    # FMjSensorTypeInfo descriptor-table policy (sensor category).
+    "semantic", "value_kind", "fixed_dim",
+    "obj_source", "obj_type", "ref_source", "ref_type",
 }
 _ELEMENT_RULE_OPTIONAL = {
     "exclude_attrs", "applies_canonicalizations", "xml_enum_attrs",

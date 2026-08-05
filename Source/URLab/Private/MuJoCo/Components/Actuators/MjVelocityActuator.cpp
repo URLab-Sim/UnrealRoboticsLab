@@ -40,7 +40,13 @@ void UMjVelocityActuator::ExportTo(mjsActuator* Element, mjsDefault* def)
 	Super::ExportTo(Element, def);
 
 	// --- CODEGEN_EXPORT_START ---
-	mjs_setToVelocity(Element, bOverride_kv ? (double)kv : -1.0);
+	{
+		const char* SetToErr = mjs_setToVelocity(Element, bOverride_kv ? (double)kv : Element->gainprm[0]);
+		if (SetToErr && *SetToErr)
+		{
+			UE_LOG(LogURLabBind, Warning, TEXT("mjs_setToVelocity on '%s': %s"), *GetName(), UTF8_TO_TCHAR(SetToErr));
+		}
+	}
 	// --- CODEGEN_EXPORT_END ---
 }
 

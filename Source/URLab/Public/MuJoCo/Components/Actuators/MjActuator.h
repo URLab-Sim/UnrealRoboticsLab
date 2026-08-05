@@ -281,6 +281,8 @@ public:
 
 	virtual FString GetMjName() const override;
 
+	virtual void DescribeState(FMjArticulationState& Out) const override;
+
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
 	void SetGear(const TArray<float>& NewGear);
 

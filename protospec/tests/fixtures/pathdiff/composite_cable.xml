@@ -1,0 +1,9 @@
+<mujoco model="composite_cable">
+  <worldbody>
+    <body name="host" pos="0.3 0 1">
+      <composite type="cable" curve="s 0 0" count="6 1 1" size="0.5 0 0" initial="none">
+        <geom type="capsule" size="0.005"/>
+      </composite>
+    </body>
+  </worldbody>
+</mujoco>

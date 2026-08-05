@@ -1,0 +1,18 @@
+<mujoco model="sites_cameras_lights">
+  <!-- Covers: sites (several shapes), tracking + fixed cameras, directional and
+       positional lights, both world-attached and body-attached. -->
+  <compiler angle="degree"/>
+  <worldbody>
+    <light name="sun" directional="true" pos="0 0 3" dir="0 0 -1" diffuse="0.8 0.8 0.8"/>
+    <camera name="fixed_cam" pos="2 2 2" xyaxes="-1 1 0 -1 -1 2"/>
+    <site name="world_site" type="sphere" size="0.02" pos="0 0 0.5" rgba="1 1 0 1"/>
+    <body name="tracked" pos="0 0 1">
+      <freejoint/>
+      <geom name="tracked_g" type="box" size="0.05 0.05 0.05"/>
+      <site name="body_site_box" type="box" size="0.01 0.02 0.03" pos="0.05 0 0"/>
+      <site name="body_site_cyl" type="cylinder" size="0.01 0.02" pos="0 0.05 0"/>
+      <camera name="onboard" mode="fixed" pos="0.1 0 0.1" euler="0 90 0"/>
+      <light name="lamp" pos="0 0 0.2" dir="0 0 -1" diffuse="0.5 0.5 0.5"/>
+    </body>
+  </worldbody>
+</mujoco>

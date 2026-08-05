@@ -1,0 +1,19 @@
+<mujoco model="flexcomp_material_texcoord">
+  <!-- PARITY. A flexcomp with a material and no inline texcoord (and no file
+       supplying UVs) makes the reader auto-generate texture coordinates
+       (needtex). BuildFlexcompMirror sets the material on the flex before
+       generation and mirrors the needtex UV projection, so the mjSpec leg
+       produces the same nflextexcoord as XmlPath. -->
+  <asset>
+    <texture name="tex" type="2d" builtin="checker" rgb1=".2 .3 .4"
+             rgb2=".1 .15 .2" width="128" height="128"/>
+    <material name="matsponge" texture="tex" texrepeat="4 4"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <flexcomp name="softbox" type="box" count="5 5 5" spacing=".04 .04 .04"
+              radius="0.01" dim="3" material="matsponge" dof="radial" pos="0 0 1">
+      <contact internal="false" selfcollide="none"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>

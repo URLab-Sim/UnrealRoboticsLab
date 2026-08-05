@@ -1,0 +1,19 @@
+<mujoco model="flexcomp_interp_pin">
+  <!-- GATED (mjs.flexcomp_interp). A box flexcomp with interpolated dof
+       (trilinear) + <pin> needs the internal mjCFlex node/empty-cell machinery
+       (MarkEmptyCells/ComputeCellEmpty) to build the nodal mesh and pin nodes;
+       no public mjs surface reproduces it. This mirrors the corpus models
+       strain.xml / gripper_trilinear.xml. Forced MjsPath errors loudly; Auto
+       falls back to XmlPath. -->
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="anchor">
+      <geom type="box" size=".1 .1 .5" rgba=".2 .2 .2 1"/>
+      <flexcomp name="softbar" type="box" pos="-.24 0 .1" dim="3"
+                spacing=".03 .01 .01" radius=".001" mass=".5" dof="trilinear">
+        <contact selfcollide="none"/>
+        <pin id="4 5 6 7"/>
+      </flexcomp>
+    </body>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,35 @@
+{
+  "corpus": {
+    "total_files": 387,
+    "mjcf": 387,
+    "include_fragment": 0,
+    "non_mjcf": 0,
+    "unparseable": 0
+  },
+  "usage": {
+    "elements": 30524,
+    "pairs": 30075,
+    "attributes": 92286,
+    "enum_values": 7484
+  },
+  "coverage": {
+    "distinct_elements": 161,
+    "unknown_elements": 0,
+    "elements_covered_pct": 100.0,
+    "distinct_pairs": 159,
+    "unknown_pairs": 0,
+    "pairs_covered_pct": 100.0,
+    "distinct_attributes": 632,
+    "unknown_attributes": 0,
+    "attributes_covered_pct": 100.0,
+    "distinct_enum_values": 131,
+    "unknown_enum_values": 0,
+    "enum_values_covered_pct": 100.0
+  },
+  "unknown": {
+    "elements": [],
+    "pairs": [],
+    "attributes": [],
+    "enum_values": []
+  }
+}

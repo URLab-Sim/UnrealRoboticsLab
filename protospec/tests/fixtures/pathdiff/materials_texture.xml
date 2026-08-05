@@ -1,0 +1,22 @@
+<mujoco model="materials_texture">
+  <!-- Covers: procedural (builtin) textures -- a checker 2d and a gradient skybox --
+       plus materials referencing them with texrepeat/reflectance/specular, applied
+       to geoms. Exercises ntex/nmat and tex_*/mat_* arrays with no asset files. -->
+  <compiler angle="degree"/>
+  <asset>
+    <texture name="grid" type="2d" builtin="checker" width="128" height="128"
+             rgb1="0.1 0.2 0.3" rgb2="0.3 0.4 0.5"/>
+    <texture name="sky" type="skybox" builtin="gradient" width="64" height="64"
+             rgb1="0.6 0.7 0.9" rgb2="0.1 0.1 0.2"/>
+    <material name="grid_mat" texture="grid" texrepeat="4 4" reflectance="0.2"
+              specular="0.5" shininess="0.3"/>
+    <material name="plain_mat" rgba="0.8 0.3 0.3 1" specular="0.9"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1" material="grid_mat"/>
+    <body name="mt" pos="0 0 0.5">
+      <freejoint/>
+      <geom name="mt_g" type="box" size="0.06 0.06 0.06" material="plain_mat"/>
+    </body>
+  </worldbody>
+</mujoco>

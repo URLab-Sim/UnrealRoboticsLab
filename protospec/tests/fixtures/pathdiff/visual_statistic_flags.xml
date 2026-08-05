@@ -1,0 +1,32 @@
+<mujoco model="visual_statistic_flags">
+  <!-- Covers: the <visual> family (global/quality/headlight/map/scale/rgba),
+       <statistic> overrides and <option><flag> enable/disable bits. These land
+       in mjModel vis.*, stat.* and opt.disableflags/enableflags and must
+       survive both compile legs. -->
+  <compiler autolimits="true"/>
+  <option>
+    <flag contact="disable" energy="enable" gravity="disable" limit="disable"
+          multiccd="enable" warmstart="disable" fwdinv="enable"/>
+  </option>
+  <visual>
+    <global azimuth="120" elevation="-30" fovy="50" linewidth="2" glow="0.4"
+            offwidth="800" offheight="600" ellipsoidinertia="true"/>
+    <quality shadowsize="2048" offsamples="8" numslices="20" numstacks="20"/>
+    <headlight ambient="0.2 0.2 0.2" diffuse="0.5 0.5 0.5" specular="0.1 0.1 0.1"
+               active="0"/>
+    <map stiffness="50" force="0.02" torque="0.05" zfar="40" znear="0.02"
+         shadowclip="2" shadowscale="0.4" haze="0.2"/>
+    <scale forcewidth="0.05" contactwidth="0.2" contactheight="0.05" jointwidth="0.08"
+           framelength="0.5" framewidth="0.05"/>
+    <rgba fog="0.5 0.5 0.5 1" force="1 0 0 1" contactpoint="0 1 0 0.5"
+          joint="0.2 0.2 1 0.6" constraint="0.9 0 0.9 0.5"/>
+  </visual>
+  <statistic meansize="0.2" extent="4" center="0 0 0.5" meanmass="2" meaninertia="0.1"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="b" pos="0 0 1">
+      <joint name="j" type="hinge" axis="0 1 0" range="-45 45"/>
+      <geom name="g" type="capsule" size="0.05" fromto="0 0 0 0.3 0 0"/>
+    </body>
+  </worldbody>
+</mujoco>

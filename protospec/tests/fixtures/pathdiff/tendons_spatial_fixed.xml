@@ -1,0 +1,32 @@
+<mujoco model="tendons_spatial_fixed">
+  <!-- Covers: a spatial tendon routed through sites (with a pulley + geom wrap),
+       and a fixed tendon combining two joints with coefficients. Exercises
+       tendon_* and wrap_* arrays. -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <site name="s0" pos="0 0 1" size="0.01"/>
+    <geom name="wrap_cyl" type="cylinder" size="0.03 0.1" pos="0.15 0 1" euler="0 0 0"/>
+    <body name="b1" pos="0.3 0 1">
+      <joint name="tj1" type="hinge" axis="0 1 0"/>
+      <geom name="b1g" type="capsule" size="0.02" fromto="0 0 0 0.2 0 0"/>
+      <site name="s1" pos="0.2 0 0" size="0.01"/>
+      <body name="b2" pos="0.2 0 0">
+        <joint name="tj2" type="hinge" axis="0 1 0"/>
+        <geom name="b2g" type="capsule" size="0.02" fromto="0 0 0 0.2 0 0"/>
+        <site name="s2" pos="0.2 0 0" size="0.01"/>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <spatial name="sp" width="0.004" rgba="0 1 0 1">
+      <site site="s0"/>
+      <geom geom="wrap_cyl"/>
+      <site site="s1"/>
+      <site site="s2"/>
+    </spatial>
+    <fixed name="fx">
+      <joint joint="tj1" coef="1"/>
+      <joint joint="tj2" coef="-1"/>
+    </fixed>
+  </tendon>
+</mujoco>

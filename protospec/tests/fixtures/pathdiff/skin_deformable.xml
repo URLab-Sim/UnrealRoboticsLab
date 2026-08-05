@@ -1,0 +1,15 @@
+<mujoco model="skin_deformable">
+  <worldbody>
+    <body name="sk_b0" pos="0 0 0.5"><geom type="sphere" size="0.05"/></body>
+    <body name="sk_b1" pos="0.2 0 0.5"><geom type="sphere" size="0.05"/></body>
+  </worldbody>
+  <deformable>
+    <skin name="sk" rgba="1 0 0 1" inflate="0.01" group="1"
+          vertex="0 0 0.5  0.2 0 0.5  0 0.2 0.5  0.2 0.2 0.5"
+          texcoord="0 0  1 0  0 1  1 1"
+          face="0 1 2  1 3 2">
+      <bone body="sk_b0" bindpos="0 0 0.5" bindquat="1 0 0 0" vertid="0 2" vertweight="1 1"/>
+      <bone body="sk_b1" bindpos="0.2 0 0.5" bindquat="1 0 0 0" vertid="1 3" vertweight="1 1"/>
+    </skin>
+  </deformable>
+</mujoco>

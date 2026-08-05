@@ -1,0 +1,59 @@
+<mujoco model="actuators_exotic">
+  <!-- Covers: the actuator shorthands with no prior fixture -- intvelocity,
+       damper, cylinder, muscle (with <lengthrange> via compiler settings),
+       adhesion and dcmotor -- plus a spatial tendon pulley branch. These
+       exercise gainprm/biasprm/dyntype folding per shorthand and the pulley
+       wrap element on both legs. -->
+  <compiler autolimits="true"/>
+  <option timestep="0.001"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="arm" pos="0 0 1">
+      <joint name="shoulder" type="hinge" axis="0 1 0" range="-90 90"/>
+      <geom name="arm_g" type="capsule" size="0.04" fromto="0 0 0 0.4 0 0"/>
+      <site name="s_base" pos="0.05 0 0.05"/>
+      <body name="fore" pos="0.4 0 0">
+        <joint name="elbow" type="hinge" axis="0 1 0" range="-120 5"/>
+        <geom name="fore_g" type="capsule" size="0.03" fromto="0 0 0 0.3 0 0"/>
+        <site name="s_mid" pos="0.05 0 0.04"/>
+        <geom name="wrap_g" type="cylinder" size="0.02 0.05" pos="0.15 0 0.03"
+              euler="90 0 0" contype="0" conaffinity="0"/>
+        <body name="hand" pos="0.3 0 0">
+          <joint name="wrist" type="hinge" axis="0 1 0" range="-45 45"/>
+          <geom name="hand_g" type="box" size="0.04 0.03 0.02"/>
+          <site name="s_tip" pos="0.04 0 0"/>
+          <body name="pad" pos="0.08 0 0">
+            <joint name="pad_slide" type="slide" axis="1 0 0" range="-0.05 0.05"/>
+            <geom name="pad_g" type="sphere" size="0.02"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <tendon>
+    <spatial name="ten_muscle" range="0 0.9">
+      <site site="s_base"/>
+      <geom geom="wrap_g" sidesite="s_mid"/>
+      <site site="s_mid"/>
+      <pulley divisor="2"/>
+      <site site="s_mid"/>
+      <site site="s_tip"/>
+    </spatial>
+  </tendon>
+  <actuator>
+    <intvelocity name="a_intvel" joint="shoulder" actrange="-1.5 1.5" kp="20" kv="2"/>
+    <damper name="a_damper" joint="elbow" kv="5" ctrlrange="0 1"/>
+    <!-- NOTE: no `bias` attribute on cylinder -- stock's OneActuator reads the
+         3-valued bias into a scalar double (xml_native_reader.cc "double bias
+         =...; ReadAttr(..., 3, &bias, ...)"), a stack overrun that clobbers
+         area/diameter, so any bias-bearing cylinder diverges from the faithful
+         mjs leg. Upstream bug; keep bias out until it is fixed upstream. -->
+    <cylinder name="a_cyl" joint="wrist" timeconst="0.5" area="0.02"/>
+    <muscle name="a_muscle" tendon="ten_muscle" timeconst="0.01 0.04" range="0.6 1.2"
+            force="120" scale="180" lmin="0.4" lmax="1.7" vmax="1.4" fpmax="1.2"
+            fvmax="1.3"/>
+    <adhesion name="a_adhesion" body="pad" ctrlrange="0 2" gain="30"/>
+    <dcmotor name="a_dcmotor" joint="pad_slide" motorconst="0.05" resistance="1.2"
+             nominal="12" inductance="0.002"/>
+  </actuator>
+</mujoco>

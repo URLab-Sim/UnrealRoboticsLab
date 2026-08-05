@@ -1,0 +1,19 @@
+<mujoco model="cylinder_bias">
+  <!-- Regression fixture: a <cylinder> actuator with a 3-valued bias. Stock's
+       OneActuator used to read the bias array into a scalar slot and overrun it,
+       clobbering the adjacent gainprm "area" (fixed upstream in d3166cb6, which
+       keeps mjs_setToCylinder's scalar bias and writes biasprm[1..2] directly).
+       The mjs builder mirrors the fixed reader, so all three biasprm slots and
+       "area" must reach byte parity on every leg. -->
+  <compiler autolimits="true"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="arm" pos="0 0 1">
+      <joint name="wrist" type="hinge" axis="0 1 0" range="-90 90"/>
+      <geom name="arm_g" type="capsule" size="0.03" fromto="0 0 0 0.3 0 0"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <cylinder name="a_cyl" joint="wrist" timeconst="0.5" area="0.02" bias="0 -1 0"/>
+  </actuator>
+</mujoco>

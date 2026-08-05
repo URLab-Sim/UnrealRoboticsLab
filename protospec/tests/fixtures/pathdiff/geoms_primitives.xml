@@ -1,0 +1,20 @@
+<mujoco model="geoms_primitives">
+  <!-- Covers: every primitive geom type -- plane, sphere, capsule, ellipsoid,
+       cylinder, box -- plus a fromto-specified capsule and a fromto cylinder,
+       with per-geom rgba/friction. -->
+  <compiler angle="degree"/>
+  <worldbody>
+    <geom name="ground" type="plane" size="2 2 0.1" rgba="0.4 0.4 0.4 1"/>
+    <body name="shapes" pos="0 0 1">
+      <freejoint/>
+      <geom name="g_sphere" type="sphere" size="0.05" pos="0 0 0"/>
+      <geom name="g_box" type="box" size="0.05 0.06 0.07" pos="0.2 0 0"/>
+      <geom name="g_capsule" type="capsule" size="0.03" fromto="0.4 0 0 0.4 0 0.15"/>
+      <geom name="g_ellipsoid" type="ellipsoid" size="0.04 0.05 0.06" pos="0.6 0 0"/>
+      <geom name="g_cylinder" type="cylinder" size="0.03 0.05" pos="0.8 0 0"/>
+      <geom name="g_capsule_ft" type="capsule" size="0.02" fromto="1.0 0 0 1.1 0.05 0.05"
+            friction="1 0.01 0.001" rgba="1 0 0 1"/>
+      <geom name="g_cylinder_ft" type="cylinder" size="0.025" fromto="1.2 0 0 1.2 0 0.1"/>
+    </body>
+  </worldbody>
+</mujoco>

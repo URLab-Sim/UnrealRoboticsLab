@@ -1,0 +1,9 @@
+<mujoco model="child">
+  <worldbody>
+    <body name="link" pos="0 0 0.1">
+      <joint name="hinge" type="hinge" axis="0 1 0"/>
+      <geom type="capsule" size="0.02" fromto="0 0 0 0 0 0.2"/>
+      <site name="tip" pos="0 0 0.2"/>
+    </body>
+  </worldbody>
+</mujoco>

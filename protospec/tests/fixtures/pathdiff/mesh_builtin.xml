@@ -1,0 +1,14 @@
+<mujoco model="mesh_builtin">
+  <asset>
+    <mesh name="bsphere" builtin="sphere" params="3"/>
+    <mesh name="bhemi" builtin="hemisphere" params="3"/>
+  </asset>
+  <worldbody>
+    <body name="b0" pos="0 0 1">
+      <geom type="mesh" mesh="bsphere"/>
+    </body>
+    <body name="b1" pos="0.3 0 1">
+      <geom type="mesh" mesh="bhemi"/>
+    </body>
+  </worldbody>
+</mujoco>

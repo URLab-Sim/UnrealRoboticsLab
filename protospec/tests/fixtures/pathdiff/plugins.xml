@@ -1,0 +1,38 @@
+<mujoco model="plugins">
+  <compiler autolimits="true"/>
+  <extension>
+    <plugin plugin="mujoco.pid">
+      <instance name="pid1">
+        <config key="kp" value="4.0"/>
+      </instance>
+      <instance name="pid2">
+        <config key="kp" value="4.0"/>
+        <config key="kd" value="0.4"/>
+      </instance>
+    </plugin>
+    <plugin plugin="mujoco.sensor.touch_grid"/>
+  </extension>
+  <worldbody>
+    <body pos="-0.06 0 0">
+      <joint name="j1" type="slide" axis="0 0 1"/>
+      <geom type="sphere" size="0.01"/>
+    </body>
+    <body pos="0.02 0 0">
+      <joint name="j2" type="slide" axis="0 0 1"/>
+      <geom type="sphere" size="0.01"/>
+      <site name="touch" pos="0 0 .1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <plugin joint="j1" plugin="mujoco.pid" instance="pid1" ctrlrange="0 0.15"/>
+    <plugin joint="j2" plugin="mujoco.pid" instance="pid2" ctrlrange="0 0.15"/>
+  </actuator>
+  <sensor>
+    <plugin name="touch" plugin="mujoco.sensor.touch_grid" objtype="site" objname="touch">
+      <config key="size" value="7 7"/>
+      <config key="fov" value="45 45"/>
+      <config key="gamma" value="0"/>
+      <config key="nchannel" value="3"/>
+    </plugin>
+  </sensor>
+</mujoco>

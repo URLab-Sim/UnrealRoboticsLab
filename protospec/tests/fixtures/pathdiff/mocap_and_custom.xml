@@ -1,0 +1,28 @@
+<mujoco model="mocap_and_custom">
+  <!-- Covers: a mocap body (nmocap>0, body_mocapid) welded to a dynamic body,
+       plus <custom> numeric/text/tuple payloads (nnumeric/ntext/ntuple and their
+       data arrays). Exercises tables the physics fixtures never touch. -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="target" mocap="true" pos="0.2 0 1">
+      <geom name="target_g" type="box" size="0.02 0.02 0.02" contype="0" conaffinity="0"/>
+    </body>
+    <body name="payload" pos="0 0 1">
+      <freejoint/>
+      <geom name="payload_g" type="sphere" size="0.05"/>
+      <site name="payload_s" size="0.01"/>
+    </body>
+  </worldbody>
+  <equality>
+    <weld name="hold" body1="payload" body2="target"/>
+  </equality>
+  <custom>
+    <numeric name="gain_table" data="1.0 2.0 3.0 4.0"/>
+    <numeric name="scalar" data="0.5"/>
+    <text name="note" data="pathdiff-fixture"/>
+    <tuple name="pair">
+      <element objtype="body" objname="payload"/>
+      <element objtype="site" objname="payload_s"/>
+    </tuple>
+  </custom>
+</mujoco>

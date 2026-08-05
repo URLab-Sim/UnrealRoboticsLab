@@ -1,0 +1,36 @@
+<mujoco model="equality_constraints">
+  <!-- Covers: equality constraints of several types -- connect (site anchor),
+       weld (two bodies), joint (coupling with polycoef), tendon coupling.
+       Exercises the eq_* arrays (type/obj1id/obj2id/data). -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="ea" pos="0 0 1">
+      <freejoint/>
+      <geom name="ea_g" type="sphere" size="0.03"/>
+      <site name="ea_s" pos="0 0 0" size="0.01"/>
+    </body>
+    <body name="eb" pos="0.2 0 1">
+      <freejoint/>
+      <geom name="eb_g" type="sphere" size="0.03"/>
+      <site name="eb_s" pos="0 0 0" size="0.01"/>
+    </body>
+    <body name="ja" pos="0.5 0 1">
+      <joint name="jja" type="hinge" axis="0 0 1"/>
+      <geom name="ja_g" type="capsule" size="0.02" fromto="0 0 0 0.1 0 0"/>
+    </body>
+    <body name="jb" pos="0.7 0 1">
+      <joint name="jjb" type="hinge" axis="0 0 1"/>
+      <geom name="jb_g" type="capsule" size="0.02" fromto="0 0 0 0.1 0 0"/>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="t1"><joint joint="jja" coef="1"/></fixed>
+    <fixed name="t2"><joint joint="jjb" coef="1"/></fixed>
+  </tendon>
+  <equality>
+    <connect name="eq_connect" body1="ea" body2="eb" anchor="0 0 0"/>
+    <weld name="eq_weld" body1="ea" body2="eb"/>
+    <joint name="eq_joint" joint1="jja" joint2="jjb" polycoef="0 1 0 0 0"/>
+    <tendon name="eq_tendon" tendon1="t1" tendon2="t2"/>
+  </equality>
+</mujoco>

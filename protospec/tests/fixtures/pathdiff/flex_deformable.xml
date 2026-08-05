@@ -1,0 +1,26 @@
+<mujoco model="flex_deformable">
+  <worldbody>
+    <body name="fb0" pos="0 0 0.5"/>
+    <body name="fb1" pos="0.2 0 0.5"/>
+    <body name="fb2" pos="0 0.2 0.5"/>
+    <body name="fb3" pos="0.2 0.2 0.5"/>
+    <body name="rb0" pos="0 0 1"/>
+    <body name="rb1" pos="0.2 0 1"/>
+    <body name="rb2" pos="0.4 0 1"/>
+  </worldbody>
+  <deformable>
+    <flex name="cloth" dim="2" radius="0.01" group="1"
+          body="fb0 fb1 fb2 fb3" element="0 1 2  1 3 2">
+      <contact contype="2" conaffinity="3" condim="6" priority="1"
+               friction="0.8 0.01 0.001" solmix="0.5" solref="0.02 1"
+               solimp="0.9 0.95 0.001 0.5 2" margin="0.001" gap="0.002"
+               internal="true" selfcollide="bvh" activelayers="2" passive="true"/>
+      <elasticity young="1000" poisson="0.3" damping="0.01" thickness="0.005" elastic2d="stretch"/>
+    </flex>
+    <flex name="rope" dim="1" radius="0.008"
+          body="rb0 rb1 rb2" element="0 1  1 2">
+      <edge stiffness="0.5" damping="0.1"/>
+      <contact contype="1" conaffinity="1" condim="3" selfcollide="none"/>
+    </flex>
+  </deformable>
+</mujoco>

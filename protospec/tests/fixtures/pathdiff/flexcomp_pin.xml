@@ -1,0 +1,16 @@
+<mujoco model="flexcomp_pin">
+  <!-- PARITY. A flexcomp <pin id> pins vertices to the parent body (no dof).
+       BuildFlexcompMirror (mjs_builder.cc) resolves the pin ids against the
+       generated grid and binds pinned vertices to the parent body exactly as
+       mjCFlexcomp::Make does, so XmlPath and MjsPath compile bit-identically. -->
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <flexcomp name="cloth" type="grid" count="4 4 1" spacing="0.08 0.08 0.08"
+              dim="2" radius="0.008" pos="0 0 1">
+      <pin id="0 3"/>
+    </flexcomp>
+  </worldbody>
+  <equality>
+    <flexvert name="fv" flex="cloth"/>
+  </equality>
+</mujoco>

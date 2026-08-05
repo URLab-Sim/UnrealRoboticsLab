@@ -1,0 +1,18 @@
+<mujoco model="options_compiler">
+  <!-- Covers: non-default <option> (integrator, timestep, gravity, solver iters,
+       cone/jacobian flags) and <compiler> settings (angle, coordinate defaults,
+       inertiafromgeom, eulerseq) plus <size> memory hints. These flow into
+       mjModel opt.* scalars and must survive both compile legs. -->
+  <compiler angle="degree" inertiafromgeom="true" eulerseq="xyz" autolimits="true"/>
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"
+          iterations="50" solver="Newton" cone="elliptic" jacobian="dense"
+          tolerance="1e-8"/>
+  <size njmax="200" nconmax="100" nstack="500000"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="ob" pos="0 0 1">
+      <freejoint/>
+      <geom name="ob_g" type="sphere" size="0.05"/>
+    </body>
+  </worldbody>
+</mujoco>

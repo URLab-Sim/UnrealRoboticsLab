@@ -1,0 +1,29 @@
+<mujoco model="sensors_refs">
+  <!-- Covers: sensors spanning site-transducer types (accelerometer, gyro,
+       velocimeter, force, touch) and dynamic objtype/objname reference sensors
+       (framepos/framequat with objtype+objname, jointpos, actuatorpos,
+       subtreecom). Exercises sensor_dim/adr/objtype/objid arrays. -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="pend" pos="0 0 1">
+      <joint name="pj" type="hinge" axis="0 1 0"/>
+      <geom name="pg" type="capsule" size="0.02" fromto="0 0 0 0 0 -0.2"/>
+      <site name="imu" pos="0 0 -0.2" size="0.01"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="pm" joint="pj"/>
+  </actuator>
+  <sensor>
+    <accelerometer name="acc" site="imu"/>
+    <gyro name="gyr" site="imu"/>
+    <velocimeter name="vel" site="imu"/>
+    <force name="frc" site="imu"/>
+    <touch name="tch" site="imu"/>
+    <jointpos name="jp" joint="pj"/>
+    <actuatorpos name="ap" actuator="pm"/>
+    <framepos name="fp" objtype="site" objname="imu"/>
+    <framequat name="fq" objtype="body" objname="pend"/>
+    <subtreecom name="com" body="pend"/>
+  </sensor>
+</mujoco>

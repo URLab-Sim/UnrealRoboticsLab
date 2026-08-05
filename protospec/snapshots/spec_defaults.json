@@ -1,0 +1,1298 @@
+{
+  "source": {
+    "file": "src/user/user_init.c",
+    "mujoco_version": "3.10.1"
+  },
+  "defaults": {
+    "mjSpec": {
+      "stat.meaninertia": {
+        "sentinel": "mjNAN"
+      },
+      "stat.meanmass": {
+        "sentinel": "mjNAN"
+      },
+      "stat.meansize": {
+        "sentinel": "mjNAN"
+      },
+      "stat.extent": {
+        "sentinel": "mjNAN"
+      },
+      "compiler.autolimits": 1,
+      "compiler.settotalmass": {
+        "sentinel": -1
+      },
+      "compiler.degree": 1,
+      "compiler.usethread": 1,
+      "compiler.inertiafromgeom": {
+        "value": "mjINERTIAFROMGEOM_AUTO",
+        "auto": true
+      },
+      "compiler.saveinertial": 0,
+      "compiler.LRopt": {
+        "opaque": "mj_defaultLROpt(&spec->compiler.LRopt)"
+      },
+      "option": {
+        "opaque": "mj_defaultOption(&spec->option)"
+      },
+      "visual": {
+        "opaque": "mj_defaultVisual(&spec->visual)"
+      },
+      "memory": {
+        "sentinel": -1
+      },
+      "njmax": {
+        "sentinel": -1
+      },
+      "nconmax": {
+        "sentinel": -1
+      },
+      "nstack": {
+        "sentinel": -1
+      },
+      "nuser_body": {
+        "sentinel": -1
+      },
+      "nuser_jnt": {
+        "sentinel": -1
+      },
+      "nuser_geom": {
+        "sentinel": -1
+      },
+      "nuser_site": {
+        "sentinel": -1
+      },
+      "nuser_cam": {
+        "sentinel": -1
+      },
+      "nuser_tendon": {
+        "sentinel": -1
+      },
+      "nuser_actuator": {
+        "sentinel": -1
+      },
+      "nuser_sensor": {
+        "sentinel": -1
+      },
+      "stat.center": [
+        {
+          "sentinel": "mjNAN"
+        }
+      ],
+      "compiler.eulerseq": [
+        "x",
+        "y",
+        "z"
+      ],
+      "compiler.inertiagrouprange": [
+        0,
+        {
+          "value": "mjNGROUP-1"
+        }
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "modelname": {
+        "unset_by_memset": true
+      },
+      "strippath": {
+        "unset_by_memset": true
+      },
+      "nemax": {
+        "unset_by_memset": true
+      },
+      "nuserdata": {
+        "unset_by_memset": true
+      },
+      "nkey": {
+        "unset_by_memset": true
+      },
+      "comment": {
+        "unset_by_memset": true
+      },
+      "modelfiledir": {
+        "unset_by_memset": true
+      },
+      "hasImplicitPluginElem": {
+        "unset_by_memset": true
+      },
+      "authored": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsOrientation": {
+      "type": {
+        "unset_by_memset": true
+      },
+      "axisangle": {
+        "unset_by_memset": true
+      },
+      "xyaxes": {
+        "unset_by_memset": true
+      },
+      "zaxis": {
+        "unset_by_memset": true
+      },
+      "euler": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsBody": {
+      "simple": 1,
+      "quat": [
+        1
+      ],
+      "ipos": [
+        {
+          "sentinel": "mjNAN"
+        }
+      ],
+      "iquat": [
+        1
+      ],
+      "fullinertia": [
+        {
+          "sentinel": "mjNAN"
+        }
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "childclass": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "alt": {
+        "unset_by_memset": true
+      },
+      "mass": {
+        "unset_by_memset": true
+      },
+      "inertia": {
+        "unset_by_memset": true
+      },
+      "ialt": {
+        "unset_by_memset": true
+      },
+      "mocap": {
+        "unset_by_memset": true
+      },
+      "gravcomp": {
+        "unset_by_memset": true
+      },
+      "sleep": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "explicitinertial": {
+        "unset_by_memset": true
+      },
+      "plugin": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsFrame": {
+      "quat": [
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "childclass": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "alt": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsJoint": {
+      "type": {
+        "value": "mjJNT_HINGE"
+      },
+      "limited": {
+        "value": "mjLIMITED_AUTO",
+        "auto": true
+      },
+      "actfrclimited": {
+        "value": "mjLIMITED_AUTO",
+        "auto": true
+      },
+      "align": {
+        "value": "mjALIGNFREE_AUTO",
+        "auto": true
+      },
+      "solref_limit": {
+        "opaque": "mj_defaultSolRefImp(joint->solref_limit, joint->solimp_limit)"
+      },
+      "solimp_limit": {
+        "opaque": "mj_defaultSolRefImp(joint->solref_limit, joint->solimp_limit)"
+      },
+      "solref_friction": {
+        "opaque": "mj_defaultSolRefImp(joint->solref_friction, joint->solimp_friction)"
+      },
+      "solimp_friction": {
+        "opaque": "mj_defaultSolRefImp(joint->solref_friction, joint->solimp_friction)"
+      },
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "ref": {
+        "unset_by_memset": true
+      },
+      "stiffness": {
+        "unset_by_memset": true
+      },
+      "springref": {
+        "unset_by_memset": true
+      },
+      "springdamper": {
+        "unset_by_memset": true
+      },
+      "range": {
+        "unset_by_memset": true
+      },
+      "margin": {
+        "unset_by_memset": true
+      },
+      "actfrcrange": {
+        "unset_by_memset": true
+      },
+      "armature": {
+        "unset_by_memset": true
+      },
+      "damping": {
+        "unset_by_memset": true
+      },
+      "frictionloss": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "actgravcomp": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsGeom": {
+      "type": {
+        "value": "mjGEOM_SPHERE"
+      },
+      "contype": 1,
+      "conaffinity": 1,
+      "condim": 3,
+      "solmix": 1.0,
+      "solref": {
+        "opaque": "mj_defaultSolRefImp(geom->solref, geom->solimp)"
+      },
+      "solimp": {
+        "opaque": "mj_defaultSolRefImp(geom->solref, geom->solimp)"
+      },
+      "mass": {
+        "sentinel": "mjNAN"
+      },
+      "density": 1000,
+      "typeinertia": {
+        "value": "mjINERTIA_VOLUME"
+      },
+      "fitscale": 1,
+      "quat": [
+        1
+      ],
+      "fromto": [
+        {
+          "sentinel": "mjNAN"
+        }
+      ],
+      "friction": [
+        1,
+        0.005,
+        0.0001
+      ],
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "fluid_coefs": [
+        0.5,
+        0.25,
+        1.5,
+        1.0,
+        1.0
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "alt": {
+        "unset_by_memset": true
+      },
+      "size": {
+        "unset_by_memset": true
+      },
+      "priority": {
+        "unset_by_memset": true
+      },
+      "margin": {
+        "unset_by_memset": true
+      },
+      "gap": {
+        "unset_by_memset": true
+      },
+      "surfacevel": {
+        "unset_by_memset": true
+      },
+      "fluid_ellipsoid": {
+        "unset_by_memset": true
+      },
+      "material": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "hfieldname": {
+        "unset_by_memset": true
+      },
+      "meshname": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "plugin": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsSite": {
+      "type": {
+        "value": "mjGEOM_SPHERE"
+      },
+      "quat": [
+        1
+      ],
+      "size": [
+        0.005,
+        0.005,
+        0.005
+      ],
+      "fromto": [
+        {
+          "sentinel": "mjNAN"
+        }
+      ],
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "alt": {
+        "unset_by_memset": true
+      },
+      "material": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsCamera": {
+      "mode": {
+        "value": "mjCAMLIGHT_FIXED"
+      },
+      "fovy": 45,
+      "ipd": 0.068,
+      "output": {
+        "value": "mjCAMOUT_RGB"
+      },
+      "quat": [
+        1
+      ],
+      "resolution": [
+        1,
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "alt": {
+        "unset_by_memset": true
+      },
+      "targetbody": {
+        "unset_by_memset": true
+      },
+      "proj": {
+        "unset_by_memset": true
+      },
+      "intrinsic": {
+        "unset_by_memset": true
+      },
+      "sensor_size": {
+        "unset_by_memset": true
+      },
+      "focal_length": {
+        "unset_by_memset": true
+      },
+      "focal_pixel": {
+        "unset_by_memset": true
+      },
+      "principal_length": {
+        "unset_by_memset": true
+      },
+      "principal_pixel": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsLight": {
+      "mode": {
+        "value": "mjCAMLIGHT_FIXED"
+      },
+      "castshadow": 1,
+      "bulbradius": 0.02,
+      "intensity": 0.0,
+      "range": 10.0,
+      "active": 1,
+      "cutoff": 45,
+      "exponent": 10,
+      "dir": [
+        0,
+        0,
+        -1
+      ],
+      "attenuation": [
+        1
+      ],
+      "diffuse": [
+        0.7,
+        0.7,
+        0.7
+      ],
+      "specular": [
+        0.3,
+        0.3,
+        0.3
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "pos": {
+        "unset_by_memset": true
+      },
+      "targetbody": {
+        "unset_by_memset": true
+      },
+      "type": {
+        "unset_by_memset": true
+      },
+      "texture": {
+        "unset_by_memset": true
+      },
+      "ambient": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsFlex": {
+      "contype": 1,
+      "conaffinity": 1,
+      "condim": 3,
+      "solmix": 1.0,
+      "solref": {
+        "opaque": "mj_defaultSolRefImp(flex->solref, flex->solimp)"
+      },
+      "solimp": {
+        "opaque": "mj_defaultSolRefImp(flex->solref, flex->solimp)"
+      },
+      "dim": 2,
+      "radius": 0.005,
+      "internal": 0,
+      "selfcollide": {
+        "value": "mjFLEXSELF_AUTO",
+        "auto": true
+      },
+      "activelayers": 1,
+      "thickness": {
+        "sentinel": -1
+      },
+      "friction": [
+        1,
+        0.005,
+        0.0001
+      ],
+      "cellcount": [
+        1,
+        1,
+        1
+      ],
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "priority": {
+        "unset_by_memset": true
+      },
+      "margin": {
+        "unset_by_memset": true
+      },
+      "gap": {
+        "unset_by_memset": true
+      },
+      "size": {
+        "unset_by_memset": true
+      },
+      "flatskin": {
+        "unset_by_memset": true
+      },
+      "passive": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "edgestiffness": {
+        "unset_by_memset": true
+      },
+      "edgedamping": {
+        "unset_by_memset": true
+      },
+      "material": {
+        "unset_by_memset": true
+      },
+      "young": {
+        "unset_by_memset": true
+      },
+      "poisson": {
+        "unset_by_memset": true
+      },
+      "damping": {
+        "unset_by_memset": true
+      },
+      "elastic2d": {
+        "unset_by_memset": true
+      },
+      "order": {
+        "unset_by_memset": true
+      },
+      "nodebody": {
+        "unset_by_memset": true
+      },
+      "vertbody": {
+        "unset_by_memset": true
+      },
+      "node": {
+        "unset_by_memset": true
+      },
+      "vert": {
+        "unset_by_memset": true
+      },
+      "elem": {
+        "unset_by_memset": true
+      },
+      "texcoord": {
+        "unset_by_memset": true
+      },
+      "elemtexcoord": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsMesh": {
+      "maxhullvert": {
+        "sentinel": -1
+      },
+      "inertia": {
+        "value": "mjMESH_INERTIA_LEGACY"
+      },
+      "octree_maxdepth": 6,
+      "refquat": [
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "content_type": {
+        "unset_by_memset": true
+      },
+      "file": {
+        "unset_by_memset": true
+      },
+      "refpos": {
+        "unset_by_memset": true
+      },
+      "smoothnormal": {
+        "unset_by_memset": true
+      },
+      "needsdf": {
+        "unset_by_memset": true
+      },
+      "uservert": {
+        "unset_by_memset": true
+      },
+      "usernormal": {
+        "unset_by_memset": true
+      },
+      "usertexcoord": {
+        "unset_by_memset": true
+      },
+      "userface": {
+        "unset_by_memset": true
+      },
+      "userfacenormal": {
+        "unset_by_memset": true
+      },
+      "userfacetexcoord": {
+        "unset_by_memset": true
+      },
+      "plugin": {
+        "unset_by_memset": true
+      },
+      "material": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsHField": {
+      "element": {
+        "unset_by_memset": true
+      },
+      "content_type": {
+        "unset_by_memset": true
+      },
+      "file": {
+        "unset_by_memset": true
+      },
+      "size": {
+        "unset_by_memset": true
+      },
+      "nrow": {
+        "unset_by_memset": true
+      },
+      "ncol": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsSkin": {
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "file": {
+        "unset_by_memset": true
+      },
+      "material": {
+        "unset_by_memset": true
+      },
+      "inflate": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "vert": {
+        "unset_by_memset": true
+      },
+      "texcoord": {
+        "unset_by_memset": true
+      },
+      "face": {
+        "unset_by_memset": true
+      },
+      "bodyname": {
+        "unset_by_memset": true
+      },
+      "bindpos": {
+        "unset_by_memset": true
+      },
+      "bindquat": {
+        "unset_by_memset": true
+      },
+      "vertid": {
+        "unset_by_memset": true
+      },
+      "vertweight": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsTexture": {
+      "type": {
+        "value": "mjTEXTURE_CUBE"
+      },
+      "colorspace": {
+        "value": "mjCOLORSPACE_AUTO",
+        "auto": true
+      },
+      "random": 0.01,
+      "nchannel": 3,
+      "gridlayout": "............",
+      "rgb1": [
+        0.8,
+        0.8,
+        0.8
+      ],
+      "rgb2": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "gridsize": [
+        1,
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "builtin": {
+        "unset_by_memset": true
+      },
+      "mark": {
+        "unset_by_memset": true
+      },
+      "markrgb": {
+        "unset_by_memset": true
+      },
+      "height": {
+        "unset_by_memset": true
+      },
+      "width": {
+        "unset_by_memset": true
+      },
+      "content_type": {
+        "unset_by_memset": true
+      },
+      "file": {
+        "unset_by_memset": true
+      },
+      "cubefiles": {
+        "unset_by_memset": true
+      },
+      "data": {
+        "unset_by_memset": true
+      },
+      "hflip": {
+        "unset_by_memset": true
+      },
+      "vflip": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsMaterial": {
+      "specular": 0.5,
+      "shininess": 0.5,
+      "metallic": {
+        "sentinel": -1
+      },
+      "roughness": {
+        "sentinel": -1
+      },
+      "texrepeat": [
+        1,
+        1
+      ],
+      "rgba": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "textures": {
+        "unset_by_memset": true
+      },
+      "texuniform": {
+        "unset_by_memset": true
+      },
+      "emission": {
+        "unset_by_memset": true
+      },
+      "reflectance": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsPair": {
+      "condim": 3,
+      "solref": {
+        "opaque": "mj_defaultSolRefImp(pair->solref, pair->solimp)"
+      },
+      "solimp": {
+        "opaque": "mj_defaultSolRefImp(pair->solref, pair->solimp)"
+      },
+      "friction": [
+        1,
+        1,
+        0.005,
+        0.0001,
+        0.0001
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "geomname1": {
+        "unset_by_memset": true
+      },
+      "geomname2": {
+        "unset_by_memset": true
+      },
+      "solreffriction": {
+        "unset_by_memset": true
+      },
+      "margin": {
+        "unset_by_memset": true
+      },
+      "gap": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsEquality": {
+      "type": {
+        "value": "mjEQ_CONNECT"
+      },
+      "active": 1,
+      "solref": {
+        "opaque": "mj_defaultSolRefImp(equality->solref, equality->solimp)"
+      },
+      "solimp": {
+        "opaque": "mj_defaultSolRefImp(equality->solref, equality->solimp)"
+      },
+      "data": [
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "name1": {
+        "unset_by_memset": true
+      },
+      "name2": {
+        "unset_by_memset": true
+      },
+      "objtype": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsTendon": {
+      "limited": {
+        "value": "mjLIMITED_AUTO",
+        "auto": true
+      },
+      "solref_limit": {
+        "opaque": "mj_defaultSolRefImp(tendon->solref_limit, tendon->solimp_limit)"
+      },
+      "solimp_limit": {
+        "opaque": "mj_defaultSolRefImp(tendon->solref_limit, tendon->solimp_limit)"
+      },
+      "solref_friction": {
+        "opaque": "mj_defaultSolRefImp(tendon->solref_friction, tendon->solimp_friction)"
+      },
+      "solimp_friction": {
+        "opaque": "mj_defaultSolRefImp(tendon->solref_friction, tendon->solimp_friction)"
+      },
+      "width": 0.003,
+      "springlength": [
+        -1,
+        -1
+      ],
+      "rgba": [
+        0.5,
+        0.5,
+        0.5,
+        1.0
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "stiffness": {
+        "unset_by_memset": true
+      },
+      "damping": {
+        "unset_by_memset": true
+      },
+      "frictionloss": {
+        "unset_by_memset": true
+      },
+      "armature": {
+        "unset_by_memset": true
+      },
+      "actfrclimited": {
+        "unset_by_memset": true
+      },
+      "range": {
+        "unset_by_memset": true
+      },
+      "actfrcrange": {
+        "unset_by_memset": true
+      },
+      "margin": {
+        "unset_by_memset": true
+      },
+      "material": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsActuator": {
+      "gaintype": {
+        "value": "mjGAIN_FIXED"
+      },
+      "biastype": {
+        "value": "mjBIAS_NONE"
+      },
+      "dyntype": {
+        "value": "mjDYN_NONE"
+      },
+      "actdim": {
+        "sentinel": -1
+      },
+      "trntype": {
+        "value": "mjTRN_UNDEFINED"
+      },
+      "ctrllimited": {
+        "value": "mjLIMITED_AUTO",
+        "auto": true
+      },
+      "forcelimited": {
+        "value": "mjLIMITED_AUTO",
+        "auto": true
+      },
+      "actlimited": {
+        "value": "mjLIMITED_AUTO",
+        "auto": true
+      },
+      "gainprm": [
+        1
+      ],
+      "dynprm": [
+        1
+      ],
+      "gear": [
+        1
+      ],
+      "element": {
+        "unset_by_memset": true
+      },
+      "biasprm": {
+        "unset_by_memset": true
+      },
+      "actearly": {
+        "unset_by_memset": true
+      },
+      "target": {
+        "unset_by_memset": true
+      },
+      "refsite": {
+        "unset_by_memset": true
+      },
+      "slidersite": {
+        "unset_by_memset": true
+      },
+      "cranklength": {
+        "unset_by_memset": true
+      },
+      "lengthrange": {
+        "unset_by_memset": true
+      },
+      "inheritrange": {
+        "unset_by_memset": true
+      },
+      "damping": {
+        "unset_by_memset": true
+      },
+      "armature": {
+        "unset_by_memset": true
+      },
+      "ctrlrange": {
+        "unset_by_memset": true
+      },
+      "forcerange": {
+        "unset_by_memset": true
+      },
+      "actrange": {
+        "unset_by_memset": true
+      },
+      "group": {
+        "unset_by_memset": true
+      },
+      "nsample": {
+        "unset_by_memset": true
+      },
+      "interp": {
+        "unset_by_memset": true
+      },
+      "delay": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "plugin": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsSensor": {
+      "type": {
+        "value": "mjSENS_TOUCH"
+      },
+      "datatype": {
+        "value": "mjDATATYPE_REAL"
+      },
+      "needstage": {
+        "value": "mjSTAGE_ACC"
+      },
+      "element": {
+        "unset_by_memset": true
+      },
+      "objtype": {
+        "unset_by_memset": true
+      },
+      "objname": {
+        "unset_by_memset": true
+      },
+      "reftype": {
+        "unset_by_memset": true
+      },
+      "refname": {
+        "unset_by_memset": true
+      },
+      "intprm": {
+        "unset_by_memset": true
+      },
+      "dim": {
+        "unset_by_memset": true
+      },
+      "cutoff": {
+        "unset_by_memset": true
+      },
+      "noise": {
+        "unset_by_memset": true
+      },
+      "nsample": {
+        "unset_by_memset": true
+      },
+      "interp": {
+        "unset_by_memset": true
+      },
+      "delay": {
+        "unset_by_memset": true
+      },
+      "interval": {
+        "unset_by_memset": true
+      },
+      "userdata": {
+        "unset_by_memset": true
+      },
+      "plugin": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsNumeric": {
+      "element": {
+        "unset_by_memset": true
+      },
+      "data": {
+        "unset_by_memset": true
+      },
+      "size": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsText": {
+      "element": {
+        "unset_by_memset": true
+      },
+      "data": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsTuple": {
+      "element": {
+        "unset_by_memset": true
+      },
+      "objtype": {
+        "unset_by_memset": true
+      },
+      "objname": {
+        "unset_by_memset": true
+      },
+      "objprm": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsKey": {
+      "element": {
+        "unset_by_memset": true
+      },
+      "time": {
+        "unset_by_memset": true
+      },
+      "qpos": {
+        "unset_by_memset": true
+      },
+      "qvel": {
+        "unset_by_memset": true
+      },
+      "act": {
+        "unset_by_memset": true
+      },
+      "mpos": {
+        "unset_by_memset": true
+      },
+      "mquat": {
+        "unset_by_memset": true
+      },
+      "ctrl": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    },
+    "mjsPlugin": {
+      "element": {
+        "unset_by_memset": true
+      },
+      "name": {
+        "unset_by_memset": true
+      },
+      "plugin_name": {
+        "unset_by_memset": true
+      },
+      "active": {
+        "unset_by_memset": true
+      },
+      "info": {
+        "unset_by_memset": true
+      }
+    }
+  }
+}

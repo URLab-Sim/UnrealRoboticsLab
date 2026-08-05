@@ -1,0 +1,29 @@
+<mujoco model="exotic_sensors">
+  <asset>
+    <mesh name="tetra" vertex="0 0 0  1 0 0  0 1 0  0 0 1"/>
+  </asset>
+  <worldbody>
+    <body name="b1" pos="0 0 0.5">
+      <freejoint/>
+      <geom name="g1" type="box" size="0.1 0.1 0.1"/>
+      <site name="s1" pos="0 0 0.2"/>
+      <camera name="cam1" pos="0 0 0.3" resolution="4 4"/>
+    </body>
+    <body name="b2" pos="0.5 0 0.5">
+      <freejoint/>
+      <geom name="g2" type="sphere" size="0.1"/>
+      <geom name="gmesh" type="mesh" mesh="tetra"/>
+    </body>
+  </worldbody>
+  <sensor>
+    <rangefinder name="rf_site" site="s1"/>
+    <rangefinder name="rf_data" site="s1" data="dist normal" cutoff="5"/>
+    <rangefinder name="rf_cam" camera="cam1"/>
+    <contact name="ct_min" geom1="g1" geom2="g2" data="found force" num="3" reduce="mindist"/>
+    <contact name="ct_sub" subtree1="b1" subtree2="b2" reduce="netforce"/>
+    <contact name="ct_site" site="s1"/>
+    <tactile name="tc1" geom="gmesh" mesh="tetra"/>
+    <user name="us1" objtype="site" objname="s1" datatype="real" needstage="vel" dim="1" cutoff="2" noise="0.1"/>
+    <user name="us_axis" objtype="body" objname="b1" datatype="axis" needstage="acc" dim="3"/>
+  </sensor>
+</mujoco>

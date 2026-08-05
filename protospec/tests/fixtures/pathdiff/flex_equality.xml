@@ -1,0 +1,18 @@
+<mujoco model="flex_equality">
+  <!-- Covers: the flexvert / flexstrain equality constraints targeting a
+       flexcomp-generated flex. Exercises the eq_* tables' flex wiring on both
+       compile legs.
+       NOTE: no <pin> inside the flexcomp -- pins have no mjs_makeFlex surface
+       and the mjs leg silently builds unpinned vertices (extra bodies/joints),
+       so a pin-bearing flexcomp diverges structurally. Add a <pin> case here
+       once the bridge reproduces pinning. -->
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <flexcomp name="cloth" type="grid" count="4 4 1" spacing="0.08 0.08 0.08"
+              dim="2" radius="0.008" pos="0 0 1"/>
+  </worldbody>
+  <equality>
+    <flexvert name="fv" flex="cloth"/>
+    <flexstrain name="fs" flex="cloth" cell="0.5 0.5 0.5"/>
+  </equality>
+</mujoco>

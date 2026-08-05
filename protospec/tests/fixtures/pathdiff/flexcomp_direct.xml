@@ -1,0 +1,12 @@
+<mujoco model="flexcomp_direct">
+  <!-- PARITY. type="direct" supplies inline point/element topology.
+       BuildFlexcompMirror authors the plain mjsFlex vert/elem directly and
+       creates a body + dof sliders per unreferenced-free vertex, matching
+       mjCFlexcomp::Make. XmlPath and MjsPath compile bit-identically. -->
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <flexcomp name="sheet" type="direct" dim="2" radius="0.01" pos="0 0 1"
+              point="0 0 0  0.2 0 0  0.2 0.2 0  0 0.2 0"
+              element="0 1 2  0 2 3"/>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,21 @@
+<mujoco model="mesh_geom_inline">
+  <!-- Covers: mesh asset defined by INLINE vertex data (no file), scaled, used
+       as a geom; MuJoCo builds the convex hull at compile. Exercises the mesh
+       size fields (nmesh/nmeshvert/nmeshface) on both compile legs. -->
+  <compiler angle="degree"/>
+  <asset>
+    <mesh name="tetra_inline" scale="1 1 1"
+          vertex="0 0 0  0.1 0 0  0 0.1 0  0 0 0.1"/>
+    <mesh name="pyramid" vertex="0 0 0  0.1 0 0  0.1 0.1 0  0 0.1 0  0.05 0.05 0.12"/>
+  </asset>
+  <worldbody>
+    <body name="m1" pos="0 0 0.5">
+      <freejoint/>
+      <geom name="tetra_g" type="mesh" mesh="tetra_inline"/>
+    </body>
+    <body name="m2" pos="0.3 0 0.5">
+      <freejoint/>
+      <geom name="pyr_g" type="mesh" mesh="pyramid"/>
+    </body>
+  </worldbody>
+</mujoco>

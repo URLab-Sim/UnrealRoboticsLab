@@ -1,0 +1,11 @@
+<mujoco model="model_asset_urdf">
+  <asset>
+    <model name="urdfchild" file="assets/._ps_urdf_child.urdf"/>
+  </asset>
+  <worldbody>
+    <body name="mount" pos="0 0 0.5">
+      <geom type="box" size="0.1 0.1 0.1"/>
+      <attach model="urdfchild" body="base" prefix="u_"/>
+    </body>
+  </worldbody>
+</mujoco>

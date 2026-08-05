@@ -1,0 +1,11 @@
+<mujoco model="texture_gridlayout">
+  <compiler texturedir="assets"/>
+  <asset>
+    <texture name="gridtex" type="cube" file="cube_grid.png"
+             gridsize="3 4" gridlayout=".U..LFRB.D.."/>
+    <material name="gridmat" texture="gridtex"/>
+  </asset>
+  <worldbody>
+    <geom name="g" type="box" size="0.1 0.1 0.1" material="gridmat"/>
+  </worldbody>
+</mujoco>

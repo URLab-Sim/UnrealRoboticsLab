@@ -1,0 +1,28 @@
+<mujoco model="hfield_terrain">
+  <!-- Covers three <hfield> asset sources + hfield-type geoms on both legs:
+       (1) a PNG file source; (2) a procedural grid with ASYMMETRIC inline
+       elevation -- exercises stock OneHfield's reverse-row-order flip (the mjs
+       leg must flip too, else silent divergence); (3) a procedural grid with NO
+       elevation -- exercises stock's zero-fill of userdata (else MjsPath fails
+       "hfield not specified"). Cases 2 and 3 were bridge gaps until the builder
+       reproduced OneHfield's userdata construction. -->
+  <compiler texturedir="assets"/>
+  <asset>
+    <hfield name="terrain" file="assets/terrain.png" size="2 1.5 0.5 0.1"/>
+    <hfield name="grid" nrow="4" ncol="6" size="2 1.5 0.5 0.1"
+            elevation="0 0.1 0.2 0.3 0.2 0.1
+                       0.1 0.2 0.4 0.5 0.4 0.2
+                       0.2 0.4 0.6 0.8 0.6 0.4
+                       0.1 0.2 0.4 0.5 0.4 0.2"/>
+    <hfield name="flat" nrow="4" ncol="6" size="2 1.5 0.5 0.1"/>
+  </asset>
+  <worldbody>
+    <geom name="ground" type="hfield" hfield="terrain" pos="0 0 0"/>
+    <geom name="ground_grid" type="hfield" hfield="grid" pos="5 0 0"/>
+    <geom name="ground_flat" type="hfield" hfield="flat" pos="-5 0 0"/>
+    <body name="ball" pos="0 0 2">
+      <freejoint/>
+      <geom name="ball_g" type="sphere" size="0.1"/>
+    </body>
+  </worldbody>
+</mujoco>

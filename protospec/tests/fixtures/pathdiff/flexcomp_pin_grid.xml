@@ -1,0 +1,15 @@
+<mujoco model="flexcomp_pin_grid">
+  <!-- PARITY. Exercises the grid-coordinate pin families (pingrid + pingridrange)
+       and a pinrange, all resolved through mjCFlexcomp::GridID by
+       BuildFlexcompMirror. A 2D grid cloth pinned along two edges + a corner. -->
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <flexcomp name="cloth" type="grid" count="5 4 1" spacing="0.08 0.08 0.08"
+              dim="2" radius="0.006" pos="0 0 1">
+      <pin gridrange="0 0 0 3"/>
+      <pin grid="4 0"/>
+      <pin range="10 11"/>
+      <edge equality="true"/>
+    </flexcomp>
+  </worldbody>
+</mujoco>

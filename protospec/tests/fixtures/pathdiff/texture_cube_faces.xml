@@ -1,0 +1,13 @@
+<mujoco model="texture_cube_faces">
+  <compiler texturedir="assets"/>
+  <asset>
+    <texture name="cubetex" type="cube"
+             fileright="cube_right.png" fileleft="cube_left.png"
+             fileup="cube_up.png" filedown="cube_down.png"
+             filefront="cube_front.png" fileback="cube_back.png"/>
+    <material name="cubemat" texture="cubetex"/>
+  </asset>
+  <worldbody>
+    <geom name="g" type="box" size="0.1 0.1 0.1" material="cubemat"/>
+  </worldbody>
+</mujoco>

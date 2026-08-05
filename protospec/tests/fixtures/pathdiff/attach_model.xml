@@ -1,0 +1,14 @@
+<mujoco model="attach_parent">
+  <asset>
+    <model name="arm" file="assets/._ps_attach_child.xml"/>
+  </asset>
+  <worldbody>
+    <body name="base" pos="0 0 0.5">
+      <geom type="box" size="0.1 0.1 0.1"/>
+      <attach model="arm" body="link" prefix="a_"/>
+    </body>
+    <frame pos="0.3 0 0.5" euler="0 0 90">
+      <attach model="arm" body="link" prefix="b_"/>
+    </frame>
+  </worldbody>
+</mujoco>

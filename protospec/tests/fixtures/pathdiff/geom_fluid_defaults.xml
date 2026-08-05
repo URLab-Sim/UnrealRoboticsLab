@@ -1,0 +1,33 @@
+<mujoco model="geom_fluid_defaults">
+  <!-- Covers: geom fluidshape="ellipsoid" + fluidcoef authored on a <default>
+       class (the balloons/cards pattern). The compiler derives geom_fluid from
+       fluid_ellipsoid + fluid_coefs; both must land on the DEFAULT template so
+       inheriting geoms pick them up. The mjs leg previously applied the
+       keyword->enum conversion only to real geoms, never to class templates, so
+       class-level fluidshape was dropped (silent geom_fluid divergence). -->
+  <compiler autolimits="true"/>
+  <default>
+    <default class="floaty">
+      <geom density="0.2" fluidshape="ellipsoid" fluidcoef="0.6 0.3 1.4 1.1 0.9"/>
+    </default>
+    <default class="floaty_default_coef">
+      <geom density="0.3" fluidshape="ellipsoid"/>
+    </default>
+  </default>
+  <option density="1.2" viscosity="1.8e-5"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="balloon" pos="0 0 1" childclass="floaty">
+      <freejoint/>
+      <geom name="balloon_g" type="ellipsoid" size="0.1 0.12 0.15"/>
+    </body>
+    <body name="balloon2" pos="0.5 0 1" childclass="floaty_default_coef">
+      <freejoint/>
+      <geom name="balloon2_g" type="sphere" size="0.1"/>
+    </body>
+    <body name="plain" pos="1 0 1">
+      <freejoint/>
+      <geom name="plain_g" type="sphere" size="0.1" class="floaty"/>
+    </body>
+  </worldbody>
+</mujoco>

@@ -1,0 +1,29 @@
+<mujoco model="keyframes">
+  <!-- Covers: <key> frames with qpos/qvel/ctrl/act, exercising nkey and the
+       key_time/key_qpos/key_qvel/key_ctrl arrays. A free body + a hinge give a
+       non-trivial qpos layout (7 + 1 = 8 dofs of qpos). -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="kfree" pos="0 0 1">
+      <freejoint/>
+      <geom name="kfree_g" type="box" size="0.05 0.05 0.05"/>
+    </body>
+    <body name="khinge" pos="0.3 0 1">
+      <joint name="kj" type="hinge" axis="0 0 1"/>
+      <geom name="khinge_g" type="capsule" size="0.02" fromto="0 0 0 0.1 0 0"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="km" joint="kj"/>
+  </actuator>
+  <keyframe>
+    <key name="home" time="0"
+         qpos="0 0 1 1 0 0 0  0"
+         qvel="0 0 0 0 0 0  0"
+         ctrl="0"/>
+    <key name="posed" time="0.5"
+         qpos="0.1 0.2 1.3 0.9238795 0 0 0.3826834  0.7"
+         qvel="0.1 0 0 0 0 0.2  1.0"
+         ctrl="0.5"/>
+  </keyframe>
+</mujoco>

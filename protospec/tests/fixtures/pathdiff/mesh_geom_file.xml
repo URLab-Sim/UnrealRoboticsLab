@@ -1,0 +1,15 @@
+<mujoco model="mesh_geom_file">
+  <!-- Covers: mesh asset loaded from a FILE (assets/tetra.obj) via meshdir,
+       exercising base_dir asset resolution on both the ProtoSpec bridge and
+       stock mj_loadXML legs. -->
+  <compiler angle="degree" meshdir="assets"/>
+  <asset>
+    <mesh name="tetra_file" file="tetra.obj" scale="1 1 1"/>
+  </asset>
+  <worldbody>
+    <body name="mf" pos="0 0 0.5">
+      <freejoint/>
+      <geom name="tetra_file_g" type="mesh" mesh="tetra_file"/>
+    </body>
+  </worldbody>
+</mujoco>

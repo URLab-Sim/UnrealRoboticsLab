@@ -1,0 +1,20 @@
+<mujoco model="replicate_macro">
+  <compiler angle="degree"/>
+  <worldbody>
+    <replicate count="3" offset="0.2 0 0">
+      <body name="a" pos="0 0 1"><geom type="sphere" size="0.05"/></body>
+    </replicate>
+    <replicate count="4" offset="0.15 0 0" euler="0 0 15">
+      <body name="b" pos="0.5 0 0.5"><geom type="box" size="0.03 0.03 0.03"/></body>
+    </replicate>
+    <replicate count="3" offset="0.2 0 0" euler="0 0 10">
+      <body name="c" pos="0 0.5 1"><freejoint/><geom type="sphere" size="0.04"/></body>
+    </replicate>
+    <replicate count="2" offset="0 0.3 0">
+      <body name="d" pos="0 0 1.5">
+        <geom type="capsule" size="0.02" fromto="0 0 0 0 0 0.2"/>
+        <body name="dc" pos="0 0 0.2"><joint type="hinge" axis="1 0 0"/><geom type="sphere" size="0.03"/></body>
+      </body>
+    </replicate>
+  </worldbody>
+</mujoco>

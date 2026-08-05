@@ -1,0 +1,32 @@
+<mujoco model="actuators_transmissions">
+  <!-- Covers: several actuator transmission types -- motor(joint), position(joint),
+       velocity(joint), general(joint with gainprm), and a site-transmission
+       actuator via a spatial tendon actuator (motor on tendon). Exercises the
+       actuator gain/bias/range/ctrlrange arrays. -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="j1_body" pos="0 0 1">
+      <joint name="j1" type="hinge" axis="0 0 1"/>
+      <geom name="j1_g" type="capsule" size="0.02" fromto="0 0 0 0.2 0 0"/>
+      <body name="j2_body" pos="0.2 0 0">
+        <joint name="j2" type="hinge" axis="0 0 1"/>
+        <geom name="j2_g" type="capsule" size="0.02" fromto="0 0 0 0.2 0 0"/>
+        <site name="tip_site" pos="0.2 0 0" size="0.01"/>
+      </body>
+    </body>
+    <site name="anchor" pos="0 0 1" size="0.01"/>
+  </worldbody>
+  <tendon>
+    <spatial name="td" width="0.005">
+      <site site="anchor"/>
+      <site site="tip_site"/>
+    </spatial>
+  </tendon>
+  <actuator>
+    <motor name="m_j1" joint="j1" ctrlrange="-1 1" gear="2"/>
+    <position name="p_j2" joint="j2" kp="10" ctrlrange="-1.5 1.5"/>
+    <velocity name="v_j1" joint="j1" kv="0.5"/>
+    <general name="g_j2" joint="j2" gainprm="5 0 0" biasprm="0 -5 0" ctrlrange="-1 1"/>
+    <motor name="m_td" tendon="td" ctrlrange="-2 2"/>
+  </actuator>
+</mujoco>

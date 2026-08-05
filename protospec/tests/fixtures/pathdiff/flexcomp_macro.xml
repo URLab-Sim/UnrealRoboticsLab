@@ -1,0 +1,6 @@
+<mujoco model="flexcomp_macro">
+  <worldbody>
+    <flexcomp name="grid1" type="grid" count="3 3 1" spacing="0.1 0.1 0.1" dim="2" radius="0.01" pos="0 0 1"/>
+    <flexcomp name="box1" type="box" count="3 3 3" spacing="0.05 0.05 0.05" dim="3" radius="0.008" mass="2" pos="1 0 1"/>
+  </worldbody>
+</mujoco>

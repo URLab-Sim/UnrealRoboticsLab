@@ -1,0 +1,37 @@
+<mujoco model="actuator_default_shortcut">
+  <!-- Covers: actuator gain/bias SHORTCUTS (kp/kv/...) authored on a <default>
+       class (the slider_crank pattern: <position kp="30"/> in a default). Stock
+       runs OneActuator on <default> actuator entries, so the shortcut's
+       mjs_setTo* folds gainprm/biasprm onto the class template and inheriting
+       actuators pick them up. The mjs leg previously ran ApplyMjs only on class
+       templates, dropping the shortcut (gainprm/biasprm divergence). -->
+  <compiler autolimits="true"/>
+  <default>
+    <position ctrllimited="true" ctrlrange="-1 1" kp="30"/>
+    <default class="stiff">
+      <position kp="80" kv="5"/>
+    </default>
+    <default class="damp">
+      <velocity kv="12"/>
+    </default>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="arm" pos="0 0 1">
+      <joint name="j0" type="hinge" axis="0 1 0" range="-90 90"/>
+      <geom name="arm_g" type="capsule" size="0.03" fromto="0 0 0 0.3 0 0"/>
+      <body name="fore" pos="0.3 0 0">
+        <joint name="j1" type="hinge" axis="0 1 0" range="-90 90"/>
+        <geom name="fore_g" type="capsule" size="0.025" fromto="0 0 0 0.25 0 0"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <!-- inherits root default kp=30 -->
+    <position name="p_root" joint="j0"/>
+    <!-- inherits class stiff kp=80 kv=5 -->
+    <position name="p_stiff" joint="j1" class="stiff"/>
+    <!-- inherits class damp kv=12 -->
+    <velocity name="v_damp" joint="j1" class="damp"/>
+  </actuator>
+</mujoco>

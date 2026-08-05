@@ -1,0 +1,29 @@
+<mujoco model="defaults_class_inheritance">
+  <!-- Covers: <default> class tree with nested child classes, a body-level
+       childclass propagating to descendants, and per-element class= overrides.
+       Exercises default-attribute resolution which the writer must reproduce. -->
+  <compiler angle="degree"/>
+  <default>
+    <default class="arm_defaults">
+      <geom type="capsule" size="0.02" rgba="0.7 0.7 0.9 1"/>
+      <joint type="hinge" damping="0.1"/>
+      <default class="thick">
+        <geom size="0.04" rgba="0.9 0.5 0.5 1"/>
+      </default>
+      <default class="thin">
+        <geom size="0.01"/>
+      </default>
+    </default>
+  </default>
+  <worldbody>
+    <body name="arm" childclass="arm_defaults" pos="0 0 1">
+      <joint name="a0" axis="0 1 0"/>
+      <geom name="link0" fromto="0 0 0 0.2 0 0"/>
+      <body name="forearm" pos="0.2 0 0">
+        <joint name="a1" axis="0 1 0" damping="0.2"/>
+        <geom name="link1" class="thick" fromto="0 0 0 0.15 0 0"/>
+        <geom name="tip" class="thin" fromto="0.15 0 0 0.2 0 0"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

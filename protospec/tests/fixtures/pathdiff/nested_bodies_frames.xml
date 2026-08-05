@@ -1,0 +1,26 @@
+<mujoco model="nested_bodies_frames">
+  <!-- Covers: deep body nesting, <frame> grouping with pos/euler, mixed
+       body pos/quat, inertial elements authored explicitly. -->
+  <compiler angle="degree"/>
+  <worldbody>
+    <body name="root" pos="0 0 1" quat="1 0 0 0">
+      <inertial pos="0 0 0" mass="2" diaginertia="0.01 0.02 0.03"/>
+      <geom name="root_g" type="box" size="0.1 0.1 0.1"/>
+      <frame name="f1" pos="0.2 0 0" euler="0 0 30">
+        <body name="child1" pos="0 0.1 0">
+          <joint name="c1j" type="hinge" axis="0 1 0"/>
+          <geom name="child1_g" type="sphere" size="0.05"/>
+          <body name="grandchild" pos="0.05 0 0.05" euler="10 20 30">
+            <joint name="gcj" type="slide" axis="1 0 0"/>
+            <geom name="gc_g" type="capsule" size="0.02" fromto="0 0 0 0.1 0 0"/>
+          </body>
+        </body>
+      </frame>
+      <frame name="f2" pos="-0.2 0 0">
+        <body name="child2" pos="0 -0.1 0">
+          <geom name="child2_g" type="cylinder" size="0.03 0.05"/>
+        </body>
+      </frame>
+    </body>
+  </worldbody>
+</mujoco>

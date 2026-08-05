@@ -1,0 +1,45 @@
+<mujoco model="replicate_tendon_wrap">
+  <!-- Covers: a spatial <tendon> whose site wraps reference sites created inside
+       a <replicate> block (the replicate/tendon.xml pattern). Stock parses the
+       tendon section BEFORE worldbody, then replicate's mjs_attach rewrites the
+       tendon's wrap references onto the suffixed site names. The mjs leg must
+       build worldbody LAST for the same reference rewrite to happen (building it
+       first left the wrap referencing a not-yet-existent site "a"). -->
+  <default>
+    <site size=".02"/>
+    <geom condim="1"/>
+  </default>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 .01"/>
+    <site name="ceiling" pos="0.01 0.02 2.4"/>
+    <body pos="0 0 1.5">
+      <freejoint/>
+      <site name="hook" pos="0 0 .3"/>
+      <geom name="bulb" size=".3" density="100" contype="0" conaffinity="0"/>
+      <site name="bulb" pos="0 0 0"/>
+    </body>
+    <replicate count="6" euler="0 0 20">
+      <body pos=".2 0 1.5">
+        <freejoint/>
+        <site name="a"/>
+        <geom size=".03"/>
+      </body>
+      <body pos="1.2 0 1.5">
+        <freejoint/>
+        <site name="b"/>
+        <geom size=".1"/>
+      </body>
+    </replicate>
+  </worldbody>
+  <tendon>
+    <spatial springlength="0 0.5" stiffness="10000">
+      <site site="ceiling"/>
+      <site site="hook"/>
+    </spatial>
+    <spatial range="0 0.5">
+      <site site="a"/>
+      <geom geom="bulb" sidesite="bulb"/>
+      <site site="b"/>
+    </spatial>
+  </tendon>
+</mujoco>

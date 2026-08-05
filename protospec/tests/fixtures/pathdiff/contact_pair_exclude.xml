@@ -1,0 +1,26 @@
+<mujoco model="contact_pair_exclude">
+  <!-- Covers: explicit contact <pair> with friction/solref/solimp overrides and
+       a body-body <exclude>. Exercises npair/nexclude and pair_*/exclude_signature. -->
+  <compiler angle="degree"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="2 2 0.1"/>
+    <body name="ca" pos="0 0 0.5">
+      <freejoint/>
+      <geom name="ca_g" type="box" size="0.05 0.05 0.05"/>
+    </body>
+    <body name="cb" pos="0.05 0 0.6">
+      <freejoint/>
+      <geom name="cb_g" type="sphere" size="0.05"/>
+    </body>
+    <body name="cc" pos="0 0.05 0.7">
+      <freejoint/>
+      <geom name="cc_g" type="capsule" size="0.03" fromto="0 0 0 0 0 0.1"/>
+    </body>
+  </worldbody>
+  <contact>
+    <pair name="p_ab" geom1="ca_g" geom2="cb_g" friction="1 1 0.005 0.0001 0.0001"
+          solref="0.02 1" solimp="0.9 0.95 0.001"/>
+    <pair name="p_ac" geom1="ca_g" geom2="cc_g" condim="6"/>
+    <exclude name="ex_bc" body1="cb" body2="cc"/>
+  </contact>
+</mujoco>

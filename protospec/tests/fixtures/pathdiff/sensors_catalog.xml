@@ -1,0 +1,83 @@
+<mujoco model="sensors_catalog">
+  <!-- Covers: every sensor family with no prior fixture -- the joint/tendon
+       pos/vel/limit triads, actuator pos/vel/frc (+ jointactuatorfrc /
+       tendonactuatorfrc), ball quat/angvel, all eight frame* sensors, subtree
+       com/linvel/angmom, magnetometer, torque, camprojection, e_potential,
+       e_kinetic and clock, plus the geometric-distance family (distance/normal/
+       fromto with geom/body objects) and insidesite. Sensors fold into mjModel
+       sensor_* tables (type/objtype/objid/dim/adr) and must agree on both legs.
+       The distance family + insidesite gained their mjs_builder dispatch here
+       (previously s->type stayed unset and mj_compile failed "invalid type"). -->
+  <compiler autolimits="true"/>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1"/>
+    <body name="base" pos="0 0 1">
+      <joint name="hinge1" type="hinge" axis="0 1 0" range="-60 60"/>
+      <geom name="base_g" type="capsule" size="0.04" fromto="0 0 0 0.3 0 0"/>
+      <site name="s_a" pos="0.1 0 0.05"/>
+      <camera name="cam" pos="0 -0.5 0.2" mode="targetbody" target="ball"
+              resolution="16 16"/>
+      <body name="mid" pos="0.3 0 0">
+        <joint name="slide1" type="slide" axis="1 0 0" range="-0.2 0.2"/>
+        <geom name="mid_g" type="box" size="0.05 0.04 0.03"/>
+        <site name="s_b" pos="0 0 0.04"/>
+      </body>
+    </body>
+    <body name="ball" pos="1 0 1">
+      <joint name="balljoint" type="ball" range="0 50"/>
+      <geom name="ball_g" type="sphere" size="0.08"/>
+      <site name="s_ball" pos="0 0 0.1"/>
+    </body>
+  </worldbody>
+  <tendon>
+    <fixed name="ten_fix" range="-0.3 0.3" limited="true">
+      <joint joint="hinge1" coef="1"/>
+      <joint joint="slide1" coef="-0.5"/>
+    </fixed>
+  </tendon>
+  <actuator>
+    <motor name="act_m" joint="hinge1" gear="2"/>
+    <position name="act_p" joint="slide1" kp="10"/>
+  </actuator>
+  <sensor>
+    <jointpos name="q_pos" joint="hinge1"/>
+    <jointvel name="q_vel" joint="hinge1"/>
+    <jointlimitpos name="q_lpos" joint="hinge1"/>
+    <jointlimitvel name="q_lvel" joint="hinge1"/>
+    <jointlimitfrc name="q_lfrc" joint="hinge1"/>
+    <jointactuatorfrc name="q_afrc" joint="hinge1"/>
+    <tendonpos name="t_pos" tendon="ten_fix"/>
+    <tendonvel name="t_vel" tendon="ten_fix"/>
+    <tendonlimitpos name="t_lpos" tendon="ten_fix"/>
+    <tendonlimitvel name="t_lvel" tendon="ten_fix"/>
+    <tendonlimitfrc name="t_lfrc" tendon="ten_fix"/>
+    <tendonactuatorfrc name="t_afrc" tendon="ten_fix"/>
+    <actuatorpos name="a_pos" actuator="act_m"/>
+    <actuatorvel name="a_vel" actuator="act_m"/>
+    <actuatorfrc name="a_frc" actuator="act_p"/>
+    <ballquat name="b_quat" joint="balljoint"/>
+    <ballangvel name="b_angvel" joint="balljoint"/>
+    <magnetometer name="mag" site="s_a"/>
+    <torque name="trq" site="s_a"/>
+    <camprojection name="cproj" site="s_ball" camera="cam"/>
+    <framepos name="f_pos" objtype="site" objname="s_b" reftype="body" refname="base"/>
+    <framequat name="f_quat" objtype="body" objname="mid"/>
+    <framexaxis name="f_x" objtype="geom" objname="mid_g"/>
+    <frameyaxis name="f_y" objtype="camera" objname="cam"/>
+    <framezaxis name="f_z" objtype="site" objname="s_a"/>
+    <framelinvel name="f_lv" objtype="body" objname="ball"/>
+    <frameangvel name="f_av" objtype="body" objname="ball"/>
+    <framelinacc name="f_la" objtype="body" objname="mid"/>
+    <frameangacc name="f_aa" objtype="body" objname="mid"/>
+    <subtreecom name="st_com" body="base"/>
+    <subtreelinvel name="st_lv" body="base"/>
+    <subtreeangmom name="st_am" body="base"/>
+    <e_potential name="e_pot"/>
+    <e_kinetic name="e_kin"/>
+    <clock name="clk"/>
+    <distance name="d_gg" geom1="base_g" geom2="ball_g"/>
+    <normal name="n_bb" body1="base" body2="ball"/>
+    <fromto name="ft_gb" geom1="mid_g" body2="ball"/>
+    <insidesite name="ins" site="s_ball" objtype="body" objname="ball"/>
+  </sensor>
+</mujoco>

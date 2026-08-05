@@ -1,0 +1,22 @@
+<mujoco model="composite_cable_asset">
+  <!-- Covers: a <composite> alongside <asset> textures/materials (the belt/
+       cable/coil pattern where a shared "texplane" arrives via an <include>d
+       scene). GraftComposite parses the composite in a throwaway fragment spec
+       then merges it with mjs_addSpec; cloning the model's assets into that
+       fragment duplicated every asset name and mj_compile failed "repeated name
+       'texplane'". The composite geometry resolves any material against the
+       parent spec after the merge, so the fragment carries no asset copy. -->
+  <asset>
+    <texture name="texplane" type="2d" builtin="checker" rgb1=".2 .3 .4"
+             rgb2=".1 .15 .2" width="512" height="512"/>
+    <material name="matplane" texture="texplane" texrepeat="10 10"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" type="plane" size="3 3 0.1" material="matplane"/>
+    <body name="host" pos="0.3 0 1">
+      <composite type="cable" curve="s 0 0" count="6 1 1" size="0.5 0 0" initial="none">
+        <geom type="capsule" size="0.005"/>
+      </composite>
+    </body>
+  </worldbody>
+</mujoco>

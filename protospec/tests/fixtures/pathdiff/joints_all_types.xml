@@ -1,0 +1,28 @@
+<mujoco model="joints_all_types">
+  <!-- Covers: every joint type -- free, ball, slide, hinge -- plus a body with
+       two joints (hinge+slide compound) and joint ranges/limits. -->
+  <compiler angle="radian"/>
+  <worldbody>
+    <body name="free_body" pos="0 0 1">
+      <freejoint name="free_j"/>
+      <geom name="free_g" type="box" size="0.05 0.05 0.05"/>
+    </body>
+    <body name="ball_body" pos="0.3 0 1">
+      <joint name="ball_j" type="ball"/>
+      <geom name="ball_g" type="sphere" size="0.05"/>
+    </body>
+    <body name="slide_body" pos="0.6 0 1">
+      <joint name="slide_j" type="slide" axis="0 0 1" range="-0.2 0.2" limited="true"/>
+      <geom name="slide_g" type="capsule" size="0.02" fromto="0 0 0 0 0 0.1"/>
+    </body>
+    <body name="hinge_body" pos="0.9 0 1">
+      <joint name="hinge_j" type="hinge" axis="0 1 0" range="-1.0 1.0" limited="true"/>
+      <geom name="hinge_g" type="cylinder" size="0.03 0.05"/>
+    </body>
+    <body name="compound" pos="1.2 0 1">
+      <joint name="cmp_slide" type="slide" axis="1 0 0"/>
+      <joint name="cmp_hinge" type="hinge" axis="0 0 1"/>
+      <geom name="cmp_g" type="ellipsoid" size="0.04 0.05 0.06"/>
+    </body>
+  </worldbody>
+</mujoco>

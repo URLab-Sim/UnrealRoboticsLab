@@ -67,7 +67,7 @@ static void ApplyCompilerNode(const FXmlNode* CompilerNode, FMjCompilerSettings&
 		Settings.bAutoLimits = true;
 }
 
-// Walk a model/fragment root applying every <compiler> in document order,
+// Walk a model/fragment root applying every <compiler> in spec order,
 // descending into <include>d fragments (rooted in <mujocoinclude>).
 static void GatherCompilerSettings(const FXmlNode* Node, const FString& XMLDir, FMjCompilerSettings& Settings)
 {

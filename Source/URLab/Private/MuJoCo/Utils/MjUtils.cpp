@@ -21,58 +21,10 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Utils/MjUtils.h"
-#include "MuJoCo/Utils/MjBind.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Utils/MjXmlUtils.h"
 #include "DrawDebugHelpers.h"
 #include "XmlNode.h"
-
-FVector MjUtils::MjToUEPosition(const double* pos)
-{
-	// MuJoCo (Right-handed, Z-up) -> UE (Left-handed, Z-up)
-	// scale: 1 unit -> 100 cm
-	// Axis: X->X, Y->-Y, Z->Z
-	if (!pos)
-		return FVector::ZeroVector;
-	return FVector(pos[0] * 100.0, pos[1] * -100.0, pos[2] * 100.0);
-}
-
-FVector MjUtils::MjToUEPosition(const float* pos)
-{
-	if (!pos)
-		return FVector::ZeroVector;
-	return FVector((double)pos[0] * 100.0, (double)pos[1] * -100.0, (double)pos[2] * 100.0);
-}
-
-void MjUtils::UEToMjPosition(const FVector& pos, double* outPos)
-{
-	if (!outPos)
-		return;
-	outPos[0] = pos.X / 100.0;
-	outPos[1] = pos.Y / -100.0;
-	outPos[2] = pos.Z / 100.0;
-}
-
-FQuat MjUtils::MjToUERotation(const double* quat)
-{
-	// MuJoCo [w,x,y,z] -> UE [x,y,z,w] with Y-flip for handedness
-
-	if (!quat)
-		return FQuat::Identity;
-	return FQuat(-quat[1], quat[2], -quat[3], quat[0]);
-}
-
-void MjUtils::UEToMjRotation(const FQuat& quat, double* outQuat)
-{
-	if (!outQuat)
-		return;
-
-	// UE [x,y,z,w] -> MuJoCo [w,x,y,z] with Y-flip for handedness
-
-	outQuat[0] = quat.W;
-	outQuat[1] = -quat.X;
-	outQuat[2] = quat.Y;
-	outQuat[3] = -quat.Z;
-}
 
 FString MjUtils::MjToString(const char* text)
 {
@@ -115,8 +67,8 @@ bool MjUtils::ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& 
 		double Start[3] = {FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2])};
 		double End[3] = {FCString::Atod(*Parts[3]), FCString::Atod(*Parts[4]), FCString::Atod(*Parts[5])};
 
-		OutStart = MjToUEPosition(Start);
-		OutEnd = MjToUEPosition(End);
+		OutStart = URLabAxisConv::MjPositionToUe(Start);
+		OutEnd = URLabAxisConv::MjPositionToUe(End);
 		return true;
 	}
 	return false;
@@ -148,32 +100,33 @@ bool MjUtils::DecomposeFromTo(const FXmlNode* Node,
 	return true;
 }
 
-void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geom_view, const FColor& DrawColor, float Multiplier)
+void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const mjData* d, int32 GeomId,
+	const FColor& DrawColor, float Multiplier)
 {
-	if (!World || !m)
+	if (!World || !m || !d || GeomId < 0 || GeomId >= m->ngeom)
 		return;
 
-	mjtNum* pos = geom_view.geom_xpos;
-	mjtNum* mat = geom_view.geom_xmat;
-	mjtNum* size = geom_view.geom_size;
+	const mjtNum* pos = &d->geom_xpos[GeomId * 3];
+	const mjtNum* mat = &d->geom_xmat[GeomId * 9];
+	const mjtNum* size = &m->geom_size[GeomId * 3];
 
 	// Draw if group 3 (collision convention) OR if both contype and conaffinity are non-zero (active collider)
-	int group = geom_view._m->geom_group[geom_view.id];
-	int contype = geom_view._m->geom_contype[geom_view.id];
-	int conaffinity = geom_view._m->geom_conaffinity[geom_view.id];
+	int group = m->geom_group[GeomId];
+	int contype = m->geom_contype[GeomId];
+	int conaffinity = m->geom_conaffinity[GeomId];
 	bool isCollisionGeom = (group == 3) || (contype != 0 && conaffinity != 0);
 	if (!isCollisionGeom)
 	{
 		return;
 	}
 
-	FVector Position = MjToUEPosition(pos);
+	FVector Position = URLabAxisConv::MjPositionToUe(pos);
 
 	mjtNum _quat[4];
 	mju_mat2Quat(_quat, mat);
-	FQuat Rotation = MjToUERotation(_quat);
+	FQuat Rotation = URLabAxisConv::MjQuatToUe(_quat);
 
-	switch (geom_view.geom_type)
+	switch (m->geom_type[GeomId])
 	{
 		case mjGEOM_BOX:
 		{
@@ -211,7 +164,7 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
 		case mjGEOM_MESH:
 		{
 			FColor Color = DrawColor != FColor::Magenta ? DrawColor : FColor::Magenta;
-			int meshId = geom_view.geom_dataid;
+			int meshId = m->geom_dataid[GeomId];
 			if (meshId < 0)
 				break;
 
@@ -234,9 +187,9 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
 					int v2_idx = faceGlobalId[3 * j + 1];
 					int v3_idx = faceGlobalId[3 * j + 2];
 
-					FVector v1 = MjToUEPosition(&vertices[3 * v1_idx]);
-					FVector v2 = MjToUEPosition(&vertices[3 * v2_idx]);
-					FVector v3 = MjToUEPosition(&vertices[3 * v3_idx]);
+					FVector v1 = URLabAxisConv::MjPositionToUe(&vertices[3 * v1_idx]);
+					FVector v2 = URLabAxisConv::MjPositionToUe(&vertices[3 * v2_idx]);
+					FVector v3 = URLabAxisConv::MjPositionToUe(&vertices[3 * v3_idx]);
 
 					v1 = Rotation.RotateVector(v1) + Position;
 					v2 = Rotation.RotateVector(v2) + Position;
@@ -260,9 +213,9 @@ void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geo
 					int v2_idx = faceData[3 * j + 1];
 					int v3_idx = faceData[3 * j + 2];
 
-					FVector v1 = MjToUEPosition(&vertices[3 * v1_idx]);
-					FVector v2 = MjToUEPosition(&vertices[3 * v2_idx]);
-					FVector v3 = MjToUEPosition(&vertices[3 * v3_idx]);
+					FVector v1 = URLabAxisConv::MjPositionToUe(&vertices[3 * v1_idx]);
+					FVector v2 = URLabAxisConv::MjPositionToUe(&vertices[3 * v2_idx]);
+					FVector v3 = URLabAxisConv::MjPositionToUe(&vertices[3 * v3_idx]);
 
 					v1 = Rotation.RotateVector(v1) + Position;
 					v2 = Rotation.RotateVector(v2) + Position;
@@ -447,6 +400,6 @@ bool MjUtils::ReadVec3InMeters(const FXmlNode* Node, const TCHAR* Attr, FVector&
 	// Schema attribute is in MJ metres; convert to UE centimetres + Y-flip.
 	FVector MjVec = MjXmlUtils::ParseVector(Str);
 	const double MjArr[3] = {MjVec.X, MjVec.Y, MjVec.Z};
-	Out = MjUtils::MjToUEPosition(MjArr);
+	Out = URLabAxisConv::MjPositionToUe(MjArr);
 	return true;
 }

@@ -76,7 +76,7 @@ struct FMjCompilerSettings
  *   quat > axisangle > euler > xyaxes > zaxis
  *
  * All functions produce MuJoCo-frame quaternions (w, x, y, z).
- * Use MjUtils::MjToUERotation() to convert to Unreal frame afterwards.
+ * Use URLabAxisConv::MjQuatToUe() to convert to Unreal frame afterwards.
  */
 class URLAB_API MjOrientationUtils
 {
@@ -84,8 +84,8 @@ public:
 	/**
 	 * Parse <compiler> settings from an MJCF XML root and extract orientation-related settings.
 	 * Compilers in <include>d fragments (rooted in <mujocoinclude>) are merged in
-	 * document order, later values overriding earlier, matching MuJoCo's splice.
-	 * @param RootNode  The root <mujoco> node of the XML document.
+	 * spec order, later values overriding earlier, matching MuJoCo's splice.
+	 * @param RootNode  The root <mujoco> node of the XML spec.
 	 * @param XMLDir    Directory of the XML file, used to resolve <include> paths.
 	 *                  Pass empty to skip include resolution (direct compilers only).
 	 * @return Parsed compiler settings (angle mode, euler sequence, dirs, autolimits).

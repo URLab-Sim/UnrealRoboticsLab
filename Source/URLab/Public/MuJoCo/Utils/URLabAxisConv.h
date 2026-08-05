@@ -10,31 +10,24 @@
 // ============================================================================
 // URLabAxisConv
 //
-// Centralised MuJoCo <-> Unreal handedness + units conversion helpers. The
-// codegen and the hand-rolled import/export paths converge here so a future
-// audit only has to scrub one file (instead of grepping for inlined
-// expressions like ``Out.Y = -In.Y;`` and ``X / 100.0`` scattered across
-// every component .cpp).
+// The one place MuJoCo's frame and units become Unreal's, and the only place a
+// handedness or unit audit has to read. Every seam that crosses the boundary --
+// the editor preview, the editor write-back, the runtime render pass, the
+// runtime input path -- goes through these five functions and no others.
 //
-// Gating:
-//   URLAB_USE_AXIS_CONV_HELPERS=1 routes codegen emission through these
-//   helpers. Defaults to 0 (codegen stays inline) so existing serialized
-//   data + compiled artifacts stay byte-identical until the migration flips.
+// The spec itself is never converted: an MJCF attribute stays in MuJoCo's
+// frame, in metres and radians, exactly as authored. Conversion happens at the
+// moment a value becomes an Unreal transform, and nowhere earlier.
 //
-// Conventions (mirroring the existing MjUtils:: shape):
-//   * Position: MuJoCo metres -> UE centimetres, Y-axis sign flipped.
-//   * Direction: same handedness flip but NO scale.
-//   * Rotation: wxyz -> xyzw + X/Z sign flip for RHS -> LHS.
-//   * Per-element apply mode (UE -> MuJoCo) inverts each rule.
+// Conventions:
+//   * Position:  MuJoCo metres, RHS -> UE centimetres, LHS. Y negated, x100.
+//   * Direction: RHS -> LHS. Y negated, magnitude untouched.
+//   * Rotation:  MJCF [w, x, y, z] -> FQuat [x, y, z, w], X and Z negated.
 // ============================================================================
-
-#ifndef URLAB_USE_AXIS_CONV_HELPERS
-#define URLAB_USE_AXIS_CONV_HELPERS 0
-#endif
 
 namespace URLabAxisConv
 {
-/** @brief MuJoCo position (metres, RHS) -> UE FVector (centimetres, LHS). */
+/** MuJoCo position (metres, RHS) -> UE FVector (centimetres, LHS). */
 FORCEINLINE FVector MjPositionToUe(const double InM[3])
 {
 	return FVector(
@@ -43,7 +36,14 @@ FORCEINLINE FVector MjPositionToUe(const double InM[3])
 		static_cast<FVector::FReal>(InM[2] * 100.0));
 }
 
-/** @brief UE FVector position (cm, LHS) -> MuJoCo metres (RHS). */
+/** As above, for the float arrays a compiled model stores mesh vertices in. */
+FORCEINLINE FVector MjPositionToUe(const float InM[3])
+{
+	const double AsDouble[3] = {InM[0], InM[1], InM[2]};
+	return MjPositionToUe(AsDouble);
+}
+
+/** UE FVector position (cm, LHS) -> MuJoCo metres (RHS). */
 FORCEINLINE void UePositionToMj(const FVector& In, double OutM[3])
 {
 	OutM[0] = static_cast<double>(In.X) / 100.0;
@@ -51,7 +51,14 @@ FORCEINLINE void UePositionToMj(const FVector& In, double OutM[3])
 	OutM[2] = static_cast<double>(In.Z) / 100.0;
 }
 
-/** @brief MuJoCo direction (RHS, no scale) -> UE FVector (LHS, no scale). */
+/**
+ * MuJoCo direction (RHS) -> UE FVector (LHS), magnitude untouched.
+ *
+ * Distinct from MjPositionToUe by the missing x100: a joint axis has no length
+ * to convert, and a physical vector (gravity in m/s^2, wind in m/s) keeps its
+ * SI magnitude, because scaling it would silently change the physics rather
+ * than the frame.
+ */
 FORCEINLINE FVector MjDirectionToUe(const double In[3])
 {
 	return FVector(
@@ -60,7 +67,7 @@ FORCEINLINE FVector MjDirectionToUe(const double In[3])
 		static_cast<FVector::FReal>(In[2]));
 }
 
-/** @brief UE direction -> MuJoCo direction (LHS -> RHS, no scale). */
+/** UE FVector direction (LHS) -> MuJoCo (RHS), magnitude untouched. */
 FORCEINLINE void UeDirectionToMj(const FVector& In, double Out[3])
 {
 	Out[0] = static_cast<double>(In.X);
@@ -68,7 +75,7 @@ FORCEINLINE void UeDirectionToMj(const FVector& In, double Out[3])
 	Out[2] = static_cast<double>(In.Z);
 }
 
-/** @brief MuJoCo quaternion (wxyz, RHS) -> UE FQuat (xyzw, LHS). */
+/** MuJoCo quaternion (wxyz, RHS) -> UE FQuat (xyzw, LHS). */
 FORCEINLINE FQuat MjQuatToUe(const double InWXYZ[4])
 {
 	// wxyz -> xyzw + X/Z negate so the resulting LHS quat matches
@@ -81,33 +88,12 @@ FORCEINLINE FQuat MjQuatToUe(const double InWXYZ[4])
 		.GetNormalized();
 }
 
-/** @brief UE FQuat (LHS) -> MuJoCo quaternion (wxyz, RHS). */
+/** UE FQuat (LHS) -> MuJoCo quaternion (wxyz, RHS). */
 FORCEINLINE void UeQuatToMj(const FQuat& In, double OutWXYZ[4])
 {
 	OutWXYZ[0] = static_cast<double>(In.W);
 	OutWXYZ[1] = -static_cast<double>(In.X);
 	OutWXYZ[2] = static_cast<double>(In.Y);
 	OutWXYZ[3] = -static_cast<double>(In.Z);
-}
-
-/** @brief Scalar-array Y-negate apply (in-place). Used by direction
- *  attrs like joint.axis where the codegen handles cm scaling
- *  separately (vec3_convert = "y_negate" rule path). */
-FORCEINLINE void YNegate(FVector& InOut)
-{
-	InOut.Y = -InOut.Y;
-}
-
-/** @brief Per-element scale for fixed-size MJ array fields. The
- *  codegen array-export loop reads through this so a future units
- *  change (e.g. radians -> degrees on a specific subtype) doesn't
- *  need a per-call-site edit. */
-FORCEINLINE double ScaleMToCm(double InM)
-{
-	return InM * 100.0;
-}
-FORCEINLINE double ScaleCmToM(double InCm)
-{
-	return InCm * 0.01;
 }
 } // namespace URLabAxisConv

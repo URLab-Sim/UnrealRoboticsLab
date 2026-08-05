@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -43,6 +43,11 @@ class UMjDebugVisualizer;
 class UMjNetworkManager;
 class UMjInputHandler;
 class UMjPerturbation;
+struct FSpecRef;
+
+class UMjFlag;
+class UMjModel;
+class UMjOption;
 class UMjSimulationState;
 class UMjBody;
 class UMjUserChannelComponent;
@@ -67,7 +72,7 @@ struct FMjUserInputChannelInfo
  * @struct FMjEntityRecord
  * @brief Cached non-articulation entity metadata: a UMjBody whose owner is
  *        not an AMjArticulation (props, free-jointed scene objects, ...).
- *        Built once at session start (PostCompile) and consumed by
+ *        Built once per compile and consumed by
  *        UURLabZmqPublishTransport for "scene/<name>/state" PUB topics and by
  *        the step server for the `entities` block in step replies.
  *        Articulations have their own typed cache; this struct is for
@@ -121,11 +126,46 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo")
 	UMjPerturbation* Perturbation;
 
+	/**
+	 * The scene spec's root, and the manager's transform root.
+	 *
+	 * A level is one MuJoCo scene, so it is one MJCF spec; the sections
+	 * below are its children, and every articulation in the level is attached
+	 * into it at write time rather than being merged into it.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjModel> SceneSpec;
+
+	/**
+	 * The scene's `<option>`, as the spec element it is.
+	 *
+	 * The scene is one MuJoCo spec assembled from the level, and its
+	 * top-level sections belong to the manager rather than to any articulation:
+	 * MuJoCo takes the scene's option block whole and discards an attached
+	 * spec's own copy, so there is exactly one authority and this is it.
+	 * Fields hold MJCF's values in MJCF's units.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjOption> SceneOption;
+
+	/** The scene's `<option><flag>`. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjFlag> SceneFlags;
+
+	/** A handle on the scene spec the manager's sections belong to. */
+	FSpecRef GetSceneSpec() const;
+
 	/** Set in BeginPlay, cleared in EndPlay. Use GetManager() from Blueprints. */
 	static AAMjManager* Instance;
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Global", meta = (DisplayName = "Get MuJoCo Manager"))
 	static AAMjManager* GetManager();
+
+	/** The physics engine a game-thread accessor should talk to: the singleton
+	 *  manager's when one is live, otherwise the first manager in the calling
+	 *  object's world (test worlds never run BeginPlay, so Instance is null
+	 *  there). Components resolve per call rather than caching the engine. */
+	static UMjPhysicsEngine* ResolveEngine(const UObject* WorldCtx);
 
 	// --- State Control (delegates to PhysicsEngine) ---
 
@@ -152,10 +192,10 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 
-	/** Non-articulation entity table built in PostCompile; empty until then. */
+	/** Non-articulation entity table, rebuilt on every compile; empty until the first. */
 	const TArray<FMjEntityRecord>& GetEntities() const { return EntityCache; }
 
-	/** Refresh the entity cache; called from PostCompile. */
+	/** Refresh the entity cache. Called once per compile, on the game thread. */
 	void BuildEntityCache();
 
 	/** Rebuild the caches the state IR reads (entity table + producer cache) and
@@ -174,7 +214,7 @@ public:
 	 *  callable directly as the manual re-export trigger. No-op without a model. */
 	void ExportRobotDescriptions();
 
-	/** Cached URDF documents keyed by canonical art segment, filled by
+	/** Cached URDF specs keyed by canonical art segment, filled by
 	 *  ExportRobotDescriptions and read by the state publish transport. */
 	const TMap<FName, FString>& GetRobotDescriptions() const { return RobotDescriptions; }
 
@@ -285,7 +325,7 @@ public:
 	UUserWidget* SimulateWidget = nullptr;
 
 protected:
-	/** O(1) articulation lookup built in PostCompile. Key = actor name. */
+	/** O(1) articulation lookup, rebuilt on every compile. Key = actor name. */
 	TMap<FString, AMjArticulation*> m_ArticulationMap;
 
 	TArray<FMjEntityRecord> EntityCache;
@@ -293,7 +333,7 @@ protected:
 	/** Builds the per-step state IR consumed by the msgpack encoder. */
 	FMjStateCollector StateCollector;
 
-	/** Per-art URDF documents, keyed by canonical art segment. */
+	/** Per-art URDF specs, keyed by canonical art segment. */
 	TMap<FName, FString> RobotDescriptions;
 
 public:
@@ -377,8 +417,6 @@ public:
 	TArray<AMjHeightfieldActor*> m_heightfieldActors;
 
 	void Compile();
-	void PreCompile();
-	void PostCompile();
 
 	// --- Replay ---
 

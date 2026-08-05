@@ -25,57 +25,20 @@
 #include "CoreMinimal.h"
 #include "mujoco/mujoco.h"
 
-struct GeomView;
 
 /**
  * @class MjUtils
- * @brief Static utility class for common MuJoCo <-> Unreal Engine conversions and helper functions.
+ * @brief Static utility class for MuJoCo <-> Unreal Engine helper functions.
  *
- * This class provides standardized methods for:
- * - Coordinate system conversion (Right-Handed Z-up <-> Left-Handed Z-up)
+ * Frame and unit conversion is NOT here: it lives in URLabAxisConv, which is the
+ * one place a handedness or unit audit has to read. This class provides:
  * - String conversions (char* <-> FString)
- * - Common math type mappings
+ * - MJCF attribute parsing helpers
+ * - Debug drawing of compiled geoms and joints
  */
 class URLAB_API MjUtils
 {
 public:
-	/**
-	 * @brief Converts a MuJoCo position array (double[3]) to an Unreal Engine FVector.
-	 * Applies scaling (*100) and coordinate axis swizzling (Y-inversion) to match UE's coordinate system.
-	 *
-	 * @param pos Pointer to the MuJoCo position array (size 3).
-	 * @return FVector The corresponding Unreal Engine position in centimeters.
-	 */
-	static FVector MjToUEPosition(const double* pos);
-	static FVector MjToUEPosition(const float* pos);
-
-	/**
-	 * @brief Converts an Unreal Engine FVector to a MuJoCo position array.
-	 * Applies scaling (/100) and coordinate axis swizzling (Y-inversion).
-	 *
-	 * @param pos The Unreal Engine position in centimeters.
-	 * @param outPos Pointer to the output MuJoCo position array (size 3).
-	 */
-	static void UEToMjPosition(const FVector& pos, double* outPos);
-
-	/**
-	 * @brief Converts a MuJoCo quaternion array (double[4]: w, x, y, z) to an Unreal Engine FQuat.
-	 * Applies necessary axis flips to account for coordinate system differences.
-	 *
-	 * @param quat Pointer to the MuJoCo quaternion array (size 4).
-	 * @return FQuat The corresponding Unreal Engine quaternion.
-	 */
-	static FQuat MjToUERotation(const double* quat);
-
-	/**
-	 * @brief Converts an Unreal Engine FQuat to a MuJoCo quaternion array.
-	 * Applies necessary axis flips.
-	 *
-	 * @param quat The Unreal Engine quaternion.
-	 * @param outQuat Pointer to the output MuJoCo quaternion array (size 4).
-	 */
-	static void UEToMjRotation(const FQuat& quat, double* outQuat);
-
 	/**
 	 * @brief Read a position attribute from XML (in MJ metres) and convert
 	 * to Unreal Engine centimetres + Y-flip. Sets ``bOverride=true`` when
@@ -147,7 +110,8 @@ public:
 	 * @param DrawColor The color to draw the wireframes.
 	 * @param Multiplier Scaling factor for coordinate conversion.
 	 */
-	static void DrawDebugGeom(UWorld* World, const mjModel* m, const GeomView& geom_view, const FColor& DrawColor = FColor::Magenta, float Multiplier = 100.0f);
+	static void DrawDebugGeom(UWorld* World, const mjModel* m, const mjData* d, int32 GeomId,
+		const FColor& DrawColor = FColor::Magenta, float Multiplier = 100.0f);
 
 	/**
 	 * @brief Draws joint range arc (hinge) or range bar (slide) with position indicator.

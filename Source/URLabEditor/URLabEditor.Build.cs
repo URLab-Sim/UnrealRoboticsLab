@@ -58,7 +58,11 @@ public class URLabEditor : ModuleRules
 			"RenderCore",
 			"DesktopPlatform",
 			"Kismet",
-			"ToolMenus"
+			"BlueprintGraph",
+			"ToolMenus",
+			// M_MuJoCo_Master is built from code (MjMasterMaterial.cpp) rather
+			// than hand-authored, so the graph is reviewable and reproducible.
+			"MaterialEditor"
 		});
 	}
 }

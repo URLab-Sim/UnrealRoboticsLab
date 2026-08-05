@@ -25,6 +25,7 @@
 #include "LevelEditorViewport.h"
 
 #include "MuJoCo/Utils/MjUtils.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -1211,7 +1212,7 @@ TSharedPtr<FJsonObject> HandleDrawMarker(const TSharedPtr<FJsonObject>& Req)
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
 		return MakeJsonError(URLabError::MissingField, TEXT("draw_marker requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
-	const FVector UELoc = MjUtils::MjToUEPosition(MjPos);
+	const FVector UELoc = URLabAxisConv::MjPositionToUe(MjPos);
 
 	const FColor Color = ReadColor(Req);
 	bool bPersistent;
@@ -1242,8 +1243,8 @@ TSharedPtr<FJsonObject> HandleDrawLine(const TSharedPtr<FJsonObject>& Req)
 		return MakeJsonError(URLabError::MissingField, TEXT("draw_line requires 'from' + 'to'"));
 	const double MjF[3] = {MjFrom.X, MjFrom.Y, MjFrom.Z};
 	const double MjT[3] = {MjTo.X, MjTo.Y, MjTo.Z};
-	const FVector UEFrom = MjUtils::MjToUEPosition(MjF);
-	const FVector UETo = MjUtils::MjToUEPosition(MjT);
+	const FVector UEFrom = URLabAxisConv::MjPositionToUe(MjF);
+	const FVector UETo = URLabAxisConv::MjPositionToUe(MjT);
 
 	const FColor Color = ReadColor(Req);
 	bool bPersistent;
@@ -1273,7 +1274,7 @@ TSharedPtr<FJsonObject> HandleDrawBox(const TSharedPtr<FJsonObject>& Req)
 			TEXT("draw_box requires 'center' + 'half_extents'"));
 
 	const double MjC[3] = {MjCenter.X, MjCenter.Y, MjCenter.Z};
-	const FVector UECenter = MjUtils::MjToUEPosition(MjC);
+	const FVector UECenter = URLabAxisConv::MjPositionToUe(MjC);
 	// Extents are unsigned magnitudes; cm scaling is one MjToUEDist multiply.
 	// MjUtils::MjToUEPosition would also flip Y, so we do extents by hand.
 	const FVector UEHalf(
@@ -1310,8 +1311,8 @@ TSharedPtr<FJsonObject> HandleDrawArrow(const TSharedPtr<FJsonObject>& Req)
 			TEXT("draw_arrow requires 'from' + 'to'"));
 	const double MjF[3] = {MjFrom.X, MjFrom.Y, MjFrom.Z};
 	const double MjT[3] = {MjTo.X, MjTo.Y, MjTo.Z};
-	const FVector UEFrom = MjUtils::MjToUEPosition(MjF);
-	const FVector UETo = MjUtils::MjToUEPosition(MjT);
+	const FVector UEFrom = URLabAxisConv::MjPositionToUe(MjF);
+	const FVector UETo = URLabAxisConv::MjPositionToUe(MjT);
 
 	const FColor Color = ReadColor(Req);
 	bool bPersistent;
@@ -1346,7 +1347,7 @@ TSharedPtr<FJsonObject> HandleDrawAxes(const TSharedPtr<FJsonObject>& Req)
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
 		return MakeJsonError(URLabError::MissingField, TEXT("draw_axes requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
-	const FVector UEOrigin = MjUtils::MjToUEPosition(MjPos);
+	const FVector UEOrigin = URLabAxisConv::MjPositionToUe(MjPos);
 
 	FQuat UEQuat = FQuat::Identity;
 	ReadRotation(Req, UEQuat);
@@ -1475,9 +1476,9 @@ void ExportCameraPose(FEditorViewportClient* Client, TSharedPtr<FJsonObject>& Re
 	const FVector UELoc = Client->GetViewLocation();
 	const FRotator UERot = Client->GetViewRotation();
 	double MjPos[3] = {0};
-	MjUtils::UEToMjPosition(UELoc, MjPos);
+	URLabAxisConv::UePositionToMj(UELoc, MjPos);
 	double MjQuat[4] = {0};
-	MjUtils::UEToMjRotation(UERot.Quaternion(), MjQuat);
+	URLabAxisConv::UeQuatToMj(UERot.Quaternion(), MjQuat);
 
 	TArray<TSharedPtr<FJsonValue>> Loc;
 	for (int32 i = 0; i < 3; ++i)
@@ -1513,7 +1514,7 @@ TSharedPtr<FJsonObject> HandleViewportSetCamera(const TSharedPtr<FJsonObject>& R
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
 		return MakeJsonError(URLabError::MissingField, TEXT("set_camera requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
-	Client->SetViewLocation(MjUtils::MjToUEPosition(MjPos));
+	Client->SetViewLocation(URLabAxisConv::MjPositionToUe(MjPos));
 
 	FQuat UEQuat;
 	if (ReadRotation(Req, UEQuat))
@@ -1661,12 +1662,12 @@ TSharedPtr<FJsonObject> HandleViewportTrackActor(const TSharedPtr<FJsonObject>& 
 	if (ReadVec3(Req, TEXT("offset"), OffsetMj, FVector(0.0, -2.0, 1.0)))
 	{
 		const double MjOff[3] = {OffsetMj.X, OffsetMj.Y, OffsetMj.Z};
-		S.OffsetUE = MjUtils::MjToUEPosition(MjOff);
+		S.OffsetUE = URLabAxisConv::MjPositionToUe(MjOff);
 	}
 	else
 	{
 		const double MjOff[3] = {0.0, -2.0, 1.0};
-		S.OffsetUE = MjUtils::MjToUEPosition(MjOff);
+		S.OffsetUE = URLabAxisConv::MjPositionToUe(MjOff);
 	}
 
 	double SmoothingD = 0.0;

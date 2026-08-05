@@ -28,7 +28,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "MuJoCo/Elements/MjGeom.h"
 
 // ============================================================================
 // Geom — adds CoACD decomposition buttons (the only non-hiding logic).
@@ -52,7 +52,7 @@ void FMjGeomDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBu
 		return;
 
 	// Decomposition buttons (only for mesh geoms).
-	if (WeakGeom->Type != EMjGeomType::Mesh)
+	if (WeakGeom->GetType() != EMjGeomType::mesh)
 		return;
 
 	IDetailCategoryBuilder& DecompCategory = DetailBuilder.EditCategory("MuJoCo|Geom|Decomposition");

@@ -151,14 +151,21 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 
 		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep2", "Building Blueprint components..."));
 
-		// Generate Components using the (potentially prepared) XML
+		// Reads the (potentially prepared) XML into the Blueprint's construction
+		// script, imports the assets it references, and compiles.
 		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
-		Generator->GenerateForBlueprint(NewBP, ActualXmlPath);
+		const bool bGenerated = Generator->GenerateForBlueprint(NewBP, ActualXmlPath);
 
-		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep3", "Compiling Blueprint..."));
+		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep3", "Finalizing assets..."));
 
-		// Compile to save changes and ensure components are valid
-		FKismetEditorUtilities::CompileBlueprint(NewBP);
+		if (!bGenerated)
+		{
+			// The asset still exists so the reader's diagnostics can be read
+			// against it; it just has no spec in it.
+			UE_LOG(LogURLabEditor, Error,
+				TEXT("MujocoImportFactory: '%s' produced no spec. '%s' was created empty."),
+				*ActualXmlPath, *NewBP->GetName());
+		}
 
 		// Wait for all shaders to finish compiling and flush render commands.
 		// Material instances created during import trigger async shader compilation.

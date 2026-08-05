@@ -36,30 +36,31 @@
 
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
+
+#include "MjFrameTypeCustomizations.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
 #include "MjComponentDetailCustomizations.h"
-#include "MuJoCo/Components/Physics/MjContactPair.h"
-#include "MuJoCo/Components/Physics/MjContactExclude.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjPair.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjExclude.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjEquality.gen.h"
 
 #include "LevelEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "ScopedTransaction.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/SCS_Node.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Geometry/MjSite.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Defaults/MjDefault.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Physics/MjContactPair.h"
-#include "MuJoCo/Components/Physics/MjContactExclude.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
 #include "SMjArticulationOutliner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Framework/Docking/WorkspaceItem.h"
@@ -88,12 +89,14 @@ void FURLabEditorModule::StartupModule()
 	// URLabOpRegistry, which these handlers populate.
 	URLabEditorOpHandlers::RegisterAll();
 
+	// The MuJoCo frame types render as a single inline row with a unit label,
+	// rather than as an expandable struct of three doubles.
+	FMjFrameTypeCustomization::RegisterAll();
+
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	// Only Geom has non-hiding logic (the CoACD decomposition buttons).
-	// The other 9 components' simple "HideProperty(DefaultClass)" /
-	// "HideProperty(Name)" customizations were replaced by
-	// meta=(EditCondition="false", EditConditionHides) on the UPROPERTY
-	// decls themselves — see UMjActuator::DefaultClass et al.
+	// Only the geom needs a custom layout, for the CoACD decomposition buttons.
+	// Every other element's panel is what the generated UPROPERTY metadata makes
+	// it, which is the point of generating them.
 	{
 		TArray<UClass*> GeomClasses;
 		GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
@@ -183,6 +186,7 @@ void FURLabEditorModule::ShutdownModule()
 			}
 		};
 		UnregisterWithSubclasses(UMjGeom::StaticClass());
+		FMjFrameTypeCustomization::UnregisterAll();
 	}
 
 	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))
@@ -341,21 +345,37 @@ bool FURLabEditorModule::AutoParentSCSNode(USCS_Node* Node, USimpleConstructionS
 		return false;
 
 	// Determine the correct parent folder name for this component type
+	// Which organisational folder a freshly added component belongs under is a
+	// question about the element it is, not about its C++ class: an actuator is
+	// thirteen classes with no shared base, and a sensor is forty-eight.
 	FString TargetParentName;
-	if (Node->ComponentTemplate->IsA<UMjSensor>())
+#if URLAB_MJ_GEN
+	using urlab::spec::psm::ElementType;
+	const UMjNodeComponent* Element = Cast<UMjNodeComponent>(Node->ComponentTemplate);
+	ElementType Type;
+	if (Element == nullptr || !urlab::spec::MjElementTypeOfNode(*Element, Type))
+		return false;
+
+	if (UMjSensorRuntime::IsSensor(Element))
 		TargetParentName = TEXT("SensorsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjActuator>())
+	else if (UMjActuatorRuntime::IsActuator(Element))
 		TargetParentName = TEXT("ActuatorsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjDefault>())
+	else if (Type == ElementType::Default)
 		TargetParentName = TEXT("DefaultsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjTendon>())
+	else if (Type == ElementType::Spatial || Type == ElementType::Fixed)
 		TargetParentName = TEXT("TendonsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjContactPair>() || Node->ComponentTemplate->IsA<UMjContactExclude>())
+	else if (Type == ElementType::Pair || Type == ElementType::Exclude)
 		TargetParentName = TEXT("ContactsRoot");
-	else if (Node->ComponentTemplate->IsA<UMjEquality>())
+	else if (Type == ElementType::Connect || Type == ElementType::Weld
+		|| Type == ElementType::EqualityJoint || Type == ElementType::EqualityTendon
+		|| Type == ElementType::EqualityFlex || Type == ElementType::Flexvert
+		|| Type == ElementType::Flexstrain)
 		TargetParentName = TEXT("EqualitiesRoot");
 	else
 		return false;
+#else
+	return false;
+#endif
 
 	// Check if already correctly parented
 	USCS_Node* CurrentParent = SCS->FindParentNode(Node);

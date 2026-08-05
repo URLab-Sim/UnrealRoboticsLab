@@ -630,6 +630,18 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	URLabAxisConv::UePositionToMj(Current.GetLocation(), MjPos);
 	URLabAxisConv::UeQuatToMj(Current.GetRotation(), MjQuat);
 
+	// Join the open undo transaction before authoring anything.
+	//
+	// The gizmo opens one and records the component's own transform, but the
+	// MJCF attributes below are separate properties and are not in that record
+	// unless the object asks to be. Without this an undo restores the transform,
+	// leaves `pos` at its new value, and the next sync puts that value straight
+	// back on the component -- so the undo appears to do nothing at all.
+	//
+	// A no-op outside a transaction, which is what the paths that author without
+	// a user edit behind them want.
+	Modify();
+
 	// Each attribute is authored only where its own component moved. Writing the
 	// unmoved half as well would author a value the element was inheriting.
 	WriteMjPose(*this, bPosMoved ? MjPos : nullptr, bRotMoved ? MjQuat : nullptr);
@@ -667,6 +679,9 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 		{
 			return;
 		}
+		// The instance is a different object from the template being dragged, so
+		// it carries its own undo record or none.
+		Instance.Modify();
 		WriteMjPose(Instance, bTakePos ? MjPos : nullptr, bTakeRot ? MjQuat : nullptr);
 		if (bTakeScale)
 		{

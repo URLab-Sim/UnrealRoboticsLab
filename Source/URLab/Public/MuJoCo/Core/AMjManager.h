@@ -30,6 +30,9 @@
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
 #include "Transport/SnapshotPublisher.h"
+#include "State/MjStateCollector.h"
+#include "State/MjStateProducer.h"
+#include "State/MjStateConsumer.h"
 #include <atomic>
 #include "AMjManager.generated.h"
 
@@ -42,6 +45,23 @@ class UMjInputHandler;
 class UMjPerturbation;
 class UMjSimulationState;
 class UMjBody;
+class UMjUserChannelComponent;
+struct FMjUserChannel;
+enum class EMjUserChannelKind : uint8;
+
+/**
+ * @struct FMjUserInputChannelInfo
+ * @brief One declared user-input channel and its scope, enumerated for the
+ *        transports that create per-channel input subscriptions (ROS) or route
+ *        writes to it (the set_user_channels RPC op). ArtSegment is the canonical
+ *        art segment for art scope, or empty for scene scope.
+ */
+struct FMjUserInputChannelInfo
+{
+	FString ArtSegment;
+	FName Channel;
+	EMjUserChannelKind Kind;
+};
 
 /**
  * @struct FMjEntityRecord
@@ -124,7 +144,7 @@ public:
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
-	TArray<AMjArticulation*> GetAllArticulations() const;
+	const TArray<AMjArticulation*>& GetAllArticulations() const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
@@ -137,6 +157,26 @@ public:
 
 	/** Refresh the entity cache; called from PostCompile. */
 	void BuildEntityCache();
+
+	/** Rebuild the caches the state IR reads (entity table + producer cache) and
+	 *  (re)bind the collector to this manager. Run after every compile / recompile
+	 *  on the game thread. */
+	void RefreshStateCaches();
+
+	/** The per-step state-IR collector. Owned by the manager; used by the
+	 *  post-step snapshot fan-out and by the RPC step/reset/forward replies. */
+	FMjStateCollector& GetStateCollector() { return StateCollector; }
+
+	/** Export a URDF + binary STL meshes for every articulation from the compiled
+	 *  mjModel, dumping each to <ProjectSaved>/URLab/UrdfExport/<art>/ and caching
+	 *  the URDF text for the /<art>/robot_description publisher. Runs on the
+	 *  game thread; auto-invoked from RefreshStateCaches (every compile) and
+	 *  callable directly as the manual re-export trigger. No-op without a model. */
+	void ExportRobotDescriptions();
+
+	/** Cached URDF documents keyed by canonical art segment, filled by
+	 *  ExportRobotDescriptions and read by the state publish transport. */
+	const TMap<FName, FString>& GetRobotDescriptions() const { return RobotDescriptions; }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Status")
 	float GetSimTime() const;
@@ -176,18 +216,11 @@ public:
 	 */
 	std::atomic<bool> bPublishersPaused{false};
 
-	/**
-	 * @brief The resolved, authoritative step mode the physics loop runs under.
-	 *
-	 * `StepMode` above is the *configured* value and may be `Auto`, which the
-	 * dispatcher resolves to a concrete mode (Auto starts Live). The physics
-	 * loop must pace off the resolved mode, not the configured one — reading
-	 * `StepMode == Live` directly leaves `Auto` (the default) pacing as if it
-	 * were Direct, blocking on the step-request timeout at ~10 Hz. The
-	 * dispatcher mirrors its `ActiveStepMode` here whenever it changes; defaults
-	 * to Live so a bridge-less PIE session runs real-time.
-	 */
-	std::atomic<EStepMode> EffectiveStepMode{EStepMode::Live};
+	/** Post-step render-snapshot id / sim time last applied to the actors.
+	 *  Written on the game thread in ApplyLatestRenderState; read (atomically)
+	 *  by cameras when stamping readbacks. */
+	std::atomic<uint64> LastAppliedRenderFrameId{0};
+	std::atomic<double> LastAppliedRenderSimTime{0.0};
 
 	/** Owns the FURLabRpcDispatcher + transports. Created in BeginPlay, destroyed in EndPlay. */
 	UPROPERTY()
@@ -206,6 +239,44 @@ public:
 		class UObject* OwnerObj);
 	void UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher);
 
+	/** Register a typed consumer of the per-step state IR. FanOutStateSnapshot
+	 *  calls ConsumeState on every registered consumer once per step, in all step
+	 *  modes (unlike the byte fan-out, which the Direct/Puppet pause suppresses).
+	 *  OwnerObj keeps the registration alive only while the owner is valid. This
+	 *  is the transport-agnostic seam an out-of-core encoder registers against so
+	 *  the manager never names a concrete consumer type. */
+	void RegisterStateConsumer(IMjStateConsumer* Consumer, class UObject* OwnerObj);
+	void UnregisterStateConsumer(IMjStateConsumer* Consumer);
+
+	/** Register an IMjStateProducer the collector cannot discover by walking
+	 *  articulations (scene-level actors, user channel components). Marks the
+	 *  producer cache dirty so scope is re-resolved. Game thread. */
+	void RegisterStateProducer(TScriptInterface<IMjStateProducer> Producer);
+	void UnregisterStateProducer(TScriptInterface<IMjStateProducer> Producer);
+
+	/** Copy the registered state producers out under the registry lock. Called by
+	 *  the collector's game-thread cache rebuild. */
+	void GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const;
+
+	/** Route an inbound user-channel value to the declaring component. ArtOrNone is
+	 *  the canonical art segment for art scope, or None/empty for scene scope. The
+	 *  transport (the set_user_channels RPC op, or a ROS subscription) builds the
+	 *  value; the component validates it against the declared kind and stores it.
+	 *  Returns true when a declaring component accepted the write. Thread-safe;
+	 *  callable from any transport thread. This is the input mirror of the state
+	 *  consumer seam. */
+	bool ApplyUserChannelInput(FName ArtOrNone, FName Channel, const FMjUserChannel& Value);
+
+	/** Enumerate every declared user-input channel across registered components,
+	 *  with its scope. Used by ROS to create one subscription per input channel and
+	 *  rebuild the set on a StructureVersion change. Thread-safe. */
+	void GetUserInputChannels(TArray<FMjUserInputChannelInfo>& Out) const;
+
+	/** Build the per-step IR, encode the canonical `state_full` msgpack, and fan
+	 *  the bytes to every registered snapshot publisher. Bound to the physics
+	 *  post-step callback; gated by bPublishersPaused (byte fan-out only). */
+	void FanOutStateSnapshot(struct mjModel_* m, struct mjData_* d);
+
 	/** Bound to Tab key. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|UI")
 	void ToggleSimulateWidget();
@@ -218,6 +289,12 @@ protected:
 	TMap<FString, AMjArticulation*> m_ArticulationMap;
 
 	TArray<FMjEntityRecord> EntityCache;
+
+	/** Builds the per-step state IR consumed by the msgpack encoder. */
+	FMjStateCollector StateCollector;
+
+	/** Per-art URDF documents, keyed by canonical art segment. */
+	TMap<FName, FString> RobotDescriptions;
 
 public:
 	/** Manager-owned UObject publish transports
@@ -247,11 +324,48 @@ protected:
 	TArray<FRegisteredSnapshotPublisher> SnapshotPublishers;
 	mutable FCriticalSection SnapshotPublishersMutex;
 
+	struct FRegisteredStateConsumer
+	{
+		TWeakObjectPtr<UObject> Owner;
+		IMjStateConsumer* Consumer = nullptr;
+	};
+	/** Typed state consumers registered by their owning transports. Read on the
+	 *  physics async thread (fan-out), mutated on the game thread; guarded by
+	 *  StateConsumersMutex. */
+	TArray<FRegisteredStateConsumer> StateConsumers;
+	mutable FCriticalSection StateConsumersMutex;
+
+	/** IMjStateProducers registered by owners the collector cannot walk to.
+	 *  Read on the game thread (collector rebuild), mutated on the game thread
+	 *  (BeginPlay / EndPlay); guarded by StateProducersMutex for safety. */
+	TArray<TWeakObjectPtr<UObject>> StateProducers;
+	mutable FCriticalSection StateProducersMutex;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 public:
 	virtual void Tick(float DeltaTime) override;
+
+	/** Pull the latest physics render snapshot and push it onto the UE
+	 *  actor/component transforms. Normally driven once per frame from Tick.
+	 *  Records the applied snapshot's FrameId / SimTime so cameras can tag
+	 *  their readbacks with the post-step state they show. Game thread only. */
+	void ApplyLatestRenderState();
+
+	/** Render-snapshot id last applied to the actors (post-step state id that
+	 *  the currently-rendered scene reflects). Cameras stamp readbacks with
+	 *  this; the bridge associates an image with a step by frame_id. */
+	uint64 GetLastAppliedFrameId() const
+	{
+		return LastAppliedRenderFrameId.load(std::memory_order_acquire);
+	}
+
+	/** MuJoCo sim time of the snapshot last applied to the actors. */
+	double GetLastAppliedSimTime() const
+	{
+		return LastAppliedRenderSimTime.load(std::memory_order_acquire);
+	}
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
 	TArray<UMjQuickConvertComponent*> m_MujocoComponents;

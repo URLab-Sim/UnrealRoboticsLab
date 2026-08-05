@@ -700,14 +700,17 @@ void AMjArticulation::ApplyControls(bool bSkipController)
 	// thread races against game-thread mutations and corrupts nearby heap.
 	// The bridge can opt this articulation out for the current sub-step
 	// by setting `bSkipController=true` (mirrors a per-step
-	// `control_mode="raw"` from the wire); the staged `NetworkValue`
-	// then lands directly on `d->ctrl` without controller transformation.
+	// `control_mode="raw"` from the wire); d->ctrl is written directly
+	// by ApplyStepCtrl and the staged NetworkValue path is skipped.
 	if (!bSkipController
 		&& CachedController && CachedController->bEnabled && CachedController->IsBound())
 	{
 		CachedController->ComputeAndApply(m_model, m_data, ControlSource);
 		return;
 	}
+
+	if (bSkipController)
+		return;
 
 	// Default path: write control values directly to d->ctrl
 	for (auto& Elem : ActuatorIdMap)

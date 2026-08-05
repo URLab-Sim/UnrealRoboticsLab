@@ -382,8 +382,11 @@ void AMjReplayManager::StartReplay()
 		Manager->PhysicsEngine->SetPaused(false);
 	}
 
-	Manager->PhysicsEngine->SetCustomStepHandler([this](mjModel* m, mjData* d) {
+	Manager->PhysicsEngine->SetCustomStepHandler([this](mjModel* m, mjData* d) -> bool {
 		this->OnReplayStep(m, d);
+		// Replay applies a frame each tick and does not self-publish, so the
+		// worker loop owns the render-snapshot push — report an advance.
+		return true;
 	});
 
 	UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: Started Replay of '%s' (%d frames)"),

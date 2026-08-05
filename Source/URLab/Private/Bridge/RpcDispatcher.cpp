@@ -26,14 +26,16 @@
 #include "Bridge/StepCommands.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "State/MjCanonicalName.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -59,31 +61,35 @@
 
 namespace
 {
-/** Map URLab actuator enum -> wire-format string. */
-FString ActuatorTypeToString(EMjActuatorType T)
+/**
+ * The authored kind of an actuator, as the wire spells it.
+ *
+ * The kind is the element itself -- a `<position>` is a different element from a
+ * `<motor>` -- so this is the element's own MJCF tag and there is no mapping
+ * table to keep in step with the schema. The compiled model cannot answer it:
+ * every shortcut compiles down to `<general>`.
+ */
+FString ActuatorTypeToString(const UMjNodeComponent* Actuator)
 {
-	switch (T)
+#if URLAB_MJ_GEN
+	urlab::spec::psm::ElementType Type;
+	if (Actuator != nullptr && urlab::spec::MjElementTypeOfNode(*Actuator, Type))
 	{
-		case EMjActuatorType::Motor:
-			return TEXT("motor");
-		case EMjActuatorType::Position:
-			return TEXT("position");
-		case EMjActuatorType::Velocity:
-			return TEXT("velocity");
-		case EMjActuatorType::IntVelocity:
-			return TEXT("intvelocity");
-		case EMjActuatorType::Damper:
-			return TEXT("damper");
-		case EMjActuatorType::Cylinder:
-			return TEXT("cylinder");
-		case EMjActuatorType::Muscle:
-			return TEXT("muscle");
-		case EMjActuatorType::Adhesion:
-			return TEXT("adhesion");
-		case EMjActuatorType::DcMotor:
-			return TEXT("dcmotor");
+		return urlab::spec::MjTagOf(Type);
 	}
+#endif
 	return TEXT("motor");
+}
+
+/** An element's authored MJCF name with the articulation prefix taken off. */
+FString LocalElementName(const UMjNodeComponent& Element, const FString& ArtPrefix)
+{
+	FString Name = Element.MjName.Get(Element.GetName());
+	if (Name.StartsWith(ArtPrefix))
+	{
+		Name = Name.Mid(ArtPrefix.Len());
+	}
+	return Name;
 }
 
 /** Ops that do NOT count as lease-owner activity: discovery, bootstrap, and
@@ -752,47 +758,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 	// the client can reload the model offline (MJX, custom integrators,
 	// headless renderers). Opt-in because the payload can be tens of MB
 	// for typical robots.
-	if (bIncludeAssets && m && Manager->PhysicsEngine->m_spec)
+	if (bIncludeAssets && m)
 	{
-		// Two-pass XML serialise. mj_saveXMLString returns -1 on buffer
-		// overflow; start at 256 KB (covers most robots, including G1)
-		// and double up to 32 MB before giving up.
-		TArray<uint8> XmlBuf;
-		FString XmlContent;
-		for (int32 Cap = 256 * 1024; Cap <= 32 * 1024 * 1024; Cap *= 2)
-		{
-			XmlBuf.SetNumUninitialized(Cap);
-			FMemory::Memzero(XmlBuf.GetData(), Cap);
-			char SaveError[1024] = "";
-			const int XmlResult = mj_saveXMLString(
-				Manager->PhysicsEngine->m_spec,
-				reinterpret_cast<char*>(XmlBuf.GetData()), Cap,
-				SaveError, sizeof(SaveError));
-			if (XmlResult == 0)
-			{
-				XmlContent = UTF8_TO_TCHAR(reinterpret_cast<const char*>(XmlBuf.GetData()));
-				break;
-			}
-			// Overflow or another fault. Grow + retry. The error string
-			// distinguishes "buffer too small" from real failures; for
-			// any non-overflow we still break to avoid silent corruption.
-			const FString Err = UTF8_TO_TCHAR(SaveError);
-			if (!Err.Contains(TEXT("buffer"), ESearchCase::IgnoreCase))
-			{
-				UE_LOG(LogURLabNet, Warning,
-					TEXT("BuildHandshake: mj_saveXMLString failed (%s); skipping mjcf_compiled"),
-					*Err);
-				XmlContent.Reset();
-				break;
-			}
-		}
-		if (!XmlContent.IsEmpty())
-		{
-			// Flatten file="dir/sub/foo.STL" -> file="foo.STL" so a VFS
-			// keyed by bare filename (which is what mj_addFileVFS does)
-			// can resolve the references on the client side.
+		// Flatten file="dir/sub/foo.STL" -> file="foo.STL" so a VFS keyed by
+		// bare filename (which is what mj_addFileVFS does) can resolve the
+		// references on the client side.
+		auto FlattenAssetRefs = [](const FString& Xml) {
 			FRegexPattern Pattern(TEXT("file=\"([^\"]*?)([^/\\\\\"]+)\""));
-			FRegexMatcher Matcher(Pattern, XmlContent);
+			FRegexMatcher Matcher(Pattern, Xml);
 			FString Rewritten;
 			int32 Cursor = 0;
 			while (Matcher.FindNext())
@@ -800,34 +773,61 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 				const int32 MatchStart = Matcher.GetMatchBeginning();
 				const int32 MatchEnd = Matcher.GetMatchEnding();
 				const FString Filename = Matcher.GetCaptureGroup(2);
-				Rewritten += XmlContent.Mid(Cursor, MatchStart - Cursor);
+				Rewritten += Xml.Mid(Cursor, MatchStart - Cursor);
 				Rewritten += FString::Printf(TEXT("file=\"%s\""), *Filename);
 				Cursor = MatchEnd;
 			}
-			Rewritten += XmlContent.Mid(Cursor);
-			Reply->SetStringField(TEXT("mjcf_compiled"), Rewritten);
+			Rewritten += Xml.Mid(Cursor);
+			return Rewritten;
+		};
+
+		FMjCompiledScene Scene;
+		FString SceneError;
+		if (Manager->PhysicsEngine->BuildCompiledScene(Scene, SceneError))
+		{
+			Reply->SetStringField(TEXT("mjcf_compiled"), FlattenAssetRefs(Scene.Xml));
+		}
+		else
+		{
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("BuildHandshake: no scene MJCF (%s); skipping mjcf_compiled"), *SceneError);
 		}
 
-		// Asset bytes: one msgpack-bin field per file, keyed by bare
-		// filename (matches the flattened file= refs above). No base64
-		// duplicate — clients should use the msgpack decoder.
+		// VFS bytes: one msgpack-bin field per entry, keyed by the bare name
+		// the flattened file= refs above resolve against. Asset files come off
+		// disk; a scene that references participant specs carries their
+		// text the same way, because to the client's VFS the two are the same
+		// kind of thing. No base64 duplicate — clients should use the msgpack
+		// decoder. Shipped whether or not the MJCF made it, because a client
+		// that already has the model still needs the meshes.
 		TSharedPtr<FJsonObject> VfsAssets = MakeShared<FJsonObject>();
 		int64 TotalBytes = 0;
-		for (const FString& FilePath : Manager->PhysicsEngine->ActiveAssetPaths)
+		for (const TPair<FString, FString>& Asset : Scene.AssetFiles)
 		{
 			TArray<uint8> FileData;
-			if (FFileHelper::LoadFileToArray(FileData, *FilePath))
+			if (FFileHelper::LoadFileToArray(FileData, *Asset.Value))
 			{
-				const FString Filename = FPaths::GetCleanFilename(FilePath);
-				FURLabMsgpackUtil::SetBinaryField(VfsAssets, *Filename,
+				// The name the scene mounted it under, not the file's own. A
+				// scene prefixes every `file=` so participants cannot collide in
+				// MuJoCo's flat VFS namespace, and the refs flattened above keep
+				// that prefix -- so a key rebuilt from the path names a file the
+				// spec never asks for.
+				FURLabMsgpackUtil::SetBinaryField(VfsAssets, *Asset.Key,
 					FileData.GetData(), FileData.Num());
 				TotalBytes += FileData.Num();
 			}
 		}
+		for (const TPair<FString, FString>& Participant : Scene.ParticipantXml)
+		{
+			const FTCHARToUTF8 Utf8(*FlattenAssetRefs(Participant.Value));
+			FURLabMsgpackUtil::SetBinaryField(VfsAssets, *Participant.Key,
+				reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
+			TotalBytes += Utf8.Length();
+		}
 		Reply->SetObjectField(TEXT("vfs_assets"), VfsAssets);
 		UE_LOG(LogURLabNet, Log,
-			TEXT("BuildHandshake: shipped %d assets (%lld bytes) + mjcf_compiled (%d chars)"),
-			VfsAssets->Values.Num(), TotalBytes, XmlContent.Len());
+			TEXT("BuildHandshake: shipped %d VFS entries (%lld bytes) + mjcf_compiled (%d chars)"),
+			VfsAssets->Values.Num(), TotalBytes, Scene.Xml.Len());
 	}
 
 	// Articulations block.
@@ -872,15 +872,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		// Per-actuator authored kind. The MJB doesn't carry the original
 		// <position> / <velocity> shortcut — they all compile to <general>.
 		TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
-		for (UMjActuator* Act : Art->GetActuators())
+		for (const UMjNodeComponent* Act : Art->GetActuators())
 		{
-			if (!Act)
+			if (Act == nullptr)
 				continue;
-			FString Local = Act->GetMjName();
-			FString Prefix = Art->GetName() + TEXT("_");
-			if (Local.StartsWith(Prefix))
-				Local = Local.Mid(Prefix.Len());
-			ActTypes->SetStringField(Local, ActuatorTypeToString(Act->Type));
+			ActTypes->SetStringField(LocalElementName(*Act, Art->GetCompiledPrefix()),
+				ActuatorTypeToString(Act));
 		}
 		ArtObj->SetObjectField(TEXT("actuator_types"), ActTypes);
 
@@ -888,42 +885,18 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		// components whose live name was renamed by SCS / spec-time
 		// dedup. The bridge resolves mjlab patterns against original
 		// names. Identity entries + default-class templates are skipped.
+		// Live-to-authored name maps, one per category. They are empty and the
+		// wire contract keeps them: the reader writes the MJCF `name` attribute
+		// into the element and nothing renames it afterwards, so an element's
+		// live name IS its authored name. The maps existed because the component
+		// tree went through Blueprint variable naming, which deduplicated names
+		// the MJCF had kept distinct.
 		{
-			const FString ArtPrefix = Art->GetName() + TEXT("_");
-			auto MakeMap = [&ArtPrefix](auto& Components) {
-				TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-				for (auto* C : Components)
-				{
-					if (!C || C->bIsDefault)
-						continue;
-					if (C->OriginalMjName.IsEmpty())
-						continue;
-					FString Live = C->GetMjName();
-					if (Live.StartsWith(ArtPrefix))
-						Live = Live.Mid(ArtPrefix.Len());
-					if (Live.IsEmpty() || Live == C->OriginalMjName)
-						continue;
-					Obj->SetStringField(Live, C->OriginalMjName);
-				}
-				return Obj;
-			};
-
 			TSharedPtr<FJsonObject> OriginalNames = MakeShared<FJsonObject>();
-
-			TArray<UMjActuator*> ActComps = Art->GetActuators();
-			OriginalNames->SetObjectField(TEXT("actuators"), MakeMap(ActComps));
-
-			TArray<UMjJoint*> JointComps = Art->GetJoints();
-			OriginalNames->SetObjectField(TEXT("joints"), MakeMap(JointComps));
-
-			TArray<UMjSensor*> SensorComps;
-			Art->GetComponents<UMjSensor>(SensorComps);
-			OriginalNames->SetObjectField(TEXT("sensors"), MakeMap(SensorComps));
-
-			TArray<UMjBody*> BodyComps;
-			Art->GetComponents<UMjBody>(BodyComps);
-			OriginalNames->SetObjectField(TEXT("bodies"), MakeMap(BodyComps));
-
+			OriginalNames->SetObjectField(TEXT("actuators"), MakeShared<FJsonObject>());
+			OriginalNames->SetObjectField(TEXT("joints"), MakeShared<FJsonObject>());
+			OriginalNames->SetObjectField(TEXT("sensors"), MakeShared<FJsonObject>());
+			OriginalNames->SetObjectField(TEXT("bodies"), MakeShared<FJsonObject>());
 			ArtObj->SetObjectField(TEXT("original_names"), OriginalNames);
 		}
 
@@ -933,7 +906,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		Art->GetComponents<UMjCamera>(Cameras);
 		for (UMjCamera* Cam : Cameras)
 		{
-			if (!Cam || Cam->bIsDefault)
+			if (!Cam)
 				continue;
 			TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
 
@@ -955,11 +928,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			}
 			CamObj->SetStringField(TEXT("mode"), ModeStr);
 
+			const FIntPoint CamRes = Cam->CaptureResolution();
 			TArray<TSharedPtr<FJsonValue>> Res;
-			Res.Add(MakeShared<FJsonValueNumber>(Cam->resolution.Num() > 0 ? Cam->resolution[0] : 0));
-			Res.Add(MakeShared<FJsonValueNumber>(Cam->resolution.Num() > 1 ? Cam->resolution[1] : 0));
+			Res.Add(MakeShared<FJsonValueNumber>(CamRes.X));
+			Res.Add(MakeShared<FJsonValueNumber>(CamRes.Y));
 			CamObj->SetArrayField(TEXT("resolution"), Res);
-			CamObj->SetNumberField(TEXT("fovy"), Cam->fovy);
+			CamObj->SetNumberField(TEXT("fovy"), Cam->DerivedFovy);
 
 			FString Endpoint = Cam->GetActualZmqEndpoint();
 			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));

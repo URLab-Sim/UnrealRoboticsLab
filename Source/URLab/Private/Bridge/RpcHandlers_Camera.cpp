@@ -25,13 +25,14 @@
 #include "Bridge/OpRegistry.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -200,7 +201,7 @@ void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
 	// First writer wins so a sanitize-collision can't hide an already-registered
 	// distinct camera.
 	auto AddCanonical = [&OutByName](UMjCamera* C) {
-		if (!C || C->bIsDefault)
+		if (!C)
 			return;
 		UMjCamera*& Slot = OutByName.FindOrAdd(C->GetCanonicalName());
 		if (Slot == nullptr)

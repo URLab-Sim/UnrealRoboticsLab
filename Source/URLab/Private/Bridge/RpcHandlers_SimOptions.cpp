@@ -25,13 +25,18 @@
 #include "Bridge/OpRegistry.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Core/MjSceneOptions.h"
+#include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
+#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
+#include "MuJoCo/Gen/MjKeywords.gen.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -96,94 +101,51 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleConfigureController(const TSh
 
 namespace
 {
-bool ParseIntegrator(const FString& S, EMjIntegrator& Out)
+/** An MJCF keyword. The schema's spellings are ASCII by construction. */
+FString KeywordToString(std::string_view Keyword)
 {
-	if (S.Equals(TEXT("euler"), ESearchCase::IgnoreCase))
+	FString Out;
+	Out.Reserve(static_cast<int32>(Keyword.size()));
+	for (const char Character : Keyword)
 	{
-		Out = EMjIntegrator::Euler;
-		return true;
+		Out.AppendChar(static_cast<TCHAR>(Character));
 	}
-	if (S.Equals(TEXT("rk4"), ESearchCase::IgnoreCase))
+	return Out;
+}
+
+/**
+ * An MJCF keyword, matched without regard to case.
+ *
+ * The keyword tables are generated from the schema, so the spellings are
+ * MuJoCo's own ("Euler", "RK4", "PGS"). The wire has always accepted any
+ * casing, and the ordinal scan below stops at the first spelling the table
+ * does not know, which is how it learns the enum's arity without one being
+ * declared anywhere.
+ */
+template <class TEnum>
+bool ParseKeyword(const FString& Text, TEnum& Out)
+{
+	for (int32 Ordinal = 0; Ordinal < 256; ++Ordinal)
 	{
-		Out = EMjIntegrator::RK4;
-		return true;
-	}
-	if (S.Equals(TEXT("implicit"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjIntegrator::Implicit;
-		return true;
-	}
-	if (S.Equals(TEXT("implicitfast"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjIntegrator::ImplicitFast;
-		return true;
+		const TEnum Candidate = static_cast<TEnum>(Ordinal);
+		const std::string_view Keyword = ps::ue::ToMjcf(Candidate);
+		if (Keyword.empty())
+		{
+			return false;
+		}
+		if (Text.Equals(KeywordToString(Keyword), ESearchCase::IgnoreCase))
+		{
+			Out = Candidate;
+			return true;
+		}
 	}
 	return false;
 }
-FString IntegratorToString(EMjIntegrator I)
+
+template <class TEnum>
+FString KeywordOf(TEnum Value)
 {
-	switch (I)
-	{
-		case EMjIntegrator::Euler:
-			return TEXT("euler");
-		case EMjIntegrator::RK4:
-			return TEXT("rk4");
-		case EMjIntegrator::Implicit:
-			return TEXT("implicit");
-		case EMjIntegrator::ImplicitFast:
-			return TEXT("implicitfast");
-	}
-	return TEXT("euler");
-}
-bool ParseCone(const FString& S, EMjCone& Out)
-{
-	if (S.Equals(TEXT("pyramidal"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjCone::Pyramidal;
-		return true;
-	}
-	if (S.Equals(TEXT("elliptic"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjCone::Elliptic;
-		return true;
-	}
-	return false;
-}
-FString ConeToString(EMjCone C)
-{
-	return C == EMjCone::Elliptic ? TEXT("elliptic") : TEXT("pyramidal");
-}
-bool ParseSolver(const FString& S, EMjSolver& Out)
-{
-	if (S.Equals(TEXT("pgs"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjSolver::PGS;
-		return true;
-	}
-	if (S.Equals(TEXT("cg"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjSolver::CG;
-		return true;
-	}
-	if (S.Equals(TEXT("newton"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjSolver::Newton;
-		return true;
-	}
-	return false;
-}
-FString SolverToString(EMjSolver S)
-{
-	switch (S)
-	{
-		case EMjSolver::PGS:
-			return TEXT("pgs");
-		case EMjSolver::CG:
-			return TEXT("cg");
-		case EMjSolver::Newton:
-			return TEXT("newton");
-	}
-	return TEXT("newton");
+	return KeywordToString(ps::ue::ToMjcf(Value));
 }
 
 bool TryReadVec3(const TSharedPtr<FJsonObject>& Obj, const TCHAR* Key, double Out[3])
@@ -209,126 +171,112 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 		return MakeError(URLabError::MissingField, TEXT("set_sim_options requires 'options' object"));
 	const TSharedPtr<FJsonObject>& Opts = *OptsPtr;
 
-	FMjOptionGenerated& O = Mgr->PhysicsEngine->Options;
+	UMjOption* const O = Mgr->SceneOption;
+	UMjFlag* const F = Mgr->SceneFlags;
+	if (O == nullptr || F == nullptr)
+		return MakeError(URLabError::NotReady, TEXT("scene <option> missing"));
 
+	// The wire is MJ-native SI and so is the spec, so nothing is converted
+	// on the way in; setting a field is what marks it authored.
 	double DNum = 0.0;
 	if (Opts->TryGetNumberField(TEXT("timestep"), DNum))
 	{
-		O.Timestep = (float)DNum;
-		O.bOverride_Timestep = true;
+		O->Timestep = DNum;
 	}
 
-	// Wire is MJ-native SI; FMjOptionGenerated stores UE cm/s² with Y-flip and
-	// ApplyOverridesToModel reverses that, so pre-bake the inverse here.
 	double V3[3];
 	if (TryReadVec3(Opts, TEXT("gravity"), V3))
 	{
-		O.Gravity = FVector((float)(V3[0] * 100.0), (float)(-V3[1] * 100.0), (float)(V3[2] * 100.0));
-		O.bOverride_Gravity = true;
+		O->Gravity = FMjDirection3(V3[0], V3[1], V3[2]);
 	}
 	if (TryReadVec3(Opts, TEXT("wind"), V3))
 	{
-		O.Wind = FVector((float)(V3[0] * 100.0), (float)(-V3[1] * 100.0), (float)(V3[2] * 100.0));
-		O.bOverride_Wind = true;
+		O->Wind = FMjDirection3(V3[0], V3[1], V3[2]);
 	}
 	if (TryReadVec3(Opts, TEXT("magnetic"), V3))
 	{
-		O.Magnetic = FVector((float)V3[0], (float)-V3[1], (float)V3[2]);
-		O.bOverride_Magnetic = true;
+		O->Magnetic = FMjDirection3(V3[0], V3[1], V3[2]);
 	}
 
 	if (Opts->TryGetNumberField(TEXT("density"), DNum))
 	{
-		O.Density = (float)DNum;
-		O.bOverride_Density = true;
+		O->Density = DNum;
 	}
 	if (Opts->TryGetNumberField(TEXT("viscosity"), DNum))
 	{
-		O.Viscosity = (float)DNum;
-		O.bOverride_Viscosity = true;
+		O->Viscosity = DNum;
 	}
 	if (Opts->TryGetNumberField(TEXT("impratio"), DNum))
 	{
-		O.Impratio = (float)DNum;
-		O.bOverride_Impratio = true;
+		O->Impratio = DNum;
 	}
 	if (Opts->TryGetNumberField(TEXT("tolerance"), DNum))
 	{
-		O.Tolerance = (float)DNum;
-		O.bOverride_Tolerance = true;
+		O->Tolerance = DNum;
 	}
 
 	int32 INum = 0;
 	if (Opts->TryGetNumberField(TEXT("iterations"), INum))
 	{
-		O.Iterations = INum;
-		O.bOverride_Iterations = true;
+		O->Iterations = INum;
 	}
 	if (Opts->TryGetNumberField(TEXT("ls_iterations"), INum))
 	{
-		O.LsIterations = INum;
-		O.bOverride_LsIterations = true;
+		O->LsIterations = INum;
 	}
 
 	FString SNum;
 	if (Opts->TryGetStringField(TEXT("integrator"), SNum))
 	{
 		EMjIntegrator E;
-		if (!ParseIntegrator(SNum, E))
+		if (!ParseKeyword(SNum, E))
 			return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown integrator '%s'"), *SNum));
-		O.Integrator = E;
-		O.bOverride_Integrator = true;
+		O->Integrator = E;
 	}
 	if (Opts->TryGetStringField(TEXT("cone"), SNum))
 	{
 		EMjCone E;
-		if (!ParseCone(SNum, E))
+		if (!ParseKeyword(SNum, E))
 			return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown cone '%s'"), *SNum));
-		O.Cone = E;
-		O.bOverride_Cone = true;
+		O->Cone = E;
 	}
 	if (Opts->TryGetStringField(TEXT("solver"), SNum))
 	{
-		EMjSolver E;
-		if (!ParseSolver(SNum, E))
+		EMjSolverType E;
+		if (!ParseKeyword(SNum, E))
 			return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown solver '%s'"), *SNum));
-		O.Solver = E;
-		O.bOverride_Solver = true;
+		O->Solver = E;
 	}
 
 	if (Opts->TryGetNumberField(TEXT("noslip_iterations"), INum))
 	{
-		O.NoslipIterations = INum;
-		O.bOverride_NoslipIterations = true;
+		O->NoslipIterations = INum;
 	}
 	if (Opts->TryGetNumberField(TEXT("noslip_tolerance"), DNum))
 	{
-		O.NoslipTolerance = (float)DNum;
-		O.bOverride_NoslipTolerance = true;
+		O->NoslipTolerance = DNum;
 	}
 	if (Opts->TryGetNumberField(TEXT("ccd_iterations"), INum))
 	{
-		O.CCD_Iterations = INum;
-		O.bOverride_CCD_Iterations = true;
+		O->CcdIterations = INum;
 	}
 	if (Opts->TryGetNumberField(TEXT("ccd_tolerance"), DNum))
 	{
-		O.CCD_Tolerance = (float)DNum;
-		O.bOverride_CCD_Tolerance = true;
+		O->CcdTolerance = DNum;
 	}
 
 	bool BNum = false;
 	if (Opts->TryGetBoolField(TEXT("enable_multiccd"), BNum))
 	{
-		O.bEnableMultiCCD = BNum;
+		F->Multiccd = BNum ? EMjEnable::enable : EMjEnable::disable;
 	}
 	if (Opts->TryGetBoolField(TEXT("enable_sleep"), BNum))
 	{
-		O.bEnableSleep = BNum;
+		F->Sleep = BNum ? EMjEnable::enable : EMjEnable::disable;
 	}
 	if (Opts->TryGetNumberField(TEXT("sleep_tolerance"), DNum))
 	{
-		O.SleepTolerance = (float)DNum;
+		O->SleepTolerance = DNum;
 	}
 
 	// The physics worker may be mid mj_step on this same m/d on another thread.
@@ -347,7 +295,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 
 	// Raw disable / enable bit masks. Values are bitwise-ORs of
 	// mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.
-	// Applied BEFORE FMjOptionGenerated::ApplyOverridesToModel so any named
+	// Applied BEFORE the spec is pushed onto the model, so any named
 	// bits the caller also set (enable_sleep / enable_multiccd) win on
 	// top of the raw mask. Treat the raw masks as a coarse baseline.
 	int32 DisableMask = 0;
@@ -361,7 +309,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 		m->opt.enableflags = EnableMask;
 	}
 
-	O.ApplyOverridesToModel(m);
+	// The spec is the authority and the live model is the runtime effect,
+	// so the write goes spec first and model second (Section 4.10).
+	MjApplyOptionToModel(O, F, m);
 
 	// Worker thread pool (mju_threadpool). Not a MuJoCo option-struct field —
 	// it's a URLab engine setting applied to the live mjData. Clamped to the
@@ -408,9 +358,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPt
 	Out->SetNumberField(TEXT("tolerance"), m->opt.tolerance);
 	Out->SetNumberField(TEXT("iterations"), m->opt.iterations);
 	Out->SetNumberField(TEXT("ls_iterations"), m->opt.ls_iterations);
-	Out->SetStringField(TEXT("integrator"), IntegratorToString((EMjIntegrator)m->opt.integrator));
-	Out->SetStringField(TEXT("cone"), ConeToString((EMjCone)m->opt.cone));
-	Out->SetStringField(TEXT("solver"), SolverToString((EMjSolver)m->opt.solver));
+	Out->SetStringField(TEXT("integrator"), KeywordOf(static_cast<EMjIntegrator>(m->opt.integrator)));
+	Out->SetStringField(TEXT("cone"), KeywordOf(static_cast<EMjCone>(m->opt.cone)));
+	Out->SetStringField(TEXT("solver"), KeywordOf(static_cast<EMjSolverType>(m->opt.solver)));
 	Out->SetNumberField(TEXT("noslip_iterations"), m->opt.noslip_iterations);
 	Out->SetNumberField(TEXT("noslip_tolerance"), m->opt.noslip_tolerance);
 	Out->SetNumberField(TEXT("ccd_iterations"), m->opt.ccd_iterations);

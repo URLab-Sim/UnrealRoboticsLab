@@ -30,13 +30,14 @@
 #include "State/MjCanonicalName.h"
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -176,14 +177,14 @@ static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req,
 		{
 			if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
 			{
-				TArray<UMjActuator*> Acts = Art->GetActuators();
+				const TArray<UMjNodeComponent*> Acts = Art->GetActuators();
+				const FString Prefix = Art->GetCompiledPrefix();
 				for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
 				{
-					UMjActuator* A = Acts[i];
+					const UMjNodeComponent* A = Acts[i];
 					if (!A)
 						continue;
-					FString LocalName = A->GetMjName();
-					FString Prefix = Art->GetName() + TEXT("_");
+					FString LocalName = A->MjName.Get(A->GetName());
 					if (LocalName.StartsWith(Prefix))
 						LocalName = LocalName.Mid(Prefix.Len());
 					Out.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
@@ -287,7 +288,7 @@ void FURLabRpcDispatcher::ParseStepCommon(const TSharedPtr<FJsonObject>& Req,
 			if (Req->TryGetBoolField(TEXT("include_cameras"), bAll) && bAll && Mgr)
 			{
 				auto AddCamera = [&Out](UMjCamera* C) {
-					if (!C || C->bIsDefault)
+					if (!C)
 						return;
 					Out.CameraSpec.Add(C->GetCanonicalName(), ECameraInclude::Latest);
 				};
@@ -430,15 +431,16 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 		if (!Art)
 			continue;
 
-		const FString Prefix = Art->GetName() + TEXT("_");
-		TMap<FString, UMjActuator*> ByName;
-		ByName.Reserve(Art->GetActuators().Num() * 2);
-		for (UMjActuator* A : Art->GetActuators())
+		const FString Prefix = Art->GetCompiledPrefix();
+		const TArray<UMjNodeComponent*> Actuators = Art->GetActuators();
+		TMap<FString, UMjNodeComponent*> ByName;
+		ByName.Reserve(Actuators.Num() * 2);
+		for (UMjNodeComponent* A : Actuators)
 		{
 			if (!A)
 				continue;
-			FString FullName = A->GetMjName();
-			FString Local = FullName.StartsWith(Prefix) ? FullName.Mid(Prefix.Len()) : FullName;
+			const FString FullName = A->MjName.Get(A->GetName());
+			const FString Local = FullName.StartsWith(Prefix) ? FullName.Mid(Prefix.Len()) : FullName;
 			ByName.Add(Local, A);
 			ByName.Add(FullName, A);
 		}
@@ -457,18 +459,18 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 		}
 		for (const TPair<FString, float>& KV : Pair.Value)
 		{
-			UMjActuator** Found = ByName.Find(KV.Key);
+			UMjNodeComponent** Found = ByName.Find(KV.Key);
 			if (!Found || !*Found)
 				continue;
 			if (bRaw && m && d)
 			{
-				int id = (*Found)->GetMjID();
-				if (id >= 0 && id < m->nu)
-					d->ctrl[id] = (mjtNum)KV.Value;
+				const int32 Id = (*Found)->GetBoundId().Get(-1);
+				if (Id >= 0 && Id < m->nu)
+					d->ctrl[Id] = (mjtNum)KV.Value;
 			}
 			else
 			{
-				(*Found)->SetNetworkControl(KV.Value);
+				UMjActuatorRuntime::SetNetworkControl(*Found, KV.Value);
 			}
 		}
 	}
@@ -1040,7 +1042,7 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 				if (!Art)
 					continue;
 				const bool* bSkip = SkipController.Find(Art);
-				Art->ApplyControls(bSkip != nullptr && *bSkip);
+				Art->ApplyControls(m, d, bSkip != nullptr && *bSkip);
 			}
 			mj_step(m, d);
 			if (Engine->OnPostStep)

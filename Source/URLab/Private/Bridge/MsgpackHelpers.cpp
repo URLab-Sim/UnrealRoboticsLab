@@ -25,6 +25,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Misc/Base64.h"
+#include "Utils/URLabLogging.h"
 
 // rpclib's msgpack-cxx headers use member functions and templates named
 // `check`, which collides with UE's `check(cond)` assertion macro. Save
@@ -50,6 +51,37 @@ namespace
 constexpr const TCHAR* kBinSuffix = TEXT("__b64__");
 constexpr int32 kBinSuffixLen = 7;
 
+// FJsonValue carrying raw bytes to pack straight through as msgpack `bin`, with
+// no base64 encode/decode round trip and no intermediate FString. It holds a
+// Keeper that owns the underlying buffer so the bytes stay valid until the reply
+// is packed. It is always stored under a kBinSuffix key, and its Type is set to
+// EJson::Null so PackJsonObjectInner can tell it apart from the legacy base64
+// string form (a msgpack->JSON round trip yields EJson::String there, and no
+// code ever stores a plain null under a __b64__ key). EJson::Null also serialises
+// safely if the reply ever goes out as JSON: the __b64__ field is the
+// msgpack-canonical form and JSON clients read the parallel *_base64 field.
+class FURLabJsonValueBinary : public FJsonValue
+{
+public:
+	FURLabJsonValueBinary(const uint8* InData, int32 InSize,
+		TSharedPtr<const void, ESPMode::ThreadSafe> InKeeper)
+		: Data(InData), Size(InSize), Keeper(MoveTemp(InKeeper))
+	{
+		Type = EJson::Null;
+	}
+
+	const uint8* GetBinaryData() const { return Data; }
+	int32 GetBinarySize() const { return Size; }
+
+protected:
+	virtual FString GetType() const override { return TEXT("URLabBinary"); }
+
+private:
+	const uint8* Data = nullptr;
+	int32 Size = 0;
+	TSharedPtr<const void, ESPMode::ThreadSafe> Keeper;
+};
+
 template <typename Stream>
 void PackString(clmdep_msgpack::packer<Stream>& Packer, const FString& S)
 {
@@ -74,24 +106,39 @@ void PackJsonObjectInner(clmdep_msgpack::packer<Stream>& Packer,
 	for (const auto& Kv : Obj->Values)
 	{
 		const FString& Key = Kv.Key;
-		// Special-case keys with kBinSuffix: emit real msgpack bin rather
-		// than the base64-as-string form the JSON tree carries.
+		// Keys with kBinSuffix emit real msgpack bin (the suffix is stripped from
+		// the wire field name). The value is either our raw-binary carrier
+		// (EJson::Null, bytes packed directly) or a legacy base64 string (from a
+		// msgpack->JSON round trip, decoded back to bytes).
 		if (Key.EndsWith(kBinSuffix, ESearchCase::CaseSensitive))
 		{
-			FString StrippedKey = Key.LeftChop(kBinSuffixLen);
-			PackString(Packer, StrippedKey);
-			FString Encoded;
-			if (Kv.Value.IsValid() && Kv.Value->TryGetString(Encoded))
+			PackString(Packer, Key.LeftChop(kBinSuffixLen));
+
+			const FJsonValue* Val = Kv.Value.Get();
+			if (Val && Val->Type == EJson::Null)
 			{
-				TArray<uint8> Decoded;
-				FBase64::Decode(Encoded, Decoded);
-				Packer.pack_bin(Decoded.Num());
-				if (Decoded.Num() > 0)
-					Packer.pack_bin_body(reinterpret_cast<const char*>(Decoded.GetData()), Decoded.Num());
+				// Raw bytes already in hand: pack directly, no base64 round trip.
+				const FURLabJsonValueBinary* Bin = static_cast<const FURLabJsonValueBinary*>(Val);
+				const int32 N = Bin->GetBinarySize();
+				Packer.pack_bin(N);
+				if (N > 0 && Bin->GetBinaryData())
+					Packer.pack_bin_body(reinterpret_cast<const char*>(Bin->GetBinaryData()), N);
 			}
 			else
 			{
-				Packer.pack_bin(0);
+				FString Encoded;
+				if (Val && Kv.Value->TryGetString(Encoded))
+				{
+					TArray<uint8> Decoded;
+					FBase64::Decode(Encoded, Decoded);
+					Packer.pack_bin(Decoded.Num());
+					if (Decoded.Num() > 0)
+						Packer.pack_bin_body(reinterpret_cast<const char*>(Decoded.GetData()), Decoded.Num());
+				}
+				else
+				{
+					Packer.pack_bin(0);
+				}
 			}
 			continue;
 		}
@@ -164,11 +211,24 @@ void FURLabMsgpackUtil::SetBinaryField(TSharedPtr<FJsonObject>& Obj, const FStri
 {
 	if (!Obj.IsValid())
 		return;
-	FString Encoded;
+	// Own a single copy of the bytes so the caller's buffer need not outlive the
+	// reply, then pack it straight through as msgpack bin (no base64). The __b64__
+	// key suffix tells PackJsonObjectInner to strip the suffix and emit bin.
+	TSharedRef<TArray<uint8>, ESPMode::ThreadSafe> Owned =
+		MakeShared<TArray<uint8>, ESPMode::ThreadSafe>();
 	if (Size > 0 && Data)
-		Encoded = FBase64::Encode(Data, Size);
-	// The packer recognises the __b64__ suffix and converts back to msgpack bin.
-	Obj->SetStringField(Field + kBinSuffix, Encoded);
+		Owned->Append(Data, Size);
+	Obj->SetField(Field + kBinSuffix,
+		MakeShared<FURLabJsonValueBinary>(Owned->GetData(), Owned->Num(), Owned));
+}
+
+void FURLabMsgpackUtil::SetBinaryFieldShared(TSharedPtr<FJsonObject>& Obj, const FString& Field,
+	const uint8* Data, int32 Size, TSharedPtr<const void, ESPMode::ThreadSafe> Keeper)
+{
+	if (!Obj.IsValid())
+		return;
+	Obj->SetField(Field + kBinSuffix,
+		MakeShared<FURLabJsonValueBinary>(Data, Size, MoveTemp(Keeper)));
 }
 
 // =============================================================================
@@ -274,6 +334,7 @@ bool FURLabMsgpackUtil::UnpackToJsonObject(const uint8* Data, int32 Size,
 	}
 	catch (...)
 	{
+		UE_LOG(LogURLab, Warning, TEXT("MsgpackHelpers: parse failure in UnpackToJsonObject"));
 		return false;
 	}
 }

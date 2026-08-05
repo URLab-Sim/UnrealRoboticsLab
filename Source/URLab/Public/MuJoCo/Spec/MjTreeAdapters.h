@@ -526,8 +526,19 @@ struct URLAB_API FMjScsScope
 	/** The node holding `Template`, or null. */
 	USCS_Node* FindNode(const UMjNodeComponent& Template) const;
 
-	/** Forget the cached template-to-node map; the next lookup rebuilds it. */
+	/** Forget the cached maps; the next lookup rebuilds them. */
 	void InvalidateNodeMap();
+
+	/**
+	 * The node holding `Child`'s parent, or null at a root.
+	 *
+	 * From a map rather than a search. `USCS_Node` records its children and not
+	 * its parent, so the only way to ask directly is to scan every node in the
+	 * Blueprint and test whether `Child` is among its children -- and the parent
+	 * of every element is exactly what building an effective context asks for,
+	 * so that search made one context cost the square of the spec.
+	 */
+	USCS_Node* ParentNodeOf(const UMjNodeComponent& Child) const;
 
 private:
 	void EnsureNodeMap() const;
@@ -536,6 +547,7 @@ private:
 	USimpleConstructionScript* Scs = nullptr;
 	FMjScsScope* Previous = nullptr;
 	mutable TMap<const UMjNodeComponent*, USCS_Node*> NodeMap;
+	mutable TMap<const USCS_Node*, USCS_Node*> ParentMap;
 	mutable bool bNodeMapValid = false;
 };
 

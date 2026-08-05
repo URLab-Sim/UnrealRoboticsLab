@@ -109,6 +109,7 @@ FMjScsScope* FMjScsScope::Current()
 void FMjScsScope::InvalidateNodeMap()
 {
 	NodeMap.Reset();
+	ParentMap.Reset();
 	bNodeMapValid = false;
 }
 
@@ -119,6 +120,11 @@ void FMjScsScope::EnsureNodeMap() const
 		return;
 	}
 	NodeMap.Reset();
+	ParentMap.Reset();
+	// One pass builds both. A USCS_Node records its children and not its parent,
+	// so the parent of an element is otherwise a scan of every node in the
+	// Blueprint -- and that question is asked once per ancestor test, of which
+	// there are several per geom.
 	for (USCS_Node* Node : Scs->GetAllNodes())
 	{
 		if (Node == nullptr)
@@ -129,8 +135,31 @@ void FMjScsScope::EnsureNodeMap() const
 		{
 			NodeMap.Add(Template, Node);
 		}
+		for (USCS_Node* Child : Node->GetChildNodes())
+		{
+			if (Child != nullptr)
+			{
+				ParentMap.Add(Child, Node);
+			}
+		}
 	}
 	bNodeMapValid = true;
+}
+
+USCS_Node* FMjScsScope::ParentNodeOf(const UMjNodeComponent& Child) const
+{
+	EnsureNodeMap();
+	const USCS_Node* ChildNode = nullptr;
+	if (USCS_Node* const* Found = NodeMap.Find(&Child))
+	{
+		ChildNode = *Found;
+	}
+	if (ChildNode == nullptr)
+	{
+		return nullptr;
+	}
+	USCS_Node* const* Parent = ParentMap.Find(ChildNode);
+	return Parent != nullptr ? *Parent : nullptr;
 }
 
 USCS_Node* FMjScsScope::FindNode(const UMjNodeComponent& Template) const
@@ -192,23 +221,15 @@ UMjNodeComponent* FMjScsAdapter::ParentOf(const UMjNodeComponent& Child)
 	{
 		return nullptr;
 	}
-	const USCS_Node* ChildNode = Scope->FindNode(Child);
-	if (ChildNode == nullptr)
+	USCS_Node* ParentNode = Scope->ParentNodeOf(Child);
+	if (ParentNode == nullptr)
 	{
 		return nullptr;
 	}
-	for (USCS_Node* Candidate : Scope->GetScs().GetAllNodes())
-	{
-		if (Candidate == nullptr)
-		{
-			continue;
-		}
-		if (Candidate->GetChildNodes().Contains(ChildNode))
-		{
-			return Cast<UMjNodeComponent>(Candidate->ComponentTemplate);
-		}
-	}
-	return nullptr;
+	// Null rather than a climb when the parent is not an element: a spec root
+	// under a plain DefaultSceneRoot has no element parent, and answering with
+	// its grandparent would invent an ancestry the spec does not have.
+	return Cast<UMjNodeComponent>(ParentNode->ComponentTemplate);
 }
 
 void FMjScsAdapter::Attach(UMjNodeComponent& Parent, UMjNodeComponent& Child)
@@ -227,6 +248,7 @@ void FMjScsAdapter::Attach(UMjNodeComponent& Parent, UMjNodeComponent& Child)
 	if (!ParentNode->GetChildNodes().Contains(ChildNode))
 	{
 		ParentNode->AddChildNode(ChildNode);
+		Scope->InvalidateNodeMap();
 	}
 }
 
@@ -242,13 +264,10 @@ void FMjScsAdapter::Detach(UMjNodeComponent& Child)
 	{
 		return;
 	}
-	for (USCS_Node* Candidate : Scope->GetScs().GetAllNodes())
+	if (USCS_Node* ParentNode = Scope->ParentNodeOf(Child))
 	{
-		if (Candidate != nullptr && Candidate->GetChildNodes().Contains(ChildNode))
-		{
-			Candidate->RemoveChildNode(ChildNode, /*bRemoveFromAllNodes=*/false);
-			break;
-		}
+		ParentNode->RemoveChildNode(ChildNode, /*bRemoveFromAllNodes=*/false);
+		Scope->InvalidateNodeMap();
 	}
 }
 

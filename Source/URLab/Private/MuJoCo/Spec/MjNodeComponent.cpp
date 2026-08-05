@@ -497,6 +497,12 @@ void UMjNodeComponent::RefreshSpecPresentation()
 		return;
 	}
 
+	// One context for the whole walk. Each node asks the class chain several
+	// questions and a geom asks more, and every one of those used to index the
+	// spec from scratch -- so refreshing N elements cost N whole-spec walks per
+	// question rather than one.
+	urlab::spec::FMjEffectiveScope Effective(*Root);
+
 #if WITH_EDITOR
 	if (Doc.GetGraph() == EMjSpecGraph::Scs)
 	{
@@ -604,6 +610,11 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	{
 		return;
 	}
+
+	// Past the early-out, so the descendants of a moving actor never pay for it:
+	// everything below resolves the class chain more than once, and each instance
+	// below opens its own, an instance being a separate spec with its own root.
+	urlab::spec::FMjEffectiveScope Effective(*this);
 
 	// Snap first, so the comparison and the spec both see a scale the shape
 	// can actually hold.
@@ -774,6 +785,8 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 		// nothing. What the user is looking at is the preview actor -- and every
 		// placed actor of that class -- so the instances built from this template
 		// have to re-read their own specs too.
+		// Each instance is a spec of its own, so `RefreshSpecPresentation` opens
+		// its own context per instance rather than one covering the loop.
 		ForEachInstanceOfTemplate(*this, [](UMjNodeComponent& Instance) {
 			Instance.RefreshSpecPresentation();
 		});

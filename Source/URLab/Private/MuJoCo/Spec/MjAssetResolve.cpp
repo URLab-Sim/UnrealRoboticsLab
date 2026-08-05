@@ -71,6 +71,99 @@ const TCHAR* const kMasterMaterial = TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo
 #if URLAB_MJ_GEN
 
 /**
+ * Every element of the spec, template graph or actor components alike.
+ *
+ * The two graphs hold their elements in different places and neither is a tree
+ * walk: a reference resolves by name across the whole spec exactly as MuJoCo
+ * resolves it.
+ */
+template <class Visit>
+void ForEachElement(const FSpecRef& Doc, Visit&& Visitor)
+{
+#if WITH_EDITOR
+	if (UBlueprint* Blueprint = Doc.GetBlueprint())
+	{
+		if (Blueprint->SimpleConstructionScript != nullptr)
+		{
+			for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+			{
+				if (Node != nullptr && Node->ComponentTemplate != nullptr)
+				{
+					Visitor(Node->ComponentTemplate);
+				}
+			}
+		}
+		return;
+	}
+#endif
+	if (AActor* Actor = Doc.GetActor())
+	{
+		for (UActorComponent* Component : Actor->GetComponents())
+		{
+			Visitor(Component);
+		}
+	}
+}
+
+/** The name namespaces MuJoCo keeps apart: a mesh and a material may share one. */
+enum class ENameKind : int32
+{
+	Material = 0,
+	Texture = 1,
+	Mesh = 2,
+};
+
+/**
+ * `Name` in the namespace `Kind`, through the open pass index when there is one.
+ *
+ * Without a scope this is the scan it always was. With one, the spec is walked
+ * once per kind per pass rather than once per query -- which is what turns
+ * resolving a few hundred geoms' pictures from quadratic into linear.
+ */
+template <class T>
+T* FindNamedElement(const FSpecRef& Doc, ENameKind Kind, const FString& Name,
+	TFunctionRef<FString(const UMjNodeComponent&)> NameOf)
+{
+	if (Name.IsEmpty())
+	{
+		return nullptr;
+	}
+	auto Match = [&NameOf, &Name](UActorComponent* Component) -> T* {
+		T* Element = Cast<T>(Component);
+		return (Element != nullptr && NameOf(*Element) == Name) ? Element : nullptr;
+	};
+
+	const UMjModel* Root = Cast<UMjModel>(Doc.GetRoot());
+	if (Root != nullptr)
+	{
+		if (urlab::spec::FMjEffectiveScope* Scope = urlab::spec::FMjEffectiveScope::Find(Root))
+		{
+			UActorComponent* Found = Scope->FindNamed(static_cast<int32>(Kind), Name, [&Doc, &NameOf](auto&& Add) {
+				ForEachElement(Doc, [&NameOf, &Add](UActorComponent* Component) {
+					if (T* Element = Cast<T>(Component))
+					{
+						Add(NameOf(*Element), Component);
+					}
+				});
+			});
+			return Cast<T>(Found);
+		}
+	}
+
+	T* Result = nullptr;
+	ForEachElement(Doc, [&Match, &Result](UActorComponent* Component) {
+		if (Result == nullptr)
+		{
+			if (T* Found = Match(Component))
+			{
+				Result = Found;
+			}
+		}
+	});
+	return Result;
+}
+
+/**
  * The `<material>` named `Name` in `Doc`.
  *
  * Over the graph's own flat store -- the Blueprint's construction-script nodes,
@@ -82,49 +175,8 @@ const TCHAR* const kMasterMaterial = TEXT("/UnrealRoboticsLab/Materials/M_MuJoCo
  */
 UMjMaterial* FindMaterialElement(const FSpecRef& Doc, const FString& Name)
 {
-	if (Name.IsEmpty())
-	{
-		return nullptr;
-	}
-	auto Match = [&Name](UActorComponent* Component) -> UMjMaterial* {
-		UMjMaterial* Material = Cast<UMjMaterial>(Component);
-		return (Material != nullptr && Material->MjName.IsSet() && Material->MjName.GetValue() == Name) ? Material
-																										: nullptr;
-	};
-
-#if WITH_EDITOR
-	if (UBlueprint* Blueprint = Doc.GetBlueprint())
-	{
-		if (Blueprint->SimpleConstructionScript == nullptr)
-		{
-			return nullptr;
-		}
-		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
-		{
-			if (Node == nullptr)
-			{
-				continue;
-			}
-			if (UMjMaterial* Found = Match(Node->ComponentTemplate))
-			{
-				return Found;
-			}
-		}
-		return nullptr;
-	}
-#endif
-
-	if (AActor* Actor = Doc.GetActor())
-	{
-		for (UActorComponent* Component : Actor->GetComponents())
-		{
-			if (UMjMaterial* Found = Match(Component))
-			{
-				return Found;
-			}
-		}
-	}
-	return nullptr;
+	return FindNamedElement<UMjMaterial>(Doc, ENameKind::Material, Name,
+		[](const UMjNodeComponent& Element) { return Element.MjName.IsSet() ? Element.MjName.GetValue() : FString(); });
 }
 
 /**
@@ -137,93 +189,15 @@ UMjMaterial* FindMaterialElement(const FSpecRef& Doc, const FString& Name)
  */
 UMjTexture* FindTextureElement(const FSpecRef& Doc, const FString& Name)
 {
-	if (Name.IsEmpty())
-	{
-		return nullptr;
-	}
-	auto Match = [&Name](UActorComponent* Component) -> UMjTexture* {
-		UMjTexture* Texture = Cast<UMjTexture>(Component);
-		return (Texture != nullptr && MjAssetElementName(*Texture) == Name) ? Texture : nullptr;
-	};
-
-#if WITH_EDITOR
-	if (UBlueprint* Blueprint = Doc.GetBlueprint())
-	{
-		if (Blueprint->SimpleConstructionScript == nullptr)
-		{
-			return nullptr;
-		}
-		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
-		{
-			if (Node != nullptr)
-			{
-				if (UMjTexture* Found = Match(Node->ComponentTemplate))
-				{
-					return Found;
-				}
-			}
-		}
-		return nullptr;
-	}
-#endif
-
-	if (AActor* Actor = Doc.GetActor())
-	{
-		for (UActorComponent* Component : Actor->GetComponents())
-		{
-			if (UMjTexture* Found = Match(Component))
-			{
-				return Found;
-			}
-		}
-	}
-	return nullptr;
+	return FindNamedElement<UMjTexture>(Doc, ENameKind::Texture, Name,
+		[](const UMjNodeComponent& Element) { return MjAssetElementName(Element); });
 }
 
 /** The `<mesh>` element `Name` refers to, by the same rule as a texture. */
 const UMjMesh* FindMeshElement(const FSpecRef& Doc, const FString& Name)
 {
-	if (Name.IsEmpty())
-	{
-		return nullptr;
-	}
-	auto Match = [&Name](UActorComponent* Component) -> const UMjMesh* {
-		const UMjMesh* Mesh = Cast<UMjMesh>(Component);
-		return (Mesh != nullptr && MjAssetElementName(*Mesh) == Name) ? Mesh : nullptr;
-	};
-
-#if WITH_EDITOR
-	if (UBlueprint* Blueprint = Doc.GetBlueprint())
-	{
-		if (Blueprint->SimpleConstructionScript == nullptr)
-		{
-			return nullptr;
-		}
-		for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
-		{
-			if (Node != nullptr)
-			{
-				if (const UMjMesh* Found = Match(Node->ComponentTemplate))
-				{
-					return Found;
-				}
-			}
-		}
-		return nullptr;
-	}
-#endif
-
-	if (AActor* Actor = Doc.GetActor())
-	{
-		for (UActorComponent* Component : Actor->GetComponents())
-		{
-			if (const UMjMesh* Found = Match(Component))
-			{
-				return Found;
-			}
-		}
-	}
-	return nullptr;
+	return FindNamedElement<UMjMesh>(Doc, ENameKind::Mesh, Name,
+		[](const UMjNodeComponent& Element) { return MjAssetElementName(Element); });
 }
 
 /**

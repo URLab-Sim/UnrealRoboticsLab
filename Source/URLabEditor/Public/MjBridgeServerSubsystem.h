@@ -7,6 +7,7 @@
 
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
+#include "Containers/Ticker.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/BridgeServerConfig.h"
 #include "MjBridgeServerSubsystem.generated.h"
@@ -58,4 +59,13 @@ private:
 	TObjectPtr<UURLabBridgeServer> Server;
 
 	FURLabBridgeServerConfig Config;
+
+	/** Version string echoed into the registry heartbeat, cached at start. */
+	FString CachedUrlabVersion;
+
+	/** Periodic registry refresh: keeps the entry's mtime fresh (so discovery
+	 *  doesn't treat a live instance as stale) and republishes the live lease
+	 *  `busy` state. */
+	FTSTicker::FDelegateHandle HeartbeatHandle;
+	bool RefreshRegistryHeartbeat(float DeltaTime);
 };

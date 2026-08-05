@@ -297,6 +297,40 @@ bool FTest_MjImport_MJ_TendonArmature::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_SensorSection,
+	"URLab.Import.MJ_SensorSection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_MJ_SensorSection::RunTest(const FString&)
+{
+	// The <sensor> container is a wrapper; the importer must recurse into its
+	// per-type children (like <actuator>). A regression drops the whole section.
+	FMjTestSession S;
+	if (!S.CompileXml(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body pos="0 0 1">
+              <joint name="j" type="hinge"/>
+              <geom size=".1"/>
+              <site name="s"/>
+            </body>
+          </worldbody>
+          <sensor>
+            <accelerometer name="acc" site="s"/>
+            <gyro name="gyr" site="s"/>
+            <framepos name="fp" objtype="site" objname="s"/>
+          </sensor>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	TestEqual(TEXT("nsensor (all three <sensor> children imported)"), (int)S.m->nsensor, 3);
+	S.Cleanup();
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_EqualityPolycoef,
 	"URLab.Import.MJ_EqualityPolycoef",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)

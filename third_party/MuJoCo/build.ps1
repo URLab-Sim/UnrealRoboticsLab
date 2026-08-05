@@ -8,6 +8,7 @@ param(
 if (-not [System.IO.Path]::IsPathRooted($InstallDir)) {
     $InstallDir = Join-Path $PSScriptRoot $InstallDir
 }
+$InstallRoot = [System.IO.Path]::GetFullPath($InstallDir).Replace('\', '/')
 $InstallDir = Join-Path $InstallDir "MuJoCo"
 $InstallDir = [System.IO.Path]::GetFullPath($InstallDir)
 $InstallDir = $InstallDir.Replace('\', '/')
@@ -61,7 +62,14 @@ $cmakeArgs = @(
     "-DMUJOCO_BUILD_EXAMPLES=OFF",
     "-DMUJOCO_BUILD_TESTS=OFF",
     "-DMUJOCO_BUILD_SIMULATE=OFF",
-    "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$($BuildType.Replace('Release', '').Replace('Debug', 'Debug'))DLL"
+    "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$($BuildType.Replace('Release', '').Replace('Debug', 'Debug'))DLL",
+    # MuJoCo patches its fetched qhull with `git apply --reject`, which is not
+    # idempotent: applied twice it rejects every hunk and returns non-zero. On
+    # the Visual Studio generator MSBuild re-invokes CMake mid-build once the
+    # FetchContent deps have landed, so a build from a clean tree would re-run
+    # that patch and fail. Suppressing regeneration keeps the one successful
+    # configure authoritative for the rest of the build.
+    "-DCMAKE_SUPPRESS_REGENERATION=ON"
 )
 cmake @cmakeArgs
 if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed for MuJoCo" }

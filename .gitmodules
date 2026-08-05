@@ -1,6 +1,11 @@
 [submodule "third_party/MuJoCo/src"]
 	path = third_party/MuJoCo/src
-	url = https://github.com/google-deepmind/mujoco
+	# URLab's MuJoCo fork. It is upstream plus one directory, protospec/, which
+	# carries the MJCF schema front end, its generator and the C++ SDK that
+	# Source/URLab/*/MuJoCo/Gen compiles against. Keeping it in the submodule is
+	# what makes schema, generator, SDK and engine version as one unit; the fork
+	# branch commits nothing outside protospec/, so bumping MuJoCo stays a rebase.
+	url = https://github.com/URLab-Sim/mujoco
 [submodule "third_party/CoACD/src"]
 	path = third_party/CoACD/src
 	url = https://github.com/SarahWeiii/CoACD

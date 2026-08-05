@@ -24,9 +24,9 @@
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
-#include "MuJoCo/Utils/MjUtils.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
 #include "Utils/URLabLogging.h"
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
@@ -173,8 +173,8 @@ int32 UMjPerturbation::ResolveBodyIdFromActor(const AActor* Actor, const FVector
 	if (!Actor)
 		return -1;
 
-	// Articulation path: find the nearest UMjGeom to the hit point (any geom
-	// on the actor belongs to a body via Geom->GetMj().geom_bodyid).
+	// Articulation path: the nearest geom to the hit point, whose body the
+	// compiled model names at `geom_bodyid`.
 	TArray<UMjGeom*> Geoms;
 	const_cast<AActor*>(Actor)->GetComponents<UMjGeom>(Geoms);
 	if (Geoms.Num() > 0)
@@ -183,7 +183,7 @@ int32 UMjPerturbation::ResolveBodyIdFromActor(const AActor* Actor, const FVector
 		float BestDist = TNumericLimits<float>::Max();
 		for (UMjGeom* G : Geoms)
 		{
-			if (!G || !G->IsBound())
+			if (!G || !G->GetBoundId().IsSet())
 				continue;
 			const float D = FVector::DistSquared(G->GetComponentLocation(), HitWorldUE);
 			if (D < BestDist)
@@ -192,9 +192,14 @@ int32 UMjPerturbation::ResolveBodyIdFromActor(const AActor* Actor, const FVector
 				Best = G;
 			}
 		}
-		if (Best)
+		if (Best != nullptr)
 		{
-			return Best->GetMj().geom_bodyid;
+			const mjModel* Model = Manager->PhysicsEngine->m_model;
+			const int32 GeomId = Best->GetBoundId().GetValue();
+			if (Model != nullptr && GeomId < Model->ngeom)
+			{
+				return Model->geom_bodyid[GeomId];
+			}
 		}
 	}
 
@@ -253,7 +258,7 @@ void UMjPerturbation::HandleSelect(const FVector& CursorOrigin, const FVector& C
 	{
 		// Compute localpos = xmat[sel]^T * (world_hit - xpos[sel])
 		mjtNum HitMj[3];
-		MjUtils::UEToMjPosition(SelectedHit.ImpactPoint, HitMj);
+		URLabAxisConv::UePositionToMj(SelectedHit.ImpactPoint, HitMj);
 
 		mjtNum Diff[3];
 		mju_sub3(Diff, HitMj, d->xpos + 3 * BodyId);
@@ -359,7 +364,7 @@ void UMjPerturbation::UpdateDrag(const FVector& CursorOrigin, const FVector& Cur
 		const FVector DeltaUE = CurTargetUE - ClickHitWorldUE;
 
 		mjtNum DeltaMj[3];
-		MjUtils::UEToMjPosition(DeltaUE, DeltaMj);
+		URLabAxisConv::UePositionToMj(DeltaUE, DeltaMj);
 
 		FScopeLock Lock(&Manager->PhysicsEngine->CallbackMutex);
 		for (int i = 0; i < 3; ++i)

@@ -31,6 +31,10 @@ struct FMjArticulationState;
 class UInputAction;
 class UInputMappingContext;
 class UEnhancedInputComponent;
+struct mjModel_;
+struct mjData_;
+typedef mjModel_ mjModel;
+typedef mjData_ mjData;
 
 /**
  * Captures WASD/gamepad input and stores twist commands (vx, vy, yaw_rate)
@@ -84,10 +88,10 @@ public:
 	int32 GetActiveActions() const;
 
 	/** Declares this controller's twist + active actions into the articulation IR.
-	 *  UMjTwistController derives from UActorComponent, not UMjComponent, so the
+	 *  UMjTwistController derives from UActorComponent, not UMjNodeComponent, so the
 	 *  collector calls this through a cached weak ptr rather than the DescribeState
 	 *  virtual. */
-	void DescribeState(FMjArticulationState& Out) const;
+	void DescribeState(const mjModel* m, mjData* d, FMjArticulationState& Out) const;
 
 	/** Bind input actions to an EnhancedInputComponent. Called from AMjArticulation::SetupPlayerInputComponent. */
 	void BindInput(UEnhancedInputComponent* EIC);

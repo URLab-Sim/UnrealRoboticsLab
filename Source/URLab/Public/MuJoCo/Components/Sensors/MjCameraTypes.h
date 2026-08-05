@@ -42,3 +42,52 @@ enum class EMjCameraMode : uint8
 
 // EMjCameraTrackingMode, EMjCameraProjection moved to
 // MuJoCo/Generated/MjArticulationEnums.h.
+
+/** Magic identifying a camera frame-metadata header. Stored as a uint32 that
+ *  reads as the ASCII bytes "UCM1" in a little-endian hexdump, so the C++ and
+ *  Python sides agree by inspection. */
+inline constexpr uint32 URLAB_CAMERA_META_MAGIC = 0x314D4355u; // 'UCM1'
+// v2 appends CaptureUnixTime (Unix-epoch seconds when the frame's readback was
+// requested) so a client can measure true content latency. v1 consumers that
+// stop reading after Height still parse correctly (the field is appended).
+inline constexpr uint32 URLAB_CAMERA_META_VERSION = 2u;
+
+/**
+ * @struct FMjCameraFrameMeta
+ * @brief Per-frame metadata prepended to streamed camera pixels on BOTH the
+ *        ZMQ and SHM transports.
+ *
+ * The streaming channels (PUB socket / SHM ring) are how the client gets
+ * camera frames in every step mode — frames are no longer bundled into the
+ * step RPC reply. This header is what lets the client associate a streamed
+ * frame with the step that produced it (FrameId) so a "fresh" query can wait
+ * for FrameId >= the step's post-state id.
+ *
+ * Fixed 40-byte POD, little-endian, no padding (verified by static_assert).
+ * The Python consumer parses the identical layout: "<IIQdIId".
+ *
+ * Layout (offsets in bytes):
+ *   0  uint32 magic
+ *   4  uint32 version
+ *   8  uint64 frame_id
+ *   16 double sim_time
+ *   24 uint32 width
+ *   28 uint32 height
+ *   32 double capture_unix_time   (v2+; seconds since 1970-01-01 UTC)
+ */
+struct FMjCameraFrameMeta
+{
+	uint32 Magic = URLAB_CAMERA_META_MAGIC;
+	uint32 Version = URLAB_CAMERA_META_VERSION;
+	uint64 FrameId = 0;  // post-step render-snapshot id this frame shows
+	double SimTime = 0.0;
+	uint32 Width = 0;
+	uint32 Height = 0;
+	// Unix-epoch seconds (FDateTime::UtcNow) when this frame's GPU readback was
+	// requested -- same clock as the state stream's wall_time and Python's
+	// time.time(), so content latency = time.time() - CaptureUnixTime with no
+	// cross-process clock sync.
+	double CaptureUnixTime = 0.0;
+};
+static_assert(sizeof(FMjCameraFrameMeta) == 40,
+	"FMjCameraFrameMeta must be exactly 40 bytes for cross-language ABI");

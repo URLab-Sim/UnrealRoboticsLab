@@ -22,27 +22,21 @@
 
 #pragma once
 
-#include <atomic>
-
 #include "CoreMinimal.h"
 #include "Transport/PublishTransport.h"
 #include "Transport/SnapshotPublisher.h"
 #include "ZmqPublishTransport.generated.h"
 
 class AAMjManager;
-class AMjArticulation;
-class UMjComponent;
-class UMjTwistController;
 
 /**
  * @class UURLabZmqPublishTransport
- * @brief ZMQ PUB transport broadcasting per-articulation telemetry +
- *        the `state/full` snapshot.
+ * @brief ZMQ PUB transport broadcasting the `state/full` snapshot.
  *
  * Plain UObject deriving from UURLabPublishTransport, created via
- * `NewObject` + `SetOwningManager` + `TransportInit`. The game-thread
- * cache build runs lazily on the first PostStep via `AsyncTask` to the
- * game thread.
+ * `NewObject` + `SetOwningManager` + `TransportInit`. It registers as an
+ * IMjSnapshotPublisher; the manager's post-step callback builds + encodes
+ * the snapshot once and fans the bytes out via PublishSnapshot.
  */
 UCLASS()
 class URLAB_API UURLabZmqPublishTransport : public UURLabPublishTransport
@@ -68,11 +62,8 @@ public:
 	virtual void Publish(const FString& Topic,
 		const TArray<uint8>& Payload) override;
 
-	// Per-step hook (Async / physics thread).
-	virtual void PostStep(struct mjModel_* m, struct mjData_* d) override;
-
 	// IMjSnapshotPublisher: route through to Publish("state/full", bytes)
-	// so the manager's existing snapshot fan-out keeps working.
+	// so the manager's snapshot fan-out delivers to the wire.
 	virtual void PublishSnapshot(const TArray<uint8>& Bytes) override
 	{
 		Publish(TEXT("state/full"), Bytes);
@@ -82,38 +73,7 @@ private:
 	TWeakObjectPtr<AAMjManager> OwningManager;
 	void* ZmqContext = nullptr;
 	void* ZmqPublisher = nullptr;
-	int32 FrameCounter = 0;
 	bool bIsInitialized = false;
-
-	/** Per-articulation snapshot built once on the game thread and read
-	 *  repeatedly from the physics thread in PostStep. Iterating
-	 *  OwnedComponents on the physics thread is unsafe (the game thread
-	 *  can mutate it during actor BeginPlay — e.g. auto-created twist
-	 *  controllers), and tripping the sparse-array range-for ensure
-	 *  corrupts nearby heap state, producing seemingly-unrelated RHI
-	 *  crashes further along. */
-	struct FArticulationBroadcastRecord
-	{
-		AMjArticulation* Articulation = nullptr;
-		FString ArticPrefix;
-		TArray<UMjComponent*> TelemetryComponents;
-		UMjTwistController* TwistCtrl = nullptr;
-	};
-
-	/** Populated once on the game thread. bCacheBuilt (with acquire/release
-	 *  ordering) publishes visibility to the physics thread. No mid-play
-	 *  refresh — broadcaster assumes articulations and their components are
-	 *  stable across a single play session. */
-	TArray<FArticulationBroadcastRecord> CachedRecords;
-	std::atomic<bool> bCacheBuilt{false};
-	std::atomic<bool> bCacheBuildScheduled{false};
-
-	/** Schedule a one-shot AsyncTask(GameThread) to build the cache.
-	 *  Idempotent: only the first call goes through. */
-	void RequestGameThreadCacheBuild();
-
-	/** Game-thread-only: enumerate articulations + components into CachedRecords. */
-	void BuildBroadcastCacheGameThread();
 
 	void InitZmqSocket();
 	void ShutdownZmqSocket();

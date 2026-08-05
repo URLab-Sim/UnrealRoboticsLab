@@ -24,6 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "Transport/RpcTransport.h"
+#include "Bridge/StepCommands.h"
 #include "Dom/JsonObject.h"
 #include "HAL/Event.h"
 #include "HAL/PlatformProcess.h"
@@ -31,71 +32,7 @@
 #include "ZmqRpcTransport.generated.h"
 
 class FRunnableThread;
-
-/**
- * @struct FMjStepRequest
- * @brief One Direct-mode step request, parsed from a client RPC and pushed to
- *        the physics-thread queue. Owns the per-articulation ctrl writes and
- *        the n_steps count.
- */
-struct FMjStepRequest
-{
-	int32 NSteps = 1;
-	/** prefix -> array of (actuator_name, value). Names are local (no prefix). */
-	TMap<FString, TArray<TPair<FString, float>>> PerArticulationCtrl;
-	/** Per-articulation control mode: "ue_controller" (default) or "raw". */
-	TMap<FString, FString> PerArticulationControlMode;
-	/** Per-articulation xfrc_applied: prefix -> body_name -> [fx,fy,fz,tx,ty,tz]. */
-	TMap<FString, TMap<FString, TArray<double>>> PerArticulationXfrc;
-	/** Echo'd request envelope for downstream reply building. */
-	FString Op;
-};
-
-/**
- * @struct FMjDirectStepCommand
- * @brief Heap-allocated wrapper passed by raw pointer through the SPSC queue
- *        in Direct mode. The RPC thread enqueues, the physics-thread custom
- *        step handler dequeues, drains the request, and signals via FEvent.
- *        Captures observations inline so the reply can be built off the
- *        physics thread without re-touching d.
- */
-struct FMjDirectStepCommand
-{
-	FMjStepRequest Request;
-	/** Set true by the handler when mj_step has completed. */
-	bool bDone = false;
-	/** Observations captured under the engine's CallbackMutex. */
-	TSharedPtr<FJsonObject> Observations;
-	TSharedPtr<FJsonObject> Entities;
-	double ResultTime = 0.0;
-	int64 ResultStep = 0;
-	/** Physics thread signals this when the step has completed. */
-	FEvent* Completion = nullptr;
-
-	~FMjDirectStepCommand()
-	{
-		if (Completion)
-		{
-			FPlatformProcess::ReturnSynchEventToPool(Completion);
-			Completion = nullptr;
-		}
-	}
-};
-
-/**
- * @struct FMjPushStateRequest
- * @brief One Puppet-mode push-state request. The client owns the integrator;
- *        UE writes qpos/qvel and calls mj_forward.
- */
-struct FMjPushStateRequest
-{
-	TArray<double> QPos;
-	TArray<double> QVel;
-	TArray<double> Ctrl; // optional informational ctrl
-	bool bIncludeCtrl = false;
-	double Time = 0.0;
-	int32 NSteps = 1; // informational only in puppet
-};
+class FRunnable;
 
 /**
  * @class UURLabZmqRpcTransport
@@ -129,10 +66,20 @@ private:
 	void* ZmqContext = nullptr;
 	void* ZmqRep = nullptr;
 	FRunnableThread* WorkerThread = nullptr;
+	/** Runnable driving WorkerThread. FRunnableThread does not own it, so the
+	 *  transport keeps the pointer and deletes it at shutdown. */
+	FRunnable* WorkerRunnable = nullptr;
 	std::atomic<bool> bStop{false};
 	bool bIsInitialized = false;
+
+	/** Create the REP socket, apply timeouts + LINGER, and bind StepEndpoint.
+	 *  Shared by TransportInit and the send-error recovery path so a wedged
+	 *  REP state machine can be reset without duplicating socket setup. */
+	bool CreateAndBindRep();
 
 	/** Worker thread loop. Runs zmq_poll on the REP socket and forwards each
 	 *  parsed request to the dispatcher; sends the reply back to the wire. */
 	void RunPollLoop();
+
+	friend class FStepServerRunnable;
 };

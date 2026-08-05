@@ -15,6 +15,8 @@
 #include "Transport/ShmRpcTransport.h"
 #include "Transport/ShmPublishTransport.h" // ResolveSessionDir
 #include "Bridge/BridgeServer.h"
+#include "Bridge/RpcDispatcher.h" // MakeError
+#include "Bridge/RpcErrorCodes.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
 #include "HAL/RunnableThread.h"
@@ -61,10 +63,24 @@ bool UURLabShmRpcTransport::TransportInit()
 	if (bInitialized)
 		return true;
 
-	FString Sid = SessionId;
-	if (Sid.IsEmpty())
-		Sid = TEXT("live");
-	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(Sid);
+	const FString BaseSid = SessionId.IsEmpty() ? FString(TEXT("live")) : SessionId;
+	// Make the session globally unique per editor process so many render-server
+	// instances on one host never share SHM files or Windows event names (a
+	// shared event name lets one instance eat another's wakeup and degrade to
+	// the 100 ms poll timeout). The process id guarantees uniqueness; the step
+	// port, when the bridge supplies it, keeps the name traceable to the
+	// instance. Every resolved name and path is advertised in the hello
+	// shm_rpc block, so the bridge opens exactly these objects instead of
+	// re-deriving them from a fixed "live" session.
+	const uint32 Pid = FPlatformProcess::GetCurrentProcessId();
+	ResolvedSessionId = InstancePort > 0
+						  ? FString::Printf(TEXT("%s_p%d_%u"), *BaseSid, InstancePort, Pid)
+						  : FString::Printf(TEXT("%s_%u"), *BaseSid, Pid);
+	// Event names match what the worker creates below; advertised in hello so
+	// the bridge opens the exact objects rather than assuming "live".
+	ReqEventName = MakeEventName(ResolvedSessionId, TEXT("req"));
+	RepEventName = MakeEventName(ResolvedSessionId, TEXT("rep"));
+	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(ResolvedSessionId);
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 	ReqPath = FPaths::Combine(Dir, TEXT("req.shm"));
 	RepPath = FPaths::Combine(Dir, TEXT("rep.shm"));
@@ -75,7 +91,7 @@ bool UURLabShmRpcTransport::TransportInit()
 			TEXT("UURLabShmRpcTransport: failed to open req.shm at %s"), *ReqPath);
 		return false;
 	}
-	if (!RepRegion.Open(RepPath, static_cast<uint32>(BufferStride), /*NBuffers=*/2))
+	if (!RepRegion.Open(RepPath, static_cast<uint32>(ReplyBufferStride), /*NBuffers=*/2))
 	{
 		UE_LOG(LogURLabNet, Error,
 			TEXT("UURLabShmRpcTransport: failed to open rep.shm at %s"), *RepPath);
@@ -89,14 +105,25 @@ bool UURLabShmRpcTransport::TransportInit()
 	// means a single SetEvent unblocks exactly one waiter and self-clears.
 	// Initial state = unsignaled; the first signal comes from the producer.
 	{
-		const FString ReqName = MakeEventName(Sid, TEXT("req"));
-		const FString RepName = MakeEventName(Sid, TEXT("rep"));
 		// UE's Windows wrappers hide the TRUE/FALSE macros; pass integers
 		// directly (BOOL is int).
 		ReqReadyEvent = ::CreateEventW(nullptr, /*bManualReset=*/0,
-			/*bInitialState=*/0, *ReqName);
+			/*bInitialState=*/0, *ReqEventName);
+		const DWORD ReqErr = ::GetLastError();
 		RepReadyEvent = ::CreateEventW(nullptr, /*bManualReset=*/0,
-			/*bInitialState=*/0, *RepName);
+			/*bInitialState=*/0, *RepEventName);
+		const DWORD RepErr = ::GetLastError();
+		// Per-process naming should make a pre-existing event impossible. If one
+		// exists anyway, another instance resolved the same identity; warn
+		// rather than silently share a wake object, which would let that
+		// instance steal this one's request/reply signals.
+		if ((ReqReadyEvent && ReqErr == ERROR_ALREADY_EXISTS) || (RepReadyEvent && RepErr == ERROR_ALREADY_EXISTS))
+		{
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("UURLabShmRpcTransport: kernel event name collision (req=%s rep=%s); "
+					 "another instance may steal wakeups"),
+				*ReqEventName, *RepEventName);
+		}
 		if (!ReqReadyEvent || !RepReadyEvent)
 		{
 			UE_LOG(LogURLabNet, Warning,
@@ -119,8 +146,8 @@ bool UURLabShmRpcTransport::TransportInit()
 	bStop = false;
 	bInitialized = true;
 
-	FSmStepTransportRunnable* Runner = new FSmStepTransportRunnable(this);
-	WorkerThread = FRunnableThread::Create(Runner, TEXT("URLabSmStepTransport"));
+	WorkerRunnable = new FSmStepTransportRunnable(this);
+	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabSmStepTransport"));
 
 	UE_LOG(LogURLabNet, Log,
 		TEXT("UURLabShmRpcTransport: req=%s, rep=%s, sync=%s"),
@@ -149,6 +176,10 @@ void UURLabShmRpcTransport::TransportShutdown()
 		delete WorkerThread;
 		WorkerThread = nullptr;
 	}
+	// FRunnableThread never owns the runnable; delete it explicitly so the
+	// bind/unbind cycle does not leak one runnable each time.
+	delete WorkerRunnable;
+	WorkerRunnable = nullptr;
 
 #if PLATFORM_WINDOWS
 	if (ReqReadyEvent)
@@ -228,7 +259,11 @@ void UURLabShmRpcTransport::RunPollLoop()
 		}
 		uint32 Size = 0;
 		FMemory::Memcpy(&Size, Slot, sizeof(uint32));
-		if (Size == 0 || Size + sizeof(uint32) > ReqStride)
+		// Size is written by any local process that can map the region, so it
+		// is untrusted. Compare against the remaining slot space without adding
+		// to Size first: `Size + sizeof(uint32)` would wrap for a hostile Size
+		// near UINT32_MAX and pass the check, then over-read the slot.
+		if (Size == 0 || Size > ReqStride - sizeof(uint32))
 		{
 			UE_LOG(LogURLab, Warning,
 				TEXT("ShmRpcTransport: dropping request seq=%llu with invalid size=%u (stride=%u)"),
@@ -242,9 +277,11 @@ void UURLabShmRpcTransport::RunPollLoop()
 		FMemory::Memcpy(ReqBytes.GetData(), Slot + sizeof(uint32), Size);
 
 		const uint64 SeqAfter = ReqHdr->Sequence.load(std::memory_order_acquire);
-		if (SeqAfter - CurSeq > ReqHdr->NBuffers)
+		if (SeqAfter - CurSeq >= ReqHdr->NBuffers)
 		{
-			// Producer wrapped past our read. Skip.
+			// Producer advanced by at least NBuffers slots while we copied, so
+			// the slot we read has already been reused: the read is torn. Reject
+			// `== NBuffers` too, since that already reuses our slot exactly once.
 			LastSeenReqSeq = SeqAfter;
 			continue;
 		}
@@ -259,15 +296,37 @@ void UURLabShmRpcTransport::RunPollLoop()
 
 		if (static_cast<uint32>(RepBytes.Num()) + sizeof(uint32) > RepStride)
 		{
+			// Reply doesn't fit the fixed SHM reply slot — e.g. a multi-camera
+			// include_cameras frame or a large hello MJB. By design SHM hands
+			// oversize replies to ZMQ. Return an explicit `wrong_transport`
+			// reply NOW so the bridge re-routes this one request to ZMQ
+			// immediately, instead of dropping it and forcing the client to
+			// wait out its full recv timeout (the 5s stall). The fast image
+			// path for SHM consumers is the per-camera cam_*.shm streams, not
+			// this RPC reply slot; raise ReplyBufferStride only if you want
+			// large inline replies carried over SHM.
 			UE_LOG(LogURLabNet, Warning,
-				TEXT("UURLabShmRpcTransport: reply payload %d bytes exceeds slot stride %u; dropping"),
+				TEXT("UURLabShmRpcTransport: reply %d bytes exceeds reply slot %u; routing to zmq "
+					 "(raise ReplyBufferStride to carry it over shm)"),
 				RepBytes.Num(), RepStride);
-			// Manager-required ops have bounded reply sizes (step replies,
-			// sensor readouts, qpos snapshots) — overflow here means a
-			// bug in the dispatcher's reply construction. Drop the reply
-			// rather than corrupting the slot; the bridge times out, which
-			// is the correct signal that something is wrong.
-			continue;
+
+			// `reply_too_large` is the code the bridge's ShmTransport already
+			// sticky-routes to its ZMQ fallback. (Distinct from the editor-op
+			// `wrong_transport` rejection.)
+			TSharedPtr<FJsonObject> Err = FURLabRpcDispatcher::MakeError(
+				URLabError::ReplyTooLarge,
+				FString::Printf(
+					TEXT("reply %d bytes exceeds shm reply slot %u; use zmq for this request"),
+					RepBytes.Num(), RepStride));
+			TArray<uint8> ErrBytes;
+			EncodeReply(Err, ErrBytes);
+			if (static_cast<uint32>(ErrBytes.Num()) + sizeof(uint32) > RepStride)
+			{
+				// Error envelope itself won't fit (pathologically tiny stride).
+				// Nothing safe to write; skip and let the bridge time out.
+				continue;
+			}
+			RepBytes = MoveTemp(ErrBytes);
 		}
 
 		const uint32 CurLatest = RepHdr->LatestIdx.load(std::memory_order_acquire);
@@ -292,4 +351,21 @@ void UURLabShmRpcTransport::RunPollLoop()
 			::SetEvent(static_cast<HANDLE>(RepReadyEvent));
 #endif
 	}
+}
+
+void UURLabShmRpcTransport::AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const
+{
+	TSharedPtr<FJsonObject> Rpc = MakeShared<FJsonObject>();
+	Rpc->SetStringField(TEXT("session"), GetSessionId());
+	Rpc->SetStringField(TEXT("req_path"),
+		FPaths::ConvertRelativePathToFull(GetReqPath()));
+	Rpc->SetStringField(TEXT("rep_path"),
+		FPaths::ConvertRelativePathToFull(GetRepPath()));
+	Rpc->SetStringField(TEXT("req_event"), GetReqEventName());
+	Rpc->SetStringField(TEXT("rep_event"), GetRepEventName());
+	Rpc->SetNumberField(TEXT("req_stride"), GetReqStride());
+	Rpc->SetNumberField(TEXT("rep_stride"), GetRepStride());
+	Rpc->SetNumberField(TEXT("n_buffers"), GetNumBuffers());
+	Rpc->SetNumberField(TEXT("header_size"), static_cast<double>(sizeof(FMjShmHeader)));
+	Reply->SetObjectField(TEXT("shm_rpc"), Rpc);
 }

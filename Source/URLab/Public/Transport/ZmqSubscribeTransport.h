@@ -71,6 +71,7 @@ private:
 	int TotalStepCount = 0;
 	TMap<FString, int> ActuatorCache;
 	TMap<int32, UMjActuator*> ActuatorComponentCache;
+	TMap<int32, FName> ActuatorToArticulationName;
 	bool bCacheBuilt = false;
 
 	int32 ControlLogCounter = 0;

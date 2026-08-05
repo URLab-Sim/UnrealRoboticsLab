@@ -1,0 +1,101 @@
+// Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+// --- LEGAL DISCLAIMER ---
+// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
+// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
+// trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
+//
+// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
+// CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
+
+#include "Transport/RosOutputProvider.h"
+#include "Transport/RosStateEstimation.h"
+#include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
+
+// nav_msgs/Odometry on /<art>/odom, one publisher per free-base articulation. The
+// pose is the base link's world pose and the twist is its velocity resolved into
+// the base frame (linear rotated world->body, angular native body-frame), both
+// from the free joint per the MuJoCo convention. header.frame_id = "odom"
+// (REP-105), child_frame_id = "<art>/<base>". Covariance is a ground-truth
+// diagonal fixed at create.
+class FMjRosOdometryProvider : public IMjRosOutputProvider
+{
+public:
+	virtual FName GetProviderName() const override { return TEXT("odometry"); }
+
+	virtual void Build(FMjRosPublisherFactory& Factory, const FMjStateSnapshot& Snapshot) override
+	{
+		Entries.Reset();
+		for (int32 i = 0; i < Snapshot.Articulations.Num(); ++i)
+		{
+			const FMjArticulationState& Art = Snapshot.Articulations[i];
+			MjRosStateEstimation::FMjFreeBaseState State;
+			if (!MjRosStateEstimation::ComputeFreeBaseState(Art, State))
+			{
+				continue;  // fixed-base art: no odometry
+			}
+			const FString ArtName = Art.Name.ToString();
+			const FString Topic = FString::Printf(TEXT("/%s/odom"), *ArtName);
+			const FName BaseName = Art.Bodies.IsValidIndex(State.BaseBodyIndex)
+				? Art.Bodies[State.BaseBodyIndex].Name
+				: FName(TEXT("base_link"));
+			const FString Child = FMjCanonicalName::Full(Art.Name, BaseName);
+			FMjRosPub Pub = Factory.CreateOdometry(Topic, TEXT("odom"), Child);
+			if (Pub.IsValid())
+			{
+				Entries.Add({i, MoveTemp(Pub)});
+			}
+		}
+	}
+
+	virtual void Publish(const FMjStateSnapshot& Snapshot, int64 SimTimeNs) override
+	{
+		static constexpr int64 PublishIntervalNs = 20'000'000; // 50 Hz
+		if (LastPublishNs != 0 && (SimTimeNs - LastPublishNs) < PublishIntervalNs)
+		{
+			return;
+		}
+		LastPublishNs = SimTimeNs;
+
+		for (FEntry& Entry : Entries)
+		{
+			if (!Snapshot.Articulations.IsValidIndex(Entry.ArtIndex))
+			{
+				continue;
+			}
+			MjRosStateEstimation::FMjFreeBaseState State;
+			if (MjRosStateEstimation::ComputeFreeBaseState(
+					Snapshot.Articulations[Entry.ArtIndex], State))
+			{
+				Entry.Pub.PublishOdometry(State.Position, State.OrientationXyzw,
+					State.LinearBody, State.AngularBody, SimTimeNs);
+			}
+		}
+	}
+
+	virtual int32 GetPublisherCountForTest() const override { return Entries.Num(); }
+
+private:
+	struct FEntry
+	{
+		int32 ArtIndex = 0;
+		FMjRosPub Pub;
+	};
+	TArray<FEntry> Entries;
+	int64 LastPublishNs = 0;
+};
+
+REGISTER_MJ_ROS_OUTPUT_PROVIDER("odometry", FMjRosOdometryProvider);

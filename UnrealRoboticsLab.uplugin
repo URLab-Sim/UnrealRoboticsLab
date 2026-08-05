@@ -21,6 +21,11 @@
 			"LoadingPhase": "Default"
 		},
 		{
+			"Name": "URLabRos",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
 			"Name": "URLabEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default"

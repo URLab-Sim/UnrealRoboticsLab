@@ -37,7 +37,7 @@ FString UURLabRosRpcTransport::RosControlSourceId()
 #include "Bridge/RpcDispatcher.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "State/MjCanonicalName.h"
 #include "State/MjStateTypes.h"

@@ -25,7 +25,7 @@
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 
 // sensor_msgs/CameraInfo on /<art>/<camera>/camera_info, one publisher per camera,
 // carrying the pinhole intrinsics a vision node needs to interpret the paired
@@ -33,11 +33,13 @@
 // ("<art>/<part>", the same key the image stream uses), so camera_info sits
 // alongside the image.
 //
-// Intrinsic derivation: MuJoCo cameras carry a vertical FOV (fovy). The standard
-// pinhole K is fy = (height/2) / tan(fovy/2), fx = fy (square pixels; the
-// horizontal FOV follows from the width), principal point at the image centre.
-// If the camera stores an explicit pixel focal length (focalpixel, MuJoCo's
-// intrinsic override), that is used verbatim instead of the fovy derivation.
+// Intrinsic derivation: a MuJoCo camera is specified either by a vertical FOV or
+// by intrinsics, and DerivedFovy is whichever of the two resolved, so it is what
+// this reads rather than the `fovy` attribute. The standard pinhole K is
+// fy = (height/2) / tan(fovy/2), fx = fy (square pixels; the horizontal FOV
+// follows from the width), principal point at the image centre. If the camera
+// stores an explicit pixel focal length (focalpixel, MuJoCo's intrinsic
+// override), that is used verbatim instead of the fovy derivation.
 // Intrinsics are constant, so K / width / height / frame are fixed at create and
 // Publish only restamps.
 class FMjRosCameraInfoProvider : public IMjRosOutputProvider
@@ -60,7 +62,7 @@ public:
 		TSet<FString> Seen;
 		auto AddCamera = [this, &Factory, &Seen](UMjCamera* Cam)
 		{
-			if (!Cam || Cam->bIsDefault)
+			if (!Cam)
 			{
 				return;
 			}
@@ -71,7 +73,7 @@ public:
 			}
 			Seen.Add(Canonical);
 
-			const FIntPoint Res = Cam->GetResolution();
+			const FIntPoint Res = Cam->CaptureResolution();
 			double K[9];
 			DeriveK(Cam, Res.X, Res.Y, K);
 
@@ -118,14 +120,17 @@ public:
 private:
 	static void DeriveK(const UMjCamera* Cam, int32 Width, int32 Height, double OutK[9])
 	{
-		MjRosStateEstimation::PinholeKFromFovy(Cam->fovy, Width, Height, OutK);
+		MjRosStateEstimation::PinholeKFromFovy(Cam->DerivedFovy, Width, Height, OutK);
 		// Explicit pixel focal length overrides the fovy-derived focal length when
 		// the camera stores one (MuJoCo's focalpixel intrinsic).
-		if (Cam->bOverride_focalpixel && Cam->focalpixel.Num() >= 2
-			&& Cam->focalpixel[0] > 0 && Cam->focalpixel[1] > 0)
+		if (Cam->HasFocalpixel())
 		{
-			OutK[0] = static_cast<double>(Cam->focalpixel[0]);  // fx
-			OutK[4] = static_cast<double>(Cam->focalpixel[1]);  // fy
+			const TArray<float> FocalPixel = Cam->GetFocalpixel();
+			if (FocalPixel.Num() >= 2 && FocalPixel[0] > 0 && FocalPixel[1] > 0)
+			{
+				OutK[0] = static_cast<double>(FocalPixel[0]);  // fx
+				OutK[4] = static_cast<double>(FocalPixel[1]);  // fy
+			}
 		}
 	}
 

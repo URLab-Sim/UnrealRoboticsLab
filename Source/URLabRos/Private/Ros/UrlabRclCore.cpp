@@ -1058,7 +1058,7 @@ UrlabRclStringPub* UrlabRcl_CreateStringPub(UrlabRclContext* Ctx, const char* To
 	Pub->Ctx = Ctx;
 	std_msgs__msg__String__init(&Pub->Msg);
 
-	// Latch the last document so late-joining subscribers (rviz, MoveIt) receive
+	// Latch the last spec so late-joining subscribers (rviz, MoveIt) receive
 	// it without a re-publish, matching robot_state_publisher's QoS.
 	rmw_qos_profile_t Qos = rmw_qos_profile_default;
 	Qos.durability = RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL;

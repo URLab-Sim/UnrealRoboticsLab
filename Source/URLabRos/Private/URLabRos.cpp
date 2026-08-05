@@ -29,7 +29,7 @@
 #include "Transport/RosPublishTransport.h"
 #include "Bridge/BridgeServer.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Sensors/MjCameraFrameBus.h"
+#include "MuJoCo/Capture/MjCameraFrameBus.h"
 #include "URLabRosLog.h"
 
 #if defined(URLAB_WITH_ROS2) && URLAB_WITH_ROS2

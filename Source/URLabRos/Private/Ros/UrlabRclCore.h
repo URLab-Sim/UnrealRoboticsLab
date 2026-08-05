@@ -185,7 +185,7 @@ extern "C"
 	// Latched std_msgs/String publisher, transient-local + reliable + keep-last
 	// depth 1, for the per-art /<art>/robot_description URDF. The QoS matches
 	// robot_state_publisher so late-joining subscribers (rviz, MoveIt) receive the
-	// last published document. The text is copied on each publish.
+	// last published spec. The text is copied on each publish.
 	struct UrlabRclStringPub* UrlabRcl_CreateStringPub(struct UrlabRclContext* Ctx,
 		const char* Topic);
 	int UrlabRcl_PublishString(struct UrlabRclStringPub* Pub, const char* Text);

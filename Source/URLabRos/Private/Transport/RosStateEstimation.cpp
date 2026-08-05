@@ -53,7 +53,7 @@ bool ComputeFreeBaseState(const FMjArticulationState& Art, FMjFreeBaseState& Out
 	const FMjJointState* Free = nullptr;
 	for (const FMjJointState& Joint : Art.Joints)
 	{
-		if (Joint.Type == EMjJointType::Free && Joint.QPos.Num() >= 7 && Joint.QVel.Num() >= 6)
+		if (Joint.Type == EMjJointType::free && Joint.QPos.Num() >= 7 && Joint.QVel.Num() >= 6)
 		{
 			Free = &Joint;
 			break;

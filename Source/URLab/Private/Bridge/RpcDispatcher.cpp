@@ -21,11 +21,13 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
-#include "Transport/ZmqRpcTransport.h"
+#include "Bridge/StepCommands.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjCanonicalName.h"
 #include "MuJoCo/Components/Actuators/MjActuator.h"
 #include "MuJoCo/Components/Sensors/MjSensor.h"
 #include "MuJoCo/Components/Sensors/MjCamera.h"
@@ -36,6 +38,13 @@
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
 #include "Transport/ShmPublishTransport.h"
+#include "Transport/ShmRpcTransport.h"
+#include "Transport/RpcTransport.h"
+#include "Bridge/BridgeServer.h"
+#include "Bridge/BridgeServerConfig.h"
+#include "Bridge/InstanceRegistry.h"
+#include "HAL/PlatformProcess.h"
+#include "Transport/ShmRegion.h" // FMjShmHeader (header_size in shm_rpc block)
 #include "Replay/MjReplayManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Base64.h"
@@ -50,48 +59,6 @@
 
 namespace
 {
-/** Map enum to wire-format string, matching the Python StepMode enum values. */
-FString StepModeToString(EStepMode Mode)
-{
-	switch (Mode)
-	{
-		case EStepMode::Live:
-			return TEXT("live");
-		case EStepMode::Direct:
-			return TEXT("direct");
-		case EStepMode::Puppet:
-			return TEXT("puppet");
-		case EStepMode::Auto:
-			return TEXT("auto");
-	}
-	return TEXT("live");
-}
-
-bool StepModeFromString(const FString& Str, EStepMode& OutMode)
-{
-	if (Str.Equals(TEXT("live"), ESearchCase::IgnoreCase) || Str.Equals(TEXT("streaming"), ESearchCase::IgnoreCase))
-	{
-		OutMode = EStepMode::Live;
-		return true;
-	}
-	if (Str.Equals(TEXT("direct"), ESearchCase::IgnoreCase))
-	{
-		OutMode = EStepMode::Direct;
-		return true;
-	}
-	if (Str.Equals(TEXT("puppet"), ESearchCase::IgnoreCase))
-	{
-		OutMode = EStepMode::Puppet;
-		return true;
-	}
-	if (Str.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
-	{
-		OutMode = EStepMode::Auto;
-		return true;
-	}
-	return false;
-}
-
 /** Map URLab actuator enum -> wire-format string. */
 FString ActuatorTypeToString(EMjActuatorType T)
 {
@@ -119,25 +86,23 @@ FString ActuatorTypeToString(EMjActuatorType T)
 	return TEXT("motor");
 }
 
-/** Resolve a save / load path. Bare filename -> <Project>/Saved/URLab/Replays/.
- *  Must match AMjReplayManager::SaveRecordingToFile so the
- *  recording_save_ok absolute_path actually resolves on the bridge. */
-FString ResolveReplayPath(const FString& UserPath, const FString& DefaultBaseName = TEXT(""))
+/** Ops that do NOT count as lease-owner activity: discovery, bootstrap, and
+ *  lifecycle/status polls that a non-owner (e.g. a pool client probing for a
+ *  free instance) issues to inspect an instance. Refreshing the lease on these
+ *  would let steady discovery polling keep a held lease alive forever and
+ *  defeat TTL auto-release. Real owner activity (step / reset / forward / set_*
+ *  and every other state-advancing op) still refreshes. */
+bool OpRefreshesLease(const FString& Op)
 {
-	FString BaseDir = FPaths::ProjectSavedDir() / TEXT("URLab") / TEXT("Replays");
-	IFileManager::Get().MakeDirectory(*BaseDir, true);
-
-	FString Path = UserPath;
-	if (Path.IsEmpty())
-	{
-		Path = DefaultBaseName.IsEmpty() ? TEXT("recording.json") : DefaultBaseName;
-	}
-
-	if (FPaths::IsRelative(Path))
-	{
-		Path = FPaths::Combine(BaseDir, Path);
-	}
-	return FPaths::ConvertRelativePathToFull(Path);
+	static const TSet<FString> NonActivityOps = {
+		TEXT("hello"),
+		TEXT("meta"),
+		TEXT("pie_status"),
+		TEXT("op_status"),
+		TEXT("acquire_lease"),
+		TEXT("release_lease"),
+	};
+	return !NonActivityOps.Contains(Op);
 }
 } // namespace
 
@@ -192,6 +157,14 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleSetPaused(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("paused:bool")},
 		/*Required=*/{TEXT("paused")});
+	Reg(TEXT("set_camera_streaming"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetCameraStreaming(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("cameras:object")},
+		/*Required=*/{TEXT("cameras")});
+	Reg(TEXT("set_camera_delay"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetCameraDelay(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("cameras:object")},
+		/*Required=*/{TEXT("cameras")});
 	Reg(TEXT("configure_controller"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleConfigureController(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("params:object")},
@@ -206,9 +179,20 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	Reg(TEXT("set_control_source"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetControlSource(R); },
 		{TEXT("op:string")});
+	Reg(TEXT("claim_control"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleClaimControl(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("owner:string"), TEXT("ttl_s:float")},
+		/*Required=*/{TEXT("articulation")});
+	Reg(TEXT("release_control"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleReleaseControl(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string")},
+		/*Required=*/{TEXT("articulation")});
 	Reg(TEXT("set_twist"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetTwist(R); },
 		{TEXT("op:string")});
+	Reg(TEXT("set_user_channels"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetUserChannels(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("applied:int"), TEXT("rejected:object")});
 	Reg(TEXT("set_qpos"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetQpos(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("target:string"), TEXT("actor_id:string?"), TEXT("actor_name:string?"), TEXT("qpos:array"), TEXT("free_base_shortcut:bool")},
@@ -227,6 +211,36 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	Reg(TEXT("list_keyframes"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleListKeyframes(R); },
 		{TEXT("op:string"), TEXT("keyframes:array")});
+
+	// Cooperative render-farm lease. No-manager: a pool client claims the
+	// process itself, whether or not a scene is loaded.
+	Reg(TEXT("acquire_lease"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleAcquireLease(R); },
+		{TEXT("op:string"), TEXT("lease_id:string"), TEXT("ttl_s:float")});
+	// lease_id is validated in the handler (not declaratively) so a missing
+	// value returns `bad_request` per the schema, not the generic
+	// `missing_field`.
+	Reg(TEXT("release_lease"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleReleaseLease(R); },
+		/*Reply=*/{TEXT("op:string")});
+
+	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
+	// pure data staging (no manager, no editor). Commit drives the existing
+	// import_xml editor job on a materialised temp dir; it self-checks for the
+	// editor import handler, so it stays NoManager and returns `import_failed`
+	// when the editor module isn't loaded.
+	Reg(TEXT("upload_model_manifest"), EOpCategory::NoManager, TEXT("scene"),
+		[this](auto& R) { return HandleUploadModelManifest(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("upload_id:string"), TEXT("need_xml:bool"), TEXT("need_assets:array"), TEXT("max_asset_bytes:int"), TEXT("max_total_bytes:int")},
+		/*Required=*/{TEXT("xml_sha256")});
+	Reg(TEXT("upload_model_chunk"), EOpCategory::NoManager, TEXT("scene"),
+		[this](auto& R) { return HandleUploadModelChunk(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("name:string"), TEXT("received:int"), TEXT("complete:bool")},
+		/*Required=*/{TEXT("upload_id"), TEXT("kind")});
+	Reg(TEXT("upload_model_commit"), EOpCategory::NoManager, TEXT("scene"),
+		[this](auto& R) { return HandleUploadModelCommit(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("imported:bool"), TEXT("nq:int?"), TEXT("nv:int?"), TEXT("nu:int?"), TEXT("nbody:int?"), TEXT("ngeom:int?"), TEXT("mjb:object?"), TEXT("warnings:array")},
+		/*Required=*/{TEXT("upload_id")});
 
 	auto RecBody = [this](auto& R) {
 		FString OpName;
@@ -272,18 +286,17 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 	const EStepMode InitMode = (OwnerMgr->StepMode == EStepMode::Auto)
 								 ? EStepMode::Live
 								 : OwnerMgr->StepMode;
-	ActiveStepMode.store(InitMode, std::memory_order_release);
-	// Mirror onto the manager so the physics loop paces off the resolved mode
-	// (Auto -> Live), not the configured StepMode which would stay Auto.
-	OwnerMgr->EffectiveStepMode.store(InitMode, std::memory_order_release);
-	const bool bPaused = (InitMode != EStepMode::Live);
-	OwnerMgr->bPublishersPaused.store(bPaused, std::memory_order_release);
-	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);
-
-	if (InitMode == EStepMode::Puppet)
-		InstallPuppetHandler();
-	else if (InitMode == EStepMode::Direct)
-		InstallDirectHandler();
+	{
+		// Serialise strategy construction + OnEnter against a concurrent
+		// set_mode / OnManagerGone (PIE-end) touching the same members.
+		FScopeLock Lock(&DispatchMutex);
+		ActiveStepMode.store(InitMode, std::memory_order_release);
+		// Camera publishers stream in every mode; the strategy's OnEnter handles
+		// the state/ctrl publishers, the engine step mode, and the handler install.
+		FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
+		CurrentStepStrategy = MakeStepStrategy(InitMode);
+		CurrentStepStrategy->OnEnter(*this, *OwnerMgr);
+	}
 
 	// Cached on the game thread; worker threads later use Get() (TActorIterator
 	// asserts IsInGameThread).
@@ -297,13 +310,23 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 
 void FURLabRpcDispatcher::OnManagerGone()
 {
-	UninstallPuppetHandler();
+	// Serialise handler teardown + strategy reset against a concurrent set_mode
+	// racing PIE-end (would otherwise be a UAF on CurrentStepStrategy / the
+	// handler flags).
+	FScopeLock Lock(&DispatchMutex);
+
 	UninstallDirectHandler();
-	DrainQueuesForTest();
+	CurrentStepStrategy.Reset();
+	DrainQueues();
+
+	// Claims are per-PIE: the articulations die with the world.
+	ControlOwnership.Reset();
 
 	if (OwnerMgr.IsValid())
 	{
 		OwnerMgr->bPublishersPaused.store(false, std::memory_order_release);
+		if (OwnerMgr->PhysicsEngine)
+			OwnerMgr->PhysicsEngine->SetStepMode(EStepMode::Live);
 	}
 	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 	OwnerMgr.Reset();
@@ -340,6 +363,13 @@ void FURLabRpcDispatcher::SetCachedReplayManager(AMjReplayManager* RM)
 	CachedReplayManager = RM;
 }
 
+// Out-of-line so the TWeakObjectPtr assignment sees the full UURLabBridgeServer
+// type (the header only forward-declares it to avoid an include cycle).
+void FURLabRpcDispatcher::SetOwningBridge(UURLabBridgeServer* InBridge)
+{
+	OwningBridge = InBridge;
+}
+
 void FURLabRpcDispatcher::EnqueueStepRequestForTest(FMjStepRequest&& Req)
 {
 	TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
@@ -354,20 +384,18 @@ void FURLabRpcDispatcher::EnqueueStepRequestForTest(FMjStepRequest&& Req)
 	}
 }
 
-void FURLabRpcDispatcher::EnqueuePushStateRequestForTest(FMjPushStateRequest&& Req)
-{
-	PushStateQueue.Enqueue(MoveTemp(Req));
-}
-
-void FURLabRpcDispatcher::DrainQueuesForTest()
+void FURLabRpcDispatcher::DrainQueues()
 {
 	TSharedPtr<FMjDirectStepCommand> Cmd;
 	while (StepQueue.Dequeue(Cmd))
 	{
-	} // shared_ptr deallocates on scope exit
-	FMjPushStateRequest P;
-	while (PushStateQueue.Dequeue(P))
-	{
+		if (!Cmd.IsValid())
+			continue;
+		// Abandon + wake any RPC thread blocked on this command so a mode switch
+		// / PIE-end returns immediately instead of eating the 5s step deadline.
+		Cmd->bAbandoned.store(true, std::memory_order_release);
+		if (Cmd->Completion)
+			Cmd->Completion->Trigger();
 	}
 }
 
@@ -410,16 +438,28 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	// holding the mutex across either wedges every other RPC.
 	if (!Req.IsValid())
 	{
-		return MakeError(TEXT("bad_request"), TEXT("Failed to parse request (json or msgpack)"));
+		return MakeError(URLabError::BadRequest, TEXT("Failed to parse request (json or msgpack)"));
 	}
 
 	FString Op;
 	if (!Req->TryGetStringField(TEXT("op"), Op))
 	{
-		return MakeError(TEXT("missing_op"), TEXT("Request missing 'op' field"));
+		return MakeError(URLabError::MissingOp, TEXT("Request missing 'op' field"));
 	}
 
-	// hello / meta are pre-session bootstrap endpoints.
+	// Only real owner activity refreshes the lease. Discovery / bootstrap /
+	// status-poll ops (see OpRefreshesLease) must NOT, or a pool client's
+	// steady `hello`/status polling would keep a held lease alive forever and
+	// defeat TTL auto-release. No-op when no lease is held.
+	if (OpRefreshesLease(Op))
+	{
+		if (UURLabBridgeServer* Bridge = OwningBridge.Get())
+			Bridge->TouchLease();
+	}
+
+	// hello / meta are pre-session ops that run before a client has a
+	// session_id, so they bypass the registry. Both validate fields inline
+	// (all hello fields are optional with sensible defaults; meta takes none).
 	if (Op.Equals(TEXT("hello")))
 		return HandleHello(Req);
 	if (Op.Equals(TEXT("meta")))
@@ -431,7 +471,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 		Req->TryGetStringField(TEXT("session_id"), SessionId);
 		if (!ValidateSession(SessionId))
 		{
-			return MakeError(TEXT("session_expired"),
+			return MakeError(URLabError::SessionExpired,
 				FString::Printf(TEXT("Session id '%s' does not match active session"), *SessionId));
 		}
 	}
@@ -441,10 +481,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	{
 		if (URLabOpRegistry::IsEditorOnlyOp(Op))
 		{
-			return MakeError(TEXT("not_in_editor"),
+			return MakeError(URLabError::NotInEditor,
 				FString::Printf(TEXT("op '%s' is editor-only and has no registered handler"), *Op));
 		}
-		return MakeError(TEXT("unknown_op"), FString::Printf(TEXT("Unknown op '%s'"), *Op));
+		return MakeError(URLabError::UnknownOp, FString::Printf(TEXT("Unknown op '%s'"), *Op));
 	}
 
 	// RequiredFields runs before the manager-required check so malformed
@@ -453,7 +493,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	{
 		if (!Req->HasField(Field))
 		{
-			return MakeError(TEXT("missing_field"),
+			return MakeError(URLabError::MissingField,
 				FString::Printf(TEXT("op '%s' missing required field '%s'"),
 					*Op, *Field));
 		}
@@ -462,7 +502,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	if (Decl->Category == URLabOpRegistry::EOpCategory::ManagerRequired
 		&& !OwnerMgr.IsValid())
 	{
-		return MakeError(TEXT("no_active_manager"),
+		return MakeError(URLabError::NoActiveManager,
 			FString::Printf(
 				TEXT("op '%s' requires an active AAMjManager (PIE not running?)"),
 				*Op));
@@ -517,26 +557,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleMeta(const TSharedPtr<FJsonOb
 		Ops.Add(MakeShared<FJsonValueObject>(O));
 	}
 	Reply->SetArrayField(TEXT("ops"), Ops);
-	return Reply;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-
-	bool bPause = false;
-	if (!Req->TryGetBoolField(TEXT("paused"), bPause))
-		return MakeError(TEXT("missing_field"), TEXT("set_paused requires 'paused' bool"));
-
-	Mgr->PhysicsEngine->SetPaused(bPause);
-	UE_LOG(LogURLabNet, Log, TEXT("FURLabRpcDispatcher: set_paused -> %s"),
-		bPause ? TEXT("true") : TEXT("false"));
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_paused_ok"));
-	Reply->SetBoolField(TEXT("paused"), Mgr->PhysicsEngine->bIsPaused);
 	return Reply;
 }
 
@@ -596,6 +616,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleHello(const TSharedPtr<FJsonO
 		ActiveSessionId = NewSessionId;
 	}
 
+	FString ClientVersion;
+	if (Req.IsValid())
+		Req->TryGetStringField(TEXT("client_version"), ClientVersion);
+	UE_LOG(LogURLabNet, Log, TEXT("URLab client connected: %s (server %s)"),
+		*ClientVersion, *URLabVersion);
+
 	// Reset to msgpack default on each handshake; per-session opt-in via encoding=json.
 	bUseJsonEncoding.store(false, std::memory_order_release);
 	FString Encoding;
@@ -641,6 +667,34 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 	const bool bManagerPresent = (Manager && Manager->PhysicsEngine);
 	Reply->SetBoolField(TEXT("manager_present"), bManagerPresent);
 
+	// Per-instance identity for render-farm discovery. Values come from the
+	// bridge server's resolved config (env / command line / INI), so a client
+	// learns exactly which instance answered and on which ports.
+	if (Manager && Manager->BridgeServer)
+	{
+		const FURLabBridgeServerConfig& Cfg = Manager->BridgeServer->GetInstanceConfig();
+		TSharedPtr<FJsonObject> Instance = MakeShared<FJsonObject>();
+		Instance->SetStringField(TEXT("instance_id"),
+			Cfg.InstanceId.IsEmpty() ? FString(TEXT("live")) : Cfg.InstanceId);
+		Instance->SetNumberField(TEXT("index"), Cfg.InstanceIndex);
+		Instance->SetNumberField(TEXT("pid"),
+			static_cast<double>(FPlatformProcess::GetCurrentProcessId()));
+		Instance->SetStringField(TEXT("host"), FPlatformProcess::ComputerName());
+		Instance->SetNumberField(TEXT("step_port"), Cfg.StepPort);
+		Instance->SetNumberField(TEXT("state_port"), Cfg.StatePort);
+		Instance->SetNumberField(TEXT("cam_base_port"), Cfg.CamBasePort);
+		Instance->SetBoolField(TEXT("manager_present"), bManagerPresent);
+		Instance->SetBoolField(TEXT("busy"), Manager->BridgeServer->IsLeaseHeld());
+		Instance->SetStringField(TEXT("urlab_version"), URLabVer);
+
+		TArray<TSharedPtr<FJsonValue>> Capabilities;
+		for (const FString& Cap : FURLabInstanceRegistry::Capabilities())
+			Capabilities.Add(MakeShared<FJsonValueString>(Cap));
+		Instance->SetArrayField(TEXT("capabilities"), Capabilities);
+
+		Reply->SetObjectField(TEXT("instance"), Instance);
+	}
+
 	if (!bManagerPresent)
 	{
 		// Editor-time / pre-PIE handshake. Only editor-only ops can run
@@ -654,33 +708,30 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 	mjModel* m = Manager->PhysicsEngine->GetModel();
 
-	// SHM session directory. Ship an absolute path so the bridge can
-	// open the SHM regions regardless of its own working directory --
-	// UE's path APIs return strings relative to the engine binary, which
-	// would mmap from the bridge's CWD otherwise.
+	// Let each bound transport append its own block to the handshake.
+	// SHM publish transport sets shm_session_dir; SHM RPC transport sets
+	// shm_rpc (paths/events/strides). Adding a third transport type
+	// requires no changes here — just override AppendHandshakeBlock.
+	for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
 	{
-		FString ShmDir;
-		// Snapshot publisher is a UObject in
-		// ManagerOwnedPublishTransports. Walk the manager's transport
-		// array to find it.
-		for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
-		{
-			if (UURLabShmPublishTransport* ShmPub = Cast<UURLabShmPublishTransport>(T.Get()))
-			{
-				const FString StatePath = ShmPub->GetStatePath();
-				if (!StatePath.IsEmpty())
-				{
-					ShmDir = FPaths::GetPath(StatePath);
-				}
-				break;
-			}
-		}
-		if (ShmDir.IsEmpty())
-		{
-			ShmDir = UURLabShmPublishTransport::ResolveSessionDir(SessionId);
-		}
+		T->AppendHandshakeBlock(Reply);
+	}
+
+	// Fall back to the static helper when no publish transport set
+	// shm_session_dir (e.g. no SHM transport bound).
+	if (!Reply->HasField(TEXT("shm_session_dir")))
+	{
+		const FString ShmDir = UURLabShmPublishTransport::ResolveSessionDir(SessionId);
 		Reply->SetStringField(TEXT("shm_session_dir"),
 			FPaths::ConvertRelativePathToFull(ShmDir));
+	}
+
+	if (Manager->BridgeServer)
+	{
+		for (const TObjectPtr<UURLabRpcTransport>& T : Manager->BridgeServer->GetRpcTransports())
+		{
+			T->AppendHandshakeBlock(Reply);
+		}
 	}
 
 	// MJB bytes: real msgpack bin under "mjb" for msgpack clients;
@@ -787,8 +838,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			continue;
 
 		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
-		ArtObj->SetStringField(TEXT("prefix"), Art->GetName());
+		// The public segment (ActorId-based) is the art's topic / observation
+		// namespace, matching the IR Art.Name the state stream keys arts under.
+		ArtObj->SetStringField(TEXT("prefix"), FMjCanonicalName::ArtSegment(Art).ToString());
 		ArtObj->SetStringField(TEXT("actor_id"), Art->ActorId);
+		ArtObj->SetStringField(TEXT("actor_name"), Art->GetName());
 
 		// Default control mode follows whether a controller is attached.
 		UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
@@ -910,9 +964,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			FString Endpoint = Cam->GetActualZmqEndpoint();
 			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
 			CamObj->SetStringField(TEXT("zmq_endpoint"), Endpoint);
-			CamObj->SetStringField(TEXT("zmq_topic"),
-				FString::Printf(TEXT("%s/camera/%s"), *Art->GetName(), *Cam->GetName()));
-			CamMap->SetObjectField(Cam->GetName(), CamObj);
+			const FString CamCanon = Cam->GetCanonicalName();
+			CamObj->SetStringField(TEXT("zmq_topic"), CamCanon);
+			CamMap->SetObjectField(CamCanon, CamObj);
 		}
 		ArtObj->SetObjectField(TEXT("camera_topics"), CamMap);
 
@@ -960,2193 +1014,4 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 	Reply->SetObjectField(TEXT("global_cameras"), MakeShared<FJsonObject>());
 
 	return Reply;
-}
-
-// =============================================================================
-// step
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
-	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-	}
-
-	if (ActiveStepMode == EStepMode::Live)
-	{
-		// Live mode: UE drives its own physics. step() applies ctrl and
-		// returns current state. n_steps is ignored (UE steps at its own
-		// rate). Same per_articulation shape as direct mode.
-		mjModel* m = Mgr->PhysicsEngine->GetModel();
-		mjData* d = Mgr->PhysicsEngine->GetData();
-
-		FMjStepRequest TmpReq;
-		const TSharedPtr<FJsonObject>* PerArt = nullptr;
-		if (Req->TryGetObjectField(TEXT("per_articulation"), PerArt) && PerArt && PerArt->IsValid())
-		{
-			for (auto& Pair : (*PerArt)->Values)
-			{
-				const TSharedPtr<FJsonObject>* ArtObj = nullptr;
-				if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
-					continue;
-
-				FString CtlMode;
-				if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
-					TmpReq.PerArticulationControlMode.Add(Pair.Key, CtlMode);
-
-				const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
-				if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
-				{
-					if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
-					{
-						TArray<UMjActuator*> Acts = Art->GetActuators();
-						for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
-						{
-							UMjActuator* A = Acts[i];
-							if (!A)
-								continue;
-							FString Local = A->GetMjName();
-							FString Prefix = Art->GetName() + TEXT("_");
-							if (Local.StartsWith(Prefix))
-								Local = Local.Mid(Prefix.Len());
-							TmpReq.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-								{Local, (float)(*CtrlList)[i]->AsNumber()});
-						}
-					}
-				}
-			}
-		}
-
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		{
-			FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-			ApplyStepCtrl(Mgr, TmpReq, m, d);
-			Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-			Reply->SetNumberField(TEXT("time"), d->time);
-			Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
-			AppendClockFields(Reply, d->time);
-			TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-			if (Obs.IsValid())
-				Reply->SetObjectField(TEXT("per_articulation"), Obs);
-			TSharedPtr<FJsonObject> Scene = BuildEntitiesBlock(Mgr, m, d);
-			if (Scene.IsValid())
-				Reply->SetObjectField(TEXT("entities"), Scene);
-		}
-		return Reply;
-	}
-
-	// Per-step observations override (does not change the session default).
-	FString StepObs;
-	if (Req->TryGetStringField(TEXT("observations"), StepObs))
-	{
-		if (StepObs.Equals(TEXT("minimal"), ESearchCase::IgnoreCase))
-			ActiveObservationLevel = EObservationLevel::Minimal;
-		else if (StepObs.Equals(TEXT("full"), ESearchCase::IgnoreCase))
-			ActiveObservationLevel = EObservationLevel::Full;
-		else if (StepObs.Equals(TEXT("standard"), ESearchCase::IgnoreCase))
-			ActiveObservationLevel = EObservationLevel::Standard;
-	}
-
-	// Parse include_cameras: accepts either
-	//   - object: { "<cam_name>": "sync"|"latest" } -- per-camera mode
-	//   - bool true: all registered cameras at "latest" mode (legacy form)
-	//   - false/absent: no cameras
-	TMap<FString, ECameraInclude> CameraSpec;
-	{
-		const TSharedPtr<FJsonObject>* CamObj = nullptr;
-		if (Req->TryGetObjectField(TEXT("include_cameras"), CamObj) && CamObj && CamObj->IsValid())
-		{
-			for (const auto& Kv : (*CamObj)->Values)
-			{
-				FString Mode;
-				if (Kv.Value.IsValid() && Kv.Value->TryGetString(Mode))
-				{
-					ECameraInclude E = ECameraInclude::Latest;
-					if (Mode.Equals(TEXT("sync"), ESearchCase::IgnoreCase))
-						E = ECameraInclude::Sync;
-					CameraSpec.Add(Kv.Key, E);
-				}
-			}
-		}
-		else
-		{
-			bool bAll = false;
-			if (Req->TryGetBoolField(TEXT("include_cameras"), bAll) && bAll)
-			{
-				for (AMjArticulation* Art : Mgr->GetAllArticulations())
-				{
-					if (!Art)
-						continue;
-					TArray<UMjCamera*> Cams;
-					Art->GetComponents<UMjCamera>(Cams);
-					for (UMjCamera* C : Cams)
-					{
-						if (!C || C->bIsDefault)
-							continue;
-						CameraSpec.Add(C->GetName(), ECameraInclude::Latest);
-					}
-				}
-			}
-		}
-	}
-
-	if (ActiveStepMode == EStepMode::Puppet)
-	{
-		FMjPushStateRequest Push;
-		const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
-		const TArray<TSharedPtr<FJsonValue>>* QVelArr = nullptr;
-		const TArray<TSharedPtr<FJsonValue>>* CtrlArr = nullptr;
-		if (Req->TryGetArrayField(TEXT("qpos"), QPosArr))
-		{
-			Push.QPos.Reserve(QPosArr->Num());
-			for (auto& V : *QPosArr)
-				Push.QPos.Add(V->AsNumber());
-		}
-		if (Req->TryGetArrayField(TEXT("qvel"), QVelArr))
-		{
-			Push.QVel.Reserve(QVelArr->Num());
-			for (auto& V : *QVelArr)
-				Push.QVel.Add(V->AsNumber());
-		}
-		if (Req->TryGetArrayField(TEXT("ctrl"), CtrlArr))
-		{
-			Push.bIncludeCtrl = true;
-			Push.Ctrl.Reserve(CtrlArr->Num());
-			for (auto& V : *CtrlArr)
-				Push.Ctrl.Add(V->AsNumber());
-		}
-		double TimeVal = 0.0;
-		Req->TryGetNumberField(TEXT("time"), TimeVal);
-		Push.Time = TimeVal;
-
-		mjModel* m = Mgr->PhysicsEngine->GetModel();
-		mjData* d = Mgr->PhysicsEngine->GetData();
-
-		{
-			FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-			if (Push.QPos.Num() == m->nq)
-				FMemory::Memcpy(d->qpos, Push.QPos.GetData(), m->nq * sizeof(mjtNum));
-			if (Push.QVel.Num() == m->nv)
-				FMemory::Memcpy(d->qvel, Push.QVel.GetData(), m->nv * sizeof(mjtNum));
-			if (Push.bIncludeCtrl && Push.Ctrl.Num() == m->nu)
-				FMemory::Memcpy(d->ctrl, Push.Ctrl.GetData(), m->nu * sizeof(mjtNum));
-			d->time = Push.Time;
-			mj_forward(m, d);
-
-			if (Mgr->PhysicsEngine->OnPostStep)
-				Mgr->PhysicsEngine->OnPostStep(m, d);
-		}
-
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-		Reply->SetNumberField(TEXT("time"), d->time);
-		Reply->SetNumberField(TEXT("step"), StepCounter.fetch_add(1, std::memory_order_relaxed) + 1);
-		AppendClockFields(Reply, d->time);
-		TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-		if (Obs.IsValid())
-			Reply->SetObjectField(TEXT("per_articulation"), Obs);
-		TSharedPtr<FJsonObject> Scene = BuildEntitiesBlock(Mgr, m, d);
-		if (Scene.IsValid())
-			Reply->SetObjectField(TEXT("entities"), Scene);
-		if (CameraSpec.Num() > 0)
-		{
-			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec);
-			if (Cams.IsValid() && Cams->Values.Num() > 0)
-				Reply->SetObjectField(TEXT("cameras"), Cams);
-		}
-		// Puppet-mode perturbation: include the latest sample so the client
-		// can apply the editor click-drag widget's force to its own MjData.
-		if (Mgr->Perturbation)
-		{
-			FMjPerturbationSample Sample = Mgr->Perturbation->GetLatestPerturbationSample();
-			if (Sample.BodyId > 0)
-			{
-				TSharedPtr<FJsonObject> Pert = MakeShared<FJsonObject>();
-				Pert->SetNumberField(TEXT("body_id"), Sample.BodyId);
-				Pert->SetNumberField(TEXT("version"), Sample.Version);
-				TArray<TSharedPtr<FJsonValue>> Six;
-				for (int i = 0; i < 6; ++i)
-					Six.Add(MakeShared<FJsonValueNumber>(Sample.Xfrc[i]));
-				Pert->SetArrayField(TEXT("xfrc"), Six);
-				Reply->SetObjectField(TEXT("perturbation"), Pert);
-			}
-		}
-		return Reply;
-	}
-
-	// Direct mode.
-	TSharedPtr<FMjDirectStepCommand> Cmd = MakeShared<FMjDirectStepCommand>();
-	int32 NSteps = 1;
-	Req->TryGetNumberField(TEXT("n_steps"), NSteps);
-	Cmd->Request.NSteps = NSteps > 0 ? NSteps : 1;
-
-	const TSharedPtr<FJsonObject>* PerArt = nullptr;
-	if (Req->TryGetObjectField(TEXT("per_articulation"), PerArt) && PerArt && PerArt->IsValid())
-	{
-		for (auto& Pair : (*PerArt)->Values)
-		{
-			const TSharedPtr<FJsonObject>* ArtObj = nullptr;
-			if (!Pair.Value->TryGetObject(ArtObj) || !ArtObj || !ArtObj->IsValid())
-				continue;
-
-			// control_mode override
-			FString CtlMode;
-			if ((*ArtObj)->TryGetStringField(TEXT("control_mode"), CtlMode))
-			{
-				Cmd->Request.PerArticulationControlMode.Add(Pair.Key, CtlMode);
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
-			if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
-			{
-				// Positional ctrl array: indexed in articulation actuator order.
-				if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
-				{
-					TArray<UMjActuator*> Acts = Art->GetActuators();
-					for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
-					{
-						UMjActuator* A = Acts[i];
-						if (!A)
-							continue;
-						FString LocalName = A->GetMjName();
-						FString Prefix = Art->GetName() + TEXT("_");
-						if (LocalName.StartsWith(Prefix))
-							LocalName = LocalName.Mid(Prefix.Len());
-						Cmd->Request.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-							{LocalName, (float)(*CtrlList)[i]->AsNumber()});
-					}
-				}
-			}
-
-			// Named ctrl map alternative.
-			const TSharedPtr<FJsonObject>* CtrlMap = nullptr;
-			if ((*ArtObj)->TryGetObjectField(TEXT("ctrl_map"), CtrlMap) && CtrlMap && CtrlMap->IsValid())
-			{
-				for (auto& KV : (*CtrlMap)->Values)
-				{
-					Cmd->Request.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-						{KV.Key, (float)KV.Value->AsNumber()});
-				}
-			}
-
-			// xfrc_applied: { body_name: [fx,fy,fz,tx,ty,tz] }. Cleared after step.
-			const TSharedPtr<FJsonObject>* XfrcMap = nullptr;
-			if ((*ArtObj)->TryGetObjectField(TEXT("xfrc_applied"), XfrcMap) && XfrcMap && XfrcMap->IsValid())
-			{
-				TMap<FString, TArray<double>>& BodyMap = Cmd->Request.PerArticulationXfrc.FindOrAdd(Pair.Key);
-				for (auto& KV : (*XfrcMap)->Values)
-				{
-					const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
-					if (KV.Value->TryGetArray(Arr) && Arr && Arr->Num() == 6)
-					{
-						TArray<double>& Six = BodyMap.FindOrAdd(KV.Key);
-						Six.SetNum(6);
-						for (int i = 0; i < 6; ++i)
-							Six[i] = (*Arr)[i]->AsNumber();
-					}
-				}
-			}
-		}
-	}
-
-	// Submit to physics-thread custom handler (no race) then wait. If the
-	// engine isn't running its async loop (test path), fall back to inline.
-	Cmd->Completion = FPlatformProcess::GetSynchEventFromPool(true);
-
-	const bool bAsyncRunning = Mgr->PhysicsEngine->AsyncPhysicsFuture.IsValid();
-	StepQueue.Enqueue(Cmd);
-	if (Mgr->PhysicsEngine->StepRequestEvent)
-	{
-		Mgr->PhysicsEngine->StepRequestEvent->Trigger();
-	}
-
-	if (!bAsyncRunning)
-	{
-		// Test / editor path: pump the handler synchronously so we don't
-		// block forever waiting for an engine that isn't ticking.
-		if (Mgr->PhysicsEngine->CustomStepHandler)
-		{
-			Mgr->PhysicsEngine->CustomStepHandler(
-				Mgr->PhysicsEngine->GetModel(),
-				Mgr->PhysicsEngine->GetData());
-		}
-	}
-
-	// 5-second hard cap so a wedged engine returns an error rather than
-	// wedging the RPC thread. Polled in 50ms slices so the bDraining
-	// flag (set when the bridge is being stopped) can short-circuit the
-	// wait without forcing the user to sit through the full 5s while
-	// the editor closes.
-	bool bSignaled = false;
-	{
-		const double Deadline = FPlatformTime::Seconds() + 5.0;
-		while (FPlatformTime::Seconds() < Deadline)
-		{
-			if (bDraining.load(std::memory_order_acquire))
-			{
-				break;
-			}
-			if (Cmd->Completion->Wait(FTimespan::FromMilliseconds(50)))
-			{
-				bSignaled = true;
-				break;
-			}
-		}
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	if (bSignaled && Cmd->bDone)
-	{
-		Reply->SetStringField(TEXT("op"), TEXT("step_ok"));
-		Reply->SetNumberField(TEXT("time"), Cmd->ResultTime);
-		Reply->SetNumberField(TEXT("step"), Cmd->ResultStep);
-		AppendClockFields(Reply, Cmd->ResultTime);
-		if (Cmd->Observations.IsValid())
-			Reply->SetObjectField(TEXT("per_articulation"), Cmd->Observations);
-		if (Cmd->Entities.IsValid())
-			Reply->SetObjectField(TEXT("entities"), Cmd->Entities);
-
-		if (CameraSpec.Num() > 0)
-		{
-			TSharedPtr<FJsonObject> Cams = BuildCamerasBlock(Mgr, CameraSpec);
-			if (Cams.IsValid() && Cams->Values.Num() > 0)
-				Reply->SetObjectField(TEXT("cameras"), Cams);
-		}
-	}
-	else
-	{
-		if (bDraining.load(std::memory_order_acquire))
-		{
-			Reply = MakeError(TEXT("shutting_down"),
-				TEXT("Bridge stopping; Direct-mode step abandoned"));
-		}
-		else
-		{
-			Reply = MakeError(TEXT("step_timeout"),
-				TEXT("Direct-mode step did not complete within 5s"));
-		}
-	}
-
-	return Reply;
-}
-
-void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepRequest& Req,
-	mjModel* m, mjData* d)
-{
-	if (!Manager)
-		return;
-	for (auto& Pair : Req.PerArticulationCtrl)
-	{
-		AMjArticulation* Art = Manager->GetArticulation(Pair.Key);
-		if (!Art)
-			continue;
-
-		const FString Prefix = Art->GetName() + TEXT("_");
-		TMap<FString, UMjActuator*> ByName;
-		ByName.Reserve(Art->GetActuators().Num() * 2);
-		for (UMjActuator* A : Art->GetActuators())
-		{
-			if (!A)
-				continue;
-			FString FullName = A->GetMjName();
-			FString Local = FullName.StartsWith(Prefix) ? FullName.Mid(Prefix.Len()) : FullName;
-			ByName.Add(Local, A);
-			ByName.Add(FullName, A);
-		}
-
-		// Stage to actuator NetworkValue; AMjArticulation::ApplyControls
-		// copies it into d->ctrl every sub-step. Writing d->ctrl directly
-		// would be overwritten on the next sub-step.
-		for (const TPair<FString, float>& KV : Pair.Value)
-		{
-			UMjActuator** Found = ByName.Find(KV.Key);
-			if (!Found || !*Found)
-				continue;
-			(*Found)->SetNetworkControl(KV.Value);
-		}
-	}
-
-	// xfrc_applied writes: per_articulation -> body_name -> 6-vec.
-	// MuJoCo clears d->xfrc_applied on every mj_step, so this is a one-shot
-	// impulse for the next mj_step n_steps loop. Body name lookup tries both
-	// the local (no-prefix) form and the prefixed full name.
-	if (m && d)
-	{
-		for (auto& APair : Req.PerArticulationXfrc)
-		{
-			FString ArtPrefix = APair.Key + TEXT("_");
-			for (auto& BPair : APair.Value)
-			{
-				if (BPair.Value.Num() != 6)
-					continue;
-				FString FullName = ArtPrefix + BPair.Key;
-				int Bid = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*FullName));
-				if (Bid < 0)
-					Bid = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*BPair.Key));
-				if (Bid < 0 || Bid >= m->nbody)
-					continue;
-				for (int i = 0; i < 6; ++i)
-					d->xfrc_applied[6 * Bid + i] = (mjtNum)BPair.Value[i];
-			}
-		}
-	}
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildStepObservations(AAMjManager* Manager, mjModel* m, mjData* d,
-	EObservationLevel Level)
-{
-	TSharedPtr<FJsonObject> PerArt = MakeShared<FJsonObject>();
-	if (!Manager || !m || !d)
-		return PerArt;
-
-	const bool bWantStandard = (Level == EObservationLevel::Standard) || (Level == EObservationLevel::Full);
-	const bool bWantFull = (Level == EObservationLevel::Full);
-
-	for (AMjArticulation* Art : Manager->GetAllArticulations())
-	{
-		if (!Art)
-			continue;
-		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
-
-		// qpos / qvel — present at every level. Joints are emitted in the
-		// discovery order that GetJoints() returns, which matches the MjModel
-		// jnt_id order at compile time. Per-joint qpos/qvel slot widths follow
-		// jnt_type. Wire-side consumers should always rebuild full m.nq / m.nv
-		// arrays from per-articulation slices in this same order.
-		TArray<UMjJoint*> Joints = Art->GetJoints();
-		TArray<TSharedPtr<FJsonValue>> QPos;
-		TArray<TSharedPtr<FJsonValue>> QVel;
-		for (UMjJoint* J : Joints)
-		{
-			if (!J)
-				continue;
-			int32 Id = J->GetMjID();
-			if (Id < 0 || Id >= m->njnt)
-				continue;
-			int QAddr = m->jnt_qposadr[Id];
-			int VAddr = m->jnt_dofadr[Id];
-			int QSize = 1, VSize = 1;
-			switch (m->jnt_type[Id])
-			{
-				case mjJNT_FREE:
-					QSize = 7;
-					VSize = 6;
-					break;
-				case mjJNT_BALL:
-					QSize = 4;
-					VSize = 3;
-					break;
-				case mjJNT_SLIDE:
-				case mjJNT_HINGE:
-					QSize = 1;
-					VSize = 1;
-					break;
-			}
-			for (int i = 0; i < QSize; ++i)
-				QPos.Add(MakeShared<FJsonValueNumber>(d->qpos[QAddr + i]));
-			for (int i = 0; i < VSize; ++i)
-				QVel.Add(MakeShared<FJsonValueNumber>(d->qvel[VAddr + i]));
-		}
-		ArtObj->SetArrayField(TEXT("qpos"), QPos);
-		ArtObj->SetArrayField(TEXT("qvel"), QVel);
-
-		if (bWantStandard)
-		{
-			// ctrl positional array, same order as GetActuators().
-			TArray<TSharedPtr<FJsonValue>> Ctrl;
-			TArray<TSharedPtr<FJsonValue>> Act;
-			for (UMjActuator* A : Art->GetActuators())
-			{
-				if (!A)
-					continue;
-				int32 Id = A->GetMjID();
-				if (Id < 0 || Id >= m->nu)
-					continue;
-				Ctrl.Add(MakeShared<FJsonValueNumber>(d->ctrl[Id]));
-				// Each actuator's "act" slot, if it has one (intvelocity, muscle, ...)
-				int ActAddr = m->actuator_actadr ? m->actuator_actadr[Id] : -1;
-				if (ActAddr >= 0 && ActAddr < m->na)
-					Act.Add(MakeShared<FJsonValueNumber>(d->act[ActAddr]));
-				else
-					Act.Add(MakeShared<FJsonValueNumber>(0.0));
-			}
-			ArtObj->SetArrayField(TEXT("ctrl"), Ctrl);
-			ArtObj->SetArrayField(TEXT("act"), Act);
-
-			// sensors by name — use sensor MjID + dim.
-			TSharedPtr<FJsonObject> Sensors = MakeShared<FJsonObject>();
-			TArray<UMjSensor*> SensorComponents;
-			Art->GetComponents<UMjSensor>(SensorComponents);
-			FString Prefix = Art->GetName() + TEXT("_");
-			for (UMjSensor* S : SensorComponents)
-			{
-				if (!S)
-					continue;
-				int32 Sid = S->GetMjID();
-				if (Sid < 0 || Sid >= m->nsensor)
-					continue;
-				int Adr = m->sensor_adr[Sid];
-				int Dim = m->sensor_dim[Sid];
-				if (Adr < 0 || Dim <= 0 || (Adr + Dim) > m->nsensordata)
-					continue;
-				TArray<TSharedPtr<FJsonValue>> Vals;
-				for (int i = 0; i < Dim; ++i)
-					Vals.Add(MakeShared<FJsonValueNumber>(d->sensordata[Adr + i]));
-				FString LocalName = S->GetMjName();
-				if (LocalName.StartsWith(Prefix))
-					LocalName = LocalName.Mid(Prefix.Len());
-				Sensors->SetArrayField(LocalName, Vals);
-			}
-			ArtObj->SetObjectField(TEXT("sensors"), Sensors);
-		}
-
-		if (bWantFull)
-		{
-			// body xpos/xquat — discovered through articulation's MjBody components.
-			TSharedPtr<FJsonObject> Bodies = MakeShared<FJsonObject>();
-			TArray<UMjBody*> BodyComponents;
-			Art->GetComponents<UMjBody>(BodyComponents);
-			FString Prefix = Art->GetName() + TEXT("_");
-			for (UMjBody* B : BodyComponents)
-			{
-				if (!B || B->bIsDefault)
-					continue;
-				int32 Bid = B->GetMjID();
-				if (Bid < 0 || Bid >= m->nbody)
-					continue;
-				TSharedPtr<FJsonObject> Bo = MakeShared<FJsonObject>();
-				TArray<TSharedPtr<FJsonValue>> XPos, XQuat;
-				for (int i = 0; i < 3; ++i)
-					XPos.Add(MakeShared<FJsonValueNumber>(d->xpos[Bid * 3 + i]));
-				for (int i = 0; i < 4; ++i)
-					XQuat.Add(MakeShared<FJsonValueNumber>(d->xquat[Bid * 4 + i]));
-				Bo->SetArrayField(TEXT("xpos"), XPos);
-				Bo->SetArrayField(TEXT("xquat"), XQuat);
-				FString LocalName = B->GetMjName();
-				if (LocalName.StartsWith(Prefix))
-					LocalName = LocalName.Mid(Prefix.Len());
-				Bodies->SetObjectField(LocalName, Bo);
-			}
-			ArtObj->SetObjectField(TEXT("bodies"), Bodies);
-
-			// actuator_force per actuator (positional, same order as ctrl)
-			TArray<TSharedPtr<FJsonValue>> AForce;
-			for (UMjActuator* A : Art->GetActuators())
-			{
-				if (!A)
-					continue;
-				int32 Id = A->GetMjID();
-				if (Id < 0 || Id >= m->nu)
-					continue;
-				AForce.Add(MakeShared<FJsonValueNumber>(d->actuator_force[Id]));
-			}
-			ArtObj->SetArrayField(TEXT("actuator_force"), AForce);
-		}
-
-		// geometry_msgs/Twist-aligned: (linear.x, linear.y, angular.z)
-		// filled; rest stays zero. Only when a TwistController is attached.
-		if (UMjTwistController* TwistCtrl = Art->FindComponentByClass<UMjTwistController>())
-		{
-			const FVector Twist = TwistCtrl->GetTwist(); // (Vx, Vy, YawRate)
-
-			TArray<TSharedPtr<FJsonValue>> Linear;
-			Linear.Add(MakeShared<FJsonValueNumber>(Twist.X));
-			Linear.Add(MakeShared<FJsonValueNumber>(Twist.Y));
-			Linear.Add(MakeShared<FJsonValueNumber>(0.0));
-
-			TArray<TSharedPtr<FJsonValue>> Angular;
-			Angular.Add(MakeShared<FJsonValueNumber>(0.0));
-			Angular.Add(MakeShared<FJsonValueNumber>(0.0));
-			Angular.Add(MakeShared<FJsonValueNumber>(Twist.Z));
-
-			TSharedPtr<FJsonObject> TwistObj = MakeShared<FJsonObject>();
-			TwistObj->SetArrayField(TEXT("linear"), Linear);
-			TwistObj->SetArrayField(TEXT("angular"), Angular);
-			ArtObj->SetObjectField(TEXT("twist"), TwistObj);
-
-			ArtObj->SetNumberField(TEXT("actions"),
-				static_cast<double>(TwistCtrl->GetActiveActions()));
-		}
-
-		PerArt->SetObjectField(Art->GetName(), ArtObj);
-	}
-	return PerArt;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildCamerasBlock(AAMjManager* Manager,
-	const TMap<FString, ECameraInclude>& CameraSpec, int32 TimeoutMs)
-{
-	TSharedPtr<FJsonObject> Cams = MakeShared<FJsonObject>();
-	if (!Manager || CameraSpec.Num() == 0)
-		return Cams;
-
-	UWorld* World = Manager->GetWorld();
-	if (!World)
-		return Cams;
-
-	// Build a name -> camera lookup using the canonical "<articulation>/<camera>"
-	// form the handshake exposes plus the bare camera name as a fallback.
-	TMap<FString, UMjCamera*> ByName;
-	for (AMjArticulation* Art : Manager->GetAllArticulations())
-	{
-		if (!Art)
-			continue;
-		TArray<UMjCamera*> Cameras;
-		Art->GetComponents<UMjCamera>(Cameras);
-		for (UMjCamera* C : Cameras)
-		{
-			if (!C || C->bIsDefault)
-				continue;
-			FString Qualified = Art->GetName() + TEXT("/") + C->GetName();
-			ByName.Add(Qualified, C);
-			ByName.Add(C->GetName(), C);
-		}
-	}
-
-	for (const TPair<FString, ECameraInclude>& Spec : CameraSpec)
-	{
-		UMjCamera** Found = ByName.Find(Spec.Key);
-		if (!Found || !*Found)
-		{
-			UE_LOG(LogURLabNet, Verbose,
-				TEXT("[BuildCamerasBlock] camera '%s' not found"), *Spec.Key);
-			continue;
-		}
-		UMjCamera* Cam = *Found;
-
-		// Streaming auto-enables in UMjCamera::BeginPlay via
-		// UMjNetworkManager::RegisterCamera (bEnableAllCameras=true by
-		// default), so by the time we hit this path the camera is
-		// already streaming. The earlier worker-thread
-		// SetStreamingEnabled call here was dead code; left only the
-		// game-thread RequestReadback marshalling below, which is
-		// the actual fix — RenderTarget->GameThread_GetRenderTargetResource
-		// returns null on non-game threads and silently bails the
-		// readback, which is why include_cameras saw empty frames.
-
-		// For "sync" we kick a readback and poll. RequestReadback
-		// must run on the game thread (it touches
-		// RenderTarget->GameThread_GetRenderTargetResource and enqueues
-		// a render command); calling it from the bridge worker thread
-		// makes Resource null and the readback never lands. We marshal
-		// here and wait briefly; the per-tick auto-readback in
-		// UMjCamera::TickComponent keeps PendingPixels fresh for the
-		// "latest" path so consumers without an explicit sync call
-		// still get frames.
-		if (Spec.Value == ECameraInclude::Sync)
-		{
-			FEvent* ReqDone = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
-			TWeakObjectPtr<UMjCamera> WeakCam(Cam);
-			AsyncTask(ENamedThreads::GameThread, [WeakCam, ReqDone]() {
-				if (UMjCamera* C = WeakCam.Get())
-				{
-					C->RequestReadback();
-				}
-				ReqDone->Trigger();
-			});
-			ReqDone->Wait(2000);
-			FPlatformProcess::ReturnSynchEventToPool(ReqDone);
-
-			const double DeadlineSec = FPlatformTime::Seconds() + (TimeoutMs / 1000.0);
-			while (!Cam->IsReadbackReady() && FPlatformTime::Seconds() < DeadlineSec)
-			{
-				FPlatformProcess::Sleep(0.001f);
-			}
-		}
-
-		TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
-		CamObj->SetNumberField(TEXT("width"), Cam->resolution.Num() > 0 ? Cam->resolution[0] : 0);
-		CamObj->SetNumberField(TEXT("height"), Cam->resolution.Num() > 1 ? Cam->resolution[1] : 0);
-
-		if (Cam->CaptureMode == EMjCameraMode::Depth)
-		{
-			TArray<float> Pixels = Cam->ConsumeFloatPixels();
-			if (Pixels.Num() == 0)
-				continue;
-			CamObj->SetStringField(TEXT("dtype"), TEXT("float32"));
-			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(Pixels.GetData()),
-				Pixels.Num() * sizeof(float));
-		}
-		else
-		{
-			TArray<FColor> Pixels = Cam->ConsumePixels();
-			if (Pixels.Num() == 0)
-				continue;
-			// Real / SemSeg / InstanceSeg all ship 4-byte BGRA. Bridge
-			// discriminates the seg modes by the camera_topics handshake.
-			CamObj->SetStringField(TEXT("dtype"), TEXT("bgra8"));
-			FURLabMsgpackUtil::SetBinaryField(CamObj, TEXT("data"),
-				reinterpret_cast<const uint8*>(Pixels.GetData()),
-				Pixels.Num() * sizeof(FColor));
-		}
-		Cams->SetObjectField(Spec.Key, CamObj);
-	}
-	return Cams;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildEntitiesBlock(AAMjManager* Manager, mjModel* m, mjData* d)
-{
-	TSharedPtr<FJsonObject> Scene = MakeShared<FJsonObject>();
-	if (!Manager || !m || !d)
-		return Scene;
-
-	// Prefer the cached scene-body record table when populated. Avoids a
-	// per-call TActorIterator walk on the physics thread.
-	auto BuildFromBody = [&](int32 Id, const FString& Name) {
-		if (Id < 0 || Id >= m->nbody)
-			return;
-		TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-		TArray<TSharedPtr<FJsonValue>> XPos, XQuat;
-		for (int i = 0; i < 3; ++i)
-			XPos.Add(MakeShared<FJsonValueNumber>(d->xpos[Id * 3 + i]));
-		for (int i = 0; i < 4; ++i)
-			XQuat.Add(MakeShared<FJsonValueNumber>(d->xquat[Id * 4 + i]));
-		Obj->SetArrayField(TEXT("xpos"), XPos);
-		Obj->SetArrayField(TEXT("xquat"), XQuat);
-
-		// Free-joint detection: a body with a single jntnum=1 of mjJNT_FREE
-		// owns a 7-vec qpos and 6-vec qvel. Stream both. Other joint types
-		// get xpos/xquat only — a kinematic-driven heightfield base, etc.
-		if (Id < m->nbody && m->body_jntnum && m->body_jntadr)
-		{
-			int FirstJnt = m->body_jntadr[Id];
-			int NumJnt = m->body_jntnum[Id];
-			if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
-			{
-				int QAddr = m->jnt_qposadr[FirstJnt];
-				int VAddr = m->jnt_dofadr[FirstJnt];
-				TArray<TSharedPtr<FJsonValue>> QPos, QVel;
-				for (int i = 0; i < 7; ++i)
-					QPos.Add(MakeShared<FJsonValueNumber>(d->qpos[QAddr + i]));
-				for (int i = 0; i < 6; ++i)
-					QVel.Add(MakeShared<FJsonValueNumber>(d->qvel[VAddr + i]));
-				Obj->SetArrayField(TEXT("qpos"), QPos);
-				Obj->SetArrayField(TEXT("qvel"), QVel);
-			}
-		}
-		Scene->SetObjectField(Name, Obj);
-	};
-
-	// Cache fast path.
-	const TArray<FMjEntityRecord>& Cache = Manager->GetEntities();
-	if (Cache.Num() > 0)
-	{
-		for (const FMjEntityRecord& R : Cache)
-			BuildFromBody(R.MjId, R.Name);
-		return Scene;
-	}
-
-	// Fallback: walk the world via TActorIterator. ONLY safe from the game
-	// thread -- the iterator asserts IsInGameThread(). DirectStepHandler /
-	// PuppetStepHandler run on the physics async thread, so when called from
-	// there with an empty cache (no scene bodies were registered), return an
-	// empty block rather than crashing. Tests / pre-cache callers on the
-	// game thread still use the fallback path.
-	if (!IsInGameThread())
-		return Scene;
-
-	UWorld* World = Manager->GetWorld();
-	if (!World)
-		return Scene;
-
-	TSet<AMjArticulation*> ArticSet;
-	for (AMjArticulation* A : Manager->GetAllArticulations())
-		ArticSet.Add(A);
-
-	for (TActorIterator<AActor> It(World); It; ++It)
-	{
-		AActor* Actor = *It;
-		if (!Actor)
-			continue;
-		if (AMjArticulation* AsArt = Cast<AMjArticulation>(Actor))
-		{
-			if (ArticSet.Contains(AsArt))
-				continue;
-		}
-		TArray<UMjBody*> Bodies;
-		Actor->GetComponents<UMjBody>(Bodies);
-		for (UMjBody* B : Bodies)
-		{
-			if (!B || B->bIsDefault)
-				continue;
-			BuildFromBody(B->GetMjID(), B->GetMjName());
-		}
-	}
-	return Scene;
-}
-
-// =============================================================================
-// reset / set_mode
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
-	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-	}
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-
-	int32 SeedVal = 0;
-	if (Req->TryGetNumberField(TEXT("seed"), SeedVal))
-	{
-		Mgr->Seed = SeedVal;
-		// Modern mjOption has no "seed" field; mj_step is deterministic and
-		// doesn't depend on a stored seed (random elements come from
-		// user-set noise inputs, not an integrator-internal RNG). The seed
-		// is recorded on the manager so any RNG used by client code or by
-		// the recording layer can mirror it for reproducibility. UE itself
-		// does not reseed the integrator here.
-	}
-
-	{
-		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-
-		FString KfName;
-		if (Req->TryGetStringField(TEXT("keyframe_name"), KfName) && !KfName.IsEmpty())
-		{
-			int Kid = mj_name2id(m, mjOBJ_KEY, TCHAR_TO_UTF8(*KfName));
-			if (Kid < 0)
-				return MakeError(TEXT("unknown_keyframe"), KfName);
-			mj_resetDataKeyframe(m, d, Kid);
-		}
-		else
-		{
-			mj_resetData(m, d);
-		}
-
-		// Per-articulation qpos overrides (joint-name -> value).
-		const TSharedPtr<FJsonObject>* PerArt = nullptr;
-		if (Req->TryGetObjectField(TEXT("per_articulation_qpos"), PerArt) && PerArt && PerArt->IsValid())
-		{
-			for (auto& APair : (*PerArt)->Values)
-			{
-				AMjArticulation* Art = Mgr->GetArticulation(APair.Key);
-				if (!Art)
-					continue;
-				const TSharedPtr<FJsonObject>* QObj = nullptr;
-				if (!APair.Value->TryGetObject(QObj) || !QObj || !QObj->IsValid())
-					continue;
-
-				FString Prefix = Art->GetName() + TEXT("_");
-				for (auto& JPair : (*QObj)->Values)
-				{
-					FString FullName = Prefix + JPair.Key;
-					int Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*FullName));
-					if (Jid < 0)
-						Jid = mj_name2id(m, mjOBJ_JOINT, TCHAR_TO_UTF8(*JPair.Key));
-					if (Jid < 0)
-						continue;
-					int QAddr = m->jnt_qposadr[Jid];
-					d->qpos[QAddr] = (mjtNum)JPair.Value->AsNumber();
-				}
-			}
-		}
-		mj_forward(m, d);
-	}
-
-	StepCounter.store(0, std::memory_order_relaxed);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("reset_ok"));
-	Reply->SetNumberField(TEXT("time"), d->time);
-	Reply->SetNumberField(TEXT("step"), 0);
-	AppendClockFields(Reply, d->time);
-	TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-	if (Obs.IsValid())
-		Reply->SetObjectField(TEXT("per_articulation"), Obs);
-	return Reply;
-}
-
-// Run mj_forward (kinematics + dynamics, no integration) and return
-// observations. Lets a client write qpos / qvel then read consistent
-// derived state (xpos, sensors, contacts, ...) without advancing time.
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleForward(const TSharedPtr<FJsonObject>& /*Req*/)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->m_model)
-	{
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-	}
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-
-	{
-		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-		mj_forward(m, d);
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("forward_ok"));
-	Reply->SetNumberField(TEXT("time"), d->time);
-	Reply->SetNumberField(TEXT("step"), StepCounter.load(std::memory_order_relaxed));
-	AppendClockFields(Reply, d->time);
-	TSharedPtr<FJsonObject> Obs = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-	if (Obs.IsValid())
-		Reply->SetObjectField(TEXT("per_articulation"), Obs);
-	return Reply;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
-
-	if (Mgr->StepMode != EStepMode::Auto)
-	{
-		return MakeError(TEXT("mode_locked_by_server"),
-			FString::Printf(TEXT("Project pinned StepMode to %s"), *StepModeToString(Mgr->StepMode)));
-	}
-
-	FString ModeStr;
-	if (!Req->TryGetStringField(TEXT("mode"), ModeStr))
-		return MakeError(TEXT("missing_field"), TEXT("set_mode requires 'mode'"));
-
-	EStepMode NewMode;
-	if (!StepModeFromString(ModeStr, NewMode))
-		return MakeError(TEXT("bad_mode"), FString::Printf(TEXT("Unknown mode '%s'"), *ModeStr));
-
-	EStepMode Prev = ActiveStepMode;
-	SetActiveStepMode(NewMode);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_mode_ok"));
-	Reply->SetStringField(TEXT("previous_mode"), StepModeToString(Prev));
-	Reply->SetStringField(TEXT("current_mode"), StepModeToString(ActiveStepMode));
-	return Reply;
-}
-
-void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
-{
-	// Serialises install/uninstall side effects against concurrent
-	// set_mode calls; Dispatch releases DispatchMutex before handlers.
-	FScopeLock Lock(&DispatchMutex);
-
-	const EStepMode CurMode = ActiveStepMode.load(std::memory_order_acquire);
-	if (NewMode == CurMode)
-		return;
-
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return;
-
-	if (CurMode == EStepMode::Puppet)
-		UninstallPuppetHandler();
-	if (CurMode == EStepMode::Direct)
-		UninstallDirectHandler();
-	DrainQueuesForTest();
-
-	ActiveStepMode.store(NewMode, std::memory_order_release);
-	Mgr->EffectiveStepMode.store(NewMode, std::memory_order_release);
-	const bool bPaused = (NewMode != EStepMode::Live);
-	Mgr->bPublishersPaused.store(bPaused, std::memory_order_release);
-	FCameraZmqWorker::bPublishersPaused.store(bPaused, std::memory_order_release);
-
-	if (NewMode == EStepMode::Puppet)
-		InstallPuppetHandler();
-	else if (NewMode == EStepMode::Direct)
-		InstallDirectHandler();
-
-	// Engine defaults bIsPaused=true and is normally unpaused via the editor
-	// UI / hotkey. A remote client has no UI handle, so entering Direct or
-	// Direct/Puppet imply "client drives physics" — force unpause so the
-	// async loop calls CustomStepHandler and the request queue drains.
-	if (Mgr->PhysicsEngine && NewMode != EStepMode::Live)
-	{
-		if (Mgr->PhysicsEngine->bIsPaused)
-		{
-			Mgr->PhysicsEngine->SetPaused(false);
-			UE_LOG(LogURLabNet, Log,
-				TEXT("FURLabRpcDispatcher: unpaused PhysicsEngine for %s mode"),
-				*StepModeToString(NewMode));
-		}
-	}
-
-	UE_LOG(LogURLabNet, Log, TEXT("FURLabRpcDispatcher: step mode -> %s (publishers_paused=%s)"),
-		*StepModeToString(NewMode), bPaused ? TEXT("true") : TEXT("false"));
-}
-
-void FURLabRpcDispatcher::InstallPuppetHandler()
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return;
-	if (bPuppetHandlerInstalled)
-		return;
-
-	UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
-	PuppetStepHandler = [this, Engine](mjModel* m, mjData* d) {
-		FMjPushStateRequest Req;
-		if (!PushStateQueue.Dequeue(Req))
-			return;
-		if (Req.QPos.Num() == m->nq)
-			FMemory::Memcpy(d->qpos, Req.QPos.GetData(), m->nq * sizeof(mjtNum));
-		if (Req.QVel.Num() == m->nv)
-			FMemory::Memcpy(d->qvel, Req.QVel.GetData(), m->nv * sizeof(mjtNum));
-		if (Req.bIncludeCtrl && Req.Ctrl.Num() == m->nu)
-			FMemory::Memcpy(d->ctrl, Req.Ctrl.GetData(), m->nu * sizeof(mjtNum));
-		d->time = Req.Time;
-		mj_forward(m, d);
-		if (Engine->OnPostStep)
-			Engine->OnPostStep(m, d);
-	};
-	Engine->SetCustomStepHandler(PuppetStepHandler);
-	bPuppetHandlerInstalled = true;
-}
-
-void FURLabRpcDispatcher::UninstallPuppetHandler()
-{
-	if (!bPuppetHandlerInstalled)
-		return;
-	if (AAMjManager* Mgr = OwnerMgr.Get())
-	{
-		if (Mgr->PhysicsEngine)
-			Mgr->PhysicsEngine->ClearCustomStepHandler();
-	}
-	bPuppetHandlerInstalled = false;
-	PuppetStepHandler = nullptr;
-}
-
-void FURLabRpcDispatcher::InstallDirectHandler()
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return;
-	if (bDirectHandlerInstalled)
-		return;
-
-	UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
-	DirectStepHandler = [this, Engine, Mgr](mjModel* m, mjData* d) {
-		// Only the physics-engine async worker thread runs this handler,
-		// so d is exclusively owned for its duration.
-		TSharedPtr<FMjDirectStepCommand> Cmd;
-		if (!StepQueue.Dequeue(Cmd) || !Cmd.IsValid())
-			return;
-
-		ApplyStepCtrl(Mgr, Cmd->Request, m, d);
-
-		// control_mode="raw" per articulation bypasses the UE controller
-		// (NetworkValue treated as direct ctrl setpoint). Name-keyed so
-		// adding/removing articulations doesn't shift the mapping.
-		TMap<AMjArticulation*, bool> SkipController;
-		for (AMjArticulation* Art : Mgr->GetAllArticulations())
-		{
-			if (!Art)
-				continue;
-			const FString* Mode = Cmd->Request.PerArticulationControlMode.Find(Art->GetName());
-			const bool bRaw = Mode && Mode->Equals(TEXT("raw"), ESearchCase::IgnoreCase);
-			SkipController.Add(Art, bRaw);
-		}
-
-		for (int32 i = 0; i < Cmd->Request.NSteps; ++i)
-		{
-			for (AMjArticulation* Art : Mgr->GetAllArticulations())
-			{
-				if (!Art)
-					continue;
-				const bool* bSkip = SkipController.Find(Art);
-				Art->ApplyControls(bSkip != nullptr && *bSkip);
-			}
-			mj_step(m, d);
-			if (Engine->OnPostStep)
-				Engine->OnPostStep(m, d);
-		}
-		Cmd->ResultTime = d->time;
-		Cmd->ResultStep = StepCounter.fetch_add(Cmd->Request.NSteps, std::memory_order_relaxed)
-						+ Cmd->Request.NSteps;
-		Cmd->Observations = BuildStepObservations(Mgr, m, d, ActiveObservationLevel);
-		Cmd->Entities = BuildEntitiesBlock(Mgr, m, d);
-		Cmd->bDone = true;
-		if (Cmd->Completion)
-			Cmd->Completion->Trigger();
-	};
-	Engine->SetCustomStepHandler(DirectStepHandler);
-	bDirectHandlerInstalled = true;
-}
-
-void FURLabRpcDispatcher::UninstallDirectHandler()
-{
-	if (!bDirectHandlerInstalled)
-		return;
-	if (AAMjManager* Mgr = OwnerMgr.Get())
-	{
-		if (Mgr->PhysicsEngine)
-			Mgr->PhysicsEngine->ClearCustomStepHandler();
-	}
-	bDirectHandlerInstalled = false;
-	DirectStepHandler = nullptr;
-}
-
-// =============================================================================
-// configure_controller
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleConfigureController(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
-
-	FString ArtName;
-	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(TEXT("missing_field"), TEXT("configure_controller requires 'articulation'"));
-
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
-		return MakeError(TEXT("unknown_articulation"), ArtName);
-
-	UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
-	if (!Ctrl)
-		return MakeError(TEXT("no_controller"), FString::Printf(TEXT("Articulation '%s' has no controller"), *ArtName));
-
-	const TSharedPtr<FJsonObject>* Params = nullptr;
-	if (Req->TryGetObjectField(TEXT("params"), Params) && Params && Params->IsValid())
-	{
-		Ctrl->ApplyConfig(*Params);
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("configure_controller_ok"));
-	Reply->SetStringField(TEXT("articulation"), ArtName);
-
-	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
-	Ctrl->GetCurrentConfig(Out);
-	Reply->SetObjectField(TEXT("params"), Out);
-	return Reply;
-}
-
-// =============================================================================
-// set_sim_options
-// =============================================================================
-
-namespace
-{
-bool ParseIntegrator(const FString& S, EMjIntegrator& Out)
-{
-	if (S.Equals(TEXT("euler"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjIntegrator::Euler;
-		return true;
-	}
-	if (S.Equals(TEXT("rk4"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjIntegrator::RK4;
-		return true;
-	}
-	if (S.Equals(TEXT("implicit"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjIntegrator::Implicit;
-		return true;
-	}
-	if (S.Equals(TEXT("implicitfast"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjIntegrator::ImplicitFast;
-		return true;
-	}
-	return false;
-}
-FString IntegratorToString(EMjIntegrator I)
-{
-	switch (I)
-	{
-		case EMjIntegrator::Euler:
-			return TEXT("euler");
-		case EMjIntegrator::RK4:
-			return TEXT("rk4");
-		case EMjIntegrator::Implicit:
-			return TEXT("implicit");
-		case EMjIntegrator::ImplicitFast:
-			return TEXT("implicitfast");
-	}
-	return TEXT("euler");
-}
-bool ParseCone(const FString& S, EMjCone& Out)
-{
-	if (S.Equals(TEXT("pyramidal"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjCone::Pyramidal;
-		return true;
-	}
-	if (S.Equals(TEXT("elliptic"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjCone::Elliptic;
-		return true;
-	}
-	return false;
-}
-FString ConeToString(EMjCone C)
-{
-	return C == EMjCone::Elliptic ? TEXT("elliptic") : TEXT("pyramidal");
-}
-bool ParseSolver(const FString& S, EMjSolver& Out)
-{
-	if (S.Equals(TEXT("pgs"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjSolver::PGS;
-		return true;
-	}
-	if (S.Equals(TEXT("cg"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjSolver::CG;
-		return true;
-	}
-	if (S.Equals(TEXT("newton"), ESearchCase::IgnoreCase))
-	{
-		Out = EMjSolver::Newton;
-		return true;
-	}
-	return false;
-}
-FString SolverToString(EMjSolver S)
-{
-	switch (S)
-	{
-		case EMjSolver::PGS:
-			return TEXT("pgs");
-		case EMjSolver::CG:
-			return TEXT("cg");
-		case EMjSolver::Newton:
-			return TEXT("newton");
-	}
-	return TEXT("newton");
-}
-
-bool TryReadVec3(const TSharedPtr<FJsonObject>& Obj, const TCHAR* Key, double Out[3])
-{
-	const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
-	if (!Obj->TryGetArrayField(Key, Arr) || !Arr || Arr->Num() != 3)
-		return false;
-	Out[0] = (*Arr)[0]->AsNumber();
-	Out[1] = (*Arr)[1]->AsNumber();
-	Out[2] = (*Arr)[2]->AsNumber();
-	return true;
-}
-} // namespace
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimOptions(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	if (!m)
-		return MakeError(TEXT("not_ready"), TEXT("mjModel not compiled"));
-
-	const TSharedPtr<FJsonObject>* OptsPtr = nullptr;
-	if (!Req->TryGetObjectField(TEXT("options"), OptsPtr) || !OptsPtr || !(*OptsPtr).IsValid())
-		return MakeError(TEXT("missing_field"), TEXT("set_sim_options requires 'options' object"));
-	const TSharedPtr<FJsonObject>& Opts = *OptsPtr;
-
-	FMjOptionGenerated& O = Mgr->PhysicsEngine->Options;
-
-	double DNum = 0.0;
-	if (Opts->TryGetNumberField(TEXT("timestep"), DNum))
-	{
-		O.Timestep = (float)DNum;
-		O.bOverride_Timestep = true;
-	}
-
-	// Wire is MJ-native SI; FMjOptionGenerated stores UE cm/s² with Y-flip and
-	// ApplyOverridesToModel reverses that, so pre-bake the inverse here.
-	double V3[3];
-	if (TryReadVec3(Opts, TEXT("gravity"), V3))
-	{
-		O.Gravity = FVector((float)(V3[0] * 100.0), (float)(-V3[1] * 100.0), (float)(V3[2] * 100.0));
-		O.bOverride_Gravity = true;
-	}
-	if (TryReadVec3(Opts, TEXT("wind"), V3))
-	{
-		O.Wind = FVector((float)(V3[0] * 100.0), (float)(-V3[1] * 100.0), (float)(V3[2] * 100.0));
-		O.bOverride_Wind = true;
-	}
-	if (TryReadVec3(Opts, TEXT("magnetic"), V3))
-	{
-		O.Magnetic = FVector((float)V3[0], (float)-V3[1], (float)V3[2]);
-		O.bOverride_Magnetic = true;
-	}
-
-	if (Opts->TryGetNumberField(TEXT("density"), DNum))
-	{
-		O.Density = (float)DNum;
-		O.bOverride_Density = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("viscosity"), DNum))
-	{
-		O.Viscosity = (float)DNum;
-		O.bOverride_Viscosity = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("impratio"), DNum))
-	{
-		O.Impratio = (float)DNum;
-		O.bOverride_Impratio = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("tolerance"), DNum))
-	{
-		O.Tolerance = (float)DNum;
-		O.bOverride_Tolerance = true;
-	}
-
-	int32 INum = 0;
-	if (Opts->TryGetNumberField(TEXT("iterations"), INum))
-	{
-		O.Iterations = INum;
-		O.bOverride_Iterations = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("ls_iterations"), INum))
-	{
-		O.LsIterations = INum;
-		O.bOverride_LsIterations = true;
-	}
-
-	FString SNum;
-	if (Opts->TryGetStringField(TEXT("integrator"), SNum))
-	{
-		EMjIntegrator E;
-		if (!ParseIntegrator(SNum, E))
-			return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown integrator '%s'"), *SNum));
-		O.Integrator = E;
-		O.bOverride_Integrator = true;
-	}
-	if (Opts->TryGetStringField(TEXT("cone"), SNum))
-	{
-		EMjCone E;
-		if (!ParseCone(SNum, E))
-			return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown cone '%s'"), *SNum));
-		O.Cone = E;
-		O.bOverride_Cone = true;
-	}
-	if (Opts->TryGetStringField(TEXT("solver"), SNum))
-	{
-		EMjSolver E;
-		if (!ParseSolver(SNum, E))
-			return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown solver '%s'"), *SNum));
-		O.Solver = E;
-		O.bOverride_Solver = true;
-	}
-
-	if (Opts->TryGetNumberField(TEXT("noslip_iterations"), INum))
-	{
-		O.NoslipIterations = INum;
-		O.bOverride_NoslipIterations = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("noslip_tolerance"), DNum))
-	{
-		O.NoslipTolerance = (float)DNum;
-		O.bOverride_NoslipTolerance = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("ccd_iterations"), INum))
-	{
-		O.CCD_Iterations = INum;
-		O.bOverride_CCD_Iterations = true;
-	}
-	if (Opts->TryGetNumberField(TEXT("ccd_tolerance"), DNum))
-	{
-		O.CCD_Tolerance = (float)DNum;
-		O.bOverride_CCD_Tolerance = true;
-	}
-
-	bool BNum = false;
-	if (Opts->TryGetBoolField(TEXT("enable_multiccd"), BNum))
-	{
-		O.bEnableMultiCCD = BNum;
-	}
-	if (Opts->TryGetBoolField(TEXT("enable_sleep"), BNum))
-	{
-		O.bEnableSleep = BNum;
-	}
-	if (Opts->TryGetNumberField(TEXT("sleep_tolerance"), DNum))
-	{
-		O.SleepTolerance = (float)DNum;
-	}
-
-	// Raw disable / enable bit masks. Values are bitwise-ORs of
-	// mujoco/mjmodel.h mjtDisableBit / mjtEnableBit constants.
-	// Applied BEFORE FMjOptionGenerated::ApplyOverridesToModel so any named
-	// bits the caller also set (enable_sleep / enable_multiccd) win on
-	// top of the raw mask. Treat the raw masks as a coarse baseline.
-	int32 DisableMask = 0;
-	if (Opts->TryGetNumberField(TEXT("disableflags"), DisableMask))
-	{
-		m->opt.disableflags = DisableMask;
-	}
-	int32 EnableMask = 0;
-	if (Opts->TryGetNumberField(TEXT("enableflags"), EnableMask))
-	{
-		m->opt.enableflags = EnableMask;
-	}
-
-	O.ApplyOverridesToModel(m);
-
-	// Worker thread pool (mju_threadpool). Not a MuJoCo option-struct field —
-	// it's a URLab engine setting applied to the live mjData. Clamped to the
-	// detected CPU core count; ApplyThreadPool is idempotent.
-	int32 NumThreads = 0;
-	if (Opts->TryGetNumberField(TEXT("num_worker_threads"), NumThreads))
-	{
-		Mgr->PhysicsEngine->NumWorkerThreads =
-			FMath::Clamp(NumThreads, 0, UMjPhysicsEngine::MaxWorkerThreads());
-		Mgr->PhysicsEngine->ApplyThreadPool();
-	}
-
-	UE_LOG(LogURLabNet, Log,
-		TEXT("FURLabRpcDispatcher: set_sim_options applied (timestep=%.5fs, gravity=[%.3f %.3f %.3f] m/s²)"),
-		m->opt.timestep, m->opt.gravity[0], m->opt.gravity[1], m->opt.gravity[2]);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_sim_options_ok"));
-
-	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
-	Out->SetNumberField(TEXT("timestep"), m->opt.timestep);
-	Out->SetNumberField(TEXT("num_worker_threads"), Mgr->PhysicsEngine->NumWorkerThreads);
-	Out->SetNumberField(TEXT("max_worker_threads"), UMjPhysicsEngine::MaxWorkerThreads());
-	{
-		TArray<TSharedPtr<FJsonValue>> G;
-		G.Add(MakeShared<FJsonValueNumber>(m->opt.gravity[0]));
-		G.Add(MakeShared<FJsonValueNumber>(m->opt.gravity[1]));
-		G.Add(MakeShared<FJsonValueNumber>(m->opt.gravity[2]));
-		Out->SetArrayField(TEXT("gravity"), G);
-		TArray<TSharedPtr<FJsonValue>> W;
-		W.Add(MakeShared<FJsonValueNumber>(m->opt.wind[0]));
-		W.Add(MakeShared<FJsonValueNumber>(m->opt.wind[1]));
-		W.Add(MakeShared<FJsonValueNumber>(m->opt.wind[2]));
-		Out->SetArrayField(TEXT("wind"), W);
-		TArray<TSharedPtr<FJsonValue>> Mg;
-		Mg.Add(MakeShared<FJsonValueNumber>(m->opt.magnetic[0]));
-		Mg.Add(MakeShared<FJsonValueNumber>(m->opt.magnetic[1]));
-		Mg.Add(MakeShared<FJsonValueNumber>(m->opt.magnetic[2]));
-		Out->SetArrayField(TEXT("magnetic"), Mg);
-	}
-	Out->SetNumberField(TEXT("density"), m->opt.density);
-	Out->SetNumberField(TEXT("viscosity"), m->opt.viscosity);
-	Out->SetNumberField(TEXT("impratio"), m->opt.impratio);
-	Out->SetNumberField(TEXT("tolerance"), m->opt.tolerance);
-	Out->SetNumberField(TEXT("iterations"), m->opt.iterations);
-	Out->SetNumberField(TEXT("ls_iterations"), m->opt.ls_iterations);
-	Out->SetStringField(TEXT("integrator"), IntegratorToString((EMjIntegrator)m->opt.integrator));
-	Out->SetStringField(TEXT("cone"), ConeToString((EMjCone)m->opt.cone));
-	Out->SetStringField(TEXT("solver"), SolverToString((EMjSolver)m->opt.solver));
-	Out->SetNumberField(TEXT("noslip_iterations"), m->opt.noslip_iterations);
-	Out->SetNumberField(TEXT("noslip_tolerance"), m->opt.noslip_tolerance);
-	Out->SetNumberField(TEXT("ccd_iterations"), m->opt.ccd_iterations);
-	Out->SetNumberField(TEXT("ccd_tolerance"), m->opt.ccd_tolerance);
-
-	constexpr int MJ_ENBL_MULTICCD = 1 << 4;
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
-	Out->SetBoolField(TEXT("enable_multiccd"), (m->opt.enableflags & MJ_ENBL_MULTICCD) != 0);
-	Out->SetBoolField(TEXT("enable_sleep"), (m->opt.enableflags & MJ_ENBL_SLEEP) != 0);
-	Out->SetNumberField(TEXT("sleep_tolerance"), m->opt.sleep_tolerance);
-
-	// Echo the raw bit masks so callers using disableflags / enableflags
-	// can verify the final composed state (named overrides + raw mask).
-	Out->SetNumberField(TEXT("disableflags"), (int32)m->opt.disableflags);
-	Out->SetNumberField(TEXT("enableflags"), (int32)m->opt.enableflags);
-
-	Reply->SetObjectField(TEXT("options"), Out);
-	return Reply;
-}
-
-// =============================================================================
-// set_sim_speed
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimSpeed(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-
-	double Pct = 0.0;
-	if (!Req->TryGetNumberField(TEXT("percent"), Pct))
-		return MakeError(TEXT("missing_field"), TEXT("set_sim_speed requires 'percent'"));
-
-	// Engine clamps internally (5..100); echo back so the caller sees what stuck.
-	Mgr->PhysicsEngine->SimSpeedPercent = (float)Pct;
-	const float Effective = FMath::Clamp((float)Pct, 5.0f, 100.0f);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_sim_speed_ok"));
-	Reply->SetNumberField(TEXT("percent"), Effective);
-	return Reply;
-}
-
-// =============================================================================
-// set_control_source
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(TEXT("not_ready"), TEXT("PhysicsEngine not initialised"));
-
-	FString SourceStr;
-	if (!Req->TryGetStringField(TEXT("source"), SourceStr))
-		return MakeError(TEXT("missing_field"), TEXT("set_control_source requires 'source' (\"zmq\" | \"ui\")"));
-
-	EControlSource NewSource;
-	if (SourceStr.Equals(TEXT("zmq"), ESearchCase::IgnoreCase))
-		NewSource = EControlSource::ZMQ;
-	else if (SourceStr.Equals(TEXT("ui"), ESearchCase::IgnoreCase))
-		NewSource = EControlSource::UI;
-	else
-		return MakeError(TEXT("bad_value"), FString::Printf(TEXT("unknown source '%s'"), *SourceStr));
-
-	FString ArtName;
-	Req->TryGetStringField(TEXT("articulation"), ArtName);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_control_source_ok"));
-	Reply->SetStringField(TEXT("source"), SourceStr.ToLower());
-
-	if (ArtName.IsEmpty())
-	{
-		// Global: update engine + every articulation so the per-actor field
-		// doesn't keep stale state after a global flip.
-		Mgr->PhysicsEngine->SetControlSource(NewSource);
-		for (AMjArticulation* Art : Mgr->GetAllArticulations())
-		{
-			if (Art)
-				Art->ControlSource = (uint8)NewSource;
-		}
-		Reply->SetStringField(TEXT("scope"), TEXT("global"));
-	}
-	else
-	{
-		AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-		if (!Art)
-			return MakeError(TEXT("unknown_articulation"), ArtName);
-		Art->ControlSource = (uint8)NewSource;
-		Reply->SetStringField(TEXT("scope"), TEXT("articulation"));
-		Reply->SetStringField(TEXT("articulation"), ArtName);
-	}
-	return Reply;
-}
-
-// =============================================================================
-// set_twist
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
-
-	FString ArtName;
-	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(TEXT("missing_field"), TEXT("set_twist requires 'articulation'"));
-
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
-		return MakeError(TEXT("unknown_articulation"), ArtName);
-
-	UMjTwistController* TC = Art->FindComponentByClass<UMjTwistController>();
-	if (!TC)
-		return MakeError(TEXT("no_twist_controller"),
-			FString::Printf(TEXT("Articulation '%s' has no UMjTwistController"), *ArtName));
-
-	// Wire format mirrors how the bridge already reads twist: linear is
-	// (vx, vy, _) m/s, angular is (_, _, yaw_rate) rad/s. Tuple slots
-	// beyond the ones used are accepted but ignored.
-	auto ReadAxis = [](const TArray<TSharedPtr<FJsonValue>>* Arr, int32 Idx, float& Out) {
-		if (Arr && Arr->IsValidIndex(Idx))
-			Out = (float)(*Arr)[Idx]->AsNumber();
-	};
-
-	float Vx = 0.f, Vy = 0.f, YawRate = 0.f;
-	const TArray<TSharedPtr<FJsonValue>>* LinArr = nullptr;
-	const TArray<TSharedPtr<FJsonValue>>* AngArr = nullptr;
-	Req->TryGetArrayField(TEXT("linear"), LinArr);
-	Req->TryGetArrayField(TEXT("angular"), AngArr);
-	ReadAxis(LinArr, 0, Vx);
-	ReadAxis(LinArr, 1, Vy);
-	ReadAxis(AngArr, 2, YawRate);
-
-	TC->SetTwist(Vx, Vy, YawRate);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_twist_ok"));
-	Reply->SetStringField(TEXT("articulation"), ArtName);
-	{
-		TArray<TSharedPtr<FJsonValue>> L;
-		L.Add(MakeShared<FJsonValueNumber>(Vx));
-		L.Add(MakeShared<FJsonValueNumber>(Vy));
-		L.Add(MakeShared<FJsonValueNumber>(0.0));
-		Reply->SetArrayField(TEXT("linear"), L);
-		TArray<TSharedPtr<FJsonValue>> A;
-		A.Add(MakeShared<FJsonValueNumber>(0.0));
-		A.Add(MakeShared<FJsonValueNumber>(0.0));
-		A.Add(MakeShared<FJsonValueNumber>(YawRate));
-		Reply->SetArrayField(TEXT("angular"), A);
-	}
-	return Reply;
-}
-
-// =============================================================================
-// set_qpos — manager-required runtime write to a single articulation's qpos.
-//
-// Two write modes:
-//   - Free-base 7-vec shortcut: len=7 and the first joint is mjJNT_FREE,
-//     writes only the 7 free-joint slots (xyz + quat). Skips dof joints.
-//   - Full per-articulation qpos: len matches the articulation's total qpos
-//     dim (sum of per-joint slot widths in GetJoints() order). Writes the
-//     whole slice.
-// Always calls mj_forward after the write, mirroring the puppet push-state
-// path so derived quantities (xpos, sensors) reflect the new state.
-// =============================================================================
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
-
-	// target/target_by wire shape. target_by="actor_name" looks up via
-	// the manager's GetArticulation (UE name match); default
-	// "actor_id" walks ActorId.
-	FString Target, By;
-	Req->TryGetStringField(TEXT("target"), Target);
-	Req->TryGetStringField(TEXT("target_by"), By);
-	if (Target.IsEmpty())
-	{
-		return MakeError(TEXT("missing_field"),
-			TEXT("set_qpos: missing 'target' field"));
-	}
-	const bool bByName = By.Equals(TEXT("actor_name"), ESearchCase::IgnoreCase);
-
-	AMjArticulation* Art = nullptr;
-	if (bByName)
-	{
-		Art = Mgr->GetArticulation(Target);
-	}
-	else
-	{
-		for (AMjArticulation* A : Mgr->GetAllArticulations())
-		{
-			if (A && A->ActorId.Equals(Target))
-			{
-				Art = A;
-				break;
-			}
-		}
-	}
-	if (!Art)
-	{
-		return MakeError(TEXT("unknown_articulation"), Target);
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
-	if (!Req->TryGetArrayField(TEXT("qpos"), QPosArr) || !QPosArr)
-		return MakeError(TEXT("missing_field"), TEXT("set_qpos requires 'qpos' array"));
-
-	struct FJointSlot
-	{
-		int32 Adr;
-		int32 Size;
-		int32 Type;
-	};
-	TArray<FJointSlot> Slots;
-	int32 ArtQDim = 0;
-	for (UMjJoint* J : Art->GetJoints())
-	{
-		if (!J)
-			continue;
-		int32 Id = J->GetMjID();
-		if (Id < 0 || Id >= m->njnt)
-			continue;
-		int32 Size = 1;
-		switch (m->jnt_type[Id])
-		{
-			case mjJNT_FREE:
-				Size = 7;
-				break;
-			case mjJNT_BALL:
-				Size = 4;
-				break;
-			case mjJNT_SLIDE:
-			case mjJNT_HINGE:
-				Size = 1;
-				break;
-		}
-		Slots.Add({m->jnt_qposadr[Id], Size, m->jnt_type[Id]});
-		ArtQDim += Size;
-	}
-
-	if (Slots.Num() == 0)
-		return MakeError(TEXT("no_joints"),
-			TEXT("Articulation has no joints; nothing to write"));
-
-	const int32 InN = QPosArr->Num();
-	bool bFreeBaseShortcut = false;
-	if (InN == 7 && Slots[0].Type == mjJNT_FREE && ArtQDim != 7)
-		bFreeBaseShortcut = true;
-	else if (InN != ArtQDim)
-		return MakeError(TEXT("dim_mismatch"),
-			FString::Printf(
-				TEXT("qpos length %d != articulation qpos dim %d (free-base shortcut requires len=7 with FREE root)"),
-				InN, ArtQDim));
-
-	{
-		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-		if (bFreeBaseShortcut)
-		{
-			const int32 Adr = Slots[0].Adr;
-			for (int32 i = 0; i < 7; ++i)
-				d->qpos[Adr + i] = (mjtNum)(*QPosArr)[i]->AsNumber();
-		}
-		else
-		{
-			int32 Cursor = 0;
-			for (const FJointSlot& S : Slots)
-			{
-				for (int32 i = 0; i < S.Size; ++i, ++Cursor)
-					d->qpos[S.Adr + i] = (mjtNum)(*QPosArr)[Cursor]->AsNumber();
-			}
-		}
-		mj_forward(m, d);
-	}
-
-	TArray<TSharedPtr<FJsonValue>> Out;
-	if (bFreeBaseShortcut)
-	{
-		const int32 Adr = Slots[0].Adr;
-		for (int32 i = 0; i < 7; ++i)
-			Out.Add(MakeShared<FJsonValueNumber>(d->qpos[Adr + i]));
-	}
-	else
-	{
-		for (const FJointSlot& S : Slots)
-			for (int32 i = 0; i < S.Size; ++i)
-				Out.Add(MakeShared<FJsonValueNumber>(d->qpos[S.Adr + i]));
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_qpos_ok"));
-	// Echo back the resolved actor identifiers so the caller can
-	// confirm which articulation actually got the write. `target`
-	// matches the request's target field; `actor_name` is the UE
-	// name (always present, even if actor_id was the lookup key).
-	Reply->SetStringField(TEXT("target"), Target);
-	Reply->SetStringField(TEXT("actor_name"), Art->GetName());
-	if (!Art->ActorId.IsEmpty())
-		Reply->SetStringField(TEXT("actor_id"), Art->ActorId);
-	Reply->SetArrayField(TEXT("qpos"), Out);
-	Reply->SetBoolField(TEXT("free_base_shortcut"), bFreeBaseShortcut);
-	return Reply;
-}
-
-// =============================================================================
-// set_mocap_pose / read_mocap_pose / get_contacts — runtime MJ-side reads/writes.
-//
-// All three operate directly on the live mjModel/mjData under the engine's
-// CallbackMutex (same as set_qpos). Body name lookup uses mj_name2id with
-// the full compiled MJ name (URLab prefixes are already included).
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
-
-	FString Body;
-	Req->TryGetStringField(TEXT("body"), Body);
-	if (Body.IsEmpty())
-		return MakeError(TEXT("missing_field"), TEXT("set_mocap_pose: missing 'body'"));
-
-	const int32 BodyId = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*Body));
-	if (BodyId < 0)
-		return MakeError(TEXT("unknown_body"), Body);
-
-	const int32 MocapId = m->body_mocapid[BodyId];
-	if (MocapId < 0)
-		return MakeError(TEXT("not_mocap_body"),
-			FString::Printf(TEXT("Body '%s' is not a mocap body"), *Body));
-
-	const TArray<TSharedPtr<FJsonValue>>* PosArr = nullptr;
-	const TArray<TSharedPtr<FJsonValue>>* QuatArr = nullptr;
-	const bool bHasPos = Req->TryGetArrayField(TEXT("pos"), PosArr) && PosArr && PosArr->Num() == 3;
-	const bool bHasQuat = Req->TryGetArrayField(TEXT("quat"), QuatArr) && QuatArr && QuatArr->Num() == 4;
-	if (!bHasPos && !bHasQuat)
-		return MakeError(TEXT("missing_field"),
-			TEXT("set_mocap_pose requires at least one of pos[3] or quat[4]"));
-
-	{
-		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-		if (bHasPos)
-		{
-			for (int32 i = 0; i < 3; ++i)
-				d->mocap_pos[3 * MocapId + i] = (mjtNum)(*PosArr)[i]->AsNumber();
-		}
-		if (bHasQuat)
-		{
-			for (int32 i = 0; i < 4; ++i)
-				d->mocap_quat[4 * MocapId + i] = (mjtNum)(*QuatArr)[i]->AsNumber();
-		}
-	}
-
-	TArray<TSharedPtr<FJsonValue>> PosOut, QuatOut;
-	for (int32 i = 0; i < 3; ++i)
-		PosOut.Add(MakeShared<FJsonValueNumber>(d->mocap_pos[3 * MocapId + i]));
-	for (int32 i = 0; i < 4; ++i)
-		QuatOut.Add(MakeShared<FJsonValueNumber>(d->mocap_quat[4 * MocapId + i]));
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_mocap_pose_ok"));
-	Reply->SetStringField(TEXT("body"), Body);
-	Reply->SetArrayField(TEXT("pos"), PosOut);
-	Reply->SetArrayField(TEXT("quat"), QuatOut);
-	return Reply;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReadMocapPose(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
-
-	FString Body;
-	Req->TryGetStringField(TEXT("body"), Body);
-	if (Body.IsEmpty())
-		return MakeError(TEXT("missing_field"), TEXT("read_mocap_pose: missing 'body'"));
-
-	const int32 BodyId = mj_name2id(m, mjOBJ_BODY, TCHAR_TO_UTF8(*Body));
-	if (BodyId < 0)
-		return MakeError(TEXT("unknown_body"), Body);
-
-	const int32 MocapId = m->body_mocapid[BodyId];
-	if (MocapId < 0)
-		return MakeError(TEXT("not_mocap_body"),
-			FString::Printf(TEXT("Body '%s' is not a mocap body"), *Body));
-
-	TArray<TSharedPtr<FJsonValue>> PosOut, QuatOut;
-	{
-		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-		for (int32 i = 0; i < 3; ++i)
-			PosOut.Add(MakeShared<FJsonValueNumber>(d->mocap_pos[3 * MocapId + i]));
-		for (int32 i = 0; i < 4; ++i)
-			QuatOut.Add(MakeShared<FJsonValueNumber>(d->mocap_quat[4 * MocapId + i]));
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("read_mocap_pose_ok"));
-	Reply->SetStringField(TEXT("body"), Body);
-	Reply->SetArrayField(TEXT("pos"), PosOut);
-	Reply->SetArrayField(TEXT("quat"), QuatOut);
-	return Reply;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleGetContacts(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	mjData* d = Mgr->PhysicsEngine->GetData();
-	if (!m || !d)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel/MjData missing"));
-
-	int32 MaxContacts = 64;
-	{
-		int32 Cap = 0;
-		if (Req->TryGetNumberField(TEXT("max_contacts"), Cap) && Cap > 0)
-			MaxContacts = Cap;
-	}
-
-	// Optional filter: {body1?, body2?, geom1?, geom2?}. AND across set fields.
-	FString FBody1, FBody2, FGeom1, FGeom2;
-	const TSharedPtr<FJsonObject>* FilterObj = nullptr;
-	if (Req->TryGetObjectField(TEXT("filter"), FilterObj) && FilterObj && *FilterObj)
-	{
-		(*FilterObj)->TryGetStringField(TEXT("body1"), FBody1);
-		(*FilterObj)->TryGetStringField(TEXT("body2"), FBody2);
-		(*FilterObj)->TryGetStringField(TEXT("geom1"), FGeom1);
-		(*FilterObj)->TryGetStringField(TEXT("geom2"), FGeom2);
-	}
-
-	auto NameOrEmpty = [&](int Type, int Id) -> FString {
-		if (Id < 0)
-			return FString();
-		const char* p = mj_id2name(m, Type, Id);
-		return p ? FString(UTF8_TO_TCHAR(p)) : FString();
-	};
-
-	TArray<TSharedPtr<FJsonValue>> Out;
-	bool bTruncated = false;
-	int32 Matched = 0;
-
-	{
-		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
-		const int32 N = d->ncon;
-		for (int32 i = 0; i < N; ++i)
-		{
-			const mjContact& c = d->contact[i];
-			const int32 G1 = c.geom[0];
-			const int32 G2 = c.geom[1];
-			const int32 B1 = (G1 >= 0 && G1 < m->ngeom) ? m->geom_bodyid[G1] : -1;
-			const int32 B2 = (G2 >= 0 && G2 < m->ngeom) ? m->geom_bodyid[G2] : -1;
-			const FString G1Name = NameOrEmpty(mjOBJ_GEOM, G1);
-			const FString G2Name = NameOrEmpty(mjOBJ_GEOM, G2);
-			const FString B1Name = NameOrEmpty(mjOBJ_BODY, B1);
-			const FString B2Name = NameOrEmpty(mjOBJ_BODY, B2);
-
-			if (!FGeom1.IsEmpty() && !G1Name.Equals(FGeom1))
-				continue;
-			if (!FGeom2.IsEmpty() && !G2Name.Equals(FGeom2))
-				continue;
-			if (!FBody1.IsEmpty() && !B1Name.Equals(FBody1))
-				continue;
-			if (!FBody2.IsEmpty() && !B2Name.Equals(FBody2))
-				continue;
-
-			if (Matched >= MaxContacts)
-			{
-				bTruncated = true;
-				break;
-			}
-
-			mjtNum Force[6] = {0};
-			mj_contactForce(m, d, i, Force);
-
-			TArray<TSharedPtr<FJsonValue>> Pos;
-			for (int32 k = 0; k < 3; ++k)
-				Pos.Add(MakeShared<FJsonValueNumber>(c.pos[k]));
-			// First row of the contact frame is the contact normal.
-			TArray<TSharedPtr<FJsonValue>> Normal;
-			for (int32 k = 0; k < 3; ++k)
-				Normal.Add(MakeShared<FJsonValueNumber>(c.frame[k]));
-			TArray<TSharedPtr<FJsonValue>> ForceArr;
-			for (int32 k = 0; k < 6; ++k)
-				ForceArr.Add(MakeShared<FJsonValueNumber>(Force[k]));
-
-			TSharedPtr<FJsonObject> CObj = MakeShared<FJsonObject>();
-			CObj->SetStringField(TEXT("geom1"), G1Name);
-			CObj->SetStringField(TEXT("geom2"), G2Name);
-			CObj->SetStringField(TEXT("body1"), B1Name);
-			CObj->SetStringField(TEXT("body2"), B2Name);
-			CObj->SetArrayField(TEXT("pos"), Pos);
-			CObj->SetArrayField(TEXT("normal"), Normal);
-			CObj->SetNumberField(TEXT("dist"), c.dist);
-			CObj->SetArrayField(TEXT("force"), ForceArr);
-			Out.Add(MakeShared<FJsonValueObject>(CObj));
-			++Matched;
-		}
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("get_contacts_ok"));
-	Reply->SetNumberField(TEXT("n_contacts"), Matched);
-	Reply->SetBoolField(TEXT("truncated"), bTruncated);
-	Reply->SetArrayField(TEXT("contacts"), Out);
-	return Reply;
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleListKeyframes(const TSharedPtr<FJsonObject>& /*Req*/)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine || !Mgr->PhysicsEngine->IsInitialized())
-		return MakeError(TEXT("not_ready"), TEXT("Manager not initialised"));
-
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	if (!m)
-		return MakeError(TEXT("not_ready"), TEXT("MjModel missing"));
-
-	auto Slice = [](const mjtNum* src, int32 stride, int32 idx, int32 width) {
-		TArray<TSharedPtr<FJsonValue>> Out;
-		if (!src || width <= 0)
-			return Out;
-		for (int32 k = 0; k < width; ++k)
-			Out.Add(MakeShared<FJsonValueNumber>(src[idx * stride + k]));
-		return Out;
-	};
-
-	TArray<TSharedPtr<FJsonValue>> Keys;
-	for (int32 i = 0; i < m->nkey; ++i)
-	{
-		const char* NameC = mj_id2name(m, mjOBJ_KEY, i);
-		TSharedPtr<FJsonObject> K = MakeShared<FJsonObject>();
-		K->SetStringField(TEXT("name"), NameC ? UTF8_TO_TCHAR(NameC) : TEXT(""));
-		K->SetNumberField(TEXT("time"), m->key_time ? m->key_time[i] : 0.0);
-		K->SetArrayField(TEXT("qpos"), Slice(m->key_qpos, m->nq, i, m->nq));
-		K->SetArrayField(TEXT("qvel"), Slice(m->key_qvel, m->nv, i, m->nv));
-		K->SetArrayField(TEXT("ctrl"), Slice(m->key_ctrl, m->nu, i, m->nu));
-		K->SetArrayField(TEXT("mocap_pos"), Slice(m->key_mpos, m->nmocap * 3, i, m->nmocap * 3));
-		K->SetArrayField(TEXT("mocap_quat"), Slice(m->key_mquat, m->nmocap * 4, i, m->nmocap * 4));
-		Keys.Add(MakeShared<FJsonValueObject>(K));
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("list_keyframes_ok"));
-	Reply->SetArrayField(TEXT("keyframes"), Keys);
-	return Reply;
-}
-
-// =============================================================================
-// recording_* / replay_*  delegate to AMjReplayManager
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleRecording(const FString& Op, const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
-	// Use the game-thread-cached pointer; TActorIterator from this worker
-	// thread would assert IsInGameThread() and crash.
-	AMjReplayManager* RM = CachedReplayManager.Get();
-	if (!RM)
-		return MakeError(TEXT("not_ready"), TEXT("AMjReplayManager not present in scene"));
-
-	if (Op.Equals(TEXT("recording_start")))
-	{
-		if (RM->bIsRecording)
-			return MakeError(TEXT("recording_already_active"), TEXT("Recording already active"));
-		double MaxDur = 0.0;
-		if (Req->TryGetNumberField(TEXT("max_duration_s"), MaxDur))
-			RM->MaxRecordDuration = (float)MaxDur;
-		else
-			RM->MaxRecordDuration = FLT_MAX;
-		RM->StartRecording();
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("recording_start_ok"));
-		Reply->SetStringField(TEXT("name"), AMjReplayManager::LiveSessionName);
-		Reply->SetNumberField(TEXT("max_duration_s"), RM->MaxRecordDuration);
-		return Reply;
-	}
-	if (Op.Equals(TEXT("recording_stop")))
-	{
-		if (!RM->bIsRecording)
-			return MakeError(TEXT("recording_not_active"), TEXT("Recording is not active"));
-		RM->StopRecording();
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("recording_stop_ok"));
-		Reply->SetStringField(TEXT("name"), AMjReplayManager::LiveSessionName);
-		// Populate the summary fields the Python client maps to
-		// RecordingSummary. Recording has been stopped (StopRecording
-		// above set bIsRecording=false) so the OnPostStep hook isn't
-		// mutating Frames in parallel.
-		Reply->SetNumberField(TEXT("frame_count"), static_cast<double>(RM->GetLiveFrameCount()));
-		Reply->SetNumberField(TEXT("sim_duration_s"), RM->GetLiveSimDurationS());
-		return Reply;
-	}
-	if (Op.Equals(TEXT("recording_save")))
-	{
-		FString Path;
-		Req->TryGetStringField(TEXT("path"), Path);
-		FString FileName = Path.IsEmpty() ? TEXT("recording.json") : FPaths::GetCleanFilename(Path);
-		if (Path.IsEmpty())
-			Path = FileName;
-		bool bOk = RM->SaveRecordingToFile(FileName);
-		// ResolveReplayPath now matches the manager's
-		// ProjectSavedDir/URLab/Replays/ output dir, so the absolute_path
-		// returned to the client points at the file the manager actually wrote.
-		FString Abs = ResolveReplayPath(Path);
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), bOk ? TEXT("recording_save_ok") : TEXT("error"));
-		Reply->SetStringField(TEXT("absolute_path"), Abs);
-		if (!bOk)
-			Reply->SetStringField(TEXT("code"), TEXT("path_not_writable"));
-		return Reply;
-	}
-	if (Op.Equals(TEXT("recording_clear")))
-	{
-		RM->ClearRecording();
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("recording_clear_ok"));
-		return Reply;
-	}
-	return MakeError(TEXT("unknown_op"), Op);
-}
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReplay(const FString& Op, const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return MakeError(TEXT("not_ready"), TEXT("Manager missing"));
-	AMjReplayManager* RM = CachedReplayManager.Get();
-	if (!RM)
-		return MakeError(TEXT("not_ready"), TEXT("AMjReplayManager not present in scene"));
-
-	if (Op.Equals(TEXT("replay_load")))
-	{
-		FString P;
-		if (!Req->TryGetStringField(TEXT("path"), P))
-			return MakeError(TEXT("missing_field"), TEXT("replay_load requires 'path'"));
-		FString FileName = FPaths::GetCleanFilename(P);
-		bool bOk = RM->LoadRecordingFromFile(FileName);
-		if (!bOk)
-			return MakeError(TEXT("path_not_readable"), P);
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("replay_load_ok"));
-		Reply->SetStringField(TEXT("name"), FPaths::GetBaseFilename(FileName));
-		return Reply;
-	}
-	if (Op.Equals(TEXT("replay_list_sessions")))
-	{
-		TArray<TSharedPtr<FJsonValue>> Names;
-		for (const FString& N : RM->GetSessionNames())
-			Names.Add(MakeShared<FJsonValueString>(N));
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("replay_list_sessions_ok"));
-		Reply->SetArrayField(TEXT("sessions"), Names);
-		return Reply;
-	}
-	if (Op.Equals(TEXT("replay_set_active")))
-	{
-		FString N;
-		if (!Req->TryGetStringField(TEXT("name"), N))
-			return MakeError(TEXT("missing_field"), TEXT("replay_set_active requires 'name'"));
-		if (!RM->Sessions.Contains(N))
-			return MakeError(TEXT("replay_session_not_found"), N);
-		RM->SetActiveSession(N);
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("replay_set_active_ok"));
-		return Reply;
-	}
-	if (Op.Equals(TEXT("replay_start")))
-	{
-		if (ActiveStepMode == EStepMode::Live)
-			return MakeError(TEXT("replay_requires_stepped"),
-				TEXT("Switch to direct or puppet before starting replay"));
-		RM->StartReplay();
-		int32 Total = RM->Sessions.Contains(RM->GetActiveSessionName())
-						? RM->Sessions[RM->GetActiveSessionName()].Frames.Num()
-						: 0;
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("replay_start_ok"));
-		Reply->SetStringField(TEXT("active_session"), RM->GetActiveSessionName());
-		Reply->SetNumberField(TEXT("total_frames"), Total);
-		return Reply;
-	}
-	if (Op.Equals(TEXT("replay_stop")))
-	{
-		RM->StopReplay();
-		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-		Reply->SetStringField(TEXT("op"), TEXT("replay_stop_ok"));
-		return Reply;
-	}
-	return MakeError(TEXT("unknown_op"), Op);
 }

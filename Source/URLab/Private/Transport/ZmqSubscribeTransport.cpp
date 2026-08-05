@@ -22,13 +22,14 @@
 
 #include "Transport/ZmqSubscribeTransport.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "Transport/NetworkManager.h"
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
-#include "MuJoCo/Components/Controllers/MjPDController.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Controllers/MjArticulationController.h"
+#include "MuJoCo/Controllers/MjPDController.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "zmq.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "Serialization/JsonSerializer.h"
 #include "Dom/JsonObject.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
@@ -149,19 +150,16 @@ void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 			continue;
 
 		const FName ArtName(*Articulation->GetName());
-		TArray<UMjActuator*> ArticActuators = Articulation->GetActuators();
-		for (UMjActuator* Actuator : ArticActuators)
+		for (UMjNodeComponent* Actuator : Articulation->GetActuators())
 		{
-			if (Actuator)
+			if (Actuator == nullptr || !Actuator->GetBoundId().IsSet())
 			{
-				int id = Actuator->GetMjID();
-				if (id != -1)
-				{
-					ActuatorCache.Add(Actuator->GetMjName(), id);
-					ActuatorComponentCache.Add(id, Actuator);
-					ActuatorToArticulationName.Add(id, ArtName);
-				}
+				continue;
 			}
+			const int32 Id = Actuator->GetBoundId().GetValue();
+			ActuatorCache.Add(Actuator->MjName.Get(Actuator->GetName()), Id);
+			ActuatorComponentCache.Add(Id, Actuator);
+			ActuatorToArticulationName.Add(Id, ArtName);
 		}
 	}
 	bCacheBuilt = true;
@@ -430,7 +428,7 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 						int32 Idx = *IDPtr;
 						float Value = *ValPtr;
 
-						if (UMjActuator** ActuatorPtr = ActuatorComponentCache.Find(Idx))
+						if (UMjNodeComponent** ActuatorPtr = ActuatorComponentCache.Find(Idx))
 						{
 							if (*ActuatorPtr)
 							{
@@ -445,7 +443,7 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 										continue;
 									}
 								}
-								(*ActuatorPtr)->SetNetworkControl(Value);
+								UMjActuatorRuntime::SetNetworkControl(*ActuatorPtr, Value);
 							}
 						}
 						else if (bShouldLog)

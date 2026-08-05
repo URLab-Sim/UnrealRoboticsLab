@@ -23,11 +23,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MuJoCo/Components/Joints/MjJoint.h" // EMjJointType
+#include "MuJoCo/Gen/MjEnums.gen.h"
 
 /**
  * Semantically-typed intermediate representation of one physics step. Producers
- * declare into it once (UMjComponent::DescribeState); encoders read it. There is
+ * declare into it once per step; encoders read it. There is
  * one IR and, downstream, two encoders: msgpack (state/full + step replies) and,
  * later, ROS. Semantics and grouping are first-class because typed ROS messages
  * need them; msgpack ignores the extra typing harmlessly.
@@ -38,7 +38,7 @@
  */
 
 /**
- * Coarse grouping derived from EMjSensorType. It is what lets a ROS publisher
+ * Coarse grouping of a sensor element. It is what lets a ROS publisher
  * pair gyro+accel into one Imu and route pose-like sensors to tf2. msgpack does
  * not read it.
  */
@@ -88,7 +88,7 @@ struct FMjClock
 struct FMjJointState
 {
 	FName Name;
-	EMjJointType Type = EMjJointType::Hinge;
+	EMjJointType Type = EMjJointType::hinge;
 	TArray<double> QPos;
 	TArray<double> QVel;
 	/** The joint's qpos0 (reference) slice. Filled for 1-DOF joints (hinge/slide)
@@ -121,7 +121,7 @@ struct FMjActuatorState
 
 /** One sensor's reading, as raw MuJoCo SI values (MuJoCo frame, double
  *  precision) copied straight from d->sensordata. The MuJoCo -> UE coordinate/
- *  unit transform lives on the display-facing UMjSensor::GetReading() accessor,
+ *  unit transform lives on the display-facing UMjSensorRuntime::GetReading(),
  *  not here; encoders own their own target conventions. */
 struct FMjSensorState
 {

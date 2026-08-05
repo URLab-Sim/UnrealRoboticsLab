@@ -21,7 +21,9 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Net/MjInputMapping.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "Utils/URLabLogging.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "EnhancedInputComponent.h"
@@ -49,9 +51,21 @@ void UMjInputMapping::SetupBindings()
 	// Clear cache
 	ActionCache.Empty();
 
-	// 1. Gather all Actuators on the owner (or children)
-	TArray<UMjActuator*> AllActuators;
-	Owner->GetComponents<UMjActuator>(AllActuators, true); // bIncludeFromChildActors = true? Maybe. default false usually fine unless nested.
+	// Every element on the owner, filtered to the actuators by asking the
+	// runtime library rather than by class: an actuator is a schema element
+	// family, not a C++ type, so there is no class to look for.
+	TArray<UMjNodeComponent*> AllActuators;
+	{
+		TArray<UMjNodeComponent*> Nodes;
+		Owner->GetComponents(Nodes, true);
+		for (UMjNodeComponent* Node : Nodes)
+		{
+			if (UMjActuatorRuntime::IsActuator(Node))
+			{
+				AllActuators.Add(Node);
+			}
+		}
+	}
 
 	// 2. Build Cache
 	for (const FMjInputBinding& Bind : Bindings)
@@ -59,9 +73,9 @@ void UMjInputMapping::SetupBindings()
 		if (!Bind.Action)
 			continue;
 
-		UMjActuator* TargetActuator = nullptr;
+		UMjNodeComponent* TargetActuator = nullptr;
 		// Find by name
-		for (UMjActuator* Act : AllActuators)
+		for (UMjNodeComponent* Act : AllActuators)
 		{
 			if (Act->GetName().Equals(Bind.ActuatorName))
 			{
@@ -126,13 +140,13 @@ void UMjInputMapping::GenericInputHandler(const FInputActionInstance& Instance)
 
 	if (FCachedMjBinding* Binding = ActionCache.Find(SourceAction))
 	{
-		UMjActuator* Act = Binding->Actuator.Get();
+		UMjNodeComponent* Act = Binding->Actuator.Get();
 		if (Act)
 		{
 			float InputVal = Instance.GetValue().Get<float>(); // Handles Axis/bool conversion
 			float FinalVal = InputVal * Binding->Scale;
 
-			Act->SetControl(FinalVal);
+			UMjActuatorRuntime::SetControl(Act, FinalVal);
 		}
 	}
 }

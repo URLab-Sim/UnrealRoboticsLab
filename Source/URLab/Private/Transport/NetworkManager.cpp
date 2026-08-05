@@ -22,7 +22,7 @@
 
 #include "Transport/NetworkManager.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "Utils/URLabLogging.h"
 
 UMjNetworkManager::UMjNetworkManager()

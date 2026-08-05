@@ -19,7 +19,7 @@
 #include "ZmqSubscribeTransport.generated.h"
 
 class AAMjManager;
-class UMjActuator;
+class UMjNodeComponent;
 
 /**
  * @class UURLabZmqSubscribeTransport
@@ -70,7 +70,7 @@ private:
 	int InfoBroadcastCounter = 0;
 	int TotalStepCount = 0;
 	TMap<FString, int> ActuatorCache;
-	TMap<int32, UMjActuator*> ActuatorComponentCache;
+	TMap<int32, UMjNodeComponent*> ActuatorComponentCache;
 	TMap<int32, FName> ActuatorToArticulationName;
 	bool bCacheBuilt = false;
 

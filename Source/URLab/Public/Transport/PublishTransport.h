@@ -60,6 +60,10 @@ public:
 
 	virtual FString GetTransportName() const PURE_VIRTUAL(UURLabPublishTransport::GetTransportName, return FString(););
 
+	/** Append transport-specific fields to the hello handshake reply.
+	 *  Default no-op; SHM override advertises the session dir. */
+	virtual void AppendHandshakeBlock(TSharedPtr<class FJsonObject>& Reply) const {}
+
 	// --- Per-step physics hooks (Async thread) ----------------------------
 	// Default-empty so transports that don't tie to the physics step (e.g.
 	// sensor-shaped publishers that publish on demand) don't need to opt in.
@@ -73,5 +77,7 @@ public:
 	virtual void PostStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
 
 protected:
+	// Owning bridge; same pattern as UURLabRpcTransport — UE single-inheritance
+	// prevents extracting a shared UObject base for all three transport ABCs.
 	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
 };

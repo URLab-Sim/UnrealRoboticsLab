@@ -56,5 +56,7 @@ public:
 	virtual void PostStep(struct mjModel_* /*m*/, struct mjData_* /*d*/) {}
 
 protected:
+	// Owning bridge; same pattern as UURLabRpcTransport — UE single-inheritance
+	// prevents extracting a shared UObject base for all three transport ABCs.
 	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
 };

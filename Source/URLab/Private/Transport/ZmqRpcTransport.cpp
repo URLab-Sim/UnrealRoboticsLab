@@ -20,7 +20,45 @@
 #include "Utils/URLabLogging.h"
 #include "zmq.h"
 
+class FStepServerRunnable : public FRunnable
+{
+public:
+	UURLabZmqRpcTransport* Server;
+	explicit FStepServerRunnable(UURLabZmqRpcTransport* S)
+		: Server(S) {}
+	virtual uint32 Run() override
+	{
+		Server->RunPollLoop();
+		return 0;
+	}
+	virtual void Stop() override { Server->bStop = true; }
+};
+
 UURLabZmqRpcTransport::UURLabZmqRpcTransport() = default;
+
+bool UURLabZmqRpcTransport::CreateAndBindRep()
+{
+	ZmqRep = zmq_socket(ZmqContext, ZMQ_REP);
+	if (!ZmqRep)
+		return false;
+
+	int Timeout = PollTimeoutMs;
+	zmq_setsockopt(ZmqRep, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
+	zmq_setsockopt(ZmqRep, ZMQ_SNDTIMEO, &Timeout, sizeof(Timeout));
+	// LINGER 0: on close, drop any unsent reply immediately instead of the
+	// libzmq default (infinite), so zmq_ctx_term can never block editor exit
+	// on a client that stopped reading.
+	int Linger = 0;
+	zmq_setsockopt(ZmqRep, ZMQ_LINGER, &Linger, sizeof(Linger));
+
+	if (zmq_bind(ZmqRep, TCHAR_TO_UTF8(*StepEndpoint)) != 0)
+	{
+		zmq_close(ZmqRep);
+		ZmqRep = nullptr;
+		return false;
+	}
+	return true;
+}
 
 bool UURLabZmqRpcTransport::TransportInit()
 {
@@ -28,45 +66,27 @@ bool UURLabZmqRpcTransport::TransportInit()
 		return true;
 
 	ZmqContext = zmq_ctx_new();
-	ZmqRep = zmq_socket(ZmqContext, ZMQ_REP);
-	int Timeout = PollTimeoutMs;
-	zmq_setsockopt(ZmqRep, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
-	zmq_setsockopt(ZmqRep, ZMQ_SNDTIMEO, &Timeout, sizeof(Timeout));
-
-	int rc = zmq_bind(ZmqRep, TCHAR_TO_UTF8(*StepEndpoint));
-	if (rc != 0)
+	if (!ZmqContext || !CreateAndBindRep())
 	{
 		UE_LOG(LogURLabNet, Error, TEXT("UURLabZmqRpcTransport: failed to bind REP at %s"), *StepEndpoint);
 		if (GEngine)
 		{
 			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
-				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — port conflict?"), *StepEndpoint));
+				FString::Printf(TEXT("URLab: ZMQ bind failed on %s, port conflict?"), *StepEndpoint));
 		}
-		zmq_close(ZmqRep);
-		zmq_ctx_term(ZmqContext);
-		ZmqRep = nullptr;
-		ZmqContext = nullptr;
+		if (ZmqContext)
+		{
+			zmq_ctx_term(ZmqContext);
+			ZmqContext = nullptr;
+		}
 		return false;
 	}
 
 	bIsInitialized = true;
 	bStop = false;
 
-	class FStepServerRunnable : public FRunnable
-	{
-	public:
-		UURLabZmqRpcTransport* Server;
-		explicit FStepServerRunnable(UURLabZmqRpcTransport* S)
-			: Server(S) {}
-		virtual uint32 Run() override
-		{
-			Server->RunPollLoop();
-			return 0;
-		}
-		virtual void Stop() override { Server->bStop = true; }
-	};
-	FStepServerRunnable* Runner = new FStepServerRunnable(this);
-	WorkerThread = FRunnableThread::Create(Runner, TEXT("URLabStepServer"));
+	WorkerRunnable = new FStepServerRunnable(this);
+	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabStepServer"));
 
 	UE_LOG(LogURLabNet, Log, TEXT("UURLabZmqRpcTransport initialised at %s"), *StepEndpoint);
 	return true;
@@ -84,6 +104,10 @@ void UURLabZmqRpcTransport::TransportShutdown()
 		delete WorkerThread;
 		WorkerThread = nullptr;
 	}
+	// FRunnableThread never owns the runnable; delete it explicitly so the
+	// bind/unbind cycle does not leak one runnable each time.
+	delete WorkerRunnable;
+	WorkerRunnable = nullptr;
 
 	if (ZmqRep)
 	{
@@ -122,6 +146,39 @@ void UURLabZmqRpcTransport::RunPollLoop()
 		// Wire detect / parse / dispatch / encode all live on the base.
 		TArray<uint8> OutBytes;
 		ProcessRequestBytes(InBytes, OutBytes);
-		zmq_send(ZmqRep, OutBytes.GetData(), OutBytes.Num(), 0);
+
+		// REP is a strict recv-then-send state machine: having received, we
+		// MUST send before the next recv. If the send fails (EAGAIN under the
+		// send timeout, or a peer that vanished) the socket stays stuck in the
+		// must-send state and every later recv returns EFSM, spinning a core.
+		// Retry a few times while progress is still possible, then rebuild the
+		// socket to reset the state machine instead of busy-spinning.
+		constexpr int MaxSendAttempts = 3;
+		bool bSent = false;
+		for (int Attempt = 0; Attempt < MaxSendAttempts && !bStop.load(std::memory_order_acquire); ++Attempt)
+		{
+			if (zmq_send(ZmqRep, OutBytes.GetData(), OutBytes.Num(), 0) >= 0)
+			{
+				bSent = true;
+				break;
+			}
+			if (zmq_errno() != EAGAIN)
+				break; // hard error; rebuild rather than keep retrying
+		}
+		if (!bSent && !bStop.load(std::memory_order_acquire))
+		{
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("UURLabZmqRpcTransport: reply send failed (errno=%d); resetting REP socket at %s"),
+				zmq_errno(), *StepEndpoint);
+			zmq_close(ZmqRep);
+			ZmqRep = nullptr;
+			if (!CreateAndBindRep())
+			{
+				UE_LOG(LogURLabNet, Error,
+					TEXT("UURLabZmqRpcTransport: failed to rebind REP at %s after send error; stopping poll loop"),
+					*StepEndpoint);
+				break;
+			}
+		}
 	}
 }

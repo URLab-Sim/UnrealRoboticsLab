@@ -35,6 +35,7 @@ public class URLabEditor : ModuleRules
 			"CoreUObject",
 			"Engine",
 			"URLab",
+			"URLabRos",
 			"UnrealEd",
 			"EditorSubsystem",
 			"AssetTools",

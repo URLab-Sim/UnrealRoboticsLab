@@ -141,7 +141,7 @@ bool FMjPythonHelper::CheckPythonPackages(const FString& PythonPath)
 	FString StdOut, StdErr;
 	// PIL is a transitive trimesh dep that only fires on textured OBJ
 	// loads (e.g. menagerie unitree_go2). Check explicitly.
-	FPlatformProcess::ExecProcess(*PythonPath, TEXT("-c \"import trimesh; import numpy; import scipy; import PIL\""), &ReturnCode, &StdOut, &StdErr);
+	FPlatformProcess::ExecProcess(*PythonPath, TEXT("-c \"import trimesh; import numpy; import scipy; import networkx; import PIL\""), &ReturnCode, &StdOut, &StdErr);
 	return (ReturnCode == 0);
 }
 
@@ -159,7 +159,7 @@ bool FMjPythonHelper::InstallPythonPackages(const FString& PythonPath, FString& 
 					TEXT("Please install pip first, or choose a different Python interpreter.\n")
 						TEXT("You can also install packages manually:\n")
 							TEXT("  %s -m ensurepip\n")
-								TEXT("  %s -m pip install trimesh numpy scipy Pillow"),
+								TEXT("  %s -m pip install trimesh numpy scipy networkx Pillow"),
 				*PythonPath, *PythonPath);
 			UE_LOG(LogURLabEditor, Warning, TEXT("[Python] pip not available: %s"), *PipErr);
 			return false;
@@ -168,8 +168,8 @@ bool FMjPythonHelper::InstallPythonPackages(const FString& PythonPath, FString& 
 
 	int32 ReturnCode = -1;
 	FString StdOut, StdErr;
-	UE_LOG(LogURLabEditor, Log, TEXT("[Python] Installing packages: %s -m pip install trimesh numpy scipy Pillow"), *PythonPath);
-	FPlatformProcess::ExecProcess(*PythonPath, TEXT("-m pip install trimesh numpy scipy Pillow"), &ReturnCode, &StdOut, &StdErr);
+	UE_LOG(LogURLabEditor, Log, TEXT("[Python] Installing packages: %s -m pip install trimesh numpy scipy networkx Pillow"), *PythonPath);
+	FPlatformProcess::ExecProcess(*PythonPath, TEXT("-m pip install trimesh numpy scipy networkx Pillow"), &ReturnCode, &StdOut, &StdErr);
 	OutLog = StdOut + TEXT("\n") + StdErr;
 	if (ReturnCode == 0)
 	{
@@ -249,7 +249,7 @@ FString FMjPythonHelper::EnsurePythonReady(bool& bOutCancelled)
 		else
 		{
 			MessageStr = FString::Printf(
-				TEXT("URLab needs the 'trimesh', 'numpy', 'scipy', and 'Pillow' Python packages to preprocess mesh files.\n\n")
+				TEXT("URLab needs the 'trimesh', 'numpy', 'scipy', 'networkx', and 'Pillow' Python packages to preprocess mesh files.\n\n")
 					TEXT("Unreal Engine does not natively support all mesh formats used by MuJoCo, ")
 						TEXT("so these packages are used to convert and prepare meshes for import.\n\n")
 							TEXT("These will be installed to %s.\n\n")
@@ -257,7 +257,7 @@ FString FMjPythonHelper::EnsurePythonReady(bool& bOutCancelled)
 									TEXT("Note: The editor will be unresponsive during installation. ")
 										TEXT("This may take a minute.\n\n")
 											TEXT("Alternatively, you can install these manually in your preferred Python environment:\n")
-												TEXT("  <your-python> -m pip install trimesh numpy scipy Pillow\n")
+												TEXT("  <your-python> -m pip install trimesh numpy scipy networkx Pillow\n")
 													TEXT("Then set the path in Config/LocalUnrealRoboticsLab.ini in the plugin directory.\n\n")
 														TEXT("Click 'Yes' to install, 'No' to choose a different interpreter, ")
 															TEXT("or 'Cancel' to cancel the import."),
@@ -293,7 +293,7 @@ FString FMjPythonHelper::EnsurePythonReady(bool& bOutCancelled)
 
 			// Ask to install for the new Python
 			FText InstallMsg = FText::FromString(FString::Printf(
-				TEXT("Install 'trimesh', 'numpy', 'scipy', and 'Pillow' to:\n%s?\n\n")
+				TEXT("Install 'trimesh', 'numpy', 'scipy', 'networkx', and 'Pillow' to:\n%s?\n\n")
 					TEXT("The editor will be unresponsive during installation.\n\n")
 						TEXT("Click 'Cancel' to cancel the import."),
 				*PythonPath));
@@ -313,7 +313,7 @@ FString FMjPythonHelper::EnsurePythonReady(bool& bOutCancelled)
 				FMessageDialog::Open(EAppMsgType::Ok,
 					FText::FromString(FString::Printf(
 						TEXT("Failed to install packages. You can install them manually by running:\n\n")
-							TEXT("%s -m pip install trimesh numpy scipy Pillow\n\n")
+							TEXT("%s -m pip install trimesh numpy scipy networkx Pillow\n\n")
 								TEXT("Error log:\n%s"),
 						*PythonPath, *InstallLog)),
 					FText::FromString(TEXT("Package Install Failed")));

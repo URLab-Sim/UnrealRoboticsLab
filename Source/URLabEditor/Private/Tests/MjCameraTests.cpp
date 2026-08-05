@@ -26,11 +26,16 @@
 #include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "State/MjCanonicalName.h"
+#include "Bridge/RpcDispatcher.h"
 #include "Components/SceneCaptureComponent2D.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/TextureRenderTarget2D.h"
 #include "UObject/ConstructorHelpers.h"
+#include "RenderingThread.h"
+#include "Misc/App.h"
 
 namespace
 {
@@ -51,7 +56,7 @@ UMjCamera* SpawnCameraAndStream(FMjUESession& Sess, EMjCameraMode Mode)
 
 // ============================================================================
 // URLab.Camera.RealMode_ConfiguresFinalColorBGRA
-//   Default Real mode → RT is RGBA8, CaptureSource is SCS_FinalToneCurveHDR.
+//   Default Real mode → RT is RGBA8, CaptureSource is SCS_FinalColorLDR.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraRealModeConfig,
 	"URLab.Camera.RealMode_ConfiguresFinalColorBGRA",
@@ -84,7 +89,7 @@ bool FMjCameraRealModeConfig::RunTest(const FString& Parameters)
 	{
 		TestEqual(TEXT("capture source"),
 			(int32)Cam->CaptureComponent->CaptureSource,
-			(int32)ESceneCaptureSource::SCS_FinalToneCurveHDR);
+			(int32)ESceneCaptureSource::SCS_FinalColorLDR);
 	}
 
 	S.Cleanup();
@@ -370,6 +375,114 @@ bool FMjCameraNonSegHidesSiblings::RunTest(const FString& Parameters)
 	const int32 ExpectedHidden = Seg->CaptureComponent->ShowOnlyComponents.Num();
 	TestEqual(TEXT("real cam hides seg siblings"),
 		Real->CaptureComponent->HiddenComponents.Num(), ExpectedHidden);
+
+	S.Cleanup();
+	return true;
+}
+
+// ============================================================================
+// URLab.Camera.RenderOnDemandSync
+//   Exercises the render-on-demand path: apply a physics frame, then
+//   IssueSyncCapture -> FlushRenderingCommands -> HarvestCompletedReadbacks, and
+//   check a frame with pixels lands in the history ring. The GPU part runs only
+//   with a real RHI; run with -RenderOffScreen to validate actual rendering.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraRenderOnDemandSync,
+	"URLab.Camera.RenderOnDemandSync",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraRenderOnDemandSync::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjCamera* Cam = SpawnCameraAndStream(S, EMjCameraMode::Real);
+	if (!TestNotNull(TEXT("camera"), Cam))
+	{
+		S.Cleanup();
+		return false;
+	}
+
+	// Produce a physics frame and apply it, so the sync readback has a real
+	// applied-state id to tag its frame with.
+	S.Manager->PhysicsEngine->StepSync(1);
+	S.Manager->ApplyLatestRenderState();
+	const uint64 AppliedId = S.Manager->GetLastAppliedFrameId();
+	TestTrue(TEXT("applied frame id advanced"), AppliedId > 0);
+
+	if (!FApp::CanEverRender())
+	{
+		AddInfo(TEXT("No RHI: GPU capture not exercised; run with -RenderOffScreen to validate rendering"));
+		S.Cleanup();
+		return true;
+	}
+
+	// Warm the freshly-enabled render target (render-thread allocation) before
+	// the first capture, matching RenderCamerasSync's cold-camera warmup.
+	FlushRenderingCommands();
+
+	// Synchronous render-on-demand: capture, submit, wait on the GPU fence, harvest.
+	Cam->IssueSyncCapture();
+	const int32 InFlight = Cam->NumInFlightReadbacks();
+	FlushRenderingCommands();
+	Cam->WaitAndHarvestReadbacks(1.0);
+	AddInfo(FString::Printf(TEXT("RenderOnDemandSync: readbacks_enqueued=%d latest_frame=%llu"),
+		InFlight, (unsigned long long)Cam->GetLatestFrameId()));
+
+	FMjCameraFrame Frame;
+	if (TestTrue(TEXT("sync capture produced a frame in history"), Cam->GetFrame(0, Frame)))
+	{
+		AddInfo(FString::Printf(TEXT("RenderOnDemandSync: frame_id=%llu applied=%llu size=%dx%d color_px=%d"),
+			(unsigned long long)Frame.FrameId, (unsigned long long)AppliedId,
+			Frame.Width, Frame.Height, Frame.Color.Num()));
+		TestTrue(TEXT("frame carries rendered pixels"), Frame.Color.Num() > 0);
+		TestEqual(TEXT("pixel count matches frame dimensions"),
+			Frame.Color.Num(), Frame.Width * Frame.Height);
+	}
+
+	S.Cleanup();
+	return true;
+}
+
+// ============================================================================
+// URLab.Camera.CanonicalName_ArtSlashPart
+//   A camera's canonical identity is the single "<art>/<part>" name (no
+//   "camera/" infix, no raw-name aliases), and BuildCameraNameMap resolves it
+//   by that name alone.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraCanonicalName,
+	"URLab.Camera.CanonicalName_ArtSlashPart",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjCameraCanonicalName::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("WristCam"));
+	Cam->RegisterComponent();
+	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+
+	const FString ArtSeg = FMjCanonicalName::ArtSegment(S.Robot).ToString();
+	const FString Canon = Cam->GetCanonicalName();
+
+	TestEqual(TEXT("canonical is <art>/<part>"), Canon, ArtSeg + TEXT("/WristCam"));
+	TestFalse(TEXT("no camera/ infix"), Canon.Contains(TEXT("/camera/")));
+
+	TMap<FString, UMjCamera*> ByName;
+	FURLabRpcDispatcher::BuildCameraNameMap(S.Manager, ByName);
+	TestEqual(TEXT("canonical name resolves to the camera"), ByName.FindRef(Canon), Cam);
+	TestNull(TEXT("bare component-name alias dropped"), ByName.FindRef(TEXT("WristCam")));
+	TestNull(TEXT("camera/ infix alias dropped"),
+		ByName.FindRef(ArtSeg + TEXT("/camera/WristCam")));
 
 	S.Cleanup();
 	return true;

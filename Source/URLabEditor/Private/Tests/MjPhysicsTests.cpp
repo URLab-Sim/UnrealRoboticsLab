@@ -387,9 +387,8 @@ bool FMjPhysicsSleep_EnableFlagSet::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
 	TestTrue(TEXT("mjENBL_SLEEP bit set when bEnableSleep=true"),
-		(S.Manager->PhysicsEngine->m_model->opt.enableflags & MJ_ENBL_SLEEP) != 0);
+		(S.Manager->PhysicsEngine->m_model->opt.enableflags & mjENBL_SLEEP) != 0);
 	TestTrue(TEXT("sleep_tolerance matches Options.SleepTolerance"),
 		FMath::Abs((float)S.Manager->PhysicsEngine->m_model->opt.sleep_tolerance - 1e-3f) < 1e-6f);
 
@@ -414,9 +413,8 @@ bool FMjPhysicsSleep_DisableFlagClear::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
 	TestTrue(TEXT("mjENBL_SLEEP NOT set when bEnableSleep=false (default)"),
-		(S.Manager->PhysicsEngine->m_model->opt.enableflags & MJ_ENBL_SLEEP) == 0);
+		(S.Manager->PhysicsEngine->m_model->opt.enableflags & mjENBL_SLEEP) == 0);
 
 	S.Cleanup();
 	return true;

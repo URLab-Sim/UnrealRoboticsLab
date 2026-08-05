@@ -34,6 +34,7 @@
 #include "Bridge/OpRegistry.h"
 #include "Bridge/OpHelpers.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/RpcErrorCodes.h"
 
 namespace
 {
@@ -104,12 +105,102 @@ TSharedPtr<FJsonObject> RunOnGameThreadSync(Lambda&& Body)
 	{
 		if (Dispatcher && Dispatcher->IsDraining())
 		{
-			return URLabOpHelpers::MakeError(TEXT("shutting_down"),
+			return URLabOpHelpers::MakeError(URLabError::ShuttingDown,
 				TEXT("editor op aborted: dispatcher draining"));
 		}
 		FPlatformProcess::Sleep(0.05f);
 	}
 	return State->Result;
+}
+
+// ---- async editor jobs -------------------------------------------------
+// Long editor ops (import_xml, spawn, create/load/save level) block the game
+// thread for seconds. Running them synchronously also blocks the single RPC
+// worker thread (no other RPC is served until they finish). Instead we kick
+// the work onto a game-thread ticker, return a `op_started` + job_id
+// immediately, and let the client poll `op_status` (a fast worker-thread read)
+// until the job is done -- freeing the worker thread and giving the client a
+// liveness signal. The python client tolerates BOTH this async form and a
+// direct synchronous reply.
+struct FEditorJob
+{
+	FString State = TEXT("running"); // running | done | failed
+	FString Progress;
+	TSharedPtr<FJsonObject> Result; // the original handler reply once done
+};
+static FCriticalSection GEditorJobLock;
+static TMap<FString, FEditorJob> GEditorJobs;
+static std::atomic<uint64> GEditorJobCounter{0};
+
+template <typename Lambda>
+TSharedPtr<FJsonObject> RunEditorJobAsync(Lambda&& Body)
+{
+	const FString JobId = FString::Printf(
+		TEXT("job_%llu"), GEditorJobCounter.fetch_add(1, std::memory_order_relaxed) + 1);
+	{
+		FScopeLock Lock(&GEditorJobLock);
+		GEditorJobs.Add(JobId, FEditorJob{});
+	}
+	// Run the body on the game thread next tick; store the result in the job
+	// registry. The ticker (game thread) is the only writer of Result/State.
+	FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateLambda(
+			[JobId, BodyCopy = Forward<Lambda>(Body)](float /*Dt*/) mutable -> bool {
+				TSharedPtr<FJsonObject> Res = BodyCopy();
+				FString ReplyOp;
+				if (Res.IsValid())
+					Res->TryGetStringField(TEXT("op"), ReplyOp);
+				FScopeLock Lock(&GEditorJobLock);
+				if (FEditorJob* Job = GEditorJobs.Find(JobId))
+				{
+					Job->Result = Res;
+					Job->State = (ReplyOp == TEXT("error")) ? TEXT("failed") : TEXT("done");
+				}
+				return false; // one-shot
+			}));
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("op_started"));
+	Reply->SetStringField(TEXT("job_id"), JobId);
+	Reply->SetStringField(TEXT("state"), TEXT("running"));
+	return Reply;
+}
+
+// Fast, worker-thread read of a job's state. Pops the job once it is reported
+// terminal (done/failed) so the registry doesn't grow unbounded.
+TSharedPtr<FJsonObject> HandleOpStatus(const TSharedPtr<FJsonObject>& Req)
+{
+	FString JobId;
+	if (!Req->TryGetStringField(TEXT("job_id"), JobId) || JobId.IsEmpty())
+		return URLabOpHelpers::MakeError(URLabError::BadRequest,
+			TEXT("op_status requires a non-empty 'job_id'"));
+
+	FString State, Progress;
+	TSharedPtr<FJsonObject> Result;
+	bool bTerminal = false;
+	{
+		FScopeLock Lock(&GEditorJobLock);
+		FEditorJob* Job = GEditorJobs.Find(JobId);
+		if (!Job)
+			return URLabOpHelpers::MakeError(URLabError::UnknownJob,
+				FString::Printf(TEXT("no job %s (already collected or never existed)"), *JobId));
+		State = Job->State;
+		Progress = Job->Progress;
+		Result = Job->Result;
+		bTerminal = (State != TEXT("running"));
+		if (bTerminal)
+			GEditorJobs.Remove(JobId);
+	}
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("op_status_ok"));
+	Reply->SetStringField(TEXT("job_id"), JobId);
+	Reply->SetStringField(TEXT("state"), State);
+	if (!Progress.IsEmpty())
+		Reply->SetStringField(TEXT("progress"), Progress);
+	if (bTerminal && Result.IsValid())
+		Reply->SetObjectField(TEXT("result"), Result);
+	return Reply;
 }
 
 // ---- import_xml --------------------------------------------------------
@@ -118,7 +209,7 @@ TSharedPtr<FJsonObject> HandleImportXml(const TSharedPtr<FJsonObject>& Req)
 	FString Path;
 	if (!Req->TryGetStringField(TEXT("path"), Path) || Path.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("import_xml requires a non-empty 'path'"));
 	}
 	bool bForceReimport = false;
@@ -148,7 +239,7 @@ TSharedPtr<FJsonObject> HandleCreateLevel(const TSharedPtr<FJsonObject>& Req)
 	FString Name;
 	if (!Req->TryGetStringField(TEXT("name"), Name) || Name.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("create_level requires non-empty 'name'"));
 	}
 	bool bForceOverwrite = false;
@@ -167,7 +258,7 @@ TSharedPtr<FJsonObject> HandleCreateLevel(const TSharedPtr<FJsonObject>& Req)
 TSharedPtr<FJsonObject> HandleCurrentLevel(const TSharedPtr<FJsonObject>& /*Req*/)
 {
 	if (!GEditor)
-		return MakeJsonError(TEXT("not_in_editor"), TEXT("GEditor null"));
+		return MakeJsonError(URLabError::NotInEditor, TEXT("GEditor null"));
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World)
 		return MakeJsonError(TEXT("no_world"), TEXT("editor world unavailable"));
@@ -183,7 +274,7 @@ TSharedPtr<FJsonObject> HandleDestroyAsset(const TSharedPtr<FJsonObject>& Req)
 	FString AssetPath;
 	if (!Req->TryGetStringField(TEXT("asset_path"), AssetPath) || AssetPath.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("destroy_asset requires non-empty 'asset_path'"));
 	}
 	bool bWasFound = false;
@@ -202,7 +293,7 @@ TSharedPtr<FJsonObject> HandleDestroyAsset(const TSharedPtr<FJsonObject>& Req)
 TSharedPtr<FJsonObject> HandleEnsureManager(const TSharedPtr<FJsonObject>& /*Req*/)
 {
 	if (!GEditor)
-		return MakeJsonError(TEXT("not_in_editor"), TEXT("GEditor null"));
+		return MakeJsonError(URLabError::NotInEditor, TEXT("GEditor null"));
 	UWorld* World = GEditor->GetEditorWorldContext().World();
 	if (!World)
 		return MakeJsonError(TEXT("no_world"), TEXT("editor world unavailable"));
@@ -245,7 +336,7 @@ TSharedPtr<FJsonObject> HandleLoadLevel(const TSharedPtr<FJsonObject>& Req)
 		Req->TryGetStringField(TEXT("name"), Path);
 	if (Path.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("load_level requires 'level_path' or 'name'"));
 	}
 	FString OutPath, Err;
@@ -272,14 +363,14 @@ TSharedPtr<FJsonObject> HandleSaveLevel(const TSharedPtr<FJsonObject>& /*Req*/)
 	return Reply;
 }
 
-// ---- spawn_actor / destroy_actor ---------------------------------------
+// ---- spawn_actor / remove_actor ---------------------------------------
 
 TSharedPtr<FJsonObject> HandleSpawnActor(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Blueprint;
 	if (!Req->TryGetStringField(TEXT("blueprint"), Blueprint) || Blueprint.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("spawn_actor requires non-empty 'blueprint'"));
 	}
 	FString ActorId;
@@ -331,12 +422,12 @@ TSharedPtr<FJsonObject> HandleSpawnGrid(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Blueprint;
 	if (!Req->TryGetStringField(TEXT("blueprint"), Blueprint) || Blueprint.IsEmpty())
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("spawn_grid requires non-empty 'blueprint'"));
 
 	FString BaseId;
 	if (!Req->TryGetStringField(TEXT("base_actor_id"), BaseId) || BaseId.IsEmpty())
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("spawn_grid requires non-empty 'base_actor_id'"));
 
 	int32 CountX = 0, CountY = 0;
@@ -627,7 +718,7 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 	}
 	if (bDraining)
 	{
-		return MakeJsonError(TEXT("shutting_down"),
+		return MakeJsonError(URLabError::ShuttingDown,
 			TEXT("Bridge stopping; begin_pie abandoned"));
 	}
 
@@ -702,7 +793,7 @@ TSharedPtr<FJsonObject> HandleStopPie(const TSharedPtr<FJsonObject>& /*Req*/)
 	FPlatformProcess::ReturnSynchEventToPool(DoneEvent);
 	if (!bTriggered)
 	{
-		return MakeJsonError(TEXT("timeout"),
+		return MakeJsonError(URLabError::Timeout,
 			TEXT("game thread blocked (modal dialog?); stop_pie did not complete"));
 	}
 
@@ -766,7 +857,7 @@ TSharedPtr<FJsonObject> HandleSetActorTransform(const TSharedPtr<FJsonObject>& R
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("set_actor_transform: %s"), *Err));
 	}
 
@@ -826,7 +917,7 @@ TSharedPtr<FJsonObject> HandleGetActorBounds(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("get_actor_bounds: %s"), *Err));
 	}
 	bool bComponentsOnly = false;
@@ -881,13 +972,13 @@ TSharedPtr<FJsonObject> HandleDuplicateActor(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("duplicate_actor: %s"), *Err));
 	}
 	FString NewActorId;
 	if (!Req->TryGetStringField(TEXT("new_actor_id"), NewActorId) || NewActorId.IsEmpty())
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("duplicate_actor requires non-empty 'new_actor_id'"));
 	}
 
@@ -916,7 +1007,7 @@ TSharedPtr<FJsonObject> HandleActorHierarchy(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("actor_hierarchy: %s"), *Err));
 	}
 	TSharedPtr<FJsonObject> Root;
@@ -952,7 +1043,7 @@ TSharedPtr<FJsonObject> HandleSelectActor(const TSharedPtr<FJsonObject>& Req)
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("select_actor: %s"), *Err));
 	}
 	FString ActorName;
@@ -972,7 +1063,7 @@ TSharedPtr<FJsonObject> HandleAddQuickConvert(const TSharedPtr<FJsonObject>& Req
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("add_quick_convert: %s"), *Err));
 	}
 	bool bStatic = false, bComplexMesh = false, bDrivenByUnreal = false;
@@ -1025,7 +1116,7 @@ TSharedPtr<FJsonObject> HandleRemoveQuickConvert(const TSharedPtr<FJsonObject>& 
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("remove_quick_convert: %s"), *Err));
 	}
 	FString ActorName;
@@ -1041,21 +1132,21 @@ TSharedPtr<FJsonObject> HandleRemoveQuickConvert(const TSharedPtr<FJsonObject>& 
 	return Reply;
 }
 
-TSharedPtr<FJsonObject> HandleDestroyActor(const TSharedPtr<FJsonObject>& Req)
+TSharedPtr<FJsonObject> HandleRemoveActor(const TSharedPtr<FJsonObject>& Req)
 {
 	FString Id, Err;
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Id, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
-			FString::Printf(TEXT("destroy_actor: %s"), *Err));
+		return MakeJsonError(URLabError::MissingField,
+			FString::Printf(TEXT("remove_actor: %s"), *Err));
 	}
 	if (!URLabLevelOps::DestroyActorSync(Id, Err))
 	{
 		return MakeJsonError(TEXT("destroy_failed"), Err);
 	}
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("destroy_actor_ok"));
+	Reply->SetStringField(TEXT("op"), TEXT("remove_actor_ok"));
 	Reply->SetBoolField(TEXT("requires_pie_restart"),
 		GEditor ? GEditor->IsPlayingSessionInEditor() : false);
 	return Reply;
@@ -1118,7 +1209,7 @@ TSharedPtr<FJsonObject> HandleDrawMarker(const TSharedPtr<FJsonObject>& Req)
 
 	FVector MjLoc;
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("draw_marker requires 'location'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("draw_marker requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
 	const FVector UELoc = MjUtils::MjToUEPosition(MjPos);
 
@@ -1148,7 +1239,7 @@ TSharedPtr<FJsonObject> HandleDrawLine(const TSharedPtr<FJsonObject>& Req)
 	FVector MjFrom, MjTo;
 	if (!ReadVec3(Req, TEXT("from"), MjFrom, FVector::ZeroVector)
 		|| !ReadVec3(Req, TEXT("to"), MjTo, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("draw_line requires 'from' + 'to'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("draw_line requires 'from' + 'to'"));
 	const double MjF[3] = {MjFrom.X, MjFrom.Y, MjFrom.Z};
 	const double MjT[3] = {MjTo.X, MjTo.Y, MjTo.Z};
 	const FVector UEFrom = MjUtils::MjToUEPosition(MjF);
@@ -1178,7 +1269,7 @@ TSharedPtr<FJsonObject> HandleDrawBox(const TSharedPtr<FJsonObject>& Req)
 	FVector MjCenter, MjHalf;
 	if (!ReadVec3(Req, TEXT("center"), MjCenter, FVector::ZeroVector)
 		|| !ReadVec3(Req, TEXT("half_extents"), MjHalf, FVector(0.1, 0.1, 0.1)))
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("draw_box requires 'center' + 'half_extents'"));
 
 	const double MjC[3] = {MjCenter.X, MjCenter.Y, MjCenter.Z};
@@ -1215,7 +1306,7 @@ TSharedPtr<FJsonObject> HandleDrawArrow(const TSharedPtr<FJsonObject>& Req)
 	FVector MjFrom, MjTo;
 	if (!ReadVec3(Req, TEXT("from"), MjFrom, FVector::ZeroVector)
 		|| !ReadVec3(Req, TEXT("to"), MjTo, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			TEXT("draw_arrow requires 'from' + 'to'"));
 	const double MjF[3] = {MjFrom.X, MjFrom.Y, MjFrom.Z};
 	const double MjT[3] = {MjTo.X, MjTo.Y, MjTo.Z};
@@ -1253,7 +1344,7 @@ TSharedPtr<FJsonObject> HandleDrawAxes(const TSharedPtr<FJsonObject>& Req)
 
 	FVector MjLoc;
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("draw_axes requires 'location'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("draw_axes requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
 	const FVector UEOrigin = MjUtils::MjToUEPosition(MjPos);
 
@@ -1420,7 +1511,7 @@ TSharedPtr<FJsonObject> HandleViewportSetCamera(const TSharedPtr<FJsonObject>& R
 
 	FVector MjLoc;
 	if (!ReadVec3(Req, TEXT("location"), MjLoc, FVector::ZeroVector))
-		return MakeJsonError(TEXT("missing_field"), TEXT("set_camera requires 'location'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("set_camera requires 'location'"));
 	const double MjPos[3] = {MjLoc.X, MjLoc.Y, MjLoc.Z};
 	Client->SetViewLocation(MjUtils::MjToUEPosition(MjPos));
 
@@ -1461,7 +1552,7 @@ TSharedPtr<FJsonObject> HandleViewportFrameActor(const TSharedPtr<FJsonObject>& 
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("frame_actor: %s"), *Err));
 	}
 	AActor* Actor = FindActorInEditorWorld(Key, bByName);
@@ -1490,7 +1581,7 @@ TSharedPtr<FJsonObject> HandleViewportSetMode(const TSharedPtr<FJsonObject>& Req
 	FString ModeStr;
 	Req->TryGetStringField(TEXT("mode"), ModeStr);
 	if (ModeStr.IsEmpty())
-		return MakeJsonError(TEXT("missing_field"), TEXT("set_mode requires 'mode'"));
+		return MakeJsonError(URLabError::MissingField, TEXT("set_mode requires 'mode'"));
 
 	EViewModeIndex Mode = VMI_Lit;
 	if (ModeStr.Equals(TEXT("lit"), ESearchCase::IgnoreCase))
@@ -1555,7 +1646,7 @@ TSharedPtr<FJsonObject> HandleViewportTrackActor(const TSharedPtr<FJsonObject>& 
 	bool bByName = false;
 	if (!ResolveActorKey(Req, Key, bByName, Err))
 	{
-		return MakeJsonError(TEXT("missing_field"),
+		return MakeJsonError(URLabError::MissingField,
 			FString::Printf(TEXT("track_actor: %s"), *Err));
 	}
 	AActor* Actor = FindActorInEditorWorld(Key, bByName);
@@ -1639,6 +1730,17 @@ static URLabOpRegistry::FHandler GameThreadHandler(
 	};
 }
 
+// Async variant for long-running editor ops: returns op_started + job_id
+// immediately and runs the body on a game-thread ticker; the client polls
+// op_status. Req is copied (TSharedPtr) so the deferred body owns it safely.
+static URLabOpRegistry::FHandler GameThreadHandlerAsync(
+	TSharedPtr<FJsonObject> (*Inner)(const TSharedPtr<FJsonObject>&))
+{
+	return [Inner](const TSharedPtr<FJsonObject>& Req) {
+		return RunEditorJobAsync([Inner, Req]() { return Inner(Req); });
+	};
+}
+
 /** Each editor op carries its category + namespace metadata so the
  *  bridge can synthesise method bindings from the `meta` payload. */
 void RegEditor(const TCHAR* Name, const TCHAR* Ns,
@@ -1662,11 +1764,11 @@ void RegisterAll()
 {
 	// scene namespace: level / asset import + spawn ops.
 	RegEditor(TEXT("import_xml"), TEXT("scene"),
-		GameThreadHandler(&HandleImportXml),
+		GameThreadHandlerAsync(&HandleImportXml),
 		/*Reply=*/{TEXT("op:string"), TEXT("blueprint_class_path:string"), TEXT("blueprint_short_name:string"), TEXT("imported_now:bool")},
 		/*Required=*/{TEXT("path")});
 	RegEditor(TEXT("create_level"), TEXT("scene"),
-		GameThreadHandler(&HandleCreateLevel),
+		GameThreadHandlerAsync(&HandleCreateLevel),
 		/*Reply=*/{TEXT("op:string"), TEXT("level_path:string")},
 		/*Required=*/{TEXT("name")});
 	RegEditor(TEXT("ensure_manager"), TEXT("scene"),
@@ -1685,7 +1787,7 @@ void RegisterAll()
 		{TEXT("op:string"), TEXT("actors:array"),
 			TEXT("in_pie:bool"), TEXT("level_path:string")});
 	RegEditor(TEXT("duplicate_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleDuplicateActor),
+		GameThreadHandlerAsync(&HandleDuplicateActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("actor_id:string"), TEXT("actor_name:string"), TEXT("actor_path:string"), TEXT("blueprint_class_path:string")},
 		/*Required=*/{TEXT("target"), TEXT("new_actor_id")});
 	RegEditor(TEXT("actor_hierarchy"), TEXT("scene"),
@@ -1693,34 +1795,41 @@ void RegisterAll()
 		/*Reply=*/{TEXT("op:string"), TEXT("root:object")},
 		/*Required=*/{TEXT("target")});
 	RegEditor(TEXT("load_level"), TEXT("scene"),
-		GameThreadHandler(&HandleLoadLevel),
+		GameThreadHandlerAsync(&HandleLoadLevel),
 		/*Reply=*/{TEXT("op:string"), TEXT("level_path:string")},
 		/*Required=*/{TEXT("level_path")});
 	RegEditor(TEXT("save_level"), TEXT("scene"),
-		GameThreadHandler(&HandleSaveLevel),
+		GameThreadHandlerAsync(&HandleSaveLevel),
 		{TEXT("op:string"), TEXT("level_path:string")});
 	RegEditor(TEXT("spawn_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleSpawnActor),
+		GameThreadHandlerAsync(&HandleSpawnActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("actor_id:string"), TEXT("actor_name:string"), TEXT("actor_path:string"), TEXT("blueprint_class_path:string"), TEXT("location:array"), TEXT("rotation_quat:array"), TEXT("was_existing:bool"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("blueprint")});
 	RegEditor(TEXT("spawn_grid"), TEXT("scene"),
-		GameThreadHandler(&HandleSpawnGrid),
+		GameThreadHandlerAsync(&HandleSpawnGrid),
 		/*Reply=*/{TEXT("op:string"), TEXT("count:int"), TEXT("blueprint_class_path:string"), TEXT("actors:array"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("blueprint"), TEXT("base_actor_id"), TEXT("count_x"), TEXT("count_y")});
 	RegEditor(TEXT("spawn_light"), TEXT("scene"),
-		GameThreadHandler(&HandleSpawnLight),
+		GameThreadHandlerAsync(&HandleSpawnLight),
 		{TEXT("op:string"), TEXT("actor_id:string"), TEXT("actor_name:string"),
 			TEXT("actor_path:string"), TEXT("kind:string"),
 			TEXT("intensity:float"), TEXT("color:array"),
 			TEXT("location:array"), TEXT("requires_pie_restart:bool")});
-	RegEditor(TEXT("destroy_actor"), TEXT("scene"),
-		GameThreadHandler(&HandleDestroyActor),
+	RegEditor(TEXT("remove_actor"), TEXT("scene"),
+		GameThreadHandlerAsync(&HandleRemoveActor),
 		/*Reply=*/{TEXT("op:string"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("target")});
 	RegEditor(TEXT("set_actor_transform"), TEXT("scene"),
 		GameThreadHandler(&HandleSetActorTransform),
 		/*Reply=*/{TEXT("op:string"), TEXT("target:string"), TEXT("actor_name:string"), TEXT("requires_pie_restart:bool")},
 		/*Required=*/{TEXT("target")});
+	// Poll an async editor job (import_xml / spawn / create / save). NOT
+	// game-thread-wrapped: it's a fast worker-thread read of the job registry,
+	// so it stays responsive while the game thread runs the actual op.
+	RegEditor(TEXT("op_status"), TEXT("scene"),
+		[](const TSharedPtr<FJsonObject>& Req) { return HandleOpStatus(Req); },
+		/*Reply=*/{TEXT("op:string"), TEXT("job_id:string"), TEXT("state:string"), TEXT("progress:string?"), TEXT("result:object?")},
+		/*Required=*/{TEXT("job_id")});
 
 	// sim namespace: PIE lifecycle. Per the plan §5.1 the Python
 	// wrappers expose these as client.sim.start / sim.stop /
@@ -1839,7 +1948,8 @@ void UnregisterAll()
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_actor"));
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_grid"));
 	URLabOpRegistry::UnregisterHandler(TEXT("spawn_light"));
-	URLabOpRegistry::UnregisterHandler(TEXT("destroy_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("remove_actor"));
+	URLabOpRegistry::UnregisterHandler(TEXT("op_status"));
 	URLabOpRegistry::UnregisterHandler(TEXT("set_actor_transform"));
 	URLabOpRegistry::UnregisterHandler(TEXT("begin_pie"));
 	URLabOpRegistry::UnregisterHandler(TEXT("stop_pie"));

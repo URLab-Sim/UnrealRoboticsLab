@@ -134,7 +134,7 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
 	AssetImportPath = UPackageTools::SanitizePackageName(AssetImportPath);
 
 	// 0. Pre-scan: collect default mesh scales so asset parsing can inherit them
-	CollectDefaultMeshScales(Root);
+	CollectDefaultMeshScales(Root, TEXT("main"), XMLDir);
 
 	// 1. Pass: Resolved Assets
 	TMap<FString, FString> MeshAssets;
@@ -177,7 +177,7 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
 	// 2. Parse compiler settings first (angle, eulerseq) so they can be
 	//    propagated into <default>-block imports — joint ranges inside a
 	//    default class depend on the compiler-level `angle` setting.
-	FMjCompilerSettings CompilerSettings = MjOrientationUtils::ParseCompilerSettings(Root);
+	FMjCompilerSettings CompilerSettings = MjOrientationUtils::ParseCompilerSettings(Root, XMLDir);
 
 	// 2a. Pass: Defaults
 	ParseDefaultsRecursive(Root, BP, DefaultsNode, XMLDir, CompilerSettings, TEXT(""));
@@ -198,13 +198,11 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
 		FString Tag = Child->GetTag();
 		if (Tag.Equals(TEXT("worldbody")))
 		{
-			// Create worldbody node only once — merge subsequent <worldbody> sections into it
+			// Create worldbody node only once — merge subsequent <worldbody> sections
+			// into it. Idempotent across both this loop and ImportNodeRecursive (an
+			// included scene file may have already created it); see issue #72.
 			if (!WorldBodyNode)
-			{
-				WorldBodyNode = BP->SimpleConstructionScript->CreateNode(UMjWorldBody::StaticClass(), TEXT("worldbody"));
-				WorldBodyNode->SetVariableName(TEXT("worldbody"));
-				BP->SimpleConstructionScript->AddNode(WorldBodyNode);
-			}
+				WorldBodyNode = GetOrCreateWorldBodyNode(BP);
 
 			// Iterate worldbody children
 			for (const FXmlNode* WBChild : Child->GetChildrenNodes())
@@ -239,152 +237,179 @@ void UMujocoGenerationAction::GenerateForBlueprintXml(UBlueprint* BP, const FStr
 		}
 	}
 
-	// 4. Parse <option> and store on articulation CDO so AAMjManager can apply them at runtime
-	for (const FXmlNode* Child : Root->GetChildrenNodes())
+	// 4. Parse <option> (following includes) and store on articulation CDO so
+	//    AAMjManager can apply them at runtime.
+	ParseOptionSection(Root, BP, XMLDir);
+}
+
+void UMujocoGenerationAction::ParseOptionSection(const FXmlNode* Node, UBlueprint* BP, const FString& XMLDir)
+{
+	if (!Node || !BP)
+		return;
+	const FString Tag = Node->GetTag();
+
+	if (Tag.Equals(TEXT("include")))
 	{
-		if (Child->GetTag().Equals(TEXT("option")))
+		const FString FileAttr = Node->GetAttribute(TEXT("file"));
+		if (!FileAttr.IsEmpty() && !XMLDir.IsEmpty())
 		{
-			AMjArticulation* CDO = Cast<AMjArticulation>(BP->GeneratedClass->GetDefaultObject());
-			if (CDO)
-			{
-				FMjOptionGenerated& Opts = CDO->SimOptions;
-
-				auto ParseVec3 = [](const FString& Raw, FVector& Out) {
-					TArray<FString> P;
-					Raw.ParseIntoArray(P, TEXT(" "), true);
-					if (P.Num() >= 3)
-					{
-						Out.X = FCString::Atof(*P[0]);
-						Out.Y = FCString::Atof(*P[1]);
-						Out.Z = FCString::Atof(*P[2]);
-					}
-				};
-
-				FString V;
-				V = Child->GetAttribute(TEXT("timestep"));
-				if (!V.IsEmpty())
-					Opts.Timestep = FCString::Atof(*V);
-				V = Child->GetAttribute(TEXT("gravity"));
-				if (!V.IsEmpty())
-					ParseVec3(V, Opts.Gravity);
-				V = Child->GetAttribute(TEXT("wind"));
-				if (!V.IsEmpty())
-					ParseVec3(V, Opts.Wind);
-				V = Child->GetAttribute(TEXT("magnetic"));
-				if (!V.IsEmpty())
-					ParseVec3(V, Opts.Magnetic);
-				V = Child->GetAttribute(TEXT("density"));
-				if (!V.IsEmpty())
-					Opts.Density = FCString::Atof(*V);
-				V = Child->GetAttribute(TEXT("viscosity"));
-				if (!V.IsEmpty())
-					Opts.Viscosity = FCString::Atof(*V);
-				V = Child->GetAttribute(TEXT("impratio"));
-				if (!V.IsEmpty())
-					Opts.Impratio = FCString::Atof(*V);
-				V = Child->GetAttribute(TEXT("tolerance"));
-				if (!V.IsEmpty())
-					Opts.Tolerance = FCString::Atof(*V);
-				V = Child->GetAttribute(TEXT("iterations"));
-				if (!V.IsEmpty())
-					Opts.Iterations = FCString::Atoi(*V);
-				V = Child->GetAttribute(TEXT("ls_iterations"));
-				if (!V.IsEmpty())
-					Opts.LsIterations = FCString::Atoi(*V);
-
-				V = Child->GetAttribute(TEXT("noslip_iterations"));
-				if (!V.IsEmpty())
-				{
-					Opts.NoslipIterations = FCString::Atoi(*V);
-					Opts.bOverride_NoslipIterations = true;
-				}
-				V = Child->GetAttribute(TEXT("noslip_tolerance"));
-				if (!V.IsEmpty())
-				{
-					Opts.NoslipTolerance = FCString::Atof(*V);
-					Opts.bOverride_NoslipTolerance = true;
-				}
-				V = Child->GetAttribute(TEXT("ccd_iterations"));
-				if (!V.IsEmpty())
-				{
-					Opts.CCD_Iterations = FCString::Atoi(*V);
-					Opts.bOverride_CCD_Iterations = true;
-				}
-				V = Child->GetAttribute(TEXT("ccd_tolerance"));
-				if (!V.IsEmpty())
-				{
-					Opts.CCD_Tolerance = FCString::Atof(*V);
-					Opts.bOverride_CCD_Tolerance = true;
-				}
-
-				V = Child->GetAttribute(TEXT("integrator")).ToLower();
-				if (!V.IsEmpty())
-				{
-					Opts.bOverride_Integrator = true;
-					if (V == TEXT("euler"))
-						Opts.Integrator = EMjIntegrator::Euler;
-					else if (V == TEXT("rk4"))
-						Opts.Integrator = EMjIntegrator::RK4;
-					else if (V == TEXT("implicit"))
-						Opts.Integrator = EMjIntegrator::Implicit;
-					else if (V == TEXT("implicitfast"))
-						Opts.Integrator = EMjIntegrator::ImplicitFast;
-				}
-
-				V = Child->GetAttribute(TEXT("cone")).ToLower();
-				if (!V.IsEmpty())
-				{
-					Opts.bOverride_Cone = true;
-					if (V == TEXT("pyramidal"))
-						Opts.Cone = EMjCone::Pyramidal;
-					else if (V == TEXT("elliptic"))
-						Opts.Cone = EMjCone::Elliptic;
-				}
-
-				V = Child->GetAttribute(TEXT("solver")).ToLower();
-				if (!V.IsEmpty())
-				{
-					Opts.bOverride_Solver = true;
-					if (V == TEXT("pgs"))
-						Opts.Solver = EMjSolver::PGS;
-					else if (V == TEXT("cg"))
-						Opts.Solver = EMjSolver::CG;
-					else if (V == TEXT("newton"))
-						Opts.Solver = EMjSolver::Newton;
-				}
-
-				// <option><flag sleep="enable|disable"/></option>
-				V = Child->GetAttribute(TEXT("sleep")).ToLower();
-				if (V == TEXT("enable"))
-					Opts.bEnableSleep = true;
-				else if (V == TEXT("disable"))
-					Opts.bEnableSleep = false;
-				// sleep_tolerance is a direct option attribute (not inside <flag>)
-				V = Child->GetAttribute(TEXT("sleep_tolerance"));
-				if (!V.IsEmpty())
-					Opts.SleepTolerance = FCString::Atof(*V);
-
-				// Also check inside child <flag> nodes (MuJoCo XML spec allows both)
-				for (const FXmlNode* FlagNode : Child->GetChildrenNodes())
-				{
-					if (FlagNode->GetTag().Equals(TEXT("flag"), ESearchCase::IgnoreCase))
-					{
-						FString SleepFlag = FlagNode->GetAttribute(TEXT("sleep")).ToLower();
-						if (SleepFlag == TEXT("enable"))
-							Opts.bEnableSleep = true;
-						else if (SleepFlag == TEXT("disable"))
-							Opts.bEnableSleep = false;
-					}
-				}
-
-				CDO->MarkPackageDirty();
-
-				UE_LOG(LogURLabEditor, Log, TEXT("Parsed <option>: timestep=%.4f, gravity=%s"),
-					Opts.Timestep, *Opts.Gravity.ToString());
-			}
-			break;
+			const FString IncludePath = FPaths::Combine(XMLDir, FileAttr);
+			FXmlFile IncludedFile(IncludePath);
+			if (IncludedFile.IsValid())
+				ParseOptionSection(IncludedFile.GetRootNode(), BP, FPaths::GetPath(IncludePath));
 		}
 	}
+	else if (Tag.Equals(TEXT("option")))
+	{
+		if (AMjArticulation* CDO = Cast<AMjArticulation>(BP->GeneratedClass->GetDefaultObject()))
+			ApplyOptionNode(Node, CDO);
+	}
+	else if (IsModelContainerTag(Tag))
+	{
+		for (const FXmlNode* Child : Node->GetChildrenNodes())
+			ParseOptionSection(Child, BP, XMLDir);
+	}
+}
+
+void UMujocoGenerationAction::ApplyOptionNode(const FXmlNode* Child, AMjArticulation* CDO)
+{
+	if (!Child || !CDO)
+		return;
+
+	FMjOptionGenerated& Opts = CDO->SimOptions;
+
+	auto ParseVec3 = [](const FString& Raw, FVector& Out) {
+		TArray<FString> P;
+		Raw.ParseIntoArray(P, TEXT(" "), true);
+		if (P.Num() >= 3)
+		{
+			Out.X = FCString::Atof(*P[0]);
+			Out.Y = FCString::Atof(*P[1]);
+			Out.Z = FCString::Atof(*P[2]);
+		}
+	};
+
+	FString V;
+	V = Child->GetAttribute(TEXT("timestep"));
+	if (!V.IsEmpty())
+		Opts.Timestep = FCString::Atof(*V);
+	V = Child->GetAttribute(TEXT("gravity"));
+	if (!V.IsEmpty())
+		ParseVec3(V, Opts.Gravity);
+	V = Child->GetAttribute(TEXT("wind"));
+	if (!V.IsEmpty())
+		ParseVec3(V, Opts.Wind);
+	V = Child->GetAttribute(TEXT("magnetic"));
+	if (!V.IsEmpty())
+		ParseVec3(V, Opts.Magnetic);
+	V = Child->GetAttribute(TEXT("density"));
+	if (!V.IsEmpty())
+		Opts.Density = FCString::Atof(*V);
+	V = Child->GetAttribute(TEXT("viscosity"));
+	if (!V.IsEmpty())
+		Opts.Viscosity = FCString::Atof(*V);
+	V = Child->GetAttribute(TEXT("impratio"));
+	if (!V.IsEmpty())
+		Opts.Impratio = FCString::Atof(*V);
+	V = Child->GetAttribute(TEXT("tolerance"));
+	if (!V.IsEmpty())
+		Opts.Tolerance = FCString::Atof(*V);
+	V = Child->GetAttribute(TEXT("iterations"));
+	if (!V.IsEmpty())
+		Opts.Iterations = FCString::Atoi(*V);
+	V = Child->GetAttribute(TEXT("ls_iterations"));
+	if (!V.IsEmpty())
+		Opts.LsIterations = FCString::Atoi(*V);
+
+	V = Child->GetAttribute(TEXT("noslip_iterations"));
+	if (!V.IsEmpty())
+	{
+		Opts.NoslipIterations = FCString::Atoi(*V);
+		Opts.bOverride_NoslipIterations = true;
+	}
+	V = Child->GetAttribute(TEXT("noslip_tolerance"));
+	if (!V.IsEmpty())
+	{
+		Opts.NoslipTolerance = FCString::Atof(*V);
+		Opts.bOverride_NoslipTolerance = true;
+	}
+	V = Child->GetAttribute(TEXT("ccd_iterations"));
+	if (!V.IsEmpty())
+	{
+		Opts.CCD_Iterations = FCString::Atoi(*V);
+		Opts.bOverride_CCD_Iterations = true;
+	}
+	V = Child->GetAttribute(TEXT("ccd_tolerance"));
+	if (!V.IsEmpty())
+	{
+		Opts.CCD_Tolerance = FCString::Atof(*V);
+		Opts.bOverride_CCD_Tolerance = true;
+	}
+
+	V = Child->GetAttribute(TEXT("integrator")).ToLower();
+	if (!V.IsEmpty())
+	{
+		Opts.bOverride_Integrator = true;
+		if (V == TEXT("euler"))
+			Opts.Integrator = EMjIntegrator::Euler;
+		else if (V == TEXT("rk4"))
+			Opts.Integrator = EMjIntegrator::RK4;
+		else if (V == TEXT("implicit"))
+			Opts.Integrator = EMjIntegrator::Implicit;
+		else if (V == TEXT("implicitfast"))
+			Opts.Integrator = EMjIntegrator::ImplicitFast;
+	}
+
+	V = Child->GetAttribute(TEXT("cone")).ToLower();
+	if (!V.IsEmpty())
+	{
+		Opts.bOverride_Cone = true;
+		if (V == TEXT("pyramidal"))
+			Opts.Cone = EMjCone::Pyramidal;
+		else if (V == TEXT("elliptic"))
+			Opts.Cone = EMjCone::Elliptic;
+	}
+
+	V = Child->GetAttribute(TEXT("solver")).ToLower();
+	if (!V.IsEmpty())
+	{
+		Opts.bOverride_Solver = true;
+		if (V == TEXT("pgs"))
+			Opts.Solver = EMjSolver::PGS;
+		else if (V == TEXT("cg"))
+			Opts.Solver = EMjSolver::CG;
+		else if (V == TEXT("newton"))
+			Opts.Solver = EMjSolver::Newton;
+	}
+
+	// <option><flag sleep="enable|disable"/></option>
+	V = Child->GetAttribute(TEXT("sleep")).ToLower();
+	if (V == TEXT("enable"))
+		Opts.bEnableSleep = true;
+	else if (V == TEXT("disable"))
+		Opts.bEnableSleep = false;
+	// sleep_tolerance is a direct option attribute (not inside <flag>)
+	V = Child->GetAttribute(TEXT("sleep_tolerance"));
+	if (!V.IsEmpty())
+		Opts.SleepTolerance = FCString::Atof(*V);
+
+	// Also check inside child <flag> nodes (MuJoCo XML spec allows both)
+	for (const FXmlNode* FlagNode : Child->GetChildrenNodes())
+	{
+		if (FlagNode->GetTag().Equals(TEXT("flag"), ESearchCase::IgnoreCase))
+		{
+			FString SleepFlag = FlagNode->GetAttribute(TEXT("sleep")).ToLower();
+			if (SleepFlag == TEXT("enable"))
+				Opts.bEnableSleep = true;
+			else if (SleepFlag == TEXT("disable"))
+				Opts.bEnableSleep = false;
+		}
+	}
+
+	CDO->MarkPackageDirty();
+
+	UE_LOG(LogURLabEditor, Log, TEXT("Parsed <option>: timestep=%.4f, gravity=%s"),
+		Opts.Timestep, *Opts.Gravity.ToString());
 }
 
 FArticulationHierarchy UMujocoGenerationAction::CreateOrganizationalHierarchy(UBlueprint* BP)

@@ -173,6 +173,14 @@ public:
 	/** @brief Parses XML <keyframe> section to create corresponding components. */
 	void ParseKeyframeSection(const class FXmlNode* Node, UBlueprint* BP, USCS_Node* RootNode, const FString& XMLDir);
 
+	/** @brief Parses XML <option> section(s) onto the articulation CDO's SimOptions.
+	 *  Follows <include> fragments and merges multiple <option> elements in
+	 *  document order (later attributes win), matching MuJoCo. */
+	void ParseOptionSection(const class FXmlNode* Node, UBlueprint* BP, const FString& XMLDir);
+
+	/** @brief Applies one <option> element's attributes onto SimOptions. */
+	void ApplyOptionNode(const class FXmlNode* OptionNode, class AMjArticulation* CDO);
+
 	/**
 	 * @brief Recursively imports XML nodes into SCS.
 	 */
@@ -194,8 +202,21 @@ private:
 	TMap<FString, USCS_Node*> CreatedDefaultNodes;
 	TMap<FString, FVector> DefaultMeshScales;
 
+	/**
+	 * Returns the single shared "worldbody" SCS node, creating it on first call.
+	 * Multiple <worldbody> sections (e.g. one from an included scene file plus the
+	 * model's own) must merge into one node; creating a second and renaming it onto
+	 * the existing one is fatal in UE. Idempotent across all call sites.
+	 */
+	USCS_Node* GetOrCreateWorldBodyNode(UBlueprint* BP);
+
+	/** True for MJCF document roots that hold top-level sections: <mujoco> and
+	 *  <include> fragment roots <mujocoinclude>. Used by the recursive parse passes
+	 *  so included files (which are rooted in <mujocoinclude>) are traversed. */
+	static bool IsModelContainerTag(const FString& Tag);
+
 	/** Pre-scans the XML for <default><mesh scale="..."/> to populate DefaultMeshScales. */
-	void CollectDefaultMeshScales(const class FXmlNode* Node, const FString& CurrentClass = TEXT("main"));
+	void CollectDefaultMeshScales(const class FXmlNode* Node, const FString& CurrentClass = TEXT("main"), const FString& XMLDir = TEXT(""));
 	UStaticMesh* ImportSingleMesh(const FString& SourcePath, const FString& DestinationPath);
 
 	UTexture2D* ImportSingleTexture(const FString& SourcePath, const FString& DestinationPath);

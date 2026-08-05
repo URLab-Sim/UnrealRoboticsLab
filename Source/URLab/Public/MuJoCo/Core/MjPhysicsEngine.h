@@ -84,6 +84,9 @@ class URLAB_API UMjPhysicsEngine : public UActorComponent
 public:
 	UMjPhysicsEngine();
 	virtual void BeginDestroy() override;
+#if WITH_EDITOR
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
 
 	// --- MuJoCo Core Pointers ---
 
@@ -102,6 +105,13 @@ public:
 	std::atomic<bool> bShouldStopTask{false};
 	TFuture<void> AsyncPhysicsFuture;
 
+	/** True for exactly the lifetime of the async worker lambda. The direct-mode
+	 *  step body reads this to decide whether to submit to the worker or run the
+	 *  handler inline: unlike AsyncPhysicsFuture.IsValid() it is cleared the
+	 *  instant the worker returns, so a joined-but-not-yet-reset future can't be
+	 *  mistaken for a live worker. */
+	std::atomic<bool> bWorkerRunning{false};
+
 	/** Wakes the async physics worker when a step request lands in
 	 *  direct/puppet mode. Dispatcher Triggers on enqueue; worker
 	 *  Waits on this in lieu of the real-time spin pacer when the
@@ -109,10 +119,38 @@ public:
 	 *  returned to the pool on shutdown. */
 	FEvent* StepRequestEvent = nullptr;
 
+	// --- Worker shadow state (lock-free reads on the physics thread) ---
+	//
+	// The physics worker must not read UPROPERTYs (torn cross-thread) or
+	// reach into the owning actor for the step mode. These mirror the
+	// authoritative values: SetPaused / SetSimSpeed / SetStepMode
+	// (plus PostEditChangeProperty for details-panel edits) keep them in
+	// sync, and RunMujocoAsync seeds them when the worker starts.
+	std::atomic<bool> bPausedAtomic{true};
+	std::atomic<float> SimSpeedAtomic{100.0f};
+	std::atomic<EStepMode> ResolvedStepMode{EStepMode::Live};
+
+	/** Set by the game thread each time it consumes the render snapshot; the
+	 *  live-mode worker publishes a new snapshot only when it is set, so the
+	 *  full-state copy runs at the consumer's frame rate rather than the
+	 *  physics rate. Direct/puppet publish every step (frame association). */
+	std::atomic<bool> bSnapshotWanted{true};
+
+	/** Worker-thread only. Reset at the top of each worker iteration; a step
+	 *  handler that publishes the render snapshot itself (direct mode captures
+	 *  its exact frame id for the reply) sets this so the loop tail does not
+	 *  publish again and bump the id past what the step reported. */
+	bool bRenderStatePublishedThisStep = false;
+
 	// --- Step Callbacks ---
 
-	/** If bound, replaces mj_step (used by replay). */
-	using FMujocoStepCallback = std::function<void(mjModel*, mjData*)>;
+	/** If bound, replaces mj_step (direct/puppet stepping and replay).
+	 *  Returns true iff it advanced sim state this call (dequeued work and
+	 *  stepped); false on an idle wake with nothing to do, so the worker
+	 *  loop can skip the render-snapshot publish instead of inflating
+	 *  FrameId on unchanged state. A handler that steps owns its own
+	 *  OnPostStep notification (per sub-step for direct mode). */
+	using FMujocoStepCallback = std::function<bool(mjModel*, mjData*)>;
 	FMujocoStepCallback CustomStepHandler;
 
 	/** Called after mj_step (or custom step); used for recording. */
@@ -206,6 +244,25 @@ public:
 
 	void RunMujocoAsync();
 	void SetPaused(bool bPaused);
+
+	/** Set the real-time speed target (percent). Writes the UPROPERTY (for
+	 *  the details panel) and the worker's lock-free shadow. */
+	void SetSimSpeed(float Percent);
+
+	/** Single entry point for the runtime step mode. Stores the resolved mode
+	 *  the worker honours (pacing + whether it runs the UE controller pass;
+	 *  Auto resolves to Live) and unpauses the worker for client-driven modes
+	 *  (direct/puppet) so the async loop calls the step handler and drains the
+	 *  request queue. The RPC dispatcher is the runtime owner; call on every
+	 *  mode change. */
+	void SetStepMode(EStepMode Mode);
+
+	/** The resolved step mode the physics worker is currently pacing off
+	 *  (Auto already collapsed to Live). This is the authoritative value the
+	 *  loop reads, so it is what regression coverage for the live 10 Hz lock
+	 *  should assert. */
+	EStepMode GetStepMode() const { return ResolvedStepMode.load(std::memory_order_acquire); }
+
 	bool IsRunning() const;
 	bool IsInitialized() const;
 	float GetSimTime() const;
@@ -219,7 +276,21 @@ public:
 	void SetControlSource(EControlSource NewSource);
 	EControlSource GetControlSource() const;
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
-	TArray<AMjArticulation*> GetAllArticulations() const;
+	/** The live articulation registry. Registration happens in bulk at compile
+	 *  time (PreCompile) while the worker thread is stopped and joined, so the
+	 *  array is immutable for the duration of a play session. The returned
+	 *  reference is therefore stable to read on the game thread, but it is NOT a
+	 *  synchronised snapshot: it must not be retained across a recompile, and
+	 *  callers on other threads that need a stable copy must take one themselves.
+	 *  The physics worker iterates the underlying array directly, not through
+	 *  this accessor. */
+	const TArray<AMjArticulation*>& GetAllArticulations() const;
+
+	/** Register an articulation into the registry the physics worker iterates
+	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the
+	 *  array or the name map out from under a step; in practice registration
+	 *  runs at compile time with the worker joined. */
+	void RegisterArticulation(AMjArticulation* Articulation);
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 	FString GetLastCompileError() const;
@@ -255,6 +326,11 @@ public:
 	 * under CallbackMutex).
 	 */
 	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor);
+
+	/** Current render-snapshot frame id (monotonic, bumped each PushRenderState
+	 *  i.e. each step's post-step state). Returned in step replies so a client
+	 *  can fetch the matching camera frame by id. Thread-safe. */
+	uint64 GetRenderFrameId();
 
 	// --- Command channel (UE -> MuJoCo) --------------------------------
 	//
@@ -331,6 +407,8 @@ private:
 	FCommandQueue PendingCommands;
 
 	/** Drains PendingCommands into m_data. Must be called by the
-	 *  stepping thread while it already holds CallbackMutex. */
-	void DrainCommands();
+	 *  stepping thread while it already holds CallbackMutex. Returns true
+	 *  iff it applied at least one command, so the caller can treat a mocap
+	 *  / wrench edit as a state advance (publish it) even while paused. */
+	bool DrainCommands();
 };

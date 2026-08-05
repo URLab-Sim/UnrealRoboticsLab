@@ -46,7 +46,83 @@ import sys
 import copy
 
 
-def clean_mesh(mesh):
+# MuJoCo's own crease threshold: a face whose normal is more than acos(0.8)
+# ~= 36.9 degrees off the vertex normal is not part of that vertex's smooth
+# group (mjCMesh::MakeNormal, src/user/user_mesh.cc). Reused here so the
+# decision about what counts as an edge matches the simulator, even though the
+# representation below is sharper than MuJoCo's own.
+CREASE_DOT = 0.8
+
+
+def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
+    """Split `mesh`'s vertices into smooth groups, so hard edges shade hard.
+
+    The split is geometric rather than a normal override: a vertex whose faces
+    disagree by more than the threshold is duplicated, once per group of faces
+    that agree. Averaging then happens within a group and never across one, so
+    a box corner stays sharp while a finely tessellated cylinder stays round.
+
+    Done this way on purpose. Assigning `mesh.vertex_normals` directly does hold
+    in memory, but trimesh recomputes normals during GLB export and the override
+    is silently lost -- which looks like a crease split right up until you read
+    the accessor back.
+
+    MuJoCo cannot express this at all: it keeps one normal per vertex and merely
+    subtracts the outlying contributions, so its corners are a compromise. The
+    threshold is still MuJoCo's, so the decision about what counts as an edge
+    matches the simulator even though the representation is sharper.
+    """
+    faces = mesh.faces
+    verts = mesh.vertices
+    raw = np.cross(verts[faces[:, 1]] - verts[faces[:, 0]],
+                   verts[faces[:, 2]] - verts[faces[:, 0]])
+    unit = raw / np.maximum(np.linalg.norm(raw, axis=1)[:, None], 1e-20)
+
+    # Faces meeting at each vertex.
+    incident = [[] for _ in range(len(verts))]
+    for fi, tri in enumerate(faces):
+        for vi in tri:
+            incident[vi].append(fi)
+
+    new_verts = []
+    # (vertex, face) -> index into new_verts
+    remap = {}
+    for vi, face_ids in enumerate(incident):
+        if not face_ids:
+            continue
+        # Greedy clustering: a face joins the first group whose running mean it
+        # agrees with, otherwise it starts one. Enough for the shapes a mesh
+        # asset actually has, and it never merges across a real edge.
+        groups = []            # list of [summed_normal, [face ids]]
+        for fi in face_ids:
+            n = unit[fi]
+            for g in groups:
+                mean = g[0] / max(np.linalg.norm(g[0]), 1e-20)
+                if float(np.dot(n, mean)) >= dot_threshold:
+                    g[0] = g[0] + n
+                    g[1].append(fi)
+                    break
+            else:
+                groups.append([n.copy(), [fi]])
+        for g in groups:
+            index = len(new_verts)
+            new_verts.append(verts[vi])
+            for fi in g[1]:
+                remap[(vi, fi)] = index
+
+    new_faces = np.empty_like(faces)
+    for fi, tri in enumerate(faces):
+        for corner, vi in enumerate(tri):
+            new_faces[fi, corner] = remap[(vi, fi)]
+
+    # No custom normals: trimesh's own area-weighted average over the split
+    # geometry is the crease result, and it survives export because nothing
+    # had to be overridden.
+    return trimesh.Trimesh(vertices=np.asarray(new_verts), faces=new_faces,
+                           process=False)
+
+
+def clean_mesh(mesh, source_path=None, smooth_normal=False):
     """Clean up a mesh using trimesh."""
     print(f"  Original: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
 
@@ -71,6 +147,18 @@ def clean_mesh(mesh):
     rotation_matrix = trimesh.transformations.rotation_matrix(-np.radians(90), [1, 0, 0])
     mesh.apply_transform(rotation_matrix)
 
+    # Every mesh, not just the ones whose file states no normals. An OBJ that
+    # ships split vertices loses them here regardless: the welding above and the
+    # GLB export both collapse them, so "the file already answered this" is not
+    # a state that survives conversion. Measured on Spot, whose OBJs are flat
+    # and whose GLBs came out averaged across every corner.
+    #
+    # After the transform, never before: applying one invalidates trimesh's
+    # cached normals.
+    if not smooth_normal:
+        mesh = split_normals_by_crease(mesh)
+        print(f"  Creased: {len(mesh.vertices)} vertices after splitting hard edges")
+
     print(f"  Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
     return mesh
 
@@ -88,7 +176,7 @@ def glb_up_to_date(output_glb: Path, source_path: Path) -> bool:
     return mtime > source_path.stat().st_mtime and mtime > _SCRIPT_MTIME
 
 
-def convert_mesh(input_path: Path, output_path: Path) -> bool:
+def convert_mesh(input_path: Path, output_path: Path, smooth_normal: bool = False) -> bool:
     """Convert a single mesh file to GLB."""
     print(f"\n  Converting: {input_path.name} -> {output_path.name}")
 
@@ -99,7 +187,7 @@ def convert_mesh(input_path: Path, output_path: Path) -> bool:
             print(f"  x Not a valid mesh: {input_path.name}")
             return False
 
-        cleaned_mesh = clean_mesh(mesh)
+        cleaned_mesh = clean_mesh(mesh, input_path, smooth_normal)
 
         # Strip embedded materials/textures to prevent Unreal's Interchange importer
         # from creating a Texture2D instead of a StaticMesh.
@@ -479,7 +567,11 @@ def process_xml(xml_path: Path):
             continue
 
         print(f"\n[{mesh_name}] {actual_source.name} -> {output_glb.name}")
-        if convert_mesh(actual_source, output_glb):
+        # MJCF's own opt-in to one averaged normal per vertex. It defaults to
+        # false, so a model that says nothing gets the crease split.
+        smooth_normal = mesh_el.get("smoothnormal", "false").strip().lower() in ("true", "1")
+
+        if convert_mesh(actual_source, output_glb, smooth_normal):
             success_count += 1
         else:
             print(f"  x FAILED to convert {actual_source.name}")

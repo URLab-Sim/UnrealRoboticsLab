@@ -130,8 +130,64 @@ public class URLab : ModuleRules
 		VerifyThirdPartyInstalls();
 
 		AddMuj(Target);
+		AddProtospec(Target);
 		AddCoACD(Target);
 		AddZeroMQ(Target);
+	}
+
+	// ProtoSpec: the schema-driven MJCF object model, reader and writer that the
+	// generated MuJoCo document profile (Source/URLab/*/MuJoCo/Gen) and its hand
+	// seams (MuJoCo/Doc) compile against. It ships inside the MuJoCo fork and is
+	// staged by third_party/MuJoCo/build.ps1|.sh, so it is present exactly when
+	// the submodule carries the fork. When it is absent the Gen/ and Doc/ trees
+	// compile out and the module builds as it did before Phase 3.
+	protected void AddProtospec(ReadOnlyTargetRules Target)
+	{
+		// The staged header tree mirrors ProtoSpec's lib/ layout, because its
+		// umbrella headers reach the generated tables through relative paths. These
+		// are the same directories ProtoSpec's own CMake targets export.
+		string[] IncludeDirs = { "include", "sdk", "generated", "core", "io", "compile", "validate",
+			Path.Combine("third_party", "tinyxml2") };
+
+		string Root = Path.Combine(ThirdPartyPath, "protospec");
+		string IncludePath = Path.Combine(Root, "include");
+		string LibPath = Path.Combine(Root, "lib");
+		if (!Directory.Exists(IncludePath) || !Directory.Exists(LibPath))
+		{
+			Console.WriteLine(
+				"URLab: ProtoSpec is not installed under third_party/install/protospec - " +
+				"building without the generated MuJoCo spec profile. Run " +
+				"protospec/build.ps1 (Windows) or protospec/build.sh (Linux) to enable it.");
+			PublicDefinitions.Add("URLAB_PROTOSPEC=0");
+			return;
+		}
+
+		foreach (string Dir in IncludeDirs)
+		{
+			string Full = Path.Combine(Root, Dir);
+			if (Directory.Exists(Full))
+			{
+				PublicIncludePaths.Add(Full);
+			}
+		}
+
+		string LibExt = Target.Platform == UnrealTargetPlatform.Win64 ? "*.lib" : "*.a";
+		string[] Libs = Directory.GetFiles(LibPath, LibExt, SearchOption.AllDirectories);
+		if (Libs.Length == 0)
+		{
+			throw new BuildException(
+				"ProtoSpec install at {0} has an include/ but no static libraries in lib/. " +
+				"Re-run third_party/MuJoCo/build.ps1 (Windows) or build.sh (Linux).", Root);
+		}
+		foreach (string Lib in Libs)
+		{
+			PublicAdditionalLibraries.Add(Lib);
+		}
+
+		// ProtoSpec is header-template-heavy and uses C++20 concepts throughout;
+		// UE 5.7 already compiles at C++20, so this only pins the intent.
+		CppStandard = CppStandardVersion.Cpp20;
+		PublicDefinitions.Add("URLAB_PROTOSPEC=1");
 	}
 
 	private string ThirdPartyPath

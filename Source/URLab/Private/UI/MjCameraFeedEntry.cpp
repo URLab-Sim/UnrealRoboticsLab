@@ -30,6 +30,17 @@
 #include "Materials/Material.h"
 #include "Styling/SlateTypes.h"
 #include "Fonts/SlateFontInfo.h"
+#include "Utils/URLabLogging.h"
+
+namespace
+{
+// An unnamed <camera> is legal MJCF, so the label falls back to the component
+// name rather than showing a blank row.
+FString CameraLabel(const UMjCamera& Camera)
+{
+	return Camera.MjName.Get(Camera.GetName());
+}
+} // namespace
 
 void UMjCameraFeedEntry::BindToCamera(UMjCamera* InCamera)
 {
@@ -41,7 +52,7 @@ void UMjCameraFeedEntry::BindToCamera(UMjCamera* InCamera)
 
 	if (CameraNameText)
 	{
-		CameraNameText->SetText(FText::FromString(InCamera->MjName));
+		CameraNameText->SetText(FText::FromString(CameraLabel(*InCamera)));
 		FSlateFontInfo FontInfo = CameraNameText->GetFont();
 		FontInfo.Size = 12;
 		FontInfo.TypefaceFontName = TEXT("Bold");
@@ -62,8 +73,8 @@ void UMjCameraFeedEntry::RefreshBrush()
 		return;
 
 	// Read the resolution through the camera's validated accessor so a malformed
-	// `resolution` array can never index out of bounds here.
-	const FIntPoint Res = BoundCamera->GetResolution();
+	// `resolution` attribute can never size the preview texture out of bounds.
+	const FIntPoint Res = BoundCamera->CaptureResolution();
 	const float W = 320.f;
 	const float H = (Res.X > 0)
 					  ? W * static_cast<float>(Res.Y) / static_cast<float>(Res.X)
@@ -105,7 +116,7 @@ void UMjCameraFeedEntry::RefreshBrush()
 
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjCameraFeedEntry] Brush set: '%s' mode=%s RT=%dx%d display=%.0fx%.0f"),
-		*BoundCamera->MjName, *UEnum::GetValueAsString(BoundCamera->CaptureMode),
+		*CameraLabel(*BoundCamera), *UEnum::GetValueAsString(BoundCamera->CaptureMode),
 		RT->SizeX, RT->SizeY, W, H);
 }
 

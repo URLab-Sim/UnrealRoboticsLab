@@ -82,13 +82,13 @@ bool FMjJointStateFreeBaseAlignment::RunTest(const FString& Parameters)
 	FMjArticulationState Art;
 	Art.Name = FName(TEXT("go2"));
 
-	Art.Joints.Add(MakeJoint(TEXT("root"), EMjJointType::Free,
+	Art.Joints.Add(MakeJoint(TEXT("root"), EMjJointType::free,
 		{0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0}));
-	Art.Joints.Add(MakeJoint(TEXT("fl_hip"), EMjJointType::Hinge,
+	Art.Joints.Add(MakeJoint(TEXT("fl_hip"), EMjJointType::hinge,
 		{0.10}, {1.10}, {0.04}));
-	Art.Joints.Add(MakeJoint(TEXT("fl_knee"), EMjJointType::Hinge,
+	Art.Joints.Add(MakeJoint(TEXT("fl_knee"), EMjJointType::hinge,
 		{0.20}, {1.20}));
-	Art.Joints.Add(MakeJoint(TEXT("fl_slide"), EMjJointType::Slide,
+	Art.Joints.Add(MakeJoint(TEXT("fl_slide"), EMjJointType::slide,
 		{0.30}, {1.30}, {0.05}));
 
 	// fl_hip and fl_knee are driven 1:1 by differently-named actuators; fl_slide has
@@ -142,9 +142,9 @@ bool FMjJointStateFixedBaseUnchanged::RunTest(const FString& Parameters)
 {
 	FMjArticulationState Art;
 	Art.Name = FName(TEXT("arm"));
-	Art.Joints.Add(MakeJoint(TEXT("j0"), EMjJointType::Hinge, {0.1}, {0.01}));
-	Art.Joints.Add(MakeJoint(TEXT("j1"), EMjJointType::Hinge, {0.2}, {0.02}));
-	Art.Joints.Add(MakeJoint(TEXT("j2"), EMjJointType::Slide, {0.3}, {0.03}));
+	Art.Joints.Add(MakeJoint(TEXT("j0"), EMjJointType::hinge, {0.1}, {0.01}));
+	Art.Joints.Add(MakeJoint(TEXT("j1"), EMjJointType::hinge, {0.2}, {0.02}));
+	Art.Joints.Add(MakeJoint(TEXT("j2"), EMjJointType::slide, {0.3}, {0.03}));
 	Art.Actuators.Add(MakeActuator(TEXT("motor_j1"), TEXT("j1"), 7.5));
 
 	TArray<FString> Names;
@@ -179,8 +179,8 @@ bool FMjJointStateEffortEmptyWithoutActuators::RunTest(const FString& Parameters
 {
 	FMjArticulationState Art;
 	Art.Name = FName(TEXT("passive"));
-	Art.Joints.Add(MakeJoint(TEXT("j0"), EMjJointType::Hinge, {0.1}, {0.0}));
-	Art.Joints.Add(MakeJoint(TEXT("j1"), EMjJointType::Hinge, {0.2}, {0.0}));
+	Art.Joints.Add(MakeJoint(TEXT("j0"), EMjJointType::hinge, {0.1}, {0.0}));
+	Art.Joints.Add(MakeJoint(TEXT("j1"), EMjJointType::hinge, {0.2}, {0.0}));
 
 	TArray<FString> Names;
 	TArray<double> Positions;

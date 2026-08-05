@@ -66,7 +66,7 @@ bool FMjRosRouteTableTotal::RunTest(const FString& Parameters)
 	TestEqual(TEXT("SubtreeCom -> MultiArray"), RouteForSemantic(EMjSensorSemantic::SubtreeCom), ERosSensorRoute::MultiArray);
 
 	// Totality: every value from Generic..Clock maps to a defined route. The
-	// compiler enforces this (the switch has no default); the loop documents it and
+	// compiler enforces this (the switch has no default); the loop specs it and
 	// guards against a value being dropped from the mapping.
 	for (uint8 V = 0; V <= static_cast<uint8>(EMjSensorSemantic::Clock); ++V)
 	{
@@ -235,7 +235,7 @@ bool FMjRosFreeBaseTwist::RunTest(const FString& Parameters)
 
 	FMjJointState Free;
 	Free.Name = FName(TEXT("root"));
-	Free.Type = EMjJointType::Free;
+	Free.Type = EMjJointType::free;
 	Free.QPos = {1.0, 2.0, 3.0, S, 0.0, 0.0, S};       // pos + wxyz
 	// qvel: WORLD linear (1,0,0), BODY angular (0.1, 0.2, 0.3).
 	Free.QVel = {1.0, 0.0, 0.0, 0.1, 0.2, 0.3};
@@ -271,7 +271,7 @@ bool FMjRosFreeBaseTwist::RunTest(const FString& Parameters)
 	Fixed.Name = FName(TEXT("arm"));
 	FMjJointState Hinge;
 	Hinge.Name = FName(TEXT("j0"));
-	Hinge.Type = EMjJointType::Hinge;
+	Hinge.Type = EMjJointType::hinge;
 	Hinge.QPos = {0.0};
 	Hinge.QVel = {0.0};
 	Fixed.Joints.Add(Hinge);

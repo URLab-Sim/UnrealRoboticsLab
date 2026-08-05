@@ -48,10 +48,16 @@
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Controllers/MjPDController.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Controllers/MjPDController.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjActuator.gen.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjPosition.gen.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -613,7 +619,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 6. Direct mode ApplyStepCtrl writes ctrl through actuator NetworkValue
+// 6. Direct mode ApplyStepCtrl writes ctrl for the named actuator
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerDirectCtrl,
 	"URLab.StepServer.DirectCtrl",
@@ -624,12 +630,14 @@ bool FMjStepServerDirectCtrl::RunTest(const FString& Parameters)
 	// Articulation with one slide joint + position actuator
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Slide;
-			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
-			A->Type = EMjActuatorType::Position;
-			A->TargetName = Sess.Joint->GetName();
-			A->RegisterComponent();
-			A->AttachToComponent(Sess.Robot->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+			Sess.Joint->SetType(EMjJointType::slide);
+			// The actuator kind is the element: <position> under the spec's
+			// <actuator> section, rather than an enum on one actuator class.
+			UMjActuator* Section = Sess.Add<UMjActuator>(Sess.Robot->Spec);
+			if (Section == nullptr)
+				return;
+			if (UMjPosition* A = Sess.Add<UMjPosition>(Section, TEXT("TestActuator")))
+				A->SetJoint(Sess.Joint->MjName.GetValue());
 		}))
 	{
 		// The session may not finish due to actuator wiring. Skip without erroring.
@@ -657,29 +665,36 @@ bool FMjStepServerDirectCtrl::RunTest(const FString& Parameters)
 		return true;
 	}
 	AMjArticulation* Art = Arts[0];
-	TArray<UMjActuator*> Acts = Art->GetActuators();
+	TArray<UMjNodeComponent*> Acts = Art->GetActuators();
 	if (Acts.Num() == 0)
 	{
 		AddInfo(TEXT("Skipping DirectCtrl: articulation has no actuators"));
 		S.Cleanup();
 		return true;
 	}
-	FString Local = Acts[0]->GetMjName();
-	FString Pfx = Art->GetName() + TEXT("_");
+	const int32 Aid = S.MjId(mjOBJ_ACTUATOR, TEXT("TestActuator"));
+	if (Aid < 0)
+	{
+		AddInfo(TEXT("Skipping DirectCtrl: actuator did not compile"));
+		S.Cleanup();
+		return true;
+	}
+	FString Local = Acts[0]->MjName.Get(Acts[0]->GetName());
+	FString Pfx = Art->GetCompiledPrefix();
 	if (Local.StartsWith(Pfx))
 		Local = Local.Mid(Pfx.Len());
 	Req.PerArticulationCtrl.FindOrAdd(Art->GetName()).Add({Local, 0.7f});
 	// Force raw write so the test path doesn't depend on a live controller.
 	Req.PerArticulationControlMode.Add(Art->GetName(), TEXT("raw"));
 
-	// ApplyStepCtrl stages writes on each actuator's NetworkValue. The
-	// copy into d->ctrl happens inside Art->ApplyControls(...) once per
-	// sub-step; passing bSkipController=true mirrors the bridge's
-	// control_mode="raw" path so we land NetworkValue → d->ctrl without
-	// controller transformation.
+	// ApplyStepCtrl stages control on the articulation's network slot for the
+	// named actuator; the copy into d->ctrl happens inside ApplyControls once
+	// per sub-step. control_mode="raw" is the bridge's bypass -- ApplyStepCtrl
+	// writes d->ctrl outright and ApplyControls(bSkipController) leaves it
+	// alone, so what lands is the requested value untransformed.
 	FURLabRpcDispatcher::ApplyStepCtrl(S.Manager, Req, m, d);
 	Art->ApplyControls(/*bSkipController=*/true);
-	TestEqual(TEXT("d->ctrl[0] written by raw path"), (double)d->ctrl[0], 0.7, 1e-6);
+	TestEqual(TEXT("d->ctrl written by raw path"), (double)d->ctrl[Aid], 0.7, 1e-6);
 
 	S.Cleanup();
 	return true;
@@ -940,7 +955,7 @@ bool FMjStepServerXfrcApplied::RunTest(const FString& Parameters)
 	UMjBody* B = nullptr;
 	for (UMjBody* Bd : Bodies)
 	{
-		if (Bd && !Bd->bIsDefault)
+		if (Bd && Bd->GetBoundId().IsSet())
 		{
 			B = Bd;
 			break;
@@ -952,15 +967,16 @@ bool FMjStepServerXfrcApplied::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	int32 BodyId = B->GetMjID();
+	int32 BodyId = B->GetBoundId().GetValue();
 	if (BodyId <= 0 || BodyId >= m->nbody)
 	{
 		S.Cleanup();
 		return true;
 	}
 
-	// Resolve the actual body name from the compiled model (the test
-	// helper doesn't set MjName explicitly, so we read mj_id2name).
+	// Resolve the body name from the compiled model rather than the spec:
+	// scene assembly prefixes every participant's names, so the authored name
+	// is not the one ApplyStepCtrl has to match.
 	const char* BodyNameC = mj_id2name(m, mjOBJ_BODY, BodyId);
 	if (!BodyNameC)
 	{
@@ -1212,10 +1228,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposByName,
 bool FMjStepServerSetQposByName::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-		}))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 	{
 		AddError(S.LastError);
 		return false;
@@ -1233,7 +1246,7 @@ bool FMjStepServerSetQposByName::RunTest(const FString& Parameters)
 	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
-	int32 Jid = Art->GetJoints()[0]->GetMjID();
+	int32 Jid = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
 	int32 QAddr = m->jnt_qposadr[Jid];
 
 	// Control writes require an explicit claim; the session owns the art.
@@ -1273,10 +1286,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposActorId,
 bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-		}))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 	{
 		AddError(S.LastError);
 		return false;
@@ -1313,7 +1323,7 @@ bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
-	int32 Jid = Art->GetJoints()[0]->GetMjID();
+	int32 Jid = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
 	int32 QAddr = m->jnt_qposadr[Jid];
 	TestEqual(TEXT("qpos written via actor_id"), (double)d->qpos[QAddr], 0.91, 1e-9);
 
@@ -1335,22 +1345,15 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 	// A 7-vec request triggers the free-base shortcut and only writes the
 	// free joint slots, leaving the hinge value untouched.
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Free;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::free);
 
-			UMjBody* ChildBody = NewObject<UMjBody>(Sess.Robot, TEXT("ChildBody"));
-			ChildBody->RegisterComponent();
-			ChildBody->AttachToComponent(Sess.Body, FAttachmentTransformRules::KeepRelativeTransform);
-			UMjGeom* ChildGeom = NewObject<UMjGeom>(Sess.Robot, TEXT("ChildGeom"));
-			ChildGeom->size = {0.05f, 0.05f, 0.05f};
-			ChildGeom->bOverride_size = true;
-			ChildGeom->RegisterComponent();
-			ChildGeom->AttachToComponent(ChildBody, FAttachmentTransformRules::KeepRelativeTransform);
-			UMjJoint* Hinge = NewObject<UMjJoint>(Sess.Robot, TEXT("ChildHinge"));
-			Hinge->Type = EMjJointType::Hinge;
-			Hinge->bOverride_Type = true;
-			Hinge->RegisterComponent();
-			Hinge->AttachToComponent(ChildBody, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjBodyBase* ChildBody = Sess.Add<UMjBodyBase>(Sess.Body, TEXT("ChildBody"));
+			if (ChildBody == nullptr)
+				return;
+			if (UMjGeomBase* ChildGeom = Sess.Add<UMjGeomBase>(ChildBody, TEXT("ChildGeom")))
+				ChildGeom->SetSize({0.05, 0.05, 0.05});
+			if (UMjJoint* Hinge = Sess.Add<UMjJoint>(ChildBody, TEXT("ChildHinge")))
+				Hinge->SetType(EMjJointType::hinge);
 		}))
 	{
 		// Articulation construction with a free base + child can fail in some
@@ -1366,15 +1369,19 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
 
-	TArray<UMjJoint*> JointsArr = Art->GetJoints();
-	if (JointsArr.Num() < 2)
+	// By compiled name rather than by index: the element index is a map, so the
+	// order GetJoints() answers in is not the spec's.
+	const int32 FreeId = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
+	const int32 HingeId = S.MjId(mjOBJ_JOINT, TEXT("ChildHinge"));
+	if (FreeId < 0 || HingeId < 0)
 	{
-		AddInfo(FString::Printf(TEXT("Skipping FreeBase: only %d joints compiled"), JointsArr.Num()));
+		AddInfo(FString::Printf(TEXT("Skipping FreeBase: only %d joints compiled"),
+			Art->GetJoints().Num()));
 		S.Cleanup();
 		return true;
 	}
-	int32 FreeAdr = m->jnt_qposadr[JointsArr[0]->GetMjID()];
-	int32 HingeAdr = m->jnt_qposadr[JointsArr[1]->GetMjID()];
+	int32 FreeAdr = m->jnt_qposadr[FreeId];
+	int32 HingeAdr = m->jnt_qposadr[HingeId];
 	d->qpos[HingeAdr] = 1.5; // sentinel -- the shortcut must NOT touch this
 
 	FString ClaimOwner;
@@ -1418,10 +1425,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposErrors,
 bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-		}))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 	{
 		AddError(S.LastError);
 		return false;

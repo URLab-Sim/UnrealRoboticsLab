@@ -51,7 +51,10 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjActuator.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjPosition.gen.h"
 #include "UserChannels/MjUserChannelComponent.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/ControlOwnership.h"
@@ -76,21 +79,21 @@ FMjStateSnapshot MakeSnapshot()
 
 	FMjJointState Hip;
 	Hip.Name = FName(TEXT("fl_hip"));
-	Hip.Type = EMjJointType::Hinge;
+	Hip.Type = EMjJointType::hinge;
 	Hip.QPos = {0.10};
 	Hip.QVel = {1.10};
 	Art.Joints.Add(Hip);
 
 	FMjJointState Knee;
 	Knee.Name = FName(TEXT("fl_knee"));
-	Knee.Type = EMjJointType::Hinge;
+	Knee.Type = EMjJointType::hinge;
 	Knee.QPos = {0.20};
 	Knee.QVel = {1.20};
 	Art.Joints.Add(Knee);
 
 	FMjJointState Root;
 	Root.Name = FName(TEXT("root"));
-	Root.Type = EMjJointType::Free;
+	Root.Type = EMjJointType::free;
 	Root.QPos = {0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0};
 	Root.QVel = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 	Art.Joints.Add(Root);
@@ -340,7 +343,7 @@ bool FMjRosPublisherRebuild::RunTest(const FString& Parameters)
 	Art2.Name = FName(TEXT("arm"));
 	FMjJointState J;
 	J.Name = FName(TEXT("j0"));
-	J.Type = EMjJointType::Hinge;
+	J.Type = EMjJointType::hinge;
 	J.QPos = {0.0};
 	J.QVel = {0.0};
 	Art2.Joints.Add(J);
@@ -565,13 +568,14 @@ bool FMjRosCtrlModeGating::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Slide;
-			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
-			A->Type = EMjActuatorType::Position;
-			A->TargetName = Sess.Joint->GetName();
-			A->RegisterComponent();
-			A->AttachToComponent(Sess.Robot->GetRootComponent(),
-				FAttachmentTransformRules::KeepRelativeTransform);
+			Sess.Joint->SetType(EMjJointType::slide);
+			// The actuator kind is the element: <position> under the spec's
+			// <actuator> section, rather than an enum on one actuator class.
+			UMjActuator* Section = Sess.Add<UMjActuator>(Sess.Robot->Spec);
+			if (Section == nullptr)
+				return;
+			if (UMjPosition* A = Sess.Add<UMjPosition>(Section, TEXT("TestActuator")))
+				A->SetJoint(Sess.Joint->MjName.GetValue());
 		}))
 	{
 		AddInfo(FString::Printf(TEXT("Skipping CtrlModeGating: %s"), *S.LastError));
@@ -637,13 +641,14 @@ bool FMjRosCtrlWire::RunTest(const FString& Parameters)
 
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Slide;
-			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
-			A->Type = EMjActuatorType::Position;
-			A->TargetName = Sess.Joint->GetName();
-			A->RegisterComponent();
-			A->AttachToComponent(Sess.Robot->GetRootComponent(),
-				FAttachmentTransformRules::KeepRelativeTransform);
+			Sess.Joint->SetType(EMjJointType::slide);
+			// The actuator kind is the element: <position> under the spec's
+			// <actuator> section, rather than an enum on one actuator class.
+			UMjActuator* Section = Sess.Add<UMjActuator>(Sess.Robot->Spec);
+			if (Section == nullptr)
+				return;
+			if (UMjPosition* A = Sess.Add<UMjPosition>(Section, TEXT("TestActuator")))
+				A->SetJoint(Sess.Joint->MjName.GetValue());
 		}))
 	{
 		AddInfo(FString::Printf(TEXT("Skipping CtrlWire: %s"), *S.LastError));
@@ -785,7 +790,7 @@ bool FMjRosStateEstimationWire::RunTest(const FString& Parameters)
 
 	FMjJointState Free;
 	Free.Name = FName(TEXT("root"));
-	Free.Type = EMjJointType::Free;
+	Free.Type = EMjJointType::free;
 	Free.QPos = {0.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0};
 	Free.QVel = {0.3, 0.0, 0.0, 0.0, 0.0, 0.5};
 	Art.Joints.Add(Free);
@@ -970,13 +975,14 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Slide;
-			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
-			A->Type = EMjActuatorType::Position;
-			A->TargetName = Sess.Joint->GetName();
-			A->RegisterComponent();
-			A->AttachToComponent(Sess.Robot->GetRootComponent(),
-				FAttachmentTransformRules::KeepRelativeTransform);
+			Sess.Joint->SetType(EMjJointType::slide);
+			// The actuator kind is the element: <position> under the spec's
+			// <actuator> section, rather than an enum on one actuator class.
+			UMjActuator* Section = Sess.Add<UMjActuator>(Sess.Robot->Spec);
+			if (Section == nullptr)
+				return;
+			if (UMjPosition* A = Sess.Add<UMjPosition>(Section, TEXT("TestActuator")))
+				A->SetJoint(Sess.Joint->MjName.GetValue());
 		}))
 	{
 		AddInfo(FString::Printf(TEXT("Skipping JointCommandJog: %s"), *S.LastError));
@@ -1000,8 +1006,22 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 
 	// The jog names the joint the actuator drives (not the actuator's own name),
 	// resolved through the same canonical-name convention JointState output uses.
-	UMjActuator* Act = Art->GetActuators()[0];
-	const FString JointName = FMjCanonicalName::PartSegment(Art, Act->TargetName).ToString();
+	// The transmission target is read out of the compiled model, which is where
+	// the state IR reads it too, so the jog and the published JointState agree
+	// even when the actuator reached its joint through a default class.
+	const int32 Aid = S.MjId(mjOBJ_ACTUATOR, TEXT("TestActuator"));
+	const int32 JointId = (Aid >= 0) ? m->actuator_trnid[Aid * 2] : -1;
+	const char* JointRaw = (JointId >= 0 && JointId < m->njnt)
+							 ? mj_id2name(m, mjOBJ_JOINT, JointId)
+							 : nullptr;
+	if (JointRaw == nullptr)
+	{
+		AddInfo(TEXT("Skipping JointCommandJog: the actuator drives no named joint"));
+		S.Cleanup();
+		return true;
+	}
+	const FString JointName =
+		FMjCanonicalName::PartSegment(Art, UTF8_TO_TCHAR(JointRaw)).ToString();
 
 	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
 	Ros->SetOwningBridge(S.Manager->BridgeServer);

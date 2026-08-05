@@ -20,63 +20,50 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
+// Read MJCF into a Blueprint, write the Blueprint back out, and hold the result
+// against MuJoCo's own canonical form of the same file.
+//
+// Both sides end up as mj_saveXMLString output, so the comparison is between two
+// specs MuJoCo itself normalised and not between two spellings. The spec
+// is compiled on its own -- no scene, no attach -- so no name on either side
+// carries a participant prefix.
+
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/AutomationEditorCommon.h"
-#include "MuJoCo/Core/MjArticulation.h"
-#include "MujocoGenerationAction.h"
-#include "MuJoCo/Core/Spec/MjSpecWrapper.h"
-#include "mujoco/mujoco.h"
-#include "XmlFile.h"
-#include "Misc/Paths.h"
 #include "Internationalization/Regex.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/Paths.h"
+
+#include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
+#include "MujocoGenerationAction.h"
+
+THIRD_PARTY_INCLUDES_START
+#include "mujoco/mujoco.h"
+THIRD_PARTY_INCLUDES_END
 
 // Define a test with flags to run in Editor
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImporterValidationTest, "URLab.MuJoCo.Importer.Validation", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-FString SanitizeXmlForComparison(const FString& InXml, const FString& PrefixToStrip)
+FString SanitizeXmlForComparison(const FString& InXml)
 {
 	FString OutXml = InXml;
 
-	// 1. Strip the specific actor prefix surgically (e.g. TempBP_0_C_0_)
-	if (!PrefixToStrip.IsEmpty())
+	// 1. Strip the reserved names the compile gives unnamed bindable elements.
+	// They exist in the emitted text only, so the ground truth has no equivalent.
 	{
-		OutXml = OutXml.Replace(*PrefixToStrip, TEXT(""));
-	}
-
-	// 2. Strip auto-generated names produced by the importer for unnamed XML elements.
-	// Covers new contextual names (Geom_Box, HingeJoint, etc.) and legacy AUTONAME_*.
-	TArray<FRegexPattern> AutoNamePatterns;
-	AutoNamePatterns.Emplace(TEXT(" name=\"AUTONAME_[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Geom_[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Joint[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"FreeJoint[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Site[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Inertial[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Camera[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Sensor[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Actuator[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"[A-Z][a-z]*Tendon[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"[a-zA-Z_]*_Body[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"[a-zA-Z_]*_Frame[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"ContactPair_[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"ContactExclude_[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Eq_[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Keyframe[^\"]*\""));
-	AutoNamePatterns.Emplace(TEXT(" name=\"Default[A-Z][^\"]*\""));
-
-	for (const FRegexPattern& Pattern : AutoNamePatterns)
-	{
-		FRegexMatcher Matcher(Pattern, OutXml);
+		const FRegexPattern ReservedNamePattern(TEXT(" name=\"_ps:[^\"]*\""));
+		FRegexMatcher Matcher(ReservedNamePattern, OutXml);
 		while (Matcher.FindNext())
 		{
 			OutXml = OutXml.Replace(*Matcher.GetCaptureGroup(0), TEXT(""));
-			Matcher = FRegexMatcher(Pattern, OutXml);
+			Matcher = FRegexMatcher(ReservedNamePattern, OutXml);
 		}
 	}
 
-	// 3. Collapse whitespace and newlines for robust comparison
+	// 2. Collapse whitespace and newlines for robust comparison
 	OutXml = OutXml.Replace(TEXT("\n"), TEXT(" "));
 	OutXml = OutXml.Replace(TEXT("\r"), TEXT(" "));
 	OutXml = OutXml.Replace(TEXT("\t"), TEXT(" "));
@@ -85,7 +72,7 @@ FString SanitizeXmlForComparison(const FString& InXml, const FString& PrefixToSt
 		OutXml = OutXml.Replace(TEXT("  "), TEXT(" "));
 	}
 
-	// 4. Remove empty default tags strictly (e.g. <default class="foo"></default> or <default></default>)
+	// 3. Remove empty default tags strictly (e.g. <default class="foo"></default> or <default></default>)
 	// Also handle self-closing ones: <default class="foo" />
 	OutXml = OutXml.Replace(TEXT("<default> </default>"), TEXT("<default></default>"));
 
@@ -109,7 +96,7 @@ FString SanitizeXmlForComparison(const FString& InXml, const FString& PrefixToSt
 		EmptyDefaultMatcher = FRegexMatcher(EmptyDefaultPattern, OutXml);
 	}
 
-	// 5. Promote children of <default> and <default class="main">
+	// 4. Promote children of <default> and <default class="main">
 	auto StripTagPair = [&](const FString& TagToStrip) {
 		int32 TagPos = OutXml.Find(TagToStrip);
 		while (TagPos != INDEX_NONE)
@@ -275,10 +262,6 @@ bool FMjImporterValidationTest::RunTest(const FString& Parameters)
 		FString GtXmlString = FString(UTF8_TO_TCHAR(szGtXml));
 
 		// 2. Unreal Generation
-		UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
-		FWorldContext& WorldContext = GEngine->CreateNewWorldContext(EWorldType::Game);
-		WorldContext.SetCurrentWorld(World);
-
 		UBlueprint* TempBP = FKismetEditorUtilities::CreateBlueprint(
 			AMjArticulation::StaticClass(),
 			GetTransientPackage(),
@@ -291,88 +274,71 @@ bool FMjImporterValidationTest::RunTest(const FString& Parameters)
 		{
 			AddError(TEXT("Failed to create temporary blueprint."));
 			mj_deleteSpec(gt_spec);
-			World->DestroyWorld(false);
-			GEngine->DestroyWorldContext(World);
 			continue;
 		}
 
-		FXmlFile* XmlFile = new FXmlFile(TestCase.XmlString, EConstructMethod::ConstructFromBuffer);
-		if (!XmlFile->IsValid())
-		{
-			AddError(TEXT("FXmlFile Failed to parse test string buffer"));
-			mj_deleteSpec(gt_spec);
-			delete XmlFile;
-			World->DestroyWorld(false);
-			GEngine->DestroyWorldContext(World);
-			continue;
-		}
-
+		// The filename is never opened; it is what an <include> and every asset
+		// path would resolve against, and these cases name neither.
 		UMujocoGenerationAction* GenAction = NewObject<UMujocoGenerationAction>();
-		GenAction->GenerateForBlueprintXml(TempBP, TEXT(""), XmlFile);
-		FKismetEditorUtilities::CompileBlueprint(TempBP);
-
-		if (!TempBP->GeneratedClass)
+		if (!GenAction->GenerateFromXml(TempBP, TestCase.XmlString, TEXT("")))
 		{
-			AddError(TEXT("Blueprint compilation failed."));
+			AddError(FString::Printf(TEXT("Import failed for %s"), *TestCase.Name));
 			mj_deleteSpec(gt_spec);
-			delete XmlFile;
-			World->DestroyWorld(false);
-			GEngine->DestroyWorldContext(World);
 			continue;
 		}
 
-		FActorSpawnParameters SpawnParams;
-		AMjArticulation* SpawnedRobot = World->SpawnActor<AMjArticulation>(TempBP->GeneratedClass, SpawnParams);
-
-		if (!SpawnedRobot)
+		// The construction script IS the spec, so the writer is asked for the
+		// MJCF directly rather than for a spec built alongside it.
+		const FMjCompiled Compiled = MjCompileSpec(FSpecRef::OverBlueprint(*TempBP));
+		if (!Compiled.IsOk())
 		{
-			AddError(TEXT("Failed to spawn generated TempBP articulation"));
+			for (const FMjSpecDiagnostic& Diagnostic : Compiled.Errors)
+			{
+				AddError(Diagnostic.ToString());
+			}
+			mj_deleteSpec(gt_spec);
+			continue;
+		}
+
+		// Round-trip URLab's emission through MuJoCo's own writer, so both sides
+		// of the comparison are in the same canonical form.
+		FMemory::Memzero(szError, sizeof(szError));
+		mjSpec* UeSpec = mj_parseXMLString(TCHAR_TO_UTF8(*Compiled.Xml), nullptr, szError, sizeof(szError));
+		if (!UeSpec)
+		{
+			AddError(FString::Printf(TEXT("MuJoCo rejected URLab's MJCF for %s: %hs"), *TestCase.Name, szError));
+			AddInfo(Compiled.Xml);
+			mj_deleteSpec(gt_spec);
+			continue;
+		}
+
+		mj_compile(UeSpec, nullptr);
+		FMemory::Memzero(szError, sizeof(szError));
+		int ue_save_res = mj_saveXMLString(UeSpec, szUeXml, N_XML_BUFFER, szError, sizeof(szError));
+		AddInfo(FString::Printf(TEXT("mj_saveXMLString(UE) returned: %d. Error: %hs"), ue_save_res, szError));
+
+		FString UeXmlString = FString(UTF8_TO_TCHAR(szUeXml));
+
+		// 3. Comparison
+		FString SanitizedGt = SanitizeXmlForComparison(GtXmlString);
+		FString SanitizedUe = SanitizeXmlForComparison(UeXmlString);
+
+		AddInfo(TEXT("--- Sanitized Ground Truth ---"));
+		AddInfo(SanitizedGt.IsEmpty() ? TEXT("[EMPTY]") : SanitizedGt);
+		AddInfo(TEXT("--- Sanitized Unreal Export ---"));
+		AddInfo(SanitizedUe.IsEmpty() ? TEXT("[EMPTY]") : SanitizedUe);
+
+		if (SanitizedUe != SanitizedGt)
+		{
+			AddError(FString::Printf(TEXT("XML Comparison Failed for %s. Lengths: SanitizedGT=%d, SanitizedUE=%d"), *TestCase.Name, SanitizedGt.Len(), SanitizedUe.Len()));
 		}
 		else
 		{
-			mjVFS* TempVfs = new mjVFS();
-			mj_defaultVFS(TempVfs);
-
-			mjSpec* UeSpec = mj_makeSpec();
-			UeSpec->compiler.degree = false;
-
-			SpawnedRobot->Setup(UeSpec, TempVfs);
-			FString ActorPrefix = SpawnedRobot->GetName() + TEXT("_");
-
-			mj_compile(UeSpec, TempVfs);
-			FMemory::Memzero(szError, sizeof(szError));
-			int ue_save_res = mj_saveXMLString(UeSpec, szUeXml, N_XML_BUFFER, szError, sizeof(szError));
-			AddInfo(FString::Printf(TEXT("mj_saveXMLString(UE) returned: %d. Error: %hs"), ue_save_res, szError));
-
-			FString UeXmlString = FString(UTF8_TO_TCHAR(szUeXml));
-
-			// 3. Comparison
-			FString SanitizedGt = SanitizeXmlForComparison(GtXmlString, TEXT("")); // GT doesn't have the TempBP prefix
-			FString SanitizedUe = SanitizeXmlForComparison(UeXmlString, ActorPrefix);
-
-			AddInfo(TEXT("--- Sanitized Ground Truth ---"));
-			AddInfo(SanitizedGt.IsEmpty() ? TEXT("[EMPTY]") : SanitizedGt);
-			AddInfo(TEXT("--- Sanitized Unreal Export ---"));
-			AddInfo(SanitizedUe.IsEmpty() ? TEXT("[EMPTY]") : SanitizedUe);
-
-			if (SanitizedUe != SanitizedGt)
-			{
-				AddError(FString::Printf(TEXT("XML Comparison Failed for %s. Lengths: SanitizedGT=%d, SanitizedUE=%d"), *TestCase.Name, SanitizedGt.Len(), SanitizedUe.Len()));
-			}
-			else
-			{
-				AddInfo(FString::Printf(TEXT("XML Comparison Passed for %s"), *TestCase.Name));
-			}
-
-			mj_deleteSpec(UeSpec);
-			mj_deleteVFS(TempVfs);
-			delete TempVfs;
+			AddInfo(FString::Printf(TEXT("XML Comparison Passed for %s"), *TestCase.Name));
 		}
 
-		World->DestroyWorld(false);
-		GEngine->DestroyWorldContext(World);
+		mj_deleteSpec(UeSpec);
 		mj_deleteSpec(gt_spec);
-		delete XmlFile;
 		AddInfo(TEXT("=================================================="));
 	}
 

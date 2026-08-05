@@ -23,7 +23,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Utils/MJHelper.h"
-#include "MuJoCo/Utils/MjUtils.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Utils/MjOrientationUtils.h"
 #include "mujoco/mujoco.h"
 
@@ -38,7 +38,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformPosScale,
 bool FMjTransformPosScale::RunTest(const FString& Parameters)
 {
 	double mjPos[3] = {1.0, 2.0, 3.0};
-	FVector uePos = MjUtils::MjToUEPosition(mjPos);
+	FVector uePos = URLabAxisConv::MjPositionToUe(mjPos);
 
 	TestEqual(TEXT("UE X should be 100 cm"), uePos.X, 100.0);
 	TestEqual(TEXT("UE Y should be -200 cm (Y negated)"), uePos.Y, -200.0);
@@ -57,7 +57,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformYNegation,
 bool FMjTransformYNegation::RunTest(const FString& Parameters)
 {
 	double mjPos[3] = {0.0, 5.0, 0.0};
-	FVector uePos = MjUtils::MjToUEPosition(mjPos);
+	FVector uePos = URLabAxisConv::MjPositionToUe(mjPos);
 
 	TestEqual(TEXT("UE X should be 0"), uePos.X, 0.0);
 	TestEqual(TEXT("UE Y should be -500 cm"), uePos.Y, -500.0);
@@ -89,9 +89,9 @@ bool FMjTransformPosRoundTrip::RunTest(const FString& Parameters)
 	for (const FCase& C : Cases)
 	{
 		double in[3] = {C.x, C.y, C.z};
-		FVector ue = MjUtils::MjToUEPosition(in);
+		FVector ue = URLabAxisConv::MjPositionToUe(in);
 		double out[3] = {0, 0, 0};
-		MjUtils::UEToMjPosition(ue, out);
+		URLabAxisConv::UePositionToMj(ue, out);
 
 		TestTrue(FString::Printf(TEXT("RoundTrip X for (%.2f,%.2f,%.2f)"), C.x, C.y, C.z),
 			FMath::Abs((float)(out[0] - C.x)) < 1e-4f);
@@ -114,7 +114,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformQuatIdentity,
 bool FMjTransformQuatIdentity::RunTest(const FString& Parameters)
 {
 	double q[4] = {1.0, 0.0, 0.0, 0.0}; // MuJoCo: w,x,y,z
-	FQuat ueQuat = MjUtils::MjToUERotation(q);
+	FQuat ueQuat = URLabAxisConv::MjQuatToUe(q);
 
 	// Identity should have W≈1, X≈Y≈Z≈0
 	TestTrue(TEXT("Identity W≈1"), FMath::Abs(FMath::Abs(ueQuat.W) - 1.0f) < 0.01f);
@@ -127,7 +127,7 @@ bool FMjTransformQuatIdentity::RunTest(const FString& Parameters)
 // ============================================================================
 // URLab.Transform.QuatRoundTrip
 //   UEToMjRotation(MjToUERotation(q)) should recover original q
-//   NOTE: This test documents the KNOWN BUG in MjUtils quat conversion.
+//   NOTE: This test specs the KNOWN BUG in MjUtils quat conversion.
 //   If it passes, the bug has been fixed.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformQuatRoundTrip,
@@ -151,9 +151,9 @@ bool FMjTransformQuatRoundTrip::RunTest(const FString& Parameters)
 	for (const FCase& C : Cases)
 	{
 		double in[4] = {C.w, C.x, C.y, C.z};
-		FQuat ueQ = MjUtils::MjToUERotation(in);
+		FQuat ueQ = URLabAxisConv::MjQuatToUe(in);
 		double out[4] = {0, 0, 0, 0};
-		MjUtils::UEToMjRotation(ueQ, out);
+		URLabAxisConv::UeQuatToMj(ueQ, out);
 
 		// Normalize: quats q and -q represent the same rotation
 		bool bW = FMath::Abs((float)(out[0] - C.w)) < 0.01f || FMath::Abs((float)(out[0] + C.w)) < 0.01f;
@@ -172,7 +172,7 @@ bool FMjTransformQuatRoundTrip::RunTest(const FString& Parameters)
 // URLab.Transform.MJHelperQuatRoundTrip
 //   Tests the legacy MJHelper::MJQuatToUE / UEQuatToMJ round-trip.
 //   KNOWN BUG: both functions use the same formula so they are NOT inverses.
-//   This test documents the current (broken) behaviour.
+//   This test specs the current (broken) behaviour.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformMJHelperQuatRoundTrip,
 	"URLab.Transform.MJHelperQuatRoundTrip",
@@ -247,8 +247,9 @@ bool FMjTransformGravityScale::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Transform.JointAxis
-//   UE axis (0,1,0) exported to MuJoCo should become (0,-1,0) due to Y-negation.
-//   KNOWN BUG (Step 3.5): MjJoint::ExportTo does not negate Y.
+//   The conversion utility itself: an Unreal axis (0,1,0) is MuJoCo (0,-1,0).
+//   This is about MjUtils, not about authoring -- a spec stores MJCF's own
+//   frame verbatim, and the handedness flip lives only where UE and MuJoCo meet.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformJointAxis,
 	"URLab.Transform.JointAxis",
@@ -263,7 +264,8 @@ bool FMjTransformJointAxis::RunTest(const FString& Parameters)
 	TestEqual(TEXT("MJ axis X should be 0"), mjAxis.X, 0.0);
 	TestEqual(TEXT("MJ axis Y should be -1"), mjAxis.Y, -1.0);
 	TestEqual(TEXT("MJ axis Z should be 0"), mjAxis.Z, 0.0);
-	AddInfo(TEXT("Joint axis transform verified. See Step 3.5 to verify UMjJoint::ExportTo applies this."));
+	AddInfo(TEXT("Joint axis transform verified. This is the MJ/UE frame rule itself, not a spec read: "
+				 "an authored <joint axis> is already in MuJoCo's frame and reaches the compiler unchanged."));
 	return true;
 }
 

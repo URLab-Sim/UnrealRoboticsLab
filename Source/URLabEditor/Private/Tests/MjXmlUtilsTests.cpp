@@ -280,7 +280,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjXmlUtilsParseBoolMujoco,
 bool FMjXmlUtilsParseBoolMujoco::RunTest(const FString& Parameters)
 {
 	// MuJoCo often uses "enable"/"disable" — ParseBool only handles "true"/"1"
-	// This documents the current behavior (not necessarily correct for all use cases)
+	// This specs the current behavior (not necessarily correct for all use cases)
 	TestFalse(TEXT("\"enable\" → false (not handled)"), MjXmlUtils::ParseBool(TEXT("enable")));
 	TestFalse(TEXT("\"disable\" → false"), MjXmlUtils::ParseBool(TEXT("disable")));
 	return true;

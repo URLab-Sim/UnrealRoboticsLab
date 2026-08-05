@@ -28,7 +28,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Tests/MjTestHelpers.h"
@@ -261,13 +261,10 @@ bool FMjCameraStreamingApply::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("StreamCam"));
+	UMjCamera* Cam = Cast<UMjCamera>(S.Add<UMjCameraBase>(S.Body, TEXT("stream_cam")));
 	if (!TestNotNull(TEXT("camera"), Cam))
 		return false;
-	Cam->MjName = TEXT("stream_cam");
 	Cam->CaptureMode = EMjCameraMode::Real;
-	Cam->RegisterComponent();
-	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
 
 	// Name resolution: the canonical "<art>/<part>" name resolves to this camera.
 	const FString Canon = Cam->GetCanonicalName();

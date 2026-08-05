@@ -36,7 +36,7 @@
 # --target defaults to <ProjectName>Editor derived from the .uproject filename.
 # Only override for projects that don't follow UE's naming convention.
 #
-# Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
+# Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args, 4 generated-profile drift.
 
 set -eu
 
@@ -60,7 +60,7 @@ Usage:
 
 --target defaults to <ProjectName>Editor derived from the .uproject filename.
 
-Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
+Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args, 4 generated-profile drift.
 HELP
     exit 3
 }
@@ -93,6 +93,24 @@ CMD="$ENGINE/Engine/Binaries/Win64/UnrealEditor-Cmd.exe"
 
 [[ -f "$BAT" ]] || { echo "Build.bat not found: $BAT" >&2; exit 3; }
 [[ -x "$CMD" ]] || { echo "UnrealEditor-Cmd not found: $CMD" >&2; exit 3; }
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
+# --- Generated-profile drift gate ------------------------------------------
+# Refuse to build if the emitted MuJoCo document profile drifted from what the
+# schema now says. The generator ships inside the MuJoCo submodule, so this is
+# skipped when the submodule is not checked out: the gate is best-effort
+# locally and enforced in CI.
+REGEN="$PLUGIN_ROOT/Scripts/regen_ue_profile.sh"
+PROTOSPEC_GEN="$PLUGIN_ROOT/protospec/protospec_gen"
+if [[ -f "$REGEN" && -d "$PROTOSPEC_GEN" ]] && command -v uv >/dev/null 2>&1; then
+    echo ">>> Profile drift gate: regen_ue_profile.sh --check"
+    if ! bash "$REGEN" --check; then
+        echo "ERROR: generated profile drift detected. Re-run 'Scripts/regen_ue_profile.sh', then re-run this script." >&2
+        exit 4
+    fi
+fi
 
 # Truncate the test log up-front so a build failure (or any early exit
 # before UnrealEditor-Cmd writes to it) doesn't leave the SHA-256 in the
@@ -153,8 +171,6 @@ ENGINE_LABEL=$(basename "$ENGINE")
 # Third-party dep SHAs from third_party/install/<dep>/INSTALLED_SHA.txt
 # (written by the CMake build scripts). Lets a reviewer verify they're
 # comparing against the same binary toolchain. Silent skip if missing.
-SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 DEPS_LINE=""
 for pair in "mj:MuJoCo" "coacd:CoACD" "zmq:libzmq"; do
     key="${pair%%:*}"

@@ -40,7 +40,7 @@
 # --target defaults to <ProjectName>Editor derived from the .uproject filename.
 # Only override for projects that don't follow UE's naming convention.
 #
-# Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
+# Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args, 4 generated-profile drift.
 
 set -eu
 
@@ -64,7 +64,7 @@ Usage:
 
 --target defaults to <ProjectName>Editor derived from the .uproject filename.
 
-Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
+Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args, 4 generated-profile drift.
 HELP
     exit 3
 }
@@ -104,6 +104,24 @@ CMD="$ENGINE/Engine/Binaries/Linux/UnrealEditor-Cmd"
 if pgrep -fa "/UnrealEditor( |$)" >/dev/null 2>&1; then
     echo "ERROR: an UnrealEditor process is running. Close it first." >&2
     exit 3
+fi
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
+# --- Generated-profile drift gate ------------------------------------------
+# Refuse to build if the emitted MuJoCo document profile drifted from what the
+# schema now says. The generator ships inside the MuJoCo submodule, so this is
+# skipped when the submodule is not checked out: the gate is best-effort
+# locally and enforced in CI.
+REGEN="$PLUGIN_ROOT/Scripts/regen_ue_profile.sh"
+PROTOSPEC_GEN="$PLUGIN_ROOT/protospec/protospec_gen"
+if [[ -f "$REGEN" && -d "$PROTOSPEC_GEN" ]] && command -v uv >/dev/null 2>&1; then
+    echo ">>> Profile drift gate: regen_ue_profile.sh --check"
+    if ! bash "$REGEN" --check; then
+        echo "ERROR: generated profile drift detected. Re-run 'Scripts/regen_ue_profile.sh', then re-run this script." >&2
+        exit 4
+    fi
 fi
 
 : > "$LOG"

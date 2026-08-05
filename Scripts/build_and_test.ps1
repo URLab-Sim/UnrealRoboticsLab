@@ -39,7 +39,7 @@
         -Target  CustomEditorTargetName
 
 .NOTES
-    Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args.
+    Exit codes: 0 ok, 1 build failed, 2 tests failed, 3 bad args, 4 generated-profile drift.
 #>
 
 [CmdletBinding()]
@@ -66,19 +66,19 @@ $cmd = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 if (-not (Test-Path $bat)) { Write-Error "Build.bat not found: $bat";          exit 3 }
 if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   exit 3 }
 
-# --- Codegen drift gate ----------------------------------------------------
-# Refuse to build if codegen output drifted from the committed Source/, or
-# if any drift diagnostic (--strict) fires, or if the clang-AST introspect
-# snapshot is missing (--require-introspect). Skipped silently when Python
-# isn't on PATH — the gate is best-effort locally; CI enforces it strictly.
+# --- Generated-profile drift gate ------------------------------------------
+# Refuse to build if the emitted MuJoCo document profile drifted from what the
+# schema now says. The generator ships inside the MuJoCo submodule, so this is
+# skipped when the submodule is not checked out: the gate is best-effort
+# locally and enforced in CI.
 $pluginRoot = Split-Path -Parent $PSScriptRoot
-$generator = Join-Path $pluginRoot 'Scripts/codegen/generate_ue_components.py'
-$py = (Get-Command python -ErrorAction SilentlyContinue)
-if ($py -and (Test-Path $generator)) {
-    Write-Host '>>> Codegen drift gate: python generate_ue_components.py --check --strict --require-introspect'
-    & $py.Source $generator --check --strict --require-introspect
+$regen = Join-Path $pluginRoot 'Scripts/regen_ue_profile.ps1'
+$protospec = Join-Path $pluginRoot 'protospec/protospec_gen'
+if ((Test-Path $regen) -and (Test-Path $protospec) -and (Get-Command uv -ErrorAction SilentlyContinue)) {
+    Write-Host '>>> Profile drift gate: regen_ue_profile.ps1 -Check'
+    & $regen -Check
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Codegen drift detected (exit $LASTEXITCODE). Re-run 'python Scripts/codegen/generate_ue_components.py' to regenerate, then re-run this script."
+        Write-Error "Generated profile drift detected (exit $LASTEXITCODE). Re-run 'Scripts/regen_ue_profile.ps1', then re-run this script."
         exit 4
     }
 }

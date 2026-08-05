@@ -76,7 +76,8 @@ ROS 2 bridging.
 
 ## Requirements
 
-- Unreal Engine 5.7+, Windows (Win64) with Visual Studio 2022/2025, or Linux
+- Unreal Engine 5.7 (only tested/supported version; avoid 5.8 — Vulkan driver
+  regressions on Linux), Windows (Win64) with Visual Studio 2022/2025, or Linux
   (x86_64) with UE's bundled clang.
 - CMake 3.24+ to build the dependencies.
 - MuJoCo, CoACD, and libzmq are bundled as submodules and built from source.

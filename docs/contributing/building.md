@@ -90,7 +90,7 @@ A missing DLL almost always means `build_all` was never run, so `third_party/ins
 
 ## Linux build internals
 
-URLab builds on Linux against UE 5.7+, but the flow is more involved than on Windows because UE's bundled clang and libc++ require the native deps to be ABI-compatible. The [Installation](../installation.md) page covers the one-time walkthrough; this section documents the internals you may need when debugging a per-dep failure.
+URLab builds on Linux against UE 5.7 (the only supported version — avoid 5.8 due to Vulkan driver regressions), but the flow is more involved than on Windows because UE's bundled clang and libc++ require the native deps to be ABI-compatible. The [Installation](../installation.md) page covers the one-time walkthrough; this section documents the internals you may need when debugging a per-dep failure.
 
 ### Why `--engine`
 

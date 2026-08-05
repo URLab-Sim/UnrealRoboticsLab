@@ -99,6 +99,7 @@ nav:
     - Debug Visualization: guides/debug.md
     - Interaction: guides/interaction.md
     - Recording & Replay: guides/recording.md
+    - ROS 2 Integration: guides/ros.md
   - Python & External Control:
     - Overview: python/index.md
     - Quickstart: python/quickstart.md

@@ -26,6 +26,7 @@
 #include "DrawDebugHelpers.h"
 #include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "Serialization/BufferArchive.h"
 #include "Utils/URLabLogging.h"
 
 AMjHeightfieldActor::AMjHeightfieldActor()

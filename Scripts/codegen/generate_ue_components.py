@@ -3261,91 +3261,241 @@ def _phase_synthetic_categories(ctx: PhaseContext) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Sensor switch + TagToType codegen
+# Sensor type-info descriptor table
 # ---------------------------------------------------------------------------
 #
-# Replaces the hand-written switch + map in MjSensor.cpp with codegen
-# output driven by:
-#   - codegen_rules.json[categories.sensor.subtypes] for XML key + enum
-#     value + (optional) case_body_override
-#   - sensor_per_type (from build_mjcf_schema_snapshot.py's Sensor()
-#     scrape) for mj_type + static objtype/reftype literals
+# Emits FMjSensorTypeInfo, one row per sensor type, into a generated header +
+# source pair. The row carries everything the six formerly type-keyed switches
+# each recomputed: the mjSENS_* enum, MJCF tag, objtype/reftype export policy,
+# ROS semantic, coordinate-transform value kind, MuJoCo output dimension, and
+# the concrete UMj*Sensor UClass. Consumers (ExportTo, the ImportFromXml tag
+# lookup, TransformSensorReading, DescribeState, and the editor XML parser's
+# tag -> UClass chain) all read this one table.
 #
-# Variable-objtype/reftype branches (frame*, geomdist, contact, plugin,
-# user) stay hand-written in the post-switch block — that block reads
-# UE-side ObjType / RefType properties and applies them after the
-# codegen case fires.
+# Data sources:
+#   - codegen_rules.json[categories.sensor.subtypes] for XML key, enum value,
+#     class name, header, and the URLab-side policy (semantic, value_kind,
+#     fixed_dim, and any obj_source/ref_source overrides)
+#   - sensor_per_type (from build_mjcf_schema_snapshot.py's Sensor() scrape)
+#     for mj_type + the objtype/reftype literals
 
-def _emit_sensor_switch_block(cat_rules: Dict[str, Any],
-                             sensor_per_type: Dict[str, Any]) -> str:
-    """One ``case EMjSensorType::X: ...`` per subtype + the default fallback.
-    Lives between ``CODEGEN_SENSOR_TYPE_SWITCH_*`` markers in MjSensor.cpp.
+# Value kind -> MuJoCo output dimension. Used as the default FixedDim when a
+# subtype rule doesn't pin one explicitly. Mirrors mjs_sensorDim in MuJoCo's
+# user_api.cc; camprojection (2) and the variable-dim sensors (-1) override it.
+_SENSOR_VALUE_KIND_DIM = {
+    "Scalar":     1,
+    "Position":   3,
+    "Direction":  3,
+    "Vector3":    3,
+    "Quaternion": 4,
+    "GeomFromTo": 6,
+}
+
+
+def _sensor_obj_ref_policy(per: Dict[str, Any],
+                           subtype: Dict[str, Any]) -> Tuple[str, str, str, str]:
+    """Resolve ``(obj_source, obj_literal, ref_source, ref_literal)`` for one
+    sensor subtype.
+
+    The base policy is derived from the scraped ``sensor_per_type`` objtype /
+    reftype:
+      - ``mjOBJ_*``  -> Static, carrying that literal
+      - ``from_xml`` -> FromXml (UE translates its ObjType / RefType property)
+      - ``computed`` -> FromXml (geom / contact / plugin read the properties)
+      - reftype null while objtype is from_xml -> FromXml (frame sensors carry
+        an optional relative reference frame the scraper records as null)
+      - otherwise    -> None (leave the mjs field at its zero default)
+
+    A subtype rule overrides either side via ``obj_source`` / ``ref_source``
+    (plus an ``obj_type`` / ``ref_type`` literal when Static): rangefinder
+    computes its objtype from the attachment, and user / rangefinder never
+    write a reftype.
     """
-    lines: List[str] = []
+    def resolve(source_key: str, type_key: str,
+                snapshot_val: Any, allow_frame_ref: bool) -> Tuple[str, str]:
+        override = subtype.get(source_key)
+        if override:
+            return override, subtype.get(type_key, "mjOBJ_UNKNOWN")
+        if isinstance(snapshot_val, str) and snapshot_val.startswith("mjOBJ_"):
+            return "Static", snapshot_val
+        if snapshot_val in ("from_xml", "computed"):
+            return "FromXml", "mjOBJ_UNKNOWN"
+        if snapshot_val is None and allow_frame_ref:
+            return "FromXml", "mjOBJ_UNKNOWN"
+        return "None", "mjOBJ_UNKNOWN"
+
+    objtype = per.get("objtype")
+    reftype = per.get("reftype")
+    obj_source, obj_literal = resolve("obj_source", "obj_type", objtype, False)
+    ref_source, ref_literal = resolve(
+        "ref_source", "ref_type", reftype, objtype == "from_xml")
+    return obj_source, obj_literal, ref_source, ref_literal
+
+
+_SENSOR_TYPE_INFO_HEADER = (
+    f"{COPYRIGHT_BLOCK}\n"
+    "#pragma once\n\n"
+    '#include "CoreMinimal.h"\n'
+    '#include "MuJoCo/Components/Sensors/MjSensor.h"\n'
+    '#include "State/MjStateTypes.h"\n\n'
+    "// How a sensor's MuJoCo objtype / reftype is resolved during ExportTo.\n"
+    "enum class EMjSensorObjSource : uint8\n"
+    "{\n"
+    "    None,     // leave the mjs field at its zero default (global sensors)\n"
+    "    Static,   // write the fixed mjOBJ_* literal carried in the descriptor\n"
+    "    FromXml,  // translate the UE ObjType / RefType property\n"
+    "    Computed, // derive from the attachment (rangefinder: camera or site)\n"
+    "};\n\n"
+    "// Coordinate / unit family for the MuJoCo -> UE reading transform.\n"
+    "enum class EMjSensorValueKind : uint8\n"
+    "{\n"
+    "    Scalar,     // no transform\n"
+    "    Position,   // metres -> centimetres, negate Y\n"
+    "    Direction,  // unit vector, negate Y\n"
+    "    Vector3,    // velocity / acceleration / force / torque / angular, negate Y\n"
+    "    Quaternion, // (w,x,y,z) -> UE (x,y,z,w) with handedness fix\n"
+    "    GeomFromTo, // two concatenated positions\n"
+    "};\n\n"
+    "// One row of sensor-type metadata. This table collapses the six\n"
+    "// type-keyed switches that used to live across MjSensor.cpp and the\n"
+    "// editor XML parser into a single source of truth.\n"
+    "struct FMjSensorTypeInfo\n"
+    "{\n"
+    "    EMjSensorType      Type;        // URLab sensor enum\n"
+    "    int32              MjType;      // mjSENS_* value\n"
+    "    const TCHAR*       Tag;         // MJCF element tag (lowercase)\n"
+    "    EMjSensorObjSource ObjSource;   // how objtype is resolved\n"
+    "    int32              ObjType;     // mjOBJ_* literal when ObjSource == Static\n"
+    "    EMjSensorObjSource RefSource;   // how reftype is resolved\n"
+    "    int32              RefType;     // mjOBJ_* literal when RefSource == Static\n"
+    "    EMjSensorSemantic  Semantic;    // ROS-facing grouping\n"
+    "    EMjSensorValueKind ValueKind;   // coordinate-transform family\n"
+    "    int32              FixedDim;    // MuJoCo output dim; -1 if variable\n"
+    "    UClass*            SensorClass; // concrete UMj*Sensor component class\n"
+    "};\n\n"
+    "// Descriptor for a sensor type. Falls back to the accelerometer row for\n"
+    "// unmapped values; never returns null.\n"
+    "URLAB_API const FMjSensorTypeInfo& MjSensorTypeInfoFor(EMjSensorType Type);\n\n"
+    "// Descriptor for a MJCF sensor tag (case-insensitive), or null if the\n"
+    "// tag is not a recognised sensor element.\n"
+    "URLAB_API const FMjSensorTypeInfo* MjSensorTypeInfoForTag(const FString& Tag);\n\n"
+    "// The full descriptor table, one row per sensor type.\n"
+    "URLAB_API TArrayView<const FMjSensorTypeInfo> MjSensorTypeInfoTable();\n"
+)
+
+
+_SENSOR_TYPE_INFO_CPP_BODY = (
+    "namespace\n"
+    "{\n"
+    "const TArray<FMjSensorTypeInfo>& GetSensorTypeInfoTable()\n"
+    "{\n"
+    "    static const TArray<FMjSensorTypeInfo> Table = {\n"
+    "{ROWS}"
+    "    };\n"
+    "    return Table;\n"
+    "}\n"
+    "} // namespace\n\n"
+    "TArrayView<const FMjSensorTypeInfo> MjSensorTypeInfoTable()\n"
+    "{\n"
+    "    return GetSensorTypeInfoTable();\n"
+    "}\n\n"
+    "const FMjSensorTypeInfo& MjSensorTypeInfoFor(EMjSensorType Type)\n"
+    "{\n"
+    "    static const TMap<EMjSensorType, const FMjSensorTypeInfo*> ByType = []\n"
+    "    {\n"
+    "        TMap<EMjSensorType, const FMjSensorTypeInfo*> Map;\n"
+    "        for (const FMjSensorTypeInfo& Info : GetSensorTypeInfoTable())\n"
+    "        {\n"
+    "            Map.Add(Info.Type, &Info);\n"
+    "        }\n"
+    "        return Map;\n"
+    "    }();\n"
+    "    if (const FMjSensorTypeInfo* const* Found = ByType.Find(Type))\n"
+    "    {\n"
+    "        return **Found;\n"
+    "    }\n"
+    "    return *ByType.FindChecked(EMjSensorType::Accelerometer);\n"
+    "}\n\n"
+    "const FMjSensorTypeInfo* MjSensorTypeInfoForTag(const FString& Tag)\n"
+    "{\n"
+    "    static const TMap<FString, const FMjSensorTypeInfo*> ByTag = []\n"
+    "    {\n"
+    "        TMap<FString, const FMjSensorTypeInfo*> Map;\n"
+    "        for (const FMjSensorTypeInfo& Info : GetSensorTypeInfoTable())\n"
+    "        {\n"
+    "            Map.Add(FString(Info.Tag).ToLower(), &Info);\n"
+    "        }\n"
+    "        return Map;\n"
+    "    }();\n"
+    "    if (const FMjSensorTypeInfo* const* Found = ByTag.Find(Tag.ToLower()))\n"
+    "    {\n"
+    "        return *Found;\n"
+    "    }\n"
+    "    return nullptr;\n"
+    "}\n"
+)
+
+
+def _emit_sensor_type_info_files(cat_rules: Dict[str, Any],
+                                 sensor_per_type: Dict[str, Any],
+                                 public_root: str,
+                                 private_root: str) -> List["FileWrite"]:
+    """Build the FMjSensorTypeInfo header + source FileWrites."""
     type_enum = cat_rules.get("type_enum_name", "EMjSensorType")
+    rows: List[str] = []
+    includes: List[str] = []
     for subtype in cat_rules.get("subtypes", []):
         key = subtype["key"]
         enum_value = subtype["enum_value"]
-        override = subtype.get("case_body_override")
-        if override:
-            lines.append(f"        case {type_enum}::{enum_value}:")
-            lines.append(f"            {override} break;")
-            continue
+        class_name = subtype["class_name"]
+        header = subtype.get("header")
         per = sensor_per_type.get(key, {})
         mj_type = per.get("mj_type")
-        if not mj_type:
-            # The sensor switch will fall through to ``default:`` for this
-            # subtype at runtime — i.e. all framejerk/whatever sensors get
-            # the default mjSENS_ACCELEROMETER + mjOBJ_SITE substitution.
+        if not mj_type or not header:
+            # A missing scrape entry (or header) drops this row from the
+            # table; the runtime lookup then falls back to accelerometer.
             # Loud diagnostic so a regression in build_mjcf_schema_snapshot's
             # _extract_sensor_per_type regex doesn't silently miscompile.
             _diag_add(
-                f"[diagnostic] sensor subtype '{key}' has no entry in "
-                f"sensor_per_type snapshot — runtime will fall through to "
-                f"the default mjSENS_ACCELEROMETER + mjOBJ_SITE branch. "
-                f"Check the _extract_sensor_per_type regex against "
-                f"mujoco/src/user/user_objects.cc.",
-                source="sensor_scrape_miss",
+                f"[diagnostic] sensor subtype '{key}' has no "
+                f"{'mj_type in sensor_per_type' if not mj_type else 'header'} "
+                f"entry — it is omitted from the FMjSensorTypeInfo table and "
+                f"will fall back to the accelerometer descriptor at runtime.",
+                source="sensor_type_info",
             )
-            lines.append(f"        // (skipped: no mj_type for '{key}' in sensor_per_type)")
             continue
-        stmts = [f"Element->type = {mj_type};"]
-        # Only emit static objtype/reftype when sensor_per_type carries a
-        # literal mjOBJ_X. "from_xml" and "computed" entries are handled
-        # by the post-switch block reading UE-side ObjType/RefType.
-        objtype = per.get("objtype")
-        if isinstance(objtype, str) and objtype.startswith("mjOBJ_"):
-            stmts.append(f"Element->objtype = {objtype};")
-        reftype = per.get("reftype")
-        if isinstance(reftype, str) and reftype.startswith("mjOBJ_"):
-            stmts.append(f"Element->reftype = {reftype};")
-        lines.append(f"        case {type_enum}::{enum_value}: "
-                     f"{' '.join(stmts)} break;")
-    default_per = sensor_per_type.get("accelerometer", {})
-    default_type = default_per.get("mj_type", "mjSENS_ACCELEROMETER")
-    default_objtype = default_per.get("objtype") or "mjOBJ_SITE"
-    if not (isinstance(default_objtype, str) and default_objtype.startswith("mjOBJ_")):
-        default_objtype = "mjOBJ_SITE"
-    lines.append(f"        default: Element->type = {default_type}; "
-                 f"Element->objtype = {default_objtype}; break;")
-    return "\n".join(lines) + "\n"
+        obj_source, obj_literal, ref_source, ref_literal = _sensor_obj_ref_policy(
+            per, subtype)
+        semantic = subtype.get("semantic", "Generic")
+        value_kind = subtype.get("value_kind", "Scalar")
+        fixed_dim = subtype.get("fixed_dim")
+        if fixed_dim is None:
+            fixed_dim = _SENSOR_VALUE_KIND_DIM.get(value_kind, 1)
+        includes.append(f'#include "MuJoCo/Components/Sensors/{header}"')
+        rows.append(
+            f"        {{ {type_enum}::{enum_value}, {mj_type}, "
+            f'TEXT("{key}"), '
+            f"EMjSensorObjSource::{obj_source}, {obj_literal}, "
+            f"EMjSensorObjSource::{ref_source}, {ref_literal}, "
+            f"EMjSensorSemantic::{semantic}, EMjSensorValueKind::{value_kind}, "
+            f"{fixed_dim}, {class_name}::StaticClass() }},\n"
+        )
 
-
-def _emit_sensor_tag_to_type_block(cat_rules: Dict[str, Any]) -> str:
-    """One ``{TEXT(""), EMjSensorType::X}`` per subtype. Lives between
-    ``CODEGEN_SENSOR_TAG_TO_TYPE_*`` markers in MjSensor.cpp.
-    """
-    lines: List[str] = []
-    type_enum = cat_rules.get("type_enum_name", "EMjSensorType")
-    for subtype in cat_rules.get("subtypes", []):
-        # Some subtype XML keys collide with C++ enum members that diverge
-        # (e.g. `key=tendonactuatorfrc`, `enum_value=TendonActFrc`,
-        # mjSENS_TENDONACTFRC). The tag-to-type map uses the XML key
-        # verbatim so MJCF lookups match.
-        key = subtype["key"]
-        enum_value = subtype["enum_value"]
-        lines.append(f'        {{TEXT("{key}"), {type_enum}::{enum_value}}},')
-    return "\n".join(lines) + "\n"
+    cpp_content = (
+        f"{COPYRIGHT_BLOCK}\n"
+        '#include "MuJoCo/Generated/MjSensorTypeInfo.h"\n\n'
+        '#include "mujoco/mujoco.h"\n\n'
+        + "\n".join(includes) + "\n\n"
+        + _SENSOR_TYPE_INFO_CPP_BODY.replace("{ROWS}", "".join(rows))
+    )
+    pub_path = os.path.join(
+        public_root, "MuJoCo", "Generated", "MjSensorTypeInfo.h")
+    priv_path = os.path.join(
+        private_root, "MuJoCo", "Generated", "MjSensorTypeInfo.cpp")
+    return [
+        FileWrite(path=pub_path, content=_SENSOR_TYPE_INFO_HEADER),
+        FileWrite(path=priv_path, content=cpp_content),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -3859,8 +4009,8 @@ def _phase_geom_final_type(ctx: PhaseContext) -> None:
     )
 
 
-def _phase_sensor_codegen(ctx: PhaseContext) -> None:
-    """Inject codegen-emitted sensor switch + TagToType into MjSensor.cpp."""
+def _phase_sensor_type_info(ctx: PhaseContext) -> None:
+    """Emit the FMjSensorTypeInfo descriptor table (header + source)."""
     sensor_rules = ctx.rules.get("categories", {}).get("sensor")
     if not sensor_rules:
         return
@@ -3868,23 +4018,13 @@ def _phase_sensor_codegen(ctx: PhaseContext) -> None:
     if not sensor_per_type:
         _diag_add(
             "[diagnostic] sensor_per_type missing from schema snapshot; "
-            "skipping sensor switch codegen (run "
+            "skipping FMjSensorTypeInfo table (run "
             "build_mjcf_schema_snapshot.py).",
-            source="sensor_codegen",
+            source="sensor_type_info",
         )
         return
-    cpp_path = os.path.join(
-        ctx.private_root, "MuJoCo", "Components", "Sensors", "MjSensor.cpp",
-    )
-    _inject_tags_into_cpp(
-        cpp_path,
-        [
-            ("SENSOR_TYPE_SWITCH", _emit_sensor_switch_block(sensor_rules, sensor_per_type)),
-            ("SENSOR_TAG_TO_TYPE", _emit_sensor_tag_to_type_block(sensor_rules)),
-        ],
-        ctx.writes,
-        diag_source="sensor_codegen",
-    )
+    ctx.writes.extend(_emit_sensor_type_info_files(
+        sensor_rules, sensor_per_type, ctx.public_root, ctx.private_root))
 
 
 _KNOWN_LAYOUTS = {"single_uclass_per_file", "multi_uclass", "no_subclasses"}
@@ -3954,7 +4094,7 @@ EMISSION_PHASES: List[EmissionPhase] = [
     EmissionPhase(name="generated_enums",       fn=_phase_generated_enums),
     EmissionPhase(name="editor_option_helpers", fn=_phase_editor_option_helpers),
     EmissionPhase(name="articulation_registry", fn=_phase_articulation_registry),
-    EmissionPhase(name="sensor_codegen",        fn=_phase_sensor_codegen),
+    EmissionPhase(name="sensor_type_info",      fn=_phase_sensor_type_info),
     EmissionPhase(name="objtype_dispatch",      fn=_phase_objtype_dispatch),
     EmissionPhase(name="geom_final_type",       fn=_phase_geom_final_type),
     EmissionPhase(name="bind_h",                fn=_phase_bind_h),

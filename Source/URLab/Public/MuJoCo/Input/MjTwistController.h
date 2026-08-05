@@ -27,6 +27,7 @@
 #include "InputActionValue.h"
 #include "MjTwistController.generated.h"
 
+struct FMjArticulationState;
 class UInputAction;
 class UInputMappingContext;
 class UEnhancedInputComponent;
@@ -81,6 +82,12 @@ public:
 
 	/** Returns bitmask of currently pressed action keys (bits 0-9). Thread-safe. */
 	int32 GetActiveActions() const;
+
+	/** Declares this controller's twist + active actions into the articulation IR.
+	 *  UMjTwistController derives from UActorComponent, not UMjComponent, so the
+	 *  collector calls this through a cached weak ptr rather than the DescribeState
+	 *  virtual. */
+	void DescribeState(FMjArticulationState& Out) const;
 
 	/** Bind input actions to an EnhancedInputComponent. Called from AMjArticulation::SetupPlayerInputComponent. */
 	void BindInput(UEnhancedInputComponent* EIC);

@@ -234,8 +234,21 @@ client.step(n_steps=1, include_cameras=True)
 frame = robot.cameras["wrist"].latest_frame   # (H, W, 4) RGBA uint8
 ```
 
-In `live` mode, per-camera SUB threads keep `latest_frame` fresh in the
-background. See [API Reference](api.md#cameras) for the per-mode shapes.
+Capture is decoupled from stepping and retrieval is non-blocking. For the
+image of a specific step's state, request its `frame_id` (pipeline one step
+to keep full rate):
+
+```python
+r = client.step()
+r2 = client.step(include_cameras={"wrist": r["frame_id"]})
+frame = robot.cameras["wrist"].latest_frame
+```
+
+For continuous ZMQ/SHM streams (enabled automatically in `live` mode, or
+explicitly via `client.runtime.set_camera_streaming({"wrist": {"zmq": True}})`
+since `bEnableAllCameras` now defaults off), per-camera SUB threads keep
+`latest_frame` fresh in the background. See
+[API Reference](api.md#cameras) for the per-mode shapes.
 
 ## Record and replay
 

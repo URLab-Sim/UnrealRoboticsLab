@@ -39,10 +39,9 @@ Representation decisions (see the plan's DR-1..DR-11):
 
 Entry point: ``python -m protospec_gen.emit`` writes the files;
 ``python -m protospec_gen.emit --check`` regenerates in memory and verifies the
-checked-in files are byte-identical (same convention as draft_schema.py). Both
-also drive the Unreal profile (:mod:`protospec_gen.emit_ue`), but only when a
-URLab checkout is locatable, so one command and one gate cover every emission of
-the schema.
+checked-in files are byte-identical. Both also drive the Unreal profile
+(:mod:`protospec_gen.emit_ue`), but only when a URLab checkout is locatable, so
+one command and one gate cover every emission of the schema.
 """
 
 from __future__ import annotations

@@ -1,5 +1,5 @@
 <mujoco model="equality_constraints">
-  <!-- Covers: equality constraints of several types -- connect (site anchor),
+  <!-- Covers: equality constraints of several types - connect (site anchor),
        weld (two bodies), joint (coupling with polycoef), tendon coupling.
        Exercises the eq_* arrays (type/obj1id/obj2id/data). -->
   <compiler angle="radian"/>

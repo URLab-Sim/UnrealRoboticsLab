@@ -1,5 +1,5 @@
 <mujoco model="joints_all_types">
-  <!-- Covers: every joint type -- free, ball, slide, hinge -- plus a body with
+  <!-- Covers: every joint type - free, ball, slide, hinge - plus a body with
        two joints (hinge+slide compound) and joint ranges/limits. -->
   <compiler angle="radian"/>
   <worldbody>

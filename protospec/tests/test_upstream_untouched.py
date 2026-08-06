@@ -13,7 +13,8 @@ introduced, rather than surfacing as a rebase conflict at the next MuJoCo bump.
 
 ProtoSpec is meant to be usable outside this fork, so the gate skips with a
 stated reason when it cannot establish a baseline: no git, not a repository, a
-shallow clone (no merge base to diff against), or no upstream remote ref.
+shallow clone (no merge base to diff against), no upstream remote ref, or an
+enclosing repository that is not a MuJoCo checkout at all.
 """
 
 from __future__ import annotations
@@ -62,6 +63,13 @@ def checkout() -> tuple[Path, str]:
     if _git(here, "rev-parse", "--is-shallow-repository") == "true":
         pytest.skip("shallow clone: no merge base to diff against")
     root_path = Path(root)
+    if not (root_path / "src" / "xml" / "mjcf.schema").is_file():
+        pytest.skip(
+            "the enclosing repository is not a MuJoCo checkout (no "
+            "src/xml/mjcf.schema at its root); this gate only applies when "
+            "ProtoSpec lives inside one, where everything outside protospec/ "
+            "is upstream source of truth"
+        )
 
     baseline: str | None = None
     for ref in UPSTREAM_REFS:

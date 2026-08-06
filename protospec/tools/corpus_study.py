@@ -322,8 +322,13 @@ class _Inventory:
 def _discover(corpus: Path) -> list:
     files = []
     for dp, dn, fn in os.walk(corpus):
-        parts = Path(dp).parts
-        if "build" in parts[len(corpus.parts):]:
+        parts = Path(dp).parts[len(corpus.parts):]
+        # The checkout's embedded ProtoSpec tree is not part of MuJoCo's MJCF
+        # corpus, and counting its fixtures makes the coverage metric measure
+        # the wrong population.
+        if parts[:1] == ("protospec",):
+            continue
+        if "build" in parts:
             continue
         for f in fn:
             if f.endswith(".xml"):

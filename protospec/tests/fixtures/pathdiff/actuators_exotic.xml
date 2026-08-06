@@ -1,7 +1,7 @@
 <mujoco model="actuators_exotic">
-  <!-- Covers: the actuator shorthands with no prior fixture -- intvelocity,
+  <!-- Covers: the actuator shorthands with no prior fixture - intvelocity,
        damper, cylinder, muscle (with <lengthrange> via compiler settings),
-       adhesion and dcmotor -- plus a spatial tendon pulley branch. These
+       adhesion and dcmotor - plus a spatial tendon pulley branch. These
        exercise gainprm/biasprm/dyntype folding per shorthand and the pulley
        wrap element on both legs. -->
   <compiler autolimits="true"/>
@@ -43,7 +43,7 @@
   <actuator>
     <intvelocity name="a_intvel" joint="shoulder" actrange="-1.5 1.5" kp="20" kv="2"/>
     <damper name="a_damper" joint="elbow" kv="5" ctrlrange="0 1"/>
-    <!-- NOTE: no `bias` attribute on cylinder -- stock's OneActuator reads the
+    <!-- NOTE: no `bias` attribute on cylinder - stock's OneActuator reads the
          3-valued bias into a scalar double (xml_native_reader.cc "double bias
          =...; ReadAttr(..., 3, &bias, ...)"), a stack overrun that clobbers
          area/diameter, so any bias-bearing cylinder diverges from the faithful

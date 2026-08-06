@@ -1,5 +1,5 @@
 <mujoco model="materials_texture">
-  <!-- Covers: procedural (builtin) textures -- a checker 2d and a gradient skybox --
+  <!-- Covers: procedural (builtin) textures - a checker 2d and a gradient skybox -
        plus materials referencing them with texrepeat/reflectance/specular, applied
        to geoms. Exercises ntex/nmat and tex_*/mat_* arrays with no asset files. -->
   <compiler angle="degree"/>

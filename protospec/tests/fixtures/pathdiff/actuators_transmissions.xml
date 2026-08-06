@@ -1,5 +1,5 @@
 <mujoco model="actuators_transmissions">
-  <!-- Covers: several actuator transmission types -- motor(joint), position(joint),
+  <!-- Covers: several actuator transmission types - motor(joint), position(joint),
        velocity(joint), general(joint with gainprm), and a site-transmission
        actuator via a spatial tendon actuator (motor on tendon). Exercises the
        actuator gain/bias/range/ctrlrange arrays. -->

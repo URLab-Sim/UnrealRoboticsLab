@@ -1,5 +1,5 @@
 <mujoco model="material_layers">
-  <!-- Covers: multi-layer materials -- <material><layer texture= role=/>
+  <!-- Covers: multi-layer materials - <material><layer texture= role=/>
        children mapping textures to PBR roles. Exercises mat_texid role slots
        on both compile legs. -->
   <asset>

@@ -1,9 +1,9 @@
 <mujoco model="hfield_terrain">
   <!-- Covers three <hfield> asset sources + hfield-type geoms on both legs:
        (1) a PNG file source; (2) a procedural grid with ASYMMETRIC inline
-       elevation -- exercises stock OneHfield's reverse-row-order flip (the mjs
+       elevation - exercises stock OneHfield's reverse-row-order flip (the mjs
        leg must flip too, else silent divergence); (3) a procedural grid with NO
-       elevation -- exercises stock's zero-fill of userdata (else MjsPath fails
+       elevation - exercises stock's zero-fill of userdata (else MjsPath fails
        "hfield not specified"). Cases 2 and 3 were bridge gaps until the builder
        reproduced OneHfield's userdata construction. -->
   <compiler texturedir="assets"/>

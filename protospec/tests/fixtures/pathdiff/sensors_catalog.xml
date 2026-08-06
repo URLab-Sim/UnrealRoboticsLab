@@ -1,5 +1,5 @@
 <mujoco model="sensors_catalog">
-  <!-- Covers: every sensor family with no prior fixture -- the joint/tendon
+  <!-- Covers: every sensor family with no prior fixture - the joint/tendon
        pos/vel/limit triads, actuator pos/vel/frc (+ jointactuatorfrc /
        tendonactuatorfrc), ball quat/angvel, all eight frame* sensors, subtree
        com/linvel/angmom, magnetometer, torque, camprojection, e_potential,

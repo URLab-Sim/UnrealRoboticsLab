@@ -1,6 +1,6 @@
 <mujoco model="geoms_primitives">
-  <!-- Covers: every primitive geom type -- plane, sphere, capsule, ellipsoid,
-       cylinder, box -- plus a fromto-specified capsule and a fromto cylinder,
+  <!-- Covers: every primitive geom type - plane, sphere, capsule, ellipsoid,
+       cylinder, box - plus a fromto-specified capsule and a fromto cylinder,
        with per-geom rgba/friction. -->
   <compiler angle="degree"/>
   <worldbody>

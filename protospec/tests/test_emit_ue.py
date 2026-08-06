@@ -47,6 +47,18 @@ TOP_LEVEL = {
 }
 
 
+def element_header_path(schema: UeSchema, name: str) -> str:
+    """Where the emitter puts one element's header.
+
+    Derived from `element_family` rather than spelled out, so the grouping is
+    read from the emitter that owns it and a regrouping moves these tests with
+    it instead of breaking them.
+    """
+    family = emit_ue.element_family(schema, name)
+    sub = f"{family}/" if family else ""
+    return f"{PUBLIC}/Elements/{sub}Mj{name}.gen.h"
+
+
 @pytest.fixture(scope="module")
 def files() -> dict[str, str]:
     return emit_ue.generate()
@@ -62,7 +74,7 @@ def schema() -> UeSchema:
 # --------------------------------------------------------------------------- #
 def test_manifest(files, schema):
     """One header per element, plus the aggregate files and the regen scripts."""
-    element_headers = {f"{PUBLIC}/Elements/Mj{e['name']}.gen.h"
+    element_headers = {element_header_path(schema, e["name"])
                        for e in schema.elements}
     assert TOP_LEVEL <= set(files)
     assert element_headers <= set(files)
@@ -71,7 +83,7 @@ def test_manifest(files, schema):
 
 def test_every_element_has_a_class(files, schema):
     for e in schema.elements:
-        text = files[f"{PUBLIC}/Elements/Mj{e['name']}.gen.h"]
+        text = files[element_header_path(schema, e["name"])]
         assert f"class URLAB_API {schema.cls[e['name']]} : public " \
                "UMjNodeComponent" in text
 
@@ -90,7 +102,7 @@ def test_only_hand_bases_are_kept_out_of_the_picker(files, schema):
     """BlueprintSpawnableComponent is what puts a component in Add Component.
     The five hand bases must not be there; the hand subclass is."""
     for e in schema.elements:
-        text = files[f"{PUBLIC}/Elements/Mj{e['name']}.gen.h"]
+        text = files[element_header_path(schema, e["name"])]
         head = text.split(f"class URLAB_API {schema.cls[e['name']]}", 1)[0]
         spawnable = "BlueprintSpawnableComponent" in head
         assert spawnable is not schema.is_hand_base(e["name"]), e["name"]
@@ -105,7 +117,7 @@ def test_hand_base_list_must_name_real_elements():
 
 def test_every_attribute_has_a_property_and_a_quartet(files, schema):
     for e in schema.elements:
-        text = files[f"{PUBLIC}/Elements/Mj{e['name']}.gen.h"]
+        text = files[element_header_path(schema, e["name"])]
         for _fid, f in schema.stored_fields(e):
             member = schema.member(e, f)
             assert re.search(rf"^\t\S.* {member};$", text, re.M), \
@@ -125,7 +137,7 @@ def test_identity_attribute_is_not_a_property(files, schema):
     still reaches Visit at its schema field id."""
     visit = files[f"{PUBLIC}/MjVisit.gen.h"]
     for e in schema.elements:
-        text = files[f"{PUBLIC}/Elements/Mj{e['name']}.gen.h"]
+        text = files[element_header_path(schema, e["name"])]
         for fid, f in enumerate(e["fields"]):
             if not UeSchema.is_identity(f):
                 continue
@@ -387,7 +399,7 @@ def test_name_collision_guard_fires():
 def test_active_is_renamed(files, schema):
     """`active` would produce SetActive, which UActorComponent already declares
     as a virtual UFUNCTION with a different signature."""
-    text = files[f"{PUBLIC}/Elements/MjLight.gen.h"]
+    text = files[element_header_path(schema, "Light")]
     assert "TOptional<bool> ActiveFlag;" in text
     assert "SetActiveFlag(bool InValue)" in text
     assert "void SetActive(" not in text

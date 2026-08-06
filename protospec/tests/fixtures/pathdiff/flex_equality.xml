@@ -2,7 +2,7 @@
   <!-- Covers: the flexvert / flexstrain equality constraints targeting a
        flexcomp-generated flex. Exercises the eq_* tables' flex wiring on both
        compile legs.
-       NOTE: no <pin> inside the flexcomp -- pins have no mjs_makeFlex surface
+       NOTE: no <pin> inside the flexcomp - pins have no mjs_makeFlex surface
        and the mjs leg silently builds unpinned vertices (extra bodies/joints),
        so a pin-bearing flexcomp diverges structurally. Add a <pin> case here
        once the bridge reproduces pinning. -->

@@ -1345,7 +1345,7 @@ static void TestWaveBCanonicalization() {
   CHECK(num.ok());
   const Custom& cst = *num.model->customs.front();
   CHECK(*cst.numerics[0]->size == 5 && cst.numerics[0]->data == "1 2 3");
-  CHECK(*cst.numerics[1]->size == 3 && cst.numerics[1]->data.empty());
+  CHECK(*cst.numerics[1]->size == 3 && !cst.numerics[1]->data);
   CHECK(!cst.numerics[2]->size && cst.numerics[2]->data == "7 8");
   CHECK(WriteMjcf(*num.model).find("size=\"5\"") != std::string::npos);
   Fixpoint(num);

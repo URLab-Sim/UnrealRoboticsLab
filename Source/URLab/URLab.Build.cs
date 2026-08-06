@@ -137,10 +137,10 @@ public class URLab : ModuleRules
 
 	// ProtoSpec: the schema-driven MJCF object model, reader and writer that the
 	// generated MuJoCo document profile (Source/URLab/*/MuJoCo/Gen) and its hand
-	// seams (MuJoCo/Doc) compile against. It ships inside the MuJoCo fork and is
-	// staged by third_party/MuJoCo/build.ps1|.sh, so it is present exactly when
-	// the submodule carries the fork. When it is absent the Gen/ and Doc/ trees
-	// compile out and the module builds as it did before Phase 3.
+	// seams (MuJoCo/Doc) compile against. It is built from the plugin's protospec/
+	// directory and staged by protospec/build.ps1 (Windows) or protospec/build.sh
+	// (Linux), so it is present exactly when that staging has been run. When it is
+	// absent the Gen/ and Doc/ trees compile out and the module builds without them.
 	protected void AddProtospec(ReadOnlyTargetRules Target)
 	{
 		// The staged header tree mirrors ProtoSpec's lib/ layout, because its
@@ -177,7 +177,7 @@ public class URLab : ModuleRules
 		{
 			throw new BuildException(
 				"ProtoSpec install at {0} has an include/ but no static libraries in lib/. " +
-				"Re-run third_party/MuJoCo/build.ps1 (Windows) or build.sh (Linux).", Root);
+				"Re-run protospec/build.ps1 (Windows) or protospec/build.sh (Linux).", Root);
 		}
 		foreach (string Lib in Libs)
 		{

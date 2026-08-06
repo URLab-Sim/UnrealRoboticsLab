@@ -45,7 +45,6 @@ public class URLabEditor : ModuleRules
 			"PropertyEditor",
 			"Slate",
 			"SlateCore",
-			"XmlParser",
 			"Projects",
 			"LevelEditor",
 			"Json",

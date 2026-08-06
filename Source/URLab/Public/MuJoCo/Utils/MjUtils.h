@@ -40,21 +40,6 @@ class URLAB_API MjUtils
 {
 public:
 	/**
-	 * @brief Read a position attribute from XML (in MJ metres) and convert
-	 * to Unreal Engine centimetres + Y-flip. Sets ``bOverride=true`` when
-	 * the attribute is present. Codegen-driven thin wrapper used by the
-	 * spatial_pose canonicalisation in URLab components.
-	 *
-	 * @param Node XML element.
-	 * @param Attr Attribute name (typically TEXT("pos")).
-	 * @param Out UE-space output vector.
-	 * @param bOverride Set to true when the attribute is present.
-	 * @return true if the attribute was present and parsed.
-	 */
-	static bool ReadVec3InMeters(const class FXmlNode* Node, const TCHAR* Attr,
-		FVector& Out, bool& bOverride);
-
-	/**
 	 * @brief Converts a C-style string (possibly null) to an Unreal Engine FString.
 	 *
 	 * @param text Pointer to the C-string.
@@ -80,26 +65,6 @@ public:
 	 * @return true if successful (6 values parsed), false otherwise.
 	 */
 	static bool ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& OutEnd);
-
-	/**
-	 * @brief Decompose a MuJoCo `fromto` XML attribute into URLab's canonical
-	 * Pos/Quat representation plus a half-length scalar.
-	 *
-	 * MJCF's ``fromto="x1 y1 z1 x2 y2 z2"`` is an alternative way to specify
-	 * pos+quat+size[1 or 2] for capsule/cylinder/box/ellipsoid primitives. We
-	 * always normalise to (Pos = midpoint, Quat aligns +Z with the segment
-	 * direction, HalfLength = half the segment length in metres). The caller
-	 * decides which Size slot to write the half-length into.
-	 *
-	 * @param Node           XML node to read the `fromto` attribute from.
-	 * @param OutPos         Receives the midpoint in UE world units (cm).
-	 * @param OutQuat        Receives the orientation aligning local +Z with fromto.
-	 * @param OutHalfLength  Receives the half-distance in MuJoCo metres.
-	 * @return true iff `fromto` was present and successfully parsed.
-	 */
-	static bool DecomposeFromTo(const class FXmlNode* Node,
-		FVector& OutPos, FQuat& OutQuat,
-		float& OutHalfLength);
 
 	/**
 	 * @brief Renders the collision geometries for a specific MuJoCo Geom (Primitives and Convex Hulls).
@@ -140,68 +105,3 @@ public:
 	 */
 	static FString PrettifyName(const FString& Name, const FString& PrefixToStrip = TEXT(""));
 };
-
-// ---------------------------------------------------------------------------
-// Free inline helpers for the most common MuJoCo-side write patterns.
-// These collapse the `if (!X.IsEmpty()) mjs_setString(Field, TCHAR_TO_UTF8(*X));`
-// boilerplate that appears in ~13 places across URLab components.
-// ---------------------------------------------------------------------------
-
-/**
- * @brief Write a UE FString to an mjString* field, but only if non-empty.
- *
- * Replaces the gated pattern:
- *   if (!Name.IsEmpty()) mjs_setString(Element->name, TCHAR_TO_UTF8(*Name));
- * with:
- *   MjSetString(Element->name, Name);
- *
- * @param Field  The mjString* field (e.g. Element->childclass).
- * @param Value  The UE FString to write. No-op if empty.
- */
-inline void MjSetString(mjString* Field, const FString& Value)
-{
-	if (!Value.IsEmpty())
-	{
-		mjs_setString(Field, TCHAR_TO_UTF8(*Value));
-	}
-}
-
-/**
- * @brief Unconditionally write a UE FString to an mjString* field.
- *
- * Use when the caller has already verified the value should be written
- * (e.g. registered mesh asset name, attached body identifier). Does NOT
- * skip empty strings — the caller's responsibility.
- *
- * @param Field  The mjString* field.
- * @param Value  The UE FString to write.
- */
-inline void MjSetStringRaw(mjString* Field, const FString& Value)
-{
-	mjs_setString(Field, TCHAR_TO_UTF8(*Value));
-}
-
-/**
- * @brief Overwrite an mjDoubleVec* with the contents of a TArray<float>.
- *
- * The mjs spec exposes mjsKey::qpos / qvel / ... as ``mjDoubleVec*``
- * (a std::vector<double>* in disguise). The standard write pattern is
- * ``clear() + push_back per element``; this helper packages that.
- * Used both by codegen-emitted exports and by URLab's hand-written
- * freejoint-padding path in MjKeyframe.
- *
- * @param Dest  The mjDoubleVec* destination. No-op if null.
- * @param Src   The float source array. Each element is widened to double.
- */
-inline void MjSetDoubleVec(mjDoubleVec* Dest, const TArray<float>& Src)
-{
-	if (!Dest)
-	{
-		return;
-	}
-	Dest->clear();
-	for (float V : Src)
-	{
-		Dest->push_back(static_cast<double>(V));
-	}
-}

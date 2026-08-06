@@ -60,6 +60,17 @@ namespace urlab::spec
 // Identity, provenance and construction all live on UMjNodeComponent, so this is
 // one implementation for all 145 element classes rather than 145.
 
+/**
+ * The class registered for `Type`, or `Fallback` when nothing is registered.
+ *
+ * Declared in MjNodeFactories.h, which the node factories use to build hand
+ * subclasses in place of generated ones. That header cannot be included here:
+ * it builds FScsNodeFactory and FInstanceNodeFactory over FMjScsProfile and
+ * FMjInstanceProfile, which this file only finishes defining below. Forward
+ * declaring the one entry point Ident needs avoids the cycle.
+ */
+URLAB_API UClass* MjElementClass(psm::ElementType Type, UClass* Fallback);
+
 struct FMjIdentPolicy
 {
 	using serial_t = std::uint64_t;
@@ -101,7 +112,8 @@ struct FMjIdentPolicy
 	template <class E>
 	static E* New()
 	{
-		E* Element = NewObject<E>(GetTransientPackage(), E::StaticClass(), NAME_None, RF_Transactional);
+		UClass* ResolvedClass = MjElementClass(gen::TMjElementType<E>::Value, E::StaticClass());
+		E* Element = NewObject<E>(GetTransientPackage(), ResolvedClass, NAME_None, RF_Transactional);
 		Element->EnsureSerial();
 		return Element;
 	}

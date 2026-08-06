@@ -22,9 +22,7 @@
 
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
-#include "MuJoCo/Utils/MjXmlUtils.h"
 #include "DrawDebugHelpers.h"
-#include "XmlNode.h"
 
 FString MjUtils::MjToString(const char* text)
 {
@@ -72,32 +70,6 @@ bool MjUtils::ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& 
 		return true;
 	}
 	return false;
-}
-
-bool MjUtils::DecomposeFromTo(const FXmlNode* Node,
-	FVector& OutPos, FQuat& OutQuat,
-	float& OutHalfLength)
-{
-	if (!Node)
-		return false;
-	const FString FromToStr = Node->GetAttribute(TEXT("fromto"));
-	if (FromToStr.IsEmpty())
-		return false;
-
-	FVector Start, End;
-	if (!ParseFromTo(FromToStr, Start, End))
-		return false;
-
-	OutPos = (Start + End) * 0.5f;
-
-	const FVector Dir = (End - Start).GetSafeNormal();
-	OutQuat = Dir.IsNearlyZero()
-				? FQuat::Identity
-				: FQuat::FindBetweenNormals(FVector(0.f, 0.f, 1.f), Dir);
-
-	// UE cm -> MuJoCo m for the half-length.
-	OutHalfLength = (End - Start).Size() * 0.5f / 100.0f;
-	return true;
 }
 
 void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const mjData* d, int32 GeomId,
@@ -387,19 +359,4 @@ FString MjUtils::PrettifyName(const FString& Name, const FString& PrefixToStrip)
 	Result = Result.TrimStartAndEnd().TrimChar('_');
 
 	return Result.IsEmpty() ? Name : Result;
-}
-
-bool MjUtils::ReadVec3InMeters(const FXmlNode* Node, const TCHAR* Attr, FVector& Out, bool& bOverride)
-{
-	if (!Node)
-		return false;
-	FString Str = Node->GetAttribute(Attr);
-	if (Str.IsEmpty())
-		return false;
-	bOverride = true;
-	// Schema attribute is in MJ metres; convert to UE centimetres + Y-flip.
-	FVector MjVec = MjXmlUtils::ParseVector(Str);
-	const double MjArr[3] = {MjVec.X, MjVec.Y, MjVec.Z};
-	Out = URLabAxisConv::MjPositionToUe(MjArr);
-	return true;
 }

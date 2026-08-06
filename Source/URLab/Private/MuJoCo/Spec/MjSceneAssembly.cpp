@@ -12,11 +12,6 @@
 #include "Internationalization/Regex.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 
-#if URLAB_MJ_GEN
-#include "MuJoCo/Spec/MjSpecProfile.h"
-#include "MuJoCo/Spec/MjTreeAdapters.h"
-#endif
-
 namespace
 {
 /** Bytes collected for one participant, in spec order. */
@@ -159,60 +154,6 @@ TMap<FString, FString> FSceneAssembly::CollectAssetFiles() const
 			}
 		}
 	}
-	return Out;
-}
-
-TArray<FMjSectionConflict> FSceneAssembly::FindSectionConflicts() const
-{
-	TArray<FMjSectionConflict> Out;
-#if URLAB_MJ_GEN
-	using namespace urlab::spec;
-	if (!SceneRoot.IsValid())
-	{
-		return Out;
-	}
-
-	// `<compiler angle>` is honoured per child and round-trips, so a participant
-	// carrying its own <compiler> is only reported when it carries something else
-	// as well. The other two are discarded wholesale.
-	auto SectionName = [](psm::ElementType Type) -> const TCHAR* {
-		switch (Type)
-		{
-			case psm::ElementType::Option:
-				return TEXT("option");
-			case psm::ElementType::Size:
-				return TEXT("size");
-			default:
-				return nullptr;
-		}
-	};
-
-	for (const FMjSceneParticipant& Participant : GetParticipants())
-	{
-		UMjNodeComponent* Root = Participant.Spec.GetRoot();
-		if (Root == nullptr)
-		{
-			continue;
-		}
-		for (const FMjOrderedChild& Child : FMjInstanceAdapter::OrderedChildren(*Root))
-		{
-			psm::ElementType Type{};
-			const TCHAR* Name = gen::ElementTypeOfNode(*Child.Node, Type) ? SectionName(Type) : nullptr;
-			if (Name == nullptr)
-			{
-				continue;
-			}
-			FMjSectionConflict Conflict;
-			Conflict.Prefix = Participant.Prefix;
-			Conflict.Section = Name;
-			Conflict.Detail = FString::Printf(
-				TEXT("the scene's <%s> is sole authority; MuJoCo discards an attached spec's own copy without "
-					 "reporting it on the pinned engine"),
-				Name);
-			Out.Add(MoveTemp(Conflict));
-		}
-	}
-#endif
 	return Out;
 }
 

@@ -137,14 +137,6 @@ void MjApplyOption(const UMjOption* Option, const UMjFlag* Flags, mjOption& Out)
 	}
 }
 
-void MjApplyOptionToSpec(const UMjOption* Option, const UMjFlag* Flags, mjSpec* Spec)
-{
-	if (Spec != nullptr)
-	{
-		MjApplyOption(Option, Flags, Spec->option);
-	}
-}
-
 void MjApplyOptionToModel(const UMjOption* Option, const UMjFlag* Flags, mjModel* Model)
 {
 	if (Model != nullptr)

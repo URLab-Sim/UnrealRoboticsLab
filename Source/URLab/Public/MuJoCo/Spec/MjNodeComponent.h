@@ -26,11 +26,6 @@ struct mjData_;
 typedef mjModel_ mjModel;
 typedef mjData_ mjData;
 
-namespace ps::mjcf
-{
-class Binding;
-}
-
 /**
  * The base of every generated MJCF element component.
  *
@@ -112,16 +107,6 @@ public:
 	int32 SourceLine = 0;
 
 	// --- Runtime binding --------------------------------------------------- //
-
-	/**
-	 * Record the id this element received in the compiled model.
-	 *
-	 * Binding is by name, so an element the compiler removed (discardvisual,
-	 * fusestatic) simply reports nothing and stays as authoring data. Nothing but
-	 * the id is retained: no view struct, no cached mjModel or mjData pointer.
-	 * Accessors index the model and data the engine hands them.
-	 */
-	void Bind(const ps::mjcf::Binding& Binding);
 
 	/** Record an id resolved elsewhere (the engine's one pass over the binding). */
 	void BindTo(int32 Id);

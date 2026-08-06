@@ -37,8 +37,5 @@ class UMjOption;
  */
 URLAB_API void MjApplyOption(const UMjOption* Option, const UMjFlag* Flags, mjOption& Out);
 
-/** As above, onto a spec the compiler has not run over yet. */
-URLAB_API void MjApplyOptionToSpec(const UMjOption* Option, const UMjFlag* Flags, mjSpec* Spec);
-
 /** As above, onto a compiled model, which is what the live RPC edits. */
 URLAB_API void MjApplyOptionToModel(const UMjOption* Option, const UMjFlag* Flags, mjModel* Model);

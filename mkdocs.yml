@@ -269,9 +269,7 @@ nav:
 #       - FMjCompilerSettings: api/utils/fmjcompilersettings.md
 #       - GeomView: api/utils/geomview.md
 #       - JointView: api/utils/jointview.md
-#       - MjOrientationUtils: api/utils/mjorientationutils.md
 #       - MujocoUtils: api/utils/mujocoutils.md
-#       - MujocoXmlUtils: api/utils/mujocoxmlutils.md
 #       - SensorView: api/utils/sensorview.md
 #       - TendonView: api/utils/tendonview.md
 #     - Other:

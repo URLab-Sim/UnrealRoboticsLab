@@ -37,7 +37,6 @@
 #include "HAL/PlatformMisc.h"
 #include "Async/Future.h"
 #include "Misc/Paths.h"
-#include "XmlFile.h"
 #include "Internationalization/Regex.h"
 #include "Utils/URLabLogging.h"
 #include <atomic>

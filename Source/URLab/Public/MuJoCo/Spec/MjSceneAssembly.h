@@ -60,14 +60,6 @@ struct URLAB_API FMjVfsAsset
 };
 
 
-/** A section a participant authored that the scene's own section overrides. */
-struct URLAB_API FMjSectionConflict
-{
-	FString Prefix;
-	FString Section;
-	FString Detail;
-};
-
 /**
  * A scene, assembled at write time from the level.
  *
@@ -112,19 +104,6 @@ struct URLAB_API FSceneAssembly
 	 * from the path gets one nothing resolves against.
 	 */
 	TMap<FString, FString> CollectAssetFiles() const;
-
-	/**
-	 * Participants whose own <option>, <size> or <compiler> differs from the
-	 * scene's.
-	 *
-	 * MuJoCo discards an attached spec's option and size wholesale rather
-	 * than merging them, and on the pinned engine it does so SILENTLY: the
-	 * per-field diagnostic exists only in a later release. So the editor detects
-	 * this rather than relying on the engine to report it. `<compiler angle>` is
-	 * the exception -- it is honoured per child and round-trips, so it is not
-	 * reported.
-	 */
-	TArray<FMjSectionConflict> FindSectionConflicts() const;
 
 	/**
 	 * The scene MJCF: the manager's sections, the world-body content, and one

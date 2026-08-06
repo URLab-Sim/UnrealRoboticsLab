@@ -22,7 +22,6 @@
 
 #if URLAB_PROTOSPEC
 THIRD_PARTY_INCLUDES_START
-#include "binding.h"
 #include "protospec/model_core.h"
 THIRD_PARTY_INCLUDES_END
 #endif
@@ -120,30 +119,6 @@ void UMjNodeComponent::PostDuplicate(bool bDuplicateForPIE)
 }
 
 // --- Runtime binding ------------------------------------------------------- //
-
-void UMjNodeComponent::Bind(const ps::mjcf::Binding& Binding)
-{
-	BoundId.Reset();
-#if URLAB_PROTOSPEC
-	// Scanned rather than looked up because Binding's pointer index is defined in
-	// the compile bridge, which links the engine; URLab links MuJoCo itself and
-	// does not take the bridge. The engine's own post-compile pass walks the
-	// entries once and calls BindTo, so this per-element form is the fallback for
-	// a caller holding only one element.
-	const void* Self = static_cast<const void*>(this);
-	for (const ps::mjcf::Binding::Entry& Entry : Binding.entries())
-	{
-		if (Entry.elem == Self)
-		{
-			if (Entry.id >= 0)
-			{
-				BoundId = Entry.id;
-			}
-			return;
-		}
-	}
-#endif
-}
 
 void UMjNodeComponent::BindTo(int32 Id)
 {

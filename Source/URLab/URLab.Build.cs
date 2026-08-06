@@ -59,7 +59,6 @@ public class URLab : ModuleRules
 			"Engine",
 			"InputCore",
 			"PhysicsCore",
-			"XmlParser",
 			"HTTP",
 			"Json",
 			"JsonUtilities",

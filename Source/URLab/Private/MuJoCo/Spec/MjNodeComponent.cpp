@@ -141,12 +141,39 @@ void UMjNodeComponent::Unbind()
 
 TArray<FString> UMjNodeComponent::RefNameOptions(int32 FieldId) const
 {
+	TArray<FString> Out;
 #if URLAB_MJ_GEN
-	return urlab::spec::gen::RefNameOptions(this, FieldId);
+	ps::mjcf::ElementType Self;
+	if (!urlab::spec::gen::ElementTypeOfNode(*this, Self))
+	{
+		return Out;
+	}
+	const std::vector<ps::mjcf::ElementType> Targets = ps::sdk::detail::RefTargetsAt(Self, FieldId);
+	if (Targets.empty())
+	{
+		return Out;
+	}
+
+	// The dispatch-level RefNameOptions walks the attach hierarchy, which SCS
+	// templates never have, so an editing Blueprint always sees empty
+	// dropdowns. FSpecRef's graph-aware walk serves both the live-actor attach
+	// tree and the SCS construction-script tree, so it is used here instead.
+	const FSpecRef SpecRef = FSpecRef::OverOwner(this);
+	for (ps::mjcf::ElementType Target : Targets)
+	{
+		if (const UClass* TargetClass = urlab::spec::gen::ClassForElement(Target))
+		{
+			for (const FString& Name : SpecRef.NamesOfType(TargetClass))
+			{
+				Out.AddUnique(Name);
+			}
+		}
+	}
+	Out.Sort();
 #else
 	(void)FieldId;
-	return TArray<FString>();
 #endif
+	return Out;
 }
 
 // --- Pose preview and write-back ------------------------------------------- //

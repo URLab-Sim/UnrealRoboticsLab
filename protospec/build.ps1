@@ -5,13 +5,19 @@
 # a change here used to tear down and reconfigure the entire MuJoCo install to
 # recompile one file.
 #
-# Only the MuJoCo-free targets are built -- the object model, the
+# Of the MuJoCo-free targets, all are built -- the object model, the
 # canonicalization resolvers and the MJCF reader/writer. The compile bridge
 # links the engine and is not part of URLab's link line, because URLab already
 # links MuJoCo itself.
+#
+# The one MuJoCo-dependent target that is built is the comparison harness
+# (protospec_harness), which URLab's compile-parity goldens call to diff two
+# mjModels field by field. It needs mujoco.h and nothing else that URLab does
+# not already link, so the staged MuJoCo install is enough to build it.
 
 param(
     [string]$InstallDir = "../third_party/install",
+    [string]$MujocoRoot = "../third_party/install/MuJoCo",
     [string]$BuildType = "Release"
 )
 
@@ -25,6 +31,14 @@ if (-not [System.IO.Path]::IsPathRooted($InstallDir)) {
 $InstallRoot = [System.IO.Path]::GetFullPath($InstallDir).Replace('\', '/')
 $ProtospecInstallDir = "$InstallRoot/protospec"
 
+if (-not [System.IO.Path]::IsPathRooted($MujocoRoot)) {
+    $MujocoRoot = Join-Path $PSScriptRoot $MujocoRoot
+}
+$MujocoRoot = [System.IO.Path]::GetFullPath($MujocoRoot).Replace('\', '/')
+if (-not (Test-Path "$MujocoRoot/include/mujoco/mujoco.h")) {
+    throw "No MuJoCo headers under $MujocoRoot. Run third_party/build_all.ps1 first, or pass -MujocoRoot."
+}
+
 $Src = Join-Path $PSScriptRoot "lib"
 if (-not (Test-Path (Join-Path $Src "CMakeLists.txt"))) {
     throw "No ProtoSpec sources at $Src."
@@ -34,12 +48,12 @@ $Build = "$Src/build-urlab"
 
 Write-Host "Resolved install: $ProtospecInstallDir" -ForegroundColor Gray
 Write-Host "Configuring ProtoSpec from $Src..." -ForegroundColor Gray
-cmake -S $Src -B $Build -DCMAKE_BUILD_TYPE=$BuildType `
+cmake -S $Src -B $Build -DCMAKE_BUILD_TYPE=$BuildType "-DMUJOCO_ROOT=$MujocoRoot" `
     "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded$($BuildType.Replace('Release', '').Replace('Debug', 'Debug'))DLL"
 if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed for ProtoSpec" }
 
 Write-Host "Building ProtoSpec..." -ForegroundColor Gray
-cmake --build $Build --config $BuildType --target protospec protospec_core protospec_io
+cmake --build $Build --config $BuildType --target protospec protospec_core protospec_io protospec_harness
 if ($LASTEXITCODE -ne 0) { throw "Build failed for ProtoSpec" }
 
 # Staging is explicit because ProtoSpec's CMake declares no install() rules.
@@ -52,14 +66,18 @@ if ($LASTEXITCODE -ne 0) { throw "Build failed for ProtoSpec" }
 # Staged last, so a failed build leaves the previous install in place rather
 # than none at all.
 Write-Host "Staging ProtoSpec into $ProtospecInstallDir..." -ForegroundColor Gray
-$BuiltLibs = Get-ChildItem -Path "$Build/$BuildType" -Filter "*.lib" -File -ErrorAction SilentlyContinue
-if (-not $BuiltLibs) { throw "ProtoSpec built no static libraries under $Build/$BuildType" }
+# The harness is its own CMake subdirectory, so its archive lands one level
+# deeper than the rest; both output directories are collected.
+$LibDirs = @("$Build/$BuildType", "$Build/harness/$BuildType")
+$BuiltLibs = @($LibDirs | Where-Object { Test-Path $_ } |
+    ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lib" -File })
+if (-not $BuiltLibs) { throw "ProtoSpec built no static libraries under $Build" }
 
 if (Test-Path $ProtospecInstallDir) { Remove-Item -Recurse -Force $ProtospecInstallDir }
 $Lib = Join-Path $ProtospecInstallDir "lib"
 New-Item -ItemType Directory -Force -Path $Lib | Out-Null
 
-foreach ($dir in @("include", "sdk", "generated", "core", "io", "compile", "validate")) {
+foreach ($dir in @("include", "sdk", "generated", "core", "io", "compile", "validate", "harness")) {
     $dirSrc = Join-Path $Src $dir
     if (-not (Test-Path $dirSrc)) { continue }
     $dirSrcFull = [System.IO.Path]::GetFullPath($dirSrc)

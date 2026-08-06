@@ -145,7 +145,7 @@ public class URLab : ModuleRules
 		// The staged header tree mirrors ProtoSpec's lib/ layout, because its
 		// umbrella headers reach the generated tables through relative paths. These
 		// are the same directories ProtoSpec's own CMake targets export.
-		string[] IncludeDirs = { "include", "sdk", "generated", "core", "io", "compile", "validate",
+		string[] IncludeDirs = { "include", "sdk", "generated", "core", "io", "compile", "validate", "harness",
 			Path.Combine("third_party", "tinyxml2") };
 
 		string Root = Path.Combine(ThirdPartyPath, "protospec");

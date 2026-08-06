@@ -1,12 +1,10 @@
 // ProtoSpec compile boundary: Model -> mjModel + Binding (plan DR-5/DR-10/DR-11,
-// milestone 5). This is the production contract the native compiler lands behind
-// later (native-compiler impl-plan Section 1). One shipping implementation
-// exists:
+// milestone 5). One shipping implementation exists:
 //   * XmlPath: WriteMjcf(model) -> register assets + the XML in an mjVFS ->
 //     mj_loadXML -> name-based Binding.
 // Auto resolves to XmlPath. report.taken always names the path that actually ran.
-// NativePath remains parked in attic and is reached only when explicitly forced
-// (PROTOSPEC_NATIVE); Auto never routes to it.
+// NativePath is a defined enum value but is not supported; requesting it returns
+// an error rather than falling back to the XML path.
 //
 // Purity (CDR-14): Compile / Recompile take const Model& end to end and never
 // mutate the tree (no const_cast). Unnamed elements are auto-named only in the

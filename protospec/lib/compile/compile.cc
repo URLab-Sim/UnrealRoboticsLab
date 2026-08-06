@@ -16,9 +16,6 @@
 #include <mujoco/mujoco.h>
 
 #include "mjcf.h"
-#ifdef PROTOSPEC_NATIVE
-#include "native.h"   // attic/compile native compiler; built only when PROTOSPEC_NATIVE
-#endif
 #include "reflect.h"
 #include "validate.h"
 #include "visit.h"
@@ -391,40 +388,20 @@ Compiled Compile(const Model& model, const CompileOptions& opts) {
     if (gated) return out;
   }
 
-#ifdef PROTOSPEC_NATIVE
-  // NativePath is forced: run the native compiler and never fall back to XML.
-  // Today it always returns null with UnsupportedNatively (attic/compile/native.cc);
-  // when NC1 lands stages it will return a model + native-constructed Binding.
-  // Auto never routes here -- it resolves to the XML path; the native compiler
-  // stays parked in attic and is only reached when explicitly forced.
-  if (opts.path == CompilePath::NativePath) {
-    mjModel* nm = compile::NativeCompile(model, opts, out.report);
-    if (nm) {
-      out.model.reset(nm);
-      BuildNameBinding(model, nm, opts, out);  // CDR-4 (name-based construction)
-    }
-    return out;
-  }
-#else
-  // The native compiler lives in attic/ and is not built (PROTOSPEC_NATIVE off).
-  // NativePath (forced) reports UnsupportedNatively and does NOT fall back,
-  // honoring its "never silently fall back" contract.
+  // NativePath is not available. Report an error rather than falling back.
   if (opts.path == CompilePath::NativePath) {
     out.report.taken = CompilePath::NativePath;
     FallbackReason nr;
-    nr.feature = "native.not_built";
+    nr.feature = "native.not_available";
     nr.count = 1;
     out.report.fallback_reasons.push_back(nr);
     ps::Diagnostic d;
     d.severity = ps::Diagnostic::Severity::Error;
     d.source = "gate";
-    d.message =
-        "native compile unsupported (UnsupportedNatively): the native compiler "
-        "is not built (PROTOSPEC_NATIVE off; sources parked in attic/)";
+    d.message = "native compile path is not available";
     out.report.errors.push_back(std::move(d));
     return out;
   }
-#endif  // PROTOSPEC_NATIVE
 
   // XmlPath (forced) and Auto both resolve to the XML path.
   out.report.taken = CompilePath::XmlPath;

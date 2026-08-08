@@ -12,6 +12,7 @@
 
 #include "Bridge/OpRegistry.h"
 #include "MjLevelOps.h"
+#include "MuJoCo/Core/AMjManager.h"
 
 namespace
 {

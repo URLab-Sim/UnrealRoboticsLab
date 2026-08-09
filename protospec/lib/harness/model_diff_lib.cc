@@ -16,8 +16,44 @@
 #include <mujoco/mujoco.h>
 #include <mujoco/mjxmacro.h>
 
+#if defined(_WIN32)
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#endif
+
 namespace ps::harness {
 namespace {
+
+using ErrorFn = void (*)(const char*);
+
+/**
+ * The address of MuJoCo's `mju_user_error` slot, or null.
+ *
+ * `mju_user_error` is a DATA export, and naming it directly puts a data import
+ * in this object file. A host that delay-loads mujoco.dll -- the Unreal plugin
+ * does, so that it can place the library at runtime -- cannot bind one: the
+ * linker refuses the whole module with LNK1194 rather than emit a stub. Asking
+ * the loaded module for the export by name yields the same address with no
+ * import record, and reads the same whether the library was delay-loaded or
+ * linked normally. The plugin resolves these two symbols the same way for its
+ * own handler (`MjPhysicsEngine.cpp`).
+ */
+ErrorFn* UserErrorSlot() {
+#if defined(_WIN32)
+  static ErrorFn* const slot = [] {
+    // The module is already loaded by the time any comparison runs: this
+    // library cannot be called without having called MuJoCo first.
+    HMODULE module = GetModuleHandleA("mujoco.dll");
+    if (module == nullptr) return static_cast<ErrorFn*>(nullptr);
+    return reinterpret_cast<ErrorFn*>(
+        reinterpret_cast<void*>(GetProcAddress(module, "mju_user_error")));
+  }();
+  return slot;
+#else
+  return &mju_user_error;
+#endif
+}
 
 // --------------------------------------------------------------------------
 // Fatal-error trap
@@ -64,11 +100,21 @@ bool RunForward(const mjModel* m, mjData* d) {
 // mj_forward with the fatal handler trapped. Returns MuJoCo's message when the
 // step aborted, an empty string when it completed.
 std::string ForwardTrapped(const mjModel* m, mjData* d) {
-  void (*previous)(const char*) = mju_user_error;
+  ErrorFn* const slot = UserErrorSlot();
+  if (slot == nullptr) {
+    // No slot means no trap, and the choice is between running the pass
+    // unprotected and reporting every model as aborted. Reporting them all
+    // would empty the invariant comparison while every report still read as a
+    // clean one, so the pass runs as it did before the trap existed.
+    mj_forward(m, d);
+    return std::string();
+  }
+
+  ErrorFn const previous = *slot;
   g_forward_msg[0] = '\0';
-  mju_user_error = &ForwardErrorHandler;
+  *slot = &ForwardErrorHandler;
   const bool completed = RunForward(m, d);
-  mju_user_error = previous;
+  *slot = previous;
   if (completed) return std::string();
   return g_forward_msg[0] ? std::string(g_forward_msg)
                           : std::string("mj_forward aborted");

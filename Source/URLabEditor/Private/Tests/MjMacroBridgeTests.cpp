@@ -163,9 +163,9 @@ FString ReportToString(const ps::harness::DiffReport& Report)
 /**
  * Compile `Xml` both ways and require the two models to be the same model.
  *
- * The file path is compiled with auto-naming off, because the two paths bind
- * differently by design and a reserved name in one of them is a difference in
- * how the model is REACHED rather than in what it is.
+ * Production options on both sides. The two paths reserve names for the unnamed
+ * from the same rule, so the name table is part of what has to agree rather
+ * than something to be excused.
  */
 void CheckBridgeMatchesFilePath(
 	FAutomationTestBase& Test, const FString& Label, const FString& Xml, const FString& Path)
@@ -177,9 +177,7 @@ void CheckBridgeMatchesFilePath(
 	}
 	const FSpecRef Ref = FSpecRef::OverBlueprint(*Blueprint);
 
-	FMjCompileOptions Options;
-	Options.bAutoName = false;
-	FMjCompiled ViaFile = MjCompileSpec(Ref, Options);
+	FMjCompiled ViaFile = MjCompileSpec(Ref);
 	if (!ViaFile.IsOk())
 	{
 		Test.AddError(

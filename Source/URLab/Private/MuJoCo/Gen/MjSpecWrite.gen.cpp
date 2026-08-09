@@ -6595,7 +6595,7 @@ FMjHookList HooksFor(ElementType Type)
 	}
 	case ElementType::OrientationActuator:
 	{
-		static const TCHAR* const Names[] = { TEXT("actuator_shorthand") };
+		static const TCHAR* const Names[] = { TEXT("transmission"), TEXT("actuator_shorthand") };
 		return FMjHookList{ Names, UE_ARRAY_COUNT(Names) };
 	}
 	case ElementType::Pid:
@@ -6620,7 +6620,7 @@ FMjHookList HooksFor(ElementType Type)
 	}
 	case ElementType::Adhesion:
 	{
-		static const TCHAR* const Names[] = { TEXT("actuator_shorthand") };
+		static const TCHAR* const Names[] = { TEXT("transmission"), TEXT("actuator_shorthand") };
 		return FMjHookList{ Names, UE_ARRAY_COUNT(Names) };
 	}
 	case ElementType::DcMotor:

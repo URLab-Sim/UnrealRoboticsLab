@@ -17,6 +17,7 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END
 
 #if URLAB_MJ_GEN
+#include "MjReservedNames.h"
 #include "MuJoCo/Spec/MjSpecProfile.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 #endif
@@ -605,6 +606,72 @@ mjModel* LoadFromVfs(const FString& RootXml, const TMap<FString, FString>& Parti
 	return Model;
 }
 }  // namespace
+
+// --- Reserved names, for the spec path --------------------------------------- //
+
+namespace urlab::spec
+{
+
+/**
+ * The same reservation FReservedNames performs, for a caller that builds an
+ * mjSpec instead of emitting text.
+ *
+ * It sits beside the original rather than beneath it because the original is
+ * the specification: the two have to produce the same name for the same
+ * element, and the way to keep them that way is to write them against the same
+ * serial, the same `mju_type2Str` spelling and the same prefix, in one file.
+ *
+ * One half of the original is missing here, and deliberately: the file-derived
+ * name of an unnamed asset. The spec path pins that one onto the ELEMENT, from
+ * the same derivation, at the point it rewrites `file` -- so the elements the
+ * original reserves a basename for are exactly the ones skipped below, and they
+ * end up named the same either way.
+ */
+FMjReservedNames::FMjReservedNames(const FSpecRef& Spec)
+{
+	const FMjCompileOptions Options;
+	if (!Options.bAutoName)
+	{
+		return;
+	}
+
+	const FDocNodes Tree = NodesOf(Spec);
+	for (UMjNodeComponent* Node : Tree.Nodes)
+	{
+		psm::ElementType Type{};
+		if (Node == nullptr || !gen::ElementTypeOfNode(*Node, Type))
+		{
+			continue;
+		}
+		const int32 ObjType = ObjTypeOfElement(Type);
+		if (ObjType == mjOBJ_UNKNOWN || Tree.Unnamable.Contains(Node))
+		{
+			continue;
+		}
+		if (Node->MjName.IsSet() && !Node->MjName.GetValue().IsEmpty())
+		{
+			continue;
+		}
+		if (!MjAssetElementName(*Node).IsEmpty())
+		{
+			continue;
+		}
+		Node->EnsureSerial();
+		Node->MjName = FString::Printf(TEXT("%s%s:%llu"), *Options.AutoNamePrefix,
+			UTF8_TO_TCHAR(mju_type2Str(ObjType)), Node->Serial);
+		Renamed.Add(Node);
+	}
+}
+
+FMjReservedNames::~FMjReservedNames()
+{
+	for (UMjNodeComponent* Node : Renamed)
+	{
+		Node->MjName.Reset();
+	}
+}
+
+}  // namespace urlab::spec
 
 FMjCompiled MjCompileSpec(const FSpecRef& Spec, const FMjCompileOptions& Options)
 {

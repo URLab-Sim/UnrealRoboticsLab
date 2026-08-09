@@ -907,7 +907,13 @@ SPEC_TARGET = {
 SPEC_WRITE_HANDLERS = {
     # Transmission: exactly one of joint/tendon/site/body and friends elects
     # target and trntype together, so no one of them can be written alone.
+    # Keyed on the target attribute wherever a spelling carries no
+    # `cranklength`: the hook is attached per attribute, so a spelling whose
+    # only transmission attributes are targets has to name one of them or it
+    # never elects a target at all.
     ("general", "body"): "transmission",
+    ("orientation", "site"): "transmission",
+    ("adhesion", "body"): "transmission",
     ("general", "cranklength"): "transmission",
     ("motor", "cranklength"): "transmission",
     ("position", "cranklength"): "transmission",

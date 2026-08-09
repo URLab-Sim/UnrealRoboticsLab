@@ -37,8 +37,11 @@
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
 
+#include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjCompile.h"
 #include "MuJoCo/Spec/MjSceneAssembly.h"
+#include "MuJoCo/Spec/MjSceneSpec.h"
+#include "MuJoCo/Spec/MjSpecBuild.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 
 THIRD_PARTY_INCLUDES_START
@@ -332,6 +335,121 @@ void CheckNoOrphanedGoldens(FAutomationTestBase& Test, const TArray<FString>& Fi
 	}
 }
 
+// --- The spec path --------------------------------------------------------- //
+//
+// The same corpus and the same goldens, reached by building an mjSpec from the
+// components and compiling that, instead of emitting MJCF and loading it. The
+// goldens are the fixed point: whichever path produces the model, it is the
+// same model or it is a finding.
+
+/** The MJCF a scene root that contributes nothing of its own is written as. */
+const TCHAR* const EmptySceneRootXml = TEXT("<mujoco model=\"scene\"><worldbody></worldbody></mujoco>");
+
+/**
+ * A document whose bindable elements are mostly unnamed.
+ *
+ * Nothing in the parity corpus is: every fixture names every element it has, so
+ * the goldens say nothing about what an unnamed one compiles as. This is the
+ * document that does, and one named element is in it so that the reservation
+ * can be seen to leave authored names alone.
+ */
+const TCHAR* const UnnamedElementsXml = TEXT(R"(<mujoco model="reserved_names">
+  <worldbody>
+    <geom type="plane" size="1 1 0.1"/>
+    <light pos="0 0 3"/>
+    <body pos="0 0 1">
+      <joint type="hinge" axis="0 0 1"/>
+      <geom name="authored" type="box" size="0.1 0.1 0.1"/>
+      <site pos="0 0 0"/>
+      <camera pos="0 0 1"/>
+      <body pos="0.2 0 0">
+        <joint type="hinge" axis="0 1 0"/>
+        <geom type="sphere" size="0.05"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>)");
+
+/** One asset's bytes under the name the spec references it by. */
+struct FSpecAsset
+{
+	FString Name;
+	TArray<uint8> Bytes;
+};
+
+/** Bytes and mount names for a spec compiled on its own. */
+class FSpecAssetCollector final : public IMjAssetSink
+{
+public:
+	TArray<FSpecAsset> Assets;
+
+	void OnMesh(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+	void OnTexture(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+	void OnHeightField(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+
+private:
+	void Take(const FMjAssetRequest& Request, const TArray<uint8>& Bytes)
+	{
+		if (!Request.VfsName.IsEmpty() && Bytes.Num() > 0)
+		{
+			Assets.Add(FSpecAsset{Request.VfsName, Bytes});
+		}
+	}
+};
+
+/**
+ * Compile one spec through the spec path, assets and all.
+ *
+ * The spec's own `file` references are left as authored and the bytes are
+ * mounted under the names the sink emits, which is what a spec compiled on its
+ * own asks for: nothing is namespaced because nothing is composed. Composition
+ * is the scene builder's job and it rewrites both halves together.
+ *
+ * Returns null on failure, having reported why. The caller owns the model, and
+ * holds the spec it came from: a compiled model never outlives its spec here,
+ * the same ordering the compiled scene keeps.
+ */
+mjModel* CompileThroughSpecPath(
+	FAutomationTestBase& Test, const FString& Label, const FSpecRef& Spec, urlab::spec::FMjBuiltSpec& Built)
+{
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	Built = urlab::spec::BuildSpec(Spec, Diagnostics);
+	if (Built.Spec == nullptr)
+	{
+		Test.AddError(
+			FString::Printf(TEXT("%s: the spec did not build: %s"), *Label, *DiagnosticsToString(Diagnostics)));
+		return nullptr;
+	}
+
+	FSpecAssetCollector Collector;
+	FMjAssetSink Sink(Collector);
+	Sink.Collect(Spec);
+	for (const FMjAssetRequest& Request : Sink.GetRequests())
+	{
+		if (Request.bMissing)
+		{
+			Test.AddError(FString::Printf(TEXT("%s: asset '%s' could not be read from '%s'"), *Label, *Request.Name,
+				*Request.ResolvedPath));
+		}
+	}
+
+	mjVFS Vfs;
+	mj_defaultVFS(&Vfs);
+	for (const FSpecAsset& Asset : Collector.Assets)
+	{
+		mj_addBufferVFS(&Vfs, TCHAR_TO_UTF8(*Asset.Name), Asset.Bytes.GetData(), Asset.Bytes.Num());
+	}
+	mjModel* const Model = mj_compile(Built.Spec, &Vfs);
+	mj_deleteVFS(&Vfs);
+
+	if (Model == nullptr)
+	{
+		Test.AddError(FString::Printf(
+			TEXT("%s: the built spec did not compile: %s"), *Label, UTF8_TO_TCHAR(mjs_getError(Built.Spec))));
+	}
+	return Model;
+}
+
 } // namespace MjParityGoldenTests
 
 // ============================================================================
@@ -447,6 +565,205 @@ bool FMjParitySceneGoldenTest::RunTest(const FString& Parameters)
 	CheckAgainstGolden(*this, Label, GoldenPath, Compiled.Model);
 
 	return true;
+}
+
+// ============================================================================
+// URLab.Parity.SpecGoldens
+//   Every fixture again, built as an mjSpec from its components and compiled
+//   from that. Same goldens: the route to the model is not allowed to change
+//   the model.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParityGoldenTest, "URLab.Parity.SpecGoldens",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecParityGoldenTest::RunTest(const FString& Parameters)
+{
+	using namespace MjParityGoldenTests;
+
+	const TArray<FString> Fixtures = FixtureFiles();
+	if (Fixtures.Num() == 0)
+	{
+		AddError(TEXT("no fixtures under Content/TestData/parity; the spec path was checked against nothing"));
+		return true;
+	}
+
+	for (const FString& Fixture : Fixtures)
+	{
+		const FString Stem = FPaths::GetBaseFilename(Fixture);
+		const FString Label = FPaths::GetCleanFilename(Fixture);
+
+		FString Xml;
+		if (!FFileHelper::LoadFileToString(Xml, *Fixture))
+		{
+			AddError(FString::Printf(TEXT("%s: could not read fixture"), *Label));
+			continue;
+		}
+
+		UBlueprint* const Blueprint = ParseFixture(*this, Label, Xml, Fixture);
+		if (Blueprint == nullptr)
+		{
+			continue;
+		}
+
+		urlab::spec::FMjBuiltSpec Built;
+		mjModel* const Model = CompileThroughSpecPath(*this, Label, FSpecRef::OverBlueprint(*Blueprint), Built);
+		if (Model == nullptr)
+		{
+			continue;
+		}
+		CheckAgainstGolden(*this, Label, FPaths::Combine(GoldensDir(), Stem + GoldenSuffix), Model);
+		mj_deleteModel(Model);
+	}
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Parity.SpecSceneGolden
+//   The two-participant scene through FMjSceneSpecBuilder, against the golden
+//   the emitted-text path recorded for it.
+//
+//   This is the case the corpus could not pose until the spec path reserved
+//   names for the unnamed the way the text path does: a scene is where the
+//   prefixing, the attach frames and the asset namespacing all land on the
+//   name table at once.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParitySceneGoldenTest, "URLab.Parity.SpecSceneGolden",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecParitySceneGoldenTest::RunTest(const FString& Parameters)
+{
+	using namespace MjParityGoldenTests;
+
+	const FString Fixture = FPaths::Combine(ParityDir(), FString(SceneFixtureStem) + TEXT(".xml"));
+	const FString Label = FPaths::GetCleanFilename(Fixture);
+
+	FString Xml;
+	if (!FFileHelper::LoadFileToString(Xml, *Fixture))
+	{
+		AddError(FString::Printf(TEXT("%s: could not read fixture"), *Label));
+		return true;
+	}
+
+	UBlueprint* const Participant = ParseFixture(*this, Label, Xml, Fixture);
+	if (Participant == nullptr)
+	{
+		return true;
+	}
+
+	// The builder composes INTO a root spec, where the text path assembled a
+	// document around none. A root contributing nothing of its own is the same
+	// scene, and it is what a manager authoring no content already is.
+	UBlueprint* const Root = ParseFixture(*this, TEXT("scene root"), EmptySceneRootXml, FString());
+	if (Root == nullptr)
+	{
+		return true;
+	}
+
+	urlab::spec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(FSpecRef::OverBlueprint(*Root));
+
+	// Both participants are the same spec, at the poses the golden was recorded
+	// from, so any difference is attributable to the composition rather than to
+	// the two specs being different.
+	const FSpecRef Ref = FSpecRef::OverBlueprint(*Participant);
+	urlab::spec::FMjSceneSpecParticipant First;
+	First.Spec = Ref;
+	First.Prefix = TEXT("p0_");
+	Builder.AddParticipant(First);
+
+	urlab::spec::FMjSceneSpecParticipant Second;
+	Second.Spec = Ref;
+	Second.Prefix = TEXT("p1_");
+	Second.MjPos = FVector(1.0, 0.5, 0.25);
+	Second.MjQuat = FQuat(FVector(0.0, 0.0, 1.0), FMath::DegreesToRadians(90.0));
+	Builder.AddParticipant(Second);
+
+	urlab::spec::FMjCompiledScene Scene = Builder.Compile();
+	if (!Scene.IsValid())
+	{
+		AddError(FString::Printf(TEXT("%s: the scene did not compile: %s"), *Label,
+			*DiagnosticsToString(Scene.Errors)));
+		return true;
+	}
+
+	const FString GoldenPath = FPaths::Combine(GoldensDir(), FString(SceneFixtureStem) + SceneInfix + GoldenSuffix);
+	CheckAgainstGolden(*this, Label, GoldenPath, Scene.Model);
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Parity.SpecReservedNames
+//   An element the document leaves unnamed still arrives in the compiled model
+//   with a name, and with the same name whichever path compiled it.
+//
+//   The goldens cannot say this: every fixture in the corpus names everything.
+//   The names are what leaves the engine -- the bridge reconciles by them -- so
+//   they are asserted on the compiled model rather than on the spec.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParityReservedNamesTest, "URLab.Parity.SpecReservedNames",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecParityReservedNamesTest::RunTest(const FString& Parameters)
+{
+	using namespace MjParityGoldenTests;
+
+	const FString Label = TEXT("reserved_names");
+	UBlueprint* const Blueprint = ParseFixture(*this, Label, UnnamedElementsXml, FString());
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+	const FSpecRef Ref = FSpecRef::OverBlueprint(*Blueprint);
+
+	FMjCompiled ViaText = MjCompileSpec(Ref);
+	if (!ViaText.IsOk())
+	{
+		AddError(FString::Printf(
+			TEXT("%s: the text path did not compile: %s"), *Label, *DiagnosticsToString(ViaText.Errors)));
+		return false;
+	}
+
+	urlab::spec::FMjBuiltSpec Built;
+	mjModel* const ViaSpec = CompileThroughSpecPath(*this, Label, Ref, Built);
+	if (ViaSpec == nullptr)
+	{
+		return false;
+	}
+
+	// The unnamed body is the one that proves the reservation happened at all: a
+	// path that stopped reserving names would still agree with itself.
+	bool bReserved = false;
+	for (int32 Id = 0; Id < static_cast<int32>(ViaSpec->nbody); ++Id)
+	{
+		const char* const Name = mj_id2name(ViaSpec, mjOBJ_BODY, Id);
+		if (Name != nullptr && FString(UTF8_TO_TCHAR(Name)).StartsWith(TEXT("_ps:body:")))
+		{
+			bReserved = true;
+			break;
+		}
+	}
+	TestTrue(TEXT("an unnamed body reached the compiled model with a reserved name"), bReserved);
+
+	TestTrue(TEXT("the authored name survived untouched"), mj_name2id(ViaSpec, mjOBJ_GEOM, "authored") >= 0);
+
+	std::string Err;
+	const ps::harness::DiffReport Report =
+		ps::harness::DiffModels(ViaText.Model, ViaSpec, ps::harness::Tol{0.0, 0.0}, MaxExamples, Err);
+	mj_deleteModel(ViaSpec);
+
+	if (!Err.empty())
+	{
+		AddError(FString::Printf(TEXT("%s: model comparison did not complete: %s"), *Label, *Utf8ToUe(Err)));
+	}
+	if (Report.Differs())
+	{
+		AddError(FString::Printf(TEXT("%s: the spec path named the unnamed differently from the text path:\n%s"),
+			*Label, *ReportToString(Report)));
+	}
+
+	return !HasAnyErrors();
 }
 
 #endif // URLAB_MJ_GEN && WITH_EDITOR

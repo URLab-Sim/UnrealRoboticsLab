@@ -1390,23 +1390,42 @@ bool ApplyAssetBuiltin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	case ElementType::Hfield:
 	{
 		const UMjHfield& Element = static_cast<const UMjHfield&>(Node);
-		if (!Element.Elevation.IsSet())
-		{
-			return true;
-		}
-		// Elevation data shares the heightfield's user-data vector; the engine
-		// flips rows and zero-fills against nrow and ncol at compile.
 		mjsHField* const Field = static_cast<mjsHField*>(Ctx.Struct);
 		if (Field == nullptr)
 		{
 			return Ctx.Error(Node, TEXT("elevation on something that is not a heightfield"));
 		}
-		const TArray<double>& Values = Element.Elevation.GetValue();
-		TArray<float> Elevation;
-		Elevation.Reserve(Values.Num());
-		for (const double Value : Values)
+		// A file supplies the elevation, and authored rows beside one are the
+		// reader's no-op rather than a second source
+		// (`xml_native_reader.cc:2263`).
+		const bool bFromFile = Element.File.IsSet() && !Element.File.GetValue().IsEmpty();
+		const int32 Rows = Element.Nrow.Get(0);
+		const int32 Columns = Element.Ncol.Get(0);
+		if (!Element.Elevation.IsSet() || bFromFile || Rows <= 0 || Columns <= 0)
 		{
-			Elevation.Add(static_cast<float>(Value));
+			return true;
+		}
+
+		const TArray<double>& Values = Element.Elevation.GetValue();
+		if (Values.Num() != Rows * Columns)
+		{
+			return Ctx.Error(Node, TEXT("elevation data length must match nrow*ncol"));
+		}
+
+		// Rows go in bottom-to-top, so that the authored string reads
+		// top-to-bottom. The compiler copies the vector across verbatim
+		// (`user_objects.cc:4773`), so this row order is the stored row order
+		// and reversing it here is the whole of the convention
+		// (`xml_native_reader.cc:2277`).
+		TArray<float> Elevation;
+		Elevation.SetNumUninitialized(Values.Num());
+		for (int32 Row = 0; Row < Rows; ++Row)
+		{
+			const int32 Flipped = Rows - 1 - Row;
+			for (int32 Column = 0; Column < Columns; ++Column)
+			{
+				Elevation[Flipped * Columns + Column] = static_cast<float>(Values[Row * Columns + Column]);
+			}
 		}
 		mjs_setFloat(Field->userdata, Elevation.GetData(), Elevation.Num());
 		return true;

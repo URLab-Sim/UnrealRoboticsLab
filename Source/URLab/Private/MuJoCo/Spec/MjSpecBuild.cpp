@@ -12,6 +12,7 @@
 
 #include "MuJoCo/Gen/MjSpecWrite.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MjReservedNames.h"
 #include "MjSpecBuildContext.h"
 #include "MjSpecWriteHooks.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
@@ -624,6 +625,9 @@ FMjBuiltSpec BuildSpec(const FSpecRef& Root, TArray<FMjSpecDiagnostic>& OutDiags
 		Diagnostic.Message = TEXT("the spec handle names no component tree");
 		return FMjBuiltSpec();
 	}
+	// Held across the whole walk: the elements are named from their components,
+	// and a macro's subtree is serialized back out to MJCF from them as well.
+	const FMjReservedNames Reserved(Root);
 	return FBuilder(Root, OutDiags).Build();
 }
 

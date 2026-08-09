@@ -37,6 +37,39 @@ class UMjNodeComponent;
 namespace urlab::spec
 {
 
+/**
+ * The child specs a document's `<model>` assets parsed into.
+ *
+ * MuJoCo's reader hands each one to the spec with `mjs_addSpec` and finds it
+ * again by the child's own model name; this keeps them beside the walk instead,
+ * because `mjs_attach` takes the child's element directly and registration buys
+ * nothing a map does not. Lookup is first-registered-wins, which is what
+ * `mjCModel::FindSpec` does with a repeated name.
+ *
+ * Ownership is the point. A child nothing attaches is still released, and one
+ * that is attached survives this release on the target's own reference count:
+ * attach appends the child spec to the target and takes a reference of its own
+ * (`user_objects.cc:1685`), so the walk's reference is the only one left over.
+ */
+class FMjModelAssets
+{
+public:
+	FMjModelAssets() = default;
+	FMjModelAssets(const FMjModelAssets&) = delete;
+	FMjModelAssets& operator=(const FMjModelAssets&) = delete;
+	~FMjModelAssets();
+
+	/** Take ownership of `Child`, findable under `Name` if nothing else is. */
+	void Add(const FString& Name, mjSpec* Child);
+
+	/** The spec registered under `Name`, or null. */
+	mjSpec* Find(const FString& Name) const;
+
+private:
+	TMap<FString, mjSpec*> ByName;
+	TArray<mjSpec*> Owned;
+};
+
 struct FMjSpecWriteContext
 {
 	/** The component tree being read. Never mutated. */
@@ -121,6 +154,20 @@ struct FMjSpecWriteContext
 	bool* Failed = nullptr;
 
 	/**
+	 * Set once the spec can no longer be built on at all.
+	 *
+	 * A failed `mjs_attach` is not a failed element: the duplicate is already
+	 * inserted and the counts have already moved, so every later `mj_compile`
+	 * fails with the same error and there is no unwind. The walk stops outright
+	 * rather than recording more diagnostics against a spec that can only
+	 * produce more of the same.
+	 */
+	bool* Aborted = nullptr;
+
+	/** The `<model>` assets registered so far, for `<attach model=>` to find. */
+	FMjModelAssets* Models = nullptr;
+
+	/**
 	 * Record a failure against a node, naming where it was authored.
 	 *
 	 * Always returns false, so a hook can `return Ctx.Error(...)` and read as
@@ -129,6 +176,9 @@ struct FMjSpecWriteContext
 	 * the document with it.
 	 */
 	bool Error(const UMjNodeComponent& Node, const FString& Message);
+
+	/** As above, and the walk stops here. Returns false. */
+	bool Abort(const UMjNodeComponent& Node, const FString& Message);
 
 	/** As above, for something recoverable. Returns true. */
 	bool Warn(const UMjNodeComponent& Node, const FString& Message);

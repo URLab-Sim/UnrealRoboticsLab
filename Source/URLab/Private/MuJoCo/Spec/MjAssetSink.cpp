@@ -13,6 +13,31 @@
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 
+namespace
+{
+/**
+ * The directory an asset path resolves against.
+ *
+ * MJCF resolves an asset path relative to the model file, then through the
+ * compiler's meshdir / texturedir. The element records the file it came from, so
+ * an included sub-spec's assets resolve beside the include rather than
+ * beside the root -- which is the whole reason provenance is per element.
+ */
+FString AssetBaseDirectory(const UMjNodeComponent& Element, const FString& AssetDir)
+{
+	const FString SourceDir = Element.SourceFile.IsEmpty() ? FString() : FPaths::GetPath(Element.SourceFile);
+	if (AssetDir.IsEmpty())
+	{
+		return SourceDir;
+	}
+	if (FPaths::IsRelative(AssetDir))
+	{
+		return FPaths::Combine(SourceDir, AssetDir);
+	}
+	return AssetDir;
+}
+}  // namespace
+
 #if URLAB_MJ_GEN
 
 #include "MuJoCo/Spec/MjSpecProfile.h"
@@ -55,28 +80,6 @@ FString StringAttribute(UMjNodeComponent& Node, const char* Attr)
 	FString Out;
 	AuthoredString(Node, Attr, Out);
 	return Out;
-}
-
-/**
- * The directory an asset path resolves against.
- *
- * MJCF resolves an asset path relative to the model file, then through the
- * compiler's meshdir / texturedir. The element records the file it came from, so
- * an included sub-spec's assets resolve beside the include rather than
- * beside the root -- which is the whole reason provenance is per element.
- */
-FString AssetBaseDirectory(UMjNodeComponent& Element, const FString& AssetDir)
-{
-	const FString SourceDir = Element.SourceFile.IsEmpty() ? FString() : FPaths::GetPath(Element.SourceFile);
-	if (AssetDir.IsEmpty())
-	{
-		return SourceDir;
-	}
-	if (FPaths::IsRelative(AssetDir))
-	{
-		return FPaths::Combine(SourceDir, AssetDir);
-	}
-	return AssetDir;
 }
 
 /**
@@ -153,6 +156,20 @@ FString MjAssetElementName(const UMjNodeComponent& Element)
 	return FString();
 }
 
+FString MjResolveAssetPath(const UMjNodeComponent& Element, const FString& AssetDir, const FString& File)
+{
+	if (File.IsEmpty())
+	{
+		return FString();
+	}
+	// MuJoCo takes an absolute `file` as it stands; only a relative one goes
+	// through the directories. A spec whose asset was exported back out of
+	// Unreal with nowhere relative to be is the case that makes the difference.
+	return FPaths::IsRelative(File)
+		? FPaths::ConvertRelativePathToFull(FPaths::Combine(AssetBaseDirectory(Element, AssetDir), File))
+		: File;
+}
+
 void FMjAssetSink::Collect(const FSpecRef& Spec)
 {
 	Requests.Reset();
@@ -197,13 +214,7 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 			const FString File = StringAttribute(*Asset.Node, "file");
 			if (!File.IsEmpty())
 			{
-				// MuJoCo takes an absolute `file` as it stands; only a relative one
-				// goes through the directories. A spec whose asset was exported
-				// back out of Unreal with nowhere relative to be is the case that
-				// makes the difference.
-				Request.ResolvedPath = FPaths::IsRelative(File)
-					? FPaths::ConvertRelativePathToFull(FPaths::Combine(Request.BaseDirectory, File))
-					: File;
+				Request.ResolvedPath = MjResolveAssetPath(*Asset.Node, bTexture ? TextureDir : MeshDir, File);
 				Request.VfsName = VfsPrefix + FPaths::GetCleanFilename(File);
 			}
 

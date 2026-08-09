@@ -25,6 +25,9 @@ namespace sw = ps::ue::specwrite;
 
 using ps::mjcf::ElementType;
 
+/** The model name a spec gets when its root authors none. */
+const TCHAR* const UnauthoredModelName = TEXT("urlab");
+
 /**
  * The order the sections are written in.
  *
@@ -112,6 +115,8 @@ public:
 		Ctx.Source = &Root;
 		Ctx.Diagnostics = &OutDiags;
 		Ctx.Failed = &bFailed;
+		Ctx.Aborted = &bAborted;
+		Ctx.Models = &Models;
 	}
 
 	FMjBuiltSpec Build();
@@ -125,7 +130,9 @@ private:
 
 	FMjSpecWriteContext Ctx;
 	FMjBuiltSpec Result;
+	FMjModelAssets Models;
 	bool bFailed = false;
+	bool bAborted = false;
 };
 
 bool FBuilder::ResolveClass(UMjNodeComponent& Node, FMjSpecWriteContext& Local)
@@ -399,6 +406,13 @@ void FBuilder::WalkChildren(UMjNodeComponent& Parent, const FMjSpecWriteContext&
 
 	for (const FMjOrderedChild& Child : Children)
 	{
+		// An abort is not a skipped element: the spec it would be written onto
+		// is already unusable, so there is nothing left for the rest of the
+		// document to be written into.
+		if (bAborted)
+		{
+			return;
+		}
 		if (Child.Node != nullptr)
 		{
 			WalkNode(*Child.Node, Inherited);
@@ -443,12 +457,19 @@ FMjBuiltSpec FBuilder::Build()
 	// element carries its name in. Reading the wrong one is silent: mj_makeSpec
 	// names a fresh spec "MuJoCo Model", so the name reaches the compiled name
 	// table either way and only its content says which was read.
-	if (const TOptional<FString> ModelName = ModelNameOf(*Root);
-		ModelName.IsSet() && !ModelName.GetValue().IsEmpty())
-	{
-		const FTCHARToUTF8 Name(*ModelName.GetValue());
-		mjs_setString(Ctx.Spec->modelname, Name.Get());
-	}
+	//
+	// Written whether or not the root authored one, because the name buffer is
+	// part of the model a comparison sees and leaving it to mj_makeSpec makes
+	// the same document compile differently depending on which path built it.
+	// The stand-in is a constant rather than anything derived from a file or an
+	// asset, so the artefact stays reproducible, and it is deliberately not
+	// MuJoCo's own default, so that reading a compiled model still says whether
+	// a name was authored.
+	const TOptional<FString> ModelName = ModelNameOf(*Root);
+	const FString Named = ModelName.IsSet() && !ModelName.GetValue().IsEmpty()
+		? ModelName.GetValue() : FString(UnauthoredModelName);
+	const FTCHARToUTF8 Name(*Named);
+	mjs_setString(Ctx.Spec->modelname, Name.Get());
 
 	// Sections in write order, siblings within a section in authored order.
 	TArray<FMjOrderedChild> Sections = MjOrderedChildrenOf(*Ctx.Source, *Root);
@@ -465,6 +486,10 @@ FMjBuiltSpec FBuilder::Build()
 	Top.ParentNode = Root;
 	for (const FMjOrderedChild& Section : Sections)
 	{
+		if (bAborted)
+		{
+			break;
+		}
 		if (Section.Node == nullptr)
 		{
 			continue;
@@ -512,6 +537,15 @@ bool FMjSpecWriteContext::Error(const UMjNodeComponent& Node, const FString& Mes
 	return false;
 }
 
+bool FMjSpecWriteContext::Abort(const UMjNodeComponent& Node, const FString& Message)
+{
+	if (Aborted != nullptr)
+	{
+		*Aborted = true;
+	}
+	return Error(Node, Message);
+}
+
 bool FMjSpecWriteContext::Warn(const UMjNodeComponent& Node, const FString& Message)
 {
 	if (Diagnostics != nullptr)
@@ -522,6 +556,33 @@ bool FMjSpecWriteContext::Warn(const UMjNodeComponent& Node, const FString& Mess
 		Diagnostic.Line = Node.SourceLine;
 	}
 	return true;
+}
+
+FMjModelAssets::~FMjModelAssets()
+{
+	for (mjSpec* const Child : Owned)
+	{
+		mj_deleteSpec(Child);
+	}
+}
+
+void FMjModelAssets::Add(const FString& Name, mjSpec* Child)
+{
+	if (Child == nullptr)
+	{
+		return;
+	}
+	Owned.Add(Child);
+	if (!ByName.Contains(Name))
+	{
+		ByName.Add(Name, Child);
+	}
+}
+
+mjSpec* FMjModelAssets::Find(const FString& Name) const
+{
+	mjSpec* const* const Found = ByName.Find(Name);
+	return Found != nullptr ? *Found : nullptr;
 }
 
 FMjBuiltSpec::FMjBuiltSpec(FMjBuiltSpec&& Other)

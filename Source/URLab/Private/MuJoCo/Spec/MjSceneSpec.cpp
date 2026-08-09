@@ -95,6 +95,14 @@ mjString* FileSlotOf(mjsElement* Element)
 	return nullptr;
 }
 
+/** True when nothing has written a name onto this element. */
+bool IsUnnamed(mjsElement* Element)
+{
+	mjString* const Name = mjs_getName(Element);
+	const char* const Text = Name != nullptr ? mjs_getString(Name) : nullptr;
+	return Text == nullptr || Text[0] == '\0';
+}
+
 /**
  * Point a spec's asset references at the names its bytes are mounted under.
  *
@@ -104,6 +112,14 @@ mjString* FileSlotOf(mjsElement* Element)
  * than directories, because MuJoCo's VFS falls back to a case-insensitive
  * basename match across every mount: two participants each carrying their own
  * `base.obj` would otherwise silently share whichever was mounted first.
+ *
+ * An asset that authored no name is given the one MuJoCo would derive for it
+ * FIRST, because MuJoCo derives it from the file and then prefixes the result
+ * (`user_mesh.cc:297`, `user_objects.cc:4681`, `:4972`). Rewrite the file first
+ * and the derivation runs over an already-prefixed basename, so `p0_base.obj`
+ * becomes the mesh `p0_p0_base` while the geom referring to it was prefixed
+ * once to `p0_base`, and the compile fails on a reference to nothing. Naming it
+ * explicitly means attach prefixes an explicit name exactly once.
  *
  * The spec's own meshdir and texturedir go with them. They resolved the
  * authored paths, the sink has already applied them, and leaving them behind
@@ -122,6 +138,13 @@ void NamespaceAssets(mjSpec& Spec, const TMap<TObjectPtr<const UMjNodeComponent>
 		if (Element == nullptr)
 		{
 			continue;
+		}
+		if (!Request.Name.IsEmpty() && IsUnnamed(*Element))
+		{
+			// The sink's name for an unnamed element IS the derivation MuJoCo
+			// applies, so this pins what would otherwise be derived later.
+			const FTCHARToUTF8 Derived(*Request.Name);
+			mjs_setName(*Element, Derived.Get());
 		}
 		if (mjString* const File = FileSlotOf(*Element))
 		{

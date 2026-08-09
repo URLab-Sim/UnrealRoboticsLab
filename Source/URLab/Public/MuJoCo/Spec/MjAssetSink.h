@@ -113,6 +113,18 @@ public:
 URLAB_API FString MjAssetElementName(const UMjNodeComponent& Element);
 
 /**
+ * Where a file an element references resolves to.
+ *
+ * The element's own source directory with `AssetDir` folded in, and the file
+ * taken as it stands when it is already absolute -- the rule MuJoCo applies.
+ * `AssetDir` is the `<compiler>` directory for the asset's kind; a `<model>`
+ * asset passes none, because the reader resolves a nested model against the
+ * model file's own directory and through no asset directory at all
+ * (`src/xml/xml_native_reader.cc:2303`). Empty when `File` is.
+ */
+URLAB_API FString MjResolveAssetPath(const UMjNodeComponent& Element, const FString& AssetDir, const FString& File);
+
+/**
  * The spec's asset pass.
  *
  * `VfsPrefix` prefixes every emitted VfsName. It is not cosmetic: MuJoCo's VFS

@@ -13,9 +13,11 @@
 #include <string>
 #include <type_traits>
 
+#include "MuJoCo/Gen/MjElements.gen.h"
 #include "MuJoCo/Gen/MjKeywords.gen.h"
 #include "MuJoCo/Gen/MjSpecWrite.gen.h"
 #include "MuJoCo/Gen/MjStorage.gen.h"
+#include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 
 namespace urlab::spec
@@ -1702,8 +1704,12 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 
 	if (!bAttached)
 	{
-		return Ctx.Error(Node, FString::Printf(
-			TEXT("this macro's expansion could not be attached: %s"), *AttachError));
+		// A rejected attach has already inserted its element and moved the
+		// counts, so the target spec is finished with rather than merely short
+		// of one macro.
+		return Ctx.Abort(Node, FString::Printf(
+			TEXT("this macro's expansion could not be attached and the model cannot be built: %s"),
+			*AttachError));
 	}
 
 	// The subtree went into the wrapper whole; the walk must not create it again
@@ -1712,16 +1718,178 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 	return true;
 }
 
-// --- H13: not reachable from this layer ----------------------------------- //
-// A nested model resolves an asset file, which needs the asset sink. Diagnosing
-// is what keeps the omission visible instead of letting the subtree vanish into
-// a spec that still compiles.
+// --- H13: nested models --------------------------------------------------- //
+// `<model>` parses a file into a child spec and `<attach>` splices one in, both
+// on the reader's own terms (`src/xml/xml_native_reader.cc:2296` and `:2598`).
+// Neither produces an element of the current spec: a child spec is held beside
+// the walk, and an attach leaves behind only whatever MuJoCo copied across.
+
+/**
+ * The `<model>` asset's file, parsed and registered under its model name.
+ *
+ * The file resolves against the element's own source directory and through no
+ * asset directory, which is the rule the reader applies to a nested model and
+ * only to a nested model.
+ */
+bool ApplyModelAsset(FMjSpecWriteContext& Ctx, const UMjModelAsset& Asset)
+{
+	if (Ctx.Models == nullptr)
+	{
+		return Ctx.Error(Asset, TEXT("this build has nowhere to register a model asset"));
+	}
+	const FString File = Asset.File.Get(FString());
+	if (File.IsEmpty())
+	{
+		return Ctx.Error(Asset, TEXT("this model asset names no file"));
+	}
+	const FString Path = MjResolveAssetPath(Asset, FString(), File);
+
+	char Error[1024] = {0};
+	mjSpec* const Child =
+		mj_parse(Utf8(Path), Utf8(Asset.ContentType.Get(FString())), nullptr, Error, sizeof(Error));
+	if (Child == nullptr)
+	{
+		return Ctx.Error(Asset, FString::Printf(TEXT("could not parse the model file '%s': %s"), *Path,
+			UTF8_TO_TCHAR(Error)));
+	}
+
+	// An authored name renames the child, and the renamed child is what an
+	// `<attach model=>` finds: the lookup is by model name either way.
+	if (Asset.MjName.IsSet() && !Asset.MjName.GetValue().IsEmpty())
+	{
+		mjs_setString(Child->modelname, Utf8(Asset.MjName.GetValue()));
+	}
+	const char* const Registered = mjs_getString(Child->modelname);
+	Ctx.Models->Add(FString(UTF8_TO_TCHAR(Registered != nullptr ? Registered : "")), Child);
+	return true;
+}
+
+/** The name of a body or frame in a diagnostic. */
+FString KindName(mjtObj Kind)
+{
+	const char* const Text = mju_type2Str(Kind);
+	return FString(UTF8_TO_TCHAR(Text != nullptr ? Text : "element"));
+}
+
+/** Splice a registered model, or a body or frame of this one, onto the current body. */
+bool ApplyAttach(FMjSpecWriteContext& Ctx, const UMjAttach& Attach)
+{
+	if (Ctx.Spec == nullptr || Ctx.Body == nullptr)
+	{
+		return Ctx.Error(Attach, TEXT("this attach has no body to be placed on"));
+	}
+	if (Ctx.Partial != nullptr)
+	{
+		return Ctx.Error(Attach, TEXT("an attach cannot be a default class partial"));
+	}
+
+	// Read as the reader reads it: `body` and `frame` share one name slot, and
+	// `body` decides the kind when a document authors both.
+	FString ChildName;
+	mjtObj Kind = mjOBJ_UNKNOWN;
+	if (Attach.Body.IsSet())
+	{
+		ChildName = Attach.Body.GetValue();
+		Kind = mjOBJ_BODY;
+	}
+	if (Attach.Frame.IsSet())
+	{
+		ChildName = Attach.Frame.GetValue();
+		Kind = Kind == mjOBJ_UNKNOWN ? mjOBJ_FRAME : Kind;
+	}
+	const FString& Prefix = Attach.Prefix;
+
+	// Refused before anything is inserted, because a rejected attach cannot be
+	// unwound and a prefixed name the spec already holds is exactly what it
+	// rejects on.
+	if (!ChildName.IsEmpty() && Kind != mjOBJ_UNKNOWN &&
+		mjs_findElement(Ctx.Spec, Kind, Utf8(Prefix + ChildName)) != nullptr)
+	{
+		return Ctx.Error(Attach, FString::Printf(TEXT("this model already has a %s named '%s%s'"),
+			*KindName(Kind), *Prefix, *ChildName));
+	}
+
+	mjsElement* Source = nullptr;
+	if (!Attach.Model.IsSet())
+	{
+		if (Kind == mjOBJ_UNKNOWN)
+		{
+			return Ctx.Error(Attach, TEXT("an attach naming no model must name a body or a frame"));
+		}
+		Source = mjs_findElement(Ctx.Spec, Kind, Utf8(ChildName));
+		if (Source == nullptr)
+		{
+			return Ctx.Error(Attach, FString::Printf(TEXT("this model has no %s named '%s' to attach to itself"),
+				*KindName(Kind), *ChildName));
+		}
+	}
+	else
+	{
+		const FString& ModelName = Attach.Model.GetValue();
+		mjSpec* const Model = Ctx.Models != nullptr ? Ctx.Models->Find(ModelName) : nullptr;
+		if (Model == nullptr)
+		{
+			return Ctx.Error(Attach, FString::Printf(TEXT("no model asset named '%s' was registered"), *ModelName));
+		}
+		// Naming neither a body nor a frame attaches the model itself, which is
+		// what puts its whole world body's contents in.
+		Source = Kind == mjOBJ_UNKNOWN ? Model->element : mjs_findElement(Model, Kind, Utf8(ChildName));
+		if (Source == nullptr)
+		{
+			return Ctx.Error(Attach, FString::Printf(TEXT("model asset '%s' has no %s named '%s'"), *ModelName,
+				*KindName(Kind), *ChildName));
+		}
+	}
+
+	// mjs_attach splices onto a frame rather than onto a body, so an attach
+	// authored outside one needs a frame of its own; inside one it uses that
+	// frame and its transform.
+	mjsFrame* Frame = Ctx.Frame;
+	if (Frame == nullptr)
+	{
+		Frame = mjs_addFrame(Ctx.Body, nullptr);
+		if (Frame == nullptr)
+		{
+			return Ctx.Error(Attach, TEXT("could not add the frame this attach hangs from"));
+		}
+		mjs_setDefault(Frame->element, Ctx.Class);
+		if (!Attach.SourceFile.IsEmpty() || Attach.SourceLine > 0)
+		{
+			mjs_setString(Frame->info,
+				Utf8(FString::Printf(TEXT("%s:%d"), *Attach.SourceFile, Attach.SourceLine)));
+		}
+	}
+
+	// Authored attach copies, where composition moves. The reader raises this
+	// flag for exactly the span in which an `<attach>` can appear and lowers it
+	// again (`src/xml/xml_native_reader.cc:309,316`), and both halves matter: a
+	// model asset spliced in twice needs a copy each time, a self-attach without
+	// one puts the same body in the tree twice, and leaving it raised would
+	// deep-copy the participant attach that Gate A settled on not copying. A
+	// fresh spec has it lowered, and nothing else in the walk raises it, so
+	// lowering it again restores what was there.
+	mjs_setDeepCopy(Ctx.Spec, 1);
+	mjsElement* const Attached = mjs_attach(Frame->element, Source, Utf8(Prefix), "");
+	mjs_setDeepCopy(Ctx.Spec, 0);
+	if (Attached == nullptr)
+	{
+		return Ctx.Abort(Attach, FString::Printf(TEXT("this attach failed and the model cannot be built: %s"),
+			UTF8_TO_TCHAR(mjs_getError(Ctx.Spec))));
+	}
+	return true;
+}
 
 bool ApplyNestedModel(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
-	return Ctx.Error(Node,
-		TEXT("nested models are not carried by the spec write yet; this model has to "
-			 "go through the file boundary"));
+	if (const UMjModelAsset* const Asset = Cast<UMjModelAsset>(&Node))
+	{
+		return ApplyModelAsset(Ctx, *Asset);
+	}
+	if (const UMjAttach* const Attach = Cast<UMjAttach>(&Node))
+	{
+		return ApplyAttach(Ctx, *Attach);
+	}
+	return Ctx.Error(Node, TEXT("this element is neither a model asset nor an attach"));
 }
 
 // --- Registry ------------------------------------------------------------- //

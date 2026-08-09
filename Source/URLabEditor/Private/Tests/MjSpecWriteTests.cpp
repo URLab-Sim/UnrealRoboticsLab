@@ -13,7 +13,11 @@
 // limitations under the License.
 
 #include "CoreMinimal.h"
+#include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
+#include "Misc/Paths.h"
 
 #include "MuJoCo/Spec/MjGenHooks.h"
 
@@ -141,6 +145,32 @@ mjsSensor* FindSensor(mjSpec* Spec, const TCHAR* Name)
 	const FTCHARToUTF8 Utf8(Name);
 	return mjs_asSensor(mjs_findElement(Spec, mjOBJ_SENSOR, Utf8.Get()));
 }
+
+/** Compile, reporting the spec's own account of a failure. */
+mjModel* Compile(FAutomationTestBase& Test, mjSpec* Spec)
+{
+	mjModel* const Model = mj_compile(Spec, nullptr);
+	if (Model == nullptr)
+	{
+		Test.AddError(FString::Printf(TEXT("mj_compile failed: %s"), UTF8_TO_TCHAR(mjs_getError(Spec))));
+	}
+	return Model;
+}
+
+/** A scratch directory of this run's own, removed with everything under it. */
+struct FSpecWriteScratch
+{
+	FString Path;
+
+	FSpecWriteScratch()
+		: Path(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLabTests"),
+			  FGuid::NewGuid().ToString(EGuidFormats::Digits)))
+	{
+		IFileManager::Get().MakeDirectory(*Path, /*Tree=*/true);
+	}
+
+	~FSpecWriteScratch() { IFileManager::Get().DeleteDirectory(*Path, /*RequireExists=*/false, /*Tree=*/true); }
+};
 
 }  // namespace
 
@@ -611,6 +641,228 @@ bool FMjSpecWriteWalkTest::RunTest(const FString& Parameters)
 	// type it is in rather than leaving the overload set to guess.
 	TestEqual(TEXT("both authored bodies compiled, plus the world"),
 		static_cast<int32>(Model->nbody), 3);
+	mj_deleteModel(Model);
+
+	return !HasAnyErrors();
+}
+
+// --- The model name -------------------------------------------------------- //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteModelNameTest,
+	"URLab.MuJoCo.SpecWrite.ModelName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteModelNameTest::RunTest(const FString& Parameters)
+{
+	// The model name is written whether or not the root authored one, because
+	// it sits in the compiled name buffer and a spec that left it to
+	// mj_makeSpec compiles to a different model from the same document read
+	// through a file. The stand-in is deliberately not MuJoCo's own default, so
+	// an unauthored root and a root authored to "MuJoCo Model" stay
+	// distinguishable in the artefact.
+	const auto NameOfCompiled = [this](bool bAuthored, const TCHAR* Authored) {
+		FSpecWriteFixture Fixture;
+		if (!Fixture.Init())
+		{
+			AddError(TEXT("could not build the component tree"));
+			return FString();
+		}
+		if (bAuthored)
+		{
+			Fixture.Robot->Spec->Model = FString(Authored);
+		}
+		UMjGeom* const Geom = Fixture.Add<UMjGeom>(Fixture.WorldBody, TEXT("Ball"));
+		if (Geom == nullptr)
+		{
+			AddError(TEXT("could not author the geom"));
+			return FString();
+		}
+		Geom->Type = EMjGeomType::sphere;
+		Geom->Size = TArray<double>({ 0.1 });
+
+		urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
+		if (Built.Spec == nullptr)
+		{
+			return FString();
+		}
+		mjModel* const Model = Compile(*this, Built.Spec);
+		if (Model == nullptr)
+		{
+			return FString();
+		}
+		// The model name is the first entry of the compiled name buffer.
+		const FString Out = FString(UTF8_TO_TCHAR(Model->names));
+		mj_deleteModel(Model);
+		return Out;
+	};
+
+	TestEqual(TEXT("an unauthored root compiles under the stand-in name"),
+		NameOfCompiled(false, nullptr), FString(TEXT("urlab")));
+	TestEqual(TEXT("an authored name is what compiles"),
+		NameOfCompiled(true, TEXT("authored_model")), FString(TEXT("authored_model")));
+
+	return !HasAnyErrors();
+}
+
+// --- Nested models --------------------------------------------------------- //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteNestedModelTest,
+	"URLab.MuJoCo.SpecWrite.NestedModel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteNestedModelTest::RunTest(const FString& Parameters)
+{
+	// A `<model>` asset is a whole second document, and `<attach>` splices it
+	// in. The child carries its own default class, so what is asserted is the
+	// value that class supplies on the compiled model: an attach that brought
+	// the bodies across without their classes produces a model that compiles
+	// and is quietly wrong.
+	FSpecWriteScratch Scratch;
+	const FString ChildXml = TEXT(R"(<mujoco model="child_model">
+  <default>
+    <default class="chunky">
+      <geom condim="6" group="3"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="link">
+      <geom name="shape" class="chunky" type="sphere" size="0.1"/>
+    </body>
+  </worldbody>
+</mujoco>)");
+	const FString ChildPath = FPaths::Combine(Scratch.Path, TEXT("child.xml"));
+	if (!FFileHelper::SaveStringToFile(ChildXml, *ChildPath))
+	{
+		AddError(FString::Printf(TEXT("could not write '%s'"), *ChildPath));
+		return false;
+	}
+
+	FSpecWriteFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjAsset* const Section = Fixture.Add<UMjAsset>(Fixture.Robot->Spec);
+	UMjModelAsset* const Asset = Fixture.Add<UMjModelAsset>(Section, TEXT("child"));
+	UMjAttach* const Attach = Fixture.Add<UMjAttach>(Fixture.WorldBody);
+	// Twice, because one asset spliced in more than once is the reason a nested
+	// model exists at all, and it only works if each attach copies: the second
+	// one finds nothing if the first moved the child's body out of it.
+	UMjAttach* const Again = Fixture.Add<UMjAttach>(Fixture.WorldBody);
+	if (Asset == nullptr || Attach == nullptr || Again == nullptr)
+	{
+		AddError(TEXT("could not author the model asset and its attaches"));
+		return false;
+	}
+	Asset->File = FString(TEXT("child.xml"));
+	// The file resolves against the element's own source directory, so a tree
+	// nobody parsed has to say where it would have come from.
+	Asset->SourceFile = FPaths::Combine(Scratch.Path, TEXT("parent.xml"));
+	// The asset's own name renames the child spec, and the renamed child is
+	// what the attach looks up.
+	Attach->Model = FString(TEXT("child"));
+	Attach->Body = FString(TEXT("link"));
+	Attach->Prefix = FString(TEXT("c_"));
+	Again->Model = FString(TEXT("child"));
+	Again->Body = FString(TEXT("link"));
+	Again->Prefix = FString(TEXT("d_"));
+
+	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
+	if (Built.Spec == nullptr)
+	{
+		return false;
+	}
+	mjModel* const Model = Compile(*this, Built.Spec);
+	if (Model == nullptr)
+	{
+		return false;
+	}
+
+	for (const char* const Prefix : {"c_", "d_"})
+	{
+		const FString Label = UTF8_TO_TCHAR(Prefix);
+		TestTrue(FString::Printf(TEXT("the child's body came across under '%s'"), *Label),
+			mj_name2id(Model, mjOBJ_BODY, TCHAR_TO_UTF8(*(Label + TEXT("link")))) >= 0);
+		const int GeomId = mj_name2id(Model, mjOBJ_GEOM, TCHAR_TO_UTF8(*(Label + TEXT("shape"))));
+		if (TestTrue(FString::Printf(TEXT("the child's geom came across under '%s'"), *Label), GeomId >= 0))
+		{
+			TestEqual(FString::Printf(TEXT("%s: condim came from the child's own class"), *Label),
+				Model->geom_condim[GeomId], 6);
+			TestEqual(FString::Printf(TEXT("%s: group came from the child's own class"), *Label),
+				Model->geom_group[GeomId], 3);
+		}
+	}
+	mj_deleteModel(Model);
+
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteSelfAttachTest,
+	"URLab.MuJoCo.SpecWrite.SelfAttach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteSelfAttachTest::RunTest(const FString& Parameters)
+{
+	// An `<attach>` naming no model duplicates a body of the current spec into
+	// another body of it. The duplicate keeps the original's default class
+	// rather than a prefixed one, because MuJoCo renames classes only across
+	// specs -- so the copy carrying the class's value is the assertion that says
+	// the duplication went through the resolver rather than past it.
+	FSpecWriteFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjDefault* const Class = Fixture.Add<UMjDefault>(Fixture.Robot->Spec, TEXT("chunky"));
+	UMjGeomBase* const ClassGeom = Fixture.Add<UMjGeomBase>(Class);
+	UMjBody* const Link = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("link"));
+	UMjGeom* const Shape = Fixture.Add<UMjGeom>(Link, TEXT("shape"));
+	UMjBody* const Host = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("host"));
+	UMjAttach* const Attach = Fixture.Add<UMjAttach>(Host);
+	if (ClassGeom == nullptr || Shape == nullptr || Host == nullptr || Attach == nullptr)
+	{
+		AddError(TEXT("could not author the body and its duplicate"));
+		return false;
+	}
+	ClassGeom->Condim = 6;
+	Shape->Dclass = FString(TEXT("chunky"));
+	Shape->Type = EMjGeomType::sphere;
+	Shape->Size = TArray<double>({ 0.1 });
+	Attach->Body = FString(TEXT("link"));
+	Attach->Prefix = FString(TEXT("dup_"));
+
+	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
+	if (Built.Spec == nullptr)
+	{
+		return false;
+	}
+	mjModel* const Model = Compile(*this, Built.Spec);
+	if (Model == nullptr)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("the original body is still there"), mj_name2id(Model, mjOBJ_BODY, "link") >= 0);
+	const int HostId = mj_name2id(Model, mjOBJ_BODY, "host");
+	const int CopyBodyId = mj_name2id(Model, mjOBJ_BODY, "dup_link");
+	if (TestTrue(TEXT("the duplicate is there under its prefix"), HostId >= 0 && CopyBodyId >= 0))
+	{
+		// Under the body the attach was authored in, which is what says the
+		// frame it hangs from was added where the walk was rather than at the
+		// top of the tree.
+		TestEqual(TEXT("the duplicate hangs off the attaching body"), Model->body_parentid[CopyBodyId], HostId);
+	}
+	const int OriginalId = mj_name2id(Model, mjOBJ_GEOM, "shape");
+	const int CopyId = mj_name2id(Model, mjOBJ_GEOM, "dup_shape");
+	if (TestTrue(TEXT("both geoms compiled"), OriginalId >= 0 && CopyId >= 0))
+	{
+		TestEqual(TEXT("the original resolved its class"), Model->geom_condim[OriginalId], 6);
+		TestEqual(TEXT("the duplicate resolved the same class"), Model->geom_condim[CopyId], 6);
+	}
 	mj_deleteModel(Model);
 
 	return !HasAnyErrors();

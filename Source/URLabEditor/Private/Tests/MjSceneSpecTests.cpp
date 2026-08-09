@@ -424,6 +424,91 @@ bool FMjSceneSpecAssetCollisionTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecUnnamedAssetTest, "URLab.MuJoCo.SceneSpec.UnnamedAssets",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSceneSpecUnnamedAssetTest::RunTest(const FString& Parameters)
+{
+	// An asset that authors no name is named by MuJoCo from its file, and MuJoCo
+	// does that AFTER the composition has rewritten `file` to a prefixed
+	// basename -- so a mesh whose file became `p0_base.obj` derives the name
+	// `p0_base` and is then prefixed again to `p0_p0_base`, while the geom that
+	// referred to it was prefixed once to `p0_base`. The compile fails on a
+	// reference to nothing. Nothing in the parity corpus exposes this, because
+	// every asset in it is named.
+	FSceneFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not create the world"));
+		return false;
+	}
+
+	UMjBodyBase* SceneWorld = nullptr;
+	AMjArticulation* const Manager = Fixture.AddActor(SceneWorld);
+	if (Manager == nullptr)
+	{
+		AddError(TEXT("could not spawn the manager"));
+		return false;
+	}
+
+	mjspec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(FSpecRef::OverActor(*Manager));
+
+	const TCHAR* const Files[] = {TEXT("meshA/base.obj"), TEXT("meshB/base.obj")};
+	const TCHAR* const Prefixes[] = {TEXT("p0_"), TEXT("p1_")};
+	for (int32 Index = 0; Index < 2; ++Index)
+	{
+		UMjBodyBase* ParticipantWorld = nullptr;
+		AMjArticulation* const Robot = Fixture.AddActor(ParticipantWorld);
+		if (Robot == nullptr)
+		{
+			AddError(TEXT("could not spawn a participant"));
+			return false;
+		}
+		// No name on the mesh, and the geom refers to it by the spelling MuJoCo
+		// would derive -- which is how such a document is authored.
+		if (AddMesh(Fixture, *Robot, nullptr, Files[Index], ParityDir()) == nullptr ||
+			AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("base")) == nullptr)
+		{
+			AddError(TEXT("could not author a participant"));
+			return false;
+		}
+
+		mjspec::FMjSceneSpecParticipant Placed;
+		Placed.Spec = FSpecRef::OverActor(*Robot);
+		Placed.Prefix = Prefixes[Index];
+		Builder.AddParticipant(Placed);
+	}
+
+	mjspec::FMjCompiledScene Scene = CompileScene(*this, Builder);
+	if (!Scene.IsValid())
+	{
+		return false;
+	}
+
+	// Prefixed once each, so the geoms' references still name them.
+	const int FirstId = mj_name2id(Scene.Model, mjOBJ_MESH, "p0_base");
+	const int SecondId = mj_name2id(Scene.Model, mjOBJ_MESH, "p1_base");
+	if (!TestTrue(TEXT("both unnamed meshes compiled under one prefix each"), FirstId >= 0 && SecondId >= 0))
+	{
+		return false;
+	}
+	TestTrue(TEXT("nothing was prefixed twice"), mj_name2id(Scene.Model, mjOBJ_MESH, "p0_p0_base") < 0);
+
+	// And each geom got its own participant's file rather than a shared one.
+	const int FirstGeom = mj_name2id(Scene.Model, mjOBJ_GEOM, "p0_shell");
+	const int SecondGeom = mj_name2id(Scene.Model, mjOBJ_GEOM, "p1_shell");
+	if (TestTrue(TEXT("both geoms compiled"), FirstGeom >= 0 && SecondGeom >= 0))
+	{
+		TestEqual(TEXT("the first geom resolved to the first mesh"), Scene.Model->geom_dataid[FirstGeom], FirstId);
+		TestEqual(TEXT("the second geom resolved to the second mesh"), Scene.Model->geom_dataid[SecondGeom], SecondId);
+	}
+	TestNotEqual(TEXT("the two meshes really are different files"), Scene.Model->mesh_vertnum[FirstId],
+		Scene.Model->mesh_vertnum[SecondId]);
+
+	return !HasAnyErrors();
+}
+
 // --- Discarded globals ------------------------------------------------------ //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecDiscardedGlobalsTest, "URLab.MuJoCo.SceneSpec.DiscardedGlobals",

@@ -168,14 +168,25 @@ void NamespaceAssets(mjSpec& Spec, const TMap<TObjectPtr<const UMjNodeComponent>
 }
 
 /**
- * The sections `mjs_attach` drops on the floor.
+ * What a participant's model-wide sections do when it joins a scene.
  *
- * A participant's `<option>` and `<size>` are model-wide, and a scene has one
- * of each: the scene's. Silently is the wrong way to find that out, because a
- * robot authored against a timestep it no longer gets behaves differently and
- * looks fine.
+ * A scene has one `<option>` and one `<size>`, and they are the scene's.
+ * MuJoCo's attach conflict resolver decides what happens to a participant's
+ * own: the scene's `<compiler conflict>` policy chooses between keeping the
+ * scene's value with a warning, merging the two, and refusing the attach.
+ *
+ * `<size>` is reported as information because the resolver settles it outright
+ * and the sizes it settles -- memory, arena, stack -- are capacities rather
+ * than physics: a participant that asked for more and got the scene's answer is
+ * not a robot behaving differently.
+ *
+ * `<option>` keeps a warning, as a policy choice rather than a statement about
+ * the mechanism. Under the default policy the scene's value wins, and a robot
+ * authored against a timestep it no longer gets behaves differently and looks
+ * fine, which is exactly the thing worth being told about.
  */
-void WarnOnDiscardedGlobals(const FSpecRef& Spec, const FString& Prefix, TArray<FMjSpecDiagnostic>& OutWarnings)
+void ReportParticipantGlobals(const FSpecRef& Spec, const FString& Prefix,
+	TArray<FMjSpecDiagnostic>& OutWarnings, TArray<FMjSpecDiagnostic>& OutInfos)
 {
 	UMjNodeComponent* const Root = Spec.GetRoot();
 	if (Root == nullptr)
@@ -189,14 +200,21 @@ void WarnOnDiscardedGlobals(const FSpecRef& Spec, const FString& Prefix, TArray<
 		{
 			continue;
 		}
-		if (Type != ElementType::Option && Type != ElementType::Size)
+		if (Type == ElementType::Option)
 		{
-			continue;
+			OutWarnings.Add(DiagnosticFor(Child.Node,
+				FString::Printf(TEXT("participant '%s' authors <option>, which does not become the "
+									 "scene's: the scene's conflict policy resolves it against the "
+									 "scene's own"),
+					*Prefix)));
 		}
-		OutWarnings.Add(DiagnosticFor(Child.Node,
-			FString::Printf(TEXT("participant '%s' authors <%s>, which the scene discards: "
-								 "the scene's own applies to everything in it"),
-				*Prefix, gen::TagForElement(Type))));
+		else if (Type == ElementType::Size)
+		{
+			OutInfos.Add(DiagnosticFor(Child.Node,
+				FString::Printf(TEXT("participant '%s' authors <size>, which the scene's conflict "
+									 "policy resolves against the scene's own"),
+					*Prefix)));
+		}
 	}
 }
 
@@ -220,6 +238,7 @@ FMjCompiledScene::FMjCompiledScene(FMjCompiledScene&& Other)
 	, Assets(MoveTemp(Other.Assets))
 	, Errors(MoveTemp(Other.Errors))
 	, Warnings(MoveTemp(Other.Warnings))
+	, Infos(MoveTemp(Other.Infos))
 {
 	Other.Model = nullptr;
 }
@@ -236,6 +255,7 @@ FMjCompiledScene& FMjCompiledScene::operator=(FMjCompiledScene&& Other)
 		Assets = MoveTemp(Other.Assets);
 		Errors = MoveTemp(Other.Errors);
 		Warnings = MoveTemp(Other.Warnings);
+		Infos = MoveTemp(Other.Infos);
 		Other.Model = nullptr;
 	}
 	return *this;
@@ -435,7 +455,7 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 			return Out;
 		}
 
-		WarnOnDiscardedGlobals(Participant.Spec, Participant.Prefix, Out.Warnings);
+		ReportParticipantGlobals(Participant.Spec, Participant.Prefix, Out.Warnings, Out.Infos);
 		TakeAssets(Participant.Spec, Participant.Prefix, Built);
 
 		mjsFrame* const Frame = mjs_addFrame(World, nullptr);

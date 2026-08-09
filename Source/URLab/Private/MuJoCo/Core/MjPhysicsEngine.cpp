@@ -669,6 +669,10 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("Scene: %s"), *Warning.ToString());
 	}
+	for (const FMjSpecDiagnostic& Info : Compiled.Infos)
+	{
+		UE_LOG(LogURLab, Log, TEXT("Scene: %s"), *Info.ToString());
+	}
 	if (!Compiled.IsValid())
 	{
 		TArray<FString> Reasons;

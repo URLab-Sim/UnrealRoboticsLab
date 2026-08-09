@@ -2114,6 +2114,25 @@ _CATEGORY_ENUM = {
     "section": "Section",
 }
 
+# The model-level blocks MuJoCo's attach conflict resolver visits, named by the
+# SPEC_TARGET expression that reaches them and by the struct a sub-block hangs
+# off. A write onto one of these is followed by an authored-flag write, so a
+# spec URLab built and a spec MuJoCo's own reader produced look the same to the
+# resolver -- including the case the resolver cannot otherwise see, a value
+# authored equal to MuJoCo's default.
+#
+# <compiler> is deliberately absent: the resolver never visits it, so a flag
+# there would have no consumer. <size> (which IS resolved) has no flags at all;
+# it lives directly on mjSpec, where MuJoCo tracks no authorship.
+_AUTHORED_TARGETS = ("Spec->option", "Spec->visual")
+_AUTHORED_PARENT = "mjVisual"
+
+# The structs those targets resolve to. Stated separately from the expressions
+# because this is the half a MuJoCo rename would break silently: an element that
+# still writes onto mjOption but stops being reached by `Spec->option` must fail
+# generation rather than quietly stop being flagged.
+_AUTHORED_STRUCTS = ("mjOption", "mjVisual")
+
 
 def parse_spec_structs(*paths: str) -> dict[str, dict[str, tuple[str, str | None]]]:
     """Struct name -> {field: (C type, array dimension or None)}.
@@ -2198,6 +2217,10 @@ class SpecElement:
         self.writes: list[SpecWrite] = []
         self.consts: list[dict] = []
         self.hooks: list[str] = []
+
+        # True when this element's writes land in a block the attach conflict
+        # resolver reads, so each one is followed by an authored-flag write.
+        self.authored = False
 
     @property
     def creates(self) -> bool:
@@ -2426,6 +2449,9 @@ class SpecWritePlan:
                 plan.fields_key = f"{elem['spec']}.{plan.sub}"
                 plan.prefix = f"{plan.sub}."
 
+            plan.authored = (plan.target in _AUTHORED_TARGETS
+                             or plan.parent_ctype == _AUTHORED_PARENT)
+
             self._plan_hooks(plan)
             if plan.struct is None:
                 self._check_unbound(plan)
@@ -2435,6 +2461,43 @@ class SpecWritePlan:
 
             self._plan_consts(plan)
             self._plan_fields(plan)
+
+        self._check_authored_flags()
+
+    def _check_authored_flags(self) -> None:
+        """Every write into a resolver-visited block carries an authored flag.
+
+        The flags are worth nothing unless they are complete: the resolver falls
+        back to comparing against MuJoCo's defaults only when NEITHER side of an
+        attach has a flag on the field, so a spec that flags half its option
+        block can swallow a conflict the unflagged path would have caught. That
+        makes a silently unflagged element the failure mode to gate against, and
+        the gate asks the question from the struct's side, where a renamed
+        SPEC_TARGET expression cannot hide it.
+        """
+        flagged = sorted(n for n, p in self.by_name.items() if p.authored)
+        for name in flagged:
+            # The spec reaches the write through ApplyEmbedded, which is the
+            # only entry point that has one.
+            if not self.by_name[name].embedded:
+                self.problems.append(
+                    f"{name} is flagged authored but is "
+                    f"{self.by_name[name].category}, which is applied without a "
+                    "spec; only an embedded element can carry the flags")
+        for name, plan in sorted(self.by_name.items()):
+            if plan.fields_key is None or plan.authored:
+                continue
+            if plan.fields_key.split(".", 1)[0] in _AUTHORED_STRUCTS:
+                self.problems.append(
+                    f"{name} writes onto {plan.fields_key}, which MuJoCo's "
+                    "attach conflict resolver reads, but nothing flags those "
+                    "writes as authored; it is reached by "
+                    f"{plan.target!r}, which is not one of "
+                    f"{list(_AUTHORED_TARGETS)}")
+        if not flagged:
+            self.problems.append(
+                "no element writes authored flags, so the conflict resolver "
+                "would see every spec URLab builds as having authored nothing")
 
     def _check_unbound(self, plan: SpecElement) -> None:
         """An element with no struct may still declare attributes.
@@ -2604,6 +2667,10 @@ def _write_body(s: UeSchema, plan: SpecElement, wr: SpecWrite,
 
 def _apply_signature(s: UeSchema, plan: SpecElement) -> str:
     cls = s.cls[plan.elem["name"]]
+    if plan.authored:
+        # The flags hang off the spec, not off the block, so a write into a
+        # resolver-visited block needs the spec that owns it.
+        return f"void Apply(const {cls}& In, {plan.struct}& Out, const mjSpec* Spec)"
     return f"void Apply(const {cls}& In, {plan.struct}& Out)"
 
 
@@ -2784,11 +2851,24 @@ def emit_specwrite_cpp(s: UeSchema, plan: SpecWritePlan) -> str:
     w("#include <cstring>")
     w("")
     w('#include "MuJoCo/Gen/MjStorage.gen.h"')
+    w('#include "MuJoCo/Spec/MjAuthored.h"')
     w("")
     w("namespace ps::ue::specwrite")
     w("{")
     w("namespace")
     w("{")
+    w("// The authored flag MuJoCo's attach conflict resolver reads. A null spec")
+    w("// is a caller with no spec to flag against rather than an error: the")
+    w("// value has already been written either way, and the flag is what the")
+    w("// resolver consults, not what the compiler does.")
+    w("void MarkAuthored(const mjSpec* Spec, const void* Field)")
+    w("{")
+    w("\tif (Spec != nullptr)")
+    w("\t{")
+    w("\t\tmjs_setAuthored(Spec, Field, 1);")
+    w("\t}")
+    w("}")
+    w("")
     w("// The mjs vector handles own their storage on MuJoCo's side, so a value")
     w("// is copied in rather than assigned. The setters take a mutable pointer")
     w("// and only read through it, which is what the cast is for.")
@@ -2822,6 +2902,8 @@ def emit_specwrite_cpp(s: UeSchema, plan: SpecWritePlan) -> str:
         w("{")
         if not row.writes:
             w("\t(void)In;")
+            if row.authored:
+                w("\t(void)Spec;")
         for const in row.consts:
             w(f"\tOut.{row.prefix}{const['field']} = {const['value']};")
         for write in row.writes:
@@ -2831,6 +2913,10 @@ def emit_specwrite_cpp(s: UeSchema, plan: SpecWritePlan) -> str:
                 w(f"\tif (In.{write.member}.IsSet())")
             w("\t{")
             o.extend(_write_body(s, row, write, "\t\t"))
+            if row.authored:
+                # Inside the authored branch, so the flag says what it means:
+                # this document wrote this field, whatever value it wrote.
+                w(f"\t\tMarkAuthored(Spec, &Out.{row.prefix}{write.field});")
             w("\t}")
         w("}")
     w("")
@@ -3074,9 +3160,10 @@ def _emit_specwrite_apply(s: UeSchema, plan: SpecWritePlan, w) -> None:
         if not row.writes and not row.consts:
             continue
         cls = s.cls[element["name"]]
+        spec_arg = ", Spec" if row.authored else ""
         w(f"\tcase ElementType::{element['name']}:")
         w(f"\t\tApply(static_cast<const {cls}&>(Node),")
-        w(f"\t\t\t*static_cast<{row.struct}*>(Target));")
+        w(f"\t\t\t*static_cast<{row.struct}*>(Target){spec_arg});")
         w("\t\treturn true;")
     w("\tdefault: return false;")
     w("\t}")

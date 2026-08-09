@@ -115,6 +115,14 @@ struct URLAB_API FMjCompiledScene
 	TArray<FMjSpecDiagnostic> Errors;
 	TArray<FMjSpecDiagnostic> Warnings;
 
+	/**
+	 * Things worth saying that are not worth warning about.
+	 *
+	 * Kept apart from Warnings rather than flagged inside it, so a caller
+	 * choosing a log verbosity chooses it by reading which array it is walking.
+	 */
+	TArray<FMjSpecDiagnostic> Infos;
+
 	bool IsValid() const { return Model != nullptr; }
 
 	/**

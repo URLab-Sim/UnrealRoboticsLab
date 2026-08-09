@@ -194,6 +194,16 @@ a known failure shape, so each is checked deliberately:
   simplified — but do not weaken it on assumption.
 - **`mjCModel::CopyList` silently dropping unresolved-reference elements**
   (cited in `MjSpecWriteHooks.cpp`).
+- **The two undeclared authored-flag symbols** (`MjAuthored.h`).
+  `mjs_isAuthored` and `mjs_setAuthored` are exported from the library and
+  absent from the installed headers, so URLab declares them itself from
+  `src/user/user_api.h:444` and `:447`. Re-read both signatures there, and
+  confirm they are still absent from `include/mujoco` — if upstream publishes
+  them, delete URLab's declarations and include the header instead. No compiler
+  can check this for you; what does is `URLab.MuJoCo.AttachPolicy.*`, which sets
+  a flag, attaches under each conflict policy and asserts the resolution, then
+  clears the flag and asserts it changes back. If those tests fail after a bump,
+  suspect the declarations before suspecting the resolver.
 
 ### 8. Build, test, and run the nets
 

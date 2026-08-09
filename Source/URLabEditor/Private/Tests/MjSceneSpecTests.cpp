@@ -566,8 +566,9 @@ bool FMjSceneSpecDiscardedGlobalsTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Two blocks authored, two warnings, and each names the section it is
-	// about: a single "globals were dropped" would not say which.
+	// Two blocks authored, two reports, on the two channels their consequences
+	// deserve: a single "globals were dropped" would say neither which section
+	// nor how much it matters.
 	int32 OptionWarnings = 0;
 	int32 SizeWarnings = 0;
 	for (const FMjSpecDiagnostic& Warning : Scene.Warnings)
@@ -575,10 +576,22 @@ bool FMjSceneSpecDiscardedGlobalsTest::RunTest(const FString& Parameters)
 		OptionWarnings += Warning.Message.Contains(TEXT("<option>")) ? 1 : 0;
 		SizeWarnings += Warning.Message.Contains(TEXT("<size>")) ? 1 : 0;
 	}
-	TestEqual(TEXT("the discarded <option> was reported"), OptionWarnings, 1);
-	TestEqual(TEXT("the discarded <size> was reported"), SizeWarnings, 1);
+	int32 SizeInfos = 0;
+	int32 OptionInfos = 0;
+	for (const FMjSpecDiagnostic& Info : Scene.Infos)
+	{
+		SizeInfos += Info.Message.Contains(TEXT("<size>")) ? 1 : 0;
+		OptionInfos += Info.Message.Contains(TEXT("<option>")) ? 1 : 0;
+	}
+	TestEqual(TEXT("the participant's <option> was warned about"), OptionWarnings, 1);
+	TestEqual(TEXT("and not merely noted"), OptionInfos, 0);
+	// <size> is settled by MuJoCo's own conflict resolver, so it is information
+	// rather than a warning: nothing behaves differently for it.
+	TestEqual(TEXT("the participant's <size> was reported as information"), SizeInfos, 1);
+	TestEqual(TEXT("and not warned about"), SizeWarnings, 0);
 
-	// And it really is discarded rather than merged: the scene keeps its own.
+	// The scene keeps its own option block under the default policy, which is
+	// what the warning is about.
 	TestNotEqual(TEXT("the participant's timestep did not reach the model"),
 		static_cast<double>(Scene.Model->opt.timestep), 0.001);
 

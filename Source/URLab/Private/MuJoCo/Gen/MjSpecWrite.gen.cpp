@@ -22,11 +22,24 @@
 #include <cstring>
 
 #include "MuJoCo/Gen/MjStorage.gen.h"
+#include "MuJoCo/Spec/MjAuthored.h"
 
 namespace ps::ue::specwrite
 {
 namespace
 {
+// The authored flag MuJoCo's attach conflict resolver reads. A null spec
+// is a caller with no spec to flag against rather than an error: the
+// value has already been written either way, and the flag is what the
+// resolver consults, not what the compiler does.
+void MarkAuthored(const mjSpec* Spec, const void* Field)
+{
+	if (Spec != nullptr)
+	{
+		mjs_setAuthored(Spec, Field, 1);
+	}
+}
+
 // The mjs vector handles own their storage on MuJoCo's side, so a value
 // is copied in rather than assigned. The setters take a mutable pointer
 // and only read through it, which is what the cast is for.
@@ -179,35 +192,42 @@ void Apply(const UMjLengthRange& In, mjLROpt& Out)
 }
 
 // <option> -> mjOption
-void Apply(const UMjOption& In, mjOption& Out)
+void Apply(const UMjOption& In, mjOption& Out, const mjSpec* Spec)
 {
 	if (In.Timestep.IsSet())
 	{
 		Out.timestep = static_cast<mjtNum>(In.Timestep.GetValue());
+		MarkAuthored(Spec, &Out.timestep);
 	}
 	if (In.Impratio.IsSet())
 	{
 		Out.impratio = static_cast<mjtNum>(In.Impratio.GetValue());
+		MarkAuthored(Spec, &Out.impratio);
 	}
 	if (In.Tolerance.IsSet())
 	{
 		Out.tolerance = static_cast<mjtNum>(In.Tolerance.GetValue());
+		MarkAuthored(Spec, &Out.tolerance);
 	}
 	if (In.LsTolerance.IsSet())
 	{
 		Out.ls_tolerance = static_cast<mjtNum>(In.LsTolerance.GetValue());
+		MarkAuthored(Spec, &Out.ls_tolerance);
 	}
 	if (In.NoslipTolerance.IsSet())
 	{
 		Out.noslip_tolerance = static_cast<mjtNum>(In.NoslipTolerance.GetValue());
+		MarkAuthored(Spec, &Out.noslip_tolerance);
 	}
 	if (In.CcdTolerance.IsSet())
 	{
 		Out.ccd_tolerance = static_cast<mjtNum>(In.CcdTolerance.GetValue());
+		MarkAuthored(Spec, &Out.ccd_tolerance);
 	}
 	if (In.SleepTolerance.IsSet())
 	{
 		Out.sleep_tolerance = static_cast<mjtNum>(In.SleepTolerance.GetValue());
+		MarkAuthored(Spec, &Out.sleep_tolerance);
 	}
 	if (In.Gravity.IsSet())
 	{
@@ -218,6 +238,7 @@ void Apply(const UMjOption& In, mjOption& Out)
 		{
 			Out.gravity[I] = static_cast<mjtNum>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.gravity);
 	}
 	if (In.Wind.IsSet())
 	{
@@ -228,6 +249,7 @@ void Apply(const UMjOption& In, mjOption& Out)
 		{
 			Out.wind[I] = static_cast<mjtNum>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.wind);
 	}
 	if (In.Magnetic.IsSet())
 	{
@@ -238,18 +260,22 @@ void Apply(const UMjOption& In, mjOption& Out)
 		{
 			Out.magnetic[I] = static_cast<mjtNum>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.magnetic);
 	}
 	if (In.Density.IsSet())
 	{
 		Out.density = static_cast<mjtNum>(In.Density.GetValue());
+		MarkAuthored(Spec, &Out.density);
 	}
 	if (In.Viscosity.IsSet())
 	{
 		Out.viscosity = static_cast<mjtNum>(In.Viscosity.GetValue());
+		MarkAuthored(Spec, &Out.viscosity);
 	}
 	if (In.OMargin.IsSet())
 	{
 		Out.o_margin = static_cast<mjtNum>(In.OMargin.GetValue());
+		MarkAuthored(Spec, &Out.o_margin);
 	}
 	if (In.OSolref.IsSet())
 	{
@@ -259,6 +285,7 @@ void Apply(const UMjOption& In, mjOption& Out)
 		{
 			Out.o_solref[I] = static_cast<mjtNum>(Values[I]);
 		}
+		MarkAuthored(Spec, &Out.o_solref);
 	}
 	if (In.OSolimp.IsSet())
 	{
@@ -268,6 +295,7 @@ void Apply(const UMjOption& In, mjOption& Out)
 		{
 			Out.o_solimp[I] = static_cast<mjtNum>(Values[I]);
 		}
+		MarkAuthored(Spec, &Out.o_solimp);
 	}
 	if (In.OFriction.IsSet())
 	{
@@ -277,46 +305,57 @@ void Apply(const UMjOption& In, mjOption& Out)
 		{
 			Out.o_friction[I] = static_cast<mjtNum>(Values[I]);
 		}
+		MarkAuthored(Spec, &Out.o_friction);
 	}
 	if (In.Integrator.IsSet())
 	{
 		Out.integrator = static_cast<int>(KeywordC(In.Integrator.GetValue()));
+		MarkAuthored(Spec, &Out.integrator);
 	}
 	if (In.Cone.IsSet())
 	{
 		Out.cone = static_cast<int>(KeywordC(In.Cone.GetValue()));
+		MarkAuthored(Spec, &Out.cone);
 	}
 	if (In.Jacobian.IsSet())
 	{
 		Out.jacobian = static_cast<int>(KeywordC(In.Jacobian.GetValue()));
+		MarkAuthored(Spec, &Out.jacobian);
 	}
 	if (In.Solver.IsSet())
 	{
 		Out.solver = static_cast<int>(KeywordC(In.Solver.GetValue()));
+		MarkAuthored(Spec, &Out.solver);
 	}
 	if (In.Iterations.IsSet())
 	{
 		Out.iterations = static_cast<int>(In.Iterations.GetValue());
+		MarkAuthored(Spec, &Out.iterations);
 	}
 	if (In.LsIterations.IsSet())
 	{
 		Out.ls_iterations = static_cast<int>(In.LsIterations.GetValue());
+		MarkAuthored(Spec, &Out.ls_iterations);
 	}
 	if (In.NoslipIterations.IsSet())
 	{
 		Out.noslip_iterations = static_cast<int>(In.NoslipIterations.GetValue());
+		MarkAuthored(Spec, &Out.noslip_iterations);
 	}
 	if (In.CcdIterations.IsSet())
 	{
 		Out.ccd_iterations = static_cast<int>(In.CcdIterations.GetValue());
+		MarkAuthored(Spec, &Out.ccd_iterations);
 	}
 	if (In.SdfIterations.IsSet())
 	{
 		Out.sdf_iterations = static_cast<int>(In.SdfIterations.GetValue());
+		MarkAuthored(Spec, &Out.sdf_iterations);
 	}
 	if (In.SdfInitpoints.IsSet())
 	{
 		Out.sdf_initpoints = static_cast<int>(In.SdfInitpoints.GetValue());
+		MarkAuthored(Spec, &Out.sdf_initpoints);
 	}
 }
 
@@ -409,89 +448,107 @@ void Apply(const UMjStatistic& In, mjStatistic& Out)
 }
 
 // <global> -> mjVisual
-void Apply(const UMjVisualGlobal& In, mjVisual& Out)
+void Apply(const UMjVisualGlobal& In, mjVisual& Out, const mjSpec* Spec)
 {
 	if (In.Cameraid.IsSet())
 	{
 		Out.global.cameraid = static_cast<int>(In.Cameraid.GetValue());
+		MarkAuthored(Spec, &Out.global.cameraid);
 	}
 	if (In.Orthographic.IsSet())
 	{
 		Out.global.orthographic = static_cast<int>(In.Orthographic.GetValue());
+		MarkAuthored(Spec, &Out.global.orthographic);
 	}
 	if (In.Fovy.IsSet())
 	{
 		Out.global.fovy = static_cast<float>(In.Fovy.GetValue());
+		MarkAuthored(Spec, &Out.global.fovy);
 	}
 	if (In.Ipd.IsSet())
 	{
 		Out.global.ipd = static_cast<float>(In.Ipd.GetValue());
+		MarkAuthored(Spec, &Out.global.ipd);
 	}
 	if (In.Azimuth.IsSet())
 	{
 		Out.global.azimuth = static_cast<float>(In.Azimuth.GetValue());
+		MarkAuthored(Spec, &Out.global.azimuth);
 	}
 	if (In.Elevation.IsSet())
 	{
 		Out.global.elevation = static_cast<float>(In.Elevation.GetValue());
+		MarkAuthored(Spec, &Out.global.elevation);
 	}
 	if (In.Linewidth.IsSet())
 	{
 		Out.global.linewidth = static_cast<float>(In.Linewidth.GetValue());
+		MarkAuthored(Spec, &Out.global.linewidth);
 	}
 	if (In.Glow.IsSet())
 	{
 		Out.global.glow = static_cast<float>(In.Glow.GetValue());
+		MarkAuthored(Spec, &Out.global.glow);
 	}
 	if (In.Offwidth.IsSet())
 	{
 		Out.global.offwidth = static_cast<int>(In.Offwidth.GetValue());
+		MarkAuthored(Spec, &Out.global.offwidth);
 	}
 	if (In.Offheight.IsSet())
 	{
 		Out.global.offheight = static_cast<int>(In.Offheight.GetValue());
+		MarkAuthored(Spec, &Out.global.offheight);
 	}
 	if (In.Realtime.IsSet())
 	{
 		Out.global.realtime = static_cast<float>(In.Realtime.GetValue());
+		MarkAuthored(Spec, &Out.global.realtime);
 	}
 	if (In.Ellipsoidinertia.IsSet())
 	{
 		Out.global.ellipsoidinertia = static_cast<int>(In.Ellipsoidinertia.GetValue());
+		MarkAuthored(Spec, &Out.global.ellipsoidinertia);
 	}
 	if (In.Bvactive.IsSet())
 	{
 		Out.global.bvactive = static_cast<int>(In.Bvactive.GetValue());
+		MarkAuthored(Spec, &Out.global.bvactive);
 	}
 }
 
 // <quality> -> mjVisual
-void Apply(const UMjVisualQuality& In, mjVisual& Out)
+void Apply(const UMjVisualQuality& In, mjVisual& Out, const mjSpec* Spec)
 {
 	if (In.Shadowsize.IsSet())
 	{
 		Out.quality.shadowsize = static_cast<int>(In.Shadowsize.GetValue());
+		MarkAuthored(Spec, &Out.quality.shadowsize);
 	}
 	if (In.Offsamples.IsSet())
 	{
 		Out.quality.offsamples = static_cast<int>(In.Offsamples.GetValue());
+		MarkAuthored(Spec, &Out.quality.offsamples);
 	}
 	if (In.Numslices.IsSet())
 	{
 		Out.quality.numslices = static_cast<int>(In.Numslices.GetValue());
+		MarkAuthored(Spec, &Out.quality.numslices);
 	}
 	if (In.Numstacks.IsSet())
 	{
 		Out.quality.numstacks = static_cast<int>(In.Numstacks.GetValue());
+		MarkAuthored(Spec, &Out.quality.numstacks);
 	}
 	if (In.Numquads.IsSet())
 	{
 		Out.quality.numquads = static_cast<int>(In.Numquads.GetValue());
+		MarkAuthored(Spec, &Out.quality.numquads);
 	}
 }
 
 // <headlight> -> mjVisual
-void Apply(const UMjVisualHeadlight& In, mjVisual& Out)
+void Apply(const UMjVisualHeadlight& In, mjVisual& Out, const mjSpec* Spec)
 {
 	if (In.Ambient.IsSet())
 	{
@@ -501,6 +558,7 @@ void Apply(const UMjVisualHeadlight& In, mjVisual& Out)
 		{
 			Out.headlight.ambient[I] = static_cast<float>(Values[I]);
 		}
+		MarkAuthored(Spec, &Out.headlight.ambient);
 	}
 	if (In.Diffuse.IsSet())
 	{
@@ -510,6 +568,7 @@ void Apply(const UMjVisualHeadlight& In, mjVisual& Out)
 		{
 			Out.headlight.diffuse[I] = static_cast<float>(Values[I]);
 		}
+		MarkAuthored(Spec, &Out.headlight.diffuse);
 	}
 	if (In.Specular.IsSet())
 	{
@@ -519,145 +578,177 @@ void Apply(const UMjVisualHeadlight& In, mjVisual& Out)
 		{
 			Out.headlight.specular[I] = static_cast<float>(Values[I]);
 		}
+		MarkAuthored(Spec, &Out.headlight.specular);
 	}
 	if (In.ActiveFlag.IsSet())
 	{
 		Out.headlight.active = static_cast<int>(In.ActiveFlag.GetValue());
+		MarkAuthored(Spec, &Out.headlight.active);
 	}
 }
 
 // <map> -> mjVisual
-void Apply(const UMjVisualMap& In, mjVisual& Out)
+void Apply(const UMjVisualMap& In, mjVisual& Out, const mjSpec* Spec)
 {
 	if (In.Stiffness.IsSet())
 	{
 		Out.map.stiffness = static_cast<float>(In.Stiffness.GetValue());
+		MarkAuthored(Spec, &Out.map.stiffness);
 	}
 	if (In.Stiffnessrot.IsSet())
 	{
 		Out.map.stiffnessrot = static_cast<float>(In.Stiffnessrot.GetValue());
+		MarkAuthored(Spec, &Out.map.stiffnessrot);
 	}
 	if (In.Force.IsSet())
 	{
 		Out.map.force = static_cast<float>(In.Force.GetValue());
+		MarkAuthored(Spec, &Out.map.force);
 	}
 	if (In.Torque.IsSet())
 	{
 		Out.map.torque = static_cast<float>(In.Torque.GetValue());
+		MarkAuthored(Spec, &Out.map.torque);
 	}
 	if (In.Alpha.IsSet())
 	{
 		Out.map.alpha = static_cast<float>(In.Alpha.GetValue());
+		MarkAuthored(Spec, &Out.map.alpha);
 	}
 	if (In.Fogstart.IsSet())
 	{
 		Out.map.fogstart = static_cast<float>(In.Fogstart.GetValue());
+		MarkAuthored(Spec, &Out.map.fogstart);
 	}
 	if (In.Fogend.IsSet())
 	{
 		Out.map.fogend = static_cast<float>(In.Fogend.GetValue());
+		MarkAuthored(Spec, &Out.map.fogend);
 	}
 	if (In.Znear.IsSet())
 	{
 		Out.map.znear = static_cast<float>(In.Znear.GetValue());
+		MarkAuthored(Spec, &Out.map.znear);
 	}
 	if (In.Zfar.IsSet())
 	{
 		Out.map.zfar = static_cast<float>(In.Zfar.GetValue());
+		MarkAuthored(Spec, &Out.map.zfar);
 	}
 	if (In.Haze.IsSet())
 	{
 		Out.map.haze = static_cast<float>(In.Haze.GetValue());
+		MarkAuthored(Spec, &Out.map.haze);
 	}
 	if (In.Shadowclip.IsSet())
 	{
 		Out.map.shadowclip = static_cast<float>(In.Shadowclip.GetValue());
+		MarkAuthored(Spec, &Out.map.shadowclip);
 	}
 	if (In.Shadowscale.IsSet())
 	{
 		Out.map.shadowscale = static_cast<float>(In.Shadowscale.GetValue());
+		MarkAuthored(Spec, &Out.map.shadowscale);
 	}
 	if (In.Actuatortendon.IsSet())
 	{
 		Out.map.actuatortendon = static_cast<float>(In.Actuatortendon.GetValue());
+		MarkAuthored(Spec, &Out.map.actuatortendon);
 	}
 }
 
 // <scale> -> mjVisual
-void Apply(const UMjVisualScale& In, mjVisual& Out)
+void Apply(const UMjVisualScale& In, mjVisual& Out, const mjSpec* Spec)
 {
 	if (In.Forcewidth.IsSet())
 	{
 		Out.scale.forcewidth = static_cast<float>(In.Forcewidth.GetValue());
+		MarkAuthored(Spec, &Out.scale.forcewidth);
 	}
 	if (In.Contactwidth.IsSet())
 	{
 		Out.scale.contactwidth = static_cast<float>(In.Contactwidth.GetValue());
+		MarkAuthored(Spec, &Out.scale.contactwidth);
 	}
 	if (In.Contactheight.IsSet())
 	{
 		Out.scale.contactheight = static_cast<float>(In.Contactheight.GetValue());
+		MarkAuthored(Spec, &Out.scale.contactheight);
 	}
 	if (In.Connect.IsSet())
 	{
 		Out.scale.connect = static_cast<float>(In.Connect.GetValue());
+		MarkAuthored(Spec, &Out.scale.connect);
 	}
 	if (In.Com.IsSet())
 	{
 		Out.scale.com = static_cast<float>(In.Com.GetValue());
+		MarkAuthored(Spec, &Out.scale.com);
 	}
 	if (In.Camera.IsSet())
 	{
 		Out.scale.camera = static_cast<float>(In.Camera.GetValue());
+		MarkAuthored(Spec, &Out.scale.camera);
 	}
 	if (In.Light.IsSet())
 	{
 		Out.scale.light = static_cast<float>(In.Light.GetValue());
+		MarkAuthored(Spec, &Out.scale.light);
 	}
 	if (In.Selectpoint.IsSet())
 	{
 		Out.scale.selectpoint = static_cast<float>(In.Selectpoint.GetValue());
+		MarkAuthored(Spec, &Out.scale.selectpoint);
 	}
 	if (In.Jointlength.IsSet())
 	{
 		Out.scale.jointlength = static_cast<float>(In.Jointlength.GetValue());
+		MarkAuthored(Spec, &Out.scale.jointlength);
 	}
 	if (In.Jointwidth.IsSet())
 	{
 		Out.scale.jointwidth = static_cast<float>(In.Jointwidth.GetValue());
+		MarkAuthored(Spec, &Out.scale.jointwidth);
 	}
 	if (In.Actuatorlength.IsSet())
 	{
 		Out.scale.actuatorlength = static_cast<float>(In.Actuatorlength.GetValue());
+		MarkAuthored(Spec, &Out.scale.actuatorlength);
 	}
 	if (In.Actuatorwidth.IsSet())
 	{
 		Out.scale.actuatorwidth = static_cast<float>(In.Actuatorwidth.GetValue());
+		MarkAuthored(Spec, &Out.scale.actuatorwidth);
 	}
 	if (In.Framelength.IsSet())
 	{
 		Out.scale.framelength = static_cast<float>(In.Framelength.GetValue());
+		MarkAuthored(Spec, &Out.scale.framelength);
 	}
 	if (In.Framewidth.IsSet())
 	{
 		Out.scale.framewidth = static_cast<float>(In.Framewidth.GetValue());
+		MarkAuthored(Spec, &Out.scale.framewidth);
 	}
 	if (In.Constraint.IsSet())
 	{
 		Out.scale.constraint = static_cast<float>(In.Constraint.GetValue());
+		MarkAuthored(Spec, &Out.scale.constraint);
 	}
 	if (In.Slidercrank.IsSet())
 	{
 		Out.scale.slidercrank = static_cast<float>(In.Slidercrank.GetValue());
+		MarkAuthored(Spec, &Out.scale.slidercrank);
 	}
 	if (In.Frustum.IsSet())
 	{
 		Out.scale.frustum = static_cast<float>(In.Frustum.GetValue());
+		MarkAuthored(Spec, &Out.scale.frustum);
 	}
 }
 
 // <rgba> -> mjVisual
-void Apply(const UMjVisualRgba& In, mjVisual& Out)
+void Apply(const UMjVisualRgba& In, mjVisual& Out, const mjSpec* Spec)
 {
 	if (In.Fog.IsSet())
 	{
@@ -668,6 +759,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.fog[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.fog);
 	}
 	if (In.Haze.IsSet())
 	{
@@ -678,6 +770,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.haze[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.haze);
 	}
 	if (In.Force.IsSet())
 	{
@@ -688,6 +781,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.force[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.force);
 	}
 	if (In.Inertia.IsSet())
 	{
@@ -698,6 +792,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.inertia[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.inertia);
 	}
 	if (In.Joint.IsSet())
 	{
@@ -708,6 +803,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.joint[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.joint);
 	}
 	if (In.Actuator.IsSet())
 	{
@@ -718,6 +814,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.actuator[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.actuator);
 	}
 	if (In.Actuatornegative.IsSet())
 	{
@@ -728,6 +825,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.actuatornegative[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.actuatornegative);
 	}
 	if (In.Actuatorpositive.IsSet())
 	{
@@ -738,6 +836,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.actuatorpositive[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.actuatorpositive);
 	}
 	if (In.Com.IsSet())
 	{
@@ -748,6 +847,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.com[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.com);
 	}
 	if (In.Camera.IsSet())
 	{
@@ -758,6 +858,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.camera[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.camera);
 	}
 	if (In.Light.IsSet())
 	{
@@ -768,6 +869,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.light[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.light);
 	}
 	if (In.Selectpoint.IsSet())
 	{
@@ -778,6 +880,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.selectpoint[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.selectpoint);
 	}
 	if (In.Connect.IsSet())
 	{
@@ -788,6 +891,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.connect[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.connect);
 	}
 	if (In.Contactpoint.IsSet())
 	{
@@ -798,6 +902,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.contactpoint[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.contactpoint);
 	}
 	if (In.Contactforce.IsSet())
 	{
@@ -808,6 +913,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.contactforce[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.contactforce);
 	}
 	if (In.Contactfriction.IsSet())
 	{
@@ -818,6 +924,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.contactfriction[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.contactfriction);
 	}
 	if (In.Contacttorque.IsSet())
 	{
@@ -828,6 +935,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.contacttorque[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.contacttorque);
 	}
 	if (In.Contactgap.IsSet())
 	{
@@ -838,6 +946,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.contactgap[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.contactgap);
 	}
 	if (In.Rangefinder.IsSet())
 	{
@@ -848,6 +957,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.rangefinder[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.rangefinder);
 	}
 	if (In.Constraint.IsSet())
 	{
@@ -858,6 +968,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.constraint[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.constraint);
 	}
 	if (In.Slidercrank.IsSet())
 	{
@@ -868,6 +979,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.slidercrank[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.slidercrank);
 	}
 	if (In.Crankbroken.IsSet())
 	{
@@ -878,6 +990,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.crankbroken[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.crankbroken);
 	}
 	if (In.Frustum.IsSet())
 	{
@@ -888,6 +1001,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.frustum[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.frustum);
 	}
 	if (In.Bv.IsSet())
 	{
@@ -898,6 +1012,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.bv[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.bv);
 	}
 	if (In.Bvactive.IsSet())
 	{
@@ -908,6 +1023,7 @@ void Apply(const UMjVisualRgba& In, mjVisual& Out)
 		{
 			Out.rgba.bvactive[I] = static_cast<float>(Buffer[I]);
 		}
+		MarkAuthored(Spec, &Out.rgba.bvactive);
 	}
 }
 
@@ -8931,7 +9047,7 @@ bool ApplyEmbedded(const UMjNodeComponent& Node, mjSpec* Spec, void* Parent)
 		return true;
 	case ElementType::Option:
 		Apply(static_cast<const UMjOption&>(Node),
-			*static_cast<mjOption*>(Target));
+			*static_cast<mjOption*>(Target), Spec);
 		return true;
 	case ElementType::Size:
 		Apply(static_cast<const UMjSize&>(Node),
@@ -8943,27 +9059,27 @@ bool ApplyEmbedded(const UMjNodeComponent& Node, mjSpec* Spec, void* Parent)
 		return true;
 	case ElementType::VisualGlobal:
 		Apply(static_cast<const UMjVisualGlobal&>(Node),
-			*static_cast<mjVisual*>(Target));
+			*static_cast<mjVisual*>(Target), Spec);
 		return true;
 	case ElementType::VisualQuality:
 		Apply(static_cast<const UMjVisualQuality&>(Node),
-			*static_cast<mjVisual*>(Target));
+			*static_cast<mjVisual*>(Target), Spec);
 		return true;
 	case ElementType::VisualHeadlight:
 		Apply(static_cast<const UMjVisualHeadlight&>(Node),
-			*static_cast<mjVisual*>(Target));
+			*static_cast<mjVisual*>(Target), Spec);
 		return true;
 	case ElementType::VisualMap:
 		Apply(static_cast<const UMjVisualMap&>(Node),
-			*static_cast<mjVisual*>(Target));
+			*static_cast<mjVisual*>(Target), Spec);
 		return true;
 	case ElementType::VisualScale:
 		Apply(static_cast<const UMjVisualScale&>(Node),
-			*static_cast<mjVisual*>(Target));
+			*static_cast<mjVisual*>(Target), Spec);
 		return true;
 	case ElementType::VisualRgba:
 		Apply(static_cast<const UMjVisualRgba&>(Node),
-			*static_cast<mjVisual*>(Target));
+			*static_cast<mjVisual*>(Target), Spec);
 		return true;
 	case ElementType::Inertial:
 		Apply(static_cast<const UMjInertial&>(Node),

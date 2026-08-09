@@ -23,28 +23,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The four failures this branch inherited and the owner recorded rather than
-# scheduled. A fifth is a regression and stops the net.
+# The two failures this branch inherited and the owner recorded rather than
+# scheduled. A third is a regression and stops the net.
 #
-# The first two are a harness scope defect over two files: the corpus enumerator
-# walks the whole MuJoCo checkout, which contains an embedded protospec/ subtree,
-# so it sweeps ProtoSpec's own negative fixtures -- an include pointing outside
-# its root, and 201 levels of nesting. Both exist to be REJECTED, so the guards
-# firing is correct behaviour and counting it as a failure is the harness's bug.
-#
-# The third is a real round-trip fidelity defect in the retained reader and
-# writer: many_dependencies.xml round-trips to a model that will not load
-# ("no tree found for constraint 0"). It is a genuine MuJoCo test model and not
-# a corpus artifact, and it must not be closed as one.
-#
-# The fourth is the aggregate floor, which fails because of the third and clears
-# when it does.
+# Both describe one defect. many_dependencies.xml is a real round-trip fidelity
+# defect in the retained reader and writer: it round-trips to a model that will
+# not load ("no tree found for constraint 0"). It is a genuine MuJoCo test model
+# and not a corpus artifact, and it must not be closed as one. The aggregate
+# floor fails because of it and clears when it does.
 ALLOWED_FAILURES = frozenset(
     {
-        "tests/test_differential.py::test_roundtrip_matches_mujoco"
-        "[protospec/tests/fixtures/include_traversal/root/uses_outside.xml]",
-        "tests/test_differential.py::test_roundtrip_matches_mujoco"
-        "[protospec/tests/fixtures/nesting/deep_201.xml]",
         "tests/test_differential.py::test_roundtrip_matches_mujoco"
         "[test/xml/testdata/many_dependencies.xml]",
         "tests/test_differential.py::test_xml_parity_floor",

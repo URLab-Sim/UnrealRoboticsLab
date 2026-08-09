@@ -119,12 +119,20 @@ void SyncPreviewSubtree(UMjNodeComponent& Node)
  * queries used to index the entire spec on its own, so posing a model of N
  * elements paid N whole-spec walks per question. The scope creates and destroys
  * no nodes, which is what makes holding it open across the walk safe.
+ *
+ * The reference check rides along here for the same reason the preview does:
+ * this is the first moment the whole spec exists, and a reference naming
+ * nothing is a fact about the whole spec. A file can arrive with one -- a
+ * hand-edited MJCF, or an include that did not bring what it promised -- and
+ * MuJoCo would not say so until the model is compiled, from the compiler, with
+ * no element to point at.
  */
 template <class Adapter>
 void SyncPreviewTree(UMjNodeComponent& Root)
 {
 	FMjEffectiveScope Effective(Root);
 	SyncPreviewSubtree<Adapter>(Root);
+	MjNoteDanglingReferences<Adapter>(Root);
 }
 
 /** The spec root of a Blueprint: the SCS node with no MuJoCo parent. */

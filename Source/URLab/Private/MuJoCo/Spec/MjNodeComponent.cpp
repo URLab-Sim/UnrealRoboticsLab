@@ -362,6 +362,191 @@ void ForEachInstanceOfTemplate(UMjNodeComponent& Template, TFunctionRef<void(UMj
 #endif
 }
 
+// --- References ------------------------------------------------------------ //
+//
+// Every cross-reference in a MuJoCo model is a NAME with a typed target, never a
+// pointer: an actuator names the joint it drives, a geom names its material. The
+// schema says which attributes those are and what each may point at, so
+// everything below is reflection-driven and no element type is named by hand.
+
+using FProfile = urlab::spec::FMjInstanceProfile;
+
+/**
+ * Invoke `On` for every authored reference of one element.
+ *
+ * Two kinds. The typed ones the profile's own scan hands out with their target
+ * sets. The dynamic ones -- MuJoCo's frame sensors, whose `objname` means
+ * whatever the sibling `objtype` says -- are plain strings the schema marks with
+ * the sibling that types them, so the descriptor is what resolves them and they
+ * are reached with no per-element code either.
+ *
+ * `On` is called as `On(FieldId, FieldName, Slot, Targets)`. The slot is a live,
+ * move-only proxy over the stored name: writing to it edits the reference in
+ * place, which is what makes the rename fixup below a rewrite rather than a
+ * report.
+ */
+template <class E, class OnRef>
+void ForEachReference(E& Element, OnRef&& On)
+{
+	FProfile::Ref::ScanTyped(Element, On);
+
+	const psm::ElementType Type = urlab::spec::gen::TMjElementType<std::decay_t<E>>::Value;
+	const psm::reflect::ElementDescriptor& Descriptor = psm::reflect::Describe(Type);
+	for (int FieldId = 0; FieldId < static_cast<int>(Descriptor.field_count); ++FieldId)
+	{
+		const psm::reflect::FieldDescriptor& Field = Descriptor.fields[FieldId];
+		if (Field.target_from.empty())
+		{
+			continue;
+		}
+		const int Sibling = ps::sdk::internal::FieldIdByName(Type, Field.target_from);
+		if (Sibling < 0)
+		{
+			continue;
+		}
+		auto Keyword = FProfile::Ref::DynSlot(Element, Sibling);
+		auto Name = FProfile::Ref::DynSlot(Element, FieldId);
+		if (!Keyword.IsSet() || !Name.IsSet())
+		{
+			continue;
+		}
+		// An unset or unrecognised keyword types nothing, and a reference whose
+		// target type is unknown is opaque rather than wrong: left alone.
+		const std::vector<psm::ElementType> Targets =
+			ps::sdk::detail::DynRefTargetTypes(FProfile::Str::ToUtf8(Keyword.Get()));
+		if (Targets.empty())
+		{
+			continue;
+		}
+		On(FieldId, Field.name.data(), MoveTemp(Name), Targets);
+	}
+}
+
+/** Every element of the tree rooted at `Node`, in spec order. */
+template <class Adapter>
+void WalkSpecTree(UMjNodeComponent& Node, TFunctionRef<void(UMjNodeComponent&)> Visit)
+{
+	Visit(Node);
+	for (const urlab::spec::FMjOrderedChild& Child : Adapter::OrderedChildren(Node))
+	{
+		if (Child.Node != nullptr)
+		{
+			WalkSpecTree<Adapter>(*Child.Node, Visit);
+		}
+	}
+}
+
+#if WITH_EDITOR
+
+/** The same walk, over whichever object graph holds `Spec`. */
+void ForEachElementOfSpec(const FSpecRef& Spec, TFunctionRef<void(UMjNodeComponent&)> Visit)
+{
+	UMjNodeComponent* Root = Spec.GetRoot();
+	if (Root == nullptr)
+	{
+		return;
+	}
+	if (Spec.GetGraph() == EMjSpecGraph::Scs)
+	{
+		if (UBlueprint* Blueprint = Spec.GetBlueprint())
+		{
+			urlab::spec::FMjScsScope Scope(*Blueprint);
+			WalkSpecTree<urlab::spec::FMjScsAdapter>(*Root, Visit);
+		}
+		return;
+	}
+	WalkSpecTree<urlab::spec::FMjInstanceAdapter>(*Root, Visit);
+}
+
+/** True when `Type`'s attribute called `PropertyName` is a reference. */
+bool IsReferenceField(psm::ElementType Type, FName PropertyName)
+{
+	if (PropertyName.IsNone())
+	{
+		return false;
+	}
+	// The member spelling is the schema's field name, PascalCased, and the
+	// PascalCasing is the only difference -- so the schema's own descriptor
+	// answers this rather than a list kept by hand here.
+	const FString Wanted = PropertyName.ToString();
+	const psm::reflect::ElementDescriptor& Descriptor = psm::reflect::Describe(Type);
+	for (std::size_t FieldId = 0; FieldId < Descriptor.field_count; ++FieldId)
+	{
+		const psm::reflect::FieldDescriptor& Field = Descriptor.fields[FieldId];
+		if (Field.kind != psm::reflect::FieldKind::Ref && Field.target_from.empty())
+		{
+			continue;
+		}
+		if (Wanted.Equals(FProfile::Str::FromUtf8(Field.name), ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Point every reference to `OldName` at `NewName` instead.
+ *
+ * Only references whose target set admits `TargetType` are rewritten: MuJoCo
+ * names elements per category, so a body and a geom may both be called `torso`
+ * and only one of them is what an actuator's `joint` attribute could mean.
+ */
+int32 RepointReferrers(
+	const FSpecRef& Spec, psm::ElementType TargetType, const FString& OldName, const FString& NewName)
+{
+	int32 Updated = 0;
+	ForEachElementOfSpec(Spec, [&](UMjNodeComponent& Node) {
+		urlab::spec::gen::DispatchByType(Node, [&](auto& Element) {
+			ForEachReference(Element,
+				[&](int, const char*, auto&& Slot, const std::vector<psm::ElementType>& Targets) {
+					if (!ps::sdk::detail::Contains(Targets, TargetType))
+					{
+						return;
+					}
+					if (!Slot.Get().Equals(FStringView(OldName), ESearchCase::CaseSensitive))
+					{
+						return;
+					}
+					// Its own undo record: the panel's transaction covers the
+					// element the user typed into, not the ones being corrected.
+					Node.Modify();
+					Slot.Set(FStringView(NewName));
+					++Updated;
+				});
+		});
+	});
+	return Updated;
+}
+
+#endif  // WITH_EDITOR
+
+/** True when the reference `Name` with target set `Targets` resolves in `Declared`. */
+bool ReferenceResolves(const TMap<FString, TArray<int32>>& Declared, const FString& Name,
+	const std::vector<psm::ElementType>& Targets)
+{
+	// MuJoCo's root default class is called `main` whether or not the model
+	// spells it, so a `class="main"` on a model that declared no such block is
+	// naming something real.
+	if (Name == TEXT("main") && ps::sdk::detail::Contains(Targets, psm::ElementType::Default))
+	{
+		return true;
+	}
+	const TArray<int32>* Types = Declared.Find(Name);
+	if (Types == nullptr)
+	{
+		return false;
+	}
+	for (psm::ElementType Target : Targets)
+	{
+		if (Types->Contains(static_cast<int32>(Target)))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 /** True when `FieldId` on `Type` is one of the attributes the preview draws. */
 bool IsSpatialField(psm::ElementType Type, FName PropertyName)
 {
@@ -704,6 +889,53 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	});
 }
 
+// --- Reference diagnostics -------------------------------------------------- //
+
+namespace urlab::spec
+{
+
+template <class Adapter>
+void MjNoteDanglingReferences(UMjNodeComponent& Root)
+{
+	// The names the model declares, and the element types declaring each. Both
+	// halves matter: MuJoCo names elements per category, so `torso` naming a
+	// body says nothing about whether an actuator's `joint="torso"` resolves.
+	TMap<FString, TArray<int32>> Declared;
+	WalkSpecTree<Adapter>(Root, [&Declared](UMjNodeComponent& Node) {
+		psm::ElementType Type;
+		if (!Node.MjName.IsSet() || Node.MjName->IsEmpty() || !MjElementTypeOfNode(Node, Type))
+		{
+			return;
+		}
+		Declared.FindOrAdd(Node.MjName.GetValue()).AddUnique(static_cast<int32>(Type));
+	});
+
+	WalkSpecTree<Adapter>(Root, [&Declared](UMjNodeComponent& Node) {
+		Node.DanglingReferences.Reset();
+		gen::DispatchByType(Node, [&Declared, &Node](auto& Element) {
+			ForEachReference(Element, [&Declared, &Node](int, const char* FieldName, auto&& Slot,
+										  const std::vector<psm::ElementType>& Targets) {
+				const FString Name(Slot.Get());
+				if (Name.IsEmpty() || ReferenceResolves(Declared, Name, Targets))
+				{
+					return;
+				}
+				const FString Message =
+					FString::Printf(TEXT("%hs=\"%s\" names no element this model declares"), FieldName, *Name);
+				UE_LOG(LogURLab, Warning, TEXT("%s: %s"), *Node.GetName(), *Message);
+				Node.DanglingReferences.Add(Message);
+			});
+		});
+	});
+}
+
+template void MjNoteDanglingReferences<FMjInstanceAdapter>(UMjNodeComponent&);
+#if WITH_EDITOR
+template void MjNoteDanglingReferences<FMjScsAdapter>(UMjNodeComponent&);
+#endif
+
+}  // namespace urlab::spec
+
 #else  // !URLAB_MJ_GEN
 
 bool UMjNodeComponent::HasPoseAttributes() const
@@ -741,12 +973,49 @@ void UMjNodeComponent::RefreshSpecPresentation()
 
 #if WITH_EDITOR
 
+namespace
+{
+/** The member the MJCF `name` attribute is stored in. */
+const FName GMjNamePropertyName(TEXT("MjName"));
+
+#if URLAB_MJ_GEN
+/** Re-derive the reference diagnostics of the whole spec `Spec` names. */
+void RefreshSpecReferenceDiagnostics(const FSpecRef& Spec)
+{
+	UMjNodeComponent* Root = Spec.GetRoot();
+	if (Root == nullptr)
+	{
+		return;
+	}
+	if (Spec.GetGraph() == EMjSpecGraph::Scs)
+	{
+		if (UBlueprint* Blueprint = Spec.GetBlueprint())
+		{
+			urlab::spec::FMjScsScope Scope(*Blueprint);
+			urlab::spec::MjNoteDanglingReferences<urlab::spec::FMjScsAdapter>(*Root);
+		}
+		return;
+	}
+	urlab::spec::MjNoteDanglingReferences<urlab::spec::FMjInstanceAdapter>(*Root);
+}
+#endif  // URLAB_MJ_GEN
+}  // namespace
+
 void UMjNodeComponent::PostEditComponentMove(bool bFinished)
 {
 	Super::PostEditComponentMove(bFinished);
 	// Deliberately not gated on bFinished: an SCS template only ever receives
 	// false, and the change detector makes the per-delta invocations cheap.
 	WriteBackTransformIfChanged();
+}
+
+void UMjNodeComponent::PreEditChange(FProperty* PropertyAboutToChange)
+{
+	Super::PreEditChange(PropertyAboutToChange);
+	if (PropertyAboutToChange != nullptr && PropertyAboutToChange->GetFName() == GMjNamePropertyName)
+	{
+		NameBeforeEdit = MjName;
+	}
 }
 
 void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -771,9 +1040,37 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	// viewport. Which names those are comes from the schema's field-id lookup,
 	// not from a list kept by hand here.
 	psm::ElementType Type;
-	if (urlab::spec::MjElementTypeOfNode(*this, Type) && (IsSpatialField(Type, Changed) || IsSpatialField(Type, Member)))
+	const bool bIsElement = urlab::spec::MjElementTypeOfNode(*this, Type);
+	if (bIsElement && (IsSpatialField(Type, Changed) || IsSpatialField(Type, Member)))
 	{
 		SyncPreviewFromSpec();
+	}
+
+	// A rename is not a local edit. Every reference in the model is a name, so
+	// the elements pointing here are pointing at a name that no longer exists,
+	// and MuJoCo would report that from the compiler with nothing to blame it
+	// on. They are corrected in the same transaction, so one undo puts both
+	// sides back.
+	if (bIsElement && (Changed == GMjNamePropertyName || Member == GMjNamePropertyName))
+	{
+		const FSpecRef Doc = FSpecRef::OverOwner(this);
+		const FString OldName = NameBeforeEdit.IsSet() ? NameBeforeEdit.GetValue() : FString();
+		const FString NewName = MjName.IsSet() ? MjName.GetValue() : FString();
+		// An element that gains its first name had nothing pointing at it, and
+		// one that loses its name leaves references that are now genuinely
+		// dangling -- clearing them would discard what the user authored.
+		if (!OldName.IsEmpty() && !NewName.IsEmpty() && OldName != NewName)
+		{
+			RepointReferrers(Doc, Type, OldName, NewName);
+		}
+		NameBeforeEdit.Reset();
+		RefreshSpecReferenceDiagnostics(Doc);
+	}
+	else if (bIsElement && (IsReferenceField(Type, Changed) || IsReferenceField(Type, Member)))
+	{
+		// Typing a name into a reference is the other way to make one dangle,
+		// and the user finds out here rather than at play.
+		RefreshSpecReferenceDiagnostics(FSpecRef::OverOwner(this));
 	}
 
 	// Everything above acts on the element that was edited, which is the whole

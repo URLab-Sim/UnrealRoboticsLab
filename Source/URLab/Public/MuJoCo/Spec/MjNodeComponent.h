@@ -152,6 +152,23 @@ public:
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category = "MuJoCo|Provenance")
 	int32 SourceLine = 0;
 
+	// --- Reference diagnostics --------------------------------------------- //
+
+	/**
+	 * This element's reference attributes that name nothing in the spec.
+	 *
+	 * A reference is a NAME, resolved at compile time, so a typo or a renamed
+	 * target is silent until MuJoCo refuses the model -- and it refuses it from
+	 * the compiler, with no line and no component to blame. Recorded here so the
+	 * element carrying the bad name is the one that says so, at the moment it
+	 * becomes bad rather than at the moment somebody presses play.
+	 *
+	 * Transient: it describes the spec as it is right now, and the spec is what
+	 * it is derived from.
+	 */
+	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Transient, Category = "MuJoCo|Diagnostics")
+	TArray<FString> DanglingReferences;
+
 	// --- Runtime binding --------------------------------------------------- //
 
 	/** Record an id resolved elsewhere (the engine's one pass over the binding). */
@@ -329,6 +346,15 @@ public:
 	 */
 	virtual void PostEditComponentMove(bool bFinished) override;
 
+	/**
+	 * The only moment the name an element is about to lose still exists.
+	 *
+	 * A rename has to reach the elements that refer to this one, and they refer
+	 * to it BY the old name -- so without capturing it here there is nothing left
+	 * to search the spec for once the edit has landed.
+	 */
+	virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+
 	/** Details-panel edits of the Relative* members and of spatial attributes. */
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
@@ -373,4 +399,24 @@ protected:
 	 * a saved level or an SCS template and on `OnRegister` for everything else.
 	 */
 	TOptional<FTransform> LastPreviewTransform;
+
+#if WITH_EDITOR
+	/** What `MjName` held when the details panel announced it was about to change. */
+	TOptional<FString> NameBeforeEdit;
+#endif
 };
+
+namespace urlab::spec
+{
+/**
+ * Record, on every element of the spec rooted at `Root`, the reference
+ * attributes it carries that name nothing the spec declares.
+ *
+ * Whole-spec rather than per-element because that is the question: a reference
+ * dangles relative to the set of names the model declares, and no element knows
+ * that set on its own. `Adapter` is the tree adapter for the graph the elements
+ * live in.
+ */
+template <class Adapter>
+void MjNoteDanglingReferences(UMjNodeComponent& Root);
+}  // namespace urlab::spec

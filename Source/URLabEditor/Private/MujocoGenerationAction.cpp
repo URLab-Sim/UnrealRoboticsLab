@@ -72,7 +72,19 @@ void ClearSpec(UBlueprint& Blueprint)
 				Self(Child, Self);
 			}
 		}
+		UActorComponent* const Template = Node->ComponentTemplate;
 		Scs->RemoveNode(Node);
+
+		// A removed template keeps its name in the Blueprint until garbage
+		// collection takes it, and the naming pass declines any name something
+		// else still holds. That is how a reimport used to come back with every
+		// component suffixed `_1`, and the one after it `_2`. Moving the old
+		// template aside hands the name back to the read that follows.
+		if (Template != nullptr)
+		{
+			Template->Rename(nullptr, GetTransientPackage(),
+				REN_DontCreateRedirectors | REN_DoNotDirty | REN_NonTransactional);
+		}
 	};
 
 	for (USCS_Node* Root : Roots)

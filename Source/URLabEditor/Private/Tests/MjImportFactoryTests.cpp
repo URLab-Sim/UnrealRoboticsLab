@@ -30,7 +30,7 @@
 namespace
 {
 /** A throwaway directory of this test's own, emptied on the way in. */
-FString ScratchDir(const TCHAR* Leaf)
+FString FactoryScratchDir(const TCHAR* Leaf)
 {
 	const FString Dir = FPaths::ConvertRelativePathToFull(
 		FPaths::ProjectSavedDir() / TEXT("URLabTest/ImportFactory") / Leaf);
@@ -39,7 +39,7 @@ FString ScratchDir(const TCHAR* Leaf)
 	return Dir;
 }
 
-const TCHAR* kMinimalMjcf =
+const TCHAR* kFactoryProbeMjcf =
 	TEXT("<mujoco model=\"factory_probe\">\n")
 	TEXT("  <worldbody>\n")
 	TEXT("    <body name=\"b1\"><geom name=\"g1\" type=\"sphere\" size=\"0.1\"/></body>\n")
@@ -54,14 +54,14 @@ const TCHAR* kMinimalMjcf =
  * prepared. Writing one lets the failing branch be exercised on demand rather
  * than waiting for a mesh that happens to be broken.
  */
-FString WriteStubScript(const FString& Dir, const TCHAR* Name, const TCHAR* Body)
+FString WriteFactoryStubScript(const FString& Dir, const TCHAR* Name, const TCHAR* Body)
 {
 	const FString Path = Dir / Name;
 	FFileHelper::SaveStringToFile(FString(Body), *Path);
 	return Path;
 }
 
-const TCHAR* kStubSucceeds =
+const TCHAR* kFactoryStubSucceeds =
 	TEXT("import argparse, pathlib\n")
 	TEXT("p = argparse.ArgumentParser()\n")
 	TEXT("p.add_argument('xml', type=pathlib.Path)\n")
@@ -71,23 +71,23 @@ const TCHAR* kStubSucceeds =
 	TEXT("(a.out_dir / (a.xml.stem + '_ue.xml')).write_text(a.xml.read_text())\n")
 	TEXT("raise SystemExit(0)\n");
 
-const TCHAR* kStubFails =
+const TCHAR* kFactoryStubFails =
 	TEXT("import sys\n")
 	TEXT("print('mesh cube could not be prepared', file=sys.stderr)\n")
 	TEXT("raise SystemExit(7)\n");
 
-const TCHAR* kStubSilentlyWritesNothing =
+const TCHAR* kFactoryStubSilent =
 	TEXT("raise SystemExit(0)\n");
 
 /** The interpreter the factory would use, or empty when there is none to use. */
-FString ProbePython()
+FString FactoryProbePython()
 {
 	const FString Python = FMjPythonHelper::ResolvePythonPath();
 	return FMjPythonHelper::ValidatePythonBinary(Python) ? Python : FString();
 }
 
 /** One import through the factory, into a package of this run's own. */
-struct FImportProbe
+struct FFactoryImportProbe
 {
 	FString AssetName;
 	UPackage* Package = nullptr;
@@ -121,7 +121,7 @@ struct FImportProbe
 };
 
 /** The construction script's component names, in order. */
-TArray<FString> ComponentNames(const UBlueprint* Blueprint)
+TArray<FString> FactoryComponentNames(const UBlueprint* Blueprint)
 {
 	TArray<FString> Out;
 	if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr)
@@ -141,13 +141,13 @@ TArray<FString> ComponentNames(const UBlueprint* Blueprint)
 }
 
 /** Every authored value in the Blueprint's spec, as the MJCF it writes back. */
-FString SpecMjcf(UBlueprint* Blueprint)
+FString FactorySpecMjcf(UBlueprint* Blueprint)
 {
 	return Blueprint != nullptr ? FSpecRef::OverBlueprint(*Blueprint).WriteMjcf() : FString();
 }
 
 /** The model file a Blueprint says it came from. */
-FString RecordedSource(const UBlueprint* Blueprint)
+FString FactoryRecordedSource(const UBlueprint* Blueprint)
 {
 	if (Blueprint == nullptr || Blueprint->GeneratedClass == nullptr)
 	{
@@ -158,7 +158,7 @@ FString RecordedSource(const UBlueprint* Blueprint)
 }
 
 /** True when the Blueprint's spec holds an element the model named `MjName`. */
-bool HasElementNamed(const UBlueprint* Blueprint, const FString& MjName)
+bool FactoryHasElementNamed(const UBlueprint* Blueprint, const FString& MjName)
 {
 	if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr)
 	{
@@ -177,7 +177,7 @@ bool HasElementNamed(const UBlueprint* Blueprint, const FString& MjName)
 }
 
 /** An empty articulation Blueprint in a package of this run's own. */
-UBlueprint* MakeScratchBlueprint()
+UBlueprint* MakeFactoryScratchBlueprint()
 {
 	const FString Unique = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
 	UPackage* Package = CreatePackage(*(FString(TEXT("/Temp/URLabImportOptions_")) + Unique));
@@ -200,16 +200,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportMeshPreparationOutcomes,
 
 bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 {
-	const FString Python = ProbePython();
+	const FString Python = FactoryProbePython();
 	if (Python.IsEmpty())
 	{
 		AddError(TEXT("No usable Python interpreter; mesh preparation cannot be exercised."));
 		return false;
 	}
 
-	const FString Dir = ScratchDir(TEXT("Prep"));
+	const FString Dir = FactoryScratchDir(TEXT("Prep"));
 	const FString SourceXml = Dir / TEXT("prep_probe.xml");
-	FFileHelper::SaveStringToFile(FString(kMinimalMjcf), *SourceXml);
+	FFileHelper::SaveStringToFile(FString(kFactoryProbeMjcf), *SourceXml);
 
 	const FString PrepDir = UMujocoImportFactory::ImportPrepDir(SourceXml);
 	TestTrue(TEXT("prepared copies land under the project's Saved directory"),
@@ -219,7 +219,7 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 
 	// Succeeding preparation: the prepared copy is what gets parsed.
 	{
-		const FString Script = WriteStubScript(Dir, TEXT("stub_ok.py"), kStubSucceeds);
+		const FString Script = WriteFactoryStubScript(Dir, TEXT("stub_ok.py"), kFactoryStubSucceeds);
 		FString OutXml;
 		FString Error;
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
@@ -236,7 +236,7 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 
 	// Failing preparation: fatal, and the script's stderr comes with it.
 	{
-		const FString Script = WriteStubScript(Dir, TEXT("stub_fail.py"), kStubFails);
+		const FString Script = WriteFactoryStubScript(Dir, TEXT("stub_fail.py"), kFactoryStubFails);
 		FString OutXml;
 		FString Error;
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
@@ -251,7 +251,7 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 	// Preparation that claims success and produced nothing is failing too: the
 	// alternative is parsing the unprepared original without saying so.
 	{
-		const FString Script = WriteStubScript(Dir, TEXT("stub_silent.py"), kStubSilentlyWritesNothing);
+		const FString Script = WriteFactoryStubScript(Dir, TEXT("stub_silent.py"), kFactoryStubSilent);
 		FString OutXml;
 		FString Error;
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
@@ -276,7 +276,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportFactoryClaimsOnlyMuJoCoModels,
 
 bool FMjImportFactoryClaimsOnlyMuJoCoModels::RunTest(const FString& Parameters)
 {
-	const FString Dir = ScratchDir(TEXT("CanImport"));
+	const FString Dir = FactoryScratchDir(TEXT("CanImport"));
 	UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
 
 	const auto Write = [&Dir](const TCHAR* Name, const TCHAR* Body) {
@@ -285,7 +285,7 @@ bool FMjImportFactoryClaimsOnlyMuJoCoModels::RunTest(const FString& Parameters)
 		return Path;
 	};
 
-	const FString Model = Write(TEXT("model.xml"), kMinimalMjcf);
+	const FString Model = Write(TEXT("model.xml"), kFactoryProbeMjcf);
 	const FString Fragment = Write(TEXT("fragment.xml"),
 		TEXT("<mujocoinclude>\n  <asset/>\n</mujocoinclude>\n"));
 	const FString Declared = Write(TEXT("declared.xml"),
@@ -293,7 +293,7 @@ bool FMjImportFactoryClaimsOnlyMuJoCoModels::RunTest(const FString& Parameters)
 	const FString Foreign = Write(TEXT("settings.xml"),
 		TEXT("<?xml version=\"1.0\"?>\n<configuration><setting name=\"mujoco\"/></configuration>\n"));
 	const FString Empty = Write(TEXT("empty.xml"), TEXT(""));
-	const FString WrongExtension = Write(TEXT("model.txt"), kMinimalMjcf);
+	const FString WrongExtension = Write(TEXT("model.txt"), kFactoryProbeMjcf);
 
 	TestTrue(TEXT("a MuJoCo model is claimed"), Factory->FactoryCanImport(Model));
 	TestTrue(TEXT("a mujocoinclude fragment is claimed"), Factory->FactoryCanImport(Fragment));
@@ -321,10 +321,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportFailedImportLeavesNothing,
 
 bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 {
-	const FString Dir = ScratchDir(TEXT("Outcome"));
+	const FString Dir = FactoryScratchDir(TEXT("Outcome"));
 
 	const FString GoodXml = Dir / TEXT("import_good.xml");
-	FFileHelper::SaveStringToFile(FString(kMinimalMjcf), *GoodXml);
+	FFileHelper::SaveStringToFile(FString(kFactoryProbeMjcf), *GoodXml);
 
 	// Well-formed XML that the reader rejects: the preparation step is happy
 	// with it, so the failure lands after the Blueprint has been made, which is
@@ -336,7 +336,7 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 		TEXT("</mujoco>\n")), *BadXml);
 
 	{
-		FImportProbe Probe;
+		FFactoryImportProbe Probe;
 		Probe.Run(GoodXml);
 		TestNotNull(TEXT("a model that reads produces an asset"), Probe.Result);
 		TestFalse(TEXT("a successful import is not a cancellation"), Probe.bCancelled);
@@ -349,7 +349,7 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 	AddExpectedErrorPlain(TEXT("produced no spec"), EAutomationExpectedErrorFlags::Contains, 0);
 
 	{
-		FImportProbe Probe;
+		FFactoryImportProbe Probe;
 		Probe.Run(BadXml);
 		TestNull(TEXT("a model that does not read produces no asset"), Probe.Result);
 		TestFalse(TEXT("a failure is not reported as a cancellation"), Probe.bCancelled);
@@ -373,7 +373,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportReimportMatchesImport,
 
 bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 {
-	const FString Dir = ScratchDir(TEXT("Reimport"));
+	const FString Dir = FactoryScratchDir(TEXT("Reimport"));
 	const FString SourceXml = Dir / TEXT("reimport_probe.xml");
 	FFileHelper::SaveStringToFile(FString(
 		TEXT("<mujoco model=\"reimport_probe\">\n")
@@ -386,7 +386,7 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 		TEXT("  <actuator><motor name=\"drive\" joint=\"hinge\" gear=\"25\"/></actuator>\n")
 		TEXT("</mujoco>\n")), *SourceXml);
 
-	FImportProbe Probe;
+	FFactoryImportProbe Probe;
 	Probe.Run(SourceXml);
 	UBlueprint* Blueprint = Probe.AsBlueprint();
 	if (Blueprint == nullptr)
@@ -396,10 +396,10 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 	}
 
 	// The recorded source is the model, not the prepared copy that was parsed.
-	TestEqual(TEXT("the Blueprint records the original path"), RecordedSource(Blueprint), SourceXml);
+	TestEqual(TEXT("the Blueprint records the original path"), FactoryRecordedSource(Blueprint), SourceXml);
 
-	const TArray<FString> NamesBefore = ComponentNames(Blueprint);
-	const FString MjcfBefore = SpecMjcf(Blueprint);
+	const TArray<FString> NamesBefore = FactoryComponentNames(Blueprint);
+	const FString MjcfBefore = FactorySpecMjcf(Blueprint);
 	TestTrue(TEXT("the import produced components"), NamesBefore.Num() > 0);
 	TestTrue(TEXT("the import produced a spec"), !MjcfBefore.IsEmpty());
 
@@ -417,10 +417,12 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 		static_cast<int32>(Factory->Reimport(Blueprint)),
 		static_cast<int32>(EReimportResult::Succeeded));
 
-	TestEqual(TEXT("reimport lands on the same components"), ComponentNames(Blueprint), NamesBefore);
-	TestEqual(TEXT("reimport lands on the same authored values"), SpecMjcf(Blueprint), MjcfBefore);
+	TestEqual(TEXT("reimport lands on the same components"),
+		FString::Join(FactoryComponentNames(Blueprint), TEXT(", ")),
+		FString::Join(NamesBefore, TEXT(", ")));
+	TestEqual(TEXT("reimport lands on the same authored values"), FactorySpecMjcf(Blueprint), MjcfBefore);
 	TestEqual(TEXT("reimport leaves the recorded source alone"),
-		RecordedSource(Blueprint), SourceXml);
+		FactoryRecordedSource(Blueprint), SourceXml);
 
 	return true;
 }
@@ -439,7 +441,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportCancelAndFailureLeaveNothing,
 
 bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 {
-	const FString Dir = ScratchDir(TEXT("Cancel"));
+	const FString Dir = FactoryScratchDir(TEXT("Cancel"));
 
 	// A model whose mesh is not on disk: preparation runs, fails, and the
 	// import stops before anything is made.
@@ -475,7 +477,7 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 	}
 
 	{
-		FImportProbe Probe;
+		FFactoryImportProbe Probe;
 		Probe.Run(UnpreparableXml);
 		TestNull(TEXT("the factory imports nothing"), Probe.Result);
 		TestFalse(TEXT("a failure is not reported as a cancellation"), Probe.bCancelled);
@@ -488,16 +490,16 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 	// asset it declined to touch is the one that was already there.
 	{
 		const FString GoodXml = Dir / TEXT("cancel_probe.xml");
-		FFileHelper::SaveStringToFile(FString(kMinimalMjcf), *GoodXml);
+		FFileHelper::SaveStringToFile(FString(kFactoryProbeMjcf), *GoodXml);
 
-		FImportProbe First;
+		FFactoryImportProbe First;
 		First.Run(GoodXml);
 		if (First.AsBlueprint() == nullptr)
 		{
 			AddError(TEXT("import setup failed: no Blueprint produced"));
 			return false;
 		}
-		const TArray<FString> NamesBefore = ComponentNames(First.AsBlueprint());
+		const TArray<FString> NamesBefore = FactoryComponentNames(First.AsBlueprint());
 
 		UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
 		bool bCancelled = false;
@@ -507,7 +509,7 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 		TestNull(TEXT("the second import produces nothing"), Second);
 		TestTrue(TEXT("stopping early is reported as a cancellation"), bCancelled);
 		TestEqual(TEXT("the Blueprint that was already there is untouched"),
-			ComponentNames(First.AsBlueprint()), NamesBefore);
+			FactoryComponentNames(First.AsBlueprint()), NamesBefore);
 	}
 
 	return true;
@@ -530,7 +532,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportExternalIncludeOption,
 
 bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
 {
-	const FString Root = ScratchDir(TEXT("Includes"));
+	const FString Root = FactoryScratchDir(TEXT("Includes"));
 	const FString ModelDir = Root / TEXT("model");
 	const FString OutsideDir = Root / TEXT("outside");
 	IFileManager::Get().MakeDirectory(*ModelDir, /*Tree=*/true);
@@ -555,7 +557,7 @@ bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
 
 	// Off, the default: the escaping include does not reach the spec.
 	{
-		UBlueprint* Blueprint = MakeScratchBlueprint();
+		UBlueprint* Blueprint = MakeFactoryScratchBlueprint();
 		if (Blueprint == nullptr)
 		{
 			AddError(TEXT("could not create a scratch Blueprint"));
@@ -566,13 +568,13 @@ bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
 
 		MjParseIntoBlueprint(*Blueprint, ModelXml, ModelPath, Options);
 		TestFalse(TEXT("an escaping include is refused by default"),
-			HasElementNamed(Blueprint, TEXT("from_outside")));
+			FactoryHasElementNamed(Blueprint, TEXT("from_outside")));
 	}
 
 	// On, and carried all the way through the generation action the importer
 	// uses: the same include is read.
 	{
-		UBlueprint* Blueprint = MakeScratchBlueprint();
+		UBlueprint* Blueprint = MakeFactoryScratchBlueprint();
 		if (Blueprint == nullptr)
 		{
 			AddError(TEXT("could not create a scratch Blueprint"));
@@ -585,9 +587,9 @@ bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
 		TestTrue(TEXT("the model reads when escaping includes are allowed"),
 			Generator->GenerateFromXml(Blueprint, ModelXml, ModelPath, Options));
 		TestTrue(TEXT("the option reaches the reader through the generation action"),
-			HasElementNamed(Blueprint, TEXT("from_outside")));
+			FactoryHasElementNamed(Blueprint, TEXT("from_outside")));
 		TestTrue(TEXT("the model's own content is still there"),
-			HasElementNamed(Blueprint, TEXT("host_body")));
+			FactoryHasElementNamed(Blueprint, TEXT("host_body")));
 	}
 
 	return true;

@@ -22,7 +22,6 @@
 #include "UObject/UObjectGlobals.h"
 #include "UnrealEdGlobals.h"
 #include "Widgets/Notifications/SNotificationList.h"
-#include "Widgets/Notifications/SNotificationItem.h"
 
 #include "URLabEditorLogging.h"
 

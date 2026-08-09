@@ -137,7 +137,10 @@ bool FMjAssetSinkCollectsSkinFiles::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	FRecordingSink Recorder;
+	// Qualified: another suite in this module declares a recording sink of the
+	// same name in an anonymous namespace, and the two land in one translation
+	// unit whenever the build unifies them.
+	MjSkinSinkTests::FRecordingSink Recorder;
 	FMjAssetSink Pass(Recorder);
 	// The scene-assembly convention: participant-prefixed basenames, because the
 	// VFS matches on basename across every mount.

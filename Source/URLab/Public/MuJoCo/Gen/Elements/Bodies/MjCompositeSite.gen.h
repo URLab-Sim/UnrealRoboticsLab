@@ -29,20 +29,20 @@ class URLAB_API UMjCompositeSite : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the site belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of sites. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "Integer group to which the site belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of sites. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: size */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "MJCF: size"))
+	/** Sizes of the geometric shape representing the site. (MJCF: size) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "Sizes of the geometric shape representing the site. (MJCF: size)"))
 	TOptional<TArray<double>> Size;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** Material used to specify the visual properties of the site. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "Material used to specify the visual properties of the site. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "MJCF: rgba"))
+	/** Color and transparency. If this value is different from the internal default, it overrides the corresponding material properties. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSite", meta = (ToolTip = "Color and transparency. If this value is different from the internal default, it overrides the corresponding material properties. (MJCF: rgba)"))
 	TOptional<TArray<double>> Rgba;
 
 	// --- Blueprint access ---

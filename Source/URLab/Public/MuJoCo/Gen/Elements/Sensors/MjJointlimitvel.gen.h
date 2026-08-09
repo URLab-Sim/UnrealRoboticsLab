@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointlimitvel|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointlimitvel|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointlimitvel|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,8 +58,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointlimitvel|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: joint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointlimitvel", meta = (ToolTip = "MJCF: joint", GetOptions = "GetJointOptions"))
+	/** The joint whose limit is sensed. The sensor output is copied from mjData.efc_vel. If the joint limit is not violated, the result is 0. (MJCF: joint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointlimitvel", meta = (ToolTip = "The joint whose limit is sensed. The sensor output is copied from mjData.efc_vel. If the joint limit is not violated, the result is 0. (MJCF: joint)", GetOptions = "GetJointOptions"))
 	FString Joint;
 
 	// --- Blueprint access ---

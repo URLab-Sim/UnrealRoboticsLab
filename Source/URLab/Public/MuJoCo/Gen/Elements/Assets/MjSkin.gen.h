@@ -29,36 +29,36 @@ class URLAB_API UMjSkin : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: file */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: file"))
+	/** The SKN file from which the skin will be loaded. The path is determined as described in the meshdir attribute of compiler. If the file is omitted, the skin specification must be provided in the XML using the attributes below. (MJCF: file) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "The SKN file from which the skin will be loaded. The path is determined as described in the meshdir attribute of compiler. If the file is omitted, the skin specification must be provided in the XML using the attributes below. (MJCF: file)"))
 	TOptional<FString> File;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** If specified, this attribute applies a material to the skin. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "If specified, this attribute applies a material to the skin. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: rgba"))
+	/** Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba)"))
 	TOptional<FLinearColor> Rgba;
 
-	/** MJCF: inflate */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: inflate"))
+	/** The default value of 0 means that the automatically-generated skin passes through the centers of the body elements comprising the composite object. Positive values offset each skin vertex by the specified amount, in the direction normal to the (non-inflated) skin at that vertex. This has two uses. First, in 2D objects, a small positive inflate factor is needed to avoid aliasing artifacts. (MJCF: inflate) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "The default value of 0 means that the automatically-generated skin passes through the centers of the body elements comprising the composite object. Positive values offset each skin vertex by the specified amount, in the direction normal to the (non-inflated) skin at that vertex. This has two uses. First, in 2D objects, a small positive inflate factor is needed to avoid aliasing artifacts. (MJCF: inflate)"))
 	TOptional<float> Inflate;
 
-	/** MJCF: vertex */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: vertex"))
+	/** Vertex 3D positions, in the global bind pose where the skin is defined. (MJCF: vertex) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "Vertex 3D positions, in the global bind pose where the skin is defined. (MJCF: vertex)"))
 	TOptional<TArray<float>> Vertex;
 
-	/** MJCF: texcoord */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: texcoord"))
+	/** If this is true, explicit texture coordinates will be generated, mapping the skin to the unit square in texture space. This is needed when the material specifies a texture. If texcoord is false and the skin has texture, the texture will appear fixed to the world instead of the skin. (MJCF: texcoord) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "If this is true, explicit texture coordinates will be generated, mapping the skin to the unit square in texture space. This is needed when the material specifies a texture. If texcoord is false and the skin has texture, the texture will appear fixed to the world instead of the skin. (MJCF: texcoord)"))
 	TOptional<TArray<float>> Texcoord;
 
-	/** MJCF: face */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: face"))
+	/** Triangular skin faces. Each face is a triple of vertex indices, which are integers between zero and nvert-1. (MJCF: face) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "Triangular skin faces. Each face is a triple of vertex indices, which are integers between zero and nvert-1. (MJCF: face)"))
 	TOptional<TArray<int32>> Face;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the skin belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of skins. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Skin", meta = (ToolTip = "Integer group to which the skin belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of skins. (MJCF: group)", ClampMin = "0", ClampMax = "5"))
 	TOptional<int32> Group;
 
 	// --- Blueprint access ---

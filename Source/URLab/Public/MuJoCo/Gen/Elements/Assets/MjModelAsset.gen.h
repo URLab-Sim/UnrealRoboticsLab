@@ -29,12 +29,12 @@ class URLAB_API UMjModelAsset : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: file */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ModelAsset", meta = (ToolTip = "MJCF: file"))
+	/** The file from which the sub-model will be loaded. Note that the sub-model must be a valid MJCF model. (MJCF: file) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ModelAsset", meta = (ToolTip = "The file from which the sub-model will be loaded. Note that the sub-model must be a valid MJCF model. (MJCF: file)"))
 	TOptional<FString> File;
 
-	/** MJCF: content_type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ModelAsset", meta = (ToolTip = "MJCF: content_type"))
+	/** The file type to be loaded into a model. Currently only text/xml is supported. (MJCF: content_type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ModelAsset", meta = (ToolTip = "The file type to be loaded into a model. Currently only text/xml is supported. (MJCF: content_type)"))
 	TOptional<FString> ContentType;
 
 	// --- Blueprint access ---

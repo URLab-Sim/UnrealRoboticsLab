@@ -30,12 +30,12 @@ class URLAB_API UMjFreeJoint : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FreeJoint", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the joint belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of joints. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FreeJoint", meta = (ToolTip = "Integer group to which the joint belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of joints. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: align */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FreeJoint", meta = (ToolTip = "MJCF: align"))
+	/** When set to true, the body frame and free joint will automatically be aligned with inertial frame. When set to false, no alignment will occur. When set to auto, the compiler's alignfree global attribute will be respected. Inertial frame alignment is an optimization only applies to bodies with a free joint and no child bodies ('simple free bodies'). (MJCF: align) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FreeJoint", meta = (ToolTip = "When set to true, the body frame and free joint will automatically be aligned with inertial frame. When set to false, no alignment will occur. When set to auto, the compiler's alignfree global attribute will be respected. Inertial frame alignment is an optimization only applies to bodies with a free joint and no child bodies ('simple free bodies'). (MJCF: align)"))
 	TOptional<EMjTriState> Align;
 
 	// --- Blueprint access ---

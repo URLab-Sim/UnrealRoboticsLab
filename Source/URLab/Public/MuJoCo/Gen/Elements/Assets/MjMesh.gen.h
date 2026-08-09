@@ -33,68 +33,68 @@ class URLAB_API UMjMeshBase : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes (only scale in this case). (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Defaults class for setting unspecified attributes (only scale in this case). (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: content_type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: content_type"))
+	/** If the file attribute is specified, then this sets the `Media Type <https://www.iana.org/assignments/media-types/media-types.xhtml>`__ (formerly known as MIME type) of the file to be loaded. Any filename extensions will be overloaded. Currently model/vnd.mujoco.msh, model/obj, and model/stl are supported. (MJCF: content_type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "If the file attribute is specified, then this sets the `Media Type <https://www.iana.org/assignments/media-types/media-types.xhtml>`__ (formerly known as MIME type) of the file to be loaded. Any filename extensions will be overloaded. Currently model/vnd.mujoco.msh, model/obj, and model/stl are supported. (MJCF: content_type)"))
 	TOptional<FString> ContentType;
 
-	/** MJCF: file */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: file"))
+	/** The file from which the mesh will be loaded. The path is determined as described in the meshdir attribute of compiler. The file extension must be 'stl', 'msh', or 'obj' (not case sensitive) specifying the file type. If the file name is omitted, the vertex attribute becomes required. (MJCF: file) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "The file from which the mesh will be loaded. The path is determined as described in the meshdir attribute of compiler. The file extension must be 'stl', 'msh', or 'obj' (not case sensitive) specifying the file type. If the file name is omitted, the vertex attribute becomes required. (MJCF: file)"))
 	TOptional<FString> File;
 
-	/** MJCF: vertex */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: vertex"))
+	/** Vertex 3D position data. You can specify position data in the XML using this attribute, or using a binary file, but not both. (MJCF: vertex) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Vertex 3D position data. You can specify position data in the XML using this attribute, or using a binary file, but not both. (MJCF: vertex)"))
 	TOptional<TArray<float>> Vertex;
 
-	/** MJCF: normal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: normal"))
+	/** Vertex 3D normal data. If specified, the number of normals must equal the number of vertices. The model compiler normalizes the normals automatically. (MJCF: normal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Vertex 3D normal data. If specified, the number of normals must equal the number of vertices. The model compiler normalizes the normals automatically. (MJCF: normal)"))
 	TOptional<TArray<float>> Normal;
 
-	/** MJCF: texcoord */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: texcoord"))
+	/** Vertex 2D texture coordinates, which are numbers between 0 and 1. If specified, the number of texture coordinate pairs must equal the number of vertices. (MJCF: texcoord) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Vertex 2D texture coordinates, which are numbers between 0 and 1. If specified, the number of texture coordinate pairs must equal the number of vertices. (MJCF: texcoord)"))
 	TOptional<TArray<float>> Texcoord;
 
-	/** MJCF: face */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: face"))
+	/** Faces of the mesh. Each face is a sequence of 3 vertex indices, in counter-clockwise order. The indices must be integers between 0 and nvert-1. (MJCF: face) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Faces of the mesh. Each face is a sequence of 3 vertex indices, in counter-clockwise order. The indices must be integers between 0 and nvert-1. (MJCF: face)"))
 	TOptional<TArray<int32>> Face;
 
-	/** MJCF: refpos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: refpos"))
+	/** Reference position relative to which the 3D vertex coordinates are defined. This vector is subtracted from the positions. (MJCF: refpos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Reference position relative to which the 3D vertex coordinates are defined. This vector is subtracted from the positions. (MJCF: refpos)"))
 	TOptional<FMjPosition3> Refpos;
 
-	/** MJCF: refquat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: refquat"))
+	/** Reference orientation relative to which the 3D vertex coordinates and normals are defined. The conjugate of this quaternion is used to rotate the positions and normals. The model compiler normalizes the quaternion automatically. (MJCF: refquat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Reference orientation relative to which the 3D vertex coordinates and normals are defined. The conjugate of this quaternion is used to rotate the positions and normals. The model compiler normalizes the quaternion automatically. (MJCF: refquat)"))
 	TOptional<FMjQuatRot> Refquat;
 
-	/** MJCF: scale */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: scale"))
+	/** This attribute specifies the scaling that will be applied to the vertex data along each coordinate axis. Negative values are allowed, resulting in flipping the mesh along the corresponding axis. (MJCF: scale) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "This attribute specifies the scaling that will be applied to the vertex data along each coordinate axis. Negative values are allowed, resulting in flipping the mesh along the corresponding axis. (MJCF: scale)"))
 	TOptional<FMjVec3> Scale;
 
-	/** MJCF: smoothnormal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: smoothnormal"))
+	/** Controls the automatic generation of vertex normals when normals are not given explicitly. If true, smooth normals are generated by averaging the face normals at each vertex, with weight proportional to the face area. If false, faces at large angles relative to the average normal are excluded from the average. In this way, sharp edges (as in cube edges) are not smoothed. (MJCF: smoothnormal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Controls the automatic generation of vertex normals when normals are not given explicitly. If true, smooth normals are generated by averaging the face normals at each vertex, with weight proportional to the face area. If false, faces at large angles relative to the average normal are excluded from the average. In this way, sharp edges (as in cube edges) are not smoothed. (MJCF: smoothnormal)"))
 	TOptional<bool> Smoothnormal;
 
-	/** MJCF: maxhullvert */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: maxhullvert"))
+	/** Maximum number of vertices in a mesh's convex hull. Currently this is implemented by asking qhull `to terminate <http://www.qhull.org/html/qh-optt.htm#TAn>`__ after maxhullvert vertices. The default value of -1 means 'unlimited'. Positive values must be larger than 3. (MJCF: maxhullvert) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Maximum number of vertices in a mesh's convex hull. Currently this is implemented by asking qhull `to terminate <http://www.qhull.org/html/qh-optt.htm#TAn>`__ after maxhullvert vertices. The default value of -1 means 'unlimited'. Positive values must be larger than 3. (MJCF: maxhullvert)"))
 	TOptional<int32> Maxhullvert;
 
-	/** MJCF: inertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: inertia"))
+	/** This attribute controls how the mesh is used when mass and inertia are inferred from geometry. The default value is legacy for backward compatibility, but convex is recommended. convex: Use the mesh's convex hull to compute volume and inertia, assuming uniform density. exact: Compute volume and inertia exactly, even for non-convex meshes. (MJCF: inertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "This attribute controls how the mesh is used when mass and inertia are inferred from geometry. The default value is legacy for backward compatibility, but convex is recommended. convex: Use the mesh's convex hull to compute volume and inertia, assuming uniform density. exact: Compute volume and inertia exactly, even for non-convex meshes. (MJCF: inertia)"))
 	TOptional<EMjMeshInertia> Inertia;
 
-	/** MJCF: builtin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: builtin"))
+	/** The mesh is generated by the compiler from a set of parameters specified in params. When saved to XML, meshes produced this way are converted to explicit vertices. The Python bindings include convenience methods for generating these meshes. The available built-in types, their parameters and semantics are: .. (MJCF: builtin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "The mesh is generated by the compiler from a set of parameters specified in params. When saved to XML, meshes produced this way are converted to explicit vertices. The Python bindings include convenience methods for generating these meshes. The available built-in types, their parameters and semantics are: .. (MJCF: builtin)"))
 	TOptional<EMjMeshBuiltin> Builtin;
 
-	/** MJCF: params */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: params"))
+	/** The parameters used to generate a builtin mesh. The number and type of parameters and their semantic depends on the mesh type. See mesh/builtin for details. (MJCF: params) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "The parameters used to generate a builtin mesh. The number and type of parameters and their semantic depends on the mesh type. See mesh/builtin for details. (MJCF: params)"))
 	TOptional<TArray<double>> Params;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** Fallback material for mesh geoms that do not specify their own material. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Mesh", meta = (ToolTip = "Fallback material for mesh geoms that do not specify their own material. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
 	// --- Blueprint access ---

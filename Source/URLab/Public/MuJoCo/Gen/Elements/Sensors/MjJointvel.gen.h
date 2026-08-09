@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointvel|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointvel|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointvel|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,8 +58,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointvel|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: joint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointvel", meta = (ToolTip = "MJCF: joint", GetOptions = "GetJointOptions"))
+	/** The joint whose velocity will be sensed. Only scalar joints can be referenced here. The sensor output is copied from mjData.qvel. (MJCF: joint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Jointvel", meta = (ToolTip = "The joint whose velocity will be sensed. Only scalar joints can be referenced here. The sensor output is copied from mjData.qvel. (MJCF: joint)", GetOptions = "GetJointOptions"))
 	FString Joint;
 
 	// --- Blueprint access ---

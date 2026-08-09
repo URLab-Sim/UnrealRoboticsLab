@@ -77,7 +77,7 @@ import os
 import re
 import sys
 
-from . import overlay, overlay_ue
+from . import overlay, overlay_ue, xmlref
 from .frontend import load_schema, mujoco_src, pascal
 
 # ASCII only, and lint() keeps the whole tree that way: MSVC decodes a source
@@ -286,6 +286,10 @@ class UeSchema:
                     for e in self.elements}
         self.enum = {n["name"]: f"E{prefix}{n['name']}" for n in self.enums}
         self.union_tag = {u["name"]: f"F{prefix}{u['name']}" for u in self.unions}
+        # `element.attribute` -> the prose MuJoCo's reference manual has for it.
+        # Attached by `generate` rather than read here, because the manual is a
+        # second document and an index over the AST alone must not need it.
+        self.tooltip: dict[str, str] = {}
         self._check_hand_bases()
         self._check_overlay()
         self._members: dict[tuple[str, str], str] = {}
@@ -639,9 +643,11 @@ def element_header(s: UeSchema, elem: dict) -> str:
         vt = value_type(s, f)
         st = stored_type(s, f)
         member = s.member(elem, f)
-        for line in doc_comment(_field_doc(f), "\t"):
+        documentation = _field_doc(s, elem, f)
+        for line in doc_comment(documentation, "\t"):
             w(line)
-        meta = [f'ToolTip = "{cpp_str(_field_doc(f))}"']
+        meta = [f'ToolTip = "{cpp_str(documentation)}"']
+        meta.extend(_clamp_meta(f))
         if f["type"]["kind"] == "ref":
             meta.append(f'GetOptions = "Get{member}Options"')
         spec = f'EditAnywhere, Category = "{_ue_category(category, f)}"'
@@ -691,9 +697,44 @@ def element_header(s: UeSchema, elem: dict) -> str:
     return "\n".join(o) + "\n"
 
 
-def _field_doc(f: dict) -> str:
-    doc = f.get("doc", "")
+def _field_doc(s: UeSchema, elem: dict, f: dict) -> str:
+    """What the editor tells a user about one attribute.
+
+    MuJoCo's reference manual first, the schema's own `doc` where the manual has
+    nothing, and the wire name always: an attribute a user reads about in the
+    manual has to be findable in the panel by the name the manual calls it.
+    """
+    doc = s.tooltip.get(f"{elem['schema_name']}.{f['xml']}") or f.get("doc", "")
     return f"{doc} (MJCF: {f['xml']})" if doc else f"MJCF: {f['xml']}"
+
+
+def _facet_number(f: dict, value) -> str:
+    """A range facet as a UE clamp value, integral where the field is."""
+    t = f["type"]
+    if t["kind"] == "prim" and t["prim"] == "int32":
+        return str(int(value))
+    text = repr(float(value))
+    return text[:-2] if text.endswith(".0") else text
+
+
+def _clamp_meta(f: dict) -> list[str]:
+    """The schema's numeric range as details-panel clamps.
+
+    `positive` becomes `ClampMin = "0"` and is the one inexact translation here:
+    UE's clamp is inclusive and MJCF's facet is not, so zero gets through the
+    panel and is refused by MuJoCo's compiler, which is the authority either
+    way. The alternative -- no bound at all -- lets a user type a negative
+    stiffness and find out at compile.
+    """
+    annotations = f.get("annotations", {})
+    out = []
+    if "min" in annotations:
+        out.append(f'ClampMin = "{_facet_number(f, annotations["min"])}"')
+    elif annotations.get("positive"):
+        out.append('ClampMin = "0"')
+    if "max" in annotations:
+        out.append(f'ClampMax = "{_facet_number(f, annotations["max"])}"')
+    return out
 
 
 def _ue_category(element: str, f: dict) -> str:
@@ -3382,6 +3423,10 @@ def generate(root: str | None = None,
              prefix: str = DEFAULT_PREFIX) -> dict[str, str]:
     """{URLab-relative path: content} for every file the UE profile owns."""
     s = UeSchema(load_schema(root), prefix)
+    # Reads MuJoCo's reference manual and checks the recorded bindings against
+    # it, so a restructured manual fails generation instead of leaving the
+    # editor describing attributes from memory.
+    s.tooltip = xmlref.tooltips(s.doc, root)
     files: dict[str, str] = {}
     for e in s.elements:
         fam = element_family(s, e["name"])

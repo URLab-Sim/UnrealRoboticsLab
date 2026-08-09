@@ -29,20 +29,20 @@ class URLAB_API UMjAttach : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: model */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "MJCF: model", GetOptions = "GetModelOptions"))
+	/** The child model from which to attach a subtree or a frame. If omitted, the attachment is performed within the current model (self-attachment). (MJCF: model) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "The child model from which to attach a subtree or a frame. If omitted, the attachment is performed within the current model (self-attachment). (MJCF: model)", GetOptions = "GetModelOptions"))
 	TOptional<FString> Model;
 
-	/** MJCF: body */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "MJCF: body", GetOptions = "GetBodyOptions"))
+	/** Name of the body in the child model to attach here. The body and its subtree will be attached. If neither this attribute nor frame is specified (only one allowed), the contents of the world body will be attached in a new frame. (MJCF: body) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "Name of the body in the child model to attach here. The body and its subtree will be attached. If neither this attribute nor frame is specified (only one allowed), the contents of the world body will be attached in a new frame. (MJCF: body)", GetOptions = "GetBodyOptions"))
 	TOptional<FString> Body;
 
-	/** MJCF: frame */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "MJCF: frame", GetOptions = "GetFrameOptions"))
+	/** Name of the frame in the child model to attach here. If neither this attribute nor body is specified (only one allowed), the contents of the world body will be attached in a new frame. (MJCF: frame) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "Name of the frame in the child model to attach here. If neither this attribute nor body is specified (only one allowed), the contents of the world body will be attached in a new frame. (MJCF: frame)", GetOptions = "GetFrameOptions"))
 	TOptional<FString> Frame;
 
-	/** MJCF: prefix */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "MJCF: prefix"))
+	/** Prefix to prepend to names of elements in the child model. This attribute is required to prevent name collisions with the parent or when attaching the same sub-tree multiple times. (MJCF: prefix) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Attach", meta = (ToolTip = "Prefix to prepend to names of elements in the child model. This attribute is required to prevent name collisions with the parent or when attaching the same sub-tree multiple times. (MJCF: prefix)"))
 	FString Prefix;
 
 	// --- Blueprint access ---

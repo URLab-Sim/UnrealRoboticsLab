@@ -29,104 +29,104 @@ class URLAB_API UMjVisualRgba : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: fog */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: fog"))
+	/** When fog is enabled, the color of all pixels fades towards the color specified here. The spatial extent of the fading is controlled by the fogstart and fogend attributes of the map element above. (MJCF: fog) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "When fog is enabled, the color of all pixels fades towards the color specified here. The spatial extent of the fading is controlled by the fogstart and fogend attributes of the map element above. (MJCF: fog)"))
 	TOptional<FLinearColor> Fog;
 
-	/** MJCF: haze */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: haze"))
+	/** Haze color at the horizon, used to transition between an infinite plane and a skybox smoothly. The default creates white haze. To create a seamless transition, make sure the skybox colors near the horizon are similar to the plane color/texture, and set the haze color somewhere in that color gamut. (MJCF: haze) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Haze color at the horizon, used to transition between an infinite plane and a skybox smoothly. The default creates white haze. To create a seamless transition, make sure the skybox colors near the horizon are similar to the plane color/texture, and set the haze color somewhere in that color gamut. (MJCF: haze)"))
 	TOptional<FLinearColor> Haze;
 
-	/** MJCF: force */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: force"))
+	/** Color of the arrows used to render perturbation forces. (MJCF: force) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the arrows used to render perturbation forces. (MJCF: force)"))
 	TOptional<FLinearColor> Force;
 
-	/** MJCF: inertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: inertia"))
+	/** Color of the boxes used to render equivalent body inertias. This is the only rgba setting that has transparency by default, because it is usually desirable to see the geoms inside the inertia box. (MJCF: inertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the boxes used to render equivalent body inertias. This is the only rgba setting that has transparency by default, because it is usually desirable to see the geoms inside the inertia box. (MJCF: inertia)"))
 	TOptional<FLinearColor> Inertia;
 
-	/** MJCF: joint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: joint"))
+	/** Color of the arrows used to render joint axes. If a joint is limited and the joint value exceeds the limit, the value of the constraint impedance d is used to mix this color and rgba/constraint. (MJCF: joint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the arrows used to render joint axes. If a joint is limited and the joint value exceeds the limit, the value of the constraint impedance d is used to mix this color and rgba/constraint. (MJCF: joint)"))
 	TOptional<FLinearColor> Joint;
 
-	/** MJCF: actuator */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: actuator"))
+	/** Actuator color for neutral value of the control. (MJCF: actuator) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Actuator color for neutral value of the control. (MJCF: actuator)"))
 	TOptional<FLinearColor> Actuator;
 
-	/** MJCF: actuatornegative */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: actuatornegative"))
+	/** Actuator color for most negative value of the control. (MJCF: actuatornegative) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Actuator color for most negative value of the control. (MJCF: actuatornegative)"))
 	TOptional<FLinearColor> Actuatornegative;
 
-	/** MJCF: actuatorpositive */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: actuatorpositive"))
+	/** Actuator color for most positive value of the control. (MJCF: actuatorpositive) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Actuator color for most positive value of the control. (MJCF: actuatorpositive)"))
 	TOptional<FLinearColor> Actuatorpositive;
 
-	/** MJCF: com */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: com"))
+	/** Color of the spheres used to render sub-tree centers of mass. (MJCF: com) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the spheres used to render sub-tree centers of mass. (MJCF: com)"))
 	TOptional<FLinearColor> Com;
 
-	/** MJCF: camera */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: camera"))
+	/** Color of the decorative object used to represent model cameras in the rendering. (MJCF: camera) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the decorative object used to represent model cameras in the rendering. (MJCF: camera)"))
 	TOptional<FLinearColor> Camera;
 
-	/** MJCF: light */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: light"))
+	/** Color of the decorative object used to represent model lights in the rendering. (MJCF: light) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the decorative object used to represent model lights in the rendering. (MJCF: light)"))
 	TOptional<FLinearColor> Light;
 
-	/** MJCF: selectpoint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: selectpoint"))
+	/** Color of the sphere used to render the selection point. (MJCF: selectpoint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the sphere used to render the selection point. (MJCF: selectpoint)"))
 	TOptional<FLinearColor> Selectpoint;
 
-	/** MJCF: connect */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: connect"))
+	/** Color of the capsules used to connect bodies and joints, resulting in an automatically generated skeleton. (MJCF: connect) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the capsules used to connect bodies and joints, resulting in an automatically generated skeleton. (MJCF: connect)"))
 	TOptional<FLinearColor> Connect;
 
-	/** MJCF: contactpoint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: contactpoint"))
+	/** Color of the cylinders used to render contact points. (MJCF: contactpoint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the cylinders used to render contact points. (MJCF: contactpoint)"))
 	TOptional<FLinearColor> Contactpoint;
 
-	/** MJCF: contactforce */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: contactforce"))
+	/** Color of the arrows used to render contact forces. When splitting of contact forces into normal and tangential components is enabled, this color is used to render the normal components. (MJCF: contactforce) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the arrows used to render contact forces. When splitting of contact forces into normal and tangential components is enabled, this color is used to render the normal components. (MJCF: contactforce)"))
 	TOptional<FLinearColor> Contactforce;
 
-	/** MJCF: contactfriction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: contactfriction"))
+	/** Color of the arrows used to render contact tangential forces, only when splitting is enabled. (MJCF: contactfriction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the arrows used to render contact tangential forces, only when splitting is enabled. (MJCF: contactfriction)"))
 	TOptional<FLinearColor> Contactfriction;
 
-	/** MJCF: contacttorque */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: contacttorque"))
+	/** Color of the arrows used to render contact torques (currently disabled). (MJCF: contacttorque) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of the arrows used to render contact torques (currently disabled). (MJCF: contacttorque)"))
 	TOptional<FLinearColor> Contacttorque;
 
-	/** MJCF: contactgap */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: contactgap"))
+	/** Color of contacts that fall in the contact gap (and are thereby excluded from contact force computations). (MJCF: contactgap) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of contacts that fall in the contact gap (and are thereby excluded from contact force computations). (MJCF: contactgap)"))
 	TOptional<FLinearColor> Contactgap;
 
-	/** MJCF: rangefinder */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: rangefinder"))
+	/** Color of line geoms used to render rangefinder sensors. (MJCF: rangefinder) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of line geoms used to render rangefinder sensors. (MJCF: rangefinder)"))
 	TOptional<FLinearColor> Rangefinder;
 
-	/** MJCF: constraint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: constraint"))
+	/** Color corresponding to spatial constraint violations -- equality constraints, joint limits, and tendon limits. (MJCF: constraint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color corresponding to spatial constraint violations -- equality constraints, joint limits, and tendon limits. (MJCF: constraint)"))
 	TOptional<FLinearColor> Constraint;
 
-	/** MJCF: slidercrank */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: slidercrank"))
+	/** Color of slider-crank mechanisms. (MJCF: slidercrank) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color of slider-crank mechanisms. (MJCF: slidercrank)"))
 	TOptional<FLinearColor> Slidercrank;
 
-	/** MJCF: crankbroken */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: crankbroken"))
+	/** Color used to render the crank of slide-crank mechanisms, in model configurations where the specified rod length cannot be maintained, i.e., it is 'broken'. (MJCF: crankbroken) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color used to render the crank of slide-crank mechanisms, in model configurations where the specified rod length cannot be maintained, i.e., it is 'broken'. (MJCF: crankbroken)"))
 	TOptional<FLinearColor> Crankbroken;
 
-	/** MJCF: frustum */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: frustum"))
+	/** Color used to render the camera frustum. (MJCF: frustum) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color used to render the camera frustum. (MJCF: frustum)"))
 	TOptional<FLinearColor> Frustum;
 
-	/** MJCF: bv */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: bv"))
+	/** Color used to render bounding volumes. (MJCF: bv) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color used to render bounding volumes. (MJCF: bv)"))
 	TOptional<FLinearColor> Bv;
 
-	/** MJCF: bvactive */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "MJCF: bvactive"))
+	/** Color used to render active bounding volumes, if the bvactive flag is 'true'. (MJCF: bvactive) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualRgba", meta = (ToolTip = "Color used to render active bounding volumes, if the bvactive flag is 'true'. (MJCF: bvactive)"))
 	TOptional<FLinearColor> Bvactive;
 
 	// --- Blueprint access ---

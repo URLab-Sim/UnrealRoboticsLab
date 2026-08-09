@@ -30,44 +30,44 @@ class URLAB_API UMjLengthRange : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: mode */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: mode"))
+	/** Determines the type of actuators to which length range computation is applied. 'none' disables this functionality. 'all' applies it to all actuators. 'muscle' applies it to actuators whose gaintype or biastype is set to 'muscle'. 'muscleuser' applies it to actuators whose gaintype or biastype is set to either 'muscle' or 'user'. (MJCF: mode) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "Determines the type of actuators to which length range computation is applied. 'none' disables this functionality. 'all' applies it to all actuators. 'muscle' applies it to actuators whose gaintype or biastype is set to 'muscle'. 'muscleuser' applies it to actuators whose gaintype or biastype is set to either 'muscle' or 'user'. (MJCF: mode)"))
 	TOptional<EMjLRMode> Mode;
 
-	/** MJCF: useexisting */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: useexisting"))
+	/** If this attribute is 'true' and the length range for a given actuator is already defined in the model, the existing value will be used and the automatic computation will be skipped. The range is considered defined if the first number is smaller than the second number. (MJCF: useexisting) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "If this attribute is 'true' and the length range for a given actuator is already defined in the model, the existing value will be used and the automatic computation will be skipped. The range is considered defined if the first number is smaller than the second number. (MJCF: useexisting)"))
 	TOptional<bool> Useexisting;
 
-	/** MJCF: uselimit */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: uselimit"))
+	/** If this attribute is 'true' and the actuator is attached to a joint or a tendon which has limits defined, these limits will be copied into the actuator length range and the automatic computation will be skipped. (MJCF: uselimit) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "If this attribute is 'true' and the actuator is attached to a joint or a tendon which has limits defined, these limits will be copied into the actuator length range and the automatic computation will be skipped. (MJCF: uselimit)"))
 	TOptional<bool> Uselimit;
 
-	/** MJCF: accel */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: accel"))
+	/** This attribute scales the forces applied to the simulation in order to push each actuator to its smallest and largest length. The force magnitude is computed so that the resulting joint-space acceleration vector has norm equal to this attribute. (MJCF: accel) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "This attribute scales the forces applied to the simulation in order to push each actuator to its smallest and largest length. The force magnitude is computed so that the resulting joint-space acceleration vector has norm equal to this attribute. (MJCF: accel)"))
 	TOptional<double> Accel;
 
-	/** MJCF: maxforce */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: maxforce"))
+	/** The force computed via the accel attribute above can be very large when the actuator has very small moments. Such a force will still produce reasonable acceleration (by construction) but large numbers could cause numerical issues. Although we have never observed such issues, the present attribute is provided as a safeguard. (MJCF: maxforce) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "The force computed via the accel attribute above can be very large when the actuator has very small moments. Such a force will still produce reasonable acceleration (by construction) but large numbers could cause numerical issues. Although we have never observed such issues, the present attribute is provided as a safeguard. (MJCF: maxforce)"))
 	TOptional<double> Maxforce;
 
-	/** MJCF: timeconst */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: timeconst"))
+	/** The simulation is damped in a non-physical way so as to push the actuators to their limits without the risk of instabilities. This is done by simply scaling down the joint velocity at each time step. In the absence of new accelerations, such scaling will decrease the velocity exponentially. The timeconst attribute specifies the time constant of this exponential decrease, in seconds. (MJCF: timeconst) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "The simulation is damped in a non-physical way so as to push the actuators to their limits without the risk of instabilities. This is done by simply scaling down the joint velocity at each time step. In the absence of new accelerations, such scaling will decrease the velocity exponentially. The timeconst attribute specifies the time constant of this exponential decrease, in seconds. (MJCF: timeconst)"))
 	TOptional<double> Timeconst;
 
-	/** MJCF: timestep */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: timestep"))
+	/** The timestep used for the internal simulation. Setting this to 0 will cause the model timestep to be used. The latter is not the default because models that can go unstable usually have small timesteps, while the simulation here is artificially damped and very stable. To speed up the length range computation, users can attempt to increase this value. (MJCF: timestep) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "The timestep used for the internal simulation. Setting this to 0 will cause the model timestep to be used. The latter is not the default because models that can go unstable usually have small timesteps, while the simulation here is artificially damped and very stable. To speed up the length range computation, users can attempt to increase this value. (MJCF: timestep)"))
 	TOptional<double> Timestep;
 
-	/** MJCF: inttotal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: inttotal"))
+	/** The total time interval (in seconds) for running the internal simulation, for each actuator and actuator direction. Each simulation is initialized at qpos0. It is expected to settle after inttotal time has passed. (MJCF: inttotal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "The total time interval (in seconds) for running the internal simulation, for each actuator and actuator direction. Each simulation is initialized at qpos0. It is expected to settle after inttotal time has passed. (MJCF: inttotal)"))
 	TOptional<double> Inttotal;
 
-	/** MJCF: interval */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: interval"))
+	/** The time interval at the end of the simulation over which length data is collected and analyzed. The maximum (or respectively minimum) length achieved during this interval is recorded. The difference between the maximum and minimum is also recorded and is used as a measure of divergence. If the simulation settles, this difference will be small. (MJCF: interval) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "The time interval at the end of the simulation over which length data is collected and analyzed. The maximum (or respectively minimum) length achieved during this interval is recorded. The difference between the maximum and minimum is also recorded and is used as a measure of divergence. If the simulation settles, this difference will be small. (MJCF: interval)"))
 	TOptional<double> Interval;
 
-	/** MJCF: tolrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "MJCF: tolrange"))
+	/** This determines the threshold for detecting divergence and generating a compiler error. The range of actuator lengths observed during interval is divided by the overall range computed via simulation. If that value is larger than tolrange, a compiler error is generated. So one way to suppress compiler errors is to simply make this attribute larger, but in that case the results could be inaccurate. (MJCF: tolrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|LengthRange", meta = (ToolTip = "This determines the threshold for detecting divergence and generating a compiler error. The range of actuator lengths observed during interval is divided by the overall range computed via simulation. If that value is larger than tolrange, a compiler error is generated. So one way to suppress compiler errors is to simply make this attribute larger, but in that case the results could be inaccurate. (MJCF: tolrange)"))
 	TOptional<double> Tolrange;
 
 	// --- Blueprint access ---

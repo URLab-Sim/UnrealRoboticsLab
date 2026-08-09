@@ -30,80 +30,80 @@ class URLAB_API UMjSpatial : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the tendon belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of tendons. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Integer group to which the tendon belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of tendons. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: limited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: limited"))
+	/** If this attribute is 'true', the length limits defined by the range attribute below are imposed by the constraint solver. If this attribute is 'auto', and autolimits is set in compiler, length limits will be enabled if range is defined. (MJCF: limited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "If this attribute is 'true', the length limits defined by the range attribute below are imposed by the constraint solver. If this attribute is 'auto', and autolimits is set in compiler, length limits will be enabled if range is defined. (MJCF: limited)"))
 	TOptional<EMjTriState> Limited;
 
-	/** MJCF: actuatorfrclimited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: actuatorfrclimited"))
+	/** This attribute specifies whether actuator forces acting on the tendon should be clamped. See CForceRange for details. This attribute interacts with the actuatorfrcrange attribute. If this attribute is 'false', actuator force clamping is disabled. If it is 'true', actuator force clamping is enabled. (MJCF: actuatorfrclimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "This attribute specifies whether actuator forces acting on the tendon should be clamped. See CForceRange for details. This attribute interacts with the actuatorfrcrange attribute. If this attribute is 'false', actuator force clamping is disabled. If it is 'true', actuator force clamping is enabled. (MJCF: actuatorfrclimited)"))
 	TOptional<EMjTriState> Actuatorfrclimited;
 
-	/** MJCF: range */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: range"))
+	/** Range of allowed tendon lengths. Setting this attribute without specifying limited is an error, unless autolimits is set in compiler. (MJCF: range) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Range of allowed tendon lengths. Setting this attribute without specifying limited is an error, unless autolimits is set in compiler. (MJCF: range)"))
 	TOptional<FVector2D> Range;
 
-	/** MJCF: actuatorfrcrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: actuatorfrcrange"))
+	/** Range for clamping total actuator forces acting on this tendon. See CForceRange for details. The compiler expects the lower bound to be nonpositive and the upper bound to be nonnegative. Setting this attribute without specifying actuatorfrclimited is an error if compiler-autolimits is 'false'. (MJCF: actuatorfrcrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Range for clamping total actuator forces acting on this tendon. See CForceRange for details. The compiler expects the lower bound to be nonpositive and the upper bound to be nonnegative. Setting this attribute without specifying actuatorfrclimited is an error if compiler-autolimits is 'false'. (MJCF: actuatorfrcrange)"))
 	TOptional<FVector2D> Actuatorfrcrange;
 
-	/** MJCF: solreflimit */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "MJCF: solreflimit"))
+	/** Constraint solver parameters for simulating tendon limits. See CSolver. (MJCF: solreflimit) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating tendon limits. See CSolver. (MJCF: solreflimit)"))
 	TOptional<TArray<double>> Solreflimit;
 
-	/** MJCF: solimplimit */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "MJCF: solimplimit"))
+	/** Constraint solver parameters for simulating tendon limits. See CSolver. (MJCF: solimplimit) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating tendon limits. See CSolver. (MJCF: solimplimit)"))
 	TOptional<TArray<double>> Solimplimit;
 
-	/** MJCF: solreffriction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "MJCF: solreffriction"))
+	/** Constraint solver parameters for simulating dry friction in the tendon. See also Friction. (MJCF: solreffriction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating dry friction in the tendon. See also Friction. (MJCF: solreffriction)"))
 	TOptional<TArray<double>> Solreffriction;
 
-	/** MJCF: solimpfriction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "MJCF: solimpfriction"))
+	/** Constraint solver parameters for simulating dry friction in the tendon. See also Friction. (MJCF: solimpfriction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating dry friction in the tendon. See also Friction. (MJCF: solimpfriction)"))
 	TOptional<TArray<double>> Solimpfriction;
 
-	/** MJCF: frictionloss */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: frictionloss"))
+	/** Friction loss caused by dry friction. To enable friction loss, set this attribute to a positive value. (MJCF: frictionloss) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Friction loss caused by dry friction. To enable friction loss, set this attribute to a positive value. (MJCF: frictionloss)"))
 	TOptional<double> Frictionloss;
 
-	/** one value: copied to both (MJCF: springlength) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "one value: copied to both (MJCF: springlength)"))
+	/** Spring resting position, can take either one or two values. If one value is given, it corresponds to the length of the tendon at rest. If it is -1, the tendon resting length is determined from the model reference configuration in mjModel.qpos0. (MJCF: springlength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Spring resting position, can take either one or two values. If one value is given, it corresponds to the length of the tendon at rest. If it is -1, the tendon resting length is determined from the model reference configuration in mjModel.qpos0. (MJCF: springlength)"))
 	TOptional<TArray<double>> Springlength;
 
-	/** MJCF: width */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: width"))
+	/** Radius of the cross-section area of the spatial tendon, used for rendering. Parts of the tendon that wrap around geom obstacles are rendered with reduced width. (MJCF: width) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Radius of the cross-section area of the spatial tendon, used for rendering. Parts of the tendon that wrap around geom obstacles are rendered with reduced width. (MJCF: width)"))
 	TOptional<double> Width;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** Material used to set the appearance of the tendon. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Material used to set the appearance of the tendon. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: margin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "MJCF: margin"))
+	/** The limit constraint becomes active when the absolute value of the difference between the tendon length and either limit of the specified range falls below this margin. Similar to contacts, the margin parameter is subtracted from the difference between the range limit and the tendon length. The resulting constraint distance is always negative when the constraint is active. (MJCF: margin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", AdvancedDisplay, meta = (ToolTip = "The limit constraint becomes active when the absolute value of the difference between the tendon length and either limit of the specified range falls below this margin. Similar to contacts, the margin parameter is subtracted from the difference between the range limit and the tendon length. The resulting constraint distance is always negative when the constraint is active. (MJCF: margin)"))
 	TOptional<double> Margin;
 
 	/** spring polynomial, 1+mjNPOLY coefficients (MJCF: stiffness) */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "spring polynomial, 1+mjNPOLY coefficients (MJCF: stiffness)"))
 	TOptional<TArray<double>> Stiffness;
 
-	/** damper polynomial, 1+mjNPOLY coefficients (MJCF: damping) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "damper polynomial, 1+mjNPOLY coefficients (MJCF: damping)"))
+	/** Damping coefficients a, b, c. A positive a produces the standard dissipative linear damping force f(v) = -a v. If the optional second and third components are set, they define a nonlinear polynomial damping force f(v) = -(a v + b v + c v^3). Note the anti-symmetrization of the quadratic term, ensuring that the force is an odd function of velocity. See Polynomial forces for details. (MJCF: damping) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Damping coefficients a, b, c. A positive a produces the standard dissipative linear damping force f(v) = -a v. If the optional second and third components are set, they define a nonlinear polynomial damping force f(v) = -(a v + b v + c v^3). Note the anti-symmetrization of the quadratic term, ensuring that the force is an odd function of velocity. See Polynomial forces for details. (MJCF: damping)"))
 	TOptional<TArray<double>> Damping;
 
-	/** MJCF: armature */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: armature"))
+	/** Inertia associated with changes in tendon length. Setting this attribute to a positive value m adds a kinetic energy term /frac{1}{2}mv^2, where v is the tendon velocity. Tendon inertia is most valuable when modeling the armature inertia in a linear actuator which contains a spinning element or the inertial motion of a fluid in a linear hydraulic actuator. (MJCF: armature) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Inertia associated with changes in tendon length. Setting this attribute to a positive value m adds a kinetic energy term /frac{1}{2}mv^2, where v is the tendon velocity. Tendon inertia is most valuable when modeling the armature inertia in a linear actuator which contains a spinning element or the inertial motion of a fluid in a linear hydraulic actuator. (MJCF: armature)"))
 	TOptional<double> Armature;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "MJCF: rgba"))
+	/** Color and transparency of the tendon. When this value is different from the internal default, it overrides the corresponding material properties. If a material is unspecified and rgba has the default value, limited tendons whose length exceeds the limit are recolored using the value of the constraint impedance d to mix the default color and rgba/constraint. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Spatial", meta = (ToolTip = "Color and transparency of the tendon. When this value is different from the internal default, it overrides the corresponding material properties. If a material is unspecified and rgba has the default value, limited tendons whose length exceeds the limit are recolored using the value of the constraint impedance d to mix the default color and rgba/constraint. (MJCF: rgba)"))
 	TOptional<FLinearColor> Rgba;
 
 	/** MJCF: user */

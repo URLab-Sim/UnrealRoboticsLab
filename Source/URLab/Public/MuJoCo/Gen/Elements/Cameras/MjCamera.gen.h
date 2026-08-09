@@ -33,64 +33,64 @@ class URLAB_API UMjCameraBase : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: projection */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: projection"))
+	/** Whether the camera uses a perspective (the default) or orthographic projection. Setting this attribute to 'orthographic' changes the semantic of the fovy attribute, see below. (MJCF: projection) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Whether the camera uses a perspective (the default) or orthographic projection. Setting this attribute to 'orthographic' changes the semantic of the fovy attribute, see below. (MJCF: projection)"))
 	TOptional<EMjCameraProjection> Projection;
 
-	/** fovy or the intrinsics family is saved (MJCF: fovy) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "fovy or the intrinsics family is saved (MJCF: fovy)"))
+	/** Vertical field-of-view of the camera. If the camera uses a perspective projection, the field-of-view is expressed in degrees, regardless of the global compiler/angle setting. If the camera uses an orthographic projection, the field-of-view is expressed in units of length; note that in this case the default of 45 is too large for most scenes and should likely be reduced. (MJCF: fovy) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Vertical field-of-view of the camera. If the camera uses a perspective projection, the field-of-view is expressed in degrees, regardless of the global compiler/angle setting. If the camera uses an orthographic projection, the field-of-view is expressed in units of length; note that in this case the default of 45 is too large for most scenes and should likely be reduced. (MJCF: fovy)"))
 	TOptional<double> Fovy;
 
-	/** MJCF: ipd */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: ipd"))
+	/** Inter-pupilary distance. This attribute only has an effect during stereoscopic rendering. It specifies the distance between the left and right viewpoints. Each viewpoint is shifted by +/- half of the distance specified here, along the X axis of the camera frame. (MJCF: ipd) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Inter-pupilary distance. This attribute only has an effect during stereoscopic rendering. It specifies the distance between the left and right viewpoints. Each viewpoint is shifted by +/- half of the distance specified here, along the X axis of the camera frame. (MJCF: ipd)"))
 	TOptional<double> Ipd;
 
-	/** MJCF: resolution */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: resolution"))
+	/** Resolution of the camera in pixels [width height]. Note that these values are not used for rendering since those dimensions are determined by the size of the rendering context. This attribute serves as a convenient location to save the required resolution. Setting either value larger than 1 enables frustum visualization when the mjVIS_CAMERA visualization flag is active. (MJCF: resolution) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Resolution of the camera in pixels [width height]. Note that these values are not used for rendering since those dimensions are determined by the size of the rendering context. This attribute serves as a convenient location to save the required resolution. Setting either value larger than 1 enables frustum visualization when the mjVIS_CAMERA visualization flag is active. (MJCF: resolution)"))
 	TOptional<TArray<int32>> Resolution;
 
-	/** MJCF: output */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: output"))
+	/** Types of output images supported by the camera. - rgb: RGB image. - depth: Depth image (distance from camera plane). - distance: Distance image (distance from camera origin). - normal: Surface normal image. - segmentation: Segmentation image. This attribute is not used for rendering, but serves as a convenient location to save the output types supported by the camera. (MJCF: output) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Types of output images supported by the camera. - rgb: RGB image. - depth: Depth image (distance from camera plane). - distance: Distance image (distance from camera origin). - normal: Surface normal image. - segmentation: Segmentation image. This attribute is not used for rendering, but serves as a convenient location to save the output types supported by the camera. (MJCF: output)"))
 	TOptional<TArray<EMjCameraOutput>> Output;
 
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: pos"))
+	/** Position of the camera frame. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Position of the camera frame. (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
-	/** MJCF: quat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: quat"))
+	/** Orientation of the camera frame. See COrientation. Note that specifically for cameras, the xyaxes attribute is semantically convenient as the X and Y axes correspond to the directions 'right' and 'up' in pixel space, respectively. (MJCF: quat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Orientation of the camera frame. See COrientation. Note that specifically for cameras, the xyaxes attribute is semantically convenient as the X and Y axes correspond to the directions 'right' and 'up' in pixel space, respectively. (MJCF: quat)"))
 	TOptional<FMjQuatRot> Quat;
 
-	/** MJCF: mode */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: mode"))
+	/** This attribute specifies how the camera position and orientation in world coordinates are computed in forward kinematics (which in turn determine what the camera sees). 'fixed' means that the position and orientation specified below are fixed relative to the body where the camera is defined. (MJCF: mode) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "This attribute specifies how the camera position and orientation in world coordinates are computed in forward kinematics (which in turn determine what the camera sees). 'fixed' means that the position and orientation specified below are fixed relative to the body where the camera is defined. (MJCF: mode)"))
 	TOptional<EMjCamLightMode> Mode;
 
-	/** MJCF: target */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: target", GetOptions = "GetTargetOptions"))
+	/** When the camera mode is 'targetbody' or 'targetbodycom', this attribute becomes required. It specifies which body should be targeted by the camera. In all other modes this attribute is ignored. (MJCF: target) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "When the camera mode is 'targetbody' or 'targetbodycom', this attribute becomes required. It specifies which body should be targeted by the camera. In all other modes this attribute is ignored. (MJCF: target)", GetOptions = "GetTargetOptions"))
 	TOptional<FString> Target;
 
-	/** MJCF: focal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: focal"))
+	/** Focal length in physical length units or in pixels, respectively. If both are specified, the pixel value is used and the length value is ignored. (MJCF: focal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Focal length in physical length units or in pixels, respectively. If both are specified, the pixel value is used and the length value is ignored. (MJCF: focal)"))
 	TOptional<TArray<float>> Focal;
 
-	/** MJCF: focalpixel */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: focalpixel"))
+	/** Focal length in physical length units or in pixels, respectively. If both are specified, the pixel value is used and the length value is ignored. (MJCF: focalpixel) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Focal length in physical length units or in pixels, respectively. If both are specified, the pixel value is used and the length value is ignored. (MJCF: focalpixel)"))
 	TOptional<TArray<float>> Focalpixel;
 
-	/** MJCF: principal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: principal"))
+	/** Offset of the principal point (optical axis intersection with the image plane) from the image center. If both are specified, the pixel value is used. At zero offset, the rendered image is centered on the camera's negative Z axis, as in a standard pinhole camera model. (MJCF: principal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Offset of the principal point (optical axis intersection with the image plane) from the image center. If both are specified, the pixel value is used. At zero offset, the rendered image is centered on the camera's negative Z axis, as in a standard pinhole camera model. (MJCF: principal)"))
 	TOptional<TArray<float>> Principal;
 
-	/** MJCF: principalpixel */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: principalpixel"))
+	/** Offset of the principal point (optical axis intersection with the image plane) from the image center. If both are specified, the pixel value is used. At zero offset, the rendered image is centered on the camera's negative Z axis, as in a standard pinhole camera model. (MJCF: principalpixel) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Offset of the principal point (optical axis intersection with the image plane) from the image center. If both are specified, the pixel value is used. At zero offset, the rendered image is centered on the camera's negative Z axis, as in a standard pinhole camera model. (MJCF: principalpixel)"))
 	TOptional<TArray<float>> Principalpixel;
 
-	/** MJCF: sensorsize */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "MJCF: sensorsize"))
+	/** Size of the camera sensor in length units. When specified, all intrinsic attributes become active and fovy is ignored. The field-of-view is then computed automatically from the focal length and sensor size. (MJCF: sensorsize) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camera", meta = (ToolTip = "Size of the camera sensor in length units. When specified, all intrinsic attributes become active and fovy is ignored. The field-of-view is then computed automatically from the focal length and sensor size. (MJCF: sensorsize)"))
 	TOptional<TArray<float>> Sensorsize;
 
 	/** MJCF: user */

@@ -30,108 +30,108 @@ class URLAB_API UMjFlag : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: constraint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: constraint"))
+	/** This flag disables all standard computations related to the constraint solver. As a result, no constraint forces are applied. Note that the next four flags disable the computations related to a specific type of constraint. Both this flag and the type-specific flag must be set to 'enable' for a given computation to be performed. (MJCF: constraint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables all standard computations related to the constraint solver. As a result, no constraint forces are applied. Note that the next four flags disable the computations related to a specific type of constraint. Both this flag and the type-specific flag must be set to 'enable' for a given computation to be performed. (MJCF: constraint)"))
 	TOptional<EMjEnable> Constraint;
 
-	/** MJCF: equality */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: equality"))
+	/** This flag disables all standard computations related to equality constraints. (MJCF: equality) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables all standard computations related to equality constraints. (MJCF: equality)"))
 	TOptional<EMjEnable> Equality;
 
-	/** MJCF: frictionloss */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: frictionloss"))
+	/** This flag disables all standard computations related to friction loss constraints. (MJCF: frictionloss) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables all standard computations related to friction loss constraints. (MJCF: frictionloss)"))
 	TOptional<EMjEnable> Frictionloss;
 
-	/** MJCF: limit */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: limit"))
+	/** This flag disables all standard computations related to joint and tendon limit constraints. (MJCF: limit) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables all standard computations related to joint and tendon limit constraints. (MJCF: limit)"))
 	TOptional<EMjEnable> Limit;
 
-	/** MJCF: contact */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: contact"))
+	/** This flag disables collision detection and all standard computations related to contact constraints. (MJCF: contact) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables collision detection and all standard computations related to contact constraints. (MJCF: contact)"))
 	TOptional<EMjEnable> Contact;
 
-	/** MJCF: spring */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: spring"))
+	/** This flag disables passive joint and tendon springs. If passive damper forces are also disabled, all passive forces are disabled, including gravity compensation, fluid forces, forces computed by the mjcb_passive callback, and forces computed by plugins when passed the mjPLUGIN_PASSIVE capability flag. (MJCF: spring) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables passive joint and tendon springs. If passive damper forces are also disabled, all passive forces are disabled, including gravity compensation, fluid forces, forces computed by the mjcb_passive callback, and forces computed by plugins when passed the mjPLUGIN_PASSIVE capability flag. (MJCF: spring)"))
 	TOptional<EMjEnable> Spring;
 
-	/** MJCF: damper */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: damper"))
+	/** This flag disables passive joint and tendon dampers. If passive spring forces are also disabled, all passive forces are disabled, including gravity compensation, fluid forces, forces computed by the mjcb_passive callback, and forces computed by plugins when passed the mjPLUGIN_PASSIVE capability flag. (MJCF: damper) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables passive joint and tendon dampers. If passive spring forces are also disabled, all passive forces are disabled, including gravity compensation, fluid forces, forces computed by the mjcb_passive callback, and forces computed by plugins when passed the mjPLUGIN_PASSIVE capability flag. (MJCF: damper)"))
 	TOptional<EMjEnable> Damper;
 
-	/** MJCF: gravity */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: gravity"))
+	/** This flag causes the gravitational acceleration vector in mjOption to be replaced with (0 0 0) at runtime, without changing the value in mjOption. Once the flag is re-enabled, the value in mjOption is used. (MJCF: gravity) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag causes the gravitational acceleration vector in mjOption to be replaced with (0 0 0) at runtime, without changing the value in mjOption. Once the flag is re-enabled, the value in mjOption is used. (MJCF: gravity)"))
 	TOptional<EMjEnable> Gravity;
 
-	/** MJCF: clampctrl */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: clampctrl"))
+	/** This flag disables the clamping of control inputs to all actuators, even if the actuator-specific attributes are set to enable clamping. (MJCF: clampctrl) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables the clamping of control inputs to all actuators, even if the actuator-specific attributes are set to enable clamping. (MJCF: clampctrl)"))
 	TOptional<EMjEnable> Clampctrl;
 
-	/** MJCF: warmstart */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: warmstart"))
+	/** This flag disables warm-starting of the constraint solver. By default the solver uses the solution (i.e., the constraint force) from the previous time step to initialize the iterative optimization. This feature should be disabled when evaluating the dynamics at a collection of states that do not form a trajectory - in which case warm starts make no sense and are likely to slow down the solver. (MJCF: warmstart) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables warm-starting of the constraint solver. By default the solver uses the solution (i.e., the constraint force) from the previous time step to initialize the iterative optimization. This feature should be disabled when evaluating the dynamics at a collection of states that do not form a trajectory - in which case warm starts make no sense and are likely to slow down the solver. (MJCF: warmstart)"))
 	TOptional<EMjEnable> Warmstart;
 
-	/** MJCF: filterparent */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: filterparent"))
+	/** This flag disables the filtering of contact pairs where the two geoms belong to a parent and child body; recall contact selection in the Computation chapter. (MJCF: filterparent) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables the filtering of contact pairs where the two geoms belong to a parent and child body; recall contact selection in the Computation chapter. (MJCF: filterparent)"))
 	TOptional<EMjEnable> Filterparent;
 
-	/** MJCF: actuation */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: actuation"))
+	/** This flag disables all standard computations related to actuator forces, including the actuator dynamics. As a result, no actuator forces are applied to the simulation. (MJCF: actuation) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables all standard computations related to actuator forces, including the actuator dynamics. As a result, no actuator forces are applied to the simulation. (MJCF: actuation)"))
 	TOptional<EMjEnable> Actuation;
 
-	/** MJCF: refsafe */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: refsafe"))
+	/** This flag enables a safety mechanism that prevents instabilities due to solref[0] being too small compared to the simulation timestep. Recall that solref[0] is the stiffness of the virtual spring-damper used for constraint stabilization. If this setting is enabled, the solver uses max(solref[0], 2*timestep) in place of solref[0] separately for each active constraint. (MJCF: refsafe) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables a safety mechanism that prevents instabilities due to solref[0] being too small compared to the simulation timestep. Recall that solref[0] is the stiffness of the virtual spring-damper used for constraint stabilization. If this setting is enabled, the solver uses max(solref[0], 2*timestep) in place of solref[0] separately for each active constraint. (MJCF: refsafe)"))
 	TOptional<EMjEnable> Refsafe;
 
-	/** MJCF: sensor */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: sensor"))
+	/** This flag disables all computations related to sensors. When disabled, sensor values will remain constant, either zeros if disabled at the start of simulation, or, if disabled at runtime, whatever value was last computed. (MJCF: sensor) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables all computations related to sensors. When disabled, sensor values will remain constant, either zeros if disabled at the start of simulation, or, if disabled at runtime, whatever value was last computed. (MJCF: sensor)"))
 	TOptional<EMjEnable> Sensor;
 
-	/** MJCF: midphase */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: midphase"))
+	/** This flag disables the mid-phase collision filtering using a static AABB bounding volume hierarchy (a BVH binary tree). If disabled, all geoms pairs that are allowed to collide are checked for collisions. (MJCF: midphase) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables the mid-phase collision filtering using a static AABB bounding volume hierarchy (a BVH binary tree). If disabled, all geoms pairs that are allowed to collide are checked for collisions. (MJCF: midphase)"))
 	TOptional<EMjEnable> Midphase;
 
-	/** MJCF: eulerdamp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: eulerdamp"))
+	/** This flag disables implicit integration with respect to joint damping in the Euler integrator. See the Numerical Integration section for more details. (MJCF: eulerdamp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables implicit integration with respect to joint damping in the Euler integrator. See the Numerical Integration section for more details. (MJCF: eulerdamp)"))
 	TOptional<EMjEnable> Eulerdamp;
 
-	/** MJCF: autoreset */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: autoreset"))
+	/** This flag disables the automatic resetting of the simulation state when numerical issues are detected. (MJCF: autoreset) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag disables the automatic resetting of the simulation state when numerical issues are detected. (MJCF: autoreset)"))
 	TOptional<EMjEnable> Autoreset;
 
-	/** MJCF: nativeccd */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: nativeccd"))
+	/** This flag enables the native convex collision detection pipeline instead of using the `libccd library <https://github.com/danfis/libccd>`__, see convex collisions for more details. (MJCF: nativeccd) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables the native convex collision detection pipeline instead of using the `libccd library <https://github.com/danfis/libccd>`__, see convex collisions for more details. (MJCF: nativeccd)"))
 	TOptional<EMjEnable> Nativeccd;
 
-	/** MJCF: island */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: island"))
+	/** This flag enables discovery and construction of constraint islands: disjoint sets of constraints and degrees-of-freedom that do not interact and can be solved independently. Islanding is not yet supported by the PGS solver. See soIsland for more details. The mjVIS_ISLAND enables `island visualization <https://youtu.be/Vc1tq0fFvQA>`__. (MJCF: island) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables discovery and construction of constraint islands: disjoint sets of constraints and degrees-of-freedom that do not interact and can be solved independently. Islanding is not yet supported by the PGS solver. See soIsland for more details. The mjVIS_ISLAND enables `island visualization <https://youtu.be/Vc1tq0fFvQA>`__. (MJCF: island)"))
 	TOptional<EMjEnable> Island;
 
-	/** MJCF: multiccd */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: multiccd"))
+	/** This flag enables multiple-contact collision detection for geom pairs that use a general-purpose convex-convex collider e.g., mesh-mesh collisions. (MJCF: multiccd) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables multiple-contact collision detection for geom pairs that use a general-purpose convex-convex collider e.g., mesh-mesh collisions. (MJCF: multiccd)"))
 	TOptional<EMjEnable> Multiccd;
 
-	/** MJCF: override */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: override"))
+	/** This flag enables the Contact override mechanism. (MJCF: override) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables the Contact override mechanism. (MJCF: override)"))
 	TOptional<EMjEnable> Override;
 
-	/** MJCF: energy */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: energy"))
+	/** This flag enables the computation of potential and kinetic energy in mjData.energy[0, 1] respectively, and displayed in the simulate GUI info overlay. Potential energy includes the gravitational component summed over all bodies /sum_b m_b g h and energy stored in passive springs in joints, tendons and flexes /tfrac{1}{2} k x^2, where x is the displacement and k is the spring constant. (MJCF: energy) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables the computation of potential and kinetic energy in mjData.energy[0, 1] respectively, and displayed in the simulate GUI info overlay. Potential energy includes the gravitational component summed over all bodies /sum_b m_b g h and energy stored in passive springs in joints, tendons and flexes /tfrac{1}{2} k x^2, where x is the displacement and k is the spring constant. (MJCF: energy)"))
 	TOptional<EMjEnable> Energy;
 
-	/** MJCF: fwdinv */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: fwdinv"))
+	/** This flag enables the automatic comparison of forward and inverse dynamics. When enabled, the inverse dynamics is invoked after mj_forward (or internally within mj_step) and the difference in applied forces is recorded in mjData.solver_fwdinv[2]. The first value is the relative norm of the discrepancy in joint space, the next is in constraint space. (MJCF: fwdinv) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables the automatic comparison of forward and inverse dynamics. When enabled, the inverse dynamics is invoked after mj_forward (or internally within mj_step) and the difference in applied forces is recorded in mjData.solver_fwdinv[2]. The first value is the relative norm of the discrepancy in joint space, the next is in constraint space. (MJCF: fwdinv)"))
 	TOptional<EMjEnable> Fwdinv;
 
-	/** MJCF: invdiscrete */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: invdiscrete"))
+	/** This flag enables discrete-time inverse dynamics with mj_inverse for all integrators other than RK4. Recall from the numerical integration section that the one-step integrators (Euler, implicit and implicitfast), modify the mass matrix M /rightarrow M-hD. This implies that finite-differenced accelerations (v_{t+h} - v_t)/h will not correspond to the continuous-time acceleration mjData.qacc. (MJCF: invdiscrete) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables discrete-time inverse dynamics with mj_inverse for all integrators other than RK4. Recall from the numerical integration section that the one-step integrators (Euler, implicit and implicitfast), modify the mass matrix M /rightarrow M-hD. This implies that finite-differenced accelerations (v_{t+h} - v_t)/h will not correspond to the continuous-time acceleration mjData.qacc. (MJCF: invdiscrete)"))
 	TOptional<EMjEnable> Invdiscrete;
 
-	/** MJCF: sleep */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: sleep"))
+	/** This flag enables sleeping. Disabling this flag when some trees are sleeping will wake them. .. admonition:: flag value at initialization time :class: attention Unlike any other flag, the sleep flag has an effect during mjData initialization (mj_makeData or mj_resetData). First, it must be set at initialization time in order for the sleep-init policy to take effect. (MJCF: sleep) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables sleeping. Disabling this flag when some trees are sleeping will wake them. .. admonition:: flag value at initialization time :class: attention Unlike any other flag, the sleep flag has an effect during mjData initialization (mj_makeData or mj_resetData). First, it must be set at initialization time in order for the sleep-init policy to take effect. (MJCF: sleep)"))
 	TOptional<EMjEnable> Sleep;
 
-	/** MJCF: diagexact */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "MJCF: diagexact"))
+	/** This flag enables computation of the exact diagonal of the constraint-space inertia matrix A = J M^{-1} J^T, replacing the body-based approximation normally used. The exact diagonal is computed from the whitened Jacobian Y = J M^{-1/2} as A_{ii} = /|Y_i/|^2. This provides a more accurate impedance computation, which can improve solver quality for models with complex kinematic coupling. (MJCF: diagexact) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flag", meta = (ToolTip = "This flag enables computation of the exact diagonal of the constraint-space inertia matrix A = J M^{-1} J^T, replacing the body-based approximation normally used. The exact diagonal is computed from the whitened Jacobian Y = J M^{-1/2} as A_{ii} = /|Y_i/|^2. This provides a more accurate impedance computation, which can improve solver quality for models with complex kinematic coupling. (MJCF: diagexact)"))
 	TOptional<EMjEnable> Diagexact;
 
 	// --- Blueprint access ---

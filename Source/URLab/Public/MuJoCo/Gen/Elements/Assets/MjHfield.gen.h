@@ -29,28 +29,28 @@ class URLAB_API UMjHfield : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: content_type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "MJCF: content_type"))
+	/** If the file attribute is specified, then this sets the `Media Type <https://www.iana.org/assignments/media-types/media-types.xhtml>`__ (formerly known as MIME types) of the file to be loaded. Any filename extensions will be overloaded. Currently image/png and image/vnd.mujoco.hfield are supported. (MJCF: content_type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "If the file attribute is specified, then this sets the `Media Type <https://www.iana.org/assignments/media-types/media-types.xhtml>`__ (formerly known as MIME types) of the file to be loaded. Any filename extensions will be overloaded. Currently image/png and image/vnd.mujoco.hfield are supported. (MJCF: content_type)"))
 	TOptional<FString> ContentType;
 
-	/** MJCF: file */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "MJCF: file"))
+	/** If this attribute is specified, the elevation data is loaded from the given file. If the file extension is '.png', not case-sensitive, the file is treated as a PNG file. Otherwise it is treated as a binary file in the above custom format. The number of rows and columns in the data are determined from the file contents. (MJCF: file) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "If this attribute is specified, the elevation data is loaded from the given file. If the file extension is '.png', not case-sensitive, the file is treated as a PNG file. Otherwise it is treated as a binary file in the above custom format. The number of rows and columns in the data are determined from the file contents. (MJCF: file)"))
 	TOptional<FString> File;
 
-	/** MJCF: nrow */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "MJCF: nrow"))
+	/** This attribute and the next are used to allocate a height field in mjModel. If the elevation attribute is not set, the elevation data is set to 0. This attribute specifies the number of rows in the elevation data matrix. The default value of 0 means that the data will be loaded from a file, which will be used to infer the size of the matrix. (MJCF: nrow) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "This attribute and the next are used to allocate a height field in mjModel. If the elevation attribute is not set, the elevation data is set to 0. This attribute specifies the number of rows in the elevation data matrix. The default value of 0 means that the data will be loaded from a file, which will be used to infer the size of the matrix. (MJCF: nrow)"))
 	TOptional<int32> Nrow;
 
-	/** MJCF: ncol */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "MJCF: ncol"))
+	/** This attribute specifies the number of columns in the elevation data matrix. (MJCF: ncol) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "This attribute specifies the number of columns in the elevation data matrix. (MJCF: ncol)"))
 	TOptional<int32> Ncol;
 
-	/** MJCF: size */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "MJCF: size"))
+	/** .. figure:: images/XMLreference/peaks.png :width: 350px :align: right The four numbers here are (radius_x, radius_y, elevation_z, base_z). The height field is centered at the referencing geom's local frame. Elevation is in the +Z direction. The first two numbers specify the X and Y extent (or 'radius') of the rectangle over which the height field is defined. (MJCF: size) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = ".. figure:: images/XMLreference/peaks.png :width: 350px :align: right The four numbers here are (radius_x, radius_y, elevation_z, base_z). The height field is centered at the referencing geom's local frame. Elevation is in the +Z direction. The first two numbers specify the X and Y extent (or 'radius') of the rectangle over which the height field is defined. (MJCF: size)"))
 	TArray<double> Size;
 
-	/** flipped and zero-filled (MJCF: elevation) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "flipped and zero-filled (MJCF: elevation)"))
+	/** This attribute specifies the elevation data matrix. Values are automatically normalized to lie between 0 and 1 by first subtracting the minimum value and then dividing by the (maximum-minimum) difference, if not 0. If not provided, values are set to 0. Note that the row order of data in mjModel and mjsHField is flipped w.r.t. the order in XML i.e., it is bottom-to-top. (MJCF: elevation) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Hfield", meta = (ToolTip = "This attribute specifies the elevation data matrix. Values are automatically normalized to lie between 0 and 1 by first subtracting the minimum value and then dividing by the (maximum-minimum) difference, if not 0. If not provided, values are set to 0. Note that the row order of data in mjModel and mjsHField is flipped w.r.t. the order in XML i.e., it is bottom-to-top. (MJCF: elevation)"))
 	TOptional<TArray<double>> Elevation;
 
 	// --- Blueprint access ---

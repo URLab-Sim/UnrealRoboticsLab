@@ -33,32 +33,32 @@ class URLAB_API UMjBodyBase : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: childclass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: childclass", GetOptions = "GetChildclassOptions"))
+	/** If this attribute is present, all descendant elements that admit a defaults class will use the class specified here, unless they specify their own class or another body or frame with a childclass attribute is encountered along the chain of nested bodies and frames. Recall CDefault. (MJCF: childclass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "If this attribute is present, all descendant elements that admit a defaults class will use the class specified here, unless they specify their own class or another body or frame with a childclass attribute is encountered along the chain of nested bodies and frames. Recall CDefault. (MJCF: childclass)", GetOptions = "GetChildclassOptions"))
 	TOptional<FString> Childclass;
 
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: pos"))
+	/** The 3D position of the body frame, in the parent coordinate frame. If undefined it defaults to (0,0,0). (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "The 3D position of the body frame, in the parent coordinate frame. If undefined it defaults to (0,0,0). (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
 	/** MJCF: quat */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: quat"))
 	TOptional<FMjQuatRot> Quat;
 
-	/** MJCF: mocap */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: mocap"))
+	/** If this attribute is 'true', the body is labeled as a mocap body. This is allowed only for bodies that are children of the world body and have no joints. Such bodies are fixed from the viewpoint of the dynamics, but nevertheless the forward kinematics set their position and orientation from the fields mjData.mocap_{pos,quat} at each time step. (MJCF: mocap) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "If this attribute is 'true', the body is labeled as a mocap body. This is allowed only for bodies that are children of the world body and have no joints. Such bodies are fixed from the viewpoint of the dynamics, but nevertheless the forward kinematics set their position and orientation from the fields mjData.mocap_{pos,quat} at each time step. (MJCF: mocap)"))
 	TOptional<bool> Mocap;
 
 	/** MJCF: gravcomp */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: gravcomp"))
 	TOptional<double> Gravcomp;
 
-	/** MJCF: sleep */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: sleep"))
+	/** Sleep policy for the tree under this body. This attribute is only supported by moving bodies which are the root of a kinematic tree. For the default auto, the compiler will set the sleep policy as follows: - A tree which is affected by actuators is not allowed to sleep (overridable). (MJCF: sleep) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "Sleep policy for the tree under this body. This attribute is only supported by moving bodies which are the root of a kinematic tree. For the default auto, the compiler will set the sleep policy as follows: - A tree which is affected by actuators is not allowed to sleep (overridable). (MJCF: sleep)"))
 	TOptional<EMjBodySleep> Sleep;
 
-	/** MJCF: simple */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "MJCF: simple"))
+	/** Controls the simple body optimization. When a body qualifies as 'simple', its inertial matrix block in the mass matrix is diagonal, representing independent translational and rotational degrees of freedom. The optimization omits storing of the zero-valued off-diagonal entries, reducing memory footprint and computation. (MJCF: simple) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Body", meta = (ToolTip = "Controls the simple body optimization. When a body qualifies as 'simple', its inertial matrix block in the mass matrix is diagonal, representing independent translational and rotational degrees of freedom. The optimization omits storing of the zero-valued off-diagonal entries, reducing memory footprint and computation. (MJCF: simple)"))
 	TOptional<EMjSimpleMode> Simple;
 
 	/** MJCF: user */

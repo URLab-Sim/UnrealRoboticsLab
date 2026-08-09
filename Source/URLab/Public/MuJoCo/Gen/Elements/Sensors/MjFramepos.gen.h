@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,20 +58,20 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: objtype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameObject", meta = (ToolTip = "MJCF: objtype"))
+	/** The type of object to which the sensor is attached. This must be an object type that has a spatial frame. 'body' refers to the inertial frame of the body, while 'xbody' refers to the regular frame of the body (usually centered at the joint with the parent body). (MJCF: objtype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameObject", meta = (ToolTip = "The type of object to which the sensor is attached. This must be an object type that has a spatial frame. 'body' refers to the inertial frame of the body, while 'xbody' refers to the regular frame of the body (usually centered at the joint with the parent body). (MJCF: objtype)"))
 	EMjFrameObject Objtype;
 
-	/** MJCF: objname */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameObject", meta = (ToolTip = "MJCF: objname"))
+	/** The name of the object to which the sensor is attached. (MJCF: objname) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameObject", meta = (ToolTip = "The name of the object to which the sensor is attached. (MJCF: objname)"))
 	FString Objname;
 
-	/** MJCF: reftype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameReference", meta = (ToolTip = "MJCF: reftype"))
+	/** The type of object to which the frame-of-reference is attached. The semantics are identical to the objtype attribute. If reftype and refname are given, the sensor values will be measured with respect to this frame. If they are not given, sensor values will be measured with respect to the global frame. (MJCF: reftype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameReference", meta = (ToolTip = "The type of object to which the frame-of-reference is attached. The semantics are identical to the objtype attribute. If reftype and refname are given, the sensor values will be measured with respect to this frame. If they are not given, sensor values will be measured with respect to the global frame. (MJCF: reftype)"))
 	TOptional<EMjFrameObject> Reftype;
 
-	/** MJCF: refname */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameReference", meta = (ToolTip = "MJCF: refname"))
+	/** The name of the object to which the frame-of-reference is attached. (MJCF: refname) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framepos|FrameReference", meta = (ToolTip = "The name of the object to which the frame-of-reference is attached. (MJCF: refname)"))
 	TOptional<FString> Refname;
 
 	// --- Blueprint access ---

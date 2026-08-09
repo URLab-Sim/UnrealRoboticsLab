@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,12 +58,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: site */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
+	/** The site which is projected on to the camera image. (MJCF: site) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection", meta = (ToolTip = "The site which is projected on to the camera image. (MJCF: site)", GetOptions = "GetSiteOptions"))
 	FString Site;
 
-	/** MJCF: camera */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection", meta = (ToolTip = "MJCF: camera", GetOptions = "GetCameraOptions"))
+	/** The camera used for the projection, its resolution attribute must be positive. (MJCF: camera) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Camprojection", meta = (ToolTip = "The camera used for the projection, its resolution attribute must be positive. (MJCF: camera)", GetOptions = "GetCameraOptions"))
 	FString Camera;
 
 	// --- Blueprint access ---

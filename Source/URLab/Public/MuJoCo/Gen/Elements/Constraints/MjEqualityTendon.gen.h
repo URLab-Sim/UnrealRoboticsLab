@@ -29,32 +29,32 @@ class URLAB_API UMjEqualityTendon : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Same as in connect element. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", meta = (ToolTip = "MJCF: active"))
+	/** Same as in connect element. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: active)"))
 	TOptional<bool> ActiveFlag;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** Same as in connect element. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** Same as in connect element. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: tendon1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon", meta = (ToolTip = "MJCF: tendon1", GetOptions = "GetTendon1Options"))
+	/** Name of the first tendon. (MJCF: tendon1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon", meta = (ToolTip = "Name of the first tendon. (MJCF: tendon1)", GetOptions = "GetTendon1Options"))
 	FString Tendon1;
 
-	/** MJCF: tendon2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon", meta = (ToolTip = "MJCF: tendon2", GetOptions = "GetTendon2Options"))
+	/** Name of the second tendon. If this attribute is omitted, the first tendon is fixed to a constant. (MJCF: tendon2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon", meta = (ToolTip = "Name of the second tendon. If this attribute is omitted, the first tendon is fixed to a constant. (MJCF: tendon2)", GetOptions = "GetTendon2Options"))
 	TOptional<FString> Tendon2;
 
-	/** MJCF: polycoef */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon", meta = (ToolTip = "MJCF: polycoef"))
+	/** Same as in the equality/joint element above, but applied to tendon lengths instead of joint positions. (MJCF: polycoef) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityTendon", meta = (ToolTip = "Same as in the equality/joint element above, but applied to tendon lengths instead of joint positions. (MJCF: polycoef)"))
 	TOptional<TArray<double>> Polycoef;
 
 	// --- Blueprint access ---

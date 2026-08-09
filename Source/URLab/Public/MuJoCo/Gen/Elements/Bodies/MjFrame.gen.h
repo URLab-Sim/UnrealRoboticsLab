@@ -32,12 +32,12 @@ class URLAB_API UMjFrame : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: childclass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame", meta = (ToolTip = "MJCF: childclass", GetOptions = "GetChildclassOptions"))
+	/** If this attribute is present, all descendant elements that admit a defaults class will use the class specified here, unless they specify their own class or another frame or body with a childclass attribute is encountered along the chain of nested bodies and frames. Recall CDefault. (MJCF: childclass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame", meta = (ToolTip = "If this attribute is present, all descendant elements that admit a defaults class will use the class specified here, unless they specify their own class or another frame or body with a childclass attribute is encountered along the chain of nested bodies and frames. Recall CDefault. (MJCF: childclass)", GetOptions = "GetChildclassOptions"))
 	TOptional<FString> Childclass;
 
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame", meta = (ToolTip = "MJCF: pos"))
+	/** The 3D position of the frame, in the parent coordinate system. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Frame", meta = (ToolTip = "The 3D position of the frame, in the parent coordinate system. (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
 	/** MJCF: quat */

@@ -33,96 +33,96 @@ class URLAB_API UMjTextureBase : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: type"))
+	/** This attribute determines how the texture is represented and mapped to objects. It also determines which of the remaining attributes are relevant. The keywords have the following meaning: The cube type has the effect of shrink-wrapping a texture cube over an object. Apart from the adjustment provided by the texuniform attribute of material, the process is automatic. (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "This attribute determines how the texture is represented and mapped to objects. It also determines which of the remaining attributes are relevant. The keywords have the following meaning: The cube type has the effect of shrink-wrapping a texture cube over an object. Apart from the adjustment provided by the texuniform attribute of material, the process is automatic. (MJCF: type)"))
 	TOptional<EMjTextureType> Type;
 
-	/** MJCF: colorspace */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: colorspace"))
+	/** This attribute determines the color space of the texture. The default value auto means that the color space will be determined from the image file itself. If no color space is defined in the file, then linear is assumed. (MJCF: colorspace) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "This attribute determines the color space of the texture. The default value auto means that the color space will be determined from the image file itself. If no color space is defined in the file, then linear is assumed. (MJCF: colorspace)"))
 	TOptional<EMjColorSpace> Colorspace;
 
-	/** MJCF: content_type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: content_type"))
+	/** If the file attribute is specified, then this sets the `Media Type <https://www.iana.org/assignments/media-types/media-types.xhtml>`_ (formerly known as MIME types) of the file to be loaded. Any filename extensions will be ignored. Currently image/png, image/ktx, and image/vnd.mujoco.texture are supported. (MJCF: content_type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "If the file attribute is specified, then this sets the `Media Type <https://www.iana.org/assignments/media-types/media-types.xhtml>`_ (formerly known as MIME types) of the file to be loaded. Any filename extensions will be ignored. Currently image/png, image/ktx, and image/vnd.mujoco.texture are supported. (MJCF: content_type)"))
 	TOptional<FString> ContentType;
 
-	/** MJCF: file */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: file"))
+	/** If this attribute is specified, and the builtin attribute below is set to 'none', the texture data is loaded from a single file. See the texturedir attribute of compiler regarding the file path. (MJCF: file) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "If this attribute is specified, and the builtin attribute below is set to 'none', the texture data is loaded from a single file. See the texturedir attribute of compiler regarding the file path. (MJCF: file)"))
 	TOptional<FString> File;
 
-	/** MJCF: gridsize */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: gridsize"))
+	/** When a cube or skybox texture is loaded from a single file, this attribute and the next specify how the six square sides of the texture cube are obtained from the single image. The default setting '1 1' means that the same image is repeated on all sides of the cube. Otherwise the image is interpreted as a grid from which the six sides are extracted. (MJCF: gridsize) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "When a cube or skybox texture is loaded from a single file, this attribute and the next specify how the six square sides of the texture cube are obtained from the single image. The default setting '1 1' means that the same image is repeated on all sides of the cube. Otherwise the image is interpreted as a grid from which the six sides are extracted. (MJCF: gridsize)"))
 	TOptional<TArray<int32>> Gridsize;
 
-	/** length must equal the gridsize product (MJCF: gridlayout) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "length must equal the gridsize product (MJCF: gridlayout)"))
+	/** .. figure:: images/XMLreference/skybox.png :width: 250px :align: right When a cube or skybox texture is loaded from a single file, and the grid size is different from '1 1', this attribute specifies which grid cells are used and which side of the cube they correspond to. (MJCF: gridlayout) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = ".. figure:: images/XMLreference/skybox.png :width: 250px :align: right When a cube or skybox texture is loaded from a single file, and the grid size is different from '1 1', this attribute specifies which grid cells are used and which side of the cube they correspond to. (MJCF: gridlayout)"))
 	TOptional<FString> Gridlayout;
 
-	/** MJCF: fileright */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: fileright"))
+	/** These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileright) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileright)"))
 	TOptional<FString> Fileright;
 
-	/** MJCF: fileleft */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: fileleft"))
+	/** These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileleft) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileleft)"))
 	TOptional<FString> Fileleft;
 
-	/** MJCF: fileup */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: fileup"))
+	/** These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileup) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileup)"))
 	TOptional<FString> Fileup;
 
-	/** MJCF: filedown */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: filedown"))
+	/** These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: filedown) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: filedown)"))
 	TOptional<FString> Filedown;
 
-	/** MJCF: filefront */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: filefront"))
+	/** These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: filefront) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: filefront)"))
 	TOptional<FString> Filefront;
 
-	/** MJCF: fileback */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: fileback"))
+	/** These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileback) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "These attributes are used to load the six sides of a cube or skybox texture from separate files, but only if the file attribute is omitted and the builtin attribute is set to 'none'. If any one of these attributes are omitted, the corresponding side is filled with the color specified by the rgb1 attribute. The coordinate frame here is unusual. (MJCF: fileback)"))
 	TOptional<FString> Fileback;
 
-	/** MJCF: builtin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: builtin"))
+	/** This and the remaining attributes control the generation of procedural textures. If the value of this attribute is different from 'none', the texture is treated as procedural and any file names are ignored. The keywords have the following meaning: gradient Generates a color gradient from rgb1 to rgb2. The interpolation in color space is done through a sigmoid function. (MJCF: builtin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "This and the remaining attributes control the generation of procedural textures. If the value of this attribute is different from 'none', the texture is treated as procedural and any file names are ignored. The keywords have the following meaning: gradient Generates a color gradient from rgb1 to rgb2. The interpolation in color space is done through a sigmoid function. (MJCF: builtin)"))
 	TOptional<EMjTextureBuiltin> Builtin;
 
-	/** MJCF: rgb1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: rgb1"))
+	/** The first color used for procedural texture generation. This color is also used to fill missing sides of cube and skybox textures loaded from files. The components of this and all other RGB(A) vectors should be in the range [0 1]. (MJCF: rgb1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "The first color used for procedural texture generation. This color is also used to fill missing sides of cube and skybox textures loaded from files. The components of this and all other RGB(A) vectors should be in the range [0 1]. (MJCF: rgb1)"))
 	TOptional<FMjVec3> Rgb1;
 
-	/** MJCF: rgb2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: rgb2"))
+	/** The second color used for procedural texture generation. (MJCF: rgb2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "The second color used for procedural texture generation. (MJCF: rgb2)"))
 	TOptional<FMjVec3> Rgb2;
 
-	/** MJCF: mark */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: mark"))
+	/** Procedural textures can be marked with the markrgb color, on top of the colors determined by the builtin type. 'edge' means that the edges of all texture images are marked. 'cross' means that a cross is marked in the middle of each image. 'random' means that randomly chosen pixels are marked. All markings are one-pixel wide, thus the markings appear larger and more diffuse on smaller textures. (MJCF: mark) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "Procedural textures can be marked with the markrgb color, on top of the colors determined by the builtin type. 'edge' means that the edges of all texture images are marked. 'cross' means that a cross is marked in the middle of each image. 'random' means that randomly chosen pixels are marked. All markings are one-pixel wide, thus the markings appear larger and more diffuse on smaller textures. (MJCF: mark)"))
 	TOptional<EMjTextureMark> Mark;
 
-	/** MJCF: markrgb */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: markrgb"))
+	/** The color used for procedural texture markings. (MJCF: markrgb) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "The color used for procedural texture markings. (MJCF: markrgb)"))
 	TOptional<FMjVec3> Markrgb;
 
-	/** MJCF: random */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: random"))
+	/** When the mark attribute is set to 'random', this attribute determines the probability of turning on each pixel. Note that larger textures have more pixels, and the probability here is applied independently to each pixel -- thus the texture size and probability need to be adjusted jointly. Together with a gradient skybox texture, this can create the appearance of a night sky with stars. (MJCF: random) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "When the mark attribute is set to 'random', this attribute determines the probability of turning on each pixel. Note that larger textures have more pixels, and the probability here is applied independently to each pixel -- thus the texture size and probability need to be adjusted jointly. Together with a gradient skybox texture, this can create the appearance of a night sky with stars. (MJCF: random)"))
 	TOptional<double> Random;
 
-	/** MJCF: width */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: width"))
+	/** The width of a procedural texture, i.e., the number of columns in the image. Larger values usually result in higher quality images, although in some cases (e.g. checker patterns) small values are sufficient. For textures loaded from files, this attribute is ignored. (MJCF: width) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "The width of a procedural texture, i.e., the number of columns in the image. Larger values usually result in higher quality images, although in some cases (e.g. checker patterns) small values are sufficient. For textures loaded from files, this attribute is ignored. (MJCF: width)"))
 	TOptional<int32> Width;
 
-	/** MJCF: height */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: height"))
+	/** The height of the procedural texture, i.e., the number of rows in the image. For cube and skybox textures, this attribute is ignored and the height is set to 6 times the width. For textures loaded from files, this attribute is ignored. (MJCF: height) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "The height of the procedural texture, i.e., the number of rows in the image. For cube and skybox textures, this attribute is ignored and the height is set to 6 times the width. For textures loaded from files, this attribute is ignored. (MJCF: height)"))
 	TOptional<int32> Height;
 
-	/** MJCF: hflip */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: hflip"))
+	/** If true, images loaded from file are flipped in the horizontal direction. Does not affect procedural textures. (MJCF: hflip) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "If true, images loaded from file are flipped in the horizontal direction. Does not affect procedural textures. (MJCF: hflip)"))
 	TOptional<bool> Hflip;
 
-	/** MJCF: vflip */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: vflip"))
+	/** If true, images loaded from file are flipped in the vertical direction. Does not affect procedural textures. (MJCF: vflip) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "If true, images loaded from file are flipped in the vertical direction. Does not affect procedural textures. (MJCF: vflip)"))
 	TOptional<bool> Vflip;
 
-	/** MJCF: nchannel */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "MJCF: nchannel"))
+	/** The number of channels in the texture image file. This allows loading 4-channel textures (RGBA) or single-channel textures (e.g., for Physics-Based Rendering properties such as roughness or metallic). (MJCF: nchannel) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Texture", meta = (ToolTip = "The number of channels in the texture image file. This allows loading 4-channel textures (RGBA) or single-channel textures (e.g., for Physics-Based Rendering properties such as roughness or metallic). (MJCF: nchannel)"))
 	TOptional<int32> Nchannel;
 
 	// --- Blueprint access ---

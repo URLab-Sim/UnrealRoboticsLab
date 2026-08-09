@@ -29,60 +29,60 @@ class URLAB_API UMjSize : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** suffixed byte count (MJCF: memory) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "suffixed byte count (MJCF: memory)"))
+	/** This attribute specifies the size of memory allocated for dynamic arrays in the mjData.arena memory space, in bytes. The default setting of -1 instructs the compiler to guess how much space to allocate. Appending the digits with one of the letters {K, M, G, T, P, E} sets the unit to be {kilo, mega, giga, tera, peta, exa}-byte, respectively. (MJCF: memory) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "This attribute specifies the size of memory allocated for dynamic arrays in the mjData.arena memory space, in bytes. The default setting of -1 instructs the compiler to guess how much space to allocate. Appending the digits with one of the letters {K, M, G, T, P, E} sets the unit to be {kilo, mega, giga, tera, peta, exa}-byte, respectively. (MJCF: memory)"))
 	TOptional<FString> Memory;
 
-	/** range/exclusivity checks (MJCF: njmax) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "range/exclusivity checks (MJCF: njmax)"))
+	/** This is a deprecated legacy attribute. It previously determined the maximum allowed number of constraints. Currently it means 'allocate as much memory as would have previously been required for this number of constraints'. Specifying both njmax and memory leads to an error. (MJCF: njmax) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "This is a deprecated legacy attribute. It previously determined the maximum allowed number of constraints. Currently it means 'allocate as much memory as would have previously been required for this number of constraints'. Specifying both njmax and memory leads to an error. (MJCF: njmax)"))
 	TOptional<int32> Njmax;
 
-	/** range check (MJCF: nconmax) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "range check (MJCF: nconmax)"))
+	/** This attribute specifies the maximum number of contacts that will be generated at runtime. If the number of active contacts is about to exceed this value, the extra contacts are discarded and a warning is generated. This is a deprecated legacy attribute which previously affected memory allocation. It is kept for backwards compatibility and debugging purposes. (MJCF: nconmax) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "This attribute specifies the maximum number of contacts that will be generated at runtime. If the number of active contacts is about to exceed this value, the extra contacts are discarded and a warning is generated. This is a deprecated legacy attribute which previously affected memory allocation. It is kept for backwards compatibility and debugging purposes. (MJCF: nconmax)"))
 	TOptional<int32> Nconmax;
 
-	/** range/exclusivity checks (MJCF: nstack) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "range/exclusivity checks (MJCF: nstack)"))
+	/** This is a deprecated legacy attribute. It previously determined the maximum size of the stack. If nstack is specified, then the size of mjData.narena is nstack * sizeof(mjtNum) bytes, plus an additional space for the constraint solver. Specifying both nstack and memory leads to an error. (MJCF: nstack) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "This is a deprecated legacy attribute. It previously determined the maximum size of the stack. If nstack is specified, then the size of mjData.narena is nstack * sizeof(mjtNum) bytes, plus an additional space for the constraint solver. Specifying both nstack and memory leads to an error. (MJCF: nstack)"))
 	TOptional<int32> Nstack;
 
-	/** MJCF: nuserdata */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuserdata"))
+	/** The size of the field mjData.userdata of mjData. This field should be used to store custom dynamic variables. See also CUser. (MJCF: nuserdata) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The size of the field mjData.userdata of mjData. This field should be used to store custom dynamic variables. See also CUser. (MJCF: nuserdata)", ClampMin = "-1"))
 	TOptional<int32> Nuserdata;
 
-	/** MJCF: nkey */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nkey"))
+	/** The number of key frames allocated in mjModel is the larger of this value and the number of key elements below. Note that the interactive simulator has the ability to take snapshots of the system state and save them as key frames. (MJCF: nkey) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of key frames allocated in mjModel is the larger of this value and the number of key elements below. Note that the interactive simulator has the ability to take snapshots of the system state and save them as key frames. (MJCF: nkey)", ClampMin = "-1"))
 	TOptional<int32> Nkey;
 
-	/** MJCF: nuser_body */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_body"))
+	/** The number of custom user parameters added to the definition of each body. See also User parameters. The parameter values are set via the user attribute of the body element. These values are not accessed by MuJoCo. They can be used to define element properties needed in user callbacks and other custom code. (MJCF: nuser_body) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each body. See also User parameters. The parameter values are set via the user attribute of the body element. These values are not accessed by MuJoCo. They can be used to define element properties needed in user callbacks and other custom code. (MJCF: nuser_body)", ClampMin = "-1"))
 	TOptional<int32> NuserBody;
 
-	/** MJCF: nuser_jnt */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_jnt"))
+	/** The number of custom user parameters added to the definition of each joint. (MJCF: nuser_jnt) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each joint. (MJCF: nuser_jnt)", ClampMin = "-1"))
 	TOptional<int32> NuserJnt;
 
-	/** MJCF: nuser_geom */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_geom"))
+	/** The number of custom user parameters added to the definition of each geom. (MJCF: nuser_geom) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each geom. (MJCF: nuser_geom)", ClampMin = "-1"))
 	TOptional<int32> NuserGeom;
 
-	/** MJCF: nuser_site */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_site"))
+	/** The number of custom user parameters added to the definition of each site. (MJCF: nuser_site) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each site. (MJCF: nuser_site)", ClampMin = "-1"))
 	TOptional<int32> NuserSite;
 
-	/** MJCF: nuser_cam */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_cam"))
+	/** The number of custom user parameters added to the definition of each camera. (MJCF: nuser_cam) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each camera. (MJCF: nuser_cam)", ClampMin = "-1"))
 	TOptional<int32> NuserCam;
 
-	/** MJCF: nuser_tendon */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_tendon"))
+	/** The number of custom user parameters added to the definition of each tendon. (MJCF: nuser_tendon) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each tendon. (MJCF: nuser_tendon)", ClampMin = "-1"))
 	TOptional<int32> NuserTendon;
 
-	/** MJCF: nuser_actuator */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_actuator"))
+	/** The number of custom user parameters added to the definition of each actuator. (MJCF: nuser_actuator) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each actuator. (MJCF: nuser_actuator)", ClampMin = "-1"))
 	TOptional<int32> NuserActuator;
 
-	/** MJCF: nuser_sensor */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "MJCF: nuser_sensor"))
+	/** The number of custom user parameters added to the definition of each sensor. (MJCF: nuser_sensor) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Size", meta = (ToolTip = "The number of custom user parameters added to the definition of each sensor. (MJCF: nuser_sensor)", ClampMin = "-1"))
 	TOptional<int32> NuserSensor;
 
 	// --- Blueprint access ---

@@ -29,16 +29,16 @@ class URLAB_API UMjTupleElement : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: objtype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|TupleElement", meta = (ToolTip = "MJCF: objtype"))
+	/** Type of the object being added. (MJCF: objtype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|TupleElement", meta = (ToolTip = "Type of the object being added. (MJCF: objtype)"))
 	FString Objtype;
 
-	/** MJCF: objname */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|TupleElement", meta = (ToolTip = "MJCF: objname"))
+	/** Name of the object being added. The type and name must reference a named MuJoCo element defined somewhere in the model. Tuples can also be referenced (including self-references). (MJCF: objname) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|TupleElement", meta = (ToolTip = "Name of the object being added. The type and name must reference a named MuJoCo element defined somewhere in the model. Tuples can also be referenced (including self-references). (MJCF: objname)"))
 	FString Objname;
 
-	/** MJCF: prm */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|TupleElement", meta = (ToolTip = "MJCF: prm"))
+	/** Real-valued parameter associated with this element of the tuple. Its use is up to the user. (MJCF: prm) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|TupleElement", meta = (ToolTip = "Real-valued parameter associated with this element of the tuple. Its use is up to the user. (MJCF: prm)"))
 	TOptional<double> Prm;
 
 	// --- Blueprint access ---

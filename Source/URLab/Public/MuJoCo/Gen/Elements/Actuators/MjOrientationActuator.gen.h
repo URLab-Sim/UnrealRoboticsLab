@@ -38,32 +38,32 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "MJCF: group"))
 	TOptional<int32> Group;
 
-	/** MJCF: nsample */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "MJCF: nsample"))
+	/** If greater than 0, this attribute creates a time-indexed ring buffer with nsample samples of this actuator's ctrl history. During state advancement, the current control input is appended to the buffer with timestamp time, and the oldest sample is removed. Values in the history buffer can be read via mj_readCtrl. A positive nsample is required for delay. See Delays for details. (MJCF: nsample) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "If greater than 0, this attribute creates a time-indexed ring buffer with nsample samples of this actuator's ctrl history. During state advancement, the current control input is appended to the buffer with timestamp time, and the oldest sample is removed. Values in the history buffer can be read via mj_readCtrl. A positive nsample is required for delay. See Delays for details. (MJCF: nsample)"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
-	/** MJCF: delay */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "MJCF: delay"))
+	/** If greater than 0, then during the forward dynamics, instead of reading the control input to the actuator from mjData.ctrl, the control input is read from the history buffer using mj_readCtrl. Requires a history buffer (nsample > 0). In the most common case, delay = nsample * timestep. (MJCF: delay) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "If greater than 0, then during the forward dynamics, instead of reading the control input to the actuator from mjData.ctrl, the control input is read from the history buffer using mj_readCtrl. Requires a history buffer (nsample > 0). In the most common case, delay = nsample * timestep. (MJCF: delay)"))
 	TOptional<double> Delay;
 
-	/** MJCF: ctrlrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "MJCF: ctrlrange"))
+	/** Range for clamping the control input, as described in ctrlrange. For this multi-input actuator, the same range limits are replicated and applied independently to each of the 3 (expmap) or 4 (quaternion) control inputs in the control block. (MJCF: ctrlrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", meta = (ToolTip = "Range for clamping the control input, as described in ctrlrange. For this multi-input actuator, the same range limits are replicated and applied independently to each of the 3 (expmap) or 4 (quaternion) control inputs in the control block. (MJCF: ctrlrange)"))
 	TOptional<FVector2D> Ctrlrange;
 
 	/** MJCF: user */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator|ActuatorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: forcelimited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: forcelimited"))
+	/** If true, the force output of this actuator is automatically clamped to forcerange at runtime. If false, force clamping is disabled. If 'auto' and autolimits is set in compiler, force clamping will automatically be set to true if forcerange is defined without explicitly setting this attribute to 'true'. (MJCF: forcelimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "If true, the force output of this actuator is automatically clamped to forcerange at runtime. If false, force clamping is disabled. If 'auto' and autolimits is set in compiler, force clamping will automatically be set to true if forcerange is defined without explicitly setting this attribute to 'true'. (MJCF: forcelimited)"))
 	TOptional<EMjTriState> Forcelimited;
 
-	/** MJCF: forcerange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: forcerange"))
+	/** Range for clamping the torque output, as described in forcerange. The torque is clamped on its norm, preserving its direction: the second value bounds the torque magnitude and the first value must be 0. (MJCF: forcerange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "Range for clamping the torque output, as described in forcerange. The torque is clamped on its norm, preserving its direction: the second value bounds the torque magnitude and the first value must be 0. (MJCF: forcerange)"))
 	TOptional<FVector2D> Forcerange;
 
 	/** MJCF: joint */
@@ -74,24 +74,24 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
 	TOptional<FString> Site;
 
-	/** MJCF: refsite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: refsite", GetOptions = "GetRefsiteOptions"))
+	/** When using a site transmission, measure the translation and rotation w.r.t the frame of the refsite. In this case the actuator does have length and position actuators can be used to directly control an end effector, see `refsite.xml <https://github.com/google-deepmind/mujoco/tree/main/test/engine/testdata/actuation/refsite.xml>`__ example model. (MJCF: refsite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "When using a site transmission, measure the translation and rotation w.r.t the frame of the refsite. In this case the actuator does have length and position actuators can be used to directly control an end effector, see `refsite.xml <https://github.com/google-deepmind/mujoco/tree/main/test/engine/testdata/actuation/refsite.xml>`__ example model. (MJCF: refsite)", GetOptions = "GetRefsiteOptions"))
 	TOptional<FString> Refsite;
 
-	/** MJCF: kp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: kp"))
+	/** Position feedback gain, in units of torque per radian of geodesic error. (MJCF: kp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "Position feedback gain, in units of torque per radian of geodesic error. (MJCF: kp)"))
 	TOptional<double> Kp;
 
-	/** MJCF: kv */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: kv"))
+	/** Damping applied by the actuator, per force output. When using this attribute, it is recommended to use the implicitfast or implicit integrators. (MJCF: kv) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "Damping applied by the actuator, per force output. When using this attribute, it is recommended to use the implicitfast or implicit integrators. (MJCF: kv)"))
 	TOptional<double> Kv;
 
-	/** MJCF: dampratio */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: dampratio"))
+	/** Damping applied by the actuator, using damping ratio units, as for position/dampratio. This attribute is exclusive with kv. (MJCF: dampratio) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "Damping applied by the actuator, using damping ratio units, as for position/dampratio. This attribute is exclusive with kv. (MJCF: dampratio)"))
 	TOptional<double> Dampratio;
 
-	/** MJCF: input */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "MJCF: input"))
+	/** `Chart <https://en.wikipedia.org/wiki/Manifold#Charts>`__ of the commanded orientation. With 'expmap' the control block is an exponential-map vector (3 controls, in radians). With 'quat' the control block is a quaternion (4 controls, w-first); (MJCF: input) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|OrientationActuator", meta = (ToolTip = "`Chart <https://en.wikipedia.org/wiki/Manifold#Charts>`__ of the commanded orientation. With 'expmap' the control block is an exponential-map vector (3 controls, in radians). With 'quat' the control block is a quaternion (4 controls, w-first); (MJCF: input)"))
 	TOptional<EMjInputChart> Input;
 
 	// --- Blueprint access ---

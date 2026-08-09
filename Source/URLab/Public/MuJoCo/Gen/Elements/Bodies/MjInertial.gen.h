@@ -30,20 +30,20 @@ class URLAB_API UMjInertial : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "MJCF: pos"))
+	/** Position of the inertial frame. This attribute is required even when the inertial properties can be inferred from geoms. This is because the presence of the inertial element itself disables the automatic inference mechanism. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "Position of the inertial frame. This attribute is required even when the inertial properties can be inferred from geoms. This is because the presence of the inertial element itself disables the automatic inference mechanism. (MJCF: pos)"))
 	FMjPosition3 Pos;
 
-	/** MJCF: quat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "MJCF: quat"))
+	/** Orientation of the inertial frame. See COrientation. (MJCF: quat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "Orientation of the inertial frame. See COrientation. (MJCF: quat)"))
 	TOptional<FMjQuatRot> Quat;
 
-	/** MJCF: mass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "MJCF: mass"))
+	/** Mass of the body. Negative values are not allowed. MuJoCo requires the inertia matrix in generalized coordinates to be positive-definite, which can sometimes be achieved even if some bodies have zero mass. In general however there is no reason to use massless bodies. (MJCF: mass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "Mass of the body. Negative values are not allowed. MuJoCo requires the inertia matrix in generalized coordinates to be positive-definite, which can sometimes be achieved even if some bodies have zero mass. In general however there is no reason to use massless bodies. (MJCF: mass)"))
 	double Mass;
 
-	/** MJCF: diaginertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "MJCF: diaginertia"))
+	/** Diagonal inertia matrix, expressing the body inertia relative to the inertial frame. If this attribute is omitted, the next attribute becomes required. (MJCF: diaginertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Inertial", meta = (ToolTip = "Diagonal inertia matrix, expressing the body inertia relative to the inertial frame. If this attribute is omitted, the next attribute becomes required. (MJCF: diaginertia)"))
 	TOptional<FMjVec3> Diaginertia;
 
 	// --- Blueprint access ---

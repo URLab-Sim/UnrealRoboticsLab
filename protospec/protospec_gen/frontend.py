@@ -884,6 +884,18 @@ class _Frontend:
             annotations["namespace"] = attr.target
         if attr.facets.get("nodefault"):
             annotations["nodefault"] = True
+        # Numeric range facets, carried verbatim. They are the schema's own
+        # statement about admissible values and the only one it makes, so an
+        # editor has somewhere to get an entry field's bounds from other than a
+        # guess. `positive` is a bound with no number: an emitter that wants one
+        # decides what to do with it, because what "greater than zero" becomes
+        # depends on whether the target's clamp is inclusive.
+        if "min" in attr.facets:
+            annotations["min"] = attr.facets["min"]
+        if "max" in attr.facets:
+            annotations["max"] = attr.facets["max"]
+        if attr.facets.get("positive"):
+            annotations["positive"] = True
 
         field = {
             "name": cpp,

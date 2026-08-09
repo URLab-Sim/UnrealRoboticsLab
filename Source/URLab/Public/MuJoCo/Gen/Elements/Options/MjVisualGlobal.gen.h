@@ -29,56 +29,56 @@ class URLAB_API UMjVisualGlobal : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: cameraid */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: cameraid"))
+	/** The id of the camera used when initially loading the model in the visualizer. The default value of -1 means the free camera. In order to specify a modeled camera, use the camera's id as given by mj_name2id. (MJCF: cameraid) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "The id of the camera used when initially loading the model in the visualizer. The default value of -1 means the free camera. In order to specify a modeled camera, use the camera's id as given by mj_name2id. (MJCF: cameraid)"))
 	TOptional<int32> Cameraid;
 
-	/** MJCF: orthographic */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: orthographic"))
+	/** Whether the free camera uses a perspective projection (the default) or an orthographic projection. Setting this attribute changes the semantic of the global/fovy attribute, see below. (MJCF: orthographic) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "Whether the free camera uses a perspective projection (the default) or an orthographic projection. Setting this attribute changes the semantic of the global/fovy attribute, see below. (MJCF: orthographic)"))
 	TOptional<bool> Orthographic;
 
-	/** MJCF: fovy */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: fovy"))
+	/** This attribute specifies the vertical field of view of the free camera, i.e., the camera that is always available in the visualizer even if no cameras are explicitly defined in the model. If the camera uses a perspective projection, the field-of-view is expressed in degrees, regardless of the global compiler/angle setting. (MJCF: fovy) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies the vertical field of view of the free camera, i.e., the camera that is always available in the visualizer even if no cameras are explicitly defined in the model. If the camera uses a perspective projection, the field-of-view is expressed in degrees, regardless of the global compiler/angle setting. (MJCF: fovy)"))
 	TOptional<float> Fovy;
 
-	/** MJCF: ipd */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: ipd"))
+	/** This attribute specifies the inter-pupilary distance of the free camera. It only affects the rendering in stereoscopic mode. The left and right viewpoints are offset by half of this value in the corresponding direction. (MJCF: ipd) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies the inter-pupilary distance of the free camera. It only affects the rendering in stereoscopic mode. The left and right viewpoints are offset by half of this value in the corresponding direction. (MJCF: ipd)"))
 	TOptional<float> Ipd;
 
-	/** MJCF: azimuth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: azimuth"))
+	/** This attribute specifies the initial azimuth of the free camera around the vertical z-axis, in degrees. A value of 0 corresponds to looking in the positive x direction, while the default value of 90 corresponds to looking in the positive y direction. (MJCF: azimuth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies the initial azimuth of the free camera around the vertical z-axis, in degrees. A value of 0 corresponds to looking in the positive x direction, while the default value of 90 corresponds to looking in the positive y direction. (MJCF: azimuth)"))
 	TOptional<float> Azimuth;
 
-	/** MJCF: elevation */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: elevation"))
+	/** This attribute specifies the initial elevation of the free camera with respect to the lookat point. Note that since this is a rotation around a vector parallel to the camera's X-axis (right in pixel space), negative numbers correspond to moving the camera up from the horizontal plane, and vice-versa. (MJCF: elevation) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies the initial elevation of the free camera with respect to the lookat point. Note that since this is a rotation around a vector parallel to the camera's X-axis (right in pixel space), negative numbers correspond to moving the camera up from the horizontal plane, and vice-versa. (MJCF: elevation)"))
 	TOptional<float> Elevation;
 
-	/** MJCF: linewidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: linewidth"))
+	/** This attribute specifies the line-width in the sense of OpenGL. It affects the rendering in wire-frame mode. (MJCF: linewidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies the line-width in the sense of OpenGL. It affects the rendering in wire-frame mode. (MJCF: linewidth)"))
 	TOptional<float> Linewidth;
 
-	/** MJCF: glow */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: glow"))
+	/** The value of this attribute is added to the emission coefficient of all geoms attached to the selected body. As a result, the selected body appears to glow. (MJCF: glow) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "The value of this attribute is added to the emission coefficient of all geoms attached to the selected body. As a result, the selected body appears to glow. (MJCF: glow)"))
 	TOptional<float> Glow;
 
-	/** MJCF: offwidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: offwidth"))
+	/** This and the next attribute specify the size in pixels of the off-screen OpenGL rendering buffer. This attribute specifies the width of the buffer. The size of this buffer can also be adjusted at runtime, but it is usually more convenient to set it in the XML. (MJCF: offwidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This and the next attribute specify the size in pixels of the off-screen OpenGL rendering buffer. This attribute specifies the width of the buffer. The size of this buffer can also be adjusted at runtime, but it is usually more convenient to set it in the XML. (MJCF: offwidth)"))
 	TOptional<int32> Offwidth;
 
-	/** MJCF: offheight */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: offheight"))
+	/** This attribute specifies the height in pixels of the OpenGL off-screen rendering buffer. (MJCF: offheight) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies the height in pixels of the OpenGL off-screen rendering buffer. (MJCF: offheight)"))
 	TOptional<int32> Offheight;
 
-	/** MJCF: realtime */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: realtime"))
+	/** This value sets the initial real-time factor of the model, when loaded in `simulate`. 1: real time. Less than 1: slower than real time. Must be greater than 0. (MJCF: realtime) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This value sets the initial real-time factor of the model, when loaded in `simulate`. 1: real time. Less than 1: slower than real time. Must be greater than 0. (MJCF: realtime)", ClampMin = "0"))
 	TOptional<float> Realtime;
 
-	/** MJCF: ellipsoidinertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: ellipsoidinertia"))
+	/** This attribute specifies how the equivalent inertia is visualized. 'false': use box, 'true': use ellipsoid. (MJCF: ellipsoidinertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies how the equivalent inertia is visualized. 'false': use box, 'true': use ellipsoid. (MJCF: ellipsoidinertia)"))
 	TOptional<bool> Ellipsoidinertia;
 
-	/** MJCF: bvactive */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "MJCF: bvactive"))
+	/** This attribute specifies whether collision and raycasting code should mark elements of Bounding Volume Hierarchies as intersecting, for the purpose of visualization. Setting this attribute to 'false' can speed up simulation for models with high-resolution meshes. (MJCF: bvactive) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualGlobal", meta = (ToolTip = "This attribute specifies whether collision and raycasting code should mark elements of Bounding Volume Hierarchies as intersecting, for the purpose of visualization. Setting this attribute to 'false' can speed up simulation for models with high-resolution meshes. (MJCF: bvactive)"))
 	TOptional<bool> Bvactive;
 
 	// --- Blueprint access ---

@@ -29,20 +29,20 @@ class URLAB_API UMjVisualHeadlight : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: ambient */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "MJCF: ambient"))
+	/** The ambient component of the headlight, in the sense of OpenGL. The alpha component here and in the next two attributes is set to 1 and cannot be adjusted. (MJCF: ambient) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "The ambient component of the headlight, in the sense of OpenGL. The alpha component here and in the next two attributes is set to 1 and cannot be adjusted. (MJCF: ambient)"))
 	TOptional<TArray<float>> Ambient;
 
-	/** MJCF: diffuse */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "MJCF: diffuse"))
+	/** The diffuse component of the headlight, in the sense of OpenGL. (MJCF: diffuse) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "The diffuse component of the headlight, in the sense of OpenGL. (MJCF: diffuse)"))
 	TOptional<TArray<float>> Diffuse;
 
-	/** MJCF: specular */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "MJCF: specular"))
+	/** The specular component of the headlight, in the sense of OpenGL. (MJCF: specular) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "The specular component of the headlight, in the sense of OpenGL. (MJCF: specular)"))
 	TOptional<TArray<float>> Specular;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "MJCF: active"))
+	/** This attribute enables and disables the headlight. A value of 0 means disabled, any other value means enabled. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualHeadlight", meta = (ToolTip = "This attribute enables and disables the headlight. A value of 0 means disabled, any other value means enabled. (MJCF: active)"))
 	TOptional<int32> ActiveFlag;
 
 	// --- Blueprint access ---

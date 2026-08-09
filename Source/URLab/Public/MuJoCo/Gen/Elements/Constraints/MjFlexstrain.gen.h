@@ -30,28 +30,28 @@ class URLAB_API UMjFlexstrain : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Same as in connect element. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", meta = (ToolTip = "MJCF: active"))
+	/** Same as in connect element. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: active)"))
 	TOptional<bool> ActiveFlag;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** Same as in connect element. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** Same as in connect element. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: flex */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain", meta = (ToolTip = "MJCF: flex", GetOptions = "GetFlexOptions"))
+	/** Name of the flex whose strain is being constrained. (MJCF: flex) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain", meta = (ToolTip = "Name of the flex whose strain is being constrained. (MJCF: flex)", GetOptions = "GetFlexOptions"))
 	FString Flex;
 
-	/** MJCF: cell */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain", meta = (ToolTip = "MJCF: cell"))
+	/** 3D grid index (i, j, k) identifying the cell in the flex object. The grid size is specified in the cellcount attribute. (MJCF: cell) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexstrain", meta = (ToolTip = "3D grid index (i, j, k) identifying the cell in the flex object. The grid size is specified in the cellcount attribute. (MJCF: cell)"))
 	TOptional<FMjVec3> Cell;
 
 	// --- Blueprint access ---

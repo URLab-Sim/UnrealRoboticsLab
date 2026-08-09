@@ -29,8 +29,8 @@ class URLAB_API UMjPluginDef : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: plugin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|PluginDef", meta = (ToolTip = "MJCF: plugin"))
+	/** Plugin identifier, used for implicit plugin instantiation. (MJCF: plugin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|PluginDef", meta = (ToolTip = "Plugin identifier, used for implicit plugin instantiation. (MJCF: plugin)"))
 	TOptional<FString> Plugin;
 
 	// --- Blueprint access ---

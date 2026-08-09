@@ -29,20 +29,20 @@ class URLAB_API UMjFlexcompPin : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: id */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "MJCF: id"))
+	/** Zero-based ids of points to pin. When the points are automatically-generated, the user needs to understand their layout in order to decide which points to pin. This can be done by first creating a flexcomp without any pins, loading it in the simulator, and showing the body labels. (MJCF: id) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "Zero-based ids of points to pin. When the points are automatically-generated, the user needs to understand their layout in order to decide which points to pin. This can be done by first creating a flexcomp without any pins, loading it in the simulator, and showing the body labels. (MJCF: id)"))
 	TOptional<TArray<double>> Id;
 
-	/** MJCF: range */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "MJCF: range"))
+	/** Ranges of points to pin. Each range is specified by two integers. (MJCF: range) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "Ranges of points to pin. Each range is specified by two integers. (MJCF: range)"))
 	TOptional<TArray<double>> Range;
 
-	/** MJCF: grid */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "MJCF: grid"))
+	/** Grid coordinates of points to pin. This can only be used with type grid. (MJCF: grid) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "Grid coordinates of points to pin. This can only be used with type grid. (MJCF: grid)"))
 	TOptional<TArray<double>> Grid;
 
-	/** MJCF: gridrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "MJCF: gridrange"))
+	/** Ranges of grid coordinates of points to pin. Each range is specified by (dim) integers for the minimum of the range followed by (dim) integers for the maximum of the range. This can only be used with type grid. (MJCF: gridrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompPin", meta = (ToolTip = "Ranges of grid coordinates of points to pin. Each range is specified by (dim) integers for the minimum of the range followed by (dim) integers for the maximum of the range. This can only be used with type grid. (MJCF: gridrange)"))
 	TOptional<TArray<double>> Gridrange;
 
 	// --- Blueprint access ---

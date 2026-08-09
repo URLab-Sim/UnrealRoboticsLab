@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -46,8 +46,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", meta = (ToolTip = "MJCF: interval"))
 	TOptional<TArray<double>> Interval;
 
-	/** MJCF: cutoff */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", meta = (ToolTip = "MJCF: cutoff"))
+	/** This attribute is ignored. (MJCF: cutoff) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", meta = (ToolTip = "This attribute is ignored. (MJCF: cutoff)"))
 	TOptional<double> Cutoff;
 
 	/** MJCF: noise */
@@ -58,44 +58,44 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: geom1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: geom1", GetOptions = "GetGeom1Options"))
+	/** Name of a geom participating in a contact. See matching above. (MJCF: geom1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a geom participating in a contact. See matching above. (MJCF: geom1)", GetOptions = "GetGeom1Options"))
 	TOptional<FString> Geom1;
 
-	/** MJCF: geom2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: geom2", GetOptions = "GetGeom2Options"))
+	/** Name of a geom participating in a contact. See matching above. (MJCF: geom2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a geom participating in a contact. See matching above. (MJCF: geom2)", GetOptions = "GetGeom2Options"))
 	TOptional<FString> Geom2;
 
-	/** MJCF: body1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: body1", GetOptions = "GetBody1Options"))
+	/** Name of a body participating in a contact. See matching above. (MJCF: body1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a body participating in a contact. See matching above. (MJCF: body1)", GetOptions = "GetBody1Options"))
 	TOptional<FString> Body1;
 
-	/** MJCF: body2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: body2", GetOptions = "GetBody2Options"))
+	/** Name of a body participating in a contact. See matching above. (MJCF: body2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a body participating in a contact. See matching above. (MJCF: body2)", GetOptions = "GetBody2Options"))
 	TOptional<FString> Body2;
 
-	/** MJCF: subtree1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: subtree1", GetOptions = "GetSubtree1Options"))
+	/** Name of a body whose subtree is participating in a contact. See matching above. (MJCF: subtree1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a body whose subtree is participating in a contact. See matching above. (MJCF: subtree1)", GetOptions = "GetSubtree1Options"))
 	TOptional<FString> Subtree1;
 
-	/** MJCF: subtree2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: subtree2", GetOptions = "GetSubtree2Options"))
+	/** Name of a body whose subtree is participating in a contact. See matching above. (MJCF: subtree2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a body whose subtree is participating in a contact. See matching above. (MJCF: subtree2)", GetOptions = "GetSubtree2Options"))
 	TOptional<FString> Subtree2;
 
-	/** MJCF: site */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
+	/** Name of a site within whose volume the contact position must be found in order to match. See matching above. (MJCF: site) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Name of a site within whose volume the contact position must be found in order to match. See matching above. (MJCF: site)", GetOptions = "GetSiteOptions"))
 	TOptional<FString> Site;
 
-	/** MJCF: num */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: num"))
+	/** Number of contacts to report. The sensor will always report num sequential data arrays ('slots') per contact. The order in which contacts are reported depends on the reduce attribute. (MJCF: num) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Number of contacts to report. The sensor will always report num sequential data arrays ('slots') per contact. The order in which contacts are reported depends on the reduce attribute. (MJCF: num)"))
 	TOptional<int32> Num;
 
-	/** MJCF: data */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: data"))
+	/** Specification of which data field(s) to report from the selected contacts. - found real(1): This field serves two purposes. First, it indicates whether a contact was found in this slot, 0 means not found while a positive number means found. Second, the positive value equals the number of matching contacts. (MJCF: data) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Specification of which data field(s) to report from the selected contacts. - found real(1): This field serves two purposes. First, it indicates whether a contact was found in this slot, 0 means not found while a positive number means found. Second, the positive value equals the number of matching contacts. (MJCF: data)"))
 	TOptional<TArray<EMjContactData>> Data;
 
-	/** MJCF: reduce */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "MJCF: reduce"))
+	/** Reduction criterion to use. Also see reduction above. - none: Returns the first num contacts that satisfy the matching criterion, in the order that they appear in mjData.contact. Note that while this is the fastest option, it is also potentially non-deterministic: future changes to collision detection code may cause the identity and order of matching contacts to change. (MJCF: reduce) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SensorContact", meta = (ToolTip = "Reduction criterion to use. Also see reduction above. - none: Returns the first num contacts that satisfy the matching criterion, in the order that they appear in mjData.contact. Note that while this is the fastest option, it is also potentially non-deterministic: future changes to collision detection code may cause the identity and order of matching contacts to change. (MJCF: reduce)"))
 	TOptional<EMjContactReduce> Reduce;
 
 	// --- Blueprint access ---

@@ -30,148 +30,148 @@ class URLAB_API UMjActuatorGeneral : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Active defaults class. See CDefault. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "Active defaults class. See CDefault. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the actuator belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of actuators. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "Integer group to which the actuator belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of actuators. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: nsample */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "MJCF: nsample"))
+	/** If greater than 0, this attribute creates a time-indexed ring buffer with nsample samples of this actuator's ctrl history. During state advancement, the current control input is appended to the buffer with timestamp time, and the oldest sample is removed. Values in the history buffer can be read via mj_readCtrl. A positive nsample is required for delay. See Delays for details. (MJCF: nsample) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "If greater than 0, this attribute creates a time-indexed ring buffer with nsample samples of this actuator's ctrl history. During state advancement, the current control input is appended to the buffer with timestamp time, and the oldest sample is removed. Values in the history buffer can be read via mj_readCtrl. A positive nsample is required for delay. See Delays for details. (MJCF: nsample)"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
-	/** MJCF: delay */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "MJCF: delay"))
+	/** If greater than 0, then during the forward dynamics, instead of reading the control input to the actuator from mjData.ctrl, the control input is read from the history buffer using mj_readCtrl. Requires a history buffer (nsample > 0). In the most common case, delay = nsample * timestep. (MJCF: delay) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "If greater than 0, then during the forward dynamics, instead of reading the control input to the actuator from mjData.ctrl, the control input is read from the history buffer using mj_readCtrl. Requires a history buffer (nsample > 0). In the most common case, delay = nsample * timestep. (MJCF: delay)"))
 	TOptional<double> Delay;
 
-	/** MJCF: ctrlrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "MJCF: ctrlrange"))
+	/** Range for clamping the control input. The first value must be smaller than the second value. Setting this attribute without specifying ctrllimited is an error if autolimits is 'false' in compiler. (MJCF: ctrlrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", meta = (ToolTip = "Range for clamping the control input. The first value must be smaller than the second value. Setting this attribute without specifying ctrllimited is an error if autolimits is 'false' in compiler. (MJCF: ctrlrange)"))
 	TOptional<FVector2D> Ctrlrange;
 
 	/** MJCF: user */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: ctrllimited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: ctrllimited"))
+	/** If true, the control input to this actuator is automatically clamped to ctrlrange at runtime. If false, control input clamping is disabled. If 'auto' and autolimits is set in compiler, control clamping will automatically be set to true if ctrlrange is defined without explicitly setting this attribute to 'true'. (MJCF: ctrllimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "If true, the control input to this actuator is automatically clamped to ctrlrange at runtime. If false, control input clamping is disabled. If 'auto' and autolimits is set in compiler, control clamping will automatically be set to true if ctrlrange is defined without explicitly setting this attribute to 'true'. (MJCF: ctrllimited)"))
 	TOptional<EMjTriState> Ctrllimited;
 
-	/** MJCF: forcelimited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: forcelimited"))
+	/** If true, the force output of this actuator is automatically clamped to forcerange at runtime. If false, force clamping is disabled. If 'auto' and autolimits is set in compiler, force clamping will automatically be set to true if forcerange is defined without explicitly setting this attribute to 'true'. (MJCF: forcelimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "If true, the force output of this actuator is automatically clamped to forcerange at runtime. If false, force clamping is disabled. If 'auto' and autolimits is set in compiler, force clamping will automatically be set to true if forcerange is defined without explicitly setting this attribute to 'true'. (MJCF: forcelimited)"))
 	TOptional<EMjTriState> Forcelimited;
 
-	/** MJCF: actlimited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: actlimited"))
+	/** If true, the internal state (activation) associated with this actuator is automatically clamped to actrange at runtime. If false, activation clamping is disabled. If 'auto' and autolimits is set in compiler, activation clamping will automatically be set to true if actrange is defined without explicitly setting this attribute to 'true'. See the Activation clamping section for more details. (MJCF: actlimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "If true, the internal state (activation) associated with this actuator is automatically clamped to actrange at runtime. If false, activation clamping is disabled. If 'auto' and autolimits is set in compiler, activation clamping will automatically be set to true if actrange is defined without explicitly setting this attribute to 'true'. See the Activation clamping section for more details. (MJCF: actlimited)"))
 	TOptional<EMjTriState> Actlimited;
 
-	/** MJCF: forcerange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: forcerange"))
+	/** Range for clamping the force output. The first value must be no greater than the second value. On orientation actuators the force is a 3D torque, clamped on its norm: the second value bounds the torque magnitude and the first value must be 0. Setting this attribute without specifying forcelimited is an error if autolimits is 'false' in compiler. (MJCF: forcerange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Range for clamping the force output. The first value must be no greater than the second value. On orientation actuators the force is a 3D torque, clamped on its norm: the second value bounds the torque magnitude and the first value must be 0. Setting this attribute without specifying forcelimited is an error if autolimits is 'false' in compiler. (MJCF: forcerange)"))
 	TOptional<FVector2D> Forcerange;
 
-	/** MJCF: actrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: actrange"))
+	/** Range for clamping the activation state. The first value must be no greater than the second value. See the Activation clamping section for more details. Setting this attribute without specifying actlimited is an error if autolimits is 'false' in compiler. (MJCF: actrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Range for clamping the activation state. The first value must be no greater than the second value. See the Activation clamping section for more details. Setting this attribute without specifying actlimited is an error if autolimits is 'false' in compiler. (MJCF: actrange)"))
 	TOptional<FVector2D> Actrange;
 
-	/** MJCF: lengthrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "MJCF: lengthrange"))
+	/** Range of feasible lengths of the actuator's transmission. See Length Range. (MJCF: lengthrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "Range of feasible lengths of the actuator's transmission. See Length Range. (MJCF: lengthrange)"))
 	TOptional<FVector2D> Lengthrange;
 
-	/** MJCF: gear */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "MJCF: gear"))
+	/** This attribute scales the length (and consequently moment arms, velocity and force) of the actuator, for all transmission types. It is different from the gain in the force generation mechanism, because the gain only scales the force output and does not affect the length, moment arms and velocity. For actuators with scalar transmission, only the first element of this vector is used. (MJCF: gear) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "This attribute scales the length (and consequently moment arms, velocity and force) of the actuator, for all transmission types. It is different from the gain in the force generation mechanism, because the gain only scales the force output and does not affect the length, moment arms and velocity. For actuators with scalar transmission, only the first element of this vector is used. (MJCF: gear)"))
 	TOptional<TArray<double>> Gear;
 
-	/** damper polynomial, 1+mjNPOLY coefficients (MJCF: damping) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "damper polynomial, 1+mjNPOLY coefficients (MJCF: damping)"))
+	/** Viscous damping coefficients, contributed by the actuator to its transmission target (joint or tendon only). The damping value is scaled by gear squared, because the gear ratio scales both forces and velocities, leading to reflected damping (analogous to reflected inertia). Like joint damping, coefficients correspond to linear, quadratic and cubic velocity. See Polynomial forces for details. (MJCF: damping) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "Viscous damping coefficients, contributed by the actuator to its transmission target (joint or tendon only). The damping value is scaled by gear squared, because the gear ratio scales both forces and velocities, leading to reflected damping (analogous to reflected inertia). Like joint damping, coefficients correspond to linear, quadratic and cubic velocity. See Polynomial forces for details. (MJCF: damping)"))
 	TOptional<TArray<double>> Damping;
 
-	/** MJCF: armature */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "MJCF: armature"))
+	/** Armature inertia (or mass for slider joints) contributed by the actuator to its transmission target (joint or tendon only). This is the actual inertia of the spinning element inside the actuator (e.g., a rotor). (MJCF: armature) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "Armature inertia (or mass for slider joints) contributed by the actuator to its transmission target (joint or tendon only). This is the actual inertia of the spinning element inside the actuator (e.g., a rotor). (MJCF: armature)"))
 	TOptional<double> Armature;
 
-	/** slidercrank-only, validated (MJCF: cranklength) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "slidercrank-only, validated (MJCF: cranklength)"))
+	/** Used only for the slider-crank transmission type. Specifies the length of the connecting rod. The compiler expects this value to be positive when a slider-crank transmission is present. (MJCF: cranklength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|ActuatorDynamics", meta = (ToolTip = "Used only for the slider-crank transmission type. Specifies the length of the connecting rod. The compiler expects this value to be positive when a slider-crank transmission is present. (MJCF: cranklength)"))
 	TOptional<double> Cranklength;
 
-	/** MJCF: joint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: joint", GetOptions = "GetJointOptions"))
+	/** This and the next four attributes determine the type of actuator transmission. All of them are optional, and exactly one of them must be specified. If this attribute is specified, the actuator acts on the given joint. For hinge and slide joints, the actuator length equals the joint position/angle times the first element of gear. (MJCF: joint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "This and the next four attributes determine the type of actuator transmission. All of them are optional, and exactly one of them must be specified. If this attribute is specified, the actuator acts on the given joint. For hinge and slide joints, the actuator length equals the joint position/angle times the first element of gear. (MJCF: joint)", GetOptions = "GetJointOptions"))
 	TOptional<FString> Joint;
 
-	/** MJCF: jointinparent */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: jointinparent"))
+	/** Identical to joint, except that for ball and free joints, the 3d rotation axis given by gear is defined in the parent frame (which is the world frame for free joints) rather than the child frame. (MJCF: jointinparent) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "Identical to joint, except that for ball and free joints, the 3d rotation axis given by gear is defined in the parent frame (which is the world frame for free joints) rather than the child frame. (MJCF: jointinparent)"))
 	TOptional<FString> Jointinparent;
 
-	/** MJCF: tendon */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: tendon", GetOptions = "GetTendonOptions"))
+	/** If specified, the actuator acts on the given tendon. The actuator length equals the tendon length times the gear ratio. Both spatial and fixed tendons can be used. (MJCF: tendon) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "If specified, the actuator acts on the given tendon. The actuator length equals the tendon length times the gear ratio. Both spatial and fixed tendons can be used. (MJCF: tendon)", GetOptions = "GetTendonOptions"))
 	TOptional<FString> Tendon;
 
-	/** MJCF: slidersite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: slidersite", GetOptions = "GetSlidersiteOptions"))
+	/** Used only for the slider-crank transmission type. The specified site is the pin joining the slider and the connecting rod. The slider moves along the z-axis of the slidersite frame. Therefore the site should be oriented as needed when it is defined in the kinematic tree; its orientation cannot be changed in the actuator definition. (MJCF: slidersite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "Used only for the slider-crank transmission type. The specified site is the pin joining the slider and the connecting rod. The slider moves along the z-axis of the slidersite frame. Therefore the site should be oriented as needed when it is defined in the kinematic tree; its orientation cannot be changed in the actuator definition. (MJCF: slidersite)", GetOptions = "GetSlidersiteOptions"))
 	TOptional<FString> Slidersite;
 
-	/** MJCF: cranksite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: cranksite", GetOptions = "GetCranksiteOptions"))
+	/** If specified, the actuator acts on a slider-crank mechanism which is implicitly determined by the actuator (i.e., it is not a separate model element). The specified site corresponds to the pin joining the crank and the connecting rod. The actuator length equals the position of the slider-crank mechanism times the gear ratio. (MJCF: cranksite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "If specified, the actuator acts on a slider-crank mechanism which is implicitly determined by the actuator (i.e., it is not a separate model element). The specified site corresponds to the pin joining the crank and the connecting rod. The actuator length equals the position of the slider-crank mechanism times the gear ratio. (MJCF: cranksite)", GetOptions = "GetCranksiteOptions"))
 	TOptional<FString> Cranksite;
 
-	/** MJCF: site */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
+	/** This transmission can apply force and torque at a site. The gear vector defines a 3d translation axis followed by a 3d rotation axis. Both are defined in the site's frame. This can be used to model jets and propellers. The effect is similar to actuating a free joint, and the actuator length is defined as zero unless a refsite is defined (see below). (MJCF: site) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "This transmission can apply force and torque at a site. The gear vector defines a 3d translation axis followed by a 3d rotation axis. Both are defined in the site's frame. This can be used to model jets and propellers. The effect is similar to actuating a free joint, and the actuator length is defined as zero unless a refsite is defined (see below). (MJCF: site)", GetOptions = "GetSiteOptions"))
 	TOptional<FString> Site;
 
-	/** MJCF: refsite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "MJCF: refsite", GetOptions = "GetRefsiteOptions"))
+	/** When using a site transmission, measure the translation and rotation w.r.t the frame of the refsite. In this case the actuator does have length and position actuators can be used to directly control an end effector, see `refsite.xml <https://github.com/google-deepmind/mujoco/tree/main/test/engine/testdata/actuation/refsite.xml>`__ example model. (MJCF: refsite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral|Transmission", meta = (ToolTip = "When using a site transmission, measure the translation and rotation w.r.t the frame of the refsite. In this case the actuator does have length and position actuators can be used to directly control an end effector, see `refsite.xml <https://github.com/google-deepmind/mujoco/tree/main/test/engine/testdata/actuation/refsite.xml>`__ example model. (MJCF: refsite)", GetOptions = "GetRefsiteOptions"))
 	TOptional<FString> Refsite;
 
-	/** transmission target (MJCF: body) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "transmission target (MJCF: body)", GetOptions = "GetBodyOptions"))
+	/** This transmission can apply linear forces at contact points in the direction of the contact normal. The set of contacts is all those belonging to the specified body. This can be used to model natural active adhesion mechanisms like the feet of geckos and insects. The actuator length is again defined as zero. For more information, see the adhesion shortcut below. (MJCF: body) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "This transmission can apply linear forces at contact points in the direction of the contact normal. The set of contacts is all those belonging to the specified body. This can be used to model natural active adhesion mechanisms like the feet of geckos and insects. The actuator length is again defined as zero. For more information, see the adhesion shortcut below. (MJCF: body)", GetOptions = "GetBodyOptions"))
 	TOptional<FString> Body;
 
-	/** saved default depends on dyntype (MJCF: actdim) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "saved default depends on dyntype (MJCF: actdim)"))
+	/** Dimension of the activation state. The default value of -1 instructs the compiler to set the dimension according to the dyntype. Values larger than 1 are only allowed for user-defined activation dynamics, as native types require dimensions of only 0 or 1. For activation dimensions bigger than 1, the last element is used to generate force. (MJCF: actdim) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Dimension of the activation state. The default value of -1 instructs the compiler to set the dimension according to the dyntype. Values larger than 1 are only allowed for user-defined activation dynamics, as native types require dimensions of only 0 or 1. For activation dimensions bigger than 1, the last element is used to generate force. (MJCF: actdim)"))
 	TOptional<int32> Actdim;
 
-	/** so3 chart keyword, or servo token subset (MJCF: input) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "so3 chart keyword, or servo token subset (MJCF: input)"))
+	/** Input signature of the actuator: which controls make up its control block, recorded in mjModel.actuator_ctrlspec. For gaintype 'so3' it selects the orientation chart: 'expmap' (3 controls, the default) or 'quat' (4 controls); see orientation/input. For gaintype 'pid' it is a token list selecting the input subset; see pid/input. (MJCF: input) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Input signature of the actuator: which controls make up its control block, recorded in mjModel.actuator_ctrlspec. For gaintype 'so3' it selects the orientation chart: 'expmap' (3 controls, the default) or 'quat' (4 controls); see orientation/input. For gaintype 'pid' it is a token list selecting the input subset; see pid/input. (MJCF: input)"))
 	TOptional<EMjInputChart> Input;
 
-	/** MJCF: velrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: velrange"))
+	/** Range of the velocity-setpoint input of a pid actuator. (MJCF: velrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Range of the velocity-setpoint input of a pid actuator. (MJCF: velrange)"))
 	TOptional<FVector2D> Velrange;
 
-	/** MJCF: ffrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: ffrange"))
+	/** Range of the feedforward input of a pid actuator. (MJCF: ffrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Range of the feedforward input of a pid actuator. (MJCF: ffrange)"))
 	TOptional<FVector2D> Ffrange;
 
-	/** MJCF: dyntype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: dyntype"))
+	/** Activation dynamics type for the actuator. The available dynamics types were already described in the Actuation model section. Repeating that description in somewhat different notation (corresponding to the mjModel and mjData fields involved) we have: ============= ====================================== Keyword Description ============= ====================================== none No internal st... (MJCF: dyntype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Activation dynamics type for the actuator. The available dynamics types were already described in the Actuation model section. Repeating that description in somewhat different notation (corresponding to the mjModel and mjData fields involved) we have: ============= ====================================== Keyword Description ============= ====================================== none No internal st... (MJCF: dyntype)"))
 	TOptional<EMjDynType> Dyntype;
 
-	/** gain/bias family is not (MJCF: gaintype) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "gain/bias family is not (MJCF: gaintype)"))
+	/** The gain and bias together determine the output of the force generation mechanism, which is currently assumed to be affine. As already explained in Actuation model, the general formula is: scalar_force = gain_term / (act or ctrl) + bias_term. The formula uses the activation state when present, and the control otherwise. (MJCF: gaintype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "The gain and bias together determine the output of the force generation mechanism, which is currently assumed to be affine. As already explained in Actuation model, the general formula is: scalar_force = gain_term / (act or ctrl) + bias_term. The formula uses the activation state when present, and the control otherwise. (MJCF: gaintype)"))
 	TOptional<EMjGainType> Gaintype;
 
-	/** saved for plugin actuators (MJCF: biastype) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "saved for plugin actuators (MJCF: biastype)"))
+	/** The keywords have the following meaning: ======= ================================================================ Keyword Description ======= ================================================================ none bias_term = 0 affine bias_term = biasprm[0] + biasprm[1]length + biasprm[2]velocity muscle bias_term = mju_muscleBias(...) so3 damping term of the geodesic orientation servo, see orient... (MJCF: biastype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "The keywords have the following meaning: ======= ================================================================ Keyword Description ======= ================================================================ none bias_term = 0 affine bias_term = biasprm[0] + biasprm[1]length + biasprm[2]velocity muscle bias_term = mju_muscleBias(...) so3 damping term of the geodesic orientation servo, see orient... (MJCF: biastype)"))
 	TOptional<EMjBiasType> Biastype;
 
-	/** MJCF: dynprm */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: dynprm"))
+	/** Activation dynamics parameters. The built-in activation types (except for muscle) use only the first parameter, but we provide additional parameters in case user callbacks implement a more elaborate model. The length of this array is not enforced by the parser, so the user can enter as many parameters as needed. These defaults are not compatible with muscle actuators; see muscle below. (MJCF: dynprm) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Activation dynamics parameters. The built-in activation types (except for muscle) use only the first parameter, but we provide additional parameters in case user callbacks implement a more elaborate model. The length of this array is not enforced by the parser, so the user can enter as many parameters as needed. These defaults are not compatible with muscle actuators; see muscle below. (MJCF: dynprm)"))
 	TOptional<TArray<double>> Dynprm;
 
-	/** MJCF: gainprm */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: gainprm"))
+	/** Gain parameters. The built-in gain types (except for muscle) use only the first parameter, but we provide additional parameters in case user callbacks implement a more elaborate model. The length of this array is not enforced by the parser, so the user can enter as many parameters as needed. These defaults are not compatible with muscle actuators; see muscle below. (MJCF: gainprm) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Gain parameters. The built-in gain types (except for muscle) use only the first parameter, but we provide additional parameters in case user callbacks implement a more elaborate model. The length of this array is not enforced by the parser, so the user can enter as many parameters as needed. These defaults are not compatible with muscle actuators; see muscle below. (MJCF: gainprm)"))
 	TOptional<TArray<double>> Gainprm;
 
-	/** MJCF: biasprm */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: biasprm"))
+	/** Bias parameters. The affine bias type uses three parameters. The length of this array is not enforced by the parser, so the user can enter as many parameters as needed. These defaults are not compatible with muscle actuators; see muscle below. (MJCF: biasprm) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "Bias parameters. The affine bias type uses three parameters. The length of this array is not enforced by the parser, so the user can enter as many parameters as needed. These defaults are not compatible with muscle actuators; see muscle below. (MJCF: biasprm)"))
 	TOptional<TArray<double>> Biasprm;
 
-	/** MJCF: actearly */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "MJCF: actearly"))
+	/** If true, force computation will use the next value of the activation variable rather than the current one. Setting this flag reduces the delay between the control and accelerations by one time-step. (MJCF: actearly) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|ActuatorGeneral", meta = (ToolTip = "If true, force computation will use the next value of the activation variable rather than the current one. Setting this flag reduces the delay between the control and accelerations by one time-step. (MJCF: actearly)"))
 	TOptional<bool> Actearly;
 
 	// --- Blueprint access ---

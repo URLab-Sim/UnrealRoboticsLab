@@ -29,12 +29,12 @@ class URLAB_API UMjNumeric : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: size */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Numeric", meta = (ToolTip = "MJCF: size"))
+	/** If specified this attribute sets the size of the data array, in doubles. If this attribute is not specified, the size will be inferred from the actual data array below. (MJCF: size) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Numeric", meta = (ToolTip = "If specified this attribute sets the size of the data array, in doubles. If this attribute is not specified, the size will be inferred from the actual data array below. (MJCF: size)"))
 	TOptional<int32> Size;
 
-	/** MJCF: data */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Numeric", meta = (ToolTip = "MJCF: data"))
+	/** Numeric data to be copied into mjModel. If size is specified, the length of the array given here cannot exceed the specified size. If the length of the array is smaller, the missing components are set to 0. Note that custom arrays can be created for storing information at runtime - which is why data initialization is optional. It becomes required only when the array size is omitted. (MJCF: data) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Numeric", meta = (ToolTip = "Numeric data to be copied into mjModel. If size is specified, the length of the array given here cannot exceed the specified size. If the length of the array is smaller, the missing components are set to 0. Note that custom arrays can be created for storing information at runtime - which is why data initialization is optional. It becomes required only when the array size is omitted. (MJCF: data)"))
 	TOptional<FString> Data;
 
 	// --- Blueprint access ---

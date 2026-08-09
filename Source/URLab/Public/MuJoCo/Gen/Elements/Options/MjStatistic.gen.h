@@ -30,24 +30,24 @@ class URLAB_API UMjStatistic : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: meaninertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "MJCF: meaninertia"))
+	/** If this attribute is specified, it replaces the value of mjModel.stat.meaninertia computed by the compiler. The computed value is the average diagonal element of the joint-space inertia matrix when the model is in qpos0. At runtime this value scales the solver cost and gradient used for early termination. (MJCF: meaninertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "If this attribute is specified, it replaces the value of mjModel.stat.meaninertia computed by the compiler. The computed value is the average diagonal element of the joint-space inertia matrix when the model is in qpos0. At runtime this value scales the solver cost and gradient used for early termination. (MJCF: meaninertia)"))
 	TOptional<double> Meaninertia;
 
-	/** MJCF: meanmass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "MJCF: meanmass"))
+	/** If this attribute is specified, it replaces the value of mjModel.stat.meanmass computed by the compiler. The computed value is the average body mass, not counting the massless world body. At runtime this value scales the perturbation force. (MJCF: meanmass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "If this attribute is specified, it replaces the value of mjModel.stat.meanmass computed by the compiler. The computed value is the average body mass, not counting the massless world body. At runtime this value scales the perturbation force. (MJCF: meanmass)"))
 	TOptional<double> Meanmass;
 
-	/** MJCF: meansize */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "MJCF: meansize"))
+	/** If this attribute is specified, it replaces the value of mjModel.stat.meansize computed by the compiler. At runtime this value multiplies the attributes of the scale element above, and acts as their length unit. If specific lengths are desired, it can be convenient to set meansize to a round number like 1 or 0.01 so that scale values are in recognized length units. (MJCF: meansize) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "If this attribute is specified, it replaces the value of mjModel.stat.meansize computed by the compiler. At runtime this value multiplies the attributes of the scale element above, and acts as their length unit. If specific lengths are desired, it can be convenient to set meansize to a round number like 1 or 0.01 so that scale values are in recognized length units. (MJCF: meansize)"))
 	TOptional<double> Meansize;
 
-	/** when defined (MJCF: extent) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "when defined (MJCF: extent)"))
+	/** If this attribute is specified, it replaces the value of mjModel.stat.extent computed by the compiler. The computed value is half the side of the bounding box of the model in the initial configuration. At runtime this value is multiplied by some of the attributes of the map element above. (MJCF: extent) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "If this attribute is specified, it replaces the value of mjModel.stat.extent computed by the compiler. The computed value is half the side of the bounding box of the model in the initial configuration. At runtime this value is multiplied by some of the attributes of the map element above. (MJCF: extent)", ClampMin = "0"))
 	TOptional<double> Extent;
 
-	/** MJCF: center */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "MJCF: center"))
+	/** If this attribute is specified, it replaces the value of mjModel.stat.center computed by the compiler. The computed value is the center of the bounding box of the entire model in the initial configuration. This 3D vector is used to center the view of the free camera when the model is first loaded. (MJCF: center) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Statistic", meta = (ToolTip = "If this attribute is specified, it replaces the value of mjModel.stat.center computed by the compiler. The computed value is the center of the bounding box of the entire model in the initial configuration. This 3D vector is used to center the view of the free camera when the model is first loaded. (MJCF: center)"))
 	TOptional<FMjPosition3> Center;
 
 	// --- Blueprint access ---

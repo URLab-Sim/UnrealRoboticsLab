@@ -74,8 +74,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Fixed", meta = (ToolTip = "MJCF: frictionloss"))
 	TOptional<double> Frictionloss;
 
-	/** one value: copied to both (MJCF: springlength) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Fixed", meta = (ToolTip = "one value: copied to both (MJCF: springlength)"))
+	/** Spring resting position, can take either one or two values. If one value is given, it corresponds to the length of the tendon at rest. If it is -1, the tendon resting length is determined from the model reference configuration in mjModel.qpos0. (MJCF: springlength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Fixed", meta = (ToolTip = "Spring resting position, can take either one or two values. If one value is given, it corresponds to the length of the tendon at rest. If it is -1, the tendon resting length is determined from the model reference configuration in mjModel.qpos0. (MJCF: springlength)"))
 	TOptional<TArray<double>> Springlength;
 
 	/** MJCF: margin */

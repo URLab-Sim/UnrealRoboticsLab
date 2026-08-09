@@ -30,24 +30,24 @@ class URLAB_API UMjSkinBone : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: body */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "MJCF: body", GetOptions = "GetBodyOptions"))
+	/** Name of the body corresponding to this bone. (MJCF: body) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "Name of the body corresponding to this bone. (MJCF: body)", GetOptions = "GetBodyOptions"))
 	FString Body;
 
-	/** MJCF: bindpos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "MJCF: bindpos"))
+	/** Global body position corresponding to the bind pose. (MJCF: bindpos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "Global body position corresponding to the bind pose. (MJCF: bindpos)"))
 	TOptional<FMjPosition3> Bindpos;
 
-	/** MJCF: bindquat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "MJCF: bindquat"))
+	/** Global body orientation corresponding to the bind pose. (MJCF: bindquat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "Global body orientation corresponding to the bind pose. (MJCF: bindquat)"))
 	TOptional<FMjQuatRot> Bindquat;
 
-	/** MJCF: vertid */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "MJCF: vertid"))
+	/** Integer indices of the vertices influenced by this bone. The vertex index corresponds to the order of the vertex in the skin mesh. The number of vertex indices specified here (nvert) must equal the number of vertex weights specified with the next attribute. The same vertex may be influenced by multiple bones, and each vertex must be influenced by at least one bone. (MJCF: vertid) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "Integer indices of the vertices influenced by this bone. The vertex index corresponds to the order of the vertex in the skin mesh. The number of vertex indices specified here (nvert) must equal the number of vertex weights specified with the next attribute. The same vertex may be influenced by multiple bones, and each vertex must be influenced by at least one bone. (MJCF: vertid)"))
 	TOptional<TArray<double>> Vertid;
 
-	/** MJCF: vertweight */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "MJCF: vertweight"))
+	/** Weights for the vertices influenced by this bone, in the same order as the vertex indices. Negative weights are allowed (which is needed for cubic interpolation for example) however the sum of all bone weights for a given vertex must be positive. (MJCF: vertweight) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SkinBone", meta = (ToolTip = "Weights for the vertices influenced by this bone, in the same order as the vertex indices. Negative weights are allowed (which is needed for cubic interpolation for example) however the sum of all bone weights for a given vertex must be positive. (MJCF: vertweight)"))
 	TOptional<TArray<double>> Vertweight;
 
 	// --- Blueprint access ---

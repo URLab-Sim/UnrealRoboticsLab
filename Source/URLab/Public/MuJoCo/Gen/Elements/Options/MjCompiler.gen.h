@@ -30,88 +30,88 @@ class URLAB_API UMjCompiler : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: autolimits */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: autolimits"))
+	/** This attribute affects the behavior of attributes such as 'limited' (on <body-joint> or <tendon>), 'forcelimited', 'ctrllimited', and 'actlimited' (on <actuator>). If 'true', these attributes are unnecessary and their value will be inferred from the presence of their corresponding 'range' attribute. (MJCF: autolimits) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute affects the behavior of attributes such as 'limited' (on <body-joint> or <tendon>), 'forcelimited', 'ctrllimited', and 'actlimited' (on <actuator>). If 'true', these attributes are unnecessary and their value will be inferred from the presence of their corresponding 'range' attribute. (MJCF: autolimits)"))
 	TOptional<bool> Autolimits;
 
-	/** MJCF: boundmass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: boundmass"))
+	/** This attribute imposes a lower bound on the mass of each body except for the world body. Setting this attribute to a value greater than 0 can be used as a quick fix for poorly designed models that contain massless moving bodies, such as the dummy bodies often used in URDF models to attach sensors. Note that in MuJoCo there is no need to create dummy bodies. (MJCF: boundmass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute imposes a lower bound on the mass of each body except for the world body. Setting this attribute to a value greater than 0 can be used as a quick fix for poorly designed models that contain massless moving bodies, such as the dummy bodies often used in URDF models to attach sensors. Note that in MuJoCo there is no need to create dummy bodies. (MJCF: boundmass)"))
 	TOptional<double> Boundmass;
 
-	/** MJCF: boundinertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: boundinertia"))
+	/** This attribute imposes a lower bound on the diagonal inertia components of each body except for the world body. Its use is similar to boundmass above. (MJCF: boundinertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute imposes a lower bound on the diagonal inertia components of each body except for the world body. Its use is similar to boundmass above. (MJCF: boundinertia)"))
 	TOptional<double> Boundinertia;
 
-	/** MJCF: settotalmass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: settotalmass"))
+	/** If this value is positive, the compiler will scale the masses and inertias of all bodies in the model, so that the total mass equals the value specified here. The world body has mass 0 and does not participate in any mass-related computations. This scaling is performed last, after all other operations affecting the body mass and inertia. (MJCF: settotalmass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "If this value is positive, the compiler will scale the masses and inertias of all bodies in the model, so that the total mass equals the value specified here. The world body has mass 0 and does not participate in any mass-related computations. This scaling is performed last, after all other operations affecting the body mass and inertia. (MJCF: settotalmass)"))
 	TOptional<double> Settotalmass;
 
-	/** MJCF: balanceinertia */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: balanceinertia"))
+	/** A valid diagonal inertia matrix must satisfy A+B>=C for all permutations of the three diagonal elements. Some poorly designed models violate this constraint, which will normally result in a compile error. If this attribute is set to 'true', the compiler will silently set all three diagonal elements to their average value whenever the above condition is violated. (MJCF: balanceinertia) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "A valid diagonal inertia matrix must satisfy A+B>=C for all permutations of the three diagonal elements. Some poorly designed models violate this constraint, which will normally result in a compile error. If this attribute is set to 'true', the compiler will silently set all three diagonal elements to their average value whenever the above condition is violated. (MJCF: balanceinertia)"))
 	TOptional<bool> Balanceinertia;
 
-	/** stored on the spec (MJCF: strippath) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "stored on the spec (MJCF: strippath)"))
+	/** When this attribute is 'true', the parser will remove any path information in file names specified in the model. This is useful for loading models created on a different system using a different directory structure. (MJCF: strippath) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "When this attribute is 'true', the parser will remove any path information in file names specified in the model. This is useful for loading models created on a different system using a different directory structure. (MJCF: strippath)"))
 	TOptional<bool> Strippath;
 
-	/** deprecation error (MJCF: coordinate) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "deprecation error (MJCF: coordinate)"))
+	/** This attribute specifies whether frame positions and orientations are expressed in local coordinates. The 'global' option is no longer supported and will cause an error. (MJCF: coordinate) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute specifies whether frame positions and orientations are expressed in local coordinates. The 'global' option is no longer supported and will cause an error. (MJCF: coordinate)"))
 	TOptional<EMjCoordinate> Coordinate;
 
-	/** MJCF: angle */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: angle"))
+	/** This attribute specifies whether the angles in the MJCF model are expressed in units of degrees or radians. The compiler converts degrees into radians, and mjModel always uses radians. For URDF models the parser sets this attribute to 'radian' internally, regardless of the XML setting. (MJCF: angle) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute specifies whether the angles in the MJCF model are expressed in units of degrees or radians. The compiler converts degrees into radians, and mjModel always uses radians. For URDF models the parser sets this attribute to 'radian' internally, regardless of the XML setting. (MJCF: angle)"))
 	TOptional<EMjAngleUnit> Angle;
 
-	/** MJCF: fitaabb */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: fitaabb"))
+	/** The compiler is able to replace a mesh with a geometric primitive fitted to that mesh; see geom below. If this attribute is 'true', the fitting procedure uses the axis-aligned bounding box (AABB) of the mesh, choosing the smallest primitive whose AABB contains the mesh AABB. Otherwise it uses the equivalent-inertia box of the mesh. (MJCF: fitaabb) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "The compiler is able to replace a mesh with a geometric primitive fitted to that mesh; see geom below. If this attribute is 'true', the fitting procedure uses the axis-aligned bounding box (AABB) of the mesh, choosing the smallest primitive whose AABB contains the mesh AABB. Otherwise it uses the equivalent-inertia box of the mesh. (MJCF: fitaabb)"))
 	TOptional<bool> Fitaabb;
 
-	/** MJCF: eulerseq */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: eulerseq"))
+	/** This attribute specifies the sequence of Euler rotations for all euler attributes of elements that have spatial frames, as explained in COrientation. This must be a string with exactly 3 characters from the set {x, y, z, X, Y, Z}. The character at position n determines the axis around which the n-th rotation is performed. (MJCF: eulerseq) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute specifies the sequence of Euler rotations for all euler attributes of elements that have spatial frames, as explained in COrientation. This must be a string with exactly 3 characters from the set {x, y, z, X, Y, Z}. The character at position n determines the axis around which the n-th rotation is performed. (MJCF: eulerseq)"))
 	TOptional<FString> Eulerseq;
 
-	/** MJCF: meshdir */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: meshdir"))
+	/** This attribute instructs the compiler where to look for mesh and height field files. The full path to a file is determined as follows. If the strippath attribute described above is 'true', all path information from the file name is removed. The following checks are then applied in order: (1) if the file name contains an absolute path, it is used without further changes; (MJCF: meshdir) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute instructs the compiler where to look for mesh and height field files. The full path to a file is determined as follows. If the strippath attribute described above is 'true', all path information from the file name is removed. The following checks are then applied in order: (1) if the file name contains an absolute path, it is used without further changes; (MJCF: meshdir)"))
 	TOptional<FString> Meshdir;
 
-	/** MJCF: texturedir */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: texturedir"))
+	/** This attribute is used to instruct the compiler where to look for texture files. It works in the same way as meshdir above. (MJCF: texturedir) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute is used to instruct the compiler where to look for texture files. It works in the same way as meshdir above. (MJCF: texturedir)"))
 	TOptional<FString> Texturedir;
 
-	/** MJCF: discardvisual */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: discardvisual"))
+	/** This attribute instructs the compiler to discard all model elements which are purely visual and have no effect on the physics (with one exception, see below). This often enables smaller mjModel structs and faster simulation. - All materials are discarded. - All textures are discarded. - All geoms with contype = conaffinity =0 are discarded, if they are not referenced in another MJCF element. (MJCF: discardvisual) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute instructs the compiler to discard all model elements which are purely visual and have no effect on the physics (with one exception, see below). This often enables smaller mjModel structs and faster simulation. - All materials are discarded. - All textures are discarded. - All geoms with contype = conaffinity =0 are discarded, if they are not referenced in another MJCF element. (MJCF: discardvisual)"))
 	TOptional<bool> Discardvisual;
 
-	/** MJCF: usethread */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: usethread"))
+	/** If this attribute is 'true', the model compiler will run in multi-threaded mode. Multi-threading is used for computing the length ranges of actuators and for parallel loading and processing of meshes. (MJCF: usethread) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "If this attribute is 'true', the model compiler will run in multi-threaded mode. Multi-threading is used for computing the length ranges of actuators and for parallel loading and processing of meshes. (MJCF: usethread)"))
 	TOptional<bool> Usethread;
 
-	/** MJCF: fusestatic */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: fusestatic"))
+	/** This attribute controls a compiler optimization feature where static bodies are fused with their parent, and any elements defined in those bodies are reassigned to the parent. Static bodies are fused with their parent unless - They are referenced by another element in the model. - They contain a site which is referenced by a force or torque sensor. (MJCF: fusestatic) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute controls a compiler optimization feature where static bodies are fused with their parent, and any elements defined in those bodies are reassigned to the parent. Static bodies are fused with their parent unless - They are referenced by another element in the model. - They contain a site which is referenced by a force or torque sensor. (MJCF: fusestatic)"))
 	TOptional<bool> Fusestatic;
 
-	/** MJCF: inertiafromgeom */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: inertiafromgeom"))
+	/** This attribute controls the automatic inference of body masses and inertias from geoms attached to the body. If this setting is 'false', no automatic inference is performed. In that case each body must have explicitly defined mass and inertia with the inertial element, or else a compile error will be generated. (MJCF: inertiafromgeom) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute controls the automatic inference of body masses and inertias from geoms attached to the body. If this setting is 'false', no automatic inference is performed. In that case each body must have explicitly defined mass and inertia with the inertial element, or else a compile error will be generated. (MJCF: inertiafromgeom)"))
 	TOptional<EMjTriState> Inertiafromgeom;
 
-	/** MJCF: inertiagrouprange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: inertiagrouprange"))
+	/** This attribute specifies the range of geom groups that are used to infer body masses and inertias (when such inference is enabled). The group attribute of geom is an integer. If this integer falls in the range specified here, the geom will be used in the inertial computation, otherwise it will be ignored. (MJCF: inertiagrouprange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute specifies the range of geom groups that are used to infer body masses and inertias (when such inference is enabled). The group attribute of geom is an integer. If this integer falls in the range specified here, the geom will be used in the inertial computation, otherwise it will be ignored. (MJCF: inertiagrouprange)"))
 	TOptional<TArray<int32>> Inertiagrouprange;
 
-	/** MJCF: saveinertial */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: saveinertial"))
+	/** If set to 'true', the compiler will save explicit inertial clauses for all bodies. (MJCF: saveinertial) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "If set to 'true', the compiler will save explicit inertial clauses for all bodies. (MJCF: saveinertial)"))
 	TOptional<bool> Saveinertial;
 
-	/** fans out to mesh/texturedir (MJCF: assetdir) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "fans out to mesh/texturedir (MJCF: assetdir)"))
+	/** This attribute sets the values of both meshdir and texturedir above. Values in the latter attributes take precedence over assetdir. (MJCF: assetdir) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute sets the values of both meshdir and texturedir above. Values in the latter attributes take precedence over assetdir. (MJCF: assetdir)"))
 	TOptional<FString> Assetdir;
 
-	/** MJCF: alignfree */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: alignfree"))
+	/** This attribute toggles the default behaviour of an optimization that applies to bodies with a free joint and no child bodies. When true, the body frame and free joint will automatically be aligned with inertial frame, which leads to both faster and more stable simulation. See freejoint/align for details. (MJCF: alignfree) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute toggles the default behaviour of an optimization that applies to bodies with a free joint and no child bodies. When true, the body frame and free joint will automatically be aligned with inertial frame, which leads to both faster and more stable simulation. See freejoint/align for details. (MJCF: alignfree)"))
 	TOptional<bool> Alignfree;
 
-	/** MJCF: conflict */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "MJCF: conflict"))
+	/** This attribute controls how conflicting global attributes (physics options, sizes, visual settings) are resolved when a child spec is attached to a parent using mjs_attach. A conflict occurs when both the parent and child specify authored values for the same field and those values differ. See Attribute Merging for details and a per-field table. warning Parent values take precedence. (MJCF: conflict) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Compiler", meta = (ToolTip = "This attribute controls how conflicting global attributes (physics options, sizes, visual settings) are resolved when a child spec is attached to a parent using mjs_attach. A conflict occurs when both the parent and child specify authored values for the same field and those values differ. See Attribute Merging for details and a per-field table. warning Parent values take precedence. (MJCF: conflict)"))
 	TOptional<EMjConflict> Conflict;
 
 	// --- Blueprint access ---

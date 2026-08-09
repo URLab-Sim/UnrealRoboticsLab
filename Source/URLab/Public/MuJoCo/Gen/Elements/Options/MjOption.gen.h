@@ -31,112 +31,112 @@ class URLAB_API UMjOption : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: timestep */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: timestep"))
+	/** Simulation time step in seconds. This is the single most important parameter affecting the speed-accuracy trade-off which is inherent in every physics simulation. Smaller values result in better accuracy and stability. To achieve real-time performance, the time step must be larger than the CPU time per step (or 4 times larger when using the RK4 integrator). (MJCF: timestep) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Simulation time step in seconds. This is the single most important parameter affecting the speed-accuracy trade-off which is inherent in every physics simulation. Smaller values result in better accuracy and stability. To achieve real-time performance, the time step must be larger than the CPU time per step (or 4 times larger when using the RK4 integrator). (MJCF: timestep)"))
 	TOptional<double> Timestep;
 
-	/** MJCF: impratio */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: impratio"))
+	/** This attribute determines the ratio of frictional-to-normal constraint impedance for elliptic friction cones. The setting of solimp determines a single impedance value for all contact dimensions, which is then modulated by this attribute. (MJCF: impratio) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "This attribute determines the ratio of frictional-to-normal constraint impedance for elliptic friction cones. The setting of solimp determines a single impedance value for all contact dimensions, which is then modulated by this attribute. (MJCF: impratio)"))
 	TOptional<double> Impratio;
 
-	/** MJCF: tolerance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: tolerance"))
+	/** Tolerance threshold used for early termination of the iterative solver. For PGS, the threshold is applied to the cost improvement between two iterations. For CG and Newton, it is applied to the smaller of the cost improvement and the gradient norm. For Newton, it is additionally applied to the Newton decrement /tfrac{1}{2} g^T H^{-1} g, the predicted cost improvement of the next iteration. (MJCF: tolerance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Tolerance threshold used for early termination of the iterative solver. For PGS, the threshold is applied to the cost improvement between two iterations. For CG and Newton, it is applied to the smaller of the cost improvement and the gradient norm. For Newton, it is additionally applied to the Newton decrement /tfrac{1}{2} g^T H^{-1} g, the predicted cost improvement of the next iteration. (MJCF: tolerance)"))
 	TOptional<double> Tolerance;
 
-	/** MJCF: ls_tolerance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: ls_tolerance"))
+	/** Tolerance threshold used for early termination of the linesearch algorithm. (MJCF: ls_tolerance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Tolerance threshold used for early termination of the linesearch algorithm. (MJCF: ls_tolerance)"))
 	TOptional<double> LsTolerance;
 
-	/** MJCF: noslip_tolerance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: noslip_tolerance"))
+	/** Tolerance threshold used for early termination of the Noslip solver. (MJCF: noslip_tolerance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Tolerance threshold used for early termination of the Noslip solver. (MJCF: noslip_tolerance)"))
 	TOptional<double> NoslipTolerance;
 
-	/** MJCF: ccd_tolerance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: ccd_tolerance"))
+	/** Tolerance threshold used for early termination of the convex collision algorithm. (MJCF: ccd_tolerance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Tolerance threshold used for early termination of the convex collision algorithm. (MJCF: ccd_tolerance)"))
 	TOptional<double> CcdTolerance;
 
-	/** MJCF: sleep_tolerance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: sleep_tolerance"))
+	/** Velocity tolerance below which sleeping is allowed. (MJCF: sleep_tolerance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Velocity tolerance below which sleeping is allowed. (MJCF: sleep_tolerance)"))
 	TOptional<double> SleepTolerance;
 
-	/** MJCF: gravity */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: gravity"))
+	/** Gravitational acceleration vector. In the default world orientation the Z-axis points up. The MuJoCo GUI is organized around this convention (both the camera and perturbation commands are based on it) so we do not recommend deviating from it. (MJCF: gravity) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Gravitational acceleration vector. In the default world orientation the Z-axis points up. The MuJoCo GUI is organized around this convention (both the camera and perturbation commands are based on it) so we do not recommend deviating from it. (MJCF: gravity)"))
 	TOptional<FMjDirection3> Gravity;
 
-	/** MJCF: wind */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: wind"))
+	/** Velocity vector of the medium (i.e., wind). This vector is subtracted from the 3D translational velocity of each body, and the result is used to compute viscous, lift and drag forces acting on the body; recall Passive forces in the Computation chapter. The magnitude of these forces scales with the values of the next two attributes. (MJCF: wind) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Velocity vector of the medium (i.e., wind). This vector is subtracted from the 3D translational velocity of each body, and the result is used to compute viscous, lift and drag forces acting on the body; recall Passive forces in the Computation chapter. The magnitude of these forces scales with the values of the next two attributes. (MJCF: wind)"))
 	TOptional<FMjDirection3> Wind;
 
-	/** MJCF: magnetic */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: magnetic"))
+	/** Global magnetic flux. This vector is used by magnetometer sensors, which are defined as sites and return the magnetic flux at the site position expressed in the site frame. (MJCF: magnetic) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Global magnetic flux. This vector is used by magnetometer sensors, which are defined as sites and return the magnetic flux at the site position expressed in the site frame. (MJCF: magnetic)"))
 	TOptional<FMjDirection3> Magnetic;
 
-	/** MJCF: density */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: density"))
+	/** Density of the medium, not to be confused with the geom density used to infer masses and inertias. This parameter is used to simulate lift and drag forces, which scale quadratically with velocity. In SI units the density of air is around 1.2 while the density of water is around 1000 depending on temperature. Setting density to 0 disables lift and drag forces. (MJCF: density) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Density of the medium, not to be confused with the geom density used to infer masses and inertias. This parameter is used to simulate lift and drag forces, which scale quadratically with velocity. In SI units the density of air is around 1.2 while the density of water is around 1000 depending on temperature. Setting density to 0 disables lift and drag forces. (MJCF: density)"))
 	TOptional<double> Density;
 
-	/** MJCF: viscosity */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: viscosity"))
+	/** Viscosity of the medium. This parameter is used to simulate viscous forces, which scale linearly with velocity. In SI units the viscosity of air is around 0.00002 while the viscosity of water is around 0.0009 depending on temperature. Setting viscosity to 0 disables viscous forces. (MJCF: viscosity) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Viscosity of the medium. This parameter is used to simulate viscous forces, which scale linearly with velocity. In SI units the viscosity of air is around 0.00002 while the viscosity of water is around 0.0009 depending on temperature. Setting viscosity to 0 disables viscous forces. (MJCF: viscosity)"))
 	TOptional<double> Viscosity;
 
-	/** MJCF: o_margin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: o_margin"))
+	/** This attribute replaces the margin parameter of all active contact pairs when Contact override is enabled. Otherwise MuJoCo uses the element-specific margin attribute of geom or pair depending on how the contact pair was generated. See margin and gap in the Computation chapter. The related gap parameter does not have a global override. (MJCF: o_margin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "This attribute replaces the margin parameter of all active contact pairs when Contact override is enabled. Otherwise MuJoCo uses the element-specific margin attribute of geom or pair depending on how the contact pair was generated. See margin and gap in the Computation chapter. The related gap parameter does not have a global override. (MJCF: o_margin)"))
 	TOptional<double> OMargin;
 
-	/** MJCF: o_solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: o_solref"))
+	/** These attributes replace the solref, solimp and friction parameters of all active contact pairs when contact override is enabled. See CSolver for details. (MJCF: o_solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "These attributes replace the solref, solimp and friction parameters of all active contact pairs when contact override is enabled. See CSolver for details. (MJCF: o_solref)"))
 	TOptional<TArray<double>> OSolref;
 
-	/** MJCF: o_solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: o_solimp"))
+	/** These attributes replace the solref, solimp and friction parameters of all active contact pairs when contact override is enabled. See CSolver for details. (MJCF: o_solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "These attributes replace the solref, solimp and friction parameters of all active contact pairs when contact override is enabled. See CSolver for details. (MJCF: o_solimp)"))
 	TOptional<TArray<double>> OSolimp;
 
-	/** MJCF: o_friction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: o_friction"))
+	/** These attributes replace the solref, solimp and friction parameters of all active contact pairs when contact override is enabled. See CSolver for details. (MJCF: o_friction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "These attributes replace the solref, solimp and friction parameters of all active contact pairs when contact override is enabled. See CSolver for details. (MJCF: o_friction)"))
 	TOptional<TArray<double>> OFriction;
 
-	/** MJCF: integrator */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: integrator"))
+	/** This attribute selects the numerical integrator to be used. Currently the available integrators are the semi-implicit Euler method, the fixed-step 4-th order Runge Kutta method, the Implicit-in-velocity Euler method, and implicitfast, which drops the Coriolis and centrifugal terms. See Numerical Integration for more details. (MJCF: integrator) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "This attribute selects the numerical integrator to be used. Currently the available integrators are the semi-implicit Euler method, the fixed-step 4-th order Runge Kutta method, the Implicit-in-velocity Euler method, and implicitfast, which drops the Coriolis and centrifugal terms. See Numerical Integration for more details. (MJCF: integrator)"))
 	TOptional<EMjIntegrator> Integrator;
 
-	/** MJCF: cone */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: cone"))
+	/** The type of contact friction cone. Elliptic cones are a better model of the physical reality, but pyramidal cones sometimes make the solver faster and more robust. (MJCF: cone) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "The type of contact friction cone. Elliptic cones are a better model of the physical reality, but pyramidal cones sometimes make the solver faster and more robust. (MJCF: cone)"))
 	TOptional<EMjCone> Cone;
 
-	/** MJCF: jacobian */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: jacobian"))
+	/** The type of constraint Jacobian and matrices computed from it. Auto resolves to dense when the number of degrees of freedom is up to 60, and sparse over 60. (MJCF: jacobian) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "The type of constraint Jacobian and matrices computed from it. Auto resolves to dense when the number of degrees of freedom is up to 60, and sparse over 60. (MJCF: jacobian)"))
 	TOptional<EMjJacobianType> Jacobian;
 
-	/** MJCF: solver */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: solver"))
+	/** This attribute selects one of the constraint solver algorithms described in the Computation chapter. Guidelines for solver selection and parameter tuning are available in the Algorithms section above. (MJCF: solver) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "This attribute selects one of the constraint solver algorithms described in the Computation chapter. Guidelines for solver selection and parameter tuning are available in the Algorithms section above. (MJCF: solver)"))
 	TOptional<EMjSolverType> Solver;
 
-	/** MJCF: iterations */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: iterations"))
+	/** Maximum number of iterations of the constraint solver. When the warmstart attribute of flag is enabled (which is the default), accurate results are obtained with fewer iterations; if the warmstarted solution already satisfies the tolerance, the CG and Newton solvers terminate with zero iterations. Larger and more complex systems with many interacting constraints require more iterations. (MJCF: iterations) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Maximum number of iterations of the constraint solver. When the warmstart attribute of flag is enabled (which is the default), accurate results are obtained with fewer iterations; if the warmstarted solution already satisfies the tolerance, the CG and Newton solvers terminate with zero iterations. Larger and more complex systems with many interacting constraints require more iterations. (MJCF: iterations)"))
 	TOptional<int32> Iterations;
 
-	/** MJCF: ls_iterations */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: ls_iterations"))
+	/** Maximum number of linesearch iterations performed by CG/Newton constraint solvers. Ensures that at most iterations times ls_iterations linesearch iterations are performed during each constraint solve. (MJCF: ls_iterations) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Maximum number of linesearch iterations performed by CG/Newton constraint solvers. Ensures that at most iterations times ls_iterations linesearch iterations are performed during each constraint solve. (MJCF: ls_iterations)"))
 	TOptional<int32> LsIterations;
 
-	/** MJCF: noslip_iterations */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: noslip_iterations"))
+	/** Maximum number of iterations of the Noslip solver. This is a post-processing step executed after the main solver. It uses a modified PGS method to suppress slip/drift in friction dimensions resulting from the soft-constraint model. The default setting 0 disables this post-processing step. (MJCF: noslip_iterations) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Maximum number of iterations of the Noslip solver. This is a post-processing step executed after the main solver. It uses a modified PGS method to suppress slip/drift in friction dimensions resulting from the soft-constraint model. The default setting 0 disables this post-processing step. (MJCF: noslip_iterations)"))
 	TOptional<int32> NoslipIterations;
 
-	/** MJCF: ccd_iterations */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: ccd_iterations"))
+	/** Maximum number of iterations of the algorithm used for convex collisions. This rarely needs to be adjusted, except in situations where some geoms have very large aspect ratios. (MJCF: ccd_iterations) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Maximum number of iterations of the algorithm used for convex collisions. This rarely needs to be adjusted, except in situations where some geoms have very large aspect ratios. (MJCF: ccd_iterations)"))
 	TOptional<int32> CcdIterations;
 
-	/** MJCF: sdf_iterations */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: sdf_iterations"))
+	/** Number of iterations used for Signed Distance Field collisions (per initial point). (MJCF: sdf_iterations) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Number of iterations used for Signed Distance Field collisions (per initial point). (MJCF: sdf_iterations)"))
 	TOptional<int32> SdfIterations;
 
-	/** MJCF: sdf_initpoints */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "MJCF: sdf_initpoints"))
+	/** Number of starting points used for finding contacts with Signed Distance Field collisions. (MJCF: sdf_initpoints) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "Number of starting points used for finding contacts with Signed Distance Field collisions. (MJCF: sdf_initpoints)"))
 	TOptional<int32> SdfInitpoints;
 
-	/** bits of disableactuator (MJCF: actuatorgroupdisable) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "bits of disableactuator (MJCF: actuatorgroupdisable)"))
+	/** List of actuator groups to disable. Actuators whose group is in this list will produce no force. If they are stateful, their activation states will not be integrated. Internally this list is implemented as an integer bitfield, so values must be in the range 0 <= group <= 30. If not set, all actuator groups are enabled. (MJCF: actuatorgroupdisable) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Option", meta = (ToolTip = "List of actuator groups to disable. Actuators whose group is in this list will produce no force. If they are stateful, their activation states will not be integrated. Internally this list is implemented as an integer bitfield, so values must be in the range 0 <= group <= 30. If not set, all actuator groups are enabled. (MJCF: actuatorgroupdisable)"))
 	TOptional<TArray<int32>> Actuatorgroupdisable;
 
 	// --- Blueprint access ---

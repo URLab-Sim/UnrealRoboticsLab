@@ -29,32 +29,32 @@ class URLAB_API UMjEqualityJoint : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", meta = (ToolTip = "MJCF: active"))
+	/** Same as in connect element. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: active)"))
 	TOptional<bool> ActiveFlag;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** Same as in connect element. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** Same as in connect element. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: joint1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint", meta = (ToolTip = "MJCF: joint1", GetOptions = "GetJoint1Options"))
+	/** Name of the first joint. (MJCF: joint1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint", meta = (ToolTip = "Name of the first joint. (MJCF: joint1)", GetOptions = "GetJoint1Options"))
 	FString Joint1;
 
-	/** MJCF: joint2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint", meta = (ToolTip = "MJCF: joint2", GetOptions = "GetJoint2Options"))
+	/** Name of the second joint. If this attribute is omitted, the first joint is fixed to a constant. (MJCF: joint2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint", meta = (ToolTip = "Name of the second joint. If this attribute is omitted, the first joint is fixed to a constant. (MJCF: joint2)", GetOptions = "GetJoint2Options"))
 	TOptional<FString> Joint2;
 
-	/** MJCF: polycoef */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint", meta = (ToolTip = "MJCF: polycoef"))
+	/** Coefficients a_0 /ldots a_4 of the quartic polynomial. If the joint values of joint1 and joint2 are respectively y and x, and their reference positions (corresponding to the joint values in the initial model configuration) are y_0 and x_0, the constraint is: .. (MJCF: polycoef) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|EqualityJoint", meta = (ToolTip = "Coefficients a_0 /ldots a_4 of the quartic polynomial. If the joint values of joint1 and joint2 are respectively y and x, and their reference positions (corresponding to the joint values in the initial model configuration) are y_0 and x_0, the constraint is: .. (MJCF: polycoef)"))
 	TOptional<TArray<double>> Polycoef;
 
 	// --- Blueprint access ---

@@ -31,40 +31,40 @@ class URLAB_API UMjComposite : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: prefix */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: prefix"))
+	/** All automatically generated model elements have names indicating the element type and index. For example, the body at coordinates (2, 0) in a 2D grid is named 'B2_0' by default. If prefix='C' is specified, the same body is named 'CB2_0'. The prefix is needed when multiple composite objects are used in the same model, to avoid name conflicts. (MJCF: prefix) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "All automatically generated model elements have names indicating the element type and index. For example, the body at coordinates (2, 0) in a 2D grid is named 'B2_0' by default. If prefix='C' is specified, the same body is named 'CB2_0'. The prefix is needed when multiple composite objects are used in the same model, to avoid name conflicts. (MJCF: prefix)"))
 	TOptional<FString> Prefix;
 
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: type"))
+	/** This attribute determines the type of composite object. The only supported type is cable. The cable type creates a 1D chain of bodies connected with ball joints, each having a geom with user-defined type (cylinder, capsule or box). The geometry can either be defined with an array of 3D vertex coordinates vertex or with prescribed functions with the option curve. (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "This attribute determines the type of composite object. The only supported type is cable. The cable type creates a 1D chain of bodies connected with ball joints, each having a geom with user-defined type (cylinder, capsule or box). The geometry can either be defined with an array of 3D vertex coordinates vertex or with prescribed functions with the option curve. (MJCF: type)"))
 	EMjCompositeType Type;
 
-	/** MJCF: count */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: count"))
+	/** The element count in each dimension of the grid. This can have 1, 2 or 3 numbers, specifying the element count along the X, Y and Z axis of the parent body frame within. Any missing numbers default to 1. If any of these numbers is 1, all subsequent numbers must also be 1, so that the leading dimensions of the grid are used. (MJCF: count) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "The element count in each dimension of the grid. This can have 1, 2 or 3 numbers, specifying the element count along the X, Y and Z axis of the parent body frame within. Any missing numbers default to 1. If any of these numbers is 1, all subsequent numbers must also be 1, so that the leading dimensions of the grid are used. (MJCF: count)"))
 	TOptional<TArray<double>> Count;
 
-	/** MJCF: offset */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: offset"))
+	/** It specifies a 3D offset from the center of the parent body to the center of the first body of the cable. The offset is expressed in the local coordinate frame of the parent body. (MJCF: offset) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "It specifies a 3D offset from the center of the parent body to the center of the first body of the cable. The offset is expressed in the local coordinate frame of the parent body. (MJCF: offset)"))
 	TOptional<FMjPosition3> Offset;
 
-	/** MJCF: vertex */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: vertex"))
+	/** Vertex 3D positions in global coordinates. (MJCF: vertex) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "Vertex 3D positions in global coordinates. (MJCF: vertex)"))
 	TOptional<TArray<double>> Vertex;
 
-	/** MJCF: initial */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: initial"))
+	/** Behavior of the first point. Free: free joint. Ball: ball joint. None: no dof. (MJCF: initial) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "Behavior of the first point. Free: free joint. Ball: ball joint. None: no dof. (MJCF: initial)"))
 	TOptional<FString> Initial;
 
-	/** MJCF: curve */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: curve"))
+	/** Functions specifying the vertex positions. Available functions are `s`, `cos(s)`, and `sin(s)`, where `s` is the arc length parameter. (MJCF: curve) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "Functions specifying the vertex positions. Available functions are `s`, `cos(s)`, and `sin(s)`, where `s` is the arc length parameter. (MJCF: curve)"))
 	TOptional<FString> Curve;
 
-	/** MJCF: size */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: size"))
+	/** Scaling of the curve functions. `size[0]` is the scaling of `s`, `size[1]` is the radius of `/cos(s)` and `/sin(s)`, and `size[2]` is the speed of the argument (i.e. `/cos(2/pisize[2]*s)`). (MJCF: size) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "Scaling of the curve functions. `size[0]` is the scaling of `s`, `size[1]` is the radius of `/cos(s)` and `/sin(s)`, and `size[2]` is the speed of the argument (i.e. `/cos(2/pisize[2]*s)`). (MJCF: size)"))
 	TOptional<TArray<double>> Size;
 
-	/** MJCF: quat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "MJCF: quat"))
+	/** It specifies a quaternion that rotates the first body frame. The quaternion is expressed in the parent body frame. (MJCF: quat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Composite", meta = (ToolTip = "It specifies a quaternion that rotates the first body frame. The quaternion is expressed in the parent body frame. (MJCF: quat)"))
 	TOptional<FMjQuatRot> Quat;
 
 	// --- Blueprint access ---

@@ -29,8 +29,8 @@ class URLAB_API UMjText : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: data */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Text", meta = (ToolTip = "MJCF: data"))
+	/** Custom text to be copied into mjModel. (MJCF: data) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Text", meta = (ToolTip = "Custom text to be copied into mjModel. (MJCF: data)"))
 	FString Data;
 
 	// --- Blueprint access ---

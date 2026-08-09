@@ -29,32 +29,32 @@ class URLAB_API UMjKey : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: time */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: time"))
+	/** Simulation time, copied into mjData.time when the simulation state is set to this keyframe. (MJCF: time) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Simulation time, copied into mjData.time when the simulation state is set to this keyframe. (MJCF: time)"))
 	TOptional<double> Time;
 
-	/** MJCF: qpos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: qpos"))
+	/** Vector of joint positions, copied into mjData.qpos when the simulation state is set to this keyframe. (MJCF: qpos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Vector of joint positions, copied into mjData.qpos when the simulation state is set to this keyframe. (MJCF: qpos)"))
 	TOptional<TArray<double>> Qpos;
 
-	/** MJCF: qvel */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: qvel"))
+	/** Vector of joint velocities, copied into mjData.qvel when the simulation state is set to this keyframe. (MJCF: qvel) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Vector of joint velocities, copied into mjData.qvel when the simulation state is set to this keyframe. (MJCF: qvel)"))
 	TOptional<TArray<double>> Qvel;
 
-	/** MJCF: act */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: act"))
+	/** Vector of actuator activations, copied into mjData.act when the simulation state is set to this keyframe. (MJCF: act) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Vector of actuator activations, copied into mjData.act when the simulation state is set to this keyframe. (MJCF: act)"))
 	TOptional<TArray<double>> Act;
 
-	/** MJCF: mpos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: mpos"))
+	/** Vector of mocap body positions, copied into mjData.mocap_pos when the simulation state is set to this keyframe. (MJCF: mpos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Vector of mocap body positions, copied into mjData.mocap_pos when the simulation state is set to this keyframe. (MJCF: mpos)"))
 	TOptional<TArray<double>> Mpos;
 
-	/** MJCF: mquat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: mquat"))
+	/** Vector of mocap body quaternions, copied into mjData.mocap_quat when the simulation state is set to this keyframe. (MJCF: mquat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Vector of mocap body quaternions, copied into mjData.mocap_quat when the simulation state is set to this keyframe. (MJCF: mquat)"))
 	TOptional<TArray<double>> Mquat;
 
-	/** MJCF: ctrl */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "MJCF: ctrl"))
+	/** Vector of controls, copied into mjData.ctrl when the simulation state is set to this keyframe. (MJCF: ctrl) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Key", meta = (ToolTip = "Vector of controls, copied into mjData.ctrl when the simulation state is set to this keyframe. (MJCF: ctrl)"))
 	TOptional<TArray<double>> Ctrl;
 
 	// --- Blueprint access ---

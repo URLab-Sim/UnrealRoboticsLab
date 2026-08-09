@@ -30,48 +30,48 @@ class URLAB_API UMjWeld : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Same as in connect element. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", meta = (ToolTip = "MJCF: active"))
+	/** Same as in connect element. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", meta = (ToolTip = "Same as in connect element. (MJCF: active)"))
 	TOptional<bool> ActiveFlag;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** Same as in connect element. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** Same as in connect element. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Same as in connect element. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: body1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: body1", GetOptions = "GetBody1Options"))
+	/** Name of the first body participating in the constraint. Either this attribute and must be specified or site1 and site2 must be specified. (MJCF: body1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "Name of the first body participating in the constraint. Either this attribute and must be specified or site1 and site2 must be specified. (MJCF: body1)", GetOptions = "GetBody1Options"))
 	TOptional<FString> Body1;
 
-	/** MJCF: body2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: body2", GetOptions = "GetBody2Options"))
+	/** Name of the second body. If this attribute is omitted, the second body is the world body. Welding a body to the world and changing the corresponding component of mjData.eq_active at runtime can be used to fix the body temporarily. (MJCF: body2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "Name of the second body. If this attribute is omitted, the second body is the world body. Welding a body to the world and changing the corresponding component of mjData.eq_active at runtime can be used to fix the body temporarily. (MJCF: body2)", GetOptions = "GetBody2Options"))
 	TOptional<FString> Body2;
 
-	/** MJCF: relpose */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: relpose"))
+	/** This attribute specifies the relative pose (3D position followed by 4D quaternion orientation) of the anchor point relative to body1. The position part (first 3 components) gives the anchor coordinates in the local frame of body1, and the quaternion part (last 4 components) gives the relative orientation of body2 relative to body1. (MJCF: relpose) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "This attribute specifies the relative pose (3D position followed by 4D quaternion orientation) of the anchor point relative to body1. The position part (first 3 components) gives the anchor coordinates in the local frame of body1, and the quaternion part (last 4 components) gives the relative orientation of body2 relative to body1. (MJCF: relpose)"))
 	TOptional<TArray<double>> Relpose;
 
-	/** MJCF: anchor */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: anchor"))
+	/** Coordinates of the weld point relative to body2. If relpose is not specified, the meaning of this parameter is the same as for connect constraints, except that is relative to body2. If relpose is specified, body1 will use the pose to compute its anchor point. (MJCF: anchor) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "Coordinates of the weld point relative to body2. If relpose is not specified, the meaning of this parameter is the same as for connect constraints, except that is relative to body2. If relpose is specified, body1 will use the pose to compute its anchor point. (MJCF: anchor)"))
 	TOptional<FMjPosition3> Anchor;
 
-	/** MJCF: site1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: site1", GetOptions = "GetSite1Options"))
+	/** Name of a site belonging to the first body participating in the constraint. When specified, site2 must also be specified. The (site1, site2) specification is a more flexible alternative to the body-based specification, and is different in two ways. First, the sites are not required to overlap at the default configuration; (MJCF: site1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "Name of a site belonging to the first body participating in the constraint. When specified, site2 must also be specified. The (site1, site2) specification is a more flexible alternative to the body-based specification, and is different in two ways. First, the sites are not required to overlap at the default configuration; (MJCF: site1)", GetOptions = "GetSite1Options"))
 	TOptional<FString> Site1;
 
-	/** MJCF: site2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: site2", GetOptions = "GetSite2Options"))
+	/** Name of a site belonging to the second body participating in the constraint. When specified, site1 must also be specified. See the site1 description for more details. (MJCF: site2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "Name of a site belonging to the second body participating in the constraint. When specified, site1 must also be specified. See the site1 description for more details. (MJCF: site2)", GetOptions = "GetSite2Options"))
 	TOptional<FString> Site2;
 
-	/** MJCF: torquescale */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "MJCF: torquescale"))
+	/** A constant that scales the angular residual (angular constraint violation). Notionally in units of /textrm{torque}//textrm{force}=/textrm{length}. Intuitively this coefficient defines how much the weld 'cares' about rotational displacements vs. translational displacements. Setting this value to 0 makes the weld behave like a connect constraint. (MJCF: torquescale) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Weld", meta = (ToolTip = "A constant that scales the angular residual (angular constraint violation). Notionally in units of /textrm{torque}//textrm{force}=/textrm{length}. Intuitively this coefficient defines how much the weld 'cares' about rotational displacements vs. translational displacements. Setting this value to 0 makes the weld behave like a connect constraint. (MJCF: torquescale)"))
 	TOptional<double> Torquescale;
 
 	// --- Blueprint access ---

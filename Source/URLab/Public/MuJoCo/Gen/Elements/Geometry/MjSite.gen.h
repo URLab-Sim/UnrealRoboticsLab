@@ -31,40 +31,40 @@ class URLAB_API UMjSite : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: type"))
+	/** Type of geometric shape. This is used for rendering, and also determines the active sensor zone for touch sensors. (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Type of geometric shape. This is used for rendering, and also determines the active sensor zone for touch sensors. (MJCF: type)"))
 	TOptional<EMjGeomType> Type;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the site belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of sites. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Integer group to which the site belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of sites. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: pos"))
+	/** Position of the site frame. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Position of the site frame. (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
-	/** MJCF: quat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: quat"))
+	/** Orientation of the site frame. See COrientation. (MJCF: quat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Orientation of the site frame. See COrientation. (MJCF: quat)"))
 	TOptional<FMjQuatRot> Quat;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** Material used to specify the visual properties of the site. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Material used to specify the visual properties of the site. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** saved length is type-dependent (MJCF: size) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "saved length is type-dependent (MJCF: size)"))
+	/** Sizes of the geometric shape representing the site. (MJCF: size) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Sizes of the geometric shape representing the site. (MJCF: size)"))
 	TOptional<TArray<double>> Size;
 
-	/** compile directive: saved as pos/quat/size (MJCF: fromto) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "compile directive: saved as pos/quat/size (MJCF: fromto)"))
+	/** This attribute can only be used with capsule, cylinder, ellipsoid and box sites. It provides an alternative specification of the site length as well as the frame position and orientation. The six numbers are the 3D coordinates of one point followed by the 3D coordinates of another point. (MJCF: fromto) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "This attribute can only be used with capsule, cylinder, ellipsoid and box sites. It provides an alternative specification of the site length as well as the frame position and orientation. The six numbers are the 3D coordinates of one point followed by the 3D coordinates of another point. (MJCF: fromto)"))
 	TOptional<TArray<double>> Fromto;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "MJCF: rgba"))
+	/** Color and transparency. If this value is different from the internal default, it overrides the corresponding material properties. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Site", meta = (ToolTip = "Color and transparency. If this value is different from the internal default, it overrides the corresponding material properties. (MJCF: rgba)"))
 	TOptional<FLinearColor> Rgba;
 
 	/** MJCF: user */

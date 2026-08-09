@@ -29,8 +29,8 @@ class URLAB_API UMjSpatialSite : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: site */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SpatialSite", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
+	/** The name of the site that the tendon must pass through. (MJCF: site) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SpatialSite", meta = (ToolTip = "The name of the site that the tendon must pass through. (MJCF: site)", GetOptions = "GetSiteOptions"))
 	FString Site;
 
 	// --- Blueprint access ---

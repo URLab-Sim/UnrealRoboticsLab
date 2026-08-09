@@ -29,8 +29,8 @@ class URLAB_API UMjPulley : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: divisor */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Pulley", meta = (ToolTip = "MJCF: divisor"))
+	/** The length of the tendon branch started by the pulley element is divided by the value specified here. For a physical pulley that splits a single branch into two parallel branches, the common branch would have divisor value of 1 and the two branches following the pulley would have divisor values of 2. (MJCF: divisor) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Pulley", meta = (ToolTip = "The length of the tendon branch started by the pulley element is divided by the value specified here. For a physical pulley that splits a single branch into two parallel branches, the common branch would have divisor value of 1 and the two branches following the pulley would have divisor values of 2. (MJCF: divisor)"))
 	TOptional<double> Divisor;
 
 	// --- Blueprint access ---

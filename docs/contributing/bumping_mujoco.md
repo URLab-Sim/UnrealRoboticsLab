@@ -137,6 +137,21 @@ Refresh it **after** answering the gates, never before: the baseline is what
 makes "new" mean anything, and refreshing first is how an unclassified
 attribute becomes permanently invisible.
 
+**Documentation.** The editor's tooltips are MuJoCo's own reference manual,
+bound per attribute to an anchor in `doc/XMLreference.rst` and recorded in
+`protospec/protospec_gen/doc_anchors.json`. A restructured manual fails
+generation naming the attribute and the anchor that moved, because the
+alternative is the editor quietly describing an attribute from an anchor that
+now documents something else. Read what moved, then either refresh the
+recording or, for an attribute upstream has genuinely stopped documenting, add
+a waiver with a reason to `overlay_ue.XMLREF_WAIVERS`:
+
+```bash
+cd protospec && uv run python -m protospec_gen.xmlref --update-baseline
+```
+
+Same ordering rule as above, and for the same reason.
+
 ### 5. Commit the gitlink, the profile and the baseline
 
 UBT reads the **committed** gitlink, so this happens before the editor build:
@@ -290,6 +305,7 @@ git add -A && git commit --amend --no-edit
 - [ ] `uv run pytest` and `emit --check` green inside `protospec/`.
 - [ ] Every overlay gate answered by editing a table, not by loosening a gate.
 - [ ] Every new attribute classified or waived with a reason; `classified_attrs.json` refreshed **after**.
+- [ ] Every moved documentation anchor read; `doc_anchors.json` refreshed **after**, or the removal waived.
 - [ ] `Scripts/regen_ue_profile.*` re-run; `Gen/` changes committed.
 - [ ] Every upstream citation re-read against the new sources (regenerate the list by grep).
 - [ ] The behavioral assumptions in step 7 retested.

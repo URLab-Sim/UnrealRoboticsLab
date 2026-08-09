@@ -30,60 +30,60 @@ class URLAB_API UMjFlex : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the flex belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of flexes. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Integer group to which the flex belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of flexes. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: dim */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: dim"))
+	/** Dimensionality of the flex. Allowed values are 1, 2 and 3. In 1D the elements are capsules, in 2D the elements are triangles with radius, in 3D the elements are tetrahedra with (optional) radius. (MJCF: dim) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Dimensionality of the flex. Allowed values are 1, 2 and 3. In 1D the elements are capsules, in 2D the elements are triangles with radius, in 3D the elements are tetrahedra with (optional) radius. (MJCF: dim)"))
 	TOptional<int32> Dim;
 
-	/** MJCF: radius */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: radius"))
+	/** Radius of all flex elements. It can be zero in 3D, but must be positive in 1D and 2D. The radius affects both collision detection and rendering. In 1D and 2D it is needed to make the elements volumetric. (MJCF: radius) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Radius of all flex elements. It can be zero in 3D, but must be positive in 1D and 2D. The radius affects both collision detection and rendering. In 1D and 2D it is needed to make the elements volumetric. (MJCF: radius)"))
 	TOptional<double> Radius;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** If specified, this attribute applies a material to the flex. Note that textures specified in the material will be applied only if the flex has explicit texture coordinates. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "If specified, this attribute applies a material to the flex. Note that textures specified in the material will be applied only if the flex has explicit texture coordinates. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: rgba"))
+	/** Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba)"))
 	TOptional<FLinearColor> Rgba;
 
-	/** MJCF: flatskin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: flatskin"))
+	/** This attribute determines whether 2D and 3D flexes that are rendered in flexskin mode will use smooth or flat shading. The default smooth shading is suitable in most cases, however if the object is intended to have visible sharp edges (such as a cube) then flat shading is more natural. (MJCF: flatskin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "This attribute determines whether 2D and 3D flexes that are rendered in flexskin mode will use smooth or flat shading. The default smooth shading is suitable in most cases, however if the object is intended to have visible sharp edges (such as a cube) then flat shading is more natural. (MJCF: flatskin)"))
 	TOptional<bool> Flatskin;
 
-	/** space-separated body names (MJCF: body) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "space-separated body names (MJCF: body)"))
+	/** An array of MuJoCo body names (separated by white space) to which each vertex belongs. The number of body names should either equal the number of vertices (nvert), or be a single body. If a single body is specified, all vertices are defined within that body - in which case the flex becomes a rigid body. (MJCF: body) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "An array of MuJoCo body names (separated by white space) to which each vertex belongs. The number of body names should either equal the number of vertices (nvert), or be a single body. If a single body is specified, all vertices are defined within that body - in which case the flex becomes a rigid body. (MJCF: body)"))
 	FString Body;
 
-	/** MJCF: vertex */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: vertex"))
+	/** The local coordinates of the vertices within the corresponding body frames. If this attribute is omitted, all coordinates are (0,0,0) or in other words, the vertices coincide with the centers of the body frames. (MJCF: vertex) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "The local coordinates of the vertices within the corresponding body frames. If this attribute is omitted, all coordinates are (0,0,0) or in other words, the vertices coincide with the centers of the body frames. (MJCF: vertex)"))
 	TOptional<TArray<double>> Vertex;
 
-	/** MJCF: element */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: element"))
+	/** For each element of the flex, this lists the zero-based indices of the vertices forming that flex element. We need two vertices to specify a capsule, three vertices to specify a triangle, and four vertices to specify a tetrahedron - which is why the number of indices equals (dim+1) times the number of elements. In 2D, the vertices should be listed in counter-clockwise order. (MJCF: element) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "For each element of the flex, this lists the zero-based indices of the vertices forming that flex element. We need two vertices to specify a capsule, three vertices to specify a triangle, and four vertices to specify a tetrahedron - which is why the number of indices equals (dim+1) times the number of elements. In 2D, the vertices should be listed in counter-clockwise order. (MJCF: element)"))
 	TArray<int32> Element;
 
-	/** MJCF: texcoord */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: texcoord"))
+	/** Texture coordinates. If omitted, texture mapping for this flex is disabled, even if a texture is specified in the material. (MJCF: texcoord) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Texture coordinates. If omitted, texture mapping for this flex is disabled, even if a texture is specified in the material. (MJCF: texcoord)"))
 	TOptional<TArray<float>> Texcoord;
 
-	/** MJCF: elemtexcoord */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "MJCF: elemtexcoord"))
+	/** Texture indices for each face. If omitted, texture are assumed to be vertex-based. (MJCF: elemtexcoord) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Texture indices for each face. If omitted, texture are assumed to be vertex-based. (MJCF: elemtexcoord)"))
 	TOptional<TArray<int32>> Elemtexcoord;
 
-	/** space-separated body names (MJCF: node) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "space-separated body names (MJCF: node)"))
+	/** The degrees-of-freedom of the flex. An array of MuJoCo body names (separated by white space) to which each node belongs. The number of body names should equal the number of nodes (nnode). See the flexcomp dof attribute for more details. (MJCF: node) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "The degrees-of-freedom of the flex. An array of MuJoCo body names (separated by white space) to which each node belongs. The number of body names should equal the number of nodes (nnode). See the flexcomp dof attribute for more details. (MJCF: node)"))
 	TOptional<FString> Node;
 
-	/** seeded to {1,1,1} before reading (MJCF: cellcount) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "seeded to {1,1,1} before reading (MJCF: cellcount)"))
+	/** When using trilinear or quadratic dofs, this specifies the number of cells in each dimension for the background interpolation grid. (MJCF: cellcount) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "When using trilinear or quadratic dofs, this specifies the number of cells in each dimension for the background interpolation grid. (MJCF: cellcount)"))
 	TOptional<TArray<int32>> Cellcount;
 
-	/** lowers to interpolation order (MJCF: dof) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "lowers to interpolation order (MJCF: dof)"))
+	/** Interpolation order for the flex. (MJCF: dof) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flex", meta = (ToolTip = "Interpolation order for the flex. (MJCF: dof)"))
 	TOptional<EMjFlexDof> Dof;
 
 	// --- Blueprint access ---

@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Subtreelinvel|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Subtreelinvel|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Subtreelinvel|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,8 +58,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Subtreelinvel|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: body */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Subtreelinvel", meta = (ToolTip = "MJCF: body", GetOptions = "GetBodyOptions"))
+	/** Name of the body where the kinematic subtree is rooted. (MJCF: body) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Subtreelinvel", meta = (ToolTip = "Name of the body where the kinematic subtree is rooted. (MJCF: body)", GetOptions = "GetBodyOptions"))
 	FString Body;
 
 	// --- Blueprint access ---

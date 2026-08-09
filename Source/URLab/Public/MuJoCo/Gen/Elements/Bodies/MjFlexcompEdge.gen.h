@@ -30,24 +30,24 @@ class URLAB_API UMjFlexcompEdge : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: equality */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", meta = (ToolTip = "MJCF: equality"))
+	/** The type of equality constraint applied to this edge. If false, no equality constraint is applied. If true, then edge constraints are enforced. If vert, an averaged constraint is used, see flexvert. if strain, then a constraint is added to enforce that the invariants of the strain tensor do not change; (MJCF: equality) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", meta = (ToolTip = "The type of equality constraint applied to this edge. If false, no equality constraint is applied. If true, then edge constraints are enforced. If vert, an averaged constraint is used, see flexvert. if strain, then a constraint is added to enforce that the invariants of the strain tensor do not change; (MJCF: equality)"))
 	TOptional<EMjFlexEquality> Equality;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** The standard constraint parameters, passed through to the automatically generated equality constraint. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", AdvancedDisplay, meta = (ToolTip = "The standard constraint parameters, passed through to the automatically generated equality constraint. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** The standard constraint parameters, passed through to the automatically generated equality constraint. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", AdvancedDisplay, meta = (ToolTip = "The standard constraint parameters, passed through to the automatically generated equality constraint. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: stiffness */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", meta = (ToolTip = "MJCF: stiffness"))
+	/** Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: stiffness) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", meta = (ToolTip = "Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: stiffness)"))
 	TOptional<double> Stiffness;
 
-	/** MJCF: damping */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", meta = (ToolTip = "MJCF: damping"))
+	/** Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: damping) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexcompEdge", meta = (ToolTip = "Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: damping)"))
 	TOptional<double> Damping;
 
 	// --- Blueprint access ---

@@ -29,28 +29,28 @@ class URLAB_API UMjCompositeSkin : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: texcoord */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "MJCF: texcoord"))
+	/** If this is true, explicit texture coordinates will be generated, mapping the skin to the unit square in texture space. This is needed when the material specifies a texture. If texcoord is false and the skin has texture, the texture will appear fixed to the world instead of the skin. (MJCF: texcoord) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "If this is true, explicit texture coordinates will be generated, mapping the skin to the unit square in texture space. This is needed when the material specifies a texture. If texcoord is false and the skin has texture, the texture will appear fixed to the world instead of the skin. (MJCF: texcoord)"))
 	TOptional<bool> Texcoord;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** If specified, this attribute applies a material to the skin. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "If specified, this attribute applies a material to the skin. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the skin belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of skins. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "Integer group to which the skin belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of skins. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "MJCF: rgba"))
+	/** Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba)"))
 	TOptional<TArray<double>> Rgba;
 
-	/** MJCF: inflate */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "MJCF: inflate"))
+	/** The default value of 0 means that the automatically-generated skin passes through the centers of the body elements comprising the composite object. Positive values offset each skin vertex by the specified amount, in the direction normal to the (non-inflated) skin at that vertex. This has two uses. First, in 2D objects, a small positive inflate factor is needed to avoid aliasing artifacts. (MJCF: inflate) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "The default value of 0 means that the automatically-generated skin passes through the centers of the body elements comprising the composite object. Positive values offset each skin vertex by the specified amount, in the direction normal to the (non-inflated) skin at that vertex. This has two uses. First, in 2D objects, a small positive inflate factor is needed to avoid aliasing artifacts. (MJCF: inflate)"))
 	TOptional<double> Inflate;
 
-	/** MJCF: subgrid */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "MJCF: subgrid"))
+	/** This is only applicable to cloth and 2D grid types, and has no effect for any other composite type. The default value of 0 means that the skin has as many vertices as the number of element bodies. A positive value causes subdivision, with the specified number of (additional) grid lines. In this case the model compiler generates a denser skin using bi-cubic interpolation. (MJCF: subgrid) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeSkin", meta = (ToolTip = "This is only applicable to cloth and 2D grid types, and has no effect for any other composite type. The default value of 0 means that the skin has as many vertices as the number of element bodies. A positive value causes subdivision, with the specified number of (additional) grid lines. In this case the model compiler generates a denser skin using bi-cubic interpolation. (MJCF: subgrid)"))
 	TOptional<int32> Subgrid;
 
 	// --- Blueprint access ---

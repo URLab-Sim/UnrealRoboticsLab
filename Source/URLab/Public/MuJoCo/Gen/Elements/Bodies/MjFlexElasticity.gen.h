@@ -30,24 +30,24 @@ class URLAB_API UMjFlexElasticity : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: young */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "MJCF: young"))
+	/** Young's elastic modulus, a measure of tensile and compressive stiffness for continuum elastic materials. Units of /textrm{pressure}=/textrm{force}//textrm{area}. (MJCF: young) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "Young's elastic modulus, a measure of tensile and compressive stiffness for continuum elastic materials. Units of /textrm{pressure}=/textrm{force}//textrm{area}. (MJCF: young)"))
 	TOptional<double> Young;
 
-	/** MJCF: poisson */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "MJCF: poisson"))
+	/** Poisson's ratio, the ratio of transverse deformation to applied longitudinal strain. This unitless quantity is in the range [0, 0.5). Small or large values imply compressibility or incompressiblity, respectively. (MJCF: poisson) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "Poisson's ratio, the ratio of transverse deformation to applied longitudinal strain. This unitless quantity is in the range [0, 0.5). Small or large values imply compressibility or incompressiblity, respectively. (MJCF: poisson)"))
 	TOptional<double> Poisson;
 
-	/** MJCF: damping */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "MJCF: damping"))
+	/** Rayleigh's damping coefficient, units of time. This quantity scales the stiffness defined by Young's modulus to produce the damping matrix. (MJCF: damping) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "Rayleigh's damping coefficient, units of time. This quantity scales the stiffness defined by Young's modulus to produce the damping matrix. (MJCF: damping)"))
 	TOptional<double> Damping;
 
-	/** MJCF: thickness */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "MJCF: thickness"))
+	/** Shell thickness, units of length; only for used 2D flexes. Used to scale the stretching stiffness. This thickness can be set equal to 2 times the radius in order to match the geometry, but is exposed separately since the radius might be constrained by considerations related to collision detection. (MJCF: thickness) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "Shell thickness, units of length; only for used 2D flexes. Used to scale the stretching stiffness. This thickness can be set equal to 2 times the radius in order to match the geometry, but is exposed separately since the radius might be constrained by considerations related to collision detection. (MJCF: thickness)"))
 	TOptional<double> Thickness;
 
-	/** MJCF: elastic2d */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "MJCF: elastic2d"))
+	/** Elastic contribution to passive forces of 2D flexes. 'none': none, 'bend': bending only, 'stretch': stretching only, 'both': bending and stretching. Bending is not yet supported by dof trilinear and quadratic. (MJCF: elastic2d) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexElasticity", meta = (ToolTip = "Elastic contribution to passive forces of 2D flexes. 'none': none, 'bend': bending only, 'stretch': stretching only, 'both': bending and stretching. Bending is not yet supported by dof trilinear and quadratic. (MJCF: elastic2d)"))
 	TOptional<EMjElastic2D> Elastic2d;
 
 	// --- Blueprint access ---

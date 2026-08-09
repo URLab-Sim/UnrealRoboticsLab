@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,20 +58,20 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: objtype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameObject", meta = (ToolTip = "MJCF: objtype"))
+	/** See framepos sensor. (MJCF: objtype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameObject", meta = (ToolTip = "See framepos sensor. (MJCF: objtype)"))
 	EMjFrameObject Objtype;
 
-	/** MJCF: objname */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameObject", meta = (ToolTip = "MJCF: objname"))
+	/** See framepos sensor. (MJCF: objname) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameObject", meta = (ToolTip = "See framepos sensor. (MJCF: objname)"))
 	FString Objname;
 
-	/** MJCF: reftype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameReference", meta = (ToolTip = "MJCF: reftype"))
+	/** See framepos sensor. (MJCF: reftype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameReference", meta = (ToolTip = "See framepos sensor. (MJCF: reftype)"))
 	TOptional<EMjFrameObject> Reftype;
 
-	/** MJCF: refname */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameReference", meta = (ToolTip = "MJCF: refname"))
+	/** See framepos sensor. (MJCF: refname) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Framelinvel|FrameReference", meta = (ToolTip = "See framepos sensor. (MJCF: refname)"))
 	TOptional<FString> Refname;
 
 	// --- Blueprint access ---

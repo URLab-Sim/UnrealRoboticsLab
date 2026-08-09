@@ -29,12 +29,12 @@ class URLAB_API UMjExclude : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: body1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Exclude", meta = (ToolTip = "MJCF: body1", GetOptions = "GetBody1Options"))
+	/** The name of the first body in the pair. (MJCF: body1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Exclude", meta = (ToolTip = "The name of the first body in the pair. (MJCF: body1)", GetOptions = "GetBody1Options"))
 	FString Body1;
 
-	/** MJCF: body2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Exclude", meta = (ToolTip = "MJCF: body2", GetOptions = "GetBody2Options"))
+	/** The name of the second body in the pair. (MJCF: body2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Exclude", meta = (ToolTip = "The name of the second body in the pair. (MJCF: body2)", GetOptions = "GetBody2Options"))
 	FString Body2;
 
 	// --- Blueprint access ---

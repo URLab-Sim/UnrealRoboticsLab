@@ -30,80 +30,80 @@ class URLAB_API UMjCompositeGeom : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: type"))
+	/** Type of geometric shape. The keywords have the following meaning: The plane type defines a surface which is infinite for collision detection purposes. It can only be attached to the world body or static children of the world. The plane passes through a point specified via the pos attribute. It is normal to the Z axis of the geom's local frame. The +Z direction corresponds to empty space. (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Type of geometric shape. The keywords have the following meaning: The plane type defines a surface which is infinite for collision detection purposes. It can only be attached to the world body or static children of the world. The plane passes through a point specified via the pos attribute. It is normal to the Z axis of the geom's local frame. The +Z direction corresponds to empty space. (MJCF: type)"))
 	TOptional<EMjGeomType> Type;
 
-	/** MJCF: contype */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: contype"))
+	/** This attribute and the next specify 32-bit integer bitmasks used for contact filtering of dynamically generated contact pairs. See Collision in the Computation chapter. Two geoms can collide if the contype of one geom is compatible with the conaffinity of the other geom or vice versa. Compatible means that the two bitmasks have a common bit set to 1. (MJCF: contype) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "This attribute and the next specify 32-bit integer bitmasks used for contact filtering of dynamically generated contact pairs. See Collision in the Computation chapter. Two geoms can collide if the contype of one geom is compatible with the conaffinity of the other geom or vice versa. Compatible means that the two bitmasks have a common bit set to 1. (MJCF: contype)"))
 	TOptional<int32> Contype;
 
-	/** MJCF: conaffinity */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: conaffinity"))
+	/** Bitmask for contact filtering; see contype above. (MJCF: conaffinity) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Bitmask for contact filtering; see contype above. (MJCF: conaffinity)"))
 	TOptional<int32> Conaffinity;
 
-	/** MJCF: condim */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: condim"))
+	/** The dimensionality of the contact space for a dynamically generated contact pair is set to the maximum of the condim values of the two participating geoms. See coContact in the Computation chapter. (MJCF: condim) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "The dimensionality of the contact space for a dynamically generated contact pair is set to the maximum of the condim values of the two participating geoms. See coContact in the Computation chapter. (MJCF: condim)"))
 	TOptional<int32> Condim;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: group"))
+	/** This attribute specifies an integer group to which the geom belongs. The only effect on the physics is at compile time, when body masses and inertias are inferred from geoms selected based on their group; see inertiagrouprange attribute of compiler. At runtime this attribute is used by the visualizer to enable and disable the rendering of entire geom groups. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "This attribute specifies an integer group to which the geom belongs. The only effect on the physics is at compile time, when body masses and inertias are inferred from geoms selected based on their group; see inertiagrouprange attribute of compiler. At runtime this attribute is used by the visualizer to enable and disable the rendering of entire geom groups. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: priority */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: priority"))
+	/** The geom priority determines how the properties of two colliding geoms are combined to form the properties of the contact. This interacts with the solmix attribute. See CContact. (MJCF: priority) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "The geom priority determines how the properties of two colliding geoms are combined to form the properties of the contact. This interacts with the solmix attribute. See CContact. (MJCF: priority)"))
 	TOptional<int32> Priority;
 
-	/** MJCF: size */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: size"))
+	/** Geom size parameters. The number of required parameters and their meaning depends on the geom type as documented under the type attribute. Here we only provide a summary. All required size parameters must be positive; the internal defaults correspond to invalid settings. Note that when a non-mesh geom type references a mesh, a geometric primitive of that type is fitted to the mesh. (MJCF: size) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Geom size parameters. The number of required parameters and their meaning depends on the geom type as documented under the type attribute. Here we only provide a summary. All required size parameters must be positive; the internal defaults correspond to invalid settings. Note that when a non-mesh geom type references a mesh, a geometric primitive of that type is fitted to the mesh. (MJCF: size)"))
 	TOptional<TArray<double>> Size;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** If specified, this attribute applies a material to the geom. Otherwise, if unspecified and the type of the geom is a mesh the compiler will apply the mesh asset material if present. The material determines the visual properties of the geom. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "If specified, this attribute applies a material to the geom. Otherwise, if unspecified and the type of the geom is a mesh the compiler will apply the mesh asset material if present. The material determines the visual properties of the geom. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: rgba"))
+	/** Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Instead of creating material assets and referencing them, this attribute can be used to set color and transparency only. This is not as flexible as the material mechanism, but is more convenient and is often sufficient. If the value of this attribute is different from the internal default, it takes precedence over the material. (MJCF: rgba)"))
 	TOptional<TArray<double>> Rgba;
 
-	/** MJCF: friction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: friction"))
+	/** Contact friction parameters for dynamically generated contact pairs. The first number is the sliding friction, acting along both axes of the tangent plane. The second number is the torsional friction, acting around the contact normal. The third number is the rolling friction, acting around both axes of the tangent plane. (MJCF: friction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Contact friction parameters for dynamically generated contact pairs. The first number is the sliding friction, acting along both axes of the tangent plane. The second number is the torsional friction, acting around the contact normal. The third number is the rolling friction, acting around both axes of the tangent plane. (MJCF: friction)"))
 	TOptional<TArray<double>> Friction;
 
-	/** MJCF: mass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: mass"))
+	/** If this attribute is specified, the density attribute below is ignored and the geom density is computed from the given mass, using the geom shape and the assumption of uniform density. The computed density is then used to obtain the geom inertia. Recall that the geom mass and inertia are only used during compilation, to infer the body mass and inertia if necessary. (MJCF: mass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "If this attribute is specified, the density attribute below is ignored and the geom density is computed from the given mass, using the geom shape and the assumption of uniform density. The computed density is then used to obtain the geom inertia. Recall that the geom mass and inertia are only used during compilation, to infer the body mass and inertia if necessary. (MJCF: mass)"))
 	TOptional<double> Mass;
 
-	/** MJCF: density */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: density"))
+	/** Material density used to compute the geom mass and inertia. The computation is based on the geom shape and the assumption of uniform density. The internal default of 1000 is the density of water in SI units. This attribute is used only when the mass attribute above is unspecified. If `shellinertia` is 'false' (the default), density has semantics of mass/volume; (MJCF: density) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Material density used to compute the geom mass and inertia. The computation is based on the geom shape and the assumption of uniform density. The internal default of 1000 is the density of water in SI units. This attribute is used only when the mass attribute above is unspecified. If `shellinertia` is 'false' (the default), density has semantics of mass/volume; (MJCF: density)"))
 	TOptional<double> Density;
 
-	/** MJCF: solmix */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "MJCF: solmix"))
+	/** This attribute specifies the weight used for averaging of contact parameters, and interacts with the priority attribute. See CContact. (MJCF: solmix) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "This attribute specifies the weight used for averaging of contact parameters, and interacts with the priority attribute. See CContact. (MJCF: solmix)"))
 	TOptional<double> Solmix;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** Constraint solver parameters for contact simulation. See CSolver. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for contact simulation. See CSolver. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** Constraint solver parameters for contact simulation. See CSolver. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for contact simulation. See CSolver. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: margin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "MJCF: margin"))
+	/** Geometric inflation of the geom surface for the purpose of contact force generation. When the distance between two geom surfaces is below margin, the contact is considered active and contact forces are generated. The constraint impedance can be a function of distance, as explained in CSolver. The quantity this function is applied to is the distance between the two geoms minus the margin. (MJCF: margin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "Geometric inflation of the geom surface for the purpose of contact force generation. When the distance between two geom surfaces is below margin, the contact is considered active and contact forces are generated. The constraint impedance can be a function of distance, as explained in CSolver. The quantity this function is applied to is the distance between the two geoms minus the margin. (MJCF: margin)"))
 	TOptional<double> Margin;
 
-	/** MJCF: gap */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "MJCF: gap"))
+	/** Additional contact detection buffer beyond margin. When this value is positive, contacts are detected at distance margin + gap but forces are only generated at distance margin. Contacts with distance between margin and margin + gap are included in mjData.contact as inactive contacts (with efc_address = -1). (MJCF: gap) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", AdvancedDisplay, meta = (ToolTip = "Additional contact detection buffer beyond margin. When this value is positive, contacts are detected at distance margin + gap but forces are only generated at distance margin. Contacts with distance between margin and margin + gap are included in mjData.contact as inactive contacts (with efc_address = -1). (MJCF: gap)"))
 	TOptional<double> Gap;
 
 	/** MJCF: surfacevel */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: surfacevel"))
 	TOptional<TArray<double>> Surfacevel;
 
-	/** MJCF: adhesion */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "MJCF: adhesion"))
+	/** Adhesive force of contacts generated by this pair, overriding the sum of the geoms' adhesion values. See there for detailed semantics. (MJCF: adhesion) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|CompositeGeom", meta = (ToolTip = "Adhesive force of contacts generated by this pair, overriding the sum of the geoms' adhesion values. See there for detailed semantics. (MJCF: adhesion)"))
 	TOptional<double> Adhesion;
 
 	// --- Blueprint access ---

@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendonpos|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendonpos|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendonpos|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,8 +58,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendonpos|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: tendon */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendonpos", meta = (ToolTip = "MJCF: tendon", GetOptions = "GetTendonOptions"))
+	/** The tendon whose length will be sensed. The sensor output is copied from mjData.ten_length. (MJCF: tendon) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Tendonpos", meta = (ToolTip = "The tendon whose length will be sensed. The sensor output is copied from mjData.ten_length. (MJCF: tendon)", GetOptions = "GetTendonOptions"))
 	FString Tendon;
 
 	// --- Blueprint access ---

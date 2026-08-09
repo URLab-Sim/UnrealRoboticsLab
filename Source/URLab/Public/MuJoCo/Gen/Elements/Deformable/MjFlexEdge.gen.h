@@ -29,12 +29,12 @@ class URLAB_API UMjFlexEdge : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: stiffness */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexEdge", meta = (ToolTip = "MJCF: stiffness"))
+	/** Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: stiffness) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexEdge", meta = (ToolTip = "Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: stiffness)"))
 	TOptional<double> Stiffness;
 
-	/** MJCF: damping */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexEdge", meta = (ToolTip = "MJCF: damping"))
+	/** Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: damping) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FlexEdge", meta = (ToolTip = "Edge stiffness and damping, passed through to the automatically generated flex. (MJCF: damping)"))
 	TOptional<double> Damping;
 
 	// --- Blueprint access ---

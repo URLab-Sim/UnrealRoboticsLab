@@ -29,44 +29,44 @@ class URLAB_API UMjMaterial : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: texrepeat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: texrepeat"))
+	/** This attribute applies to textures of type '2d'. It specifies how many times the texture image is repeated, relative to either the object size or the spatial unit, as determined by the next attribute. (MJCF: texrepeat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "This attribute applies to textures of type '2d'. It specifies how many times the texture image is repeated, relative to either the object size or the spatial unit, as determined by the next attribute. (MJCF: texrepeat)"))
 	TOptional<TArray<float>> Texrepeat;
 
-	/** MJCF: texuniform */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: texuniform"))
+	/** For cube textures, this attribute controls how cube mapping is applied. The default value 'false' means apply cube mapping directly, using the actual size of the object. The value 'true' maps the texture to a unit object before scaling it to its actual size (geometric primitives are created by the renderer as unit objects and then scaled). (MJCF: texuniform) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "For cube textures, this attribute controls how cube mapping is applied. The default value 'false' means apply cube mapping directly, using the actual size of the object. The value 'true' maps the texture to a unit object before scaling it to its actual size (geometric primitives are created by the renderer as unit objects and then scaled). (MJCF: texuniform)"))
 	TOptional<bool> Texuniform;
 
-	/** MJCF: emission */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: emission"))
+	/** Emission in OpenGL has the RGBA format, however we only provide a scalar setting. The RGB components of the OpenGL emission vector are the RGB components of the material color multiplied by the value specified here. The alpha component is 1. (MJCF: emission) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "Emission in OpenGL has the RGBA format, however we only provide a scalar setting. The RGB components of the OpenGL emission vector are the RGB components of the material color multiplied by the value specified here. The alpha component is 1. (MJCF: emission)"))
 	TOptional<float> Emission;
 
-	/** MJCF: specular */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: specular"))
+	/** Specularity in OpenGL has the RGBA format, however we only provide a scalar setting. The RGB components of the OpenGL specularity vector are all equal to the value specified here. The alpha component is 1. This value should be in the range [0 1]. (MJCF: specular) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "Specularity in OpenGL has the RGBA format, however we only provide a scalar setting. The RGB components of the OpenGL specularity vector are all equal to the value specified here. The alpha component is 1. This value should be in the range [0 1]. (MJCF: specular)"))
 	TOptional<float> Specular;
 
-	/** MJCF: shininess */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: shininess"))
+	/** Shininess in OpenGL is a number between 0 and 128. The value given here is multiplied by 128 before passing it to OpenGL, so it should be in the range [0 1]. Larger values correspond to tighter specular highlight (thus reducing the overall amount of highlight but making it more salient visually). This interacts with the specularity setting; see OpenGL documentation for details. (MJCF: shininess) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "Shininess in OpenGL is a number between 0 and 128. The value given here is multiplied by 128 before passing it to OpenGL, so it should be in the range [0 1]. Larger values correspond to tighter specular highlight (thus reducing the overall amount of highlight but making it more salient visually). This interacts with the specularity setting; see OpenGL documentation for details. (MJCF: shininess)"))
 	TOptional<float> Shininess;
 
-	/** MJCF: reflectance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: reflectance"))
+	/** This attribute should be in the range [0 1]. If the value is greater than 0, and the material is applied to a plane or a box geom, the renderer will simulate reflectance. The larger the value, the stronger the reflectance. For boxes, only the face in the direction of the local +Z axis is reflective. Simulating reflectance properly requires ray-tracing. (MJCF: reflectance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "This attribute should be in the range [0 1]. If the value is greater than 0, and the material is applied to a plane or a box geom, the renderer will simulate reflectance. The larger the value, the stronger the reflectance. For boxes, only the face in the direction of the local +Z axis is reflective. Simulating reflectance properly requires ray-tracing. (MJCF: reflectance)"))
 	TOptional<float> Reflectance;
 
-	/** MJCF: metallic */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: metallic"))
+	/** This attribute corresponds to uniform metallicity coefficient applied to the entire material. This attribute has no effect in MuJoCo's native renderer, but it can be useful when rendering scenes with a physically-based renderer. (MJCF: metallic) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "This attribute corresponds to uniform metallicity coefficient applied to the entire material. This attribute has no effect in MuJoCo's native renderer, but it can be useful when rendering scenes with a physically-based renderer. (MJCF: metallic)"))
 	TOptional<float> Metallic;
 
-	/** MJCF: roughness */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: roughness"))
+	/** This attribute corresponds to uniform roughness coefficient applied to the entire material. This attribute has no effect in MuJoCo's native renderer, but it can be useful when rendering scenes with a physically-based renderer. (MJCF: roughness) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "This attribute corresponds to uniform roughness coefficient applied to the entire material. This attribute has no effect in MuJoCo's native renderer, but it can be useful when rendering scenes with a physically-based renderer. (MJCF: roughness)"))
 	TOptional<float> Roughness;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "MJCF: rgba"))
+	/** Color and transparency of the material. All components should be in the range [0 1]. Note that the texture color (if assigned) and the color specified here are multiplied component-wise. Thus the default value of '1 1 1 1' has the effect of leaving the texture unchanged. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Material", meta = (ToolTip = "Color and transparency of the material. All components should be in the range [0 1]. Note that the texture color (if assigned) and the color specified here are multiplied component-wise. Thus the default value of '1 1 1 1' has the effect of leaving the texture unchanged. (MJCF: rgba)"))
 	TOptional<FLinearColor> Rgba;
 
 	// --- Blueprint access ---

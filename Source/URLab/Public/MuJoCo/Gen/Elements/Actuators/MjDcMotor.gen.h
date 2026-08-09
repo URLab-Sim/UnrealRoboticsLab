@@ -38,16 +38,16 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "MJCF: group"))
 	TOptional<int32> Group;
 
-	/** MJCF: nsample */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "MJCF: nsample"))
+	/** If greater than 0, this attribute creates a time-indexed ring buffer with nsample samples of this actuator's ctrl history. During state advancement, the current control input is appended to the buffer with timestamp time, and the oldest sample is removed. Values in the history buffer can be read via mj_readCtrl. A positive nsample is required for delay. See Delays for details. (MJCF: nsample) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "If greater than 0, this attribute creates a time-indexed ring buffer with nsample samples of this actuator's ctrl history. During state advancement, the current control input is appended to the buffer with timestamp time, and the oldest sample is removed. Values in the history buffer can be read via mj_readCtrl. A positive nsample is required for delay. See Delays for details. (MJCF: nsample)"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
-	/** MJCF: delay */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "MJCF: delay"))
+	/** If greater than 0, then during the forward dynamics, instead of reading the control input to the actuator from mjData.ctrl, the control input is read from the history buffer using mj_readCtrl. Requires a history buffer (nsample > 0). In the most common case, delay = nsample * timestep. (MJCF: delay) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", meta = (ToolTip = "If greater than 0, then during the forward dynamics, instead of reading the control input to the actuator from mjData.ctrl, the control input is read from the history buffer using mj_readCtrl. Requires a history buffer (nsample > 0). In the most common case, delay = nsample * timestep. (MJCF: delay)"))
 	TOptional<double> Delay;
 
 	/** MJCF: ctrlrange */
@@ -58,16 +58,16 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: ctrllimited */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: ctrllimited"))
+	/** If true, the control input to this actuator is automatically clamped to ctrlrange at runtime. If false, control input clamping is disabled. If 'auto' and autolimits is set in compiler, control clamping will automatically be set to true if ctrlrange is defined without explicitly setting this attribute to 'true'. (MJCF: ctrllimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "If true, the control input to this actuator is automatically clamped to ctrlrange at runtime. If false, control input clamping is disabled. If 'auto' and autolimits is set in compiler, control clamping will automatically be set to true if ctrlrange is defined without explicitly setting this attribute to 'true'. (MJCF: ctrllimited)"))
 	TOptional<EMjTriState> Ctrllimited;
 
-	/** MJCF: lengthrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "MJCF: lengthrange"))
+	/** Range of feasible lengths of the actuator's transmission. See Length Range. (MJCF: lengthrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "Range of feasible lengths of the actuator's transmission. See Length Range. (MJCF: lengthrange)"))
 	TOptional<FVector2D> Lengthrange;
 
-	/** MJCF: gear */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "MJCF: gear"))
+	/** This attribute scales the length (and consequently moment arms, velocity and force) of the actuator, for all transmission types. It is different from the gain in the force generation mechanism, because the gain only scales the force output and does not affect the length, moment arms and velocity. For actuators with scalar transmission, only the first element of this vector is used. (MJCF: gear) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "This attribute scales the length (and consequently moment arms, velocity and force) of the actuator, for all transmission types. It is different from the gain in the force generation mechanism, because the gain only scales the force output and does not affect the length, moment arms and velocity. For actuators with scalar transmission, only the first element of this vector is used. (MJCF: gear)"))
 	TOptional<TArray<double>> Gear;
 
 	/** damper polynomial, 1+mjNPOLY coefficients (MJCF: damping) */
@@ -78,76 +78,76 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "MJCF: armature"))
 	TOptional<double> Armature;
 
-	/** slidercrank-only, validated (MJCF: cranklength) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "slidercrank-only, validated (MJCF: cranklength)"))
+	/** Used only for the slider-crank transmission type. Specifies the length of the connecting rod. The compiler expects this value to be positive when a slider-crank transmission is present. (MJCF: cranklength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|ActuatorDynamics", meta = (ToolTip = "Used only for the slider-crank transmission type. Specifies the length of the connecting rod. The compiler expects this value to be positive when a slider-crank transmission is present. (MJCF: cranklength)"))
 	TOptional<double> Cranklength;
 
 	/** MJCF: joint */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: joint", GetOptions = "GetJointOptions"))
 	TOptional<FString> Joint;
 
-	/** MJCF: jointinparent */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: jointinparent"))
+	/** Identical to joint, except that for ball and free joints, the 3d rotation axis given by gear is defined in the parent frame (which is the world frame for free joints) rather than the child frame. (MJCF: jointinparent) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "Identical to joint, except that for ball and free joints, the 3d rotation axis given by gear is defined in the parent frame (which is the world frame for free joints) rather than the child frame. (MJCF: jointinparent)"))
 	TOptional<FString> Jointinparent;
 
 	/** MJCF: tendon */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: tendon", GetOptions = "GetTendonOptions"))
 	TOptional<FString> Tendon;
 
-	/** MJCF: slidersite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: slidersite", GetOptions = "GetSlidersiteOptions"))
+	/** Used only for the slider-crank transmission type. The specified site is the pin joining the slider and the connecting rod. The slider moves along the z-axis of the slidersite frame. Therefore the site should be oriented as needed when it is defined in the kinematic tree; its orientation cannot be changed in the actuator definition. (MJCF: slidersite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "Used only for the slider-crank transmission type. The specified site is the pin joining the slider and the connecting rod. The slider moves along the z-axis of the slidersite frame. Therefore the site should be oriented as needed when it is defined in the kinematic tree; its orientation cannot be changed in the actuator definition. (MJCF: slidersite)", GetOptions = "GetSlidersiteOptions"))
 	TOptional<FString> Slidersite;
 
-	/** MJCF: cranksite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: cranksite", GetOptions = "GetCranksiteOptions"))
+	/** If specified, the actuator acts on a slider-crank mechanism which is implicitly determined by the actuator (i.e., it is not a separate model element). The specified site corresponds to the pin joining the crank and the connecting rod. The actuator length equals the position of the slider-crank mechanism times the gear ratio. (MJCF: cranksite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "If specified, the actuator acts on a slider-crank mechanism which is implicitly determined by the actuator (i.e., it is not a separate model element). The specified site corresponds to the pin joining the crank and the connecting rod. The actuator length equals the position of the slider-crank mechanism times the gear ratio. (MJCF: cranksite)", GetOptions = "GetCranksiteOptions"))
 	TOptional<FString> Cranksite;
 
 	/** MJCF: site */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
 	TOptional<FString> Site;
 
-	/** MJCF: refsite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "MJCF: refsite", GetOptions = "GetRefsiteOptions"))
+	/** When using a site transmission, measure the translation and rotation w.r.t the frame of the refsite. In this case the actuator does have length and position actuators can be used to directly control an end effector, see `refsite.xml <https://github.com/google-deepmind/mujoco/tree/main/test/engine/testdata/actuation/refsite.xml>`__ example model. (MJCF: refsite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor|Transmission", meta = (ToolTip = "When using a site transmission, measure the translation and rotation w.r.t the frame of the refsite. In this case the actuator does have length and position actuators can be used to directly control an end effector, see `refsite.xml <https://github.com/google-deepmind/mujoco/tree/main/test/engine/testdata/actuation/refsite.xml>`__ example model. (MJCF: refsite)", GetOptions = "GetRefsiteOptions"))
 	TOptional<FString> Refsite;
 
-	/** MJCF: motorconst */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: motorconst"))
+	/** Motor constants, defined as motorconst = 'Kt Ke' (N.m/A, equivalently V.s/rad). Kt is the torque constant and Ke the back-EMF constant; they can differ when magnetic saturation is present. If both are positive, the effective constant is K = /sqrt{K_t K_e} (geometric mean). If only one is positive, K equals that value. If a datasheet specifies the speed constant K_v in rad/(V.s), use K_e = 1/K_v. (MJCF: motorconst) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Motor constants, defined as motorconst = 'Kt Ke' (N.m/A, equivalently V.s/rad). Kt is the torque constant and Ke the back-EMF constant; they can differ when magnetic saturation is present. If both are positive, the effective constant is K = /sqrt{K_t K_e} (geometric mean). If only one is positive, K equals that value. If a datasheet specifies the speed constant K_v in rad/(V.s), use K_e = 1/K_v. (MJCF: motorconst)"))
 	TOptional<TArray<double>> Motorconst;
 
-	/** MJCF: resistance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: resistance"))
+	/** Terminal resistance R in Ohm. (see `tech note <_static/dcmotor.pdf>`__, Sections 1.1 and 2.1) (MJCF: resistance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Terminal resistance R in Ohm. (see `tech note <_static/dcmotor.pdf>`__, Sections 1.1 and 2.1) (MJCF: resistance)"))
 	TOptional<double> Resistance;
 
-	/** MJCF: nominal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: nominal"))
+	/** Nominal operating point, defined as nominal = 'voltage stall_torque no_load_speed'. The compiler derives K = voltage / no_load_speed and R = K . voltage / stall_torque. (see `tech note <_static/dcmotor.pdf>`__, Sections 1.1 and 2.1) (MJCF: nominal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Nominal operating point, defined as nominal = 'voltage stall_torque no_load_speed'. The compiler derives K = voltage / no_load_speed and R = K . voltage / stall_torque. (see `tech note <_static/dcmotor.pdf>`__, Sections 1.1 and 2.1) (MJCF: nominal)"))
 	TOptional<TArray<double>> Nominal;
 
-	/** MJCF: saturation */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: saturation"))
+	/** Limits on the actuator, defined as saturation = 'torque current current_rate'. torque and current are alternative specifications of the maximum continuous torque: if current is given, torque = K /cdot current; if both are given, torque takes precedence. Sets forcerange to [-/tau_{/max},/, /tau_{/max}]. current_rate sets the maximum rate of change of current (di/dt)_{/max} (requires inductance). (MJCF: saturation) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Limits on the actuator, defined as saturation = 'torque current current_rate'. torque and current are alternative specifications of the maximum continuous torque: if current is given, torque = K /cdot current; if both are given, torque takes precedence. Sets forcerange to [-/tau_{/max},/, /tau_{/max}]. current_rate sets the maximum rate of change of current (di/dt)_{/max} (requires inductance). (MJCF: saturation)"))
 	TOptional<TArray<double>> Saturation;
 
-	/** MJCF: inductance */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: inductance"))
+	/** Electrical dynamics, defined as inductance = 'L timeconst' (Henry, seconds). These are alternative specifications: L is the winding inductance and timeconst = L/R is the electrical time constant. Specify one; if both are given, L takes precedence. If both are 0 (the default), no electrical dynamics are modeled and the current is computed algebraically. (MJCF: inductance) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Electrical dynamics, defined as inductance = 'L timeconst' (Henry, seconds). These are alternative specifications: L is the winding inductance and timeconst = L/R is the electrical time constant. Specify one; if both are given, L takes precedence. If both are 0 (the default), no electrical dynamics are modeled and the current is computed algebraically. (MJCF: inductance)"))
 	TOptional<TArray<double>> Inductance;
 
-	/** MJCF: cogging */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: cogging"))
+	/** Cogging torque, defined as cogging = 'amplitude poles phase' (N.m, integer, rad). Adds a position-dependent torque = /textsf{amplitude} /cdot /sin(/textsf{poles} /cdot /theta + /textsf{phase}). Disabled when amplitude = 0 (the default). (see `tech note <_static/dcmotor.pdf>`__, Sections 1.2 and 2.1) (MJCF: cogging) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Cogging torque, defined as cogging = 'amplitude poles phase' (N.m, integer, rad). Adds a position-dependent torque = /textsf{amplitude} /cdot /sin(/textsf{poles} /cdot /theta + /textsf{phase}). Disabled when amplitude = 0 (the default). (see `tech note <_static/dcmotor.pdf>`__, Sections 1.2 and 2.1) (MJCF: cogging)"))
 	TOptional<TArray<double>> Cogging;
 
-	/** MJCF: controller */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: controller"))
+	/** PID controller parameters, defined as controller = 'kp ki kd slewmax Imax Vmax'. Depending on the input mode, the controller stabilizes either position or velocity. If the input mode is voltage, kp, ki, kd are ignored. Vmax sets the maximum drive voltage v_{/max} (Volt); (MJCF: controller) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "PID controller parameters, defined as controller = 'kp ki kd slewmax Imax Vmax'. Depending on the input mode, the controller stabilizes either position or velocity. If the input mode is voltage, kp, ki, kd are ignored. Vmax sets the maximum drive voltage v_{/max} (Volt); (MJCF: controller)"))
 	TOptional<TArray<double>> Controller;
 
-	/** MJCF: thermal */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: thermal"))
+	/** Thermal model, defined as thermal = 'resistance capacitance timeconst tempcoef reftemp ambient' (K/W, J/K, s, 1/K, degreesC, degreesC). The first three sub-values specify the thermal time constant: timeconst = resistance /times capacitance. Specify either timeconst directly, or resistance and capacitance; if all three are given, timeconst takes precedence. (MJCF: thermal) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Thermal model, defined as thermal = 'resistance capacitance timeconst tempcoef reftemp ambient' (K/W, J/K, s, 1/K, degreesC, degreesC). The first three sub-values specify the thermal time constant: timeconst = resistance /times capacitance. Specify either timeconst directly, or resistance and capacitance; if all three are given, timeconst takes precedence. (MJCF: thermal)"))
 	TOptional<TArray<double>> Thermal;
 
-	/** MJCF: lugre */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: lugre"))
+	/** LuGre friction, defined as lugre = 'stiffness damping coulomb static stribeck' (N.m/rad, N.m.s/rad, N.m, N.m, rad/s). Disabled when stiffness = 0 (the default). Adds one activation variable for bristle deflection. Note that the viscous damping coefficient /sigma_2 is not part of the lugre attribute and should be added to the standard actuator damping attribute. (MJCF: lugre) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "LuGre friction, defined as lugre = 'stiffness damping coulomb static stribeck' (N.m/rad, N.m.s/rad, N.m, N.m, rad/s). Disabled when stiffness = 0 (the default). Adds one activation variable for bristle deflection. Note that the viscous damping coefficient /sigma_2 is not part of the lugre attribute and should be added to the standard actuator damping attribute. (MJCF: lugre)"))
 	TOptional<TArray<double>> Lugre;
 
-	/** MJCF: input */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "MJCF: input"))
+	/** Specifies the input signal semantics. In 'voltage' mode, the control directly sets applied motor voltage. In 'position' or 'velocity' modes, the PID controller uses the control as a reference setpoint relative to the joint trajectory. (see `tech note <_static/dcmotor.pdf>`__, Section 2.5) (MJCF: input) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|DcMotor", meta = (ToolTip = "Specifies the input signal semantics. In 'voltage' mode, the control directly sets applied motor voltage. In 'position' or 'velocity' modes, the PID controller uses the control as a reference setpoint relative to the joint trajectory. (see `tech note <_static/dcmotor.pdf>`__, Section 2.5) (MJCF: input)"))
 	TOptional<EMjDcMotorInput> Input;
 
 	// --- Blueprint access ---

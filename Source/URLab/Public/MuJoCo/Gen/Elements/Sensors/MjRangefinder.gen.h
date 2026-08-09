@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,16 +58,16 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: site */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder", meta = (ToolTip = "MJCF: site", GetOptions = "GetSiteOptions"))
+	/** The site where the sensor is attached. (MJCF: site) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder", meta = (ToolTip = "The site where the sensor is attached. (MJCF: site)", GetOptions = "GetSiteOptions"))
 	TOptional<FString> Site;
 
-	/** MJCF: camera */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder", meta = (ToolTip = "MJCF: camera", GetOptions = "GetCameraOptions"))
+	/** The camera where the sensor is attached. (MJCF: camera) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder", meta = (ToolTip = "The camera where the sensor is attached. (MJCF: camera)", GetOptions = "GetCameraOptions"))
 	TOptional<FString> Camera;
 
-	/** ordering-checked (MJCF: data) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder", meta = (ToolTip = "ordering-checked (MJCF: data)"))
+	/** By default, the rangefinder outputs a distance measurement, as described above. However, it is also possible to specify a set of output data fields. The data attribute can contain multiple sequential data types, as long as the relative order---as listed above---is maintained. (MJCF: data) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Rangefinder", meta = (ToolTip = "By default, the rangefinder outputs a distance measurement, as described above. However, it is also possible to specify a set of output data fields. The data attribute can contain multiple sequential data types, as long as the relative order---as listed above---is maintained. (MJCF: data)"))
 	TOptional<TArray<EMjRayData>> Data;
 
 	// --- Blueprint access ---

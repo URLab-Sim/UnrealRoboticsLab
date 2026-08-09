@@ -32,20 +32,20 @@ class URLAB_API UMjReplicate : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: count */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "MJCF: count"))
+	/** The number of replicas. Must be positive. (MJCF: count) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "The number of replicas. Must be positive. (MJCF: count)"))
 	int32 Count;
 
-	/** MJCF: offset */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "MJCF: offset"))
+	/** Translational offset along the three coordinate axes. In general, the frame of the offset is with respect to the previous replica, except for the first one which is with respect to the replicate element's parent. If there is no rotation, these values are always in the frame of the replicate element's parent. (MJCF: offset) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "Translational offset along the three coordinate axes. In general, the frame of the offset is with respect to the previous replica, except for the first one which is with respect to the replicate element's parent. If there is no rotation, these values are always in the frame of the replicate element's parent. (MJCF: offset)"))
 	TOptional<FMjPosition3> Offset;
 
-	/** MJCF: euler */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "MJCF: euler"))
+	/** Rotation angles around three coordinate axes between two subsequent replicas. The angular units and rotation sequence respect the global angle and eulerseq settings. Rotation is always with respect to the frame of the previous replica, so total rotation is cumulative. (MJCF: euler) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "Rotation angles around three coordinate axes between two subsequent replicas. The angular units and rotation sequence respect the global angle and eulerseq settings. Rotation is always with respect to the frame of the previous replica, so total rotation is cumulative. (MJCF: euler)"))
 	TOptional<FMjVec3> Euler;
 
-	/** MJCF: sep */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "MJCF: sep"))
+	/** The namespace separator. This optional string is prepended to the namespace suffix string. Note that for nested replicate elements, the innermost namespace suffixes are appended first. (MJCF: sep) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Replicate", meta = (ToolTip = "The namespace separator. This optional string is prepended to the namespace suffix string. Note that for nested replicate elements, the innermost namespace suffixes are appended first. (MJCF: sep)"))
 	TOptional<FString> Sep;
 
 	/** MJCF: childclass */

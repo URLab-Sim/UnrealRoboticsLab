@@ -33,108 +33,108 @@ class URLAB_API UMjFlexcompBase : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: type"))
+	/** This attribute determines the type of flexcomp object. The remaining attributes and sub-elements are then interpreted according to the type. Default settings are also adjusted depending on the type. Different types correspond to different methods for specifying the flexcomp points and the stretchable elements that connect them. (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "This attribute determines the type of flexcomp object. The remaining attributes and sub-elements are then interpreted according to the type. Default settings are also adjusted depending on the type. Different types correspond to different methods for specifying the flexcomp points and the stretchable elements that connect them. (MJCF: type)"))
 	TOptional<EMjFlexcompType> Type;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: group"))
+	/** These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** MJCF: dim */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: dim"))
+	/** Dimensionality of the flex object. This value must be 1, 2 or 3. The flex elements are capsules in 1D, triangles with radius in 2D, and tetrahedra with radius in 3D. Certain flexcomp types imply a dimensionality, in which case the value specified here is ignored. (MJCF: dim) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Dimensionality of the flex object. This value must be 1, 2 or 3. The flex elements are capsules in 1D, triangles with radius in 2D, and tetrahedra with radius in 3D. Certain flexcomp types imply a dimensionality, in which case the value specified here is ignored. (MJCF: dim)"))
 	TOptional<int32> Dim;
 
-	/** MJCF: dof */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: dof"))
+	/** The parametrization of the flex's degrees of freedom (dofs). See the video on the right illustrating the different parametrizations with deformable spheres. (MJCF: dof) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The parametrization of the flex's degrees of freedom (dofs). See the video on the right illustrating the different parametrizations with deformable spheres. (MJCF: dof)"))
 	TOptional<EMjFlexDof> Dof;
 
-	/** MJCF: count */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: count"))
+	/** Specifies the number of automatically generated points in each dimension for types grid, box, cylinder, and ellipsoid. (MJCF: count) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Specifies the number of automatically generated points in each dimension for types grid, box, cylinder, and ellipsoid. (MJCF: count)"))
 	TOptional<FMjVec3> Count;
 
-	/** MJCF: cellcount */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: cellcount"))
+	/** Specifies the number of cells in each dimension for the background interpolation grid when using trilinear or quadratic dofs. (MJCF: cellcount) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Specifies the number of cells in each dimension for the background interpolation grid when using trilinear or quadratic dofs. (MJCF: cellcount)"))
 	TOptional<FMjVec3> Cellcount;
 
-	/** MJCF: spacing */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: spacing"))
+	/** The spacing between the automatically generated points in each dimension. The spacing should be sufficiently large compared to the radius, to avoid permanent contacts. (MJCF: spacing) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The spacing between the automatically generated points in each dimension. The spacing should be sufficiently large compared to the radius, to avoid permanent contacts. (MJCF: spacing)"))
 	TOptional<FMjVec3> Spacing;
 
-	/** MJCF: radius */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: radius"))
+	/** These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: radius) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: radius)"))
 	TOptional<double> Radius;
 
-	/** MJCF: rigid */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: rigid"))
+	/** If this is true, all points correspond to vertices within the parent body, and no new bodies are created. This is equivalent to pinning all points. Note that if all points are indeed pinned, the model compiler will detect that the flex is rigid (which behaves is a non-convex mesh in collision detection). (MJCF: rigid) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "If this is true, all points correspond to vertices within the parent body, and no new bodies are created. This is equivalent to pinning all points. Note that if all points are indeed pinned, the model compiler will detect that the flex is rigid (which behaves is a non-convex mesh in collision detection). (MJCF: rigid)"))
 	TOptional<bool> Rigid;
 
-	/** MJCF: mass */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: mass"))
+	/** The mass of each automatically-generated body equals this value divided by the number of points. Note that pinning some points does not affect the mass of the other bodies. (MJCF: mass) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The mass of each automatically-generated body equals this value divided by the number of points. Note that pinning some points does not affect the mass of the other bodies. (MJCF: mass)"))
 	TOptional<double> Mass;
 
-	/** MJCF: inertiabox */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: inertiabox"))
+	/** Even though the automatically-generated bodies have the physics of point masses, with slider joints, MuJoCo still requires each body to have rotational inertia. The inertias generated here are diagonal, and are computed such that the corresponding equivalent-inertia boxes have sides equal to this value. (MJCF: inertiabox) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Even though the automatically-generated bodies have the physics of point masses, with slider joints, MuJoCo still requires each body to have rotational inertia. The inertias generated here are diagonal, and are computed such that the corresponding equivalent-inertia boxes have sides equal to this value. (MJCF: inertiabox)"))
 	TOptional<double> Inertiabox;
 
-	/** MJCF: scale */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: scale"))
+	/** Scaling of all point coordinates, for types that specify coordinates explicitly. Scaling is applied after the pose transformation. (MJCF: scale) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Scaling of all point coordinates, for types that specify coordinates explicitly. Scaling is applied after the pose transformation. (MJCF: scale)"))
 	TOptional<FMjVec3> Scale;
 
-	/** MJCF: file */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: file"))
+	/** The name of the file from which a surface (triangular) or volumetric (tetrahedral) mesh is loaded. For surface meshes, the file extension is used to determine the file format. Supported formats are GMSH and the formats specified in mesh assets, excluding the legacy .msh format. Volumetric meshes are supported only in GMSH format. See here for more information on GMSH files. (MJCF: file) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The name of the file from which a surface (triangular) or volumetric (tetrahedral) mesh is loaded. For surface meshes, the file extension is used to determine the file format. Supported formats are GMSH and the formats specified in mesh assets, excluding the legacy .msh format. Volumetric meshes are supported only in GMSH format. See here for more information on GMSH files. (MJCF: file)"))
 	TOptional<FString> File;
 
-	/** MJCF: point */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: point"))
+	/** The 3D coordinates of the points. This attribute is only used with type direct. All other flexcomp types generate their own points. The points are used to construct bodies and vertices as explained earlier. (MJCF: point) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The 3D coordinates of the points. This attribute is only used with type direct. All other flexcomp types generate their own points. The points are used to construct bodies and vertices as explained earlier. (MJCF: point)"))
 	TOptional<TArray<double>> Point;
 
-	/** MJCF: element */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: element"))
+	/** The zero-based point ids forming each flex elements. This attribute is only used with type direct. All other flexcomp types generate their own elements. This data is passed through to the automatically-generated flex. (MJCF: element) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The zero-based point ids forming each flex elements. This attribute is only used with type direct. All other flexcomp types generate their own elements. This data is passed through to the automatically-generated flex. (MJCF: element)"))
 	TOptional<TArray<double>> Element;
 
-	/** MJCF: texcoord */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: texcoord"))
+	/** Texture coordinates of each point, passed through to the automatically-generated flex. Note that flexcomp does not generate texture coordinates automatically, except for 2D grids, box, cylinder and ellipsoid. For all other types, the user can specify explicit texture coordinates here, even if the points themselves were generated automatically. (MJCF: texcoord) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Texture coordinates of each point, passed through to the automatically-generated flex. Note that flexcomp does not generate texture coordinates automatically, except for 2D grids, box, cylinder and ellipsoid. For all other types, the user can specify explicit texture coordinates here, even if the points themselves were generated automatically. (MJCF: texcoord)"))
 	TOptional<TArray<double>> Texcoord;
 
-	/** MJCF: material */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: material", GetOptions = "GetMaterialOptions"))
+	/** These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: material) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: material)", GetOptions = "GetMaterialOptions"))
 	TOptional<FString> Material;
 
-	/** MJCF: rgba */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: rgba"))
+	/** These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: rgba) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: rgba)"))
 	TOptional<TArray<double>> Rgba;
 
-	/** MJCF: flatskin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: flatskin"))
+	/** These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: flatskin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "These attributes are directly passed through to the automatically-generated flex object and have the same meaning. (MJCF: flatskin)"))
 	TOptional<bool> Flatskin;
 
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: pos"))
+	/** This 3D vector translates all points relative to the frame of the parent body. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "This 3D vector translates all points relative to the frame of the parent body. (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
-	/** MJCF: quat */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: quat"))
+	/** This is a quaternion rotation of all points around the pos vector specified above. Together these two vectors define a pose transformation, used to position and orient the points as needed. (MJCF: quat) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "This is a quaternion rotation of all points around the pos vector specified above. Together these two vectors define a pose transformation, used to position and orient the points as needed. (MJCF: quat)"))
 	TOptional<FMjQuatRot> Quat;
 
-	/** MJCF: axisangle */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: axisangle"))
+	/** Alternative specification of rotation, that can be used instead of quat. (MJCF: axisangle) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Alternative specification of rotation, that can be used instead of quat. (MJCF: axisangle)"))
 	TOptional<TArray<double>> Axisangle;
 
-	/** MJCF: xyaxes */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: xyaxes"))
+	/** Alternative specification of rotation, that can be used instead of quat. (MJCF: xyaxes) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Alternative specification of rotation, that can be used instead of quat. (MJCF: xyaxes)"))
 	TOptional<TArray<double>> Xyaxes;
 
-	/** MJCF: zaxis */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: zaxis"))
+	/** Alternative specification of rotation, that can be used instead of quat. (MJCF: zaxis) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Alternative specification of rotation, that can be used instead of quat. (MJCF: zaxis)"))
 	TOptional<FMjDirection3> Zaxis;
 
-	/** MJCF: euler */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: euler"))
+	/** Alternative specification of rotation, that can be used instead of quat. (MJCF: euler) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "Alternative specification of rotation, that can be used instead of quat. (MJCF: euler)"))
 	TOptional<FMjVec3> Euler;
 
-	/** MJCF: origin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "MJCF: origin"))
+	/** The origin of the flexcomp. Used for generating a volumetric mesh from an OBJ surface mesh. Each surface triangle is connected to the origin to create a tetrahedron, so the resulting volumetric mesh is guaranteed to be well-formed only for convex shapes. (MJCF: origin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Flexcomp", meta = (ToolTip = "The origin of the flexcomp. Used for generating a volumetric mesh from an OBJ surface mesh. Each surface triangle is connected to the origin to create a tetrahedron, so the resulting volumetric mesh is guaranteed to be well-formed only for convex shapes. (MJCF: origin)"))
 	TOptional<FMjPosition3> Origin;
 
 	// --- Blueprint access ---

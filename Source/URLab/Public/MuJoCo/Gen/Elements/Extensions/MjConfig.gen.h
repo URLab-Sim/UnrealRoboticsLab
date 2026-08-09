@@ -29,12 +29,12 @@ class URLAB_API UMjConfig : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: key */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Config", meta = (ToolTip = "MJCF: key"))
+	/** Key used for plugin configuration. (MJCF: key) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Config", meta = (ToolTip = "Key used for plugin configuration. (MJCF: key)"))
 	FString Key;
 
-	/** MJCF: value */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Config", meta = (ToolTip = "MJCF: value"))
+	/** Value associated with key. (MJCF: value) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Config", meta = (ToolTip = "Value associated with key. (MJCF: value)"))
 	TOptional<FString> Value;
 
 	// --- Blueprint access ---

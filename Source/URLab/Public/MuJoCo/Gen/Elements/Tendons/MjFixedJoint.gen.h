@@ -29,12 +29,12 @@ class URLAB_API UMjFixedJoint : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: joint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FixedJoint", meta = (ToolTip = "MJCF: joint", GetOptions = "GetJointOptions"))
+	/** Name of the joint to be added to the fixed tendon. Only scalar joints (slide and hinge) can be referenced here. (MJCF: joint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FixedJoint", meta = (ToolTip = "Name of the joint to be added to the fixed tendon. Only scalar joints (slide and hinge) can be referenced here. (MJCF: joint)", GetOptions = "GetJointOptions"))
 	FString Joint;
 
-	/** MJCF: coef */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|FixedJoint", meta = (ToolTip = "MJCF: coef"))
+	/** Scalar coefficient multiplying the position or angle of the specified joint. (MJCF: coef) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|FixedJoint", meta = (ToolTip = "Scalar coefficient multiplying the position or angle of the specified joint. (MJCF: coef)"))
 	TOptional<double> Coef;
 
 	// --- Blueprint access ---

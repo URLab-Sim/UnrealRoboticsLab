@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuatorvel|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuatorvel|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuatorvel|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -58,8 +58,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuatorvel|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: actuator */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuatorvel", meta = (ToolTip = "MJCF: actuator", GetOptions = "GetActuatorOptions"))
+	/** The actuator whose transmission's velocity will be sensed. The sensor output is copied from mjData.actuator_velocity. (MJCF: actuator) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Actuatorvel", meta = (ToolTip = "The actuator whose transmission's velocity will be sensed. The sensor output is copied from mjData.actuator_velocity. (MJCF: actuator)", GetOptions = "GetActuatorOptions"))
 	FString Actuator;
 
 	// --- Blueprint access ---

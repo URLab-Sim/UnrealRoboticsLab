@@ -29,12 +29,12 @@ class URLAB_API UMjSpatialGeom : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: geom */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SpatialGeom", meta = (ToolTip = "MJCF: geom", GetOptions = "GetGeomOptions"))
+	/** The name of a geom that acts as an obstacle for the tendon path. Only sphere and cylinder geoms can be referenced here. (MJCF: geom) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SpatialGeom", meta = (ToolTip = "The name of a geom that acts as an obstacle for the tendon path. Only sphere and cylinder geoms can be referenced here. (MJCF: geom)", GetOptions = "GetGeomOptions"))
 	FString Geom;
 
-	/** MJCF: sidesite */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|SpatialGeom", meta = (ToolTip = "MJCF: sidesite", GetOptions = "GetSidesiteOptions"))
+	/** To prevent the tendon path from snapping from one side of the geom to the other as the model configuration varies, the user can define a preferred 'side' of the geom. At runtime, the wrap that is closer to the specified site is automatically selected. Specifying a side site is often needed in practice. (MJCF: sidesite) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|SpatialGeom", meta = (ToolTip = "To prevent the tendon path from snapping from one side of the geom to the other as the model configuration varies, the user can define a preferred 'side' of the geom. At runtime, the wrap that is closer to the specified site is automatically selected. Specifying a side site is often needed in practice. (MJCF: sidesite)", GetOptions = "GetSidesiteOptions"))
 	TOptional<FString> Sidesite;
 
 	// --- Blueprint access ---

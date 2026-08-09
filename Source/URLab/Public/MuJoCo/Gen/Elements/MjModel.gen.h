@@ -29,8 +29,8 @@ class URLAB_API UMjModel : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: model */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Model", meta = (ToolTip = "MJCF: model"))
+	/** The name of the model. This name is shown in the title bar of simulate.cc. (MJCF: model) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Model", meta = (ToolTip = "The name of the model. This name is shown in the title bar of simulate.cc. (MJCF: model)"))
 	TOptional<FString> Model;
 
 	// --- Blueprint access ---

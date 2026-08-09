@@ -29,72 +29,72 @@ class URLAB_API UMjVisualScale : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: forcewidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: forcewidth"))
+	/** The radius of the arrows used to render contact forces and perturbation forces. (MJCF: forcewidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the arrows used to render contact forces and perturbation forces. (MJCF: forcewidth)"))
 	TOptional<float> Forcewidth;
 
-	/** MJCF: contactwidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: contactwidth"))
+	/** The radius of the cylinders used to render contact points. The normal direction of the cylinder is aligned with the contact normal. Making the cylinder short and wide results in a 'pancake' representation of the tangent plane. (MJCF: contactwidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the cylinders used to render contact points. The normal direction of the cylinder is aligned with the contact normal. Making the cylinder short and wide results in a 'pancake' representation of the tangent plane. (MJCF: contactwidth)"))
 	TOptional<float> Contactwidth;
 
-	/** MJCF: contactheight */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: contactheight"))
+	/** The height of the cylinders used to render contact points. (MJCF: contactheight) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The height of the cylinders used to render contact points. (MJCF: contactheight)"))
 	TOptional<float> Contactheight;
 
-	/** MJCF: connect */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: connect"))
+	/** The radius of the capsules used to connect bodies and joints, resulting in an automatically generated skeleton. (MJCF: connect) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the capsules used to connect bodies and joints, resulting in an automatically generated skeleton. (MJCF: connect)"))
 	TOptional<float> Connect;
 
-	/** MJCF: com */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: com"))
+	/** The radius of the spheres used to render the centers of mass of kinematic sub-trees. (MJCF: com) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the spheres used to render the centers of mass of kinematic sub-trees. (MJCF: com)"))
 	TOptional<float> Com;
 
-	/** MJCF: camera */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: camera"))
+	/** The size of the decorative object used to represent model cameras in the rendering. (MJCF: camera) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The size of the decorative object used to represent model cameras in the rendering. (MJCF: camera)"))
 	TOptional<float> Camera;
 
-	/** MJCF: light */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: light"))
+	/** The size of the decorative object used to represent model lights in the rendering. (MJCF: light) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The size of the decorative object used to represent model lights in the rendering. (MJCF: light)"))
 	TOptional<float> Light;
 
-	/** MJCF: selectpoint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: selectpoint"))
+	/** The radius of the sphere used to render the selection point (i.e., the point where the user left-double-clicked to select a body). Note that the local and global coordinates of this point can be printed in the 3D view by activating the corresponding rendering flags. In this way, the coordinates of points of interest can be found. (MJCF: selectpoint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the sphere used to render the selection point (i.e., the point where the user left-double-clicked to select a body). Note that the local and global coordinates of this point can be printed in the 3D view by activating the corresponding rendering flags. In this way, the coordinates of points of interest can be found. (MJCF: selectpoint)"))
 	TOptional<float> Selectpoint;
 
-	/** MJCF: jointlength */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: jointlength"))
+	/** The length of the arrows used to render joint axes. (MJCF: jointlength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The length of the arrows used to render joint axes. (MJCF: jointlength)"))
 	TOptional<float> Jointlength;
 
-	/** MJCF: jointwidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: jointwidth"))
+	/** The radius of the arrows used to render joint axes. (MJCF: jointwidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the arrows used to render joint axes. (MJCF: jointwidth)"))
 	TOptional<float> Jointwidth;
 
-	/** MJCF: actuatorlength */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: actuatorlength"))
+	/** The length of the arrows used to render actuators acting on scalar joints only. (MJCF: actuatorlength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The length of the arrows used to render actuators acting on scalar joints only. (MJCF: actuatorlength)"))
 	TOptional<float> Actuatorlength;
 
-	/** MJCF: actuatorwidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: actuatorwidth"))
+	/** The radius of the arrows used to render actuators acting on scalar joints only. (MJCF: actuatorwidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the arrows used to render actuators acting on scalar joints only. (MJCF: actuatorwidth)"))
 	TOptional<float> Actuatorwidth;
 
-	/** MJCF: framelength */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: framelength"))
+	/** The length of the cylinders used to render coordinate frames. The world frame is automatically scaled relative to this setting. (MJCF: framelength) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The length of the cylinders used to render coordinate frames. The world frame is automatically scaled relative to this setting. (MJCF: framelength)"))
 	TOptional<float> Framelength;
 
-	/** MJCF: framewidth */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: framewidth"))
+	/** The radius of the cylinders used to render coordinate frames. (MJCF: framewidth) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the cylinders used to render coordinate frames. (MJCF: framewidth)"))
 	TOptional<float> Framewidth;
 
-	/** MJCF: constraint */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: constraint"))
+	/** The radius of the capsules used to render violations in spatial constraints. (MJCF: constraint) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the capsules used to render violations in spatial constraints. (MJCF: constraint)"))
 	TOptional<float> Constraint;
 
-	/** MJCF: slidercrank */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: slidercrank"))
+	/** The radius of the capsules used to render slider-crank mechanisms. The second part of the mechanism is automatically scaled relative to this setting. (MJCF: slidercrank) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The radius of the capsules used to render slider-crank mechanisms. The second part of the mechanism is automatically scaled relative to this setting. (MJCF: slidercrank)"))
 	TOptional<float> Slidercrank;
 
-	/** MJCF: frustum */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "MJCF: frustum"))
+	/** The distance of the zfar plane from the camera pinhole for rendering the frustum. (MJCF: frustum) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualScale", meta = (ToolTip = "The distance of the zfar plane from the camera pinhole for rendering the frustum. (MJCF: frustum)"))
 	TOptional<float> Frustum;
 
 	// --- Blueprint access ---

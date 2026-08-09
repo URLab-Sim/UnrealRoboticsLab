@@ -30,40 +30,40 @@ class URLAB_API UMjConnect : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", meta = (ToolTip = "MJCF: active"))
+	/** If this attribute is set to 'true', the constraint is active and the constraint solver will try to enforce it. The field mjModel.eq_active0 corresponds to this value, and is used to initialize mjData.eq_active, which is user-settable at runtime. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", meta = (ToolTip = "If this attribute is set to 'true', the constraint is active and the constraint solver will try to enforce it. The field mjModel.eq_active0 corresponds to this value, and is used to initialize mjData.eq_active, which is user-settable at runtime. (MJCF: active)"))
 	TOptional<bool> ActiveFlag;
 
-	/** MJCF: solref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solref"))
+	/** Constraint solver parameters for equality constraint simulation. See CSolver. (MJCF: solref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for equality constraint simulation. See CSolver. (MJCF: solref)"))
 	TOptional<TArray<double>> Solref;
 
-	/** MJCF: solimp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", AdvancedDisplay, meta = (ToolTip = "MJCF: solimp"))
+	/** Constraint solver parameters for equality constraint simulation. See CSolver. (MJCF: solimp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect|EqualityBase", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for equality constraint simulation. See CSolver. (MJCF: solimp)"))
 	TOptional<TArray<double>> Solimp;
 
-	/** MJCF: body1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "MJCF: body1", GetOptions = "GetBody1Options"))
+	/** Name of the first body participating in the constraint. Either this attribute and anchor must be specified, or site1 and site2 must be specified. (MJCF: body1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "Name of the first body participating in the constraint. Either this attribute and anchor must be specified, or site1 and site2 must be specified. (MJCF: body1)", GetOptions = "GetBody1Options"))
 	TOptional<FString> Body1;
 
-	/** MJCF: body2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "MJCF: body2", GetOptions = "GetBody2Options"))
+	/** Name of the second body participating in the constraint. If this attribute is omitted, the second body is the world body. (MJCF: body2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "Name of the second body participating in the constraint. If this attribute is omitted, the second body is the world body. (MJCF: body2)", GetOptions = "GetBody2Options"))
 	TOptional<FString> Body2;
 
-	/** MJCF: anchor */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "MJCF: anchor"))
+	/** Coordinates of the 3D anchor point where the two bodies are connected, in the local coordinate frame of body1. The constraint is assumed to be satisfied in the configuration at which the model is defined (mjData.qpos0), which lets the compiler compute the associated anchor point for body2. (MJCF: anchor) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "Coordinates of the 3D anchor point where the two bodies are connected, in the local coordinate frame of body1. The constraint is assumed to be satisfied in the configuration at which the model is defined (mjData.qpos0), which lets the compiler compute the associated anchor point for body2. (MJCF: anchor)"))
 	TOptional<FMjPosition3> Anchor;
 
-	/** MJCF: site1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "MJCF: site1", GetOptions = "GetSite1Options"))
+	/** Name of a site belonging to the first body participating in the constraint. When specified, site2 must also be specified. The (site1, site2) specification is a more flexible alternative to the body-based specification, and is different in two ways. First, the sites are not required to overlap at the default configuration; (MJCF: site1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "Name of a site belonging to the first body participating in the constraint. When specified, site2 must also be specified. The (site1, site2) specification is a more flexible alternative to the body-based specification, and is different in two ways. First, the sites are not required to overlap at the default configuration; (MJCF: site1)", GetOptions = "GetSite1Options"))
 	TOptional<FString> Site1;
 
-	/** MJCF: site2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "MJCF: site2", GetOptions = "GetSite2Options"))
+	/** Name of a site belonging to the second body participating in the constraint. When specified, site1 must also be specified. See the site1 description for more details. (MJCF: site2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Connect", meta = (ToolTip = "Name of a site belonging to the second body participating in the constraint. When specified, site1 must also be specified. See the site1 description for more details. (MJCF: site2)", GetOptions = "GetSite2Options"))
 	TOptional<FString> Site2;
 
 	// --- Blueprint access ---

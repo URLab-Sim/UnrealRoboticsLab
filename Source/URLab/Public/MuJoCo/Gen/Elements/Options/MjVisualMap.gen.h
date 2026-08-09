@@ -29,56 +29,56 @@ class URLAB_API UMjVisualMap : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: stiffness */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: stiffness"))
+	/** This attribute controls the strength of mouse perturbations. The internal perturbation mechanism simulates a mass-spring-damper with critical damping, unit mass, and stiffness given here. Larger values mean that a larger force will be applied for the same displacement between the selected body and the mouse-controlled target. (MJCF: stiffness) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "This attribute controls the strength of mouse perturbations. The internal perturbation mechanism simulates a mass-spring-damper with critical damping, unit mass, and stiffness given here. Larger values mean that a larger force will be applied for the same displacement between the selected body and the mouse-controlled target. (MJCF: stiffness)"))
 	TOptional<float> Stiffness;
 
-	/** MJCF: stiffnessrot */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: stiffnessrot"))
+	/** Same as above but applies to rotational perturbations rather than translational perturbations. Empirically, the rotational stiffness needs to be larger in order for rotational mouse perturbations to have an effect. (MJCF: stiffnessrot) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "Same as above but applies to rotational perturbations rather than translational perturbations. Empirically, the rotational stiffness needs to be larger in order for rotational mouse perturbations to have an effect. (MJCF: stiffnessrot)"))
 	TOptional<float> Stiffnessrot;
 
-	/** MJCF: force */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: force"))
+	/** This attributes controls the visualization of both contact forces and perturbation forces. The length of the rendered force vector equals the force magnitude multiplied by the value of this attribute and divided by the mean body mass for the model (see statistic element). (MJCF: force) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "This attributes controls the visualization of both contact forces and perturbation forces. The length of the rendered force vector equals the force magnitude multiplied by the value of this attribute and divided by the mean body mass for the model (see statistic element). (MJCF: force)"))
 	TOptional<float> Force;
 
-	/** MJCF: torque */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: torque"))
+	/** Same as above, but controls the rendering of contact torque and perturbation torque rather than force (currently disabled). (MJCF: torque) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "Same as above, but controls the rendering of contact torque and perturbation torque rather than force (currently disabled). (MJCF: torque)"))
 	TOptional<float> Torque;
 
-	/** MJCF: alpha */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: alpha"))
+	/** When transparency is turned on in the visualizer, the geoms attached to all moving bodies are made more transparent. This is done by multiplying the geom-specific alpha values by this value. (MJCF: alpha) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "When transparency is turned on in the visualizer, the geoms attached to all moving bodies are made more transparent. This is done by multiplying the geom-specific alpha values by this value. (MJCF: alpha)"))
 	TOptional<float> Alpha;
 
-	/** MJCF: fogstart */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: fogstart"))
+	/** The visualizer can simulate linear fog, in the sense of OpenGL. The start position of the fog is the model extent (see statistic element) multiplied by the value of this attribute. (MJCF: fogstart) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "The visualizer can simulate linear fog, in the sense of OpenGL. The start position of the fog is the model extent (see statistic element) multiplied by the value of this attribute. (MJCF: fogstart)"))
 	TOptional<float> Fogstart;
 
-	/** MJCF: fogend */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: fogend"))
+	/** The end position of the fog is the model extent multiplied by the value of this attribute. (MJCF: fogend) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "The end position of the fog is the model extent multiplied by the value of this attribute. (MJCF: fogend)"))
 	TOptional<float> Fogend;
 
-	/** MJCF: znear */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: znear"))
+	/** This and the next attribute determine the clipping planes of the OpenGL projection. The near clipping plane is particularly important: setting it too close causes (often severe) loss of resolution in the depth buffer, while setting it too far causes objects of interest to be clipped, making it impossible to zoom in. (MJCF: znear) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "This and the next attribute determine the clipping planes of the OpenGL projection. The near clipping plane is particularly important: setting it too close causes (often severe) loss of resolution in the depth buffer, while setting it too far causes objects of interest to be clipped, making it impossible to zoom in. (MJCF: znear)", ClampMin = "0"))
 	TOptional<float> Znear;
 
-	/** MJCF: zfar */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: zfar"))
+	/** The distance to the far clipping plane is the model extent multiplied by the value of this attribute. (MJCF: zfar) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "The distance to the far clipping plane is the model extent multiplied by the value of this attribute. (MJCF: zfar)"))
 	TOptional<float> Zfar;
 
-	/** MJCF: haze */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: haze"))
+	/** Proportion of the distance-to-horizon that is covered by haze (when haze rendering is enabled and a skybox is present). (MJCF: haze) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "Proportion of the distance-to-horizon that is covered by haze (when haze rendering is enabled and a skybox is present). (MJCF: haze)"))
 	TOptional<float> Haze;
 
-	/** MJCF: shadowclip */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: shadowclip"))
+	/** As mentioned above, shadow quality depends on the size of the shadow texture as well as the area where a given light can cast shadows. For directional lights, the area would be infinite unless we limited it somehow. This attribute specifies the limits, as +/- the model extent multiplied by the present value. These limits define a square in the plane orthogonal to the light direction. (MJCF: shadowclip) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "As mentioned above, shadow quality depends on the size of the shadow texture as well as the area where a given light can cast shadows. For directional lights, the area would be infinite unless we limited it somehow. This attribute specifies the limits, as +/- the model extent multiplied by the present value. These limits define a square in the plane orthogonal to the light direction. (MJCF: shadowclip)"))
 	TOptional<float> Shadowclip;
 
-	/** MJCF: shadowscale */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: shadowscale"))
+	/** This attribute plays a similar role as the previous one, but applies to spotlights rather than directional lights. Spotlights have a cutoff angle, limited internally to 80 deg. However this angle is often too large to obtain good quality shadows, and it is necessary to limit the shadow to a smaller cone. (MJCF: shadowscale) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "This attribute plays a similar role as the previous one, but applies to spotlights rather than directional lights. Spotlights have a cutoff angle, limited internally to 80 deg. However this angle is often too large to obtain good quality shadows, and it is necessary to limit the shadow to a smaller cone. (MJCF: shadowscale)"))
 	TOptional<float> Shadowscale;
 
-	/** MJCF: actuatortendon */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "MJCF: actuatortendon"))
+	/** Ratio of actuator width to tendon width for rendering of actuators attached to tendons. (MJCF: actuatortendon) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualMap", meta = (ToolTip = "Ratio of actuator width to tendon width for rendering of actuators attached to tendons. (MJCF: actuatortendon)"))
 	TOptional<float> Actuatortendon;
 
 	// --- Blueprint access ---

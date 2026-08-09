@@ -31,76 +31,76 @@ class URLAB_API UMjLight : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: type"))
+	/** Determines the type of light. Note that some light types may not be supported by some renderers (e.g. only spot and directional lights are supported by the default native renderer). (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "Determines the type of light. Note that some light types may not be supported by some renderers (e.g. only spot and directional lights are supported by the default native renderer). (MJCF: type)"))
 	TOptional<EMjLightType> Type;
 
-	/** MJCF: castshadow */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: castshadow"))
+	/** If this attribute is 'true' the light will cast shadows. More precisely, the geoms illuminated by the light will cast shadows, however this is a property of lights rather than geoms. Since each shadow-casting light causes one extra rendering pass through all geoms, this attribute should be used with caution. (MJCF: castshadow) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "If this attribute is 'true' the light will cast shadows. More precisely, the geoms illuminated by the light will cast shadows, however this is a property of lights rather than geoms. Since each shadow-casting light causes one extra rendering pass through all geoms, this attribute should be used with caution. (MJCF: castshadow)"))
 	TOptional<bool> Castshadow;
 
-	/** MJCF: active */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: active"))
+	/** The light is active if this attribute is 'true'. This can be used at runtime to turn lights on and off. (MJCF: active) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The light is active if this attribute is 'true'. This can be used at runtime to turn lights on and off. (MJCF: active)"))
 	TOptional<bool> ActiveFlag;
 
-	/** MJCF: pos */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: pos"))
+	/** Position of the light. This attribute only affects the rendering for spotlights, but it should also be defined for directional lights because we render the cameras as decorative elements. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "Position of the light. This attribute only affects the rendering for spotlights, but it should also be defined for directional lights because we render the cameras as decorative elements. (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
-	/** MJCF: dir */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: dir"))
+	/** Direction of the light. (MJCF: dir) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "Direction of the light. (MJCF: dir)"))
 	TOptional<FMjDirection3> Dir;
 
-	/** MJCF: bulbradius */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: bulbradius"))
+	/** The radius of the light-emitting surface. Larger radii produce softer shadows in renderers that support soft shadows. Ignored by the classic renderer. (MJCF: bulbradius) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The radius of the light-emitting surface. Larger radii produce softer shadows in renderers that support soft shadows. Ignored by the classic renderer. (MJCF: bulbradius)"))
 	TOptional<float> Bulbradius;
 
-	/** MJCF: intensity */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: intensity"))
+	/** The intensity of the light source, measured in candela, used for physically-based lighting models. This is unused by the default Phong lighting model. (MJCF: intensity) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The intensity of the light source, measured in candela, used for physically-based lighting models. This is unused by the default Phong lighting model. (MJCF: intensity)"))
 	TOptional<float> Intensity;
 
-	/** MJCF: range */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: range"))
+	/** The effective range of the light. Objects further than this distance from the light position will not be illuminated by this light. This only applies to spotlights. (MJCF: range) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The effective range of the light. Objects further than this distance from the light position will not be illuminated by this light. This only applies to spotlights. (MJCF: range)"))
 	TOptional<float> Range;
 
-	/** MJCF: attenuation */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: attenuation"))
+	/** These are the constant, linear and quadratic attenuation coefficients for Phong lighting. The default corresponds to no attenuation. (MJCF: attenuation) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "These are the constant, linear and quadratic attenuation coefficients for Phong lighting. The default corresponds to no attenuation. (MJCF: attenuation)"))
 	TOptional<TArray<float>> Attenuation;
 
-	/** MJCF: cutoff */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: cutoff"))
+	/** Cutoff angle for spotlights, always in degrees regardless of the global angle setting. (MJCF: cutoff) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "Cutoff angle for spotlights, always in degrees regardless of the global angle setting. (MJCF: cutoff)"))
 	TOptional<float> Cutoff;
 
-	/** MJCF: exponent */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: exponent"))
+	/** Exponent for spotlights. This setting controls the softness of the spotlight cutoff. (MJCF: exponent) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "Exponent for spotlights. This setting controls the softness of the spotlight cutoff. (MJCF: exponent)"))
 	TOptional<float> Exponent;
 
-	/** MJCF: ambient */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: ambient"))
+	/** The ambient color of the light, used by the default Phong lighting model. (MJCF: ambient) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The ambient color of the light, used by the default Phong lighting model. (MJCF: ambient)"))
 	TOptional<TArray<float>> Ambient;
 
-	/** MJCF: diffuse */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: diffuse"))
+	/** The color of the light. For the Phong (default) lighting model, this defines the diffuse color of the light. (MJCF: diffuse) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The color of the light. For the Phong (default) lighting model, this defines the diffuse color of the light. (MJCF: diffuse)"))
 	TOptional<TArray<float>> Diffuse;
 
-	/** MJCF: specular */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: specular"))
+	/** The specular color of the light, used by the default Phong lighting model. (MJCF: specular) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The specular color of the light, used by the default Phong lighting model. (MJCF: specular)"))
 	TOptional<TArray<float>> Specular;
 
-	/** MJCF: mode */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: mode"))
+	/** This is identical to the mode attribute of camera above. It specifies the how the light position and orientation in world coordinates are computed in forward kinematics (which in turn determine what the light illuminates). (MJCF: mode) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "This is identical to the mode attribute of camera above. It specifies the how the light position and orientation in world coordinates are computed in forward kinematics (which in turn determine what the light illuminates). (MJCF: mode)"))
 	TOptional<EMjCamLightMode> Mode;
 
-	/** MJCF: target */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: target", GetOptions = "GetTargetOptions"))
+	/** This is identical to the target attribute of camera above. It specifies which body should be targeted in 'targetbody' and 'targetbodycom' modes. (MJCF: target) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "This is identical to the target attribute of camera above. It specifies which body should be targeted in 'targetbody' and 'targetbodycom' modes. (MJCF: target)", GetOptions = "GetTargetOptions"))
 	TOptional<FString> Target;
 
-	/** MJCF: texture */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "MJCF: texture", GetOptions = "GetTextureOptions"))
+	/** The texture to use for image-based lighting. This is unused by the default Phong lighting model. (MJCF: texture) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Light", meta = (ToolTip = "The texture to use for image-based lighting. This is unused by the default Phong lighting model. (MJCF: texture)", GetOptions = "GetTextureOptions"))
 	TOptional<FString> Texture;
 
 	// --- Blueprint access ---

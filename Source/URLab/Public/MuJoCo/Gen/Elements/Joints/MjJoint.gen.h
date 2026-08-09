@@ -31,92 +31,92 @@ class URLAB_API UMjJoint : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: class */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: class", GetOptions = "GetDclassOptions"))
+	/** Defaults class for setting unspecified attributes. (MJCF: class) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Defaults class for setting unspecified attributes. (MJCF: class)", GetOptions = "GetDclassOptions"))
 	TOptional<FString> Dclass;
 
-	/** MJCF: type */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: type"))
+	/** Type of the joint. The keywords have the following meaning: The free type creates a free 'joint' with three translational degrees of freedom followed by three rotational degrees of freedom. In other words it makes the body floating. The rotation is represented as a unit quaternion. This joint type is only allowed in bodies that are children of the world body. (MJCF: type) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Type of the joint. The keywords have the following meaning: The free type creates a free 'joint' with three translational degrees of freedom followed by three rotational degrees of freedom. In other words it makes the body floating. The rotation is represented as a unit quaternion. This joint type is only allowed in bodies that are children of the world body. (MJCF: type)"))
 	TOptional<EMjJointType> Type;
 
-	/** MJCF: group */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: group"))
+	/** Integer group to which the joint belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of joints. (MJCF: group) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Integer group to which the joint belongs. This attribute can be used for custom tags. It is also used by the visualizer to enable and disable the rendering of entire groups of joints. (MJCF: group)"))
 	TOptional<int32> Group;
 
-	/** saved unless free (MJCF: pos) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "saved unless free (MJCF: pos)"))
+	/** Position of the joint, specified in the frame of the body where the joint is defined. For free joints this attribute is ignored. (MJCF: pos) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Position of the joint, specified in the frame of the body where the joint is defined. For free joints this attribute is ignored. (MJCF: pos)"))
 	TOptional<FMjPosition3> Pos;
 
-	/** saved for slide/hinge (MJCF: axis) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "saved for slide/hinge (MJCF: axis)"))
+	/** This attribute specifies the axis of rotation for hinge joints and the direction of translation for slide joints. It is ignored for free and ball joints. The vector specified here is automatically normalized to unit length as long as its length is greater than 10E-14; otherwise a compile error is generated. (MJCF: axis) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "This attribute specifies the axis of rotation for hinge joints and the direction of translation for slide joints. It is ignored for free and ball joints. The vector specified here is automatically normalized to unit length as long as its length is greater than 10E-14; otherwise a compile error is generated. (MJCF: axis)"))
 	TOptional<FMjDirection3> Axis;
 
-	/** compile directive: saved as stiffness/damping (MJCF: springdamper) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "compile directive: saved as stiffness/damping (MJCF: springdamper)"))
+	/** When both numbers are positive, the compiler will override any stiffness and damping values specified with the attributes below, and will instead set them automatically so that the resulting mass-spring-damper for this joint has the desired time constant (first value) and damping ratio (second value). This is done by taking into account the joint inertia in the model reference configuration. (MJCF: springdamper) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "When both numbers are positive, the compiler will override any stiffness and damping values specified with the attributes below, and will instead set them automatically so that the resulting mass-spring-damper for this joint has the desired time constant (first value) and damping ratio (second value). This is done by taking into account the joint inertia in the model reference configuration. (MJCF: springdamper)"))
 	TOptional<FVector2D> Springdamper;
 
-	/** saved unless free (MJCF: limited) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "saved unless free (MJCF: limited)"))
+	/** This attribute specifies if the joint has limits. It interacts with the range attribute. If this attribute is 'false', joint limits are disabled. If this attribute is 'true', joint limits are enabled. If this attribute is 'auto', and autolimits is set in compiler, joint limits will be enabled if range is defined. (MJCF: limited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "This attribute specifies if the joint has limits. It interacts with the range attribute. If this attribute is 'false', joint limits are disabled. If this attribute is 'true', joint limits are enabled. If this attribute is 'auto', and autolimits is set in compiler, joint limits will be enabled if range is defined. (MJCF: limited)"))
 	TOptional<EMjTriState> Limited;
 
-	/** saved for slide/hinge (MJCF: actuatorfrclimited) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "saved for slide/hinge (MJCF: actuatorfrclimited)"))
+	/** This attribute specifies whether actuator forces acting on the joint should be clamped. See CForceRange for details. It is available only for scalar joints (hinge and slider) and ignored for ball and free joints. This attribute interacts with the actuatorfrcrange attribute. If this attribute is 'false', actuator force clamping is disabled. If it is 'true', actuator force clamping is enabled. (MJCF: actuatorfrclimited) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "This attribute specifies whether actuator forces acting on the joint should be clamped. See CForceRange for details. It is available only for scalar joints (hinge and slider) and ignored for ball and free joints. This attribute interacts with the actuatorfrcrange attribute. If this attribute is 'false', actuator force clamping is disabled. If it is 'true', actuator force clamping is enabled. (MJCF: actuatorfrclimited)"))
 	TOptional<EMjTriState> Actuatorfrclimited;
 
-	/** MJCF: solreflimit */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "MJCF: solreflimit"))
+	/** Constraint solver parameters for simulating joint limits. See CSolver. (MJCF: solreflimit) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating joint limits. See CSolver. (MJCF: solreflimit)"))
 	TOptional<TArray<double>> Solreflimit;
 
-	/** MJCF: solimplimit */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "MJCF: solimplimit"))
+	/** Constraint solver parameters for simulating joint limits. See CSolver. (MJCF: solimplimit) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating joint limits. See CSolver. (MJCF: solimplimit)"))
 	TOptional<TArray<double>> Solimplimit;
 
-	/** MJCF: solreffriction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "MJCF: solreffriction"))
+	/** Constraint solver parameters for simulating dry friction. See also Friction. (MJCF: solreffriction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating dry friction. See also Friction. (MJCF: solreffriction)"))
 	TOptional<TArray<double>> Solreffriction;
 
-	/** MJCF: solimpfriction */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "MJCF: solimpfriction"))
+	/** Constraint solver parameters for simulating dry friction. See also Friction. (MJCF: solimpfriction) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "Constraint solver parameters for simulating dry friction. See also Friction. (MJCF: solimpfriction)"))
 	TOptional<TArray<double>> Solimpfriction;
 
-	/** spring polynomial, 1+mjNPOLY coefficients (MJCF: stiffness) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "spring polynomial, 1+mjNPOLY coefficients (MJCF: stiffness)"))
+	/** Joint stiffness coefficients a, b, c. A positive a produces the standard restorative linear spring force f = -a x, where x is the joint displacement from equilibrium given by springref. If the optional second and third components are set, they define a nonlinear polynomial spring force f(x) = -(a x + b x^2 + c x^3). See Polynomial forces for details. (MJCF: stiffness) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Joint stiffness coefficients a, b, c. A positive a produces the standard restorative linear spring force f = -a x, where x is the joint displacement from equilibrium given by springref. If the optional second and third components are set, they define a nonlinear polynomial spring force f(x) = -(a x + b x^2 + c x^3). See Polynomial forces for details. (MJCF: stiffness)"))
 	TOptional<TArray<double>> Stiffness;
 
-	/** MJCF: range */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: range"))
+	/** The joint limits. Limits can be imposed on all joint types except for free joints. For hinge and ball joints, the range is specified in degrees or radians depending on the angle attribute of compiler. For ball joints, the limit is imposed on the angle of rotation (relative to the reference configuration) regardless of the axis of rotation. Only the second range parameter is used for ball joints; (MJCF: range) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "The joint limits. Limits can be imposed on all joint types except for free joints. For hinge and ball joints, the range is specified in degrees or radians depending on the angle attribute of compiler. For ball joints, the limit is imposed on the angle of rotation (relative to the reference configuration) regardless of the axis of rotation. Only the second range parameter is used for ball joints; (MJCF: range)"))
 	TOptional<FVector2D> Range;
 
-	/** MJCF: actuatorfrcrange */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: actuatorfrcrange"))
+	/** Range for clamping total actuator forces acting on this joint. See CForceRange for details. It is available only for scalar joints (hinge and slider) and ignored for ball and free joints. The compiler expects the first value to be smaller than the second value. Setting this attribute without specifying actuatorfrclimited is an error if compiler-autolimits is 'false'. (MJCF: actuatorfrcrange) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Range for clamping total actuator forces acting on this joint. See CForceRange for details. It is available only for scalar joints (hinge and slider) and ignored for ball and free joints. The compiler expects the first value to be smaller than the second value. Setting this attribute without specifying actuatorfrclimited is an error if compiler-autolimits is 'false'. (MJCF: actuatorfrcrange)"))
 	TOptional<FVector2D> Actuatorfrcrange;
 
-	/** MJCF: actuatorgravcomp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: actuatorgravcomp"))
+	/** If this flag is enabled, gravity compensation applied to this joint is added to actuator forces (mjData.qfrc_actuator) rather than passive forces (mjData.qfrc_passive). Notionally, this means that gravity compensation is the result of a control system rather than natural buoyancy. In practice, enabling this flag is useful when joint-level actuator force clamping is used. (MJCF: actuatorgravcomp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "If this flag is enabled, gravity compensation applied to this joint is added to actuator forces (mjData.qfrc_actuator) rather than passive forces (mjData.qfrc_passive). Notionally, this means that gravity compensation is the result of a control system rather than natural buoyancy. In practice, enabling this flag is useful when joint-level actuator force clamping is used. (MJCF: actuatorgravcomp)"))
 	TOptional<bool> Actuatorgravcomp;
 
-	/** MJCF: margin */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "MJCF: margin"))
+	/** The distance threshold below which limits become active. Recall that the Constraint solver normally generates forces as soon as a constraint becomes active, even if the margin parameter makes that happen at a distance. This attribute together with solreflimit and solimplimit can be used to model a soft joint limit. (MJCF: margin) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", AdvancedDisplay, meta = (ToolTip = "The distance threshold below which limits become active. Recall that the Constraint solver normally generates forces as soon as a constraint becomes active, even if the margin parameter makes that happen at a distance. This attribute together with solreflimit and solimplimit can be used to model a soft joint limit. (MJCF: margin)"))
 	TOptional<double> Margin;
 
-	/** MJCF: ref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: ref"))
+	/** The reference position or angle of the joint. This attribute is only used for slide and hinge joints. It defines the joint value corresponding to the initial model configuration. Note that the initial configuration itself is unmodified, only the value of the joint at this configuration. (MJCF: ref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "The reference position or angle of the joint. This attribute is only used for slide and hinge joints. It defines the joint value corresponding to the initial model configuration. Note that the initial configuration itself is unmodified, only the value of the joint at this configuration. (MJCF: ref)"))
 	TOptional<double> Ref;
 
-	/** MJCF: springref */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: springref"))
+	/** The joint position or angle in which the joint spring (if any) achieves equilibrium. Similar to the vector mjModel.qpos0 which stores all joint reference values specified with the ref attribute above, all spring reference values specified with this attribute are stored in the vector mjModel.qpos_spring. (MJCF: springref) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "The joint position or angle in which the joint spring (if any) achieves equilibrium. Similar to the vector mjModel.qpos0 which stores all joint reference values specified with the ref attribute above, all spring reference values specified with this attribute are stored in the vector mjModel.qpos_spring. (MJCF: springref)"))
 	TOptional<double> Springref;
 
-	/** MJCF: armature */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: armature"))
+	/** Additional inertia associated with movement of the joint that is not due to body mass. This added inertia is usually due to a rotor (a.k.a `armature <https://en.wikipedia.org/wiki/Armature_(electrical)>`__) spinning faster than the joint itself due to a geared transmission. (MJCF: armature) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Additional inertia associated with movement of the joint that is not due to body mass. This added inertia is usually due to a rotor (a.k.a `armature <https://en.wikipedia.org/wiki/Armature_(electrical)>`__) spinning faster than the joint itself due to a geared transmission. (MJCF: armature)"))
 	TOptional<double> Armature;
 
-	/** damper polynomial, 1+mjNPOLY coefficients (MJCF: damping) */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "damper polynomial, 1+mjNPOLY coefficients (MJCF: damping)"))
+	/** Damping coefficients a, b, c. A positive a produces the standard dissipative linear damping force f(v) = -a v, where v is the joint velocity. Despite its simplicity, larger damping values can make numerical integrators unstable, which is why our Euler integrator handles damping implicitly. See Integration in the Computation chapter. (MJCF: damping) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Damping coefficients a, b, c. A positive a produces the standard dissipative linear damping force f(v) = -a v, where v is the joint velocity. Despite its simplicity, larger damping values can make numerical integrators unstable, which is why our Euler integrator handles damping implicitly. See Integration in the Computation chapter. (MJCF: damping)"))
 	TOptional<TArray<double>> Damping;
 
-	/** MJCF: frictionloss */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "MJCF: frictionloss"))
+	/** Friction loss due to dry friction. This value is the same for all degrees of freedom created by this joint. Semantically friction loss does not make sense for free joints, but the compiler allows it. To enable friction loss, set this attribute to a positive value. (MJCF: frictionloss) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Joint", meta = (ToolTip = "Friction loss due to dry friction. This value is the same for all degrees of freedom created by this joint. Semantically friction loss does not make sense for free joints, but the compiler allows it. To enable friction loss, set this attribute to a positive value. (MJCF: frictionloss)"))
 	TOptional<double> Frictionloss;
 
 	/** MJCF: user */

@@ -29,12 +29,12 @@ class URLAB_API UMjMaterialLayer : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: texture */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|MaterialLayer", meta = (ToolTip = "MJCF: texture", GetOptions = "GetTextureOptions"))
+	/** Name of the texture, like the texture attribute. (MJCF: texture) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MaterialLayer", meta = (ToolTip = "Name of the texture, like the texture attribute. (MJCF: texture)", GetOptions = "GetTextureOptions"))
 	TOptional<FString> Texture;
 
-	/** MJCF: role */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|MaterialLayer", meta = (ToolTip = "MJCF: role"))
+	/** Role of the texture. The valid values, expected number of channels, and the role semantics are: .. list-table:: :widths: 1 1 8 :header-rows: 1 - value - channels - description - rgb - 3 - base color / albedo [red, green, blue] - normal - 3 - bump map (surface normals) - occlusion - 1 - ambient occlusion - roughness - 1 - roughness - metallic - 1 - metallicity - opacity - 1 - opacity (alpha chan... (MJCF: role) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|MaterialLayer", meta = (ToolTip = "Role of the texture. The valid values, expected number of channels, and the role semantics are: .. list-table:: :widths: 1 1 8 :header-rows: 1 - value - channels - description - rgb - 3 - base color / albedo [red, green, blue] - normal - 3 - bump map (surface normals) - occlusion - 1 - ambient occlusion - roughness - 1 - roughness - metallic - 1 - metallicity - opacity - 1 - opacity (alpha chan... (MJCF: role)"))
 	FString Role;
 
 	// --- Blueprint access ---

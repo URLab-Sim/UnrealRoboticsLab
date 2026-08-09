@@ -191,6 +191,25 @@ UE_FAMILY_OF_ELEMENT = {
     "mujoco": "",
 }
 
+# Attributes that take no tooltip from MuJoCo's reference manual, keyed
+# `element.attribute` with the reason. Two kinds of entry, and no others:
+# an attribute upstream has genuinely stopped documenting (the drift gate in
+# `xmlref.py` names it, and this is where the answer goes), and one whose
+# recorded binding a human read and judged to be about a different thing.
+#
+# A waived attribute keeps the bare `MJCF: <name>` tooltip. Empty is better
+# than wrong: a user reading a description of the wrong attribute has no way to
+# tell, where a user reading nothing goes and looks it up.
+XMLREF_WAIVERS: dict[str, str] = {
+    # Both bind to `plugin-instance-name`, which documents the name of a
+    # <plugin> instance under <extension>. These two are the actuator's and the
+    # sensor's own names, and the manual leaves them to its shared attribute
+    # chapter.
+    "actuator_plugin.name": "binds to the <extension><plugin><instance> name, "
+        "which is a different element's name",
+    "sensor_plugin.name": "as actuator_plugin.name",
+}
+
 UE_ADVANCED = {
     # -- constraint solver ------------------------------------------------- #
     "solref",

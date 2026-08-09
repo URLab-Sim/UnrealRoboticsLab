@@ -29,24 +29,24 @@ class URLAB_API UMjVisualQuality : public UMjNodeComponent
 	GENERATED_BODY()
 
 public:
-	/** MJCF: shadowsize */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "MJCF: shadowsize"))
+	/** This attribute specifies the size of the square texture used for shadow mapping. Higher values result in smoother shadows. The size of the area over which a light can cast shadows also affects smoothness, so these settings should be adjusted jointly. The default here is somewhat conservative. Most modern GPUs are able to handle significantly larger textures without slowing down. (MJCF: shadowsize) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "This attribute specifies the size of the square texture used for shadow mapping. Higher values result in smoother shadows. The size of the area over which a light can cast shadows also affects smoothness, so these settings should be adjusted jointly. The default here is somewhat conservative. Most modern GPUs are able to handle significantly larger textures without slowing down. (MJCF: shadowsize)"))
 	TOptional<int32> Shadowsize;
 
-	/** MJCF: offsamples */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "MJCF: offsamples"))
+	/** This attribute specifies the number of multi-samples for offscreen rendering. Larger values produce better anti-aliasing but can slow down the GPU. Set this to 0 to disable multi-sampling. Note that this attribute only affects offscreen rendering. (MJCF: offsamples) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "This attribute specifies the number of multi-samples for offscreen rendering. Larger values produce better anti-aliasing but can slow down the GPU. Set this to 0 to disable multi-sampling. Note that this attribute only affects offscreen rendering. (MJCF: offsamples)"))
 	TOptional<int32> Offsamples;
 
-	/** MJCF: numslices */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "MJCF: numslices"))
+	/** This and the next three attributes specify the density of internally-generated meshes for geometric primitives. Such meshes are only used for rendering, while the collision detector works with the underlying analytic surfaces. This value is passed to the various visualizer functions as the 'slices' parameter as used in GLU. (MJCF: numslices) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "This and the next three attributes specify the density of internally-generated meshes for geometric primitives. Such meshes are only used for rendering, while the collision detector works with the underlying analytic surfaces. This value is passed to the various visualizer functions as the 'slices' parameter as used in GLU. (MJCF: numslices)"))
 	TOptional<int32> Numslices;
 
-	/** MJCF: numstacks */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "MJCF: numstacks"))
+	/** This value of this attribute is passed to the various visualization functions as the 'stacks' parameter as used in GLU. It specifies the number of subdivisions along the Z-axis, similar to lines of latitude. (MJCF: numstacks) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "This value of this attribute is passed to the various visualization functions as the 'stacks' parameter as used in GLU. It specifies the number of subdivisions along the Z-axis, similar to lines of latitude. (MJCF: numstacks)"))
 	TOptional<int32> Numstacks;
 
-	/** MJCF: numquads */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "MJCF: numquads"))
+	/** This attribute specifies the number of rectangles for rendering box faces, automatically-generated planes (as opposed to geom planes which have an element-specific attribute with the same function), and sides of height fields. (MJCF: numquads) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|VisualQuality", meta = (ToolTip = "This attribute specifies the number of rectangles for rendering box faces, automatically-generated planes (as opposed to geom planes which have an element-specific attribute with the same function), and sides of height fields. (MJCF: numquads)"))
 	TOptional<int32> Numquads;
 
 	// --- Blueprint access ---

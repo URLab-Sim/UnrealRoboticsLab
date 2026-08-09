@@ -34,8 +34,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", meta = (ToolTip = "MJCF: nsample"))
 	TOptional<int32> Nsample;
 
-	/** MJCF: interp */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", meta = (ToolTip = "MJCF: interp"))
+	/** The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", meta = (ToolTip = "The interpolation method used when reading from the history buffer. Corresponds to the interp argument in mj_readCtrl. - zoh: Zero-order hold (piecewise constant). - linear: Piecewise linear interpolation. - cubic: Cubic spline interpolation (Catmull-Rom). The interp value is for advanced use-cases, see Delays for details. (MJCF: interp)"))
 	TOptional<EMjInterpType> Interp;
 
 	/** MJCF: delay */
@@ -46,8 +46,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", meta = (ToolTip = "MJCF: interval"))
 	TOptional<TArray<double>> Interval;
 
-	/** MJCF: cutoff */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", meta = (ToolTip = "MJCF: cutoff"))
+	/** See collision-sensors for the semantics of this attribute, which is different than for other sensor categories. If no collision is detected, the distance sensor returns the cutoff value, so in this case cutoff acts as a maximum clipping value, in addition to the special semantics. (MJCF: cutoff) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", meta = (ToolTip = "See collision-sensors for the semantics of this attribute, which is different than for other sensor categories. If no collision is detected, the distance sensor returns the cutoff value, so in this case cutoff acts as a maximum clipping value, in addition to the special semantics. (MJCF: cutoff)"))
 	TOptional<double> Cutoff;
 
 	/** MJCF: noise */
@@ -58,20 +58,20 @@ public:
 	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance|SensorBase", AdvancedDisplay, meta = (ToolTip = "MJCF: user"))
 	TOptional<TArray<double>> User;
 
-	/** MJCF: geom1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "MJCF: geom1", GetOptions = "GetGeom1Options"))
+	/** Name of the first geom. Exactly one of (geom1, body1) must be specified. (MJCF: geom1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "Name of the first geom. Exactly one of (geom1, body1) must be specified. (MJCF: geom1)", GetOptions = "GetGeom1Options"))
 	TOptional<FString> Geom1;
 
-	/** MJCF: geom2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "MJCF: geom2", GetOptions = "GetGeom2Options"))
+	/** Name of the second geom. Exactly one of (geom2, body2) must be specified. (MJCF: geom2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "Name of the second geom. Exactly one of (geom2, body2) must be specified. (MJCF: geom2)", GetOptions = "GetGeom2Options"))
 	TOptional<FString> Geom2;
 
-	/** MJCF: body1 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "MJCF: body1", GetOptions = "GetBody1Options"))
+	/** Name of the first body. Exactly one of (geom1, body1) must be specified. (MJCF: body1) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "Name of the first body. Exactly one of (geom1, body1) must be specified. (MJCF: body1)", GetOptions = "GetBody1Options"))
 	TOptional<FString> Body1;
 
-	/** MJCF: body2 */
-	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "MJCF: body2", GetOptions = "GetBody2Options"))
+	/** Name of the second body. Exactly one of (geom2, body2) must be specified. (MJCF: body2) */
+	UPROPERTY(EditAnywhere, Category = "MuJoCo|Distance", meta = (ToolTip = "Name of the second body. Exactly one of (geom2, body2) must be specified. (MJCF: body2)", GetOptions = "GetBody2Options"))
 	TOptional<FString> Body2;
 
 	// --- Blueprint access ---

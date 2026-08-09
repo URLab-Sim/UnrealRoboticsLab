@@ -126,7 +126,7 @@ bool FMjSensorJointPosSensorGetReading::RunTest(const FString& Parameters)
 
 	// Drive the joint to 1.5 rad and propagate through kinematics
 	UMjJointRuntime::SetPosition(S.Joint, 1.5f);
-	mj_forward(S.Manager->PhysicsEngine->m_model, S.Manager->PhysicsEngine->m_data);
+	S.Manager->PhysicsEngine->ForwardSync();
 
 	TArray<float> Reading = UMjSensorRuntime::GetReading(Sensor);
 	TestTrue(TEXT("GetReading() should return at least one element"), Reading.Num() > 0);

@@ -453,6 +453,16 @@ public:
 	// queueing. The spec field remains the authority: these reach the
 	// compiled model only, and a recompile reconciles from the spec.
 
+	/**
+	 * Recompute everything derived from the current state, and publish it.
+	 *
+	 * The synchronous edits above write one number; contacts, constraints and
+	 * sensor readings are all downstream of it and stale until a forward pass
+	 * runs. Readers see the published snapshot, so the pass and the publish are
+	 * one operation rather than two a caller could do half of.
+	 */
+	void ForwardSync();
+
 	/** Write d->qpos for a 1-DOF joint's first slot. */
 	void ApplyJointPosition(int32 JointId, double Value);
 

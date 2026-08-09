@@ -265,7 +265,7 @@ bool FMjSpecInstallReadsThroughLibraries::RunTest(const FString& Parameters)
 	TestEqual(TEXT("and reads back through the library"), UMjJointRuntime::GetPosition(Joint), 0.4f);
 
 	// The sensor is downstream of that qpos, so a forward pass has to move it.
-	mj_forward(Model, Data);
+	Scene.Manager->PhysicsEngine->ForwardSync();
 	const TArray<float> Reading = UMjSensorRuntime::GetReading(Sensor);
 	if (TestEqual(TEXT("the sensor read one value"), Reading.Num(), 1))
 	{

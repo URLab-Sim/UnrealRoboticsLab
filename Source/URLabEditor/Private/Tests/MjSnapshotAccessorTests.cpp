@@ -30,7 +30,7 @@ const TCHAR* kAccessorMjcf =
 	TEXT("  <worldbody>\n")
 	TEXT("    <body name=\"link\" pos=\"0 0 0.5\">\n")
 	TEXT("      <joint name=\"hinge\" type=\"hinge\" axis=\"0 1 0\"/>\n")
-	TEXT("      <geom name=\"shaft\" type=\"capsule\" size=\"0.05 0.2\"/>\n")
+	TEXT("      <geom name=\"shaft\" type=\"capsule\" fromto=\"0 0 0 0.4 0 0\" size=\"0.05\"/>\n")
 	TEXT("    </body>\n")
 	TEXT("  </worldbody>\n")
 	TEXT("  <tendon><fixed name=\"cable\"><joint joint=\"hinge\" coef=\"1\"/></fixed></tendon>\n")

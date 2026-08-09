@@ -371,7 +371,7 @@ bool FMjStateSensorRawParity::RunTest(const FString& Parameters)
 		d->qpos[4] = 0.7071; // x
 		d->qpos[5] = 0.0;
 		d->qpos[6] = 0.0;
-		mj_forward(m, d);
+		S.Manager->PhysicsEngine->ForwardSync();
 	}
 
 	UMjNodeComponent* Sensor = S.Robot->GetSensor(TEXT("fq"));

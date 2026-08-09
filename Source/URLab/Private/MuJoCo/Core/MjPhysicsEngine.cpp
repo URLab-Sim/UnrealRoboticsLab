@@ -1643,6 +1643,15 @@ bool UMjPhysicsEngine::IsBodyAwake(int32 BodyId) const
 	return m_data->body_awake[BodyId] != 0;
 }
 
+void UMjPhysicsEngine::ForwardSync()
+{
+	if (!m_model || !m_data)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	mj_forward(m_model, m_data);
+	PushRenderState();
+}
+
 void UMjPhysicsEngine::ApplyJointPosition(int32 JointId, double Value)
 {
 	if (!m_model || !m_data || JointId < 0 || JointId >= m_model->njnt)

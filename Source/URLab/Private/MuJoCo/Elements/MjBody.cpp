@@ -231,13 +231,13 @@ FVector UMjBody::GetWorldPosition() const
 	{
 		return FVector::ZeroVector;
 	}
-	double Pos[3] = {0.0, 0.0, 0.0};
-	if (!MjSnapshotRange(*Engine, Id * 3, 3, Pos,
+	double WorldPos[3] = {0.0, 0.0, 0.0};
+	if (!MjSnapshotRange(*Engine, Id * 3, 3, WorldPos,
 			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.XPos; }))
 	{
 		return FVector::ZeroVector;
 	}
-	return URLabAxisConv::MjPositionToUe(Pos);
+	return URLabAxisConv::MjPositionToUe(WorldPos);
 }
 
 FQuat UMjBody::GetWorldRotation() const
@@ -249,13 +249,13 @@ FQuat UMjBody::GetWorldRotation() const
 	{
 		return FQuat::Identity;
 	}
-	double Quat[4] = {1.0, 0.0, 0.0, 0.0};
-	if (!MjSnapshotRange(*Engine, Id * 4, 4, Quat,
+	double WorldQuat[4] = {1.0, 0.0, 0.0, 0.0};
+	if (!MjSnapshotRange(*Engine, Id * 4, 4, WorldQuat,
 			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.XQuat; }))
 	{
 		return FQuat::Identity;
 	}
-	return URLabAxisConv::MjQuatToUe(Quat);
+	return URLabAxisConv::MjQuatToUe(WorldQuat);
 }
 
 FMuJoCoSpatialVelocity UMjBody::GetSpatialVelocity() const

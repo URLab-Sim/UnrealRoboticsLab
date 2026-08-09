@@ -405,7 +405,7 @@ public:
 	 * acquire CallbackMutex (or any lock that the producer takes
 	 * under CallbackMutex).
 	 */
-	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor);
+	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor) const;
 
 	/** Current render-snapshot frame id (monotonic, bumped each PushRenderState
 	 *  i.e. each step's post-step state). Returned in step replies so a client
@@ -505,7 +505,7 @@ private:
 
 	/** Guards RenderSnapshot. Inner to CallbackMutex on the producer
 	 *  path; held alone on the consumer (game thread) path. */
-	FCriticalSection RenderStateMutex;
+	mutable FCriticalSection RenderStateMutex;
 
 	/** Engine-owned snapshot buffer. Sized on model load. */
 	FMjRenderSnapshot RenderSnapshot;
@@ -548,3 +548,53 @@ private:
 	 *  / wrench edit as a state advance (publish it) even while paused. */
 	bool DrainCommands();
 };
+
+/**
+ * One value from the engine's latest published snapshot, or zero when the
+ * index is outside what the snapshot holds.
+ *
+ * The Blueprint-facing accessors read here rather than from live mjData. The
+ * physics thread publishes one coherent copy per step, so two questions asked
+ * in the same frame cannot be answered from two different steps; the price is
+ * that the answer is the state at the end of the last completed step rather
+ * than whatever the integrator is part way through writing.
+ */
+template <typename FPickArray>
+double MjSnapshotValue(const UMjPhysicsEngine& Engine, int32 Index, FPickArray&& PickArray)
+{
+	double Value = 0.0;
+	Engine.WithRenderState([&](const FMjRenderSnapshot& Snapshot) {
+		const auto& Array = PickArray(Snapshot);
+		if (Array.IsValidIndex(Index))
+		{
+			Value = static_cast<double>(Array[Index]);
+		}
+	});
+	return Value;
+}
+
+/**
+ * `Count` values from `Index` of one of the snapshot's arrays, into `Out`.
+ *
+ * False leaves `Out` untouched: the range is not in the snapshot, which is
+ * what a caller sees before the first publish or across a recompile.
+ */
+template <typename FPickArray>
+bool MjSnapshotRange(const UMjPhysicsEngine& Engine, int32 Index, int32 Count, double* Out,
+	FPickArray&& PickArray)
+{
+	bool bRead = false;
+	Engine.WithRenderState([&](const FMjRenderSnapshot& Snapshot) {
+		const auto& Array = PickArray(Snapshot);
+		if (Count <= 0 || Index < 0 || Index + Count > Array.Num())
+		{
+			return;
+		}
+		for (int32 I = 0; I < Count; ++I)
+		{
+			Out[I] = static_cast<double>(Array[Index + I]);
+		}
+		bRead = true;
+	});
+	return bRead;
+}

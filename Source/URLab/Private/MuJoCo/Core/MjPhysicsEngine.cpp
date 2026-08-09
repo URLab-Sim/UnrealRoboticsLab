@@ -864,6 +864,11 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	mj_resetData(m_model, m_data);
 	RestoreState(m_model, m_data, InstalledBinding, Stash);
 	mj_forward(m_model, m_data);
+
+	// The snapshot is what every consumer reads, so it has to exist before the
+	// first step: a scene that compiles and is inspected while paused would
+	// otherwise be read out of the previous model's snapshot, or out of none.
+	PushRenderState();
 	return true;
 #endif  // URLAB_MJ_GEN
 }
@@ -1525,6 +1530,19 @@ void UMjPhysicsEngine::PushRenderState()
 	CopyArray(RenderSnapshot.ActuatorForce, m_data->actuator_force, NU);
 	CopyArray(RenderSnapshot.SensorData, m_data->sensordata, NSensorData);
 
+	// The rest of what the Blueprint-facing accessors report. They used to read
+	// live mjData, so a script asking two questions during one step could get
+	// answers from two different steps; these give them the same published
+	// frame everything else already reads.
+	CopyArray(RenderSnapshot.JntXAnchor, m_data->xanchor, m_model->njnt * 3);
+	CopyArray(RenderSnapshot.JntXAxis, m_data->xaxis, m_model->njnt * 3);
+	CopyArray(RenderSnapshot.Ctrl, m_data->ctrl, NU);
+	CopyArray(RenderSnapshot.ActuatorLength, m_data->actuator_length, NU);
+	CopyArray(RenderSnapshot.ActuatorVelocity, m_data->actuator_velocity, NU);
+	CopyArray(RenderSnapshot.Act, m_data->act, m_model->na);
+	CopyArray(RenderSnapshot.TenLength, m_data->ten_length, m_model->ntendon);
+	CopyArray(RenderSnapshot.TenVelocity, m_data->ten_velocity, m_model->ntendon);
+
 	// Sleep state.
 	CopyArray(RenderSnapshot.BodyAwake, m_data->body_awake, NBody);
 	CopyArray(RenderSnapshot.TreeAsleep, m_data->tree_asleep, NTree);
@@ -1539,7 +1557,7 @@ void UMjPhysicsEngine::PushRenderState()
 }
 
 void UMjPhysicsEngine::WithRenderState(
-	TFunctionRef<void(const FMjRenderSnapshot&)> Visitor)
+	TFunctionRef<void(const FMjRenderSnapshot&)> Visitor) const
 {
 	FScopeLock Lock(&RenderStateMutex);
 	Visitor(RenderSnapshot);
@@ -1634,6 +1652,10 @@ void UMjPhysicsEngine::ApplyJointPosition(int32 JointId, double Value)
 		return;
 	FScopeLock Lock(&CallbackMutex);
 	m_data->qpos[QposAdr] = Value;
+	// Readers see the published snapshot, so a write nobody publishes is a
+	// write nobody can observe until the next step. That would break the
+	// on-the-very-next-read contract these synchronous edits exist for.
+	PushRenderState();
 }
 
 void UMjPhysicsEngine::ApplyJointVelocity(int32 JointId, double Value)
@@ -1645,6 +1667,7 @@ void UMjPhysicsEngine::ApplyJointVelocity(int32 JointId, double Value)
 		return;
 	FScopeLock Lock(&CallbackMutex);
 	m_data->qvel[DofAdr] = Value;
+	PushRenderState();
 }
 
 void UMjPhysicsEngine::ApplyGeomFriction(int32 GeomId, double Slide)

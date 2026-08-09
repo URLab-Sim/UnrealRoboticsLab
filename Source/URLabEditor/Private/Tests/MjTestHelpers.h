@@ -368,6 +368,12 @@ struct FMjUESession
 		if (M && D)
 			for (int i = 0; i < N; ++i)
 				mj_step(M, D);
+		// The session stands in for the physics worker, and the worker publishes
+		// a snapshot after every step. The Blueprint-facing accessors read that
+		// snapshot, so a session that stepped without publishing would answer
+		// every question with the state before the step.
+		if (Manager && Manager->PhysicsEngine)
+			Manager->PhysicsEngine->PushRenderState();
 	}
 
 	void Cleanup()

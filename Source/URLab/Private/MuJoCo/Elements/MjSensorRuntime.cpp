@@ -189,8 +189,8 @@ const FSensorKind* KindOf(const UMjNodeComponent* Node)
  * bound id. The spec knows the sensor exists; only the model knows where it
  * landed and how wide it is.
  */
-bool ResolveSlot(const UMjNodeComponent* Node, const mjModel*& OutModel, const mjData*& OutData,
-	int32& OutAdr, int32& OutDim)
+bool ResolveSlot(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutAdr, int32& OutDim)
 {
 	if (KindOf(Node) == nullptr)
 	{
@@ -207,8 +207,7 @@ bool ResolveSlot(const UMjNodeComponent* Node, const mjModel*& OutModel, const m
 		return false;
 	}
 	const mjModel* Model = Engine->GetModel();
-	const mjData* Data = Engine->GetData();
-	if (Model == nullptr || Data == nullptr)
+	if (Model == nullptr)
 	{
 		return false;
 	}
@@ -222,8 +221,8 @@ bool ResolveSlot(const UMjNodeComponent* Node, const mjModel*& OutModel, const m
 	{
 		return false;
 	}
+	OutEngine = Engine;
 	OutModel = Model;
-	OutData = Data;
 	OutAdr = Adr;
 	OutDim = Dim;
 	return true;
@@ -250,28 +249,38 @@ EMjSensorValueKind UMjSensorRuntime::GetValueKind(const UMjNodeComponent* Sensor
 
 int32 UMjSensorRuntime::GetDimension(const UMjNodeComponent* Sensor)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Adr = 0;
 	int32 Dim = 0;
-	return ResolveSlot(Sensor, Model, Data, Adr, Dim) ? Dim : 0;
+	return ResolveSlot(Sensor, Engine, Model, Adr, Dim) ? Dim : 0;
 }
 
 TArray<float> UMjSensorRuntime::GetReading(const UMjNodeComponent* Sensor)
 {
 	TArray<float> Result;
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Adr = 0;
 	int32 Dim = 0;
-	if (!ResolveSlot(Sensor, Model, Data, Adr, Dim))
+	if (!ResolveSlot(Sensor, Engine, Model, Adr, Dim))
+	{
+		return Result;
+	}
+	// One visit for the whole reading: a multi-component sensor read a
+	// component at a time could straddle two steps and describe a pose that
+	// never existed.
+	TArray<double, TInlineAllocator<8>> Raw;
+	Raw.SetNumZeroed(Dim);
+	if (!MjSnapshotRange(*Engine, Adr, Dim, Raw.GetData(),
+			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.SensorData; }))
 	{
 		return Result;
 	}
 	Result.Reserve(Dim);
 	for (int32 I = 0; I < Dim; ++I)
 	{
-		Result.Add(static_cast<float>(Data->sensordata[Adr + I]));
+		Result.Add(static_cast<float>(Raw[I]));
 	}
 	MjTransformSensorReading(Result, GetValueKind(Sensor));
 	return Result;
@@ -279,15 +288,16 @@ TArray<float> UMjSensorRuntime::GetReading(const UMjNodeComponent* Sensor)
 
 float UMjSensorRuntime::GetScalarReading(const UMjNodeComponent* Sensor)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Adr = 0;
 	int32 Dim = 0;
-	if (!ResolveSlot(Sensor, Model, Data, Adr, Dim))
+	if (!ResolveSlot(Sensor, Engine, Model, Adr, Dim))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->sensordata[Adr]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Adr,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.SensorData; }));
 }
 
 #else  // URLAB_MJ_GEN

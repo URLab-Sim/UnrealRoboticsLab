@@ -50,12 +50,18 @@ bool IsElementOf(const UMjNodeComponent* Node, std::initializer_list<ElementType
 }
 
 /**
- * The engine's model and data, plus the compiled id `Node` bound to.
+ * The engine, its model, and the compiled id `Node` bound to.
+ *
+ * The model is the compiled shape -- addresses, counts, ranges -- and is what
+ * an accessor indexes WITH. The values themselves come from the engine's
+ * published snapshot rather than from live mjData, so two questions asked
+ * during one step cannot be answered out of two different steps.
  *
  * Says nothing about whether the id is in range: the count to check against is
  * per family and lives on the caller, which knows which one it wants.
  */
-bool ResolveBound(const UMjNodeComponent* Node, const mjModel*& OutModel, const mjData*& OutData, int32& OutId)
+bool ResolveBound(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutId)
 {
 	if (Node == nullptr)
 	{
@@ -72,42 +78,43 @@ bool ResolveBound(const UMjNodeComponent* Node, const mjModel*& OutModel, const 
 		return false;
 	}
 	const mjModel* Model = Engine->GetModel();
-	const mjData* Data = Engine->GetData();
-	if (Model == nullptr || Data == nullptr || Id.GetValue() < 0)
+	if (Model == nullptr || Id.GetValue() < 0)
 	{
 		return false;
 	}
+	OutEngine = Engine;
 	OutModel = Model;
-	OutData = Data;
 	OutId = Id.GetValue();
 	return true;
 }
 
 /** A bound joint id, for the reads that index by joint rather than by slot. */
-bool ResolveJointId(const UMjNodeComponent* Node, const mjModel*& OutModel, const mjData*& OutData, int32& OutId)
+bool ResolveJointId(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutId)
 {
 	if (!IsElementOf(Node, {ElementType::Joint, ElementType::FreeJoint}))
 	{
 		return false;
 	}
-	return ResolveBound(Node, OutModel, OutData, OutId) && OutId < static_cast<int32>(OutModel->njnt);
+	return ResolveBound(Node, OutEngine, OutModel, OutId) && OutId < static_cast<int32>(OutModel->njnt);
 }
 
-bool ResolveTendon(const UMjNodeComponent* Node, const mjModel*& OutModel, const mjData*& OutData, int32& OutId)
+bool ResolveTendon(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutId)
 {
 	if (!IsElementOf(Node, {ElementType::Spatial, ElementType::Fixed}))
 	{
 		return false;
 	}
-	return ResolveBound(Node, OutModel, OutData, OutId) && OutId < static_cast<int32>(OutModel->ntendon);
+	return ResolveBound(Node, OutEngine, OutModel, OutId) && OutId < static_cast<int32>(OutModel->ntendon);
 }
 
 /** A bound joint, with its qpos and dof addresses already resolved. */
-bool ResolveJoint(const UMjNodeComponent* Node, const mjModel*& OutModel, const mjData*& OutData,
-	int32& OutQposAdr, int32& OutDofAdr)
+bool ResolveJoint(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutQposAdr, int32& OutDofAdr)
 {
 	int32 Id = 0;
-	if (!ResolveJointId(Node, OutModel, OutData, Id))
+	if (!ResolveJointId(Node, OutEngine, OutModel, Id))
 	{
 		return false;
 	}
@@ -126,49 +133,52 @@ bool UMjJointRuntime::IsJoint(const UMjNodeComponent* Node)
 
 float UMjJointRuntime::GetPosition(const UMjNodeComponent* Joint)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 QposAdr = 0;
 	int32 DofAdr = 0;
-	if (!ResolveJoint(Joint, Model, Data, QposAdr, DofAdr))
+	if (!ResolveJoint(Joint, Engine, Model, QposAdr, DofAdr))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->qpos[QposAdr]);
+	return static_cast<float>(MjSnapshotValue(*Engine, QposAdr,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QPos; }));
 }
 
 float UMjJointRuntime::GetVelocity(const UMjNodeComponent* Joint)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 QposAdr = 0;
 	int32 DofAdr = 0;
-	if (!ResolveJoint(Joint, Model, Data, QposAdr, DofAdr))
+	if (!ResolveJoint(Joint, Engine, Model, QposAdr, DofAdr))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->qvel[DofAdr]);
+	return static_cast<float>(MjSnapshotValue(*Engine, DofAdr,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QVel; }));
 }
 
 float UMjJointRuntime::GetAcceleration(const UMjNodeComponent* Joint)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 QposAdr = 0;
 	int32 DofAdr = 0;
-	if (!ResolveJoint(Joint, Model, Data, QposAdr, DofAdr))
+	if (!ResolveJoint(Joint, Engine, Model, QposAdr, DofAdr))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->qacc[DofAdr]);
+	return static_cast<float>(MjSnapshotValue(*Engine, DofAdr,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QAcc; }));
 }
 
 void UMjJointRuntime::SetPosition(const UMjNodeComponent* Joint, float Position)
 {
+	const UMjPhysicsEngine* Bound = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveJointId(Joint, Model, Data, Id))
+	if (!ResolveJointId(Joint, Bound, Model, Id))
 	{
 		return;
 	}
@@ -180,10 +190,10 @@ void UMjJointRuntime::SetPosition(const UMjNodeComponent* Joint, float Position)
 
 void UMjJointRuntime::SetVelocity(const UMjNodeComponent* Joint, float Velocity)
 {
+	const UMjPhysicsEngine* Bound = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveJointId(Joint, Model, Data, Id))
+	if (!ResolveJointId(Joint, Bound, Model, Id))
 	{
 		return;
 	}
@@ -195,13 +205,15 @@ void UMjJointRuntime::SetVelocity(const UMjNodeComponent* Joint, float Velocity)
 
 FVector2D UMjJointRuntime::GetJointRange(const UMjNodeComponent* Joint)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveJointId(Joint, Model, Data, Id))
+	if (!ResolveJointId(Joint, Engine, Model, Id))
 	{
 		return FVector2D::ZeroVector;
 	}
+	// A compiled range is model state, fixed for the life of a compile, so
+	// there is nothing here a step could tear.
 	return FVector2D(
 		static_cast<float>(Model->jnt_range[Id * 2 + 0]),
 		static_cast<float>(Model->jnt_range[Id * 2 + 1]));
@@ -209,28 +221,39 @@ FVector2D UMjJointRuntime::GetJointRange(const UMjNodeComponent* Joint)
 
 FVector UMjJointRuntime::GetWorldAnchor(const UMjNodeComponent* Joint)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveJointId(Joint, Model, Data, Id))
+	if (!ResolveJointId(Joint, Engine, Model, Id))
 	{
 		return FVector::ZeroVector;
 	}
-	return URLabAxisConv::MjPositionToUe(&Data->xanchor[Id * 3]);
+	double Anchor[3] = {0.0, 0.0, 0.0};
+	if (!MjSnapshotRange(*Engine, Id * 3, 3, Anchor,
+			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.JntXAnchor; }))
+	{
+		return FVector::ZeroVector;
+	}
+	return URLabAxisConv::MjPositionToUe(Anchor);
 }
 
 FVector UMjJointRuntime::GetWorldAxis(const UMjNodeComponent* Joint)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveJointId(Joint, Model, Data, Id))
+	if (!ResolveJointId(Joint, Engine, Model, Id))
+	{
+		return FVector::ForwardVector;
+	}
+	double Axis[3] = {0.0, 0.0, 0.0};
+	if (!MjSnapshotRange(*Engine, Id * 3, 3, Axis,
+			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.JntXAxis; }))
 	{
 		return FVector::ForwardVector;
 	}
 	// An axis is a direction, so it takes the handedness flip without the
 	// metres-to-centimetres scaling a position would.
-	const mjtNum* Axis = &Data->xaxis[Id * 3];
 	return FVector(
 		static_cast<float>(Axis[0]),
 		-static_cast<float>(Axis[1]),
@@ -244,26 +267,28 @@ bool UMjTendonRuntime::IsTendon(const UMjNodeComponent* Node)
 
 float UMjTendonRuntime::GetLength(const UMjNodeComponent* Tendon)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveTendon(Tendon, Model, Data, Id))
+	if (!ResolveTendon(Tendon, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->ten_length[Id]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Id,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.TenLength; }));
 }
 
 float UMjTendonRuntime::GetVelocity(const UMjNodeComponent* Tendon)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveTendon(Tendon, Model, Data, Id))
+	if (!ResolveTendon(Tendon, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->ten_velocity[Id]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Id,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.TenVelocity; }));
 }
 
 #else  // URLAB_MJ_GEN

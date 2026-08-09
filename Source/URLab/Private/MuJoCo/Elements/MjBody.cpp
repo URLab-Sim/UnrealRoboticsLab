@@ -35,7 +35,8 @@ namespace
  * there has to do folded in: there is only one count a body can be checked
  * against, so there is no reason to make every accessor repeat it.
  */
-bool ResolveBoundBody(const UMjBody* Body, const mjModel*& OutModel, const mjData*& OutData, int32& OutId)
+bool ResolveBoundBody(const UMjBody* Body, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutId)
 {
 	if (Body == nullptr)
 	{
@@ -52,13 +53,12 @@ bool ResolveBoundBody(const UMjBody* Body, const mjModel*& OutModel, const mjDat
 		return false;
 	}
 	const mjModel* Model = Engine->GetModel();
-	const mjData* Data = Engine->GetData();
-	if (Model == nullptr || Data == nullptr || Id.GetValue() >= static_cast<int32>(Model->nbody))
+	if (Model == nullptr || Id.GetValue() >= static_cast<int32>(Model->nbody))
 	{
 		return false;
 	}
+	OutEngine = Engine;
 	OutModel = Model;
-	OutData = Data;
 	OutId = Id.GetValue();
 	return true;
 }
@@ -224,26 +224,38 @@ void UMjBody::RefreshMeshPivotOffset()
 
 FVector UMjBody::GetWorldPosition() const
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveBoundBody(this, Model, Data, Id))
+	if (!ResolveBoundBody(this, Engine, Model, Id))
 	{
 		return FVector::ZeroVector;
 	}
-	return URLabAxisConv::MjPositionToUe(&Data->xpos[Id * 3]);
+	double Pos[3] = {0.0, 0.0, 0.0};
+	if (!MjSnapshotRange(*Engine, Id * 3, 3, Pos,
+			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.XPos; }))
+	{
+		return FVector::ZeroVector;
+	}
+	return URLabAxisConv::MjPositionToUe(Pos);
 }
 
 FQuat UMjBody::GetWorldRotation() const
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = 0;
-	if (!ResolveBoundBody(this, Model, Data, Id))
+	if (!ResolveBoundBody(this, Engine, Model, Id))
 	{
 		return FQuat::Identity;
 	}
-	return URLabAxisConv::MjQuatToUe(&Data->xquat[Id * 4]);
+	double Quat[4] = {1.0, 0.0, 0.0, 0.0};
+	if (!MjSnapshotRange(*Engine, Id * 4, 4, Quat,
+			[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.XQuat; }))
+	{
+		return FQuat::Identity;
+	}
+	return URLabAxisConv::MjQuatToUe(Quat);
 }
 
 FMuJoCoSpatialVelocity UMjBody::GetSpatialVelocity() const

@@ -68,8 +68,15 @@ bool ResolveActuatorId(const UMjNodeComponent* Node, int32& OutId)
 	return true;
 }
 
-/** The id plus the engine's model and data, with the id known to be in range. */
-bool ResolveBound(const UMjNodeComponent* Node, const mjModel*& OutModel, const mjData*& OutData, int32& OutId)
+/**
+ * The id plus the engine and its model, with the id known to be in range.
+ *
+ * The model carries the compiled shape an accessor indexes with; the values
+ * come from the engine's published snapshot rather than from live mjData, so
+ * two questions asked during one step cannot be answered out of two steps.
+ */
+bool ResolveBound(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngine,
+	const mjModel*& OutModel, int32& OutId)
 {
 	int32 Id = -1;
 	if (!ResolveActuatorId(Node, Id))
@@ -82,13 +89,12 @@ bool ResolveBound(const UMjNodeComponent* Node, const mjModel*& OutModel, const 
 		return false;
 	}
 	const mjModel* Model = Engine->GetModel();
-	const mjData* Data = Engine->GetData();
-	if (Model == nullptr || Data == nullptr || Id >= Model->nu)
+	if (Model == nullptr || Id >= Model->nu)
 	{
 		return false;
 	}
+	OutEngine = Engine;
 	OutModel = Model;
-	OutData = Data;
 	OutId = Id;
 	return true;
 }
@@ -172,86 +178,95 @@ float UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent* Actuator
 
 float UMjActuatorRuntime::GetAppliedControl(const UMjNodeComponent* Actuator)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->ctrl[Id]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Id,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.Ctrl; }));
 }
 
 float UMjActuatorRuntime::GetForce(const UMjNodeComponent* Actuator)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->actuator_force[Id]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Id,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.ActuatorForce; }));
 }
 
 float UMjActuatorRuntime::GetLength(const UMjNodeComponent* Actuator)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->actuator_length[Id]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Id,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.ActuatorLength; }));
 }
 
 float UMjActuatorRuntime::GetVelocity(const UMjNodeComponent* Actuator)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
-	return static_cast<float>(Data->actuator_velocity[Id]);
+	return static_cast<float>(MjSnapshotValue(*Engine, Id,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.ActuatorVelocity; }));
 }
 
 FVector2D UMjActuatorRuntime::GetControlRange(const UMjNodeComponent* Actuator)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return FVector2D::ZeroVector;
 	}
+	// A compiled control range is model state, fixed for the life of a
+	// compile, so there is nothing here a step could tear.
 	return FVector2D(static_cast<float>(Model->actuator_ctrlrange[2 * Id + 0]),
 		static_cast<float>(Model->actuator_ctrlrange[2 * Id + 1]));
 }
 
 float UMjActuatorRuntime::GetActivation(const UMjNodeComponent* Actuator)
 {
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return 0.0f;
 	}
 	// Negative for a stateless actuator, which has no activation to report.
 	const int32 ActAdr = Model->actuator_actadr[Id];
-	return ActAdr >= 0 ? static_cast<float>(Data->act[ActAdr]) : 0.0f;
+	return ActAdr >= 0
+		? static_cast<float>(MjSnapshotValue(*Engine, ActAdr,
+			  [](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.Act; }))
+		: 0.0f;
 }
 
 TArray<float> UMjActuatorRuntime::GetGear(const UMjNodeComponent* Actuator)
 {
 	TArray<float> Out;
+	const UMjPhysicsEngine* Engine = nullptr;
 	const mjModel* Model = nullptr;
-	const mjData* Data = nullptr;
 	int32 Id = -1;
-	if (!ResolveBound(Actuator, Model, Data, Id))
+	if (!ResolveBound(Actuator, Engine, Model, Id))
 	{
 		return Out;
 	}

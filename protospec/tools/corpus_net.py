@@ -23,21 +23,21 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# The two failures this branch inherited and the owner recorded rather than
-# scheduled. A third is a regression and stops the net.
+# Empty, and meant to stay that way: every failure is a failure.
 #
-# Both describe one defect. many_dependencies.xml is a real round-trip fidelity
-# defect in the retained reader and writer: it round-trips to a model that will
-# not load ("no tree found for constraint 0"). It is a genuine MuJoCo test model
-# and not a corpus artifact, and it must not be closed as one. The aggregate
-# floor fails because of it and clears when it does.
-ALLOWED_FAILURES = frozenset(
-    {
-        "tests/test_differential.py::test_roundtrip_matches_mujoco"
-        "[test/xml/testdata/many_dependencies.xml]",
-        "tests/test_differential.py::test_xml_parity_floor",
-    }
-)
+# It last held two entries, both describing one supposed round-trip fidelity
+# defect on many_dependencies.xml ("no tree found for constraint 0"), plus the
+# aggregate floor that fell over because of it. Neither was ours. The model
+# aborts in mj_island on a stock load of the ORIGINAL file, in an engine corner
+# MuJoCo excludes from its own parity tests; what was broken here was the diff
+# harness, which did not trap the fatal handler, so the process died and the
+# round trip was blamed for it. The harness traps it now, compares every mjModel
+# field, and skips only the forward-kinematics invariants.
+#
+# The set stays declared rather than deleted because the shape is the contract:
+# an entry may be added only for a failure the owner has recorded and decided
+# not to schedule, never to quiet one.
+ALLOWED_FAILURES: frozenset[str] = frozenset()
 
 
 class _Outcomes:

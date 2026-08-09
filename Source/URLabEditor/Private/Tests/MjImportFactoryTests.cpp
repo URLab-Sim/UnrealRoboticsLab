@@ -391,3 +391,89 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 
 	return true;
 }
+
+// ============================================================================
+// URLab.Import.CancelAndFailureLeaveNothing
+//   An import that stops before it finishes must leave the project as it found
+//   it, and must say which of the two happened: a cancellation is reported as
+//   one, a failure is not. Nothing is created before the model is known to be
+//   readable, which is what makes "leaves nothing" structural rather than a
+//   clean-up step that can be forgotten.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportCancelAndFailureLeaveNothing,
+	"URLab.Import.CancelAndFailureLeaveNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
+{
+	const FString Dir = ScratchDir(TEXT("Cancel"));
+
+	// A model whose mesh is not on disk: preparation runs, fails, and the
+	// import stops before anything is made.
+	const FString UnpreparableXml = Dir / TEXT("unpreparable.xml");
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujoco model=\"unpreparable\">\n")
+		TEXT("  <asset><mesh name=\"absent\" file=\"absent.stl\"/></asset>\n")
+		TEXT("  <worldbody><body name=\"b\"><geom name=\"g\" type=\"mesh\" mesh=\"absent\"/></body></worldbody>\n")
+		TEXT("</mujoco>\n")), *UnpreparableXml);
+
+	AddExpectedErrorPlain(TEXT("mesh preparation of"), EAutomationExpectedErrorFlags::Contains, 0);
+	AddExpectedErrorPlain(TEXT("refusing to overwrite existing Blueprint"),
+		EAutomationExpectedErrorFlags::Contains, 0);
+
+	{
+		int32 Acquisitions = 0;
+		UBlueprint* Produced = nullptr;
+		FString Error;
+		bool bCancelled = false;
+		const bool bOk = UMujocoImportFactory::ImportModel(UnpreparableXml,
+			[&Acquisitions]() -> UBlueprint* {
+				++Acquisitions;
+				return nullptr;
+			},
+			Produced, Error, bCancelled);
+
+		TestFalse(TEXT("an unpreparable model does not import"), bOk);
+		TestEqual(TEXT("nothing is asked for before the model is prepared"), Acquisitions, 0);
+		TestNull(TEXT("no Blueprint comes back"), Produced);
+		TestTrue(TEXT("the failure carries a reason"), !Error.IsEmpty());
+	}
+
+	{
+		FImportProbe Probe;
+		Probe.Run(UnpreparableXml);
+		TestNull(TEXT("the factory imports nothing"), Probe.Result);
+		TestFalse(TEXT("a failure is not reported as a cancellation"), Probe.bCancelled);
+		TestNull(TEXT("nothing is left in the package"), Probe.Leftover());
+		TestFalse(TEXT("nothing is left in the asset registry"), Probe.RegisteredAsAsset());
+	}
+
+	// Refusing to overwrite a Blueprint that is still in memory is the other
+	// way an import stops early. It reports itself as a cancellation, and the
+	// asset it declined to touch is the one that was already there.
+	{
+		const FString GoodXml = Dir / TEXT("cancel_probe.xml");
+		FFileHelper::SaveStringToFile(FString(kMinimalMjcf), *GoodXml);
+
+		FImportProbe First;
+		First.Run(GoodXml);
+		if (First.AsBlueprint() == nullptr)
+		{
+			AddError(TEXT("import setup failed: no Blueprint produced"));
+			return false;
+		}
+		const TArray<FString> NamesBefore = ComponentNames(First.AsBlueprint());
+
+		UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
+		bool bCancelled = false;
+		UObject* Second = Factory->FactoryCreateFile(UBlueprint::StaticClass(), First.Package,
+			FName(*First.AssetName), RF_Public | RF_Standalone, GoodXml, nullptr, GWarn, bCancelled);
+
+		TestNull(TEXT("the second import produces nothing"), Second);
+		TestTrue(TEXT("stopping early is reported as a cancellation"), bCancelled);
+		TestEqual(TEXT("the Blueprint that was already there is untouched"),
+			ComponentNames(First.AsBlueprint()), NamesBefore);
+	}
+
+	return true;
+}

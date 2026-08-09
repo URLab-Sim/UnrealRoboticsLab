@@ -1,0 +1,16 @@
+<mujoco model="macro_composite">
+  <default>
+    <default class="cable_default">
+      <geom type="capsule" size="0.005" rgba="0.9 0.4 0.1 1"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="composite_root" childclass="cable_default" pos="0 0 1">
+      <geom name="composite_anchor" type="sphere" size="0.02"/>
+      <composite type="cable" count="8 1 1" initial="none" curve="s" size="0.5">
+        <joint kind="main" damping="0.015"/>
+        <geom type="capsule" size="0.005"/>
+      </composite>
+    </body>
+  </worldbody>
+</mujoco>

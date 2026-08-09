@@ -150,9 +150,24 @@ TArray<FString> CorpusFiles()
 {
 	TArray<FString> Found;
 
-	const FString TestData = FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UnrealRoboticsLab"),
+	FString TestData = FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UnrealRoboticsLab"),
 		TEXT("Content"), TEXT("TestData"));
+	FPaths::NormalizeDirectoryName(TestData);
 	IFileManager::Get().FindFilesRecursive(Found, *TestData, TEXT("*.xml"), true, false);
+
+	// Two subdirectories are outputs or non-inputs, never fixtures. `goldens`
+	// holds recorded answers: re-reading one as input would test the run
+	// against itself, and its asset references are relative to the fixture it
+	// was recorded from, so they do not resolve from there. `boundary` holds
+	// models that exercise the reader and writer but cannot compile in URLab,
+	// which is the property that puts them in that directory.
+	const FString Goldens = FPaths::Combine(TestData, TEXT("goldens")) + TEXT("/");
+	const FString Boundary = FPaths::Combine(TestData, TEXT("boundary")) + TEXT("/");
+	Found.RemoveAll([&Goldens, &Boundary](const FString& File) {
+		FString Path = File;
+		FPaths::NormalizeFilename(Path);
+		return Path.StartsWith(Goldens) || Path.StartsWith(Boundary);
+	});
 
 	const FString Menagerie = FPlatformMisc::GetEnvironmentVariable(TEXT("MUJOCO_MENAGERIE_PATH"));
 	if (!Menagerie.IsEmpty())

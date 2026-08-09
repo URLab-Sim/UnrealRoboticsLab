@@ -1,0 +1,88 @@
+<mujoco model="tendons_equality_sensors">
+  <worldbody>
+    <body name="site_body_a" pos="0 0 1">
+      <site name="s0" pos="0 0 0"/>
+    </body>
+    <body name="wrap_body" pos="1 0 1">
+      <geom name="g_wrap" type="sphere" size="0.1"/>
+      <site name="side_s" pos="0 0.15 0"/>
+    </body>
+    <body name="site_body_b" pos="2 0 1">
+      <site name="s1" pos="0 0 0"/>
+    </body>
+    <body name="pulley_body" pos="3 0 1">
+      <site name="s2" pos="0 0 0"/>
+      <site name="s3" pos="0.5 0 0"/>
+    </body>
+    <body name="connect_a" pos="4 0 1">
+      <site name="csite_a" pos="0 0 0"/>
+    </body>
+    <body name="connect_b" pos="4.5 0 1">
+      <site name="csite_b" pos="0 0 0"/>
+    </body>
+    <body name="weld_a" pos="5 0 1">
+      <site name="wsite_a" pos="0 0 0"/>
+    </body>
+    <body name="weld_b" pos="5.5 0 1">
+      <site name="wsite_b" pos="0 0 0"/>
+    </body>
+    <body name="eqj_body1" pos="6 0 1">
+      <joint name="ej1" type="hinge" axis="0 0 1"/>
+      <geom name="geom_eqj1" type="capsule" size="0.025 0.125" pos="0.125 0 0" quat="0.7071067811865476 0 -0.7071067811865476 0"/>
+    </body>
+    <body name="eqj_body2" pos="6.5 0 1">
+      <joint name="ej2" type="hinge" axis="0 0 1"/>
+      <geom name="geom_eqj2" type="capsule" size="0.025 0.125" pos="0.125 0 0" quat="0.7071067811865476 0 -0.7071067811865476 0"/>
+    </body>
+    <body name="flex_v0" pos="7 0 1"/>
+    <body name="flex_v1" pos="7.5 0 1"/>
+    <body name="sensor_body" pos="8 0 1">
+      <site name="acc_site" pos="0 0 0"/>
+      <site name="gyro_site" pos="0 0 0"/>
+      <site name="vel_site" pos="0 0 0"/>
+      <site name="touch_site" type="box" pos="0 0 0" size="0.05 0.05 0.05"/>
+      <site name="range_site" pos="0 0 0"/>
+    </body>
+  </worldbody>
+  <deformable>
+    <flex name="flex_line" dim="1" radius="0.01" body="flex_v0 flex_v1" element="0 1"/>
+  </deformable>
+  <tendon>
+    <spatial name="spatial_tendon">
+      <site site="s0"/>
+      <geom geom="g_wrap" sidesite="side_s"/>
+      <site site="s1"/>
+      <pulley divisor="2"/>
+      <site site="s2"/>
+      <site site="s3"/>
+    </spatial>
+    <fixed name="fixed_t1">
+      <joint joint="ej1" coef="1"/>
+    </fixed>
+    <fixed name="fixed_t2">
+      <joint joint="ej2" coef="1"/>
+    </fixed>
+  </tendon>
+  <equality>
+    <connect name="eq_connect" site1="csite_a" site2="csite_b"/>
+    <weld name="eq_weld" site1="wsite_a" site2="wsite_b"/>
+    <joint name="eq_joint" joint1="ej1" joint2="ej2" polycoef="0 1 0 0 0"/>
+    <tendon name="eq_tendon" tendon1="fixed_t1" tendon2="fixed_t2" polycoef="0 1 0 0 0"/>
+    <flex name="eq_flex" flex="flex_line"/>
+  </equality>
+  <actuator>
+    <motor name="mot_ej1" joint="ej1"/>
+  </actuator>
+  <sensor>
+    <framepos name="sens_framepos" objtype="body" objname="site_body_a" reftype="body" refname="connect_a"/>
+    <framequat name="sens_framequat" objtype="body" objname="site_body_b"/>
+    <jointpos name="sens_jointpos" joint="ej1"/>
+    <actuatorfrc name="sens_actuatorfrc" actuator="mot_ej1"/>
+    <subtreecom name="sens_subtreecom" body="site_body_a"/>
+    <touch name="sens_touch" site="touch_site"/>
+    <rangefinder name="sens_rangefinder" site="range_site"/>
+    <accelerometer name="sens_accelerometer" site="acc_site"/>
+    <gyro name="sens_gyro" site="gyro_site"/>
+    <velocimeter name="sens_velocimeter" site="vel_site"/>
+  </sensor>
+</mujoco>

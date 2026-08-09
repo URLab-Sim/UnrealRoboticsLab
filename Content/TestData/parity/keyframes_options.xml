@@ -1,0 +1,24 @@
+<mujoco model="keyframes_options">
+<!-- non-default option values, size.memory, flag overrides, and two keyframes with qpos/ctrl -->
+  <option timestep="0.005" gravity="0 0 -4.905" integrator="RK4" cone="elliptic" iterations="50">
+    <flag contact="disable" energy="enable" gravity="enable"/>
+  </option>
+
+  <size memory="1M"/>
+
+  <worldbody>
+    <body name="body1" pos="0 0 1">
+      <joint name="j1" type="hinge" axis="0 0 1"/>
+      <geom name="geom1" type="box" size="0.1 0.1 0.1"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <motor name="act1" joint="j1"/>
+  </actuator>
+
+  <keyframe>
+    <key name="key_home" qpos="0" ctrl="0"/>
+    <key name="key_quarter" time="0.5" qpos="0.25" ctrl="0.5"/>
+  </keyframe>
+</mujoco>

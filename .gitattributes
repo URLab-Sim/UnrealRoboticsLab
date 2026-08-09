@@ -9,3 +9,9 @@ Source/URLab/Private/MuJoCo/Gen/** text eol=lf linguist-generated=true
 Source/URLabEditor/Private/Tests/MjGenCoverage.gen.cpp text eol=lf linguist-generated=true
 Scripts/regen_ue_profile.ps1 text eol=lf
 Scripts/regen_ue_profile.sh text eol=lf
+
+# Recorded models. These are compared field for field after being loaded back,
+# so any rewriting on checkout would surface as a corrupt golden rather than as
+# the line-ending change it actually was. Pinned rather than left to content
+# sniffing, because a golden is only worth what its bytes are.
+Content/TestData/goldens/*.mjb binary

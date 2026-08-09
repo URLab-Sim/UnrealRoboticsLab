@@ -34,6 +34,7 @@ ThirdParty
 *.lo
 *.o
 *.obj
+!Content/TestData/**/*.obj
 
 # Precompiled Headers
 *.gch

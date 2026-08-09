@@ -1,0 +1,13 @@
+<mujoco model="angle_degrees">
+  <compiler angle="degree" eulerseq="zyx"/>
+  <worldbody>
+    <body name="body_euler" pos="0 0 1" quat="0.8223631719059994 0.3604234056503559 0.43967973954090955 0.022260026714733816">
+      <joint name="j_euler" type="hinge" axis="0 0 1" stiffness="1" range="-90 90" ref="15" springref="30"/>
+      <geom name="geom_euler" type="box" size="0.1 0.1 0.1"/>
+      <body name="body_axisangle" pos="0.5 0 0" quat="0.7071067811865476 0 0 0.7071067811865476">
+        <joint name="j_axisangle" type="hinge" axis="1 0 0" stiffness="1" range="-45 45" ref="10" springref="20"/>
+        <geom name="geom_axisangle" type="box" size="0.05 0.05 0.05"/>
+      </body>
+    </body>
+  </worldbody>
+</mujoco>

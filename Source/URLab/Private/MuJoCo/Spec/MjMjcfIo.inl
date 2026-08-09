@@ -15,8 +15,8 @@
 // than copied.
 
 #if !defined(URLAB_MJ_IO_PROFILE) || !defined(URLAB_MJ_IO_FACTORY) || !defined(URLAB_MJ_IO_PARSE) || \
-	!defined(URLAB_MJ_IO_WRITE)
-#error "MjMjcfIo.inl needs URLAB_MJ_IO_{PROFILE,FACTORY,PARSE,WRITE}"
+	!defined(URLAB_MJ_IO_WRITE) || !defined(URLAB_MJ_IO_WRITE_ELEMENT)
+#error "MjMjcfIo.inl needs URLAB_MJ_IO_{PROFILE,FACTORY,PARSE,WRITE,WRITE_ELEMENT}"
 #endif
 
 namespace urlab::spec::io
@@ -64,6 +64,46 @@ FString URLAB_MJ_IO_WRITE(const UMjNodeComponent& Root, TArray<FMjSpecDiagnostic
 	if (OutErrors != nullptr)
 	{
 		CollectDiagnostics(Errors, *OutErrors);
+	}
+	return gen::FMjStrPolicy::FromUtf8(Text);
+}
+
+FString URLAB_MJ_IO_WRITE_ELEMENT(const UMjNodeComponent& Node, TArray<FMjSpecDiagnostic>* OutErrors)
+{
+	std::vector<ps::Diagnostic> Errors;
+	std::string Text;
+
+	// The tag is the element's own, never the parent's slot. A caller reaching
+	// here has no parent to derive a contextual alias from, and letting it pass
+	// one would be an invitation to pass the wrong one.
+	const bool bDispatched = gen::DispatchByType(Node, [&](const auto& Element)
+	{
+		using E = std::decay_t<decltype(Element)>;
+		const psm::ElementType Type = pssdk::ElementTypeOf<URLAB_MJ_IO_PROFILE, E>;
+		ps::mjcf::io::WriteElement<URLAB_MJ_IO_PROFILE>(Element, ps::mjcf::xmlbind::Bind(Type).tag,
+			/*depth=*/0, Text, /*names=*/nullptr, &Errors);
+	});
+
+	if (!bDispatched)
+	{
+		if (OutErrors != nullptr)
+		{
+			FMjSpecDiagnostic Diagnostic;
+			Diagnostic.Message = TEXT("this component is not a spec element");
+			OutErrors->Add(MoveTemp(Diagnostic));
+		}
+		return FString();
+	}
+
+	// Same contract as the whole-document write: a partial document is worse
+	// than none, because it parses.
+	if (!Errors.empty())
+	{
+		if (OutErrors != nullptr)
+		{
+			CollectDiagnostics(Errors, *OutErrors);
+		}
+		return FString();
 	}
 	return gen::FMjStrPolicy::FromUtf8(Text);
 }

@@ -226,6 +226,28 @@ FString FSpecRef::WriteMjcf(TArray<FMjSpecDiagnostic>* OutErrors) const
 #endif
 }
 
+FString FSpecRef::WriteMjcfElement(const UMjNodeComponent& Node, TArray<FMjSpecDiagnostic>* OutErrors) const
+{
+#if URLAB_MJ_GEN
+#if WITH_EDITOR
+	if (Graph == EMjSpecGraph::Scs)
+	{
+		if (Blueprint == nullptr)
+		{
+			return FString();
+		}
+		urlab::spec::FMjScsScope Scope(*Blueprint);
+		return urlab::spec::io::WriteElementFromScs(Node, OutErrors);
+	}
+#endif
+	return urlab::spec::io::WriteElementFromInstance(Node, OutErrors);
+#else
+	(void)Node;
+	(void)OutErrors;
+	return FString();
+#endif
+}
+
 TArray<FString> FSpecRef::NamesOfType(const UClass* Type) const
 {
 	TArray<FString> Out;

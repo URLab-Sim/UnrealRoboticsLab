@@ -93,6 +93,17 @@ struct FMjSpecWriteContext
 	/** The current node's element handle, once created. */
 	mjsElement* Element = nullptr;
 
+	/**
+	 * Set by a hook that has already carried this node's children.
+	 *
+	 * A macro element's subtree is the template its expansion is generated
+	 * from, not content of its own: the bridge serializes the whole subtree into
+	 * the wrapper it parses, and the expansion is what lands in the spec.
+	 * Walking those children as well would create the template a second time,
+	 * as real elements beside the expansion.
+	 */
+	bool bChildrenConsumed = false;
+
 	/** Per-component element identity, filled as the walk creates. */
 	TMap<TObjectPtr<const UMjNodeComponent>, mjsElement*>* ElementFor = nullptr;
 

@@ -35,6 +35,9 @@ FMjSpecParseResult ParseIntoScs(const FString& Xml, const FString& Filename, con
 
 /** Write a spec held as Blueprint templates; needs an open FMjScsScope. */
 FString WriteFromScs(const UMjNodeComponent& Root, TArray<FMjSpecDiagnostic>* OutErrors);
+
+/** Write one element and its subtree, not a whole document. */
+FString WriteElementFromScs(const UMjNodeComponent& Node, TArray<FMjSpecDiagnostic>* OutErrors);
 #endif
 
 /** Read into the ambient FMjInstanceScope's actor. */
@@ -42,6 +45,9 @@ FMjSpecParseResult ParseIntoInstance(const FString& Xml, const FString& Filename
 
 /** Write a spec held as live components. */
 FString WriteFromInstance(const UMjNodeComponent& Root, TArray<FMjSpecDiagnostic>* OutErrors);
+
+/** Write one element and its subtree, not a whole document. */
+FString WriteElementFromInstance(const UMjNodeComponent& Node, TArray<FMjSpecDiagnostic>* OutErrors);
 
 }  // namespace urlab::spec::io
 

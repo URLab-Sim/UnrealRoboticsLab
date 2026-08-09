@@ -74,6 +74,21 @@ TOptional<FString> DclassOf(const UMjNodeComponent& Node)
 	return Out;
 }
 
+/** The `model` attribute of `<mujoco>`, when the root authored one. */
+TOptional<FString> ModelNameOf(const UMjNodeComponent& Root)
+{
+	TOptional<FString> Out;
+	gen::DispatchByType(Root, [&Out](const auto& Element)
+	{
+		if constexpr (requires { Element.Model; })
+		{
+			Out = Element.Model;
+		}
+		(void)Element;
+	});
+	return Out;
+}
+
 /** The class a node imposes on its subtree, when its schema gives it one. */
 TOptional<FString> ChildclassOf(const UMjNodeComponent& Node)
 {
@@ -215,6 +230,7 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 	FMjSpecWriteContext Local = Inherited;
 	Local.Struct = nullptr;
 	Local.Element = nullptr;
+	Local.bChildrenConsumed = false;
 
 	const sw::ECreate Category = sw::CreateOf(Type);
 	if (Category != sw::ECreate::Section && !ResolveClass(Node, Local))
@@ -245,6 +261,26 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 		// and whose "default" argument is the class it nests inside rather than
 		// the class it resolves through.
 		const bool bClass = Type == ElementType::Default;
+
+		// The top-level `<default>` names no class because it IS the spec's
+		// root class, which every spec already has. MuJoCo's own reader
+		// configures "main" from it rather than adding a second one, and
+		// mjs_addDefault refuses a class name the spec already holds.
+		if (bClass && Local.Partial == nullptr &&
+			!(Node.MjName.IsSet() && !Node.MjName.GetValue().IsEmpty()))
+		{
+			mjsDefault* const Root =
+				Local.Spec != nullptr ? mjs_getSpecDefault(Local.Spec) : nullptr;
+			if (Root == nullptr)
+			{
+				Ctx.Error(Node, TEXT("this spec has no root default class"));
+				return;
+			}
+			Local.Element = Root->element;
+			Local.Struct = Root;
+			break;
+		}
+
 		const FTCHARToUTF8 ClassName(bClass && Node.MjName.IsSet()
 			? *Node.MjName.GetValue() : *Local.ClassName);
 		const mjsDefault* const Parent =
@@ -312,6 +348,11 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 	if (!RunHooks(Node, Local, /*bCreating=*/false))
 	{
 		return;  // the element is malformed; its children would be worse
+	}
+
+	if (Local.bChildrenConsumed)
+	{
+		return;
 	}
 
 	// The subtree is created inside whatever this node established.
@@ -397,11 +438,15 @@ FMjBuiltSpec FBuilder::Build()
 		return FMjBuiltSpec();
 	}
 
-	// The root's own name attribute is the model name, which is the spec's
-	// rather than any element's.
-	if (Root->MjName.IsSet())
+	// The model name is the spec's rather than any element's, and it is the
+	// root's `model` FIELD rather than the identity attribute every other
+	// element carries its name in. Reading the wrong one is silent: mj_makeSpec
+	// names a fresh spec "MuJoCo Model", so the name reaches the compiled name
+	// table either way and only its content says which was read.
+	if (const TOptional<FString> ModelName = ModelNameOf(*Root);
+		ModelName.IsSet() && !ModelName.GetValue().IsEmpty())
 	{
-		const FTCHARToUTF8 Name(*Root->MjName.GetValue());
+		const FTCHARToUTF8 Name(*ModelName.GetValue());
 		mjs_setString(Ctx.Spec->modelname, Name.Get());
 	}
 

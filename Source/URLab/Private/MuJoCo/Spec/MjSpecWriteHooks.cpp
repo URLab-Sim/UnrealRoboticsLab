@@ -1499,19 +1499,223 @@ bool ApplyNumericData(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 	return true;
 }
 
-// --- H10, H13: not reachable from this layer ------------------------------ //
-// A macro expansion is produced by parsing a wrapper document, and a nested
-// model by resolving an asset file: both need surfaces that arrive with the
-// scene builder -- subtree serialization for the wrapper, and the asset sink
-// for the file. Diagnosing is what keeps the omission visible instead of
-// letting the subtree vanish into a spec that still compiles.
+// --- H10: the macro bridge ------------------------------------------------ //
+// `<composite>`, `<flexcomp>` and `<replicate>` are expanded by MuJoCo's XML
+// READER, not by its compiler, so there is no mjs_* call that performs one. The
+// bridge is therefore the reader itself: serialize the macro subtree into a
+// small document, parse it, and attach the expansion where the macro was
+// authored.
+//
+// What the document has to carry beyond the macro is what the expansion depends
+// on. The participant's `<compiler>` governs its subtree's angle and coordinate
+// semantics regardless of the spec it is attached into, and its `<default>` tree
+// has to be present or a `childclass` reference fails to parse. Assets are the
+// one thing it must NOT carry wholesale: the expansion is attached with an empty
+// prefix and the target already holds every one of them, and mjs_attach rejects
+// a repeated asset name. So the wrapper carries the asset section minus the
+// names the target holds, which is a set difference rather than a walk over what
+// the macro references -- anything omitted is omitted BECAUSE the target has it,
+// so no omission can break a reference.
+//
+// The macro sits under a `<frame>` carrying the class the macro resolved
+// through, which is the class its enclosing body imposed. A frame rather than a
+// body because a frame is flattened at compile and a body is not: a body carrier
+// would put an extra link in the chain and shift every name after it.
+
+/**
+ * The three elements MuJoCo's reader expands.
+ *
+ * Their inner components route to this handler too, and reaching it means one
+ * was authored outside the macro that owns it: the macro carries its own
+ * subtree, so nothing inside one is ever bridged on its own.
+ */
+bool IsMacroRoot(ElementType Type)
+{
+	return Type == ElementType::Composite || Type == ElementType::Flexcomp ||
+		Type == ElementType::Replicate;
+}
+
+/** The object kind an asset element compiles into, or mjOBJ_UNKNOWN. */
+mjtObj AssetKind(ElementType Type)
+{
+	switch (Type)
+	{
+	case ElementType::Mesh: return mjOBJ_MESH;
+	case ElementType::Hfield: return mjOBJ_HFIELD;
+	case ElementType::Skin: return mjOBJ_SKIN;
+	case ElementType::Texture: return mjOBJ_TEXTURE;
+	case ElementType::Material: return mjOBJ_MATERIAL;
+	case ElementType::ModelAsset: return mjOBJ_MODEL;
+	default: return mjOBJ_UNKNOWN;
+	}
+}
+
+/**
+ * True when the wrapper has to carry this asset element.
+ *
+ * False means the target spec already holds it, which is the only reason an
+ * asset is ever left out. An unnamed element is one the walk created before the
+ * body sections and whose compiled name MuJoCo derives from its file, so a
+ * second copy in the wrapper would collide at compile rather than at attach --
+ * the same "already there" for a different reason.
+ */
+bool WrapperNeedsAsset(const FMjSpecWriteContext& Ctx, const UMjNodeComponent& Asset)
+{
+	ElementType Type;
+	if (!gen::ElementTypeOfNode(Asset, Type))
+	{
+		return false;
+	}
+	const mjtObj Kind = AssetKind(Type);
+	if (Kind == mjOBJ_UNKNOWN)
+	{
+		return false;
+	}
+	if (!Asset.MjName.IsSet() || Asset.MjName.GetValue().IsEmpty())
+	{
+		return false;
+	}
+	const FTCHARToUTF8 Name(*Asset.MjName.GetValue());
+	return mjs_findElement(Ctx.Spec, Kind, Name.Get()) == nullptr;
+}
+
+/** Serialize one node's subtree, reporting rather than returning a partial. */
+bool AppendElement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Macro,
+	const UMjNodeComponent& Node, FString& Out)
+{
+	TArray<FMjSpecDiagnostic> Errors;
+	const FString Text = Ctx.Source->WriteMjcfElement(Node, &Errors);
+	if (Text.IsEmpty())
+	{
+		TArray<FString> Lines;
+		for (const FMjSpecDiagnostic& Diagnostic : Errors)
+		{
+			Lines.Add(Diagnostic.ToString());
+		}
+		return Ctx.Error(Macro, FString::Printf(
+			TEXT("could not serialize '%s' into this macro's wrapper document: %s"),
+			*Node.GetName(), Lines.IsEmpty() ? TEXT("no output") : *FString::Join(Lines, TEXT("; "))));
+	}
+	Out += Text;
+	return true;
+}
+
+/** The participant's compiler blocks, class tree and the assets not yet shared. */
+bool AppendContext(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Macro, FString& Out)
+{
+	UMjNodeComponent* const Root = Ctx.Source->GetRoot();
+	if (Root == nullptr)
+	{
+		return Ctx.Error(Macro, TEXT("this spec has no root component"));
+	}
+
+	FString Compilers;
+	FString Defaults;
+	FString Assets;
+	for (const FMjOrderedChild& Section : MjOrderedChildrenOf(*Ctx.Source, *Root))
+	{
+		ElementType Type;
+		if (Section.Node == nullptr || !gen::ElementTypeOfNode(*Section.Node, Type))
+		{
+			continue;
+		}
+		if (Type == ElementType::Compiler && !AppendElement(Ctx, Macro, *Section.Node, Compilers))
+		{
+			return false;
+		}
+		if (Type == ElementType::Default && !AppendElement(Ctx, Macro, *Section.Node, Defaults))
+		{
+			return false;
+		}
+		if (Type != ElementType::Asset)
+		{
+			continue;
+		}
+		for (const FMjOrderedChild& Asset : MjOrderedChildrenOf(*Ctx.Source, *Section.Node))
+		{
+			if (Asset.Node != nullptr && WrapperNeedsAsset(Ctx, *Asset.Node) &&
+				!AppendElement(Ctx, Macro, *Asset.Node, Assets))
+			{
+				return false;
+			}
+		}
+	}
+
+	Out += Compilers;
+	Out += Defaults;
+	if (!Assets.IsEmpty())
+	{
+		Out += TEXT("<asset>\n") + Assets + TEXT("</asset>\n");
+	}
+	return true;
+}
 
 bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
-	return Ctx.Error(Node,
-		TEXT("macro elements are not carried by the spec write yet; this model has to "
-			 "go through the file boundary"));
+	if (Ctx.Source == nullptr || Ctx.Spec == nullptr || Ctx.Body == nullptr)
+	{
+		return Ctx.Error(Node, TEXT("this macro element has nothing to be expanded onto"));
+	}
+	if (Ctx.Partial != nullptr)
+	{
+		return Ctx.Error(Node, TEXT("a macro element cannot be a default class partial"));
+	}
+	ElementType Type;
+	if (!gen::ElementTypeOfNode(Node, Type) || !IsMacroRoot(Type))
+	{
+		return Ctx.Error(Node,
+			TEXT("this element belongs inside a macro element, which carries it already"));
+	}
+
+	FString Wrapper = TEXT("<mujoco>\n");
+	if (!AppendContext(Ctx, Node, Wrapper))
+	{
+		return false;
+	}
+
+	FString Macro;
+	if (!AppendElement(Ctx, Node, Node, Macro))
+	{
+		return false;
+	}
+	Wrapper += FString::Printf(TEXT("<worldbody>\n<frame childclass=\"%s\">\n"), *Ctx.ClassName);
+	Wrapper += Macro;
+	Wrapper += TEXT("</frame>\n</worldbody>\n</mujoco>\n");
+
+	char Error[1024] = {0};
+	const FTCHARToUTF8 Utf8Wrapper(*Wrapper);
+	mjSpec* const Expansion =
+		mj_parseXMLString(Utf8Wrapper.Get(), nullptr, Error, sizeof(Error));
+	if (Expansion == nullptr)
+	{
+		return Ctx.Error(Node, FString::Printf(TEXT("this macro did not expand: %s"),
+			UTF8_TO_TCHAR(Error)));
+	}
+
+	// The enclosing frame is the parent, so a macro authored inside a `<frame>`
+	// expands under that frame's transform rather than under the body's.
+	mjsFrame* const At = mjs_addFrame(Ctx.Body, Ctx.Frame);
+	const bool bAttached = At != nullptr && Expansion->element != nullptr &&
+		mjs_attach(At->element, Expansion->element, "", "") != nullptr;
+	const FString AttachError = bAttached ? FString() : FString(UTF8_TO_TCHAR(mjs_getError(Ctx.Spec)));
+	mj_deleteSpec(Expansion);
+
+	if (!bAttached)
+	{
+		return Ctx.Error(Node, FString::Printf(
+			TEXT("this macro's expansion could not be attached: %s"), *AttachError));
+	}
+
+	// The subtree went into the wrapper whole; the walk must not create it again
+	// beside the expansion it produced.
+	Ctx.bChildrenConsumed = true;
+	return true;
 }
+
+// --- H13: not reachable from this layer ----------------------------------- //
+// A nested model resolves an asset file, which needs the asset sink. Diagnosing
+// is what keeps the omission visible instead of letting the subtree vanish into
+// a spec that still compiles.
 
 bool ApplyNestedModel(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {

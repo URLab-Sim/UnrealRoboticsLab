@@ -59,6 +59,7 @@ THIRD_PARTY_INCLUDES_END
 #define URLAB_MJ_IO_FACTORY urlab::spec::FInstanceNodeFactory
 #define URLAB_MJ_IO_PARSE ParseIntoInstance
 #define URLAB_MJ_IO_WRITE WriteFromInstance
+#define URLAB_MJ_IO_WRITE_ELEMENT WriteElementFromInstance
 
 #include "MjMjcfIo.inl"
 
@@ -66,5 +67,6 @@ THIRD_PARTY_INCLUDES_END
 #undef URLAB_MJ_IO_FACTORY
 #undef URLAB_MJ_IO_PARSE
 #undef URLAB_MJ_IO_WRITE
+#undef URLAB_MJ_IO_WRITE_ELEMENT
 
 #endif  // URLAB_MJ_GEN

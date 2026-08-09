@@ -82,6 +82,16 @@ struct URLAB_API FSpecRef
 	 */
 	FString WriteMjcf(TArray<FMjSpecDiagnostic>* OutErrors = nullptr) const;
 
+	/**
+	 * Serialize one element of the spec and its subtree, tag included.
+	 *
+	 * The tag is the element's own, so the result is a fragment rather than a
+	 * document and a caller assembles whatever surrounds it. Same all-or-nothing
+	 * contract as the whole-spec write: empty on failure, reasons in `OutErrors`,
+	 * never a partial that would parse.
+	 */
+	FString WriteMjcfElement(const UMjNodeComponent& Node, TArray<FMjSpecDiagnostic>* OutErrors = nullptr) const;
+
 	/** Every named element of the spec whose class is `Type`, in spec order. */
 	TArray<FString> NamesOfType(const UClass* Type) const;
 

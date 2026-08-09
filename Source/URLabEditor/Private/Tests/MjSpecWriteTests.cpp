@@ -351,6 +351,87 @@ bool FMjSpecWriteDefaultsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// --- The unnamed top-level class ------------------------------------------- //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteRootDefaultTest,
+	"URLab.MuJoCo.SpecWrite.RootDefault",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteRootDefaultTest::RunTest(const FString& Parameters)
+{
+	// The `<default>` every MJCF document opens its class tree with names no
+	// class, because it IS the spec's root class. A spec always has that class,
+	// so trying to add it fails -- and the whole class tree under it goes with
+	// it, which reaches the model as elements silently carrying engine defaults.
+	FSpecWriteFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjDefault* const Root = Fixture.Add<UMjDefault>(Fixture.Robot->Spec);
+	UMjGeomBase* const RootGeom = Fixture.Add<UMjGeomBase>(Root);
+	UMjDefault* const Named = Fixture.Add<UMjDefault>(Root, TEXT("named"));
+	UMjGeomBase* const NamedGeom = Fixture.Add<UMjGeomBase>(Named);
+	if (Root == nullptr || RootGeom == nullptr || Named == nullptr || NamedGeom == nullptr)
+	{
+		AddError(TEXT("could not author the class tree"));
+		return false;
+	}
+	RootGeom->Condim = 6;
+	NamedGeom->Group = 3;
+
+	UMjBody* const Body = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("Root"));
+	UMjGeom* const Plain = Fixture.Add<UMjGeom>(Body, TEXT("Plain"));
+	UMjGeom* const Classed = Fixture.Add<UMjGeom>(Body, TEXT("Classed"));
+	if (Plain == nullptr || Classed == nullptr)
+	{
+		AddError(TEXT("could not author the geoms"));
+		return false;
+	}
+	Plain->Type = EMjGeomType::sphere;
+	Plain->Size = TArray<double>({ 0.1 });
+	Classed->Type = EMjGeomType::sphere;
+	Classed->Size = TArray<double>({ 0.1 });
+	Classed->Dclass = FString(TEXT("named"));
+
+	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
+	if (Built.Spec == nullptr)
+	{
+		return false;
+	}
+
+	mjModel* const Model = mj_compile(Built.Spec, nullptr);
+	if (Model == nullptr)
+	{
+		AddError(FString::Printf(TEXT("mj_compile failed: %s"),
+			UTF8_TO_TCHAR(mjs_getError(Built.Spec))));
+		return false;
+	}
+
+	// A geom naming no class resolves through the root class, so the template
+	// written onto it is the only thing that could have set this.
+	const int PlainId = mj_name2id(Model, mjOBJ_GEOM, "Plain");
+	if (TestTrue(TEXT("the unclassed geom compiled"), PlainId >= 0))
+	{
+		TestEqual(TEXT("condim came from the top-level class"), Model->geom_condim[PlainId], 6);
+	}
+
+	// And a nested class still inherits from it, which is what fails if the
+	// top-level class is a second object rather than the spec's own.
+	const int ClassedId = mj_name2id(Model, mjOBJ_GEOM, "Classed");
+	if (TestTrue(TEXT("the classed geom compiled"), ClassedId >= 0))
+	{
+		TestEqual(TEXT("condim was inherited through the nested class"),
+			Model->geom_condim[ClassedId], 6);
+		TestEqual(TEXT("group came from the nested class"), Model->geom_group[ClassedId], 3);
+	}
+	mj_deleteModel(Model);
+
+	return !HasAnyErrors();
+}
+
 // --- Childclass over a nested class chain ---------------------------------- //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteChildclassTest,

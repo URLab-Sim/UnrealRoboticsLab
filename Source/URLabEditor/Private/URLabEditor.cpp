@@ -37,6 +37,7 @@
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
 
+#include "MjElementVisualizers.h"
 #include "MjFrameTypeCustomizations.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
@@ -92,6 +93,11 @@ void FURLabEditorModule::StartupModule()
 	// The MuJoCo frame types render as a single inline row with a unit label,
 	// rather than as an expandable struct of three doubles.
 	FMjFrameTypeCustomization::RegisterAll();
+
+	// Joints, sites, lights and cameras have no mesh to preview with, so the
+	// editor drew nothing for them at all. One visualizer against the element
+	// base draws all of them from the components and their effective values.
+	FMjElementVisualizer::RegisterAll();
 
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
 	// Only the geom needs a custom layout, for the CoACD decomposition buttons.
@@ -164,6 +170,8 @@ void FURLabEditorModule::StartupModule()
 void FURLabEditorModule::ShutdownModule()
 {
 	FMjEditorStyle::Shutdown();
+
+	FMjElementVisualizer::UnregisterAll();
 
 	URLabBridgeProvider::RegisterResolver(nullptr);
 	URLabEditorOpHandlers::UnregisterAll();

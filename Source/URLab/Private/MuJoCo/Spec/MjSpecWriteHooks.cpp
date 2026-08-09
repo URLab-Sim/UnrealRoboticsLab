@@ -159,7 +159,6 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		return Ctx.Error(Node, TEXT("transmission on something that is not an actuator"));
 	}
 
-	bool bElected = false;
 	// Matched on TYPE as well as name. The walk instantiates this over every
 	// element the schema declares, not just the actuators it is called for, and
 	// `<visual><rgba joint=...>` is a colour that happens to share the spelling
@@ -175,7 +174,6 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 			}
 			mjs_setString(Act->target, Utf8(Target.GetValue()));
 			Act->trntype = Type;
-			bElected = true;
 		}
 	};
 
@@ -202,7 +200,6 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		if constexpr (requires { Element.Refsite; }) { RefSite = Element.Refsite; }
 		(void)Element;
 	});
-	(void)bElected;
 
 	if (SliderSite.IsSet())
 	{
@@ -216,7 +213,8 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		Act->trntype != mjTRN_SLIDERCRANK && Act->trntype != mjTRN_UNDEFINED)
 	{
 		return Ctx.Error(Node,
-			TEXT("cranklength and slidersite need a slidercrank transmission"));
+			TEXT("cranklength and slidersite can only be used in a slidercrank transmission, "
+				 "which is elected by cranksite (xml_native_reader.cc:1217)"));
 	}
 
 	if (RefSite.IsSet())
@@ -224,8 +222,23 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		mjs_setString(Act->refsite, Utf8(RefSite.GetValue()));
 		if (Act->trntype != mjTRN_SITE && Act->trntype != mjTRN_UNDEFINED)
 		{
-			return Ctx.Error(Node, TEXT("refsite needs a site transmission"));
+			return Ctx.Error(Node,
+				TEXT("refsite can only be used with a site transmission, which is elected by "
+					 "site (xml_native_reader.cc:1226)"));
 		}
+	}
+
+	// An actuator that elects no transmission and inherits none reaches MuJoCo
+	// as mjTRN_UNDEFINED and dies in the compiler as "invalid transmission type
+	// in actuator" (`user_objects.cc:7109`), which names neither the actuator
+	// nor where it was authored. A class template legitimately has none: the
+	// element resolving through it supplies one.
+	if (Ctx.Partial == nullptr && Act->trntype == mjTRN_UNDEFINED)
+	{
+		return Ctx.Error(Node,
+			TEXT("this actuator elects no transmission: one of joint, jointinparent, tendon, "
+				 "cranksite, site or body has to name what it drives, or a default class has "
+				 "to supply it"));
 	}
 	return true;
 }
@@ -1019,6 +1032,12 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		return false;
 	}
 
+	// The operands below are required, and unconditionally so. MuJoCo's reader
+	// guards its own election with `!readingdefaults`
+	// (`xml_native_reader.cc:1038`) because a `<default>` there carries the
+	// generic `<equality>`, never a subtype; the schema says the same, so a
+	// subtype under a class is not a case this hook can be reached in and there
+	// is nothing to exempt.
 	FString Name1;
 	FString Name2;
 	const auto Anchor = [&](const TOptional<FMjPosition3>& Value, int Offset)
@@ -1047,6 +1066,17 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		}
 		else
 		{
+			// Anything that is not the body spelling IS the site spelling, and
+			// the reader reads both site names unconditionally there
+			// (`xml_native_reader.cc:1056-1057`). Without them the compile ends
+			// on a reference to nothing, naming neither this element nor which
+			// half of the choice was half-authored.
+			if (!(Element.Site1.IsSet() && Element.Site2.IsSet()))
+			{
+				return Ctx.Error(Node,
+					TEXT("a connect constraint is either body1 with anchor, or site1 and "
+						 "site2; this one authors neither pair completely"));
+			}
 			Name1 = Element.Site1.Get(FString());
 			Name2 = Element.Site2.Get(FString());
 			Equality->objtype = mjOBJ_SITE;
@@ -1080,6 +1110,15 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 		}
 		else
 		{
+			// Weld elects the body spelling on body1 alone, so the site
+			// spelling is what is left, and both of its names are read
+			// unconditionally (`xml_native_reader.cc:1083-1084`).
+			if (!(Element.Site1.IsSet() && Element.Site2.IsSet()))
+			{
+				return Ctx.Error(Node,
+					TEXT("a weld constraint is either body1 (with an optional anchor), or "
+						 "site1 and site2; this one authors neither pair completely"));
+			}
 			Name1 = Element.Site1.Get(FString());
 			Name2 = Element.Site2.Get(FString());
 			Equality->objtype = mjOBJ_SITE;
@@ -1095,6 +1134,12 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	{
 		const UMjEqualityJoint& Element = static_cast<const UMjEqualityJoint&>(Node);
 		Equality->type = mjEQ_JOINT;
+		if (Element.Joint1.IsEmpty())
+		{
+			return Ctx.Error(Node,
+				TEXT("a joint equality has to name joint1; the reader requires it "
+					 "(xml_native_reader.cc:1093)"));
+		}
 		Name1 = Element.Joint1;
 		Name2 = Element.Joint2.Get(FString());
 		CopySome(Element.Polycoef, Equality->data, 5);
@@ -1105,6 +1150,12 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	{
 		const UMjEqualityTendon& Element = static_cast<const UMjEqualityTendon&>(Node);
 		Equality->type = mjEQ_TENDON;
+		if (Element.Tendon1.IsEmpty())
+		{
+			return Ctx.Error(Node,
+				TEXT("a tendon equality has to name tendon1; the reader requires it "
+					 "(xml_native_reader.cc:1099)"));
+		}
 		Name1 = Element.Tendon1;
 		Name2 = Element.Tendon2.Get(FString());
 		CopySome(Element.Polycoef, Equality->data, 5);
@@ -1114,17 +1165,35 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	case ElementType::EqualityFlex:
 		Equality->type = mjEQ_FLEX;
 		Name1 = static_cast<const UMjEqualityFlex&>(Node).Flex;
+		if (Name1.IsEmpty())
+		{
+			return Ctx.Error(Node,
+				TEXT("a flex equality has to name flex; the reader requires it "
+					 "(xml_native_reader.cc:1106)"));
+		}
 		break;
 
 	case ElementType::Flexvert:
 		Equality->type = mjEQ_FLEXVERT;
 		Name1 = static_cast<const UMjFlexvert&>(Node).Flex;
+		if (Name1.IsEmpty())
+		{
+			return Ctx.Error(Node,
+				TEXT("a flexvert equality has to name flex; the reader requires it "
+					 "(xml_native_reader.cc:1106)"));
+		}
 		break;
 
 	case ElementType::Flexstrain:
 	{
 		const UMjFlexstrain& Element = static_cast<const UMjFlexstrain&>(Node);
 		Equality->type = mjEQ_FLEXSTRAIN;
+		if (Element.Flex.IsEmpty())
+		{
+			return Ctx.Error(Node,
+				TEXT("a flexstrain equality has to name flex; the reader requires it "
+					 "(xml_native_reader.cc:1110)"));
+		}
 		Name1 = Element.Flex;
 		if (Element.Cell.IsSet())
 		{

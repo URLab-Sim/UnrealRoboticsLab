@@ -6,10 +6,14 @@
 // and that a failed or cancelled import leaves the project as it found it.
 
 #include "CoreMinimal.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Engine/Blueprint.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "UObject/Package.h"
+#include "UObject/SoftObjectPath.h"
 
 #include "MjPythonHelper.h"
 #include "MujocoImportFactory.h"
@@ -72,6 +76,38 @@ FString ProbePython()
 	const FString Python = FMjPythonHelper::ResolvePythonPath();
 	return FMjPythonHelper::ValidatePythonBinary(Python) ? Python : FString();
 }
+
+/** One import through the factory, into a package of this run's own. */
+struct FImportProbe
+{
+	FString AssetName;
+	UPackage* Package = nullptr;
+	UObject* Result = nullptr;
+	bool bCancelled = false;
+
+	void Run(const FString& XmlPath)
+	{
+		const FString Unique = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
+		AssetName = FString(TEXT("FactoryProbe_")) + Unique;
+		Package = CreatePackage(*(FString(TEXT("/Game/MuJoCoImportsTest/")) + AssetName));
+
+		UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
+		Result = Factory->FactoryCreateFile(UBlueprint::StaticClass(), Package, FName(*AssetName),
+			RF_Public | RF_Standalone, XmlPath, nullptr, GWarn, bCancelled);
+	}
+
+	/** The Blueprint the import would have left behind, if it left one. */
+	UBlueprint* Leftover() const { return FindObject<UBlueprint>(Package, *AssetName); }
+
+	bool RegisteredAsAsset() const
+	{
+		const FString ObjectPath = FString::Printf(TEXT("/Game/MuJoCoImportsTest/%s.%s"),
+			*AssetName, *AssetName);
+		FAssetRegistryModule& Registry =
+			FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		return Registry.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath)).IsValid();
+	}
+};
 }  // namespace
 
 // ============================================================================
@@ -129,7 +165,7 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
 			Python, Script, SourceXml, OutXml, Error);
 		TestFalse(TEXT("a failed preparation fails the import"), bOk);
-		TestTrue(TEXT("the diagnostic names the exit code"), Error.Contains(TEXT("7")));
+		TestTrue(TEXT("the diagnostic names the exit code"), Error.Contains(TEXT("exit code 7")));
 		TestTrue(TEXT("the diagnostic carries the script's stderr"),
 			Error.Contains(TEXT("could not be prepared")));
 		TestEqual(TEXT("no prepared copy is offered"), OutXml, SourceXml);
@@ -146,6 +182,102 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 		TestFalse(TEXT("a preparation that wrote nothing fails the import"), bOk);
 		TestTrue(TEXT("the diagnostic says nothing was written"), Error.Contains(TEXT("_ue.xml")));
 		TestEqual(TEXT("no prepared copy is offered"), OutXml, SourceXml);
+	}
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Import.FactoryClaimsOnlyMuJoCoModels
+//   `.xml` belongs to everybody. The importer offers itself only for documents
+//   whose root tag says MuJoCo, so a settings file or a UI layout is not
+//   offered a robot import.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportFactoryClaimsOnlyMuJoCoModels,
+	"URLab.Import.FactoryClaimsOnlyMuJoCoModels",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportFactoryClaimsOnlyMuJoCoModels::RunTest(const FString& Parameters)
+{
+	const FString Dir = ScratchDir(TEXT("CanImport"));
+	UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
+
+	const auto Write = [&Dir](const TCHAR* Name, const TCHAR* Body) {
+		const FString Path = Dir / Name;
+		FFileHelper::SaveStringToFile(FString(Body), *Path);
+		return Path;
+	};
+
+	const FString Model = Write(TEXT("model.xml"), kMinimalMjcf);
+	const FString Fragment = Write(TEXT("fragment.xml"),
+		TEXT("<mujocoinclude>\n  <asset/>\n</mujocoinclude>\n"));
+	const FString Declared = Write(TEXT("declared.xml"),
+		TEXT("<?xml version=\"1.0\"?>\n<!-- a model -->\n<mujoco model=\"d\"/>\n"));
+	const FString Foreign = Write(TEXT("settings.xml"),
+		TEXT("<?xml version=\"1.0\"?>\n<configuration><setting name=\"mujoco\"/></configuration>\n"));
+	const FString Empty = Write(TEXT("empty.xml"), TEXT(""));
+	const FString WrongExtension = Write(TEXT("model.txt"), kMinimalMjcf);
+
+	TestTrue(TEXT("a MuJoCo model is claimed"), Factory->FactoryCanImport(Model));
+	TestTrue(TEXT("a mujocoinclude fragment is claimed"), Factory->FactoryCanImport(Fragment));
+	TestTrue(TEXT("a declaration and a comment before the root tag are fine"),
+		Factory->FactoryCanImport(Declared));
+	TestFalse(TEXT("an unrelated XML is not claimed"), Factory->FactoryCanImport(Foreign));
+	TestFalse(TEXT("an empty file is not claimed"), Factory->FactoryCanImport(Empty));
+	TestFalse(TEXT("the root tag alone is not enough without the extension"),
+		Factory->FactoryCanImport(WrongExtension));
+	TestFalse(TEXT("a file that is not there is not claimed"),
+		Factory->FactoryCanImport(Dir / TEXT("absent.xml")));
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Import.FailedImportLeavesNothing
+//   An articulation left in the content browser reads as a model that
+//   imported. A read that fails must leave the project as it found it, and a
+//   read that succeeds must still produce the asset.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportFailedImportLeavesNothing,
+	"URLab.Import.FailedImportLeavesNothing",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
+{
+	const FString Dir = ScratchDir(TEXT("Outcome"));
+
+	const FString GoodXml = Dir / TEXT("import_good.xml");
+	FFileHelper::SaveStringToFile(FString(kMinimalMjcf), *GoodXml);
+
+	// Well-formed XML that the reader rejects: the preparation step is happy
+	// with it, so the failure lands after the Blueprint has been made, which is
+	// the case that used to leave an empty articulation behind.
+	const FString BadXml = Dir / TEXT("import_bad.xml");
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujoco model=\"import_bad\">\n")
+		TEXT("  <worldbody><notathing/></worldbody>\n")
+		TEXT("</mujoco>\n")), *BadXml);
+
+	{
+		FImportProbe Probe;
+		Probe.Run(GoodXml);
+		TestNotNull(TEXT("a model that reads produces an asset"), Probe.Result);
+		TestFalse(TEXT("a successful import is not a cancellation"), Probe.bCancelled);
+		TestNotNull(TEXT("the asset is in its package"), Probe.Leftover());
+		TestTrue(TEXT("the asset is registered"), Probe.RegisteredAsAsset());
+	}
+
+	AddExpectedErrorPlain(TEXT("notathing"), EAutomationExpectedErrorFlags::Contains, 0);
+	AddExpectedErrorPlain(TEXT("Failed to read MJCF"), EAutomationExpectedErrorFlags::Contains, 0);
+	AddExpectedErrorPlain(TEXT("produced no spec"), EAutomationExpectedErrorFlags::Contains, 0);
+
+	{
+		FImportProbe Probe;
+		Probe.Run(BadXml);
+		TestNull(TEXT("a model that does not read produces no asset"), Probe.Result);
+		TestFalse(TEXT("a failure is not reported as a cancellation"), Probe.bCancelled);
+		TestNull(TEXT("nothing is left in the package"), Probe.Leftover());
+		TestFalse(TEXT("nothing is left in the asset registry"), Probe.RegisteredAsAsset());
 	}
 
 	return true;

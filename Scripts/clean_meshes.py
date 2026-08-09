@@ -31,17 +31,25 @@ Installation:
     pip install trimesh numpy scipy Pillow networkx
 
 Usage:
-    python clean_meshes.py <path_to_xml> [--out-dir DIR]
+    python clean_meshes.py <path_to_xml> [--out-dir DIR] [--allow-external-includes]
 
 Without --out-dir the prepared XML is written beside the input. With it, the
 prepared XML goes to DIR and every asset path inside is re-expressed so it
 still resolves from there, which is how Unreal keeps its prepared copy out of
 the model author's own folders.
 
+<include> fragments are flattened into one document on the way through, and an
+include whose target is outside the model's own folder is REFUSED unless
+--allow-external-includes is passed. That is the same boundary the Unreal
+reader enforces, asked here because this step runs first: a prepared import
+whose includes were followed by this script would otherwise have its security
+answer decided by a script nobody asked.
+
 Exit status is 0 only when every referenced mesh was prepared. A conversion
-that failed, a source file that was missing, or an unreadable document exits
-nonzero with the reason on stderr, because a caller that continued anyway
-would import the unprepared meshes at the wrong scale without saying so.
+that failed, a source file that was missing, a refused include, or an
+unreadable document exits nonzero with the reason on stderr, because a caller
+that continued anyway would import the unprepared meshes at the wrong scale
+without saying so.
 
 Example:
     python clean_meshes.py "path/to/mujoco_menagerie/franka_emika_panda/panda.xml"
@@ -244,6 +252,37 @@ _ASSET_FILE_TAGS = ("mesh", "texture", "hfield", "skin")
 _MODEL_ROOT_TAGS = ("mujoco", "mujocoinclude")
 
 
+class ExternalIncludeError(Exception):
+    """An ``<include>`` reaching outside the model's own folder.
+
+    The importer asks before following one of those, because an MJCF document
+    can be someone else's and ``<include file="../../../.ssh/id_rsa"/>`` is a
+    file read the author of the scene never asked for. This preparation step
+    runs BEFORE the reader and flattens the includes itself, so it has to ask
+    the same question or the answer the user gave is decided by a script that
+    never heard it.
+    """
+
+    def __init__(self, include: str, resolved: Path, boundary: Path):
+        super().__init__(
+            f"refused <include file=\"{include}\"> resolving to {resolved}: "
+            f"outside the model's folder {boundary}. Re-run with "
+            "--allow-external-includes to allow it.")
+        self.include = include
+        self.resolved = resolved
+        self.boundary = boundary
+
+
+def _inside(path: Path, boundary: Path) -> bool:
+    """True when ``path`` is ``boundary`` or below it, symlinks resolved."""
+    try:
+        return path.resolve().is_relative_to(boundary.resolve())
+    except (OSError, ValueError):
+        # A path on another drive, or one the OS will not resolve, is outside
+        # by definition; failing closed is the whole point of the check.
+        return False
+
+
 def _compiler_dirs(root) -> tuple:
     """Return (meshdir, texturedir, assetdir) declared by any <compiler> directly
     under ``root``. MuJoCo allows several compiler elements; later ones win for a
@@ -283,15 +322,21 @@ def _rewrite_asset_path(elem, src_dir: Path, root_dir: Path,
 
 
 def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
-                     meshdir: str, texturedir: str, assetdir: str, visited: set):
+                     meshdir: str, texturedir: str, assetdir: str, visited: set,
+                     boundary: Path = None):
     """Copy ``elem`` into ``out_parent``, recursively expanding any <include>
     descendants in place. Handles both <mujoco> and <mujocoinclude> include roots
-    and rewrites asset file= paths to stay valid from root_dir."""
+    and rewrites asset file= paths to stay valid from root_dir.
+
+    ``boundary``, when given, is the directory tree an include may not leave;
+    one that does raises ExternalIncludeError naming it."""
     if elem.tag == "include":
         inc_file = elem.get("file")
         if not inc_file:
             return
         inc_path = (src_dir / inc_file).resolve()
+        if boundary is not None and not _inside(inc_path, boundary):
+            raise ExternalIncludeError(inc_file, inc_path, boundary)
         if inc_path in visited:
             print(f"  [include] cycle/duplicate skipped: {inc_path}")
             return
@@ -304,7 +349,8 @@ def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
         imd, itxd, iad = _compiler_dirs(inc_root)
         # Splice the included root's children directly into the current parent.
         for child in list(inc_root):
-            _append_expanded(out_parent, child, inc_dir, root_dir, imd, itxd, iad, visited)
+            _append_expanded(out_parent, child, inc_dir, root_dir, imd, itxd, iad,
+                             visited, boundary)
         return
 
     # Regular element: shallow-copy attributes, then recurse into children.
@@ -321,10 +367,11 @@ def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
 
     for child in list(elem):
         _append_expanded(new_elem, child, src_dir, root_dir,
-                         meshdir, texturedir, assetdir, visited)
+                         meshdir, texturedir, assetdir, visited, boundary)
 
 
-def flatten_includes(root, src_dir: Path, root_dir: Path = None):
+def flatten_includes(root, src_dir: Path, root_dir: Path = None,
+                     boundary: Path = None):
     """Resolve every <include> into a single self-contained <mujoco> tree.
 
     gym-aloha (and many MJCF models) split a robot across <include> fragments
@@ -335,6 +382,8 @@ def flatten_includes(root, src_dir: Path, root_dir: Path = None):
 
     ``src_dir`` is where the document being flattened lives; ``root_dir`` is
     where the flattened document will be written, and defaults to ``src_dir``.
+    ``boundary`` is the directory tree includes may not leave, or None to follow
+    them anywhere.
     """
     if root_dir is None:
         root_dir = src_dir
@@ -342,7 +391,8 @@ def flatten_includes(root, src_dir: Path, root_dir: Path = None):
     visited = set()
     new_root = ET.Element("mujoco", dict(root.attrib))
     for child in list(root):
-        _append_expanded(new_root, child, src_dir, root_dir, md, txd, ad, visited)
+        _append_expanded(new_root, child, src_dir, root_dir, md, txd, ad, visited,
+                         boundary)
     return new_root
 
 
@@ -435,10 +485,13 @@ def materialize_inline_meshes(root, mesh_base: Path) -> int:
     return materialized
 
 
-def process_xml(xml_path: Path, out_dir: Path = None) -> bool:
+def process_xml(xml_path: Path, out_dir: Path = None,
+                allow_external_includes: bool = False) -> bool:
     """Parse MJCF XML, convert meshes, resolve conflicts, write updated XML.
 
-    Returns True only when every mesh the document references was prepared.
+    Returns True only when every mesh the document references was prepared, and
+    only when every ``<include>`` stayed inside the model's own folder unless
+    ``allow_external_includes`` says otherwise.
     """
 
     if not xml_path.exists():
@@ -466,7 +519,15 @@ def process_xml(xml_path: Path, out_dir: Path = None) -> bool:
     include_count = sum(1 for _ in root.iter("include"))
     if include_count:
         print(f"Flattening {include_count} <include> fragment(s)...")
-        root = flatten_includes(root, xml_dir, root_dir)
+        # The model's own folder is the boundary, matching the reader's rule.
+        # Off only when the caller passed the same option the import dialog
+        # shows, so the gate is decided in one place rather than twice.
+        boundary = None if allow_external_includes else xml_dir
+        try:
+            root = flatten_includes(root, xml_dir, root_dir, boundary)
+        except ExternalIncludeError as refused:
+            print(f"Error: {refused}", file=sys.stderr)
+            return False
         tree = ET.ElementTree(root)
         remaining = sum(1 for _ in root.iter("include"))
         print(f"  -> {remaining} include(s) remain after flatten")
@@ -663,12 +724,17 @@ def main():
     parser.add_argument("--out-dir", type=Path, default=None, dest="out_dir",
                         help="directory to write the prepared _ue.xml into "
                              "(default: beside the input)")
+    parser.add_argument("--allow-external-includes", action="store_true",
+                        dest="allow_external_includes",
+                        help="follow an <include> whose target is outside the "
+                             "model's own folder (refused by default)")
     args = parser.parse_args()
 
     if args.xml.suffix.lower() != ".xml":
         parser.error(f"expected an .xml file, got '{args.xml.suffix}'")
 
-    return 0 if process_xml(args.xml, args.out_dir) else 1
+    return 0 if process_xml(args.xml, args.out_dir,
+                            args.allow_external_includes) else 1
 
 
 if __name__ == "__main__":

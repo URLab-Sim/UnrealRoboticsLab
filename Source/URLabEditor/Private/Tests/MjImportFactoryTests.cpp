@@ -12,7 +12,9 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "IMessageLogListing.h"
+#include "Interfaces/IPluginManager.h"
 #include "MessageLogModule.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -81,6 +83,30 @@ const TCHAR* kFactoryStubFails =
 
 const TCHAR* kFactoryStubSilent =
 	TEXT("raise SystemExit(0)\n");
+
+/** Writes its own arguments where the prepared document goes, and nothing else. */
+const TCHAR* kFactoryStubRecordsArgs =
+	TEXT("import sys, pathlib\n")
+	TEXT("out = pathlib.Path(sys.argv[sys.argv.index('--out-dir') + 1])\n")
+	TEXT("out.mkdir(parents=True, exist_ok=True)\n")
+	TEXT("stem = pathlib.Path(sys.argv[1]).stem\n")
+	TEXT("(out / (stem + '_ue.xml')).write_text(' '.join(sys.argv[1:]))\n")
+	TEXT("raise SystemExit(0)\n");
+
+/** A model whose only include reaches out of its own folder. */
+const TCHAR* kFactoryExternalIncludeMjcf =
+	TEXT("<mujoco model=\"include_probe\">\n")
+	TEXT("  <include file=\"../outside/extra.xml\"/>\n")
+	TEXT("  <worldbody>\n")
+	TEXT("    <body name=\"b1\"><geom name=\"g1\" type=\"sphere\" size=\"0.1\"/></body>\n")
+	TEXT("  </worldbody>\n")
+	TEXT("</mujoco>\n");
+
+/** What that include pulls in: harmless here, and not the point. */
+const TCHAR* kFactoryIncludedFragment =
+	TEXT("<mujocoinclude>\n")
+	TEXT("  <option timestep=\"0.004\"/>\n")
+	TEXT("</mujocoinclude>\n");
 
 /** The interpreter the factory would use, or empty when there is none to use. */
 FString FactoryProbePython()
@@ -226,7 +252,7 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 		FString OutXml;
 		FString Error;
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
-			Python, Script, SourceXml, OutXml, Error);
+			Python, Script, SourceXml, /*bAllowExternalIncludes=*/false, OutXml, Error);
 		TestTrue(TEXT("a clean preparation succeeds"), bOk);
 		TestEqual(TEXT("no diagnostic on success"), Error, FString());
 		TestEqual(TEXT("the prepared copy is what gets parsed"),
@@ -243,7 +269,7 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 		FString OutXml;
 		FString Error;
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
-			Python, Script, SourceXml, OutXml, Error);
+			Python, Script, SourceXml, /*bAllowExternalIncludes=*/false, OutXml, Error);
 		TestFalse(TEXT("a failed preparation fails the import"), bOk);
 		TestTrue(TEXT("the diagnostic names the exit code"), Error.Contains(TEXT("exit code 7")));
 		TestTrue(TEXT("the diagnostic carries the script's stderr"),
@@ -258,13 +284,116 @@ bool FMjImportMeshPreparationOutcomes::RunTest(const FString& Parameters)
 		FString OutXml;
 		FString Error;
 		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
-			Python, Script, SourceXml, OutXml, Error);
+			Python, Script, SourceXml, /*bAllowExternalIncludes=*/false, OutXml, Error);
 		TestFalse(TEXT("a preparation that wrote nothing fails the import"), bOk);
 		TestTrue(TEXT("the diagnostic says nothing was written"), Error.Contains(TEXT("_ue.xml")));
 		TestEqual(TEXT("no prepared copy is offered"), OutXml, SourceXml);
 	}
 
 	return true;
+}
+
+// ============================================================================
+// URLab.Import.ExternalIncludeGate
+//   The import option that decides whether a model may pull files from
+//   elsewhere on disk has to be answered where the includes are actually
+//   followed, and mesh preparation follows them first. Two halves: the option
+//   reaches the script at all, and the shipped script fails closed on it.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportExternalIncludeGate,
+	"URLab.Import.ExternalIncludeGate",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportExternalIncludeGate::RunTest(const FString& Parameters)
+{
+	const FString Python = FactoryProbePython();
+	if (Python.IsEmpty())
+	{
+		AddError(TEXT("No usable Python interpreter; mesh preparation cannot be exercised."));
+		return false;
+	}
+
+	// A model whose include reaches up and out of its own folder, which is the
+	// shape the option exists for.
+	const FString Dir = FactoryScratchDir(TEXT("IncludeGate"));
+	const FString ModelDir = Dir / TEXT("model");
+	const FString OutsideDir = Dir / TEXT("outside");
+	IFileManager::Get().MakeDirectory(*ModelDir, /*Tree=*/true);
+	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
+	FFileHelper::SaveStringToFile(FString(kFactoryIncludedFragment), *(OutsideDir / TEXT("extra.xml")));
+	const FString SourceXml = ModelDir / TEXT("include_probe.xml");
+	FFileHelper::SaveStringToFile(FString(kFactoryExternalIncludeMjcf), *SourceXml);
+
+	// Half one: the option reaches the script, and only when it is on. Asserted
+	// against a stub that writes its own arguments out, so it holds whether or
+	// not this machine can run the real preparation.
+	const FString Script = WriteFactoryStubScript(Dir, TEXT("stub_args.py"), kFactoryStubRecordsArgs);
+	for (const bool bAllow : {false, true})
+	{
+		FString OutXml;
+		FString Error;
+		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
+			Python, Script, SourceXml, bAllow, OutXml, Error);
+		FString Recorded;
+		if (TestTrue(TEXT("the stub preparation ran"), bOk)
+			&& TestTrue(TEXT("and wrote its arguments"), FFileHelper::LoadFileToString(Recorded, *OutXml)))
+		{
+			const bool bPassed = Recorded.Contains(TEXT("--allow-external-includes"));
+			if (bAllow)
+			{
+				TestTrue(TEXT("the option is passed when it is on"), bPassed);
+			}
+			else
+			{
+				TestFalse(TEXT("the option is not passed when it is off"), bPassed);
+			}
+		}
+	}
+
+	// Half two: the shipped script, which is where the refusal lives.
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UnrealRoboticsLab"));
+	const FString RealScript = Plugin.IsValid()
+		? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Scripts/clean_meshes.py")) : FString();
+	if (!TestTrue(TEXT("the preparation script ships with the plugin"), FPaths::FileExists(RealScript)))
+	{
+		return false;
+	}
+
+	// The script imports its mesh libraries at module scope, so on a machine
+	// without them it cannot run at all. Said out loud rather than skipped
+	// silently: this half of the gate is then untested here.
+	int32 ProbeCode = -1;
+	FString ProbeOut;
+	FString ProbeErr;
+	FPlatformProcess::ExecProcess(*Python, TEXT("-c \"import trimesh, numpy\""),
+		&ProbeCode, &ProbeOut, &ProbeErr);
+	if (ProbeCode != 0)
+	{
+		AddWarning(TEXT("Python has no trimesh/numpy, so the shipped preparation script could not "
+						"be run; only the option's plumbing was checked."));
+		return !HasAnyErrors();
+	}
+
+	{
+		FString OutXml;
+		FString Error;
+		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
+			Python, RealScript, SourceXml, /*bAllowExternalIncludes=*/false, OutXml, Error);
+		TestFalse(TEXT("preparation refuses an include outside the model's folder"), bOk);
+		TestTrue(TEXT("and the diagnostic names the file it refused"),
+			Error.Contains(TEXT("extra.xml")));
+		TestEqual(TEXT("no prepared copy is offered"), OutXml, SourceXml);
+	}
+	{
+		FString OutXml;
+		FString Error;
+		const bool bOk = UMujocoImportFactory::RunMeshPreparation(
+			Python, RealScript, SourceXml, /*bAllowExternalIncludes=*/true, OutXml, Error);
+		TestTrue(TEXT("the option lets the same import through"), bOk);
+		TestNotEqual(TEXT("and the prepared copy is what gets parsed"), OutXml, SourceXml);
+	}
+
+	return !HasAnyErrors();
 }
 
 // ============================================================================

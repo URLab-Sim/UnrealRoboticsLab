@@ -79,9 +79,13 @@ FString PreparationScriptPath()
  * Preparation that cannot run at all -- no script, or a user who declined the
  * Python setup -- leaves the original in `OutXmlPath` and succeeds, because
  * that is a stated choice. Preparation that RAN and failed returns false.
+ *
+ * `bAllowExternalIncludes` is the reader's own option, passed on because
+ * preparation flattens the model's includes before the reader ever sees it: the
+ * gate has to be answered wherever the includes are actually followed.
  */
-bool PrepareMeshes(const FString& SourceXmlPath, bool bAllowPrompts, FString& OutXmlPath,
-	FString& OutError, bool& bOutCancelled)
+bool PrepareMeshes(const FString& SourceXmlPath, bool bAllowPrompts, bool bAllowExternalIncludes,
+	FString& OutXmlPath, FString& OutError, bool& bOutCancelled)
 {
 	OutXmlPath = SourceXmlPath;
 	OutError.Reset();
@@ -107,7 +111,8 @@ bool PrepareMeshes(const FString& SourceXmlPath, bool bAllowPrompts, FString& Ou
 		return true;
 	}
 
-	return UMujocoImportFactory::RunMeshPreparation(PythonExe, ScriptPath, SourceXmlPath, OutXmlPath, OutError);
+	return UMujocoImportFactory::RunMeshPreparation(
+		PythonExe, ScriptPath, SourceXmlPath, bAllowExternalIncludes, OutXmlPath, OutError);
 }
 
 /** What the import dialog says about mesh preparation for this run. */
@@ -189,7 +194,7 @@ FString UMujocoImportFactory::ImportPrepDir(const FString& SourceXmlPath)
 }
 
 bool UMujocoImportFactory::RunMeshPreparation(const FString& PythonExe, const FString& ScriptPath,
-	const FString& SourceXmlPath, FString& OutXmlPath, FString& OutError)
+	const FString& SourceXmlPath, bool bAllowExternalIncludes, FString& OutXmlPath, FString& OutError)
 {
 	OutXmlPath = SourceXmlPath;
 	OutError.Reset();
@@ -205,8 +210,13 @@ bool UMujocoImportFactory::RunMeshPreparation(const FString& PythonExe, const FS
 	int32 ReturnCode = -1;
 	FString StdOut;
 	FString StdErr;
-	const FString Args = FString::Printf(TEXT("\"%s\" \"%s\" --out-dir \"%s\""),
-		*ScriptPath, *SourceXmlPath, *PrepDir);
+	// The flag is passed only when the option is on, so a script that predates
+	// it still runs the default import: an unknown argument would fail the
+	// import for every model, where an absent one fails closed for the few that
+	// reach outside their own folder.
+	const FString Args = FString::Printf(TEXT("\"%s\" \"%s\" --out-dir \"%s\"%s"),
+		*ScriptPath, *SourceXmlPath, *PrepDir,
+		bAllowExternalIncludes ? TEXT(" --allow-external-includes") : TEXT(""));
 	UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
 	FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
 
@@ -254,7 +264,8 @@ bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath, const FMjIm
 	bOutCancelled = false;
 
 	FString PreparedXmlPath;
-	if (!PrepareMeshes(SourceXmlPath, Settings.bAllowPrompts, PreparedXmlPath, OutError, bOutCancelled))
+	if (!PrepareMeshes(SourceXmlPath, Settings.bAllowPrompts, Settings.Parse.bAllowExternalIncludes,
+			PreparedXmlPath, OutError, bOutCancelled))
 	{
 		return false;
 	}

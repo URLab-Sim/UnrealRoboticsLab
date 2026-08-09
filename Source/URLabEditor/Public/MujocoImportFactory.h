@@ -106,7 +106,13 @@ public:
 	 * zero exit that wrote no prepared document: parsing the unprepared
 	 * original is how a model imports at the wrong scale while looking
 	 * plausible.
+	 *
+	 * `bAllowExternalIncludes` is the reader's security option, forwarded to
+	 * the script because preparation flattens the model's `<include>` fragments
+	 * itself, before the reader sees the document. Without it the gate would be
+	 * decided by a step that never asked.
 	 */
 	static bool RunMeshPreparation(const FString& PythonExe, const FString& ScriptPath,
-		const FString& SourceXmlPath, FString& OutXmlPath, FString& OutError);
+		const FString& SourceXmlPath, bool bAllowExternalIncludes, FString& OutXmlPath,
+		FString& OutError);
 };

@@ -5,7 +5,20 @@
 // Exit codes:
 //   0  models are identical within tolerance
 //   2  models differ
-//   1  a load error occurred (stderr names the file and MuJoCo's message)
+//   3  side a would not load (stderr names the file and MuJoCo's message)
+//   4  side b would not load
+//   1  usage, or the harness itself could not run the comparison
+//
+// Which side failed to load is an exit code and not a phrase in a sentence
+// because callers classify on it: the two cases mean opposite things (a corpus
+// fixture that is not standalone-loadable, versus a document this tool's caller
+// produced and cannot load back), and a caller matching on prose gets the
+// attribution wrong the first time the wording changes.
+//
+// A model whose mj_forward aborts inside the engine is NOT a load error and not
+// a difference. It compiled, every field was compared, and the abort is named
+// on stderr and in the JSON as forward_error_a / forward_error_b; only the
+// forward-kinematics invariants are missing from the verdict.
 //
 // The comparison itself lives in model_diff_lib (shared with ps_native_diff);
 // this file is now a thin CLI over it: parse args, load both models, diff, and
@@ -53,12 +66,29 @@ void PrintFieldExamples(const FieldDiff& fd) {
   }
 }
 
+void PrintForwardAborts(const DiffReport& report) {
+  if (!report.forward_error_a.empty()) {
+    std::printf("  forward aborted in a: %s\n",
+                report.forward_error_a.c_str());
+  }
+  if (!report.forward_error_b.empty()) {
+    std::printf("  forward aborted in b: %s\n",
+                report.forward_error_b.c_str());
+  }
+  if (report.ForwardAborted()) {
+    std::printf(
+        "  (fields compared in full; forward-kinematics invariants skipped)\n");
+  }
+}
+
 void PrintText(const DiffReport& report, const char* fa, const char* fb) {
   if (!report.Differs()) {
     std::printf("IDENTICAL\n  %s\n  %s\n", fa, fb);
+    PrintForwardAborts(report);
     return;
   }
   std::printf("DIFFER\n  a: %s\n  b: %s\n", fa, fb);
+  PrintForwardAborts(report);
   if (!report.sizes.empty()) {
     std::printf("\nSIZE INTS (%zu differ):\n", report.sizes.size());
     for (const auto& s : report.sizes) {
@@ -109,6 +139,12 @@ void PrintJson(const DiffReport& report, const char* fa, const char* fb) {
   std::printf("  \"a\":\"%s\",\n  \"b\":\"%s\",\n", JsonEscape(fa).c_str(),
               JsonEscape(fb).c_str());
   std::printf("  \"identical\":%s,\n", report.Differs() ? "false" : "true");
+  std::printf("  \"forward_error_a\":\"%s\",\n",
+              JsonEscape(report.forward_error_a).c_str());
+  std::printf("  \"forward_error_b\":\"%s\",\n",
+              JsonEscape(report.forward_error_b).c_str());
+  std::printf("  \"invariants_skipped\":%s,\n",
+              report.ForwardAborted() ? "true" : "false");
   std::printf("  \"sizes\":[");
   bool first = true;
   for (const auto& s : report.sizes) {
@@ -194,13 +230,13 @@ int main(int argc, char** argv) {
   mjModel* a = Load(fa, err);
   if (!a) {
     std::fprintf(stderr, "load error in a (%s): %s\n", fa, err.c_str());
-    return 1;
+    return 3;
   }
   mjModel* b = Load(fb, err);
   if (!b) {
     std::fprintf(stderr, "load error in b (%s): %s\n", fb, err.c_str());
     mj_deleteModel(a);
-    return 1;
+    return 4;
   }
 
   std::string diff_err;
@@ -211,6 +247,17 @@ int main(int argc, char** argv) {
     mj_deleteModel(a);
     mj_deleteModel(b);
     return 1;
+  }
+
+  // Named on stderr as well as in the report, so a caller that only reads the
+  // stream still learns the invariants were not part of this verdict.
+  if (!report.forward_error_a.empty()) {
+    std::fprintf(stderr, "forward aborted in a (%s): %s\n", fa,
+                 report.forward_error_a.c_str());
+  }
+  if (!report.forward_error_b.empty()) {
+    std::fprintf(stderr, "forward aborted in b (%s): %s\n", fb,
+                 report.forward_error_b.c_str());
   }
 
   if (json) {

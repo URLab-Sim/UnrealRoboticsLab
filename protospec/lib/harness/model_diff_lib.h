@@ -59,6 +59,20 @@ struct DiffReport {
   std::vector<FieldDiff> invariants;
   bool sizes_equal = true;
 
+  // MuJoCo's fatal error path is trapped around each side's mj_forward, so a
+  // model the engine refuses to step reports here instead of taking the process
+  // down. A non-empty string is that side's message. The model still compiled,
+  // and every size, name and array field was still compared; only the
+  // forward-kinematics invariants below were skipped, because they need a
+  // completed forward pass on both sides. An abort is therefore not a
+  // difference, and never a verdict about the reader or the writer.
+  std::string forward_error_a;
+  std::string forward_error_b;
+
+  bool ForwardAborted() const {
+    return !forward_error_a.empty() || !forward_error_b.empty();
+  }
+
   bool Differs() const {
     return !sizes.empty() || !names.empty() || !fields.empty() ||
            !invariants.empty();
@@ -73,7 +87,9 @@ struct DiffReport {
 // Compare two compiled models. Mirrors mj_model_diff's original sequence:
 // sizes, names, array fields (only when sizes match), then fk invariants. On a
 // data-allocation failure during the invariant check, `err` is set non-empty
-// and the returned report holds whatever was computed before it.
+// and the returned report holds whatever was computed before it. A model whose
+// mj_forward aborts is not an `err`: it is reported per side on the report and
+// costs only the invariants.
 DiffReport DiffModels(const mjModel* a, const mjModel* b, const Tol& tol,
                       int max_examples, std::string& err);
 

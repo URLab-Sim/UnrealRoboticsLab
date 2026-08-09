@@ -4,8 +4,10 @@
 
 #include "model_diff_lib.h"
 
+#include <csetjmp>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <type_traits>
@@ -16,6 +18,61 @@
 
 namespace ps::harness {
 namespace {
+
+// --------------------------------------------------------------------------
+// Fatal-error trap
+// --------------------------------------------------------------------------
+// mju_error is not recoverable by default: MuJoCo's stock log handler prints
+// and calls exit(). An engine corner that only some models reach -- a rigid
+// deformable resting on a static body is the one this harness meets -- would
+// therefore take the whole comparison down mid-run, and whichever side was
+// being stepped at the time gets blamed for a defect it does not have.
+//
+// The trap is setjmp/longjmp rather than a C++ throw because the stack being
+// unwound is MuJoCo's C code, which carries no guarantee that it can be unwound
+// by the C++ mechanism; this is the same construction MuJoCo's own Python
+// bindings use for the same reason. The handler must not return: engine_util_
+// errmem.c's dispatcher says so, and continuing past a fatal error would leave
+// the engine in the state that raised it.
+thread_local std::jmp_buf g_forward_jmp;
+thread_local char g_forward_msg[1024];
+
+void ForwardErrorHandler(const char* msg) {
+  std::snprintf(g_forward_msg, sizeof(g_forward_msg), "%s",
+                (msg && msg[0]) ? msg : "unspecified MuJoCo error");
+  std::longjmp(g_forward_jmp, 1);
+}
+
+// setjmp's frame holds nothing that needs destroying, which is what makes the
+// longjmp back into it well defined. MSVC warns about the combination on sight,
+// so the warning is answered here rather than left in every build log.
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4611)  // interaction between setjmp and C++ objects
+#endif
+bool RunForward(const mjModel* m, mjData* d) {
+  if (setjmp(g_forward_jmp) == 0) {
+    mj_forward(m, d);
+    return true;
+  }
+  return false;
+}
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+// mj_forward with the fatal handler trapped. Returns MuJoCo's message when the
+// step aborted, an empty string when it completed.
+std::string ForwardTrapped(const mjModel* m, mjData* d) {
+  void (*previous)(const char*) = mju_user_error;
+  g_forward_msg[0] = '\0';
+  mju_user_error = &ForwardErrorHandler;
+  const bool completed = RunForward(m, d);
+  mju_user_error = previous;
+  if (completed) return std::string();
+  return g_forward_msg[0] ? std::string(g_forward_msg)
+                          : std::string("mj_forward aborted");
+}
 
 bool NearlyEqual(double a, double b, const Tol& tol) {
   if (a == b) return true;
@@ -125,6 +182,11 @@ void CompareFields(const mjModel* a, const mjModel* b, const Tol& tol,
 // Forward-kinematics invariant: mj_makeData initializes qpos to qpos0, and
 // mj_forward then fills xpos/xquat. Comparing those exposes orientation, unit,
 // and frame bugs that identical array sizes would hide.
+//
+// Either side's forward pass may abort inside the engine. That is recorded on
+// the report and costs this comparison only: the fields above it are already
+// done, and a model whose physics MuJoCo itself refuses to start says nothing
+// about whether two compilations of it agree.
 bool CompareInvariants(const mjModel* a, const mjModel* b, const Tol& tol,
                        int max_examples, DiffReport& report, std::string& err) {
   mjData* da = mj_makeData(a);
@@ -135,8 +197,13 @@ bool CompareInvariants(const mjModel* a, const mjModel* b, const Tol& tol,
     err = "mj_makeData failed";
     return false;
   }
-  mj_forward(a, da);
-  mj_forward(b, db);
+  report.forward_error_a = ForwardTrapped(a, da);
+  report.forward_error_b = ForwardTrapped(b, db);
+  if (report.ForwardAborted()) {
+    mj_deleteData(da);
+    mj_deleteData(db);
+    return true;
+  }
   if (a->nbody == b->nbody) {
     CompareField<mjtNum>("xpos", da->xpos, db->xpos,
                          static_cast<std::int64_t>(a->nbody) * 3, tol,

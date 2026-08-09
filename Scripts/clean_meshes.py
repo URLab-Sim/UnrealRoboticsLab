@@ -31,16 +31,27 @@ Installation:
     pip install trimesh numpy scipy Pillow networkx
 
 Usage:
-    python clean_meshes_trimesh.py <path_to_xml>
+    python clean_meshes.py <path_to_xml> [--out-dir DIR]
+
+Without --out-dir the prepared XML is written beside the input. With it, the
+prepared XML goes to DIR and every asset path inside is re-expressed so it
+still resolves from there, which is how Unreal keeps its prepared copy out of
+the model author's own folders.
+
+Exit status is 0 only when every referenced mesh was prepared. A conversion
+that failed, a source file that was missing, or an unreadable document exits
+nonzero with the reason on stderr, because a caller that continued anyway
+would import the unprepared meshes at the wrong scale without saying so.
 
 Example:
-    python clean_meshes_trimesh.py "path/to/mujoco_menagerie/franka_emika_panda/panda.xml"
+    python clean_meshes.py "path/to/mujoco_menagerie/franka_emika_panda/panda.xml"
 """
 
 import trimesh
 import numpy as np
 from pathlib import Path
 from xml.etree import ElementTree as ET
+import argparse
 import os
 import sys
 import copy
@@ -313,7 +324,7 @@ def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
                          meshdir, texturedir, assetdir, visited)
 
 
-def flatten_includes(root, root_dir: Path):
+def flatten_includes(root, src_dir: Path, root_dir: Path = None):
     """Resolve every <include> into a single self-contained <mujoco> tree.
 
     gym-aloha (and many MJCF models) split a robot across <include> fragments
@@ -321,13 +332,34 @@ def flatten_includes(root, root_dir: Path):
     Unreal's importer must see one flat document so all <asset>/<compiler>/body
     content is visible and there is exactly one worldbody. Returns the new root
     element (a <mujoco>). No-op-equivalent for files without includes.
+
+    ``src_dir`` is where the document being flattened lives; ``root_dir`` is
+    where the flattened document will be written, and defaults to ``src_dir``.
     """
+    if root_dir is None:
+        root_dir = src_dir
     md, txd, ad = _compiler_dirs(root)
     visited = set()
     new_root = ET.Element("mujoco", dict(root.attrib))
     for child in list(root):
-        _append_expanded(new_root, child, root_dir, root_dir, md, txd, ad, visited)
+        _append_expanded(new_root, child, src_dir, root_dir, md, txd, ad, visited)
     return new_root
+
+
+def _rebase_assets(root, src_dir: Path, root_dir: Path):
+    """Re-express every asset ``file=`` so it resolves from ``root_dir``.
+
+    What ``flatten_includes`` does on the way through, for a document that has
+    no includes to flatten. The <compiler> dir attributes are cleared once the
+    paths carry their own prefixes, so nothing double-prefixes them.
+    """
+    md, txd, ad = _compiler_dirs(root)
+    for elem in root.iter():
+        if elem.tag in _ASSET_FILE_TAGS:
+            _rewrite_asset_path(elem, src_dir, root_dir, md, txd, ad)
+    for comp in root.findall("compiler"):
+        for attr in ("meshdir", "texturedir", "assetdir"):
+            comp.attrib.pop(attr, None)
 
 
 def materialize_inline_meshes(root, mesh_base: Path) -> int:
@@ -403,17 +435,24 @@ def materialize_inline_meshes(root, mesh_base: Path) -> int:
     return materialized
 
 
-def process_xml(xml_path: Path):
-    """Parse MJCF XML, convert meshes, resolve conflicts, write updated XML."""
+def process_xml(xml_path: Path, out_dir: Path = None) -> bool:
+    """Parse MJCF XML, convert meshes, resolve conflicts, write updated XML.
+
+    Returns True only when every mesh the document references was prepared.
+    """
 
     if not xml_path.exists():
-        print(f"Error: XML file not found: {xml_path}")
-        return
+        print(f"Error: XML file not found: {xml_path}", file=sys.stderr)
+        return False
 
-    xml_dir = xml_path.parent
+    xml_dir = xml_path.parent.resolve()
+    root_dir = out_dir.resolve() if out_dir is not None else xml_dir
+    root_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"XML: {xml_path}")
     print(f"Dir: {xml_dir}")
+    if root_dir != xml_dir:
+        print(f"Out: {root_dir}")
     print("=" * 60)
 
     # Parse XML
@@ -427,10 +466,12 @@ def process_xml(xml_path: Path):
     include_count = sum(1 for _ in root.iter("include"))
     if include_count:
         print(f"Flattening {include_count} <include> fragment(s)...")
-        root = flatten_includes(root, xml_dir.resolve())
+        root = flatten_includes(root, xml_dir, root_dir)
         tree = ET.ElementTree(root)
         remaining = sum(1 for _ in root.iter("include"))
         print(f"  -> {remaining} include(s) remain after flatten")
+    elif root_dir != xml_dir:
+        _rebase_assets(root, xml_dir, root_dir)
 
     # Find meshdir from compiler
     meshdir = ""
@@ -439,8 +480,12 @@ def process_xml(xml_path: Path):
         if md:
             meshdir = md
 
-    mesh_base = xml_dir / meshdir if meshdir else xml_dir
+    mesh_base = root_dir / meshdir if meshdir else root_dir
     print(f"Mesh directory: {mesh_base}")
+
+    # Every mesh this run could not prepare. Non-empty means the caller must
+    # not use the output: the unconverted source would import at its own scale.
+    failures = []
 
     # Phase 0: Materialize inline ``<mesh vertex="..." face="...">`` entries.
     # These get rewritten to file= entries before Phase 1 runs, so the rest
@@ -461,11 +506,15 @@ def process_xml(xml_path: Path):
                 output_glb = source_path.with_suffix(".glb")
                 if not glb_up_to_date(output_glb, source_path):
                     print(f"\n[flexcomp] Converting mesh: {source_path.name} -> {output_glb.name}")
-                    if not convert_mesh(source_path, output_glb) and output_glb.exists():
-                        output_glb.unlink()
-                        print(f"[flexcomp] Removed stale GLB: {output_glb.name}")
+                    if not convert_mesh(source_path, output_glb):
+                        failures.append(f"flexcomp mesh '{file_attr}' failed to convert")
+                        if output_glb.exists():
+                            output_glb.unlink()
+                            print(f"[flexcomp] Removed stale GLB: {output_glb.name}")
                 else:
                     print(f"\n[flexcomp] Mesh up to date: {output_glb.name}")
+            else:
+                failures.append(f"flexcomp mesh not found: {source_path}")
 
     print(f"Found {len(mesh_elements)} mesh assets in XML\n")
 
@@ -541,7 +590,8 @@ def process_xml(xml_path: Path):
 
                     # Copy the source file to the new name
                     if not source_path.exists():
-                        print(f"    x Source file missing: {source_path} — skipping")
+                        print(f"    x Source file missing: {source_path}")
+                        failures.append(f"mesh source not found: {source_path}")
                         continue
                     if not renamed_source.exists() or renamed_source.stat().st_mtime < source_path.stat().st_mtime:
                         shutil.copy2(str(source_path), str(renamed_source))
@@ -559,6 +609,7 @@ def process_xml(xml_path: Path):
 
         if not actual_source.exists():
             print(f"\n  x Source not found: {actual_source}")
+            failures.append(f"mesh source not found: {actual_source}")
             continue
 
         if glb_up_to_date(output_glb, actual_source):
@@ -575,6 +626,7 @@ def process_xml(xml_path: Path):
             success_count += 1
         else:
             print(f"  x FAILED to convert {actual_source.name}")
+            failures.append(f"mesh '{mesh_name}' failed to convert: {actual_source}")
             # Never leave a stale or partial GLB behind: the importer
             # prefers .glb over the source mesh, so a leftover here would
             # silently ship the very data the conversion just refused to
@@ -583,32 +635,41 @@ def process_xml(xml_path: Path):
                 output_glb.unlink()
                 print(f"  -> Removed stale GLB: {output_glb.name}")
 
-    # Phase 4: Write updated XML
-    output_xml = xml_path.parent / f"{xml_path.stem}_ue.xml"
+    # Phase 4: Write updated XML. Written even when something failed, so the
+    # partial result can be inspected; the exit status is what decides whether
+    # a caller may use it.
+    output_xml = root_dir / f"{xml_path.stem}_ue.xml"
     tree.write(str(output_xml), encoding="unicode", xml_declaration=True)
 
     print("\n" + "=" * 60)
     print(f"Processed {success_count}/{len(output_plan)} meshes successfully")
     print(f"Conflicts resolved: {conflicts_found}")
     print(f"Updated XML: {output_xml}")
+
+    if failures:
+        print(f"\n{len(failures)} mesh(es) could not be prepared:", file=sys.stderr)
+        for reason in failures:
+            print(f"  - {reason}", file=sys.stderr)
+        return False
+
     print(f"\nDrag '{output_xml.name}' into Unreal Content Browser to import.")
+    return True
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Error: No XML file specified")
-        print("Usage: python clean_meshes_trimesh.py <path_to_xml>")
-        print('Example: python clean_meshes_trimesh.py "C:/mujoco_menagerie/franka_emika_panda/panda.xml"')
-        return
+    parser = argparse.ArgumentParser(
+        description="Prepare MuJoCo MJCF meshes for Unreal import.")
+    parser.add_argument("xml", type=Path, help="path to the MJCF .xml to prepare")
+    parser.add_argument("--out-dir", type=Path, default=None, dest="out_dir",
+                        help="directory to write the prepared _ue.xml into "
+                             "(default: beside the input)")
+    args = parser.parse_args()
 
-    xml_path = Path(sys.argv[1])
+    if args.xml.suffix.lower() != ".xml":
+        parser.error(f"expected an .xml file, got '{args.xml.suffix}'")
 
-    if xml_path.suffix.lower() == ".xml":
-        process_xml(xml_path)
-    else:
-        print(f"Error: Expected an .xml file, got '{xml_path.suffix}'")
-        print("Usage: python clean_meshes_trimesh.py <path_to_xml>")
+    return 0 if process_xml(args.xml, args.out_dir) else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

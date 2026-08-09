@@ -24,6 +24,7 @@
 #include "MujocoGenerationAction.h"
 #include "MjPythonHelper.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "HAL/FileManager.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Engine/Blueprint.h"
 #include "Misc/FeedbackContext.h"
@@ -33,6 +34,107 @@
 #include "RenderingThread.h"
 #include "ShaderCompiler.h"
 #include "URLabEditorLogging.h"
+
+namespace
+{
+/**
+ * Prepare `SourceXmlPath`'s meshes and report the document to parse.
+ *
+ * Preparation that cannot run at all -- no script, or a user who declined the
+ * Python setup -- leaves the original in `OutXmlPath` and succeeds, because
+ * that is a stated choice. Preparation that RAN and failed returns false.
+ */
+bool PrepareMeshes(const FString& SourceXmlPath, FString& OutXmlPath, FString& OutError, bool& bOutCancelled)
+{
+	OutXmlPath = SourceXmlPath;
+	OutError.Reset();
+	bOutCancelled = false;
+
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UnrealRoboticsLab"));
+	if (!Plugin.IsValid())
+	{
+		OutError = TEXT("the UnrealRoboticsLab plugin directory could not be located");
+		return false;
+	}
+
+	const FString ScriptPath = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Scripts/clean_meshes.py"));
+	if (!FPaths::FileExists(ScriptPath))
+	{
+		UE_LOG(LogURLabEditor, Warning,
+			TEXT("Mesh preparation script missing at '%s' -- importing the model as authored."), *ScriptPath);
+		return true;
+	}
+
+	const FString PythonExe = FMjPythonHelper::EnsurePythonReady(bOutCancelled);
+	if (bOutCancelled)
+	{
+		return false;
+	}
+	if (PythonExe.IsEmpty())
+	{
+		UE_LOG(LogURLabEditor, Warning,
+			TEXT("Python is not configured -- importing the model as authored, without mesh preparation."));
+		return true;
+	}
+
+	return UMujocoImportFactory::RunMeshPreparation(PythonExe, ScriptPath, SourceXmlPath, OutXmlPath, OutError);
+}
+}  // namespace
+
+FString UMujocoImportFactory::ImportPrepDir(const FString& SourceXmlPath)
+{
+	return FPaths::ConvertRelativePathToFull(
+		FPaths::ProjectSavedDir() / TEXT("URLab/ImportPrep") / FPaths::GetBaseFilename(SourceXmlPath));
+}
+
+bool UMujocoImportFactory::RunMeshPreparation(const FString& PythonExe, const FString& ScriptPath,
+	const FString& SourceXmlPath, FString& OutXmlPath, FString& OutError)
+{
+	OutXmlPath = SourceXmlPath;
+	OutError.Reset();
+
+	const FString PrepDir = ImportPrepDir(SourceXmlPath);
+	const FString PreparedPath = FPaths::Combine(PrepDir,
+		FPaths::GetBaseFilename(SourceXmlPath) + TEXT("_ue.xml"));
+
+	// A leftover from an earlier run must never be mistaken for this one's
+	// output, so the target is gone before the script is asked to write it.
+	IFileManager::Get().Delete(*PreparedPath, /*RequireExists=*/false, /*EvenReadOnly=*/true, /*Quiet=*/true);
+
+	int32 ReturnCode = -1;
+	FString StdOut;
+	FString StdErr;
+	const FString Args = FString::Printf(TEXT("\"%s\" \"%s\" --out-dir \"%s\""),
+		*ScriptPath, *SourceXmlPath, *PrepDir);
+	UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
+	FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
+
+	if (ReturnCode != 0)
+	{
+		OutError = FString::Printf(
+			TEXT("mesh preparation of '%s' failed (exit code %d).%s%s"),
+			*SourceXmlPath, ReturnCode,
+			StdErr.IsEmpty() ? TEXT("") : TEXT("\n"),
+			StdErr.IsEmpty() ? TEXT("") : *StdErr);
+		if (!StdOut.IsEmpty())
+		{
+			UE_LOG(LogURLabEditor, Log, TEXT("Mesh preparation output:\n%s"), *StdOut);
+		}
+		return false;
+	}
+
+	if (!FPaths::FileExists(PreparedPath))
+	{
+		OutError = FString::Printf(
+			TEXT("mesh preparation of '%s' reported success but wrote no '%s'."),
+			*SourceXmlPath, *PreparedPath);
+		return false;
+	}
+
+	UE_LOG(LogURLabEditor, Log, TEXT("Using prepared XML: %s"), *PreparedPath);
+	OutXmlPath = PreparedPath;
+	return true;
+}
 
 UMujocoImportFactory::UMujocoImportFactory()
 {
@@ -88,55 +190,20 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 		// Step 0: Try to run clean_meshes_trimesh.py to prepare meshes
 		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
 
-		FString ActualXmlPath = Filename;
+		FString ActualXmlPath;
+		FString PrepareError;
+		bool bCancelled = false;
+		if (!PrepareMeshes(Filename, ActualXmlPath, PrepareError, bCancelled))
 		{
-			FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
-			FString ScriptPath = FPaths::Combine(PluginDir, TEXT("Scripts/clean_meshes.py"));
-
-			if (FPaths::FileExists(ScriptPath))
+			if (bCancelled)
 			{
-				bool bCancelled = false;
-				FString PythonExe = FMjPythonHelper::EnsurePythonReady(bCancelled);
-
-				if (bCancelled)
-				{
-					UE_LOG(LogURLabEditor, Log, TEXT("Import cancelled by user during Python setup."));
-					return nullptr;
-				}
-
-				if (!PythonExe.IsEmpty())
-				{
-					// Run the clean script
-					int32 ReturnCode = -1;
-					FString StdOut, StdErr;
-					FString Args = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *Filename);
-					UE_LOG(LogURLabEditor, Log, TEXT("Running mesh preparation: %s %s"), *PythonExe, *Args);
-					FPlatformProcess::ExecProcess(*PythonExe, *Args, &ReturnCode, &StdOut, &StdErr);
-
-					if (ReturnCode == 0)
-					{
-						FString UeXmlPath = FPaths::Combine(
-							FPaths::GetPath(Filename),
-							FPaths::GetBaseFilename(Filename) + TEXT("_ue.xml"));
-
-						if (FPaths::FileExists(UeXmlPath))
-						{
-							UE_LOG(LogURLabEditor, Log, TEXT("Using prepared XML: %s"), *UeXmlPath);
-							ActualXmlPath = UeXmlPath;
-						}
-					}
-					else
-					{
-						UE_LOG(LogURLabEditor, Warning, TEXT("Mesh preparation script failed (code %d). Using original XML."), ReturnCode);
-						if (!StdErr.IsEmpty())
-							UE_LOG(LogURLabEditor, Warning, TEXT("  stderr: %s"), *StdErr);
-					}
-				}
-				else
-				{
-					UE_LOG(LogURLabEditor, Log, TEXT("Python not configured — skipping mesh preparation."));
-				}
+				UE_LOG(LogURLabEditor, Log, TEXT("Import cancelled by user during Python setup."));
 			}
+			else
+			{
+				UE_LOG(LogURLabEditor, Error, TEXT("MujocoImportFactory: %s"), *PrepareError);
+			}
+			return nullptr;
 		}
 
 		SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep1", "Reading XML..."));

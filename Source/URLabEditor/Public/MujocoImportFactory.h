@@ -42,4 +42,26 @@ public:
 	// UFactory Interface
 	virtual UObject* FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled) override;
 	virtual bool FactoryCanImport(const FString& Filename) override;
+
+	/**
+	 * Where a model's prepared copy is written.
+	 *
+	 * Under the project's Saved directory rather than beside the model, so
+	 * preparation never leaves artifacts in the author's own folders, and keyed
+	 * by the model's file stem so import and reimport prepare to one place.
+	 */
+	static FString ImportPrepDir(const FString& SourceXmlPath);
+
+	/**
+	 * Run a mesh-preparation script over `SourceXmlPath` and report the
+	 * document to parse.
+	 *
+	 * On success `OutXmlPath` is the prepared copy in `ImportPrepDir`. A
+	 * nonzero exit fails with the script's stderr in `OutError`, and so does a
+	 * zero exit that wrote no prepared document: parsing the unprepared
+	 * original is how a model imports at the wrong scale while looking
+	 * plausible.
+	 */
+	static bool RunMeshPreparation(const FString& PythonExe, const FString& ScriptPath,
+		const FString& SourceXmlPath, FString& OutXmlPath, FString& OutError);
 };

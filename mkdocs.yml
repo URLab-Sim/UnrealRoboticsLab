@@ -115,6 +115,7 @@ nav:
     - Building from Source: contributing/building.md
     - Codegen: contributing/codegen.md
     - Bumping MuJoCo: contributing/bumping_mujoco.md
+    - mjSpec Architecture: architecture_mjspec.md
   - Troubleshooting: troubleshooting.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md

@@ -14,6 +14,12 @@
 // subset. It runs at exact tolerance: a compile that moves a single field is a
 // finding, and judging it is a human's job, never this test's.
 //
+// One divergence is accounted for rather than reported, and only one: the
+// serial inside a generated `_ps:` name, which is minted from a
+// process-lifetime counter and so differs between the run that recorded a
+// golden and every run that checks it. Which elements carry a reservation, of
+// which family, at which index, still has to match exactly. See SameReservation.
+//
 // A missing golden fails. Coverage that disappears -- a golden deleted,
 // renamed, or never staged -- has to be as loud as a mismatch, or the suite
 // passes by testing nothing. Recording is therefore an explicit operator
@@ -54,6 +60,8 @@ THIRD_PARTY_INCLUDES_START
 
 #include "model_diff_lib.h"
 THIRD_PARTY_INCLUDES_END
+
+#include <string>
 
 namespace MjParityGoldenTests
 {
@@ -246,6 +254,126 @@ bool CaptureManifestAgrees(FAutomationTestBase& Test)
 	return true;
 }
 
+/** What a generated name begins with. One spelling, stated in MjReservedNames.h. */
+const TCHAR* const ReservedPrefix = TEXT("_ps:");
+
+/** The two raw tables a name difference also shows up in, byte for byte. */
+const char* const NameTableFields[] = {"names", "names_map"};
+
+/**
+ * The family segment of a generated name, or empty if it is not one.
+ *
+ * A generated name reads `_ps:<family>:<serial>`, so the family is what sits
+ * between the prefix and the last colon.
+ */
+FString ReservationFamily(const std::string& Name)
+{
+	const FString Text = Utf8ToUe(Name);
+	if (!Text.StartsWith(ReservedPrefix))
+	{
+		return FString();
+	}
+	int32 LastColon = INDEX_NONE;
+	if (!Text.FindLastChar(TEXT(':'), LastColon))
+	{
+		return FString();
+	}
+	const int32 Start = FCString::Strlen(ReservedPrefix);
+	return LastColon > Start ? Text.Mid(Start, LastColon - Start) : FString();
+}
+
+/**
+ * True when the two sides are the same reservation minted in two sessions.
+ *
+ * An element the document left unnamed reaches the compiled model carrying
+ * `_ps:<family>:<serial>`, and the serial comes from a process-lifetime counter
+ * (`UMjNodeComponent::EnsureSerial`). It is the one part of a compiled model
+ * that cannot repeat across runs, so a recording taken from a model with
+ * unnamed elements could never verify against itself: every fixture here
+ * happened to name everything until a real robot joined the corpus, which is
+ * why this surfaced only then.
+ *
+ * The serial is session identity for the bridge, never a fact about the model.
+ * What IS a fact -- that this element got a reservation at all, of this family,
+ * at this index -- is exactly what still has to match, and does: the comparison
+ * is per object type and id, and a side that is not a reservation of the same
+ * family is a finding whichever way round it reads.
+ */
+bool SameReservation(const ps::harness::NameDiff& Name)
+{
+	const FString Family = ReservationFamily(Name.a);
+	return !Family.IsEmpty() && Family == ReservationFamily(Name.b);
+}
+
+/** True when `Field` is one of the raw tables the names themselves are stored in. */
+bool IsNameTableField(const std::string& Field)
+{
+	for (const char* const Name : NameTableFields)
+	{
+		if (Field == Name)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * Every divergence from a golden that the reserved-name convention does not
+ * account for, formatted one per entry.
+ *
+ * Sizes are deliberately NOT forgiven, even `nnames`, which a serial of a
+ * different digit count would move: the harness compares array fields only when
+ * every size matched, so forgiving one size here would forgive the whole field
+ * comparison with it. If a recapture ever moves the name table's size, this
+ * fails loudly with the full report, which is the right outcome for a recording
+ * that has to be taken again.
+ */
+TArray<FString> UnexplainedGoldenDiffs(const ps::harness::DiffReport& Report)
+{
+	TArray<FString> Unexplained;
+
+	int32 Reservations = 0;
+	for (const ps::harness::NameDiff& Name : Report.names)
+	{
+		if (SameReservation(Name))
+		{
+			++Reservations;
+			continue;
+		}
+		Unexplained.Add(FString::Printf(TEXT("name %s[%d]: golden '%s', ours '%s'"), *Utf8ToUe(Name.objtype), Name.id,
+			*Utf8ToUe(Name.a), *Utf8ToUe(Name.b)));
+	}
+
+	// The two raw tables are the same fact spelled in bytes, so they are the
+	// serials' shadow only while the serials are all the names that moved.
+	const bool bSerialsOnly = Unexplained.IsEmpty() && Reservations > 0;
+
+	for (const ps::harness::FieldDiff& Field : Report.fields)
+	{
+		if (bSerialsOnly && IsNameTableField(Field.field))
+		{
+			continue;
+		}
+		Unexplained.Add(FString::Printf(TEXT("field %s: %lld of %lld differ"), *Utf8ToUe(Field.field),
+			static_cast<int64>(Field.num_diff), static_cast<int64>(Field.count_a)));
+	}
+
+	for (const ps::harness::SizeDiff& Size : Report.sizes)
+	{
+		Unexplained.Add(FString::Printf(TEXT("size %s: golden %lld, ours %lld"), *Utf8ToUe(Size.name),
+			static_cast<int64>(Size.a), static_cast<int64>(Size.b)));
+	}
+
+	for (const ps::harness::FieldDiff& Invariant : Report.invariants)
+	{
+		Unexplained.Add(FString::Printf(TEXT("invariant %s: %lld of %lld differ"), *Utf8ToUe(Invariant.field),
+			static_cast<int64>(Invariant.num_diff), static_cast<int64>(Invariant.count_a)));
+	}
+
+	return Unexplained;
+}
+
 /** Serialize `Model` into the byte form a golden is stored as. */
 bool SaveModelBytes(FAutomationTestBase& Test, const FString& Label, const mjModel* Model, const FString& Path)
 {
@@ -317,10 +445,13 @@ void CheckAgainstGolden(
 		Test.AddError(FString::Printf(TEXT("%s: model comparison did not complete: %s"), *Label, *Utf8ToUe(Err)));
 	}
 
-	if (Report.Differs())
+	const TArray<FString> Unexplained = UnexplainedGoldenDiffs(Report);
+	if (!Unexplained.IsEmpty())
 	{
-		Test.AddError(FString::Printf(TEXT("%s: compiled model differs from its golden (%s):\n%s"), *Label,
-			*GoldenPath, *ReportToString(Report)));
+		Test.AddError(FString::Printf(TEXT("%s: compiled model differs from its golden (%s) beyond the generated "
+										   "names (%d unexplained):\n  %s\nfull comparison:\n%s"),
+			*Label, *GoldenPath, Unexplained.Num(), *FString::Join(Unexplained, TEXT("\n  ")),
+			*ReportToString(Report)));
 	}
 }
 

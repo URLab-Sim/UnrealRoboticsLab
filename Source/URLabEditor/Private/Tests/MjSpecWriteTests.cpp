@@ -654,12 +654,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteModelNameTest,
 
 bool FMjSpecWriteModelNameTest::RunTest(const FString& Parameters)
 {
-	// The model name is written whether or not the root authored one, because
-	// it sits in the compiled name buffer and a spec that left it to
-	// mj_makeSpec compiles to a different model from the same document read
-	// through a file. The stand-in is deliberately not MuJoCo's own default, so
-	// an unauthored root and a root authored to "MuJoCo Model" stay
-	// distinguishable in the artefact.
+	// The model name is written only when the root authored one, which is the
+	// condition MuJoCo's own reader writes it under. An unauthored root keeps
+	// what mj_makeSpec left, so an untitled document compiles to the same name
+	// buffer whether it arrived through a file or through this path.
 	const auto NameOfCompiled = [this](bool bAuthored, const TCHAR* Authored) {
 		FSpecWriteFixture Fixture;
 		if (!Fixture.Init())
@@ -696,8 +694,8 @@ bool FMjSpecWriteModelNameTest::RunTest(const FString& Parameters)
 		return Out;
 	};
 
-	TestEqual(TEXT("an unauthored root compiles under the stand-in name"),
-		NameOfCompiled(false, nullptr), FString(TEXT("urlab")));
+	TestEqual(TEXT("an unauthored root compiles under MuJoCo's own default name"),
+		NameOfCompiled(false, nullptr), FString(TEXT("MuJoCo Model")));
 	TestEqual(TEXT("an authored name is what compiles"),
 		NameOfCompiled(true, TEXT("authored_model")), FString(TEXT("authored_model")));
 

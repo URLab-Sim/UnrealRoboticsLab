@@ -26,9 +26,6 @@ namespace sw = ps::ue::specwrite;
 
 using ps::mjcf::ElementType;
 
-/** The model name a spec gets when its root authors none. */
-const TCHAR* const UnauthoredModelName = TEXT("urlab");
-
 /**
  * The order the sections are written in.
  *
@@ -459,18 +456,16 @@ FMjBuiltSpec FBuilder::Build()
 	// names a fresh spec "MuJoCo Model", so the name reaches the compiled name
 	// table either way and only its content says which was read.
 	//
-	// Written whether or not the root authored one, because the name buffer is
-	// part of the model a comparison sees and leaving it to mj_makeSpec makes
-	// the same document compile differently depending on which path built it.
-	// The stand-in is a constant rather than anything derived from a file or an
-	// asset, so the artefact stays reproducible, and it is deliberately not
-	// MuJoCo's own default, so that reading a compiled model still says whether
-	// a name was authored.
+	// Written only when the root authored one. MuJoCo's own reader writes it
+	// under exactly that condition (`xml_native_reader.cc:211`), so a document
+	// with no `model` attribute keeps the name mj_makeSpec left on the fresh
+	// spec and compiles to the same name buffer whichever path built it.
 	const TOptional<FString> ModelName = ModelNameOf(*Root);
-	const FString Named = ModelName.IsSet() && !ModelName.GetValue().IsEmpty()
-		? ModelName.GetValue() : FString(UnauthoredModelName);
-	const FTCHARToUTF8 Name(*Named);
-	mjs_setString(Ctx.Spec->modelname, Name.Get());
+	if (ModelName.IsSet() && !ModelName.GetValue().IsEmpty())
+	{
+		const FTCHARToUTF8 Name(*ModelName.GetValue());
+		mjs_setString(Ctx.Spec->modelname, Name.Get());
+	}
 
 	// Sections in write order, siblings within a section in authored order.
 	TArray<FMjOrderedChild> Sections = MjOrderedChildrenOf(*Ctx.Source, *Root);

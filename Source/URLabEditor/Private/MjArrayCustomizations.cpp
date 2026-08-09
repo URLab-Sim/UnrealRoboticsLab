@@ -14,6 +14,8 @@
 #include "IDetailPropertyRow.h"
 #include "PropertyHandle.h"
 #include "ScopedTransaction.h"
+#include "Styling/SlateColor.h"
+#include "UObject/Class.h"
 #include "UObject/PropertyOptional.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/Input/SNumericEntryBox.h"

@@ -18,6 +18,7 @@
 #include "PropertyEditorModule.h"
 #include "PropertyHandle.h"
 #include "ScopedTransaction.h"
+#include "Styling/SlateColor.h"
 #include <type_traits>
 #include "UObject/PropertyOptional.h"
 #include "UObject/UnrealType.h"

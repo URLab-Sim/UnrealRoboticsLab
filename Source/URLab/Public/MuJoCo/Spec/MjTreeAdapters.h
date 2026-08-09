@@ -195,7 +195,8 @@ struct TMjTreeAdapter
 	template <class T, class E>
 	static T& Adopt(E& Parent, std::size_t Index, owner<T> Child)
 	{
-		const int32 Slot = FindSlot(Parent, *Child);
+		int32 Slot = -1;
+		const bool bChildIsElement = TryFindSlot(Parent, *Child, Slot);
 
 		TArray<UMjNodeComponent*> Peers;
 		for (const FMjOrderedChild& Existing : OrderedChildren(Parent))
@@ -210,6 +211,11 @@ struct TMjTreeAdapter
 		Peers.Insert(Child, At);
 
 		Derived::Attach(Parent, *Child);
+		// The slot this link needed was resolved a moment ago, so hand it to the
+		// parent's batch rather than making the next read resolve every child
+		// again. That is the whole of the reader's per-insertion cost: it adopts
+		// once per element and asked the tree for its children each time.
+		NoteChildLinked(Parent, *Child, Slot, bChildIsElement);
 		for (int32 Position = 0; Position < Peers.Num(); ++Position)
 		{
 			Peers[Position]->SiblingIndex = Position;
@@ -372,23 +378,30 @@ struct TMjTreeAdapter
 
 	// --- Shared mechanics -------------------------------------------------- //
 
-	/** `Parent`'s children in spec order, each tagged with its storage slot. */
+	/**
+	 * `Parent`'s children in spec order, each tagged with its storage slot.
+	 *
+	 * Answered from the parent's own batch of resolved slots, which is checked
+	 * against the live child list before it is believed. The check is a walk of
+	 * pointers and serials and consults no schema table; a mismatch -- a child
+	 * linked or unlinked by something that is not this adapter -- rebuilds.
+	 */
 	static TArray<FMjOrderedChild> OrderedChildren(const UMjNodeComponent& Parent)
 	{
-		psm::ElementType ParentType{};
-		TArray<FMjOrderedChild> Out;
-		if (!gen::ElementTypeOfNode(Parent, ParentType))
+		const TArray<UMjNodeComponent*> Raw = Derived::RawChildren(Parent);
+		if (!BatchMatches(Parent.ChildSlotCache, Raw))
 		{
-			return Out;
+			RebuildChildSlots(Parent, Raw);
 		}
-		for (UMjNodeComponent* Child : Derived::RawChildren(Parent))
+
+		TArray<FMjOrderedChild> Out;
+		Out.Reserve(Parent.ChildSlotCache.Num());
+		for (const FMjChildSlot& Entry : Parent.ChildSlotCache)
 		{
-			psm::ElementType ChildType{};
-			if (Child == nullptr || !gen::ElementTypeOfNode(*Child, ChildType))
+			if (Entry.bIsElement)
 			{
-				continue;
+				Out.Add(FMjOrderedChild{Entry.Node, Entry.Slot});
 			}
-			Out.Add(FMjOrderedChild{Child, gen::SlotFor(ParentType, ChildType)});
 		}
 		MjSortSpecOrder(Out);
 		return Out;
@@ -426,13 +439,92 @@ private:
 
 	static int32 FindSlot(const UMjNodeComponent& Parent, const UMjNodeComponent& Child)
 	{
+		int32 Slot = -1;
+		TryFindSlot(Parent, Child, Slot);
+		return Slot;
+	}
+
+	/**
+	 * The storage slot `Child` occupies under `Parent`, and whether the pair are
+	 * elements at all.
+	 *
+	 * A slot of -1 has two causes -- a child the parent's schema does not admit,
+	 * and a component that is not a spec element -- and the batch has to tell
+	 * them apart, because the first belongs in the ordered result and the second
+	 * does not.
+	 */
+	static bool TryFindSlot(const UMjNodeComponent& Parent, const UMjNodeComponent& Child, int32& OutSlot)
+	{
+		OutSlot = -1;
 		psm::ElementType ParentType{};
 		psm::ElementType ChildType{};
 		if (!gen::ElementTypeOfNode(Parent, ParentType) || !gen::ElementTypeOfNode(Child, ChildType))
 		{
-			return -1;
+			return false;
 		}
-		return gen::SlotFor(ParentType, ChildType);
+		OutSlot = gen::SlotFor(ParentType, ChildType);
+		return true;
+	}
+
+	/** True when `Batch` still describes exactly the children `Raw` holds. */
+	static bool BatchMatches(const TArray<FMjChildSlot>& Batch, const TArray<UMjNodeComponent*>& Raw)
+	{
+		if (Batch.Num() != Raw.Num())
+		{
+			return false;
+		}
+		for (int32 Index = 0; Index < Raw.Num(); ++Index)
+		{
+			if (Batch[Index].Node != Raw[Index])
+			{
+				return false;
+			}
+			if (Raw[Index] != nullptr && Batch[Index].Serial != Raw[Index]->Serial)
+			{
+				return false;
+			}
+		}
+		return true;
+	}
+
+	/** Resolve every child's slot once, and keep the answers on the parent. */
+	static void RebuildChildSlots(const UMjNodeComponent& Parent, const TArray<UMjNodeComponent*>& Raw)
+	{
+		psm::ElementType ParentType{};
+		const bool bParentIsElement = gen::ElementTypeOfNode(Parent, ParentType);
+
+		TArray<FMjChildSlot>& Batch = Parent.ChildSlotCache;
+		Batch.Reset(Raw.Num());
+		for (UMjNodeComponent* Child : Raw)
+		{
+			FMjChildSlot Entry;
+			Entry.Node = Child;
+			Entry.Serial = Child != nullptr ? Child->Serial : 0;
+			psm::ElementType ChildType{};
+			if (bParentIsElement && Child != nullptr && gen::ElementTypeOfNode(*Child, ChildType))
+			{
+				Entry.Slot = gen::SlotFor(ParentType, ChildType);
+				Entry.bIsElement = true;
+			}
+			Batch.Add(Entry);
+		}
+	}
+
+	/**
+	 * Extend the parent's batch with a link just made, instead of discarding it.
+	 *
+	 * Both graphs link a new child at the end, so appending keeps the batch in
+	 * step with the raw list. If it ever does not, the check in OrderedChildren
+	 * fails and the batch is rebuilt -- correctness does not rest on this.
+	 */
+	static void NoteChildLinked(const UMjNodeComponent& Parent, UMjNodeComponent& Child, int32 Slot, bool bIsElement)
+	{
+		FMjChildSlot Entry;
+		Entry.Node = &Child;
+		Entry.Serial = Child.Serial;
+		Entry.Slot = Slot;
+		Entry.bIsElement = bIsElement;
+		Parent.ChildSlotCache.Add(Entry);
 	}
 
 	template <class E, class Fn>

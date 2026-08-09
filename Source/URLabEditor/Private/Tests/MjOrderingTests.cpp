@@ -32,6 +32,7 @@
 #include "UObject/Package.h"
 
 #include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
+#include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
@@ -256,6 +257,114 @@ bool FMjImportedOrderUntouchedTest::RunTest(const FString& Parameters)
 		}
 	}
 	TestEqual(TEXT("an import leaves no element without a spec order"), Unstamped, 0);
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Perf.ImportChildQueries
+//   The reader adopts once per element, and adopting used to ask the parent for
+//   its children -- resolving every one of their slots through the schema
+//   tables again. A parent of k children paid that k times, so the table work
+//   grew as the square of the tree's width: quadrupling the model multiplied it
+//   by 5.6 rather than by 4. The slots are now resolved once per child and kept
+//   on the parent, checked against the live child list before use.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportChildQueriesTest, "URLab.Perf.ImportChildQueries",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+namespace MjOrderingTests
+{
+/** The two model sizes, a factor of four apart. */
+constexpr int32 SmallBodies = 25;
+constexpr int32 LargeBodies = 100;
+
+/**
+ * How far past the model's own growth the table work may go.
+ *
+ * Linear is 4.0 for a fourfold model and is not achievable exactly: an import
+ * consults the tables a model-independent number of times as well, which shows
+ * up as a small constant the small size pays proportionally more of. The
+ * quadratic term this replaces measured 5.64, so the bound separates the two.
+ */
+constexpr double MaxLookupGrowth = 5.0;
+
+/** Rows a table lookup may examine on average, unchanged by the batching. */
+constexpr double MaxRowsPerLookup = 4.0;
+
+/** A flat robot of `BodyCount` links, each with a joint, a geom and a site. */
+FString WideModel(int32 BodyCount)
+{
+	FString Xml = TEXT("<mujoco model=\"child_queries\">\n  <worldbody>\n");
+	for (int32 Index = 0; Index < BodyCount; ++Index)
+	{
+		Xml += FString::Printf(TEXT("    <body name=\"link%d\" pos=\"%.3f 0 0.5\">\n"), Index, 0.25 * Index);
+		Xml += FString::Printf(TEXT("      <joint name=\"hinge%d\" type=\"hinge\" axis=\"0 0 1\"/>\n"), Index);
+		Xml += FString::Printf(
+			TEXT("      <geom name=\"shape%d\" type=\"box\" size=\"0.05 0.05 0.05\"/>\n"), Index);
+		Xml += FString::Printf(TEXT("      <site name=\"mount%d\" size=\"0.01\"/>\n"), Index);
+		Xml += TEXT("    </body>\n");
+	}
+	Xml += TEXT("  </worldbody>\n</mujoco>\n");
+	return Xml;
+}
+
+/** What one import of `BodyCount` links cost in schema-table work. */
+struct FTableCost
+{
+	int64 Lookups = 0;
+	int64 RowVisits = 0;
+
+	double RowsPerLookup() const { return Lookups > 0 ? static_cast<double>(RowVisits) / Lookups : 0.0; }
+};
+
+bool MeasureImport(FAutomationTestBase& Test, int32 BodyCount, FTableCost& Out)
+{
+	const int64 Lookups = ps::ue::DispatchLookups();
+	const int64 Rows = ps::ue::DispatchRowVisits();
+	UBlueprint* Blueprint = ParseScratch(Test, WideModel(BodyCount));
+	Out.Lookups = ps::ue::DispatchLookups() - Lookups;
+	Out.RowVisits = ps::ue::DispatchRowVisits() - Rows;
+	return Blueprint != nullptr;
+}
+}  // namespace MjOrderingTests
+
+bool FMjImportChildQueriesTest::RunTest(const FString& Parameters)
+{
+	using namespace MjOrderingTests;
+
+	// The first import is thrown away: the tables and the schema's static state
+	// are built on first use, and that cost belongs to neither size.
+	FTableCost Discard;
+	if (!MeasureImport(*this, SmallBodies, Discard))
+	{
+		return false;
+	}
+
+	FTableCost Small;
+	FTableCost Large;
+	if (!MeasureImport(*this, SmallBodies, Small) || !MeasureImport(*this, LargeBodies, Large))
+	{
+		return false;
+	}
+
+	if (!TestTrue(TEXT("the small import consulted the schema tables"), Small.Lookups > 0))
+	{
+		return false;
+	}
+
+	const double Growth = static_cast<double>(Large.Lookups) / static_cast<double>(Small.Lookups);
+	AddInfo(FString::Printf(
+		TEXT("BENCH child_queries small_lookups=%lld large_lookups=%lld growth=%.2f rows_per_lookup=%.2f"),
+		Small.Lookups, Large.Lookups, Growth, Large.RowsPerLookup()));
+
+	TestTrue(FString::Printf(TEXT("table work grows with the model rather than with its square (%.2fx for a 4x model)"),
+				 Growth),
+		Growth <= MaxLookupGrowth);
+
+	// The batching must not have been bought by making each lookup do a scan.
+	TestTrue(FString::Printf(TEXT("dispatch answers in %.2f rows per lookup"), Large.RowsPerLookup()),
+		Large.RowsPerLookup() <= MaxRowsPerLookup);
 
 	return true;
 }

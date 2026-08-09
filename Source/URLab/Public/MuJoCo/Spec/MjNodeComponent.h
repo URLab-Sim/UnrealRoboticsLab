@@ -26,6 +26,26 @@ struct mjData_;
 typedef mjModel_ mjModel;
 typedef mjData_ mjData;
 
+class UMjNodeComponent;
+
+/**
+ * One raw child of an element, as the tree adapters last resolved it: the
+ * storage slot the schema puts it in, or a mark that the child is not a spec
+ * element at all.
+ *
+ * Kept by pointer AND serial. The pointer is what makes the batch cheap to
+ * check against the live child list; the serial is what makes the check exact,
+ * because a collected component's address can be handed to a new one and a
+ * different element type would sit in a different slot.
+ */
+struct FMjChildSlot
+{
+	UMjNodeComponent* Node = nullptr;
+	uint64 Serial = 0;
+	int32 Slot = -1;
+	bool bIsElement = false;
+};
+
 /**
  * The base of every generated MJCF element component.
  *
@@ -103,6 +123,24 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category = "MuJoCo|Provenance")
 	int32 SiblingIndex = INDEX_NONE;
+
+	/**
+	 * This element's children with their storage slots already resolved, so the
+	 * schema tables are asked once per child rather than once per question.
+	 *
+	 * Reading a spec asks a parent for its children constantly -- the reader asks
+	 * again for every element it inserts, and a whole-tree walk asks once per
+	 * node -- and answering means resolving each child's element type and its
+	 * slot under this parent through the dispatch tables. That made reading a
+	 * model cost the square of the number of children a parent has.
+	 *
+	 * Not serialized and not a UPROPERTY: it is derived from the tree and from
+	 * the schema, both of which are still there, so it is rebuilt rather than
+	 * saved. It is also never trusted on its own -- every use checks it against
+	 * the live child list first, which is what makes a structural edit made
+	 * behind the adapters' back correct itself instead of going unnoticed.
+	 */
+	mutable TArray<FMjChildSlot> ChildSlotCache;
 
 	// --- Provenance -------------------------------------------------------- //
 

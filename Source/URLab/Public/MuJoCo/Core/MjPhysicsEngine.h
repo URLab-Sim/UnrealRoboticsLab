@@ -27,6 +27,7 @@
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjSceneSpec.h"
 #include <functional>
 #include <atomic>
 #include "MjPhysicsEngine.generated.h"
@@ -292,11 +293,22 @@ public:
 	 * into. After this a caller can read `d->sensordata` at an element's
 	 * `BoundId` and get an answer.
 	 *
-	 * The previous model is torn down whether or not the new one compiles: a
-	 * half-installed scene that still answered from the old model would be
-	 * indistinguishable from a good one at every call site.
+	 * Transactional. Everything that can fail -- building the specs, composing
+	 * them, compiling, making the data -- happens before anything running is
+	 * touched, so a compile that fails costs the caller a diagnostic and leaves
+	 * the session stepping exactly the model it was already stepping.
 	 */
 	bool InstallCompiledSpec(FString& OutError);
+
+	/**
+	 * Drop the installed model, its data, and the scene they came from.
+	 *
+	 * The model belongs to the compiled scene rather than to this component, so
+	 * it cannot be freed on its own: the specs it was compiled from have to
+	 * outlive it, and only the scene knows that order. Callers that used to
+	 * delete the two pointers call this instead.
+	 */
+	void ReleaseCompiledScene();
 
 	/**
 	 * The MJCF of the scene the engine currently holds compiled.
@@ -483,7 +495,20 @@ private:
 	 *  was built against. */
 	FMjBinding InstalledBinding;
 
-	/** Write the compiled MJCF and MJB to Saved/URLab. Honours bSaveDebugXml. */
+#if URLAB_MJ_GEN
+	/**
+	 * The compiled scene the installed model belongs to.
+	 *
+	 * It owns the model, the composed scene spec and every participant spec, in
+	 * that destruction order. `m_model` is an alias into it and never an owner,
+	 * which is why replacing this is what retires a model. Held behind a pointer
+	 * so a worker that could not be joined can be left holding the model it is
+	 * inside rather than having it freed underneath it.
+	 */
+	TUniquePtr<urlab::spec::FMjCompiledScene> InstalledScene;
+#endif
+
+	/** Write the compiled scene and its MJB to Saved/URLab. Honours bSaveDebugXml. */
 	void SaveDebugArtifacts() const;
 
 	/** Guards RenderSnapshot. Inner to CallbackMutex on the producer

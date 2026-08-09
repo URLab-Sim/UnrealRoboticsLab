@@ -28,6 +28,7 @@
 #include "MuJoCo/Core/MjSimulationState.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjSceneOptions.h"
+#include "MuJoCo/Spec/MjAssetFiles.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjSceneContributor.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
@@ -192,8 +193,14 @@ void UMjPhysicsEngine::BeginDestroy()
 		{
 			UE_LOG(LogURLab, Warning,
 				TEXT("Physics async worker still running at BeginDestroy after %.1fs; ")
-					TEXT("leaking its sync event to avoid a use-after-free in the stuck step."),
+					TEXT("leaking its sync event and its model to avoid a use-after-free in the stuck step."),
 				kBeginDestroyWaitSec);
+#if URLAB_MJ_GEN
+			// The worker is inside a step against this model. Freeing the scene
+			// that owns it would pull the model out from under a running step,
+			// so it is abandoned for the same reason the sync event below is.
+			(void)InstalledScene.Release();
+#endif
 		}
 	}
 
@@ -610,27 +617,65 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 {
 	OutError.Reset();
 
+#if !URLAB_MJ_GEN
+	OutError = TEXT("built without the generated MuJoCo profile");
+	m_LastCompileError = OutError;
+	return false;
+#else
 	UWorld* World = GetWorld();
 	if (World == nullptr)
 	{
 		OutError = TEXT("no world to compile");
 		return false;
 	}
+	const AAMjManager* const Owner = Cast<AAMjManager>(GetOwner());
+	if (Owner == nullptr)
+	{
+		OutError = TEXT("no manager to take the scene's sections from");
+		m_LastCompileError = OutError;
+		return false;
+	}
 
 	TArray<AActor*> Actors;
 	UGameplayStatics::GetAllActorsOfClass(World, AMjArticulation::StaticClass(), Actors);
 
-	// Compile before tearing anything down, so a compile that fails costs the
-	// caller a diagnostic rather than the model it was running. The assembly is
-	// held rather than discarded because the ship-list has to come off the same
-	// projection the compiler was given, not a second walk of the level. This
-	// also re-authors every contributor's spec, so the contributor list is
-	// taken afterwards and describes the level the compiler was shown.
+	// The assembly is the projection of the level the compile is given: it
+	// decides who takes part and in what order, and the ship-list comes off the
+	// same projection rather than a second walk. It also re-authors every
+	// contributor's spec, so the contributor list is taken afterwards and
+	// describes the level the compiler was shown.
 	FSceneAssembly Scene;
 	BuildSceneAssembly(Scene);
 	const TArray<UObject*> Contributors = GatherSceneContributors();
-	FMjCompiled Compiled = MjCompileScene(Scene);
-	if (!Compiled.IsOk())
+
+	// Before anything reads `file`: an element whose asset the user replaced has
+	// to have that asset on disk and `file` pointing at it, or the compiler is
+	// handed the mesh it displaced.
+	const FSpecRef SceneRoot = Owner->GetSceneSpec();
+	MjSyncAssetFiles(SceneRoot);
+
+	urlab::spec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(SceneRoot);
+	for (const FMjSceneParticipant& Participant : Scene.GetParticipants())
+	{
+		MjSyncAssetFiles(Participant.Spec);
+		urlab::spec::FMjSceneSpecParticipant Placed;
+		Placed.Spec = Participant.Spec;
+		Placed.Prefix = Participant.Prefix;
+		Placed.MjPos = Participant.MjPos;
+		Placed.MjQuat = Participant.MjQuat;
+		Builder.AddParticipant(Placed);
+	}
+
+	// Everything that can fail happens here, before anything running is touched:
+	// a scene that does not compile costs the caller a diagnostic and leaves the
+	// session stepping the model it was already stepping.
+	urlab::spec::FMjCompiledScene Compiled = Builder.Compile();
+	for (const FMjSpecDiagnostic& Warning : Compiled.Warnings)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("Scene: %s"), *Warning.ToString());
+	}
+	if (!Compiled.IsValid())
 	{
 		TArray<FString> Reasons;
 		for (const FMjSpecDiagnostic& Diagnostic : Compiled.Errors)
@@ -638,6 +683,17 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 			Reasons.Add(Diagnostic.ToString());
 		}
 		OutError = Reasons.Num() > 0 ? FString::Join(Reasons, TEXT("; ")) : TEXT("the scene spec did not compile");
+		m_LastCompileError = OutError;
+		return false;
+	}
+
+	// The last thing that can fail. It is made against the new model and not yet
+	// installed, so a null here is still a return with nothing disturbed; the
+	// compiled scene deletes the model it produced on the way out.
+	mjData* const NewData = mj_makeData(Compiled.Model);
+	if (NewData == nullptr)
+	{
+		OutError = TEXT("mj_makeData returned null");
 		m_LastCompileError = OutError;
 		return false;
 	}
@@ -656,78 +712,89 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	}
 
 	// Read the running state out while the model that gives it meaning is still
-	// here. After the teardown below there is no way back to it: the addresses
-	// are the old model's and the old model is freed.
+	// here. After the swap below there is no way back to it: the addresses are
+	// the old model's and the old model is freed.
 	const FMjMigratedState Stash = StashState(m_model, m_data, InstalledBinding);
 
-	// Every id from the previous compile is now meaningless. Forgetting them
-	// before the model goes away means no element can be read against a model
-	// it never bound to, even for the length of this function.
+	// The MJCF a remote client is handed to reload this scene. The compile no
+	// longer goes through text, so it is written here rather than harvested from
+	// the compile, and it is written after the compile succeeded so a failed
+	// install leaves the previous scene's text as the scene on offer.
+	TArray<FMjSpecDiagnostic> WriteDiagnostics;
+	TMap<FString, FString> NewParticipantXml;
+	const FString NewXml = MjWriteSceneMjcf(Scene, NewParticipantXml, &WriteDiagnostics);
+	for (const FMjSpecDiagnostic& Diagnostic : WriteDiagnostics)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("Scene MJCF: %s"), *Diagnostic.ToString());
+	}
+
+	FMjBinding NewBinding = MjBindingOf(Compiled);
+
+	// The swap, under the fence the worker steps behind. The compiled scene owns
+	// the model, so publishing the scene is what publishes the model, and
+	// releasing the previous scene is what retires the previous model -- in the
+	// one order that is safe, the model before the specs it was compiled from.
+	{
+		FScopeLock Lock(&CallbackMutex);
+		mjData* const PreviousData = m_data;
+		TUniquePtr<urlab::spec::FMjCompiledScene> Previous = MoveTemp(InstalledScene);
+
+		InstalledScene = MakeUnique<urlab::spec::FMjCompiledScene>(MoveTemp(Compiled));
+		m_model = InstalledScene->Model;
+		m_data = NewData;
+
+		if (PreviousData != nullptr)
+		{
+			mj_deleteData(PreviousData);
+		}
+	}
+
+	CompiledXml = NewXml;
+	ParticipantXml = MoveTemp(NewParticipantXml);
+	ActiveAssetFiles = Scene.CollectAssetFiles();
+	InstalledBinding = MoveTemp(NewBinding);
+	m_LastCompileError.Empty();
+
+	// An element that bound again is told its new id below. An element that did
+	// not has to stop answering at all, because the id it still holds addresses
+	// a model that no longer exists.
+	const auto UnbindIfAbsent = [this](UMjNodeComponent& Node) {
+		if (!InstalledBinding.Id(Node).IsSet())
+		{
+			Node.Unbind();
+		}
+	};
 	for (AActor* Actor : Actors)
 	{
 		if (Actor == nullptr)
 		{
 			continue;
 		}
-		ForEachSpecNode(*Actor, [](UMjNodeComponent& Node) { Node.Unbind(); });
 		if (AMjArticulation* Articulation = Cast<AMjArticulation>(Actor))
 		{
 			Articulation->ClearControlSlots();
 			Articulation->ClearElementIndex();
 		}
+		ForEachSpecNode(*Actor, UnbindIfAbsent);
 	}
 	if (AAMjManager* Manager = Cast<AAMjManager>(GetOwner()))
 	{
-		ForEachSpecNode(*Manager, [](UMjNodeComponent& Node) { Node.Unbind(); });
+		ForEachSpecNode(*Manager, UnbindIfAbsent);
 	}
 	for (UObject* Object : Contributors)
 	{
-		if (AActor* Owner = ActorOfContributor(Object))
+		if (AActor* ContributorOwner = ActorOfContributor(Object))
 		{
-			ForEachSpecNode(*Owner, [](UMjNodeComponent& Node) { Node.Unbind(); });
+			ForEachSpecNode(*ContributorOwner, UnbindIfAbsent);
 		}
 	}
-
-	{
-		FScopeLock Lock(&CallbackMutex);
-		if (m_data != nullptr)
-		{
-			mj_deleteData(m_data);
-			m_data = nullptr;
-		}
-		if (m_model != nullptr)
-		{
-			mj_deleteModel(m_model);
-			m_model = nullptr;
-		}
-	}
-
-	// The ids it holds address a model that no longer exists. Dropped here
-	// rather than on the way out so that every path from this point on -- the
-	// failure returns included -- leaves nothing behind that a later install
-	// could mistake for the state of the model it is replacing.
-	InstalledBinding = FMjBinding{};
-
-	CompiledXml = MoveTemp(Compiled.Xml);
-	ParticipantXml = MoveTemp(Compiled.ParticipantXml);
-	ActiveAssetFiles = Scene.CollectAssetFiles();
-
-	m_model = Compiled.Release();
-	m_data = mj_makeData(m_model);
-	if (m_data == nullptr)
-	{
-		OutError = TEXT("mj_makeData returned null");
-		m_LastCompileError = OutError;
-		return false;
-	}
-	m_LastCompileError.Empty();
 
 	// One pass over the binding does both jobs: it tells each element its id,
 	// and it collects the actuator ids per articulation. The ids are the
 	// scene's, so an articulation's are neither zero-based nor contiguous, and
 	// there is nowhere else they could be recovered from.
 	TMap<AMjArticulation*, TArray<int32>> ActuatorIdsByArticulation;
-	for (const FMjBinding::FEntry& Entry : Compiled.Binding.GetEntries())
+	for (const FMjBinding::FEntry& Entry : InstalledBinding.GetEntries())
 	{
 		if (Entry.Node == nullptr || Entry.Id < 0)
 		{
@@ -788,7 +855,6 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	}
 
 	ApplyThreadPool();
-	ApplyOptions();
 
 	if (bSaveDebugXml)
 	{
@@ -802,18 +868,33 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	// on top of, so it has to happen first.
 	mj_step(m_model, m_data);
 	mj_resetData(m_model, m_data);
-	RestoreState(m_model, m_data, Compiled.Binding, Stash);
+	RestoreState(m_model, m_data, InstalledBinding, Stash);
 	mj_forward(m_model, m_data);
-
-	// Held for the next install, which cannot resolve these addresses once this
-	// model is gone.
-	InstalledBinding = Compiled.Binding;
 	return true;
+#endif  // URLAB_MJ_GEN
+}
+
+void UMjPhysicsEngine::ReleaseCompiledScene()
+{
+	FScopeLock Lock(&CallbackMutex);
+	if (m_data != nullptr)
+	{
+		mj_deleteData(m_data);
+		m_data = nullptr;
+	}
+	// The model is the compiled scene's, not this component's, so it goes when
+	// the scene does and never before the specs it was compiled from.
+	m_model = nullptr;
+#if URLAB_MJ_GEN
+	InstalledScene.Reset();
+#endif
+	// The addresses it resolves belong to a model that no longer exists.
+	InstalledBinding = FMjBinding{};
 }
 
 void UMjPhysicsEngine::SaveDebugArtifacts() const
 {
-	if (m_model == nullptr || CompiledXml.IsEmpty())
+	if (m_model == nullptr)
 	{
 		return;
 	}
@@ -824,13 +905,22 @@ void UMjPhysicsEngine::SaveDebugArtifacts() const
 	const FString MjbPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.mjb"));
 	mj_saveModel(m_model, TCHAR_TO_UTF8(*MjbPath), nullptr, mj_sizeModel(m_model));
 
-	// The text as the compiler was given it, rather than a re-serialisation of
-	// the model: this is the artifact that reproduces the compile.
-	FFileHelper::SaveStringToFile(CompiledXml, *FPaths::Combine(CacheDir, TEXT("scene_compiled.xml")));
-	for (const TPair<FString, FString>& Spec : ParticipantXml)
+#if URLAB_MJ_GEN
+	// The scene as it was actually composed, with its assets beside it, rather
+	// than the text a client is shipped: this one is written to be read by a
+	// person trying to understand what compiled.
+	if (InstalledScene.IsValid())
 	{
-		FFileHelper::SaveStringToFile(Spec.Value, *FPaths::Combine(CacheDir, Spec.Key));
+		TArray<FMjSpecDiagnostic> Diagnostics;
+		if (!InstalledScene->SaveDebugArtifacts(CacheDir, Diagnostics))
+		{
+			for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+			{
+				UE_LOG(LogURLab, Warning, TEXT("Scene artefact: %s"), *Diagnostic.ToString());
+			}
+		}
 	}
+#endif
 }
 
 bool UMjPhysicsEngine::BuildCompiledScene(FMjCompiledScene& Out, FString& OutError) const
@@ -1206,16 +1296,16 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 
 bool UMjPhysicsEngine::CompileModel()
 {
-	// The install does its own stop-and-join and its own teardown of the model
-	// it is replacing, so all that is left here is restarting the worker against
-	// whatever it produced.
-	m_MujocoComponents.Empty();
-	m_articulations.Empty();
-	m_heightfieldActors.Empty();
-
+	// The install does its own stop-and-join, its own registries and its own
+	// teardown of the model it is replacing, so all that is left here is
+	// restarting the worker against whatever it produced. Failure is read from
+	// the compile rather than from `IsInitialized`, because the install is
+	// transactional: a scene that does not compile leaves the previous one
+	// installed and running, which is indistinguishable from success by any
+	// question asked of the model.
 	Compile();
 
-	if (!IsInitialized())
+	if (!m_LastCompileError.IsEmpty())
 	{
 		return false;
 	}

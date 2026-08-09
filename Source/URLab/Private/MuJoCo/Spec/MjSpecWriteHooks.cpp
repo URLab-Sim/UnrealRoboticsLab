@@ -526,9 +526,11 @@ bool ApplyTendonPath(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	case ElementType::SpatialGeom:
 	{
 		const UMjSpatialGeom& Element = static_cast<const UMjSpatialGeom&>(Node);
+		// The empty string rather than a null pointer for an unauthored side
+		// site: MuJoCo takes it by value into a std::string, so null is not
+		// "there isn't one", it is an access violation.
 		const FString Side = Element.Sidesite.Get(FString());
-		Made = mjs_wrapGeom(Tendon, Utf8(Element.Geom),
-			Element.Sidesite.IsSet() ? Utf8(Side) : nullptr);
+		Made = mjs_wrapGeom(Tendon, Utf8(Element.Geom), Utf8(Side));
 		break;
 	}
 	case ElementType::Pulley:
@@ -1671,6 +1673,57 @@ bool AppendContext(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Macro, FStr
 	return true;
 }
 
+/**
+ * Point the expansion's body references at the body the macro was authored in.
+ *
+ * A `<flexcomp>` pins its vertices to the enclosing body BY NAME
+ * (`user_flexcomp.cc:517`). The wrapper has no such body -- the macro sits
+ * directly in its world body -- so an expansion parsed on its own names
+ * `world`, and after the attach that is the target spec's world rather than the
+ * body the user authored the macro in. The pins would land on the wrong body,
+ * and one attach later, under a participant prefix, the name resolves to
+ * nothing and MuJoCo drops the whole flex without a word
+ * (`user_model.cc:263-284` skips an element whose references do not resolve).
+ *
+ * So the substitution happens here, while the expansion is still its own spec
+ * and its `world` still means "wherever this macro was authored".
+ */
+void PointExpansionAtOwner(mjSpec& Expansion, const mjsBody& Owner)
+{
+	const mjString* const OwnerName = mjs_getName(const_cast<mjsBody&>(Owner).element);
+	const char* const Name = OwnerName != nullptr ? mjs_getString(OwnerName) : nullptr;
+	if (Name == nullptr || Name[0] == '\0' || std::string(Name) == "world")
+	{
+		// The macro was authored in the spec's own world body, which is what
+		// the wrapper already reproduces.
+		return;
+	}
+
+	const auto Repoint = [Name](mjStringVec* Names) {
+		if (Names == nullptr)
+		{
+			return;
+		}
+		for (int Index = 0; Index < static_cast<int>(Names->size()); ++Index)
+		{
+			if ((*Names)[Index] == "world")
+			{
+				mjs_setInStringVec(Names, Index, Name);
+			}
+		}
+	};
+
+	for (mjsElement* Element = mjs_firstElement(&Expansion, mjOBJ_FLEX); Element != nullptr;
+		 Element = mjs_nextElement(&Expansion, Element))
+	{
+		if (mjsFlex* const Flex = mjs_asFlex(Element))
+		{
+			Repoint(Flex->vertbody);
+			Repoint(Flex->nodebody);
+		}
+	}
+}
+
 bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
 	if (Ctx.Source == nullptr || Ctx.Spec == nullptr || Ctx.Body == nullptr)
@@ -1712,6 +1765,8 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 		return Ctx.Error(Node, FString::Printf(TEXT("this macro did not expand: %s"),
 			UTF8_TO_TCHAR(Error)));
 	}
+
+	PointExpansionAtOwner(*Expansion, *Ctx.Body);
 
 	// The enclosing frame is the parent, so a macro authored inside a `<frame>`
 	// expands under that frame's transform rather than under the body's.

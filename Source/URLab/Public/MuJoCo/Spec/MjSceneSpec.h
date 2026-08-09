@@ -64,6 +64,28 @@ struct URLAB_API FMjSceneAsset
 };
 
 /**
+ * What one component compiled into: the family MuJoCo gave it, and its id.
+ *
+ * The family comes off the element itself (`mjsElement::elemtype`) rather than
+ * from a table mapping schema elements onto `mjtObj`. A table has to be kept in
+ * step with the schema by hand and answers `mjOBJ_UNKNOWN` for anything it has
+ * not been taught, which is a new element silently becoming unbindable; the
+ * element already knows, and it cannot fall behind itself.
+ *
+ * Both are needed together, because an id means nothing without the family it
+ * indexes: `mj_id2name`, the address tables and the state migration all take
+ * the pair.
+ */
+struct URLAB_API FMjBoundElement
+{
+	/** An `mjtObj`, as MuJoCo spelled it on the element. */
+	int32 ObjType = 0;
+
+	/** The compiled-model id, always non-negative for a recorded binding. */
+	int32 Id = -1;
+};
+
+/**
  * The compiled scene: the model, the specs behind it, and the binding.
  *
  * Owns the model and every spec. Destruction deletes the model first, then the
@@ -88,7 +110,7 @@ struct URLAB_API FMjCompiledScene
 	mjModel* Model = nullptr;
 	FMjBuiltSpec Scene;
 	TArray<FMjBuiltSpec> Participants;
-	TMap<TObjectPtr<const UMjNodeComponent>, int32> BoundIds;
+	TMap<TObjectPtr<const UMjNodeComponent>, FMjBoundElement> BoundIds;
 	TArray<FMjSceneAsset> Assets;
 	TArray<FMjSpecDiagnostic> Errors;
 	TArray<FMjSpecDiagnostic> Warnings;

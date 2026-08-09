@@ -11,6 +11,7 @@
 #include "MuJoCo/Spec/MjAssetFiles.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjSceneSpec.h"
 
 THIRD_PARTY_INCLUDES_START
 #include <mujoco/mujoco.h>
@@ -673,6 +674,68 @@ FMjReservedNames::~FMjReservedNames()
 
 }  // namespace urlab::spec
 
+FMjBinding MjBindingOf(const urlab::spec::FMjCompiledScene& Scene)
+{
+	FMjBinding Out;
+	if (Scene.Model == nullptr)
+	{
+		return Out;
+	}
+
+	// Sorted rather than taken in map order, because the entries are read as a
+	// sequence downstream -- an articulation's actuator ids come off this walk --
+	// and a hash order is not a sequence anybody chose. Family then id is the
+	// order the compiler laid the model out in, which is the one the emitted-text
+	// binding produced by walking the tree.
+	TArray<FMjBinding::FEntry> Entries;
+	Entries.Reserve(Scene.BoundIds.Num());
+	for (const TPair<TObjectPtr<const UMjNodeComponent>, urlab::spec::FMjBoundElement>& Bound : Scene.BoundIds)
+	{
+		UMjNodeComponent* const Node = const_cast<UMjNodeComponent*>(Bound.Key.Get());
+		if (Node == nullptr || Bound.Value.Id < 0
+			|| Bound.Value.Id >= ObjectCountOf(Scene.Model, Bound.Value.ObjType))
+		{
+			continue;
+		}
+		Node->EnsureSerial();
+
+		FMjBinding::FEntry Entry;
+		Entry.Node = Node;
+		Entry.ObjType = Bound.Value.ObjType;
+		Entry.Id = Bound.Value.Id;
+		const char* const Name = mj_id2name(Scene.Model, Bound.Value.ObjType, Bound.Value.Id);
+		Entry.Name = Name != nullptr ? FString(UTF8_TO_TCHAR(Name)) : FString();
+		Entry.Serial = Node->Serial;
+		Entries.Add(MoveTemp(Entry));
+	}
+	Entries.Sort([](const FMjBinding::FEntry& A, const FMjBinding::FEntry& B) {
+		return A.ObjType != B.ObjType ? A.ObjType < B.ObjType : A.Id < B.Id;
+	});
+
+	for (FMjBinding::FEntry& Entry : Entries)
+	{
+		Out.Add(MoveTemp(Entry));
+	}
+	Out.SetModel(Scene.Model);
+	return Out;
+}
+
+FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
+	TArray<FMjSpecDiagnostic>* OutErrors, const FMjCompileOptions& Options)
+{
+	TArray<UMjNodeComponent*> Nodes;
+	TSet<const UMjNodeComponent*> Unnamable;
+	for (const FMjSceneParticipant& Participant : Scene.GetParticipants())
+	{
+		FDocNodes Tree = NodesOf(Participant.Spec);
+		Nodes.Append(Tree.Nodes);
+		Unnamable.Append(Tree.Unnamable);
+	}
+
+	const FReservedNames Reserved(Nodes, Unnamable, Options);
+	return Scene.WriteSceneMjcf(OutParticipantXml, OutErrors);
+}
+
 FMjCompiled MjCompileSpec(const FSpecRef& Spec, const FMjCompileOptions& Options)
 {
 	FMjCompiled Out;
@@ -747,6 +810,12 @@ FMjCompiled MjCompileScene(const FSceneAssembly& Scene, const FMjCompileOptions&
 }
 
 #else  // URLAB_MJ_GEN
+
+FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
+	TArray<FMjSpecDiagnostic>* OutErrors, const FMjCompileOptions&)
+{
+	return Scene.WriteSceneMjcf(OutParticipantXml, OutErrors);
+}
 
 FMjCompiled MjCompileSpec(const FSpecRef&, const FMjCompileOptions&)
 {

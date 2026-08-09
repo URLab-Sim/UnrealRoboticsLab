@@ -249,10 +249,11 @@ bool FMjSceneSpecComposeTest::RunTest(const FString& Parameters)
 
 	// Identity comes from the handles rather than from names: the components
 	// were never given one and still bind.
-	const int32* const BoundBody = Scene.BoundIds.Find(Link);
+	const mjspec::FMjBoundElement* const BoundBody = Scene.BoundIds.Find(Link);
 	if (TestNotNull(TEXT("the participant's body bound"), BoundBody))
 	{
-		TestEqual(TEXT("it bound to the id it compiled to"), *BoundBody, BodyId);
+		TestEqual(TEXT("it bound to the id it compiled to"), BoundBody->Id, BodyId);
+		TestEqual(TEXT("it bound as a body"), BoundBody->ObjType, static_cast<int32>(mjOBJ_BODY));
 	}
 	TestTrue(TEXT("the participant's geom bound"), Scene.BoundIds.Contains(Shape));
 
@@ -330,10 +331,11 @@ bool FMjSceneSpecManagerContentTest::RunTest(const FString& Parameters)
 	}
 
 	// Bug 4 in one line: manager-authored content binds like a participant's.
-	const int32* const BoundGeom = Scene.BoundIds.Find(Geom);
+	const mjspec::FMjBoundElement* const BoundGeom = Scene.BoundIds.Find(Geom);
 	if (TestNotNull(TEXT("the manager's geom bound"), BoundGeom))
 	{
-		TestEqual(TEXT("it bound to the id it compiled to"), *BoundGeom, GeomId);
+		TestEqual(TEXT("it bound to the id it compiled to"), BoundGeom->Id, GeomId);
+		TestEqual(TEXT("it bound as a geom"), BoundGeom->ObjType, static_cast<int32>(mjOBJ_GEOM));
 	}
 	TestTrue(TEXT("the manager's mesh bound"), Scene.BoundIds.Contains(Mesh));
 	TestTrue(TEXT("the participant still bound"), Scene.BoundIds.Contains(Ball));

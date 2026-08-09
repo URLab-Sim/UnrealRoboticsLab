@@ -718,16 +718,10 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// detached thread may still be executing mj_step and reading these.
 	if (PhysicsEngine && bAsyncExited)
 	{
-		if (PhysicsEngine->m_data)
-		{
-			mj_deleteData(PhysicsEngine->m_data);
-			PhysicsEngine->m_data = nullptr;
-		}
-		if (PhysicsEngine->m_model)
-		{
-			mj_deleteModel(PhysicsEngine->m_model);
-			PhysicsEngine->m_model = nullptr;
-		}
+		// The model belongs to the compiled scene, which also owns the specs it
+		// was compiled from and knows the order they have to go in, so the two
+		// pointers cannot be freed on their own.
+		PhysicsEngine->ReleaseCompiledScene();
 		PhysicsEngine->m_heightfieldActors.Empty();
 		PhysicsEngine->m_articulations.Empty();
 		PhysicsEngine->m_MujocoComponents.Empty();

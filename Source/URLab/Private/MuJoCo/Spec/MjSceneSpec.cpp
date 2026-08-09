@@ -500,7 +500,10 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 			const int32 Id = mjs_getId(Entry.Value);
 			if (Id >= 0)
 			{
-				Out.BoundIds.Add(Entry.Key, Id);
+				FMjBoundElement Bound;
+				Bound.ObjType = Entry.Value->elemtype;
+				Bound.Id = Id;
+				Out.BoundIds.Add(Entry.Key, Bound);
 			}
 		}
 	};

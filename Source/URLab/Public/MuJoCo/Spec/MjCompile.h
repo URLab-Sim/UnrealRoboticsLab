@@ -35,6 +35,11 @@ typedef struct mjModel_ mjModel;
 
 class UMjNodeComponent;
 
+namespace urlab::spec
+{
+struct FMjCompiledScene;
+}
+
 /** How a compile is performed. */
 struct URLAB_API FMjCompileOptions
 {
@@ -157,6 +162,30 @@ struct URLAB_API FMjCompiled
 	/** Hand the model to the caller and stop owning it. */
 	mjModel* Release();
 };
+
+/**
+ * The engine-facing binding of a scene the spec path compiled.
+ *
+ * The ids are the ones the compile recorded against the elements themselves, so
+ * nothing here searches the model: names are read back out of it with
+ * `mj_id2name` rather than used to find anything. Elements of a family the model
+ * holds no objects of -- a `<default>` class, which exists in the spec and not
+ * in the model -- are left out, because an id into a table that does not exist
+ * is worse than no id at all.
+ */
+URLAB_API FMjBinding MjBindingOf(const urlab::spec::FMjCompiledScene& Scene);
+
+/**
+ * The scene's MJCF, named as the compiled model is.
+ *
+ * The compile no longer goes through text, but the text is still what a remote
+ * client is handed to reload the scene, and it has to spell every element the
+ * way the model does or a client reconciling by name finds nothing. So the same
+ * reservation the emitted-text compile applied is applied here, for the write
+ * and no longer than that.
+ */
+URLAB_API FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
+	TArray<FMjSpecDiagnostic>* OutErrors = nullptr, const FMjCompileOptions& Options = {});
 
 /** Compile one spec on its own: no attach, no scene, no prefix. */
 URLAB_API FMjCompiled MjCompileSpec(const FSpecRef& Spec, const FMjCompileOptions& Options = {});

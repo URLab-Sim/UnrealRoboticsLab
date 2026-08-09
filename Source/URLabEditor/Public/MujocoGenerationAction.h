@@ -29,6 +29,8 @@
 
 #include "AssetActionUtility.h"
 
+#include "MuJoCo/Spec/MjSpecRef.h"
+
 #include "MujocoGenerationAction.generated.h"
 
 class UBlueprint;
@@ -57,7 +59,8 @@ public:
 	 * out first, because a construction script holding two spec roots
 	 * answers every later question from whichever one it happens to reach first.
 	 */
-	bool GenerateForBlueprint(UBlueprint* Blueprint, const FString& XmlPath);
+	bool GenerateForBlueprint(UBlueprint* Blueprint, const FString& XmlPath,
+		const FMjDocParseOptions& Options = {});
 
 	/**
 	 * As above, for MJCF text already in hand.
@@ -67,7 +70,8 @@ public:
 	 * in, so a caller holding text from somewhere else still has to say where
 	 * that text would have lived.
 	 */
-	bool GenerateFromXml(UBlueprint* Blueprint, const FString& Xml, const FString& Filename);
+	bool GenerateFromXml(UBlueprint* Blueprint, const FString& Xml, const FString& Filename,
+		const FMjDocParseOptions& Options = {});
 
 	/** Give a fresh articulation Blueprint an empty spec to author into. */
 	void SetupEmptyArticulation(UBlueprint* Blueprint);

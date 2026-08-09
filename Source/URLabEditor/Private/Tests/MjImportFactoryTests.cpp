@@ -18,9 +18,13 @@
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
 
+#include "Kismet2/KismetEditorUtilities.h"
+
 #include "MjPythonHelper.h"
+#include "MujocoGenerationAction.h"
 #include "MujocoImportFactory.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 
 namespace
@@ -151,6 +155,35 @@ FString RecordedSource(const UBlueprint* Blueprint)
 	}
 	const AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject());
 	return CDO != nullptr ? CDO->MuJoCoXMLFile.FilePath : FString();
+}
+
+/** True when the Blueprint's spec holds an element the model named `MjName`. */
+bool HasElementNamed(const UBlueprint* Blueprint, const FString& MjName)
+{
+	if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr)
+	{
+		return false;
+	}
+	for (const USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+	{
+		const UMjNodeComponent* Element = Node != nullptr
+			? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
+		if (Element != nullptr && Element->MjName.IsSet() && Element->MjName.GetValue() == MjName)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/** An empty articulation Blueprint in a package of this run's own. */
+UBlueprint* MakeScratchBlueprint()
+{
+	const FString Unique = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
+	UPackage* Package = CreatePackage(*(FString(TEXT("/Temp/URLabImportOptions_")) + Unique));
+	return FKismetEditorUtilities::CreateBlueprint(AMjArticulation::StaticClass(), Package,
+		*(FString(TEXT("OptionsProbe_")) + Unique), BPTYPE_Normal, UBlueprint::StaticClass(),
+		UBlueprintGeneratedClass::StaticClass());
 }
 }  // namespace
 
@@ -426,7 +459,9 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 		UBlueprint* Produced = nullptr;
 		FString Error;
 		bool bCancelled = false;
-		const bool bOk = UMujocoImportFactory::ImportModel(UnpreparableXml,
+		FMjImportSettings Settings;
+		Settings.bAllowPrompts = false;
+		const bool bOk = UMujocoImportFactory::ImportModel(UnpreparableXml, Settings,
 			[&Acquisitions]() -> UBlueprint* {
 				++Acquisitions;
 				return nullptr;
@@ -473,6 +508,86 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 		TestTrue(TEXT("stopping early is reported as a cancellation"), bCancelled);
 		TestEqual(TEXT("the Blueprint that was already there is untouched"),
 			ComponentNames(First.AsBlueprint()), NamesBefore);
+	}
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Import.ExternalIncludeOptionReachesTheReader
+//   The external-include boundary had no way to be reached: the reader refuses
+//   an <include> that escapes the model's directory tree, and nothing in the
+//   editor could say otherwise. The import dialog now carries the option, so
+//   what matters here is that the option a caller sets is the one the reader
+//   honours, in both positions.
+//
+//   Both halves go through APIs that report rather than log, so the test says
+//   what happened without the run having to expect error output.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportExternalIncludeOption,
+	"URLab.Import.ExternalIncludeOptionReachesTheReader",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
+{
+	const FString Root = ScratchDir(TEXT("Includes"));
+	const FString ModelDir = Root / TEXT("model");
+	const FString OutsideDir = Root / TEXT("outside");
+	IFileManager::Get().MakeDirectory(*ModelDir, /*Tree=*/true);
+	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
+
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujocoinclude>\n")
+		TEXT("  <worldbody>\n")
+		TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
+		TEXT("  </worldbody>\n")
+		TEXT("</mujocoinclude>\n")), *(OutsideDir / TEXT("fragment.xml")));
+
+	const FString ModelPath = ModelDir / TEXT("host.xml");
+	const FString ModelXml =
+		TEXT("<mujoco model=\"host\">\n")
+		TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
+		TEXT("  <worldbody>\n")
+		TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
+		TEXT("  </worldbody>\n")
+		TEXT("</mujoco>\n");
+	FFileHelper::SaveStringToFile(ModelXml, *ModelPath);
+
+	// Off, the default: the escaping include does not reach the spec.
+	{
+		UBlueprint* Blueprint = MakeScratchBlueprint();
+		if (Blueprint == nullptr)
+		{
+			AddError(TEXT("could not create a scratch Blueprint"));
+			return false;
+		}
+		FMjDocParseOptions Options;
+		TestFalse(TEXT("the option is off by default"), Options.bAllowExternalIncludes);
+
+		MjParseIntoBlueprint(*Blueprint, ModelXml, ModelPath, Options);
+		TestFalse(TEXT("an escaping include is refused by default"),
+			HasElementNamed(Blueprint, TEXT("from_outside")));
+	}
+
+	// On, and carried all the way through the generation action the importer
+	// uses: the same include is read.
+	{
+		UBlueprint* Blueprint = MakeScratchBlueprint();
+		if (Blueprint == nullptr)
+		{
+			AddError(TEXT("could not create a scratch Blueprint"));
+			return false;
+		}
+		FMjDocParseOptions Options;
+		Options.bAllowExternalIncludes = true;
+
+		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
+		TestTrue(TEXT("the model reads when escaping includes are allowed"),
+			Generator->GenerateFromXml(Blueprint, ModelXml, ModelPath, Options));
+		TestTrue(TEXT("the option reaches the reader through the generation action"),
+			HasElementNamed(Blueprint, TEXT("from_outside")));
+		TestTrue(TEXT("the model's own content is still there"),
+			HasElementNamed(Blueprint, TEXT("host_body")));
 	}
 
 	return true;

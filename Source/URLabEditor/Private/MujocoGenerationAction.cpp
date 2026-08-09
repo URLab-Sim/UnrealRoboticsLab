@@ -247,7 +247,8 @@ void UMujocoGenerationAction::GenerateMuJoCoComponents()
 	}
 }
 
-bool UMujocoGenerationAction::GenerateForBlueprint(UBlueprint* Blueprint, const FString& XmlPath)
+bool UMujocoGenerationAction::GenerateForBlueprint(UBlueprint* Blueprint, const FString& XmlPath,
+	const FMjDocParseOptions& Options)
 {
 	if (Blueprint == nullptr || XmlPath.IsEmpty())
 	{
@@ -261,10 +262,11 @@ bool UMujocoGenerationAction::GenerateForBlueprint(UBlueprint* Blueprint, const 
 		return false;
 	}
 
-	return GenerateFromXml(Blueprint, Xml, XmlPath);
+	return GenerateFromXml(Blueprint, Xml, XmlPath, Options);
 }
 
-bool UMujocoGenerationAction::GenerateFromXml(UBlueprint* Blueprint, const FString& Xml, const FString& Filename)
+bool UMujocoGenerationAction::GenerateFromXml(UBlueprint* Blueprint, const FString& Xml, const FString& Filename,
+	const FMjDocParseOptions& Options)
 {
 	if (Blueprint == nullptr)
 	{
@@ -273,7 +275,7 @@ bool UMujocoGenerationAction::GenerateFromXml(UBlueprint* Blueprint, const FStri
 
 	ClearSpec(*Blueprint);
 
-	const FMjSpecParseResult Result = MjParseIntoBlueprint(*Blueprint, Xml, Filename);
+	const FMjSpecParseResult Result = MjParseIntoBlueprint(*Blueprint, Xml, Filename, Options);
 	LogDiagnostics(Result, Filename);
 	if (!Result.IsOk())
 	{

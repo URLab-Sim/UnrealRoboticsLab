@@ -25,9 +25,28 @@
 #include "CoreMinimal.h"
 #include "EditorReimportHandler.h"
 #include "Factories/Factory.h"
+
+#include "MuJoCo/Spec/MjSpecRef.h"
+
 #include "MujocoImportFactory.generated.h"
 
 class UBlueprint;
+
+/** What an import has been told to do, decided before it starts. */
+struct FMjImportSettings
+{
+	/** Parse-time options, the external-include boundary among them. */
+	FMjDocParseOptions Parse;
+
+	/**
+	 * Whether this import may put a dialog in front of somebody.
+	 *
+	 * False for automated and scripted imports, which have nobody to answer
+	 * one: an unanswered dialog resolves to Cancel, so prompting unattended
+	 * turns every scripted import into a cancellation.
+	 */
+	bool bAllowPrompts = true;
+};
 
 /**
  * @class UMujocoImportFactory
@@ -65,8 +84,9 @@ public:
 	 * `OutBlueprint` carries whatever `AcquireBlueprint` produced, including
 	 * when the read then failed, so the caller can decide what to do with it.
 	 */
-	static bool ImportModel(const FString& SourceXmlPath, TFunctionRef<UBlueprint*()> AcquireBlueprint,
-		UBlueprint*& OutBlueprint, FString& OutError, bool& bOutCancelled);
+	static bool ImportModel(const FString& SourceXmlPath, const FMjImportSettings& Settings,
+		TFunctionRef<UBlueprint*()> AcquireBlueprint, UBlueprint*& OutBlueprint,
+		FString& OutError, bool& bOutCancelled);
 
 	/**
 	 * Where a model's prepared copy is written.

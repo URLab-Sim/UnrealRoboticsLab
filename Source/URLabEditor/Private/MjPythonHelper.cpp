@@ -180,9 +180,22 @@ bool FMjPythonHelper::InstallPythonPackages(const FString& PythonPath, FString& 
 	return false;
 }
 
-FString FMjPythonHelper::EnsurePythonReady(bool& bOutCancelled)
+bool FMjPythonHelper::IsPythonReady()
+{
+	const FString PythonPath = ResolvePythonPath();
+	return ValidatePythonBinary(PythonPath) && CheckPythonPackages(PythonPath);
+}
+
+FString FMjPythonHelper::EnsurePythonReady(bool bAllowPrompts, bool& bOutCancelled)
 {
 	bOutCancelled = false;
+
+	if (!bAllowPrompts)
+	{
+		const FString Configured = ResolvePythonPath();
+		return IsPythonReady() ? Configured : FString();
+	}
+
 	bool bNeedsFirstTimeSetup = GetStoredPythonOverride().IsEmpty();
 
 	FString PythonPath = ResolvePythonPath();

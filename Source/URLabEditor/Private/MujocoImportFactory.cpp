@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MujocoImportFactory.h"
+#include "MjImportOptionsDialog.h"
 #include "MujocoGenerationAction.h"
 #include "MjPythonHelper.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -38,6 +39,18 @@
 
 namespace
 {
+/** The mesh preparation script that ships with the plugin, if it is there. */
+FString PreparationScriptPath()
+{
+	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UnrealRoboticsLab"));
+	if (!Plugin.IsValid())
+	{
+		return FString();
+	}
+	const FString ScriptPath = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Scripts/clean_meshes.py"));
+	return FPaths::FileExists(ScriptPath) ? ScriptPath : FString();
+}
+
 /**
  * Prepare `SourceXmlPath`'s meshes and report the document to parse.
  *
@@ -45,28 +58,22 @@ namespace
  * Python setup -- leaves the original in `OutXmlPath` and succeeds, because
  * that is a stated choice. Preparation that RAN and failed returns false.
  */
-bool PrepareMeshes(const FString& SourceXmlPath, FString& OutXmlPath, FString& OutError, bool& bOutCancelled)
+bool PrepareMeshes(const FString& SourceXmlPath, bool bAllowPrompts, FString& OutXmlPath,
+	FString& OutError, bool& bOutCancelled)
 {
 	OutXmlPath = SourceXmlPath;
 	OutError.Reset();
 	bOutCancelled = false;
 
-	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UnrealRoboticsLab"));
-	if (!Plugin.IsValid())
-	{
-		OutError = TEXT("the UnrealRoboticsLab plugin directory could not be located");
-		return false;
-	}
-
-	const FString ScriptPath = FPaths::Combine(Plugin->GetBaseDir(), TEXT("Scripts/clean_meshes.py"));
-	if (!FPaths::FileExists(ScriptPath))
+	const FString ScriptPath = PreparationScriptPath();
+	if (ScriptPath.IsEmpty())
 	{
 		UE_LOG(LogURLabEditor, Warning,
-			TEXT("Mesh preparation script missing at '%s' -- importing the model as authored."), *ScriptPath);
+			TEXT("Mesh preparation script not found -- importing the model as authored."));
 		return true;
 	}
 
-	const FString PythonExe = FMjPythonHelper::EnsurePythonReady(bOutCancelled);
+	const FString PythonExe = FMjPythonHelper::EnsurePythonReady(bAllowPrompts, bOutCancelled);
 	if (bOutCancelled)
 	{
 		return false;
@@ -79,6 +86,25 @@ bool PrepareMeshes(const FString& SourceXmlPath, FString& OutXmlPath, FString& O
 	}
 
 	return UMujocoImportFactory::RunMeshPreparation(PythonExe, ScriptPath, SourceXmlPath, OutXmlPath, OutError);
+}
+
+/** What the import dialog says about mesh preparation for this run. */
+FText PreparationStatusText()
+{
+	if (PreparationScriptPath().IsEmpty())
+	{
+		return NSLOCTEXT("URLab", "PrepMissing",
+			"Mesh preparation is unavailable: the preparation script is missing. "
+			"The model will be imported exactly as authored.");
+	}
+	if (!FMjPythonHelper::IsPythonReady())
+	{
+		return NSLOCTEXT("URLab", "PrepNeedsSetup",
+			"Mesh preparation needs Python with trimesh, numpy, scipy, networkx and Pillow. "
+			"You will be asked to set that up before the model is read.");
+	}
+	return NSLOCTEXT("URLab", "PrepWillRun",
+		"Meshes will be converted for Unreal before the model is read.");
 }
 
 /**
@@ -197,7 +223,7 @@ UMujocoImportFactory::UMujocoImportFactory()
 	bEditorImport = true;
 }
 
-bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath,
+bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath, const FMjImportSettings& Settings,
 	TFunctionRef<UBlueprint*()> AcquireBlueprint, UBlueprint*& OutBlueprint,
 	FString& OutError, bool& bOutCancelled)
 {
@@ -206,7 +232,7 @@ bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath,
 	bOutCancelled = false;
 
 	FString PreparedXmlPath;
-	if (!PrepareMeshes(SourceXmlPath, PreparedXmlPath, OutError, bOutCancelled))
+	if (!PrepareMeshes(SourceXmlPath, Settings.bAllowPrompts, PreparedXmlPath, OutError, bOutCancelled))
 	{
 		return false;
 	}
@@ -229,7 +255,7 @@ bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath,
 	// Reads the prepared XML into the Blueprint's construction script, imports
 	// the assets it references, and compiles.
 	UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
-	if (!Generator->GenerateForBlueprint(OutBlueprint, PreparedXmlPath))
+	if (!Generator->GenerateForBlueprint(OutBlueprint, PreparedXmlPath, Settings.Parse))
 	{
 		OutError = FString::Printf(TEXT("'%s' produced no spec."), *PreparedXmlPath);
 		return false;
@@ -288,11 +314,16 @@ EReimportResult::Type UMujocoImportFactory::Reimport(UObject* Obj)
 		return EReimportResult::Failed;
 	}
 
+	// No dialog on the way back in: reimport-all runs in bulk and the security
+	// option returns to its default, which is the safe direction to fail in.
+	FMjImportSettings Settings;
+	Settings.bAllowPrompts = false;
+
 	UBlueprint* const Existing = Cast<UBlueprint>(Obj);
 	UBlueprint* Read = nullptr;
 	FString Error;
 	bool bCancelled = false;
-	const bool bOk = ImportModel(Filenames[0], [Existing]() { return Existing; },
+	const bool bOk = ImportModel(Filenames[0], Settings, [Existing]() { return Existing; },
 		Read, Error, bCancelled);
 
 	if (bCancelled)
@@ -345,6 +376,19 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 		return nullptr;
 	}
 
+	// An automated import has nobody to answer a dialog, so it takes the
+	// defaults; that is also what keeps the Python first-run setup silent in a
+	// scripted run, where an unanswered prompt would resolve to Cancel.
+	FMjImportSettings Settings;
+	Settings.bAllowPrompts = !IsAutomatedImport();
+	if (Settings.bAllowPrompts
+		&& !ShowMjImportOptionsDialog(Filename, PreparationStatusText(), Settings.Parse))
+	{
+		UE_LOG(LogURLabEditor, Log, TEXT("Import of '%s' cancelled from the options dialog."), *Filename);
+		bOutOperationCanceled = true;
+		return nullptr;
+	}
+
 	FScopedSlowTask SlowTask(2.f, NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
 	SlowTask.MakeDialog(/*bShowCancelButton=*/false);
 	SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
@@ -354,7 +398,7 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 	// as making an asset.
 	UBlueprint* NewBP = nullptr;
 	FString Error;
-	const bool bImported = ImportModel(Filename,
+	const bool bImported = ImportModel(Filename, Settings,
 		[&]() -> UBlueprint* {
 			SlowTask.EnterProgressFrame(1.f,
 				NSLOCTEXT("URLab", "ImportStep1", "Building Blueprint components..."));

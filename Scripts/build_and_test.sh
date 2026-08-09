@@ -42,7 +42,10 @@ set -eu
 
 TARGET=""
 FILTER="URLab"
-LOG="/tmp/urlab_test.log"
+# Unique per run. Two runs sharing one path collide on the file lock: the loser
+# dies outright, and the winner can be left with a truncated or empty log, which
+# greps to zero failures and reads exactly like a clean pass.
+LOG="/tmp/urlab_test_$(date +%Y%m%d-%H%M%S)_$$.log"
 ENGINE=""
 PROJECT=""
 
@@ -123,7 +126,20 @@ echo ">>> Building $TARGET (Win64 Development)..."
 # target name it makes UBT's two action-graph passes ambiguous and bails with
 # Result: Failed (ActionGraphInvalid). Just the positional target is enough.
 BUILD_OUT=$("$BAT" "$TARGET" Win64 Development "-Project=$PROJECT" -Progress 2>&1 || true)
-echo "$BUILD_OUT" | tail -10
+
+# The whole build output goes to a file, and what reaches the console is the
+# diagnostics rather than the last ten lines. A failing build is explained by
+# its FIRST error; the tail is whatever the toolchain happened to say
+# afterwards, which on a large generated translation unit is usually a summary
+# that names no file at all.
+BUILD_LOG="$LOG.build.txt"
+printf '%s\n' "$BUILD_OUT" > "$BUILD_LOG"
+if printf '%s\n' "$BUILD_OUT" | grep -qE 'error [A-Z]+[0-9]+|error:|fatal error'; then
+    printf '%s\n' "$BUILD_OUT" | grep -E 'error [A-Z]+[0-9]+|error:|fatal error|Result: ' | head -40
+else
+    printf '%s\n' "$BUILD_OUT" | tail -10
+fi
+echo ">>> Full build output: $BUILD_LOG"
 if echo "$BUILD_OUT" | grep -q "Result: Succeeded"; then
     BUILD_STATUS="Succeeded"
 else
@@ -160,8 +176,13 @@ fi
 # The SHA-256 of the log is sufficient for reviewers to verify content
 # integrity when they re-run the suite themselves (#37).
 TS=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
-GIT_SHA=$(git rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
-GIT_BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+# Asked of the PLUGIN repository explicitly, not of whatever directory the
+# script happened to be invoked from. The SHA in this block is what ties a gate
+# result to a commit in the record, so it must not depend on the caller's
+# working directory: run from the host project root, a bare `git rev-parse`
+# answers for the wrong repository or for none.
+GIT_SHA=$(git -C "$SCRIPT_DIR" rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
+GIT_BRANCH=$(git -C "$SCRIPT_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
 
 # Strip the engine path down to its last segment (e.g. 'UE_5.7'). The full
 # path can contain the user's install root on a non-standard layout.

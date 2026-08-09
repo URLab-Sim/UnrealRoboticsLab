@@ -48,7 +48,10 @@ param(
     [Parameter(Mandatory = $true)] [string] $Project,
     [string] $Target = '',
     [string] $Filter = 'URLab',
-    [string] $Log    = (Join-Path $env:TEMP 'urlab_test.log')
+    # Unique per run. Two runs sharing one path collide on the file lock: the
+    # loser dies outright, and the winner can be left with a truncated or empty
+    # log, which greps to zero failures and reads exactly like a clean pass.
+    [string] $Log    = (Join-Path $env:TEMP ('urlab_test_{0}_{1}.log' -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID))
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,7 +98,21 @@ Write-Host ">>> Building $Target (Win64 Development)..."
 # Result: Failed (ActionGraphInvalid). Just the positional target is enough.
 $buildArgs = @($Target, 'Win64', 'Development', "-Project=$Project", '-Progress')
 $buildOut  = & $bat @buildArgs 2>&1
-$buildOut | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
+
+# The whole build output goes to a file, and what reaches the console is the
+# diagnostics rather than the last ten lines. A failing build is explained by
+# its FIRST error; the tail is whatever the toolchain happened to say
+# afterwards, which on a large generated translation unit is usually a summary
+# that names no file at all.
+$buildLog = "$Log.build.txt"
+$buildOut | Out-File -FilePath $buildLog -Encoding utf8
+$diagnostics = $buildOut | Select-String -Pattern 'error [A-Z]+[0-9]+|error:|fatal error|Result: '
+if ($diagnostics) {
+    $diagnostics | Select-Object -First 40 | ForEach-Object { Write-Host $_ }
+} else {
+    $buildOut | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
+}
+Write-Host ">>> Full build output: $buildLog"
 $buildStatus = if ($buildOut -match 'Result: Succeeded') { 'Succeeded' } else { 'Failed' }
 
 # --- Test ------------------------------------------------------------------
@@ -132,10 +149,15 @@ if ($buildStatus -eq 'Succeeded') {
 # runs. The SHA-256 of the log is sufficient for reviewers to verify content
 # integrity when they re-run the suite themselves (#37).
 $ts        = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + ' UTC'
-try {
-    $gitSha    = (git rev-parse --short=8 HEAD 2>$null).Trim()
-    $gitBranch = (git rev-parse --abbrev-ref HEAD 2>$null).Trim()
-} catch { $gitSha = 'unknown'; $gitBranch = 'unknown' }
+# Asked of the PLUGIN repository explicitly, not of whatever directory the
+# script happened to be invoked from. The SHA in this block is what ties a gate
+# result to a commit in the record, so it must not depend on the caller's
+# working directory: run from the host project root, a bare `git rev-parse`
+# answers for the wrong repository or for none.
+$gitSha    = (git -C $PSScriptRoot rev-parse --short=8 HEAD 2>$null)
+$gitBranch = (git -C $PSScriptRoot rev-parse --abbrev-ref HEAD 2>$null)
+if (-not $gitSha)    { $gitSha    = 'unknown' } else { $gitSha    = $gitSha.Trim() }
+if (-not $gitBranch) { $gitBranch = 'unknown' } else { $gitBranch = $gitBranch.Trim() }
 
 # Strip the engine path down to its last segment (e.g. 'UE_5.7'). The full
 # path can contain the user's install root on a non-standard layout.

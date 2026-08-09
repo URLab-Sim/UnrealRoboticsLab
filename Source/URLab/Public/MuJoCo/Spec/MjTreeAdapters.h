@@ -63,13 +63,20 @@ struct FMjOrderedChild
 /**
  * Spec order for a set of siblings.
  *
- * Sorted on (slot, SiblingIndex, Serial). The serial tie-break is not defensive
- * padding: SiblingIndex is authored data and can be duplicated by a hand edit, a
- * merge, or a partially-migrated asset, and a sort that left ties to storage
- * order would be nondeterministic in exactly the case Unreal gives no ordering
- * guarantee for -- a level instance, whose AttachChildren is Transient and
- * rebuilt from registration order. Serials are minted in spec order by the
- * reader, so the tie-break resolves to the original spec order.
+ * Sorted on (slot, stamped before unstamped, SiblingIndex, Serial). The serial
+ * tie-break is not defensive padding: SiblingIndex is authored data and can be
+ * duplicated by a hand edit, a merge, or a partially-migrated asset, and a sort
+ * that left ties to storage order would be nondeterministic in exactly the case
+ * Unreal gives no ordering guarantee for -- a level instance, whose
+ * AttachChildren is Transient and rebuilt from registration order. Serials are
+ * minted in spec order by the reader, so the tie-break resolves to the original
+ * spec order.
+ *
+ * An unstamped sibling (`SiblingIndex == INDEX_NONE`, which is what a component
+ * added by hand in the components panel carries) orders after every stamped one
+ * in its slot, and unstamped siblings order among themselves by serial, which is
+ * creation order. That is what makes adding an element an append rather than an
+ * insertion at the front of its group.
  */
 URLAB_API void MjSortSpecOrder(TArray<FMjOrderedChild>& Children);
 
@@ -80,6 +87,11 @@ URLAB_API void MjSortSpecOrder(TArray<FMjOrderedChild>& Children);
  * never attached to one another -- so reading the attachment tree over an SCS
  * spec walks an empty list and the caller silently finds nothing. Which
  * adapter answers is the spec's business, not the caller's.
+ *
+ * The walk that answers the spec's own question about order is also where an
+ * unstamped child acquires its stamp: this is what the compile and the writer
+ * read, so a hand-added element's position becomes persisted data the first
+ * time the element counts for anything, at the end of the group it joined.
  */
 URLAB_API TArray<FMjOrderedChild> MjOrderedChildrenOf(const FSpecRef& Spec, UMjNodeComponent& Parent);
 

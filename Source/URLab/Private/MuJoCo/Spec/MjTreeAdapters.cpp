@@ -20,16 +20,61 @@
 namespace urlab::spec
 {
 
+namespace
+{
+/**
+ * Give the unstamped children of one already-ordered sibling set a stamp.
+ *
+ * Only the unstamped ones are written. Restating the whole group densely would
+ * express the same order, and would also dirty the package of every element the
+ * user did not touch; the stamped siblings are the imported model, and it is not
+ * this walk's business to rewrite them.
+ *
+ * The value handed out is one past the highest stamp seen so far in the slot, so
+ * an element that sorted last keeps sorting last once it is stamped.
+ */
+void StampUnorderedChildren(const TArray<FMjOrderedChild>& Children)
+{
+	int32 Slot = MIN_int32;
+	int32 Next = 0;
+	for (const FMjOrderedChild& Child : Children)
+	{
+		if (Child.Node == nullptr)
+		{
+			continue;
+		}
+		if (Child.Slot != Slot)
+		{
+			Slot = Child.Slot;
+			Next = 0;
+		}
+		if (Child.Node->SiblingIndex == INDEX_NONE)
+		{
+			Child.Node->Modify();
+			Child.Node->SiblingIndex = Next++;
+		}
+		else
+		{
+			Next = FMath::Max(Next, Child.Node->SiblingIndex + 1);
+		}
+	}
+}
+}  // namespace
+
 TArray<FMjOrderedChild> MjOrderedChildrenOf(const FSpecRef& Spec, UMjNodeComponent& Parent)
 {
 #if WITH_EDITOR
 	if (Spec.GetGraph() == EMjSpecGraph::Scs && Spec.GetBlueprint() != nullptr)
 	{
 		FMjScsScope Scope(*Spec.GetBlueprint());
-		return FMjScsAdapter::OrderedChildren(Parent);
+		TArray<FMjOrderedChild> Children = FMjScsAdapter::OrderedChildren(Parent);
+		StampUnorderedChildren(Children);
+		return Children;
 	}
 #endif
-	return FMjInstanceAdapter::OrderedChildren(Parent);
+	TArray<FMjOrderedChild> Children = FMjInstanceAdapter::OrderedChildren(Parent);
+	StampUnorderedChildren(Children);
+	return Children;
 }
 
 void MjSortSpecOrder(TArray<FMjOrderedChild>& Children)
@@ -39,7 +84,17 @@ void MjSortSpecOrder(TArray<FMjOrderedChild>& Children)
 		{
 			return A.Slot < B.Slot;
 		}
-		if (A.Node->SiblingIndex != B.Node->SiblingIndex)
+		// An unstamped element is one the user just added, and the only honest
+		// place for it is the end of its group: MJCF declaration order is the
+		// qpos layout, and a component whose SiblingIndex is still the class
+		// default has expressed no position at all.
+		const bool bAStamped = A.Node->SiblingIndex != INDEX_NONE;
+		const bool bBStamped = B.Node->SiblingIndex != INDEX_NONE;
+		if (bAStamped != bBStamped)
+		{
+			return bAStamped;
+		}
+		if (bAStamped && A.Node->SiblingIndex != B.Node->SiblingIndex)
 		{
 			return A.Node->SiblingIndex < B.Node->SiblingIndex;
 		}

@@ -92,9 +92,17 @@ public:
 	 * `USCS_Node::ChildNodes` is a serialized ordered array, and a level instance
 	 * has none. So spec order is persisted here, stamped by the factories at
 	 * creation and renumbered by the adapters on insert and remove.
+	 *
+	 * `INDEX_NONE` means unstamped, and it is the default because the default is
+	 * what a component added by hand in the components panel arrives with. Zero
+	 * is a position -- the first one -- so a hand-added joint used to claim the
+	 * front of its body's joint list and silently rewrite the robot's qpos
+	 * layout. An unstamped element instead orders after every stamped sibling in
+	 * its slot, so adding one appends, and the walk that reads spec order stamps
+	 * it where it landed.
 	 */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Category = "MuJoCo|Provenance")
-	int32 SiblingIndex = 0;
+	int32 SiblingIndex = INDEX_NONE;
 
 	// --- Provenance -------------------------------------------------------- //
 

@@ -19,6 +19,12 @@
 // passes by testing nothing. Recording is therefore an explicit operator
 // action: run with URLAB_CAPTURE_GOLDENS=1 to capture the goldens that are
 // absent. Even then an existing golden is left alone.
+//
+// A recorded mjModel is only meaningful against the engine that produced it:
+// the serialized form carries whatever fields that version had, in that
+// version's order. `CAPTURE.json` records which engine that was, and it is read
+// before any recording is loaded, so a MuJoCo update fails here with an
+// explanation instead of failing inside mj_loadModel with a byte offset.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -27,20 +33,20 @@
 
 #if URLAB_MJ_GEN && WITH_EDITOR
 
-#include "Engine/Blueprint.h"
-#include "GameFramework/Actor.h"
+#include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
-#include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
-#include "Misc/Guid.h"
 #include "Misc/Paths.h"
-#include "UObject/Package.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
-#include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjSceneSpec.h"
 #include "MuJoCo/Spec/MjSpecBuild.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
+
+#include "Tests/MjParitySupport.h"
 
 THIRD_PARTY_INCLUDES_START
 #include <mujoco/mujoco.h>
@@ -51,8 +57,7 @@ THIRD_PARTY_INCLUDES_END
 namespace MjParityGoldenTests
 {
 
-/** Indices sampled per differing field, and entries listed per category. */
-constexpr int32 MaxExamples = 4;
+using namespace MjParitySupport;
 
 /** The suffix a single-spec golden is named with. */
 const TCHAR* const GoldenSuffix = TEXT(".parity.mjb");
@@ -63,25 +68,15 @@ const TCHAR* const SceneInfix = TEXT(".scene2");
 /** The one fixture the two-participant scene is assembled from. */
 const TCHAR* const SceneFixtureStem = TEXT("assets_meshes");
 
-FString ParityDir()
-{
-	return FPaths::Combine(
-		FPaths::ProjectPluginsDir(), TEXT("UnrealRoboticsLab"), TEXT("Content"), TEXT("TestData"), TEXT("parity"));
-}
+/** The scratch Blueprint name prefix, so a leaked package says whose it was. */
+const TCHAR* const ScratchPrefix = TEXT("MjParityGolden");
 
-FString GoldensDir()
-{
-	return FPaths::Combine(
-		FPaths::ProjectPluginsDir(), TEXT("UnrealRoboticsLab"), TEXT("Content"), TEXT("TestData"), TEXT("goldens"));
-}
+/** What the recordings under `Content/TestData/goldens` were produced by. */
+const TCHAR* const CaptureManifestName = TEXT("CAPTURE.json");
 
-/** Every fixture under `Content/TestData/parity`, one file each. */
-TArray<FString> FixtureFiles()
+FString CaptureManifestPath()
 {
-	TArray<FString> Found;
-	IFileManager::Get().FindFilesRecursive(Found, *ParityDir(), TEXT("*.xml"), true, false);
-	Found.Sort();
-	return Found;
+	return FPaths::Combine(GoldensDir(), CaptureManifestName);
 }
 
 /** Every golden of this test's kind, ignoring goldens other tests own. */
@@ -108,101 +103,146 @@ bool ShouldCaptureGoldens()
 	return FPlatformMisc::GetEnvironmentVariable(TEXT("URLAB_CAPTURE_GOLDENS")) == TEXT("1");
 }
 
-/** A throwaway Blueprint in the transient package; nothing reaches disk. */
-UBlueprint* MakeScratchBlueprint()
+/** What `CAPTURE.json` records about the engine the goldens came from. */
+struct FCaptureManifest
 {
-	const FString Name = FString::Printf(TEXT("MjParityGolden_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
-	UPackage* Package = CreatePackage(*(TEXT("/Temp/") + Name));
-	return FKismetEditorUtilities::CreateBlueprint(AActor::StaticClass(), Package, FName(*Name), BPTYPE_Normal,
-		UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+	/** `mj_versionString()` as it read at capture. The one runtime-checkable field. */
+	FString MujocoVersion;
+
+	/** The `third_party/MuJoCo/src` submodule commit, for the human reading a failure. */
+	FString MujocoSubmodule;
+
+	/** The plugin commit the capture ran at, and the day it ran. */
+	FString CapturedCommit;
+	FString CapturedUtc;
+};
+
+/**
+ * Read the manifest at `Path`.
+ *
+ * `OutError` is set and false returned when the file is absent or is not the
+ * object this expects; an unreadable manifest is treated exactly like a missing
+ * one, because both leave the recordings unattributed.
+ */
+bool ReadCaptureManifest(const FString& Path, FCaptureManifest& Out, FString& OutError)
+{
+	FString Text;
+	if (!FFileHelper::LoadFileToString(Text, *Path))
+	{
+		OutError = FString::Printf(TEXT("could not read '%s'"), *Path);
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> Root;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
+	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+	{
+		OutError = FString::Printf(TEXT("'%s' is not a JSON object"), *Path);
+		return false;
+	}
+
+	if (!Root->TryGetStringField(TEXT("mujoco_version"), Out.MujocoVersion) || Out.MujocoVersion.IsEmpty())
+	{
+		OutError = FString::Printf(TEXT("'%s' carries no 'mujoco_version'"), *Path);
+		return false;
+	}
+	Root->TryGetStringField(TEXT("mujoco_submodule"), Out.MujocoSubmodule);
+	Root->TryGetStringField(TEXT("captured_commit"), Out.CapturedCommit);
+	Root->TryGetStringField(TEXT("captured_utc"), Out.CapturedUtc);
+	return true;
 }
 
-FString DiagnosticsToString(const TArray<FMjSpecDiagnostic>& Diagnostics)
+/** Write what this run knows about itself. Only ever called for an absent manifest. */
+bool WriteCaptureManifest(const FString& Path, FString& OutError)
 {
-	TArray<FString> Lines;
-	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	// The two commit fields are the operator's to fill: nothing inside a running
+	// editor knows which commit it was built from, and a guess recorded here
+	// would be worse than a blank a human has to complete.
+	const FString Text = FString::Printf(TEXT("{\n")
+										 TEXT("  \"mujoco_version\": \"%s\",\n")
+										 TEXT("  \"mujoco_submodule\": \"\",\n")
+										 TEXT("  \"captured_commit\": \"\",\n")
+										 TEXT("  \"captured_utc\": \"%s\"\n")
+										 TEXT("}\n"),
+		UTF8_TO_TCHAR(mj_versionString()), *FDateTime::UtcNow().ToString(TEXT("%Y-%m-%d")));
+
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
+	if (!FFileHelper::SaveStringToFile(Text, *Path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
 	{
-		Lines.Add(Diagnostic.ToString());
+		OutError = FString::Printf(TEXT("could not write '%s'"), *Path);
+		return false;
 	}
-	return FString::Join(Lines, TEXT("; "));
+	return true;
 }
 
-FString Utf8ToUe(const std::string& Text)
+/**
+ * Why the recordings cannot be trusted against this build, or empty.
+ *
+ * Separated from the tests that call it so the explanation itself can be
+ * asserted: a check whose message nobody reads is a check that will be
+ * satisfied by re-recording, which is exactly the outcome it exists to prevent.
+ */
+FString CaptureMismatchExplanation(const FString& ManifestPath)
 {
-	return FString(UTF8_TO_TCHAR(Text.c_str()));
+	FCaptureManifest Manifest;
+	FString ReadError;
+	if (!ReadCaptureManifest(ManifestPath, Manifest, ReadError))
+	{
+		return FString::Printf(
+			TEXT("the goldens under Content/TestData/goldens are unattributed: %s. Every recording there is a "
+				 "serialized mjModel and only means anything against the MuJoCo that wrote it, so one has to say "
+				 "which. Restore the file, or re-record deliberately with URLAB_CAPTURE_GOLDENS=1"),
+			*ReadError);
+	}
+
+	const FString Running = FString(UTF8_TO_TCHAR(mj_versionString()));
+	if (Manifest.MujocoVersion == Running)
+	{
+		return FString();
+	}
+
+	return FString::Printf(
+		TEXT("the goldens under Content/TestData/goldens were recorded against MuJoCo %s (submodule %s, plugin "
+			 "commit %s, %s) and this build is MuJoCo %s. A serialized mjModel carries the fields that version had, "
+			 "in that version's order, so the recordings do not describe this engine's output and a mismatch below "
+			 "would say nothing. Re-record only after the live stock differential (URLab.Parity.StockDiff) is green "
+			 "on this engine, then update %s; re-recording to make a failure go away blesses whatever the code does "
+			 "today"),
+		*Manifest.MujocoVersion, Manifest.MujocoSubmodule.IsEmpty() ? TEXT("unrecorded") : *Manifest.MujocoSubmodule,
+		Manifest.CapturedCommit.IsEmpty() ? TEXT("unrecorded") : *Manifest.CapturedCommit,
+		Manifest.CapturedUtc.IsEmpty() ? TEXT("undated") : *Manifest.CapturedUtc, *Running, CaptureManifestName);
 }
 
-/** One field or invariant divergence, with a bounded sample of the indices. */
-void AppendFieldDiffs(TArray<FString>& Lines, const TCHAR* Heading, const std::vector<ps::harness::FieldDiff>& Diffs)
+/**
+ * The manifest gate, run before any recording is loaded.
+ *
+ * Returns false when the recordings must not be read. In capture mode an absent
+ * manifest is written rather than refused, because that is the one moment the
+ * answer is being produced rather than checked.
+ */
+bool CaptureManifestAgrees(FAutomationTestBase& Test)
 {
-	if (Diffs.empty())
+	const FString Path = CaptureManifestPath();
+	if (!IFileManager::Get().FileExists(*Path) && ShouldCaptureGoldens())
 	{
-		return;
-	}
-	Lines.Add(FString::Printf(TEXT("  %s (%d):"), Heading, static_cast<int32>(Diffs.size())));
-
-	int32 Listed = 0;
-	for (const ps::harness::FieldDiff& Diff : Diffs)
-	{
-		if (Listed++ >= MaxExamples)
+		FString WriteError;
+		if (!WriteCaptureManifest(Path, WriteError))
 		{
-			Lines.Add(FString::Printf(TEXT("    ... and %d more"), static_cast<int32>(Diffs.size()) - MaxExamples));
-			break;
+			Test.AddError(WriteError);
+			return false;
 		}
-		Lines.Add(FString::Printf(TEXT("    %s: %lld of %lld differ%s%s"), *Utf8ToUe(Diff.field),
-			static_cast<int64>(Diff.num_diff), static_cast<int64>(Diff.count_a),
-			Diff.note.empty() ? TEXT("") : TEXT(" -- "), *Utf8ToUe(Diff.note)));
-		for (const ps::harness::FieldDiff::Example& Example : Diff.examples)
-		{
-			Lines.Add(FString::Printf(TEXT("      [%lld] golden %.17g, compiled %.17g"),
-				static_cast<int64>(Example.index), Example.a, Example.b));
-		}
-	}
-}
-
-/** The whole verdict, rendered for a failure message. */
-FString ReportToString(const ps::harness::DiffReport& Report)
-{
-	TArray<FString> Lines;
-	Lines.Add(FString::Printf(TEXT("  first divergence: %s"), *Utf8ToUe(Report.FirstDivergence())));
-
-	if (!Report.sizes.empty())
-	{
-		Lines.Add(FString::Printf(TEXT("  sizes (%d):"), static_cast<int32>(Report.sizes.size())));
-		int32 Listed = 0;
-		for (const ps::harness::SizeDiff& Size : Report.sizes)
-		{
-			if (Listed++ >= MaxExamples)
-			{
-				Lines.Add(FString::Printf(
-					TEXT("    ... and %d more"), static_cast<int32>(Report.sizes.size()) - MaxExamples));
-				break;
-			}
-			Lines.Add(FString::Printf(TEXT("    %s: golden %lld, compiled %lld"), *Utf8ToUe(Size.name),
-				static_cast<int64>(Size.a), static_cast<int64>(Size.b)));
-		}
+		Test.AddInfo(FString::Printf(
+			TEXT("captured '%s'; fill in mujoco_submodule and captured_commit before committing it"), *Path));
+		return true;
 	}
 
-	if (!Report.names.empty())
+	const FString Explanation = CaptureMismatchExplanation(Path);
+	if (!Explanation.IsEmpty())
 	{
-		Lines.Add(FString::Printf(TEXT("  names (%d):"), static_cast<int32>(Report.names.size())));
-		int32 Listed = 0;
-		for (const ps::harness::NameDiff& Name : Report.names)
-		{
-			if (Listed++ >= MaxExamples)
-			{
-				Lines.Add(FString::Printf(
-					TEXT("    ... and %d more"), static_cast<int32>(Report.names.size()) - MaxExamples));
-				break;
-			}
-			Lines.Add(FString::Printf(TEXT("    %s[%d]: golden '%s', compiled '%s'"), *Utf8ToUe(Name.objtype),
-				Name.id, *Utf8ToUe(Name.a), *Utf8ToUe(Name.b)));
-		}
+		Test.AddError(Explanation);
+		return false;
 	}
-
-	AppendFieldDiffs(Lines, TEXT("fields"), Report.fields);
-	AppendFieldDiffs(Lines, TEXT("invariants"), Report.invariants);
-	return FString::Join(Lines, TEXT("\n"));
+	return true;
 }
 
 /** Serialize `Model` into the byte form a golden is stored as. */
@@ -283,28 +323,6 @@ void CheckAgainstGolden(
 	}
 }
 
-/** Parse one fixture into a scratch Blueprint, ready to compile. */
-UBlueprint* ParseFixture(FAutomationTestBase& Test, const FString& Label, const FString& Xml, const FString& Path)
-{
-	UBlueprint* Blueprint = MakeScratchBlueprint();
-	if (Blueprint == nullptr)
-	{
-		Test.AddError(FString::Printf(TEXT("%s: could not create a scratch Blueprint"), *Label));
-		return nullptr;
-	}
-
-	// A parity fixture is authored against the supported surface, so an
-	// unsupported-only parse is a fixture that stopped being covered, not a
-	// reason to pass.
-	const FMjSpecParseResult Parsed = MjParseIntoBlueprint(*Blueprint, Xml, Path);
-	if (!Parsed.IsOk())
-	{
-		Test.AddError(FString::Printf(TEXT("%s: parse failed: %s"), *Label, *DiagnosticsToString(Parsed.Errors)));
-		return nullptr;
-	}
-	return Blueprint;
-}
-
 /**
  * Every golden of this kind must still name a fixture that exists.
  *
@@ -336,112 +354,59 @@ void CheckNoOrphanedGoldens(FAutomationTestBase& Test, const TArray<FString>& Fi
 /** The MJCF a scene root that contributes nothing of its own is written as. */
 const TCHAR* const EmptySceneRootXml = TEXT("<mujoco model=\"scene\"><worldbody></worldbody></mujoco>");
 
-/**
- * A document whose bindable elements are mostly unnamed.
- *
- * Nothing in the parity corpus is: every fixture names every element it has, so
- * the goldens say nothing about what an unnamed one compiles as. This is the
- * document that does, and one named element is in it so that the reservation
- * can be seen to leave authored names alone.
- */
-const TCHAR* const UnnamedElementsXml = TEXT(R"(<mujoco model="reserved_names">
-  <worldbody>
-    <geom type="plane" size="1 1 0.1"/>
-    <light pos="0 0 3"/>
-    <body pos="0 0 1">
-      <joint type="hinge" axis="0 0 1"/>
-      <geom name="authored" type="box" size="0.1 0.1 0.1"/>
-      <site pos="0 0 0"/>
-      <camera pos="0 0 1"/>
-      <body pos="0.2 0 0">
-        <joint type="hinge" axis="0 1 0"/>
-        <geom type="sphere" size="0.05"/>
-      </body>
-    </body>
-  </worldbody>
-</mujoco>)");
-
-/** One asset's bytes under the name the spec references it by. */
-struct FSpecAsset
-{
-	FString Name;
-	TArray<uint8> Bytes;
-};
-
-/** Bytes and mount names for a spec compiled on its own. */
-class FSpecAssetCollector final : public IMjAssetSink
-{
-public:
-	TArray<FSpecAsset> Assets;
-
-	void OnMesh(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
-	void OnTexture(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
-	void OnHeightField(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
-
-private:
-	void Take(const FMjAssetRequest& Request, const TArray<uint8>& Bytes)
-	{
-		if (!Request.VfsName.IsEmpty() && Bytes.Num() > 0)
-		{
-			Assets.Add(FSpecAsset{Request.VfsName, Bytes});
-		}
-	}
-};
-
-/**
- * Compile one spec through the spec path, assets and all.
- *
- * The spec's own `file` references are left as authored and the bytes are
- * mounted under the names the sink emits, which is what a spec compiled on its
- * own asks for: nothing is namespaced because nothing is composed. Composition
- * is the scene builder's job and it rewrites both halves together.
- *
- * Returns null on failure, having reported why. The caller owns the model, and
- * holds the spec it came from: a compiled model never outlives its spec here,
- * the same ordering the compiled scene keeps.
- */
-mjModel* CompileThroughSpecPath(
-	FAutomationTestBase& Test, const FString& Label, const FSpecRef& Spec, urlab::spec::FMjBuiltSpec& Built)
-{
-	TArray<FMjSpecDiagnostic> Diagnostics;
-	Built = urlab::spec::BuildSpec(Spec, Diagnostics);
-	if (Built.Spec == nullptr)
-	{
-		Test.AddError(
-			FString::Printf(TEXT("%s: the spec did not build: %s"), *Label, *DiagnosticsToString(Diagnostics)));
-		return nullptr;
-	}
-
-	FSpecAssetCollector Collector;
-	FMjAssetSink Sink(Collector);
-	Sink.Collect(Spec);
-	for (const FMjAssetRequest& Request : Sink.GetRequests())
-	{
-		if (Request.bMissing)
-		{
-			Test.AddError(FString::Printf(TEXT("%s: asset '%s' could not be read from '%s'"), *Label, *Request.Name,
-				*Request.ResolvedPath));
-		}
-	}
-
-	mjVFS Vfs;
-	mj_defaultVFS(&Vfs);
-	for (const FSpecAsset& Asset : Collector.Assets)
-	{
-		mj_addBufferVFS(&Vfs, TCHAR_TO_UTF8(*Asset.Name), Asset.Bytes.GetData(), Asset.Bytes.Num());
-	}
-	mjModel* const Model = mj_compile(Built.Spec, &Vfs);
-	mj_deleteVFS(&Vfs);
-
-	if (Model == nullptr)
-	{
-		Test.AddError(FString::Printf(
-			TEXT("%s: the built spec did not compile: %s"), *Label, UTF8_TO_TCHAR(mjs_getError(Built.Spec))));
-	}
-	return Model;
-}
-
 } // namespace MjParityGoldenTests
+
+// ============================================================================
+// URLab.Parity.GoldenCaptureManifest
+//   The manifest gate itself: a recorded engine that is not this one has to
+//   produce the explanation, and this build's own manifest has to pass.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParityCaptureManifestTest, "URLab.Parity.GoldenCaptureManifest",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecParityCaptureManifestTest::RunTest(const FString& Parameters)
+{
+	using namespace MjParityGoldenTests;
+
+	TestEqual(TEXT("the committed manifest attributes the goldens to this engine"),
+		CaptureMismatchExplanation(CaptureManifestPath()), FString());
+
+	// The interesting direction is the one no committed tree can be in, so it is
+	// staged: a manifest naming a version that is not running, in a scratch
+	// location, checked for the explanation rather than merely for failing.
+	const FString Scratch =
+		FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("Tests"), TEXT("CAPTURE.mismatch.json"));
+	const FString Stale = TEXT("0.0.0-not-this-engine");
+	const FString StaleText = FString::Printf(TEXT("{\"mujoco_version\": \"%s\", \"mujoco_submodule\": \"deadbeef\", ")
+											  TEXT("\"captured_commit\": \"cafef00d\", \"captured_utc\": \"1970-01-01\"}"),
+		*Stale);
+
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Scratch), /*Tree=*/true);
+	if (!FFileHelper::SaveStringToFile(StaleText, *Scratch, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		AddError(FString::Printf(TEXT("could not stage '%s'"), *Scratch));
+		return false;
+	}
+
+	const FString Explanation = CaptureMismatchExplanation(Scratch);
+	IFileManager::Get().Delete(*Scratch);
+
+	TestTrue(TEXT("a recorded version that is not running is refused"), !Explanation.IsEmpty());
+	TestTrue(TEXT("the refusal names the version the goldens were recorded against"), Explanation.Contains(Stale));
+	TestTrue(TEXT("the refusal names the version that is running"),
+		Explanation.Contains(FString(UTF8_TO_TCHAR(mj_versionString()))));
+	TestTrue(TEXT("the refusal names the submodule the recording came from"), Explanation.Contains(TEXT("deadbeef")));
+	TestTrue(TEXT("the refusal says what to do instead of re-recording blindly"),
+		Explanation.Contains(TEXT("URLab.Parity.StockDiff")));
+
+	// A missing manifest is the same refusal, not a silent pass.
+	const FString Absent =
+		FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("Tests"), TEXT("CAPTURE.absent.json"));
+	IFileManager::Get().Delete(*Absent);
+	TestTrue(TEXT("an absent manifest is refused too"), !CaptureMismatchExplanation(Absent).IsEmpty());
+
+	return !HasAnyErrors();
+}
 
 // ============================================================================
 // URLab.Parity.SpecGoldens
@@ -455,6 +420,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParityGoldenTest, "URLab.Parity.SpecGold
 bool FMjSpecParityGoldenTest::RunTest(const FString& Parameters)
 {
 	using namespace MjParityGoldenTests;
+
+	// Before any recording is loaded: a recording from another engine cannot be
+	// compared against, and the diff it would produce would misdescribe why.
+	if (!CaptureManifestAgrees(*this))
+	{
+		return false;
+	}
 
 	const TArray<FString> Fixtures = FixtureFiles();
 	CheckNoOrphanedGoldens(*this, Fixtures);
@@ -477,7 +449,7 @@ bool FMjSpecParityGoldenTest::RunTest(const FString& Parameters)
 			continue;
 		}
 
-		UBlueprint* const Blueprint = ParseFixture(*this, Label, Xml, Fixture);
+		UBlueprint* const Blueprint = ParseFixture(*this, ScratchPrefix, Label, Xml, Fixture);
 		if (Blueprint == nullptr)
 		{
 			continue;
@@ -512,6 +484,11 @@ bool FMjSpecParitySceneGoldenTest::RunTest(const FString& Parameters)
 {
 	using namespace MjParityGoldenTests;
 
+	if (!CaptureManifestAgrees(*this))
+	{
+		return false;
+	}
+
 	const FString Fixture = FPaths::Combine(ParityDir(), FString(SceneFixtureStem) + TEXT(".xml"));
 	const FString Label = FPaths::GetCleanFilename(Fixture);
 
@@ -522,7 +499,7 @@ bool FMjSpecParitySceneGoldenTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	UBlueprint* const Participant = ParseFixture(*this, Label, Xml, Fixture);
+	UBlueprint* const Participant = ParseFixture(*this, ScratchPrefix, Label, Xml, Fixture);
 	if (Participant == nullptr)
 	{
 		return true;
@@ -531,7 +508,7 @@ bool FMjSpecParitySceneGoldenTest::RunTest(const FString& Parameters)
 	// The builder composes INTO a root spec, where the text path assembled a
 	// document around none. A root contributing nothing of its own is the same
 	// scene, and it is what a manager authoring no content already is.
-	UBlueprint* const Root = ParseFixture(*this, TEXT("scene root"), EmptySceneRootXml, FString());
+	UBlueprint* const Root = ParseFixture(*this, ScratchPrefix, TEXT("scene root"), EmptySceneRootXml, FString());
 	if (Root == nullptr)
 	{
 		return true;
@@ -587,7 +564,7 @@ bool FMjSpecParityReservedNamesTest::RunTest(const FString& Parameters)
 	using namespace MjParityGoldenTests;
 
 	const FString Label = TEXT("reserved_names");
-	UBlueprint* const Blueprint = ParseFixture(*this, Label, UnnamedElementsXml, FString());
+	UBlueprint* const Blueprint = ParseFixture(*this, ScratchPrefix, Label, UnnamedElementsXml, FString());
 	if (Blueprint == nullptr)
 	{
 		return false;

@@ -20,6 +20,7 @@
 #include "MjFromtoFold.h"
 #include "MjMjcfIoInternal.h"
 #include "MjNodeNames.h"
+#include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjSpecProfile.h"
 #include "MuJoCo/Spec/MjNodeFactories.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
@@ -95,6 +96,16 @@ UMjNodeComponent* RootOfActor(AActor& Actor)
 	return Empty;
 }
 
+template <class Adapter>
+void SyncPreviewSubtree(UMjNodeComponent& Node)
+{
+	Node.SyncPreviewFromSpec();
+	for (const FMjOrderedChild& Child : Adapter::OrderedChildren(Node))
+	{
+		SyncPreviewSubtree<Adapter>(*Child.Node);
+	}
+}
+
 /**
  * Drive every node of a freshly read tree from the spec it came from.
  *
@@ -102,15 +113,18 @@ UMjNodeComponent* RootOfActor(AActor& Actor)
  * point -- the asset action, a test, a scripted op -- spawns posed. For the
  * Blueprint graph this runs before the caller compiles, so the SCS templates
  * carry `RelativeLocation` into instance construction.
+ *
+ * One effective-value context for the whole pass. Every node's preview resolves
+ * its pose and its scale through the default-class chain, and each of those
+ * queries used to index the entire spec on its own, so posing a model of N
+ * elements paid N whole-spec walks per question. The scope creates and destroys
+ * no nodes, which is what makes holding it open across the walk safe.
  */
 template <class Adapter>
-void SyncPreviewTree(UMjNodeComponent& Node)
+void SyncPreviewTree(UMjNodeComponent& Root)
 {
-	Node.SyncPreviewFromSpec();
-	for (const FMjOrderedChild& Child : Adapter::OrderedChildren(Node))
-	{
-		SyncPreviewTree<Adapter>(*Child.Node);
-	}
+	FMjEffectiveScope Effective(Root);
+	SyncPreviewSubtree<Adapter>(Root);
 }
 
 /** The spec root of a Blueprint: the SCS node with no MuJoCo parent. */

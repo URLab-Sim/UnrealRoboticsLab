@@ -530,6 +530,29 @@ struct URLAB_API FMjScsScope
 	void InvalidateNodeMap();
 
 	/**
+	 * Keep the maps in step with an edit just made, rather than discarding them.
+	 *
+	 * A rebuild walks every node in the Blueprint, and reading a spec files a
+	 * node and links it for every element, so invalidating on each one made the
+	 * read cost the square of the model. These three cover every structural edit
+	 * the reader and the adapters make; anything that restructures the graph
+	 * behind the scope's back still has to invalidate.
+	 */
+	void NoteNodeCreated(const UMjNodeComponent& Template, USCS_Node& Node);
+	void NoteChildAttached(USCS_Node& Parent, USCS_Node& Child);
+	void NoteChildDetached(USCS_Node& Child);
+
+	/**
+	 * How many times a scope has built its node map, process-wide.
+	 *
+	 * A build walks every node in the Blueprint, so one build per structural
+	 * edit makes reading a spec of N elements cost N squared. Monotonic since
+	 * process start; the import benchmark takes a delta around a parse and
+	 * asserts the count does not grow with the model.
+	 */
+	static int64 NodeMapBuilds();
+
+	/**
 	 * The node holding `Child`'s parent, or null at a root.
 	 *
 	 * From a map rather than a search. `USCS_Node` records its children and not

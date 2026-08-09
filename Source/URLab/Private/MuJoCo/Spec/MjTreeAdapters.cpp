@@ -10,6 +10,8 @@
 
 #if URLAB_MJ_GEN
 
+#include <atomic>
+
 #include "Algo/StableSort.h"
 #include "Engine/Blueprint.h"
 
@@ -85,6 +87,7 @@ void FMjInstanceAdapter::Detach(UMjNodeComponent& Child)
 namespace
 {
 thread_local FMjScsScope* GCurrentScsScope = nullptr;
+std::atomic<int64> GNodeMapBuilds{0};
 }
 
 FMjScsScope::FMjScsScope(UBlueprint& Blueprint)
@@ -113,12 +116,42 @@ void FMjScsScope::InvalidateNodeMap()
 	bNodeMapValid = false;
 }
 
+void FMjScsScope::NoteNodeCreated(const UMjNodeComponent& Template, USCS_Node& Node)
+{
+	if (bNodeMapValid)
+	{
+		NodeMap.Add(&Template, &Node);
+	}
+}
+
+void FMjScsScope::NoteChildAttached(USCS_Node& Parent, USCS_Node& Child)
+{
+	if (bNodeMapValid)
+	{
+		ParentMap.Add(&Child, &Parent);
+	}
+}
+
+void FMjScsScope::NoteChildDetached(USCS_Node& Child)
+{
+	if (bNodeMapValid)
+	{
+		ParentMap.Remove(&Child);
+	}
+}
+
+int64 FMjScsScope::NodeMapBuilds()
+{
+	return GNodeMapBuilds.load(std::memory_order_relaxed);
+}
+
 void FMjScsScope::EnsureNodeMap() const
 {
 	if (bNodeMapValid)
 	{
 		return;
 	}
+	GNodeMapBuilds.fetch_add(1, std::memory_order_relaxed);
 	NodeMap.Reset();
 	ParentMap.Reset();
 	// One pass builds both. A USCS_Node records its children and not its parent,
@@ -182,7 +215,7 @@ USCS_Node* FMjScsScope::NodeFor(UMjNodeComponent& Template)
 	USCS_Node* Node = Scs->CreateNodeAndRenameComponent(&Template);
 	if (Node != nullptr)
 	{
-		NodeMap.Add(&Template, Node);
+		NoteNodeCreated(Template, *Node);
 	}
 	return Node;
 }
@@ -248,7 +281,7 @@ void FMjScsAdapter::Attach(UMjNodeComponent& Parent, UMjNodeComponent& Child)
 	if (!ParentNode->GetChildNodes().Contains(ChildNode))
 	{
 		ParentNode->AddChildNode(ChildNode);
-		Scope->InvalidateNodeMap();
+		Scope->NoteChildAttached(*ParentNode, *ChildNode);
 	}
 }
 
@@ -267,7 +300,7 @@ void FMjScsAdapter::Detach(UMjNodeComponent& Child)
 	if (USCS_Node* ParentNode = Scope->ParentNodeOf(Child))
 	{
 		ParentNode->RemoveChildNode(ChildNode, /*bRemoveFromAllNodes=*/false);
-		Scope->InvalidateNodeMap();
+		Scope->NoteChildDetached(*ChildNode);
 	}
 }
 

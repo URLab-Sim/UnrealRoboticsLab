@@ -106,6 +106,32 @@ The claim this suite enforces: **byte-exact vs the enclosing MuJoCo checkout**
 over MuJoCo's own model corpus (last verified against main at 3.11.0,
 2026-07-22).
 
+### Running the corpus net
+
+One entry point, same behaviour on both platforms. It builds `ps_roundtrip` and
+`mj_model_diff` against the staged MuJoCo, runs the differential over the
+corpus, and exits non-zero on anything but the recorded allowed failures:
+
+```powershell
+# Windows
+./corpus_net.ps1                                    # defaults below
+./corpus_net.ps1 -MujocoRoot <dir> -Corpus <dir> -BuildType Release
+```
+
+```sh
+# Linux
+./corpus_net.sh                                     # defaults below
+./corpus_net.sh <mujoco-root> <corpus-dir> <build-type>
+```
+
+Defaults: MuJoCo at `../third_party/install/MuJoCo`, corpus at
+`../third_party/MuJoCo/src`, `Release`. Exit 0 the net holds, 1 it does not,
+2 the harness could not run. The verdict is `tools/corpus_net.py`, shared by
+both scripts: every failure must be one of the four recorded allowed failures
+(named, with their diagnoses, at the top of that file) *and* at least
+`_PARITY_FLOOR_IDENTICAL` models must have round-tripped identically, so a run
+that silently skipped its subject fails rather than passing empty.
+
 ## Building and testing
 
 Everything runs from this `protospec/` directory. Python tooling uses

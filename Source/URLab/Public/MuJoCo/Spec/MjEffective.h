@@ -44,6 +44,19 @@ namespace urlab::spec
 {
 
 /**
+ * Whole-spec effective-value contexts built, process-wide, and the ticker the
+ * constructor below rings.
+ *
+ * Building one indexes every element and every default class in the spec, so a
+ * pass that builds one per query costs the square of the spec -- which is
+ * exactly the shape `FMjEffectiveScope` exists to remove. Monotonic since
+ * process start; the import benchmark takes a delta around a parse and asserts
+ * the count does not grow with the model.
+ */
+URLAB_API int64 MjEffectiveContextBuilds();
+URLAB_API void MjNoteEffectiveContextBuilt();
+
+/**
  * The layers that decide one element's attributes, in priority order.
  *
  * Built once per spec and reused for every query against it.
@@ -55,7 +68,10 @@ public:
 	/** The profile this context resolves against, for the generic-lambda caller. */
 	using ProfileType = P;
 
-	explicit TMjEffective(const typename P::Doc::doc_type& Root) : Context(Root) {}
+	explicit TMjEffective(const typename P::Doc::doc_type& Root) : Context(Root)
+	{
+		MjNoteEffectiveContextBuilt();
+	}
 
 	/**
 	 * Offer `Function` each layer governing `Element` until one accepts.

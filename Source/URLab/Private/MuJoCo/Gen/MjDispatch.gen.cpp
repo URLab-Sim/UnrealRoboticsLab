@@ -16,6 +16,7 @@
 
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 
+#include <atomic>
 #include <vector>
 
 #include "protospec/detail.h"
@@ -24,6 +25,17 @@ namespace ps::ue
 {
 namespace
 {
+std::atomic<int64> GLookups{0};
+std::atomic<int64> GRowVisits{0};
+
+// Relaxed: these are a cost meter read once at the end of a benchmark, not
+// a synchronization edge, and a lookup must not pay for a fence.
+void NoteLookup(int32 RowsVisited)
+{
+	GLookups.fetch_add(1, std::memory_order_relaxed);
+	GRowVisits.fetch_add(RowsVisited, std::memory_order_relaxed);
+}
+
 struct FElementRow
 {
 	ElementType Type;
@@ -404,6 +416,74 @@ const FChildRow* ChildRows(int32& OutCount)
 	return Rows;
 }
 
+// The tables above are answered from these, never by scanning. Every
+// element of a model is resolved to a class, a tag and a storage slot
+// several times over while it is read, so the height of a table used to
+// multiply the size of the model.
+//
+// Built once, on first use rather than at static-initialisation time,
+// because a row's class is a UClass and asking for one before the object
+// system is up is undefined.
+struct FDispatchIndex
+{
+	/** Element rows, by schema type, by concrete class, by tag hash. */
+	TMap<int32, int32> ByType;
+	TMap<const UClass*, int32> ByClass;
+	TMultiMap<uint32, int32> ByTagHash;
+
+	/** Child rows, by (parent, child), and the row span of each parent. */
+	TMap<uint64, int32> ByParentChild;
+	TMultiMap<uint64, int32> ByParentTagHash;
+	TMap<int32, TPair<int32, int32>> SpanByParent;
+};
+
+uint64 PairKey(ElementType Parent, ElementType Child)
+{
+	return (static_cast<uint64>(Parent) << 32) | static_cast<uint32>(Child);
+}
+
+uint64 TagKey(ElementType Parent, uint32 TagHash)
+{
+	return (static_cast<uint64>(Parent) << 32) | TagHash;
+}
+
+const FDispatchIndex& Index()
+{
+	static const FDispatchIndex Built = []
+	{
+		FDispatchIndex Out;
+		int32 ElementCount = 0;
+		const FElementRow* Elements = ElementRows(ElementCount);
+		for (int32 I = 0; I < ElementCount; ++I)
+		{
+			// First row wins, which is the row a scan would have stopped at.
+			Out.ByType.FindOrAdd(static_cast<int32>(Elements[I].Type), I);
+			Out.ByClass.FindOrAdd(Elements[I].StaticClassFn(), I);
+			Out.ByTagHash.Add(GetTypeHash(FStringView(Elements[I].Tag)), I);
+		}
+		int32 ChildCount = 0;
+		const FChildRow* Children = ChildRows(ChildCount);
+		for (int32 I = 0; I < ChildCount; ++I)
+		{
+			Out.ByParentChild.FindOrAdd(PairKey(Children[I].Parent, Children[I].Child), I);
+			Out.ByParentTagHash.Add(
+				TagKey(Children[I].Parent, GetTypeHash(FStringView(Children[I].Tag))), I);
+			const int32 Parent = static_cast<int32>(Children[I].Parent);
+			if (TPair<int32, int32>* Span = Out.SpanByParent.Find(Parent))
+			{
+				Span->Key = FMath::Min(Span->Key, I);
+				Span->Value = FMath::Max(Span->Value, I + 1);
+			}
+			else
+			{
+				Out.SpanByParent.Add(Parent, TPair<int32, int32>(I, I + 1));
+			}
+		}
+		return Out;
+	}();
+	return Built;
+}
+
 void CollectNames(const USceneComponent* Node,
 	const std::vector<ElementType>& Targets, TArray<FString>& Out)
 {
@@ -425,24 +505,35 @@ void CollectNames(const USceneComponent* Node,
 
 }  // namespace
 
+int64 DispatchLookups() { return GLookups.load(std::memory_order_relaxed); }
+int64 DispatchRowVisits() { return GRowVisits.load(std::memory_order_relaxed); }
+
 UClass* ClassForElement(ElementType Type)
 {
+	NoteLookup(1);
+	const int32* Row = Index().ByType.Find(static_cast<int32>(Type));
+	if (Row == nullptr) return nullptr;
 	int32 Count = 0;
-	const FElementRow* Rows = ElementRows(Count);
-	for (int32 I = 0; I < Count; ++I)
-		if (Rows[I].Type == Type) return Rows[I].StaticClassFn();
-	return nullptr;
+	return ElementRows(Count)[*Row].StaticClassFn();
 }
 
 bool ElementTypeOfClass(const UClass* Class, ElementType& Out)
 {
 	int32 Count = 0;
 	const FElementRow* Rows = ElementRows(Count);
+	const FDispatchIndex& Idx = Index();
+	int32 Visited = 0;
 	// A presentation subclass (UMjBox over a geom) is the element its
 	// nearest generated base names, so walk up rather than matching exactly.
+	// The walk is the class chain, which is short and fixed; what it used to
+	// cost was the whole element table at every step of it.
 	for (const UClass* C = Class; C != nullptr; C = C->GetSuperClass())
-		for (int32 I = 0; I < Count; ++I)
-			if (Rows[I].StaticClassFn() == C) { Out = Rows[I].Type; return true; }
+	{
+		++Visited;
+		if (const int32* Row = Idx.ByClass.Find(C))
+		{ NoteLookup(Visited); Out = Rows[*Row].Type; return true; }
+	}
+	NoteLookup(FMath::Max(Visited, 1));
 	return false;
 }
 
@@ -453,23 +544,35 @@ bool ElementTypeOfNode(const UMjNodeComponent& Node, ElementType& Out)
 
 const TCHAR* TagForElement(ElementType Type)
 {
+	NoteLookup(1);
+	const int32* Row = Index().ByType.Find(static_cast<int32>(Type));
+	if (Row == nullptr) return TEXT("");
 	int32 Count = 0;
-	const FElementRow* Rows = ElementRows(Count);
-	for (int32 I = 0; I < Count; ++I)
-		if (Rows[I].Type == Type) return Rows[I].Tag;
-	return TEXT("");
+	return ElementRows(Count)[*Row].Tag;
 }
 
 bool ElementTypeForTag(FStringView Tag, ElementType& Out)
 {
 	int32 Count = 0;
 	const FElementRow* Rows = ElementRows(Count);
-	for (int32 I = 0; I < Count; ++I)
+	// Several elements answer to one tag -- <geom> is a body geom, a
+	// composite geom and a tendon geom -- so the lowest row wins, which is
+	// the row a scan would have stopped at. The index is keyed on a
+	// case-insensitive hash, so a hit is a candidate and the comparison
+	// below is what decides.
+	int32 Best = MAX_int32;
+	int32 Visited = 0;
+	for (auto It = Index().ByTagHash.CreateConstKeyIterator(GetTypeHash(Tag)); It; ++It)
 	{
-		if (Tag.Equals(FStringView(Rows[I].Tag), ESearchCase::CaseSensitive))
-		{ Out = Rows[I].Type; return true; }
+		++Visited;
+		const int32 Row = It.Value();
+		if (Row < Best && Tag.Equals(FStringView(Rows[Row].Tag), ESearchCase::CaseSensitive))
+			Best = Row;
 	}
-	return false;
+	NoteLookup(FMath::Max(Visited, 1));
+	if (Best == MAX_int32) return false;
+	Out = Rows[Best].Type;
+	return true;
 }
 
 bool ElementTypeForChildTag(ElementType Parent, FStringView Tag,
@@ -477,44 +580,53 @@ bool ElementTypeForChildTag(ElementType Parent, FStringView Tag,
 {
 	int32 Count = 0;
 	const FChildRow* Rows = ChildRows(Count);
-	for (int32 I = 0; I < Count; ++I)
+	int32 Best = MAX_int32;
+	int32 Visited = 0;
+	for (auto It = Index().ByParentTagHash.CreateConstKeyIterator(
+			TagKey(Parent, GetTypeHash(Tag))); It; ++It)
 	{
-		if (Rows[I].Parent != Parent) continue;
-		if (!Tag.Equals(FStringView(Rows[I].Tag), ESearchCase::CaseSensitive))
-			continue;
-		OutChild = Rows[I].Child;
-		OutSlot = Rows[I].Slot;
-		return true;
+		++Visited;
+		const int32 Row = It.Value();
+		if (Row >= Best || Rows[Row].Parent != Parent) continue;
+		if (Tag.Equals(FStringView(Rows[Row].Tag), ESearchCase::CaseSensitive))
+			Best = Row;
 	}
-	return false;
+	NoteLookup(FMath::Max(Visited, 1));
+	if (Best == MAX_int32) return false;
+	OutChild = Rows[Best].Child;
+	OutSlot = Rows[Best].Slot;
+	return true;
 }
 
 const TCHAR* ChildTagFor(ElementType Parent, ElementType Child)
 {
+	NoteLookup(1);
+	const int32* Row = Index().ByParentChild.Find(PairKey(Parent, Child));
+	if (Row == nullptr) return TagForElement(Child);
 	int32 Count = 0;
-	const FChildRow* Rows = ChildRows(Count);
-	for (int32 I = 0; I < Count; ++I)
-		if (Rows[I].Parent == Parent && Rows[I].Child == Child)
-			return Rows[I].Tag;
-	return TagForElement(Child);
+	return ChildRows(Count)[*Row].Tag;
 }
 
 int32 SlotFor(ElementType Parent, ElementType Child)
 {
+	NoteLookup(1);
+	const int32* Row = Index().ByParentChild.Find(PairKey(Parent, Child));
+	if (Row == nullptr) return -1;
 	int32 Count = 0;
-	const FChildRow* Rows = ChildRows(Count);
-	for (int32 I = 0; I < Count; ++I)
-		if (Rows[I].Parent == Parent && Rows[I].Child == Child)
-			return Rows[I].Slot;
-	return -1;
+	return ChildRows(Count)[*Row].Slot;
 }
 
 void ForEachAdmissibleChild(ElementType Parent,
 	TFunctionRef<void(int32 Slot, ElementType Child)> Fn)
 {
+	// An enumeration rather than a lookup: it visits the parent's own rows,
+	// which the index locates, instead of the whole table.
+	const TPair<int32, int32>* Span = Index().SpanByParent.Find(static_cast<int32>(Parent));
+	if (Span == nullptr) { NoteLookup(1); return; }
+	NoteLookup(Span->Value - Span->Key);
 	int32 Count = 0;
 	const FChildRow* Rows = ChildRows(Count);
-	for (int32 I = 0; I < Count; ++I)
+	for (int32 I = Span->Key; I < Span->Value; ++I)
 		if (Rows[I].Parent == Parent) Fn(Rows[I].Slot, Rows[I].Child);
 }
 

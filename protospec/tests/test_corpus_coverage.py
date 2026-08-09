@@ -45,12 +45,9 @@ def _load_study():
 def _corpus_root() -> Path | None:
     env = os.environ.get("PROTOSPEC_CORPUS")
     candidates = [Path(env)] if env else []
-    candidates.append(
-        Path(
-            r"C:\Users\jonat\Documents\Unreal Projects\url_proj\Plugins"
-            r"\UnrealRoboticsLab\third_party\MuJoCo\src"
-        )
-    )
+    # Resolved from this file rather than spelled out, so the suite is not
+    # pinned to one machine or one operating system.
+    candidates.append(ROOT.parent / "third_party" / "MuJoCo" / "src")
     for c in candidates:
         if c.is_dir():
             return c

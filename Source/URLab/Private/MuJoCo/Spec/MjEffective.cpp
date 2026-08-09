@@ -10,14 +10,30 @@
 
 #if URLAB_MJ_GEN
 
+#include <atomic>
+
 namespace urlab::spec
 {
+namespace
+{
+std::atomic<int64> GContextBuilds{0};
+}
 
 // Editor and game thread both re-derive presentation, never at the same time and
 // never across a suspension point, so the open scope is a plain pointer rather
 // than thread-local storage. A scope that outlived its stack would be the bug
 // either way.
 FMjEffectiveScope* FMjEffectiveScope::Current = nullptr;
+
+int64 MjEffectiveContextBuilds()
+{
+	return GContextBuilds.load(std::memory_order_relaxed);
+}
+
+void MjNoteEffectiveContextBuilt()
+{
+	GContextBuilds.fetch_add(1, std::memory_order_relaxed);
+}
 
 }  // namespace urlab::spec
 

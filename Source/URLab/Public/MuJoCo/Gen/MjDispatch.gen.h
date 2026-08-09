@@ -1068,6 +1068,19 @@ void ForEachAdmissibleChild(ElementType Parent,
  *  legally point at: the backing of every generated GetOptions dropdown. */
 TArray<FString> RefNameOptions(const UMjNodeComponent* Node, int32 FieldId);
 
+// --- What the tables cost ------------------------------------------ //
+// `DispatchLookups` counts calls that consult a table above;
+// `DispatchRowVisits` counts the rows examined answering them. The ratio
+// is the shape of the lookup: about one row per call is a hashed hit, and
+// the table's height is a scan. Every element of a model is dispatched
+// several times over during an import, so the difference between the two
+// is the difference between a table and a search. The import benchmark
+// asserts on the ratio, which is what stops a scan coming back.
+//
+// Monotonic since process start; take deltas around the work of interest.
+URLAB_API int64 DispatchLookups();
+URLAB_API int64 DispatchRowVisits();
+
 // --- Compile-time dispatch ----------------------------------------- //
 // The storage slots an element admits, as (slot, TypeTag<Class>). The
 // overload set is the schema's; a tree adapter forwards to it.

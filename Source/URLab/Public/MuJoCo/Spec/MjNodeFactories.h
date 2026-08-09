@@ -178,12 +178,16 @@ E* FScsNodeFactory::Construct(UMjNodeComponent* ParentElement)
 
 	E* Template = CastChecked<E>(Node->ComponentTemplate);
 	Template->EnsureSerial();
-	Scope->InvalidateNodeMap();
 
+	// A fresh node is not in the construction script yet -- CreateNode only
+	// makes it, and AddNode or AddChildNode is what files it -- so the scope's
+	// maps still describe the graph accurately and must not be thrown away. The
+	// root is the exception: it is filed here, so the scope is told about it.
 	if (ParentElement == nullptr)
 	{
 		// The root is the Blueprint's scene root: no parent to adopt it.
 		Scs.AddNode(Node);
+		Scope->NoteNodeCreated(*Template, *Node);
 	}
 	return Template;
 }

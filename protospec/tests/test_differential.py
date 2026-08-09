@@ -53,9 +53,15 @@ Engine plugins
 ``mujoco.pid``) at startup, so plugin-bearing corpus models load on both legs
 and are differential-tested like any other model -- our reader/writer carry the
 ``<extension>``/``<plugin>`` config as ordered data, which the round trip must
-preserve verbatim. The plugin DLLs are found beside ``mujoco.dll`` by default;
-override with ``--plugin-dir`` or ``PROTOSPEC_PLUGIN_DIR``. See the parity floor
-at the bottom of this file for the resulting corpus accounting.
+preserve verbatim. The plugin libraries are found beside the MuJoCo runtime by
+default; override with ``--plugin-dir`` or ``PROTOSPEC_PLUGIN_DIR``. See the
+parity floor at the bottom of this file for the resulting corpus accounting.
+
+Running it
+----------
+``protospec/corpus_net.ps1`` and ``protospec/corpus_net.sh`` are the CI entry
+point: they build ``ps_roundtrip`` and ``mj_model_diff``, run this module, and
+exit non-zero on anything but the recorded allowed failures.
 """
 
 from __future__ import annotations
@@ -87,22 +93,30 @@ _IGNORE_TAGS = {"mujoco"}
 def _corpus_root() -> Path | None:
     env = os.environ.get("PROTOSPEC_CORPUS")
     candidates = [Path(env)] if env else []
-    candidates.append(
-        Path(
-            r"C:\Users\jonat\Documents\Unreal Projects\url_proj\Plugins"
-            r"\UnrealRoboticsLab\third_party\MuJoCo\src"
-        )
-    )
+    # The enclosing checkout's MuJoCo sources, resolved from this file rather
+    # than spelled out: an absolute path pins the harness to one machine and one
+    # operating system, and the corpus net has to run on both.
+    candidates.append(ROOT.parent / "third_party" / "MuJoCo" / "src")
     for c in candidates:
         if c.is_dir():
             return c
     return None
 
 
-def _find_binary(name: str) -> Path | None:
-    """Locate a built exe under protospec/lib/** in any config dir, newest first."""
+def _exe(stem: str) -> str:
+    """The file name a built tool has on this platform."""
+    return f"{stem}.exe" if os.name == "nt" else stem
+
+
+def _runtime_lib() -> str:
+    """The MuJoCo runtime the harness CMake copies next to its executables."""
+    return "mujoco.dll" if os.name == "nt" else "libmujoco.so"
+
+
+def _find_binary(stem: str) -> Path | None:
+    """Locate a built tool under protospec/lib/** in any config dir, newest first."""
     matches = sorted(
-        (ROOT / "lib").rglob(name),
+        (p for p in (ROOT / "lib").rglob(_exe(stem)) if p.is_file()),
         key=lambda p: p.stat().st_mtime,
         reverse=True,
     )
@@ -121,16 +135,16 @@ def _load_supported() -> set[str] | None:
 
 
 CORPUS_ROOT = _corpus_root()
-MJ_MODEL_DIFF = _find_binary("mj_model_diff.exe")
-PS_ROUNDTRIP = _find_binary("ps_roundtrip.exe")
+MJ_MODEL_DIFF = _find_binary("mj_model_diff")
+PS_ROUNDTRIP = _find_binary("ps_roundtrip")
 SUPPORTED = _load_supported()
 
 
 def _mujoco_available() -> bool:
     if MJ_MODEL_DIFF is None:
         return False
-    # The runtime DLL is copied next to the exe by the harness CMake build.
-    return (MJ_MODEL_DIFF.parent / "mujoco.dll").is_file()
+    # The runtime library is copied next to the exe by the harness CMake build.
+    return (MJ_MODEL_DIFF.parent / _runtime_lib()).is_file()
 
 
 # --------------------------------------------------------------------------- #
@@ -225,7 +239,7 @@ _SELF_MJCF = """<mujoco>
 
 @pytest.mark.skipif(
     not _mujoco_available(),
-    reason="mj_model_diff.exe / mujoco.dll not built (cmake -S protospec/lib/harness)",
+    reason="mj_model_diff / the MuJoCo runtime not built (see corpus_net.ps1 / corpus_net.sh)",
 )
 def test_self_identical(tmp_path):
     a = tmp_path / "a.xml"
@@ -241,7 +255,7 @@ def test_self_identical(tmp_path):
 
 @pytest.mark.skipif(
     not _mujoco_available(),
-    reason="mj_model_diff.exe / mujoco.dll not built (cmake -S protospec/lib/harness)",
+    reason="mj_model_diff / the MuJoCo runtime not built (see corpus_net.ps1 / corpus_net.sh)",
 )
 def test_self_geom_pos_diff(tmp_path):
     a = tmp_path / "a.xml"
@@ -262,7 +276,7 @@ def test_self_geom_pos_diff(tmp_path):
 
 @pytest.mark.skipif(
     not _mujoco_available(),
-    reason="mj_model_diff.exe / mujoco.dll not built (cmake -S protospec/lib/harness)",
+    reason="mj_model_diff / the MuJoCo runtime not built (see corpus_net.ps1 / corpus_net.sh)",
 )
 def test_self_load_error(tmp_path):
     a = tmp_path / "a.xml"
@@ -292,9 +306,9 @@ def _pipeline_skip_reason() -> str:
     if CORPUS_ROOT is None:
         return "MuJoCo corpus not found (set PROTOSPEC_CORPUS)"
     if not _mujoco_available():
-        return "mj_model_diff.exe / mujoco.dll not built"
+        return "mj_model_diff / the MuJoCo runtime not built"
     if PS_ROUNDTRIP is None:
-        return "ps_roundtrip.exe not built yet (pathfinder pending)"
+        return "ps_roundtrip not built yet (pathfinder pending)"
     if SUPPORTED is None:
         return "lib/io/supported.json missing (pathfinder pending)"
     return ""

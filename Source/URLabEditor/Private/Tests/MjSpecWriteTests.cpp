@@ -868,4 +868,99 @@ bool FMjSpecWriteSelfAttachTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteWholeModelAttachTest,
+	"URLab.MuJoCo.SpecWrite.WholeModelAttach",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteWholeModelAttachTest::RunTest(const FString& Parameters)
+{
+	// An `<attach>` that names a model but neither a body nor a frame takes the
+	// child spec's own element as the source, and MuJoCo then splices the whole
+	// of the child's world body: every top-level body of it at once, and the
+	// content hanging off the world body directly. The child here has both, and
+	// two top-level bodies rather than one, because either is enough on its own
+	// to tell this apart from a source resolved to some single named body -- and
+	// the world body itself is not reproduced, which is what the body count says.
+	FSpecWriteScratch Scratch;
+	const FString ChildXml = TEXT(R"(<mujoco model="child_model">
+  <default>
+    <default class="chunky">
+      <geom condim="6"/>
+    </default>
+  </default>
+  <worldbody>
+    <geom name="pad" class="chunky" type="box" size="0.2 0.2 0.02"/>
+    <body name="alpha">
+      <geom name="alpha_shape" type="sphere" size="0.1"/>
+    </body>
+    <body name="beta">
+      <geom name="beta_shape" type="sphere" size="0.1"/>
+    </body>
+  </worldbody>
+</mujoco>)");
+	const FString ChildPath = FPaths::Combine(Scratch.Path, TEXT("child.xml"));
+	if (!FFileHelper::SaveStringToFile(ChildXml, *ChildPath))
+	{
+		AddError(FString::Printf(TEXT("could not write '%s'"), *ChildPath));
+		return false;
+	}
+
+	FSpecWriteFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjAsset* const Section = Fixture.Add<UMjAsset>(Fixture.Robot->Spec);
+	UMjModelAsset* const Asset = Fixture.Add<UMjModelAsset>(Section, TEXT("child"));
+	UMjBody* const Host = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("host"));
+	UMjAttach* const Attach = Fixture.Add<UMjAttach>(Host);
+	if (Asset == nullptr || Host == nullptr || Attach == nullptr)
+	{
+		AddError(TEXT("could not author the model asset and its attach"));
+		return false;
+	}
+	Asset->File = FString(TEXT("child.xml"));
+	Asset->SourceFile = FPaths::Combine(Scratch.Path, TEXT("parent.xml"));
+	Attach->Model = FString(TEXT("child"));
+	Attach->Prefix = FString(TEXT("kid_"));
+
+	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
+	if (Built.Spec == nullptr)
+	{
+		return false;
+	}
+	mjModel* const Model = Compile(*this, Built.Spec);
+	if (Model == nullptr)
+	{
+		return false;
+	}
+
+	const int HostId = mj_name2id(Model, mjOBJ_BODY, "host");
+	const int AlphaId = mj_name2id(Model, mjOBJ_BODY, "kid_alpha");
+	const int BetaId = mj_name2id(Model, mjOBJ_BODY, "kid_beta");
+	if (TestTrue(TEXT("both of the child's top-level bodies came across under the prefix"),
+			HostId >= 0 && AlphaId >= 0 && BetaId >= 0))
+	{
+		TestEqual(TEXT("the first hangs off the attaching body"), Model->body_parentid[AlphaId], HostId);
+		TestEqual(TEXT("the second hangs off it too, as a sibling"), Model->body_parentid[BetaId], HostId);
+	}
+	// The world body, the host, and the child's two: a source resolved to one
+	// named body of the child would be one short, and a world body spliced in as
+	// a body of its own rather than unwrapped would be one over.
+	TestEqual(TEXT("the child's world body was unwrapped rather than reproduced"),
+		static_cast<int>(Model->nbody), 4);
+
+	const int PadId = mj_name2id(Model, mjOBJ_GEOM, "kid_pad");
+	if (TestTrue(TEXT("the geom on the child's world body came across"), PadId >= 0))
+	{
+		TestEqual(TEXT("it landed on the attaching body"), Model->geom_bodyid[PadId], HostId);
+		TestEqual(TEXT("it kept the value of the child's own class"), Model->geom_condim[PadId], 6);
+	}
+	mj_deleteModel(Model);
+
+	return !HasAnyErrors();
+}
+
 #endif  // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS

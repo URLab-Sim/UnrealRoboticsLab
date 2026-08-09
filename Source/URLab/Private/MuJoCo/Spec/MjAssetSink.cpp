@@ -27,10 +27,10 @@ namespace
 {
 using namespace urlab::spec;
 
-/** The MJCF string attribute `Attr` of `Node`, or empty. */
-FString StringAttribute(UMjNodeComponent& Node, const char* Attr)
+/** The MJCF string attribute `Attr` of `Node` when it was authored. */
+bool AuthoredString(UMjNodeComponent& Node, const char* Attr, FString& Out)
 {
-	FString Out;
+	bool bAuthored = false;
 	gen::DispatchByType(Node, [&](auto& Element) {
 		using P = FMjInstanceProfile;
 		using E = std::decay_t<decltype(Element)>;
@@ -43,8 +43,17 @@ FString StringAttribute(UMjNodeComponent& Node, const char* Attr)
 		if (pssdk::internal::GetStrField<P>(Element, FieldId, Text))
 		{
 			Out = gen::FMjStrPolicy::FromUtf8(Text);
+			bAuthored = true;
 		}
 	});
+	return bAuthored;
+}
+
+/** The same, for a caller that cannot act on the difference. */
+FString StringAttribute(UMjNodeComponent& Node, const char* Attr)
+{
+	FString Out;
+	AuthoredString(Node, Attr, Out);
 	return Out;
 }
 
@@ -89,7 +98,15 @@ TArray<FMjOrderedChild> ChildrenOf(const FSpecRef& Spec, UMjNodeComponent& Paren
 	return FMjInstanceAdapter::OrderedChildren(Parent);
 }
 
-/** The spec-level meshdir / texturedir, read off <compiler>. */
+/**
+ * The spec-level meshdir / texturedir, read off <compiler>.
+ *
+ * Authored fields only, which is the reader's own rule: `assetdir` stands in
+ * for both and each of the two overrides it only where the document actually
+ * says so. Reading them as plain values instead makes an unauthored field an
+ * empty string that overrides `assetdir`, and a `<compiler>` carrying nothing
+ * relevant erase what an earlier one set.
+ */
 void ReadAssetDirectories(const FSpecRef& Spec, UMjNodeComponent& Root, FString& OutMeshDir, FString& OutTextureDir)
 {
 	for (const FMjOrderedChild& Child : ChildrenOf(Spec, Root))
@@ -99,20 +116,20 @@ void ReadAssetDirectories(const FSpecRef& Spec, UMjNodeComponent& Root, FString&
 		{
 			continue;
 		}
-		const FString AssetDir = StringAttribute(*Child.Node, "assetdir");
-		OutMeshDir = StringAttribute(*Child.Node, "meshdir");
-		OutTextureDir = StringAttribute(*Child.Node, "texturedir");
-		if (!AssetDir.IsEmpty())
+		FString AssetDir;
+		if (AuthoredString(*Child.Node, "assetdir", AssetDir))
 		{
-			// assetdir is the fallback for both, per the schema.
-			if (OutMeshDir.IsEmpty())
-			{
-				OutMeshDir = AssetDir;
-			}
-			if (OutTextureDir.IsEmpty())
-			{
-				OutTextureDir = AssetDir;
-			}
+			OutMeshDir = AssetDir;
+			OutTextureDir = AssetDir;
+		}
+		FString Directory;
+		if (AuthoredString(*Child.Node, "meshdir", Directory))
+		{
+			OutMeshDir = Directory;
+		}
+		if (AuthoredString(*Child.Node, "texturedir", Directory))
+		{
+			OutTextureDir = Directory;
 		}
 	}
 }
@@ -190,10 +207,19 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 				Request.VfsName = VfsPrefix + FPaths::GetCleanFilename(File);
 			}
 
+			// Whether the file is there is a property of the resolution, not of
+			// this pass: a caller that only wants to know what a model needs
+			// would otherwise have to read every byte of it to find out, and
+			// one that does not read the bytes would be told nothing is
+			// missing.
 			TArray<uint8> Bytes;
-			if (!Request.ResolvedPath.IsEmpty() && bLoadBytes)
+			if (!Request.ResolvedPath.IsEmpty())
 			{
-				Request.bMissing = !FFileHelper::LoadFileToArray(Bytes, *Request.ResolvedPath);
+				Request.bMissing = !FPaths::FileExists(Request.ResolvedPath);
+				if (!Request.bMissing && bLoadBytes)
+				{
+					Request.bMissing = !FFileHelper::LoadFileToArray(Bytes, *Request.ResolvedPath);
+				}
 			}
 
 			Requests.Add(Request);

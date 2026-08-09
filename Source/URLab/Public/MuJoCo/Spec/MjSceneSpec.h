@@ -50,6 +50,20 @@ struct URLAB_API FMjSceneSpecParticipant
 };
 
 /**
+ * One asset the compile was given, under the name the specs reference it by.
+ *
+ * Kept past the compile because the debug artefact has to write the same bytes
+ * out beside the XML: the VFS is gone by then, and the paths the bytes were
+ * read from cannot be recovered from a spec whose references have been
+ * namespaced.
+ */
+struct URLAB_API FMjSceneAsset
+{
+	FString Name;
+	TArray<uint8> Bytes;
+};
+
+/**
  * The compiled scene: the model, the specs behind it, and the binding.
  *
  * Owns the model and every spec. Destruction deletes the model first, then the
@@ -75,6 +89,7 @@ struct URLAB_API FMjCompiledScene
 	FMjBuiltSpec Scene;
 	TArray<FMjBuiltSpec> Participants;
 	TMap<TObjectPtr<const UMjNodeComponent>, int32> BoundIds;
+	TArray<FMjSceneAsset> Assets;
 	TArray<FMjSpecDiagnostic> Errors;
 	TArray<FMjSpecDiagnostic> Warnings;
 
@@ -87,6 +102,10 @@ struct URLAB_API FMjCompiledScene
 	 * never read back by the product.
 	 */
 	bool SaveDebugArtifacts(const FString& Dir, TArray<FMjSpecDiagnostic>& OutDiags) const;
+
+private:
+	/** Model then specs, shared by the destructor and move assignment. */
+	void Release();
 };
 
 /**

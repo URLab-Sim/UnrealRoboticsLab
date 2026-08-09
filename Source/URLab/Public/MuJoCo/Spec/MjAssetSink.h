@@ -64,7 +64,12 @@ struct URLAB_API FMjAssetRequest
 	/** The file's basename, prefixed when the request came from a scene assembly. */
 	FString VfsName;
 
-	/** True when the path could not be resolved to a readable file. */
+	/**
+	 * True when the path could not be resolved to a readable file.
+	 *
+	 * Answered by the resolution, so it is as true of a pass that reads no
+	 * bytes as of one that does.
+	 */
 	bool bMissing = false;
 };
 
@@ -124,7 +129,12 @@ struct URLAB_API FMjAssetSink
 	/** Prefix applied to every VfsName. Empty for a single-spec import. */
 	FString VfsPrefix;
 
-	/** Read the bytes as well as resolving the path. Off for a ship-list pass. */
+	/**
+	 * Read the bytes as well as resolving the path.
+	 *
+	 * Off for a pass that only wants the paths: whether an asset is missing is
+	 * reported either way, so nothing has to read a mesh to find out it exists.
+	 */
 	bool bLoadBytes = true;
 
 	/** Walk `Spec`'s asset section and emit one request per asset element. */

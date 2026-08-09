@@ -192,6 +192,10 @@ void ImportSpecAssets(UBlueprint& Blueprint)
 	// asset went: both ask MjImportedAssetPath the same question.
 	FMjImportAssetSink Importer(Spec);
 	FMjAssetSink Pass(Importer);
+	// The importers read from disk themselves, so the only thing reading the
+	// bytes here would establish is that the file is there, which the pass
+	// answers without them.
+	Pass.bLoadBytes = false;
 	Pass.Collect(Spec);
 }
 

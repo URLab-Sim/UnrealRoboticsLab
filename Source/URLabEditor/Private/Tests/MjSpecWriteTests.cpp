@@ -351,6 +351,103 @@ bool FMjSpecWriteDefaultsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// --- Childclass over a nested class chain ---------------------------------- //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteChildclassTest,
+	"URLab.MuJoCo.SpecWrite.NestedChildclass",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteChildclassTest::RunTest(const FString& Parameters)
+{
+	// Childclass is a second route to a class and not the same one: it names
+	// the class the SUBTREE resolves through, where Dclass names the one the
+	// element itself resolves through. A nested chain reached that way has to
+	// inherit the whole chain, keep applying down the subtree, and give way to
+	// an element that names its own class.
+	FSpecWriteFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjDefault* const Outer = Fixture.Add<UMjDefault>(Fixture.Robot->Spec, TEXT("outer"));
+	UMjGeomBase* const OuterGeom = Fixture.Add<UMjGeomBase>(Outer);
+	UMjDefault* const Inner = Fixture.Add<UMjDefault>(Outer, TEXT("inner"));
+	UMjGeomBase* const InnerGeom = Fixture.Add<UMjGeomBase>(Inner);
+	if (OuterGeom == nullptr || InnerGeom == nullptr)
+	{
+		AddError(TEXT("could not author the default classes"));
+		return false;
+	}
+	OuterGeom->Condim = 6;
+	InnerGeom->Group = 3;
+
+	const auto Sphere = [](UMjGeom* Geom) {
+		Geom->Type = EMjGeomType::sphere;
+		Geom->Size = TArray<double>({ 0.1 });
+	};
+
+	UMjBody* const Host = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("Host"));
+	UMjBody* const Nested = Fixture.Add<UMjBody>(Host, TEXT("Nested"));
+	UMjGeom* const Direct = Fixture.Add<UMjGeom>(Host, TEXT("Direct"));
+	UMjGeom* const Deep = Fixture.Add<UMjGeom>(Nested, TEXT("Deep"));
+	UMjGeom* const Overriding = Fixture.Add<UMjGeom>(Host, TEXT("Overriding"));
+	UMjBody* const Shallow = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("Shallow"));
+	UMjGeom* const ShallowGeom = Fixture.Add<UMjGeom>(Shallow, TEXT("ShallowGeom"));
+	if (Host == nullptr || Nested == nullptr || Direct == nullptr || Deep == nullptr ||
+		Overriding == nullptr || Shallow == nullptr || ShallowGeom == nullptr)
+	{
+		AddError(TEXT("could not author the bodies"));
+		return false;
+	}
+	Host->Childclass = FString(TEXT("inner"));
+	Shallow->Childclass = FString(TEXT("outer"));
+	Overriding->Dclass = FString(TEXT("outer"));
+	Sphere(Direct);
+	Sphere(Deep);
+	Sphere(Overriding);
+	Sphere(ShallowGeom);
+
+	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
+	if (Built.Spec == nullptr)
+	{
+		return false;
+	}
+
+	mjModel* const Model = mj_compile(Built.Spec, nullptr);
+	if (Model == nullptr)
+	{
+		AddError(FString::Printf(TEXT("mj_compile failed: %s"),
+			UTF8_TO_TCHAR(mjs_getError(Built.Spec))));
+		return false;
+	}
+
+	const auto Check = [this, Model](const char* Name, int ExpectedCondim, int ExpectedGroup) {
+		const int Id = mj_name2id(Model, mjOBJ_GEOM, Name);
+		if (!TestTrue(FString::Printf(TEXT("%s compiled"), UTF8_TO_TCHAR(Name)), Id >= 0))
+		{
+			return;
+		}
+		TestEqual(FString::Printf(TEXT("%s condim"), UTF8_TO_TCHAR(Name)),
+			Model->geom_condim[Id], ExpectedCondim);
+		TestEqual(FString::Printf(TEXT("%s group"), UTF8_TO_TCHAR(Name)),
+			Model->geom_group[Id], ExpectedGroup);
+	};
+
+	// The whole chain, reached through childclass rather than by naming it.
+	Check("Direct", 6, 3);
+	// And it keeps applying below the body that opened it.
+	Check("Deep", 6, 3);
+	// An element naming its own class is not overridden by the subtree's.
+	Check("Overriding", 6, 0);
+	// The outer class alone, so a chain that collapsed into one class fails.
+	Check("ShallowGeom", 6, 0);
+	mj_deleteModel(Model);
+
+	return !HasAnyErrors();
+}
+
 // --- The walk -------------------------------------------------------------- //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteWalkTest,

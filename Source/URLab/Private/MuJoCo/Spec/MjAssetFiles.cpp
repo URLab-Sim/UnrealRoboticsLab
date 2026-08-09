@@ -31,29 +31,41 @@ namespace
  * exported under one set of asset directories and then read back under another.
  * The bytes are not wanted here -- what is on disk is exactly what this may be
  * about to replace -- which is why the pass runs with `bLoadBytes` off.
+ *
+ * A missing file arrives here too, and it is the case this exists for: an
+ * element whose Unreal asset was swapped names a file that has not been written
+ * yet, so being told it is absent is the signal to write it, not to skip it.
  */
 class FMjAssetFileSync final : public IMjAssetSink
 {
 public:
-	void OnMesh(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override
-	{
-		UMjMesh* Mesh = Cast<UMjMesh>(Request.Element);
-		if (Mesh != nullptr && Mesh->IsFileStale())
-		{
-			Mesh->DumpAssetToFile(Request.BaseDirectory);
-		}
-	}
+	void OnMesh(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Sync(Request); }
 
-	void OnTexture(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override
-	{
-		UMjTexture* Texture = Cast<UMjTexture>(Request.Element);
-		if (Texture != nullptr && Texture->IsFileStale())
-		{
-			Texture->DumpAssetToFile(Request.BaseDirectory);
-		}
-	}
+	void OnTexture(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Sync(Request); }
 
 	void OnHeightField(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override {}
+
+	void OnMissing(const FMjAssetRequest& Request) override { Sync(Request); }
+
+private:
+	static void Sync(const FMjAssetRequest& Request)
+	{
+		if (UMjMesh* Mesh = Cast<UMjMesh>(Request.Element))
+		{
+			if (Mesh->IsFileStale())
+			{
+				Mesh->DumpAssetToFile(Request.BaseDirectory);
+			}
+			return;
+		}
+		if (UMjTexture* Texture = Cast<UMjTexture>(Request.Element))
+		{
+			if (Texture->IsFileStale())
+			{
+				Texture->DumpAssetToFile(Request.BaseDirectory);
+			}
+		}
+	}
 };
 
 #endif  // URLAB_MJ_GEN

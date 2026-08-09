@@ -62,6 +62,9 @@ const TCHAR* const ReservedPrefix = TEXT("_ps:");
 /** The one model size a generated name can move. Compared against `SizeDiff::name`. */
 const char* const NameTableSize = "nnames";
 
+/** The total allocation every other size is laid out inside: derived, never a cause. */
+const char* const BufferSize = "nbuffer";
+
 /**
  * A model MuJoCo's own front end produced, and the spec it came from.
  *
@@ -153,8 +156,30 @@ FStockVerdict ClassifyStockDiff(const ps::harness::DiffReport& Report)
 {
 	FStockVerdict Verdict;
 
+	// `nbuffer` is the size of the single allocation every other size is laid
+	// out inside, so it is a consequence of the others and never an independent
+	// fact about the model: a name table carrying the generated names moves it
+	// too, by its own amount, because the layout pads. Counting it as a
+	// divergence of its own makes "the generated names and nothing else"
+	// unsatisfiable by construction. It is therefore treated as the symptom it
+	// is -- accounted for whenever something else moved, and still reported in
+	// the impossible case where it is the only thing that did.
+	bool bOtherSizeMoved = false;
 	for (const ps::harness::SizeDiff& Size : Report.sizes)
 	{
+		if (Size.name != BufferSize)
+		{
+			bOtherSizeMoved = true;
+			break;
+		}
+	}
+
+	for (const ps::harness::SizeDiff& Size : Report.sizes)
+	{
+		if (Size.name == BufferSize && bOtherSizeMoved)
+		{
+			continue;
+		}
 		++Verdict.SizeDiffs;
 		if (Size.name != NameTableSize)
 		{

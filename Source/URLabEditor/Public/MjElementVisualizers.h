@@ -53,6 +53,16 @@ public:
 	/** Register (and unregister) against UMjNodeComponent. */
 	static void RegisterAll();
 	static void UnregisterAll();
+
+private:
+	/**
+	 * Set while the registration is waiting for the editor engine.
+	 *
+	 * The registry belongs to `GUnrealEd`, and this module can load before that
+	 * exists; registering then is not an error, it is a no-op, so the whole
+	 * feature would be off with nothing said.
+	 */
+	static FDelegateHandle PostEngineInitHandle;
 };
 
 /**

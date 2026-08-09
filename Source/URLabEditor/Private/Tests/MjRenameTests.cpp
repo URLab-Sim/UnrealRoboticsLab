@@ -152,8 +152,14 @@ bool FMjRenameFollowsReferrersTest::RunTest(const FString& Parameters)
 		Mjcf.Contains(TEXT("name=\"elbow\""), ESearchCase::CaseSensitive));
 	TestTrue(TEXT("and the actuator drives it under that name"),
 		Mjcf.Contains(TEXT("joint=\"elbow\""), ESearchCase::CaseSensitive));
+	// Spelled out per attribute rather than as a bare search for the old string:
+	// the joint's TYPE is also `hinge`, and `type="hinge"` is not a reference to
+	// anything. A search for the word alone asserts that a MuJoCo keyword
+	// disappeared, which is not what a rename does or should do.
+	TestFalse(TEXT("no element is left named by the old name"),
+		Mjcf.Contains(TEXT("name=\"hinge\""), ESearchCase::CaseSensitive));
 	TestFalse(TEXT("nothing is left pointing at the old name"),
-		Mjcf.Contains(TEXT("\"hinge\""), ESearchCase::CaseSensitive));
+		Mjcf.Contains(TEXT("joint=\"hinge\""), ESearchCase::CaseSensitive));
 
 	// And nothing is reported dangling, because nothing is.
 	const UMjNodeComponent* Motor = ElementNamed(*Blueprint, TEXT("drive"));

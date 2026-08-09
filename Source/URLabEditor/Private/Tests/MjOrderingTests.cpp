@@ -192,7 +192,23 @@ bool FMjHandAddedElementAppendsTest::RunTest(const FString& Parameters)
 	// The order the compile reads is also where it is written down: an element
 	// left unstamped would be re-decided by creation order on every load, and a
 	// duplicated component mints a fresh serial.
-	TestEqual(TEXT("the walk stamps the added joint where it landed"), Added->SiblingIndex, 2);
+	//
+	// The stamp is a position within the STORAGE SLOT, and a body holds every
+	// child type it admits in one slot (`ChildSlots(const UMjBodyBase*)`, all of
+	// them slot 0) because MJCF body children are one interleaved declaration
+	// sequence. So the number counts the geom too, and the assertion is that the
+	// element was stamped after every sibling rather than any literal index --
+	// which is the property, and does not go stale when a fixture gains an
+	// element.
+	TestNotEqual(TEXT("the walk stamped the added joint"), Added->SiblingIndex, static_cast<int32>(INDEX_NONE));
+	for (const urlab::spec::FMjOrderedChild& Child : urlab::spec::MjOrderedChildrenOf(Spec, *Body))
+	{
+		if (Child.Node != nullptr && Child.Node != Added)
+		{
+			TestTrue(FString::Printf(TEXT("the added joint sorts after '%s'"), *Child.Node->GetName()),
+				Added->SiblingIndex > Child.Node->SiblingIndex);
+		}
+	}
 
 	// And the same order comes back out of the writer, which is the qpos layout
 	// as MuJoCo will read it.

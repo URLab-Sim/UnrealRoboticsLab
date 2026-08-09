@@ -138,6 +138,28 @@ bool Parse(FAutomationTestBase& Test, FScratchDoc& Doc, const TCHAR* Xml)
 	return true;
 }
 
+/**
+ * The element of type `T` this document names `MjName`.
+ *
+ * Asking the actor for the first component of a class finds the `<default>`
+ * class partial as readily as the element in the worldbody -- a partial is a
+ * component of the same class -- and the partial is the one authoring the value
+ * these tests assert is NOT authored.
+ */
+template <class T>
+T* ElementNamed(const AActor& Actor, const TCHAR* MjName)
+{
+	for (UActorComponent* Component : Actor.GetComponents())
+	{
+		T* const Typed = Cast<T>(Component);
+		if (Typed != nullptr && Typed->MjName.IsSet() && Typed->MjName.GetValue() == MjName)
+		{
+			return Typed;
+		}
+	}
+	return nullptr;
+}
+
 /** The furthest any drawn endpoint got from `Centre`. */
 double FurthestFrom(const TArray<FVector>& Points, const FVector& Centre)
 {
@@ -209,7 +231,7 @@ bool FMjElementVisualizerDrawsInheritedSize::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjSite* const Site = Doc.Actor->FindComponentByClass<UMjSite>();
+	UMjSite* const Site = ElementNamed<UMjSite>(*Doc.Actor, TEXT("marker"));
 	if (!TestNotNull(TEXT("the site component"), Site))
 	{
 		return false;

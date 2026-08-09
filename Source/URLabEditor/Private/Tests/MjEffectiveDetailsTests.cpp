@@ -94,6 +94,28 @@ bool Parse(FAutomationTestBase& Test, FScratchDoc& Doc)
 	return true;
 }
 
+/**
+ * The element of type `T` this document names `MjName`.
+ *
+ * Asking the actor for the first component of a class finds the `<default>`
+ * class partial just as readily as the geom in the worldbody -- a partial is a
+ * component of the same class -- and the partial is the one that authors the
+ * value, so the test would assert the opposite of what it means to.
+ */
+template <class T>
+T* ElementNamed(const AActor& Actor, const TCHAR* MjName)
+{
+	for (UActorComponent* Component : Actor.GetComponents())
+	{
+		T* const Typed = Cast<T>(Component);
+		if (Typed != nullptr && Typed->MjName.IsSet() && Typed->MjName.GetValue() == MjName)
+		{
+			return Typed;
+		}
+	}
+	return nullptr;
+}
+
 /** The optional property named `Name` on `Node`'s class, or null. */
 const FOptionalProperty* OptionalNamed(const UMjNodeComponent& Node, const TCHAR* Name)
 {
@@ -116,7 +138,7 @@ bool FMjEffectiveDetailsNamesTheClassThatSuppliedTheValue::RunTest(const FString
 		return false;
 	}
 
-	UMjGeomBase* const Geom = Doc.Actor->FindComponentByClass<UMjGeomBase>();
+	UMjGeomBase* const Geom = ElementNamed<UMjGeomBase>(*Doc.Actor, TEXT("shell"));
 	if (!TestNotNull(TEXT("the geom component"), Geom))
 	{
 		return false;
@@ -163,7 +185,7 @@ bool FMjEffectiveDetailsBuildsOneContextPerRefresh::RunTest(const FString& Param
 		return false;
 	}
 
-	UMjGeomBase* const Geom = Doc.Actor->FindComponentByClass<UMjGeomBase>();
+	UMjGeomBase* const Geom = ElementNamed<UMjGeomBase>(*Doc.Actor, TEXT("shell"));
 	if (!TestNotNull(TEXT("the geom component"), Geom))
 	{
 		return false;

@@ -15,6 +15,7 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
+#include "Misc/CoreDelegates.h"
 #include "PrimitiveDrawInterface.h"
 #include "PrimitiveDrawingUtils.h"
 #include "SceneManagement.h"
@@ -645,12 +646,24 @@ void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, c
 #endif  // URLAB_MJ_GEN
 }
 
+FDelegateHandle FMjElementVisualizer::PostEngineInitHandle;
+
 void FMjElementVisualizer::RegisterAll()
 {
 	if (GUnrealEd == nullptr)
 	{
+		// Not an error, and that is the danger: the visualizer registry belongs
+		// to the editor engine, and this module can be loaded before the engine
+		// exists. Registering then succeeds at nothing, silently, and every
+		// element draws nothing for the rest of the session. Wait for the
+		// engine and register once it is there.
+		if (!PostEngineInitHandle.IsValid())
+		{
+			PostEngineInitHandle = FCoreDelegates::OnPostEngineInit.AddStatic(&FMjElementVisualizer::RegisterAll);
+		}
 		return;
 	}
+	PostEngineInitHandle.Reset();
 	// One registration for every element class. UnrealEd resolves a visualizer
 	// by walking up the component's class chain, so registering the base covers
 	// all 145 generated classes and the hand subclasses over them -- and a new
@@ -661,6 +674,11 @@ void FMjElementVisualizer::RegisterAll()
 
 void FMjElementVisualizer::UnregisterAll()
 {
+	if (PostEngineInitHandle.IsValid())
+	{
+		FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
+		PostEngineInitHandle.Reset();
+	}
 	if (GUnrealEd != nullptr)
 	{
 		GUnrealEd->UnregisterComponentVisualizer(UMjNodeComponent::StaticClass()->GetFName());

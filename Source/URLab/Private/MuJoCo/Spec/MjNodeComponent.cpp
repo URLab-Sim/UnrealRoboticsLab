@@ -11,6 +11,7 @@
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
 #include "HAL/PlatformAtomics.h"
+#include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjSpecProfile.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjEffective.h"
@@ -903,11 +904,24 @@ void MjNoteDanglingReferences(UMjNodeComponent& Root)
 	TMap<FString, TArray<int32>> Declared;
 	WalkSpecTree<Adapter>(Root, [&Declared](UMjNodeComponent& Node) {
 		psm::ElementType Type;
-		if (!Node.MjName.IsSet() || Node.MjName->IsEmpty() || !MjElementTypeOfNode(Node, Type))
+		if (!MjElementTypeOfNode(Node, Type))
 		{
 			return;
 		}
-		Declared.FindOrAdd(Node.MjName.GetValue()).AddUnique(static_cast<int32>(Type));
+		// Not `MjName`: an asset that omits `name` is still declared, under the
+		// stem of the file it names, and MuJoCo resolves references to it by
+		// that. Menagerie writes assets that way as a matter of course -- ten of
+		// the eleven meshes in the Trossen arm -- so reading only the authored
+		// name reports every one of them as dangling on a model that is
+		// perfectly correct. The rule comes from the asset pass rather than
+		// being restated, so the two cannot disagree about what a thing is
+		// called.
+		const FString DeclaredName = MjAssetElementName(Node);
+		if (DeclaredName.IsEmpty())
+		{
+			return;
+		}
+		Declared.FindOrAdd(DeclaredName).AddUnique(static_cast<int32>(Type));
 	});
 
 	WalkSpecTree<Adapter>(Root, [&Declared](UMjNodeComponent& Node) {

@@ -37,6 +37,7 @@
 
 #if URLAB_MJ_GEN
 #include "MuJoCo/Spec/MjNodeFactories.h"
+#include "MuJoCo/Spec/MjSpecWriteHooks.h"
 #endif
 
 #if WITH_EDITOR
@@ -79,6 +80,18 @@ void RegisterHandElementClasses()
 void FURLabModule::StartupModule()
 {
 	RegisterHandElementClasses();
+
+#if URLAB_MJ_GEN
+	// A hook the schema names and nobody registered is a write that vanishes
+	// silently, one element family at a time, so it is asserted here rather
+	// than discovered by a model that compiles to the wrong thing.
+	{
+		TArray<FString> Missing;
+		checkf(urlab::spec::SpecWriteRegistryComplete(&Missing),
+			TEXT("the spec write has no hook registered under: %s"),
+			*FString::Join(Missing, TEXT(", ")));
+	}
+#endif
 
 	FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
 	FString InstallDir = FPaths::Combine(PluginDir, TEXT("third_party/install"));

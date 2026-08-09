@@ -698,3 +698,409 @@ WRITE_NOTES = {
     ("general", "gainprm"): "authored values written verbatim",
     ("general", "biasprm"): "authored values written verbatim",
 }
+
+
+# --------------------------------------------------------------------------- #
+# Spec-write bindings                                                          #
+# --------------------------------------------------------------------------- #
+# How each element reaches an mjSpec: one category per element, drift-gated
+# against the schema so an element the schema gains or drops fails generation
+# rather than silently losing its write.
+#
+#   body_scoped(fn)   created on the owning body by `fn`
+#   spec_scoped(fn)   created on the spec by `fn`
+#   parent_embedded   applies its fields onto a struct its PARENT owns, and
+#                     creates nothing
+#   spec_embedded     applies its fields onto a struct mjSpec owns
+#   hook              hand code owns the write; the value names the hook
+#   section           a grouping tag: creates nothing, binds no struct, and is
+#                     recursed into in authored order
+#
+# The macro sub-elements are `hook` by association with the macro bridge: a
+# macro hands its whole subtree over before per-element dispatch sees any of its
+# children, so they are never created individually, and reaching one outside a
+# macro subtree is a diagnostic rather than a construction.
+SPEC_CREATE = {
+    "accelerometer": ("spec_scoped", "mjs_addSensor"),
+    "actuator": ("section", None),
+    "actuator_plugin": ("hook", "plugins"),
+    "actuatorfrc": ("spec_scoped", "mjs_addSensor"),
+    "actuatorpos": ("spec_scoped", "mjs_addSensor"),
+    "actuatorvel": ("spec_scoped", "mjs_addSensor"),
+    "adhesion": ("hook", "actuator_shorthand"),
+    "asset": ("section", None),
+    "attach": ("hook", "nested_model"),
+    "ballangvel": ("spec_scoped", "mjs_addSensor"),
+    "ballquat": ("spec_scoped", "mjs_addSensor"),
+    "body": ("body_scoped", "mjs_addBody"),
+    "bone": ("hook", "skin_bones"),
+    "camera": ("body_scoped", "mjs_addCamera"),
+    "camprojection": ("spec_scoped", "mjs_addSensor"),
+    "clock": ("spec_scoped", "mjs_addSensor"),
+    "compiler": ("spec_embedded", None),
+    "composite": ("hook", "macro_bridge"),
+    "composite_geom": ("hook", "macro_bridge"),
+    "composite_joint": ("hook", "macro_bridge"),
+    "composite_site": ("hook", "macro_bridge"),
+    "composite_skin": ("hook", "macro_bridge"),
+    "config": ("hook", "plugins"),
+    "connect": ("spec_scoped", "mjs_addEquality"),
+    "contact": ("section", None),
+    "custom": ("section", None),
+    "cylinder": ("hook", "actuator_shorthand"),
+    "damper": ("hook", "actuator_shorthand"),
+    "dcmotor": ("hook", "actuator_shorthand"),
+    "default": ("spec_scoped", "mjs_addDefault"),
+    "default_equality": ("parent_embedded", None),
+    "default_tendon": ("parent_embedded", None),
+    "deformable": ("section", None),
+    "distance": ("spec_scoped", "mjs_addSensor"),
+    "e_kinetic": ("spec_scoped", "mjs_addSensor"),
+    "e_potential": ("spec_scoped", "mjs_addSensor"),
+    "elasticity": ("parent_embedded", None),
+    "element": ("hook", "tuple_elements"),
+    "equality": ("section", None),
+    "equality_flex": ("spec_scoped", "mjs_addEquality"),
+    "equality_joint": ("spec_scoped", "mjs_addEquality"),
+    "equality_tendon": ("spec_scoped", "mjs_addEquality"),
+    "exclude": ("spec_scoped", "mjs_addExclude"),
+    "extension": ("hook", "plugins"),
+    "extension_plugin": ("hook", "plugins"),
+    "fixed": ("spec_scoped", "mjs_addTendon"),
+    "fixed_joint": ("hook", "tendon_path"),
+    "flag": ("hook", "option_flags"),
+    "flex": ("spec_scoped", "mjs_addFlex"),
+    "flex_edge": ("parent_embedded", None),
+    "flexcomp": ("hook", "macro_bridge"),
+    "flexcomp_contact": ("parent_embedded", None),
+    "flexcomp_edge": ("hook", "macro_bridge"),
+    "flexstrain": ("spec_scoped", "mjs_addEquality"),
+    "flexvert": ("spec_scoped", "mjs_addEquality"),
+    "force": ("spec_scoped", "mjs_addSensor"),
+    "frame": ("body_scoped", "mjs_addFrame"),
+    "frameangacc": ("spec_scoped", "mjs_addSensor"),
+    "frameangvel": ("spec_scoped", "mjs_addSensor"),
+    "framelinacc": ("spec_scoped", "mjs_addSensor"),
+    "framelinvel": ("spec_scoped", "mjs_addSensor"),
+    "framepos": ("spec_scoped", "mjs_addSensor"),
+    "framequat": ("spec_scoped", "mjs_addSensor"),
+    "framexaxis": ("spec_scoped", "mjs_addSensor"),
+    "frameyaxis": ("spec_scoped", "mjs_addSensor"),
+    "framezaxis": ("spec_scoped", "mjs_addSensor"),
+    "freejoint": ("body_scoped", "mjs_addFreeJoint"),
+    "fromto": ("spec_scoped", "mjs_addSensor"),
+    "general": ("hook", "actuator_shorthand"),
+    "geom": ("body_scoped", "mjs_addGeom"),
+    "global": ("spec_embedded", None),
+    "gyro": ("spec_scoped", "mjs_addSensor"),
+    "headlight": ("spec_embedded", None),
+    "hfield": ("spec_scoped", "mjs_addHField"),
+    "inertial": ("parent_embedded", None),
+    "insidesite": ("spec_scoped", "mjs_addSensor"),
+    "instance": ("hook", "plugins"),
+    "intvelocity": ("hook", "actuator_shorthand"),
+    "joint": ("body_scoped", "mjs_addJoint"),
+    "jointactuatorfrc": ("spec_scoped", "mjs_addSensor"),
+    "jointlimitfrc": ("spec_scoped", "mjs_addSensor"),
+    "jointlimitpos": ("spec_scoped", "mjs_addSensor"),
+    "jointlimitvel": ("spec_scoped", "mjs_addSensor"),
+    "jointpos": ("spec_scoped", "mjs_addSensor"),
+    "jointvel": ("spec_scoped", "mjs_addSensor"),
+    "key": ("spec_scoped", "mjs_addKey"),
+    "keyframe": ("section", None),
+    "layer": ("hook", "material_layers"),
+    "lengthrange": ("parent_embedded", None),
+    "light": ("body_scoped", "mjs_addLight"),
+    "magnetometer": ("spec_scoped", "mjs_addSensor"),
+    "map": ("spec_embedded", None),
+    "material": ("spec_scoped", "mjs_addMaterial"),
+    "mesh": ("spec_scoped", "mjs_addMesh"),
+    "model": ("hook", "nested_model"),
+    "motor": ("hook", "actuator_shorthand"),
+    "mujoco": ("section", None),
+    "muscle": ("hook", "actuator_shorthand"),
+    "normal": ("spec_scoped", "mjs_addSensor"),
+    "numeric": ("spec_scoped", "mjs_addNumeric"),
+    "option": ("spec_embedded", None),
+    "orientation": ("hook", "actuator_shorthand"),
+    "pair": ("spec_scoped", "mjs_addPair"),
+    "pid": ("hook", "actuator_shorthand"),
+    "pin": ("hook", "macro_bridge"),
+    "plugin": ("hook", "plugins"),
+    "position": ("hook", "actuator_shorthand"),
+    "pulley": ("hook", "tendon_path"),
+    "quality": ("spec_embedded", None),
+    "rangefinder": ("spec_scoped", "mjs_addSensor"),
+    "replicate": ("hook", "macro_bridge"),
+    "rgba": ("spec_embedded", None),
+    "scale": ("spec_embedded", None),
+    "sensor": ("section", None),
+    "sensor_contact": ("spec_scoped", "mjs_addSensor"),
+    "sensor_plugin": ("hook", "plugins"),
+    "site": ("body_scoped", "mjs_addSite"),
+    "size": ("spec_embedded", None),
+    "skin": ("spec_scoped", "mjs_addSkin"),
+    "spatial": ("spec_scoped", "mjs_addTendon"),
+    "spatial_geom": ("hook", "tendon_path"),
+    "spatial_site": ("hook", "tendon_path"),
+    "statistic": ("spec_embedded", None),
+    "subtreeangmom": ("spec_scoped", "mjs_addSensor"),
+    "subtreecom": ("spec_scoped", "mjs_addSensor"),
+    "subtreelinvel": ("spec_scoped", "mjs_addSensor"),
+    "tactile": ("spec_scoped", "mjs_addSensor"),
+    "tendon": ("section", None),
+    "tendonactuatorfrc": ("spec_scoped", "mjs_addSensor"),
+    "tendonlimitfrc": ("spec_scoped", "mjs_addSensor"),
+    "tendonlimitpos": ("spec_scoped", "mjs_addSensor"),
+    "tendonlimitvel": ("spec_scoped", "mjs_addSensor"),
+    "tendonpos": ("spec_scoped", "mjs_addSensor"),
+    "tendonvel": ("spec_scoped", "mjs_addSensor"),
+    "text": ("spec_scoped", "mjs_addText"),
+    "texture": ("spec_scoped", "mjs_addTexture"),
+    "torque": ("spec_scoped", "mjs_addSensor"),
+    "touch": ("spec_scoped", "mjs_addSensor"),
+    "tuple": ("spec_scoped", "mjs_addTuple"),
+    "user": ("spec_scoped", "mjs_addSensor"),
+    "velocimeter": ("spec_scoped", "mjs_addSensor"),
+    "velocity": ("hook", "actuator_shorthand"),
+    "visual": ("spec_embedded", None),
+    "weld": ("spec_scoped", "mjs_addEquality"),
+}
+
+# Where an embedded element's struct LIVES. The schema names the struct an
+# element binds, but not how to reach one that no `mjs_add*` call returns, and
+# the spellings are not derivable: mjStatistic is reached as `spec->stat`, and
+# `lengthrange` targets its parent's `LRopt` rather than the parent's own
+# struct.
+#
+# One row per element in category `spec_embedded` or `parent_embedded`, except
+# the visual sub-blocks, whose `field=` facet already names them relative to
+# their parent. The value is (parent struct C type or None, target expression);
+# the expression is C++ over `Spec` for a spec-embedded element and over
+# `Parent` for a parent-embedded one.
+SPEC_TARGET = {
+    "compiler": (None, "Spec->compiler"),
+    "option": (None, "Spec->option"),
+    "size": (None, "*Spec"),
+    "statistic": (None, "Spec->stat"),
+    # `visual` binds no struct of its own; the row is how its sub-blocks are
+    # reached, and it is what makes the gate's "one row per element" hold.
+    "visual": (None, "Spec->visual"),
+
+    "inertial": ("mjsBody", "*Parent"),
+    "elasticity": ("mjsFlex", "*Parent"),
+    "flex_edge": ("mjsFlex", "*Parent"),
+    "flexcomp_contact": ("mjsFlex", "*Parent"),
+    "lengthrange": ("mjsCompiler", "Parent->LRopt"),
+    # The class partials hang off the owning default's member structs, which
+    # mjsDefault holds by pointer.
+    "default_equality": ("mjsDefault", "*Parent->equality"),
+    "default_tendon": ("mjsDefault", "*Parent->tendon"),
+}
+
+# The hook that owns a write the generated path cannot express. Keyed by element
+# name for a whole-element hook, or by (element, attribute) where the generated
+# code applies the plain fields and the hook owns only the named ones.
+#
+# `lib/io` registers every name that appears here, the same completeness rule
+# READ_HANDLERS carries.
+SPEC_WRITE_HANDLERS = {
+    # Transmission: exactly one of joint/tendon/site/body and friends elects
+    # target and trntype together, so no one of them can be written alone.
+    ("general", "body"): "transmission",
+    ("general", "cranklength"): "transmission",
+    ("motor", "cranklength"): "transmission",
+    ("position", "cranklength"): "transmission",
+    ("velocity", "cranklength"): "transmission",
+    ("intvelocity", "cranklength"): "transmission",
+    ("pid", "cranklength"): "transmission",
+    ("damper", "cranklength"): "transmission",
+    ("cylinder", "cranklength"): "transmission",
+    ("muscle", "cranklength"): "transmission",
+    ("dcmotor", "cranklength"): "transmission",
+    ("actuator_plugin", "cranklength"): "transmission",
+
+    # The actuator shorthands' own parameters: `mjs_setTo*` derives gain, bias
+    # and dyntype together from them, and inherits from what is already set.
+    ("general", "input"): "actuator_shorthand",
+
+    # Single-attribute folds: the alias has no field of its own, so the write is
+    # the canonical field's, and the alias is the reader's spelling of it.
+    ("inertial", "axisangle"): "input_fold",
+    ("inertial", "euler"): "input_fold",
+    ("inertial", "xyaxes"): "input_fold",
+    ("inertial", "zaxis"): "input_fold",
+    ("inertial", "fullinertia"): "input_fold",
+    ("light", "directional"): "input_fold",
+    ("cylinder", "diameter"): "input_fold",
+
+    # The orientation variant group, on every element that carries it. The
+    # schema declares it `group orientation variant`, so the members are the
+    # alternative spellings of the group's first member and fold into it by the
+    # same rule the aliases above follow.
+    ("body", "axisangle"): "input_fold",
+    ("body", "euler"): "input_fold",
+    ("body", "xyaxes"): "input_fold",
+    ("body", "zaxis"): "input_fold",
+    ("camera", "axisangle"): "input_fold",
+    ("camera", "euler"): "input_fold",
+    ("camera", "xyaxes"): "input_fold",
+    ("camera", "zaxis"): "input_fold",
+    ("frame", "axisangle"): "input_fold",
+    ("frame", "euler"): "input_fold",
+    ("frame", "xyaxes"): "input_fold",
+    ("frame", "zaxis"): "input_fold",
+    ("geom", "axisangle"): "input_fold",
+    ("geom", "euler"): "input_fold",
+    ("geom", "xyaxes"): "input_fold",
+    ("geom", "zaxis"): "input_fold",
+    ("site", "axisangle"): "input_fold",
+    ("site", "euler"): "input_fold",
+    ("site", "xyaxes"): "input_fold",
+    ("site", "zaxis"): "input_fold",
+
+    # A material's `texture=` is the RGB entry of its layer list.
+    ("material", "texture"): "material_layers",
+
+    # The authored suffix form parses into a byte count on mjSpec.
+    ("size", "memory"): "size_memory",
+
+    # Authored group ids fold into mjOption's disableactuator bitmask, one bit
+    # per id, with the engine's non-negative and <= 30 checks. There is no
+    # vector on the option struct to write plainly, so the fold is the write.
+    ("option", "actuatorgroupdisable"): "option_flags",
+
+    # Below: attributes with no field on the struct their element binds. Each
+    # row is justified by an absence the emitter re-checks against mjspec.h on
+    # every run, so a row that stops being needed fails generation rather than
+    # lingering as hand code the generator could have covered.
+
+    # mjsEquality carries name1/name2/objtype/data and nothing else, so every
+    # operand of every subtype is a fold: the subtype elects objtype and packs
+    # its operands into the name pair and its numbers into data.
+    ("connect", "body1"): "equality_fold",
+    ("connect", "body2"): "equality_fold",
+    ("connect", "anchor"): "equality_fold",
+    ("connect", "site1"): "equality_fold",
+    ("connect", "site2"): "equality_fold",
+    ("weld", "body1"): "equality_fold",
+    ("weld", "body2"): "equality_fold",
+    ("weld", "relpose"): "equality_fold",
+    ("weld", "anchor"): "equality_fold",
+    ("weld", "site1"): "equality_fold",
+    ("weld", "site2"): "equality_fold",
+    ("weld", "torquescale"): "equality_fold",
+    ("equality_joint", "joint1"): "equality_fold",
+    ("equality_joint", "joint2"): "equality_fold",
+    ("equality_joint", "polycoef"): "equality_fold",
+    ("equality_tendon", "tendon1"): "equality_fold",
+    ("equality_tendon", "tendon2"): "equality_fold",
+    ("equality_tendon", "polycoef"): "equality_fold",
+    ("equality_flex", "flex"): "equality_fold",
+    ("flexvert", "flex"): "equality_fold",
+    ("flexstrain", "flex"): "equality_fold",
+    ("flexstrain", "cell"): "equality_fold",
+
+    # The same shape one level over: the irregular sensors name their operands
+    # per tag, and mjsSensor stores them in objname/refname/objtype/reftype,
+    # with the keyword sets in intprm.
+    ("rangefinder", "site"): "sensor_fold",
+    ("rangefinder", "camera"): "sensor_fold",
+    ("rangefinder", "data"): "sensor_fold",
+    ("distance", "geom1"): "sensor_fold",
+    ("distance", "geom2"): "sensor_fold",
+    ("distance", "body1"): "sensor_fold",
+    ("distance", "body2"): "sensor_fold",
+    ("normal", "geom1"): "sensor_fold",
+    ("normal", "geom2"): "sensor_fold",
+    ("normal", "body1"): "sensor_fold",
+    ("normal", "body2"): "sensor_fold",
+    ("fromto", "geom1"): "sensor_fold",
+    ("fromto", "geom2"): "sensor_fold",
+    ("fromto", "body1"): "sensor_fold",
+    ("fromto", "body2"): "sensor_fold",
+    ("sensor_contact", "geom1"): "sensor_fold",
+    ("sensor_contact", "geom2"): "sensor_fold",
+    ("sensor_contact", "body1"): "sensor_fold",
+    ("sensor_contact", "body2"): "sensor_fold",
+    ("sensor_contact", "subtree1"): "sensor_fold",
+    ("sensor_contact", "subtree2"): "sensor_fold",
+    ("sensor_contact", "site"): "sensor_fold",
+    ("sensor_contact", "num"): "sensor_fold",
+    ("sensor_contact", "data"): "sensor_fold",
+    ("sensor_contact", "reduce"): "sensor_fold",
+    ("tactile", "geom"): "sensor_fold",
+    ("tactile", "mesh"): "sensor_fold",
+    ("tactile", "user"): "sensor_fold",
+    ("user", "user"): "sensor_fold",
+    # A keyword spelled as a plain string, because <user> names the object kind
+    # rather than choosing between per-kind attributes the way the rest do.
+    ("user", "objtype"): "sensor_fold",
+
+    # A double list spelled as one string, so the parse is the write.
+    ("numeric", "data"): "numeric_data",
+
+    # strippath lands on mjSpec rather than on mjsCompiler, coordinate has no
+    # field because the engine reads it only to reject the removed global form,
+    # and assetdir fans out into meshdir and texturedir.
+    ("compiler", "strippath"): "compiler_placement",
+    ("compiler", "coordinate"): "compiler_placement",
+    ("compiler", "assetdir"): "compiler_placement",
+
+    # Generated geometry parameters and the positional cube-face vector, none of
+    # which is a field on the asset's own struct.
+    ("mesh", "builtin"): "asset_builtin",
+    ("mesh", "params"): "asset_builtin",
+    ("hfield", "elevation"): "asset_builtin",
+    ("texture", "fileright"): "asset_builtin",
+    ("texture", "fileleft"): "asset_builtin",
+    ("texture", "fileup"): "asset_builtin",
+    ("texture", "filedown"): "asset_builtin",
+    ("texture", "filefront"): "asset_builtin",
+    ("texture", "fileback"): "asset_builtin",
+
+    # A keyword the engine maps to a dof layout, with no field behind it.
+    ("flex", "dof"): "flex_layout",
+}
+
+# Attributes the gate asks about whose plain generated write is correct, with
+# the reason. Same discipline as READ_NOTES: silence is not allowed, so every
+# one of these is a stated decision rather than an omission.
+SPEC_WRITE_NOTES = {
+    # Canonical targets of the folds above: the stored field is written plainly,
+    # and the fold is what put the value there.
+    ("inertial", "quat"): "the canonical orientation field, written plainly "
+        "onto the parent body's iquat",
+    ("inertial", "diaginertia"): "the canonical inertia field, written plainly "
+        "onto the parent body's inertia",
+    ("light", "type"): "the canonical field the directional spelling folds "
+        "into, a plain enum write",
+    ("cylinder", "area"): "the canonical field the diameter spelling folds "
+        "into, a plain double write",
+    ("spatial", "springlength"): "plain double pair; the reader's resolver "
+        "exists to accept the one-value spelling, and the stored value is what "
+        "the spec takes",
+    ("fixed", "springlength"): "as spatial.springlength",
+    ("default_tendon", "springlength"): "as spatial.springlength",
+
+    # Values the engine interprets at compile. ProtoSpec stores what was
+    # authored and the spec takes the same, so the conversion stays MuJoCo's.
+    ("mesh", "maxhullvert"): "plain int; the engine clamps it against the "
+        "vertex count at compile",
+    ("skin", "group"): "plain int the engine range-checks",
+    ("geom", "fluidshape"): "plain keyword the engine stores as a 0/1 flag",
+    ("flex", "cellcount"): "plain int list the engine derives counts from",
+
+    # Legacy sizing the engine accepts only to reject: there is nothing to write.
+    ("size", "njmax"): "removed legacy sizing; the engine rejects it, so the "
+        "spec never carries it",
+    ("size", "nconmax"): "as size.njmax",
+    ("size", "nstack"): "as size.njmax",
+
+    # The identity attribute is written centrally after creation, by mjs_setName
+    # rather than by any element's field application. This is also what settles
+    # the keyframe vectors: mjsKey's own vectors are plain unbounded writes, so
+    # no keyframe hook is needed.
+    ("key", "name"): "the identity attribute, written centrally by mjs_setName "
+        "after creation, not through this element's fields",
+}

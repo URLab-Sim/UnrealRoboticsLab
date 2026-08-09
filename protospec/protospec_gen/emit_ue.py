@@ -78,7 +78,7 @@ import re
 import sys
 
 from . import overlay
-from .frontend import load_schema, pascal
+from .frontend import load_schema, mujoco_src, pascal
 
 # ASCII only, and lint() keeps the whole tree that way: MSVC decodes a source
 # file without a BOM in the system codepage unless told otherwise, so a stray
@@ -1924,6 +1924,1064 @@ def emit_profile(s: UeSchema) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Spec write: the mjs struct layouts                                           #
+# --------------------------------------------------------------------------- #
+# The schema says which struct an element binds. Only the header says what is
+# in it, and the difference decides everything about a write: whether there is a
+# field at all, whether a keyword lands in an mjtGeom or an mjtNum, and whether
+# a list is an inline array or one of the mjDoubleVec handles. So the emitter
+# reads the two MuJoCo headers, exactly as upstream's own read-table generator
+# does (`doc/generate/generate_read_table.py`) and for the same reason. Reading
+# is all it does; the headers are never written.
+_STRUCT_FIELD = re.compile(r"^\s*([\w<>*]+(?:\s*\*)?)\s+(\w+)(\[([^\]]+)\])?\s*;", re.M)
+_STRUCT_BODY = re.compile(r"typedef struct (mj\w+)_ \{(.*?)\n\} \1;", re.S)
+_ANON_SUB = re.compile(r"struct \{(.*?)\} (\w+);", re.S)
+
+# Every header the installed tree ships. The C constants an emitted switch may
+# name are exactly the ones these define: MuJoCo keeps the parse-time enums --
+# composite and flexcomp kinds -- in its private user-side headers, and that is
+# the API saying those elements never reach an mjs struct.
+_PUBLIC_HEADERS = (
+    "mjmodel.h", "mjtype.h", "mjdata.h", "mjvisualize.h", "mjrender.h",
+    "mjui.h", "mjplugin.h", "mjmacro.h", "mjspec.h", "mjspecmacro.h",
+    "mjsan.h", "mjassert.h", "mjexport.h", "mujoco.h",
+)
+
+_COMMENT = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
+_DEFINE = re.compile(r"^\s*#\s*define\s+(\w+)", re.M)
+_ENUM_BODY = re.compile(r"\benum\b[^{;]*\{(.*?)\}", re.S)
+_ENUMERATOR = re.compile(r"(?:^|,)\s*(\w+)")
+
+# mjs setter per vector handle. A vector-valued field is not assignable: the
+# handle owns storage on MuJoCo's side and only these copy into it.
+_VEC_SETTER = {
+    "mjDoubleVec*": ("SetVec", "double"),
+    "mjFloatVec*": ("SetVec", "float"),
+    "mjIntVec*": ("SetVec", "int"),
+}
+
+# How each creation function is called, and what it hands back. The C API's
+# shape is not in the schema: some take a default class, `mjs_addFrame` takes a
+# parent frame instead, and `mjs_addFreeJoint` takes neither. The returned
+# struct is also the answer for an element the schema binds to nothing --
+# `<freejoint>` declares `align` and no spec, and mjsJoint is where `align`
+# lives. Gated against SPEC_CREATE in both directions by SpecWritePlan.
+#
+# An element the overlay routes to a hook is absent here on purpose: creating it
+# is part of what its hook does, which is why an actuator shorthand has no
+# creation function of its own and why nothing generated calls mjs_addActuator.
+_ADD_CALLS = {
+    "mjs_addBody": ("Body, Def", "mjsBody"),
+    "mjs_addSite": ("Body, Def", "mjsSite"),
+    "mjs_addJoint": ("Body, Def", "mjsJoint"),
+    "mjs_addFreeJoint": ("Body", "mjsJoint"),
+    "mjs_addGeom": ("Body, Def", "mjsGeom"),
+    "mjs_addCamera": ("Body, Def", "mjsCamera"),
+    "mjs_addLight": ("Body, Def", "mjsLight"),
+    "mjs_addFrame": ("Body, Frame", "mjsFrame"),
+    "mjs_addSensor": ("Spec", "mjsSensor"),
+    "mjs_addFlex": ("Spec", "mjsFlex"),
+    "mjs_addPair": ("Spec, Def", "mjsPair"),
+    "mjs_addExclude": ("Spec", "mjsExclude"),
+    "mjs_addEquality": ("Spec, Def", "mjsEquality"),
+    "mjs_addTendon": ("Spec, Def", "mjsTendon"),
+    "mjs_addNumeric": ("Spec", "mjsNumeric"),
+    "mjs_addText": ("Spec", "mjsText"),
+    "mjs_addTuple": ("Spec", "mjsTuple"),
+    "mjs_addKey": ("Spec", "mjsKey"),
+    "mjs_addMesh": ("Spec, Def", "mjsMesh"),
+    "mjs_addHField": ("Spec", "mjsHField"),
+    "mjs_addSkin": ("Spec", "mjsSkin"),
+    "mjs_addTexture": ("Spec", "mjsTexture"),
+    "mjs_addMaterial": ("Spec, Def", "mjsMaterial"),
+    "mjs_addDefault": ("Spec, ClassName, Def", "mjsDefault"),
+}
+
+# The creation functions that consume the identity attribute themselves, so the
+# central mjs_setName would be writing a name the element already has.
+_ADD_TAKES_NAME = frozenset({"mjs_addDefault"})
+
+# The categories that create an element the walk can hang children on.
+_CREATING = ("body_scoped", "spec_scoped")
+
+_CATEGORY_ENUM = {
+    "body_scoped": "BodyScoped",
+    "spec_scoped": "SpecScoped",
+    "parent_embedded": "ParentEmbedded",
+    "spec_embedded": "SpecEmbedded",
+    "hook": "Hook",
+    "section": "Section",
+}
+
+
+def parse_spec_structs(*paths: str) -> dict[str, dict[str, tuple[str, str | None]]]:
+    """Struct name -> {field: (C type, array dimension or None)}.
+
+    Anonymous sub-structs -- mjVisual's sections -- are exposed as `Outer.name`,
+    because that is how a `field=` facet names one.
+    """
+    structs: dict[str, dict[str, tuple[str, str | None]]] = {}
+    for path in paths:
+        with open(path, "r", encoding="utf-8") as fh:
+            text = fh.read()
+        for match in _STRUCT_BODY.finditer(text):
+            name, body = match.group(1), match.group(2)
+            for sub in _ANON_SUB.finditer(body):
+                fields = {}
+                for field in _STRUCT_FIELD.finditer(sub.group(1)):
+                    ctype, fname, _br, dim = field.groups()
+                    fields[fname] = (ctype.replace(" ", ""), dim)
+                structs[f"{name}.{sub.group(2)}"] = fields
+            body = _ANON_SUB.sub("", body)
+            fields = {}
+            for field in _STRUCT_FIELD.finditer(body):
+                ctype, fname, _br, dim = field.groups()
+                fields[fname] = (ctype.replace(" ", ""), dim)
+            structs[name] = fields
+    return structs
+
+
+def parse_public_constants(include_dir: str) -> set[str]:
+    """Every identifier the installed MuJoCo headers define.
+
+    Enumerators and macros both, because the schema spells a member's C
+    constant either way. What this set is FOR is the negative case: a constant
+    that is not in it cannot be named by generated code, however plausible it
+    looks in the schema, because the header that defines it is not shipped.
+    """
+    out: set[str] = set()
+    for name in _PUBLIC_HEADERS:
+        path = os.path.join(include_dir, name)
+        if not os.path.isfile(path):
+            continue
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            text = _COMMENT.sub(" ", fh.read())
+        out.update(_DEFINE.findall(text))
+        for body in _ENUM_BODY.findall(text):
+            out.update(_ENUMERATOR.findall(body))
+    return out
+
+
+class SpecWrite:
+    """One attribute's resolved write: where it lands and in what C type."""
+
+    def __init__(self, f: dict, member: str, field: str, ctype: str,
+                 dim: str | None):
+        self.f = f
+        self.member = member
+        self.field = field
+        self.ctype = ctype
+        self.dim = dim
+
+
+class SpecElement:
+    """One element's whole spec write.
+
+    `struct` is the C++ type the apply function takes; `fields_key` is what the
+    header parse is indexed by. They differ for a visual sub-block, whose fields
+    live in an anonymous struct with no type name of its own: the apply function
+    takes the enclosing mjVisual and every field is reached through `prefix`.
+    """
+
+    def __init__(self, elem: dict, category: str, arg: str | None):
+        self.elem = elem
+        self.name = elem["schema_name"]
+        self.category = category
+        self.arg = arg
+        self.struct: str | None = None
+        self.fields_key: str | None = None
+        self.prefix = ""
+        self.sub: str | None = elem.get("spec_field")
+        self.target: str | None = None
+        self.parent_ctype: str | None = None
+        self.writes: list[SpecWrite] = []
+        self.consts: list[dict] = []
+        self.hooks: list[str] = []
+
+    @property
+    def creates(self) -> bool:
+        return self.category in _CREATING
+
+    @property
+    def embedded(self) -> bool:
+        return self.category in ("spec_embedded", "parent_embedded")
+
+
+class SpecWritePlan:
+    """Every element's spec write, resolved against the mjs headers.
+
+    The rule the whole plan enforces, stated once: an attribute is written by
+    generated code if and only if it resolves to a field the shape rules can
+    write. Anything else must be named in SPEC_WRITE_HANDLERS or belong to an
+    element the overlay routes to a hook, and an attribute that is neither fails
+    generation by name. That is what keeps a MuJoCo bump from silently dropping
+    a write: a field that moves becomes a build-time complaint about the
+    attribute that used to reach it.
+    """
+
+    def __init__(self, s: UeSchema, root: str | None = None):
+        self.s = s
+        mjroot = root or mujoco_src()
+        include = os.path.join(mjroot, "include", "mujoco")
+        self.structs = parse_spec_structs(
+            os.path.join(include, "mjspec.h"),
+            os.path.join(include, "mjmodel.h"))
+        self.constants = parse_public_constants(include)
+        self.by_name: dict[str, SpecElement] = {}
+        self.enums_needed: set[str] = set()
+        self.problems: list[str] = []
+        self._check_add_calls()
+        self._build()
+        self.enums_emitted = self._resolve_enums()
+        if self.problems:
+            raise UeError(
+                "the spec write does not cover the schema (route each to "
+                "overlay.SPEC_WRITE_HANDLERS, or correct the binding):\n  "
+                + "\n  ".join(self.problems))
+
+    # -- tables ------------------------------------------------------------- #
+    def _check_add_calls(self) -> None:
+        used = {arg for cat, arg in overlay.SPEC_CREATE.values()
+                if cat in _CREATING and arg}
+        for name in sorted(used - set(_ADD_CALLS)):
+            self.problems.append(
+                f"SPEC_CREATE creates with {name}, which _ADD_CALLS does not "
+                "know how to call")
+        for name in sorted(set(_ADD_CALLS) - used):
+            self.problems.append(
+                f"_ADD_CALLS knows {name}, which no SPEC_CREATE row uses")
+
+    def _resolve_enums(self) -> set[str]:
+        """The enums whose keyword-to-constant switch may be emitted.
+
+        A member's C constant is either a literal or an identifier the headers
+        have to define. An enum with an unreachable one is not emitted at all,
+        which is what keeps a parse-time constant from being named by generated
+        code; and if a generated write NEEDED that enum, generation fails here
+        naming the constant rather than handing the build a C2065.
+        """
+        out: set[str] = set()
+        for enum in self.s.enums:
+            missing = [
+                m["c"] for m in enum["members"]
+                if m.get("c") is not None
+                and not str(m["c"]).lstrip("+-").isdigit()
+                and str(m["c"]) not in self.constants
+            ]
+            if not missing:
+                out.add(enum["name"])
+                continue
+            if enum["name"] in self.enums_needed:
+                self.problems.append(
+                    f"enum {enum['name']} is written by generated code, but the "
+                    f"installed MuJoCo headers do not define {missing[0]}; the "
+                    "header that does is not shipped")
+        return out
+
+    def fields_of(self, struct: str) -> dict[str, tuple[str, str | None]]:
+        table = self.structs.get(struct)
+        if table is None:
+            raise UeError(f"no struct {struct!r} in mjspec.h or mjmodel.h")
+        return table
+
+    # -- targets ------------------------------------------------------------ #
+    def _resolve_target(self, name: str, expr: str,
+                        parent_ctype: str | None) -> str:
+        """The struct a SPEC_TARGET expression yields, walked through the
+        headers so a wrong spelling fails here rather than in the build."""
+        body = expr[1:] if expr.startswith("*") else expr
+        steps = re.split(r"->|\.", body)
+        root = steps[0]
+        if root == "Spec":
+            current = "mjSpec"
+        elif root == "Parent":
+            if parent_ctype is None:
+                raise UeError(
+                    f"SPEC_TARGET[{name!r}] is written over Parent but names no "
+                    "parent struct")
+            current = parent_ctype
+        else:
+            raise UeError(
+                f"SPEC_TARGET[{name!r}] starts at {root!r}; it must start at "
+                "Spec or Parent")
+        for step in steps[1:]:
+            if f"{current}.{step}" in self.structs:
+                current = f"{current}.{step}"
+                continue
+            entry = self.fields_of(current).get(step)
+            if entry is None:
+                raise UeError(
+                    f"SPEC_TARGET[{name!r}] reaches {current}.{step}, which the "
+                    "header does not declare")
+            current = entry[0].rstrip("*")
+        return current
+
+    # -- field resolution --------------------------------------------------- #
+    def _borrowed(self, plan: SpecElement, attr: str) -> str | None:
+        """The field name `attr` binds on the element that owns this struct.
+
+        A class partial is the same attributes as the element it defaults, so
+        for `<default><tendon solreflimit=...>` the truth about where
+        `solreflimit` lands is the real `<tendon>`'s own `field=` facet. Taking
+        it from there rather than from a table is what keeps the two in step.
+        """
+        found = {}
+        for other in self.s.elements:
+            if other.get("spec") != plan.fields_key or other.get("spec_field"):
+                continue
+            for f in other["fields"]:
+                if f["xml"] == attr:
+                    found[f.get("annotations", {}).get("spec_field", attr)] = \
+                        other["schema_name"]
+        if len(found) == 1:
+            return next(iter(found))
+        if len(found) > 1:
+            owners = ", ".join(sorted(found.values()))
+            self.problems.append(
+                f"{plan.name}.{attr}: {owners} disagree about which field of "
+                f"{plan.struct} it binds")
+        return None
+
+    def _write_for(self, plan: SpecElement, f: dict) -> SpecWrite | None:
+        """The resolved write, or None when nothing generated can carry it."""
+        annotations = f.get("annotations", {})
+        fields = self.fields_of(plan.fields_key)
+        field = annotations.get("spec_field")
+        if field is None:
+            field = f["xml"]
+            if field not in fields and plan.category == "parent_embedded":
+                field = self._borrowed(plan, f["xml"]) or field
+        entry = fields.get(field)
+        if entry is None:
+            return None
+        ctype, dim = entry
+        if not self._writable(f, ctype, dim):
+            return None
+        return SpecWrite(f, self.s.member(plan.elem, f), field, ctype, dim)
+
+    def _writable(self, f: dict, ctype: str, dim: str | None) -> bool:
+        """True when the shape rules produce a write for this pairing.
+
+        A field of an incompatible type is as unwritable as an absent one -- a
+        keyword list onto an mjsPlugin, a space-separated number list onto an
+        mjDoubleVec -- and is routed the same way, so the two never diverge.
+        """
+        t = f["type"]
+        arity = t.get("arity")
+        if t["kind"] == "named":
+            if arity is None:
+                return ctype == "int" or ctype.startswith("mjt")
+            return ctype == "int" and dim is None
+        if t["kind"] == "ref":
+            return ctype in ("mjString*", "mjStringVec*")
+        prim = t["prim"]
+        if prim == "string":
+            if "max_chars" in f.get("annotations", {}):
+                return ctype == "char" and dim is not None
+            return ctype in ("mjString*", "mjStringVec*")
+        if arity is None:
+            # A scalar onto an array field is the class partials' narrower
+            # spelling of a polynomial: `<default><tendon stiffness="5">` is the
+            # first coefficient, which is also what a one-value read of the real
+            # element's non-exact row leaves behind.
+            if dim is not None:
+                return ctype in ("int", "float", "double", "mjtNum")
+            return ctype in ("int", "float", "double", "mjtNum",
+                             "mjtSize") or ctype.startswith("mjt")
+        if arity["kind"] == "unbounded":
+            return ctype in _VEC_SETTER
+        return dim is not None and ctype in ("int", "float", "double", "mjtNum")
+
+    # -- assembly ----------------------------------------------------------- #
+    def _build(self) -> None:
+        for elem in self.s.elements:
+            name = elem["schema_name"]
+            category, arg = overlay.SPEC_CREATE[name]
+            plan = SpecElement(elem, category, arg)
+            self.by_name[name] = plan
+
+            if plan.creates and arg:
+                plan.struct = _ADD_CALLS[arg][1]
+            elif elem.get("spec"):
+                plan.struct = elem["spec"]
+
+            row = overlay.SPEC_TARGET.get(name)
+            if row is not None:
+                plan.parent_ctype, plan.target = row
+                resolved = self._resolve_target(name, plan.target,
+                                                plan.parent_ctype)
+                if plan.struct and resolved != plan.struct:
+                    self.problems.append(
+                        f"SPEC_TARGET[{name!r}] yields {resolved}, but the "
+                        f"schema binds {name} to {plan.struct}")
+                plan.struct = resolved
+            elif plan.embedded and plan.sub:
+                # A visual sub-block. Its fields live in an anonymous struct, so
+                # the apply function takes the enclosing one and reaches them
+                # through the facet's name, exactly as the reader's row offsets
+                # do (`xml_native_reader.cc:2116`, obj = &spec->visual).
+                plan.parent_ctype = elem["spec"]
+                plan.target = "*Parent"
+                plan.fields_key = f"{elem['spec']}.{plan.sub}"
+                plan.prefix = f"{plan.sub}."
+
+            self._plan_hooks(plan)
+            if plan.struct is None:
+                self._check_unbound(plan)
+                continue
+            if plan.fields_key is None:
+                plan.fields_key = plan.struct
+
+            self._plan_consts(plan)
+            self._plan_fields(plan)
+
+    def _check_unbound(self, plan: SpecElement) -> None:
+        """An element with no struct may still declare attributes.
+
+        A `hook` owns everything its element declares, and a `section` is a
+        grouping tag that writes nothing by definition -- the root's `model` is
+        the spec name and BuildSpec writes it. Anything else with attributes and
+        no struct has lost them, and says so.
+        """
+        if plan.category in ("hook", "section"):
+            return
+        for f in plan.elem["fields"]:
+            if self.s.is_identity(f) or self._is_dclass(f):
+                continue
+            self.problems.append(
+                f"{plan.name}.{f['xml']}: {plan.name} binds no mjs struct, so "
+                "there is nowhere to write it")
+
+    @staticmethod
+    def _is_dclass(f: dict) -> bool:
+        """The default-class selector, written centrally by mjs_setDefault."""
+        return f["xml"] == "class" and f["type"]["kind"] == "ref"
+
+    def _plan_consts(self, plan: SpecElement) -> None:
+        if plan.arg == "macro_bridge":
+            return
+        fields = self.fields_of(plan.fields_key)
+        for const in plan.elem.get("consts", []):
+            if const["field"] not in fields:
+                self.problems.append(
+                    f"{plan.name}: `set {const['field']}` names no field of "
+                    f"{plan.fields_key}")
+                continue
+            plan.consts.append(const)
+
+    def _plan_fields(self, plan: SpecElement) -> None:
+        if plan.arg == "macro_bridge":
+            # A macro element never reaches an mjs struct: H10 hands its whole
+            # subtree to the file boundary and attaches the expansion, so there
+            # is nothing here for a field write to land on. Its keywords are
+            # parse-time and MuJoCo does not ship the header that defines them.
+            return
+        for f in plan.elem["fields"]:
+            if self.s.is_identity(f) or self._is_dclass(f):
+                continue
+            key = (plan.name, f["xml"])
+            if key in overlay.SPEC_WRITE_HANDLERS:
+                continue
+            write = self._write_for(plan, f)
+            if write is not None:
+                plan.writes.append(write)
+                if write.f["type"]["kind"] == "named":
+                    self.enums_needed.add(write.f["type"]["name"])
+            elif plan.category != "hook":
+                self.problems.append(
+                    f"{plan.name}.{f['xml']}: no field of {plan.fields_key} "
+                    "that the shape rules can write")
+
+    def _plan_hooks(self, plan: SpecElement) -> None:
+        """The hooks this element needs, attribute-scoped first.
+
+        Order is the reader's: a transmission target is elected before the
+        shorthand that consumes it (`xml_native_reader.cc:1186-1210` runs ahead
+        of the `mjs_setTo*` calls at `:1232` on).
+        """
+        attribute = sorted({
+            handler for (element, _attr), handler
+            in overlay.SPEC_WRITE_HANDLERS.items() if element == plan.name})
+        if plan.category == "hook" and plan.arg:
+            attribute = [h for h in attribute if h != plan.arg] + [plan.arg]
+        plan.hooks = attribute
+
+    # -- reporting ---------------------------------------------------------- #
+    def handler_rows_with_a_field(self) -> list[str]:
+        """Handler rows whose attribute does resolve to a writable field.
+
+        A hook that the generator could have covered is hand code for nothing,
+        so these are surfaced rather than left to accumulate. Not every one is
+        wrong -- a legality check or a unit conversion is a real reason -- which
+        is why this reports rather than fails.
+        """
+        out = []
+        for (element, attr), handler in sorted(overlay.SPEC_WRITE_HANDLERS.items()):
+            plan = self.by_name.get(element)
+            if plan is None or plan.struct is None:
+                continue
+            f = next((x for x in plan.elem["fields"] if x["xml"] == attr), None)
+            if f is None:
+                continue
+            if self._write_for(plan, f) is not None:
+                out.append(f"{element}.{attr} -> {handler}")
+        return out
+
+
+# --------------------------------------------------------------------------- #
+# Spec write: emission                                                         #
+# --------------------------------------------------------------------------- #
+def _keyword_c(s: UeSchema, enum: dict) -> str:
+    return s.enum[enum["name"]]
+
+
+def _write_body(s: UeSchema, plan: SpecElement, wr: SpecWrite,
+                indent: str) -> list[str]:
+    """The statements that put one authored value into its mjs field."""
+    o: list[str] = []
+    w = o.append
+    f = wr.f
+    t = f["type"]
+    arity = t.get("arity")
+    value = f"In.{wr.member}" + (".GetValue()" if f["optional"] else "")
+    target = f"Out.{plan.prefix}{wr.field}"
+
+    if t["kind"] == "named" and arity is None:
+        w(f"{indent}{target} = static_cast<{wr.ctype}>(KeywordC({value}));")
+    elif t["kind"] == "named":
+        # A keyword set is one integer field: the members' constants OR'd
+        # together, which is what the reader's kFlags rows do.
+        w(f"{indent}int Bits = 0;")
+        w(f"{indent}for (const {value_type(s, f)[len('TArray<'):-1]} Item : {value})")
+        w(f"{indent}{{")
+        w(f"{indent}\tBits |= KeywordC(Item);")
+        w(f"{indent}}}")
+        w(f"{indent}{target} = static_cast<{wr.ctype}>(Bits);")
+    elif t["kind"] == "ref" or t["prim"] == "string":
+        if "max_chars" in f.get("annotations", {}):
+            # The array is not NUL-terminated in the header, so the tail is
+            # zeroed rather than a terminator written past the authored text.
+            w(f"{indent}CopyChars({target}, {value});")
+        elif wr.ctype == "mjStringVec*":
+            w(f"{indent}mjs_setStringVec({target}, TCHAR_TO_UTF8(*{value}));")
+        else:
+            w(f"{indent}mjs_setString({target}, TCHAR_TO_UTF8(*{value}));")
+    elif arity is None:
+        slot = "[0]" if wr.dim is not None else ""
+        w(f"{indent}{target}{slot} = static_cast<{wr.ctype}>({value});")
+    elif arity["kind"] == "unbounded":
+        w(f"{indent}SetVec({target}, {value});")
+    else:
+        vt = value_type(s, f)
+        if vt in FIXED_TYPES:
+            # Whole-array transfer through the storage adapter: none of the
+            # fixed types may be indexed, because a quaternion would come back
+            # a slot out.
+            w(f"{indent}using Fixed = FMjShape::fixed<{vt}>;")
+            w(f"{indent}Fixed::scalar Buffer[Fixed::size];")
+            w(f"{indent}Fixed::Load({value}, Buffer);")
+            w(f"{indent}for (std::size_t I = 0; I < Fixed::size; ++I)")
+            w(f"{indent}{{")
+            w(f"{indent}\t{target}[I] = static_cast<{wr.ctype}>(Buffer[I]);")
+            w(f"{indent}}}")
+        else:
+            # A range arity shares TArray storage with a fixed one, so the
+            # authored count is what bounds the copy: writing the declared
+            # length would author slots the document never named.
+            inner = vt[len("TArray<"):-1]
+            w(f"{indent}const TArray<{inner}>& Values = {value};")
+            w(f"{indent}const int32 Count = FMath::Min<int32>("
+              f"Values.Num(), {wr.dim});")
+            w(f"{indent}for (int32 I = 0; I < Count; ++I)")
+            w(f"{indent}{{")
+            w(f"{indent}\t{target}[I] = static_cast<{wr.ctype}>(Values[I]);")
+            w(f"{indent}}}")
+    return o
+
+
+def _apply_signature(s: UeSchema, plan: SpecElement) -> str:
+    cls = s.cls[plan.elem["name"]]
+    return f"void Apply(const {cls}& In, {plan.struct}& Out)"
+
+
+def emit_specwrite_h(s: UeSchema, plan: SpecWritePlan) -> str:
+    o: list[str] = []
+    w = o.append
+    w(LICENSE.rstrip("\n"))
+    w("")
+    w(BANNER)
+    w("//")
+    w("// The spec write: how an authored component tree reaches an mjSpec.")
+    w("//")
+    w("// Everything here scales with the schema -- which struct an element")
+    w("// binds, which function creates it, which field each attribute lands in")
+    w("// and in what C type -- so none of it is hand-written. What is NOT here")
+    w("// is the walk: the order elements are visited in, the class context, the")
+    w("// diagnostics and the element identity map are the caller's, and they do")
+    w("// not scale with the schema.")
+    w("//")
+    w("// An attribute reaches an mjs field only when one exists that these")
+    w("// shape rules can write. The rest belong to hooks, and the emitter fails")
+    w("// rather than emit a write it cannot justify, so a field that moves in a")
+    w("// MuJoCo bump is a generation error naming the attribute.")
+    w("//")
+    w("// Unauthored attributes are never written. That is the whole reason the")
+    w("// spec path inherits default classes the way MuJoCo's own reader does:")
+    w("// what mjs_add* left in place is what mj_compile resolves against.")
+    w("#pragma once")
+    w("")
+    w('#include "CoreMinimal.h"')
+    w("")
+    w('#include "MuJoCo/Spec/MjGenHooks.h"')
+    w("")
+    w("#if URLAB_MJ_GEN")
+    w("")
+    w('#include "MuJoCo/Gen/MjElements.gen.h"')
+    w('#include "MuJoCo/Gen/MjEnums.gen.h"')
+    w("")
+    w("THIRD_PARTY_INCLUDES_START")
+    w("#include <mujoco/mujoco.h>")
+    w("THIRD_PARTY_INCLUDES_END")
+    w("")
+    w("namespace ps::ue::specwrite")
+    w("{")
+    w("using ps::mjcf::ElementType;")
+    w("")
+    w("/** How an element reaches a spec: one value per SPEC_CREATE category. */")
+    w("enum class ECreate : uint8")
+    w("{")
+    for category in _CATEGORY_ENUM.values():
+        w(f"\t{category},")
+    w("};")
+    w("")
+    w("/**")
+    w(" * A created element: the identity handle, and the struct its fields go")
+    w(" * through.")
+    w(" *")
+    w(" * The two are different objects -- mjs_addGeom hands back an mjsGeom")
+    w(" * whose `element` member is the handle -- so both are carried. Struct is")
+    w(" * void* because the pairing is the schema's, and every consumer recovers")
+    w(" * the type from the element type it already dispatched on.")
+    w(" */")
+    w("struct FMjCreated")
+    w("{")
+    w("\tmjsElement* Element = nullptr;")
+    w("\tvoid* Struct = nullptr;")
+    w("")
+    w("\t/** Set when the created element is one children can hang off. */")
+    w("\tmjsBody* Body = nullptr;")
+    w("\tmjsFrame* Frame = nullptr;")
+    w("\tmjsDefault* Default = nullptr;")
+    w("};")
+    w("")
+    w("/** The hooks an element needs, in the order they must run. */")
+    w("struct FMjHookList")
+    w("{")
+    w("\tconst TCHAR* const* Names = nullptr;")
+    w("\tint32 Num = 0;")
+    w("};")
+    w("")
+    w("// --- Schema tables -------------------------------------------------- //")
+    w("URLAB_API ECreate CreateOf(ElementType Type);")
+    w("")
+    w("/** The hooks to run after the generated write, empty for most elements. */")
+    w("URLAB_API FMjHookList HooksFor(ElementType Type);")
+    w("")
+    w("/** Every hook name the schema asks for, so a registry can check itself. */")
+    w("URLAB_API FMjHookList AllHooks();")
+    w("")
+    w("/** True when the creation call consumes the identity attribute itself. */")
+    w("URLAB_API bool CreationTakesName(ElementType Type);")
+    w("")
+    w("/** True when this element has fields of its own to write. */")
+    w("URLAB_API bool HasFields(ElementType Type);")
+    w("")
+    w("// --- Enum constants ------------------------------------------------- //")
+    w("// The C constant a keyword stands for. An mjs field is typed as the C")
+    w("// enum, never as the schema's declaration order, so this is the one")
+    w("// place the two numbering systems meet.")
+    w("//")
+    w("// An enum whose constants live in a header the installed tree does not")
+    w("// ship has none: those are MuJoCo's parse-time keywords, and an element")
+    w("// spelled with them goes through the file boundary rather than here.")
+    for enum in s.enums:
+        if enum["name"] in plan.enums_emitted:
+            w(f"URLAB_API int KeywordC({_keyword_c(s, enum)} Value);")
+    w("")
+    w("// --- Creation ------------------------------------------------------- //")
+    w("/**")
+    w(" * Create one element on whichever owner its category names.")
+    w(" *")
+    w(" * Body, Frame, Def and ClassName are the context the walk carries; an")
+    w(" * element ignores the ones its creation function does not take. A")
+    w(" * category that creates nothing returns an empty result, which is not an")
+    w(" * error: an embedded element writes onto a struct that already exists.")
+    w(" */")
+    w("URLAB_API FMjCreated Create(ElementType Type, mjSpec* Spec, mjsBody* Body,")
+    w("\tmjsFrame* Frame, const mjsDefault* Def, const char* ClassName);")
+    w("")
+    w("// --- Field application ---------------------------------------------- //")
+    w("/**")
+    w(" * Write a node's schema constants and authored fields onto its struct.")
+    w(" *")
+    w(" * Struct is what Create handed back, or what a hook allocated for an")
+    w(" * element the overlay routes to one; the pairing with the node's element")
+    w(" * type is the schema's, and this is where it is checked.")
+    w(" */")
+    w("URLAB_API bool ApplyFields(const UMjNodeComponent& Node, void* Struct);")
+    w("")
+    w("/**")
+    w(" * Write an embedded node's authored fields onto its target struct.")
+    w(" *")
+    w(" * Parent is the struct the enclosing element owns, and is unused by a")
+    w(" * spec-embedded element, whose target hangs off the spec.")
+    w(" */")
+    w("URLAB_API bool ApplyEmbedded(const UMjNodeComponent& Node, mjSpec* Spec,")
+    w("\tvoid* Parent);")
+    w("")
+    w("/** The struct an embedded element owns, for its own embedded children. */")
+    w("URLAB_API void* EmbeddedTarget(ElementType Type, mjSpec* Spec, void* Parent);")
+    w("")
+    w("/**")
+    w(" * The struct a class partial writes onto, or null.")
+    w(" *")
+    w(" * A `<geom>` inside a `<default>` is the same element as one in a body")
+    w(" * and is not a geom: it is the geom template the class carries, so it")
+    w(" * targets mjsDefault's member of that type and creates nothing.")
+    w(" */")
+    w("URLAB_API void* DefaultMember(ElementType Type, mjsDefault* Default);")
+    w("")
+    w("/**")
+    w(" * Stamp an element's provenance string, if its struct carries one.")
+    w(" *")
+    w(" * `info` sits at a different offset in every struct and has no")
+    w(" * element-level setter, so which structs have one is schema knowledge")
+    w(" * like everything else here. False when this element has no info member.")
+    w(" */")
+    w("URLAB_API bool SetInfo(ElementType Type, void* Struct, const char* Info);")
+    w("")
+    w("}  // namespace ps::ue::specwrite")
+    w("")
+    w("#endif  // URLAB_MJ_GEN")
+    return "\n".join(o) + "\n"
+
+
+def emit_specwrite_cpp(s: UeSchema, plan: SpecWritePlan) -> str:
+    o: list[str] = []
+    w = o.append
+    w(LICENSE.rstrip("\n"))
+    w("")
+    w(BANNER)
+    w("")
+    w('#include "MuJoCo/Gen/MjSpecWrite.gen.h"')
+    w("")
+    w("#if URLAB_MJ_GEN")
+    w("")
+    w("#include <cstddef>")
+    w("#include <cstring>")
+    w("")
+    w('#include "MuJoCo/Gen/MjStorage.gen.h"')
+    w("")
+    w("namespace ps::ue::specwrite")
+    w("{")
+    w("namespace")
+    w("{")
+    w("// The mjs vector handles own their storage on MuJoCo's side, so a value")
+    w("// is copied in rather than assigned. The setters take a mutable pointer")
+    w("// and only read through it, which is what the cast is for.")
+    w("void SetVec(mjDoubleVec* Dest, const TArray<double>& Values)")
+    w("{ mjs_setDouble(Dest, const_cast<double*>(Values.GetData()), Values.Num()); }")
+    w("")
+    w("void SetVec(mjFloatVec* Dest, const TArray<float>& Values)")
+    w("{ mjs_setFloat(Dest, const_cast<float*>(Values.GetData()), Values.Num()); }")
+    w("")
+    w("void SetVec(mjIntVec* Dest, const TArray<int32>& Values)")
+    w("{ mjs_setInt(Dest, const_cast<int32*>(Values.GetData()), Values.Num()); }")
+    w("")
+    w("// A chars[N] field is a fixed byte window, not a C string: the header")
+    w("// gives it exactly the schema's maximum length and no room for a")
+    w("// terminator, so the tail is zeroed instead of terminated.")
+    w("template <std::size_t N>")
+    w("void CopyChars(char (&Dest)[N], const FString& Value)")
+    w("{")
+    w("\tconst auto Utf8 = StringCast<UTF8CHAR>(*Value);")
+    w("\tconst std::size_t Count = FMath::Min<std::size_t>(Utf8.Length(), N);")
+    w("\tstd::memset(Dest, 0, N);")
+    w("\tstd::memcpy(Dest, Utf8.Get(), Count);")
+    w("}")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if row.struct is None or (not row.writes and not row.consts):
+            continue
+        w("")
+        w(f"// <{element['xml']}> -> {row.struct}")
+        w(_apply_signature(s, row))
+        w("{")
+        if not row.writes:
+            w("\t(void)In;")
+        for const in row.consts:
+            w(f"\tOut.{row.prefix}{const['field']} = {const['value']};")
+        for write in row.writes:
+            # Every write gets its own scope: several of the shapes need a local
+            # buffer or count, and two of them in one function would collide.
+            if write.f["optional"]:
+                w(f"\tif (In.{write.member}.IsSet())")
+            w("\t{")
+            o.extend(_write_body(s, row, write, "\t\t"))
+            w("\t}")
+        w("}")
+    w("")
+    w("}  // namespace")
+    w("")
+    _emit_specwrite_tables(s, plan, w)
+    _emit_specwrite_keywords(s, plan, w)
+    _emit_specwrite_create(s, plan, w)
+    _emit_specwrite_apply(s, plan, w)
+    w("}  // namespace ps::ue::specwrite")
+    w("")
+    w("#endif  // URLAB_MJ_GEN")
+    return "\n".join(o) + "\n"
+
+
+def _emit_specwrite_tables(s: UeSchema, plan: SpecWritePlan, w) -> None:
+    w("ECreate CreateOf(ElementType Type)")
+    w("{")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        w(f"\tcase ElementType::{element['name']}: "
+          f"return ECreate::{_CATEGORY_ENUM[row.category]};")
+    w("\tdefault: return ECreate::Section;")
+    w("\t}")
+    w("}")
+    w("")
+    w("FMjHookList HooksFor(ElementType Type)")
+    w("{")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if not row.hooks:
+            continue
+        names = ", ".join(f'TEXT("{h}")' for h in row.hooks)
+        w(f"\tcase ElementType::{element['name']}:")
+        w("\t{")
+        w(f"\t\tstatic const TCHAR* const Names[] = {{ {names} }};")
+        w("\t\treturn FMjHookList{ Names, UE_ARRAY_COUNT(Names) };")
+        w("\t}")
+    w("\tdefault: return FMjHookList{};")
+    w("\t}")
+    w("}")
+    w("")
+    w("FMjHookList AllHooks()")
+    w("{")
+    every = sorted({h for row in plan.by_name.values() for h in row.hooks})
+    names = ", ".join(f'TEXT("{h}")' for h in every)
+    w(f"\tstatic const TCHAR* const Names[] = {{ {names} }};")
+    w("\treturn FMjHookList{ Names, UE_ARRAY_COUNT(Names) };")
+    w("}")
+    w("")
+    w("bool CreationTakesName(ElementType Type)")
+    w("{")
+    w("\tswitch (Type)")
+    w("\t{")
+    named = [e for e in s.elements
+             if plan.by_name[e["schema_name"]].arg in _ADD_TAKES_NAME]
+    for element in named:
+        w(f"\tcase ElementType::{element['name']}: return true;")
+    if not named:
+        w("\t// No creation function consumes the identity attribute.")
+    w("\tdefault: return false;")
+    w("\t}")
+    w("}")
+    w("")
+    w("bool HasFields(ElementType Type)")
+    w("{")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if row.struct is not None and (row.writes or row.consts):
+            w(f"\tcase ElementType::{element['name']}: return true;")
+    w("\tdefault: return false;")
+    w("\t}")
+    w("}")
+    w("")
+
+
+def _emit_specwrite_keywords(s: UeSchema, plan: SpecWritePlan, w) -> None:
+    for enum in s.enums:
+        if enum["name"] not in plan.enums_emitted:
+            continue
+        name = _keyword_c(s, enum)
+        w(f"int KeywordC({name} Value)")
+        w("{")
+        w("\tswitch (Value)")
+        w("\t{")
+        for member in enum["members"]:
+            constant = member.get("c")
+            if constant is None:
+                continue
+            w(f"\tcase {name}::{ident(member['name'])}: return {constant};")
+        w("\tdefault: return 0;")
+        w("\t}")
+        w("}")
+        w("")
+
+
+def _emit_specwrite_create(s: UeSchema, plan: SpecWritePlan, w) -> None:
+    w("FMjCreated Create(ElementType Type, mjSpec* Spec, mjsBody* Body,")
+    w("\tmjsFrame* Frame, const mjsDefault* Def, const char* ClassName)")
+    w("{")
+    w("\t(void)Body; (void)Frame; (void)Def; (void)ClassName;")
+    w("\tFMjCreated Out;")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if not row.creates or not row.arg:
+            continue
+        args, struct = _ADD_CALLS[row.arg]
+        # The owner is always the first argument, and mjs_add* reads through it
+        # without checking. A caller with no owner to give gets an empty result
+        # and a diagnostic, rather than handing MuJoCo a null.
+        owner = args.split(",", 1)[0].strip()
+        w(f"\tcase ElementType::{element['name']}:")
+        w("\t{")
+        w(f"\t\tif ({owner} == nullptr) return Out;")
+        w(f"\t\t{struct}* const Made = {row.arg}({args});")
+        w("\t\tif (Made == nullptr) return Out;")
+        w("\t\tOut.Element = Made->element;")
+        w("\t\tOut.Struct = Made;")
+        if struct == "mjsBody":
+            w("\t\tOut.Body = Made;")
+        elif struct == "mjsFrame":
+            w("\t\tOut.Frame = Made;")
+        elif struct == "mjsDefault":
+            w("\t\tOut.Default = Made;")
+        if row.category == "body_scoped" and row.arg != "mjs_addFrame":
+            w("\t\t// A body-scoped element authored inside a <frame> is placed")
+            w("\t\t// in that frame; a <frame> nests through mjs_addFrame itself.")
+            w("\t\tif (Frame != nullptr) mjs_setFrame(Out.Element, Frame);")
+        w("\t\treturn Out;")
+        w("\t}")
+    w("\tdefault: return Out;")
+    w("\t}")
+    w("}")
+    w("")
+
+
+def _emit_specwrite_apply(s: UeSchema, plan: SpecWritePlan, w) -> None:
+    w("bool ApplyFields(const UMjNodeComponent& Node, void* Struct)")
+    w("{")
+    w("\tElementType Type;")
+    w("\tif (Struct == nullptr || !ElementTypeOfNode(Node, Type))")
+    w("\t{")
+    w("\t\treturn false;")
+    w("\t}")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if row.embedded or row.struct is None:
+            continue
+        if not row.writes and not row.consts:
+            continue
+        cls = s.cls[element["name"]]
+        w(f"\tcase ElementType::{element['name']}:")
+        w(f"\t\tApply(static_cast<const {cls}&>(Node),")
+        w(f"\t\t\t*static_cast<{row.struct}*>(Struct));")
+        w("\t\treturn true;")
+    w("\tdefault: return false;")
+    w("\t}")
+    w("}")
+    w("")
+    w("void* EmbeddedTarget(ElementType Type, mjSpec* Spec, void* Parent)")
+    w("{")
+    w("\t(void)Spec; (void)Parent;")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if not row.embedded or row.target is None:
+            continue
+        w(f"\tcase ElementType::{element['name']}:")
+        w("\t{")
+        if row.parent_ctype:
+            w(f"\t\t{row.parent_ctype}* const Owner = "
+              f"static_cast<{row.parent_ctype}*>(Parent);")
+            w("\t\tif (Owner == nullptr) return nullptr;")
+            w(f"\t\treturn &({row.target.replace('Parent', 'Owner')});")
+        else:
+            w("\t\tif (Spec == nullptr) return nullptr;")
+            w(f"\t\treturn &({row.target});")
+        w("\t}")
+    w("\tdefault: return nullptr;")
+    w("\t}")
+    w("}")
+    w("")
+    w("void* DefaultMember(ElementType Type, mjsDefault* Default)")
+    w("{")
+    w("\tif (Default == nullptr) return nullptr;")
+    w("\tswitch (Type)")
+    w("\t{")
+    members = {ctype.rstrip("*"): name
+               for name, (ctype, _dim) in plan.fields_of("mjsDefault").items()
+               if ctype.endswith("*") and ctype.startswith("mjs")}
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if row.struct is None or row.embedded or row.struct not in members:
+            continue
+        w(f"\tcase ElementType::{element['name']}: return Default->{members[row.struct]};")
+    w("\tdefault: return nullptr;")
+    w("\t}")
+    w("}")
+    w("")
+    w("bool SetInfo(ElementType Type, void* Struct, const char* Info)")
+    w("{")
+    w("\tif (Struct == nullptr || Info == nullptr) return false;")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if row.struct is None or row.embedded:
+            continue
+        if "info" not in plan.fields_of(row.fields_key):
+            continue
+        w(f"\tcase ElementType::{element['name']}:")
+        w(f"\t\tmjs_setString(static_cast<{row.struct}*>(Struct)->info, Info);")
+        w("\t\treturn true;")
+    w("\tdefault: return false;")
+    w("\t}")
+    w("}")
+    w("")
+    w("bool ApplyEmbedded(const UMjNodeComponent& Node, mjSpec* Spec, void* Parent)")
+    w("{")
+    w("\tElementType Type;")
+    w("\tif (!ElementTypeOfNode(Node, Type)) return false;")
+    w("\tvoid* const Target = EmbeddedTarget(Type, Spec, Parent);")
+    w("\tif (Target == nullptr) return false;")
+    w("\tswitch (Type)")
+    w("\t{")
+    for element in s.elements:
+        row = plan.by_name[element["schema_name"]]
+        if not row.embedded or row.struct is None:
+            continue
+        if not row.writes and not row.consts:
+            continue
+        cls = s.cls[element["name"]]
+        w(f"\tcase ElementType::{element['name']}:")
+        w(f"\t\tApply(static_cast<const {cls}&>(Node),")
+        w(f"\t\t\t*static_cast<{row.struct}*>(Target));")
+        w("\t\treturn true;")
+    w("\tdefault: return false;")
+    w("\t}")
+    w("}")
+    w("")
+
+
+# --------------------------------------------------------------------------- #
 # Generated coverage test                                                      #
 # --------------------------------------------------------------------------- #
 def emit_coverage(s: UeSchema) -> str:
@@ -2148,6 +3206,9 @@ def generate(root: str | None = None,
     files[f"{PUBLIC}/MjDispatch.gen.h"] = emit_dispatch_h(s)
     files[f"{PUBLIC}/MjReflect.gen.h"] = emit_reflect_h(s)
     files[f"{PUBLIC}/MjProfile.gen.h"] = emit_profile(s)
+    write = SpecWritePlan(s)
+    files[f"{PUBLIC}/MjSpecWrite.gen.h"] = emit_specwrite_h(s, write)
+    files[f"{PRIVATE}/MjSpecWrite.gen.cpp"] = emit_specwrite_cpp(s, write)
     files[f"{PRIVATE}/MjKeywords.gen.cpp"] = emit_keywords_cpp(s)
     files[f"{PRIVATE}/MjDefaults.gen.cpp"] = emit_defaults_cpp(s)
     files[f"{PRIVATE}/MjDispatch.gen.cpp"] = emit_dispatch_cpp(s)

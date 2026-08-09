@@ -296,6 +296,97 @@ class _Frontend:
                 "(add each to overlay.READ_HANDLERS/READ_NOTES or "
                 "overlay.WRITE_NOTES):\n  " + "\n  ".join(sorted(unhandled)))
 
+    def _spec_write_keys(self) -> set:
+        """The attributes the spec write has to have an answer for.
+
+        An attribute the reader interprets rather than stores is an attribute
+        whose write cannot be assumed plain, so the same set drives both: the
+        schema's own `reading=custom` facets, plus the attributes the overlay
+        binds to a resolver.
+        """
+        keys = set()
+        for name, element in self.elements.items():
+            for attr in self.schema.expanded_attrs(element):
+                if attr.facets.get("reading") == "custom":
+                    keys.add((name, attr.name))
+        keys |= set(overlay.INPUT_ALIASES)
+        keys |= set(overlay.READ_HANDLERS)
+        keys |= set(self.variant_alias_keys)
+        return keys
+
+    def _check_spec_write(self):
+        """Every element has a creation category and a target where it needs
+        one, and every interpreted attribute a spec-write disposition.
+
+        The other half of the rule -- that an attribute with no field on the
+        bound struct is named somewhere -- cannot be asked here, because it
+        needs the mjs struct layouts and only the emitter reads those. This gate
+        covers what the schema alone answers; the emitter's gate covers the rest
+        and is what makes the two-way check exhaustive.
+        """
+        problems = []
+
+        for name in self.elements:
+            if name not in overlay.SPEC_CREATE:
+                problems.append(f"element {name} has no SPEC_CREATE category")
+        for name in overlay.SPEC_CREATE:
+            if name not in self.elements:
+                problems.append(
+                    f"SPEC_CREATE names {name}, which the schema no longer declares")
+
+        problems += self._check_spec_target()
+
+        for key in self._spec_write_keys():
+            if (key not in overlay.SPEC_WRITE_HANDLERS
+                    and key not in overlay.SPEC_WRITE_NOTES):
+                problems.append(
+                    f"{key[0]}.{key[1]} has no spec-write handler and no waiver")
+
+        for table, label in ((overlay.SPEC_WRITE_HANDLERS, "SPEC_WRITE_HANDLERS"),
+                             (overlay.SPEC_WRITE_NOTES, "SPEC_WRITE_NOTES")):
+            for element, attr in table:
+                if element not in self.elements:
+                    problems.append(
+                        f"{label} names {element}.{attr}, and the schema no "
+                        "longer declares that element")
+                    continue
+                live = {a.name for a in
+                        self.schema.expanded_attrs(self.elements[element])}
+                if attr not in live:
+                    problems.append(
+                        f"{label} names {element}.{attr}, which {element} no "
+                        "longer declares")
+
+        if problems:
+            raise OverlayError(
+                "spec-write bindings out of step with the schema (fix "
+                "overlay.SPEC_CREATE, overlay.SPEC_TARGET, "
+                "overlay.SPEC_WRITE_HANDLERS or "
+                "overlay.SPEC_WRITE_NOTES):\n  " + "\n  ".join(sorted(problems)))
+
+    def _check_spec_target(self) -> list[str]:
+        """Exactly the embedded elements carry a target expression.
+
+        A visual sub-block is excluded in both directions: its own `field=`
+        facet already names it relative to its parent, so a row here would be a
+        second spelling of the same fact, free to disagree with it.
+        """
+        problems = []
+        wanted = {
+            name for name, element in self.elements.items()
+            if overlay.SPEC_CREATE.get(name, (None, None))[0] in
+            ("spec_embedded", "parent_embedded") and "field" not in element.facets
+        }
+        for name in sorted(wanted - set(overlay.SPEC_TARGET)):
+            problems.append(
+                f"element {name} is {overlay.SPEC_CREATE[name][0]} and has no "
+                "SPEC_TARGET row, so there is nowhere to write it")
+        for name in sorted(set(overlay.SPEC_TARGET) - wanted):
+            problems.append(
+                f"SPEC_TARGET names {name}, which is not an embedded element "
+                "needing a target expression")
+        return problems
+
     # -- unions ------------------------------------------------------------- #
     def _aliased_to(self, name: str) -> list[str]:
         return [n for n, e in self.elements.items()
@@ -708,6 +799,7 @@ class _Frontend:
             elements.append(row)
 
         self._check_custom_facets()
+        self._check_spec_write()
         self._check_child_names(elements)
         self._check_type_overrides()
 
@@ -725,14 +817,27 @@ class _Frontend:
         row = {
             "name": self.enum_name[name],
             "schema_name": name,
-            "members": [{"name": self._enum_member(name, keyword),
-                         "value": keyword}
-                        for keyword, _c in enum.items],
+            "members": [self._enum_member_row(name, keyword, c)
+                        for keyword, c in enum.items],
         }
         if enum.ctype:
             row["ctype"] = enum.ctype
         if enum.doc:
             row["doc"] = enum.doc
+        return row
+
+    def _enum_member_row(self, name: str, keyword: str, c) -> dict:
+        """One enum member: its C++ name, its MJCF keyword, and its C constant.
+
+        The constant is what a spec write has to store in the mjs struct, whose
+        fields are the C enums rather than the keywords. It is carried verbatim,
+        constant or numeric literal alike, because the schema is the authority on
+        which of the two a member is spelled with. A member with no binding
+        carries no key at all rather than a null.
+        """
+        row = {"name": self._enum_member(name, keyword), "value": keyword}
+        if c is not None:
+            row["c"] = c
         return row
 
     def _constraints(self, name: str, element, fields: list[dict]) -> list[dict]:

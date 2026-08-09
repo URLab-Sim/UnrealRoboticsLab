@@ -37,6 +37,8 @@ TOP_LEVEL = {
     f"{PUBLIC}/MjDispatch.gen.h",
     f"{PUBLIC}/MjReflect.gen.h",
     f"{PUBLIC}/MjProfile.gen.h",
+    f"{PUBLIC}/MjSpecWrite.gen.h",
+    f"{PRIVATE}/MjSpecWrite.gen.cpp",
     f"{PRIVATE}/MjKeywords.gen.cpp",
     f"{PRIVATE}/MjDefaults.gen.cpp",
     f"{PRIVATE}/MjDispatch.gen.cpp",

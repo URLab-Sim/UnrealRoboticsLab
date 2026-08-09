@@ -141,8 +141,9 @@ bool FMjNodeNamesReadableTest::RunTest(const FString& Parameters)
 
 	// MJCF names are unique per element type, not across types: the humanoid has
 	// a body `torso` and a geom `torso`. The first in spec order keeps the
-	// bare name and only the second is suffixed.
-	TestTrue(TEXT("a name shared by two element types suffixes only the second"), Names.Contains(TEXT("torso_1")));
+	// bare name and only the second is suffixed, by what it is.
+	TestTrue(TEXT("a name shared by two element types suffixes only the second"), Names.Contains(TEXT("torso_geom")));
+	TestFalse(TEXT("a named element is never disambiguated by an ordinal"), Names.Contains(TEXT("torso_1")));
 
 	// And no NAMED element is left on the ordinal it was constructed with. An
 	// unnamed one has nothing better to be called than its tag, so it keeps a

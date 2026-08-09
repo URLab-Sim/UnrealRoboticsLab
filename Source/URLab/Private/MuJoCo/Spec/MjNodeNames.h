@@ -28,10 +28,14 @@
 //     `<worldbody>` is not a type, it is a `body` in the model's world slot,
 //     so a node named after its element type reads `body` and the user
 //     reasonably concludes the world body is missing.
-//   * an ordinal only on a genuine collision. MJCF names are unique per element
-//     type and not across types -- MuJoCo's humanoid has a body `torso` and a
-//     geom `torso` -- and Unreal needs one namespace, so the second one asks
-//     for a suffix. Only the second one.
+//   * a suffix only on a genuine collision, and the suffix is the element's own
+//     type. MJCF names are unique per element type and not across types --
+//     MuJoCo's humanoid has a body `torso` and a geom `torso` -- and Unreal
+//     needs one namespace, so the second one asks for a suffix. Since a
+//     collision between two named elements can only be a cross-type one, the
+//     type is what actually tells them apart: the body keeps `torso` and the
+//     geom becomes `torso_geom`. Ordinals are left to unnamed elements, which
+//     have nothing but their tag to be distinguished by.
 //
 // Names are sanitised to what Unreal accepts as a variable, because MJCF
 // permits characters it does not: a menagerie model namespaces with `/`.

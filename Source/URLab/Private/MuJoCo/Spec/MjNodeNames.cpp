@@ -26,11 +26,19 @@ namespace urlab::spec
 namespace
 {
 
-/** One node and the name it should end up with. */
+/**
+ * One node, the name it should end up with, and the name to try if some object
+ * outside this plan is already holding that one.
+ *
+ * The fallback is empty unless the planned name is the element's own MJCF name
+ * unqualified, which is the only case where a type suffix reads as an answer
+ * rather than as noise.
+ */
 struct FNamePlan
 {
 	UMjNodeComponent* Node = nullptr;
 	FString Name;
+	FString Fallback;
 };
 
 /**
@@ -160,15 +168,24 @@ bool TryRename(UMjNodeComponent& Node, const FString& Name)
 }
 
 /**
- * Take `Preferred`, or the first free `Preferred_N`, or leave the node as it is.
+ * Take `Preferred`, or `Fallback`, or the first free `Preferred_N`, or leave the
+ * node as it is.
+ *
+ * `Fallback` is the type-suffixed spelling, tried before any ordinal for the
+ * same reason the plan prefers it: `torso_geom` says what the element is,
+ * `torso_1` says only that something else got there first.
  *
  * Giving up is a real outcome: a node keeping the ordinal it was constructed
  * with is a worse name, not a broken asset.
  */
 template <class Adapter>
-void RenameToBest(UMjNodeComponent& Node, const FString& Preferred)
+void RenameToBest(UMjNodeComponent& Node, const FString& Preferred, const FString& Fallback)
 {
 	if (TryRename<Adapter>(Node, Preferred))
+	{
+		return;
+	}
+	if (!Fallback.IsEmpty() && TryRename<Adapter>(Node, Fallback))
 	{
 		return;
 	}
@@ -187,6 +204,15 @@ void RenameToBest(UMjNodeComponent& Node, const FString& Preferred)
  * Spec order is what makes the result stable and lets the FIRST claimant of
  * a shared name keep it unsuffixed -- the body `torso` before the geom `torso`,
  * which is the order the MJCF reads in.
+ *
+ * The SECOND claimant is disambiguated by what it is rather than by how many
+ * came before it. MuJoCo names elements uniquely within a type and not across
+ * types, so two NAMED elements can only ever collide across types -- and the
+ * type is therefore always the true distinction between them. `torso_geom` and
+ * `torso_joint` say which is which; `torso_1` and `torso_2` say only what order
+ * the file happened to be in. Ordinals remain for unnamed elements, which have
+ * nothing but their tag to be told apart by, and as the last resort for an
+ * authored name that collides with a type-suffixed one.
  */
 template <class Adapter>
 void PlanSubtree(UMjNodeComponent& Node, const UMjNodeComponent* Parent, TSet<FString>& Taken,
@@ -206,19 +232,27 @@ void PlanSubtree(UMjNodeComponent& Node, const UMjNodeComponent* Parent, TSet<FS
 	{
 		Desired = SanitizeName(Node.MjName.GetValue());
 	}
+	const bool bNamed = !Desired.IsEmpty();
 	if (Desired.IsEmpty())
 	{
 		Desired = SanitizeName(ContextualTag(Node, Parent));
 	}
 	if (!Desired.IsEmpty())
 	{
+		const FString Tagged = bNamed ? Desired + TEXT("_") + SanitizeName(ContextualTag(Node, Parent)) : FString();
+
 		FString Unique = Desired;
+		if (Taken.Contains(Unique) && !Tagged.IsEmpty() && !Taken.Contains(Tagged))
+		{
+			Unique = Tagged;
+		}
 		for (int32 Ordinal = 1; Taken.Contains(Unique); ++Ordinal)
 		{
 			Unique = FString::Printf(TEXT("%s_%d"), *Desired, Ordinal);
 		}
 		Taken.Add(Unique);
-		Plan.Add(FNamePlan{&Node, MoveTemp(Unique)});
+		const FString Fallback = Unique == Desired ? Tagged : FString();
+		Plan.Add(FNamePlan{&Node, MoveTemp(Unique), Fallback});
 	}
 
 	for (const FMjOrderedChild& Child : Adapter::OrderedChildren(Node))
@@ -249,7 +283,7 @@ void NameTreeFromSpec(UMjNodeComponent& Root)
 
 	for (const FNamePlan& Entry : Plan)
 	{
-		RenameToBest<Adapter>(*Entry.Node, Entry.Name);
+		RenameToBest<Adapter>(*Entry.Node, Entry.Name, Entry.Fallback);
 	}
 
 #if WITH_EDITOR

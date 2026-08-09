@@ -64,9 +64,18 @@ struct URLAB_API FMjBuiltSpec
 /**
  * Populate an mjSpec from the component tree under Root.
  *
- * Reads the components, never mutates them. On error the result's Spec is null
- * and OutDiags carries at least one diagnostic; diagnostics carry the
- * offending component's source file and line where one is implicated.
+ * Reads the components, with one mutation it undoes before returning: an
+ * element the document left unnamed is given a transient `_ps:` name for the
+ * duration of the build, because that name is what leaves the engine -- the
+ * bridge reconciles by it -- and the walk reads it off the component rather
+ * than off the built element. The reservation scope takes every one of them off
+ * again, and a debug build checks that it did, because the symptom of a name
+ * that survived is a generated identity authored into the user's Blueprint and
+ * showing up in the next diff of their MJCF, not a failure here.
+ *
+ * On error the result's Spec is null and OutDiags carries at least one
+ * diagnostic; diagnostics carry the offending component's source file and line
+ * where one is implicated.
  */
 URLAB_API FMjBuiltSpec BuildSpec(const FSpecRef& Root, TArray<FMjSpecDiagnostic>& OutDiags);
 

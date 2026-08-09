@@ -14,6 +14,7 @@
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MjReservedNames.h"
 #include "MjSpecBuildContext.h"
+#include "MjSpecNodes.h"
 #include "MjSpecWriteHooks.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 
@@ -515,6 +516,35 @@ FMjBuiltSpec FBuilder::Build()
 	return MoveTemp(Result);
 }
 
+/**
+ * Nothing under `Root` still carries a name the reservation minted.
+ *
+ * The reservation is transient by contract and the tree is the user's document,
+ * so a name that survived is authored identity nobody asked for. It would not
+ * fail anything here: it fails later, in a saved package and in the next diff
+ * of their MJCF, which is why it is checked at the one point the contract says
+ * it must already be true.
+ */
+void CheckReservationLifted(const FSpecRef& Root)
+{
+#if DO_CHECK
+	const FMjSpecNodes Tree = MjSpecNodesOf(Root);
+	for (const UMjNodeComponent* const Node : Tree.Nodes)
+	{
+		if (Node == nullptr || !Node->MjName.IsSet())
+		{
+			continue;
+		}
+		checkf(!Node->MjName.GetValue().StartsWith(MjReservedNamePrefix),
+			TEXT("the reserved name '%s' survived the spec build; the reservation scope is meant to take "
+				 "every one of them off again before the tree is handed back"),
+			*Node->MjName.GetValue());
+	}
+#else
+	(void)Root;
+#endif
+}
+
 }  // namespace
 
 bool FMjSpecWriteContext::Error(const UMjNodeComponent& Node, const FString& Message)
@@ -620,10 +650,16 @@ FMjBuiltSpec BuildSpec(const FSpecRef& Root, TArray<FMjSpecDiagnostic>& OutDiags
 		Diagnostic.Message = TEXT("the spec handle names no component tree");
 		return FMjBuiltSpec();
 	}
-	// Held across the whole walk: the elements are named from their components,
-	// and a macro's subtree is serialized back out to MJCF from them as well.
-	const FMjReservedNames Reserved(Root);
-	return FBuilder(Root, OutDiags).Build();
+	FMjBuiltSpec Built;
+	{
+		// Held across the whole walk: the elements are named from their
+		// components, and a macro's subtree is serialized back out to MJCF from
+		// them as well.
+		const FMjReservedNames Reserved(Root);
+		Built = FBuilder(Root, OutDiags).Build();
+	}
+	CheckReservationLifted(Root);
+	return Built;
 }
 
 }  // namespace urlab::spec

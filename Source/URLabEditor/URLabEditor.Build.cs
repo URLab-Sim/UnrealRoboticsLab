@@ -59,6 +59,9 @@ public class URLabEditor : ModuleRules
 			"Kismet",
 			"BlueprintGraph",
 			"ToolMenus",
+			// Import and generation diagnostics are routed to the editor's
+			// Messages panel; the module owns the listing they land in.
+			"MessageLog",
 			// M_MuJoCo_Master is built from code (MjMasterMaterial.cpp) rather
 			// than hand-authored, so the graph is reviewable and reproducible.
 			"MaterialEditor"

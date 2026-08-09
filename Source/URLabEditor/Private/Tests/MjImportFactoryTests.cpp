@@ -12,9 +12,12 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "HAL/FileManager.h"
+#include "IMessageLogListing.h"
+#include "MessageLogModule.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
 #include "UObject/Package.h"
 #include "UObject/SoftObjectPath.h"
 
@@ -348,6 +351,15 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 	AddExpectedErrorPlain(TEXT("Failed to read MJCF"), EAutomationExpectedErrorFlags::Contains, 0);
 	AddExpectedErrorPlain(TEXT("produced no spec"), EAutomationExpectedErrorFlags::Contains, 0);
 
+	// The output log is a firehose during an import, so the diagnostic is also
+	// routed to the editor's Messages panel. Read it back from the listing
+	// rather than trusting that the call was made: the panel is where a user
+	// who missed the toast goes looking, and a message that never reaches the
+	// listing is invisible in exactly the case it exists for.
+	FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+	const TSharedRef<IMessageLogListing> Listing = MessageLogModule.GetLogListing(TEXT("URLab"));
+	Listing->ClearMessages();
+
 	{
 		FFactoryImportProbe Probe;
 		Probe.Run(BadXml);
@@ -356,6 +368,10 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 		TestNull(TEXT("nothing is left in the package"), Probe.Leftover());
 		TestFalse(TEXT("nothing is left in the asset registry"), Probe.RegisteredAsAsset());
 	}
+
+	const FString Listed = Listing->GetAllMessagesAsString();
+	TestTrue(TEXT("the failure reached the editor's message log"),
+		Listed.Contains(TEXT("Failed to read MJCF")) || Listed.Contains(TEXT("produced no spec")));
 
 	return true;
 }

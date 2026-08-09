@@ -239,7 +239,8 @@ void PlanSubtree(UMjNodeComponent& Node, const UMjNodeComponent* Parent, TSet<FS
 	}
 	if (!Desired.IsEmpty())
 	{
-		const FString Tagged = bNamed ? Desired + TEXT("_") + SanitizeName(ContextualTag(Node, Parent)) : FString();
+		const FString Tag = bNamed ? SanitizeName(ContextualTag(Node, Parent)) : FString();
+		const FString Tagged = Tag.IsEmpty() ? FString() : Desired + TEXT("_") + Tag;
 
 		FString Unique = Desired;
 		if (Taken.Contains(Unique) && !Tagged.IsEmpty() && !Taken.Contains(Tagged))

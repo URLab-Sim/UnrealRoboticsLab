@@ -31,6 +31,7 @@
 #include "MuJoCo/Spec/MjAssetFiles.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjSceneContributor.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
@@ -379,13 +380,6 @@ void UMjPhysicsEngine::BuildSceneAssembly(FSceneAssembly& Out)
 		AddParticipant(Out, Contributor->GetSceneSpec(), Contributor->GetScenePrefix(),
 			Contributor->GetScenePlacement());
 	}
-}
-
-FMjCompiled UMjPhysicsEngine::CompileSceneSpec()
-{
-	FSceneAssembly Scene;
-	BuildSceneAssembly(Scene);
-	return MjCompileScene(Scene);
 }
 
 namespace

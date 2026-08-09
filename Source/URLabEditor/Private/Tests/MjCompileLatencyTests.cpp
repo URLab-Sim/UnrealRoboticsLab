@@ -8,22 +8,22 @@
 
 // What a compile costs.
 //
-// The spec path compiles by printing canonical MJCF and handing the text to
-// MuJoCo's own parser. That is obviously fine for a compile the user asked for
-// and pressed a button to get. It is not obviously fine for a recompile that
-// happens because they dragged a component, so it is measured here rather than
-// assumed either way.
+// The engine builds an mjSpec from the components and compiles that. It is
+// obviously fine for a compile the user asked for and pressed a button to get.
+// It is not obviously fine for a recompile that happens because they dragged a
+// component, so it is measured here rather than assumed either way.
 //
 // Three numbers, because they answer different questions:
 //
-//   write     the spec to MJCF text. Ours, and the only part a different
-//             compile route could remove.
-//   compile   write plus VFS staging plus mj_loadXML plus the name binding:
-//             everything CompileSceneSpec does, model in hand, nothing
+//   write     the spec to MJCF text. Not on the compile route at all any more;
+//             it is what the bridge handshake and the render-farm upload are
+//             handed, and the install still pays for it.
+//   compile   building the scene spec and compiling it: model in hand, nothing
 //             installed.
-//   install   the whole of InstallCompiledSpec: the above, plus joining the
-//             physics worker, unbinding, freeing the old model, mj_makeData,
-//             rebinding every element, sizing control slots, and one step.
+//   install   the whole of InstallCompiledSpec: the above, plus the handshake
+//             text, joining the physics worker, unbinding, freeing the old
+//             model, mj_makeData, rebinding every element, sizing control slots,
+//             and one step.
 //
 // The convention is ProtoSpec's `ps_path_diff --bench`: one machine-readable
 // line, averages over N runs, and no threshold asserted. A perf assertion on a
@@ -40,6 +40,9 @@
 #if URLAB_MJ_GEN
 
 #include "HAL/PlatformTime.h"
+
+#include "MuJoCo/Spec/MjSceneAssembly.h"
+#include "MuJoCo/Spec/MjSceneSpec.h"
 
 // The measurement has to reach the run's own log, and URLab's categories are
 // not exported to this module, so the benchmark carries its own.
@@ -62,6 +65,31 @@ constexpr int32 Runs = 5;
 double MillisSince(double Start)
 {
 	return (FPlatformTime::Seconds() - Start) * 1000.0;
+}
+
+/**
+ * The scene the engine would install, built and compiled but not installed.
+ *
+ * The same two steps `InstallCompiledSpec` performs before anything running is
+ * touched, so the number is the one that would be paid on a recompile.
+ */
+urlab::spec::FMjCompiledScene CompileSceneOffline(UMjPhysicsEngine& Engine)
+{
+	FSceneAssembly Scene;
+	Engine.BuildSceneAssembly(Scene);
+
+	urlab::spec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(Scene.GetSceneRoot());
+	for (const FMjSceneParticipant& Participant : Scene.GetParticipants())
+	{
+		urlab::spec::FMjSceneSpecParticipant Placed;
+		Placed.Spec = Participant.Spec;
+		Placed.Prefix = Participant.Prefix;
+		Placed.MjPos = Participant.MjPos;
+		Placed.MjQuat = Participant.MjQuat;
+		Builder.AddParticipant(Placed);
+	}
+	return Builder.Compile();
 }
 
 /** Hang `BodyCount` jointed, geom-bearing bodies off the session's world body. */
@@ -134,9 +162,9 @@ bool FMjCompileLatency::RunTest(const FString& Parameters)
 		}
 
 		const double CompileStart = FPlatformTime::Seconds();
-		FMjCompiled Compiled = Engine->CompileSceneSpec();
+		urlab::spec::FMjCompiledScene Compiled = CompileSceneOffline(*Engine);
 		const double Compile = MillisSince(CompileStart);
-		if (!Compiled.IsOk())
+		if (!Compiled.IsValid())
 		{
 			AddError(TEXT("the benchmark spec did not compile"));
 			return false;
@@ -178,10 +206,10 @@ bool FMjCompileLatency::RunTest(const FString& Parameters)
 
 	// Nothing here is a threshold. The assertions are that the measurement
 	// happened and that it measured the pipeline rather than an early return:
-	// a compile cannot be cheaper than the write it contains, and an install
-	// cannot be cheaper than the compile it contains.
+	// an install cannot be cheaper than the compile it contains. The write is
+	// not on the compile route, so it bounds neither of the other two.
 	TestTrue(TEXT("the write was measured"), WriteMs > 0.0);
-	TestTrue(TEXT("a compile costs at least its write"), CompileMs >= WriteMs);
+	TestTrue(TEXT("the compile was measured"), CompileMs > 0.0);
 	TestTrue(TEXT("an install costs at least its compile"), InstallMs >= CompileMs);
 	return true;
 }

@@ -21,7 +21,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
-#include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjBinding.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 
 THIRD_PARTY_INCLUDES_START

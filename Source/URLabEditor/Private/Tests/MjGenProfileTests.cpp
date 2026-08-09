@@ -33,7 +33,6 @@
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
 
-#include "MuJoCo/Spec/MjCompile.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
@@ -617,96 +616,6 @@ bool FMjGenProfileHandshakeMjcfTest::RunTest(const FString& Parameters)
 	}
 
 	TestTrue(TEXT("at least one payload was compared"), Compared > 0);
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjGenProfileSpecCompileTest, "URLab.Gen.Profile.SpecCompile",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FMjGenProfileSpecCompileTest::RunTest(const FString& Parameters)
-{
-	using namespace MjGenProfileTests;
-
-	// The compile path in one line: parse a file into a spec, hand the
-	// spec to MjCompileSpec, and require the model it produces to match
-	// a stock mj_loadXML of the original field for field. Then require the ids
-	// to have come back: a model that matches but binds nothing would pass a
-	// differential gate and be useless.
-	int32 Compiled = 0;
-	TArray<FString> Files;
-	Files.Add(FString());
-	Files.Append(CorpusFiles());
-
-	for (const FString& File : Files)
-	{
-		const FString Label = File.IsEmpty() ? TEXT("inline") : FPaths::GetCleanFilename(File);
-
-		FString Xml = InlineCorpus;
-		if (!File.IsEmpty() && !FFileHelper::LoadFileToString(Xml, *File))
-		{
-			continue;
-		}
-
-		UBlueprint* Blueprint = MakeScratchBlueprint();
-		if (Blueprint == nullptr)
-		{
-			AddError(FString::Printf(TEXT("%s: could not create a scratch Blueprint"), *Label));
-			continue;
-		}
-
-		const FMjSpecParseResult Parsed =
-			MjParseIntoBlueprint(*Blueprint, Xml, File.IsEmpty() ? TEXT("<inline>") : File);
-		if (!Parsed.IsOk())
-		{
-			if (!Parsed.IsUnsupportedOnly())
-			{
-				AddError(FString::Printf(TEXT("%s: parse failed: %s"), *Label,
-					*DiagnosticsToString(Parsed.Errors)));
-			}
-			continue;
-		}
-
-		// The differential runs with auto-naming off: a reserved name is a real
-		// name, and it would show up in the model's name table, so a run with it
-		// on could never be byte-identical to a stock load of the original.
-		FMjCompileOptions Pristine;
-		Pristine.bAutoName = false;
-		FMjCompiled Model = MjCompileSpec(FSpecRef::OverBlueprint(*Blueprint), Pristine);
-		if (!Model.IsOk())
-		{
-			AddError(FString::Printf(TEXT("%s: spec compile failed: %s"), *Label,
-				*DiagnosticsToString(Model.Errors)));
-			continue;
-		}
-
-		if (!CompiledModelsAgree(*this, Label, Xml, Model.Xml, FPaths::GetPath(File)))
-		{
-			continue;
-		}
-
-		// Then the same spec with auto-naming on, which is how it compiles
-		// in production: a model that matches but binds nothing is useless.
-		FMjCompiled Named = MjCompileSpec(FSpecRef::OverBlueprint(*Blueprint));
-		if (!Named.IsOk())
-		{
-			AddError(FString::Printf(TEXT("%s: auto-named compile failed: %s"), *Label,
-				*DiagnosticsToString(Named.Errors)));
-			continue;
-		}
-		int32 Bound = 0;
-		for (const FMjBinding::FEntry& Entry : Named.Binding.GetEntries())
-		{
-			Bound += Entry.Id >= 0 ? 1 : 0;
-		}
-		if (Named.Binding.GetEntries().Num() > 0 && Bound == 0)
-		{
-			AddError(FString::Printf(TEXT("%s: compiled but nothing bound"), *Label));
-			continue;
-		}
-		++Compiled;
-	}
-
-	TestTrue(TEXT("at least one model compiled through the spec path"), Compiled > 0);
 	return true;
 }
 

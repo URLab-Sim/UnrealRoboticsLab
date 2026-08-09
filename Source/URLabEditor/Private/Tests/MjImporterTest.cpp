@@ -36,7 +36,7 @@
 #include "Misc/Paths.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MujocoGenerationAction.h"
 
@@ -288,31 +288,59 @@ bool FMjImporterValidationTest::RunTest(const FString& Parameters)
 		}
 
 		// The construction script IS the spec, so the writer is asked for the
-		// MJCF directly rather than for a spec built alongside it.
-		const FMjCompiled Compiled = MjCompileSpec(FSpecRef::OverBlueprint(*TempBP));
-		if (!Compiled.IsOk())
+		// MJCF directly rather than for a spec built alongside it. Through the
+		// scene writer, because that is where the reservation for unnamed
+		// elements lives and the sanitizer below expects to see it.
+		FSceneAssembly Scene;
+		Scene.Add(FSpecRef::OverBlueprint(*TempBP), FString());
+
+		TMap<FString, FString> ParticipantXml;
+		TArray<FMjSpecDiagnostic> WriteDiagnostics;
+		MjWriteSceneMjcf(Scene, ParticipantXml, &WriteDiagnostics);
+		const FString* const WrittenXml = ParticipantXml.Find(TEXT("model.xml"));
+		if (WriteDiagnostics.Num() > 0 || WrittenXml == nullptr)
 		{
-			for (const FMjSpecDiagnostic& Diagnostic : Compiled.Errors)
+			for (const FMjSpecDiagnostic& Diagnostic : WriteDiagnostics)
 			{
 				AddError(Diagnostic.ToString());
+			}
+			if (WrittenXml == nullptr)
+			{
+				AddError(FString::Printf(TEXT("No MJCF was written for %s"), *TestCase.Name));
 			}
 			mj_deleteSpec(gt_spec);
 			continue;
 		}
+		const FString UeMjcf = *WrittenXml;
 
 		// Round-trip URLab's emission through MuJoCo's own writer, so both sides
 		// of the comparison are in the same canonical form.
 		FMemory::Memzero(szError, sizeof(szError));
-		mjSpec* UeSpec = mj_parseXMLString(TCHAR_TO_UTF8(*Compiled.Xml), nullptr, szError, sizeof(szError));
+		mjSpec* UeSpec = mj_parseXMLString(TCHAR_TO_UTF8(*UeMjcf), nullptr, szError, sizeof(szError));
 		if (!UeSpec)
 		{
 			AddError(FString::Printf(TEXT("MuJoCo rejected URLab's MJCF for %s: %hs"), *TestCase.Name, szError));
-			AddInfo(Compiled.Xml);
+			AddInfo(UeMjcf);
 			mj_deleteSpec(gt_spec);
 			continue;
 		}
 
-		mj_compile(UeSpec, nullptr);
+		// Compiled rather than only parsed: mj_saveXMLString refuses an
+		// uncompiled spec, and a document that parses but does not compile is a
+		// finding rather than an empty comparison.
+		if (mjModel* const UeModel = mj_compile(UeSpec, nullptr))
+		{
+			mj_deleteModel(UeModel);
+		}
+		else
+		{
+			AddError(FString::Printf(TEXT("URLab's MJCF for %s did not compile: %hs"), *TestCase.Name,
+				mjs_getError(UeSpec)));
+			AddInfo(UeMjcf);
+			mj_deleteSpec(UeSpec);
+			mj_deleteSpec(gt_spec);
+			continue;
+		}
 		FMemory::Memzero(szError, sizeof(szError));
 		int ue_save_res = mj_saveXMLString(UeSpec, szUeXml, N_XML_BUFFER, szError, sizeof(szError));
 		AddInfo(FString::Printf(TEXT("mj_saveXMLString(UE) returned: %d. Error: %hs"), ue_save_res, szError));

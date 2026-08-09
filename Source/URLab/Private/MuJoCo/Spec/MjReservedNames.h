@@ -16,8 +16,10 @@
 // reconciles by name, so an element that used to arrive named has to keep
 // arriving named.
 //
-// The spelling is not this file's to choose. It reproduces the emitted-text
-// path's, so that a model compiled either way carries the same name table.
+// One half of the reservation is not here, and deliberately: the file-derived
+// name of an unnamed asset. This path pins that one onto the ELEMENT, from the
+// same derivation, at the point it rewrites `file`, so the elements a basename
+// would be reserved for are exactly the ones skipped below.
 
 #include "CoreMinimal.h"
 
@@ -31,6 +33,14 @@ class UMjNodeComponent;
 
 namespace urlab::spec
 {
+
+/**
+ * What a reserved name begins with.
+ *
+ * Shared with ProtoSpec's own default, and with the writer that emits the
+ * scene's MJCF: a client reconciling the two by name has to see one spelling.
+ */
+inline const TCHAR* const MjReservedNamePrefix = TEXT("_ps:");
 
 /**
  * Name the unnamed of one spec, and take the names off again.

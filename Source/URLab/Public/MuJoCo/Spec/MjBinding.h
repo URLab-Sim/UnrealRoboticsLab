@@ -8,27 +8,16 @@
 
 #pragma once
 
-// Compiling a spec tree to an mjModel, and recovering the ids it was given.
+// Which compiled-model id each spec element received, and the addresses that
+// follow from it.
 //
-// The route is MJCF text: the writer emits the spec, the assets it names go
-// into an in-memory VFS beside it, and MuJoCo's own mj_loadXML does the rest.
-// Nothing here reimplements a compiler, and nothing here has an opinion about
-// what MJCF means -- which is the whole reason the differential gate can be
-// byte-exact against a stock load of the same file.
-//
-// Binding is by name, because ids cannot be predicted: discardvisual and
-// fusestatic compact them, so the element at index 3 before the compile is not
-// the element at index 3 after it. Elements the compiler removed simply report
-// nothing and stay as authoring data. An element the spec left unnamed is
-// given a reserved name in the emitted text ONLY -- the tree is handed back
-// exactly as it was -- so that every element is reachable without authoring
-// names nobody asked for.
+// A compile records the correspondence while it is known; this is the shape it
+// is read back through. Elements the compiler removed -- discardvisual and
+// fusestatic both remove some -- simply report nothing and stay as authoring
+// data, because an id into a table that does not hold the element is worse than
+// no id at all.
 
 #include "CoreMinimal.h"
-
-#include "MuJoCo/Spec/MjSpecRef.h"
-#include "MuJoCo/Spec/MjGenHooks.h"
-#include "MuJoCo/Spec/MjSceneAssembly.h"
 
 struct mjModel_;
 typedef struct mjModel_ mjModel;
@@ -39,23 +28,6 @@ namespace urlab::spec
 {
 struct FMjCompiledScene;
 }
-
-/** How a compile is performed. */
-struct URLAB_API FMjCompileOptions
-{
-	/**
-	 * Give unnamed bindable elements a reserved name in the emitted MJCF.
-	 *
-	 * Off means unnamed elements compile as they were authored and are simply
-	 * not bindable, which is what a caller wanting a pristine name table asks
-	 * for. The name is derived from the element's serial, so it is stable across
-	 * edits that do not change identity.
-	 */
-	bool bAutoName = true;
-
-	/** The prefix reserved names carry. Shared with ProtoSpec's own default. */
-	FString AutoNamePrefix = TEXT("_ps:");
-};
 
 /**
  * Which compiled-model id each spec element received.
@@ -132,38 +104,6 @@ private:
 };
 
 /**
- * One compile: the model, the ids, and the text it all came from.
- *
- * Owns the model. Move-only, because two owners of one mjModel is a double free
- * waiting for a bad day.
- */
-struct URLAB_API FMjCompiled
-{
-	FMjCompiled() = default;
-	~FMjCompiled();
-	FMjCompiled(FMjCompiled&& Other);
-	FMjCompiled& operator=(FMjCompiled&& Other);
-	FMjCompiled(const FMjCompiled&) = delete;
-	FMjCompiled& operator=(const FMjCompiled&) = delete;
-
-	mjModel* Model = nullptr;
-	FMjBinding Binding;
-
-	/** The MJCF handed to MuJoCo. The root spec when a scene was compiled. */
-	FString Xml;
-
-	/** ParticipantXml the root references, keyed by the VFS name it references them by. */
-	TMap<FString, FString> ParticipantXml;
-
-	TArray<FMjSpecDiagnostic> Errors;
-
-	bool IsOk() const { return Model != nullptr && Errors.Num() == 0; }
-
-	/** Hand the model to the caller and stop owning it. */
-	mjModel* Release();
-};
-
-/**
  * The engine-facing binding of a scene the spec path compiled.
  *
  * The ids are the ones the compile recorded against the elements themselves, so
@@ -174,24 +114,3 @@ struct URLAB_API FMjCompiled
  * is worse than no id at all.
  */
 URLAB_API FMjBinding MjBindingOf(const urlab::spec::FMjCompiledScene& Scene);
-
-/**
- * The scene's MJCF, named as the compiled model is.
- *
- * The compile no longer goes through text, but the text is still what a remote
- * client is handed to reload the scene, and it has to spell every element the
- * way the model does or a client reconciling by name finds nothing. So the same
- * reservation the emitted-text compile applied is applied here, for the write
- * and no longer than that.
- */
-URLAB_API FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
-	TArray<FMjSpecDiagnostic>* OutErrors = nullptr, const FMjCompileOptions& Options = {});
-
-/** Compile one spec on its own: no attach, no scene, no prefix. */
-URLAB_API FMjCompiled MjCompileSpec(const FSpecRef& Spec, const FMjCompileOptions& Options = {});
-
-/**
- * Compile a scene: the root spec's sections plus one `<attach>` per
- * participant, exactly as `FSceneAssembly` projects it.
- */
-URLAB_API FMjCompiled MjCompileScene(const FSceneAssembly& Scene, const FMjCompileOptions& Options = {});

@@ -34,13 +34,87 @@
 
 #include "MuJoCo/Spec/MjAssetFiles.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
-#include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjSpecBuild.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Elements/MjMesh.h"
 #include "MuJoCo/Elements/MjTexture.h"
 
+THIRD_PARTY_INCLUDES_START
+#include <mujoco/mujoco.h>
+THIRD_PARTY_INCLUDES_END
+
 namespace MjAssetFileTests
 {
+
+/** One asset's bytes under the name the spec references it by. */
+struct FScratchAsset
+{
+	FString Name;
+	TArray<uint8> Bytes;
+};
+
+/** Bytes and mount names for a spec compiled on its own. */
+class FScratchAssetCollector final : public IMjAssetSink
+{
+public:
+	TArray<FScratchAsset> Assets;
+
+	void OnMesh(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+	void OnTexture(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+	void OnHeightField(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+
+private:
+	void Take(const FMjAssetRequest& Request, const TArray<uint8>& Bytes)
+	{
+		if (!Request.VfsName.IsEmpty() && Bytes.Num() > 0)
+		{
+			Assets.Add(FScratchAsset{Request.VfsName, Bytes});
+		}
+	}
+};
+
+/**
+ * Compile one spec the way the engine does, minus the composition.
+ *
+ * The export pass runs first, because it is what puts a file back for an
+ * element whose reference and file have parted company -- and this whole file
+ * is about whether the compiler then finds what it wrote. The spec's own `file`
+ * references are left as authored and the bytes are mounted under the names the
+ * sink emits, which is what a spec compiled on its own asks for: nothing is
+ * namespaced because nothing is composed.
+ *
+ * Null when the model does not compile, which several cases here require.
+ */
+mjModel* CompileStandalone(const FSpecRef& Spec, TArray<FMjSpecDiagnostic>& OutDiagnostics)
+{
+	MjSyncAssetFiles(Spec);
+
+	urlab::spec::FMjBuiltSpec Built = urlab::spec::BuildSpec(Spec, OutDiagnostics);
+	if (Built.Spec == nullptr)
+	{
+		return nullptr;
+	}
+
+	FScratchAssetCollector Collector;
+	FMjAssetSink Sink(Collector);
+	Sink.Collect(Spec);
+
+	mjVFS Vfs;
+	mj_defaultVFS(&Vfs);
+	for (const FScratchAsset& Asset : Collector.Assets)
+	{
+		mj_addBufferVFS(&Vfs, TCHAR_TO_UTF8(*Asset.Name), Asset.Bytes.GetData(), Asset.Bytes.Num());
+	}
+	mjModel* const Model = mj_compile(Built.Spec, &Vfs);
+	mj_deleteVFS(&Vfs);
+
+	if (Model == nullptr)
+	{
+		FMjSpecDiagnostic& Diagnostic = OutDiagnostics.AddDefaulted_GetRef();
+		Diagnostic.Message = UTF8_TO_TCHAR(mjs_getError(Built.Spec));
+	}
+	return Model;
+}
 
 /**
  * A spec over a live actor, read from a path that really exists.
@@ -226,8 +300,13 @@ bool FMjSwappedMeshTest::RunTest(const FString& Parameters)
 	}
 
 	{
-		const FMjCompiled Before = MjCompileSpec(Doc.Ref());
-		TestNull(TEXT("a model naming an OBJ that is not there does not compile"), Before.Model);
+		TArray<FMjSpecDiagnostic> Ignored;
+		mjModel* const Before = CompileStandalone(Doc.Ref(), Ignored);
+		TestNull(TEXT("a model naming an OBJ that is not there does not compile"), Before);
+		if (Before != nullptr)
+		{
+			mj_deleteModel(Before);
+		}
 	}
 
 	UStaticMesh* Cube = EngineCube();
@@ -238,12 +317,17 @@ bool FMjSwappedMeshTest::RunTest(const FString& Parameters)
 	Mesh->MeshAsset = Cube;
 	TestTrue(TEXT("a swapped asset makes the file stale"), Mesh->IsFileStale());
 
-	const FMjCompiled After = MjCompileSpec(Doc.Ref());
-	for (const FMjSpecDiagnostic& Error : After.Errors)
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	mjModel* const After = CompileStandalone(Doc.Ref(), Diagnostics);
+	for (const FMjSpecDiagnostic& Error : Diagnostics)
 	{
 		AddError(Error.ToString());
 	}
-	TestNotNull(TEXT("with the asset dropped on it, the model compiles"), After.Model);
+	TestNotNull(TEXT("with the asset dropped on it, the model compiles"), After);
+	if (After != nullptr)
+	{
+		mj_deleteModel(After);
+	}
 
 	const FString Written = Mesh->File.Get(FString());
 	TestEqual(TEXT("and `file` names what was written"), Written, FString(TEXT("urlab_assets/part.obj")));
@@ -290,19 +374,29 @@ bool FMjSwappedTextureTest::RunTest(const FString& Parameters)
 	}
 
 	{
-		const FMjCompiled Before = MjCompileSpec(Doc.Ref());
-		TestNull(TEXT("a model naming a PNG that is not there does not compile"), Before.Model);
+		TArray<FMjSpecDiagnostic> Ignored;
+		mjModel* const Before = CompileStandalone(Doc.Ref(), Ignored);
+		TestNull(TEXT("a model naming a PNG that is not there does not compile"), Before);
+		if (Before != nullptr)
+		{
+			mj_deleteModel(Before);
+		}
 	}
 
 	Texture->TextureAsset = PaintedTexture();
 	TestTrue(TEXT("a swapped asset makes the file stale"), Texture->IsFileStale());
 
-	const FMjCompiled After = MjCompileSpec(Doc.Ref());
-	for (const FMjSpecDiagnostic& Error : After.Errors)
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	mjModel* const After = CompileStandalone(Doc.Ref(), Diagnostics);
+	for (const FMjSpecDiagnostic& Error : Diagnostics)
 	{
 		AddError(Error.ToString());
 	}
-	TestNotNull(TEXT("with the asset dropped on it, the model compiles"), After.Model);
+	TestNotNull(TEXT("with the asset dropped on it, the model compiles"), After);
+	if (After != nullptr)
+	{
+		mj_deleteModel(After);
+	}
 
 	const FString Written = Texture->File.Get(FString());
 	TestEqual(TEXT("and `file` names what was written"), Written, FString(TEXT("urlab_assets/skin.png")));

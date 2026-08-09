@@ -38,7 +38,7 @@
 
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
-#include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjMesh.h"
@@ -773,11 +773,27 @@ bool FMjUnnamedAssetNameTest::RunTest(const FString& Parameters)
 	}
 	TestFalse(TEXT("the authored texture has no name"), Texture->MjName.IsSet());
 
-	// The compile can fail past this point -- there is no PNG on disk -- but the
-	// text is written before anything reads the file, and the text is the claim.
-	const FMjCompiled Compiled = MjCompileSpec(FSpecRef::OverActor(*Doc.Actor));
+	// Nothing reads the PNG here -- there is none on disk -- because the claim is
+	// about the text, and the text is what a remote client reconciles against.
+	FSceneAssembly Scene;
+	Scene.Add(FSpecRef::OverActor(*Doc.Actor), FString());
+
+	TMap<FString, FString> ParticipantXml;
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	MjWriteSceneMjcf(Scene, ParticipantXml, &Diagnostics);
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		AddError(Diagnostic.ToString());
+	}
+
+	const FString* const Written = ParticipantXml.Find(TEXT("model.xml"));
+	if (Written == nullptr)
+	{
+		AddError(TEXT("the scene wrote no MJCF for its one participant"));
+		return false;
+	}
 	TestTrue(TEXT("the emitted texture states its derived name"),
-		Compiled.Xml.Contains(TEXT("name=\"2_of_clubs\"")));
+		Written->Contains(TEXT("name=\"2_of_clubs\"")));
 
 	TestFalse(TEXT("and the spec is handed back unnamed"), Texture->MjName.IsSet());
 	return true;

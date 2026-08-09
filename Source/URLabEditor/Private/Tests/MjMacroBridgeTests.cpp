@@ -7,7 +7,8 @@
 //     http://www.apache.org/licenses/LICENSE-2.0
 
 // The macro bridge, held to the only standard that means anything for it: the
-// model it produces has to be the model the file boundary produces.
+// model it produces has to be the model MuJoCo's own reader produces from the
+// same document.
 //
 // `<composite>`, `<flexcomp>` and `<replicate>` are expanded by MuJoCo's reader
 // rather than by its compiler, so the spec write cannot perform one. It
@@ -18,9 +19,11 @@
 // a model that is nearly right, which is why the comparison is field for field
 // at exact tolerance rather than a spot check.
 //
-// The fixtures for the three macro kinds are the parity corpus's own; the
-// conditions the wrapper has to satisfy are covered by documents written here,
-// so that the corpus and its goldens are left alone.
+// The three macro kinds are covered against the recorded goldens by
+// URLab.Parity.SpecGoldens, whose corpus carries a fixture for each. What is
+// left here is the pair of conditions the wrapper has to satisfy that no corpus
+// fixture poses, each written as a document of its own so that the corpus and
+// its goldens are left alone.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -31,14 +34,11 @@
 
 #include "Engine/Blueprint.h"
 #include "GameFramework/Actor.h"
-#include "HAL/FileManager.h"
 #include "Kismet2/KismetEditorUtilities.h"
-#include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "UObject/Package.h"
 
-#include "MuJoCo/Spec/MjCompile.h"
 #include "MuJoCo/Spec/MjSpecBuild.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 
@@ -53,19 +53,6 @@ namespace MjMacroBridgeTests
 
 /** Indices sampled per differing field, and entries listed per category. */
 constexpr int32 MaxExamples = 4;
-
-/** The macro fixtures the parity corpus carries, one per macro element. */
-const TCHAR* const MacroFixtures[] = {
-	TEXT("macro_composite"),
-	TEXT("macro_flexcomp"),
-	TEXT("macro_replicate"),
-};
-
-FString ParityDir()
-{
-	return FPaths::Combine(
-		FPaths::ProjectPluginsDir(), TEXT("UnrealRoboticsLab"), TEXT("Content"), TEXT("TestData"), TEXT("parity"));
-}
 
 FString DiagnosticsToString(const TArray<FMjSpecDiagnostic>& Diagnostics)
 {
@@ -121,7 +108,7 @@ FString ReportToString(const ps::harness::DiffReport& Report)
 		{
 			break;
 		}
-		Lines.Add(FString::Printf(TEXT("  size %s: file path %lld, bridge %lld"), *Utf8ToUe(Size.name),
+		Lines.Add(FString::Printf(TEXT("  size %s: reader %lld, bridge %lld"), *Utf8ToUe(Size.name),
 			static_cast<int64>(Size.a), static_cast<int64>(Size.b)));
 	}
 
@@ -132,7 +119,7 @@ FString ReportToString(const ps::harness::DiffReport& Report)
 		{
 			break;
 		}
-		Lines.Add(FString::Printf(TEXT("  name %s[%d]: file path '%s', bridge '%s'"), *Utf8ToUe(Name.objtype),
+		Lines.Add(FString::Printf(TEXT("  name %s[%d]: reader '%s', bridge '%s'"), *Utf8ToUe(Name.objtype),
 			Name.id, *Utf8ToUe(Name.a), *Utf8ToUe(Name.b)));
 	}
 
@@ -161,13 +148,40 @@ FString ReportToString(const ps::harness::DiffReport& Report)
 }
 
 /**
- * Compile `Xml` both ways and require the two models to be the same model.
+ * MuJoCo's own reader over `Xml`, with nothing of ours in between.
  *
- * Production options on both sides. The two paths reserve names for the unnamed
- * from the same rule, so the name table is part of what has to agree rather
- * than something to be excused.
+ * The reference the bridge is held to. Mounted rather than written to disk, so
+ * the document under test is exactly the string above it in the file.
  */
-void CheckBridgeMatchesFilePath(
+mjModel* LoadThroughStockReader(FAutomationTestBase& Test, const FString& Label, const FString& Xml)
+{
+	mjVFS Vfs;
+	mj_defaultVFS(&Vfs);
+
+	const char* const Name = "__urlab_macro.xml";
+	const FTCHARToUTF8 Utf8(*Xml);
+	mj_addBufferVFS(&Vfs, Name, Utf8.Get(), Utf8.Length());
+
+	char Error[1024] = {0};
+	mjModel* const Model = mj_loadXML(Name, &Vfs, Error, sizeof(Error));
+	mj_deleteVFS(&Vfs);
+
+	if (Model == nullptr)
+	{
+		Test.AddError(FString::Printf(TEXT("%s: MuJoCo's reader declined the document: %hs"), *Label, Error));
+	}
+	return Model;
+}
+
+/**
+ * Read `Xml` into a spec, build it, and require the model to be MuJoCo's.
+ *
+ * The reference is the reader rather than any writer of ours, so nothing in the
+ * comparison depends on our own MJCF being spelled a particular way. The
+ * document names every bindable element, so no reservation lands on either
+ * side and the name table is part of what has to agree.
+ */
+void CheckBridgeMatchesStockReader(
 	FAutomationTestBase& Test, const FString& Label, const FString& Xml, const FString& Path)
 {
 	UBlueprint* const Blueprint = ParseDocument(Test, Label, Xml, Path);
@@ -177,11 +191,9 @@ void CheckBridgeMatchesFilePath(
 	}
 	const FSpecRef Ref = FSpecRef::OverBlueprint(*Blueprint);
 
-	FMjCompiled ViaFile = MjCompileSpec(Ref);
-	if (!ViaFile.IsOk())
+	mjModel* const ViaReader = LoadThroughStockReader(Test, Label, Xml);
+	if (ViaReader == nullptr)
 	{
-		Test.AddError(
-			FString::Printf(TEXT("%s: the file path did not compile: %s"), *Label, *DiagnosticsToString(ViaFile.Errors)));
 		return;
 	}
 
@@ -191,6 +203,7 @@ void CheckBridgeMatchesFilePath(
 	{
 		Test.AddError(FString::Printf(
 			TEXT("%s: the spec write did not build: %s"), *Label, *DiagnosticsToString(Diagnostics)));
+		mj_deleteModel(ViaReader);
 		return;
 	}
 
@@ -199,13 +212,15 @@ void CheckBridgeMatchesFilePath(
 	{
 		Test.AddError(FString::Printf(
 			TEXT("%s: the bridged spec did not compile: %s"), *Label, UTF8_TO_TCHAR(mjs_getError(Built.Spec))));
+		mj_deleteModel(ViaReader);
 		return;
 	}
 
 	std::string Err;
 	const ps::harness::DiffReport Report =
-		ps::harness::DiffModels(ViaFile.Model, ViaBridge, ps::harness::Tol{0.0, 0.0}, MaxExamples, Err);
+		ps::harness::DiffModels(ViaReader, ViaBridge, ps::harness::Tol{0.0, 0.0}, MaxExamples, Err);
 	mj_deleteModel(ViaBridge);
+	mj_deleteModel(ViaReader);
 
 	if (!Err.empty())
 	{
@@ -214,41 +229,12 @@ void CheckBridgeMatchesFilePath(
 	if (Report.Differs())
 	{
 		Test.AddError(FString::Printf(
-			TEXT("%s: the macro bridge produced a different model from the file path:\n%s"), *Label,
+			TEXT("%s: the macro bridge produced a different model from MuJoCo's reader:\n%s"), *Label,
 			*ReportToString(Report)));
 	}
 }
 
 } // namespace MjMacroBridgeTests
-
-// ============================================================================
-// URLab.MuJoCo.MacroBridge.Parity
-//   Each macro fixture compiled through the bridge and through the file path,
-//   and required to be the same model.
-// ============================================================================
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjMacroBridgeParityTest, "URLab.MuJoCo.MacroBridge.Parity",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FMjMacroBridgeParityTest::RunTest(const FString& Parameters)
-{
-	using namespace MjMacroBridgeTests;
-
-	for (const TCHAR* const Stem : MacroFixtures)
-	{
-		const FString Path = FPaths::Combine(ParityDir(), FString(Stem) + TEXT(".xml"));
-		FString Xml;
-		if (!FFileHelper::LoadFileToString(Xml, *Path))
-		{
-			// Loud rather than skipped: a macro fixture that stopped existing is
-			// coverage that stopped existing.
-			AddError(FString::Printf(TEXT("%s.xml is missing from Content/TestData/parity"), Stem));
-			continue;
-		}
-		CheckBridgeMatchesFilePath(*this, FPaths::GetCleanFilename(Path), Xml, Path);
-	}
-
-	return true;
-}
 
 // ============================================================================
 // URLab.MuJoCo.MacroBridge.CompilerCarriage
@@ -278,7 +264,7 @@ bool FMjMacroBridgeCompilerCarriageTest::RunTest(const FString& Parameters)
   </worldbody>
 </mujoco>)");
 
-	CheckBridgeMatchesFilePath(*this, TEXT("macro_degrees"), Xml, TEXT("macro_degrees.xml"));
+	CheckBridgeMatchesStockReader(*this, TEXT("macro_degrees"), Xml, TEXT("macro_degrees.xml"));
 	return true;
 }
 

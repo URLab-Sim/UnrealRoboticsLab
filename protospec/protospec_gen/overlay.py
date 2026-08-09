@@ -905,15 +905,15 @@ SPEC_TARGET = {
 # `lib/io` registers every name that appears here, the same completeness rule
 # READ_HANDLERS carries.
 SPEC_WRITE_HANDLERS = {
-    # Transmission: exactly one of joint/tendon/site/body and friends elects
-    # target and trntype together, so no one of them can be written alone.
-    # Keyed on the target attribute wherever a spelling carries no
-    # `cranklength`: the hook is attached per attribute, so a spelling whose
-    # only transmission attributes are targets has to name one of them or it
-    # never elects a target at all.
+    # Transmission's own attributes, where the gate asks about them.
+    # `cranklength` resolves to a field of mjsActuator, so without a row here it
+    # would be written twice: once plainly and once by the hook that validates
+    # it against the elected trntype. `general.body` the reader interprets, so
+    # the gate demands a disposition for it and the hook is the answer. Neither
+    # row is what ATTACHES the hook -- that is stated per element, in
+    # SPEC_WRITE_ELEMENT_HOOKS, because the election reads all of the operands
+    # together and no one attribute owns it.
     ("general", "body"): "transmission",
-    ("orientation", "site"): "transmission",
-    ("adhesion", "body"): "transmission",
     ("general", "cranklength"): "transmission",
     ("motor", "cranklength"): "transmission",
     ("position", "cranklength"): "transmission",
@@ -1067,6 +1067,32 @@ SPEC_WRITE_HANDLERS = {
 
     # A keyword the engine maps to a dof layout, with no field behind it.
     ("flex", "dof"): "flex_layout",
+}
+
+# Hooks whose concern is the element rather than any one of its attributes.
+#
+# Transmission election is the case that forced this table. Exactly one of
+# joint/jointinparent/tendon/cranksite/site/body decides `target` and `trntype`
+# together, so the hook has to read them as a set and none of them owns it.
+# Keyed per attribute, the hook was attached only to a spelling that happened to
+# declare the keyed attribute, and `orientation` and `adhesion` -- which declare
+# no `cranklength` -- silently elected no target at all. Every actuator spelling
+# is named here so that the guarantee is stated once per element rather than
+# inferred from which attributes the element turned out to have.
+SPEC_WRITE_ELEMENT_HOOKS = {
+    "general": ("transmission",),
+    "motor": ("transmission",),
+    "position": ("transmission",),
+    "velocity": ("transmission",),
+    "intvelocity": ("transmission",),
+    "orientation": ("transmission",),
+    "pid": ("transmission",),
+    "damper": ("transmission",),
+    "cylinder": ("transmission",),
+    "muscle": ("transmission",),
+    "adhesion": ("transmission",),
+    "dcmotor": ("transmission",),
+    "actuator_plugin": ("transmission",),
 }
 
 # Attributes the gate asks about whose plain generated write is correct, with

@@ -8,19 +8,16 @@
 
 #pragma once
 
-// The scene as a spec assembled from participating specs.
+// Who takes part in the scene, under which prefix, at which pose.
 //
 // A level holds several articulations plus a manager carrying the scene-level
-// sections. MJCF expresses exactly that with <asset><model/> and <attach
-// prefix=...>, so the scene spec is written, not built: each participant
-// goes into the compile VFS as its own MJCF, and the scene references them.
-// MuJoCo's own attach then performs the keyframe remapping, the default-class
-// namespacing and the asset prefixing, which is why this is a projection rather
-// than a merge.
+// sections. This is the projection of that level, and only the projection: it
+// decides membership and order, and hands the result to whoever needs it --
+// the scene builder to compose and compile, the scene writer to emit text.
 //
 // Two properties are load-bearing and neither is incidental:
 //
-// ORDER. Attach-row order determines cross-articulation qpos layout, and
+// ORDER. Attach order determines cross-articulation qpos layout, and
 // GetAllActorsOfClass order is unpinned engine behaviour -- the same hazard class
 // as sibling order. Participants are sorted by canonical prefix.
 //
@@ -28,7 +25,8 @@
 // across every mount, so two participants that each reference their own
 // `base.obj` silently share one mesh, with no warning on any version we have
 // tested. Every asset is therefore mounted under a participant-prefixed
-// basename; subdirectories do not help, because the fallback ignores them.
+// basename; subdirectories do not help, because the fallback ignores them. The
+// ship-list below is keyed by those mounted names for the same reason.
 
 #include "CoreMinimal.h"
 
@@ -51,22 +49,15 @@ struct URLAB_API FMjSceneParticipant
 	FQuat MjQuat = FQuat::Identity;
 };
 
-/** An asset mounted into the compile VFS. */
-struct URLAB_API FMjVfsAsset
-{
-	/** The prefixed basename MuJoCo will match on. */
-	FString Name;
-	TArray<uint8> Bytes;
-};
-
-
 /**
  * A scene, assembled at write time from the level.
  *
  * Nothing is owned and nothing is cached: membership is a projection of the
  * actors present, so there is no second source of truth to reconcile against the
  * level. Participants are added, the scene root supplies the manager's sections,
- * and the result is MJCF text plus the assets it needs.
+ * and what comes out is the membership itself: who takes part, under which
+ * prefix, at which pose. Turning that into a compiled model is the scene
+ * builder's job and turning it into text is the scene writer's.
  */
 struct URLAB_API FSceneAssembly
 {
@@ -83,20 +74,15 @@ struct URLAB_API FSceneAssembly
 	/** Participants, sorted by canonical prefix. */
 	const TArray<FMjSceneParticipant>& GetParticipants() const;
 
-	/**
-	 * Every asset the scene needs, mounted under participant-prefixed basenames.
-	 *
-	 * The same collection backs the bridge handshake's ship-list, so what the
-	 * compiler sees and what a remote client is told about cannot drift apart.
-	 */
-	TArray<FMjVfsAsset> CollectAssets() const;
+	/** The spec supplying the scene's own sections, or an invalid handle. */
+	const FSpecRef& GetSceneRoot() const { return SceneRoot; }
 
 	/**
 	 * Every asset file the scene resolved, keyed by the name it is mounted under.
 	 *
-	 * The same pass as `CollectAssets` with the bytes left on disk, because a
-	 * caller shipping a ship-list wants the names of the files and not their
-	 * contents. Inline assets contribute nothing: they have no file.
+	 * The bytes are left on disk, because a caller shipping a ship-list wants
+	 * the names of the files and not their contents. Inline assets contribute
+	 * nothing: they have no file.
 	 *
 	 * The key is `FMjVfsAsset::Name`, not the file's own name, and the two
 	 * differ: a scene prefixes every `file=` so that two participants cannot
@@ -104,16 +90,6 @@ struct URLAB_API FSceneAssembly
 	 * from the path gets one nothing resolves against.
 	 */
 	TMap<FString, FString> CollectAssetFiles() const;
-
-	/**
-	 * The scene MJCF: the manager's sections, the world-body content, and one
-	 * <asset><model/> plus <attach prefix=.../> pair per participant.
-	 *
-	 * Each participant's own MJCF goes into `OutParticipantXml` keyed by the VFS
-	 * name the scene references it under.
-	 */
-	FString WriteSceneMjcf(TMap<FString, FString>& OutParticipantXml,
-		TArray<FMjSpecDiagnostic>* OutErrors = nullptr) const;
 
 private:
 	void SortParticipants() const;

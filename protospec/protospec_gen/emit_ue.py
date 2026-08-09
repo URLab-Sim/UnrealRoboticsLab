@@ -2399,9 +2399,10 @@ class SpecWritePlan:
         shorthand that consumes it (`xml_native_reader.cc:1186-1210` runs ahead
         of the `mjs_setTo*` calls at `:1232` on).
         """
-        attribute = sorted({
-            handler for (element, _attr), handler
-            in overlay.SPEC_WRITE_HANDLERS.items() if element == plan.name})
+        attribute = sorted(
+            {handler for (element, _attr), handler
+             in overlay.SPEC_WRITE_HANDLERS.items() if element == plan.name}
+            | set(overlay.SPEC_WRITE_ELEMENT_HOOKS.get(plan.name, ())))
         if plan.category == "hook" and plan.arg:
             attribute = [h for h in attribute if h != plan.arg] + [plan.arg]
         plan.hooks = attribute

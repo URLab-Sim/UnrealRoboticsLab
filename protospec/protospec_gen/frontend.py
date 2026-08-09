@@ -342,6 +342,12 @@ class _Frontend:
                 problems.append(
                     f"{key[0]}.{key[1]} has no spec-write handler and no waiver")
 
+        for element in overlay.SPEC_WRITE_ELEMENT_HOOKS:
+            if element not in self.elements:
+                problems.append(
+                    f"SPEC_WRITE_ELEMENT_HOOKS names {element}, which the "
+                    "schema no longer declares")
+
         for table, label in ((overlay.SPEC_WRITE_HANDLERS, "SPEC_WRITE_HANDLERS"),
                              (overlay.SPEC_WRITE_NOTES, "SPEC_WRITE_NOTES")):
             for element, attr in table:

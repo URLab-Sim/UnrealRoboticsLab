@@ -26,7 +26,8 @@
 #include "Components/ActorComponent.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
-#include "MuJoCo/Spec/MjCompile.h"
+#include "MuJoCo/Spec/MjBinding.h"
+#include "MuJoCo/Spec/MjSceneAssembly.h"
 #include "MuJoCo/Spec/MjSceneSpec.h"
 #include <functional>
 #include <atomic>
@@ -276,22 +277,13 @@ public:
 	TArray<UObject*> GatherSceneContributors() const;
 
 	/**
-	 * Compile the level through the spec path: writer, VFS, mj_loadXML.
-	 *
-	 * The model and its binding are handed back rather than installed, so this
-	 * can be exercised beside the live simulation rather than in place of it.
-	 */
-	FMjCompiled CompileSceneSpec();
-
-	/**
 	 * Compile the level's specs and install the result as the live model.
 	 *
-	 * The spec route from end to end, which `CompileSceneSpec` stops
-	 * one step short of: the model becomes the engine's, mjData is made for it,
-	 * every element that survived the compile is told the id it received, and
-	 * each articulation's control slots are sized to the scene it compiled
-	 * into. After this a caller can read `d->sensordata` at an element's
-	 * `BoundId` and get an answer.
+	 * The spec route from end to end: the specs are built and composed, the
+	 * model becomes the engine's, mjData is made for it, every element that
+	 * survived the compile is told the id it received, and each articulation's
+	 * control slots are sized to the scene it compiled into. After this a caller
+	 * can read `d->sensordata` at an element's `BoundId` and get an answer.
 	 *
 	 * Transactional. Everything that can fail -- building the specs, composing
 	 * them, compiling, making the data -- happens before anything running is

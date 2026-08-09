@@ -104,6 +104,10 @@ void FURLabEditorModule::StartupModule()
 	// class says. The panel shows that value, greyed, next to the class name.
 	FMjEffectiveDetails::RegisterAll();
 
+	// A component dropped somewhere the schema does not admit it used to fail
+	// at compile, minutes later. It says so at the drop now.
+	FMjAddTimeLegality::RegisterAll();
+
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
 	// Only the geom needs a custom layout, for the CoACD decomposition buttons.
 	// Every other element's panel is what the generated UPROPERTY metadata makes
@@ -177,6 +181,7 @@ void FURLabEditorModule::ShutdownModule()
 	FMjEditorStyle::Shutdown();
 
 	FMjElementVisualizer::UnregisterAll();
+	FMjAddTimeLegality::UnregisterAll();
 
 	URLabBridgeProvider::RegisterResolver(nullptr);
 	URLabEditorOpHandlers::UnregisterAll();

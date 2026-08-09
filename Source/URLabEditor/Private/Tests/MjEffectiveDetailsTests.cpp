@@ -29,6 +29,7 @@
 #include "UObject/PropertyOptional.h"
 #include "UObject/UnrealType.h"
 
+#include "MjArrayCustomizations.h"
 #include "MjEffectiveDetails.h"
 #include "MuJoCo/Gen/Elements/Geometry/MjGeom.gen.h"
 #include "MuJoCo/Spec/MjEffective.h"
@@ -196,6 +197,53 @@ bool FMjEffectiveDetailsBuildsOneContextPerRefresh::RunTest(const FString& Param
 	const int64 Built = MjEffectiveContextBuilds() - Before;
 
 	TestEqual(TEXT("one context for the whole refresh"), Built, static_cast<int64>(1));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEulerRowRoundTripsThroughTheAuthoredQuaternion,
+	"URLab.Editor.EulerRowRoundTripsThroughTheAuthoredQuaternion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjEulerRowRoundTripsThroughTheAuthoredQuaternion::RunTest(const FString& Parameters)
+{
+	// A quarter turn about x is the case that catches a swapped component
+	// order and a wrong handedness at once: MJCF writes it [w x y z] with the
+	// scalar first, and Unreal's own quaternion writes the same rotation with
+	// the scalar last and a negated x.
+	{
+		const double Degrees[3] = {90.0, 0.0, 0.0};
+		double Quat[4];
+		FMjArrayCustomizations::EulerDegreesToQuat(Degrees, Quat);
+
+		const double Root = FMath::Sqrt(0.5);
+		TestTrue(TEXT("w is cos 45"), FMath::IsNearlyEqual(Quat[0], Root, 1e-9));
+		TestTrue(TEXT("x is sin 45"), FMath::IsNearlyEqual(Quat[1], Root, 1e-9));
+		TestTrue(TEXT("y is zero"), FMath::IsNearlyEqual(Quat[2], 0.0, 1e-9));
+		TestTrue(TEXT("z is zero"), FMath::IsNearlyEqual(Quat[3], 0.0, 1e-9));
+	}
+
+	// Every triple away from the gimbal pole comes back as itself. A wrong
+	// extraction order survives the identity and fails here.
+	const double Cases[4][3] = {
+		{0.0, 0.0, 0.0},
+		{30.0, -20.0, 45.0},
+		{-115.0, 40.0, 10.0},
+		{5.0, 89.0, -170.0},
+	};
+	for (const double(&Degrees)[3] : Cases)
+	{
+		double Quat[4];
+		FMjArrayCustomizations::EulerDegreesToQuat(Degrees, Quat);
+		double Back[3];
+		FMjArrayCustomizations::QuatToEulerDegrees(Quat, Back);
+
+		for (int32 Axis = 0; Axis < 3; ++Axis)
+		{
+			TestTrue(FString::Printf(TEXT("axis %d round trips: %.3f became %.3f"), Axis, Degrees[Axis],
+						 Back[Axis]),
+				FMath::IsNearlyEqual(Degrees[Axis], Back[Axis], 1e-6));
+		}
+	}
 	return true;
 }
 

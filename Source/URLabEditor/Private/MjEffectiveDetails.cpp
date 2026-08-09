@@ -8,6 +8,8 @@
 
 #include "MjEffectiveDetails.h"
 
+#include "MjArrayCustomizations.h"
+
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
 #include "IDetailPropertyRow.h"
@@ -171,6 +173,11 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 	FMjEffectiveScope Effective(*Node);
 
 	const TSharedPtr<IPropertyUtilities> Utilities = DetailBuilder.GetPropertyUtilities();
+
+	// Inside the scope, because naming a `size` slot means knowing the shape,
+	// and the shape is an effective value like any other.
+	FMjArrayCustomizations::CustomizeArrays(DetailBuilder, *Node);
+	FMjArrayCustomizations::AddEulerRow(DetailBuilder, *Node);
 
 	for (TFieldIterator<FOptionalProperty> It(Node->GetClass()); It; ++It)
 	{

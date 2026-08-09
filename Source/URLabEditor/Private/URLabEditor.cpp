@@ -37,6 +37,7 @@
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
 
+#include "MjEffectiveDetails.h"
 #include "MjElementVisualizers.h"
 #include "MjFrameTypeCustomizations.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
@@ -98,6 +99,10 @@ void FURLabEditorModule::StartupModule()
 	// editor drew nothing for them at all. One visualizer against the element
 	// base draws all of them from the components and their effective values.
 	FMjElementVisualizer::RegisterAll();
+
+	// An unset attribute is not a blank: it is whatever the element's default
+	// class says. The panel shows that value, greyed, next to the class name.
+	FMjEffectiveDetails::RegisterAll();
 
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
 	// Only the geom needs a custom layout, for the CoACD decomposition buttons.
@@ -194,6 +199,7 @@ void FURLabEditorModule::ShutdownModule()
 			}
 		};
 		UnregisterWithSubclasses(UMjGeom::StaticClass());
+		FMjEffectiveDetails::UnregisterAll();
 		FMjFrameTypeCustomization::UnregisterAll();
 	}
 

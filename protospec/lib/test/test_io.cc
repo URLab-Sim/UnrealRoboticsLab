@@ -125,7 +125,7 @@ static void TestFixpoint() {
   CHECK(out1 == out2);
 }
 
-// --- Q-ANGLE: values and compiler unit are preserved verbatim -------------- //
+// --- values and compiler unit are preserved verbatim --------------------- //
 // MuJoCo converts joint range only for LIMITED hinge/ball and ref/springref
 // only for hinge, resolving those conditions per consuming element at compile
 // (user_objects.cc:3207-3282); a shared default class can feed elements that
@@ -144,10 +144,10 @@ static void TestAngle() {
   </mujoco>)");
   CHECK(r.ok());
   const Body* b = FirstBody(*World(*r.model));
-  // Q-ORIENT: the body's euler is canonicalized to quat at read (angle="degree",
+  // the body's euler is canonicalized to quat at read (angle="degree",
   // eulerseq "xyz"). euler="90 0 0" deg -> rotate +90 deg about x ->
   // (cos45, sin45, 0, 0) = (sqrt2/2, sqrt2/2, 0, 0). Joint angle FIELDS below stay
-  // authored (Q-ANGLE): angle-field preservation is unaffected by Q-ORIENT.
+  // authored: angle-field preservation is unaffected by the orientation fold.
   CHECK(b->quat.has_value());
   CHECK(Near((*b->quat)[0], 0.7071067811865476));
   CHECK(Near((*b->quat)[1], 0.7071067811865476));
@@ -185,14 +185,14 @@ static void TestAngle() {
   CHECK(rad_out.find("angle=\"radian\"") != std::string::npos);
 }
 
-// --- Q-ORIENT: each encoding + multiple-specifier and zero-quat errors ----- //
+// --- each encoding + multiple-specifier and zero-quat errors ------------- //
 static void TestOrient() {
   auto ok = Parse(R"(<mujoco><worldbody>
     <geom name="g" type="sphere" size="1" axisangle="0 0 1 90"/>
   </worldbody></mujoco>)");
   CHECK(ok.ok());
   const auto& g = *FirstOf<Geom>(*World(*ok.model));
-  // Q-ORIENT: axisangle="0 0 1 90" (deg default) canonicalizes to a +90 deg
+  // axisangle="0 0 1 90" (deg default) canonicalizes to a +90 deg
   // rotation about z -> (cos45, 0, 0, sin45) = (sqrt2/2, 0, 0, sqrt2/2).
   CHECK(g.quat.has_value());
   CHECK(Near((*g.quat)[0], 0.7071067811865476));
@@ -213,7 +213,7 @@ static void TestOrient() {
   CHECK(zero.errors[0].message.find("zero quaternion") != std::string::npos);
 }
 
-// --- Q-FROMTO: routes into GeomShape; size stays a plain field ------------- //
+// --- routes into GeomShape; size stays a plain field --------------------- //
 static void TestFromto() {
   auto r = Parse(R"(<mujoco><worldbody>
     <geom name="c" type="capsule" fromto="0 0 0 0 0 1" size="0.1"/>
@@ -229,7 +229,7 @@ static void TestFromto() {
   CHECK(s.size.has_value() && Near((*s.size)[0], 0.2));
 }
 
-// --- Q-INERTIA: full vs diagonal; fullinertia + orientation exclusion ------ //
+// --- full vs diagonal; fullinertia + orientation exclusion --------------- //
 static void TestInertia() {
   auto full = Parse(R"(<mujoco><worldbody><body>
     <inertial pos="0 0 0" mass="1" fullinertia="1 2 3 0.1 0.2 0.3"/>
@@ -238,7 +238,7 @@ static void TestInertia() {
   const auto& body = *FirstBody(*World(*full.model));
   CHECK(!body.inertial.empty());
   const auto& in = *body.inertial.front();
-  // Q-INERTIA: fullinertia is eigendecomposed at read into diaginertia (principal
+  // fullinertia is eigendecomposed at read into diaginertia (principal
   // moments, descending) + the inertial-frame quat. The exact eigenvalues are
   // hard to hand-write, but two invariants pin them: their sum equals the trace
   // (xx+yy+zz = 1+2+3 = 6) and they are positive and sorted descending.
@@ -256,7 +256,7 @@ static void TestInertia() {
         std::string::npos);
 }
 
-// --- Q-ORIENT: parse-end resolution is document-order independent ---------- //
+// --- parse-end resolution is document-order independent ------------------ //
 static void TestOrientDocumentOrder() {
   // A <compiler> block AFTER <worldbody> still governs orientation resolution:
   // the reader folds the effective compiler context at parse end, so document
@@ -276,7 +276,7 @@ static void TestOrientDocumentOrder() {
   CHECK(Near((*b->quat)[2], 0.0) && Near((*b->quat)[3], 0.0));
 }
 
-// --- Q-ORIENT: a default class stores the canonical quat (inheritance) ------ //
+// --- a default class stores the canonical quat (inheritance) ------------- //
 static void TestOrientClassInheritance() {
   // A default class authoring euler stores the resolved quat, exactly like an
   // element (canonicalization runs per authored site, classes included). class
@@ -301,7 +301,7 @@ static void TestOrientClassInheritance() {
   CHECK(!g.quat.has_value());
 }
 
-// --- Q-ARITY: fewer-than-max OK, more-than-max errors ---------------------- //
+// --- fewer-than-max OK, more-than-max errors ----------------------------- //
 static void TestArity() {
   auto r = Parse(R"(<mujoco><worldbody>
     <geom name="g" type="sphere" size="1" friction="1.5"/>
@@ -318,7 +318,7 @@ static void TestArity() {
   CHECK(too_many.errors[0].message.find("too much data") != std::string::npos);
 }
 
-// --- Q-NUM: inf, memory suffix, overflow, NaN warning ---------------------- //
+// --- inf, memory suffix, overflow, NaN warning --------------------------- //
 static void TestNumeric() {
   auto r = Parse(R"(<mujoco>
     <size memory="2M"/>
@@ -368,7 +368,7 @@ static void TestNumeric() {
   CHECK(num::ParseMemory("1Q", bytes) == num::MemStatus::Bad);
 }
 
-// --- presence (DR-1): only authored attributes set fields ------------------ //
+// --- presence: only authored attributes set fields ----------------------- //
 static void TestPresence() {
   auto r = Parse(R"(<mujoco><worldbody>
     <geom name="g" type="box" size="1 1 1"/>
@@ -510,7 +510,7 @@ static void TestDefaults() {
   CHECK(out1 == WriteMjcf(*b.model));
 }
 
-// --- Q-AUTO/defaults: root class name rules (xml_native_reader.cc:3041-3055) //
+// --- defaults: root class name rules (xml_native_reader.cc:3041-3055) ----- //
 static void TestDefaultClassNames() {
   // Top level may be unnamed or exactly "main".
   CHECK(Parse(R"(<mujoco><default><geom size="1"/></default></mujoco>)").ok());
@@ -534,7 +534,7 @@ static void TestDefaultClassNames() {
 // --- Unknown class reference: NOT a read-time error (deferred to tier 2) ---- //
 // MuJoCo resolves classes during parse and errors immediately on a dangling
 // name (xml_native_reader.cc:4705-4719). ProtoSpec instead stores every ref by
-// name and resolves none at read (DR-8, plan Section 9 tier 2), exactly as it
+// name and resolves none at read, exactly as it
 // treats mesh/material/target refs -- referential validation, not IO, reports
 // dangling names with provenance later. This is harness-neutral: a genuinely
 // dangling class makes MuJoCo reject the model at compile on both sides.
@@ -572,12 +572,12 @@ static void TestAssets() {
   }
   CHECK(r.model->assets.size() == 1);
   const Asset& a = *r.model->assets.front();
-  CHECK(a.meshs.size() == 2);
-  const Mesh& m0 = *a.meshs.front();
-  // Asset file paths are DATA: stored verbatim, contents never loaded (DR-7).
+  CHECK(a.meshes.size() == 2);
+  const Mesh& m0 = *a.meshes.front();
+  // Asset file paths are DATA: stored verbatim, contents never loaded.
   CHECK(m0.file.has_value() && *m0.file == "parts/arm.obj");
   CHECK(m0.scale.has_value() && Near((*m0.scale)[0], 0.1));
-  CHECK(a.meshs[1]->vertex.has_value() && a.meshs[1]->vertex->size() == 9);
+  CHECK(a.meshes[1]->vertex.has_value() && a.meshes[1]->vertex->size() == 9);
   CHECK(a.hfields.size() == 1 && *a.hfields.front()->nrow == 4);
   CHECK(a.materials.size() == 1);
   const Material& mat = *a.materials.front();
@@ -592,7 +592,7 @@ static void TestAssets() {
   CHECK(out1 == WriteMjcf(*b.model));
 }
 
-// --- Q-TEX: a texture's source (builtin vs file) --------------------------- //
+// --- a texture's source (builtin vs file) -------------------------------- //
 static void TestTextureSource() {
   auto tex = Parse(R"(<mujoco><asset>
     <texture name="grid" type="2d" builtin="checker" width="8" height="8"/>
@@ -619,7 +619,7 @@ static void TestTextureSource() {
   CHECK(tb.file == "a.png" && tb.builtin == TextureBuiltin::none);
 }
 
-// --- Include (Q-INC): splice-in-place, provenance, once-per-file globally --- //
+// --- Include: splice-in-place, provenance, once-per-file globally -------- //
 namespace {
 int g_tmp_counter = 0;
 std::filesystem::path TempDir() {
@@ -668,7 +668,7 @@ static void TestInclude() {
     const Body* w = World(*r.model);
     CHECK(CountOf<Geom>(*w) == 1 && *FirstOf<Geom>(*w)->name == "floor");
     CHECK(CountOf<Body>(*w) == 1 && *FirstBody(*w)->name == "b");
-    // Provenance (DR-9): the spliced body's SourceLoc names the INCLUDED file.
+    // Provenance: the spliced body's SourceLoc names the INCLUDED file.
     const Body& b = *FirstBody(*w);
     CHECK(b.loc.file.find("body.xml") != std::string::npos);
     CHECK(b.loc.line == 2);
@@ -780,7 +780,7 @@ static void TestContact() {
   CHECK(c.excludes.front()->body1.name == "t");
   Fixpoint(r);
 
-  // 3-value pair friction (Q-ARITY, fewer than the 5 max) round trips.
+  // 3-value pair friction (fewer than the 5 max) round trips.
   auto few = Parse(R"(<mujoco><contact>
     <pair geom1="a" geom2="b" friction="1 1 0.01"/>
   </contact></mujoco>)");
@@ -808,7 +808,7 @@ static void TestEquality() {
     for (const auto& e : r.errors) std::printf("  err: %s\n", e.Render().c_str());
     return;
   }
-  const Equality& eq = *r.model->equalitys.front();
+  const Equality& eq = *r.model->equalities.front();
   CHECK(eq.equalities.size() == 8);
   // Union child list keeps document order across spellings (Section 6).
   using K = EqualityAny::Kind;
@@ -938,7 +938,7 @@ static void TestActuators() {
   const Actuator& a = *r.model->actuators.front();
   CHECK(a.actuators.size() == 11);
   // Document order == compile id order; each spelling stays its own type
-  // (DR-3/Q-ACT: no lowering to <general> in IO).
+  // (no lowering to <general> in IO).
   using K = ActuatorAny::Kind;
   const K expect[] = {K::Motor,       K::Position, K::ActuatorGeneral,
                       K::Velocity,    K::IntVelocity, K::Damper,
@@ -1046,7 +1046,7 @@ static void TestSensors() {
   using K = SensorAny::Kind;
   CHECK(list[0].kind() == K::Accelerometer && list[2].kind() == K::Rangefinder);
   CHECK(list[10].kind() == K::SensorPlugin);
-  // A `interval` shorter than 2 (Q-ARITY exact=false) is accepted.
+  // A `interval` shorter than its arity maximum is accepted.
   const Gyro* g = Member<Gyro>(list[1]);
   CHECK(g && g->interval && g->interval->size() == 1);
   const Rangefinder* rf = Member<Rangefinder>(list[2]);
@@ -1153,7 +1153,7 @@ static void TestCustomKeyframeExtension() {
   CHECK(inst.name == "inst0" && inst.config.size() == 2);
   Fixpoint(r);
 
-  // Negative: duplicate config key (Q-PLUGIN, ReadPluginConfigs).
+  // Negative: duplicate config key (ReadPluginConfigs).
   auto dup = Parse(R"(<mujoco><extension>
     <plugin plugin="p"><instance name="i">
       <config key="k" value="1"/>
@@ -1390,7 +1390,7 @@ static void TestResolverRegistryCoverage() {
   }
 }
 
-// Wave 4 #3: element nesting is capped (200 levels) so a hostile deep document
+// Element nesting is capped (200 levels) so a hostile deep document
 // fails with a clear diagnostic instead of overflowing the native stack.
 static void TestNestingDepthCap() {
   auto nested = [](int n) {
@@ -1423,7 +1423,7 @@ static void TestNestingDepthCap() {
   CHECK(named);
 }
 
-// Wave 4 #4: a name repeated within a namespace raises a parse-time WARNING (both
+// A name repeated within a namespace raises a parse-time WARNING (both
 // locations) without failing the parse; cross-namespace repeats never fire.
 static void TestDuplicateNameWarning() {
   auto has_warn = [](const ParseResult& r, const char* sub) {
@@ -1458,7 +1458,7 @@ static void TestDuplicateNameWarning() {
   CHECK(has_warn(act, "duplicate actuator name 'a'"));
 }
 
-// Wave 4 #6: an <include> whose resolved path escapes the root model's directory
+// An <include> whose resolved path escapes the root model's directory
 // tree is rejected by default and permitted under allow_external_includes.
 static void TestIncludeTraversal() {
   std::filesystem::path dir = TempDir();

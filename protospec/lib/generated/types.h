@@ -678,7 +678,7 @@ struct Model {
   std::vector<std::unique_ptr<Deformable>> deformables;
   std::vector<std::unique_ptr<Contact>> contacts;
   std::vector<std::unique_ptr<Tendon>> tendons;
-  std::vector<std::unique_ptr<Equality>> equalitys;
+  std::vector<std::unique_ptr<Equality>> equalities;
   std::vector<std::unique_ptr<Actuator>> actuators;
   std::vector<std::unique_ptr<Sensor>> sensors;
   std::vector<std::unique_ptr<Custom>> customs;
@@ -824,7 +824,7 @@ struct Visual {
   ps::SourceLoc loc;
   std::uint64_t serial = ps::detail::next_serial();
   std::vector<std::unique_ptr<VisualGlobal>> visualGlobals;
-  std::vector<std::unique_ptr<VisualQuality>> visualQualitys;
+  std::vector<std::unique_ptr<VisualQuality>> visualQualities;
   std::vector<std::unique_ptr<VisualHeadlight>> visualHeadlights;
   std::vector<std::unique_ptr<VisualMap>> visualMaps;
   std::vector<std::unique_ptr<VisualScale>> visualScales;
@@ -1004,7 +1004,7 @@ struct Config {
 struct Asset {
   ps::SourceLoc loc;
   std::uint64_t serial = ps::detail::next_serial();
-  std::vector<std::unique_ptr<Mesh>> meshs;
+  std::vector<std::unique_ptr<Mesh>> meshes;
   std::vector<std::unique_ptr<Hfield>> hfields;
   std::vector<std::unique_ptr<Skin>> skins;
   std::vector<std::unique_ptr<Texture>> textures;
@@ -1420,7 +1420,7 @@ struct Flexcomp {
   ps::opt<std::array<double, 3>> euler = {};
   ps::opt<std::array<double, 3>> origin = {};
   std::vector<std::unique_ptr<FlexcompEdge>> flexcompEdges;
-  std::vector<std::unique_ptr<FlexElasticity>> flexElasticitys;
+  std::vector<std::unique_ptr<FlexElasticity>> flexElasticities;
   std::vector<std::unique_ptr<FlexContact>> flexContacts;
   std::vector<std::unique_ptr<FlexcompPin>> flexcompPins;
   std::vector<std::unique_ptr<PluginRef>> plugin;
@@ -1501,7 +1501,7 @@ struct Flex {
   ps::opt<FlexDof> dof = {};
   std::vector<std::unique_ptr<FlexContact>> flexContacts;
   std::vector<std::unique_ptr<FlexEdge>> flexEdges;
-  std::vector<std::unique_ptr<FlexElasticity>> flexElasticitys;
+  std::vector<std::unique_ptr<FlexElasticity>> flexElasticities;
 };
 
 struct FlexEdge {

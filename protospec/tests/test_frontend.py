@@ -214,8 +214,8 @@ def test_aliased_elements_inherit_their_target_s_children(elements):
 
 def test_homogeneous_lists_keep_the_child_tag(elements):
     asset = children(elements["Asset"])
-    assert asset["meshs"]["element"] == "Mesh"
-    assert asset["meshs"]["tag"] == "mesh"
+    assert asset["meshes"]["element"] == "Mesh"
+    assert asset["meshes"]["tag"] == "mesh"
 
 
 def test_world_body_slot_carries_the_overlay_tag(elements):

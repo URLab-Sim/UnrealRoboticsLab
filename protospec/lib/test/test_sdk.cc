@@ -1,11 +1,11 @@
-// Property tests for the ProtoSpec SDK (milestone 6).
+// Property tests for the ProtoSpec SDK.
 //
 // Builds the milestone-exit robot programmatically through the typed builders,
 // round-trips it through the MJCF writer/reader as a fixpoint check, then
 // exercises the ergonomic layer: traversal + parent map + path, typed-reference
 // resolve / find-referrers / rename / recursive-delete, the default-class
-// operations (Effective / FlattenDefaults / ExtractClass), and namespaced
-// attach. MuJoCo-free: correctness is asserted against the reader fixpoint and
+// operations (Effective / FlattenDefaults / ExtractClass). MuJoCo-free:
+// correctness is asserted against the reader fixpoint and
 // against the generated value-equality, not against a live compile.
 
 #include <cstdio>
@@ -122,15 +122,15 @@ static void TestBuilders() {
   Body dummy_parent;
   Joint& j = sdk::AddJoint(dummy_parent);
   CHECK(j.type.has_value() && j.type.value() == JointType::hinge);
-  // ...but no other IDL default is silently stamped on (DR-1).
+  // ...but no other IDL default is silently stamped on.
   CHECK(!j.damping.has_value());
 
   // Equality builder lands in the section's ordered union list.
   Weld& weld = sdk::AddEquality<Weld>(*m, "weld1");
   CHECK(weld.name.has_value() && weld.name.value() == "weld1");
-  CHECK(m->equalitys.size() == 1);
-  CHECK(m->equalitys.front()->equalities.size() == 1);
-  CHECK(m->equalitys.front()->equalities[0].kind() ==
+  CHECK(m->equalities.size() == 1);
+  CHECK(m->equalities.front()->equalities.size() == 1);
+  CHECK(m->equalities.front()->equalities[0].kind() ==
         EqualityAny::Kind::Weld);
 }
 
@@ -510,56 +510,6 @@ static void TestMultiBlockDefaults() {
     auto e = sdk::Effective(*m, g);
     CHECK(e->size.has_value() && (*e->size)[0] == 0.1);  // first "a" kept
   }
-}
-
-// --- attach: namespaced deep-clone splice --------------------------------- //
-static void TestAttach() {
-  auto m = BuildRobot();
-
-  // Build a small standalone gripper subtree to graft onto the shin.
-  Body gripper;
-  gripper.name = "palm";
-  sdk::AddJoint(gripper, JointType::slide, "slide");
-  Geom& gg = sdk::AddGeom(gripper, GeomType::box, "pad");
-  (void)gg;
-  Body& finger = sdk::AddBody(gripper, "finger");
-  sdk::AddGeom(finger, GeomType::box, "tip");
-
-  Body* shin = sdk::Find<Body>(*m, "shin");
-  CHECK(shin != nullptr);
-  auto result = sdk::Attach(*m, *shin, gripper, "g1_");
-  CHECK(result.ok);
-  CHECK(result.collisions.empty());
-  CHECK(result.attached != nullptr);
-
-  // Every name in the graft is prefixed; the source is untouched (deep clone).
-  CHECK(sdk::Find<Body>(*m, "g1_palm") != nullptr);
-  CHECK(sdk::Find<Body>(*m, "g1_finger") != nullptr);
-  CHECK(sdk::Find<Geom>(*m, "g1_pad") != nullptr);
-  CHECK(sdk::Find<Geom>(*m, "g1_tip") != nullptr);
-  CHECK(sdk::Find<Joint>(*m, "g1_slide") != nullptr);
-  CHECK(gripper.name.value() == "palm");  // source unchanged
-
-  // Attaching the same subtree again with the same prefix collides.
-  auto dup = sdk::Attach(*m, *shin, gripper, "g1_");
-  CHECK(!dup.ok);
-  CHECK(!dup.collisions.empty());
-  // A different prefix succeeds.
-  auto ok2 = sdk::Attach(*m, *shin, gripper, "g2_");
-  CHECK(ok2.ok);
-  CHECK(sdk::Find<Joint>(*m, "g2_slide") != nullptr);
-
-  // An internal reference inside a cloned subtree is namespaced too: give the
-  // gripper geom a material ref and attach; the clone's ref is prefixed.
-  Body refbody;
-  refbody.name = "rb";
-  Geom& rg = sdk::AddGeom(refbody, GeomType::sphere, "rgeom");
-  rg.material = ps::Ref<Material>("mat");
-  auto r3 = sdk::Attach(*m, *shin, refbody, "p_");
-  CHECK(r3.ok);
-  Geom* cloned = sdk::Find<Geom>(*m, "p_rgeom");
-  CHECK(cloned && cloned->material.has_value() &&
-        cloned->material->name == "p_mat");
 }
 
 // --- save: Save round-trip + SaveAs asset externalization ----------------- //
@@ -1024,7 +974,6 @@ int main() {
   TestEffectiveAndFlatten();
   TestExtractClass();
   TestMultiBlockDefaults();
-  TestAttach();
   TestSchemaInvariants();
 
   std::printf("%d checks, %d failures\n", g_checks, g_failed);

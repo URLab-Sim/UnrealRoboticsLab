@@ -46,7 +46,7 @@ import os
 import re
 import sys
 
-from . import overlay
+from . import overlay, overlay_ue
 
 __all__ = ["load_schema", "mujoco_src", "SchemaError", "OverlayError"]
 
@@ -115,11 +115,29 @@ def _import_parser(root: str):
     return module
 
 
-_PARSER = _import_parser(mujoco_src())
-SchemaError = _PARSER.SchemaError
-Attr = _PARSER.Attr
-Constraint = _PARSER.Constraint
-Use = _PARSER.Use
+# The parser is located and loaded on first use, not on import. Importing this
+# module must not require a MuJoCo checkout: a caller that only wants the
+# overlay tables, or a tool that reports a missing checkout itself, would
+# otherwise fail at import with no chance to say anything useful.
+_PARSER = None
+
+
+def _parser():
+    global _PARSER
+    if _PARSER is None:
+        _PARSER = _import_parser(mujoco_src())
+    return _PARSER
+
+
+# Names re-exported from upstream's parser. Resolved through the module hook so
+# they cost nothing until something actually names one.
+_PARSER_EXPORTS = ("SchemaError", "Attr", "Constraint", "Use")
+
+
+def __getattr__(name):
+    if name in _PARSER_EXPORTS:
+        return getattr(_parser(), name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 _DEFINE_RE = re.compile(r"^#define\s+(mjN[A-Z]+)\s+(\d+)", re.M)
@@ -166,7 +184,7 @@ _SCALAR_PRIM = {
 class _Frontend:
     def __init__(self, root: str):
         self.root = root
-        self.schema = _PARSER.parse_file(
+        self.schema = _parser().parse_file(
             os.path.join(root, "src", "xml", "mjcf.schema"))
         self.consts = _engine_constants(root)
         self.used: set = set()
@@ -246,7 +264,7 @@ class _Frontend:
                     f"ANGLE_ATTRS names {key[0]}.{key[1]}, which the schema no "
                     "longer declares")
         live_names = {a for _e, a in live}
-        for attr in sorted(overlay.UE_ADVANCED):
+        for attr in sorted(overlay_ue.UE_ADVANCED):
             if attr not in live_names:
                 raise OverlayError(
                     f"UE_ADVANCED names attribute {attr!r}, which no element "
@@ -327,9 +345,9 @@ class _Frontend:
         problems = []
 
         for name in self.elements:
-            if name not in overlay.SPEC_CREATE:
+            if name not in overlay_ue.SPEC_CREATE:
                 problems.append(f"element {name} has no SPEC_CREATE category")
-        for name in overlay.SPEC_CREATE:
+        for name in overlay_ue.SPEC_CREATE:
             if name not in self.elements:
                 problems.append(
                     f"SPEC_CREATE names {name}, which the schema no longer declares")
@@ -337,19 +355,19 @@ class _Frontend:
         problems += self._check_spec_target()
 
         for key in self._spec_write_keys():
-            if (key not in overlay.SPEC_WRITE_HANDLERS
-                    and key not in overlay.SPEC_WRITE_NOTES):
+            if (key not in overlay_ue.SPEC_WRITE_HANDLERS
+                    and key not in overlay_ue.SPEC_WRITE_NOTES):
                 problems.append(
                     f"{key[0]}.{key[1]} has no spec-write handler and no waiver")
 
-        for element in overlay.SPEC_WRITE_ELEMENT_HOOKS:
+        for element in overlay_ue.SPEC_WRITE_ELEMENT_HOOKS:
             if element not in self.elements:
                 problems.append(
                     f"SPEC_WRITE_ELEMENT_HOOKS names {element}, which the "
                     "schema no longer declares")
 
-        for table, label in ((overlay.SPEC_WRITE_HANDLERS, "SPEC_WRITE_HANDLERS"),
-                             (overlay.SPEC_WRITE_NOTES, "SPEC_WRITE_NOTES")):
+        for table, label in ((overlay_ue.SPEC_WRITE_HANDLERS, "SPEC_WRITE_HANDLERS"),
+                             (overlay_ue.SPEC_WRITE_NOTES, "SPEC_WRITE_NOTES")):
             for element, attr in table:
                 if element not in self.elements:
                     problems.append(
@@ -366,9 +384,9 @@ class _Frontend:
         if problems:
             raise OverlayError(
                 "spec-write bindings out of step with the schema (fix "
-                "overlay.SPEC_CREATE, overlay.SPEC_TARGET, "
-                "overlay.SPEC_WRITE_HANDLERS or "
-                "overlay.SPEC_WRITE_NOTES):\n  " + "\n  ".join(sorted(problems)))
+                "overlay_ue.SPEC_CREATE, overlay_ue.SPEC_TARGET, "
+                "overlay_ue.SPEC_WRITE_HANDLERS or "
+                "overlay_ue.SPEC_WRITE_NOTES):\n  " + "\n  ".join(sorted(problems)))
 
     def _check_spec_target(self) -> list[str]:
         """Exactly the embedded elements carry a target expression.
@@ -380,14 +398,14 @@ class _Frontend:
         problems = []
         wanted = {
             name for name, element in self.elements.items()
-            if overlay.SPEC_CREATE.get(name, (None, None))[0] in
+            if overlay_ue.SPEC_CREATE.get(name, (None, None))[0] in
             ("spec_embedded", "parent_embedded") and "field" not in element.facets
         }
-        for name in sorted(wanted - set(overlay.SPEC_TARGET)):
+        for name in sorted(wanted - set(overlay_ue.SPEC_TARGET)):
             problems.append(
-                f"element {name} is {overlay.SPEC_CREATE[name][0]} and has no "
+                f"element {name} is {overlay_ue.SPEC_CREATE[name][0]} and has no "
                 "SPEC_TARGET row, so there is nowhere to write it")
-        for name in sorted(set(overlay.SPEC_TARGET) - wanted):
+        for name in sorted(set(overlay_ue.SPEC_TARGET) - wanted):
             problems.append(
                 f"SPEC_TARGET names {name}, which is not an embedded element "
                 "needing a target expression")
@@ -469,7 +487,7 @@ class _Frontend:
         hi = arity.hi
         if isinstance(hi, str):
             if hi not in self.consts:
-                raise SchemaError(self.schema.path, attr.line,
+                raise _parser().SchemaError(self.schema.path, attr.line,
                                   f"unknown arity bound {hi!r}")
             hi = self.consts[hi]
         if arity.lo == hi:
@@ -485,7 +503,7 @@ class _Frontend:
             return t
         if attr.type == "ref":
             if attr.target not in self.ref_target:
-                raise SchemaError(self.schema.path, attr.line,
+                raise _parser().SchemaError(self.schema.path, attr.line,
                                   f"ref<{attr.target}> has no declaring element")
             return {"kind": "ref", "target": self.ref_target[attr.target]}
         if attr.type == "id":
@@ -529,7 +547,7 @@ class _Frontend:
         for name, group in self.schema.groups.items():
             if group.variant:
                 out[name] = [m.name for m in group.members
-                             if isinstance(m, Attr)]
+                             if isinstance(m, _parser().Attr)]
         return out
 
     def _element_fields(self, name: str, element) -> list[dict]:
@@ -538,7 +556,7 @@ class _Frontend:
         # uses, plus the overlay's explicit input aliases.
         folded: dict[str, tuple[str, str]] = {}  # attr -> (canonical, resolver)
         for member in element.members:
-            if isinstance(member, Use) and member.group in variants:
+            if isinstance(member, _parser().Use) and member.group in variants:
                 names = variants[member.group]
                 resolver = overlay.VARIANT_GROUP_RESOLVERS[member.group]
                 for alias in names[1:]:
@@ -596,9 +614,9 @@ class _Frontend:
         """
         paired: list[tuple] = []
         for member in element.members:
-            if isinstance(member, Attr):
+            if isinstance(member, _parser().Attr):
                 paired.append((member, None))
-            elif isinstance(member, Use):
+            elif isinstance(member, _parser().Use):
                 for attr in self._group_attrs(member.group):
                     paired.append((attr, member.group))
         expanded = self.schema.expanded_attrs(element)
@@ -613,9 +631,9 @@ class _Frontend:
         """A group's attributes, with any group it uses spliced in."""
         out = []
         for member in self.schema.groups[name].members:
-            if isinstance(member, Attr):
+            if isinstance(member, _parser().Attr):
                 out.append(member)
-            elif isinstance(member, Use):
+            elif isinstance(member, _parser().Use):
                 out.extend(self._group_attrs(member.group))
         return out
 
@@ -645,7 +663,7 @@ class _Frontend:
         else:
             facets.pop("required", None)
         return dataclasses.replace(attr, type=new_type, target=new_target,
-                                   arity=_PARSER.Arity(lo, hi), facets=facets)
+                                   arity=_parser().Arity(lo, hi), facets=facets)
 
     def _field(self, element: str, attr, folded: dict) -> dict:
         attr = self._corrected(element, attr)
@@ -857,9 +875,9 @@ class _Frontend:
         stored = {f["xml"] for f in fields}
         rows = list(element.constraints())
         for member in element.members:
-            if isinstance(member, Use):
+            if isinstance(member, _parser().Use):
                 rows.extend(m for m in self.schema.groups[member.group].members
-                            if isinstance(m, Constraint))
+                            if isinstance(m, _parser().Constraint))
         out = []
         for con in rows:
             bundles = [list(b) for b in con.bundles

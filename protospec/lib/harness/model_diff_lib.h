@@ -1,5 +1,5 @@
 // model_diff_lib: the structural mjModel comparison core, factored out of
-// mj_model_diff.cc (impl-plan T0.2) so both the mj_model_diff CLI and the
+// mj_model_diff.cc so both the mj_model_diff CLI and the
 // three-way ps_native_diff harness share one comparison. The comparison is
 // driven entirely by MuJoCo's own mjxmacro tables (MJMODEL_SIZES /
 // MJMODEL_POINTERS) so coverage is total and survives version bumps.

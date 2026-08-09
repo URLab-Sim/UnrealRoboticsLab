@@ -1,18 +1,16 @@
 // ProtoSpec: shared model-core machinery (ps::sdk::internal).
 //
-// This is the internal seam SHARED between the ProtoSpec SDK's public verbs and
-// the native compiler (parked: attic/compile/{native,build}.cc). It is NOT a
-// stable public surface -- external consumers program against the public verbs
-// aggregated in sdk.h (Name, WalkModel, WalkSubtree, Rename, ...). But unlike
-// detail.h (genuinely private to the SDK), this header is a real, named contract
-// with a second in-tree consumer: the compiler legitimately needs the generic
-// tree walk, name access, the <default> class index and the reference prefixer
-// to lower an authored Model to MuJoCo.
+// This is the internal seam SHARED between the ProtoSpec SDK's verbs and the
+// hosts that bring their own document profile. It is NOT a stable public surface
+// -- a consumer of the tree library programs against the verbs aggregated in
+// sdk.h (Name, WalkModel, WalkSubtree, Rename, ...). But unlike detail.h
+// (genuinely private to the SDK), this header is a real, named contract with
+// more than one in-tree consumer, so it is written and documented as one.
 //
-// CONTRACT: any change to a symbol here must update BOTH consumers in the same
-// change -- the SDK headers (traversal.h / refs.h / classes.h / attach.h /
-// builders.h) and protospec/lib/compile. It carries no compatibility guarantee
-// beyond that; it is not versioned and not exported.
+// CONTRACT: any change to a symbol here must update every consumer in the same
+// change -- the SDK headers (classes.h / parents.h and the fixture's traversal.h
+// / refs.h / builders.h) and the host profiles. It carries no compatibility
+// guarantee beyond that; it is not versioned and not exported.
 //
 // Everything here is generic over an emission profile `P` (profile.h). A profile
 // supplies a per-element Visit hook handing a visitor every field by id + name

@@ -1,4 +1,4 @@
-// MJCF <include> pre-pass (Q-INC, DR-7): the one construct that cannot pass
+// MJCF <include> pre-pass: the one construct that cannot pass
 // through as data. Before the table-driven reader runs, every <include> in the
 // document is expanded in place with MuJoCo's exact rules (xml.cc:101-240):
 // the file attribute is required, the element must have no children, each file
@@ -13,7 +13,7 @@
 // <include> wrapper, ProtoSpec splices the included root's children directly
 // into the parent and drops the <include> element, yielding a flat document
 // the reader consumes with no knowledge of includes. Because tinyxml2 clones
-// do not carry parse line numbers across documents, provenance (DR-9) for
+// do not carry parse line numbers across documents, provenance for
 // every spliced element is captured into a side map keyed on the clone: the
 // reader consults it so a SourceLoc points at the INCLUDED file's path and
 // line, not the top-level file.

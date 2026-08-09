@@ -10,7 +10,7 @@
 // the quirks the tables cannot carry: numeric parsing, variable arity, and the
 // strict support boundary -- all of which live in mjcf_common.h and compile once.
 //
-// Q-ORIENT / Q-INERTIA canonicalization: orientation is stored as a single
+// Orientation and inertia canonicalization: orientation is stored as a single
 // canonical quaternion and inertia as diaginertia + quat. The reader still
 // ACCEPTS every authored spelling (quat/euler/axisangle/xyaxes/zaxis via the
 // binding's input aliases; diaginertia/fullinertia), but folds them into the
@@ -27,17 +27,17 @@
 // (a deliberate, documented divergence from MuJoCo's ReadAlternative precedence
 // wart; no corpus witness).
 //
-// Q-ANGLE is handled by form preservation, not read-time conversion: angle
+// Angles are handled by form preservation, not read-time conversion: angle
 // values are stored exactly as authored and the compiler's angle unit round
 // trips verbatim, so MuJoCo performs every degree->radian conversion at compile
 // time. This is necessary, not merely tidy: MuJoCo converts joint range only for
 // LIMITED hinge/ball joints and ref/springref only for hinge -- conditions
-// resolved per consuming joint at compile. A default class (data, DR-1) can be
+// resolved per consuming joint at compile. A default class (data) can be
 // shared by joints that resolve those conditions differently, so no single
 // pre-converted stored value is correct.
 //
-// Presence (DR-1): only authored attributes set fields; a missing attribute
-// leaves the slot unauthored. Provenance (DR-9): every element records
+// Presence: only authored attributes set fields; a missing attribute
+// leaves the slot unauthored. Provenance: every element records
 // {file, line}.
 
 namespace ps::mjcf::io {
@@ -45,7 +45,7 @@ namespace ps::mjcf::io {
 namespace common_ = ps::mjcf::io::common;
 
 // A collected-but-unresolved orientation: an authored spelling awaiting the
-// document-order-folded compiler context (parse-end resolution, Q-ORIENT).
+// document-order-folded compiler context (parse-end resolution).
 // `node` plus `field_id` names the canonical quat slot; `apply` recovers the
 // node's concrete type, which is known where the record is made and nowhere
 // else. `xml` stays valid for the whole parse.
@@ -96,13 +96,13 @@ class Reader : public common_::ReaderBase {
     AttrVisitor<E> av{this, xml, &b};
     P::Visit(out, av);
 
-    // Q-ORIENT: collect the authored orientation (resolved at parse end against
+    // Collect the authored orientation (resolved at parse end against
     // the folded compiler context). Elements whose schema orientation is the
     // variant group only. The "orientation" resolver is dispatched here, not
     // through ApplyResolvers, because it defers to the document-order compiler
     // fold.
     if (common_::FoldsOrientation(b)) CollectOrientation(xml, out, b);
-    // Q-INERTIA: the mutual-exclusion check is a hardcoded quirk (not a schema
+    // The mutual-exclusion check is a hardcoded quirk (not a schema
     // resolver); the fullinertia/diaginertia fold itself is the "inertia"
     // resolver, dispatched below off the binding metadata.
     if (type == ElementType::Inertial) InertialOrientExclusion(xml);
@@ -138,7 +138,7 @@ class Reader : public common_::ReaderBase {
     }
   }
 
-  // Parse-end orientation fold (Q-ORIENT). Computes the effective compiler
+  // Parse-end orientation fold. Computes the effective compiler
   // context by folding the document's <compiler> blocks in document order (later
   // authored attributes win, matching MuJoCo's accumulate-into-one-spec), then
   // resolves every collected authored orientation against that single context --
@@ -296,7 +296,7 @@ class Reader : public common_::ReaderBase {
     return true;
   }
 
-  // Fixed-arity: exactly N values (Q-ARITY exact=true). The scalars go to the
+  // Fixed-arity: exactly N values. The scalars go to the
   // profile's fixed adapter as a whole array in MJCF component order; the
   // adapter, not this code, decides where each component lands.
   template <class Inner>
@@ -314,7 +314,7 @@ class Reader : public common_::ReaderBase {
   }
 
   // Range arity: up to capacity values, fewer is fine (record the filled count),
-  // more is an error (Q-ARITY exact=false).
+  // more is an error.
   template <class Inner>
   bool ReadRange(XMLElement* xml, const AttrBinding& ab, std::string_view text,
                  Inner& out) {
@@ -399,7 +399,7 @@ class Reader : public common_::ReaderBase {
     return true;
   }
 
-  // ---- Q-ORIENT collection ------------------------------------------------ //
+  // ---- Orientation collection --------------------------------------------- //
   // Recover the element's concrete type here, where it is known, and hand the
   // parse-end fold a plain function pointer plus the canonical field's schema
   // id -- so the deferred write goes through the profile's own presence plumbing
@@ -458,7 +458,7 @@ class Reader : public common_::ReaderBase {
   // Each writes its canonical field by schema id, so one body serves every
   // profile and every element type the schema points at it.
 
-  // Q-INERTIA: diaginertia stores as authored; fullinertia is eigendecomposed
+  // Diaginertia stores as authored; fullinertia is eigendecomposed
   // into diaginertia + the inertial-frame quaternion (iquat) inline -- inertia
   // has no angular context, so no parse-end deferral is needed. Mutual exclusion
   // mirrors MuJoCo.
@@ -616,7 +616,7 @@ class Reader : public common_::ReaderBase {
     if (slot) slot.Set(P::Str::View(P::Str::FromUtf8(tex)));
   }
 
-  // Q-NUM: the `memory` size is authored as an integer with an optional
+  // The `memory` size is authored as an integer with an optional
   // K/M/G/T/P/E binary suffix; the reader stores the canonical byte count (as a
   // string, the field's storage). "-1" or absent means unset.
   template <class E>
@@ -718,7 +718,7 @@ class Reader : public common_::ReaderBase {
   std::vector<PendingOrient> pending_orient_;
 };
 
-// eulerseq must be length 3 (Q-ANGLE); MuJoCo enforces this at read.
+// eulerseq must be length 3; MuJoCo enforces this at read.
 template <class P, class Factory>
 void ValidateEulerseq(Reader<P, Factory>& r, XMLElement* root,
                       const sdk::DocOf<P>& m) {
@@ -767,7 +767,7 @@ ParseResultOf<P> ReadDocumentT(XMLDocument& doc, const std::string& filename,
 
   auto model = Factory::CreateRoot();
   reader.ReadElement(root, *model);
-  // Q-ORIENT: fold the effective compiler context and resolve every collected
+  // Fold the effective compiler context and resolve every collected
   // orientation now that the whole (include-flattened) document is in the tree.
   reader.ResolvePendingOrientations(*model);
   ValidateEulerseq(reader, root, *model);

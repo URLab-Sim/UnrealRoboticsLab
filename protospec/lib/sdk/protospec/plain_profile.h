@@ -72,7 +72,7 @@ struct is_vector : std::false_type {};
 template <class T>
 struct is_vector<std::vector<T>> : std::true_type {};
 
-// A single typed cross reference (DR-8), in either storage: `opt<Ref<T>>` for an
+// A single typed cross reference, in either storage: `opt<Ref<T>>` for an
 // optional attribute, a bare `Ref<T>` for one the schema marks required. Both
 // must be seen by everything that scans references -- a required reference is
 // still a reference, and missing it would silently exclude it from the referrer
@@ -1106,7 +1106,7 @@ struct PlainDoc {
     Each(doc.worldbody, fn);
     Each(doc.deformables, fn);
     Each(doc.contacts, fn);
-    Each(doc.equalitys, fn);
+    Each(doc.equalities, fn);
     Each(doc.tendons, fn);
     Each(doc.actuators, fn);
     Each(doc.sensors, fn);

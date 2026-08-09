@@ -1,17 +1,17 @@
-// ProtoSpec SDK: default-class operations (plan Section 7).
+// ProtoSpec SDK: default-class operations.
 //
 // Defaults are first-class data: a <default> class holds an unset-everything
 // partial per defaultable family, and elements inherit unauthored fields from
 // their class, its ancestor classes, `main`, and finally the IDL defaults, in
-// that order (first authored value wins). These operations expose that layering
-// and two tree transforms built on it.
+// that order (first authored value wins). These operations expose that layering.
 //
-// IMPORTANT: unlike Effective (a pure query returning a computed copy),
-// FlattenDefaults and ExtractClass MUTATE the document. They are authoring
-// operations, not part of Compile: FlattenDefaults bakes effective values into
-// elements and drops the class tree; ExtractClass factors shared authored
-// values out of a set of elements into a new class. Neither is reversible in
-// place; clone the document first if you need the original.
+// This header carries the QUERY half only -- Effective, EffectiveField,
+// EffectiveRef and the layering they share. It reaches upward through
+// ParentMap and nothing else, so a consumer of the class layering (the editor
+// preview, which resolves an inherited value while a document is being edited)
+// does not pull in the find, rename or builder machinery. The two mutating
+// authoring transforms built on the same layering, FlattenDefaults and
+// ExtractClass, live in protospec/class_edits.h.
 //
 // Scope: the layered merge is defined for families whose class partial has the
 // same element type as the live element (geom, joint, site, camera, light,
@@ -31,10 +31,9 @@
 #include <vector>
 
 #include "protospec/detail.h"
+#include "protospec/parents.h"
 #include "protospec/plain_profile.h"
-#include "protospec/refs.h"
 #include "protospec/profile.h"
-#include "protospec/traversal.h"
 
 namespace ps::sdk {
 
@@ -79,11 +78,9 @@ inline std::vector<mj::ElementType> DefaultFamilyCoverageGaps() {
 }
 
 // --- Shared class-layering surface (ps::sdk::internal) -------------------- //
-// The <default> class index and class-name resolution the in-tree native
-// compiler shares with the SDK (contract in model_core.h: changes update both
-// protospec/lib/sdk and protospec/lib/compile). These live in classes.h rather
-// than model_core.h because ResolveClassName is defined over ParentMap
-// (traversal.h), which sits above model_core in the include order.
+// The <default> class index and class-name resolution. These live in classes.h
+// rather than model_core.h because ResolveClassName is defined over ParentMap
+// (parents.h), which sits above model_core in the include order.
 
 namespace internal {
 
@@ -432,120 +429,6 @@ bool EffectiveRef(const EffectiveContext<P>& ctx, const T& e, int field_id,
     }
   }
   return false;
-}
-
-// --- FlattenDefaults (mutating) ------------------------------------------- //
-
-// Bake each element's class-layered values into the element and drop the whole
-// <default> tree. Only the authored class layers are baked (not the IDL
-// defaults), so unauthored-everywhere fields stay unset and still resolve to
-// MuJoCo's compiler defaults at compile. After this call the document has no
-// classes and no class/childclass references, and compiles identically.
-template <class P = plain::Plain>
-void FlattenDefaults(DocOf<P>& model) {
-  ParentMap<P> pm(model);
-  detail::DefaultIndex<P> idx(model);
-
-  detail::WalkModelLive<P>(model, [&](auto& e) {
-    using E = std::decay_t<decltype(e)>;
-    if constexpr (has_default_family_v<P, E>) {
-      ViewOf<P> cls =
-          detail::ResolveClassName<P>(pm, detail::OwnClass<P, E>(e), &e);
-      detail::MergeClassChain<P>(idx, cls, e);
-      const int id = detail::FieldIdByName(ElementTypeOf<P, E>, "dclass");
-      if (id >= 0) ClearRefByField<P>(e, id);
-    }
-  });
-
-  detail::WalkModelLive<P>(model, [&](auto& e) {
-    using E = std::decay_t<decltype(e)>;
-    // The three body-context containers carry the inherited class as
-    // `childclass`; flattening resolves it away.
-    const mj::ElementType t = ElementTypeOf<P, E>;
-    if (t == mj::ElementType::Body || t == mj::ElementType::Frame ||
-        t == mj::ElementType::Replicate) {
-      const int id = detail::FieldIdByName(t, "childclass");
-      if (id >= 0) ClearRefByField<P>(e, id);
-    }
-  });
-
-  P::Tree::template ClearChildrenOfType<detail::DefaultOf<P>>(model);
-}
-
-// --- ExtractClass (mutating) ---------------------------------------------- //
-
-namespace detail {
-
-// For each field authored identically across every element, move that value
-// into the class element and clear it on each source element. Identity fields
-// are exempt: `name` names the element (referrers depend on it) and `dclass` is
-// the class link itself (rewritten by ExtractClass to point at the new class) --
-// neither may migrate into the class partial, where MJCF forbids them.
-template <class P, class T>
-struct ExtractVisitor {
-  const std::vector<T*>* elems;
-  template <class U>
-  void field(int id, const char* fname, U& clsField) {
-    if constexpr (P::Shape::template optional_v<U>) {
-      const std::string_view f(fname);
-      if (f == "name" || f == "dclass") return;
-      const U* first = nullptr;
-      bool all_equal = !elems->empty();
-      for (T* e : *elems) {
-        const U* v = FieldAt<P, T, U>(*e, id);
-        if (!v || !P::Shape::IsSet(*v)) {
-          all_equal = false;
-          break;
-        }
-        if (!first)
-          first = v;
-        else if (!(*v == *first)) {
-          all_equal = false;
-          break;
-        }
-      }
-      if (all_equal && first) {
-        clsField = *first;
-        for (T* e : *elems) {
-          if (U* v = FieldAt<P, T, U>(*e, id)) P::Shape::Reset(*v);
-        }
-      }
-    }
-  }
-  template <class C>
-  void child(int, const char*, C&) {}
-  template <class C>
-  void union_child(int, const char*, C&) {}
-};
-
-}  // namespace detail
-
-// Factor the fields shared (authored and equal) across `elems` into a new class
-// `name`, clear those fields on each element, and point each element at the new
-// class. The class is added under the root `main` default (created if absent).
-// All elements must be the same defaultable family type. Returns the new class,
-// or nullptr when `elems` is empty or the family has no class partial.
-template <class P = plain::Plain, class T>
-detail::DefaultOf<P>* ExtractClass(DocOf<P>& model, const std::vector<T*>& elems,
-                                   ViewOf<P> name) {
-  if (elems.empty()) return nullptr;
-  if constexpr (!has_default_family_v<P, T>) {
-    return nullptr;
-  } else {
-    using DefaultT = detail::DefaultOf<P>;
-    DefaultT& root = detail::EnsureRoot<P>(model);
-    DefaultT& cls = detail::Create<P, DefaultT>(root);
-    detail::SetName<P>(cls, name);
-    T& clsElem = detail::Create<P, T>(cls);
-
-    detail::ExtractVisitor<P, T> v{&elems};
-    P::Visit(clsElem, v);
-
-    const int dclass_id = detail::FieldIdByName(ElementTypeOf<P, T>, "dclass");
-    for (T* e : elems)
-      if (dclass_id >= 0) SetRefByField<P>(*e, dclass_id, name);
-    return &cls;
-  }
 }
 
 }  // namespace ps::sdk

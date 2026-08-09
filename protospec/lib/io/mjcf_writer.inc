@@ -3,9 +3,9 @@
 //
 // Included by exactly one translation unit per emission profile. Deterministic
 // output: 2-space indent, attributes in schema field order, children in schema
-// child order, exactly the authored fields (DR-1, no default diffing). Angle
+// child order, exactly the authored fields (no default diffing). Angle
 // values are emitted verbatim in their authored unit and the compiler's angle
-// attribute round trips as read (Q-ANGLE form preservation); MuJoCo applies the
+// attribute round trips as read (form preservation); MuJoCo applies the
 // degree->radian conversion at compile, per consuming element.
 //
 // Numeric formatting is shortest round-trip via std::to_chars (numeric.cc). This
@@ -233,7 +233,7 @@ void WriteElement(const E& e, std::string_view tag, int depth, std::string& out,
     WriteElement<P>(c, ctag, depth + 1, children, names, errors);
   });
 
-  // Auto-name injection (DR-10): an unnamed bindable element whose serial the
+  // Auto-name injection: an unnamed bindable element whose serial the
   // bridge recorded is emitted with its reserved name. The tree is untouched;
   // the name exists only here in the emitted text. Prepended so it reads first.
   if (names != nullptr) {

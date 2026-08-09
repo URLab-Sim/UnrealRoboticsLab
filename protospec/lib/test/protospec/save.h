@@ -2,7 +2,7 @@
 //
 // The rest of the SDK (sdk.h) is a pure, MuJoCo-free, filesystem-free tree
 // library. Saving is deliberately a *separate* opt-in header because it reaches
-// out to disk and pulls in the MJCF writer (protospec_io): a consumer that only
+// out to disk and pulls in the MJCF writer: a consumer that only
 // builds and edits trees keeps the pure surface, and only a consumer that wants
 // to persist a model includes this and links protospec_sdk_io.
 //
@@ -12,7 +12,7 @@
 //            authored <compiler meshdir>. This is the operation that turns a
 //            never-saved, in-memory model into a fully on-disk one.
 //
-// Purity (CDR-14): saving never mutates the model tree. The model is taken by
+// Purity: saving never mutates the model tree. The model is taken by
 // const ref; the only mutable output is the asset list a caller hands to
 // SaveAs, which is cleared once its bytes live on disk.
 //

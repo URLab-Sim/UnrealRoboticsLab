@@ -1,17 +1,18 @@
 # ProtoSpec
 
-ProtoSpec is an IDL-driven redesign of the MJCF/mjSpec authoring layer. One
-schema file describes the model format; a generator emits the C++ object
-model, serialization, reflection, and validation tables from it. Compilation to
-`mjModel` goes through MuJoCo itself — ProtoSpec adds no second compiler — and
-correctness is defined as byte-exact agreement with stock MuJoCo, enforced by
-differential tests.
+ProtoSpec is an IDL-driven redesign of the MJCF authoring layer. One schema
+file describes the model format; a generator emits the C++ object model,
+serialization and reflection tables from it. ProtoSpec owns the FILE boundary
+only — reading MJCF into a document and writing a document back out.
+Everything past that boundary is mjSpec and MuJoCo's own compiler, so
+correctness is defined as byte-exact agreement with stock MuJoCo over its own
+corpus, enforced by a round-trip differential.
 
 ## How it works
 
 ```
-schema/mujoco.spec          the IDL: every element, field, type, default,
-        │                   union, and reference relationship, stated once
+src/xml/mjcf.schema         MuJoCo's own grammar: every element, field, type,
+        │                   default, union and reference relationship
         ▼
 protospec_gen/              the generator (pure Python, no deps)
         │   emit.py         → lib/generated/   C++ types, XML binding tables,
@@ -36,27 +37,30 @@ The layers on top:
   irregular corners. MuJoCo-free.
 - **`lib/core/`** — canonicalization resolvers (orientation and inertia
   spellings fold into canonical quat/diaginertia at parse end). MuJoCo-free.
-- **`lib/validate/`** — three-tier structural / referential / semantic
-  validation over a const `Model`, driven by the generated tables.
-- **`lib/sdk/`** — the ergonomic authoring layer (below).
-- **`lib/compile/`** — the bridge to `mjModel` (below).
+- **`lib/sdk/`** — the emission-profile seam and the default-class query
+  (below). Its authoring verbs are a test fixture and live under `lib/test/`.
 
 ## The SDK
 
-`lib/sdk/protospec/sdk.h` is a pure tree library over the generated types —
+`lib/test/protospec/sdk.h` is a pure tree library over the generated types —
 it is written once against the reflection/visit hooks and never needs
-regenerating when the schema grows:
+regenerating when the schema grows. It is a test fixture: the host that ships
+ProtoSpec brings its own document profile and its own authoring UI, so only
+the profile seam and the default-class query below are shipped surface.
 
 - `builders.h` — typed `Add*` verbs that insert into the right child list
   (`AddBody`, `AddPrimitive`, `AddFreeJoint`, `AddMaterial`, …).
-- `traversal.h` — `World`, `Find<T>`, `ForEachOfType<T>`, `ParentMap`,
-  path-to-element.
+- `traversal.h` — `World`, `Find<T>`, `ForEachOfType<T>`, path-to-element.
+- `parents.h` — `ParentMap`, the upward index (shipped: the default-class
+  query needs it).
 - `refs.h` — typed reference handling: `SetRef`, `Resolve`, `FindReferrers`,
   `Rename` (referrer-safe), `DeleteRecursive`.
 - `classes.h` — defaults-class queries (`Effective`, and the allocation-free
-  per-field `EffectiveField` / `EffectiveRef`) and rewrites (`FlattenDefaults`,
+  per-field `EffectiveField` / `EffectiveRef`). Shipped surface: an editor
+  resolves an inherited value while a document is being edited.
+- `class_edits.h` — the mutating class transforms (`FlattenDefaults`,
   `ExtractClass`).
-- `attach.h` — namespaced deep-clone splice of one model into another.
+- `edits.h` — `Duplicate`, `Reparent`.
 
 ### Emission profiles
 
@@ -68,13 +72,8 @@ algorithms on its own objects. `plain_profile.h` is the reference profile and
 the default for every verb, so a call site that never mentions a profile reads
 exactly as it always did.
 
-`lib/test/mock_profile.h` is a second, deliberately hostile profile that shares
-nothing with the plain one but the schema; `test_profile_mock.cc` runs the SDK,
-the reader and the writer over it and asserts the writer's output is byte-
-identical to the plain profile's from the same source document.
-
-A complete load → edit → validate → compile round trip
-(`lib/test/test_public_api.cc` runs exactly this):
+A complete load → edit → save round trip (`lib/test/test_public_api.cc` runs
+exactly this):
 
 ```cpp
 #include "protospec/sdk.h"
@@ -92,20 +91,16 @@ mj::Geom& g = sdk::AddPrimitive(box, mj::GeomType::box, "box_geom");
 mj::Material& mat = sdk::AddMaterial(model, "grid_mat");
 sdk::SetRef(g.material, mat);            // typed, name-backed reference
 
-auto diags = ps::mjcf::validate::Validate(model);   // pre-compile checks
-mj::Compiled compiled = mj::Compile(model);          // → mjModel via MuJoCo
+sdk::Save(model, "hello.xml");           // canonical MJCF back to disk
 ```
 
-## Compile path and correctness
+## Correctness
 
-`mj::Compile` reaches `mjModel` through **XmlPath** — write canonical MJCF, load
-with `mj_loadXML`. `CompilePath::Auto` (the default) resolves to it.
-
-`lib/harness/ps_path_diff.cc` is the permanent correctness net: it compiles a
-corpus twice and diffs the resulting `mjModel`s field-by-field (every sizes
-int, name table, and pointer array) in two modes — identity (determinism) and
-against-stock (ProtoSpec vs a pristine `mj_loadXML` of the original file,
-catching reader/writer drift).
+The round-trip differential is the permanent net: parse a corpus model, write
+it back, `mj_loadXML` the result, and diff that `mjModel` field-by-field
+(every sizes int, name table, and pointer array) against a stock `mj_loadXML`
+of the original file. `lib/harness/model_diff_lib.cc` is the comparison core;
+`mj_model_diff` is its CLI and `tests/test_differential.py` drives the sweep.
 
 The claim this suite enforces: **byte-exact vs the enclosing MuJoCo checkout**
 over MuJoCo's own model corpus (last verified against main at 3.11.0,
@@ -121,17 +116,15 @@ project with a MuJoCo-free core.
 # Generated code matches the schema, byte for byte.
 uv run python -m protospec_gen.emit --check
 
-# C++ core (object model, io, validate, SDK) + unit tests. No MuJoCo needed.
+# C++ core (object model, io, SDK) + unit tests. No MuJoCo needed.
 cmake -S lib -B lib/build && cmake --build lib/build -j && ctest --test-dir lib/build
 
 # Python suite: schema, generator, extractors, differentials.
 uv run pytest
 ```
 
-Tests that need MuJoCo *source* (the bootstrap extractors under `tools/`,
-which regenerate `snapshots/` ground truth) default to the enclosing checkout
-— this directory lives inside the MuJoCo repo — and honor
-`PROTOSPEC_MUJOCO_SRC` as an override. Tests that need *prebuilt* libraries
-(the `ps_path_diff` differentials link `libmujoco.so` + `libprotospec_core.a`)
-skip unless `PROTOSPEC_BUILD_PS_LIB` points at a build tree containing both,
-so a plain `uv run pytest` stays green everywhere.
+Tests that need MuJoCo *source* (the corpus study under `tools/`) default to
+the enclosing checkout and honor `PROTOSPEC_MUJOCO_SRC` as an override. Tests
+that need *prebuilt* binaries (the round-trip differential runs `ps_roundtrip`
+and `mj_model_diff`) skip when those have not been built, so a plain
+`uv run pytest` stays green everywhere.

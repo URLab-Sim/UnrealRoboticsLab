@@ -35,7 +35,7 @@ if [ $? -ne 0 ]; then echo "CMake configuration failed for ProtoSpec" >&2; exit 
 
 echo "Building ProtoSpec..."
 cmake --build "$BUILD" --config "$BUILD_TYPE" \
-      --target protospec protospec_core protospec_io protospec_harness
+      --target protospec protospec_core protospec_mjcf protospec_harness
 if [ $? -ne 0 ]; then echo "Build failed for ProtoSpec" >&2; exit 1; fi
 
 # Staging is explicit because ProtoSpec's CMake declares no install() rules. The
@@ -44,19 +44,27 @@ if [ $? -ne 0 ]; then echo "Build failed for ProtoSpec" >&2; exit 1; fi
 # original shape. URLab.Build.cs adds each of these directories to the include
 # path.
 #
-# The previous install is removed only once the build has produced libraries, so
-# a failure leaves what was there rather than nothing. Depth 2 is what reaches
-# the harness, which is its own CMake subdirectory and archives one level down.
-if [ -z "$(find "$BUILD" -maxdepth 2 -name '*.a' -print -quit)" ]; then
-    echo "ProtoSpec built no static libraries under $BUILD" >&2
-    exit 1
-fi
+# Named rather than globbed: the build tree also holds the fixture-only archives
+# (the plain profile and the SDK authoring layer), which URLab must not link.
+# Depth 2 is what reaches the harness, which is its own CMake subdirectory and
+# archives one level down. The previous install is removed only once every
+# expected archive is present, so a failure leaves what was there.
+STAGED_LIBS=(protospec protospec_core protospec_mjcf tinyxml2 protospec_harness)
+FOUND_LIBS=()
+for name in "${STAGED_LIBS[@]}"; do
+    lib="$(find "$BUILD" -maxdepth 2 -name "lib$name.a" -print -quit)"
+    if [ -z "$lib" ]; then
+        echo "ProtoSpec did not build lib$name.a under $BUILD" >&2
+        exit 1
+    fi
+    FOUND_LIBS+=("$lib")
+done
 
 echo "Staging ProtoSpec into $PROTOSPEC_INSTALL_DIR..."
 rm -rf "$PROTOSPEC_INSTALL_DIR"
 mkdir -p "$PROTOSPEC_INSTALL_DIR/lib" "$PROTOSPEC_INSTALL_DIR/third_party/tinyxml2"
 
-for dir in include sdk generated core io compile validate harness; do
+for dir in include sdk generated core io harness; do
     [ -d "$SRC/$dir" ] || continue
     (cd "$SRC/$dir" && find . \( -name "*.h" -o -name "*.inc" \) -print0 |
         while IFS= read -r -d '' f; do
@@ -66,5 +74,5 @@ for dir in include sdk generated core io compile validate harness; do
 done
 cp -f "$SRC/third_party/tinyxml2/tinyxml2.h" "$PROTOSPEC_INSTALL_DIR/third_party/tinyxml2/"
 
-LIB_COUNT=$(find "$BUILD" -maxdepth 2 -name "*.a" -exec cp -f {} "$PROTOSPEC_INSTALL_DIR/lib/" \; -print | wc -l)
-echo "ProtoSpec staged: $LIB_COUNT libraries, headers under $PROTOSPEC_INSTALL_DIR"
+for lib in "${FOUND_LIBS[@]}"; do cp -f "$lib" "$PROTOSPEC_INSTALL_DIR/lib/"; done
+echo "ProtoSpec staged: ${#FOUND_LIBS[@]} libraries, headers under $PROTOSPEC_INSTALL_DIR"

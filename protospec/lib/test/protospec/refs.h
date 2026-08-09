@@ -1,4 +1,4 @@
-// ProtoSpec SDK: typed references (DR-8).
+// ProtoSpec SDK: typed references.
 //
 // References are stored as name strings with a typed target; the tree holds no
 // pointers. This module gives the ergonomic operations that make that safe:
@@ -123,7 +123,7 @@ bool AssignableName(ViewOf<P> name) {
 
 }  // namespace detail
 
-// --- Reference assignment (DR-8) ------------------------------------------ //
+// --- Reference assignment ------------------------------------------------ //
 // Every typed cross-reference in the document is a name with a typed target,
 // never a tree pointer. These set or clear one without the consumer having to
 // know the storage shape. An empty name clears the field (unauthored);

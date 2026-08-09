@@ -5,12 +5,12 @@
 // reference to the live element for further authoring. Structural parameters
 // (a geom's type, a joint's type) default to the same value the schema records
 // as the compiler default, so `AddGeom(body)` yields a sphere. In keeping with
-// DR-1 ("defaults are never silently written into models"), builders do NOT
+// Because defaults are never silently written into models, builders do NOT
 // stamp the full default set onto an element -- only what you pass is authored.
 // Call `ps::mjcf::ApplyDefault(elem)` explicitly to seed the rest.
 //
 // The `name` argument is always optional; unnamed elements are still bindable
-// through their creation serial (DR-10), so a name is only for your own refs.
+// through their creation serial, so a name is only for your own refs.
 //
 // Every verb names its element by schema identity (`element_t<ET::Geom>`) and
 // links it through the profile's tree adapter, so construction and linkage are
@@ -291,7 +291,7 @@ ElementOf<P, mj::ElementType::Default>& AddDefault(DocOf<P>& model,
 
 // Stamp a compilable default `size` onto a primitive geom from its type: a
 // size-0 geom is a compile error for every non-mesh primitive, so `AddGeom`
-// (which authors only what you pass, DR-1) leaves it unset and this fills it.
+// (which authors only what you pass) leaves it unset and this fills it.
 // Only `size` is written -- no other default is stamped. Mesh/hfield/sdf geoms
 // take their extent from the referenced asset and are left untouched.
 template <class P = plain::Plain>

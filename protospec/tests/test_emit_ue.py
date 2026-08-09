@@ -24,7 +24,7 @@ import re
 
 import pytest
 
-from protospec_gen import emit_ue, load_schema, overlay
+from protospec_gen import emit_ue, load_schema, overlay, overlay_ue
 from protospec_gen.emit_ue import PRIVATE, PUBLIC, TESTS, UeError, UeSchema
 
 TOP_LEVEL = {
@@ -278,7 +278,7 @@ def test_fixed_arity_maps_only_where_the_shape_matches(schema):
                                   "FMjVec3"), where
                 continue
             shape = (t["prim"], arity["size"])
-            kind = overlay.UE_KIND.get(f["xml"])
+            kind = overlay_ue.UE_KIND.get(f["xml"])
             if vt == "FMjQuatRot":
                 assert shape == ("double", 4), where
                 assert kind == "orientation", where
@@ -315,14 +315,14 @@ def test_every_spatial_shape_is_classified(schema):
         for f in e["fields"]:
             if emit_ue._kind_shape(f) is None:
                 continue
-            assert f["xml"] in overlay.UE_KIND, f"{e['name']}.{f['name']}"
+            assert f["xml"] in overlay_ue.UE_KIND, f"{e['name']}.{f['name']}"
 
 
 def test_an_unclassified_spatial_attribute_fails_generation(schema, monkeypatch):
     """Dropping one classification is a named failure, not a silent fallback."""
-    trimmed = dict(overlay.UE_KIND)
+    trimmed = dict(overlay_ue.UE_KIND)
     trimmed.pop("pos")
-    monkeypatch.setattr(overlay, "UE_KIND", trimmed)
+    monkeypatch.setattr(overlay_ue, "UE_KIND", trimmed)
     with pytest.raises(emit_ue.UeError) as excinfo:
         emit_ue.UeSchema(schema.doc)
     assert "pos" in str(excinfo.value)
@@ -330,9 +330,9 @@ def test_an_unclassified_spatial_attribute_fails_generation(schema, monkeypatch)
 
 def test_a_stale_classification_fails_generation(schema, monkeypatch):
     """And so is a kind for an attribute the schema no longer shapes that way."""
-    extended = dict(overlay.UE_KIND)
+    extended = dict(overlay_ue.UE_KIND)
     extended["nosuchattribute"] = "position"
-    monkeypatch.setattr(overlay, "UE_KIND", extended)
+    monkeypatch.setattr(overlay_ue, "UE_KIND", extended)
     with pytest.raises(emit_ue.UeError) as excinfo:
         emit_ue.UeSchema(schema.doc)
     assert "nosuchattribute" in str(excinfo.value)

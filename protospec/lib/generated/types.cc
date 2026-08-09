@@ -207,7 +207,7 @@ std::unique_ptr<Model> Clone(const Model& src) {
   out->deformables = ps::PtrVecClone(src.deformables);
   out->contacts = ps::PtrVecClone(src.contacts);
   out->tendons = ps::PtrVecClone(src.tendons);
-  out->equalitys = ps::PtrVecClone(src.equalitys);
+  out->equalities = ps::PtrVecClone(src.equalities);
   out->actuators = ps::PtrVecClone(src.actuators);
   out->sensors = ps::PtrVecClone(src.sensors);
   out->customs = ps::PtrVecClone(src.customs);
@@ -229,7 +229,7 @@ bool operator==(const Model& a, const Model& b) {
          ps::PtrVecEq(a.deformables, b.deformables) &&
          ps::PtrVecEq(a.contacts, b.contacts) &&
          ps::PtrVecEq(a.tendons, b.tendons) &&
-         ps::PtrVecEq(a.equalitys, b.equalitys) &&
+         ps::PtrVecEq(a.equalities, b.equalities) &&
          ps::PtrVecEq(a.actuators, b.actuators) &&
          ps::PtrVecEq(a.sensors, b.sensors) &&
          ps::PtrVecEq(a.customs, b.customs) &&
@@ -504,7 +504,7 @@ std::unique_ptr<Visual> Clone(const Visual& src) {
   auto out = std::make_unique<Visual>();
   out->loc = src.loc;
   out->visualGlobals = ps::PtrVecClone(src.visualGlobals);
-  out->visualQualitys = ps::PtrVecClone(src.visualQualitys);
+  out->visualQualities = ps::PtrVecClone(src.visualQualities);
   out->visualHeadlights = ps::PtrVecClone(src.visualHeadlights);
   out->visualMaps = ps::PtrVecClone(src.visualMaps);
   out->visualScales = ps::PtrVecClone(src.visualScales);
@@ -514,7 +514,7 @@ std::unique_ptr<Visual> Clone(const Visual& src) {
 
 bool operator==(const Visual& a, const Visual& b) {
   return ps::PtrVecEq(a.visualGlobals, b.visualGlobals) &&
-         ps::PtrVecEq(a.visualQualitys, b.visualQualitys) &&
+         ps::PtrVecEq(a.visualQualities, b.visualQualities) &&
          ps::PtrVecEq(a.visualHeadlights, b.visualHeadlights) &&
          ps::PtrVecEq(a.visualMaps, b.visualMaps) &&
          ps::PtrVecEq(a.visualScales, b.visualScales) &&
@@ -852,7 +852,7 @@ bool operator==(const Config& a, const Config& b) {
 std::unique_ptr<Asset> Clone(const Asset& src) {
   auto out = std::make_unique<Asset>();
   out->loc = src.loc;
-  out->meshs = ps::PtrVecClone(src.meshs);
+  out->meshes = ps::PtrVecClone(src.meshes);
   out->hfields = ps::PtrVecClone(src.hfields);
   out->skins = ps::PtrVecClone(src.skins);
   out->textures = ps::PtrVecClone(src.textures);
@@ -862,7 +862,7 @@ std::unique_ptr<Asset> Clone(const Asset& src) {
 }
 
 bool operator==(const Asset& a, const Asset& b) {
-  return ps::PtrVecEq(a.meshs, b.meshs) &&
+  return ps::PtrVecEq(a.meshes, b.meshes) &&
          ps::PtrVecEq(a.hfields, b.hfields) &&
          ps::PtrVecEq(a.skins, b.skins) &&
          ps::PtrVecEq(a.textures, b.textures) &&
@@ -1634,7 +1634,7 @@ std::unique_ptr<Flexcomp> Clone(const Flexcomp& src) {
   out->euler = src.euler;
   out->origin = src.origin;
   out->flexcompEdges = ps::PtrVecClone(src.flexcompEdges);
-  out->flexElasticitys = ps::PtrVecClone(src.flexElasticitys);
+  out->flexElasticities = ps::PtrVecClone(src.flexElasticities);
   out->flexContacts = ps::PtrVecClone(src.flexContacts);
   out->flexcompPins = ps::PtrVecClone(src.flexcompPins);
   out->plugin = ps::PtrVecClone(src.plugin);
@@ -1670,7 +1670,7 @@ bool operator==(const Flexcomp& a, const Flexcomp& b) {
          a.euler == b.euler &&
          a.origin == b.origin &&
          ps::PtrVecEq(a.flexcompEdges, b.flexcompEdges) &&
-         ps::PtrVecEq(a.flexElasticitys, b.flexElasticitys) &&
+         ps::PtrVecEq(a.flexElasticities, b.flexElasticities) &&
          ps::PtrVecEq(a.flexContacts, b.flexContacts) &&
          ps::PtrVecEq(a.flexcompPins, b.flexcompPins) &&
          ps::PtrVecEq(a.plugin, b.plugin);
@@ -1801,7 +1801,7 @@ std::unique_ptr<Flex> Clone(const Flex& src) {
   out->dof = src.dof;
   out->flexContacts = ps::PtrVecClone(src.flexContacts);
   out->flexEdges = ps::PtrVecClone(src.flexEdges);
-  out->flexElasticitys = ps::PtrVecClone(src.flexElasticitys);
+  out->flexElasticities = ps::PtrVecClone(src.flexElasticities);
   return out;
 }
 
@@ -1823,7 +1823,7 @@ bool operator==(const Flex& a, const Flex& b) {
          a.dof == b.dof &&
          ps::PtrVecEq(a.flexContacts, b.flexContacts) &&
          ps::PtrVecEq(a.flexEdges, b.flexEdges) &&
-         ps::PtrVecEq(a.flexElasticitys, b.flexElasticitys);
+         ps::PtrVecEq(a.flexElasticities, b.flexElasticities);
 }
 
 std::unique_ptr<FlexEdge> Clone(const FlexEdge& src) {

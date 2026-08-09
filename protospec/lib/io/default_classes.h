@@ -1,7 +1,7 @@
-// Default-class read-time checks (family c, Q-AUTO context).
+// Default-class read-time checks (family c).
 //
 // ProtoSpec treats defaults as data: classes are read verbatim into the Default
-// tree, written back verbatim, and NOTHING is resolved or applied (DR-1). The
+// tree, written back verbatim, and NOTHING is resolved or applied. The
 // only rules enforced at read time are the two structural ones MuJoCo enforces
 // in mjXReader::Default (xml_native_reader.cc:3034-3056), because they gate a
 // well-formed <default> tree and MuJoCo rejects violators before compile:
@@ -12,7 +12,7 @@
 //     (:3041-3044, "empty class name").
 //
 // Class-reference resolution (does a referenced class exist?) is deliberately
-// NOT done here: it is referential validation (plan Section 9 tier 2, DR-8),
+// NOT done here: it is referential validation,
 // consistent with how every other ref<T> in the reader is stored by name and
 // resolved later. See test_io.cc TestUnknownClassRef for the grounding.
 #ifndef PROTOSPEC_IO_DEFAULT_CLASSES_H

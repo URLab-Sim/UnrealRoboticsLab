@@ -1,13 +1,13 @@
 // ProtoSpec SDK internals: genuinely-private helpers, used ONLY within the SDK
 // headers themselves. Nothing here is part of the public surface (see the
-// sibling headers builders.h / traversal.h / refs.h / classes.h / attach.h),
-// and no in-tree consumer outside protospec/lib/sdk refers to these private
-// symbols.
+// sibling headers classes.h / parents.h and, in the test fixture, builders.h /
+// traversal.h / refs.h), and no in-tree consumer outside protospec/lib/sdk
+// refers to these private symbols.
 //
-// The generic tree machinery that the SDK's public verbs AND the in-tree native
-// compiler both program against (the whole-tree walk, name access, field access
-// by id, the ref prefixer) is NOT here: it lives in model_core.h under
-// ps::sdk::internal, a named shared seam with its own contract. This header
+// The generic tree machinery every profile programs against (the whole-tree
+// walk, name access, field access by id, the ref prefixer) is NOT here: it lives
+// in model_core.h under ps::sdk::internal, a named shared seam with its own
+// contract. This header
 // carries the reflection-derived pieces the SDK keeps to itself: the union / ref
 // target descriptors, the name-category folding and the dynamic-keyword table +
 // its drift guard.
@@ -210,7 +210,7 @@ inline std::vector<mj::ElementType> DynRefTargetTypes(std::string_view keyword) 
 // this MuJoCo-independent layer cannot enumerate. This guard therefore catches a
 // new referenceable family added to the SCHEMA; a keyword added to mju_str2Type
 // with no schema ref target is out of its reach and must be caught where MuJoCo
-// is linked (attic/compile/native.cc consumes str2Type directly).
+// is linked.
 inline std::vector<mj::ElementType> DynRefKeywordGaps() {
   std::vector<mj::ElementType> reachable;
   for (const auto& [k, v] : DynRefTable())

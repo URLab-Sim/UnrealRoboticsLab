@@ -25,7 +25,7 @@ constexpr ChildBinding kChildren_Model[] = {
     {"deformables", "deformable", "Deformable", ElementType::Deformable, false},
     {"contacts", "contact", "Contact", ElementType::Contact, false},
     {"tendons", "tendon", "Tendon", ElementType::Tendon, false},
-    {"equalitys", "equality", "Equality", ElementType::Equality, false},
+    {"equalities", "equality", "Equality", ElementType::Equality, false},
     {"actuators", "actuator", "Actuator", ElementType::Actuator, false},
     {"sensors", "sensor", "Sensor", ElementType::Sensor, false},
     {"customs", "custom", "Custom", ElementType::Custom, false},
@@ -161,7 +161,7 @@ constexpr AttrBinding kAttrs_Statistic[] = {
 
 constexpr ChildBinding kChildren_Visual[] = {
     {"visualGlobals", "global", "VisualGlobal", ElementType::VisualGlobal, false},
-    {"visualQualitys", "quality", "VisualQuality", ElementType::VisualQuality, false},
+    {"visualQualities", "quality", "VisualQuality", ElementType::VisualQuality, false},
     {"visualHeadlights", "headlight", "VisualHeadlight", ElementType::VisualHeadlight, false},
     {"visualMaps", "map", "VisualMap", ElementType::VisualMap, false},
     {"visualScales", "scale", "VisualScale", ElementType::VisualScale, false},
@@ -321,7 +321,7 @@ constexpr AttrBinding kAttrs_Config[] = {
 };
 
 constexpr ChildBinding kChildren_Asset[] = {
-    {"meshs", "mesh", "Mesh", ElementType::Mesh, false},
+    {"meshes", "mesh", "Mesh", ElementType::Mesh, false},
     {"hfields", "hfield", "Hfield", ElementType::Hfield, false},
     {"skins", "skin", "Skin", ElementType::Skin, false},
     {"textures", "texture", "Texture", ElementType::Texture, false},
@@ -744,7 +744,7 @@ constexpr AttrBinding kAttrs_Flexcomp[] = {
 };
 constexpr ChildBinding kChildren_Flexcomp[] = {
     {"flexcompEdges", "edge", "FlexcompEdge", ElementType::FlexcompEdge, false},
-    {"flexElasticitys", "elasticity", "FlexElasticity", ElementType::FlexElasticity, false},
+    {"flexElasticities", "elasticity", "FlexElasticity", ElementType::FlexElasticity, false},
     {"flexContacts", "contact", "FlexContact", ElementType::FlexContact, false},
     {"flexcompPins", "pin", "FlexcompPin", ElementType::FlexcompPin, false},
     {"plugin", "plugin", "PluginRef", ElementType::PluginRef, false},
@@ -815,7 +815,7 @@ constexpr AttrBinding kAttrs_Flex[] = {
 constexpr ChildBinding kChildren_Flex[] = {
     {"flexContacts", "contact", "FlexContact", ElementType::FlexContact, false},
     {"flexEdges", "edge", "FlexEdge", ElementType::FlexEdge, false},
-    {"flexElasticitys", "elasticity", "FlexElasticity", ElementType::FlexElasticity, false},
+    {"flexElasticities", "elasticity", "FlexElasticity", ElementType::FlexElasticity, false},
 };
 
 constexpr AttrBinding kAttrs_FlexEdge[] = {

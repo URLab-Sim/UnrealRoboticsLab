@@ -1,21 +1,19 @@
 // ProtoSpec diagnostics: one structured finding shape shared by every layer.
 //
-// The MJCF reader/writer (protospec/lib/io), the validator (protospec/lib/validate),
-// and the compile bridge (protospec/lib/compile) all raise findings with the same fields, so a front-end
-// handles errors uniformly and diagnostics flow across layers without
-// hand-translation. `source` names the producing pass/layer ("parse", "write",
-// "validate", "serialize", "load", "bind", ...). Layer-specific classification
-// survives as fields, never as a separate type:
+// The MJCF reader/writer (protospec/lib/io) and every consumer above it raise
+// findings with the same fields, so a front-end handles errors uniformly and
+// diagnostics flow across layers without hand-translation. `source` names the
+// producing pass/layer ("parse", "write", "serialize", "load", ...).
+// Layer-specific classification survives as fields, never as a separate type:
 //   - `kind` distinguishes the reader's well-formed-but-unsupported-element
 //     report from ordinary malformed input (queried by ParseResult and the
 //     unsupported-file harness); it defaults to None for every other source.
-//   - `tier` carries the validator's structural/referential/semantic tier (which
-//     callers filter on); it defaults to None for every other source.
-//   - `tag` is optional context (the validator's element path, empty otherwise).
+//   - `tier` carries a structural/referential/semantic tier for callers that
+//     filter on it; it defaults to None for every other source.
+//   - `tag` is optional context (an element path, empty otherwise).
 //
 // Field order is a contract: `{severity, source, message, loc}` are the first
-// four members so positional aggregate initialization stays valid for the
-// bridge/native construction sites that predate this header.
+// four members so positional aggregate initialization stays valid.
 #ifndef PROTOSPEC_DIAG_H
 #define PROTOSPEC_DIAG_H
 

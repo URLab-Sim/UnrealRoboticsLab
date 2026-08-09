@@ -177,7 +177,7 @@ bool IsSupported(ElementType t) {
     case ElementType::PluginDef:
     case ElementType::PluginInstance:
     case ElementType::PluginRef:
-    // Macros + deformable (family i): first-class pass-through (DR-7).
+    // Macros + deformable (family i): first-class pass-through.
     case ElementType::Composite:
     case ElementType::CompositeJoint:
     case ElementType::CompositeSkin:
@@ -299,7 +299,7 @@ Resolver LookupResolver(std::string_view name) {
   return Resolver::None;
 }
 
-// Provenance (DR-9): elements spliced from an included file carry that file's
+// Provenance: elements spliced from an included file carry that file's
 // path and line via the pre-pass map; top-level elements take theirs from
 // tinyxml2 against the model filename.
 ps::SourceLoc ReaderBase::Loc(const XMLElement* e) const {
@@ -336,7 +336,7 @@ void ReaderBase::Warn(const XMLElement* e, std::string msg) {
   warnings_.push_back(std::move(d));
 }
 
-// Parse-time duplicate-name diagnostic (Wave 4 #4): at first sight of a name
+// Parse-time duplicate-name diagnostic: at first sight of a name
 // that repeats within a MuJoCo name namespace, emit a WARNING carrying BOTH
 // source locations (the first occurrence in the message, this one in the loc).
 // The referential validator remains the authoritative error tier; this only
@@ -442,7 +442,7 @@ void ReaderBase::CheckUnknownAttributes(XMLElement* xml, const ElementBinding& b
   std::unordered_set<std::string_view> known;
   for (std::size_t i = 0; i < b.attr_count; ++i) known.insert(b.attrs[i].attr);
   // Read-only input aliases are accepted spellings canonicalized on read:
-  // euler/axisangle/xyaxes/zaxis, fullinertia (Q-ORIENT/Q-INERTIA) and the
+  // euler/axisangle/xyaxes/zaxis, fullinertia and the
   // Wave B scalar/slot aliases (directional->type, diameter->area, material
   // texture->layer).
   for (std::size_t i = 0; i < b.input_alias_count; ++i)
@@ -481,7 +481,7 @@ void ReaderBase::InertialOrientExclusion(XMLElement* xml) {
   }
 }
 
-// Q-ACT: an actuator has at most one transmission target, and the
+// An actuator has at most one transmission target, and the
 // slidercrank-only (cranklength/slidersite) and site-only (refsite)
 // attributes require the matching transmission (xml_native_reader.cc:
 // 2415-2470). trntype is undefined with no target, slidercrank with
@@ -560,7 +560,7 @@ void ReaderBase::PluginSensorPairing(XMLElement* xml) {
   }
 }
 
-// Q-PLUGIN: a plugin/instance element's <config> keys must be unique
+// A plugin/instance element's <config> keys must be unique
 // (ReadPluginConfigs, xml_native_reader.cc:135-141).
 void ReaderBase::ConfigKeyUnique(XMLElement* xml) {
   std::unordered_set<std::string> seen;

@@ -21,17 +21,6 @@ namespace ps::ue
 namespace
 {
 
-bool Present_Model(const void* P, int FieldId)
-{
-	const UMjModel& E = *static_cast<const UMjModel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Model.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Model(void* P, int FieldId)
 {
 	UMjModel& E = *static_cast<UMjModel*>(P);
@@ -39,37 +28,6 @@ void Clear_Model(void* P, int FieldId)
 	{
 	case 0: E.Model.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Compiler(const void* P, int FieldId)
-{
-	const UMjCompiler& E = *static_cast<const UMjCompiler*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Autolimits.IsSet();
-	case 1: return E.Boundmass.IsSet();
-	case 2: return E.Boundinertia.IsSet();
-	case 3: return E.Settotalmass.IsSet();
-	case 4: return E.Balanceinertia.IsSet();
-	case 5: return E.Strippath.IsSet();
-	case 6: return E.Coordinate.IsSet();
-	case 7: return E.Angle.IsSet();
-	case 8: return E.Fitaabb.IsSet();
-	case 9: return E.Eulerseq.IsSet();
-	case 10: return E.Meshdir.IsSet();
-	case 11: return E.Texturedir.IsSet();
-	case 12: return E.Discardvisual.IsSet();
-	case 13: return E.Usethread.IsSet();
-	case 14: return E.Fusestatic.IsSet();
-	case 15: return E.Inertiafromgeom.IsSet();
-	case 16: return E.Inertiagrouprange.IsSet();
-	case 17: return E.Saveinertial.IsSet();
-	case 18: return E.Assetdir.IsSet();
-	case 19: return E.Alignfree.IsSet();
-	case 20: return E.Conflict.IsSet();
-	default: return false;
 	}
 }
 
@@ -103,26 +61,6 @@ void Clear_Compiler(void* P, int FieldId)
 	}
 }
 
-bool Present_LengthRange(const void* P, int FieldId)
-{
-	const UMjLengthRange& E = *static_cast<const UMjLengthRange*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Mode.IsSet();
-	case 1: return E.Useexisting.IsSet();
-	case 2: return E.Uselimit.IsSet();
-	case 3: return E.Accel.IsSet();
-	case 4: return E.Maxforce.IsSet();
-	case 5: return E.Timeconst.IsSet();
-	case 6: return E.Timestep.IsSet();
-	case 7: return E.Inttotal.IsSet();
-	case 8: return E.Interval.IsSet();
-	case 9: return E.Tolrange.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_LengthRange(void* P, int FieldId)
 {
 	UMjLengthRange& E = *static_cast<UMjLengthRange*>(P);
@@ -139,43 +77,6 @@ void Clear_LengthRange(void* P, int FieldId)
 	case 8: E.Interval.Reset(); break;
 	case 9: E.Tolrange.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Option(const void* P, int FieldId)
-{
-	const UMjOption& E = *static_cast<const UMjOption*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Timestep.IsSet();
-	case 1: return E.Impratio.IsSet();
-	case 2: return E.Tolerance.IsSet();
-	case 3: return E.LsTolerance.IsSet();
-	case 4: return E.NoslipTolerance.IsSet();
-	case 5: return E.CcdTolerance.IsSet();
-	case 6: return E.SleepTolerance.IsSet();
-	case 7: return E.Gravity.IsSet();
-	case 8: return E.Wind.IsSet();
-	case 9: return E.Magnetic.IsSet();
-	case 10: return E.Density.IsSet();
-	case 11: return E.Viscosity.IsSet();
-	case 12: return E.OMargin.IsSet();
-	case 13: return E.OSolref.IsSet();
-	case 14: return E.OSolimp.IsSet();
-	case 15: return E.OFriction.IsSet();
-	case 16: return E.Integrator.IsSet();
-	case 17: return E.Cone.IsSet();
-	case 18: return E.Jacobian.IsSet();
-	case 19: return E.Solver.IsSet();
-	case 20: return E.Iterations.IsSet();
-	case 21: return E.LsIterations.IsSet();
-	case 22: return E.NoslipIterations.IsSet();
-	case 23: return E.CcdIterations.IsSet();
-	case 24: return E.SdfIterations.IsSet();
-	case 25: return E.SdfInitpoints.IsSet();
-	case 26: return E.Actuatorgroupdisable.IsSet();
-	default: return false;
 	}
 }
 
@@ -215,42 +116,6 @@ void Clear_Option(void* P, int FieldId)
 	}
 }
 
-bool Present_Flag(const void* P, int FieldId)
-{
-	const UMjFlag& E = *static_cast<const UMjFlag*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Constraint.IsSet();
-	case 1: return E.Equality.IsSet();
-	case 2: return E.Frictionloss.IsSet();
-	case 3: return E.Limit.IsSet();
-	case 4: return E.Contact.IsSet();
-	case 5: return E.Spring.IsSet();
-	case 6: return E.Damper.IsSet();
-	case 7: return E.Gravity.IsSet();
-	case 8: return E.Clampctrl.IsSet();
-	case 9: return E.Warmstart.IsSet();
-	case 10: return E.Filterparent.IsSet();
-	case 11: return E.Actuation.IsSet();
-	case 12: return E.Refsafe.IsSet();
-	case 13: return E.Sensor.IsSet();
-	case 14: return E.Midphase.IsSet();
-	case 15: return E.Eulerdamp.IsSet();
-	case 16: return E.Autoreset.IsSet();
-	case 17: return E.Nativeccd.IsSet();
-	case 18: return E.Island.IsSet();
-	case 19: return E.Multiccd.IsSet();
-	case 20: return E.Override.IsSet();
-	case 21: return E.Energy.IsSet();
-	case 22: return E.Fwdinv.IsSet();
-	case 23: return E.Invdiscrete.IsSet();
-	case 24: return E.Sleep.IsSet();
-	case 25: return E.Diagexact.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Flag(void* P, int FieldId)
 {
 	UMjFlag& E = *static_cast<UMjFlag*>(P);
@@ -286,30 +151,6 @@ void Clear_Flag(void* P, int FieldId)
 	}
 }
 
-bool Present_Size(const void* P, int FieldId)
-{
-	const UMjSize& E = *static_cast<const UMjSize*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Memory.IsSet();
-	case 1: return E.Njmax.IsSet();
-	case 2: return E.Nconmax.IsSet();
-	case 3: return E.Nstack.IsSet();
-	case 4: return E.Nuserdata.IsSet();
-	case 5: return E.Nkey.IsSet();
-	case 6: return E.NuserBody.IsSet();
-	case 7: return E.NuserJnt.IsSet();
-	case 8: return E.NuserGeom.IsSet();
-	case 9: return E.NuserSite.IsSet();
-	case 10: return E.NuserCam.IsSet();
-	case 11: return E.NuserTendon.IsSet();
-	case 12: return E.NuserActuator.IsSet();
-	case 13: return E.NuserSensor.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Size(void* P, int FieldId)
 {
 	UMjSize& E = *static_cast<UMjSize*>(P);
@@ -333,21 +174,6 @@ void Clear_Size(void* P, int FieldId)
 	}
 }
 
-bool Present_Statistic(const void* P, int FieldId)
-{
-	const UMjStatistic& E = *static_cast<const UMjStatistic*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Meaninertia.IsSet();
-	case 1: return E.Meanmass.IsSet();
-	case 2: return E.Meansize.IsSet();
-	case 3: return E.Extent.IsSet();
-	case 4: return E.Center.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Statistic(void* P, int FieldId)
 {
 	UMjStatistic& E = *static_cast<UMjStatistic*>(P);
@@ -362,38 +188,9 @@ void Clear_Statistic(void* P, int FieldId)
 	}
 }
 
-bool Present_Visual(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Visual(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_VisualGlobal(const void* P, int FieldId)
-{
-	const UMjVisualGlobal& E = *static_cast<const UMjVisualGlobal*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Cameraid.IsSet();
-	case 1: return E.Orthographic.IsSet();
-	case 2: return E.Fovy.IsSet();
-	case 3: return E.Ipd.IsSet();
-	case 4: return E.Azimuth.IsSet();
-	case 5: return E.Elevation.IsSet();
-	case 6: return E.Linewidth.IsSet();
-	case 7: return E.Glow.IsSet();
-	case 8: return E.Offwidth.IsSet();
-	case 9: return E.Offheight.IsSet();
-	case 10: return E.Realtime.IsSet();
-	case 11: return E.Ellipsoidinertia.IsSet();
-	case 12: return E.Bvactive.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_VisualGlobal(void* P, int FieldId)
@@ -418,21 +215,6 @@ void Clear_VisualGlobal(void* P, int FieldId)
 	}
 }
 
-bool Present_VisualQuality(const void* P, int FieldId)
-{
-	const UMjVisualQuality& E = *static_cast<const UMjVisualQuality*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Shadowsize.IsSet();
-	case 1: return E.Offsamples.IsSet();
-	case 2: return E.Numslices.IsSet();
-	case 3: return E.Numstacks.IsSet();
-	case 4: return E.Numquads.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_VisualQuality(void* P, int FieldId)
 {
 	UMjVisualQuality& E = *static_cast<UMjVisualQuality*>(P);
@@ -447,20 +229,6 @@ void Clear_VisualQuality(void* P, int FieldId)
 	}
 }
 
-bool Present_VisualHeadlight(const void* P, int FieldId)
-{
-	const UMjVisualHeadlight& E = *static_cast<const UMjVisualHeadlight*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Ambient.IsSet();
-	case 1: return E.Diffuse.IsSet();
-	case 2: return E.Specular.IsSet();
-	case 3: return E.ActiveFlag.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_VisualHeadlight(void* P, int FieldId)
 {
 	UMjVisualHeadlight& E = *static_cast<UMjVisualHeadlight*>(P);
@@ -471,29 +239,6 @@ void Clear_VisualHeadlight(void* P, int FieldId)
 	case 2: E.Specular.Reset(); break;
 	case 3: E.ActiveFlag.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_VisualMap(const void* P, int FieldId)
-{
-	const UMjVisualMap& E = *static_cast<const UMjVisualMap*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Stiffness.IsSet();
-	case 1: return E.Stiffnessrot.IsSet();
-	case 2: return E.Force.IsSet();
-	case 3: return E.Torque.IsSet();
-	case 4: return E.Alpha.IsSet();
-	case 5: return E.Fogstart.IsSet();
-	case 6: return E.Fogend.IsSet();
-	case 7: return E.Znear.IsSet();
-	case 8: return E.Zfar.IsSet();
-	case 9: return E.Haze.IsSet();
-	case 10: return E.Shadowclip.IsSet();
-	case 11: return E.Shadowscale.IsSet();
-	case 12: return E.Actuatortendon.IsSet();
-	default: return false;
 	}
 }
 
@@ -516,33 +261,6 @@ void Clear_VisualMap(void* P, int FieldId)
 	case 11: E.Shadowscale.Reset(); break;
 	case 12: E.Actuatortendon.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_VisualScale(const void* P, int FieldId)
-{
-	const UMjVisualScale& E = *static_cast<const UMjVisualScale*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Forcewidth.IsSet();
-	case 1: return E.Contactwidth.IsSet();
-	case 2: return E.Contactheight.IsSet();
-	case 3: return E.Connect.IsSet();
-	case 4: return E.Com.IsSet();
-	case 5: return E.Camera.IsSet();
-	case 6: return E.Light.IsSet();
-	case 7: return E.Selectpoint.IsSet();
-	case 8: return E.Jointlength.IsSet();
-	case 9: return E.Jointwidth.IsSet();
-	case 10: return E.Actuatorlength.IsSet();
-	case 11: return E.Actuatorwidth.IsSet();
-	case 12: return E.Framelength.IsSet();
-	case 13: return E.Framewidth.IsSet();
-	case 14: return E.Constraint.IsSet();
-	case 15: return E.Slidercrank.IsSet();
-	case 16: return E.Frustum.IsSet();
-	default: return false;
 	}
 }
 
@@ -569,41 +287,6 @@ void Clear_VisualScale(void* P, int FieldId)
 	case 15: E.Slidercrank.Reset(); break;
 	case 16: E.Frustum.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_VisualRgba(const void* P, int FieldId)
-{
-	const UMjVisualRgba& E = *static_cast<const UMjVisualRgba*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Fog.IsSet();
-	case 1: return E.Haze.IsSet();
-	case 2: return E.Force.IsSet();
-	case 3: return E.Inertia.IsSet();
-	case 4: return E.Joint.IsSet();
-	case 5: return E.Actuator.IsSet();
-	case 6: return E.Actuatornegative.IsSet();
-	case 7: return E.Actuatorpositive.IsSet();
-	case 8: return E.Com.IsSet();
-	case 9: return E.Camera.IsSet();
-	case 10: return E.Light.IsSet();
-	case 11: return E.Selectpoint.IsSet();
-	case 12: return E.Connect.IsSet();
-	case 13: return E.Contactpoint.IsSet();
-	case 14: return E.Contactforce.IsSet();
-	case 15: return E.Contactfriction.IsSet();
-	case 16: return E.Contacttorque.IsSet();
-	case 17: return E.Contactgap.IsSet();
-	case 18: return E.Rangefinder.IsSet();
-	case 19: return E.Constraint.IsSet();
-	case 20: return E.Slidercrank.IsSet();
-	case 21: return E.Crankbroken.IsSet();
-	case 22: return E.Frustum.IsSet();
-	case 23: return E.Bv.IsSet();
-	case 24: return E.Bvactive.IsSet();
-	default: return false;
 	}
 }
 
@@ -641,17 +324,6 @@ void Clear_VisualRgba(void* P, int FieldId)
 	}
 }
 
-bool Present_Default(const void* P, int FieldId)
-{
-	const UMjDefault& E = *static_cast<const UMjDefault*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Default(void* P, int FieldId)
 {
 	UMjDefault& E = *static_cast<UMjDefault*>(P);
@@ -659,18 +331,6 @@ void Clear_Default(void* P, int FieldId)
 	{
 	case 0: E.MjName.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_MaterialLayer(const void* P, int FieldId)
-{
-	const UMjMaterialLayer& E = *static_cast<const UMjMaterialLayer*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Texture.IsSet();
-	case 1: return true;
-	default: return false;
 	}
 }
 
@@ -684,26 +344,9 @@ void Clear_MaterialLayer(void* P, int FieldId)
 	}
 }
 
-bool Present_Extension(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Extension(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_PluginDef(const void* P, int FieldId)
-{
-	const UMjPluginDef& E = *static_cast<const UMjPluginDef*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Plugin.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_PluginDef(void* P, int FieldId)
@@ -716,32 +359,9 @@ void Clear_PluginDef(void* P, int FieldId)
 	}
 }
 
-bool Present_PluginInstance(const void* P, int FieldId)
-{
-	const UMjPluginInstance& E = *static_cast<const UMjPluginInstance*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_PluginInstance(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Config(const void* P, int FieldId)
-{
-	const UMjConfig& E = *static_cast<const UMjConfig*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Value.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Config(void* P, int FieldId)
@@ -754,42 +374,9 @@ void Clear_Config(void* P, int FieldId)
 	}
 }
 
-bool Present_Asset(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Asset(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Mesh(const void* P, int FieldId)
-{
-	const UMjMeshBase& E = *static_cast<const UMjMeshBase*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ContentType.IsSet();
-	case 3: return E.File.IsSet();
-	case 4: return E.Vertex.IsSet();
-	case 5: return E.Normal.IsSet();
-	case 6: return E.Texcoord.IsSet();
-	case 7: return E.Face.IsSet();
-	case 8: return E.Refpos.IsSet();
-	case 9: return E.Refquat.IsSet();
-	case 10: return E.Scale.IsSet();
-	case 11: return E.Smoothnormal.IsSet();
-	case 12: return E.Maxhullvert.IsSet();
-	case 13: return E.Inertia.IsSet();
-	case 14: return E.Builtin.IsSet();
-	case 15: return E.Params.IsSet();
-	case 16: return E.Material.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Mesh(void* P, int FieldId)
@@ -818,18 +405,6 @@ void Clear_Mesh(void* P, int FieldId)
 	}
 }
 
-bool Present_PluginRef(const void* P, int FieldId)
-{
-	const UMjPluginRef& E = *static_cast<const UMjPluginRef*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Plugin.IsSet();
-	case 1: return E.Instance.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_PluginRef(void* P, int FieldId)
 {
 	UMjPluginRef& E = *static_cast<UMjPluginRef*>(P);
@@ -838,23 +413,6 @@ void Clear_PluginRef(void* P, int FieldId)
 	case 0: E.Plugin.Reset(); break;
 	case 1: E.Instance.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Hfield(const void* P, int FieldId)
-{
-	const UMjHfield& E = *static_cast<const UMjHfield*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.ContentType.IsSet();
-	case 2: return E.File.IsSet();
-	case 3: return E.Nrow.IsSet();
-	case 4: return E.Ncol.IsSet();
-	case 5: return true;
-	case 6: return E.Elevation.IsSet();
-	default: return false;
 	}
 }
 
@@ -870,25 +428,6 @@ void Clear_Hfield(void* P, int FieldId)
 	case 4: E.Ncol.Reset(); break;
 	case 6: E.Elevation.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Skin(const void* P, int FieldId)
-{
-	const UMjSkin& E = *static_cast<const UMjSkin*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.File.IsSet();
-	case 2: return E.Material.IsSet();
-	case 3: return E.Rgba.IsSet();
-	case 4: return E.Inflate.IsSet();
-	case 5: return E.Vertex.IsSet();
-	case 6: return E.Texcoord.IsSet();
-	case 7: return E.Face.IsSet();
-	case 8: return E.Group.IsSet();
-	default: return false;
 	}
 }
 
@@ -910,21 +449,6 @@ void Clear_Skin(void* P, int FieldId)
 	}
 }
 
-bool Present_SkinBone(const void* P, int FieldId)
-{
-	const UMjSkinBone& E = *static_cast<const UMjSkinBone*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Bindpos.IsSet();
-	case 2: return E.Bindquat.IsSet();
-	case 3: return E.Vertid.IsSet();
-	case 4: return E.Vertweight.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_SkinBone(void* P, int FieldId)
 {
 	UMjSkinBone& E = *static_cast<UMjSkinBone*>(P);
@@ -935,40 +459,6 @@ void Clear_SkinBone(void* P, int FieldId)
 	case 3: E.Vertid.Reset(); break;
 	case 4: E.Vertweight.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Texture(const void* P, int FieldId)
-{
-	const UMjTextureBase& E = *static_cast<const UMjTextureBase*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Type.IsSet();
-	case 2: return E.Colorspace.IsSet();
-	case 3: return E.ContentType.IsSet();
-	case 4: return E.File.IsSet();
-	case 5: return E.Gridsize.IsSet();
-	case 6: return E.Gridlayout.IsSet();
-	case 7: return E.Fileright.IsSet();
-	case 8: return E.Fileleft.IsSet();
-	case 9: return E.Fileup.IsSet();
-	case 10: return E.Filedown.IsSet();
-	case 11: return E.Filefront.IsSet();
-	case 12: return E.Fileback.IsSet();
-	case 13: return E.Builtin.IsSet();
-	case 14: return E.Rgb1.IsSet();
-	case 15: return E.Rgb2.IsSet();
-	case 16: return E.Mark.IsSet();
-	case 17: return E.Markrgb.IsSet();
-	case 18: return E.Random.IsSet();
-	case 19: return E.Width.IsSet();
-	case 20: return E.Height.IsSet();
-	case 21: return E.Hflip.IsSet();
-	case 22: return E.Vflip.IsSet();
-	case 23: return E.Nchannel.IsSet();
-	default: return false;
 	}
 }
 
@@ -1005,27 +495,6 @@ void Clear_Texture(void* P, int FieldId)
 	}
 }
 
-bool Present_Material(const void* P, int FieldId)
-{
-	const UMjMaterial& E = *static_cast<const UMjMaterial*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Texrepeat.IsSet();
-	case 3: return E.Texuniform.IsSet();
-	case 4: return E.Emission.IsSet();
-	case 5: return E.Specular.IsSet();
-	case 6: return E.Shininess.IsSet();
-	case 7: return E.Reflectance.IsSet();
-	case 8: return E.Metallic.IsSet();
-	case 9: return E.Roughness.IsSet();
-	case 10: return E.Rgba.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Material(void* P, int FieldId)
 {
 	UMjMaterial& E = *static_cast<UMjMaterial*>(P);
@@ -1046,19 +515,6 @@ void Clear_Material(void* P, int FieldId)
 	}
 }
 
-bool Present_ModelAsset(const void* P, int FieldId)
-{
-	const UMjModelAsset& E = *static_cast<const UMjModelAsset*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.File.IsSet();
-	case 2: return E.ContentType.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_ModelAsset(void* P, int FieldId)
 {
 	UMjModelAsset& E = *static_cast<UMjModelAsset*>(P);
@@ -1068,25 +524,6 @@ void Clear_ModelAsset(void* P, int FieldId)
 	case 1: E.File.Reset(); break;
 	case 2: E.ContentType.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Body(const void* P, int FieldId)
-{
-	const UMjBodyBase& E = *static_cast<const UMjBodyBase*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Childclass.IsSet();
-	case 2: return E.Pos.IsSet();
-	case 3: return E.Quat.IsSet();
-	case 4: return E.Mocap.IsSet();
-	case 5: return E.Gravcomp.IsSet();
-	case 6: return E.Sleep.IsSet();
-	case 7: return E.Simple.IsSet();
-	case 8: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -1108,20 +545,6 @@ void Clear_Body(void* P, int FieldId)
 	}
 }
 
-bool Present_Inertial(const void* P, int FieldId)
-{
-	const UMjInertial& E = *static_cast<const UMjInertial*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Quat.IsSet();
-	case 2: return true;
-	case 3: return E.Diaginertia.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Inertial(void* P, int FieldId)
 {
 	UMjInertial& E = *static_cast<UMjInertial*>(P);
@@ -1130,40 +553,6 @@ void Clear_Inertial(void* P, int FieldId)
 	case 1: E.Quat.Reset(); break;
 	case 3: E.Diaginertia.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Joint(const void* P, int FieldId)
-{
-	const UMjJoint& E = *static_cast<const UMjJoint*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Type.IsSet();
-	case 3: return E.Group.IsSet();
-	case 4: return E.Pos.IsSet();
-	case 5: return E.Axis.IsSet();
-	case 6: return E.Springdamper.IsSet();
-	case 7: return E.Limited.IsSet();
-	case 8: return E.Actuatorfrclimited.IsSet();
-	case 9: return E.Solreflimit.IsSet();
-	case 10: return E.Solimplimit.IsSet();
-	case 11: return E.Solreffriction.IsSet();
-	case 12: return E.Solimpfriction.IsSet();
-	case 13: return E.Stiffness.IsSet();
-	case 14: return E.Range.IsSet();
-	case 15: return E.Actuatorfrcrange.IsSet();
-	case 16: return E.Actuatorgravcomp.IsSet();
-	case 17: return E.Margin.IsSet();
-	case 18: return E.Ref.IsSet();
-	case 19: return E.Springref.IsSet();
-	case 20: return E.Armature.IsSet();
-	case 21: return E.Damping.IsSet();
-	case 22: return E.Frictionloss.IsSet();
-	case 23: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -1200,19 +589,6 @@ void Clear_Joint(void* P, int FieldId)
 	}
 }
 
-bool Present_FreeJoint(const void* P, int FieldId)
-{
-	const UMjFreeJoint& E = *static_cast<const UMjFreeJoint*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Group.IsSet();
-	case 2: return E.Align.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_FreeJoint(void* P, int FieldId)
 {
 	UMjFreeJoint& E = *static_cast<UMjFreeJoint*>(P);
@@ -1222,47 +598,6 @@ void Clear_FreeJoint(void* P, int FieldId)
 	case 1: E.Group.Reset(); break;
 	case 2: E.Align.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Geom(const void* P, int FieldId)
-{
-	const UMjGeomBase& E = *static_cast<const UMjGeomBase*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Type.IsSet();
-	case 3: return E.Contype.IsSet();
-	case 4: return E.Conaffinity.IsSet();
-	case 5: return E.Condim.IsSet();
-	case 6: return E.Group.IsSet();
-	case 7: return E.Priority.IsSet();
-	case 8: return E.Size.IsSet();
-	case 9: return E.Material.IsSet();
-	case 10: return E.Friction.IsSet();
-	case 11: return E.Mass.IsSet();
-	case 12: return E.Density.IsSet();
-	case 13: return E.Shellinertia.IsSet();
-	case 14: return E.Solmix.IsSet();
-	case 15: return E.Solref.IsSet();
-	case 16: return E.Solimp.IsSet();
-	case 17: return E.Margin.IsSet();
-	case 18: return E.Gap.IsSet();
-	case 19: return E.Surfacevel.IsSet();
-	case 20: return E.Adhesion.IsSet();
-	case 21: return E.Fromto.IsSet();
-	case 22: return E.Pos.IsSet();
-	case 23: return E.Quat.IsSet();
-	case 24: return E.Hfield.IsSet();
-	case 25: return E.Mesh.IsSet();
-	case 26: return E.Fitscale.IsSet();
-	case 27: return E.Rgba.IsSet();
-	case 28: return E.Fluidshape.IsSet();
-	case 29: return E.Fluidcoef.IsSet();
-	case 30: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -1306,20 +641,6 @@ void Clear_Geom(void* P, int FieldId)
 	}
 }
 
-bool Present_Attach(const void* P, int FieldId)
-{
-	const UMjAttach& E = *static_cast<const UMjAttach*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Model.IsSet();
-	case 1: return E.Body.IsSet();
-	case 2: return E.Frame.IsSet();
-	case 3: return true;
-	default: return false;
-	}
-}
-
 void Clear_Attach(void* P, int FieldId)
 {
 	UMjAttach& E = *static_cast<UMjAttach*>(P);
@@ -1329,27 +650,6 @@ void Clear_Attach(void* P, int FieldId)
 	case 1: E.Body.Reset(); break;
 	case 2: E.Frame.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Site(const void* P, int FieldId)
-{
-	const UMjSite& E = *static_cast<const UMjSite*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Type.IsSet();
-	case 3: return E.Group.IsSet();
-	case 4: return E.Pos.IsSet();
-	case 5: return E.Quat.IsSet();
-	case 6: return E.Material.IsSet();
-	case 7: return E.Size.IsSet();
-	case 8: return E.Fromto.IsSet();
-	case 9: return E.Rgba.IsSet();
-	case 10: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -1370,33 +670,6 @@ void Clear_Site(void* P, int FieldId)
 	case 9: E.Rgba.Reset(); break;
 	case 10: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Camera(const void* P, int FieldId)
-{
-	const UMjCameraBase& E = *static_cast<const UMjCameraBase*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Projection.IsSet();
-	case 3: return E.Fovy.IsSet();
-	case 4: return E.Ipd.IsSet();
-	case 5: return E.Resolution.IsSet();
-	case 6: return E.Output.IsSet();
-	case 7: return E.Pos.IsSet();
-	case 8: return E.Quat.IsSet();
-	case 9: return E.Mode.IsSet();
-	case 10: return E.Target.IsSet();
-	case 11: return E.Focal.IsSet();
-	case 12: return E.Focalpixel.IsSet();
-	case 13: return E.Principal.IsSet();
-	case 14: return E.Principalpixel.IsSet();
-	case 15: return E.Sensorsize.IsSet();
-	case 16: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -1423,35 +696,6 @@ void Clear_Camera(void* P, int FieldId)
 	case 15: E.Sensorsize.Reset(); break;
 	case 16: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Light(const void* P, int FieldId)
-{
-	const UMjLight& E = *static_cast<const UMjLight*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Type.IsSet();
-	case 3: return E.Castshadow.IsSet();
-	case 4: return E.ActiveFlag.IsSet();
-	case 5: return E.Pos.IsSet();
-	case 6: return E.Dir.IsSet();
-	case 7: return E.Bulbradius.IsSet();
-	case 8: return E.Intensity.IsSet();
-	case 9: return E.Range.IsSet();
-	case 10: return E.Attenuation.IsSet();
-	case 11: return E.Cutoff.IsSet();
-	case 12: return E.Exponent.IsSet();
-	case 13: return E.Ambient.IsSet();
-	case 14: return E.Diffuse.IsSet();
-	case 15: return E.Specular.IsSet();
-	case 16: return E.Mode.IsSet();
-	case 17: return E.Target.IsSet();
-	case 18: return E.Texture.IsSet();
-	default: return false;
 	}
 }
 
@@ -1483,25 +727,6 @@ void Clear_Light(void* P, int FieldId)
 	}
 }
 
-bool Present_Composite(const void* P, int FieldId)
-{
-	const UMjComposite& E = *static_cast<const UMjComposite*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Prefix.IsSet();
-	case 1: return true;
-	case 2: return E.Count.IsSet();
-	case 3: return E.Offset.IsSet();
-	case 4: return E.Vertex.IsSet();
-	case 5: return E.Initial.IsSet();
-	case 6: return E.Curve.IsSet();
-	case 7: return E.Size.IsSet();
-	case 8: return E.Quat.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Composite(void* P, int FieldId)
 {
 	UMjComposite& E = *static_cast<UMjComposite*>(P);
@@ -1516,33 +741,6 @@ void Clear_Composite(void* P, int FieldId)
 	case 7: E.Size.Reset(); break;
 	case 8: E.Quat.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_CompositeJoint(const void* P, int FieldId)
-{
-	const UMjCompositeJoint& E = *static_cast<const UMjCompositeJoint*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Group.IsSet();
-	case 2: return E.Stiffness.IsSet();
-	case 3: return E.Damping.IsSet();
-	case 4: return E.Armature.IsSet();
-	case 5: return E.Solreffix.IsSet();
-	case 6: return E.Solimpfix.IsSet();
-	case 7: return E.Type.IsSet();
-	case 8: return E.Axis.IsSet();
-	case 9: return E.Limited.IsSet();
-	case 10: return E.Range.IsSet();
-	case 11: return E.Margin.IsSet();
-	case 12: return E.Solreflimit.IsSet();
-	case 13: return E.Solimplimit.IsSet();
-	case 14: return E.Frictionloss.IsSet();
-	case 15: return E.Solreffriction.IsSet();
-	case 16: return E.Solimpfriction.IsSet();
-	default: return false;
 	}
 }
 
@@ -1571,22 +769,6 @@ void Clear_CompositeJoint(void* P, int FieldId)
 	}
 }
 
-bool Present_CompositeSkin(const void* P, int FieldId)
-{
-	const UMjCompositeSkin& E = *static_cast<const UMjCompositeSkin*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Texcoord.IsSet();
-	case 1: return E.Material.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Rgba.IsSet();
-	case 4: return E.Inflate.IsSet();
-	case 5: return E.Subgrid.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_CompositeSkin(void* P, int FieldId)
 {
 	UMjCompositeSkin& E = *static_cast<UMjCompositeSkin*>(P);
@@ -1599,35 +781,6 @@ void Clear_CompositeSkin(void* P, int FieldId)
 	case 4: E.Inflate.Reset(); break;
 	case 5: E.Subgrid.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_CompositeGeom(const void* P, int FieldId)
-{
-	const UMjCompositeGeom& E = *static_cast<const UMjCompositeGeom*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Type.IsSet();
-	case 1: return E.Contype.IsSet();
-	case 2: return E.Conaffinity.IsSet();
-	case 3: return E.Condim.IsSet();
-	case 4: return E.Group.IsSet();
-	case 5: return E.Priority.IsSet();
-	case 6: return E.Size.IsSet();
-	case 7: return E.Material.IsSet();
-	case 8: return E.Rgba.IsSet();
-	case 9: return E.Friction.IsSet();
-	case 10: return E.Mass.IsSet();
-	case 11: return E.Density.IsSet();
-	case 12: return E.Solmix.IsSet();
-	case 13: return E.Solref.IsSet();
-	case 14: return E.Solimp.IsSet();
-	case 15: return E.Margin.IsSet();
-	case 16: return E.Gap.IsSet();
-	case 17: return E.Surfacevel.IsSet();
-	case 18: return E.Adhesion.IsSet();
-	default: return false;
 	}
 }
 
@@ -1659,20 +812,6 @@ void Clear_CompositeGeom(void* P, int FieldId)
 	}
 }
 
-bool Present_CompositeSite(const void* P, int FieldId)
-{
-	const UMjCompositeSite& E = *static_cast<const UMjCompositeSite*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Group.IsSet();
-	case 1: return E.Size.IsSet();
-	case 2: return E.Material.IsSet();
-	case 3: return E.Rgba.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_CompositeSite(void* P, int FieldId)
 {
 	UMjCompositeSite& E = *static_cast<UMjCompositeSite*>(P);
@@ -1683,43 +822,6 @@ void Clear_CompositeSite(void* P, int FieldId)
 	case 2: E.Material.Reset(); break;
 	case 3: E.Rgba.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Flexcomp(const void* P, int FieldId)
-{
-	const UMjFlexcompBase& E = *static_cast<const UMjFlexcompBase*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Type.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Dim.IsSet();
-	case 4: return E.Dof.IsSet();
-	case 5: return E.Count.IsSet();
-	case 6: return E.Cellcount.IsSet();
-	case 7: return E.Spacing.IsSet();
-	case 8: return E.Radius.IsSet();
-	case 9: return E.Rigid.IsSet();
-	case 10: return E.Mass.IsSet();
-	case 11: return E.Inertiabox.IsSet();
-	case 12: return E.Scale.IsSet();
-	case 13: return E.File.IsSet();
-	case 14: return E.Point.IsSet();
-	case 15: return E.Element.IsSet();
-	case 16: return E.Texcoord.IsSet();
-	case 17: return E.Material.IsSet();
-	case 18: return E.Rgba.IsSet();
-	case 19: return E.Flatskin.IsSet();
-	case 20: return E.Pos.IsSet();
-	case 21: return E.Quat.IsSet();
-	case 22: return E.Axisangle.IsSet();
-	case 23: return E.Xyaxes.IsSet();
-	case 24: return E.Zaxis.IsSet();
-	case 25: return E.Euler.IsSet();
-	case 26: return E.Origin.IsSet();
-	default: return false;
 	}
 }
 
@@ -1758,21 +860,6 @@ void Clear_Flexcomp(void* P, int FieldId)
 	}
 }
 
-bool Present_FlexcompEdge(const void* P, int FieldId)
-{
-	const UMjFlexcompEdge& E = *static_cast<const UMjFlexcompEdge*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Equality.IsSet();
-	case 1: return E.Solref.IsSet();
-	case 2: return E.Solimp.IsSet();
-	case 3: return E.Stiffness.IsSet();
-	case 4: return E.Damping.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_FlexcompEdge(void* P, int FieldId)
 {
 	UMjFlexcompEdge& E = *static_cast<UMjFlexcompEdge*>(P);
@@ -1787,21 +874,6 @@ void Clear_FlexcompEdge(void* P, int FieldId)
 	}
 }
 
-bool Present_FlexElasticity(const void* P, int FieldId)
-{
-	const UMjFlexElasticity& E = *static_cast<const UMjFlexElasticity*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Young.IsSet();
-	case 1: return E.Poisson.IsSet();
-	case 2: return E.Damping.IsSet();
-	case 3: return E.Thickness.IsSet();
-	case 4: return E.Elastic2d.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_FlexElasticity(void* P, int FieldId)
 {
 	UMjFlexElasticity& E = *static_cast<UMjFlexElasticity*>(P);
@@ -1813,30 +885,6 @@ void Clear_FlexElasticity(void* P, int FieldId)
 	case 3: E.Thickness.Reset(); break;
 	case 4: E.Elastic2d.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_FlexContact(const void* P, int FieldId)
-{
-	const UMjFlexContact& E = *static_cast<const UMjFlexContact*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Contype.IsSet();
-	case 1: return E.Conaffinity.IsSet();
-	case 2: return E.Condim.IsSet();
-	case 3: return E.Priority.IsSet();
-	case 4: return E.Friction.IsSet();
-	case 5: return E.Solmix.IsSet();
-	case 6: return E.Solref.IsSet();
-	case 7: return E.Solimp.IsSet();
-	case 8: return E.Margin.IsSet();
-	case 9: return E.Gap.IsSet();
-	case 10: return E.Internal.IsSet();
-	case 11: return E.Selfcollide.IsSet();
-	case 12: return E.Activelayers.IsSet();
-	case 13: return E.Passive.IsSet();
-	default: return false;
 	}
 }
 
@@ -1863,20 +911,6 @@ void Clear_FlexContact(void* P, int FieldId)
 	}
 }
 
-bool Present_FlexcompPin(const void* P, int FieldId)
-{
-	const UMjFlexcompPin& E = *static_cast<const UMjFlexcompPin*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Id.IsSet();
-	case 1: return E.Range.IsSet();
-	case 2: return E.Grid.IsSet();
-	case 3: return E.Gridrange.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_FlexcompPin(void* P, int FieldId)
 {
 	UMjFlexcompPin& E = *static_cast<UMjFlexcompPin*>(P);
@@ -1890,40 +924,9 @@ void Clear_FlexcompPin(void* P, int FieldId)
 	}
 }
 
-bool Present_Deformable(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Deformable(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Flex(const void* P, int FieldId)
-{
-	const UMjFlex& E = *static_cast<const UMjFlex*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Group.IsSet();
-	case 2: return E.Dim.IsSet();
-	case 3: return E.Radius.IsSet();
-	case 4: return E.Material.IsSet();
-	case 5: return E.Rgba.IsSet();
-	case 6: return E.Flatskin.IsSet();
-	case 7: return true;
-	case 8: return E.Vertex.IsSet();
-	case 9: return true;
-	case 10: return E.Texcoord.IsSet();
-	case 11: return E.Elemtexcoord.IsSet();
-	case 12: return E.Node.IsSet();
-	case 13: return E.Cellcount.IsSet();
-	case 14: return E.Dof.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Flex(void* P, int FieldId)
@@ -1948,18 +951,6 @@ void Clear_Flex(void* P, int FieldId)
 	}
 }
 
-bool Present_FlexEdge(const void* P, int FieldId)
-{
-	const UMjFlexEdge& E = *static_cast<const UMjFlexEdge*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Stiffness.IsSet();
-	case 1: return E.Damping.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_FlexEdge(void* P, int FieldId)
 {
 	UMjFlexEdge& E = *static_cast<UMjFlexEdge*>(P);
@@ -1971,37 +962,9 @@ void Clear_FlexEdge(void* P, int FieldId)
 	}
 }
 
-bool Present_Contact(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Contact(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Pair(const void* P, int FieldId)
-{
-	const UMjPair& E = *static_cast<const UMjPair*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Geom1.IsSet();
-	case 3: return E.Geom2.IsSet();
-	case 4: return E.Condim.IsSet();
-	case 5: return E.Friction.IsSet();
-	case 6: return E.Solref.IsSet();
-	case 7: return E.Solreffriction.IsSet();
-	case 8: return E.Solimp.IsSet();
-	case 9: return E.Gap.IsSet();
-	case 10: return E.Margin.IsSet();
-	case 11: return E.Adhesion.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Pair(void* P, int FieldId)
@@ -2025,19 +988,6 @@ void Clear_Pair(void* P, int FieldId)
 	}
 }
 
-bool Present_Exclude(const void* P, int FieldId)
-{
-	const UMjExclude& E = *static_cast<const UMjExclude*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return true;
-	case 2: return true;
-	default: return false;
-	}
-}
-
 void Clear_Exclude(void* P, int FieldId)
 {
 	UMjExclude& E = *static_cast<UMjExclude*>(P);
@@ -2048,46 +998,9 @@ void Clear_Exclude(void* P, int FieldId)
 	}
 }
 
-bool Present_Tendon(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Tendon(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Spatial(const void* P, int FieldId)
-{
-	const UMjSpatial& E = *static_cast<const UMjSpatial*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Limited.IsSet();
-	case 4: return E.Actuatorfrclimited.IsSet();
-	case 5: return E.Range.IsSet();
-	case 6: return E.Actuatorfrcrange.IsSet();
-	case 7: return E.Solreflimit.IsSet();
-	case 8: return E.Solimplimit.IsSet();
-	case 9: return E.Solreffriction.IsSet();
-	case 10: return E.Solimpfriction.IsSet();
-	case 11: return E.Frictionloss.IsSet();
-	case 12: return E.Springlength.IsSet();
-	case 13: return E.Width.IsSet();
-	case 14: return E.Material.IsSet();
-	case 15: return E.Margin.IsSet();
-	case 16: return E.Stiffness.IsSet();
-	case 17: return E.Damping.IsSet();
-	case 18: return E.Armature.IsSet();
-	case 19: return E.Rgba.IsSet();
-	case 20: return E.User.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Spatial(void* P, int FieldId)
@@ -2120,32 +1033,9 @@ void Clear_Spatial(void* P, int FieldId)
 	}
 }
 
-bool Present_SpatialSite(const void* P, int FieldId)
-{
-	const UMjSpatialSite& E = *static_cast<const UMjSpatialSite*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	default: return false;
-	}
-}
-
 void Clear_SpatialSite(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_SpatialGeom(const void* P, int FieldId)
-{
-	const UMjSpatialGeom& E = *static_cast<const UMjSpatialGeom*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Sidesite.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_SpatialGeom(void* P, int FieldId)
@@ -2158,17 +1048,6 @@ void Clear_SpatialGeom(void* P, int FieldId)
 	}
 }
 
-bool Present_Pulley(const void* P, int FieldId)
-{
-	const UMjPulley& E = *static_cast<const UMjPulley*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Divisor.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Pulley(void* P, int FieldId)
 {
 	UMjPulley& E = *static_cast<UMjPulley*>(P);
@@ -2176,34 +1055,6 @@ void Clear_Pulley(void* P, int FieldId)
 	{
 	case 0: E.Divisor.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Fixed(const void* P, int FieldId)
-{
-	const UMjFixed& E = *static_cast<const UMjFixed*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Limited.IsSet();
-	case 4: return E.Actuatorfrclimited.IsSet();
-	case 5: return E.Range.IsSet();
-	case 6: return E.Actuatorfrcrange.IsSet();
-	case 7: return E.Solreflimit.IsSet();
-	case 8: return E.Solimplimit.IsSet();
-	case 9: return E.Solreffriction.IsSet();
-	case 10: return E.Solimpfriction.IsSet();
-	case 11: return E.Frictionloss.IsSet();
-	case 12: return E.Springlength.IsSet();
-	case 13: return E.Margin.IsSet();
-	case 14: return E.Stiffness.IsSet();
-	case 15: return E.Damping.IsSet();
-	case 16: return E.Armature.IsSet();
-	case 17: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -2234,18 +1085,6 @@ void Clear_Fixed(void* P, int FieldId)
 	}
 }
 
-bool Present_FixedJoint(const void* P, int FieldId)
-{
-	const UMjFixedJoint& E = *static_cast<const UMjFixedJoint*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Coef.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_FixedJoint(void* P, int FieldId)
 {
 	UMjFixedJoint& E = *static_cast<UMjFixedJoint*>(P);
@@ -2256,35 +1095,9 @@ void Clear_FixedJoint(void* P, int FieldId)
 	}
 }
 
-bool Present_Equality(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Equality(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Connect(const void* P, int FieldId)
-{
-	const UMjConnect& E = *static_cast<const UMjConnect*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return E.Body1.IsSet();
-	case 6: return E.Body2.IsSet();
-	case 7: return E.Anchor.IsSet();
-	case 8: return E.Site1.IsSet();
-	case 9: return E.Site2.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Connect(void* P, int FieldId)
@@ -2303,28 +1116,6 @@ void Clear_Connect(void* P, int FieldId)
 	case 8: E.Site1.Reset(); break;
 	case 9: E.Site2.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Weld(const void* P, int FieldId)
-{
-	const UMjWeld& E = *static_cast<const UMjWeld*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return E.Body1.IsSet();
-	case 6: return E.Body2.IsSet();
-	case 7: return E.Relpose.IsSet();
-	case 8: return E.Anchor.IsSet();
-	case 9: return E.Site1.IsSet();
-	case 10: return E.Site2.IsSet();
-	case 11: return E.Torquescale.IsSet();
-	default: return false;
 	}
 }
 
@@ -2349,24 +1140,6 @@ void Clear_Weld(void* P, int FieldId)
 	}
 }
 
-bool Present_EqualityJoint(const void* P, int FieldId)
-{
-	const UMjEqualityJoint& E = *static_cast<const UMjEqualityJoint*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return true;
-	case 6: return E.Joint2.IsSet();
-	case 7: return E.Polycoef.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_EqualityJoint(void* P, int FieldId)
 {
 	UMjEqualityJoint& E = *static_cast<UMjEqualityJoint*>(P);
@@ -2380,24 +1153,6 @@ void Clear_EqualityJoint(void* P, int FieldId)
 	case 6: E.Joint2.Reset(); break;
 	case 7: E.Polycoef.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_EqualityTendon(const void* P, int FieldId)
-{
-	const UMjEqualityTendon& E = *static_cast<const UMjEqualityTendon*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return true;
-	case 6: return E.Tendon2.IsSet();
-	case 7: return E.Polycoef.IsSet();
-	default: return false;
 	}
 }
 
@@ -2417,22 +1172,6 @@ void Clear_EqualityTendon(void* P, int FieldId)
 	}
 }
 
-bool Present_EqualityFlex(const void* P, int FieldId)
-{
-	const UMjEqualityFlex& E = *static_cast<const UMjEqualityFlex*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return true;
-	default: return false;
-	}
-}
-
 void Clear_EqualityFlex(void* P, int FieldId)
 {
 	UMjEqualityFlex& E = *static_cast<UMjEqualityFlex*>(P);
@@ -2447,22 +1186,6 @@ void Clear_EqualityFlex(void* P, int FieldId)
 	}
 }
 
-bool Present_Flexvert(const void* P, int FieldId)
-{
-	const UMjFlexvert& E = *static_cast<const UMjFlexvert*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return true;
-	default: return false;
-	}
-}
-
 void Clear_Flexvert(void* P, int FieldId)
 {
 	UMjFlexvert& E = *static_cast<UMjFlexvert*>(P);
@@ -2474,23 +1197,6 @@ void Clear_Flexvert(void* P, int FieldId)
 	case 3: E.Solref.Reset(); break;
 	case 4: E.Solimp.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Flexstrain(const void* P, int FieldId)
-{
-	const UMjFlexstrain& E = *static_cast<const UMjFlexstrain*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.ActiveFlag.IsSet();
-	case 3: return E.Solref.IsSet();
-	case 4: return E.Solimp.IsSet();
-	case 5: return true;
-	case 6: return E.Cell.IsSet();
-	default: return false;
 	}
 }
 
@@ -2509,62 +1215,9 @@ void Clear_Flexstrain(void* P, int FieldId)
 	}
 }
 
-bool Present_Actuator(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Actuator(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_ActuatorGeneral(const void* P, int FieldId)
-{
-	const UMjActuatorGeneral& E = *static_cast<const UMjActuatorGeneral*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Actlimited.IsSet();
-	case 11: return E.Forcerange.IsSet();
-	case 12: return E.Actrange.IsSet();
-	case 13: return E.Lengthrange.IsSet();
-	case 14: return E.Gear.IsSet();
-	case 15: return E.Damping.IsSet();
-	case 16: return E.Armature.IsSet();
-	case 17: return E.Cranklength.IsSet();
-	case 18: return E.Joint.IsSet();
-	case 19: return E.Jointinparent.IsSet();
-	case 20: return E.Tendon.IsSet();
-	case 21: return E.Slidersite.IsSet();
-	case 22: return E.Cranksite.IsSet();
-	case 23: return E.Site.IsSet();
-	case 24: return E.Refsite.IsSet();
-	case 25: return E.Body.IsSet();
-	case 26: return E.Actdim.IsSet();
-	case 27: return E.Input.IsSet();
-	case 28: return E.Velrange.IsSet();
-	case 29: return E.Ffrange.IsSet();
-	case 30: return E.Dyntype.IsSet();
-	case 31: return E.Gaintype.IsSet();
-	case 32: return E.Biastype.IsSet();
-	case 33: return E.Dynprm.IsSet();
-	case 34: return E.Gainprm.IsSet();
-	case 35: return E.Biasprm.IsSet();
-	case 36: return E.Actearly.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_ActuatorGeneral(void* P, int FieldId)
@@ -2613,39 +1266,6 @@ void Clear_ActuatorGeneral(void* P, int FieldId)
 	}
 }
 
-bool Present_Motor(const void* P, int FieldId)
-{
-	const UMjMotor& E = *static_cast<const UMjMotor*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Forcerange.IsSet();
-	case 11: return E.Lengthrange.IsSet();
-	case 12: return E.Gear.IsSet();
-	case 13: return E.Damping.IsSet();
-	case 14: return E.Armature.IsSet();
-	case 15: return E.Cranklength.IsSet();
-	case 16: return E.Joint.IsSet();
-	case 17: return E.Jointinparent.IsSet();
-	case 18: return E.Tendon.IsSet();
-	case 19: return E.Slidersite.IsSet();
-	case 20: return E.Cranksite.IsSet();
-	case 21: return E.Site.IsSet();
-	case 22: return E.Refsite.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Motor(void* P, int FieldId)
 {
 	UMjMotor& E = *static_cast<UMjMotor*>(P);
@@ -2675,44 +1295,6 @@ void Clear_Motor(void* P, int FieldId)
 	case 21: E.Site.Reset(); break;
 	case 22: E.Refsite.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Position(const void* P, int FieldId)
-{
-	const UMjPosition& E = *static_cast<const UMjPosition*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Inheritrange.IsSet();
-	case 11: return E.Forcerange.IsSet();
-	case 12: return E.Lengthrange.IsSet();
-	case 13: return E.Gear.IsSet();
-	case 14: return E.Damping.IsSet();
-	case 15: return E.Armature.IsSet();
-	case 16: return E.Cranklength.IsSet();
-	case 17: return E.Joint.IsSet();
-	case 18: return E.Jointinparent.IsSet();
-	case 19: return E.Tendon.IsSet();
-	case 20: return E.Slidersite.IsSet();
-	case 21: return E.Cranksite.IsSet();
-	case 22: return E.Site.IsSet();
-	case 23: return E.Refsite.IsSet();
-	case 24: return E.Kp.IsSet();
-	case 25: return E.Kv.IsSet();
-	case 26: return E.Dampratio.IsSet();
-	case 27: return E.Timeconst.IsSet();
-	default: return false;
 	}
 }
 
@@ -2753,40 +1335,6 @@ void Clear_Position(void* P, int FieldId)
 	}
 }
 
-bool Present_Velocity(const void* P, int FieldId)
-{
-	const UMjVelocity& E = *static_cast<const UMjVelocity*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Forcerange.IsSet();
-	case 11: return E.Lengthrange.IsSet();
-	case 12: return E.Gear.IsSet();
-	case 13: return E.Damping.IsSet();
-	case 14: return E.Armature.IsSet();
-	case 15: return E.Cranklength.IsSet();
-	case 16: return E.Joint.IsSet();
-	case 17: return E.Jointinparent.IsSet();
-	case 18: return E.Tendon.IsSet();
-	case 19: return E.Slidersite.IsSet();
-	case 20: return E.Cranksite.IsSet();
-	case 21: return E.Site.IsSet();
-	case 22: return E.Refsite.IsSet();
-	case 23: return E.Kv.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Velocity(void* P, int FieldId)
 {
 	UMjVelocity& E = *static_cast<UMjVelocity*>(P);
@@ -2817,45 +1365,6 @@ void Clear_Velocity(void* P, int FieldId)
 	case 22: E.Refsite.Reset(); break;
 	case 23: E.Kv.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_IntVelocity(const void* P, int FieldId)
-{
-	const UMjIntVelocity& E = *static_cast<const UMjIntVelocity*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Actlimited.IsSet();
-	case 11: return E.Forcerange.IsSet();
-	case 12: return E.Actrange.IsSet();
-	case 13: return E.Inheritrange.IsSet();
-	case 14: return E.Lengthrange.IsSet();
-	case 15: return E.Gear.IsSet();
-	case 16: return E.Damping.IsSet();
-	case 17: return E.Armature.IsSet();
-	case 18: return E.Cranklength.IsSet();
-	case 19: return E.Joint.IsSet();
-	case 20: return E.Jointinparent.IsSet();
-	case 21: return E.Tendon.IsSet();
-	case 22: return E.Slidersite.IsSet();
-	case 23: return E.Cranksite.IsSet();
-	case 24: return E.Site.IsSet();
-	case 25: return E.Refsite.IsSet();
-	case 26: return E.Kp.IsSet();
-	case 27: return E.Kv.IsSet();
-	case 28: return E.Dampratio.IsSet();
-	default: return false;
 	}
 }
 
@@ -2897,33 +1406,6 @@ void Clear_IntVelocity(void* P, int FieldId)
 	}
 }
 
-bool Present_OrientationActuator(const void* P, int FieldId)
-{
-	const UMjOrientationActuator& E = *static_cast<const UMjOrientationActuator*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Forcelimited.IsSet();
-	case 9: return E.Forcerange.IsSet();
-	case 10: return E.Joint.IsSet();
-	case 11: return E.Site.IsSet();
-	case 12: return E.Refsite.IsSet();
-	case 13: return E.Kp.IsSet();
-	case 14: return E.Kv.IsSet();
-	case 15: return E.Dampratio.IsSet();
-	case 16: return E.Input.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_OrientationActuator(void* P, int FieldId)
 {
 	UMjOrientationActuator& E = *static_cast<UMjOrientationActuator*>(P);
@@ -2947,50 +1429,6 @@ void Clear_OrientationActuator(void* P, int FieldId)
 	case 15: E.Dampratio.Reset(); break;
 	case 16: E.Input.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Pid(const void* P, int FieldId)
-{
-	const UMjPid& E = *static_cast<const UMjPid*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Posrange.IsSet();
-	case 11: return E.Velrange.IsSet();
-	case 12: return E.Ffrange.IsSet();
-	case 13: return E.Forcerange.IsSet();
-	case 14: return E.Inheritrange.IsSet();
-	case 15: return E.Lengthrange.IsSet();
-	case 16: return E.Gear.IsSet();
-	case 17: return E.Damping.IsSet();
-	case 18: return E.Armature.IsSet();
-	case 19: return E.Cranklength.IsSet();
-	case 20: return E.Joint.IsSet();
-	case 21: return E.Jointinparent.IsSet();
-	case 22: return E.Tendon.IsSet();
-	case 23: return E.Slidersite.IsSet();
-	case 24: return E.Cranksite.IsSet();
-	case 25: return E.Site.IsSet();
-	case 26: return E.Refsite.IsSet();
-	case 27: return E.Kp.IsSet();
-	case 28: return E.Kv.IsSet();
-	case 29: return E.Dampratio.IsSet();
-	case 30: return E.Ki.IsSet();
-	case 31: return E.Imax.IsSet();
-	case 32: return E.Slewmax.IsSet();
-	case 33: return E.Input.IsSet();
-	default: return false;
 	}
 }
 
@@ -3037,39 +1475,6 @@ void Clear_Pid(void* P, int FieldId)
 	}
 }
 
-bool Present_Damper(const void* P, int FieldId)
-{
-	const UMjDamper& E = *static_cast<const UMjDamper*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Forcelimited.IsSet();
-	case 9: return E.Forcerange.IsSet();
-	case 10: return E.Lengthrange.IsSet();
-	case 11: return E.Gear.IsSet();
-	case 12: return E.Damping.IsSet();
-	case 13: return E.Armature.IsSet();
-	case 14: return E.Cranklength.IsSet();
-	case 15: return E.Joint.IsSet();
-	case 16: return E.Jointinparent.IsSet();
-	case 17: return E.Tendon.IsSet();
-	case 18: return E.Slidersite.IsSet();
-	case 19: return E.Cranksite.IsSet();
-	case 20: return E.Site.IsSet();
-	case 21: return E.Refsite.IsSet();
-	case 22: return E.Kv.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Damper(void* P, int FieldId)
 {
 	UMjDamper& E = *static_cast<UMjDamper*>(P);
@@ -3099,42 +1504,6 @@ void Clear_Damper(void* P, int FieldId)
 	case 21: E.Refsite.Reset(); break;
 	case 22: E.Kv.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Cylinder(const void* P, int FieldId)
-{
-	const UMjCylinder& E = *static_cast<const UMjCylinder*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Forcerange.IsSet();
-	case 11: return E.Lengthrange.IsSet();
-	case 12: return E.Gear.IsSet();
-	case 13: return E.Damping.IsSet();
-	case 14: return E.Armature.IsSet();
-	case 15: return E.Cranklength.IsSet();
-	case 16: return E.Joint.IsSet();
-	case 17: return E.Jointinparent.IsSet();
-	case 18: return E.Tendon.IsSet();
-	case 19: return E.Slidersite.IsSet();
-	case 20: return E.Cranksite.IsSet();
-	case 21: return E.Site.IsSet();
-	case 22: return E.Refsite.IsSet();
-	case 23: return E.Timeconst.IsSet();
-	case 24: return E.Area.IsSet();
-	case 25: return E.Bias.IsSet();
-	default: return false;
 	}
 }
 
@@ -3170,47 +1539,6 @@ void Clear_Cylinder(void* P, int FieldId)
 	case 24: E.Area.Reset(); break;
 	case 25: E.Bias.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Muscle(const void* P, int FieldId)
-{
-	const UMjMuscle& E = *static_cast<const UMjMuscle*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Forcelimited.IsSet();
-	case 10: return E.Forcerange.IsSet();
-	case 11: return E.Lengthrange.IsSet();
-	case 12: return E.Gear.IsSet();
-	case 13: return E.Damping.IsSet();
-	case 14: return E.Armature.IsSet();
-	case 15: return E.Cranklength.IsSet();
-	case 16: return E.Joint.IsSet();
-	case 17: return E.Jointinparent.IsSet();
-	case 18: return E.Tendon.IsSet();
-	case 19: return E.Slidersite.IsSet();
-	case 20: return E.Cranksite.IsSet();
-	case 21: return E.Timeconst.IsSet();
-	case 22: return E.Tausmooth.IsSet();
-	case 23: return E.Range.IsSet();
-	case 24: return E.Force.IsSet();
-	case 25: return E.Scale.IsSet();
-	case 26: return E.Lmin.IsSet();
-	case 27: return E.Lmax.IsSet();
-	case 28: return E.Vmax.IsSet();
-	case 29: return E.Fpmax.IsSet();
-	case 30: return E.Fvmax.IsSet();
-	default: return false;
 	}
 }
 
@@ -3254,28 +1582,6 @@ void Clear_Muscle(void* P, int FieldId)
 	}
 }
 
-bool Present_Adhesion(const void* P, int FieldId)
-{
-	const UMjAdhesion& E = *static_cast<const UMjAdhesion*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Forcelimited.IsSet();
-	case 9: return E.Forcerange.IsSet();
-	case 10: return E.Body.IsSet();
-	case 11: return E.Gain.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Adhesion(void* P, int FieldId)
 {
 	UMjAdhesion& E = *static_cast<UMjAdhesion*>(P);
@@ -3294,47 +1600,6 @@ void Clear_Adhesion(void* P, int FieldId)
 	case 10: E.Body.Reset(); break;
 	case 11: E.Gain.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_DcMotor(const void* P, int FieldId)
-{
-	const UMjDcMotor& E = *static_cast<const UMjDcMotor*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Ctrllimited.IsSet();
-	case 9: return E.Lengthrange.IsSet();
-	case 10: return E.Gear.IsSet();
-	case 11: return E.Damping.IsSet();
-	case 12: return E.Armature.IsSet();
-	case 13: return E.Cranklength.IsSet();
-	case 14: return E.Joint.IsSet();
-	case 15: return E.Jointinparent.IsSet();
-	case 16: return E.Tendon.IsSet();
-	case 17: return E.Slidersite.IsSet();
-	case 18: return E.Cranksite.IsSet();
-	case 19: return E.Site.IsSet();
-	case 20: return E.Refsite.IsSet();
-	case 21: return E.Motorconst.IsSet();
-	case 22: return E.Resistance.IsSet();
-	case 23: return E.Nominal.IsSet();
-	case 24: return E.Saturation.IsSet();
-	case 25: return E.Inductance.IsSet();
-	case 26: return E.Cogging.IsSet();
-	case 27: return E.Controller.IsSet();
-	case 28: return E.Thermal.IsSet();
-	case 29: return E.Lugre.IsSet();
-	case 30: return E.Input.IsSet();
-	default: return false;
 	}
 }
 
@@ -3378,46 +1643,6 @@ void Clear_DcMotor(void* P, int FieldId)
 	}
 }
 
-bool Present_ActuatorPlugin(const void* P, int FieldId)
-{
-	const UMjActuatorPlugin& E = *static_cast<const UMjActuatorPlugin*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Dclass.IsSet();
-	case 2: return E.Group.IsSet();
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Ctrlrange.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Plugin.IsSet();
-	case 9: return E.Instance.IsSet();
-	case 10: return E.Ctrllimited.IsSet();
-	case 11: return E.Forcelimited.IsSet();
-	case 12: return E.Actlimited.IsSet();
-	case 13: return E.Forcerange.IsSet();
-	case 14: return E.Actrange.IsSet();
-	case 15: return E.Lengthrange.IsSet();
-	case 16: return E.Gear.IsSet();
-	case 17: return E.Damping.IsSet();
-	case 18: return E.Armature.IsSet();
-	case 19: return E.Cranklength.IsSet();
-	case 20: return E.Joint.IsSet();
-	case 21: return E.Jointinparent.IsSet();
-	case 22: return E.Site.IsSet();
-	case 23: return E.Actdim.IsSet();
-	case 24: return E.Dyntype.IsSet();
-	case 25: return E.Dynprm.IsSet();
-	case 26: return E.Tendon.IsSet();
-	case 27: return E.Cranksite.IsSet();
-	case 28: return E.Slidersite.IsSet();
-	case 29: return E.Actearly.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_ActuatorPlugin(void* P, int FieldId)
 {
 	UMjActuatorPlugin& E = *static_cast<UMjActuatorPlugin*>(P);
@@ -3457,34 +1682,9 @@ void Clear_ActuatorPlugin(void* P, int FieldId)
 	}
 }
 
-bool Present_Sensor(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Sensor(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Touch(const void* P, int FieldId)
-{
-	const UMjTouch& E = *static_cast<const UMjTouch*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
 }
 
 void Clear_Touch(void* P, int FieldId)
@@ -3501,25 +1701,6 @@ void Clear_Touch(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Accelerometer(const void* P, int FieldId)
-{
-	const UMjAccelerometer& E = *static_cast<const UMjAccelerometer*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -3540,25 +1721,6 @@ void Clear_Accelerometer(void* P, int FieldId)
 	}
 }
 
-bool Present_Velocimeter(const void* P, int FieldId)
-{
-	const UMjVelocimeter& E = *static_cast<const UMjVelocimeter*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Velocimeter(void* P, int FieldId)
 {
 	UMjVelocimeter& E = *static_cast<UMjVelocimeter*>(P);
@@ -3573,25 +1735,6 @@ void Clear_Velocimeter(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Gyro(const void* P, int FieldId)
-{
-	const UMjGyro& E = *static_cast<const UMjGyro*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -3612,25 +1755,6 @@ void Clear_Gyro(void* P, int FieldId)
 	}
 }
 
-bool Present_Force(const void* P, int FieldId)
-{
-	const UMjForce& E = *static_cast<const UMjForce*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Force(void* P, int FieldId)
 {
 	UMjForce& E = *static_cast<UMjForce*>(P);
@@ -3645,25 +1769,6 @@ void Clear_Force(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Torque(const void* P, int FieldId)
-{
-	const UMjTorque& E = *static_cast<const UMjTorque*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -3684,25 +1789,6 @@ void Clear_Torque(void* P, int FieldId)
 	}
 }
 
-bool Present_Magnetometer(const void* P, int FieldId)
-{
-	const UMjMagnetometer& E = *static_cast<const UMjMagnetometer*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Magnetometer(void* P, int FieldId)
 {
 	UMjMagnetometer& E = *static_cast<UMjMagnetometer*>(P);
@@ -3720,26 +1806,6 @@ void Clear_Magnetometer(void* P, int FieldId)
 	}
 }
 
-bool Present_Camprojection(const void* P, int FieldId)
-{
-	const UMjCamprojection& E = *static_cast<const UMjCamprojection*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	default: return false;
-	}
-}
-
 void Clear_Camprojection(void* P, int FieldId)
 {
 	UMjCamprojection& E = *static_cast<UMjCamprojection*>(P);
@@ -3754,27 +1820,6 @@ void Clear_Camprojection(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Rangefinder(const void* P, int FieldId)
-{
-	const UMjRangefinder& E = *static_cast<const UMjRangefinder*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Site.IsSet();
-	case 9: return E.Camera.IsSet();
-	case 10: return E.Data.IsSet();
-	default: return false;
 	}
 }
 
@@ -3798,25 +1843,6 @@ void Clear_Rangefinder(void* P, int FieldId)
 	}
 }
 
-bool Present_Jointpos(const void* P, int FieldId)
-{
-	const UMjJointpos& E = *static_cast<const UMjJointpos*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Jointpos(void* P, int FieldId)
 {
 	UMjJointpos& E = *static_cast<UMjJointpos*>(P);
@@ -3831,25 +1857,6 @@ void Clear_Jointpos(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Jointvel(const void* P, int FieldId)
-{
-	const UMjJointvel& E = *static_cast<const UMjJointvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -3870,25 +1877,6 @@ void Clear_Jointvel(void* P, int FieldId)
 	}
 }
 
-bool Present_Tendonpos(const void* P, int FieldId)
-{
-	const UMjTendonpos& E = *static_cast<const UMjTendonpos*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Tendonpos(void* P, int FieldId)
 {
 	UMjTendonpos& E = *static_cast<UMjTendonpos*>(P);
@@ -3903,25 +1891,6 @@ void Clear_Tendonpos(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Tendonvel(const void* P, int FieldId)
-{
-	const UMjTendonvel& E = *static_cast<const UMjTendonvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -3942,25 +1911,6 @@ void Clear_Tendonvel(void* P, int FieldId)
 	}
 }
 
-bool Present_Actuatorpos(const void* P, int FieldId)
-{
-	const UMjActuatorpos& E = *static_cast<const UMjActuatorpos*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Actuatorpos(void* P, int FieldId)
 {
 	UMjActuatorpos& E = *static_cast<UMjActuatorpos*>(P);
@@ -3975,25 +1925,6 @@ void Clear_Actuatorpos(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Actuatorvel(const void* P, int FieldId)
-{
-	const UMjActuatorvel& E = *static_cast<const UMjActuatorvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4014,25 +1945,6 @@ void Clear_Actuatorvel(void* P, int FieldId)
 	}
 }
 
-bool Present_Actuatorfrc(const void* P, int FieldId)
-{
-	const UMjActuatorfrc& E = *static_cast<const UMjActuatorfrc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Actuatorfrc(void* P, int FieldId)
 {
 	UMjActuatorfrc& E = *static_cast<UMjActuatorfrc*>(P);
@@ -4047,25 +1959,6 @@ void Clear_Actuatorfrc(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Jointactuatorfrc(const void* P, int FieldId)
-{
-	const UMjJointactuatorfrc& E = *static_cast<const UMjJointactuatorfrc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4086,25 +1979,6 @@ void Clear_Jointactuatorfrc(void* P, int FieldId)
 	}
 }
 
-bool Present_Tendonactuatorfrc(const void* P, int FieldId)
-{
-	const UMjTendonactuatorfrc& E = *static_cast<const UMjTendonactuatorfrc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Tendonactuatorfrc(void* P, int FieldId)
 {
 	UMjTendonactuatorfrc& E = *static_cast<UMjTendonactuatorfrc*>(P);
@@ -4119,25 +1993,6 @@ void Clear_Tendonactuatorfrc(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Ballquat(const void* P, int FieldId)
-{
-	const UMjBallquat& E = *static_cast<const UMjBallquat*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4158,25 +2013,6 @@ void Clear_Ballquat(void* P, int FieldId)
 	}
 }
 
-bool Present_Ballangvel(const void* P, int FieldId)
-{
-	const UMjBallangvel& E = *static_cast<const UMjBallangvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Ballangvel(void* P, int FieldId)
 {
 	UMjBallangvel& E = *static_cast<UMjBallangvel*>(P);
@@ -4191,25 +2027,6 @@ void Clear_Ballangvel(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Jointlimitpos(const void* P, int FieldId)
-{
-	const UMjJointlimitpos& E = *static_cast<const UMjJointlimitpos*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4230,25 +2047,6 @@ void Clear_Jointlimitpos(void* P, int FieldId)
 	}
 }
 
-bool Present_Jointlimitvel(const void* P, int FieldId)
-{
-	const UMjJointlimitvel& E = *static_cast<const UMjJointlimitvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Jointlimitvel(void* P, int FieldId)
 {
 	UMjJointlimitvel& E = *static_cast<UMjJointlimitvel*>(P);
@@ -4263,25 +2061,6 @@ void Clear_Jointlimitvel(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Jointlimitfrc(const void* P, int FieldId)
-{
-	const UMjJointlimitfrc& E = *static_cast<const UMjJointlimitfrc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4302,25 +2081,6 @@ void Clear_Jointlimitfrc(void* P, int FieldId)
 	}
 }
 
-bool Present_Tendonlimitpos(const void* P, int FieldId)
-{
-	const UMjTendonlimitpos& E = *static_cast<const UMjTendonlimitpos*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Tendonlimitpos(void* P, int FieldId)
 {
 	UMjTendonlimitpos& E = *static_cast<UMjTendonlimitpos*>(P);
@@ -4335,25 +2095,6 @@ void Clear_Tendonlimitpos(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Tendonlimitvel(const void* P, int FieldId)
-{
-	const UMjTendonlimitvel& E = *static_cast<const UMjTendonlimitvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4374,25 +2115,6 @@ void Clear_Tendonlimitvel(void* P, int FieldId)
 	}
 }
 
-bool Present_Tendonlimitfrc(const void* P, int FieldId)
-{
-	const UMjTendonlimitfrc& E = *static_cast<const UMjTendonlimitfrc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Tendonlimitfrc(void* P, int FieldId)
 {
 	UMjTendonlimitfrc& E = *static_cast<UMjTendonlimitfrc*>(P);
@@ -4407,28 +2129,6 @@ void Clear_Tendonlimitfrc(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Framepos(const void* P, int FieldId)
-{
-	const UMjFramepos& E = *static_cast<const UMjFramepos*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
 	}
 }
 
@@ -4451,28 +2151,6 @@ void Clear_Framepos(void* P, int FieldId)
 	}
 }
 
-bool Present_Framequat(const void* P, int FieldId)
-{
-	const UMjFramequat& E = *static_cast<const UMjFramequat*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Framequat(void* P, int FieldId)
 {
 	UMjFramequat& E = *static_cast<UMjFramequat*>(P);
@@ -4489,28 +2167,6 @@ void Clear_Framequat(void* P, int FieldId)
 	case 10: E.Reftype.Reset(); break;
 	case 11: E.Refname.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Framexaxis(const void* P, int FieldId)
-{
-	const UMjFramexaxis& E = *static_cast<const UMjFramexaxis*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
 	}
 }
 
@@ -4533,28 +2189,6 @@ void Clear_Framexaxis(void* P, int FieldId)
 	}
 }
 
-bool Present_Frameyaxis(const void* P, int FieldId)
-{
-	const UMjFrameyaxis& E = *static_cast<const UMjFrameyaxis*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Frameyaxis(void* P, int FieldId)
 {
 	UMjFrameyaxis& E = *static_cast<UMjFrameyaxis*>(P);
@@ -4571,28 +2205,6 @@ void Clear_Frameyaxis(void* P, int FieldId)
 	case 10: E.Reftype.Reset(); break;
 	case 11: E.Refname.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Framezaxis(const void* P, int FieldId)
-{
-	const UMjFramezaxis& E = *static_cast<const UMjFramezaxis*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
 	}
 }
 
@@ -4615,28 +2227,6 @@ void Clear_Framezaxis(void* P, int FieldId)
 	}
 }
 
-bool Present_Framelinvel(const void* P, int FieldId)
-{
-	const UMjFramelinvel& E = *static_cast<const UMjFramelinvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Framelinvel(void* P, int FieldId)
 {
 	UMjFramelinvel& E = *static_cast<UMjFramelinvel*>(P);
@@ -4653,28 +2243,6 @@ void Clear_Framelinvel(void* P, int FieldId)
 	case 10: E.Reftype.Reset(); break;
 	case 11: E.Refname.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Frameangvel(const void* P, int FieldId)
-{
-	const UMjFrameangvel& E = *static_cast<const UMjFrameangvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return E.Reftype.IsSet();
-	case 11: return E.Refname.IsSet();
-	default: return false;
 	}
 }
 
@@ -4697,26 +2265,6 @@ void Clear_Frameangvel(void* P, int FieldId)
 	}
 }
 
-bool Present_Framelinacc(const void* P, int FieldId)
-{
-	const UMjFramelinacc& E = *static_cast<const UMjFramelinacc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	default: return false;
-	}
-}
-
 void Clear_Framelinacc(void* P, int FieldId)
 {
 	UMjFramelinacc& E = *static_cast<UMjFramelinacc*>(P);
@@ -4731,26 +2279,6 @@ void Clear_Framelinacc(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Frameangacc(const void* P, int FieldId)
-{
-	const UMjFrameangacc& E = *static_cast<const UMjFrameangacc*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	default: return false;
 	}
 }
 
@@ -4771,25 +2299,6 @@ void Clear_Frameangacc(void* P, int FieldId)
 	}
 }
 
-bool Present_Subtreecom(const void* P, int FieldId)
-{
-	const UMjSubtreecom& E = *static_cast<const UMjSubtreecom*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Subtreecom(void* P, int FieldId)
 {
 	UMjSubtreecom& E = *static_cast<UMjSubtreecom*>(P);
@@ -4804,25 +2313,6 @@ void Clear_Subtreecom(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Subtreelinvel(const void* P, int FieldId)
-{
-	const UMjSubtreelinvel& E = *static_cast<const UMjSubtreelinvel*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
 	}
 }
 
@@ -4843,25 +2333,6 @@ void Clear_Subtreelinvel(void* P, int FieldId)
 	}
 }
 
-bool Present_Subtreeangmom(const void* P, int FieldId)
-{
-	const UMjSubtreeangmom& E = *static_cast<const UMjSubtreeangmom*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	default: return false;
-	}
-}
-
 void Clear_Subtreeangmom(void* P, int FieldId)
 {
 	UMjSubtreeangmom& E = *static_cast<UMjSubtreeangmom*>(P);
@@ -4879,27 +2350,6 @@ void Clear_Subtreeangmom(void* P, int FieldId)
 	}
 }
 
-bool Present_Insidesite(const void* P, int FieldId)
-{
-	const UMjInsidesite& E = *static_cast<const UMjInsidesite*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return true;
-	case 9: return true;
-	case 10: return true;
-	default: return false;
-	}
-}
-
 void Clear_Insidesite(void* P, int FieldId)
 {
 	UMjInsidesite& E = *static_cast<UMjInsidesite*>(P);
@@ -4914,28 +2364,6 @@ void Clear_Insidesite(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Distance(const void* P, int FieldId)
-{
-	const UMjDistance& E = *static_cast<const UMjDistance*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Geom1.IsSet();
-	case 9: return E.Geom2.IsSet();
-	case 10: return E.Body1.IsSet();
-	case 11: return E.Body2.IsSet();
-	default: return false;
 	}
 }
 
@@ -4960,28 +2388,6 @@ void Clear_Distance(void* P, int FieldId)
 	}
 }
 
-bool Present_Normal(const void* P, int FieldId)
-{
-	const UMjNormal& E = *static_cast<const UMjNormal*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Geom1.IsSet();
-	case 9: return E.Geom2.IsSet();
-	case 10: return E.Body1.IsSet();
-	case 11: return E.Body2.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Normal(void* P, int FieldId)
 {
 	UMjNormal& E = *static_cast<UMjNormal*>(P);
@@ -5003,28 +2409,6 @@ void Clear_Normal(void* P, int FieldId)
 	}
 }
 
-bool Present_Fromto(const void* P, int FieldId)
-{
-	const UMjFromto& E = *static_cast<const UMjFromto*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Geom1.IsSet();
-	case 9: return E.Geom2.IsSet();
-	case 10: return E.Body1.IsSet();
-	case 11: return E.Body2.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Fromto(void* P, int FieldId)
 {
 	UMjFromto& E = *static_cast<UMjFromto*>(P);
@@ -5043,34 +2427,6 @@ void Clear_Fromto(void* P, int FieldId)
 	case 10: E.Body1.Reset(); break;
 	case 11: E.Body2.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_SensorContact(const void* P, int FieldId)
-{
-	const UMjSensorContact& E = *static_cast<const UMjSensorContact*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	case 8: return E.Geom1.IsSet();
-	case 9: return E.Geom2.IsSet();
-	case 10: return E.Body1.IsSet();
-	case 11: return E.Body2.IsSet();
-	case 12: return E.Subtree1.IsSet();
-	case 13: return E.Subtree2.IsSet();
-	case 14: return E.Site.IsSet();
-	case 15: return E.Num.IsSet();
-	case 16: return E.Data.IsSet();
-	case 17: return E.Reduce.IsSet();
-	default: return false;
 	}
 }
 
@@ -5101,24 +2457,6 @@ void Clear_SensorContact(void* P, int FieldId)
 	}
 }
 
-bool Present_EPotential(const void* P, int FieldId)
-{
-	const UMjEPotential& E = *static_cast<const UMjEPotential*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_EPotential(void* P, int FieldId)
 {
 	UMjEPotential& E = *static_cast<UMjEPotential*>(P);
@@ -5133,24 +2471,6 @@ void Clear_EPotential(void* P, int FieldId)
 	case 6: E.Noise.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_EKinetic(const void* P, int FieldId)
-{
-	const UMjEKinetic& E = *static_cast<const UMjEKinetic*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -5171,24 +2491,6 @@ void Clear_EKinetic(void* P, int FieldId)
 	}
 }
 
-bool Present_Clock(const void* P, int FieldId)
-{
-	const UMjClock& E = *static_cast<const UMjClock*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Nsample.IsSet();
-	case 2: return E.Interp.IsSet();
-	case 3: return E.Delay.IsSet();
-	case 4: return E.Interval.IsSet();
-	case 5: return E.Cutoff.IsSet();
-	case 6: return E.Noise.IsSet();
-	case 7: return E.User.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Clock(void* P, int FieldId)
 {
 	UMjClock& E = *static_cast<UMjClock*>(P);
@@ -5206,24 +2508,6 @@ void Clear_Clock(void* P, int FieldId)
 	}
 }
 
-bool Present_Tactile(const void* P, int FieldId)
-{
-	const UMjTactile& E = *static_cast<const UMjTactile*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return true;
-	case 2: return true;
-	case 3: return E.Nsample.IsSet();
-	case 4: return E.Interp.IsSet();
-	case 5: return E.Delay.IsSet();
-	case 6: return E.Interval.IsSet();
-	case 7: return E.User.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Tactile(void* P, int FieldId)
 {
 	UMjTactile& E = *static_cast<UMjTactile*>(P);
@@ -5236,25 +2520,6 @@ void Clear_Tactile(void* P, int FieldId)
 	case 6: E.Interval.Reset(); break;
 	case 7: E.User.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_SensorUser(const void* P, int FieldId)
-{
-	const UMjSensorUser& E = *static_cast<const UMjSensorUser*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Objtype.IsSet();
-	case 2: return E.Objname.IsSet();
-	case 3: return E.Datatype.IsSet();
-	case 4: return E.Needstage.IsSet();
-	case 5: return E.Dim.IsSet();
-	case 6: return E.Cutoff.IsSet();
-	case 7: return E.Noise.IsSet();
-	case 8: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -5276,25 +2541,6 @@ void Clear_SensorUser(void* P, int FieldId)
 	}
 }
 
-bool Present_SensorPlugin(const void* P, int FieldId)
-{
-	const UMjSensorPlugin& E = *static_cast<const UMjSensorPlugin*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Plugin.IsSet();
-	case 2: return E.Instance.IsSet();
-	case 3: return E.Cutoff.IsSet();
-	case 4: return E.Objtype.IsSet();
-	case 5: return E.Objname.IsSet();
-	case 6: return E.Reftype.IsSet();
-	case 7: return E.Refname.IsSet();
-	case 8: return E.User.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_SensorPlugin(void* P, int FieldId)
 {
 	UMjSensorPlugin& E = *static_cast<UMjSensorPlugin*>(P);
@@ -5313,28 +2559,9 @@ void Clear_SensorPlugin(void* P, int FieldId)
 	}
 }
 
-bool Present_Custom(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Custom(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Numeric(const void* P, int FieldId)
-{
-	const UMjNumeric& E = *static_cast<const UMjNumeric*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Size.IsSet();
-	case 2: return E.Data.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Numeric(void* P, int FieldId)
@@ -5348,50 +2575,14 @@ void Clear_Numeric(void* P, int FieldId)
 	}
 }
 
-bool Present_Text(const void* P, int FieldId)
-{
-	const UMjText& E = *static_cast<const UMjText*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return true;
-	default: return false;
-	}
-}
-
 void Clear_Text(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
 }
 
-bool Present_Tuple(const void* P, int FieldId)
-{
-	const UMjTuple& E = *static_cast<const UMjTuple*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Tuple(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_TupleElement(const void* P, int FieldId)
-{
-	const UMjTupleElement& E = *static_cast<const UMjTupleElement*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return true;
-	case 2: return E.Prm.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_TupleElement(void* P, int FieldId)
@@ -5404,33 +2595,9 @@ void Clear_TupleElement(void* P, int FieldId)
 	}
 }
 
-bool Present_Keyframe(const void* P, int FieldId)
-{
-	(void)P; (void)FieldId;
-	return false;
-}
-
 void Clear_Keyframe(void* P, int FieldId)
 {
 	(void)P; (void)FieldId;
-}
-
-bool Present_Key(const void* P, int FieldId)
-{
-	const UMjKey& E = *static_cast<const UMjKey*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Time.IsSet();
-	case 2: return E.Qpos.IsSet();
-	case 3: return E.Qvel.IsSet();
-	case 4: return E.Act.IsSet();
-	case 5: return E.Mpos.IsSet();
-	case 6: return E.Mquat.IsSet();
-	case 7: return E.Ctrl.IsSet();
-	default: return false;
-	}
 }
 
 void Clear_Key(void* P, int FieldId)
@@ -5450,20 +2617,6 @@ void Clear_Key(void* P, int FieldId)
 	}
 }
 
-bool Present_Frame(const void* P, int FieldId)
-{
-	const UMjFrame& E = *static_cast<const UMjFrame*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.MjName.IsSet();
-	case 1: return E.Childclass.IsSet();
-	case 2: return E.Pos.IsSet();
-	case 3: return E.Quat.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_Frame(void* P, int FieldId)
 {
 	UMjFrame& E = *static_cast<UMjFrame*>(P);
@@ -5474,21 +2627,6 @@ void Clear_Frame(void* P, int FieldId)
 	case 2: E.Pos.Reset(); break;
 	case 3: E.Quat.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_Replicate(const void* P, int FieldId)
-{
-	const UMjReplicate& E = *static_cast<const UMjReplicate*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return true;
-	case 1: return E.Offset.IsSet();
-	case 2: return E.Euler.IsSet();
-	case 3: return E.Sep.IsSet();
-	case 4: return E.Childclass.IsSet();
-	default: return false;
 	}
 }
 
@@ -5505,19 +2643,6 @@ void Clear_Replicate(void* P, int FieldId)
 	}
 }
 
-bool Present_EqualityDefault(const void* P, int FieldId)
-{
-	const UMjEqualityDefault& E = *static_cast<const UMjEqualityDefault*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.ActiveFlag.IsSet();
-	case 1: return E.Solref.IsSet();
-	case 2: return E.Solimp.IsSet();
-	default: return false;
-	}
-}
-
 void Clear_EqualityDefault(void* P, int FieldId)
 {
 	UMjEqualityDefault& E = *static_cast<UMjEqualityDefault*>(P);
@@ -5527,32 +2652,6 @@ void Clear_EqualityDefault(void* P, int FieldId)
 	case 1: E.Solref.Reset(); break;
 	case 2: E.Solimp.Reset(); break;
 	default: break;
-	}
-}
-
-bool Present_TendonDefault(const void* P, int FieldId)
-{
-	const UMjTendonDefault& E = *static_cast<const UMjTendonDefault*>(P);
-	(void)E;
-	switch (FieldId)
-	{
-	case 0: return E.Group.IsSet();
-	case 1: return E.Limited.IsSet();
-	case 2: return E.Range.IsSet();
-	case 3: return E.Solreflimit.IsSet();
-	case 4: return E.Solimplimit.IsSet();
-	case 5: return E.Solreffriction.IsSet();
-	case 6: return E.Solimpfriction.IsSet();
-	case 7: return E.Frictionloss.IsSet();
-	case 8: return E.Springlength.IsSet();
-	case 9: return E.Width.IsSet();
-	case 10: return E.Material.IsSet();
-	case 11: return E.Margin.IsSet();
-	case 12: return E.Stiffness.IsSet();
-	case 13: return E.Damping.IsSet();
-	case 14: return E.Rgba.IsSet();
-	case 15: return E.User.IsSet();
-	default: return false;
 	}
 }
 
@@ -5581,7 +2680,6 @@ void Clear_TendonDefault(void* P, int FieldId)
 	}
 }
 
-bool Present_None(const void*, int) { return false; }
 void Clear_None(void*, int) {}
 
 struct FThunkRow
@@ -5591,153 +2689,153 @@ struct FThunkRow
 };
 
 const FThunkRow Rows[] = {
-	{ ElementType::Model, { &Present_Model, &Clear_Model } },
-	{ ElementType::Compiler, { &Present_Compiler, &Clear_Compiler } },
-	{ ElementType::LengthRange, { &Present_LengthRange, &Clear_LengthRange } },
-	{ ElementType::Option, { &Present_Option, &Clear_Option } },
-	{ ElementType::Flag, { &Present_Flag, &Clear_Flag } },
-	{ ElementType::Size, { &Present_Size, &Clear_Size } },
-	{ ElementType::Statistic, { &Present_Statistic, &Clear_Statistic } },
-	{ ElementType::Visual, { &Present_Visual, &Clear_Visual } },
-	{ ElementType::VisualGlobal, { &Present_VisualGlobal, &Clear_VisualGlobal } },
-	{ ElementType::VisualQuality, { &Present_VisualQuality, &Clear_VisualQuality } },
-	{ ElementType::VisualHeadlight, { &Present_VisualHeadlight, &Clear_VisualHeadlight } },
-	{ ElementType::VisualMap, { &Present_VisualMap, &Clear_VisualMap } },
-	{ ElementType::VisualScale, { &Present_VisualScale, &Clear_VisualScale } },
-	{ ElementType::VisualRgba, { &Present_VisualRgba, &Clear_VisualRgba } },
-	{ ElementType::Default, { &Present_Default, &Clear_Default } },
-	{ ElementType::MaterialLayer, { &Present_MaterialLayer, &Clear_MaterialLayer } },
-	{ ElementType::Extension, { &Present_Extension, &Clear_Extension } },
-	{ ElementType::PluginDef, { &Present_PluginDef, &Clear_PluginDef } },
-	{ ElementType::PluginInstance, { &Present_PluginInstance, &Clear_PluginInstance } },
-	{ ElementType::Config, { &Present_Config, &Clear_Config } },
-	{ ElementType::Asset, { &Present_Asset, &Clear_Asset } },
-	{ ElementType::Mesh, { &Present_Mesh, &Clear_Mesh } },
-	{ ElementType::PluginRef, { &Present_PluginRef, &Clear_PluginRef } },
-	{ ElementType::Hfield, { &Present_Hfield, &Clear_Hfield } },
-	{ ElementType::Skin, { &Present_Skin, &Clear_Skin } },
-	{ ElementType::SkinBone, { &Present_SkinBone, &Clear_SkinBone } },
-	{ ElementType::Texture, { &Present_Texture, &Clear_Texture } },
-	{ ElementType::Material, { &Present_Material, &Clear_Material } },
-	{ ElementType::ModelAsset, { &Present_ModelAsset, &Clear_ModelAsset } },
-	{ ElementType::Body, { &Present_Body, &Clear_Body } },
-	{ ElementType::Inertial, { &Present_Inertial, &Clear_Inertial } },
-	{ ElementType::Joint, { &Present_Joint, &Clear_Joint } },
-	{ ElementType::FreeJoint, { &Present_FreeJoint, &Clear_FreeJoint } },
-	{ ElementType::Geom, { &Present_Geom, &Clear_Geom } },
-	{ ElementType::Attach, { &Present_Attach, &Clear_Attach } },
-	{ ElementType::Site, { &Present_Site, &Clear_Site } },
-	{ ElementType::Camera, { &Present_Camera, &Clear_Camera } },
-	{ ElementType::Light, { &Present_Light, &Clear_Light } },
-	{ ElementType::Composite, { &Present_Composite, &Clear_Composite } },
-	{ ElementType::CompositeJoint, { &Present_CompositeJoint, &Clear_CompositeJoint } },
-	{ ElementType::CompositeSkin, { &Present_CompositeSkin, &Clear_CompositeSkin } },
-	{ ElementType::CompositeGeom, { &Present_CompositeGeom, &Clear_CompositeGeom } },
-	{ ElementType::CompositeSite, { &Present_CompositeSite, &Clear_CompositeSite } },
-	{ ElementType::Flexcomp, { &Present_Flexcomp, &Clear_Flexcomp } },
-	{ ElementType::FlexcompEdge, { &Present_FlexcompEdge, &Clear_FlexcompEdge } },
-	{ ElementType::FlexElasticity, { &Present_FlexElasticity, &Clear_FlexElasticity } },
-	{ ElementType::FlexContact, { &Present_FlexContact, &Clear_FlexContact } },
-	{ ElementType::FlexcompPin, { &Present_FlexcompPin, &Clear_FlexcompPin } },
-	{ ElementType::Deformable, { &Present_Deformable, &Clear_Deformable } },
-	{ ElementType::Flex, { &Present_Flex, &Clear_Flex } },
-	{ ElementType::FlexEdge, { &Present_FlexEdge, &Clear_FlexEdge } },
-	{ ElementType::Contact, { &Present_Contact, &Clear_Contact } },
-	{ ElementType::Pair, { &Present_Pair, &Clear_Pair } },
-	{ ElementType::Exclude, { &Present_Exclude, &Clear_Exclude } },
-	{ ElementType::Tendon, { &Present_Tendon, &Clear_Tendon } },
-	{ ElementType::Spatial, { &Present_Spatial, &Clear_Spatial } },
-	{ ElementType::SpatialSite, { &Present_SpatialSite, &Clear_SpatialSite } },
-	{ ElementType::SpatialGeom, { &Present_SpatialGeom, &Clear_SpatialGeom } },
-	{ ElementType::Pulley, { &Present_Pulley, &Clear_Pulley } },
-	{ ElementType::Fixed, { &Present_Fixed, &Clear_Fixed } },
-	{ ElementType::FixedJoint, { &Present_FixedJoint, &Clear_FixedJoint } },
-	{ ElementType::Equality, { &Present_Equality, &Clear_Equality } },
-	{ ElementType::Connect, { &Present_Connect, &Clear_Connect } },
-	{ ElementType::Weld, { &Present_Weld, &Clear_Weld } },
-	{ ElementType::EqualityJoint, { &Present_EqualityJoint, &Clear_EqualityJoint } },
-	{ ElementType::EqualityTendon, { &Present_EqualityTendon, &Clear_EqualityTendon } },
-	{ ElementType::EqualityFlex, { &Present_EqualityFlex, &Clear_EqualityFlex } },
-	{ ElementType::Flexvert, { &Present_Flexvert, &Clear_Flexvert } },
-	{ ElementType::Flexstrain, { &Present_Flexstrain, &Clear_Flexstrain } },
-	{ ElementType::Actuator, { &Present_Actuator, &Clear_Actuator } },
-	{ ElementType::ActuatorGeneral, { &Present_ActuatorGeneral, &Clear_ActuatorGeneral } },
-	{ ElementType::Motor, { &Present_Motor, &Clear_Motor } },
-	{ ElementType::Position, { &Present_Position, &Clear_Position } },
-	{ ElementType::Velocity, { &Present_Velocity, &Clear_Velocity } },
-	{ ElementType::IntVelocity, { &Present_IntVelocity, &Clear_IntVelocity } },
-	{ ElementType::OrientationActuator, { &Present_OrientationActuator, &Clear_OrientationActuator } },
-	{ ElementType::Pid, { &Present_Pid, &Clear_Pid } },
-	{ ElementType::Damper, { &Present_Damper, &Clear_Damper } },
-	{ ElementType::Cylinder, { &Present_Cylinder, &Clear_Cylinder } },
-	{ ElementType::Muscle, { &Present_Muscle, &Clear_Muscle } },
-	{ ElementType::Adhesion, { &Present_Adhesion, &Clear_Adhesion } },
-	{ ElementType::DcMotor, { &Present_DcMotor, &Clear_DcMotor } },
-	{ ElementType::ActuatorPlugin, { &Present_ActuatorPlugin, &Clear_ActuatorPlugin } },
-	{ ElementType::Sensor, { &Present_Sensor, &Clear_Sensor } },
-	{ ElementType::Touch, { &Present_Touch, &Clear_Touch } },
-	{ ElementType::Accelerometer, { &Present_Accelerometer, &Clear_Accelerometer } },
-	{ ElementType::Velocimeter, { &Present_Velocimeter, &Clear_Velocimeter } },
-	{ ElementType::Gyro, { &Present_Gyro, &Clear_Gyro } },
-	{ ElementType::Force, { &Present_Force, &Clear_Force } },
-	{ ElementType::Torque, { &Present_Torque, &Clear_Torque } },
-	{ ElementType::Magnetometer, { &Present_Magnetometer, &Clear_Magnetometer } },
-	{ ElementType::Camprojection, { &Present_Camprojection, &Clear_Camprojection } },
-	{ ElementType::Rangefinder, { &Present_Rangefinder, &Clear_Rangefinder } },
-	{ ElementType::Jointpos, { &Present_Jointpos, &Clear_Jointpos } },
-	{ ElementType::Jointvel, { &Present_Jointvel, &Clear_Jointvel } },
-	{ ElementType::Tendonpos, { &Present_Tendonpos, &Clear_Tendonpos } },
-	{ ElementType::Tendonvel, { &Present_Tendonvel, &Clear_Tendonvel } },
-	{ ElementType::Actuatorpos, { &Present_Actuatorpos, &Clear_Actuatorpos } },
-	{ ElementType::Actuatorvel, { &Present_Actuatorvel, &Clear_Actuatorvel } },
-	{ ElementType::Actuatorfrc, { &Present_Actuatorfrc, &Clear_Actuatorfrc } },
-	{ ElementType::Jointactuatorfrc, { &Present_Jointactuatorfrc, &Clear_Jointactuatorfrc } },
-	{ ElementType::Tendonactuatorfrc, { &Present_Tendonactuatorfrc, &Clear_Tendonactuatorfrc } },
-	{ ElementType::Ballquat, { &Present_Ballquat, &Clear_Ballquat } },
-	{ ElementType::Ballangvel, { &Present_Ballangvel, &Clear_Ballangvel } },
-	{ ElementType::Jointlimitpos, { &Present_Jointlimitpos, &Clear_Jointlimitpos } },
-	{ ElementType::Jointlimitvel, { &Present_Jointlimitvel, &Clear_Jointlimitvel } },
-	{ ElementType::Jointlimitfrc, { &Present_Jointlimitfrc, &Clear_Jointlimitfrc } },
-	{ ElementType::Tendonlimitpos, { &Present_Tendonlimitpos, &Clear_Tendonlimitpos } },
-	{ ElementType::Tendonlimitvel, { &Present_Tendonlimitvel, &Clear_Tendonlimitvel } },
-	{ ElementType::Tendonlimitfrc, { &Present_Tendonlimitfrc, &Clear_Tendonlimitfrc } },
-	{ ElementType::Framepos, { &Present_Framepos, &Clear_Framepos } },
-	{ ElementType::Framequat, { &Present_Framequat, &Clear_Framequat } },
-	{ ElementType::Framexaxis, { &Present_Framexaxis, &Clear_Framexaxis } },
-	{ ElementType::Frameyaxis, { &Present_Frameyaxis, &Clear_Frameyaxis } },
-	{ ElementType::Framezaxis, { &Present_Framezaxis, &Clear_Framezaxis } },
-	{ ElementType::Framelinvel, { &Present_Framelinvel, &Clear_Framelinvel } },
-	{ ElementType::Frameangvel, { &Present_Frameangvel, &Clear_Frameangvel } },
-	{ ElementType::Framelinacc, { &Present_Framelinacc, &Clear_Framelinacc } },
-	{ ElementType::Frameangacc, { &Present_Frameangacc, &Clear_Frameangacc } },
-	{ ElementType::Subtreecom, { &Present_Subtreecom, &Clear_Subtreecom } },
-	{ ElementType::Subtreelinvel, { &Present_Subtreelinvel, &Clear_Subtreelinvel } },
-	{ ElementType::Subtreeangmom, { &Present_Subtreeangmom, &Clear_Subtreeangmom } },
-	{ ElementType::Insidesite, { &Present_Insidesite, &Clear_Insidesite } },
-	{ ElementType::Distance, { &Present_Distance, &Clear_Distance } },
-	{ ElementType::Normal, { &Present_Normal, &Clear_Normal } },
-	{ ElementType::Fromto, { &Present_Fromto, &Clear_Fromto } },
-	{ ElementType::SensorContact, { &Present_SensorContact, &Clear_SensorContact } },
-	{ ElementType::EPotential, { &Present_EPotential, &Clear_EPotential } },
-	{ ElementType::EKinetic, { &Present_EKinetic, &Clear_EKinetic } },
-	{ ElementType::Clock, { &Present_Clock, &Clear_Clock } },
-	{ ElementType::Tactile, { &Present_Tactile, &Clear_Tactile } },
-	{ ElementType::SensorUser, { &Present_SensorUser, &Clear_SensorUser } },
-	{ ElementType::SensorPlugin, { &Present_SensorPlugin, &Clear_SensorPlugin } },
-	{ ElementType::Custom, { &Present_Custom, &Clear_Custom } },
-	{ ElementType::Numeric, { &Present_Numeric, &Clear_Numeric } },
-	{ ElementType::Text, { &Present_Text, &Clear_Text } },
-	{ ElementType::Tuple, { &Present_Tuple, &Clear_Tuple } },
-	{ ElementType::TupleElement, { &Present_TupleElement, &Clear_TupleElement } },
-	{ ElementType::Keyframe, { &Present_Keyframe, &Clear_Keyframe } },
-	{ ElementType::Key, { &Present_Key, &Clear_Key } },
-	{ ElementType::Frame, { &Present_Frame, &Clear_Frame } },
-	{ ElementType::Replicate, { &Present_Replicate, &Clear_Replicate } },
-	{ ElementType::EqualityDefault, { &Present_EqualityDefault, &Clear_EqualityDefault } },
-	{ ElementType::TendonDefault, { &Present_TendonDefault, &Clear_TendonDefault } },
+	{ ElementType::Model, { &Clear_Model } },
+	{ ElementType::Compiler, { &Clear_Compiler } },
+	{ ElementType::LengthRange, { &Clear_LengthRange } },
+	{ ElementType::Option, { &Clear_Option } },
+	{ ElementType::Flag, { &Clear_Flag } },
+	{ ElementType::Size, { &Clear_Size } },
+	{ ElementType::Statistic, { &Clear_Statistic } },
+	{ ElementType::Visual, { &Clear_Visual } },
+	{ ElementType::VisualGlobal, { &Clear_VisualGlobal } },
+	{ ElementType::VisualQuality, { &Clear_VisualQuality } },
+	{ ElementType::VisualHeadlight, { &Clear_VisualHeadlight } },
+	{ ElementType::VisualMap, { &Clear_VisualMap } },
+	{ ElementType::VisualScale, { &Clear_VisualScale } },
+	{ ElementType::VisualRgba, { &Clear_VisualRgba } },
+	{ ElementType::Default, { &Clear_Default } },
+	{ ElementType::MaterialLayer, { &Clear_MaterialLayer } },
+	{ ElementType::Extension, { &Clear_Extension } },
+	{ ElementType::PluginDef, { &Clear_PluginDef } },
+	{ ElementType::PluginInstance, { &Clear_PluginInstance } },
+	{ ElementType::Config, { &Clear_Config } },
+	{ ElementType::Asset, { &Clear_Asset } },
+	{ ElementType::Mesh, { &Clear_Mesh } },
+	{ ElementType::PluginRef, { &Clear_PluginRef } },
+	{ ElementType::Hfield, { &Clear_Hfield } },
+	{ ElementType::Skin, { &Clear_Skin } },
+	{ ElementType::SkinBone, { &Clear_SkinBone } },
+	{ ElementType::Texture, { &Clear_Texture } },
+	{ ElementType::Material, { &Clear_Material } },
+	{ ElementType::ModelAsset, { &Clear_ModelAsset } },
+	{ ElementType::Body, { &Clear_Body } },
+	{ ElementType::Inertial, { &Clear_Inertial } },
+	{ ElementType::Joint, { &Clear_Joint } },
+	{ ElementType::FreeJoint, { &Clear_FreeJoint } },
+	{ ElementType::Geom, { &Clear_Geom } },
+	{ ElementType::Attach, { &Clear_Attach } },
+	{ ElementType::Site, { &Clear_Site } },
+	{ ElementType::Camera, { &Clear_Camera } },
+	{ ElementType::Light, { &Clear_Light } },
+	{ ElementType::Composite, { &Clear_Composite } },
+	{ ElementType::CompositeJoint, { &Clear_CompositeJoint } },
+	{ ElementType::CompositeSkin, { &Clear_CompositeSkin } },
+	{ ElementType::CompositeGeom, { &Clear_CompositeGeom } },
+	{ ElementType::CompositeSite, { &Clear_CompositeSite } },
+	{ ElementType::Flexcomp, { &Clear_Flexcomp } },
+	{ ElementType::FlexcompEdge, { &Clear_FlexcompEdge } },
+	{ ElementType::FlexElasticity, { &Clear_FlexElasticity } },
+	{ ElementType::FlexContact, { &Clear_FlexContact } },
+	{ ElementType::FlexcompPin, { &Clear_FlexcompPin } },
+	{ ElementType::Deformable, { &Clear_Deformable } },
+	{ ElementType::Flex, { &Clear_Flex } },
+	{ ElementType::FlexEdge, { &Clear_FlexEdge } },
+	{ ElementType::Contact, { &Clear_Contact } },
+	{ ElementType::Pair, { &Clear_Pair } },
+	{ ElementType::Exclude, { &Clear_Exclude } },
+	{ ElementType::Tendon, { &Clear_Tendon } },
+	{ ElementType::Spatial, { &Clear_Spatial } },
+	{ ElementType::SpatialSite, { &Clear_SpatialSite } },
+	{ ElementType::SpatialGeom, { &Clear_SpatialGeom } },
+	{ ElementType::Pulley, { &Clear_Pulley } },
+	{ ElementType::Fixed, { &Clear_Fixed } },
+	{ ElementType::FixedJoint, { &Clear_FixedJoint } },
+	{ ElementType::Equality, { &Clear_Equality } },
+	{ ElementType::Connect, { &Clear_Connect } },
+	{ ElementType::Weld, { &Clear_Weld } },
+	{ ElementType::EqualityJoint, { &Clear_EqualityJoint } },
+	{ ElementType::EqualityTendon, { &Clear_EqualityTendon } },
+	{ ElementType::EqualityFlex, { &Clear_EqualityFlex } },
+	{ ElementType::Flexvert, { &Clear_Flexvert } },
+	{ ElementType::Flexstrain, { &Clear_Flexstrain } },
+	{ ElementType::Actuator, { &Clear_Actuator } },
+	{ ElementType::ActuatorGeneral, { &Clear_ActuatorGeneral } },
+	{ ElementType::Motor, { &Clear_Motor } },
+	{ ElementType::Position, { &Clear_Position } },
+	{ ElementType::Velocity, { &Clear_Velocity } },
+	{ ElementType::IntVelocity, { &Clear_IntVelocity } },
+	{ ElementType::OrientationActuator, { &Clear_OrientationActuator } },
+	{ ElementType::Pid, { &Clear_Pid } },
+	{ ElementType::Damper, { &Clear_Damper } },
+	{ ElementType::Cylinder, { &Clear_Cylinder } },
+	{ ElementType::Muscle, { &Clear_Muscle } },
+	{ ElementType::Adhesion, { &Clear_Adhesion } },
+	{ ElementType::DcMotor, { &Clear_DcMotor } },
+	{ ElementType::ActuatorPlugin, { &Clear_ActuatorPlugin } },
+	{ ElementType::Sensor, { &Clear_Sensor } },
+	{ ElementType::Touch, { &Clear_Touch } },
+	{ ElementType::Accelerometer, { &Clear_Accelerometer } },
+	{ ElementType::Velocimeter, { &Clear_Velocimeter } },
+	{ ElementType::Gyro, { &Clear_Gyro } },
+	{ ElementType::Force, { &Clear_Force } },
+	{ ElementType::Torque, { &Clear_Torque } },
+	{ ElementType::Magnetometer, { &Clear_Magnetometer } },
+	{ ElementType::Camprojection, { &Clear_Camprojection } },
+	{ ElementType::Rangefinder, { &Clear_Rangefinder } },
+	{ ElementType::Jointpos, { &Clear_Jointpos } },
+	{ ElementType::Jointvel, { &Clear_Jointvel } },
+	{ ElementType::Tendonpos, { &Clear_Tendonpos } },
+	{ ElementType::Tendonvel, { &Clear_Tendonvel } },
+	{ ElementType::Actuatorpos, { &Clear_Actuatorpos } },
+	{ ElementType::Actuatorvel, { &Clear_Actuatorvel } },
+	{ ElementType::Actuatorfrc, { &Clear_Actuatorfrc } },
+	{ ElementType::Jointactuatorfrc, { &Clear_Jointactuatorfrc } },
+	{ ElementType::Tendonactuatorfrc, { &Clear_Tendonactuatorfrc } },
+	{ ElementType::Ballquat, { &Clear_Ballquat } },
+	{ ElementType::Ballangvel, { &Clear_Ballangvel } },
+	{ ElementType::Jointlimitpos, { &Clear_Jointlimitpos } },
+	{ ElementType::Jointlimitvel, { &Clear_Jointlimitvel } },
+	{ ElementType::Jointlimitfrc, { &Clear_Jointlimitfrc } },
+	{ ElementType::Tendonlimitpos, { &Clear_Tendonlimitpos } },
+	{ ElementType::Tendonlimitvel, { &Clear_Tendonlimitvel } },
+	{ ElementType::Tendonlimitfrc, { &Clear_Tendonlimitfrc } },
+	{ ElementType::Framepos, { &Clear_Framepos } },
+	{ ElementType::Framequat, { &Clear_Framequat } },
+	{ ElementType::Framexaxis, { &Clear_Framexaxis } },
+	{ ElementType::Frameyaxis, { &Clear_Frameyaxis } },
+	{ ElementType::Framezaxis, { &Clear_Framezaxis } },
+	{ ElementType::Framelinvel, { &Clear_Framelinvel } },
+	{ ElementType::Frameangvel, { &Clear_Frameangvel } },
+	{ ElementType::Framelinacc, { &Clear_Framelinacc } },
+	{ ElementType::Frameangacc, { &Clear_Frameangacc } },
+	{ ElementType::Subtreecom, { &Clear_Subtreecom } },
+	{ ElementType::Subtreelinvel, { &Clear_Subtreelinvel } },
+	{ ElementType::Subtreeangmom, { &Clear_Subtreeangmom } },
+	{ ElementType::Insidesite, { &Clear_Insidesite } },
+	{ ElementType::Distance, { &Clear_Distance } },
+	{ ElementType::Normal, { &Clear_Normal } },
+	{ ElementType::Fromto, { &Clear_Fromto } },
+	{ ElementType::SensorContact, { &Clear_SensorContact } },
+	{ ElementType::EPotential, { &Clear_EPotential } },
+	{ ElementType::EKinetic, { &Clear_EKinetic } },
+	{ ElementType::Clock, { &Clear_Clock } },
+	{ ElementType::Tactile, { &Clear_Tactile } },
+	{ ElementType::SensorUser, { &Clear_SensorUser } },
+	{ ElementType::SensorPlugin, { &Clear_SensorPlugin } },
+	{ ElementType::Custom, { &Clear_Custom } },
+	{ ElementType::Numeric, { &Clear_Numeric } },
+	{ ElementType::Text, { &Clear_Text } },
+	{ ElementType::Tuple, { &Clear_Tuple } },
+	{ ElementType::TupleElement, { &Clear_TupleElement } },
+	{ ElementType::Keyframe, { &Clear_Keyframe } },
+	{ ElementType::Key, { &Clear_Key } },
+	{ ElementType::Frame, { &Clear_Frame } },
+	{ ElementType::Replicate, { &Clear_Replicate } },
+	{ ElementType::EqualityDefault, { &Clear_EqualityDefault } },
+	{ ElementType::TendonDefault, { &Clear_TendonDefault } },
 };
 
-const FMjElementThunks NoThunks{ &Present_None, &Clear_None };
+const FMjElementThunks NoThunks{ &Clear_None };
 
 }  // namespace
 
@@ -5746,11 +2844,6 @@ const FMjElementThunks& Thunks(ElementType Type)
 	for (const FThunkRow& Row : Rows)
 		if (Row.Type == Type) return Row.Thunks;
 	return NoThunks;
-}
-
-const ps::mjcf::reflect::ElementDescriptor& Describe(ElementType Type)
-{
-	return ps::mjcf::reflect::Describe(Type);
 }
 
 }  // namespace ps::ue

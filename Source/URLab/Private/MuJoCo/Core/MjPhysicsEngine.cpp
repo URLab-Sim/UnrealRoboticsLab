@@ -407,7 +407,7 @@ void ForEachSpecNode(AActor& Actor, TFunctionRef<void(UMjNodeComponent&)> Visit)
 // it -- keyed on the node's creation serial, which is minted once per element
 // and never reissued.
 //
-// The rules follow the ProtoSpec bridge's `Recompile` (protospec/lib/compile),
+// The rules follow the retired ProtoSpec compile bridge's `Recompile`,
 // which is the same migration one level down:
 //
 //   * a surviving element's state is written back at its NEW address,

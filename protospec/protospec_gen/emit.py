@@ -7,8 +7,8 @@ It consumes the AST :mod:`protospec_gen.frontend` builds from upstream's
     types.h      element structs, enums, union child-list item wrappers, the
                  ElementType enum, and the Clone/operator== declarations.
     types.cc     deep Clone() and field-wise operator== definitions.
-    visit.h      the templated per-element/union Visit(elem, V&&) hook
-                 (plan Section 3's Serialize hook); field-id + child traversal.
+    visit.h      the templated per-element/union Visit(elem, V&&) hook;
+                 field-id + child traversal.
     reflect.h    field/child/constraint/element/union descriptor tables (the
                  downstream UE mirroring contract; shape documented in that
                  header).
@@ -20,7 +20,7 @@ It consumes the AST :mod:`protospec_gen.frontend` builds from upstream's
     xml_binding.h  per-element MJCF binding table types (attr/alias/child rows).
     xml_binding.cc the binding tables the handwritten reader/writer drive.
 
-Representation decisions (see the plan's DR-1..DR-11):
+Representation decisions:
   * presence: optional element fields are ``ps::opt<T>``; required fields are
     plain ``T``.
   * arrays: fixed ``[N]`` -> ``std::array<T,N>``; range ``[lo..hi]`` ->
@@ -470,7 +470,7 @@ def emit_visit_h(s: Schema) -> str:
     w = o.append
     w(BANNER)
     w("//")
-    w("// Generated Visit(elem, V&&) hook (plan Section 3's Serialize hook). One")
+    w("// Generated Visit(elem, V&&) hook: the schema-driven serialize seam. One")
     w("// traversal, N consumers: V receives every field by id + name + typed")
     w("// reference, and every child list. V's expected surface:")
     w("//   template <class T> void field(int id, const char* name, T& value);")
@@ -936,7 +936,7 @@ def emit_defaults_h(s: Schema) -> str:
     w = o.append
     w(BANNER)
     w("//")
-    w("// IDL `=` defaults, applied on request (never silently written; DR-1).")
+    w("// IDL `=` defaults, applied on request; never silently written.")
     w("// ApplyDefault populates only fields the IDL gives a default; every other")
     w("// presence-tracked field stays unset. HasDefaults() reports whether an")
     w("// element has any (an empty ApplyDefault is still generated for symmetry).")
@@ -981,7 +981,7 @@ def emit_defaults_cc(s: Schema) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# XML binding tables (the reader/writer contract; plan Section 3 xml_binding)   #
+# XML binding tables (the reader/writer contract)                              #
 # --------------------------------------------------------------------------- #
 # These describe, per element, exactly what an MJCF reader and writer need and
 # nothing they do not: the element's XML tag; every attribute (its XML
@@ -1079,7 +1079,7 @@ def emit_xml_binding_h(s: Schema) -> str:
     w("                                // writer still emits it plainly.")
     w("};")
     w("")
-    w("// A read-only input-alias attribute (Q-ORIENT/Q-INERTIA): an MJCF attribute")
+    w("// A read-only input-alias attribute: an MJCF attribute")
     w("// accepted on input that is canonicalized into a sibling field at parse end")
     w("// (euler/axisangle/xyaxes/zaxis -> quat; fullinertia -> diaginertia+iquat).")
     w("// It has no field of its own; the reader accepts it (so it is not an unknown")

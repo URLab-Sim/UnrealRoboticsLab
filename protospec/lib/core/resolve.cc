@@ -1,11 +1,11 @@
-// Lifted from MuJoCo (CDR-3, pin mjVERSION_HEADER 3010000, Apache-2.0, (c)
+// Lifted from MuJoCo (pin mjVERSION_HEADER 3010000, Apache-2.0, (c)
 // DeepMind Technologies Limited -- see NOTICE). The numeric kernels below are
 // lifted verbatim from the vendored user-layer math pool and registered in
 // snapshots/lifted_code.json (ids: resolve_orientation, full_inertia; sources
 // user_objects.cc ResolveOrientation and user_util.cc mjuu_fullInertia + its
 // mjuu_* dependencies). This module is MuJoCo-free (no mujoco.h) so the reader
-// (protospec_io) can canonicalize orientation/inertia at parse end without
-// linking MuJoCo (plan.md Section 3 core/resolve). The mjuu_* helpers are a
+// (protospec_mjcf) can canonicalize orientation/inertia at parse end without
+// linking MuJoCo. The mjuu_* helpers are a
 // self-contained copy of the same functions in attic/compile/lifted/mjuu_util.cc;
 // they carry no state and are drift-gated against the upstream originals.
 #include "resolve.h"

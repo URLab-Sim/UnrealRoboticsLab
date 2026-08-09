@@ -54,12 +54,12 @@ $LogDir   = Join-Path $BuildDir "asan_logs"
 # The instrumentable (MuJoCo-free) targets and their ctest suites.
 $Targets = @(
   "protospec_tests", "protospec_io_tests",
-  "protospec_validate_tests", "protospec_sdk_tests",
-  "ps_roundtrip", "ps_validate"
+  "protospec_sdk_tests", "protospec_public_api_tests",
+  "ps_roundtrip"
 )
 $Suites = @(
   "protospec_tests", "protospec_io_tests",
-  "protospec_validate_tests", "protospec_sdk_tests"
+  "protospec_sdk_tests", "protospec_public_api_tests"
 )
 
 # ASan runtime knobs: never abort (so we can triage every file), surface stack

@@ -144,8 +144,10 @@ public class URLab : ModuleRules
 	{
 		// The staged header tree mirrors ProtoSpec's lib/ layout, because its
 		// umbrella headers reach the generated tables through relative paths. These
-		// are the same directories ProtoSpec's own CMake targets export.
-		string[] IncludeDirs = { "include", "sdk", "generated", "core", "io", "compile", "validate", "harness",
+		// are the same directories ProtoSpec's own CMake targets export. The
+		// fixture-only halves (the plain profile's reader/writer instantiation and
+		// the SDK authoring verbs) are not staged, so they never reach this list.
+		string[] IncludeDirs = { "include", "sdk", "generated", "core", "io", "harness",
 			Path.Combine("third_party", "tinyxml2") };
 
 		string Root = Path.Combine(ThirdPartyPath, "protospec");
@@ -170,16 +172,20 @@ public class URLab : ModuleRules
 			}
 		}
 
-		string LibExt = Target.Platform == UnrealTargetPlatform.Win64 ? "*.lib" : "*.a";
-		string[] Libs = Directory.GetFiles(LibPath, LibExt, SearchOption.AllDirectories);
-		if (Libs.Length == 0)
+		// Named, not globbed: the link line is the staging script's contract, so a
+		// library that stops being staged fails here by name instead of silently
+		// disappearing, and a stale archive left in the install cannot creep back on.
+		string[] LibNames = { "protospec", "protospec_core", "protospec_mjcf", "tinyxml2", "protospec_harness" };
+		bool Win64 = Target.Platform == UnrealTargetPlatform.Win64;
+		foreach (string Name in LibNames)
 		{
-			throw new BuildException(
-				"ProtoSpec install at {0} has an include/ but no static libraries in lib/. " +
-				"Re-run protospec/build.ps1 (Windows) or protospec/build.sh (Linux).", Root);
-		}
-		foreach (string Lib in Libs)
-		{
+			string Lib = Path.Combine(LibPath, Win64 ? Name + ".lib" : "lib" + Name + ".a");
+			if (!File.Exists(Lib))
+			{
+				throw new BuildException(
+					"ProtoSpec install at {0} is missing '{1}'. " +
+					"Re-run protospec/build.ps1 (Windows) or protospec/build.sh (Linux).", Root, Lib);
+			}
 			PublicAdditionalLibraries.Add(Lib);
 		}
 

@@ -25,7 +25,7 @@ constexpr ChildDescriptor kChildren_Model[] = {
     {"deformables", "Deformable", false, Cardinality::ZeroOrMore},
     {"contacts", "Contact", false, Cardinality::ZeroOrMore},
     {"tendons", "Tendon", false, Cardinality::ZeroOrMore},
-    {"equalitys", "Equality", false, Cardinality::ZeroOrMore},
+    {"equalities", "Equality", false, Cardinality::ZeroOrMore},
     {"actuators", "Actuator", false, Cardinality::ZeroOrMore},
     {"sensors", "Sensor", false, Cardinality::ZeroOrMore},
     {"customs", "Custom", false, Cardinality::ZeroOrMore},
@@ -177,7 +177,7 @@ constexpr FieldDescriptor kFields_Statistic[] = {
 
 constexpr ChildDescriptor kChildren_Visual[] = {
     {"visualGlobals", "VisualGlobal", false, Cardinality::ZeroOrOne},
-    {"visualQualitys", "VisualQuality", false, Cardinality::ZeroOrOne},
+    {"visualQualities", "VisualQuality", false, Cardinality::ZeroOrOne},
     {"visualHeadlights", "VisualHeadlight", false, Cardinality::ZeroOrOne},
     {"visualMaps", "VisualMap", false, Cardinality::ZeroOrOne},
     {"visualScales", "VisualScale", false, Cardinality::ZeroOrOne},
@@ -337,7 +337,7 @@ constexpr FieldDescriptor kFields_Config[] = {
 };
 
 constexpr ChildDescriptor kChildren_Asset[] = {
-    {"meshs", "Mesh", false, Cardinality::ZeroOrMore},
+    {"meshes", "Mesh", false, Cardinality::ZeroOrMore},
     {"hfields", "Hfield", false, Cardinality::ZeroOrMore},
     {"skins", "Skin", false, Cardinality::ZeroOrMore},
     {"textures", "Texture", false, Cardinality::ZeroOrMore},
@@ -757,7 +757,7 @@ constexpr FieldDescriptor kFields_Flexcomp[] = {
 };
 constexpr ChildDescriptor kChildren_Flexcomp[] = {
     {"flexcompEdges", "FlexcompEdge", false, Cardinality::ZeroOrOne},
-    {"flexElasticitys", "FlexElasticity", false, Cardinality::ZeroOrOne},
+    {"flexElasticities", "FlexElasticity", false, Cardinality::ZeroOrOne},
     {"flexContacts", "FlexContact", false, Cardinality::ZeroOrOne},
     {"flexcompPins", "FlexcompPin", false, Cardinality::ZeroOrMore},
     {"plugin", "PluginRef", false, Cardinality::ZeroOrMore},
@@ -828,7 +828,7 @@ constexpr FieldDescriptor kFields_Flex[] = {
 constexpr ChildDescriptor kChildren_Flex[] = {
     {"flexContacts", "FlexContact", false, Cardinality::ZeroOrOne},
     {"flexEdges", "FlexEdge", false, Cardinality::ZeroOrOne},
-    {"flexElasticitys", "FlexElasticity", false, Cardinality::ZeroOrOne},
+    {"flexElasticities", "FlexElasticity", false, Cardinality::ZeroOrOne},
 };
 
 constexpr FieldDescriptor kFields_FlexEdge[] = {

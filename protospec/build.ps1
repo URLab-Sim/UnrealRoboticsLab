@@ -5,10 +5,11 @@
 # a change here used to tear down and reconfigure the entire MuJoCo install to
 # recompile one file.
 #
-# Of the MuJoCo-free targets, all are built -- the object model, the
-# canonicalization resolvers and the MJCF reader/writer. The compile bridge
-# links the engine and is not part of URLab's link line, because URLab already
-# links MuJoCo itself.
+# What is staged is exactly what URLab links: the object model, the
+# canonicalization resolvers, and the profile-independent half of the MJCF
+# reader/writer (protospec_mjcf). URLab instantiates the templated halves for
+# its own two document profiles, so the plain-profile instantiation
+# (protospec_io_plain) is a test fixture here and is neither built nor staged.
 #
 # The one MuJoCo-dependent target that is built is the comparison harness
 # (protospec_harness), which URLab's compile-parity goldens call to diff two
@@ -53,7 +54,7 @@ cmake -S $Src -B $Build -DCMAKE_BUILD_TYPE=$BuildType "-DMUJOCO_ROOT=$MujocoRoot
 if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed for ProtoSpec" }
 
 Write-Host "Building ProtoSpec..." -ForegroundColor Gray
-cmake --build $Build --config $BuildType --target protospec protospec_core protospec_io protospec_harness
+cmake --build $Build --config $BuildType --target protospec protospec_core protospec_mjcf protospec_harness
 if ($LASTEXITCODE -ne 0) { throw "Build failed for ProtoSpec" }
 
 # Staging is explicit because ProtoSpec's CMake declares no install() rules.
@@ -66,18 +67,24 @@ if ($LASTEXITCODE -ne 0) { throw "Build failed for ProtoSpec" }
 # Staged last, so a failed build leaves the previous install in place rather
 # than none at all.
 Write-Host "Staging ProtoSpec into $ProtospecInstallDir..." -ForegroundColor Gray
+# Named rather than globbed: the build tree also holds the fixture-only archives
+# (the plain profile and the SDK authoring layer), which URLab must not link.
 # The harness is its own CMake subdirectory, so its archive lands one level
-# deeper than the rest; both output directories are collected.
+# deeper than the rest; both output directories are searched.
+$StagedLibs = @("protospec", "protospec_core", "protospec_mjcf", "tinyxml2", "protospec_harness")
 $LibDirs = @("$Build/$BuildType", "$Build/harness/$BuildType")
-$BuiltLibs = @($LibDirs | Where-Object { Test-Path $_ } |
-    ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lib" -File })
-if (-not $BuiltLibs) { throw "ProtoSpec built no static libraries under $Build" }
+$BuiltLibs = @($StagedLibs | ForEach-Object {
+    $name = "$_.lib"
+    $found = $LibDirs | ForEach-Object { Join-Path $_ $name } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $found) { throw "ProtoSpec did not build $name under $Build" }
+    Get-Item $found
+})
 
 if (Test-Path $ProtospecInstallDir) { Remove-Item -Recurse -Force $ProtospecInstallDir }
 $Lib = Join-Path $ProtospecInstallDir "lib"
 New-Item -ItemType Directory -Force -Path $Lib | Out-Null
 
-foreach ($dir in @("include", "sdk", "generated", "core", "io", "compile", "validate", "harness")) {
+foreach ($dir in @("include", "sdk", "generated", "core", "io", "harness")) {
     $dirSrc = Join-Path $Src $dir
     if (-not (Test-Path $dirSrc)) { continue }
     $dirSrcFull = [System.IO.Path]::GetFullPath($dirSrc)

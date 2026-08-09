@@ -1,12 +1,12 @@
-// Orientation + inertia canonicalization resolvers (Q-ORIENT / Q-INERTIA).
+// Orientation + inertia canonicalization resolvers.
 //
 // ProtoSpec stores orientation as a single canonical unit quaternion and inertia
 // as diaginertia + iquat (docs/plan_canonicalization.md, Wave A). The MJCF reader
 // accepts every authored spelling (quat/euler/axisangle/xyaxes/zaxis;
 // diaginertia/fullinertia) and folds it here, at parse end, against the effective
-// compiler context. Placing the fold in this MuJoCo-free module (plan.md Section 3
-// core/resolve) keeps the reader (protospec_io) MuJoCo-free while sharing the
-// exact math MuJoCo compiles: the resolvers are lifted verbatim from the vendored
+// compiler context. Placing the fold in this MuJoCo-free module keeps the
+// reader (protospec_mjcf) MuJoCo-free while sharing the exact math MuJoCo
+// compiles: the resolvers are lifted verbatim from the vendored
 // tree (see resolve.cc for provenance and snapshots/lifted_code.json).
 #ifndef PROTOSPEC_CORE_RESOLVE_H
 #define PROTOSPEC_CORE_RESOLVE_H
@@ -25,7 +25,7 @@ struct OrientContext {
                                  //   extrinsic, lower/upper case)
 };
 
-// Which MJCF orientation spelling was authored (Q-ORIENT).
+// Which MJCF orientation spelling was authored.
 enum class OrientKind { Quat, AxisAngle, XYAxes, ZAxis, Euler };
 
 // Fold an authored orientation spelling into a unit quaternion (w, x, y, z),

@@ -96,7 +96,7 @@ class ReaderBase {
         warnings_(warnings),
         provenance_(provenance) {}
 
-  // Provenance (DR-9): elements spliced from an included file carry that file's
+  // Provenance: elements spliced from an included file carry that file's
   // path and line via the pre-pass map; top-level elements take theirs from
   // tinyxml2 against the model filename.
   ps::SourceLoc Loc(const XMLElement* e) const;

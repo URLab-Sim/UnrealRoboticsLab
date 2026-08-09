@@ -23,9 +23,9 @@ LOG_DIR="$BUILD_DIR/asan_logs"
 COUNT="${1:-60}"
 [ "$COUNT" -lt 50 ] && COUNT=50
 
-TARGETS=(protospec_tests protospec_io_tests protospec_validate_tests
-         protospec_sdk_tests ps_roundtrip ps_validate)
-SUITES=(protospec_tests protospec_io_tests protospec_validate_tests protospec_sdk_tests)
+TARGETS=(protospec_tests protospec_io_tests protospec_sdk_tests
+         protospec_public_api_tests ps_roundtrip)
+SUITES=(protospec_tests protospec_io_tests protospec_sdk_tests protospec_public_api_tests)
 
 export ASAN_OPTIONS="abort_on_error=0:exitcode=1:detect_stack_use_after_return=1:detect_leaks=0"
 

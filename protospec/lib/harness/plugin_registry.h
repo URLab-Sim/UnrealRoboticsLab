@@ -1,5 +1,5 @@
 // First-party MuJoCo engine-plugin registration, shared by every tool that
-// loads plugin-bearing corpus models (mj_model_diff, ps_native_diff, ps_compile).
+// loads plugin-bearing corpus models (mj_model_diff).
 //
 // MuJoCo's plugin registry is process-global: mj_loadPluginLibrary(dll) runs the
 // library's mjPLUGIN_LIB_INIT, which calls mjp_registerPlugin into that global

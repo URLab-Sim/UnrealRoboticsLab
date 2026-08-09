@@ -51,7 +51,7 @@ if(NOT EXISTS "${MUJOCO_IMPORT_LIB}")
 endif()
 
 # First-party engine-plugin registration, shared by every tool that loads
-# plugin-bearing corpus models (mj_model_diff, ps_native_diff, ps_compile).
+# plugin-bearing corpus models (mj_model_diff).
 # MuJoCo's plugin registry is process-global, so one small lift-free lib linked
 # into each tool is the single registration point. Guarded so a parent project
 # that has already defined it (or a re-run) does not redefine the target.
@@ -70,10 +70,9 @@ if(NOT TARGET plugin_registry)
   endif()
 endif()
 
-# The mjModel comparison core, shared by the mj_model_diff CLI, the
-# ps_native_diff three-way harness (impl-plan T0.2), and URLab's compile-parity
-# goldens, which link the staged protospec_harness library and call
-# ps::harness::DiffModels directly. MuJoCo only.
+# The mjModel comparison core, shared by the mj_model_diff CLI and URLab's
+# compile-parity goldens, which link the staged protospec_harness library and
+# call ps::harness::DiffModels directly. MuJoCo only.
 #
 # `model_diff_lib` remains as an alias so the tools below, which name the
 # comparison core rather than the staged artifact, keep reading as they did.

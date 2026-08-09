@@ -17,7 +17,7 @@ each observed (parent, child) edge against the schema's actual child links
 (through body-context aliasing, worldbody/frame/replicate -> Body), so a missing
 self-recursive link surfaces as an unknown pair instead of passing silently.
 
-Coverage-mapping conventions (plan Section 5; identical to the drift gate in
+Coverage-mapping conventions (identical to the drift gate in
 ``tests/test_schema_coverage.py``):
 
 * an IDL element covers the MJCF element reached by matching its XML tag along
@@ -30,7 +30,7 @@ Coverage-mapping conventions (plan Section 5; identical to the drift gate in
   (``EnumName[]``, MuJoCo's ``MapValues`` bitmask attributes) is split on
   whitespace and each token counted and checked individually.
 
-Read-time constructs (plan Section 8, DR-7 / Q-MACRO / Q-INC) are handled the way
+Read-time constructs are handled the way
 MuJoCo's own reader does, so they are never miscounted as unknown structure:
 
 * ``<include>``  -- resolves nothing; usage recorded, not attribute-checked.
@@ -39,7 +39,7 @@ MuJoCo's own reader does, so they are never miscounted as unknown structure:
   table omits body/frame as children of body too. Validated against ``Body``.
 * ``<frame>``    -- persists; own attributes validate against the ``Frame`` row,
   but its children are resolved in body context (a frame may hold bodies/frames).
-* ``<replicate>``-- a first-class pass-through element (DR-7); it has no MJCF[]
+* ``<replicate>``-- a first-class pass-through element; it has no MJCF[]
   row (the reader handles it against the body row, xml_util.cc:492), so it is a
   curated ``Replicate`` schema element. Own attributes validate against that row,
   its children are resolved in body context.
@@ -131,7 +131,7 @@ class _SchemaIndex:
                 if (t.get("arity") or {}).get("kind") == "unbounded":
                     enum_list_attrs.add(attr)
         # A child list targets either a single element or a union of member
-        # elements (plan Section 5: "union child lists cover member tags").
+        # elements: a union child list covers its member tags.
         child_targets: dict = {}
         for c in e["children"]:
             if "union" in c:
@@ -210,7 +210,7 @@ class _Inventory:
             # (the arbiter) likewise omits body/frame as children of body.
             return "Body", "Body", None
         if tag == "replicate":
-            # replicate is a first-class element (DR-7); its own attributes are
+            # replicate is a first-class element; its own attributes are
             # validated against the Replicate row and its children in body context.
             return "Replicate", "Replicate", None
         if tag == "frame":

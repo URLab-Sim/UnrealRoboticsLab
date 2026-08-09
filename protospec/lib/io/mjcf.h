@@ -32,7 +32,7 @@ namespace ps::mjcf::io {
 // Serial-keyed auto-name overrides. An element whose creation serial is a key
 // here is emitted with the mapped `name="..."` attribute even if its own name
 // field is empty; the tree is never mutated. The compile bridge uses this to
-// give unnamed elements deterministic reserved names for binding (DR-10), so
+// give unnamed elements deterministic reserved names for binding, so
 // the serialization-time naming lives here (in the serializer) with no tree
 // edit. Elements already carrying an authored name are unaffected (the bridge
 // only enters unnamed elements).
@@ -85,7 +85,7 @@ ParseResult ParseMjcfFile(const std::string& path,
                           const ParseOptions& opts = {});
 
 // Serialize a Model to a deterministic MJCF string (2-space indent, angles
-// emitted verbatim in their authored unit per Q-ANGLE, shortest round-trip
+// emitted verbatim in their authored unit, shortest round-trip
 // numeric formatting). Emits exactly the authored fields.
 //
 // A model can hold a value MJCF cannot represent: a ref-list entry (e.g.

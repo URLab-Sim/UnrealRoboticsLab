@@ -24,12 +24,12 @@
 
 namespace ps {
 
-// --- Presence (DR-1) ------------------------------------------------------ //
+// --- Presence ------------------------------------------------------------ //
 // Every defaultable field is presence-tracked: `has_value()` == "authored".
 template <class T>
 using opt = std::optional<T>;
 
-// --- Variable-arity storage (Q-ARITY) ------------------------------------- //
+// --- Variable-arity storage ---------------------------------------------- //
 // A fixed-capacity vector carrying its filled count, for range-arity MJCF
 // attributes (`size` 0..3, `friction` 1..3, `gear` 0..6, ...). Capacity is the
 // arity upper bound; the filled count is the number of authored values. Range
@@ -92,14 +92,14 @@ class InlineVec {
   std::size_t size_ = 0;
 };
 
-// --- Reserved name prefix (DR-10) ----------------------------------------- //
+// --- Reserved name prefix ------------------------------------------------ //
 // Auto-generated binding names (`_ps:<family>:<serial>`, injected only into
 // compile-XML, never into saved documents) own this prefix. Authored names must
 // never start with it: SDK SetName/Rename reject such names and validation
 // flags them, so an auto-name can never collide with an authored one.
 inline constexpr std::string_view kReservedNamePrefix = "_ps:";
 
-// --- Provenance (DR-9) ---------------------------------------------------- //
+// --- Provenance ---------------------------------------------------------- //
 // mjSpec's `info` string, structured. Populated by the reader through include
 // expansion; empty for programmatically built elements. Not part of semantic
 // equality (it is provenance, not content).
@@ -110,7 +110,7 @@ struct SourceLoc {
   friend bool operator==(const SourceLoc&, const SourceLoc&) = default;
 };
 
-// --- Creation serials (DR-10 / DR-11) ------------------------------------- //
+// --- Creation serials ---------------------------------------------------- //
 // Each element is stamped with a monotonic serial at construction. Serials are
 // process-unique (hence Model-unique: a superset guarantee), never reassigned
 // or reused, so they are stable across tree edits. Auto-generated binding names
@@ -125,7 +125,7 @@ inline std::uint64_t next_serial() {
 }
 }  // namespace detail
 
-// --- Typed references (DR-8) ---------------------------------------------- //
+// --- Typed references ---------------------------------------------------- //
 // Storage is the name string (that is what MJCF is); the template parameter is
 // a phantom recording the target element (or union) type so validation, rename,
 // and resolve stay type-aware without storing tree pointers.
@@ -145,7 +145,7 @@ struct Ref {
 };
 
 // --- Deep container equality/clone helpers -------------------------------- //
-// Child lists are `std::vector<std::unique_ptr<Child>>` (DR-2, stable identity).
+// Child lists are `std::vector<std::unique_ptr<Child>>` (stable identity).
 // These compare/copy them by pointed-to value. The element `operator==` and
 // `Clone` these dispatch to are generated; instantiation happens in the
 // translation unit that has the full element definitions.

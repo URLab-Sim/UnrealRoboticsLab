@@ -25,7 +25,7 @@
 //             model, mj_makeData, rebinding every element, sizing control slots,
 //             and one step.
 //
-// The convention is ProtoSpec's `ps_path_diff --bench`: one machine-readable
+// The convention is one machine-readable
 // line, averages over N runs, and no threshold asserted. A perf assertion on a
 // shared machine fails for reasons that have nothing to do with the code, so
 // this reports and the reader judges.

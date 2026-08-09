@@ -1,20 +1,16 @@
-// ProtoSpec SDK: attach (namespaced subtree splice).
+// ProtoSpec SDK: same-document structural edits.
 //
-// Attach deep-clones a body subtree from one document (or another point in the
-// same document) into a parent body, prefixing every name AND every internal
-// typed reference of the clone so the graft is self-contained: joints/sites/geoms
-// the clone refers to resolve within the clone, never colliding with the host.
-// This mirrors MuJoCo's mjs_attach namespacing but is a pure tree operation --
-// no compile, no source mutation (the source is cloned, not moved, unlike
-// mjs_attach which mutates its source child).
+// Duplicate deep-clones an element in place, uniquely renaming every named
+// element of the clone and remapping the clone's INTERNAL typed references to
+// the new names; references pointing outside the clone are left untouched.
+// Reparent moves an element to a new parent without touching names or refs.
+// Both are keyed on a runtime element pointer, so an editor can drive them from
+// a selection without knowing the concrete type.
 //
-// A name collision against the host is reported and blocks the attach (the host
-// is left untouched), rather than producing two elements of one type sharing a
-// name (which a valid model forbids, Q-NAMES). Assets and default classes the
-// source relied on are NOT copied; a clone's prefixed asset/class references are
-// left for the caller to satisfy (bring the assets over, or clear the refs).
-#ifndef PROTOSPEC_SDK_ATTACH_H
-#define PROTOSPEC_SDK_ATTACH_H
+// The sibling deletion verbs (DeleteRecursive, DeleteSubtree) live in refs.h,
+// which owns the reference fallout they report.
+#ifndef PROTOSPEC_SDK_EDITS_H
+#define PROTOSPEC_SDK_EDITS_H
 
 #include <cstddef>
 #include <functional>
@@ -35,132 +31,6 @@
 namespace ps::sdk {
 
 namespace mj = ps::mjcf;
-
-template <class P = plain::Plain>
-struct AttachResult {
-  // the grafted clone, when ok (AttachModel: the last body grafted, null when
-  // the source had none)
-  ElementOf<P, mj::ElementType::Body>* attached = nullptr;
-  bool ok = false;                      // false when a collision blocked it
-  std::vector<std::string> collisions;  // "type:name" clashes with the host
-  // Uniform result-object contract (see refs.h): truthy when the splice applied.
-  explicit operator bool() const { return ok; }
-};
-
-namespace detail {
-
-// Prefix every name and every internal reference throughout a cloned subtree.
-template <class P, class E>
-void PrefixSubtree(E& clone, ViewOf<P> prefix) {
-  WalkTree<P>(clone, [&](auto& e) {
-    if (std::optional<ViewOf<P>> nm = NameOf<P>(e)) {
-      StrOf<P> prefixed = P::Str::Concat(prefix, *nm);
-      SetName<P>(e, P::Str::View(prefixed));
-    }
-    PrefixRefs<P>(e, prefix);
-  });
-}
-
-// (category,name) key over the shared MuJoCo name namespaces; the category
-// folding itself (detail.h NameCategory) is shared with Rename's collision
-// rejection.
-inline std::string Key(mj::ElementType t, std::string_view name) {
-  return std::to_string(NameCategory(t)) + ':' + std::string(name);
-}
-
-// Every (category,name) an element of the host already uses.
-template <class P>
-std::unordered_set<std::string> HostNames(const DocOf<P>& model) {
-  std::unordered_set<std::string> names;
-  WalkModelAll<P>(model, [&](const auto& e) {
-    using E = std::decay_t<decltype(e)>;
-    if (std::optional<ViewOf<P>> nm = NameOf<P>(e))
-      names.insert(Key(ElementTypeOf<P, E>, P::Str::ToUtf8(*nm)));
-  });
-  return names;
-}
-
-// Report every element of `clone` whose (category,name) the host already holds.
-template <class P, class E>
-void CollectCollisions(E& clone, const std::unordered_set<std::string>& host,
-                       std::vector<std::string>& out) {
-  WalkTree<P>(clone, [&](auto& e) {
-    using X = std::decay_t<decltype(e)>;
-    if (std::optional<ViewOf<P>> nm = NameOf<P>(e)) {
-      const std::string utf8 = P::Str::ToUtf8(*nm);
-      if (host.count(Key(ElementTypeOf<P, X>, utf8))) {
-        out.push_back(
-            std::string(mj::reflect::Describe(ElementTypeOf<P, X>).name) + ":" +
-            utf8);
-      }
-    }
-  });
-}
-
-}  // namespace detail
-
-// Clone `src` (a body subtree), prefix all its names and internal references,
-// check for collisions against the host `model`, and on success splice it under
-// `parent`. On collision nothing is attached and the clashes are reported.
-template <class P = plain::Plain>
-AttachResult<P> Attach(DocOf<P>& model,
-                       ElementOf<P, mj::ElementType::Body>& parent,
-                       const ElementOf<P, mj::ElementType::Body>& src,
-                       ViewOf<P> prefix) {
-  using BodyT = ElementOf<P, mj::ElementType::Body>;
-  AttachResult<P> result;
-  OwnerOf<P, BodyT> clone = P::Ident::Clone(src);
-  detail::PrefixSubtree<P>(*clone, prefix);
-
-  const std::unordered_set<std::string> host = detail::HostNames<P>(model);
-  detail::CollectCollisions<P>(*clone, host, result.collisions);
-
-  if (!result.collisions.empty()) {
-    result.ok = false;
-    return result;  // host untouched
-  }
-
-  result.attached = &P::Tree::template Adopt<BodyT>(parent, kAppend,
-                                                    std::move(clone));
-  result.ok = true;
-  return result;
-}
-
-// Attach every top-level body of another document's worldbody under `parent`,
-// sharing one prefix. Collisions from any body abort the whole splice (nothing
-// is attached) and are aggregated in the result.
-template <class P = plain::Plain>
-AttachResult<P> AttachModel(DocOf<P>& model,
-                            ElementOf<P, mj::ElementType::Body>& parent,
-                            const DocOf<P>& src, ViewOf<P> prefix) {
-  using BodyT = ElementOf<P, mj::ElementType::Body>;
-  AttachResult<P> result;
-  const BodyT* world = P::Tree::template FirstChildOfType<BodyT>(src);
-  if (world == nullptr) {
-    result.ok = true;
-    return result;
-  }
-
-  // Dry-run collision scan across all source bodies first.
-  const std::unordered_set<std::string> host = detail::HostNames<P>(model);
-  std::vector<OwnerOf<P, BodyT>> clones;
-  P::Tree::template ForEachChildOfType<BodyT>(*world, [&](const BodyT& b) {
-    OwnerOf<P, BodyT> clone = P::Ident::Clone(b);
-    detail::PrefixSubtree<P>(*clone, prefix);
-    detail::CollectCollisions<P>(*clone, host, result.collisions);
-    clones.push_back(std::move(clone));
-  });
-
-  if (!result.collisions.empty()) {
-    result.ok = false;
-    return result;
-  }
-  for (auto& c : clones)
-    result.attached =
-        &P::Tree::template Adopt<BodyT>(parent, kAppend, std::move(c));
-  result.ok = true;
-  return result;
-}
 
 // --- Duplicate (same-document deep clone) --------------------------------- //
 
@@ -269,8 +139,8 @@ void RemapClone(DocOf<P>& model, const void* clone) {
 // references pointing outside the clone are preserved. On success `ok` is true
 // and `clone` is the clone's root element (type-erased; its ElementType matches
 // `elem`'s); on failure `ok` is false with a `reason` when `elem` is not found.
-// Unlike Attach, this is a same-document, unprefixed duplicate -- the everyday
-// "copy this element" verb.
+// This is a same-document, unprefixed duplicate -- the everyday "copy this
+// element" verb.
 template <class P = plain::Plain>
 DuplicateResult Duplicate(DocOf<P>& model, const void* elem) {
   void* clone = P::Tree::CloneAsNextSibling(model, elem);
@@ -320,4 +190,4 @@ ReparentResult Reparent(DocOf<P>& model, const void* elem, void* new_parent) {
 
 }  // namespace ps::sdk
 
-#endif  // PROTOSPEC_SDK_ATTACH_H
+#endif  // PROTOSPEC_SDK_EDITS_H

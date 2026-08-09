@@ -152,7 +152,7 @@ static std::unique_ptr<Model> BuildRobot() {
   return m;
 }
 
-// --- presence: unset vs set-to-default distinguishable (DR-1) ------------- //
+// --- presence: unset vs set-to-default distinguishable ------------------- //
 static void TestPresence() {
   Geom g;
   CHECK(!g.contype.has_value());  // fresh: unset

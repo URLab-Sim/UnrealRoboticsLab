@@ -1,34 +1,23 @@
 // Public-API self-sufficiency test.
 //
 // This translation unit includes ONLY the curated public umbrella headers under
-// <protospec/...> -- never a generated, io/, bridge/, validate/, or sdk-detail
-// header. If it compiles and runs, the public surface is self-contained: a
-// consumer (the studio editor today, the UE plugin tomorrow) needs nothing
-// internal to load, edit, validate, compile, step, and save a model.
-//
-// <mujoco/mujoco.h> is the simulation engine the CONSUMER brings; ProtoSpec's
-// own headers forward-declare mjModel/mjData and never include it. Stepping the
-// compiled mjModel is the consumer's job, shown here for the full round trip.
+// <protospec/...> -- never a generated, io/ or sdk-detail header. If it compiles
+// and runs, the public surface is self-contained: a consumer needs nothing
+// internal to load, edit and save a model.
 
-#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <string>
 
-#include <mujoco/mujoco.h>
-
-// The public surface -- these six headers are the whole ProtoSpec include set a
+// The public surface -- these five headers are the whole ProtoSpec include set a
 // consumer touches. Nothing below reaches past them.
 #include "protospec/model.h"
 #include "protospec/io.h"
-#include "protospec/validate.h"
-#include "protospec/compile.h"
 #include "protospec/reflect.h"
 #include "protospec/sdk.h"
 #include "protospec/save.h"
 
 namespace io = ps::mjcf::io;
-namespace validate = ps::mjcf::validate;
 namespace sdk = ps::sdk;
 namespace mj = ps::mjcf;
 
@@ -96,41 +85,8 @@ int main() {
   // Reflection surface is reachable and describes the model.
   CHECK(std::string(mj::reflect::Describe(mj::ElementType::Geom).xml) == "geom");
 
-  // --- 3. VALIDATE -------------------------------------------------------- //
-  auto diags = validate::Validate(model);
-  int errors = 0;
-  for (const auto& d : diags)
-    if (d.severity == validate::Severity::Error) ++errors;
-  CHECK(errors == 0);
-
-  // --- 4. COMPILE --------------------------------------------------------- //
-  mj::Compiled compiled = mj::Compile(model);
-  CHECK(compiled.ok());
-  if (!compiled.ok()) {
-    for (const auto& e : compiled.report.errors)
-      std::printf("  %s\n", e.Render().c_str());
-    return 1;
-  }
-  mjModel* m = compiled.model.get();
-  CHECK(m != nullptr);
-
-  // The Binding maps our tree element back to the compiled id.
-  auto gid = compiled.binding.Id(g);
-  CHECK(gid.has_value());
-  CHECK(compiled.binding.GeomAt(*gid) == &g);
-
-  // --- 5. STEP (consumer's engine) --------------------------------------- //
-  mjData* d = mj_makeData(m);
-  CHECK(d != nullptr);
-  for (int i = 0; i < 10; ++i) mj_step(m, d);
-  CHECK(d->time > 0.0);
-  CHECK(std::isfinite(d->qpos[2]));  // box height stayed finite under gravity
-
-  mj_deleteData(d);
-
-  // --- 5c. STRUCTURAL SDK VERBS (public, runtime-typed) ------------------- //
-  // Duplicate / Rename / Reparent / DeleteSubtree keyed on runtime pointers --
-  // the binding is a snapshot, so these follow the compile (they invalidate it).
+  // --- 3. STRUCTURAL SDK VERBS (public, runtime-typed) ------------------- //
+  // Duplicate / Rename / Reparent / DeleteSubtree keyed on runtime pointers.
   auto* box_copy = sdk::Duplicate(model, &box).As<mj::Body>();
   CHECK(box_copy != nullptr);
   CHECK(sdk::Find<mj::Body>(model, "box_1") == box_copy);  // re-uniqued name
@@ -141,7 +97,7 @@ int main() {
   CHECK(del.removed);
   CHECK(sdk::Find<mj::Body>(model, "box_copy") == nullptr);
 
-  // --- 6. SAVE + reload --------------------------------------------------- //
+  // --- 4. SAVE + reload --------------------------------------------------- //
   std::filesystem::path out =
       std::filesystem::temp_directory_path() / "protospec_public_api_hello.xml";
   CHECK(sdk::Save(model, out));

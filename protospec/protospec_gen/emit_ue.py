@@ -21,7 +21,7 @@ half of the UE spec model that scales with the schema:
       MjKeywords.gen.cpp  MjDefaults.gen.cpp  MjDispatch.gen.cpp
       MjReflect.gen.cpp   MjCoverage.gen.cpp (generated schema-coverage test)
 
-Storage mapping (plan Section 3.2):
+Storage mapping:
 
 ===========================  ==========================================
 schema                       UE
@@ -77,7 +77,7 @@ import os
 import re
 import sys
 
-from . import overlay
+from . import overlay, overlay_ue
 from .frontend import load_schema, mujoco_src, pascal
 
 # ASCII only, and lint() keeps the whole tree that way: MSVC decodes a source
@@ -123,7 +123,7 @@ def element_family(s: "UeSchema", name: str) -> str:
     """
     elem = s.element_by_name.get(name)
     schema_name = elem["schema_name"] if elem else name
-    override = overlay.UE_FAMILY_OF_ELEMENT.get(schema_name)
+    override = overlay_ue.UE_FAMILY_OF_ELEMENT.get(schema_name)
     if override is not None:
         return override
 
@@ -153,7 +153,7 @@ def element_family(s: "UeSchema", name: str) -> str:
         # `default` last, so a section that really owns an element wins.
         sections = [x for x in sections if schema_of(x) != "default"] +                    [x for x in sections if schema_of(x) == "default"]
         for section in sections:
-            family = overlay.UE_FAMILY_OF_SECTION.get(schema_of(section))
+            family = overlay_ue.UE_FAMILY_OF_SECTION.get(schema_of(section))
             if not family:
                 continue
             seen: set[str] = set()
@@ -321,7 +321,7 @@ class UeSchema:
     # -- overlay drift ------------------------------------------------------ #
     def _check_overlay(self) -> None:
         live = {f["xml"] for e in self.elements for f in e["fields"]}
-        for attr in overlay.UE_MEMBER_NAMES:
+        for attr in overlay_ue.UE_MEMBER_NAMES:
             if attr not in live:
                 raise UeError(
                     f"UE_MEMBER_NAMES renames {attr!r}, which the schema no "
@@ -344,14 +344,14 @@ class UeSchema:
                 if _kind_shape(f) is not None:
                     shaped.setdefault(f["xml"], set()).add(
                         f["type"]["arity"]["size"])
-        unclassified = sorted(a for a in shaped if a not in overlay.UE_KIND)
+        unclassified = sorted(a for a in shaped if a not in overlay_ue.UE_KIND)
         if unclassified:
             raise UeError(
                 "these attributes are a fixed double[3] or double[4] and have "
-                "no overlay.UE_KIND entry, so the emitter cannot tell a point "
+                "no overlay_ue.UE_KIND entry, so the emitter cannot tell a point "
                 "from a direction from a colour; classify each one:\n  " +
                 "\n  ".join(unclassified))
-        for attr, kind in sorted(overlay.UE_KIND.items()):
+        for attr, kind in sorted(overlay_ue.UE_KIND.items()):
             if attr not in shaped:
                 raise UeError(
                     f"UE_KIND classifies {attr!r} as {kind!r}, which the schema "
@@ -370,12 +370,12 @@ class UeSchema:
         for f in elem["fields"]:
             if self.is_identity(f):
                 continue
-            member = overlay.UE_MEMBER_NAMES.get(f["xml"], pascal(f["name"]))
+            member = overlay_ue.UE_MEMBER_NAMES.get(f["xml"], pascal(f["name"]))
             if member in _RESERVED_MEMBERS or member in _RESERVED_STEMS:
                 raise UeError(
                     f"{elem['name']}.{f['name']} maps to the UE member "
                     f"{member!r}, which the component hierarchy already "
-                    "declares; add an overlay.UE_MEMBER_NAMES entry")
+                    "declares; add an overlay_ue.UE_MEMBER_NAMES entry")
             if member in seen:
                 raise UeError(
                     f"{elem['name']}.{f['name']} and {elem['name']}."
@@ -435,7 +435,7 @@ _KIND_UE = {
     "position": {3: "FMjPosition3"},
     "direction": {3: "FMjDirection3"},
     # Same crossing rule as a direction (flip Y, leave the magnitude alone), so
-    # the same type; overlay.UE_KIND keeps the two kinds distinct in the
+    # the same type; overlay_ue.UE_KIND keeps the two kinds distinct in the
     # classification even though the conversion cannot tell them apart.
     "physical": {3: "FMjDirection3"},
     "orientation": {4: "FMjQuatRot"},
@@ -488,7 +488,7 @@ def value_type(s: UeSchema, f: dict) -> str:
     size = _kind_shape(f)
     if size is not None:
         # Checked exhaustive by UeSchema._check_kinds, so the lookup cannot miss.
-        typed = _KIND_UE.get(overlay.UE_KIND[f["xml"]], {}).get(size)
+        typed = _KIND_UE.get(overlay_ue.UE_KIND[f["xml"]], {}).get(size)
         if typed is not None:
             return typed
         if size == 3:
@@ -645,7 +645,7 @@ def element_header(s: UeSchema, elem: dict) -> str:
         if f["type"]["kind"] == "ref":
             meta.append(f'GetOptions = "Get{member}Options"')
         spec = f'EditAnywhere, Category = "{_ue_category(category, f)}"'
-        if f["xml"] in overlay.UE_ADVANCED:
+        if f["xml"] in overlay_ue.UE_ADVANCED:
             spec += ", AdvancedDisplay"
         spec += f", meta = ({', '.join(meta)})"
         w(f"\tUPROPERTY({spec})")
@@ -1703,19 +1703,19 @@ def emit_reflect_h(s: UeSchema) -> str:
     w("")
     w(BANNER)
     w("//")
-    w("// The per-profile half of reflection: presence and clear over this")
+    w("// The per-profile half of reflection: clearing an authored field over this")
     w("// profile's storage, keyed by the schema's element type and field id.")
     w("//")
     w("// Everything else an ElementDescriptor carries -- names, XML spellings,")
     w("// kinds, arities, defaults, constraints -- is schema identity and is")
     w("// already emitted once into ps::mjcf::reflect, which URLab links. Only the")
-    w("// thunks vary by profile, so only the thunks are emitted here; the")
-    w("// descriptor's own present/clear members belong to the plain profile and")
+    w("// storage-shaped operation varies by profile, so only that is emitted here;")
+    w("// the descriptor's own present/clear members belong to the plain profile and")
     w("// must not be called on a UE node.")
     w("#pragma once")
     w("")
     w('#include "MuJoCo/Gen/MjElements.gen.h"')
-    w('#include "reflect.h"')
+    w('#include "types.h"')
     w("")
     w("namespace ps::ue")
     w("{")
@@ -1723,16 +1723,12 @@ def emit_reflect_h(s: UeSchema) -> str:
     w("")
     w("struct FMjElementThunks")
     w("{")
-    w("\tbool (*Present)(const void* Element, int FieldId);")
     w("\tvoid (*Clear)(void* Element, int FieldId);")
     w("};")
     w("")
-    w("/** The thunks for an element type. Always valid: an unknown type gets a")
-    w(" *  pair that reports absence and clears nothing. */")
+    w("/** The thunks for an element type. Always valid: an unknown type gets one")
+    w(" *  that clears nothing. */")
     w("const FMjElementThunks& Thunks(ElementType Type);")
-    w("")
-    w("/** The shared schema descriptor, for callers that want both halves. */")
-    w("const ps::mjcf::reflect::ElementDescriptor& Describe(ElementType Type);")
     w("")
     w("}  // namespace ps::ue")
     return "\n".join(o) + "\n"
@@ -1755,27 +1751,6 @@ def emit_reflect_cpp(s: UeSchema) -> str:
         cls = s.cls[e["name"]]
         name = e["name"]
         w("")
-        w(f"bool Present_{name}(const void* P, int FieldId)")
-        w("{")
-        if not e["fields"]:
-            w("\t(void)P; (void)FieldId;")
-            w("\treturn false;")
-        else:
-            w(f"\tconst {cls}& E = *static_cast<const {cls}*>(P);")
-            w("\t(void)E;")
-            w("\tswitch (FieldId)")
-            w("\t{")
-            for fid, f in enumerate(e["fields"]):
-                if UeSchema.is_identity(f):
-                    w(f"\tcase {fid}: return E.MjName.IsSet();")
-                elif f["optional"]:
-                    w(f"\tcase {fid}: return E.{s.member(e, f)}.IsSet();")
-                else:
-                    w(f"\tcase {fid}: return true;")
-            w("\tdefault: return false;")
-            w("\t}")
-        w("}")
-        w("")
         clearable = [(fid, f) for fid, f in enumerate(e["fields"])
                      if f["optional"]]
         w(f"void Clear_{name}(void* P, int FieldId)")
@@ -1795,7 +1770,6 @@ def emit_reflect_cpp(s: UeSchema) -> str:
             w("\t}")
         w("}")
     w("")
-    w("bool Present_None(const void*, int) { return false; }")
     w("void Clear_None(void*, int) {}")
     w("")
     w("struct FThunkRow")
@@ -1807,10 +1781,10 @@ def emit_reflect_cpp(s: UeSchema) -> str:
     w("const FThunkRow Rows[] = {")
     for e in s.elements:
         name = e["name"]
-        w(f"\t{{ ElementType::{name}, {{ &Present_{name}, &Clear_{name} }} }},")
+        w(f"\t{{ ElementType::{name}, {{ &Clear_{name} }} }},")
     w("};")
     w("")
-    w("const FMjElementThunks NoThunks{ &Present_None, &Clear_None };")
+    w("const FMjElementThunks NoThunks{ &Clear_None };")
     w("")
     w("}  // namespace")
     w("")
@@ -1819,11 +1793,6 @@ def emit_reflect_cpp(s: UeSchema) -> str:
     w("\tfor (const FThunkRow& Row : Rows)")
     w("\t\tif (Row.Type == Type) return Row.Thunks;")
     w("\treturn NoThunks;")
-    w("}")
-    w("")
-    w("const ps::mjcf::reflect::ElementDescriptor& Describe(ElementType Type)")
-    w("{")
-    w("\treturn ps::mjcf::reflect::Describe(Type);")
     w("}")
     w("")
     w("}  // namespace ps::ue")
@@ -2136,12 +2105,12 @@ class SpecWritePlan:
         if self.problems:
             raise UeError(
                 "the spec write does not cover the schema (route each to "
-                "overlay.SPEC_WRITE_HANDLERS, or correct the binding):\n  "
+                "overlay_ue.SPEC_WRITE_HANDLERS, or correct the binding):\n  "
                 + "\n  ".join(self.problems))
 
     # -- tables ------------------------------------------------------------- #
     def _check_add_calls(self) -> None:
-        used = {arg for cat, arg in overlay.SPEC_CREATE.values()
+        used = {arg for cat, arg in overlay_ue.SPEC_CREATE.values()
                 if cat in _CREATING and arg}
         for name in sorted(used - set(_ADD_CALLS)):
             self.problems.append(
@@ -2296,7 +2265,7 @@ class SpecWritePlan:
     def _build(self) -> None:
         for elem in self.s.elements:
             name = elem["schema_name"]
-            category, arg = overlay.SPEC_CREATE[name]
+            category, arg = overlay_ue.SPEC_CREATE[name]
             plan = SpecElement(elem, category, arg)
             self.by_name[name] = plan
 
@@ -2305,7 +2274,7 @@ class SpecWritePlan:
             elif elem.get("spec"):
                 plan.struct = elem["spec"]
 
-            row = overlay.SPEC_TARGET.get(name)
+            row = overlay_ue.SPEC_TARGET.get(name)
             if row is not None:
                 plan.parent_ctype, plan.target = row
                 resolved = self._resolve_target(name, plan.target,
@@ -2371,8 +2340,9 @@ class SpecWritePlan:
 
     def _plan_fields(self, plan: SpecElement) -> None:
         if plan.arg == "macro_bridge":
-            # A macro element never reaches an mjs struct: H10 hands its whole
-            # subtree to the file boundary and attaches the expansion, so there
+            # A macro element never reaches an mjs struct: the macro bridge
+            # hands its whole subtree to the file boundary and attaches the
+            # expansion, so there
             # is nothing here for a field write to land on. Its keywords are
             # parse-time and MuJoCo does not ship the header that defines them.
             return
@@ -2380,7 +2350,7 @@ class SpecWritePlan:
             if self.s.is_identity(f) or self._is_dclass(f):
                 continue
             key = (plan.name, f["xml"])
-            if key in overlay.SPEC_WRITE_HANDLERS:
+            if key in overlay_ue.SPEC_WRITE_HANDLERS:
                 continue
             write = self._write_for(plan, f)
             if write is not None:
@@ -2401,8 +2371,8 @@ class SpecWritePlan:
         """
         attribute = sorted(
             {handler for (element, _attr), handler
-             in overlay.SPEC_WRITE_HANDLERS.items() if element == plan.name}
-            | set(overlay.SPEC_WRITE_ELEMENT_HOOKS.get(plan.name, ())))
+             in overlay_ue.SPEC_WRITE_HANDLERS.items() if element == plan.name}
+            | set(overlay_ue.SPEC_WRITE_ELEMENT_HOOKS.get(plan.name, ())))
         if plan.category == "hook" and plan.arg:
             attribute = [h for h in attribute if h != plan.arg] + [plan.arg]
         plan.hooks = attribute
@@ -2417,7 +2387,7 @@ class SpecWritePlan:
         is why this reports rather than fails.
         """
         out = []
-        for (element, attr), handler in sorted(overlay.SPEC_WRITE_HANDLERS.items()):
+        for (element, attr), handler in sorted(overlay_ue.SPEC_WRITE_HANDLERS.items()):
             plan = self.by_name.get(element)
             if plan is None or plan.struct is None:
                 continue

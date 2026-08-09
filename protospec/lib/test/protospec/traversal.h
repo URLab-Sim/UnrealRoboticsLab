@@ -1,7 +1,8 @@
 // ProtoSpec SDK: traversal and lookup.
 //
 // Downward queries (Find, ForEach*) are direct walks over the profile's Visit
-// hook. Upward queries go through ParentMap. Everything here is a query except
+// hook. Upward queries go through ParentMap (protospec/parents.h). Everything
+// here is a query except
 // SetName, which writes a single field; structural edits live in the sibling
 // headers.
 //
@@ -21,6 +22,7 @@
 #include <vector>
 
 #include "protospec/detail.h"
+#include "protospec/parents.h"
 #include "protospec/plain_profile.h"
 #include "protospec/profile.h"
 #include "reflect.h"
@@ -93,121 +95,11 @@ void ForEachElement(const DocOf<P>& model, Fn&& fn) {
   });
 }
 
-// A parent lookup + path index over a document, built once and queried many
-// times. Construction is a single whole-tree walk; every element (including
-// class elements under <default>) gets an entry. Element identity is the
-// profile's node pointer. The map is a snapshot: rebuild it after structural
-// edits.
-//
-// A profile whose parenthood is directly queryable (a component tree's attach
-// parent) can supply its own type through `P::Doc::parent_map` instead, which
-// removes the staleness footgun rather than reproducing it.
-template <class P = plain::Plain>
-class ParentMap {
- public:
-  struct Node {
-    const void* parent = nullptr;  // owning element, null for the root
-    mj::ElementType type{};        // this element's type
-    StrOf<P> name;                 // authored name (or dclass), else ""
-    StrOf<P> childclass;           // body-context childclass, else ""
-  };
-
-  explicit ParentMap(const DocOf<P>& model) {
-    const void* root = &model;
-    Node n;
-    n.parent = nullptr;
-    n.type = ElementTypeOf<P, DocOf<P>>;
-    if (std::optional<ViewOf<P>> nm = P::Doc::Name(model))
-      n.name = P::Str::FromUtf8(P::Str::ToUtf8(*nm));
-    nodes_[root] = std::move(n);
-    Record(model, root);
-  }
-
-  // Parent of an element, or null when it is the document root or not indexed.
-  template <class E>
-  const void* ParentOf(const E& e) const {
-    auto it = nodes_.find(&e);
-    return it == nodes_.end() ? nullptr : it->second.parent;
-  }
-
-  const Node* Lookup(const void* ptr) const {
-    auto it = nodes_.find(ptr);
-    return it == nodes_.end() ? nullptr : &it->second;
-  }
-
-  // A "/"-joined path from the root to the element, each step the element's XML
-  // tag plus its name in brackets when it has one (e.g.
-  // "mujoco/worldbody/body[torso]/geom[shin]"). For diagnostics.
-  template <class E>
-  std::string PathTo(const E& e) const {
-    return PathToPtr(&e);
-  }
-
-  std::string PathToPtr(const void* ptr) const {
-    std::vector<const Node*> chain;
-    for (const void* p = ptr; p;) {
-      const Node* n = Lookup(p);
-      if (!n) break;
-      chain.push_back(n);
-      p = n->parent;
-    }
-    std::string out;
-    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-      if (!out.empty()) out += '/';
-      out += mj::reflect::Describe((*it)->type).xml;
-      const std::string nm = P::Str::ToUtf8(P::Str::View((*it)->name));
-      if (!nm.empty()) {
-        out += '[';
-        out += nm;
-        out += ']';
-      }
-    }
-    return out;
-  }
-
- private:
-  // Record children of `e` (whose handle is `self`) as pointing back at `self`,
-  // then recurse.
-  template <class E>
-  void Record(const E& e, const void* self) {
-    P::Tree::ForEachChild(e, [&](const auto& c) { Add(c, self); });
-  }
-
-  template <class E>
-  void Add(const E& e, const void* parent) {
-    Node n;
-    n.parent = parent;
-    n.type = ElementTypeOf<P, E>;
-    if (std::optional<ViewOf<P>> nm = detail::NameOf<P>(e))
-      n.name = P::Str::FromUtf8(P::Str::ToUtf8(*nm));
-    n.childclass = ChildClass(e);
-    nodes_[&e] = std::move(n);
-    Record(e, &e);
-  }
-
-  // childclass propagates defaults down the body tree; only the three
-  // body-context containers carry it. Reached by schema field name, so no
-  // element type is spelled here.
-  template <class E>
-  static StrOf<P> ChildClass(const E& e) {
-    const mj::ElementType t = ElementTypeOf<P, E>;
-    if (t != mj::ElementType::Body && t != mj::ElementType::Frame &&
-        t != mj::ElementType::Replicate) {
-      return StrOf<P>();
-    }
-    const int id = detail::FieldIdByName(t, "childclass");
-    if (id < 0) return StrOf<P>();
-    return P::Str::FromUtf8(P::Str::ToUtf8(P::Ref::NameAt(e, id)));
-  }
-
-  std::unordered_map<const void*, Node> nodes_;
-};
-
 // --- Find ----------------------------------------------------------------- //
 
 // The first element of type T with the given name, or nullptr. Searches the
 // whole document, class elements included. Names are unique per element type in
-// a valid model (Q-NAMES), so this is effectively a keyed lookup.
+// a valid model, so this is effectively a keyed lookup.
 template <class T, class P = plain::Plain>
 T* Find(DocOf<P>& model, ViewOf<P> name) {
   T* found = nullptr;

@@ -1,5 +1,5 @@
 // model_diff_lib implementation. The comparison core lifted verbatim from the
-// original mj_model_diff.cc (impl-plan T0.2); mj_model_diff is now a thin CLI
+// original mj_model_diff.cc; mj_model_diff is now a thin CLI
 // over this, and ps_native_diff reuses DiffModels for its three-way verdict.
 
 #include "model_diff_lib.h"

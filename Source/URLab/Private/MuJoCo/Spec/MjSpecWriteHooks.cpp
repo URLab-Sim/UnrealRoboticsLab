@@ -991,7 +991,7 @@ bool ApplySizeMemory(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	return true;
 }
 
-// --- H11: input folds ----------------------------------------------------- //
+// --- Input folds ---------------------------------------------------------- //
 // Nothing to do, and that is the point: these attributes are the reader's
 // alternative spellings of a canonical field, so the fold already happened when
 // the document was read and they carry no storage of their own to write.
@@ -1001,7 +1001,7 @@ bool ApplyInputFold(FMjSpecWriteContext&, const UMjNodeComponent&, mjsElement*)
 	return true;
 }
 
-// --- H14: equality subtype folds ------------------------------------------ //
+// --- Equality subtype folds ----------------------------------------------- //
 // mjsEquality carries name1, name2, objtype and one data array, so each subtype
 // elects the object kind and packs its operands into them.
 
@@ -1147,7 +1147,7 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	return true;
 }
 
-// --- H15: irregular sensor folds ------------------------------------------ //
+// --- Irregular sensor folds ----------------------------------------------- //
 // The same shape one level over: mjsSensor stores its operands in one name pair
 // with a kind each, and its keyword sets in intprm.
 
@@ -1316,7 +1316,7 @@ bool ApplySensorFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	return true;
 }
 
-// --- H16: compiler placement ---------------------------------------------- //
+// --- Compiler placement --------------------------------------------------- //
 
 bool ApplyCompilerPlacement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
@@ -1354,7 +1354,7 @@ bool ApplyCompilerPlacement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& No
 	return true;
 }
 
-// --- H17: asset builtins -------------------------------------------------- //
+// --- Asset builtins ------------------------------------------------------- //
 
 bool ApplyAssetBuiltin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
@@ -1462,7 +1462,7 @@ bool ApplyAssetBuiltin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	}
 }
 
-// --- H18: flex dof layout ------------------------------------------------- //
+// --- Flex dof layout ------------------------------------------------------ //
 
 bool ApplyFlexLayout(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
@@ -1489,7 +1489,7 @@ bool ApplyFlexLayout(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	return true;
 }
 
-// --- H19: numeric data ---------------------------------------------------- //
+// --- Numeric data --------------------------------------------------------- //
 
 bool ApplyNumericData(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
@@ -1522,7 +1522,7 @@ bool ApplyNumericData(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 	return true;
 }
 
-// --- H10: the macro bridge ------------------------------------------------ //
+// --- The macro bridge ----------------------------------------------------- //
 // `<composite>`, `<flexcomp>` and `<replicate>` are expanded by MuJoCo's XML
 // READER, not by its compiler, so there is no mjs_* call that performs one. The
 // bridge is therefore the reader itself: serialize the macro subtree into a
@@ -1792,7 +1792,7 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 	return true;
 }
 
-// --- H13: nested models --------------------------------------------------- //
+// --- Nested models -------------------------------------------------------- //
 // `<model>` parses a file into a child spec and `<attach>` splices one in, both
 // on the reader's own terms (`src/xml/xml_native_reader.cc:2296` and `:2598`).
 // Neither produces an element of the current spec: a child spec is held beside

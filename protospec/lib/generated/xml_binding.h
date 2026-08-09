@@ -39,7 +39,7 @@ struct AttrBinding {
                                 // writer still emits it plainly.
 };
 
-// A read-only input-alias attribute (Q-ORIENT/Q-INERTIA): an MJCF attribute
+// A read-only input-alias attribute: an MJCF attribute
 // accepted on input that is canonicalized into a sibling field at parse end
 // (euler/axisangle/xyaxes/zaxis -> quat; fullinertia -> diaginertia+iquat).
 // It has no field of its own; the reader accepts it (so it is not an unknown

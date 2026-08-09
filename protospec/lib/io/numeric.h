@@ -1,4 +1,4 @@
-// Q-NUM: C-locale numeric parsing and formatting for MJCF attribute values.
+// C-locale numeric parsing and formatting for MJCF attribute values.
 //
 // Mirrors MuJoCo's xml_util.cc number handling: whitespace-separated tokens,
 // C-locale (std::from_chars is locale-independent by construction), explicit

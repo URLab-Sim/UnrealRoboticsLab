@@ -27,11 +27,24 @@
 #include "MuJoCo/Elements/MjMesh.h"
 #include "MuJoCo/Elements/MjTexture.h"
 
+#include "Logging/MessageLog.h"
+#include "Logging/TokenizedMessage.h"
+
 #include "MujocoMeshImporter.h"
 #include "URLabEditorLogging.h"
 
 namespace
 {
+
+/**
+ * The editor's Messages panel, which is where an import failure has to land.
+ *
+ * The output log is a firehose nobody is watching during an import, so a model
+ * that failed to read looked exactly like one that worked until the user tried
+ * to use it. `Notify` raises the panel; the log lines stay where they were,
+ * because the log is still the thing a bug report gets pasted from.
+ */
+const FName MjMessageLogName(TEXT("URLab"));
 
 /**
  * Take `Blueprint`'s existing spec out of its construction script.
@@ -214,17 +227,30 @@ void ImportSpecAssets(UBlueprint& Blueprint)
 /** Report one parse's diagnostics against the file they came from. */
 void LogDiagnostics(const FMjSpecParseResult& Result, const FString& Filename)
 {
+	FMessageLog MessageLog(MjMessageLogName);
+
 	for (const FMjSpecDiagnostic& Diagnostic : Result.Warnings)
 	{
 		UE_LOG(LogURLabEditor, Warning, TEXT("%s"), *Diagnostic.ToString());
+		MessageLog.Warning(FText::FromString(Diagnostic.ToString()));
 	}
 	for (const FMjSpecDiagnostic& Diagnostic : Result.Errors)
 	{
 		UE_LOG(LogURLabEditor, Error, TEXT("%s"), *Diagnostic.ToString());
+		MessageLog.Error(FText::FromString(Diagnostic.ToString()));
 	}
 	if (!Result.IsOk())
 	{
 		UE_LOG(LogURLabEditor, Error, TEXT("Failed to read MJCF '%s'"), *Filename);
+		// Worded to match the log line above: the two are the same statement in
+		// two places, and searching for one should find the other.
+		MessageLog.Error(FText::Format(
+			NSLOCTEXT("URLab", "ReadFailed", "Failed to read MJCF '{0}'."),
+			FText::FromString(Filename)));
+		// Forced, because the default filter would let a run whose only entries
+		// are the ones just written stay silent.
+		MessageLog.Notify(NSLOCTEXT("URLab", "ReadFailedToast", "MuJoCo model could not be read"),
+			EMessageSeverity::Error, /*bForce=*/true);
 	}
 }
 
@@ -271,6 +297,12 @@ bool UMujocoGenerationAction::GenerateForBlueprint(UBlueprint* Blueprint, const 
 	if (!FFileHelper::LoadFileToString(Xml, *XmlPath))
 	{
 		UE_LOG(LogURLabEditor, Error, TEXT("Failed to read MJCF file: %s"), *XmlPath);
+		FMessageLog MessageLog(MjMessageLogName);
+		MessageLog.Error(FText::Format(
+			NSLOCTEXT("URLab", "FileUnreadable", "Failed to read MJCF file: {0}"),
+			FText::FromString(XmlPath)));
+		MessageLog.Notify(NSLOCTEXT("URLab", "FileUnreadableToast", "MuJoCo model file could not be opened"),
+			EMessageSeverity::Error, /*bForce=*/true);
 		return false;
 	}
 

@@ -32,6 +32,8 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Interfaces/IPluginManager.h"
+#include "Logging/MessageLog.h"
+#include "Logging/TokenizedMessage.h"
 #include "ObjectTools.h"
 #include "RenderingThread.h"
 #include "ShaderCompiler.h"
@@ -39,6 +41,26 @@
 
 namespace
 {
+
+/**
+ * Say it where a failed import is actually looked for.
+ *
+ * The diagnostic used to go to the output log alone, which during an import is
+ * a firehose: the visible outcome of a model that failed to read was an asset
+ * that did not appear, with no statement of why. This puts the same text in the
+ * editor's Messages panel and raises it. The log line stays -- it is what a bug
+ * report is pasted from -- so this adds a place rather than moving one.
+ */
+void ReportImportFailure(const FText& Message)
+{
+	FMessageLog MessageLog(TEXT("URLab"));
+	MessageLog.Error(Message);
+	// Forced, because the default severity filter would let a page whose only
+	// entries are the ones just written go unshown.
+	MessageLog.Notify(NSLOCTEXT("URLab", "ImportFailedToast", "MuJoCo import failed"),
+		EMessageSeverity::Error, /*bForce=*/true);
+}
+
 /** The mesh preparation script that ships with the plugin, if it is there. */
 FString PreparationScriptPath()
 {
@@ -334,6 +356,9 @@ EReimportResult::Type UMujocoImportFactory::Reimport(UObject* Obj)
 	if (!bOk)
 	{
 		UE_LOG(LogURLabEditor, Error, TEXT("MujocoImportFactory: %s"), *Error);
+		ReportImportFailure(FText::Format(
+			NSLOCTEXT("URLab", "ReimportFailedDetail", "MuJoCo reimport failed: {0}"),
+			FText::FromString(Error)));
 		return EReimportResult::Failed;
 	}
 	return EReimportResult::Succeeded;
@@ -372,6 +397,14 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 				 "before importing again."),
 			*InName.ToString(),
 			InParent ? *InParent->GetPathName() : TEXT("<no outer>"));
+		// The wording tracks the log line above deliberately: both say the same
+		// thing, and a reader who found one and searched for the other should
+		// land on it.
+		ReportImportFailure(FText::Format(
+			NSLOCTEXT("URLab", "ImportWouldOverwrite",
+				"MuJoCo import: refusing to overwrite existing Blueprint '{0}'. Delete it, or reimport "
+				"it, before importing the model again."),
+			FText::FromName(InName)));
 		bOutOperationCanceled = true;
 		return nullptr;
 	}
@@ -422,6 +455,9 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 		{
 			UE_LOG(LogURLabEditor, Error,
 				TEXT("MujocoImportFactory: %s Nothing was imported."), *Error);
+			ReportImportFailure(FText::Format(
+				NSLOCTEXT("URLab", "ImportFailedDetail", "MuJoCo import failed: {0} Nothing was imported."),
+				FText::FromString(Error)));
 		}
 		// An empty articulation left in the content browser reads as a model
 		// that imported, and the next thing that happens to it is a user

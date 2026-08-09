@@ -197,6 +197,122 @@ UMujocoImportFactory::UMujocoImportFactory()
 	bEditorImport = true;
 }
 
+bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath,
+	TFunctionRef<UBlueprint*()> AcquireBlueprint, UBlueprint*& OutBlueprint,
+	FString& OutError, bool& bOutCancelled)
+{
+	OutBlueprint = nullptr;
+	OutError.Reset();
+	bOutCancelled = false;
+
+	FString PreparedXmlPath;
+	if (!PrepareMeshes(SourceXmlPath, PreparedXmlPath, OutError, bOutCancelled))
+	{
+		return false;
+	}
+
+	OutBlueprint = AcquireBlueprint();
+	if (OutBlueprint == nullptr || OutBlueprint->GeneratedClass == nullptr)
+	{
+		OutError = FString::Printf(TEXT("no Blueprint to read '%s' into."), *SourceXmlPath);
+		return false;
+	}
+
+	// The ORIGINAL path, never the prepared copy: it is what the user chose,
+	// and it is what the next reimport has to prepare again from.
+	if (AMjArticulation* CDO = Cast<AMjArticulation>(OutBlueprint->GeneratedClass->GetDefaultObject()))
+	{
+		CDO->MuJoCoXMLFile.FilePath = SourceXmlPath;
+		CDO->MarkPackageDirty();
+	}
+
+	// Reads the prepared XML into the Blueprint's construction script, imports
+	// the assets it references, and compiles.
+	UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
+	if (!Generator->GenerateForBlueprint(OutBlueprint, PreparedXmlPath))
+	{
+		OutError = FString::Printf(TEXT("'%s' produced no spec."), *PreparedXmlPath);
+		return false;
+	}
+
+	// Wait for all shaders to finish compiling and flush render commands.
+	// Material instances created during import trigger async shader compilation.
+	// If the content browser renders thumbnails before shaders are ready,
+	// the render thread crashes (UE-23902).
+	if (GShaderCompilingManager)
+	{
+		GShaderCompilingManager->FinishAllCompilation();
+	}
+	FlushRenderingCommands();
+	return true;
+}
+
+bool UMujocoImportFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilenames)
+{
+	const UBlueprint* Blueprint = Cast<UBlueprint>(Obj);
+	if (Blueprint == nullptr || Blueprint->GeneratedClass == nullptr
+		|| !Blueprint->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
+	{
+		return false;
+	}
+
+	const AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject());
+	if (CDO == nullptr || CDO->MuJoCoXMLFile.FilePath.IsEmpty())
+	{
+		return false;
+	}
+
+	OutFilenames.Add(CDO->MuJoCoXMLFile.FilePath);
+	return true;
+}
+
+void UMujocoImportFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths)
+{
+	UBlueprint* Blueprint = Cast<UBlueprint>(Obj);
+	if (NewReimportPaths.Num() == 0 || Blueprint == nullptr || Blueprint->GeneratedClass == nullptr)
+	{
+		return;
+	}
+	if (AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject()))
+	{
+		CDO->MuJoCoXMLFile.FilePath = NewReimportPaths[0];
+		CDO->MarkPackageDirty();
+	}
+}
+
+EReimportResult::Type UMujocoImportFactory::Reimport(UObject* Obj)
+{
+	TArray<FString> Filenames;
+	if (!CanReimport(Obj, Filenames))
+	{
+		return EReimportResult::Failed;
+	}
+
+	UBlueprint* const Existing = Cast<UBlueprint>(Obj);
+	UBlueprint* Read = nullptr;
+	FString Error;
+	bool bCancelled = false;
+	const bool bOk = ImportModel(Filenames[0], [Existing]() { return Existing; },
+		Read, Error, bCancelled);
+
+	if (bCancelled)
+	{
+		UE_LOG(LogURLabEditor, Log, TEXT("Reimport cancelled by user during Python setup."));
+		return EReimportResult::Cancelled;
+	}
+	if (!bOk)
+	{
+		UE_LOG(LogURLabEditor, Error, TEXT("MujocoImportFactory: %s"), *Error);
+		return EReimportResult::Failed;
+	}
+	return EReimportResult::Succeeded;
+}
+
+int32 UMujocoImportFactory::GetPriority() const
+{
+	return ImportPriority;
+}
+
 bool UMujocoImportFactory::FactoryCanImport(const FString& Filename)
 {
 	// `.xml` belongs to everybody. Claiming every one of them offers a MuJoCo
@@ -229,16 +345,30 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 		return nullptr;
 	}
 
-	FScopedSlowTask SlowTask(4.f, NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
+	FScopedSlowTask SlowTask(2.f, NSLOCTEXT("URLab", "ImportingMuJoCo", "Importing MuJoCo model..."));
 	SlowTask.MakeDialog(/*bShowCancelButton=*/false);
-
-	// Preparation first, because it needs nothing from the project: a model
-	// whose meshes cannot be prepared never gets as far as making an asset.
 	SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep0", "Preparing meshes..."));
 
-	FString ActualXmlPath;
-	FString PrepareError;
-	if (!PrepareMeshes(Filename, ActualXmlPath, PrepareError, bOutOperationCanceled))
+	// The Blueprint is made from inside the pipeline, after preparation has
+	// succeeded, so a model whose meshes cannot be prepared never gets as far
+	// as making an asset.
+	UBlueprint* NewBP = nullptr;
+	FString Error;
+	const bool bImported = ImportModel(Filename,
+		[&]() -> UBlueprint* {
+			SlowTask.EnterProgressFrame(1.f,
+				NSLOCTEXT("URLab", "ImportStep1", "Building Blueprint components..."));
+			return FKismetEditorUtilities::CreateBlueprint(
+				AMjArticulation::StaticClass(),
+				InParent,
+				InName,
+				BPTYPE_Normal,
+				UBlueprint::StaticClass(),
+				UBlueprintGeneratedClass::StaticClass());
+		},
+		NewBP, Error, bOutOperationCanceled);
+
+	if (!bImported)
 	{
 		if (bOutOperationCanceled)
 		{
@@ -246,64 +376,15 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 		}
 		else
 		{
-			UE_LOG(LogURLabEditor, Error, TEXT("MujocoImportFactory: %s"), *PrepareError);
+			UE_LOG(LogURLabEditor, Error,
+				TEXT("MujocoImportFactory: %s Nothing was imported."), *Error);
 		}
-		return nullptr;
-	}
-
-	SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep1", "Reading XML..."));
-
-	UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(
-		AMjArticulation::StaticClass(),
-		InParent,
-		InName,
-		BPTYPE_Normal,
-		UBlueprint::StaticClass(),
-		UBlueprintGeneratedClass::StaticClass());
-	if (NewBP == nullptr)
-	{
-		UE_LOG(LogURLabEditor, Error,
-			TEXT("MujocoImportFactory: could not create a Blueprint named '%s'."), *InName.ToString());
-		return nullptr;
-	}
-
-	// The ORIGINAL path, never the prepared copy: it is what the user chose,
-	// and it is what a reimport has to prepare again from.
-	if (AMjArticulation* CDO = Cast<AMjArticulation>(NewBP->GeneratedClass->GetDefaultObject()))
-	{
-		CDO->MuJoCoXMLFile.FilePath = Filename;
-		CDO->MarkPackageDirty();
-	}
-
-	SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep2", "Building Blueprint components..."));
-
-	// Reads the prepared XML into the Blueprint's construction script, imports
-	// the assets it references, and compiles.
-	UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
-	const bool bGenerated = Generator->GenerateForBlueprint(NewBP, ActualXmlPath);
-
-	SlowTask.EnterProgressFrame(1.f, NSLOCTEXT("URLab", "ImportStep3", "Finalizing assets..."));
-
-	if (!bGenerated)
-	{
 		// An empty articulation left in the content browser reads as a model
 		// that imported, and the next thing that happens to it is a user
 		// dropping it into a level and wondering where the robot went.
-		UE_LOG(LogURLabEditor, Error,
-			TEXT("MujocoImportFactory: '%s' produced no spec; nothing was imported."), *ActualXmlPath);
 		DiscardImportedBlueprint(NewBP);
 		return nullptr;
 	}
-
-	// Wait for all shaders to finish compiling and flush render commands.
-	// Material instances created during import trigger async shader compilation.
-	// If the content browser renders thumbnails before shaders are ready,
-	// the render thread crashes (UE-23902).
-	if (GShaderCompilingManager)
-	{
-		GShaderCompilingManager->FinishAllCompilation();
-	}
-	FlushRenderingCommands();
 
 	return NewBP;
 }

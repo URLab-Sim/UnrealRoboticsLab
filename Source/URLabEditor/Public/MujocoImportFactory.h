@@ -23,8 +23,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "EditorReimportHandler.h"
 #include "Factories/Factory.h"
 #include "MujocoImportFactory.generated.h"
+
+class UBlueprint;
 
 /**
  * @class UMujocoImportFactory
@@ -32,7 +35,7 @@
  * Creates an AMjArticulation Blueprint and populates it with components.
  */
 UCLASS()
-class URLABEDITOR_API UMujocoImportFactory : public UFactory
+class URLABEDITOR_API UMujocoImportFactory : public UFactory, public FReimportHandler
 {
 	GENERATED_BODY()
 
@@ -42,6 +45,28 @@ public:
 	// UFactory Interface
 	virtual UObject* FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled) override;
 	virtual bool FactoryCanImport(const FString& Filename) override;
+
+	// FReimportHandler Interface
+	virtual bool CanReimport(UObject* Obj, TArray<FString>& OutFilenames) override;
+	virtual void SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths) override;
+	virtual EReimportResult::Type Reimport(UObject* Obj) override;
+	virtual int32 GetPriority() const override;
+
+	/**
+	 * The one import pipeline, taken by import and by reimport alike.
+	 *
+	 * `SourceXmlPath`'s meshes are prepared first; only once that has succeeded
+	 * is `AcquireBlueprint` asked for the Blueprint to read into, which is what
+	 * keeps a failed preparation from leaving an asset behind on a fresh import
+	 * while letting a reimport hand back the Blueprint it already has. The
+	 * Blueprint records the ORIGINAL path, never the prepared copy, so the next
+	 * reimport prepares from what the user actually chose.
+	 *
+	 * `OutBlueprint` carries whatever `AcquireBlueprint` produced, including
+	 * when the read then failed, so the caller can decide what to do with it.
+	 */
+	static bool ImportModel(const FString& SourceXmlPath, TFunctionRef<UBlueprint*()> AcquireBlueprint,
+		UBlueprint*& OutBlueprint, FString& OutError, bool& bOutCancelled);
 
 	/**
 	 * Where a model's prepared copy is written.

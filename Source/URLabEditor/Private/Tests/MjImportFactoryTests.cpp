@@ -7,7 +7,10 @@
 
 #include "CoreMinimal.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "EditorReimportHandler.h"
 #include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/FileHelper.h"
@@ -17,6 +20,8 @@
 
 #include "MjPythonHelper.h"
 #include "MujocoImportFactory.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
 
 namespace
 {
@@ -99,6 +104,8 @@ struct FImportProbe
 	/** The Blueprint the import would have left behind, if it left one. */
 	UBlueprint* Leftover() const { return FindObject<UBlueprint>(Package, *AssetName); }
 
+	UBlueprint* AsBlueprint() const { return Cast<UBlueprint>(Result); }
+
 	bool RegisteredAsAsset() const
 	{
 		const FString ObjectPath = FString::Printf(TEXT("/Game/MuJoCoImportsTest/%s.%s"),
@@ -108,6 +115,43 @@ struct FImportProbe
 		return Registry.Get().GetAssetByObjectPath(FSoftObjectPath(ObjectPath)).IsValid();
 	}
 };
+
+/** The construction script's component names, in order. */
+TArray<FString> ComponentNames(const UBlueprint* Blueprint)
+{
+	TArray<FString> Out;
+	if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr)
+	{
+		return Out;
+	}
+	for (const USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+	{
+		if (Node != nullptr && Node->ComponentTemplate != nullptr)
+		{
+			Out.Add(FString::Printf(TEXT("%s %s"),
+				*Node->ComponentTemplate->GetClass()->GetName(),
+				*Node->GetVariableName().ToString()));
+		}
+	}
+	return Out;
+}
+
+/** Every authored value in the Blueprint's spec, as the MJCF it writes back. */
+FString SpecMjcf(UBlueprint* Blueprint)
+{
+	return Blueprint != nullptr ? FSpecRef::OverBlueprint(*Blueprint).WriteMjcf() : FString();
+}
+
+/** The model file a Blueprint says it came from. */
+FString RecordedSource(const UBlueprint* Blueprint)
+{
+	if (Blueprint == nullptr || Blueprint->GeneratedClass == nullptr)
+	{
+		return FString();
+	}
+	const AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject());
+	return CDO != nullptr ? CDO->MuJoCoXMLFile.FilePath : FString();
+}
 }  // namespace
 
 // ============================================================================
@@ -279,6 +323,71 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 		TestNull(TEXT("nothing is left in the package"), Probe.Leftover());
 		TestFalse(TEXT("nothing is left in the asset registry"), Probe.RegisteredAsAsset());
 	}
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Import.ReimportMatchesImport
+//   Reimport used to have no handler at all, so the only way back to a changed
+//   model went round the preparation step. It now runs the identical pipeline,
+//   from the original path the Blueprint recorded rather than from a prepared
+//   copy, and lands on the same spec.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportReimportMatchesImport,
+	"URLab.Import.ReimportMatchesImport",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
+{
+	const FString Dir = ScratchDir(TEXT("Reimport"));
+	const FString SourceXml = Dir / TEXT("reimport_probe.xml");
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujoco model=\"reimport_probe\">\n")
+		TEXT("  <worldbody>\n")
+		TEXT("    <body name=\"root\" pos=\"0 0 0.5\">\n")
+		TEXT("      <joint name=\"hinge\" type=\"hinge\" axis=\"0 1 0\" range=\"-1 1\"/>\n")
+		TEXT("      <geom name=\"link\" type=\"capsule\" size=\"0.05 0.2\" rgba=\"0.2 0.4 0.8 1\"/>\n")
+		TEXT("    </body>\n")
+		TEXT("  </worldbody>\n")
+		TEXT("  <actuator><motor name=\"drive\" joint=\"hinge\" gear=\"25\"/></actuator>\n")
+		TEXT("</mujoco>\n")), *SourceXml);
+
+	FImportProbe Probe;
+	Probe.Run(SourceXml);
+	UBlueprint* Blueprint = Probe.AsBlueprint();
+	if (Blueprint == nullptr)
+	{
+		AddError(TEXT("import setup failed: no Blueprint produced"));
+		return false;
+	}
+
+	// The recorded source is the model, not the prepared copy that was parsed.
+	TestEqual(TEXT("the Blueprint records the original path"), RecordedSource(Blueprint), SourceXml);
+
+	const TArray<FString> NamesBefore = ComponentNames(Blueprint);
+	const FString MjcfBefore = SpecMjcf(Blueprint);
+	TestTrue(TEXT("the import produced components"), NamesBefore.Num() > 0);
+	TestTrue(TEXT("the import produced a spec"), !MjcfBefore.IsEmpty());
+
+	UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
+
+	TArray<FString> Filenames;
+	TestTrue(TEXT("an imported articulation can be reimported"),
+		Factory->CanReimport(Blueprint, Filenames));
+	if (Filenames.Num() == 1)
+	{
+		TestEqual(TEXT("reimport reads the original path"), Filenames[0], SourceXml);
+	}
+
+	TestEqual(TEXT("reimport succeeds"),
+		static_cast<int32>(Factory->Reimport(Blueprint)),
+		static_cast<int32>(EReimportResult::Succeeded));
+
+	TestEqual(TEXT("reimport lands on the same components"), ComponentNames(Blueprint), NamesBefore);
+	TestEqual(TEXT("reimport lands on the same authored values"), SpecMjcf(Blueprint), MjcfBefore);
+	TestEqual(TEXT("reimport leaves the recorded source alone"),
+		RecordedSource(Blueprint), SourceXml);
 
 	return true;
 }

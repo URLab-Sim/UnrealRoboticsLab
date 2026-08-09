@@ -457,12 +457,19 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 		// The spec's own element, not its world body: the world body would come
 		// across as a body of its own and put an extra link in every chain.
 		const FTCHARToUTF8 Prefix(*Participant.Prefix);
-		if (Frame->element == nullptr || Built.Spec->element == nullptr ||
-			mjs_attach(Frame->element, Built.Spec->element, Prefix.Get(), "") == nullptr)
+		const bool bAttached = Frame->element != nullptr && Built.Spec->element != nullptr
+			&& mjs_attach(Frame->element, Built.Spec->element, Prefix.Get(), "") != nullptr;
+
+		// Harvested into a local the moment the attach returns. A failed attach
+		// leaves the target spec unusable, and its error string is the last
+		// thing on it worth reading -- so nothing else touches the spec between
+		// the failure and the copy.
+		const FString AttachError = bAttached ? FString() : SpecErrorText(*Out.Scene.Spec);
+		if (!bAttached)
 		{
 			Out.Errors.Add(DiagnosticFor(nullptr,
 				FString::Printf(TEXT("could not attach participant '%s': %s"), *Participant.Prefix,
-					*SpecErrorText(*Out.Scene.Spec))));
+					*AttachError)));
 			return Out;
 		}
 

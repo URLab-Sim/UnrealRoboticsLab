@@ -102,12 +102,20 @@ PLUGIN_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
 
 # --- Generated-profile drift gate ------------------------------------------
 # Refuse to build if the emitted MuJoCo document profile drifted from what the
-# schema now says. The generator ships inside the MuJoCo submodule, so this is
-# skipped when the submodule is not checked out: the gate is best-effort
-# locally and enforced in CI.
+# schema now says. The gate needs the generator and `uv`; when either is absent
+# it cannot run, and it says so rather than passing quietly. A skipped gate and
+# a passing gate are the same exit code, so silence here reads as a green gate
+# in every log and every CI summary that only checks the code.
 REGEN="$PLUGIN_ROOT/Scripts/regen_ue_profile.sh"
 PROTOSPEC_GEN="$PLUGIN_ROOT/protospec/protospec_gen"
-if [[ -f "$REGEN" && -d "$PROTOSPEC_GEN" ]] && command -v uv >/dev/null 2>&1; then
+GATE_MISSING=""
+[[ -f "$REGEN" ]]         || GATE_MISSING="no $REGEN"
+[[ -d "$PROTOSPEC_GEN" ]] || GATE_MISSING="${GATE_MISSING:+$GATE_MISSING; }no ProtoSpec generator at $PROTOSPEC_GEN"
+command -v uv >/dev/null 2>&1 || GATE_MISSING="${GATE_MISSING:+$GATE_MISSING; }uv is not on PATH"
+
+if [[ -n "$GATE_MISSING" ]]; then
+    echo "WARNING: profile drift gate SKIPPED ($GATE_MISSING). The generated MuJoCo profile is NOT checked in this run." >&2
+else
     echo ">>> Profile drift gate: regen_ue_profile.sh --check"
     if ! bash "$REGEN" --check; then
         echo "ERROR: generated profile drift detected. Re-run 'Scripts/regen_ue_profile.sh', then re-run this script." >&2

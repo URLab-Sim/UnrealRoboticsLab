@@ -2,47 +2,30 @@
 
 How to move URLab onto a newer MuJoCo.
 
-!!! danger "`third_party/MuJoCo/src` is URLab's fork, not upstream. A bump is a REBASE, and getting it wrong looks like success."
+The engine is a submodule, `third_party/MuJoCo/src`. Everything URLab derives
+from it — the generated document profile, the compiled-model goldens, the
+hand-written translation of MuJoCo's own reader — is pinned to that commit, and
+each derived thing has a different failure style when the pin moves. This page
+is ordered so the loud failures happen before the silent ones.
 
-    The submodule tracks URLab's MuJoCo fork, whose `protospec` branch is upstream
-    **plus one directory**: `protospec/`, carrying the MJCF schema front end, the
-    generator, and the C++ SDK that `Source/URLab/*/MuJoCo/Gen` is compiled
-    against.
+!!! info "Where ProtoSpec lives"
 
-    So a bump is: **rebase the fork's `protospec` branch onto the new upstream
-    commit, then move the gitlink to the rebased tip.** Never `git checkout` an
-    upstream SHA or tag in the submodule.
+    **The plugin's `protospec/` is the live tree.** The generator, the overlay,
+    and the SDK that `Source/URLab/*/MuJoCo/Gen` is compiled against are all
+    there, in the plugin, tracked in the plugin's history.
 
-    Pointing the gitlink at an upstream commit **does not fail**. It fails
-    silently, and every signal you would normally trust says the bump worked:
+    The MuJoCo submodule contains a directory also called `protospec/`. It is
+    **not consumed** — `.gitmodules` says so, and that is the authoritative
+    statement — but it still holds a runnable generator with its own, older
+    overlay. Running that copy produces plausible output from the wrong tables.
+    Check which tree you are in before running anything: the live one is at the
+    plugin root, not under `third_party/`.
 
-    | What happens | What you see |
-    |---|---|
-    | `protospec/` vanishes from the submodule | nothing |
-    | `third_party/MuJoCo/build.ps1` finds no `src/protospec/lib`, skips it | one skipped line in a long build log |
-    | `URLab.Build.cs` defines `URLAB_PROTOSPEC=0` (`URLab.Build.cs:162`) | one warning in a long build log |
-    | the entire generated document profile compiles out | **build succeeds** |
-    | the drift gate in `build_and_test.{ps1,sh}` needs `protospec_gen`, which is gone, so it skips itself | **no gate failure** |
-    | the automation suite's ProtoSpec tests compile out with it | **tests pass** |
-
-    A green build and a green suite are therefore **not** evidence the pipeline is
-    present. Verify it explicitly — see [Prove the pipeline is
-    live](#prove-the-pipeline-is-live) — every time.
-
-    One more trap in the same family: `third_party/MuJoCo/build.ps1` runs
-    `git submodule update --force`, which follows the **index** gitlink. If you
-    have moved the submodule but not staged the gitlink, the build resets your
-    submodule back, dropping `protospec/`, with the symptoms above. **Stage the
-    gitlink before you build.**
-
-    And its mirror image, which fails loudly rather than silently: UBT's own
-    drift check (`URLab.Build.cs:401`) reads `git ls-tree HEAD`, so it compares
-    the submodule against the **committed** gitlink, not the staged one. Stage
-    it and the third-party build works; leave it uncommitted and the editor
-    build refuses with `MuJoCo submodule drift: URLab expects <old SHA>`. The
-    two checks read different places, so the gitlink has to be both staged and
-    committed before the UE build — which is why the commit below happens
-    before `build_and_test`, not after it.
+    What the submodule *does* supply is the grammar and the C API:
+    `src/xml/mjcf.schema`, `doc/generate/mjcf_schema.py`, and the headers under
+    `include/mujoco/`. The generator reads all of them straight from the
+    submodule working tree (`frontend.py`, `mujoco_src()`), which is why the
+    submodule has to be at the new commit before anything is regenerated.
 
 ## Procedure
 
@@ -62,120 +45,228 @@ release's `General` section, to removed or renamed `mjs_*` entry points, and to
 anything about plugin packaging or CMake targets (a DLL-packaging change is what
 made the 3.7.0 bump crash URLab silently during module init).
 
-### 2. Rebase the fork
+Read it for MJCF changes too, not just API changes. Sections 6 and 7 below are
+the parts of the bump the tooling cannot do for you, and the changelog is the
+only advance warning either of them gets.
 
-In the fork checkout (not the submodule working tree, if you keep a separate
-clone):
-
-```bash
-git fetch upstream
-git rebase <new-upstream-commit> protospec
-```
-
-The branch commits nothing outside `protospec/`, and its own
-`tests/test_upstream_untouched.py` enforces that, so the rebase should be
-conflict-free. **A conflict means someone edited MuJoCo itself** — that is the
-bug to fix, not to resolve away.
-
-Then run the fork's own gates before moving the gitlink:
-
-```bash
-cd protospec
-uv run python -m protospec_gen.emit --check
-uv run pytest
-```
-
-A schema change surfaces here first: the overlay's drift gates
-(`ATTR_TYPE_OVERRIDES`, `UE_KIND`, `UE_QUAT_ATTRS`, `ANGLE_ATTRS`, the
-`reading=custom` / `writing=custom` waivers) fail by name rather than going
-stale. Each failure names the exact overlay entry to edit or delete.
-
-### 3. Move the gitlink and stage it
+### 2. Move the submodule and stage the gitlink
 
 ```bash
 cd third_party/MuJoCo/src
-git checkout protospec && git pull --ff-only     # the REBASED branch
+git fetch origin && git checkout <target>
 cd ../../..
-git add third_party/MuJoCo/src                   # BEFORE building; see the warning above
+git add third_party/MuJoCo/src
 ```
 
-### 4. Rebuild third-party
+Stage it now. Two different checks read the gitlink from two different places
+and both have to agree:
+
+- `third_party/MuJoCo/build.ps1` runs `git submodule update --force`, which
+  follows the **index**. Build with the gitlink unstaged and it resets your
+  submodule back under you.
+- UBT's drift check (`URLab.Build.cs`) reads `git ls-tree HEAD`, so it compares
+  against the **committed** gitlink and refuses the editor build with
+  `MuJoCo submodule drift: URLab expects SHA ...`.
+
+So the gitlink is staged before the third-party build and committed before the
+UE build. Step 5 opens that commit for exactly that reason.
+
+### 3. Rebuild the third-party install, then ProtoSpec
+
+Order matters. The generator parses the **submodule's** headers while the
+build links the **staged install**, so an install that is one version behind
+produces a profile that compiles against nothing.
 
 ```bash
-cd third_party/MuJoCo
-./build.ps1          # or ./build.sh on Linux/macOS
+cd third_party && ./build_all.ps1        # or ./build_all.sh
+cd ../protospec && ./build.ps1           # or ./build.sh — NOT part of build_all
 ```
 
-Confirm the install carries ProtoSpec:
+`protospec/build.ps1` is deliberately not a step of the MuJoCo build, so it is
+also easy to forget. Confirm both landed:
 
 ```bash
 ls third_party/install/protospec/sdk/protospec/classes.h
 grep '#define mjVERSION_HEADER' third_party/install/MuJoCo/include/mujoco/mujoco.h
 ```
 
-### 5. Regenerate the UE profile
+If `third_party/install/protospec/` is missing, `URLab.Build.cs` defines
+`URLAB_PROTOSPEC=0`, the whole generated profile compiles out, and the build
+**succeeds** with one warning in a long log. See
+[Prove the pipeline is live](#9-prove-the-pipeline-is-live).
+
+### 4. Regenerate and answer the gates
 
 ```bash
-./Scripts/regen_ue_profile.ps1        # or .sh
+cd protospec && uv run pytest && uv run python -m protospec_gen.emit --check
+cd .. && ./Scripts/regen_ue_profile.ps1        # or .sh
 ```
 
 A schema change moves the generated profile, so expect `Source/URLab/*/MuJoCo/Gen`
-to change. Commit that output; it is checked in.
+to change. It is checked in; commit it.
 
-### 6. Commit the gitlink and the regenerated profile
+This is the strongest part of the bump: the gates fail **by name**, and each
+failure names the exact overlay entry to edit or delete. Two families:
 
-UBT reads the **committed** gitlink, so this has to happen before the editor
-build, not after it:
+**Removal and change.** An overlay entry naming an element, enum, keyword or
+attribute the schema no longer declares; a `reading=custom` / `writing=custom`
+facet with no handler and no waiver; an `ATTR_TYPE_OVERRIDES` row correcting a
+declaration that has changed under it; a moved or retyped `mjs*` field. All in
+`protospec/protospec_gen/overlay.py` and `overlay_ue.py`.
+
+**Addition.** Three classes of upstream addition would otherwise pass every
+removal gate and land silently wrong, so each has its own gate
+(`frontend.py`):
+
+| Addition | If unclassified | Gate |
+|---|---|---|
+| a repeatable child of an interleaved section (`body`, `tendon`, `spatial`, `equality`, `actuator`, `sensor`) left out of its `INTERLEAVE` row | written as a separate list after the ordered one, shifting every id in that family | strict, no waiver |
+| a new angle-valued attribute not in `ANGLE_ATTRS` | read as radians whatever the document says: wrong by 57.3x | heuristic; waive in `NOT_ANGLE` |
+| a new dynamic reference not in `TARGET_FROM` | a plain string no referrer scan or rename fixup can see | heuristic; waive in `NOT_TARGET` |
+
+The two heuristic gates fire only on attributes that are *new*, which is
+computed against `protospec/protospec_gen/classified_attrs.json`. Once every
+new attribute is either classified or waived with a reason, refresh that
+baseline and commit it with the rest:
 
 ```bash
-git add third_party/MuJoCo/src Source/
+cd protospec && uv run python -m protospec_gen.frontend --update-baseline
+```
+
+Refresh it **after** answering the gates, never before: the baseline is what
+makes "new" mean anything, and refreshing first is how an unclassified
+attribute becomes permanently invisible.
+
+### 5. Commit the gitlink, the profile and the baseline
+
+UBT reads the **committed** gitlink, so this happens before the editor build:
+
+```bash
+git add third_party/MuJoCo/src Source/ protospec/
 git commit -m 'Bump MuJoCo to <SHA> and ...'
 ```
 
-Amend this commit as the rest of the bump lands. The whole bump stays one
-commit — see [Commit](#8-commit).
+Amend this commit as the rest of the bump lands — see [Finish the
+commit](#11-finish-the-commit).
 
-### 7. Build and test
+### 6. Re-read the upstream citations
 
-Use the wrapper, not a bare UBT invocation — it runs the drift gate first and
-prints the summary block the PR template wants.
+About 2,000 lines of `Source/URLab/Private/MuJoCo/Spec/` hand-mirror MuJoCo's
+own MJCF reader, so that URLab's component tree produces the same `mjSpec` the
+reader would have produced from the equivalent document. Those transcriptions
+cite upstream by file and line. Nothing checks that a citation still describes
+the code it names, so this step is manual and it is the step most likely to be
+skipped.
+
+Regenerate the review list rather than trusting this one — the grep is the
+list, so it cannot rot:
+
+```bash
+grep -rn 'xml_native_reader\.cc\|user_objects\.cc\|user_model\.cc\|user_mesh\.cc\|user_api\.cc' Source/URLab
+```
+
+At the time of writing that is six files: `MjSpecWriteHooks.cpp` (five sites),
+`MjSceneSpec.cpp`, `MjFromtoFold.cpp` and `.h`, `MjSpecBuildContext.h`,
+`MjAssetSink.h`. For each, open the cited upstream location in the **new**
+submodule and confirm the rule still reads the way the comment says. A rule
+that moved and was not followed produces a model that compiles and is wrong.
+
+### 7. Retest the behavioral assumptions
+
+These are upstream behaviours URLab depends on that no gate expresses. Each has
+a known failure shape, so each is checked deliberately:
+
+- **The compile-before-serialize workaround** (`MjSceneSpec.cpp`,
+  `SaveDebugArtifacts`). MuJoCo's writer serializes a *compiled* spec, and a
+  spec copy carries no compile with it; handing `mj_saveXMLString` an
+  uncompiled copy is an access violation rather than a refusal, so the copy is
+  compiled first. If upstream starts refusing cleanly, the extra compile can
+  go; if the access violation moves, the crash is in debug-artifact saving.
+- **The VFS case-insensitive basename fallback** (`MjSceneSpec.cpp`,
+  `MjAssetSink.h`). The whole asset-namespacing scheme is built on MuJoCo
+  resolving a VFS entry by basename, case-insensitively.
+- **Derive-then-prefix order for unnamed assets** (`MjSceneSpec.cpp`). MuJoCo
+  derives an unnamed asset's name from its file before URLab's prefix is
+  applied; a change in order renames every unnamed asset in a scene.
+- **`mjs_attach` corruption on failure.** A failed attach leaves the target
+  spec unusable. URLab aborts and discards the whole build on failure and never
+  retries. If upstream ever makes attach failure recoverable, that path can be
+  simplified — but do not weaken it on assumption.
+- **`mjCModel::CopyList` silently dropping unresolved-reference elements**
+  (cited in `MjSpecWriteHooks.cpp`).
+
+### 8. Build, test, and run the nets
 
 ```powershell
 .\Scripts\build_and_test.ps1 -Engine 'C:\Program Files\Epic Games\UE_5.7' `
                              -Project 'C:\path\to\your.uproject'
 ```
 
-The gate exits 4 on generated-profile drift. **Confirm you saw it run**: the line
-`>>> Profile drift gate: regen_ue_profile.ps1 -Check` must appear. If it did not,
-the submodule is not checked out, which is the failure this page is about.
+The wrapper runs the profile drift gate first and prints the summary block the
+PR template wants. **Confirm you saw the gate line**,
+`>>> Profile drift gate: regen_ue_profile.ps1 -Check`. If it is absent the
+script prints a `WARNING:` naming what it could not find — `uv` off PATH, the
+generator missing — and continues without gating. Exit 4 is drift.
 
-### 8. Prove the pipeline is live
+Then run the corpus net, which `build_and_test` does **not** run for you. It
+round-trips every model in MuJoCo's own corpus through URLab's reader and
+writer and field-diffs the resulting `mjModel` against a stock load:
 
-Do this before you believe the green build. All three must hold:
+```powershell
+.\protospec\corpus_net.ps1        # or ./protospec/corpus_net.sh
+```
 
-1. **The submodule carries the fork.**
-   ```bash
-   ls third_party/MuJoCo/src/protospec/protospec_gen/emit_ue.py
-   git -C third_party/MuJoCo/src log --oneline -1
-   ```
-   The log line must be a fork commit, not an upstream one.
+It exits non-zero on anything outside its recorded allowed-failure list
+(`protospec/tools/corpus_net.py`). A new entry in that list is a decision, not
+a formality.
 
-2. **`URLAB_PROTOSPEC` is 1.** It is 0 whenever `third_party/install/protospec`
-   is missing (`URLab.Build.cs:152-162`). A clean rebuild prints the warning
-   text from that branch when it is off; the absence of that warning, plus the
-   presence of the install directory, is the check.
+### 9. Prove the pipeline is live
 
-3. **The drift gate actually executed.** Its own output line, above. A skipped
-   gate is indistinguishable from a passing one in the exit code.
+Do this before you believe a green build. A green build and a green suite are
+not evidence the generated profile is present: with `URLAB_PROTOSPEC=0`
+everything that would have failed compiles out instead, and the automation
+suite's ProtoSpec tests go with it.
 
-### 9. Finish the commit
+1. **`third_party/install/protospec/` exists** and `URLAB_PROTOSPEC` is 1. The
+   build prints a `URLab: ProtoSpec is not installed ...` line when it is 0;
+   the absence of that line plus the presence of the directory is the check.
+2. **The drift gate executed** — its own output line, above. A skipped gate and
+   a passing gate have the same exit code.
+3. **A representative imported model still loads and simulates** in the editor.
 
-The whole bump is **one commit**: gitlink, regenerated `Gen/`, any API
-migrations, any overlay edits, any tests. An intermediate state where the
-gitlink moved but call sites still use old signatures does not compile, breaks
-`git bisect`, and leaves the tree unbuildable. Step 6 opened that commit
-because UBT would not build without it; amend the rest into it rather than
-stacking follow-ups.
+### 10. The goldens
+
+`Content/TestData/goldens/` holds compiled `mjModel` files (`.mjb`).
+`mj_loadModel` validates the MuJoCo version in the `.mjb` header, so **any
+release bump makes every golden fail to load**.
+
+`Content/TestData/goldens/CAPTURE.json` records the MuJoCo version and
+submodule SHA the goldens were captured at, and the golden test reads it before
+loading anything, so a version bump gives you an explanatory failure rather
+than a message indistinguishable from file corruption. When it fires:
+
+1. Confirm the live compile-parity check is green first. It compares URLab's
+   compiled output against `mj_loadXML` of the same authored file on every run,
+   with no recording involved, so it is the thing that says the new output is
+   *correct*. Recapturing goldens without it records whatever the code does
+   that day, regressions included.
+2. Delete the goldens (capture mode writes only files that are **absent**, so
+   recapture is delete-then-run).
+3. Re-run the suite with `URLAB_CAPTURE_GOLDENS=1`.
+4. Review the diff. `CAPTURE.json` is rewritten by capture mode; the `.mjb`
+   files are binary, so the live check in step 1 is the review.
+
+A golden that changes when the MuJoCo version did **not** change is a
+regression, and stops the bump.
+
+### 11. Finish the commit
+
+The whole bump is **one commit**: gitlink, regenerated `Gen/`, the classified
+baseline, any API migrations, any overlay edits, recaptured goldens, any tests.
+An intermediate state where the gitlink moved but call sites still use old
+signatures does not compile, breaks `git bisect`, and leaves the tree
+unbuildable. Step 5 opened that commit because UBT would not build without it;
+amend the rest into it rather than stacking follow-ups.
 
 ```bash
 git add -A && git commit --amend --no-edit
@@ -183,15 +274,23 @@ git add -A && git commit --amend --no-edit
 
 ## Checklist
 
-- [ ] Fork branch rebased, not checked out at an upstream SHA.
-- [ ] `uv run pytest` and `emit --check` green inside `protospec/`.
+- [ ] Changelog slice read, including MJCF changes.
 - [ ] Gitlink staged **before** the third-party build, committed **before** the UE build.
-- [ ] `third_party/install/protospec/` exists after the build.
+- [ ] `third_party/build_all.*` **and** `protospec/build.*` both re-run; `third_party/install/protospec/` exists.
+- [ ] `uv run pytest` and `emit --check` green inside `protospec/`.
+- [ ] Every overlay gate answered by editing a table, not by loosening a gate.
+- [ ] Every new attribute classified or waived with a reason; `classified_attrs.json` refreshed **after**.
 - [ ] `Scripts/regen_ue_profile.*` re-run; `Gen/` changes committed.
+- [ ] Every upstream citation re-read against the new sources (regenerate the list by grep).
+- [ ] The behavioral assumptions in step 7 retested.
 - [ ] `build_and_test.*` printed the drift-gate line and exited 0.
-- [ ] `URLAB_PROTOSPEC` is 1 (see step 8).
+- [ ] `corpus_net.*` run, and its allowed-failure list unchanged or deliberately changed.
+- [ ] `URLAB_PROTOSPEC` is 1 (step 9).
+- [ ] Goldens: live parity check green first, then recaptured; `CAPTURE.json` updated.
 - [ ] A representative imported model still loads and simulates in the editor.
 
 ## Related
 
+- [Architecture: the mjSpec pipeline](../architecture_mjspec.md): what the
+  gates, goldens and hooks in this page are protecting.
 - [Building from Source](building.md): dependency drift checks and the build gate.

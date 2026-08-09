@@ -71,13 +71,21 @@ if (-not (Test-Path $cmd)) { Write-Error "UnrealEditor-Cmd not found: $cmd";   e
 
 # --- Generated-profile drift gate ------------------------------------------
 # Refuse to build if the emitted MuJoCo document profile drifted from what the
-# schema now says. The generator ships inside the MuJoCo submodule, so this is
-# skipped when the submodule is not checked out: the gate is best-effort
-# locally and enforced in CI.
+# schema now says. The gate needs the generator and `uv`; when either is absent
+# it cannot run, and it says so rather than passing quietly. A skipped gate and
+# a passing gate are the same exit code, so silence here reads as a green gate
+# in every log and every CI summary that only checks the code.
 $pluginRoot = Split-Path -Parent $PSScriptRoot
 $regen = Join-Path $pluginRoot 'Scripts/regen_ue_profile.ps1'
 $protospec = Join-Path $pluginRoot 'protospec/protospec_gen'
-if ((Test-Path $regen) -and (Test-Path $protospec) -and (Get-Command uv -ErrorAction SilentlyContinue)) {
+$gateMissing = @()
+if (-not (Test-Path $regen))     { $gateMissing += "no $regen" }
+if (-not (Test-Path $protospec)) { $gateMissing += "no ProtoSpec generator at $protospec" }
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { $gateMissing += 'uv is not on PATH' }
+
+if ($gateMissing.Count -gt 0) {
+    Write-Warning ("Profile drift gate SKIPPED ({0}). The generated MuJoCo profile is NOT checked in this run." -f ($gateMissing -join '; '))
+} else {
     Write-Host '>>> Profile drift gate: regen_ue_profile.ps1 -Check'
     & $regen -Check
     if ($LASTEXITCODE -ne 0) {

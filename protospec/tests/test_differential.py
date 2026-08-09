@@ -18,7 +18,10 @@ Two tools cooperate, located under ``protospec/lib/**`` in any config directory:
   ProtoSpec-roundtripped MJCF to stdout. Exit 0 = ok, 3 = file uses elements
   outside the currently supported set (skip), 1 = real error (fail).
 * ``mj_model_diff a.xml b.xml`` (this harness) -- exit 0 identical, 2 differ,
-  1 load error.
+  3 side a would not load, 4 side b would not load, 1 the tool could not run.
+  The two load-error codes are separate because they mean opposite things here:
+  3 is a corpus fixture that is not standalone-loadable and never was our
+  business, 4 is a document our own writer produced and MuJoCo cannot read back.
 
 ``lib/io/supported.json`` (owned by the pathfinder) lists the lowercase MJCF
 tags fully supported today; the harness only runs the round trip on files whose
@@ -45,6 +48,17 @@ Runtime cap
 bounded, models whose source XML exceeds ``MAX_XML_BYTES`` are skipped for size
 rather than silently truncated; the skipped-for-size list is printed in the
 session summary.
+
+Models MuJoCo will not step
+---------------------------
+A handful of corpus models compile and then abort inside ``mj_forward``: the
+engine has corners (a rigid deformable resting on a static body is the one this
+corpus reaches) that its own parity tests exclude. ``mj_model_diff`` traps the
+fatal handler, so such a model still gets every size, name and array field
+compared and simply loses the forward-kinematics invariants, reported per side.
+It counts as identical when its fields match, because that is what the round
+trip is being asked about; the abort is upstream's and is listed separately in
+the session summary so it is visible rather than merged into a pass.
 
 Engine plugins
 --------------
@@ -152,6 +166,9 @@ def _mujoco_available() -> bool:
 # --------------------------------------------------------------------------- #
 _STATS: Counter = Counter()
 _SIZE_SKIPS: list[str] = []
+# Models compared in full whose mj_forward aborted upstream; not a _STATS key,
+# because every _STATS key is one model and these are already counted there.
+_FORWARD_ABORTS: list[str] = []
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -176,6 +193,10 @@ def _summary():
     if _SIZE_SKIPS:
         print("  skipped-for-size:")
         for name in _SIZE_SKIPS:
+            print(f"    {name}")
+    if _FORWARD_ABORTS:
+        print("  compared in full, mj_forward aborted upstream (invariants skipped):")
+        for name in _FORWARD_ABORTS:
             print(f"    {name}")
 
 
@@ -293,7 +314,7 @@ def test_self_geom_pos_diff(tmp_path):
     not _mujoco_available(),
     reason="mj_model_diff / the MuJoCo runtime not built (see corpus_net.ps1 / corpus_net.sh)",
 )
-def test_self_load_error(tmp_path):
+def test_self_load_error_in_b(tmp_path):
     a = tmp_path / "a.xml"
     a.write_text(_SELF_MJCF, encoding="utf-8")
     missing = tmp_path / "does_not_exist.xml"
@@ -302,8 +323,65 @@ def test_self_load_error(tmp_path):
         capture_output=True,
         text=True,
     )
-    assert r.returncode == 1, f"expected load error (1), got {r.returncode}"
-    assert "load error" in r.stderr
+    assert r.returncode == 4, f"expected load error in b (4), got {r.returncode}"
+    assert "load error in b" in r.stderr
+
+
+@pytest.mark.skipif(
+    not _mujoco_available(),
+    reason="mj_model_diff / the MuJoCo runtime not built (see corpus_net.ps1 / corpus_net.sh)",
+)
+def test_self_load_error_in_a(tmp_path):
+    """The two sides get their own exit code; the pipeline classifies on it.
+
+    Keying on the wording instead is what misattributed an upstream engine abort
+    to this project's round trip for as long as the phrase happened to be absent.
+    """
+    b = tmp_path / "b.xml"
+    b.write_text(_SELF_MJCF, encoding="utf-8")
+    missing = tmp_path / "does_not_exist.xml"
+    r = subprocess.run(
+        [str(MJ_MODEL_DIFF), str(missing), str(b)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 3, f"expected load error in a (3), got {r.returncode}"
+    assert "load error in a" in r.stderr
+
+
+_FORWARD_ABORT_FIXTURE = "test/xml/testdata/many_dependencies.xml"
+
+
+@pytest.mark.skipif(
+    not _mujoco_available() or CORPUS_ROOT is None,
+    reason="mj_model_diff / the MuJoCo corpus not available",
+)
+def test_self_forward_abort_survives():
+    """A model MuJoCo refuses to step is still compared, and does not kill the tool.
+
+    ``many_dependencies.xml`` compiles and then aborts in ``mj_island`` on a
+    rigid deformable resting on a static body -- upstream's corner, reproducible
+    with a stock load of the ORIGINAL file, which is what this test diffs against
+    itself. Before the fatal handler was trapped the process died here and the
+    round trip was blamed. If upstream ever fixes the abort the assertion on the
+    verdict still holds; only the reported message goes away.
+    """
+    model = CORPUS_ROOT / _FORWARD_ABORT_FIXTURE
+    if not model.is_file():
+        pytest.skip(f"{_FORWARD_ABORT_FIXTURE} is not in this corpus")
+    r = subprocess.run(
+        [str(MJ_MODEL_DIFF), str(model), str(model)],
+        capture_output=True,
+        text=True,
+    )
+    assert r.returncode == 0, (
+        f"a model compared against itself must be identical, got {r.returncode}\n"
+        f"{r.stdout}\n{r.stderr}"
+    )
+    assert "IDENTICAL" in r.stdout
+    if "forward aborted" in r.stderr:
+        assert "forward aborted in a" in r.stderr
+        assert "forward aborted in b" in r.stderr
 
 
 # --------------------------------------------------------------------------- #
@@ -383,12 +461,17 @@ def test_roundtrip_matches_mujoco(model: Path):
         except OSError:
             pass
 
-    if diff.returncode == 1:
-        # Distinguish "the original itself is not a standalone-loadable model"
-        # (a corpus fixture, not our bug) from "our round trip won't load".
-        if "load error in a" in diff.stderr:
-            _STATS["skip-unloadable-original"] += 1
-            pytest.skip(f"original not standalone-loadable: {diff.stderr.strip()}")
+    # Exit 3 is "the original itself is not a standalone-loadable model" -- a
+    # corpus fixture, never our bug. Exit 4 is "the document our writer produced
+    # will not load", which is ours and fails. The tool distinguishes them by
+    # code; classifying on the message text is what made an upstream engine
+    # abort look like a round-trip defect, because the abort left the process
+    # dead with an exit code that happened to collide with a load error.
+    if diff.returncode == 3:
+        _STATS["skip-unloadable-original"] += 1
+        pytest.skip(f"original not standalone-loadable: {diff.stderr.strip()}")
+
+    if diff.returncode == 4:
         _STATS["load-error"] += 1
         pytest.fail(f"mj_model_diff load error on round trip:\n{diff.stderr}")
 
@@ -397,6 +480,8 @@ def test_roundtrip_matches_mujoco(model: Path):
         pytest.fail(f"round trip differs from original:\n{diff.stdout}")
 
     assert diff.returncode == 0, f"unexpected exit {diff.returncode}\n{diff.stdout}\n{diff.stderr}"
+    if "forward aborted" in diff.stderr:
+        _FORWARD_ABORTS.append(_rel_id(model))
     _STATS["identical"] += 1
 
 
@@ -416,16 +501,30 @@ def test_roundtrip_matches_mujoco(model: Path):
 # plugin models (17 of them, three sharing mujoco.elasticity.cable) load on
 # neither leg and skip instead of counting. The value below is therefore taken
 # from the weaker configuration -- a bare `pytest` run with no plugins
-# registered -- so it holds in both: 404 enumerated models, 372 identical, 31
-# skips, 1 load error (many_dependencies, the recorded round-trip defect).
+# registered -- so it holds in both: 404 enumerated models, 373 identical, 30
+# skips, 1 unsupported, 0 load errors.
 #
-# _MAX_UNLOADABLE_SKIP is the guard against a plugin quietly failing to
-# register, and it is reached only after the load-error assertion above it
-# clears. Its 11 dates from a corpus that had neither the attach-conflict
-# fixtures nor a configuration in which the plugin models skip; a bare run
-# measures 30 today.
+# many_dependencies.xml is in the 373. It compiles identically and then aborts
+# in mj_island on both legs, the ORIGINAL file included, so the abort is
+# upstream's and not a round-trip defect; the harness traps it, compares every
+# field anyway, and drops only the invariants.
+#
+# _MAX_UNLOADABLE_SKIP guards against a plugin quietly failing to register, and
+# is reached only after the load-error assertion above it clears -- which is why
+# it sat stale at 11 while that assertion fired first. Measured, not raised to
+# fit: a bare run skips exactly 30, and every one is accounted for.
+#   17  first-party plugin models, absent from a bare checkout (mujoco.sdf.*,
+#       mujoco.pid, mujoco.sensor.touch_grid, mujoco.elasticity.* -- three of
+#       them share mujoco.elasticity.cable)
+#    2  upstream attach-conflict fixtures whose declared policy is to refuse
+#       (parent_error.xml, parent_merge_unmergable.xml)
+#   10  deliberately-malformed mesh and flexcomp fixtures
+#    1  sleep-init engine-fail fixture (init_island_fail.xml)
+# Run WITH the plugin directory on hand and the first 17 load, so the skips fall
+# to 13 and the identical count rises correspondingly; the cap is the bare
+# number because it has to hold in both.
 _PARITY_FLOOR_IDENTICAL = 372
-_MAX_UNLOADABLE_SKIP = 11
+_MAX_UNLOADABLE_SKIP = 30
 
 
 @pytest.mark.skipif(not _PIPELINE_READY, reason=_pipeline_skip_reason())

@@ -52,16 +52,55 @@ struct FOperand
 
 // --- Small conversions ---------------------------------------------------- //
 
+// A ring rather than one buffer: several conversions appear as separate
+// arguments of a single mjs_* call, so each has to survive until that call
+// runs, and a shared buffer would leave all but the last dangling. A ring fixes
+// that up to its own depth and then wraps SILENTLY, handing back a pointer into
+// a slot something else now owns.
+//
+// Nothing at the conversion site can see where one call's argument list ends,
+// so the boundary the depth is checked against is declared instead: one hook
+// invocation is one batch, and a loop converting per iteration opens a batch of
+// its own, so a model with more bones than the ring has slots is not mistaken
+// for an overrun. The count is an upper bound rather than the live count --
+// every consumer here copies immediately, so most conversions are dead long
+// before their batch closes -- which is why the ring is deeper than any hook
+// needs rather than exactly as deep.
+constexpr int32 Utf8Slots = 16;
+thread_local int32 Utf8Live = 0;
+
+/** One batch of conversions, within which the ring must not wrap. */
+class FUtf8Batch
+{
+public:
+	FUtf8Batch()
+		: Saved(Utf8Live)
+	{
+		Utf8Live = 0;
+	}
+	~FUtf8Batch() { Utf8Live = Saved; }
+
+	FUtf8Batch(const FUtf8Batch&) = delete;
+	FUtf8Batch& operator=(const FUtf8Batch&) = delete;
+
+private:
+	int32 Saved;
+};
+
 const char* Utf8(const FString& Value)
 {
-	// A ring rather than one buffer: several of these appear as separate
-	// arguments of a single mjs_* call, so each conversion has to survive until
-	// that call runs, and a shared buffer would leave all but the last dangling.
-	constexpr int32 Slots = 8;
-	static thread_local std::string Ring[Slots];
+	static thread_local std::string Ring[Utf8Slots];
 	static thread_local int32 Next = 0;
+
+	++Utf8Live;
+	checkf(Utf8Live <= Utf8Slots,
+		TEXT("the UTF-8 ring wrapped inside one conversion batch (%d conversions against %d slots), so a "
+			 "pointer already handed out now names a different string; open an FUtf8Batch around the loop "
+			 "that made them, or make the ring deeper"),
+		Utf8Live, Utf8Slots);
+
 	std::string& Slot = Ring[Next];
-	Next = (Next + 1) % Slots;
+	Next = (Next + 1) % Utf8Slots;
 	Slot = ps::ue::FMjStrPolicy::ToUtf8(FStringView(Value));
 	return Slot.c_str();
 }
@@ -638,6 +677,7 @@ bool ApplySkinBone(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsEl
 	TArray<float> Rotations;
 	for (const FMjOrderedChild& Child : Bones)
 	{
+		FUtf8Batch Batch;
 		const UMjSkinBone* const Bone = Cast<UMjSkinBone>(Child.Node);
 		if (Bone == nullptr)
 		{
@@ -708,6 +748,7 @@ bool ApplyTupleElement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	TArray<double> Parameters;
 	for (const FMjOrderedChild& Child : Entries)
 	{
+		FUtf8Batch Batch;
 		const UMjTupleElement* const Entry = Cast<UMjTupleElement>(Child.Node);
 		if (Entry == nullptr)
 		{
@@ -1517,6 +1558,7 @@ bool ApplyAssetBuiltin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 			&Element.Filedown, &Element.Filefront, &Element.Fileback };
 		for (int32 Face = 0; Face < UE_ARRAY_COUNT(Faces); ++Face)
 		{
+			FUtf8Batch Batch;
 			if (Faces[Face]->IsSet())
 			{
 				mjs_setInStringVec(Texture->cubefiles, Face,
@@ -2037,25 +2079,33 @@ bool ApplyNestedModel(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 
 // --- Registry ------------------------------------------------------------- //
 
+/** Run `Hook` as one conversion batch. See FUtf8Batch for what that bounds. */
+template <FMjSpecWriteHook Hook>
+bool InBatch(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement* Created)
+{
+	FUtf8Batch Batch;
+	return Hook(Ctx, Node, Created);
+}
+
 const FMjSpecWriteHookRow Rows[] = {
-	{ TEXT("actuator_shorthand"), &CreateActuator, &ApplyShorthand },
-	{ TEXT("transmission"), nullptr, &ApplyTransmission },
-	{ TEXT("tendon_path"), nullptr, &ApplyTendonPath },
-	{ TEXT("material_layers"), nullptr, &ApplyMaterialLayers },
-	{ TEXT("skin_bones"), nullptr, &ApplySkinBone },
-	{ TEXT("tuple_elements"), nullptr, &ApplyTupleElement },
-	{ TEXT("plugins"), nullptr, &ApplyPlugin },
-	{ TEXT("option_flags"), nullptr, &ApplyOptionFlags },
-	{ TEXT("size_memory"), nullptr, &ApplySizeMemory },
-	{ TEXT("macro_bridge"), nullptr, &ApplyMacroBridge },
-	{ TEXT("input_fold"), nullptr, &ApplyInputFold },
-	{ TEXT("nested_model"), nullptr, &ApplyNestedModel },
-	{ TEXT("equality_fold"), nullptr, &ApplyEqualityFold },
-	{ TEXT("sensor_fold"), nullptr, &ApplySensorFold },
-	{ TEXT("compiler_placement"), nullptr, &ApplyCompilerPlacement },
-	{ TEXT("asset_builtin"), nullptr, &ApplyAssetBuiltin },
-	{ TEXT("flex_layout"), nullptr, &ApplyFlexLayout },
-	{ TEXT("numeric_data"), nullptr, &ApplyNumericData },
+	{ TEXT("actuator_shorthand"), &InBatch<&CreateActuator>, &InBatch<&ApplyShorthand> },
+	{ TEXT("transmission"), nullptr, &InBatch<&ApplyTransmission> },
+	{ TEXT("tendon_path"), nullptr, &InBatch<&ApplyTendonPath> },
+	{ TEXT("material_layers"), nullptr, &InBatch<&ApplyMaterialLayers> },
+	{ TEXT("skin_bones"), nullptr, &InBatch<&ApplySkinBone> },
+	{ TEXT("tuple_elements"), nullptr, &InBatch<&ApplyTupleElement> },
+	{ TEXT("plugins"), nullptr, &InBatch<&ApplyPlugin> },
+	{ TEXT("option_flags"), nullptr, &InBatch<&ApplyOptionFlags> },
+	{ TEXT("size_memory"), nullptr, &InBatch<&ApplySizeMemory> },
+	{ TEXT("macro_bridge"), nullptr, &InBatch<&ApplyMacroBridge> },
+	{ TEXT("input_fold"), nullptr, &InBatch<&ApplyInputFold> },
+	{ TEXT("nested_model"), nullptr, &InBatch<&ApplyNestedModel> },
+	{ TEXT("equality_fold"), nullptr, &InBatch<&ApplyEqualityFold> },
+	{ TEXT("sensor_fold"), nullptr, &InBatch<&ApplySensorFold> },
+	{ TEXT("compiler_placement"), nullptr, &InBatch<&ApplyCompilerPlacement> },
+	{ TEXT("asset_builtin"), nullptr, &InBatch<&ApplyAssetBuiltin> },
+	{ TEXT("flex_layout"), nullptr, &InBatch<&ApplyFlexLayout> },
+	{ TEXT("numeric_data"), nullptr, &InBatch<&ApplyNumericData> },
 };
 
 }  // namespace

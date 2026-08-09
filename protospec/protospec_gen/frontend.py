@@ -30,25 +30,50 @@ What the front end does beyond reading the schema:
 Everything else -- types, defaults, arities, enums, docs, declaration order, the
 mjSpec struct and field bindings -- is passed through from the schema unchanged.
 
-Drift gates: an overlay entry naming something the schema no longer declares is
-an error, as is a `reading=custom` or `writing=custom` facet the overlay neither
-binds to a handler nor waives with a reason.
+Drift gates, removal side: an overlay entry naming something the schema no
+longer declares is an error, as is a `reading=custom` or `writing=custom` facet
+the overlay neither binds to a handler nor waives with a reason.
 
-Public API: ``load_schema()`` returns the AST as a plain dict, and
-``SchemaError`` is the failure type (upstream's, re-exported).
+Drift gates, addition side: the removal gates all read the overlay and ask the
+schema about it, which leaves upstream free to ADD something the overlay has
+never heard of. Three additions land silently wrong rather than loudly, so each
+has its own gate here:
+
+* a new repeatable child of a section whose spec order is semantic, left out of
+  its `INTERLEAVE` row, becomes a separate homogeneous list and shifts every
+  subsequent id in that family (`_check_interleave_reverse`, no waiver);
+* a new angle-valued attribute, unlisted in `ANGLE_ATTRS`, is read as radians
+  whatever the document says and is wrong by 57.3x;
+* a new dynamic reference, unlisted in `TARGET_FROM`, is a plain string that no
+  referrer scan or rename fixup can see.
+
+The last two are name-and-doc heuristics rather than facts, so they fire only
+on attributes ``classified_attrs.json`` has never recorded, and a false
+positive is answered with one row in `overlay.NOT_ANGLE` or
+`overlay.NOT_TARGET` (`_check_classified_attrs`). That baseline is generated,
+not hand-kept::
+
+    uv run python -m protospec_gen.frontend --update-baseline
+
+Public API: ``load_schema()`` returns the AST as a plain dict,
+``write_classified_attrs()`` refreshes the baseline, and ``SchemaError`` is the
+failure type (upstream's, re-exported).
 """
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import importlib.util
+import json
 import os
 import re
 import sys
 
 from . import overlay, overlay_ue
 
-__all__ = ["load_schema", "mujoco_src", "SchemaError", "OverlayError"]
+__all__ = ["load_schema", "write_classified_attrs", "mujoco_src", "SchemaError",
+           "OverlayError"]
 
 
 class OverlayError(Exception):
@@ -140,6 +165,54 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
+# --------------------------------------------------------------------------- #
+# The classified-attribute baseline                                            #
+# --------------------------------------------------------------------------- #
+# One line per live (element, attribute), carrying the classification the
+# overlay gives it: "angle" for an ANGLE_ATTRS member, "target" for a
+# TARGET_FROM member, "plain" for everything else. Its only job is to make "new"
+# computable, so the addition gates can ask a human about an attribute the
+# schema has just grown without asking again about the ~1,600 that were already
+# there. Committed, and regenerated with `--update-baseline`.
+CLASSIFIED_ATTRS = os.path.join(_HERE, "classified_attrs.json")
+
+# The heuristics the addition gates fire on. Both are deliberately over-eager:
+# they cost a waiver row when wrong and catch a silent 57.3x error or an
+# invisible reference when right.
+_ANGLE_NAME_RE = re.compile(r"angle|euler", re.I)
+_ANGLE_DOC_RE = re.compile(r"degree", re.I)
+_TARGET_NAME_RE = re.compile(r"target", re.I)
+
+
+def _angle_like(attr) -> bool:
+    if _ANGLE_NAME_RE.search(attr.name):
+        return True
+    return bool(attr.doc and _ANGLE_DOC_RE.search(attr.doc))
+
+
+def _reference_like(attr) -> bool:
+    # An `id<ns>` attribute DECLARES a name rather than referring to one, so the
+    # element's own `name` is not a reference however it is spelled.
+    if attr.type == "id":
+        return False
+    return (attr.type == "ref"
+            or attr.name.endswith("name")
+            or bool(_TARGET_NAME_RE.search(attr.name)))
+
+
+def _classify(element: str, attr) -> str:
+    if (element, attr.name) in overlay.ANGLE_ATTRS:
+        return "angle"
+    if (element, attr.name) in overlay.TARGET_FROM:
+        return "target"
+    return "plain"
+
+
+def _read_baseline() -> dict[str, str]:
+    with open(CLASSIFIED_ATTRS, "r", encoding="utf-8") as fh:
+        return json.load(fh)["attributes"]
+
+
 _DEFINE_RE = re.compile(r"^#define\s+(mjN[A-Z]+)\s+(\d+)", re.M)
 
 
@@ -198,6 +271,7 @@ class _Frontend:
                           for n in self.schema.enums}
         self._check_overlay_targets()
         self.unions = self._build_unions()
+        self._check_interleave_reverse()
         self.ref_target = self._build_ref_targets()
 
     # -- overlay drift ------------------------------------------------------ #
@@ -240,6 +314,112 @@ class _Frontend:
                     f"elements {cpp[name]!r} and {schema_name!r} both map to "
                     f"the C++ name {name!r}")
             cpp[name] = schema_name
+
+    def _check_interleave_reverse(self):
+        """Every repeatable child of an interleaved parent is in a row.
+
+        `_build_unions` asks whether each row member is still a child, which
+        catches a removal. This asks the other question, which catches an
+        addition: a parent whose spec order across tags is semantic cannot have
+        a repeatable child outside the ordered list, because such a child
+        becomes a homogeneous list written after it, and its elements' ids then
+        land after every element authored below them. The model still compiles
+        and every other gate still passes; only the ids are wrong.
+
+        Exempt: a child that aliases a listed member (`frame` and `replicate`
+        carry `alias=body`, and `_build_unions` has already folded them into
+        the union that admits their target), a child the overlay skips, and a
+        child that cannot repeat -- `?` and `!` admit one element, which has no
+        order to be wrong about.
+        """
+        problems = []
+        for owner, rows in overlay.INTERLEAVE.items():
+            listed = {m for _list, _union, members in rows for m in members}
+            for child in self.elements[owner].children():
+                if child.name in listed or child.card not in ("*", "R"):
+                    continue
+                if child.name in overlay.ELEMENT_SKIP:
+                    continue
+                alias = self.schema.elements[child.name].facets.get("alias")
+                if alias in listed:
+                    continue
+                problems.append(
+                    f"{owner}.{child.name} repeats and is not in any "
+                    f"INTERLEAVE[{owner!r}] row")
+        if problems:
+            raise OverlayError(
+                "repeatable children outside their parent's ordered list; "
+                "spec order in these sections is id order, so a child left out "
+                "is written in the wrong place (add each to the row in "
+                "overlay.INTERLEAVE):\n  " + "\n  ".join(sorted(problems)))
+
+    def _classified(self) -> dict[str, str]:
+        """Every live attribute, keyed `element.attribute`, with its class."""
+        return {f"{name}.{attr.name}": _classify(name, attr)
+                for name, element in self.elements.items()
+                for attr in self.schema.expanded_attrs(element)}
+
+    def _check_classified_attrs(self):
+        """Attributes the schema has grown are classified by a human.
+
+        The heuristics cannot be trusted to be right, only to be loud, so they
+        are asked exclusively of attributes the baseline has never seen. An
+        attribute already in the baseline was answered for when it arrived; one
+        that is not is either classified now or waived now, with a reason.
+
+        Reclassification and removal are checked too, so the file cannot go
+        stale under an overlay edit and quietly stop computing "new" correctly.
+        """
+        baseline = _read_baseline()
+        live = self._classified()
+        problems = []
+
+        for key in sorted(set(baseline) - set(live)):
+            problems.append(
+                f"{key} is in the baseline and the schema no longer declares "
+                "it; refresh the baseline")
+
+        for name, element in self.elements.items():
+            for attr in self.schema.expanded_attrs(element):
+                key = f"{name}.{attr.name}"
+                actual = live[key]
+                recorded = baseline.get(key)
+                if recorded is not None:
+                    if recorded != actual:
+                        problems.append(
+                            f"{key} was recorded {recorded!r} and the overlay "
+                            f"now makes it {actual!r}; refresh the baseline if "
+                            "the change is deliberate")
+                    continue
+                if (_angle_like(attr) and actual != "angle"
+                        and (name, attr.name) not in overlay.NOT_ANGLE):
+                    problems.append(
+                        f"{key} is new and reads as an angle; add it to "
+                        "overlay.ANGLE_ATTRS or waive it in overlay.NOT_ANGLE")
+                if (_reference_like(attr) and actual != "target"
+                        and (name, attr.name) not in overlay.NOT_TARGET):
+                    problems.append(
+                        f"{key} is new and reads as a reference; add it to "
+                        "overlay.TARGET_FROM or waive it in "
+                        "overlay.NOT_TARGET")
+
+        for label, table in (("NOT_ANGLE", overlay.NOT_ANGLE),
+                             ("NOT_TARGET", overlay.NOT_TARGET)):
+            for key, reason in table.items():
+                if f"{key[0]}.{key[1]}" not in live:
+                    problems.append(
+                        f"{label} waives {key[0]}.{key[1]}, which the schema "
+                        "no longer declares; delete the entry")
+                elif not (isinstance(reason, str) and reason.strip()):
+                    problems.append(
+                        f"{label} waives {key[0]}.{key[1]} with no reason")
+
+        if problems:
+            raise OverlayError(
+                "the schema declares attributes the overlay has not "
+                "classified (regenerate the baseline with `python -m "
+                "protospec_gen.frontend --update-baseline` once each is "
+                "answered):\n  " + "\n  ".join(sorted(problems)))
 
     def _check_attr_tables(self):
         """Every (element, attribute) keyed overlay entry names a live pair."""
@@ -785,6 +965,7 @@ class _Frontend:
     def build(self) -> dict:
         self.variant_alias_keys = set()
         self.element_aliases = {}
+        self._check_classified_attrs()
         self._check_attr_tables()
         self.overrides_applied.clear()
 
@@ -917,3 +1098,41 @@ _CARD = {"?": "zero_or_one", "!": "one", "*": "zero_or_more",
 def load_schema(root: str | None = None) -> dict:
     """Parse the MJCF schema, apply the overlay, return the emitter AST."""
     return _Frontend(root or mujoco_src()).build()
+
+
+def write_classified_attrs(root: str | None = None,
+                           path: str | None = None) -> int:
+    """Rewrite the classified-attribute baseline; return the entry count.
+
+    Deliberately does not go through :func:`load_schema`: the gate this file
+    feeds is what stands between an unclassified addition and a silently wrong
+    model, and a refresh that had to pass the gate first could never be used to
+    answer it.
+    """
+    fe = _Frontend(root or mujoco_src())
+    attrs = fe._classified()
+    payload = {"attributes": {k: attrs[k] for k in sorted(attrs)}}
+    with open(path or CLASSIFIED_ATTRS, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(payload, fh, indent=2)
+        fh.write("\n")
+    return len(attrs)
+
+
+def _main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m protospec_gen.frontend",
+        description="ProtoSpec front end maintenance.")
+    parser.add_argument(
+        "--update-baseline", action="store_true",
+        help="rewrite classified_attrs.json from the current schema and overlay")
+    parser.add_argument("--root", help="MuJoCo checkout to read the schema from")
+    args = parser.parse_args(argv)
+    if not args.update_baseline:
+        parser.error("nothing to do; pass --update-baseline")
+    count = write_classified_attrs(args.root)
+    print(f"{CLASSIFIED_ATTRS}: {count} attributes")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(_main(sys.argv[1:]))

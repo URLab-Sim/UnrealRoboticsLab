@@ -351,6 +351,28 @@ ANGLE_ATTRS = {
     ("replicate", "euler"),
 }
 
+# The two waiver tables below answer the front end's addition-side gates
+# (`classified_attrs.json` and `_check_classified_attrs`). Those gates cannot
+# tell an angle from a length or a reference from a label, so they use a
+# deliberately over-eager name and doc heuristic and demand a human answer for
+# every attribute the schema gains that trips it. The answer is either the
+# classification table (`ANGLE_ATTRS`, `TARGET_FROM`) or a row here saying why
+# the heuristic is wrong for this one. Silence is not an option, so a false
+# positive costs one line and a real angle attribute cannot arrive as a plain
+# double that is then wrong by 57.3x.
+#
+# Both are keyed (element, attribute) and both are self-retiring: a row naming
+# an attribute the schema no longer declares fails generation.
+
+# Angle-shaped by name or doc text, but not an angle.
+NOT_ANGLE: dict[tuple[str, str], str] = {}
+
+# Reference-shaped by name or type, but not a dynamic reference needing a
+# TARGET_FROM row. A statically typed `ref<ns>` belongs here: the front end
+# already phantom-types it from the namespace's declarers, which is stronger
+# than a TARGET_FROM row, so the heuristic firing on it is expected.
+NOT_TARGET: dict[tuple[str, str], str] = {}
+
 
 # --------------------------------------------------------------------------- #
 # IO handler bindings                                                          #

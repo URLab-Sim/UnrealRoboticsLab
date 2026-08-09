@@ -11,6 +11,9 @@ that fail an overlay entry the schema no longer supports.
 
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 import pytest
 
 from protospec_gen import frontend, overlay
@@ -348,3 +351,110 @@ def test_every_read_handler_binds_a_resolver_name(ast):
         for alias in elem.get("input_aliases", []):
             named.add(alias["resolver"])
     assert named == set(overlay.READ_HANDLERS.values()) | {"materiallayer"}
+
+
+# --------------------------------------------------------------------------- #
+# Addition-side gates                                                          #
+# --------------------------------------------------------------------------- #
+# The gates above all read the overlay and ask the schema about it, so an
+# upstream ADDITION the overlay has never heard of passes every one of them.
+# These drive the three gates that ask the question the other way round, each
+# against a synthetic schema carrying exactly one addition.
+def _schema_with(tmp_path: Path, old: str, new: str) -> str:
+    """A MuJoCo root whose schema has one edit; everything else is upstream's.
+
+    Only two files are read from the root -- the schema and `mjmodel.h`, for the
+    symbolic arity bounds -- so the copy is two files rather than a checkout.
+    Upstream's schema PARSER is loaded once from the real checkout and is shared,
+    which is what makes this cheap enough to do per test.
+    """
+    src = Path(frontend.mujoco_src())
+    text = (src / "src" / "xml" / "mjcf.schema").read_text(encoding="utf-8")
+    assert text.count(old) == 1, f"anchor {old!r} is not unique in the schema"
+
+    root = tmp_path / "mujoco"
+    (root / "src" / "xml").mkdir(parents=True)
+    (root / "include" / "mujoco").mkdir(parents=True)
+    (root / "src" / "xml" / "mjcf.schema").write_text(
+        text.replace(old, new), encoding="utf-8")
+    shutil.copyfile(src / "include" / "mujoco" / "mjmodel.h",
+                    root / "include" / "mujoco" / "mjmodel.h")
+    return str(root)
+
+
+_SITE = "element site : mjsSite {"
+
+
+def test_new_angle_attribute_must_be_classified(tmp_path):
+    root = _schema_with(tmp_path, _SITE, _SITE + "\n  swingangle : double = 0")
+    with pytest.raises(frontend.OverlayError, match=r"site\.swingangle .* angle"):
+        frontend.load_schema(root)
+
+
+def test_new_angle_attribute_can_be_waived(monkeypatch, tmp_path):
+    root = _schema_with(tmp_path, _SITE, _SITE + "\n  swingangle : double = 0")
+    monkeypatch.setattr(
+        overlay, "NOT_ANGLE",
+        {("site", "swingangle"): "a synthetic attribute, not an angle"})
+    ast = frontend.load_schema(root)
+    site = next(e for e in ast["elements"] if e["schema_name"] == "site")
+    assert "swingangle" in {f["xml"] for f in site["fields"]}
+
+
+def test_new_reference_attribute_must_be_classified(tmp_path):
+    root = _schema_with(tmp_path, _SITE, _SITE + "\n  targetname : string")
+    with pytest.raises(frontend.OverlayError,
+                       match=r"site\.targetname .* reference"):
+        frontend.load_schema(root)
+
+
+def test_new_reference_attribute_can_be_waived(monkeypatch, tmp_path):
+    root = _schema_with(tmp_path, _SITE, _SITE + "\n  targetname : string")
+    monkeypatch.setattr(
+        overlay, "NOT_TARGET",
+        {("site", "targetname"): "a synthetic attribute, not a reference"})
+    assert frontend.load_schema(root)
+
+
+def test_new_repeatable_child_must_join_the_interleave_row(tmp_path):
+    # <tendon> is one ordered heterogeneous list; a repeatable child outside it
+    # is written after the whole list and shifts every id it carries.
+    root = _schema_with(tmp_path, "element tendon {",
+                        "element tendon {\n  child geom *")
+    with pytest.raises(frontend.OverlayError, match=r"tendon\.geom repeats"):
+        frontend.load_schema(root)
+
+
+def test_one_at_a_time_child_may_stay_outside_the_row(ast):
+    # The other half of the gate: <body> carries <inertial> once, so it has no
+    # order to be wrong about and needs no row. The whole suite loading proves
+    # it, and this states why.
+    body = next(e for e in ast["elements"] if e["schema_name"] == "body")
+    assert "inertial" in {c["name"] for c in body["children"]}
+    assert "subtree" in {c["name"] for c in body["children"]}
+
+
+def test_reclassified_attribute_is_rejected(monkeypatch):
+    _with_overlay(monkeypatch, "ANGLE_ATTRS",
+                  overlay.ANGLE_ATTRS - {("joint", "range")})
+    with pytest.raises(frontend.OverlayError, match=r"joint\.range was recorded"):
+        frontend.load_schema()
+
+
+def test_stale_waiver_is_rejected(monkeypatch):
+    monkeypatch.setattr(overlay, "NOT_ANGLE",
+                        {("site", "no_such_attr"): "stale"})
+    with pytest.raises(frontend.OverlayError, match="no longer declares"):
+        frontend.load_schema()
+
+
+def test_classified_baseline_covers_every_live_attribute(ast):
+    baseline = frontend._read_baseline()
+    live = {f"{elem['schema_name']}.{f['xml']}"
+            for elem in ast["elements"] for f in elem["fields"]}
+    # Folded spellings have no field of their own, so the AST is the smaller
+    # set; nothing it carries may be missing from the baseline.
+    assert live <= set(baseline)
+    assert set(baseline) >= {"joint.range", "framepos.objname"}
+    assert baseline["joint.range"] == "angle"
+    assert baseline["framepos.objname"] == "target"

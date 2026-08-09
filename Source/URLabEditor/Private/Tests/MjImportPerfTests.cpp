@@ -34,18 +34,24 @@
 #if WITH_EDITOR
 
 #include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "GameFramework/Actor.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/Guid.h"
 #include "UObject/Package.h"
+#include "UObject/UnrealType.h"
 
 #include "MuJoCo/Spec/MjGenHooks.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 
 #if URLAB_MJ_GEN
 
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjEffective.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 
 // The measurement has to reach the run's own log, and URLab's categories are not
@@ -244,6 +250,288 @@ bool FMjImportScaling::RunTest(const FString& Parameters)
 		Large.RowsPerLookup() <= MaxRowsPerLookup);
 
 	return true;
+}
+
+// ============================================================================
+// URLab.Perf.PresentationScaling
+//   The same two counters, aimed at editing rather than at reading.
+//
+//   An import walks the document once and is done. Editing asks the same three
+//   surfaces the same questions over and over, once per keystroke, and the
+//   reports are of a default edit taking tens of seconds on a model of a few
+//   hundred elements. This measures where that time goes, in whole-structure
+//   walks rather than in seconds, at two model sizes so a term that grows with
+//   the model is separable from a constant one.
+//
+//   MEASUREMENT ONLY. Nothing here is bounded: an assertion would have to encode
+//   an opinion about which of the four suspects is the culprit, and choosing that
+//   is what the numbers are for. The one thing asserted is that the measurement
+//   measured something, because a silent zero would read as a clean result.
+// ============================================================================
+
+namespace MjImportPerfTests
+{
+/** The four probes, each aimed at one of the suspects. */
+struct FPresentationCost
+{
+	/** One `IsSharedPresentationInput()`: the ancestor walk's own scope. */
+	FImportCost AncestorQuery;
+
+	/** One `SyncPreviewFromSpec()` on a single element: the register-time sync. */
+	FImportCost SingleSync;
+
+	/** One `RefreshSpecPresentation()`: the whole-spec refresh. */
+	FImportCost SpecRefresh;
+
+	/** One details-panel edit of `size` on an ordinary geom. */
+	FImportCost PlainGeomEdit;
+
+	/** The same edit on a geom inside a `<default>` class: the reported case. */
+	FImportCost DefaultClassEdit;
+
+	/** The same edit on a joint, which has no visualizer of its own. */
+	FImportCost PlainJointEdit;
+
+	/** Creating one component under an existing body and registering it. */
+	FImportCost Spawn;
+};
+
+/** Every element of `Blueprint`'s construction script, templates included. */
+TArray<UMjNodeComponent*> ElementsOf(UBlueprint& Blueprint)
+{
+	TArray<UMjNodeComponent*> Out;
+	if (Blueprint.SimpleConstructionScript == nullptr)
+	{
+		return Out;
+	}
+	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
+	{
+		if (UMjNodeComponent* Element = Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr)
+		{
+			Out.Add(Element);
+		}
+	}
+	return Out;
+}
+
+/** The SCS node whose element carries `MjName`, or null. */
+USCS_Node* NodeNamed(UBlueprint& Blueprint, const FString& MjName)
+{
+	if (Blueprint.SimpleConstructionScript == nullptr)
+	{
+		return nullptr;
+	}
+	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
+	{
+		const UMjNodeComponent* Element = Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
+		if (Element != nullptr && Element->MjName.IsSet() && Element->MjName.GetValue() == MjName)
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+/** Announce an edit of `PropertyName` on `Element` the way the details panel does. */
+void NotifyEdited(UMjNodeComponent& Element, const TCHAR* PropertyName)
+{
+	FProperty* Property = Element.GetClass()->FindPropertyByName(FName(PropertyName));
+	FPropertyChangedEvent Event(Property);
+	Element.PostEditChangeProperty(Event);
+}
+
+/** Run `Body` and report what the two whole-structure indexes did during it. */
+template <class Fn>
+FImportCost CostOf(Fn&& Body)
+{
+	const FImportCost Start = Snapshot();
+	Body();
+	return Since(Start);
+}
+
+void ReportProbe(FAutomationTestBase& Test, const TCHAR* Probe, int32 BodyCount, const FImportCost& Cost)
+{
+	const FString Bench = FString::Printf(
+		TEXT("BENCH presentation probe=%s bodies=%d node_map_builds=%lld effective_builds=%lld ")
+		TEXT("dispatch_lookups=%lld dispatch_row_visits=%lld"),
+		Probe, BodyCount, Cost.NodeMapBuilds, Cost.EffectiveContextBuilds, Cost.DispatchLookups,
+		Cost.DispatchRowVisits);
+	UE_LOG(LogMjImportBench, Display, TEXT("%s"), *Bench);
+	Test.AddInfo(Bench);
+}
+
+/**
+ * Import a model of `BodyCount` links and run every probe over it.
+ *
+ * The import itself is outside every measurement: what is being measured is what
+ * one edit costs on a model that is already there, which is the situation the
+ * reports describe.
+ */
+bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentationCost& Out, int32& OutElements)
+{
+	UBlueprint* Blueprint = MakeScratchBlueprint();
+	if (Blueprint == nullptr)
+	{
+		Test.AddError(TEXT("could not create a scratch Blueprint"));
+		return false;
+	}
+	const FMjSpecParseResult Parsed = MjParseIntoBlueprint(*Blueprint, BuildModel(BodyCount), TEXT("<inline>"));
+	if (!Parsed.IsOk())
+	{
+		Test.AddError(FString::Printf(TEXT("the %d-body presentation model did not parse"), BodyCount));
+		return false;
+	}
+
+	const TArray<UMjNodeComponent*> Elements = ElementsOf(*Blueprint);
+	OutElements = Elements.Num();
+
+	// The two geoms the probes act on: one ordinary, one declared inside the
+	// `<default class="link">` block. They differ in exactly one property --
+	// whether other elements read them -- which is the branch under suspicion.
+	UMjGeomBase* PlainGeom = nullptr;
+	UMjGeomBase* DefaultGeom = nullptr;
+	UMjNodeComponent* PlainJoint = nullptr;
+	for (UMjNodeComponent* Element : Elements)
+	{
+		if (UMjGeomBase* Geom = Cast<UMjGeomBase>(Element))
+		{
+			if (Geom->IsClassPartial())
+			{
+				DefaultGeom = DefaultGeom != nullptr ? DefaultGeom : Geom;
+			}
+			else
+			{
+				PlainGeom = PlainGeom != nullptr ? PlainGeom : Geom;
+			}
+		}
+		else if (UMjJoint* Joint = Cast<UMjJoint>(Element))
+		{
+			if (!Joint->IsClassPartial())
+			{
+				PlainJoint = PlainJoint != nullptr ? PlainJoint : Joint;
+			}
+		}
+	}
+
+	if (PlainGeom == nullptr || DefaultGeom == nullptr || PlainJoint == nullptr)
+	{
+		Test.AddError(FString::Printf(
+			TEXT("the %d-body model did not yield the three elements the probes need (plain geom %s, class geom %s, "
+				 "joint %s)"),
+			BodyCount, PlainGeom != nullptr ? TEXT("yes") : TEXT("no"), DefaultGeom != nullptr ? TEXT("yes") : TEXT("no"),
+			PlainJoint != nullptr ? TEXT("yes") : TEXT("no")));
+		return false;
+	}
+
+	// Suspect 1: the ancestor walk opens its own scope, once per call, and the
+	// callers ask it per element rather than per pass.
+	Out.AncestorQuery = CostOf([PlainGeom] { PlainGeom->IsSharedPresentationInput(); });
+
+	// Suspect 2: the register-time sync runs under no ambient scope of its own.
+	Out.SingleSync = CostOf([PlainGeom] { PlainGeom->SyncPreviewFromSpec(); });
+
+	// Suspect 3: the whole-spec refresh, which is what a shared-input edit
+	// triggers. Its own scopes are the point; what matters is what it costs per
+	// element of the model, which is the ratio between the two sizes.
+	Out.SpecRefresh = CostOf([PlainGeom] { PlainGeom->RefreshSpecPresentation(); });
+
+	// Suspect 4: the geom visualizer is rebuilt on every property change. The
+	// joint edit is the control -- same edit, same base class hooks, no
+	// visualizer override -- so the difference is what the rebuild costs.
+	Out.PlainGeomEdit = CostOf([PlainGeom] { NotifyEdited(*PlainGeom, TEXT("Size")); });
+	Out.PlainJointEdit = CostOf([PlainJoint] { NotifyEdited(*PlainJoint, TEXT("Damping")); });
+
+	// The reported case: editing a value on a `<default>` class.
+	Out.DefaultClassEdit = CostOf([DefaultGeom] { NotifyEdited(*DefaultGeom, TEXT("Size")); });
+
+	// A spawn: a node created under an existing body the way the components
+	// panel creates one, then the register that follows it.
+	USCS_Node* const Parent = NodeNamed(*Blueprint, FString::Printf(TEXT("link%d"), BodyCount / 2));
+	if (Parent == nullptr)
+	{
+		Test.AddError(FString::Printf(TEXT("the %d-body model has no body to spawn under"), BodyCount));
+		return false;
+	}
+	Out.Spawn = CostOf([Blueprint, Parent] {
+		USCS_Node* const Added =
+			Blueprint->SimpleConstructionScript->CreateNode(UMjGeom::StaticClass(), FName(TEXT("Spawned")));
+		if (Added == nullptr)
+		{
+			return;
+		}
+		Parent->AddChildNode(Added);
+		if (UMjNodeComponent* Element = Cast<UMjNodeComponent>(Added->ComponentTemplate))
+		{
+			// A template never registers, so the sync `OnRegister` would perform
+			// is invoked directly; it is the same call on the same object.
+			Element->SyncPreviewFromSpec();
+		}
+	});
+
+	return true;
+}
+}  // namespace MjImportPerfTests
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPresentationScaling,
+	"URLab.Perf.PresentationScaling",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjPresentationScaling::RunTest(const FString& Parameters)
+{
+	using namespace MjImportPerfTests;
+
+	// First-use costs belong to neither size, the same reason the import
+	// benchmark discards its first import.
+	FPresentationCost Discard;
+	int32 DiscardElements = 0;
+	if (!MeasurePresentation(*this, SmallBodies, Discard, DiscardElements))
+	{
+		return false;
+	}
+
+	FPresentationCost Small;
+	FPresentationCost Large;
+	int32 SmallElements = 0;
+	int32 LargeElements = 0;
+	if (!MeasurePresentation(*this, SmallBodies, Small, SmallElements)
+		|| !MeasurePresentation(*this, LargeBodies, Large, LargeElements))
+	{
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("BENCH presentation elements small=%d large=%d"), SmallElements, LargeElements));
+
+	struct FProbeRow
+	{
+		const TCHAR* Name;
+		const FImportCost* Small;
+		const FImportCost* Large;
+	};
+	const FProbeRow Probes[] = {
+		{TEXT("ancestor_query"), &Small.AncestorQuery, &Large.AncestorQuery},
+		{TEXT("single_sync"), &Small.SingleSync, &Large.SingleSync},
+		{TEXT("spec_refresh"), &Small.SpecRefresh, &Large.SpecRefresh},
+		{TEXT("plain_geom_edit"), &Small.PlainGeomEdit, &Large.PlainGeomEdit},
+		{TEXT("plain_joint_edit"), &Small.PlainJointEdit, &Large.PlainJointEdit},
+		{TEXT("default_class_edit"), &Small.DefaultClassEdit, &Large.DefaultClassEdit},
+		{TEXT("spawn"), &Small.Spawn, &Large.Spawn},
+	};
+
+	for (const FProbeRow& Probe : Probes)
+	{
+		ReportProbe(*this, Probe.Name, SmallBodies, *Probe.Small);
+		ReportProbe(*this, Probe.Name, LargeBodies, *Probe.Large);
+	}
+
+	// The one assertion: a probe set that measured nothing at all would report
+	// seven rows of zeroes and read exactly like a clean result.
+	TestTrue(TEXT("the larger model produced more elements than the smaller one"), LargeElements > SmallElements);
+	TestTrue(TEXT("the probes observed work happening"),
+		Large.DefaultClassEdit.NodeMapBuilds + Large.DefaultClassEdit.EffectiveContextBuilds
+				+ Large.SpecRefresh.NodeMapBuilds + Large.SpecRefresh.EffectiveContextBuilds
+			> 0);
+
+	return !HasAnyErrors();
 }
 
 #endif  // URLAB_MJ_GEN

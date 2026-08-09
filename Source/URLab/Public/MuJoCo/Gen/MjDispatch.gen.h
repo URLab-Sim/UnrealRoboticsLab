@@ -1031,42 +1031,49 @@ template <> struct TMjHasName<UMjKey> : std::true_type {};
 template <> struct TMjHasName<UMjFrame> : std::true_type {};
 
 // --- Runtime tables ------------------------------------------------ //
+// Exported as a set. This is a public header of the URLab module, and the
+// editor module asks these tables the same questions the runtime does:
+// what an element is, what it is called, where a child may be placed.
+// Declaring them here unexported turns each one into a link error at the
+// moment a second module first calls it, which is a fact about the module
+// boundary rather than about the caller, and exporting them one at a time
+// as that happens leaves the surface arbitrary.
 /** The generated class an element type names, or null. */
-UClass* ClassForElement(ElementType Type);
+URLAB_API UClass* ClassForElement(ElementType Type);
 
 /** The element type a class (or the nearest generated base of a
  *  presentation subclass) names. False when it is not a spec node. */
-bool ElementTypeOfClass(const UClass* Class, ElementType& Out);
+URLAB_API bool ElementTypeOfClass(const UClass* Class, ElementType& Out);
 
 /** As above, for a live node. */
-bool ElementTypeOfNode(const UMjNodeComponent& Node, ElementType& Out);
+URLAB_API bool ElementTypeOfNode(const UMjNodeComponent& Node, ElementType& Out);
 
 /** The element's own MJCF tag (what it is called at the top level). */
-const TCHAR* TagForElement(ElementType Type);
+URLAB_API const TCHAR* TagForElement(ElementType Type);
 
 /** The element a top-level MJCF tag names. */
-bool ElementTypeForTag(FStringView Tag, ElementType& Out);
+URLAB_API bool ElementTypeForTag(FStringView Tag, ElementType& Out);
 
 /** The element a tag names IN CONTEXT, which is not always the same: the
  *  schema routes <worldbody> to a body and <joint> under <composite> to a
  *  composite joint. Reports the storage slot the child would occupy. */
-bool ElementTypeForChildTag(ElementType Parent, FStringView Tag,
+URLAB_API bool ElementTypeForChildTag(ElementType Parent, FStringView Tag,
 	ElementType& OutChild, int32& OutSlot);
 
 /** The tag a child of this type is WRITTEN as under this parent. */
-const TCHAR* ChildTagFor(ElementType Parent, ElementType Child);
+URLAB_API const TCHAR* ChildTagFor(ElementType Parent, ElementType Child);
 
 /** The storage slot a child of this type occupies under this parent, or
  *  -1 when the parent does not admit it. */
-int32 SlotFor(ElementType Parent, ElementType Child);
+URLAB_API int32 SlotFor(ElementType Parent, ElementType Child);
 
 /** Every (slot, admissible child type) pair a parent admits. */
-void ForEachAdmissibleChild(ElementType Parent,
+URLAB_API void ForEachAdmissibleChild(ElementType Parent,
 	TFunctionRef<void(int32 Slot, ElementType Child)> Fn);
 
 /** Names of every element in the spec that a reference field could
  *  legally point at: the backing of every generated GetOptions dropdown. */
-TArray<FString> RefNameOptions(const UMjNodeComponent* Node, int32 FieldId);
+URLAB_API TArray<FString> RefNameOptions(const UMjNodeComponent* Node, int32 FieldId);
 
 // --- What the tables cost ------------------------------------------ //
 // `DispatchLookups` counts calls that consult a table above;

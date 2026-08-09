@@ -34,6 +34,7 @@
 #if URLAB_MJ_GEN && WITH_EDITOR
 
 #include "Dom/JsonObject.h"
+#include "Engine/Blueprint.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "Misc/DateTime.h"

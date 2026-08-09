@@ -31,7 +31,7 @@
 
 #if URLAB_MJ_GEN && WITH_EDITOR
 
-#include "HAL/FileManager.h"
+#include "Engine/Blueprint.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 

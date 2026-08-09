@@ -10,8 +10,8 @@
 
 // Asset bytes out of a parsed spec and into Unreal's importers.
 //
-// A <mesh>, <texture> or <hfield> is an ordinary generated element like any
-// other, and the spec is complete without any Unreal asset existing. What
+// A <mesh>, <texture>, <hfield> or <skin> is an ordinary generated element like
+// any other, and the spec is complete without any Unreal asset existing. What
 // the editor additionally wants is a UStaticMesh or a UTexture2D to preview
 // with, and that is what this produces: it walks the spec's asset section,
 // resolves each element's `file` against the directories the spec itself
@@ -94,6 +94,17 @@ public:
 
 	/** A height field. */
 	virtual void OnHeightField(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) = 0;
+
+	/**
+	 * A skin's `.skn` file.
+	 *
+	 * Defaulted to ignoring it, unlike the three above, because a skin is a
+	 * file the COMPILER needs and not an asset Unreal has anything to make of:
+	 * there is no UStaticMesh or UTexture2D at the end of it. A sink that
+	 * mounts bytes for a compile overrides this; a sink that imports Unreal
+	 * assets, or writes files back out beside a model, correctly does not.
+	 */
+	virtual void OnSkin(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) {}
 
 	/** An asset the spec names but no file backs. */
 	virtual void OnMissing(const FMjAssetRequest& Request) {}

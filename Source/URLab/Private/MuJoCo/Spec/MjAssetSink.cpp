@@ -201,7 +201,11 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 			const bool bMesh = Type == psm::ElementType::Mesh;
 			const bool bTexture = Type == psm::ElementType::Texture;
 			const bool bHeightField = Type == psm::ElementType::Hfield;
-			if (!bMesh && !bTexture && !bHeightField)
+			// A skin's `.skn` resolves through meshdir and the model file's own
+			// directory, exactly as a mesh does (`user_mesh.cc:3141`), so it
+			// belongs on this pass rather than in a second one of its own.
+			const bool bSkin = Type == psm::ElementType::Skin;
+			if (!bMesh && !bTexture && !bHeightField && !bSkin)
 			{
 				continue;
 			}
@@ -245,6 +249,10 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 			else if (bTexture)
 			{
 				Sink->OnTexture(Request, Bytes);
+			}
+			else if (bSkin)
+			{
+				Sink->OnSkin(Request, Bytes);
 			}
 			else
 			{

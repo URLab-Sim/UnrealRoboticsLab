@@ -46,6 +46,7 @@ public:
 	void OnMesh(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
 	void OnTexture(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
 	void OnHeightField(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
+	void OnSkin(const FMjAssetRequest& Request, const TArray<uint8>& Bytes) override { Take(Request, Bytes); }
 
 private:
 	void Take(const FMjAssetRequest& Request, const TArray<uint8>& Bytes)
@@ -91,6 +92,10 @@ mjString* FileSlotOf(mjsElement* Element)
 	if (mjsHField* HField = mjs_asHField(Element))
 	{
 		return HField->file;
+	}
+	if (mjsSkin* Skin = mjs_asSkin(Element))
+	{
+		return Skin->file;
 	}
 	return nullptr;
 }

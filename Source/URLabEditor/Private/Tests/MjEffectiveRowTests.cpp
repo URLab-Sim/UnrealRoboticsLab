@@ -32,14 +32,19 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/Actor.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/Guid.h"
+#include "Misc/ScopeExit.h"
 #include "UObject/Package.h"
 
 #include "MjEffectiveDetails.h"
+#include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Gen/Elements/Geometry/MjGeom.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
 #include "MuJoCo/Gen/Elements/Sensors/MjTouch.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
@@ -327,6 +332,126 @@ bool FMjSetSeedsTheResolvedValue::RunTest(const FString& Parameters)
 				const FLinearColor Authored = Geom->Rgba.GetValue();
 				TestTrue(FString::Printf(TEXT("seeded with the class's red, got %s"), *Authored.ToString()),
 					FMath::IsNearlyEqual(Authored.R, 1.0f) && FMath::IsNearlyEqual(Authored.G, 0.0f));
+			}
+		}
+	}
+
+	return !HasAnyErrors();
+}
+
+// ============================================================================
+// URLab.Editor.EffectiveRowsWithoutADocument
+//   The rows of an element that has no `<mujoco>` above it: a component dropped
+//   onto an ordinary actor, which is how a user adds one by hand.
+//
+//   The layer walk went through `WithEffectiveDoc`, which answers nothing at all
+//   when the spec's root cannot be reached -- so the list came back EMPTY, the
+//   schema layer with it, and every attribute of such an element read "(no
+//   default)". The class chain genuinely cannot be resolved without a document;
+//   the schema layer never needed one, because MuJoCo's `condim` is 3 whatever
+//   file it is read from. A hand-added geom therefore showed no effective values
+//   at all while the same geom inside an imported robot showed all of them.
+//
+//   A geom and a joint together, because the two differ in exactly the way that
+//   was suspected of causing it -- a geom is a hand subclass over its generated
+//   base, a joint is the generated class itself -- and the answer has to be the
+//   same for both.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEffectiveRowsWithoutADocument, "URLab.Editor.EffectiveRowsWithoutADocument",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjEffectiveRowsWithoutADocument::RunTest(const FString& Parameters)
+{
+	using namespace MjEffectiveRowTests;
+	using namespace MjRowSupport;
+
+	if (!TestTrue(TEXT("Slate is up, so a row can be built at all"), FSlateApplication::IsInitialized()))
+	{
+		return false;
+	}
+
+	UWorld* const World = UWorld::CreateWorld(EWorldType::Editor, /*bInformEngineOfWorld=*/false,
+		FName(*FString::Printf(TEXT("MjRowWorld_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits))));
+	if (!TestNotNull(TEXT("scratch world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(false);
+	};
+
+	AActor* const Plain = World->SpawnActor<AActor>();
+	if (!TestNotNull(TEXT("an actor that is not a model"), Plain))
+	{
+		return false;
+	}
+
+	// A root of the actor's own, so the two elements are siblings under something
+	// that is not an element rather than parented to each other.
+	USceneComponent* const Root = NewObject<USceneComponent>(Plain);
+	Plain->SetRootComponent(Root);
+	Root->RegisterComponent();
+
+	UMjGeom* const Geom = NewObject<UMjGeom>(Plain);
+	UMjJoint* const Joint = NewObject<UMjJoint>(Plain);
+	if (!TestNotNull(TEXT("a hand-added geom"), Geom) || !TestNotNull(TEXT("a hand-added joint"), Joint))
+	{
+		return false;
+	}
+	Geom->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
+	Joint->AttachToComponent(Root, FAttachmentTransformRules::KeepRelativeTransform);
+	Geom->RegisterComponent();
+	Joint->RegisterComponent();
+
+	// The premise: there really is no `<mujoco>` above these, so the class chain
+	// really is unresolvable and what comes back can only be the schema's.
+	TestNull(TEXT("the geom has no model root above it"),
+		Cast<UMjModel>(FSpecRef::OverOwner(Geom).GetRoot()));
+	TestFalse(TEXT("and it authors no condim"), Geom->Condim.IsSet());
+
+	FRows GeomRows;
+	if (!GeomRows.Build(*this, *Geom))
+	{
+		return false;
+	}
+	const FString Condim = TextOf(GeomRows.ValueOf(TEXT("Condim")));
+	TestTrue(FString::Printf(TEXT("the geom's condim row shows MuJoCo's own value, got '%s'"), *Condim),
+		Condim.Contains(TEXT("3")));
+	TestTrue(FString::Printf(TEXT("marked a default rather than a class, got '%s'"), *Condim),
+		Condim.Contains(TEXT("(default)")));
+	TestFalse(FString::Printf(TEXT("and never claims a class supplied it, got '%s'"), *Condim),
+		Condim.Contains(TEXT("(from ")));
+
+	// The same question of the element family that has no hand subclass.
+	FRows JointRows;
+	if (JointRows.Build(*this, *Joint))
+	{
+		const FString Damping = TextOf(JointRows.ValueOf(TEXT("Damping")));
+		TestTrue(FString::Printf(TEXT("a joint answers the same way, got '%s'"), *Damping),
+			Damping.Contains(TEXT("(default)")));
+	}
+
+	// An attribute MuJoCo genuinely computes still says so, so the fix is the
+	// schema layer arriving rather than every row being given a value.
+	if (GeomRows.Has(TEXT("Mass")))
+	{
+		const FString Mass = TextOf(GeomRows.ValueOf(TEXT("Mass")));
+		TestTrue(FString::Printf(TEXT("a computed attribute still has no default, got '%s'"), *Mass),
+			Mass.Contains(TEXT("(no default)")));
+	}
+
+	// And Set still seeds what the row is showing rather than a zero.
+	FRows Fresh;
+	if (Fresh.Build(*this, *Geom))
+	{
+		const TSharedPtr<SButton> Set = ButtonIn(Fresh.ValueOf(TEXT("Condim")));
+		if (TestTrue(TEXT("the condim row carries a button"), Set.IsValid()))
+		{
+			Set->SimulateClick();
+			if (TestTrue(TEXT("pressing Set authors the attribute"), Geom->Condim.IsSet()))
+			{
+				TestEqual(TEXT("seeded with MuJoCo's own value"), Geom->Condim.GetValue(), 3);
 			}
 		}
 	}

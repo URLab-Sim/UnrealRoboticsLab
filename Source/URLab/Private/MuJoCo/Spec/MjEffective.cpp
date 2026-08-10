@@ -62,7 +62,7 @@ void MjNoteEffectiveContextBuilt()
 void MjEffectiveLayersOf(const UMjNodeComponent& Node, TArray<FMjEffectiveLayer>& Out)
 {
 	Out.Reset();
-	WithEffectiveDoc(Node, [&Out, &Node](auto& Effective) {
+	if (WithEffectiveDoc(Node, [&Out, &Node](auto& Effective) {
 		using P = typename std::decay_t<decltype(Effective)>::ProfileType;
 		gen::DispatchByType(const_cast<UMjNodeComponent&>(Node), [&Out, &Effective](auto& Element) {
 			// The schema layer is a shared prototype rather than a node of the
@@ -82,6 +82,28 @@ void MjEffectiveLayersOf(const UMjNodeComponent& Node, TArray<FMjEffectiveLayer>
 				return false;
 			});
 		});
+	}))
+	{
+		return;
+	}
+
+	// No `<mujoco>` above this element: a component dropped onto an ordinary
+	// actor, or one whose tree has not been built yet. The default-class chain
+	// genuinely cannot be resolved without a document -- there is no document to
+	// declare a class in -- but the SCHEMA layer never needed one. MuJoCo's own
+	// value for `condim` is 3 whatever file it is read from, and dropping that
+	// layer with the rest left every attribute of such an element reading "(no
+	// default)": a panel that answered "nothing decides this" about attributes
+	// MuJoCo decides.
+	gen::DispatchByType(const_cast<UMjNodeComponent&>(Node), [&Out](auto& Element) {
+		using E = std::decay_t<decltype(Element)>;
+
+		FMjEffectiveLayer& Own = Out.AddDefaulted_GetRef();
+		Own.Node = &static_cast<const UMjNodeComponent&>(Element);
+
+		FMjEffectiveLayer& Schema = Out.AddDefaulted_GetRef();
+		Schema.Node = &static_cast<const UMjNodeComponent&>(FMjInstanceProfile::Defaults<E>());
+		Schema.bSchema = true;
 	});
 }
 

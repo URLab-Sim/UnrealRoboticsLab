@@ -9,6 +9,7 @@
 #include "MuJoCo/Spec/MjSceneAssembly.h"
 
 #include "Algo/StableSort.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 
 namespace
@@ -27,6 +28,16 @@ public:
 	void OnHeightField(const FMjAssetRequest&, const TArray<uint8>&) override {}
 };
 }  // namespace
+
+FString MjSceneModelName(const FSpecRef& SceneRoot)
+{
+	const UMjModel* const Root = Cast<UMjModel>(SceneRoot.GetRoot());
+	if (Root != nullptr && Root->Model.IsSet() && !Root->Model.GetValue().IsEmpty())
+	{
+		return Root->Model.GetValue();
+	}
+	return FString(TEXT("scene"));
+}
 
 TArray<FMjAssetRequest> MjCollectSceneAssets(const FMjSceneParticipant& Participant)
 {

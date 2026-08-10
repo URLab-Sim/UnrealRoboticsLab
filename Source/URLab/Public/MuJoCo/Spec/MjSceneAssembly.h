@@ -36,6 +36,21 @@
 
 class AActor;
 
+/**
+ * The name a composed scene carries, wherever it is composed.
+ *
+ * The scene root's authored `model` when it made one, because that is the only
+ * name the level ever gave this composition; `scene` otherwise, because a
+ * composed scene has no single source document and `scene` is what the debug
+ * artefact and the clients already expect to find.
+ *
+ * Decided here rather than at each consumer. The compiled model and the MJCF
+ * the handshake ships are the same scene, and a client holding both reconciles
+ * one against the other -- so a second answer to this question is not a second
+ * spelling, it is two scenes as far as that client can tell.
+ */
+URLAB_API FString MjSceneModelName(const FSpecRef& SceneRoot);
+
 /** One spec taking part in a scene. */
 struct URLAB_API FMjSceneParticipant
 {

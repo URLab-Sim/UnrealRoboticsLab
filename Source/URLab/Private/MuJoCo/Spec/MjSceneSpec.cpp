@@ -15,10 +15,10 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 
-#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjSceneAssembly.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 
 THIRD_PARTY_INCLUDES_START
@@ -31,9 +31,6 @@ namespace
 {
 
 using ps::mjcf::ElementType;
-
-/** The name a composed scene compiles under when its root authored none. */
-const char* const SceneModelName = "scene";
 
 /** Where SaveDebugArtifacts puts the assets, relative to the XML beside them. */
 const TCHAR* const SceneAssetFolder = TEXT("scene_assets");
@@ -416,18 +413,13 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 	{
 		return Out;
 	}
-	// A name the scene root authored is the scene's, because it is the only
-	// name the level ever gave this composition: a manager whose `model` says
-	// `warehouse` compiles as `warehouse` rather than losing it. The build has
-	// already put it on the spec, so the fallback is the whole of the work
-	// here -- `scene` rather than the name mj_makeSpec leaves on a fresh spec,
-	// because a composed scene has no single source document and `scene` is
-	// what the debug artefact and the clients already expect to find.
-	const UMjModel* const Root = Cast<UMjModel>(SceneRoot.GetRoot());
-	const bool bNamed = Root != nullptr && Root->Model.IsSet() && !Root->Model.GetValue().IsEmpty();
-	if (!bNamed && Out.Scene.Spec->modelname != nullptr)
+	// Which spec is the scene is this builder's answer rather than the walk's,
+	// so the name is written here -- but what that name IS is one decision the
+	// text writer shares, because the two documents describe one scene.
+	if (Out.Scene.Spec->modelname != nullptr)
 	{
-		mjs_setString(Out.Scene.Spec->modelname, SceneModelName);
+		const FTCHARToUTF8 Name(*MjSceneModelName(SceneRoot));
+		mjs_setString(Out.Scene.Spec->modelname, Name.Get());
 	}
 
 	mjsBody* const World = mjs_findBody(Out.Scene.Spec, "world");

@@ -273,7 +273,12 @@ bool FMjSceneSpecSceneNameTest::RunTest(const FString& Parameters)
 	// assertion is on the model rather than on the spec it came from: a builder
 	// that names the spec and a compile that names the model from somewhere else
 	// would otherwise both pass.
-	const auto SceneNameWith = [this](const TCHAR* const Authored, FString& OutName) {
+	//
+	// The MJCF the handshake ships is read out beside it, because the two are
+	// one scene: a client is handed the model and the text together and
+	// reconciles them, so a text that says `scene` over a model that says
+	// `warehouse` is two scenes as far as that client can tell.
+	const auto SceneNameWith = [this](const TCHAR* const Authored, FString& OutName, FString& OutTextName) {
 		FSceneFixture Fixture;
 		if (!Fixture.Init())
 		{
@@ -317,23 +322,57 @@ bool FMjSceneSpecSceneNameTest::RunTest(const FString& Parameters)
 			return false;
 		}
 		OutName = UTF8_TO_TCHAR(Scene.Model->names);
+
+		FSceneAssembly Assembly;
+		Assembly.SetSceneRoot(FSpecRef::OverActor(*Manager));
+		Assembly.Add(FSpecRef::OverActor(*Robot), TEXT("p0_"));
+
+		TMap<FString, FString> ParticipantXml;
+		TArray<FMjSpecDiagnostic> Diagnostics;
+		const FString SceneXml = MjWriteSceneMjcf(Assembly, ParticipantXml, &Diagnostics);
+		for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+		{
+			AddError(Diagnostic.ToString());
+		}
+
+		// The `model` attribute of the document's root element, read off the
+		// text rather than recomputed: what a client parses is the assertion.
+		const FString Opening = TEXT("<mujoco model=\"");
+		const int32 Start = SceneXml.Find(Opening, ESearchCase::CaseSensitive);
+		if (Start == INDEX_NONE)
+		{
+			AddError(TEXT("the scene text has no <mujoco model=...> root element"));
+			return false;
+		}
+		const int32 From = Start + Opening.Len();
+		const int32 End = SceneXml.Find(TEXT("\""), ESearchCase::CaseSensitive, ESearchDir::FromStart, From);
+		if (End == INDEX_NONE)
+		{
+			AddError(TEXT("the scene text's model attribute is unterminated"));
+			return false;
+		}
+		OutTextName = SceneXml.Mid(From, End - From);
 		return true;
 	};
 
 	// Unnamed: `scene`, and not the name mj_makeSpec leaves on a fresh spec.
 	FString Unnamed;
-	if (SceneNameWith(nullptr, Unnamed))
+	FString UnnamedText;
+	if (SceneNameWith(nullptr, Unnamed, UnnamedText))
 	{
 		TestEqual(TEXT("a scene root that authored no model name composes as 'scene'"), Unnamed,
 			FString(TEXT("scene")));
+		TestEqual(TEXT("unnamed: the handshake text names the same scene the model does"), UnnamedText, Unnamed);
 	}
 
 	// Named: the manager's own, which the builder used to overwrite.
 	FString Named;
-	if (SceneNameWith(TEXT("warehouse"), Named))
+	FString NamedText;
+	if (SceneNameWith(TEXT("warehouse"), Named, NamedText))
 	{
 		TestEqual(TEXT("a scene root's authored model name is the composed scene's"), Named,
 			FString(TEXT("warehouse")));
+		TestEqual(TEXT("named: the handshake text names the same scene the model does"), NamedText, Named);
 	}
 
 	return !HasAnyErrors();

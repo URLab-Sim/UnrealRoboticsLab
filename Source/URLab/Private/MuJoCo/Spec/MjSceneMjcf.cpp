@@ -201,7 +201,10 @@ FString WriteScene(const FSceneAssembly& Scene, TMap<FString, FString>& OutParti
 	}
 
 	FString Out;
-	Out += TEXT("<mujoco model=\"scene\">\n");
+	// The same name the composed model compiles under, from the same decision:
+	// a client reconciling this document against the model it was shipped
+	// beside has to be looking at one scene.
+	Out += FString::Printf(TEXT("<mujoco model=\"%s\">\n"), *EscapeXmlAttribute(MjSceneModelName(SceneRoot)));
 	Out += SceneSections;
 
 	Out += TEXT("  <asset>\n");

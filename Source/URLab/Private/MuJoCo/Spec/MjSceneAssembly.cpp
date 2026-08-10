@@ -28,6 +28,16 @@ public:
 };
 }  // namespace
 
+TArray<FMjAssetRequest> MjCollectSceneAssets(const FMjSceneParticipant& Participant)
+{
+	FMjAssetFileCollector Collector;
+	FMjAssetSink Sink(Collector);
+	Sink.VfsPrefix = Participant.Prefix;
+	Sink.bLoadBytes = false;
+	Sink.Collect(Participant.Spec);
+	return Sink.GetRequests();
+}
+
 void FSceneAssembly::Add(const FSpecRef& Spec, const FString& Prefix, const FVector& MjPos, const FQuat& MjQuat)
 {
 	if (!Spec.IsValid())
@@ -71,12 +81,7 @@ TMap<FString, FString> FSceneAssembly::CollectAssetFiles() const
 	TMap<FString, FString> Out;
 	for (const FMjSceneParticipant& Participant : GetParticipants())
 	{
-		FMjAssetFileCollector Collector;
-		FMjAssetSink Sink(Collector);
-		Sink.VfsPrefix = Participant.Prefix;
-		Sink.bLoadBytes = false;
-		Sink.Collect(Participant.Spec);
-		for (const FMjAssetRequest& Request : Sink.GetRequests())
+		for (const FMjAssetRequest& Request : MjCollectSceneAssets(Participant))
 		{
 			// Keyed by the mounted name rather than the path, because two
 			// participants referencing one file mount it once each, under their

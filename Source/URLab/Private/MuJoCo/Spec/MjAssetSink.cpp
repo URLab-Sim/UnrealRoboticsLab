@@ -260,6 +260,7 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 			const FString File = StringAttribute(*Asset.Node, "file");
 			if (!File.IsEmpty())
 			{
+				Request.File = File;
 				Request.ResolvedPath = MjResolveAssetPath(*Asset.Node, bTexture ? TextureDir : MeshDir, File);
 				// Under a prefix the caller points the reference at whatever this
 				// emits, so a basename carries it. Without one nothing rewrites

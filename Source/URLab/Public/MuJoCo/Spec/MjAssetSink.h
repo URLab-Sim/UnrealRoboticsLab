@@ -45,6 +45,17 @@ struct URLAB_API FMjAssetRequest
 	FString Name;
 
 	/**
+	 * The `file` the element authored, spelled exactly as the document spells
+	 * it. Empty for an inline asset.
+	 *
+	 * A text consumer reads this string and nothing else, so it is what a
+	 * rewrite to `VfsName` has to match: two elements naming `meshA/base.obj`
+	 * and `meshB/base.obj` are one basename and two references, and only the
+	 * whole authored string tells them apart.
+	 */
+	FString File;
+
+	/**
 	 * The path the spec referenced, resolved against the element's source
 	 * directory and the spec's meshdir / texturedir. Empty for an inline
 	 * asset (vertex/face data authored in the MJCF itself).

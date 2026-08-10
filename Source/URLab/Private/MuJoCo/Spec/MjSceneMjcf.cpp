@@ -20,28 +20,80 @@
 namespace
 {
 /**
+ * The mount name of every `file` a participant's document authored.
+ *
+ * Read off the asset pass, which is the only thing that knows: it is what
+ * mounts the bytes, and two elements whose basenames collide are separated
+ * there by an ordinal that no rule applied to the reference alone can
+ * reproduce.
+ *
+ * An authored path repeated by two elements that resolve to different files is
+ * the one case the text cannot express -- both references say the same string,
+ * so whatever the rewrite does one of them is wrong. The first claimant keeps
+ * it, as it does in the mount itself, and the second is reported rather than
+ * silently pointed at the first one's bytes.
+ */
+TMap<FString, FString> MountNamesFor(const FMjSceneParticipant& Participant, TArray<FMjSpecDiagnostic>* OutErrors)
+{
+	TMap<FString, FString> Out;
+	for (const FMjAssetRequest& Request : MjCollectSceneAssets(Participant))
+	{
+		if (Request.File.IsEmpty() || Request.VfsName.IsEmpty())
+		{
+			continue;
+		}
+		const FString* const Taken = Out.Find(Request.File);
+		if (Taken == nullptr)
+		{
+			Out.Add(Request.File, Request.VfsName);
+		}
+		else if (*Taken != Request.VfsName && OutErrors != nullptr)
+		{
+			FMjSpecDiagnostic Ambiguous;
+			Ambiguous.Message =
+				FString::Printf(TEXT("'%s' resolves to two files under prefix '%s'; the text can only name '%s'"),
+					*Request.File, *Participant.Prefix, **Taken);
+			OutErrors->Add(Ambiguous);
+		}
+	}
+	return Out;
+}
+
+/**
  * Re-point a participant's `file=` references at the names it is mounted under.
  *
  * A scene mounts every asset under a participant-prefixed basename, because
  * MuJoCo's VFS falls back to a case-insensitive basename match across every
  * mount and would otherwise hand one participant another's mesh. The text has
- * to name the same thing, and it is the writer's output rather than the spec
- * that is rewritten, so nothing authored moves.
+ * to name the same thing, and only the mount knows what that is: one
+ * participant's `meshA/base.obj` and `meshB/base.obj` are mounted as
+ * `p0_base.obj` and `p0_base_2.obj`, which a rewrite reading the basename off
+ * the reference cannot tell apart.
+ *
+ * A `file=` nothing mounted is left as the document wrote it: an invented name
+ * for it names nothing, whereas the authored path is still resolvable by a
+ * client holding the files. It is the writer's output rather than the spec that
+ * is rewritten either way, so nothing authored moves.
  */
-FString PrefixAssetRefs(const FString& Xml, const FString& Prefix)
+FString RewriteAssetRefs(const FString& Xml, const TMap<FString, FString>& MountFor)
 {
-	if (Prefix.IsEmpty())
+	if (MountFor.IsEmpty())
 	{
 		return Xml;
 	}
-	FRegexPattern Pattern(TEXT("file=\"([^\"]*?)([^/\\\\\"]+)\""));
+	FRegexPattern Pattern(TEXT("file=\"([^\"]*)\""));
 	FRegexMatcher Matcher(Pattern, Xml);
 	FString Out;
 	int32 Cursor = 0;
 	while (Matcher.FindNext())
 	{
+		const FString* const Mount = MountFor.Find(Matcher.GetCaptureGroup(1));
+		if (Mount == nullptr)
+		{
+			continue;
+		}
 		Out += Xml.Mid(Cursor, Matcher.GetMatchBeginning() - Cursor);
-		Out += FString::Printf(TEXT("file=\"%s%s\""), *Prefix, *Matcher.GetCaptureGroup(2));
+		Out += FString::Printf(TEXT("file=\"%s\""), **Mount);
 		Cursor = Matcher.GetMatchEnding();
 	}
 	Out += Xml.Mid(Cursor);
@@ -155,7 +207,12 @@ FString WriteScene(const FSceneAssembly& Scene, TMap<FString, FString>& OutParti
 	for (const FMjSceneParticipant& Participant : Scene.GetParticipants())
 	{
 		const FString VfsName = Participant.Prefix + TEXT("model.xml");
-		OutParticipantXml.Add(VfsName, PrefixAssetRefs(Participant.Spec.WriteMjcf(OutErrors), Participant.Prefix));
+		const FString Mjcf = Participant.Spec.WriteMjcf(OutErrors);
+		// Without a prefix the mount name IS the reference as authored, so the
+		// pass would cost a walk of the spec to answer with the text it was
+		// given.
+		OutParticipantXml.Add(VfsName,
+			Participant.Prefix.IsEmpty() ? Mjcf : RewriteAssetRefs(Mjcf, MountNamesFor(Participant, OutErrors)));
 		Out += FString::Printf(TEXT("    <model name=\"%s\" file=\"%s\"/>\n"),
 			*EscapeXmlAttribute(Participant.Prefix), *EscapeXmlAttribute(VfsName));
 	}

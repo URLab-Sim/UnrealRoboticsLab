@@ -23,6 +23,8 @@
 #include "MuJoCo/Gen/MjElements.gen.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjNodeFactories.h"
+#include "MuJoCo/Spec/MjSceneAssembly.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "MuJoCo/Spec/MjSceneSpec.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "Tests/MjTestHelpers.h"
@@ -423,6 +425,210 @@ bool FMjSceneSpecAssetCollisionTest::RunTest(const FString& Parameters)
 	TestNotEqual(TEXT("the participants did not share one mesh"), Scene.Model->mesh_vertnum[FirstId],
 		Scene.Model->mesh_vertnum[SecondId]);
 
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneMjcfMountNamesTest, "URLab.MuJoCo.SceneSpec.HandshakeTextNamesTheMounts",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSceneMjcfMountNamesTest::RunTest(const FString& Parameters)
+{
+	// One participant referencing two `base.obj` from different folders. The
+	// mounts are `p0_base.obj` and `p0_base_2.obj`, and the MJCF handed to a
+	// remote client has to ask for those two names -- a writer deriving the name
+	// from the reference's own basename asks for the first one twice, and the
+	// client silently gets one mesh where the model has two.
+	//
+	// The compiled scene cannot show that: the compile never goes through text.
+	// So the test compiles both, the scene through the spec path and the text
+	// through stock MuJoCo against the very mounts the scene produced, and
+	// compares the two models' mesh data.
+	FSceneFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not create the world"));
+		return false;
+	}
+
+	UMjBodyBase* SceneWorld = nullptr;
+	AMjArticulation* const Manager = Fixture.AddActor(SceneWorld);
+	UMjBodyBase* ParticipantWorld = nullptr;
+	AMjArticulation* const Robot = Fixture.AddActor(ParticipantWorld);
+	if (Manager == nullptr || Robot == nullptr)
+	{
+		AddError(TEXT("could not spawn the spec actors"));
+		return false;
+	}
+
+	if (AddMesh(Fixture, *Robot, TEXT("left"), TEXT("meshA/base.obj"), ParityDir()) == nullptr ||
+		AddMesh(Fixture, *Robot, TEXT("right"), TEXT("meshB/base.obj"), ParityDir()) == nullptr ||
+		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell_left"), TEXT("left")) == nullptr ||
+		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell_right"), TEXT("right")) == nullptr)
+	{
+		AddError(TEXT("could not author the participant"));
+		return false;
+	}
+
+	mjspec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(FSpecRef::OverActor(*Manager));
+	mjspec::FMjSceneSpecParticipant Placed;
+	Placed.Spec = FSpecRef::OverActor(*Robot);
+	Placed.Prefix = TEXT("p0_");
+	Builder.AddParticipant(Placed);
+
+	mjspec::FMjCompiledScene Scene = CompileScene(*this, Builder);
+	if (!Scene.IsValid())
+	{
+		return false;
+	}
+
+	// The mounts the client will be handed, which are what its text has to name.
+	if (!TestEqual(TEXT("both meshes are mounted"), Scene.Assets.Num(), 2))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the first claimant keeps the clean name"), Scene.Assets[0].Name, FString(TEXT("p0_base.obj")));
+	TestEqual(TEXT("the second is disambiguated"), Scene.Assets[1].Name, FString(TEXT("p0_base_2.obj")));
+
+	FSceneAssembly Assembly;
+	Assembly.SetSceneRoot(FSpecRef::OverActor(*Manager));
+	Assembly.Add(FSpecRef::OverActor(*Robot), TEXT("p0_"));
+
+	TMap<FString, FString> ParticipantXml;
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	const FString SceneXml = MjWriteSceneMjcf(Assembly, ParticipantXml, &Diagnostics);
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		AddError(Diagnostic.ToString());
+	}
+	const FString* const Written = ParticipantXml.Find(TEXT("p0_model.xml"));
+	if (Written == nullptr)
+	{
+		AddError(TEXT("the scene wrote no MJCF for its participant"));
+		return false;
+	}
+	TestTrue(TEXT("the text asks for the first mount"), Written->Contains(TEXT("file=\"p0_base.obj\"")));
+	TestTrue(TEXT("the text asks for the second mount"), Written->Contains(TEXT("file=\"p0_base_2.obj\"")));
+
+	// Exactly what a client is given: the scene text, the participant text it
+	// names, and the asset bytes under the names the scene mounted them by. The
+	// specs outlive the models they produce, the ordering the compiled scene
+	// keeps.
+	TArray<mjSpec*> Specs;
+	const auto CompileHandshake = [&](const FString& Participant) -> mjModel* {
+		mjVFS Vfs;
+		mj_defaultVFS(&Vfs);
+		for (const urlab::spec::FMjSceneAsset& Asset : Scene.Assets)
+		{
+			mj_addBufferVFS(&Vfs, TCHAR_TO_UTF8(*Asset.Name), Asset.Bytes.GetData(), Asset.Bytes.Num());
+		}
+		const FTCHARToUTF8 Payload(*Participant);
+		mj_addBufferVFS(&Vfs, "p0_model.xml", Payload.Get(), Payload.Length());
+
+		char Error[1024] = {0};
+		mjSpec* const Parsed = mj_parseXMLString(TCHAR_TO_UTF8(*SceneXml), &Vfs, Error, sizeof(Error));
+		if (Parsed == nullptr)
+		{
+			AddError(FString::Printf(TEXT("stock MuJoCo rejected the handshake MJCF: %s"), UTF8_TO_TCHAR(Error)));
+			mj_deleteVFS(&Vfs);
+			return nullptr;
+		}
+		Specs.Add(Parsed);
+		mjModel* const Model = mj_compile(Parsed, &Vfs);
+		if (Model == nullptr)
+		{
+			AddError(
+				FString::Printf(TEXT("the handshake MJCF did not compile: %s"), UTF8_TO_TCHAR(mjs_getError(Parsed))));
+		}
+		mj_deleteVFS(&Vfs);
+		return Model;
+	};
+
+	const auto Release = [&Specs](mjModel* Model) {
+		mj_deleteModel(Model);
+		for (mjSpec* Spec : Specs)
+		{
+			mj_deleteSpec(Spec);
+		}
+	};
+
+	mjModel* const Reloaded = CompileHandshake(*Written);
+	if (Reloaded == nullptr)
+	{
+		Release(nullptr);
+		return false;
+	}
+
+	TestEqual(TEXT("the text compiled the same number of meshes"), static_cast<int32>(Reloaded->nmesh),
+		static_cast<int32>(Scene.Model->nmesh));
+
+	// Each mesh in the reloaded model against the same mesh in the scene the
+	// text describes: same vertex and face counts, and the same vertex bytes.
+	// A reference pointing at the other mount compiles perfectly well and fails
+	// here.
+	for (const TCHAR* const MeshName : {TEXT("p0_left"), TEXT("p0_right")})
+	{
+		const int Mine = mj_name2id(Scene.Model, mjOBJ_MESH, TCHAR_TO_UTF8(MeshName));
+		const int Theirs = mj_name2id(Reloaded, mjOBJ_MESH, TCHAR_TO_UTF8(MeshName));
+		if (!TestTrue(FString::Printf(TEXT("'%s' is in both models"), MeshName), Mine >= 0 && Theirs >= 0))
+		{
+			continue;
+		}
+		const int32 Vertices = static_cast<int32>(Scene.Model->mesh_vertnum[Mine]);
+		if (!TestEqual(FString::Printf(TEXT("'%s' has the same vertex count"), MeshName),
+				static_cast<int32>(Reloaded->mesh_vertnum[Theirs]), Vertices))
+		{
+			continue;
+		}
+		TestEqual(FString::Printf(TEXT("'%s' has the same face count"), MeshName),
+			static_cast<int32>(Reloaded->mesh_facenum[Theirs]), static_cast<int32>(Scene.Model->mesh_facenum[Mine]));
+		TestTrue(FString::Printf(TEXT("'%s' resolved to the same bytes"), MeshName),
+			FMemory::Memcmp(Scene.Model->mesh_vert + 3 * Scene.Model->mesh_vertadr[Mine],
+				Reloaded->mesh_vert + 3 * Reloaded->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float)) == 0);
+	}
+
+	// And the two are still two: a text that names one mount twice reaches here
+	// with a pair of identical meshes that each match nothing in particular.
+	const int Left = mj_name2id(Reloaded, mjOBJ_MESH, "p0_left");
+	const int Right = mj_name2id(Reloaded, mjOBJ_MESH, "p0_right");
+	if (TestTrue(TEXT("both meshes reloaded"), Left >= 0 && Right >= 0))
+	{
+		TestNotEqual(TEXT("the reloaded meshes are two different meshes"),
+			static_cast<int32>(Reloaded->mesh_vertnum[Left]), static_cast<int32>(Reloaded->mesh_vertnum[Right]));
+
+		const int LeftGeom = mj_name2id(Reloaded, mjOBJ_GEOM, "p0_shell_left");
+		const int RightGeom = mj_name2id(Reloaded, mjOBJ_GEOM, "p0_shell_right");
+		if (TestTrue(TEXT("both geoms reloaded"), LeftGeom >= 0 && RightGeom >= 0))
+		{
+			TestEqual(TEXT("the left geom kept its own mesh"), Reloaded->geom_dataid[LeftGeom], Left);
+			TestEqual(TEXT("the right geom kept its own mesh"), Reloaded->geom_dataid[RightGeom], Right);
+		}
+	}
+
+	// The convention this replaced, put through the same comparison so that the
+	// comparison is shown to discriminate: the two references collapsed onto one
+	// name by their shared basename, which is what deriving the mount name from
+	// the reference produced. It parses and compiles perfectly well, and it
+	// compiles to the first mesh twice.
+	FString Collapsed = *Written;
+	Collapsed.ReplaceInline(TEXT("file=\"p0_base_2.obj\""), TEXT("file=\"p0_base.obj\""));
+	if (TestFalse(TEXT("the collapsed text asks for one mount twice"), Collapsed.Contains(TEXT("p0_base_2.obj"))))
+	{
+		if (mjModel* const Wrong = CompileHandshake(Collapsed))
+		{
+			const int WrongLeft = mj_name2id(Wrong, mjOBJ_MESH, "p0_left");
+			const int WrongRight = mj_name2id(Wrong, mjOBJ_MESH, "p0_right");
+			if (TestTrue(TEXT("the collapsed text still compiles two meshes"), WrongLeft >= 0 && WrongRight >= 0))
+			{
+				TestEqual(TEXT("and they are one mesh twice, which the assertions above reject"),
+					static_cast<int32>(Wrong->mesh_vertnum[WrongRight]),
+					static_cast<int32>(Wrong->mesh_vertnum[WrongLeft]));
+			}
+			mj_deleteModel(Wrong);
+		}
+	}
+
+	Release(Reloaded);
 	return !HasAnyErrors();
 }
 

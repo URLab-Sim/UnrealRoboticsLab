@@ -50,6 +50,20 @@ struct URLAB_API FMjSceneParticipant
 };
 
 /**
+ * One participant's assets, under the names the scene mounts them by.
+ *
+ * The single place those names come from. The asset pass decides them, and it
+ * decides them identically for the compile, for the ship-list and for the text
+ * a remote client is handed, so the three cannot drift into three conventions
+ * that only agree by inspection -- which is what a text writer re-deriving a
+ * name from the reference's basename did, pointing two `base.obj` at one mount.
+ *
+ * The bytes stay on disk: a caller that wants them runs the pass with a sink
+ * that takes them.
+ */
+URLAB_API TArray<FMjAssetRequest> MjCollectSceneAssets(const FMjSceneParticipant& Participant);
+
+/**
  * A scene, assembled at write time from the level.
  *
  * Nothing is owned and nothing is cached: membership is a projection of the

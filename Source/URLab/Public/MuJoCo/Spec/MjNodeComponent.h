@@ -21,6 +21,7 @@
 #include "MjNodeComponent.generated.h"
 
 struct FMjArticulationState;
+struct FSpecRef;
 struct mjModel_;
 struct mjData_;
 typedef mjModel_ mjModel;
@@ -522,6 +523,43 @@ protected:
 #if WITH_EDITOR
 	/** What `MjName` held when the details panel announced it was about to change. */
 	TOptional<FString> NameBeforeEdit;
+
+	/**
+	 * The attribute a template edit is about to change, and the text it held.
+	 *
+	 * Only the value BEFORE the edit says which preview instances were still
+	 * following this template, and after the edit there is nothing left to
+	 * compare them against: every instance now differs from the template, which
+	 * is indistinguishable from one the user authored on. Captured in
+	 * `PreEditChange` and consumed once by the carry below.
+	 *
+	 * Never a UPROPERTY: an `FProperty*` is not reflectable, and both halves are
+	 * live only between the two hooks of a single edit.
+	 */
+	FProperty* PropertyBeforeEdit = nullptr;
+	FString PropertyTextBeforeEdit;
+
+	/**
+	 * Carry a template's edited attribute onto the instances following it.
+	 *
+	 * Re-running a preview actor's construction scripts -- which the Blueprint
+	 * editor does on every template edit -- reads any attribute an instance holds
+	 * differently from its template as an instance OVERRIDE, caches it, and puts
+	 * it back on the rebuilt component. So the moment a template's `type` moves,
+	 * the instance's unchanged `type` becomes an override of it and the preview
+	 * stays the shape it was while the panel says otherwise.
+	 *
+	 * `pos`, `quat` and `size` have carried across since the drag work; every
+	 * other attribute had nothing, and `type` is the one a user notices first.
+	 * The rule is the pose carry's, for the same reason: only onto an instance
+	 * that still holds this element's own pre-edit value, so an instance the user
+	 * has authored on keeps what it authored.
+	 *
+	 * Delivered through the instance's own `PostEditChangeProperty`, so each
+	 * element class decides for itself what an edit of that attribute costs --
+	 * which is what keeps a `contype` carry from rebuilding a picture.
+	 */
+	void CarryEditToInstances(const FSpecRef& Doc, const FPropertyChangedEvent& Event);
 #endif
 };
 

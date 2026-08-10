@@ -1488,6 +1488,78 @@ void UMjNodeComponent::PreEditChange(FProperty* PropertyAboutToChange)
 	{
 		NameBeforeEdit = MjName;
 	}
+
+	// The value the instances following this template are still holding. It only
+	// exists now: see the member's comment.
+	PropertyBeforeEdit = nullptr;
+	PropertyTextBeforeEdit.Reset();
+	const UClass* const Owner = PropertyAboutToChange != nullptr ? PropertyAboutToChange->GetOwnerClass() : nullptr;
+	if (Owner != nullptr && GetOwner() == nullptr && !HasAnyFlags(RF_ClassDefaultObject) && IsA(Owner))
+	{
+		PropertyBeforeEdit = PropertyAboutToChange;
+		PropertyAboutToChange->ExportTextItem_Direct(PropertyTextBeforeEdit,
+			PropertyAboutToChange->ContainerPtrToValuePtr<void>(this), nullptr, this, PPF_None);
+	}
+}
+
+void UMjNodeComponent::CarryEditToInstances(const FSpecRef& Doc, const FPropertyChangedEvent& Event)
+{
+#if URLAB_MJ_GEN
+	FProperty* const Property = PropertyBeforeEdit;
+	const FString Before = PropertyTextBeforeEdit;
+	PropertyBeforeEdit = nullptr;
+	PropertyTextBeforeEdit.Reset();
+
+	if (Property == nullptr || GetOwner() != nullptr)
+	{
+		return;
+	}
+
+	// The snapshot has to belong to the edit that just landed. `PreEditChange`
+	// and `PostEditChangeProperty` are not always a matched pair -- a cancelled
+	// edit fires only the first -- so a stale snapshot must not be spent on the
+	// next property that happens along.
+	const FName Name = Property->GetFName();
+	if (Event.Property != Property && Event.MemberProperty != Property && Event.GetPropertyName() != Name &&
+		Event.GetMemberPropertyName() != Name)
+	{
+		return;
+	}
+
+	FString After;
+	Property->ExportTextItem_Direct(After, Property->ContainerPtrToValuePtr<void>(this), nullptr, this, PPF_None);
+	if (After == Before)
+	{
+		return;
+	}
+
+	ForEachInstanceOfTemplate(Doc, *this, [Property, &Before, &After](UMjNodeComponent& Instance) {
+		if (!Instance.IsA(Property->GetOwnerClass()))
+		{
+			return;
+		}
+		void* const Slot = Property->ContainerPtrToValuePtr<void>(&Instance);
+		FString Held;
+		Property->ExportTextItem_Direct(Held, Slot, nullptr, &Instance, PPF_None);
+		if (Held != Before)
+		{
+			// This instance authored its own value: the template is no longer
+			// what decides it, and taking that back would discard the user's edit.
+			return;
+		}
+
+		Instance.Modify();
+		Property->ImportText_Direct(*After, Slot, &Instance, PPF_None);
+
+		FPropertyChangedEvent Carried(Property, EPropertyChangeType::ValueSet);
+		Instance.PostEditChangeProperty(Carried);
+	});
+#else
+	// Without the generated profile there is no spec to walk and no template
+	// graph to find instances in.
+	(void)Doc;
+	(void)Event;
+#endif  // URLAB_MJ_GEN
 }
 
 void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -1503,6 +1575,11 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 		Changed == USceneComponent::GetRelativeRotationPropertyName() ||
 		Changed == USceneComponent::GetRelativeScale3DPropertyName())
 	{
+		// The transform carries itself: the write-back authors the spec and
+		// hands the authored value to the instances that were following it. The
+		// snapshot is spent here so it cannot be applied to the next edit.
+		PropertyBeforeEdit = nullptr;
+		PropertyTextBeforeEdit.Reset();
 		WriteBackTransformIfChanged();
 		return;
 	}
@@ -1577,6 +1654,10 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 			RefreshSpecPresentationOf(FSpecRef::OverOwner(&Instance));
 		});
 	}
+
+	// Last, because it re-enters this hook on each instance and everything above
+	// is about the template's own spec.
+	CarryEditToInstances(Doc, PropertyChangedEvent);
 #endif
 }
 

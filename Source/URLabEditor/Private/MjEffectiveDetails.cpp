@@ -218,6 +218,12 @@ void AuthorInherited(UMjNodeComponent& Node, const FOptionalProperty& Optional, 
 	FScopedTransaction Transaction(LOCTEXT("AuthorInherited", "Author Inherited MuJoCo Value"));
 	Node.Modify();
 
+	// The pair the property editor's own edits come in, and not a formality: the
+	// pre-edit half is where a template records what the instances following it
+	// are still holding, and without it a Set on a template never reaches the
+	// preview.
+	Node.PreEditChange(const_cast<FOptionalProperty*>(&Optional));
+
 	void* const Container = Optional.ContainerPtrToValuePtr<void>(&Node);
 	if (Container == nullptr)
 	{

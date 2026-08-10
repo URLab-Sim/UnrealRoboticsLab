@@ -312,6 +312,7 @@ void WriteQuat(UMjNodeComponent& Node, const FOptionalProperty& Property, const 
 {
 	FScopedTransaction Transaction(LOCTEXT("EditEuler", "Edit MuJoCo Orientation"));
 	Node.Modify();
+	Node.PreEditChange(const_cast<FOptionalProperty*>(&Property));
 
 	void* const Container = Property.ContainerPtrToValuePtr<void>(&Node);
 	if (Container == nullptr)

@@ -87,6 +87,17 @@ const TCHAR* const InheritedPoseModel = TEXT(R"(<mujoco model="inherit">
 </mujoco>
 )");
 
+/** Two plain spheres, for the attribute a user changes and immediately looks at. */
+const TCHAR* const ShapeModel = TEXT(R"(<mujoco model="shape">
+  <worldbody>
+    <body name="b">
+      <geom name="ball" type="sphere" size="0.05"/>
+      <geom name="own" type="sphere" size="0.05"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
 UBlueprint* ParseScratch(FAutomationTestBase& Test, const TCHAR* Xml)
 {
 	const FString Name = FString::Printf(TEXT("MjPresent_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
@@ -199,6 +210,32 @@ void NotifyEdited(UMjNodeComponent& Node, const TCHAR* PropertyName)
 	FProperty* Property = Node.GetClass()->FindPropertyByName(FName(PropertyName));
 	FPropertyChangedEvent Event(Property);
 	Node.PostEditChangeProperty(Event);
+}
+
+/**
+ * The whole edit, in the order the property editor performs it.
+ *
+ * The announcement BEFORE the write is not a formality here: a template records
+ * at that moment what the instances following it are still holding, and after
+ * the write there is nothing left to compare them against. `NotifyEdited` above
+ * announces only the second half, which is enough for the tests that write both
+ * sides themselves and not enough for one about the carry.
+ */
+void EditProperty(UMjNodeComponent& Node, const TCHAR* PropertyName, TFunctionRef<void()> Write)
+{
+	FProperty* Property = Node.GetClass()->FindPropertyByName(FName(PropertyName));
+	Node.PreEditChange(Property);
+	Write();
+	FPropertyChangedEvent Event(Property, EPropertyChangeType::ValueSet);
+	Node.PostEditChangeProperty(Event);
+}
+
+/** The engine primitive a geom's preview is currently built from. */
+FString PreviewMeshName(const UMjGeom& Geom)
+{
+	const UStaticMeshComponent* const Part = Geom.GetVisualizerMesh();
+	const UStaticMesh* const Asset = Part != nullptr ? Part->GetStaticMesh() : nullptr;
+	return Asset != nullptr ? Asset->GetName() : FString(TEXT("<none>"));
 }
 
 } // namespace MjPresentationTests
@@ -560,6 +597,116 @@ bool FMjClassTemplatePropagatesTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("and that instance still authors no pos of its own"), Follower->HasPos());
 
 	return true;
+}
+
+// ============================================================================
+// URLab.Preview.EditingATemplateAttributeReachesThePreview
+//   Author `type="box"` on a geom and the picture stays a sphere.
+//
+//   Not the rebuild gate, which names `Type` and fires. The Blueprint editor
+//   re-runs the preview actor's construction scripts on a template edit, and
+//   re-running them reads any attribute an instance holds differently from its
+//   template as an instance OVERRIDE: it caches the instance's pre-edit value and
+//   puts it back on the rebuilt component. So the moment the template's `type`
+//   moves, the instance's unchanged `type` becomes an override of it, and the
+//   preview is a sphere for the rest of the session while the panel says box.
+//
+//   The pose has carried across since the drag work. Every other attribute had
+//   nothing, so this asserts the carry on `type` -- the one a user changes and
+//   immediately looks at -- and on an attribute that decides nothing visual,
+//   which must carry just as faithfully and must NOT cost a rebuild.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTemplateAttributeReachesThePreview,
+	"URLab.Preview.EditingATemplateAttributeReachesThePreview",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjTemplateAttributeReachesThePreview::RunTest(const FString& Parameters)
+{
+	using namespace MjPresentationTests;
+
+	UBlueprint* Blueprint = ParseScratch(*this, ShapeModel);
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	UWorld* World = ScratchWorld();
+	if (!TestNotNull(TEXT("scratch world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(false);
+	};
+
+	AActor* Actor = World->SpawnActor<AActor>(Blueprint->GeneratedClass);
+	UMjGeom* Template = TemplateNamed<UMjGeom>(*Blueprint, TEXT("ball"));
+	UMjGeom* Instance = Actor != nullptr ? ComponentNamed<UMjGeom>(*Actor, TEXT("ball")) : nullptr;
+	if (Actor == nullptr || !TestNotNull(TEXT("the geom's template"), Template) ||
+		!TestNotNull(TEXT("the geom on the preview"), Instance))
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("the preview starts as the sphere the document authored"), PreviewMeshName(*Instance),
+		FString(TEXT("Sphere")));
+
+	// The edit, on the template alone -- which is what the Blueprint editor's
+	// details panel changes when the user picks a different type.
+	EditProperty(*Template, TEXT("Type"), [Template]() { Template->Type = EMjGeomType::box; });
+
+	TestTrue(TEXT("the instance following the template took the new type"),
+		Instance->Type.IsSet() && Instance->Type.GetValue() == EMjGeomType::box);
+	TestEqual(TEXT("so its picture is the box"), PreviewMeshName(*Instance), FString(TEXT("Cube")));
+
+	// And it survives the reconstruction that used to undo it. This is literally
+	// what FSCSEditorViewportClient runs after a template edit.
+	Actor->RerunConstructionScripts();
+	UMjGeom* Rebuilt = ComponentNamed<UMjGeom>(*Actor, TEXT("ball"));
+	if (!TestNotNull(TEXT("the geom after reconstruction"), Rebuilt))
+	{
+		return false;
+	}
+	TestTrue(TEXT("the rebuilt component still carries the type the template authored"),
+		Rebuilt->Type.IsSet() && Rebuilt->Type.GetValue() == EMjGeomType::box);
+	TestEqual(TEXT("and draws it"), PreviewMeshName(*Rebuilt), FString(TEXT("Cube")));
+
+	// The other arm. An instance the user has authored on has really overridden
+	// the template, and a later template edit must not take that back -- the same
+	// rule the pose carry follows, and without this the assertions above would
+	// pass for a carry that simply overwrote everything.
+	UMjGeom* OwnTemplate = TemplateNamed<UMjGeom>(*Blueprint, TEXT("own"));
+	UMjGeom* Own = ComponentNamed<UMjGeom>(*Actor, TEXT("own"));
+	if (TestNotNull(TEXT("the second geom's template"), OwnTemplate) &&
+		TestNotNull(TEXT("the second geom on the preview"), Own))
+	{
+		EditProperty(*Own, TEXT("Type"), [Own]() { Own->Type = EMjGeomType::capsule; });
+		EditProperty(*OwnTemplate, TEXT("Type"), [OwnTemplate]() { OwnTemplate->Type = EMjGeomType::box; });
+
+		TestTrue(TEXT("an instance that authored its own type keeps it"),
+			Own->Type.IsSet() && Own->Type.GetValue() == EMjGeomType::capsule);
+	}
+
+	// The cost. An attribute that decides nothing visual has to reach the
+	// instance just as faithfully, and must not rebuild a picture on the way:
+	// that rebuild is what the lag work removed, and a carry that reinstated it
+	// would put it back on every keystroke of every geom attribute.
+	UMjGeom* Cheap = ComponentNamed<UMjGeom>(*Actor, TEXT("ball"));
+	UMjGeom* CheapTemplate = TemplateNamed<UMjGeom>(*Blueprint, TEXT("ball"));
+	if (TestNotNull(TEXT("the geom for the cost arm"), Cheap) &&
+		TestNotNull(TEXT("its template"), CheapTemplate))
+	{
+		const UStaticMeshComponent* const Drawn = Cheap->GetVisualizerMesh();
+		EditProperty(*CheapTemplate, TEXT("Contype"), [CheapTemplate]() { CheapTemplate->Contype = 5; });
+
+		TestTrue(TEXT("a non-visual attribute reaches the instance too"),
+			Cheap->Contype.IsSet() && Cheap->Contype.GetValue() == 5);
+		TestTrue(TEXT("and the picture was not torn down and rebuilt for it"),
+			Cheap->GetVisualizerMesh() == Drawn);
+	}
+
+	return !HasAnyErrors();
 }
 
 #endif // URLAB_MJ_GEN && WITH_EDITOR

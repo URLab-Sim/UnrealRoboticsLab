@@ -399,6 +399,84 @@ bool FMjMeshGeomRefusesAScale::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// The size a drag must never author
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjNonPositiveSizeIsRefused,
+	"URLab.Preview.NonPositiveSizeIsRefused",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjNonPositiveSizeIsRefused::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjScaleZero"), TEXT("zero size"), Model, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	UMjNodeComponent* const Ball = Named(*Blueprint, TEXT("ball"));
+	if (Ball == nullptr)
+	{
+		AddError(TEXT("the fixture's geom was not imported"));
+		return false;
+	}
+
+	// The authored radius, and the scale it previews at: 0.05 m against a 0.5 m
+	// engine primitive is a scale of 0.1, which is well under the level
+	// viewport's default 0.25 scale grid. One grid step down and the drag arrives
+	// here asking for a radius of zero.
+	const TArray<double> Before = AuthoredSize(*Ball);
+	if (!TestEqual(TEXT("the geom starts with the radius the document authored"), Before.Num(), 1))
+	{
+		return false;
+	}
+	TestEqual(TEXT("which is 0.05"), Before[0], 0.05);
+
+	DragScale(*Ball, FVector::ZeroVector);
+
+	const TArray<double> After = AuthoredSize(*Ball);
+	if (TestEqual(TEXT("the collapsing drag authored no new size"), After.Num(), 1))
+	{
+		TestEqual(TEXT("the radius is the one the document authored, untouched"), After[0], 0.05);
+	}
+	TestEqual(TEXT("and the component goes back to the scale the spec implies"),
+		Ball->GetRelativeScale3D(), FVector(0.1, 0.1, 0.1));
+
+	if (TestEqual(TEXT("the refusal is explained on the element"), Ball->PreviewProblems.Num(), 1))
+	{
+		const FString Reported = Ball->PreviewProblems[0];
+		TestTrue(FString::Printf(TEXT("it says the size is unchanged, got '%s'"), *Reported),
+			Reported.Contains(TEXT("size is unchanged")));
+		TestTrue(FString::Printf(TEXT("it names the scale grid, got '%s'"), *Reported),
+			Reported.Contains(TEXT("scale grid")));
+	}
+
+	// A negative scale asks for a negative size, which MuJoCo refuses for the
+	// same reason: mirroring a geom is not an edit of its radius.
+	DragScale(*Ball, FVector(-0.5, -0.5, -0.5));
+	const TArray<double> Mirrored = AuthoredSize(*Ball);
+	if (TestEqual(TEXT("a mirrored drag leaves the one authored radius"), Mirrored.Num(), 1))
+	{
+		TestEqual(TEXT("and does not author a negative one"), Mirrored[0], 0.05);
+	}
+
+	// And an ordinary drag still authors, so the refusal is the sign of the size
+	// rather than the write-back having been switched off.
+	DragScale(*Ball, FVector(0.4, 0.4, 0.4));
+	const TArray<double> Grown = AuthoredSize(*Ball);
+	if (TestEqual(TEXT("a positive drag still authors one radius"), Grown.Num(), 1))
+	{
+		TestEqual(TEXT("and it is half the dragged scale"), Grown[0], 0.2);
+	}
+	TestEqual(TEXT("which withdraws the refusal"), Ball->PreviewProblems.Num(), 0);
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
 // Arity, spec-side
 // ---------------------------------------------------------------------------
 

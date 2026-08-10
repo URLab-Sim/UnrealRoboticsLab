@@ -394,8 +394,16 @@ public:
 	 */
 	virtual void ConstrainPreviewScale();
 
-	/** Author this element's size from a relative scale, under its own arity. */
-	virtual void WriteBackScale(const FVector& Scale);
+	/**
+	 * Author this element's size from a relative scale, under its own arity.
+	 *
+	 * False when nothing was authored, which is not a failure but a refusal with
+	 * a reason: the element's size is not a scale, or the scale asks for a size
+	 * of zero or less, which MuJoCo's own `checksize` will not accept. The caller
+	 * puts the component back where the spec still says it is, so a refusal is
+	 * something the user sees rather than a silent divergence.
+	 */
+	virtual bool WriteBackScale(const FVector& Scale);
 
 	// --- Reference dropdowns ----------------------------------------------- //
 

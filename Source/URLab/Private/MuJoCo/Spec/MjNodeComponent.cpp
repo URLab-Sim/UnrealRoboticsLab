@@ -815,23 +815,47 @@ void UMjNodeComponent::ConstrainPreviewScale()
 	}
 }
 
-void UMjNodeComponent::WriteBackScale(const FVector& Scale)
+bool UMjNodeComponent::WriteBackScale(const FVector& Scale)
 {
 	EMjGeomType Type = EMjGeomType::sphere;
 	TArray<double> Size;
 	if (!urlab::spec::MjEffectiveShapeOf(*this, Type, Size))
 	{
-		return;
+		return false;
 	}
 	const urlab::spec::FMjSizeShape& Shape = urlab::spec::MjSizeShapeFor(Type);
 	if (Shape.AxisNum == 0 || Shape.bSizeIsReadOnly)
 	{
-		return;
+		return false;
 	}
 
 	// Exactly the slots this type reads, which is the arity MuJoCo's own writer
 	// trims a `size` to. A drag can therefore never author an over-long one.
 	const TArray<double> Authored = urlab::spec::MjSizeFromScale(Shape, Scale);
+
+	// And never a size of zero or less. MuJoCo's own `checksize` refuses one --
+	// "size 0 must be positive" -- so authoring it turns a working model into one
+	// that will not compile, from a gesture that looks like an ordinary drag.
+	//
+	// It is not a rare gesture either: the level viewport's scale grid steps in
+	// 0.25 and most of a robot is smaller than that, so the first drag on a
+	// centimetre-scale geom lands exactly on zero. The grid is the editor's and
+	// stays as the user configured it; what changes is that the spec no longer
+	// takes the collapse.
+	for (const double Value : Authored)
+	{
+		if (Value <= 0.0)
+		{
+			NotePreviewProblem(EMjPreviewProblem::NonPositiveSize,
+				FString::Printf(
+					TEXT("a scale of %s would author a size of zero or less, so the size is unchanged: the "
+						 "viewport's scale grid steps in 0.25 by default, which is larger than most of a robot"),
+					*Scale.ToString()));
+			return false;
+		}
+	}
+	ClearPreviewProblem(EMjPreviewProblem::NonPositiveSize);
+
 	using P = urlab::spec::FMjInstanceProfile;
 	urlab::spec::gen::DispatchByType(*this, [&Authored](auto& Element) {
 		using E = std::decay_t<decltype(Element)>;
@@ -849,6 +873,7 @@ void UMjNodeComponent::WriteBackScale(const FVector& Scale)
 		}
 		pssdk::internal::SetSeqField<P>(Element, FieldId, Slots, static_cast<std::size_t>(Num));
 	});
+	return true;
 }
 
 // --- What an element is in the spec ------------------------------------ //
@@ -1146,11 +1171,20 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	// Each attribute is authored only where its own component moved. Writing the
 	// unmoved half as well would author a value the element was inheriting.
 	WriteMjPose(*this, bPosMoved ? MjPos : nullptr, bRotMoved ? MjQuat : nullptr);
-	if (bScaleMoved)
+	const bool bScaleAuthored = bScaleMoved && WriteBackScale(Current.GetScale3D());
+
+	// A refused scale is a refusal in the viewport too. The spec still says what
+	// it said, so a component left holding the scale that was refused is a
+	// picture of a model that does not exist -- and for the collapse this refusal
+	// exists for, that picture is a geom that has vanished. It goes back to the
+	// pose it was dragged to and the scale the spec still holds.
+	FTransform Settled = Current;
+	if (bScaleMoved && !bScaleAuthored)
 	{
-		WriteBackScale(Current.GetScale3D());
+		Settled.SetScale3D(Baseline.GetScale3D());
+		SetRelativeScale3D(Settled.GetScale3D());
 	}
-	LastPreviewTransform = Current;
+	LastPreviewTransform = Settled;
 
 	// The Blueprint editor's viewport does not drag the component the user can
 	// see. It applies the delta to the construction-script TEMPLATE and leaves
@@ -1175,7 +1209,7 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 		const bool bTakeRot = bRotMoved &&
 			Instance.GetRelativeRotation().Quaternion().Equals(Baseline.GetRotation(), MjPreviewEpsilon);
 		const bool bTakeScale =
-			bScaleMoved && Instance.GetRelativeScale3D().Equals(Baseline.GetScale3D(), MjPreviewEpsilon);
+			bScaleAuthored && Instance.GetRelativeScale3D().Equals(Baseline.GetScale3D(), MjPreviewEpsilon);
 		if (!bTakePos && !bTakeRot && !bTakeScale)
 		{
 			return;
@@ -1334,8 +1368,9 @@ void UMjNodeComponent::ConstrainPreviewScale()
 {
 }
 
-void UMjNodeComponent::WriteBackScale(const FVector& Scale)
+bool UMjNodeComponent::WriteBackScale(const FVector& Scale)
 {
+	return false;
 }
 
 #endif  // URLAB_MJ_GEN

@@ -24,6 +24,9 @@
 
 #include "CoreMinimal.h"
 
+#include "Containers/ArrayView.h"
+#include "Templates/Function.h"
+
 #include "MuJoCo/Spec/MjSceneAssembly.h"
 
 /**
@@ -36,3 +39,24 @@
  */
 URLAB_API FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
 	TArray<FMjSpecDiagnostic>* OutErrors = nullptr);
+
+/**
+ * Everything the scene text needs mounted beside it, one entry at a time.
+ *
+ * The two maps are `FSceneAssembly::CollectAssetFiles` and the
+ * `OutParticipantXml` above, and their keys go out unchanged: they are the
+ * names the documents ask for. Nothing here re-derives a name from a path,
+ * because MuJoCo's VFS matches the asked-for name first and falls back to a
+ * case-insensitive basename match across every mount -- so a key that is not
+ * what the text says leaves the fallback to choose, and two participants each
+ * carrying their own `base.obj` silently share whichever was mounted first.
+ *
+ * Bytes are read from disk and handed straight to the visitor rather than
+ * accumulated: a scene's meshes run to tens of megabytes and every caller so
+ * far copies each entry into a payload of its own. A file that cannot be read
+ * contributes no entry, because a client is better served by an absent mount,
+ * which it can report, than by an empty one, which it cannot.
+ */
+URLAB_API void MjForEachSceneVfsEntry(const TMap<FString, FString>& AssetFiles,
+	const TMap<FString, FString>& ParticipantXml,
+	TFunctionRef<void(const FString& Name, TArrayView<const uint8> Bytes)> Visit);

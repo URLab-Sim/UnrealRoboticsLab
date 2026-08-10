@@ -28,6 +28,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "State/MjCanonicalName.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
@@ -52,7 +53,6 @@
 #include "Misc/Base64.h"
 #include "Misc/Paths.h"
 #include "Misc/FileHelper.h"
-#include "Internationalization/Regex.h"
 #include "HAL/FileManager.h"
 #include "EngineUtils.h"
 #include "Engine/World.h"
@@ -760,32 +760,17 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 	// for typical robots.
 	if (bIncludeAssets && m)
 	{
-		// Flatten file="dir/sub/foo.STL" -> file="foo.STL" so a VFS keyed by
-		// bare filename (which is what mj_addFileVFS does) can resolve the
-		// references on the client side.
-		auto FlattenAssetRefs = [](const FString& Xml) {
-			FRegexPattern Pattern(TEXT("file=\"([^\"]*?)([^/\\\\\"]+)\""));
-			FRegexMatcher Matcher(Pattern, Xml);
-			FString Rewritten;
-			int32 Cursor = 0;
-			while (Matcher.FindNext())
-			{
-				const int32 MatchStart = Matcher.GetMatchBeginning();
-				const int32 MatchEnd = Matcher.GetMatchEnding();
-				const FString Filename = Matcher.GetCaptureGroup(2);
-				Rewritten += Xml.Mid(Cursor, MatchStart - Cursor);
-				Rewritten += FString::Printf(TEXT("file=\"%s\""), *Filename);
-				Cursor = MatchEnd;
-			}
-			Rewritten += Xml.Mid(Cursor);
-			return Rewritten;
-		};
-
+		// The text goes out exactly as the scene writer produced it. Every
+		// `file=` in it already names the mount the asset pass chose, and those
+		// mount names are what the VFS below is keyed by; rewriting either end
+		// here would be a second naming convention for the same bytes, and the
+		// one it used to apply -- reducing every reference to its basename --
+		// collapsed two participants' `base.obj` onto one mount.
 		FMjCompiledScene Scene;
 		FString SceneError;
 		if (Manager->PhysicsEngine->BuildCompiledScene(Scene, SceneError))
 		{
-			Reply->SetStringField(TEXT("mjcf_compiled"), FlattenAssetRefs(Scene.Xml));
+			Reply->SetStringField(TEXT("mjcf_compiled"), Scene.Xml);
 		}
 		else
 		{
@@ -793,37 +778,20 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 				TEXT("BuildHandshake: no scene MJCF (%s); skipping mjcf_compiled"), *SceneError);
 		}
 
-		// VFS bytes: one msgpack-bin field per entry, keyed by the bare name
-		// the flattened file= refs above resolve against. Asset files come off
-		// disk; a scene that references participant specs carries their
-		// text the same way, because to the client's VFS the two are the same
-		// kind of thing. No base64 duplicate — clients should use the msgpack
-		// decoder. Shipped whether or not the MJCF made it, because a client
-		// that already has the model still needs the meshes.
+		// VFS bytes: one msgpack-bin field per entry, keyed by the name the
+		// text asks for. Asset files come off disk; a scene that references
+		// participant specs carries their text the same way, because to the
+		// client's VFS the two are the same kind of thing. No base64 duplicate —
+		// clients should use the msgpack decoder. Shipped whether or not the
+		// MJCF made it, because a client that already has the model still needs
+		// the meshes.
 		TSharedPtr<FJsonObject> VfsAssets = MakeShared<FJsonObject>();
 		int64 TotalBytes = 0;
-		for (const TPair<FString, FString>& Asset : Scene.AssetFiles)
-		{
-			TArray<uint8> FileData;
-			if (FFileHelper::LoadFileToArray(FileData, *Asset.Value))
-			{
-				// The name the scene mounted it under, not the file's own. A
-				// scene prefixes every `file=` so participants cannot collide in
-				// MuJoCo's flat VFS namespace, and the refs flattened above keep
-				// that prefix -- so a key rebuilt from the path names a file the
-				// spec never asks for.
-				FURLabMsgpackUtil::SetBinaryField(VfsAssets, *Asset.Key,
-					FileData.GetData(), FileData.Num());
-				TotalBytes += FileData.Num();
-			}
-		}
-		for (const TPair<FString, FString>& Participant : Scene.ParticipantXml)
-		{
-			const FTCHARToUTF8 Utf8(*FlattenAssetRefs(Participant.Value));
-			FURLabMsgpackUtil::SetBinaryField(VfsAssets, *Participant.Key,
-				reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length());
-			TotalBytes += Utf8.Length();
-		}
+		MjForEachSceneVfsEntry(Scene.AssetFiles, Scene.ParticipantXml,
+			[&VfsAssets, &TotalBytes](const FString& Name, TArrayView<const uint8> Bytes) {
+				FURLabMsgpackUtil::SetBinaryField(VfsAssets, Name, Bytes.GetData(), Bytes.Num());
+				TotalBytes += Bytes.Num();
+			});
 		Reply->SetObjectField(TEXT("vfs_assets"), VfsAssets);
 		UE_LOG(LogURLabNet, Log,
 			TEXT("BuildHandshake: shipped %d VFS entries (%lld bytes) + mjcf_compiled (%d chars)"),

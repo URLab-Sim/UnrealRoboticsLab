@@ -566,26 +566,29 @@ bool FMjSceneMjcfMountNamesTest::RunTest(const FString& Parameters)
 	// text describes: same vertex and face counts, and the same vertex bytes.
 	// A reference pointing at the other mount compiles perfectly well and fails
 	// here.
-	for (const TCHAR* const MeshName : {TEXT("p0_left"), TEXT("p0_right")})
-	{
-		const int Mine = mj_name2id(Scene.Model, mjOBJ_MESH, TCHAR_TO_UTF8(MeshName));
-		const int Theirs = mj_name2id(Reloaded, mjOBJ_MESH, TCHAR_TO_UTF8(MeshName));
-		if (!TestTrue(FString::Printf(TEXT("'%s' is in both models"), MeshName), Mine >= 0 && Theirs >= 0))
+	const auto SameMeshes = [this, &Scene](mjModel* Other, const TCHAR* Route) {
+		for (const TCHAR* const MeshName : {TEXT("p0_left"), TEXT("p0_right")})
 		{
-			continue;
+			const int Mine = mj_name2id(Scene.Model, mjOBJ_MESH, TCHAR_TO_UTF8(MeshName));
+			const int Theirs = mj_name2id(Other, mjOBJ_MESH, TCHAR_TO_UTF8(MeshName));
+			if (!TestTrue(FString::Printf(TEXT("%s: '%s' is in both models"), Route, MeshName), Mine >= 0 && Theirs >= 0))
+			{
+				continue;
+			}
+			const int32 Vertices = static_cast<int32>(Scene.Model->mesh_vertnum[Mine]);
+			if (!TestEqual(FString::Printf(TEXT("%s: '%s' has the same vertex count"), Route, MeshName),
+					static_cast<int32>(Other->mesh_vertnum[Theirs]), Vertices))
+			{
+				continue;
+			}
+			TestEqual(FString::Printf(TEXT("%s: '%s' has the same face count"), Route, MeshName),
+				static_cast<int32>(Other->mesh_facenum[Theirs]), static_cast<int32>(Scene.Model->mesh_facenum[Mine]));
+			TestTrue(FString::Printf(TEXT("%s: '%s' resolved to the same bytes"), Route, MeshName),
+				FMemory::Memcmp(Scene.Model->mesh_vert + 3 * Scene.Model->mesh_vertadr[Mine],
+					Other->mesh_vert + 3 * Other->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float)) == 0);
 		}
-		const int32 Vertices = static_cast<int32>(Scene.Model->mesh_vertnum[Mine]);
-		if (!TestEqual(FString::Printf(TEXT("'%s' has the same vertex count"), MeshName),
-				static_cast<int32>(Reloaded->mesh_vertnum[Theirs]), Vertices))
-		{
-			continue;
-		}
-		TestEqual(FString::Printf(TEXT("'%s' has the same face count"), MeshName),
-			static_cast<int32>(Reloaded->mesh_facenum[Theirs]), static_cast<int32>(Scene.Model->mesh_facenum[Mine]));
-		TestTrue(FString::Printf(TEXT("'%s' resolved to the same bytes"), MeshName),
-			FMemory::Memcmp(Scene.Model->mesh_vert + 3 * Scene.Model->mesh_vertadr[Mine],
-				Reloaded->mesh_vert + 3 * Reloaded->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float)) == 0);
-	}
+	};
+	SameMeshes(Reloaded, TEXT("the written text"));
 
 	// And the two are still two: a text that names one mount twice reaches here
 	// with a pair of identical meshes that each match nothing in particular.
@@ -604,6 +607,55 @@ bool FMjSceneMjcfMountNamesTest::RunTest(const FString& Parameters)
 			TestEqual(TEXT("the right geom kept its own mesh"), Reloaded->geom_dataid[RightGeom], Right);
 		}
 	}
+
+	// And now the payload the handshake actually ships, assembled by the pass
+	// the dispatcher runs rather than by this test: the scene text verbatim as
+	// `mjcf_compiled`, and a VFS whose entries are the ship-list's mounts read
+	// off disk plus the participant document under the name the scene's
+	// `<model file=...>` row asks for. The dispatcher used to reduce every
+	// `file=` in both documents to its basename before shipping them, which
+	// collapsed the two mounts back onto one and handed the client one mesh
+	// twice -- with the model it shipped alongside still holding two.
+	const TMap<FString, FString> Shipped = Assembly.CollectAssetFiles();
+	TestTrue(TEXT("the ship-list carries the first mount"), Shipped.Contains(TEXT("p0_base.obj")));
+	TestTrue(TEXT("the ship-list carries the second mount"), Shipped.Contains(TEXT("p0_base_2.obj")));
+
+	mjVFS Shipping;
+	mj_defaultVFS(&Shipping);
+	int32 Entries = 0;
+	MjForEachSceneVfsEntry(Shipped, ParticipantXml,
+		[&Shipping, &Entries](const FString& Name, TArrayView<const uint8> Bytes) {
+			mj_addBufferVFS(&Shipping, TCHAR_TO_UTF8(*Name), Bytes.GetData(), Bytes.Num());
+			++Entries;
+		});
+	// Two meshes and one participant document, and the mesh bytes came off the
+	// ship-list's paths rather than out of the compile's own mounts.
+	TestEqual(TEXT("the dispatcher ships both meshes and the participant document"), Entries, 3);
+
+	char ShippedError[1024] = {0};
+	mjSpec* const ShippedSpec = mj_parseXMLString(TCHAR_TO_UTF8(*SceneXml), &Shipping, ShippedError, sizeof(ShippedError));
+	if (ShippedSpec == nullptr)
+	{
+		AddError(FString::Printf(TEXT("stock MuJoCo rejected the shipped scene text: %s"), UTF8_TO_TCHAR(ShippedError)));
+	}
+	else
+	{
+		Specs.Add(ShippedSpec);
+		mjModel* const ShippedModel = mj_compile(ShippedSpec, &Shipping);
+		if (ShippedModel == nullptr)
+		{
+			AddError(FString::Printf(
+				TEXT("the shipped payload did not compile: %s"), UTF8_TO_TCHAR(mjs_getError(ShippedSpec))));
+		}
+		else
+		{
+			TestEqual(TEXT("the shipped payload compiled the same number of meshes"),
+				static_cast<int32>(ShippedModel->nmesh), static_cast<int32>(Scene.Model->nmesh));
+			SameMeshes(ShippedModel, TEXT("the shipped payload"));
+			mj_deleteModel(ShippedModel);
+		}
+	}
+	mj_deleteVFS(&Shipping);
 
 	// The convention this replaced, put through the same comparison so that the
 	// comparison is shown to discriminate: the two references collapsed onto one

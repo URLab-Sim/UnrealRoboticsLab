@@ -9,6 +9,7 @@
 #include "MuJoCo/Spec/MjSceneMjcf.h"
 
 #include "Internationalization/Regex.h"
+#include "Misc/FileHelper.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 
@@ -253,4 +254,26 @@ FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& Ou
 	}
 #endif
 	return WriteScene(Scene, OutParticipantXml, OutErrors);
+}
+
+void MjForEachSceneVfsEntry(const TMap<FString, FString>& AssetFiles, const TMap<FString, FString>& ParticipantXml,
+	TFunctionRef<void(const FString& Name, TArrayView<const uint8> Bytes)> Visit)
+{
+	for (const TPair<FString, FString>& Asset : AssetFiles)
+	{
+		TArray<uint8> Bytes;
+		if (FFileHelper::LoadFileToArray(Bytes, *Asset.Value))
+		{
+			Visit(Asset.Key, TArrayView<const uint8>(Bytes.GetData(), Bytes.Num()));
+		}
+	}
+	for (const TPair<FString, FString>& Participant : ParticipantXml)
+	{
+		// A participant document is bytes to the VFS exactly as an `.obj` is,
+		// and it is mounted under the name the scene's `<model file=...>` row
+		// asks for.
+		const FTCHARToUTF8 Utf8(*Participant.Value);
+		Visit(Participant.Key,
+			TArrayView<const uint8>(reinterpret_cast<const uint8*>(Utf8.Get()), Utf8.Length()));
+	}
 }

@@ -48,6 +48,8 @@ THIRD_PARTY_INCLUDES_END
 
 #include <string>
 
+DEFINE_LOG_CATEGORY_STATIC(LogMjStockDiff, Display, All);
+
 namespace MjStockDiffTests
 {
 
@@ -309,11 +311,15 @@ bool FMjStockDiffCorpusTest::RunTest(const FString& Parameters)
 
 			// One line per fixture, always. A single "the corpus matched"
 			// cannot tell a reader whether the real robot was in it, and the
-			// robot is the fixture whose result the log is read for.
-			AddInfo(FString::Printf(
+			// robot is the fixture whose result the log is read for. Into the
+			// run log as well as the automation report, because the run log is
+			// the one a reader has in front of them.
+			const FString Line = FString::Printf(
 				TEXT("STOCKDIFF %-28s %s (generated names %d, sizes moved %d, unexplained %d)"), *Label,
 				Verdict.Unexplained.IsEmpty() ? TEXT("matches stock") : TEXT("DIVERGES FROM STOCK"),
-				Verdict.GeneratedNames, Verdict.SizeDiffs, Verdict.Unexplained.Num()));
+				Verdict.GeneratedNames, Verdict.SizeDiffs, Verdict.Unexplained.Num());
+			UE_LOG(LogMjStockDiff, Display, TEXT("%s"), *Line);
+			AddInfo(Line);
 
 			bComparedTheRobot = bComparedTheRobot || Label == RealRobot;
 			++Compared;

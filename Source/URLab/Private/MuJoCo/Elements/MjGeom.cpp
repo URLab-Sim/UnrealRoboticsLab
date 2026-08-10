@@ -158,6 +158,106 @@ FGeomShapeState EffectiveShapeOf(const UMjGeomBase& Geom)
 	return Out;
 }
 
+/** The `<hfield>` this geom names, resolved the way `EffectiveMeshName` resolves `mesh`. */
+FString EffectiveHfieldName(const UMjGeom& Geom)
+{
+	FString Name = Geom.Hfield.Get(FString());
+#if URLAB_MJ_GEN
+	if (Geom.Hfield.IsSet())
+	{
+		return Name;
+	}
+	urlab::spec::WithEffectiveDoc(Geom, [&](auto& Effective) {
+		Effective.ForEachLayer(static_cast<const UMjGeomBase&>(Geom), [&](const auto& Layer) {
+			if (!Layer.Hfield.IsSet())
+			{
+				return false;
+			}
+			Name = Layer.Hfield.GetValue();
+			return true;
+		});
+	});
+#endif
+	return Name;
+}
+
+/**
+ * The `<default>` class this geom's effective `type` came from.
+ *
+ * Empty when the geom authored the type itself, which is also what the schema
+ * layer yields -- and the schema's own `type` is `sphere`, which always draws,
+ * so it never reaches the caller below.
+ */
+FString ClassSupplyingType(const UMjGeom& Geom)
+{
+#if URLAB_MJ_GEN
+	TArray<urlab::spec::FMjEffectiveLayer> Layers;
+	urlab::spec::MjEffectiveLayersOf(Geom, Layers);
+	for (const urlab::spec::FMjEffectiveLayer& Layer : Layers)
+	{
+		const UMjGeomBase* const Partial = Cast<UMjGeomBase>(Layer.Node);
+		if (Partial != nullptr && Partial->Type.IsSet())
+		{
+			return Layer.ClassName;
+		}
+	}
+#endif
+	return FString();
+}
+
+/**
+ * Say so when a geom's effective shape leaves it with no picture and no geom in
+ * the compiled model, and withdraw it when that stops being true.
+ *
+ * A menagerie model puts `type="mesh"` on a `<default>` class and the mesh name
+ * on each geom, so a geom added by hand under a body carrying that class inherits
+ * the type, names no mesh, and is silent twice over: it draws nothing, and the
+ * next compile fails somewhere with no element to blame. The user did nothing
+ * but add a geom.
+ *
+ * Keyed on the NAME being absent, never on the asset failing to load. A named
+ * mesh whose asset did not resolve is the import pass's report to make -- it
+ * knows which file was missing -- and repeating it here would accuse every
+ * import whose meshes are prepared in a later step.
+ */
+void NoteUndrawableShape(UMjGeom& Geom, EMjGeomType EffectiveType)
+{
+	const TCHAR* Attribute = nullptr;
+	FString Named;
+	if (EffectiveType == EMjGeomType::mesh)
+	{
+		Attribute = TEXT("mesh");
+		Named = Geom.EffectiveMeshName();
+	}
+	else if (EffectiveType == EMjGeomType::hfield)
+	{
+		Attribute = TEXT("hfield");
+		Named = EffectiveHfieldName(Geom);
+	}
+	else
+	{
+		// An `sdf` geom takes its shape from a `<plugin>` child rather than from a
+		// named asset, so there is no empty name to key on and one that compiles
+		// perfectly well would be accused of the opposite.
+		Geom.ClearPreviewProblem(EMjPreviewProblem::UndrawableShape);
+		return;
+	}
+
+	if (!Named.IsEmpty())
+	{
+		Geom.ClearPreviewProblem(EMjPreviewProblem::UndrawableShape);
+		return;
+	}
+
+	const FString Source = ClassSupplyingType(Geom);
+	const FString Where = Source.IsEmpty()
+		? FString::Printf(TEXT("type=\"%s\" is authored here"), Attribute)
+		: FString::Printf(TEXT("type=\"%s\" comes from default class '%s'"), Attribute, *Source);
+	Geom.NotePreviewProblem(EMjPreviewProblem::UndrawableShape,
+		FString::Printf(TEXT("%s and no <%s> is named: this geom will not draw, and the model will not compile"),
+			*Where, Attribute));
+}
+
 /**
  * The engine driving `Node`, and the compiled id `Node` bound to.
  *
@@ -334,8 +434,14 @@ void UMjGeom::RebuildVisualizer()
 	const FGeomShape& Shape = ShapeFor(EffectiveType);
 	if (Shape.MeshPath == nullptr && SpecMesh.Asset == nullptr)
 	{
+		// No engine primitive and no asset: nothing is drawn, and the user is told
+		// rather than left with a geom that is simply not there. Deliberately not
+		// a stand-in sphere -- a sphere the model does not contain is a worse lie
+		// than an absence, because it looks like it will be simulated.
+		NoteUndrawableShape(*this, EffectiveType);
 		return;
 	}
+	ClearPreviewProblem(EMjPreviewProblem::UndrawableShape);
 
 	if (!IsValid(VisualizerMesh))
 	{

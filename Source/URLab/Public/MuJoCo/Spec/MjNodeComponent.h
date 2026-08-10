@@ -47,6 +47,28 @@ struct FMjChildSlot
 };
 
 /**
+ * A way an element's picture and what will be simulated have come apart.
+ *
+ * One value per rule, because a rule is cleared when it stops being broken and
+ * a message string is not a key. The rows they produce all land in
+ * `PreviewProblems`, which is what the user reads.
+ */
+enum class EMjPreviewProblem : uint8
+{
+	/**
+	 * The effective shape has no picture and no asset to draw: a `mesh` or
+	 * `hfield` geom that names none. MuJoCo will not compile it either.
+	 */
+	UndrawableShape,
+
+	/** The scale handle cannot author this element's size, so a drag was refused. */
+	ScaleNotEditable,
+
+	/** A drag would have authored a size of zero or less, so it was refused. */
+	NonPositiveSize,
+};
+
+/**
  * The base of every generated MJCF element component.
  *
  * A MuJoCo spec is not stored beside the component tree; the component tree
@@ -184,6 +206,37 @@ public:
 	 */
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Transient, Category = "MuJoCo|Diagnostics")
 	TArray<FString> PlacementProblems;
+
+	/**
+	 * Where this element's picture and what will be simulated disagree.
+	 *
+	 * The viewport is the only report most of these have: a geom that resolves to
+	 * a shape with nothing to draw simply is not there, and a scale handle that
+	 * cannot author a size looks identical to one that did. Neither is an error
+	 * the model reaches the compiler with a line number for, and a toast is gone
+	 * before the user has finished the gesture that caused it.
+	 *
+	 * Transient, and keyed by `EMjPreviewProblem` rather than by text, so a rule
+	 * that stops being broken takes its own row away and leaves the others.
+	 */
+	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Transient, Category = "MuJoCo|Diagnostics")
+	TArray<FString> PreviewProblems;
+
+	/**
+	 * Record `Message` as this element's row for `Problem`, replacing any earlier
+	 * one, and say it once in the message log and the run log.
+	 *
+	 * Once per element and per rule: the row is the persistent surface and is
+	 * rewritten freely, while the logs are a transition and would otherwise
+	 * repeat on every registration for the rest of the session. Keyed on `Serial`
+	 * for the same reason `CheckPlacementLegality` is -- a component is not the
+	 * same object across a Blueprint reconstruct, and a new element is a new
+	 * mistake.
+	 */
+	void NotePreviewProblem(EMjPreviewProblem Problem, const FString& Message);
+
+	/** Drop this element's row for `Problem`, and let it be said again if it returns. */
+	void ClearPreviewProblem(EMjPreviewProblem Problem);
 
 	// --- Runtime binding --------------------------------------------------- //
 
@@ -440,6 +493,15 @@ protected:
 
 	/** The compiled-model id, or unset. Runtime only: never serialized. */
 	TOptional<int32> BoundId;
+
+	/**
+	 * Which rule each row of `PreviewProblems` came from, in the same order.
+	 *
+	 * Kept beside the rows rather than in them so that clearing one rule does not
+	 * mean matching on the text it wrote. Not a UPROPERTY, for the same reason the
+	 * rows are Transient: both are derived from the spec as it is right now.
+	 */
+	TArray<EMjPreviewProblem> PreviewProblemKeys;
 
 	/**
 	 * The relative transform `SyncPreviewFromSpec` last applied, and the

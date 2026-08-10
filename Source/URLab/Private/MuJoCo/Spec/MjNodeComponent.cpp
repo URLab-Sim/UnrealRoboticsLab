@@ -151,6 +151,82 @@ void UMjNodeComponent::PostDuplicate(bool bDuplicateForPIE)
 	}
 }
 
+// --- Preview diagnostics --------------------------------------------------- //
+
+namespace
+{
+/**
+ * Elements already told about, by identity and rule rather than by object.
+ *
+ * The same reasoning as `GReportedIllegalPlacement`: a component is not the
+ * same object from one Blueprint reconstruct to the next, so a message keyed on
+ * the object is said again on every recompile, while `Serial` survives a
+ * reconstruct and a genuinely new element mints a fresh one. The rule is part of
+ * the key because an element can break two of them, and clearing one must not
+ * silence the other.
+ */
+TSet<TPair<uint64, uint8>> GReportedPreviewProblems;
+}  // namespace
+
+void UMjNodeComponent::NotePreviewProblem(EMjPreviewProblem Problem, const FString& Message)
+{
+	// A class default object is not an element: it has no spec, and nothing the
+	// user can see is derived from its picture.
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+
+	// The keys and the rows are one table in two arrays, and a mismatch between
+	// them could only come from something writing the rows directly. Rebuilding
+	// is the recovery, because the rows are re-derived anyway.
+	if (PreviewProblemKeys.Num() != PreviewProblems.Num())
+	{
+		PreviewProblemKeys.Reset();
+		PreviewProblems.Reset();
+	}
+
+	const int32 Existing = PreviewProblemKeys.Find(Problem);
+	if (Existing != INDEX_NONE)
+	{
+		PreviewProblems[Existing] = Message;
+	}
+	else
+	{
+		PreviewProblemKeys.Add(Problem);
+		PreviewProblems.Add(Message);
+	}
+
+	// The row above is the persistent surface and is rewritten every time. The
+	// two logs are a transition: said when the element starts breaking the rule,
+	// not once per registration for the rest of the session.
+	const TPair<uint64, uint8> Key(Serial, static_cast<uint8>(Problem));
+	if (GReportedPreviewProblems.Contains(Key))
+	{
+		return;
+	}
+	GReportedPreviewProblems.Add(Key);
+
+	const FString Line = FString::Printf(TEXT("%s: %s"), *MjName.Get(GetName()), *Message);
+	UE_LOG(LogURLab, Warning, TEXT("%s"), *Line);
+#if WITH_EDITOR
+	FMessageLog(TEXT("URLab")).Warning(FText::FromString(Line));
+#endif
+}
+
+void UMjNodeComponent::ClearPreviewProblem(EMjPreviewProblem Problem)
+{
+	const int32 Existing = PreviewProblemKeys.Find(Problem);
+	if (Existing != INDEX_NONE && PreviewProblems.IsValidIndex(Existing))
+	{
+		PreviewProblemKeys.RemoveAt(Existing);
+		PreviewProblems.RemoveAt(Existing);
+	}
+
+	// Breaking the same rule a second time is a new mistake, and is said again.
+	GReportedPreviewProblems.Remove(TPair<uint64, uint8>(Serial, static_cast<uint8>(Problem)));
+}
+
 // --- Runtime binding ------------------------------------------------------- //
 
 void UMjNodeComponent::BindTo(int32 Id)

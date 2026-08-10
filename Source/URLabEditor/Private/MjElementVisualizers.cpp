@@ -13,6 +13,7 @@
 #include "PrimitiveDrawInterface.h"
 #include "PrimitiveDrawingUtils.h"
 #include "SceneManagement.h"
+#include "SceneView.h"
 #include "UnrealEdGlobals.h"
 
 #include "MuJoCo/Spec/MjGenHooks.h"
@@ -265,6 +266,34 @@ void DrawFreeJoint(const UMjFreeJoint& Joint, FPrimitiveDrawInterface* PDI)
 }
 
 /**
+ * A locator marker's size in Unreal units, so a tiny site stays locatable.
+ *
+ * MuJoCo's own 5 mm default site floors the SHAPE at 0.5 UU (`DrawSite`
+ * leaves that alone), but an authored 1 mm site draws a shape smaller still
+ * and reads as nothing at ordinary zoom. This is a second, independent floor
+ * on a marker added next to the shape: `MarkerFloor` off-screen or with no
+ * view to measure against, and -- when a view is available -- the standard
+ * editor-gizmo scale factor, so the marker holds a constant size in pixels
+ * rather than shrinking at a distance or swamping the shape up close.
+ *
+ * `View` is null off both of this drawing's existing tests
+ * (`FMjElementVisualizerDrawsInheritedSize`,
+ * `FMjElementVisualizerReadsRangeInAuthoredAngleUnit`, `MjVisualizerTests.cpp`),
+ * so every read of it is guarded rather than assumed present.
+ */
+double LocatorMarkerSize(const FSceneView* View, const FVector& Location)
+{
+	constexpr double MarkerFloor = 2.0;
+	if (View == nullptr)
+	{
+		return MarkerFloor;
+	}
+	const double ScreenScale = View->WorldToScreen(Location).W
+		* (4.0 / View->UnscaledViewRect.Width() / View->ViewMatrices.GetProjectionMatrix().M[0][0]);
+	return FMath::Max(ScreenScale, MarkerFloor);
+}
+
+/**
  * A site's shape, in wireframe.
  *
  * A site is a geom's geometry without a geom's physics, and MuJoCo sizes it by
@@ -272,7 +301,7 @@ void DrawFreeJoint(const UMjFreeJoint& Joint, FPrimitiveDrawInterface* PDI)
  * capsule and cylinder by radius and half-length along local Z, box and
  * ellipsoid by three half-extents.
  */
-void DrawSite(const UMjSite& Site, FPrimitiveDrawInterface* PDI)
+void DrawSite(const UMjSite& Site, const FSceneView* View, FPrimitiveDrawInterface* PDI)
 {
 	EMjGeomType Type = EMjGeomType::sphere;
 	TOptional<TArray<double>> Size;
@@ -343,6 +372,12 @@ void DrawSite(const UMjSite& Site, FPrimitiveDrawInterface* PDI)
 			PDI->DrawLine(Base - AxisZ * Radius, Base + AxisZ * Radius, Color, SDPG_Foreground, 1.0f);
 			break;
 	}
+
+	// The locator marker: independent of the shape and its own floor, so a
+	// well-sized site is unaffected (the marker sits inside the shape it
+	// already drew) and a millimetre-scale one is not simply undetectable.
+	DrawWireDiamond(PDI, Frame.ToMatrixNoScale(), static_cast<float>(LocatorMarkerSize(View, Base)), MarkerColor,
+		SDPG_Foreground);
 }
 
 /**
@@ -573,7 +608,7 @@ void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, c
 	}
 	else if (const UMjSite* const Site = Cast<UMjSite>(Element))
 	{
-		DrawSite(*Site, PDI);
+		DrawSite(*Site, View, PDI);
 	}
 	else if (const UMjLight* const Light = Cast<UMjLight>(Element))
 	{

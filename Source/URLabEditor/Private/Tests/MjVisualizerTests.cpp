@@ -402,4 +402,52 @@ bool FMjElementVisualizerSkipsMarkerForPreviewingGeom::RunTest(const FString& Pa
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjElementVisualizerFloorsTinySiteMarker,
+	"URLab.Editor.ElementVisualizerFloorsTinySiteMarker",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjElementVisualizerFloorsTinySiteMarker::RunTest(const FString& Parameters)
+{
+	using namespace MjVisualizerTests;
+
+	// A millimetre site: MuJoCo's own shape floor keeps the wireframe itself
+	// from vanishing to a point, but at 0.5 UU it is still smaller than the
+	// locator marker's own, larger floor -- the marker is the thing this test
+	// pins.
+	const TCHAR* const Xml = TEXT(R"(<mujoco model="tiny">
+  <worldbody>
+    <body name="base">
+      <site name="pin" size="0.001"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
+	FScratchDoc Doc;
+	if (!Parse(*this, Doc, Xml))
+	{
+		return false;
+	}
+
+	UMjSite* const Site = ElementNamed<UMjSite>(*Doc.Actor, TEXT("pin"));
+	if (!TestNotNull(TEXT("the site component"), Site))
+	{
+		return false;
+	}
+
+	// No FSceneView to scale against, so the marker sits at its bare floor:
+	// this pins the drawing headlessly, not its on-screen visibility, which
+	// is AWAITING OWNER.
+	FCountingPDI PDI;
+	FMjElementVisualizer Visualizer;
+	Visualizer.DrawVisualization(Site, nullptr, &PDI);
+
+	TestTrue(TEXT("the site drew something"), PDI.Points.Num() > 0);
+
+	const double Extent = FurthestFrom(PDI.Points, Site->GetComponentLocation());
+	TestTrue(FString::Printf(TEXT("a 1mm site's marker still reaches the locator floor, got %.2f cm"), Extent),
+		Extent >= 1.9);
+	return true;
+}
+
 #endif  // URLAB_MJ_GEN && WITH_EDITOR

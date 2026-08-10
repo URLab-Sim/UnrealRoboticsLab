@@ -701,6 +701,36 @@ bool UMjNodeComponent::HasPoseAttributes() const
 // and what makes an element MuJoCo adds tomorrow behave the day it is
 // generated instead of the day someone remembers it.
 
+namespace
+{
+/**
+ * Why a drag on this shape is not an edit of its `size`, in the terms the user
+ * can act on: which element DOES own the size they were trying to change.
+ *
+ * Every shape here is one MuJoCo itself sizes from somewhere other than the
+ * element's own `size`, so there is always somewhere to send them.
+ */
+FString ScaleRefusalMessage(EMjGeomType Type)
+{
+	switch (Type)
+	{
+		case EMjGeomType::mesh:
+			return TEXT("the scale handle does not author a mesh shape's size: it is the <mesh> asset's own, "
+						"so scale the <mesh> element rather than this one");
+		case EMjGeomType::hfield:
+			return TEXT("the scale handle does not author a height field's size: it is the <hfield> asset's own, "
+						"so scale the <hfield> element rather than this one");
+		case EMjGeomType::sdf:
+			return TEXT("the scale handle does not author an sdf shape's size: it comes from the geom's plugin");
+		case EMjGeomType::plane:
+			return TEXT("the scale handle does not author a plane's size: two of its three values are half-extents "
+						"and the third is a grid spacing, and a zero half-extent means infinite");
+		default:
+			return TEXT("the scale handle does not author this shape's size");
+	}
+}
+}  // namespace
+
 bool UMjNodeComponent::TryPreviewScaleFromSpec(FVector& OutScale) const
 {
 	EMjGeomType Type = EMjGeomType::sphere;
@@ -745,9 +775,13 @@ void UMjNodeComponent::ConstrainPreviewScale()
 
 	EMjGeomType Type = EMjGeomType::sphere;
 	TArray<double> Size;
-	if (urlab::spec::MjEffectiveShapeOf(*this, Type, Size))
+	const bool bShaped = urlab::spec::MjEffectiveShapeOf(*this, Type, Size);
+	const urlab::spec::FMjSizeShape& Shape = urlab::spec::MjSizeShapeFor(Type);
+	const bool bScaleIsTheSize = bShaped && Shape.AxisNum > 0 && !Shape.bSizeIsReadOnly;
+
+	if (bScaleIsTheSize)
 	{
-		urlab::spec::MjApplyScaleLock(urlab::spec::MjSizeShapeFor(Type).Lock, Locked);
+		urlab::spec::MjApplyScaleLock(Shape.Lock, Locked);
 	}
 	else
 	{
@@ -755,7 +789,24 @@ void UMjNodeComponent::ConstrainPreviewScale()
 		// one no scale expresses -- so a scaled component is a picture that
 		// disagrees with what will be simulated, and the honest answer is to put
 		// it back rather than to keep a distortion nobody can act on.
-		Locked = FVector::OneVector;
+		//
+		// A shape whose `size` is not a scale is the same refusal and used to be
+		// silent: a mesh geom's handle moved, the write-back had nothing to author
+		// and authored nothing, and the component kept a stretch that would never
+		// be simulated. It snaps back to what the spec implies -- which for a mesh
+		// is one, because a mesh geom's own scale says nothing about its picture --
+		// exactly as a body's does.
+		if (!TryPreviewScaleFromSpec(Locked))
+		{
+			Locked = FVector::OneVector;
+		}
+		if (bShaped)
+		{
+			// Only for a shape, because an element with no `size` at all has no
+			// alternative to point the user at: the message below names the element
+			// that DOES own the size, and there is one.
+			NotePreviewProblem(EMjPreviewProblem::ScaleNotEditable, ScaleRefusalMessage(Type));
+		}
 	}
 
 	if (!Locked.Equals(Scale))

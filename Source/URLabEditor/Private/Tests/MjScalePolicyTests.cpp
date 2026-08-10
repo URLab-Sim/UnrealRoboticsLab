@@ -30,6 +30,17 @@
 //                             member of it is classified. A MuJoCo release that
 //                             adds one fails here by name rather than silently
 //                             falling through to the refusal.
+//
+//   a refusal is visible      A mesh geom has no scale mapping at all, and its
+//                             handle used to move and do nothing whatever: no
+//                             edit, no snap, no explanation. It snaps back like
+//                             a body and says which element owns the size.
+//
+//   zero is never authored    A size of zero is not a small geom, it is a model
+//                             that will not compile. The level viewport's scale
+//                             grid steps in 0.25, which is larger than most of a
+//                             robot, so the first drag on a sub-grid geom used to
+//                             author exactly that.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -310,6 +321,79 @@ bool FMjUnsizedElementSnapsToUnit::RunTest(const FString& Parameters)
 	// And the refusal is a scale answer only: the position it was dragged to on
 	// some other day is not re-authored by it.
 	TestEqual(TEXT("refusing a scale does not move the element"), Body->GetRelativeLocation(), Before);
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
+// A shape whose size is not a scale
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjMeshGeomRefusesAScale,
+	"URLab.Preview.MeshGeomRefusesAScale",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjMeshGeomRefusesAScale::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	// A mesh geom and a sphere in one document, so the sphere is the control:
+	// the same gesture on it is an ordinary size edit, which is what makes the
+	// mesh geom's refusal a property of the shape rather than of the harness.
+	const TCHAR* const MeshModel = TEXT(R"(<mujoco model="mesh_scale">
+  <asset>
+    <mesh name="shell" file="shell.stl"/>
+  </asset>
+  <worldbody>
+    <body name="link">
+      <geom name="hull" type="mesh" mesh="shell"/>
+      <geom name="ball" type="sphere" size="0.05"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjScaleMesh"), TEXT("mesh geom"), MeshModel, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	UMjNodeComponent* const Hull = Named(*Blueprint, TEXT("hull"));
+	UMjNodeComponent* const Ball = Named(*Blueprint, TEXT("ball"));
+	if (Hull == nullptr || Ball == nullptr)
+	{
+		AddError(TEXT("the fixture's geoms were not imported"));
+		return false;
+	}
+	TestFalse(TEXT("a mesh geom's size is not the scale handle's to edit"), Hull->HasScaleMapping());
+
+	DragScale(*Hull, FVector(3.0, 1.0, 0.5));
+
+	// The refusal, which used to be a handle that moved and did nothing at all.
+	// A mesh geom's picture rides on the mesh asset's own scale, so the scale the
+	// spec implies for the geom component is one.
+	TestEqual(TEXT("a mesh geom's scale goes back to what the spec implies"),
+		Hull->GetRelativeScale3D(), FVector::OneVector);
+	TestEqual(TEXT("and the drag authored no size"), AuthoredSize(*Hull).Num(), 0);
+
+	if (TestEqual(TEXT("the refusal is explained on the element"), Hull->PreviewProblems.Num(), 1))
+	{
+		const FString Reported = Hull->PreviewProblems[0];
+		TestTrue(FString::Printf(TEXT("it names the element that does own the size, got '%s'"), *Reported),
+			Reported.Contains(TEXT("<mesh>")));
+	}
+
+	// The control. Without it, a run in which every drag was inert would pass the
+	// assertions above without the refusal existing at all.
+	DragScale(*Ball, FVector(0.4, 0.4, 0.4));
+	const TArray<double> Size = AuthoredSize(*Ball);
+	if (TestEqual(TEXT("a sphere in the same document still authors its radius"), Size.Num(), 1))
+	{
+		TestEqual(TEXT("and the radius is half the dragged scale"), Size[0], 0.2);
+	}
+	TestEqual(TEXT("a shape whose size a scale expresses has nothing to explain"), Ball->PreviewProblems.Num(), 0);
 
 	return !HasAnyErrors();
 }

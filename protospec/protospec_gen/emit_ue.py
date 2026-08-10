@@ -77,7 +77,7 @@ import os
 import re
 import sys
 
-from . import overlay, overlay_ue, xmlref
+from . import mjdefaults, overlay, overlay_ue, xmlref
 from .frontend import load_schema, mujoco_src, pascal
 
 # ASCII only, and lint() keeps the whole tree that way: MSVC decodes a source
@@ -2297,6 +2297,7 @@ class SpecWritePlan:
         self.problems: list[str] = []
         self._check_add_calls()
         self._build()
+        self._check_probed_defaults()
         self.enums_emitted = self._resolve_enums()
         if self.problems:
             raise UeError(
@@ -2539,6 +2540,30 @@ class SpecWritePlan:
             self.problems.append(
                 "no element writes authored flags, so the conflict resolver "
                 "would see every spec URLab builds as having authored nothing")
+
+    def _check_probed_defaults(self) -> None:
+        """Every attribute the spec write reaches was seen by the defaults probe.
+
+        The addition half of the gate `_Frontend._check_mujoco_defaults` opens.
+        That one asks whether a probed row still exists; this asks the question
+        the other way, which is the one a MuJoCo bump answers badly: an
+        attribute that grows a binding and is never probed silently loses its
+        lowest layer, and every panel row for it reads as having no default at
+        all. Skips count as seen -- `mujoco_defaults.json` records the reason --
+        so the check is about coverage, never about which side a row landed on.
+        """
+        reached = {(name, w.f["xml"]) for name, plan in self.by_name.items()
+                   for w in plan.writes}
+        probed = mjdefaults.coverage(mjdefaults.load())
+        missing = sorted(reached - probed)
+        if not missing:
+            return
+        named = ", ".join(f"{e}.{a}" for e, a in missing[:8])
+        self.problems.append(
+            f"{len(missing)} attribute(s) the spec write reaches were never "
+            f"probed for a MuJoCo default ({named}"
+            + (", ..." if len(missing) > 8 else "")
+            + "); refresh with `uv run python tools/refresh_mj_defaults.py`")
 
     def _check_unbound(self, plan: SpecElement) -> None:
         """An element with no struct may still declare attributes.

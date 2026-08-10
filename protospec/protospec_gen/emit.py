@@ -181,6 +181,8 @@ def stored_type(f: dict) -> str:
 def _fmt_scalar(value, prim: str) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
+    if prim == "string":
+        return f'std::string("{cpp_str(str(value))}")'
     if prim in ("int32", "uint64"):
         return str(int(value))
     if prim == "float":

@@ -70,7 +70,7 @@ import os
 import re
 import sys
 
-from . import overlay, overlay_ue
+from . import mjdefaults, overlay, overlay_ue
 
 __all__ = ["load_schema", "write_classified_attrs", "mujoco_src", "SchemaError",
            "OverlayError"]
@@ -262,6 +262,7 @@ class _Frontend:
         self.consts = _engine_constants(root)
         self.used: set = set()
         self.overrides_applied: set = set()
+        self.mj_defaults = mjdefaults.load()
 
         self.elements = {n: e for n, e in self.schema.elements.items()
                          if n not in overlay.ELEMENT_SKIP}
@@ -694,10 +695,24 @@ class _Frontend:
             t["arity"] = arity
         return t
 
-    def _default(self, attr, type_: dict) -> dict | None:
-        if attr.default is None:
-            return None
+    def _default(self, element: str, attr, type_: dict) -> dict | None:
+        """The lowest layer's value for this attribute, or None.
+
+        Two sources, in priority order. The schema's own `=` default wins: it is
+        the authored contract, and where upstream wrote one it is a statement
+        about MJCF rather than about a struct. Where the schema is silent,
+        MuJoCo's initialised struct value stands in -- that is what the compiler
+        will merge against whatever the schema says, so an attribute with no `=`
+        row is not undefaulted, only undocumented.
+
+        The struct values are the probed table in
+        :mod:`protospec_gen.mjdefaults`; see it for what is deliberately absent.
+        """
         value = attr.default
+        if value is None:
+            value = self._mujoco_default(element, attr, type_)
+        if value is None:
+            return None
         if attr.type == "enum":
             return {"kind": "enum",
                     "member": self._enum_member(attr.target, value)}
@@ -712,6 +727,43 @@ class _Frontend:
         if type_["kind"] == "prim" and type_["prim"] == "int32":
             return {"kind": "scalar", "value": int(value)}
         return {"kind": "scalar", "value": value}
+
+    def _mujoco_default(self, element: str, attr, type_: dict):
+        """MuJoCo's initialised value for this attribute, in the schema parser's
+        own spelling, so one conversion serves both sources."""
+        raw = self.mj_defaults["defaults"].get(element, {}).get(attr.name)
+        if raw is None:
+            return None
+        if isinstance(raw, bool):
+            return "true" if raw else "false"
+        if isinstance(raw, list):
+            arity = type_.get("arity") or {}
+            if arity.get("kind") == "fixed" and len(raw) != arity["size"]:
+                raise mjdefaults.DefaultsError(
+                    f"the probed default for {element}.{attr.name} has "
+                    f"{len(raw)} values, but the schema declares "
+                    f"{arity['size']}; re-probe against the pinned MuJoCo")
+            return tuple(raw)
+        return raw
+
+    def _check_mujoco_defaults(self, elements: list[dict]) -> None:
+        """Every probed row still names an attribute the schema declares.
+
+        The removal half of the drift gate. The addition half -- an attribute
+        the spec-write layer can reach that the probe never saw -- is asked
+        where the write plan exists, in the UE emitter, because that is what
+        knows which attributes are reachable at all.
+        """
+        live = {(e["schema_name"], f["xml"]) for e in elements
+                for f in e["fields"]}
+        stale = sorted(mjdefaults.coverage(self.mj_defaults) - live)
+        if stale:
+            named = ", ".join(f"{e}.{a}" for e, a in stale[:8])
+            raise mjdefaults.DefaultsError(
+                f"{len(stale)} probed MuJoCo default(s) name attributes the "
+                f"schema no longer declares ({named}"
+                + (", ..." if len(stale) > 8 else "")
+                + "); re-probe with `uv run python tools/refresh_mj_defaults.py`")
 
     def _enum_member(self, enum: str, keyword: str) -> str:
         return overlay.ENUM_MEMBERS.get((enum, keyword), keyword)
@@ -905,7 +957,7 @@ class _Frontend:
         }
         if annotations:
             field["annotations"] = dict(sorted(annotations.items()))
-        default = self._default(attr, type_)
+        default = self._default(element, attr, type_)
         if default is not None:
             field["default"] = default
         if attr.doc:
@@ -1019,6 +1071,7 @@ class _Frontend:
         self._check_spec_write()
         self._check_child_names(elements)
         self._check_type_overrides()
+        self._check_mujoco_defaults(elements)
 
         return {
             "mujoco_schema": os.path.relpath(

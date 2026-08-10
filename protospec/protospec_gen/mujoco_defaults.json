@@ -1,0 +1,2474 @@
+{
+ "mujoco": "b6683ac13dd353c8d66788a3beea6e84b2eb2dc2",
+ "probe": "tools/refresh_mj_defaults.py",
+ "defaults": {
+  "accelerometer": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "actuator_plugin": {
+   "actdim": -1,
+   "actearly": false,
+   "actlimited": "auto",
+   "actrange": [
+    0.0,
+    0.0
+   ],
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "dynprm": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "dyntype": "none",
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "actuatorfrc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "actuatorpos": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "actuatorvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "adhesion": {
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "nsample": 0
+  },
+  "ballangvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "ballquat": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "body": {
+   "gravcomp": 0.0,
+   "mocap": false,
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "quat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "simple": "auto",
+   "sleep": "auto"
+  },
+  "camera": {
+   "focal": [
+    0.0,
+    0.0
+   ],
+   "focalpixel": [
+    0.0,
+    0.0
+   ],
+   "fovy": 45.0,
+   "ipd": 0.068,
+   "mode": "fixed",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "principal": [
+    0.0,
+    0.0
+   ],
+   "principalpixel": [
+    0.0,
+    0.0
+   ],
+   "projection": "perspective",
+   "quat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "resolution": [
+    1,
+    1
+   ],
+   "sensorsize": [
+    0.0,
+    0.0
+   ]
+  },
+  "camprojection": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "clock": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "compiler": {
+   "alignfree": false,
+   "angle": "degree",
+   "autolimits": true,
+   "balanceinertia": false,
+   "boundinertia": 0.0,
+   "boundmass": 0.0,
+   "conflict": "warning",
+   "discardvisual": false,
+   "eulerseq": "xyz",
+   "fitaabb": false,
+   "fusestatic": false,
+   "inertiafromgeom": "auto",
+   "inertiagrouprange": [
+    0,
+    5
+   ],
+   "saveinertial": false,
+   "settotalmass": -1.0,
+   "usethread": true
+  },
+  "connect": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "cylinder": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "damper": {
+   "armature": 0.0,
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "dcmotor": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "default_equality": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "default_tendon": {
+   "damping": 0.0,
+   "frictionloss": 0.0,
+   "group": 0,
+   "limited": "auto",
+   "margin": 0.0,
+   "range": [
+    0.0,
+    0.0
+   ],
+   "rgba": [
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ],
+   "solimpfriction": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solimplimit": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solreffriction": [
+    0.02,
+    1.0
+   ],
+   "solreflimit": [
+    0.02,
+    1.0
+   ],
+   "springlength": [
+    -1.0,
+    -1.0
+   ],
+   "stiffness": 0.0,
+   "width": 0.003
+  },
+  "distance": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "e_kinetic": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "e_potential": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "elasticity": {
+   "damping": 0.0,
+   "elastic2d": "none",
+   "poisson": 0.0,
+   "thickness": -1.0,
+   "young": 0.0
+  },
+  "equality_flex": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "equality_joint": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "equality_tendon": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "fixed": {
+   "actuatorfrclimited": "false",
+   "actuatorfrcrange": [
+    0.0,
+    0.0
+   ],
+   "armature": 0.0,
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "frictionloss": 0.0,
+   "group": 0,
+   "limited": "auto",
+   "margin": 0.0,
+   "range": [
+    0.0,
+    0.0
+   ],
+   "solimpfriction": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solimplimit": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solreffriction": [
+    0.02,
+    1.0
+   ],
+   "solreflimit": [
+    0.02,
+    1.0
+   ],
+   "springlength": [
+    -1.0,
+    -1.0
+   ],
+   "stiffness": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "flex": {
+   "cellcount": [
+    1,
+    1,
+    1
+   ],
+   "dim": 2,
+   "flatskin": false,
+   "group": 0,
+   "radius": 0.005,
+   "rgba": [
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ]
+  },
+  "flex_edge": {
+   "damping": 0.0,
+   "stiffness": 0.0
+  },
+  "flexcomp_contact": {
+   "activelayers": 1,
+   "conaffinity": 1,
+   "condim": 3,
+   "contype": 1,
+   "friction": [
+    1.0,
+    0.005,
+    0.0001
+   ],
+   "gap": 0.0,
+   "internal": false,
+   "margin": 0.0,
+   "passive": false,
+   "priority": 0,
+   "selfcollide": "auto",
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solmix": 1.0,
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "flexstrain": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "flexvert": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  },
+  "force": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "frame": {
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "quat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "frameangacc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "frameangvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "framelinacc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "framelinvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "framepos": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "framequat": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "framexaxis": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "frameyaxis": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "framezaxis": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "freejoint": {
+   "align": "auto",
+   "group": 0
+  },
+  "fromto": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "general": {
+   "actdim": -1,
+   "actearly": false,
+   "actlimited": "auto",
+   "actrange": [
+    0.0,
+    0.0
+   ],
+   "armature": 0.0,
+   "biasprm": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "biastype": "none",
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "dynprm": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "dyntype": "none",
+   "ffrange": [
+    0.0,
+    0.0
+   ],
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gainprm": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "gaintype": "fixed",
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0,
+   "velrange": [
+    0.0,
+    0.0
+   ]
+  },
+  "geom": {
+   "adhesion": 0.0,
+   "conaffinity": 1,
+   "condim": 3,
+   "contype": 1,
+   "density": 1000.0,
+   "fitscale": 1.0,
+   "fluidcoef": [
+    0.5,
+    0.25,
+    1.5,
+    1.0,
+    1.0
+   ],
+   "fluidshape": "none",
+   "friction": [
+    1.0,
+    0.005,
+    0.0001
+   ],
+   "gap": 0.0,
+   "group": 0,
+   "margin": 0.0,
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "priority": 0,
+   "quat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rgba": [
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ],
+   "shellinertia": false,
+   "size": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solmix": 1.0,
+   "solref": [
+    0.02,
+    1.0
+   ],
+   "surfacevel": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "type": "sphere"
+  },
+  "global": {
+   "azimuth": 90.0,
+   "bvactive": true,
+   "cameraid": -1,
+   "elevation": -45.0,
+   "ellipsoidinertia": false,
+   "fovy": 45.0,
+   "glow": 0.30000001192092896,
+   "ipd": 0.06800000369548798,
+   "linewidth": 1.0,
+   "offheight": 480,
+   "offwidth": 640,
+   "orthographic": false,
+   "realtime": 1.0
+  },
+  "gyro": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "headlight": {
+   "active": 1,
+   "ambient": [
+    0.10000000149011612,
+    0.10000000149011612,
+    0.10000000149011612
+   ],
+   "diffuse": [
+    0.4000000059604645,
+    0.4000000059604645,
+    0.4000000059604645
+   ],
+   "specular": [
+    0.5,
+    0.5,
+    0.5
+   ]
+  },
+  "hfield": {
+   "ncol": 0,
+   "nrow": 0,
+   "size": [
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "inertial": {
+   "diaginertia": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "mass": 0.0,
+   "quat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "insidesite": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "intvelocity": {
+   "actlimited": "auto",
+   "actrange": [
+    0.0,
+    0.0
+   ],
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "inheritrange": 0.0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "joint": {
+   "actuatorfrclimited": "auto",
+   "actuatorfrcrange": [
+    0.0,
+    0.0
+   ],
+   "actuatorgravcomp": false,
+   "armature": 0.0,
+   "axis": [
+    0.0,
+    0.0,
+    1.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "frictionloss": 0.0,
+   "group": 0,
+   "limited": "auto",
+   "margin": 0.0,
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "range": [
+    0.0,
+    0.0
+   ],
+   "ref": 0.0,
+   "solimpfriction": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solimplimit": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solreffriction": [
+    0.02,
+    1.0
+   ],
+   "solreflimit": [
+    0.02,
+    1.0
+   ],
+   "springdamper": [
+    0.0,
+    0.0
+   ],
+   "springref": 0.0,
+   "stiffness": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "type": "hinge"
+  },
+  "jointactuatorfrc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "jointlimitfrc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "jointlimitpos": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "jointlimitvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "jointpos": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "jointvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "key": {
+   "time": 0.0
+  },
+  "lengthrange": {
+   "accel": 20.0,
+   "interval": 2.0,
+   "inttotal": 10.0,
+   "maxforce": 0.0,
+   "mode": "muscle",
+   "timeconst": 1.0,
+   "timestep": 0.01,
+   "tolrange": 0.05,
+   "useexisting": true,
+   "uselimit": false
+  },
+  "light": {
+   "active": true,
+   "ambient": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "attenuation": [
+    1.0,
+    0.0,
+    0.0
+   ],
+   "bulbradius": 0.019999999552965164,
+   "castshadow": true,
+   "cutoff": 45.0,
+   "diffuse": [
+    0.699999988079071,
+    0.699999988079071,
+    0.699999988079071
+   ],
+   "dir": [
+    0.0,
+    0.0,
+    -1.0
+   ],
+   "exponent": 10.0,
+   "intensity": 0.0,
+   "mode": "fixed",
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "range": 10.0,
+   "specular": [
+    0.30000001192092896,
+    0.30000001192092896,
+    0.30000001192092896
+   ],
+   "type": "spot"
+  },
+  "magnetometer": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "map": {
+   "actuatortendon": 2.0,
+   "alpha": 0.30000001192092896,
+   "fogend": 10.0,
+   "fogstart": 3.0,
+   "force": 0.004999999888241291,
+   "haze": 0.30000001192092896,
+   "shadowclip": 1.0,
+   "shadowscale": 0.6000000238418579,
+   "stiffness": 100.0,
+   "stiffnessrot": 500.0,
+   "torque": 0.10000000149011612,
+   "zfar": 50.0,
+   "znear": 0.009999999776482582
+  },
+  "material": {
+   "emission": 0.0,
+   "metallic": -1.0,
+   "reflectance": 0.0,
+   "rgba": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "roughness": -1.0,
+   "shininess": 0.5,
+   "specular": 0.5,
+   "texrepeat": [
+    1.0,
+    1.0
+   ],
+   "texuniform": false
+  },
+  "mesh": {
+   "inertia": "legacy",
+   "maxhullvert": -1,
+   "refpos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "refquat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "scale": [
+    1.0,
+    1.0,
+    1.0
+   ],
+   "smoothnormal": false
+  },
+  "motor": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "muscle": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "normal": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "numeric": {
+   "size": 0
+  },
+  "option": {
+   "ccd_iterations": 35,
+   "ccd_tolerance": 1e-06,
+   "cone": "pyramidal",
+   "density": 0.0,
+   "gravity": [
+    0.0,
+    0.0,
+    -9.81
+   ],
+   "impratio": 1.0,
+   "integrator": "Euler",
+   "iterations": 100,
+   "jacobian": "auto",
+   "ls_iterations": 50,
+   "ls_tolerance": 0.01,
+   "magnetic": [
+    0.0,
+    -0.5,
+    0.0
+   ],
+   "noslip_iterations": 0,
+   "noslip_tolerance": 1e-06,
+   "o_friction": [
+    1.0,
+    1.0,
+    0.005,
+    0.0001,
+    0.0001
+   ],
+   "o_margin": 0.0,
+   "o_solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "o_solref": [
+    0.02,
+    1.0
+   ],
+   "sdf_initpoints": 40,
+   "sdf_iterations": 10,
+   "sleep_tolerance": 0.001,
+   "solver": "Newton",
+   "timestep": 0.002,
+   "tolerance": 1e-08,
+   "viscosity": 0.0,
+   "wind": [
+    0.0,
+    0.0,
+    0.0
+   ]
+  },
+  "orientation": {
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "nsample": 0
+  },
+  "pair": {
+   "adhesion": 0.0,
+   "condim": 3,
+   "friction": [
+    1.0,
+    1.0,
+    0.005,
+    0.0001,
+    0.0001
+   ],
+   "gap": 0.0,
+   "margin": 0.0,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ],
+   "solreffriction": [
+    0.0,
+    0.0
+   ]
+  },
+  "pid": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "ffrange": [
+    0.0,
+    0.0
+   ],
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "inheritrange": 0.0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0,
+   "posrange": [
+    0.0,
+    0.0
+   ],
+   "velrange": [
+    0.0,
+    0.0
+   ]
+  },
+  "position": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "inheritrange": 0.0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "quality": {
+   "numquads": 4,
+   "numslices": 28,
+   "numstacks": 16,
+   "offsamples": 4,
+   "shadowsize": 4096
+  },
+  "rangefinder": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "rgba": {
+   "actuator": [
+    0.20000000298023224,
+    0.25,
+    0.20000000298023224,
+    1.0
+   ],
+   "actuatornegative": [
+    0.20000000298023224,
+    0.6000000238418579,
+    0.8999999761581421,
+    1.0
+   ],
+   "actuatorpositive": [
+    0.8999999761581421,
+    0.4000000059604645,
+    0.20000000298023224,
+    1.0
+   ],
+   "bv": [
+    0.0,
+    1.0,
+    0.0,
+    0.5
+   ],
+   "bvactive": [
+    1.0,
+    0.0,
+    0.0,
+    0.5
+   ],
+   "camera": [
+    0.6000000238418579,
+    0.8999999761581421,
+    0.6000000238418579,
+    1.0
+   ],
+   "com": [
+    0.8999999761581421,
+    0.8999999761581421,
+    0.8999999761581421,
+    1.0
+   ],
+   "connect": [
+    0.20000000298023224,
+    0.20000000298023224,
+    0.800000011920929,
+    1.0
+   ],
+   "constraint": [
+    0.8999999761581421,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "contactforce": [
+    0.699999988079071,
+    0.8999999761581421,
+    0.8999999761581421,
+    1.0
+   ],
+   "contactfriction": [
+    0.8999999761581421,
+    0.800000011920929,
+    0.4000000059604645,
+    1.0
+   ],
+   "contactgap": [
+    0.5,
+    0.800000011920929,
+    0.8999999761581421,
+    1.0
+   ],
+   "contactpoint": [
+    0.8999999761581421,
+    0.6000000238418579,
+    0.20000000298023224,
+    1.0
+   ],
+   "contacttorque": [
+    0.8999999761581421,
+    0.699999988079071,
+    0.8999999761581421,
+    1.0
+   ],
+   "crankbroken": [
+    0.8999999761581421,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "fog": [
+    0.0,
+    0.0,
+    0.0,
+    1.0
+   ],
+   "force": [
+    1.0,
+    0.5,
+    0.5,
+    1.0
+   ],
+   "frustum": [
+    1.0,
+    1.0,
+    0.0,
+    0.20000000298023224
+   ],
+   "haze": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+   ],
+   "inertia": [
+    0.800000011920929,
+    0.20000000298023224,
+    0.20000000298023224,
+    0.6000000238418579
+   ],
+   "joint": [
+    0.20000000298023224,
+    0.6000000238418579,
+    0.800000011920929,
+    1.0
+   ],
+   "light": [
+    0.6000000238418579,
+    0.6000000238418579,
+    0.8999999761581421,
+    1.0
+   ],
+   "rangefinder": [
+    1.0,
+    1.0,
+    0.10000000149011612,
+    1.0
+   ],
+   "selectpoint": [
+    0.8999999761581421,
+    0.8999999761581421,
+    0.10000000149011612,
+    1.0
+   ],
+   "slidercrank": [
+    0.5,
+    0.30000001192092896,
+    0.800000011920929,
+    1.0
+   ]
+  },
+  "scale": {
+   "actuatorlength": 0.699999988079071,
+   "actuatorwidth": 0.20000000298023224,
+   "camera": 0.30000001192092896,
+   "com": 0.4000000059604645,
+   "connect": 0.20000000298023224,
+   "constraint": 0.10000000149011612,
+   "contactheight": 0.10000000149011612,
+   "contactwidth": 0.30000001192092896,
+   "forcewidth": 0.10000000149011612,
+   "framelength": 1.0,
+   "framewidth": 0.10000000149011612,
+   "frustum": 10.0,
+   "jointlength": 1.0,
+   "jointwidth": 0.10000000149011612,
+   "light": 0.30000001192092896,
+   "selectpoint": 0.20000000298023224,
+   "slidercrank": 0.20000000298023224
+  },
+  "sensor_contact": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "sensor_plugin": {
+   "cutoff": 0.0
+  },
+  "site": {
+   "group": 0,
+   "pos": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "quat": [
+    1.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "rgba": [
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ],
+   "size": [
+    0.005,
+    0.005,
+    0.005
+   ],
+   "type": "sphere"
+  },
+  "size": {
+   "nconmax": -1,
+   "njmax": -1,
+   "nkey": 0,
+   "nstack": -1,
+   "nuser_actuator": -1,
+   "nuser_body": -1,
+   "nuser_cam": -1,
+   "nuser_geom": -1,
+   "nuser_jnt": -1,
+   "nuser_sensor": -1,
+   "nuser_site": -1,
+   "nuser_tendon": -1,
+   "nuserdata": 0
+  },
+  "skin": {
+   "group": 0,
+   "inflate": 0.0,
+   "rgba": [
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ]
+  },
+  "spatial": {
+   "actuatorfrclimited": "false",
+   "actuatorfrcrange": [
+    0.0,
+    0.0
+   ],
+   "armature": 0.0,
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "frictionloss": 0.0,
+   "group": 0,
+   "limited": "auto",
+   "margin": 0.0,
+   "range": [
+    0.0,
+    0.0
+   ],
+   "rgba": [
+    0.5,
+    0.5,
+    0.5,
+    1.0
+   ],
+   "solimpfriction": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solimplimit": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solreffriction": [
+    0.02,
+    1.0
+   ],
+   "solreflimit": [
+    0.02,
+    1.0
+   ],
+   "springlength": [
+    -1.0,
+    -1.0
+   ],
+   "stiffness": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "width": 0.003
+  },
+  "subtreeangmom": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "subtreecom": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "subtreelinvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "tactile": {
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "tendonactuatorfrc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "tendonlimitfrc": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "tendonlimitpos": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "tendonlimitvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "tendonpos": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "tendonvel": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "texture": {
+   "builtin": "none",
+   "colorspace": "auto",
+   "gridlayout": "............",
+   "gridsize": [
+    1,
+    1
+   ],
+   "height": 0,
+   "hflip": false,
+   "mark": "none",
+   "markrgb": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "nchannel": 3,
+   "random": 0.01,
+   "rgb1": [
+    0.8,
+    0.8,
+    0.8
+   ],
+   "rgb2": [
+    0.5,
+    0.5,
+    0.5
+   ],
+   "type": "cube",
+   "vflip": false,
+   "width": 0
+  },
+  "torque": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "touch": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "user": {
+   "cutoff": 0.0,
+   "datatype": "real",
+   "dim": 0,
+   "needstage": "acc",
+   "noise": 0.0
+  },
+  "velocimeter": {
+   "cutoff": 0.0,
+   "delay": 0.0,
+   "interp": "zoh",
+   "interval": [
+    0.0,
+    0.0
+   ],
+   "noise": 0.0,
+   "nsample": 0
+  },
+  "velocity": {
+   "armature": 0.0,
+   "ctrllimited": "auto",
+   "ctrlrange": [
+    0.0,
+    0.0
+   ],
+   "damping": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "delay": 0.0,
+   "forcelimited": "auto",
+   "forcerange": [
+    0.0,
+    0.0
+   ],
+   "gear": [
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "group": 0,
+   "interp": "zoh",
+   "lengthrange": [
+    0.0,
+    0.0
+   ],
+   "nsample": 0
+  },
+  "weld": {
+   "active": true,
+   "solimp": [
+    0.9,
+    0.95,
+    0.001,
+    0.5,
+    2.0
+   ],
+   "solref": [
+    0.02,
+    1.0
+   ]
+  }
+ },
+ "skipped": {
+  "accelerometer": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "actuator_plugin": {
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "actuatorfrc": {
+   "actuator": "dynamic",
+   "user": "dynamic"
+  },
+  "actuatorpos": {
+   "actuator": "dynamic",
+   "user": "dynamic"
+  },
+  "actuatorvel": {
+   "actuator": "dynamic",
+   "user": "dynamic"
+  },
+  "adhesion": {
+   "user": "dynamic"
+  },
+  "ballangvel": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "ballquat": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "body": {
+   "childclass": "dynamic",
+   "user": "dynamic"
+  },
+  "camera": {
+   "output": "dynamic",
+   "target": "dynamic",
+   "user": "dynamic"
+  },
+  "camprojection": {
+   "camera": "dynamic",
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "clock": {
+   "user": "dynamic"
+  },
+  "compiler": {
+   "meshdir": "dynamic",
+   "texturedir": "dynamic"
+  },
+  "cylinder": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "damper": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "dcmotor": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "default_tendon": {
+   "material": "dynamic",
+   "user": "dynamic"
+  },
+  "distance": {
+   "user": "dynamic"
+  },
+  "e_kinetic": {
+   "user": "dynamic"
+  },
+  "e_potential": {
+   "user": "dynamic"
+  },
+  "exclude": {
+   "body1": "dynamic",
+   "body2": "dynamic"
+  },
+  "fixed": {
+   "user": "dynamic"
+  },
+  "flex": {
+   "body": "dynamic",
+   "element": "dynamic",
+   "elemtexcoord": "dynamic",
+   "material": "dynamic",
+   "node": "dynamic",
+   "texcoord": "dynamic",
+   "vertex": "dynamic"
+  },
+  "force": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "frame": {
+   "childclass": "dynamic"
+  },
+  "frameangacc": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "user": "dynamic"
+  },
+  "frameangvel": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "framelinacc": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "user": "dynamic"
+  },
+  "framelinvel": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "framepos": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "framequat": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "framexaxis": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "frameyaxis": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "framezaxis": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "refname": "dynamic",
+   "reftype": "unmapped",
+   "user": "dynamic"
+  },
+  "fromto": {
+   "user": "dynamic"
+  },
+  "general": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "geom": {
+   "fromto": "sentinel",
+   "hfield": "dynamic",
+   "mass": "sentinel",
+   "material": "dynamic",
+   "mesh": "dynamic",
+   "user": "dynamic"
+  },
+  "gyro": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "hfield": {
+   "content_type": "dynamic",
+   "file": "dynamic"
+  },
+  "inertial": {
+   "pos": "sentinel"
+  },
+  "insidesite": {
+   "objname": "dynamic",
+   "objtype": "unmapped",
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "intvelocity": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "joint": {
+   "user": "dynamic"
+  },
+  "jointactuatorfrc": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "jointlimitfrc": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "jointlimitpos": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "jointlimitvel": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "jointpos": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "jointvel": {
+   "joint": "dynamic",
+   "user": "dynamic"
+  },
+  "key": {
+   "act": "dynamic",
+   "ctrl": "dynamic",
+   "mpos": "dynamic",
+   "mquat": "dynamic",
+   "qpos": "dynamic",
+   "qvel": "dynamic"
+  },
+  "light": {
+   "target": "dynamic",
+   "texture": "dynamic"
+  },
+  "magnetometer": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "mesh": {
+   "content_type": "dynamic",
+   "face": "dynamic",
+   "file": "dynamic",
+   "material": "dynamic",
+   "normal": "dynamic",
+   "texcoord": "dynamic",
+   "vertex": "dynamic"
+  },
+  "motor": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "muscle": {
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "normal": {
+   "user": "dynamic"
+  },
+  "orientation": {
+   "refsite": "dynamic",
+   "user": "dynamic"
+  },
+  "pair": {
+   "geom1": "dynamic",
+   "geom2": "dynamic"
+  },
+  "pid": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "position": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  },
+  "rangefinder": {
+   "user": "dynamic"
+  },
+  "sensor_contact": {
+   "user": "dynamic"
+  },
+  "sensor_plugin": {
+   "objname": "dynamic",
+   "refname": "dynamic"
+  },
+  "site": {
+   "fromto": "sentinel",
+   "material": "dynamic",
+   "user": "dynamic"
+  },
+  "skin": {
+   "face": "dynamic",
+   "file": "dynamic",
+   "material": "dynamic",
+   "texcoord": "dynamic",
+   "vertex": "dynamic"
+  },
+  "spatial": {
+   "material": "dynamic",
+   "user": "dynamic"
+  },
+  "statistic": {
+   "center": "sentinel",
+   "extent": "sentinel",
+   "meaninertia": "sentinel",
+   "meanmass": "sentinel",
+   "meansize": "sentinel"
+  },
+  "subtreeangmom": {
+   "body": "dynamic",
+   "user": "dynamic"
+  },
+  "subtreecom": {
+   "body": "dynamic",
+   "user": "dynamic"
+  },
+  "subtreelinvel": {
+   "body": "dynamic",
+   "user": "dynamic"
+  },
+  "tendonactuatorfrc": {
+   "tendon": "dynamic",
+   "user": "dynamic"
+  },
+  "tendonlimitfrc": {
+   "tendon": "dynamic",
+   "user": "dynamic"
+  },
+  "tendonlimitpos": {
+   "tendon": "dynamic",
+   "user": "dynamic"
+  },
+  "tendonlimitvel": {
+   "tendon": "dynamic",
+   "user": "dynamic"
+  },
+  "tendonpos": {
+   "tendon": "dynamic",
+   "user": "dynamic"
+  },
+  "tendonvel": {
+   "tendon": "dynamic",
+   "user": "dynamic"
+  },
+  "text": {
+   "data": "dynamic"
+  },
+  "texture": {
+   "content_type": "dynamic",
+   "file": "dynamic"
+  },
+  "torque": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "touch": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "user": {
+   "objname": "dynamic"
+  },
+  "velocimeter": {
+   "site": "dynamic",
+   "user": "dynamic"
+  },
+  "velocity": {
+   "refsite": "dynamic",
+   "slidersite": "dynamic",
+   "user": "dynamic"
+  }
+ }
+}

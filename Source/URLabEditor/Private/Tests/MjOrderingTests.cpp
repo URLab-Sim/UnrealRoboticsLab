@@ -301,9 +301,15 @@ constexpr int32 LargeBodies = 100;
  * Linear is 4.0 for a fourfold model and is not achievable exactly: an import
  * consults the tables a model-independent number of times as well, which shows
  * up as a small constant the small size pays proportionally more of. The
- * quadratic term this replaces measured 5.64, so the bound separates the two.
+ * quadratic term this replaces measured 5.64.
+ *
+ * 4.2 rather than 5.0. A bound of 5.0 separates 4.0 from 5.64 in the sense of
+ * lying between them, but it also admits a growth of 4.9 -- most of the way back
+ * to the defect -- without saying anything. Just above measured linear is the
+ * bound that fails when the quadratic term starts to return, which is the only
+ * event this number exists to catch.
  */
-constexpr double MaxLookupGrowth = 5.0;
+constexpr double MaxLookupGrowth = 4.2;
 
 /** Rows a table lookup may examine on average, unchanged by the batching. */
 constexpr double MaxRowsPerLookup = 4.0;

@@ -38,7 +38,9 @@
 #include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
+#include "Misc/Paths.h"
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
 
@@ -52,6 +54,7 @@
 #include "MjElementVisualizers.h"
 
 #include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Bodies/MjBody.gen.h"
 #include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjEffective.h"
@@ -331,24 +334,6 @@ TArray<UMjNodeComponent*> ElementsOf(UBlueprint& Blueprint)
 	return Out;
 }
 
-/** The SCS node whose element carries `MjName`, or null. */
-USCS_Node* NodeNamed(UBlueprint& Blueprint, const FString& MjName)
-{
-	if (Blueprint.SimpleConstructionScript == nullptr)
-	{
-		return nullptr;
-	}
-	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
-	{
-		const UMjNodeComponent* Element = Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
-		if (Element != nullptr && Element->MjName.IsSet() && Element->MjName.GetValue() == MjName)
-		{
-			return Node;
-		}
-	}
-	return nullptr;
-}
-
 /** Announce an edit of `PropertyName` on `Element` the way the details panel does. */
 void NotifyEdited(UMjNodeComponent& Element, const TCHAR* PropertyName)
 {
@@ -378,28 +363,41 @@ void ReportProbe(FAutomationTestBase& Test, const TCHAR* Probe, int32 BodyCount,
 }
 
 /**
- * Import a model of `BodyCount` links and run every probe over it.
+ * A body with children, to spawn a new element under.
+ *
+ * By shape rather than by name, because the probes run over a hand-written
+ * fixture and over a real robot, and the robot's bodies are called whatever the
+ * menagerie calls them.
+ */
+USCS_Node* AnyBodyNode(UBlueprint& Blueprint)
+{
+	if (Blueprint.SimpleConstructionScript == nullptr)
+	{
+		return nullptr;
+	}
+	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
+	{
+		const UMjNodeComponent* Element = Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
+		if (Element != nullptr && Element->IsA<UMjBodyBase>() && !Element->IsClassPartial()
+			&& Node->GetChildNodes().Num() > 0)
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+/**
+ * Run every probe over a model that has already been read.
  *
  * The import itself is outside every measurement: what is being measured is what
  * one edit costs on a model that is already there, which is the situation the
  * reports describe.
  */
-bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentationCost& Out, int32& OutElements)
+bool RunPresentationProbes(
+	FAutomationTestBase& Test, UBlueprint& Blueprint, const FString& Label, FPresentationCost& Out, int32& OutElements)
 {
-	UBlueprint* Blueprint = MakeScratchBlueprint();
-	if (Blueprint == nullptr)
-	{
-		Test.AddError(TEXT("could not create a scratch Blueprint"));
-		return false;
-	}
-	const FMjSpecParseResult Parsed = MjParseIntoBlueprint(*Blueprint, BuildModel(BodyCount), TEXT("<inline>"));
-	if (!Parsed.IsOk())
-	{
-		Test.AddError(FString::Printf(TEXT("the %d-body presentation model did not parse"), BodyCount));
-		return false;
-	}
-
-	const TArray<UMjNodeComponent*> Elements = ElementsOf(*Blueprint);
+	const TArray<UMjNodeComponent*> Elements = ElementsOf(Blueprint);
 	OutElements = Elements.Num();
 
 	// The two geoms the probes act on: one ordinary, one declared inside the
@@ -433,9 +431,8 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 	if (PlainGeom == nullptr || DefaultGeom == nullptr || PlainJoint == nullptr)
 	{
 		Test.AddError(FString::Printf(
-			TEXT("the %d-body model did not yield the three elements the probes need (plain geom %s, class geom %s, "
-				 "joint %s)"),
-			BodyCount, PlainGeom != nullptr ? TEXT("yes") : TEXT("no"), DefaultGeom != nullptr ? TEXT("yes") : TEXT("no"),
+			TEXT("%s did not yield the three elements the probes need (plain geom %s, class geom %s, joint %s)"),
+			*Label, PlainGeom != nullptr ? TEXT("yes") : TEXT("no"), DefaultGeom != nullptr ? TEXT("yes") : TEXT("no"),
 			PlainJoint != nullptr ? TEXT("yes") : TEXT("no")));
 		return false;
 	}
@@ -470,15 +467,15 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 
 	// A spawn: a node created under an existing body the way the components
 	// panel creates one, then the register that follows it.
-	USCS_Node* const Parent = NodeNamed(*Blueprint, FString::Printf(TEXT("link%d"), BodyCount / 2));
+	USCS_Node* const Parent = AnyBodyNode(Blueprint);
 	if (Parent == nullptr)
 	{
-		Test.AddError(FString::Printf(TEXT("the %d-body model has no body to spawn under"), BodyCount));
+		Test.AddError(FString::Printf(TEXT("%s has no body to spawn under"), *Label));
 		return false;
 	}
-	Out.Spawn = CostOf([Blueprint, Parent] {
+	Out.Spawn = CostOf([&Blueprint, Parent] {
 		USCS_Node* const Added =
-			Blueprint->SimpleConstructionScript->CreateNode(UMjGeom::StaticClass(), FName(TEXT("Spawned")));
+			Blueprint.SimpleConstructionScript->CreateNode(UMjGeom::StaticClass(), FName(TEXT("Spawned")));
 		if (Added == nullptr)
 		{
 			return;
@@ -493,6 +490,25 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 	});
 
 	return true;
+}
+
+/** Import a model of `BodyCount` links and run every probe over it. */
+bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentationCost& Out, int32& OutElements)
+{
+	UBlueprint* Blueprint = MakeScratchBlueprint();
+	if (Blueprint == nullptr)
+	{
+		Test.AddError(TEXT("could not create a scratch Blueprint"));
+		return false;
+	}
+	const FMjSpecParseResult Parsed = MjParseIntoBlueprint(*Blueprint, BuildModel(BodyCount), TEXT("<inline>"));
+	if (!Parsed.IsOk())
+	{
+		Test.AddError(FString::Printf(TEXT("the %d-body presentation model did not parse"), BodyCount));
+		return false;
+	}
+	return RunPresentationProbes(
+		Test, *Blueprint, FString::Printf(TEXT("the %d-body model"), BodyCount), Out, OutElements);
 }
 }  // namespace MjImportPerfTests
 
@@ -618,6 +634,105 @@ bool FMjPresentationScaling::RunTest(const FString& Parameters)
 		Large.PlainGeomPhysicsEdit.NodeMapBuilds, Large.PlainJointEdit.NodeMapBuilds);
 	TestEqual(TEXT("a collision-mask edit builds the effective contexts a joint edit builds"),
 		Large.PlainGeomPhysicsEdit.EffectiveContextBuilds, Large.PlainJointEdit.EffectiveContextBuilds);
+
+	return !HasAnyErrors();
+}
+
+// ============================================================================
+// URLab.Perf.PresentationOnARealRobot
+//   The same probes, on a model nobody here wrote.
+//
+//   The scaling test above measures a body chain this file generates: every
+//   body identical, one `<default>` class, no meshes, no actuators, no
+//   childclass. That is the right shape for separating a term that grows with
+//   the model from a constant one, and the wrong shape for believing the result
+//   -- the lag was reported on real robots, and a real robot has nested default
+//   classes, childclass inheritance, mesh assets and a deep body tree, every one
+//   of which is a way for a whole-spec pass to reappear.
+//
+//   So one run over an actual menagerie arm, asserting the same exact index
+//   counts. No growth ratio here: there is one model, and what is being claimed
+//   is that an edit costs one index build on a real robot too.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPresentationOnARealRobot, "URLab.Perf.PresentationOnARealRobot",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjPresentationOnARealRobot::RunTest(const FString& Parameters)
+{
+	using namespace MjImportPerfTests;
+
+	const FString File = FPaths::Combine(FPaths::ProjectPluginsDir(), TEXT("UnrealRoboticsLab"), TEXT("Content"),
+		TEXT("TestData"), TEXT("parity"), TEXT("trossen_vx300s"), TEXT("vx300s.xml"));
+	FString Xml;
+	if (!TestTrue(FString::Printf(TEXT("the robot fixture is on disk at '%s'"), *File),
+			FFileHelper::LoadFileToString(Xml, *File)))
+	{
+		return false;
+	}
+
+	UBlueprint* Blueprint = MakeScratchBlueprint();
+	if (Blueprint == nullptr)
+	{
+		AddError(TEXT("could not create a scratch Blueprint"));
+		return false;
+	}
+	// The real path, so the model's `meshdir` resolves the way it does on
+	// import: the assets are part of what makes this a real robot.
+	const FMjSpecParseResult Parsed = MjParseIntoBlueprint(*Blueprint, Xml, File);
+	if (!Parsed.IsOk())
+	{
+		AddError(TEXT("the robot fixture did not parse"));
+		return false;
+	}
+
+	// Warm first, discarded: first-use costs belong to no model, the same
+	// reason the scaling probes discard their first import.
+	FPresentationCost Discard;
+	int32 DiscardElements = 0;
+	RunPresentationProbes(*this, *Blueprint, TEXT("the robot (warm-up)"), Discard, DiscardElements);
+
+	FPresentationCost Cost;
+	int32 Elements = 0;
+	if (!RunPresentationProbes(*this, *Blueprint, TEXT("the robot"), Cost, Elements))
+	{
+		return false;
+	}
+	AddInfo(FString::Printf(TEXT("BENCH presentation robot=vx300s elements=%d"), Elements));
+
+	// A robot with a handful of elements would satisfy every bound below while
+	// saying nothing about a real one.
+	if (!TestTrue(FString::Printf(TEXT("the robot is a real model, got %d elements"), Elements), Elements > 40))
+	{
+		return false;
+	}
+
+	struct FRobotProbe
+	{
+		const TCHAR* Name;
+		const FImportCost* Cost;
+		int64 NodeMapBuilds;
+		int64 EffectiveContextBuilds;
+	};
+	const FRobotProbe Probes[] = {
+		{TEXT("ancestor_query"), &Cost.AncestorQuery, 1, 0},
+		{TEXT("single_sync"), &Cost.SingleSync, 1, 1},
+		{TEXT("spec_refresh"), &Cost.SpecRefresh, 1, 1},
+		{TEXT("plain_geom_edit"), &Cost.PlainGeomEdit, 1, 1},
+		{TEXT("plain_geom_physics_edit"), &Cost.PlainGeomPhysicsEdit, 1, 0},
+		{TEXT("plain_joint_edit"), &Cost.PlainJointEdit, 1, 0},
+		{TEXT("default_class_edit"), &Cost.DefaultClassEdit, 1, 1},
+		{TEXT("spawn"), &Cost.Spawn, 1, 1},
+	};
+
+	for (const FRobotProbe& Probe : Probes)
+	{
+		ReportProbe(*this, Probe.Name, Elements, *Probe.Cost);
+		TestEqual(FString::Printf(TEXT("%s builds %lld node map(s) on the robot"), Probe.Name, Probe.NodeMapBuilds),
+			Probe.Cost->NodeMapBuilds, Probe.NodeMapBuilds);
+		TestEqual(FString::Printf(TEXT("%s builds %lld effective context(s) on the robot"), Probe.Name,
+					  Probe.EffectiveContextBuilds),
+			Probe.Cost->EffectiveContextBuilds, Probe.EffectiveContextBuilds);
+	}
 
 	return !HasAnyErrors();
 }

@@ -110,7 +110,7 @@ struct FMjSpecWriteContext
 	 * bone and a macro's asset are all reported against themselves, and this
 	 * says what they were being written under.
 	 */
-	const UMjNodeComponent* Node = nullptr;
+	const UMjNodeComponent* Walked = nullptr;
 
 	/**
 	 * The component that owns the current one.

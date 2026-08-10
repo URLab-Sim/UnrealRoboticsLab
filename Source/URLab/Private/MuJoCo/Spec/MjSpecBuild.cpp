@@ -381,7 +381,7 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 	}
 
 	FMjSpecWriteContext Local = Inherited;
-	Local.Node = &Node;
+	Local.Walked = &Node;
 	Local.Struct = nullptr;
 	Local.Element = nullptr;
 	Local.bChildrenConsumed = false;
@@ -628,7 +628,7 @@ FMjBuiltSpec FBuilder::Build()
 	});
 
 	FMjSpecWriteContext Top = Ctx;
-	Top.Node = Root;
+	Top.Walked = Root;
 	Top.ParentNode = Root;
 	for (const FMjOrderedChild& Section : Sections)
 	{
@@ -646,7 +646,7 @@ FMjBuiltSpec FBuilder::Build()
 			// The root's body IS the world body, which the spec already has, so
 			// its children are written onto that rather than into a new one.
 			FMjSpecWriteContext World = Top;
-			World.Node = Section.Node;
+			World.Walked = Section.Node;
 			World.ParentNode = Section.Node;
 			Result.ElementFor.Add(Section.Node, Ctx.Body->element);
 			WalkChildren(*Section.Node, World);
@@ -712,7 +712,7 @@ bool FMjSpecWriteContext::Error(const UMjNodeComponent& Node, const FString& Mes
 	{
 		FMjSpecDiagnostic& Diagnostic = Diagnostics->AddDefaulted_GetRef();
 		Diagnostic.Message = FString::Printf(
-			TEXT("%s: %s"), *DiagnosticSubject(Node, this->Node), *Message);
+			TEXT("%s: %s"), *DiagnosticSubject(Node, Walked), *Message);
 		Diagnostic.File = Node.SourceFile;
 		Diagnostic.Line = Node.SourceLine;
 	}
@@ -734,7 +734,7 @@ bool FMjSpecWriteContext::Warn(const UMjNodeComponent& Node, const FString& Mess
 	{
 		FMjSpecDiagnostic& Diagnostic = Diagnostics->AddDefaulted_GetRef();
 		Diagnostic.Message = FString::Printf(
-			TEXT("%s: %s"), *DiagnosticSubject(Node, this->Node), *Message);
+			TEXT("%s: %s"), *DiagnosticSubject(Node, Walked), *Message);
 		Diagnostic.File = Node.SourceFile;
 		Diagnostic.Line = Node.SourceLine;
 		// The build carried on and produced a spec. A caller asking "did this

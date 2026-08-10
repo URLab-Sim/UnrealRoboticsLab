@@ -15,6 +15,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
@@ -31,7 +32,7 @@ namespace
 
 using ps::mjcf::ElementType;
 
-/** The name the scene spec compiles under, as the assembled document uses. */
+/** The name a composed scene compiles under when its root authored none. */
 const char* const SceneModelName = "scene";
 
 /** Where SaveDebugArtifacts puts the assets, relative to the XML beside them. */
@@ -411,10 +412,16 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 	{
 		return Out;
 	}
-	// The scene is the composition target, and it is named here rather than by
-	// the walk: which spec is the scene is this builder's answer, not the
-	// component tree's.
-	if (Out.Scene.Spec->modelname != nullptr)
+	// A name the scene root authored is the scene's, because it is the only
+	// name the level ever gave this composition: a manager whose `model` says
+	// `warehouse` compiles as `warehouse` rather than losing it. The build has
+	// already put it on the spec, so the fallback is the whole of the work
+	// here -- `scene` rather than the name mj_makeSpec leaves on a fresh spec,
+	// because a composed scene has no single source document and `scene` is
+	// what the debug artefact and the clients already expect to find.
+	const UMjModel* const Root = Cast<UMjModel>(SceneRoot.GetRoot());
+	const bool bNamed = Root != nullptr && Root->Model.IsSet() && !Root->Model.GetValue().IsEmpty();
+	if (!bNamed && Out.Scene.Spec->modelname != nullptr)
 	{
 		mjs_setString(Out.Scene.Spec->modelname, SceneModelName);
 	}

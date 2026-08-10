@@ -262,6 +262,83 @@ bool FMjSceneSpecComposeTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// --- The composed scene's name ---------------------------------------------- //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecSceneNameTest, "URLab.MuJoCo.SceneSpec.SceneName",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSceneSpecSceneNameTest::RunTest(const FString& Parameters)
+{
+	// The compiled model's name is the first string in its name table, so the
+	// assertion is on the model rather than on the spec it came from: a builder
+	// that names the spec and a compile that names the model from somewhere else
+	// would otherwise both pass.
+	const auto SceneNameWith = [this](const TCHAR* const Authored, FString& OutName) {
+		FSceneFixture Fixture;
+		if (!Fixture.Init())
+		{
+			AddError(TEXT("could not create the world"));
+			return false;
+		}
+
+		UMjBodyBase* SceneWorld = nullptr;
+		AMjArticulation* const Manager = Fixture.AddActor(SceneWorld);
+		UMjBodyBase* ParticipantWorld = nullptr;
+		AMjArticulation* const Robot = Fixture.AddActor(ParticipantWorld);
+		if (Manager == nullptr || Robot == nullptr || Manager->Spec == nullptr)
+		{
+			AddError(TEXT("could not spawn the spec actors"));
+			return false;
+		}
+		if (Authored != nullptr)
+		{
+			Manager->Spec->Model = FString(Authored);
+		}
+
+		UMjGeom* const Ball = Fixture.Add<UMjGeom>(*Robot, ParticipantWorld, TEXT("ball"));
+		if (Ball == nullptr)
+		{
+			AddError(TEXT("could not author the participant"));
+			return false;
+		}
+		Ball->Type = EMjGeomType::sphere;
+		Ball->Size = TArray<double>({0.1});
+
+		mjspec::FMjSceneSpecBuilder Builder;
+		Builder.SetSceneRoot(FSpecRef::OverActor(*Manager));
+		mjspec::FMjSceneSpecParticipant Placed;
+		Placed.Spec = FSpecRef::OverActor(*Robot);
+		Placed.Prefix = TEXT("p0_");
+		Builder.AddParticipant(Placed);
+
+		mjspec::FMjCompiledScene Scene = CompileScene(*this, Builder);
+		if (!Scene.IsValid())
+		{
+			return false;
+		}
+		OutName = UTF8_TO_TCHAR(Scene.Model->names);
+		return true;
+	};
+
+	// Unnamed: `scene`, and not the name mj_makeSpec leaves on a fresh spec.
+	FString Unnamed;
+	if (SceneNameWith(nullptr, Unnamed))
+	{
+		TestEqual(TEXT("a scene root that authored no model name composes as 'scene'"), Unnamed,
+			FString(TEXT("scene")));
+	}
+
+	// Named: the manager's own, which the builder used to overwrite.
+	FString Named;
+	if (SceneNameWith(TEXT("warehouse"), Named))
+	{
+		TestEqual(TEXT("a scene root's authored model name is the composed scene's"), Named,
+			FString(TEXT("warehouse")));
+	}
+
+	return !HasAnyErrors();
+}
+
 // --- The manager's own content ---------------------------------------------- //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecManagerContentTest, "URLab.MuJoCo.SceneSpec.ManagerContent",

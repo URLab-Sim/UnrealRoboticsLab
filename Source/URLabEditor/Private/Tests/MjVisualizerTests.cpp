@@ -35,6 +35,7 @@
 #include "UnrealEdGlobals.h"
 
 #include "MjElementVisualizers.h"
+#include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Gen/Elements/Cameras/MjCamera.gen.h"
 #include "MuJoCo/Gen/Elements/Cameras/MjLight.gen.h"
 #include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
@@ -309,6 +310,95 @@ bool FMjElementVisualizerReadsRangeInAuthoredAngleUnit::RunTest(const FString& P
 	}
 	TestTrue(FString::Printf(TEXT("the arc spans the authored ninety degrees, got %.1f"), WidestDegrees),
 		WidestDegrees > 80.0 && WidestDegrees < 100.0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjElementVisualizerMarksUndrawableGeom,
+	"URLab.Editor.ElementVisualizerMarksUndrawableGeom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjElementVisualizerMarksUndrawableGeom::RunTest(const FString& Parameters)
+{
+	using namespace MjVisualizerTests;
+
+	// A mesh geom naming an asset the spec never places: `RebuildVisualizer`
+	// resolves no asset, the shape table has no engine primitive for `mesh`
+	// either, and the geom builds no preview at all -- the same shape a
+	// menagerie `childclass` that inherits `type="mesh"` and names no mesh
+	// leaves behind, without needing the class indirection to reach it.
+	const TCHAR* const Xml = TEXT(R"(<mujoco model="undrawable">
+  <worldbody>
+    <body name="base">
+      <geom name="ghost" type="mesh" mesh="nothing_named_this"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
+	FScratchDoc Doc;
+	if (!Parse(*this, Doc, Xml))
+	{
+		return false;
+	}
+
+	UMjGeom* const Geom = ElementNamed<UMjGeom>(*Doc.Actor, TEXT("ghost"));
+	if (!TestNotNull(TEXT("the geom component"), Geom))
+	{
+		return false;
+	}
+	Geom->RefreshPresentation();
+	if (!TestNull(TEXT("a dangling mesh reference builds no preview"), Geom->GetVisualizerMesh()))
+	{
+		return false;
+	}
+
+	FCountingPDI PDI;
+	FMjElementVisualizer Visualizer;
+	Visualizer.DrawVisualization(Geom, nullptr, &PDI);
+
+	TestTrue(TEXT("an undrawable geom still draws a locator marker"), PDI.Points.Num() > 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjElementVisualizerSkipsMarkerForPreviewingGeom,
+	"URLab.Editor.ElementVisualizerSkipsMarkerForPreviewingGeom",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjElementVisualizerSkipsMarkerForPreviewingGeom::RunTest(const FString& Parameters)
+{
+	using namespace MjVisualizerTests;
+
+	const TCHAR* const Xml = TEXT(R"(<mujoco model="previewing">
+  <worldbody>
+    <body name="base">
+      <geom name="ball" type="sphere" size="0.05"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
+	FScratchDoc Doc;
+	if (!Parse(*this, Doc, Xml))
+	{
+		return false;
+	}
+
+	UMjGeom* const Geom = ElementNamed<UMjGeom>(*Doc.Actor, TEXT("ball"));
+	if (!TestNotNull(TEXT("the geom component"), Geom))
+	{
+		return false;
+	}
+	Geom->RefreshPresentation();
+	if (!TestNotNull(TEXT("a sphere geom builds its own preview mesh"), Geom->GetVisualizerMesh()))
+	{
+		return false;
+	}
+
+	FCountingPDI PDI;
+	FMjElementVisualizer Visualizer;
+	Visualizer.DrawVisualization(Geom, nullptr, &PDI);
+
+	TestEqual(TEXT("a geom that already previews as a mesh draws no marker on top of it"), PDI.Points.Num(), 0);
 	return true;
 }
 

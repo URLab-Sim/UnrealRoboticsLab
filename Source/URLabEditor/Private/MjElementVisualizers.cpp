@@ -20,6 +20,7 @@
 
 #if URLAB_MJ_GEN
 
+#include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Gen/Elements/Cameras/MjCamera.gen.h"
 #include "MuJoCo/Gen/Elements/Cameras/MjLight.gen.h"
 #include "MuJoCo/Gen/Elements/Geometry/MjGeom.gen.h"
@@ -584,8 +585,18 @@ void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, c
 	}
 	else if (Element->IsA<UMjGeomBase>())
 	{
-		// A geom already previews as a real mesh; a marker on top of it would
-		// only be in the way.
+		// A geom already previews as a real mesh, and a marker on top of it
+		// would only be in the way -- except when there is no mesh: a
+		// `childclass` template that inherits `type="mesh"` and names no mesh
+		// builds no preview at all, and a null `Cast<UMjGeom>` (a base-class
+		// template) means the same thing. That geom is otherwise unlocatable
+		// and silently breaks the next compile, so it gets the same marker
+		// everything else without a mesh gets.
+		const UMjGeom* const Geom = Cast<UMjGeom>(Element);
+		if (Geom == nullptr || Geom->GetVisualizerMesh() == nullptr)
+		{
+			DrawMarker(*Element, PDI);
+		}
 	}
 	else
 	{

@@ -372,14 +372,19 @@ bool FMjSizeArityReported::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the sphere is reported against its own arity"), bNamedTheSphere);
 	TestTrue(TEXT("the site is reported against its own arity"), bNamedTheSite);
 
-	// And the compile receives a legal size: the slots the type does not read
-	// are cleared before the spec is handed over, so what compiles is the shape
-	// the author will see rather than one carrying values that decide nothing.
+	// And the compile receives a legal size: the value MuJoCo itself would
+	// receive from the same document, which is the one the shape is read out of.
+	// The extra entries are reported and LEFT: `checksize` bounds its loop by the
+	// arity (user_objects.cc:163) and `CopyObjects` copies all three slots
+	// whatever the type reads (user_model.cc:3055), so dropping them would
+	// compile a different model from stock MuJoCo's out of a document stock
+	// MuJoCo accepts -- and the two models being the same one is what this
+	// project's correctness rests on.
 	mjVFS Vfs;
 	mj_defaultVFS(&Vfs);
 	mjModel* const Compiled = mj_compile(Built.Spec, &Vfs);
 	mj_deleteVFS(&Vfs);
-	if (!TestNotNull(TEXT("the truncated spec compiles"), Compiled))
+	if (!TestNotNull(TEXT("the reported document still compiles"), Compiled))
 	{
 		return false;
 	}
@@ -388,14 +393,14 @@ bool FMjSizeArityReported::RunTest(const FString& Parameters)
 	if (TestTrue(TEXT("the reported geom compiled"), Ball >= 0))
 	{
 		TestEqual(TEXT("the radius the compiler uses is the first value"), Compiled->geom_size[3 * Ball], 0.1);
-		TestEqual(TEXT("the second slot a sphere never reads is cleared"), Compiled->geom_size[3 * Ball + 1], 0.0);
-		TestEqual(TEXT("the third slot a sphere never reads is cleared"), Compiled->geom_size[3 * Ball + 2], 0.0);
+		TestEqual(TEXT("the slots a sphere never reads are carried as MuJoCo carries them"),
+			Compiled->geom_size[3 * Ball + 1], 0.2);
 	}
 
 	const int32 Brick = mj_name2id(Compiled, mjOBJ_GEOM, "brick");
 	if (TestTrue(TEXT("the control geom compiled"), Brick >= 0))
 	{
-		// A box reads all three, so nothing is dropped from it.
+		// A box reads all three, so nothing about it was ever in question.
 		TestEqual(TEXT("a box keeps its second half-extent"), Compiled->geom_size[3 * Brick + 1], 0.2);
 		TestEqual(TEXT("a box keeps its third half-extent"), Compiled->geom_size[3 * Brick + 2], 0.3);
 	}
@@ -403,9 +408,8 @@ bool FMjSizeArityReported::RunTest(const FString& Parameters)
 	const int32 Dot = mj_name2id(Compiled, mjOBJ_SITE, "dot");
 	if (TestTrue(TEXT("the site compiled"), Dot >= 0))
 	{
-		TestEqual(TEXT("a capsule site keeps its radius"), Compiled->site_size[3 * Dot], 0.01);
-		TestEqual(TEXT("a capsule site keeps its half-length"), Compiled->site_size[3 * Dot + 1], 0.05);
-		TestEqual(TEXT("the slot a capsule never reads is cleared"), Compiled->site_size[3 * Dot + 2], 0.0);
+		TestEqual(TEXT("a capsule site's radius is its first value"), Compiled->site_size[3 * Dot], 0.01);
+		TestEqual(TEXT("a capsule site's half-length is its second"), Compiled->site_size[3 * Dot + 1], 0.05);
 	}
 	mj_deleteModel(Compiled);
 

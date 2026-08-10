@@ -697,8 +697,31 @@ FImportCost SweepCost(UBlueprint& Blueprint, int32& OutDrawn, int32& OutDrawCall
 	return Cost;
 }
 
-bool MeasureSweep(FAutomationTestBase& Test, int32 BodyCount, FImportCost& OutCost, int32& OutDrawn,
-	int32& OutDrawCalls)
+/**
+ * The same drawing, with nothing shared between elements: the control.
+ *
+ * A visualizer per element makes every element the first of its own sweep, so
+ * every one of them builds the index the sweep above builds once. That is
+ * precisely what this drawing cost before it shared one, measured through the
+ * shipped path rather than quoted from memory -- and it is what makes the
+ * assertion below discriminating: a sweep that had quietly stopped resolving
+ * anything would report one build too, and so would this.
+ */
+FImportCost UnsharedCost(UBlueprint& Blueprint)
+{
+	const TArray<UMjNodeComponent*> Elements = ElementsOf(Blueprint);
+	FCountingPDI PDI;
+	const FImportCost Start = Snapshot();
+	for (UMjNodeComponent* Element : Elements)
+	{
+		FMjElementVisualizer PerElement;
+		PerElement.DrawVisualization(Element, /*View=*/nullptr, &PDI);
+	}
+	return Since(Start);
+}
+
+bool MeasureSweep(FAutomationTestBase& Test, int32 BodyCount, FImportCost& OutCost, FImportCost& OutUnshared,
+	int32& OutDrawn, int32& OutDrawCalls)
 {
 	UBlueprint* Blueprint = MakeScratchBlueprint();
 	if (Blueprint == nullptr)
@@ -712,6 +735,7 @@ bool MeasureSweep(FAutomationTestBase& Test, int32 BodyCount, FImportCost& OutCo
 		return false;
 	}
 	OutCost = SweepCost(*Blueprint, OutDrawn, OutDrawCalls);
+	OutUnshared = UnsharedCost(*Blueprint);
 	return true;
 }
 }  // namespace MjImportPerfTests
@@ -726,27 +750,32 @@ bool FMjVisualizerSweep::RunTest(const FString& Parameters)
 
 	// First-use costs belong to neither size, as in the two benchmarks above.
 	FImportCost Discard;
+	FImportCost DiscardUnshared;
 	int32 DiscardDrawn = 0;
 	int32 DiscardCalls = 0;
-	if (!MeasureSweep(*this, SmallBodies, Discard, DiscardDrawn, DiscardCalls))
+	if (!MeasureSweep(*this, SmallBodies, Discard, DiscardUnshared, DiscardDrawn, DiscardCalls))
 	{
 		return false;
 	}
 
 	FImportCost Small;
 	FImportCost Large;
+	FImportCost SmallUnshared;
+	FImportCost LargeUnshared;
 	int32 SmallDrawn = 0;
 	int32 LargeDrawn = 0;
 	int32 SmallCalls = 0;
 	int32 LargeCalls = 0;
-	if (!MeasureSweep(*this, SmallBodies, Small, SmallDrawn, SmallCalls)
-		|| !MeasureSweep(*this, LargeBodies, Large, LargeDrawn, LargeCalls))
+	if (!MeasureSweep(*this, SmallBodies, Small, SmallUnshared, SmallDrawn, SmallCalls)
+		|| !MeasureSweep(*this, LargeBodies, Large, LargeUnshared, LargeDrawn, LargeCalls))
 	{
 		return false;
 	}
 
 	ReportProbe(*this, TEXT("visualizer_sweep"), SmallBodies, Small);
 	ReportProbe(*this, TEXT("visualizer_sweep"), LargeBodies, Large);
+	ReportProbe(*this, TEXT("visualizer_sweep_unshared"), SmallBodies, SmallUnshared);
+	ReportProbe(*this, TEXT("visualizer_sweep_unshared"), LargeBodies, LargeUnshared);
 	AddInfo(FString::Printf(TEXT("BENCH sweep elements small=%d large=%d draw_calls small=%d large=%d"), SmallDrawn,
 		LargeDrawn, SmallCalls, LargeCalls));
 
@@ -773,6 +802,19 @@ bool FMjVisualizerSweep::RunTest(const FString& Parameters)
 		Small.NodeMapBuilds, static_cast<int64>(1));
 	TestEqual(FString::Printf(TEXT("a sweep of %d elements builds one node map"), LargeDrawn),
 		Large.NodeMapBuilds, static_cast<int64>(1));
+
+	// The control says the drawing is still resolving something, and says what
+	// sharing is worth: unshared, the same drawing builds an index per element,
+	// and that count grows with the model where the sweep's does not.
+	TestTrue(FString::Printf(TEXT("unshared drawing builds %lld contexts at %d elements, against the sweep's %lld"),
+				 SmallUnshared.EffectiveContextBuilds, SmallDrawn, Small.EffectiveContextBuilds),
+		SmallUnshared.EffectiveContextBuilds > Small.EffectiveContextBuilds);
+	TestTrue(FString::Printf(TEXT("unshared drawing builds %lld contexts at %d elements, against the sweep's %lld"),
+				 LargeUnshared.EffectiveContextBuilds, LargeDrawn, Large.EffectiveContextBuilds),
+		LargeUnshared.EffectiveContextBuilds > Large.EffectiveContextBuilds);
+	TestTrue(FString::Printf(TEXT("unshared drawing grows with the model (%lld to %lld)"),
+				 SmallUnshared.EffectiveContextBuilds, LargeUnshared.EffectiveContextBuilds),
+		LargeUnshared.EffectiveContextBuilds > SmallUnshared.EffectiveContextBuilds);
 
 	return !HasAnyErrors();
 }

@@ -59,11 +59,19 @@ private:
 	}
 };
 
-/** A diagnostic naming where the offending component was authored. */
-FMjSpecDiagnostic DiagnosticFor(const UMjNodeComponent* Node, FString Message)
+/**
+ * A diagnostic naming where the offending component was authored.
+ *
+ * The severity is carried on the entry as well as implied by the array it goes
+ * into, so the two say the same thing: a consumer reading one and a consumer
+ * reading the other cannot come to different conclusions about the same report.
+ */
+FMjSpecDiagnostic DiagnosticFor(const UMjNodeComponent* Node, FString Message,
+	EMjDiagnosticSeverity Severity = EMjDiagnosticSeverity::Error)
 {
 	FMjSpecDiagnostic Out;
 	Out.Message = MoveTemp(Message);
+	Out.Severity = Severity;
 	if (Node != nullptr)
 	{
 		Out.File = Node->SourceFile;
@@ -204,14 +212,16 @@ void ReportParticipantGlobals(const FSpecRef& Spec, const FString& Prefix,
 				FString::Printf(TEXT("participant '%s' authors <option>, which does not become the "
 									 "scene's: the scene's conflict policy resolves it against the "
 									 "scene's own"),
-					*Prefix)));
+					*Prefix),
+				EMjDiagnosticSeverity::Warning));
 		}
 		else if (Type == ElementType::Size)
 		{
 			OutInfos.Add(DiagnosticFor(Child.Node,
 				FString::Printf(TEXT("participant '%s' authors <size>, which the scene's conflict "
 									 "policy resolves against the scene's own"),
-					*Prefix)));
+					*Prefix),
+				EMjDiagnosticSeverity::Info));
 		}
 	}
 }
@@ -443,7 +453,8 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 			{
 				Out.Warnings.Add(DiagnosticFor(Request.Element,
 					FString::Printf(TEXT("asset '%s' could not be read from '%s'"), *Request.Name,
-						*Request.ResolvedPath)));
+						*Request.ResolvedPath),
+					EMjDiagnosticSeverity::Warning));
 			}
 		}
 		if (Built.Spec != nullptr)

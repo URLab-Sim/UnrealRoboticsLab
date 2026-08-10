@@ -1070,20 +1070,32 @@ bool FMjSceneSpecDiscardedGlobalsTest::RunTest(const FString& Parameters)
 	// Two blocks authored, two reports, on the two channels their consequences
 	// deserve: a single "globals were dropped" would say neither which section
 	// nor how much it matters.
+	// The severity on the entry and the array it is in are one classification,
+	// so both are read here: an entry filed as information whose own severity
+	// still says Error would tell a consumer reading the field the opposite of
+	// what the array it came out of says.
 	int32 OptionWarnings = 0;
 	int32 SizeWarnings = 0;
+	bool bWarningsSaySo = true;
 	for (const FMjSpecDiagnostic& Warning : Scene.Warnings)
 	{
 		OptionWarnings += Warning.Message.Contains(TEXT("<option>")) ? 1 : 0;
 		SizeWarnings += Warning.Message.Contains(TEXT("<size>")) ? 1 : 0;
+		bWarningsSaySo = bWarningsSaySo && Warning.Severity == EMjDiagnosticSeverity::Warning;
 	}
 	int32 SizeInfos = 0;
 	int32 OptionInfos = 0;
+	bool bInfosSaySo = true;
 	for (const FMjSpecDiagnostic& Info : Scene.Infos)
 	{
 		SizeInfos += Info.Message.Contains(TEXT("<size>")) ? 1 : 0;
 		OptionInfos += Info.Message.Contains(TEXT("<option>")) ? 1 : 0;
+		bInfosSaySo = bInfosSaySo && Info.Severity == EMjDiagnosticSeverity::Info;
 	}
+	TestTrue(TEXT("every entry in Warnings carries the Warning severity"), bWarningsSaySo);
+	TestTrue(TEXT("every entry in Infos carries the Info severity"), bInfosSaySo);
+	TestFalse(TEXT("and neither array reads as a failure"),
+		MjAnyError(Scene.Warnings) || MjAnyError(Scene.Infos));
 	TestEqual(TEXT("the participant's <option> was warned about"), OptionWarnings, 1);
 	TestEqual(TEXT("and not merely noted"), OptionInfos, 0);
 	// <size> is settled by MuJoCo's own conflict resolver, so it is information

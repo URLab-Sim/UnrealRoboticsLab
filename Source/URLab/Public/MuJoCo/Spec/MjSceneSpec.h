@@ -120,6 +120,8 @@ struct URLAB_API FMjCompiledScene
 	 *
 	 * Kept apart from Warnings rather than flagged inside it, so a caller
 	 * choosing a log verbosity chooses it by reading which array it is walking.
+	 * Every entry also carries the matching `Severity`, so a caller that was
+	 * handed one array without being told which one still reads it correctly.
 	 */
 	TArray<FMjSpecDiagnostic> Infos;
 

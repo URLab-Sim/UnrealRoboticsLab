@@ -51,6 +51,15 @@ enum class EMjDiagnosticSeverity : uint8
 	 * work" by whether the array is empty; it asks the entries.
 	 */
 	Warning,
+	/**
+	 * Worth saying, not worth acting on.
+	 *
+	 * A remark about something that was settled correctly without the user's
+	 * involvement. Apart from Warning so that a caller choosing a verbosity can
+	 * drop these without also dropping the reports that describe a difference
+	 * in how the model will behave.
+	 */
+	Info,
 };
 
 /** One reader or writer diagnostic, flattened out of ProtoSpec's own. */
@@ -65,9 +74,10 @@ struct URLAB_API FMjSpecDiagnostic
 	 * Error unless something says otherwise.
 	 *
 	 * Every construction site that predates this field records a failure, so the
-	 * default keeps their meaning without touching them. The scene builder's own
-	 * `Warnings` and `Infos` arrays classify by which array an entry is in and do
-	 * not read this; unifying the two conventions is a change to that builder.
+	 * default keeps their meaning without touching them. The scene builder keeps
+	 * its separate `Warnings` and `Infos` arrays and fills this to match, so
+	 * which array an entry is in and what its severity says are one
+	 * classification rather than two that can disagree.
 	 */
 	EMjDiagnosticSeverity Severity = EMjDiagnosticSeverity::Error;
 

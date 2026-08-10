@@ -1060,6 +1060,91 @@ bool FMjSceneSpecDiscardedGlobalsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// --- A refused attach -------------------------------------------------------- //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecAttachFailureTest, "URLab.MuJoCo.SceneSpec.AttachFailureDiagnostic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSceneSpecAttachFailureTest::RunTest(const FString& Parameters)
+{
+	// A refused attach leaves the caller with the diagnostic and nothing else:
+	// the scene is abandoned, and the spec the reason was written onto is the
+	// one the failure may have wrecked. Forced here through the mechanism MuJoCo
+	// provides for it -- the scene and the participant author different
+	// timesteps, and the scene's conflict policy says `error`.
+	FSceneFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not create the world"));
+		return false;
+	}
+
+	UMjBodyBase* SceneWorld = nullptr;
+	AMjArticulation* const Manager = Fixture.AddActor(SceneWorld);
+	UMjBodyBase* ParticipantWorld = nullptr;
+	AMjArticulation* const Robot = Fixture.AddActor(ParticipantWorld);
+	if (Manager == nullptr || Robot == nullptr)
+	{
+		AddError(TEXT("could not spawn the spec actors"));
+		return false;
+	}
+
+	UMjCompiler* const Policy = Fixture.Add<UMjCompiler>(*Manager, Manager->Spec);
+	UMjOption* const SceneOption = Fixture.Add<UMjOption>(*Manager, Manager->Spec);
+	UMjOption* const RobotOption = Fixture.Add<UMjOption>(*Robot, Robot->Spec);
+	UMjGeom* const Ball = Fixture.Add<UMjGeom>(*Robot, ParticipantWorld, TEXT("ball"));
+	if (Policy == nullptr || SceneOption == nullptr || RobotOption == nullptr || Ball == nullptr)
+	{
+		AddError(TEXT("could not author the conflicting scene"));
+		return false;
+	}
+	Policy->Conflict = EMjConflict::error;
+	SceneOption->Timestep = 0.01;
+	RobotOption->Timestep = 0.001;
+	Ball->Type = EMjGeomType::sphere;
+	Ball->Size = TArray<double>({0.1});
+
+	mjspec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(FSpecRef::OverActor(*Manager));
+	mjspec::FMjSceneSpecParticipant Placed;
+	Placed.Spec = FSpecRef::OverActor(*Robot);
+	Placed.Prefix = TEXT("p0_");
+	Builder.AddParticipant(Placed);
+
+	// Compiled directly rather than through the helper above: the errors are
+	// the subject here, not a failure to report.
+	const mjspec::FMjCompiledScene Scene = Builder.Compile();
+	TestFalse(TEXT("a refused attach produces no model"), Scene.IsValid());
+	if (!TestTrue(TEXT("and it is reported"), Scene.Errors.Num() > 0))
+	{
+		return false;
+	}
+
+	FString Refusal;
+	for (const FMjSpecDiagnostic& Error : Scene.Errors)
+	{
+		if (Error.Message.Contains(TEXT("could not attach participant 'p0_'")))
+		{
+			Refusal = Error.Message;
+		}
+	}
+	if (!TestFalse(TEXT("the diagnostic names the participant that could not be attached"), Refusal.IsEmpty()))
+	{
+		return false;
+	}
+
+	// The two halves of "correct": a reason at all, and MuJoCo's own reason.
+	// Reading it off the spec after the attach used to be able to come back
+	// with neither, and a caller told only that something failed has nowhere
+	// to go.
+	TestFalse(TEXT("the diagnostic carries a reason rather than the fallback"),
+		Refusal.Contains(TEXT("no reason given")));
+	TestTrue(TEXT("and the reason names the field the two documents conflicted on"),
+		Refusal.Contains(TEXT("timestep")));
+
+	return !HasAnyErrors();
+}
+
 // --- The debug artefact ----------------------------------------------------- //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecDebugArtifactTest, "URLab.MuJoCo.SceneSpec.DebugArtifact",

@@ -219,12 +219,16 @@ void ReportParticipantGlobals(const FSpecRef& Spec, const FString& Prefix,
 	}
 }
 
+/** Whatever an error slot holds, never empty. */
+FString ErrorTextAt(const char* const Slot)
+{
+	return Slot != nullptr && Slot[0] != '\0' ? FString(UTF8_TO_TCHAR(Slot)) : FString(TEXT("no reason given"));
+}
+
 /** Whatever the spec has to say about its last failure, never null. */
 FString SpecErrorText(mjSpec& Spec)
 {
-	const char* const Message = mjs_getError(&Spec);
-	return Message != nullptr && Message[0] != '\0' ? FString(UTF8_TO_TCHAR(Message))
-													: FString(TEXT("no reason given"));
+	return ErrorTextAt(mjs_getError(&Spec));
 }
 
 }  // namespace
@@ -485,22 +489,28 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 		Frame->quat[2] = Participant.MjQuat.Y;
 		Frame->quat[3] = Participant.MjQuat.Z;
 
+		// Where MuJoCo writes the reason an attach failed: a fixed buffer on the
+		// target's model, taken here while the spec it hangs off is still whole.
+		// A failed attach leaves that spec unusable -- the child's subtree is
+		// spliced in and its lists half-merged -- so asking the wreck for its
+		// error afterwards puts a dereference of it between the failure and the
+		// diagnostic, and the diagnostic is the only thing the caller is going
+		// to get. The buffer outlives the damage; the route to it does not.
+		const char* const ErrorSlot = mjs_getError(Out.Scene.Spec);
+
 		// The spec's own element, not its world body: the world body would come
 		// across as a body of its own and put an extra link in every chain.
 		const FTCHARToUTF8 Prefix(*Participant.Prefix);
 		const bool bAttached = Frame->element != nullptr && Built.Spec->element != nullptr
 			&& mjs_attach(Frame->element, Built.Spec->element, Prefix.Get(), "") != nullptr;
-
-		// Harvested into a local the moment the attach returns. A failed attach
-		// leaves the target spec unusable, and its error string is the last
-		// thing on it worth reading -- so nothing else touches the spec between
-		// the failure and the copy.
-		const FString AttachError = bAttached ? FString() : SpecErrorText(*Out.Scene.Spec);
 		if (!bAttached)
 		{
+			// Abandoned, never continued and never retried: a scene with a
+			// half-attached participant in it has no compile left in it, and
+			// the caller gets the reason instead of a model.
 			Out.Errors.Add(DiagnosticFor(nullptr,
 				FString::Printf(TEXT("could not attach participant '%s': %s"), *Participant.Prefix,
-					*AttachError)));
+					*ErrorTextAt(ErrorSlot))));
 			return Out;
 		}
 

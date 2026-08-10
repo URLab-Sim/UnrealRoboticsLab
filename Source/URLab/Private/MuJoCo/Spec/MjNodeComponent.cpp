@@ -1099,10 +1099,15 @@ void MjNoteDanglingReferences(UMjNodeComponent& Root)
 		Declared.FindOrAdd(DeclaredName).AddUnique(static_cast<int32>(Type));
 	});
 
-	WalkSpecTree<Adapter>(Root, [&Declared](UMjNodeComponent& Node) {
+	// Gathered rather than emitted as they are found: the pass runs on every
+	// rename and every reference edit, and a message log constructed per pass
+	// would touch the listing even on the ordinary run where nothing dangles.
+	TArray<FString> Reported;
+
+	WalkSpecTree<Adapter>(Root, [&Declared, &Reported](UMjNodeComponent& Node) {
 		Node.DanglingReferences.Reset();
-		gen::DispatchByType(Node, [&Declared, &Node](auto& Element) {
-			ForEachReference(Element, [&Declared, &Node](int, const char* FieldName, auto&& Slot,
+		gen::DispatchByType(Node, [&Declared, &Node, &Reported](auto& Element) {
+			ForEachReference(Element, [&Declared, &Node, &Reported](int, const char* FieldName, auto&& Slot,
 										  const std::vector<psm::ElementType>& Targets) {
 				const FString Name(Slot.Get());
 				if (Name.IsEmpty() || ReferenceResolves(Declared, Name, Targets))
@@ -1111,11 +1116,36 @@ void MjNoteDanglingReferences(UMjNodeComponent& Root)
 				}
 				const FString Message =
 					FString::Printf(TEXT("%hs=\"%s\" names no element this model declares"), FieldName, *Name);
-				UE_LOG(LogURLab, Warning, TEXT("%s: %s"), *Node.GetName(), *Message);
 				Node.DanglingReferences.Add(Message);
+
+				// Named by the model's own name for the referrer where it has
+				// one: the component name is an editor fact, and the name the
+				// user typed the reference against is the MJCF one.
+				Reported.Add(FString::Printf(
+					TEXT("%s: %s"), *Node.MjName.Get(Node.GetName()), *Message));
 			});
 		});
 	});
+
+	// Two audiences, the same as every other diagnostic that cannot fail a
+	// build: the run's log, and the editor's message log -- because a component
+	// row is only seen by someone who has already selected the component, and
+	// the whole difficulty with a dangling name is not knowing which one to look
+	// at.
+	for (const FString& Line : Reported)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("%s"), *Line);
+	}
+#if WITH_EDITOR
+	if (Reported.Num() > 0)
+	{
+		FMessageLog MessageLog(TEXT("URLab"));
+		for (const FString& Line : Reported)
+		{
+			MessageLog.Warning(FText::FromString(Line));
+		}
+	}
+#endif
 }
 
 template void MjNoteDanglingReferences<FMjInstanceAdapter>(UMjNodeComponent&);

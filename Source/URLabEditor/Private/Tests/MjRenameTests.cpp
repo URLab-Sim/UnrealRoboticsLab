@@ -28,8 +28,11 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
 #include "GameFramework/Actor.h"
+#include "IMessageLogListing.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "MessageLogModule.h"
 #include "Misc/Guid.h"
+#include "Modules/ModuleManager.h"
 #include "ScopedTransaction.h"
 #include "UObject/Package.h"
 
@@ -285,6 +288,81 @@ bool FMjDanglingReferenceTest::RunTest(const FString& Parameters)
 	}
 
 	return true;
+}
+
+// ============================================================================
+// URLab.Spec.ADanglingNameReachesTheMessageLog
+//   The component row is where the answer is, and it is only read by someone
+//   who already suspects that element. The user who has just broken a reference
+//   does not know which element to select, so the diagnostic also goes to the
+//   editor's own Messages panel, naming the referrer and the missing target.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjDanglingReferenceIsLoudTest, "URLab.Spec.ADanglingNameReachesTheMessageLog",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjDanglingReferenceIsLoudTest::RunTest(const FString& Parameters)
+{
+	using namespace MjRenameTests;
+
+	const TCHAR* const Xml = TEXT(R"(<mujoco model="loud">
+  <worldbody>
+    <body name="link" pos="0 0 1">
+      <joint name="hinge" type="hinge" axis="0 0 1"/>
+      <geom name="shape" type="box" size="0.1 0.1 0.1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="drive" joint="knee"/>
+  </actuator>
+</mujoco>
+)");
+
+	// Read back from the listing rather than trusting that the call was made:
+	// the panel is where a user goes looking, and a message that never reaches
+	// it is invisible in exactly the case it exists for.
+	FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+	if (!TestTrue(TEXT("the \"URLab\" listing is registered"),
+			MessageLogModule.IsRegisteredLogListing(TEXT("URLab"))))
+	{
+		return false;
+	}
+	const TSharedRef<IMessageLogListing> Listing = MessageLogModule.GetLogListing(TEXT("URLab"));
+	Listing->ClearMessages();
+
+	UBlueprint* Blueprint = ParseScratch(*this, Xml);
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	const FString Listed = Listing->GetAllMessagesAsString();
+	TestTrue(FString::Printf(TEXT("the referring element is named, got '%s'"), *Listed),
+		Listed.Contains(TEXT("drive")));
+	TestTrue(FString::Printf(TEXT("and the name that answers to nothing, got '%s'"), *Listed),
+		Listed.Contains(TEXT("knee")));
+
+	// A model whose references all resolve says nothing at all, or the panel
+	// fills with lines that mean a user must read every one to find a real one.
+	Listing->ClearMessages();
+	const TCHAR* const Clean = TEXT(R"(<mujoco model="quiet">
+  <worldbody>
+    <body name="link" pos="0 0 1">
+      <joint name="hinge" type="hinge" axis="0 0 1"/>
+      <geom name="shape" type="box" size="0.1 0.1 0.1"/>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="drive" joint="hinge"/>
+  </actuator>
+</mujoco>
+)");
+	if (ParseScratch(*this, Clean) != nullptr)
+	{
+		TestEqual(TEXT("a model whose references resolve writes nothing to the log"),
+			Listing->GetAllMessagesAsString(), FString());
+	}
+
+	return !HasAnyErrors();
 }
 
 #endif  // URLAB_MJ_GEN && WITH_EDITOR

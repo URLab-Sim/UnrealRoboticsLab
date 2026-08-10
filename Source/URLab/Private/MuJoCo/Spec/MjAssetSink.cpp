@@ -101,6 +101,44 @@ TArray<FMjOrderedChild> ChildrenOf(const FSpecRef& Spec, UMjNodeComponent& Paren
 	return FMjInstanceAdapter::OrderedChildren(Parent);
 }
 
+/** `Name` with an ordinal before its extension: `base.obj`, `base_2.obj`, ... */
+FString NumberedName(const FString& Name, int32 Ordinal)
+{
+	const FString Extension = FPaths::GetExtension(Name, /*bIncludeDot=*/true);
+	return FString::Printf(TEXT("%s_%d%s"), *Name.LeftChop(Extension.Len()), Ordinal, *Extension);
+}
+
+/**
+ * `Desired`, made unique across the names already mounted.
+ *
+ * `Mounted` maps each name taken to the file behind it. An element naming a
+ * file that is already mounted keeps that mount -- one file referenced twice is
+ * one file -- and only a DIFFERENT file takes an ordinal. The walk is in spec
+ * order, so the first claimant keeps the clean name and the answer does not
+ * depend on the order a directory happened to be read in.
+ *
+ * Compared case-insensitively, because the basename fallback this exists to
+ * keep out of the decision is.
+ */
+FString UniqueMountName(TMap<FString, FString>& Mounted, const FString& Desired, const FString& ResolvedPath)
+{
+	FString Name = Desired;
+	for (int32 Ordinal = 2;; ++Ordinal)
+	{
+		const FString* const Taken = Mounted.Find(Name.ToLower());
+		if (Taken == nullptr)
+		{
+			Mounted.Add(Name.ToLower(), ResolvedPath);
+			return Name;
+		}
+		if (*Taken == ResolvedPath)
+		{
+			return Name;
+		}
+		Name = NumberedName(Desired, Ordinal);
+	}
+}
+
 /**
  * The spec-level meshdir / texturedir, read off <compiler>.
  *
@@ -184,6 +222,10 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 	FString TextureDir;
 	ReadAssetDirectories(Spec, *Root, MeshDir, TextureDir);
 
+	// One entry per mount this pass hands out: the name, and the file it
+	// carries. Two assets that would take one name are what this is for.
+	TMap<FString, FString> Mounted;
+
 	for (const FMjOrderedChild& Section : ChildrenOf(Spec, *Root))
 	{
 		psm::ElementType SectionType{};
@@ -219,7 +261,14 @@ void FMjAssetSink::Collect(const FSpecRef& Spec)
 			if (!File.IsEmpty())
 			{
 				Request.ResolvedPath = MjResolveAssetPath(*Asset.Node, bTexture ? TextureDir : MeshDir, File);
-				Request.VfsName = VfsPrefix + FPaths::GetCleanFilename(File);
+				// Under a prefix the caller points the reference at whatever this
+				// emits, so a basename carries it. Without one nothing rewrites
+				// anything and the reference still says what the document said,
+				// which is then the only name that matches it exactly -- and an
+				// exact match is what keeps MuJoCo's basename fallback from
+				// choosing between two `base.obj` on our behalf.
+				const FString Desired = VfsPrefix.IsEmpty() ? File : VfsPrefix + FPaths::GetCleanFilename(File);
+				Request.VfsName = UniqueMountName(Mounted, Desired, Request.ResolvedPath);
 			}
 
 			// Whether the file is there is a property of the resolution, not of

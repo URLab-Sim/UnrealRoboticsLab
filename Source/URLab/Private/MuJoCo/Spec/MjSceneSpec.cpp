@@ -305,7 +305,11 @@ bool FMjCompiledScene::SaveDebugArtifacts(const FString& Dir, TArray<FMjSpecDiag
 		{
 			continue;
 		}
+		// A mount name keeps whatever subdirectory its reference was authored
+		// with, so the sidecar has to carry that directory too or the write
+		// lands nowhere.
 		const FString Path = FPaths::Combine(AssetDir, Asset.Name);
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
 		if (!FFileHelper::SaveArrayToFile(Asset.Bytes, *Path))
 		{
 			return Fail(FString::Printf(TEXT("could not write asset '%s'"), *Path));

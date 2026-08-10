@@ -61,7 +61,22 @@ struct URLAB_API FMjAssetRequest
 	 */
 	FString BaseDirectory;
 
-	/** The file's basename, prefixed when the request came from a scene assembly. */
+	/**
+	 * The name the bytes mount under, which is the name a reference must ask
+	 * for.
+	 *
+	 * A VFS lookup matches the asked-for name first and falls back to a
+	 * case-insensitive basename match across every mount only when nothing
+	 * matched, so a mount name that is not what the reference says leaves the
+	 * fallback to choose. A scene assembly rewrites every reference to this
+	 * string, so there it is the prefixed basename; a spec compiled on its own
+	 * keeps its references as authored, so there it is the authored path,
+	 * subdirectories and all.
+	 *
+	 * Two elements naming DIFFERENT files that would land on one name are
+	 * separated by a `_2`, `_3` ordinal in spec order; two naming the same file
+	 * share the one mount.
+	 */
 	FString VfsName;
 
 	/**
@@ -138,12 +153,16 @@ URLAB_API FString MjResolveAssetPath(const UMjNodeComponent& Element, const FStr
 /**
  * The spec's asset pass.
  *
- * `VfsPrefix` prefixes every emitted VfsName. It is not cosmetic: MuJoCo's VFS
- * falls back to a case-insensitive BASENAME match across all mounts, so two
- * articulations that each reference their own `base.obj` silently share whichever
- * one was mounted -- a missing asset becoming the wrong asset, with no warning.
- * Subdirectories do not help, because the fallback ignores them. A scene assembly
- * therefore mounts participant-prefixed basenames.
+ * `VfsPrefix` prefixes every emitted VfsName, and setting it says the caller
+ * will point the spec's own references at what this emits. It is not cosmetic:
+ * MuJoCo's VFS falls back to a case-insensitive BASENAME match across all
+ * mounts, so two articulations that each reference their own `base.obj`
+ * silently share whichever one was mounted -- a missing asset becoming the
+ * wrong asset, with no warning. A scene assembly therefore mounts
+ * participant-prefixed basenames and rewrites the references to match.
+ *
+ * Left empty, nothing rewrites anything, and the mount name is the reference
+ * as authored so the lookup matches it exactly rather than by fallback.
  */
 struct URLAB_API FMjAssetSink
 {

@@ -263,10 +263,20 @@ bool FMjImportScaling::RunTest(const FString& Parameters)
 //   walks rather than in seconds, at two model sizes so a term that grows with
 //   the model is separable from a constant one.
 //
-//   MEASUREMENT ONLY. Nothing here is bounded: an assertion would have to encode
-//   an opinion about which of the four suspects is the culprit, and choosing that
-//   is what the numbers are for. The one thing asserted is that the measurement
-//   measured something, because a silent zero would read as a clean result.
+//   The measurement convicted all four suspects and the fixes landed, so the
+//   numbers below are now bounds rather than a report. Every probe builds ONE
+//   node map and at most one effective context, at either model size: an edit
+//   costs the same whether the model has a hundred elements or four hundred.
+//   What legitimately grows is the dispatch work inside the single index build,
+//   which is one pass over the spec, so that one is bounded by a growth ratio
+//   instead.
+//
+//   What the numbers were before, for the record. Syncing one element cost 3
+//   node maps and 3 contexts, and a registration is one of those per component.
+//   A whole-spec refresh built one node map PER BODY -- 27 at 25 bodies, 102 at
+//   100 -- because the ancestor test opened a fresh scope per element. And a
+//   `contype` edit, which cannot change any picture, cost 10 node maps and 8
+//   contexts where the same edit on a joint cost 1 and 0.
 // ============================================================================
 
 namespace MjImportPerfTests
@@ -285,6 +295,9 @@ struct FPresentationCost
 
 	/** One details-panel edit of `size` on an ordinary geom. */
 	FImportCost PlainGeomEdit;
+
+	/** The same panel, on a geom attribute the picture is not derived from. */
+	FImportCost PlainGeomPhysicsEdit;
 
 	/** The same edit on a geom inside a `<default>` class: the reported case. */
 	FImportCost DefaultClassEdit;
@@ -427,8 +440,10 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 	// callers ask it per element rather than per pass.
 	Out.AncestorQuery = CostOf([PlainGeom] { PlainGeom->IsSharedPresentationInput(); });
 
-	// Suspect 2: the register-time sync runs under no ambient scope of its own.
-	Out.SingleSync = CostOf([PlainGeom] { PlainGeom->SyncPreviewFromSpec(); });
+	// Suspect 2: the register-time sync. `SyncPreviewUnderOneScope` is what
+	// `OnRegister` calls, so it is what is measured; calling the inner sync
+	// directly would measure a path no registration takes.
+	Out.SingleSync = CostOf([PlainGeom] { PlainGeom->SyncPreviewUnderOneScope(); });
 
 	// Suspect 3: the whole-spec refresh, which is what a shared-input edit
 	// triggers. Its own scopes are the point; what matters is what it costs per
@@ -440,6 +455,11 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 	// visualizer override -- so the difference is what the rebuild costs.
 	Out.PlainGeomEdit = CostOf([PlainGeom] { NotifyEdited(*PlainGeom, TEXT("Size")); });
 	Out.PlainJointEdit = CostOf([PlainJoint] { NotifyEdited(*PlainJoint, TEXT("Damping")); });
+
+	// The same panel, on a collision mask. Nothing about the picture depends on
+	// it, so it is the one probe that says whether the rebuild is gated on what
+	// changed or merely on something having changed.
+	Out.PlainGeomPhysicsEdit = CostOf([PlainGeom] { NotifyEdited(*PlainGeom, TEXT("Contype")); });
 
 	// The reported case: editing a value on a `<default>` class.
 	Out.DefaultClassEdit = CostOf([DefaultGeom] { NotifyEdited(*DefaultGeom, TEXT("Size")); });
@@ -464,7 +484,7 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 		{
 			// A template never registers, so the sync `OnRegister` would perform
 			// is invoked directly; it is the same call on the same object.
-			Element->SyncPreviewFromSpec();
+			Element->SyncPreviewUnderOneScope();
 		}
 	});
 
@@ -501,20 +521,38 @@ bool FMjPresentationScaling::RunTest(const FString& Parameters)
 
 	AddInfo(FString::Printf(TEXT("BENCH presentation elements small=%d large=%d"), SmallElements, LargeElements));
 
+	/** What one probe may cost, at either model size. */
 	struct FProbeRow
 	{
 		const TCHAR* Name;
 		const FImportCost* Small;
 		const FImportCost* Large;
+
+		/** Node maps the probe builds. One means it builds its own and no more. */
+		int64 NodeMapBuilds;
+
+		/** Effective contexts it builds. Zero means it never resolved a class chain. */
+		int64 EffectiveContextBuilds;
+
+		/**
+		 * How much the dispatch work may grow across a fourfold model.
+		 *
+		 * One where the probe touches a fixed number of elements. Where it builds
+		 * an index or walks the spec, the work is one pass over the model and so
+		 * is linear in it; the bound is a little over four so that linear passes
+		 * and only linear passes fit under it.
+		 */
+		double DispatchGrowth;
 	};
 	const FProbeRow Probes[] = {
-		{TEXT("ancestor_query"), &Small.AncestorQuery, &Large.AncestorQuery},
-		{TEXT("single_sync"), &Small.SingleSync, &Large.SingleSync},
-		{TEXT("spec_refresh"), &Small.SpecRefresh, &Large.SpecRefresh},
-		{TEXT("plain_geom_edit"), &Small.PlainGeomEdit, &Large.PlainGeomEdit},
-		{TEXT("plain_joint_edit"), &Small.PlainJointEdit, &Large.PlainJointEdit},
-		{TEXT("default_class_edit"), &Small.DefaultClassEdit, &Large.DefaultClassEdit},
-		{TEXT("spawn"), &Small.Spawn, &Large.Spawn},
+		{TEXT("ancestor_query"), &Small.AncestorQuery, &Large.AncestorQuery, 1, 0, 1.0},
+		{TEXT("single_sync"), &Small.SingleSync, &Large.SingleSync, 1, 1, 4.5},
+		{TEXT("spec_refresh"), &Small.SpecRefresh, &Large.SpecRefresh, 1, 1, 4.5},
+		{TEXT("plain_geom_edit"), &Small.PlainGeomEdit, &Large.PlainGeomEdit, 1, 1, 4.5},
+		{TEXT("plain_geom_physics_edit"), &Small.PlainGeomPhysicsEdit, &Large.PlainGeomPhysicsEdit, 1, 0, 1.0},
+		{TEXT("plain_joint_edit"), &Small.PlainJointEdit, &Large.PlainJointEdit, 1, 0, 1.0},
+		{TEXT("default_class_edit"), &Small.DefaultClassEdit, &Large.DefaultClassEdit, 1, 1, 4.5},
+		{TEXT("spawn"), &Small.Spawn, &Large.Spawn, 1, 1, 4.5},
 	};
 
 	for (const FProbeRow& Probe : Probes)
@@ -523,13 +561,59 @@ bool FMjPresentationScaling::RunTest(const FString& Parameters)
 		ReportProbe(*this, Probe.Name, LargeBodies, *Probe.Large);
 	}
 
-	// The one assertion: a probe set that measured nothing at all would report
-	// seven rows of zeroes and read exactly like a clean result.
+	// A probe set that measured nothing at all would report zeroes everywhere and
+	// satisfy every bound below.
 	TestTrue(TEXT("the larger model produced more elements than the smaller one"), LargeElements > SmallElements);
-	TestTrue(TEXT("the probes observed work happening"),
-		Large.DefaultClassEdit.NodeMapBuilds + Large.DefaultClassEdit.EffectiveContextBuilds
-				+ Large.SpecRefresh.NodeMapBuilds + Large.SpecRefresh.EffectiveContextBuilds
-			> 0);
+	if (!TestTrue(TEXT("the probes observed work happening"), Large.SpecRefresh.DispatchLookups > 0))
+	{
+		return false;
+	}
+
+	for (const FProbeRow& Probe : Probes)
+	{
+		// Exact, at both sizes. A bound of the form "no more than" would pass on
+		// a probe that had stopped doing anything, and these are small enough
+		// numbers that the difference between one index and two is the finding.
+		TestEqual(FString::Printf(TEXT("%s builds %lld node map(s) at %d bodies"), Probe.Name, Probe.NodeMapBuilds,
+					  SmallBodies),
+			Probe.Small->NodeMapBuilds, Probe.NodeMapBuilds);
+		TestEqual(FString::Printf(TEXT("%s builds %lld node map(s) at %d bodies"), Probe.Name, Probe.NodeMapBuilds,
+					  LargeBodies),
+			Probe.Large->NodeMapBuilds, Probe.NodeMapBuilds);
+
+		TestEqual(FString::Printf(TEXT("%s builds %lld effective context(s) at %d bodies"), Probe.Name,
+					  Probe.EffectiveContextBuilds, SmallBodies),
+			Probe.Small->EffectiveContextBuilds, Probe.EffectiveContextBuilds);
+		TestEqual(FString::Printf(TEXT("%s builds %lld effective context(s) at %d bodies"), Probe.Name,
+					  Probe.EffectiveContextBuilds, LargeBodies),
+			Probe.Large->EffectiveContextBuilds, Probe.EffectiveContextBuilds);
+
+		const double Growth = Probe.Small->DispatchLookups > 0
+			? static_cast<double>(Probe.Large->DispatchLookups) / Probe.Small->DispatchLookups
+			: 0.0;
+		TestTrue(FString::Printf(TEXT("%s dispatch work grows %.2fx across a fourfold model, bound %.2fx"), Probe.Name,
+					 Growth, Probe.DispatchGrowth),
+			Growth <= Probe.DispatchGrowth);
+	}
+
+	// The two relations the fixes are really about, stated as relations so they
+	// survive a change in what an index build happens to cost.
+	//
+	// An edit to a geom attribute the picture IS derived from costs an index
+	// build the joint edit does not need, and nothing else: the joint is the
+	// control, same panel, same base-class hooks, no visualiser of its own.
+	const int64 JointIndexes = Large.PlainJointEdit.NodeMapBuilds + Large.PlainJointEdit.EffectiveContextBuilds;
+	const int64 GeomIndexes = Large.PlainGeomEdit.NodeMapBuilds + Large.PlainGeomEdit.EffectiveContextBuilds;
+	TestTrue(FString::Printf(TEXT("a visual geom edit costs %lld index builds against the joint edit's %lld"),
+				 GeomIndexes, JointIndexes),
+		GeomIndexes <= 2 * JointIndexes);
+
+	// An edit to one it is NOT derived from -- a collision mask -- costs exactly
+	// what the joint edit costs. This is the whole of the visualiser gate.
+	TestEqual(TEXT("a collision-mask edit builds the node maps a joint edit builds"),
+		Large.PlainGeomPhysicsEdit.NodeMapBuilds, Large.PlainJointEdit.NodeMapBuilds);
+	TestEqual(TEXT("a collision-mask edit builds the effective contexts a joint edit builds"),
+		Large.PlainGeomPhysicsEdit.EffectiveContextBuilds, Large.PlainJointEdit.EffectiveContextBuilds);
 
 	return !HasAnyErrors();
 }

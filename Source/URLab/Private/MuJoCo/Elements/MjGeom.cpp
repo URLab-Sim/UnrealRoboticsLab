@@ -833,12 +833,69 @@ void UMjGeom::SetGeomVisibility(bool bNewVisibility)
 }
 
 #if WITH_EDITOR
+
+namespace
+{
+/**
+ * The geom attributes the picture is derived from.
+ *
+ * Rebuilding a visualiser resolves the shape, the mesh asset, the material and
+ * the colour through the default-class chain, which is several whole-spec reads;
+ * a geom carries thirty-odd attributes and most of them are physics. Editing
+ * `contype` or `group` used to cost what editing `size` costs, which is what
+ * made a geom's details panel the slowest one in the editor.
+ *
+ * `class` is in the list because it is the chain itself: changing it changes
+ * every inherited value at once. Nothing here is a guess about the schema -- the
+ * names are this element's own members, and an attribute that starts feeding the
+ * picture has to be added here in the same change that makes it do so.
+ */
+bool AffectsGeomPicture(FName PropertyName)
+{
+	static const TSet<FName> Visual = {
+		FName(TEXT("Dclass")),
+		FName(TEXT("Type")),
+		FName(TEXT("Size")),
+		FName(TEXT("Fromto")),
+		FName(TEXT("Pos")),
+		FName(TEXT("Quat")),
+		FName(TEXT("Mesh")),
+		FName(TEXT("Hfield")),
+		FName(TEXT("Fitscale")),
+		FName(TEXT("Material")),
+		FName(TEXT("Rgba")),
+		FName(TEXT("OverrideMaterial")),
+	};
+	return Visual.Contains(PropertyName);
+}
+}  // namespace
+
 void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
+	// One index for the whole edit, the base's half included. The base resolves
+	// the pose and the scale through the class chain and the rebuild below
+	// resolves the shape, the mesh, the material and the colour through the same
+	// chain; each of those indexed the spec on its own, so editing one geom
+	// attribute cost the model several times over.
+#if URLAB_MJ_GEN
+	urlab::spec::FMjEffectiveScope Edit(*this);
+#endif
+
 	// The base drives the preview transform and the write-back from the schema's
 	// own field ids, `type` and `size` included. What is left here is the
 	// picture: a different `type` is a different engine primitive.
 	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	// A property this hook cannot name is rebuilt for: an undo, a paste, or a
+	// bulk edit arrives with no property at all, and the picture may be anything.
+	const FName Changed = PropertyChangedEvent.GetPropertyName();
+	const FName Member =
+		PropertyChangedEvent.MemberProperty != nullptr ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
+	if (!Changed.IsNone() && !AffectsGeomPicture(Changed) && !AffectsGeomPicture(Member))
+	{
+		return;
+	}
+
 	RebuildVisualizer();
 }
 #endif

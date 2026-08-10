@@ -122,19 +122,49 @@ private:
  * The scope may not span the creation or destruction of a spec node: the context
  * holds a parent map and a default index built from the tree as it was when the
  * scope opened. It is keyed on the root, so a nested scope over a different spec
- * correctly builds its own.
+ * correctly builds its own -- and one over a spec an enclosing scope already
+ * covers shares that scope's contexts rather than building a second set.
+ *
+ * A spec held as Blueprint templates needs the construction-script graph open to
+ * be walked at all, so the scope opens that too. One scope is then the whole of
+ * what a pass over a spec has to hold: the class index, the name index, and the
+ * template graph.
  */
 class FMjEffectiveScope
 {
 public:
-	explicit FMjEffectiveScope(const UMjNodeComponent& Node)
-		: Root(Cast<UMjModel>(FSpecRef::OverOwner(&Node).GetRoot()))
-		, Previous(Current)
+	explicit FMjEffectiveScope(const UMjNodeComponent& Node) : FMjEffectiveScope(FSpecRef::OverOwner(&Node))
 	{
-		if (Root != nullptr)
+	}
+
+	/**
+	 * The same, over an already-resolved spec.
+	 *
+	 * Resolving one means walking to the spec's root, which a caller that is
+	 * about to walk the whole spec has already done. Taking the answer avoids
+	 * doing it twice per pass.
+	 */
+	explicit FMjEffectiveScope(const FSpecRef& Doc) : Previous(Current)
+	{
+		Root = Cast<UMjModel>(Doc.GetRoot());
+		if (Root == nullptr)
 		{
-			Current = this;
+			return;
 		}
+#if WITH_EDITOR
+		if (Doc.GetGraph() == EMjSpecGraph::Scs)
+		{
+			if (UBlueprint* Blueprint = Doc.GetBlueprint())
+			{
+				ScsScope = MakeUnique<FMjScsScope>(*Blueprint);
+			}
+		}
+#endif
+		if (FMjEffectiveScope* Outer = Find(Root))
+		{
+			Shared = Outer->Shared;
+		}
+		Current = this;
 	}
 
 	~FMjEffectiveScope()
@@ -161,7 +191,7 @@ public:
 	template <class P>
 	TMjEffective<P>& Get(const UMjModel& InRoot)
 	{
-		TUniquePtr<TMjEffective<P>>& Slot = Storage<P>();
+		TUniquePtr<TMjEffective<P>>& Slot = Shared->Storage<P>();
 		if (!Slot.IsValid())
 		{
 			Slot = MakeUnique<TMjEffective<P>>(InRoot);
@@ -184,7 +214,7 @@ public:
 	template <class EnumerateFn>
 	UActorComponent* FindNamed(int32 Kind, const FString& Name, EnumerateFn&& Enumerate)
 	{
-		TMap<FString, TWeakObjectPtr<UActorComponent>>& Index = Named.FindOrAdd(Kind);
+		TMap<FString, TWeakObjectPtr<UActorComponent>>& Index = Shared->Named.FindOrAdd(Kind);
 		if (Index.Num() == 0)
 		{
 			Enumerate([&Index](const FString& ElementName, UActorComponent* Element) {
@@ -208,7 +238,21 @@ private:
 	const UMjModel* Root = nullptr;
 	FMjEffectiveScope* Previous = nullptr;
 
+	/**
+	 * Whichever scope owns the indexes this one reads.
+	 *
+	 * `this` for the outermost scope over a spec, and the outermost one for every
+	 * scope nested inside it. Nesting is ordinary -- a whole-spec pass opens one
+	 * and the single-element work inside it opens its own -- and an inner scope
+	 * that built its own indexes would pay the whole-spec walk the outer one
+	 * exists to have paid once.
+	 */
+	FMjEffectiveScope* Shared = this;
+
 #if WITH_EDITOR
+	/** The template graph, when the spec is held as Blueprint templates. */
+	TUniquePtr<FMjScsScope> ScsScope;
+
 	TUniquePtr<TMjEffective<FMjScsProfile>> Scs;
 #endif
 	TUniquePtr<TMjEffective<FMjInstanceProfile>> Instance;
@@ -254,35 +298,6 @@ bool WithEffectiveDoc(const UMjNodeComponent& Node, Fn&& Function)
 		return false;
 	}
 
-	if (FMjEffectiveScope* Scope = FMjEffectiveScope::Find(Root))
-	{
-#if WITH_EDITOR
-		if (Doc.GetGraph() == EMjSpecGraph::Scs)
-		{
-			UBlueprint* Blueprint = Doc.GetBlueprint();
-			if (Blueprint == nullptr)
-			{
-				return false;
-			}
-			// Only if one is not already open over this Blueprint. A nested
-			// scope shadows the outer one and starts with an empty node map, so
-			// opening one per query rebuilds that map per query -- which is the
-			// cost this scope exists to remove.
-			if (FMjScsScope* Open = FMjScsScope::Current();
-				Open != nullptr && &Open->GetBlueprint() == Blueprint)
-			{
-				Function(Scope->Get<FMjScsProfile>(*Root));
-				return true;
-			}
-			FMjScsScope ScsScope(*Blueprint);
-			Function(Scope->Get<FMjScsProfile>(*Root));
-			return true;
-		}
-#endif
-		Function(Scope->Get<FMjInstanceProfile>(*Root));
-		return true;
-	}
-
 #if WITH_EDITOR
 	if (Doc.GetGraph() == EMjSpecGraph::Scs)
 	{
@@ -291,19 +306,27 @@ bool WithEffectiveDoc(const UMjNodeComponent& Node, Fn&& Function)
 		{
 			return false;
 		}
-		if (FMjScsScope* Open = FMjScsScope::Current();
-			Open != nullptr && &Open->GetBlueprint() == Blueprint)
+		// A spec held as Blueprint templates cannot be walked without the
+		// template graph open, and this opens one per query. That is affordable
+		// only because a scope nested inside one over the same Blueprint adopts
+		// its maps and builds none, so an enclosing pass still pays for one.
+		FMjScsScope ScsScope(*Blueprint);
+		if (FMjEffectiveScope* Scope = FMjEffectiveScope::Find(Root))
 		{
-			TMjEffective<FMjScsProfile> Effective(*Root);
-			Function(Effective);
+			Function(Scope->Get<FMjScsProfile>(*Root));
 			return true;
 		}
-		FMjScsScope Scope(*Blueprint);
 		TMjEffective<FMjScsProfile> Effective(*Root);
 		Function(Effective);
 		return true;
 	}
 #endif
+
+	if (FMjEffectiveScope* Scope = FMjEffectiveScope::Find(Root))
+	{
+		Function(Scope->Get<FMjInstanceProfile>(*Root));
+		return true;
+	}
 
 	TMjEffective<FMjInstanceProfile> Effective(*Root);
 	Function(Effective);

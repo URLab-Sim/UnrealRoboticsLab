@@ -208,6 +208,16 @@ public:
 	void SyncPreviewFromSpec();
 
 	/**
+	 * The same, with one whole-spec index held open around it.
+	 *
+	 * A single sync asks the default-class chain several questions, and each of
+	 * them indexes the spec unless something already has. This is the entry point
+	 * for the moments where the sync is the whole of the work -- load, register,
+	 * undo -- and it is a no-op wrapper inside a pass that already holds a scope.
+	 */
+	void SyncPreviewUnderOneScope();
+
+	/**
 	 * The relative transform the spec says this element sits at.
 	 *
 	 * What `SyncPreviewFromSpec` would apply, without applying it, so the

@@ -151,6 +151,20 @@ FMjScsScope::FMjScsScope(UBlueprint& Blueprint)
 	, Previous(GCurrentScsScope)
 {
 	checkf(Scs != nullptr, TEXT("FMjScsScope needs a Blueprint with a construction script"));
+
+	// An enclosing scope over the same Blueprint has already answered every
+	// question this one can be asked, so its maps are adopted rather than a
+	// second set built. Without this a nested scope starts empty and rebuilds the
+	// whole-Blueprint map on its first lookup, which is what made a per-element
+	// query cost the size of the model: the ancestor test opens a scope per call.
+	for (FMjScsScope* Outer = Previous; Outer != nullptr; Outer = Outer->Previous)
+	{
+		if (Outer->Owner == Owner)
+		{
+			Maps = Outer->Maps;
+			break;
+		}
+	}
 	GCurrentScsScope = this;
 }
 
@@ -166,32 +180,32 @@ FMjScsScope* FMjScsScope::Current()
 
 void FMjScsScope::InvalidateNodeMap()
 {
-	NodeMap.Reset();
-	ParentMap.Reset();
-	bNodeMapValid = false;
+	Maps->NodeMap.Reset();
+	Maps->ParentMap.Reset();
+	Maps->bNodeMapValid = false;
 }
 
 void FMjScsScope::NoteNodeCreated(const UMjNodeComponent& Template, USCS_Node& Node)
 {
-	if (bNodeMapValid)
+	if (Maps->bNodeMapValid)
 	{
-		NodeMap.Add(&Template, &Node);
+		Maps->NodeMap.Add(&Template, &Node);
 	}
 }
 
 void FMjScsScope::NoteChildAttached(USCS_Node& Parent, USCS_Node& Child)
 {
-	if (bNodeMapValid)
+	if (Maps->bNodeMapValid)
 	{
-		ParentMap.Add(&Child, &Parent);
+		Maps->ParentMap.Add(&Child, &Parent);
 	}
 }
 
 void FMjScsScope::NoteChildDetached(USCS_Node& Child)
 {
-	if (bNodeMapValid)
+	if (Maps->bNodeMapValid)
 	{
-		ParentMap.Remove(&Child);
+		Maps->ParentMap.Remove(&Child);
 	}
 }
 
@@ -202,6 +216,11 @@ int64 FMjScsScope::NodeMapBuilds()
 
 void FMjScsScope::EnsureNodeMap() const
 {
+	if (Maps != this)
+	{
+		Maps->EnsureNodeMap();
+		return;
+	}
 	if (bNodeMapValid)
 	{
 		return;
@@ -238,7 +257,7 @@ USCS_Node* FMjScsScope::ParentNodeOf(const UMjNodeComponent& Child) const
 {
 	EnsureNodeMap();
 	const USCS_Node* ChildNode = nullptr;
-	if (USCS_Node* const* Found = NodeMap.Find(&Child))
+	if (USCS_Node* const* Found = Maps->NodeMap.Find(&Child))
 	{
 		ChildNode = *Found;
 	}
@@ -246,14 +265,14 @@ USCS_Node* FMjScsScope::ParentNodeOf(const UMjNodeComponent& Child) const
 	{
 		return nullptr;
 	}
-	USCS_Node* const* Parent = ParentMap.Find(ChildNode);
+	USCS_Node* const* Parent = Maps->ParentMap.Find(ChildNode);
 	return Parent != nullptr ? *Parent : nullptr;
 }
 
 USCS_Node* FMjScsScope::FindNode(const UMjNodeComponent& Template) const
 {
 	EnsureNodeMap();
-	USCS_Node* const* Found = NodeMap.Find(&Template);
+	USCS_Node* const* Found = Maps->NodeMap.Find(&Template);
 	return Found != nullptr ? *Found : nullptr;
 }
 

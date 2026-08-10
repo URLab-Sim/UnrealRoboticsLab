@@ -609,6 +609,12 @@ struct URLAB_API FMjInstanceAdapter : TMjTreeAdapter<FMjInstanceAdapter>
  * SDK calls `P::Tree::Adopt<T>(parent, index, child)` with no adapter instance to
  * carry a Blueprint on. A component knows its template graph only by being found
  * in one, so the graph is supplied for the duration of a read or a write.
+ *
+ * Nesting one inside another over the SAME Blueprint is ordinary -- a pass over
+ * a whole spec opens one, and the per-element queries inside it open their own
+ * -- and it is free: the inner scope adopts the outer's maps rather than
+ * building a second set. It has to be free, because opening one per element was
+ * what made an edit cost the size of the model.
  */
 struct URLAB_API FMjScsScope
 {
@@ -673,6 +679,16 @@ private:
 	UBlueprint* Owner = nullptr;
 	USimpleConstructionScript* Scs = nullptr;
 	FMjScsScope* Previous = nullptr;
+
+	/**
+	 * Whichever scope owns the maps this one reads and writes.
+	 *
+	 * `this` for the outermost scope over a Blueprint, and the outermost one for
+	 * every scope nested inside it. Every access below goes through it, so a
+	 * nested scope has no state of its own to fall out of step.
+	 */
+	FMjScsScope* Maps = this;
+
 	mutable TMap<const UMjNodeComponent*, USCS_Node*> NodeMap;
 	mutable TMap<const USCS_Node*, USCS_Node*> ParentMap;
 	mutable bool bNodeMapValid = false;

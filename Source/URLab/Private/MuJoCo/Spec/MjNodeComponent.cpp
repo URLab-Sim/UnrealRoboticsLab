@@ -86,12 +86,28 @@ void UMjNodeComponent::PostLoad()
 	// Saved levels and SCS templates both arrive here. Templates never register,
 	// so this is the only moment a template can acquire the write-back baseline,
 	// and a template does receive gizmo moves.
-	SyncPreviewFromSpec();
+	SyncPreviewUnderOneScope();
 }
 
 void UMjNodeComponent::OnRegister()
 {
 	Super::OnRegister();
+	SyncPreviewUnderOneScope();
+}
+
+void UMjNodeComponent::SyncPreviewUnderOneScope()
+{
+#if URLAB_MJ_GEN
+	// One index for the whole sync. Syncing a single element resolves its pose,
+	// its scale and -- for a geom -- its mesh and its material through the same
+	// default-class chain, and each of those questions used to index the entire
+	// spec on its own. Registering a model is N of those, which is the shape the
+	// import path already avoids by holding one scope open across its walk.
+	//
+	// Only where the sync is the whole of the work: inside a pass that already
+	// holds a scope open, this joins it and costs nothing.
+	urlab::spec::FMjEffectiveScope Effective(*this);
+#endif
 	SyncPreviewFromSpec();
 }
 
@@ -319,15 +335,18 @@ bool HasQuatAttribute(UMjNodeComponent& Node)
  * Nothing to do for a component that already belongs to an actor: it is an
  * instance, not a template, which is also what keeps the level-editor drag off
  * this path entirely.
+ *
+ * `Doc` is the template's own spec, resolved by the caller: reaching a spec's
+ * root is a walk of its own, and the callers here have already done it.
  */
-void ForEachInstanceOfTemplate(UMjNodeComponent& Template, TFunctionRef<void(UMjNodeComponent&)> Visit)
+void ForEachInstanceOfTemplate(
+	const FSpecRef& Doc, UMjNodeComponent& Template, TFunctionRef<void(UMjNodeComponent&)> Visit)
 {
 #if WITH_EDITOR
 	if (Template.GetOwner() != nullptr)
 	{
 		return;
 	}
-	const FSpecRef Doc = FSpecRef::OverOwner(&Template);
 	UBlueprint* Blueprint = Doc.GetGraph() == EMjSpecGraph::Scs ? Doc.GetBlueprint() : nullptr;
 	UClass* Generated = Blueprint != nullptr ? Blueprint->GeneratedClass : nullptr;
 	if (Generated == nullptr)
@@ -617,6 +636,11 @@ bool AnyAncestorMatches(const UMjNodeComponent& Node, Pred&& Predicate)
  * A component with an owner is in a spawned actor and its parent link is the
  * attachment; a Blueprint template has neither, and its tree is only reachable
  * through the construction script the ambient scope names.
+ *
+ * Asked once per element by the callers below, so the scope it opens is opened
+ * once per element too. That is affordable because a scope nested inside one
+ * over the same Blueprint adopts the outer scope's maps and builds none: a pass
+ * that already holds one open pays for one, not for one per element.
  */
 template <class Pred>
 bool AnyAncestorInSpec(const UMjNodeComponent& Node, Pred&& Predicate)
@@ -674,36 +698,45 @@ void RefreshSubtree(UMjNodeComponent& Node)
 		}
 	}
 }
-}  // namespace
 
-void UMjNodeComponent::RefreshSpecPresentation()
+/**
+ * Re-derive the picture of every element of an already-resolved spec.
+ *
+ * Taking the resolved spec rather than a node in it is what lets a fan-out over
+ * several specs resolve each of them once: reaching a spec's root is itself a
+ * walk, and doing it per pass instead of per query is the difference between
+ * one and several.
+ */
+void RefreshSpecPresentationOf(const FSpecRef& Doc)
 {
-	const FSpecRef Doc = FSpecRef::OverOwner(this);
 	UMjNodeComponent* Root = Doc.GetRoot();
 	if (Root == nullptr)
 	{
 		return;
 	}
 
-	// One context for the whole walk. Each node asks the class chain several
+	// One index for the whole walk. Each node asks the class chain several
 	// questions and a geom asks more, and every one of those used to index the
 	// spec from scratch -- so refreshing N elements cost N whole-spec walks per
-	// question rather than one.
-	urlab::spec::FMjEffectiveScope Effective(*Root);
+	// question rather than one. The template graph comes with the scope, because
+	// a spec held as Blueprint templates cannot be walked without it.
+	urlab::spec::FMjEffectiveScope Effective(Doc);
 
 #if WITH_EDITOR
 	if (Doc.GetGraph() == EMjSpecGraph::Scs)
 	{
-		if (UBlueprint* Blueprint = Doc.GetBlueprint())
-		{
-			urlab::spec::FMjScsScope Scope(*Blueprint);
-			RefreshSubtree<urlab::spec::FMjScsAdapter>(*Root);
-		}
+		RefreshSubtree<urlab::spec::FMjScsAdapter>(*Root);
 		return;
 	}
 #endif
 
 	RefreshSubtree<urlab::spec::FMjInstanceAdapter>(*Root);
+}
+}  // namespace
+
+void UMjNodeComponent::RefreshSpecPresentation()
+{
+	RefreshSpecPresentationOf(FSpecRef::OverOwner(this));
 }
 
 bool UMjNodeComponent::ComputePreviewTransform(FTransform& Out)
@@ -867,7 +900,7 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	// Attribute by attribute, and only onto an instance that still holds this
 	// element's own pre-drag value: one that had been moved on its own really has
 	// overridden the template and must keep what it authored.
-	ForEachInstanceOfTemplate(*this, [&](UMjNodeComponent& Instance) {
+	ForEachInstanceOfTemplate(FSpecRef::OverOwner(this), *this, [&](UMjNodeComponent& Instance) {
 		const bool bTakePos =
 			bPosMoved && Instance.GetRelativeLocation().Equals(Baseline.GetLocation(), MjPreviewEpsilon);
 		const bool bTakeRot = bRotMoved &&
@@ -1050,15 +1083,12 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	}
 
 #if URLAB_MJ_GEN
-	// The other direction: typing into a spatial attribute has to move the
-	// viewport. Which names those are comes from the schema's field-id lookup,
-	// not from a list kept by hand here.
 	psm::ElementType Type;
 	const bool bIsElement = urlab::spec::MjElementTypeOfNode(*this, Type);
-	if (bIsElement && (IsSpatialField(Type, Changed) || IsSpatialField(Type, Member)))
-	{
-		SyncPreviewFromSpec();
-	}
+
+	// Resolved once for the whole hook. Reaching the spec's root is a walk of the
+	// object graph, and every branch below wants the same answer.
+	const FSpecRef Doc = FSpecRef::OverOwner(this);
 
 	// A rename is not a local edit. Every reference in the model is a name, so
 	// the elements pointing here are pointing at a name that no longer exists,
@@ -1067,7 +1097,6 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	// sides back.
 	if (bIsElement && (Changed == GMjNamePropertyName || Member == GMjNamePropertyName))
 	{
-		const FSpecRef Doc = FSpecRef::OverOwner(this);
 		const FString OldName = NameBeforeEdit.IsSet() ? NameBeforeEdit.GetValue() : FString();
 		const FString NewName = MjName.IsSet() ? MjName.GetValue() : FString();
 		// An element that gains its first name had nothing pointing at it, and
@@ -1084,24 +1113,43 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	{
 		// Typing a name into a reference is the other way to make one dangle,
 		// and the user finds out here rather than at play.
-		RefreshSpecReferenceDiagnostics(FSpecRef::OverOwner(this));
+		RefreshSpecReferenceDiagnostics(Doc);
 	}
 
-	// Everything above acts on the element that was edited, which is the whole
-	// answer for content. A shared node is an input to other elements' pictures,
-	// and none of them re-reads on its own.
+	// The picture, under one index for the whole of it. Everything below asks the
+	// same spec the same structural questions -- what class chain an element
+	// resolves through, which node holds which template -- and each of those used
+	// to index the spec on its own. It opens after the branches above because
+	// those can rewrite names, and the index is keyed by them.
+	urlab::spec::FMjEffectiveScope Presentation(Doc);
+
+	// Typing into a spatial attribute has to move the viewport. Which names those
+	// are comes from the schema's field-id lookup, not from a list kept by hand
+	// here.
+	if (bIsElement && (IsSpatialField(Type, Changed) || IsSpatialField(Type, Member)))
+	{
+		SyncPreviewFromSpec();
+	}
+
+	// The element that was edited is the whole answer for content. A shared node
+	// is an input to other elements' pictures, and none of them re-reads on its
+	// own.
 	if (IsSharedPresentationInput())
 	{
-		RefreshSpecPresentation();
+		// The edited spec is walked once, from the root already resolved above.
+		RefreshSpecPresentationOf(Doc);
 
 		// A Blueprint template's own spec is the template graph, which draws
 		// nothing. What the user is looking at is the preview actor -- and every
 		// placed actor of that class -- so the instances built from this template
 		// have to re-read their own specs too.
-		// Each instance is a spec of its own, so `RefreshSpecPresentation` opens
-		// its own context per instance rather than one covering the loop.
-		ForEachInstanceOfTemplate(*this, [](UMjNodeComponent& Instance) {
-			Instance.RefreshSpecPresentation();
+		//
+		// Each instance is a spec of its own, with its own root and its own class
+		// chain, so it gets one walk and one index -- one, not one per element
+		// and not one per question, which is what resolving the instance's root
+		// per query used to cost.
+		ForEachInstanceOfTemplate(Doc, *this, [](UMjNodeComponent& Instance) {
+			RefreshSpecPresentationOf(FSpecRef::OverOwner(&Instance));
 		});
 	}
 #endif
@@ -1112,7 +1160,7 @@ void UMjNodeComponent::PostEditUndo()
 	Super::PostEditUndo();
 	// Undo restores properties without firing a change hook, so the baseline is
 	// stale and the preview may disagree with the spec. Re-derive both.
-	SyncPreviewFromSpec();
+	SyncPreviewUnderOneScope();
 }
 
 #endif  // WITH_EDITOR

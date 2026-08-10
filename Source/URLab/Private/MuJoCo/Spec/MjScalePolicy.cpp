@@ -105,20 +105,6 @@ FShapeFieldIds ShapeFieldIdsOf(psm::ElementType Type)
 	return Out;
 }
 
-/** The descriptor field whose MJCF spelling is `Xml`, or null. */
-const psm::reflect::FieldDescriptor* FieldNamed(psm::ElementType Type, const char* Xml)
-{
-	const psm::reflect::ElementDescriptor& Descriptor = psm::reflect::Describe(Type);
-	for (std::size_t Index = 0; Index < Descriptor.field_count; ++Index)
-	{
-		if (Descriptor.fields[Index].xml == Xml)
-		{
-			return &Descriptor.fields[Index];
-		}
-	}
-	return nullptr;
-}
-
 #endif  // URLAB_MJ_GEN
 
 }  // namespace
@@ -200,7 +186,7 @@ TArray<double> MjSizeFromScale(const FMjSizeShape& Shape, FVector Scale)
 
 EMjScalePolicy MjScalePolicyFor(psm::ElementType Type)
 {
-	if (FieldNamed(Type, "size") == nullptr)
+	if (MjSchemaFieldOf(Type, "size") == nullptr)
 	{
 		return EMjScalePolicy::Unsized;
 	}
@@ -209,7 +195,7 @@ EMjScalePolicy MjScalePolicyFor(psm::ElementType Type)
 	// which enum it is rather than which element this is means `<site>` and
 	// `<geom>` are covered by the same sentence, and so is whatever the next
 	// release spells the same way.
-	const psm::reflect::FieldDescriptor* const TypeField = FieldNamed(Type, "type");
+	const psm::reflect::FieldDescriptor* const TypeField = MjSchemaFieldOf(Type, "type");
 	if (TypeField != nullptr && TypeField->kind == psm::reflect::FieldKind::Enum
 		&& TypeField->type_name == "GeomType")
 	{
@@ -235,8 +221,8 @@ TArray<psm::ElementType> MjSizedTransformElements()
 	{
 		const psm::reflect::ElementDescriptor& Descriptor = psm::reflect::ElementAt(Index);
 		const bool bTransform =
-			FieldNamed(Descriptor.type, "pos") != nullptr || FieldNamed(Descriptor.type, "quat") != nullptr;
-		if (bTransform && FieldNamed(Descriptor.type, "size") != nullptr)
+			MjSchemaFieldOf(Descriptor.type, "pos") != nullptr || MjSchemaFieldOf(Descriptor.type, "quat") != nullptr;
+		if (bTransform && MjSchemaFieldOf(Descriptor.type, "size") != nullptr)
 		{
 			Out.Add(Descriptor.type);
 		}

@@ -35,7 +35,10 @@
 #include "UObject/Package.h"
 
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjSpecBuild.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
+
+#include "Tests/MjParitySupport.h"
 
 namespace MjNamingTests
 {
@@ -159,7 +162,57 @@ bool FMjCrossTypeNameClashTest::RunTest(const FString& Parameters)
 	}
 	TestEqual(TEXT("and the MJCF the spec writes still names all three 'torso'"), Written, 3);
 
-	return true;
+	// The proof the item rests on, which the assertions above only imply: the
+	// model this document compiles to through our path is byte for byte the
+	// model MuJoCo's own reader compiles it to. Every element here is named, so
+	// there is no generated name to explain and nothing to allow for -- the
+	// comparison is the whole file. A suffix that had leaked into the spec would
+	// move a name table and fail here.
+	{
+		using namespace MjParitySupport;
+
+		urlab::spec::FMjBuiltSpec Built;
+		mjModel* const Ours =
+			CompileThroughSpecPath(*this, TEXT("clash"), FSpecRef::OverBlueprint(*Blueprint), Built);
+
+		char Error[1024] = {0};
+		mjSpec* const StockSpec = mj_parseXMLString(TCHAR_TO_UTF8(Xml), nullptr, Error, sizeof(Error));
+		mjModel* const Stock = StockSpec != nullptr ? mj_compile(StockSpec, nullptr) : nullptr;
+		if (StockSpec == nullptr)
+		{
+			AddError(FString::Printf(TEXT("stock refused the clash document: %s"), UTF8_TO_TCHAR(Error)));
+		}
+
+		if (Ours != nullptr && Stock != nullptr)
+		{
+			const TArray<uint8> OurBytes = ModelBytes(Ours);
+			const TArray<uint8> StockBytes = ModelBytes(Stock);
+			if (TestTrue(TEXT("both models serialise to something"), OurBytes.Num() > 0 && StockBytes.Num() > 0))
+			{
+				TestEqual(TEXT("our compiled model is the size stock's is"), OurBytes.Num(), StockBytes.Num());
+				if (OurBytes.Num() == StockBytes.Num())
+				{
+					TestEqual(TEXT("and byte for byte the same model, suffixes and all"),
+						FMemory::Memcmp(OurBytes.GetData(), StockBytes.GetData(), OurBytes.Num()), 0);
+				}
+			}
+		}
+
+		if (Stock != nullptr)
+		{
+			mj_deleteModel(Stock);
+		}
+		if (StockSpec != nullptr)
+		{
+			mj_deleteSpec(StockSpec);
+		}
+		if (Ours != nullptr)
+		{
+			mj_deleteModel(Ours);
+		}
+	}
+
+	return !HasAnyErrors();
 }
 
 // ============================================================================

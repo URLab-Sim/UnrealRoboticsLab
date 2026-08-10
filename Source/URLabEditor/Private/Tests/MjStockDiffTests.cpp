@@ -268,6 +268,14 @@ bool FMjStockDiffCorpusTest::RunTest(const FString& Parameters)
 	}
 
 	int32 Compared = 0;
+	// The corpus is mostly small hand-written documents that exercise one
+	// feature each. Exactly one fixture is a real robot off the menagerie, and
+	// it is the one whose result a reader of the log actually wants to find --
+	// so it is named, and its absence is a failure rather than a quiet corpus
+	// that shrank.
+	const TCHAR* const RealRobot = TEXT("vx300s.xml");
+	bool bComparedTheRobot = false;
+
 	for (const FString& Fixture : Fixtures)
 	{
 		const FString Label = FPaths::GetCleanFilename(Fixture);
@@ -298,11 +306,16 @@ bool FMjStockDiffCorpusTest::RunTest(const FString& Parameters)
 			const ps::harness::DiffReport Report = DiffAgainstStock(*this, Label, Stock.Model, Ours);
 			const FStockVerdict Verdict = ClassifyStockDiff(Report);
 			ReportUnexplained(*this, Label, Verdict, Report);
-			if (Verdict.GeneratedNames > 0)
-			{
-				AddInfo(FString::Printf(TEXT("%s: %d generated names, otherwise identical to stock"), *Label,
-					Verdict.GeneratedNames));
-			}
+
+			// One line per fixture, always. A single "the corpus matched"
+			// cannot tell a reader whether the real robot was in it, and the
+			// robot is the fixture whose result the log is read for.
+			AddInfo(FString::Printf(
+				TEXT("STOCKDIFF %-28s %s (generated names %d, sizes moved %d, unexplained %d)"), *Label,
+				Verdict.Unexplained.IsEmpty() ? TEXT("matches stock") : TEXT("DIVERGES FROM STOCK"),
+				Verdict.GeneratedNames, Verdict.SizeDiffs, Verdict.Unexplained.Num()));
+
+			bComparedTheRobot = bComparedTheRobot || Label == RealRobot;
 			++Compared;
 		}
 		mj_deleteModel(Ours);
@@ -311,6 +324,8 @@ bool FMjStockDiffCorpusTest::RunTest(const FString& Parameters)
 	// Every exit from the loop above is a `continue`, so without a floor this
 	// passes when the corpus has stopped being found at all.
 	TestTrue(TEXT("at least one fixture was compared against stock"), Compared > 0);
+	TestTrue(FString::Printf(TEXT("the real-robot fixture '%s' was among the %d compared"), RealRobot, Compared),
+		bComparedTheRobot);
 	return true;
 }
 

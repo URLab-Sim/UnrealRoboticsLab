@@ -31,6 +31,7 @@
 #include "MuJoCo/Gen/Elements/Geometry/MjGeom.gen.h"
 #include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
 #include "MuJoCo/Gen/MjEnums.gen.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "MjArrayCustomizations"
@@ -38,13 +39,62 @@
 namespace
 {
 
+#if URLAB_MJ_GEN
+
+/** How many slots the schema gives `Node`'s `Xml` attribute; 0 when it has none. */
+int32 SchemaArityOf(const UMjNodeComponent& Node, const char* Xml)
+{
+	urlab::spec::psm::ElementType Type{};
+	if (!urlab::spec::MjElementTypeOfNode(Node, Type))
+	{
+		return 0;
+	}
+	return urlab::spec::MjSchemaArityOf(Type, Xml);
+}
+
+/**
+ * What each `friction` slot means, for the element it is on.
+ *
+ * `friction` is two different attributes wearing one name. A `<geom>` takes
+ * three coefficients -- one sliding, one torsional, one rolling -- and a
+ * `<pair>` takes FIVE, because a contact pair names two tangential directions
+ * and two rolling ones. Labelling the pair's five slots with the geom's three
+ * names told the user that slot 1 was torsional friction when it is the second
+ * sliding coefficient, which is a wrong number typed into a real model.
+ *
+ * Which form applies is read off the schema's own arity rather than from a list
+ * of element types kept here, so a MuJoCo release that gives some other element
+ * a five-slot friction is labelled correctly the day it is generated -- and one
+ * that is neither three nor five is labelled by index rather than by a guess.
+ */
+TArray<FText> FrictionLabelsFor(const UMjNodeComponent& Node)
+{
+	switch (SchemaArityOf(Node, "friction"))
+	{
+		case 3:
+			return {LOCTEXT("FrictionSliding", "sliding"), LOCTEXT("FrictionTorsional", "torsional"),
+				LOCTEXT("FrictionRolling", "rolling")};
+		case 5:
+			return {LOCTEXT("FrictionSliding1", "sliding 1"), LOCTEXT("FrictionSliding2", "sliding 2"),
+				LOCTEXT("FrictionTorsional5", "torsional"), LOCTEXT("FrictionRolling1", "rolling 1"),
+				LOCTEXT("FrictionRolling2", "rolling 2")};
+		default:
+			return {};
+	}
+}
+
+#endif  // URLAB_MJ_GEN
+
 /** MuJoCo's own names for the slots, in MuJoCo's own order. */
-TArray<FText> LabelsFor(const FName& Attribute)
+TArray<FText> LabelsFor(const UMjNodeComponent& Node, const FName& Attribute)
 {
 	if (Attribute == FName(TEXT("Friction")))
 	{
-		return {LOCTEXT("FrictionSliding", "sliding"), LOCTEXT("FrictionTorsional", "torsional"),
-			LOCTEXT("FrictionRolling", "rolling")};
+#if URLAB_MJ_GEN
+		return FrictionLabelsFor(Node);
+#else
+		return {};
+#endif
 	}
 	if (Attribute == FName(TEXT("Solref")))
 	{
@@ -285,6 +335,22 @@ void WriteQuat(UMjNodeComponent& Node, const FOptionalProperty& Property, const 
 
 }  // namespace
 
+TArray<FText> FMjArrayCustomizations::SlotLabelsFor(UMjNodeComponent& Node, const FName& Attribute)
+{
+	TArray<FText> Labels = LabelsFor(Node, Attribute);
+#if URLAB_MJ_GEN
+	if (Labels.Num() == 0 && Attribute == FName(TEXT("Size")))
+	{
+		EMjGeomType Shape = EMjGeomType::sphere;
+		if (EffectiveShapeName(Node, Shape))
+		{
+			Labels = SizeLabelsFor(Shape);
+		}
+	}
+#endif
+	return Labels;
+}
+
 void FMjArrayCustomizations::CustomizeArrays(IDetailLayoutBuilder& DetailBuilder, UMjNodeComponent& Node)
 {
 	for (TFieldIterator<FOptionalProperty> It(Node.GetClass()); It; ++It)
@@ -295,17 +361,7 @@ void FMjArrayCustomizations::CustomizeArrays(IDetailLayoutBuilder& DetailBuilder
 			continue;
 		}
 
-		TArray<FText> Labels = LabelsFor(Optional->GetFName());
-#if URLAB_MJ_GEN
-		if (Labels.Num() == 0 && Optional->GetFName() == FName(TEXT("Size")))
-		{
-			EMjGeomType Shape = EMjGeomType::sphere;
-			if (EffectiveShapeName(Node, Shape))
-			{
-				Labels = SizeLabelsFor(Shape);
-			}
-		}
-#endif
+		const TArray<FText> Labels = SlotLabelsFor(Node, Optional->GetFName());
 		if (Labels.Num() == 0)
 		{
 			continue;

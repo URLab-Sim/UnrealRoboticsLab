@@ -127,6 +127,20 @@ inline TArray<FString> FixtureFiles()
 	return Found;
 }
 
+/** `Model` in the byte form MuJoCo serialises it to, which is what "identical" means. */
+inline TArray<uint8> ModelBytes(const mjModel* Model)
+{
+	TArray<uint8> Buffer;
+	const mjtSize Size = Model != nullptr ? mj_sizeModel(Model) : 0;
+	if (Size == 0)
+	{
+		return Buffer;
+	}
+	Buffer.SetNumUninitialized(static_cast<int32>(Size));
+	mj_saveModel(Model, nullptr, Buffer.GetData(), static_cast<int>(Size));
+	return Buffer;
+}
+
 /** A throwaway Blueprint in the transient package; nothing reaches disk. */
 inline UBlueprint* MakeScratchBlueprint(const TCHAR* Prefix)
 {

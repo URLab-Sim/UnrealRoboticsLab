@@ -34,6 +34,13 @@
 
 class UMjNodeComponent;
 
+// Declared rather than included: the generated reflection tables are a large
+// header and everything below hands back a pointer into them.
+namespace ps::mjcf::reflect
+{
+struct FieldDescriptor;
+}
+
 namespace urlab::spec
 {
 
@@ -58,6 +65,20 @@ URLAB_API UClass* MjGeneratedClassOf(psm::ElementType Type);
 
 /** The element's own MJCF tag: what it is called at the top level. */
 URLAB_API const TCHAR* MjTagOf(psm::ElementType Type);
+
+/**
+ * The schema's description of the attribute `Type` spells `Xml`, or null.
+ *
+ * The generated reflection tables are indexed by IDL field name; a caller
+ * holding an MJCF attribute name has to walk them. One walk, here, rather than
+ * one per caller: the scale policy reads a field's kind off it and the details
+ * panel reads its arity, and two copies of the same loop are two places for the
+ * schema's spelling of an attribute to be got wrong.
+ */
+URLAB_API const psm::reflect::FieldDescriptor* MjSchemaFieldOf(psm::ElementType Type, const char* Xml);
+
+/** How many values `Type` reads out of its `Xml` attribute; 0 when it has none. */
+URLAB_API int32 MjSchemaArityOf(psm::ElementType Type, const char* Xml);
 
 }  // namespace urlab::spec
 

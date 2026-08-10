@@ -13,6 +13,10 @@
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 
+THIRD_PARTY_INCLUDES_START
+#include "reflect.h"
+THIRD_PARTY_INCLUDES_END
+
 namespace urlab::spec
 {
 
@@ -34,6 +38,25 @@ UClass* MjGeneratedClassOf(psm::ElementType Type)
 const TCHAR* MjTagOf(psm::ElementType Type)
 {
 	return gen::TagForElement(Type);
+}
+
+const psm::reflect::FieldDescriptor* MjSchemaFieldOf(psm::ElementType Type, const char* Xml)
+{
+	const psm::reflect::ElementDescriptor& Descriptor = psm::reflect::Describe(Type);
+	for (std::size_t Index = 0; Index < Descriptor.field_count; ++Index)
+	{
+		if (Descriptor.fields[Index].xml == Xml)
+		{
+			return &Descriptor.fields[Index];
+		}
+	}
+	return nullptr;
+}
+
+int32 MjSchemaArityOf(psm::ElementType Type, const char* Xml)
+{
+	const psm::reflect::FieldDescriptor* const Field = MjSchemaFieldOf(Type, Xml);
+	return Field != nullptr ? Field->arity_max : 0;
 }
 
 }  // namespace urlab::spec

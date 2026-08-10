@@ -39,6 +39,21 @@ public:
 	/** Name the slots of the numeric arrays whose slots have names. */
 	static void CustomizeArrays(IDetailLayoutBuilder& DetailBuilder, UMjNodeComponent& Node);
 
+	/**
+	 * What `Attribute`'s slots are called on THIS element, in MuJoCo's order.
+	 *
+	 * Empty when the attribute has no named slots, which is most of them.
+	 *
+	 * The element matters, and that is the whole reason this is not a table keyed
+	 * by attribute name: `friction` is three coefficients on a `<geom>` and five
+	 * on a `<pair>`, and `size` means a radius or three half-extents depending on
+	 * the shape the element resolves to. Exposed for the same reason the euler
+	 * conversion below is: what a row says is checkable as text where the widget
+	 * it ends up in is not, and a mislabelled friction slot is a user authoring
+	 * the wrong number.
+	 */
+	static TArray<FText> SlotLabelsFor(UMjNodeComponent& Node, const FName& Attribute);
+
 	/** Offer euler degrees as a second way to type the element's `quat`. */
 	static void AddEulerRow(IDetailLayoutBuilder& DetailBuilder, UMjNodeComponent& Node);
 

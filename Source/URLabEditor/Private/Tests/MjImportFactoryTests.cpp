@@ -853,3 +853,89 @@ bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
 
 	return true;
 }
+
+// ============================================================================
+// URLab.Import.AnUnattendedImportIsNeverPrompted
+//   The import dialog is the only piece of the import that waits for a person.
+//   A scripted import has nobody to answer it, and a modal window opened in a
+//   run with no user does not fail -- it stops, for as long as the run lasts.
+//   So the factory asks whether anyone is there, and takes the option defaults
+//   when nobody is.
+//
+//   Asserted as the two halves that matter: the factory reports the condition
+//   that suppresses the prompt, and a whole import through the real entry point
+//   finishes and parses with the DEFAULT the dialog would otherwise have set.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportUnattendedIsNeverPrompted,
+	"URLab.Import.AnUnattendedImportIsNeverPrompted",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportUnattendedIsNeverPrompted::RunTest(const FString& Parameters)
+{
+	UMujocoImportFactory* const Factory = NewObject<UMujocoImportFactory>();
+	if (!TestTrue(TEXT("a scripted run reports itself as one, which is what suppresses the dialog"),
+			Factory->IsAutomatedImport()))
+	{
+		// Everything below would hang rather than fail, so stop here.
+		return false;
+	}
+
+	// Mesh preparation is part of what runs unprompted, so this needs the real
+	// interpreter the same way the include gate does.
+	if (FactoryProbePython().IsEmpty())
+	{
+		AddError(TEXT("No usable Python interpreter; the unattended import cannot be exercised."));
+		return false;
+	}
+
+	const FString Root = FactoryScratchDir(TEXT("Unattended"));
+	const FString ModelDir = Root / TEXT("model");
+	const FString OutsideDir = Root / TEXT("outside");
+	IFileManager::Get().MakeDirectory(*ModelDir, /*Tree=*/true);
+	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
+
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujocoinclude>\n")
+		TEXT("  <worldbody>\n")
+		TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
+		TEXT("  </worldbody>\n")
+		TEXT("</mujocoinclude>\n")), *(OutsideDir / TEXT("fragment.xml")));
+
+	// An ordinary model, through the real entry point the content browser
+	// calls. Reaching the assertions below at all is half the result: a modal
+	// window here would stop the run rather than fail it.
+	{
+		const FString Plain = ModelDir / TEXT("unattended.xml");
+		FFileHelper::SaveStringToFile(FString(kFactoryProbeMjcf), *Plain);
+
+		FFactoryImportProbe Probe;
+		Probe.Run(Plain);
+		TestFalse(TEXT("an unattended import is not reported cancelled"), Probe.bCancelled);
+		TestNotNull(TEXT("and it produces the Blueprint"), Probe.AsBlueprint());
+	}
+
+	// And the option the dialog would have offered stands at its default, which
+	// is what makes the silence safe rather than merely quiet: an `<include>`
+	// escaping the model's folder is refused, and the import fails saying so.
+	{
+		// One pattern, not two: the refusal is reported to the run log and to the
+		// message log, and both lines carry this phrase.
+		AddExpectedErrorPlain(TEXT("mesh preparation of"), EAutomationExpectedErrorFlags::Contains, 0);
+
+		const FString Escaping = ModelDir / TEXT("escaping.xml");
+		FFileHelper::SaveStringToFile(FString(
+			TEXT("<mujoco model=\"escaping\">\n")
+			TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
+			TEXT("  <worldbody>\n")
+			TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
+			TEXT("  </worldbody>\n")
+			TEXT("</mujoco>\n")), *Escaping);
+
+		FFactoryImportProbe Probe;
+		Probe.Run(Escaping);
+		TestNull(TEXT("the escaping include is refused, so the defaults were taken"), Probe.AsBlueprint());
+		TestNull(TEXT("and nothing is left behind"), Probe.Leftover());
+	}
+
+	return true;
+}

@@ -34,8 +34,10 @@
 #include "UObject/Package.h"
 
 #include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Gen/Elements/Bodies/MjBody.gen.h"
+#include "MuJoCo/Gen/MjDispatch.gen.h"
 
 namespace MjNodeNameTests
 {
@@ -64,6 +66,19 @@ TSet<FString> VariableNames(UBlueprint& Blueprint)
 		}
 	}
 	return Out;
+}
+
+/**
+ * Whether the components panel shows an element under a name that names IT.
+ *
+ * Its MJCF name, or -- when two elements of different types share that name,
+ * which is legal MJCF -- its MJCF name and what it is. Nothing else: an ordinal
+ * suffix is the disambiguation this item replaced, and a rule that merely looked
+ * for "the name, an underscore, something" would accept it back.
+ */
+bool ShownUnderItsOwnName(const FString& Variable, const FString& MjName, urlab::spec::psm::ElementType Type)
+{
+	return Variable == MjName || Variable == MjName + TEXT("_") + urlab::spec::gen::TagForElement(Type);
 }
 
 UBlueprint* ParseScratch(FAutomationTestBase& Test, const FString& Xml, const FString& Filename)
@@ -148,6 +163,11 @@ bool FMjNodeNamesReadableTest::RunTest(const FString& Parameters)
 	// And no NAMED element is left on the ordinal it was constructed with. An
 	// unnamed one has nothing better to be called than its tag, so it keeps a
 	// tag and an ordinal -- that is the schema's answer, not a naming failure.
+	//
+	// The suffix is checked for what it IS, not merely for being present: a
+	// `StartsWith(name + "_")` accepts `torso_1` as readily as `torso_geom`, so
+	// the very disambiguation this item replaced would pass the sweep that is
+	// supposed to forbid it. The only legal suffix is the element's own tag.
 	int32 Stranded = 0;
 	for (USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
 	{
@@ -158,13 +178,34 @@ bool FMjNodeNamesReadableTest::RunTest(const FString& Parameters)
 		}
 		const FString Variable = Node->GetVariableName().ToString();
 		const FString Expected = Element->MjName.GetValue();
-		if (Variable != Expected && !Variable.StartsWith(Expected + TEXT("_")))
+
+		urlab::spec::psm::ElementType Type{};
+		if (!urlab::spec::MjElementTypeOfNode(*Element, Type))
+		{
+			continue;
+		}
+		if (!ShownUnderItsOwnName(Variable, Expected, Type))
 		{
 			++Stranded;
-			AddError(FString::Printf(TEXT("element '%s' is shown as '%s'"), *Expected, *Variable));
+			AddError(FString::Printf(TEXT("element '%s' is shown as '%s', which is neither its name nor its name "
+										  "suffixed by what it is"),
+				*Expected, *Variable));
 		}
 	}
 	TestEqual(TEXT("every named element is shown under its own name"), Stranded, 0);
+
+	// The sweep's own guard. `torso_1` is exactly the shape this item removed,
+	// and the rule the sweep used to apply -- "starts with the name and an
+	// underscore" -- accepted it, so the sweep could not have caught a return to
+	// it. Fed the three cases directly, the rule has to sort them.
+	TestFalse(TEXT("an ordinal suffix is not a name"),
+		ShownUnderItsOwnName(TEXT("torso_1"), TEXT("torso"), urlab::spec::psm::ElementType::Geom));
+	TestTrue(TEXT("a type suffix is"),
+		ShownUnderItsOwnName(TEXT("torso_geom"), TEXT("torso"), urlab::spec::psm::ElementType::Geom));
+	TestTrue(TEXT("and so is the bare name"),
+		ShownUnderItsOwnName(TEXT("torso"), TEXT("torso"), urlab::spec::psm::ElementType::Body));
+	TestFalse(TEXT("another element's tag is not this element's suffix"),
+		ShownUnderItsOwnName(TEXT("torso_joint"), TEXT("torso"), urlab::spec::psm::ElementType::Geom));
 
 	// The world body specifically: it is the model's world-slot `body`, and
 	// naming it from its element type reads `body`, which is why the user

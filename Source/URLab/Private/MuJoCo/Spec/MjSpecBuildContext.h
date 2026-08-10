@@ -100,6 +100,19 @@ struct FMjSpecWriteContext
 	void* Parent = nullptr;
 
 	/**
+	 * The component the walk is on.
+	 *
+	 * Carried rather than recovered: a diagnostic wants to say which element it
+	 * is about, and the alternative -- looking the element up by spec id once
+	 * the failure is known -- asks for an id that a failed write never made. It
+	 * is set before the hooks run, so every hook has it whether or not the
+	 * thing it is reporting is the node it was handed: a tuple entry, a skin
+	 * bone and a macro's asset are all reported against themselves, and this
+	 * says what they were being written under.
+	 */
+	const UMjNodeComponent* Node = nullptr;
+
+	/**
 	 * The component that owns the current one.
 	 *
 	 * A few hooks need the siblings rather than the node: a skin's bones are
@@ -168,7 +181,13 @@ struct FMjSpecWriteContext
 	FMjModelAssets* Models = nullptr;
 
 	/**
-	 * Record a failure against a node, naming where it was authored.
+	 * Record a failure against a node, naming it and where it was authored.
+	 *
+	 * The source file and line are the reader's answer and are empty for
+	 * anything authored in the editor, which is where most of this content now
+	 * comes from; so the diagnostic leads with the component's own name and the
+	 * MJCF name it compiles under, which are what a user can select and what a
+	 * bridge client sees.
 	 *
 	 * Always returns false, so a hook can `return Ctx.Error(...)` and read as
 	 * what it is. Nothing here throws: a spec write runs over user-authored

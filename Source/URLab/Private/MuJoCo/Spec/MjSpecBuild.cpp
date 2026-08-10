@@ -100,19 +100,48 @@ TOptional<int32> AuthoredSizeNumOf(const UMjNodeComponent& Node)
 	TOptional<int32> Out;
 	gen::DispatchByType(Node, [&Out](const auto& Element)
 	{
-		if constexpr (requires { Element.Size; })
+		// A `size` the schema gives a length to. An element whose `size` is a
+		// fixed arity has nothing to count and nothing to truncate.
+		if constexpr (requires { Element.Size.IsSet(); Element.Size.GetValue().Num(); })
 		{
-			if constexpr (std::is_same_v<std::decay_t<decltype(Element.Size)>, TOptional<TArray<double>>>)
+			if (Element.Size.IsSet())
 			{
-				if (Element.Size.IsSet())
-				{
-					Out = Element.Size.GetValue().Num();
-				}
+				Out = Element.Size.GetValue().Num();
 			}
 		}
 		(void)Element;
 	});
 	return Out;
+}
+
+/**
+ * How a diagnostic says which element it is about.
+ *
+ * Both names, because they answer different questions: the component name is
+ * what the user selects in the editor, and the MJCF name is what the compiled
+ * model, the debug artefact and a bridge client all know the element by. An
+ * element the document left unnamed is carrying its transient reserved name
+ * here, which is the name that leaves the engine, so quoting it is right.
+ */
+FString IdentityOf(const UMjNodeComponent& Node)
+{
+	const FString Component = Node.GetName();
+	const FString MjName = Node.MjName.Get(FString());
+	if (MjName.IsEmpty() || MjName == Component)
+	{
+		return Component;
+	}
+	return FString::Printf(TEXT("%s '%s'"), *Component, *MjName);
+}
+
+/** The element a diagnostic is about, and what it was being written under. */
+FString DiagnosticSubject(const UMjNodeComponent& Node, const UMjNodeComponent* Walked)
+{
+	if (Walked == nullptr || Walked == &Node)
+	{
+		return IdentityOf(Node);
+	}
+	return FString::Printf(TEXT("%s under %s"), *IdentityOf(Node), *IdentityOf(*Walked));
 }
 
 /** An MJCF keyword as text. The tables are ASCII by construction. */
@@ -278,6 +307,12 @@ void FBuilder::TruncateSizesToArity()
 	// where the element authored none of it; and a shape whose tail came from
 	// its class, or a site sitting on MuJoCo's own 0.005 default, wrote nothing
 	// there and keeps what it inherited.
+	//
+	// Reported twice on purpose, to two audiences. The build's own diagnostic
+	// array is read when a build FAILS, and this does not fail one; a user who
+	// authored a size and had part of it dropped has to be told where they are
+	// looking, which is the editor's message log.
+	TArray<FMjSizeViolation> Violations;
 	for (const TPair<TObjectPtr<const UMjNodeComponent>, mjsElement*>& Entry : Result.ElementFor)
 	{
 		const UMjNodeComponent* const Node = Entry.Key.Get();
@@ -318,11 +353,22 @@ void FBuilder::TruncateSizesToArity()
 		{
 			Size[Slot] = 0.0;
 		}
-		Ctx.Warn(*Node, FString::Printf(
+		const FString Message = FString::Printf(
 			TEXT("authors %d size values where a %s reads %d; the rest decide nothing and are dropped "
 				 "before the compile"),
-			Authored.GetValue(), *KeywordOf(Type), Allowed));
+			Authored.GetValue(), *KeywordOf(Type), Allowed);
+		Ctx.Warn(*Node, Message);
+
+		FMjSizeViolation& Violation = Violations.AddDefaulted_GetRef();
+		Violation.Name = Node->MjName.Get(Node->GetName());
+		Violation.File = Node->SourceFile;
+		Violation.Line = Node->SourceLine;
+		Violation.Authored = Authored.GetValue();
+		Violation.Allowed = Allowed;
+		Violation.Message = FString::Printf(TEXT("%s: %s"), *IdentityOf(*Node), *Message);
 	}
+
+	MjReportSizeArity(Violations);
 }
 
 void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inherited)
@@ -335,6 +381,7 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 	}
 
 	FMjSpecWriteContext Local = Inherited;
+	Local.Node = &Node;
 	Local.Struct = nullptr;
 	Local.Element = nullptr;
 	Local.bChildrenConsumed = false;
@@ -581,6 +628,7 @@ FMjBuiltSpec FBuilder::Build()
 	});
 
 	FMjSpecWriteContext Top = Ctx;
+	Top.Node = Root;
 	Top.ParentNode = Root;
 	for (const FMjOrderedChild& Section : Sections)
 	{
@@ -598,6 +646,7 @@ FMjBuiltSpec FBuilder::Build()
 			// The root's body IS the world body, which the spec already has, so
 			// its children are written onto that rather than into a new one.
 			FMjSpecWriteContext World = Top;
+			World.Node = Section.Node;
 			World.ParentNode = Section.Node;
 			Result.ElementFor.Add(Section.Node, Ctx.Body->element);
 			WalkChildren(*Section.Node, World);
@@ -662,7 +711,8 @@ bool FMjSpecWriteContext::Error(const UMjNodeComponent& Node, const FString& Mes
 	if (Diagnostics != nullptr)
 	{
 		FMjSpecDiagnostic& Diagnostic = Diagnostics->AddDefaulted_GetRef();
-		Diagnostic.Message = Message;
+		Diagnostic.Message = FString::Printf(
+			TEXT("%s: %s"), *DiagnosticSubject(Node, this->Node), *Message);
 		Diagnostic.File = Node.SourceFile;
 		Diagnostic.Line = Node.SourceLine;
 	}
@@ -683,7 +733,8 @@ bool FMjSpecWriteContext::Warn(const UMjNodeComponent& Node, const FString& Mess
 	if (Diagnostics != nullptr)
 	{
 		FMjSpecDiagnostic& Diagnostic = Diagnostics->AddDefaulted_GetRef();
-		Diagnostic.Message = Message;
+		Diagnostic.Message = FString::Printf(
+			TEXT("%s: %s"), *DiagnosticSubject(Node, this->Node), *Message);
 		Diagnostic.File = Node.SourceFile;
 		Diagnostic.Line = Node.SourceLine;
 	}

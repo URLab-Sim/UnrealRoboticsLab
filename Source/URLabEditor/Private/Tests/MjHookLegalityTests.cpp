@@ -404,4 +404,60 @@ bool FMjHookLegalityClassTemplateTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// ============================================================================
+// URLab.MuJoCo.HookLegality.DiagnosticNamesTheElement
+//   Which element broke the rule, not just which rule broke. Two actuators of
+//   the same type, one legal and one not: a diagnostic that named neither, or
+//   named the type, would read identically in both fixtures and send the user
+//   looking through every actuator in the model. The source file and line stay
+//   where they were, because a model that came from a file still has them and
+//   one authored in the editor never did.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjHookLegalityNamedElementTest, "URLab.MuJoCo.HookLegality.DiagnosticNamesTheElement",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjHookLegalityNamedElementTest::RunTest(const FString& Parameters)
+{
+	using namespace MjHookLegalityTests;
+
+	FHookFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjMotor* const Driven = Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("elbow_drive"));
+	UMjMotor* const Adrift = Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("wrist_drive"));
+	if (Driven == nullptr || Adrift == nullptr)
+	{
+		AddError(TEXT("could not author the two actuators"));
+		return false;
+	}
+	Driven->Joint = FString(TEXT("elbow"));
+	// Adrift names nothing to drive, which is the rule under test.
+	Adrift->SourceFile = FString(TEXT("robot.xml"));
+	Adrift->SourceLine = 42;
+
+	const FBuildOutcome Outcome = BuildOnce(Fixture.Spec());
+	if (Outcome.bBuilt)
+	{
+		AddError(TEXT("the spec built; the transmissionless actuator was carried into the compiler"));
+		return false;
+	}
+
+	TestTrue(TEXT("the diagnostic names the offending element by its MJCF name"),
+		Outcome.Diagnostics.Contains(TEXT("wrist_drive")));
+	TestFalse(TEXT("and not its legal sibling of the same type"),
+		Outcome.Diagnostics.Contains(TEXT("elbow_drive")));
+	TestTrue(TEXT("it names the component the user selects, too"),
+		Outcome.Diagnostics.Contains(Adrift->GetName()));
+	TestTrue(TEXT("alongside the source location, which is not displaced by the names"),
+		Outcome.Diagnostics.Contains(TEXT("robot.xml(42)")));
+	TestTrue(TEXT("and still says which rule was broken"),
+		Outcome.Diagnostics.Contains(TEXT("elects no transmission")));
+
+	return !HasAnyErrors();
+}
+
 #endif // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS

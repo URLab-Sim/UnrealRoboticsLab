@@ -206,11 +206,11 @@ bool FMjAccessorsReadThePublishedSnapshot::RunTest(const FString& Parameters)
 // URLab.Runtime.AccessorsUnderStepping
 //   The reason for the snapshot: the game thread reading while the physics
 //   thread steps. Two things have to hold. Every frame a reader observes is
-//   one whole physics frame -- a jointpos sensor reads exactly the qpos it
-//   sensed, which is only true if both came out of the same step. And a reader
-//   that keeps reading keeps getting new frames: in live mode the worker
-//   publishes what a consumer asked for, and reading is the asking, so an
-//   accessor is not pinned to whichever frame the visual update last wanted.
+//   one whole physics frame -- two arrays written by one forward pass agree,
+//   and a frame never changes underneath its own id. And a reader that keeps
+//   reading keeps getting new frames: in live mode the worker publishes what a
+//   consumer asked for, and reading is the asking, so an accessor is not
+//   pinned to whichever frame the visual update last wanted.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjAccessorsUnderStepping,
 	"URLab.Runtime.AccessorsUnderStepping",
@@ -248,6 +248,12 @@ bool FMjAccessorsUnderStepping::RunTest(const FString& Parameters)
 		AddError(TEXT("the compiled model is missing one of the fixture's elements"));
 		return false;
 	}
+	const int32 TendonId = MjIdOf(S, mjOBJ_TENDON, TEXT("cable"));
+	if (TendonId < 0)
+	{
+		AddError(TEXT("the compiled model is missing the fixture's tendon"));
+		return false;
+	}
 	const int32 QposAdr = M->jnt_qposadr[JointId];
 	const int32 DofAdr = M->jnt_dofadr[JointId];
 	const int32 SensorAdr = M->sensor_adr[SensorId];
@@ -264,32 +270,62 @@ bool FMjAccessorsUnderStepping::RunTest(const FString& Parameters)
 	const double Started = FPlatformTime::Seconds();
 
 	int32 Visits = 0;
-	int32 CoherentVisits = 0;
+	int32 Revisits = 0;
+	int32 TornVisits = 0;
 	int32 DistinctFrames = 0;
 	int32 DistinctAccessorValues = 0;
 	uint64 LastFrameId = 0;
+	bool bHaveFrame = false;
+	mjtNum FrameQPos = 0.0;
+	mjtNum FrameSensor = 0.0;
+	mjtNum FrameTendon = 0.0;
 	float LastAngle = 0.0f;
 	bool bHaveAngle = false;
 
 	while (DistinctFrames < WantedFrames && (FPlatformTime::Seconds() - Started) < Budget)
 	{
 		Engine->WithRenderState([&](const FMjRenderSnapshot& Snap) {
-			if (!Snap.QPos.IsValidIndex(QposAdr) || !Snap.SensorData.IsValidIndex(SensorAdr))
+			if (!Snap.QPos.IsValidIndex(QposAdr) || !Snap.SensorData.IsValidIndex(SensorAdr)
+				|| !Snap.TenLength.IsValidIndex(TendonId))
 			{
 				return;
 			}
 			++Visits;
-			// A jointpos sensor is a copy of the qpos it sensed, so these two
-			// arrays disagree only if the frame was assembled out of two steps.
-			if (Snap.QPos[QposAdr] == Snap.SensorData[SensorAdr])
+
+			// The fixed tendon and the jointpos sensor are both written by the
+			// same forward pass off the same qpos, so with a unit coefficient
+			// they are bit-identical in any one frame -- and they come out of
+			// two different arrays of the snapshot, so a frame assembled from
+			// two steps would separate them.
+			//
+			// Not compared against qpos: MuJoCo integrates after it senses, so
+			// within one mjData the sensor is the angle from before the step's
+			// integration. That is a fact about mj_step, not incoherence.
+			if (Snap.TenLength[TendonId] != Snap.SensorData[SensorAdr])
 			{
-				++CoherentVisits;
+				++TornVisits;
 			}
-			if (Snap.FrameId != LastFrameId)
+
+			if (bHaveFrame && Snap.FrameId == LastFrameId)
 			{
-				LastFrameId = Snap.FrameId;
-				++DistinctFrames;
+				// Same frame id, so the same values: a publish that could be
+				// observed half-done would show up here as a frame changing
+				// underneath its own id.
+				++Revisits;
+				if (Snap.QPos[QposAdr] != FrameQPos || Snap.SensorData[SensorAdr] != FrameSensor
+					|| Snap.TenLength[TendonId] != FrameTendon)
+				{
+					++TornVisits;
+				}
+				return;
 			}
+
+			LastFrameId = Snap.FrameId;
+			bHaveFrame = true;
+			FrameQPos = Snap.QPos[QposAdr];
+			FrameSensor = Snap.SensorData[SensorAdr];
+			FrameTendon = Snap.TenLength[TendonId];
+			++DistinctFrames;
 		});
 
 		// The accessor surface, hammered through the same stepping. Its value
@@ -324,11 +360,13 @@ bool FMjAccessorsUnderStepping::RunTest(const FString& Parameters)
 		Engine->AsyncPhysicsFuture.Wait();
 	}
 
-	AddInfo(FString::Printf(TEXT("visits=%d frames=%d accessor values=%d"),
-		Visits, DistinctFrames, DistinctAccessorValues));
+	AddInfo(FString::Printf(TEXT("visits=%d revisits=%d frames=%d accessor values=%d"),
+		Visits, Revisits, DistinctFrames, DistinctAccessorValues));
 
 	TestTrue(TEXT("every read landed on a published frame"), Visits > 0);
-	TestEqual(TEXT("every frame read was one whole physics frame"), CoherentVisits, Visits);
+	TestEqual(TEXT("every frame read was one whole physics frame"), TornVisits, 0);
+	TestTrue(TEXT("frames were read more than once each, so the check could see a tear"),
+		Revisits > 0);
 	TestEqual(TEXT("reading kept the frames coming while the worker stepped"),
 		DistinctFrames, WantedFrames);
 	TestTrue(TEXT("the accessor tracked the stepping model"), DistinctAccessorValues > 1);

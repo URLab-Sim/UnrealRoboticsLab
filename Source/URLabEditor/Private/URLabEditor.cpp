@@ -33,6 +33,7 @@
 #include "ToolMenuEntry.h"
 #include "ToolMenuSection.h"
 #include "ToolMenuMisc.h"
+#include "MessageLogModule.h"
 
 DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "PropertyEditorModule.h"
@@ -70,6 +71,19 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 void FURLabEditorModule::StartupModule()
 {
 	FMjEditorStyle::Initialize();
+
+	// Import and generation diagnostics are routed to a listing named "URLab"
+	// (see MujocoImportFactory.cpp, MujocoGenerationAction.cpp) via
+	// FMessageLog before this call ever runs, so nothing breaks without it --
+	// but an unregistered listing renders in the Messages panel with no label,
+	// indistinguishable from every other unlabelled entry there. Registering it
+	// is what gives it the "URLab" heading and lets it be opened directly.
+	{
+		FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+		FMessageLogInitializationOptions InitOptions;
+		InitOptions.bShowPages = true;
+		MessageLogModule.RegisterLogListing(TEXT("URLab"), NSLOCTEXT("URLab", "URLabLogLabel", "URLab"), InitOptions);
+	}
 
 	// Install the bridge-server resolver so AAMjManager (URLab module) can
 	// discover the editor-time server without depending on URLabEditor.
@@ -179,6 +193,12 @@ void FURLabEditorModule::StartupModule()
 void FURLabEditorModule::ShutdownModule()
 {
 	FMjEditorStyle::Shutdown();
+
+	if (FModuleManager::Get().IsModuleLoaded("MessageLog"))
+	{
+		FMessageLogModule& MessageLogModule = FModuleManager::GetModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+		MessageLogModule.UnregisterLogListing(TEXT("URLab"));
+	}
 
 	FMjElementVisualizer::UnregisterAll();
 	FMjAddTimeLegality::UnregisterAll();

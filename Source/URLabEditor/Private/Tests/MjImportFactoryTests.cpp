@@ -486,6 +486,14 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 	// who missed the toast goes looking, and a message that never reaches the
 	// listing is invisible in exactly the case it exists for.
 	FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>(TEXT("MessageLog"));
+
+	// The listing has to be registered, not merely written to, or the panel
+	// shows it with no name -- indistinguishable from anything else that
+	// never bothered to register. The module's own query answers this without
+	// touching the (private) registry it is backed by.
+	TestTrue(TEXT("the \"URLab\" listing is registered with the message log module"),
+		MessageLogModule.IsRegisteredLogListing(TEXT("URLab")));
+
 	const TSharedRef<IMessageLogListing> Listing = MessageLogModule.GetLogListing(TEXT("URLab"));
 	Listing->ClearMessages();
 
@@ -501,6 +509,31 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 	const FString Listed = Listing->GetAllMessagesAsString();
 	TestTrue(TEXT("the failure reached the editor's message log"),
 		Listed.Contains(TEXT("Failed to read MJCF")) || Listed.Contains(TEXT("produced no spec")));
+
+	// The generation action's own dead end -- an articulation Blueprint with
+	// no XML path recorded -- used to be log-only. It now reaches the same
+	// listing, checked the same way: read back, not trusted from the call.
+	{
+		UBlueprint* Blueprint = MakeFactoryScratchBlueprint();
+		if (Blueprint == nullptr)
+		{
+			AddError(TEXT("could not create a scratch Blueprint"));
+			return false;
+		}
+		TestTrue(TEXT("a fresh scratch Blueprint has no recorded XML path"),
+			FactoryRecordedSource(Blueprint).IsEmpty());
+
+		AddExpectedErrorPlain(TEXT("No XML File Path set"), EAutomationExpectedErrorFlags::Contains, 0);
+
+		Listing->ClearMessages();
+		UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
+		TestFalse(TEXT("regenerating a Blueprint with no XML path does nothing"),
+			Generator->GenerateForSelectedBlueprint(Blueprint));
+
+		const FString GenerationListed = Listing->GetAllMessagesAsString();
+		TestTrue(TEXT("the missing-path error reached the editor's message log"),
+			GenerationListed.Contains(TEXT("No XML File Path set")));
+	}
 
 	return true;
 }

@@ -53,6 +53,17 @@ public:
 	void GenerateMuJoCoComponents();
 
 	/**
+	 * The per-Blueprint step `GenerateMuJoCoComponents` runs for each selected
+	 * asset: reject one with no recorded XML path (routed to the "URLab"
+	 * message log, since this is the only entry point that ever hits that
+	 * case), otherwise regenerate it from the path its own CDO names.
+	 *
+	 * Split out from the selection loop so it can be driven directly, without
+	 * a live Content Browser selection to satisfy `GetSelectedAssets()`.
+	 */
+	bool GenerateForSelectedBlueprint(UBlueprint* Blueprint);
+
+	/**
 	 * Replace `Blueprint`'s spec with the one in `XmlPath`, assets and all.
 	 *
 	 * Replace, not merge: whatever spec the Blueprint already held is taken

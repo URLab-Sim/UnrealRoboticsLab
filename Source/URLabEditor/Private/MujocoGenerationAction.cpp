@@ -261,27 +261,37 @@ UMujocoGenerationAction::UMujocoGenerationAction()
 	SupportedClasses.Add(UBlueprint::StaticClass());
 }
 
+bool UMujocoGenerationAction::GenerateForSelectedBlueprint(UBlueprint* Blueprint)
+{
+	if (Blueprint == nullptr || Blueprint->GeneratedClass == nullptr
+		|| !Blueprint->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
+	{
+		return false;
+	}
+
+	const AMjArticulation* Cdo = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject());
+	if (Cdo == nullptr || Cdo->MuJoCoXMLFile.FilePath.IsEmpty())
+	{
+		UE_LOG(LogURLabEditor, Error, TEXT("No XML File Path set in Blueprint Defaults for %s"), *Blueprint->GetName());
+		FMessageLog MessageLog(MjMessageLogName);
+		MessageLog.Error(FText::Format(
+			NSLOCTEXT("URLab", "NoXmlPath", "No XML File Path set in Blueprint Defaults for {0}"),
+			FText::FromString(Blueprint->GetName())));
+		MessageLog.Notify(NSLOCTEXT("URLab", "NoXmlPathToast", "MuJoCo Blueprint has no XML file path set"),
+			EMessageSeverity::Error, /*bForce=*/true);
+		return false;
+	}
+
+	return GenerateForBlueprint(Blueprint, Cdo->MuJoCoXMLFile.FilePath);
+}
+
 void UMujocoGenerationAction::GenerateMuJoCoComponents()
 {
 	UE_LOG(LogURLabEditor, Log, TEXT("Generating MuJoCo model components"));
 
 	for (UObject* Asset : UEditorUtilityLibrary::GetSelectedAssets())
 	{
-		UBlueprint* Blueprint = Cast<UBlueprint>(Asset);
-		if (Blueprint == nullptr || Blueprint->GeneratedClass == nullptr
-			|| !Blueprint->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
-		{
-			continue;
-		}
-
-		const AMjArticulation* Cdo = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject());
-		if (Cdo == nullptr || Cdo->MuJoCoXMLFile.FilePath.IsEmpty())
-		{
-			UE_LOG(LogURLabEditor, Error, TEXT("No XML File Path set in Blueprint Defaults for %s"), *Blueprint->GetName());
-			continue;
-		}
-
-		GenerateForBlueprint(Blueprint, Cdo->MuJoCoXMLFile.FilePath);
+		GenerateForSelectedBlueprint(Cast<UBlueprint>(Asset));
 	}
 }
 

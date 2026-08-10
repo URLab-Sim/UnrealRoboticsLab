@@ -8,25 +8,13 @@
 
 #include "MjElementVisualizers.h"
 
-#include "Editor.h"
 #include "Editor/UnrealEdEngine.h"
-#include "Engine/Blueprint.h"
-#include "Engine/SCS_Node.h"
-#include "Engine/SimpleConstructionScript.h"
-#include "Framework/Application/SlateApplication.h"
-#include "Framework/Notifications/NotificationManager.h"
 #include "Misc/CoreDelegates.h"
 #include "PrimitiveDrawInterface.h"
 #include "PrimitiveDrawingUtils.h"
 #include "SceneManagement.h"
-#include "TimerManager.h"
-#include "UObject/UObjectGlobals.h"
 #include "UnrealEdGlobals.h"
-#include "Widgets/Notifications/SNotificationList.h"
 
-#include "URLabEditorLogging.h"
-
-#include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Spec/MjGenHooks.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 
@@ -488,113 +476,6 @@ void DrawMarker(const USceneComponent& Element, FPrimitiveDrawInterface* PDI)
 		SDPG_Foreground);
 }
 
-// --- Add-time legality ------------------------------------------------- //
-
-/** The handle module shutdown removes, so a hot reload cannot double-register. */
-FDelegateHandle ObjectModifiedHandle;
-
-/**
- * Components already reported, so a warning is a transition and not a per-edit
- * repeat. Weak, because a component the user deleted must not keep the entry
- * alive, and the entry going stale is exactly the right behaviour: adding the
- * same illegal child again is a new mistake and deserves the warning again.
- */
-TSet<TWeakObjectPtr<const UMjNodeComponent>> ReportedIllegal;
-
-/** Say it where the user is looking, as well as in the log. */
-void ReportIllegalPlacement(const UMjNodeComponent& Child, const UMjNodeComponent& Parent,
-	psm::ElementType ChildType, psm::ElementType ParentType)
-{
-	const FString Message = FString::Printf(
-		TEXT("<%s> is not a legal child of <%s>: '%s' will be dropped when the model compiles"),
-		gen::TagForElement(ChildType), gen::TagForElement(ParentType), *Child.GetName());
-
-	UE_LOG(LogURLabEditor, Warning, TEXT("%s (parent '%s')"), *Message, *Parent.GetName());
-
-	if (FSlateApplication::IsInitialized())
-	{
-		FNotificationInfo Info(FText::FromString(Message));
-		Info.ExpireDuration = 6.0f;
-		if (const TSharedPtr<SNotificationItem> Item = FSlateNotificationManager::Get().AddNotification(Info))
-		{
-			Item->SetCompletionState(SNotificationItem::CS_Fail);
-		}
-	}
-}
-
-/** Check every parent/child pair in `SCS` against the schema's child slots. */
-void CheckLegality(USimpleConstructionScript& SCS)
-{
-	for (USCS_Node* Node : SCS.GetAllNodes())
-	{
-		const UMjNodeComponent* const Child =
-			Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
-		if (Child == nullptr)
-		{
-			continue;
-		}
-
-		USCS_Node* const ParentNode = SCS.FindParentNode(Node);
-		const UMjNodeComponent* const Parent =
-			ParentNode != nullptr ? Cast<UMjNodeComponent>(ParentNode->ComponentTemplate) : nullptr;
-		if (Parent == nullptr)
-		{
-			// An organisational folder or the actor root: not an element, so the
-			// schema has nothing to say about the pair. The import pass owns
-			// where those go.
-			continue;
-		}
-
-		psm::ElementType ChildType{};
-		psm::ElementType ParentType{};
-		if (!MjElementTypeOfNode(*Child, ChildType) || !MjElementTypeOfNode(*Parent, ParentType))
-		{
-			continue;
-		}
-
-		if (gen::SlotFor(ParentType, ChildType) >= 0)
-		{
-			ReportedIllegal.Remove(Child);
-			continue;
-		}
-		if (ReportedIllegal.Contains(Child))
-		{
-			continue;
-		}
-		ReportedIllegal.Add(Child);
-		ReportIllegalPlacement(*Child, *Parent, ChildType, ParentType);
-	}
-}
-
-void OnObjectModified(UObject* Object)
-{
-	USimpleConstructionScript* const SCS = Cast<USimpleConstructionScript>(Object);
-	if (SCS == nullptr)
-	{
-		return;
-	}
-	const UBlueprint* const Blueprint = SCS->GetBlueprint();
-	if (Blueprint == nullptr || Blueprint->GeneratedClass == nullptr
-		|| !Blueprint->GeneratedClass->IsChildOf(AMjArticulation::StaticClass()))
-	{
-		return;
-	}
-
-	// Next tick, because the notification fires while the tree is mid-edit: the
-	// node the user just dropped may not have been parented yet, and judging it
-	// then would report every add as illegal exactly once.
-	TWeakObjectPtr<USimpleConstructionScript> Weak = SCS;
-	if (GEditor != nullptr)
-	{
-		GEditor->GetTimerManager()->SetTimerForNextTick([Weak]() {
-			if (USimpleConstructionScript* const Live = Weak.Get())
-			{
-				CheckLegality(*Live);
-			}
-		});
-	}
-}
-
 #endif  // URLAB_MJ_GEN
 
 }  // namespace
@@ -730,7 +611,14 @@ void FMjElementVisualizer::RegisterAll()
 		}
 		return;
 	}
-	PostEngineInitHandle.Reset();
+	// Removed, not merely forgotten: the binding is what brought us here, and
+	// dropping the handle on its own leaves a static delegate pointing into this
+	// module for the rest of the process, which a hot reload then calls.
+	if (PostEngineInitHandle.IsValid())
+	{
+		FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
+		PostEngineInitHandle.Reset();
+	}
 	// One registration for every element class. UnrealEd resolves a visualizer
 	// by walking up the component's class chain, so registering the base covers
 	// all 145 generated classes and the hand subclasses over them -- and a new
@@ -752,24 +640,3 @@ void FMjElementVisualizer::UnregisterAll()
 	}
 }
 
-void FMjAddTimeLegality::RegisterAll()
-{
-#if URLAB_MJ_GEN
-	if (!ObjectModifiedHandle.IsValid())
-	{
-		ObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddStatic(&OnObjectModified);
-	}
-#endif
-}
-
-void FMjAddTimeLegality::UnregisterAll()
-{
-#if URLAB_MJ_GEN
-	if (ObjectModifiedHandle.IsValid())
-	{
-		FCoreUObjectDelegates::OnObjectModified.Remove(ObjectModifiedHandle);
-		ObjectModifiedHandle.Reset();
-	}
-	ReportedIllegal.Empty();
-#endif
-}

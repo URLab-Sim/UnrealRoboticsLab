@@ -120,23 +120,3 @@ private:
 	 */
 	static FDelegateHandle PostEngineInitHandle;
 };
-
-/**
- * The add-time legality warning.
- *
- * MuJoCo's schema says which children an element admits, and a component
- * dropped somewhere it is not admitted does not fail when it is dropped: it
- * fails at compile, in play, as a message about an element the user placed
- * minutes earlier. This watches the Blueprint's construction script and says so
- * at the moment of the drop instead.
- *
- * It deliberately does NOT filter the Add Component picker. A filter that is
- * wrong hides a legal child with no way to find out why, which is a worse
- * failure than accepting the drop and explaining it.
- */
-class FMjAddTimeLegality
-{
-public:
-	static void RegisterAll();
-	static void UnregisterAll();
-};

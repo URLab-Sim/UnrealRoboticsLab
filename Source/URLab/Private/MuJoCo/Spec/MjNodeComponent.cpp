@@ -28,6 +28,10 @@ THIRD_PARTY_INCLUDES_START
 THIRD_PARTY_INCLUDES_END
 #endif
 
+#if WITH_EDITOR
+#include "Logging/MessageLog.h"
+#endif
+
 namespace
 {
 /**
@@ -98,6 +102,13 @@ void UMjNodeComponent::OnRegister()
 {
 	Super::OnRegister();
 	SyncPreviewUnderOneScope();
+#if WITH_EDITOR
+	// Both ways of adding an element arrive here: the components panel of a
+	// placed actor registers what it creates, and a Blueprint's construction
+	// script registers the preview actor's copy of every template. The rule is
+	// the schema's and there is one of it, so there is one place that applies it.
+	CheckPlacementLegality();
+#endif
 }
 
 void UMjNodeComponent::SyncPreviewUnderOneScope()
@@ -1199,8 +1210,76 @@ void RefreshSpecReferenceDiagnostics(const FSpecRef& Spec)
 	}
 	urlab::spec::MjNoteDanglingReferences<urlab::spec::FMjInstanceAdapter>(*Root);
 }
+
+/**
+ * Elements already reported, by identity rather than by object.
+ *
+ * A component is not the same object from one Blueprint reconstruct to the
+ * next, and a rule broken once should be said once -- not on every recompile for
+ * the rest of the session. `Serial` survives a reconstruct and a genuinely new
+ * element mints a fresh one, so it separates "this again" from "another one".
+ *
+ * Cleared for an element whose placement becomes legal, because putting the same
+ * element somewhere illegal a second time is a new mistake.
+ */
+TSet<uint64> GReportedIllegalPlacement;
 #endif  // URLAB_MJ_GEN
 }  // namespace
+
+void UMjNodeComponent::CheckPlacementLegality()
+{
+#if URLAB_MJ_GEN
+	PlacementProblems.Reset();
+
+	// A class default object is not placed anywhere, and a template is not
+	// registered at all; both reach here only through some other path.
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+
+	const UMjNodeComponent* const Parent = Cast<UMjNodeComponent>(GetAttachParent());
+	if (Parent == nullptr)
+	{
+		// An organisational folder or the actor root: not an element, so the
+		// schema has nothing to say about the pair. The import pass owns where
+		// those go.
+		return;
+	}
+
+	psm::ElementType ChildType{};
+	psm::ElementType ParentType{};
+	if (!urlab::spec::MjElementTypeOfNode(*this, ChildType)
+		|| !urlab::spec::MjElementTypeOfNode(*Parent, ParentType))
+	{
+		return;
+	}
+
+	if (urlab::spec::gen::SlotFor(ParentType, ChildType) >= 0)
+	{
+		GReportedIllegalPlacement.Remove(Serial);
+		return;
+	}
+
+	const FString Message = FString::Printf(
+		TEXT("<%s> is not a legal child of <%s>: it will be dropped when the model compiles"),
+		urlab::spec::gen::TagForElement(ChildType), urlab::spec::gen::TagForElement(ParentType));
+	PlacementProblems.Add(Message);
+
+	// The row above is the persistent surface and is rewritten every time. The
+	// two logs are a transition: said when the element becomes illegally placed,
+	// not once per registration for the rest of the session.
+	if (GReportedIllegalPlacement.Contains(Serial))
+	{
+		return;
+	}
+	GReportedIllegalPlacement.Add(Serial);
+
+	const FString Line = FString::Printf(TEXT("%s: %s"), *MjName.Get(GetName()), *Message);
+	UE_LOG(LogURLab, Warning, TEXT("%s (parent '%s')"), *Line, *Parent->MjName.Get(Parent->GetName()));
+	FMessageLog(TEXT("URLab")).Warning(FText::FromString(Line));
+#endif  // URLAB_MJ_GEN
+}
 
 void UMjNodeComponent::PostEditComponentMove(bool bFinished)
 {

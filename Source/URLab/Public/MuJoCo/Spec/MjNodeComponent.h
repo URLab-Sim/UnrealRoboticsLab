@@ -169,6 +169,22 @@ public:
 	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Transient, Category = "MuJoCo|Diagnostics")
 	TArray<FString> DanglingReferences;
 
+	/**
+	 * Why the schema cannot keep this element where it has been put.
+	 *
+	 * MJCF says which elements may contain which, and a component parented
+	 * against that is not an error the user gets told about at the time: the
+	 * element is simply absent from the compiled model, and the model still
+	 * compiles. Recorded on the element itself, the same surface and for the same
+	 * reason as `DanglingReferences` -- a transient toast is gone before the user
+	 * has finished adding the next one.
+	 *
+	 * Re-derived on every registration, so moving the element somewhere legal
+	 * clears it.
+	 */
+	UPROPERTY(VisibleAnywhere, AdvancedDisplay, Transient, Category = "MuJoCo|Diagnostics")
+	TArray<FString> PlacementProblems;
+
 	// --- Runtime binding --------------------------------------------------- //
 
 	/** Record an id resolved elsewhere (the engine's one pass over the binding). */
@@ -356,6 +372,19 @@ public:
 	 * sync: a template receives gizmo moves and so needs the baseline too.
 	 */
 	virtual void OnRegister() override;
+
+#if WITH_EDITOR
+	/**
+	 * Judge this element's parentage against the schema's child slots.
+	 *
+	 * Fills `PlacementProblems`, and says so once in the message log and the run
+	 * log for each element that becomes illegally placed. On `OnRegister`, which
+	 * is the one moment BOTH ways of adding a component reach: the components
+	 * panel of a placed actor and the Blueprint's construction script, whose
+	 * templates reach it through the preview actor built from them.
+	 */
+	void CheckPlacementLegality();
+#endif
 
 #if WITH_EDITOR
 	/**

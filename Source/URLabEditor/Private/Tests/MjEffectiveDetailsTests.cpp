@@ -151,22 +151,41 @@ bool FMjEffectiveDetailsNamesTheClassThatSuppliedTheValue::RunTest(const FString
 		return false;
 	}
 
-	FString Text;
-	FString ClassName;
+	FMjEffectiveValue Resolved;
 	TestTrue(TEXT("size resolves through the class chain"),
-		FMjEffectiveDetails::ResolveInherited(*Geom, *Size, Text, ClassName));
-	TestEqual(TEXT("named the class that authored it"), ClassName, FString(TEXT("visual")));
-	TestTrue(FString::Printf(TEXT("the value reads as the authored one, got '%s'"), *Text),
-		Text.Contains(TEXT("0.3")));
+		FMjEffectiveDetails::ResolveInherited(*Geom, *Size, Resolved));
+	TestTrue(TEXT("the class is what supplied it"), Resolved.Source == EMjValueSource::Class);
+	TestEqual(TEXT("named the class that authored it"), Resolved.ClassName, FString(TEXT("visual")));
+	TestTrue(FString::Printf(TEXT("the value reads as the authored one, got '%s'"), *Resolved.Text),
+		Resolved.Text.Contains(TEXT("0.3")));
+	TestEqual(TEXT("and the row names the class beside the value"),
+		FMjEffectiveDetails::DescribeValue(Resolved).ToString(), Resolved.Text + TEXT("  (from visual)"));
 
-	// An attribute nobody authored anywhere has nothing to report, and saying
-	// so is what keeps every other row clean.
+	// An attribute no class mentions still has a value: MuJoCo's own. That layer
+	// is the whole of this item -- without it the panel showed a bare Set button
+	// on nearly every row, because a document's `<default>` classes speak for a
+	// handful of attributes and the schema speaks for the rest. `condim` is one
+	// nothing in this document mentions.
+	if (const FOptionalProperty* const Condim = OptionalNamed(*Geom, TEXT("Condim")))
+	{
+		FMjEffectiveValue Schema;
+		TestTrue(TEXT("an attribute no class mentions falls to MuJoCo's own value"),
+			FMjEffectiveDetails::ResolveInherited(*Geom, *Condim, Schema));
+		TestTrue(TEXT("and says so: the schema supplied it, not a class"),
+			Schema.Source == EMjValueSource::Schema);
+		TestEqual(TEXT("the value is MuJoCo's own condim"), Schema.Text, FString(TEXT("3")));
+		TestEqual(TEXT("the row reads it as a default rather than as a class"),
+			FMjEffectiveDetails::DescribeValue(Schema).ToString(), FString(TEXT("3  (default)")));
+	}
+
+	// And an attribute the SCHEMA leaves open too has nothing to report: a geom's
+	// `margin` has no `=` default, so the honest row is still a blank. This is
+	// what keeps the layer from turning every row into a confident number.
 	if (const FOptionalProperty* const Margin = OptionalNamed(*Geom, TEXT("Margin")))
 	{
-		FString Unused;
-		FString UnusedClass;
-		TestFalse(TEXT("an attribute no layer authored reports nothing"),
-			FMjEffectiveDetails::ResolveInherited(*Geom, *Margin, Unused, UnusedClass));
+		FMjEffectiveValue Unresolved;
+		TestFalse(TEXT("an attribute no layer supplies at all reports nothing"),
+			FMjEffectiveDetails::ResolveInherited(*Geom, *Margin, Unresolved));
 	}
 	return true;
 }
@@ -211,9 +230,8 @@ bool FMjEffectiveDetailsBuildsOneContextPerRefresh::RunTest(const FString& Param
 		FMjEffectiveScope Scope(*Geom);
 		for (const FOptionalProperty* const Property : Asked)
 		{
-			FString Text;
-			FString ClassName;
-			FMjEffectiveDetails::ResolveInherited(*Geom, *Property, Text, ClassName);
+			FMjEffectiveValue Resolved;
+			FMjEffectiveDetails::ResolveInherited(*Geom, *Property, Resolved);
 		}
 	}
 	const int64 Built = MjEffectiveContextBuilds() - Before;

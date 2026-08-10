@@ -32,6 +32,33 @@
 class FOptionalProperty;
 class UMjNodeComponent;
 
+/** Which layer supplied an attribute the element itself leaves unset. */
+enum class EMjValueSource : uint8
+{
+	/** None did, not even the schema: there is nothing to put on the row. */
+	None,
+
+	/** A `<default>` class in the document, which the user can go and edit. */
+	Class,
+
+	/** MuJoCo's own value for the attribute. No document mentions it. */
+	Schema,
+};
+
+/** One attribute's effective value, and where it came from. */
+struct FMjEffectiveValue
+{
+	/** The value as the property system formats it. */
+	FString Text;
+
+	/** The `<default>` class, when `Source` is `Class`. "main" for the root one. */
+	FString ClassName;
+
+	EMjValueSource Source = EMjValueSource::None;
+
+	bool IsSet() const { return Source != EMjValueSource::None; }
+};
+
 /** The inherited-value rows, for every MuJoCo element. */
 class FMjEffectiveDetails : public IDetailCustomization
 {
@@ -42,21 +69,23 @@ public:
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
 
 	/**
-	 * What `Node` would get for `Optional` if it authored nothing.
+	 * What the compiler will use for `Optional` when `Node` authors nothing.
 	 *
-	 * The nearest layer above the element that authored the attribute, as the
-	 * formatted value and the name of the `<default>` class that supplied it
-	 * ("main" for the root default, empty when the layer is not a class at all).
-	 * False when no layer authored it, which is the ordinary case: most
-	 * attributes are inherited from nowhere and fall to the schema default.
+	 * The nearest layer above the element that supplies the attribute, resolved
+	 * through the layering `ps::sdk::EffectiveField` applies: the `<default>`
+	 * class chain from nearest to furthest, and then MuJoCo's own value for the
+	 * attribute. False only when NO layer supplies it -- an attribute the schema
+	 * itself leaves open, like a geom's `size`, where the honest row is a blank.
 	 *
 	 * The row builder's own question, exposed because it is the answer worth
 	 * asserting: a display string is checkable where a Slate widget is not.
 	 * Join an `FMjEffectiveScope` around a batch of calls -- see the
 	 * customization -- or each one indexes the spec for itself.
 	 */
-	static bool ResolveInherited(UMjNodeComponent& Node, const FOptionalProperty& Optional,
-		FString& OutText, FString& OutClassName);
+	static bool ResolveInherited(UMjNodeComponent& Node, const FOptionalProperty& Optional, FMjEffectiveValue& Out);
+
+	/** How the row spells `Value` beside the widget, source and all. */
+	static FText DescribeValue(const FMjEffectiveValue& Value);
 
 	static void RegisterAll();
 	static void UnregisterAll();

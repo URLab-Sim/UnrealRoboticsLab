@@ -95,16 +95,15 @@ bool EffectiveShapeName(UMjNodeComponent& Node, EMjGeomType& OutType)
 	{
 		return false;
 	}
-	FString Text;
-	FString ClassName;
-	if (!FMjEffectiveDetails::ResolveInherited(Node, *Property, Text, ClassName))
+	FMjEffectiveValue Resolved;
+	if (!FMjEffectiveDetails::ResolveInherited(Node, *Property, Resolved))
 	{
 		// MuJoCo's own default for both families.
 		OutType = EMjGeomType::sphere;
 		return true;
 	}
 	const UEnum* const Enum = StaticEnum<EMjGeomType>();
-	const int64 Value = Enum != nullptr ? Enum->GetValueByNameString(Text) : INDEX_NONE;
+	const int64 Value = Enum != nullptr ? Enum->GetValueByNameString(Resolved.Text) : INDEX_NONE;
 	if (Value == INDEX_NONE)
 	{
 		return false;

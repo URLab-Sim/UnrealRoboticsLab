@@ -10,14 +10,38 @@
 
 #if URLAB_MJ_GEN
 
+#include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
+#include "MuJoCo/Gen/MjDispatch.gen.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+
 #include <atomic>
+#include <type_traits>
 
 namespace urlab::spec
 {
 namespace
 {
 std::atomic<int64> GContextBuilds{0};
+
+/**
+ * The class a `<default>` partial belongs to, as MuJoCo names it.
+ *
+ * Empty when the layer is not a partial at all, which is how the element's own
+ * storage and the schema prototype are told from a class.
+ */
+template <class P>
+FString ClassNameOf(const UMjNodeComponent& Layer)
+{
+	UMjNodeComponent* const Parent = P::Tree::ParentOf(Layer);
+	if (Parent == nullptr || Cast<UMjDefault>(Parent) == nullptr)
+	{
+		return FString();
+	}
+	// MuJoCo's own name for the root `<default>`, which authors no class name
+	// because everything inherits from it.
+	return Parent->MjName.Get(TEXT("main"));
 }
+}  // namespace
 
 // Editor and game thread both re-derive presentation, never at the same time and
 // never across a suspension point, so the open scope is a plain pointer rather
@@ -33,6 +57,32 @@ int64 MjEffectiveContextBuilds()
 void MjNoteEffectiveContextBuilt()
 {
 	GContextBuilds.fetch_add(1, std::memory_order_relaxed);
+}
+
+void MjEffectiveLayersOf(const UMjNodeComponent& Node, TArray<FMjEffectiveLayer>& Out)
+{
+	Out.Reset();
+	WithEffectiveDoc(Node, [&Out, &Node](auto& Effective) {
+		using P = typename std::decay_t<decltype(Effective)>::ProfileType;
+		gen::DispatchByType(const_cast<UMjNodeComponent&>(Node), [&Out, &Effective](auto& Element) {
+			// The schema layer is a shared prototype rather than a node of the
+			// document: it is recognised by being that object, and never asked
+			// which class it belongs to, because it belongs to none.
+			const UMjNodeComponent* const Schema =
+				&static_cast<const UMjNodeComponent&>(Effective.SchemaDefaultsOf(Element));
+
+			Effective.ForEachEffectiveLayer(Element, [&Out, Schema](const auto& Layer) {
+				const UMjNodeComponent& LayerNode = static_cast<const UMjNodeComponent&>(Layer);
+				FMjEffectiveLayer& Row = Out.AddDefaulted_GetRef();
+				Row.Node = &LayerNode;
+				Row.bSchema = &LayerNode == Schema;
+				Row.ClassName = Row.bSchema ? FString() : ClassNameOf<P>(LayerNode);
+				// Never stops: the caller is collecting the layers, not asking
+				// one of them a question.
+				return false;
+			});
+		});
+	});
 }
 
 }  // namespace urlab::spec

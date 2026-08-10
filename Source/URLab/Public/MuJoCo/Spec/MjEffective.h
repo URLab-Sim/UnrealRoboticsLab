@@ -56,6 +56,42 @@ namespace urlab::spec
 URLAB_API int64 MjEffectiveContextBuilds();
 URLAB_API void MjNoteEffectiveContextBuilt();
 
+/** One layer that decides an element's attributes, and where it came from. */
+struct FMjEffectiveLayer
+{
+	/**
+	 * The storage to read the attribute out of.
+	 *
+	 * A node of the document -- the element itself or a `<default>` partial --
+	 * except for the schema layer, which is a shared prototype owned by the
+	 * generated profile and never part of any document.
+	 */
+	const UMjNodeComponent* Node = nullptr;
+
+	/** The `<default>` class this layer is, or empty when it is not one. */
+	FString ClassName;
+
+	/** True for the schema layer: MuJoCo's own value, which no document authored. */
+	bool bSchema = false;
+};
+
+/**
+ * The layers deciding `Node`'s attributes, in the order the compiler resolves.
+ *
+ * The element itself, then its `<default>` class chain from nearest to
+ * furthest, then the schema's own values -- `ps::sdk::EffectiveField`'s layer
+ * order, walked once. A caller reads whichever attribute it is after out of the
+ * first layer that has it.
+ *
+ * Exported because it is a whole-spec question with a per-element answer, and
+ * the panel that asks it lives in the editor module while the layer order is a
+ * fact about the schema. Joins an open `FMjEffectiveScope`, so a pass over many
+ * elements batches into one index.
+ *
+ * The pointers are into the spec: valid until the next tree mutation.
+ */
+URLAB_API void MjEffectiveLayersOf(const UMjNodeComponent& Node, TArray<FMjEffectiveLayer>& Out);
+
 /**
  * The layers that decide one element's attributes, in priority order.
  *
@@ -101,6 +137,44 @@ public:
 				}
 			}
 		}
+	}
+
+	/**
+	 * The same walk, ending where the compiler's own merge ends.
+	 *
+	 * `ps::sdk::EffectiveField` (classes.h) resolves a field through element,
+	 * class chain and then `P::Defaults<T>()`, and that last layer is the one a
+	 * class chain never supplies: MuJoCo's own value for an attribute no
+	 * `<default>` in the document mentions, which is most attributes of most
+	 * elements. A caller that has to answer "what will the compiler use" rather
+	 * than "what did some class say" wants this walk.
+	 *
+	 * It is the SAME walk with one more layer, not a second pass beside it, so
+	 * the two cannot come to different answers about the class chain.
+	 *
+	 * `SchemaDefaultsOf` is how a caller tells that last layer apart: the layer
+	 * it is handed is that exact object, so an identity test says "this came from
+	 * the schema, not from a class the user can go and edit".
+	 */
+	template <class T, class Fn>
+	void ForEachEffectiveLayer(const T& Element, Fn&& Function) const
+	{
+		bool bAccepted = false;
+		ForEachLayer(Element, [&bAccepted, &Function](const auto& Layer) {
+			bAccepted = Function(Layer);
+			return bAccepted;
+		});
+		if (!bAccepted)
+		{
+			Function(SchemaDefaultsOf(Element));
+		}
+	}
+
+	/** The schema's own values for `Element`'s family, as one shared layer. */
+	template <class T>
+	static const T& SchemaDefaultsOf(const T&)
+	{
+		return P::template Defaults<T>();
 	}
 
 private:

@@ -22,7 +22,6 @@
 #include "PropertyHandle.h"
 #include "ScopedTransaction.h"
 #include "Styling/SlateColor.h"
-#include <type_traits>
 #include "UObject/PropertyOptional.h"
 #include "UObject/UnrealType.h"
 #include "Widgets/Input/SButton.h"
@@ -34,8 +33,6 @@
 
 #if URLAB_MJ_GEN
 
-#include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
-#include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjEffective.h"
 
 #endif  // URLAB_MJ_GEN
@@ -63,29 +60,8 @@ bool IsInheritable(const FProperty& Property)
 	return Name != GET_MEMBER_NAME_CHECKED(UMjNodeComponent, MjName) && Name != FName(TEXT("Dclass"));
 }
 
-/** The class a `<default>` partial belongs to, as MuJoCo names it. */
-template <class P>
-FString ClassNameOf(const UMjNodeComponent& Layer)
-{
-	UMjNodeComponent* const Parent = P::Tree::ParentOf(Layer);
-	if (Parent == nullptr || Cast<UMjDefault>(Parent) == nullptr)
-	{
-		return FString();
-	}
-	// MuJoCo's own name for the root `<default>`, which authors no class name
-	// because everything inherits from it.
-	return Parent->MjName.Get(TEXT("main"));
-}
-
-/** What an element would inherit for one attribute, and from which class. */
-struct FInheritedValue
-{
-	FString Text;
-	FString ClassName;
-};
-
 /**
- * Everything `Node` inherits, in ONE walk of its class chain.
+ * Everything `Node` inherits, in ONE walk of its layers.
  *
  * The panel asks this question of about thirty attributes, and asking it thirty
  * times means dispatching the element's type thirty times and walking its
@@ -94,52 +70,51 @@ struct FInheritedValue
  * walked once and every attribute is read from each layer as it passes.
  *
  * Nearest layer wins, which is what the compiler's merge does: an attribute
- * already answered by a nearer layer is not overwritten by a further one.
+ * already answered by a nearer layer is not overwritten by a further one. The
+ * walk is `ForEachEffectiveLayer`, so the last layer offered is the schema's own
+ * -- MuJoCo's value for an attribute no `<default>` in the document mentions,
+ * which is most attributes of most elements, and the reason a panel that
+ * consulted only the class chain showed a bare Set button on nearly every row.
  */
 void CollectInherited(UMjNodeComponent& Node, const TArray<FOptionalProperty*>& Wanted,
-	TMap<FName, FInheritedValue>& Out)
+	TMap<FName, FMjEffectiveValue>& Out)
 {
-	WithEffectiveDoc(Node, [&](auto& Effective) {
-		using P = typename std::decay_t<decltype(Effective)>::ProfileType;
-		gen::DispatchByType(Node, [&](auto& Element) {
-			Effective.ForEachLayer(Element, [&](const auto& Layer) {
-				const UMjNodeComponent& LayerNode = static_cast<const UMjNodeComponent&>(Layer);
-				// The element itself is the first layer, and the question is
-				// what it would inherit, not what it authored.
-				if (&LayerNode == &Node)
-				{
-					return false;
-				}
-				const FString ClassName = ClassNameOf<P>(LayerNode);
-				for (FOptionalProperty* const Optional : Wanted)
-				{
-					if (Out.Contains(Optional->GetFName()))
-					{
-						continue;
-					}
-					// A hand subclass may declare properties the generated
-					// partial has never heard of. None of those are spec
-					// attributes, but asking is cheaper than assuming.
-					if (!LayerNode.GetClass()->IsChildOf(Optional->GetOwnerClass()))
-					{
-						continue;
-					}
-					const void* const Container = Optional->ContainerPtrToValuePtr<void>(&LayerNode);
-					if (Container == nullptr || !Optional->IsSet(Container))
-					{
-						continue;
-					}
-					FInheritedValue& Value = Out.Add(Optional->GetFName());
-					Optional->GetValueProperty()->ExportTextItem_Direct(Value.Text,
-						Optional->GetValuePointerForRead(Container), nullptr, nullptr, PPF_None);
-					Value.ClassName = ClassName;
-				}
-				// Never stops: the question is what every attribute inherits,
-				// not what any one of them does.
-				return false;
-			});
-		});
-	});
+	TArray<FMjEffectiveLayer> Layers;
+	MjEffectiveLayersOf(Node, Layers);
+
+	for (const FMjEffectiveLayer& Layer : Layers)
+	{
+		// The element itself is the first layer, and the question is what it
+		// would inherit, not what it authored.
+		if (Layer.Node == nullptr || Layer.Node == &Node)
+		{
+			continue;
+		}
+		for (FOptionalProperty* const Optional : Wanted)
+		{
+			if (Out.Contains(Optional->GetFName()))
+			{
+				continue;
+			}
+			// A hand subclass may declare properties the generated partial has
+			// never heard of. None of those are spec attributes, but asking is
+			// cheaper than assuming.
+			if (!Layer.Node->GetClass()->IsChildOf(Optional->GetOwnerClass()))
+			{
+				continue;
+			}
+			const void* const Container = Optional->ContainerPtrToValuePtr<void>(Layer.Node);
+			if (Container == nullptr || !Optional->IsSet(Container))
+			{
+				continue;
+			}
+			FMjEffectiveValue& Value = Out.Add(Optional->GetFName());
+			Optional->GetValueProperty()->ExportTextItem_Direct(
+				Value.Text, Optional->GetValuePointerForRead(Container), nullptr, nullptr, PPF_None);
+			Value.ClassName = Layer.ClassName;
+			Value.Source = Layer.bSchema ? EMjValueSource::Schema : EMjValueSource::Class;
+		}
+	}
 }
 
 /**
@@ -219,50 +194,46 @@ TSharedRef<IDetailCustomization> FMjEffectiveDetails::MakeInstance()
 	return MakeShareable(new FMjEffectiveDetails);
 }
 
-bool FMjEffectiveDetails::ResolveInherited(UMjNodeComponent& Node, const FOptionalProperty& Optional,
-	FString& OutText, FString& OutClassName)
+bool FMjEffectiveDetails::ResolveInherited(
+	UMjNodeComponent& Node, const FOptionalProperty& Optional, FMjEffectiveValue& Out)
 {
-	OutText.Reset();
-	OutClassName.Reset();
+	Out = FMjEffectiveValue();
 #if URLAB_MJ_GEN
-	using namespace urlab::spec;
+	// The row builder's own collector, asked about one attribute. A second walk
+	// written for the single-attribute question is a second answer that can
+	// disagree with the rows, which is the class of bug this file keeps finding.
+	TArray<FOptionalProperty*> Wanted;
+	Wanted.Add(const_cast<FOptionalProperty*>(&Optional));
 
-	bool bFound = false;
-	WithEffectiveDoc(Node, [&](auto& Effective) {
-		using P = typename std::decay_t<decltype(Effective)>::ProfileType;
-		gen::DispatchByType(Node, [&](auto& Element) {
-			Effective.ForEachLayer(Element, [&](const auto& Layer) {
-				const UMjNodeComponent& LayerNode = static_cast<const UMjNodeComponent&>(Layer);
-				// The element itself is the first layer, and the question is
-				// what it would inherit, not what it authored.
-				if (&LayerNode == &Node)
-				{
-					return false;
-				}
-				// A hand subclass may declare properties the generated partial
-				// has never heard of. None of those are spec attributes, but
-				// asking is cheaper than assuming.
-				if (!LayerNode.GetClass()->IsChildOf(Optional.GetOwnerClass()))
-				{
-					return false;
-				}
-				const void* const Container = Optional.ContainerPtrToValuePtr<void>(&LayerNode);
-				if (Container == nullptr || !Optional.IsSet(Container))
-				{
-					return false;
-				}
-				Optional.GetValueProperty()->ExportTextItem_Direct(OutText,
-					Optional.GetValuePointerForRead(Container), nullptr, nullptr, PPF_None);
-				OutClassName = ClassNameOf<P>(LayerNode);
-				bFound = true;
-				return true;
-			});
-		});
-	});
-	return bFound;
-#else
-	return false;
+	TMap<FName, FMjEffectiveValue> Collected;
+	CollectInherited(Node, Wanted, Collected);
+
+	if (const FMjEffectiveValue* const Found = Collected.Find(Optional.GetFName()))
+	{
+		Out = *Found;
+	}
 #endif
+	return Out.IsSet();
+}
+
+FText FMjEffectiveDetails::DescribeValue(const FMjEffectiveValue& Value)
+{
+	switch (Value.Source)
+	{
+		case EMjValueSource::Schema:
+			// Named as what it is rather than as a class, because there is no
+			// class to open: MuJoCo decides this one and the only way to change
+			// it is to author the attribute here or on a `<default>`.
+			return FText::FromString(FString::Printf(TEXT("%s  (default)"), *Value.Text));
+
+		case EMjValueSource::Class:
+			return Value.ClassName.IsEmpty()
+				? FText::FromString(Value.Text)
+				: FText::FromString(FString::Printf(TEXT("%s  (from %s)"), *Value.Text, *Value.ClassName));
+
+		default:
+			return FText::GetEmpty();
+	}
 }
 
 void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
@@ -326,18 +297,16 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 		Unset.Add(Optional);
 	}
 
-	TMap<FName, FInheritedValue> Inherited;
+	TMap<FName, FMjEffectiveValue> Inherited;
 	CollectInherited(*Node, Unset, Inherited);
 
 	for (FOptionalProperty* const Optional : Unset)
 	{
-		const FInheritedValue* const Found = Inherited.Find(Optional->GetFName());
+		const FMjEffectiveValue* const Found = Inherited.Find(Optional->GetFName());
 		if (Found == nullptr)
 		{
 			continue;
 		}
-		const FString& InheritedText = Found->Text;
-		const FString& InheritedClass = Found->ClassName;
 
 		const TSharedPtr<IPropertyHandle> Handle =
 			DetailBuilder.GetProperty(Optional->GetFName(), Optional->GetOwnerClass());
@@ -354,17 +323,21 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 		TSharedPtr<SWidget> NameWidget;
 		TSharedPtr<SWidget> ValueWidget;
 		Row->GetDefaultWidgets(NameWidget, ValueWidget, /*bAddWidgetDecoration=*/true);
-		if (!NameWidget.IsValid() || !ValueWidget.IsValid())
+		if (!NameWidget.IsValid())
 		{
 			continue;
 		}
 
-		const FText Display = InheritedClass.IsEmpty()
-			? FText::FromString(InheritedText)
-			: FText::FromString(FString::Printf(TEXT("%s  (from %s)"), *InheritedText, *InheritedClass));
+		// The engine's own widget for an unset optional is a bare Set button that
+		// value-initialises -- a geom inheriting `0.3` from its class gets a zero
+		// -- and it is deliberately NOT put on these rows. Every row built here is
+		// an unset attribute with a resolved value, so the only Set the user is
+		// offered is the one below, which seeds what the row is showing them.
+		const FText Display = FMjEffectiveDetails::DescribeValue(*Found);
 
 		TWeakObjectPtr<UMjNodeComponent> WeakNode = Node;
-		const FString Text = InheritedText;
+		const FString Text = Found->Text;
+		const bool bFromSchema = Found->Source == EMjValueSource::Schema;
 
 		Row->CustomWidget(/*bShowChildren=*/true)
 			.NameContent()[NameWidget.ToSharedRef()]
@@ -372,7 +345,6 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 			.MinDesiredWidth(250.0f)
 			.MaxDesiredWidth(700.0f)
 				[SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()[ValueWidget.ToSharedRef()]
 					+ SHorizontalBox::Slot()
 						  .FillWidth(1.0f)
 						  .VAlign(VAlign_Center)
@@ -380,17 +352,23 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 							  [SNew(STextBlock)
 									  .Text(Display)
 									  .ColorAndOpacity(FSlateColor::UseSubduedForeground())
-									  .ToolTipText(LOCTEXT("InheritedTip",
-										  "What the compiler will use: this element authors nothing, so the "
-										  "value comes from its default class. Editing the class changes it."))]
+									  .ToolTipText(bFromSchema
+											  ? LOCTEXT("SchemaTip",
+													"What the compiler will use: this element authors nothing and no "
+													"default class mentions the attribute, so MuJoCo's own value "
+													"decides it.")
+											  : LOCTEXT("InheritedTip",
+													"What the compiler will use: this element authors nothing, so the "
+													"value comes from its default class. Editing the class changes "
+													"it."))]
 					+ SHorizontalBox::Slot()
 						  .AutoWidth()
 						  .VAlign(VAlign_Center)
 							  [SNew(SButton)
-									  .Text(LOCTEXT("AuthorInheritedLabel", "Use"))
+									  .Text(LOCTEXT("AuthorInheritedLabel", "Set"))
 									  .ToolTipText(LOCTEXT("AuthorInheritedTip",
-										  "Author this value onto the element, seeded from the class. The "
-										  "element then keeps it whatever the class does next."))
+										  "Author this value onto the element, seeded from the value shown. The "
+										  "element then keeps it whatever its class does next."))
 									  .OnClicked_Lambda([WeakNode, Optional, Text, Utilities]() -> FReply {
 										  if (UMjNodeComponent* const Live = WeakNode.Get())
 										  {

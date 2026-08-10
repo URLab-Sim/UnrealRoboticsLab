@@ -697,7 +697,12 @@ bool FMjPresentationOnARealRobot::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	AddInfo(FString::Printf(TEXT("BENCH presentation robot=vx300s elements=%d"), Elements));
+	// Both channels, the way every other line in this file reports: the run log
+	// is where a reader greps, and `AddInfo` is where the automation report
+	// keeps it.
+	const FString Bench = FString::Printf(TEXT("BENCH presentation robot=vx300s elements=%d"), Elements);
+	UE_LOG(LogMjImportBench, Display, TEXT("%s"), *Bench);
+	AddInfo(Bench);
 
 	// A robot with a handful of elements would satisfy every bound below while
 	// saying nothing about a real one.

@@ -91,7 +91,7 @@ public:
 	bool HasInterp() const { return Interp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Rangefinder")
-	EMjInterpType GetInterp() const { return Interp.Get(static_cast<EMjInterpType>(0)); }
+	EMjInterpType GetInterp() const { return Interp.Get(EMjInterpType::zoh); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Rangefinder")
 	void SetInterp(EMjInterpType InValue) { Interp = InValue; }
@@ -115,7 +115,7 @@ public:
 	bool HasInterval() const { return Interval.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Rangefinder")
-	TArray<double> GetInterval() const { return Interval.Get(TArray<double>()); }
+	TArray<double> GetInterval() const { return Interval.Get(TArray<double>({0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Rangefinder")
 	void SetInterval(const TArray<double>& InValue) { Interval = InValue; }

@@ -8,11 +8,35 @@ void ApplyDefault(Model& e) {
 }
 
 void ApplyDefault(Compiler& e) {
-  (void)e;
+  e.autolimits = true;
+  e.boundmass = 0.0;
+  e.boundinertia = 0.0;
+  e.settotalmass = -1.0;
+  e.balanceinertia = false;
+  e.angle = AngleUnit::degree;
+  e.fitaabb = false;
+  e.eulerseq = std::string("xyz");
+  e.discardvisual = false;
+  e.usethread = true;
+  e.fusestatic = false;
+  e.inertiafromgeom = TriState::auto_;
+  e.inertiagrouprange = std::array<int32_t, 2>{{0, 5}};
+  e.saveinertial = false;
+  e.alignfree = false;
+  e.conflict = Conflict::warning;
 }
 
 void ApplyDefault(LengthRange& e) {
-  (void)e;
+  e.mode = LRMode::muscle;
+  e.useexisting = true;
+  e.uselimit = false;
+  e.accel = 20.0;
+  e.maxforce = 0.0;
+  e.timeconst = 1.0;
+  e.timestep = 0.01;
+  e.inttotal = 10.0;
+  e.interval = 2.0;
+  e.tolrange = 0.05;
 }
 
 void ApplyDefault(Option& e) {
@@ -26,6 +50,11 @@ void ApplyDefault(Option& e) {
   e.gravity = std::array<double, 3>{{0.0, 0.0, -9.81}};
   e.wind = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.magnetic = std::array<double, 3>{{0.0, -0.5, 0.0}};
+  e.density = 0.0;
+  e.viscosity = 0.0;
+  e.o_margin = 0.0;
+  e.o_solref = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.o_solimp = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
   e.o_friction = ps::InlineVec<double, 5>{1.0, 1.0, 0.005, 0.0001, 0.0001};
   e.integrator = Integrator::Euler;
   e.cone = Cone::pyramidal;
@@ -33,6 +62,7 @@ void ApplyDefault(Option& e) {
   e.solver = SolverType::Newton;
   e.iterations = 100;
   e.ls_iterations = 50;
+  e.noslip_iterations = 0;
   e.ccd_iterations = 35;
   e.sdf_iterations = 10;
   e.sdf_initpoints = 40;
@@ -68,7 +98,19 @@ void ApplyDefault(Flag& e) {
 }
 
 void ApplyDefault(Size& e) {
-  (void)e;
+  e.njmax = -1;
+  e.nconmax = -1;
+  e.nstack = -1;
+  e.nuserdata = 0;
+  e.nkey = 0;
+  e.nuser_body = -1;
+  e.nuser_jnt = -1;
+  e.nuser_geom = -1;
+  e.nuser_site = -1;
+  e.nuser_cam = -1;
+  e.nuser_tendon = -1;
+  e.nuser_actuator = -1;
+  e.nuser_sensor = -1;
 }
 
 void ApplyDefault(Statistic& e) {
@@ -147,7 +189,31 @@ void ApplyDefault(VisualScale& e) {
 }
 
 void ApplyDefault(VisualRgba& e) {
-  (void)e;
+  e.fog = std::array<float, 4>{{0.0f, 0.0f, 0.0f, 1.0f}};
+  e.haze = std::array<float, 4>{{1.0f, 1.0f, 1.0f, 1.0f}};
+  e.force = std::array<float, 4>{{1.0f, 0.5f, 0.5f, 1.0f}};
+  e.inertia = std::array<float, 4>{{0.800000011920929f, 0.20000000298023224f, 0.20000000298023224f, 0.6000000238418579f}};
+  e.joint = std::array<float, 4>{{0.20000000298023224f, 0.6000000238418579f, 0.800000011920929f, 1.0f}};
+  e.actuator = std::array<float, 4>{{0.20000000298023224f, 0.25f, 0.20000000298023224f, 1.0f}};
+  e.actuatornegative = std::array<float, 4>{{0.20000000298023224f, 0.6000000238418579f, 0.8999999761581421f, 1.0f}};
+  e.actuatorpositive = std::array<float, 4>{{0.8999999761581421f, 0.4000000059604645f, 0.20000000298023224f, 1.0f}};
+  e.com = std::array<float, 4>{{0.8999999761581421f, 0.8999999761581421f, 0.8999999761581421f, 1.0f}};
+  e.camera = std::array<float, 4>{{0.6000000238418579f, 0.8999999761581421f, 0.6000000238418579f, 1.0f}};
+  e.light = std::array<float, 4>{{0.6000000238418579f, 0.6000000238418579f, 0.8999999761581421f, 1.0f}};
+  e.selectpoint = std::array<float, 4>{{0.8999999761581421f, 0.8999999761581421f, 0.10000000149011612f, 1.0f}};
+  e.connect = std::array<float, 4>{{0.20000000298023224f, 0.20000000298023224f, 0.800000011920929f, 1.0f}};
+  e.contactpoint = std::array<float, 4>{{0.8999999761581421f, 0.6000000238418579f, 0.20000000298023224f, 1.0f}};
+  e.contactforce = std::array<float, 4>{{0.699999988079071f, 0.8999999761581421f, 0.8999999761581421f, 1.0f}};
+  e.contactfriction = std::array<float, 4>{{0.8999999761581421f, 0.800000011920929f, 0.4000000059604645f, 1.0f}};
+  e.contacttorque = std::array<float, 4>{{0.8999999761581421f, 0.699999988079071f, 0.8999999761581421f, 1.0f}};
+  e.contactgap = std::array<float, 4>{{0.5f, 0.800000011920929f, 0.8999999761581421f, 1.0f}};
+  e.rangefinder = std::array<float, 4>{{1.0f, 1.0f, 0.10000000149011612f, 1.0f}};
+  e.constraint = std::array<float, 4>{{0.8999999761581421f, 0.0f, 0.0f, 1.0f}};
+  e.slidercrank = std::array<float, 4>{{0.5f, 0.30000001192092896f, 0.800000011920929f, 1.0f}};
+  e.crankbroken = std::array<float, 4>{{0.8999999761581421f, 0.0f, 0.0f, 1.0f}};
+  e.frustum = std::array<float, 4>{{1.0f, 1.0f, 0.0f, 0.20000000298023224f}};
+  e.bv = std::array<float, 4>{{0.0f, 1.0f, 0.0f, 0.5f}};
+  e.bvactive = std::array<float, 4>{{1.0f, 0.0f, 0.0f, 0.5f}};
 }
 
 void ApplyDefault(Default& e) {
@@ -179,8 +245,10 @@ void ApplyDefault(Asset& e) {
 }
 
 void ApplyDefault(Mesh& e) {
+  e.refpos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.refquat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
   e.scale = std::array<double, 3>{{1.0, 1.0, 1.0}};
+  e.smoothnormal = false;
   e.maxhullvert = -1;
   e.inertia = MeshInertia::legacy;
 }
@@ -190,11 +258,15 @@ void ApplyDefault(PluginRef& e) {
 }
 
 void ApplyDefault(Hfield& e) {
-  (void)e;
+  e.nrow = 0;
+  e.ncol = 0;
+  e.size = std::array<double, 4>{{0.0, 0.0, 0.0, 0.0}};
 }
 
 void ApplyDefault(Skin& e) {
   e.rgba = std::array<float, 4>{{0.5f, 0.5f, 0.5f, 1.0f}};
+  e.inflate = 0.0f;
+  e.group = 0;
 }
 
 void ApplyDefault(SkinBone& e) {
@@ -205,16 +277,27 @@ void ApplyDefault(Texture& e) {
   e.type = TextureType::cube;
   e.colorspace = ColorSpace::auto_;
   e.gridsize = std::array<int32_t, 2>{{1, 1}};
+  e.gridlayout = std::string("............");
+  e.builtin = TextureBuiltin::none;
   e.rgb1 = std::array<double, 3>{{0.8, 0.8, 0.8}};
   e.rgb2 = std::array<double, 3>{{0.5, 0.5, 0.5}};
+  e.mark = TextureMark::none;
+  e.markrgb = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.random = 0.01;
+  e.width = 0;
+  e.height = 0;
+  e.hflip = false;
+  e.vflip = false;
   e.nchannel = 3;
 }
 
 void ApplyDefault(Material& e) {
   e.texrepeat = std::array<float, 2>{{1.0f, 1.0f}};
+  e.texuniform = false;
+  e.emission = 0.0f;
   e.specular = 0.5f;
   e.shininess = 0.5f;
+  e.reflectance = 0.0f;
   e.metallic = -1.0f;
   e.roughness = -1.0f;
   e.rgba = std::array<float, 4>{{1.0f, 1.0f, 1.0f, 1.0f}};
@@ -227,20 +310,45 @@ void ApplyDefault(ModelAsset& e) {
 void ApplyDefault(Body& e) {
   e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.quat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
+  e.mocap = false;
+  e.gravcomp = 0.0;
+  e.sleep = BodySleep::auto_;
   e.simple = SimpleMode::auto_;
 }
 
 void ApplyDefault(Inertial& e) {
-  (void)e;
+  e.quat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
+  e.mass = 0.0;
+  e.diaginertia = std::array<double, 3>{{0.0, 0.0, 0.0}};
 }
 
 void ApplyDefault(Joint& e) {
   e.type = JointType::hinge;
+  e.group = 0;
+  e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.axis = std::array<double, 3>{{0.0, 0.0, 1.0}};
+  e.springdamper = std::array<double, 2>{{0.0, 0.0}};
+  e.limited = TriState::auto_;
+  e.actuatorfrclimited = TriState::auto_;
+  e.solreflimit = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimplimit = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.solreffriction = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimpfriction = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.stiffness = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.range = std::array<double, 2>{{0.0, 0.0}};
+  e.actuatorfrcrange = std::array<double, 2>{{0.0, 0.0}};
+  e.actuatorgravcomp = false;
+  e.margin = 0.0;
+  e.ref = 0.0;
+  e.springref = 0.0;
+  e.armature = 0.0;
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.frictionloss = 0.0;
 }
 
 void ApplyDefault(FreeJoint& e) {
-  (void)e;
+  e.group = 0;
+  e.align = TriState::auto_;
 }
 
 void ApplyDefault(Geom& e) {
@@ -248,15 +356,25 @@ void ApplyDefault(Geom& e) {
   e.contype = 1;
   e.conaffinity = 1;
   e.condim = 3;
+  e.group = 0;
+  e.priority = 0;
+  e.size = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
   e.friction = ps::InlineVec<double, 3>{1.0, 0.005, 0.0001};
   e.density = 1000.0;
+  e.shellinertia = false;
   e.solmix = 1.0;
   e.solref = ps::InlineVec<double, 2>{0.02, 1.0};
   e.solimp = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.margin = 0.0;
+  e.gap = 0.0;
+  e.surfacevel = ps::InlineVec<double, 6>{0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.adhesion = 0.0;
   e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.quat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
   e.fitscale = 1.0;
   e.rgba = std::array<float, 4>{{0.5f, 0.5f, 0.5f, 1.0f}};
+  e.fluidshape = FluidShape::none;
+  e.fluidcoef = ps::InlineVec<double, 5>{0.5, 0.25, 1.5, 1.0, 1.0};
 }
 
 void ApplyDefault(Attach& e) {
@@ -265,6 +383,7 @@ void ApplyDefault(Attach& e) {
 
 void ApplyDefault(Site& e) {
   e.type = GeomType::sphere;
+  e.group = 0;
   e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.quat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
   e.size = ps::InlineVec<double, 3>{0.005, 0.005, 0.005};
@@ -272,24 +391,33 @@ void ApplyDefault(Site& e) {
 }
 
 void ApplyDefault(Camera& e) {
+  e.projection = CameraProjection::perspective;
   e.fovy = 45.0;
   e.ipd = 0.068;
   e.resolution = std::array<int32_t, 2>{{1, 1}};
   e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.quat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
   e.mode = CamLightMode::fixed;
+  e.focal = std::array<float, 2>{{0.0f, 0.0f}};
+  e.focalpixel = std::array<float, 2>{{0.0f, 0.0f}};
+  e.principal = std::array<float, 2>{{0.0f, 0.0f}};
+  e.principalpixel = std::array<float, 2>{{0.0f, 0.0f}};
+  e.sensorsize = std::array<float, 2>{{0.0f, 0.0f}};
 }
 
 void ApplyDefault(Light& e) {
+  e.type = LightType::spot;
   e.castshadow = true;
   e.active = true;
   e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.dir = std::array<double, 3>{{0.0, 0.0, -1.0}};
   e.bulbradius = 0.02f;
+  e.intensity = 0.0f;
   e.range = 10.0f;
   e.attenuation = std::array<float, 3>{{1.0f, 0.0f, 0.0f}};
   e.cutoff = 45.0f;
   e.exponent = 10.0f;
+  e.ambient = std::array<float, 3>{{0.0f, 0.0f, 0.0f}};
   e.diffuse = std::array<float, 3>{{0.7f, 0.7f, 0.7f}};
   e.specular = std::array<float, 3>{{0.3f, 0.3f, 0.3f}};
   e.mode = CamLightMode::fixed;
@@ -324,11 +452,28 @@ void ApplyDefault(FlexcompEdge& e) {
 }
 
 void ApplyDefault(FlexElasticity& e) {
-  (void)e;
+  e.young = 0.0;
+  e.poisson = 0.0;
+  e.damping = 0.0;
+  e.thickness = -1.0;
+  e.elastic2d = Elastic2D::none;
 }
 
 void ApplyDefault(FlexContact& e) {
-  (void)e;
+  e.contype = 1;
+  e.conaffinity = 1;
+  e.condim = 3;
+  e.priority = 0;
+  e.friction = ps::InlineVec<double, 3>{1.0, 0.005, 0.0001};
+  e.solmix = 1.0;
+  e.solref = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimp = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.margin = 0.0;
+  e.gap = 0.0;
+  e.internal = false;
+  e.selfcollide = FlexSelfCollide::auto_;
+  e.activelayers = 1;
+  e.passive = false;
 }
 
 void ApplyDefault(FlexcompPin& e) {
@@ -340,11 +485,17 @@ void ApplyDefault(Deformable& e) {
 }
 
 void ApplyDefault(Flex& e) {
-  (void)e;
+  e.group = 0;
+  e.dim = 2;
+  e.radius = 0.005;
+  e.rgba = std::array<float, 4>{{0.5f, 0.5f, 0.5f, 1.0f}};
+  e.flatskin = false;
+  e.cellcount = std::array<int32_t, 3>{{1, 1, 1}};
 }
 
 void ApplyDefault(FlexEdge& e) {
-  (void)e;
+  e.stiffness = 0.0;
+  e.damping = 0.0;
 }
 
 void ApplyDefault(Contact& e) {
@@ -355,7 +506,11 @@ void ApplyDefault(Pair& e) {
   e.condim = 3;
   e.friction = ps::InlineVec<double, 5>{1.0, 1.0, 0.005, 0.0001, 0.0001};
   e.solref = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solreffriction = ps::InlineVec<double, 2>{0.0, 0.0};
   e.solimp = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.gap = 0.0;
+  e.margin = 0.0;
+  e.adhesion = 0.0;
 }
 
 void ApplyDefault(Exclude& e) {
@@ -367,8 +522,22 @@ void ApplyDefault(Tendon& e) {
 }
 
 void ApplyDefault(Spatial& e) {
+  e.group = 0;
+  e.limited = TriState::auto_;
+  e.actuatorfrclimited = TriState::false_;
+  e.range = std::array<double, 2>{{0.0, 0.0}};
+  e.actuatorfrcrange = std::array<double, 2>{{0.0, 0.0}};
+  e.solreflimit = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimplimit = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.solreffriction = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimpfriction = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.frictionloss = 0.0;
   e.springlength = ps::InlineVec<double, 2>{-1.0, -1.0};
   e.width = 0.003;
+  e.margin = 0.0;
+  e.stiffness = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
   e.rgba = std::array<float, 4>{{0.5f, 0.5f, 0.5f, 1.0f}};
 }
 
@@ -385,7 +554,21 @@ void ApplyDefault(Pulley& e) {
 }
 
 void ApplyDefault(Fixed& e) {
+  e.group = 0;
+  e.limited = TriState::auto_;
+  e.actuatorfrclimited = TriState::false_;
+  e.range = std::array<double, 2>{{0.0, 0.0}};
+  e.actuatorfrcrange = std::array<double, 2>{{0.0, 0.0}};
+  e.solreflimit = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimplimit = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.solreffriction = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimpfriction = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.frictionloss = 0.0;
   e.springlength = ps::InlineVec<double, 2>{-1.0, -1.0};
+  e.margin = 0.0;
+  e.stiffness = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(FixedJoint& e) {
@@ -443,64 +626,211 @@ void ApplyDefault(Actuator& e) {
 }
 
 void ApplyDefault(ActuatorGeneral& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.actlimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.actrange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
   e.actdim = -1;
+  e.velrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ffrange = std::array<double, 2>{{0.0, 0.0}};
   e.dyntype = DynType::none;
   e.gaintype = GainType::fixed;
   e.biastype = BiasType::none;
   e.dynprm = ps::InlineVec<double, 10>{1.0};
   e.gainprm = ps::InlineVec<double, 10>{1.0};
+  e.biasprm = ps::InlineVec<double, 10>{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.actearly = false;
 }
 
 void ApplyDefault(Motor& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(Position& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.inheritrange = 0.0;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(Velocity& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(IntVelocity& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.actlimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.actrange = std::array<double, 2>{{0.0, 0.0}};
+  e.inheritrange = 0.0;
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(OrientationActuator& e) {
-  (void)e;
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
 }
 
 void ApplyDefault(Pid& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.posrange = std::array<double, 2>{{0.0, 0.0}};
+  e.velrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ffrange = std::array<double, 2>{{0.0, 0.0}};
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.inheritrange = 0.0;
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(Damper& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(Cylinder& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(Muscle& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(Adhesion& e) {
-  (void)e;
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.forcelimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
 }
 
 void ApplyDefault(DcMotor& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
 }
 
 void ApplyDefault(ActuatorPlugin& e) {
+  e.group = 0;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.ctrlrange = std::array<double, 2>{{0.0, 0.0}};
+  e.ctrllimited = TriState::auto_;
+  e.forcelimited = TriState::auto_;
+  e.actlimited = TriState::auto_;
+  e.forcerange = std::array<double, 2>{{0.0, 0.0}};
+  e.actrange = std::array<double, 2>{{0.0, 0.0}};
+  e.lengthrange = std::array<double, 2>{{0.0, 0.0}};
   e.gear = ps::InlineVec<double, 6>{1.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  e.damping = ps::InlineVec<double, 3>{0.0, 0.0, 0.0};
+  e.armature = 0.0;
   e.actdim = -1;
   e.dyntype = DynType::none;
   e.dynprm = ps::InlineVec<double, 10>{1.0};
+  e.actearly = false;
 }
 
 void ApplyDefault(Sensor& e) {
@@ -508,200 +838,436 @@ void ApplyDefault(Sensor& e) {
 }
 
 void ApplyDefault(Touch& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Accelerometer& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Velocimeter& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Gyro& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Force& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Torque& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Magnetometer& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Camprojection& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Rangefinder& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Jointpos& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Jointvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tendonpos& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tendonvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Actuatorpos& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Actuatorvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Actuatorfrc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Jointactuatorfrc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tendonactuatorfrc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Ballquat& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Ballangvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Jointlimitpos& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Jointlimitvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Jointlimitfrc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tendonlimitpos& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tendonlimitvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tendonlimitfrc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Framepos& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Framequat& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Framexaxis& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Frameyaxis& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Framezaxis& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Framelinvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Frameangvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Framelinacc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Frameangacc& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Subtreecom& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Subtreelinvel& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Subtreeangmom& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Insidesite& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Distance& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Normal& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Fromto& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(SensorContact& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(EPotential& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(EKinetic& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Clock& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(Tactile& e) {
-  (void)e;
+  e.nsample = 0;
+  e.interp = InterpType::zoh;
+  e.delay = 0.0;
+  e.interval = ps::InlineVec<double, 2>{0.0, 0.0};
 }
 
 void ApplyDefault(SensorUser& e) {
   e.datatype = DataType::real;
   e.needstage = NeedStage::acc;
+  e.dim = 0;
+  e.cutoff = 0.0;
+  e.noise = 0.0;
 }
 
 void ApplyDefault(SensorPlugin& e) {
-  (void)e;
+  e.cutoff = 0.0;
 }
 
 void ApplyDefault(Custom& e) {
@@ -709,7 +1275,7 @@ void ApplyDefault(Custom& e) {
 }
 
 void ApplyDefault(Numeric& e) {
-  (void)e;
+  e.size = 0;
 }
 
 void ApplyDefault(Text& e) {
@@ -729,10 +1295,11 @@ void ApplyDefault(Keyframe& e) {
 }
 
 void ApplyDefault(Key& e) {
-  (void)e;
+  e.time = 0.0;
 }
 
 void ApplyDefault(Frame& e) {
+  e.pos = std::array<double, 3>{{0.0, 0.0, 0.0}};
   e.quat = std::array<double, 4>{{1.0, 0.0, 0.0, 0.0}};
 }
 
@@ -741,11 +1308,26 @@ void ApplyDefault(Replicate& e) {
 }
 
 void ApplyDefault(EqualityDefault& e) {
-  (void)e;
+  e.active = true;
+  e.solref = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimp = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
 }
 
 void ApplyDefault(TendonDefault& e) {
-  (void)e;
+  e.group = 0;
+  e.limited = TriState::auto_;
+  e.range = std::array<double, 2>{{0.0, 0.0}};
+  e.solreflimit = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimplimit = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.solreffriction = ps::InlineVec<double, 2>{0.02, 1.0};
+  e.solimpfriction = ps::InlineVec<double, 5>{0.9, 0.95, 0.001, 0.5, 2.0};
+  e.frictionloss = 0.0;
+  e.springlength = ps::InlineVec<double, 2>{-1.0, -1.0};
+  e.width = 0.003;
+  e.margin = 0.0;
+  e.stiffness = 0.0;
+  e.damping = 0.0;
+  e.rgba = std::array<double, 4>{{0.5, 0.5, 0.5, 1.0}};
 }
 
 }  // namespace ps::mjcf

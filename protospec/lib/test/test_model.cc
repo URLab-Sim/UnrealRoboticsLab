@@ -166,13 +166,17 @@ static void TestPresence() {
   CHECK(g.contype.value() == 1);
 
   // ApplyDefault populates only defaulted fields; non-defaulted stay unset.
+  // The layer is both sources: the schema's `=` rows and, where the schema is
+  // silent, the value MuJoCo's own mjs_defaultGeom leaves in the struct. Only
+  // an attribute MuJoCo COMPUTES (mass, from density and volume) has no value
+  // at this layer, and it stays unset rather than reading as zero.
   Geom d;
   ApplyDefault(d);
   CHECK(d.contype.has_value() && d.contype.value() == 1);
   CHECK(d.type.has_value() && d.type.value() == GeomType::sphere);
   CHECK(d.density.has_value() && d.density.value() == 1000.0);
-  CHECK(!d.mass.has_value());   // no IDL default -> stays unset
-  CHECK(!d.margin.has_value());
+  CHECK(d.margin.has_value() && d.margin.value() == 0.0);
+  CHECK(!d.mass.has_value());
 }
 
 // --- geom shape spellings are independent presence-tracked fields --------- //

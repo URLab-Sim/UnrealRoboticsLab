@@ -304,7 +304,7 @@ public:
 	bool HasOSolref() const { return OSolref.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Option")
-	TArray<double> GetOSolref() const { return OSolref.Get(TArray<double>()); }
+	TArray<double> GetOSolref() const { return OSolref.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Option")
 	void SetOSolref(const TArray<double>& InValue) { OSolref = InValue; }
@@ -316,7 +316,7 @@ public:
 	bool HasOSolimp() const { return OSolimp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Option")
-	TArray<double> GetOSolimp() const { return OSolimp.Get(TArray<double>()); }
+	TArray<double> GetOSolimp() const { return OSolimp.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Option")
 	void SetOSolimp(const TArray<double>& InValue) { OSolimp = InValue; }

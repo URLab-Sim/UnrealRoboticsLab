@@ -123,7 +123,7 @@ public:
 	bool HasAutolimits() const { return Autolimits.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	bool GetAutolimits() const { return Autolimits.Get(false); }
+	bool GetAutolimits() const { return Autolimits.Get(true); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetAutolimits(bool InValue) { Autolimits = InValue; }
@@ -159,7 +159,7 @@ public:
 	bool HasSettotalmass() const { return Settotalmass.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	double GetSettotalmass() const { return Settotalmass.Get(0.0); }
+	double GetSettotalmass() const { return Settotalmass.Get(-1.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetSettotalmass(double InValue) { Settotalmass = InValue; }
@@ -207,7 +207,7 @@ public:
 	bool HasAngle() const { return Angle.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	EMjAngleUnit GetAngle() const { return Angle.Get(static_cast<EMjAngleUnit>(0)); }
+	EMjAngleUnit GetAngle() const { return Angle.Get(EMjAngleUnit::degree); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetAngle(EMjAngleUnit InValue) { Angle = InValue; }
@@ -231,7 +231,7 @@ public:
 	bool HasEulerseq() const { return Eulerseq.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	FString GetEulerseq() const { return Eulerseq.Get(FString()); }
+	FString GetEulerseq() const { return Eulerseq.Get(FString(TEXT("xyz"))); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetEulerseq(const FString& InValue) { Eulerseq = InValue; }
@@ -279,7 +279,7 @@ public:
 	bool HasUsethread() const { return Usethread.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	bool GetUsethread() const { return Usethread.Get(false); }
+	bool GetUsethread() const { return Usethread.Get(true); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetUsethread(bool InValue) { Usethread = InValue; }
@@ -303,7 +303,7 @@ public:
 	bool HasInertiafromgeom() const { return Inertiafromgeom.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	EMjTriState GetInertiafromgeom() const { return Inertiafromgeom.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetInertiafromgeom() const { return Inertiafromgeom.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetInertiafromgeom(EMjTriState InValue) { Inertiafromgeom = InValue; }
@@ -315,7 +315,7 @@ public:
 	bool HasInertiagrouprange() const { return Inertiagrouprange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	TArray<int32> GetInertiagrouprange() const { return Inertiagrouprange.Get(TArray<int32>()); }
+	TArray<int32> GetInertiagrouprange() const { return Inertiagrouprange.Get(TArray<int32>({0, 5})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetInertiagrouprange(const TArray<int32>& InValue) { Inertiagrouprange = InValue; }
@@ -363,7 +363,7 @@ public:
 	bool HasConflict() const { return Conflict.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Compiler")
-	EMjConflict GetConflict() const { return Conflict.Get(static_cast<EMjConflict>(0)); }
+	EMjConflict GetConflict() const { return Conflict.Get(EMjConflict::warning); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Compiler")
 	void SetConflict(EMjConflict InValue) { Conflict = InValue; }

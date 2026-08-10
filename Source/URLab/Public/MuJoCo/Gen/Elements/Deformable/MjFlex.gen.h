@@ -107,7 +107,7 @@ public:
 	bool HasDim() const { return Dim.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Flex")
-	int32 GetDim() const { return Dim.Get(0); }
+	int32 GetDim() const { return Dim.Get(2); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Flex")
 	void SetDim(int32 InValue) { Dim = InValue; }
@@ -119,7 +119,7 @@ public:
 	bool HasRadius() const { return Radius.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Flex")
-	double GetRadius() const { return Radius.Get(0.0); }
+	double GetRadius() const { return Radius.Get(0.005); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Flex")
 	void SetRadius(double InValue) { Radius = InValue; }
@@ -147,7 +147,7 @@ public:
 	bool HasRgba() const { return Rgba.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Flex")
-	FLinearColor GetRgba() const { return Rgba.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetRgba() const { return Rgba.Get(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Flex")
 	void SetRgba(FLinearColor InValue) { Rgba = InValue; }
@@ -237,7 +237,7 @@ public:
 	bool HasCellcount() const { return Cellcount.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Flex")
-	TArray<int32> GetCellcount() const { return Cellcount.Get(TArray<int32>()); }
+	TArray<int32> GetCellcount() const { return Cellcount.Get(TArray<int32>({1, 1, 1})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Flex")
 	void SetCellcount(const TArray<int32>& InValue) { Cellcount = InValue; }

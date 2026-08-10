@@ -95,7 +95,7 @@ public:
 	bool HasThickness() const { return Thickness.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexElasticity")
-	double GetThickness() const { return Thickness.Get(0.0); }
+	double GetThickness() const { return Thickness.Get(-1.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexElasticity")
 	void SetThickness(double InValue) { Thickness = InValue; }
@@ -107,7 +107,7 @@ public:
 	bool HasElastic2d() const { return Elastic2d.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexElasticity")
-	EMjElastic2D GetElastic2d() const { return Elastic2d.Get(static_cast<EMjElastic2D>(0)); }
+	EMjElastic2D GetElastic2d() const { return Elastic2d.Get(EMjElastic2D::none); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexElasticity")
 	void SetElastic2d(EMjElastic2D InValue) { Elastic2d = InValue; }

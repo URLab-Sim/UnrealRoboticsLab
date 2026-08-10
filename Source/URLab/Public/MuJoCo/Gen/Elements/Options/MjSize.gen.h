@@ -106,7 +106,7 @@ public:
 	bool HasNjmax() const { return Njmax.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNjmax() const { return Njmax.Get(0); }
+	int32 GetNjmax() const { return Njmax.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNjmax(int32 InValue) { Njmax = InValue; }
@@ -118,7 +118,7 @@ public:
 	bool HasNconmax() const { return Nconmax.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNconmax() const { return Nconmax.Get(0); }
+	int32 GetNconmax() const { return Nconmax.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNconmax(int32 InValue) { Nconmax = InValue; }
@@ -130,7 +130,7 @@ public:
 	bool HasNstack() const { return Nstack.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNstack() const { return Nstack.Get(0); }
+	int32 GetNstack() const { return Nstack.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNstack(int32 InValue) { Nstack = InValue; }
@@ -166,7 +166,7 @@ public:
 	bool HasNuserBody() const { return NuserBody.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserBody() const { return NuserBody.Get(0); }
+	int32 GetNuserBody() const { return NuserBody.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserBody(int32 InValue) { NuserBody = InValue; }
@@ -178,7 +178,7 @@ public:
 	bool HasNuserJnt() const { return NuserJnt.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserJnt() const { return NuserJnt.Get(0); }
+	int32 GetNuserJnt() const { return NuserJnt.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserJnt(int32 InValue) { NuserJnt = InValue; }
@@ -190,7 +190,7 @@ public:
 	bool HasNuserGeom() const { return NuserGeom.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserGeom() const { return NuserGeom.Get(0); }
+	int32 GetNuserGeom() const { return NuserGeom.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserGeom(int32 InValue) { NuserGeom = InValue; }
@@ -202,7 +202,7 @@ public:
 	bool HasNuserSite() const { return NuserSite.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserSite() const { return NuserSite.Get(0); }
+	int32 GetNuserSite() const { return NuserSite.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserSite(int32 InValue) { NuserSite = InValue; }
@@ -214,7 +214,7 @@ public:
 	bool HasNuserCam() const { return NuserCam.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserCam() const { return NuserCam.Get(0); }
+	int32 GetNuserCam() const { return NuserCam.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserCam(int32 InValue) { NuserCam = InValue; }
@@ -226,7 +226,7 @@ public:
 	bool HasNuserTendon() const { return NuserTendon.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserTendon() const { return NuserTendon.Get(0); }
+	int32 GetNuserTendon() const { return NuserTendon.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserTendon(int32 InValue) { NuserTendon = InValue; }
@@ -238,7 +238,7 @@ public:
 	bool HasNuserActuator() const { return NuserActuator.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserActuator() const { return NuserActuator.Get(0); }
+	int32 GetNuserActuator() const { return NuserActuator.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserActuator(int32 InValue) { NuserActuator = InValue; }
@@ -250,7 +250,7 @@ public:
 	bool HasNuserSensor() const { return NuserSensor.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Size")
-	int32 GetNuserSensor() const { return NuserSensor.Get(0); }
+	int32 GetNuserSensor() const { return NuserSensor.Get(-1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Size")
 	void SetNuserSensor(int32 InValue) { NuserSensor = InValue; }

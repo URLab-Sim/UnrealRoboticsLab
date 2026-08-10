@@ -166,7 +166,7 @@ public:
 	bool HasSolreffriction() const { return Solreffriction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Pair")
-	TArray<double> GetSolreffriction() const { return Solreffriction.Get(TArray<double>()); }
+	TArray<double> GetSolreffriction() const { return Solreffriction.Get(TArray<double>({0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Pair")
 	void SetSolreffriction(const TArray<double>& InValue) { Solreffriction = InValue; }

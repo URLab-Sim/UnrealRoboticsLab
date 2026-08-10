@@ -26,12 +26,36 @@ void ApplyDefault(UMjModel& Element)
 
 void ApplyDefault(UMjCompiler& Element)
 {
-	(void)Element;
+	Element.Autolimits = true;
+	Element.Boundmass = 0.0;
+	Element.Boundinertia = 0.0;
+	Element.Settotalmass = -1.0;
+	Element.Balanceinertia = false;
+	Element.Angle = EMjAngleUnit::degree;
+	Element.Fitaabb = false;
+	Element.Eulerseq = FString(TEXT("xyz"));
+	Element.Discardvisual = false;
+	Element.Usethread = true;
+	Element.Fusestatic = false;
+	Element.Inertiafromgeom = EMjTriState::auto_;
+	Element.Inertiagrouprange = TArray<int32>({0, 5});
+	Element.Saveinertial = false;
+	Element.Alignfree = false;
+	Element.Conflict = EMjConflict::warning;
 }
 
 void ApplyDefault(UMjLengthRange& Element)
 {
-	(void)Element;
+	Element.Mode = EMjLRMode::muscle;
+	Element.Useexisting = true;
+	Element.Uselimit = false;
+	Element.Accel = 20.0;
+	Element.Maxforce = 0.0;
+	Element.Timeconst = 1.0;
+	Element.Timestep = 0.01;
+	Element.Inttotal = 10.0;
+	Element.Interval = 2.0;
+	Element.Tolrange = 0.05;
 }
 
 void ApplyDefault(UMjOption& Element)
@@ -46,6 +70,11 @@ void ApplyDefault(UMjOption& Element)
 	Element.Gravity = FMjDirection3(0.0, 0.0, -9.81);
 	Element.Wind = FMjDirection3(0.0, 0.0, 0.0);
 	Element.Magnetic = FMjDirection3(0.0, -0.5, 0.0);
+	Element.Density = 0.0;
+	Element.Viscosity = 0.0;
+	Element.OMargin = 0.0;
+	Element.OSolref = TArray<double>({0.02, 1.0});
+	Element.OSolimp = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
 	Element.OFriction = TArray<double>({1.0, 1.0, 0.005, 0.0001, 0.0001});
 	Element.Integrator = EMjIntegrator::Euler;
 	Element.Cone = EMjCone::pyramidal;
@@ -53,6 +82,7 @@ void ApplyDefault(UMjOption& Element)
 	Element.Solver = EMjSolverType::Newton;
 	Element.Iterations = 100;
 	Element.LsIterations = 50;
+	Element.NoslipIterations = 0;
 	Element.CcdIterations = 35;
 	Element.SdfIterations = 10;
 	Element.SdfInitpoints = 40;
@@ -90,7 +120,19 @@ void ApplyDefault(UMjFlag& Element)
 
 void ApplyDefault(UMjSize& Element)
 {
-	(void)Element;
+	Element.Njmax = -1;
+	Element.Nconmax = -1;
+	Element.Nstack = -1;
+	Element.Nuserdata = 0;
+	Element.Nkey = 0;
+	Element.NuserBody = -1;
+	Element.NuserJnt = -1;
+	Element.NuserGeom = -1;
+	Element.NuserSite = -1;
+	Element.NuserCam = -1;
+	Element.NuserTendon = -1;
+	Element.NuserActuator = -1;
+	Element.NuserSensor = -1;
 }
 
 void ApplyDefault(UMjStatistic& Element)
@@ -177,7 +219,31 @@ void ApplyDefault(UMjVisualScale& Element)
 
 void ApplyDefault(UMjVisualRgba& Element)
 {
-	(void)Element;
+	Element.Fog = FLinearColor(0.0f, 0.0f, 0.0f, 1.0f);
+	Element.Haze = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	Element.Force = FLinearColor(1.0f, 0.5f, 0.5f, 1.0f);
+	Element.Inertia = FLinearColor(0.800000011920929f, 0.20000000298023224f, 0.20000000298023224f, 0.6000000238418579f);
+	Element.Joint = FLinearColor(0.20000000298023224f, 0.6000000238418579f, 0.800000011920929f, 1.0f);
+	Element.Actuator = FLinearColor(0.20000000298023224f, 0.25f, 0.20000000298023224f, 1.0f);
+	Element.Actuatornegative = FLinearColor(0.20000000298023224f, 0.6000000238418579f, 0.8999999761581421f, 1.0f);
+	Element.Actuatorpositive = FLinearColor(0.8999999761581421f, 0.4000000059604645f, 0.20000000298023224f, 1.0f);
+	Element.Com = FLinearColor(0.8999999761581421f, 0.8999999761581421f, 0.8999999761581421f, 1.0f);
+	Element.Camera = FLinearColor(0.6000000238418579f, 0.8999999761581421f, 0.6000000238418579f, 1.0f);
+	Element.Light = FLinearColor(0.6000000238418579f, 0.6000000238418579f, 0.8999999761581421f, 1.0f);
+	Element.Selectpoint = FLinearColor(0.8999999761581421f, 0.8999999761581421f, 0.10000000149011612f, 1.0f);
+	Element.Connect = FLinearColor(0.20000000298023224f, 0.20000000298023224f, 0.800000011920929f, 1.0f);
+	Element.Contactpoint = FLinearColor(0.8999999761581421f, 0.6000000238418579f, 0.20000000298023224f, 1.0f);
+	Element.Contactforce = FLinearColor(0.699999988079071f, 0.8999999761581421f, 0.8999999761581421f, 1.0f);
+	Element.Contactfriction = FLinearColor(0.8999999761581421f, 0.800000011920929f, 0.4000000059604645f, 1.0f);
+	Element.Contacttorque = FLinearColor(0.8999999761581421f, 0.699999988079071f, 0.8999999761581421f, 1.0f);
+	Element.Contactgap = FLinearColor(0.5f, 0.800000011920929f, 0.8999999761581421f, 1.0f);
+	Element.Rangefinder = FLinearColor(1.0f, 1.0f, 0.10000000149011612f, 1.0f);
+	Element.Constraint = FLinearColor(0.8999999761581421f, 0.0f, 0.0f, 1.0f);
+	Element.Slidercrank = FLinearColor(0.5f, 0.30000001192092896f, 0.800000011920929f, 1.0f);
+	Element.Crankbroken = FLinearColor(0.8999999761581421f, 0.0f, 0.0f, 1.0f);
+	Element.Frustum = FLinearColor(1.0f, 1.0f, 0.0f, 0.20000000298023224f);
+	Element.Bv = FLinearColor(0.0f, 1.0f, 0.0f, 0.5f);
+	Element.Bvactive = FLinearColor(1.0f, 0.0f, 0.0f, 0.5f);
 }
 
 void ApplyDefault(UMjDefault& Element)
@@ -217,8 +283,10 @@ void ApplyDefault(UMjAsset& Element)
 
 void ApplyDefault(UMjMeshBase& Element)
 {
+	Element.Refpos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Refquat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
 	Element.Scale = FMjVec3(1.0, 1.0, 1.0);
+	Element.Smoothnormal = false;
 	Element.Maxhullvert = -1;
 	Element.Inertia = EMjMeshInertia::legacy;
 }
@@ -230,12 +298,16 @@ void ApplyDefault(UMjPluginRef& Element)
 
 void ApplyDefault(UMjHfield& Element)
 {
-	(void)Element;
+	Element.Nrow = 0;
+	Element.Ncol = 0;
+	Element.Size = TArray<double>({0.0, 0.0, 0.0, 0.0});
 }
 
 void ApplyDefault(UMjSkin& Element)
 {
 	Element.Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	Element.Inflate = 0.0f;
+	Element.Group = 0;
 }
 
 void ApplyDefault(UMjSkinBone& Element)
@@ -248,17 +320,28 @@ void ApplyDefault(UMjTextureBase& Element)
 	Element.Type = EMjTextureType::cube;
 	Element.Colorspace = EMjColorSpace::auto_;
 	Element.Gridsize = TArray<int32>({1, 1});
+	Element.Gridlayout = FString(TEXT("............"));
+	Element.Builtin = EMjTextureBuiltin::none;
 	Element.Rgb1 = FMjVec3(0.8, 0.8, 0.8);
 	Element.Rgb2 = FMjVec3(0.5, 0.5, 0.5);
+	Element.Mark = EMjTextureMark::none;
+	Element.Markrgb = FMjVec3(0.0, 0.0, 0.0);
 	Element.Random = 0.01;
+	Element.Width = 0;
+	Element.Height = 0;
+	Element.Hflip = false;
+	Element.Vflip = false;
 	Element.Nchannel = 3;
 }
 
 void ApplyDefault(UMjMaterial& Element)
 {
 	Element.Texrepeat = TArray<float>({1.0f, 1.0f});
+	Element.Texuniform = false;
+	Element.Emission = 0.0f;
 	Element.Specular = 0.5f;
 	Element.Shininess = 0.5f;
+	Element.Reflectance = 0.0f;
 	Element.Metallic = -1.0f;
 	Element.Roughness = -1.0f;
 	Element.Rgba = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -273,23 +356,48 @@ void ApplyDefault(UMjBodyBase& Element)
 {
 	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Quat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
+	Element.Mocap = false;
+	Element.Gravcomp = 0.0;
+	Element.Sleep = EMjBodySleep::auto_;
 	Element.Simple = EMjSimpleMode::auto_;
 }
 
 void ApplyDefault(UMjInertial& Element)
 {
-	(void)Element;
+	Element.Quat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
+	Element.Mass = 0.0;
+	Element.Diaginertia = FMjVec3(0.0, 0.0, 0.0);
 }
 
 void ApplyDefault(UMjJoint& Element)
 {
 	Element.Type = EMjJointType::hinge;
+	Element.Group = 0;
+	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Axis = FMjDirection3(0.0, 0.0, 1.0);
+	Element.Springdamper = FVector2D(0.0, 0.0);
+	Element.Limited = EMjTriState::auto_;
+	Element.Actuatorfrclimited = EMjTriState::auto_;
+	Element.Solreflimit = TArray<double>({0.02, 1.0});
+	Element.Solimplimit = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Solreffriction = TArray<double>({0.02, 1.0});
+	Element.Solimpfriction = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Stiffness = TArray<double>({0.0, 0.0, 0.0});
+	Element.Range = FVector2D(0.0, 0.0);
+	Element.Actuatorfrcrange = FVector2D(0.0, 0.0);
+	Element.Actuatorgravcomp = false;
+	Element.Margin = 0.0;
+	Element.Ref = 0.0;
+	Element.Springref = 0.0;
+	Element.Armature = 0.0;
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Frictionloss = 0.0;
 }
 
 void ApplyDefault(UMjFreeJoint& Element)
 {
-	(void)Element;
+	Element.Group = 0;
+	Element.Align = EMjTriState::auto_;
 }
 
 void ApplyDefault(UMjGeomBase& Element)
@@ -298,15 +406,25 @@ void ApplyDefault(UMjGeomBase& Element)
 	Element.Contype = 1;
 	Element.Conaffinity = 1;
 	Element.Condim = 3;
+	Element.Group = 0;
+	Element.Priority = 0;
+	Element.Size = TArray<double>({0.0, 0.0, 0.0});
 	Element.Friction = TArray<double>({1.0, 0.005, 0.0001});
 	Element.Density = 1000.0;
+	Element.Shellinertia = false;
 	Element.Solmix = 1.0;
 	Element.Solref = TArray<double>({0.02, 1.0});
 	Element.Solimp = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Margin = 0.0;
+	Element.Gap = 0.0;
+	Element.Surfacevel = TArray<double>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Adhesion = 0.0;
 	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Quat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
 	Element.Fitscale = 1.0;
 	Element.Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	Element.Fluidshape = EMjFluidShape::none;
+	Element.Fluidcoef = TArray<double>({0.5, 0.25, 1.5, 1.0, 1.0});
 }
 
 void ApplyDefault(UMjAttach& Element)
@@ -317,6 +435,7 @@ void ApplyDefault(UMjAttach& Element)
 void ApplyDefault(UMjSite& Element)
 {
 	Element.Type = EMjGeomType::sphere;
+	Element.Group = 0;
 	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Quat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
 	Element.Size = TArray<double>({0.005, 0.005, 0.005});
@@ -325,25 +444,34 @@ void ApplyDefault(UMjSite& Element)
 
 void ApplyDefault(UMjCameraBase& Element)
 {
+	Element.Projection = EMjCameraProjection::perspective;
 	Element.Fovy = 45.0;
 	Element.Ipd = 0.068;
 	Element.Resolution = TArray<int32>({1, 1});
 	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Quat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
 	Element.Mode = EMjCamLightMode::fixed;
+	Element.Focal = TArray<float>({0.0f, 0.0f});
+	Element.Focalpixel = TArray<float>({0.0f, 0.0f});
+	Element.Principal = TArray<float>({0.0f, 0.0f});
+	Element.Principalpixel = TArray<float>({0.0f, 0.0f});
+	Element.Sensorsize = TArray<float>({0.0f, 0.0f});
 }
 
 void ApplyDefault(UMjLight& Element)
 {
+	Element.Type = EMjLightType::spot;
 	Element.Castshadow = true;
 	Element.ActiveFlag = true;
 	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Dir = FMjDirection3(0.0, 0.0, -1.0);
 	Element.Bulbradius = 0.02f;
+	Element.Intensity = 0.0f;
 	Element.Range = 10.0f;
 	Element.Attenuation = TArray<float>({1.0f, 0.0f, 0.0f});
 	Element.Cutoff = 45.0f;
 	Element.Exponent = 10.0f;
+	Element.Ambient = TArray<float>({0.0f, 0.0f, 0.0f});
 	Element.Diffuse = TArray<float>({0.7f, 0.7f, 0.7f});
 	Element.Specular = TArray<float>({0.3f, 0.3f, 0.3f});
 	Element.Mode = EMjCamLightMode::fixed;
@@ -386,12 +514,29 @@ void ApplyDefault(UMjFlexcompEdge& Element)
 
 void ApplyDefault(UMjFlexElasticity& Element)
 {
-	(void)Element;
+	Element.Young = 0.0;
+	Element.Poisson = 0.0;
+	Element.Damping = 0.0;
+	Element.Thickness = -1.0;
+	Element.Elastic2d = EMjElastic2D::none;
 }
 
 void ApplyDefault(UMjFlexContact& Element)
 {
-	(void)Element;
+	Element.Contype = 1;
+	Element.Conaffinity = 1;
+	Element.Condim = 3;
+	Element.Priority = 0;
+	Element.Friction = TArray<double>({1.0, 0.005, 0.0001});
+	Element.Solmix = 1.0;
+	Element.Solref = TArray<double>({0.02, 1.0});
+	Element.Solimp = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Margin = 0.0;
+	Element.Gap = 0.0;
+	Element.Internal = false;
+	Element.Selfcollide = EMjFlexSelfCollide::auto_;
+	Element.Activelayers = 1;
+	Element.Passive = false;
 }
 
 void ApplyDefault(UMjFlexcompPin& Element)
@@ -406,12 +551,18 @@ void ApplyDefault(UMjDeformable& Element)
 
 void ApplyDefault(UMjFlex& Element)
 {
-	(void)Element;
+	Element.Group = 0;
+	Element.Dim = 2;
+	Element.Radius = 0.005;
+	Element.Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
+	Element.Flatskin = false;
+	Element.Cellcount = TArray<int32>({1, 1, 1});
 }
 
 void ApplyDefault(UMjFlexEdge& Element)
 {
-	(void)Element;
+	Element.Stiffness = 0.0;
+	Element.Damping = 0.0;
 }
 
 void ApplyDefault(UMjContact& Element)
@@ -424,7 +575,11 @@ void ApplyDefault(UMjPair& Element)
 	Element.Condim = 3;
 	Element.Friction = TArray<double>({1.0, 1.0, 0.005, 0.0001, 0.0001});
 	Element.Solref = TArray<double>({0.02, 1.0});
+	Element.Solreffriction = TArray<double>({0.0, 0.0});
 	Element.Solimp = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Gap = 0.0;
+	Element.Margin = 0.0;
+	Element.Adhesion = 0.0;
 }
 
 void ApplyDefault(UMjExclude& Element)
@@ -439,8 +594,22 @@ void ApplyDefault(UMjTendon& Element)
 
 void ApplyDefault(UMjSpatial& Element)
 {
+	Element.Group = 0;
+	Element.Limited = EMjTriState::auto_;
+	Element.Actuatorfrclimited = EMjTriState::false_;
+	Element.Range = FVector2D(0.0, 0.0);
+	Element.Actuatorfrcrange = FVector2D(0.0, 0.0);
+	Element.Solreflimit = TArray<double>({0.02, 1.0});
+	Element.Solimplimit = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Solreffriction = TArray<double>({0.02, 1.0});
+	Element.Solimpfriction = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Frictionloss = 0.0;
 	Element.Springlength = TArray<double>({-1.0, -1.0});
 	Element.Width = 0.003;
+	Element.Margin = 0.0;
+	Element.Stiffness = TArray<double>({0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 	Element.Rgba = FLinearColor(0.5f, 0.5f, 0.5f, 1.0f);
 }
 
@@ -461,7 +630,21 @@ void ApplyDefault(UMjPulley& Element)
 
 void ApplyDefault(UMjFixed& Element)
 {
+	Element.Group = 0;
+	Element.Limited = EMjTriState::auto_;
+	Element.Actuatorfrclimited = EMjTriState::false_;
+	Element.Range = FVector2D(0.0, 0.0);
+	Element.Actuatorfrcrange = FVector2D(0.0, 0.0);
+	Element.Solreflimit = TArray<double>({0.02, 1.0});
+	Element.Solimplimit = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Solreffriction = TArray<double>({0.02, 1.0});
+	Element.Solimpfriction = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Frictionloss = 0.0;
 	Element.Springlength = TArray<double>({-1.0, -1.0});
+	Element.Margin = 0.0;
+	Element.Stiffness = TArray<double>({0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjFixedJoint& Element)
@@ -530,76 +713,223 @@ void ApplyDefault(UMjActuator& Element)
 
 void ApplyDefault(UMjActuatorGeneral& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Actlimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Actrange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 	Element.Actdim = -1;
+	Element.Velrange = FVector2D(0.0, 0.0);
+	Element.Ffrange = FVector2D(0.0, 0.0);
 	Element.Dyntype = EMjDynType::none;
 	Element.Gaintype = EMjGainType::fixed;
 	Element.Biastype = EMjBiasType::none;
 	Element.Dynprm = TArray<double>({1.0});
 	Element.Gainprm = TArray<double>({1.0});
+	Element.Biasprm = TArray<double>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Actearly = false;
 }
 
 void ApplyDefault(UMjMotor& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjPosition& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Inheritrange = 0.0;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjVelocity& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjIntVelocity& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Actlimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Actrange = FVector2D(0.0, 0.0);
+	Element.Inheritrange = 0.0;
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjOrientationActuator& Element)
 {
-	(void)Element;
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
 }
 
 void ApplyDefault(UMjPid& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Posrange = FVector2D(0.0, 0.0);
+	Element.Velrange = FVector2D(0.0, 0.0);
+	Element.Ffrange = FVector2D(0.0, 0.0);
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Inheritrange = 0.0;
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjDamper& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjCylinder& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjMuscle& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjAdhesion& Element)
 {
-	(void)Element;
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
 }
 
 void ApplyDefault(UMjDcMotor& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 }
 
 void ApplyDefault(UMjActuatorPlugin& Element)
 {
+	Element.Group = 0;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Ctrlrange = FVector2D(0.0, 0.0);
+	Element.Ctrllimited = EMjTriState::auto_;
+	Element.Forcelimited = EMjTriState::auto_;
+	Element.Actlimited = EMjTriState::auto_;
+	Element.Forcerange = FVector2D(0.0, 0.0);
+	Element.Actrange = FVector2D(0.0, 0.0);
+	Element.Lengthrange = FVector2D(0.0, 0.0);
 	Element.Gear = TArray<double>({1.0, 0.0, 0.0, 0.0, 0.0, 0.0});
+	Element.Damping = TArray<double>({0.0, 0.0, 0.0});
+	Element.Armature = 0.0;
 	Element.Actdim = -1;
 	Element.Dyntype = EMjDynType::none;
 	Element.Dynprm = TArray<double>({1.0});
+	Element.Actearly = false;
 }
 
 void ApplyDefault(UMjSensor& Element)
@@ -609,248 +939,484 @@ void ApplyDefault(UMjSensor& Element)
 
 void ApplyDefault(UMjTouch& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjAccelerometer& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjVelocimeter& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjGyro& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjForce& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTorque& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjMagnetometer& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjCamprojection& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjRangefinder& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjJointpos& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjJointvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTendonpos& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTendonvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjActuatorpos& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjActuatorvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjActuatorfrc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjJointactuatorfrc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTendonactuatorfrc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjBallquat& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjBallangvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjJointlimitpos& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjJointlimitvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjJointlimitfrc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTendonlimitpos& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTendonlimitvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTendonlimitfrc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFramepos& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFramequat& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFramexaxis& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFrameyaxis& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFramezaxis& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFramelinvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFrameangvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFramelinacc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFrameangacc& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjSubtreecom& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjSubtreelinvel& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjSubtreeangmom& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjInsidesite& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjDistance& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjNormal& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjFromto& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjSensorContact& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjEPotential& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjEKinetic& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjClock& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjTactile& Element)
 {
-	(void)Element;
+	Element.Nsample = 0;
+	Element.Interp = EMjInterpType::zoh;
+	Element.Delay = 0.0;
+	Element.Interval = TArray<double>({0.0, 0.0});
 }
 
 void ApplyDefault(UMjSensorUser& Element)
 {
 	Element.Datatype = EMjDataType::real;
 	Element.Needstage = EMjNeedStage::acc;
+	Element.Dim = 0;
+	Element.Cutoff = 0.0;
+	Element.Noise = 0.0;
 }
 
 void ApplyDefault(UMjSensorPlugin& Element)
 {
-	(void)Element;
+	Element.Cutoff = 0.0;
 }
 
 void ApplyDefault(UMjCustom& Element)
@@ -860,7 +1426,7 @@ void ApplyDefault(UMjCustom& Element)
 
 void ApplyDefault(UMjNumeric& Element)
 {
-	(void)Element;
+	Element.Size = 0;
 }
 
 void ApplyDefault(UMjText& Element)
@@ -885,11 +1451,12 @@ void ApplyDefault(UMjKeyframe& Element)
 
 void ApplyDefault(UMjKey& Element)
 {
-	(void)Element;
+	Element.Time = 0.0;
 }
 
 void ApplyDefault(UMjFrame& Element)
 {
+	Element.Pos = FMjPosition3(0.0, 0.0, 0.0);
 	Element.Quat = FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0);
 }
 
@@ -900,12 +1467,27 @@ void ApplyDefault(UMjReplicate& Element)
 
 void ApplyDefault(UMjEqualityDefault& Element)
 {
-	(void)Element;
+	Element.ActiveFlag = true;
+	Element.Solref = TArray<double>({0.02, 1.0});
+	Element.Solimp = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
 }
 
 void ApplyDefault(UMjTendonDefault& Element)
 {
-	(void)Element;
+	Element.Group = 0;
+	Element.Limited = EMjTriState::auto_;
+	Element.Range = FVector2D(0.0, 0.0);
+	Element.Solreflimit = TArray<double>({0.02, 1.0});
+	Element.Solimplimit = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Solreffriction = TArray<double>({0.02, 1.0});
+	Element.Solimpfriction = TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0});
+	Element.Frictionloss = 0.0;
+	Element.Springlength = TArray<double>({-1.0, -1.0});
+	Element.Width = 0.003;
+	Element.Margin = 0.0;
+	Element.Stiffness = 0.0;
+	Element.Damping = 0.0;
+	Element.Rgba = TArray<double>({0.5, 0.5, 0.5, 1.0});
 }
 
 }  // namespace ps::ue

@@ -64,7 +64,7 @@ public:
 	bool HasQuat() const { return Quat.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Inertial")
-	FMjQuatRot GetQuat() const { return Quat.Get(FMjQuatRot()); }
+	FMjQuatRot GetQuat() const { return Quat.Get(FMjQuatRot(/*W=*/1.0, /*X=*/0.0, /*Y=*/0.0, /*Z=*/0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Inertial")
 	void SetQuat(FMjQuatRot InValue) { Quat = InValue; }
@@ -85,7 +85,7 @@ public:
 	bool HasDiaginertia() const { return Diaginertia.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Inertial")
-	FMjVec3 GetDiaginertia() const { return Diaginertia.Get(FMjVec3()); }
+	FMjVec3 GetDiaginertia() const { return Diaginertia.Get(FMjVec3(0.0, 0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Inertial")
 	void SetDiaginertia(FMjVec3 InValue) { Diaginertia = InValue; }

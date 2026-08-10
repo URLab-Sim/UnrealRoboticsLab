@@ -95,7 +95,7 @@ public:
 	bool HasContype() const { return Contype.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	int32 GetContype() const { return Contype.Get(0); }
+	int32 GetContype() const { return Contype.Get(1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetContype(int32 InValue) { Contype = InValue; }
@@ -107,7 +107,7 @@ public:
 	bool HasConaffinity() const { return Conaffinity.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	int32 GetConaffinity() const { return Conaffinity.Get(0); }
+	int32 GetConaffinity() const { return Conaffinity.Get(1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetConaffinity(int32 InValue) { Conaffinity = InValue; }
@@ -119,7 +119,7 @@ public:
 	bool HasCondim() const { return Condim.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	int32 GetCondim() const { return Condim.Get(0); }
+	int32 GetCondim() const { return Condim.Get(3); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetCondim(int32 InValue) { Condim = InValue; }
@@ -143,7 +143,7 @@ public:
 	bool HasFriction() const { return Friction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	TArray<double> GetFriction() const { return Friction.Get(TArray<double>()); }
+	TArray<double> GetFriction() const { return Friction.Get(TArray<double>({1.0, 0.005, 0.0001})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetFriction(const TArray<double>& InValue) { Friction = InValue; }
@@ -155,7 +155,7 @@ public:
 	bool HasSolmix() const { return Solmix.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	double GetSolmix() const { return Solmix.Get(0.0); }
+	double GetSolmix() const { return Solmix.Get(1.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetSolmix(double InValue) { Solmix = InValue; }
@@ -167,7 +167,7 @@ public:
 	bool HasSolref() const { return Solref.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	TArray<double> GetSolref() const { return Solref.Get(TArray<double>()); }
+	TArray<double> GetSolref() const { return Solref.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetSolref(const TArray<double>& InValue) { Solref = InValue; }
@@ -179,7 +179,7 @@ public:
 	bool HasSolimp() const { return Solimp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	TArray<double> GetSolimp() const { return Solimp.Get(TArray<double>()); }
+	TArray<double> GetSolimp() const { return Solimp.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetSolimp(const TArray<double>& InValue) { Solimp = InValue; }
@@ -227,7 +227,7 @@ public:
 	bool HasSelfcollide() const { return Selfcollide.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	EMjFlexSelfCollide GetSelfcollide() const { return Selfcollide.Get(static_cast<EMjFlexSelfCollide>(0)); }
+	EMjFlexSelfCollide GetSelfcollide() const { return Selfcollide.Get(EMjFlexSelfCollide::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetSelfcollide(EMjFlexSelfCollide InValue) { Selfcollide = InValue; }
@@ -239,7 +239,7 @@ public:
 	bool HasActivelayers() const { return Activelayers.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FlexContact")
-	int32 GetActivelayers() const { return Activelayers.Get(0); }
+	int32 GetActivelayers() const { return Activelayers.Get(1); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FlexContact")
 	void SetActivelayers(int32 InValue) { Activelayers = InValue; }

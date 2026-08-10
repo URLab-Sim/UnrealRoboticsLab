@@ -147,7 +147,7 @@ public:
 	bool HasLimited() const { return Limited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	EMjTriState GetLimited() const { return Limited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetLimited() const { return Limited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetLimited(EMjTriState InValue) { Limited = InValue; }
@@ -159,7 +159,7 @@ public:
 	bool HasActuatorfrclimited() const { return Actuatorfrclimited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	EMjTriState GetActuatorfrclimited() const { return Actuatorfrclimited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetActuatorfrclimited() const { return Actuatorfrclimited.Get(EMjTriState::false_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetActuatorfrclimited(EMjTriState InValue) { Actuatorfrclimited = InValue; }
@@ -171,7 +171,7 @@ public:
 	bool HasRange() const { return Range.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	FVector2D GetRange() const { return Range.Get(FVector2D::ZeroVector); }
+	FVector2D GetRange() const { return Range.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetRange(FVector2D InValue) { Range = InValue; }
@@ -183,7 +183,7 @@ public:
 	bool HasActuatorfrcrange() const { return Actuatorfrcrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	FVector2D GetActuatorfrcrange() const { return Actuatorfrcrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetActuatorfrcrange() const { return Actuatorfrcrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetActuatorfrcrange(FVector2D InValue) { Actuatorfrcrange = InValue; }
@@ -195,7 +195,7 @@ public:
 	bool HasSolreflimit() const { return Solreflimit.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	TArray<double> GetSolreflimit() const { return Solreflimit.Get(TArray<double>()); }
+	TArray<double> GetSolreflimit() const { return Solreflimit.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetSolreflimit(const TArray<double>& InValue) { Solreflimit = InValue; }
@@ -207,7 +207,7 @@ public:
 	bool HasSolimplimit() const { return Solimplimit.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	TArray<double> GetSolimplimit() const { return Solimplimit.Get(TArray<double>()); }
+	TArray<double> GetSolimplimit() const { return Solimplimit.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetSolimplimit(const TArray<double>& InValue) { Solimplimit = InValue; }
@@ -219,7 +219,7 @@ public:
 	bool HasSolreffriction() const { return Solreffriction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	TArray<double> GetSolreffriction() const { return Solreffriction.Get(TArray<double>()); }
+	TArray<double> GetSolreffriction() const { return Solreffriction.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetSolreffriction(const TArray<double>& InValue) { Solreffriction = InValue; }
@@ -231,7 +231,7 @@ public:
 	bool HasSolimpfriction() const { return Solimpfriction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	TArray<double> GetSolimpfriction() const { return Solimpfriction.Get(TArray<double>()); }
+	TArray<double> GetSolimpfriction() const { return Solimpfriction.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetSolimpfriction(const TArray<double>& InValue) { Solimpfriction = InValue; }
@@ -307,7 +307,7 @@ public:
 	bool HasStiffness() const { return Stiffness.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	TArray<double> GetStiffness() const { return Stiffness.Get(TArray<double>()); }
+	TArray<double> GetStiffness() const { return Stiffness.Get(TArray<double>({0.0, 0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetStiffness(const TArray<double>& InValue) { Stiffness = InValue; }
@@ -319,7 +319,7 @@ public:
 	bool HasDamping() const { return Damping.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Spatial")
-	TArray<double> GetDamping() const { return Damping.Get(TArray<double>()); }
+	TArray<double> GetDamping() const { return Damping.Get(TArray<double>({0.0, 0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Spatial")
 	void SetDamping(const TArray<double>& InValue) { Damping = InValue; }

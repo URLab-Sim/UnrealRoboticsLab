@@ -138,7 +138,7 @@ public:
 	bool HasFog() const { return Fog.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetFog() const { return Fog.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetFog() const { return Fog.Get(FLinearColor(0.0f, 0.0f, 0.0f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetFog(FLinearColor InValue) { Fog = InValue; }
@@ -150,7 +150,7 @@ public:
 	bool HasHaze() const { return Haze.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetHaze() const { return Haze.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetHaze() const { return Haze.Get(FLinearColor(1.0f, 1.0f, 1.0f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetHaze(FLinearColor InValue) { Haze = InValue; }
@@ -162,7 +162,7 @@ public:
 	bool HasForce() const { return Force.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetForce() const { return Force.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetForce() const { return Force.Get(FLinearColor(1.0f, 0.5f, 0.5f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetForce(FLinearColor InValue) { Force = InValue; }
@@ -174,7 +174,7 @@ public:
 	bool HasInertia() const { return Inertia.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetInertia() const { return Inertia.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetInertia() const { return Inertia.Get(FLinearColor(0.800000011920929f, 0.20000000298023224f, 0.20000000298023224f, 0.6000000238418579f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetInertia(FLinearColor InValue) { Inertia = InValue; }
@@ -186,7 +186,7 @@ public:
 	bool HasJoint() const { return Joint.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetJoint() const { return Joint.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetJoint() const { return Joint.Get(FLinearColor(0.20000000298023224f, 0.6000000238418579f, 0.800000011920929f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetJoint(FLinearColor InValue) { Joint = InValue; }
@@ -198,7 +198,7 @@ public:
 	bool HasActuator() const { return Actuator.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetActuator() const { return Actuator.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetActuator() const { return Actuator.Get(FLinearColor(0.20000000298023224f, 0.25f, 0.20000000298023224f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetActuator(FLinearColor InValue) { Actuator = InValue; }
@@ -210,7 +210,7 @@ public:
 	bool HasActuatornegative() const { return Actuatornegative.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetActuatornegative() const { return Actuatornegative.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetActuatornegative() const { return Actuatornegative.Get(FLinearColor(0.20000000298023224f, 0.6000000238418579f, 0.8999999761581421f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetActuatornegative(FLinearColor InValue) { Actuatornegative = InValue; }
@@ -222,7 +222,7 @@ public:
 	bool HasActuatorpositive() const { return Actuatorpositive.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetActuatorpositive() const { return Actuatorpositive.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetActuatorpositive() const { return Actuatorpositive.Get(FLinearColor(0.8999999761581421f, 0.4000000059604645f, 0.20000000298023224f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetActuatorpositive(FLinearColor InValue) { Actuatorpositive = InValue; }
@@ -234,7 +234,7 @@ public:
 	bool HasCom() const { return Com.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetCom() const { return Com.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetCom() const { return Com.Get(FLinearColor(0.8999999761581421f, 0.8999999761581421f, 0.8999999761581421f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetCom(FLinearColor InValue) { Com = InValue; }
@@ -246,7 +246,7 @@ public:
 	bool HasCamera() const { return Camera.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetCamera() const { return Camera.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetCamera() const { return Camera.Get(FLinearColor(0.6000000238418579f, 0.8999999761581421f, 0.6000000238418579f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetCamera(FLinearColor InValue) { Camera = InValue; }
@@ -258,7 +258,7 @@ public:
 	bool HasLight() const { return Light.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetLight() const { return Light.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetLight() const { return Light.Get(FLinearColor(0.6000000238418579f, 0.6000000238418579f, 0.8999999761581421f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetLight(FLinearColor InValue) { Light = InValue; }
@@ -270,7 +270,7 @@ public:
 	bool HasSelectpoint() const { return Selectpoint.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetSelectpoint() const { return Selectpoint.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetSelectpoint() const { return Selectpoint.Get(FLinearColor(0.8999999761581421f, 0.8999999761581421f, 0.10000000149011612f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetSelectpoint(FLinearColor InValue) { Selectpoint = InValue; }
@@ -282,7 +282,7 @@ public:
 	bool HasConnect() const { return Connect.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetConnect() const { return Connect.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetConnect() const { return Connect.Get(FLinearColor(0.20000000298023224f, 0.20000000298023224f, 0.800000011920929f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetConnect(FLinearColor InValue) { Connect = InValue; }
@@ -294,7 +294,7 @@ public:
 	bool HasContactpoint() const { return Contactpoint.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetContactpoint() const { return Contactpoint.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetContactpoint() const { return Contactpoint.Get(FLinearColor(0.8999999761581421f, 0.6000000238418579f, 0.20000000298023224f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetContactpoint(FLinearColor InValue) { Contactpoint = InValue; }
@@ -306,7 +306,7 @@ public:
 	bool HasContactforce() const { return Contactforce.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetContactforce() const { return Contactforce.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetContactforce() const { return Contactforce.Get(FLinearColor(0.699999988079071f, 0.8999999761581421f, 0.8999999761581421f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetContactforce(FLinearColor InValue) { Contactforce = InValue; }
@@ -318,7 +318,7 @@ public:
 	bool HasContactfriction() const { return Contactfriction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetContactfriction() const { return Contactfriction.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetContactfriction() const { return Contactfriction.Get(FLinearColor(0.8999999761581421f, 0.800000011920929f, 0.4000000059604645f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetContactfriction(FLinearColor InValue) { Contactfriction = InValue; }
@@ -330,7 +330,7 @@ public:
 	bool HasContacttorque() const { return Contacttorque.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetContacttorque() const { return Contacttorque.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetContacttorque() const { return Contacttorque.Get(FLinearColor(0.8999999761581421f, 0.699999988079071f, 0.8999999761581421f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetContacttorque(FLinearColor InValue) { Contacttorque = InValue; }
@@ -342,7 +342,7 @@ public:
 	bool HasContactgap() const { return Contactgap.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetContactgap() const { return Contactgap.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetContactgap() const { return Contactgap.Get(FLinearColor(0.5f, 0.800000011920929f, 0.8999999761581421f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetContactgap(FLinearColor InValue) { Contactgap = InValue; }
@@ -354,7 +354,7 @@ public:
 	bool HasRangefinder() const { return Rangefinder.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetRangefinder() const { return Rangefinder.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetRangefinder() const { return Rangefinder.Get(FLinearColor(1.0f, 1.0f, 0.10000000149011612f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetRangefinder(FLinearColor InValue) { Rangefinder = InValue; }
@@ -366,7 +366,7 @@ public:
 	bool HasConstraint() const { return Constraint.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetConstraint() const { return Constraint.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetConstraint() const { return Constraint.Get(FLinearColor(0.8999999761581421f, 0.0f, 0.0f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetConstraint(FLinearColor InValue) { Constraint = InValue; }
@@ -378,7 +378,7 @@ public:
 	bool HasSlidercrank() const { return Slidercrank.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetSlidercrank() const { return Slidercrank.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetSlidercrank() const { return Slidercrank.Get(FLinearColor(0.5f, 0.30000001192092896f, 0.800000011920929f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetSlidercrank(FLinearColor InValue) { Slidercrank = InValue; }
@@ -390,7 +390,7 @@ public:
 	bool HasCrankbroken() const { return Crankbroken.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetCrankbroken() const { return Crankbroken.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetCrankbroken() const { return Crankbroken.Get(FLinearColor(0.8999999761581421f, 0.0f, 0.0f, 1.0f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetCrankbroken(FLinearColor InValue) { Crankbroken = InValue; }
@@ -402,7 +402,7 @@ public:
 	bool HasFrustum() const { return Frustum.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetFrustum() const { return Frustum.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetFrustum() const { return Frustum.Get(FLinearColor(1.0f, 1.0f, 0.0f, 0.20000000298023224f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetFrustum(FLinearColor InValue) { Frustum = InValue; }
@@ -414,7 +414,7 @@ public:
 	bool HasBv() const { return Bv.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetBv() const { return Bv.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetBv() const { return Bv.Get(FLinearColor(0.0f, 1.0f, 0.0f, 0.5f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetBv(FLinearColor InValue) { Bv = InValue; }
@@ -426,7 +426,7 @@ public:
 	bool HasBvactive() const { return Bvactive.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|VisualRgba")
-	FLinearColor GetBvactive() const { return Bvactive.Get(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f)); }
+	FLinearColor GetBvactive() const { return Bvactive.Get(FLinearColor(1.0f, 0.0f, 0.0f, 0.5f)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|VisualRgba")
 	void SetBvactive(FLinearColor InValue) { Bvactive = InValue; }

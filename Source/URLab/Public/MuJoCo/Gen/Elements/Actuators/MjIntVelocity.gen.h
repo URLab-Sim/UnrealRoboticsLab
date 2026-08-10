@@ -191,7 +191,7 @@ public:
 	bool HasInterp() const { return Interp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	EMjInterpType GetInterp() const { return Interp.Get(static_cast<EMjInterpType>(0)); }
+	EMjInterpType GetInterp() const { return Interp.Get(EMjInterpType::zoh); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetInterp(EMjInterpType InValue) { Interp = InValue; }
@@ -215,7 +215,7 @@ public:
 	bool HasCtrlrange() const { return Ctrlrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	FVector2D GetCtrlrange() const { return Ctrlrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetCtrlrange() const { return Ctrlrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetCtrlrange(FVector2D InValue) { Ctrlrange = InValue; }
@@ -239,7 +239,7 @@ public:
 	bool HasCtrllimited() const { return Ctrllimited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	EMjTriState GetCtrllimited() const { return Ctrllimited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetCtrllimited() const { return Ctrllimited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetCtrllimited(EMjTriState InValue) { Ctrllimited = InValue; }
@@ -251,7 +251,7 @@ public:
 	bool HasForcelimited() const { return Forcelimited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	EMjTriState GetForcelimited() const { return Forcelimited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetForcelimited() const { return Forcelimited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetForcelimited(EMjTriState InValue) { Forcelimited = InValue; }
@@ -263,7 +263,7 @@ public:
 	bool HasActlimited() const { return Actlimited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	EMjTriState GetActlimited() const { return Actlimited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetActlimited() const { return Actlimited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetActlimited(EMjTriState InValue) { Actlimited = InValue; }
@@ -275,7 +275,7 @@ public:
 	bool HasForcerange() const { return Forcerange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	FVector2D GetForcerange() const { return Forcerange.Get(FVector2D::ZeroVector); }
+	FVector2D GetForcerange() const { return Forcerange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetForcerange(FVector2D InValue) { Forcerange = InValue; }
@@ -287,7 +287,7 @@ public:
 	bool HasActrange() const { return Actrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	FVector2D GetActrange() const { return Actrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetActrange() const { return Actrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetActrange(FVector2D InValue) { Actrange = InValue; }
@@ -311,7 +311,7 @@ public:
 	bool HasLengthrange() const { return Lengthrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	FVector2D GetLengthrange() const { return Lengthrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetLengthrange() const { return Lengthrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetLengthrange(FVector2D InValue) { Lengthrange = InValue; }
@@ -335,7 +335,7 @@ public:
 	bool HasDamping() const { return Damping.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|IntVelocity")
-	TArray<double> GetDamping() const { return Damping.Get(TArray<double>()); }
+	TArray<double> GetDamping() const { return Damping.Get(TArray<double>({0.0, 0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|IntVelocity")
 	void SetDamping(const TArray<double>& InValue) { Damping = InValue; }

@@ -199,7 +199,7 @@ public:
 	bool HasInterp() const { return Interp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|DcMotor")
-	EMjInterpType GetInterp() const { return Interp.Get(static_cast<EMjInterpType>(0)); }
+	EMjInterpType GetInterp() const { return Interp.Get(EMjInterpType::zoh); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|DcMotor")
 	void SetInterp(EMjInterpType InValue) { Interp = InValue; }
@@ -223,7 +223,7 @@ public:
 	bool HasCtrlrange() const { return Ctrlrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|DcMotor")
-	FVector2D GetCtrlrange() const { return Ctrlrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetCtrlrange() const { return Ctrlrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|DcMotor")
 	void SetCtrlrange(FVector2D InValue) { Ctrlrange = InValue; }
@@ -247,7 +247,7 @@ public:
 	bool HasCtrllimited() const { return Ctrllimited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|DcMotor")
-	EMjTriState GetCtrllimited() const { return Ctrllimited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetCtrllimited() const { return Ctrllimited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|DcMotor")
 	void SetCtrllimited(EMjTriState InValue) { Ctrllimited = InValue; }
@@ -259,7 +259,7 @@ public:
 	bool HasLengthrange() const { return Lengthrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|DcMotor")
-	FVector2D GetLengthrange() const { return Lengthrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetLengthrange() const { return Lengthrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|DcMotor")
 	void SetLengthrange(FVector2D InValue) { Lengthrange = InValue; }
@@ -283,7 +283,7 @@ public:
 	bool HasDamping() const { return Damping.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|DcMotor")
-	TArray<double> GetDamping() const { return Damping.Get(TArray<double>()); }
+	TArray<double> GetDamping() const { return Damping.Get(TArray<double>({0.0, 0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|DcMotor")
 	void SetDamping(const TArray<double>& InValue) { Damping = InValue; }

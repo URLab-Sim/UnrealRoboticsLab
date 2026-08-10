@@ -194,7 +194,7 @@ public:
 	bool HasRefpos() const { return Refpos.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Mesh")
-	FMjPosition3 GetRefpos() const { return Refpos.Get(FMjPosition3()); }
+	FMjPosition3 GetRefpos() const { return Refpos.Get(FMjPosition3(0.0, 0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Mesh")
 	void SetRefpos(FMjPosition3 InValue) { Refpos = InValue; }

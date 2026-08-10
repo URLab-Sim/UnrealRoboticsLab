@@ -50,7 +50,7 @@ public:
 	bool HasActiveFlag() const { return ActiveFlag.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|EqualityDefault")
-	bool GetActiveFlag() const { return ActiveFlag.Get(false); }
+	bool GetActiveFlag() const { return ActiveFlag.Get(true); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|EqualityDefault")
 	void SetActiveFlag(bool InValue) { ActiveFlag = InValue; }
@@ -62,7 +62,7 @@ public:
 	bool HasSolref() const { return Solref.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|EqualityDefault")
-	TArray<double> GetSolref() const { return Solref.Get(TArray<double>()); }
+	TArray<double> GetSolref() const { return Solref.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|EqualityDefault")
 	void SetSolref(const TArray<double>& InValue) { Solref = InValue; }
@@ -74,7 +74,7 @@ public:
 	bool HasSolimp() const { return Solimp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|EqualityDefault")
-	TArray<double> GetSolimp() const { return Solimp.Get(TArray<double>()); }
+	TArray<double> GetSolimp() const { return Solimp.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|EqualityDefault")
 	void SetSolimp(const TArray<double>& InValue) { Solimp = InValue; }

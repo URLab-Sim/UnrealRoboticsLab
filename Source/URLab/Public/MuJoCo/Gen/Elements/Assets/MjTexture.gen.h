@@ -194,7 +194,7 @@ public:
 	bool HasGridlayout() const { return Gridlayout.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Texture")
-	FString GetGridlayout() const { return Gridlayout.Get(FString()); }
+	FString GetGridlayout() const { return Gridlayout.Get(FString(TEXT("............"))); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Texture")
 	void SetGridlayout(const FString& InValue) { Gridlayout = InValue; }
@@ -278,7 +278,7 @@ public:
 	bool HasBuiltin() const { return Builtin.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Texture")
-	EMjTextureBuiltin GetBuiltin() const { return Builtin.Get(static_cast<EMjTextureBuiltin>(0)); }
+	EMjTextureBuiltin GetBuiltin() const { return Builtin.Get(EMjTextureBuiltin::none); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Texture")
 	void SetBuiltin(EMjTextureBuiltin InValue) { Builtin = InValue; }
@@ -314,7 +314,7 @@ public:
 	bool HasMark() const { return Mark.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Texture")
-	EMjTextureMark GetMark() const { return Mark.Get(static_cast<EMjTextureMark>(0)); }
+	EMjTextureMark GetMark() const { return Mark.Get(EMjTextureMark::none); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Texture")
 	void SetMark(EMjTextureMark InValue) { Mark = InValue; }
@@ -326,7 +326,7 @@ public:
 	bool HasMarkrgb() const { return Markrgb.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Texture")
-	FMjVec3 GetMarkrgb() const { return Markrgb.Get(FMjVec3()); }
+	FMjVec3 GetMarkrgb() const { return Markrgb.Get(FMjVec3(0.0, 0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Texture")
 	void SetMarkrgb(FMjVec3 InValue) { Markrgb = InValue; }

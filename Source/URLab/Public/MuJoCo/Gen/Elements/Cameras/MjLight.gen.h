@@ -128,7 +128,7 @@ public:
 	bool HasType() const { return Type.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Light")
-	EMjLightType GetType() const { return Type.Get(static_cast<EMjLightType>(0)); }
+	EMjLightType GetType() const { return Type.Get(EMjLightType::spot); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Light")
 	void SetType(EMjLightType InValue) { Type = InValue; }
@@ -260,7 +260,7 @@ public:
 	bool HasAmbient() const { return Ambient.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Light")
-	TArray<float> GetAmbient() const { return Ambient.Get(TArray<float>()); }
+	TArray<float> GetAmbient() const { return Ambient.Get(TArray<float>({0.0f, 0.0f, 0.0f})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Light")
 	void SetAmbient(const TArray<float>& InValue) { Ambient = InValue; }

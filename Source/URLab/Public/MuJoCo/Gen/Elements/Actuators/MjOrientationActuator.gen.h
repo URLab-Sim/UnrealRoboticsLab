@@ -143,7 +143,7 @@ public:
 	bool HasInterp() const { return Interp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|OrientationActuator")
-	EMjInterpType GetInterp() const { return Interp.Get(static_cast<EMjInterpType>(0)); }
+	EMjInterpType GetInterp() const { return Interp.Get(EMjInterpType::zoh); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|OrientationActuator")
 	void SetInterp(EMjInterpType InValue) { Interp = InValue; }
@@ -167,7 +167,7 @@ public:
 	bool HasCtrlrange() const { return Ctrlrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|OrientationActuator")
-	FVector2D GetCtrlrange() const { return Ctrlrange.Get(FVector2D::ZeroVector); }
+	FVector2D GetCtrlrange() const { return Ctrlrange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|OrientationActuator")
 	void SetCtrlrange(FVector2D InValue) { Ctrlrange = InValue; }
@@ -191,7 +191,7 @@ public:
 	bool HasForcelimited() const { return Forcelimited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|OrientationActuator")
-	EMjTriState GetForcelimited() const { return Forcelimited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetForcelimited() const { return Forcelimited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|OrientationActuator")
 	void SetForcelimited(EMjTriState InValue) { Forcelimited = InValue; }
@@ -203,7 +203,7 @@ public:
 	bool HasForcerange() const { return Forcerange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|OrientationActuator")
-	FVector2D GetForcerange() const { return Forcerange.Get(FVector2D::ZeroVector); }
+	FVector2D GetForcerange() const { return Forcerange.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|OrientationActuator")
 	void SetForcerange(FVector2D InValue) { Forcerange = InValue; }

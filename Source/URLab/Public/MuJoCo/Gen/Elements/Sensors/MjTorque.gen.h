@@ -83,7 +83,7 @@ public:
 	bool HasInterp() const { return Interp.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Torque")
-	EMjInterpType GetInterp() const { return Interp.Get(static_cast<EMjInterpType>(0)); }
+	EMjInterpType GetInterp() const { return Interp.Get(EMjInterpType::zoh); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Torque")
 	void SetInterp(EMjInterpType InValue) { Interp = InValue; }
@@ -107,7 +107,7 @@ public:
 	bool HasInterval() const { return Interval.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Torque")
-	TArray<double> GetInterval() const { return Interval.Get(TArray<double>()); }
+	TArray<double> GetInterval() const { return Interval.Get(TArray<double>({0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Torque")
 	void SetInterval(const TArray<double>& InValue) { Interval = InValue; }

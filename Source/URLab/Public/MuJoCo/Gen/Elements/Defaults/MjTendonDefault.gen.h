@@ -115,7 +115,7 @@ public:
 	bool HasLimited() const { return Limited.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	EMjTriState GetLimited() const { return Limited.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetLimited() const { return Limited.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetLimited(EMjTriState InValue) { Limited = InValue; }
@@ -127,7 +127,7 @@ public:
 	bool HasRange() const { return Range.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	FVector2D GetRange() const { return Range.Get(FVector2D::ZeroVector); }
+	FVector2D GetRange() const { return Range.Get(FVector2D(0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetRange(FVector2D InValue) { Range = InValue; }
@@ -139,7 +139,7 @@ public:
 	bool HasSolreflimit() const { return Solreflimit.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	TArray<double> GetSolreflimit() const { return Solreflimit.Get(TArray<double>()); }
+	TArray<double> GetSolreflimit() const { return Solreflimit.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetSolreflimit(const TArray<double>& InValue) { Solreflimit = InValue; }
@@ -151,7 +151,7 @@ public:
 	bool HasSolimplimit() const { return Solimplimit.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	TArray<double> GetSolimplimit() const { return Solimplimit.Get(TArray<double>()); }
+	TArray<double> GetSolimplimit() const { return Solimplimit.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetSolimplimit(const TArray<double>& InValue) { Solimplimit = InValue; }
@@ -163,7 +163,7 @@ public:
 	bool HasSolreffriction() const { return Solreffriction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	TArray<double> GetSolreffriction() const { return Solreffriction.Get(TArray<double>()); }
+	TArray<double> GetSolreffriction() const { return Solreffriction.Get(TArray<double>({0.02, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetSolreffriction(const TArray<double>& InValue) { Solreffriction = InValue; }
@@ -175,7 +175,7 @@ public:
 	bool HasSolimpfriction() const { return Solimpfriction.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	TArray<double> GetSolimpfriction() const { return Solimpfriction.Get(TArray<double>()); }
+	TArray<double> GetSolimpfriction() const { return Solimpfriction.Get(TArray<double>({0.9, 0.95, 0.001, 0.5, 2.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetSolimpfriction(const TArray<double>& InValue) { Solimpfriction = InValue; }
@@ -199,7 +199,7 @@ public:
 	bool HasSpringlength() const { return Springlength.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	TArray<double> GetSpringlength() const { return Springlength.Get(TArray<double>()); }
+	TArray<double> GetSpringlength() const { return Springlength.Get(TArray<double>({-1.0, -1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetSpringlength(const TArray<double>& InValue) { Springlength = InValue; }
@@ -211,7 +211,7 @@ public:
 	bool HasWidth() const { return Width.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	double GetWidth() const { return Width.Get(0.0); }
+	double GetWidth() const { return Width.Get(0.003); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetWidth(double InValue) { Width = InValue; }
@@ -275,7 +275,7 @@ public:
 	bool HasRgba() const { return Rgba.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|TendonDefault")
-	TArray<double> GetRgba() const { return Rgba.Get(TArray<double>()); }
+	TArray<double> GetRgba() const { return Rgba.Get(TArray<double>({0.5, 0.5, 0.5, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|TendonDefault")
 	void SetRgba(const TArray<double>& InValue) { Rgba = InValue; }

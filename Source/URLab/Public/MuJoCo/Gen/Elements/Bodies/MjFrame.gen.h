@@ -69,7 +69,7 @@ public:
 	bool HasPos() const { return Pos.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Frame")
-	FMjPosition3 GetPos() const { return Pos.Get(FMjPosition3()); }
+	FMjPosition3 GetPos() const { return Pos.Get(FMjPosition3(0.0, 0.0, 0.0)); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Frame")
 	void SetPos(FMjPosition3 InValue) { Pos = InValue; }

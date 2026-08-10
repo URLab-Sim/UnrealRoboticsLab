@@ -122,7 +122,7 @@ public:
 	bool HasProjection() const { return Projection.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Camera")
-	EMjCameraProjection GetProjection() const { return Projection.Get(static_cast<EMjCameraProjection>(0)); }
+	EMjCameraProjection GetProjection() const { return Projection.Get(EMjCameraProjection::perspective); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void SetProjection(EMjCameraProjection InValue) { Projection = InValue; }
@@ -234,7 +234,7 @@ public:
 	bool HasFocal() const { return Focal.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Camera")
-	TArray<float> GetFocal() const { return Focal.Get(TArray<float>()); }
+	TArray<float> GetFocal() const { return Focal.Get(TArray<float>({0.0f, 0.0f})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void SetFocal(const TArray<float>& InValue) { Focal = InValue; }
@@ -246,7 +246,7 @@ public:
 	bool HasFocalpixel() const { return Focalpixel.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Camera")
-	TArray<float> GetFocalpixel() const { return Focalpixel.Get(TArray<float>()); }
+	TArray<float> GetFocalpixel() const { return Focalpixel.Get(TArray<float>({0.0f, 0.0f})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void SetFocalpixel(const TArray<float>& InValue) { Focalpixel = InValue; }
@@ -258,7 +258,7 @@ public:
 	bool HasPrincipal() const { return Principal.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Camera")
-	TArray<float> GetPrincipal() const { return Principal.Get(TArray<float>()); }
+	TArray<float> GetPrincipal() const { return Principal.Get(TArray<float>({0.0f, 0.0f})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void SetPrincipal(const TArray<float>& InValue) { Principal = InValue; }
@@ -270,7 +270,7 @@ public:
 	bool HasPrincipalpixel() const { return Principalpixel.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Camera")
-	TArray<float> GetPrincipalpixel() const { return Principalpixel.Get(TArray<float>()); }
+	TArray<float> GetPrincipalpixel() const { return Principalpixel.Get(TArray<float>({0.0f, 0.0f})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void SetPrincipalpixel(const TArray<float>& InValue) { Principalpixel = InValue; }
@@ -282,7 +282,7 @@ public:
 	bool HasSensorsize() const { return Sensorsize.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Camera")
-	TArray<float> GetSensorsize() const { return Sensorsize.Get(TArray<float>()); }
+	TArray<float> GetSensorsize() const { return Sensorsize.Get(TArray<float>({0.0f, 0.0f})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	void SetSensorsize(const TArray<float>& InValue) { Sensorsize = InValue; }

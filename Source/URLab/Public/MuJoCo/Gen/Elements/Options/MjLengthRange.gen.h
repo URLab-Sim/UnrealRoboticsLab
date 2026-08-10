@@ -79,7 +79,7 @@ public:
 	bool HasMode() const { return Mode.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	EMjLRMode GetMode() const { return Mode.Get(static_cast<EMjLRMode>(0)); }
+	EMjLRMode GetMode() const { return Mode.Get(EMjLRMode::muscle); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetMode(EMjLRMode InValue) { Mode = InValue; }
@@ -91,7 +91,7 @@ public:
 	bool HasUseexisting() const { return Useexisting.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	bool GetUseexisting() const { return Useexisting.Get(false); }
+	bool GetUseexisting() const { return Useexisting.Get(true); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetUseexisting(bool InValue) { Useexisting = InValue; }
@@ -115,7 +115,7 @@ public:
 	bool HasAccel() const { return Accel.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	double GetAccel() const { return Accel.Get(0.0); }
+	double GetAccel() const { return Accel.Get(20.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetAccel(double InValue) { Accel = InValue; }
@@ -139,7 +139,7 @@ public:
 	bool HasTimeconst() const { return Timeconst.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	double GetTimeconst() const { return Timeconst.Get(0.0); }
+	double GetTimeconst() const { return Timeconst.Get(1.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetTimeconst(double InValue) { Timeconst = InValue; }
@@ -151,7 +151,7 @@ public:
 	bool HasTimestep() const { return Timestep.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	double GetTimestep() const { return Timestep.Get(0.0); }
+	double GetTimestep() const { return Timestep.Get(0.01); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetTimestep(double InValue) { Timestep = InValue; }
@@ -163,7 +163,7 @@ public:
 	bool HasInttotal() const { return Inttotal.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	double GetInttotal() const { return Inttotal.Get(0.0); }
+	double GetInttotal() const { return Inttotal.Get(10.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetInttotal(double InValue) { Inttotal = InValue; }
@@ -175,7 +175,7 @@ public:
 	bool HasInterval() const { return Interval.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	double GetInterval() const { return Interval.Get(0.0); }
+	double GetInterval() const { return Interval.Get(2.0); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetInterval(double InValue) { Interval = InValue; }
@@ -187,7 +187,7 @@ public:
 	bool HasTolrange() const { return Tolrange.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|LengthRange")
-	double GetTolrange() const { return Tolrange.Get(0.0); }
+	double GetTolrange() const { return Tolrange.Get(0.05); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|LengthRange")
 	void SetTolrange(double InValue) { Tolrange = InValue; }

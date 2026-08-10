@@ -138,7 +138,7 @@ public:
 	bool HasSleep() const { return Sleep.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Body")
-	EMjBodySleep GetSleep() const { return Sleep.Get(static_cast<EMjBodySleep>(0)); }
+	EMjBodySleep GetSleep() const { return Sleep.Get(EMjBodySleep::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Body")
 	void SetSleep(EMjBodySleep InValue) { Sleep = InValue; }

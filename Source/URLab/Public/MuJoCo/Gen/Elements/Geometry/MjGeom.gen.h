@@ -250,7 +250,7 @@ public:
 	bool HasSize() const { return Size.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Geom")
-	TArray<double> GetSize() const { return Size.Get(TArray<double>()); }
+	TArray<double> GetSize() const { return Size.Get(TArray<double>({0.0, 0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Geom")
 	void SetSize(const TArray<double>& InValue) { Size = InValue; }
@@ -386,7 +386,7 @@ public:
 	bool HasSurfacevel() const { return Surfacevel.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Geom")
-	TArray<double> GetSurfacevel() const { return Surfacevel.Get(TArray<double>()); }
+	TArray<double> GetSurfacevel() const { return Surfacevel.Get(TArray<double>({0.0, 0.0, 0.0, 0.0, 0.0, 0.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Geom")
 	void SetSurfacevel(const TArray<double>& InValue) { Surfacevel = InValue; }
@@ -502,7 +502,7 @@ public:
 	bool HasFluidshape() const { return Fluidshape.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Geom")
-	EMjFluidShape GetFluidshape() const { return Fluidshape.Get(static_cast<EMjFluidShape>(0)); }
+	EMjFluidShape GetFluidshape() const { return Fluidshape.Get(EMjFluidShape::none); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Geom")
 	void SetFluidshape(EMjFluidShape InValue) { Fluidshape = InValue; }
@@ -514,7 +514,7 @@ public:
 	bool HasFluidcoef() const { return Fluidcoef.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|Geom")
-	TArray<double> GetFluidcoef() const { return Fluidcoef.Get(TArray<double>()); }
+	TArray<double> GetFluidcoef() const { return Fluidcoef.Get(TArray<double>({0.5, 0.25, 1.5, 1.0, 1.0})); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Geom")
 	void SetFluidcoef(const TArray<double>& InValue) { Fluidcoef = InValue; }

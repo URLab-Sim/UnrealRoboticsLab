@@ -59,7 +59,7 @@ public:
 	bool HasAlign() const { return Align.IsSet(); }
 
 	UFUNCTION(BlueprintPure, Category = "MuJoCo|FreeJoint")
-	EMjTriState GetAlign() const { return Align.Get(static_cast<EMjTriState>(0)); }
+	EMjTriState GetAlign() const { return Align.Get(EMjTriState::auto_); }
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|FreeJoint")
 	void SetAlign(EMjTriState InValue) { Align = InValue; }

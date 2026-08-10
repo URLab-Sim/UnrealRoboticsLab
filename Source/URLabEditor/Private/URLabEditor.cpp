@@ -147,6 +147,23 @@ void FURLabEditorModule::StartupModule()
 	// Register auto-parenting hook for MuJoCo components
 	OnObjectModifiedHandle = FCoreUObjectDelegates::OnObjectModified.AddRaw(this, &FURLabEditorModule::OnObjectModified);
 
+	// The move hook the engine does not deliver to a construction-script root.
+	// The delegate lives on `GEngine`, which an editor module can start before,
+	// so the binding waits for the engine when it has to.
+	if (GEngine != nullptr)
+	{
+		OnActorMovedHandle = GEngine->OnActorMoved().AddRaw(this, &FURLabEditorModule::OnActorMoved);
+	}
+	else
+	{
+		PostEngineInitHandle = FCoreDelegates::OnPostEngineInit.AddLambda([this]() {
+			if (GEngine != nullptr && !OnActorMovedHandle.IsValid())
+			{
+				OnActorMovedHandle = GEngine->OnActorMoved().AddRaw(this, &FURLabEditorModule::OnActorMoved);
+			}
+		});
+	}
+
 	// Register the StepMode status indicator into the level editor toolbar.
 	// The indicator is a small Slate widget that polls AAMjManager::Instance
 	// every 0.5s and shows a coloured pill: green=Live, amber=Direct,
@@ -202,6 +219,12 @@ void FURLabEditorModule::ShutdownModule()
 	URLabEditorOpHandlers::UnregisterAll();
 
 	FCoreUObjectDelegates::OnObjectModified.Remove(OnObjectModifiedHandle);
+
+	FCoreDelegates::OnPostEngineInit.Remove(PostEngineInitHandle);
+	if (GEngine != nullptr)
+	{
+		GEngine->OnActorMoved().Remove(OnActorMovedHandle);
+	}
 
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
 
@@ -330,6 +353,27 @@ void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors
 
 	UE_LOG(LogURLabEditor, Log, TEXT("MuJoCo Quick Convert applied to %d actor(s) [Static=%d, Complex=%d]"),
 		Applied, bStatic, bComplex);
+}
+
+void FURLabEditorModule::OnActorMoved(AActor* Actor)
+{
+	USceneComponent* const Root = Actor != nullptr ? Actor->GetRootComponent() : nullptr;
+	if (Root == nullptr || Cast<UMjNodeComponent>(Root) == nullptr)
+	{
+		return;
+	}
+
+	// Only the case the engine skips. A root it made itself already had the hook
+	// from `AActor::PostEditMove`, and delivering a second one would run the
+	// whole subtree's write-back twice per drag.
+	if (!Root->IsCreatedByConstructionScript())
+	{
+		return;
+	}
+
+	// Recurses into every attached child, which is what puts the refusal in front
+	// of every element under the actor rather than only the root.
+	Root->PostEditComponentMove(/*bFinished=*/true);
 }
 
 void FURLabEditorModule::OnObjectModified(UObject* Object)

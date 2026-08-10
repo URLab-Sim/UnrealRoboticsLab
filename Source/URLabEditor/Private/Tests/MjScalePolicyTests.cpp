@@ -41,6 +41,16 @@
 //                             grid steps in 0.25, which is larger than most of a
 //                             robot, so the first drag on a sub-grid geom used to
 //                             author exactly that.
+//
+//   the actor is an element   Every refusal above rides on `PostEditComponentMove`,
+//                             and the ordinary level gesture -- select the placed
+//                             model, drag the scale handle -- never reached it.
+//                             `AActor::PostEditMove` calls that hook on the root
+//                             only when the construction script did NOT create it
+//                             (`ActorEditor.cpp:323-327`), and a model's root
+//                             always is one. So a scaled actor drew every geom
+//                             under it stretched while MuJoCo went on simulating
+//                             the sphere.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -52,8 +62,13 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Engine/World.h"
+#include "GameFramework/Actor.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/FileHelper.h"
+#include "Misc/Guid.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeExit.h"
 
 #include "MjParitySupport.h"
 
@@ -149,6 +164,28 @@ void DragScale(UMjNodeComponent& Element, const FVector& Scale)
 {
 	Element.SetRelativeScale3D(Scale);
 	Element.PostEditComponentMove(/*bFinished=*/true);
+}
+
+UWorld* ScratchWorld()
+{
+	return UWorld::CreateWorld(EWorldType::Editor, /*bInformEngineOfWorld=*/false,
+		FName(*FString::Printf(TEXT("MjScaleWorld_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits))));
+}
+
+/** The component of type `T` a spawned actor carries under the MJCF name `MjName`. */
+template <class T>
+T* ComponentNamed(AActor& Actor, const TCHAR* MjName)
+{
+	TArray<T*> Found;
+	Actor.GetComponents(Found);
+	for (T* const One : Found)
+	{
+		if (One != nullptr && One->MjName.IsSet() && One->MjName.GetValue() == MjName)
+		{
+			return One;
+		}
+	}
+	return nullptr;
 }
 
 /** The element's authored `size`, or an empty array when it authored none. */
@@ -472,6 +509,103 @@ bool FMjNonPositiveSizeIsRefused::RunTest(const FString& Parameters)
 		TestEqual(TEXT("and it is half the dragged scale"), Grown[0], 0.2);
 	}
 	TestEqual(TEXT("which withdraws the refusal"), Ball->PreviewProblems.Num(), 0);
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
+// The gesture that reached no hook at all
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActorScaleDoesNotDistortTheModel,
+	"URLab.Preview.AnActorScaleDoesNotDistortTheModel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjActorScaleDoesNotDistortTheModel::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjScaleActor"), TEXT("actor scale"), Model, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+	FKismetEditorUtilities::CompileBlueprint(Blueprint);
+
+	UWorld* const World = ScratchWorld();
+	if (!TestNotNull(TEXT("scratch world"), World))
+	{
+		return false;
+	}
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(false);
+	};
+
+	AActor* const Actor = World->SpawnActor<AActor>(Blueprint->GeneratedClass);
+	if (!TestNotNull(TEXT("the placed model"), Actor))
+	{
+		return false;
+	}
+	USceneComponent* const Root = Actor->GetRootComponent();
+	UMjNodeComponent* const Ball = ComponentNamed<UMjNodeComponent>(*Actor, TEXT("ball"));
+	if (!TestNotNull(TEXT("the model's root"), Root) || !TestNotNull(TEXT("the placed geom"), Ball))
+	{
+		return false;
+	}
+
+	// The whole reason the hook never arrived, asserted rather than assumed: the
+	// engine skips a root the construction script made, and this is one.
+	TestTrue(TEXT("the model's root is a construction-script component"), Root->IsCreatedByConstructionScript());
+	TestNotNull(TEXT("and it is an element, so the refusal applies to it"), Cast<UMjNodeComponent>(Root));
+
+	const TArray<double> Before = AuthoredSize(*Ball);
+	const FVector Uniform = Ball->GetComponentScale();
+	if (!TestEqual(TEXT("the geom starts at the scale its radius implies"), Uniform, FVector(0.1, 0.1, 0.1)))
+	{
+		return false;
+	}
+
+	// The gesture: scale the placed actor, which lands on its root component and
+	// multiplies every element under it.
+	Root->SetRelativeScale3D(FVector(3.0, 1.0, 1.0));
+	TestEqual(TEXT("the drag really did reach the root"), Root->GetRelativeScale3D(), FVector(3.0, 1.0, 1.0));
+	TestFalse(TEXT("and the geom really was drawn distorted before the move finished"),
+		Ball->GetComponentScale().Equals(Uniform, 1e-4));
+
+	// What the level viewport does when the drag ends.
+	Actor->PostEditMove(/*bFinished=*/true);
+
+	UMjNodeComponent* const Settled = ComponentNamed<UMjNodeComponent>(*Actor, TEXT("ball"));
+	if (!TestNotNull(TEXT("the geom after the move"), Settled))
+	{
+		return false;
+	}
+	TestEqual(TEXT("a scale MJCF cannot express goes back to one"),
+		Actor->GetRootComponent()->GetRelativeScale3D(), FVector::OneVector);
+	TestTrue(FString::Printf(TEXT("so the sphere is drawn as a sphere again, got %s"),
+				 *Settled->GetComponentScale().ToString()),
+		Settled->GetComponentScale().Equals(Uniform, 1e-4));
+
+	// And the refusal is a refusal, not a write: the drag must not have authored
+	// the distortion into the model either.
+	const TArray<double> After = AuthoredSize(*Settled);
+	if (TestEqual(TEXT("the geom still authors its one radius"), After.Num(), Before.Num()))
+	{
+		for (int32 Index = 0; Index < After.Num(); ++Index)
+		{
+			TestEqual(TEXT("unchanged by the actor gesture"), After[Index], Before[Index]);
+		}
+	}
+
+	// The control. Moving the actor is legal and must still be free: an actor
+	// translation is not a lie about anything, and if the hook above refused
+	// everything the assertions would pass for the wrong reason.
+	Actor->SetActorLocation(FVector(100.0, 200.0, 300.0));
+	Actor->PostEditMove(/*bFinished=*/true);
+	TestTrue(TEXT("moving a placed model is left alone"),
+		Actor->GetActorLocation().Equals(FVector(100.0, 200.0, 300.0), 1e-3));
 
 	return !HasAnyErrors();
 }

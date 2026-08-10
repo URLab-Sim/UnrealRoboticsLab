@@ -1072,8 +1072,30 @@ void UMjNodeComponent::SyncPreviewFromSpec()
 
 void UMjNodeComponent::WriteBackTransformIfChanged()
 {
-	if (!HasPoseAttributes() || HasAnyFlags(RF_ClassDefaultObject))
+	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
+		return;
+	}
+
+	// The scale answer does not depend on the element having a pose, and tying
+	// the two together is how a whole model came to be drawn at a scale MuJoCo
+	// never sees. A `<mujoco>` root authors neither `pos` nor `quat`, so it left
+	// here at once -- and it is the component a placed actor's own transform
+	// lands on. Scale the actor and every geom under it is drawn stretched while
+	// the simulation goes on using the `size` the gesture never touched, which is
+	// the picture and the model saying different things.
+	//
+	// Every element the schema gives a `size` also gives a transform, so a
+	// pose-less element is an unsized one and the scale it can hold is one. That
+	// makes the guard exact rather than a heuristic, and it is a guard rather
+	// than an unconditional call because resolving a shape indexes the spec.
+	if (!HasPoseAttributes())
+	{
+		if (!GetRelativeScale3D().Equals(FVector::OneVector, MjPreviewEpsilon))
+		{
+			urlab::spec::FMjEffectiveScope Effective(*this);
+			ConstrainPreviewScale();
+		}
 		return;
 	}
 

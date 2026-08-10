@@ -10,12 +10,15 @@
 
 #if URLAB_MJ_GEN
 
+#include "MuJoCo/Gen/MjEnums.gen.h"
+#include "MuJoCo/Gen/MjKeywords.gen.h"
 #include "MuJoCo/Gen/MjSpecWrite.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MjReservedNames.h"
 #include "MjSpecBuildContext.h"
 #include "MjSpecNodes.h"
 #include "MjSpecWriteHooks.h"
+#include "MuJoCo/Spec/MjScalePolicy.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 
 namespace urlab::spec
@@ -91,6 +94,38 @@ TOptional<FString> ModelNameOf(const UMjNodeComponent& Root)
 	return Out;
 }
 
+/** How many `size` values a node authored on its own storage, if any. */
+TOptional<int32> AuthoredSizeNumOf(const UMjNodeComponent& Node)
+{
+	TOptional<int32> Out;
+	gen::DispatchByType(Node, [&Out](const auto& Element)
+	{
+		if constexpr (requires { Element.Size; })
+		{
+			if constexpr (std::is_same_v<std::decay_t<decltype(Element.Size)>, TOptional<TArray<double>>>)
+			{
+				if (Element.Size.IsSet())
+				{
+					Out = Element.Size.GetValue().Num();
+				}
+			}
+		}
+		(void)Element;
+	});
+	return Out;
+}
+
+/** An MJCF keyword as text. The tables are ASCII by construction. */
+FString KeywordOf(EMjGeomType Type)
+{
+	FString Out;
+	for (const char Character : ps::ue::ToMjcf(Type))
+	{
+		Out.AppendChar(static_cast<TCHAR>(Character));
+	}
+	return Out;
+}
+
 /** The class a node imposes on its subtree, when its schema gives it one. */
 TOptional<FString> ChildclassOf(const UMjNodeComponent& Node)
 {
@@ -126,6 +161,7 @@ private:
 	bool ResolveClass(UMjNodeComponent& Node, FMjSpecWriteContext& Local);
 	void Identify(UMjNodeComponent& Node, FMjSpecWriteContext& Local);
 	bool RunHooks(UMjNodeComponent& Node, FMjSpecWriteContext& Local, bool bCreating);
+	void TruncateSizesToArity();
 
 	FMjSpecWriteContext Ctx;
 	FMjBuiltSpec Result;
@@ -222,6 +258,71 @@ bool FBuilder::RunHooks(UMjNodeComponent& Node, FMjSpecWriteContext& Local, bool
 		}
 	}
 	return bOk;
+}
+
+void FBuilder::TruncateSizesToArity()
+{
+	// One pass over what the walk built, rather than a check inside each
+	// generated Apply. The gizmo, the array widget and a hand-edited MJCF file
+	// all arrive at this same build, so the rule is enforced once where they
+	// meet; scattered through generated code it would be a rule nobody reviews.
+	//
+	// MuJoCo reads `mjGEOMINFO[type]` values out of `size` and carries the rest
+	// into the compiled model untouched (`mjCModel::CopyObjects`,
+	// user_model.cc:3055), where they decide nothing: a sphere authored with
+	// three radii is a sphere of the first, and no compile ever says so.
+	//
+	// Only the slots the author wrote are cleared. The type is read off the
+	// built element rather than off the component because creation copies the
+	// resolved class's template in, so it is the type the compile will read even
+	// where the element authored none of it; and a shape whose tail came from
+	// its class, or a site sitting on MuJoCo's own 0.005 default, wrote nothing
+	// there and keeps what it inherited.
+	for (const TPair<TObjectPtr<const UMjNodeComponent>, mjsElement*>& Entry : Result.ElementFor)
+	{
+		const UMjNodeComponent* const Node = Entry.Key.Get();
+		if (Node == nullptr || Entry.Value == nullptr)
+		{
+			continue;
+		}
+		const TOptional<int32> Authored = AuthoredSizeNumOf(*Node);
+		if (!Authored.IsSet() || Authored.GetValue() <= 0)
+		{
+			continue;
+		}
+
+		double* Size = nullptr;
+		mjtGeom Shape = mjGEOM_SPHERE;
+		if (mjsGeom* const Geom = mjs_asGeom(Entry.Value))
+		{
+			Size = Geom->size;
+			Shape = Geom->type;
+		}
+		else if (mjsSite* const Site = mjs_asSite(Entry.Value))
+		{
+			Size = Site->size;
+			Shape = Site->type;
+		}
+		else
+		{
+			continue;  // a `size` that is not a shape's: a composite, an hfield
+		}
+
+		const EMjGeomType Type = static_cast<EMjGeomType>(Shape);
+		const int32 Allowed = MjSizeArityFor(Type);
+		if (Authored.GetValue() <= Allowed)
+		{
+			continue;
+		}
+		for (int32 Slot = Allowed; Slot < Authored.GetValue() && Slot < 3; ++Slot)
+		{
+			Size[Slot] = 0.0;
+		}
+		Ctx.Warn(*Node, FString::Printf(
+			TEXT("authors %d size values where a %s reads %d; the rest decide nothing and are dropped "
+				 "before the compile"),
+			Authored.GetValue(), *KeywordOf(Type), Allowed));
+	}
 }
 
 void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inherited)
@@ -504,6 +605,11 @@ FMjBuiltSpec FBuilder::Build()
 		}
 		WalkNode(*Section.Node, Top);
 	}
+
+	// The whole document is written, so every element carries the type its class
+	// resolved to and nothing more will be added: the last thing before the spec
+	// is handed to a compile.
+	TruncateSizesToArity();
 
 	if (bFailed)
 	{

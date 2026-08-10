@@ -294,6 +294,99 @@ bool FMjSpecWriteUnauthoredTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// --- Size arity ------------------------------------------------------------ //
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteSizeArityTest,
+	"URLab.MuJoCo.SpecWrite.SizeArity",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSpecWriteSizeArityTest::RunTest(const FString& Parameters)
+{
+	// Authored, not dragged. A gizmo cannot produce this and the shape lock
+	// stops it trying; a hand-edited MJCF file, a script and the array widget
+	// all can, and every one of them lands in the same build.
+	FSpecWriteFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not build the component tree"));
+		return false;
+	}
+
+	UMjBody* const Body = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("Root"));
+	UMjGeom* const Ball = Fixture.Add<UMjGeom>(Body, TEXT("ball"));
+	UMjGeom* const Brick = Fixture.Add<UMjGeom>(Body, TEXT("brick"));
+	if (Ball == nullptr || Brick == nullptr)
+	{
+		AddError(TEXT("could not author the two geoms"));
+		return false;
+	}
+	Ball->Type = EMjGeomType::sphere;
+	Ball->Size = TArray<double>({ 0.1, 0.2, 0.3 });
+	// The control: three values is exactly what a box reads, so a pass that
+	// reported both would be reporting length rather than arity.
+	Brick->Type = EMjGeomType::box;
+	Brick->Size = TArray<double>({ 0.1, 0.2, 0.3 });
+
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	urlab::spec::FMjBuiltSpec Built = urlab::spec::BuildSpec(Fixture.Spec(), Diagnostics);
+	if (Built.Spec == nullptr)
+	{
+		for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+		{
+			AddError(Diagnostic.ToString());
+		}
+		return false;
+	}
+
+	TArray<FString> Lines;
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		Lines.Add(Diagnostic.ToString());
+	}
+	const FString Reported = FString::Join(Lines, TEXT("; "));
+	if (TestEqual(TEXT("one over-long size is reported and one only"), Diagnostics.Num(), 1))
+	{
+		TestTrue(TEXT("the report says what was authored and what the shape reads"),
+			Reported.Contains(TEXT("authors 3 size values where a sphere reads 1")));
+	}
+
+	const mjsGeom* const SpecBall = FindGeom(Built.Spec, TEXT("ball"));
+	if (TestNotNull(TEXT("the sphere is findable by name"), SpecBall))
+	{
+		TestEqual(TEXT("the radius the shape reads is untouched"), SpecBall->size[0], 0.1);
+		TestEqual(TEXT("the second value is gone before the compile sees it"), SpecBall->size[1], 0.0);
+		TestEqual(TEXT("and the third"), SpecBall->size[2], 0.0);
+	}
+
+	// The compiled model is where this has to be true: the defaults path fails
+	// by producing a plausible model rather than an error, so the spec agreeing
+	// is not the same as the compile agreeing.
+	mjModel* const Model = Compile(*this, Built.Spec);
+	if (Model == nullptr)
+	{
+		return false;
+	}
+	const int BallId = mj_name2id(Model, mjOBJ_GEOM, "ball");
+	if (TestTrue(TEXT("the sphere compiled"), BallId >= 0))
+	{
+		TestEqual(TEXT("it compiles as a sphere of the authored radius"),
+			Model->geom_size[3 * BallId], 0.1);
+		TestEqual(TEXT("carrying no value its type cannot read"),
+			Model->geom_size[3 * BallId + 1], 0.0);
+		TestEqual(TEXT("in either slot"), Model->geom_size[3 * BallId + 2], 0.0);
+	}
+	const int BrickId = mj_name2id(Model, mjOBJ_GEOM, "brick");
+	if (TestTrue(TEXT("the box compiled"), BrickId >= 0))
+	{
+		TestEqual(TEXT("a box keeps all three half-extents"),
+			Model->geom_size[3 * BrickId + 1], 0.2);
+		TestEqual(TEXT("including the last"), Model->geom_size[3 * BrickId + 2], 0.3);
+	}
+	mj_deleteModel(Model);
+
+	return !HasAnyErrors();
+}
+
 // --- Nested default classes ------------------------------------------------ //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecWriteDefaultsTest,

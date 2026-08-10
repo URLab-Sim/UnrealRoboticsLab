@@ -422,6 +422,133 @@ bool FMjSceneSpecManagerContentTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecManagerAssetsShipTest, "URLab.MuJoCo.SceneSpec.ManagerAssetsShip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSceneSpecManagerAssetsShipTest::RunTest(const FString& Parameters)
+{
+	// A manager-authored mesh compiles into the scene, so a client handed the
+	// scene text has to be handed the mesh too. The ship-list used to walk the
+	// participants only, which shipped a document referencing bytes that were
+	// never sent: the client's compile fails, or worse, MuJoCo's basename
+	// fallback finds a participant's file of the same name and it does not.
+	FSceneFixture Fixture;
+	if (!Fixture.Init())
+	{
+		AddError(TEXT("could not create the world"));
+		return false;
+	}
+
+	UMjBodyBase* SceneWorld = nullptr;
+	AMjArticulation* const Manager = Fixture.AddActor(SceneWorld);
+	UMjBodyBase* ParticipantWorld = nullptr;
+	AMjArticulation* const Robot = Fixture.AddActor(ParticipantWorld);
+	if (Manager == nullptr || Robot == nullptr)
+	{
+		AddError(TEXT("could not spawn the spec actors"));
+		return false;
+	}
+
+	// The manager's mesh and the participant's are two different files sharing
+	// one basename, so a ship-list that mounted the wrong bytes under the right
+	// name reaches the vertex-count assertions below and fails there.
+	if (AddMesh(Fixture, *Manager, TEXT("ground_mesh"), TEXT("meshA/base.obj"), ParityDir()) == nullptr ||
+		AddMeshGeom(Fixture, *Manager, SceneWorld, TEXT("ground"), TEXT("ground_mesh")) == nullptr ||
+		AddMesh(Fixture, *Robot, TEXT("part"), TEXT("meshB/base.obj"), ParityDir()) == nullptr ||
+		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
+	{
+		AddError(TEXT("could not author the scene's meshes"));
+		return false;
+	}
+
+	mjspec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(FSpecRef::OverActor(*Manager));
+	mjspec::FMjSceneSpecParticipant Placed;
+	Placed.Spec = FSpecRef::OverActor(*Robot);
+	Placed.Prefix = TEXT("p0_");
+	Builder.AddParticipant(Placed);
+
+	mjspec::FMjCompiledScene Scene = CompileScene(*this, Builder);
+	if (!Scene.IsValid())
+	{
+		return false;
+	}
+
+	FSceneAssembly Assembly;
+	Assembly.SetSceneRoot(FSpecRef::OverActor(*Manager));
+	Assembly.Add(FSpecRef::OverActor(*Robot), TEXT("p0_"));
+
+	// The scene root mounts under no prefix, so its mount name is the reference
+	// its document authored, and that is the key the text asks for.
+	const TMap<FString, FString> Shipped = Assembly.CollectAssetFiles();
+	TestTrue(TEXT("the manager's mesh is in the ship-list"), Shipped.Contains(TEXT("meshA/base.obj")));
+	TestTrue(TEXT("the participant's mesh is still in the ship-list"), Shipped.Contains(TEXT("p0_base.obj")));
+
+	TMap<FString, FString> ParticipantXml;
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	const FString SceneXml = MjWriteSceneMjcf(Assembly, ParticipantXml, &Diagnostics);
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		AddError(Diagnostic.ToString());
+	}
+
+	// End to end: the shipped payload alone, through stock MuJoCo.
+	mjVFS Shipping;
+	mj_defaultVFS(&Shipping);
+	MjForEachSceneVfsEntry(Shipped, ParticipantXml, [&Shipping](const FString& Name, TArrayView<const uint8> Bytes) {
+		mj_addBufferVFS(&Shipping, TCHAR_TO_UTF8(*Name), Bytes.GetData(), Bytes.Num());
+	});
+
+	char Error[1024] = {0};
+	mjSpec* const Parsed = mj_parseXMLString(TCHAR_TO_UTF8(*SceneXml), &Shipping, Error, sizeof(Error));
+	if (Parsed == nullptr)
+	{
+		AddError(FString::Printf(TEXT("stock MuJoCo rejected the shipped scene text: %s"), UTF8_TO_TCHAR(Error)));
+		mj_deleteVFS(&Shipping);
+		return false;
+	}
+	mjModel* const Reloaded = mj_compile(Parsed, &Shipping);
+	mj_deleteVFS(&Shipping);
+	if (Reloaded == nullptr)
+	{
+		AddError(FString::Printf(
+			TEXT("the shipped payload did not compile: %s"), UTF8_TO_TCHAR(mjs_getError(Parsed))));
+		mj_deleteSpec(Parsed);
+		return false;
+	}
+
+	const int Mine = mj_name2id(Scene.Model, mjOBJ_MESH, "ground_mesh");
+	const int Theirs = mj_name2id(Reloaded, mjOBJ_MESH, "ground_mesh");
+	if (TestTrue(TEXT("the manager's mesh is in both models"), Mine >= 0 && Theirs >= 0))
+	{
+		const int32 Vertices = static_cast<int32>(Scene.Model->mesh_vertnum[Mine]);
+		if (TestEqual(TEXT("the shipped bytes are the manager's own file"),
+				static_cast<int32>(Reloaded->mesh_vertnum[Theirs]), Vertices))
+		{
+			TestTrue(TEXT("the manager's mesh resolved to the same bytes"),
+				FMemory::Memcmp(Scene.Model->mesh_vert + 3 * Scene.Model->mesh_vertadr[Mine],
+					Reloaded->mesh_vert + 3 * Reloaded->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float)) == 0);
+		}
+		const int GroundGeom = mj_name2id(Reloaded, mjOBJ_GEOM, "ground");
+		if (TestTrue(TEXT("the manager's geom reloaded"), GroundGeom >= 0))
+		{
+			TestEqual(TEXT("it still renders the manager's mesh"), Reloaded->geom_dataid[GroundGeom], Theirs);
+		}
+	}
+
+	// And the participant's same-basename file did not stand in for it.
+	const int Part = mj_name2id(Reloaded, mjOBJ_MESH, "p0_part");
+	if (TestTrue(TEXT("the participant's mesh reloaded too"), Part >= 0 && Theirs >= 0))
+	{
+		TestNotEqual(TEXT("the two 'base.obj' stayed two files"), static_cast<int32>(Reloaded->mesh_vertnum[Theirs]),
+			static_cast<int32>(Reloaded->mesh_vertnum[Part]));
+	}
+
+	mj_deleteModel(Reloaded);
+	mj_deleteSpec(Parsed);
+	return !HasAnyErrors();
+}
+
 // --- Asset namespacing ------------------------------------------------------ //
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecAssetCollisionTest, "URLab.MuJoCo.SceneSpec.AssetCollision",

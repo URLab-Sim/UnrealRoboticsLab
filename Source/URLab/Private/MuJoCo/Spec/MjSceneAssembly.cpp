@@ -79,9 +79,8 @@ const TArray<FMjSceneParticipant>& FSceneAssembly::GetParticipants() const
 TMap<FString, FString> FSceneAssembly::CollectAssetFiles() const
 {
 	TMap<FString, FString> Out;
-	for (const FMjSceneParticipant& Participant : GetParticipants())
-	{
-		for (const FMjAssetRequest& Request : MjCollectSceneAssets(Participant))
+	const auto Take = [&Out](const FMjSceneParticipant& Contributor) {
+		for (const FMjAssetRequest& Request : MjCollectSceneAssets(Contributor))
 		{
 			// Keyed by the mounted name rather than the path, because two
 			// participants referencing one file mount it once each, under their
@@ -91,6 +90,22 @@ TMap<FString, FString> FSceneAssembly::CollectAssetFiles() const
 				Out.Add(Request.VfsName, Request.ResolvedPath);
 			}
 		}
+	};
+
+	// The scene root goes through the same pass as a participant, under the
+	// empty prefix it already mounts and is referenced under. Manager-authored
+	// content is content: a mesh the scene root puts in the world compiles into
+	// the model like any other, and a ship-list that skipped it handed clients a
+	// document referencing bytes they were never sent.
+	if (SceneRoot.IsValid())
+	{
+		FMjSceneParticipant Root;
+		Root.Spec = SceneRoot;
+		Take(Root);
+	}
+	for (const FMjSceneParticipant& Participant : GetParticipants())
+	{
+		Take(Participant);
 	}
 	return Out;
 }

@@ -764,7 +764,10 @@ bool AMjArticulation::ResetToKeyframe(const FString& KeyframeName)
 		Data->ctrl[i] = KeyCtrl[i];
 	}
 
-	mj_forward(Model, Data);
+	// Not a bare mj_forward: the accessors answer from the published snapshot, so
+	// a reset nobody publishes is a reset nobody can read. ForwardSync is the one
+	// place the forward pass and the publish happen as a single operation.
+	Engine->ForwardSync();
 	return true;
 }
 

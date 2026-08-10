@@ -19,6 +19,8 @@
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Elements/MjJointRuntime.h"
 #include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Gen/Elements/Keyframes/MjKey.gen.h"
+#include "MuJoCo/Gen/Elements/Keyframes/MjKeyframe.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 
@@ -265,5 +267,79 @@ bool FMjAccessorsUnderStepping::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every read came back a finite value"), Finite, Reads);
 	TestTrue(TEXT("the worker stepped while the reads ran"), Engine->GetRenderFrameId() > 1);
 
+	return true;
+}
+
+// ============================================================================
+// URLab.Runtime.ResetToKeyframeIsVisibleToReaders
+//   Resetting to a keyframe is a state change a caller expects to observe on
+//   the very next read. The accessors answer from the published snapshot, so
+//   the reset has to publish; before it did, a read after the reset still
+//   returned the pose the reset replaced.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjResetToKeyframeIsVisibleToReaders,
+	"URLab.Runtime.ResetToKeyframeIsVisibleToReaders",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjResetToKeyframeIsVisibleToReaders::RunTest(const FString& Parameters)
+{
+	const double KeyframeAngle = 0.7;
+	const double PreResetAngle = 0.2;
+
+	FMjUESession S;
+	if (!S.Init([KeyframeAngle](FMjUESession& Sess) {
+			Sess.Joint->SetType(EMjJointType::hinge);
+			UMjKeyframe* Section = Sess.Add<UMjKeyframe>(Sess.Robot->Spec);
+			UMjKey* Key = Sess.Add<UMjKey>(Section, TEXT("home"));
+			if (Key != nullptr)
+			{
+				Key->SetQpos({KeyframeAngle});
+			}
+		}))
+	{
+		AddError(FString::Printf(TEXT("session setup failed: %s"), *S.LastError));
+		return false;
+	}
+
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+	const mjModel* M = S.Model();
+	const mjData* D = S.Data();
+	const int32 JointId = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
+	if (Engine == nullptr || M == nullptr || D == nullptr || JointId < 0)
+	{
+		AddError(TEXT("the compiled model is missing the fixture's joint"));
+		return false;
+	}
+	if (M->nkey < 1)
+	{
+		AddError(TEXT("the fixture's keyframe did not compile"));
+		return false;
+	}
+
+	const int32 QposAdr = M->jnt_qposadr[JointId];
+
+	// A published pose for the reset to be stale against: this write goes
+	// through the engine's synchronous edit, which publishes, so the accessor
+	// genuinely reads it before the reset runs.
+	Engine->ApplyJointPosition(JointId, PreResetAngle);
+	TestEqual(TEXT("the joint reads the pre-reset pose"),
+		UMjJointRuntime::GetPosition(S.Joint), static_cast<float>(PreResetAngle));
+
+	if (!S.Robot->ResetToKeyframe(TEXT("home")))
+	{
+		AddError(TEXT("ResetToKeyframe did not find the fixture's keyframe"));
+		return false;
+	}
+
+	// Separating the write from the publish: if only the first of these fails
+	// the keyframe was never applied, and if only the second does the reset
+	// applied it without publishing it.
+	TestEqual(TEXT("the reset reached mjData"), D->qpos[QposAdr], KeyframeAngle);
+	TestEqual(TEXT("a read after the reset is the keyframe pose, not the pre-reset one"),
+		UMjJointRuntime::GetPosition(S.Joint), static_cast<float>(KeyframeAngle));
+	TestEqual(TEXT("the articulation's own joint query agrees"),
+		S.Robot->GetJointAngle(TEXT("TestJoint")), static_cast<float>(KeyframeAngle));
+
+	S.Cleanup();
 	return true;
 }

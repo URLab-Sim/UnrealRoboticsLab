@@ -40,6 +40,7 @@
 
 #include "MjEffectiveDetails.h"
 #include "MuJoCo/Gen/Elements/Geometry/MjGeom.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjTouch.gen.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "Tests/MjRowSupport.h"
@@ -48,12 +49,15 @@ namespace MjEffectiveRowTests
 {
 
 /**
- * A geom that authors nothing at all.
+ * A geom that authors nothing at all, and a sensor that must.
  *
- * `size` and `rgba` come from its class, so those rows exercise the class chain.
- * `condim` is mentioned by no `<default>` in the document, so its row can only
- * be filled by the schema layer -- and `margin` is mentioned by no layer at all,
- * schema included, so its row must stay blank.
+ * `size` and `rgba` come from the geom's class, so those rows exercise the class
+ * chain. `condim` and `margin` are mentioned by no `<default>` in the document,
+ * so their rows can only be filled by the schema layer -- and `mass` is the one
+ * MuJoCo computes rather than defaults, so its row is the "(no default)" case.
+ * The `<touch>` sensor is here for the other half: `site` is REQUIRED, which is
+ * a row with no layering to report and one an iterator over presence-wrapped
+ * properties never saw.
  */
 const TCHAR* const Corpus = TEXT(R"(<mujoco model="rows">
   <default>
@@ -64,8 +68,12 @@ const TCHAR* const Corpus = TEXT(R"(<mujoco model="rows">
   <worldbody>
     <body name="base">
       <geom name="shell" class="visual"/>
+      <site name="tip"/>
     </body>
   </worldbody>
+  <sensor>
+    <touch name="tap" site="tip"/>
+  </sensor>
 </mujoco>
 )");
 
@@ -168,14 +176,87 @@ bool FMjEffectiveRowsOverAnScsDocument::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("and the row's own button is the one offered, got '%s'"), *Condim),
 		Condim.Contains(TEXT("Set")));
 
-	// And the honest blank: `margin` has no `=` default in the schema and no
-	// class mentions it, so there is nothing to show and the row is left alone.
+	// `margin` is the row the owner went looking for. The schema states no `=`
+	// default for it, so it used to be blank with a bare Set button; MuJoCo
+	// initialises it all the same, and that is what the compiler will use.
 	if (Rows.Has(TEXT("Margin")))
 	{
 		const FString Margin = TextOf(Rows.ValueOf(TEXT("Margin")));
-		TestFalse(FString::Printf(TEXT("an attribute no layer supplies claims no source, got '%s'"), *Margin),
-			Margin.Contains(TEXT("(default)")) || Margin.Contains(TEXT("(from ")));
+		TestTrue(FString::Printf(TEXT("the margin row shows MuJoCo's own value, got '%s'"), *Margin),
+			Margin.Contains(TEXT("(default)")));
+		TestFalse(FString::Printf(TEXT("and never claims a class supplied it, got '%s'"), *Margin),
+			Margin.Contains(TEXT("(from ")));
 	}
+
+	// And the honest one: `mass` is COMPUTED from density and volume, so no layer
+	// has a value for it. The row says that in words rather than going blank,
+	// which is what tells the user the panel answered rather than gave up.
+	if (Rows.Has(TEXT("Mass")))
+	{
+		const FString Mass = TextOf(Rows.ValueOf(TEXT("Mass")));
+		TestTrue(FString::Printf(TEXT("a computed attribute says it has no default, got '%s'"), *Mass),
+			Mass.Contains(TEXT("(no default)")));
+		TestFalse(FString::Printf(TEXT("and invents no value, got '%s'"), *Mass),
+			Mass.Contains(TEXT("(default)")) && !Mass.Contains(TEXT("(no default)")));
+	}
+
+	return !HasAnyErrors();
+}
+
+// ============================================================================
+// URLab.Editor.RequiredRowsSayTheyAreRequired
+//   A `required` attribute has no unset state, so the inherited-value walk has
+//   nothing to say about it -- and the row builder used to skip it entirely,
+//   because it iterated presence-wrapped properties only. It keeps its editable
+//   widget and gains the annotation, so every MuJoCo row says where it stands.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRequiredRowsSayTheyAreRequired, "URLab.Editor.RequiredRowsSayTheyAreRequired",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjRequiredRowsSayTheyAreRequired::RunTest(const FString& Parameters)
+{
+	using namespace MjEffectiveRowTests;
+	using namespace MjRowSupport;
+
+	if (!TestTrue(TEXT("Slate is up, so a row can be built at all"), FSlateApplication::IsInitialized()))
+	{
+		return false;
+	}
+
+	UBlueprint* const Blueprint = ParseScratch(*this);
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+	UMjTouch* const Touch = TemplateNamed<UMjTouch>(*Blueprint, TEXT("tap"));
+	if (!TestNotNull(TEXT("the touch sensor template"), Touch))
+	{
+		return false;
+	}
+	TestEqual(TEXT("the sensor authors its required site"), Touch->Site, FString(TEXT("tip")));
+
+	FRows Rows;
+	if (!Rows.Build(*this, *Touch))
+	{
+		return false;
+	}
+
+	const FString Site = TextOf(Rows.ValueOf(TEXT("Site")));
+	TestTrue(FString::Printf(TEXT("the required row is annotated, got '%s'"), *Site),
+		Site.Contains(TEXT("(required)")));
+	TestFalse(FString::Printf(TEXT("and claims neither a class nor a default, got '%s'"), *Site),
+		Site.Contains(TEXT("(from ")) || Site.Contains(TEXT("(default)")));
+
+	// The widget the user edits is still the engine's own: annotating a row must
+	// not cost the ability to change it.
+	TestTrue(TEXT("the required row keeps an editable widget beside the annotation"),
+		Rows.ValueOf(TEXT("Site")).IsValid());
+
+	// An engine property on the same component is none of this panel's business.
+	// Widening the iterator to every FProperty is what makes that worth asserting.
+	const FString Mobility = TextOf(Rows.ValueOf(TEXT("Mobility")));
+	TestFalse(FString::Printf(TEXT("an engine property is left alone, got '%s'"), *Mobility),
+		Mobility.Contains(TEXT("(required)")));
 
 	return !HasAnyErrors();
 }

@@ -40,7 +40,13 @@ namespace MjEffectiveDetailsTests
 {
 using namespace urlab::spec;
 
-/** A geom that authors nothing: every number it uses comes off its class. */
+/**
+ * A geom that authors nothing: every number it uses comes off its class.
+ *
+ * Except the ones no class mentions, which is most of them -- `condim` and
+ * `margin` are two -- and which resolve through MuJoCo's own initialised values.
+ * `mass` is the third case: MuJoCo computes it, so nothing supplies it.
+ */
 const TCHAR* const Corpus = TEXT(R"(<mujoco model="inherited">
   <default>
     <default class="visual">
@@ -178,14 +184,35 @@ bool FMjEffectiveDetailsNamesTheClassThatSuppliedTheValue::RunTest(const FString
 			FMjEffectiveDetails::DescribeValue(Schema).ToString(), FString(TEXT("3  (default)")));
 	}
 
-	// And an attribute the SCHEMA leaves open too has nothing to report: a geom's
-	// `margin` has no `=` default, so the honest row is still a blank. This is
-	// what keeps the layer from turning every row into a confident number.
+	// `margin` is the case that used to have no answer anywhere: `mjcf.schema`
+	// states no `=` default for it, so the row was blank and the user was left to
+	// read MuJoCo's manual. It is not undefaulted -- `mjs_defaultGeom` initialises
+	// it, and that is the value the compiler merges against -- and the schema
+	// layer now carries it.
 	if (const FOptionalProperty* const Margin = OptionalNamed(*Geom, TEXT("Margin")))
 	{
+		FMjEffectiveValue Resolved;
+		TestTrue(TEXT("an attribute the schema states no default for still resolves"),
+			FMjEffectiveDetails::ResolveInherited(*Geom, *Margin, Resolved));
+		TestTrue(TEXT("and it is MuJoCo's own layer that supplied it"), Resolved.Source == EMjValueSource::Schema);
+		TestEqual(TEXT("MuJoCo's margin is zero"), FCString::Atod(*Resolved.Text), 0.0);
+		TestTrue(FString::Printf(TEXT("the row marks it a default, got '%s'"),
+					 *FMjEffectiveDetails::DescribeValue(Resolved).ToString()),
+			FMjEffectiveDetails::DescribeValue(Resolved).ToString().EndsWith(TEXT("(default)")));
+	}
+
+	// What is left unresolved is an attribute MuJoCo COMPUTES rather than
+	// defaults: a geom's `mass` comes from its density and its volume, and
+	// `mjs_defaultGeom` marks it mjNAN to say so. That is not a value, so none is
+	// invented -- and the row says "(no default)" rather than going blank, which
+	// is the difference between an answer and a gap.
+	if (const FOptionalProperty* const Mass = OptionalNamed(*Geom, TEXT("Mass")))
+	{
 		FMjEffectiveValue Unresolved;
-		TestFalse(TEXT("an attribute no layer supplies at all reports nothing"),
-			FMjEffectiveDetails::ResolveInherited(*Geom, *Margin, Unresolved));
+		TestFalse(TEXT("a computed attribute reports no value"),
+			FMjEffectiveDetails::ResolveInherited(*Geom, *Mass, Unresolved));
+		TestEqual(TEXT("and the row says so in words"),
+			FMjEffectiveDetails::DescribeValue(Unresolved).ToString(), FString(TEXT("(no default)")));
 	}
 	return true;
 }

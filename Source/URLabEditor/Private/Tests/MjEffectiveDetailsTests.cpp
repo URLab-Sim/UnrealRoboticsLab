@@ -191,14 +191,14 @@ bool FMjEffectiveDetailsNamesTheClassThatSuppliedTheValue::RunTest(const FString
 	// layer now carries it.
 	if (const FOptionalProperty* const Margin = OptionalNamed(*Geom, TEXT("Margin")))
 	{
-		FMjEffectiveValue Resolved;
+		FMjEffectiveValue MarginValue;
 		TestTrue(TEXT("an attribute the schema states no default for still resolves"),
-			FMjEffectiveDetails::ResolveInherited(*Geom, *Margin, Resolved));
-		TestTrue(TEXT("and it is MuJoCo's own layer that supplied it"), Resolved.Source == EMjValueSource::Schema);
-		TestEqual(TEXT("MuJoCo's margin is zero"), FCString::Atod(*Resolved.Text), 0.0);
+			FMjEffectiveDetails::ResolveInherited(*Geom, *Margin, MarginValue));
+		TestTrue(TEXT("and it is MuJoCo's own layer that supplied it"), MarginValue.Source == EMjValueSource::Schema);
+		TestEqual(TEXT("MuJoCo's margin is zero"), FCString::Atod(*MarginValue.Text), 0.0);
 		TestTrue(FString::Printf(TEXT("the row marks it a default, got '%s'"),
-					 *FMjEffectiveDetails::DescribeValue(Resolved).ToString()),
-			FMjEffectiveDetails::DescribeValue(Resolved).ToString().EndsWith(TEXT("(default)")));
+					 *FMjEffectiveDetails::DescribeValue(MarginValue).ToString()),
+			FMjEffectiveDetails::DescribeValue(MarginValue).ToString().EndsWith(TEXT("(default)")));
 	}
 
 	// What is left unresolved is an attribute MuJoCo COMPUTES rather than

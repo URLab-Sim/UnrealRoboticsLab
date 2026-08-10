@@ -250,8 +250,7 @@ void UMjQuickConvertComponent::DrawDebugCollision()
 	// recompile holding one.
 	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this);
 	const mjModel* const Model = Engine != nullptr ? Engine->GetModel() : nullptr;
-	const mjData* const Data = Engine != nullptr ? Engine->GetData() : nullptr;
-	if (Model == nullptr || Data == nullptr)
+	if (Model == nullptr)
 		return;
 
 	float Multiplier = 100.0f;
@@ -262,28 +261,51 @@ void UMjQuickConvertComponent::DrawDebugCollision()
 	const int32 FirstGeom = Model->body_geomadr[*BodyId];
 	const int32 GeomCount = Model->body_geomnum[*BodyId];
 
-	for (int32 GeomId = FirstGeom; GeomId < FirstGeom + GeomCount; ++GeomId)
+	// The hull is model data, fixed by the compile; only the pose comes from
+	// simulation state, and that is read from the engine's published snapshot in
+	// one visit. The drawing runs after the visitor returns rather than under
+	// the lock it holds, because a hull is thousands of debug lines.
+	struct FHullPose
 	{
-		const int meshId = Model->geom_dataid[GeomId];
-		if (meshId < 0)
+		int32 MeshId = INDEX_NONE;
+		FVector Position = FVector::ZeroVector;
+		FQuat Rotation = FQuat::Identity;
+	};
+
+	TArray<FHullPose> Poses;
+	Poses.Reserve(FMath::Max(GeomCount, 0));
+
+	Engine->WithRenderState([&](const FMjRenderSnapshot& Snap) {
+		for (int32 GeomId = FirstGeom; GeomId < FirstGeom + GeomCount; ++GeomId)
 		{
-			continue;
+			const int32 MeshId = Model->geom_dataid[GeomId];
+			if (MeshId < 0 || Model->mesh_graphadr[MeshId] == -1)
+			{
+				continue;
+			}
+			if (!Snap.GeomXPos.IsValidIndex(GeomId * 3 + 2)
+				|| !Snap.GeomXMat.IsValidIndex(GeomId * 9 + 8))
+			{
+				continue;
+			}
+
+			const mjtNum* pos = &Snap.GeomXPos[GeomId * 3];
+			mjtNum _quat[4];
+			mju_mat2Quat(_quat, &Snap.GeomXMat[GeomId * 9]);
+
+			FHullPose& Pose = Poses.AddDefaulted_GetRef();
+			Pose.MeshId = MeshId;
+			Pose.Position = FVector(pos[0], -pos[1], pos[2]) * Multiplier;
+			Pose.Rotation = URLabAxisConv::MjQuatToUe(_quat);
 		}
+	});
 
-		const mjtNum* pos = Data->geom_xpos + 3 * GeomId;
-		const mjtNum* mat = Data->geom_xmat + 9 * GeomId;
+	for (const FHullPose& Pose : Poses)
+	{
+		const int32 meshId = Pose.MeshId;
+		const FVector Position = Pose.Position;
+		const FQuat quat = Pose.Rotation;
 
-		FVector Position = FVector(pos[0], -pos[1], pos[2]);
-		Position *= Multiplier;
-
-		mjtNum _quat[4];
-		mju_mat2Quat(_quat, mat);
-		const FQuat quat = URLabAxisConv::MjQuatToUe(_quat);
-
-		if (Model->mesh_graphadr[meshId] == -1)
-		{
-			continue;
-		}
 		int graphStart = Model->mesh_graphadr[meshId];
 		int* graphData = Model->mesh_graph + graphStart;
 

@@ -79,6 +79,21 @@ public:
 		const FColor& DrawColor = FColor::Magenta, float Multiplier = 100.0f);
 
 	/**
+	 * @brief The same drawing, from a world transform the caller already holds.
+	 *
+	 * The shape comes from the model, which a compile fixes; only the pose comes
+	 * from simulation state. A game-thread caller reads that pose out of the
+	 * engine's published render snapshot rather than out of live mjData, and
+	 * hands it here.
+	 *
+	 * @param GeomPos The geom's world position, 3 mjtNum (MuJoCo frame).
+	 * @param GeomMat The geom's world orientation, 9 mjtNum row-major.
+	 */
+	static void DrawDebugGeom(UWorld* World, const mjModel* m, int32 GeomId,
+		const mjtNum* GeomPos, const mjtNum* GeomMat,
+		const FColor& DrawColor = FColor::Magenta, float Multiplier = 100.0f);
+
+	/**
 	 * @brief Draws joint range arc (hinge) or range bar (slide) with position indicator.
 	 *
 	 * @param World The UE world.

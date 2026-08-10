@@ -75,11 +75,21 @@ bool MjUtils::ParseFromTo(const FString& FromToStr, FVector& OutStart, FVector& 
 void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, const mjData* d, int32 GeomId,
 	const FColor& DrawColor, float Multiplier)
 {
-	if (!World || !m || !d || GeomId < 0 || GeomId >= m->ngeom)
+	if (!m || !d || GeomId < 0 || GeomId >= m->ngeom)
 		return;
 
-	const mjtNum* pos = &d->geom_xpos[GeomId * 3];
-	const mjtNum* mat = &d->geom_xmat[GeomId * 9];
+	DrawDebugGeom(World, m, GeomId, &d->geom_xpos[GeomId * 3], &d->geom_xmat[GeomId * 9],
+		DrawColor, Multiplier);
+}
+
+void MjUtils::DrawDebugGeom(UWorld* World, const mjModel* m, int32 GeomId,
+	const mjtNum* GeomPos, const mjtNum* GeomMat, const FColor& DrawColor, float Multiplier)
+{
+	if (!World || !m || !GeomPos || !GeomMat || GeomId < 0 || GeomId >= m->ngeom)
+		return;
+
+	const mjtNum* pos = GeomPos;
+	const mjtNum* mat = GeomMat;
 	const mjtNum* size = &m->geom_size[GeomId * 3];
 
 	// Draw if group 3 (collision convention) OR if both contype and conaffinity are non-zero (active collider)

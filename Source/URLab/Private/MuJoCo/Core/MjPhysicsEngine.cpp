@@ -1563,6 +1563,12 @@ void UMjPhysicsEngine::PushRenderState()
 void UMjPhysicsEngine::WithRenderState(
 	TFunctionRef<void(const FMjRenderSnapshot&)> Visitor) const
 {
+	// Reading this frame is what asks for the next one. Without it a consumer
+	// that is not the visual pump -- a Blueprint accessor, a debug draw -- reads
+	// the same published frame for the whole of a live session, because in live
+	// mode the worker publishes only what somebody asked for.
+	bSnapshotWanted.store(true, std::memory_order_release);
+
 	FScopeLock Lock(&RenderStateMutex);
 	Visitor(RenderSnapshot);
 }

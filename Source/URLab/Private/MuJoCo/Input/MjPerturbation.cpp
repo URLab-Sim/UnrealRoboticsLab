@@ -454,6 +454,13 @@ void UMjPerturbation::DrawDebugSpring() const
 	if (!World)
 		return;
 
+	// The other mjData reads in this file take CallbackMutex, and this one is no
+	// different for being a debug draw: the body frames it reads are the ones the
+	// stepping thread is writing. The published render snapshot cannot answer
+	// here -- the rotation arrow needs the body's inertial frame, which the
+	// snapshot does not carry -- so it reads live under the producer's lock.
+	FScopeLock Lock(&Manager->PhysicsEngine->CallbackMutex);
+
 	mjtNum SelWorldMj[3];
 	mju_mulMatVec3(SelWorldMj, d->xmat + 9 * Sel, Perturb.localpos);
 	mju_addTo3(SelWorldMj, d->xpos + 3 * Sel);

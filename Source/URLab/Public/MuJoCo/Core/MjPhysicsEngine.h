@@ -154,8 +154,12 @@ public:
 	/** Set by the game thread each time it consumes the render snapshot; the
 	 *  live-mode worker publishes a new snapshot only when it is set, so the
 	 *  full-state copy runs at the consumer's frame rate rather than the
-	 *  physics rate. Direct/puppet publish every step (frame association). */
-	std::atomic<bool> bSnapshotWanted{true};
+	 *  physics rate. Direct/puppet publish every step (frame association).
+	 *
+	 *  Every WithRenderState visit sets it, so a consumer asks for the next
+	 *  frame by reading this one. Mutable for exactly that: consuming is a
+	 *  const operation on the snapshot and a request for the one after it. */
+	mutable std::atomic<bool> bSnapshotWanted{true};
 
 	/** Worker-thread only. Reset at the top of each worker iteration; a step
 	 *  handler that publishes the render snapshot itself (direct mode captures
@@ -404,6 +408,11 @@ public:
 	 * visitor, so the visitor must complete promptly and must not
 	 * acquire CallbackMutex (or any lock that the producer takes
 	 * under CallbackMutex).
+	 *
+	 * Also asks the worker for the next frame (bSnapshotWanted). A reader
+	 * that keeps reading therefore keeps getting fresh state -- in live mode
+	 * that is one publish per step for as long as anything is looking, and
+	 * none at all when nothing is.
 	 */
 	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor) const;
 

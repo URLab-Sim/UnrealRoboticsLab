@@ -899,18 +899,47 @@ void AMjArticulation::DrawDebugCollision()
 	UWorld* World = GetWorld();
 	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this);
 	mjModel* Model = Engine != nullptr ? Engine->GetModel() : nullptr;
-	mjData* Data = Engine != nullptr ? Engine->GetData() : nullptr;
-	if (World == nullptr || Model == nullptr || Data == nullptr)
+	if (World == nullptr || Model == nullptr)
 	{
 		return;
 	}
 
-	for (const UMjNodeComponent* Geom : GetComponentsOfFamily(mjOBJ_GEOM))
+	// Poses are taken from the published snapshot in one visit and drawn after
+	// it. The visitor runs under the lock the physics thread publishes behind,
+	// and a robot's collision hulls are thousands of debug lines.
+	struct FGeomPose
 	{
-		if (Geom != nullptr && Geom->GetBoundId().IsSet())
+		int32 Id = INDEX_NONE;
+		mjtNum Pos[3] = {0.0, 0.0, 0.0};
+		mjtNum Mat[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	};
+
+	const TArray<UMjNodeComponent*> Geoms = GetComponentsOfFamily(mjOBJ_GEOM);
+	TArray<FGeomPose> Poses;
+	Poses.Reserve(Geoms.Num());
+
+	Engine->WithRenderState([&Geoms, &Poses](const FMjRenderSnapshot& Snap) {
+		for (const UMjNodeComponent* Geom : Geoms)
 		{
-			MjUtils::DrawDebugGeom(World, Model, Data, Geom->GetBoundId().GetValue(), FColor::Magenta, 100.0f);
+			if (Geom == nullptr || !Geom->GetBoundId().IsSet())
+			{
+				continue;
+			}
+			const int32 Id = Geom->GetBoundId().GetValue();
+			if (!Snap.GeomXPos.IsValidIndex(Id * 3 + 2) || !Snap.GeomXMat.IsValidIndex(Id * 9 + 8))
+			{
+				continue;
+			}
+			FGeomPose& Pose = Poses.AddDefaulted_GetRef();
+			Pose.Id = Id;
+			FMemory::Memcpy(Pose.Pos, &Snap.GeomXPos[Id * 3], sizeof(Pose.Pos));
+			FMemory::Memcpy(Pose.Mat, &Snap.GeomXMat[Id * 9], sizeof(Pose.Mat));
 		}
+	});
+
+	for (const FGeomPose& Pose : Poses)
+	{
+		MjUtils::DrawDebugGeom(World, Model, Pose.Id, Pose.Pos, Pose.Mat, FColor::Magenta, 100.0f);
 	}
 }
 
@@ -924,7 +953,6 @@ void AMjArticulation::DrawDebugJoints()
 
 	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this);
 	mjModel* Model = Engine != nullptr ? Engine->GetModel() : nullptr;
-	mjData* Data = Engine != nullptr ? Engine->GetData() : nullptr;
 
 	TArray<UMjNodeComponent*> Joints = GetComponentsOfFamily(mjOBJ_JOINT);
 	if (Joints.Num() == 0)
@@ -950,7 +978,11 @@ void AMjArticulation::DrawDebugJoints()
 		float CurrentPos = NAN;
 		float RefPos = 0.0f;
 
-		const bool bCompiled = Model != nullptr && Data != nullptr && Node->GetBoundId().IsSet()
+		// The pose and the position come from the joint accessors, which read the
+		// published snapshot; the shape of the joint -- its type, its range, its
+		// reference -- comes from the model, which a compile fixes.
+		const bool bCompiled = Model != nullptr && Node->GetBoundId().IsSet()
+			&& Node->GetBoundId().GetValue() >= 0
 			&& Node->GetBoundId().GetValue() < Model->njnt;
 
 		if (bCompiled)
@@ -1033,7 +1065,6 @@ void AMjArticulation::DrawDebugSites()
 
 	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this);
 	mjModel* Model = Engine != nullptr ? Engine->GetModel() : nullptr;
-	mjData* Data = Engine != nullptr ? Engine->GetData() : nullptr;
 
 	TArray<UMjNodeComponent*> Sites = GetComponentsOfFamily(mjOBJ_SITE);
 	if (Sites.Num() == 0)
@@ -1043,6 +1074,22 @@ void AMjArticulation::DrawDebugSites()
 #endif
 	}
 
+	// What to draw is settled first from the model and from what each element
+	// authors, then the compiled ones take their position from the published
+	// snapshot in a single visit, and only then is anything drawn: the visitor
+	// holds the lock the physics thread publishes behind.
+	struct FSiteDraw
+	{
+		FVector Pos = FVector::ZeroVector;
+		float Radius = 1.0f;
+		FColor Color = FColor(128, 128, 128, 200);
+		int32 SnapshotId = INDEX_NONE;
+		bool bPosed = true;
+	};
+
+	TArray<FSiteDraw> Draws;
+	Draws.Reserve(Sites.Num());
+
 	for (UMjNodeComponent* Node : Sites)
 	{
 		if (Node == nullptr)
@@ -1050,20 +1097,19 @@ void AMjArticulation::DrawDebugSites()
 			continue;
 		}
 
-		FVector Pos;
-		float Radius = 1.0f;
-		FColor Color = FColor(128, 128, 128, 200);
-
-		const bool bCompiled = Model != nullptr && Data != nullptr && Node->GetBoundId().IsSet()
+		const bool bCompiled = Model != nullptr && Node->GetBoundId().IsSet()
+			&& Node->GetBoundId().GetValue() >= 0
 			&& Node->GetBoundId().GetValue() < Model->nsite;
 
 		if (bCompiled)
 		{
 			const int32 Id = Node->GetBoundId().GetValue();
-			Pos = URLabAxisConv::MjPositionToUe(&Data->site_xpos[Id * 3]);
-			Radius = static_cast<float>(Model->site_size[Id * 3]) * 100.0f;
+			FSiteDraw& Draw = Draws.AddDefaulted_GetRef();
+			Draw.SnapshotId = Id;
+			Draw.bPosed = false;
+			Draw.Radius = static_cast<float>(Model->site_size[Id * 3]) * 100.0f;
 			const float* Rgba = &Model->site_rgba[Id * 4];
-			Color = FColor(
+			Draw.Color = FColor(
 				static_cast<uint8>(Rgba[0] * 255.0), static_cast<uint8>(Rgba[1] * 255.0),
 				static_cast<uint8>(Rgba[2] * 255.0), 200);
 		}
@@ -1074,19 +1120,47 @@ void AMjArticulation::DrawDebugSites()
 			{
 				continue;
 			}
-			Pos = Site->GetComponentLocation();
+			FSiteDraw& Draw = Draws.AddDefaulted_GetRef();
+			Draw.Pos = Site->GetComponentLocation();
 			const TArray<double> Size = Site->Size.Get({0.005});
-			Radius = static_cast<float>(Size.Num() > 0 ? Size[0] : 0.005) * 100.0f;
-			Color = Site->Rgba.Get(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f)).ToFColor(true);
-			Color.A = 200;
+			Draw.Radius = static_cast<float>(Size.Num() > 0 ? Size[0] : 0.005) * 100.0f;
+			Draw.Color = Site->Rgba.Get(FLinearColor(0.5f, 0.5f, 0.5f, 1.0f)).ToFColor(true);
+			Draw.Color.A = 200;
+		}
+	}
+
+	if (Engine != nullptr)
+	{
+		Engine->WithRenderState([&Draws](const FMjRenderSnapshot& Snap) {
+			for (FSiteDraw& Draw : Draws)
+			{
+				if (Draw.SnapshotId == INDEX_NONE
+					|| !Snap.SiteXPos.IsValidIndex(Draw.SnapshotId * 3 + 2))
+				{
+					continue;
+				}
+				Draw.Pos = URLabAxisConv::MjPositionToUe(&Snap.SiteXPos[Draw.SnapshotId * 3]);
+				Draw.bPosed = true;
+			}
+		});
+	}
+
+	for (const FSiteDraw& Draw : Draws)
+	{
+		// A compiled site the snapshot cannot place yet would otherwise draw its
+		// cross at the world origin, beside the model rather than on it.
+		if (!Draw.bPosed)
+		{
+			continue;
 		}
 
-		Radius = FMath::Max(Radius, 0.5f);
+		const FVector Pos = Draw.Pos;
+		const float Radius = FMath::Max(Draw.Radius, 0.5f);
 		const float CrossSize = FMath::Max(Radius * 2.0f, 2.0f);
-		DrawDebugPoint(World, Pos, 6.0f, Color, false, -1);
-		DrawDebugLine(World, Pos - FVector(CrossSize, 0, 0), Pos + FVector(CrossSize, 0, 0), Color, false, -1, 0, 1.0f);
-		DrawDebugLine(World, Pos - FVector(0, CrossSize, 0), Pos + FVector(0, CrossSize, 0), Color, false, -1, 0, 1.0f);
-		DrawDebugLine(World, Pos - FVector(0, 0, CrossSize), Pos + FVector(0, 0, CrossSize), Color, false, -1, 0, 1.0f);
+		DrawDebugPoint(World, Pos, 6.0f, Draw.Color, false, -1);
+		DrawDebugLine(World, Pos - FVector(CrossSize, 0, 0), Pos + FVector(CrossSize, 0, 0), Draw.Color, false, -1, 0, 1.0f);
+		DrawDebugLine(World, Pos - FVector(0, CrossSize, 0), Pos + FVector(0, CrossSize, 0), Draw.Color, false, -1, 0, 1.0f);
+		DrawDebugLine(World, Pos - FVector(0, 0, CrossSize), Pos + FVector(0, 0, CrossSize), Draw.Color, false, -1, 0, 1.0f);
 	}
 }
 

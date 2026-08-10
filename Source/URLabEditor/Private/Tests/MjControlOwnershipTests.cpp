@@ -37,7 +37,7 @@
 #include "Bridge/RpcDispatcher.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
 #include "State/MjStateCollector.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -147,8 +147,7 @@ bool FMjControlOwnershipWriteGate::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 		}))
 	{
 		AddError(S.LastError);

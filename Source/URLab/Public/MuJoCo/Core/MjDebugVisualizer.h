@@ -25,7 +25,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "MuJoCo/Core/MjDebugTypes.h"
-#include "MuJoCo/Components/Sensors/MjCameraTypes.h"
+#include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MjDebugVisualizer.generated.h"
 
 // Forward declarations

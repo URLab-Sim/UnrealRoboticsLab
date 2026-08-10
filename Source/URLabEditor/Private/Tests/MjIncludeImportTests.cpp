@@ -5,9 +5,10 @@
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Bodies/MjWorldBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "mujoco/mujoco.h"
 
 // ============================================================================
@@ -17,13 +18,14 @@
 //   including one pulled in from inside <worldbody> and two top-level fragments
 //   that carry their own <worldbody>/<asset>/<compiler> — the gym-aloha shape.
 //
-//   Before the fix this crashed: a second "worldbody" SCS node was created for
-//   the included scene's <worldbody> and renamed onto the existing one (fatal).
+//   Before the fix this crashed: a second root SCS node was created for the
+//   included scene's <worldbody> and renamed onto the existing one (fatal).
 //   It also dropped <asset>/<compiler> declared inside <mujocoinclude> roots.
 //
-//   Reaching any assertion proves the import did not crash. We then check there
-//   is exactly one worldbody node and that the mesh declared in the included
-//   <asset> survived into the compiled model (nmesh == 1).
+//   Reaching any assertion proves the import did not crash. We then check the
+//   included fragments merged into a single spec root and that the mesh
+//   declared in the included <asset> survived into the compiled model
+//   (nmesh == 1).
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportIssue72Includes,
 	"URLab.Import.Issue72Includes",
@@ -53,10 +55,12 @@ bool FMjImportIssue72Includes::RunTest(const FString& Parameters)
 	TestEqual(TEXT("native joint count"), (int32)S.NativeJointCount, 2);
 	TestEqual(TEXT("native geom count"), (int32)S.NativeGeomCount, 4);
 
-	// Core crash fix: the included scene's <worldbody> and the model's own
-	// <worldbody> must merge into a single worldbody node.
-	const int32 WorldBodies = S.CountTemplates<UMjWorldBody>();
-	TestEqual(TEXT("exactly one worldbody node"), WorldBodies, 1);
+	// Core crash fix. There is no worldbody element -- a body under the model
+	// root is a world body -- so what the included fragments have to merge into
+	// is the model root itself. Two of those and every later question is
+	// answered by whichever one is reached first.
+	const int32 SpecRoots = S.CountTemplates<UMjModel>();
+	TestEqual(TEXT("exactly one spec root"), SpecRoots, 1);
 
 	// Structure traversal across both styles of include:
 	//  - 'table' comes from a top-level <mujocoinclude> <worldbody>
@@ -68,7 +72,7 @@ bool FMjImportIssue72Includes::RunTest(const FString& Parameters)
 	UMjGeom* TableGeom = S.FindTemplate<UMjGeom>(TEXT("table_geom"));
 	TestNotNull(TEXT("table_geom imported"), TableGeom);
 	if (TableGeom)
-		TestEqual(TEXT("table_geom references 'tabletop' mesh"), TableGeom->mesh, FString(TEXT("tabletop")));
+		TestEqual(TEXT("table_geom references 'tabletop' mesh"), TableGeom->GetMesh(), FString(TEXT("tabletop")));
 
 	// Compile through our pipeline. nmesh == 1 proves the <asset> mesh declared
 	// inside the <mujocoinclude> was found (bug 2) and wired into the spec.
@@ -135,7 +139,7 @@ bool FMjImportIssue72AlohaReal::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("Native: %d bodies, %d joints, %d geoms"),
 		(int32)S.NativeBodyCount, (int32)S.NativeJointCount, (int32)S.NativeGeomCount));
 
-	TestEqual(TEXT("exactly one worldbody node"), S.CountTemplates<UMjWorldBody>(), 1);
+	TestEqual(TEXT("exactly one spec root"), S.CountTemplates<UMjModel>(), 1);
 	TestTrue(TEXT("imported some bodies"), S.CountTemplates<UMjBody>() >= 1);
 
 	if (!S.Compile())

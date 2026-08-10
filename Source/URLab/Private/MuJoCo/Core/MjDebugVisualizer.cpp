@@ -21,14 +21,15 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Core/MjDebugVisualizer.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/Utils/MjUtils.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Utils/MjColor.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "DrawDebugHelpers.h"
 #include "Components/SplineMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -36,6 +37,25 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Utils/URLabLogging.h"
+
+namespace
+{
+// Which body a geom belongs to is a fact of the compiled model, not of the
+// spec, so it is read out of `geom_bodyid` at the id the element bound to.
+// Negative when there is no compiled model or the geom did not survive the
+// compile, which is the same set the overlays used to skip as unbound.
+int32 GeomBodyId(const mjModel* Model, const UMjGeom* Geom)
+{
+	if (!Model || !Geom || !Geom->GetBoundId().IsSet())
+		return -1;
+
+	const int32 GeomId = Geom->GetBoundId().GetValue();
+	if (GeomId < 0 || GeomId >= Model->ngeom)
+		return -1;
+
+	return Model->geom_bodyid[GeomId];
+}
+} // namespace
 
 UMjDebugVisualizer::UMjDebugVisualizer()
 {
@@ -122,7 +142,7 @@ void UMjDebugVisualizer::CaptureDebugData()
 
 	for (int i = 0; i < Data->ncon; ++i)
 	{
-		FVector Pos = MjUtils::MjToUEPosition(Data->contact[i].pos);
+		FVector Pos = URLabAxisConv::MjPositionToUe(Data->contact[i].pos);
 		DebugData.ContactPoints.Add(Pos);
 
 		// Normal: first row of contact frame, Y-flipped for UE coordinate convention
@@ -209,7 +229,7 @@ void UMjDebugVisualizer::CaptureDebugData()
 	{
 		for (int32 p = 0; p < NumWrapPoints; ++p)
 		{
-			DebugData.WrapPointsFlat[p] = MjUtils::MjToUEPosition(Data->wrap_xpos + p * 3);
+			DebugData.WrapPointsFlat[p] = URLabAxisConv::MjPositionToUe(Data->wrap_xpos + p * 3);
 		}
 	}
 
@@ -259,7 +279,7 @@ void UMjDebugVisualizer::CaptureDebugData()
 	for (int32 g = 0; g < Model->ngeom; ++g)
 	{
 		DebugData.GeomXPos[g] = Data->geom_xpos
-								  ? MjUtils::MjToUEPosition(Data->geom_xpos + g * 3)
+								  ? URLabAxisConv::MjPositionToUe(Data->geom_xpos + g * 3)
 								  : FVector::ZeroVector;
 	}
 }
@@ -517,6 +537,8 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 		MID->SetVectorParameterValue(OverlayColorParam, Color);
 	};
 
+	const mjModel* Model = Manager->PhysicsEngine ? Manager->PhysicsEngine->m_model : nullptr;
+
 	for (AMjArticulation* Art : Manager->GetAllArticulations())
 	{
 		if (!Art)
@@ -525,13 +547,11 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 		// Semantic grouping hashes the Blueprint class so two instances share colour.
 		const uint32 ArtHash = GetTypeHash(Art->GetClass()->GetFName());
 
-		TArray<UMjGeom*> Geoms;
-		Art->GetRuntimeComponents<UMjGeom>(Geoms);
-		for (UMjGeom* Geom : Geoms)
+		for (UMjGeom* Geom : Art->GetGeoms())
 		{
-			if (!Geom || !Geom->IsBound())
+			const int32 BodyId = GeomBodyId(Model, Geom);
+			if (BodyId < 0)
 				continue;
-			const int32 BodyId = Geom->GetMj().geom_bodyid;
 
 			ApplyToMesh(Geom->GetVisualizerMesh(), BodyId, ArtHash);
 
@@ -692,6 +712,8 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
 		}
 	};
 
+	const mjModel* Model = Manager->PhysicsEngine ? Manager->PhysicsEngine->m_model : nullptr;
+
 	// Articulation visual meshes — walk geoms and their static-mesh children.
 	for (AMjArticulation* Art : Manager->GetAllArticulations())
 	{
@@ -699,13 +721,11 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
 			continue;
 		const uint32 ArtHash = GetTypeHash(Art->GetClass()->GetFName());
 
-		TArray<UMjGeom*> Geoms;
-		Art->GetRuntimeComponents<UMjGeom>(Geoms);
-		for (UMjGeom* Geom : Geoms)
+		for (UMjGeom* Geom : Art->GetGeoms())
 		{
-			if (!Geom || !Geom->IsBound())
+			const int32 BodyId = GeomBodyId(Model, Geom);
+			if (BodyId < 0)
 				continue;
-			const int32 BodyId = Geom->GetMj().geom_bodyid;
 
 			AddSibling(Geom->GetVisualizerMesh(), BodyId, ArtHash);
 

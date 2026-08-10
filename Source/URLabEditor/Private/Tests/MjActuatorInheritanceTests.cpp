@@ -44,15 +44,16 @@ namespace
 // Every actuator below inherits ALL of its gain params from a <default class>;
 // none carries an inline param on the actuator element (the bug trigger).
 //
-// Damper is covered separately (InheritedDamperKv_Preserved): native
-// mj_loadXML drops a damper's class-inherited kv, so a native diff isn't a fair
-// reference for it — URLab intentionally preserves the value instead.
+// Damper is included: MuJoCo 3.11 fixed the reader bug that used to drop a
+// damper's class-inherited kv, so a native diff is a fair reference for it
+// again.
 static const TCHAR* INHERITED_GAINS_XML = TEXT(R"(
     <mujoco>
       <default>
         <default class="pos">  <position    kp="2000" kv="100"/></default>
         <default class="ivel"> <intvelocity kp="800"  kv="12" actrange="-1 1"/></default>
         <default class="vel">  <velocity    kv="55"/>          </default>
+        <default class="damp"> <damper      kv="7" ctrlrange="0 1"/></default>
         <default class="cyl">  <cylinder    timeconst="0.2" area="3"/></default>
         <default class="adh">  <adhesion    gain="9" ctrlrange="0 1"/></default>
       </default>
@@ -60,6 +61,7 @@ static const TCHAR* INHERITED_GAINS_XML = TEXT(R"(
         <body name="b1"><joint name="j1" type="hinge"/><geom type="capsule" size="0.05 0.5" mass="1"/></body>
         <body name="b2"><joint name="j2" type="hinge"/><geom type="capsule" size="0.05 0.5" mass="1"/></body>
         <body name="b3"><joint name="j3" type="hinge"/><geom type="capsule" size="0.05 0.5" mass="1"/></body>
+        <body name="b4"><joint name="j4" type="hinge"/><geom type="capsule" size="0.05 0.5" mass="1"/></body>
         <body name="b5"><joint name="j5" type="hinge"/><geom type="capsule" size="0.05 0.5" mass="1"/></body>
         <body name="b6"><geom type="sphere" size="0.1" mass="1"/></body>
       </worldbody>
@@ -67,6 +69,7 @@ static const TCHAR* INHERITED_GAINS_XML = TEXT(R"(
         <position    class="pos"  name="p"  joint="j1"/>
         <intvelocity class="ivel" name="iv" joint="j2"/>
         <velocity    class="vel"  name="v"  joint="j3"/>
+        <damper      class="damp" name="d"  joint="j4"/>
         <cylinder    class="cyl"  name="c"  joint="j5"/>
         <adhesion    class="adh"  name="a"  body="b6"/>
       </actuator>
@@ -233,15 +236,14 @@ bool FMjActuatorInheritedPositionKpNotClobbered::RunTest(const FString&)
 // ============================================================================
 // URLab.Actuator.InheritedDamperKv_Preserved
 //   A damper inheriting kv from its default class compiles with
-//   gainprm[2] == -kv. Native mj_loadXML drops a damper's class-inherited kv to
-//   0, so this asserts the value directly rather than against a native diff:
-//   URLab intentionally preserves the damping the user asked for.
+//   gainprm[2] == -kv, and native mj_loadXML now agrees.
 //
-//   TODO(jonat): the mj_loadXML drop is a verified MuJoCo bug — OneActuator()
-//   seeds `kv = 0` for damper while every sibling seeds from the inherited
-//   field. URLab diverges here (keeps kv); revisit whether to match MuJoCo
-//   bug-for-bug for UE-vs-bridge fidelity or upstream a reader fix. See the
-//   _todo_damper_inherit note in codegen_rules.json.
+//   MuJoCo used to drop the inherited value: OneActuator() seeded `kv = 0` for
+//   damper while every sibling seeded from the inherited field, so URLab (which
+//   keeps kv) diverged from mj_loadXML. 3.11 seeds it the way the sibling types
+//   do, closing the divergence — the second assertion guards that it stays
+//   closed, since a silent reopening would show up as UE-vs-bridge sim2sim
+//   drift rather than as a compile failure.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorInheritedDamperKvPreserved,
 	"URLab.Actuator.InheritedDamperKv_Preserved",
@@ -286,16 +288,14 @@ bool FMjActuatorInheritedDamperKvPreserved::RunTest(const FString&)
 	TestEqual(TEXT("inherited damper kv -> gainprm[2] == -kv"),
 		(float)S.Model()->actuator_gainprm[2], -7.0f);
 
-	// Canary for the upstream MuJoCo bug this test documents: mj_loadXML
-	// currently drops the same inherited kv to 0 (OneActuator seeds kv=0 for
-	// damper). If this ever fails because native returns -7, upstream fixed
-	// their reader — at that point delete the divergence note (_todo_damper_
-	// inherit) and fold damper back into InheritedGains_MatchNative.
+	// Native must agree: the reader seeds the damper's kv from the inherited
+	// gainprm like every sibling type, so URLab and mj_loadXML land on the same
+	// value.
 	FMjTestSession Ref;
 	if (Ref.CompileXml(Xml))
 	{
-		TestEqual(TEXT("native mj_loadXML still drops inherited damper kv (canary)"),
-			(float)Ref.m->actuator_gainprm[2], 0.0f);
+		TestEqual(TEXT("native mj_loadXML preserves inherited damper kv"),
+			(float)Ref.m->actuator_gainprm[2], -7.0f);
 		Ref.Cleanup();
 	}
 	else

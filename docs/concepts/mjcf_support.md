@@ -2,7 +2,7 @@
 
 What URLab parses from MJCF and writes back to a MuJoCo spec. This is a reference for which elements and attributes round-trip, so you can tell ahead of time whether a model will import cleanly.
 
-Checked against MuJoCo upstream `main` (header version `3010000`, that is 3.10.0-dev). Status terms:
+Checked against MuJoCo upstream `main` (header version `3011001`, that is 3.11.1-dev). Status terms:
 
 - **Supported** parses on import and exports back to the spec.
 - **Missing** is not parsed or written; MuJoCo's own default applies if the model relies on it.

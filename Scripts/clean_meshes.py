@@ -31,22 +31,117 @@ Installation:
     pip install trimesh numpy scipy Pillow networkx
 
 Usage:
-    python clean_meshes_trimesh.py <path_to_xml>
+    python clean_meshes.py <path_to_xml> [--out-dir DIR] [--allow-external-includes]
+
+Without --out-dir the prepared XML is written beside the input. With it, the
+prepared XML goes to DIR and every asset path inside is re-expressed so it
+still resolves from there, which is how Unreal keeps its prepared copy out of
+the model author's own folders.
+
+<include> fragments are flattened into one document on the way through, and an
+include whose target is outside the model's own folder is REFUSED unless
+--allow-external-includes is passed. That is the same boundary the Unreal
+reader enforces, asked here because this step runs first: a prepared import
+whose includes were followed by this script would otherwise have its security
+answer decided by a script nobody asked.
+
+Exit status is 0 only when every referenced mesh was prepared. A conversion
+that failed, a source file that was missing, a refused include, or an
+unreadable document exits nonzero with the reason on stderr, because a caller
+that continued anyway would import the unprepared meshes at the wrong scale
+without saying so.
 
 Example:
-    python clean_meshes_trimesh.py "path/to/mujoco_menagerie/franka_emika_panda/panda.xml"
+    python clean_meshes.py "path/to/mujoco_menagerie/franka_emika_panda/panda.xml"
 """
 
 import trimesh
 import numpy as np
 from pathlib import Path
 from xml.etree import ElementTree as ET
+import argparse
 import os
 import sys
 import copy
 
 
-def clean_mesh(mesh):
+# MuJoCo's own crease threshold: a face whose normal is more than acos(0.8)
+# ~= 36.9 degrees off the vertex normal is not part of that vertex's smooth
+# group (mjCMesh::MakeNormal, src/user/user_mesh.cc). Reused here so the
+# decision about what counts as an edge matches the simulator, even though the
+# representation below is sharper than MuJoCo's own.
+CREASE_DOT = 0.8
+
+
+def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
+    """Split `mesh`'s vertices into smooth groups, so hard edges shade hard.
+
+    The split is geometric rather than a normal override: a vertex whose faces
+    disagree by more than the threshold is duplicated, once per group of faces
+    that agree. Averaging then happens within a group and never across one, so
+    a box corner stays sharp while a finely tessellated cylinder stays round.
+
+    Done this way on purpose. Assigning `mesh.vertex_normals` directly does hold
+    in memory, but trimesh recomputes normals during GLB export and the override
+    is silently lost -- which looks like a crease split right up until you read
+    the accessor back.
+
+    MuJoCo cannot express this at all: it keeps one normal per vertex and merely
+    subtracts the outlying contributions, so its corners are a compromise. The
+    threshold is still MuJoCo's, so the decision about what counts as an edge
+    matches the simulator even though the representation is sharper.
+    """
+    faces = mesh.faces
+    verts = mesh.vertices
+    raw = np.cross(verts[faces[:, 1]] - verts[faces[:, 0]],
+                   verts[faces[:, 2]] - verts[faces[:, 0]])
+    unit = raw / np.maximum(np.linalg.norm(raw, axis=1)[:, None], 1e-20)
+
+    # Faces meeting at each vertex.
+    incident = [[] for _ in range(len(verts))]
+    for fi, tri in enumerate(faces):
+        for vi in tri:
+            incident[vi].append(fi)
+
+    new_verts = []
+    # (vertex, face) -> index into new_verts
+    remap = {}
+    for vi, face_ids in enumerate(incident):
+        if not face_ids:
+            continue
+        # Greedy clustering: a face joins the first group whose running mean it
+        # agrees with, otherwise it starts one. Enough for the shapes a mesh
+        # asset actually has, and it never merges across a real edge.
+        groups = []            # list of [summed_normal, [face ids]]
+        for fi in face_ids:
+            n = unit[fi]
+            for g in groups:
+                mean = g[0] / max(np.linalg.norm(g[0]), 1e-20)
+                if float(np.dot(n, mean)) >= dot_threshold:
+                    g[0] = g[0] + n
+                    g[1].append(fi)
+                    break
+            else:
+                groups.append([n.copy(), [fi]])
+        for g in groups:
+            index = len(new_verts)
+            new_verts.append(verts[vi])
+            for fi in g[1]:
+                remap[(vi, fi)] = index
+
+    new_faces = np.empty_like(faces)
+    for fi, tri in enumerate(faces):
+        for corner, vi in enumerate(tri):
+            new_faces[fi, corner] = remap[(vi, fi)]
+
+    # No custom normals: trimesh's own area-weighted average over the split
+    # geometry is the crease result, and it survives export because nothing
+    # had to be overridden.
+    return trimesh.Trimesh(vertices=np.asarray(new_verts), faces=new_faces,
+                           process=False)
+
+
+def clean_mesh(mesh, source_path=None, smooth_normal=False):
     """Clean up a mesh using trimesh."""
     print(f"  Original: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
 
@@ -71,6 +166,18 @@ def clean_mesh(mesh):
     rotation_matrix = trimesh.transformations.rotation_matrix(-np.radians(90), [1, 0, 0])
     mesh.apply_transform(rotation_matrix)
 
+    # Every mesh, not just the ones whose file states no normals. An OBJ that
+    # ships split vertices loses them here regardless: the welding above and the
+    # GLB export both collapse them, so "the file already answered this" is not
+    # a state that survives conversion. Measured on Spot, whose OBJs are flat
+    # and whose GLBs came out averaged across every corner.
+    #
+    # After the transform, never before: applying one invalidates trimesh's
+    # cached normals.
+    if not smooth_normal:
+        mesh = split_normals_by_crease(mesh)
+        print(f"  Creased: {len(mesh.vertices)} vertices after splitting hard edges")
+
     print(f"  Cleaned:  {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
     return mesh
 
@@ -88,7 +195,7 @@ def glb_up_to_date(output_glb: Path, source_path: Path) -> bool:
     return mtime > source_path.stat().st_mtime and mtime > _SCRIPT_MTIME
 
 
-def convert_mesh(input_path: Path, output_path: Path) -> bool:
+def convert_mesh(input_path: Path, output_path: Path, smooth_normal: bool = False) -> bool:
     """Convert a single mesh file to GLB."""
     print(f"\n  Converting: {input_path.name} -> {output_path.name}")
 
@@ -99,7 +206,7 @@ def convert_mesh(input_path: Path, output_path: Path) -> bool:
             print(f"  x Not a valid mesh: {input_path.name}")
             return False
 
-        cleaned_mesh = clean_mesh(mesh)
+        cleaned_mesh = clean_mesh(mesh, input_path, smooth_normal)
 
         # Strip embedded materials/textures to prevent Unreal's Interchange importer
         # from creating a Texture2D instead of a StaticMesh.
@@ -145,6 +252,37 @@ _ASSET_FILE_TAGS = ("mesh", "texture", "hfield", "skin")
 _MODEL_ROOT_TAGS = ("mujoco", "mujocoinclude")
 
 
+class ExternalIncludeError(Exception):
+    """An ``<include>`` reaching outside the model's own folder.
+
+    The importer asks before following one of those, because an MJCF document
+    can be someone else's and ``<include file="../../../.ssh/id_rsa"/>`` is a
+    file read the author of the scene never asked for. This preparation step
+    runs BEFORE the reader and flattens the includes itself, so it has to ask
+    the same question or the answer the user gave is decided by a script that
+    never heard it.
+    """
+
+    def __init__(self, include: str, resolved: Path, boundary: Path):
+        super().__init__(
+            f"refused <include file=\"{include}\"> resolving to {resolved}: "
+            f"outside the model's folder {boundary}. Re-run with "
+            "--allow-external-includes to allow it.")
+        self.include = include
+        self.resolved = resolved
+        self.boundary = boundary
+
+
+def _inside(path: Path, boundary: Path) -> bool:
+    """True when ``path`` is ``boundary`` or below it, symlinks resolved."""
+    try:
+        return path.resolve().is_relative_to(boundary.resolve())
+    except (OSError, ValueError):
+        # A path on another drive, or one the OS will not resolve, is outside
+        # by definition; failing closed is the whole point of the check.
+        return False
+
+
 def _compiler_dirs(root) -> tuple:
     """Return (meshdir, texturedir, assetdir) declared by any <compiler> directly
     under ``root``. MuJoCo allows several compiler elements; later ones win for a
@@ -184,15 +322,21 @@ def _rewrite_asset_path(elem, src_dir: Path, root_dir: Path,
 
 
 def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
-                     meshdir: str, texturedir: str, assetdir: str, visited: set):
+                     meshdir: str, texturedir: str, assetdir: str, visited: set,
+                     boundary: Path = None):
     """Copy ``elem`` into ``out_parent``, recursively expanding any <include>
     descendants in place. Handles both <mujoco> and <mujocoinclude> include roots
-    and rewrites asset file= paths to stay valid from root_dir."""
+    and rewrites asset file= paths to stay valid from root_dir.
+
+    ``boundary``, when given, is the directory tree an include may not leave;
+    one that does raises ExternalIncludeError naming it."""
     if elem.tag == "include":
         inc_file = elem.get("file")
         if not inc_file:
             return
         inc_path = (src_dir / inc_file).resolve()
+        if boundary is not None and not _inside(inc_path, boundary):
+            raise ExternalIncludeError(inc_file, inc_path, boundary)
         if inc_path in visited:
             print(f"  [include] cycle/duplicate skipped: {inc_path}")
             return
@@ -205,7 +349,8 @@ def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
         imd, itxd, iad = _compiler_dirs(inc_root)
         # Splice the included root's children directly into the current parent.
         for child in list(inc_root):
-            _append_expanded(out_parent, child, inc_dir, root_dir, imd, itxd, iad, visited)
+            _append_expanded(out_parent, child, inc_dir, root_dir, imd, itxd, iad,
+                             visited, boundary)
         return
 
     # Regular element: shallow-copy attributes, then recurse into children.
@@ -222,10 +367,11 @@ def _append_expanded(out_parent, elem, src_dir: Path, root_dir: Path,
 
     for child in list(elem):
         _append_expanded(new_elem, child, src_dir, root_dir,
-                         meshdir, texturedir, assetdir, visited)
+                         meshdir, texturedir, assetdir, visited, boundary)
 
 
-def flatten_includes(root, root_dir: Path):
+def flatten_includes(root, src_dir: Path, root_dir: Path = None,
+                     boundary: Path = None):
     """Resolve every <include> into a single self-contained <mujoco> tree.
 
     gym-aloha (and many MJCF models) split a robot across <include> fragments
@@ -233,13 +379,37 @@ def flatten_includes(root, root_dir: Path):
     Unreal's importer must see one flat document so all <asset>/<compiler>/body
     content is visible and there is exactly one worldbody. Returns the new root
     element (a <mujoco>). No-op-equivalent for files without includes.
+
+    ``src_dir`` is where the document being flattened lives; ``root_dir`` is
+    where the flattened document will be written, and defaults to ``src_dir``.
+    ``boundary`` is the directory tree includes may not leave, or None to follow
+    them anywhere.
     """
+    if root_dir is None:
+        root_dir = src_dir
     md, txd, ad = _compiler_dirs(root)
     visited = set()
     new_root = ET.Element("mujoco", dict(root.attrib))
     for child in list(root):
-        _append_expanded(new_root, child, root_dir, root_dir, md, txd, ad, visited)
+        _append_expanded(new_root, child, src_dir, root_dir, md, txd, ad, visited,
+                         boundary)
     return new_root
+
+
+def _rebase_assets(root, src_dir: Path, root_dir: Path):
+    """Re-express every asset ``file=`` so it resolves from ``root_dir``.
+
+    What ``flatten_includes`` does on the way through, for a document that has
+    no includes to flatten. The <compiler> dir attributes are cleared once the
+    paths carry their own prefixes, so nothing double-prefixes them.
+    """
+    md, txd, ad = _compiler_dirs(root)
+    for elem in root.iter():
+        if elem.tag in _ASSET_FILE_TAGS:
+            _rewrite_asset_path(elem, src_dir, root_dir, md, txd, ad)
+    for comp in root.findall("compiler"):
+        for attr in ("meshdir", "texturedir", "assetdir"):
+            comp.attrib.pop(attr, None)
 
 
 def materialize_inline_meshes(root, mesh_base: Path) -> int:
@@ -315,17 +485,27 @@ def materialize_inline_meshes(root, mesh_base: Path) -> int:
     return materialized
 
 
-def process_xml(xml_path: Path):
-    """Parse MJCF XML, convert meshes, resolve conflicts, write updated XML."""
+def process_xml(xml_path: Path, out_dir: Path = None,
+                allow_external_includes: bool = False) -> bool:
+    """Parse MJCF XML, convert meshes, resolve conflicts, write updated XML.
+
+    Returns True only when every mesh the document references was prepared, and
+    only when every ``<include>`` stayed inside the model's own folder unless
+    ``allow_external_includes`` says otherwise.
+    """
 
     if not xml_path.exists():
-        print(f"Error: XML file not found: {xml_path}")
-        return
+        print(f"Error: XML file not found: {xml_path}", file=sys.stderr)
+        return False
 
-    xml_dir = xml_path.parent
+    xml_dir = xml_path.parent.resolve()
+    root_dir = out_dir.resolve() if out_dir is not None else xml_dir
+    root_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"XML: {xml_path}")
     print(f"Dir: {xml_dir}")
+    if root_dir != xml_dir:
+        print(f"Out: {root_dir}")
     print("=" * 60)
 
     # Parse XML
@@ -339,10 +519,20 @@ def process_xml(xml_path: Path):
     include_count = sum(1 for _ in root.iter("include"))
     if include_count:
         print(f"Flattening {include_count} <include> fragment(s)...")
-        root = flatten_includes(root, xml_dir.resolve())
+        # The model's own folder is the boundary, matching the reader's rule.
+        # Off only when the caller passed the same option the import dialog
+        # shows, so the gate is decided in one place rather than twice.
+        boundary = None if allow_external_includes else xml_dir
+        try:
+            root = flatten_includes(root, xml_dir, root_dir, boundary)
+        except ExternalIncludeError as refused:
+            print(f"Error: {refused}", file=sys.stderr)
+            return False
         tree = ET.ElementTree(root)
         remaining = sum(1 for _ in root.iter("include"))
         print(f"  -> {remaining} include(s) remain after flatten")
+    elif root_dir != xml_dir:
+        _rebase_assets(root, xml_dir, root_dir)
 
     # Find meshdir from compiler
     meshdir = ""
@@ -351,8 +541,12 @@ def process_xml(xml_path: Path):
         if md:
             meshdir = md
 
-    mesh_base = xml_dir / meshdir if meshdir else xml_dir
+    mesh_base = root_dir / meshdir if meshdir else root_dir
     print(f"Mesh directory: {mesh_base}")
+
+    # Every mesh this run could not prepare. Non-empty means the caller must
+    # not use the output: the unconverted source would import at its own scale.
+    failures = []
 
     # Phase 0: Materialize inline ``<mesh vertex="..." face="...">`` entries.
     # These get rewritten to file= entries before Phase 1 runs, so the rest
@@ -373,11 +567,15 @@ def process_xml(xml_path: Path):
                 output_glb = source_path.with_suffix(".glb")
                 if not glb_up_to_date(output_glb, source_path):
                     print(f"\n[flexcomp] Converting mesh: {source_path.name} -> {output_glb.name}")
-                    if not convert_mesh(source_path, output_glb) and output_glb.exists():
-                        output_glb.unlink()
-                        print(f"[flexcomp] Removed stale GLB: {output_glb.name}")
+                    if not convert_mesh(source_path, output_glb):
+                        failures.append(f"flexcomp mesh '{file_attr}' failed to convert")
+                        if output_glb.exists():
+                            output_glb.unlink()
+                            print(f"[flexcomp] Removed stale GLB: {output_glb.name}")
                 else:
                     print(f"\n[flexcomp] Mesh up to date: {output_glb.name}")
+            else:
+                failures.append(f"flexcomp mesh not found: {source_path}")
 
     print(f"Found {len(mesh_elements)} mesh assets in XML\n")
 
@@ -453,7 +651,8 @@ def process_xml(xml_path: Path):
 
                     # Copy the source file to the new name
                     if not source_path.exists():
-                        print(f"    x Source file missing: {source_path} — skipping")
+                        print(f"    x Source file missing: {source_path}")
+                        failures.append(f"mesh source not found: {source_path}")
                         continue
                     if not renamed_source.exists() or renamed_source.stat().st_mtime < source_path.stat().st_mtime:
                         shutil.copy2(str(source_path), str(renamed_source))
@@ -471,6 +670,7 @@ def process_xml(xml_path: Path):
 
         if not actual_source.exists():
             print(f"\n  x Source not found: {actual_source}")
+            failures.append(f"mesh source not found: {actual_source}")
             continue
 
         if glb_up_to_date(output_glb, actual_source):
@@ -479,10 +679,15 @@ def process_xml(xml_path: Path):
             continue
 
         print(f"\n[{mesh_name}] {actual_source.name} -> {output_glb.name}")
-        if convert_mesh(actual_source, output_glb):
+        # MJCF's own opt-in to one averaged normal per vertex. It defaults to
+        # false, so a model that says nothing gets the crease split.
+        smooth_normal = mesh_el.get("smoothnormal", "false").strip().lower() in ("true", "1")
+
+        if convert_mesh(actual_source, output_glb, smooth_normal):
             success_count += 1
         else:
             print(f"  x FAILED to convert {actual_source.name}")
+            failures.append(f"mesh '{mesh_name}' failed to convert: {actual_source}")
             # Never leave a stale or partial GLB behind: the importer
             # prefers .glb over the source mesh, so a leftover here would
             # silently ship the very data the conversion just refused to
@@ -491,32 +696,46 @@ def process_xml(xml_path: Path):
                 output_glb.unlink()
                 print(f"  -> Removed stale GLB: {output_glb.name}")
 
-    # Phase 4: Write updated XML
-    output_xml = xml_path.parent / f"{xml_path.stem}_ue.xml"
+    # Phase 4: Write updated XML. Written even when something failed, so the
+    # partial result can be inspected; the exit status is what decides whether
+    # a caller may use it.
+    output_xml = root_dir / f"{xml_path.stem}_ue.xml"
     tree.write(str(output_xml), encoding="unicode", xml_declaration=True)
 
     print("\n" + "=" * 60)
     print(f"Processed {success_count}/{len(output_plan)} meshes successfully")
     print(f"Conflicts resolved: {conflicts_found}")
     print(f"Updated XML: {output_xml}")
+
+    if failures:
+        print(f"\n{len(failures)} mesh(es) could not be prepared:", file=sys.stderr)
+        for reason in failures:
+            print(f"  - {reason}", file=sys.stderr)
+        return False
+
     print(f"\nDrag '{output_xml.name}' into Unreal Content Browser to import.")
+    return True
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Error: No XML file specified")
-        print("Usage: python clean_meshes_trimesh.py <path_to_xml>")
-        print('Example: python clean_meshes_trimesh.py "C:/mujoco_menagerie/franka_emika_panda/panda.xml"')
-        return
+    parser = argparse.ArgumentParser(
+        description="Prepare MuJoCo MJCF meshes for Unreal import.")
+    parser.add_argument("xml", type=Path, help="path to the MJCF .xml to prepare")
+    parser.add_argument("--out-dir", type=Path, default=None, dest="out_dir",
+                        help="directory to write the prepared _ue.xml into "
+                             "(default: beside the input)")
+    parser.add_argument("--allow-external-includes", action="store_true",
+                        dest="allow_external_includes",
+                        help="follow an <include> whose target is outside the "
+                             "model's own folder (refused by default)")
+    args = parser.parse_args()
 
-    xml_path = Path(sys.argv[1])
+    if args.xml.suffix.lower() != ".xml":
+        parser.error(f"expected an .xml file, got '{args.xml.suffix}'")
 
-    if xml_path.suffix.lower() == ".xml":
-        process_xml(xml_path)
-    else:
-        print(f"Error: Expected an .xml file, got '{xml_path.suffix}'")
-        print("Usage: python clean_meshes_trimesh.py <path_to_xml>")
+    return 0 if process_xml(args.xml, args.out_dir,
+                            args.allow_external_includes) else 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

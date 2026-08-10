@@ -5,79 +5,62 @@
 // You may obtain a copy of the License at
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//
-// --- LEGAL DISCLAIMER ---
-// UnrealRoboticsLab is an independent software plugin. It is NOT affiliated with,
-// endorsed by, or sponsored by Epic Games, Inc. "Unreal" and "Unreal Engine" are
-// trademarks or registered trademarks of Epic Games, Inc. in the US and elsewhere.
-//
-// This plugin incorporates third-party software: MuJoCo (Apache 2.0),
-// CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #pragma once
 
+// The three ways a URLab test gets something to assert against.
+//
+// FMjTestSession is MuJoCo and nothing else: use it for the coordinate and unit
+// utilities, or as a reference compile to hold FMjUESession against.
+//
+// FMjUESession is a world with a manager and one articulation, built through the
+// same factories the reader uses and compiled through the same spec path the
+// engine uses. Elements are created with Add<E>() rather than NewObject: the
+// factory is what stamps identity and spec order onto a node, and an element
+// missing either is not a spec element -- it will not serialise and will not
+// bind, and it fails in a way that reads like a compiler bug.
+//
+// FMjXmlImportSession is the editor's importer: MJCF text into a Blueprint whose
+// construction script IS the spec, optionally compiled afterwards.
+
 #include "CoreMinimal.h"
-#include "Engine/World.h"
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
-#include "Kismet2/KismetEditorUtilities.h"
+#include "Engine/World.h"
 #include "HAL/FileManager.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/FileHelper.h"
-#include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "UObject/Package.h"
 #include "PackageTools.h"
-#include "mujoco/mujoco.h"
-#include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/MjComponent.h"
-#include "MuJoCo/Components/Bodies/MjWorldBody.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "UObject/Package.h"
+
 #include "Bridge/RpcDispatcher.h"
 #include "MujocoGenerationAction.h"
 
-/**
- * @file MjTestHelpers.h
- * @brief Shared test utilities for all URLab automation tests.
- *
- * Two usage patterns:
- *
- * 1. FMjTestSession — direct MuJoCo (no UE world).
- *    Use ONLY for MjTransformTests (testing the plugin's coordinate-convert
- *    utilities) or as a reference compile to compare against FMjUESession.
- *    Do NOT use for compilation/physics/sensor/actuator tests — those must
- *    go through the plugin's component pipeline.
- *
- * 2. FMjUESession — full Unreal component hierarchy.
- *    Use for ALL tests that verify the plugin's behaviour (component export,
- *    binding, physics integration, sensor readings, actuator control, etc.).
- *    The optional ConfigCallback lets a test customise component properties
- *    before Manager->Compile() is called.
- */
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Spec/MjGenHooks.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjFlexcomp.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
+
+#if URLAB_MJ_GEN
+#include "MuJoCo/Spec/MjNodeFactories.h"
+#endif
+
+THIRD_PARTY_INCLUDES_START
+#include "mujoco/mujoco.h"
+THIRD_PARTY_INCLUDES_END
 
 // ---------------------------------------------------------------------------
-// FMjTestSession: lightweight RAII wrapper around mjSpec/mjModel/mjData
+// FMjTestSession: MuJoCo on its own
 // ---------------------------------------------------------------------------
 
-/**
- * @struct FMjTestSession
- * @brief Compiles an MJCF XML string directly and provides access to model/data.
- *
- * Usage:
- *   FMjTestSession S;
- *   if (S.CompileXml(TEXT("<mujoco>...</mujoco>"))) {
- *       S.Step(10);
- *       float z = S.d->xpos[2 * 3 + 2];  // body 2 z-position
- *   }
- */
 struct FMjTestSession
 {
 	mjSpec* spec = nullptr;
@@ -86,7 +69,7 @@ struct FMjTestSession
 
 	FString LastError;
 
-	/** Compile an inline MJCF XML string. Returns true on success. */
+	/** Compile an inline MJCF string. Returns true on success. */
 	bool CompileXml(const FString& Xml)
 	{
 		Cleanup();
@@ -113,7 +96,6 @@ struct FMjTestSession
 		return true;
 	}
 
-	/** Step physics N times. */
 	void Step(int N = 1)
 	{
 		if (m && d)
@@ -121,64 +103,26 @@ struct FMjTestSession
 				mj_step(m, d);
 	}
 
-	/** Forward kinematics without stepping (updates xpos, xquat etc.). */
 	void Forward()
 	{
 		if (m && d)
 			mj_forward(m, d);
 	}
 
-	/** Reset simulation to initial state. */
 	void Reset()
 	{
 		if (m && d)
 			mj_resetData(m, d);
 	}
 
-	/** Get body ID by name (prefixed or not). Returns -1 if not found. */
-	int BodyId(const char* Name) const
-	{
-		if (!m)
-			return -1;
-		return mj_name2id(m, mjOBJ_BODY, Name);
-	}
+	int BodyId(const char* Name) const { return m ? mj_name2id(m, mjOBJ_BODY, Name) : -1; }
+	int GeomId(const char* Name) const { return m ? mj_name2id(m, mjOBJ_GEOM, Name) : -1; }
+	int JointId(const char* Name) const { return m ? mj_name2id(m, mjOBJ_JOINT, Name) : -1; }
+	int SensorId(const char* Name) const { return m ? mj_name2id(m, mjOBJ_SENSOR, Name) : -1; }
+	int ActuatorId(const char* Name) const { return m ? mj_name2id(m, mjOBJ_ACTUATOR, Name) : -1; }
 
-	/** Get geom ID by name. Returns -1 if not found. */
-	int GeomId(const char* Name) const
-	{
-		if (!m)
-			return -1;
-		return mj_name2id(m, mjOBJ_GEOM, Name);
-	}
-
-	/** Get joint ID by name. Returns -1 if not found. */
-	int JointId(const char* Name) const
-	{
-		if (!m)
-			return -1;
-		return mj_name2id(m, mjOBJ_JOINT, Name);
-	}
-
-	/** Get sensor ID by name. Returns -1 if not found. */
-	int SensorId(const char* Name) const
-	{
-		if (!m)
-			return -1;
-		return mj_name2id(m, mjOBJ_SENSOR, Name);
-	}
-
-	/** Get actuator ID by name. Returns -1 if not found. */
-	int ActuatorId(const char* Name) const
-	{
-		if (!m)
-			return -1;
-		return mj_name2id(m, mjOBJ_ACTUATOR, Name);
-	}
-
-	/** True if model and data are valid. */
 	bool IsValid() const { return m != nullptr && d != nullptr; }
 
-	/** Free all MuJoCo resources. */
 	void Cleanup()
 	{
 		if (d)
@@ -202,47 +146,74 @@ struct FMjTestSession
 };
 
 // ---------------------------------------------------------------------------
-// FMjUESession: full Unreal Engine world + component hierarchy session
+// FMjUESession: a world, a manager, and one articulation
 // ---------------------------------------------------------------------------
 
 /**
- * @struct FMjUESession
- * @brief RAII wrapper for tests that need a full UE world with actors.
+ * The generated element class `E` names.
  *
- * Creates a temporary game world, spawns an AMjManager and one AMjArticulation
- * with a minimal body+geom+joint hierarchy, then drives Compile() directly
- * (bypassing BeginPlay, which does not fire in headless test worlds).
+ * Itself for a generated class, and its base for one of the four hand
+ * subclasses. The factories are keyed on the generated type -- a hand subclass
+ * is a registration, not a second element -- so a test that asks for `UMjBody`
+ * has to be turned back into the `UMjBodyBase` the factory builds. Four entries,
+ * because there are four subclasses and the list does not grow with the schema.
+ */
+template <typename E>
+struct TMjGeneratedOf
+{
+	using Type = E;
+};
+template <>
+struct TMjGeneratedOf<UMjBody>
+{
+	using Type = UMjBodyBase;
+};
+template <>
+struct TMjGeneratedOf<UMjGeom>
+{
+	using Type = UMjGeomBase;
+};
+template <>
+struct TMjGeneratedOf<UMjCamera>
+{
+	using Type = UMjCameraBase;
+};
+template <>
+struct TMjGeneratedOf<UMjFlexcomp>
+{
+	using Type = UMjFlexcompBase;
+};
+
+/**
+ * A minimal articulation -- one body carrying one geom and one joint -- spawned
+ * into a throwaway world and compiled through the spec path.
  *
- * Usage:
- *   FMjUESession S;
- *   if (!S.Init()) { AddError(S.LastError); return false; }
- *   TestTrue(TEXT("..."), S.Manager->IsInitialized());
- *   S.Cleanup();
+ * `Compile()` is driven directly because `BeginPlay` does not fire in a headless
+ * test world. The optional `ConfigCallback` runs after the elements exist and
+ * before the compile, which is where a test authors whatever it is asserting on.
  */
 struct FMjUESession
 {
 	UWorld* World = nullptr;
 	AAMjManager* Manager = nullptr;
 	AMjArticulation* Robot = nullptr;
-	UMjBody* Body = nullptr; ///< The single user body (child of WorldBody)
+
+	/** The spec's <worldbody>. Anonymous by necessity; see Init. */
+	UMjBodyBase* WorldBody = nullptr;
+
+	/** The single user body, the geom on it, and the joint on it. */
+	UMjBody* Body = nullptr;
 	UMjGeom* Geom = nullptr;
 	UMjJoint* Joint = nullptr;
 
 	FString LastError;
 
-	/**
-	 * Create world, spawn manager + minimal articulation, optionally configure
-	 * components, then compile.
-	 *
-	 * @param ConfigCallback  Optional lambda called AFTER spawning components
-	 *                        but BEFORE Manager->Compile().  Use it to set
-	 *                        component properties specific to a test, e.g.
-	 *                        Joint->Type = EMjJointType::Slide.
-	 *
-	 * @return true on success.
-	 */
 	bool Init(TFunction<void(FMjUESession&)> ConfigCallback = nullptr)
 	{
+#if !URLAB_MJ_GEN
+		LastError = TEXT("URLab was built without the generated MuJoCo spec profile");
+		return false;
+#else
 		World = UWorld::CreateWorld(EWorldType::Game, false);
 		if (!World)
 		{
@@ -254,7 +225,6 @@ struct FMjUESession
 		Ctx.SetCurrentWorld(World);
 
 		FActorSpawnParameters P;
-
 		Robot = World->SpawnActor<AMjArticulation>(P);
 		if (!Robot)
 		{
@@ -262,23 +232,30 @@ struct FMjUESession
 			return false;
 		}
 
-		UMjWorldBody* WB = NewObject<UMjWorldBody>(Robot, TEXT("WorldBody"));
-		Robot->SetRootComponent(WB);
-		WB->RegisterComponent();
-
-		Body = NewObject<UMjBody>(Robot, TEXT("RootBody"));
-		Body->RegisterComponent();
-		Body->AttachToComponent(WB, FAttachmentTransformRules::KeepRelativeTransform);
-
-		Geom = NewObject<UMjGeom>(Robot, TEXT("TestGeom"));
-		Geom->size = {0.1f, 0.1f, 0.1f};
-		Geom->bOverride_size = true;
-		Geom->RegisterComponent();
-		Geom->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform);
-
-		Joint = NewObject<UMjJoint>(Robot, TEXT("TestJoint"));
-		Joint->RegisterComponent();
-		Joint->AttachToComponent(Body, FAttachmentTransformRules::KeepRelativeTransform);
+		// The first body in the model's worldbody slot IS <worldbody>, which MJCF
+		// forbids from carrying attributes -- naming it, or posing it, makes the
+		// spec unparseable. So the session authors an anonymous world body
+		// and hangs everything the tests care about underneath it.
+		WorldBody = Add<UMjBodyBase>(Robot->Spec);
+		if (WorldBody == nullptr)
+		{
+			LastError = TEXT("could not create the world body");
+			return false;
+		}
+		Body = Add<UMjBody>(WorldBody, TEXT("RootBody"));
+		if (Body == nullptr)
+		{
+			LastError = TEXT("could not create the root body");
+			return false;
+		}
+		Geom = Add<UMjGeom>(Body, TEXT("TestGeom"));
+		Joint = Add<UMjJoint>(Body, TEXT("TestJoint"));
+		if (Geom == nullptr || Joint == nullptr)
+		{
+			LastError = TEXT("could not create the geom or the joint");
+			return false;
+		}
+		Geom->SetSize({0.1});
 
 		Manager = World->SpawnActor<AAMjManager>(P);
 		if (!Manager)
@@ -287,49 +264,124 @@ struct FMjUESession
 			return false;
 		}
 
-		// Allow the test to customise component properties before compilation
 		if (ConfigCallback)
 			ConfigCallback(*this);
 
-		// Drive compilation directly — BeginPlay is not dispatched in test worlds
 		Manager->Compile();
-
 		if (!Manager->IsInitialized())
 		{
-			LastError = TEXT("Manager->Compile() failed — model not initialized");
+			LastError = FString::Printf(TEXT("Compile() failed: %s"),
+				*Manager->PhysicsEngine->GetLastCompileError());
 			return false;
 		}
 
-		// Stand the bridge server (and its dispatcher) up here too.
-		// AAMjManager::BeginPlay normally does this; tests bypass BeginPlay
-		// and drive Compile() directly, so any test that exercises
-		// step-server semantics needs the dispatcher available.
+		// AAMjManager::BeginPlay normally stands the bridge server up; tests
+		// bypass BeginPlay, and anything exercising step-server semantics needs
+		// the dispatcher. The empty endpoint skips the ZMQ bind so concurrent
+		// tests do not fight over the default port.
 		Manager->BridgeServer = NewObject<UURLabBridgeServer>(Manager, TEXT("BridgeServer"));
 		Manager->BridgeServer->SetOwnedByManager(true);
-		// Tests don't need a real socket; pass empty endpoint to skip
-		// the ZMQ bind. Multiple tests would fight over the default
-		// port otherwise.
 		Manager->BridgeServer->Start(TEXT(""));
 		Manager->BridgeServer->RegisterManager(Manager);
 		return true;
+#endif
 	}
 
-	/** Step physics N times on the manager's model/data. */
+	/**
+	 * Create an element under `Parent`, as the reader would.
+	 *
+	 * Goes through the instance factory rather than `NewObject` because that is
+	 * what stamps a node's identity and its position among its siblings, and an
+	 * element missing either does not serialise and does not bind.
+	 *
+	 * `E` may be a generated class or a hand subclass of one; the factory builds
+	 * whichever class is registered for the element either way, so the cast at
+	 * the end is what the caller asked for.
+	 */
+	template <typename E>
+	E* Add(UMjNodeComponent* Parent, const TCHAR* ElementName = nullptr)
+	{
+#if URLAB_MJ_GEN
+		if (Robot == nullptr || Parent == nullptr)
+		{
+			return nullptr;
+		}
+		urlab::spec::FMjInstanceScope Scope(*Robot);
+		UMjNodeComponent& Node = urlab::spec::FInstanceNodeFactory::Create<
+			typename TMjGeneratedOf<E>::Type>(*Parent);
+		if (ElementName != nullptr)
+		{
+			Node.MjName = ElementName;
+		}
+		return Cast<E>(&Node);
+#else
+		return nullptr;
+#endif
+	}
+
+	/** Recompile after a spec edit, and report why when it fails. */
+	bool Recompile()
+	{
+		if (Manager == nullptr)
+		{
+			LastError = TEXT("no manager");
+			return false;
+		}
+		Manager->Compile();
+		if (!Manager->IsInitialized())
+		{
+			LastError = Manager->PhysicsEngine->GetLastCompileError();
+			return false;
+		}
+		return true;
+	}
+
+	mjModel* Model() const
+	{
+		return (Manager && Manager->PhysicsEngine) ? Manager->PhysicsEngine->m_model : nullptr;
+	}
+	mjData* Data() const
+	{
+		return (Manager && Manager->PhysicsEngine) ? Manager->PhysicsEngine->m_data : nullptr;
+	}
+
+	/**
+	 * The compiled id of one of the articulation's elements, by its MJCF name
+	 * under the articulation's prefix. -1 when the model holds no such object.
+	 *
+	 * Prefer this to an element's own bound id whenever the assertion is about
+	 * the model: it then reads the model and nothing else.
+	 */
+	int MjId(mjtObj Type, const TCHAR* ElementName) const
+	{
+		mjModel* M = Model();
+		if (!M || !Robot)
+			return -1;
+		const FString Full = Robot->GetCompiledPrefix() + ElementName;
+		return mj_name2id(M, Type, TCHAR_TO_UTF8(*Full));
+	}
+
 	void Step(int N = 1)
 	{
-		if (Manager && Manager->PhysicsEngine->m_model && Manager->PhysicsEngine->m_data)
+		mjModel* M = Model();
+		mjData* D = Data();
+		if (M && D)
 			for (int i = 0; i < N; ++i)
-				mj_step(Manager->PhysicsEngine->m_model, Manager->PhysicsEngine->m_data);
+				mj_step(M, D);
+		// The session stands in for the physics worker, and the worker publishes
+		// a snapshot after every step. The Blueprint-facing accessors read that
+		// snapshot, so a session that stepped without publishing would answer
+		// every question with the state before the step.
+		if (Manager && Manager->PhysicsEngine)
+			Manager->PhysicsEngine->PushRenderState();
 	}
 
-	/** Free world and engine context. */
 	void Cleanup()
 	{
 		if (Manager)
 		{
-			// Tear the dispatcher down before the world goes away so its
-			// CustomStepHandler is uninstalled while PhysicsEngine is still
-			// valid.
+			// Tear the dispatcher down before the world goes away so its custom
+			// step handler is uninstalled while the engine is still valid.
 			if (Manager->BridgeServer)
 			{
 				Manager->BridgeServer->UnregisterManager(Manager);
@@ -345,6 +397,10 @@ struct FMjUESession
 			World = nullptr;
 			Manager = nullptr;
 			Robot = nullptr;
+			WorldBody = nullptr;
+			Body = nullptr;
+			Geom = nullptr;
+			Joint = nullptr;
 		}
 	}
 
@@ -352,29 +408,15 @@ struct FMjUESession
 };
 
 // ---------------------------------------------------------------------------
-// FMjXmlImportSession: full XML→Blueprint import + optional compile
+// FMjXmlImportSession: MJCF to a Blueprint, and optionally to a model
 // ---------------------------------------------------------------------------
 
 /**
- * @struct FMjXmlImportSession
- * @brief Writes an inline MJCF XML string to a temp file, runs it through
- *        UMujocoGenerationAction, and provides access to the Blueprint's
- *        component templates for inspection.  Optionally spawns a world and
- *        compiles the model so mjModel values can also be checked.
+ * Runs MJCF through the editor importer and exposes the Blueprint's construction
+ * script, which after a successful import IS the spec.
  *
- * Two-tier usage:
- *
- *   // Tier 1 — inspect importer output (UE component properties):
- *   FMjXmlImportSession S;
- *   if (!S.Init(TEXT("<mujoco>...</mujoco>"))) { ... }
- *   UMjGeom* G = S.FindTemplate<UMjGeom>(TEXT("mygeom"));
- *   TestEqual("friction", G->Friction.X, 0.8f);
- *   S.Cleanup();
- *
- *   // Tier 2 — also verify compiled mjModel values:
- *   if (!S.Compile()) { ... }
- *   TestEqual("ngeom", S.Model()->ngeom, 2);
- *   S.Cleanup();
+ * Two tiers: `Init` alone for asserting on what the importer produced, and
+ * `Compile` on top for asserting on the model it compiles to.
  */
 struct FMjXmlImportSession
 {
@@ -386,17 +428,14 @@ struct FMjXmlImportSession
 	FString LastError;
 	FString TempXmlPath;
 
-	/**
-	 * Write @p XmlContent to a temp file and run UMujocoGenerationAction.
-	 * After this call FindTemplate<T>() is valid.
-	 * Call Compile() afterwards if you also need mjModel values.
-	 *
-	 * @return true on success.
-	 */
-	/**
-	 * Load from an existing XML file on disk (no temp copy).
-	 * Use for testing real Menagerie models with mesh references.
-	 */
+	// Counts from a stock MuJoCo load of the same file, for comparison.
+	int32 NativeBodyCount = 0;
+	int32 NativeJointCount = 0;
+	int32 NativeActuatorCount = 0;
+	int32 NativeGeomCount = 0;
+	bool bOwnsTempFile = true;
+
+	/** Import an MJCF file already on disk. Use for Menagerie models with meshes. */
 	bool InitFromFile(const FString& XmlFilePath)
 	{
 		if (!FPaths::FileExists(XmlFilePath))
@@ -407,7 +446,6 @@ struct FMjXmlImportSession
 		TempXmlPath = XmlFilePath;
 		bOwnsTempFile = false;
 
-		// Quick MuJoCo validation
 		{
 			char szErr[1000] = "";
 			mjModel* TmpM = mj_loadXML(TCHAR_TO_UTF8(*TempXmlPath), nullptr, szErr, sizeof(szErr));
@@ -423,48 +461,14 @@ struct FMjXmlImportSession
 			mj_deleteModel(TmpM);
 		}
 
-		// Create Blueprint and run generator. Both the package path AND the
-		// blueprint class name are unique-per-session — hardcoding the class
-		// name caused intermittent Kismet2.cpp:424 FindObject-uniqueness
-		// assertion failures when GC hadn't collected the previous test's
-		// blueprint-generated class before the next test ran.
-		const FString UniqueSfx = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
-		FString PkgName = UPackageTools::SanitizePackageName(
-			FString(TEXT("/Temp/URLabImportTest_")) + UniqueSfx);
-		UPackage* Pkg = CreatePackage(*PkgName);
-
-		const FString BPName = FString(TEXT("ImportTestArt_")) + UniqueSfx;
-		Blueprint = FKismetEditorUtilities::CreateBlueprint(
-			AMjArticulation::StaticClass(), Pkg, *BPName,
-			BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
-
-		if (!Blueprint)
-		{
-			LastError = TEXT("CreateBlueprint failed");
-			return false;
-		}
-
-		if (AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject()))
-			CDO->MuJoCoXMLFile.FilePath = TempXmlPath;
-
-		UMujocoGenerationAction* Gen = NewObject<UMujocoGenerationAction>();
-		Gen->GenerateForBlueprint(Blueprint, TempXmlPath);
-
-		return true;
+		return RunImporter();
 	}
 
-	// Native MuJoCo counts (populated by InitFromFile for comparison)
-	int32 NativeBodyCount = 0;
-	int32 NativeJointCount = 0;
-	int32 NativeActuatorCount = 0;
-	int32 NativeGeomCount = 0;
-	bool bOwnsTempFile = true;
-
+	/** Write `XmlContent` to a temp file and import it. */
 	bool Init(const FString& XmlContent)
 	{
 		bOwnsTempFile = true;
-		// 1. Write temp XML
-		FString TempDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab/Tests"));
+		const FString TempDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab/Tests"));
 		IFileManager::Get().MakeDirectory(*TempDir, true);
 		TempXmlPath = FPaths::Combine(TempDir,
 			FString::Printf(TEXT("import_%d.xml"), FMath::RandRange(0, 999999)));
@@ -475,7 +479,6 @@ struct FMjXmlImportSession
 			return false;
 		}
 
-		// 2. Quick MuJoCo validation (no UE objects yet)
 		{
 			char szErr[1000] = "";
 			mjModel* TmpM = mj_loadXML(TCHAR_TO_UTF8(*TempXmlPath), nullptr, szErr, sizeof(szErr));
@@ -489,42 +492,13 @@ struct FMjXmlImportSession
 			mj_deleteModel(TmpM);
 		}
 
-		// 3. Create in-memory Blueprint. Both the package path AND the
-		//    blueprint class name are unique-per-session (GUID suffix). See
-		//    InitFromFile above for the rationale — hardcoded class names
-		//    caused intermittent Kismet2.cpp:424 uniqueness assertions.
-		const FString UniqueSfx = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
-		FString PkgName = UPackageTools::SanitizePackageName(
-			FString(TEXT("/Temp/URLabImportTest_")) + UniqueSfx);
-		UPackage* Pkg = CreatePackage(*PkgName);
-
-		const FString BPName = FString(TEXT("ImportTestArt_")) + UniqueSfx;
-		Blueprint = FKismetEditorUtilities::CreateBlueprint(
-			AMjArticulation::StaticClass(), Pkg, *BPName,
-			BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
-
-		if (!Blueprint)
-		{
-			LastError = TEXT("FKismetEditorUtilities::CreateBlueprint failed");
-			return false;
-		}
-
-		// 4. Set XML path on CDO so options merge works
-		if (AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject()))
-			CDO->MuJoCoXMLFile.FilePath = TempXmlPath;
-
-		// 5. Run the generator (no-editor calls like texture import are no-ops in headless)
-		UMujocoGenerationAction* Gen = NewObject<UMujocoGenerationAction>();
-		Gen->GenerateForBlueprint(Blueprint, TempXmlPath);
-
-		return true;
+		return RunImporter();
 	}
 
 	/**
-	 * Spawn a test world, create a Manager, spawn the imported Blueprint
-	 * actor and call Manager->Compile().  Requires Init() to have succeeded.
+	 * Spawn a world, place the imported Blueprint in it, and compile.
 	 *
-	 * @return true if compile succeeded.
+	 * `Robot` may stay null for a model with no world body; that is not an error.
 	 */
 	bool Compile()
 	{
@@ -552,30 +526,23 @@ struct FMjXmlImportSession
 			return false;
 		}
 
-		// Spawn the Blueprint-generated articulation class
-		Robot = World->SpawnActor<AMjArticulation>(Blueprint->GeneratedClass, FVector::ZeroVector, FRotator::ZeroRotator, P);
-		// Robot may be nullptr for models with no worldbody — that's OK
+		Robot = World->SpawnActor<AMjArticulation>(Blueprint->GeneratedClass,
+			FVector::ZeroVector, FRotator::ZeroRotator, P);
 
 		Manager->Compile();
 		if (!Manager->IsInitialized())
 		{
-			LastError = TEXT("Manager->Compile() failed — model not initialized");
+			LastError = FString::Printf(TEXT("Compile() failed: %s"),
+				*Manager->PhysicsEngine->GetLastCompileError());
 			return false;
 		}
 		return true;
 	}
 
-	/** Access the compiled mjModel (only valid after Compile()). */
 	mjModel* Model() const { return Manager ? Manager->PhysicsEngine->m_model : nullptr; }
 	mjData* Data() const { return Manager ? Manager->PhysicsEngine->m_data : nullptr; }
 
-	/**
-	 * Find a component template in the Blueprint's SCS nodes by MjName or
-	 * variable name.  Returns the first match of type T, or nullptr.
-	 *
-	 * @tparam T  USceneComponent subclass to search for.
-	 * @param Name  MjName or SCS variable name to match.
-	 */
+	/** The first construction-script template of type `T` named `Name`. */
 	template <typename T>
 	T* FindTemplate(const FString& Name) const
 	{
@@ -586,9 +553,9 @@ struct FMjXmlImportSession
 			T* Tmpl = Cast<T>(Node->ComponentTemplate);
 			if (!Tmpl)
 				continue;
-			if (UMjComponent* MjC = Cast<UMjComponent>(Tmpl))
+			if (const UMjNodeComponent* Element = Cast<UMjNodeComponent>(Tmpl))
 			{
-				if (MjC->MjName == Name)
+				if (Element->MjName.IsSet() && Element->MjName.GetValue() == Name)
 					return Tmpl;
 			}
 			if (Node->GetVariableName().ToString() == Name)
@@ -597,10 +564,7 @@ struct FMjXmlImportSession
 		return nullptr;
 	}
 
-	/**
-	 * Find ANY component template of type T (returns the first one found).
-	 * Useful when the test only creates one of that type.
-	 */
+	/** The first template of type `T`, for when the test authored only one. */
 	template <typename T>
 	T* FindFirstTemplate() const
 	{
@@ -614,7 +578,6 @@ struct FMjXmlImportSession
 		return nullptr;
 	}
 
-	/** Count how many SCS nodes have component templates of type T. */
 	template <typename T>
 	int32 CountTemplates() const
 	{
@@ -650,6 +613,40 @@ struct FMjXmlImportSession
 	}
 
 	~FMjXmlImportSession() { Cleanup(); }
+
+private:
+	/**
+	 * Create the Blueprint and run the importer into it.
+	 *
+	 * Both the package path and the generated class name carry a fresh GUID:
+	 * hardcoding either produced intermittent uniqueness assertions when garbage
+	 * collection had not yet reclaimed the previous test's generated class.
+	 */
+	bool RunImporter()
+	{
+		const FString UniqueSfx = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
+		const FString PkgName = UPackageTools::SanitizePackageName(
+			FString(TEXT("/Temp/URLabImportTest_")) + UniqueSfx);
+		UPackage* Pkg = CreatePackage(*PkgName);
+
+		const FString BPName = FString(TEXT("ImportTestArt_")) + UniqueSfx;
+		Blueprint = FKismetEditorUtilities::CreateBlueprint(
+			AMjArticulation::StaticClass(), Pkg, *BPName,
+			BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+
+		if (!Blueprint)
+		{
+			LastError = TEXT("FKismetEditorUtilities::CreateBlueprint failed");
+			return false;
+		}
+
+		if (AMjArticulation* CDO = Cast<AMjArticulation>(Blueprint->GeneratedClass->GetDefaultObject()))
+			CDO->MuJoCoXMLFile.FilePath = TempXmlPath;
+
+		UMujocoGenerationAction* Gen = NewObject<UMujocoGenerationAction>();
+		Gen->GenerateForBlueprint(Blueprint, TempXmlPath);
+		return true;
+	}
 };
 
 // ---------------------------------------------------------------------------
@@ -675,8 +672,8 @@ inline bool NearlyEqual(const FVector& A, const FVector& B, float Eps = 0.1f)
 
 inline bool NearlyEqual(const FQuat& A, const FQuat& B, float Eps = 0.01f)
 {
-	// Quats q and -q represent the same rotation
-	return A.Equals(B, Eps) || A.Equals(B.Inverse() * FQuat(0, 0, 0, -1) /* flip */, Eps)
+	// q and -q are the same rotation.
+	return A.Equals(B, Eps) || A.Equals(B.Inverse() * FQuat(0, 0, 0, -1), Eps)
 		|| FQuat::ErrorAutoNormalize(A, B) < Eps;
 }
-} // namespace MjTestMath
+}  // namespace MjTestMath

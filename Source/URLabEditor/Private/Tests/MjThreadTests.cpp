@@ -25,10 +25,9 @@
 #include "Tests/MjTestHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Bodies/MjWorldBody.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
 #include "Engine/World.h"
 #include "mujoco/mujoco.h"
 

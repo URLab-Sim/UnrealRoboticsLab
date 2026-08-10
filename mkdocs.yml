@@ -115,6 +115,7 @@ nav:
     - Building from Source: contributing/building.md
     - Codegen: contributing/codegen.md
     - Bumping MuJoCo: contributing/bumping_mujoco.md
+    - mjSpec Architecture: architecture_mjspec.md
   - Troubleshooting: troubleshooting.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md
@@ -269,9 +270,7 @@ nav:
 #       - FMjCompilerSettings: api/utils/fmjcompilersettings.md
 #       - GeomView: api/utils/geomview.md
 #       - JointView: api/utils/jointview.md
-#       - MjOrientationUtils: api/utils/mjorientationutils.md
 #       - MujocoUtils: api/utils/mujocoutils.md
-#       - MujocoXmlUtils: api/utils/mujocoxmlutils.md
 #       - SensorView: api/utils/sensorview.md
 #       - TendonView: api/utils/tendonview.md
 #     - Other:

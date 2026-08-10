@@ -26,14 +26,209 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/Components/MjComponent.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Components/ActorComponent.h"
 #include "GameFramework/Actor.h"
 #include "Async/Async.h"
 #include "Misc/ScopeExit.h"
 #include "mujoco/mujoco.h"
+
+#if URLAB_MJ_GEN
+#include "MuJoCo/Spec/MjElementIdentity.h"
+#endif
+
+// Element state production lives here rather than on the elements.
+//
+// A joint, a sensor and an actuator carry no per-instance state and so have no
+// hand class to hold an override, and one virtual per leaf would mean 47 sensor
+// overrides of one identical body. Each of these is a pure function of the
+// element's compiled id and the model, so each is a free function keyed on the
+// element family the compile binding already recorded.
+
+namespace
+{
+/** The IR name of an element: articulation segment plus its own MJCF name. */
+FName ElementSegment(const UMjNodeComponent& Node)
+{
+	const AMjArticulation* Art = Cast<AMjArticulation>(Node.GetOwner());
+	return FMjCanonicalName::PartSegment(Art, Node.MjName.Get(Node.GetName()));
+}
+
+void DescribeJoint(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjData* d,
+	FMjArticulationState& Out)
+{
+	if (Id < 0 || Id >= m->njnt)
+	{
+		return;
+	}
+	const int32 QposAdr = m->jnt_qposadr[Id];
+	const int32 DofAdr = m->jnt_dofadr[Id];
+	if (QposAdr < 0 || DofAdr < 0)
+	{
+		return;
+	}
+
+	// Slot widths follow the joint type -- free 7/6, ball 4/3, hinge and slide
+	// 1/1 -- counted from the joint's first qpos and dof slot.
+	int32 QSize = 1;
+	int32 VSize = 1;
+	EMjJointType JType = EMjJointType::hinge;
+	switch (m->jnt_type[Id])
+	{
+		case mjJNT_FREE:
+			QSize = 7;
+			VSize = 6;
+			JType = EMjJointType::free;
+			break;
+		case mjJNT_BALL:
+			QSize = 4;
+			VSize = 3;
+			JType = EMjJointType::ball;
+			break;
+		case mjJNT_SLIDE:
+			JType = EMjJointType::slide;
+			break;
+		default:
+			JType = EMjJointType::hinge;
+			break;
+	}
+
+	FMjJointState& J = Out.Joints.AddDefaulted_GetRef();
+	J.Name = ElementSegment(Node);
+	J.Type = JType;
+	J.QPos.SetNumUninitialized(QSize);
+	J.QVel.SetNumUninitialized(VSize);
+	for (int32 i = 0; i < QSize; ++i)
+	{
+		J.QPos[i] = d->qpos[QposAdr + i];
+	}
+	for (int32 i = 0; i < VSize; ++i)
+	{
+		J.QVel[i] = d->qvel[DofAdr + i];
+	}
+
+	// The reference slice, for the 1-DOF joints a URDF exposes, so the ROS
+	// /joint_states shift can emit qpos - qpos0: URDF q=0 is MuJoCo qpos0. Free
+	// and ball joints are not URDF joints, so they record no shift.
+	if (JType == EMjJointType::hinge || JType == EMjJointType::slide)
+	{
+		J.RefPos.SetNumUninitialized(QSize);
+		for (int32 i = 0; i < QSize; ++i)
+		{
+			J.RefPos[i] = m->qpos0[QposAdr + i];
+		}
+	}
+}
+
+void DescribeSensor(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjData* d,
+	FMjArticulationState& Out)
+{
+	if (Id < 0 || Id >= m->nsensor)
+	{
+		return;
+	}
+	const int32 Dim = m->sensor_dim[Id];
+	const int32 Adr = m->sensor_adr[Id];
+	if (Dim <= 0 || Adr < 0 || Adr >= m->nsensordata)
+	{
+		return;
+	}
+
+	// The IR carries raw MuJoCo SI values, in the MuJoCo frame, as joints and
+	// bodies do. The coordinate and unit fixup belongs to the display-facing
+	// reader and not to the serialisation path.
+	FMjSensorState& S = Out.Sensors.AddDefaulted_GetRef();
+	S.Name = ElementSegment(Node);
+	S.Semantic = UMjSensorRuntime::GetSemantic(&Node);
+	S.Values.SetNumUninitialized(Dim);
+	for (int32 i = 0; i < Dim; ++i)
+	{
+		S.Values[i] = d->sensordata[Adr + i];
+	}
+}
+
+void DescribeActuator(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjData* d,
+	FMjArticulationState& Out)
+{
+	if (Id < 0 || Id >= m->nu)
+	{
+		return;
+	}
+	FMjActuatorState& A = Out.Actuators.AddDefaulted_GetRef();
+	A.Name = ElementSegment(Node);
+
+	// The transmission target comes out of the compiled model rather than the
+	// spec, so an actuator that reached its joint through a default class is
+	// reported the same as one that named it outright.
+	const int32 TrnType = m->actuator_trntype[Id];
+	if (TrnType == mjTRN_JOINT || TrnType == mjTRN_JOINTINPARENT)
+	{
+		const int32 JointId = m->actuator_trnid[Id * 2];
+		if (JointId >= 0 && JointId < m->njnt)
+		{
+			if (const char* JointName = mj_id2name(m, mjOBJ_JOINT, JointId))
+			{
+				A.TargetJoint = FMjCanonicalName::PartSegment(
+					Cast<AMjArticulation>(Node.GetOwner()), UTF8_TO_TCHAR(JointName));
+			}
+		}
+	}
+
+	const int32 ActAdr = m->actuator_actadr[Id];  // negative for a stateless actuator
+	A.Ctrl = d->ctrl[Id];
+	A.Act = (ActAdr >= 0) ? d->act[ActAdr] : 0.0;
+	A.Force = d->actuator_force[Id];
+}
+
+/**
+ * Declare one element's per-step state.
+ *
+ * Keyed on the element family rather than on a C++ class, because that is what
+ * the element is: a joint and a free joint are one family with one state shape,
+ * and 47 sensor leaves are another.
+ */
+void DescribeElement(const UMjNodeComponent& Node, const mjModel* m, mjData* d, FMjArticulationState& Out)
+{
+	if (m == nullptr || d == nullptr)
+	{
+		return;
+	}
+
+	// A hand subclass that overrides the virtual answers for itself. The body is
+	// the only one that does, and it is the one whose state is a transform.
+	Node.DescribeState(m, d, Out);
+
+#if URLAB_MJ_GEN
+	const TOptional<int32>& Bound = Node.GetBoundId();
+	if (!Bound.IsSet())
+	{
+		return;
+	}
+	using urlab::spec::psm::ElementType;
+	ElementType Type;
+	if (!urlab::spec::MjElementTypeOfNode(Node, Type))
+	{
+		return;
+	}
+	if (Type == ElementType::Joint || Type == ElementType::FreeJoint)
+	{
+		DescribeJoint(Node, Bound.GetValue(), m, d, Out);
+	}
+	else if (UMjActuatorRuntime::IsActuator(&Node))
+	{
+		DescribeActuator(Node, Bound.GetValue(), m, d, Out);
+	}
+	else if (UMjSensorRuntime::IsSensor(&Node))
+	{
+		DescribeSensor(Node, Bound.GetValue(), m, d, Out);
+	}
+#endif
+}
+}  // namespace
 
 void FMjStateCollector::Init(AAMjManager* InManager)
 {
@@ -87,14 +282,15 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 		Rec.Art = Art;
 		Rec.ArtSegment = FMjCanonicalName::ArtSegment(Art);
 
-		TArray<UMjComponent*> Components;
-		Art->GetComponents<UMjComponent>(Components);
+		TArray<UMjNodeComponent*> Components;
+		Art->GetComponents(Components);
 		Rec.Producers.Reserve(Components.Num());
-		for (UMjComponent* Comp : Components)
+		for (UMjNodeComponent* Comp : Components)
 		{
-			if (!Comp || Comp->bIsDefault)
-				continue;
-			Rec.Producers.Add(Comp);
+			if (Comp != nullptr)
+			{
+				Rec.Producers.Add(Comp);
+			}
 		}
 
 		Rec.TwistCtrl = Art->FindComponentByClass<UMjTwistController>();
@@ -306,17 +502,17 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 			}
 			FMjArticulationState& ArtState = Snapshot.Articulations.AddDefaulted_GetRef();
 			ArtState.Name = Rec.ArtSegment;
-			for (const TWeakObjectPtr<UMjComponent>& WeakComp : Rec.Producers)
+			for (const TWeakObjectPtr<UMjNodeComponent>& WeakComp : Rec.Producers)
 			{
-				if (UMjComponent* Comp = WeakComp.Get())
-					Comp->DescribeState(ArtState);
+				if (const UMjNodeComponent* Comp = WeakComp.Get())
+					DescribeElement(*Comp, m, d, ArtState);
 			}
 			if (UMjTwistController* Twist = Rec.TwistCtrl.Get())
-				Twist->DescribeState(ArtState);
+				Twist->DescribeState(m, d, ArtState);
 			for (const TWeakObjectPtr<UObject>& WeakProducer : Rec.InterfaceProducers)
 			{
 				if (IMjStateProducer* Producer = Cast<IMjStateProducer>(WeakProducer.Get()))
-					Producer->DescribeState(ArtState);
+					Producer->DescribeState(m, d, ArtState);
 			}
 		}
 
@@ -356,7 +552,7 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 	}
 
 	// Non-articulation entities: raw MjIds with no component, read straight from
-	// mjData. Prefer the manager's entity cache (built at PostCompile).
+	// mjData. Prefer the manager's entity cache, which the compile rebuilt.
 	if (Mgr)
 	{
 		const TArray<FMjEntityRecord>& Entities = Mgr->GetEntities();

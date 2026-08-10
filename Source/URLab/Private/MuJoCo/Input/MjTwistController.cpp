@@ -43,7 +43,7 @@ int32 UMjTwistController::GetActiveActions() const
 	return ActionBitmask;
 }
 
-void UMjTwistController::DescribeState(FMjArticulationState& Out) const
+void UMjTwistController::DescribeState(const mjModel*, mjData*, FMjArticulationState& Out) const
 {
 	// geometry_msgs/Twist layout: (linear.x, linear.y, angular.z) filled from
 	// (Vx, Vy, YawRate); the rest stays zero.

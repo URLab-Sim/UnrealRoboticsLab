@@ -25,13 +25,14 @@
 #include "Bridge/OpRegistry.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Controllers/MjArticulationController.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -148,11 +149,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	};
 	TArray<FJointSlot> Slots;
 	int32 ArtQDim = 0;
-	for (UMjJoint* J : Art->GetJoints())
+	for (const UMjNodeComponent* J : Art->GetJoints())
 	{
 		if (!J)
 			continue;
-		int32 Id = J->GetMjID();
+		const int32 Id = J->GetBoundId().Get(-1);
 		if (Id < 0 || Id >= m->njnt)
 			continue;
 		int32 Size = 1;
@@ -274,7 +275,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 				continue;
 			for (UMjBody* B : Art->GetBodies())
 			{
-				if (B && B->GetMjName().Equals(Body))
+				if (B && B->MjName.Get(B->GetName()).Equals(Body))
 				{
 					ArtKey = FName(*Art->GetName());
 					break;

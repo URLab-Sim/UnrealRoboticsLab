@@ -29,13 +29,13 @@
 #include "InputActionValue.h"
 #include "MjInputMapping.generated.h"
 
-class UMjActuator;
+class UMjNodeComponent;
 class AMjArticulation;
 struct FInputActionInstance;
 
 struct FCachedMjBinding
 {
-	TWeakObjectPtr<UMjActuator> Actuator;
+	TWeakObjectPtr<UMjNodeComponent> Actuator;
 	float Scale;
 	bool bAccumulate;
 };

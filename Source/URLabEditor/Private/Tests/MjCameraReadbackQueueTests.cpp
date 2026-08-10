@@ -29,7 +29,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 
 namespace
 {
@@ -143,9 +143,10 @@ bool FMjCameraRequestFetchDelayAware::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.CameraReadback.ResolutionAccessorIsBoundsSafe
-//   GetResolution() substitutes the 640x480 default for any missing or
+//   CaptureResolution() substitutes the 640x480 default for any missing or
 //   non-positive element, so downstream pixel sizing can never index a malformed
-//   resolution array out of bounds.
+//   resolution array out of bounds. The generated GetResolution() beside it is
+//   the raw schema attribute and does no such validation.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCameraResolutionAccessor,
 	"URLab.CameraReadback.ResolutionAccessorIsBoundsSafe",
@@ -158,24 +159,24 @@ bool FMjCameraResolutionAccessor::RunTest(const FString& Parameters)
 		return false;
 
 	// Well-formed pair passes through.
-	Cam->resolution = {800, 600};
-	TestEqual(TEXT("valid width"), Cam->GetResolution().X, 800);
-	TestEqual(TEXT("valid height"), Cam->GetResolution().Y, 600);
+	Cam->SetResolution({800, 600});
+	TestEqual(TEXT("valid width"), Cam->CaptureResolution().X, 800);
+	TestEqual(TEXT("valid height"), Cam->CaptureResolution().Y, 600);
 
 	// Single element (MJCF resolution="640"): height defaults.
-	Cam->resolution = {640};
-	TestEqual(TEXT("single-element width kept"), Cam->GetResolution().X, 640);
-	TestEqual(TEXT("single-element height defaults"), Cam->GetResolution().Y, 480);
+	Cam->SetResolution({640});
+	TestEqual(TEXT("single-element width kept"), Cam->CaptureResolution().X, 640);
+	TestEqual(TEXT("single-element height defaults"), Cam->CaptureResolution().Y, 480);
 
-	// Empty array: both default.
-	Cam->resolution.Reset();
-	TestEqual(TEXT("empty width defaults"), Cam->GetResolution().X, 640);
-	TestEqual(TEXT("empty height defaults"), Cam->GetResolution().Y, 480);
+	// Unset attribute: both default.
+	Cam->ClearResolution();
+	TestEqual(TEXT("empty width defaults"), Cam->CaptureResolution().X, 640);
+	TestEqual(TEXT("empty height defaults"), Cam->CaptureResolution().Y, 480);
 
 	// Non-positive entries: both default.
-	Cam->resolution = {0, -5};
-	TestEqual(TEXT("non-positive width defaults"), Cam->GetResolution().X, 640);
-	TestEqual(TEXT("non-positive height defaults"), Cam->GetResolution().Y, 480);
+	Cam->SetResolution({0, -5});
+	TestEqual(TEXT("non-positive width defaults"), Cam->CaptureResolution().X, 640);
+	TestEqual(TEXT("non-positive height defaults"), Cam->CaptureResolution().Y, 480);
 
 	return true;
 }

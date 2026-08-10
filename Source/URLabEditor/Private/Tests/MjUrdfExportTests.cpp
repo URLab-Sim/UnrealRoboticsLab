@@ -457,7 +457,7 @@ bool FMjUrdfJointStateShift::RunTest(const FString& Parameters)
 	// Hinge with a non-zero reference: JointState must report qpos - qpos0.
 	FMjJointState Hinge;
 	Hinge.Name = FName(TEXT("j1"));
-	Hinge.Type = EMjJointType::Hinge;
+	Hinge.Type = EMjJointType::hinge;
 	Hinge.QPos = {1.25};
 	Hinge.QVel = {0.4};
 	Hinge.RefPos = {0.5};
@@ -466,7 +466,7 @@ bool FMjUrdfJointStateShift::RunTest(const FString& Parameters)
 	// Slide with no reference recorded: unshifted.
 	FMjJointState Slide;
 	Slide.Name = FName(TEXT("j2"));
-	Slide.Type = EMjJointType::Slide;
+	Slide.Type = EMjJointType::slide;
 	Slide.QPos = {0.30};
 	Slide.QVel = {0.0};
 	Art.Joints.Add(Slide);

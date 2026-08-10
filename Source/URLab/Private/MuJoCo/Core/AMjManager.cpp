@@ -21,10 +21,15 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
 #include "EngineUtils.h"
 #include "Transport/NetworkManager.h"
 #include "MuJoCo/Input/MjInputHandler.h"
@@ -65,22 +70,29 @@ AAMjManager::AAMjManager()
 	NetworkManager = CreateDefaultSubobject<UMjNetworkManager>(TEXT("NetworkManager"));
 	InputHandler = CreateDefaultSubobject<UMjInputHandler>(TEXT("InputHandler"));
 	Perturbation = CreateDefaultSubobject<UMjPerturbation>(TEXT("Perturbation"));
+
+	// The scene is one MuJoCo spec and this is its root. Sections hang off
+	// it rather than off the actor directly, because a spec with two roots
+	// is not a spec -- and the writer walks exactly this tree.
+	SceneSpec = CreateDefaultSubobject<UMjModel>(TEXT("SceneSpec"));
+	SceneOption = CreateDefaultSubobject<UMjOption>(TEXT("SceneOption"));
+	SceneFlags = CreateDefaultSubobject<UMjFlag>(TEXT("SceneFlags"));
+	SceneOption->SetupAttachment(SceneSpec);
+	SceneFlags->SetupAttachment(SceneOption);
+	if (RootComponent == nullptr)
+	{
+		RootComponent = SceneSpec;
+	}
+
+	// URLab's two departures from MuJoCo's own defaults, authored rather than
+	// hard-coded so they show up in the details panel and in written MJCF.
+	SceneOption->Integrator = EMjIntegrator::implicitfast;
+	SceneFlags->Multiccd = EMjEnable::disable;
 }
 
-// --- Forwarding shims: PreCompile, PostCompile, Compile, ApplyOptions ---
-// Actual implementations live in UMjPhysicsEngine.
-
-void AAMjManager::PreCompile()
+FSpecRef AAMjManager::GetSceneSpec() const
 {
-	if (PhysicsEngine)
-		PhysicsEngine->PreCompile();
-}
-
-void AAMjManager::PostCompile()
-{
-	if (PhysicsEngine)
-		PhysicsEngine->PostCompile();
-	RefreshStateCaches();
+	return FSpecRef::OverActor(const_cast<AAMjManager&>(*this));
 }
 
 void AAMjManager::RefreshStateCaches()
@@ -158,15 +170,15 @@ void AAMjManager::BuildEntityCache()
 		Actor->GetComponents<UMjBody>(Bodies);
 		for (UMjBody* B : Bodies)
 		{
-			if (!B || B->bIsDefault)
+			if (B == nullptr)
 				continue;
-			int32 Id = B->GetMjID();
+			const int32 Id = B->GetBoundId().Get(-1);
 			if (Id < 0 || Id >= m->nbody)
 				continue;
 
 			FMjEntityRecord Rec;
 			Rec.MjId = Id;
-			Rec.Name = B->GetMjName();
+			Rec.Name = B->MjName.Get(B->GetName());
 			Rec.BodyComp = B;
 			if (m->body_jntnum && m->body_jntadr)
 			{
@@ -191,6 +203,8 @@ void AAMjManager::Compile()
 	m_articulations = PhysicsEngine->m_articulations;
 	m_heightfieldActors = PhysicsEngine->m_heightfieldActors;
 	m_ArticulationMap = PhysicsEngine->m_ArticulationMap;
+
+	RefreshStateCaches();
 }
 
 void AAMjManager::BeginPlay()
@@ -311,12 +325,7 @@ void AAMjManager::BeginPlay()
 		}
 	}
 
-	// Compile via PhysicsEngine (also discovers ZMQ components in PreCompile)
 	Compile();
-	// The engine runs its own PostCompile (component PostSetup) inside Compile();
-	// the manager's PostCompile shim is not on that path, so build the entity +
-	// producer caches the state IR reads here, after the articulation lists sync.
-	RefreshStateCaches();
 	if (NetworkManager)
 		NetworkManager->UpdateCameraStreamingState();
 
@@ -709,23 +718,10 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// detached thread may still be executing mj_step and reading these.
 	if (PhysicsEngine && bAsyncExited)
 	{
-		if (PhysicsEngine->m_data)
-		{
-			mj_deleteData(PhysicsEngine->m_data);
-			PhysicsEngine->m_data = nullptr;
-		}
-		if (PhysicsEngine->m_model)
-		{
-			mj_deleteModel(PhysicsEngine->m_model);
-			PhysicsEngine->m_model = nullptr;
-		}
-		if (PhysicsEngine->m_spec)
-		{
-			mj_deleteVFS(&PhysicsEngine->m_vfs);
-			mj_deleteSpec(PhysicsEngine->m_spec);
-			PhysicsEngine->m_spec = nullptr;
-		}
-
+		// The model belongs to the compiled scene, which also owns the specs it
+		// was compiled from and knows the order they have to go in, so the two
+		// pointers cannot be freed on their own.
+		PhysicsEngine->ReleaseCompiledScene();
 		PhysicsEngine->m_heightfieldActors.Empty();
 		PhysicsEngine->m_articulations.Empty();
 		PhysicsEngine->m_MujocoComponents.Empty();
@@ -783,6 +779,27 @@ void AAMjManager::ApplyLatestRenderState()
 AAMjManager* AAMjManager::GetManager()
 {
 	return Instance;
+}
+
+UMjPhysicsEngine* AAMjManager::ResolveEngine(const UObject* WorldCtx)
+{
+	if (AAMjManager* Manager = GetManager())
+	{
+		if (Manager->PhysicsEngine)
+			return Manager->PhysicsEngine;
+	}
+	if (WorldCtx)
+	{
+		if (UWorld* World = WorldCtx->GetWorld())
+		{
+			for (TActorIterator<AAMjManager> It(World); It; ++It)
+			{
+				if (It->PhysicsEngine)
+					return It->PhysicsEngine;
+			}
+		}
+	}
+	return nullptr;
 }
 
 void AAMjManager::SetPaused(bool bPaused)

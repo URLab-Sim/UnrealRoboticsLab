@@ -25,8 +25,10 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "mujoco/mujoco.h"
-#include "MuJoCo/Generated/MjOptionGenerated.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
+#include "MuJoCo/Spec/MjBinding.h"
+#include "MuJoCo/Spec/MjSceneAssembly.h"
+#include "MuJoCo/Spec/MjSceneSpec.h"
 #include <functional>
 #include <atomic>
 #include "MjPhysicsEngine.generated.h"
@@ -49,7 +51,7 @@ enum class EControlSource : uint8
  * @enum EStepMode
  * @brief Controls how the physics engine advances the simulation.
  *
- * - Live: physics thread advances at Options.Timestep on its own. Publishers
+ * - Live: physics thread advances at the model's timestep on its own. Publishers
  *   stream state, control subscriber writes ctrl. Live / streaming workflows.
  * - Direct: physics thread blocks on a step-request queue fed by UURLabZmqRpcTransport.
  *   RPC writes ctrl, calls mj_step n times, returns observations. Deterministic
@@ -67,6 +69,28 @@ enum class EStepMode : uint8
 	Direct UMETA(DisplayName = "Direct (RPC step)"),
 	Puppet UMETA(DisplayName = "Puppet (RPC push-state)"),
 	Auto UMETA(DisplayName = "Auto (client picks)")
+};
+
+/**
+ * The MJCF a compiled scene was built from, with everything else it needs.
+ *
+ * A scene is not always one spec: it may reference participant models by
+ * VFS name, and a client cannot reload it without them. So the payload is the
+ * scene text plus the specs and asset files that go in the VFS alongside
+ * it, which is also exactly what the compiler was given.
+ */
+struct URLAB_API FMjCompiledScene
+{
+	/** The scene spec's MJCF text. */
+	FString Xml;
+
+	/** ParticipantXml the scene references, keyed by the VFS name it references them under. */
+	TMap<FString, FString> ParticipantXml;
+
+	/** The asset files mounted alongside the scene, keyed by mounted name. */
+	TMap<FString, FString> AssetFiles;
+
+	bool IsValid() const { return !Xml.IsEmpty(); }
 };
 
 /**
@@ -90,18 +114,15 @@ public:
 
 	// --- MuJoCo Core Pointers ---
 
-	mjSpec* m_spec = nullptr;
-	mjVFS m_vfs;
 	mjModel* m_model = nullptr;
 	mjData* m_data = nullptr;
 
 	mjModel* GetModel() const { return m_model; }
 	mjData* GetData() const { return m_data; }
-	mjSpec* GetSpec() const { return m_spec; }
 
 	// --- Thread Synchronization ---
 
-	FCriticalSection CallbackMutex;
+	mutable FCriticalSection CallbackMutex;
 	std::atomic<bool> bShouldStopTask{false};
 	TFuture<void> AsyncPhysicsFuture;
 
@@ -133,8 +154,12 @@ public:
 	/** Set by the game thread each time it consumes the render snapshot; the
 	 *  live-mode worker publishes a new snapshot only when it is set, so the
 	 *  full-state copy runs at the consumer's frame rate rather than the
-	 *  physics rate. Direct/puppet publish every step (frame association). */
-	std::atomic<bool> bSnapshotWanted{true};
+	 *  physics rate. Direct/puppet publish every step (frame association).
+	 *
+	 *  Every WithRenderState visit sets it, so a consumer asks for the next
+	 *  frame by reading this one. Mutable for exactly that: consuming is a
+	 *  const operation on the snapshot and a request for the one after it. */
+	mutable std::atomic<bool> bSnapshotWanted{true};
 
 	/** Worker-thread only. Reset at the top of each worker iteration; a step
 	 *  handler that publishes the render snapshot itself (direct mode captures
@@ -168,9 +193,6 @@ public:
 	int32 PendingStateMask = 0;
 
 	// --- Simulation Options ---
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options")
-	FMjOptionGenerated Options;
 
 	/** 100 = realtime, 50 = half speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Options", meta = (ClampMin = "5", ClampMax = "100"))
@@ -217,20 +239,82 @@ public:
 	/** Error string from the most recent Compile(); empty on success. */
 	FString m_LastCompileError;
 
-	/** Absolute paths of every mesh / texture asset registered to the
-	 *  MuJoCo VFS during the last Compile. Aggregated from each
-	 *  articulation's / quick-convert's spec wrapper in PreCompile.
-	 *  Used by the bridge handshake (opt-in) to ship the model and
-	 *  its assets to a remote client. */
+	/** Absolute paths of every mesh / texture asset the last compile mounted.
+	 *  Collected by the spec's own asset pass, which is the same pass the
+	 *  compile fed its VFS from. Used by the bridge handshake (opt-in) to ship
+	 *  the model and its assets to a remote client. */
 	UPROPERTY()
-	TArray<FString> ActiveAssetPaths;
+	TMap<FString, FString> ActiveAssetFiles;
 
 	// --- Compilation ---
 
+	/**
+	 * Compile the level and install the result as the live model.
+	 *
+	 * A thin spelling of `InstallCompiledSpec` that reports rather than
+	 * returns, because that is what every existing caller wants and the reason
+	 * the two stood side by side has gone: the spec is what compiles now.
+	 */
 	void Compile();
-	void PreCompile();
-	void PostCompile();
+
 	void ApplyOptions();
+
+	/**
+	 * Project the level into a scene assembly: the manager's sections as the
+	 * scene root, and one participant per articulation and per scene
+	 * contributor, ordered by prefix.
+	 *
+	 * A projection rather than a stored membership list, so there is no second
+	 * source of truth to reconcile against the actors actually present. Not
+	 * const: a contributor authors its spec from Unreal content here, which
+	 * is the one point at which a sampled terrain or a converted mesh becomes
+	 * MJCF, and it has to happen against the level as it is now.
+	 */
+	void BuildSceneAssembly(FSceneAssembly& Out);
+
+	/**
+	 * Every object in the world that contributes a spec to the scene:
+	 * heightfield actors, quick-convert components, anything else implementing
+	 * the interface. Actors and components both, because the two consumers that
+	 * exist are one of each.
+	 */
+	TArray<UObject*> GatherSceneContributors() const;
+
+	/**
+	 * Compile the level's specs and install the result as the live model.
+	 *
+	 * The spec route from end to end: the specs are built and composed, the
+	 * model becomes the engine's, mjData is made for it, every element that
+	 * survived the compile is told the id it received, and each articulation's
+	 * control slots are sized to the scene it compiled into. After this a caller
+	 * can read `d->sensordata` at an element's `BoundId` and get an answer.
+	 *
+	 * Transactional. Everything that can fail -- building the specs, composing
+	 * them, compiling, making the data -- happens before anything running is
+	 * touched, so a compile that fails costs the caller a diagnostic and leaves
+	 * the session stepping exactly the model it was already stepping.
+	 */
+	bool InstallCompiledSpec(FString& OutError);
+
+	/**
+	 * Drop the installed model, its data, and the scene they came from.
+	 *
+	 * The model belongs to the compiled scene rather than to this component, so
+	 * it cannot be freed on its own: the specs it was compiled from have to
+	 * outlive it, and only the scene knows that order. Callers that used to
+	 * delete the two pointers call this instead.
+	 */
+	void ReleaseCompiledScene();
+
+	/**
+	 * The MJCF of the scene the engine currently holds compiled.
+	 *
+	 * The single source of the bridge handshake's `mjcf_compiled` and of the
+	 * render farm's upload: neither reaches into the engine's compile state for
+	 * the text, so where that text comes from stays the engine's business.
+	 * Returns false with the reason in `OutError` when there is nothing to give.
+	 */
+	bool BuildCompiledScene(FMjCompiledScene& Out, FString& OutError) const;
 
 	/** (Re)build or free MuJoCo's per-step worker thread pool on the live
 	 *  mjData from NumWorkerThreads. Idempotent; safe at setup or runtime. */
@@ -277,7 +361,7 @@ public:
 	EControlSource GetControlSource() const;
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
 	/** The live articulation registry. Registration happens in bulk at compile
-	 *  time (PreCompile) while the worker thread is stopped and joined, so the
+	 *  time while the worker thread is stopped and joined, so the
 	 *  array is immutable for the duration of a play session. The returned
 	 *  reference is therefore stable to read on the game thread, but it is NOT a
 	 *  synchronised snapshot: it must not be retained across a recompile, and
@@ -324,8 +408,13 @@ public:
 	 * visitor, so the visitor must complete promptly and must not
 	 * acquire CallbackMutex (or any lock that the producer takes
 	 * under CallbackMutex).
+	 *
+	 * Also asks the worker for the next frame (bSnapshotWanted). A reader
+	 * that keeps reading therefore keeps getting fresh state -- in live mode
+	 * that is one publish per step for as long as anything is looking, and
+	 * none at all when nothing is.
 	 */
-	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor);
+	void WithRenderState(TFunctionRef<void(const FMjRenderSnapshot&)> Visitor) const;
 
 	/** Current render-snapshot frame id (monotonic, bumped each PushRenderState
 	 *  i.e. each step's post-step state). Returned in step replies so a client
@@ -361,15 +450,81 @@ public:
 	 *  Takes CallbackMutex briefly (see ApplyWakeBody). */
 	void ApplySleepBody(int32 BodyId);
 
+	/** Sleep state of a body. Takes CallbackMutex briefly so it pairs with the
+	 *  synchronous ApplyWakeBody / ApplySleepBody contract. Bodies of an
+	 *  uncompiled or unbound model read as awake. */
+	bool IsBodyAwake(int32 BodyId) const;
+
+	// --- Synchronous live-model / live-data edits ----------------------
+	//
+	// Runtime effects a Blueprint caller expects to observe on the very
+	// next read, so they take CallbackMutex and write through rather than
+	// queueing. The spec field remains the authority: these reach the
+	// compiled model only, and a recompile reconciles from the spec.
+
+	/**
+	 * Recompute everything derived from the current state, and publish it.
+	 *
+	 * The synchronous edits above write one number; contacts, constraints and
+	 * sensor readings are all downstream of it and stale until a forward pass
+	 * runs. Readers see the published snapshot, so the pass and the publish are
+	 * one operation rather than two a caller could do half of.
+	 */
+	void ForwardSync();
+
+	/** Write d->qpos for a 1-DOF joint's first slot. */
+	void ApplyJointPosition(int32 JointId, double Value);
+
+	/** Write d->qvel for a 1-DOF joint's first slot. */
+	void ApplyJointVelocity(int32 JointId, double Value);
+
+	/** Write the sliding-friction coefficient of a geom (m->geom_friction[0]). */
+	void ApplyGeomFriction(int32 GeomId, double Slide);
+
+	/** Write up to 6 gear entries of an actuator (m->actuator_gear). */
+	void ApplyActuatorGear(int32 ActuatorId, TConstArrayView<double> Gear);
+
 private:
 	TArray<FPhysicsCallback> PreStepCallbacks;
 	TArray<FPhysicsCallback> PostStepCallbacks;
 
 	// --- RenderState plumbing ------------------------------------------
 
+	/** The MJCF the installed model was compiled from, and the specs that
+	 *  MJCF references by VFS name. Kept because a client cannot reload a scene
+	 *  from the root text alone, and because the model itself cannot be turned
+	 *  back into the text that produced it. */
+	FString CompiledXml;
+	TMap<FString, FString> ParticipantXml;
+
+	/** The binding of the model currently installed.
+	 *
+	 *  The next install needs it: an element's simulation state lives at an
+	 *  address only the binding of the compile that produced it can resolve, and
+	 *  by the time the new binding exists the old model is gone. Read only
+	 *  between the join and the teardown, while `m_model` is still the model it
+	 *  was built against. */
+	FMjBinding InstalledBinding;
+
+#if URLAB_MJ_GEN
+	/**
+	 * The compiled scene the installed model belongs to.
+	 *
+	 * It owns the model, the composed scene spec and every participant spec, in
+	 * that destruction order. `m_model` is an alias into it and never an owner,
+	 * which is why replacing this is what retires a model. Held behind a pointer
+	 * so a worker that could not be joined can be left holding the model it is
+	 * inside rather than having it freed underneath it.
+	 */
+	TUniquePtr<urlab::spec::FMjCompiledScene> InstalledScene;
+#endif
+
+	/** Write the compiled scene and its MJB to Saved/URLab. Honours bSaveDebugXml. */
+	void SaveDebugArtifacts() const;
+
 	/** Guards RenderSnapshot. Inner to CallbackMutex on the producer
 	 *  path; held alone on the consumer (game thread) path. */
-	FCriticalSection RenderStateMutex;
+	mutable FCriticalSection RenderStateMutex;
 
 	/** Engine-owned snapshot buffer. Sized on model load. */
 	FMjRenderSnapshot RenderSnapshot;
@@ -412,3 +567,53 @@ private:
 	 *  / wrench edit as a state advance (publish it) even while paused. */
 	bool DrainCommands();
 };
+
+/**
+ * One value from the engine's latest published snapshot, or zero when the
+ * index is outside what the snapshot holds.
+ *
+ * The Blueprint-facing accessors read here rather than from live mjData. The
+ * physics thread publishes one coherent copy per step, so two questions asked
+ * in the same frame cannot be answered from two different steps; the price is
+ * that the answer is the state at the end of the last completed step rather
+ * than whatever the integrator is part way through writing.
+ */
+template <typename FPickArray>
+double MjSnapshotValue(const UMjPhysicsEngine& Engine, int32 Index, FPickArray&& PickArray)
+{
+	double Value = 0.0;
+	Engine.WithRenderState([&](const FMjRenderSnapshot& Snapshot) {
+		const auto& Array = PickArray(Snapshot);
+		if (Array.IsValidIndex(Index))
+		{
+			Value = static_cast<double>(Array[Index]);
+		}
+	});
+	return Value;
+}
+
+/**
+ * `Count` values from `Index` of one of the snapshot's arrays, into `Out`.
+ *
+ * False leaves `Out` untouched: the range is not in the snapshot, which is
+ * what a caller sees before the first publish or across a recompile.
+ */
+template <typename FPickArray>
+bool MjSnapshotRange(const UMjPhysicsEngine& Engine, int32 Index, int32 Count, double* Out,
+	FPickArray&& PickArray)
+{
+	bool bRead = false;
+	Engine.WithRenderState([&](const FMjRenderSnapshot& Snapshot) {
+		const auto& Array = PickArray(Snapshot);
+		if (Count <= 0 || Index < 0 || Index + Count > Array.Num())
+		{
+			return;
+		}
+		for (int32 I = 0; I < Count; ++I)
+		{
+			Out[I] = static_cast<double>(Array[Index + I]);
+		}
+		bRead = true;
+	});
+	return bRead;
+}

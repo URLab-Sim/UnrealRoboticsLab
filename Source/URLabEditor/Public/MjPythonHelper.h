@@ -61,11 +61,21 @@ public:
 
 	/**
 	 * @brief Ensure Python is available with required packages.
-	 * Shows dialogs as needed. Returns the resolved Python path, or empty if
-	 * the user skipped preprocessing or cancelled the import.
+	 *
+	 * Returns the resolved Python path, or empty if preprocessing is to be
+	 * skipped or the import was cancelled.
+	 *
+	 * @param bAllowPrompts False is the unattended contract: no dialogs, no
+	 *   install attempt and no cancellation -- the configured interpreter when
+	 *   it is usable as it stands, an empty string when it is not. An automated
+	 *   import has nobody to answer a dialog, and a dialog left unanswered
+	 *   defaults to Cancel, which would fail every scripted import.
 	 * @param bOutCancelled Set to true if the user chose to cancel the import entirely.
 	 */
-	static FString EnsurePythonReady(bool& bOutCancelled);
+	static FString EnsurePythonReady(bool bAllowPrompts, bool& bOutCancelled);
+
+	/** True when `EnsurePythonReady(false, ...)` would return an interpreter. */
+	static bool IsPythonReady();
 
 private:
 	static FString GetLocalIniPath();

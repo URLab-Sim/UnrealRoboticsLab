@@ -76,6 +76,20 @@ struct FMjRenderSnapshot
 	TArray<mjtNum> ActuatorForce; // nu
 	TArray<mjtNum> SensorData;    // nsensordata
 
+	/** Joint world anchor and axis, as the joint accessors report them. */
+	TArray<mjtNum> JntXAnchor; // 3 * njnt
+	TArray<mjtNum> JntXAxis;   // 3 * njnt
+
+	/** The rest of the actuator state the actuator accessors report. */
+	TArray<mjtNum> Ctrl;             // nu
+	TArray<mjtNum> ActuatorLength;   // nu
+	TArray<mjtNum> ActuatorVelocity; // nu
+	TArray<mjtNum> Act;              // na
+
+	/** Tendon state, as the tendon accessors report it. */
+	TArray<mjtNum> TenLength;   // ntendon
+	TArray<mjtNum> TenVelocity; // ntendon
+
 	// --- Sleep state (IsAwake + debug viz) ----------------------------
 	//
 	// Stored as int because MuJoCo's body_awake is `int*` carrying

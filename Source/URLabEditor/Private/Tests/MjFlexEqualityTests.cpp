@@ -23,7 +23,9 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjEqualityFlex.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjFlexstrain.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjFlexvert.gen.h"
 
 namespace
 {
@@ -64,10 +66,15 @@ FString MakeFlexEqualityXml(const FString& EqualityChildTag)
 } // namespace
 
 // Parametrised helper: run the parser on a flex-equality child tag and verify
-// the generated UMjEquality uses the expected enum value.
-static bool CheckFlexEqualityVariant(FAutomationTestBase& Tester,
-	const FString& Tag,
-	EMjEqualityType Expected)
+// it produced the element class that tag names, and nothing else.
+//
+// The kind of a flex equality is no longer an enum field on one shared class:
+// <flex>, <flexvert> and <flexstrain> are three separate elements, so the class
+// the reader built IS the kind. Counting all three is what makes that an
+// assertion rather than a coincidence -- a reader that emitted every variant
+// would satisfy the lookup on its own.
+template <typename ElementClass>
+static bool CheckFlexEqualityVariant(FAutomationTestBase& Tester, const FString& Tag)
 {
 	FMjXmlImportSession S;
 	const FString Xml = MakeFlexEqualityXml(Tag);
@@ -77,16 +84,18 @@ static bool CheckFlexEqualityVariant(FAutomationTestBase& Tester,
 		return false;
 	}
 
-	UMjEquality* Eq = S.FindFirstTemplate<UMjEquality>();
+	ElementClass* Eq = S.FindFirstTemplate<ElementClass>();
 	if (!Tester.TestNotNull(TEXT("equality component"), Eq))
 	{
 		return false;
 	}
 
-	Tester.TestTrue(FString::Printf(TEXT("<%s> → EqualityType matches"), *Tag),
-		Eq->EqualityType == Expected);
-	Tester.TestEqual(FString::Printf(TEXT("<%s>: flex attribute captured as Obj1"), *Tag),
-		Eq->Obj1, FString(TEXT("cloth")));
+	Tester.TestEqual(FString::Printf(TEXT("<%s> → exactly one flex equality element"), *Tag),
+		S.CountTemplates<UMjEqualityFlex>() + S.CountTemplates<UMjFlexvert>()
+			+ S.CountTemplates<UMjFlexstrain>(),
+		1);
+	Tester.TestEqual(FString::Printf(TEXT("<%s>: flex attribute captured"), *Tag),
+		Eq->Flex, FString(TEXT("cloth")));
 	return true;
 }
 
@@ -95,7 +104,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlex,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FMjEqualityFlex::RunTest(const FString&)
 {
-	return CheckFlexEqualityVariant(*this, TEXT("flex"), EMjEqualityType::Flex);
+	return CheckFlexEqualityVariant<UMjEqualityFlex>(*this, TEXT("flex"));
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlexVert,
@@ -103,7 +112,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlexVert,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FMjEqualityFlexVert::RunTest(const FString&)
 {
-	return CheckFlexEqualityVariant(*this, TEXT("flexvert"), EMjEqualityType::FlexVert);
+	return CheckFlexEqualityVariant<UMjFlexvert>(*this, TEXT("flexvert"));
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlexStrain,
@@ -111,5 +120,5 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEqualityFlexStrain,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FMjEqualityFlexStrain::RunTest(const FString&)
 {
-	return CheckFlexEqualityVariant(*this, TEXT("flexstrain"), EMjEqualityType::FlexStrain);
+	return CheckFlexEqualityVariant<UMjFlexstrain>(*this, TEXT("flexstrain"));
 }

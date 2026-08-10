@@ -20,16 +20,17 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-// ============================================================================
-// MjStateCollectorTests.cpp
+// The state-serialization IR, from the spec to the wire.
 //
-// Unit tests for the state-serialization IR (Phase 0a):
 //  - FMjCanonicalName sanitize / part-segment stripping
-//  - FMjStateCollector produces the IR fields today's paths carried
+//  - FMjStateCollector produces the IR fields the runtime paths carry
 //  - Sensor values are emitted raw (IR == d->sensordata; GetReading == transform(IR))
 //  - FMjMsgpackEncoder canonical schema + observation-level filter
 //  - StructureVersion bumps on a producer-cache rebuild, not a plain collect
-// ============================================================================
+//
+// Element state is produced by the collector rather than by the elements, so
+// what these assert against is the collector's dispatch on element family and
+// the compiled model it reads through -- not a per-class override.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -45,8 +46,12 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjActuator.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjMotor.gen.h"
 #include "Transport/RosPublishTransport.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -176,10 +181,7 @@ bool FMjStateJointWidths::RunTest(const FString& Parameters)
 	// Default rig has a single hinge joint -> per-art qpos/qvel width 1/1.
 	{
 		FMjUESession S;
-		if (!S.Init([](FMjUESession& Sess) {
-				Sess.Joint->Type = EMjJointType::Hinge;
-				Sess.Joint->bOverride_Type = true;
-			}))
+		if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 		{
 			AddError(S.LastError);
 			return false;
@@ -193,7 +195,7 @@ bool FMjStateJointWidths::RunTest(const FString& Parameters)
 		if (Snap.Articulations.Num() > 0 && Snap.Articulations[0].Joints.Num() > 0)
 		{
 			const FMjJointState& J = Snap.Articulations[0].Joints[0];
-			TestEqual(TEXT("hinge type"), (int)J.Type, (int)EMjJointType::Hinge);
+			TestEqual(TEXT("hinge type"), (int)J.Type, (int)EMjJointType::hinge);
 			TestEqual(TEXT("hinge qpos width 1"), J.QPos.Num(), 1);
 			TestEqual(TEXT("hinge qvel width 1"), J.QVel.Num(), 1);
 		}
@@ -207,10 +209,7 @@ bool FMjStateJointWidths::RunTest(const FString& Parameters)
 	// Free base -> 7/6.
 	{
 		FMjUESession S;
-		if (!S.Init([](FMjUESession& Sess) {
-				Sess.Joint->Type = EMjJointType::Free;
-				Sess.Joint->bOverride_Type = true;
-			}))
+		if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::free); }))
 		{
 			AddInfo(FString::Printf(TEXT("Skipping free-joint width: %s"), *S.LastError));
 			return true;
@@ -224,7 +223,7 @@ bool FMjStateJointWidths::RunTest(const FString& Parameters)
 		if (Snap.Articulations.Num() > 0 && Snap.Articulations[0].Joints.Num() > 0)
 		{
 			const FMjJointState& J = Snap.Articulations[0].Joints[0];
-			TestEqual(TEXT("free type"), (int)J.Type, (int)EMjJointType::Free);
+			TestEqual(TEXT("free type"), (int)J.Type, (int)EMjJointType::free);
 			TestEqual(TEXT("free qpos width 7"), J.QPos.Num(), 7);
 			TestEqual(TEXT("free qvel width 6"), J.QVel.Num(), 6);
 		}
@@ -249,13 +248,14 @@ bool FMjStateActuatorParity::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Slide;
-			Sess.Joint->bOverride_Type = true;
-			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
-			A->Type = EMjActuatorType::Motor;
-			A->TargetName = Sess.Joint->GetName();
-			A->RegisterComponent();
-			A->AttachToComponent(Sess.Robot->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+			Sess.Joint->SetType(EMjJointType::slide);
+			// <motor> is a child of the spec's <actuator> section, so the
+			// section is authored first and the motor into it.
+			UMjActuator* Section = Sess.Add<UMjActuator>(Sess.Robot->Spec);
+			if (Section == nullptr)
+				return;
+			if (UMjMotor* Motor = Sess.Add<UMjMotor>(Section, TEXT("TestActuator")))
+				Motor->SetJoint(Sess.Joint->MjName.GetValue());
 		}))
 	{
 		AddInfo(FString::Printf(TEXT("Skipping ActuatorParity: %s"), *S.LastError));
@@ -272,14 +272,16 @@ bool FMjStateActuatorParity::RunTest(const FString& Parameters)
 	}
 
 	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
-	TArray<UMjActuator*> Acts = Art->GetActuators();
-	if (Acts.Num() == 0 || !Acts[0] || Acts[0]->GetMjID() < 0)
+	TArray<UMjNodeComponent*> Acts = Art->GetActuators();
+	const int32 Aid = S.MjId(mjOBJ_ACTUATOR, TEXT("TestActuator"));
+	if (Acts.Num() == 0 || !Acts[0] || Aid < 0)
 	{
 		AddInfo(TEXT("Skipping ActuatorParity: actuator did not bind"));
 		S.Cleanup();
 		return true;
 	}
-	const int32 Aid = Acts[0]->GetMjID();
+	TestEqual(TEXT("the indexed actuator holds the compiled id its name resolves to"),
+		Acts[0]->GetBoundId().Get(-1), Aid);
 
 	// Drive a known ctrl into d and recompute derived quantities.
 	d->ctrl[Aid] = 0.55;
@@ -296,6 +298,11 @@ bool FMjStateActuatorParity::RunTest(const FString& Parameters)
 		for (const FMjActuatorState& Act : AS.Actuators)
 		{
 			bFound = true;
+			// The transmission target is read out of the compiled model, so it
+			// names the joint the actuator actually drives whether the spec
+			// spelled it out or inherited it from a default class.
+			TestEqual(TEXT("target joint is the compiled transmission target"),
+				Act.TargetJoint, FName(TEXT("TestJoint")));
 			TestEqual(TEXT("ctrl matches d->ctrl"), Act.Ctrl, (double)d->ctrl[Aid], 1e-9);
 			TestEqual(TEXT("force matches d->actuator_force"),
 				Act.Force, (double)d->actuator_force[Aid], 1e-9);
@@ -364,28 +371,19 @@ bool FMjStateSensorRawParity::RunTest(const FString& Parameters)
 		d->qpos[4] = 0.7071; // x
 		d->qpos[5] = 0.0;
 		d->qpos[6] = 0.0;
-		mj_forward(m, d);
+		S.Manager->PhysicsEngine->ForwardSync();
 	}
 
-	UMjSensor* Sensor = nullptr;
-	TArray<UMjSensor*> Sensors;
-	S.Robot->GetComponents<UMjSensor>(Sensors);
-	for (UMjSensor* Sen : Sensors)
-	{
-		if (Sen && !Sen->bIsDefault && Sen->GetMjID() >= 0)
-		{
-			Sensor = Sen;
-			break;
-		}
-	}
-	if (!Sensor)
+	UMjNodeComponent* Sensor = S.Robot->GetSensor(TEXT("fq"));
+	if (!Sensor || !Sensor->GetBoundId().IsSet())
 	{
 		AddInfo(TEXT("Skipping SensorRawParity: no bound sensor"));
 		S.Cleanup();
 		return true;
 	}
+	const int32 SensorId = Sensor->GetBoundId().GetValue();
 
-	const TArray<float> Reading = Sensor->GetReading();
+	const TArray<float> Reading = UMjSensorRuntime::GetReading(Sensor);
 
 	FMjStateCollector& C = S.Manager->GetStateCollector();
 	C.Init(S.Manager);
@@ -412,8 +410,8 @@ bool FMjStateSensorRawParity::RunTest(const FString& Parameters)
 	}
 
 	// The IR carries the raw MuJoCo sensordata slice verbatim (double precision).
-	const int SensorAdr = m->sensor_adr[Sensor->GetMjID()];
-	const int SensorDim = m->sensor_dim[Sensor->GetMjID()];
+	const int SensorAdr = m->sensor_adr[SensorId];
+	const int SensorDim = m->sensor_dim[SensorId];
 	TestEqual(TEXT("IR sensor dim == model sensor_dim"), IRValues->Num(), SensorDim);
 	if (IRValues->Num() == SensorDim)
 	{
@@ -497,27 +495,22 @@ bool FMjStateImuRawToFillImu::RunTest(const FString& Parameters)
 	}
 	mj_forward(m, d);
 
-	// Locate the gyro and accel components by type so raw slices are read via the
-	// bound sensor id (compiled sensor names carry an articulation prefix, so a
-	// bare mj_name2id lookup would miss them).
-	auto RawSliceForType = [&](EMjSensorType Want) {
+	// Raw slices are read via each sensor's bound id: compiled sensor names carry
+	// an articulation prefix, so a bare mj_name2id lookup would miss them.
+	auto RawSliceFor = [&](const TCHAR* MjName) {
 		TArray<double> Out;
-		TArray<UMjSensor*> All;
-		S.Robot->GetComponents<UMjSensor>(All);
-		for (UMjSensor* Sen : All)
-		{
-			if (!Sen || Sen->bIsDefault || Sen->Type != Want || Sen->GetMjID() < 0)
-				continue;
-			const int Adr = m->sensor_adr[Sen->GetMjID()];
-			const int Dim = m->sensor_dim[Sen->GetMjID()];
-			for (int i = 0; i < Dim; ++i)
-				Out.Add(d->sensordata[Adr + i]);
-			break;
-		}
+		UMjNodeComponent* Sen = S.Robot->GetSensor(MjName);
+		if (Sen == nullptr || !Sen->GetBoundId().IsSet())
+			return Out;
+		const int Id = Sen->GetBoundId().GetValue();
+		const int Adr = m->sensor_adr[Id];
+		const int Dim = m->sensor_dim[Id];
+		for (int i = 0; i < Dim; ++i)
+			Out.Add(d->sensordata[Adr + i]);
 		return Out;
 	};
-	const TArray<double> RawGyro = RawSliceForType(EMjSensorType::Gyro);
-	const TArray<double> RawAccel = RawSliceForType(EMjSensorType::Accelerometer);
+	const TArray<double> RawGyro = RawSliceFor(TEXT("g1"));
+	const TArray<double> RawAccel = RawSliceFor(TEXT("a1"));
 	if (RawGyro.Num() != 3 || RawAccel.Num() != 3)
 	{
 		AddInfo(TEXT("Skipping ImuRawToFillImu: gyro/accel did not bind"));
@@ -684,7 +677,7 @@ bool FMjStateStepReplyArts::RunTest(const FString& Parameters)
 
 // ---------------------------------------------------------------------------
 // 8. Byte fan-out delivers snapshots to registered publishers, and the
-//    bPublishersPaused gate suppresses delivery (Path B replacement).
+//    bPublishersPaused gate suppresses delivery.
 // ---------------------------------------------------------------------------
 namespace
 {

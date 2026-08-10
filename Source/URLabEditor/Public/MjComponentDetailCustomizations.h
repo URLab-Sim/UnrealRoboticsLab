@@ -23,6 +23,7 @@
 #pragma once
 
 #include "IDetailCustomization.h"
+#include "MjEffectiveDetails.h"
 
 /**
  * @class FMjGeomDetailCustomization
@@ -40,5 +41,15 @@ class FMjGeomDetailCustomization : public IDetailCustomization
 {
 public:
 	static TSharedRef<IDetailCustomization> MakeInstance();
+
+	/**
+	 * The decomposition buttons, and only those.
+	 *
+	 * The editor runs EVERY layout registered along the class chain, not just
+	 * the most derived one, so the inherited-value layout registered against
+	 * `UMjNodeComponent` has already run for this geom by the time this does.
+	 * This must not run it again: customising the same row twice resets it
+	 * between passes and the first pass's widgets are lost.
+	 */
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
 };

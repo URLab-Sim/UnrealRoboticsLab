@@ -47,32 +47,75 @@ Compilation runs once at `BeginPlay` (and again on a recompile request). It is o
 
 ```mermaid
 flowchart LR
-    PreC["PreCompile<br/>make spec + VFS,<br/>discover actors,<br/>RegisterToSpec"]
-    Comp["Compile<br/>mj_compile"]
-    Post["PostCompile<br/>Bind views,<br/>build ID maps"]
-    Opt["ApplyOptions +<br/>ApplyThreadPool"]
-    PreC --> Comp --> Post --> Opt
+    Write["Write<br/>document tree<br/>to MJCF text"]
+    Load["Load<br/>VFS + mj_loadXML"]
+    Bind["Bind<br/>name to id,<br/>per element"]
+    Inst["Install<br/>mj_makeData,<br/>options, thread pool"]
+    Write --> Load --> Bind --> Inst
 ```
 
-1. **PreCompile.** `mj_makeSpec()` creates a fresh spec in radians mode and `mj_defaultVFS()` initialises the virtual file system. The level is scanned with `GetAllActorsOfClass`; each `AMjArticulation`, `UMjQuickConvertComponent`, and `AMjHeightfieldActor` registers its elements. Each articulation builds an isolated child spec, applies its own `SimOptions`, then merges into the root via `mjs_attach()` with an `{ActorName}_` prefix so multi-robot scenes stay namespaced.
-2. **Compile.** `mj_compile(m_spec, &m_vfs)` produces `mjModel*`. On failure the error from `mjs_getError` is logged and shown in an editor dialog; `m_model` / `m_data` stay null and the sim does not start. On success `mj_makeData` allocates `mjData`.
-3. **PostCompile.** Each component's `Bind()` resolves its ID (by `mjs_getId` with bounds validation, falling back to name lookup) and caches pointers. ID and component maps are built for O(1) runtime access.
-4. **Apply options and thread pool.** `ApplyOptions()` writes manager-level overrides into `m_model->opt`; `ApplyThreadPool()` sizes the per-step worker pool (see below).
+1. **Write.** The level is scanned with `GetAllActorsOfClass` and projected into a scene assembly: a root document plus one `<attach>` per participating `AMjArticulation`, `UMjQuickConvertComponent`, and `AMjHeightfieldActor`. Each participant's component tree is serialised to canonical MJCF, and the assets it names are collected as in-memory bytes. Unnamed elements are given reserved names for the duration of the write, so they can be found again afterwards.
+2. **Load.** The root text, the participant documents and the asset bytes go into a MuJoCo VFS, and `mj_loadXML` produces `mjModel*`. On failure the diagnostics are returned to the caller and the previous model is left untouched — the compile happens before anything is torn down.
+3. **Bind.** Each element is resolved by `mj_name2id` under its participant's prefix and told the id it received, and each articulation's control slots are sized to the scene it compiled into.
+4. **Install.** The old model and its `mjData` are freed, `mj_makeData` allocates fresh state, simulation state is migrated onto the new addresses (see below), `ApplyOptions()` writes manager-level overrides into `m_model->opt`, and `ApplyThreadPool()` sizes the per-step worker pool.
+
+### Recompiling a running scene
+
+A recompile is a new `mjModel`, and a new model means new addresses: a joint that gained a sibling no longer sits at the same `qpos` slot. Simulation state therefore follows the *element*, not the address. Before the old model is freed, each element's `qpos`/`qvel`, actuator `ctrl`/`act`, and mocap pose are stashed against the element's creation serial; after `mj_makeData`, they are written back at whatever addresses the new binding gives.
+
+- An element that survived the edit keeps its pose.
+- An element that was deleted takes its state with it — the joint that inherits its slot holds its own value.
+- An element that was added starts at the model's own `qpos0`.
+- An element whose shape changed (a hinge become a ball) starts at the defaults, because there is no meaning to carrying three numbers into a slot that now holds four.
+- `time` continues, so a recompile is an edit to a running simulation rather than a new one.
+
+### Compile latency
+
+Measured by `URLab.Perf.CompileLatency`, which prints a `BENCH` line to the run log. The scene is a 30-body, 29-joint, 29-geom robot — the shape of an imported Menagerie arm — averaged over 5 runs after a warm-up.
+
+| Stage | What it covers | Cost |
+|---|---|---|
+| `write_ms` | document tree to canonical MJCF text | **0.38 ms** |
+| `compile_ms` | write, plus VFS staging, `mj_loadXML` and name binding | **3.47 ms** |
+| `install_ms` | the whole of `InstallCompiledDocument`: the above, plus joining the physics worker, unbinding, freeing the old model, `mj_makeData`, state migration, rebinding and one step | **4.26 ms** |
+
+**A recompile is fast enough to drive interactively.** A full install of this robot costs 4.3 ms, which fits inside a 60 Hz frame (16.7 ms) with room to spare, so a structural edit during play can be applied on the frame it happens.
+
+Printing MJCF and re-parsing it is not what costs the time. The write is 0.38 ms — under a tenth of the total. What dominates is MuJoCo's own `mj_loadXML`, about 3.1 ms of the 4.3, and that is parsing plus the model compile MuJoCo would have to do whatever route the document reached it by. Everything URLab adds on top of the engine — writing the text, staging the VFS, binding names to ids, tearing the old model down and migrating state — is under 1.2 ms combined. Replacing the text route with a native spec route would therefore save well under a millisecond here.
+
+The cost is per element, so it scales: a scene ten times this size is a recompile of roughly 40 ms, which is past a frame. If that becomes the case worth optimising, `mj_loadXML` is the thing to attack, not the writer.
+
+Run it to get current numbers on your own machine:
+
+```powershell
+.\Scripts\build_and_test.ps1 -Engine 'C:\Program Files\Epic Games\UE_5.7' `
+                             -Project 'C:\path\to\your.uproject' `
+                             -Filter 'URLab.Perf.CompileLatency'
+```
 
 !!! note "Debug XML"
     With `bSaveDebugXml` enabled, a successful compile also writes `scene_compiled.xml` and `scene_compiled.mjb` to `Saved/URLab/`. Diff the compiled XML against the source MJCF to spot import or default-inheritance mismatches. See the [Debug guide](../guides/debug.md).
 
 ## Simulation options
 
-The options struct is `FMjOptionGenerated`, declared in `Source/URLab/Public/MuJoCo/Generated/MjOptionGenerated.h`. It is codegen-owned (a mirror of MuJoCo's `MJOPTION_FIELDS`) and is regenerated on a MuJoCo bump; see [Codegen](../contributing/codegen.md). It appears in two places with different semantics:
+`<option>` is an ordinary MJCF element, and URLab holds it as one: a `UMjOption`
+component with a `UMjFlag` child, generated from the schema. Only attributes the
+document actually sets are written, so an unset one keeps whatever MuJoCo decides.
+Values are in MJCF's own units and MuJoCo's own frame -- no cm, no Y-flip.
 
-- `AMjArticulation::SimOptions` defines the native physics settings for one robot. All fields are written to that articulation's child spec before `mjs_attach()`; the per-field `bOverride_*` toggles are ignored here.
-- `UMjPhysicsEngine::Options` (surfaced on the manager) acts as post-compile overrides on `m_model->opt`. Only fields with `bOverride_* = true` are applied, once, after a successful compile.
+It appears in two places with different scopes:
 
-Resolution order is therefore: MuJoCo built-in defaults, then the articulation's `SimOptions` into its child spec, then the manager's selectively-applied overrides onto the compiled model.
+- `AMjArticulation::SimOption` / `SimFlags` is the `<option>` the articulation was
+  imported with. It is applied to that articulation's child spec before
+  `mjs_attach()`. It is not the scene's authority: MuJoCo takes the scene's option
+  block whole and discards an attached document's own copy.
+- `AAMjManager::SceneOption` / `SceneFlags` is the scene's, and it wins. It is
+  applied to the compiled model after a successful compile, and it is what the
+  `set_sim_options` RPC and the Simulate dashboard write.
 
-!!! warning "Older struct names"
-    Earlier builds used `FMuJoCoOptions` in `MjSimOptions.{h,cpp}`. Those files were removed. The current type is `FMjOptionGenerated`.
+Resolution order is therefore: MuJoCo built-in defaults, then the articulation's
+own `<option>` into its child spec, then the scene's `<option>` onto the compiled
+model.
 
 ## Physics thread and render snapshot
 
@@ -124,9 +167,11 @@ External Python clients drive physics over a wire. The path splits into a transp
 
 ## Coordinate system
 
-MuJoCo uses right-handed Z-up metres; Unreal uses left-handed Z-up centimetres. Conversions live in `Source/URLab/Public/MuJoCo/Utils/MjUtils.h`:
+MuJoCo uses right-handed Z-up metres; Unreal uses left-handed Z-up centimetres. Every conversion lives in `Source/URLab/Public/MuJoCo/Utils/URLabAxisConv.h`, and nowhere else:
 
 - Position: `X -> X`, `Y -> -Y`, `Z -> Z`; metres x 100 = centimetres.
 - Rotation: MuJoCo quaternion `[w, x, y, z]` maps to an `FQuat` with X and Z negated to flip handedness.
+
+The document itself is never converted. An MJCF attribute is stored exactly as authored, in MuJoCo's frame and units, and conversion happens only where a value becomes an Unreal transform: the editor preview, the editor write-back, the runtime render pass and the runtime input path. An authored `quat` is therefore an `FMjQuatRot`, not an `FQuat` -- the two differ by a permutation and a sign flip, and a distinct type is what stops one being handed to a rotation API by mistake. `FMjQuatRot::ToUnreal()` is the crossing.
 
 ![URLab subsystem and transport overview](../images/placeholder.svg)

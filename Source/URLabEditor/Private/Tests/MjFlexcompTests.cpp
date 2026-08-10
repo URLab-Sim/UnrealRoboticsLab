@@ -20,11 +20,44 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
+// A <flexcomp> is a compile-time macro, not a model object: it expands into a
+// flex plus a body per unpinned vertex and is itself never given an id. So the
+// only proof that an authored flexcomp still means anything is the compiled
+// model's flex table -- nflex, flex_dim, flex_vertnum -- which is what the
+// first half of this file asserts against. The second half asserts that the
+// reader lands the same attributes on the spec, including the ones that
+// live on the <elasticity> and <pin> child elements rather than on <flexcomp>.
+
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Deformable/MjFlexcomp.h"
+#include "MuJoCo/Elements/MjFlexcomp.h"
+#include "MuJoCo/Gen/Elements/Bodies/MjFlexElasticity.gen.h"
+#include "MuJoCo/Gen/Elements/Bodies/MjFlexcompPin.gen.h"
 #include "mujoco/mujoco.h"
+
+namespace MjFlexcompTests
+{
+
+/** Author a grid flexcomp on the session's body, as the reader would. */
+UMjFlexcompBase* AddGrid(FMjUESession& Session, const TCHAR* Name, int32 Dim, FMjVec3 Count,
+	FMjVec3 Spacing, double Mass, double Radius)
+{
+	UMjFlexcompBase* Flex = Session.Add<UMjFlexcompBase>(Session.Body, Name);
+	if (Flex == nullptr)
+	{
+		return nullptr;
+	}
+	Flex->SetType(EMjFlexcompType::grid);
+	Flex->SetDim(Dim);
+	Flex->SetCount(Count);
+	Flex->SetSpacing(Spacing);
+	Flex->SetMass(Mass);
+	Flex->SetRadius(Radius);
+	return Flex;
+}
+
+}  // namespace MjFlexcompTests
 
 // ============================================================================
 // URLab.Flexcomp.Grid2D_Compiles
@@ -38,22 +71,8 @@ bool FMjFlexcompGrid2DCompiles::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	bool bOk = S.Init([](FMjUESession& Session) {
-		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-		Flex->bOverride_FlexcompType = true;
-		Flex->FlexcompType = EMjFlexcompType::Grid;
-		Flex->bOverride_dim = true;
-		Flex->dim = 2;
-		Flex->bOverride_count = true;
-		Flex->count = {4, 4, 1};
-		Flex->bOverride_spacing = true;
-		Flex->spacing = {0.05, 0.05, 0.05};
-		Flex->bOverride_mass = true;
-		Flex->mass = 0.5f;
-		Flex->bOverride_radius = true;
-		Flex->radius = 0.005f;
-		Flex->MjName = TEXT("testgrid");
-		Flex->RegisterComponent();
-		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+		MjFlexcompTests::AddGrid(Session, TEXT("testgrid"), 2, FMjVec3(4.0, 4.0, 1.0),
+			FMjVec3(0.05, 0.05, 0.05), 0.5, 0.005);
 	});
 
 	if (!bOk)
@@ -82,22 +101,8 @@ bool FMjFlexcompGrid1DCompiles::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	bool bOk = S.Init([](FMjUESession& Session) {
-		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestRope"));
-		Flex->bOverride_FlexcompType = true;
-		Flex->FlexcompType = EMjFlexcompType::Grid;
-		Flex->bOverride_dim = true;
-		Flex->dim = 1;
-		Flex->bOverride_count = true;
-		Flex->count = {8, 1, 1};
-		Flex->bOverride_spacing = true;
-		Flex->spacing = {0.1, 0.1, 0.1};
-		Flex->bOverride_mass = true;
-		Flex->mass = 0.2f;
-		Flex->bOverride_radius = true;
-		Flex->radius = 0.01f;
-		Flex->MjName = TEXT("testrope");
-		Flex->RegisterComponent();
-		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+		MjFlexcompTests::AddGrid(Session, TEXT("testrope"), 1, FMjVec3(8.0, 1.0, 1.0),
+			FMjVec3(0.1, 0.1, 0.1), 0.2, 0.01);
 	});
 
 	if (!bOk)
@@ -127,22 +132,8 @@ bool FMjFlexcompGrid3DCompiles::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	bool bOk = S.Init([](FMjUESession& Session) {
-		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestVol"));
-		Flex->bOverride_FlexcompType = true;
-		Flex->FlexcompType = EMjFlexcompType::Grid;
-		Flex->bOverride_dim = true;
-		Flex->dim = 3;
-		Flex->bOverride_count = true;
-		Flex->count = {3, 3, 3};
-		Flex->bOverride_spacing = true;
-		Flex->spacing = {0.05, 0.05, 0.05};
-		Flex->bOverride_mass = true;
-		Flex->mass = 1.0f;
-		Flex->bOverride_radius = true;
-		Flex->radius = 0.005f;
-		Flex->MjName = TEXT("testvol");
-		Flex->RegisterComponent();
-		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+		MjFlexcompTests::AddGrid(Session, TEXT("testvol"), 3, FMjVec3(3.0, 3.0, 3.0),
+			FMjVec3(0.05, 0.05, 0.05), 1.0, 0.005);
 	});
 
 	if (!bOk)
@@ -172,22 +163,8 @@ bool FMjFlexcompGrid2DBodyCount::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	bool bOk = S.Init([](FMjUESession& Session) {
-		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-		Flex->bOverride_FlexcompType = true;
-		Flex->FlexcompType = EMjFlexcompType::Grid;
-		Flex->bOverride_dim = true;
-		Flex->dim = 2;
-		Flex->bOverride_count = true;
-		Flex->count = {4, 4, 1};
-		Flex->bOverride_spacing = true;
-		Flex->spacing = {0.05, 0.05, 0.05};
-		Flex->bOverride_mass = true;
-		Flex->mass = 0.5f;
-		Flex->bOverride_radius = true;
-		Flex->radius = 0.005f;
-		Flex->MjName = TEXT("counttest");
-		Flex->RegisterComponent();
-		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+		MjFlexcompTests::AddGrid(Session, TEXT("counttest"), 2, FMjVec3(4.0, 4.0, 1.0),
+			FMjVec3(0.05, 0.05, 0.05), 0.5, 0.005);
 	});
 
 	if (!bOk)
@@ -218,23 +195,17 @@ bool FMjFlexcompPinnedVertices::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	bool bOk = S.Init([](FMjUESession& Session) {
-		UMjFlexcomp* Flex = NewObject<UMjFlexcomp>(Session.Robot, TEXT("TestFlex"));
-		Flex->bOverride_FlexcompType = true;
-		Flex->FlexcompType = EMjFlexcompType::Grid;
-		Flex->bOverride_dim = true;
-		Flex->dim = 1;
-		Flex->bOverride_count = true;
-		Flex->count = {5, 1, 1};
-		Flex->bOverride_spacing = true;
-		Flex->spacing = {0.1, 0.1, 0.1};
-		Flex->bOverride_mass = true;
-		Flex->mass = 0.2f;
-		Flex->bOverride_radius = true;
-		Flex->radius = 0.01f;
-		Flex->MjName = TEXT("pintest");
-		Flex->PinIds = {0, 4}; // Pin first and last
-		Flex->RegisterComponent();
-		Flex->AttachToComponent(Session.Body, FAttachmentTransformRules::KeepRelativeTransform);
+		UMjFlexcompBase* Flex = MjFlexcompTests::AddGrid(Session, TEXT("pintest"), 1, FMjVec3(5.0, 1.0, 1.0),
+			FMjVec3(0.1, 0.1, 0.1), 0.2, 0.01);
+		if (Flex == nullptr)
+		{
+			return;
+		}
+		// Pinning is a <pin> child element, not an attribute of <flexcomp>.
+		if (UMjFlexcompPin* Pin = Session.Add<UMjFlexcompPin>(Flex))
+		{
+			Pin->SetId({0.0, 4.0}); // Pin first and last
+		}
 	});
 
 	if (!bOk)
@@ -289,13 +260,25 @@ bool FMjFlexcompImportGrid2D::RunTest(const FString& Parameters)
 
 	if (Flex)
 	{
-		TestEqual(TEXT("Type should be Grid"), Flex->FlexcompType, EMjFlexcompType::Grid);
-		TestEqual(TEXT("Dim should be 2"), Flex->dim, 2);
-		TestEqual(TEXT("count[0] should be 3"), Flex->count.Num() >= 1 ? Flex->count[0] : -1, 3);
-		TestEqual(TEXT("count[1] should be 3"), Flex->count.Num() >= 2 ? Flex->count[1] : -1, 3);
-		TestTrue(TEXT("Young should be 100"), MjTestMath::NearlyEqual(Flex->Young, 100.0f));
-		TestTrue(TEXT("Damping should be 0.5"), MjTestMath::NearlyEqual(Flex->Damping, 0.5f));
-		TestEqual(TEXT("Should have 3 pin IDs"), Flex->PinIds.Num(), 3);
+		TestEqual(TEXT("Type should be Grid"), Flex->GetType(), EMjFlexcompType::grid);
+		TestEqual(TEXT("Dim should be 2"), Flex->GetDim(), 2);
+		TestEqual(TEXT("count[0] should be 3"), (int32)Flex->GetCount().X, 3);
+		TestEqual(TEXT("count[1] should be 3"), (int32)Flex->GetCount().Y, 3);
+	}
+
+	// Young and damping are attributes of the <elasticity> child, and the pin
+	// ids of the <pin> child; each is its own element of the spec.
+	UMjFlexElasticity* Elasticity = S.FindFirstTemplate<UMjFlexElasticity>();
+	if (TestNotNull(TEXT("Should find elasticity template"), Elasticity))
+	{
+		TestTrue(TEXT("Young should be 100"), MjTestMath::NearlyEqual(Elasticity->GetYoung(), 100.0));
+		TestTrue(TEXT("Damping should be 0.5"), MjTestMath::NearlyEqual(Elasticity->GetDamping(), 0.5));
+	}
+
+	UMjFlexcompPin* Pin = S.FindFirstTemplate<UMjFlexcompPin>();
+	if (TestNotNull(TEXT("Should find pin template"), Pin))
+	{
+		TestEqual(TEXT("Should have 3 pin IDs"), Pin->GetId().Num(), 3);
 	}
 
 	S.Cleanup();
@@ -332,14 +315,14 @@ bool FMjFlexcompElasticityImported::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjFlexcomp* Flex = S.FindTemplate<UMjFlexcomp>(TEXT("elastic"));
-	TestNotNull(TEXT("Should find flexcomp template"), Flex);
+	TestNotNull(TEXT("Should find flexcomp template"), S.FindTemplate<UMjFlexcomp>(TEXT("elastic")));
 
-	if (Flex)
+	UMjFlexElasticity* Elasticity = S.FindFirstTemplate<UMjFlexElasticity>();
+	if (TestNotNull(TEXT("Should find elasticity template"), Elasticity))
 	{
-		TestTrue(TEXT("Young should be 1000"), MjTestMath::NearlyEqual(Flex->Young, 1000.0f));
-		TestTrue(TEXT("Poisson should be 0.3"), MjTestMath::NearlyEqual(Flex->Poisson, 0.3f));
-		TestTrue(TEXT("Damping should be 0.01"), MjTestMath::NearlyEqual(Flex->Damping, 0.01f));
+		TestTrue(TEXT("Young should be 1000"), MjTestMath::NearlyEqual(Elasticity->GetYoung(), 1000.0));
+		TestTrue(TEXT("Poisson should be 0.3"), MjTestMath::NearlyEqual(Elasticity->GetPoisson(), 0.3));
+		TestTrue(TEXT("Damping should be 0.01"), MjTestMath::NearlyEqual(Elasticity->GetDamping(), 0.01));
 	}
 
 	S.Cleanup();

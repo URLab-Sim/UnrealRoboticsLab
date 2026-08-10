@@ -77,7 +77,7 @@ void UURLabRosPublishTransport::FillJointState(const FMjArticulationState& Art,
 		// sensor_msgs/JointState is parallel scalar arrays. Only hinge / slide joints
 		// are scalar (1 qpos / 1 qvel); free (7/6) and ball (4/3) joints are not URDF
 		// joints and reach ROS through /tf, so they are not JointState entries.
-		if (Joint.Type != EMjJointType::Hinge && Joint.Type != EMjJointType::Slide)
+		if (Joint.Type != EMjJointType::hinge && Joint.Type != EMjJointType::slide)
 		{
 			continue;
 		}

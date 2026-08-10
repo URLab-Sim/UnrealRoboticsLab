@@ -1,10 +1,9 @@
 [submodule "third_party/MuJoCo/src"]
 	path = third_party/MuJoCo/src
-	# URLab's MuJoCo fork. It is upstream plus one directory, protospec/, which
-	# carries the MJCF schema front end, its generator and the C++ SDK that
-	# Source/URLab/*/MuJoCo/Gen compiles against. Keeping it in the submodule is
-	# what makes schema, generator, SDK and engine version as one unit; the fork
-	# branch commits nothing outside protospec/, so bumping MuJoCo stays a rebase.
+	# URLab's MuJoCo checkout. The engine is built from it, and the ProtoSpec
+	# generator reads src/xml/mjcf.schema and doc/generate/mjcf_schema.py from
+	# it. ProtoSpec itself lives in the plugin's protospec/ directory; the
+	# protospec/ directory inside this submodule is not consumed.
 	url = https://github.com/URLab-Sim/mujoco
 [submodule "third_party/CoACD/src"]
 	path = third_party/CoACD/src

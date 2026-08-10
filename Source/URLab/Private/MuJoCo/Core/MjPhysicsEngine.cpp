@@ -23,17 +23,22 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "State/MjCanonicalName.h"
-#include "MuJoCo/Components/QuickConvert/MjQuickConvertComponent.h"
-#include "MuJoCo/Components/QuickConvert/AMjHeightfieldActor.h"
-#include "MuJoCo/Core/Spec/MjSpecWrapper.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
+#include "MuJoCo/Convert/AMjHeightfieldActor.h"
 #include "MuJoCo/Core/MjSimulationState.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjSceneOptions.h"
+#include "MuJoCo/Spec/MjAssetFiles.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjSceneContributor.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
+#include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "Async/Future.h"
 #include "Misc/Paths.h"
-#include "XmlFile.h"
 #include "Internationalization/Regex.h"
 #include "Utils/URLabLogging.h"
 #include <atomic>
@@ -156,8 +161,6 @@ UMjPhysicsEngine::UMjPhysicsEngine()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 
-	Options.bOverride_Integrator = true;
-	Options.Integrator = EMjIntegrator::ImplicitFast;
 	ControlSource = EControlSource::ZMQ;
 
 	// Auto-reset so each Trigger arms exactly one Wait; coalesces bursts.
@@ -191,8 +194,14 @@ void UMjPhysicsEngine::BeginDestroy()
 		{
 			UE_LOG(LogURLab, Warning,
 				TEXT("Physics async worker still running at BeginDestroy after %.1fs; ")
-					TEXT("leaking its sync event to avoid a use-after-free in the stuck step."),
+					TEXT("leaking its sync event and its model to avoid a use-after-free in the stuck step."),
 				kBeginDestroyWaitSec);
+#if URLAB_MJ_GEN
+			// The worker is inside a step against this model. Freeing the scene
+			// that owns it would pull the model out from under a running step,
+			// so it is abandoned for the same reason the sync event below is.
+			(void)InstalledScene.Release();
+#endif
 		}
 	}
 
@@ -216,183 +225,20 @@ void UMjPhysicsEngine::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 }
 #endif
 
-void UMjPhysicsEngine::PreCompile()
-{
-	m_spec = mj_makeSpec();
-	m_spec->compiler.degree = false;
-	mj_defaultVFS(&m_vfs);
-
-	UWorld* World = GetWorld();
-	if (!World)
-		return;
-
-	TArray<AActor*> FoundActors;
-	UGameplayStatics::GetAllActorsOfClass(World, AActor::StaticClass(), FoundActors);
-
-	ActiveAssetPaths.Empty();
-	for (auto actor : FoundActors)
-	{
-		if (UMjQuickConvertComponent* QC = actor->FindComponentByClass<UMjQuickConvertComponent>())
-		{
-			m_MujocoComponents.Add(QC);
-			QC->Setup(m_spec, &m_vfs);
-			if (FMujocoSpecWrapper* W = QC->GetWrapper())
-			{
-				for (const FString& Path : W->ActiveAssetPaths)
-					ActiveAssetPaths.AddUnique(Path);
-			}
-		}
-		if (AMjArticulation* Articulation = Cast<AMjArticulation>(actor))
-		{
-			Articulation->Setup(m_spec, &m_vfs);
-			RegisterArticulation(Articulation);
-			if (FMujocoSpecWrapper* W = Articulation->GetWrapper())
-			{
-				for (const FString& Path : W->ActiveAssetPaths)
-					ActiveAssetPaths.AddUnique(Path);
-			}
-		}
-		if (AMjHeightfieldActor* HFA = Cast<AMjHeightfieldActor>(actor))
-		{
-			HFA->Setup(m_spec, &m_vfs);
-			m_heightfieldActors.Add(HFA);
-		}
-	}
-}
-
-void UMjPhysicsEngine::PostCompile()
-{
-	if (!m_model || !m_data)
-	{
-		UE_LOG(LogURLab, Error, TEXT("Skipping PostCompile: m_model or m_data is invalid."));
-		return;
-	}
-
-	for (UMjQuickConvertComponent* mujocoComponent : m_MujocoComponents)
-	{
-		UE_LOG(LogURLab, Verbose, TEXT("Running PostSetup for component '%s'"), *mujocoComponent->GetName());
-		mujocoComponent->PostSetup(m_model, m_data);
-	}
-
-	m_ArticulationMap.Empty();
-	for (AMjArticulation* Art : m_articulations)
-	{
-		if (Art)
-			m_ArticulationMap.Add(Art->GetName(), Art);
-	}
-
-	for (auto articulation : m_articulations)
-		articulation->PostSetup(m_model, m_data);
-	for (auto hfa : m_heightfieldActors)
-		hfa->PostSetup(m_model, m_data);
-}
-
 void UMjPhysicsEngine::Compile()
 {
-	PreCompile();
-
-	UE_LOG(LogURLab, Log, TEXT("Compiling MuJoCo model"));
-	m_LastCompileError.Empty();
-	m_model = mj_compile(m_spec, &m_vfs);
-
-	if (!m_model)
+	FString Error;
+	if (InstallCompiledSpec(Error))
 	{
-		const char* spec_error = mjs_getError(m_spec);
-		m_LastCompileError = spec_error ? UTF8_TO_TCHAR(spec_error) : TEXT("Unknown compile error");
-		UE_LOG(LogURLab, Error, TEXT("Model compilation failed: %s"), *m_LastCompileError);
+		return;
+	}
+
+	UE_LOG(LogURLab, Error, TEXT("Model compilation failed: %s"), *Error);
 #if WITH_EDITOR
-		FMessageDialog::Open(EAppMsgType::Ok,
-			FText::Format(NSLOCTEXT("URLab", "CompileError", "MuJoCo compile failed:\n\n{0}"), FText::FromString(m_LastCompileError)));
+	FMessageDialog::Open(EAppMsgType::Ok,
+		FText::Format(NSLOCTEXT("URLab", "CompileError", "MuJoCo compile failed:\n\n{0}"),
+			FText::FromString(Error)));
 #endif
-		return;
-	}
-
-	if (bSaveDebugXml)
-	{
-		FString CacheDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"));
-		IFileManager::Get().MakeDirectory(*CacheDir, true);
-
-		int model_size = mj_sizeModel(m_model);
-		FString MjbPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.mjb"));
-		mj_saveModel(m_model, TCHAR_TO_UTF8(*MjbPath), nullptr, model_size);
-
-		static constexpr int32 kXmlBufferSize = 100 * 1024 * 1024;
-		static constexpr int32 kSaveErrorBufferSize = 10000;
-		char* xmlBuf = (char*)FMemory::Malloc(kXmlBufferSize);
-		if (xmlBuf)
-		{
-			FMemory::Memzero(xmlBuf, kXmlBufferSize);
-			char saveError[kSaveErrorBufferSize] = "";
-			int xmlResult = mj_saveXMLString(m_spec, xmlBuf, kXmlBufferSize, saveError, sizeof(saveError));
-			int xmlLen = FCStringAnsi::Strlen(xmlBuf);
-			if (xmlResult == 0 && xmlLen > 0)
-			{
-				FString XmlPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.xml"));
-				FString XmlContent = UTF8_TO_TCHAR(xmlBuf);
-
-				XmlContent.ReplaceInline(TEXT("//"), TEXT("/"));
-
-				{
-					bool bChanged = true;
-					while (bChanged)
-					{
-						int32 Prev = XmlContent.Len();
-						XmlContent.ReplaceInline(TEXT("file=\"../"), TEXT("file=\""), ESearchCase::CaseSensitive);
-						bChanged = (XmlContent.Len() != Prev);
-					}
-				}
-
-				XmlContent.ReplaceInline(TEXT("\\"), TEXT("/"));
-
-				{
-					FRegexPattern Pattern(TEXT("file=\"[^\"]*?Saved/URLab/"));
-					FRegexMatcher Matcher(Pattern, XmlContent);
-
-					TArray<TPair<int32, int32>> Matches;
-					while (Matcher.FindNext())
-					{
-						Matches.Add(TPair<int32, int32>(Matcher.GetMatchBeginning(), Matcher.GetMatchEnding()));
-					}
-
-					for (int32 i = Matches.Num() - 1; i >= 0; --i)
-					{
-						int32 Start = Matches[i].Key;
-						int32 End = Matches[i].Value;
-						FString Before = XmlContent.Left(Start);
-						FString After = XmlContent.Mid(End);
-						XmlContent = Before + TEXT("file=\"") + After;
-					}
-				}
-
-				FFileHelper::SaveStringToFile(XmlContent, *XmlPath);
-				UE_LOG(LogURLab, Log, TEXT("Debug XML saved to: %s (%d bytes, paths relativized)"), *XmlPath, xmlLen);
-			}
-			FMemory::Free(xmlBuf);
-		}
-	}
-
-	int version = mj_version();
-	UE_LOG(LogURLab, Log, TEXT("Model successfully compiled on version %i"), version);
-	m_data = mj_makeData(m_model);
-
-	if (!m_data)
-	{
-		UE_LOG(LogURLab, Error, TEXT("Data creation failed! m_data is NULL."));
-		return;
-	}
-
-	UE_LOG(LogURLab, Log, TEXT("Data successfully made"));
-
-	ApplyThreadPool();
-	ApplyOptions();
-	PostCompile();
-
-	// Step once then reset to ensure all derived quantities (contacts,
-	// constraints, sensor data) are fully computed and synced before the
-	// user sees the paused scene.
-	mj_step(m_model, m_data);
-	mj_resetData(m_model, m_data);
-	mj_forward(m_model, m_data);
 }
 
 int32 UMjPhysicsEngine::MaxWorkerThreads()
@@ -427,12 +273,694 @@ void UMjPhysicsEngine::ApplyThreadPool()
 		N > 0 ? TEXT("enabled") : TEXT("disabled"), N);
 }
 
+namespace
+{
+/** The actor a contributor's elements live on: itself, or the one it sits on. */
+AActor* ActorOfContributor(UObject* Object)
+{
+	if (AActor* Actor = Cast<AActor>(Object))
+	{
+		return Actor;
+	}
+	if (UActorComponent* Component = Cast<UActorComponent>(Object))
+	{
+		return Component->GetOwner();
+	}
+	return nullptr;
+}
+
+/** One participant's placement, in MuJoCo's frame, from an Unreal transform. */
+void AddParticipant(FSceneAssembly& Scene, const FSpecRef& Spec, const FString& Prefix,
+	const FTransform& Placement)
+{
+	if (!Spec.IsValid())
+	{
+		return;
+	}
+	double MjPos[3] = {0.0, 0.0, 0.0};
+	double MjQuat[4] = {1.0, 0.0, 0.0, 0.0};
+	URLabAxisConv::UePositionToMj(Placement.GetLocation(), MjPos);
+	URLabAxisConv::UeQuatToMj(Placement.GetRotation(), MjQuat);
+	Scene.Add(Spec, Prefix, FVector(MjPos[0], MjPos[1], MjPos[2]),
+		FQuat(MjQuat[1], MjQuat[2], MjQuat[3], MjQuat[0]));
+}
+}  // namespace
+
+TArray<UObject*> UMjPhysicsEngine::GatherSceneContributors() const
+{
+	TArray<UObject*> Out;
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return Out;
+	}
+	for (TActorIterator<AActor> It(World); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (Actor == nullptr)
+		{
+			continue;
+		}
+		if (Actor->Implements<UMjSceneContributor>())
+		{
+			Out.Add(Actor);
+		}
+		for (UActorComponent* Component : Actor->GetComponents())
+		{
+			if (Component != nullptr && Component->Implements<UMjSceneContributor>())
+			{
+				Out.Add(Component);
+			}
+		}
+	}
+	return Out;
+}
+
+void UMjPhysicsEngine::BuildSceneAssembly(FSceneAssembly& Out)
+{
+	const AAMjManager* Manager = Cast<AAMjManager>(GetOwner());
+	if (Manager == nullptr)
+	{
+		return;
+	}
+	Out.SetSceneRoot(Manager->GetSceneSpec());
+
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return;
+	}
+	TArray<AActor*> Actors;
+	UGameplayStatics::GetAllActorsOfClass(World, AMjArticulation::StaticClass(), Actors);
+	for (AActor* Actor : Actors)
+	{
+		AMjArticulation* Articulation = Cast<AMjArticulation>(Actor);
+		if (Articulation == nullptr)
+		{
+			continue;
+		}
+		// The prefix is the articulation's own, and it is what every compiled
+		// name of this participant carries, so the binding composes with it.
+		AddParticipant(Out, Articulation->GetSpec(), Articulation->GetName() + TEXT("_"),
+			Articulation->GetActorTransform());
+	}
+
+	// Heightfields and converted actors take the same route as an articulation:
+	// author the spec, then attach it under a prefix. The only difference is
+	// that the spec is written from Unreal content a moment before it is
+	// read, which is why this is the point the sampling and the conversion run.
+	for (UObject* Object : GatherSceneContributors())
+	{
+		IMjSceneContributor* Contributor = Cast<IMjSceneContributor>(Object);
+		if (Contributor == nullptr)
+		{
+			continue;
+		}
+		Contributor->AuthorSceneSpec();
+		AddParticipant(Out, Contributor->GetSceneSpec(), Contributor->GetScenePrefix(),
+			Contributor->GetScenePlacement());
+	}
+}
+
+namespace
+{
+/** Every MuJoCo spec node on `Actor`, whether or not it is in the tree. */
+void ForEachSpecNode(AActor& Actor, TFunctionRef<void(UMjNodeComponent&)> Visit)
+{
+	TArray<UMjNodeComponent*> Nodes;
+	Actor.GetComponents(Nodes);
+	for (UMjNodeComponent* Node : Nodes)
+	{
+		if (Node != nullptr)
+		{
+			Visit(*Node);
+		}
+	}
+}
+
+// --- Recompile state migration ------------------------------------------- //
+//
+// A structural edit during play recompiles the scene, and a recompile is a new
+// mjModel with new addresses: a joint that gained a sibling moves in qpos, so
+// reading the old address back would be reading someone else's state. The
+// element that owns the state has not changed, though, so the state can follow
+// it -- keyed on the node's creation serial, which is minted once per element
+// and never reissued.
+//
+// The rules follow the retired ProtoSpec compile bridge's `Recompile`,
+// which is the same migration one level down:
+//
+//   * a surviving element's state is written back at its NEW address,
+//   * a deleted element's state is dropped with it,
+//   * a new element starts at the model's own defaults (qpos0 and zeros),
+//   * an element whose shape changed -- a hinge become a ball, an actuator that
+//     gained an activation -- starts at the defaults too, because there is no
+//     meaning to carrying three numbers into a slot that now holds four,
+//   * and `time` continues rather than restarting, so a recompile is an edit to
+//     a running simulation rather than a new one.
+
+struct FMjJointState
+{
+	TArray<double> QPos;
+	TArray<double> QVel;
+};
+
+struct FMjActuatorState
+{
+	double Ctrl = 0.0;
+	TArray<double> Act;
+};
+
+struct FMjMocapState
+{
+	double Pos[3] = {0.0, 0.0, 0.0};
+	double Quat[4] = {1.0, 0.0, 0.0, 0.0};
+};
+
+/** Everything one model's mjData holds that belongs to a spec element. */
+struct FMjMigratedState
+{
+	TMap<uint64, FMjJointState> Joints;
+	TMap<uint64, FMjActuatorState> Actuators;
+	TMap<uint64, FMjMocapState> Mocaps;
+	double Time = 0.0;
+	bool bHasState = false;
+};
+
+/** How many qpos entries joint `JointId` owns, from the next joint's address. */
+int32 QPosWidth(const mjModel& Model, int32 JointId)
+{
+	const int32 Start = Model.jnt_qposadr[JointId];
+	const int32 End = (JointId + 1 < Model.njnt) ? Model.jnt_qposadr[JointId + 1] : Model.nq;
+	return End - Start;
+}
+
+/** How many dofs joint `JointId` owns. */
+int32 DofWidth(const mjModel& Model, int32 JointId)
+{
+	const int32 Start = Model.jnt_dofadr[JointId];
+	const int32 End = (JointId + 1 < Model.njnt) ? Model.jnt_dofadr[JointId + 1] : Model.nv;
+	return End - Start;
+}
+
+/** Read the live state out of `Data`, keyed by element rather than by address. */
+FMjMigratedState StashState(const mjModel* Model, const mjData* Data, const FMjBinding& Binding)
+{
+	FMjMigratedState Out;
+	if (Model == nullptr || Data == nullptr)
+	{
+		return Out;
+	}
+	Out.bHasState = true;
+	Out.Time = Data->time;
+
+	for (const FMjBinding::FEntry& Entry : Binding.GetEntries())
+	{
+		if (Entry.Id < 0 || Entry.Serial == 0)
+		{
+			continue;
+		}
+		if (Entry.ObjType == mjOBJ_JOINT)
+		{
+			if (Entry.Id >= Model->njnt)
+			{
+				continue;
+			}
+			FMjJointState State;
+			const int32 QAdr = Model->jnt_qposadr[Entry.Id];
+			const int32 VAdr = Model->jnt_dofadr[Entry.Id];
+			State.QPos.Append(Data->qpos + QAdr, QPosWidth(*Model, Entry.Id));
+			State.QVel.Append(Data->qvel + VAdr, DofWidth(*Model, Entry.Id));
+			Out.Joints.Add(Entry.Serial, MoveTemp(State));
+		}
+		else if (Entry.ObjType == mjOBJ_ACTUATOR)
+		{
+			if (Entry.Id >= Model->nu)
+			{
+				continue;
+			}
+			FMjActuatorState State;
+			State.Ctrl = Data->ctrl[Entry.Id];
+			const int32 ActAdr = Model->actuator_actadr[Entry.Id];
+			const int32 ActNum = Model->actuator_actnum[Entry.Id];
+			if (ActAdr >= 0 && ActNum > 0)
+			{
+				State.Act.Append(Data->act + ActAdr, ActNum);
+			}
+			Out.Actuators.Add(Entry.Serial, MoveTemp(State));
+		}
+		else if (Entry.ObjType == mjOBJ_BODY)
+		{
+			if (Entry.Id >= Model->nbody)
+			{
+				continue;
+			}
+			const int32 MocapId = Model->body_mocapid[Entry.Id];
+			if (MocapId < 0)
+			{
+				continue;
+			}
+			FMjMocapState State;
+			FMemory::Memcpy(State.Pos, Data->mocap_pos + 3 * MocapId, sizeof(State.Pos));
+			FMemory::Memcpy(State.Quat, Data->mocap_quat + 4 * MocapId, sizeof(State.Quat));
+			Out.Mocaps.Add(Entry.Serial, State);
+		}
+	}
+	return Out;
+}
+
+/**
+ * Write `Stash` back at the addresses `Binding` gives in `Model`.
+ *
+ * `Data` must already hold the new model's defaults: everything this does not
+ * write is what a surviving element did not have, or what a new element starts
+ * with, and both of those answers are the model's own.
+ */
+void RestoreState(const mjModel* Model, mjData* Data, const FMjBinding& Binding,
+	const FMjMigratedState& Stash)
+{
+	if (Model == nullptr || Data == nullptr || !Stash.bHasState)
+	{
+		return;
+	}
+
+	for (const FMjBinding::FEntry& Entry : Binding.GetEntries())
+	{
+		if (Entry.Id < 0 || Entry.Serial == 0)
+		{
+			continue;
+		}
+		if (Entry.ObjType == mjOBJ_JOINT)
+		{
+			const FMjJointState* State = Stash.Joints.Find(Entry.Serial);
+			if (State == nullptr || Entry.Id >= Model->njnt)
+			{
+				continue;
+			}
+			const int32 QAdr = Model->jnt_qposadr[Entry.Id];
+			const int32 VAdr = Model->jnt_dofadr[Entry.Id];
+			if (State->QPos.Num() == QPosWidth(*Model, Entry.Id))
+			{
+				FMemory::Memcpy(Data->qpos + QAdr, State->QPos.GetData(),
+					State->QPos.Num() * sizeof(double));
+			}
+			if (State->QVel.Num() == DofWidth(*Model, Entry.Id))
+			{
+				FMemory::Memcpy(Data->qvel + VAdr, State->QVel.GetData(),
+					State->QVel.Num() * sizeof(double));
+			}
+		}
+		else if (Entry.ObjType == mjOBJ_ACTUATOR)
+		{
+			const FMjActuatorState* State = Stash.Actuators.Find(Entry.Serial);
+			if (State == nullptr || Entry.Id >= Model->nu)
+			{
+				continue;
+			}
+			Data->ctrl[Entry.Id] = State->Ctrl;
+			const int32 ActAdr = Model->actuator_actadr[Entry.Id];
+			const int32 ActNum = Model->actuator_actnum[Entry.Id];
+			if (ActAdr >= 0 && State->Act.Num() == ActNum)
+			{
+				FMemory::Memcpy(Data->act + ActAdr, State->Act.GetData(),
+					State->Act.Num() * sizeof(double));
+			}
+		}
+		else if (Entry.ObjType == mjOBJ_BODY)
+		{
+			const FMjMocapState* State = Stash.Mocaps.Find(Entry.Serial);
+			if (State == nullptr || Entry.Id >= Model->nbody)
+			{
+				continue;
+			}
+			const int32 MocapId = Model->body_mocapid[Entry.Id];
+			if (MocapId < 0)
+			{
+				continue;
+			}
+			FMemory::Memcpy(Data->mocap_pos + 3 * MocapId, State->Pos, sizeof(State->Pos));
+			FMemory::Memcpy(Data->mocap_quat + 4 * MocapId, State->Quat, sizeof(State->Quat));
+		}
+	}
+
+	Data->time = Stash.Time;
+}
+}  // namespace
+
+bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
+{
+	OutError.Reset();
+
+#if !URLAB_MJ_GEN
+	OutError = TEXT("built without the generated MuJoCo profile");
+	m_LastCompileError = OutError;
+	return false;
+#else
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		OutError = TEXT("no world to compile");
+		return false;
+	}
+	const AAMjManager* const Owner = Cast<AAMjManager>(GetOwner());
+	if (Owner == nullptr)
+	{
+		OutError = TEXT("no manager to take the scene's sections from");
+		m_LastCompileError = OutError;
+		return false;
+	}
+
+	TArray<AActor*> Actors;
+	UGameplayStatics::GetAllActorsOfClass(World, AMjArticulation::StaticClass(), Actors);
+
+	// The assembly is the projection of the level the compile is given: it
+	// decides who takes part and in what order, and the ship-list comes off the
+	// same projection rather than a second walk. It also re-authors every
+	// contributor's spec, so the contributor list is taken afterwards and
+	// describes the level the compiler was shown.
+	FSceneAssembly Scene;
+	BuildSceneAssembly(Scene);
+	const TArray<UObject*> Contributors = GatherSceneContributors();
+
+	// Before anything reads `file`: an element whose asset the user replaced has
+	// to have that asset on disk and `file` pointing at it, or the compiler is
+	// handed the mesh it displaced.
+	const FSpecRef SceneRoot = Owner->GetSceneSpec();
+	MjSyncAssetFiles(SceneRoot);
+
+	urlab::spec::FMjSceneSpecBuilder Builder;
+	Builder.SetSceneRoot(SceneRoot);
+	for (const FMjSceneParticipant& Participant : Scene.GetParticipants())
+	{
+		MjSyncAssetFiles(Participant.Spec);
+		urlab::spec::FMjSceneSpecParticipant Placed;
+		Placed.Spec = Participant.Spec;
+		Placed.Prefix = Participant.Prefix;
+		Placed.MjPos = Participant.MjPos;
+		Placed.MjQuat = Participant.MjQuat;
+		Builder.AddParticipant(Placed);
+	}
+
+	// Everything that can fail happens here, before anything running is touched:
+	// a scene that does not compile costs the caller a diagnostic and leaves the
+	// session stepping the model it was already stepping.
+	urlab::spec::FMjCompiledScene Compiled = Builder.Compile();
+	for (const FMjSpecDiagnostic& Warning : Compiled.Warnings)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("Scene: %s"), *Warning.ToString());
+	}
+	for (const FMjSpecDiagnostic& Info : Compiled.Infos)
+	{
+		UE_LOG(LogURLab, Log, TEXT("Scene: %s"), *Info.ToString());
+	}
+	if (!Compiled.IsValid())
+	{
+		TArray<FString> Reasons;
+		for (const FMjSpecDiagnostic& Diagnostic : Compiled.Errors)
+		{
+			Reasons.Add(Diagnostic.ToString());
+		}
+		OutError = Reasons.Num() > 0 ? FString::Join(Reasons, TEXT("; ")) : TEXT("the scene spec did not compile");
+		m_LastCompileError = OutError;
+		return false;
+	}
+
+	// The last thing that can fail. It is made against the new model and not yet
+	// installed, so a null here is still a return with nothing disturbed; the
+	// compiled scene deletes the model it produced on the way out.
+	mjData* const NewData = mj_makeData(Compiled.Model);
+	if (NewData == nullptr)
+	{
+		OutError = TEXT("mj_makeData returned null");
+		m_LastCompileError = OutError;
+		return false;
+	}
+
+	// Stop and JOIN the worker before the old model goes away: it can be
+	// between its stop check and its CallbackMutex acquire, and the join is
+	// what keeps it from resuming against the new one.
+	bShouldStopTask = true;
+	if (StepRequestEvent != nullptr)
+	{
+		StepRequestEvent->Trigger();
+	}
+	if (AsyncPhysicsFuture.IsValid())
+	{
+		AsyncPhysicsFuture.Wait();
+	}
+
+	// Read the running state out while the model that gives it meaning is still
+	// here. After the swap below there is no way back to it: the addresses are
+	// the old model's and the old model is freed.
+	const FMjMigratedState Stash = StashState(m_model, m_data, InstalledBinding);
+
+	// The MJCF a remote client is handed to reload this scene. The compile no
+	// longer goes through text, so it is written here rather than harvested from
+	// the compile, and it is written after the compile succeeded so a failed
+	// install leaves the previous scene's text as the scene on offer.
+	TArray<FMjSpecDiagnostic> WriteDiagnostics;
+	TMap<FString, FString> NewParticipantXml;
+	const FString NewXml = MjWriteSceneMjcf(Scene, NewParticipantXml, &WriteDiagnostics);
+	for (const FMjSpecDiagnostic& Diagnostic : WriteDiagnostics)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("Scene MJCF: %s"), *Diagnostic.ToString());
+	}
+
+	FMjBinding NewBinding = MjBindingOf(Compiled);
+
+	// The swap, under the fence the worker steps behind. The compiled scene owns
+	// the model, so publishing the scene is what publishes the model, and
+	// releasing the previous scene is what retires the previous model -- in the
+	// one order that is safe, the model before the specs it was compiled from.
+	{
+		FScopeLock Lock(&CallbackMutex);
+		mjData* const PreviousData = m_data;
+		TUniquePtr<urlab::spec::FMjCompiledScene> Previous = MoveTemp(InstalledScene);
+
+		InstalledScene = MakeUnique<urlab::spec::FMjCompiledScene>(MoveTemp(Compiled));
+		m_model = InstalledScene->Model;
+		m_data = NewData;
+
+		if (PreviousData != nullptr)
+		{
+			mj_deleteData(PreviousData);
+		}
+	}
+
+	CompiledXml = NewXml;
+	ParticipantXml = MoveTemp(NewParticipantXml);
+	ActiveAssetFiles = Scene.CollectAssetFiles();
+	InstalledBinding = MoveTemp(NewBinding);
+	m_LastCompileError.Empty();
+
+	// An element that bound again is told its new id below. An element that did
+	// not has to stop answering at all, because the id it still holds addresses
+	// a model that no longer exists.
+	const auto UnbindIfAbsent = [this](UMjNodeComponent& Node) {
+		if (!InstalledBinding.Id(Node).IsSet())
+		{
+			Node.Unbind();
+		}
+	};
+	for (AActor* Actor : Actors)
+	{
+		if (Actor == nullptr)
+		{
+			continue;
+		}
+		if (AMjArticulation* Articulation = Cast<AMjArticulation>(Actor))
+		{
+			Articulation->ClearControlSlots();
+			Articulation->ClearElementIndex();
+		}
+		ForEachSpecNode(*Actor, UnbindIfAbsent);
+	}
+	if (AAMjManager* Manager = Cast<AAMjManager>(GetOwner()))
+	{
+		ForEachSpecNode(*Manager, UnbindIfAbsent);
+	}
+	for (UObject* Object : Contributors)
+	{
+		if (AActor* ContributorOwner = ActorOfContributor(Object))
+		{
+			ForEachSpecNode(*ContributorOwner, UnbindIfAbsent);
+		}
+	}
+
+	// One pass over the binding does both jobs: it tells each element its id,
+	// and it collects the actuator ids per articulation. The ids are the
+	// scene's, so an articulation's are neither zero-based nor contiguous, and
+	// there is nowhere else they could be recovered from.
+	TMap<AMjArticulation*, TArray<int32>> ActuatorIdsByArticulation;
+	for (const FMjBinding::FEntry& Entry : InstalledBinding.GetEntries())
+	{
+		if (Entry.Node == nullptr || Entry.Id < 0)
+		{
+			continue;
+		}
+		UMjNodeComponent* Node = const_cast<UMjNodeComponent*>(Entry.Node);
+		Node->BindTo(Entry.Id);
+
+		AMjArticulation* Articulation = Cast<AMjArticulation>(Node->GetOwner());
+		if (Articulation == nullptr)
+		{
+			continue;
+		}
+		Articulation->IndexBoundElement(*Node, Entry.ObjType, Entry.Id);
+		if (Entry.ObjType == mjOBJ_ACTUATOR)
+		{
+			ActuatorIdsByArticulation.FindOrAdd(Articulation).Add(Entry.Id);
+		}
+	}
+
+	m_articulations.Empty();
+	m_ArticulationMap.Empty();
+	for (AActor* Actor : Actors)
+	{
+		AMjArticulation* Articulation = Cast<AMjArticulation>(Actor);
+		if (Articulation == nullptr)
+		{
+			continue;
+		}
+		// Sized for every articulation, including ones with no actuators of
+		// their own: the slots are indexed by scene id and an articulation
+		// that had none still has to answer a read without going out of range.
+		Articulation->ResetControlSlots(m_model->nu,
+			ActuatorIdsByArticulation.FindRef(Articulation));
+		Articulation->BindController(m_model, m_data);
+		RegisterArticulation(Articulation);
+	}
+
+	// The contributor registries are what the per-frame render pass and the
+	// debug visualiser iterate, so they are rebuilt from the same list the
+	// compile was given rather than from a second walk of the level.
+	m_MujocoComponents.Empty();
+	m_heightfieldActors.Empty();
+	for (UObject* Object : Contributors)
+	{
+		if (IMjSceneContributor* Contributor = Cast<IMjSceneContributor>(Object))
+		{
+			Contributor->OnSceneBound();
+		}
+		if (UMjQuickConvertComponent* Quick = Cast<UMjQuickConvertComponent>(Object))
+		{
+			m_MujocoComponents.AddUnique(Quick);
+		}
+		else if (AMjHeightfieldActor* Heightfield = Cast<AMjHeightfieldActor>(Object))
+		{
+			m_heightfieldActors.AddUnique(Heightfield);
+		}
+	}
+
+	ApplyThreadPool();
+
+	if (bSaveDebugXml)
+	{
+		SaveDebugArtifacts();
+	}
+
+	// One step and back, so the derived quantities a paused scene is inspected
+	// through -- contacts, constraints, sensor readings -- are all populated
+	// before anybody looks at them. The reset is what leaves mjData holding the
+	// new model's own defaults, which is exactly the floor the migration writes
+	// on top of, so it has to happen first.
+	mj_step(m_model, m_data);
+	mj_resetData(m_model, m_data);
+	RestoreState(m_model, m_data, InstalledBinding, Stash);
+	mj_forward(m_model, m_data);
+
+	// The snapshot is what every consumer reads, so it has to exist before the
+	// first step: a scene that compiles and is inspected while paused would
+	// otherwise be read out of the previous model's snapshot, or out of none.
+	PushRenderState();
+	return true;
+#endif  // URLAB_MJ_GEN
+}
+
+void UMjPhysicsEngine::ReleaseCompiledScene()
+{
+	FScopeLock Lock(&CallbackMutex);
+	if (m_data != nullptr)
+	{
+		mj_deleteData(m_data);
+		m_data = nullptr;
+	}
+	// The model is the compiled scene's, not this component's, so it goes when
+	// the scene does and never before the specs it was compiled from.
+	m_model = nullptr;
+#if URLAB_MJ_GEN
+	InstalledScene.Reset();
+#endif
+	// The addresses it resolves belong to a model that no longer exists.
+	InstalledBinding = FMjBinding{};
+}
+
+void UMjPhysicsEngine::SaveDebugArtifacts() const
+{
+	if (m_model == nullptr)
+	{
+		return;
+	}
+
+	const FString CacheDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"));
+	IFileManager::Get().MakeDirectory(*CacheDir, true);
+
+	const FString MjbPath = FPaths::Combine(CacheDir, TEXT("scene_compiled.mjb"));
+	mj_saveModel(m_model, TCHAR_TO_UTF8(*MjbPath), nullptr, mj_sizeModel(m_model));
+
+#if URLAB_MJ_GEN
+	// The scene as it was actually composed, with its assets beside it, rather
+	// than the text a client is shipped: this one is written to be read by a
+	// person trying to understand what compiled.
+	if (InstalledScene.IsValid())
+	{
+		TArray<FMjSpecDiagnostic> Diagnostics;
+		if (!InstalledScene->SaveDebugArtifacts(CacheDir, Diagnostics))
+		{
+			for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+			{
+				UE_LOG(LogURLab, Warning, TEXT("Scene artefact: %s"), *Diagnostic.ToString());
+			}
+		}
+	}
+#endif
+}
+
+bool UMjPhysicsEngine::BuildCompiledScene(FMjCompiledScene& Out, FString& OutError) const
+{
+	Out = FMjCompiledScene();
+	OutError.Reset();
+
+	// The ship-list is what the compiler was given and is available whether or
+	// not the text is, so it is filled first: a caller that only wants the
+	// assets gets them even when the MJCF cannot be produced.
+	Out.AssetFiles = ActiveAssetFiles;
+
+	if (CompiledXml.IsEmpty())
+	{
+		OutError = TEXT("no compiled scene");
+		return false;
+	}
+
+	// The text the compiler was handed, not a re-serialisation of the model:
+	// re-serialising loses the participant structure a client needs to reload,
+	// and there is no reason to reconstruct what was written a moment ago.
+	Out.Xml = CompiledXml;
+	Out.ParticipantXml = ParticipantXml;
+	return true;
+}
+
 void UMjPhysicsEngine::ApplyOptions()
 {
 	if (!m_model)
 		return;
 
-	Options.ApplyOverridesToModel(m_model);
+	// The scene's <option> is the manager's, because the scene is one spec
+	// and the manager holds its top-level sections.
+	if (const AAMjManager* Manager = Cast<AAMjManager>(GetOwner()))
+	{
+		MjApplyOptionToModel(Manager->SceneOption, Manager->SceneFlags, m_model);
+	}
 
 	UE_LOG(LogURLab, Log, TEXT("Applied manager option overrides (timestep=%.4f from model)"),
 		m_model->opt.timestep);
@@ -530,10 +1058,9 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					{
 						if (!Art)
 							continue;
-						for (UMjActuator* Act : Art->GetActuators())
+						for (const int32 Id : Art->GetOwnedActuatorIds())
 						{
-							if (Act)
-								Act->ResetControl();
+							Art->ClearStagedControl(Id);
 						}
 					}
 
@@ -595,7 +1122,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					for (AMjArticulation* Art : m_articulations)
 					{
 						if (Art)
-							Art->ApplyControls();
+							Art->ApplyControls(m_model, m_data, /*bSkipController=*/false);
 					}
 				}
 
@@ -772,48 +1299,16 @@ void UMjPhysicsEngine::StepSync(int32 NumSteps)
 
 bool UMjPhysicsEngine::CompileModel()
 {
-	bShouldStopTask = true;
-	// Wake the worker if it's parked on the step-request event so it
-	// observes bShouldStopTask without waiting out the Wait timeout.
-	if (StepRequestEvent)
-		StepRequestEvent->Trigger();
-
-	// JOIN the old worker before teardown. Without this, the worker can be
-	// mid-iteration (between its flag check and its CallbackMutex acquire)
-	// while we delete m_data/m_model and Empty() the arrays it iterates;
-	// worse, RunMujocoAsync() below resets bShouldStopTask=false, so a
-	// stalled old worker could resume against the NEW model. Wait() here,
-	// outside CallbackMutex, so the worker can reach its stop check.
-	if (AsyncPhysicsFuture.IsValid())
-		AsyncPhysicsFuture.Wait();
-
-	{
-		FScopeLock Lock(&CallbackMutex);
-		if (m_data)
-		{
-			mj_deleteData(m_data);
-			m_data = nullptr;
-		}
-		if (m_model)
-		{
-			mj_deleteModel(m_model);
-			m_model = nullptr;
-		}
-	}
-	if (m_spec)
-	{
-		mj_deleteSpec(m_spec);
-		m_spec = nullptr;
-	}
-
-	// Clear registered scene objects for re-scan
-	m_MujocoComponents.Empty();
-	m_articulations.Empty();
-	m_heightfieldActors.Empty();
-
+	// The install does its own stop-and-join, its own registries and its own
+	// teardown of the model it is replacing, so all that is left here is
+	// restarting the worker against whatever it produced. Failure is read from
+	// the compile rather than from `IsInitialized`, because the install is
+	// transactional: a scene that does not compile leaves the previous one
+	// installed and running, which is indistinguishable from success by any
+	// question asked of the model.
 	Compile();
 
-	if (!IsInitialized())
+	if (!m_LastCompileError.IsEmpty())
 	{
 		return false;
 	}
@@ -1039,6 +1534,19 @@ void UMjPhysicsEngine::PushRenderState()
 	CopyArray(RenderSnapshot.ActuatorForce, m_data->actuator_force, NU);
 	CopyArray(RenderSnapshot.SensorData, m_data->sensordata, NSensorData);
 
+	// The rest of what the Blueprint-facing accessors report. They used to read
+	// live mjData, so a script asking two questions during one step could get
+	// answers from two different steps; these give them the same published
+	// frame everything else already reads.
+	CopyArray(RenderSnapshot.JntXAnchor, m_data->xanchor, m_model->njnt * 3);
+	CopyArray(RenderSnapshot.JntXAxis, m_data->xaxis, m_model->njnt * 3);
+	CopyArray(RenderSnapshot.Ctrl, m_data->ctrl, NU);
+	CopyArray(RenderSnapshot.ActuatorLength, m_data->actuator_length, NU);
+	CopyArray(RenderSnapshot.ActuatorVelocity, m_data->actuator_velocity, NU);
+	CopyArray(RenderSnapshot.Act, m_data->act, m_model->na);
+	CopyArray(RenderSnapshot.TenLength, m_data->ten_length, m_model->ntendon);
+	CopyArray(RenderSnapshot.TenVelocity, m_data->ten_velocity, m_model->ntendon);
+
 	// Sleep state.
 	CopyArray(RenderSnapshot.BodyAwake, m_data->body_awake, NBody);
 	CopyArray(RenderSnapshot.TreeAsleep, m_data->tree_asleep, NTree);
@@ -1053,8 +1561,14 @@ void UMjPhysicsEngine::PushRenderState()
 }
 
 void UMjPhysicsEngine::WithRenderState(
-	TFunctionRef<void(const FMjRenderSnapshot&)> Visitor)
+	TFunctionRef<void(const FMjRenderSnapshot&)> Visitor) const
 {
+	// Reading this frame is what asks for the next one. Without it a consumer
+	// that is not the visual pump -- a Blueprint accessor, a debug draw -- reads
+	// the same published frame for the whole of a live session, because in live
+	// mode the worker publishes only what somebody asked for.
+	bSnapshotWanted.store(true, std::memory_order_release);
+
 	FScopeLock Lock(&RenderStateMutex);
 	Visitor(RenderSnapshot);
 }
@@ -1129,6 +1643,68 @@ void UMjPhysicsEngine::ApplySleepBody(int32 BodyId)
 			m_data->tree_asleep[TreeId] = 0;
 		m_data->tree_awake[TreeId] = 0;
 	}
+}
+
+bool UMjPhysicsEngine::IsBodyAwake(int32 BodyId) const
+{
+	if (!m_model || !m_data || BodyId < 0 || BodyId >= m_model->nbody)
+		return true;
+	FScopeLock Lock(&CallbackMutex);
+	return m_data->body_awake[BodyId] != 0;
+}
+
+void UMjPhysicsEngine::ForwardSync()
+{
+	if (!m_model || !m_data)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	mj_forward(m_model, m_data);
+	PushRenderState();
+}
+
+void UMjPhysicsEngine::ApplyJointPosition(int32 JointId, double Value)
+{
+	if (!m_model || !m_data || JointId < 0 || JointId >= m_model->njnt)
+		return;
+	const int32 QposAdr = m_model->jnt_qposadr[JointId];
+	if (QposAdr < 0 || QposAdr >= m_model->nq)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_data->qpos[QposAdr] = Value;
+	// Readers see the published snapshot, so a write nobody publishes is a
+	// write nobody can observe until the next step. That would break the
+	// on-the-very-next-read contract these synchronous edits exist for.
+	PushRenderState();
+}
+
+void UMjPhysicsEngine::ApplyJointVelocity(int32 JointId, double Value)
+{
+	if (!m_model || !m_data || JointId < 0 || JointId >= m_model->njnt)
+		return;
+	const int32 DofAdr = m_model->jnt_dofadr[JointId];
+	if (DofAdr < 0 || DofAdr >= m_model->nv)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_data->qvel[DofAdr] = Value;
+	PushRenderState();
+}
+
+void UMjPhysicsEngine::ApplyGeomFriction(int32 GeomId, double Slide)
+{
+	if (!m_model || GeomId < 0 || GeomId >= m_model->ngeom)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_model->geom_friction[GeomId * 3] = Slide;
+}
+
+void UMjPhysicsEngine::ApplyActuatorGear(int32 ActuatorId, TConstArrayView<double> Gear)
+{
+	if (!m_model || ActuatorId < 0 || ActuatorId >= m_model->nu)
+		return;
+	const int32 Num = FMath::Min(Gear.Num(), 6);
+	FScopeLock Lock(&CallbackMutex);
+	for (int32 i = 0; i < Num; ++i)
+		m_model->actuator_gear[ActuatorId * 6 + i] = Gear[i];
 }
 
 bool UMjPhysicsEngine::DrainCommands()

@@ -28,7 +28,7 @@
 
 class AAMjManager;
 class AMjArticulation;
-class UMjComponent;
+class UMjNodeComponent;
 class UMjTwistController;
 struct mjModel_;
 struct mjData_;
@@ -40,7 +40,7 @@ typedef mjData_ mjData;
  * no registration: it has exactly three fixed steps.
  *
  * - Producer cache (game thread): per articulation, the canonical name and weak
- *   ptrs to its UMjComponents; rebuilt on the same triggers as the old broadcast
+ *   ptrs to its elements; rebuilt on the same triggers as the old broadcast
  *   cache (registry change / recompile / stale weak ptr). Bumps StructureVersion.
  * - Per-step build (physics thread, post-step): reset the persistent snapshot,
  *   stamp time/step/clock, call DescribeState on each cached component and the
@@ -77,7 +77,7 @@ private:
 	{
 		FName ArtSegment;
 		TWeakObjectPtr<AMjArticulation> Art;
-		TArray<TWeakObjectPtr<UMjComponent>> Producers; // DescribeState per step
+		TArray<TWeakObjectPtr<UMjNodeComponent>> Producers; // one DescribeElement per step
 		TWeakObjectPtr<UMjTwistController> TwistCtrl;   // UActorComponent; called separately
 		/** IMjStateProducer implementers registered under this art (e.g. user
 		 *  channel components). Any UObject; the collector Casts to the interface. */

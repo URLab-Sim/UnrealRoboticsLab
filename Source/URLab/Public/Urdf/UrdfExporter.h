@@ -95,7 +95,7 @@ struct FUrdfModel
 	TArray<int32> MeshIds;
 	/** Human-readable warnings for every dropped or defaulted construct. */
 	TArray<FString> Warnings;
-	/** The full URDF document. */
+	/** The full URDF spec. */
 	FString Xml;
 };
 

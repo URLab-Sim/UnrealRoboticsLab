@@ -159,7 +159,7 @@ public:
 	bool ApplyInput(FName Channel, const FMjUserChannel& Value);
 
 	// --- IMjStateProducer: physics thread, under the engine CallbackMutex ---
-	virtual void DescribeState(FMjArticulationState& Out) const override;
+	virtual void DescribeState(const mjModel* m, mjData* d, FMjArticulationState& Out) const override;
 	virtual void DescribeSceneState(FMjStateSnapshot& Out) const override;
 
 protected:

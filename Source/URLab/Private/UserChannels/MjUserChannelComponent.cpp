@@ -370,7 +370,7 @@ FString UMjUserChannelComponent::GetInputString(FName Channel) const
 	return FString();
 }
 
-void UMjUserChannelComponent::DescribeState(FMjArticulationState& Out) const
+void UMjUserChannelComponent::DescribeState(const mjModel*, mjData*, FMjArticulationState& Out) const
 {
 	CopyMailboxInto(Out.UserChannels);
 }

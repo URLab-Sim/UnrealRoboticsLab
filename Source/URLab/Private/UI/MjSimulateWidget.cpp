@@ -23,8 +23,13 @@
 #include "UI/MjSimulateWidget.h"
 #include "UI/MjPropertyRow.h"
 #include "UI/MjCameraFeedEntry.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "Transport/NetworkManager.h"
 #include "Bridge/RpcDispatcher.h"
@@ -269,7 +274,7 @@ void UMjSimulateWidget::SetupDashboard(AAMjManager* InManager)
 		TArray<AMjArticulation*> Articulations = ManagerRef->GetAllArticulations();
 		for (AMjArticulation* Art : Articulations)
 		{
-			if (Art->bAttachFailed)
+			if (!Art)
 				continue;
 			ArticulationSelector->AddOption(MjUtils::PrettifyName(Art->GetName()));
 		}
@@ -768,17 +773,16 @@ void UMjSimulateWidget::OnIntegratorSelected(FString SelectedItem, ESelectInfo::
 	if (!ManagerRef)
 		return;
 
-	if (!ManagerRef->PhysicsEngine)
+	if (!ManagerRef->PhysicsEngine || !ManagerRef->SceneOption)
 		return;
-	ManagerRef->PhysicsEngine->Options.bOverride_Integrator = true;
 	if (SelectedItem == TEXT("Euler"))
-		ManagerRef->PhysicsEngine->Options.Integrator = EMjIntegrator::Euler;
+		ManagerRef->SceneOption->Integrator = EMjIntegrator::Euler;
 	else if (SelectedItem == TEXT("RK4"))
-		ManagerRef->PhysicsEngine->Options.Integrator = EMjIntegrator::RK4;
+		ManagerRef->SceneOption->Integrator = EMjIntegrator::RK4;
 	else if (SelectedItem == TEXT("Implicit"))
-		ManagerRef->PhysicsEngine->Options.Integrator = EMjIntegrator::Implicit;
+		ManagerRef->SceneOption->Integrator = EMjIntegrator::implicit;
 	else if (SelectedItem == TEXT("ImplicitFast"))
-		ManagerRef->PhysicsEngine->Options.Integrator = EMjIntegrator::ImplicitFast;
+		ManagerRef->SceneOption->Integrator = EMjIntegrator::implicitfast;
 
 	ManagerRef->PhysicsEngine->ApplyOptions();
 }
@@ -948,8 +952,9 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			IntegratorCombo->AddOption(TEXT("RK4"));
 			IntegratorCombo->AddOption(TEXT("Implicit"));
 			IntegratorCombo->AddOption(TEXT("ImplicitFast"));
-			if (ManagerRef->PhysicsEngine)
-				IntegratorCombo->SetSelectedIndex((int)ManagerRef->PhysicsEngine->Options.Integrator);
+			if (ManagerRef->SceneOption)
+				IntegratorCombo->SetSelectedIndex(
+					(int)ManagerRef->SceneOption->Integrator.Get(EMjIntegrator::Euler));
 			IntegratorCombo->OnSelectionChanged.AddDynamic(this, &UMjSimulateWidget::OnIntegratorSelected);
 			{
 				FTableRowStyle RowStyle = IntegratorCombo->GetItemStyle();
@@ -968,8 +973,9 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		UMjDebugVisualizer* DV = ManagerRef->DebugVisualizer;
 		UMjNetworkManager* NM = ManagerRef->NetworkManager;
 
-		AddRow(PhysicsBox, TEXT("Timestep"), PE ? PE->Options.Timestep : 0.002f, EMjPropertyType::Slider, false, FVector2D(0.0001f, 0.05f), true);
-		AddRow(PhysicsBox, TEXT("Iterations"), PE ? (float)PE->Options.Iterations : 50.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 200.0f), true);
+		UMjOption* const SceneOption = ManagerRef->SceneOption;
+		AddRow(PhysicsBox, TEXT("Timestep"), SceneOption ? (float)SceneOption->Timestep.Get(0.002) : 0.002f, EMjPropertyType::Slider, false, FVector2D(0.0001f, 0.05f), true);
+		AddRow(PhysicsBox, TEXT("Iterations"), SceneOption ? (float)SceneOption->Iterations.Get(50) : 50.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 200.0f), true);
 		AddRow(PhysicsBox, TEXT("Sim Speed %"), PE ? PE->SimSpeedPercent : 100.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 100.0f), true);
 		AddRow(PhysicsBox, TEXT("Debug Enabled"), (DV && DV->bShowDebug) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 		AddRow(PhysicsBox, TEXT("Internal Control"), (PE && PE->ControlSource == EControlSource::UI) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
@@ -1171,57 +1177,51 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		return;
 
 	// Actuators
-	TArray<UMjActuator*> Actuators = SelectedArticulation->GetActuators();
+	TArray<UMjNodeComponent*> Actuators = SelectedArticulation->GetActuators();
 	if (Actuators.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
 		CreateSection(ArticulationControlList, TEXT("ACTUATORS"), SecBox);
-		for (UMjActuator* act : Actuators)
+		for (UMjNodeComponent* Actuator : Actuators)
 		{
-			if (!act)
+			if (!Actuator)
 				continue;
-			FString ActName = act->GetMjName();
-			if (ActName.IsEmpty())
-				ActName = act->GetName();
+			const FString ActName = Actuator->MjName.Get(Actuator->GetName());
 
-			FVector2D range = act->GetControlRange();
-			AddRow(SecBox, ActName, act->GetControl(), EMjPropertyType::Slider, true, range, false, act);
+			const FVector2D range = UMjActuatorRuntime::GetControlRange(Actuator);
+			AddRow(SecBox, ActName, UMjActuatorRuntime::GetControl(Actuator), EMjPropertyType::Slider, true, range, false, Actuator);
 		}
 	}
 
 	// Monitors: Joints
-	TArray<UMjJoint*> Joints = SelectedArticulation->GetJoints();
+	TArray<UMjNodeComponent*> Joints = SelectedArticulation->GetJoints();
 	if (Joints.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
 		CreateSection(ArticulationControlList, TEXT("JOINTS"), SecBox);
-		for (UMjJoint* Joint : Joints)
+		for (UMjNodeComponent* Joint : Joints)
 		{
 			if (!Joint)
 				continue;
-			FString JointName = Joint->GetMjName();
-			if (JointName.IsEmpty())
-				JointName = Joint->GetName();
+			const FString JointName = Joint->MjName.Get(Joint->GetName());
 
-			AddRow(SecBox, JointName, Joint->GetPosition(), EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, Joint);
+			AddRow(SecBox, JointName, UMjJointRuntime::GetPosition(Joint), EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, Joint);
 		}
 	}
 
 	// Monitors: Sensors
-	TArray<UMjSensor*> Sensors = SelectedArticulation->GetSensors();
+	TArray<UMjNodeComponent*> Sensors = SelectedArticulation->GetSensors();
 	if (Sensors.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
 		CreateSection(ArticulationControlList, TEXT("SENSORS"), SecBox);
-		for (UMjSensor* Sensor : Sensors)
+		for (UMjNodeComponent* Sensor : Sensors)
 		{
 			if (!Sensor)
 				continue;
-			FString SensorName = Sensor->GetMjName();
-			if (SensorName.IsEmpty())
-				SensorName = Sensor->GetName();
+			const FString SensorName = Sensor->MjName.Get(Sensor->GetName());
 
-			AddRow(SecBox, SensorName, Sensor->GetScalarReading(), EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, Sensor);
+			AddRow(SecBox, SensorName, UMjSensorRuntime::GetScalarReading(Sensor), EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, Sensor);
 		}
 	}
 
@@ -1332,19 +1332,25 @@ void UMjSimulateWidget::UpdateMonitorValues()
 						// Identify the source of the value
 						if (UObject* RawObj = Row->GetAssociatedObject())
 						{
-							if (UMjActuator* act = Cast<UMjActuator>(RawObj))
+							// Actuators, joints and sensors all arrive as the element
+							// base, so the runtime libraries are what tell the three
+							// apart rather than the cast.
+							if (UMjNodeComponent* Node = Cast<UMjNodeComponent>(RawObj))
 							{
-								Val = act->GetControl();
+								if (UMjActuatorRuntime::IsActuator(Node))
+								{
+									Val = UMjActuatorRuntime::GetControl(Node);
+								}
+								else if (UMjJointRuntime::IsJoint(Node))
+								{
+									Val = UMjJointRuntime::GetPosition(Node);
+								}
+								else if (UMjSensorRuntime::IsSensor(Node))
+								{
+									Val = UMjSensorRuntime::GetScalarReading(Node);
+								}
 							}
-							else if (UMjJoint* Joint = Cast<UMjJoint>(RawObj))
-							{
-								Val = Joint->GetPosition();
-							}
-							else if (UMjSensor* Sensor = Cast<UMjSensor>(RawObj))
-							{
-								Val = Sensor->GetScalarReading();
-							}
-							else if (UMjTwistController* TC = Cast<UMjTwistController>(RawObj))
+							else if (Cast<UMjTwistController>(RawObj))
 							{
 								// Twist sliders are user-controlled, don't override their value
 								continue;
@@ -1377,18 +1383,16 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 
 	if (OptionName == TEXT("Timestep"))
 	{
-		if (PE)
+		if (ManagerRef->SceneOption)
 		{
-			PE->Options.bOverride_Timestep = true;
-			PE->Options.Timestep = NewValue;
+			ManagerRef->SceneOption->Timestep = NewValue;
 		}
 	}
 	else if (OptionName == TEXT("Iterations"))
 	{
-		if (PE)
+		if (ManagerRef->SceneOption)
 		{
-			PE->Options.bOverride_Iterations = true;
-			PE->Options.Iterations = (int)NewValue;
+			ManagerRef->SceneOption->Iterations = (int32)NewValue;
 		}
 	}
 	else if (OptionName == TEXT("Sim Speed %"))

@@ -27,14 +27,72 @@
 #include "Utils/URLabLogging.h"
 #include "Interfaces/IPluginManager.h"
 
+#include "MuJoCo/Spec/MjGenHooks.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjFlexcomp.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjMesh.h"
+#include "MuJoCo/Elements/MjTexture.h"
+
+#if URLAB_MJ_GEN
+#include "MuJoCo/Spec/MjNodeFactories.h"
+#include "MuJoCo/Spec/MjSpecWriteHooks.h"
+#endif
+
 #if WITH_EDITOR
 #include "AssetToolsModule.h"
 #include "IAssetTools.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "FURLabModule"
+
+namespace
+{
+/**
+ * The elements that are built as a hand subclass rather than the generated class.
+ *
+ * Each is here because it holds per-instance state the reflection system has to
+ * see: a render target and a worker thread for the camera, mesh component
+ * references held against garbage collection for the geom and the flexcomp, a
+ * pivot cache for the body, and the imported UAsset a file-backed mesh or
+ * texture stands for. Everything else an element does that is not a schema
+ * attribute lives in a runtime function library instead, so this list does not
+ * grow with the schema.
+ *
+ * Registration is process-wide and every registration has to happen before the
+ * first spec is read, which is what module startup is.
+ */
+void RegisterHandElementClasses()
+{
+#if URLAB_MJ_GEN
+	using urlab::spec::psm::ElementType;
+	urlab::spec::MjSetElementClass(ElementType::Body, UMjBody::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Camera, UMjCamera::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Flexcomp, UMjFlexcomp::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Geom, UMjGeom::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Mesh, UMjMesh::StaticClass());
+	urlab::spec::MjSetElementClass(ElementType::Texture, UMjTexture::StaticClass());
+#endif
+}
+}  // namespace
+
 void FURLabModule::StartupModule()
 {
+	RegisterHandElementClasses();
+
+#if URLAB_MJ_GEN
+	// A hook the schema names and nobody registered is a write that vanishes
+	// silently, one element family at a time, so it is asserted here rather
+	// than discovered by a model that compiles to the wrong thing.
+	{
+		TArray<FString> Missing;
+		checkf(urlab::spec::SpecWriteRegistryComplete(&Missing),
+			TEXT("the spec write has no hook registered under: %s"),
+			*FString::Join(Missing, TEXT(", ")));
+	}
+#endif
+
 	FString PluginDir = IPluginManager::Get().FindPlugin("UnrealRoboticsLab")->GetBaseDir();
 	FString InstallDir = FPaths::Combine(PluginDir, TEXT("third_party/install"));
 

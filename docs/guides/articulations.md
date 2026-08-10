@@ -39,6 +39,43 @@ The component's variable name in the tree becomes the MuJoCo element name, so na
 
 When you add a sensor, actuator, default, tendon, contact, or equality, URLab automatically moves it into the matching folder. Components placed under `DefaultsRoot` are left where you put them.
 
+## Reading the Details panel
+
+Every property on a MuJoCo component is generated from MJCF's own schema, so the
+panel is laid out the way the schema is.
+
+- **Categories.** Everything sits under **MuJoCo**, then the element:
+  `MuJoCo > Geom`, `MuJoCo > Joint`. Where MJCF itself groups attributes —
+  an actuator's transmission, a sensor's common settings — the panel adds that
+  group as a sub-category.
+- **Advanced.** Solver parameters (`solref`, `solimp`, `margin`, `gap`), the
+  `user` payload and rendering hints sit behind the **Advanced** disclosure
+  arrow at the bottom of a category. They are ordinary editable properties;
+  they are just not the ones you reach for first.
+- **Tooltips.** Hovering a property shows the schema's own description of the
+  attribute and the MJCF name it writes, so you can match a property to the
+  MJCF you would have written by hand.
+- **Unset versus set.** Most properties are optional. An unset property is not
+  written to MJCF at all, which lets the value fall through to a default class
+  or to MuJoCo's own default. Use the checkbox beside a property to set or
+  clear it.
+
+!!! warning "Multi-selecting components whose optionals differ"
+
+    Select several components at once and a property that is **set on some and
+    unset on others** does not show a value editor. In its place Unreal shows a
+    three-item dropdown: *Multiple States*, *Set all to Value*, *Set all to
+    None*.
+
+    While the selection is mixed there is no way to edit the underlying value,
+    and no way to edit only some of the selected components. Pick one of the two
+    "Set all" entries to bring the selection into agreement, and the normal
+    editor comes back.
+
+    This is Unreal's own optional-property widget, not something URLab
+    configures. Selecting components whose properties are all set, or all unset,
+    is unaffected.
+
 ## Cross-references use dropdowns
 
 Most references between components are dropdown pickers, not typed strings. An actuator's **Target** lists the joints, tendons, sites, or bodies valid for its transmission type; a sensor's **Target** lists the objects valid for its type; contact pairs pick two geoms; equalities pick two objects. The dropdowns read and write the underlying string properties that the MuJoCo spec uses.

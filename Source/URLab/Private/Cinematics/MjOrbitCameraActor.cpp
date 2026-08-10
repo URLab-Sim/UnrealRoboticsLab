@@ -22,7 +22,7 @@
 #include "Cinematics/MjOrbitCameraActor.h"
 #include "mujoco/mujoco.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Elements/MjBody.h"
 #include "Replay/MjReplayManager.h"
 #include "CineCameraComponent.h"
 #include "Components/BoxComponent.h"
@@ -120,7 +120,7 @@ void AMjOrbitCameraActor::SetTarget(AMjArticulation* NewTarget)
 		UMjBody* FirstNonDefault = nullptr;
 		for (UMjBody* B : Bodies)
 		{
-			if (B->bIsDefault)
+			if (false)
 				continue;
 			if (!FirstNonDefault)
 				FirstNonDefault = B;
@@ -354,7 +354,7 @@ void AMjOrbitCameraActor::Tick(float DeltaTime)
 			FVector Min(FLT_MAX), Max(-FLT_MAX);
 			for (UMjBody* B : Bodies)
 			{
-				if (!B->bIsDefault)
+				if (!false)
 				{
 					FVector Loc = B->GetComponentLocation();
 					Min = Min.ComponentMin(Loc);

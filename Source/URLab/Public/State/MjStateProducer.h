@@ -28,6 +28,10 @@
 
 struct FMjArticulationState;
 struct FMjStateSnapshot;
+struct mjModel_;
+struct mjData_;
+typedef mjModel_ mjModel;
+typedef mjData_ mjData;
 
 UINTERFACE(MinimalAPI)
 class UMjStateProducer : public UInterface
@@ -41,10 +45,13 @@ class UMjStateProducer : public UInterface
  * encoders (msgpack, ...) read it afterwards.
  *
  * Both methods run on the physics thread inside the engine's CallbackMutex, the
- * same contract UMjComponent::DescribeState has today. Implementers must not
+ * same contract element state production has. Implementers must not
  * allocate UObjects, must not touch game-thread-only state, and must stay cheap;
  * they run once per physics step. Values are exposed through atomics or a lock
  * (see UMjUserChannelComponent's mailbox), not by reading arbitrary game state.
+ *
+ * The compiled model and its data arrive as call parameters for the duration of
+ * that fenced scope; producers read them there and never retain them.
  *
  * Scope is resolved by the collector at cache-rebuild time on the game thread: a
  * producer owned by (or attached under) an AMjArticulation contributes through
@@ -57,7 +64,7 @@ class URLAB_API IMjStateProducer
 
 public:
 	/** Art-scoped: called when the producer is cached under an articulation. */
-	virtual void DescribeState(FMjArticulationState& Out) const {}
+	virtual void DescribeState(const mjModel* m, mjData* d, FMjArticulationState& Out) const {}
 
 	/** Scene-scoped: called for producers not owned by any articulation. */
 	virtual void DescribeSceneState(FMjStateSnapshot& Out) const {}

@@ -23,7 +23,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -40,16 +40,30 @@
 namespace
 {
 /**
- * Spawn a UMjCamera on the test articulation with the given mode and enable streaming.
- * Returns the camera so callers can inspect state after configuration.
+ * Author a `<camera>` on the test articulation's body with the given mode.
+ *
+ * The element is created through the spec factory, so the object built is
+ * whatever class is registered for `<camera>` -- UMjCamera, which is what every
+ * assertion here is about.
  */
+UMjCamera* AddCamera(FMjUESession& Sess, const TCHAR* Name, EMjCameraMode Mode)
+{
+	UMjCamera* Cam = Cast<UMjCamera>(Sess.Add<UMjCameraBase>(Sess.Body, Name));
+	if (Cam != nullptr)
+	{
+		Cam->CaptureMode = Mode;
+	}
+	return Cam;
+}
+
+/** As above, plus streaming enabled, for the tests that inspect the render target. */
 UMjCamera* SpawnCameraAndStream(FMjUESession& Sess, EMjCameraMode Mode)
 {
-	UMjCamera* Cam = NewObject<UMjCamera>(Sess.Robot, TEXT("TestCamera"));
-	Cam->CaptureMode = Mode;
-	Cam->RegisterComponent();
-	Cam->AttachToComponent(Sess.Body, FAttachmentTransformRules::KeepRelativeTransform);
-	Cam->SetStreamingEnabled(true);
+	UMjCamera* Cam = AddCamera(Sess, TEXT("TestCamera"), Mode);
+	if (Cam != nullptr)
+	{
+		Cam->SetStreamingEnabled(true);
+	}
 	return Cam;
 }
 } // namespace
@@ -78,14 +92,14 @@ bool FMjCameraRealModeConfig::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	if (!TestNotNull(TEXT("RT"), Cam->RenderTarget))
+	if (!TestNotNull(TEXT("RT"), Cam->RenderTarget.Get()))
 	{
 		S.Cleanup();
 		return false;
 	}
 	TestEqual(TEXT("RT format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_RGBA8);
 
-	if (TestNotNull(TEXT("capture component"), Cam->CaptureComponent))
+	if (TestNotNull(TEXT("capture component"), Cam->CaptureComponent.Get()))
 	{
 		TestEqual(TEXT("capture source"),
 			(int32)Cam->CaptureComponent->CaptureSource,
@@ -120,14 +134,14 @@ bool FMjCameraDepthModeConfig::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	if (!TestNotNull(TEXT("RT"), Cam->RenderTarget))
+	if (!TestNotNull(TEXT("RT"), Cam->RenderTarget.Get()))
 	{
 		S.Cleanup();
 		return false;
 	}
 	TestEqual(TEXT("RT format"), (int32)Cam->RenderTarget->RenderTargetFormat, (int32)ETextureRenderTargetFormat::RTF_R32f);
 
-	if (TestNotNull(TEXT("capture component"), Cam->CaptureComponent))
+	if (TestNotNull(TEXT("capture component"), Cam->CaptureComponent.Get()))
 	{
 		TestEqual(TEXT("capture source"),
 			(int32)Cam->CaptureComponent->CaptureSource,
@@ -176,7 +190,7 @@ bool FMjCameraModeCycleRebuildsRT::RunTest(const FString& Parameters)
 
 	Cam->CaptureMode = EMjCameraMode::Depth;
 	Cam->SetStreamingEnabled(true);
-	if (!TestNotNull(TEXT("RT rebuilt"), Cam->RenderTarget))
+	if (!TestNotNull(TEXT("RT rebuilt"), Cam->RenderTarget.Get()))
 	{
 		S.Cleanup();
 		return false;
@@ -230,15 +244,13 @@ bool FMjCameraSegPoolRefcount::RunTest(const FString& Parameters)
 	ChildMesh->RegisterComponent();
 	ChildMesh->AttachToComponent(S.Geom, FAttachmentTransformRules::KeepRelativeTransform);
 
-	UMjCamera* CamA = NewObject<UMjCamera>(S.Robot, TEXT("CamA"));
-	CamA->CaptureMode = EMjCameraMode::InstanceSegmentation;
-	CamA->RegisterComponent();
-	CamA->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
-
-	UMjCamera* CamB = NewObject<UMjCamera>(S.Robot, TEXT("CamB"));
-	CamB->CaptureMode = EMjCameraMode::InstanceSegmentation;
-	CamB->RegisterComponent();
-	CamB->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	UMjCamera* CamA = AddCamera(S, TEXT("CamA"), EMjCameraMode::InstanceSegmentation);
+	UMjCamera* CamB = AddCamera(S, TEXT("CamB"), EMjCameraMode::InstanceSegmentation);
+	if (!TestNotNull(TEXT("CamA"), CamA) || !TestNotNull(TEXT("CamB"), CamB))
+	{
+		S.Cleanup();
+		return false;
+	}
 
 	TArray<UPrimitiveComponent*> PoolA;
 	Viz->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamA, PoolA);
@@ -297,13 +309,15 @@ bool FMjCameraSegWiresShowOnly::RunTest(const FString& Parameters)
 	ChildMesh->RegisterComponent();
 	ChildMesh->AttachToComponent(S.Geom, FAttachmentTransformRules::KeepRelativeTransform);
 
-	UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("SegCam"));
-	Cam->CaptureMode = EMjCameraMode::InstanceSegmentation;
-	Cam->RegisterComponent();
-	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	UMjCamera* Cam = AddCamera(S, TEXT("SegCam"), EMjCameraMode::InstanceSegmentation);
+	if (!TestNotNull(TEXT("camera"), Cam))
+	{
+		S.Cleanup();
+		return false;
+	}
 	Cam->SetStreamingEnabled(true);
 
-	if (!TestNotNull(TEXT("capture component"), Cam->CaptureComponent))
+	if (!TestNotNull(TEXT("capture component"), Cam->CaptureComponent.Get()))
 	{
 		S.Cleanup();
 		return false;
@@ -355,19 +369,17 @@ bool FMjCameraNonSegHidesSiblings::RunTest(const FString& Parameters)
 	ChildMesh->AttachToComponent(S.Geom, FAttachmentTransformRules::KeepRelativeTransform);
 
 	// Start the seg camera first so the pool exists when the Real camera subscribes.
-	UMjCamera* Seg = NewObject<UMjCamera>(S.Robot, TEXT("SegCam"));
-	Seg->CaptureMode = EMjCameraMode::InstanceSegmentation;
-	Seg->RegisterComponent();
-	Seg->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	UMjCamera* Seg = AddCamera(S, TEXT("SegCam"), EMjCameraMode::InstanceSegmentation);
+	UMjCamera* Real = AddCamera(S, TEXT("RealCam"), EMjCameraMode::Real);
+	if (!TestNotNull(TEXT("seg camera"), Seg) || !TestNotNull(TEXT("real camera"), Real))
+	{
+		S.Cleanup();
+		return false;
+	}
 	Seg->SetStreamingEnabled(true);
-
-	UMjCamera* Real = NewObject<UMjCamera>(S.Robot, TEXT("RealCam"));
-	Real->CaptureMode = EMjCameraMode::Real;
-	Real->RegisterComponent();
-	Real->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
 	Real->SetStreamingEnabled(true);
 
-	if (!TestNotNull(TEXT("real capture component"), Real->CaptureComponent))
+	if (!TestNotNull(TEXT("real capture component"), Real->CaptureComponent.Get()))
 	{
 		S.Cleanup();
 		return false;
@@ -467,9 +479,12 @@ bool FMjCameraCanonicalName::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjCamera* Cam = NewObject<UMjCamera>(S.Robot, TEXT("WristCam"));
-	Cam->RegisterComponent();
-	Cam->AttachToComponent(S.Body, FAttachmentTransformRules::KeepRelativeTransform);
+	UMjCamera* Cam = AddCamera(S, TEXT("WristCam"), EMjCameraMode::Real);
+	if (!TestNotNull(TEXT("camera"), Cam))
+	{
+		S.Cleanup();
+		return false;
+	}
 
 	const FString ArtSeg = FMjCanonicalName::ArtSegment(S.Robot).ToString();
 	const FString Canon = Cam->GetCanonicalName();

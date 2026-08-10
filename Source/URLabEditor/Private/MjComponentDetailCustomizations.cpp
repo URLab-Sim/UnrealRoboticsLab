@@ -28,7 +28,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
 
-#include "MuJoCo/Components/Geometry/MjGeom.h"
+#include "MuJoCo/Elements/MjGeom.h"
 
 // ============================================================================
 // Geom — adds CoACD decomposition buttons (the only non-hiding logic).
@@ -42,6 +42,14 @@ TSharedRef<IDetailCustomization> FMjGeomDetailCustomization::MakeInstance()
 
 void FMjGeomDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 {
+
+	// Deliberately NOT calling the inherited-value pass here. The editor runs
+	// every layout registered along the class chain, so the one registered
+	// against `UMjNodeComponent` already ran for this geom before this did.
+	// Calling it again customised the same rows twice, and the second pass reset
+	// each row before rebuilding it, which is what discarded the first pass's
+	// widgets.
+
 	TArray<TWeakObjectPtr<UObject>> Objects;
 	DetailBuilder.GetObjectsBeingCustomized(Objects);
 
@@ -52,10 +60,16 @@ void FMjGeomDetailCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBu
 		return;
 
 	// Decomposition buttons (only for mesh geoms).
-	if (WeakGeom->Type != EMjGeomType::Mesh)
+	if (WeakGeom->GetType() != EMjGeomType::mesh)
 		return;
 
-	IDetailCategoryBuilder& DecompCategory = DetailBuilder.EditCategory("MuJoCo|Geom|Decomposition");
+	// A sibling of `MuJoCo|Geom`, never a child of it. Unreal reads `A|B|C` as a
+	// nested path, so a category under the generated attributes' own category
+	// creates that parent implicitly and early, while the attributes' real
+	// category is created late by the first row that lands in it. The panel then
+	// draws two Geom sections: the early one holding uncustomised rows and the
+	// late one holding the inherited-value rows nobody could find.
+	IDetailCategoryBuilder& DecompCategory = DetailBuilder.EditCategory("MuJoCo|Decomposition");
 
 	DecompCategory.AddCustomRow(FText::FromString("Decompose"))
 		.NameContent()

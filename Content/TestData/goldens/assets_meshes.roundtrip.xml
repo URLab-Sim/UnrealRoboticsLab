@@ -1,0 +1,22 @@
+<mujoco model="assets_meshes">
+  <asset>
+    <mesh name="mesh_a" file="meshA/base.obj"/>
+    <mesh name="mesh_b" file="meshB/base.obj"/>
+    <hfield name="hf_small" nrow="2" ncol="2" size="1 1 0.5 0.1" elevation="0 0.25 0.5 0.75"/>
+    <texture name="tex_checker" type="2d" file="checker.png"/>
+    <material name="mat_checker" texrepeat="1 1">
+      <layer texture="tex_checker" role="rgb"/>
+    </material>
+  </asset>
+  <worldbody>
+    <geom name="geom_hfield" type="hfield" pos="0 0 0" hfield="hf_small"/>
+    <body name="body_mesh_a" pos="2 0 0.5">
+      <freejoint name="jf_mesh_a"/>
+      <geom name="geom_mesh_a" type="mesh" material="mat_checker" mesh="mesh_a"/>
+    </body>
+    <body name="body_mesh_b" pos="4 0 0.5">
+      <freejoint name="jf_mesh_b"/>
+      <geom name="geom_mesh_b" type="mesh" material="mat_checker" mesh="mesh_b"/>
+    </body>
+  </worldbody>
+</mujoco>

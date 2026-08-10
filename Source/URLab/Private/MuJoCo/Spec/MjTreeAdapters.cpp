@@ -80,6 +80,13 @@ TArray<FMjOrderedChild> MjOrderedChildrenOf(const FSpecRef& Spec, UMjNodeCompone
 void MjSortSpecOrder(TArray<FMjOrderedChild>& Children)
 {
 	Algo::StableSort(Children, [](const FMjOrderedChild& A, const FMjOrderedChild& B) {
+		// A child with no node cannot be ordered against one that has one, so it
+		// goes last rather than being dereferenced. Nulls order equal to each
+		// other, which keeps this a strict weak ordering.
+		if (A.Node == nullptr || B.Node == nullptr)
+		{
+			return A.Node != nullptr && B.Node == nullptr;
+		}
 		if (A.Slot != B.Slot)
 		{
 			return A.Slot < B.Slot;

@@ -41,6 +41,8 @@
 #include "Engine/Blueprint.h"
 #include "Engine/SCS_Node.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
 #include "MjParitySupport.h"
 
@@ -412,6 +414,121 @@ bool FMjSizeArityReported::RunTest(const FString& Parameters)
 		TestEqual(TEXT("a capsule site's half-length is its second"), Compiled->site_size[3 * Dot + 1], 0.05);
 	}
 	mj_deleteModel(Compiled);
+
+	return !HasAnyErrors();
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSizeArityResolvesAnInheritedType,
+	"URLab.Spec.SizeArityResolvesAnInheritedType",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSizeArityResolvesAnInheritedType::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	// A nested `<default>` tree where the inner classes author a `size` and no
+	// `type`: they inherit `type="box"`, so three values is exactly right for
+	// every one of them. This is the shape a menagerie model is written in, and
+	// it is the shape a checker that reads a partial's OWN type gets wrong --
+	// an unauthored `type` reads as the schema's `sphere`, whose arity is one,
+	// and every class partial in the document is accused of authoring two size
+	// values too many.
+	const TCHAR* const Nested = TEXT(R"(<mujoco model="nested">
+  <default>
+    <default class="top">
+      <geom type="box" size="0.1 0.1 0.1"/>
+      <default class="mid">
+        <geom size="0.05 0.05 0.05"/>
+        <default class="leaf">
+          <geom size="0.025 0.025 0.025"/>
+        </default>
+      </default>
+    </default>
+  </default>
+  <worldbody>
+    <body name="link" childclass="top">
+      <geom name="outer"/>
+      <geom name="inner" class="leaf"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjArityNested"), TEXT("nested"), Nested, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	const FSpecRef Spec = FSpecRef::OverBlueprint(*Blueprint);
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	urlab::spec::FMjBuiltSpec Built = urlab::spec::BuildSpec(Spec, Diagnostics);
+	if (!TestNotNull(TEXT("the nested-defaults document builds"), Built.Spec))
+	{
+		return false;
+	}
+
+	TArray<FString> Accused;
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		if (Diagnostic.Message.Contains(TEXT("size values")))
+		{
+			Accused.Add(Diagnostic.Message);
+		}
+	}
+	TestEqual(FString::Printf(TEXT("nothing in a legal nested-defaults document is reported, got: %s"),
+				  *FString::Join(Accused, TEXT(" / "))),
+		Accused.Num(), 0);
+
+	// And the document really did compile the boxes it says it did, so the
+	// silence above is the checker agreeing rather than the fixture being empty.
+	mjVFS Vfs;
+	mj_defaultVFS(&Vfs);
+	mjModel* const Compiled = mj_compile(Built.Spec, &Vfs);
+	mj_deleteVFS(&Vfs);
+	if (!TestNotNull(TEXT("the nested-defaults document compiles"), Compiled))
+	{
+		return false;
+	}
+	const int32 Inner = mj_name2id(Compiled, mjOBJ_GEOM, "inner");
+	if (TestTrue(TEXT("the leaf-class geom compiled"), Inner >= 0))
+	{
+		TestEqual(TEXT("it inherited its type from three classes up"),
+			static_cast<int32>(Compiled->geom_type[Inner]), static_cast<int32>(mjGEOM_BOX));
+		TestEqual(TEXT("and reads all three of its half-extents"), Compiled->geom_size[3 * Inner + 2], 0.025);
+	}
+	mj_deleteModel(Compiled);
+
+	// The fixture the false positive was found on, by name. The inline document
+	// above states the shape; this one is the file a reader would go and open.
+	const FString Fixture = FPaths::Combine(MjParitySupport::ParityDir(), TEXT("defaults_nested.xml"));
+	FString Authored;
+	if (TestTrue(FString::Printf(TEXT("the nested-defaults fixture is on disk at '%s'"), *Fixture),
+			FFileHelper::LoadFileToString(Authored, *Fixture)))
+	{
+		UBlueprint* const FromFile =
+			MjParitySupport::ParseFixture(*this, TEXT("MjArityFixture"), TEXT("defaults_nested"), Authored, Fixture);
+		if (FromFile != nullptr)
+		{
+			TArray<FMjSpecDiagnostic> FixtureDiagnostics;
+			urlab::spec::FMjBuiltSpec FixtureBuilt =
+				urlab::spec::BuildSpec(FSpecRef::OverBlueprint(*FromFile), FixtureDiagnostics);
+			TestNotNull(TEXT("the fixture builds"), FixtureBuilt.Spec);
+
+			TArray<FString> FixtureAccused;
+			for (const FMjSpecDiagnostic& Diagnostic : FixtureDiagnostics)
+			{
+				if (Diagnostic.Message.Contains(TEXT("size values")))
+				{
+					FixtureAccused.Add(Diagnostic.Message);
+				}
+			}
+			TestEqual(FString::Printf(TEXT("defaults_nested.xml is not accused of anything, got: %s"),
+						  *FString::Join(FixtureAccused, TEXT(" / "))),
+				FixtureAccused.Num(), 0);
+		}
+	}
 
 	return !HasAnyErrors();
 }

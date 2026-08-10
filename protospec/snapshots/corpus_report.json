@@ -1,0 +1,44 @@
+{
+  "corpus": {
+    "total_files": 404,
+    "mjcf": 404,
+    "include_fragment": 0,
+    "non_mjcf": 0,
+    "unparseable": 0
+  },
+  "usage": {
+    "elements": 31147,
+    "pairs": 30681,
+    "attributes": 93887,
+    "enum_values": 7897
+  },
+  "coverage": {
+    "distinct_elements": 162,
+    "unknown_elements": 0,
+    "elements_covered_pct": 100.0,
+    "distinct_pairs": 160,
+    "unknown_pairs": 0,
+    "pairs_covered_pct": 100.0,
+    "distinct_attributes": 645,
+    "unknown_attributes": 1,
+    "attributes_covered_pct": 99.84,
+    "distinct_enum_values": 172,
+    "unknown_enum_values": 0,
+    "enum_values_covered_pct": 100.0
+  },
+  "unknown": {
+    "elements": [],
+    "pairs": [],
+    "attributes": [
+      {
+        "element": "Replicate",
+        "attribute": "prefix",
+        "files_count": 1,
+        "example_files": [
+          "test/engine/testdata/collision_primitive/spheres_cylinders.xml"
+        ]
+      }
+    ],
+    "enum_values": []
+  }
+}

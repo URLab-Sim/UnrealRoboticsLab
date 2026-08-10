@@ -1,0 +1,24 @@
+[project]
+name = "protospec"
+version = "0.0.1"
+description = "IDL-driven object model generator for MuJoCo models"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "asan: AddressSanitizer pass (opt-in; needs an ASan build). Run with `pytest -m asan` and PROTOSPEC_RUN_ASAN=1; see tools/run_asan.ps1 / tools/run_asan.sh.",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["protospec_gen"]

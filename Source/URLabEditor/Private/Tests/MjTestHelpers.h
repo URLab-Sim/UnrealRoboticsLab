@@ -255,7 +255,7 @@ struct FMjUESession
 			LastError = TEXT("could not create the geom or the joint");
 			return false;
 		}
-		Geom->SetSize({0.1, 0.1, 0.1});
+		Geom->SetSize({0.1});
 
 		Manager = World->SpawnActor<AAMjManager>(P);
 		if (!Manager)

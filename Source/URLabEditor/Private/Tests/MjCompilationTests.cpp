@@ -267,7 +267,7 @@ bool FMjCompileGeomSizeExported::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Geom->SetSize({0.3, 0.3, 0.3});
+			Sess.Geom->SetSize({0.3});
 		}))
 	{
 		AddError(FString::Printf(TEXT("Init failed: %s"), *S.LastError));
@@ -715,7 +715,7 @@ bool FMjCompileTendonExportTo::RunTest(const FString& Parameters)
 			UMjBody* Body2 = Sess.Add<UMjBody>(Sess.Body, TEXT("Body2"));
 
 			UMjGeom* Geom2 = Sess.Add<UMjGeom>(Body2, TEXT("Geom2"));
-			Geom2->SetSize({0.1, 0.1, 0.1});
+			Geom2->SetSize({0.1});
 
 			UMjJoint* Joint2 = Sess.Add<UMjJoint>(Body2, TEXT("Joint2"));
 			Joint2->SetType(EMjJointType::hinge);

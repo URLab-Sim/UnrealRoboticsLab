@@ -105,7 +105,7 @@ void BuildRobot(FMjUESession& Session)
 		}
 		if (UMjGeom* NewGeom = Session.Add<UMjGeom>(NewBody, *FString::Printf(TEXT("Shape%d"), i)))
 		{
-			NewGeom->SetSize({0.05, 0.05, 0.05});
+			NewGeom->SetSize({0.05});
 		}
 		Session.Add<UMjJoint>(NewBody, *FString::Printf(TEXT("Hinge%d"), i));
 	}

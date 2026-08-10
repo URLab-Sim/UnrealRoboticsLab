@@ -155,20 +155,14 @@ public:
 	// --- Size through the scale handle -------------------------------------- //
 	//
 	// A geom's `size` is authored with the scale gizmo, and the mapping from a
-	// size slot to a scale axis is one table in MjGeom.cpp. Both directions come
-	// off the same rows, so the round trip cannot drift.
+	// size slot to a scale axis is one table in MjScalePolicy.cpp -- shared,
+	// because `<site>` carries the same `type` enum and the same `size`, and a
+	// sphere is one radius whichever of the two is drawing it. The base class
+	// reads that table through the schema, so a geom overrides only what is a
+	// geom's alone.
 
-	/** The relative scale this geom's effective `size` and `type` imply. */
-	virtual bool TryPreviewScaleFromSpec(FVector& OutScale) const override;
-
-	/** True when the effective type is one of the four with a size mapping. */
-	virtual bool HasScaleMapping() const override;
-
-	/** Snap the scale onto the axes the effective type allows, visibly. */
+	/** Snap the scale onto the type's axes, then move the capsule's caps. */
 	virtual void ConstrainPreviewScale() override;
-
-	/** Author the whole `size` array for the effective type from a scale. */
-	virtual void WriteBackScale(const FVector& Scale) override;
 
 	// --- Mesh decomposition ------------------------------------------------- //
 
@@ -263,9 +257,6 @@ private:
 	 * mirrored.
 	 */
 	void UpdateCapTransforms();
-
-	/** Fold the gizmo's scale back onto the axes the effective type allows. */
-	void ApplyAxisLock();
 
 	/** The type the current preview was built for; unset before the first build. */
 	TOptional<EMjGeomType> BuiltType;

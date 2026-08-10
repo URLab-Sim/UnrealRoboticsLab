@@ -12,6 +12,7 @@
 #include "GameFramework/Actor.h"
 #include "HAL/PlatformAtomics.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
+#include "MuJoCo/Spec/MjScalePolicy.h"
 #include "MuJoCo/Spec/MjSpecProfile.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjEffective.h"
@@ -605,6 +606,113 @@ bool UMjNodeComponent::HasPoseAttributes() const
 	return bHas;
 }
 
+// --- Scale, and what it is allowed to mean --------------------------------- //
+//
+// One implementation for every element, keyed by what the schema says the
+// element carries rather than by which class it is. That is what puts `<site>`
+// under the same per-type lock as `<geom>` without a second copy of the rule,
+// and what makes an element MuJoCo adds tomorrow behave the day it is
+// generated instead of the day someone remembers it.
+
+bool UMjNodeComponent::TryPreviewScaleFromSpec(FVector& OutScale) const
+{
+	EMjGeomType Type = EMjGeomType::sphere;
+	TArray<double> Size;
+	if (!urlab::spec::MjEffectiveShapeOf(*this, Type, Size))
+	{
+		return false;
+	}
+	const urlab::spec::FMjSizeShape& Shape = urlab::spec::MjSizeShapeFor(Type);
+	if (Shape.AxisNum == 0)
+	{
+		return false;
+	}
+
+	// An unresolvable size -- too short for the type, or non-positive -- leaves
+	// the scale alone rather than collapsing the element to nothing.
+	const FVector Scale = urlab::spec::MjScaleFromSize(Shape, Size);
+	if (Scale.GetMin() <= 0.0)
+	{
+		return false;
+	}
+	OutScale = Scale;
+	return true;
+}
+
+bool UMjNodeComponent::HasScaleMapping() const
+{
+	EMjGeomType Type = EMjGeomType::sphere;
+	TArray<double> Size;
+	if (!urlab::spec::MjEffectiveShapeOf(*this, Type, Size))
+	{
+		return false;
+	}
+	const urlab::spec::FMjSizeShape& Shape = urlab::spec::MjSizeShapeFor(Type);
+	return Shape.AxisNum > 0 && !Shape.bSizeIsReadOnly;
+}
+
+void UMjNodeComponent::ConstrainPreviewScale()
+{
+	const FVector Scale = GetRelativeScale3D();
+	FVector Locked = Scale;
+
+	EMjGeomType Type = EMjGeomType::sphere;
+	TArray<double> Size;
+	if (urlab::spec::MjEffectiveShapeOf(*this, Type, Size))
+	{
+		urlab::spec::MjApplyScaleLock(urlab::spec::MjSizeShapeFor(Type).Lock, Locked);
+	}
+	else
+	{
+		// The refusal. Nothing about this element's `size` -- it has none, or has
+		// one no scale expresses -- so a scaled component is a picture that
+		// disagrees with what will be simulated, and the honest answer is to put
+		// it back rather than to keep a distortion nobody can act on.
+		Locked = FVector::OneVector;
+	}
+
+	if (!Locked.Equals(Scale))
+	{
+		SetRelativeScale3D(Locked);
+	}
+}
+
+void UMjNodeComponent::WriteBackScale(const FVector& Scale)
+{
+	EMjGeomType Type = EMjGeomType::sphere;
+	TArray<double> Size;
+	if (!urlab::spec::MjEffectiveShapeOf(*this, Type, Size))
+	{
+		return;
+	}
+	const urlab::spec::FMjSizeShape& Shape = urlab::spec::MjSizeShapeFor(Type);
+	if (Shape.AxisNum == 0 || Shape.bSizeIsReadOnly)
+	{
+		return;
+	}
+
+	// Exactly the slots this type reads, which is the arity MuJoCo's own writer
+	// trims a `size` to. A drag can therefore never author an over-long one.
+	const TArray<double> Authored = urlab::spec::MjSizeFromScale(Shape, Scale);
+	using P = urlab::spec::FMjInstanceProfile;
+	urlab::spec::gen::DispatchByType(*this, [&Authored](auto& Element) {
+		using E = std::decay_t<decltype(Element)>;
+		const int FieldId =
+			pssdk::internal::FieldIdByName(urlab::spec::gen::TMjElementType<E>::Value, "size");
+		if (FieldId < 0)
+		{
+			return;
+		}
+		double Slots[3] = {0.0, 0.0, 0.0};
+		const int32 Num = FMath::Min(Authored.Num(), 3);
+		for (int32 Index = 0; Index < Num; ++Index)
+		{
+			Slots[Index] = Authored[Index];
+		}
+		pssdk::internal::SetSeqField<P>(Element, FieldId, Slots, static_cast<std::size_t>(Num));
+	});
+}
+
 // --- What an element is in the spec ------------------------------------ //
 
 namespace
@@ -767,7 +875,14 @@ bool UMjNodeComponent::ComputePreviewTransform(FTransform& Out)
 	// A pose no layer authored previews at the schema default (origin, identity),
 	// which is what MuJoCo compiles it to. Reading it back out of the preview is
 	// what the write-back's change detector then suppresses.
-	FVector Scale = GetRelativeScale3D();
+	//
+	// And a scale no layer authored previews at the shape's own default, which
+	// for every element that has no resolvable size is one. NOT the component's
+	// current scale: this transform is the write-back's baseline whenever the
+	// cache is cold, and seeding it from the very component the user is dragging
+	// folds the drag into the baseline -- "nothing moved", no snap, and a sphere
+	// that previews as an ellipsoid while compiling as MuJoCo's default sphere.
+	FVector Scale = FVector::OneVector;
 	TryPreviewScaleFromSpec(Scale);
 	Out = FTransform(URLabAxisConv::MjQuatToUe(MjQuat), URLabAxisConv::MjPositionToUe(MjPos), Scale);
 	return true;
@@ -820,15 +935,28 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 		LastPreviewTransform = FromSpec;
 	}
 
-	// Moving the actor delivers this hook to every descendant, and not one of
-	// their relative transforms changed. The baseline answers that on its own,
-	// and it has to: both the scale snap below and the scale mapping resolve the
-	// default-class chain, which indexes the entire spec once per element
-	// that asks. Answering N of those per mouse-move is the whole cost.
+	// The scale is settled BEFORE anything is compared, so the comparison and
+	// the spec both see a scale the element can actually hold. The lock used to
+	// run after the early-out below, which meant it never ran at all in the one
+	// case it exists for: a freshly added geom whose baseline was cold and whose
+	// size was unset folded the dragged scale into its own baseline, "nothing
+	// moved", and the non-uniform scale stood.
 	//
-	// The snap is skipped along with the rest, and is a no-op in this case by
-	// construction: the baseline's scale came from the spec through the
-	// shape's own size mapping, so it is already a scale the shape can hold.
+	// Guarded on the scale differing, and that guard is the cost, not the
+	// correctness: moving an actor delivers this hook to every descendant, not
+	// one of whose relative transforms changed, and resolving a shape indexes
+	// the entire spec once per element that asks. A descendant that did not move
+	// matches its baseline on all three components, and its baseline scale came
+	// from the spec through the shape's own mapping, so the snap would be a
+	// no-op there by construction.
+	const FVector CurrentScale = GetRelativeScale3D();
+	TUniquePtr<urlab::spec::FMjEffectiveScope> Effective;
+	if (!LastPreviewTransform->GetScale3D().Equals(CurrentScale, MjPreviewEpsilon))
+	{
+		Effective = MakeUnique<urlab::spec::FMjEffectiveScope>(*this);
+		ConstrainPreviewScale();
+	}
+
 	if (LastPreviewTransform->Equals(
 			FTransform(GetRelativeRotation().Quaternion(), GetRelativeLocation(), GetRelativeScale3D()),
 			MjPreviewEpsilon))
@@ -839,11 +967,10 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	// Past the early-out, so the descendants of a moving actor never pay for it:
 	// everything below resolves the class chain more than once, and each instance
 	// below opens its own, an instance being a separate spec with its own root.
-	urlab::spec::FMjEffectiveScope Effective(*this);
-
-	// Snap first, so the comparison and the spec both see a scale the shape
-	// can actually hold.
-	ConstrainPreviewScale();
+	if (!Effective.IsValid())
+	{
+		Effective = MakeUnique<urlab::spec::FMjEffectiveScope>(*this);
+	}
 
 	// The pose this element was at before the drag. It is the baseline the change
 	// detector uses below, and it is also how the propagation at the end tells an
@@ -1017,6 +1144,29 @@ void UMjNodeComponent::RefreshPresentation()
 }
 
 void UMjNodeComponent::RefreshSpecPresentation()
+{
+}
+
+// The scale policy is a question about the schema, and without the generated
+// profile there is no schema to ask: every element answers "no size" and the
+// scale handle is left alone, which is what this build did before there was a
+// policy at all.
+
+bool UMjNodeComponent::TryPreviewScaleFromSpec(FVector& OutScale) const
+{
+	return false;
+}
+
+bool UMjNodeComponent::HasScaleMapping() const
+{
+	return false;
+}
+
+void UMjNodeComponent::ConstrainPreviewScale()
+{
+}
+
+void UMjNodeComponent::WriteBackScale(const FVector& Scale)
 {
 }
 

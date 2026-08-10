@@ -293,30 +293,40 @@ public:
 	 */
 	void RefreshSpecPresentation();
 
+	// --- Scale, and what it is allowed to mean ----------------------------- //
+	//
+	// Which of the three answers an element gets is a fact about the schema, not
+	// a list kept here: see `MjScalePolicy.h`. A `<geom>` and a `<site>` both
+	// carry a `size` a GeomType decides, so both are edited by the scale handle
+	// under their own type's lock; an element with no size refuses the drag by
+	// snapping back to one, because a scale it cannot express is a picture that
+	// disagrees with the simulation.
+
 	/**
 	 * The relative scale this element's effective size implies, if any.
 	 *
-	 * Only `<geom>` overrides this: its `size` is authored through the scale
-	 * handle, and the mapping from a size slot to a scale axis is a table there.
-	 * Everything else has no size the transform can carry and says so.
+	 * False for an element with no size, and for one whose size cannot be
+	 * resolved -- too short for its type, or non-positive -- which leaves the
+	 * component where it is rather than collapsing it to nothing.
 	 */
-	virtual bool TryPreviewScaleFromSpec(FVector& OutScale) const { return false; }
+	virtual bool TryPreviewScaleFromSpec(FVector& OutScale) const;
 
 	/** True when a scale drag is an edit of this element's size. */
-	virtual bool HasScaleMapping() const { return false; }
+	virtual bool HasScaleMapping() const;
 
 	/**
-	 * Snap the component's scale onto what this element's shape can represent.
+	 * Snap the component's scale onto what this element can represent.
 	 *
 	 * A sphere has one radius, so a non-uniform drag has no meaning; the rule is
-	 * to constrain visibly rather than to pick a component or to refuse. Runs
-	 * before the write-back compares, so the user sees the snap on the spot and
-	 * the spec only ever receives a representable scale.
+	 * to constrain visibly rather than to pick a component or to refuse. An
+	 * element with no size at all has no such rule to apply and snaps back to
+	 * one. Runs before the write-back compares, so the user sees the snap on the
+	 * spot and the spec only ever receives a representable scale.
 	 */
-	virtual void ConstrainPreviewScale() {}
+	virtual void ConstrainPreviewScale();
 
-	/** Author this element's size from a relative scale. Only `<geom>` does. */
-	virtual void WriteBackScale(const FVector& Scale) {}
+	/** Author this element's size from a relative scale, under its own arity. */
+	virtual void WriteBackScale(const FVector& Scale);
 
 	// --- Reference dropdowns ----------------------------------------------- //
 

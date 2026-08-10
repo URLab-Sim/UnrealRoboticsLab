@@ -210,7 +210,7 @@ UMjBody* AddHingeBody(FMjUESession& Session, const TCHAR* BodyName, const TCHAR*
 	// body without inertia, so every body authored here carries one.
 	if (UMjGeom* NewGeom = Session.Add<UMjGeom>(NewBody))
 	{
-		NewGeom->SetSize({0.1, 0.1, 0.1});
+		NewGeom->SetSize({0.1});
 	}
 	Session.Add<UMjJoint>(NewBody, JointName);
 	return NewBody;
@@ -249,7 +249,7 @@ UMjBody* AddOffsetBody(FMjUESession& S, const TCHAR* Name, const FMjPosition3& P
 	NewBody->SetPos(Pos);
 	if (UMjGeom* const Geom = S.Add<UMjGeom>(NewBody))
 	{
-		Geom->SetSize({Size, Size, Size});
+		Geom->SetSize({Size});
 	}
 	return NewBody;
 }
@@ -597,7 +597,7 @@ bool FMjRecompileCarriesStateThroughAValueEdit::RunTest(const FString& Parameter
 		return false;
 	}
 
-	S.Geom->SetSize({0.25, 0.25, 0.25});
+	S.Geom->SetSize({0.25});
 
 	if (!S.Recompile())
 	{

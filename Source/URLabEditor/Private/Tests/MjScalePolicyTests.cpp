@@ -1,0 +1,476 @@
+// Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+
+// What a scale handle is allowed to do to an element.
+//
+// MJCF has no scale, so a component's scale is an editor of the element's
+// `size` or it is a lie about what will be simulated. Three things are asserted
+// here, and each of them failed at some point in exactly one way:
+//
+//   the lock runs at all      A sphere is one radius, and the per-type lock that
+//                             says so was correct and was being SKIPPED: a
+//                             freshly added geom has no cached baseline and no
+//                             authored size, the baseline was seeded from the
+//                             component being dragged, the change detector said
+//                             nothing had moved, and a three-radii sphere stood.
+//
+//   sites are elements too    `<site>` carries the same `type` enum and the same
+//                             `size` as `<geom>`, and nothing but geom had any
+//                             scale policy at all. A sized element that is not a
+//                             geom is the case a hand-written list of "things
+//                             with a size" gets wrong, so it has its own tests.
+//
+//   nothing is left over      The set of elements that carry both a transform
+//                             and a size is read off the schema, and every
+//                             member of it is classified. A MuJoCo release that
+//                             adds one fails here by name rather than silently
+//                             falling through to the refusal.
+
+#include "CoreMinimal.h"
+#include "Misc/AutomationTest.h"
+
+#include "MuJoCo/Spec/MjGenHooks.h"
+
+#if URLAB_MJ_GEN && WITH_EDITOR
+
+#include "Engine/Blueprint.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
+
+#include "MjParitySupport.h"
+
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjScalePolicy.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
+
+THIRD_PARTY_INCLUDES_START
+#include "reflect.h"
+THIRD_PARTY_INCLUDES_END
+
+#include <string>
+
+namespace MjScalePolicyTests
+{
+using namespace urlab::spec;
+
+/** A schema name, which reflection hands out as a view rather than a string. */
+FString NameOfType(psm::ElementType Type)
+{
+	const std::string Name(psm::reflect::Describe(Type).name);
+	return FString(UTF8_TO_TCHAR(Name.c_str()));
+}
+
+/** One body, one named sphere geom, one named site. */
+const TCHAR* const Model = TEXT(R"(<mujoco model="scale_policy">
+  <worldbody>
+    <body name="link" pos="0.1 0.2 0.3">
+      <geom name="ball" type="sphere" size="0.05"/>
+      <site name="mount" type="capsule" size="0.01 0.05"/>
+    </body>
+  </worldbody>
+</mujoco>
+)");
+
+/** The template whose MJCF name is `MjName`, of any element type. */
+UMjNodeComponent* Named(UBlueprint& Blueprint, const TCHAR* MjName)
+{
+	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
+	{
+		UMjNodeComponent* const Element = Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
+		if (Element != nullptr && Element->MjName.IsSet() && Element->MjName.GetValue() == MjName)
+		{
+			return Element;
+		}
+	}
+	return nullptr;
+}
+
+/** The SCS node holding `Element`. */
+USCS_Node* NodeOf(UBlueprint& Blueprint, const UMjNodeComponent& Element)
+{
+	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
+	{
+		if (Node != nullptr && Node->ComponentTemplate == &Element)
+		{
+			return Node;
+		}
+	}
+	return nullptr;
+}
+
+/**
+ * A brand new element under `link`, exactly as the components panel adds one.
+ *
+ * Never registered and never synced, so it has no cached baseline -- which is
+ * the state the lock used to be skipped in, and the only state in which the
+ * defect reproduced.
+ */
+UMjNodeComponent* AddCold(FAutomationTestBase& Test, UBlueprint& Blueprint, UClass* Class, const TCHAR* Label)
+{
+	UMjNodeComponent* const Parent = Named(Blueprint, TEXT("link"));
+	USCS_Node* const ParentNode = Parent != nullptr ? NodeOf(Blueprint, *Parent) : nullptr;
+	if (ParentNode == nullptr)
+	{
+		Test.AddError(TEXT("the fixture has no body to add under"));
+		return nullptr;
+	}
+	USCS_Node* const Added = Blueprint.SimpleConstructionScript->CreateNode(Class, FName(Label));
+	if (Added == nullptr)
+	{
+		Test.AddError(FString::Printf(TEXT("could not create a %s node"), *Class->GetName()));
+		return nullptr;
+	}
+	ParentNode->AddChildNode(Added);
+	return Cast<UMjNodeComponent>(Added->ComponentTemplate);
+}
+
+/** Drag the scale handle, through the same hook both editor viewports call. */
+void DragScale(UMjNodeComponent& Element, const FVector& Scale)
+{
+	Element.SetRelativeScale3D(Scale);
+	Element.PostEditComponentMove(/*bFinished=*/true);
+}
+
+/** The element's authored `size`, or an empty array when it authored none. */
+TArray<double> AuthoredSize(const UMjNodeComponent& Element)
+{
+	if (const UMjGeomBase* const Geom = Cast<UMjGeomBase>(&Element))
+	{
+		return Geom->Size.Get(TArray<double>());
+	}
+	if (const UMjSite* const Site = Cast<UMjSite>(&Element))
+	{
+		return Site->Size.Get(TArray<double>());
+	}
+	return TArray<double>();
+}
+}  // namespace MjScalePolicyTests
+
+// ---------------------------------------------------------------------------
+// The cold baseline, which is where the sphere got away
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjColdBaselineGeomSnapsUniform,
+	"URLab.Preview.ColdBaselineGeomSnapsUniform",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjColdBaselineGeomSnapsUniform::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjScaleCold"), TEXT("cold geom"), Model, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	UMjNodeComponent* const Fresh = AddCold(*this, *Blueprint, UMjGeom::StaticClass(), TEXT("FreshGeom"));
+	if (Fresh == nullptr)
+	{
+		return false;
+	}
+
+	// Nothing authored: no size, no type, no baseline. A geom in exactly this
+	// state compiles as MuJoCo's default sphere, so a non-uniform scale on it
+	// is a preview of a shape that will not exist.
+	TestEqual(TEXT("the fresh geom authors no size to begin with"), AuthoredSize(*Fresh).Num(), 0);
+
+	DragScale(*Fresh, FVector(2.0, 1.0, 1.0));
+
+	const FVector Scale = Fresh->GetRelativeScale3D();
+	TestEqual(TEXT("a sphere's Y follows its X"), Scale.Y, Scale.X);
+	TestEqual(TEXT("a sphere's Z follows its X"), Scale.Z, Scale.X);
+
+	const TArray<double> Size = AuthoredSize(*Fresh);
+	TestEqual(TEXT("the drag authored a sphere's one radius"), Size.Num(), 1);
+	if (Size.Num() == 1)
+	{
+		// Half of the component scale, which is the table's own factor: an
+		// engine primitive is a metre across, so a scale of 2 is a one-metre
+		// radius.
+		TestEqual(TEXT("the authored radius is the dragged scale"), Size[0], 1.0);
+	}
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
+// A sized element that is not a geom
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSizedSiteHonoursTypeLock,
+	"URLab.Preview.SizedSiteHonoursTypeLock",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSizedSiteHonoursTypeLock::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjScaleSite"), TEXT("sized site"), Model, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	// An authored capsule site: two size values, X and Y locked together.
+	UMjNodeComponent* const Site = Named(*Blueprint, TEXT("mount"));
+	if (Site == nullptr)
+	{
+		AddError(TEXT("the fixture's site was not imported"));
+		return false;
+	}
+	TestTrue(TEXT("a site's size is edited by the scale handle"), Site->HasScaleMapping());
+
+	FVector FromSpec = FVector::ZeroVector;
+	if (TestTrue(TEXT("a site previews at the scale its size implies"), Site->TryPreviewScaleFromSpec(FromSpec)))
+	{
+		TestEqual(TEXT("the capsule's radius drives X"), FromSpec.X, 0.02);
+		TestEqual(TEXT("the capsule's half-length drives Z"), FromSpec.Z, 0.1);
+	}
+
+	DragScale(*Site, FVector(0.04, 0.005, 0.1));
+
+	const FVector Scale = Site->GetRelativeScale3D();
+	TestEqual(TEXT("a capsule site's Y follows its X"), Scale.Y, Scale.X);
+
+	const TArray<double> Size = AuthoredSize(*Site);
+	TestEqual(TEXT("a capsule authors the two values its type reads"), Size.Num(), 2);
+	if (Size.Num() == 2)
+	{
+		TestEqual(TEXT("the authored radius is the dragged X"), Size[0], 0.02);
+		TestEqual(TEXT("the authored half-length is the dragged Z"), Size[1], 0.05);
+	}
+
+	// And the same cold case the geom has: a site added by hand, never synced,
+	// with no size of its own. This is the case a policy written around geoms
+	// would have missed entirely.
+	UMjNodeComponent* const Fresh = AddCold(*this, *Blueprint, UMjSite::StaticClass(), TEXT("FreshSite"));
+	if (Fresh == nullptr)
+	{
+		return false;
+	}
+	DragScale(*Fresh, FVector(3.0, 1.0, 1.0));
+
+	const FVector FreshScale = Fresh->GetRelativeScale3D();
+	TestEqual(TEXT("a cold site's Y follows its X"), FreshScale.Y, FreshScale.X);
+	TestEqual(TEXT("a cold site's Z follows its X"), FreshScale.Z, FreshScale.X);
+
+	const TArray<double> FreshSize = AuthoredSize(*Fresh);
+	TestEqual(TEXT("a cold sphere site authors one radius"), FreshSize.Num(), 1);
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
+// An element with no size at all
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjUnsizedElementSnapsToUnit,
+	"URLab.Preview.UnsizedElementSnapsToUnit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjUnsizedElementSnapsToUnit::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjScaleBody"), TEXT("unsized body"), Model, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	UMjNodeComponent* const Body = Named(*Blueprint, TEXT("link"));
+	if (Body == nullptr)
+	{
+		AddError(TEXT("the fixture's body was not imported"));
+		return false;
+	}
+	TestFalse(TEXT("a body's scale edits nothing"), Body->HasScaleMapping());
+
+	const FVector Before = Body->GetRelativeLocation();
+	DragScale(*Body, FVector(2.0, 3.0, 4.0));
+
+	// The refusal: a scaled body distorts every descendant's picture while the
+	// simulation goes on using the numbers the body did not change, so the
+	// scale goes back rather than standing as a lie.
+	TestEqual(TEXT("an unsized element refuses a scale"), Body->GetRelativeScale3D(), FVector::OneVector);
+
+	// And the refusal is a scale answer only: the position it was dragged to on
+	// some other day is not re-authored by it.
+	TestEqual(TEXT("refusing a scale does not move the element"), Body->GetRelativeLocation(), Before);
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
+// Arity, spec-side
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSizeArityReported,
+	"URLab.Spec.SizeArityReported",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSizeArityReported::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	// Three radii on a sphere. MuJoCo takes the first, carries the other two into
+	// the compiled model where they decide nothing, and says nothing about it --
+	// which is how a hand-edited file, or the array widget, produces a shape the
+	// author did not mean and never finds out.
+	const TCHAR* const OverLong = TEXT(R"(<mujoco model="arity">
+  <worldbody>
+    <geom name="ball" type="sphere" size="0.1 0.2 0.3"/>
+    <geom name="brick" type="box" size="0.1 0.2 0.3"/>
+    <site name="dot" type="capsule" size="0.01 0.05 0.09"/>
+  </worldbody>
+</mujoco>
+)");
+
+	UBlueprint* const Blueprint =
+		MjParitySupport::ParseFixture(*this, TEXT("MjArity"), TEXT("arity"), OverLong, TEXT("<inline>"));
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	const FSpecRef Spec = FSpecRef::OverBlueprint(*Blueprint);
+	TArray<FMjSpecDiagnostic> Diagnostics;
+	urlab::spec::FMjBuiltSpec Built = urlab::spec::BuildSpec(Spec, Diagnostics);
+	if (!TestNotNull(TEXT("the over-long document still builds"), Built.Spec))
+	{
+		return false;
+	}
+
+	// The box is the control: three values is exactly what a box reads, so a
+	// check that reported it too would be reporting length rather than arity.
+	// The site is there because arity is a property of the TYPE, not of geoms.
+	int32 Reported = 0;
+	bool bNamedTheSphere = false;
+	bool bNamedTheSite = false;
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		if (!Diagnostic.Message.Contains(TEXT("size values")))
+		{
+			continue;
+		}
+		++Reported;
+		bNamedTheSphere = bNamedTheSphere || Diagnostic.Message.Contains(TEXT("a sphere reads 1"));
+		bNamedTheSite = bNamedTheSite || Diagnostic.Message.Contains(TEXT("a capsule reads 2"));
+	}
+	TestEqual(TEXT("two over-long sizes are reported"), Reported, 2);
+	TestTrue(TEXT("the sphere is reported against its own arity"), bNamedTheSphere);
+	TestTrue(TEXT("the site is reported against its own arity"), bNamedTheSite);
+
+	// And the compile receives a legal size: the slots the type does not read
+	// are cleared before the spec is handed over, so what compiles is the shape
+	// the author will see rather than one carrying values that decide nothing.
+	mjVFS Vfs;
+	mj_defaultVFS(&Vfs);
+	mjModel* const Compiled = mj_compile(Built.Spec, &Vfs);
+	mj_deleteVFS(&Vfs);
+	if (!TestNotNull(TEXT("the truncated spec compiles"), Compiled))
+	{
+		return false;
+	}
+
+	const int32 Ball = mj_name2id(Compiled, mjOBJ_GEOM, "ball");
+	if (TestTrue(TEXT("the reported geom compiled"), Ball >= 0))
+	{
+		TestEqual(TEXT("the radius the compiler uses is the first value"), Compiled->geom_size[3 * Ball], 0.1);
+		TestEqual(TEXT("the second slot a sphere never reads is cleared"), Compiled->geom_size[3 * Ball + 1], 0.0);
+		TestEqual(TEXT("the third slot a sphere never reads is cleared"), Compiled->geom_size[3 * Ball + 2], 0.0);
+	}
+
+	const int32 Brick = mj_name2id(Compiled, mjOBJ_GEOM, "brick");
+	if (TestTrue(TEXT("the control geom compiled"), Brick >= 0))
+	{
+		// A box reads all three, so nothing is dropped from it.
+		TestEqual(TEXT("a box keeps its second half-extent"), Compiled->geom_size[3 * Brick + 1], 0.2);
+		TestEqual(TEXT("a box keeps its third half-extent"), Compiled->geom_size[3 * Brick + 2], 0.3);
+	}
+
+	const int32 Dot = mj_name2id(Compiled, mjOBJ_SITE, "dot");
+	if (TestTrue(TEXT("the site compiled"), Dot >= 0))
+	{
+		TestEqual(TEXT("a capsule site keeps its radius"), Compiled->site_size[3 * Dot], 0.01);
+		TestEqual(TEXT("a capsule site keeps its half-length"), Compiled->site_size[3 * Dot + 1], 0.05);
+		TestEqual(TEXT("the slot a capsule never reads is cleared"), Compiled->site_size[3 * Dot + 2], 0.0);
+	}
+	mj_deleteModel(Compiled);
+
+	return !HasAnyErrors();
+}
+
+// ---------------------------------------------------------------------------
+// The derivation itself
+// ---------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSizedElementsAreClassified,
+	"URLab.Spec.SizedElementsAreClassified",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjSizedElementsAreClassified::RunTest(const FString& Parameters)
+{
+	using namespace MjScalePolicyTests;
+
+	// Read off the schema, not listed here. The list below is what the schema
+	// says TODAY, and it is spelled out so that a MuJoCo release which adds a
+	// sized, placeable element fails this test by name -- the failure being the
+	// point, because the alternative is a new element silently inheriting the
+	// refusal and nobody deciding whether that is right for it.
+	const TArray<psm::ElementType> Sized = MjSizedTransformElements();
+
+	TArray<FString> Names;
+	for (const psm::ElementType Type : Sized)
+	{
+		Names.Add(NameOfType(Type));
+	}
+	AddInfo(FString::Printf(TEXT("sized transform-bearing elements: %s"), *FString::Join(Names, TEXT(", "))));
+
+	TestEqual(TEXT("three schema elements carry both a transform and a size"), Sized.Num(), 3);
+	TestTrue(TEXT("<geom> is one of them"), Sized.Contains(psm::ElementType::Geom));
+	TestTrue(TEXT("<site> is one of them"), Sized.Contains(psm::ElementType::Site));
+	TestTrue(TEXT("<composite> is one of them"), Sized.Contains(psm::ElementType::Composite));
+
+	// Every one of them is classified, and none falls through to "no size".
+	for (const psm::ElementType Type : Sized)
+	{
+		TestTrue(FString::Printf(TEXT("%s is not treated as unsized"), *NameOfType(Type)),
+			MjScalePolicyFor(Type) != EMjScalePolicy::Unsized);
+	}
+
+	// A geom and a site are the same question with the same answer: their
+	// `size` is read through MuJoCo's GeomType.
+	TestTrue(TEXT("<geom> is shaped by its type"), MjScalePolicyFor(psm::ElementType::Geom) == EMjScalePolicy::GeomShaped);
+	TestTrue(TEXT("<site> is shaped by its type"), MjScalePolicyFor(psm::ElementType::Site) == EMjScalePolicy::GeomShaped);
+
+	// A composite's `size` sizes a lattice, not a shape: its `type` is
+	// CompositeType, and no scale of the component expresses it.
+	TestTrue(TEXT("<composite>'s size is not a scale"),
+		MjScalePolicyFor(psm::ElementType::Composite) == EMjScalePolicy::SizeIsNotAScale);
+
+	// A body is the unsized case, and the reason the refusal exists.
+	TestTrue(TEXT("<body> has no size"), MjScalePolicyFor(psm::ElementType::Body) == EMjScalePolicy::Unsized);
+
+	// The arity table is MuJoCo's own, spot-checked at both ends.
+	TestEqual(TEXT("a sphere reads one size value"), MjSizeArityFor(EMjGeomType::sphere), 1);
+	TestEqual(TEXT("a capsule reads two"), MjSizeArityFor(EMjGeomType::capsule), 2);
+	TestEqual(TEXT("a box reads three"), MjSizeArityFor(EMjGeomType::box), 3);
+	TestEqual(TEXT("a plane reads three"), MjSizeArityFor(EMjGeomType::plane), 3);
+	TestEqual(TEXT("a mesh reads none"), MjSizeArityFor(EMjGeomType::mesh), 0);
+
+	return !HasAnyErrors();
+}
+
+#endif  // URLAB_MJ_GEN && WITH_EDITOR

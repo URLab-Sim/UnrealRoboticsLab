@@ -212,7 +212,7 @@ bool FMjSensorMultipleSensorsAllBind::RunTest(const FString& Parameters)
 			UMjBody* Body2 = Sess.Add<UMjBody>(Sess.Body, TEXT("Body2"));
 
 			UMjGeom* Geom2 = Sess.Add<UMjGeom>(Body2, TEXT("Geom2"));
-			Geom2->SetSize({0.1, 0.1, 0.1});
+			Geom2->SetSize({0.1});
 
 			UMjJoint* Joint2 = Sess.Add<UMjJoint>(Body2, TEXT("TestJoint2"));
 			Joint2->SetType(EMjJointType::hinge);

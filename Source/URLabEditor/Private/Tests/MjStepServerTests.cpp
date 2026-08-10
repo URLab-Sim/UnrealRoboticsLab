@@ -1351,7 +1351,7 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 			if (ChildBody == nullptr)
 				return;
 			if (UMjGeomBase* ChildGeom = Sess.Add<UMjGeomBase>(ChildBody, TEXT("ChildGeom")))
-				ChildGeom->SetSize({0.05, 0.05, 0.05});
+				ChildGeom->SetSize({0.05});
 			if (UMjJoint* Hinge = Sess.Add<UMjJoint>(ChildBody, TEXT("ChildHinge")))
 				Hinge->SetType(EMjJointType::hinge);
 		}))

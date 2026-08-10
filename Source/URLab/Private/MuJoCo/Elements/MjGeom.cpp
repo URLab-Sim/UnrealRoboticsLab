@@ -22,6 +22,7 @@
 #include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjScalePolicy.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "Utils/IO.h"
@@ -52,42 +53,18 @@ constexpr double kBaseHalf = 50.0;
 constexpr double kSizeToScale = kCmPerM / kBaseHalf;
 constexpr double kMinScaleZ = 0.001; // guard for the cap counter-scale divide
 
-/** Which scale axes a shape lets the gizmo move independently. */
-enum class EScaleLock : uint8
-{
-	/** All three, as a box wants. */
-	Free,
-	/** X and Y move together, so a round cross-section stays round. */
-	RadialXY,
-	/** One number for all three, so a sphere stays a sphere. */
-	Uniform,
-	/** X and Y are free and Z is pinned to 1: a plane has no thickness. */
-	FlatXY,
-};
-
-/** One component of the relative scale, and the `size` slot that decides it. */
-struct FSizeAxis
-{
-	/** 0, 1 or 2: X, Y or Z of the component's relative scale. */
-	uint8 ScaleAxis = 0;
-
-	/** Index into the element's MJCF `size` array. */
-	uint8 SizeSlot = 0;
-};
-
 /**
- * Everything that used to be the difference between one geom subclass and the next.
+ * The engine primitive a shape previews as, keyed by the `type` attribute.
  *
- * A row per shape, keyed by the `type` attribute. Six of the nine shapes have a
- * preview and the other three are here to say they have none, which is the
- * honest answer for a height field, a mesh and an SDF: each carries its picture
- * as a child component rather than as a scaled engine primitive.
+ * Six of the nine shapes have a preview and the other three are here to say
+ * they have none, which is the honest answer for a height field, a mesh and an
+ * SDF: each carries its picture as a child component rather than as a scaled
+ * engine primitive.
  *
- * `Axes` is the size mapping, declared rather than computed. Both directions are
- * derived from it -- `size` to scale for the preview, scale to `size` for the
- * write-back -- so the round trip is consistent by construction and cannot drift
- * the way a forward function and a hand-written inverse would. The schema cannot
- * supply this: it says only `size : double[1..3] (writing=custom)`.
+ * The other half of what a shape is -- how its `size` and a component's scale
+ * correspond, and which axes a drag may move independently -- is not a geom
+ * question, because `<site>` asks it too and answers it the same way. That half
+ * lives in `MjScalePolicy.h` and is reached here through `MjSizeShapeFor`.
  */
 struct FGeomShape
 {
@@ -96,34 +73,6 @@ struct FGeomShape
 
 	/** Sphere for the capsule's two end caps; null for every other shape. */
 	const TCHAR* CapMeshPath = nullptr;
-
-	/** The size mapping, one row per axis the shape's `size` decides. */
-	FSizeAxis Axes[3] = {};
-
-	/** How many of `Axes` are live. Zero means the shape has no scale mapping. */
-	uint8 AxisNum = 0;
-
-	EScaleLock Lock = EScaleLock::Free;
-
-	/**
-	 * Metres a mapped `size` of zero previews at, or 0 when zero is simply zero.
-	 *
-	 * Only a plane needs it: MJCF spells "infinite in this direction" as a zero
-	 * half-extent, and Unreal has to draw something finite. MuJoCo's own
-	 * visualiser substitutes `vis.map.zfar * stat.extent`, neither of which
-	 * exists before a compile, so the preview uses a fixed extent instead.
-	 */
-	double InfiniteExtent = 0.0;
-
-	/**
-	 * True when the scale gizmo must not author `size` back onto the spec.
-	 *
-	 * A plane's `size` is (half-x, half-y, grid-spacing): two of the three are
-	 * dimensions and the third is not, and either dimension may be the zero
-	 * that means infinite. There is no scale a drag could write that preserves
-	 * all of that, so a plane previews from its size and never authors one.
-	 */
-	bool bSizeIsReadOnly = false;
 };
 
 const TCHAR* const kCubeMesh = TEXT("/Engine/BasicShapes/Cube.Cube");
@@ -131,48 +80,20 @@ const TCHAR* const kSphereMesh = TEXT("/Engine/BasicShapes/Sphere.Sphere");
 const TCHAR* const kCylinderMesh = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
 const TCHAR* const kPlaneMesh = TEXT("/Engine/BasicShapes/Plane.Plane");
 
-/** Half-extent, in metres, an infinite plane previews at. */
-constexpr double kInfinitePlaneHalfExtent = 10.0;
-
 constexpr FGeomShape GGeomShapes[] = {
-	/* plane     */ {kPlaneMesh, nullptr, {{0, 0}, {1, 1}}, 2, EScaleLock::FlatXY, kInfinitePlaneHalfExtent, true},
+	/* plane     */ {kPlaneMesh, nullptr},
 	/* hfield    */ {},
-	/* sphere    */ {kSphereMesh, nullptr, {{0, 0}}, 1, EScaleLock::Uniform},
-	/* capsule   */ {kCylinderMesh, kSphereMesh, {{0, 0}, {2, 1}}, 2, EScaleLock::RadialXY},
-	/* ellipsoid */ {kSphereMesh, nullptr, {{0, 0}, {1, 1}, {2, 2}}, 3, EScaleLock::Free},
-	/* cylinder  */ {kCylinderMesh, nullptr, {{0, 0}, {2, 1}}, 2, EScaleLock::RadialXY},
-	/* box       */ {kCubeMesh, nullptr, {{0, 0}, {1, 1}, {2, 2}}, 3, EScaleLock::Free},
+	/* sphere    */ {kSphereMesh, nullptr},
+	/* capsule   */ {kCylinderMesh, kSphereMesh},
+	/* ellipsoid */ {kSphereMesh, nullptr},
+	/* cylinder  */ {kCylinderMesh, nullptr},
+	/* box       */ {kCubeMesh, nullptr},
 	/* mesh      */ {},
 	/* sdf       */ {},
 };
 
 static_assert(static_cast<int32>(EMjGeomType::sdf) + 1 == static_cast<int32>(UE_ARRAY_COUNT(GGeomShapes)),
 	"GGeomShapes is indexed by EMjGeomType and must have a row for every value, in declaration order");
-
-/**
- * The size slots a shape maps must be 0..AxisNum-1 with no gaps.
- *
- * The write-back authors the whole array for the type, so a gap would leave a
- * slot MuJoCo reads holding a zero nobody wrote.
- */
-constexpr bool SizeSlotsAreContiguous()
-{
-	for (const FGeomShape& Shape : GGeomShapes)
-	{
-		uint32 Seen = 0;
-		for (uint8 Index = 0; Index < Shape.AxisNum; ++Index)
-		{
-			Seen |= 1u << Shape.Axes[Index].SizeSlot;
-		}
-		if (Seen != (1u << Shape.AxisNum) - 1u)
-		{
-			return false;
-		}
-	}
-	return true;
-}
-
-static_assert(SizeSlotsAreContiguous(), "a shape's size slots must be 0..AxisNum-1");
 
 const FGeomShape& ShapeFor(EMjGeomType Type)
 {
@@ -183,72 +104,6 @@ const FGeomShape& ShapeFor(EMjGeomType Type)
 		return NoPreview;
 	}
 	return GGeomShapes[Index];
-}
-
-/**
- * Force the scale onto what the shape can actually represent.
- *
- * X is the master, which is the rule the user sees: drag a sphere's Y handle and
- * all three snap together on the spot. Applied in both directions, so the axes
- * the table leaves unmapped are filled here rather than restated per shape, and
- * a component the shape cannot express can never reach the spec.
- */
-void ApplyLock(EScaleLock Lock, FVector& Scale)
-{
-	switch (Lock)
-	{
-		case EScaleLock::Uniform:
-			Scale.Y = Scale.Z = Scale.X;
-			break;
-		case EScaleLock::RadialXY:
-			Scale.Y = Scale.X;
-			break;
-		case EScaleLock::FlatXY:
-			Scale.Z = 1.0;
-			break;
-		case EScaleLock::Free:
-			break;
-	}
-}
-
-// A size too short for its type is unresolvable, and so is a non-positive one.
-// Both come back as a zero scale, which the caller reads as "leave it alone" --
-// except where the shape declares that a zero size means infinite, which is the
-// plane's spelling and previews at the extent the row names.
-FVector ScaleFromSize(const FGeomShape& Shape, const TArray<double>& Size)
-{
-	if (Shape.AxisNum == 0)
-	{
-		return FVector::ZeroVector;
-	}
-	FVector Scale = FVector::ZeroVector;
-	for (uint8 Index = 0; Index < Shape.AxisNum; ++Index)
-	{
-		const FSizeAxis& Axis = Shape.Axes[Index];
-		if (Size.Num() <= static_cast<int32>(Axis.SizeSlot))
-		{
-			return FVector::ZeroVector;
-		}
-		const double Extent = Size[Axis.SizeSlot];
-		Scale[Axis.ScaleAxis] =
-			(Extent == 0.0 ? Shape.InfiniteExtent : Extent) * kSizeToScale;
-	}
-	ApplyLock(Shape.Lock, Scale);
-	return Scale;
-}
-
-/** The inverse of ScaleFromSize, off the same rows. Authors the whole array. */
-TArray<double> SizeFromScale(const FGeomShape& Shape, FVector Scale)
-{
-	ApplyLock(Shape.Lock, Scale);
-	TArray<double> Size;
-	Size.SetNumZeroed(Shape.AxisNum);
-	for (uint8 Index = 0; Index < Shape.AxisNum; ++Index)
-	{
-		const FSizeAxis& Axis = Shape.Axes[Index];
-		Size[Axis.SizeSlot] = Scale[Axis.ScaleAxis] / kSizeToScale;
-	}
-	return Size;
 }
 
 /** A geom's `type` and `size` as the compiler will see them. */
@@ -367,46 +222,14 @@ void UMjGeom::RefreshPresentation()
 	RebuildVisualizer();
 }
 
-bool UMjGeom::HasScaleMapping() const
-{
-	const FGeomShape& Shape = ShapeFor(EffectiveShapeOf(*this).Type);
-	return Shape.AxisNum > 0 && !Shape.bSizeIsReadOnly;
-}
-
-bool UMjGeom::TryPreviewScaleFromSpec(FVector& OutScale) const
-{
-	const FGeomShapeState State = EffectiveShapeOf(*this);
-	const FGeomShape& Shape = ShapeFor(State.Type);
-	if (Shape.AxisNum == 0)
-	{
-		return false;
-	}
-
-	// An unresolvable size -- too short for the type, or non-positive -- leaves
-	// the scale alone rather than collapsing the geom to nothing.
-	const FVector Scale = ScaleFromSize(Shape, State.Size);
-	if (Scale.GetMin() <= 0.0)
-	{
-		return false;
-	}
-	OutScale = Scale;
-	return true;
-}
-
 void UMjGeom::ConstrainPreviewScale()
 {
-	ApplyAxisLock();
+	// The lock itself is the base's, off the shared shape table, because a
+	// site's sphere locks exactly as a geom's does. What is a geom's own is the
+	// capsule: its caps are separate components carrying a counter-scale, and
+	// they have to follow the scale the lock just settled on.
+	Super::ConstrainPreviewScale();
 	UpdateCapTransforms();
-}
-
-void UMjGeom::WriteBackScale(const FVector& Scale)
-{
-	const FGeomShape& Shape = ShapeFor(EffectiveShapeOf(*this).Type);
-	if (Shape.AxisNum == 0 || Shape.bSizeIsReadOnly)
-	{
-		return;
-	}
-	Size = SizeFromScale(Shape, Scale);
 }
 
 UStaticMeshComponent* UMjGeom::MakeVisualizerPart(FName PartName, const TCHAR* MeshPath)
@@ -573,7 +396,7 @@ void UMjGeom::ApplySpecMaterial()
 	// The two axes MuJoCo's `texuniform` scales by. The third is not used: the
 	// mapping is planar in the geom's own frame, so a box's depth never enters.
 	const FGeomShapeState Shape = EffectiveShapeOf(*this);
-	const double Infinite = ShapeFor(Shape.Type).InfiniteExtent;
+	const double Infinite = urlab::spec::MjSizeShapeFor(Shape.Type).InfiniteExtent;
 	auto Extent = [&](int32 Slot) {
 		const double Value = Shape.Size.IsValidIndex(Slot) ? Shape.Size[Slot] : 0.0;
 		return Value == 0.0 ? Infinite : Value;
@@ -676,17 +499,6 @@ void UMjGeom::SyncEditorScaleFromSize()
 
 	SetRelativeScale3D(NewScale);
 	UpdateCapTransforms();
-}
-
-void UMjGeom::ApplyAxisLock()
-{
-	const FVector Scale = GetRelativeScale3D();
-	FVector Locked = Scale;
-	ApplyLock(ShapeFor(EffectiveShapeOf(*this).Type).Lock, Locked);
-	if (!Locked.Equals(Scale))
-	{
-		SetRelativeScale3D(Locked);
-	}
 }
 
 namespace

@@ -114,10 +114,14 @@ void WithElementReader(const E& Element, Fn&& Function)
  * every model that does not say `angle="radian"`. The compiled model has no
  * such ambiguity, which is exactly why the ported drawing needs this and the
  * original did not.
+ *
+ * A property of the DOCUMENT, so it is asked once per sweep and not once per
+ * hinge: the walk below is a whole-graph walk, and a model of a hundred joints
+ * was paying a hundred of them per frame to draw one number that is the same
+ * for all of them.
  */
-double RadiansPerAuthoredAngle(const UMjNodeComponent& Node)
+double RadiansPerAuthoredAngle(const FSpecRef& Spec)
 {
-	const FSpecRef Spec = FSpecRef::OverOwner(&Node);
 	UMjNodeComponent* const Root = Spec.GetRoot();
 	if (Root == nullptr)
 	{
@@ -181,7 +185,7 @@ FVector PerpendicularTo(const FVector& Axis)
  * because nothing has stepped. The reference position is drawn when authored,
  * which is what `qpos0` would have shown.
  */
-void DrawJoint(const UMjJoint& Joint, FPrimitiveDrawInterface* PDI)
+void DrawJoint(const UMjJoint& Joint, FPrimitiveDrawInterface* PDI, double RadiansPerAngle)
 {
 	EMjJointType Type = EMjJointType::hinge;
 	FVector LocalAxis(0.0, 0.0, 1.0);
@@ -220,7 +224,7 @@ void DrawJoint(const UMjJoint& Joint, FPrimitiveDrawInterface* PDI)
 		// Negated because the axis was Y-negated crossing into Unreal's
 		// left-handed frame, so MuJoCo's right-hand rule reverses with it. The
 		// limits swap for the same reason.
-		const double Scale = -RadiansPerAuthoredAngle(Joint) * 180.0 / UE_DOUBLE_PI;
+		const double Scale = -RadiansPerAngle * 180.0 / UE_DOUBLE_PI;
 		const FVector Radial = PerpendicularTo(Axis);
 		const FVector Bitangent = FVector::CrossProduct(Axis, Radial).GetSafeNormal();
 
@@ -595,6 +599,64 @@ void OnObjectModified(UObject* Object)
 
 }  // namespace
 
+FMjElementVisualizer::FMjElementVisualizer()
+{
+#if URLAB_MJ_GEN
+	// The sweep's index is a snapshot of a tree, and the frame that painted it
+	// is the longest it may describe one. End of frame is after every viewport
+	// has drawn and before anything can edit again, which is the exact boundary.
+	EndFrameHandle = FCoreDelegates::OnEndFrame.AddRaw(this, &FMjElementVisualizer::EndSweep);
+#endif
+}
+
+FMjElementVisualizer::~FMjElementVisualizer()
+{
+#if URLAB_MJ_GEN
+	FCoreDelegates::OnEndFrame.Remove(EndFrameHandle);
+	EndSweep();
+#endif
+}
+
+#if URLAB_MJ_GEN
+
+void FMjElementVisualizer::BeginSweep(const UMjNodeComponent& Element)
+{
+	using namespace urlab::spec;
+
+	const FSpecRef Doc = FSpecRef::OverOwner(&Element);
+	const UMjModel* const Root = Cast<UMjModel>(Doc.GetRoot());
+	if (Root == nullptr)
+	{
+		EndSweep();
+		return;
+	}
+	if (SweepRoot.Get() == Root && SweepFrame == GFrameNumber)
+	{
+		return;
+	}
+
+	EndSweep();
+	SweepRoot = Root;
+	SweepFrame = GFrameNumber;
+	// Only when nobody else is holding one over this spec. A scope that adopted
+	// an outer scope's indexes would outlive the object it borrowed them from,
+	// and this one deliberately lives longer than the call that made it.
+	if (FMjEffectiveScope::Find(Root) == nullptr)
+	{
+		SweepScope = MakeUnique<FMjEffectiveScope>(Doc);
+	}
+	SweepRadiansPerAngle = RadiansPerAuthoredAngle(Doc);
+}
+
+void FMjElementVisualizer::EndSweep()
+{
+	SweepScope.Reset();
+	SweepRoot = nullptr;
+	SweepRadiansPerAngle.Reset();
+}
+
+#endif  // URLAB_MJ_GEN
+
 void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, const FSceneView* View,
 	FPrimitiveDrawInterface* PDI)
 {
@@ -604,6 +666,11 @@ void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, c
 	{
 		return;
 	}
+
+	// The first element of the frame builds the spec's index; every element
+	// after it joins that one. Before the class-partial test below, because
+	// that test is itself an ancestor walk over the spec.
+	BeginSweep(*Element);
 
 	// A `<default>` partial is an inheritance template, not an element: MuJoCo
 	// never places one, so drawing it would put a joint axis or a light cone at
@@ -616,7 +683,7 @@ void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, c
 
 	if (const UMjJoint* const Joint = Cast<UMjJoint>(Element))
 	{
-		DrawJoint(*Joint, PDI);
+		DrawJoint(*Joint, PDI, SweepRadiansPerAngle.Get(UE_DOUBLE_PI / 180.0));
 	}
 	else if (const UMjFreeJoint* const FreeJoint = Cast<UMjFreeJoint>(Element))
 	{

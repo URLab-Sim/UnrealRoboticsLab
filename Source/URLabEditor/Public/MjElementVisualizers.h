@@ -36,16 +36,36 @@
 
 #include "ComponentVisualizer.h"
 
+#include "MuJoCo/Spec/MjGenHooks.h"
+
+#if URLAB_MJ_GEN
+#include "MuJoCo/Spec/MjEffective.h"
+#endif
+
+class UMjModel;
+class UMjNodeComponent;
+
 /**
  * Editor drawing for every MuJoCo element that has no mesh to preview with.
  *
  * Joints draw their axis and their range arc, sites their wireframe shape,
  * lights their direction and cone, cameras their frustum, and anything else a
  * small marker so a selected element is at least locatable.
+ *
+ * The whole selection is drawn element by element, once per frame, and every
+ * element reads EFFECTIVE values -- which means resolving the default-class
+ * chain, which means indexing the entire spec. Once per element per frame is
+ * the quadratic this project has already paid for once, and at editor frame
+ * rates it does not read as slowness: the gizmo runs ahead of the component and
+ * the drag appears to fight back. So the sweep holds ONE index open: the first
+ * element of a frame builds it and every element after joins it.
  */
 class FMjElementVisualizer : public FComponentVisualizer
 {
 public:
+	FMjElementVisualizer();
+	virtual ~FMjElementVisualizer() override;
+
 	// FComponentVisualizer
 	virtual void DrawVisualization(const UActorComponent* Component, const FSceneView* View,
 		FPrimitiveDrawInterface* PDI) override;
@@ -55,6 +75,42 @@ public:
 	static void UnregisterAll();
 
 private:
+#if URLAB_MJ_GEN
+	/**
+	 * Open the frame's index over `Element`'s spec, or join the one already open.
+	 *
+	 * Keyed on the frame number and the spec root, so a new frame and a
+	 * selection in a different model each rebuild, and everything else adopts.
+	 * Nothing is held across a frame boundary: the index is a snapshot of a tree
+	 * that the very next edit may restructure, so it is dropped at end of frame
+	 * -- after every viewport has painted and before anything can edit again.
+	 */
+	void BeginSweep(const UMjNodeComponent& Element);
+
+	/** Drop the frame's index. Bound to end-of-frame, and run by the destructor. */
+	void EndSweep();
+
+	/** The index the frame's elements share, when this instance owns it. */
+	TUniquePtr<urlab::spec::FMjEffectiveScope> SweepScope;
+
+	/** The frame the current index describes. */
+	uint32 SweepFrame = 0;
+
+	/** The spec root it describes, so a second model in the frame rebuilds. */
+	TWeakObjectPtr<const UMjModel> SweepRoot;
+
+	/**
+	 * Radians per authored angle unit for `SweepRoot`, resolved once per frame.
+	 *
+	 * `<compiler angle>` is a property of the document, and every joint drawn
+	 * was walking the whole spec to find it -- a second whole-graph walk per
+	 * hinge per frame, on top of the index.
+	 */
+	TOptional<double> SweepRadiansPerAngle;
+
+	FDelegateHandle EndFrameHandle;
+#endif  // URLAB_MJ_GEN
+
 	/**
 	 * Set while the registration is waiting for the editor engine.
 	 *

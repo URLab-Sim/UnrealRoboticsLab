@@ -10,8 +10,11 @@
 
 #include "MjArrayCustomizations.h"
 
+#include "Containers/Ticker.h"
 #include "DetailLayoutBuilder.h"
 #include "DetailWidgetRow.h"
+#include "Editor.h"
+#include "EditorViewportClient.h"
 #include "IDetailPropertyRow.h"
 #include "IPropertyUtilities.h"
 #include "Modules/ModuleManager.h"
@@ -72,6 +75,121 @@ FString ClassNameOf(const UMjNodeComponent& Layer)
 	// MuJoCo's own name for the root `<default>`, which authors no class name
 	// because everything inherits from it.
 	return Parent->MjName.Get(TEXT("main"));
+}
+
+/** What an element would inherit for one attribute, and from which class. */
+struct FInheritedValue
+{
+	FString Text;
+	FString ClassName;
+};
+
+/**
+ * Everything `Node` inherits, in ONE walk of its class chain.
+ *
+ * The panel asks this question of about thirty attributes, and asking it thirty
+ * times means dispatching the element's type thirty times and walking its
+ * layers thirty times to read thirty fields off the same handful of objects.
+ * The chain is the expensive part and it is the same chain every time, so it is
+ * walked once and every attribute is read from each layer as it passes.
+ *
+ * Nearest layer wins, which is what the compiler's merge does: an attribute
+ * already answered by a nearer layer is not overwritten by a further one.
+ */
+void CollectInherited(UMjNodeComponent& Node, const TArray<FOptionalProperty*>& Wanted,
+	TMap<FName, FInheritedValue>& Out)
+{
+	WithEffectiveDoc(Node, [&](auto& Effective) {
+		using P = typename std::decay_t<decltype(Effective)>::ProfileType;
+		gen::DispatchByType(Node, [&](auto& Element) {
+			Effective.ForEachLayer(Element, [&](const auto& Layer) {
+				const UMjNodeComponent& LayerNode = static_cast<const UMjNodeComponent&>(Layer);
+				// The element itself is the first layer, and the question is
+				// what it would inherit, not what it authored.
+				if (&LayerNode == &Node)
+				{
+					return false;
+				}
+				const FString ClassName = ClassNameOf<P>(LayerNode);
+				for (FOptionalProperty* const Optional : Wanted)
+				{
+					if (Out.Contains(Optional->GetFName()))
+					{
+						continue;
+					}
+					// A hand subclass may declare properties the generated
+					// partial has never heard of. None of those are spec
+					// attributes, but asking is cheaper than assuming.
+					if (!LayerNode.GetClass()->IsChildOf(Optional->GetOwnerClass()))
+					{
+						continue;
+					}
+					const void* const Container = Optional->ContainerPtrToValuePtr<void>(&LayerNode);
+					if (Container == nullptr || !Optional->IsSet(Container))
+					{
+						continue;
+					}
+					FInheritedValue& Value = Out.Add(Optional->GetFName());
+					Optional->GetValueProperty()->ExportTextItem_Direct(Value.Text,
+						Optional->GetValuePointerForRead(Container), nullptr, nullptr, PPF_None);
+					Value.ClassName = ClassName;
+				}
+				// Never stops: the question is what every attribute inherits,
+				// not what any one of them does.
+				return false;
+			});
+		});
+	});
+}
+
+/**
+ * True while a viewport is dragging something.
+ *
+ * A gizmo delta refreshes every property window, and a refresh runs this
+ * customization: on a model of a few hundred elements that is a whole-spec pass
+ * per mouse-move, on top of the drag's own work, and it is paid to redraw rows
+ * the user is not looking at because their hand is on a widget in the viewport.
+ * The rows come back the moment the drag ends -- see the tick below, which is
+ * what makes this a deferral rather than a loss.
+ *
+ * Every viewport client, not just the level editor's: the Blueprint editor has
+ * its own, and the Blueprint editor is where a model is assembled.
+ */
+bool AnyViewportTracking()
+{
+	if (GEditor == nullptr)
+	{
+		return false;
+	}
+	for (const FEditorViewportClient* const Client : GEditor->GetAllViewportClients())
+	{
+		if (Client != nullptr && Client->IsTracking())
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+/** Ask the panel to rebuild once the drag that deferred it has finished. */
+void RefreshWhenTrackingEnds(TSharedPtr<IPropertyUtilities> Utilities)
+{
+	if (!Utilities.IsValid())
+	{
+		return;
+	}
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[WeakUtilities = TWeakPtr<IPropertyUtilities>(Utilities)](float) {
+			if (AnyViewportTracking())
+			{
+				return true;  // still dragging; ask again next tick
+			}
+			if (const TSharedPtr<IPropertyUtilities> Live = WeakUtilities.Pin())
+			{
+				Live->RequestForceRefresh();
+			}
+			return false;
+		}));
 }
 
 /** Author `Text` onto `Node`'s `Optional`, as the user asking for it. */
@@ -167,19 +285,32 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 		return;
 	}
 
+	const TSharedPtr<IPropertyUtilities> Utilities = DetailBuilder.GetPropertyUtilities();
+
+	// Not while the user is dragging. The engine refreshes every property
+	// window per gizmo delta, and this pass reads the spec; deferring it to the
+	// end of the drag is the difference between a drag that tracks the mouse and
+	// one that appears to fight back. The ticker puts the rows back after.
+	if (AnyViewportTracking())
+	{
+		RefreshWhenTrackingEnds(Utilities);
+		return;
+	}
+
 	// ONE context for the whole refresh. Each attribute asks the same question
 	// of the same spec, and building a context per question indexes every
 	// element and every default class per question -- the quadratic the scope
 	// exists to remove.
 	FMjEffectiveScope Effective(*Node);
 
-	const TSharedPtr<IPropertyUtilities> Utilities = DetailBuilder.GetPropertyUtilities();
-
 	// Inside the scope, because naming a `size` slot means knowing the shape,
 	// and the shape is an effective value like any other.
 	FMjArrayCustomizations::CustomizeArrays(DetailBuilder, *Node);
 	FMjArrayCustomizations::AddEulerRow(DetailBuilder, *Node);
 
+	// Every attribute the element leaves unset, asked as one question of the
+	// class chain rather than as one question each.
+	TArray<FOptionalProperty*> Unset;
 	for (TFieldIterator<FOptionalProperty> It(Node->GetClass()); It; ++It)
 	{
 		FOptionalProperty* const Optional = *It;
@@ -192,13 +323,21 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 		{
 			continue;
 		}
+		Unset.Add(Optional);
+	}
 
-		FString InheritedText;
-		FString InheritedClass;
-		if (!ResolveInherited(*Node, *Optional, InheritedText, InheritedClass))
+	TMap<FName, FInheritedValue> Inherited;
+	CollectInherited(*Node, Unset, Inherited);
+
+	for (FOptionalProperty* const Optional : Unset)
+	{
+		const FInheritedValue* const Found = Inherited.Find(Optional->GetFName());
+		if (Found == nullptr)
 		{
 			continue;
 		}
+		const FString& InheritedText = Found->Text;
+		const FString& InheritedClass = Found->ClassName;
 
 		const TSharedPtr<IPropertyHandle> Handle =
 			DetailBuilder.GetProperty(Optional->GetFName(), Optional->GetOwnerClass());

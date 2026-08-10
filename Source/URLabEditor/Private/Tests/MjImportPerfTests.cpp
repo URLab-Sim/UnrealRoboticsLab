@@ -47,6 +47,10 @@
 
 #if URLAB_MJ_GEN
 
+#include "PrimitiveDrawInterface.h"
+
+#include "MjElementVisualizers.h"
+
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
@@ -614,6 +618,161 @@ bool FMjPresentationScaling::RunTest(const FString& Parameters)
 		Large.PlainGeomPhysicsEdit.NodeMapBuilds, Large.PlainJointEdit.NodeMapBuilds);
 	TestEqual(TEXT("a collision-mask edit builds the effective contexts a joint edit builds"),
 		Large.PlainGeomPhysicsEdit.EffectiveContextBuilds, Large.PlainJointEdit.EffectiveContextBuilds);
+
+	return !HasAnyErrors();
+}
+
+// ============================================================================
+// URLab.Perf.VisualizerSweep
+//   What drawing a selected model costs, per frame.
+//
+//   The element visualizer draws one component at a time, and every element it
+//   draws reads EFFECTIVE values -- the default-class chain resolved the way the
+//   compiler will resolve it. Resolving one indexes the whole spec. Done per
+//   element that is one index per element per frame, which at a hundred elements
+//   is a frame time in the hundreds of milliseconds, and a viewport that slow
+//   does not read as slow: the gizmo runs ahead of the component and the drag
+//   appears to fight back.
+//
+//   So the sweep holds ONE index: the first element of the frame builds it and
+//   every element after joins it. Asserted as an exact equality at both model
+//   sizes, because the difference between one and N is the whole finding.
+// ============================================================================
+
+namespace MjImportPerfTests
+{
+/**
+ * A drawing surface that draws nothing.
+ *
+ * The probe is about what the visualizer ASKS the spec, not about pixels, and
+ * an automation run has no scene to draw into. Every call is counted so the
+ * test can prove the sweep actually drew rather than bailing out early.
+ */
+class FCountingPDI : public FPrimitiveDrawInterface
+{
+public:
+	FCountingPDI() : FPrimitiveDrawInterface(nullptr) {}
+
+	int32 Calls = 0;
+
+	virtual bool IsHitTesting() override { return false; }
+	virtual void SetHitProxy(HHitProxy* HitProxy) override {}
+	virtual void RegisterDynamicResource(FDynamicPrimitiveResource* DynamicResource) override {}
+	virtual void AddReserveLines(uint8, int32, bool, bool) override {}
+	virtual void DrawSprite(const FVector&, float, float, const FTexture*, const FLinearColor&, uint8, float, float,
+		float, float, uint8, float) override
+	{
+		++Calls;
+	}
+	virtual void DrawLine(const FVector&, const FVector&, const FLinearColor&, uint8, float, float, bool) override
+	{
+		++Calls;
+	}
+	virtual void DrawTranslucentLine(const FVector&, const FVector&, const FLinearColor&, uint8, float, float,
+		bool) override
+	{
+		++Calls;
+	}
+	virtual void DrawPoint(const FVector&, const FLinearColor&, float, uint8) override { ++Calls; }
+	virtual int32 DrawMesh(const FMeshBatch& Mesh) override { return 0; }
+};
+
+/** Draw every element of `Blueprint`'s spec once, as one frame's sweep would. */
+FImportCost SweepCost(UBlueprint& Blueprint, int32& OutDrawn, int32& OutDrawCalls)
+{
+	const TArray<UMjNodeComponent*> Elements = ElementsOf(Blueprint);
+	OutDrawn = Elements.Num();
+
+	// The visualizer is a local one rather than the registered instance, so the
+	// sweep's index is released when this returns instead of at end of frame.
+	FMjElementVisualizer Visualizer;
+	FCountingPDI PDI;
+	const FImportCost Start = Snapshot();
+	for (UMjNodeComponent* Element : Elements)
+	{
+		Visualizer.DrawVisualization(Element, /*View=*/nullptr, &PDI);
+	}
+	const FImportCost Cost = Since(Start);
+	OutDrawCalls = PDI.Calls;
+	return Cost;
+}
+
+bool MeasureSweep(FAutomationTestBase& Test, int32 BodyCount, FImportCost& OutCost, int32& OutDrawn,
+	int32& OutDrawCalls)
+{
+	UBlueprint* Blueprint = MakeScratchBlueprint();
+	if (Blueprint == nullptr)
+	{
+		Test.AddError(TEXT("could not create a scratch Blueprint"));
+		return false;
+	}
+	if (!MjParseIntoBlueprint(*Blueprint, BuildModel(BodyCount), TEXT("<inline>")).IsOk())
+	{
+		Test.AddError(FString::Printf(TEXT("the %d-body sweep model did not parse"), BodyCount));
+		return false;
+	}
+	OutCost = SweepCost(*Blueprint, OutDrawn, OutDrawCalls);
+	return true;
+}
+}  // namespace MjImportPerfTests
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjVisualizerSweep,
+	"URLab.Perf.VisualizerSweep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjVisualizerSweep::RunTest(const FString& Parameters)
+{
+	using namespace MjImportPerfTests;
+
+	// First-use costs belong to neither size, as in the two benchmarks above.
+	FImportCost Discard;
+	int32 DiscardDrawn = 0;
+	int32 DiscardCalls = 0;
+	if (!MeasureSweep(*this, SmallBodies, Discard, DiscardDrawn, DiscardCalls))
+	{
+		return false;
+	}
+
+	FImportCost Small;
+	FImportCost Large;
+	int32 SmallDrawn = 0;
+	int32 LargeDrawn = 0;
+	int32 SmallCalls = 0;
+	int32 LargeCalls = 0;
+	if (!MeasureSweep(*this, SmallBodies, Small, SmallDrawn, SmallCalls)
+		|| !MeasureSweep(*this, LargeBodies, Large, LargeDrawn, LargeCalls))
+	{
+		return false;
+	}
+
+	ReportProbe(*this, TEXT("visualizer_sweep"), SmallBodies, Small);
+	ReportProbe(*this, TEXT("visualizer_sweep"), LargeBodies, Large);
+	AddInfo(FString::Printf(TEXT("BENCH sweep elements small=%d large=%d draw_calls small=%d large=%d"), SmallDrawn,
+		LargeDrawn, SmallCalls, LargeCalls));
+
+	// The sweep swept. A sweep that drew nothing would satisfy every bound
+	// below by doing no work at all.
+	if (!TestTrue(TEXT("the large sweep drew more elements than the small one"), LargeDrawn > SmallDrawn)
+		|| !TestTrue(TEXT("the sweep issued drawing calls"), LargeCalls > 0))
+	{
+		return false;
+	}
+
+	// Exactly one, at both sizes: the first element of the sweep builds the
+	// spec's index and every element after it adopts that one. Before this it
+	// was one per element -- 102 at a hundred bodies -- which is the cost the
+	// drag was fighting.
+	TestEqual(FString::Printf(TEXT("a sweep of %d elements builds one effective context"), SmallDrawn),
+		Small.EffectiveContextBuilds, static_cast<int64>(1));
+	TestEqual(FString::Printf(TEXT("a sweep of %d elements builds one effective context"), LargeDrawn),
+		Large.EffectiveContextBuilds, static_cast<int64>(1));
+
+	// And one template-graph index for the same reason: the spec is held as
+	// Blueprint templates, and walking it at all needs that graph open.
+	TestEqual(FString::Printf(TEXT("a sweep of %d elements builds one node map"), SmallDrawn),
+		Small.NodeMapBuilds, static_cast<int64>(1));
+	TestEqual(FString::Printf(TEXT("a sweep of %d elements builds one node map"), LargeDrawn),
+		Large.NodeMapBuilds, static_cast<int64>(1));
 
 	return !HasAnyErrors();
 }

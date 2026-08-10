@@ -169,7 +169,25 @@ public:
 
 	~FMjEffectiveScope()
 	{
-		Current = Previous;
+		// Unlinked rather than popped. Scopes are ordinarily stack objects and
+		// close in the order they opened, and for those the two are the same
+		// thing; a scope held as a member for the length of a frame -- which the
+		// editor's element drawing does, so that one index serves a whole sweep
+		// -- is not, and popping there would put a dead pointer back on the
+		// chain for the next lookup to walk.
+		if (Current == this)
+		{
+			Current = Previous;
+			return;
+		}
+		for (FMjEffectiveScope* Scope = Current; Scope != nullptr; Scope = Scope->Previous)
+		{
+			if (Scope->Previous == this)
+			{
+				Scope->Previous = Previous;
+				return;
+			}
+		}
 	}
 
 	FMjEffectiveScope(const FMjEffectiveScope&) = delete;

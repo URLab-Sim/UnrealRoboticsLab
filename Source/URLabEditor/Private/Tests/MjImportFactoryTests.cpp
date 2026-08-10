@@ -606,6 +606,87 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 }
 
 // ============================================================================
+// URLab.Import.ReimportHonoursStoredIncludeOption
+//   Reimport used to hard-code the external-include option back to its
+//   default, so a model imported with escaping includes allowed lost them on
+//   the very next reimport. The option now travels with the asset: recorded
+//   when `ImportModel` runs (import or reimport alike), read back instead of
+//   defaulted the next time `Reimport` runs.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportReimportHonoursStoredIncludeOption,
+	"URLab.Import.ReimportHonoursStoredIncludeOption",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjImportReimportHonoursStoredIncludeOption::RunTest(const FString& Parameters)
+{
+	const FString Root = FactoryScratchDir(TEXT("ReimportIncludes"));
+	const FString ModelDir = Root / TEXT("model");
+	const FString OutsideDir = Root / TEXT("outside");
+	IFileManager::Get().MakeDirectory(*ModelDir, /*Tree=*/true);
+	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
+
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujocoinclude>\n")
+		TEXT("  <worldbody>\n")
+		TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
+		TEXT("  </worldbody>\n")
+		TEXT("</mujocoinclude>\n")), *(OutsideDir / TEXT("fragment.xml")));
+
+	const FString ModelPath = ModelDir / TEXT("host.xml");
+	FFileHelper::SaveStringToFile(FString(
+		TEXT("<mujoco model=\"host\">\n")
+		TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
+		TEXT("  <worldbody>\n")
+		TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
+		TEXT("  </worldbody>\n")
+		TEXT("</mujoco>\n")), *ModelPath);
+
+	// Import with the option ON, driven through `ImportModel` directly rather
+	// than the factory's dialog: automation runs answer no dialog, so that
+	// path always takes the option's default, which is exactly the thing
+	// under test.
+	FMjImportSettings ImportSettings;
+	ImportSettings.bAllowPrompts = false;
+	ImportSettings.Parse.bAllowExternalIncludes = true;
+
+	const FString Unique = FGuid::NewGuid().ToString(EGuidFormats::Digits).Left(12);
+	const FString AssetName = FString(TEXT("ReimportIncludeProbe_")) + Unique;
+	UPackage* const Package = CreatePackage(*(FString(TEXT("/Game/MuJoCoImportsTest/")) + AssetName));
+
+	UBlueprint* Blueprint = nullptr;
+	FString Error;
+	bool bCancelled = false;
+	const bool bImported = UMujocoImportFactory::ImportModel(ModelPath, ImportSettings,
+		[&]() -> UBlueprint* {
+			return FKismetEditorUtilities::CreateBlueprint(AMjArticulation::StaticClass(), Package,
+				*AssetName, BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+		},
+		Blueprint, Error, bCancelled);
+
+	if (!TestTrue(TEXT("the import with the option on succeeds"), bImported) || Blueprint == nullptr)
+	{
+		AddError(FString::Printf(TEXT("import setup failed: %s"), *Error));
+		return false;
+	}
+	TestTrue(TEXT("the escaping include reached the spec on import"),
+		FactoryHasElementNamed(Blueprint, TEXT("from_outside")));
+
+	// Reimport with no settings supplied by the caller at all: the option has
+	// to come from what import recorded, not from a hard-coded default.
+	UMujocoImportFactory* Factory = NewObject<UMujocoImportFactory>();
+	TestEqual(TEXT("reimport succeeds"),
+		static_cast<int32>(Factory->Reimport(Blueprint)),
+		static_cast<int32>(EReimportResult::Succeeded));
+
+	TestTrue(TEXT("reimport parsed with the stored option still on"),
+		FactoryHasElementNamed(Blueprint, TEXT("from_outside")));
+	TestTrue(TEXT("the model's own content is still there"),
+		FactoryHasElementNamed(Blueprint, TEXT("host_body")));
+
+	return true;
+}
+
+// ============================================================================
 // URLab.Import.CancelAndFailureLeaveNothing
 //   An import that stops before it finishes must leave the project as it found
 //   it, and must say which of the two happened: a cancellation is reported as

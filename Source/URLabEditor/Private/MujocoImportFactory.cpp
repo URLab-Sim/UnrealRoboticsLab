@@ -37,6 +37,8 @@
 #include "ObjectTools.h"
 #include "RenderingThread.h"
 #include "ShaderCompiler.h"
+#include "UObject/MetaData.h"
+#include "UObject/Package.h"
 #include "URLabEditorLogging.h"
 
 namespace
@@ -185,6 +187,45 @@ bool LooksLikeMjcf(const FString& Filename)
 	const FString Text(UTF8_TO_TCHAR(reinterpret_cast<const ANSICHAR*>(Head.GetData())));
 	return Text.Contains(TEXT("<mujoco"), ESearchCase::IgnoreCase);
 }
+
+/**
+ * The metadata key the factory stores `bAllowExternalIncludes` under, on the
+ * Blueprint the import created.
+ *
+ * A Blueprint has no import-data object the way a Texture or StaticMesh
+ * factory would use, so this follows the same convention the FBX importer
+ * uses for its own per-asset import tags (`FbxMainImport.cpp`): a value in
+ * the asset's own package metadata, attached to the asset object, saved and
+ * loaded with its package like any other metadata.
+ */
+const TCHAR* kAllowExternalIncludesMetaKey = TEXT("URLab.AllowExternalIncludes");
+
+/**
+ * Record the parse-time options `Blueprint` was just built with, so the next
+ * reimport can read them back instead of defaulting.
+ */
+void StoreReimportSettings(UBlueprint& Blueprint, const FMjDocParseOptions& Options)
+{
+	Blueprint.GetPackage()->GetMetaData().SetValue(&Blueprint, kAllowExternalIncludesMetaKey,
+		Options.bAllowExternalIncludes ? TEXT("True") : TEXT("False"));
+}
+
+/**
+ * The parse-time options the last import or reimport of `Blueprint` stored.
+ *
+ * Absent metadata -- a Blueprint imported before this existed -- resolves to
+ * the same safe default a fresh import takes.
+ */
+FMjDocParseOptions LoadReimportSettings(const UBlueprint& Blueprint)
+{
+	FMjDocParseOptions Options;
+	if (const FString* Value =
+			Blueprint.GetPackage()->GetMetaData().FindValue(&Blueprint, kAllowExternalIncludesMetaKey))
+	{
+		Options.bAllowExternalIncludes = Value->Equals(TEXT("True"), ESearchCase::IgnoreCase);
+	}
+	return Options;
+}
 }  // namespace
 
 FString UMujocoImportFactory::ImportPrepDir(const FString& SourceXmlPath)
@@ -285,6 +326,10 @@ bool UMujocoImportFactory::ImportModel(const FString& SourceXmlPath, const FMjIm
 		CDO->MarkPackageDirty();
 	}
 
+	// Beside the path: the parse-time options that affected how this read was
+	// done, so a reimport parses the model the same way rather than defaulting.
+	StoreReimportSettings(*OutBlueprint, Settings.Parse);
+
 	// Reads the prepared XML into the Blueprint's construction script, imports
 	// the assets it references, and compiles.
 	UMujocoGenerationAction* Generator = NewObject<UMujocoGenerationAction>();
@@ -347,12 +392,19 @@ EReimportResult::Type UMujocoImportFactory::Reimport(UObject* Obj)
 		return EReimportResult::Failed;
 	}
 
-	// No dialog on the way back in: reimport-all runs in bulk and the security
-	// option returns to its default, which is the safe direction to fail in.
+	// No dialog on the way back in: reimport-all runs in bulk, and the parse
+	// options come from what the last import or reimport recorded rather than
+	// the dialog's defaults, so a model imported with external includes
+	// allowed keeps reading the same includes on every reimport after.
+	UBlueprint* const Existing = Cast<UBlueprint>(Obj);
+
 	FMjImportSettings Settings;
 	Settings.bAllowPrompts = false;
+	if (Existing != nullptr)
+	{
+		Settings.Parse = LoadReimportSettings(*Existing);
+	}
 
-	UBlueprint* const Existing = Cast<UBlueprint>(Obj);
 	UBlueprint* Read = nullptr;
 	FString Error;
 	bool bCancelled = false;

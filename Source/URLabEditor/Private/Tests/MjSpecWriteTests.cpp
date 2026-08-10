@@ -305,6 +305,16 @@ bool FMjSpecWriteSizeArityTest::RunTest(const FString& Parameters)
 	// Authored, not dragged. A gizmo cannot produce this and the shape lock
 	// stops it trying; a hand-edited MJCF file, a script and the array widget
 	// all can, and every one of them lands in the same build.
+	//
+	// The contract has two halves and the second is the load-bearing one. The
+	// build SAYS the extra values decide nothing, and it CHANGES NOTHING: stock
+	// MuJoCo accepts this document and carries all three slots into geom_size
+	// (`checksize` bounds its loop by the arity, user_objects.cc:163;
+	// `mjCModel::CopyObjects` copies three, user_model.cc:3055), so a build that
+	// normalised the size here would compile a different model from the one
+	// stock compiles out of the same text. The last assertion is ours against
+	// stock over exactly that document, which is what makes the divergence
+	// impossible to reintroduce quietly.
 	FSpecWriteFixture Fixture;
 	if (!Fixture.Init())
 	{
@@ -348,14 +358,9 @@ bool FMjSpecWriteSizeArityTest::RunTest(const FString& Parameters)
 	{
 		TestTrue(TEXT("the report says what was authored and what the shape reads"),
 			Reported.Contains(TEXT("authors 3 size values where a sphere reads 1")));
-	}
-
-	const mjsGeom* const SpecBall = FindGeom(Built.Spec, TEXT("ball"));
-	if (TestNotNull(TEXT("the sphere is findable by name"), SpecBall))
-	{
-		TestEqual(TEXT("the radius the shape reads is untouched"), SpecBall->size[0], 0.1);
-		TestEqual(TEXT("the second value is gone before the compile sees it"), SpecBall->size[1], 0.0);
-		TestEqual(TEXT("and the third"), SpecBall->size[2], 0.0);
+		TestTrue(TEXT("and names the element, not just the rule"), Reported.Contains(TEXT("ball")));
+		TestFalse(TEXT("the box, which reads all three, is not accused"), Reported.Contains(TEXT("brick")));
+		TestFalse(TEXT("a remark does not read as a failure"), MjAnyError(Diagnostics));
 	}
 
 	// The compiled model is where this has to be true: the defaults path fails
@@ -369,11 +374,10 @@ bool FMjSpecWriteSizeArityTest::RunTest(const FString& Parameters)
 	const int BallId = mj_name2id(Model, mjOBJ_GEOM, "ball");
 	if (TestTrue(TEXT("the sphere compiled"), BallId >= 0))
 	{
-		TestEqual(TEXT("it compiles as a sphere of the authored radius"),
-			Model->geom_size[3 * BallId], 0.1);
-		TestEqual(TEXT("carrying no value its type cannot read"),
-			Model->geom_size[3 * BallId + 1], 0.0);
-		TestEqual(TEXT("in either slot"), Model->geom_size[3 * BallId + 2], 0.0);
+		TestEqual(TEXT("the radius the shape reads is the first value"), Model->geom_size[3 * BallId], 0.1);
+		TestEqual(TEXT("and the values it does not read are carried, not dropped"),
+			Model->geom_size[3 * BallId + 1], 0.2);
+		TestEqual(TEXT("both of them"), Model->geom_size[3 * BallId + 2], 0.3);
 	}
 	const int BrickId = mj_name2id(Model, mjOBJ_GEOM, "brick");
 	if (TestTrue(TEXT("the box compiled"), BrickId >= 0))
@@ -382,6 +386,42 @@ bool FMjSpecWriteSizeArityTest::RunTest(const FString& Parameters)
 			Model->geom_size[3 * BrickId + 1], 0.2);
 		TestEqual(TEXT("including the last"), Model->geom_size[3 * BrickId + 2], 0.3);
 	}
+
+	// Ours against stock, over the document our own writer emits for this tree,
+	// so the two compiles are reading the same text and any divergence is the
+	// spec path's. Nothing else in the corpus authors an over-long size, so this
+	// is the only place the two could drift here without a test noticing.
+	FSpecWriteScratch Scratch;
+	TArray<FMjSpecDiagnostic> WriteErrors;
+	const FString Mjcf = Fixture.Spec().WriteMjcf(&WriteErrors);
+	const FString MjcfPath = FPaths::Combine(Scratch.Path, TEXT("arity.xml"));
+	if (Mjcf.IsEmpty() || !FFileHelper::SaveStringToFile(Mjcf, *MjcfPath))
+	{
+		AddError(FString::Printf(TEXT("could not write the document out: %s"),
+			WriteErrors.Num() > 0 ? *WriteErrors[0].ToString() : TEXT("empty text")));
+		mj_deleteModel(Model);
+		return false;
+	}
+
+	char Error[1024] = {0};
+	mjModel* const Stock = mj_loadXML(TCHAR_TO_UTF8(*MjcfPath), nullptr, Error, sizeof(Error));
+	if (Stock == nullptr)
+	{
+		AddError(FString::Printf(TEXT("stock MuJoCo refused the document our writer emitted: %s"),
+			UTF8_TO_TCHAR(Error)));
+		mj_deleteModel(Model);
+		return false;
+	}
+	const int StockBallId = mj_name2id(Stock, mjOBJ_GEOM, "ball");
+	if (TestTrue(TEXT("stock compiled the sphere too"), StockBallId >= 0 && BallId >= 0))
+	{
+		for (int32 Slot = 0; Slot < 3; ++Slot)
+		{
+			TestEqual(FString::Printf(TEXT("size[%d] is what stock MuJoCo compiles from the same text"), Slot),
+				Model->geom_size[3 * BallId + Slot], Stock->geom_size[3 * StockBallId + Slot]);
+		}
+	}
+	mj_deleteModel(Stock);
 	mj_deleteModel(Model);
 
 	return !HasAnyErrors();

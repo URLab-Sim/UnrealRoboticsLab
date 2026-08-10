@@ -38,6 +38,21 @@ enum class EMjSpecGraph : uint8
 	Scs,
 };
 
+/** Whether a diagnostic stopped the work or only described it. */
+UENUM()
+enum class EMjDiagnosticSeverity : uint8
+{
+	/** Nothing usable came of it. */
+	Error,
+	/**
+	 * The work carried on, and the user is being told something about it.
+	 *
+	 * A build reports both into one array, so a caller cannot decide "did this
+	 * work" by whether the array is empty; it asks the entries.
+	 */
+	Warning,
+};
+
 /** One reader or writer diagnostic, flattened out of ProtoSpec's own. */
 struct URLAB_API FMjSpecDiagnostic
 {
@@ -46,8 +61,33 @@ struct URLAB_API FMjSpecDiagnostic
 	int32 Line = 0;
 	bool bUnsupportedElement = false;
 
+	/**
+	 * Error unless something says otherwise.
+	 *
+	 * Every construction site that predates this field records a failure, so the
+	 * default keeps their meaning without touching them. The scene builder's own
+	 * `Warnings` and `Infos` arrays classify by which array an entry is in and do
+	 * not read this; unifying the two conventions is a change to that builder.
+	 */
+	EMjDiagnosticSeverity Severity = EMjDiagnosticSeverity::Error;
+
+	bool IsError() const { return Severity == EMjDiagnosticSeverity::Error; }
+
 	FString ToString() const;
 };
+
+/** True when any of `Diagnostics` is a failure rather than a remark. */
+inline bool MjAnyError(const TArray<FMjSpecDiagnostic>& Diagnostics)
+{
+	for (const FMjSpecDiagnostic& Diagnostic : Diagnostics)
+	{
+		if (Diagnostic.IsError())
+		{
+			return true;
+		}
+	}
+	return false;
+}
 
 struct URLAB_API FSpecRef
 {

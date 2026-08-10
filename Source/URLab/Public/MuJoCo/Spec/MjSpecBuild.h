@@ -74,8 +74,14 @@ struct URLAB_API FMjBuiltSpec
  * showing up in the next diff of their MJCF, not a failure here.
  *
  * On error the result's Spec is null and OutDiags carries at least one
- * diagnostic; diagnostics carry the offending component's source file and line
- * where one is implicated.
+ * diagnostic of Error severity. A build that succeeded can still fill OutDiags:
+ * a warning is something the user needs told about a document that built, so
+ * "did this work" is `Spec != nullptr`, or `MjAnyError(OutDiags)`, never whether
+ * the array is empty.
+ *
+ * Every diagnostic names the component it is about -- its Unreal name and the
+ * MJCF name it compiles under -- and carries its source file and line where the
+ * document had one.
  */
 URLAB_API FMjBuiltSpec BuildSpec(const FSpecRef& Root, TArray<FMjSpecDiagnostic>& OutDiags);
 

@@ -190,7 +190,7 @@ private:
 	bool ResolveClass(UMjNodeComponent& Node, FMjSpecWriteContext& Local);
 	void Identify(UMjNodeComponent& Node, FMjSpecWriteContext& Local);
 	bool RunHooks(UMjNodeComponent& Node, FMjSpecWriteContext& Local, bool bCreating);
-	void TruncateSizesToArity();
+	void ReportOverLongSizes();
 
 	FMjSpecWriteContext Ctx;
 	FMjBuiltSpec Result;
@@ -289,29 +289,36 @@ bool FBuilder::RunHooks(UMjNodeComponent& Node, FMjSpecWriteContext& Local, bool
 	return bOk;
 }
 
-void FBuilder::TruncateSizesToArity()
+void FBuilder::ReportOverLongSizes()
 {
 	// One pass over what the walk built, rather than a check inside each
 	// generated Apply. The gizmo, the array widget and a hand-edited MJCF file
-	// all arrive at this same build, so the rule is enforced once where they
+	// all arrive at this same build, so the question is asked once where they
 	// meet; scattered through generated code it would be a rule nobody reviews.
 	//
-	// MuJoCo reads `mjGEOMINFO[type]` values out of `size` and carries the rest
-	// into the compiled model untouched (`mjCModel::CopyObjects`,
-	// user_model.cc:3055), where they decide nothing: a sphere authored with
-	// three radii is a sphere of the first, and no compile ever says so.
+	// REPORTING ONLY, and the values are left exactly as authored. MuJoCo reads
+	// `mjGEOMINFO[type]` values out of `size` and keeps the rest: `checksize`
+	// bounds its loop by the arity and never looks further (user_objects.cc:163),
+	// and `mjCModel::CopyObjects` copies all three slots into `geom_size` and
+	// `site_size` whatever the type reads (user_model.cc:3055, :3101). Dropping
+	// them would compile a different model from the one stock MuJoCo compiles
+	// out of the same document, which is a worse fault than the silence: this
+	// project's correctness rests on those two models being the same one.
 	//
-	// Only the slots the author wrote are cleared. The type is read off the
-	// built element rather than off the component because creation copies the
-	// resolved class's template in, so it is the type the compile will read even
-	// where the element authored none of it; and a shape whose tail came from
-	// its class, or a site sitting on MuJoCo's own 0.005 default, wrote nothing
-	// there and keeps what it inherited.
+	// So what is wrong is not the values, it is that nobody is told. A sphere
+	// authored with three radii is a sphere of the first and the other two decide
+	// nothing, and until now no compile said so.
 	//
-	// Reported twice on purpose, to two audiences. The build's own diagnostic
-	// array is read when a build FAILS, and this does not fail one; a user who
-	// authored a size and had part of it dropped has to be told where they are
-	// looking, which is the editor's message log.
+	// The count is the element's own authored one and the type is read off the
+	// built element, because creation copies the resolved class's template in:
+	// that is the type the compile will read even where the element authored none
+	// of it, and it means a shape whose tail came from its class, or a site
+	// sitting on MuJoCo's own 0.005 default, is not accused of authoring it.
+	//
+	// Reported to two audiences on purpose. The build's own diagnostic array is
+	// read when a build FAILS, and this does not fail one; a user who authored a
+	// size that decides nothing has to be told where they are looking, which is
+	// the editor's message log.
 	TArray<FMjSizeViolation> Violations;
 	for (const TPair<TObjectPtr<const UMjNodeComponent>, mjsElement*>& Entry : Result.ElementFor)
 	{
@@ -326,16 +333,13 @@ void FBuilder::TruncateSizesToArity()
 			continue;
 		}
 
-		double* Size = nullptr;
 		mjtGeom Shape = mjGEOM_SPHERE;
-		if (mjsGeom* const Geom = mjs_asGeom(Entry.Value))
+		if (const mjsGeom* const Geom = mjs_asGeom(Entry.Value))
 		{
-			Size = Geom->size;
 			Shape = Geom->type;
 		}
-		else if (mjsSite* const Site = mjs_asSite(Entry.Value))
+		else if (const mjsSite* const Site = mjs_asSite(Entry.Value))
 		{
-			Size = Site->size;
 			Shape = Site->type;
 		}
 		else
@@ -349,13 +353,9 @@ void FBuilder::TruncateSizesToArity()
 		{
 			continue;
 		}
-		for (int32 Slot = Allowed; Slot < Authored.GetValue() && Slot < 3; ++Slot)
-		{
-			Size[Slot] = 0.0;
-		}
 		const FString Message = FString::Printf(
-			TEXT("authors %d size values where a %s reads %d; the rest decide nothing and are dropped "
-				 "before the compile"),
+			TEXT("authors %d size values where a %s reads %d; the rest are carried into the compiled model, "
+				 "as MuJoCo carries them, and decide nothing"),
 			Authored.GetValue(), *KeywordOf(Type), Allowed);
 		Ctx.Warn(*Node, Message);
 
@@ -658,7 +658,7 @@ FMjBuiltSpec FBuilder::Build()
 	// The whole document is written, so every element carries the type its class
 	// resolved to and nothing more will be added: the last thing before the spec
 	// is handed to a compile.
-	TruncateSizesToArity();
+	ReportOverLongSizes();
 
 	if (bFailed)
 	{
@@ -737,6 +737,9 @@ bool FMjSpecWriteContext::Warn(const UMjNodeComponent& Node, const FString& Mess
 			TEXT("%s: %s"), *DiagnosticSubject(Node, this->Node), *Message);
 		Diagnostic.File = Node.SourceFile;
 		Diagnostic.Line = Node.SourceLine;
+		// The build carried on and produced a spec. A caller asking "did this
+		// work" by the array's length would be told no, over a remark.
+		Diagnostic.Severity = EMjDiagnosticSeverity::Warning;
 	}
 	return true;
 }

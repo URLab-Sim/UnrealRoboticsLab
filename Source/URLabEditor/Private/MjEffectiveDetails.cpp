@@ -34,6 +34,7 @@
 #if URLAB_MJ_GEN
 
 #include "MuJoCo/Spec/MjEffective.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
 
 #endif  // URLAB_MJ_GEN
 
@@ -58,6 +59,28 @@ bool IsInheritable(const FProperty& Property)
 {
 	const FName Name = Property.GetFName();
 	return Name != GET_MEMBER_NAME_CHECKED(UMjNodeComponent, MjName) && Name != FName(TEXT("Dclass"));
+}
+
+/**
+ * A property this panel speaks for: an MJCF attribute, and nothing else.
+ *
+ * Asked of the DECLARING class, because that is where the schema's ownership is
+ * recorded: a generated element class declares exactly its own attributes, and
+ * everything else a node carries -- `USceneComponent`'s mobility, the geom's
+ * hand-added override material, the base's provenance rows -- is declared
+ * somewhere else. `MjGeneratedClassOf` is what makes "somewhere else" exact,
+ * because a hand subclass reports its generated base's element type and would
+ * otherwise pass for the generated class itself.
+ *
+ * Presence used to stand in for this: iterating `FOptionalProperty` alone
+ * happened to select MJCF attributes, at the cost of never seeing a `required`
+ * one, which is 77 attributes with no presence to wrap.
+ */
+bool IsSpecAttribute(const FProperty& Property)
+{
+	const UClass* const Owner = Property.GetOwnerClass();
+	psm::ElementType Type;
+	return Owner != nullptr && MjElementTypeOfClass(Owner, Type) && MjGeneratedClassOf(Type) == Owner;
 }
 
 /**
@@ -114,6 +137,28 @@ void CollectInherited(UMjNodeComponent& Node, const TArray<FOptionalProperty*>& 
 			Value.ClassName = Layer.ClassName;
 			Value.Source = Layer.bSchema ? EMjValueSource::Schema : EMjValueSource::Class;
 		}
+	}
+}
+
+/** Why the row reads the way it does, one sentence per layer that can supply it. */
+FText SourceTip(EMjValueSource Source)
+{
+	switch (Source)
+	{
+		case EMjValueSource::Schema:
+			return LOCTEXT("SchemaTip",
+				"What the compiler will use: this element authors nothing and no default class mentions the "
+				"attribute, so MuJoCo's own value decides it.");
+
+		case EMjValueSource::Class:
+			return LOCTEXT("InheritedTip",
+				"What the compiler will use: this element authors nothing, so the value comes from its default "
+				"class. Editing the class changes it.");
+
+		default:
+			return LOCTEXT("NoDefaultTip",
+				"Nothing supplies a value for this attribute: no default class mentions it and MuJoCo has none "
+				"of its own. It takes effect only if this element authors it.");
 	}
 }
 
@@ -179,7 +224,15 @@ void AuthorInherited(UMjNodeComponent& Node, const FOptionalProperty& Optional, 
 		return;
 	}
 	void* const Value = Optional.MarkSetAndGetInitializedValuePointerToReplace(Container);
-	Optional.GetValueProperty()->ImportText_Direct(*Text, Value, &Node, PPF_None);
+
+	// An attribute no layer supplies has nothing to seed from, and the row said
+	// so. Marking it set is then the whole of the action: that is the
+	// value-initialised optional the engine's own Set would have produced, and
+	// importing an empty string over it would be a parse of nothing.
+	if (!Text.IsEmpty())
+	{
+		Optional.GetValueProperty()->ImportText_Direct(*Text, Value, &Node, PPF_None);
+	}
 
 	FPropertyChangedEvent Event(const_cast<FOptionalProperty*>(&Optional), EPropertyChangeType::ValueSet);
 	Node.PostEditChangeProperty(Event);
@@ -232,7 +285,11 @@ FText FMjEffectiveDetails::DescribeValue(const FMjEffectiveValue& Value)
 				: FText::FromString(FString::Printf(TEXT("%s  (from %s)"), *Value.Text, *Value.ClassName));
 
 		default:
-			return FText::GetEmpty();
+			// Not a blank. An attribute genuinely has no lowest layer -- a geom's
+			// `mass`, which MuJoCo computes from density and volume -- and the row
+			// that says so is the one the user can act on. A blank row is
+			// indistinguishable from a row this panel failed to build.
+			return LOCTEXT("NoDefault", "(no default)");
 	}
 }
 
@@ -280,33 +337,42 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 	FMjArrayCustomizations::AddEulerRow(DetailBuilder, *Node);
 
 	// Every attribute the element leaves unset, asked as one question of the
-	// class chain rather than as one question each.
+	// class chain rather than as one question each -- and, separately, every
+	// attribute MJCF makes REQUIRED, which has no unset state to ask about and
+	// which an iterator over presence-wrapped properties alone never saw at all.
 	TArray<FOptionalProperty*> Unset;
-	for (TFieldIterator<FOptionalProperty> It(Node->GetClass()); It; ++It)
+	TArray<FProperty*> Required;
+	for (TFieldIterator<FProperty> It(Node->GetClass()); It; ++It)
 	{
-		FOptionalProperty* const Optional = *It;
-		if (Optional == nullptr || !IsInheritable(*Optional))
+		FProperty* const Property = *It;
+		if (Property == nullptr || !IsSpecAttribute(*Property) || !IsInheritable(*Property))
 		{
 			continue;
 		}
-		const void* const Container = Optional->ContainerPtrToValuePtr<void>(Node);
-		if (Container == nullptr || Optional->IsSet(Container))
+		if (FOptionalProperty* const Optional = CastField<FOptionalProperty>(Property))
 		{
+			const void* const Container = Optional->ContainerPtrToValuePtr<void>(Node);
+			if (Container != nullptr && !Optional->IsSet(Container))
+			{
+				Unset.Add(Optional);
+			}
 			continue;
 		}
-		Unset.Add(Optional);
+		Required.Add(Property);
 	}
 
 	TMap<FName, FMjEffectiveValue> Inherited;
 	CollectInherited(*Node, Unset, Inherited);
 
+	// An attribute no layer supplies still gets a row. Falling through to the
+	// engine's bare Set button was the one case the panel left the user to guess
+	// about, and "nothing decides this until you do" is an answer.
+	const FMjEffectiveValue Unresolved;
+
 	for (FOptionalProperty* const Optional : Unset)
 	{
 		const FMjEffectiveValue* const Found = Inherited.Find(Optional->GetFName());
-		if (Found == nullptr)
-		{
-			continue;
-		}
+		const FMjEffectiveValue& Value = Found != nullptr ? *Found : Unresolved;
 
 		const TSharedPtr<IPropertyHandle> Handle =
 			DetailBuilder.GetProperty(Optional->GetFName(), Optional->GetOwnerClass());
@@ -330,14 +396,14 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 
 		// The engine's own widget for an unset optional is a bare Set button that
 		// value-initialises -- a geom inheriting `0.3` from its class gets a zero
-		// -- and it is deliberately NOT put on these rows. Every row built here is
-		// an unset attribute with a resolved value, so the only Set the user is
-		// offered is the one below, which seeds what the row is showing them.
-		const FText Display = FMjEffectiveDetails::DescribeValue(*Found);
+		// -- and it is deliberately NOT put on these rows. The Set below seeds
+		// what the row is showing, which for an unresolved row is the same
+		// value-initialised optional, arrived at deliberately.
+		const FText Display = FMjEffectiveDetails::DescribeValue(Value);
 
 		TWeakObjectPtr<UMjNodeComponent> WeakNode = Node;
-		const FString Text = Found->Text;
-		const bool bFromSchema = Found->Source == EMjValueSource::Schema;
+		const FString Text = Value.Text;
+		const EMjValueSource Source = Value.Source;
 
 		Row->CustomWidget(/*bShowChildren=*/true)
 			.NameContent()[NameWidget.ToSharedRef()]
@@ -352,23 +418,19 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 							  [SNew(STextBlock)
 									  .Text(Display)
 									  .ColorAndOpacity(FSlateColor::UseSubduedForeground())
-									  .ToolTipText(bFromSchema
-											  ? LOCTEXT("SchemaTip",
-													"What the compiler will use: this element authors nothing and no "
-													"default class mentions the attribute, so MuJoCo's own value "
-													"decides it.")
-											  : LOCTEXT("InheritedTip",
-													"What the compiler will use: this element authors nothing, so the "
-													"value comes from its default class. Editing the class changes "
-													"it."))]
+									  .ToolTipText(SourceTip(Source))]
 					+ SHorizontalBox::Slot()
 						  .AutoWidth()
 						  .VAlign(VAlign_Center)
 							  [SNew(SButton)
 									  .Text(LOCTEXT("AuthorInheritedLabel", "Set"))
-									  .ToolTipText(LOCTEXT("AuthorInheritedTip",
-										  "Author this value onto the element, seeded from the value shown. The "
-										  "element then keeps it whatever its class does next."))
+									  .ToolTipText(Source == EMjValueSource::None
+											  ? LOCTEXT("AuthorEmptyTip",
+													"Author this attribute onto the element. Nothing supplies a value "
+													"for it, so it starts empty and is yours to fill in.")
+											  : LOCTEXT("AuthorInheritedTip",
+													"Author this value onto the element, seeded from the value shown. "
+													"The element then keeps it whatever its class does next."))
 									  .OnClicked_Lambda([WeakNode, Optional, Text, Utilities]() -> FReply {
 										  if (UMjNodeComponent* const Live = WeakNode.Get())
 										  {
@@ -380,6 +442,52 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 										  }
 										  return FReply::Handled();
 									  })]];
+	}
+
+	// A `required` attribute has no layering to report: MJCF makes the element
+	// carry it, no `<default>` class can supply it, and MuJoCo has no value of
+	// its own to fall back on. Its widget stays exactly as the engine built it,
+	// because it is the one the user edits; the annotation goes beside it, so
+	// every MuJoCo row on the panel says where its value stands.
+	for (FProperty* const Property : Required)
+	{
+		const TSharedPtr<IPropertyHandle> Handle =
+			DetailBuilder.GetProperty(Property->GetFName(), Property->GetOwnerClass());
+		if (!Handle.IsValid() || !Handle->IsValidHandle())
+		{
+			continue;
+		}
+		IDetailPropertyRow* const Row = DetailBuilder.EditDefaultProperty(Handle);
+		if (Row == nullptr)
+		{
+			continue;
+		}
+
+		TSharedPtr<SWidget> NameWidget;
+		TSharedPtr<SWidget> ValueWidget;
+		Row->GetDefaultWidgets(NameWidget, ValueWidget, /*bAddWidgetDecoration=*/true);
+		if (!NameWidget.IsValid() || !ValueWidget.IsValid())
+		{
+			continue;
+		}
+
+		Row->CustomWidget(/*bShowChildren=*/true)
+			.NameContent()[NameWidget.ToSharedRef()]
+			.ValueContent()
+			.MinDesiredWidth(250.0f)
+			.MaxDesiredWidth(700.0f)
+				[SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[ValueWidget.ToSharedRef()]
+					+ SHorizontalBox::Slot()
+						  .AutoWidth()
+						  .VAlign(VAlign_Center)
+						  .Padding(6.0f, 0.0f, 4.0f, 0.0f)
+							  [SNew(STextBlock)
+									  .Text(LOCTEXT("RequiredLabel", "(required)"))
+									  .ColorAndOpacity(FSlateColor::UseSubduedForeground())
+									  .ToolTipText(LOCTEXT("RequiredTip",
+										  "MJCF requires this attribute on this element. It cannot be left unset "
+										  "and no default class supplies it."))]];
 	}
 #endif  // URLAB_MJ_GEN
 }

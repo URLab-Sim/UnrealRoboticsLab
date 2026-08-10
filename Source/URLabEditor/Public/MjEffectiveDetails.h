@@ -35,7 +35,12 @@ class UMjNodeComponent;
 /** Which layer supplied an attribute the element itself leaves unset. */
 enum class EMjValueSource : uint8
 {
-	/** None did, not even the schema: there is nothing to put on the row. */
+	/**
+	 * None did, not even the schema. The row says so -- "(no default)" -- rather
+	 * than going blank: an attribute MuJoCo computes rather than defaults (a
+	 * geom's `mass`) is a fact about the model, and a blank row is
+	 * indistinguishable from a row that failed to build.
+	 */
 	None,
 
 	/** A `<default>` class in the document, which the user can go and edit. */
@@ -74,8 +79,10 @@ public:
 	 * The nearest layer above the element that supplies the attribute, resolved
 	 * through the layering `ps::sdk::EffectiveField` applies: the `<default>`
 	 * class chain from nearest to furthest, and then MuJoCo's own value for the
-	 * attribute. False only when NO layer supplies it -- an attribute the schema
-	 * itself leaves open, like a geom's `size`, where the honest row is a blank.
+	 * attribute. False only when NO layer supplies it, which the schema layer has
+	 * made rare: what is left is an attribute MuJoCo COMPUTES rather than
+	 * defaults -- a geom's `mass`, from its density and volume -- where the
+	 * honest row is "(no default)".
 	 *
 	 * The row builder's own question, exposed because it is the answer worth
 	 * asserting: a display string is checkable where a Slate widget is not.

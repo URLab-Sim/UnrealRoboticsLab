@@ -31,8 +31,12 @@ namespace
 {
 /**
  * Identity counter. Serials only have to be unique and monotonic within the
- * process: they key the compile-time auto-namer and the adapters' spec-order
- * tie-break, both of which live entirely inside one session's compile.
+ * process: they are the adapters' spec-order tie-break for siblings whose
+ * authored `SiblingIndex` collides, which lives entirely inside one session.
+ *
+ * Nothing that leaves the process is derived from one. The generated names an
+ * unnamed element compiles under used to be, and are not: they count their
+ * family in document order instead, so they repeat across runs.
  */
 std::atomic<uint64> GMjSerialCounter{0};
 

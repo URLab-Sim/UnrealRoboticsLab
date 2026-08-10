@@ -14,11 +14,13 @@
 // subset. It runs at exact tolerance: a compile that moves a single field is a
 // finding, and judging it is a human's job, never this test's.
 //
-// One divergence is accounted for rather than reported, and only one: the
-// serial inside a generated `_ps:` name, which is minted from a
-// process-lifetime counter and so differs between the run that recorded a
-// golden and every run that checks it. Which elements carry a reservation, of
-// which family, at which index, still has to match exactly. See SameReservation.
+// Nothing is accounted for and nothing is forgiven. A generated `_ps:` name
+// used to be, because its serial came from a process-lifetime counter and so
+// differed between the run that recorded a golden and every run that checked
+// it; the serial is now a per-family ordinal in document order, which repeats,
+// so the recorded name and ours are the same string and the comparison is
+// exact again. A reserved name that moves is a real change in what the document
+// compiles to, and is reported like any other.
 //
 // A missing golden fails. Coverage that disappears -- a golden deleted,
 // renamed, or never staged -- has to be as loud as a mismatch, or the suite
@@ -254,124 +256,43 @@ bool CaptureManifestAgrees(FAutomationTestBase& Test)
 	return true;
 }
 
-/** What a generated name begins with. One spelling, stated in MjReservedNames.h. */
-const TCHAR* const ReservedPrefix = TEXT("_ps:");
-
-/** The two raw tables a name difference also shows up in, byte for byte. */
-const char* const NameTableFields[] = {"names", "names_map"};
-
 /**
- * The family segment of a generated name, or empty if it is not one.
+ * Every divergence from a golden, formatted one per entry.
  *
- * A generated name reads `_ps:<family>:<serial>`, so the family is what sits
- * between the prefix and the last colon.
+ * Nothing is excluded, sizes and names included. The two models come from the
+ * same compiler over the same authored input, so every field of one has to be
+ * the field of the other; a recording that no longer describes what the code
+ * compiles is a finding for a human, never something for this to absorb.
  */
-FString ReservationFamily(const std::string& Name)
+TArray<FString> GoldenDiffs(const ps::harness::DiffReport& Report)
 {
-	const FString Text = Utf8ToUe(Name);
-	if (!Text.StartsWith(ReservedPrefix))
-	{
-		return FString();
-	}
-	int32 LastColon = INDEX_NONE;
-	if (!Text.FindLastChar(TEXT(':'), LastColon))
-	{
-		return FString();
-	}
-	const int32 Start = FCString::Strlen(ReservedPrefix);
-	return LastColon > Start ? Text.Mid(Start, LastColon - Start) : FString();
-}
+	TArray<FString> Differences;
 
-/**
- * True when the two sides are the same reservation minted in two sessions.
- *
- * An element the document left unnamed reaches the compiled model carrying
- * `_ps:<family>:<serial>`, and the serial comes from a process-lifetime counter
- * (`UMjNodeComponent::EnsureSerial`). It is the one part of a compiled model
- * that cannot repeat across runs, so a recording taken from a model with
- * unnamed elements could never verify against itself: every fixture here
- * happened to name everything until a real robot joined the corpus, which is
- * why this surfaced only then.
- *
- * The serial is session identity for the bridge, never a fact about the model.
- * What IS a fact -- that this element got a reservation at all, of this family,
- * at this index -- is exactly what still has to match, and does: the comparison
- * is per object type and id, and a side that is not a reservation of the same
- * family is a finding whichever way round it reads.
- */
-bool SameReservation(const ps::harness::NameDiff& Name)
-{
-	const FString Family = ReservationFamily(Name.a);
-	return !Family.IsEmpty() && Family == ReservationFamily(Name.b);
-}
-
-/** True when `Field` is one of the raw tables the names themselves are stored in. */
-bool IsNameTableField(const std::string& Field)
-{
-	for (const char* const Name : NameTableFields)
-	{
-		if (Field == Name)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-/**
- * Every divergence from a golden that the reserved-name convention does not
- * account for, formatted one per entry.
- *
- * Sizes are deliberately NOT forgiven, even `nnames`, which a serial of a
- * different digit count would move: the harness compares array fields only when
- * every size matched, so forgiving one size here would forgive the whole field
- * comparison with it. If a recapture ever moves the name table's size, this
- * fails loudly with the full report, which is the right outcome for a recording
- * that has to be taken again.
- */
-TArray<FString> UnexplainedGoldenDiffs(const ps::harness::DiffReport& Report)
-{
-	TArray<FString> Unexplained;
-
-	int32 Reservations = 0;
 	for (const ps::harness::NameDiff& Name : Report.names)
 	{
-		if (SameReservation(Name))
-		{
-			++Reservations;
-			continue;
-		}
-		Unexplained.Add(FString::Printf(TEXT("name %s[%d]: golden '%s', ours '%s'"), *Utf8ToUe(Name.objtype), Name.id,
+		Differences.Add(FString::Printf(TEXT("name %s[%d]: golden '%s', ours '%s'"), *Utf8ToUe(Name.objtype), Name.id,
 			*Utf8ToUe(Name.a), *Utf8ToUe(Name.b)));
 	}
 
-	// The two raw tables are the same fact spelled in bytes, so they are the
-	// serials' shadow only while the serials are all the names that moved.
-	const bool bSerialsOnly = Unexplained.IsEmpty() && Reservations > 0;
-
 	for (const ps::harness::FieldDiff& Field : Report.fields)
 	{
-		if (bSerialsOnly && IsNameTableField(Field.field))
-		{
-			continue;
-		}
-		Unexplained.Add(FString::Printf(TEXT("field %s: %lld of %lld differ"), *Utf8ToUe(Field.field),
+		Differences.Add(FString::Printf(TEXT("field %s: %lld of %lld differ"), *Utf8ToUe(Field.field),
 			static_cast<int64>(Field.num_diff), static_cast<int64>(Field.count_a)));
 	}
 
 	for (const ps::harness::SizeDiff& Size : Report.sizes)
 	{
-		Unexplained.Add(FString::Printf(TEXT("size %s: golden %lld, ours %lld"), *Utf8ToUe(Size.name),
+		Differences.Add(FString::Printf(TEXT("size %s: golden %lld, ours %lld"), *Utf8ToUe(Size.name),
 			static_cast<int64>(Size.a), static_cast<int64>(Size.b)));
 	}
 
 	for (const ps::harness::FieldDiff& Invariant : Report.invariants)
 	{
-		Unexplained.Add(FString::Printf(TEXT("invariant %s: %lld of %lld differ"), *Utf8ToUe(Invariant.field),
+		Differences.Add(FString::Printf(TEXT("invariant %s: %lld of %lld differ"), *Utf8ToUe(Invariant.field),
 			static_cast<int64>(Invariant.num_diff), static_cast<int64>(Invariant.count_a)));
 	}
 
-	return Unexplained;
+	return Differences;
 }
 
 /** Serialize `Model` into the byte form a golden is stored as. */
@@ -445,13 +366,12 @@ void CheckAgainstGolden(
 		Test.AddError(FString::Printf(TEXT("%s: model comparison did not complete: %s"), *Label, *Utf8ToUe(Err)));
 	}
 
-	const TArray<FString> Unexplained = UnexplainedGoldenDiffs(Report);
-	if (!Unexplained.IsEmpty())
+	const TArray<FString> Differences = GoldenDiffs(Report);
+	if (!Differences.IsEmpty())
 	{
-		Test.AddError(FString::Printf(TEXT("%s: compiled model differs from its golden (%s) beyond the generated "
-										   "names (%d unexplained):\n  %s\nfull comparison:\n%s"),
-			*Label, *GoldenPath, Unexplained.Num(), *FString::Join(Unexplained, TEXT("\n  ")),
-			*ReportToString(Report)));
+		Test.AddError(FString::Printf(
+			TEXT("%s: compiled model differs from its golden (%s), %d differences:\n  %s\nfull comparison:\n%s"), *Label,
+			*GoldenPath, Differences.Num(), *FString::Join(Differences, TEXT("\n  ")), *ReportToString(Report)));
 	}
 }
 
@@ -485,6 +405,7 @@ void CheckNoOrphanedGoldens(FAutomationTestBase& Test, const TArray<FString>& Fi
 
 /** The MJCF a scene root that contributes nothing of its own is written as. */
 const TCHAR* const EmptySceneRootXml = TEXT("<mujoco model=\"scene\"><worldbody></worldbody></mujoco>");
+
 
 } // namespace MjParityGoldenTests
 
@@ -682,11 +603,15 @@ bool FMjSpecParitySceneGoldenTest::RunTest(const FString& Parameters)
 // ============================================================================
 // URLab.Parity.SpecReservedNames
 //   An element the document leaves unnamed still arrives in the compiled model
-//   carrying a name, and an authored name is left exactly as it was written.
+//   carrying a name, an authored name is left exactly as it was written, and
+//   the generated names are exactly these names, in every run.
 //
-//   The goldens cannot say this: every fixture in the corpus names everything.
-//   The names are what leaves the engine -- the bridge reconciles by them -- so
-//   they are asserted on the compiled model rather than on the spec.
+//   The goldens cannot say the first part: every fixture in the corpus names
+//   everything. They now depend on the last part, which is why it is asserted
+//   here by exact string rather than by shape -- the ordinal is a count of the
+//   family in document order, so it is a fact about the document and a test can
+//   spell it out. A serial from a process counter could only ever have been
+//   asserted as a pattern.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParityReservedNamesTest, "URLab.Parity.SpecReservedNames",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -694,6 +619,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecParityReservedNamesTest, "URLab.Parity.S
 bool FMjSpecParityReservedNamesTest::RunTest(const FString& Parameters)
 {
 	using namespace MjParityGoldenTests;
+
+	// Every generated name `UnnamedElementsXml` produces, spelled out. Two of
+	// each family it leaves unnamed twice, one of each it leaves unnamed once,
+	// and no ordinal spent on the one geom the document does name.
+	const TArray<FString> Expected = {
+		TEXT("_ps:body:1"),
+		TEXT("_ps:body:2"),
+		TEXT("_ps:camera:1"),
+		TEXT("_ps:geom:1"),
+		TEXT("_ps:geom:2"),
+		TEXT("_ps:joint:1"),
+		TEXT("_ps:joint:2"),
+		TEXT("_ps:light:1"),
+		TEXT("_ps:site:1"),
+	};
 
 	const FString Label = TEXT("reserved_names");
 	UBlueprint* const Blueprint = ParseFixture(*this, ScratchPrefix, Label, UnnamedElementsXml, FString());
@@ -710,20 +650,27 @@ bool FMjSpecParityReservedNamesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// The unnamed body is the one that proves the reservation happened at all.
-	bool bReserved = false;
-	for (int32 Id = 0; Id < static_cast<int32>(ViaSpec->nbody); ++Id)
-	{
-		const char* const Name = mj_id2name(ViaSpec, mjOBJ_BODY, Id);
-		if (Name != nullptr && FString(UTF8_TO_TCHAR(Name)).StartsWith(TEXT("_ps:body:")))
-		{
-			bReserved = true;
-			break;
-		}
-	}
-	TestTrue(TEXT("an unnamed body reached the compiled model with a reserved name"), bReserved);
+	const TArray<FString> Names = ReservedNamesOf(ViaSpec);
+	TestEqual(FString::Printf(TEXT("the document's generated names are exactly the expected ones (got: %s)"),
+				  *FString::Join(Names, TEXT(", "))),
+		FString::Join(Names, TEXT(", ")), FString::Join(Expected, TEXT(", ")));
 
 	TestTrue(TEXT("the authored name survived untouched"), mj_name2id(ViaSpec, mjOBJ_GEOM, "authored") >= 0);
+
+	// The same document, read and compiled again in the same process. Under a
+	// process-lifetime serial this was the assertion that could not be made:
+	// every name would have moved on. It is what the goldens next door rest on.
+	UBlueprint* const Second = ParseFixture(*this, ScratchPrefix, Label, UnnamedElementsXml, FString());
+	if (Second != nullptr)
+	{
+		urlab::spec::FMjBuiltSpec SecondBuilt;
+		if (mjModel* const Again = CompileThroughSpecPath(*this, Label, FSpecRef::OverBlueprint(*Second), SecondBuilt))
+		{
+			TestEqual(TEXT("a second read of the same document reserves the same names"),
+				FString::Join(ReservedNamesOf(Again), TEXT(", ")), FString::Join(Names, TEXT(", ")));
+			mj_deleteModel(Again);
+		}
+	}
 
 	mj_deleteModel(ViaSpec);
 	return !HasAnyErrors();

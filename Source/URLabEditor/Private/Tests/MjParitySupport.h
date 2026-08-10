@@ -52,6 +52,56 @@ namespace MjParitySupport
 /** Indices sampled per differing field, and entries listed per category. */
 constexpr int32 MaxExamples = 4;
 
+/** What a generated name begins with. One spelling, stated in MjReservedNames.h. */
+const TCHAR* const ReservedPrefix = TEXT("_ps:");
+
+/** An element family and the model size that counts it. `mjtSize`, never `int32`. */
+struct FModelFamily
+{
+	int32 ObjType;
+	mjtSize mjModel::*Count;
+};
+
+/** The families a fixture here can leave unnamed, so a reservation can appear in them. */
+const FModelFamily ReservableFamilies[] = {
+	{mjOBJ_BODY, &mjModel::nbody},
+	{mjOBJ_JOINT, &mjModel::njnt},
+	{mjOBJ_GEOM, &mjModel::ngeom},
+	{mjOBJ_SITE, &mjModel::nsite},
+	{mjOBJ_CAMERA, &mjModel::ncam},
+	{mjOBJ_LIGHT, &mjModel::nlight},
+};
+
+/**
+ * Every generated name in `Model`, sorted.
+ *
+ * Sorted rather than in model order so the result is a set a test can spell out
+ * without also pinning MuJoCo's own id assignment, which is its business.
+ */
+inline TArray<FString> ReservedNamesOf(const mjModel* Model)
+{
+	TArray<FString> Names;
+	for (const FModelFamily& Family : ReservableFamilies)
+	{
+		const int32 Count = static_cast<int32>(Model->*Family.Count);
+		for (int32 Id = 0; Id < Count; ++Id)
+		{
+			const char* const Name = mj_id2name(Model, Family.ObjType, Id);
+			if (Name == nullptr)
+			{
+				continue;
+			}
+			const FString Text(UTF8_TO_TCHAR(Name));
+			if (Text.StartsWith(ReservedPrefix))
+			{
+				Names.Add(Text);
+			}
+		}
+	}
+	Names.Sort();
+	return Names;
+}
+
 inline FString TestDataDir(const TCHAR* Leaf)
 {
 	return FPaths::Combine(

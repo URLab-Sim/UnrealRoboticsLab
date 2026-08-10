@@ -56,9 +56,6 @@ using namespace MjParitySupport;
 /** The scratch Blueprint name prefix, so a leaked package says whose it was. */
 const TCHAR* const ScratchPrefix = TEXT("MjStockDiff");
 
-/** What a generated name starts with; the one divergence this test allows. */
-const TCHAR* const ReservedPrefix = TEXT("_ps:");
-
 /** The one model size a generated name can move. Compared against `SizeDiff::name`. */
 const char* const NameTableSize = "nnames";
 
@@ -357,7 +354,25 @@ bool FMjStockDiffGeneratedNamesTest::RunTest(const FString& Parameters)
 	const FStockVerdict Verdict = ClassifyStockDiff(Report);
 	ReportUnexplained(*this, Label, Verdict, Report);
 
-	TestTrue(TEXT("the document did produce generated names"), Verdict.GeneratedNames > 0);
+	// The names themselves, by exact string. The ordinal in a generated name
+	// counts its family in document order, so it is a fact about this document
+	// and not about the session that read it: the pinning can name the names.
+	const TArray<FString> Expected = {
+		TEXT("_ps:body:1"),
+		TEXT("_ps:body:2"),
+		TEXT("_ps:camera:1"),
+		TEXT("_ps:geom:1"),
+		TEXT("_ps:geom:2"),
+		TEXT("_ps:joint:1"),
+		TEXT("_ps:joint:2"),
+		TEXT("_ps:light:1"),
+		TEXT("_ps:site:1"),
+	};
+	const TArray<FString> Names = ReservedNamesOf(Ours);
+	TestEqual(TEXT("the generated names are exactly the ones this document implies"),
+		FString::Join(Names, TEXT(", ")), FString::Join(Expected, TEXT(", ")));
+
+	TestEqual(TEXT("stock left exactly those names empty"), Verdict.GeneratedNames, Expected.Num());
 	TestTrue(TEXT("the only model size the generated names moved is the name table"), Verdict.bNameTableSizeOnly);
 	TestEqual(TEXT("the name table is the only size that moved at all"), Verdict.SizeDiffs, 1);
 	TestEqual(TEXT("nothing beyond the generated names differs from stock"), Verdict.Unexplained.Num(), 0);

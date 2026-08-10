@@ -45,6 +45,17 @@ inline const TCHAR* const MjReservedNamePrefix = TEXT("_ps:");
 /**
  * Name the unnamed of one spec, and take the names off again.
  *
+ * A reserved name reads `_ps:<family>:<n>`, where `n` counts the reservations of
+ * that family in document order within the spec being named, from one. It is
+ * therefore a property of the document: the same spec reserves the same names in
+ * every process, so a recorded model verifies against a later run, a compiled
+ * scene diffs quietly against the one before it, and a bridge client's names
+ * survive a restart. The ordinal deliberately does not come from the element's
+ * `Serial`, which is session identity and cannot repeat across runs.
+ *
+ * Uniqueness across specs is participant prefixing's job, not this one's: two
+ * specs composed into a scene each carry their own prefix by then.
+ *
  * The tree is handed back exactly as it was found. Authoring the names for real
  * would put identity nobody asked for into the user's Blueprint, and it would
  * show up in the next diff of their MJCF.

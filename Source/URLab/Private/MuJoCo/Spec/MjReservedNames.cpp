@@ -163,6 +163,12 @@ int32 ObjTypeOfElement(psm::ElementType Type)
 
 FMjReservedNames::FMjReservedNames(const FSpecRef& Spec)
 {
+	// The ordinal each family is up to, counting only the reservations this walk
+	// mints. `MjSpecNodesOf` hands the tree back in spec order, so the ordinal an
+	// element receives is a property of the document rather than of the session
+	// that read it: the same spec reserves the same names in every process.
+	TMap<int32, int32> NextOrdinal;
+
 	const FMjSpecNodes Tree = MjSpecNodesOf(Spec);
 	for (UMjNodeComponent* Node : Tree.Nodes)
 	{
@@ -184,9 +190,9 @@ FMjReservedNames::FMjReservedNames(const FSpecRef& Spec)
 		{
 			continue;
 		}
-		Node->EnsureSerial();
-		Node->MjName = FString::Printf(TEXT("%s%s:%llu"), MjReservedNamePrefix,
-			UTF8_TO_TCHAR(mju_type2Str(ObjType)), Node->Serial);
+		const int32 Ordinal = ++NextOrdinal.FindOrAdd(ObjType, 0);
+		Node->MjName = FString::Printf(
+			TEXT("%s%s:%d"), MjReservedNamePrefix, UTF8_TO_TCHAR(mju_type2Str(ObjType)), Ordinal);
 		Renamed.Add(Node);
 	}
 }

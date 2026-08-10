@@ -39,6 +39,22 @@ subtree back to MJCF text and hands it to MuJoCo's reader. That is what
 `MjSpecWriteHooks.cpp` calls the wrapper path, and it is scoped to the macro's
 subtree.
 
+Two things about the wrapper document are load-bearing and were established by
+running the engine, not by reading it:
+
+- **The carrier is a `<frame>`, never a `<body>`.** The macro sits under a frame
+  carrying the class its enclosing body imposed. A frame is flattened at
+  compile and a body is not, so a body carrier would put an extra link in the
+  kinematic chain and shift every name after it.
+- **The wrapper carries the asset section minus the names the target already
+  holds.** The expansion is attached with an empty prefix, and `mjs_attach`
+  rejects a repeated asset name outright — so carrying the section wholesale
+  fails the attach, which is unrecoverable (see below). It is a set difference
+  rather than a walk over what the macro references, and that is what makes it
+  safe: anything omitted is omitted *because* the target has it, so no omission
+  can break a reference. The wrapper spec is parsed and never compiled, so the
+  references it leaves dangling resolve in the target after the attach.
+
 If you find yourself producing MJCF text anywhere else, the design has been
 misunderstood.
 
@@ -125,13 +141,23 @@ unnamed elements — most importantly the Python bridge, which reconciles the
 model it holds against the one Unreal is simulating.
 
 So during a build, unnamed components are temporarily given generated names
-beginning `_ps:` (`MjReservedNames.h`). Two things about this are load-bearing:
+beginning `_ps:` (`MjReservedNames.h`). Three things about this are
+load-bearing:
 
 **It is a wire contract, not an implementation detail.** These names leave the
 engine: they are in the compiled model, in `scene_compiled.xml`, and in the
 handshake MJCF. Remote clients reconcile by them. Changing the prefix or the
-serial allocation breaks those clients — this is a cross-repository protocol
+ordinal allocation breaks those clients — this is a cross-repository protocol
 change, not a plugin change.
+
+**The name is a fact about the document, not about the session.** A reserved
+name reads `_ps:<family>:<n>`, where `n` counts the reservations of that family
+in document order within the spec being named, from one. The same spec therefore
+reserves the same names in every process: a recorded `.mjb` verifies against a
+later run, `scene_compiled.xml` diffs quietly against the one before it, and a
+bridge client's names survive a restart. The ordinal deliberately does not come
+from `UMjNodeComponent::Serial`, which is a process counter and cannot repeat.
+Uniqueness *across* specs is participant prefixing's job, not this one's.
 
 **The names go on the components, transiently.** They are written onto the
 components' `MjName` and removed at scope exit, and the tree is handed back
@@ -203,6 +229,40 @@ A scene is assembled by attaching participant specs into a scene root with
 Deep copy is raised only around the nested-model attach. Participant attach and
 the macro bridge attach deliberately without copying.
 
+### Conflicts between a participant and the scene are MuJoCo's to resolve
+
+Two documents composed into one both carry model-level blocks, and only one set
+survives. That decision is not ours: MuJoCo has a conflict resolver
+(`user_api.cc`) that runs inside every `mjs_attach`, driven by `mjtConflict` on
+the compiler block — `warning`, `merge` or `error` — which the scene author sets
+in MJCF like any other attribute.
+
+What it visits is `<option>`, `<visual>` and `<size>`. It never visits
+`<compiler>`, so a policy is read from there but nothing in there is resolved.
+
+**The resolver only sees values it knows were authored**, and "authored" is a
+per-field flag MuJoCo's own reader sets. A value a document wrote out
+explicitly that happens to equal MuJoCo's default is invisible to the resolver
+without it, so the spec build sets the flags itself, from the authored state the
+components already know. The two calls that do it, `mjs_setAuthored` and
+`mjs_isAuthored`, are exported from the library and absent from its public
+headers, so both are declared by hand (`MjAuthored.h`, mirroring
+`src/user/user_api.h`) and a test exercises them end to end — a signature change
+upstream would otherwise be found by a user, not by a compiler.
+
+Flags go on **every** spec the build produces, in one change and never half.
+A flagged spec attached into an unflagged one can swallow a real conflict even
+under the error policy, which is worse than flagging nothing.
+
+!!! note "Mixed units across an attach are safe by MuJoCo's design"
+
+    A robot authored in degrees dropped into a radians scene compiles with
+    correct geometry, and no policy setting is needed to make it so. Attached
+    elements keep a pointer to the document that authored them and compile under
+    *its* angle setting. This was proven with both pre-resolved and unresolved
+    orientations. There is no 57x hazard here to defend against, and the policy
+    mechanism could not express one anyway.
+
 ## The correctness nets
 
 Four independent nets cover different failure shapes. Know which one would have
@@ -265,6 +325,19 @@ single buffer because several conversions appear as separate arguments of one
 than eight conversions alive across one call dangles silently. Eight is not a
 round number chosen for comfort; it is the headroom over the widest call in the
 tree today.
+
+**A rigid flex on a static body, touching another static body, aborts inside
+`mj_forward` — upstream, and not at load.** The contact row's Jacobian is all
+zeros, `treeIterInit` takes the generic-scan branch for flex contacts
+(`engine_island.c`), the scan finds no tree, and `unionConstraintTrees` raises
+`mj_island: no tree found for constraint 0` through MuJoCo's fatal-error
+handler. MuJoCo's own test suite excludes this shape from its parity tests. The
+consequence for our tooling: anything that steps an arbitrary model has to trap
+the fatal handler, or the process dies and the failure gets attributed to
+whatever ran last. The round-trip harness does trap it and compares every model
+field regardless, skipping only the step invariants for a model whose forward
+pass aborts — the original file fails identically under stock MuJoCo, which is
+how we know the reader and writer are not involved.
 
 **`mjtSize` is not `int32`.** Comparing one against an `int32` in a `TestEqual`
 is an ambiguous-overload compile error (C2666), not a warning. Cast at the call

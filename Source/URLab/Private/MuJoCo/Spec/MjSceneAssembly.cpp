@@ -27,7 +27,7 @@ public:
 	void OnTexture(const FMjAssetRequest&, const TArray<uint8>&) override {}
 	void OnHeightField(const FMjAssetRequest&, const TArray<uint8>&) override {}
 };
-}  // namespace
+} // namespace
 
 FString MjSceneModelName(const FSpecRef& SceneRoot)
 {
@@ -49,7 +49,8 @@ TArray<FMjAssetRequest> MjCollectSceneAssets(const FMjSceneParticipant& Particip
 	return Sink.GetRequests();
 }
 
-void FSceneAssembly::Add(const FSpecRef& Spec, const FString& Prefix, const FVector& MjPos, const FQuat& MjQuat)
+void FSceneAssembly::Add(const FSpecRef& Spec, const FString& Prefix, const FVector& MjPos, const FQuat& MjQuat,
+	TOptional<EMjConflict> Conflict)
 {
 	if (!Spec.IsValid())
 	{
@@ -60,6 +61,7 @@ void FSceneAssembly::Add(const FSpecRef& Spec, const FString& Prefix, const FVec
 	Participant.Prefix = Prefix;
 	Participant.MjPos = MjPos;
 	Participant.MjQuat = MjQuat;
+	Participant.Conflict = Conflict;
 	Participants.Add(MoveTemp(Participant));
 	bSorted = false;
 }

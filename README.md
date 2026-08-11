@@ -87,7 +87,8 @@ ROS 2 bridging.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md), and the
 [Contributing docs](https://urlab-sim.github.io/UnrealRoboticsLab/contributing/building/)
-for building from source, the codegen, and bumping MuJoCo. Since Unreal projects
+for building from source, regenerating the MuJoCo profile, and bumping
+MuJoCo. Since Unreal projects
 cannot use standard CI, each PR should include proof of a local build and passing
 tests.
 

@@ -4,7 +4,7 @@ A controller decides how a control target becomes joint torques. Attach one comp
 
 ## How control flows
 
-A control target arrives on each `UMjActuator` from ZMQ or Blueprint. When the articulation applies controls each physics step:
+A control target arrives on each actuator component (`MjMotor`, `MjPosition`, `MjActuatorGeneral` and the rest) from ZMQ or Blueprint. When the articulation applies controls each physics step:
 
 - If the articulation has a controller component, the controller's compute step runs and writes `d->ctrl` (or torques) using its own control law.
 - If there is no controller, the raw target is written straight to `d->ctrl`. This is the right behaviour for position actuators, where MuJoCo runs the PD loop internally.
@@ -53,7 +53,7 @@ public:
         for (int32 i = 0; i < Bindings.Num(); ++i)
         {
             const FActuatorBinding& B = Bindings[i];
-            float Target = B.Component->ResolveDesiredControl(Source);
+            float Target = UMjActuatorRuntime::ResolveDesiredControl(B.Component, Source);
             float Pos = (float)d->qpos[B.QposAddr];
             float Vel = (float)d->qvel[B.QvelAddr];
             d->ctrl[B.ActuatorMjID] = (mjtNum)(MyGain * (Target - Pos));
@@ -65,7 +65,7 @@ public:
 Binding runs once after the model compiles. It resolves each actuator's joint transmission, stores the qpos/qvel addresses, and sorts entries by actuator ID so the index order matches how Python discovers actuators. Free and ball joints are skipped.
 
 !!! warning
-    The compute step runs on the async physics thread. Read control targets through `ResolveDesiredControl()` (atomic). Gain arrays tolerate benign torn reads during updates, since individual float writes are atomic on x86 and ARM. Do not touch non-thread-safe engine state from inside it.
+    The compute step runs on the async physics thread. Read control targets through `UMjActuatorRuntime::ResolveDesiredControl()` (atomic), which is a static taking the actuator component rather than a method on it. Gain arrays tolerate benign torn reads during updates, since individual float writes are atomic on x86 and ARM. Do not touch non-thread-safe engine state from inside it.
 
 To use a controller, add it to the articulation Blueprint, configure its properties (or push them from Python), and it activates automatically once enabled and bound.
 

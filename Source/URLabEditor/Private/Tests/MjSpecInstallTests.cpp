@@ -156,7 +156,7 @@ struct FScene
 	}
 };
 
-}  // namespace MjSpecInstallTests
+} // namespace MjSpecInstallTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecInstallBindsElements,
 	"URLab.Doc.InstalledSpecBindsItsElements",
@@ -193,11 +193,11 @@ bool FMjSpecInstallBindsElements::RunTest(const FString& Parameters)
 		mjtObj Type;
 	};
 	const FCase Cases[] = {
-		{TEXT("hinge"), mjOBJ_JOINT},
-		{TEXT("drive"), mjOBJ_ACTUATOR},
-		{TEXT("hingepos"), mjOBJ_SENSOR},
-		{TEXT("base"), mjOBJ_BODY},
-		{TEXT("link"), mjOBJ_GEOM},
+		{   TEXT("hinge"),    mjOBJ_JOINT},
+		{   TEXT("drive"), mjOBJ_ACTUATOR},
+		{TEXT("hingepos"),   mjOBJ_SENSOR},
+		{    TEXT("base"),     mjOBJ_BODY},
+		{    TEXT("link"),     mjOBJ_GEOM},
 	};
 	for (const FCase& Case : Cases)
 	{
@@ -381,4 +381,4 @@ bool FMjSpecInstallUnbindsOnRecompile::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

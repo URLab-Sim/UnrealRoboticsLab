@@ -106,7 +106,10 @@ const TCHAR* kAnchorXml = TEXT(R"XML(
 
 // --- double quaternion (w,x,y,z) helpers for the FK self-test -------------
 
-struct FQd { double w, x, y, z; };
+struct FQd
+{
+	double w, x, y, z;
+};
 
 FQd QMul(const FQd& A, const FQd& B)
 {
@@ -117,7 +120,10 @@ FQd QMul(const FQd& A, const FQd& B)
 		A.w * B.z + A.x * B.y - A.y * B.x + A.z * B.w};
 }
 
-FQd QConj(const FQd& Q) { return {Q.w, -Q.x, -Q.y, -Q.z}; }
+FQd QConj(const FQd& Q)
+{
+	return {Q.w, -Q.x, -Q.y, -Q.z};
+}
 
 FVector QRot(const FQd& Q, const FVector& V)
 {
@@ -140,7 +146,11 @@ FQd QFromRpy(const FVector& Rpy)
 	return QMul(Qz, QMul(Qy, Qx));
 }
 
-struct FPose { FVector Pos = FVector::ZeroVector; FQd Rot{1, 0, 0, 0}; };
+struct FPose
+{
+	FVector Pos = FVector::ZeroVector;
+	FQd Rot{1, 0, 0, 0};
+};
 
 // Reproduce mjModel geom_xpos from the exported URDF at the zero pose (q=0 ==
 // qpos0) and check every emitted geom lands within Tol metres of MuJoCo,
@@ -149,7 +159,7 @@ struct FPose { FVector Pos = FVector::ZeroVector; FQd Rot{1, 0, 0, 0}; };
 bool CheckForwardKinematics(FAutomationTestBase& Test, const FUrdfModel& Model,
 	mjModel* m, mjData* d, double Tol)
 {
-	mj_resetData(m, d);   // qpos <- qpos0
+	mj_resetData(m, d); // qpos <- qpos0
 	mj_forward(m, d);
 
 	// Root body of the model = the body with world as parent among the exported
@@ -157,7 +167,11 @@ bool CheckForwardKinematics(FAutomationTestBase& Test, const FUrdfModel& Model,
 	int RootBodyId = -1;
 	for (int i = 1; i < m->nbody; ++i)
 	{
-		if (m->body_parentid[i] == 0) { RootBodyId = i; break; }
+		if (m->body_parentid[i] == 0)
+		{
+			RootBodyId = i;
+			break;
+		}
 	}
 	if (RootBodyId < 0)
 	{
@@ -232,7 +246,7 @@ int CountJointType(const FUrdfModel& Model, const TCHAR* Type)
 			++N;
 	return N;
 }
-}  // namespace
+} // namespace
 
 // ---------------------------------------------------------------------------
 // 1. Counts / types / limits / mesh emission on the two-link chain.
@@ -534,4 +548,4 @@ bool FMjUrdfPublishRobotDescription::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_WITH_ROS2
+#endif // URLAB_WITH_ROS2

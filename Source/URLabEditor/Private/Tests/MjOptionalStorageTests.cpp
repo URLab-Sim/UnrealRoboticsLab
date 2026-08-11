@@ -1,11 +1,20 @@
 // Copyright (c) 2026 Jonathan Embley-Riches. All rights reserved.
 //
-// SPIKE CODE. TOptional UPROPERTY lifecycle spike (URLab.Spike.TOptional.*).
-// Proves whether UPROPERTY(EditAnywhere) TOptional<T> survives Blueprint SCS
-// template save/load, level instance save/load, template-vs-instance delta
-// serialization, undo/redo, duplication, component copy/paste, and the
-// details-panel property-handle API. Findings in docs/spike_0b_toptional.md.
-// Delete together with MjSpikeOptionalComponent.h/.cpp.
+// What `UPROPERTY(EditAnywhere) TOptional<T>` survives.
+//
+// Every generated element stores its MJCF attributes this way, and unset means
+// the document did not author the attribute. That is the whole storage model:
+// if a TOptional silently becomes set, or silently loses its value, an element
+// starts writing an attribute the user never wrote, or stops writing one they
+// did, and the MJCF that comes back out is not the one that went in.
+//
+// Unreal never promised any of this works. So each path it has to survive is
+// asserted here rather than assumed: Blueprint SCS template save/load, level
+// instance save/load, template-vs-instance delta serialization, undo/redo,
+// duplication, component copy/paste, text export, and the details-panel
+// property-handle API. These are regression tests for an engine behaviour we
+// depend on and do not control, which is what makes them worth keeping across
+// engine upgrades rather than the storage decision they originally settled.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -37,16 +46,16 @@
 #include "UObject/SavePackage.h"
 #include "UObject/UObjectHash.h"
 
-#include "MjSpikeOptionalComponent.h"
+#include "MjOptionalStorageComponent.h"
 
-namespace MjSpikeOptional
+namespace MjOptionalStorage
 {
 
-const TCHAR* const SpikeRoot = TEXT("/Game/URLabSpikeTemp/");
+const TCHAR* const StorageRoot = TEXT("/Game/URLabStorageTemp/");
 
 const TCHAR* const OptionalNames[] = {
 	TEXT("OptDouble"), TEXT("OptVector"), TEXT("OptQuat"), TEXT("OptArray"),
-	TEXT("OptString"), TEXT("OptEnum"), TEXT("OptBlueprintInt") };
+	TEXT("OptString"), TEXT("OptEnum"), TEXT("OptBlueprintInt")};
 
 FString UniqueSuffix()
 {
@@ -62,21 +71,21 @@ FString PackageFilename(const FString& PkgName, const FString& Ext)
 
 FProperty* Prop(const TCHAR* Name)
 {
-	return UMjSpikeOptionalComponent::StaticClass()->FindPropertyByName(Name);
+	return UMjOptionalStorageComponent::StaticClass()->FindPropertyByName(Name);
 }
 
 // Authored state used across tests: five optionals set, two left unset.
-void SetAuthoredValues(UMjSpikeOptionalComponent* C)
+void SetAuthoredValues(UMjOptionalStorageComponent* C)
 {
 	C->OptDouble = 1.5;
 	C->OptVector = FVector(1.0, 2.0, 3.0);
 	C->OptQuat = FQuat(0.5, 0.5, 0.5, 0.5);
 	C->OptArray = TArray<double>{0.25, -4.0, 9.75};
-	C->OptEnum = EMjSpikeOptEnum::Beta;
+	C->OptEnum = EMjOptionalStorageEnum::Beta;
 	// OptString and OptBlueprintInt stay unset.
 }
 
-bool VerifyAuthoredValues(FAutomationTestBase& T, const FString& Ctx, const UMjSpikeOptionalComponent* C)
+bool VerifyAuthoredValues(FAutomationTestBase& T, const FString& Ctx, const UMjOptionalStorageComponent* C)
 {
 	bool bOk = true;
 	bOk &= T.TestNotNull(*(Ctx + TEXT(": component")), C);
@@ -111,7 +120,7 @@ bool VerifyAuthoredValues(FAutomationTestBase& T, const FString& Ctx, const UMjS
 
 	bOk &= T.TestTrue(*(Ctx + TEXT(": OptEnum set")), C->OptEnum.IsSet());
 	if (C->OptEnum.IsSet())
-		bOk &= T.TestTrue(*(Ctx + TEXT(": OptEnum value")), C->OptEnum.GetValue() == EMjSpikeOptEnum::Beta);
+		bOk &= T.TestTrue(*(Ctx + TEXT(": OptEnum value")), C->OptEnum.GetValue() == EMjOptionalStorageEnum::Beta);
 
 	// Unset must reload unset, not default-constructed.
 	bOk &= T.TestFalse(*(Ctx + TEXT(": OptString unset")), C->OptString.IsSet());
@@ -119,7 +128,7 @@ bool VerifyAuthoredValues(FAutomationTestBase& T, const FString& Ctx, const UMjS
 	return bOk;
 }
 
-bool VerifyAllUnset(FAutomationTestBase& T, const FString& Ctx, const UMjSpikeOptionalComponent* C)
+bool VerifyAllUnset(FAutomationTestBase& T, const FString& Ctx, const UMjOptionalStorageComponent* C)
 {
 	bool bOk = true;
 	bOk &= T.TestNotNull(*(Ctx + TEXT(": component")), C);
@@ -142,8 +151,7 @@ void UnloadPackageForReload(UPackage* Pkg)
 	ResetLoaders(Pkg);
 	const FString TrashName = Pkg->GetName() + TEXT("_TRASH_") + UniqueSuffix();
 	Pkg->Rename(*TrashName, nullptr, REN_DontCreateRedirectors | REN_DoNotDirty | REN_NonTransactional);
-	ForEachObjectWithPackage(Pkg, [](UObject* Obj)
-	{
+	ForEachObjectWithPackage(Pkg, [](UObject* Obj) {
 		Obj->ClearFlags(RF_Standalone | RF_Public);
 		return true;
 	});
@@ -160,35 +168,35 @@ void UnloadAndDelete(UPackage* Pkg, const FString& Filename)
 	IFileManager::Get().Delete(*Filename, /*bRequireExists=*/false, /*bEvenReadOnly=*/true, /*bQuiet=*/true);
 
 	FString Dir;
-	if (FPackageName::TryConvertLongPackageNameToFilename(FString(SpikeRoot), Dir))
+	if (FPackageName::TryConvertLongPackageNameToFilename(FString(StorageRoot), Dir))
 		IFileManager::Get().DeleteDirectory(*Dir, /*bRequireExists=*/false, /*bTree=*/false);
 }
 
-UMjSpikeOptionalComponent* FindSpikeComponentIn(UObject* Outer)
+UMjOptionalStorageComponent* FindStorageComponentIn(UObject* Outer)
 {
 	TArray<UObject*> Subs;
 	GetObjectsWithOuter(Outer, Subs, /*bIncludeNestedObjects=*/true);
 	for (UObject* O : Subs)
-		if (UMjSpikeOptionalComponent* C = Cast<UMjSpikeOptionalComponent>(O))
+		if (UMjOptionalStorageComponent* C = Cast<UMjOptionalStorageComponent>(O))
 			return C;
 	return nullptr;
 }
 
-struct FSpikeBlueprint
+struct FStorageBlueprint
 {
 	UPackage* Pkg = nullptr;
 	UBlueprint* Blueprint = nullptr;
-	UMjSpikeOptionalComponent* Template = nullptr;
+	UMjOptionalStorageComponent* Template = nullptr;
 	FString PkgName;
 	FString BPName;
 	FString Filename;
 };
 
-// Create a saveable AActor blueprint with one SCS node of the spike component.
-bool CreateSpikeBlueprint(const FString& Tag, const FString& Sfx, FSpikeBlueprint& Out)
+// Create a saveable AActor blueprint with one SCS node of the fixture component.
+bool CreateStorageBlueprint(const FString& Tag, const FString& Sfx, FStorageBlueprint& Out)
 {
-	Out.BPName = TEXT("Spike") + Tag + TEXT("_") + Sfx;
-	Out.PkgName = FString(SpikeRoot) + Out.BPName;
+	Out.BPName = TEXT("Storage") + Tag + TEXT("_") + Sfx;
+	Out.PkgName = FString(StorageRoot) + Out.BPName;
 	Out.Pkg = CreatePackage(*Out.PkgName);
 	Out.Blueprint = FKismetEditorUtilities::CreateBlueprint(
 		AActor::StaticClass(), Out.Pkg, *Out.BPName,
@@ -198,27 +206,27 @@ bool CreateSpikeBlueprint(const FString& Tag, const FString& Sfx, FSpikeBlueprin
 	Out.Blueprint->SetFlags(RF_Public | RF_Standalone | RF_Transactional);
 
 	USimpleConstructionScript* SCS = Out.Blueprint->SimpleConstructionScript;
-	USCS_Node* Node = SCS->CreateNode(UMjSpikeOptionalComponent::StaticClass(), TEXT("SpikeComp"));
+	USCS_Node* Node = SCS->CreateNode(UMjOptionalStorageComponent::StaticClass(), TEXT("StorageComp"));
 	SCS->AddNode(Node);
-	Out.Template = Cast<UMjSpikeOptionalComponent>(Node->ComponentTemplate);
+	Out.Template = Cast<UMjOptionalStorageComponent>(Node->ComponentTemplate);
 	Out.Filename = PackageFilename(Out.PkgName, FPackageName::GetAssetPackageExtension());
 	return Out.Template != nullptr;
 }
 
-bool SaveBlueprint(const FSpikeBlueprint& BP)
+bool SaveBlueprint(const FStorageBlueprint& BP)
 {
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 	return UPackage::SavePackage(BP.Pkg, BP.Blueprint, *BP.Filename, SaveArgs);
 }
 
-UMjSpikeOptionalComponent* FindScsTemplate(UBlueprint* BP, const TCHAR* VarName)
+UMjOptionalStorageComponent* FindScsTemplate(UBlueprint* BP, const TCHAR* VarName)
 {
 	if (!BP || !BP->SimpleConstructionScript)
 		return nullptr;
 	for (USCS_Node* Node : BP->SimpleConstructionScript->GetAllNodes())
 		if (Node && Node->GetVariableName() == VarName)
-			return Cast<UMjSpikeOptionalComponent>(Node->ComponentTemplate);
+			return Cast<UMjOptionalStorageComponent>(Node->ComponentTemplate);
 	return nullptr;
 }
 
@@ -235,10 +243,10 @@ bool WouldEmitDelta(const TCHAR* PropName, const UObject* Object, const UObject*
 		const_cast<UObject*>(Object), PPF_Copy);
 }
 
-void SpikeLog(FAutomationTestBase& T, const FString& Msg)
+void StorageLog(FAutomationTestBase& T, const FString& Msg)
 {
 	T.AddInfo(Msg);
-	UE_LOG(LogTemp, Display, TEXT("[MjSpikeOpt] %s"), *Msg);
+	UE_LOG(LogTemp, Display, TEXT("[MjOptionalStorage] %s"), *Msg);
 }
 
 enum class ENodeKind : uint8
@@ -257,9 +265,12 @@ bool NodeMatches(const TSharedRef<IDetailTreeNode>& Node, FName PropName, ENodeK
 	const bool bIsOptional = CastField<FOptionalProperty>(P) != nullptr;
 	switch (Kind)
 	{
-	case ENodeKind::OptionalOnly: return bIsOptional;
-	case ENodeKind::ValueOnly:    return !bIsOptional && P->GetOwner<FOptionalProperty>() != nullptr;
-	default:                      return true;
+		case ENodeKind::OptionalOnly:
+			return bIsOptional;
+		case ENodeKind::ValueOnly:
+			return !bIsOptional && P->GetOwner<FOptionalProperty>() != nullptr;
+		default:
+			return true;
 	}
 }
 
@@ -285,11 +296,11 @@ void DumpNodes(FAutomationTestBase& T, const TArray<TSharedRef<IDetailTreeNode>>
 	{
 		TSharedPtr<IPropertyHandle> Handle = Node->CreatePropertyHandle();
 		FProperty* P = Handle.IsValid() ? Handle->GetProperty() : nullptr;
-		SpikeLog(T, FString::Printf(TEXT("%*srow '%s' prop=%s class=%s optionalHandle=%s"),
-			Depth * 2, TEXT(""), *Node->GetNodeName().ToString(),
-			P ? *P->GetName() : TEXT("<none>"),
-			P ? *P->GetClass()->GetName() : TEXT("<none>"),
-			(Handle.IsValid() && Handle->AsOptional().IsValid()) ? TEXT("yes") : TEXT("no")));
+		StorageLog(T, FString::Printf(TEXT("%*srow '%s' prop=%s class=%s optionalHandle=%s"),
+						Depth * 2, TEXT(""), *Node->GetNodeName().ToString(),
+						P ? *P->GetName() : TEXT("<none>"),
+						P ? *P->GetClass()->GetName() : TEXT("<none>"),
+						(Handle.IsValid() && Handle->AsOptional().IsValid()) ? TEXT("yes") : TEXT("no")));
 
 		TArray<TSharedRef<IDetailTreeNode>> Children;
 		Node->GetChildren(Children);
@@ -297,21 +308,21 @@ void DumpNodes(FAutomationTestBase& T, const TArray<TSharedRef<IDetailTreeNode>>
 	}
 }
 
-} // namespace MjSpikeOptional
+} // namespace MjOptionalStorage
 
-using namespace MjSpikeOptional;
+using namespace MjOptionalStorage;
 
 // ---------------------------------------------------------------------------
 // Baseline: fresh component has every optional unset; FOptionalProperty is
 // the reflected type; Identical distinguishes set from unset.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptDefaults,
-	"URLab.Spike.TOptional.Defaults",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageDefaults,
+	"URLab.Storage.TOptional.Defaults",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptDefaults::RunTest(const FString& Parameters)
+bool FMjOptionalStorageDefaults::RunTest(const FString& Parameters)
 {
-	UMjSpikeOptionalComponent* A = NewObject<UMjSpikeOptionalComponent>(GetTransientPackage());
+	UMjOptionalStorageComponent* A = NewObject<UMjOptionalStorageComponent>(GetTransientPackage());
 	VerifyAllUnset(*this, TEXT("fresh component"), A);
 
 	for (const TCHAR* Name : OptionalNames)
@@ -327,7 +338,7 @@ bool FMjSpikeOptDefaults::RunTest(const FString& Parameters)
 		}
 	}
 
-	UMjSpikeOptionalComponent* B = NewObject<UMjSpikeOptionalComponent>(GetTransientPackage());
+	UMjOptionalStorageComponent* B = NewObject<UMjOptionalStorageComponent>(GetTransientPackage());
 	FProperty* PD = Prop(TEXT("OptDouble"));
 	if (PD)
 	{
@@ -348,17 +359,16 @@ bool FMjSpikeOptDefaults::RunTest(const FString& Parameters)
 // against has the optional set. Against a null baseline an unset optional is
 // treated as "same as default" and nothing is written at all.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptTextFormat,
-	"URLab.Spike.TOptional.TextFormat",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageTextFormat,
+	"URLab.Storage.TOptional.TextFormat",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptTextFormat::RunTest(const FString& Parameters)
+bool FMjOptionalStorageTextFormat::RunTest(const FString& Parameters)
 {
-	UMjSpikeOptionalComponent* Src = NewObject<UMjSpikeOptionalComponent>(GetTransientPackage());
+	UMjOptionalStorageComponent* Src = NewObject<UMjOptionalStorageComponent>(GetTransientPackage());
 	SetAuthoredValues(Src);
 
-	auto ExportOne = [Src](const TCHAR* Name, FString& OutTxt)
-	{
+	auto ExportOne = [Src](const TCHAR* Name, FString& OutTxt) {
 		OutTxt.Reset();
 		return Prop(Name)->ExportText_InContainer(0, OutTxt, Src, nullptr, Src, PPF_Copy);
 	};
@@ -367,8 +377,8 @@ bool FMjSpikeOptTextFormat::RunTest(const FString& Parameters)
 	for (const TCHAR* Name : OptionalNames)
 	{
 		const bool bExported = ExportOne(Name, Txt);
-		SpikeLog(*this, FString::Printf(TEXT("text[%s] exported=%s value=%s"),
-			Name, bExported ? TEXT("true") : TEXT("false"), *Txt));
+		StorageLog(*this, FString::Printf(TEXT("text[%s] exported=%s value=%s"),
+							Name, bExported ? TEXT("true") : TEXT("false"), *Txt));
 	}
 
 	// Unset against a null baseline: nothing is written.
@@ -389,7 +399,7 @@ bool FMjSpikeOptTextFormat::RunTest(const FString& Parameters)
 	TestEqual(TEXT("set OptArray text"), Txt, FString(TEXT("((0.250000,-4.000000,9.750000))")));
 
 	// Unset DOES export as "()" when the baseline has it set.
-	UMjSpikeOptionalComponent* Baseline = NewObject<UMjSpikeOptionalComponent>(GetTransientPackage());
+	UMjOptionalStorageComponent* Baseline = NewObject<UMjOptionalStorageComponent>(GetTransientPackage());
 	Baseline->OptString = FString(TEXT("baseline"));
 	Txt.Reset();
 	TestTrue(TEXT("unset OptString exports against a set baseline"),
@@ -398,7 +408,7 @@ bool FMjSpikeOptTextFormat::RunTest(const FString& Parameters)
 
 	// Import must actively clear as well as set: the target starts in the
 	// opposite state for both unset properties.
-	UMjSpikeOptionalComponent* Dst = NewObject<UMjSpikeOptionalComponent>(GetTransientPackage());
+	UMjOptionalStorageComponent* Dst = NewObject<UMjOptionalStorageComponent>(GetTransientPackage());
 	Dst->OptString = FString(TEXT("sentinel"));
 	Dst->OptBlueprintInt = 42;
 
@@ -420,25 +430,25 @@ bool FMjSpikeOptTextFormat::RunTest(const FString& Parameters)
 // instance must emit a delta for a changed value AND for an explicit clear,
 // and must emit nothing for an inherited value.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptDeltaEmission,
-	"URLab.Spike.TOptional.DeltaEmission",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageDeltaEmission,
+	"URLab.Storage.TOptional.DeltaEmission",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptDeltaEmission::RunTest(const FString& Parameters)
+bool FMjOptionalStorageDeltaEmission::RunTest(const FString& Parameters)
 {
-	UMjSpikeOptionalComponent* Arch = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), *(TEXT("SpikeDeltaArch_") + UniqueSuffix()));
+	UMjOptionalStorageComponent* Arch = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), *(TEXT("StorageDeltaArch_") + UniqueSuffix()));
 	SetAuthoredValues(Arch);
 
-	UMjSpikeOptionalComponent* Inst = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), UMjSpikeOptionalComponent::StaticClass(),
-		*(TEXT("SpikeDeltaInst_") + UniqueSuffix()), RF_NoFlags, Arch);
+	UMjOptionalStorageComponent* Inst = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), UMjOptionalStorageComponent::StaticClass(),
+		*(TEXT("StorageDeltaInst_") + UniqueSuffix()), RF_NoFlags, Arch);
 
 	VerifyAuthoredValues(*this, TEXT("NewObject from archetype"), Inst);
 
-	Inst->OptVector = FVector(9.0, 9.0, 9.0);   // changed
-	Inst->OptEnum.Reset();                       // explicitly cleared
-	Inst->OptString = FString(TEXT("added"));    // set where archetype is unset
+	Inst->OptVector = FVector(9.0, 9.0, 9.0); // changed
+	Inst->OptEnum.Reset();                    // explicitly cleared
+	Inst->OptString = FString(TEXT("added")); // set where archetype is unset
 
 	FString Txt;
 	TestFalse(TEXT("inherited OptDouble emits no delta"), WouldEmitDelta(TEXT("OptDouble"), Inst, Arch, Txt));
@@ -448,20 +458,20 @@ bool FMjSpikeOptDeltaEmission::RunTest(const FString& Parameters)
 		WouldEmitDelta(TEXT("OptBlueprintInt"), Inst, Arch, Txt));
 
 	TestTrue(TEXT("changed OptVector emits a delta"), WouldEmitDelta(TEXT("OptVector"), Inst, Arch, Txt));
-	SpikeLog(*this, FString::Printf(TEXT("delta[OptVector] = %s"), *Txt));
+	StorageLog(*this, FString::Printf(TEXT("delta[OptVector] = %s"), *Txt));
 
 	const bool bClearEmits = WouldEmitDelta(TEXT("OptEnum"), Inst, Arch, Txt);
-	SpikeLog(*this, FString::Printf(TEXT("delta[OptEnum cleared] = %s"), *Txt));
+	StorageLog(*this, FString::Printf(TEXT("delta[OptEnum cleared] = %s"), *Txt));
 	TestTrue(TEXT("explicit clear against a set archetype emits a delta"), bClearEmits);
 	TestEqual(TEXT("explicit clear serialises as ()"), Txt, FString(TEXT("()")));
 
 	TestTrue(TEXT("newly-set OptString emits a delta"), WouldEmitDelta(TEXT("OptString"), Inst, Arch, Txt));
-	SpikeLog(*this, FString::Printf(TEXT("delta[OptString] = %s"), *Txt));
+	StorageLog(*this, FString::Printf(TEXT("delta[OptString] = %s"), *Txt));
 
 	// The clear delta must import back as a clear, not as a no-op.
-	UMjSpikeOptionalComponent* Round = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), UMjSpikeOptionalComponent::StaticClass(),
-		*(TEXT("SpikeDeltaRound_") + UniqueSuffix()), RF_NoFlags, Arch);
+	UMjOptionalStorageComponent* Round = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), UMjOptionalStorageComponent::StaticClass(),
+		*(TEXT("StorageDeltaRound_") + UniqueSuffix()), RF_NoFlags, Arch);
 	TestTrue(TEXT("round target inherits OptEnum before import"), Round->OptEnum.IsSet());
 	Prop(TEXT("OptEnum"))->ImportText_InContainer(TEXT("()"), Round, Round, PPF_Copy);
 	TestFalse(TEXT("importing () clears an inherited set value"), Round->OptEnum.IsSet());
@@ -471,20 +481,20 @@ bool FMjSpikeOptDeltaEmission::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 // 1. Blueprint SCS template save / disk reload.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptScsTemplateSaveLoad,
-	"URLab.Spike.TOptional.ScsTemplateSaveLoad",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageScsTemplateSaveLoad,
+	"URLab.Storage.TOptional.ScsTemplateSaveLoad",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptScsTemplateSaveLoad::RunTest(const FString& Parameters)
+bool FMjOptionalStorageScsTemplateSaveLoad::RunTest(const FString& Parameters)
 {
 	const FString Sfx = UniqueSuffix();
-	FSpikeBlueprint BP;
-	if (!TestTrue(TEXT("CreateSpikeBlueprint"), CreateSpikeBlueprint(TEXT("ScsBP"), Sfx, BP)))
+	FStorageBlueprint BP;
+	if (!TestTrue(TEXT("CreateStorageBlueprint"), CreateStorageBlueprint(TEXT("ScsBP"), Sfx, BP)))
 		return false;
 
 	SetAuthoredValues(BP.Template);
 	FKismetEditorUtilities::CompileBlueprint(BP.Blueprint);
-	VerifyAuthoredValues(*this, TEXT("template post-compile"), FindScsTemplate(BP.Blueprint, TEXT("SpikeComp")));
+	VerifyAuthoredValues(*this, TEXT("template post-compile"), FindScsTemplate(BP.Blueprint, TEXT("StorageComp")));
 
 	if (!TestTrue(TEXT("SavePackage(BP)"), SaveBlueprint(BP)))
 		return false;
@@ -498,7 +508,7 @@ bool FMjSpikeOptScsTemplateSaveLoad::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("reloaded UBlueprint"), BP2))
 		return false;
 
-	VerifyAuthoredValues(*this, TEXT("reloaded SCS template"), FindScsTemplate(BP2, TEXT("SpikeComp")));
+	VerifyAuthoredValues(*this, TEXT("reloaded SCS template"), FindScsTemplate(BP2, TEXT("StorageComp")));
 
 	UnloadAndDelete(Reloaded, BP.Filename);
 	return true;
@@ -508,31 +518,31 @@ bool FMjSpikeOptScsTemplateSaveLoad::RunTest(const FString& Parameters)
 // 2. Level instance save / disk reload. One authored component, one fully
 //    unset component on a second actor.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptLevelInstanceSaveLoad,
-	"URLab.Spike.TOptional.LevelInstanceSaveLoad",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageLevelInstanceSaveLoad,
+	"URLab.Storage.TOptional.LevelInstanceSaveLoad",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptLevelInstanceSaveLoad::RunTest(const FString& Parameters)
+bool FMjOptionalStorageLevelInstanceSaveLoad::RunTest(const FString& Parameters)
 {
 	const FString Sfx = UniqueSuffix();
-	const FString PkgName = FString(SpikeRoot) + TEXT("SpikeMap_") + Sfx;
+	const FString PkgName = FString(StorageRoot) + TEXT("StorageMap_") + Sfx;
 	UPackage* Pkg = CreatePackage(*PkgName);
 	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false,
-		*(TEXT("SpikeWorld_") + Sfx), Pkg, /*bAddToRoot=*/false);
+		*(TEXT("StorageWorld_") + Sfx), Pkg, /*bAddToRoot=*/false);
 	if (!TestNotNull(TEXT("CreateWorld"), World))
 		return false;
 
 	AActor* AuthoredActor = World->SpawnActor<AActor>();
-	UMjSpikeOptionalComponent* Authored =
-		NewObject<UMjSpikeOptionalComponent>(AuthoredActor, TEXT("SpikeInstComp"));
+	UMjOptionalStorageComponent* Authored =
+		NewObject<UMjOptionalStorageComponent>(AuthoredActor, TEXT("StorageInstComp"));
 	Authored->SetFlags(RF_Transactional);
 	AuthoredActor->AddInstanceComponent(Authored);
 	Authored->RegisterComponent();
 	SetAuthoredValues(Authored);
 
 	AActor* UnsetActor = World->SpawnActor<AActor>();
-	UMjSpikeOptionalComponent* Unset =
-		NewObject<UMjSpikeOptionalComponent>(UnsetActor, TEXT("SpikeUnsetComp"));
+	UMjOptionalStorageComponent* Unset =
+		NewObject<UMjOptionalStorageComponent>(UnsetActor, TEXT("StorageUnsetComp"));
 	Unset->SetFlags(RF_Transactional);
 	UnsetActor->AddInstanceComponent(Unset);
 	Unset->RegisterComponent();
@@ -553,17 +563,17 @@ bool FMjSpikeOptLevelInstanceSaveLoad::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("reloaded world"), World2))
 		return false;
 
-	UMjSpikeOptionalComponent* Authored2 = nullptr;
-	UMjSpikeOptionalComponent* Unset2 = nullptr;
+	UMjOptionalStorageComponent* Authored2 = nullptr;
+	UMjOptionalStorageComponent* Unset2 = nullptr;
 	for (AActor* Actor : World2->PersistentLevel->Actors)
 	{
 		if (!Actor)
 			continue;
-		if (UMjSpikeOptionalComponent* C = FindSpikeComponentIn(Actor))
+		if (UMjOptionalStorageComponent* C = FindStorageComponentIn(Actor))
 		{
-			if (C->GetFName() == TEXT("SpikeInstComp"))
+			if (C->GetFName() == TEXT("StorageInstComp"))
 				Authored2 = C;
-			else if (C->GetFName() == TEXT("SpikeUnsetComp"))
+			else if (C->GetFName() == TEXT("StorageUnsetComp"))
 				Unset2 = C;
 		}
 	}
@@ -583,36 +593,36 @@ bool FMjSpikeOptLevelInstanceSaveLoad::RunTest(const FString& Parameters)
 //    inherited value must track the template while the override and the
 //    explicit clear both survive.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptTemplateInstanceDelta,
-	"URLab.Spike.TOptional.TemplateInstanceDelta",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageTemplateInstanceDelta,
+	"URLab.Storage.TOptional.TemplateInstanceDelta",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptTemplateInstanceDelta::RunTest(const FString& Parameters)
+bool FMjOptionalStorageTemplateInstanceDelta::RunTest(const FString& Parameters)
 {
 	const FString Sfx = UniqueSuffix();
-	FSpikeBlueprint BP;
-	if (!TestTrue(TEXT("CreateSpikeBlueprint"), CreateSpikeBlueprint(TEXT("DeltaBP"), Sfx, BP)))
+	FStorageBlueprint BP;
+	if (!TestTrue(TEXT("CreateStorageBlueprint"), CreateStorageBlueprint(TEXT("DeltaBP"), Sfx, BP)))
 		return false;
 
 	BP.Template->OptDouble = 1.5;
 	BP.Template->OptVector = FVector(1.0, 2.0, 3.0);
-	BP.Template->OptEnum = EMjSpikeOptEnum::Beta;
+	BP.Template->OptEnum = EMjOptionalStorageEnum::Beta;
 	FKismetEditorUtilities::CompileBlueprint(BP.Blueprint);
 	if (!TestTrue(TEXT("SavePackage(BP)"), SaveBlueprint(BP)))
 		return false;
 
-	const FString MapPkgName = FString(SpikeRoot) + TEXT("SpikeDeltaMap_") + Sfx;
+	const FString MapPkgName = FString(StorageRoot) + TEXT("StorageDeltaMap_") + Sfx;
 	UPackage* MapPkg = CreatePackage(*MapPkgName);
 	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false,
-		*(TEXT("SpikeDeltaWorld_") + Sfx), MapPkg, /*bAddToRoot=*/false);
+		*(TEXT("StorageDeltaWorld_") + Sfx), MapPkg, /*bAddToRoot=*/false);
 	if (!TestNotNull(TEXT("CreateWorld"), World))
 		return false;
 
 	AActor* Inst = World->SpawnActor<AActor>(BP.Blueprint->GeneratedClass);
 	if (!TestNotNull(TEXT("spawned BP instance"), Inst))
 		return false;
-	UMjSpikeOptionalComponent* IC = Cast<UMjSpikeOptionalComponent>(
-		Inst->GetComponentByClass(UMjSpikeOptionalComponent::StaticClass()));
+	UMjOptionalStorageComponent* IC = Cast<UMjOptionalStorageComponent>(
+		Inst->GetComponentByClass(UMjOptionalStorageComponent::StaticClass()));
 	if (!TestNotNull(TEXT("SCS component on instance"), IC))
 		return false;
 
@@ -624,8 +634,8 @@ bool FMjSpikeOptTemplateInstanceDelta::RunTest(const FString& Parameters)
 	IC->OptEnum.Reset();
 
 	// The delta vs the archetype must be exactly {OptVector, OptEnum}.
-	UMjSpikeOptionalComponent* Arch = Cast<UMjSpikeOptionalComponent>(IC->GetArchetype());
-	if (TestNotNull(TEXT("instance archetype is spike template"), Arch))
+	UMjOptionalStorageComponent* Arch = Cast<UMjOptionalStorageComponent>(IC->GetArchetype());
+	if (TestNotNull(TEXT("instance archetype is the SCS template"), Arch))
 	{
 		FString Txt;
 		TestFalse(TEXT("delta: OptDouble not emitted"), WouldEmitDelta(TEXT("OptDouble"), IC, Arch, Txt));
@@ -645,7 +655,7 @@ bool FMjSpikeOptTemplateInstanceDelta::RunTest(const FString& Parameters)
 
 	// Edit the template AFTER the map was saved: an inherited property must
 	// pick this up on reload, proving it was not baked into the instance.
-	UMjSpikeOptionalComponent* Tmpl = FindScsTemplate(BP.Blueprint, TEXT("SpikeComp"));
+	UMjOptionalStorageComponent* Tmpl = FindScsTemplate(BP.Blueprint, TEXT("StorageComp"));
 	if (!TestNotNull(TEXT("template still reachable"), Tmpl))
 		return false;
 	Tmpl->Modify();
@@ -659,10 +669,10 @@ bool FMjSpikeOptTemplateInstanceDelta::RunTest(const FString& Parameters)
 	if (!TestNotNull(TEXT("reloaded world"), World2))
 		return false;
 
-	UMjSpikeOptionalComponent* IC2 = nullptr;
+	UMjOptionalStorageComponent* IC2 = nullptr;
 	for (AActor* Actor : World2->PersistentLevel->Actors)
 		if (Actor)
-			if (UMjSpikeOptionalComponent* C = FindSpikeComponentIn(Actor))
+			if (UMjOptionalStorageComponent* C = FindStorageComponentIn(Actor))
 				IC2 = C;
 	if (!TestNotNull(TEXT("reloaded instance component"), IC2))
 		return false;
@@ -684,18 +694,18 @@ bool FMjSpikeOptTemplateInstanceDelta::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 // 4. Undo/redo across set, value change, and clear.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptUndoRedo,
-	"URLab.Spike.TOptional.UndoRedo",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageUndoRedo,
+	"URLab.Storage.TOptional.UndoRedo",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptUndoRedo::RunTest(const FString& Parameters)
+bool FMjOptionalStorageUndoRedo::RunTest(const FString& Parameters)
 {
-	UMjSpikeOptionalComponent* C = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), *(TEXT("SpikeUndo_") + UniqueSuffix()));
+	UMjOptionalStorageComponent* C = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), *(TEXT("StorageUndo_") + UniqueSuffix()));
 	C->SetFlags(RF_Transactional);
 
 	{
-		FScopedTransaction Tx(NSLOCTEXT("MjSpike", "SetOpt", "Spike: set optionals"));
+		FScopedTransaction Tx(NSLOCTEXT("MjStorage", "SetOpt", "Storage: set optionals"));
 		C->Modify();
 		C->OptDouble = 5.0;
 		C->OptVector = FVector(1.0, 1.0, 1.0);
@@ -715,7 +725,7 @@ bool FMjSpikeOptUndoRedo::RunTest(const FString& Parameters)
 		C->OptArray.IsSet() && C->OptArray.GetValue() == TArray<double>({2.0, 4.0}));
 
 	{
-		FScopedTransaction Tx(NSLOCTEXT("MjSpike", "ChangeOpt", "Spike: change optional value"));
+		FScopedTransaction Tx(NSLOCTEXT("MjStorage", "ChangeOpt", "Storage: change optional value"));
 		C->Modify();
 		C->OptDouble = 7.0;
 	}
@@ -727,7 +737,7 @@ bool FMjSpikeOptUndoRedo::RunTest(const FString& Parameters)
 		C->OptDouble.IsSet() && C->OptDouble.GetValue() == 7.0);
 
 	{
-		FScopedTransaction Tx(NSLOCTEXT("MjSpike", "ClearOpt", "Spike: clear optional"));
+		FScopedTransaction Tx(NSLOCTEXT("MjStorage", "ClearOpt", "Storage: clear optional"));
 		C->Modify();
 		C->OptDouble.Reset();
 		C->OptArray.Reset();
@@ -742,7 +752,7 @@ bool FMjSpikeOptUndoRedo::RunTest(const FString& Parameters)
 	TestFalse(TEXT("after redo(clear): OptDouble unset"), C->OptDouble.IsSet());
 	TestFalse(TEXT("after redo(clear): OptArray unset"), C->OptArray.IsSet());
 
-	GEditor->ResetTransaction(NSLOCTEXT("MjSpike", "ResetTx", "Spike test cleanup"));
+	GEditor->ResetTransaction(NSLOCTEXT("MjStorage", "ResetTx", "Storage test cleanup"));
 	return true;
 }
 
@@ -750,40 +760,40 @@ bool FMjSpikeOptUndoRedo::RunTest(const FString& Parameters)
 // 5. Duplication (object and actor) and component copy/paste, which is the
 //    T3D text path the details and SCS panels use.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptDuplicateAndCopyPaste,
-	"URLab.Spike.TOptional.DuplicateAndCopyPaste",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageDuplicateAndCopyPaste,
+	"URLab.Storage.TOptional.DuplicateAndCopyPaste",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptDuplicateAndCopyPaste::RunTest(const FString& Parameters)
+bool FMjOptionalStorageDuplicateAndCopyPaste::RunTest(const FString& Parameters)
 {
-	UMjSpikeOptionalComponent* Src = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), *(TEXT("SpikeDupSrc_") + UniqueSuffix()));
+	UMjOptionalStorageComponent* Src = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), *(TEXT("StorageDupSrc_") + UniqueSuffix()));
 	SetAuthoredValues(Src);
 
-	UMjSpikeOptionalComponent* Dup = DuplicateObject<UMjSpikeOptionalComponent>(
-		Src, GetTransientPackage(), *(TEXT("SpikeDupDst_") + UniqueSuffix()));
+	UMjOptionalStorageComponent* Dup = DuplicateObject<UMjOptionalStorageComponent>(
+		Src, GetTransientPackage(), *(TEXT("StorageDupDst_") + UniqueSuffix()));
 	VerifyAuthoredValues(*this, TEXT("DuplicateObject copy"), Dup);
 
 	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false,
-		*(TEXT("SpikeDupWorld_") + UniqueSuffix()), nullptr, /*bAddToRoot=*/false);
+		*(TEXT("StorageDupWorld_") + UniqueSuffix()), nullptr, /*bAddToRoot=*/false);
 	if (!TestNotNull(TEXT("CreateWorld"), World))
 		return false;
 
 	AActor* Actor = World->SpawnActor<AActor>();
-	UMjSpikeOptionalComponent* Comp =
-		NewObject<UMjSpikeOptionalComponent>(Actor, TEXT("SpikeInstComp"));
+	UMjOptionalStorageComponent* Comp =
+		NewObject<UMjOptionalStorageComponent>(Actor, TEXT("StorageInstComp"));
 	Actor->AddInstanceComponent(Comp);
 	Comp->RegisterComponent();
 	SetAuthoredValues(Comp);
 
 	AActor* Actor2 = Cast<AActor>(StaticDuplicateObject(Actor, World->PersistentLevel));
 	if (TestNotNull(TEXT("duplicated actor"), Actor2))
-		VerifyAuthoredValues(*this, TEXT("actor-duplicate component"), FindSpikeComponentIn(Actor2));
+		VerifyAuthoredValues(*this, TEXT("actor-duplicate component"), FindStorageComponentIn(Actor2));
 
 	// Copy/paste: one authored component, one all-unset component, both in the
 	// same clipboard payload.
-	UMjSpikeOptionalComponent* UnsetComp =
-		NewObject<UMjSpikeOptionalComponent>(Actor, TEXT("SpikeUnsetComp"));
+	UMjOptionalStorageComponent* UnsetComp =
+		NewObject<UMjOptionalStorageComponent>(Actor, TEXT("StorageUnsetComp"));
 	Actor->AddInstanceComponent(UnsetComp);
 	UnsetComp->RegisterComponent();
 
@@ -792,7 +802,7 @@ bool FMjSpikeOptDuplicateAndCopyPaste::RunTest(const FString& Parameters)
 
 	FString Clipboard;
 	FComponentEditorUtils::CopyComponents(ToCopy, &Clipboard);
-	SpikeLog(*this, FString::Printf(TEXT("component clipboard T3D:\n%s"), *Clipboard));
+	StorageLog(*this, FString::Printf(TEXT("component clipboard T3D:\n%s"), *Clipboard));
 	TestTrue(TEXT("clipboard payload non-empty"), !Clipboard.IsEmpty());
 	TestTrue(TEXT("clipboard carries the set optional"), Clipboard.Contains(TEXT("OptDouble=(")));
 	// Both components' archetype is the all-unset CDO, so the unset optionals
@@ -805,11 +815,11 @@ bool FMjSpikeOptDuplicateAndCopyPaste::RunTest(const FString& Parameters)
 	FComponentEditorUtils::PasteComponents(Pasted, PasteTarget, nullptr, &Clipboard);
 	TestEqual(TEXT("pasted component count"), Pasted.Num(), 2);
 
-	UMjSpikeOptionalComponent* PastedAuthored = nullptr;
-	UMjSpikeOptionalComponent* PastedUnset = nullptr;
+	UMjOptionalStorageComponent* PastedAuthored = nullptr;
+	UMjOptionalStorageComponent* PastedUnset = nullptr;
 	for (UActorComponent* AC : Pasted)
 	{
-		UMjSpikeOptionalComponent* SC = Cast<UMjSpikeOptionalComponent>(AC);
+		UMjOptionalStorageComponent* SC = Cast<UMjOptionalStorageComponent>(AC);
 		if (!SC)
 			continue;
 		if (SC->OptDouble.IsSet())
@@ -829,11 +839,11 @@ bool FMjSpikeOptDuplicateAndCopyPaste::RunTest(const FString& Parameters)
 //    Covers the Set/None state, inner FVector X/Y/Z children, the TArray
 //    inner handle, and multi-select with a mixed set/unset selection.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptDetailsHandles,
-	"URLab.Spike.TOptional.DetailsHandles",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageDetailsHandles,
+	"URLab.Storage.TOptional.DetailsHandles",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
+bool FMjOptionalStorageDetailsHandles::RunTest(const FString& Parameters)
 {
 	if (!FSlateApplication::IsInitialized())
 	{
@@ -846,8 +856,8 @@ bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
 	Args.bShouldShowHiddenProperties = true;
 	TSharedRef<IPropertyRowGenerator> Gen = PEM.CreatePropertyRowGenerator(Args);
 
-	UMjSpikeOptionalComponent* A = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), *(TEXT("SpikeDetailsA_") + UniqueSuffix()));
+	UMjOptionalStorageComponent* A = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), *(TEXT("StorageDetailsA_") + UniqueSuffix()));
 	A->SetFlags(RF_Transactional);
 	SetAuthoredValues(A);
 
@@ -935,15 +945,14 @@ bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
 		FindNodeByPropertyName(Gen->GetRootTreeNodes(), TEXT("OptQuat"), ENodeKind::ValueOnly);
 	TSharedPtr<IDetailTreeNode> PlainQuatNode =
 		FindNodeByPropertyName(Gen->GetRootTreeNodes(), TEXT("PlainQuat"), ENodeKind::Any);
-	if (TestTrue(TEXT("set OptQuat surfaces as its inner FQuat row"), OptQuatNode.IsValid()) &&
-		TestTrue(TEXT("PlainQuat control row exists"), PlainQuatNode.IsValid()))
+	if (TestTrue(TEXT("set OptQuat surfaces as its inner FQuat row"), OptQuatNode.IsValid()) && TestTrue(TEXT("PlainQuat control row exists"), PlainQuatNode.IsValid()))
 	{
 		TArray<TSharedRef<IDetailTreeNode>> OptQuatChildren;
 		TArray<TSharedRef<IDetailTreeNode>> PlainQuatChildren;
 		OptQuatNode->GetChildren(OptQuatChildren);
 		PlainQuatNode->GetChildren(PlainQuatChildren);
-		SpikeLog(*this, FString::Printf(TEXT("OptQuat value row children = %d, PlainQuat row children = %d"),
-			OptQuatChildren.Num(), PlainQuatChildren.Num()));
+		StorageLog(*this, FString::Printf(TEXT("OptQuat value row children = %d, PlainQuat row children = %d"),
+							OptQuatChildren.Num(), PlainQuatChildren.Num()));
 		TestEqual(TEXT("inner FQuat row has the same child count as a plain FQuat row"),
 			OptQuatChildren.Num(), PlainQuatChildren.Num());
 	}
@@ -969,8 +978,8 @@ bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
 	}
 
 	// Multi-select with mixed set/unset.
-	UMjSpikeOptionalComponent* B = NewObject<UMjSpikeOptionalComponent>(
-		GetTransientPackage(), *(TEXT("SpikeDetailsB_") + UniqueSuffix()));
+	UMjOptionalStorageComponent* B = NewObject<UMjOptionalStorageComponent>(
+		GetTransientPackage(), *(TEXT("StorageDetailsB_") + UniqueSuffix()));
 	B->SetFlags(RF_Transactional);
 	// B leaves OptDouble unset while A has it set.
 
@@ -985,7 +994,7 @@ bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
 		{
 			FProperty* Inner = nullptr;
 			const FPropertyAccess::Result R = Opt->GetOptionalValue(Inner);
-			SpikeLog(*this, FString::Printf(TEXT("mixed-selection GetOptionalValue = %d (0=MultipleValues,1=Fail,2=Success)"), (int32)R));
+			StorageLog(*this, FString::Printf(TEXT("mixed-selection GetOptionalValue = %d (0=MultipleValues,1=Fail,2=Success)"), (int32)R));
 			TestEqual(TEXT("mixed set/unset selection reports MultipleValues"),
 				(int32)R, (int32)FPropertyAccess::MultipleValues);
 
@@ -997,7 +1006,7 @@ bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
 		}
 	}
 
-	GEditor->ResetTransaction(NSLOCTEXT("MjSpike", "ResetTxDetails", "Spike details cleanup"));
+	GEditor->ResetTransaction(NSLOCTEXT("MjStorage", "ResetTxDetails", "Storage details cleanup"));
 	return true;
 }
 
@@ -1005,13 +1014,13 @@ bool FMjSpikeOptDetailsHandles::RunTest(const FString& Parameters)
 // UHT hazard: BlueprintReadWrite TOptional<int32> compiles, but the K2 schema
 // cannot form a pin type for it, so it yields a broken pin rather than a
 // build error. The `Replicated` hazard is a hard UHT error and cannot be
-// asserted from a compiled test; see docs/spike_0b_toptional.md.
+// asserted from a compiled test, only by trying to build it.
 // ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpikeOptBlueprintPinHazard,
-	"URLab.Spike.TOptional.BlueprintPinHazard",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjOptionalStorageBlueprintPinHazard,
+	"URLab.Storage.TOptional.BlueprintPinHazard",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpikeOptBlueprintPinHazard::RunTest(const FString& Parameters)
+bool FMjOptionalStorageBlueprintPinHazard::RunTest(const FString& Parameters)
 {
 	FProperty* P = Prop(TEXT("OptBlueprintInt"));
 	if (!TestNotNull(TEXT("OptBlueprintInt reflected"), P))
@@ -1022,9 +1031,9 @@ bool FMjSpikeOptBlueprintPinHazard::RunTest(const FString& Parameters)
 
 	FEdGraphPinType PinType;
 	const bool bConverts = GetDefault<UEdGraphSchema_K2>()->ConvertPropertyToPinType(P, PinType);
-	SpikeLog(*this, FString::Printf(
-		TEXT("ConvertPropertyToPinType(OptBlueprintInt) = %s, PinCategory = %s"),
-		bConverts ? TEXT("true") : TEXT("false"), *PinType.PinCategory.ToString()));
+	StorageLog(*this, FString::Printf(
+						TEXT("ConvertPropertyToPinType(OptBlueprintInt) = %s, PinCategory = %s"),
+						bConverts ? TEXT("true") : TEXT("false"), *PinType.PinCategory.ToString()));
 	TestFalse(TEXT("K2 schema cannot form a pin type (broken pin hazard confirmed)"), bConverts);
 	return true;
 }

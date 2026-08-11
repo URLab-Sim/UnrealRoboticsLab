@@ -124,7 +124,18 @@ else
 fi
 cd "$ROOT_DIR"
 
-# 3. libzmq
+# 3. MjShim - URLab's own, and it links against the MuJoCo installed above, so
+# it has to follow it rather than run in any order.
+echo -e "\n\e[33m--- Building MjShim ---\e[0m"
+cd MjShim
+if [ -f "./build.sh" ]; then
+    bash ./build.sh "$INSTALL_DIR" "$BUILD_TYPE" "${SHARED_ARGS[@]}"
+else
+    echo "Warning: MjShim/build.sh not found!"
+fi
+cd "$ROOT_DIR"
+
+# 4. libzmq
 echo -e "\n\e[33m--- Building libzmq ---\e[0m"
 cd libzmq
 if [ -f "./build.sh" ]; then

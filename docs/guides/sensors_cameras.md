@@ -4,7 +4,7 @@ Read simulation state through MuJoCo sensors, and capture the scene through came
 
 ## Sensors
 
-A sensor reads a quantity from the simulation each step. URLab imports every MuJoCo sensor type from MJCF as a component under `SensorsRoot`, and you can add more in the Blueprint editor (set the sensor's **Target** to choose what it measures). See [Articulations](articulations.md).
+A sensor reads a quantity from the simulation each step. Every MuJoCo sensor tag is its own component class (`MjTouch`, `MjGyro`, `MjJointpos`, `MjFramepos` and so on), imported from MJCF and addable in the Blueprint editor. What a sensor measures is the reference property its own MJCF element declares: `Site` on a touch or force sensor, `Joint` on a joint sensor, `Objtype` and `Objname` on the frame sensors. Each is a dropdown over the valid targets in the same spec. See [Articulations](articulations.md).
 
 Rather than memorise individual classes, think in categories:
 

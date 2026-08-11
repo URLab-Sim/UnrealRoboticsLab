@@ -291,7 +291,7 @@ AActor* ActorOfContributor(UObject* Object)
 
 /** One participant's placement, in MuJoCo's frame, from an Unreal transform. */
 void AddParticipant(FSceneAssembly& Scene, const FSpecRef& Spec, const FString& Prefix,
-	const FTransform& Placement)
+	const FTransform& Placement, TOptional<EMjConflict> Conflict = {})
 {
 	if (!Spec.IsValid())
 	{
@@ -302,9 +302,9 @@ void AddParticipant(FSceneAssembly& Scene, const FSpecRef& Spec, const FString& 
 	URLabAxisConv::UePositionToMj(Placement.GetLocation(), MjPos);
 	URLabAxisConv::UeQuatToMj(Placement.GetRotation(), MjQuat);
 	Scene.Add(Spec, Prefix, FVector(MjPos[0], MjPos[1], MjPos[2]),
-		FQuat(MjQuat[1], MjQuat[2], MjQuat[3], MjQuat[0]));
+		FQuat(MjQuat[1], MjQuat[2], MjQuat[3], MjQuat[0]), Conflict);
 }
-}  // namespace
+} // namespace
 
 TArray<UObject*> UMjPhysicsEngine::GatherSceneContributors() const
 {
@@ -362,7 +362,7 @@ void UMjPhysicsEngine::BuildSceneAssembly(FSceneAssembly& Out)
 		// The prefix is the articulation's own, and it is what every compiled
 		// name of this participant carries, so the binding composes with it.
 		AddParticipant(Out, Articulation->GetSpec(), Articulation->GetName() + TEXT("_"),
-			Articulation->GetActorTransform());
+			Articulation->GetActorTransform(), Articulation->AttachConflict);
 	}
 
 	// Heightfields and converted actors take the same route as an articulation:
@@ -605,7 +605,7 @@ void RestoreState(const mjModel* Model, mjData* Data, const FMjBinding& Binding,
 
 	Data->time = Stash.Time;
 }
-}  // namespace
+} // namespace
 
 bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 {
@@ -658,6 +658,7 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		Placed.Prefix = Participant.Prefix;
 		Placed.MjPos = Participant.MjPos;
 		Placed.MjQuat = Participant.MjQuat;
+		Placed.Conflict = Participant.Conflict;
 		Builder.AddParticipant(Placed);
 	}
 
@@ -874,7 +875,7 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	// otherwise be read out of the previous model's snapshot, or out of none.
 	PushRenderState();
 	return true;
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 }
 
 void UMjPhysicsEngine::ReleaseCompiledScene()
@@ -1174,7 +1175,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				if (bAdvanced && !bRenderStatePublishedThisStep)
 				{
 					const bool bWantPublish = (Mode != EStepMode::Live)
-						|| bSnapshotWanted.exchange(false, std::memory_order_acq_rel);
+										   || bSnapshotWanted.exchange(false, std::memory_order_acq_rel);
 					if (bWantPublish)
 					{
 						PushRenderState();

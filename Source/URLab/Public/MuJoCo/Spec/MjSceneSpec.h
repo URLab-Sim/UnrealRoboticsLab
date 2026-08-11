@@ -24,6 +24,7 @@
 
 #if URLAB_MJ_GEN
 
+#include "MuJoCo/Gen/MjEnums.gen.h"
 #include "MuJoCo/Spec/MjSpecBuild.h"
 
 struct mjModel_;
@@ -47,6 +48,21 @@ struct URLAB_API FMjSceneSpecParticipant
 
 	/** MJCF component order is handled at the call site, not here. */
 	FQuat MjQuat = FQuat::Identity;
+
+	/**
+	 * How MuJoCo resolves this participant's model-wide sections against the
+	 * scene's, or unset to leave the scene's own policy alone.
+	 *
+	 * Per participant rather than per scene because MuJoCo reads the policy from
+	 * the TARGET at each `mjs_attach` call (`user_api.cc:476`), so a scene that
+	 * attaches its participants one at a time can answer the question
+	 * differently for each of them. A robot whose timestep must not be quietly
+	 * replaced can refuse while the rest of the scene keeps warning.
+	 *
+	 * The scene's own value is put back after the attach, so this overrides one
+	 * attach rather than changing the scene.
+	 */
+	TOptional<EMjConflict> Conflict;
 };
 
 /**
@@ -160,6 +176,6 @@ private:
 	TArray<FMjSceneSpecParticipant> Participants;
 };
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

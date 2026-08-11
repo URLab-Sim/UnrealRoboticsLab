@@ -136,7 +136,7 @@ bool IsUnnamed(mjsElement* Element)
  * authored paths, the sink has already applied them, and leaving them behind
  * would prepend a directory to a name that is now complete.
  */
-void NamespaceAssets(mjSpec& Spec, const TMap<TObjectPtr<const UMjNodeComponent>, mjsElement*>& ElementFor,
+void NamespaceAssetsIn(mjSpec& Spec, const TMap<TObjectPtr<const UMjNodeComponent>, mjsElement*>& ElementFor,
 	const TArray<FMjAssetRequest>& Requests)
 {
 	for (const FMjAssetRequest& Request : Requests)
@@ -238,7 +238,15 @@ FString SpecErrorText(mjSpec& Spec)
 	return ErrorTextAt(mjs_getError(&Spec));
 }
 
-}  // namespace
+} // namespace
+
+void MjNamespaceAssets(const FMjBuiltSpec& Built, const TArray<FMjAssetRequest>& Requests)
+{
+	if (Built.Spec != nullptr)
+	{
+		NamespaceAssetsIn(*Built.Spec, Built.ElementFor, Requests);
+	}
+}
 
 // --- FMjCompiledScene ------------------------------------------------------ //
 
@@ -457,10 +465,7 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 					EMjDiagnosticSeverity::Warning));
 			}
 		}
-		if (Built.Spec != nullptr)
-		{
-			NamespaceAssets(*Built.Spec, Built.ElementFor, Sink.GetRequests());
-		}
+		MjNamespaceAssets(Built, Sink.GetRequests());
 		Out.Assets.Append(MoveTemp(Collector.Assets));
 	};
 	TakeAssets(SceneRoot, FString(), Out.Scene);
@@ -501,11 +506,24 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 		// to get. The buffer outlives the damage; the route to it does not.
 		const char* const ErrorSlot = mjs_getError(Out.Scene.Spec);
 
+		// MuJoCo reads the conflict policy from the TARGET at each attach
+		// (`user_api.cc:476`), so setting it here answers the question for this
+		// participant alone. Restored below whether the attach succeeded or not,
+		// because the scene's own policy governs every participant that did not
+		// ask for something else.
+		const mjtConflict ScenePolicy = static_cast<mjtConflict>(Out.Scene.Spec->compiler.conflict);
+		if (Participant.Conflict.IsSet())
+		{
+			Out.Scene.Spec->compiler.conflict = static_cast<mjtConflict>(Participant.Conflict.GetValue());
+		}
+
 		// The spec's own element, not its world body: the world body would come
 		// across as a body of its own and put an extra link in every chain.
 		const FTCHARToUTF8 Prefix(*Participant.Prefix);
 		const bool bAttached = Frame->element != nullptr && Built.Spec->element != nullptr
-			&& mjs_attach(Frame->element, Built.Spec->element, Prefix.Get(), "") != nullptr;
+							&& mjs_attach(Frame->element, Built.Spec->element, Prefix.Get(), "") != nullptr;
+
+		Out.Scene.Spec->compiler.conflict = ScenePolicy;
 		if (!bAttached)
 		{
 			// Abandoned, never continued and never retried: a scene with a
@@ -572,6 +590,6 @@ FMjCompiledScene FMjSceneSpecBuilder::Compile()
 	return Out;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

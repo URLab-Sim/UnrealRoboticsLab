@@ -1,13 +1,14 @@
 # ROS 2 Integration
 
 URLab publishes robot state and scene geometry as standard ROS 2 messages so
-downstream tools — rviz, MoveIt, nav2, your own nodes — consume them without any
-shim. It also accepts `cmd_vel` (`geometry_msgs/Twist`) and can route external ROS
-control through MuJoCo actuators.
+downstream tools (rviz, MoveIt, nav2, your own nodes) consume them without any
+shim. It also subscribes: control input, twist commands and joint commands
+arrive on ROS topics, with a claim/release service pair deciding who owns an
+articulation.
 
-ROS 2 is **optional and modular**. The core plugin has no ROS dependency; nothing
-breaks when ROS is absent. The ROS pieces live in a separate `URLabRos` module that
-compiles to a no-op when ROS 2 is not installed.
+ROS 2 is **optional and modular**. The core plugin has no ROS dependency;
+nothing breaks when ROS is absent. The ROS pieces live in a separate `URLabRos`
+module that compiles to a no-op when ROS 2 is not installed.
 
 The integration works on **Ubuntu 22.04 / 24.04** (apt or Pixi/Conda) and
 **Windows 11** (Pixi/Conda via RoboStack). This guide covers Ubuntu; for Windows
@@ -62,8 +63,8 @@ cd third_party
 ### 2.2 Set the ROS root
 
 The `URLabRos` module's build logic probes the `URLAB_ROS2_ROOT` environment
-variable. Point it at your ROS install prefix (the directory that holds `include/`,
-`lib/`, and `bin/` subdirectories):
+variable. Point it at your ROS install prefix (the directory that holds
+`include/`, `lib/`, and `bin/` subdirectories):
 
 === "apt"
 
@@ -77,8 +78,9 @@ variable. Point it at your ROS install prefix (the directory that holds `include
     export URLAB_ROS2_ROOT=$CONDA_PREFIX
     ```
 
-If `URLAB_ROS2_ROOT` is unset or points at a missing directory, the module builds
-without ROS (`URLAB_WITH_ROS2=0`) and prints a notice:
+With the variable unset, the build falls back to
+`<plugin>/third_party/install/ros2` before giving up. If neither exists the
+module builds without ROS (`URLAB_WITH_ROS2=0`) and prints a notice:
 
 ```
 URLabRos: ROS 2 not found (set URLAB_ROS2_ROOT to enable) - building without ROS.
@@ -92,30 +94,26 @@ URLabRos: ROS 2 not found (set URLAB_ROS2_ROOT to enable) - building without ROS
     --project /path/to/YourProject.uproject
 ```
 
-UBT links the minimal C-ABI set (`librcl.so`, `librosidl_runtime_c.so`, the
-message-package `.so` files) and stages the transitive DDS cluster next to the
-plugin binary.
+UBT links a named, pinned set of C libraries (`rcl`, `rcutils`, `rmw`,
+`rosidl_runtime_c`, and the generator plus typesupport pair for each message
+package it uses) and stages the transitive DDS cluster next to the plugin
+binary. Nothing is globbed, so a library that stops being installed fails the
+build by name.
 
 ### 2.4 Runtime library path
 
 UE does not auto-stage `RuntimeDependencies` for editor builds on Linux, so the
-ROS `.so` files must be reachable by the dynamic linker. Two options:
-
-**Option A — `LD_LIBRARY_PATH` (quickest for development):**
+ROS `.so` files must be reachable by the dynamic linker:
 
 ```bash
 export LD_LIBRARY_PATH="$URLAB_ROS2_ROOT/lib:$LD_LIBRARY_PATH"
 ./UnrealEditor YourProject.uproject
 ```
 
-**Option B — symlink into the plugin's `Binaries/Linux/`:**
-
-```bash
-./Scripts/setup_runtime_linux.sh
-```
-
-This symlinks the ROS `.so` cluster under `Binaries/Linux/` so UBT's `$ORIGIN`
-RPATH resolves them without any env var. Idempotent; re-run after a build.
+!!! warning "`setup_runtime_linux.sh` does not cover ROS"
+    `Scripts/setup_runtime_linux.sh` symlinks the MuJoCo, CoACD and libzmq
+    libraries into `Binaries/Linux/`. It does not touch ROS, so it is not an
+    alternative to `LD_LIBRARY_PATH` here.
 
 ---
 
@@ -126,15 +124,20 @@ RPATH resolves them without any env var. Idempotent; re-run after a build.
 Launch the editor and look for the ROS context log line in the output:
 
 ```
-LogURLabRos: ROS 2 context up (distro lyrical, node 'urlab').
+LogURLabRos: ROS 2 context up (distro <name>, node 'urlab').
 ```
 
 If you see this, the module loaded and connected to DDS. A warning instead means
-the DLLs were found but `rcl_init` failed (usually a DDS configuration issue).
+the libraries were found but `rcl_init` failed (usually a DDS configuration
+issue):
 
-If you see no `LogURLabRos` lines at all, the module didn't load — check that the
-ROS `.so` files are on `LD_LIBRARY_PATH` and that `URLAB_ROS2_ROOT` was set during
-the build (re-run `Build.sh` after setting it).
+```
+LogURLabRos: Warning: ROS 2 unavailable: rcl context init failed (…). ROS publishing is disabled.
+```
+
+If you see no `LogURLabRos` lines at all, the module didn't load. Check that the
+ROS `.so` files are on `LD_LIBRARY_PATH` and that `URLAB_ROS2_ROOT` was set
+during the build.
 
 ### 3.2 Start PIE and check topics
 
@@ -146,86 +149,152 @@ sourced), run:
 ros2 topic list
 ```
 
-You should see the standard ROS topics:
+`<art>` below is the articulation's actor name.
+
+**Scene and time**
+
+| Topic | Message type | Rate |
+|---|---|---|
+| `/clock` | `rosgraph_msgs/Clock` | every sim step |
+| `/tf` | `tf2_msgs/TFMessage` | 50 Hz, `world` to `<art>/<body>` |
+| `/tf_static` | `tf2_msgs/TFMessage` | latched, the REP-105 chain `map` to `odom` to `world` |
+| `/planning_scene` | `moveit_msgs/PlanningScene` | 10 Hz, frame `world`, one scene for the whole level |
+| `/urlab/obstacle_cloud` | `sensor_msgs/PointCloud2` | 10 Hz, sampled world geometry |
+| `/map` | `nav_msgs/OccupancyGrid` | latched, republished when the scene structure changes |
+| `/octomap_binary` | `octomap_msgs/Octomap` | 5 Hz |
+
+**Per articulation**
+
+| Topic | Message type | Rate |
+|---|---|---|
+| `/<art>/joint_states` | `sensor_msgs/JointState` | 50 Hz |
+| `/<art>/pose` | `geometry_msgs/PoseWithCovarianceStamped` | every step, frame `map`, free-base articulations only |
+| `/<art>/odom` | `nav_msgs/Odometry` | 50 Hz, frame `odom`, child `<art>/<base>` |
+| `/<art>/imu` | `sensor_msgs/Imu` | 100 Hz, one per IMU sensor |
+| `/<art>/cmd_twist` | `geometry_msgs/TwistStamped` | the articulation's current twist, as an output |
+| `/<art>/robot_description` | `std_msgs/String` | latched URDF, published once |
+
+Note that the URDF is per articulation. There is no bare `/robot_description`.
+
+**Sensors** are routed by what they measure rather than lumped onto one topic:
+
+| Topic | Message type | For |
+|---|---|---|
+| `/<art>/<name>/wrench` | `geometry_msgs/WrenchStamped` | force and torque sensors |
+| `/<art>/<name>/range` | `sensor_msgs/Range` | rangefinders |
+| `/<art>/<name>/magnetic_field` | `sensor_msgs/MagneticField` | magnetometers |
+| `/<art>/<name>/velocity` | `geometry_msgs/TwistStamped` | velocimeters |
+| `/<art>/sensors/<name>` | `std_msgs/Float64MultiArray` | everything else |
+
+**Cameras** publish one pair per streaming camera, under the camera's canonical
+name:
 
 | Topic | Message type | Notes |
 |---|---|---|
-| `/clock` | `rosgraph_msgs/Clock` | Sim time, published at sim rate |
-| `/tf` | `tf2_msgs/TFMessage` | Per-body transforms, 50 Hz |
-| `/tf_static` | `tf2_msgs/TFMessage` | Static transforms, latched |
-| `/<actor>/joint_states` | `sensor_msgs/JointState` | Per-articulation, 50 Hz |
-| `/<actor>/pose` | `geometry_msgs/PoseStamped` | Articulation root pose |
-| `/<actor>/odometry` | `nav_msgs/Odometry` | Root odometry (if free joint), 50 Hz |
-| `/<actor>/imu` | `sensor_msgs/Imu` | Per-IMU-sensor, 100 Hz |
-| `/<actor>/sensors` | `sensor_msgs/JointState` | Sensor readouts |
-| `/<actor>/robot_description` | `std_msgs/String` | URDF, latched |
-| `/<actor>/planning_scene` | `moveit_msgs/PlanningScene` | Includes world geometry, 10 Hz |
-| `/<cam>/image` | `sensor_msgs/Image` | One per streaming camera |
-| `/<cam>/camera_info` | `sensor_msgs/CameraInfo` | One per streaming camera |
-| `/urlab/obstacle_cloud` | `sensor_msgs/PointCloud2` | Sampled world geometry, 10 Hz |
-| `/map` | `nav_msgs/OccupancyGrid` | 2D occupancy raster, latched |
-| `/octomap_binary` | `octomap_msgs/Octomap` | Volumetric occupancy, 5 Hz |
-| `/urlab/cmd_vel` | `geometry_msgs/Twist` | Twist control input |
+| `/<art>/<cam>/image` | `sensor_msgs/Image` | encoding `bgra8`, or `32FC1` for a depth camera |
+| `/<art>/<cam>/camera_info` | `sensor_msgs/CameraInfo` | |
 
-### 3.3 Visualise in rviz
+The `bgra8` encoding is worth knowing: it is Unreal's own channel order, and a
+consumer assuming RGB will show swapped colours.
+
+**User channels** are the extension point. A channel declared in the level is
+published on `/<art>/user/<channel>` or `/urlab/user/<channel>`, with the
+message type following the channel kind: `std_msgs/Bool`, `std_msgs/Float64`,
+`geometry_msgs/Vector3`, `geometry_msgs/PoseStamped`,
+`std_msgs/Float64MultiArray`, or `std_msgs/String` carrying JSON for a struct
+channel.
+
+### 3.3 Control input
+
+URLab subscribes as well as publishes. Per articulation:
+
+| Topic | Message type | Effect |
+|---|---|---|
+| `/<art>/cmd_ctrl` | `std_msgs/Float64MultiArray` | raw actuator controls |
+| `/<art>/cmd_vel` | `geometry_msgs/Twist` | twist command |
+| `/<art>/joint_command` | `sensor_msgs/JointState` | per-joint targets |
+| `/<art>/user/<channel>` | per channel kind | user-channel input |
+
+Two services decide who is driving, both `std_srvs/Trigger`:
+
+```bash
+ros2 service call /panda/claim_control std_srvs/srv/Trigger
+ros2 service call /panda/release_control std_srvs/srv/Trigger
+```
+
+### 3.4 Visualise in rviz
 
 ```bash
 ros2 run rviz2 rviz2
 ```
 
 Add a `RobotModel` display, set the description topic to
-`/<actor>/robot_description`, and add a `TF` display. The robot appears in rviz
+`/<art>/robot_description`, and add a `TF` display. The robot appears in rviz
 with live joint state, driven by MuJoCo physics running inside Unreal.
 
 ---
 
 ## 4. MoveIt planning
 
-To use URLab with MoveIt:
+`ros/urlab_moveit/` is a source tree rather than an ament package: there is no
+`package.xml`, so it is launched by path rather than by package name.
 
-1. Launch `urlab_moveit` from the `ros/urlab_moveit/` package:
-   ```bash
-   ros2 launch urlab_moveit franka.launch.py
-   ```
-   This brings up `move_group` with the URDF from `/robot_description`, the SRDF
-   auto-generated by `generate_srdf.py`, and the planning scene fed from
-   `/planning_scene`.
+```bash
+ros2 launch ros/urlab_moveit/launch/franka_moveit.launch.py \
+    urdf:=/path/to/franka/model.urdf
+```
 
-2. Use the MoveIt RViz plugin or the Python MoveIt API (`moveit_commander`) to
-   plan and execute trajectories. The bridge publishes joint trajectories to
-   URLab's control path.
+`urdf:=` is mandatory. The launch file reads the URDF from disk rather than from
+`/robot_description`, brings up `move_group` with the SRDF committed at
+`config/franka.srdf`, runs its own `robot_state_publisher` fed from
+`/<art>/joint_states`, and anchors the bare URDF link names under `world` with a
+static transform.
+
+Execution goes through `scripts/trajectory_bridge.py`, which converts
+`FollowJointTrajectory` goals into `/<art>/joint_command` messages, so no
+ros2_control stack is needed on the simulation side. Everything runs on sim time
+from `/clock`, so trajectory timing matches a simulation that is not running in
+real time.
+
+The SRDF is committed, not generated at launch. `scripts/generate_srdf.py`
+regenerates it, taking the disabled collision pairs from real MuJoCo collision
+sampling rather than an approximate mesh check:
+
+```bash
+uv run python ros/urlab_moveit/scripts/generate_srdf.py \
+    --xml /path/to/panda.xml --out ros/urlab_moveit/config/franka.srdf --samples 20000
+```
+
+`ros/urlab_jog/` is a sibling tree with a jog-slider launch file for the same
+robot.
 
 ---
 
 ## 5. How it fits together
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Unreal Editor (PIE)                                 │
-│  ┌──────────┐  ┌──────────────┐  ┌───────────────┐  │
-│  │  MuJoCo   │  │ FMjState-    │  │ IMjRosOutput- │  │
-│  │  thread   ├─►│ Collector    ├─►│ Provider      │  │
-│  │ (physics) │  │ (typed IR)   │  │ (per topic)   │  │
-│  └──────────┘  └──────────────┘  └───────┬───────┘  │
-│                                          │ rcl C ABI │
-│  ┌───────────────────────────────────────┴──────────┐│
-│  │  UrlabRclCore (extern "C", no rclcpp)            ││
-│  │  Fills rosidl C structs → rcl_publish            ││
-│  └──────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────┘
-                          │ DDS (FastDDS)
-                          ▼
-   ┌──────────────────────────────────────────┐
-   │  ROS 2 ecosystem (rviz, MoveIt, nav2, …) │
-   └──────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph UE["Unreal Editor (PIE)"]
+        Phys["MuJoCo physics thread"]
+        IR["FMjStateCollector<br/>transport-neutral IR"]
+        Prov["IMjRosOutputProvider<br/>one per topic"]
+        Rpc["RosRpcTransport<br/>subscriptions + services"]
+        Core["UrlabRclCore<br/>extern C, no rclcpp"]
+        Phys --> IR --> Prov --> Core
+        Rpc --> Core
+    end
+    Core -->|DDS| Ros["ROS 2 ecosystem<br/>rviz, MoveIt, nav2"]
+    Ros --> Rpc
 ```
 
-State flows from MuJoCo through a transport-neutral typed IR
-(`FMjStateCollector`). Each ROS provider reads the IR and publishes one topic. The
-whole ROS side lives in `Source/URLabRos/` and links only the rcl C API — no
-`rclcpp`, no `ament`, no colcon.
+State flows from MuJoCo through a transport-neutral typed IR,
+`FMjStateCollector` (`Source/URLab/Public/State/MjStateCollector.h`), which lives
+in the core plugin and not in the ROS module. The ZMQ and shared-memory
+transports consume the same snapshot. Each ROS provider reads it and publishes
+one topic. The whole ROS side lives in `Source/URLabRos/` and links only the rcl
+C API, with no `rclcpp`, no `ament`, and no colcon.
 
-The bridge (ZMQ + shared memory) is always available; ROS is an additional,
+The bridge (ZMQ and shared memory) is always available. ROS is an additional,
 independent transport that publishes the same state in ROS-native formats.
 
 ---
@@ -234,46 +303,54 @@ independent transport that publishes the same state in ROS-native formats.
 
 **No rclcpp.** The plugin links the rcl C API directly through a thin
 `extern "C"` seam (`Source/URLabRos/Private/Ros/UrlabRclCore.h`). This avoids
-the rclcpp dependency (and its `libstdc++` ABI mismatch with UE's bundled
-`libc++`) and keeps link times small.
+the rclcpp dependency, and its `libstdc++` ABI mismatch with UE's bundled
+`libc++`, and keeps link times small. `ros/urlab_ros_ws/` is a standalone CMake
+harness that exercises that seam against real DDS outside Unreal.
 
-**Self-registering providers.** Every ROS topic is published by a class
-that implements `IMjRosOutputProvider` and registers itself with the
-`REGISTER_MJ_ROS_OUTPUT_PROVIDER` macro. The `RosPublishTransport` discovers them
-at module load and drives their `Build`/`Publish` lifecycle each step. To add a
-new topic, write a provider and register it — no plumbing changes needed.
+**Self-registering providers.** Every published topic comes from a class that
+implements `IMjRosOutputProvider` and registers itself with the
+`REGISTER_MJ_ROS_OUTPUT_PROVIDER` macro at module load. `RosPublishTransport`
+instantiates them on first publish and again whenever the scene structure
+changes, driving `Build` once per rebuild and `Publish` per step. A registration
+that reuses an existing provider's name replaces it, so a built-in topic can be
+overridden without editing the module.
 
-**Graceful degradation.** When `URLAB_WITH_ROS2=0` (no ROS at build time) or when
-`FURLabRosContext::Initialize()` fails at runtime (no DDS, bad config), every ROS
-code path is fenced and degrades to a no-op. The simulation, bridge, and dashboard
-continue normally.
+**Cameras are not providers.** Image publishing runs off `FMjCameraFrameBus` on
+the game thread through a per-camera sink, because a camera frame arrives when
+the render completes rather than when a physics step ends.
+
+**Graceful degradation.** When `URLAB_WITH_ROS2=0` (no ROS at build time) or
+when `FURLabRosContext::Initialize()` fails at runtime (no DDS, bad config),
+every ROS code path is fenced and degrades to a no-op. The simulation, bridge,
+and dashboard continue normally.
 
 ---
 
 ## 7. Troubleshooting
 
 **"ROS 2 not found" during build.**
-`URLAB_ROS2_ROOT` is unset or points at a missing directory. Export it and
-re-build. If the ROS install uses a different layout (e.g. `include/` is nested
-under a `ros2/` prefix), point `URLAB_ROS2_ROOT` at the directory that directly
-contains `include/`, `lib/`, and `bin/`.
+`URLAB_ROS2_ROOT` is unset or points at a missing directory, and
+`third_party/install/ros2` is absent too. Export it and re-build. If the ROS
+install uses a different layout, point `URLAB_ROS2_ROOT` at the directory that
+directly contains `include/`, `lib/`, and `bin/`.
 
-**Editor fails to load with "lib<name>.so: cannot open shared object file".**
-The ROS `.so` cluster is not on the linker's search path. Use
-`LD_LIBRARY_PATH` or run `Scripts/setup_runtime_linux.sh` to symlink them.
+**Editor fails to load with "lib&lt;name&gt;.so: cannot open shared object file".**
+The ROS `.so` cluster is not on the linker's search path. Set
+`LD_LIBRARY_PATH` to your ROS `lib/` directory before launching the editor.
 
 **Module loads but no topics appear.**
-The ROS context failed to initialise. Look for this warning in the editor log:
-```
-LogURLabRos: Warning: ROS 2 unavailable: rcl context init failed (…)
-```
-This usually means DDS discovery cannot start — check that no firewall is blocking
-UDP multicast and that `$ROS_DOMAIN_ID` is consistent across terminals.
+The ROS context failed to initialise. Look for the `rcl context init failed`
+warning in the editor log. This usually means DDS discovery cannot start; check
+that no firewall is blocking UDP multicast and that `$ROS_DOMAIN_ID` is
+consistent across terminals.
 
 **`ros2 topic list` shows topics but rviz sees no TF.**
-Wait a few seconds after PIE starts. The TF provider throttles to 50 Hz and needs
-at least one sim step before the first message goes out. Also check that
-`/tf_static` appears — some tools need it before they render anything.
+Wait a few seconds after PIE starts. The TF provider throttles to 50 Hz and
+needs at least one sim step before the first message goes out. Also check that
+`/tf_static` appears; some tools need it before they render anything.
+
+**Camera images look colour-swapped.**
+The image encoding is `bgra8`. Convert rather than assuming RGB.
 
 **Wrong message types or missing fields.**
 URLab is pinned to ROS 2 Lyrical. If you sourced a different distro (Humble,

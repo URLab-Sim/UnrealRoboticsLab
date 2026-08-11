@@ -141,6 +141,85 @@ def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
                            process=False)
 
 
+def collision_mesh_names(root):
+    """Mesh names any COLLIDING geom uses, resolved through the class chain.
+
+    Splitting a vertex so a hard edge shades hard duplicates it. That is what a
+    renderer wants and it is invisible to the physics -- no vertex moves, so the
+    shape and its convex hull are unchanged -- but it does change `nmeshvert`,
+    and a collision mesh has no shading to improve. So the split is confined to
+    meshes only visual geoms use, and everything else is left exactly as MuJoCo
+    would have loaded it.
+
+    Whether a geom collides is `contype`/`conaffinity`, both 1 unless something
+    says otherwise, and in practice a visual geom gets its zeroes from a
+    `<default>` class rather than from the geom. So the chain has to be walked:
+    the geom's own attribute wins, then its class, then that class's parent, up
+    to `main`.
+
+    Conservative on purpose. A mesh whose class cannot be resolved counts as
+    collision, because the cost of being wrong that way is a mesh that shades a
+    little softer, and the cost the other way is a model that no longer matches
+    what MuJoCo would have compiled.
+    """
+    # class name -> (parent class name, geom attributes that class supplies)
+    classes = {}
+
+    def read_defaults(element, parent_name):
+        for default in element.findall("default"):
+            name = default.get("class")
+            if name is None:
+                # An unnamed <default> at the top is MuJoCo's `main`.
+                name = "main" if parent_name is None else parent_name
+            geom = default.find("geom")
+            classes[name] = (parent_name, dict(geom.attrib) if geom is not None else {})
+            read_defaults(default, name)
+
+    read_defaults(root, None)
+
+    def resolve(attr, geom_class, own):
+        """`attr` for a geom in `geom_class`, its own attributes taking priority."""
+        if attr in own:
+            return own[attr]
+        seen = set()
+        name = geom_class
+        while name is not None and name not in seen:
+            seen.add(name)
+            entry = classes.get(name)
+            if entry is None:
+                return None
+            parent, attrs = entry
+            if attr in attrs:
+                return attrs[attr]
+            name = parent
+        return None
+
+    collision = set()
+
+    def walk(element, inherited_class):
+        # `childclass` applies to every descendant that does not name its own.
+        current = element.get("childclass", inherited_class)
+        for child in element:
+            if child.tag == "geom":
+                mesh = child.get("mesh")
+                if mesh:
+                    geom_class = child.get("class", current)
+                    contype = resolve("contype", geom_class, child.attrib)
+                    conaffinity = resolve("conaffinity", geom_class, child.attrib)
+                    # Unset means MuJoCo's own 1, which collides.
+                    collides = (contype is None or contype.strip() != "0") or (
+                        conaffinity is None or conaffinity.strip() != "0"
+                    )
+                    if collides:
+                        collision.add(mesh)
+            walk(child, current)
+
+    for worldbody in root.findall("worldbody"):
+        walk(worldbody, None)
+
+    return collision
+
+
 def clean_mesh(mesh, source_path=None, smooth_normal=False):
     """Clean up a mesh using trimesh."""
     print(f"  Original: {len(mesh.vertices)} vertices, {len(mesh.faces)} faces")
@@ -558,6 +637,11 @@ def process_xml(xml_path: Path, out_dir: Path = None,
     # Collect all mesh elements
     mesh_elements = list(root.iter("mesh"))
 
+    # Which of them a colliding geom uses. Those keep MuJoCo's own vertices.
+    collision_meshes = collision_mesh_names(root)
+    if collision_meshes:
+        print(f"Collision meshes (normals left as authored): {len(collision_meshes)}")
+
     # Also convert meshes referenced by <flexcomp file="...">
     for flexcomp in root.iter("flexcomp"):
         file_attr = flexcomp.get("file")
@@ -682,6 +766,13 @@ def process_xml(xml_path: Path, out_dir: Path = None,
         # MJCF's own opt-in to one averaged normal per vertex. It defaults to
         # false, so a model that says nothing gets the crease split.
         smooth_normal = mesh_el.get("smoothnormal", "false").strip().lower() in ("true", "1")
+
+        # A mesh a colliding geom uses is not split, whatever the document says
+        # about its normals: the split is a shading improvement, and paying for
+        # it with a model that no longer matches MuJoCo's is the wrong trade on
+        # geometry nobody looks at.
+        if mesh_name in collision_meshes:
+            smooth_normal = True
 
         if convert_mesh(actual_source, output_glb, smooth_normal):
             success_count += 1

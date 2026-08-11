@@ -86,8 +86,7 @@ bool ActuatorParamsMatch(
 	const float Eps = 1e-5f;
 	bool bOk = true;
 
-	auto CheckArr = [&](const char* Name, const mjtNum* R, const mjtNum* G, int Stride, int Count)
-	{
+	auto CheckArr = [&](const char* Name, const mjtNum* R, const mjtNum* G, int Stride, int Count) {
 		for (int p = 0; p < Count; ++p)
 		{
 			const float r = (float)R[Act * Stride + p];

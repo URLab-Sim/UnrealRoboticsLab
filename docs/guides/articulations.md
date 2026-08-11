@@ -2,42 +2,39 @@
 
 An articulation is a MuJoCo model expressed as an Unreal Blueprint. This guide covers editing one in the Blueprint editor, building one from scratch, and driving it from Blueprint or C++ at runtime.
 
-An `AMjArticulation` holds a tree of MuJoCo components that mirror the MJCF structure. When placed in a level and simulated, URLab converts the tree into a MuJoCo spec, compiles it, and runs physics.
+An `AMjArticulation` holds a tree of MuJoCo components. That tree *is* the MuJoCo model, not a mirror of one: when the level is simulated, URLab walks it into a MuJoCo spec and compiles it. See [The component model](../concepts/model.md) for the mechanics.
 
 ![The articulation Blueprint editor showing the worldbody hierarchy and the definitions folders](../images/placeholder.svg)
 
 ## The component tree
 
-Components are organised into folders under the articulation root:
+The tree is the MJCF document, element for element. `MjModel` is the `<mujoco>` root, and the world body is an `MjBody` directly under it:
 
 ```
-ArticulationRoot
-├── worldbody (MjWorldBody)
+Spec (MjModel)
+├── worldbody (MjBody)
 │   └── body1 (MjBody)
-│       ├── Geom_Box (MjBox)
-│       ├── HingeJoint (MjHingeJoint)
+│       ├── Geom_Box (MjGeom, Type = box)
+│       ├── HingeJoint (MjJoint, Type = hinge)
 │       └── body2 (MjBody) ...
-└── DefinitionsRoot
-    ├── DefaultsRoot      (default classes)
-    ├── ActuatorsRoot
-    ├── SensorsRoot
-    ├── TendonsRoot
-    ├── ContactsRoot
-    ├── EqualitiesRoot
-    └── KeyframesRoot
+├── shoulder_motor (MjMotor)
+├── fingertip_touch (MjTouch)
+└── arm_class (MjDefault)
 ```
 
 The component's variable name in the tree becomes the MuJoCo element name, so name your components clearly.
 
+Section tags such as `<asset>`, `<actuator>` and `<sensor>` are not components. An actuator is a child of the root, and the writer puts it under the right section tag on its way out.
+
 ## Building from scratch
 
 1. Right-click in the Content Browser, choose **Blueprint Class**, and select `MjArticulation`. Open it.
-2. **Add bodies.** In the Components panel, **Add** an `MjBody` as a child of `worldbody`, set its transform, and nest bodies to form kinematic chains (for example upper arm, forearm, hand).
-3. **Add geoms.** Select a body and add a geom: `MjBox`, `MjSphere`, `MjCylinder` for primitives, or an `MjMeshGeom` for a static mesh asset. Size primitives with the transform gizmo. See [Geometry & Collision](geometry.md).
-4. **Add joints.** Select a body and add `MjHingeJoint`, `MjSlideJoint`, `MjBallJoint`, or `MjFreeJoint`. Configure axis, limits, stiffness, and damping in the Details panel.
-5. **Add actuators and sensors.** Add an actuator (for example `MjMotorActuator`) or sensor type. These auto-parent to `ActuatorsRoot` and `SensorsRoot`. Use the **Target** dropdown to pick what each one drives or monitors.
+2. **Add bodies.** In the Components panel, **Add** an `MjBody` as a child of the world body, set its transform, and nest bodies to form kinematic chains (for example upper arm, forearm, hand).
+3. **Add geoms.** Select a body and add an `MjGeom`, then pick its **Type**: box, sphere, capsule, cylinder, ellipsoid, plane, mesh, hfield or sdf. Size the primitives with the transform gizmo. See [Geometry & Collision](geometry.md).
+4. **Add joints.** Select a body and add an `MjJoint`, then pick its **Type**: hinge, slide or ball. A free joint is its own element, `MjFreeJoint`. Configure axis, limits, stiffness, and damping in the Details panel.
+5. **Add actuators and sensors.** Each MJCF spelling is its own component: `MjMotor`, `MjPosition`, `MjVelocity`, `MjActuatorGeneral` and so on for actuators, `MjTouch`, `MjGyro`, `MjJointpos` and so on for sensors. Set the reference property the element declares (a joint, a site, a tendon) to pick what it drives or measures.
 
-When you add a sensor, actuator, default, tendon, contact, or equality, URLab automatically moves it into the matching folder. Components placed under `DefaultsRoot` are left where you put them.
+A component parented somewhere MJCF does not allow is not silently dropped. The element records why in `PlacementProblems`, visible on the component, and moving it somewhere legal clears it.
 
 ## Reading the Details panel
 
@@ -84,14 +81,16 @@ Most references between components are dropdown pickers, not typed strings. An a
 
 Default classes hold shared properties (friction, damping, and so on) that many components inherit.
 
-1. Add an `MjDefault` (auto-parented to `DefaultsRoot`). Its variable name becomes the MuJoCo class name.
-2. Add child components under it to define template values (for example an `MjGeom` child to set default friction).
+1. Add an `MjDefault`. Its variable name becomes the MuJoCo class name.
+2. Add child components under it to define template values (for example an `MjGeom` child to set default friction). A component under an `MjDefault` is a class template, not scene content: MuJoCo never places it and the viewport never draws it.
 3. Nest defaults to build inheritance chains: drag one default under another in the tree.
-4. On a body, use the **Child Class** dropdown to assign a default to all of its children. On an individual geom or joint, use **Default Class** to reference a specific class.
+4. On a body or frame, set **Childclass** to assign a class to everything beneath it. On an individual element, set **Dclass** (MJCF `class`) to name one class. Both are dropdowns over the classes in the same spec.
 
 ## Compiling and validating
 
-Press **Compile** in the Blueprint editor. URLab syncs default class names and their hierarchy from the tree, then runs `ValidateSpec`, which builds a temporary MuJoCo spec and reports errors (missing references, invalid ranges) in the Output Log.
+Most problems are reported on the element that has them, as you make them, rather than at compile time. A reference naming nothing lands in **Dangling References**, a component parented somewhere MJCF does not allow lands in **Placement Problems**, and a geom whose shape has nothing to draw lands in **Preview Problems**. All three are on the component, under `MuJoCo|Diagnostics`, and all three clear themselves when the cause goes away.
+
+Errors only MuJoCo's own compiler can find (an invalid range, an inconsistent inertia) arrive when the scene is compiled, in the Output Log.
 
 For a filtered view of large articulations, open **Window, MuJoCo Outliner**. It lets you pick which open articulation to inspect, filter by component type, search by name, and click an entry to select it in the Blueprint tree.
 

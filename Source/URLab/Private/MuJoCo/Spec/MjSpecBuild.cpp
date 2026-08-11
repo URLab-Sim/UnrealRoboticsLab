@@ -43,24 +43,38 @@ int32 PhaseOf(ElementType Type)
 {
 	switch (Type)
 	{
-	case ElementType::Default: return 0;
-	case ElementType::Compiler:
-	case ElementType::Option:
-	case ElementType::Size:
-	case ElementType::Statistic:
-	case ElementType::Visual: return 1;
-	case ElementType::Asset: return 2;
-	case ElementType::Body: return 3;
-	case ElementType::Contact: return 4;
-	case ElementType::Deformable: return 5;
-	case ElementType::Equality: return 6;
-	case ElementType::Tendon: return 7;
-	case ElementType::Actuator: return 8;
-	case ElementType::Sensor: return 9;
-	case ElementType::Custom: return 10;
-	case ElementType::Keyframe: return 11;
-	case ElementType::Extension: return 12;
-	default: return 13;
+		case ElementType::Default:
+			return 0;
+		case ElementType::Compiler:
+		case ElementType::Option:
+		case ElementType::Size:
+		case ElementType::Statistic:
+		case ElementType::Visual:
+			return 1;
+		case ElementType::Asset:
+			return 2;
+		case ElementType::Body:
+			return 3;
+		case ElementType::Contact:
+			return 4;
+		case ElementType::Deformable:
+			return 5;
+		case ElementType::Equality:
+			return 6;
+		case ElementType::Tendon:
+			return 7;
+		case ElementType::Actuator:
+			return 8;
+		case ElementType::Sensor:
+			return 9;
+		case ElementType::Custom:
+			return 10;
+		case ElementType::Keyframe:
+			return 11;
+		case ElementType::Extension:
+			return 12;
+		default:
+			return 13;
 	}
 }
 
@@ -68,8 +82,7 @@ int32 PhaseOf(ElementType Type)
 TOptional<FString> DclassOf(const UMjNodeComponent& Node)
 {
 	TOptional<FString> Out;
-	gen::DispatchByType(Node, [&Out](const auto& Element)
-	{
+	gen::DispatchByType(Node, [&Out](const auto& Element) {
 		if constexpr (requires { Element.Dclass; })
 		{
 			Out = Element.Dclass;
@@ -83,8 +96,7 @@ TOptional<FString> DclassOf(const UMjNodeComponent& Node)
 TOptional<FString> ModelNameOf(const UMjNodeComponent& Root)
 {
 	TOptional<FString> Out;
-	gen::DispatchByType(Root, [&Out](const auto& Element)
-	{
+	gen::DispatchByType(Root, [&Out](const auto& Element) {
 		if constexpr (requires { Element.Model; })
 		{
 			Out = Element.Model;
@@ -98,8 +110,7 @@ TOptional<FString> ModelNameOf(const UMjNodeComponent& Root)
 TOptional<int32> AuthoredSizeNumOf(const UMjNodeComponent& Node)
 {
 	TOptional<int32> Out;
-	gen::DispatchByType(Node, [&Out](const auto& Element)
-	{
+	gen::DispatchByType(Node, [&Out](const auto& Element) {
 		// A `size` the schema gives a length to. An element whose `size` is a
 		// fixed arity has nothing to count and nothing to truncate.
 		if constexpr (requires { Element.Size.IsSet(); Element.Size.GetValue().Num(); })
@@ -159,8 +170,7 @@ FString KeywordOf(EMjGeomType Type)
 TOptional<FString> ChildclassOf(const UMjNodeComponent& Node)
 {
 	TOptional<FString> Out;
-	gen::DispatchByType(Node, [&Out](const auto& Element)
-	{
+	gen::DispatchByType(Node, [&Out](const auto& Element) {
 		if constexpr (requires { Element.Childclass; })
 		{
 			Out = Element.Childclass;
@@ -214,7 +224,7 @@ bool FBuilder::ResolveClass(UMjNodeComponent& Node, FMjSpecWriteContext& Local)
 	if (Local.Class == nullptr)
 	{
 		return Ctx.Error(Node, FString::Printf(
-			TEXT("no default class named '%s'"), *Local.ClassName));
+								   TEXT("no default class named '%s'"), *Local.ClassName));
 	}
 	return true;
 }
@@ -273,7 +283,7 @@ bool FBuilder::RunHooks(UMjNodeComponent& Node, FMjSpecWriteContext& Local, bool
 		if (Row == nullptr)
 		{
 			bOk = Ctx.Error(Node, FString::Printf(
-				TEXT("no hook registered under '%s'"), Hooks.Names[Index]));
+									  TEXT("no hook registered under '%s'"), Hooks.Names[Index]));
 			continue;
 		}
 		const FMjSpecWriteHook Hook = bCreating ? Row->Create : Row->Apply;
@@ -344,7 +354,7 @@ void FBuilder::ReportOverLongSizes()
 		}
 		else
 		{
-			continue;  // a `size` that is not a shape's: a composite, an hfield
+			continue; // a `size` that is not a shape's: a composite, an hfield
 		}
 
 		const EMjGeomType Type = static_cast<EMjGeomType>(Shape);
@@ -389,103 +399,123 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 	const sw::ECreate Category = sw::CreateOf(Type);
 	if (Category != sw::ECreate::Section && !ResolveClass(Node, Local))
 	{
-		return;  // the subtree is skipped: it would resolve against nothing
+		return; // the subtree is skipped: it would resolve against nothing
 	}
 
 	switch (Category)
 	{
-	case sw::ECreate::BodyScoped:
-	case sw::ECreate::SpecScoped:
-	{
-		// A <default> nested in a <default> is a class of its own, not one of
-		// its parent's templates: it is the one creating element that stays
-		// creating inside a class, and it chains to the enclosing class below.
-		// Everything else here IS a template for its own type.
-		if (Local.Partial != nullptr && Type != ElementType::Default)
+		case sw::ECreate::BodyScoped:
+		case sw::ECreate::SpecScoped:
 		{
-			Local.Struct = sw::DefaultMember(Type, Local.Partial);
+			// A <default> nested in a <default> is a class of its own, not one of
+			// its parent's templates: it is the one creating element that stays
+			// creating inside a class, and it chains to the enclosing class below.
+			// Everything else here IS a template for its own type.
+			if (Local.Partial != nullptr && Type != ElementType::Default)
+			{
+				Local.Struct = sw::DefaultMember(Type, Local.Partial);
+				if (Local.Struct == nullptr)
+				{
+					Ctx.Error(Node, TEXT("this element cannot be a default class partial"));
+					return;
+				}
+				break;
+			}
+			// A <default> is the one element whose creation consumes its own name
+			// and whose "default" argument is the class it nests inside rather than
+			// the class it resolves through.
+			const bool bClass = Type == ElementType::Default;
+
+			// The top-level `<default>` IS the spec's root class, which every spec
+			// already has. MuJoCo's own reader configures "main" from it rather
+			// than adding a second one, and mjs_addDefault refuses a class name the
+			// spec already holds.
+			//
+			// Naming it "main" is the same statement as not naming it: that is the
+			// name it already has, and MuJoCo's own reader accepts `class="main"`
+			// here while rejecting any other name. A document that spells it out is
+			// common enough -- `pal_tiago_dual` does -- that reading it as a
+			// request for a second class fails the whole model, because every
+			// nested class then has no parent to hang off.
+			//
+			// A top-level class under any other name is left to be created, not
+			// refused: MuJoCo rejects one in TEXT, but a component tree is free to
+			// hold a class without an enclosing root node for it to nest in, and
+			// that is how one authored in the editor arrives.
+			if (bClass && Local.Partial == nullptr && (!Node.MjName.IsSet() || Node.MjName.GetValue().IsEmpty() || Node.MjName.GetValue() == TEXT("main")))
+			{
+				mjsDefault* const Root =
+					Local.Spec != nullptr ? mjs_getSpecDefault(Local.Spec) : nullptr;
+				if (Root == nullptr)
+				{
+					Ctx.Error(Node, TEXT("this spec has no root default class"));
+					return;
+				}
+				Local.Element = Root->element;
+				Local.Struct = Root;
+				break;
+			}
+
+			const FTCHARToUTF8 ClassName(bClass && Node.MjName.IsSet()
+											 ? *Node.MjName.GetValue()
+											 : *Local.ClassName);
+			const mjsDefault* const Parent =
+				bClass && Local.Partial != nullptr ? Local.Partial : Local.Class;
+			// What an element is created on is the walk's answer, not the schema's,
+			// so it is the walk that has to say when it has no answer. MuJoCo's
+			// mjs_add* take the owner as a bare pointer and read through it.
+			if (Local.Spec == nullptr || (Category == sw::ECreate::BodyScoped && Local.Body == nullptr))
+			{
+				Ctx.Error(Node, TEXT("this element has nothing to be created on"));
+				return;
+			}
+			const sw::FMjCreated Made = sw::Create(Type, Local.Spec, Local.Body,
+				Local.Frame, Parent, ClassName.Get());
+			if (Made.Element == nullptr)
+			{
+				Ctx.Error(Node, TEXT("the spec refused to create this element"));
+				return;
+			}
+			Local.Element = Made.Element;
+			Local.Struct = Made.Struct;
+			// A body or frame becomes the context its own subtree is created in.
+			if (Made.Body != nullptr)
+			{
+				Local.Body = Made.Body;
+			}
+			if (Made.Frame != nullptr)
+			{
+				Local.Frame = Made.Frame;
+			}
+			if (Made.Default != nullptr)
+			{
+				Local.Struct = Made.Default;
+			}
+			break;
+		}
+
+		case sw::ECreate::Hook:
+			// A hook element is created by its hook, if it is created at all: which
+			// shorthand an actuator is decides how it is made, and a macro element
+			// or a fold has no element of its own.
+			if (!RunHooks(Node, Local, /*bCreating=*/true))
+			{
+				return;
+			}
+			break;
+
+		case sw::ECreate::ParentEmbedded:
+		case sw::ECreate::SpecEmbedded:
+			Local.Struct = sw::EmbeddedTarget(Type, Local.Spec, Local.Parent);
 			if (Local.Struct == nullptr)
 			{
-				Ctx.Error(Node, TEXT("this element cannot be a default class partial"));
+				Ctx.Error(Node, TEXT("this element has no struct to write onto"));
 				return;
 			}
 			break;
-		}
-		// A <default> is the one element whose creation consumes its own name
-		// and whose "default" argument is the class it nests inside rather than
-		// the class it resolves through.
-		const bool bClass = Type == ElementType::Default;
 
-		// The top-level `<default>` names no class because it IS the spec's
-		// root class, which every spec already has. MuJoCo's own reader
-		// configures "main" from it rather than adding a second one, and
-		// mjs_addDefault refuses a class name the spec already holds.
-		if (bClass && Local.Partial == nullptr &&
-			!(Node.MjName.IsSet() && !Node.MjName.GetValue().IsEmpty()))
-		{
-			mjsDefault* const Root =
-				Local.Spec != nullptr ? mjs_getSpecDefault(Local.Spec) : nullptr;
-			if (Root == nullptr)
-			{
-				Ctx.Error(Node, TEXT("this spec has no root default class"));
-				return;
-			}
-			Local.Element = Root->element;
-			Local.Struct = Root;
+		case sw::ECreate::Section:
 			break;
-		}
-
-		const FTCHARToUTF8 ClassName(bClass && Node.MjName.IsSet()
-			? *Node.MjName.GetValue() : *Local.ClassName);
-		const mjsDefault* const Parent =
-			bClass && Local.Partial != nullptr ? Local.Partial : Local.Class;
-		// What an element is created on is the walk's answer, not the schema's,
-		// so it is the walk that has to say when it has no answer. MuJoCo's
-		// mjs_add* take the owner as a bare pointer and read through it.
-		if (Local.Spec == nullptr ||
-			(Category == sw::ECreate::BodyScoped && Local.Body == nullptr))
-		{
-			Ctx.Error(Node, TEXT("this element has nothing to be created on"));
-			return;
-		}
-		const sw::FMjCreated Made = sw::Create(Type, Local.Spec, Local.Body,
-			Local.Frame, Parent, ClassName.Get());
-		if (Made.Element == nullptr)
-		{
-			Ctx.Error(Node, TEXT("the spec refused to create this element"));
-			return;
-		}
-		Local.Element = Made.Element;
-		Local.Struct = Made.Struct;
-		// A body or frame becomes the context its own subtree is created in.
-		if (Made.Body != nullptr) { Local.Body = Made.Body; }
-		if (Made.Frame != nullptr) { Local.Frame = Made.Frame; }
-		if (Made.Default != nullptr) { Local.Struct = Made.Default; }
-		break;
-	}
-
-	case sw::ECreate::Hook:
-		// A hook element is created by its hook, if it is created at all: which
-		// shorthand an actuator is decides how it is made, and a macro element
-		// or a fold has no element of its own.
-		if (!RunHooks(Node, Local, /*bCreating=*/true))
-		{
-			return;
-		}
-		break;
-
-	case sw::ECreate::ParentEmbedded:
-	case sw::ECreate::SpecEmbedded:
-		Local.Struct = sw::EmbeddedTarget(Type, Local.Spec, Local.Parent);
-		if (Local.Struct == nullptr)
-		{
-			Ctx.Error(Node, TEXT("this element has no struct to write onto"));
-			return;
-		}
-		break;
-
-	case sw::ECreate::Section:
-		break;
 	}
 
 	Identify(Node, Local);
@@ -501,7 +531,7 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 
 	if (!RunHooks(Node, Local, /*bCreating=*/false))
 	{
-		return;  // the element is malformed; its children would be worse
+		return; // the element is malformed; its children would be worse
 	}
 
 	if (Local.bChildrenConsumed)
@@ -516,7 +546,8 @@ void FBuilder::WalkNode(UMjNodeComponent& Node, const FMjSpecWriteContext& Inher
 	// A class is a class only for its immediate children: a nested <default>
 	// replaces it, and nothing else under it opens one.
 	Child.Partial = Type == ElementType::Default
-		? static_cast<mjsDefault*>(Local.Struct) : nullptr;
+					  ? static_cast<mjsDefault*>(Local.Struct)
+					  : nullptr;
 	const TOptional<FString> Childclass = ChildclassOf(Node);
 	if (Childclass.IsSet() && !Childclass.GetValue().IsEmpty())
 	{
@@ -539,14 +570,13 @@ void FBuilder::WalkChildren(UMjNodeComponent& Parent, const FMjSpecWriteContext&
 	ElementType ParentType{};
 	if (gen::ElementTypeOfNode(Parent, ParentType) && ParentType == ElementType::Default)
 	{
-		Children.StableSort([](const FMjOrderedChild& A, const FMjOrderedChild& B)
-		{
+		Children.StableSort([](const FMjOrderedChild& A, const FMjOrderedChild& B) {
 			ElementType Left{};
 			ElementType Right{};
 			const bool bLeft = gen::ElementTypeOfNode(*A.Node, Left)
-				&& Left == ElementType::Default;
+							&& Left == ElementType::Default;
 			const bool bRight = gen::ElementTypeOfNode(*B.Node, Right)
-				&& Right == ElementType::Default;
+							 && Right == ElementType::Default;
 			return bLeft < bRight;
 		});
 	}
@@ -570,8 +600,7 @@ void FBuilder::WalkChildren(UMjNodeComponent& Parent, const FMjSpecWriteContext&
 FMjBuiltSpec FBuilder::Build()
 {
 	UMjNodeComponent* const Root = Ctx.Source->GetRoot();
-	const auto Fail = [this](const TCHAR* Message)
-	{
+	const auto Fail = [this](const TCHAR* Message) {
 		bFailed = true;
 		FMjSpecDiagnostic& Diagnostic = Ctx.Diagnostics->AddDefaulted_GetRef();
 		Diagnostic.Message = Message;
@@ -618,8 +647,7 @@ FMjBuiltSpec FBuilder::Build()
 
 	// Sections in write order, siblings within a section in authored order.
 	TArray<FMjOrderedChild> Sections = MjOrderedChildrenOf(*Ctx.Source, *Root);
-	Sections.StableSort([](const FMjOrderedChild& A, const FMjOrderedChild& B)
-	{
+	Sections.StableSort([](const FMjOrderedChild& A, const FMjOrderedChild& B) {
 		ElementType Left{};
 		ElementType Right{};
 		gen::ElementTypeOfNode(*A.Node, Left);
@@ -700,7 +728,7 @@ void CheckReservationLifted(const FSpecRef& Root)
 #endif
 }
 
-}  // namespace
+} // namespace
 
 bool FMjSpecWriteContext::Error(const UMjNodeComponent& Node, const FString& Message)
 {
@@ -822,6 +850,6 @@ FMjBuiltSpec BuildSpec(const FSpecRef& Root, TArray<FMjSpecDiagnostic>& OutDiags
 	return Built;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

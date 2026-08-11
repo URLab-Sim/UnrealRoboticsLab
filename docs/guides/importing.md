@@ -11,7 +11,7 @@ Grab an `.xml` from the [MuJoCo Menagerie](https://github.com/google-deepmind/mu
 1. Drag your `.xml` file into the Unreal **Content Browser**.
 2. On first import, the editor prompts you to install the Python packages the importer needs (`trimesh`, `numpy`, `scipy`). By default these install into UE's bundled Python, so no external Python is required. You can also point the dialog at your own interpreter (conda, venv). The chosen path is saved to `Config/LocalUnrealRoboticsLab.ini` (per-machine, not committed).
 3. The importer runs `Scripts/clean_meshes.py` to prepare meshes: it parses the XML to find referenced meshes, resolves GLB stem conflicts (for example `link1.obj` and `link1.stl` both producing `link1.glb`), converts meshes to GLB while preserving UVs, and writes a `_ue.xml` with updated references. If you skip the Python setup, the raw XML is used and some meshes may not display.
-4. The factory builds an `AMjArticulation` Blueprint from the prepared model in four passes: assets (meshes, textures, materials), defaults (the class hierarchy), the worldbody (bodies, geoms, joints, sites), and the rest (actuators, sensors, tendons, equalities, keyframes, contact pairs and excludes).
+4. The factory imports the assets the model names (meshes, textures, materials) as Unreal assets, then parses the MJCF directly into an `AMjArticulation` Blueprint's component tree. There is no intermediate representation: the tree the parse produces *is* the model. See [The component model](../concepts/model.md).
 5. Place the Blueprint in your level. It is ready to simulate.
 
 !!! tip

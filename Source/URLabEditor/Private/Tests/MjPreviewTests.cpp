@@ -41,7 +41,7 @@ void DeliverMove(UMjNodeComponent& Node)
 {
 	Node.PostEditComponentMove(true);
 }
-}  // namespace
+} // namespace
 
 // =============================================================================
 // Presence: dragging a parent must not author a pose onto unset children
@@ -272,9 +272,9 @@ bool FTest_MjPreview_SizeScaleRoundTripPerShape::RunTest(const FString&)
 	// Scale is size * 100 cm/m / 50 cm half-extent = size * 2, on the mapped axes;
 	// the axes the shape does not map follow the lock, X mastering.
 	const TArray<FCase> Cases = {
-		{TEXT("s"), {0.1}, FVector(0.2, 0.2, 0.2)},
-		{TEXT("c"), {0.1, 0.3}, FVector(0.2, 0.2, 0.6)},
-		{TEXT("y"), {0.1, 0.3}, FVector(0.2, 0.2, 0.6)},
+		{TEXT("s"),           {0.1}, FVector(0.2, 0.2, 0.2)},
+		{TEXT("c"),      {0.1, 0.3}, FVector(0.2, 0.2, 0.6)},
+		{TEXT("y"),      {0.1, 0.3}, FVector(0.2, 0.2, 0.6)},
 		{TEXT("x"), {0.1, 0.2, 0.3}, FVector(0.2, 0.4, 0.6)},
 	};
 

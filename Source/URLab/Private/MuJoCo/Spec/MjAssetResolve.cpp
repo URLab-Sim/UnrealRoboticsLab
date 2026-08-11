@@ -48,15 +48,23 @@ struct FMjRoleRow
 // asserted by the tests; renaming one here without rebuilding the master
 // silently drops that role.
 constexpr FMjRoleRow GRoles[] = {
-	/* rgb       */ {TEXT("rgb"), TEXT("RgbTexture")},
-	/* occlusion */ {TEXT("occlusion"), TEXT("OcclusionTexture")},
-	/* roughness */ {TEXT("roughness"), TEXT("RoughnessTexture")},
-	/* metallic  */ {TEXT("metallic"), TEXT("MetallicTexture")},
-	/* normal    */ {TEXT("normal"), TEXT("NormalTexture")},
-	/* opacity   */ {TEXT("opacity"), TEXT("OpacityTexture")},
-	/* emissive  */ {TEXT("emissive"), TEXT("EmissiveTexture")},
-	/* rgba      */ {TEXT("rgba"), TEXT("RgbaTexture")},
-	/* orm       */ {TEXT("orm"), TEXT("OrmTexture")},
+	/* rgb       */ {      TEXT("rgb"),       TEXT("RgbTexture")},
+	/* occlusion */
+	{TEXT("occlusion"), TEXT("OcclusionTexture")},
+	/* roughness */
+	{TEXT("roughness"), TEXT("RoughnessTexture")},
+	/* metallic  */
+	{ TEXT("metallic"),  TEXT("MetallicTexture")},
+	/* normal    */
+	{   TEXT("normal"),    TEXT("NormalTexture")},
+	/* opacity   */
+	{  TEXT("opacity"),   TEXT("OpacityTexture")},
+	/* emissive  */
+	{ TEXT("emissive"),  TEXT("EmissiveTexture")},
+	/* rgba      */
+	{	 TEXT("rgba"),      TEXT("RgbaTexture")},
+	/* orm       */
+	{	  TEXT("orm"),       TEXT("OrmTexture")},
 };
 
 static_assert(UE_ARRAY_COUNT(GRoles) == static_cast<int32>(EMjMaterialRole::Count),
@@ -233,7 +241,7 @@ TArray<UMjMaterialLayer*> LayersOf(const FSpecRef& Doc, const UMjMaterial& Mater
 	return Out;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 /** A texture, or the neutral stand-in for its role when there is none. */
 UTexture2D* TextureOrNeutral(UTexture2D* Texture, EMjMaterialRole Role)
@@ -246,7 +254,7 @@ UTexture2D* TextureOrNeutral(UTexture2D* Texture, EMjMaterialRole Role)
 	return LoadObject<UTexture2D>(nullptr, Path);
 }
 
-}  // namespace
+} // namespace
 
 const TCHAR* MjMaterialRoleName(EMjMaterialRole Role)
 {
@@ -291,9 +299,7 @@ FString MjSanitizeAssetName(const FString& Name)
 	Out.Reserve(Name.Len());
 	for (const TCHAR Character : Name)
 	{
-		const bool bKeep = (Character >= TEXT('0') && Character <= TEXT('9')) ||
-			(Character >= TEXT('A') && Character <= TEXT('Z')) || (Character >= TEXT('a') && Character <= TEXT('z')) ||
-			Character == TEXT('_');
+		const bool bKeep = (Character >= TEXT('0') && Character <= TEXT('9')) || (Character >= TEXT('A') && Character <= TEXT('Z')) || (Character >= TEXT('a') && Character <= TEXT('z')) || Character == TEXT('_');
 		Out.AppendChar(bKeep ? Character : TEXT('_'));
 	}
 	return Out;
@@ -426,8 +432,7 @@ bool MjResolveMaterial(const FSpecRef& Spec, const FString& Name, FMjMaterialVal
 				}
 			}
 			Take(Out.bTexUniform, Layer.Texuniform, bTexUniform);
-			return bRgba && bEmission && bSpecular && bShininess && bReflectance && bMetallic && bRoughness &&
-				bTexRepeat && bTexUniform;
+			return bRgba && bEmission && bSpecular && bShininess && bReflectance && bMetallic && bRoughness && bTexRepeat && bTexUniform;
 		});
 	});
 

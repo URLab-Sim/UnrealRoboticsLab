@@ -220,7 +220,7 @@ void ScalarIs(FAutomationTestBase& Test, const TCHAR* Label, UMaterialInstanceDy
 		FMath::IsNearlyEqual(Actual, Expected, 1e-4f));
 }
 
-}  // namespace MjGeomMaterialTests
+} // namespace MjGeomMaterialTests
 
 // ============================================================================
 // URLab.Import.GeomTextureReachesThePreviewMaterial
@@ -569,8 +569,7 @@ bool FMjMeshGeomTest::RunTest(const FString& Parameters)
 	UStaticMesh* Tabletop = PlaceMesh(*this, Doc, TEXT("tabletop"));
 	UStaticMesh* Lowpoly = PlaceMesh(*this, Doc, TEXT("X2_lowpoly"));
 	UTexture2D* Skin = PlaceTexture(*this, Doc, TEXT("skin"));
-	if (!TestNotNull(TEXT("the placed tabletop asset"), Tabletop) ||
-		!TestNotNull(TEXT("the placed X2_lowpoly asset"), Lowpoly))
+	if (!TestNotNull(TEXT("the placed tabletop asset"), Tabletop) || !TestNotNull(TEXT("the placed X2_lowpoly asset"), Lowpoly))
 	{
 		return false;
 	}
@@ -578,8 +577,7 @@ bool FMjMeshGeomTest::RunTest(const FString& Parameters)
 	UMjGeom* Scaled = Named<UMjGeom>(*Doc.Actor, TEXT("scaled"));
 	UMjGeom* FromClass = Named<UMjGeom>(*Doc.Actor, TEXT("from_class"));
 	UMjGeom* Missing = Named<UMjGeom>(*Doc.Actor, TEXT("missing"));
-	if (!TestNotNull(TEXT("geom scaled"), Scaled) || !TestNotNull(TEXT("geom from_class"), FromClass) ||
-		!TestNotNull(TEXT("geom missing"), Missing))
+	if (!TestNotNull(TEXT("geom scaled"), Scaled) || !TestNotNull(TEXT("geom from_class"), FromClass) || !TestNotNull(TEXT("geom missing"), Missing))
 	{
 		return false;
 	}
@@ -659,8 +657,7 @@ bool FMjPlaneEllipsoidTest::RunTest(const FString& Parameters)
 	UMjGeom* Finite = Named<UMjGeom>(*Doc.Actor, TEXT("finite_plane"));
 	UMjGeom* Infinite = Named<UMjGeom>(*Doc.Actor, TEXT("infinite_plane"));
 	UMjGeom* Egg = Named<UMjGeom>(*Doc.Actor, TEXT("egg"));
-	if (!TestNotNull(TEXT("geom finite_plane"), Finite) || !TestNotNull(TEXT("geom infinite_plane"), Infinite) ||
-		!TestNotNull(TEXT("geom egg"), Egg))
+	if (!TestNotNull(TEXT("geom finite_plane"), Finite) || !TestNotNull(TEXT("geom infinite_plane"), Infinite) || !TestNotNull(TEXT("geom egg"), Egg))
 	{
 		return false;
 	}
@@ -721,7 +718,7 @@ bool FMjDanglingTextureTest::RunTest(const FString& Parameters)
 	FScratchDoc Doc;
 	if (!Parse(*this, Doc,
 			TEXT("<mujoco><asset><texture name=\"present\" type=\"2d\" file=\"p.png\"/></asset>")
-			TEXT("<worldbody><geom type=\"box\" size=\".1 .1 .1\"/></worldbody></mujoco>")))
+				TEXT("<worldbody><geom type=\"box\" size=\".1 .1 .1\"/></worldbody></mujoco>")))
 	{
 		return false;
 	}
@@ -756,11 +753,11 @@ bool FMjUnnamedAssetNameTest::RunTest(const FString& Parameters)
 	MjGeomMaterialTests::FScratchDoc Doc;
 	if (!MjGeomMaterialTests::Parse(*this, Doc,
 			TEXT("<mujoco><asset>")
-			TEXT("<texture type=\"2d\" file=\"2_of_clubs.png\"/>")
-			TEXT("<material name=\"2_of_clubs\" texture=\"2_of_clubs\"/>")
-			TEXT("</asset><worldbody>")
-			TEXT("<geom type=\"box\" size=\".1 .1 .1\" material=\"2_of_clubs\"/>")
-			TEXT("</worldbody></mujoco>")))
+				TEXT("<texture type=\"2d\" file=\"2_of_clubs.png\"/>")
+					TEXT("<material name=\"2_of_clubs\" texture=\"2_of_clubs\"/>")
+						TEXT("</asset><worldbody>")
+							TEXT("<geom type=\"box\" size=\".1 .1 .1\" material=\"2_of_clubs\"/>")
+								TEXT("</worldbody></mujoco>")))
 	{
 		return false;
 	}
@@ -799,4 +796,4 @@ bool FMjUnnamedAssetNameTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

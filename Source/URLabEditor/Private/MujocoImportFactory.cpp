@@ -226,7 +226,7 @@ FMjDocParseOptions LoadReimportSettings(const UBlueprint& Blueprint)
 	}
 	return Options;
 }
-}  // namespace
+} // namespace
 
 FString UMujocoImportFactory::ImportPrepDir(const FString& SourceXmlPath)
 {
@@ -408,8 +408,7 @@ EReimportResult::Type UMujocoImportFactory::Reimport(UObject* Obj)
 	UBlueprint* Read = nullptr;
 	FString Error;
 	bool bCancelled = false;
-	const bool bOk = ImportModel(Filenames[0], Settings, [Existing]() { return Existing; },
-		Read, Error, bCancelled);
+	const bool bOk = ImportModel(Filenames[0], Settings, [Existing]() { return Existing; }, Read, Error, bCancelled);
 
 	if (bCancelled)
 	{
@@ -494,8 +493,7 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 	// as making an asset.
 	UBlueprint* NewBP = nullptr;
 	FString Error;
-	const bool bImported = ImportModel(Filename, Settings,
-		[&]() -> UBlueprint* {
+	const bool bImported = ImportModel(Filename, Settings, [&]() -> UBlueprint* {
 			SlowTask.EnterProgressFrame(1.f,
 				NSLOCTEXT("URLab", "ImportStep1", "Building Blueprint components..."));
 			return FKismetEditorUtilities::CreateBlueprint(
@@ -504,9 +502,7 @@ UObject* UMujocoImportFactory::FactoryCreateFile(UClass* InClass, UObject* InPar
 				InName,
 				BPTYPE_Normal,
 				UBlueprint::StaticClass(),
-				UBlueprintGeneratedClass::StaticClass());
-		},
-		NewBP, Error, bOutOperationCanceled);
+				UBlueprintGeneratedClass::StaticClass()); }, NewBP, Error, bOutOperationCanceled);
 
 	if (!bImported)
 	{

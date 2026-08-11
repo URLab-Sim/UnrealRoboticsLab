@@ -67,7 +67,8 @@ UBlueprint* MakeScratchBlueprint()
  */
 struct FScopedOverrides
 {
-	FScopedOverrides() : Saved(MjSnapshotElementClasses()) {}
+	FScopedOverrides()
+		: Saved(MjSnapshotElementClasses()) {}
 	~FScopedOverrides() { MjRestoreElementClasses(Saved); }
 
 	TMap<int32, UClass*> Saved;
@@ -98,7 +99,7 @@ UMjNodeComponent* FindNodeOfClass(UBlueprint& Blueprint, const UClass* Generated
 	return nullptr;
 }
 
-}  // namespace MjElementClassOverrideTests
+} // namespace MjElementClassOverrideTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjElementClassOverrideBuildsSubclass,
 	"URLab.Doc.ElementClassOverrideBuildsSubclass",
@@ -295,4 +296,4 @@ bool FMjElementClassOverrideIsPerElement::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

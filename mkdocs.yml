@@ -108,12 +108,13 @@ nav:
     - Protocol Reference: reference/protocol.md
   - Concepts:
     - Architecture: concepts/architecture.md
+    - The Component Model: concepts/model.md
+    - Generation: concepts/generation.md
     - Networking: concepts/networking.md
-    - Codegen: concepts/codegen.md
     - MJCF Support: concepts/mjcf_support.md
   - Contributing:
     - Building from Source: contributing/building.md
-    - Codegen: contributing/codegen.md
+    - Regenerating the Profile: contributing/generation.md
     - Bumping MuJoCo: contributing/bumping_mujoco.md
     - mjSpec Architecture: architecture_mjspec.md
   - Troubleshooting: troubleshooting.md

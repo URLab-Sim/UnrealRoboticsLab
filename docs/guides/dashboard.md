@@ -8,7 +8,7 @@ The Simulate dashboard is an in-editor widget that mirrors MuJoCo's `simulate` U
 
 The dashboard appears automatically when you hit Play, as long as:
 
-1. An `MjManager` actor is present in the level (one per level).
+1. An `AAMjManager` actor is present in the level (one per level).
 2. `bAutoCreateSimulateWidget` is enabled on the Manager.
 3. **Show Plugin Content** is enabled in the Content Browser settings (gear icon), so the bundled widget assets are visible to the engine.
 

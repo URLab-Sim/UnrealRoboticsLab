@@ -82,6 +82,24 @@ Write-Host "Installing MuJoCo..." -ForegroundColor Gray
 cmake --install . --config $BuildType
 if ($LASTEXITCODE -ne 0) { throw "Installation failed for MuJoCo" }
 
+# MuJoCo builds its first-party plugins (PID actuator, elasticity, sensor, SDF)
+# as separate shared libraries but installs none of them -- upstream expects
+# `simulate` to pick them up out of the build tree. URLab loads them at module
+# startup, so they have to be part of the install: a model naming `mujoco.pid`
+# does not build without one.
+$PluginOut = Join-Path $InstallDir "bin/mujoco_plugin"
+New-Item -ItemType Directory -Force -Path $PluginOut | Out-Null
+$PluginBuildDir = Join-Path (Get-Location) "bin/$BuildType"
+$PluginLibs = Get-ChildItem -Path $PluginBuildDir -Filter "*.dll" -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -ne "mujoco.dll" }
+foreach ($Lib in $PluginLibs) {
+    Copy-Item -Path $Lib.FullName -Destination $PluginOut -Force
+    Write-Host "Installed plugin $($Lib.Name)" -ForegroundColor Gray
+}
+if (-not $PluginLibs) {
+    Write-Host "WARNING: no MuJoCo plugin libraries found in $PluginBuildDir" -ForegroundColor Yellow
+}
+
 Pop-Location
 
 # Record the exact source SHA we just installed from. URLab.Build.cs reads

@@ -57,7 +57,8 @@ using namespace urlab::spec;
 class FCountingPDI final : public FPrimitiveDrawInterface
 {
 public:
-	FCountingPDI() : FPrimitiveDrawInterface(nullptr) {}
+	FCountingPDI()
+		: FPrimitiveDrawInterface(nullptr) {}
 
 	virtual bool IsHitTesting() override { return false; }
 	virtual void SetHitProxy(HHitProxy*) override {}
@@ -172,7 +173,7 @@ double FurthestFrom(const TArray<FVector>& Points, const FVector& Centre)
 	return Furthest;
 }
 
-}  // namespace MjVisualizerTests
+} // namespace MjVisualizerTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjElementVisualizerIsRegisteredForEveryElement,
 	"URLab.Editor.ElementVisualizerIsRegisteredForEveryElement",
@@ -450,4 +451,4 @@ bool FMjElementVisualizerFloorsTinySiteMarker::RunTest(const FString& Parameters
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

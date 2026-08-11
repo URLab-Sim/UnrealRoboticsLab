@@ -27,6 +27,8 @@
 #include "Utils/URLabLogging.h"
 #include "Interfaces/IPluginManager.h"
 
+#include <mujoco/mujoco.h>
+
 #include "MuJoCo/Spec/MjGenHooks.h"
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Elements/MjCamera.h"
@@ -75,7 +77,7 @@ void RegisterHandElementClasses()
 	urlab::spec::MjSetElementClass(ElementType::Texture, UMjTexture::StaticClass());
 #endif
 }
-}  // namespace
+} // namespace
 
 void FURLabModule::StartupModule()
 {
@@ -156,15 +158,61 @@ void FURLabModule::StartupModule()
 	// for newer toolsets). Glob so URLab works regardless of which VS
 	// version the user built third_party with.
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq-*-mt-*.dll"), TEXT("libzmq"), TEXT("bin"));
+	// After MuJoCo, which it links against.
+	bAllDepsLoaded &= LoadDependencyDLL(TEXT("urlab_mjshim.dll"), TEXT("MjShim"), TEXT("bin"));
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.dll"), TEXT("CoACD"), TEXT("bin"));
 #elif PLATFORM_LINUX
 	// Linux .so layout: third_party/install/<pkg>/lib/. Glob the SONAME
 	// suffix so a MuJoCo bump (or any minor version bump) doesn't require
 	// tracking the literal version in the loader.
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libmujoco.so*"), TEXT("MuJoCo"), TEXT("lib"));
+	// After MuJoCo, which it links against.
+	bAllDepsLoaded &= LoadDependencyDLL(TEXT("liburlab_mjshim.so*"), TEXT("MjShim"), TEXT("lib"));
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("libzmq.so*"), TEXT("libzmq"), TEXT("lib"));
 	bAllDepsLoaded &= LoadDependencyDLL(TEXT("lib_coacd.so*"), TEXT("CoACD"), TEXT("lib"));
 #endif
+
+	// MuJoCo's first-party plugins -- the PID actuator, cable and shell
+	// elasticity, the touch-grid sensor, SDF shapes -- are separate shared
+	// libraries rather than part of the runtime, and a document naming one
+	// fails to build until its library is loaded: the plugin registry is
+	// process-global and empty until something fills it. Loading them here
+	// means both our reader and MuJoCo's own see the same set, and it happens
+	// once, before any model is read.
+	//
+	// Only after the runtime itself loaded, because each plugin library links
+	// against it.
+	if (bAllDepsLoaded)
+	{
+#if PLATFORM_WINDOWS
+		const TCHAR* const PluginBinSubDir = TEXT("bin");
+#else
+		const TCHAR* const PluginBinSubDir = TEXT("lib");
+#endif
+		FString PluginLibDir =
+			FPaths::Combine(InstallDir, TEXT("MuJoCo"), PluginBinSubDir, TEXT("mujoco_plugin"));
+		if (!IFileManager::Get().DirectoryExists(*PluginLibDir))
+		{
+			PluginLibDir = FPaths::Combine(FPlatformProcess::GetModulesDirectory(), TEXT("mujoco_plugin"));
+		}
+		if (IFileManager::Get().DirectoryExists(*PluginLibDir))
+		{
+			const int32 Before = mjp_pluginCount();
+			mj_loadAllPluginLibraries(TCHAR_TO_UTF8(*PluginLibDir), nullptr);
+			UE_LOG(LogURLab, Log, TEXT("Loaded %d MuJoCo plugin(s) from %s"),
+				mjp_pluginCount() - Before, *PluginLibDir);
+		}
+		else
+		{
+			// Not fatal: everything except a model that names a plugin works
+			// without them, and saying so beats a compile error that only
+			// names the plugin the document asked for.
+			UE_LOG(LogURLab, Warning,
+				TEXT("No MuJoCo plugin directory found; models using plugins (mujoco.pid, cable, "
+					 "shell, touch_grid, SDF) will not build. Re-run third_party/build_all.ps1 "
+					 "(Windows) or build_all.sh (Linux/macOS) to install them."));
+		}
+	}
 
 	if (!bAllDepsLoaded)
 	{

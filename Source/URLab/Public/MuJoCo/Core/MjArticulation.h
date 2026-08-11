@@ -25,6 +25,8 @@
 #include <atomic>
 
 #include "GameFramework/Pawn.h"
+
+#include "MuJoCo/Gen/MjEnums.gen.h"
 #include "Templates/UniquePtr.h"
 
 #include "MjArticulation.generated.h"
@@ -72,6 +74,22 @@ public:
 	/** Optional path to an MJCF this articulation was imported from. */
 	UPROPERTY(EditAnywhere, Category = "MuJoCo Import")
 	FFilePath MuJoCoXMLFile;
+
+	/**
+	 * What happens when this robot's model-wide settings disagree with the
+	 * scene's, or unset to accept whatever the scene does.
+	 *
+	 * A scene has one `<option>`, one `<size>` and one `<compiler>`, and a robot
+	 * that authored its own brings them along. MuJoCo settles that when the robot
+	 * is attached: `warning` keeps the scene's value and says so, `merge` takes
+	 * the safer of the two per field, and `error` refuses the attach.
+	 *
+	 * Set per robot rather than per scene because MuJoCo asks the question at
+	 * each attach, so one robot can refuse to have its timestep replaced while
+	 * the rest of the scene carries on warning.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Scene")
+	TOptional<EMjConflict> AttachConflict;
 
 	/**
 	 * The prefix every compiled name of this participant carries.

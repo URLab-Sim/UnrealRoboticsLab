@@ -82,14 +82,22 @@ const TCHAR* const kPlaneMesh = TEXT("/Engine/BasicShapes/Plane.Plane");
 
 constexpr FGeomShape GGeomShapes[] = {
 	/* plane     */ {kPlaneMesh, nullptr},
-	/* hfield    */ {},
-	/* sphere    */ {kSphereMesh, nullptr},
-	/* capsule   */ {kCylinderMesh, kSphereMesh},
-	/* ellipsoid */ {kSphereMesh, nullptr},
-	/* cylinder  */ {kCylinderMesh, nullptr},
-	/* box       */ {kCubeMesh, nullptr},
-	/* mesh      */ {},
-	/* sdf       */ {},
+	/* hfield    */
+	{},
+	/* sphere    */
+	{kSphereMesh, nullptr},
+	/* capsule   */
+	{kCylinderMesh, kSphereMesh},
+	/* ellipsoid */
+	{kSphereMesh, nullptr},
+	/* cylinder  */
+	{kCylinderMesh, nullptr},
+	/* box       */
+	{kCubeMesh, nullptr},
+	/* mesh      */
+	{},
+	/* sdf       */
+	{},
 };
 
 static_assert(static_cast<int32>(EMjGeomType::sdf) + 1 == static_cast<int32>(UE_ARRAY_COUNT(GGeomShapes)),
@@ -251,8 +259,8 @@ void NoteUndrawableShape(UMjGeom& Geom, EMjGeomType EffectiveType)
 
 	const FString Source = ClassSupplyingType(Geom);
 	const FString Where = Source.IsEmpty()
-		? FString::Printf(TEXT("type=\"%s\" is authored here"), Attribute)
-		: FString::Printf(TEXT("type=\"%s\" comes from default class '%s'"), Attribute, *Source);
+							? FString::Printf(TEXT("type=\"%s\" is authored here"), Attribute)
+							: FString::Printf(TEXT("type=\"%s\" comes from default class '%s'"), Attribute, *Source);
 	Geom.NotePreviewProblem(EMjPreviewProblem::UndrawableShape,
 		FString::Printf(TEXT("%s and no <%s> is named: this geom will not draw, and the model will not compile"),
 			*Where, Attribute));
@@ -427,8 +435,8 @@ void UMjGeom::RebuildVisualizer()
 	// The shape table cannot hold it, because it is per element and only known
 	// once the spec has been read.
 	const FMjResolvedMesh SpecMesh = EffectiveType == EMjGeomType::mesh
-		? MjResolveMesh(FSpecRef::OverOwner(this), EffectiveMeshName())
-		: FMjResolvedMesh();
+									   ? MjResolveMesh(FSpecRef::OverOwner(this), EffectiveMeshName())
+									   : FMjResolvedMesh();
 	VisualizerScale = SpecMesh.Asset != nullptr ? SpecMesh.Scale : FVector::OneVector;
 
 	const FGeomShape& Shape = ShapeFor(EffectiveType);
@@ -554,8 +562,7 @@ void UMjGeom::ApplySpecMaterial()
 	for (USceneComponent* Child : Children)
 	{
 		UStaticMeshComponent* ChildMesh = Cast<UStaticMeshComponent>(Child);
-		if (ChildMesh != nullptr && ChildMesh != VisualizerMesh && ChildMesh != VisualizerCapTop &&
-			ChildMesh != VisualizerCapBottom)
+		if (ChildMesh != nullptr && ChildMesh != VisualizerMesh && ChildMesh != VisualizerCapTop && ChildMesh != VisualizerCapBottom)
 		{
 			Dress(ChildMesh);
 		}
@@ -629,8 +636,7 @@ const FLinearColor MjMagicDefaultRgba(0.5f, 0.5f, 0.5f, 1.0f);
  */
 bool IsMagicDefaultRgba(const FLinearColor& Color)
 {
-	return Color.R == MjMagicDefaultRgba.R && Color.G == MjMagicDefaultRgba.G && Color.B == MjMagicDefaultRgba.B &&
-		Color.A == MjMagicDefaultRgba.A;
+	return Color.R == MjMagicDefaultRgba.R && Color.G == MjMagicDefaultRgba.G && Color.B == MjMagicDefaultRgba.B && Color.A == MjMagicDefaultRgba.A;
 }
 
 } // namespace
@@ -686,8 +692,7 @@ FLinearColor UMjGeom::GetEffectiveColor() const
 	// -- so the two disagree when both are explicitly non-default, and this
 	// plugin follows Filament because Unreal is PBR and classic is not.
 	FMjMaterialValues Values;
-	if (MjResolveMaterial(FSpecRef::OverOwner(this), EffectiveMaterialName(), Values) &&
-		!IsMagicDefaultRgba(Values.Rgba))
+	if (MjResolveMaterial(FSpecRef::OverOwner(this), EffectiveMaterialName(), Values) && !IsMagicDefaultRgba(Values.Rgba))
 	{
 		return Values.Rgba;
 	}
@@ -786,7 +791,7 @@ bool AffectsGeomPicture(FName PropertyName)
 	};
 	return Visual.Contains(PropertyName);
 }
-}  // namespace
+} // namespace
 
 void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {

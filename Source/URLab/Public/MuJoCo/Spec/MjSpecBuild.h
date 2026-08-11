@@ -25,6 +25,7 @@
 
 #if URLAB_MJ_GEN
 
+#include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 
 struct mjSpec_;
@@ -85,6 +86,25 @@ struct URLAB_API FMjBuiltSpec
  */
 URLAB_API FMjBuiltSpec BuildSpec(const FSpecRef& Root, TArray<FMjSpecDiagnostic>& OutDiags);
 
-}  // namespace urlab::spec
+/**
+ * Point a built spec's asset references at the names its bytes are mounted
+ * under, and clear the directories that resolved them.
+ *
+ * Anyone who mounts what an FMjAssetSink emitted has to call this before
+ * compiling, whether or not anything is being composed. The sink's names are
+ * complete, so the spec's own meshdir and texturedir would prepend a directory
+ * to a name that already resolves -- and MuJoCo answers a lookup that misses by
+ * falling back to a case-insensitive BASENAME match across every mount, so the
+ * miss does not fail the compile. It silently returns whichever file was
+ * mounted first under that basename. A model whose `visual/link.stl` and
+ * `collision/link.stl` differ only by directory then compiles clean with its
+ * collision geometry replaced by its visual mesh.
+ *
+ * Requests must be the ones emitted for THIS spec: they carry the element
+ * pointers the rewrite is applied through.
+ */
+URLAB_API void MjNamespaceAssets(const FMjBuiltSpec& Built, const TArray<FMjAssetRequest>& Requests);
 
-#endif  // URLAB_MJ_GEN
+} // namespace urlab::spec
+
+#endif // URLAB_MJ_GEN

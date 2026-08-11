@@ -180,8 +180,7 @@ TArray<FString> CorpusFiles()
 	for (const FString& File : Found)
 	{
 		FString Text;
-		if (FFileHelper::LoadFileToString(Text, *File) && Text.Contains(TEXT("<mujoco")) &&
-			!Text.Contains(TEXT("<mujocoinclude")))
+		if (FFileHelper::LoadFileToString(Text, *File) && Text.Contains(TEXT("<mujoco")) && !Text.Contains(TEXT("<mujocoinclude")))
 		{
 			Files.Add(File);
 		}
@@ -288,10 +287,10 @@ bool CompiledModelsAgree(FAutomationTestBase& Test, const FString& Label, const 
 		++Mismatches;
 	};
 
-#define X(name)                                    \
-	if (A->name != B->name)                        \
-	{                                              \
-		Report(TEXT(#name),                        \
+#define X(name)                                                     \
+	if (A->name != B->name)                                         \
+	{                                                               \
+		Report(TEXT(#name),                                         \
 			FString::Printf(TEXT(": %d vs %d"), A->name, B->name)); \
 	}
 	MJMODEL_SIZES
@@ -301,7 +300,7 @@ bool CompiledModelsAgree(FAutomationTestBase& Test, const FString& Label, const 
 	{
 		MJMODEL_POINTERS_PREAMBLE(A)
 #define X(type, name, nr, nc)                                                          \
-	if (FMemory::Memcmp(A->name, B->name, sizeof(type) * (size_t)(A->nr) * (nc)) != 0)  \
+	if (FMemory::Memcmp(A->name, B->name, sizeof(type) * (size_t)(A->nr) * (nc)) != 0) \
 	{                                                                                  \
 		Report(TEXT(#name), FirstDifference<type>(A->name, B->name, A->nr, nc));       \
 	}
@@ -312,10 +311,10 @@ bool CompiledModelsAgree(FAutomationTestBase& Test, const FString& Label, const 
 		// tables above reaches them. `X` names a scalar and `XVEC` an array, and
 		// the two need different address expressions -- which is the whole reason
 		// mjxmacro spells them apart.
-#define MJ_COMPARE(FieldLabel, APtr, BPtr, Type, Num)                             \
-	if (FMemory::Memcmp((APtr), (BPtr), sizeof(Type) * (Num)) != 0)               \
-	{                                                                             \
-		Report(FieldLabel, FirstDifference<Type>((APtr), (BPtr), 1, (Num)));      \
+#define MJ_COMPARE(FieldLabel, APtr, BPtr, Type, Num)                        \
+	if (FMemory::Memcmp((APtr), (BPtr), sizeof(Type) * (Num)) != 0)          \
+	{                                                                        \
+		Report(FieldLabel, FirstDifference<Type>((APtr), (BPtr), 1, (Num))); \
 	}
 
 #define X(type, name, num) MJ_COMPARE(TEXT("opt.") TEXT(#name), &A->opt.name, &B->opt.name, type, num)
@@ -415,7 +414,8 @@ bool SaveSpecXml(FAutomationTestBase& Test, const FString& Label, const FString&
 		FMemory::Memzero(Buffer.GetData(), Capacity);
 		char SaveError[1024] = "";
 		if (mj_saveXMLString(Spec, reinterpret_cast<char*>(Buffer.GetData()), Capacity, SaveError,
-				sizeof(SaveError)) == 0)
+				sizeof(SaveError))
+			== 0)
 		{
 			Out = UTF8_TO_TCHAR(reinterpret_cast<const char*>(Buffer.GetData()));
 			bSaved = true;
@@ -478,7 +478,7 @@ FString DescribeTextDelta(const FString& A, const FString& B)
 	return FString::Printf(TEXT("%d lines saved / %d written, %d identical"), SortedA.Num(), SortedB.Num(), Common);
 }
 
-}  // namespace MjGenProfileTests
+} // namespace MjGenProfileTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjGenProfileFixpointTest, "URLab.Gen.Profile.RoundTripFixpoint",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -669,4 +669,4 @@ bool FMjGenProfileSiblingOrderTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

@@ -296,8 +296,7 @@ bool FMjFrameTypesFromtoFoldTest::RunTest(const FString& Parameters)
 	UMjGeomBase* Arm = FindTemplate<UMjGeomBase>(*Blueprint, TEXT("arm"));
 	UMjGeomBase* Slab = FindTemplate<UMjGeomBase>(*Blueprint, TEXT("slab"));
 	UMjSite* Tip = FindTemplate<UMjSite>(*Blueprint, TEXT("tip"));
-	if (!TestNotNull(TEXT("geom shin"), Shin) || !TestNotNull(TEXT("geom arm"), Arm) ||
-		!TestNotNull(TEXT("geom slab"), Slab) || !TestNotNull(TEXT("site tip"), Tip))
+	if (!TestNotNull(TEXT("geom shin"), Shin) || !TestNotNull(TEXT("geom arm"), Arm) || !TestNotNull(TEXT("geom slab"), Slab) || !TestNotNull(TEXT("site tip"), Tip))
 	{
 		return false;
 	}

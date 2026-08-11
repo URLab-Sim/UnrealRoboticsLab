@@ -26,7 +26,7 @@ THIRD_PARTY_INCLUDES_START
 #include "reflect.h"
 THIRD_PARTY_INCLUDES_END
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 namespace urlab::spec
 {
@@ -44,14 +44,22 @@ constexpr double kInfinitePlaneHalfExtent = 10.0;
 
 constexpr FMjSizeShape GShapes[] = {
 	/* plane     */ {{{0, 0}, {1, 1}}, 2, EMjScaleLock::FlatXY, kInfinitePlaneHalfExtent, true},
-	/* hfield    */ {},
-	/* sphere    */ {{{0, 0}}, 1, EMjScaleLock::Uniform},
-	/* capsule   */ {{{0, 0}, {2, 1}}, 2, EMjScaleLock::RadialXY},
-	/* ellipsoid */ {{{0, 0}, {1, 1}, {2, 2}}, 3, EMjScaleLock::Free},
-	/* cylinder  */ {{{0, 0}, {2, 1}}, 2, EMjScaleLock::RadialXY},
-	/* box       */ {{{0, 0}, {1, 1}, {2, 2}}, 3, EMjScaleLock::Free},
-	/* mesh      */ {},
-	/* sdf       */ {},
+	/* hfield    */
+	{},
+	/* sphere    */
+	{{{0, 0}}, 1, EMjScaleLock::Uniform},
+	/* capsule   */
+	{{{0, 0}, {2, 1}}, 2, EMjScaleLock::RadialXY},
+	/* ellipsoid */
+	{{{0, 0}, {1, 1}, {2, 2}}, 3, EMjScaleLock::Free},
+	/* cylinder  */
+	{{{0, 0}, {2, 1}}, 2, EMjScaleLock::RadialXY},
+	/* box       */
+	{{{0, 0}, {1, 1}, {2, 2}}, 3, EMjScaleLock::Free},
+	/* mesh      */
+	{},
+	/* sdf       */
+	{},
 };
 
 static_assert(static_cast<int32>(EMjGeomType::sdf) + 1 == static_cast<int32>(UE_ARRAY_COUNT(GShapes)),
@@ -105,9 +113,9 @@ FShapeFieldIds ShapeFieldIdsOf(psm::ElementType Type)
 	return Out;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-}  // namespace
+} // namespace
 
 const FMjSizeShape& MjSizeShapeFor(EMjGeomType Type)
 {
@@ -383,8 +391,8 @@ void MjReportSizeArity(const TArray<FMjSizeViolation>& Violations)
 	for (const FMjSizeViolation& Violation : Violations)
 	{
 		const FString Where = Violation.File.IsEmpty()
-			? FString()
-			: FString::Printf(TEXT(" (%s:%d)"), *Violation.File, Violation.Line);
+								? FString()
+								: FString::Printf(TEXT(" (%s:%d)"), *Violation.File, Violation.Line);
 		UE_LOG(LogURLab, Warning, TEXT("%s: %s%s"), *Violation.Name, *Violation.Message, *Where);
 #if WITH_EDITOR
 		MessageLog.Warning(FText::FromString(Violation.Name + TEXT(": ") + Violation.Message + Where));
@@ -392,6 +400,6 @@ void MjReportSizeArity(const TArray<FMjSizeViolation>& Violations)
 	}
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-}  // namespace urlab::spec
+} // namespace urlab::spec

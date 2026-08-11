@@ -46,10 +46,10 @@ FString FactoryScratchDir(const TCHAR* Leaf)
 
 const TCHAR* kFactoryProbeMjcf =
 	TEXT("<mujoco model=\"factory_probe\">\n")
-	TEXT("  <worldbody>\n")
-	TEXT("    <body name=\"b1\"><geom name=\"g1\" type=\"sphere\" size=\"0.1\"/></body>\n")
-	TEXT("  </worldbody>\n")
-	TEXT("</mujoco>\n");
+		TEXT("  <worldbody>\n")
+			TEXT("    <body name=\"b1\"><geom name=\"g1\" type=\"sphere\" size=\"0.1\"/></body>\n")
+				TEXT("  </worldbody>\n")
+					TEXT("</mujoco>\n");
 
 /**
  * A stand-in for the preparation script.
@@ -68,18 +68,18 @@ FString WriteFactoryStubScript(const FString& Dir, const TCHAR* Name, const TCHA
 
 const TCHAR* kFactoryStubSucceeds =
 	TEXT("import argparse, pathlib\n")
-	TEXT("p = argparse.ArgumentParser()\n")
-	TEXT("p.add_argument('xml', type=pathlib.Path)\n")
-	TEXT("p.add_argument('--out-dir', dest='out_dir', type=pathlib.Path)\n")
-	TEXT("a = p.parse_args()\n")
-	TEXT("a.out_dir.mkdir(parents=True, exist_ok=True)\n")
-	TEXT("(a.out_dir / (a.xml.stem + '_ue.xml')).write_text(a.xml.read_text())\n")
-	TEXT("raise SystemExit(0)\n");
+		TEXT("p = argparse.ArgumentParser()\n")
+			TEXT("p.add_argument('xml', type=pathlib.Path)\n")
+				TEXT("p.add_argument('--out-dir', dest='out_dir', type=pathlib.Path)\n")
+					TEXT("a = p.parse_args()\n")
+						TEXT("a.out_dir.mkdir(parents=True, exist_ok=True)\n")
+							TEXT("(a.out_dir / (a.xml.stem + '_ue.xml')).write_text(a.xml.read_text())\n")
+								TEXT("raise SystemExit(0)\n");
 
 const TCHAR* kFactoryStubFails =
 	TEXT("import sys\n")
-	TEXT("print('mesh cube could not be prepared', file=sys.stderr)\n")
-	TEXT("raise SystemExit(7)\n");
+		TEXT("print('mesh cube could not be prepared', file=sys.stderr)\n")
+			TEXT("raise SystemExit(7)\n");
 
 const TCHAR* kFactoryStubSilent =
 	TEXT("raise SystemExit(0)\n");
@@ -87,26 +87,26 @@ const TCHAR* kFactoryStubSilent =
 /** Writes its own arguments where the prepared document goes, and nothing else. */
 const TCHAR* kFactoryStubRecordsArgs =
 	TEXT("import sys, pathlib\n")
-	TEXT("out = pathlib.Path(sys.argv[sys.argv.index('--out-dir') + 1])\n")
-	TEXT("out.mkdir(parents=True, exist_ok=True)\n")
-	TEXT("stem = pathlib.Path(sys.argv[1]).stem\n")
-	TEXT("(out / (stem + '_ue.xml')).write_text(' '.join(sys.argv[1:]))\n")
-	TEXT("raise SystemExit(0)\n");
+		TEXT("out = pathlib.Path(sys.argv[sys.argv.index('--out-dir') + 1])\n")
+			TEXT("out.mkdir(parents=True, exist_ok=True)\n")
+				TEXT("stem = pathlib.Path(sys.argv[1]).stem\n")
+					TEXT("(out / (stem + '_ue.xml')).write_text(' '.join(sys.argv[1:]))\n")
+						TEXT("raise SystemExit(0)\n");
 
 /** A model whose only include reaches out of its own folder. */
 const TCHAR* kFactoryExternalIncludeMjcf =
 	TEXT("<mujoco model=\"include_probe\">\n")
-	TEXT("  <include file=\"../outside/extra.xml\"/>\n")
-	TEXT("  <worldbody>\n")
-	TEXT("    <body name=\"b1\"><geom name=\"g1\" type=\"sphere\" size=\"0.1\"/></body>\n")
-	TEXT("  </worldbody>\n")
-	TEXT("</mujoco>\n");
+		TEXT("  <include file=\"../outside/extra.xml\"/>\n")
+			TEXT("  <worldbody>\n")
+				TEXT("    <body name=\"b1\"><geom name=\"g1\" type=\"sphere\" size=\"0.1\"/></body>\n")
+					TEXT("  </worldbody>\n")
+						TEXT("</mujoco>\n");
 
 /** What that include pulls in: harmless here, and not the point. */
 const TCHAR* kFactoryIncludedFragment =
 	TEXT("<mujocoinclude>\n")
-	TEXT("  <option timestep=\"0.004\"/>\n")
-	TEXT("</mujocoinclude>\n");
+		TEXT("  <option timestep=\"0.004\"/>\n")
+			TEXT("</mujocoinclude>\n");
 
 /** The interpreter the factory would use, or empty when there is none to use. */
 FString FactoryProbePython()
@@ -196,7 +196,8 @@ bool FactoryHasElementNamed(const UBlueprint* Blueprint, const FString& MjName)
 	for (const USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
 	{
 		const UMjNodeComponent* Element = Node != nullptr
-			? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
+											? Cast<UMjNodeComponent>(Node->ComponentTemplate)
+											: nullptr;
 		if (Element != nullptr && Element->MjName.IsSet() && Element->MjName.GetValue() == MjName)
 		{
 			return true;
@@ -214,7 +215,7 @@ UBlueprint* MakeFactoryScratchBlueprint()
 		*(FString(TEXT("OptionsProbe_")) + Unique), BPTYPE_Normal, UBlueprint::StaticClass(),
 		UBlueprintGeneratedClass::StaticClass());
 }
-}  // namespace
+} // namespace
 
 // ============================================================================
 // URLab.Import.MeshPreparationOutcomes
@@ -353,7 +354,8 @@ bool FMjImportExternalIncludeGate::RunTest(const FString& Parameters)
 	// Half two: the shipped script, which is where the refusal lives.
 	const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("UnrealRoboticsLab"));
 	const FString RealScript = Plugin.IsValid()
-		? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Scripts/clean_meshes.py")) : FString();
+								 ? FPaths::Combine(Plugin->GetBaseDir(), TEXT("Scripts/clean_meshes.py"))
+								 : FString();
 	if (!TestTrue(TEXT("the preparation script ships with the plugin"), FPaths::FileExists(RealScript)))
 	{
 		return false;
@@ -463,9 +465,10 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 	// the case that used to leave an empty articulation behind.
 	const FString BadXml = Dir / TEXT("import_bad.xml");
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujoco model=\"import_bad\">\n")
-		TEXT("  <worldbody><notathing/></worldbody>\n")
-		TEXT("</mujoco>\n")), *BadXml);
+									  TEXT("<mujoco model=\"import_bad\">\n")
+										  TEXT("  <worldbody><notathing/></worldbody>\n")
+											  TEXT("</mujoco>\n")),
+		*BadXml);
 
 	{
 		FFactoryImportProbe Probe;
@@ -554,15 +557,16 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 	const FString Dir = FactoryScratchDir(TEXT("Reimport"));
 	const FString SourceXml = Dir / TEXT("reimport_probe.xml");
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujoco model=\"reimport_probe\">\n")
-		TEXT("  <worldbody>\n")
-		TEXT("    <body name=\"root\" pos=\"0 0 0.5\">\n")
-		TEXT("      <joint name=\"hinge\" type=\"hinge\" axis=\"0 1 0\" range=\"-1 1\"/>\n")
-		TEXT("      <geom name=\"link\" type=\"capsule\" size=\"0.05 0.2\" rgba=\"0.2 0.4 0.8 1\"/>\n")
-		TEXT("    </body>\n")
-		TEXT("  </worldbody>\n")
-		TEXT("  <actuator><motor name=\"drive\" joint=\"hinge\" gear=\"25\"/></actuator>\n")
-		TEXT("</mujoco>\n")), *SourceXml);
+									  TEXT("<mujoco model=\"reimport_probe\">\n")
+										  TEXT("  <worldbody>\n")
+											  TEXT("    <body name=\"root\" pos=\"0 0 0.5\">\n")
+												  TEXT("      <joint name=\"hinge\" type=\"hinge\" axis=\"0 1 0\" range=\"-1 1\"/>\n")
+													  TEXT("      <geom name=\"link\" type=\"capsule\" size=\"0.05 0.2\" rgba=\"0.2 0.4 0.8 1\"/>\n")
+														  TEXT("    </body>\n")
+															  TEXT("  </worldbody>\n")
+																  TEXT("  <actuator><motor name=\"drive\" joint=\"hinge\" gear=\"25\"/></actuator>\n")
+																	  TEXT("</mujoco>\n")),
+		*SourceXml);
 
 	FFactoryImportProbe Probe;
 	Probe.Run(SourceXml);
@@ -626,20 +630,22 @@ bool FMjImportReimportHonoursStoredIncludeOption::RunTest(const FString& Paramet
 	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
 
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujocoinclude>\n")
-		TEXT("  <worldbody>\n")
-		TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
-		TEXT("  </worldbody>\n")
-		TEXT("</mujocoinclude>\n")), *(OutsideDir / TEXT("fragment.xml")));
+									  TEXT("<mujocoinclude>\n")
+										  TEXT("  <worldbody>\n")
+											  TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
+												  TEXT("  </worldbody>\n")
+													  TEXT("</mujocoinclude>\n")),
+		*(OutsideDir / TEXT("fragment.xml")));
 
 	const FString ModelPath = ModelDir / TEXT("host.xml");
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujoco model=\"host\">\n")
-		TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
-		TEXT("  <worldbody>\n")
-		TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
-		TEXT("  </worldbody>\n")
-		TEXT("</mujoco>\n")), *ModelPath);
+									  TEXT("<mujoco model=\"host\">\n")
+										  TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
+											  TEXT("  <worldbody>\n")
+												  TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
+													  TEXT("  </worldbody>\n")
+														  TEXT("</mujoco>\n")),
+		*ModelPath);
 
 	// Import with the option ON, driven through `ImportModel` directly rather
 	// than the factory's dialog: automation runs answer no dialog, so that
@@ -656,12 +662,8 @@ bool FMjImportReimportHonoursStoredIncludeOption::RunTest(const FString& Paramet
 	UBlueprint* Blueprint = nullptr;
 	FString Error;
 	bool bCancelled = false;
-	const bool bImported = UMujocoImportFactory::ImportModel(ModelPath, ImportSettings,
-		[&]() -> UBlueprint* {
-			return FKismetEditorUtilities::CreateBlueprint(AMjArticulation::StaticClass(), Package,
-				*AssetName, BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
-		},
-		Blueprint, Error, bCancelled);
+	const bool bImported = UMujocoImportFactory::ImportModel(ModelPath, ImportSettings, [&]() -> UBlueprint* { return FKismetEditorUtilities::CreateBlueprint(AMjArticulation::StaticClass(), Package,
+																												   *AssetName, BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass()); }, Blueprint, Error, bCancelled);
 
 	if (!TestTrue(TEXT("the import with the option on succeeds"), bImported) || Blueprint == nullptr)
 	{
@@ -706,10 +708,11 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 	// import stops before anything is made.
 	const FString UnpreparableXml = Dir / TEXT("unpreparable.xml");
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujoco model=\"unpreparable\">\n")
-		TEXT("  <asset><mesh name=\"absent\" file=\"absent.stl\"/></asset>\n")
-		TEXT("  <worldbody><body name=\"b\"><geom name=\"g\" type=\"mesh\" mesh=\"absent\"/></body></worldbody>\n")
-		TEXT("</mujoco>\n")), *UnpreparableXml);
+									  TEXT("<mujoco model=\"unpreparable\">\n")
+										  TEXT("  <asset><mesh name=\"absent\" file=\"absent.stl\"/></asset>\n")
+											  TEXT("  <worldbody><body name=\"b\"><geom name=\"g\" type=\"mesh\" mesh=\"absent\"/></body></worldbody>\n")
+												  TEXT("</mujoco>\n")),
+		*UnpreparableXml);
 
 	AddExpectedErrorPlain(TEXT("mesh preparation of"), EAutomationExpectedErrorFlags::Contains, 0);
 	AddExpectedErrorPlain(TEXT("refusing to overwrite existing Blueprint"),
@@ -722,12 +725,9 @@ bool FMjImportCancelAndFailureLeaveNothing::RunTest(const FString& Parameters)
 		bool bCancelled = false;
 		FMjImportSettings Settings;
 		Settings.bAllowPrompts = false;
-		const bool bOk = UMujocoImportFactory::ImportModel(UnpreparableXml, Settings,
-			[&Acquisitions]() -> UBlueprint* {
+		const bool bOk = UMujocoImportFactory::ImportModel(UnpreparableXml, Settings, [&Acquisitions]() -> UBlueprint* {
 				++Acquisitions;
-				return nullptr;
-			},
-			Produced, Error, bCancelled);
+				return nullptr; }, Produced, Error, bCancelled);
 
 		TestFalse(TEXT("an unpreparable model does not import"), bOk);
 		TestEqual(TEXT("nothing is asked for before the model is prepared"), Acquisitions, 0);
@@ -798,20 +798,21 @@ bool FMjImportExternalIncludeOption::RunTest(const FString& Parameters)
 	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
 
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujocoinclude>\n")
-		TEXT("  <worldbody>\n")
-		TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
-		TEXT("  </worldbody>\n")
-		TEXT("</mujocoinclude>\n")), *(OutsideDir / TEXT("fragment.xml")));
+									  TEXT("<mujocoinclude>\n")
+										  TEXT("  <worldbody>\n")
+											  TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
+												  TEXT("  </worldbody>\n")
+													  TEXT("</mujocoinclude>\n")),
+		*(OutsideDir / TEXT("fragment.xml")));
 
 	const FString ModelPath = ModelDir / TEXT("host.xml");
 	const FString ModelXml =
 		TEXT("<mujoco model=\"host\">\n")
-		TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
-		TEXT("  <worldbody>\n")
-		TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
-		TEXT("  </worldbody>\n")
-		TEXT("</mujoco>\n");
+			TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
+				TEXT("  <worldbody>\n")
+					TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
+						TEXT("  </worldbody>\n")
+							TEXT("</mujoco>\n");
 	FFileHelper::SaveStringToFile(ModelXml, *ModelPath);
 
 	// Off, the default: the escaping include does not reach the spec.
@@ -895,11 +896,12 @@ bool FMjImportUnattendedIsNeverPrompted::RunTest(const FString& Parameters)
 	IFileManager::Get().MakeDirectory(*OutsideDir, /*Tree=*/true);
 
 	FFileHelper::SaveStringToFile(FString(
-		TEXT("<mujocoinclude>\n")
-		TEXT("  <worldbody>\n")
-		TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
-		TEXT("  </worldbody>\n")
-		TEXT("</mujocoinclude>\n")), *(OutsideDir / TEXT("fragment.xml")));
+									  TEXT("<mujocoinclude>\n")
+										  TEXT("  <worldbody>\n")
+											  TEXT("    <body name=\"from_outside\"><geom name=\"og\" type=\"sphere\" size=\"0.1\"/></body>\n")
+												  TEXT("  </worldbody>\n")
+													  TEXT("</mujocoinclude>\n")),
+		*(OutsideDir / TEXT("fragment.xml")));
 
 	// An ordinary model, through the real entry point the content browser
 	// calls. Reaching the assertions below at all is half the result: a modal
@@ -924,12 +926,13 @@ bool FMjImportUnattendedIsNeverPrompted::RunTest(const FString& Parameters)
 
 		const FString Escaping = ModelDir / TEXT("escaping.xml");
 		FFileHelper::SaveStringToFile(FString(
-			TEXT("<mujoco model=\"escaping\">\n")
-			TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
-			TEXT("  <worldbody>\n")
-			TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
-			TEXT("  </worldbody>\n")
-			TEXT("</mujoco>\n")), *Escaping);
+										  TEXT("<mujoco model=\"escaping\">\n")
+											  TEXT("  <include file=\"../outside/fragment.xml\"/>\n")
+												  TEXT("  <worldbody>\n")
+													  TEXT("    <body name=\"host_body\"><geom name=\"hg\" type=\"sphere\" size=\"0.1\"/></body>\n")
+														  TEXT("  </worldbody>\n")
+															  TEXT("</mujoco>\n")),
+			*Escaping);
 
 		FFactoryImportProbe Probe;
 		Probe.Run(Escaping);

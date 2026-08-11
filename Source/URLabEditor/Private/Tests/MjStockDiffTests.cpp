@@ -32,6 +32,8 @@
 #if URLAB_MJ_GEN && WITH_EDITOR
 
 #include "Engine/Blueprint.h"
+#include "HAL/FileManager.h"
+#include "HAL/PlatformMisc.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
@@ -93,21 +95,7 @@ struct FStockModel
 	}
 };
 
-/** Compile `Path` the way a user with stock MuJoCo would. */
-bool CompileStockFile(FAutomationTestBase& Test, const FString& Label, const FString& Path, FStockModel& Out)
-{
-	char Error[1024] = {0};
-	Out.Model = mj_loadXML(TCHAR_TO_UTF8(*Path), nullptr, Error, sizeof(Error));
-	if (Out.Model == nullptr)
-	{
-		Test.AddError(FString::Printf(
-			TEXT("%s: stock mj_loadXML refused the fixture: %s"), *Label, UTF8_TO_TCHAR(Error)));
-		return false;
-	}
-	return true;
-}
-
-/** The same, for a document that lives in this file rather than on disk. */
+/** Compile a document that lives in this file rather than on disk. */
 bool CompileStockText(FAutomationTestBase& Test, const FString& Label, const FString& Xml, FStockModel& Out)
 {
 	char Error[1024] = {0};
@@ -247,6 +235,152 @@ void ReportUnexplained(FAutomationTestBase& Test, const FString& Label, const FS
 		*Label, Verdict.Unexplained.Num(), *FString::Join(Verdict.Unexplained, TEXT("\n  ")), *ReportToString(Report)));
 }
 
+/**
+ * One document, both ways, compared.
+ *
+ * Ours is the file imported and compiled through the spec path; stock is
+ * `mj_loadXML` of the SAME file, never of anything our writer produced, so a
+ * fault in the reader or the writer cannot move both sides together.
+ *
+ * Errors are raised on `Test` as they are found. The return says only whether a
+ * comparison happened at all, which is what a caller counts to know its corpus
+ * has not quietly emptied.
+ */
+bool CompareAgainstStock(FAutomationTestBase& Test, const FString& Label, const FString& Path)
+{
+	FString Xml;
+	if (!FFileHelper::LoadFileToString(Xml, *Path))
+	{
+		Test.AddError(FString::Printf(TEXT("%s: could not read"), *Label));
+		return false;
+	}
+
+	// Stock first, and quietly. This test asks whether our import agrees with
+	// MuJoCo's, so a document the MuJoCo we link cannot load ITSELF is not one
+	// it has an opinion about. Engine plugins are the case that reaches here:
+	// `mujoco.pid` lives in a plugin library that is not part of the runtime we
+	// ship, and the plugin registry is process-global, so neither front end can
+	// resolve it. Building ours first would report the absence of a plugin as
+	// an import bug.
+	FStockModel Stock;
+	{
+		char Error[1024] = {0};
+		Stock.Model = mj_loadXML(TCHAR_TO_UTF8(*Path), nullptr, Error, sizeof(Error));
+		if (Stock.Model == nullptr)
+		{
+			const FString Line = FString::Printf(
+				TEXT("STOCKDIFF %-28s skipped: stock mj_loadXML refused it too (%s)"), *Label,
+				UTF8_TO_TCHAR(Error));
+			UE_LOG(LogMjStockDiff, Display, TEXT("%s"), *Line);
+			Test.AddInfo(Line);
+			return false;
+		}
+	}
+
+	UBlueprint* const Blueprint = ParseFixture(Test, ScratchPrefix, Label, Xml, Path);
+	if (Blueprint == nullptr)
+	{
+		return false;
+	}
+
+	urlab::spec::FMjBuiltSpec Built;
+	mjModel* const Ours = CompileThroughSpecPath(Test, Label, FSpecRef::OverBlueprint(*Blueprint), Built);
+	if (Ours == nullptr)
+	{
+		return false;
+	}
+
+	bool bCompared = false;
+	{
+		const ps::harness::DiffReport Report = DiffAgainstStock(Test, Label, Stock.Model, Ours);
+		const FStockVerdict Verdict = ClassifyStockDiff(Report);
+		ReportUnexplained(Test, Label, Verdict, Report);
+
+		// One line per document, always. A single "the corpus matched" cannot
+		// tell a reader which documents were in it, and over a corpus of real
+		// robots that list is the result. Into the run log as well as the
+		// automation report, because the run log is the one a reader has in
+		// front of them.
+		const FString Line = FString::Printf(
+			TEXT("STOCKDIFF %-28s %s (generated names %d, sizes moved %d, unexplained %d)"), *Label,
+			Verdict.Unexplained.IsEmpty() ? TEXT("matches stock") : TEXT("DIVERGES FROM STOCK"),
+			Verdict.GeneratedNames, Verdict.SizeDiffs, Verdict.Unexplained.Num());
+		UE_LOG(LogMjStockDiff, Display, TEXT("%s"), *Line);
+		Test.AddInfo(Line);
+
+		bCompared = true;
+	}
+	mj_deleteModel(Ours);
+	return bCompared;
+}
+
+/**
+ * One representative document per robot in a menagerie checkout.
+ *
+ * Menagerie gives a robot a directory holding several documents: the robot, a
+ * `scene` that includes it and adds a floor and a light, MJX variants tuned for
+ * a different solver, and parts on their own such as a gripper. Comparing all of
+ * them says little the robot does not, so this takes one per directory.
+ *
+ * The robot is the document whose name appears in its directory's:
+ * `panda.xml` in `franka_emika_panda`, `g1.xml` in `unitree_g1`, `cassie.xml`
+ * in `agility_cassie`. That rule picks the robot and leaves behind the parts
+ * and the variants, which are named for what they add rather than for the robot
+ * (`hand.xml`, `panda_nohand.xml`, `g1_with_hands.xml`).
+ *
+ * `<include>` is deliberately not avoided. A document that pulls in another is
+ * exercising the include path, which is part of what is being checked.
+ */
+TArray<FString> MenagerieDocuments(const FString& Root)
+{
+	TArray<FString> Found;
+	IFileManager::Get().FindFilesRecursive(Found, *Root, TEXT("*.xml"), true, false);
+
+	TMap<FString, FString> Chosen;
+	for (const FString& File : Found)
+	{
+		FString Relative = File;
+		FPaths::MakePathRelativeTo(Relative, *(Root / TEXT("")));
+		Relative.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+		// Assets are meshes and textures. A document nested deeper than a robot's
+		// own directory is a part of something rather than a robot.
+		FString Directory;
+		FString Leaf;
+		if (!Relative.Split(TEXT("/"), &Directory, &Leaf) || Leaf.Contains(TEXT("/")))
+		{
+			continue;
+		}
+
+		const FString Stem = FPaths::GetBaseFilename(Leaf);
+
+		// MJX variants are the same robot retuned for a different solver, and a
+		// scene is the robot plus a floor.
+		if (Stem.Contains(TEXT("mjx"), ESearchCase::IgnoreCase)
+			|| Stem.StartsWith(TEXT("scene"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		if (Directory.Contains(Stem, ESearchCase::IgnoreCase))
+		{
+			// The shortest qualifying stem is the robot itself: `panda` and
+			// `panda_nohand` cannot both appear here, but if a directory ever named
+			// both, the plainer one is the robot.
+			FString* const Existing = Chosen.Find(Directory);
+			if (Existing == nullptr || Stem.Len() < FPaths::GetBaseFilename(*Existing).Len())
+			{
+				Chosen.Add(Directory, File);
+			}
+		}
+	}
+
+	TArray<FString> Documents;
+	Chosen.GenerateValueArray(Documents);
+	Documents.Sort();
+	return Documents;
+}
+
 } // namespace MjStockDiffTests
 
 // ============================================================================
@@ -281,50 +415,11 @@ bool FMjStockDiffCorpusTest::RunTest(const FString& Parameters)
 	for (const FString& Fixture : Fixtures)
 	{
 		const FString Label = FPaths::GetCleanFilename(Fixture);
-
-		FString Xml;
-		if (!FFileHelper::LoadFileToString(Xml, *Fixture))
+		if (CompareAgainstStock(*this, Label, Fixture))
 		{
-			AddError(FString::Printf(TEXT("%s: could not read fixture"), *Label));
-			continue;
-		}
-
-		UBlueprint* const Blueprint = ParseFixture(*this, ScratchPrefix, Label, Xml, Fixture);
-		if (Blueprint == nullptr)
-		{
-			continue;
-		}
-
-		urlab::spec::FMjBuiltSpec Built;
-		mjModel* const Ours = CompileThroughSpecPath(*this, Label, FSpecRef::OverBlueprint(*Blueprint), Built);
-		if (Ours == nullptr)
-		{
-			continue;
-		}
-
-		FStockModel Stock;
-		if (CompileStockFile(*this, Label, Fixture, Stock))
-		{
-			const ps::harness::DiffReport Report = DiffAgainstStock(*this, Label, Stock.Model, Ours);
-			const FStockVerdict Verdict = ClassifyStockDiff(Report);
-			ReportUnexplained(*this, Label, Verdict, Report);
-
-			// One line per fixture, always. A single "the corpus matched"
-			// cannot tell a reader whether the real robot was in it, and the
-			// robot is the fixture whose result the log is read for. Into the
-			// run log as well as the automation report, because the run log is
-			// the one a reader has in front of them.
-			const FString Line = FString::Printf(
-				TEXT("STOCKDIFF %-28s %s (generated names %d, sizes moved %d, unexplained %d)"), *Label,
-				Verdict.Unexplained.IsEmpty() ? TEXT("matches stock") : TEXT("DIVERGES FROM STOCK"),
-				Verdict.GeneratedNames, Verdict.SizeDiffs, Verdict.Unexplained.Num());
-			UE_LOG(LogMjStockDiff, Display, TEXT("%s"), *Line);
-			AddInfo(Line);
-
 			bComparedTheRobot = bComparedTheRobot || Label == RealRobot;
 			++Compared;
 		}
-		mj_deleteModel(Ours);
 	}
 
 	// Every exit from the loop above is a `continue`, so without a floor this
@@ -457,6 +552,69 @@ bool FMjStockDiffUntitledModelTest::RunTest(const FString& Parameters)
 
 	mj_deleteModel(Ours);
 	return !HasAnyErrors();
+}
+
+// ============================================================================
+// URLab.Parity.StockDiffMenagerie
+//   The same comparison over a real robot corpus, off by default.
+//
+//   Point URLAB_MENAGERIE at a mujoco_menagerie checkout and this compares one
+//   document per robot against stock. Without it the test says what it wants
+//   and passes, because a machine that has no checkout has not failed anything.
+//
+//   This is the question the fixture corpus cannot answer. The fixtures are
+//   small and hand-written, each exercising one feature, and they were written
+//   by the same people who wrote the reader. A hundred real robots were not.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStockDiffMenagerieTest, "URLab.Parity.StockDiffMenagerie",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjStockDiffMenagerieTest::RunTest(const FString& Parameters)
+{
+	using namespace MjStockDiffTests;
+
+	const FString Root = FPlatformMisc::GetEnvironmentVariable(TEXT("URLAB_MENAGERIE"));
+	if (Root.IsEmpty())
+	{
+		AddInfo(TEXT("URLAB_MENAGERIE is not set, so no robot corpus was compared. Set it to a "
+					 "mujoco_menagerie checkout to run this."));
+		return true;
+	}
+	if (!IFileManager::Get().DirectoryExists(*Root))
+	{
+		AddError(FString::Printf(TEXT("URLAB_MENAGERIE points at '%s', which is not a directory"), *Root));
+		return false;
+	}
+
+	const TArray<FString> Documents = MenagerieDocuments(Root);
+	if (Documents.Num() == 0)
+	{
+		AddError(FString::Printf(TEXT("no robot documents found under '%s'"), *Root));
+		return false;
+	}
+
+	AddInfo(FString::Printf(TEXT("comparing %d robots under %s"), Documents.Num(), *Root));
+
+	int32 Compared = 0;
+	for (const FString& Document : Documents)
+	{
+		// The directory, not the file: every other robot has a `robot.xml` too,
+		// and a log of thirty identical labels names nothing.
+		FString Relative = Document;
+		FPaths::MakePathRelativeTo(Relative, *(Root / TEXT("")));
+		Relative.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+		if (CompareAgainstStock(*this, Relative, Document))
+		{
+			++Compared;
+		}
+	}
+
+	// Every failure inside the loop is reported and stepped over, so without
+	// this the test passes when nothing could be read at all.
+	TestTrue(TEXT("at least one robot was compared against stock"), Compared > 0);
+	AddInfo(FString::Printf(TEXT("compared %d of %d robots"), Compared, Documents.Num()));
+	return true;
 }
 
 #endif // URLAB_MJ_GEN && WITH_EDITOR

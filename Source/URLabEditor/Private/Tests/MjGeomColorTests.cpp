@@ -153,10 +153,7 @@ bool FMjGeomColorTest::RunTest(const FString& Parameters)
 	UMjGeom* DefaultRgba = FindGeom(*Blueprint, TEXT("default_rgba"));
 	UMjGeom* MagicMaterial = FindGeom(*Blueprint, TEXT("magic_material"));
 	UMjGeom* Bare = FindGeom(*Blueprint, TEXT("bare"));
-	if (!TestNotNull(TEXT("geom inherited"), Inherited) || !TestNotNull(TEXT("geom own_rgba"), OwnRgba) ||
-		!TestNotNull(TEXT("geom rgba_from_class"), FromClass) ||
-		!TestNotNull(TEXT("geom default_rgba"), DefaultRgba) ||
-		!TestNotNull(TEXT("geom magic_material"), MagicMaterial) || !TestNotNull(TEXT("geom bare"), Bare))
+	if (!TestNotNull(TEXT("geom inherited"), Inherited) || !TestNotNull(TEXT("geom own_rgba"), OwnRgba) || !TestNotNull(TEXT("geom rgba_from_class"), FromClass) || !TestNotNull(TEXT("geom default_rgba"), DefaultRgba) || !TestNotNull(TEXT("geom magic_material"), MagicMaterial) || !TestNotNull(TEXT("geom bare"), Bare))
 	{
 		return false;
 	}

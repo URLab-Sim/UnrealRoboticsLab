@@ -417,9 +417,7 @@ bool FMjMaterialTemplatePropagatesTest::RunTest(const FString& Parameters)
 	UMjMaterial* Template = TemplateNamed<UMjMaterial>(*Blueprint, TEXT("skin"));
 	UMjMaterial* Instance = ComponentNamed<UMjMaterial>(*Actor, TEXT("skin"));
 	UMjGeom* Shown = ComponentNamed<UMjGeom>(*Actor, TEXT("shown"));
-	if (!TestNotNull(TEXT("the material template"), Template) ||
-		!TestNotNull(TEXT("the material on the instance"), Instance) ||
-		!TestNotNull(TEXT("the geom on the instance"), Shown))
+	if (!TestNotNull(TEXT("the material template"), Template) || !TestNotNull(TEXT("the material on the instance"), Instance) || !TestNotNull(TEXT("the geom on the instance"), Shown))
 	{
 		return false;
 	}
@@ -484,8 +482,7 @@ bool FMjClassPropagatesTest::RunTest(const FString& Parameters)
 
 	UMjGeom* Follower = ComponentNamed<UMjGeom>(*Actor, TEXT("follower"));
 	const TArray<UMjGeom*> Partials = PartialGeoms(*Actor);
-	if (!TestNotNull(TEXT("the inheriting geom"), Follower) ||
-		!TestEqual(TEXT("the fixture has one class partial"), Partials.Num(), 1))
+	if (!TestNotNull(TEXT("the inheriting geom"), Follower) || !TestEqual(TEXT("the fixture has one class partial"), Partials.Num(), 1))
 	{
 		return false;
 	}
@@ -546,8 +543,7 @@ bool FMjClassTemplatePropagatesTest::RunTest(const FString& Parameters)
 
 	UMjGeom* Follower = ComponentNamed<UMjGeom>(*Actor, TEXT("follower"));
 	const TArray<UMjGeom*> InstancePartials = PartialGeoms(*Actor);
-	if (!TestNotNull(TEXT("the inheriting geom on the instance"), Follower) ||
-		!TestEqual(TEXT("the instance has one class partial"), InstancePartials.Num(), 1))
+	if (!TestNotNull(TEXT("the inheriting geom on the instance"), Follower) || !TestEqual(TEXT("the instance has one class partial"), InstancePartials.Num(), 1))
 	{
 		return false;
 	}
@@ -643,8 +639,7 @@ bool FMjTemplateAttributeReachesThePreview::RunTest(const FString& Parameters)
 	AActor* Actor = World->SpawnActor<AActor>(Blueprint->GeneratedClass);
 	UMjGeom* Template = TemplateNamed<UMjGeom>(*Blueprint, TEXT("ball"));
 	UMjGeom* Instance = Actor != nullptr ? ComponentNamed<UMjGeom>(*Actor, TEXT("ball")) : nullptr;
-	if (Actor == nullptr || !TestNotNull(TEXT("the geom's template"), Template) ||
-		!TestNotNull(TEXT("the geom on the preview"), Instance))
+	if (Actor == nullptr || !TestNotNull(TEXT("the geom's template"), Template) || !TestNotNull(TEXT("the geom on the preview"), Instance))
 	{
 		return false;
 	}
@@ -678,8 +673,7 @@ bool FMjTemplateAttributeReachesThePreview::RunTest(const FString& Parameters)
 	// pass for a carry that simply overwrote everything.
 	UMjGeom* OwnTemplate = TemplateNamed<UMjGeom>(*Blueprint, TEXT("own"));
 	UMjGeom* Own = ComponentNamed<UMjGeom>(*Actor, TEXT("own"));
-	if (TestNotNull(TEXT("the second geom's template"), OwnTemplate) &&
-		TestNotNull(TEXT("the second geom on the preview"), Own))
+	if (TestNotNull(TEXT("the second geom's template"), OwnTemplate) && TestNotNull(TEXT("the second geom on the preview"), Own))
 	{
 		EditProperty(*Own, TEXT("Type"), [Own]() { Own->Type = EMjGeomType::capsule; });
 		EditProperty(*OwnTemplate, TEXT("Type"), [OwnTemplate]() { OwnTemplate->Type = EMjGeomType::box; });
@@ -694,8 +688,7 @@ bool FMjTemplateAttributeReachesThePreview::RunTest(const FString& Parameters)
 	// would put it back on every keystroke of every geom attribute.
 	UMjGeom* Cheap = ComponentNamed<UMjGeom>(*Actor, TEXT("ball"));
 	UMjGeom* CheapTemplate = TemplateNamed<UMjGeom>(*Blueprint, TEXT("ball"));
-	if (TestNotNull(TEXT("the geom for the cost arm"), Cheap) &&
-		TestNotNull(TEXT("its template"), CheapTemplate))
+	if (TestNotNull(TEXT("the geom for the cost arm"), Cheap) && TestNotNull(TEXT("its template"), CheapTemplate))
 	{
 		const UStaticMeshComponent* const Drawn = Cheap->GetVisualizerMesh();
 		EditProperty(*CheapTemplate, TEXT("Contype"), [CheapTemplate]() { CheapTemplate->Contype = 5; });

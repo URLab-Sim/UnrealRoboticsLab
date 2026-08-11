@@ -13,6 +13,8 @@
 #include <string>
 #include <type_traits>
 
+#include "urlab_mjshim.h"
+
 #include "MuJoCo/Gen/MjElements.gen.h"
 #include "MuJoCo/Gen/MjKeywords.gen.h"
 #include "MuJoCo/Gen/MjSpecWrite.gen.h"
@@ -40,8 +42,14 @@ TArray<FMjOrderedChild> Siblings(const FMjSpecWriteContext& Ctx)
 		*const_cast<UMjNodeComponent*>(Ctx.ParentNode));
 }
 
-template <class T> struct TIsEnumList : std::false_type {};
-template <class T> struct TIsEnumList<TArray<T>> : std::true_type {};
+template <class T>
+struct TIsEnumList : std::false_type
+{
+};
+template <class T>
+struct TIsEnumList<TArray<T>> : std::true_type
+{
+};
 
 /** One candidate operand spelling, and the object kind electing it implies. */
 struct FOperand
@@ -203,8 +211,7 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	// `<visual><rgba joint=...>` is a colour that happens to share the spelling
 	// -- so a name-only match binds a transmission to a quaternion's worth of
 	// floats and only says so at the point of use.
-	const auto Elect = [&](const auto& Target, mjtTrn Type)
-	{
+	const auto Elect = [&](const auto& Target, mjtTrn Type) {
 		if constexpr (std::is_same_v<std::decay_t<decltype(Target)>, TOptional<FString>>)
 		{
 			if (!Target.IsSet())
@@ -220,23 +227,43 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	TOptional<double> CrankLength;
 	TOptional<FString> RefSite;
 
-	gen::DispatchByType(Node, [&](const auto& Element)
-	{
-		if constexpr (requires { Element.Joint; }) { Elect(Element.Joint, mjTRN_JOINT); }
+	gen::DispatchByType(Node, [&](const auto& Element) {
+		if constexpr (requires { Element.Joint; })
+		{
+			Elect(Element.Joint, mjTRN_JOINT);
+		}
 		if constexpr (requires { Element.Jointinparent; })
 		{
 			Elect(Element.Jointinparent, mjTRN_JOINTINPARENT);
 		}
-		if constexpr (requires { Element.Tendon; }) { Elect(Element.Tendon, mjTRN_TENDON); }
+		if constexpr (requires { Element.Tendon; })
+		{
+			Elect(Element.Tendon, mjTRN_TENDON);
+		}
 		if constexpr (requires { Element.Cranksite; })
 		{
 			Elect(Element.Cranksite, mjTRN_SLIDERCRANK);
 		}
-		if constexpr (requires { Element.Site; }) { Elect(Element.Site, mjTRN_SITE); }
-		if constexpr (requires { Element.Body; }) { Elect(Element.Body, mjTRN_BODY); }
-		if constexpr (requires { Element.Slidersite; }) { SliderSite = Element.Slidersite; }
-		if constexpr (requires { Element.Cranklength; }) { CrankLength = Element.Cranklength; }
-		if constexpr (requires { Element.Refsite; }) { RefSite = Element.Refsite; }
+		if constexpr (requires { Element.Site; })
+		{
+			Elect(Element.Site, mjTRN_SITE);
+		}
+		if constexpr (requires { Element.Body; })
+		{
+			Elect(Element.Body, mjTRN_BODY);
+		}
+		if constexpr (requires { Element.Slidersite; })
+		{
+			SliderSite = Element.Slidersite;
+		}
+		if constexpr (requires { Element.Cranklength; })
+		{
+			CrankLength = Element.Cranklength;
+		}
+		if constexpr (requires { Element.Refsite; })
+		{
+			RefSite = Element.Refsite;
+		}
 		(void)Element;
 	});
 
@@ -248,8 +275,7 @@ bool ApplyTransmission(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	{
 		Act->cranklength = CrankLength.GetValue();
 	}
-	if ((CrankLength.IsSet() || SliderSite.IsSet()) &&
-		Act->trntype != mjTRN_SLIDERCRANK && Act->trntype != mjTRN_UNDEFINED)
+	if ((CrankLength.IsSet() || SliderSite.IsSet()) && Act->trntype != mjTRN_SLIDERCRANK && Act->trntype != mjTRN_UNDEFINED)
 	{
 		return Ctx.Error(Node,
 			TEXT("cranklength and slidersite can only be used in a slidercrank transmission, "
@@ -342,205 +368,254 @@ bool ApplyShorthand(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsE
 
 	switch (Type)
 	{
-	case ElementType::ActuatorGeneral:
-		ApplyInput(static_cast<const UMjActuatorGeneral&>(Node), *Act);
-		break;
+		case ElementType::ActuatorGeneral:
+			ApplyInput(static_cast<const UMjActuatorGeneral&>(Node), *Act);
+			break;
 
-	case ElementType::Motor:
-		Error = mjs_setToMotor(Act);
-		break;
+		case ElementType::Motor:
+			Error = mjs_setToMotor(Act);
+			break;
 
-	case ElementType::Position:
-	case ElementType::IntVelocity:
-	{
-		// kp inherits from whatever the default class left in gainprm[0], which
-		// is exactly what makes a class-authored gain survive the shorthand.
-		double Kp = Act->gainprm[0];
-		double InheritRange = Act->inheritrange;
-		const auto Configure = [&](const auto& Element)
+		case ElementType::Position:
+		case ElementType::IntVelocity:
 		{
-			if (Element.Kp.IsSet()) { Kp = Element.Kp.GetValue(); }
-			if (Element.Inheritrange.IsSet()) { InheritRange = Element.Inheritrange.GetValue(); }
-		};
-		double* Timing = nullptr;
-		if (Type == ElementType::Position)
-		{
-			const UMjPosition& Element = static_cast<const UMjPosition&>(Node);
-			Configure(Element);
-			Timing = Opt(Element.Timeconst, TimeConst);
-			Error = mjs_setToPosition(Act, Kp, Opt(Element.Kv, Kv),
-				Opt(Element.Dampratio, DampRatio), Timing, InheritRange);
+			// kp inherits from whatever the default class left in gainprm[0], which
+			// is exactly what makes a class-authored gain survive the shorthand.
+			double Kp = Act->gainprm[0];
+			double InheritRange = Act->inheritrange;
+			const auto Configure = [&](const auto& Element) {
+				if (Element.Kp.IsSet())
+				{
+					Kp = Element.Kp.GetValue();
+				}
+				if (Element.Inheritrange.IsSet())
+				{
+					InheritRange = Element.Inheritrange.GetValue();
+				}
+			};
+			double* Timing = nullptr;
+			if (Type == ElementType::Position)
+			{
+				const UMjPosition& Element = static_cast<const UMjPosition&>(Node);
+				Configure(Element);
+				Timing = Opt(Element.Timeconst, TimeConst);
+				Error = mjs_setToPosition(Act, Kp, Opt(Element.Kv, Kv),
+					Opt(Element.Dampratio, DampRatio), Timing, InheritRange);
+			}
+			else
+			{
+				const UMjIntVelocity& Element = static_cast<const UMjIntVelocity&>(Node);
+				Configure(Element);
+				Error = mjs_setToIntVelocity(Act, Kp, Opt(Element.Kv, Kv),
+					Opt(Element.Dampratio, DampRatio), nullptr, InheritRange);
+			}
+			break;
 		}
-		else
+
+		case ElementType::OrientationActuator:
 		{
-			const UMjIntVelocity& Element = static_cast<const UMjIntVelocity&>(Node);
-			Configure(Element);
-			Error = mjs_setToIntVelocity(Act, Kp, Opt(Element.Kv, Kv),
-				Opt(Element.Dampratio, DampRatio), nullptr, InheritRange);
+			const UMjOrientationActuator& Element = static_cast<const UMjOrientationActuator&>(Node);
+			double Kp = Act->gainprm[0];
+			if (Element.Kp.IsSet())
+			{
+				Kp = Element.Kp.GetValue();
+			}
+			ApplyInput(Element, *Act);
+			Error = mjs_setToOrientation(Act, Kp, Opt(Element.Kv, Kv),
+				Opt(Element.Dampratio, DampRatio), Act->ctrlspec);
+			break;
 		}
-		break;
-	}
 
-	case ElementType::OrientationActuator:
-	{
-		const UMjOrientationActuator& Element = static_cast<const UMjOrientationActuator&>(Node);
-		double Kp = Act->gainprm[0];
-		if (Element.Kp.IsSet()) { Kp = Element.Kp.GetValue(); }
-		ApplyInput(Element, *Act);
-		Error = mjs_setToOrientation(Act, Kp, Opt(Element.Kv, Kv),
-			Opt(Element.Dampratio, DampRatio), Act->ctrlspec);
-		break;
-	}
-
-	case ElementType::Pid:
-	{
-		const UMjPid& Element = static_cast<const UMjPid&>(Node);
-		// pid's kp inherits from the bias term rather than the gain, because
-		// that is where its affine bias put it.
-		double Kp = -Act->biasprm[1];
-		if (Element.Kp.IsSet()) { Kp = Element.Kp.GetValue(); }
-		const bool bInherited = Act->dyntype == mjDYN_PID;
-		double Ki = bInherited ? Act->gainprm[0] : 0.0;
-		double IMax = bInherited ? Act->dynprm[0] : 0.0;
-		double SlewMax = bInherited ? Act->dynprm[1] : 0.0;
-		if (Element.Ki.IsSet()) { Ki = Element.Ki.GetValue(); }
-		if (Element.Imax.IsSet()) { IMax = Element.Imax.GetValue(); }
-		if (Element.Slewmax.IsSet()) { SlewMax = Element.Slewmax.GetValue(); }
-		ApplyInput(Element, *Act);
-		double InheritRange = Act->inheritrange;
-		if (Element.Inheritrange.IsSet()) { InheritRange = Element.Inheritrange.GetValue(); }
-		Error = mjs_setToPID(Act, Kp, Opt(Element.Kv, Kv),
-			Opt(Element.Dampratio, DampRatio), &Ki, &IMax, &SlewMax, InheritRange,
-			Act->ctrlspec);
-		break;
-	}
-
-	case ElementType::Velocity:
-	{
-		const UMjVelocity& Element = static_cast<const UMjVelocity&>(Node);
-		double Gain = Act->gainprm[0];
-		if (Element.Kv.IsSet()) { Gain = Element.Kv.GetValue(); }
-		Error = mjs_setToVelocity(Act, Gain);
-		break;
-	}
-
-	case ElementType::Damper:
-	{
-		const UMjDamper& Element = static_cast<const UMjDamper&>(Node);
-		const bool bInherited = Act->gaintype == mjGAIN_AFFINE;
-		double Gain = bInherited ? -Act->gainprm[2] : 0.0;
-		if (Element.Kv.IsSet()) { Gain = Element.Kv.GetValue(); }
-		Error = mjs_setToDamper(Act, Gain);
-		break;
-	}
-
-	case ElementType::Cylinder:
-	{
-		const UMjCylinder& Element = static_cast<const UMjCylinder&>(Node);
-		double Time = Act->dynprm[0];
-		double Bias[3] = { Act->biasprm[0], Act->biasprm[1], Act->biasprm[2] };
-		double Area = Act->gainprm[0];
-		// -1 is the engine's "not given"; a diameter overrides the area.
-		const double Diameter = -1.0;
-		if (Element.Timeconst.IsSet()) { Time = Element.Timeconst.GetValue(); }
-		if (Element.Area.IsSet()) { Area = Element.Area.GetValue(); }
-		if (Element.Bias.IsSet())
+		case ElementType::Pid:
 		{
-			Bias[0] = Element.Bias.GetValue().X;
-			Bias[1] = Element.Bias.GetValue().Y;
-			Bias[2] = Element.Bias.GetValue().Z;
+			const UMjPid& Element = static_cast<const UMjPid&>(Node);
+			// pid's kp inherits from the bias term rather than the gain, because
+			// that is where its affine bias put it.
+			double Kp = -Act->biasprm[1];
+			if (Element.Kp.IsSet())
+			{
+				Kp = Element.Kp.GetValue();
+			}
+			const bool bInherited = Act->dyntype == mjDYN_PID;
+			double Ki = bInherited ? Act->gainprm[0] : 0.0;
+			double IMax = bInherited ? Act->dynprm[0] : 0.0;
+			double SlewMax = bInherited ? Act->dynprm[1] : 0.0;
+			if (Element.Ki.IsSet())
+			{
+				Ki = Element.Ki.GetValue();
+			}
+			if (Element.Imax.IsSet())
+			{
+				IMax = Element.Imax.GetValue();
+			}
+			if (Element.Slewmax.IsSet())
+			{
+				SlewMax = Element.Slewmax.GetValue();
+			}
+			ApplyInput(Element, *Act);
+			double InheritRange = Act->inheritrange;
+			if (Element.Inheritrange.IsSet())
+			{
+				InheritRange = Element.Inheritrange.GetValue();
+			}
+			Error = mjs_setToPID(Act, Kp, Opt(Element.Kv, Kv),
+				Opt(Element.Dampratio, DampRatio), &Ki, &IMax, &SlewMax, InheritRange,
+				Act->ctrlspec);
+			break;
 		}
-		Error = mjs_setToCylinder(Act, Time, Bias[0], Area, Diameter);
-		Act->biasprm[1] = Bias[1];
-		Act->biasprm[2] = Bias[2];
-		break;
-	}
 
-	case ElementType::Muscle:
-	{
-		const UMjMuscle& Element = static_cast<const UMjMuscle&>(Node);
-		double TauSmooth = Act->dynprm[2];
-		if (Element.Tausmooth.IsSet()) { TauSmooth = Element.Tausmooth.GetValue(); }
-		double Range[2] = { -1.0, -1.0 };
-		double Timing[2] = { -1.0, -1.0 };
-		if (Element.Range.IsSet())
+		case ElementType::Velocity:
 		{
-			Range[0] = Element.Range.GetValue().X;
-			Range[1] = Element.Range.GetValue().Y;
+			const UMjVelocity& Element = static_cast<const UMjVelocity&>(Node);
+			double Gain = Act->gainprm[0];
+			if (Element.Kv.IsSet())
+			{
+				Gain = Element.Kv.GetValue();
+			}
+			Error = mjs_setToVelocity(Act, Gain);
+			break;
 		}
-		if (Element.Timeconst.IsSet())
+
+		case ElementType::Damper:
 		{
-			Timing[0] = Element.Timeconst.GetValue().X;
-			Timing[1] = Element.Timeconst.GetValue().Y;
+			const UMjDamper& Element = static_cast<const UMjDamper&>(Node);
+			const bool bInherited = Act->gaintype == mjGAIN_AFFINE;
+			double Gain = bInherited ? -Act->gainprm[2] : 0.0;
+			if (Element.Kv.IsSet())
+			{
+				Gain = Element.Kv.GetValue();
+			}
+			Error = mjs_setToDamper(Act, Gain);
+			break;
 		}
-		const auto Or = [](const TOptional<double>& Value) { return Value.Get(-1.0); };
-		Error = mjs_setToMuscle(Act, Timing, TauSmooth, Range, Or(Element.Force),
-			Or(Element.Scale), Or(Element.Lmin), Or(Element.Lmax), Or(Element.Vmax),
-			Or(Element.Fpmax), Or(Element.Fvmax));
-		break;
-	}
 
-	case ElementType::Adhesion:
-	{
-		const UMjAdhesion& Element = static_cast<const UMjAdhesion&>(Node);
-		double Gain = Act->gainprm[0];
-		if (Element.Gain.IsSet()) { Gain = Element.Gain.GetValue(); }
-		if (Element.Body.IsSet())
+		case ElementType::Cylinder:
 		{
-			mjs_setString(Act->target, Utf8(Element.Body.GetValue()));
-			Act->trntype = mjTRN_BODY;
+			const UMjCylinder& Element = static_cast<const UMjCylinder&>(Node);
+			double Time = Act->dynprm[0];
+			double Bias[3] = {Act->biasprm[0], Act->biasprm[1], Act->biasprm[2]};
+			double Area = Act->gainprm[0];
+			// -1 is the engine's "not given"; a diameter overrides the area.
+			const double Diameter = -1.0;
+			if (Element.Timeconst.IsSet())
+			{
+				Time = Element.Timeconst.GetValue();
+			}
+			if (Element.Area.IsSet())
+			{
+				Area = Element.Area.GetValue();
+			}
+			if (Element.Bias.IsSet())
+			{
+				Bias[0] = Element.Bias.GetValue().X;
+				Bias[1] = Element.Bias.GetValue().Y;
+				Bias[2] = Element.Bias.GetValue().Z;
+			}
+			Error = mjs_setToCylinder(Act, Time, Bias[0], Area, Diameter);
+			Act->biasprm[1] = Bias[1];
+			Act->biasprm[2] = Bias[2];
+			break;
 		}
-		Error = mjs_setToAdhesion(Act, Gain);
-		break;
-	}
 
-	case ElementType::DcMotor:
-	{
-		const UMjDcMotor& Element = static_cast<const UMjDcMotor&>(Node);
-		const bool bInherited = Act->gaintype == mjGAIN_DCMOTOR;
-		double MotorConst[2] = { bInherited ? Act->gainprm[1] : 0.0, 0.0 };
-		double Resistance = bInherited ? Act->gainprm[0] : 0.0;
-		double Nominal[3] = { 0.0, 0.0, 0.0 };
-		double Saturation[3] = { 0.0, 0.0, bInherited ? Act->dynprm[1] : 0.0 };
-		double Controller[6] = {
-			bInherited ? Act->gainprm[4] : 0.0, bInherited ? Act->gainprm[5] : 0.0,
-			bInherited ? Act->gainprm[6] : 0.0, bInherited ? Act->dynprm[7] : 0.0,
-			bInherited ? Act->dynprm[8] : 0.0, bInherited ? Act->gainprm[7] : 0.0 };
-		double Inductance[2] = { 0.0, bInherited ? Act->dynprm[0] : 0.0 };
-		double Cogging[3] = {
-			bInherited ? Act->biasprm[0] : 0.0, bInherited ? Act->biasprm[1] : 0.0,
-			bInherited ? Act->biasprm[2] : 0.0 };
-		double Thermal[6] = {
-			bInherited ? Act->dynprm[2] : 0.0, bInherited ? Act->dynprm[3] : 0.0, 0.0,
-			bInherited ? Act->gainprm[2] : 0.0, bInherited ? Act->gainprm[3] : 0.0,
-			bInherited ? Act->dynprm[4] : 0.0 };
-		double LuGre[5] = {
-			bInherited ? Act->dynprm[5] : 0.0, bInherited ? Act->dynprm[6] : 0.0,
-			bInherited ? Act->biasprm[3] : 0.0, bInherited ? Act->biasprm[4] : 0.0,
-			bInherited ? Act->biasprm[5] : 0.0 };
-		int InputMode = bInherited ? static_cast<int>(Act->gainprm[8]) : 0;
-		if (Element.Resistance.IsSet()) { Resistance = Element.Resistance.GetValue(); }
-		if (Element.Input.IsSet()) { InputMode = sw::KeywordC(Element.Input.GetValue()); }
-		CopySome(Element.Motorconst, MotorConst, 2);
-		CopySome(Element.Nominal, Nominal, 3);
-		CopySome(Element.Saturation, Saturation, 3);
-		CopySome(Element.Inductance, Inductance, 2);
-		CopySome(Element.Cogging, Cogging, 3);
-		CopySome(Element.Controller, Controller, 6);
-		CopySome(Element.Thermal, Thermal, 6);
-		CopySome(Element.Lugre, LuGre, 5);
-		Error = mjs_setToDCMotor(Act, MotorConst, Resistance, Nominal, Saturation,
-			Inductance, Cogging, Controller, Thermal, LuGre, InputMode);
-		break;
-	}
+		case ElementType::Muscle:
+		{
+			const UMjMuscle& Element = static_cast<const UMjMuscle&>(Node);
+			double TauSmooth = Act->dynprm[2];
+			if (Element.Tausmooth.IsSet())
+			{
+				TauSmooth = Element.Tausmooth.GetValue();
+			}
+			double Range[2] = {-1.0, -1.0};
+			double Timing[2] = {-1.0, -1.0};
+			if (Element.Range.IsSet())
+			{
+				Range[0] = Element.Range.GetValue().X;
+				Range[1] = Element.Range.GetValue().Y;
+			}
+			if (Element.Timeconst.IsSet())
+			{
+				Timing[0] = Element.Timeconst.GetValue().X;
+				Timing[1] = Element.Timeconst.GetValue().Y;
+			}
+			const auto Or = [](const TOptional<double>& Value) {
+				return Value.Get(-1.0);
+			};
+			Error = mjs_setToMuscle(Act, Timing, TauSmooth, Range, Or(Element.Force),
+				Or(Element.Scale), Or(Element.Lmin), Or(Element.Lmax), Or(Element.Vmax),
+				Or(Element.Fpmax), Or(Element.Fvmax));
+			break;
+		}
 
-	case ElementType::ActuatorPlugin:
-		// The plugin hook configures the mjsPlugin member; nothing about the
-		// gain family is this element's to decide.
-		break;
+		case ElementType::Adhesion:
+		{
+			const UMjAdhesion& Element = static_cast<const UMjAdhesion&>(Node);
+			double Gain = Act->gainprm[0];
+			if (Element.Gain.IsSet())
+			{
+				Gain = Element.Gain.GetValue();
+			}
+			if (Element.Body.IsSet())
+			{
+				mjs_setString(Act->target, Utf8(Element.Body.GetValue()));
+				Act->trntype = mjTRN_BODY;
+			}
+			Error = mjs_setToAdhesion(Act, Gain);
+			break;
+		}
 
-	default:
-		return Ctx.Error(Node, TEXT("unrecognised actuator shorthand"));
+		case ElementType::DcMotor:
+		{
+			const UMjDcMotor& Element = static_cast<const UMjDcMotor&>(Node);
+			const bool bInherited = Act->gaintype == mjGAIN_DCMOTOR;
+			double MotorConst[2] = {bInherited ? Act->gainprm[1] : 0.0, 0.0};
+			double Resistance = bInherited ? Act->gainprm[0] : 0.0;
+			double Nominal[3] = {0.0, 0.0, 0.0};
+			double Saturation[3] = {0.0, 0.0, bInherited ? Act->dynprm[1] : 0.0};
+			double Controller[6] = {
+				bInherited ? Act->gainprm[4] : 0.0, bInherited ? Act->gainprm[5] : 0.0,
+				bInherited ? Act->gainprm[6] : 0.0, bInherited ? Act->dynprm[7] : 0.0,
+				bInherited ? Act->dynprm[8] : 0.0, bInherited ? Act->gainprm[7] : 0.0};
+			double Inductance[2] = {0.0, bInherited ? Act->dynprm[0] : 0.0};
+			double Cogging[3] = {
+				bInherited ? Act->biasprm[0] : 0.0, bInherited ? Act->biasprm[1] : 0.0,
+				bInherited ? Act->biasprm[2] : 0.0};
+			double Thermal[6] = {
+				bInherited ? Act->dynprm[2] : 0.0, bInherited ? Act->dynprm[3] : 0.0, 0.0,
+				bInherited ? Act->gainprm[2] : 0.0, bInherited ? Act->gainprm[3] : 0.0,
+				bInherited ? Act->dynprm[4] : 0.0};
+			double LuGre[5] = {
+				bInherited ? Act->dynprm[5] : 0.0, bInherited ? Act->dynprm[6] : 0.0,
+				bInherited ? Act->biasprm[3] : 0.0, bInherited ? Act->biasprm[4] : 0.0,
+				bInherited ? Act->biasprm[5] : 0.0};
+			int InputMode = bInherited ? static_cast<int>(Act->gainprm[8]) : 0;
+			if (Element.Resistance.IsSet())
+			{
+				Resistance = Element.Resistance.GetValue();
+			}
+			if (Element.Input.IsSet())
+			{
+				InputMode = sw::KeywordC(Element.Input.GetValue());
+			}
+			CopySome(Element.Motorconst, MotorConst, 2);
+			CopySome(Element.Nominal, Nominal, 3);
+			CopySome(Element.Saturation, Saturation, 3);
+			CopySome(Element.Inductance, Inductance, 2);
+			CopySome(Element.Cogging, Cogging, 3);
+			CopySome(Element.Controller, Controller, 6);
+			CopySome(Element.Thermal, Thermal, 6);
+			CopySome(Element.Lugre, LuGre, 5);
+			Error = mjs_setToDCMotor(Act, MotorConst, Resistance, Nominal, Saturation,
+				Inductance, Cogging, Controller, Thermal, LuGre, InputMode);
+			break;
+		}
+
+		case ElementType::ActuatorPlugin:
+			// The plugin hook configures the mjsPlugin member; nothing about the
+			// gain family is this element's to decide.
+			break;
+
+		default:
+			return Ctx.Error(Node, TEXT("unrecognised actuator shorthand"));
 	}
 
 	if (Error != nullptr && *Error != '\0')
@@ -572,31 +647,31 @@ bool ApplyTendonPath(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	const mjsWrap* Made = nullptr;
 	switch (Type)
 	{
-	case ElementType::SpatialSite:
-		Made = mjs_wrapSite(Tendon, Utf8(static_cast<const UMjSpatialSite&>(Node).Site));
-		break;
-	case ElementType::SpatialGeom:
-	{
-		const UMjSpatialGeom& Element = static_cast<const UMjSpatialGeom&>(Node);
-		// The empty string rather than a null pointer for an unauthored side
-		// site: MuJoCo takes it by value into a std::string, so null is not
-		// "there isn't one", it is an access violation.
-		const FString Side = Element.Sidesite.Get(FString());
-		Made = mjs_wrapGeom(Tendon, Utf8(Element.Geom), Utf8(Side));
-		break;
-	}
-	case ElementType::Pulley:
-		Made = mjs_wrapPulley(Tendon,
-			static_cast<const UMjPulley&>(Node).Divisor.Get(0.0));
-		break;
-	case ElementType::FixedJoint:
-	{
-		const UMjFixedJoint& Element = static_cast<const UMjFixedJoint&>(Node);
-		Made = mjs_wrapJoint(Tendon, Utf8(Element.Joint), Element.Coef.Get(0.0));
-		break;
-	}
-	default:
-		return Ctx.Error(Node, TEXT("unrecognised tendon path item"));
+		case ElementType::SpatialSite:
+			Made = mjs_wrapSite(Tendon, Utf8(static_cast<const UMjSpatialSite&>(Node).Site));
+			break;
+		case ElementType::SpatialGeom:
+		{
+			const UMjSpatialGeom& Element = static_cast<const UMjSpatialGeom&>(Node);
+			// The empty string rather than a null pointer for an unauthored side
+			// site: MuJoCo takes it by value into a std::string, so null is not
+			// "there isn't one", it is an access violation.
+			const FString Side = Element.Sidesite.Get(FString());
+			Made = mjs_wrapGeom(Tendon, Utf8(Element.Geom), Utf8(Side));
+			break;
+		}
+		case ElementType::Pulley:
+			Made = mjs_wrapPulley(Tendon,
+				static_cast<const UMjPulley&>(Node).Divisor.Get(0.0));
+			break;
+		case ElementType::FixedJoint:
+		{
+			const UMjFixedJoint& Element = static_cast<const UMjFixedJoint&>(Node);
+			Made = mjs_wrapJoint(Tendon, Utf8(Element.Joint), Element.Coef.Get(0.0));
+			break;
+		}
+		default:
+			return Ctx.Error(Node, TEXT("unrecognised tendon path item"));
 	}
 
 	if (Made == nullptr)
@@ -667,7 +742,8 @@ bool ApplySkinBone(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsEl
 	// find the work already done.
 	const TArray<FMjOrderedChild> Bones = Siblings(Ctx);
 	const UMjSkinBone* const First = Bones.IsEmpty()
-		? nullptr : Cast<UMjSkinBone>(Bones[0].Node);
+									   ? nullptr
+									   : Cast<UMjSkinBone>(Bones[0].Node);
 	if (First != &Node)
 	{
 		return true;
@@ -738,7 +814,8 @@ bool ApplyTupleElement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	// to one entry at a time.
 	const TArray<FMjOrderedChild> Entries = Siblings(Ctx);
 	const UMjTupleElement* const First = Entries.IsEmpty()
-		? nullptr : Cast<UMjTupleElement>(Entries[0].Node);
+										   ? nullptr
+										   : Cast<UMjTupleElement>(Entries[0].Node);
 	if (First != &Node)
 	{
 		return true;
@@ -771,6 +848,45 @@ bool ApplyTupleElement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 
 // --- H7: plugins ---------------------------------------------------------- //
 
+/**
+ * Create the element a plugin spelling stands for.
+ *
+ * `<plugin>` names a different thing in each section it appears in, and two of
+ * those are elements in their own right: under `<actuator>` it IS an actuator
+ * and under `<sensor>` it IS a sensor, exactly as `<position>` is an actuator.
+ * The rest -- the `<extension>` declaration, an `<instance>`, and a `<plugin>`
+ * child configuring the body, geom or mesh that encloses it -- either create
+ * nothing or create it while being applied, so they are left alone here.
+ */
+bool CreatePluginElement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement* Created)
+{
+	ElementType Type;
+	if (!gen::ElementTypeOfNode(Node, Type))
+	{
+		return false;
+	}
+	switch (Type)
+	{
+		case ElementType::ActuatorPlugin:
+			return CreateActuator(Ctx, Node, Created);
+
+		case ElementType::SensorPlugin:
+		{
+			mjsSensor* const Made = mjs_addSensor(Ctx.Spec);
+			if (Made == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("could not add a sensor to the spec"));
+			}
+			Ctx.Struct = Made;
+			Ctx.Element = Made->element;
+			return true;
+		}
+
+		default:
+			return true;
+	}
+}
+
 bool ApplyPlugin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*)
 {
 	ElementType Type;
@@ -780,8 +896,7 @@ bool ApplyPlugin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElem
 	}
 
 	const auto Configure = [&](mjsPlugin& Plugin, const TOptional<FString>& Name,
-		const TOptional<FString>& Instance)
-	{
+							   const TOptional<FString>& Instance) {
 		Plugin.active = true;
 		mjs_setString(Plugin.plugin_name, Utf8(Name.Get(FString())));
 		mjs_setString(Plugin.name, Utf8(Instance.Get(FString())));
@@ -796,127 +911,140 @@ bool ApplyPlugin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElem
 
 	switch (Type)
 	{
-	case ElementType::PluginDef:
-	{
-		const UMjPluginDef& Element = static_cast<const UMjPluginDef&>(Node);
-		if (Element.Plugin.IsSet() &&
-			mjs_activatePlugin(Ctx.Spec, Utf8(Element.Plugin.GetValue())) != 0)
+		case ElementType::PluginDef:
 		{
-			return Ctx.Error(Node, FString::Printf(
-				TEXT("could not activate plugin '%s'"), *Element.Plugin.GetValue()));
-		}
-		return true;
-	}
-
-	case ElementType::PluginInstance:
-	{
-		mjsPlugin* const Made = mjs_addPlugin(Ctx.Spec);
-		if (Made == nullptr)
-		{
-			return Ctx.Error(Node, TEXT("could not add a plugin instance"));
-		}
-		Made->active = true;
-		Ctx.Struct = Made;
-		Ctx.Element = Made->element;
-		if (Node.MjName.IsSet())
-		{
-			mjs_setString(Made->name, Utf8(Node.MjName.GetValue()));
-		}
-		return true;
-	}
-
-	case ElementType::PluginRef:
-	{
-		const UMjPluginRef& Element = static_cast<const UMjPluginRef&>(Node);
-		// A <plugin> child configures the element that encloses it, and which
-		// member that is depends on the enclosing struct: only a handful carry
-		// an mjsPlugin, so the parent's element type is what selects it.
-		ElementType Owner;
-		mjsPlugin* Slot = nullptr;
-		if (Ctx.Parent != nullptr && Ctx.ParentNode != nullptr &&
-			gen::ElementTypeOfNode(*Ctx.ParentNode, Owner))
-		{
-			switch (Owner)
+			const UMjPluginDef& Element = static_cast<const UMjPluginDef&>(Node);
+			if (Element.Plugin.IsSet() && mjs_activatePlugin(Ctx.Spec, Utf8(Element.Plugin.GetValue())) != 0)
 			{
-			case ElementType::Body:
-				Slot = &static_cast<mjsBody*>(Ctx.Parent)->plugin;
-				break;
-			case ElementType::Geom:
-				Slot = &static_cast<mjsGeom*>(Ctx.Parent)->plugin;
-				break;
-			case ElementType::Mesh:
-				Slot = &static_cast<mjsMesh*>(Ctx.Parent)->plugin;
-				break;
-			default:
-				break;
+				return Ctx.Error(Node, FString::Printf(
+										   TEXT("could not activate plugin '%s'"), *Element.Plugin.GetValue()));
 			}
+			return true;
 		}
-		if (Slot == nullptr)
-		{
-			return Ctx.Error(Node, TEXT("a <plugin> child on an element with no plugin slot"));
-		}
-		Configure(*Slot, Element.Plugin, Element.Instance);
-		return true;
-	}
 
-	case ElementType::ActuatorPlugin:
-	{
-		mjsActuator* const Act = Actuator(Ctx);
-		if (Act == nullptr)
+		case ElementType::PluginInstance:
 		{
-			return Ctx.Error(Node, TEXT("a plugin actuator that was never created"));
+			mjsPlugin* const Made = mjs_addPlugin(Ctx.Spec);
+			if (Made == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("could not add a plugin instance"));
+			}
+			Made->active = true;
+			Ctx.Struct = Made;
+			Ctx.Element = Made->element;
+			if (Node.MjName.IsSet())
+			{
+				mjs_setString(Made->name, Utf8(Node.MjName.GetValue()));
+			}
+			return true;
 		}
-		const UMjActuatorPlugin& Element = static_cast<const UMjActuatorPlugin&>(Node);
-		Configure(Act->plugin, Element.Plugin, Element.Instance);
-		return true;
-	}
 
-	case ElementType::SensorPlugin:
-	{
-		mjsSensor* const Sensor = static_cast<mjsSensor*>(Ctx.Struct);
-		if (Sensor == nullptr)
+		case ElementType::PluginRef:
 		{
-			return Ctx.Error(Node, TEXT("a plugin sensor that was never created"));
+			const UMjPluginRef& Element = static_cast<const UMjPluginRef&>(Node);
+			// A <plugin> child configures the element that encloses it, and which
+			// member that is depends on the enclosing struct: only a handful carry
+			// an mjsPlugin, so the parent's element type is what selects it.
+			ElementType Owner;
+			mjsPlugin* Slot = nullptr;
+			if (Ctx.Parent != nullptr && Ctx.ParentNode != nullptr && gen::ElementTypeOfNode(*Ctx.ParentNode, Owner))
+			{
+				switch (Owner)
+				{
+					case ElementType::Body:
+						Slot = &static_cast<mjsBody*>(Ctx.Parent)->plugin;
+						break;
+					case ElementType::Geom:
+						Slot = &static_cast<mjsGeom*>(Ctx.Parent)->plugin;
+						break;
+					case ElementType::Mesh:
+						Slot = &static_cast<mjsMesh*>(Ctx.Parent)->plugin;
+						break;
+					default:
+						break;
+				}
+			}
+			if (Slot == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("a <plugin> child on an element with no plugin slot"));
+			}
+			Configure(*Slot, Element.Plugin, Element.Instance);
+			return true;
 		}
-		const UMjSensorPlugin& Element = static_cast<const UMjSensorPlugin&>(Node);
-		Sensor->type = mjSENS_PLUGIN;
-		Configure(Sensor->plugin, Element.Plugin, Element.Instance);
-		const auto Kind = [](const TOptional<FString>& Text)
-		{
-			return Text.IsSet() ? static_cast<mjtObj>(mju_str2Type(Utf8(Text.GetValue())))
-								: mjOBJ_UNKNOWN;
-		};
-		Sensor->objtype = Kind(Element.Objtype);
-		Sensor->reftype = Kind(Element.Reftype);
-		if (Element.Objname.IsSet())
-		{
-			mjs_setString(Sensor->objname, Utf8(Element.Objname.GetValue()));
-		}
-		if (Element.Refname.IsSet())
-		{
-			mjs_setString(Sensor->refname, Utf8(Element.Refname.GetValue()));
-		}
-		if ((Sensor->objtype != mjOBJ_UNKNOWN) != Element.Objname.IsSet())
-		{
-			return Ctx.Error(Node, TEXT("objtype and objname must be given together"));
-		}
-		if ((Sensor->reftype != mjOBJ_UNKNOWN) != Element.Refname.IsSet())
-		{
-			return Ctx.Error(Node, TEXT("reftype and refname must be given together"));
-		}
-		return true;
-	}
 
-	case ElementType::Config:
-		// Plugin configuration is a key/value pair the engine reads through its
-		// own attribute map, which mjs_setPluginAttributes owns.
-		return true;
+		case ElementType::ActuatorPlugin:
+		{
+			mjsActuator* const Act = Actuator(Ctx);
+			if (Act == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("a plugin actuator that was never created"));
+			}
+			const UMjActuatorPlugin& Element = static_cast<const UMjActuatorPlugin&>(Node);
+			Configure(Act->plugin, Element.Plugin, Element.Instance);
+			return true;
+		}
 
-	case ElementType::Extension:
-		return true;
+		case ElementType::SensorPlugin:
+		{
+			mjsSensor* const Sensor = static_cast<mjsSensor*>(Ctx.Struct);
+			if (Sensor == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("a plugin sensor that was never created"));
+			}
+			const UMjSensorPlugin& Element = static_cast<const UMjSensorPlugin&>(Node);
+			Sensor->type = mjSENS_PLUGIN;
+			Configure(Sensor->plugin, Element.Plugin, Element.Instance);
+			const auto Kind = [](const TOptional<FString>& Text) {
+				return Text.IsSet() ? static_cast<mjtObj>(mju_str2Type(Utf8(Text.GetValue())))
+									: mjOBJ_UNKNOWN;
+			};
+			Sensor->objtype = Kind(Element.Objtype);
+			Sensor->reftype = Kind(Element.Reftype);
+			if (Element.Objname.IsSet())
+			{
+				mjs_setString(Sensor->objname, Utf8(Element.Objname.GetValue()));
+			}
+			if (Element.Refname.IsSet())
+			{
+				mjs_setString(Sensor->refname, Utf8(Element.Refname.GetValue()));
+			}
+			if ((Sensor->objtype != mjOBJ_UNKNOWN) != Element.Objname.IsSet())
+			{
+				return Ctx.Error(Node, TEXT("objtype and objname must be given together"));
+			}
+			if ((Sensor->reftype != mjOBJ_UNKNOWN) != Element.Refname.IsSet())
+			{
+				return Ctx.Error(Node, TEXT("reftype and refname must be given together"));
+			}
+			return true;
+		}
 
-	default:
-		return Ctx.Error(Node, TEXT("unrecognised plugin element"));
+		case ElementType::Config:
+		{
+			// One key/value onto the enclosing instance, through MjShim rather than
+			// mjs_setPluginAttributes directly. That one takes the attribute map by
+			// pointer and MOVES from it, so MuJoCo would be freeing a container
+			// this module allocated -- and Unreal replaces global operator new per
+			// module, which makes that two allocators on one allocation and a heap
+			// corruption at spec teardown. The shim owns the container on MuJoCo's
+			// side of the boundary and merges, so writing one key at a time is
+			// right here where writing one at a time through MuJoCo's own setter
+			// would keep only the last.
+			mjsPlugin* const Plugin = static_cast<mjsPlugin*>(Ctx.Parent);
+			if (Plugin == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("a <config> outside a plugin instance"));
+			}
+			const UMjConfig& Element = static_cast<const UMjConfig&>(Node);
+			urlab_mjs_setPluginAttribute(Plugin, Utf8(Element.Key), Utf8(Element.Value.Get(FString())));
+			return true;
+		}
+
+		case ElementType::Extension:
+			return true;
+
+		default:
+			return Ctx.Error(Node, TEXT("unrecognised plugin element"));
 	}
 }
 
@@ -959,15 +1087,19 @@ bool ApplyOptionFlags(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 
 	// Two families with opposite polarity: a disable flag is stored as the
 	// ABSENCE of its bit when enabled, and an enable flag as its presence.
-	const auto Disable = [&](const TOptional<EMjEnable>& Value, int Mask)
-	{
-		if (!Value.IsSet()) { return; }
+	const auto Disable = [&](const TOptional<EMjEnable>& Value, int Mask) {
+		if (!Value.IsSet())
+		{
+			return;
+		}
 		Option.disableflags &= ~Mask;
 		Option.disableflags |= Value.GetValue() == EMjEnable::enable ? 0 : Mask;
 	};
-	const auto Enable = [&](const TOptional<EMjEnable>& Value, int Mask)
-	{
-		if (!Value.IsSet()) { return; }
+	const auto Enable = [&](const TOptional<EMjEnable>& Value, int Mask) {
+		if (!Value.IsSet())
+		{
+			return;
+		}
 		Option.enableflags &= ~Mask;
 		Option.enableflags |= Value.GetValue() == EMjEnable::enable ? Mask : 0;
 	};
@@ -1014,7 +1146,7 @@ bool ApplySizeMemory(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	FString Text = Element.Memory.GetValue().TrimStartAndEnd();
 	if (Text == TEXT("-1"))
 	{
-		return true;  // the engine's own "unset" spelling
+		return true; // the engine's own "unset" spelling
 	}
 
 	// An unsigned count with an optional binary-multiple suffix, which is the
@@ -1033,8 +1165,8 @@ bool ApplySizeMemory(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	if (Text.IsEmpty() || !Text.IsNumeric() || Text.StartsWith(TEXT("-")))
 	{
 		return Ctx.Error(Node, FString::Printf(
-			TEXT("'%s' is not an unsigned byte count with an optional {K,M,G,T,P,E} suffix"),
-			*Element.Memory.GetValue()));
+								   TEXT("'%s' is not an unsigned byte count with an optional {K,M,G,T,P,E} suffix"),
+								   *Element.Memory.GetValue()));
 	}
 	const uint64 Base = FCString::Strtoui64(*Text, nullptr, 10);
 	if (Shift >= 64 || Base > (TNumericLimits<uint64>::Max() >> Shift))
@@ -1081,9 +1213,11 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 	// is nothing to exempt.
 	FString Name1;
 	FString Name2;
-	const auto Anchor = [&](const TOptional<FMjPosition3>& Value, int Offset)
-	{
-		if (!Value.IsSet()) { return false; }
+	const auto Anchor = [&](const TOptional<FMjPosition3>& Value, int Offset) {
+		if (!Value.IsSet())
+		{
+			return false;
+		}
 		Equality->data[Offset + 0] = Value.GetValue().X;
 		Equality->data[Offset + 1] = Value.GetValue().Y;
 		Equality->data[Offset + 2] = Value.GetValue().Z;
@@ -1092,161 +1226,161 @@ bool ApplyEqualityFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 
 	switch (Type)
 	{
-	case ElementType::Connect:
-	{
-		const UMjConnect& Element = static_cast<const UMjConnect&>(Node);
-		Equality->type = mjEQ_CONNECT;
-		const bool bHasAnchor = Anchor(Element.Anchor, 0);
-		// Body semantics need an anchor; site semantics name two sites and
-		// carry the offset in the sites themselves.
-		if (Element.Body1.IsSet() && bHasAnchor)
+		case ElementType::Connect:
 		{
-			Name1 = Element.Body1.GetValue();
-			Name2 = Element.Body2.Get(FString());
-			Equality->objtype = mjOBJ_BODY;
+			const UMjConnect& Element = static_cast<const UMjConnect&>(Node);
+			Equality->type = mjEQ_CONNECT;
+			const bool bHasAnchor = Anchor(Element.Anchor, 0);
+			// Body semantics need an anchor; site semantics name two sites and
+			// carry the offset in the sites themselves.
+			if (Element.Body1.IsSet() && bHasAnchor)
+			{
+				Name1 = Element.Body1.GetValue();
+				Name2 = Element.Body2.Get(FString());
+				Equality->objtype = mjOBJ_BODY;
+			}
+			else
+			{
+				// Anything that is not the body spelling IS the site spelling, and
+				// the reader reads both site names unconditionally there
+				// (`xml_native_reader.cc:1056-1057`). Without them the compile ends
+				// on a reference to nothing, naming neither this element nor which
+				// half of the choice was half-authored.
+				if (!(Element.Site1.IsSet() && Element.Site2.IsSet()))
+				{
+					return Ctx.Error(Node,
+						TEXT("a connect constraint is either body1 with anchor, or site1 and "
+							 "site2; this one authors neither pair completely"));
+				}
+				Name1 = Element.Site1.Get(FString());
+				Name2 = Element.Site2.Get(FString());
+				Equality->objtype = mjOBJ_SITE;
+			}
+			break;
 		}
-		else
+
+		case ElementType::Weld:
 		{
-			// Anything that is not the body spelling IS the site spelling, and
-			// the reader reads both site names unconditionally there
-			// (`xml_native_reader.cc:1056-1057`). Without them the compile ends
-			// on a reference to nothing, naming neither this element nor which
-			// half of the choice was half-authored.
-			if (!(Element.Site1.IsSet() && Element.Site2.IsSet()))
+			const UMjWeld& Element = static_cast<const UMjWeld&>(Node);
+			Equality->type = mjEQ_WELD;
+			const bool bHasAnchor = Anchor(Element.Anchor, 0);
+			if (Element.Relpose.IsSet())
+			{
+				const TArray<double>& Pose = Element.Relpose.GetValue();
+				const int32 Count = FMath::Min<int32>(Pose.Num(), 7);
+				for (int32 I = 0; I < Count; ++I)
+				{
+					Equality->data[3 + I] = Pose[I];
+				}
+			}
+			if (Element.Body1.IsSet())
+			{
+				Name1 = Element.Body1.GetValue();
+				Name2 = Element.Body2.Get(FString());
+				Equality->objtype = mjOBJ_BODY;
+				if (!bHasAnchor)
+				{
+					Equality->data[0] = Equality->data[1] = Equality->data[2] = 0.0;
+				}
+			}
+			else
+			{
+				// Weld elects the body spelling on body1 alone, so the site
+				// spelling is what is left, and both of its names are read
+				// unconditionally (`xml_native_reader.cc:1083-1084`).
+				if (!(Element.Site1.IsSet() && Element.Site2.IsSet()))
+				{
+					return Ctx.Error(Node,
+						TEXT("a weld constraint is either body1 (with an optional anchor), or "
+							 "site1 and site2; this one authors neither pair completely"));
+				}
+				Name1 = Element.Site1.Get(FString());
+				Name2 = Element.Site2.Get(FString());
+				Equality->objtype = mjOBJ_SITE;
+			}
+			if (Element.Torquescale.IsSet())
+			{
+				Equality->data[10] = Element.Torquescale.GetValue();
+			}
+			break;
+		}
+
+		case ElementType::EqualityJoint:
+		{
+			const UMjEqualityJoint& Element = static_cast<const UMjEqualityJoint&>(Node);
+			Equality->type = mjEQ_JOINT;
+			if (Element.Joint1.IsEmpty())
 			{
 				return Ctx.Error(Node,
-					TEXT("a connect constraint is either body1 with anchor, or site1 and "
-						 "site2; this one authors neither pair completely"));
+					TEXT("a joint equality has to name joint1; the reader requires it "
+						 "(xml_native_reader.cc:1093)"));
 			}
-			Name1 = Element.Site1.Get(FString());
-			Name2 = Element.Site2.Get(FString());
-			Equality->objtype = mjOBJ_SITE;
+			Name1 = Element.Joint1;
+			Name2 = Element.Joint2.Get(FString());
+			CopySome(Element.Polycoef, Equality->data, 5);
+			break;
 		}
-		break;
-	}
 
-	case ElementType::Weld:
-	{
-		const UMjWeld& Element = static_cast<const UMjWeld&>(Node);
-		Equality->type = mjEQ_WELD;
-		const bool bHasAnchor = Anchor(Element.Anchor, 0);
-		if (Element.Relpose.IsSet())
+		case ElementType::EqualityTendon:
 		{
-			const TArray<double>& Pose = Element.Relpose.GetValue();
-			const int32 Count = FMath::Min<int32>(Pose.Num(), 7);
-			for (int32 I = 0; I < Count; ++I)
-			{
-				Equality->data[3 + I] = Pose[I];
-			}
-		}
-		if (Element.Body1.IsSet())
-		{
-			Name1 = Element.Body1.GetValue();
-			Name2 = Element.Body2.Get(FString());
-			Equality->objtype = mjOBJ_BODY;
-			if (!bHasAnchor)
-			{
-				Equality->data[0] = Equality->data[1] = Equality->data[2] = 0.0;
-			}
-		}
-		else
-		{
-			// Weld elects the body spelling on body1 alone, so the site
-			// spelling is what is left, and both of its names are read
-			// unconditionally (`xml_native_reader.cc:1083-1084`).
-			if (!(Element.Site1.IsSet() && Element.Site2.IsSet()))
+			const UMjEqualityTendon& Element = static_cast<const UMjEqualityTendon&>(Node);
+			Equality->type = mjEQ_TENDON;
+			if (Element.Tendon1.IsEmpty())
 			{
 				return Ctx.Error(Node,
-					TEXT("a weld constraint is either body1 (with an optional anchor), or "
-						 "site1 and site2; this one authors neither pair completely"));
+					TEXT("a tendon equality has to name tendon1; the reader requires it "
+						 "(xml_native_reader.cc:1099)"));
 			}
-			Name1 = Element.Site1.Get(FString());
-			Name2 = Element.Site2.Get(FString());
-			Equality->objtype = mjOBJ_SITE;
+			Name1 = Element.Tendon1;
+			Name2 = Element.Tendon2.Get(FString());
+			CopySome(Element.Polycoef, Equality->data, 5);
+			break;
 		}
-		if (Element.Torquescale.IsSet())
-		{
-			Equality->data[10] = Element.Torquescale.GetValue();
-		}
-		break;
-	}
 
-	case ElementType::EqualityJoint:
-	{
-		const UMjEqualityJoint& Element = static_cast<const UMjEqualityJoint&>(Node);
-		Equality->type = mjEQ_JOINT;
-		if (Element.Joint1.IsEmpty())
-		{
-			return Ctx.Error(Node,
-				TEXT("a joint equality has to name joint1; the reader requires it "
-					 "(xml_native_reader.cc:1093)"));
-		}
-		Name1 = Element.Joint1;
-		Name2 = Element.Joint2.Get(FString());
-		CopySome(Element.Polycoef, Equality->data, 5);
-		break;
-	}
+		case ElementType::EqualityFlex:
+			Equality->type = mjEQ_FLEX;
+			Name1 = static_cast<const UMjEqualityFlex&>(Node).Flex;
+			if (Name1.IsEmpty())
+			{
+				return Ctx.Error(Node,
+					TEXT("a flex equality has to name flex; the reader requires it "
+						 "(xml_native_reader.cc:1106)"));
+			}
+			break;
 
-	case ElementType::EqualityTendon:
-	{
-		const UMjEqualityTendon& Element = static_cast<const UMjEqualityTendon&>(Node);
-		Equality->type = mjEQ_TENDON;
-		if (Element.Tendon1.IsEmpty())
-		{
-			return Ctx.Error(Node,
-				TEXT("a tendon equality has to name tendon1; the reader requires it "
-					 "(xml_native_reader.cc:1099)"));
-		}
-		Name1 = Element.Tendon1;
-		Name2 = Element.Tendon2.Get(FString());
-		CopySome(Element.Polycoef, Equality->data, 5);
-		break;
-	}
+		case ElementType::Flexvert:
+			Equality->type = mjEQ_FLEXVERT;
+			Name1 = static_cast<const UMjFlexvert&>(Node).Flex;
+			if (Name1.IsEmpty())
+			{
+				return Ctx.Error(Node,
+					TEXT("a flexvert equality has to name flex; the reader requires it "
+						 "(xml_native_reader.cc:1106)"));
+			}
+			break;
 
-	case ElementType::EqualityFlex:
-		Equality->type = mjEQ_FLEX;
-		Name1 = static_cast<const UMjEqualityFlex&>(Node).Flex;
-		if (Name1.IsEmpty())
+		case ElementType::Flexstrain:
 		{
-			return Ctx.Error(Node,
-				TEXT("a flex equality has to name flex; the reader requires it "
-					 "(xml_native_reader.cc:1106)"));
+			const UMjFlexstrain& Element = static_cast<const UMjFlexstrain&>(Node);
+			Equality->type = mjEQ_FLEXSTRAIN;
+			if (Element.Flex.IsEmpty())
+			{
+				return Ctx.Error(Node,
+					TEXT("a flexstrain equality has to name flex; the reader requires it "
+						 "(xml_native_reader.cc:1110)"));
+			}
+			Name1 = Element.Flex;
+			if (Element.Cell.IsSet())
+			{
+				Equality->data[0] = Element.Cell.GetValue().X;
+				Equality->data[1] = Element.Cell.GetValue().Y;
+				Equality->data[2] = Element.Cell.GetValue().Z;
+			}
+			break;
 		}
-		break;
 
-	case ElementType::Flexvert:
-		Equality->type = mjEQ_FLEXVERT;
-		Name1 = static_cast<const UMjFlexvert&>(Node).Flex;
-		if (Name1.IsEmpty())
-		{
-			return Ctx.Error(Node,
-				TEXT("a flexvert equality has to name flex; the reader requires it "
-					 "(xml_native_reader.cc:1106)"));
-		}
-		break;
-
-	case ElementType::Flexstrain:
-	{
-		const UMjFlexstrain& Element = static_cast<const UMjFlexstrain&>(Node);
-		Equality->type = mjEQ_FLEXSTRAIN;
-		if (Element.Flex.IsEmpty())
-		{
-			return Ctx.Error(Node,
-				TEXT("a flexstrain equality has to name flex; the reader requires it "
-					 "(xml_native_reader.cc:1110)"));
-		}
-		Name1 = Element.Flex;
-		if (Element.Cell.IsSet())
-		{
-			Equality->data[0] = Element.Cell.GetValue().X;
-			Equality->data[1] = Element.Cell.GetValue().Y;
-			Equality->data[2] = Element.Cell.GetValue().Z;
-		}
-		break;
-	}
-
-	default:
-		return Ctx.Error(Node, TEXT("unrecognised equality constraint"));
+		default:
+			return Ctx.Error(Node, TEXT("unrecognised equality constraint"));
 	}
 
 	mjs_setString(Equality->name1, Utf8(Name1));
@@ -1280,8 +1414,7 @@ bool ApplySensorFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 
 	/** The first operand spelling that is present decides the object kind. */
 	const auto Elect = [](std::initializer_list<FOperand> Options,
-		FString& OutName, mjtObj& OutType)
-	{
+						   FString& OutName, mjtObj& OutType) {
 		for (const FOperand& Option : Options)
 		{
 			if (Option.Value->IsSet())
@@ -1296,123 +1429,139 @@ bool ApplySensorFold(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 
 	switch (Type)
 	{
-	case ElementType::Rangefinder:
-	{
-		const UMjRangefinder& Element = static_cast<const UMjRangefinder&>(Node);
-		Sensor->type = mjSENS_RANGEFINDER;
-		Elect({ { &Element.Site, mjOBJ_SITE }, { &Element.Camera, mjOBJ_CAMERA } },
-			ObjName, Sensor->objtype);
-		if (Element.Data.IsSet() && !Ascending(Element.Data.GetValue()))
+		case ElementType::Rangefinder:
 		{
-			return Ctx.Error(Node, TEXT("rangefinder data keywords must be in schema order"));
-		}
-		Sensor->intprm[0] = DataSpec(Element.Data.Get(TArray<EMjRayData>()),
-			1 << mjRAYDATA_DIST);
-		break;
-	}
-
-	case ElementType::Distance:
-	case ElementType::Normal:
-	case ElementType::Fromto:
-	{
-		// The three share a shape, so they share the fold and differ only in
-		// which sensor kind they name.
-		const auto Fold = [&](const auto& Element)
-		{
-			Elect({ { &Element.Body1, mjOBJ_BODY }, { &Element.Geom1, mjOBJ_GEOM } },
+			const UMjRangefinder& Element = static_cast<const UMjRangefinder&>(Node);
+			Sensor->type = mjSENS_RANGEFINDER;
+			Elect({
+					  {  &Element.Site,   mjOBJ_SITE},
+					  {&Element.Camera, mjOBJ_CAMERA}
+            },
 				ObjName, Sensor->objtype);
-			Elect({ { &Element.Body2, mjOBJ_BODY }, { &Element.Geom2, mjOBJ_GEOM } },
-				RefName, Sensor->reftype);
-		};
-		if (Type == ElementType::Distance)
-		{
-			Fold(static_cast<const UMjDistance&>(Node));
-			Sensor->type = mjSENS_GEOMDIST;
-		}
-		else if (Type == ElementType::Normal)
-		{
-			Fold(static_cast<const UMjNormal&>(Node));
-			Sensor->type = mjSENS_GEOMNORMAL;
-		}
-		else
-		{
-			Fold(static_cast<const UMjFromto&>(Node));
-			Sensor->type = mjSENS_GEOMFROMTO;
-		}
-		break;
-	}
-
-	case ElementType::SensorContact:
-	{
-		const UMjSensorContact& Element = static_cast<const UMjSensorContact&>(Node);
-		Sensor->type = mjSENS_CONTACT;
-		Elect({ { &Element.Site, mjOBJ_SITE }, { &Element.Body1, mjOBJ_BODY },
-				{ &Element.Subtree1, mjOBJ_XBODY }, { &Element.Geom1, mjOBJ_GEOM } },
-			ObjName, Sensor->objtype);
-		Elect({ { &Element.Body2, mjOBJ_BODY }, { &Element.Subtree2, mjOBJ_XBODY },
-				{ &Element.Geom2, mjOBJ_GEOM } },
-			RefName, Sensor->reftype);
-		if (Element.Data.IsSet() && !Ascending(Element.Data.GetValue()))
-		{
-			return Ctx.Error(Node, TEXT("contact data keywords must be in schema order"));
-		}
-		Sensor->intprm[0] = DataSpec(Element.Data.Get(TArray<EMjContactData>()),
-			1 << mjCONDATA_FOUND);
-		Sensor->intprm[1] = Element.Reduce.IsSet()
-			? sw::KeywordC(Element.Reduce.GetValue()) : 0;
-		Sensor->intprm[2] = Element.Num.Get(1);
-		if (Sensor->intprm[2] <= 0)
-		{
-			return Ctx.Error(Node, TEXT("a contact sensor's num must be positive"));
-		}
-		break;
-	}
-
-	case ElementType::Tactile:
-	{
-		const UMjTactile& Element = static_cast<const UMjTactile&>(Node);
-		Sensor->type = mjSENS_TACTILE;
-		// The mesh is the sensorized object and the geom is the reference,
-		// which is the opposite of how the tag reads.
-		Sensor->objtype = mjOBJ_MESH;
-		ObjName = Element.Mesh;
-		Sensor->reftype = mjOBJ_GEOM;
-		RefName = Element.Geom;
-		if (Element.User.IsSet())
-		{
-			mjs_setDouble(Sensor->userdata,
-				const_cast<double*>(Element.User.GetValue().GetData()),
-				Element.User.GetValue().Num());
-		}
-		break;
-	}
-
-	case ElementType::SensorUser:
-	{
-		const UMjSensorUser& Element = static_cast<const UMjSensorUser&>(Node);
-		Sensor->type = mjSENS_USER;
-		if (Element.Objtype.IsSet())
-		{
-			Sensor->objtype = static_cast<mjtObj>(
-				mju_str2Type(Utf8(Element.Objtype.GetValue())));
-			if (Sensor->objtype == mjOBJ_UNKNOWN)
+			if (Element.Data.IsSet() && !Ascending(Element.Data.GetValue()))
 			{
-				return Ctx.Error(Node, FString::Printf(
-					TEXT("unknown object kind '%s'"), *Element.Objtype.GetValue()));
+				return Ctx.Error(Node, TEXT("rangefinder data keywords must be in schema order"));
 			}
+			Sensor->intprm[0] = DataSpec(Element.Data.Get(TArray<EMjRayData>()),
+				1 << mjRAYDATA_DIST);
+			break;
 		}
-		ObjName = Element.Objname.Get(FString());
-		if (Element.User.IsSet())
-		{
-			mjs_setDouble(Sensor->userdata,
-				const_cast<double*>(Element.User.GetValue().GetData()),
-				Element.User.GetValue().Num());
-		}
-		break;
-	}
 
-	default:
-		return Ctx.Error(Node, TEXT("unrecognised sensor"));
+		case ElementType::Distance:
+		case ElementType::Normal:
+		case ElementType::Fromto:
+		{
+			// The three share a shape, so they share the fold and differ only in
+			// which sensor kind they name.
+			const auto Fold = [&](const auto& Element) {
+				Elect({
+						  {&Element.Body1, mjOBJ_BODY},
+						  {&Element.Geom1, mjOBJ_GEOM}
+                },
+					ObjName, Sensor->objtype);
+				Elect({
+						  {&Element.Body2, mjOBJ_BODY},
+						  {&Element.Geom2, mjOBJ_GEOM}
+                },
+					RefName, Sensor->reftype);
+			};
+			if (Type == ElementType::Distance)
+			{
+				Fold(static_cast<const UMjDistance&>(Node));
+				Sensor->type = mjSENS_GEOMDIST;
+			}
+			else if (Type == ElementType::Normal)
+			{
+				Fold(static_cast<const UMjNormal&>(Node));
+				Sensor->type = mjSENS_GEOMNORMAL;
+			}
+			else
+			{
+				Fold(static_cast<const UMjFromto&>(Node));
+				Sensor->type = mjSENS_GEOMFROMTO;
+			}
+			break;
+		}
+
+		case ElementType::SensorContact:
+		{
+			const UMjSensorContact& Element = static_cast<const UMjSensorContact&>(Node);
+			Sensor->type = mjSENS_CONTACT;
+			Elect({
+					  {    &Element.Site,  mjOBJ_SITE},
+					  {   &Element.Body1,  mjOBJ_BODY},
+					  {&Element.Subtree1, mjOBJ_XBODY},
+					  {   &Element.Geom1,  mjOBJ_GEOM}
+            },
+				ObjName, Sensor->objtype);
+			Elect({
+					  {   &Element.Body2,  mjOBJ_BODY},
+					  {&Element.Subtree2, mjOBJ_XBODY},
+					  {   &Element.Geom2,  mjOBJ_GEOM}
+            },
+				RefName, Sensor->reftype);
+			if (Element.Data.IsSet() && !Ascending(Element.Data.GetValue()))
+			{
+				return Ctx.Error(Node, TEXT("contact data keywords must be in schema order"));
+			}
+			Sensor->intprm[0] = DataSpec(Element.Data.Get(TArray<EMjContactData>()),
+				1 << mjCONDATA_FOUND);
+			Sensor->intprm[1] = Element.Reduce.IsSet()
+								  ? sw::KeywordC(Element.Reduce.GetValue())
+								  : 0;
+			Sensor->intprm[2] = Element.Num.Get(1);
+			if (Sensor->intprm[2] <= 0)
+			{
+				return Ctx.Error(Node, TEXT("a contact sensor's num must be positive"));
+			}
+			break;
+		}
+
+		case ElementType::Tactile:
+		{
+			const UMjTactile& Element = static_cast<const UMjTactile&>(Node);
+			Sensor->type = mjSENS_TACTILE;
+			// The mesh is the sensorized object and the geom is the reference,
+			// which is the opposite of how the tag reads.
+			Sensor->objtype = mjOBJ_MESH;
+			ObjName = Element.Mesh;
+			Sensor->reftype = mjOBJ_GEOM;
+			RefName = Element.Geom;
+			if (Element.User.IsSet())
+			{
+				mjs_setDouble(Sensor->userdata,
+					const_cast<double*>(Element.User.GetValue().GetData()),
+					Element.User.GetValue().Num());
+			}
+			break;
+		}
+
+		case ElementType::SensorUser:
+		{
+			const UMjSensorUser& Element = static_cast<const UMjSensorUser&>(Node);
+			Sensor->type = mjSENS_USER;
+			if (Element.Objtype.IsSet())
+			{
+				Sensor->objtype = static_cast<mjtObj>(
+					mju_str2Type(Utf8(Element.Objtype.GetValue())));
+				if (Sensor->objtype == mjOBJ_UNKNOWN)
+				{
+					return Ctx.Error(Node, FString::Printf(
+											   TEXT("unknown object kind '%s'"), *Element.Objtype.GetValue()));
+				}
+			}
+			ObjName = Element.Objname.Get(FString());
+			if (Element.User.IsSet())
+			{
+				mjs_setDouble(Sensor->userdata,
+					const_cast<double*>(Element.User.GetValue().GetData()),
+					Element.User.GetValue().Num());
+			}
+			break;
+		}
+
+		default:
+			return Ctx.Error(Node, TEXT("unrecognised sensor"));
 	}
 
 	if (!ObjName.IsEmpty())
@@ -1476,100 +1625,101 @@ bool ApplyAssetBuiltin(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, m
 
 	switch (Type)
 	{
-	case ElementType::Mesh:
-	{
-		const UMjMeshBase& Element = static_cast<const UMjMeshBase&>(Node);
-		if (!Element.Builtin.IsSet())
+		case ElementType::Mesh:
 		{
-			return true;
-		}
-		// Generated geometry is not stored on the mesh: mjs_makeMesh consumes
-		// the keyword and its parameters and produces vertices.
-		mjsMesh* const Mesh = static_cast<mjsMesh*>(Ctx.Struct);
-		if (Mesh == nullptr)
-		{
-			return Ctx.Error(Node, TEXT("a builtin on something that is not a mesh"));
-		}
-		TArray<double> Parameters = Element.Params.Get(TArray<double>());
-		if (mjs_makeMesh(Mesh, static_cast<mjtMeshBuiltin>(sw::KeywordC(Element.Builtin.GetValue())),
-			Parameters.GetData(), Parameters.Num()) != 0)
-		{
-			return Ctx.Error(Node, FString(UTF8_TO_TCHAR(mjs_getError(Ctx.Spec))));
-		}
-		return true;
-	}
-
-	case ElementType::Hfield:
-	{
-		const UMjHfield& Element = static_cast<const UMjHfield&>(Node);
-		mjsHField* const Field = static_cast<mjsHField*>(Ctx.Struct);
-		if (Field == nullptr)
-		{
-			return Ctx.Error(Node, TEXT("elevation on something that is not a heightfield"));
-		}
-		// A file supplies the elevation, and authored rows beside one are the
-		// reader's no-op rather than a second source
-		// (`xml_native_reader.cc:2263`).
-		const bool bFromFile = Element.File.IsSet() && !Element.File.GetValue().IsEmpty();
-		const int32 Rows = Element.Nrow.Get(0);
-		const int32 Columns = Element.Ncol.Get(0);
-		if (!Element.Elevation.IsSet() || bFromFile || Rows <= 0 || Columns <= 0)
-		{
+			const UMjMeshBase& Element = static_cast<const UMjMeshBase&>(Node);
+			if (!Element.Builtin.IsSet())
+			{
+				return true;
+			}
+			// Generated geometry is not stored on the mesh: mjs_makeMesh consumes
+			// the keyword and its parameters and produces vertices.
+			mjsMesh* const Mesh = static_cast<mjsMesh*>(Ctx.Struct);
+			if (Mesh == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("a builtin on something that is not a mesh"));
+			}
+			TArray<double> Parameters = Element.Params.Get(TArray<double>());
+			if (mjs_makeMesh(Mesh, static_cast<mjtMeshBuiltin>(sw::KeywordC(Element.Builtin.GetValue())),
+					Parameters.GetData(), Parameters.Num())
+				!= 0)
+			{
+				return Ctx.Error(Node, FString(UTF8_TO_TCHAR(mjs_getError(Ctx.Spec))));
+			}
 			return true;
 		}
 
-		const TArray<double>& Values = Element.Elevation.GetValue();
-		if (Values.Num() != Rows * Columns)
+		case ElementType::Hfield:
 		{
-			return Ctx.Error(Node, TEXT("elevation data length must match nrow*ncol"));
-		}
-
-		// Rows go in bottom-to-top, so that the authored string reads
-		// top-to-bottom. The compiler copies the vector across verbatim
-		// (`user_objects.cc:4773`), so this row order is the stored row order
-		// and reversing it here is the whole of the convention
-		// (`xml_native_reader.cc:2277`).
-		TArray<float> Elevation;
-		Elevation.SetNumUninitialized(Values.Num());
-		for (int32 Row = 0; Row < Rows; ++Row)
-		{
-			const int32 Flipped = Rows - 1 - Row;
-			for (int32 Column = 0; Column < Columns; ++Column)
+			const UMjHfield& Element = static_cast<const UMjHfield&>(Node);
+			mjsHField* const Field = static_cast<mjsHField*>(Ctx.Struct);
+			if (Field == nullptr)
 			{
-				Elevation[Flipped * Columns + Column] = static_cast<float>(Values[Row * Columns + Column]);
+				return Ctx.Error(Node, TEXT("elevation on something that is not a heightfield"));
 			}
-		}
-		mjs_setFloat(Field->userdata, Elevation.GetData(), Elevation.Num());
-		return true;
-	}
-
-	case ElementType::Texture:
-	{
-		const UMjTextureBase& Element = static_cast<const UMjTextureBase&>(Node);
-		mjsTexture* const Texture = static_cast<mjsTexture*>(Ctx.Struct);
-		if (Texture == nullptr)
-		{
-			return Ctx.Error(Node, TEXT("cube faces on something that is not a texture"));
-		}
-		// The six faces are positional slots of one vector, in the engine's own
-		// right-left-up-down-front-back order.
-		const TOptional<FString>* const Faces[] = {
-			&Element.Fileright, &Element.Fileleft, &Element.Fileup,
-			&Element.Filedown, &Element.Filefront, &Element.Fileback };
-		for (int32 Face = 0; Face < UE_ARRAY_COUNT(Faces); ++Face)
-		{
-			FUtf8Batch Batch;
-			if (Faces[Face]->IsSet())
+			// A file supplies the elevation, and authored rows beside one are the
+			// reader's no-op rather than a second source
+			// (`xml_native_reader.cc:2263`).
+			const bool bFromFile = Element.File.IsSet() && !Element.File.GetValue().IsEmpty();
+			const int32 Rows = Element.Nrow.Get(0);
+			const int32 Columns = Element.Ncol.Get(0);
+			if (!Element.Elevation.IsSet() || bFromFile || Rows <= 0 || Columns <= 0)
 			{
-				mjs_setInStringVec(Texture->cubefiles, Face,
-					Utf8(Faces[Face]->GetValue()));
+				return true;
 			}
-		}
-		return true;
-	}
 
-	default:
-		return Ctx.Error(Node, TEXT("unrecognised asset builtin"));
+			const TArray<double>& Values = Element.Elevation.GetValue();
+			if (Values.Num() != Rows * Columns)
+			{
+				return Ctx.Error(Node, TEXT("elevation data length must match nrow*ncol"));
+			}
+
+			// Rows go in bottom-to-top, so that the authored string reads
+			// top-to-bottom. The compiler copies the vector across verbatim
+			// (`user_objects.cc:4773`), so this row order is the stored row order
+			// and reversing it here is the whole of the convention
+			// (`xml_native_reader.cc:2277`).
+			TArray<float> Elevation;
+			Elevation.SetNumUninitialized(Values.Num());
+			for (int32 Row = 0; Row < Rows; ++Row)
+			{
+				const int32 Flipped = Rows - 1 - Row;
+				for (int32 Column = 0; Column < Columns; ++Column)
+				{
+					Elevation[Flipped * Columns + Column] = static_cast<float>(Values[Row * Columns + Column]);
+				}
+			}
+			mjs_setFloat(Field->userdata, Elevation.GetData(), Elevation.Num());
+			return true;
+		}
+
+		case ElementType::Texture:
+		{
+			const UMjTextureBase& Element = static_cast<const UMjTextureBase&>(Node);
+			mjsTexture* const Texture = static_cast<mjsTexture*>(Ctx.Struct);
+			if (Texture == nullptr)
+			{
+				return Ctx.Error(Node, TEXT("cube faces on something that is not a texture"));
+			}
+			// The six faces are positional slots of one vector, in the engine's own
+			// right-left-up-down-front-back order.
+			const TOptional<FString>* const Faces[] = {
+				&Element.Fileright, &Element.Fileleft, &Element.Fileup,
+				&Element.Filedown, &Element.Filefront, &Element.Fileback};
+			for (int32 Face = 0; Face < UE_ARRAY_COUNT(Faces); ++Face)
+			{
+				FUtf8Batch Batch;
+				if (Faces[Face]->IsSet())
+				{
+					mjs_setInStringVec(Texture->cubefiles, Face,
+						Utf8(Faces[Face]->GetValue()));
+				}
+			}
+			return true;
+		}
+
+		default:
+			return Ctx.Error(Node, TEXT("unrecognised asset builtin"));
 	}
 }
 
@@ -1593,9 +1743,15 @@ bool ApplyFlexLayout(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjs
 	// layouts raise the order; full, radial and 2d all leave it at zero.
 	switch (Element.Dof.GetValue())
 	{
-	case EMjFlexDof::quadratic: Flex->order = 2; break;
-	case EMjFlexDof::trilinear: Flex->order = 1; break;
-	default: Flex->order = 0; break;
+		case EMjFlexDof::quadratic:
+			Flex->order = 2;
+			break;
+		case EMjFlexDof::trilinear:
+			Flex->order = 1;
+			break;
+		default:
+			Flex->order = 0;
+			break;
 	}
 	return true;
 }
@@ -1625,7 +1781,7 @@ bool ApplyNumericData(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 		if (!Token.IsNumeric())
 		{
 			return Ctx.Error(Node, FString::Printf(
-				TEXT("'%s' is not a number in this numeric's data"), *Token));
+									   TEXT("'%s' is not a number in this numeric's data"), *Token));
 		}
 		Values.Add(FCString::Atod(*Token));
 	}
@@ -1665,8 +1821,7 @@ bool ApplyNumericData(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
  */
 bool IsMacroRoot(ElementType Type)
 {
-	return Type == ElementType::Composite || Type == ElementType::Flexcomp ||
-		Type == ElementType::Replicate;
+	return Type == ElementType::Composite || Type == ElementType::Flexcomp || Type == ElementType::Replicate;
 }
 
 /** The object kind an asset element compiles into, or mjOBJ_UNKNOWN. */
@@ -1674,13 +1829,20 @@ mjtObj AssetKind(ElementType Type)
 {
 	switch (Type)
 	{
-	case ElementType::Mesh: return mjOBJ_MESH;
-	case ElementType::Hfield: return mjOBJ_HFIELD;
-	case ElementType::Skin: return mjOBJ_SKIN;
-	case ElementType::Texture: return mjOBJ_TEXTURE;
-	case ElementType::Material: return mjOBJ_MATERIAL;
-	case ElementType::ModelAsset: return mjOBJ_MODEL;
-	default: return mjOBJ_UNKNOWN;
+		case ElementType::Mesh:
+			return mjOBJ_MESH;
+		case ElementType::Hfield:
+			return mjOBJ_HFIELD;
+		case ElementType::Skin:
+			return mjOBJ_SKIN;
+		case ElementType::Texture:
+			return mjOBJ_TEXTURE;
+		case ElementType::Material:
+			return mjOBJ_MATERIAL;
+		case ElementType::ModelAsset:
+			return mjOBJ_MODEL;
+		default:
+			return mjOBJ_UNKNOWN;
 	}
 }
 
@@ -1727,8 +1889,8 @@ bool AppendElement(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Macro,
 			Lines.Add(Diagnostic.ToString());
 		}
 		return Ctx.Error(Macro, FString::Printf(
-			TEXT("could not serialize '%s' into this macro's wrapper document: %s"),
-			*Node.GetName(), Lines.IsEmpty() ? TEXT("no output") : *FString::Join(Lines, TEXT("; "))));
+									TEXT("could not serialize '%s' into this macro's wrapper document: %s"),
+									*Node.GetName(), Lines.IsEmpty() ? TEXT("no output") : *FString::Join(Lines, TEXT("; "))));
 	}
 	Out += Text;
 	return true;
@@ -1767,8 +1929,7 @@ bool AppendContext(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Macro, FStr
 		}
 		for (const FMjOrderedChild& Asset : MjOrderedChildrenOf(*Ctx.Source, *Section.Node))
 		{
-			if (Asset.Node != nullptr && WrapperNeedsAsset(Ctx, *Asset.Node) &&
-				!AppendElement(Ctx, Macro, *Asset.Node, Assets))
+			if (Asset.Node != nullptr && WrapperNeedsAsset(Ctx, *Asset.Node) && !AppendElement(Ctx, Macro, *Asset.Node, Assets))
 			{
 				return false;
 			}
@@ -1825,7 +1986,7 @@ void PointExpansionAtOwner(mjSpec& Expansion, const mjsBody& Owner)
 	};
 
 	for (mjsElement* Element = mjs_firstElement(&Expansion, mjOBJ_FLEX); Element != nullptr;
-		 Element = mjs_nextElement(&Expansion, Element))
+		Element = mjs_nextElement(&Expansion, Element))
 	{
 		if (mjsFlex* const Flex = mjs_asFlex(Element))
 		{
@@ -1874,7 +2035,7 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 	if (Expansion == nullptr)
 	{
 		return Ctx.Error(Node, FString::Printf(TEXT("this macro did not expand: %s"),
-			UTF8_TO_TCHAR(Error)));
+								   UTF8_TO_TCHAR(Error)));
 	}
 
 	PointExpansionAtOwner(*Expansion, *Ctx.Body);
@@ -1882,8 +2043,7 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 	// The enclosing frame is the parent, so a macro authored inside a `<frame>`
 	// expands under that frame's transform rather than under the body's.
 	mjsFrame* const At = mjs_addFrame(Ctx.Body, Ctx.Frame);
-	const bool bAttached = At != nullptr && Expansion->element != nullptr &&
-		mjs_attach(At->element, Expansion->element, "", "") != nullptr;
+	const bool bAttached = At != nullptr && Expansion->element != nullptr && mjs_attach(At->element, Expansion->element, "", "") != nullptr;
 	const FString AttachError = bAttached ? FString() : FString(UTF8_TO_TCHAR(mjs_getError(Ctx.Spec)));
 	mj_deleteSpec(Expansion);
 
@@ -1893,8 +2053,8 @@ bool ApplyMacroBridge(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mj
 		// counts, so the target spec is finished with rather than merely short
 		// of one macro.
 		return Ctx.Abort(Node, FString::Printf(
-			TEXT("this macro's expansion could not be attached and the model cannot be built: %s"),
-			*AttachError));
+								   TEXT("this macro's expansion could not be attached and the model cannot be built: %s"),
+								   *AttachError));
 	}
 
 	// The subtree went into the wrapper whole; the walk must not create it again
@@ -1935,7 +2095,7 @@ bool ApplyModelAsset(FMjSpecWriteContext& Ctx, const UMjModelAsset& Asset)
 	if (Child == nullptr)
 	{
 		return Ctx.Error(Asset, FString::Printf(TEXT("could not parse the model file '%s': %s"), *Path,
-			UTF8_TO_TCHAR(Error)));
+									UTF8_TO_TCHAR(Error)));
 	}
 
 	// An authored name renames the child, and the renamed child is what an
@@ -1987,11 +2147,10 @@ bool ApplyAttach(FMjSpecWriteContext& Ctx, const UMjAttach& Attach)
 	// Refused before anything is inserted, because a rejected attach cannot be
 	// unwound and a prefixed name the spec already holds is exactly what it
 	// rejects on.
-	if (!ChildName.IsEmpty() && Kind != mjOBJ_UNKNOWN &&
-		mjs_findElement(Ctx.Spec, Kind, Utf8(Prefix + ChildName)) != nullptr)
+	if (!ChildName.IsEmpty() && Kind != mjOBJ_UNKNOWN && mjs_findElement(Ctx.Spec, Kind, Utf8(Prefix + ChildName)) != nullptr)
 	{
 		return Ctx.Error(Attach, FString::Printf(TEXT("this model already has a %s named '%s%s'"),
-			*KindName(Kind), *Prefix, *ChildName));
+									 *KindName(Kind), *Prefix, *ChildName));
 	}
 
 	mjsElement* Source = nullptr;
@@ -2005,7 +2164,7 @@ bool ApplyAttach(FMjSpecWriteContext& Ctx, const UMjAttach& Attach)
 		if (Source == nullptr)
 		{
 			return Ctx.Error(Attach, FString::Printf(TEXT("this model has no %s named '%s' to attach to itself"),
-				*KindName(Kind), *ChildName));
+										 *KindName(Kind), *ChildName));
 		}
 	}
 	else
@@ -2022,7 +2181,7 @@ bool ApplyAttach(FMjSpecWriteContext& Ctx, const UMjAttach& Attach)
 		if (Source == nullptr)
 		{
 			return Ctx.Error(Attach, FString::Printf(TEXT("model asset '%s' has no %s named '%s'"), *ModelName,
-				*KindName(Kind), *ChildName));
+										 *KindName(Kind), *ChildName));
 		}
 	}
 
@@ -2059,7 +2218,7 @@ bool ApplyAttach(FMjSpecWriteContext& Ctx, const UMjAttach& Attach)
 	if (Attached == nullptr)
 	{
 		return Ctx.Abort(Attach, FString::Printf(TEXT("this attach failed and the model cannot be built: %s"),
-			UTF8_TO_TCHAR(mjs_getError(Ctx.Spec))));
+									 UTF8_TO_TCHAR(mjs_getError(Ctx.Spec))));
 	}
 	return true;
 }
@@ -2088,27 +2247,27 @@ bool InBatch(FMjSpecWriteContext& Ctx, const UMjNodeComponent& Node, mjsElement*
 }
 
 const FMjSpecWriteHookRow Rows[] = {
-	{ TEXT("actuator_shorthand"), &InBatch<&CreateActuator>, &InBatch<&ApplyShorthand> },
-	{ TEXT("transmission"), nullptr, &InBatch<&ApplyTransmission> },
-	{ TEXT("tendon_path"), nullptr, &InBatch<&ApplyTendonPath> },
-	{ TEXT("material_layers"), nullptr, &InBatch<&ApplyMaterialLayers> },
-	{ TEXT("skin_bones"), nullptr, &InBatch<&ApplySkinBone> },
-	{ TEXT("tuple_elements"), nullptr, &InBatch<&ApplyTupleElement> },
-	{ TEXT("plugins"), nullptr, &InBatch<&ApplyPlugin> },
-	{ TEXT("option_flags"), nullptr, &InBatch<&ApplyOptionFlags> },
-	{ TEXT("size_memory"), nullptr, &InBatch<&ApplySizeMemory> },
-	{ TEXT("macro_bridge"), nullptr, &InBatch<&ApplyMacroBridge> },
-	{ TEXT("input_fold"), nullptr, &InBatch<&ApplyInputFold> },
-	{ TEXT("nested_model"), nullptr, &InBatch<&ApplyNestedModel> },
-	{ TEXT("equality_fold"), nullptr, &InBatch<&ApplyEqualityFold> },
-	{ TEXT("sensor_fold"), nullptr, &InBatch<&ApplySensorFold> },
-	{ TEXT("compiler_placement"), nullptr, &InBatch<&ApplyCompilerPlacement> },
-	{ TEXT("asset_builtin"), nullptr, &InBatch<&ApplyAssetBuiltin> },
-	{ TEXT("flex_layout"), nullptr, &InBatch<&ApplyFlexLayout> },
-	{ TEXT("numeric_data"), nullptr, &InBatch<&ApplyNumericData> },
+	{TEXT("actuator_shorthand"),      &InBatch<&CreateActuator>,         &InBatch<&ApplyShorthand>},
+	{	  TEXT("transmission"),                        nullptr,      &InBatch<&ApplyTransmission>},
+	{	   TEXT("tendon_path"),                        nullptr,        &InBatch<&ApplyTendonPath>},
+	{   TEXT("material_layers"),                        nullptr,    &InBatch<&ApplyMaterialLayers>},
+	{		TEXT("skin_bones"),                        nullptr,          &InBatch<&ApplySkinBone>},
+	{    TEXT("tuple_elements"),                        nullptr,      &InBatch<&ApplyTupleElement>},
+	{		   TEXT("plugins"), &InBatch<&CreatePluginElement>,            &InBatch<&ApplyPlugin>},
+	{	  TEXT("option_flags"),                        nullptr,       &InBatch<&ApplyOptionFlags>},
+	{	   TEXT("size_memory"),                        nullptr,        &InBatch<&ApplySizeMemory>},
+	{	  TEXT("macro_bridge"),                        nullptr,       &InBatch<&ApplyMacroBridge>},
+	{		TEXT("input_fold"),                        nullptr,         &InBatch<&ApplyInputFold>},
+	{	  TEXT("nested_model"),                        nullptr,       &InBatch<&ApplyNestedModel>},
+	{	 TEXT("equality_fold"),                        nullptr,      &InBatch<&ApplyEqualityFold>},
+	{	   TEXT("sensor_fold"),                        nullptr,        &InBatch<&ApplySensorFold>},
+	{TEXT("compiler_placement"),                        nullptr, &InBatch<&ApplyCompilerPlacement>},
+	{	 TEXT("asset_builtin"),                        nullptr,      &InBatch<&ApplyAssetBuiltin>},
+	{	   TEXT("flex_layout"),                        nullptr,        &InBatch<&ApplyFlexLayout>},
+	{	  TEXT("numeric_data"),                        nullptr,       &InBatch<&ApplyNumericData>},
 };
 
-}  // namespace
+} // namespace
 
 const FMjSpecWriteHookRow* FindSpecWriteHook(const TCHAR* Name)
 {
@@ -2144,6 +2303,6 @@ bool SpecWriteRegistryComplete(TArray<FString>* OutMissing)
 	return bComplete;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

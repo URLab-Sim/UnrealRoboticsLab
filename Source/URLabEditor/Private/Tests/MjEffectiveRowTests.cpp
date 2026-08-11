@@ -122,7 +122,7 @@ T* TemplateNamed(UBlueprint& Blueprint, const TCHAR* MjName)
 	return nullptr;
 }
 
-}  // namespace MjEffectiveRowTests
+} // namespace MjEffectiveRowTests
 
 // ============================================================================
 // URLab.Editor.EffectiveRowsOverAnScsDocument
@@ -459,4 +459,4 @@ bool FMjEffectiveRowsWithoutADocument::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

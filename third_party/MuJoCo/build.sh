@@ -68,6 +68,27 @@ cmake --build . --config "$BUILD_TYPE"
 echo "Installing MuJoCo..."
 cmake --install . --config "$BUILD_TYPE"
 
+# MuJoCo builds its first-party plugins (PID actuator, elasticity, sensor, SDF)
+# as separate shared libraries but installs none of them -- upstream expects
+# `simulate` to pick them up out of the build tree. URLab loads them at module
+# startup, so they have to be part of the install: a model naming `mujoco.pid`
+# does not build without one.
+PLUGIN_OUT="$INSTALL_DIR/lib/mujoco_plugin"
+mkdir -p "$PLUGIN_OUT"
+PLUGIN_COUNT=0
+for LIB in lib/*.so bin/*.so; do
+    [ -e "$LIB" ] || continue
+    case "$(basename "$LIB")" in
+        libmujoco.so*) continue ;;
+    esac
+    cp -f "$LIB" "$PLUGIN_OUT/"
+    echo "Installed plugin $(basename "$LIB")"
+    PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
+done
+if [ "$PLUGIN_COUNT" -eq 0 ]; then
+    echo "WARNING: no MuJoCo plugin libraries found to install"
+fi
+
 cd ../..
 
 # Record the exact source SHA we just installed from (see MuJoCo/build.ps1).

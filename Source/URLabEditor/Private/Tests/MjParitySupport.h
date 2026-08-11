@@ -59,17 +59,17 @@ const TCHAR* const ReservedPrefix = TEXT("_ps:");
 struct FModelFamily
 {
 	int32 ObjType;
-	mjtSize mjModel::*Count;
+	mjtSize mjModel::* Count;
 };
 
 /** The families a fixture here can leave unnamed, so a reservation can appear in them. */
 const FModelFamily ReservableFamilies[] = {
-	{mjOBJ_BODY, &mjModel::nbody},
-	{mjOBJ_JOINT, &mjModel::njnt},
-	{mjOBJ_GEOM, &mjModel::ngeom},
-	{mjOBJ_SITE, &mjModel::nsite},
-	{mjOBJ_CAMERA, &mjModel::ncam},
-	{mjOBJ_LIGHT, &mjModel::nlight},
+	{  mjOBJ_BODY,  &mjModel::nbody},
+	{ mjOBJ_JOINT,   &mjModel::njnt},
+	{  mjOBJ_GEOM,  &mjModel::ngeom},
+	{  mjOBJ_SITE,  &mjModel::nsite},
+	{mjOBJ_CAMERA,   &mjModel::ncam},
+	{ mjOBJ_LIGHT, &mjModel::nlight},
 };
 
 /**
@@ -336,10 +336,13 @@ private:
 /**
  * Compile one spec through the spec path, assets and all.
  *
- * The spec's own `file` references are left as authored and the bytes are
- * mounted under the names the sink emits, which is what a spec compiled on its
- * own asks for: nothing is namespaced because nothing is composed. Composition
- * is the scene builder's job and it rewrites both halves together.
+ * The bytes are mounted under the names the sink emits and the spec's
+ * references are pointed at those same names, which is what mounting a sink's
+ * output requires whether or not anything is composed. Leaving the references
+ * as authored puts the lookup on MuJoCo's basename fallback, and a model whose
+ * visual and collision meshes share basenames then compiles clean with the
+ * wrong geometry -- a harness that did that would be reporting its own bug as
+ * the product's.
  *
  * Returns null on failure, having reported why. The caller owns the model, and
  * holds the spec it came from: a compiled model never outlives its spec here,
@@ -368,6 +371,12 @@ inline mjModel* CompileThroughSpecPath(
 				*Request.ResolvedPath));
 		}
 	}
+
+	// The same rewrite the scene builder applies, for the same reason: the mount
+	// names are complete, so the spec's meshdir would prepend a directory to
+	// them and the lookup would land on MuJoCo's basename fallback instead of
+	// the file it asked for.
+	urlab::spec::MjNamespaceAssets(Built, Sink.GetRequests());
 
 	mjVFS Vfs;
 	mj_defaultVFS(&Vfs);

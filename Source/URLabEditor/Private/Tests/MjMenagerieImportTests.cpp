@@ -38,7 +38,7 @@ int32 CountActuatorTemplates(const UBlueprint* Blueprint)
 	}
 	return Count;
 }
-}  // namespace
+} // namespace
 
 // ============================================================================
 // URLab.Import.MenagerieH1

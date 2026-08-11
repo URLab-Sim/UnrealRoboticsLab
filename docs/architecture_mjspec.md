@@ -377,4 +377,4 @@ Zero failures without that line is a crash.
   This page stops where that one starts.
 - [Bumping MuJoCo](contributing/bumping_mujoco.md): the procedure that keeps all
   of the above in step with a new engine version.
-- [Codegen](concepts/codegen.md): the generator in more detail.
+- [Generation](concepts/generation.md): the generator in more detail.

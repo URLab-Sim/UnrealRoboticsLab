@@ -129,9 +129,20 @@ public class URLab : ModuleRules
 		VerifyThirdPartyInstalls();
 
 		AddMuj(Target);
+		AddMjShim(Target);
 		AddProtospec(Target);
 		AddCoACD(Target);
 		AddZeroMQ(Target);
+	}
+
+	// MjShim: MuJoCo entry points that take a C++ container by void* and take
+	// ownership of it, restated to cross only C strings. Unreal replaces global
+	// operator new per module, so a container built here and freed by MuJoCo is
+	// two allocators on one allocation. See third_party/MjShim/include for the
+	// whole argument.
+	protected void AddMjShim(ReadOnlyTargetRules Target)
+	{
+		AddThirdPartyLibrary("MjShim", Target);
 	}
 
 	// ProtoSpec: the schema-driven MJCF object model, reader and writer that the
@@ -235,6 +246,18 @@ public class URLab : ModuleRules
 					string DllName = Path.GetFileName(DllFile);
 					if (DllName.StartsWith("vcruntime") || DllName.StartsWith("msvcp") || DllName.StartsWith("concrt"))
 						continue;
+
+					// MuJoCo's plugin libraries keep their own directory and are
+					// NOT delay-loaded: mj_loadAllPluginLibraries opens them by
+					// path at startup, and flattening them next to the runtime
+					// would both lose the directory it scans and register them
+					// as imports nothing ever calls.
+					if (DllFile.Replace('\\', '/').Contains("/mujoco_plugin/"))
+					{
+						RuntimeDependencies.Add("$(BinaryOutputDir)/mujoco_plugin/" + DllName, DllFile, StagedFileType.NonUFS);
+						continue;
+					}
+
 					RuntimeDependencies.Add("$(BinaryOutputDir)/" + DllName, DllFile, StagedFileType.NonUFS);
 					PublicDelayLoadDLLs.Add(DllName);
 				}

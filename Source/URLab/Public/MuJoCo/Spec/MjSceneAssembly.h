@@ -30,6 +30,7 @@
 
 #include "CoreMinimal.h"
 
+#include "MuJoCo/Gen/MjEnums.gen.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjGenHooks.h"
@@ -62,6 +63,9 @@ struct URLAB_API FMjSceneParticipant
 	/** The participant's placement in the scene, in MuJoCo metres and quaternion. */
 	FVector MjPos = FVector::ZeroVector;
 	FQuat MjQuat = FQuat::Identity;
+
+	/** This participant's attach conflict policy, or unset for the scene's. */
+	TOptional<EMjConflict> Conflict;
 };
 
 /**
@@ -92,7 +96,7 @@ struct URLAB_API FSceneAssembly
 {
 	/** Add a participant. Order of calls does not matter; prefix order decides. */
 	void Add(const FSpecRef& Spec, const FString& Prefix, const FVector& MjPos = FVector::ZeroVector,
-		const FQuat& MjQuat = FQuat::Identity);
+		const FQuat& MjQuat = FQuat::Identity, TOptional<EMjConflict> Conflict = {});
 
 	/**
 	 * The spec supplying the scene's own sections: <option>, <compiler>,

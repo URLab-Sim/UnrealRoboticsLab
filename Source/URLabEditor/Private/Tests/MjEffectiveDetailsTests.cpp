@@ -128,7 +128,7 @@ const FOptionalProperty* OptionalNamed(const UMjNodeComponent& Node, const TCHAR
 	return CastField<FOptionalProperty>(Node.GetClass()->FindPropertyByName(FName(Name)));
 }
 
-}  // namespace MjEffectiveDetailsTests
+} // namespace MjEffectiveDetailsTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjEffectiveDetailsNamesTheClassThatSuppliedTheValue,
 	"URLab.Editor.EffectiveDetailsNamesTheClassThatSuppliedTheValue",
@@ -292,10 +292,10 @@ bool FMjEulerRowRoundTripsThroughTheAuthoredQuaternion::RunTest(const FString& P
 	// Every triple away from the gimbal pole comes back as itself. A wrong
 	// extraction order survives the identity and fails here.
 	const double Cases[4][3] = {
-		{0.0, 0.0, 0.0},
-		{30.0, -20.0, 45.0},
-		{-115.0, 40.0, 10.0},
-		{5.0, 89.0, -170.0},
+		{   0.0,   0.0,    0.0},
+		{  30.0, -20.0,   45.0},
+		{-115.0,  40.0,   10.0},
+		{   5.0,  89.0, -170.0},
 	};
 	for (const double(&Degrees)[3] : Cases)
 	{
@@ -314,4 +314,4 @@ bool FMjEulerRowRoundTripsThroughTheAuthoredQuaternion::RunTest(const FString& P
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

@@ -59,6 +59,9 @@ public class URLabEditor : ModuleRules
 			"Kismet",
 			"BlueprintGraph",
 			"ToolMenus",
+			// The Blueprint editor's component tree, whose context menu carries
+			// the convex-decomposition entries (MjDecompositionMenu.cpp).
+			"SubobjectEditor",
 			// Import and generation diagnostics are routed to the editor's
 			// Messages panel; the module owns the listing they land in.
 			"MessageLog",

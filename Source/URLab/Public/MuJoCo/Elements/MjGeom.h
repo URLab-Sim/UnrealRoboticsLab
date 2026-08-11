@@ -124,6 +124,17 @@ public:
 	FString EffectiveMeshName() const;
 
 	/**
+	 * The `type` this geom compiles as, resolved through its default-class chain.
+	 *
+	 * `GetType()` answers the geom's OWN storage and reads `sphere` when nothing
+	 * was authored, which is the schema default rather than what the geom is. A
+	 * menagerie model writes `<geom class="collision" mesh="link0"/>` with
+	 * `type="mesh"` on the class, so anything deciding what a geom IS -- whether
+	 * it can be decomposed, which preview to draw -- has to ask this instead.
+	 */
+	EMjGeomType EffectiveType() const;
+
+	/**
 	 * The colour MuJoCo's own visualiser would draw this geom with.
 	 *
 	 * Both `rgba` and `material` are defaultable, and in a menagerie model
@@ -179,6 +190,22 @@ public:
 		meta = (ClampMin = "0.01", ClampMax = "1.0"))
 	float CoACDThreshold = 0.05f;
 
+	/**
+	 * Extend each hull along its base before collision.
+	 *
+	 * CoACD's own option for thin geometry: a plate or a shell decomposes into
+	 * hulls that are correct and almost flat, and a nearly-flat hull is what
+	 * makes a contact solver jitter. Off by default because it thickens the
+	 * collision shape, which is wrong for anything that has to fit.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Decomposition")
+	bool bCoACDExtrude = false;
+
+	/** How far an extruded hull is pushed out, in CoACD's normalised units. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Decomposition",
+		meta = (ClampMin = "0.0", ClampMax = "1.0", EditCondition = "bCoACDExtrude"))
+	float CoACDExtrudeMargin = 0.01f;
+
 	/** True when this geom is one hull of another geom's decomposition. */
 	UPROPERTY()
 	bool bIsDecomposedHull = false;
@@ -190,6 +217,37 @@ public:
 	/** Run CoACD on this geom's mesh and keep the hulls as sibling geoms. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Decomposition")
 	void DecomposeMesh();
+
+	/**
+	 * One hull produced by a decomposition, and where its geometry was written.
+	 *
+	 * The bridge between the two halves of the operation. Running CoACD and
+	 * building the hull geoms is this module's job; turning the files into
+	 * Unreal assets and `<mesh>` elements is the editor module's, because that
+	 * is where the import machinery lives. Neither half can do the other's, so
+	 * the first hands over exactly what the second needs to finish.
+	 */
+	struct FDecomposedHull
+	{
+		/** The `<mesh>` name the hull geom references, unique within the model. */
+		FString MeshName;
+
+		/** Absolute path to the OBJ CoACD wrote. */
+		FString ObjPath;
+
+		/** The geom that references it, already parented and configured. */
+		TWeakObjectPtr<UMjGeom> Geom;
+	};
+
+	/**
+	 * As DecomposeMesh, reporting the hulls so a caller can finish the job.
+	 *
+	 * A hull geom leaves here naming a `<mesh>` that does not exist yet: the
+	 * OBJ is on disk, but nothing has imported it or added the element that
+	 * makes the name resolve. A caller that ignores OutHulls is left with a
+	 * model that does not compile.
+	 */
+	bool DecomposeMeshInto(TArray<FDecomposedHull>& OutHulls);
 
 	/** Delete the hull sub-geoms and put this geom's own collision back. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Decomposition")

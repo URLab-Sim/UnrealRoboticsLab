@@ -148,6 +148,17 @@ URLAB_API UTexture2D* MjResolveTexture(const FSpecRef& Spec, const FString& Name
 /** Where a spec's imported meshes live, below `MjImportedAssetPath`. */
 URLAB_API FString MjImportedMeshPath(const FSpecRef& Spec);
 
+/**
+ * Where a spec's convex-decomposition hulls live, beside its imported meshes.
+ *
+ * Their own folder because of where they come FROM, not what they are: to the
+ * compiled model a hull is an ordinary `<mesh>`, but on disk it is generated
+ * output that a re-decomposition replaces wholesale. Keeping them apart from
+ * the meshes the document shipped with means the generated ones can be
+ * recognised, and deleted, without a name convention deciding it.
+ */
+URLAB_API FString MjDecomposedMeshPath(const FSpecRef& Spec);
+
 /** One `<mesh>`, resolved to the Unreal asset and the transform it needs. */
 struct URLAB_API FMjResolvedMesh
 {

@@ -71,15 +71,17 @@ int SaveMeshAsOBJSimple(const FString& FilePath, const Chaos::TArrayCollectionAr
 
 template <typename VertexType, typename IndexType>
 int SaveMeshAsOBJComplex(const FString& FilePath, const Chaos::TArrayCollectionArray<VertexType>& Vertices,
-	const TArray<Chaos::TVector<IndexType, 3>>& Indices, float Threshold = 0.05f)
+	const TArray<Chaos::TVector<IndexType, 3>>& Indices, float Threshold = 0.05f,
+	bool bExtrude = false, double ExtrudeMargin = 0.01)
 {
 	CoACD_Mesh inputMesh = CoacdInterface::ConvertToCoACDMesh(Vertices, Indices);
 
 	CoACD_MeshArray result = CoACD_run(inputMesh, Threshold, -1, preprocess_auto, 30, 1000, 20, 150, 3, false, true, false, 100,
-		false, 0.01, apx_ch, 0, false);
+		bExtrude, ExtrudeMargin, apx_ch, 0, false);
 	int MeshCount = result.meshes_count;
 
-	UE_LOG(LogURLab, Log, TEXT("CoACD: %d convex hulls created (threshold=%.3f)"), result.meshes_count, Threshold);
+	UE_LOG(LogURLab, Log, TEXT("CoACD: %d convex hulls created (threshold=%.3f, extrude=%s margin=%.3f)"),
+		result.meshes_count, Threshold, bExtrude ? TEXT("on") : TEXT("off"), ExtrudeMargin);
 
 	CoacdInterface::SaveCoACDMeshArrayAsOBJ(result, FilePath);
 	CoACD_freeMeshArray(result);
@@ -88,10 +90,11 @@ int SaveMeshAsOBJComplex(const FString& FilePath, const Chaos::TArrayCollectionA
 
 template <typename VertexType, typename IndexType>
 int SaveMesh(const FString& FilePath, const Chaos::TArrayCollectionArray<VertexType>& Vertices,
-	const TArray<Chaos::TVector<IndexType, 3>>& Indices, bool ComplexMeshRequired, float Threshold = 0.05f)
+	const TArray<Chaos::TVector<IndexType, 3>>& Indices, bool ComplexMeshRequired, float Threshold = 0.05f,
+	bool bExtrude = false, double ExtrudeMargin = 0.01)
 {
 	if (ComplexMeshRequired)
-		return MeshUtils::SaveMeshAsOBJComplex(FilePath, Vertices, Indices, Threshold);
+		return MeshUtils::SaveMeshAsOBJComplex(FilePath, Vertices, Indices, Threshold, bExtrude, ExtrudeMargin);
 
 	return MeshUtils::SaveMeshAsOBJSimple(FilePath, Vertices, Indices);
 }

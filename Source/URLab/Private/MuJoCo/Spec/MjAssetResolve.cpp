@@ -339,6 +339,11 @@ FString MjImportedMeshPath(const FSpecRef& Spec)
 	return MjImportedAssetPath(Spec) / TEXT("Meshes");
 }
 
+FString MjDecomposedMeshPath(const FSpecRef& Spec)
+{
+	return MjImportedAssetPath(Spec) / TEXT("Decomposed");
+}
+
 FMjResolvedMesh MjResolveMesh(const FSpecRef& Spec, const FString& Name)
 {
 	FMjResolvedMesh Out;

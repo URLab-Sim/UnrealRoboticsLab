@@ -46,7 +46,7 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjSensorRuntime.h"
-#include "MjComponentDetailCustomizations.h"
+#include "MjDecompositionMenu.h"
 #include "MuJoCo/Gen/Elements/Constraints/MjPair.gen.h"
 #include "MuJoCo/Gen/Elements/Constraints/MjExclude.gen.h"
 #include "MuJoCo/Gen/Elements/Constraints/MjEquality.gen.h"
@@ -71,6 +71,10 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 void FURLabEditorModule::StartupModule()
 {
 	FMjEditorStyle::Initialize();
+
+	// Convex decomposition is an action, not an attribute of the geom, so it
+	// sits on the component tree's context menu rather than in the details panel.
+	FMjDecompositionMenu::Register();
 
 	// Import and generation diagnostics are routed to a listing named "URLab"
 	// (see MujocoImportFactory.cpp, MujocoGenerationAction.cpp) via
@@ -119,20 +123,8 @@ void FURLabEditorModule::StartupModule()
 	FMjEffectiveDetails::RegisterAll();
 
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	// Only the geom needs a custom layout, for the CoACD decomposition buttons.
-	// Every other element's panel is what the generated UPROPERTY metadata makes
-	// it, which is the point of generating them.
-	{
-		TArray<UClass*> GeomClasses;
-		GetDerivedClasses(UMjGeom::StaticClass(), GeomClasses, true);
-		GeomClasses.Add(UMjGeom::StaticClass());
-		for (UClass* Class : GeomClasses)
-		{
-			PropertyModule.RegisterCustomClassLayout(
-				Class->GetFName(),
-				FOnGetDetailCustomizationInstance::CreateStatic(&FMjGeomDetailCustomization::MakeInstance));
-		}
-	}
+	// No element needs a custom layout: every panel is what the generated
+	// UPROPERTY metadata makes it, which is the point of generating them.
 	PropertyModule.NotifyCustomizationModuleChanged();
 
 	// Register viewport actor context menu extender

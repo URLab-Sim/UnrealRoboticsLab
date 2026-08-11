@@ -383,6 +383,11 @@ void UMjGeom::DestroyVisualizer()
 	VisualizerScale = FVector::OneVector;
 }
 
+EMjGeomType UMjGeom::EffectiveType() const
+{
+	return EffectiveShapeOf(*this).Type;
+}
+
 FString UMjGeom::EffectiveMeshName() const
 {
 	FString Name = Mesh.Get(FString());
@@ -894,10 +899,18 @@ FVector UMjGeom::GetWorldLocation() const
 
 void UMjGeom::DecomposeMesh()
 {
+	TArray<FDecomposedHull> Ignored;
+	DecomposeMeshInto(Ignored);
+}
+
+bool UMjGeom::DecomposeMeshInto(TArray<FDecomposedHull>& OutHulls)
+{
+	OutHulls.Reset();
+
 	if (EffectiveShapeOf(*this).Type != EMjGeomType::mesh)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' is not a mesh geom."), *GetName());
-		return;
+		return false;
 	}
 
 	// The attachment hierarchy answers for a placed instance. A Blueprint template
@@ -959,7 +972,7 @@ void UMjGeom::DecomposeMesh()
 	if (SMC == nullptr || SMC->GetStaticMesh() == nullptr)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' has no StaticMesh child."), *GetName());
-		return;
+		return false;
 	}
 
 	UStaticMesh* LocalMesh = SMC->GetStaticMesh();
@@ -967,7 +980,7 @@ void UMjGeom::DecomposeMesh()
 	if (BodySetup == nullptr || BodySetup->TriMeshGeometries.Num() == 0)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' has no collision geometry."), *GetName());
-		return;
+		return false;
 	}
 
 	RemoveDecomposition();
@@ -991,22 +1004,26 @@ void UMjGeom::DecomposeMesh()
 	if (TriGeom.GetReference()->Elements().RequiresLargeIndices())
 	{
 		const auto& Indices = TriGeom.GetReference()->Elements().GetLargeIndexBuffer();
-		MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, true, CoACDThreshold);
+		MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, true, CoACDThreshold, bCoACDExtrude, CoACDExtrudeMargin);
 		IO::SaveMeshHash(FullFilePath,
-			IO::ComputeMeshHash(Vertices, Indices) + FString::Printf(TEXT("_complex_%.4f"), CoACDThreshold));
+			IO::ComputeMeshHash(Vertices, Indices)
+				+ FString::Printf(TEXT("_complex_%.4f_%d_%.4f"), CoACDThreshold, bCoACDExtrude ? 1 : 0,
+					CoACDExtrudeMargin));
 	}
 	else
 	{
 		const auto& Indices = TriGeom.GetReference()->Elements().GetSmallIndexBuffer();
-		MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, true, CoACDThreshold);
+		MeshCount = MeshUtils::SaveMesh(FullFilePath, Vertices, Indices, true, CoACDThreshold, bCoACDExtrude, CoACDExtrudeMargin);
 		IO::SaveMeshHash(FullFilePath,
-			IO::ComputeMeshHash(Vertices, Indices) + FString::Printf(TEXT("_complex_%.4f"), CoACDThreshold));
+			IO::ComputeMeshHash(Vertices, Indices)
+				+ FString::Printf(TEXT("_complex_%.4f_%d_%.4f"), CoACDThreshold, bCoACDExtrude ? 1 : 0,
+					CoACDExtrudeMargin));
 	}
 
 	if (MeshCount == 0)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjGeom] DecomposeMesh: CoACD produced 0 hulls for '%s'."), *GetName());
-		return;
+		return false;
 	}
 
 	SlowTask.EnterProgressFrame(1.f,
@@ -1032,7 +1049,7 @@ void UMjGeom::DecomposeMesh()
 	if (!bIsScsContext && ParentComp == nullptr)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjGeom] DecomposeMesh: '%s' has no parent to attach hulls to."), *GetName());
-		return;
+		return false;
 	}
 
 	if (BP != nullptr)
@@ -1123,6 +1140,13 @@ void UMjGeom::DecomposeMesh()
 			continue;
 		}
 
+		// Reported before the visualiser is built: what the caller needs is the
+		// geom and the file, and neither depends on the preview succeeding.
+		FDecomposedHull& Reported = OutHulls.AddDefaulted_GetRef();
+		Reported.MeshName = Hull->MeshName;
+		Reported.ObjPath = SubObjFullPath;
+		Reported.Geom = Hull;
+
 		const FString SMCName = FString::Printf(TEXT("%s_vis"), *HullNameStr);
 		USCS_Node* HullNode = nullptr;
 		if (bIsScsContext)
@@ -1168,6 +1192,8 @@ void UMjGeom::DecomposeMesh()
 
 	bDisabledByDecomposition = true;
 	UE_LOG(LogURLab, Log, TEXT("[MjGeom] Decomposed '%s' into %d hull sub-geoms."), *GetName(), MeshCount);
+
+	return !OutHulls.IsEmpty();
 }
 
 void UMjGeom::RemoveDecomposition()
@@ -1241,6 +1267,12 @@ void UMjGeom::RemoveDecomposition()
 
 void UMjGeom::DecomposeMesh()
 {
+}
+
+bool UMjGeom::DecomposeMeshInto(TArray<FDecomposedHull>& OutHulls)
+{
+	OutHulls.Reset();
+	return false;
 }
 
 void UMjGeom::RemoveDecomposition()

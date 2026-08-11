@@ -38,11 +38,22 @@ Re-import the MJCF, or stay on the `alpha` branch.
 - **The XML compile path is gone.** Components are read straight into an
   `mjSpec`; nothing serialises MJCF text to reach the compiler any more.
 - **MuJoCo 3.11.1.**
+- **An imported model's `<option>` reaches the scene.** The scene's
+  `<compiler conflict>` is `merge`, not MuJoCo's `warning` default: the attach
+  target is a scene nobody authored, so under `warning` every field an import
+  brought lost to a default. Editable on the manager, and per-robot
+  `AttachConflict` still overrides.
 - Line endings are LF in the repository on every platform, and the formatter
   no longer fights the code generator over the generated tree.
 
 ### Fixed
 
+- **`multiccd` follows MuJoCo again.** The scene manager was disabling it on
+  every scene. That mirrored MuJoCo's default when the flag was opt-in; MuJoCo
+  has since moved it to the disable family, where it defaults on, so URLab was
+  overriding it. Convex-convex pairs generated one contact point where MuJoCo
+  generates several, and any scene with mesh or primitive contacts stepped
+  differently from `mj_loadXML` of the same document.
 - Assets whose visual and collision meshes share a basename no longer collide
   in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
 - A document naming its root default class `main` explicitly no longer loses

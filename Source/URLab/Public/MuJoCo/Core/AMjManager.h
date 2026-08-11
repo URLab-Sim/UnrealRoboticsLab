@@ -45,6 +45,7 @@ class UMjInputHandler;
 class UMjPerturbation;
 struct FSpecRef;
 
+class UMjCompiler;
 class UMjFlag;
 class UMjModel;
 class UMjOption;
@@ -151,6 +152,17 @@ public:
 	/** The scene's `<option><flag>`. */
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
 	TObjectPtr<UMjFlag> SceneFlags;
+
+	/**
+	 * The scene's `<compiler>`, which carries the attach conflict policy.
+	 *
+	 * `merge` rather than MuJoCo's `warning` default, because the attach target
+	 * is a scene nobody authored: under `warning` the parent keeps every field,
+	 * so an imported model's `<option>` is discarded against defaults.
+	 * Per-articulation `AttachConflict` overrides it.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "MuJoCo|Scene")
+	TObjectPtr<UMjCompiler> SceneCompiler;
 
 	/** A handle on the scene spec the manager's sections belong to. */
 	FSpecRef GetSceneSpec() const;

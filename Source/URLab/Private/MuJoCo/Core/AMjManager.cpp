@@ -27,6 +27,7 @@
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Gen/Elements/Options/MjCompiler.gen.h"
 #include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
 #include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
@@ -77,8 +78,10 @@ AAMjManager::AAMjManager()
 	SceneSpec = CreateDefaultSubobject<UMjModel>(TEXT("SceneSpec"));
 	SceneOption = CreateDefaultSubobject<UMjOption>(TEXT("SceneOption"));
 	SceneFlags = CreateDefaultSubobject<UMjFlag>(TEXT("SceneFlags"));
+	SceneCompiler = CreateDefaultSubobject<UMjCompiler>(TEXT("SceneCompiler"));
 	SceneOption->SetupAttachment(SceneSpec);
 	SceneFlags->SetupAttachment(SceneOption);
+	SceneCompiler->SetupAttachment(SceneSpec);
 	if (RootComponent == nullptr)
 	{
 		RootComponent = SceneSpec;
@@ -86,8 +89,11 @@ AAMjManager::AAMjManager()
 
 	// URLab's two departures from MuJoCo's own defaults, authored rather than
 	// hard-coded so they show up in the details panel and in written MJCF.
+	// Everything else stays unset, which is what leaves MuJoCo's default in
+	// place: a value written here is written into every scene, and MuJoCo is
+	// free to change its own mind between versions.
 	SceneOption->Integrator = EMjIntegrator::implicitfast;
-	SceneFlags->Multiccd = EMjEnable::disable;
+	SceneCompiler->Conflict = EMjConflict::merge;
 }
 
 FSpecRef AAMjManager::GetSceneSpec() const

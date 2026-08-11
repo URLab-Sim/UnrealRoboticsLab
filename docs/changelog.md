@@ -62,6 +62,9 @@ Re-import the MJCF, or stay on the `alpha` branch.
   `float` on the way to the actuator slots, so a `float64` setpoint arrived
   rounded and the sim diverged from stock MuJoCo given identical input. The
   path is `double` end to end, which is what `mjtNum` is.
+- **The PD controller computes in `mjtNum`.** Its law read `d->qpos` and wrote
+  `d->ctrl` through `float` locals, rounding the target and the state it was
+  given. Gains stay `float`, which is how they are authored.
 - Assets whose visual and collision meshes share a basename no longer collide
   in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
 - A document naming its root default class `main` explicitly no longer loses

@@ -75,22 +75,21 @@ void UMjPDController::ComputeAndApply(mjModel* m, mjData* d, uint8 Source)
 		int32 JntId = m->actuator_trnid[B.ActuatorMjID * 2];
 		if (JntId >= 0 && JntId < m->njnt && m->jnt_limited[JntId])
 		{
-			float Lo = (float)m->jnt_range[JntId * 2];
-			float Hi = (float)m->jnt_range[JntId * 2 + 1];
-			Target = FMath::Clamp(Target, Lo, Hi);
+			Target = FMath::Clamp(Target, m->jnt_range[JntId * 2], m->jnt_range[JntId * 2 + 1]);
 		}
 
-		// Read live joint state
-		float Pos = (float)d->qpos[B.QposAddr];
-		float Vel = (float)d->qvel[B.QvelAddr];
+		// Read live joint state. The law runs in mjtNum: the state and the
+		// target are already double, and d->ctrl is where the result lands.
+		// Gains stay float because that is what they are authored as.
+		const double Pos = d->qpos[B.QposAddr];
+		const double Vel = d->qvel[B.QvelAddr];
 
 		// PD control law: torque = Kp * (target - pos) - Kv * vel
-		float kp = (i < Kp.Num()) ? Kp[i] : DefaultKp;
-		float kv = (i < Kv.Num()) ? Kv[i] : DefaultKv;
-		float limit = (i < TorqueLimits.Num()) ? TorqueLimits[i] : DefaultTorqueLimit;
+		const double kp = (i < Kp.Num()) ? Kp[i] : DefaultKp;
+		const double kv = (i < Kv.Num()) ? Kv[i] : DefaultKv;
+		const double limit = (i < TorqueLimits.Num()) ? TorqueLimits[i] : DefaultTorqueLimit;
 
-		float Torque = kp * (Target - Pos) - kv * Vel;
-		Torque = FMath::Clamp(Torque, -limit, limit);
+		const double Torque = FMath::Clamp(kp * (Target - Pos) - kv * Vel, -limit, limit);
 
 		d->ctrl[B.ActuatorMjID] = (mjtNum)Torque;
 	}

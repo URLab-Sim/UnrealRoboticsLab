@@ -135,6 +135,11 @@ void SyncPreviewTree(UMjNodeComponent& Root)
 	MjNoteDanglingReferences<Adapter>(Root);
 }
 
+// A Blueprint's template graph exists only in the editor, and so does the
+// scope that reads it. `OverBlueprint` already compiles its body away without
+// one; this is the half that has to go with it.
+#if WITH_EDITOR
+
 /** The spec root of a Blueprint: the SCS node with no MuJoCo parent. */
 UMjNodeComponent* RootOfBlueprint(UBlueprint& Blueprint)
 {
@@ -153,6 +158,8 @@ UMjNodeComponent* RootOfBlueprint(UBlueprint& Blueprint)
 	}
 	return nullptr;
 }
+
+#endif // WITH_EDITOR
 } // namespace
 
 #endif // URLAB_MJ_GEN

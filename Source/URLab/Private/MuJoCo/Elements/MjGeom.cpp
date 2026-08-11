@@ -913,20 +913,16 @@ bool UMjGeom::DecomposeMeshInto(TArray<FDecomposedHull>& OutHulls)
 		return false;
 	}
 
-	// The attachment hierarchy answers for a placed instance. A Blueprint template
-	// is not attached to anything, so its children are only reachable through the
-	// construction script's node tree.
-	UStaticMeshComponent* SMC = nullptr;
-
-	TArray<USceneComponent*> Children;
-	GetChildrenComponents(true, Children);
-	for (USceneComponent* Child : Children)
+	// The geom's own `<mesh>` element, the same source its picture is drawn from.
+	// Not a child UStaticMeshComponent: the visualiser's parts are output, and a
+	// Blueprint template has no attached children to find one under anyway.
+	UStaticMesh* LocalMesh = MjResolveMesh(FSpecRef::OverOwner(this), EffectiveMeshName()).Asset;
+	if (LocalMesh == nullptr)
 	{
-		if (UStaticMeshComponent* Found = Cast<UStaticMeshComponent>(Child))
-		{
-			SMC = Found;
-			break;
-		}
+		UE_LOG(LogURLab, Warning,
+			TEXT("[MjGeom] DecomposeMesh: '%s' names mesh '%s', which resolves to no asset."),
+			*GetName(), *EffectiveMeshName());
+		return false;
 	}
 
 	UBlueprint* BP = nullptr;
@@ -957,25 +953,6 @@ bool UMjGeom::DecomposeMeshInto(TArray<FDecomposedHull>& OutHulls)
 		}
 	}
 
-	if (SMC == nullptr && MyNode != nullptr)
-	{
-		for (USCS_Node* ChildNode : MyNode->ChildNodes)
-		{
-			if (UStaticMeshComponent* Found = Cast<UStaticMeshComponent>(ChildNode->ComponentTemplate))
-			{
-				SMC = Found;
-				break;
-			}
-		}
-	}
-
-	if (SMC == nullptr || SMC->GetStaticMesh() == nullptr)
-	{
-		UE_LOG(LogURLab, Warning, TEXT("[MjGeom] DecomposeMesh: '%s' has no StaticMesh child."), *GetName());
-		return false;
-	}
-
-	UStaticMesh* LocalMesh = SMC->GetStaticMesh();
 	UBodySetup* BodySetup = LocalMesh->GetBodySetup();
 	if (BodySetup == nullptr || BodySetup->TriMeshGeometries.Num() == 0)
 	{

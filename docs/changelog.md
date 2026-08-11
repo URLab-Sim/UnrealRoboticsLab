@@ -65,6 +65,11 @@ Re-import the MJCF, or stay on the `alpha` branch.
 - **The PD controller computes in `mjtNum`.** Its law read `d->qpos` and wrote
   `d->ctrl` through `float` locals, rounding the target and the state it was
   given. Gains stay `float`, which is how they are authored.
+- **Convex decomposition finds its mesh.** It looked for a child
+  `UStaticMeshComponent`, which is the visualiser's output rather than the
+  authored geometry, and does not exist at all on the Blueprint template the
+  right-click menu runs against. It resolves the geom's `<mesh>` element now,
+  the same source the geom is drawn from.
 - Assets whose visual and collision meshes share a basename no longer collide
   in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
 - A document naming its root default class `main` explicitly no longer loses

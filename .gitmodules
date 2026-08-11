@@ -1,10 +1,8 @@
 [submodule "third_party/MuJoCo/src"]
 	path = third_party/MuJoCo/src
-	# URLab's MuJoCo checkout. The engine is built from it, and the ProtoSpec
-	# generator reads src/xml/mjcf.schema and doc/generate/mjcf_schema.py from
-	# it. ProtoSpec itself lives in the plugin's protospec/ directory; the
-	# protospec/ directory inside this submodule is not consumed.
-	url = https://github.com/URLab-Sim/mujoco
+	# Upstream MuJoCo. The engine is built from it, and the ProtoSpec generator
+	# reads src/xml/mjcf.schema and doc/generate/mjcf_schema.py from it.
+	url = https://github.com/google-deepmind/mujoco
 [submodule "third_party/CoACD/src"]
 	path = third_party/CoACD/src
 	url = https://github.com/SarahWeiii/CoACD

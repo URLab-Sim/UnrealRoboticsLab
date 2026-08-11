@@ -15,6 +15,7 @@
 #include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 
+#include "MjSectionFold.h"
 #include "MuJoCo/Gen/MjDispatch.gen.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
@@ -203,6 +204,14 @@ void ReportParticipantGlobals(const FSpecRef& Spec, const FString& Prefix,
 	{
 		ElementType Type{};
 		if (Child.Node == nullptr || !gen::ElementTypeOfNode(*Child.Node, Type))
+		{
+			continue;
+		}
+		// Every participant HAS these sections; what is worth reporting is a
+		// participant that authored one. An unauthored `<option>` asks for no
+		// timestep, so there is no value for the scene's policy to resolve away
+		// and nothing the author would want to be told.
+		if (!MjAuthorsAnything(Spec, *Child.Node))
 		{
 			continue;
 		}

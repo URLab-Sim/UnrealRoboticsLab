@@ -1037,7 +1037,12 @@ bool FMjSceneSpecDiscardedGlobalsTest::RunTest(const FString& Parameters)
 		AddError(TEXT("could not author the participant's global blocks"));
 		return false;
 	}
+	// Both blocks state a value. Every participant HAS an <option> and a <size>
+	// now that the sections are not conjured by hand, so what these reports are
+	// about is a value the scene's policy resolves away -- and an unauthored
+	// block asks for nothing to resolve.
 	Option->Timestep = 0.001;
+	Size->Nkey = 4;
 
 	UMjGeom* const Ball = Fixture.Add<UMjGeom>(*Robot, ParticipantWorld, TEXT("ball"));
 	if (Ball == nullptr)

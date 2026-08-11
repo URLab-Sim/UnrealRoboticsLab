@@ -20,6 +20,7 @@
 #include "MjFromtoFold.h"
 #include "MjMjcfIoInternal.h"
 #include "MjNodeNames.h"
+#include "MjSectionFold.h"
 #include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjSpecProfile.h"
 #include "MuJoCo/Spec/MjNodeFactories.h"
@@ -334,6 +335,10 @@ FMjSpecParseResult MjParseIntoBlueprint(UBlueprint& Blueprint, const FString& Xm
 	Out = urlab::spec::io::ParseIntoScs(Xml, Filename, Options);
 	if (Out.Root != nullptr)
 	{
+		// First, because it is the only pass that restructures the tree: MuJoCo
+		// reads every occurrence of a top-level section into one place, and has
+		// each of them whether the document spelled it or not.
+		urlab::spec::NormalizeModelSections<urlab::spec::FMjScsAdapter, urlab::spec::FScsNodeFactory>(*Out.Root);
 		// Before the preview, so a fromto-authored capsule previews at the pose
 		// the fold just gave it rather than at the origin.
 		urlab::spec::FoldFromtoTree<urlab::spec::FMjScsAdapter>(*Out.Root);
@@ -365,6 +370,8 @@ FMjSpecParseResult MjParseIntoActor(AActor& Actor, const FString& Xml, const FSt
 	Out = urlab::spec::io::ParseIntoInstance(Xml, Filename, Options);
 	if (Out.Root != nullptr)
 	{
+		urlab::spec::NormalizeModelSections<urlab::spec::FMjInstanceAdapter, urlab::spec::FInstanceNodeFactory>(
+			*Out.Root);
 		urlab::spec::FoldFromtoTree<urlab::spec::FMjInstanceAdapter>(*Out.Root);
 		urlab::spec::NameTreeFromSpec<urlab::spec::FMjInstanceAdapter>(*Out.Root);
 		SyncPreviewTree<urlab::spec::FMjInstanceAdapter>(*Out.Root);

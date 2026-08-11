@@ -47,6 +47,11 @@ Re-import the MJCF, or stay on the `alpha` branch.
   `source`, which `set_control_source` already uses for `"zmq"` | `"ui"` -- so
   that op could never pass its own ownership check. Requests that do not set it
   are unaffected; the owner still falls back to `session_id`.
+- **An articulation carries every top-level section, once.** MJCF admits any of
+  them repeatedly and MuJoCo merges them, so a document with two `<worldbody>`
+  or two `<asset>` blocks no longer reads as sibling components. A section the
+  document never authored is created unset rather than left for the user to
+  conjure, and an unauthored section writes nothing.
 - Line endings are LF in the repository on every platform, and the formatter
   no longer fights the code generator over the generated tree.
 

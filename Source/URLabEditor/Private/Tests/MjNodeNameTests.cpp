@@ -135,12 +135,13 @@ bool FMjNodeNamesReadableTest::RunTest(const FString& Parameters)
 	const TSet<FString> Names = VariableNames(*Blueprint);
 
 	// The sections a user goes looking for, spelled as the schema spells them.
-	// Each occurs once in this spec, so each may hold its bare tag. The
-	// humanoid authors no <sensor>, and a section it does not author must not
-	// appear -- these are the spec's own elements, not fixed furniture.
-	TestFalse(TEXT("a section the model does not author is not invented"), Names.Contains(TEXT("sensor")));
+	// Every top-level section is present whether or not this document authors
+	// one: the humanoid writes no <sensor>, and the panel still offers it,
+	// unset, so adding a sensor is editing a field rather than knowing that a
+	// section can be conjured. Unset is what keeps that free -- an unauthored
+	// section writes nothing, which MjSectionFoldTests holds to.
 	for (const TCHAR* Section : {TEXT("worldbody"), TEXT("asset"), TEXT("actuator"), TEXT("tendon"), TEXT("contact"),
-			 TEXT("keyframe"), TEXT("default")})
+			 TEXT("keyframe"), TEXT("default"), TEXT("sensor"), TEXT("option"), TEXT("compiler")})
 	{
 		TestTrue(*FString::Printf(TEXT("section '%s' is a node and keeps its bare name"), Section),
 			Names.Contains(Section));

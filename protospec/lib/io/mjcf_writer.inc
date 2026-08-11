@@ -136,7 +136,8 @@ std::optional<std::string> FormatValue(const Inner& v, bool keyword_set) {
 
 template <class P, class E>
 void WriteElement(const E& e, std::string_view tag, int depth, std::string& out,
-                  const AutoNames* names, std::vector<ps::Diagnostic>* errors);
+                  const AutoNames* names, std::vector<ps::Diagnostic>* errors,
+                  bool omit_when_empty = false);
 
 // Append ` name="value"` unless value is skipped.
 inline void AppendAttr(std::string& attrs, std::string_view name,
@@ -210,7 +211,8 @@ struct WriterVisitor {
 
 template <class P, class E>
 void WriteElement(const E& e, std::string_view tag, int depth, std::string& out,
-                  const AutoNames* names, std::vector<ps::Diagnostic>* errors) {
+                  const AutoNames* names, std::vector<ps::Diagnostic>* errors,
+                  bool omit_when_empty) {
   const ElementType type = sdk::ElementTypeOf<P, E>;
   const ElementBinding& b = Bind(type);
   std::string attrs;
@@ -230,7 +232,13 @@ void WriteElement(const E& e, std::string_view tag, int depth, std::string& out,
                              !b.children[slot].is_union)
                                 ? b.children[slot].tag
                                 : Bind(ct).tag;
-    WriteElement<P>(c, ctag, depth + 1, children, names, errors);
+    // A top-level section is omitted when it says nothing: MuJoCo's reader
+    // creates all seventeen whether the document spells them or not, so a
+    // document tree holds every section and only the authored ones are text.
+    // Only at the top level -- an empty `<body/>` or `<geom/>` IS a body or a
+    // geom, and dropping it would drop an element of the model.
+    WriteElement<P>(c, ctag, depth + 1, children, names, errors,
+                    std::is_same_v<E, sdk::DocOf<P>>);
   });
 
   // Auto-name injection: an unnamed bindable element whose serial the
@@ -245,6 +253,8 @@ void WriteElement(const E& e, std::string_view tag, int depth, std::string& out,
       attrs.insert(0, name_attr);
     }
   }
+
+  if (omit_when_empty && attrs.empty() && children.empty()) return;
 
   out += Indent(depth);
   out += '<';

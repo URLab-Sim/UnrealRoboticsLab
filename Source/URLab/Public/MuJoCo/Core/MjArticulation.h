@@ -43,6 +43,26 @@ struct mjData_;
 typedef struct mjModel_ mjModel;
 typedef struct mjData_ mjData;
 
+/**
+ * One compiled family's elements, by id and by every name they answer to.
+ *
+ * A USTRUCT with UPROPERTY members so the engine can see the components it
+ * holds: a Blueprint recompile reinstances every one of them, and a plain
+ * TObjectPtr the reflection system cannot reach is left pointing at the
+ * objects that were replaced.
+ */
+USTRUCT()
+struct FMjElementFamily
+{
+	GENERATED_BODY()
+
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<UMjNodeComponent>> ById;
+
+	UPROPERTY(Transient)
+	TMap<FString, TObjectPtr<UMjNodeComponent>> ByName;
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMjSimulationReset);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMjCollision, UMjGeom*, SelfGeom, UMjGeom*, OtherGeom, FVector, ContactPos);
 
@@ -432,15 +452,9 @@ public:
 #endif
 
 private:
-	/** One compiled family's elements, by id and by every name they answer to. */
-	struct FFamilyIndex
-	{
-		TMap<int32, TObjectPtr<UMjNodeComponent>> ById;
-		TMap<FString, TObjectPtr<UMjNodeComponent>> ByName;
-	};
-
 	/** Keyed by `mjtObj`. Sparse: a family with no elements has no entry. */
-	TMap<int32, FFamilyIndex> ElementIndex;
+	UPROPERTY(Transient)
+	TMap<int32, FMjElementFamily> ElementIndex;
 
 	/**
 	 * Controller cached at compile time so `ApplyControls` can reach it from the

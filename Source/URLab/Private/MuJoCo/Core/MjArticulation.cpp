@@ -283,7 +283,7 @@ void AMjArticulation::UnPossessed()
 
 void AMjArticulation::IndexBoundElement(UMjNodeComponent& Node, int32 ObjType, int32 Id)
 {
-	FFamilyIndex& Family = ElementIndex.FindOrAdd(ObjType);
+	FMjElementFamily& Family = ElementIndex.FindOrAdd(ObjType);
 	Family.ById.Add(Id, &Node);
 	EachNameOf(Node, [&Family, &Node](const FString& Name) { Family.ByName.Add(Name, &Node); });
 }
@@ -303,7 +303,7 @@ void AMjArticulation::BindController(mjModel* Model, mjData* Data)
 	}
 
 	TMap<int32, UMjNodeComponent*> Actuators;
-	if (const FFamilyIndex* Family = ElementIndex.Find(mjOBJ_ACTUATOR))
+	if (const FMjElementFamily* Family = ElementIndex.Find(mjOBJ_ACTUATOR))
 	{
 		for (const TPair<int32, TObjectPtr<UMjNodeComponent>>& Entry : Family->ById)
 		{
@@ -315,7 +315,7 @@ void AMjArticulation::BindController(mjModel* Model, mjData* Data)
 
 UMjNodeComponent* AMjArticulation::GetComponentByMjId(int32 ObjType, int32 Id) const
 {
-	if (const FFamilyIndex* Family = ElementIndex.Find(ObjType))
+	if (const FMjElementFamily* Family = ElementIndex.Find(ObjType))
 	{
 		if (const TObjectPtr<UMjNodeComponent>* Found = Family->ById.Find(Id))
 		{
@@ -327,7 +327,7 @@ UMjNodeComponent* AMjArticulation::GetComponentByMjId(int32 ObjType, int32 Id) c
 
 UMjNodeComponent* AMjArticulation::GetComponentByName(int32 ObjType, const FString& Name) const
 {
-	if (const FFamilyIndex* Family = ElementIndex.Find(ObjType))
+	if (const FMjElementFamily* Family = ElementIndex.Find(ObjType))
 	{
 		if (const TObjectPtr<UMjNodeComponent>* Found = Family->ByName.Find(Name))
 		{
@@ -340,7 +340,7 @@ UMjNodeComponent* AMjArticulation::GetComponentByName(int32 ObjType, const FStri
 TArray<UMjNodeComponent*> AMjArticulation::GetComponentsOfFamily(int32 ObjType) const
 {
 	TArray<UMjNodeComponent*> Out;
-	if (const FFamilyIndex* Family = ElementIndex.Find(ObjType))
+	if (const FMjElementFamily* Family = ElementIndex.Find(ObjType))
 	{
 		Out.Reserve(Family->ById.Num());
 		for (const TPair<int32, TObjectPtr<UMjNodeComponent>>& Entry : Family->ById)

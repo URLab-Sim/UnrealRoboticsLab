@@ -70,6 +70,11 @@ Re-import the MJCF, or stay on the `alpha` branch.
   authored geometry, and does not exist at all on the Blueprint template the
   right-click menu runs against. It resolves the geom's `<mesh>` element now,
   the same source the geom is drawn from.
+- **Reimporting a model no longer crashes the tick.** The articulation's
+  element index held its components without a `UPROPERTY`, so the engine could
+  not see them: a Blueprint recompile reinstanced every component and left the
+  index pointing at the ones it replaced, which the next render-state tick
+  wrote a transform through.
 - Assets whose visual and collision meshes share a basename no longer collide
   in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
 - A document naming its root default class `main` explicitly no longer loses

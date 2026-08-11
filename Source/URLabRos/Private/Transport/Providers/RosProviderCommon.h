@@ -29,24 +29,24 @@
 // ROS dependency, so they compile in every configuration.
 namespace MjRosProvider
 {
-	/** Find a sensor on an articulation by canonical name; null if absent. */
-	inline const FMjSensorState* FindSensor(const FMjArticulationState& Art, FName Name)
+/** Find a sensor on an articulation by canonical name; null if absent. */
+inline const FMjSensorState* FindSensor(const FMjArticulationState& Art, FName Name)
+{
+	for (const FMjSensorState& Sensor : Art.Sensors)
 	{
-		for (const FMjSensorState& Sensor : Art.Sensors)
+		if (Sensor.Name == Name)
 		{
-			if (Sensor.Name == Name)
-			{
-				return &Sensor;
-			}
+			return &Sensor;
 		}
-		return nullptr;
 	}
+	return nullptr;
+}
 
-	/** Copy up to three doubles out of a value array into a fixed vec3, zero-padded. */
-	inline void FirstThree(const TArray<double>& Values, double Out[3])
-	{
-		Out[0] = Values.Num() > 0 ? Values[0] : 0.0;
-		Out[1] = Values.Num() > 1 ? Values[1] : 0.0;
-		Out[2] = Values.Num() > 2 ? Values[2] : 0.0;
-	}
-}  // namespace MjRosProvider
+/** Copy up to three doubles out of a value array into a fixed vec3, zero-padded. */
+inline void FirstThree(const TArray<double>& Values, double Out[3])
+{
+	Out[0] = Values.Num() > 0 ? Values[0] : 0.0;
+	Out[1] = Values.Num() > 1 ? Values[1] : 0.0;
+	Out[2] = Values.Num() > 2 ? Values[2] : 0.0;
+}
+} // namespace MjRosProvider

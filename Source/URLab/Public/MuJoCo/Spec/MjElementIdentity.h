@@ -80,6 +80,6 @@ URLAB_API const psm::reflect::FieldDescriptor* MjSchemaFieldOf(psm::ElementType 
 /** How many values `Type` reads out of its `Xml` attribute; 0 when it has none. */
 URLAB_API int32 MjSchemaArityOf(psm::ElementType Type, const char* Xml);
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

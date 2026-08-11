@@ -81,7 +81,7 @@ void AssignDisableBit(int& Flags, int Bit, const TOptional<EMjEnable>& Source)
 		Flags |= Bit;
 	}
 }
-}  // namespace
+} // namespace
 
 void MjApplyOption(const UMjOption* Option, const UMjFlag* Flags, mjOption& Out)
 {

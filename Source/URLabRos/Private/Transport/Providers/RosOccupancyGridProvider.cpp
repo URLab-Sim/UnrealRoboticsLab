@@ -74,13 +74,16 @@ void ComputeWorldAABB(const FMjWorldGeom& G, double& MinX, double& MinY,
 	switch (G.Shape)
 	{
 		case EMjWorldGeomShape::Box:
-			HalfX = G.Size[0]; HalfY = G.Size[1]; HalfZ = G.Size[2];
+			HalfX = G.Size[0];
+			HalfY = G.Size[1];
+			HalfZ = G.Size[2];
 			break;
 		case EMjWorldGeomShape::Sphere:
 			HalfX = HalfY = HalfZ = G.Size[0];
 			break;
 		case EMjWorldGeomShape::Cylinder:
-			HalfX = HalfY = G.Size[0]; HalfZ = G.Size[1];
+			HalfX = HalfY = G.Size[0];
+			HalfZ = G.Size[1];
 			break;
 		case EMjWorldGeomShape::Mesh:
 			if (G.Mesh.IsValid())
@@ -92,11 +95,18 @@ void ComputeWorldAABB(const FMjWorldGeom& G, double& MinX, double& MinY,
 				{
 					double Px = V.X, Py = V.Y, Pz = V.Z;
 					TransformPoint(G.Xpos, G.Xquat, Px, Py, Pz);
-					if (bFirst) { MinX = MaxX = Px; MinY = MaxY = Py; bFirst = false; }
+					if (bFirst)
+					{
+						MinX = MaxX = Px;
+						MinY = MaxY = Py;
+						bFirst = false;
+					}
 					else
 					{
-						MinX = FMath::Min(MinX, Px); MaxX = FMath::Max(MaxX, Px);
-						MinY = FMath::Min(MinY, Py); MaxY = FMath::Max(MaxY, Py);
+						MinX = FMath::Min(MinX, Px);
+						MaxX = FMath::Max(MaxX, Px);
+						MinY = FMath::Min(MinY, Py);
+						MaxY = FMath::Max(MaxY, Py);
 					}
 				}
 				return;
@@ -119,11 +129,18 @@ void ComputeWorldAABB(const FMjWorldGeom& G, double& MinX, double& MinY,
 				const double X = (ix == 0) ? -HalfX : HalfX;
 				double Px = X, Py = Y, Pz = Z;
 				TransformPoint(G.Xpos, G.Xquat, Px, Py, Pz);
-				if (bFirst) { MinX = MaxX = Px; MinY = MaxY = Py; bFirst = false; }
+				if (bFirst)
+				{
+					MinX = MaxX = Px;
+					MinY = MaxY = Py;
+					bFirst = false;
+				}
 				else
 				{
-					MinX = FMath::Min(MinX, Px); MaxX = FMath::Max(MaxX, Px);
-					MinY = FMath::Min(MinY, Py); MaxY = FMath::Max(MaxY, Py);
+					MinX = FMath::Min(MinX, Px);
+					MaxX = FMath::Max(MaxX, Px);
+					MinY = FMath::Min(MinY, Py);
+					MaxY = FMath::Max(MaxY, Py);
 				}
 			}
 		}

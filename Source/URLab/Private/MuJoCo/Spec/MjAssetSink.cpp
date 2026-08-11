@@ -36,7 +36,7 @@ FString AssetBaseDirectory(const UMjNodeComponent& Element, const FString& Asset
 	}
 	return AssetDir;
 }
-}  // namespace
+} // namespace
 
 #if URLAB_MJ_GEN
 
@@ -174,9 +174,9 @@ void ReadAssetDirectories(const FSpecRef& Spec, UMjNodeComponent& Root, FString&
 		}
 	}
 }
-}  // namespace
+} // namespace
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 FString MjAssetElementName(const UMjNodeComponent& Element)
 {
@@ -204,8 +204,8 @@ FString MjResolveAssetPath(const UMjNodeComponent& Element, const FString& Asset
 	// through the directories. A spec whose asset was exported back out of
 	// Unreal with nowhere relative to be is the case that makes the difference.
 	return FPaths::IsRelative(File)
-		? FPaths::ConvertRelativePathToFull(FPaths::Combine(AssetBaseDirectory(Element, AssetDir), File))
-		: File;
+			 ? FPaths::ConvertRelativePathToFull(FPaths::Combine(AssetBaseDirectory(Element, AssetDir), File))
+			 : File;
 }
 
 void FMjAssetSink::Collect(const FSpecRef& Spec)

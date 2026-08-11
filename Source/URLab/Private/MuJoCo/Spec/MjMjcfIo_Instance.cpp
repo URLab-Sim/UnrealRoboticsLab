@@ -48,7 +48,7 @@ using xmlbind::AttrBinding;
 using xmlbind::Bind;
 using xmlbind::ElementBinding;
 namespace sdk = ps::sdk;
-}  // namespace ps::mjcf::io
+} // namespace ps::mjcf::io
 
 THIRD_PARTY_INCLUDES_START
 #include "mjcf_reader.inc"
@@ -69,4 +69,4 @@ THIRD_PARTY_INCLUDES_END
 #undef URLAB_MJ_IO_WRITE
 #undef URLAB_MJ_IO_WRITE_ELEMENT
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

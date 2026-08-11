@@ -41,15 +41,14 @@ TArray<const UMjNodeComponent*> SensorLeafDefaults()
 {
 	TArray<const UMjNodeComponent*> Out;
 	gen::ChildSlots(static_cast<const UMjSensor*>(nullptr),
-		[&Out](int32, auto Tag)
-		{
+		[&Out](int32, auto Tag) {
 			using Leaf = typename decltype(Tag)::type;
 			Out.Add(GetDefault<Leaf>());
 		});
 	return Out;
 }
 
-}  // namespace MjElementRuntimeTests
+} // namespace MjElementRuntimeTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorDescriptorTotalityTest,
 	"URLab.Elements.SensorDescriptorCoversEverySensorKind",
@@ -194,4 +193,4 @@ bool FMjSensorReadingTransformTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

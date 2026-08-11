@@ -40,9 +40,9 @@ typedef struct mjSpec_ mjSpec;
 
 extern "C"
 {
-/** Nonzero when `field_ptr`, a field of the block `elem_ptr` owns, was authored. */
-int mjs_isAuthored(const void* elem_ptr, const void* field_ptr);
+	/** Nonzero when `field_ptr`, a field of the block `elem_ptr` owns, was authored. */
+	int mjs_isAuthored(const void* elem_ptr, const void* field_ptr);
 
-/** Record whether `field_ptr` was authored. Unknown field pointers are ignored. */
-void mjs_setAuthored(const void* elem_ptr, const void* field_ptr, int authored);
+	/** Record whether `field_ptr` was authored. Unknown field pointers are ignored. */
+	void mjs_setAuthored(const void* elem_ptr, const void* field_ptr, int authored);
 }

@@ -676,4 +676,4 @@ inline bool NearlyEqual(const FQuat& A, const FQuat& B, float Eps = 0.01f)
 	return A.Equals(B, Eps) || A.Equals(B.Inverse() * FQuat(0, 0, 0, -1), Eps)
 		|| FQuat::ErrorAutoNormalize(A, B) < Eps;
 }
-}  // namespace MjTestMath
+} // namespace MjTestMath

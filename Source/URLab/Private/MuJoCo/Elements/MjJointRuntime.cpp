@@ -124,7 +124,7 @@ bool ResolveJoint(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngi
 		&& OutQposAdr < static_cast<int32>(OutModel->nq) && OutDofAdr < static_cast<int32>(OutModel->nv);
 }
 
-}  // namespace
+} // namespace
 
 bool UMjJointRuntime::IsJoint(const UMjNodeComponent* Node)
 {
@@ -291,7 +291,7 @@ float UMjTendonRuntime::GetVelocity(const UMjNodeComponent* Tendon)
 		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.TenVelocity; }));
 }
 
-#else  // URLAB_MJ_GEN
+#else // URLAB_MJ_GEN
 
 bool UMjJointRuntime::IsJoint(const UMjNodeComponent*)
 {
@@ -351,4 +351,4 @@ float UMjTendonRuntime::GetVelocity(const UMjNodeComponent*)
 	return 0.0f;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

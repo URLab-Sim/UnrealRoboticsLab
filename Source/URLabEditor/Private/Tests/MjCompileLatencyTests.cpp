@@ -110,7 +110,7 @@ void BuildRobot(FMjUESession& Session)
 		Session.Add<UMjJoint>(NewBody, *FString::Printf(TEXT("Hinge%d"), i));
 	}
 }
-}  // namespace MjCompileLatencyTests
+} // namespace MjCompileLatencyTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCompileLatency,
 	"URLab.Perf.CompileLatency",
@@ -199,7 +199,7 @@ bool FMjCompileLatency::RunTest(const FString& Parameters)
 	// run's own log has not been recorded.
 	const FString Bench = FString::Printf(
 		TEXT("BENCH scene=synthetic_robot n=%d nbody=%d njnt=%d ngeom=%d xml_bytes=%d ")
-		TEXT("write_ms=%.3f compile_ms=%.3f install_ms=%.3f"),
+			TEXT("write_ms=%.3f compile_ms=%.3f install_ms=%.3f"),
 		Runs, NBody, NJoint, NGeom, XmlBytes, WriteMs, CompileMs, InstallMs);
 	UE_LOG(LogMjCompileBench, Display, TEXT("%s"), *Bench);
 	AddInfo(Bench);
@@ -214,6 +214,6 @@ bool FMjCompileLatency::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR

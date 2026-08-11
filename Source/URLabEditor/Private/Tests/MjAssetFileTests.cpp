@@ -206,7 +206,7 @@ UTexture2D* PaintedTexture()
 	return Texture;
 }
 
-}  // namespace MjAssetFileTests
+} // namespace MjAssetFileTests
 
 // ============================================================================
 // URLab.Export.AnUntouchedModelKeepsItsOwnPaths
@@ -226,9 +226,9 @@ bool FMjUntouchedPathsTest::RunTest(const FString& Parameters)
 	FScratchDoc Doc;
 	if (!Parse(*this, Doc,
 			TEXT("<mujoco model=\"kept\"><asset>")
-			TEXT("<mesh name=\"part\" file=\"meshes/part.obj\"/>")
-			TEXT("<texture name=\"skin\" type=\"2d\" file=\"images/skin.png\"/>")
-			TEXT("</asset><worldbody><geom type=\"box\" size=\".1 .1 .1\"/></worldbody></mujoco>")))
+				TEXT("<mesh name=\"part\" file=\"meshes/part.obj\"/>")
+					TEXT("<texture name=\"skin\" type=\"2d\" file=\"images/skin.png\"/>")
+						TEXT("</asset><worldbody><geom type=\"box\" size=\".1 .1 .1\"/></worldbody></mujoco>")))
 	{
 		return false;
 	}
@@ -287,8 +287,8 @@ bool FMjSwappedMeshTest::RunTest(const FString& Parameters)
 	FScratchDoc Doc;
 	if (!Parse(*this, Doc,
 			TEXT("<mujoco model=\"swap\"><asset><mesh name=\"part\" file=\"part.obj\"/></asset>")
-			TEXT("<worldbody><body name=\"b\"><geom name=\"g\" type=\"mesh\" mesh=\"part\"/></body></worldbody>")
-			TEXT("</mujoco>")))
+				TEXT("<worldbody><body name=\"b\"><geom name=\"g\" type=\"mesh\" mesh=\"part\"/></body></worldbody>")
+					TEXT("</mujoco>")))
 	{
 		return false;
 	}
@@ -358,11 +358,11 @@ bool FMjSwappedTextureTest::RunTest(const FString& Parameters)
 	FScratchDoc Doc;
 	if (!Parse(*this, Doc,
 			TEXT("<mujoco model=\"swaptex\"><asset>")
-			TEXT("<texture name=\"skin\" type=\"2d\" file=\"skin.png\"/>")
-			TEXT("<material name=\"m\" texture=\"skin\"/>")
-			TEXT("</asset><worldbody>")
-			TEXT("<geom name=\"g\" type=\"box\" size=\".1 .1 .1\" material=\"m\"/>")
-			TEXT("</worldbody></mujoco>")))
+				TEXT("<texture name=\"skin\" type=\"2d\" file=\"skin.png\"/>")
+					TEXT("<material name=\"m\" texture=\"skin\"/>")
+						TEXT("</asset><worldbody>")
+							TEXT("<geom name=\"g\" type=\"box\" size=\".1 .1 .1\" material=\"m\"/>")
+								TEXT("</worldbody></mujoco>")))
 	{
 		return false;
 	}
@@ -405,4 +405,4 @@ bool FMjSwappedTextureTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

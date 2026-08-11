@@ -101,7 +101,7 @@ FMjStateSnapshot MakeSnapshot()
 	Snap.Articulations.Add(Art);
 	return Snap;
 }
-}  // namespace
+} // namespace
 
 // ---------------------------------------------------------------------------
 // 1. Context round-trip + idempotent double-init
@@ -375,7 +375,7 @@ struct FCountingSnapshotPublisher : public IMjSnapshotPublisher
 		++Count;
 	}
 };
-}  // namespace
+} // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosDirectModeFanOut,
 	"URLab.Ros.DirectModeFanOut",
@@ -456,7 +456,7 @@ FString RosReplyField(const TSharedPtr<FJsonObject>& Reply, const TCHAR* Field)
 		Reply->TryGetStringField(Field, Out);
 	return Out;
 }
-}  // namespace
+} // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosControlOwnershipAcrossSurfaces,
 	"URLab.Ros.ControlOwnershipAcrossSurfaces",
@@ -716,8 +716,7 @@ bool FMjRosSensorRoutingWire::RunTest(const FString& Parameters)
 	}
 
 	auto AddSensor = [](FMjArticulationState& Art, const TCHAR* Name,
-		EMjSensorSemantic Sem, TArray<double> Values)
-	{
+						 EMjSensorSemantic Sem, TArray<double> Values) {
 		FMjSensorState S;
 		S.Name = FName(Name);
 		S.Semantic = Sem;
@@ -784,7 +783,9 @@ bool FMjRosStateEstimationWire::RunTest(const FString& Parameters)
 
 	FMjBodyState Base;
 	Base.Name = FName(TEXT("trunk"));
-	Base.Xpos[0] = 0.0; Base.Xpos[1] = 0.0; Base.Xpos[2] = 0.5;
+	Base.Xpos[0] = 0.0;
+	Base.Xpos[1] = 0.0;
+	Base.Xpos[2] = 0.5;
 	Base.Xquat[0] = 1.0;
 	Art.Bodies.Add(Base);
 
@@ -852,7 +853,7 @@ bool FMjRosUserChannelsWire::RunTest(const FString& Parameters)
 	FMjUserChannel Target;
 	Target.Name = FName(TEXT("target"));
 	Target.Kind = EMjUserChannelKind::Transform;
-	Target.Values = {1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0};  // pos + quat wxyz
+	Target.Values = {1.0, 2.0, 3.0, 1.0, 0.0, 0.0, 0.0}; // pos + quat wxyz
 	Art.UserChannels.Add(Target);
 
 	Snap.Articulations.Add(Art);
@@ -1046,4 +1047,4 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_WITH_ROS2
+#endif // URLAB_WITH_ROS2

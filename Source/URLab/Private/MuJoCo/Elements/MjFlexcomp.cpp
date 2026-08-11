@@ -48,7 +48,7 @@ const FStaticMeshLODResources* SourceLod(const UStaticMeshComponent& Component)
 	}
 	return &Render->LODResources[0];
 }
-}  // namespace
+} // namespace
 
 UMjFlexcomp::UMjFlexcomp()
 {
@@ -179,8 +179,8 @@ bool UMjFlexcomp::BuildWeldMap()
 
 	auto BucketOf = [](const FVector3f& P) {
 		const uint32 H = static_cast<uint32>(P.X * 73856093.f)
-			^ static_cast<uint32>(P.Y * 19349663.f)
-			^ static_cast<uint32>(P.Z * 83492791.f);
+					   ^ static_cast<uint32>(P.Y * 19349663.f)
+					   ^ static_cast<uint32>(P.Z * 83492791.f);
 		return static_cast<int32>(H & HashMask);
 	};
 
@@ -343,8 +343,8 @@ void UMjFlexcomp::UpdateProceduralMesh(UMjPhysicsEngine& Engine)
 		{
 			const int32 Welded = RawToWelded[Raw];
 			const FVector Position = (Welded >= 0 && Welded < FlexVertNum)
-				? WeldedPositions[Welded]
-				: FVector::ZeroVector;
+									   ? WeldedPositions[Welded]
+									   : FVector::ZeroVector;
 			Mesh.SetVertex(Raw, FVector3d(Position.X, Position.Y, Position.Z));
 		}
 	},

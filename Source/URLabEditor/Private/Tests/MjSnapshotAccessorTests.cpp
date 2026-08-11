@@ -31,16 +31,16 @@ namespace
 /** A model with one of everything the accessor surfaces can be asked about. */
 const TCHAR* kAccessorMjcf =
 	TEXT("<mujoco model=\"accessors\">\n")
-	TEXT("  <worldbody>\n")
-	TEXT("    <body name=\"link\" pos=\"0 0 0.5\">\n")
-	TEXT("      <joint name=\"hinge\" type=\"hinge\" axis=\"0 1 0\"/>\n")
-	TEXT("      <geom name=\"shaft\" type=\"capsule\" fromto=\"0 0 0 0.4 0 0\" size=\"0.05\"/>\n")
-	TEXT("    </body>\n")
-	TEXT("  </worldbody>\n")
-	TEXT("  <tendon><fixed name=\"cable\"><joint joint=\"hinge\" coef=\"1\"/></fixed></tendon>\n")
-	TEXT("  <actuator><general name=\"drive\" joint=\"hinge\" gear=\"5\" dyntype=\"integrator\"/></actuator>\n")
-	TEXT("  <sensor><jointpos name=\"encoder\" joint=\"hinge\"/></sensor>\n")
-	TEXT("</mujoco>\n");
+		TEXT("  <worldbody>\n")
+			TEXT("    <body name=\"link\" pos=\"0 0 0.5\">\n")
+				TEXT("      <joint name=\"hinge\" type=\"hinge\" axis=\"0 1 0\"/>\n")
+					TEXT("      <geom name=\"shaft\" type=\"capsule\" fromto=\"0 0 0 0.4 0 0\" size=\"0.05\"/>\n")
+						TEXT("    </body>\n")
+							TEXT("  </worldbody>\n")
+								TEXT("  <tendon><fixed name=\"cable\"><joint joint=\"hinge\" coef=\"1\"/></fixed></tendon>\n")
+									TEXT("  <actuator><general name=\"drive\" joint=\"hinge\" gear=\"5\" dyntype=\"integrator\"/></actuator>\n")
+										TEXT("  <sensor><jointpos name=\"encoder\" joint=\"hinge\"/></sensor>\n")
+											TEXT("</mujoco>\n");
 
 /** The spec element `Actor` carries under the MJCF name `MjName`. */
 UMjNodeComponent* FindElement(const AActor* Actor, const TCHAR* MjName)
@@ -71,7 +71,7 @@ int32 MjIdOf(const FMjXmlImportSession& S, mjtObj Type, const TCHAR* Name)
 	const FString Full = S.Robot->GetCompiledPrefix() + Name;
 	return mj_name2id(M, Type, TCHAR_TO_UTF8(*Full));
 }
-}  // namespace
+} // namespace
 
 // ============================================================================
 // URLab.Runtime.AccessorsReadThePublishedSnapshot
@@ -410,8 +410,8 @@ bool FMjDebugDrawReadsThePublishedSnapshot::RunTest(const FString& Parameters)
 	mjData* D = S.Data();
 	const int32 SiteId = S.MjId(mjOBJ_SITE, TEXT("TestSite"));
 	ULineBatchComponent* Batcher = S.World != nullptr
-		? S.World->GetLineBatcher(UWorld::ELineBatcherType::World)
-		: nullptr;
+									 ? S.World->GetLineBatcher(UWorld::ELineBatcherType::World)
+									 : nullptr;
 	if (Engine == nullptr || D == nullptr || SiteId < 0 || Batcher == nullptr)
 	{
 		AddError(TEXT("the compiled model is missing the fixture's site, or the world has no line batcher"));

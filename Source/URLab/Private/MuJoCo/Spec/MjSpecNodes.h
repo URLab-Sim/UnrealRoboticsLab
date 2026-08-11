@@ -49,6 +49,6 @@ struct FMjSpecNodes
 /** Flatten `Spec`, through whichever graph holds it. */
 FMjSpecNodes MjSpecNodesOf(const FSpecRef& Spec);
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

@@ -78,8 +78,8 @@ void FMjFrameTypeCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> Prop
 						.Value_Lambda([Child]() -> TOptional<double> {
 							double Value = 0.0;
 							return Child->GetValue(Value) == FPropertyAccess::Success
-								? TOptional<double>(Value)
-								: TOptional<double>();
+									 ? TOptional<double>(Value)
+									 : TOptional<double>();
 						})
 						.OnValueCommitted_Lambda([Child](double NewValue, ETextCommit::Type) {
 							Child->SetValue(NewValue);

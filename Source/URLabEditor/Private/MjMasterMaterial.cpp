@@ -115,7 +115,7 @@ UMaterial* OpenOrCreate()
 	return Material;
 }
 
-}  // namespace
+} // namespace
 
 UMaterial* BuildMuJoCoMasterMaterial(bool bSave)
 {
@@ -247,7 +247,7 @@ UMaterial* BuildMuJoCoMasterMaterial(bool bSave)
 	return Material;
 }
 
-}  // namespace urlab::editor
+} // namespace urlab::editor
 
 int32 UMjBuildMasterMaterialCommandlet::Main(const FString& Params)
 {

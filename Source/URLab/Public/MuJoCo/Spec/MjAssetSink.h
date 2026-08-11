@@ -177,7 +177,8 @@ URLAB_API FString MjResolveAssetPath(const UMjNodeComponent& Element, const FStr
  */
 struct URLAB_API FMjAssetSink
 {
-	explicit FMjAssetSink(IMjAssetSink& InSink) : Sink(&InSink) {}
+	explicit FMjAssetSink(IMjAssetSink& InSink)
+		: Sink(&InSink) {}
 
 	/** Prefix applied to every VfsName. Empty for a single-spec import. */
 	FString VfsPrefix;

@@ -159,7 +159,7 @@ int32 ObjTypeOfElement(psm::ElementType Type)
 			return mjOBJ_UNKNOWN;
 	}
 }
-}  // namespace
+} // namespace
 
 FMjReservedNames::FMjReservedNames(const FSpecRef& Spec)
 {
@@ -205,6 +205,6 @@ FMjReservedNames::~FMjReservedNames()
 	}
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

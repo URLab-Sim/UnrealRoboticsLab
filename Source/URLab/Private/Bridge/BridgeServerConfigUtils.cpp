@@ -124,8 +124,7 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 	// Command line beats environment; a value from either replaces the INI
 	// one. Returns true when a value was found so callers can flag explicit
 	// port overrides (which then survive derivation).
-	auto ResolveString = [](const TCHAR* CmdKey, const TCHAR* EnvKey, FString& Out) -> bool
-	{
+	auto ResolveString = [](const TCHAR* CmdKey, const TCHAR* EnvKey, FString& Out) -> bool {
 		if (FParse::Value(FCommandLine::Get(), CmdKey, Out))
 			return true;
 		const FString Env = FPlatformMisc::GetEnvironmentVariable(EnvKey);
@@ -136,8 +135,7 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 		}
 		return false;
 	};
-	auto ResolveInt = [&ResolveString](const TCHAR* CmdKey, const TCHAR* EnvKey, int32& Out) -> bool
-	{
+	auto ResolveInt = [&ResolveString](const TCHAR* CmdKey, const TCHAR* EnvKey, int32& Out) -> bool {
 		FString Str;
 		if (!ResolveString(CmdKey, EnvKey, Str) || !Str.IsNumeric())
 			return false;

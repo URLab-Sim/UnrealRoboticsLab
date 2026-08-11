@@ -293,7 +293,7 @@ bool FMjImportGoldenTest::RunTest(const FString& Parameters)
 		if (GoldenFiles().Num() == 0)
 		{
 			AddInfo(TEXT("no fixtures under Content/TestData/parity or Content/TestData/boundary; "
-				"zero fixtures checked"));
+						 "zero fixtures checked"));
 		}
 		return true;
 	}

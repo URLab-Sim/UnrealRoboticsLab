@@ -173,7 +173,7 @@ struct FScratchDir
 	~FScratchDir() { IFileManager::Get().DeleteDirectory(*Path, /*RequireExists=*/false, /*Tree=*/true); }
 };
 
-}  // namespace
+} // namespace
 
 // --- Composition ------------------------------------------------------------ //
 
@@ -491,10 +491,7 @@ bool FMjSceneSpecManagerAssetsShipTest::RunTest(const FString& Parameters)
 	// The manager's mesh and the participant's are two different files sharing
 	// one basename, so a ship-list that mounted the wrong bytes under the right
 	// name reaches the vertex-count assertions below and fails there.
-	if (AddMesh(Fixture, *Manager, TEXT("ground_mesh"), TEXT("meshA/base.obj"), ParityDir()) == nullptr ||
-		AddMeshGeom(Fixture, *Manager, SceneWorld, TEXT("ground"), TEXT("ground_mesh")) == nullptr ||
-		AddMesh(Fixture, *Robot, TEXT("part"), TEXT("meshB/base.obj"), ParityDir()) == nullptr ||
-		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
+	if (AddMesh(Fixture, *Manager, TEXT("ground_mesh"), TEXT("meshA/base.obj"), ParityDir()) == nullptr || AddMeshGeom(Fixture, *Manager, SceneWorld, TEXT("ground"), TEXT("ground_mesh")) == nullptr || AddMesh(Fixture, *Robot, TEXT("part"), TEXT("meshB/base.obj"), ParityDir()) == nullptr || AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
 	{
 		AddError(TEXT("could not author the scene's meshes"));
 		return false;
@@ -566,7 +563,8 @@ bool FMjSceneSpecManagerAssetsShipTest::RunTest(const FString& Parameters)
 		{
 			TestTrue(TEXT("the manager's mesh resolved to the same bytes"),
 				FMemory::Memcmp(Scene.Model->mesh_vert + 3 * Scene.Model->mesh_vertadr[Mine],
-					Reloaded->mesh_vert + 3 * Reloaded->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float)) == 0);
+					Reloaded->mesh_vert + 3 * Reloaded->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float))
+					== 0);
 		}
 		const int GroundGeom = mj_name2id(Reloaded, mjOBJ_GEOM, "ground");
 		if (TestTrue(TEXT("the manager's geom reloaded"), GroundGeom >= 0))
@@ -629,8 +627,7 @@ bool FMjSceneSpecAssetCollisionTest::RunTest(const FString& Parameters)
 			AddError(TEXT("could not spawn a participant"));
 			return false;
 		}
-		if (AddMesh(Fixture, *Robot, TEXT("part"), Files[Index], ParityDir()) == nullptr ||
-			AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
+		if (AddMesh(Fixture, *Robot, TEXT("part"), Files[Index], ParityDir()) == nullptr || AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
 		{
 			AddError(TEXT("could not author a participant"));
 			return false;
@@ -703,10 +700,7 @@ bool FMjSceneMjcfMountNamesTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	if (AddMesh(Fixture, *Robot, TEXT("left"), TEXT("meshA/base.obj"), ParityDir()) == nullptr ||
-		AddMesh(Fixture, *Robot, TEXT("right"), TEXT("meshB/base.obj"), ParityDir()) == nullptr ||
-		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell_left"), TEXT("left")) == nullptr ||
-		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell_right"), TEXT("right")) == nullptr)
+	if (AddMesh(Fixture, *Robot, TEXT("left"), TEXT("meshA/base.obj"), ParityDir()) == nullptr || AddMesh(Fixture, *Robot, TEXT("right"), TEXT("meshB/base.obj"), ParityDir()) == nullptr || AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell_left"), TEXT("left")) == nullptr || AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell_right"), TEXT("right")) == nullptr)
 	{
 		AddError(TEXT("could not author the participant"));
 		return false;
@@ -828,7 +822,8 @@ bool FMjSceneMjcfMountNamesTest::RunTest(const FString& Parameters)
 				static_cast<int32>(Other->mesh_facenum[Theirs]), static_cast<int32>(Scene.Model->mesh_facenum[Mine]));
 			TestTrue(FString::Printf(TEXT("%s: '%s' resolved to the same bytes"), Route, MeshName),
 				FMemory::Memcmp(Scene.Model->mesh_vert + 3 * Scene.Model->mesh_vertadr[Mine],
-					Other->mesh_vert + 3 * Other->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float)) == 0);
+					Other->mesh_vert + 3 * Other->mesh_vertadr[Theirs], 3 * Vertices * sizeof(float))
+					== 0);
 		}
 	};
 	SameMeshes(Reloaded, TEXT("the written text"));
@@ -970,8 +965,7 @@ bool FMjSceneSpecUnnamedAssetTest::RunTest(const FString& Parameters)
 		}
 		// No name on the mesh, and the geom refers to it by the spelling MuJoCo
 		// would derive -- which is how such a document is authored.
-		if (AddMesh(Fixture, *Robot, nullptr, Files[Index], ParityDir()) == nullptr ||
-			AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("base")) == nullptr)
+		if (AddMesh(Fixture, *Robot, nullptr, Files[Index], ParityDir()) == nullptr || AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("base")) == nullptr)
 		{
 			AddError(TEXT("could not author a participant"));
 			return false;
@@ -1223,8 +1217,7 @@ bool FMjSceneSpecDebugArtifactTest::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	if (AddMesh(Fixture, *Robot, TEXT("part"), TEXT("meshA/base.obj"), ParityDir()) == nullptr ||
-		AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
+	if (AddMesh(Fixture, *Robot, TEXT("part"), TEXT("meshA/base.obj"), ParityDir()) == nullptr || AddMeshGeom(Fixture, *Robot, ParticipantWorld, TEXT("shell"), TEXT("part")) == nullptr)
 	{
 		AddError(TEXT("could not author the participant"));
 		return false;
@@ -1298,7 +1291,7 @@ public:
 	void OnHeightField(const FMjAssetRequest&, const TArray<uint8>&) override { ++Delivered; }
 	void OnMissing(const FMjAssetRequest&) override { ++Missing; }
 };
-}  // namespace
+} // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjAssetSinkResolutionTest, "URLab.MuJoCo.AssetSink.Resolution",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -1322,8 +1315,7 @@ bool FMjAssetSinkResolutionTest::RunTest(const FString& Parameters)
 
 	// One mesh that is there and one that is not, so a pass that reports
 	// nothing missing and a pass that reports everything missing both fail.
-	if (AddMesh(Fixture, *Robot, TEXT("present"), TEXT("meshA/base.obj"), ParityDir()) == nullptr ||
-		AddMesh(Fixture, *Robot, TEXT("absent"), TEXT("meshA/nothing.obj"), ParityDir()) == nullptr)
+	if (AddMesh(Fixture, *Robot, TEXT("present"), TEXT("meshA/base.obj"), ParityDir()) == nullptr || AddMesh(Fixture, *Robot, TEXT("absent"), TEXT("meshA/nothing.obj"), ParityDir()) == nullptr)
 	{
 		AddError(TEXT("could not author the meshes"));
 		return false;
@@ -1401,4 +1393,4 @@ bool FMjAssetSinkCompilerDirsTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS
+#endif // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS

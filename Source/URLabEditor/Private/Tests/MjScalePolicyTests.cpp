@@ -201,7 +201,7 @@ TArray<double> AuthoredSize(const UMjNodeComponent& Element)
 	}
 	return TArray<double>();
 }
-}  // namespace MjScalePolicyTests
+} // namespace MjScalePolicyTests
 
 // ---------------------------------------------------------------------------
 // The cold baseline, which is where the sphere got away
@@ -890,4 +890,4 @@ bool FMjSizedElementsAreClassified::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

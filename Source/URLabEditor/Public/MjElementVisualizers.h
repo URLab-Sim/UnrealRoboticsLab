@@ -109,7 +109,7 @@ private:
 	TOptional<double> SweepRadiansPerAngle;
 
 	FDelegateHandle EndFrameHandle;
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 	/**
 	 * Set while the registration is waiting for the editor engine.

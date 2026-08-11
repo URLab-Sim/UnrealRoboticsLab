@@ -72,8 +72,8 @@ bool FMjRosRouteTableTotal::RunTest(const FString& Parameters)
 	{
 		const ERosSensorRoute Route = RouteForSemantic(static_cast<EMjSensorSemantic>(V));
 		const bool bValid = Route == ERosSensorRoute::Imu || Route == ERosSensorRoute::Wrench
-			|| Route == ERosSensorRoute::Range || Route == ERosSensorRoute::MagneticField
-			|| Route == ERosSensorRoute::Twist || Route == ERosSensorRoute::MultiArray;
+						 || Route == ERosSensorRoute::Range || Route == ERosSensorRoute::MagneticField
+						 || Route == ERosSensorRoute::Twist || Route == ERosSensorRoute::MultiArray;
 		TestTrue(*FString::Printf(TEXT("semantic %u maps to a route"), V), bValid);
 	}
 	return true;
@@ -187,8 +187,7 @@ bool FMjRosProviderRegistryBuiltins::RunTest(const FString& Parameters)
 	const TCHAR* Expected[] = {
 		TEXT("joint_state"), TEXT("imu"), TEXT("cmd_twist"), TEXT("sensors"),
 		TEXT("tf"), TEXT("clock"), TEXT("robot_description"),
-		TEXT("odometry"), TEXT("pose"), TEXT("camera_info"), TEXT("rep105_frames")
-	};
+		TEXT("odometry"), TEXT("pose"), TEXT("camera_info"), TEXT("rep105_frames")};
 	for (const TCHAR* Name : Expected)
 	{
 		TestTrue(*FString::Printf(TEXT("registry lists built-in '%s'"), Name),
@@ -229,14 +228,19 @@ bool FMjRosFreeBaseTwist::RunTest(const FString& Parameters)
 	// index resolves to it.
 	FMjBodyState Base;
 	Base.Name = FName(TEXT("trunk"));
-	Base.Xpos[0] = 1.0; Base.Xpos[1] = 2.0; Base.Xpos[2] = 3.0;
-	Base.Xquat[0] = S; Base.Xquat[1] = 0.0; Base.Xquat[2] = 0.0; Base.Xquat[3] = S;
+	Base.Xpos[0] = 1.0;
+	Base.Xpos[1] = 2.0;
+	Base.Xpos[2] = 3.0;
+	Base.Xquat[0] = S;
+	Base.Xquat[1] = 0.0;
+	Base.Xquat[2] = 0.0;
+	Base.Xquat[3] = S;
 	Art.Bodies.Add(Base);
 
 	FMjJointState Free;
 	Free.Name = FName(TEXT("root"));
 	Free.Type = EMjJointType::free;
-	Free.QPos = {1.0, 2.0, 3.0, S, 0.0, 0.0, S};       // pos + wxyz
+	Free.QPos = {1.0, 2.0, 3.0, S, 0.0, 0.0, S}; // pos + wxyz
 	// qvel: WORLD linear (1,0,0), BODY angular (0.1, 0.2, 0.3).
 	Free.QVel = {1.0, 0.0, 0.0, 0.1, 0.2, 0.3};
 	Art.Joints.Add(Free);

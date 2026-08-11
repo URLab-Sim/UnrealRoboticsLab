@@ -54,7 +54,8 @@ struct FMjImportSettings
  * Creates an AMjArticulation Blueprint and populates it with components.
  */
 UCLASS()
-class URLABEDITOR_API UMujocoImportFactory : public UFactory, public FReimportHandler
+class URLABEDITOR_API UMujocoImportFactory : public UFactory
+	, public FReimportHandler
 {
 	GENERATED_BODY()
 

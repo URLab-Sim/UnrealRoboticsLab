@@ -38,7 +38,7 @@ void RotateByQuat(double w, double x, double y, double z, const double V[3], dou
 	O[1] = V[1] + w * ty + (z * tx - x * tz);
 	O[2] = V[2] + w * tz + (x * ty - y * tx);
 }
-}  // namespace
+} // namespace
 
 void RotateWorldToBody(const double QuatWxyz[4], const double VWorld[3], double OutVBody[3])
 {
@@ -70,7 +70,7 @@ bool ComputeFreeBaseState(const FMjArticulationState& Art, FMjFreeBaseState& Out
 	{
 		Out.Position[i] = Free->QPos[i];
 	}
-	const double QuatWxyz[4] = { Free->QPos[3], Free->QPos[4], Free->QPos[5], Free->QPos[6] };
+	const double QuatWxyz[4] = {Free->QPos[3], Free->QPos[4], Free->QPos[5], Free->QPos[6]};
 	Out.OrientationXyzw[0] = QuatWxyz[1];
 	Out.OrientationXyzw[1] = QuatWxyz[2];
 	Out.OrientationXyzw[2] = QuatWxyz[3];
@@ -78,7 +78,7 @@ bool ComputeFreeBaseState(const FMjArticulationState& Art, FMjFreeBaseState& Out
 
 	// Twist: qvel[0..2] is WORLD linear (rotate into the base frame); qvel[3..5] is
 	// already BODY angular (pass through).
-	const double LinearWorld[3] = { Free->QVel[0], Free->QVel[1], Free->QVel[2] };
+	const double LinearWorld[3] = {Free->QVel[0], Free->QVel[1], Free->QVel[2]};
 	RotateWorldToBody(QuatWxyz, LinearWorld, Out.LinearBody);
 	Out.AngularBody[0] = Free->QVel[3];
 	Out.AngularBody[1] = Free->QVel[4];
@@ -87,7 +87,7 @@ bool ComputeFreeBaseState(const FMjArticulationState& Art, FMjFreeBaseState& Out
 	// The base body is the free-jointed root, whose world position equals the free
 	// joint qpos exactly (same mjData source). Match on that.
 	int32 BestIndex = INDEX_NONE;
-	double BestSq = 1.0e-12;  // tight: an exact copy, not a nearest-neighbour search
+	double BestSq = 1.0e-12; // tight: an exact copy, not a nearest-neighbour search
 	for (int32 i = 0; i < Art.Bodies.Num(); ++i)
 	{
 		const FMjBodyState& Body = Art.Bodies[i];
@@ -119,11 +119,11 @@ void PinholeKFromFovy(double FovyDegrees, int32 Width, int32 Height, double OutK
 	// would otherwise collapse the focal length to infinity.
 	const double FovyRad = FMath::DegreesToRadians(FovyDegrees > 0.0 ? FovyDegrees : 45.0);
 	const double Fy = (H * 0.5) / FMath::Tan(FovyRad * 0.5);
-	const double Fx = Fy;  // square pixels; horizontal FOV emerges from the width
+	const double Fx = Fy; // square pixels; horizontal FOV emerges from the width
 	OutK9[0] = Fx;
-	OutK9[2] = W * 0.5;    // cx
+	OutK9[2] = W * 0.5; // cx
 	OutK9[4] = Fy;
-	OutK9[5] = H * 0.5;    // cy
+	OutK9[5] = H * 0.5; // cy
 	OutK9[8] = 1.0;
 }
-}  // namespace MjRosStateEstimation
+} // namespace MjRosStateEstimation

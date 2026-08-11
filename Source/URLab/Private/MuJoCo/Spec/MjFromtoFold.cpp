@@ -32,8 +32,7 @@ constexpr double MjEps = 1e-14;
 /** The shapes `fromto` is defined for (mjCGeom::Compile, user_objects.cc:3979). */
 bool AdmitsFromto(EMjGeomType Type)
 {
-	return Type == EMjGeomType::capsule || Type == EMjGeomType::cylinder ||
-		Type == EMjGeomType::ellipsoid || Type == EMjGeomType::box;
+	return Type == EMjGeomType::capsule || Type == EMjGeomType::cylinder || Type == EMjGeomType::ellipsoid || Type == EMjGeomType::box;
 }
 
 /** The attribute ids the fold needs, or -1 where the element has none. */

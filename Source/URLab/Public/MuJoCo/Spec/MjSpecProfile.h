@@ -279,8 +279,7 @@ struct FMjRefPolicy
 				return;
 			}
 			using Slot = std::decay_t<U>;
-			if constexpr ((std::is_same_v<Slot, TOptional<FString>> || std::is_same_v<Slot, FString>) &&
-						  !std::is_const_v<U>)
+			if constexpr ((std::is_same_v<Slot, TOptional<FString>> || std::is_same_v<Slot, FString>) && !std::is_const_v<U>)
 			{
 				Object = &Value;
 				Ops = OpsFor<Slot>();
@@ -648,6 +647,6 @@ bool ReadEnum(const E& Element, int FieldId, int32& Out)
 	return bRead;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

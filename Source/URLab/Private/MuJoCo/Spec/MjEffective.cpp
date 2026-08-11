@@ -41,7 +41,7 @@ FString ClassNameOf(const UMjNodeComponent& Layer)
 	// because everything inherits from it.
 	return Parent->MjName.Get(TEXT("main"));
 }
-}  // namespace
+} // namespace
 
 // Editor and game thread both re-derive presentation, never at the same time and
 // never across a suspension point, so the open scope is a plain pointer rather
@@ -63,26 +63,26 @@ void MjEffectiveLayersOf(const UMjNodeComponent& Node, TArray<FMjEffectiveLayer>
 {
 	Out.Reset();
 	if (WithEffectiveDoc(Node, [&Out, &Node](auto& Effective) {
-		using P = typename std::decay_t<decltype(Effective)>::ProfileType;
-		gen::DispatchByType(const_cast<UMjNodeComponent&>(Node), [&Out, &Effective](auto& Element) {
-			// The schema layer is a shared prototype rather than a node of the
-			// document: it is recognised by being that object, and never asked
-			// which class it belongs to, because it belongs to none.
-			const UMjNodeComponent* const Schema =
-				&static_cast<const UMjNodeComponent&>(Effective.SchemaDefaultsOf(Element));
+			using P = typename std::decay_t<decltype(Effective)>::ProfileType;
+			gen::DispatchByType(const_cast<UMjNodeComponent&>(Node), [&Out, &Effective](auto& Element) {
+				// The schema layer is a shared prototype rather than a node of the
+				// document: it is recognised by being that object, and never asked
+				// which class it belongs to, because it belongs to none.
+				const UMjNodeComponent* const Schema =
+					&static_cast<const UMjNodeComponent&>(Effective.SchemaDefaultsOf(Element));
 
-			Effective.ForEachEffectiveLayer(Element, [&Out, Schema](const auto& Layer) {
-				const UMjNodeComponent& LayerNode = static_cast<const UMjNodeComponent&>(Layer);
-				FMjEffectiveLayer& Row = Out.AddDefaulted_GetRef();
-				Row.Node = &LayerNode;
-				Row.bSchema = &LayerNode == Schema;
-				Row.ClassName = Row.bSchema ? FString() : ClassNameOf<P>(LayerNode);
-				// Never stops: the caller is collecting the layers, not asking
-				// one of them a question.
-				return false;
+				Effective.ForEachEffectiveLayer(Element, [&Out, Schema](const auto& Layer) {
+					const UMjNodeComponent& LayerNode = static_cast<const UMjNodeComponent&>(Layer);
+					FMjEffectiveLayer& Row = Out.AddDefaulted_GetRef();
+					Row.Node = &LayerNode;
+					Row.bSchema = &LayerNode == Schema;
+					Row.ClassName = Row.bSchema ? FString() : ClassNameOf<P>(LayerNode);
+					// Never stops: the caller is collecting the layers, not asking
+					// one of them a question.
+					return false;
+				});
 			});
-		});
-	}))
+		}))
 	{
 		return;
 	}
@@ -107,6 +107,6 @@ void MjEffectiveLayersOf(const UMjNodeComponent& Node, TArray<FMjEffectiveLayer>
 	});
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

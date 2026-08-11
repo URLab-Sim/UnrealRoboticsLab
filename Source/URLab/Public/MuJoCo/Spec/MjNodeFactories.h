@@ -121,7 +121,7 @@ struct URLAB_API FScsNodeFactory : TMjNodeFactory<FMjScsProfile, FScsNodeFactory
 	static E* Construct(UMjNodeComponent* ParentElement);
 };
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR
 
 /**
  * Elements as live components on a spawned actor.
@@ -192,7 +192,7 @@ E* FScsNodeFactory::Construct(UMjNodeComponent* ParentElement)
 	return Template;
 }
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR
 
 template <class E>
 E* FInstanceNodeFactory::Construct(UMjNodeComponent* ParentElement)
@@ -215,6 +215,6 @@ E* FInstanceNodeFactory::Construct(UMjNodeComponent* ParentElement)
 	return Node;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

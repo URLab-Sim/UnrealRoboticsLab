@@ -253,7 +253,7 @@ UStaticMesh* AttemptMeshImport(const FString& SourcePath, const FString& Destina
 	return Mesh;
 }
 
-}  // namespace
+} // namespace
 
 UStaticMesh* ImportMeshAsset(const FString& SourcePath, const FString& DestinationPath, const FString& AssetName)
 {
@@ -425,4 +425,4 @@ UTexture2D* ImportTextureAsset(
 	return NewTexture;
 }
 
-}  // namespace urlab::editor
+} // namespace urlab::editor

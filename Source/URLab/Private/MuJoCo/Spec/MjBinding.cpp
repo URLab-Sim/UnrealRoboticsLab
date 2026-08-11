@@ -27,30 +27,54 @@ int32 ObjectCountOf(const mjModel* Model, int32 ObjType)
 {
 	switch (ObjType)
 	{
-		case mjOBJ_BODY: return Model->nbody;
-		case mjOBJ_JOINT: return Model->njnt;
-		case mjOBJ_GEOM: return Model->ngeom;
-		case mjOBJ_SITE: return Model->nsite;
-		case mjOBJ_CAMERA: return Model->ncam;
-		case mjOBJ_LIGHT: return Model->nlight;
-		case mjOBJ_FLEX: return Model->nflex;
-		case mjOBJ_MESH: return Model->nmesh;
-		case mjOBJ_SKIN: return Model->nskin;
-		case mjOBJ_HFIELD: return Model->nhfield;
-		case mjOBJ_TEXTURE: return Model->ntex;
-		case mjOBJ_MATERIAL: return Model->nmat;
-		case mjOBJ_PAIR: return Model->npair;
-		case mjOBJ_EXCLUDE: return Model->nexclude;
-		case mjOBJ_EQUALITY: return Model->neq;
-		case mjOBJ_TENDON: return Model->ntendon;
-		case mjOBJ_ACTUATOR: return Model->nu;
-		case mjOBJ_SENSOR: return Model->nsensor;
-		case mjOBJ_NUMERIC: return Model->nnumeric;
-		case mjOBJ_TEXT: return Model->ntext;
-		case mjOBJ_TUPLE: return Model->ntuple;
-		case mjOBJ_KEY: return Model->nkey;
-		case mjOBJ_PLUGIN: return Model->nplugin;
-		default: return 0;
+		case mjOBJ_BODY:
+			return Model->nbody;
+		case mjOBJ_JOINT:
+			return Model->njnt;
+		case mjOBJ_GEOM:
+			return Model->ngeom;
+		case mjOBJ_SITE:
+			return Model->nsite;
+		case mjOBJ_CAMERA:
+			return Model->ncam;
+		case mjOBJ_LIGHT:
+			return Model->nlight;
+		case mjOBJ_FLEX:
+			return Model->nflex;
+		case mjOBJ_MESH:
+			return Model->nmesh;
+		case mjOBJ_SKIN:
+			return Model->nskin;
+		case mjOBJ_HFIELD:
+			return Model->nhfield;
+		case mjOBJ_TEXTURE:
+			return Model->ntex;
+		case mjOBJ_MATERIAL:
+			return Model->nmat;
+		case mjOBJ_PAIR:
+			return Model->npair;
+		case mjOBJ_EXCLUDE:
+			return Model->nexclude;
+		case mjOBJ_EQUALITY:
+			return Model->neq;
+		case mjOBJ_TENDON:
+			return Model->ntendon;
+		case mjOBJ_ACTUATOR:
+			return Model->nu;
+		case mjOBJ_SENSOR:
+			return Model->nsensor;
+		case mjOBJ_NUMERIC:
+			return Model->nnumeric;
+		case mjOBJ_TEXT:
+			return Model->ntext;
+		case mjOBJ_TUPLE:
+			return Model->ntuple;
+		case mjOBJ_KEY:
+			return Model->nkey;
+		case mjOBJ_PLUGIN:
+			return Model->nplugin;
+		default:
+			return 0;
 	}
 }
 
@@ -63,7 +87,7 @@ TOptional<int32> IdOfType(const FMjBinding& Binding, const UMjNodeComponent& Nod
 	}
 	return Binding.Id(Node);
 }
-}  // namespace
+} // namespace
 
 void FMjBinding::Add(FEntry Entry)
 {
@@ -211,4 +235,4 @@ FMjBinding MjBindingOf(const urlab::spec::FMjCompiledScene& Scene)
 	return Out;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

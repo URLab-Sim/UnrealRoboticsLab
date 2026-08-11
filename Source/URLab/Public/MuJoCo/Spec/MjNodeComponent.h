@@ -82,7 +82,8 @@ enum class EMjPreviewProblem : uint8
  * attributes are emitted into MuJoCo/Gen; this is the fixed cost underneath them.
  */
 UCLASS(Abstract, ClassGroup = (MuJoCo))
-class URLAB_API UMjNodeComponent : public USceneComponent, public IMjStateProducer
+class URLAB_API UMjNodeComponent : public USceneComponent
+	, public IMjStateProducer
 {
 	GENERATED_BODY()
 
@@ -576,4 +577,4 @@ namespace urlab::spec
  */
 template <class Adapter>
 void MjNoteDanglingReferences(UMjNodeComponent& Root);
-}  // namespace urlab::spec
+} // namespace urlab::spec

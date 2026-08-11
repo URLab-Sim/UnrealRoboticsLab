@@ -53,7 +53,10 @@ FVector QuatWxyzToRpy(const mjtNum* Q)
 	const double Nrm = std::sqrt(W * W + X * X + Y * Y + Z * Z);
 	if (Nrm == 0.0)
 		return FVector::ZeroVector;
-	W /= Nrm; X /= Nrm; Y /= Nrm; Z /= Nrm;
+	W /= Nrm;
+	X /= Nrm;
+	Y /= Nrm;
+	Z /= Nrm;
 
 	const double SinrCosp = 2.0 * (W * X + Y * Z);
 	const double CosrCosp = 1.0 - 2.0 * (X * X + Y * Y);
@@ -61,8 +64,8 @@ FVector QuatWxyzToRpy(const mjtNum* Q)
 
 	const double Sinp = 2.0 * (W * Y - Z * X);
 	const double Pitch = (std::abs(Sinp) >= 1.0)
-		? std::copysign(PI / 2.0, Sinp)
-		: std::asin(Sinp);
+						   ? std::copysign(PI / 2.0, Sinp)
+						   : std::asin(Sinp);
 
 	const double SinyCosp = 2.0 * (W * Z + X * Y);
 	const double CosyCosp = 1.0 - 2.0 * (Y * Y + Z * Z);
@@ -133,7 +136,7 @@ double JointEffort(const mjModel* M, int J, const FUrdfExportConfig& Cfg,
 		else if (M->actuator_ctrllimited[A] && IsPlainMotor(M, A))
 		{
 			B = M->actuator_gainprm[A * mjNGAIN + 0]
-				* AbsMax(M->actuator_ctrlrange[2 * A + 0], M->actuator_ctrlrange[2 * A + 1]);
+			  * AbsMax(M->actuator_ctrlrange[2 * A + 0], M->actuator_ctrlrange[2 * A + 1]);
 		}
 		else
 		{
@@ -182,7 +185,7 @@ struct FMimicJointInfo
 	double Multiplier = 1.0;
 	double Offset = 0.0;
 };
-}  // namespace
+} // namespace
 
 FString FUrdfExporter::MeshBaseName(const mjModel* M, int32 MeshId)
 {
@@ -225,21 +228,18 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 
 	// Compiled name -> canonical URDF segment (art prefix stripped, sanitized),
 	// mirroring FMjCanonicalName::PartSegment without needing the AMjArticulation.
-	auto LocalName = [&Prefix](const char* Raw) -> FString
-	{
+	auto LocalName = [&Prefix](const char* Raw) -> FString {
 		FString Local = Raw ? FString(UTF8_TO_TCHAR(Raw)) : FString();
 		if (!Prefix.IsEmpty() && Local.StartsWith(Prefix))
 			Local = Local.Mid(Prefix.Len());
 		return FMjCanonicalName::Sanitize(Local);
 	};
-	auto BodyName = [M, &LocalName](int i) -> FString
-	{
+	auto BodyName = [M, &LocalName](int i) -> FString {
 		return LocalName(mj_id2name(const_cast<mjModel*>(M), mjOBJ_BODY, i));
 	};
 
 	// Absolute file:// URI for a mesh id; also records the mesh id for STL export.
-	auto MeshUri = [&](int32 MeshId) -> FString
-	{
+	auto MeshUri = [&](int32 MeshId) -> FString {
 		Model.MeshIds.AddUnique(MeshId);
 		const FString File = MeshBaseName(M, MeshId) + TEXT(".stl");
 		FString Full = FPaths::ConvertRelativePathToFull(FPaths::Combine(MeshUriDir, File));
@@ -304,7 +304,11 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 			bool bHasChild = false;
 			for (int32 j : BodyIds)
 			{
-				if (M->body_parentid[j] == i) { bHasChild = true; break; }
+				if (M->body_parentid[j] == i)
+				{
+					bHasChild = true;
+					break;
+				}
 			}
 			if (!bHasChild)
 				LeafBodyId = i;
@@ -317,8 +321,7 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 	// Emit one joint (real, fixed, or a chained dummy segment) into JointXml and
 	// Model.Joints. ForceFixed synthesizes the parentless-child fixed joint.
 	auto EmitJoint = [&](int J, const FString& ParentLink, const FString& ChildLink,
-		const FVector& OriginXyz, const FVector& OriginRpy, bool bForceFixed)
-	{
+						 const FVector& OriginXyz, const FVector& OriginRpy, bool bForceFixed) {
 		FUrdfJoint Joint;
 		Joint.Parent = ParentLink;
 		Joint.Child = ChildLink;
@@ -518,7 +521,7 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 		Model.Links.Add(MoveTemp(Link));
 
 		if (Parent == 0)
-			continue;  // subtree root: no joint to world, placement rides tf2
+			continue; // subtree root: no joint to world, placement rides tf2
 
 		const FVector ParentOff = Offset[Parent];
 		const mjtNum* Bp = &M->body_pos[3 * i];
@@ -586,7 +589,8 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 		{
 			Model.Warnings.Add(FString::Printf(
 				TEXT("%d non-joint equality constraint(s) dropped (weld, connect, "
-					 "tendon etc. have no URDF equivalent)"), NonJointEq));
+					 "tendon etc. have no URDF equivalent)"),
+				NonJointEq));
 		}
 	}
 
@@ -600,7 +604,11 @@ FUrdfModel FUrdfExporter::Build(const mjModel* M, const FString& RobotName,
 		const FUrdfJoint* Found = nullptr;
 		for (const FUrdfJoint& J : Model.Joints)
 		{
-			if (J.MjJointId == JntId) { Found = &J; break; }
+			if (J.MjJointId == JntId)
+			{
+				Found = &J;
+				break;
+			}
 		}
 		if (!Found)
 			continue;

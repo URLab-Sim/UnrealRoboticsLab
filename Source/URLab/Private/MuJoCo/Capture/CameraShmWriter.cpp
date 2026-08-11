@@ -28,7 +28,7 @@ bool FCameraShmWriter::Open(const FString& Path, FIntPoint Resolution)
 
 	// 4 bytes per pixel (FColor) + 4-byte size prefix + frame meta per slot.
 	const uint32 Stride = static_cast<uint32>(ExpectedPixels) * 4u
-		+ sizeof(uint32) + sizeof(FMjCameraFrameMeta);
+						+ sizeof(uint32) + sizeof(FMjCameraFrameMeta);
 	return Region.Open(Path, Stride, /*NBuffers=*/2);
 }
 

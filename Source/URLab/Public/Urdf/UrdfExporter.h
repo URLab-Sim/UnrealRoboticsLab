@@ -37,8 +37,8 @@ typedef mjModel_ mjModel;
 struct FUrdfExportConfig
 {
 	double DefaultEffort = 100.0;
-	double DefaultVelocityAngular = 3.14;   // rad/s, for hinge joints
-	double DefaultVelocityLinear = 1.0;     // m/s, for slide joints
+	double DefaultVelocityAngular = 3.14; // rad/s, for hinge joints
+	double DefaultVelocityLinear = 1.0;   // m/s, for slide joints
 	/** Per-joint (compiled joint name) velocity override, highest priority. */
 	TMap<FString, double> VelocityOverrides;
 	/** Widen exported position limits by this (rad / m) so MuJoCo's soft-limit
@@ -56,8 +56,8 @@ struct FUrdfExportConfig
 struct FUrdfGeomFrame
 {
 	int32 MjGeomId = -1;
-	FVector LocalPos = FVector::ZeroVector;   // origin xyz after the jnt_pos frame-shift, metres
-	FVector LocalRpy = FVector::ZeroVector;   // origin rpy (extrinsic XYZ), radians
+	FVector LocalPos = FVector::ZeroVector; // origin xyz after the jnt_pos frame-shift, metres
+	FVector LocalRpy = FVector::ZeroVector; // origin rpy (extrinsic XYZ), radians
 };
 
 /** One URDF link. Dummy links (multi-joint bodies) carry no geoms. */
@@ -73,16 +73,16 @@ struct FUrdfJoint
 	FString Name;
 	FString Parent;
 	FString Child;
-	FString Type;   // revolute / continuous / prismatic / fixed
+	FString Type; // revolute / continuous / prismatic / fixed
 	FVector OriginPos = FVector::ZeroVector;
 	FVector OriginRpy = FVector::ZeroVector;
 	FVector Axis = FVector::ZeroVector;
-	bool bHasLimit = false;   // lower/upper present (revolute + prismatic)
+	bool bHasLimit = false; // lower/upper present (revolute + prismatic)
 	double Lower = 0.0;
 	double Upper = 0.0;
 	double Effort = 0.0;
 	double Velocity = 0.0;
-	int32 MjJointId = -1;     // -1 for synthesized fixed joints and dummy chains
+	int32 MjJointId = -1; // -1 for synthesized fixed joints and dummy chains
 };
 
 /** Structured result of a build plus the serialized XML. */

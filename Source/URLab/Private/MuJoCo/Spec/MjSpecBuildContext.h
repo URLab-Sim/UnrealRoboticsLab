@@ -203,6 +203,6 @@ struct FMjSpecWriteContext
 	bool Warn(const UMjNodeComponent& Node, const FString& Message);
 };
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

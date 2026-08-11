@@ -60,8 +60,7 @@ public:
 		// sanitize collision cannot hide a distinct camera - mirrors the camera name
 		// map the RPC / streaming paths build.
 		TSet<FString> Seen;
-		auto AddCamera = [this, &Factory, &Seen](UMjCamera* Cam)
-		{
+		auto AddCamera = [this, &Factory, &Seen](UMjCamera* Cam) {
 			if (!Cam)
 			{
 				return;
@@ -128,8 +127,8 @@ private:
 			const TArray<float> FocalPixel = Cam->GetFocalpixel();
 			if (FocalPixel.Num() >= 2 && FocalPixel[0] > 0 && FocalPixel[1] > 0)
 			{
-				OutK[0] = static_cast<double>(FocalPixel[0]);  // fx
-				OutK[4] = static_cast<double>(FocalPixel[1]);  // fy
+				OutK[0] = static_cast<double>(FocalPixel[0]); // fx
+				OutK[4] = static_cast<double>(FocalPixel[1]); // fy
 			}
 		}
 	}

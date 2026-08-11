@@ -59,7 +59,7 @@ void StampUnorderedChildren(const TArray<FMjOrderedChild>& Children)
 		}
 	}
 }
-}  // namespace
+} // namespace
 
 TArray<FMjOrderedChild> MjOrderedChildrenOf(const FSpecRef& Spec, UMjNodeComponent& Parent)
 {
@@ -150,7 +150,7 @@ namespace
 {
 thread_local FMjScsScope* GCurrentScsScope = nullptr;
 std::atomic<int64> GNodeMapBuilds{0};
-}
+} // namespace
 
 FMjScsScope::FMjScsScope(UBlueprint& Blueprint)
 	: Owner(&Blueprint)
@@ -385,8 +385,8 @@ void FMjScsAdapter::Detach(UMjNodeComponent& Child)
 	}
 }
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

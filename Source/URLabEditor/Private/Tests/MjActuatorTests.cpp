@@ -47,7 +47,7 @@ UMjActuator* ActuatorSection(FMjUESession& Sess)
 {
 	return Sess.Add<UMjActuator>(Sess.Robot->Spec);
 }
-}  // namespace MjActuatorTests
+} // namespace MjActuatorTests
 
 // ============================================================================
 // URLab.Actuator.MotorActuator_Binds

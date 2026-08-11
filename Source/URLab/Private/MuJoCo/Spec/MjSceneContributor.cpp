@@ -34,7 +34,7 @@ void DestroySubtree(USceneComponent& Parent)
 		}
 	}
 }
-}  // namespace
+} // namespace
 
 void MjDestroySpecChildren(UMjNodeComponent& Root)
 {

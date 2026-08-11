@@ -130,7 +130,7 @@ UStaticMesh* UnitCube()
 {
 	return LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
 }
-}  // namespace MjSceneContributorTests
+} // namespace MjSceneContributorTests
 
 // ---------------------------------------------------------------------------
 // Heightfield
@@ -414,9 +414,9 @@ bool FMjQuickConvertMobilityTest::RunTest(const FString& Parameters)
 		int32 ExpectedMocap;
 	};
 	const FCase Cases[] = {
-		{TEXT("the default conversion is free to move"), false, false, 7, 0},
-		{TEXT("a static conversion is welded to the world"), true, false, 0, 0},
-		{TEXT("an Unreal-driven conversion is a mocap body"), false, true, 0, 1},
+		{     TEXT("the default conversion is free to move"), false, false, 7, 0},
+		{ TEXT("a static conversion is welded to the world"),  true, false, 0, 0},
+		{TEXT("an Unreal-driven conversion is a mocap body"), false,  true, 0, 1},
 	};
 
 	for (const FCase& Case : Cases)
@@ -649,4 +649,4 @@ bool FMjShippedAssetNamesMatchSpecTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

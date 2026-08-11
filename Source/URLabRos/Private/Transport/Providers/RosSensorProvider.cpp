@@ -101,59 +101,59 @@ public:
 
 			switch (Entry.Route)
 			{
-			case ERosSensorRoute::Wrench:
-			{
-				double Force[3] = {0.0, 0.0, 0.0};
-				double Torque[3] = {0.0, 0.0, 0.0};
-				if (const FMjSensorState* F = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+				case ERosSensorRoute::Wrench:
 				{
-					MjRosProvider::FirstThree(F->Values, Force);
+					double Force[3] = {0.0, 0.0, 0.0};
+					double Torque[3] = {0.0, 0.0, 0.0};
+					if (const FMjSensorState* F = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+					{
+						MjRosProvider::FirstThree(F->Values, Force);
+					}
+					if (const FMjSensorState* T = MjRosProvider::FindSensor(Art, Entry.SecondaryName))
+					{
+						MjRosProvider::FirstThree(T->Values, Torque);
+					}
+					Entry.Pub.PublishWrench(Force, Torque, SimTimeNs);
+					break;
 				}
-				if (const FMjSensorState* T = MjRosProvider::FindSensor(Art, Entry.SecondaryName))
+				case ERosSensorRoute::Range:
 				{
-					MjRosProvider::FirstThree(T->Values, Torque);
+					const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName);
+					const double Reading = (S && S->Values.Num() > 0) ? S->Values[0] : 0.0;
+					Entry.Pub.PublishRange(Reading, SimTimeNs);
+					break;
 				}
-				Entry.Pub.PublishWrench(Force, Torque, SimTimeNs);
-				break;
-			}
-			case ERosSensorRoute::Range:
-			{
-				const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName);
-				const double Reading = (S && S->Values.Num() > 0) ? S->Values[0] : 0.0;
-				Entry.Pub.PublishRange(Reading, SimTimeNs);
-				break;
-			}
-			case ERosSensorRoute::MagneticField:
-			{
-				double Field[3] = {0.0, 0.0, 0.0};
-				if (const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+				case ERosSensorRoute::MagneticField:
 				{
-					MjRosProvider::FirstThree(S->Values, Field);
+					double Field[3] = {0.0, 0.0, 0.0};
+					if (const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+					{
+						MjRosProvider::FirstThree(S->Values, Field);
+					}
+					Entry.Pub.PublishMagneticField(Field, SimTimeNs);
+					break;
 				}
-				Entry.Pub.PublishMagneticField(Field, SimTimeNs);
-				break;
-			}
-			case ERosSensorRoute::Twist:
-			{
-				double Linear[3] = {0.0, 0.0, 0.0};
-				const double Angular[3] = {0.0, 0.0, 0.0};
-				if (const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+				case ERosSensorRoute::Twist:
 				{
-					MjRosProvider::FirstThree(S->Values, Linear);
+					double Linear[3] = {0.0, 0.0, 0.0};
+					const double Angular[3] = {0.0, 0.0, 0.0};
+					if (const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+					{
+						MjRosProvider::FirstThree(S->Values, Linear);
+					}
+					Entry.Pub.PublishTwistStamped(Linear, Angular, SimTimeNs);
+					break;
 				}
-				Entry.Pub.PublishTwistStamped(Linear, Angular, SimTimeNs);
-				break;
-			}
-			case ERosSensorRoute::MultiArray:
-			{
-				if (const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+				case ERosSensorRoute::MultiArray:
 				{
-					Entry.Pub.PublishFloat64MultiArray(S->Values.GetData(), S->Values.Num());
+					if (const FMjSensorState* S = MjRosProvider::FindSensor(Art, Entry.PrimaryName))
+					{
+						Entry.Pub.PublishFloat64MultiArray(S->Values.GetData(), S->Values.Num());
+					}
+					break;
 				}
-				break;
-			}
-			case ERosSensorRoute::Imu:
-				break;  // owned by the Imu provider
+				case ERosSensorRoute::Imu:
+					break; // owned by the Imu provider
 			}
 		}
 	}
@@ -165,8 +165,8 @@ private:
 	{
 		int32 ArtIndex = 0;
 		ERosSensorRoute Route = ERosSensorRoute::MultiArray;
-		FName PrimaryName;    // the source sensor (Wrench: the force sensor, may be None)
-		FName SecondaryName;  // Wrench only: the torque sensor (may be None)
+		FName PrimaryName;   // the source sensor (Wrench: the force sensor, may be None)
+		FName SecondaryName; // Wrench only: the torque sensor (may be None)
 		FMjRosPub Pub;
 	};
 
@@ -175,21 +175,21 @@ private:
 	{
 		switch (Route)
 		{
-		case ERosSensorRoute::Range:
-			// No FOV / range bounds in the IR; publish the reading with neutral
-			// constants (infrared, unbounded) so consumers still get the distance.
-			return Factory.CreateRange(Topic, ArtName, /*RadiationType=*/1,
-				/*FieldOfView=*/0.0f, /*MinRange=*/0.0f, /*MaxRange=*/TNumericLimits<float>::Max());
-		case ERosSensorRoute::MagneticField:
-			return Factory.CreateMagneticField(Topic, ArtName);
-		case ERosSensorRoute::Twist:
-			return Factory.CreateTwistStamped(Topic, ArtName);
-		case ERosSensorRoute::MultiArray:
-			return Factory.CreateFloat64MultiArray(Topic);
-		case ERosSensorRoute::Wrench:
-		case ERosSensorRoute::Imu:
-		default:
-			return FMjRosPub();
+			case ERosSensorRoute::Range:
+				// No FOV / range bounds in the IR; publish the reading with neutral
+				// constants (infrared, unbounded) so consumers still get the distance.
+				return Factory.CreateRange(Topic, ArtName, /*RadiationType=*/1,
+					/*FieldOfView=*/0.0f, /*MinRange=*/0.0f, /*MaxRange=*/TNumericLimits<float>::Max());
+			case ERosSensorRoute::MagneticField:
+				return Factory.CreateMagneticField(Topic, ArtName);
+			case ERosSensorRoute::Twist:
+				return Factory.CreateTwistStamped(Topic, ArtName);
+			case ERosSensorRoute::MultiArray:
+				return Factory.CreateFloat64MultiArray(Topic);
+			case ERosSensorRoute::Wrench:
+			case ERosSensorRoute::Imu:
+			default:
+				return FMjRosPub();
 		}
 	}
 

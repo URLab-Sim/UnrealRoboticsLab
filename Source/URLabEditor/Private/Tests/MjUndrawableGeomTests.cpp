@@ -144,7 +144,7 @@ FString ProblemText(const UMjNodeComponent& Element)
 	return Element.PreviewProblems.Num() > 0 ? Element.PreviewProblems[0] : FString();
 }
 
-}  // namespace MjUndrawableGeomTests
+} // namespace MjUndrawableGeomTests
 
 // ============================================================================
 // URLab.Preview.InheritedMeshTypeWithNoMeshIsReported
@@ -221,4 +221,4 @@ bool FMjUndrawableGeomIsReported::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

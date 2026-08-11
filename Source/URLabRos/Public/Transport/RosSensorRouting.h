@@ -70,15 +70,15 @@ struct FMjWrenchPair
 
 namespace MjRosSensorRouting
 {
-	/** The topic a sensor publishes on for its route. The MultiArray fallback uses
-	 *  the self-describing /<art>/sensors/<name>; typed routes use
-	 *  /<art>/<name>/<suffix>. Pure, exposed for tests. */
-	URLABROS_API FString TopicFor(const FString& ArtSegment, const FString& SensorName,
-		ERosSensorRoute Route);
+/** The topic a sensor publishes on for its route. The MultiArray fallback uses
+ *  the self-describing /<art>/sensors/<name>; typed routes use
+ *  /<art>/<name>/<suffix>. Pure, exposed for tests. */
+URLABROS_API FString TopicFor(const FString& ArtSegment, const FString& SensorName,
+	ERosSensorRoute Route);
 
-	/** Pair an articulation's Force and Torque sensors into wrench rows by array
-	 *  order: the i-th force with the i-th torque. One force + one torque yields a
-	 *  single fully-populated pair. Pure, exposed for tests. */
-	URLABROS_API void GatherWrenchPairs(const FMjArticulationState& Art,
-		TArray<FMjWrenchPair>& OutPairs);
-}
+/** Pair an articulation's Force and Torque sensors into wrench rows by array
+ *  order: the i-th force with the i-th torque. One force + one torque yields a
+ *  single fully-populated pair. Pure, exposed for tests. */
+URLABROS_API void GatherWrenchPairs(const FMjArticulationState& Art,
+	TArray<FMjWrenchPair>& OutPairs);
+} // namespace MjRosSensorRouting

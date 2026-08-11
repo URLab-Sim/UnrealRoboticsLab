@@ -52,7 +52,8 @@ class UMjNodeComponent;
  * later compile, exactly as an imported robot's meshes are.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
-class URLAB_API UMjQuickConvertComponent : public UActorComponent, public IMjSceneContributor
+class URLAB_API UMjQuickConvertComponent : public UActorComponent
+	, public IMjSceneContributor
 {
 	GENERATED_BODY()
 

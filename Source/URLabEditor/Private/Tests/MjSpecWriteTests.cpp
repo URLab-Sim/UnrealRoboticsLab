@@ -172,7 +172,7 @@ struct FSpecWriteScratch
 	~FSpecWriteScratch() { IFileManager::Get().DeleteDirectory(*Path, /*RequireExists=*/false, /*Tree=*/true); }
 };
 
-}  // namespace
+} // namespace
 
 // --- Storage shapes -------------------------------------------------------- //
 
@@ -198,15 +198,15 @@ bool FMjSpecWriteShapesTest::RunTest(const FString& Parameters)
 	}
 
 	// One authored value per storage shape the emitter produces.
-	Geom->Type = EMjGeomType::box;                             // enum
-	Geom->Condim = 4;                                          // int scalar
-	Geom->Mass = 2.5;                                          // double scalar
-	Geom->Shellinertia = true;                                 // bool onto an enum field
-	Geom->Size = TArray<double>({ 0.1, 0.2 });                 // range into a fixed array
-	Geom->Pos = FMjPosition3(1.0, 2.0, 3.0);                   // fixed arity, kind-typed
-	Geom->Rgba = FLinearColor(0.25f, 0.5f, 0.75f, 1.0f);       // fixed arity, float target
-	Geom->User = TArray<double>({ 7.0, 8.0 });                 // unbounded onto a vector
-	Geom->Material = FString(TEXT("Paint"));                   // reference onto a string
+	Geom->Type = EMjGeomType::box;                       // enum
+	Geom->Condim = 4;                                    // int scalar
+	Geom->Mass = 2.5;                                    // double scalar
+	Geom->Shellinertia = true;                           // bool onto an enum field
+	Geom->Size = TArray<double>({0.1, 0.2});             // range into a fixed array
+	Geom->Pos = FMjPosition3(1.0, 2.0, 3.0);             // fixed arity, kind-typed
+	Geom->Rgba = FLinearColor(0.25f, 0.5f, 0.75f, 1.0f); // fixed arity, float target
+	Geom->User = TArray<double>({7.0, 8.0});             // unbounded onto a vector
+	Geom->Material = FString(TEXT("Paint"));             // reference onto a string
 
 	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
 	if (Built.Spec == nullptr)
@@ -269,7 +269,7 @@ bool FMjSpecWriteUnauthoredTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Geom->Type = EMjGeomType::sphere;
-	Geom->Size = TArray<double>({ 0.1 });
+	Geom->Size = TArray<double>({0.1});
 
 	mjsGeom Fresh;
 	mjs_defaultGeom(&Fresh);
@@ -331,11 +331,11 @@ bool FMjSpecWriteSizeArityTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Ball->Type = EMjGeomType::sphere;
-	Ball->Size = TArray<double>({ 0.1, 0.2, 0.3 });
+	Ball->Size = TArray<double>({0.1, 0.2, 0.3});
 	// The control: three values is exactly what a box reads, so a pass that
 	// reported both would be reporting length rather than arity.
 	Brick->Type = EMjGeomType::box;
-	Brick->Size = TArray<double>({ 0.1, 0.2, 0.3 });
+	Brick->Size = TArray<double>({0.1, 0.2, 0.3});
 
 	TArray<FMjSpecDiagnostic> Diagnostics;
 	urlab::spec::FMjBuiltSpec Built = urlab::spec::BuildSpec(Fixture.Spec(), Diagnostics);
@@ -473,10 +473,10 @@ bool FMjSpecWriteDefaultsTest::RunTest(const FString& Parameters)
 	}
 	Geom->Dclass = FString(TEXT("inner"));
 	Geom->Type = EMjGeomType::sphere;
-	Geom->Size = TArray<double>({ 0.1 });
+	Geom->Size = TArray<double>({0.1});
 	Shallow->Dclass = FString(TEXT("outer"));
 	Shallow->Type = EMjGeomType::sphere;
-	Shallow->Size = TArray<double>({ 0.1 });
+	Shallow->Size = TArray<double>({0.1});
 
 	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
 	if (Built.Spec == nullptr)
@@ -554,9 +554,9 @@ bool FMjSpecWriteRootDefaultTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Plain->Type = EMjGeomType::sphere;
-	Plain->Size = TArray<double>({ 0.1 });
+	Plain->Size = TArray<double>({0.1});
 	Classed->Type = EMjGeomType::sphere;
-	Classed->Size = TArray<double>({ 0.1 });
+	Classed->Size = TArray<double>({0.1});
 	Classed->Dclass = FString(TEXT("named"));
 
 	urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
@@ -629,7 +629,7 @@ bool FMjSpecWriteChildclassTest::RunTest(const FString& Parameters)
 
 	const auto Sphere = [](UMjGeom* Geom) {
 		Geom->Type = EMjGeomType::sphere;
-		Geom->Size = TArray<double>({ 0.1 });
+		Geom->Size = TArray<double>({0.1});
 	};
 
 	UMjBody* const Host = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("Host"));
@@ -639,8 +639,7 @@ bool FMjSpecWriteChildclassTest::RunTest(const FString& Parameters)
 	UMjGeom* const Overriding = Fixture.Add<UMjGeom>(Host, TEXT("Overriding"));
 	UMjBody* const Shallow = Fixture.Add<UMjBody>(Fixture.WorldBody, TEXT("Shallow"));
 	UMjGeom* const ShallowGeom = Fixture.Add<UMjGeom>(Shallow, TEXT("ShallowGeom"));
-	if (Host == nullptr || Nested == nullptr || Direct == nullptr || Deep == nullptr ||
-		Overriding == nullptr || Shallow == nullptr || ShallowGeom == nullptr)
+	if (Host == nullptr || Nested == nullptr || Direct == nullptr || Deep == nullptr || Overriding == nullptr || Shallow == nullptr || ShallowGeom == nullptr)
 	{
 		AddError(TEXT("could not author the bodies"));
 		return false;
@@ -721,7 +720,7 @@ bool FMjSpecWriteWalkTest::RunTest(const FString& Parameters)
 		return false;
 	}
 	Geom->Type = EMjGeomType::sphere;
-	Geom->Size = TArray<double>({ 0.1 });
+	Geom->Size = TArray<double>({0.1});
 
 	UMjSensor* const Sensors = Fixture.Add<UMjSensor>(Fixture.Robot->Spec);
 	UMjGyro* const Gyro = Fixture.Add<UMjGyro>(Sensors, TEXT("Rates"));
@@ -741,11 +740,11 @@ bool FMjSpecWriteWalkTest::RunTest(const FString& Parameters)
 	// Every component that named an element has a handle, and it is the handle
 	// the walk created rather than one recovered by matching names afterwards.
 	const UMjNodeComponent* const Expected[] = {
-		Fixture.WorldBody, Body, Child, Geom, Joint, Site, Gyro };
+		Fixture.WorldBody, Body, Child, Geom, Joint, Site, Gyro};
 	for (const UMjNodeComponent* Node : Expected)
 	{
 		if (!TestTrue(FString::Printf(TEXT("%s is in ElementFor"), *Node->GetName()),
-			Built.ElementFor.Contains(Node)))
+				Built.ElementFor.Contains(Node)))
 		{
 			continue;
 		}
@@ -809,7 +808,7 @@ bool FMjSpecWriteModelNameTest::RunTest(const FString& Parameters)
 			return FString();
 		}
 		Geom->Type = EMjGeomType::sphere;
-		Geom->Size = TArray<double>({ 0.1 });
+		Geom->Size = TArray<double>({0.1});
 
 		urlab::spec::FMjBuiltSpec Built = Build(*this, Fixture.Spec());
 		if (Built.Spec == nullptr)
@@ -962,7 +961,7 @@ bool FMjSpecWriteSelfAttachTest::RunTest(const FString& Parameters)
 	ClassGeom->Condim = 6;
 	Shape->Dclass = FString(TEXT("chunky"));
 	Shape->Type = EMjGeomType::sphere;
-	Shape->Size = TArray<double>({ 0.1 });
+	Shape->Size = TArray<double>({0.1});
 	Attach->Body = FString(TEXT("link"));
 	Attach->Prefix = FString(TEXT("dup_"));
 
@@ -1094,4 +1093,4 @@ bool FMjSpecWriteWholeModelAttachTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS
+#endif // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS

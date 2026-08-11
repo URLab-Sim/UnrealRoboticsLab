@@ -121,7 +121,7 @@ FString Joined(const TArray<FText>& Labels)
 	return FString::Join(Parts, TEXT("|"));
 }
 
-}  // namespace MjArrayRowTests
+} // namespace MjArrayRowTests
 
 // ============================================================================
 // URLab.Editor.FrictionSlotsAreNamedForTheElementTheyAreOn
@@ -264,4 +264,4 @@ bool FMjEulerRowAppearsWhereQuatDoes::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

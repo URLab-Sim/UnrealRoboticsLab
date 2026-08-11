@@ -171,10 +171,10 @@ TArray<FMjConvertedHull> ExportHulls(UStaticMeshComponent& Smc, const FString& O
 	{
 		IFileManager::Get().MakeDirectory(*Directory, true);
 		Count = bLargeIndices
-			? MeshUtils::SaveMesh(ObjPath, Vertices, TriGeom.GetReference()->Elements().GetLargeIndexBuffer(),
-				  bComplex, CoacdThreshold)
-			: MeshUtils::SaveMesh(ObjPath, Vertices, TriGeom.GetReference()->Elements().GetSmallIndexBuffer(),
-				  bComplex, CoacdThreshold);
+				  ? MeshUtils::SaveMesh(ObjPath, Vertices, TriGeom.GetReference()->Elements().GetLargeIndexBuffer(),
+						bComplex, CoacdThreshold)
+				  : MeshUtils::SaveMesh(ObjPath, Vertices, TriGeom.GetReference()->Elements().GetSmallIndexBuffer(),
+						bComplex, CoacdThreshold);
 		if (Count == 0)
 		{
 			UE_LOG(LogURLab, Error, TEXT("[MjQuickConvert] could not export '%s' to '%s'."), *AssetName, *ObjPath);
@@ -196,7 +196,7 @@ TArray<FMjConvertedHull> ExportHulls(UStaticMeshComponent& Smc, const FString& O
 	}
 	return Out;
 }
-}  // namespace
+} // namespace
 
 UMjQuickConvertComponent::UMjQuickConvertComponent()
 {

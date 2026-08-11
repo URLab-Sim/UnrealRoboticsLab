@@ -82,7 +82,9 @@ void SampleBox(const FMjWorldGeom& G, TArray<float>& Out)
 			double Px = Sx, Py = Y, Pz = Z;
 			ApplyWorldTransform(G.Xpos, G.Xquat, Px, Py, Pz);
 			EmitPoint(Out, Px, Py, Pz);
-			Px = -Sx; Py = Y; Pz = Z;
+			Px = -Sx;
+			Py = Y;
+			Pz = Z;
 			ApplyWorldTransform(G.Xpos, G.Xquat, Px, Py, Pz);
 			EmitPoint(Out, Px, Py, Pz);
 		}
@@ -97,7 +99,9 @@ void SampleBox(const FMjWorldGeom& G, TArray<float>& Out)
 			double Px = X, Py = Sy, Pz = Z;
 			ApplyWorldTransform(G.Xpos, G.Xquat, Px, Py, Pz);
 			EmitPoint(Out, Px, Py, Pz);
-			Px = X; Py = -Sy; Pz = Z;
+			Px = X;
+			Py = -Sy;
+			Pz = Z;
 			ApplyWorldTransform(G.Xpos, G.Xquat, Px, Py, Pz);
 			EmitPoint(Out, Px, Py, Pz);
 		}
@@ -112,7 +116,9 @@ void SampleBox(const FMjWorldGeom& G, TArray<float>& Out)
 			double Px = X, Py = Y, Pz = Sz;
 			ApplyWorldTransform(G.Xpos, G.Xquat, Px, Py, Pz);
 			EmitPoint(Out, Px, Py, Pz);
-			Px = X; Py = Y; Pz = -Sz;
+			Px = X;
+			Py = Y;
+			Pz = -Sz;
 			ApplyWorldTransform(G.Xpos, G.Xquat, Px, Py, Pz);
 			EmitPoint(Out, Px, Py, Pz);
 		}
@@ -262,7 +268,11 @@ void SampleMesh(const FMjWorldGeom& G, TArray<float>& Out)
 		{
 			double U = FMath::FRand();
 			double V = FMath::FRand();
-			if (U + V > 1.0) { U = 1.0 - U; V = 1.0 - V; }
+			if (U + V > 1.0)
+			{
+				U = 1.0 - U;
+				V = 1.0 - V;
+			}
 			double Px = V0x + U * E1x + V * E2x;
 			double Py = V0y + U * E1y + V * E2y;
 			double Pz = V0z + U * E1z + V * E2z;

@@ -47,7 +47,7 @@ std::atomic<uint64> GMjSerialCounter{0};
 
 /** How close two transforms must be before a gizmo drag counts as a no-op. */
 constexpr double MjPreviewEpsilon = UE_KINDA_SMALL_NUMBER;
-}  // namespace
+} // namespace
 
 UMjNodeComponent::UMjNodeComponent()
 {
@@ -166,7 +166,7 @@ namespace
  * silence the other.
  */
 TSet<TPair<uint64, uint8>> GReportedPreviewProblems;
-}  // namespace
+} // namespace
 
 void UMjNodeComponent::NotePreviewProblem(EMjPreviewProblem Problem, const FString& Message)
 {
@@ -631,7 +631,7 @@ int32 RepointReferrers(
 	return Updated;
 }
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR
 
 /** True when the reference `Name` with target set `Targets` resolves in `Declared`. */
 bool ReferenceResolves(const TMap<FString, TArray<int32>>& Declared, const FString& Name,
@@ -674,13 +674,13 @@ bool IsSpatialField(psm::ElementType Type, FName PropertyName)
 	// The member spelling is the schema's, PascalCased, so the schema's own
 	// field-id lookup is what decides whether this element actually has it --
 	// no hand-kept list of which classes carry which attribute.
-	const char* const Attribute = PropertyName == PosName	 ? "pos"
-								  : PropertyName == QuatName ? "quat"
-								  : PropertyName == SizeName ? "size"
-															 : "type";
+	const char* const Attribute = PropertyName == PosName  ? "pos"
+								: PropertyName == QuatName ? "quat"
+								: PropertyName == SizeName ? "size"
+														   : "type";
 	return ps::sdk::internal::FieldIdByName(Type, Attribute) >= 0;
 }
-}  // namespace
+} // namespace
 
 bool UMjNodeComponent::HasPoseAttributes() const
 {
@@ -729,7 +729,7 @@ FString ScaleRefusalMessage(EMjGeomType Type)
 			return TEXT("the scale handle does not author this shape's size");
 	}
 }
-}  // namespace
+} // namespace
 
 bool UMjNodeComponent::TryPreviewScaleFromSpec(FVector& OutScale) const
 {
@@ -947,7 +947,7 @@ bool AnyAncestorInSpec(const UMjNodeComponent& Node, Pred&& Predicate)
 #endif
 	return false;
 }
-}  // namespace
+} // namespace
 
 bool UMjNodeComponent::IsClassPartial() const
 {
@@ -1017,7 +1017,7 @@ void RefreshSpecPresentationOf(const FSpecRef& Doc)
 
 	RefreshSubtree<urlab::spec::FMjInstanceAdapter>(*Root);
 }
-}  // namespace
+} // namespace
 
 void UMjNodeComponent::RefreshSpecPresentation()
 {
@@ -1173,8 +1173,7 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	const FTransform Baseline = LastPreviewTransform.GetValue();
 	const FTransform Current(GetRelativeRotation().Quaternion(), GetRelativeLocation(), GetRelativeScale3D());
 	const bool bPosMoved = !LastPreviewTransform->GetLocation().Equals(Current.GetLocation(), MjPreviewEpsilon);
-	const bool bRotMoved = HasQuatAttribute(*this) &&
-						   !LastPreviewTransform->GetRotation().Equals(Current.GetRotation(), MjPreviewEpsilon);
+	const bool bRotMoved = HasQuatAttribute(*this) && !LastPreviewTransform->GetRotation().Equals(Current.GetRotation(), MjPreviewEpsilon);
 	const bool bScaleMoved =
 		HasScaleMapping() && !LastPreviewTransform->GetScale3D().Equals(Current.GetScale3D(), MjPreviewEpsilon);
 
@@ -1238,8 +1237,7 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	ForEachInstanceOfTemplate(FSpecRef::OverOwner(this), *this, [&](UMjNodeComponent& Instance) {
 		const bool bTakePos =
 			bPosMoved && Instance.GetRelativeLocation().Equals(Baseline.GetLocation(), MjPreviewEpsilon);
-		const bool bTakeRot = bRotMoved &&
-			Instance.GetRelativeRotation().Quaternion().Equals(Baseline.GetRotation(), MjPreviewEpsilon);
+		const bool bTakeRot = bRotMoved && Instance.GetRelativeRotation().Quaternion().Equals(Baseline.GetRotation(), MjPreviewEpsilon);
 		const bool bTakeScale =
 			bScaleAuthored && Instance.GetRelativeScale3D().Equals(Baseline.GetScale3D(), MjPreviewEpsilon);
 		if (!bTakePos && !bTakeRot && !bTakeScale)
@@ -1346,9 +1344,9 @@ template void MjNoteDanglingReferences<FMjInstanceAdapter>(UMjNodeComponent&);
 template void MjNoteDanglingReferences<FMjScsAdapter>(UMjNodeComponent&);
 #endif
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#else  // !URLAB_MJ_GEN
+#else // !URLAB_MJ_GEN
 
 bool UMjNodeComponent::HasPoseAttributes() const
 {
@@ -1405,7 +1403,7 @@ bool UMjNodeComponent::WriteBackScale(const FVector& Scale)
 	return false;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 #if WITH_EDITOR
 
@@ -1447,8 +1445,8 @@ void RefreshSpecReferenceDiagnostics(const FSpecRef& Spec)
  * element somewhere illegal a second time is a new mistake.
  */
 TSet<uint64> GReportedIllegalPlacement;
-#endif  // URLAB_MJ_GEN
-}  // namespace
+#endif // URLAB_MJ_GEN
+} // namespace
 
 void UMjNodeComponent::CheckPlacementLegality()
 {
@@ -1502,7 +1500,7 @@ void UMjNodeComponent::CheckPlacementLegality()
 	const FString Line = FString::Printf(TEXT("%s: %s"), *MjName.Get(GetName()), *Message);
 	UE_LOG(LogURLab, Warning, TEXT("%s (parent '%s')"), *Line, *Parent->MjName.Get(Parent->GetName()));
 	FMessageLog(TEXT("URLab")).Warning(FText::FromString(Line));
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 }
 
 void UMjNodeComponent::PostEditComponentMove(bool bFinished)
@@ -1552,8 +1550,7 @@ void UMjNodeComponent::CarryEditToInstances(const FSpecRef& Doc, const FProperty
 	// edit fires only the first -- so a stale snapshot must not be spent on the
 	// next property that happens along.
 	const FName Name = Property->GetFName();
-	if (Event.Property != Property && Event.MemberProperty != Property && Event.GetPropertyName() != Name &&
-		Event.GetMemberPropertyName() != Name)
+	if (Event.Property != Property && Event.MemberProperty != Property && Event.GetPropertyName() != Name && Event.GetMemberPropertyName() != Name)
 	{
 		return;
 	}
@@ -1591,7 +1588,7 @@ void UMjNodeComponent::CarryEditToInstances(const FSpecRef& Doc, const FProperty
 	// graph to find instances in.
 	(void)Doc;
 	(void)Event;
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 }
 
 void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -1600,8 +1597,8 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 
 	const FName Changed = PropertyChangedEvent.GetPropertyName();
 	const FName Member = PropertyChangedEvent.MemberProperty != nullptr
-							 ? PropertyChangedEvent.MemberProperty->GetFName()
-							 : NAME_None;
+						   ? PropertyChangedEvent.MemberProperty->GetFName()
+						   : NAME_None;
 
 	// The member, not the innermost name. Typing into one field of the transform
 	// sends the float inside the vector -- `X` -- and comparing that against
@@ -1611,9 +1608,7 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	// vector in both fields, so reading the member covers the gizmo path too.
 	const FName Transform = (Member != NAME_None) ? Member : Changed;
 
-	if (Transform == USceneComponent::GetRelativeLocationPropertyName() ||
-		Transform == USceneComponent::GetRelativeRotationPropertyName() ||
-		Transform == USceneComponent::GetRelativeScale3DPropertyName())
+	if (Transform == USceneComponent::GetRelativeLocationPropertyName() || Transform == USceneComponent::GetRelativeRotationPropertyName() || Transform == USceneComponent::GetRelativeScale3DPropertyName())
 	{
 		// The transform carries itself: the write-back authors the spec and
 		// hands the authored value to the instances that were following it. The
@@ -1709,4 +1704,4 @@ void UMjNodeComponent::PostEditUndo()
 	SyncPreviewUnderOneScope();
 }
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR

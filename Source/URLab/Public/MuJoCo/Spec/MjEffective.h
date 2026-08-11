@@ -104,7 +104,8 @@ public:
 	/** The profile this context resolves against, for the generic-lambda caller. */
 	using ProfileType = P;
 
-	explicit TMjEffective(const typename P::Doc::doc_type& Root) : Context(Root)
+	explicit TMjEffective(const typename P::Doc::doc_type& Root)
+		: Context(Root)
 	{
 		MjNoteEffectiveContextBuilt();
 	}
@@ -207,7 +208,8 @@ private:
 class FMjEffectiveScope
 {
 public:
-	explicit FMjEffectiveScope(const UMjNodeComponent& Node) : FMjEffectiveScope(FSpecRef::OverOwner(&Node))
+	explicit FMjEffectiveScope(const UMjNodeComponent& Node)
+		: FMjEffectiveScope(FSpecRef::OverOwner(&Node))
 	{
 	}
 
@@ -218,7 +220,8 @@ public:
 	 * about to walk the whole spec has already done. Taking the answer avoids
 	 * doing it twice per pass.
 	 */
-	explicit FMjEffectiveScope(const FSpecRef& Doc) : Previous(Current)
+	explicit FMjEffectiveScope(const FSpecRef& Doc)
+		: Previous(Current)
 	{
 		Root = Cast<UMjModel>(Doc.GetRoot());
 		if (Root == nullptr)
@@ -425,6 +428,6 @@ bool WithEffectiveDoc(const UMjNodeComponent& Node, Fn&& Function)
 	return true;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

@@ -177,7 +177,7 @@ private:
 	TArray<UMjNodeComponent*> Renamed;
 };
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 /** The document itself, with every name already on the elements it belongs to. */
 FString WriteScene(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
@@ -238,7 +238,7 @@ FString WriteScene(const FSceneAssembly& Scene, TMap<FString, FString>& OutParti
 	Out += TEXT("</mujoco>\n");
 	return Out;
 }
-}  // namespace
+} // namespace
 
 FString MjWriteSceneMjcf(const FSceneAssembly& Scene, TMap<FString, FString>& OutParticipantXml,
 	TArray<FMjSpecDiagnostic>* OutErrors)

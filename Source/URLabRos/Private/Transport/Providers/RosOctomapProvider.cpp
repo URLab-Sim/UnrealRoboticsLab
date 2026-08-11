@@ -69,13 +69,16 @@ FBox ComputeWorldAABB(const FMjWorldGeom& G)
 	switch (G.Shape)
 	{
 		case EMjWorldGeomShape::Box:
-			HalfX = G.Size[0]; HalfY = G.Size[1]; HalfZ = G.Size[2];
+			HalfX = G.Size[0];
+			HalfY = G.Size[1];
+			HalfZ = G.Size[2];
 			break;
 		case EMjWorldGeomShape::Sphere:
 			HalfX = HalfY = HalfZ = G.Size[0];
 			break;
 		case EMjWorldGeomShape::Cylinder:
-			HalfX = HalfY = G.Size[0]; HalfZ = G.Size[1];
+			HalfX = HalfY = G.Size[0];
+			HalfZ = G.Size[1];
 			break;
 		case EMjWorldGeomShape::Mesh:
 			if (G.Mesh.IsValid())
@@ -172,9 +175,7 @@ bool NodeInsideGeom(const FBox& NodeBox, const TArray<FBox>& GeomBoxes)
 {
 	for (const FBox& Gb : GeomBoxes)
 	{
-		if (NodeBox.Min.X >= Gb.Min.X && NodeBox.Max.X <= Gb.Max.X &&
-			NodeBox.Min.Y >= Gb.Min.Y && NodeBox.Max.Y <= Gb.Max.Y &&
-			NodeBox.Min.Z >= Gb.Min.Z && NodeBox.Max.Z <= Gb.Max.Z)
+		if (NodeBox.Min.X >= Gb.Min.X && NodeBox.Max.X <= Gb.Max.X && NodeBox.Min.Y >= Gb.Min.Y && NodeBox.Max.Y <= Gb.Max.Y && NodeBox.Min.Z >= Gb.Min.Z && NodeBox.Max.Z <= Gb.Max.Z)
 		{
 			return true;
 		}

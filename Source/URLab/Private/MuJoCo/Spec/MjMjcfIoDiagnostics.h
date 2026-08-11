@@ -40,6 +40,6 @@ inline void CollectDiagnostics(const std::vector<ps::Diagnostic>& In, TArray<FMj
 	}
 }
 
-}  // namespace urlab::spec::io
+} // namespace urlab::spec::io
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

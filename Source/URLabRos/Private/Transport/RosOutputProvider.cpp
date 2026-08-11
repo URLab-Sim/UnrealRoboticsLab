@@ -96,59 +96,59 @@ void FMjRosPub::Reset()
 	}
 	switch (Kind)
 	{
-	case EKind::JointState:
-		UrlabRcl_DestroyJointStatePub(static_cast<UrlabRclJointStatePub*>(Handle));
-		break;
-	case EKind::Imu:
-		UrlabRcl_DestroyImuPub(static_cast<UrlabRclImuPub*>(Handle));
-		break;
-	case EKind::Tf:
-		UrlabRcl_DestroyTfPub(static_cast<UrlabRclTfPub*>(Handle));
-		break;
-	case EKind::TwistStamped:
-		UrlabRcl_DestroyTwistStampedPub(static_cast<UrlabRclTwistStampedPub*>(Handle));
-		break;
-	case EKind::Clock:
-		UrlabRcl_DestroyClockPub(static_cast<UrlabRclClockPub*>(Handle));
-		break;
-	case EKind::String:
-		UrlabRcl_DestroyStringPub(static_cast<UrlabRclStringPub*>(Handle));
-		break;
-	case EKind::Wrench:
-		UrlabRcl_DestroyWrenchStampedPub(static_cast<UrlabRclWrenchStampedPub*>(Handle));
-		break;
-	case EKind::Range:
-		UrlabRcl_DestroyRangePub(static_cast<UrlabRclRangePub*>(Handle));
-		break;
-	case EKind::MagneticField:
-		UrlabRcl_DestroyMagneticFieldPub(static_cast<UrlabRclMagneticFieldPub*>(Handle));
-		break;
-	case EKind::MultiArray:
-		UrlabRcl_DestroyFloat64MultiArrayPub(static_cast<UrlabRclFloat64MultiArrayPub*>(Handle));
-		break;
-	case EKind::Odometry:
-		UrlabRcl_DestroyOdometryPub(static_cast<UrlabRclOdometryPub*>(Handle));
-		break;
-	case EKind::PoseWithCovariance:
-		UrlabRcl_DestroyPoseWithCovariancePub(static_cast<UrlabRclPoseWithCovariancePub*>(Handle));
-		break;
-	case EKind::CameraInfo:
-		UrlabRcl_DestroyCameraInfoPub(static_cast<UrlabRclCameraInfoPub*>(Handle));
-		break;
-	case EKind::Bool:
-		UrlabRcl_DestroyBoolPub(static_cast<UrlabRclBoolPub*>(Handle));
-		break;
-	case EKind::Float64:
-		UrlabRcl_DestroyFloat64Pub(static_cast<UrlabRclFloat64Pub*>(Handle));
-		break;
-	case EKind::Vector3:
-		UrlabRcl_DestroyVector3Pub(static_cast<UrlabRclVector3Pub*>(Handle));
-		break;
-	case EKind::PoseStamped:
-		UrlabRcl_DestroyPoseStampedPub(static_cast<UrlabRclPoseStampedPub*>(Handle));
-		break;
-	case EKind::None:
-		break;
+		case EKind::JointState:
+			UrlabRcl_DestroyJointStatePub(static_cast<UrlabRclJointStatePub*>(Handle));
+			break;
+		case EKind::Imu:
+			UrlabRcl_DestroyImuPub(static_cast<UrlabRclImuPub*>(Handle));
+			break;
+		case EKind::Tf:
+			UrlabRcl_DestroyTfPub(static_cast<UrlabRclTfPub*>(Handle));
+			break;
+		case EKind::TwistStamped:
+			UrlabRcl_DestroyTwistStampedPub(static_cast<UrlabRclTwistStampedPub*>(Handle));
+			break;
+		case EKind::Clock:
+			UrlabRcl_DestroyClockPub(static_cast<UrlabRclClockPub*>(Handle));
+			break;
+		case EKind::String:
+			UrlabRcl_DestroyStringPub(static_cast<UrlabRclStringPub*>(Handle));
+			break;
+		case EKind::Wrench:
+			UrlabRcl_DestroyWrenchStampedPub(static_cast<UrlabRclWrenchStampedPub*>(Handle));
+			break;
+		case EKind::Range:
+			UrlabRcl_DestroyRangePub(static_cast<UrlabRclRangePub*>(Handle));
+			break;
+		case EKind::MagneticField:
+			UrlabRcl_DestroyMagneticFieldPub(static_cast<UrlabRclMagneticFieldPub*>(Handle));
+			break;
+		case EKind::MultiArray:
+			UrlabRcl_DestroyFloat64MultiArrayPub(static_cast<UrlabRclFloat64MultiArrayPub*>(Handle));
+			break;
+		case EKind::Odometry:
+			UrlabRcl_DestroyOdometryPub(static_cast<UrlabRclOdometryPub*>(Handle));
+			break;
+		case EKind::PoseWithCovariance:
+			UrlabRcl_DestroyPoseWithCovariancePub(static_cast<UrlabRclPoseWithCovariancePub*>(Handle));
+			break;
+		case EKind::CameraInfo:
+			UrlabRcl_DestroyCameraInfoPub(static_cast<UrlabRclCameraInfoPub*>(Handle));
+			break;
+		case EKind::Bool:
+			UrlabRcl_DestroyBoolPub(static_cast<UrlabRclBoolPub*>(Handle));
+			break;
+		case EKind::Float64:
+			UrlabRcl_DestroyFloat64Pub(static_cast<UrlabRclFloat64Pub*>(Handle));
+			break;
+		case EKind::Vector3:
+			UrlabRcl_DestroyVector3Pub(static_cast<UrlabRclVector3Pub*>(Handle));
+			break;
+		case EKind::PoseStamped:
+			UrlabRcl_DestroyPoseStampedPub(static_cast<UrlabRclPoseStampedPub*>(Handle));
+			break;
+		case EKind::None:
+			break;
 	}
 	Handle = nullptr;
 	Kind = EKind::None;
@@ -192,8 +192,7 @@ void FMjRosPub::PublishTf(const TArray<FString>& Parents, const TArray<FString>&
 	ParentPtrs.Reserve(Parents.Num());
 	ChildPtrs.Reserve(Children.Num());
 	auto AppendUtf8 = [](TArray<TArray<ANSICHAR>>& Store, TArray<const char*>& Ptrs,
-		const FString& Value)
-	{
+						  const FString& Value) {
 		FTCHARToUTF8 Conv(*Value);
 		TArray<ANSICHAR>& Bytes = Store.AddDefaulted_GetRef();
 		Bytes.Append(reinterpret_cast<const ANSICHAR*>(Conv.Get()), Conv.Length());
@@ -645,7 +644,7 @@ FMjRosPub FMjRosPublisherFactory::CreatePoseStamped(const FString& Topic, const 
 	return FMjRosPub(Pub, FMjRosPub::EKind::PoseStamped);
 }
 
-#else  // URLAB_WITH_ROS2
+#else // URLAB_WITH_ROS2
 
 // Absent-ROS stubs: handles are never created (Create* return an invalid handle),
 // so publishing and release are no-ops. Providers compile and register in every
@@ -672,22 +671,73 @@ void FMjRosPub::PublishFloat64(double) {}
 void FMjRosPub::PublishVector3(const double[3]) {}
 void FMjRosPub::PublishPoseStamped(const double[3], const double[4], int64) {}
 
-FMjRosPub FMjRosPublisherFactory::CreateJointState(const FString&, const TArray<FString>&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateImu(const FString&, const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateTf(bool) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateTwistStamped(const FString&, const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateClock() { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateString(const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateWrench(const FString&, const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateRange(const FString&, const FString&, uint8, float, float, float) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateMagneticField(const FString&, const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateFloat64MultiArray(const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateOdometry(const FString&, const FString&, const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreatePoseWithCovariance(const FString&, const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateCameraInfo(const FString&, const FString&, int32, int32, const double[9]) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateBool(const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateFloat64(const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreateVector3(const FString&) { return FMjRosPub(); }
-FMjRosPub FMjRosPublisherFactory::CreatePoseStamped(const FString&, const FString&) { return FMjRosPub(); }
+FMjRosPub FMjRosPublisherFactory::CreateJointState(const FString&, const TArray<FString>&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateImu(const FString&, const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateTf(bool)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateTwistStamped(const FString&, const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateClock()
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateString(const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateWrench(const FString&, const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateRange(const FString&, const FString&, uint8, float, float, float)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateMagneticField(const FString&, const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateFloat64MultiArray(const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateOdometry(const FString&, const FString&, const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreatePoseWithCovariance(const FString&, const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateCameraInfo(const FString&, const FString&, int32, int32, const double[9])
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateBool(const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateFloat64(const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreateVector3(const FString&)
+{
+	return FMjRosPub();
+}
+FMjRosPub FMjRosPublisherFactory::CreatePoseStamped(const FString&, const FString&)
+{
+	return FMjRosPub();
+}
 
-#endif  // URLAB_WITH_ROS2
+#endif // URLAB_WITH_ROS2

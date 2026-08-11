@@ -228,6 +228,6 @@ struct FMjSizeViolation
  */
 URLAB_API void MjReportSizeArity(const TArray<FMjSizeViolation>& Violations);
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-}  // namespace urlab::spec
+} // namespace urlab::spec

@@ -702,8 +702,8 @@ struct URLAB_API FMjScsAdapter : TMjTreeAdapter<FMjScsAdapter>
 	static void Detach(UMjNodeComponent& Child);
 };
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

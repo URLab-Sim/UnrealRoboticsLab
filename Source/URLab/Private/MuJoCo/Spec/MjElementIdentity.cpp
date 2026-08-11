@@ -59,6 +59,6 @@ int32 MjSchemaArityOf(psm::ElementType Type, const char* Xml)
 	return Field != nullptr ? Field->arity_max : 0;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

@@ -55,10 +55,10 @@ bool UMjMesh::DumpAssetToFile(const FString& BaseDirectory)
 	auto& TriGeom = BodySetup->TriMeshGeometries[0];
 	auto& Vertices = TriGeom.GetReference()->Particles().X();
 	const int32 Written = TriGeom.GetReference()->Elements().RequiresLargeIndices()
-		? MeshUtils::SaveMeshAsOBJSimple(
-			  Target.FullPath, Vertices, TriGeom.GetReference()->Elements().GetLargeIndexBuffer())
-		: MeshUtils::SaveMeshAsOBJSimple(
-			  Target.FullPath, Vertices, TriGeom.GetReference()->Elements().GetSmallIndexBuffer());
+							? MeshUtils::SaveMeshAsOBJSimple(
+								  Target.FullPath, Vertices, TriGeom.GetReference()->Elements().GetLargeIndexBuffer())
+							: MeshUtils::SaveMeshAsOBJSimple(
+								  Target.FullPath, Vertices, TriGeom.GetReference()->Elements().GetSmallIndexBuffer());
 	if (Written == 0)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjMesh] could not write '%s'"), *Target.FullPath);

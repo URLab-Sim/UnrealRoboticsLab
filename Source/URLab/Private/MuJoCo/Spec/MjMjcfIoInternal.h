@@ -49,6 +49,6 @@ FString WriteFromInstance(const UMjNodeComponent& Root, TArray<FMjSpecDiagnostic
 /** Write one element and its subtree, not a whole document. */
 FString WriteElementFromInstance(const UMjNodeComponent& Node, TArray<FMjSpecDiagnostic>* OutErrors);
 
-}  // namespace urlab::spec::io
+} // namespace urlab::spec::io
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

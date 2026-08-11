@@ -328,8 +328,8 @@ bool FMjMacroBridgeAssetsTest::RunTest(const FString& Parameters)
 		const char* Name;
 	};
 	const FExpectedAsset Expected[] = {
-		{mjOBJ_MESH, "wedge"},
-		{mjOBJ_TEXTURE, "grid"},
+		{    mjOBJ_MESH,    "wedge"},
+		{ mjOBJ_TEXTURE,     "grid"},
 		{mjOBJ_MATERIAL, "grid_mat"},
 	};
 	for (const FExpectedAsset& Asset : Expected)
@@ -340,7 +340,7 @@ bool FMjMacroBridgeAssetsTest::RunTest(const FString& Parameters)
 
 	int32 MeshCount = 0;
 	for (mjsElement* Element = mjs_firstElement(Built.Spec, mjOBJ_MESH); Element != nullptr;
-		 Element = mjs_nextElement(Built.Spec, Element))
+		Element = mjs_nextElement(Built.Spec, Element))
 	{
 		++MeshCount;
 	}

@@ -168,7 +168,7 @@ private:
 };
 
 FRosCameraImageSink GCameraImageSink;
-}  // namespace
+} // namespace
 
 void FURLabRosModule::StartupModule()
 {

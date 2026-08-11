@@ -84,7 +84,7 @@ struct FScratchDoc
 	}
 };
 
-}  // namespace MjSkinSinkTests
+} // namespace MjSkinSinkTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjAssetSinkCollectsSkinFiles,
 	"URLab.Doc.AssetSinkCollectsSkinFiles",
@@ -170,4 +170,4 @@ bool FMjAssetSinkCollectsSkinFiles::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

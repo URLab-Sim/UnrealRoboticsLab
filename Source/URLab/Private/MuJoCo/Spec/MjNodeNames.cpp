@@ -54,9 +54,7 @@ FString SanitizeName(const FString& Name)
 	Out.Reserve(Name.Len() + 1);
 	for (const TCHAR Character : Name)
 	{
-		const bool bAllowed = (Character >= TEXT('A') && Character <= TEXT('Z')) ||
-			(Character >= TEXT('a') && Character <= TEXT('z')) ||
-			(Character >= TEXT('0') && Character <= TEXT('9')) || Character == TEXT('_');
+		const bool bAllowed = (Character >= TEXT('A') && Character <= TEXT('Z')) || (Character >= TEXT('a') && Character <= TEXT('z')) || (Character >= TEXT('0') && Character <= TEXT('9')) || Character == TEXT('_');
 		Out.AppendChar(bAllowed ? Character : TEXT('_'));
 	}
 	if (Out.IsEmpty())

@@ -186,13 +186,13 @@ void Report(FAutomationTestBase& Test, int32 BodyCount, int32 Nodes, const FImpo
 {
 	const FString Bench = FString::Printf(
 		TEXT("BENCH import bodies=%d scs_nodes=%d node_map_builds=%lld effective_builds=%lld ")
-		TEXT("dispatch_lookups=%lld dispatch_row_visits=%lld rows_per_lookup=%.2f"),
+			TEXT("dispatch_lookups=%lld dispatch_row_visits=%lld rows_per_lookup=%.2f"),
 		BodyCount, Nodes, Cost.NodeMapBuilds, Cost.EffectiveContextBuilds, Cost.DispatchLookups,
 		Cost.DispatchRowVisits, Cost.RowsPerLookup());
 	UE_LOG(LogMjImportBench, Display, TEXT("%s"), *Bench);
 	Test.AddInfo(Bench);
 }
-}  // namespace MjImportPerfTests
+} // namespace MjImportPerfTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportScaling,
 	"URLab.Perf.ImportScaling",
@@ -355,7 +355,7 @@ void ReportProbe(FAutomationTestBase& Test, const TCHAR* Probe, int32 BodyCount,
 {
 	const FString Bench = FString::Printf(
 		TEXT("BENCH presentation probe=%s bodies=%d node_map_builds=%lld effective_builds=%lld ")
-		TEXT("dispatch_lookups=%lld dispatch_row_visits=%lld"),
+			TEXT("dispatch_lookups=%lld dispatch_row_visits=%lld"),
 		Probe, BodyCount, Cost.NodeMapBuilds, Cost.EffectiveContextBuilds, Cost.DispatchLookups,
 		Cost.DispatchRowVisits);
 	UE_LOG(LogMjImportBench, Display, TEXT("%s"), *Bench);
@@ -510,7 +510,7 @@ bool MeasurePresentation(FAutomationTestBase& Test, int32 BodyCount, FPresentati
 	return RunPresentationProbes(
 		Test, *Blueprint, FString::Printf(TEXT("the %d-body model"), BodyCount), Out, OutElements);
 }
-}  // namespace MjImportPerfTests
+} // namespace MjImportPerfTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPresentationScaling,
 	"URLab.Perf.PresentationScaling",
@@ -565,14 +565,14 @@ bool FMjPresentationScaling::RunTest(const FString& Parameters)
 		double DispatchGrowth;
 	};
 	const FProbeRow Probes[] = {
-		{TEXT("ancestor_query"), &Small.AncestorQuery, &Large.AncestorQuery, 1, 0, 1.0},
-		{TEXT("single_sync"), &Small.SingleSync, &Large.SingleSync, 1, 1, 4.5},
-		{TEXT("spec_refresh"), &Small.SpecRefresh, &Large.SpecRefresh, 1, 1, 4.5},
-		{TEXT("plain_geom_edit"), &Small.PlainGeomEdit, &Large.PlainGeomEdit, 1, 1, 4.5},
+		{		 TEXT("ancestor_query"),        &Small.AncestorQuery,        &Large.AncestorQuery, 1, 0, 1.0},
+		{			TEXT("single_sync"),           &Small.SingleSync,           &Large.SingleSync, 1, 1, 4.5},
+		{		   TEXT("spec_refresh"),          &Small.SpecRefresh,          &Large.SpecRefresh, 1, 1, 4.5},
+		{        TEXT("plain_geom_edit"),        &Small.PlainGeomEdit,        &Large.PlainGeomEdit, 1, 1, 4.5},
 		{TEXT("plain_geom_physics_edit"), &Small.PlainGeomPhysicsEdit, &Large.PlainGeomPhysicsEdit, 1, 0, 1.0},
-		{TEXT("plain_joint_edit"), &Small.PlainJointEdit, &Large.PlainJointEdit, 1, 0, 1.0},
-		{TEXT("default_class_edit"), &Small.DefaultClassEdit, &Large.DefaultClassEdit, 1, 1, 4.5},
-		{TEXT("spawn"), &Small.Spawn, &Large.Spawn, 1, 1, 4.5},
+		{       TEXT("plain_joint_edit"),       &Small.PlainJointEdit,       &Large.PlainJointEdit, 1, 0, 1.0},
+		{     TEXT("default_class_edit"),     &Small.DefaultClassEdit,     &Large.DefaultClassEdit, 1, 1, 4.5},
+		{				  TEXT("spawn"),                &Small.Spawn,                &Large.Spawn, 1, 1, 4.5},
 	};
 
 	for (const FProbeRow& Probe : Probes)
@@ -609,8 +609,8 @@ bool FMjPresentationScaling::RunTest(const FString& Parameters)
 			Probe.Large->EffectiveContextBuilds, Probe.EffectiveContextBuilds);
 
 		const double Growth = Probe.Small->DispatchLookups > 0
-			? static_cast<double>(Probe.Large->DispatchLookups) / Probe.Small->DispatchLookups
-			: 0.0;
+								? static_cast<double>(Probe.Large->DispatchLookups) / Probe.Small->DispatchLookups
+								: 0.0;
 		TestTrue(FString::Printf(TEXT("%s dispatch work grows %.2fx across a fourfold model, bound %.2fx"), Probe.Name,
 					 Growth, Probe.DispatchGrowth),
 			Growth <= Probe.DispatchGrowth);
@@ -719,14 +719,14 @@ bool FMjPresentationOnARealRobot::RunTest(const FString& Parameters)
 		int64 EffectiveContextBuilds;
 	};
 	const FRobotProbe Probes[] = {
-		{TEXT("ancestor_query"), &Cost.AncestorQuery, 1, 0},
-		{TEXT("single_sync"), &Cost.SingleSync, 1, 1},
-		{TEXT("spec_refresh"), &Cost.SpecRefresh, 1, 1},
-		{TEXT("plain_geom_edit"), &Cost.PlainGeomEdit, 1, 1},
+		{		 TEXT("ancestor_query"),        &Cost.AncestorQuery, 1, 0},
+		{			TEXT("single_sync"),           &Cost.SingleSync, 1, 1},
+		{		   TEXT("spec_refresh"),          &Cost.SpecRefresh, 1, 1},
+		{        TEXT("plain_geom_edit"),        &Cost.PlainGeomEdit, 1, 1},
 		{TEXT("plain_geom_physics_edit"), &Cost.PlainGeomPhysicsEdit, 1, 0},
-		{TEXT("plain_joint_edit"), &Cost.PlainJointEdit, 1, 0},
-		{TEXT("default_class_edit"), &Cost.DefaultClassEdit, 1, 1},
-		{TEXT("spawn"), &Cost.Spawn, 1, 1},
+		{       TEXT("plain_joint_edit"),       &Cost.PlainJointEdit, 1, 0},
+		{     TEXT("default_class_edit"),     &Cost.DefaultClassEdit, 1, 1},
+		{				  TEXT("spawn"),                &Cost.Spawn, 1, 1},
 	};
 
 	for (const FRobotProbe& Probe : Probes)
@@ -771,7 +771,8 @@ namespace MjImportPerfTests
 class FCountingPDI : public FPrimitiveDrawInterface
 {
 public:
-	FCountingPDI() : FPrimitiveDrawInterface(nullptr) {}
+	FCountingPDI()
+		: FPrimitiveDrawInterface(nullptr) {}
 
 	int32 Calls = 0;
 
@@ -858,7 +859,7 @@ bool MeasureSweep(FAutomationTestBase& Test, int32 BodyCount, FImportCost& OutCo
 	OutUnshared = UnsharedCost(*Blueprint);
 	return true;
 }
-}  // namespace MjImportPerfTests
+} // namespace MjImportPerfTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjVisualizerSweep,
 	"URLab.Perf.VisualizerSweep",
@@ -939,6 +940,6 @@ bool FMjVisualizerSweep::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR

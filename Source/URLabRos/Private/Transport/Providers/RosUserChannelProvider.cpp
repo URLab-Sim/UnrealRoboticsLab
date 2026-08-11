@@ -96,7 +96,7 @@ public:
 private:
 	struct FEntry
 	{
-		int32 ArtIndex = -1;  // -1 = scene scope
+		int32 ArtIndex = -1; // -1 = scene scope
 		FName Name;
 		EMjUserChannelKind Kind = EMjUserChannelKind::Scalar;
 		FMjRosPub Pub;
@@ -120,27 +120,27 @@ private:
 		FMjRosPub Pub;
 		switch (Channel.Kind)
 		{
-		case EMjUserChannelKind::Bool:
-			Pub = Factory.CreateBool(Topic);
-			break;
-		case EMjUserChannelKind::Int:
-		case EMjUserChannelKind::Scalar:
-			Pub = Factory.CreateFloat64(Topic);
-			break;
-		case EMjUserChannelKind::Vec3:
-			Pub = Factory.CreateVector3(Topic);
-			break;
-		case EMjUserChannelKind::Quat:
-		case EMjUserChannelKind::Transform:
-			Pub = Factory.CreatePoseStamped(Topic, FrameId);
-			break;
-		case EMjUserChannelKind::Array:
-			Pub = Factory.CreateFloat64MultiArray(Topic);
-			break;
-		case EMjUserChannelKind::String:
-		case EMjUserChannelKind::Struct:
-			Pub = Factory.CreateString(Topic);
-			break;
+			case EMjUserChannelKind::Bool:
+				Pub = Factory.CreateBool(Topic);
+				break;
+			case EMjUserChannelKind::Int:
+			case EMjUserChannelKind::Scalar:
+				Pub = Factory.CreateFloat64(Topic);
+				break;
+			case EMjUserChannelKind::Vec3:
+				Pub = Factory.CreateVector3(Topic);
+				break;
+			case EMjUserChannelKind::Quat:
+			case EMjUserChannelKind::Transform:
+				Pub = Factory.CreatePoseStamped(Topic, FrameId);
+				break;
+			case EMjUserChannelKind::Array:
+				Pub = Factory.CreateFloat64MultiArray(Topic);
+				break;
+			case EMjUserChannelKind::String:
+			case EMjUserChannelKind::Struct:
+				Pub = Factory.CreateString(Topic);
+				break;
 		}
 		if (Pub.IsValid())
 		{
@@ -157,66 +157,66 @@ private:
 	{
 		switch (Entry.Kind)
 		{
-		case EMjUserChannelKind::Bool:
-			Entry.Pub.PublishBool(Channel.Values.Num() > 0 && Channel.Values[0] != 0.0);
-			break;
-		case EMjUserChannelKind::Int:
-		case EMjUserChannelKind::Scalar:
-			Entry.Pub.PublishFloat64(Channel.Values.Num() > 0 ? Channel.Values[0] : 0.0);
-			break;
-		case EMjUserChannelKind::Vec3:
-		{
-			double Xyz[3] = {0.0, 0.0, 0.0};
-			for (int32 i = 0; i < 3 && i < Channel.Values.Num(); ++i)
+			case EMjUserChannelKind::Bool:
+				Entry.Pub.PublishBool(Channel.Values.Num() > 0 && Channel.Values[0] != 0.0);
+				break;
+			case EMjUserChannelKind::Int:
+			case EMjUserChannelKind::Scalar:
+				Entry.Pub.PublishFloat64(Channel.Values.Num() > 0 ? Channel.Values[0] : 0.0);
+				break;
+			case EMjUserChannelKind::Vec3:
 			{
-				Xyz[i] = Channel.Values[i];
+				double Xyz[3] = {0.0, 0.0, 0.0};
+				for (int32 i = 0; i < 3 && i < Channel.Values.Num(); ++i)
+				{
+					Xyz[i] = Channel.Values[i];
+				}
+				Entry.Pub.PublishVector3(Xyz);
+				break;
 			}
-			Entry.Pub.PublishVector3(Xyz);
-			break;
-		}
-		case EMjUserChannelKind::Quat:
-		{
-			// Values are wxyz; PoseStamped orientation is xyzw, position zero.
-			const double Pos[3] = {0.0, 0.0, 0.0};
-			double Quat[4] = {0.0, 0.0, 0.0, 1.0};
-			if (Channel.Values.Num() >= 4)
+			case EMjUserChannelKind::Quat:
 			{
-				Quat[0] = Channel.Values[1];
-				Quat[1] = Channel.Values[2];
-				Quat[2] = Channel.Values[3];
-				Quat[3] = Channel.Values[0];
+				// Values are wxyz; PoseStamped orientation is xyzw, position zero.
+				const double Pos[3] = {0.0, 0.0, 0.0};
+				double Quat[4] = {0.0, 0.0, 0.0, 1.0};
+				if (Channel.Values.Num() >= 4)
+				{
+					Quat[0] = Channel.Values[1];
+					Quat[1] = Channel.Values[2];
+					Quat[2] = Channel.Values[3];
+					Quat[3] = Channel.Values[0];
+				}
+				Entry.Pub.PublishPoseStamped(Pos, Quat, SimTimeNs);
+				break;
 			}
-			Entry.Pub.PublishPoseStamped(Pos, Quat, SimTimeNs);
-			break;
-		}
-		case EMjUserChannelKind::Transform:
-		{
-			// Values: [0..2] pos, [3..6] quat wxyz -> xyzw.
-			double Pos[3] = {0.0, 0.0, 0.0};
-			double Quat[4] = {0.0, 0.0, 0.0, 1.0};
-			for (int32 i = 0; i < 3 && i < Channel.Values.Num(); ++i)
+			case EMjUserChannelKind::Transform:
 			{
-				Pos[i] = Channel.Values[i];
+				// Values: [0..2] pos, [3..6] quat wxyz -> xyzw.
+				double Pos[3] = {0.0, 0.0, 0.0};
+				double Quat[4] = {0.0, 0.0, 0.0, 1.0};
+				for (int32 i = 0; i < 3 && i < Channel.Values.Num(); ++i)
+				{
+					Pos[i] = Channel.Values[i];
+				}
+				if (Channel.Values.Num() >= 7)
+				{
+					Quat[0] = Channel.Values[4];
+					Quat[1] = Channel.Values[5];
+					Quat[2] = Channel.Values[6];
+					Quat[3] = Channel.Values[3];
+				}
+				Entry.Pub.PublishPoseStamped(Pos, Quat, SimTimeNs);
+				break;
 			}
-			if (Channel.Values.Num() >= 7)
-			{
-				Quat[0] = Channel.Values[4];
-				Quat[1] = Channel.Values[5];
-				Quat[2] = Channel.Values[6];
-				Quat[3] = Channel.Values[3];
-			}
-			Entry.Pub.PublishPoseStamped(Pos, Quat, SimTimeNs);
-			break;
-		}
-		case EMjUserChannelKind::Array:
-			Entry.Pub.PublishFloat64MultiArray(Channel.Values.GetData(), Channel.Values.Num());
-			break;
-		case EMjUserChannelKind::String:
-			Entry.Pub.PublishString(Channel.Text);
-			break;
-		case EMjUserChannelKind::Struct:
-			Entry.Pub.PublishString(StructToJson(Channel.Packed));
-			break;
+			case EMjUserChannelKind::Array:
+				Entry.Pub.PublishFloat64MultiArray(Channel.Values.GetData(), Channel.Values.Num());
+				break;
+			case EMjUserChannelKind::String:
+				Entry.Pub.PublishString(Channel.Text);
+				break;
+			case EMjUserChannelKind::Struct:
+				Entry.Pub.PublishString(StructToJson(Channel.Packed));
+				break;
 		}
 	}
 

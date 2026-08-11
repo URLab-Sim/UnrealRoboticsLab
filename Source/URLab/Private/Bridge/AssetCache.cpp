@@ -80,7 +80,7 @@ struct FSha256
 		for (int32 i = 0; i < 16; ++i)
 		{
 			W[i] = (uint32(Block[i * 4]) << 24) | (uint32(Block[i * 4 + 1]) << 16)
-				| (uint32(Block[i * 4 + 2]) << 8) | uint32(Block[i * 4 + 3]);
+				 | (uint32(Block[i * 4 + 2]) << 8) | uint32(Block[i * 4 + 3]);
 		}
 		for (int32 i = 16; i < 64; ++i)
 		{
@@ -99,11 +99,23 @@ struct FSha256
 			const uint32 S0 = Rotr(A, 2) ^ Rotr(A, 13) ^ Rotr(A, 22);
 			const uint32 Maj = (A & B) ^ (A & C) ^ (B & C);
 			const uint32 T2 = S0 + Maj;
-			H = G; G = F; F = E; E = D + T1;
-			D = C; C = B; B = A; A = T1 + T2;
+			H = G;
+			G = F;
+			F = E;
+			E = D + T1;
+			D = C;
+			C = B;
+			B = A;
+			A = T1 + T2;
 		}
-		State[0] += A; State[1] += B; State[2] += C; State[3] += D;
-		State[4] += E; State[5] += F; State[6] += G; State[7] += H;
+		State[0] += A;
+		State[1] += B;
+		State[2] += C;
+		State[3] += D;
+		State[4] += E;
+		State[5] += F;
+		State[6] += G;
+		State[7] += H;
 	}
 
 	void Update(const uint8* Data, int32 Size)

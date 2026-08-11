@@ -114,7 +114,7 @@ const TCHAR* const DrivenJoint = TEXT(R"(<mujoco model="rename">
 </mujoco>
 )");
 
-}  // namespace MjRenameTests
+} // namespace MjRenameTests
 
 // ============================================================================
 // URLab.Spec.RenamingAnElementFollowsItsReferrers
@@ -365,4 +365,4 @@ bool FMjDanglingReferenceIsLoudTest::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

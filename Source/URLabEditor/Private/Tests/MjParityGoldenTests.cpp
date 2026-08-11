@@ -170,11 +170,11 @@ bool WriteCaptureManifest(const FString& Path, FString& OutError)
 	// editor knows which commit it was built from, and a guess recorded here
 	// would be worse than a blank a human has to complete.
 	const FString Text = FString::Printf(TEXT("{\n")
-										 TEXT("  \"mujoco_version\": \"%s\",\n")
-										 TEXT("  \"mujoco_submodule\": \"\",\n")
-										 TEXT("  \"captured_commit\": \"\",\n")
-										 TEXT("  \"captured_utc\": \"%s\"\n")
-										 TEXT("}\n"),
+											 TEXT("  \"mujoco_version\": \"%s\",\n")
+												 TEXT("  \"mujoco_submodule\": \"\",\n")
+													 TEXT("  \"captured_commit\": \"\",\n")
+														 TEXT("  \"captured_utc\": \"%s\"\n")
+															 TEXT("}\n"),
 		UTF8_TO_TCHAR(mj_versionString()), *FDateTime::UtcNow().ToString(TEXT("%Y-%m-%d")));
 
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Path), /*Tree=*/true);
@@ -406,7 +406,6 @@ void CheckNoOrphanedGoldens(FAutomationTestBase& Test, const TArray<FString>& Fi
 /** The MJCF a scene root that contributes nothing of its own is written as. */
 const TCHAR* const EmptySceneRootXml = TEXT("<mujoco model=\"scene\"><worldbody></worldbody></mujoco>");
 
-
 } // namespace MjParityGoldenTests
 
 // ============================================================================
@@ -431,7 +430,7 @@ bool FMjSpecParityCaptureManifestTest::RunTest(const FString& Parameters)
 		FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("Tests"), TEXT("CAPTURE.mismatch.json"));
 	const FString Stale = TEXT("0.0.0-not-this-engine");
 	const FString StaleText = FString::Printf(TEXT("{\"mujoco_version\": \"%s\", \"mujoco_submodule\": \"deadbeef\", ")
-											  TEXT("\"captured_commit\": \"cafef00d\", \"captured_utc\": \"1970-01-01\"}"),
+												  TEXT("\"captured_commit\": \"cafef00d\", \"captured_utc\": \"1970-01-01\"}"),
 		*Stale);
 
 	IFileManager::Get().MakeDirectory(*FPaths::GetPath(Scratch), /*Tree=*/true);

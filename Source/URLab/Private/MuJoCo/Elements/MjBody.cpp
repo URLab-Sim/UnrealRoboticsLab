@@ -79,7 +79,7 @@ bool ResolveBodyId(const UMjBody* Body, int32& OutId)
 	return true;
 }
 
-}  // namespace
+} // namespace
 
 UMjBody::UMjBody()
 {

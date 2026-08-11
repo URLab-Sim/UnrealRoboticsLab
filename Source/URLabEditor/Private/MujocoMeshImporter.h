@@ -53,4 +53,4 @@ UStaticMesh* ImportMeshAsset(const FString& SourcePath, const FString& Destinati
 UTexture2D* ImportTextureAsset(
 	const FString& SourcePath, const FString& DestinationPath, const FString& AssetName, bool bSrgb);
 
-}  // namespace urlab::editor
+} // namespace urlab::editor

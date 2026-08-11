@@ -496,7 +496,7 @@ bool IsElementOf(UObject* Comp, std::initializer_list<ElementType> Kinds)
 	return false;
 }
 #endif
-}  // namespace
+} // namespace
 
 // The outliner asks what kind of element a node is, and that is a schema
 // question rather than a C++ one: an actuator has thirteen element classes and

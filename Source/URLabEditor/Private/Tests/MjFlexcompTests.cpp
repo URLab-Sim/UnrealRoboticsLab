@@ -57,7 +57,7 @@ UMjFlexcompBase* AddGrid(FMjUESession& Session, const TCHAR* Name, int32 Dim, FM
 	return Flex;
 }
 
-}  // namespace MjFlexcompTests
+} // namespace MjFlexcompTests
 
 // ============================================================================
 // URLab.Flexcomp.Grid2D_Compiles

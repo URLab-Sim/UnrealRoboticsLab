@@ -78,7 +78,7 @@ struct FMjCameraFrameMeta
 {
 	uint32 Magic = URLAB_CAMERA_META_MAGIC;
 	uint32 Version = URLAB_CAMERA_META_VERSION;
-	uint64 FrameId = 0;  // post-step render-snapshot id this frame shows
+	uint64 FrameId = 0; // post-step render-snapshot id this frame shows
 	double SimTime = 0.0;
 	uint32 Width = 0;
 	uint32 Height = 0;

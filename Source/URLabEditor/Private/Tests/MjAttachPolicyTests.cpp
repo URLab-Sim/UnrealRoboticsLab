@@ -149,7 +149,7 @@ FAttachOutcome Compose(FAutomationTestBase& Test, mjtConflict Policy, bool bPart
 	Out.SceneTimestep = Scene.Spec->option.timestep;
 	return Out;
 }
-}  // namespace MjAttachPolicyTests
+} // namespace MjAttachPolicyTests
 
 // ============================================================================
 // URLab.MuJoCo.AttachPolicy.PolicyReachesTheSpec
@@ -299,4 +299,4 @@ bool FMjAttachPolicyResolutionFollowsThePolicy::RunTest(const FString& Parameter
 	return !HasAnyErrors();
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

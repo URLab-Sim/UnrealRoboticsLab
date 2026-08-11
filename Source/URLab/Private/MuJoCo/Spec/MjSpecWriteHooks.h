@@ -82,6 +82,6 @@ const FMjSpecWriteHookRow* FindSpecWriteHook(const TCHAR* Name);
  */
 bool SpecWriteRegistryComplete(TArray<FString>* OutMissing = nullptr);
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

@@ -69,7 +69,7 @@ mjspec::FMjCompiledScene CompileBeside(const FMjUESession& Session)
 	return Builder.Compile();
 }
 
-}  // namespace
+} // namespace
 
 // --- A failed compile costs the session nothing ----------------------------- //
 
@@ -210,4 +210,4 @@ bool FMjInstallOptionAuthorityTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS
+#endif // URLAB_MJ_GEN && WITH_DEV_AUTOMATION_TESTS

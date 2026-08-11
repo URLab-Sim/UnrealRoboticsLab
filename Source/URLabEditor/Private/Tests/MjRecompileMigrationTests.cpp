@@ -345,14 +345,14 @@ FSnapshot Capture(const FMjUESession& S)
 bool Seed(FAutomationTestBase& Test, const FMjUESession& S)
 {
 	const bool bStaged = SetQPosOf(S, TEXT("TestJoint"), 0.11) && SetQVelOf(S, TEXT("TestJoint"), 0.05)
-		&& SetQPosOf(S, TEXT("KeptJoint"), 0.22) && SetQVelOf(S, TEXT("KeptJoint"), 0.06)
-		&& SetQPosOf(S, TEXT("ActJoint"), 0.33) && SetQVelOf(S, TEXT("ActJoint"), 0.07)
-		&& SetQPosOf(S, TEXT("ChangedJoint"), 0.44) && SetQVelOf(S, TEXT("ChangedJoint"), 0.08)
-		&& SetCtrlOf(S, TEXT("TestMotor"), 0.3) && SetCtrlOf(S, TEXT("ActGeneral"), 0.4)
-		&& SetActOf(S, TEXT("ActGeneral"), 0.15);
+					  && SetQPosOf(S, TEXT("KeptJoint"), 0.22) && SetQVelOf(S, TEXT("KeptJoint"), 0.06)
+					  && SetQPosOf(S, TEXT("ActJoint"), 0.33) && SetQVelOf(S, TEXT("ActJoint"), 0.07)
+					  && SetQPosOf(S, TEXT("ChangedJoint"), 0.44) && SetQVelOf(S, TEXT("ChangedJoint"), 0.08)
+					  && SetCtrlOf(S, TEXT("TestMotor"), 0.3) && SetCtrlOf(S, TEXT("ActGeneral"), 0.4)
+					  && SetActOf(S, TEXT("ActGeneral"), 0.15);
 
 	const double Pos[3] = {1.0, 2.0, 3.0};
-	const double Quat[4] = {0.5, 0.5, 0.5, 0.5};  // unit: 0.5^2 * 4 == 1.
+	const double Quat[4] = {0.5, 0.5, 0.5, 0.5}; // unit: 0.5^2 * 4 == 1.
 	return Test.TestTrue(TEXT("every carried quantity was staged"),
 		bStaged && SetMocapOf(S, TEXT("MocapBody"), Pos, Quat));
 }
@@ -405,7 +405,7 @@ bool RunToStep100(FAutomationTestBase& Test, FMjUESession& S, FFixture& Fx, FSna
 			&& FMath::Abs(OutBefore.ActGeneralAct) > UE_DOUBLE_KINDA_SMALL_NUMBER
 			&& FMath::Abs(OutBefore.MocapPos[0]) > UE_DOUBLE_KINDA_SMALL_NUMBER);
 }
-}  // namespace MjRecompileMigrationTests
+} // namespace MjRecompileMigrationTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRecompileMigratesStateByElement,
 	"URLab.Doc.RecompileMigratesStateByElement",
@@ -694,6 +694,6 @@ bool FMjRecompileJointTypeChangeResetsOnlyThatJoint::RunTest(const FString& Para
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR

@@ -102,13 +102,28 @@ public:
 private:
 	enum class EKind : uint8
 	{
-		None, JointState, Imu, Tf, TwistStamped, Clock, String,
-		Wrench, Range, MagneticField, MultiArray,
-		Odometry, PoseWithCovariance, CameraInfo,
-		Bool, Float64, Vector3, PoseStamped
+		None,
+		JointState,
+		Imu,
+		Tf,
+		TwistStamped,
+		Clock,
+		String,
+		Wrench,
+		Range,
+		MagneticField,
+		MultiArray,
+		Odometry,
+		PoseWithCovariance,
+		CameraInfo,
+		Bool,
+		Float64,
+		Vector3,
+		PoseStamped
 	};
 
-	FMjRosPub(void* InHandle, EKind InKind) : Handle(InHandle), Kind(InKind) {}
+	FMjRosPub(void* InHandle, EKind InKind)
+		: Handle(InHandle), Kind(InKind) {}
 
 	void* Handle = nullptr;
 	EKind Kind = EKind::None;
@@ -244,7 +259,7 @@ struct URLABROS_API FMjRosOutputProviderRegistrar
  * provider .cpp; no other file needs to change. Example:
  *   REGISTER_MJ_ROS_OUTPUT_PROVIDER("joint_state", FMjRosJointStateProvider);
  */
-#define REGISTER_MJ_ROS_OUTPUT_PROVIDER(NameLiteral, Type)                      \
-	static const FMjRosOutputProviderRegistrar GMjRosProviderRegistrar_##Type(  \
-		FName(TEXT(NameLiteral)),                                               \
+#define REGISTER_MJ_ROS_OUTPUT_PROVIDER(NameLiteral, Type)                     \
+	static const FMjRosOutputProviderRegistrar GMjRosProviderRegistrar_##Type( \
+		FName(TEXT(NameLiteral)),                                              \
 		[]() -> TUniquePtr<IMjRosOutputProvider> { return MakeUnique<Type>(); })

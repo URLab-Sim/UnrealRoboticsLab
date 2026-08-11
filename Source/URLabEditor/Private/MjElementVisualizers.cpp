@@ -35,7 +35,7 @@
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 namespace
 {
@@ -125,8 +125,8 @@ double RadiansPerAuthoredAngle(const FSpecRef& Spec)
 			continue;
 		}
 		return Compiler->Angle.Get(EMjAngleUnit::degree) == EMjAngleUnit::radian
-			? 1.0
-			: UE_DOUBLE_PI / 180.0;
+				 ? 1.0
+				 : UE_DOUBLE_PI / 180.0;
 	}
 	return UE_DOUBLE_PI / 180.0;
 }
@@ -148,8 +148,8 @@ FLinearColor ColorOf(const TOptional<TArray<T>>& Rgb, const FLinearColor& Fallba
 double SizeAt(const TOptional<TArray<double>>& Size, int32 Index, double Fallback)
 {
 	const double Metres = Size.IsSet() && Size.GetValue().IsValidIndex(Index)
-		? Size.GetValue()[Index]
-		: Fallback;
+							? Size.GetValue()[Index]
+							: Fallback;
 	return Metres * MetresToUnreal;
 }
 
@@ -188,7 +188,7 @@ void DrawJoint(const UMjJoint& Joint, FPrimitiveDrawInterface* PDI, double Radia
 		LocalAxis = Read(&UMjJoint::Axis).Get(FMjDirection3(0.0, 0.0, 1.0)).ToUnreal();
 		Range = Read(&UMjJoint::Range).Get(FVector2D::ZeroVector);
 		bLimited = Read(&UMjJoint::Limited).Get(EMjTriState::auto_) == EMjTriState::true_
-			|| Range != FVector2D::ZeroVector;
+				|| Range != FVector2D::ZeroVector;
 		Ref = Read(&UMjJoint::Ref).Get(0.0);
 	});
 
@@ -289,7 +289,7 @@ double LocatorMarkerSize(const FSceneView* View, const FVector& Location)
 		return MarkerFloor;
 	}
 	const double ScreenScale = View->WorldToScreen(Location).W
-		* (4.0 / View->UnscaledViewRect.Width() / View->ViewMatrices.GetProjectionMatrix().M[0][0]);
+							 * (4.0 / View->UnscaledViewRect.Width() / View->ViewMatrices.GetProjectionMatrix().M[0][0]);
 	return FMath::Max(ScreenScale, MarkerFloor);
 }
 
@@ -472,7 +472,7 @@ void DrawCamera(const UMjCameraBase& Camera, FPrimitiveDrawInterface* PDI)
 		if (Resolution.IsSet() && Resolution.GetValue().Num() >= 2 && Resolution.GetValue()[1] > 0)
 		{
 			Aspect = static_cast<double>(Resolution.GetValue()[0])
-				/ static_cast<double>(Resolution.GetValue()[1]);
+				   / static_cast<double>(Resolution.GetValue()[1]);
 		}
 	});
 
@@ -512,9 +512,9 @@ void DrawMarker(const USceneComponent& Element, FPrimitiveDrawInterface* PDI)
 		SDPG_Foreground);
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-}  // namespace
+} // namespace
 
 FMjElementVisualizer::FMjElementVisualizer()
 {
@@ -572,7 +572,7 @@ void FMjElementVisualizer::EndSweep()
 	SweepRadiansPerAngle.Reset();
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, const FSceneView* View,
 	FPrimitiveDrawInterface* PDI)
@@ -637,7 +637,7 @@ void FMjElementVisualizer::DrawVisualization(const UActorComponent* Component, c
 	{
 		DrawMarker(*Element, PDI);
 	}
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 }
 
 FDelegateHandle FMjElementVisualizer::PostEngineInitHandle;
@@ -685,4 +685,3 @@ void FMjElementVisualizer::UnregisterAll()
 		GUnrealEd->UnregisterComponentVisualizer(UMjNodeComponent::StaticClass()->GetFName());
 	}
 }
-

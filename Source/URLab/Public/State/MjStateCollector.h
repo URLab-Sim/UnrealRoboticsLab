@@ -78,7 +78,7 @@ private:
 		FName ArtSegment;
 		TWeakObjectPtr<AMjArticulation> Art;
 		TArray<TWeakObjectPtr<UMjNodeComponent>> Producers; // one DescribeElement per step
-		TWeakObjectPtr<UMjTwistController> TwistCtrl;   // UActorComponent; called separately
+		TWeakObjectPtr<UMjTwistController> TwistCtrl;       // UActorComponent; called separately
 		/** IMjStateProducer implementers registered under this art (e.g. user
 		 *  channel components). Any UObject; the collector Casts to the interface. */
 		TArray<TWeakObjectPtr<UObject>> InterfaceProducers;

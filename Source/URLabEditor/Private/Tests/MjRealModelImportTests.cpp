@@ -181,7 +181,7 @@ UMjGeom* GeomWearing(UBlueprint& Blueprint, const TCHAR* MaterialName)
 	return nullptr;
 }
 
-}  // namespace MjRealModelImportTests
+} // namespace MjRealModelImportTests
 
 // ============================================================================
 // URLab.Import.CardsDeckTexturesBecomeAssets
@@ -238,8 +238,7 @@ bool FMjCardsImportTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("a scratch world"), World))
 	{
 		UMjGeom* Spawned = SpawnAndFindGeom(*World, *Blueprint, TEXT("2_of_clubs"));
-		if (TestNotNull(TEXT("the spawned card geom"), Spawned) &&
-			TestNotNull(TEXT("it built a preview mesh component"), Spawned->GetVisualizerMesh()))
+		if (TestNotNull(TEXT("the spawned card geom"), Spawned) && TestNotNull(TEXT("it built a preview mesh component"), Spawned->GetVisualizerMesh()))
 		{
 			TestTrue(TEXT("the component draws the imported card OBJ"),
 				Spawned->GetVisualizerMesh()->GetStaticMesh() == Card.Asset);
@@ -313,8 +312,7 @@ bool FMjSkydioImportTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("a scratch world"), World))
 	{
 		UMjGeom* Spawned = SpawnAndFindGeom(*World, *Blueprint, TEXT("phong3SG"));
-		if (TestNotNull(TEXT("the spawned drone body geom"), Spawned) &&
-			TestNotNull(TEXT("it built a preview mesh component"), Spawned->GetVisualizerMesh()))
+		if (TestNotNull(TEXT("the spawned drone body geom"), Spawned) && TestNotNull(TEXT("it built a preview mesh component"), Spawned->GetVisualizerMesh()))
 		{
 			TestTrue(TEXT("the component draws the imported OBJ"),
 				Spawned->GetVisualizerMesh()->GetStaticMesh() == Body.Asset);
@@ -406,8 +404,7 @@ bool FMjSpotImportTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("a scratch world"), World))
 	{
 		UMjGeom* Spawned = SpawnAndFindGeom(*World, *Blueprint, TEXT("BlackAbs"));
-		if (TestNotNull(TEXT("a spawned visual geom"), Spawned) &&
-			TestNotNull(TEXT("it built a preview mesh component"), Spawned->GetVisualizerMesh()))
+		if (TestNotNull(TEXT("a spawned visual geom"), Spawned) && TestNotNull(TEXT("it built a preview mesh component"), Spawned->GetVisualizerMesh()))
 		{
 			const FMjResolvedMesh Resolved = MjResolveMesh(Spec, Spawned->EffectiveMeshName());
 			TestNotNull(TEXT("its <mesh> resolves to an asset"), Resolved.Asset);
@@ -419,4 +416,4 @@ bool FMjSpotImportTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

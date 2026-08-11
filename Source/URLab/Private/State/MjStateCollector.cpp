@@ -178,7 +178,7 @@ void DescribeActuator(const UMjNodeComponent& Node, int32 Id, const mjModel* m, 
 		}
 	}
 
-	const int32 ActAdr = m->actuator_actadr[Id];  // negative for a stateless actuator
+	const int32 ActAdr = m->actuator_actadr[Id]; // negative for a stateless actuator
 	A.Ctrl = d->ctrl[Id];
 	A.Act = (ActAdr >= 0) ? d->act[ActAdr] : 0.0;
 	A.Force = d->actuator_force[Id];
@@ -228,7 +228,7 @@ void DescribeElement(const UMjNodeComponent& Node, const mjModel* m, mjData* d, 
 	}
 #endif
 }
-}  // namespace
+} // namespace
 
 void FMjStateCollector::Init(AAMjManager* InManager)
 {

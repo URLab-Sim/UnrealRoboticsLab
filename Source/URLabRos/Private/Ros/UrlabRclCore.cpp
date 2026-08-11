@@ -2467,8 +2467,7 @@ UrlabRclOccupancyGridPub* UrlabRcl_CreateOccupancyGridPub(UrlabRclContext* Ctx,
 	Pub->Msg.info.origin.position.y = OriginY;
 	Pub->Msg.info.origin.position.z = 0.0;
 	Pub->Msg.info.origin.orientation.w = 1.0;
-	const size_t CellCount = static_cast<size_t>(Pub->Msg.info.width) *
-		static_cast<size_t>(Pub->Msg.info.height);
+	const size_t CellCount = static_cast<size_t>(Pub->Msg.info.width) * static_cast<size_t>(Pub->Msg.info.height);
 	rosidl_runtime_c__int8__Sequence__init(&Pub->Msg.data, CellCount);
 	if (CellCount > 0)
 	{
@@ -2502,8 +2501,7 @@ int UrlabRcl_PublishOccupancyGrid(UrlabRclOccupancyGridPub* Pub,
 		return -1;
 	}
 	FillStamp(Pub->Msg.header.stamp, SimTimeNs);
-	const size_t CellCount = static_cast<size_t>(Pub->Msg.info.width) *
-		static_cast<size_t>(Pub->Msg.info.height);
+	const size_t CellCount = static_cast<size_t>(Pub->Msg.info.width) * static_cast<size_t>(Pub->Msg.info.height);
 	if (Data && CellCount > 0)
 	{
 		std::memcpy(Pub->Msg.data.data, Data, CellCount);

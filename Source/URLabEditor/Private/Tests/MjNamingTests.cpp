@@ -106,7 +106,7 @@ int32 CountWithMjName(UBlueprint& Blueprint, const TCHAR* MjName)
 	return Count;
 }
 
-}  // namespace MjNamingTests
+} // namespace MjNamingTests
 
 // ============================================================================
 // URLab.Import.ACrossTypeNameClashSuffixesByType
@@ -251,4 +251,4 @@ bool FMjUnnamedKeepOrdinalsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

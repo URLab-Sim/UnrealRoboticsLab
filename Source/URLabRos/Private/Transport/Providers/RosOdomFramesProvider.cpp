@@ -45,10 +45,10 @@ public:
 		{
 			return;
 		}
-		const TArray<FString> Parents = { TEXT("map"), TEXT("odom") };
-		const TArray<FString> Children = { TEXT("odom"), TEXT("world") };
-		const TArray<double> Translations = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
-		const TArray<double> RotationsXyzw = { 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0 };
+		const TArray<FString> Parents = {TEXT("map"), TEXT("odom")};
+		const TArray<FString> Children = {TEXT("odom"), TEXT("world")};
+		const TArray<double> Translations = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+		const TArray<double> RotationsXyzw = {0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0};
 		// Latched (transient-local) static transforms; publish once at Build.
 		StaticTfPub.PublishTf(Parents, Children, Translations, RotationsXyzw, /*SimTimeNs=*/0);
 	}

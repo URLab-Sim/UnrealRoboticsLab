@@ -46,7 +46,7 @@ namespace urlab::editor
  */
 UMaterial* BuildMuJoCoMasterMaterial(bool bSave);
 
-}  // namespace urlab::editor
+} // namespace urlab::editor
 
 /** Commandlet wrapper, so the asset can be rebuilt without opening the editor. */
 UCLASS()

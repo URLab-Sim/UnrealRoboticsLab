@@ -65,7 +65,7 @@ FMjActuatorState MakeActuator(const TCHAR* Name, const TCHAR* TargetJoint, doubl
 	A.Force = Force;
 	return A;
 }
-}  // namespace
+} // namespace
 
 // ---------------------------------------------------------------------------
 // 1. Free base + 1-DOF joints: the free root is dropped, and every remaining

@@ -136,7 +136,7 @@ const TCHAR* const TwoJointBody = TEXT(R"(<mujoco model="ordering">
 </mujoco>
 )");
 
-}  // namespace MjOrderingTests
+} // namespace MjOrderingTests
 
 // ============================================================================
 // URLab.Spec.AHandAddedElementAppends
@@ -349,7 +349,7 @@ bool MeasureImport(FAutomationTestBase& Test, int32 BodyCount, FTableCost& Out)
 	Out.RowVisits = ps::ue::DispatchRowVisits() - Rows;
 	return Blueprint != nullptr;
 }
-}  // namespace MjOrderingTests
+} // namespace MjOrderingTests
 
 bool FMjImportChildQueriesTest::RunTest(const FString& Parameters)
 {
@@ -391,4 +391,4 @@ bool FMjImportChildQueriesTest::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

@@ -79,8 +79,7 @@ TArray<UMjNodeComponent*> NodesOfType(const AActor& Actor, ElementType Wanted)
 	for (UMjNodeComponent* Node : SpecNodes(Actor))
 	{
 		ElementType Type;
-		if (Node != nullptr && urlab::spec::MjElementTypeOfNode(*Node, Type) && Type == Wanted &&
-			!Node->IsClassPartial())
+		if (Node != nullptr && urlab::spec::MjElementTypeOfNode(*Node, Type) && Type == Wanted && !Node->IsClassPartial())
 		{
 			Out.Add(Node);
 		}
@@ -88,7 +87,7 @@ TArray<UMjNodeComponent*> NodesOfType(const AActor& Actor, ElementType Wanted)
 	return Out;
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 /** The names an element answers to: its authored MJCF name and its own. */
 void EachNameOf(const UMjNodeComponent& Node, TFunctionRef<void(const FString&)> Visit)
@@ -104,7 +103,7 @@ void EachNameOf(const UMjNodeComponent& Node, TFunctionRef<void(const FString&)>
 	}
 }
 
-}  // namespace
+} // namespace
 
 AMjArticulation::AMjArticulation()
 {
@@ -527,12 +526,12 @@ TArray<FString> FamilyNames(const TArray<UMjNodeComponent*>& Nodes)
 			continue;
 		}
 		Names.Add(Node->MjName.IsSet() && !Node->MjName.GetValue().IsEmpty()
-				? Node->MjName.GetValue()
-				: Node->GetName());
+					  ? Node->MjName.GetValue()
+					  : Node->GetName());
 	}
 	return Names;
 }
-}  // namespace
+} // namespace
 
 TArray<UMjNodeComponent*> AMjArticulation::GetActuators() const
 {
@@ -785,7 +784,7 @@ bool AMjArticulation::HoldKeyframe(const FString& KeyframeName)
 		for (UMjNodeComponent* Node : Keys)
 		{
 			const bool bMatches = Node != nullptr
-				&& ((Node->MjName.IsSet() && Node->MjName.GetValue() == KeyframeName) || Node->GetName() == KeyframeName);
+							   && ((Node->MjName.IsSet() && Node->MjName.GetValue() == KeyframeName) || Node->GetName() == KeyframeName);
 			if (bMatches)
 			{
 				Target = Cast<UMjKey>(Node);
@@ -982,8 +981,8 @@ void AMjArticulation::DrawDebugJoints()
 		// published snapshot; the shape of the joint -- its type, its range, its
 		// reference -- comes from the model, which a compile fixes.
 		const bool bCompiled = Model != nullptr && Node->GetBoundId().IsSet()
-			&& Node->GetBoundId().GetValue() >= 0
-			&& Node->GetBoundId().GetValue() < Model->njnt;
+							&& Node->GetBoundId().GetValue() >= 0
+							&& Node->GetBoundId().GetValue() < Model->njnt;
 
 		if (bCompiled)
 		{
@@ -1030,7 +1029,7 @@ void AMjArticulation::DrawDebugJoints()
 			RangeMin = static_cast<float>(Range.X);
 			RangeMax = static_cast<float>(Range.Y);
 			bLimited = Joint->Limited.Get(EMjTriState::auto_) == EMjTriState::true_
-				|| RangeMin != 0.0f || RangeMax != 0.0f;
+					|| RangeMin != 0.0f || RangeMax != 0.0f;
 			RefPos = static_cast<float>(Joint->Ref.Get(0.0));
 		}
 
@@ -1098,8 +1097,8 @@ void AMjArticulation::DrawDebugSites()
 		}
 
 		const bool bCompiled = Model != nullptr && Node->GetBoundId().IsSet()
-			&& Node->GetBoundId().GetValue() >= 0
-			&& Node->GetBoundId().GetValue() < Model->nsite;
+							&& Node->GetBoundId().GetValue() >= 0
+							&& Node->GetBoundId().GetValue() < Model->nsite;
 
 		if (bCompiled)
 		{
@@ -1235,8 +1234,8 @@ void AMjArticulation::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	const FName PropertyName = PropertyChangedEvent.Property != nullptr
-		? PropertyChangedEvent.Property->GetFName()
-		: NAME_None;
+								 ? PropertyChangedEvent.Property->GetFName()
+								 : NAME_None;
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(AMjArticulation, bShowGroup3))
 	{
 		UpdateGroup3Visibility();
@@ -1275,4 +1274,4 @@ void AMjArticulation::PostEditMove(bool bFinished)
 	}
 }
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR

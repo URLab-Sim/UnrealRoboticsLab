@@ -5,9 +5,10 @@
 #   Scripts/format.sh            # format Source/ in place
 #   Scripts/format.sh --check    # exit 1 if anything is unformatted (CI)
 #
-# Codegen-managed files are also formatted here, but the codegen emits the
-# same formatting (see _clang_format_content in generate_ue_components.py), so
-# running this after a regen is a no-op on generated files.
+# `*.gen.h` / `*.gen.cpp` are skipped. The emitter owns their bytes and the
+# codegen drift gate compares them exactly, so formatting them here would be
+# reverted by the next regen and the two gates would each undo the other. The
+# emitter's own output is the standard those files are held to.
 #
 # Requires clang-format 19.x. Set $CLANG_FORMAT, or have clang-format(-19) on PATH.
 set -euo pipefail
@@ -23,7 +24,8 @@ resolve_cf() {
 CF="$(resolve_cf)"
 
 mapfile -t FILES < <(find "${ROOT}/Source" -type f \( -name '*.h' -o -name '*.cpp' \) \
-    -not -path '*/Intermediate/*' -not -path '*/Binaries/*' | sort)
+    -not -path '*/Intermediate/*' -not -path '*/Binaries/*' \
+    -not -name '*.gen.h' -not -name '*.gen.cpp' | sort)
 
 echo "clang-format: ${CF}"
 echo "files: ${#FILES[@]}"

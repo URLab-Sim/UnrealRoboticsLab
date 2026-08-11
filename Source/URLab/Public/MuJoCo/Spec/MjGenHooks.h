@@ -35,9 +35,9 @@
 // a checkout without them builds the plugin exactly as it did before Phase 3.
 
 #if defined(URLAB_PROTOSPEC) && URLAB_PROTOSPEC && __has_include("MuJoCo/Gen/MjProfile.gen.h")
-	#define URLAB_MJ_GEN 1
+#define URLAB_MJ_GEN 1
 #else
-	#define URLAB_MJ_GEN 0
+#define URLAB_MJ_GEN 0
 #endif
 
 #if URLAB_MJ_GEN
@@ -51,6 +51,6 @@ namespace urlab::spec
 namespace gen = ::ps::ue;
 namespace psm = ::ps::mjcf;
 namespace pssdk = ::ps::sdk;
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

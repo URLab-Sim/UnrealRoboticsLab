@@ -25,7 +25,6 @@
 #include "CoreMinimal.h"
 #include "mujoco/mujoco.h"
 
-
 /**
  * @class MjUtils
  * @brief Static utility class for MuJoCo <-> Unreal Engine helper functions.

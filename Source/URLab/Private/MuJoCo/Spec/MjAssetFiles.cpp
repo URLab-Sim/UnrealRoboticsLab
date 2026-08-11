@@ -68,9 +68,9 @@ private:
 	}
 };
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-}  // namespace
+} // namespace
 
 FMjDumpTarget MjDumpTargetFor(const FString& BaseDirectory, const FString& Name, const TCHAR* Extension)
 {

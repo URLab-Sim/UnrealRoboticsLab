@@ -254,7 +254,7 @@ void LogDiagnostics(const FMjSpecParseResult& Result, const FString& Filename)
 	}
 }
 
-}  // namespace
+} // namespace
 
 UMujocoGenerationAction::UMujocoGenerationAction()
 {

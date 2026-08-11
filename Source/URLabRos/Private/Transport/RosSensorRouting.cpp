@@ -28,42 +28,42 @@ ERosSensorRoute RouteForSemantic(EMjSensorSemantic Semantic)
 	// until it is routed, keeping ROS sensor coverage total by construction.
 	switch (Semantic)
 	{
-	case EMjSensorSemantic::Gyro:
-	case EMjSensorSemantic::Accel:
-		return ERosSensorRoute::Imu;
+		case EMjSensorSemantic::Gyro:
+		case EMjSensorSemantic::Accel:
+			return ERosSensorRoute::Imu;
 
-	case EMjSensorSemantic::Force:
-	case EMjSensorSemantic::Torque:
-		return ERosSensorRoute::Wrench;
+		case EMjSensorSemantic::Force:
+		case EMjSensorSemantic::Torque:
+			return ERosSensorRoute::Wrench;
 
-	case EMjSensorSemantic::Rangefinder:
-		return ERosSensorRoute::Range;
+		case EMjSensorSemantic::Rangefinder:
+			return ERosSensorRoute::Range;
 
-	case EMjSensorSemantic::Magnetometer:
-		return ERosSensorRoute::MagneticField;
+		case EMjSensorSemantic::Magnetometer:
+			return ERosSensorRoute::MagneticField;
 
-	case EMjSensorSemantic::Velocity:
-		return ERosSensorRoute::Twist;
+		case EMjSensorSemantic::Velocity:
+			return ERosSensorRoute::Twist;
 
-	case EMjSensorSemantic::Generic:
-	case EMjSensorSemantic::Touch:
-	case EMjSensorSemantic::JointPos:
-	case EMjSensorSemantic::JointVel:
-	case EMjSensorSemantic::ActuatorPos:
-	case EMjSensorSemantic::ActuatorVel:
-	case EMjSensorSemantic::ActuatorFrc:
-	case EMjSensorSemantic::FramePos:
-	case EMjSensorSemantic::FrameQuat:
-	case EMjSensorSemantic::FrameAxis:
-	case EMjSensorSemantic::FrameLinVel:
-	case EMjSensorSemantic::FrameAngVel:
-	case EMjSensorSemantic::FrameLinAcc:
-	case EMjSensorSemantic::FrameAngAcc:
-	case EMjSensorSemantic::SubtreeCom:
-	case EMjSensorSemantic::SubtreeLinVel:
-	case EMjSensorSemantic::SubtreeAngMom:
-	case EMjSensorSemantic::Clock:
-		return ERosSensorRoute::MultiArray;
+		case EMjSensorSemantic::Generic:
+		case EMjSensorSemantic::Touch:
+		case EMjSensorSemantic::JointPos:
+		case EMjSensorSemantic::JointVel:
+		case EMjSensorSemantic::ActuatorPos:
+		case EMjSensorSemantic::ActuatorVel:
+		case EMjSensorSemantic::ActuatorFrc:
+		case EMjSensorSemantic::FramePos:
+		case EMjSensorSemantic::FrameQuat:
+		case EMjSensorSemantic::FrameAxis:
+		case EMjSensorSemantic::FrameLinVel:
+		case EMjSensorSemantic::FrameAngVel:
+		case EMjSensorSemantic::FrameLinAcc:
+		case EMjSensorSemantic::FrameAngAcc:
+		case EMjSensorSemantic::SubtreeCom:
+		case EMjSensorSemantic::SubtreeLinVel:
+		case EMjSensorSemantic::SubtreeAngMom:
+		case EMjSensorSemantic::Clock:
+			return ERosSensorRoute::MultiArray;
 	}
 
 	// Unreachable: the switch above is total. Present only so a corrupt cast does
@@ -77,19 +77,19 @@ FString TopicFor(const FString& ArtSegment, const FString& SensorName, ERosSenso
 {
 	switch (Route)
 	{
-	case ERosSensorRoute::Imu:
-		return FString::Printf(TEXT("/%s/imu"), *ArtSegment);
-	case ERosSensorRoute::Wrench:
-		return FString::Printf(TEXT("/%s/%s/wrench"), *ArtSegment, *SensorName);
-	case ERosSensorRoute::Range:
-		return FString::Printf(TEXT("/%s/%s/range"), *ArtSegment, *SensorName);
-	case ERosSensorRoute::MagneticField:
-		return FString::Printf(TEXT("/%s/%s/magnetic_field"), *ArtSegment, *SensorName);
-	case ERosSensorRoute::Twist:
-		return FString::Printf(TEXT("/%s/%s/velocity"), *ArtSegment, *SensorName);
-	case ERosSensorRoute::MultiArray:
-	default:
-		return FString::Printf(TEXT("/%s/sensors/%s"), *ArtSegment, *SensorName);
+		case ERosSensorRoute::Imu:
+			return FString::Printf(TEXT("/%s/imu"), *ArtSegment);
+		case ERosSensorRoute::Wrench:
+			return FString::Printf(TEXT("/%s/%s/wrench"), *ArtSegment, *SensorName);
+		case ERosSensorRoute::Range:
+			return FString::Printf(TEXT("/%s/%s/range"), *ArtSegment, *SensorName);
+		case ERosSensorRoute::MagneticField:
+			return FString::Printf(TEXT("/%s/%s/magnetic_field"), *ArtSegment, *SensorName);
+		case ERosSensorRoute::Twist:
+			return FString::Printf(TEXT("/%s/%s/velocity"), *ArtSegment, *SensorName);
+		case ERosSensorRoute::MultiArray:
+		default:
+			return FString::Printf(TEXT("/%s/sensors/%s"), *ArtSegment, *SensorName);
 	}
 }
 
@@ -126,4 +126,4 @@ void GatherWrenchPairs(const FMjArticulationState& Art, TArray<FMjWrenchPair>& O
 		OutPairs.Add(Pair);
 	}
 }
-}  // namespace MjRosSensorRouting
+} // namespace MjRosSensorRouting

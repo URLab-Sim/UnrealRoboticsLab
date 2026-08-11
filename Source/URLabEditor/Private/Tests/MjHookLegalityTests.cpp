@@ -227,47 +227,41 @@ bool FMjHookLegalityTransmissionTest::RunTest(const FString& Parameters)
 		[](FHookFixture& Fixture) { Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("act")); });
 
 	ExpectRefused(*this, TEXT("cranklength on a joint transmission"), TEXT("slidercrank"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjMotor* const Motor = Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("act"));
 			Motor->Joint = FString(TEXT("hinge"));
 			Motor->Cranklength = 0.5;
 		});
 
 	ExpectRefused(*this, TEXT("slidersite on a joint transmission"), TEXT("slidercrank"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjMotor* const Motor = Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("act"));
 			Motor->Joint = FString(TEXT("hinge"));
 			Motor->Slidersite = FString(TEXT("base"));
 		});
 
 	ExpectRefused(*this, TEXT("refsite on a joint transmission"), TEXT("site transmission"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjPosition* const Position = Fixture.Add<UMjPosition>(Fixture.ActuatorSection(), TEXT("act"));
 			Position->Joint = FString(TEXT("hinge"));
 			Position->Refsite = FString(TEXT("ref"));
 		});
 
 	ExpectAccepted(*this, TEXT("a motor on a joint"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjMotor* const Motor = Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("act"));
 			Motor->Joint = FString(TEXT("hinge"));
 		});
 
 	ExpectAccepted(*this, TEXT("refsite on a site transmission"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjPosition* const Position = Fixture.Add<UMjPosition>(Fixture.ActuatorSection(), TEXT("act"));
 			Position->Site = FString(TEXT("tip"));
 			Position->Refsite = FString(TEXT("ref"));
 		});
 
 	ExpectAccepted(*this, TEXT("slidersite on a slidercrank transmission"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjMotor* const Motor = Fixture.Add<UMjMotor>(Fixture.ActuatorSection(), TEXT("act"));
 			Motor->Cranksite = FString(TEXT("crank"));
 			Motor->Slidersite = FString(TEXT("base"));
@@ -291,37 +285,32 @@ bool FMjHookLegalityEqualityTest::RunTest(const FString& Parameters)
 	using namespace MjHookLegalityTests;
 
 	ExpectRefused(*this, TEXT("a connect with body1 and no anchor"), TEXT("connect constraint"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjConnect* const Connect = Fixture.Add<UMjConnect>(Fixture.EqualitySection(), TEXT("eq"));
 			Connect->Body1 = FString(TEXT("a"));
 			Connect->Body2 = FString(TEXT("b"));
 		});
 
 	ExpectRefused(*this, TEXT("a connect naming one site"), TEXT("connect constraint"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjConnect* const Connect = Fixture.Add<UMjConnect>(Fixture.EqualitySection(), TEXT("eq"));
 			Connect->Site1 = FString(TEXT("s1"));
 		});
 
 	ExpectRefused(*this, TEXT("a weld naming one site"), TEXT("weld constraint"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjWeld* const Weld = Fixture.Add<UMjWeld>(Fixture.EqualitySection(), TEXT("eq"));
 			Weld->Site1 = FString(TEXT("s1"));
 		});
 
 	ExpectRefused(*this, TEXT("a joint equality naming no joint1"), TEXT("name joint1"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjEqualityJoint* const Joint = Fixture.Add<UMjEqualityJoint>(Fixture.EqualitySection(), TEXT("eq"));
 			Joint->Joint2 = FString(TEXT("j2"));
 		});
 
 	ExpectRefused(*this, TEXT("a tendon equality naming no tendon1"), TEXT("name tendon1"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjEqualityTendon* const Tendon = Fixture.Add<UMjEqualityTendon>(Fixture.EqualitySection(), TEXT("eq"));
 			Tendon->Tendon2 = FString(TEXT("t2"));
 		});
@@ -330,8 +319,7 @@ bool FMjHookLegalityEqualityTest::RunTest(const FString& Parameters)
 		[](FHookFixture& Fixture) { Fixture.Add<UMjEqualityFlex>(Fixture.EqualitySection(), TEXT("eq")); });
 
 	ExpectAccepted(*this, TEXT("a connect with body1 and an anchor"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjConnect* const Connect = Fixture.Add<UMjConnect>(Fixture.EqualitySection(), TEXT("eq"));
 			Connect->Body1 = FString(TEXT("a"));
 			Connect->Body2 = FString(TEXT("b"));
@@ -339,8 +327,7 @@ bool FMjHookLegalityEqualityTest::RunTest(const FString& Parameters)
 		});
 
 	ExpectAccepted(*this, TEXT("a connect naming two sites"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjConnect* const Connect = Fixture.Add<UMjConnect>(Fixture.EqualitySection(), TEXT("eq"));
 			Connect->Site1 = FString(TEXT("s1"));
 			Connect->Site2 = FString(TEXT("s2"));
@@ -349,15 +336,13 @@ bool FMjHookLegalityEqualityTest::RunTest(const FString& Parameters)
 	// Weld elects the body spelling on body1 alone; the anchor is optional
 	// there and defaults to the body origin.
 	ExpectAccepted(*this, TEXT("a weld with body1 and no anchor"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjWeld* const Weld = Fixture.Add<UMjWeld>(Fixture.EqualitySection(), TEXT("eq"));
 			Weld->Body1 = FString(TEXT("a"));
 		});
 
 	ExpectAccepted(*this, TEXT("a joint equality naming joint1"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjEqualityJoint* const Joint = Fixture.Add<UMjEqualityJoint>(Fixture.EqualitySection(), TEXT("eq"));
 			Joint->Joint1 = FString(TEXT("j1"));
 		});
@@ -380,8 +365,7 @@ bool FMjHookLegalityClassTemplateTest::RunTest(const FString& Parameters)
 	using namespace MjHookLegalityTests;
 
 	ExpectAccepted(*this, TEXT("a class template carrying a transmissionless actuator"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjDefault* const Class = Fixture.Add<UMjDefault>(Fixture.Robot->Spec, TEXT("driven"));
 			UMjPosition* const Position = Fixture.Add<UMjPosition>(Class);
 			Position->Kp = 25.0;
@@ -391,8 +375,7 @@ bool FMjHookLegalityClassTemplateTest::RunTest(const FString& Parameters)
 	// transmission, so the check has not been disarmed for the elements the
 	// class serves.
 	ExpectRefused(*this, TEXT("a classed actuator naming nothing to drive"), TEXT("elects no transmission"),
-		[](FHookFixture& Fixture)
-		{
+		[](FHookFixture& Fixture) {
 			UMjDefault* const Class = Fixture.Add<UMjDefault>(Fixture.Robot->Spec, TEXT("driven"));
 			UMjPosition* const Template = Fixture.Add<UMjPosition>(Class);
 			Template->Kp = 25.0;

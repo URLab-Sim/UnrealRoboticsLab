@@ -38,12 +38,10 @@ using urlab::spec::psm::ElementType;
  */
 const TSet<ElementType>& ActuatorKinds()
 {
-	static const TSet<ElementType> Kinds = []
-	{
+	static const TSet<ElementType> Kinds = [] {
 		TSet<ElementType> Out;
 		urlab::spec::gen::ChildSlots(static_cast<const UMjActuator*>(nullptr),
-			[&Out](int32, auto Tag)
-			{
+			[&Out](int32, auto Tag) {
 				using Leaf = typename decltype(Tag)::type;
 				Out.Add(urlab::spec::gen::TMjElementType<Leaf>::Value);
 			});
@@ -99,7 +97,7 @@ bool ResolveBound(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngi
 	return true;
 }
 
-}  // namespace
+} // namespace
 
 bool UMjActuatorRuntime::IsActuator(const UMjNodeComponent* Node)
 {
@@ -255,9 +253,9 @@ float UMjActuatorRuntime::GetActivation(const UMjNodeComponent* Actuator)
 	// Negative for a stateless actuator, which has no activation to report.
 	const int32 ActAdr = Model->actuator_actadr[Id];
 	return ActAdr >= 0
-		? static_cast<float>(MjSnapshotValue(*Engine, ActAdr,
-			  [](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.Act; }))
-		: 0.0f;
+			 ? static_cast<float>(MjSnapshotValue(*Engine, ActAdr,
+				   [](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.Act; }))
+			 : 0.0f;
 }
 
 TArray<float> UMjActuatorRuntime::GetGear(const UMjNodeComponent* Actuator)
@@ -300,7 +298,7 @@ void UMjActuatorRuntime::SetGear(const UMjNodeComponent* Actuator, const TArray<
 	Engine->ApplyActuatorGear(Id, Values);
 }
 
-#else  // URLAB_MJ_GEN
+#else // URLAB_MJ_GEN
 
 bool UMjActuatorRuntime::IsActuator(const UMjNodeComponent*)
 {
@@ -363,4 +361,4 @@ TArray<float> UMjActuatorRuntime::GetGear(const UMjNodeComponent*)
 
 void UMjActuatorRuntime::SetGear(const UMjNodeComponent*, const TArray<float>&) {}
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

@@ -41,7 +41,7 @@ AMjArticulation* MakeDetachedArticulation()
 {
 	return NewObject<AMjArticulation>(GetTransientPackage());
 }
-}  // namespace MjActuatorControlSlotTests
+} // namespace MjActuatorControlSlotTests
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjControlSourceSelectsSlot,
 	"URLab.Elements.ControlSourceSelectsStagedSlot",
@@ -157,4 +157,4 @@ bool FMjControlSlotsResetOnRecompile::RunTest(const FString& Parameters)
 	return true;
 }
 
-#endif  // WITH_EDITOR
+#endif // WITH_EDITOR

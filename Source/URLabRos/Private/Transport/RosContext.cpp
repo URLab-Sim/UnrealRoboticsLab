@@ -85,4 +85,4 @@ void FURLabRosContext::Shutdown()
 	bInitAttempted = false;
 }
 
-#endif  // URLAB_WITH_ROS2
+#endif // URLAB_WITH_ROS2

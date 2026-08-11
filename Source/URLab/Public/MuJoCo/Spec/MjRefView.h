@@ -131,6 +131,6 @@ struct TIsRefView<RefView<Target, SlotType>> : std::true_type
 {
 	using Slot = SlotType;
 };
-}  // namespace ref_view_detail
+} // namespace ref_view_detail
 
-}  // namespace urlab
+} // namespace urlab

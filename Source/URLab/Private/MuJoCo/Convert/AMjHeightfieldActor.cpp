@@ -239,8 +239,8 @@ bool AMjHeightfieldActor::SampleElevation(TArray<float>& OutNormHeights, float& 
 	}
 
 	const FBox Bounds = BoundsBox->CalcBounds(BoundsBox->GetComponentTransform()).GetBox();
-	const float BoundsWidth = Bounds.Max.X - Bounds.Min.X;   // UE X (cm)
-	const float BoundsHeight = Bounds.Max.Y - Bounds.Min.Y;  // UE Y (cm)
+	const float BoundsWidth = Bounds.Max.X - Bounds.Min.X;  // UE X (cm)
+	const float BoundsHeight = Bounds.Max.Y - Bounds.Min.Y; // UE Y (cm)
 
 	if (BoundsWidth <= 0.f || BoundsHeight <= 0.f)
 	{

@@ -33,7 +33,7 @@ FString FMjCanonicalName::Sanitize(const FString& Segment)
 	for (TCHAR C : Segment)
 	{
 		const bool bLegal = (C >= TEXT('A') && C <= TEXT('Z')) || (C >= TEXT('a') && C <= TEXT('z'))
-							 || (C >= TEXT('0') && C <= TEXT('9')) || C == TEXT('_');
+						 || (C >= TEXT('0') && C <= TEXT('9')) || C == TEXT('_');
 		Out.AppendChar(bLegal ? C : TEXT('_'));
 	}
 	if (Out[0] >= TEXT('0') && Out[0] <= TEXT('9'))

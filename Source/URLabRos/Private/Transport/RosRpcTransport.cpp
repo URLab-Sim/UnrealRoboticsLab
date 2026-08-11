@@ -54,7 +54,7 @@ namespace
 {
 constexpr int64 RosSpinTimeoutNs = 50 * 1000 * 1000; // 50 ms
 constexpr float RosIdleSleepSeconds = 0.02f;
-}
+} // namespace
 
 // Per-articulation command binding. Holds the identity used to resolve + gate the
 // write (Art->GetName(), the GetArticulation + ownership key) and the per-art
@@ -143,7 +143,7 @@ void RosUserInputTrampoline(const double* Values, int32_t Count, void* User)
 			Values, static_cast<int32>(Count));
 	}
 }
-}  // namespace
+} // namespace
 
 class FRosExecutorRunnable : public FRunnable
 {
@@ -339,11 +339,11 @@ void UURLabRosRpcTransport::RebuildCommandSubscriptions(UrlabRclContext* Ctx)
 	{
 		if (Info.Kind == EMjUserChannelKind::String || Info.Kind == EMjUserChannelKind::Struct)
 		{
-			continue;  // text-family channels have no ROS input subscription
+			continue; // text-family channels have no ROS input subscription
 		}
 		const FString Topic = Info.ArtSegment.IsEmpty()
-			? FString::Printf(TEXT("/urlab/user/%s"), *Info.Channel.ToString())
-			: FString::Printf(TEXT("/%s/user/%s"), *Info.ArtSegment, *Info.Channel.ToString());
+								? FString::Printf(TEXT("/urlab/user/%s"), *Info.Channel.ToString())
+								: FString::Printf(TEXT("/%s/user/%s"), *Info.ArtSegment, *Info.Channel.ToString());
 
 		FRosUserInputSub* Binding = new FRosUserInputSub();
 		Binding->Transport = this;
@@ -650,9 +650,9 @@ void UURLabRosRpcTransport::HandleRosClaimRelease(const FString& ArtName, bool b
 			Reply->TryGetStringField(TEXT("owner"), Owner);
 		}
 		WriteMessage(bClaim
-			? FString::Printf(TEXT("%s claimed by %s"), *ArtName,
-				Owner.IsEmpty() ? *RosControlSourceId() : *Owner)
-			: FString::Printf(TEXT("%s released"), *ArtName));
+						 ? FString::Printf(TEXT("%s claimed by %s"), *ArtName,
+							   Owner.IsEmpty() ? *RosControlSourceId() : *Owner)
+						 : FString::Printf(TEXT("%s released"), *ArtName));
 	}
 	else
 	{
@@ -728,7 +728,7 @@ bool UURLabRosRpcTransport::PublishAndPumpCtrlForTest(const FString& Topic,
 	for (int32 Attempt = 0; Attempt < 200 && !bFired; ++Attempt)
 	{
 		UrlabRcl_PublishCtrl(Pub, Values.GetData(), Values.Num());
-		UrlabRcl_SpinSome(Ctx, 20 * 1000 * 1000);  // 20 ms
+		UrlabRcl_SpinSome(Ctx, 20 * 1000 * 1000); // 20 ms
 		bFired = RosCtrlCallbackCount.load() > Before;
 		if (!bFired)
 		{
@@ -741,10 +741,13 @@ bool UURLabRosRpcTransport::PublishAndPumpCtrlForTest(const FString& Topic,
 	return bFired;
 }
 
-#else  // URLAB_WITH_ROS2
+#else // URLAB_WITH_ROS2
 
 // Absent-ROS stubs so the class links; every real caller is fenced off too.
-bool UURLabRosRpcTransport::TransportInit() { return false; }
+bool UURLabRosRpcTransport::TransportInit()
+{
+	return false;
+}
 void UURLabRosRpcTransport::TransportShutdown() {}
 void UURLabRosRpcTransport::RunExecutorLoop() {}
 void UURLabRosRpcTransport::SyncCommandSubscriptions(UrlabRclContext*) {}
@@ -757,10 +760,13 @@ void UURLabRosRpcTransport::HandleRosUserChannel(FName, FName, EMjUserChannelKin
 void UURLabRosRpcTransport::HandleRosClaimRelease(const FString&, bool, int32*, char*, int32) {}
 void UURLabRosRpcTransport::ApplyRosCtrlForTest(const FString&, const TArray<double>&) {}
 void UURLabRosRpcTransport::ApplyRosJointCommandForTest(const FString&, const TArray<FString>&, const TArray<double>&) {}
-bool UURLabRosRpcTransport::ApplyRosClaimReleaseForTest(const FString&, bool) { return false; }
+bool UURLabRosRpcTransport::ApplyRosClaimReleaseForTest(const FString&, bool)
+{
+	return false;
+}
 bool UURLabRosRpcTransport::PublishAndPumpCtrlForTest(const FString&, const TArray<double>&)
 {
 	return false;
 }
 
-#endif  // URLAB_WITH_ROS2
+#endif // URLAB_WITH_ROS2

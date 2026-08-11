@@ -135,7 +135,7 @@ bool UURLabRosPublishTransport::FillImu(const FMjArticulationState& Art,
 			bOutHasAngularVel = true;
 		}
 		else if (!bOutHasLinearAccel && Sensor.Semantic == EMjSensorSemantic::Accel
-			&& Sensor.Values.Num() >= 3)
+				 && Sensor.Values.Num() >= 3)
 		{
 			OutLinearAccel[0] = Sensor.Values[0];
 			OutLinearAccel[1] = Sensor.Values[1];
@@ -193,7 +193,7 @@ void UURLabRosPublishTransport::FillTf(const FMjStateSnapshot& Snapshot,
 int64 UURLabRosPublishTransport::FillClock(const FMjClock& Clock)
 {
 	return static_cast<int64>(Clock.SimSec) * 1000000000LL
-		+ static_cast<int64>(Clock.SimNsec);
+		 + static_cast<int64>(Clock.SimNsec);
 }
 
 // Reports the joint_state provider's per-articulation publisher count (one per
@@ -289,12 +289,15 @@ void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& Snapshot)
 	}
 }
 
-#else  // URLAB_WITH_ROS2
+#else // URLAB_WITH_ROS2
 
 // Absent-ROS stubs so the class links; every real caller is fenced off too.
-bool UURLabRosPublishTransport::TransportInit() { return false; }
+bool UURLabRosPublishTransport::TransportInit()
+{
+	return false;
+}
 void UURLabRosPublishTransport::TransportShutdown() {}
 void UURLabRosPublishTransport::PublishState(const FMjStateSnapshot& /*Snapshot*/) {}
 void UURLabRosPublishTransport::RebuildProviders(const FMjStateSnapshot& /*Snapshot*/) {}
 
-#endif  // URLAB_WITH_ROS2
+#endif // URLAB_WITH_ROS2

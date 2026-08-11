@@ -83,7 +83,7 @@ TArray<FText> FrictionLabelsFor(const UMjNodeComponent& Node)
 	}
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 /** MuJoCo's own names for the slots, in MuJoCo's own order. */
 TArray<FText> LabelsFor(const UMjNodeComponent& Node, const FName& Attribute)
@@ -186,7 +186,7 @@ TArray<FText> SizeLabelsFor(EMjGeomType Type)
 	}
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 /**
  * The array inside a property handle, however deeply the optional wraps it.
@@ -238,7 +238,7 @@ void QuatMultiply(const double A[4], const double B[4], double Out[4])
 	Out[3] = A[0] * B[3] + A[1] * B[2] - A[2] * B[1] + A[3] * B[0];
 }
 
-}  // namespace
+} // namespace
 
 void FMjArrayCustomizations::EulerDegreesToQuat(const double Degrees[3], double Out[4])
 {
@@ -334,7 +334,7 @@ void WriteQuat(UMjNodeComponent& Node, const FOptionalProperty& Property, const 
 	Node.PostEditChangeProperty(Event);
 }
 
-}  // namespace
+} // namespace
 
 TArray<FText> FMjArrayCustomizations::SlotLabelsFor(UMjNodeComponent& Node, const FName& Attribute)
 {
@@ -417,8 +417,8 @@ void FMjArrayCustomizations::CustomizeArrays(IDetailLayoutBuilder& DetailBuilder
 			// the rest with its defaults -- so a slot beyond the names is drawn
 			// with its index rather than dropped.
 			const FText Label = Labels.IsValidIndex(static_cast<int32>(Index))
-				? Labels[static_cast<int32>(Index)]
-				: FText::AsNumber(static_cast<int32>(Index));
+								  ? Labels[static_cast<int32>(Index)]
+								  : FText::AsNumber(static_cast<int32>(Index));
 
 			Boxes->AddSlot()
 				.FillWidth(1.0f)
@@ -429,8 +429,8 @@ void FMjArrayCustomizations::CustomizeArrays(IDetailLayoutBuilder& DetailBuilder
 							.Value_Lambda([Element]() -> TOptional<double> {
 								double Value = 0.0;
 								return Element->GetValue(Value) == FPropertyAccess::Success
-									? TOptional<double>(Value)
-									: TOptional<double>();
+										 ? TOptional<double>(Value)
+										 : TOptional<double>();
 							})
 							.OnValueCommitted_Lambda([Element](double NewValue, ETextCommit::Type) {
 								Element->SetValue(NewValue);

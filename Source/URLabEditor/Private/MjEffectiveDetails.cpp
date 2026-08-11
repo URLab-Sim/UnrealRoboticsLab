@@ -36,7 +36,7 @@
 #include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 #define LOCTEXT_NAMESPACE "MjEffectiveDetails"
 
@@ -202,7 +202,7 @@ void RefreshWhenTrackingEnds(TSharedPtr<IPropertyUtilities> Utilities)
 		[WeakUtilities = TWeakPtr<IPropertyUtilities>(Utilities)](float) {
 			if (AnyViewportTracking())
 			{
-				return true;  // still dragging; ask again next tick
+				return true; // still dragging; ask again next tick
 			}
 			if (const TSharedPtr<IPropertyUtilities> Live = WeakUtilities.Pin())
 			{
@@ -244,9 +244,9 @@ void AuthorInherited(UMjNodeComponent& Node, const FOptionalProperty& Optional, 
 	Node.PostEditChangeProperty(Event);
 }
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
-}  // namespace
+} // namespace
 
 TSharedRef<IDetailCustomization> FMjEffectiveDetails::MakeInstance()
 {
@@ -287,8 +287,8 @@ FText FMjEffectiveDetails::DescribeValue(const FMjEffectiveValue& Value)
 
 		case EMjValueSource::Class:
 			return Value.ClassName.IsEmpty()
-				? FText::FromString(Value.Text)
-				: FText::FromString(FString::Printf(TEXT("%s  (from %s)"), *Value.Text, *Value.ClassName));
+					 ? FText::FromString(Value.Text)
+					 : FText::FromString(FString::Printf(TEXT("%s  (from %s)"), *Value.Text, *Value.ClassName));
 
 		default:
 			// Not a blank. An attribute genuinely has no lowest layer -- a geom's
@@ -431,36 +431,36 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 			.MaxDesiredWidth(700.0f)
 				[SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot()
-						  .FillWidth(1.0f)
-						  .VAlign(VAlign_Center)
-						  .Padding(6.0f, 0.0f, 4.0f, 0.0f)
-							  [SNew(STextBlock)
-									  .Text(Display)
-									  .ColorAndOpacity(FSlateColor::UseSubduedForeground())
-									  .ToolTipText(SourceTip(Source))]
+						.FillWidth(1.0f)
+						.VAlign(VAlign_Center)
+						.Padding(6.0f, 0.0f, 4.0f, 0.0f)
+							[SNew(STextBlock)
+									.Text(Display)
+									.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+									.ToolTipText(SourceTip(Source))]
 					+ SHorizontalBox::Slot()
-						  .AutoWidth()
-						  .VAlign(VAlign_Center)
-							  [SNew(SButton)
-									  .Text(LOCTEXT("AuthorInheritedLabel", "Set"))
-									  .ToolTipText(Source == EMjValueSource::None
-											  ? LOCTEXT("AuthorEmptyTip",
-													"Author this attribute onto the element. Nothing supplies a value "
-													"for it, so it starts empty and is yours to fill in.")
-											  : LOCTEXT("AuthorInheritedTip",
-													"Author this value onto the element, seeded from the value shown. "
-													"The element then keeps it whatever its class does next."))
-									  .OnClicked_Lambda([WeakNode, Optional, Text, Utilities]() -> FReply {
-										  if (UMjNodeComponent* const Live = WeakNode.Get())
-										  {
-											  AuthorInherited(*Live, *Optional, Text);
-											  if (Utilities.IsValid())
-											  {
-												  Utilities->RequestForceRefresh();
-											  }
-										  }
-										  return FReply::Handled();
-									  })]];
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+							[SNew(SButton)
+									.Text(LOCTEXT("AuthorInheritedLabel", "Set"))
+									.ToolTipText(Source == EMjValueSource::None
+													 ? LOCTEXT("AuthorEmptyTip",
+														   "Author this attribute onto the element. Nothing supplies a value "
+														   "for it, so it starts empty and is yours to fill in.")
+													 : LOCTEXT("AuthorInheritedTip",
+														   "Author this value onto the element, seeded from the value shown. "
+														   "The element then keeps it whatever its class does next."))
+									.OnClicked_Lambda([WeakNode, Optional, Text, Utilities]() -> FReply {
+										if (UMjNodeComponent* const Live = WeakNode.Get())
+										{
+											AuthorInherited(*Live, *Optional, Text);
+											if (Utilities.IsValid())
+											{
+												Utilities->RequestForceRefresh();
+											}
+										}
+										return FReply::Handled();
+									})]];
 	}
 
 	// A `required` attribute has no layering to report: MJCF makes the element
@@ -498,17 +498,17 @@ void FMjEffectiveDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 				[SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)[ValueWidget.ToSharedRef()]
 					+ SHorizontalBox::Slot()
-						  .AutoWidth()
-						  .VAlign(VAlign_Center)
-						  .Padding(6.0f, 0.0f, 4.0f, 0.0f)
-							  [SNew(STextBlock)
-									  .Text(LOCTEXT("RequiredLabel", "(required)"))
-									  .ColorAndOpacity(FSlateColor::UseSubduedForeground())
-									  .ToolTipText(LOCTEXT("RequiredTip",
-										  "MJCF requires this attribute on this element. It cannot be left unset "
-										  "and no default class supplies it."))]];
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(6.0f, 0.0f, 4.0f, 0.0f)
+							[SNew(STextBlock)
+									.Text(LOCTEXT("RequiredLabel", "(required)"))
+									.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+									.ToolTipText(LOCTEXT("RequiredTip",
+										"MJCF requires this attribute on this element. It cannot be left unset "
+										"and no default class supplies it."))]];
 	}
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 }
 
 void FMjEffectiveDetails::RegisterAll()

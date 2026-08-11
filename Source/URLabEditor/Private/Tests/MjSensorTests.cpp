@@ -49,7 +49,7 @@ UMjSensor* SensorSection(FMjUESession& Sess)
 {
 	return Sess.Add<UMjSensor>(Sess.Robot->Spec);
 }
-}  // namespace MjSensorTests
+} // namespace MjSensorTests
 
 // ============================================================================
 // URLab.Sensor.JointPosSensor_Binds

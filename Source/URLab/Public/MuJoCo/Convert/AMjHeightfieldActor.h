@@ -58,7 +58,8 @@ class UMjModel;
  * flat.
  */
 UCLASS()
-class URLAB_API AMjHeightfieldActor : public AActor, public IMjSceneContributor
+class URLAB_API AMjHeightfieldActor : public AActor
+	, public IMjSceneContributor
 {
 	GENERATED_BODY()
 

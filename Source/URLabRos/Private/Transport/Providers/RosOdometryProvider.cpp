@@ -45,13 +45,13 @@ public:
 			MjRosStateEstimation::FMjFreeBaseState State;
 			if (!MjRosStateEstimation::ComputeFreeBaseState(Art, State))
 			{
-				continue;  // fixed-base art: no odometry
+				continue; // fixed-base art: no odometry
 			}
 			const FString ArtName = Art.Name.ToString();
 			const FString Topic = FString::Printf(TEXT("/%s/odom"), *ArtName);
 			const FName BaseName = Art.Bodies.IsValidIndex(State.BaseBodyIndex)
-				? Art.Bodies[State.BaseBodyIndex].Name
-				: FName(TEXT("base_link"));
+									 ? Art.Bodies[State.BaseBodyIndex].Name
+									 : FName(TEXT("base_link"));
 			const FString Child = FMjCanonicalName::Full(Art.Name, BaseName);
 			FMjRosPub Pub = Factory.CreateOdometry(Topic, TEXT("odom"), Child);
 			if (Pub.IsValid())

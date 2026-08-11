@@ -153,9 +153,9 @@ UMjNodeComponent* RootOfBlueprint(UBlueprint& Blueprint)
 	}
 	return nullptr;
 }
-}  // namespace
+} // namespace
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN
 
 FSpecRef FSpecRef::OverActor(AActor& InActor)
 {

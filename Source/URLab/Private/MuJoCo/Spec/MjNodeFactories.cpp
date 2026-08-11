@@ -35,7 +35,7 @@ TMap<int32, UClass*>& ElementClassOverrides()
 	static TMap<int32, UClass*> Table;
 	return Table;
 }
-}  // namespace
+} // namespace
 
 void MjSetElementClass(psm::ElementType Type, UClass* Class)
 {
@@ -103,6 +103,6 @@ FName MjMakeNodeName(psm::ElementType Type, UObject& Outer)
 	return MakeUniqueObjectName(&Outer, UObject::StaticClass(), FName(gen::TagForElement(Type)));
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

@@ -445,9 +445,9 @@ bool FURLabEditorModule::AutoParentSCSNode(USCS_Node* Node, USimpleConstructionS
 	else if (Type == ElementType::Pair || Type == ElementType::Exclude)
 		TargetParentName = TEXT("ContactsRoot");
 	else if (Type == ElementType::Connect || Type == ElementType::Weld
-		|| Type == ElementType::EqualityJoint || Type == ElementType::EqualityTendon
-		|| Type == ElementType::EqualityFlex || Type == ElementType::Flexvert
-		|| Type == ElementType::Flexstrain)
+			 || Type == ElementType::EqualityJoint || Type == ElementType::EqualityTendon
+			 || Type == ElementType::EqualityFlex || Type == ElementType::Flexvert
+			 || Type == ElementType::Flexstrain)
 		TargetParentName = TEXT("EqualitiesRoot");
 	else
 		return false;

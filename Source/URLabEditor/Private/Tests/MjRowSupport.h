@@ -202,6 +202,6 @@ private:
 	TMap<FName, TSharedRef<IDetailTreeNode>> ByProperty;
 };
 
-}  // namespace MjRowSupport
+} // namespace MjRowSupport
 
-#endif  // URLAB_MJ_GEN && WITH_EDITOR
+#endif // URLAB_MJ_GEN && WITH_EDITOR

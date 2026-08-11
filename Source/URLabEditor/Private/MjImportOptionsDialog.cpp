@@ -34,68 +34,51 @@ bool ShowMjImportOptionsDialog(const FString& SourceXmlPath, const FText& Prepar
 	bool bAllowExternalIncludes = InOutOptions.bAllowExternalIncludes;
 
 	const TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(LOCTEXT("Title", "Import MuJoCo Model"))
-		.SizingRule(ESizingRule::Autosized)
-		.SupportsMinimize(false)
-		.SupportsMaximize(false);
+										   .Title(LOCTEXT("Title", "Import MuJoCo Model"))
+										   .SizingRule(ESizingRule::Autosized)
+										   .SupportsMinimize(false)
+										   .SupportsMaximize(false);
 
 	Window->SetContent(
 		SNew(SBorder)
-		.Padding(16.f)
-		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 12.f)
-			[
-				SNew(STextBlock).Text(FText::FromString(FPaths::GetCleanFilename(SourceXmlPath)))
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 12.f)
-			[
-				SNew(STextBlock).Text(PreparationStatus).WrapTextAt(420.f)
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 16.f)
-			[
-				SNew(SCheckBox)
-				.IsChecked_Lambda([&bAllowExternalIncludes]() {
-					return bAllowExternalIncludes ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-				})
-				.OnCheckStateChanged_Lambda([&bAllowExternalIncludes](ECheckBoxState State) {
-					bAllowExternalIncludes = (State == ECheckBoxState::Checked);
-				})
-				.ToolTipText(LOCTEXT("ExternalIncludesTooltip",
-					"An <include> whose path escapes this model's own directory tree can name any "
-					"file on this machine, and whatever it names is read into the model. Leave this "
-					"off unless you trust the file you are importing."))
-				[
-					SNew(STextBlock).Text(LOCTEXT("ExternalIncludes",
-						"Allow <include> outside the model's folder"))
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
-			[
-				SNew(SUniformGridPanel).SlotPadding(4.f)
-				+ SUniformGridPanel::Slot(0, 0)
-				[
-					SNew(SButton)
-					.HAlign(HAlign_Center)
-					.Text(LOCTEXT("Import", "Import"))
-					.OnClicked_Lambda([&bAccepted, Window]() {
-						bAccepted = true;
-						FSlateApplication::Get().RequestDestroyWindow(Window);
-						return FReply::Handled();
-					})
-				]
-				+ SUniformGridPanel::Slot(1, 0)
-				[
-					SNew(SButton)
-					.HAlign(HAlign_Center)
-					.Text(LOCTEXT("Cancel", "Cancel"))
-					.OnClicked_Lambda([Window]() {
-						FSlateApplication::Get().RequestDestroyWindow(Window);
-						return FReply::Handled();
-					})
-				]
-			]
-		]);
+			.Padding(16.f)
+				[SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 12.f)
+						[SNew(STextBlock).Text(FText::FromString(FPaths::GetCleanFilename(SourceXmlPath)))]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 12.f)
+						[SNew(STextBlock).Text(PreparationStatus).WrapTextAt(420.f)]
+					+ SVerticalBox::Slot().AutoHeight().Padding(0.f, 0.f, 0.f, 16.f)
+						[SNew(SCheckBox)
+								.IsChecked_Lambda([&bAllowExternalIncludes]() {
+									return bAllowExternalIncludes ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+								})
+								.OnCheckStateChanged_Lambda([&bAllowExternalIncludes](ECheckBoxState State) {
+									bAllowExternalIncludes = (State == ECheckBoxState::Checked);
+								})
+								.ToolTipText(LOCTEXT("ExternalIncludesTooltip",
+									"An <include> whose path escapes this model's own directory tree can name any "
+									"file on this machine, and whatever it names is read into the model. Leave this "
+									"off unless you trust the file you are importing."))
+									[SNew(STextBlock).Text(LOCTEXT("ExternalIncludes", "Allow <include> outside the model's folder"))]]
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Right)
+						[SNew(SUniformGridPanel).SlotPadding(4.f)
+							+ SUniformGridPanel::Slot(0, 0)
+								[SNew(SButton)
+										.HAlign(HAlign_Center)
+										.Text(LOCTEXT("Import", "Import"))
+										.OnClicked_Lambda([&bAccepted, Window]() {
+											bAccepted = true;
+											FSlateApplication::Get().RequestDestroyWindow(Window);
+											return FReply::Handled();
+										})]
+							+ SUniformGridPanel::Slot(1, 0)
+								[SNew(SButton)
+										.HAlign(HAlign_Center)
+										.Text(LOCTEXT("Cancel", "Cancel"))
+										.OnClicked_Lambda([Window]() {
+											FSlateApplication::Get().RequestDestroyWindow(Window);
+											return FReply::Handled();
+										})]]]);
 
 	FSlateApplication::Get().AddModalWindow(Window, nullptr);
 

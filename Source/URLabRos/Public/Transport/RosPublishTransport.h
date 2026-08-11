@@ -65,7 +65,8 @@ struct FMjClock;
  * tested with no rcl dependency; the providers call them.
  */
 UCLASS()
-class URLABROS_API UURLabRosPublishTransport : public UURLabPublishTransport, public IMjStateConsumer
+class URLABROS_API UURLabRosPublishTransport : public UURLabPublishTransport
+	, public IMjStateConsumer
 {
 	GENERATED_BODY()
 

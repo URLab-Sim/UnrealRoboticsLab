@@ -40,7 +40,7 @@ void CollectNodes(UMjNodeComponent& Node, bool bTopLevel, bool bInDefault, FMjSp
 		}
 	}
 }
-}  // namespace
+} // namespace
 
 FMjSpecNodes MjSpecNodesOf(const FSpecRef& Spec)
 {
@@ -83,6 +83,6 @@ FMjSpecNodes MjSpecNodesOf(const FSpecRef& Spec)
 	return Out;
 }
 
-}  // namespace urlab::spec
+} // namespace urlab::spec
 
-#endif  // URLAB_MJ_GEN
+#endif // URLAB_MJ_GEN

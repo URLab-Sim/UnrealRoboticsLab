@@ -307,6 +307,28 @@ FString ElementName(const UMjNodeComponent& Node)
 
 #endif // WITH_EDITOR
 
+/**
+ * The magic default both MuJoCo renderers test a colour against.
+ *
+ * It is `<geom rgba>`'s schema default, and it is also the value the Filament
+ * renderer compares a MATERIAL's rgba with -- which is not that material's own
+ * default (1 1 1 1). The asymmetry is deliberate upstream and copied here.
+ */
+const FLinearColor MjMagicDefaultRgba(0.5f, 0.5f, 0.5f, 1.0f);
+
+/**
+ * Whether a colour is that default, componentwise and exactly.
+ *
+ * Exactly, because the engine's test is exact (`rgba[0] != 0.5f || ...`) and an
+ * authored 0.5 grey is meant to behave like an unauthored one. Not
+ * `FLinearColor::Equals`, whose comparison is a strict `<` against the
+ * tolerance -- so a tolerance of zero calls every colour different from itself.
+ */
+bool IsMagicDefaultRgba(const FLinearColor& Color)
+{
+	return Color.R == MjMagicDefaultRgba.R && Color.G == MjMagicDefaultRgba.G && Color.B == MjMagicDefaultRgba.B && Color.A == MjMagicDefaultRgba.A;
+}
+
 } // namespace
 
 // --- Preview ---------------------------------------------------------------- //
@@ -543,13 +565,14 @@ void UMjGeom::ApplySpecMaterial()
 		}
 	};
 
-	// An imported asset arrives with materials of its own, sometimes genuine
-	// ones an artist authored, and replacing those with a flat MuJoCo colour the
-	// spec never asked for would be a downgrade. So an asset-backed preview
-	// is dressed only when the spec actually names a material; an engine
-	// primitive, which has nothing to lose, is dressed either way.
+	// An imported asset arrives with materials of its own, and replacing those
+	// with a colour the spec never asked for would be a downgrade. So an
+	// asset-backed preview is dressed only where the spec does ask: a named
+	// material, or an rgba authored away from the magic default. An engine
+	// primitive has nothing to lose and is dressed either way.
 	const bool bAssetBacked = Shape.Type == EMjGeomType::mesh;
-	if (!bAssetBacked || !MaterialName.IsEmpty())
+	const bool bSpecAsksForColour = !MaterialName.IsEmpty() || !IsMagicDefaultRgba(Color);
+	if (!bAssetBacked || bSpecAsksForColour)
 	{
 		Dress(VisualizerMesh);
 		Dress(VisualizerCapTop);
@@ -621,28 +644,6 @@ void UMjGeom::SyncEditorScaleFromSize()
 
 namespace
 {
-
-/**
- * The magic default both MuJoCo renderers test a colour against.
- *
- * It is `<geom rgba>`'s schema default, and it is also the value the Filament
- * renderer compares a MATERIAL's rgba with -- which is not that material's own
- * default (1 1 1 1). The asymmetry is deliberate upstream and copied here.
- */
-const FLinearColor MjMagicDefaultRgba(0.5f, 0.5f, 0.5f, 1.0f);
-
-/**
- * Whether a colour is that default, componentwise and exactly.
- *
- * Exactly, because the engine's test is exact (`rgba[0] != 0.5f || ...`) and an
- * authored 0.5 grey is meant to behave like an unauthored one. Not
- * `FLinearColor::Equals`, whose comparison is a strict `<` against the
- * tolerance -- so a tolerance of zero calls every colour different from itself.
- */
-bool IsMagicDefaultRgba(const FLinearColor& Color)
-{
-	return Color.R == MjMagicDefaultRgba.R && Color.G == MjMagicDefaultRgba.G && Color.B == MjMagicDefaultRgba.B && Color.A == MjMagicDefaultRgba.A;
-}
 
 } // namespace
 

@@ -75,6 +75,10 @@ Re-import the MJCF, or stay on the `alpha` branch.
   not see them: a Blueprint recompile reinstanced every component and left the
   index pointing at the ones it replaced, which the next render-state tick
   wrote a transform through.
+- **A mesh geom's `rgba` is drawn.** The preview only took a colour from the
+  spec when a material was named, so an authored `rgba` on a mesh geom was
+  dropped and the imported asset's own material showed instead. A geom whose
+  `rgba` is left at MuJoCo's default still keeps its imported materials.
 - Assets whose visual and collision meshes share a basename no longer collide
   in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
 - A document naming its root default class `main` explicitly no longer loses

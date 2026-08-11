@@ -320,8 +320,9 @@ private:
 	void UnregisterDispatcherOps();
 	TArray<FString> RegisteredOpNames;
 
-	/** The control source for a request: the optional `source` field, falling
-	 *  back to `session_id`. Lets one session act as several sources in tests. */
+	/** Who a request writes control as: the optional `control_owner` field,
+	 *  falling back to `session_id`. Named for the ownership gate rather than
+	 *  `source`, which `set_control_source` already spends on "zmq" | "ui". */
 	FString ResolveControlSource(const TSharedPtr<FJsonObject>& Req) const;
 
 	/** Consult the control gate for a write to `ArtKey`. Returns nullptr when

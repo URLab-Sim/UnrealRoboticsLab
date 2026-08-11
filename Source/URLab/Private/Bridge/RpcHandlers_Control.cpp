@@ -92,7 +92,7 @@ bool JsonValueToUserChannel(const TSharedPtr<FJsonValue>& Value, FMjUserChannel&
 FString FURLabRpcDispatcher::ResolveControlSource(const TSharedPtr<FJsonObject>& Req) const
 {
 	FString Source;
-	if (Req->TryGetStringField(TEXT("source"), Source) && !Source.IsEmpty())
+	if (Req->TryGetStringField(TEXT("control_owner"), Source) && !Source.IsEmpty())
 		return Source;
 	Req->TryGetStringField(TEXT("session_id"), Source);
 	return Source;

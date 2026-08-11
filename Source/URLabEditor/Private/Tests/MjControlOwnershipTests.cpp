@@ -49,7 +49,7 @@ TSharedPtr<FJsonObject> CtrlOwnReq(const TCHAR* Op, const TCHAR* Source, const F
 	TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
 	R->SetStringField(TEXT("op"), Op);
 	R->SetStringField(TEXT("session_id"), TEXT("test-session"));
-	R->SetStringField(TEXT("source"), Source);
+	R->SetStringField(TEXT("control_owner"), Source);
 	R->SetStringField(TEXT("articulation"), Art);
 	return R;
 }
@@ -170,7 +170,7 @@ bool FMjControlOwnershipWriteGate::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 		Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
 		Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		Req->SetStringField(TEXT("source"), Source);
+		Req->SetStringField(TEXT("control_owner"), Source);
 		Req->SetStringField(TEXT("target"), ArtName);
 		Req->SetStringField(TEXT("target_by"), TEXT("actor_name"));
 		TArray<TSharedPtr<FJsonValue>> Q;
@@ -194,7 +194,7 @@ bool FMjControlOwnershipWriteGate::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 		Req->SetStringField(TEXT("op"), TEXT("set_twist"));
 		Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		Req->SetStringField(TEXT("source"), TEXT("B"));
+		Req->SetStringField(TEXT("control_owner"), TEXT("B"));
 		Req->SetStringField(TEXT("articulation"), ArtName);
 		TArray<TSharedPtr<FJsonValue>> Lin;
 		Lin.Add(MakeShared<FJsonValueNumber>(1.0));

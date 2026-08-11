@@ -43,6 +43,10 @@ Re-import the MJCF, or stay on the `alpha` branch.
   target is a scene nobody authored, so under `warning` every field an import
   brought lost to a default. Editable on the manager, and per-robot
   `AttachConflict` still overrides.
+- **Breaking (RPC): the control-owner override is `control_owner`.** It was
+  `source`, which `set_control_source` already uses for `"zmq"` | `"ui"` -- so
+  that op could never pass its own ownership check. Requests that do not set it
+  are unaffected; the owner still falls back to `session_id`.
 - Line endings are LF in the repository on every platform, and the formatter
   no longer fights the code generator over the generated tree.
 

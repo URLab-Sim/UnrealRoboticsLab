@@ -621,13 +621,13 @@ void UURLabRosRpcTransport::HandleRosClaimRelease(const FString& ArtName, bool b
 		return;
 	}
 
-	// Build the request the ZMQ/SHM path builds: source preset to the ROS node id,
+	// Build the request the ZMQ/SHM path builds: owner preset to the ROS node id,
 	// session preset to the active session so Dispatch's session gate passes. TTL is
 	// not settable over the Trigger service, so the default TTL applies.
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), bClaim ? TEXT("claim_control") : TEXT("release_control"));
 	Req->SetStringField(TEXT("articulation"), ArtName);
-	Req->SetStringField(TEXT("source"), RosControlSourceId());
+	Req->SetStringField(TEXT("control_owner"), RosControlSourceId());
 	Req->SetStringField(TEXT("session_id"), Disp->GetActiveSessionId());
 
 	const TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);

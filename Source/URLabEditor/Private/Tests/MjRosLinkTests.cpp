@@ -490,7 +490,7 @@ bool FMjRosControlOwnershipAcrossSurfaces::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
 		R->SetStringField(TEXT("op"), TEXT("claim_control"));
 		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("control_owner"), Source);
 		R->SetStringField(TEXT("articulation"), ArtName);
 		return Disp->Dispatch(R);
 	};
@@ -498,7 +498,7 @@ bool FMjRosControlOwnershipAcrossSurfaces::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
 		R->SetStringField(TEXT("op"), TEXT("release_control"));
 		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("control_owner"), Source);
 		R->SetStringField(TEXT("articulation"), ArtName);
 		return Disp->Dispatch(R);
 	};
@@ -506,7 +506,7 @@ bool FMjRosControlOwnershipAcrossSurfaces::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
 		R->SetStringField(TEXT("op"), TEXT("set_twist"));
 		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("control_owner"), Source);
 		R->SetStringField(TEXT("articulation"), ArtName);
 		TArray<TSharedPtr<FJsonValue>> Lin;
 		Lin.Add(MakeShared<FJsonValueNumber>(1.0));
@@ -919,7 +919,7 @@ bool FMjRosClaimService::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
 		R->SetStringField(TEXT("op"), TEXT("set_twist"));
 		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		R->SetStringField(TEXT("source"), Source);
+		R->SetStringField(TEXT("control_owner"), Source);
 		R->SetStringField(TEXT("articulation"), ArtName);
 		TArray<TSharedPtr<FJsonValue>> Lin;
 		Lin.Add(MakeShared<FJsonValueNumber>(1.0));
@@ -948,7 +948,7 @@ bool FMjRosClaimService::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
 		R->SetStringField(TEXT("op"), TEXT("claim_control"));
 		R->SetStringField(TEXT("session_id"), TEXT("test-session"));
-		R->SetStringField(TEXT("source"), RpcSrc);
+		R->SetStringField(TEXT("control_owner"), RpcSrc);
 		R->SetStringField(TEXT("articulation"), ArtName);
 		TestEqual(TEXT("RPC claim ok"), RosReplyField(Disp->Dispatch(R), TEXT("op")),
 			FString(TEXT("claim_control_ok")));

@@ -61,22 +61,22 @@ bool FMjControlSourceSelectsSlot::RunTest(const FString& Parameters)
 
 	// Both slots hold a value at once; the source decides which is read, and
 	// staging one never disturbs the other.
-	TestEqual(TEXT("source 0 reads the network slot"), Art->ResolveDesiredControl(2, 0), 0.75f);
-	TestEqual(TEXT("source 1 reads the internal slot"), Art->ResolveDesiredControl(2, 1), -0.25f);
+	TestEqual(TEXT("source 0 reads the network slot"), Art->ResolveDesiredControl(2, 0), 0.75);
+	TestEqual(TEXT("source 1 reads the internal slot"), Art->ResolveDesiredControl(2, 1), -0.25);
 
 	Art->ControlSource = 0;
-	TestEqual(TEXT("the articulation's own source is the default"), Art->ResolveDesiredControl(2), 0.75f);
+	TestEqual(TEXT("the articulation's own source is the default"), Art->ResolveDesiredControl(2), 0.75);
 	Art->ControlSource = 1;
-	TestEqual(TEXT("and follows a change of source"), Art->ResolveDesiredControl(2), -0.25f);
+	TestEqual(TEXT("and follows a change of source"), Art->ResolveDesiredControl(2), -0.25);
 
 	// Any source that is not the network is the UI: the mapping is a test
 	// against 0, not an enumeration, and a value outside EControlSource must
 	// not fall through to the network slot.
-	TestEqual(TEXT("an unknown source is not the network"), Art->ResolveDesiredControl(2, 7), -0.25f);
+	TestEqual(TEXT("an unknown source is not the network"), Art->ResolveDesiredControl(2, 7), -0.25);
 
 	Art->ClearStagedControl(2);
-	TestEqual(TEXT("clearing zeroes the network slot"), Art->ResolveDesiredControl(2, 0), 0.0f);
-	TestEqual(TEXT("clearing zeroes the internal slot"), Art->ResolveDesiredControl(2, 1), 0.0f);
+	TestEqual(TEXT("clearing zeroes the network slot"), Art->ResolveDesiredControl(2, 0), 0.0);
+	TestEqual(TEXT("clearing zeroes the internal slot"), Art->ResolveDesiredControl(2, 1), 0.0);
 	return true;
 }
 
@@ -103,15 +103,15 @@ bool FMjControlSlotsAreSceneIndexed::RunTest(const FString& Parameters)
 	TestTrue(TEXT("ownership keeps the scene ids"), Art->GetOwnedActuatorIds().Contains(5));
 
 	Art->StageNetworkControl(5, 1.5f);
-	TestEqual(TEXT("a scene id addresses its own slot"), Art->ResolveDesiredControl(5, 0), 1.5f);
-	TestEqual(TEXT("and no other"), Art->ResolveDesiredControl(3, 0), 0.0f);
+	TestEqual(TEXT("a scene id addresses its own slot"), Art->ResolveDesiredControl(5, 0), 1.5);
+	TestEqual(TEXT("and no other"), Art->ResolveDesiredControl(3, 0), 0.0);
 
 	// An id outside the scene is not this articulation's business and is not
 	// memory either. Staging it does nothing and reading it is zero.
 	Art->StageNetworkControl(8, 9.0f);
 	Art->StageNetworkControl(-1, 9.0f);
-	TestEqual(TEXT("an id past the end reads zero"), Art->ResolveDesiredControl(8, 0), 0.0f);
-	TestEqual(TEXT("a negative id reads zero"), Art->ResolveDesiredControl(-1, 0), 0.0f);
+	TestEqual(TEXT("an id past the end reads zero"), Art->ResolveDesiredControl(8, 0), 0.0);
+	TestEqual(TEXT("a negative id reads zero"), Art->ResolveDesiredControl(-1, 0), 0.0);
 
 	// An ownership list carrying an id the scene does not have would put the
 	// step loop past the end of d->ctrl, so it is filtered on the way in.
@@ -138,22 +138,22 @@ bool FMjControlSlotsResetOnRecompile::RunTest(const FString& Parameters)
 	// rather than a crash: the RPC surface is reachable before the model is.
 	TestEqual(TEXT("an uncompiled articulation has no slots"), Art->GetControlSlotCount(), 0);
 	Art->StageNetworkControl(0, 1.0f);
-	TestEqual(TEXT("staging before a compile is a no-op"), Art->ResolveDesiredControl(0, 0), 0.0f);
+	TestEqual(TEXT("staging before a compile is a no-op"), Art->ResolveDesiredControl(0, 0), 0.0);
 
 	Art->ResetControlSlots(3, {0, 1, 2});
 	Art->StageNetworkControl(1, 4.0f);
-	TestEqual(TEXT("staged"), Art->ResolveDesiredControl(1, 0), 4.0f);
+	TestEqual(TEXT("staged"), Art->ResolveDesiredControl(1, 0), 4.0);
 
 	// A recompile invalidates every id that indexed the old slots, so the
 	// values do not carry over -- a stale value surviving would be applied to
 	// whichever actuator inherited the id.
 	Art->ResetControlSlots(3, {0, 1, 2});
-	TestEqual(TEXT("a recompile does not carry staged control over"), Art->ResolveDesiredControl(1, 0), 0.0f);
+	TestEqual(TEXT("a recompile does not carry staged control over"), Art->ResolveDesiredControl(1, 0), 0.0);
 
 	Art->ClearControlSlots();
 	TestEqual(TEXT("discarding the model discards the slots"), Art->GetControlSlotCount(), 0);
 	TestEqual(TEXT("and the ownership list"), Art->GetOwnedActuatorIds().Num(), 0);
-	TestEqual(TEXT("reading after the discard is zero"), Art->ResolveDesiredControl(1, 0), 0.0f);
+	TestEqual(TEXT("reading after the discard is zero"), Art->ResolveDesiredControl(1, 0), 0.0);
 	return true;
 }
 

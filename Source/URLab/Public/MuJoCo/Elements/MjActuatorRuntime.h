@@ -59,7 +59,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
-	static void SetControl(const UMjNodeComponent* Actuator, float Value);
+	static void SetControl(const UMjNodeComponent* Actuator, double Value);
 
 	/**
 	 * Stage a control value on the external (ZMQ) slot.
@@ -71,7 +71,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
-	static void SetNetworkControl(const UMjNodeComponent* Actuator, float Value);
+	static void SetNetworkControl(const UMjNodeComponent* Actuator, double Value);
 
 	/** Zero both slots. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
@@ -81,7 +81,7 @@ public:
 	/** The staged value the articulation's control source selects. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
-	static float GetControl(const UMjNodeComponent* Actuator);
+	static double GetControl(const UMjNodeComponent* Actuator);
 
 	/**
 	 * The staged value a named control source selects, ignoring the
@@ -92,7 +92,7 @@ public:
 	 * two cannot disagree mid-step. Source 0 is the network and anything else is
 	 * the UI.
 	 */
-	static float ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source);
+	static double ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source);
 
 	// --- Compiled-model reads ---------------------------------------------- //
 

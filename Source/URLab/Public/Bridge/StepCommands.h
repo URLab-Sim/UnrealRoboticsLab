@@ -31,7 +31,7 @@ struct FMjStepRequest
 {
 	int32 NSteps = 1;
 	/** prefix -> array of (actuator_name, value). Names are local (no prefix). */
-	TMap<FString, TArray<TPair<FString, float>>> PerArticulationCtrl;
+	TMap<FString, TArray<TPair<FString, double>>> PerArticulationCtrl;
 	/** Per-articulation control mode: "ue_controller" (default) or "raw". */
 	TMap<FString, FString> PerArticulationControlMode;
 	/** Per-articulation xfrc_applied: prefix -> body_name -> [fx,fy,fz,tx,ty,tz]. */

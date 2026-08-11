@@ -369,12 +369,12 @@ void AMjArticulation::ResetControlSlots(int32 SceneActuatorCount, TArray<int32> 
 		return;
 	}
 
-	NetworkControl = MakeUnique<std::atomic<float>[]>(ControlSlotCount);
-	InternalControl = MakeUnique<std::atomic<float>[]>(ControlSlotCount);
+	NetworkControl = MakeUnique<std::atomic<double>[]>(ControlSlotCount);
+	InternalControl = MakeUnique<std::atomic<double>[]>(ControlSlotCount);
 	for (int32 i = 0; i < ControlSlotCount; ++i)
 	{
-		NetworkControl[i].store(0.0f, std::memory_order_relaxed);
-		InternalControl[i].store(0.0f, std::memory_order_relaxed);
+		NetworkControl[i].store(0.0, std::memory_order_relaxed);
+		InternalControl[i].store(0.0, std::memory_order_relaxed);
 	}
 
 	OwnedActuatorIds = MoveTemp(OwnedIds);
@@ -389,7 +389,7 @@ void AMjArticulation::ClearControlSlots()
 	OwnedActuatorIds.Reset();
 }
 
-void AMjArticulation::StageNetworkControl(int32 ActuatorId, float Value)
+void AMjArticulation::StageNetworkControl(int32 ActuatorId, double Value)
 {
 	if (NetworkControl && ActuatorId >= 0 && ActuatorId < ControlSlotCount)
 	{
@@ -397,7 +397,7 @@ void AMjArticulation::StageNetworkControl(int32 ActuatorId, float Value)
 	}
 }
 
-void AMjArticulation::StageInternalControl(int32 ActuatorId, float Value)
+void AMjArticulation::StageInternalControl(int32 ActuatorId, double Value)
 {
 	if (InternalControl && ActuatorId >= 0 && ActuatorId < ControlSlotCount)
 	{
@@ -407,11 +407,11 @@ void AMjArticulation::StageInternalControl(int32 ActuatorId, float Value)
 
 void AMjArticulation::ClearStagedControl(int32 ActuatorId)
 {
-	StageNetworkControl(ActuatorId, 0.0f);
-	StageInternalControl(ActuatorId, 0.0f);
+	StageNetworkControl(ActuatorId, 0.0);
+	StageInternalControl(ActuatorId, 0.0);
 }
 
-float AMjArticulation::ResolveDesiredControl(int32 ActuatorId, uint8 Source) const
+double AMjArticulation::ResolveDesiredControl(int32 ActuatorId, uint8 Source) const
 {
 	if (ActuatorId < 0 || ActuatorId >= ControlSlotCount)
 	{
@@ -419,12 +419,12 @@ float AMjArticulation::ResolveDesiredControl(int32 ActuatorId, uint8 Source) con
 	}
 	if (Source == 0)
 	{
-		return NetworkControl ? NetworkControl[ActuatorId].load() : 0.0f;
+		return NetworkControl ? NetworkControl[ActuatorId].load() : 0.0;
 	}
-	return InternalControl ? InternalControl[ActuatorId].load() : 0.0f;
+	return InternalControl ? InternalControl[ActuatorId].load() : 0.0;
 }
 
-float AMjArticulation::ResolveDesiredControl(int32 ActuatorId) const
+double AMjArticulation::ResolveDesiredControl(int32 ActuatorId) const
 {
 	return ResolveDesiredControl(ActuatorId, ControlSource);
 }

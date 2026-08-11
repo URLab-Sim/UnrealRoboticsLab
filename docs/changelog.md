@@ -54,6 +54,10 @@ Re-import the MJCF, or stay on the `alpha` branch.
   overriding it. Convex-convex pairs generated one contact point where MuJoCo
   generates several, and any scene with mesh or primitive contacts stepped
   differently from `mj_loadXML` of the same document.
+- **Control values keep their precision.** The step RPC narrowed `ctrl` to
+  `float` on the way to the actuator slots, so a `float64` setpoint arrived
+  rounded and the sim diverged from stock MuJoCo given identical input. The
+  path is `double` end to end, which is what `mjtNum` is.
 - Assets whose visual and collision meshes share a basename no longer collide
   in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
 - A document naming its root default class `main` explicitly no longer loses

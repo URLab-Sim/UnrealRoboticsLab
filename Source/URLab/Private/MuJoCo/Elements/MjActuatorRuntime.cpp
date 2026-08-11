@@ -122,7 +122,7 @@ AMjArticulation* UMjActuatorRuntime::OwningArticulation(const UMjNodeComponent* 
 	return Cast<AMjArticulation>(Actuator->GetOwner());
 }
 
-void UMjActuatorRuntime::SetControl(const UMjNodeComponent* Actuator, float Value)
+void UMjActuatorRuntime::SetControl(const UMjNodeComponent* Actuator, double Value)
 {
 	int32 Id = -1;
 	AMjArticulation* Art = OwningArticulation(Actuator);
@@ -132,7 +132,7 @@ void UMjActuatorRuntime::SetControl(const UMjNodeComponent* Actuator, float Valu
 	}
 }
 
-void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent* Actuator, float Value)
+void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent* Actuator, double Value)
 {
 	int32 Id = -1;
 	AMjArticulation* Art = OwningArticulation(Actuator);
@@ -152,7 +152,7 @@ void UMjActuatorRuntime::ResetControl(const UMjNodeComponent* Actuator)
 	}
 }
 
-float UMjActuatorRuntime::GetControl(const UMjNodeComponent* Actuator)
+double UMjActuatorRuntime::GetControl(const UMjNodeComponent* Actuator)
 {
 	int32 Id = -1;
 	const AMjArticulation* Art = OwningArticulation(Actuator);
@@ -163,7 +163,7 @@ float UMjActuatorRuntime::GetControl(const UMjNodeComponent* Actuator)
 	return Art->ResolveDesiredControl(Id);
 }
 
-float UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source)
+double UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source)
 {
 	int32 Id = -1;
 	const AMjArticulation* Art = OwningArticulation(Actuator);
@@ -310,18 +310,18 @@ AMjArticulation* UMjActuatorRuntime::OwningArticulation(const UMjNodeComponent*)
 	return nullptr;
 }
 
-void UMjActuatorRuntime::SetControl(const UMjNodeComponent*, float) {}
-void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent*, float) {}
+void UMjActuatorRuntime::SetControl(const UMjNodeComponent*, double) {}
+void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent*, double) {}
 void UMjActuatorRuntime::ResetControl(const UMjNodeComponent*) {}
 
-float UMjActuatorRuntime::GetControl(const UMjNodeComponent*)
+double UMjActuatorRuntime::GetControl(const UMjNodeComponent*)
 {
-	return 0.0f;
+	return 0.0;
 }
 
-float UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent*, uint8)
+double UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent*, uint8)
 {
-	return 0.0f;
+	return 0.0;
 }
 
 float UMjActuatorRuntime::GetAppliedControl(const UMjNodeComponent*)

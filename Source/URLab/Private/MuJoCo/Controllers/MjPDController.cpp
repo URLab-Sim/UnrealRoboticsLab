@@ -69,7 +69,7 @@ void UMjPDController::ComputeAndApply(mjModel* m, mjData* d, uint8 Source)
 		const FActuatorBinding& B = Bindings[i];
 
 		// Get the desired position target from ZMQ or UI
-		float Target = UMjActuatorRuntime::ResolveDesiredControl(B.Component, Source);
+		double Target = UMjActuatorRuntime::ResolveDesiredControl(B.Component, Source);
 
 		// Clamp target to joint range (matches position actuator ctrlrange behavior)
 		int32 JntId = m->actuator_trnid[B.ActuatorMjID * 2];

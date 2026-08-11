@@ -316,14 +316,14 @@ bool FMjSpecInstallSizesControlSlots::RunTest(const FString& Parameters)
 	Art->ControlSource = 0;
 	UMjActuatorRuntime::SetNetworkControl(Actuator, 0.6f);
 	TestEqual(TEXT("staged on the element, resolved on the articulation"),
-		Art->ResolveDesiredControl(ActuatorId), 0.6f);
-	TestEqual(TEXT("and read back through the element"), UMjActuatorRuntime::GetControl(Actuator), 0.6f);
+		Art->ResolveDesiredControl(ActuatorId), 0.6);
+	TestEqual(TEXT("and read back through the element"), UMjActuatorRuntime::GetControl(Actuator), 0.6);
 
 	Art->ControlSource = 1;
 	TestEqual(TEXT("the UI source does not see the network slot"),
-		UMjActuatorRuntime::GetControl(Actuator), 0.0f);
+		UMjActuatorRuntime::GetControl(Actuator), 0.0);
 	UMjActuatorRuntime::SetControl(Actuator, -0.3f);
-	TestEqual(TEXT("but does see its own"), UMjActuatorRuntime::GetControl(Actuator), -0.3f);
+	TestEqual(TEXT("but does see its own"), UMjActuatorRuntime::GetControl(Actuator), -0.3);
 
 	// A compiled read is a different question from a staged one: nothing has
 	// stepped, so d->ctrl is still zero while both slots hold values.

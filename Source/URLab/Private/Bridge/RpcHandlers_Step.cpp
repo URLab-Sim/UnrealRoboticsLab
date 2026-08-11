@@ -188,7 +188,7 @@ static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req,
 					if (LocalName.StartsWith(Prefix))
 						LocalName = LocalName.Mid(Prefix.Len());
 					Out.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-						{LocalName, (float)(*CtrlList)[i]->AsNumber()});
+						{LocalName, (*CtrlList)[i]->AsNumber()});
 				}
 			}
 		}
@@ -457,7 +457,7 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 				Mode = Req.PerArticulationControlMode.Find(Art->GetName());
 			bRaw = Mode && Mode->Equals(TEXT("raw"), ESearchCase::IgnoreCase);
 		}
-		for (const TPair<FString, float>& KV : Pair.Value)
+		for (const TPair<FString, double>& KV : Pair.Value)
 		{
 			UMjNodeComponent** Found = ByName.Find(KV.Key);
 			if (!Found || !*Found)

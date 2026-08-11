@@ -159,10 +159,10 @@ public:
 	void ClearControlSlots();
 
 	/** Stage `Value` on `ActuatorId`'s external (ZMQ) slot. */
-	void StageNetworkControl(int32 ActuatorId, float Value);
+	void StageNetworkControl(int32 ActuatorId, double Value);
 
 	/** Stage `Value` on `ActuatorId`'s internal (UI / Blueprint) slot. */
-	void StageInternalControl(int32 ActuatorId, float Value);
+	void StageInternalControl(int32 ActuatorId, double Value);
 
 	/** Zero both slots of `ActuatorId`. */
 	void ClearStagedControl(int32 ActuatorId);
@@ -174,10 +174,10 @@ public:
 	 * takes the internal one. An out-of-range id reads as zero rather than
 	 * refusing.
 	 */
-	float ResolveDesiredControl(int32 ActuatorId, uint8 Source) const;
+	double ResolveDesiredControl(int32 ActuatorId, uint8 Source) const;
 
 	/** As above, for this articulation's own `ControlSource`. */
-	float ResolveDesiredControl(int32 ActuatorId) const;
+	double ResolveDesiredControl(int32 ActuatorId) const;
 
 	/** The compiled ids this articulation stages control for. */
 	const TArray<int32>& GetOwnedActuatorIds() const { return OwnedActuatorIds; }
@@ -458,8 +458,8 @@ private:
 	// Fixed-size on purpose: a TArray of atomics cannot exist (an atomic is
 	// neither copyable nor movable, and TArray needs one of the two to grow),
 	// and the count is known exactly once, at compile time.
-	TUniquePtr<std::atomic<float>[]> NetworkControl;
-	TUniquePtr<std::atomic<float>[]> InternalControl;
+	TUniquePtr<std::atomic<double>[]> NetworkControl;
+	TUniquePtr<std::atomic<double>[]> InternalControl;
 	int32 ControlSlotCount = 0;
 	TArray<int32> OwnedActuatorIds;
 };

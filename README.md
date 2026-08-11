@@ -21,7 +21,7 @@
 > final pre-beta state and is not going to move under you:
 >
 > ```
-> git checkout alpha          # or the v0.1-alpha tag, which is frozen
+> git checkout alpha          # or the v0.5.0-alpha tag, which is frozen
 > ```
 >
 > Re-importing gets you a model that compiles to exactly what stock MuJoCo's

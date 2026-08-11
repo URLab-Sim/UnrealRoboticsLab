@@ -2,9 +2,52 @@
 
 Notable changes to UnrealRoboticsLab, newest first.
 
-URLab is in **alpha**: the public API and on-disk formats are not yet stable, and
-a milestone can include breaking changes. A first **beta** will follow once the
-feature set settles.
+URLab is in **beta**: the public API and on-disk formats are close to stable,
+but a milestone can still include breaking changes. The last alpha is preserved
+on the `alpha` branch and the `v0.5.0-alpha` tag.
+
+## v0.6.0-beta (2026-08-11)
+
+The beta. Components are the model.
+
+**Breaking: MjArticulation assets from any alpha will not open.** Their
+components are the previous generation's classes and nothing migrates them.
+Re-import the MJCF, or stay on the `alpha` branch.
+
+### Added
+
+- **ProtoSpec.** MJCF is now an object model generated from MuJoCo's own
+  `mjcf.schema`, so a version bump regenerates the element tree instead of being
+  hand-followed. Every attribute is stored as a `TOptional`, where unset means
+  the document did not author it and the default class answers instead.
+- **Stock parity.** An imported model compiles to exactly what `mj_loadXML`
+  produces, checked field by field against every robot in a MuJoCo Menagerie
+  checkout (`URLab.Parity.StockDiffMenagerie`, opt-in via `URLAB_MENAGERIE`).
+- **MuJoCo engine plugins.** The first-party plugin libraries are built,
+  installed and loaded, so a model using `mujoco.pid`, cable or shell
+  elasticity, touch grids or SDF shapes compiles and runs.
+- **Attach conflict policy.** `AMjArticulation` exposes MuJoCo's `mjtConflict`
+  so a robot joining a scene can refuse to have its `<option>` replaced.
+- **Convex decomposition, finished.** Right-click a mesh geom in the Blueprint
+  editor's component tree. Threshold and CoACD's extrude are offered where the
+  action is invoked, hulls become real `<mesh>` elements and Unreal assets
+  beside the articulation's own, and the geom references them.
+
+### Changed
+
+- **The XML compile path is gone.** Components are read straight into an
+  `mjSpec`; nothing serialises MJCF text to reach the compiler any more.
+- **MuJoCo 3.11.1.**
+- Line endings are LF in the repository on every platform, and the formatter
+  no longer fights the code generator over the generated tree.
+
+### Fixed
+
+- Assets whose visual and collision meshes share a basename no longer collide
+  in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
+- A document naming its root default class `main` explicitly no longer loses
+  every class nested inside it.
+- The plugin builds again without the editor, so a game can be packaged.
 
 ## v0.5.0-alpha (2026-06-14)
 

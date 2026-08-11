@@ -6,6 +6,8 @@
 
 # URLab: MuJoCo Physics in Unreal Engine
 
+![URLab](docs/images/hero.png)
+
 > ## ⚠️ Beta: this release breaks existing MjArticulation assets
 >
 > `main` is now the **beta**. The component model changed: components no longer
@@ -26,8 +28,6 @@
 >
 > Re-importing gets you a model that compiles to exactly what stock MuJoCo's
 > own `mj_loadXML` produces, which the previous generation could not promise.
-
-![URLab](docs/images/hero.png)
 
 UnrealRoboticsLab (URLab) is an Unreal Engine 5 plugin that embeds the
 [MuJoCo](https://github.com/google-deepmind/mujoco) physics engine directly into

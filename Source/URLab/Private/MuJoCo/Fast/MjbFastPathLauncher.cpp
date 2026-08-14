@@ -11,6 +11,7 @@
 #include "Camera/CameraActor.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -26,6 +27,17 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) || Mjb.IsEmpty())
 	{
 		return; // not a fast-path renderer launch
+	}
+
+	// In PIE the editor-world preview (built by LaunchFastPathSync) is duplicated
+	// into this world and its BeginPlay already rebuilds + streams. Don't spawn a
+	// second scene on top of it. This launcher is the pure -game / packaged path,
+	// where no editor preview exists.
+	for (TActorIterator<AMjbScene> It(&InWorld); It; ++It)
+	{
+		UE_LOG(LogURLab, Log,
+			TEXT("[MjbFastPath] a fast-path scene already exists in this world; launcher skipping"));
+		return;
 	}
 	FString Bus;
 	FParse::Value(FCommandLine::Get(), TEXT("URLabFastBus="), Bus);

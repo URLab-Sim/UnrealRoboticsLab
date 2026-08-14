@@ -17,6 +17,7 @@
 #include "GameFramework/WorldSettings.h"
 #include "IAssetTools.h"
 #include "LevelEditorSubsystem.h"
+#include "LevelEditorViewport.h"
 #include "Misc/Paths.h"
 #include "ObjectTools.h"
 #include "UObject/UObjectGlobals.h"
@@ -25,7 +26,12 @@
 #include "Engine/DirectionalLight.h"
 #include "Engine/PointLight.h"
 #include "Engine/SpotLight.h"
+#include "Engine/SkyLight.h"
 #include "Components/LightComponent.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/SkyLightComponent.h"
+
+#include "MuJoCo/Fast/MjbScene.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
@@ -554,6 +560,117 @@ bool SpawnLightSync(
 
 	OutActorName = Actor->GetName();
 	OutActorPath = Actor->GetPathName();
+	return true;
+}
+
+bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
+	bool bFreshLevel, FString& OutError)
+{
+	OutError.Empty();
+	if (!GEditor)
+	{
+		OutError = TEXT("GEditor null");
+		return false;
+	}
+	if (MjbPath.IsEmpty())
+	{
+		OutError = TEXT("empty MJB path");
+		return false;
+	}
+
+	// 1) Switch to a clean, dedicated, persistent level so the render is not
+	//    dropped into the project's default map (landscape etc), and so the
+	//    built actors survive and can be saved / re-indexed.
+	if (bFreshLevel)
+	{
+		FString LevelPath, LevelErr;
+		if (!CreateLevelSync(TEXT("FastPathRender"), /*bForceOverwrite=*/true, LevelPath, LevelErr))
+		{
+			OutError = FString::Printf(TEXT("level setup failed: %s"), *LevelErr);
+			return false;
+		}
+	}
+
+	UWorld* World = GEditor->GetEditorWorldContext().World();
+	if (!World)
+	{
+		OutError = TEXT("editor world unavailable");
+		return false;
+	}
+
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	// 2) Lighting -- movable so it lights the editor viewport with no lighting
+	//    build. Directional sun + sky fill.
+	if (ADirectionalLight* Sun = World->SpawnActor<ADirectionalLight>(
+			ADirectionalLight::StaticClass(), FVector(0, 0, 400),
+			FRotator(-45.0, -35.0, 0.0), Params))
+	{
+		if (USceneComponent* Root = Sun->GetRootComponent())
+		{
+			Root->SetMobility(EComponentMobility::Movable);
+		}
+		if (ULightComponent* LC = Sun->GetLightComponent())
+		{
+			LC->SetIntensity(6.0f);
+			LC->SetLightColor(FLinearColor(1.0f, 0.98f, 0.95f));
+		}
+		Sun->Tags.AddUnique(FName(TEXT("URLab.ActorId=fastpath_sun")));
+	}
+	if (ASkyLight* Sky = World->SpawnActor<ASkyLight>(
+			ASkyLight::StaticClass(), FVector(0, 0, 400), FRotator::ZeroRotator, Params))
+	{
+		if (USkyLightComponent* SC = Sky->GetLightComponent())
+		{
+			SC->SetMobility(EComponentMobility::Movable);
+			SC->Intensity = 1.0f;
+			SC->RecaptureSky();
+		}
+		Sky->Tags.AddUnique(FName(TEXT("URLab.ActorId=fastpath_sky")));
+	}
+
+	// 3) The fast-path scene, built + connected in the editor world so it is
+	//    persistent (not a transient PIE actor) and streams live in the viewport.
+	AMjbScene* Scene = World->SpawnActor<AMjbScene>(
+		AMjbScene::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, Params);
+	if (!Scene)
+	{
+		OutError = TEXT("failed to spawn AMjbScene");
+		return false;
+	}
+	Scene->bTestSweep = BusEndpoint.IsEmpty(); // no owner -> local dev sweep in PIE
+	Scene->MjbFilePath = MjbPath;
+	Scene->BusEndpoint = BusEndpoint;
+	Scene->Tags.AddUnique(FName(TEXT("URLab.ActorId=fastpath_scene")));
+
+	// Build a STATIC editor preview only: geometry at the rest pose, no bus, no
+	// streaming. It persists (saveable, never lost on end-play) and never animates
+	// while the user is authoring. Pressing Play duplicates it into the PIE world,
+	// where its BeginPlay connects the bus and streams the live puppet. The MJB
+	// path + bus endpoint set above carry into that PIE duplicate.
+	const int32 Geoms = Scene->BuildStaticPreview();
+	if (Geoms < 0)
+	{
+		OutError = FString::Printf(TEXT("BuildStaticPreview failed for MJB '%s'"), *MjbPath);
+		return false;
+	}
+
+	// 4) Frame the scene with the perspective viewport camera (robot ~1 m tall
+	//    at the origin).
+	for (FLevelEditorViewportClient* VC : GEditor->GetLevelViewportClients())
+	{
+		if (VC && VC->IsPerspective())
+		{
+			VC->SetViewLocation(FVector(-450.0, 0.0, 190.0));
+			VC->SetViewRotation(FRotator(-18.0, 0.0, 0.0));
+			VC->Invalidate();
+		}
+	}
+
+	UE_LOG(LogURLabEditor, Log,
+		TEXT("[MjbFastPath] built %d geoms from %s (bus=%s)"), Geoms, *MjbPath,
+		BusEndpoint.IsEmpty() ? TEXT("(none, sweep)") : *BusEndpoint);
 	return true;
 }
 

@@ -219,6 +219,26 @@ URLABEDITOR_API bool RemoveQuickConvertSync(
 	FString& OutActorName,
 	FString& OutError);
 
+/**
+ * Stand up an MJB fast-path render scene in the editor world, in one call.
+ *
+ * When bFreshLevel is true, first switches to a clean dedicated level
+ * (`/Game/Levels/FastPathRender`, overwritten) so the render isn't dropped
+ * into the project's default map. Adds a movable directional + sky light,
+ * then spawns an AMjbScene, points it at MjbPath / BusEndpoint, builds the
+ * geometry, and (when BusEndpoint is set) connects the transform stream.
+ *
+ * Everything is created as PERSISTENT editor-world actors: the built scene
+ * survives, is saveable/re-indexable, and is never torn down by a PIE session
+ * ending. With no bus endpoint the scene runs the owner-less dev sweep so it
+ * still moves. Returns false with OutError on any hard failure.
+ */
+URLABEDITOR_API bool LaunchFastPathSync(
+	const FString& MjbPath,
+	const FString& BusEndpoint,
+	bool bFreshLevel,
+	FString& OutError);
+
 /** Enumerate previously-imported MJCF blueprints under
  *  ``/Game/MuJoCoImports`` so the bridge UI can populate a
  *  spawn-actor dropdown without forcing the user to remember each

@@ -384,9 +384,17 @@ void AAMjManager::BeginPlay()
 		ViewerTransport->SourceEndpoint = ViewerCfg.StateSourceEndpoint;
 		ViewerTransport->Topic = TEXT("viewer");
 		ViewerTransport->SetOwningManager(this);
-		ViewerTransport->TransportInit();
-		UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Viewer role: state source %s"),
-			*ViewerCfg.StateSourceEndpoint);
+		if (ViewerTransport->TransportInit())
+		{
+			UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Viewer role: subscribing to %s"),
+				*ViewerCfg.StateSourceEndpoint);
+		}
+		else
+		{
+			UE_LOG(LogURLab, Error,
+				TEXT("[AAMjManager] Viewer transport failed to start (%s); the scene will be static."),
+				*ViewerCfg.StateSourceEndpoint);
+		}
 	}
 	if (NetworkManager)
 		NetworkManager->UpdateCameraStreamingState();

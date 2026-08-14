@@ -92,6 +92,10 @@ bool UURLabViewerSubscribeTransport::TransportInit()
 	zmq_setsockopt(Subscriber, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
 	int Linger = 0;
 	zmq_setsockopt(Subscriber, ZMQ_LINGER, &Linger, sizeof(Linger));
+	// A viewer only ever wants the newest state, so keep a shallow inbound queue
+	// (drop old frames rather than let a backlog build if this thread stalls).
+	int RcvHwm = 8;
+	zmq_setsockopt(Subscriber, ZMQ_RCVHWM, &RcvHwm, sizeof(RcvHwm));
 
 	if (zmq_connect(Subscriber, TCHAR_TO_UTF8(*SourceEndpoint)) != 0)
 	{
@@ -188,7 +192,10 @@ void UURLabViewerSubscribeTransport::RunReceiveLoop()
 		// so a slow viewer never lags the owner's authoritative state.
 		if (!RecvPair(/*bBlock=*/true, Payload))
 			continue;
-		while (RecvPair(/*bBlock=*/false, Payload))
+		// Drain the backlog and keep only the newest frame. Bounded so a
+		// flooding publisher can never trap the loop here.
+		int32 DrainGuard = 0;
+		while (RecvPair(/*bBlock=*/false, Payload) && ++DrainGuard < 4096)
 		{
 		}
 
@@ -217,11 +224,34 @@ void UURLabViewerSubscribeTransport::ApplyFrame(double Time, const TArray<double
 	mjData* d = Engine->GetData();
 	if (!m || !d)
 		return;
-	if (QPos.Num() == m->nq)
-		FMemory::Memcpy(d->qpos, QPos.GetData(), m->nq * sizeof(mjtNum));
-	if (QVel.Num() == m->nv)
-		FMemory::Memcpy(d->qvel, QVel.GetData(), m->nv * sizeof(mjtNum));
+
+	// Model-identity guard: the owner's qpos/qvel must fit this viewer's model.
+	// A mismatch means the viewer loaded a different scene than the owner; apply
+	// nothing (a wrong scatter would render garbage) and warn once so it is
+	// diagnosable instead of a silent freeze.
+	if (QPos.Num() != m->nq || QVel.Num() != m->nv)
+	{
+		if (!bWarnedMismatch)
+		{
+			UE_LOG(LogURLabNet, Warning,
+				TEXT("ViewerSubscribeTransport: model mismatch -- owner sent qpos=%d qvel=%d but this ")
+				TEXT("viewer has nq=%d nv=%d. Load the SAME scene/model as the owner; ignoring frames ")
+				TEXT("until it matches."),
+				QPos.Num(), QVel.Num(), m->nq, m->nv);
+			bWarnedMismatch = true;
+		}
+		return;
+	}
+
+	FMemory::Memcpy(d->qpos, QPos.GetData(), m->nq * sizeof(mjtNum));
+	FMemory::Memcpy(d->qvel, QVel.GetData(), m->nv * sizeof(mjtNum));
 	d->time = Time;
 	mj_forward(m, d);
 	Engine->PushRenderState();
+
+	if (bWarnedMismatch)
+	{
+		UE_LOG(LogURLabNet, Log, TEXT("ViewerSubscribeTransport: model matches again; resuming render."));
+		bWarnedMismatch = false;
+	}
 }

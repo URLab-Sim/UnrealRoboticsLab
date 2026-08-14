@@ -69,6 +69,10 @@ private:
 	FRunnable* WorkerRunnable = nullptr;
 	FRunnableThread* WorkerThread = nullptr;
 	bool bIsInitialized = false;
+	// Throttles the model-mismatch warning to once per mismatch episode (re-armed
+	// after any frame that applies), so a wrong-scene viewer is diagnosable
+	// without spamming the log every frame. Worker-thread only.
+	bool bWarnedMismatch = false;
 
 	// Applies one decoded frame into (m,d) + mj_forward + PushRenderState.
 	void ApplyFrame(double Time, const TArray<double>& QPos, const TArray<double>& QVel);

@@ -574,7 +574,7 @@ namespace
 // level, lighting, and a persistent static AMjbScene preview. Exactly one of
 // MjbPath / MjbBytes carries the model.
 bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
-	const FString& BusEndpoint, bool bFreshLevel, FString& OutError)
+	const FString& BusEndpoint, const FString& ControlEndpoint, bool bFreshLevel, FString& OutError)
 {
 	OutError.Empty();
 	if (!GEditor)
@@ -656,6 +656,7 @@ bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 		Scene->SetMjbBytes(MjbBytes); // wire bytes win over a path
 	}
 	Scene->BusEndpoint = BusEndpoint;
+	Scene->OwnerControlEndpoint = ControlEndpoint; // for viewer -> owner perturbation
 	Scene->Tags.AddUnique(FName(TEXT("URLab.ActorId=fastpath_scene")));
 
 	// Build a STATIC editor preview only: geometry at the rest pose, no bus, no
@@ -698,7 +699,7 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 		OutError = TEXT("empty MJB path");
 		return false;
 	}
-	return BuildFastPathScene(MjbPath, TArray<uint8>(), BusEndpoint, bFreshLevel, OutError);
+	return BuildFastPathScene(MjbPath, TArray<uint8>(), BusEndpoint, FString(), bFreshLevel, OutError);
 }
 
 bool DiscoverFastPathOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError)
@@ -794,7 +795,7 @@ bool LaunchFastPathFromOwnerSync(const FString& ControlEndpoint, bool bFreshLeve
 	UE_LOG(LogURLabEditor, Log,
 		TEXT("[MjbFastPath] fetched MJB (%d bytes) + bus %s from owner %s"),
 		Mjb.Num(), *Bus, *ControlEndpoint);
-	return BuildFastPathScene(FString(), Mjb, Bus, bFreshLevel, OutError);
+	return BuildFastPathScene(FString(), Mjb, Bus, ControlEndpoint, bFreshLevel, OutError);
 }
 
 namespace

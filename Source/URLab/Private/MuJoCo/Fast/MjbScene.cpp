@@ -662,6 +662,51 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 	}
 }
 
+void AMjbScene::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE)
+{
+	if (OwnerControlEndpoint.IsEmpty() || BodyId < 0)
+	{
+		return;
+	}
+	double ForceMj[3];
+	double TorqueMj[3];
+	URLabAxisConv::UeDirectionToMj(ForceUE, ForceMj);
+	URLabAxisConv::UeDirectionToMj(TorqueUE, TorqueMj);
+
+	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+	Obj->SetStringField(TEXT("op"), TEXT("fastpath_perturb"));
+	Obj->SetNumberField(TEXT("body"), BodyId);
+	TArray<TSharedPtr<FJsonValue>> F, T;
+	for (int32 i = 0; i < 3; ++i)
+	{
+		F.Add(MakeShared<FJsonValueNumber>(ForceMj[i]));
+		T.Add(MakeShared<FJsonValueNumber>(TorqueMj[i]));
+	}
+	Obj->SetArrayField(TEXT("force"), F);
+	Obj->SetArrayField(TEXT("torque"), T);
+	TArray<uint8> Buf;
+	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
+
+	// Short-lived REQ; fire the request and read the ack so the REP stays in sync.
+	void* Ctx = zmq_ctx_new();
+	void* Req = zmq_socket(Ctx, ZMQ_REQ);
+	int Timeout = 500;
+	zmq_setsockopt(Req, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
+	zmq_setsockopt(Req, ZMQ_SNDTIMEO, &Timeout, sizeof(Timeout));
+	int Linger = 0;
+	zmq_setsockopt(Req, ZMQ_LINGER, &Linger, sizeof(Linger));
+	if (zmq_connect(Req, TCHAR_TO_UTF8(*OwnerControlEndpoint)) == 0)
+	{
+		zmq_send(Req, Buf.GetData(), Buf.Num(), 0);
+		zmq_msg_t Ack;
+		zmq_msg_init(&Ack);
+		zmq_msg_recv(&Ack, Req, 0); // best-effort ack
+		zmq_msg_close(&Ack);
+	}
+	zmq_close(Req);
+	zmq_ctx_term(Ctx);
+}
+
 void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 {
 	if (!Xpos || !Xquat)

@@ -63,6 +63,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	FString BusEndpoint;
 
+	/** Owner control endpoint (REQ/REP), e.g. "tcp://host:5571". Set when the
+	 *  scene was connected from a discovered owner; used to push perturbations
+	 *  back to the owner. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	FString OwnerControlEndpoint;
+
 	/** Bitmask of MuJoCo geom groups to render (bit i = group i). Default shows
 	 *  groups 0-2 (visual) and hides 3+ (collision proxies), matching the common
 	 *  menagerie visual/collision split. */
@@ -87,6 +93,15 @@ public:
 	/** Set the in-memory MJB (received over the wire). Loaded in preference to
 	 *  MjbFilePath on the next build. */
 	void SetMjbBytes(const TArray<uint8>& Bytes) { MjbBytes = Bytes; }
+
+	/**
+	 * Push an external force+torque on a MuJoCo body back to the owner, which
+	 * applies it via xfrc_applied on its next step. Force/Torque are in UE world
+	 * space (converted to MuJoCo here). No-op if OwnerControlEndpoint is unset.
+	 * This is the viewer -> owner perturbation path (e.g. a drag in the renderer).
+	 */
+	UFUNCTION(BlueprintCallable, Category = "URLab|Fast")
+	void SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE);
 
 	/**
 	 * Fetch an MJB and its transform-bus endpoint from an owner over a ZMQ

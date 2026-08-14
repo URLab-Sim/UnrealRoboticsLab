@@ -46,8 +46,13 @@
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Light.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Bridge/InstanceRegistry.h"
 
 namespace URLabLevelOps
 {
@@ -563,8 +568,13 @@ bool SpawnLightSync(
 	return true;
 }
 
-bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
-	bool bFreshLevel, FString& OutError)
+namespace
+{
+// Shared builder for both the file-path and wire-bytes launch paths: clean
+// level, lighting, and a persistent static AMjbScene preview. Exactly one of
+// MjbPath / MjbBytes carries the model.
+bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
+	const FString& BusEndpoint, bool bFreshLevel, FString& OutError)
 {
 	OutError.Empty();
 	if (!GEditor)
@@ -572,9 +582,9 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 		OutError = TEXT("GEditor null");
 		return false;
 	}
-	if (MjbPath.IsEmpty())
+	if (MjbPath.IsEmpty() && MjbBytes.Num() == 0)
 	{
-		OutError = TEXT("empty MJB path");
+		OutError = TEXT("no MJB (empty path and no wire bytes)");
 		return false;
 	}
 
@@ -641,6 +651,10 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 	}
 	Scene->bTestSweep = BusEndpoint.IsEmpty(); // no owner -> local dev sweep in PIE
 	Scene->MjbFilePath = MjbPath;
+	if (MjbBytes.Num() > 0)
+	{
+		Scene->SetMjbBytes(MjbBytes); // wire bytes win over a path
+	}
 	Scene->BusEndpoint = BusEndpoint;
 	Scene->Tags.AddUnique(FName(TEXT("URLab.ActorId=fastpath_scene")));
 
@@ -648,11 +662,11 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 	// streaming. It persists (saveable, never lost on end-play) and never animates
 	// while the user is authoring. Pressing Play duplicates it into the PIE world,
 	// where its BeginPlay connects the bus and streams the live puppet. The MJB
-	// path + bus endpoint set above carry into that PIE duplicate.
+	// bytes/path + bus endpoint set above carry into that PIE duplicate.
 	const int32 Geoms = Scene->BuildStaticPreview();
 	if (Geoms < 0)
 	{
-		OutError = FString::Printf(TEXT("BuildStaticPreview failed for MJB '%s'"), *MjbPath);
+		OutError = TEXT("BuildStaticPreview failed (bad or version-mismatched MJB)");
 		return false;
 	}
 
@@ -669,9 +683,118 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 	}
 
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[MjbFastPath] built %d geoms from %s (bus=%s)"), Geoms, *MjbPath,
+		TEXT("[MjbFastPath] built %d geoms (source=%s, bus=%s)"), Geoms,
+		MjbBytes.Num() > 0 ? TEXT("wire") : *MjbPath,
 		BusEndpoint.IsEmpty() ? TEXT("(none, sweep)") : *BusEndpoint);
 	return true;
+}
+} // namespace
+
+bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
+	bool bFreshLevel, FString& OutError)
+{
+	if (MjbPath.IsEmpty())
+	{
+		OutError = TEXT("empty MJB path");
+		return false;
+	}
+	return BuildFastPathScene(MjbPath, TArray<uint8>(), BusEndpoint, bFreshLevel, OutError);
+}
+
+bool DiscoverFastPathOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError)
+{
+	OutOwners.Reset();
+	OutError.Empty();
+
+	const FString Dir = FURLabInstanceRegistry::ResolveRegistryDir();
+	IFileManager& FM = IFileManager::Get();
+	if (!FM.DirectoryExists(*Dir))
+	{
+		return true; // no registry yet -> no owners, not an error
+	}
+
+	// Entries older than this are treated as dead (the owner heartbeats ~10s).
+	constexpr double kTtlSeconds = 30.0;
+	const FDateTime Now = FDateTime::UtcNow();
+
+	TArray<FString> Files;
+	FM.FindFiles(Files, *(Dir / TEXT("*.json")), /*Files=*/true, /*Directories=*/false);
+	for (const FString& Name : Files)
+	{
+		const FString Path = Dir / Name;
+		if ((Now - FM.GetTimeStamp(*Path)).GetTotalSeconds() > kTtlSeconds)
+		{
+			continue; // stale
+		}
+		FString Json;
+		if (!FFileHelper::LoadFileToString(Json, *Path))
+		{
+			continue;
+		}
+		TSharedPtr<FJsonObject> Obj;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
+		if (!FJsonSerializer::Deserialize(Reader, Obj) || !Obj.IsValid())
+		{
+			continue;
+		}
+
+		// Only fast-path owners (role or capability). Skips ordinary bridge
+		// instances that share the same registry directory.
+		bool bIsOwner = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
+		const TArray<TSharedPtr<FJsonValue>>* Caps = nullptr;
+		if (!bIsOwner && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
+		{
+			for (const TSharedPtr<FJsonValue>& V : *Caps)
+			{
+				if (V.IsValid() && V->AsString() == TEXT("fastpath_owner"))
+				{
+					bIsOwner = true;
+					break;
+				}
+			}
+		}
+		if (!bIsOwner)
+		{
+			continue;
+		}
+
+		FMjbOwnerInfo Info;
+		Obj->TryGetStringField(TEXT("instance_id"), Info.InstanceId);
+		Obj->TryGetStringField(TEXT("scene"), Info.Scene);
+		Obj->TryGetStringField(TEXT("host"), Info.Host);
+		Obj->TryGetStringField(TEXT("control"), Info.Control);
+		Obj->TryGetStringField(TEXT("bus"), Info.Bus);
+		Info.Ngeom = static_cast<int32>(Obj->GetIntegerField(TEXT("ngeom")));
+		Info.Pid = static_cast<int32>(Obj->GetIntegerField(TEXT("pid")));
+		if (!Info.Control.IsEmpty())
+		{
+			OutOwners.Add(MoveTemp(Info));
+		}
+	}
+	return true;
+}
+
+bool LaunchFastPathFromOwnerSync(const FString& ControlEndpoint, bool bFreshLevel,
+	FString& OutError)
+{
+	OutError.Empty();
+	if (ControlEndpoint.IsEmpty())
+	{
+		OutError = TEXT("empty owner control endpoint");
+		return false;
+	}
+	// Pull the MJB + bus endpoint from the owner over its control channel.
+	TArray<uint8> Mjb;
+	FString Bus;
+	if (!AMjbScene::FetchModelFromOwner(ControlEndpoint, Mjb, Bus, OutError))
+	{
+		OutError = FString::Printf(TEXT("owner fetch failed (%s): %s"), *ControlEndpoint, *OutError);
+		return false;
+	}
+	UE_LOG(LogURLabEditor, Log,
+		TEXT("[MjbFastPath] fetched MJB (%d bytes) + bus %s from owner %s"),
+		Mjb.Num(), *Bus, *ControlEndpoint);
+	return BuildFastPathScene(FString(), Mjb, Bus, bFreshLevel, OutError);
 }
 
 namespace

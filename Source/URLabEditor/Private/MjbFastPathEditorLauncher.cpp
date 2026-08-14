@@ -17,8 +17,15 @@ void UMjbFastPathEditorLauncher::Initialize(FSubsystemCollectionBase& Collection
 {
 	Super::Initialize(Collection);
 
-	FString Mjb;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) || Mjb.IsEmpty())
+	// A fast-path renderer launch is requested by any of: an owner control
+	// endpoint to connect to, a discovery flag, or a direct MJB file path.
+	const TCHAR* Cmd = FCommandLine::Get();
+	FString Ignored;
+	const bool bRequested =
+		(FParse::Value(Cmd, TEXT("URLabFastConnect="), Ignored) && !Ignored.IsEmpty()) ||
+		FParse::Param(Cmd, TEXT("URLabFastDiscover")) ||
+		(FParse::Value(Cmd, TEXT("URLabFastMjb="), Ignored) && !Ignored.IsEmpty());
+	if (!bRequested)
 	{
 		return; // not a fast-path renderer launch
 	}
@@ -53,19 +60,48 @@ bool UMjbFastPathEditorLauncher::TryLaunch(float DeltaTime)
 		return true; // let the initial map finish opening before we switch levels
 	}
 
-	FString Mjb, Bus;
-	FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb);
-	FParse::Value(FCommandLine::Get(), TEXT("URLabFastBus="), Bus);
-
+	const TCHAR* Cmd = FCommandLine::Get();
 	FString Err;
-	if (!URLabLevelOps::LaunchFastPathSync(Mjb, Bus, /*bFreshLevel=*/true, Err))
+	bool bOk = false;
+
+	FString Control;
+	if (FParse::Value(Cmd, TEXT("URLabFastConnect="), Control) && !Control.IsEmpty())
 	{
-		UE_LOG(LogURLabEditor, Error, TEXT("[MjbFastPath] editor launch failed: %s"), *Err);
+		// Connect to a named owner: pull its MJB + bus over the control channel.
+		bOk = URLabLevelOps::LaunchFastPathFromOwnerSync(Control, /*bFreshLevel=*/true, Err);
+	}
+	else if (FParse::Param(Cmd, TEXT("URLabFastDiscover")))
+	{
+		// Auto-discover: connect to the first advertised owner found.
+		TArray<URLabLevelOps::FMjbOwnerInfo> Owners;
+		FString DiscErr;
+		if (!URLabLevelOps::DiscoverFastPathOwners(Owners, DiscErr) || Owners.Num() == 0)
+		{
+			Err = Owners.Num() == 0 ? TEXT("no fast-path owners advertised") : DiscErr;
+		}
+		else
+		{
+			UE_LOG(LogURLabEditor, Log, TEXT("[MjbFastPath] discovered %d owner(s); connecting to '%s' (%s)"),
+				Owners.Num(), *Owners[0].Scene, *Owners[0].Control);
+			bOk = URLabLevelOps::LaunchFastPathFromOwnerSync(Owners[0].Control, /*bFreshLevel=*/true, Err);
+		}
 	}
 	else
 	{
-		UE_LOG(LogURLabEditor, Log, TEXT("[MjbFastPath] editor launch complete (mjb=%s bus=%s)"),
-			*Mjb, Bus.IsEmpty() ? TEXT("(none)") : *Bus);
+		// Direct MJB file path (owner-less or hand-specified bus).
+		FString Mjb, Bus;
+		FParse::Value(Cmd, TEXT("URLabFastMjb="), Mjb);
+		FParse::Value(Cmd, TEXT("URLabFastBus="), Bus);
+		bOk = URLabLevelOps::LaunchFastPathSync(Mjb, Bus, /*bFreshLevel=*/true, Err);
+	}
+
+	if (bOk)
+	{
+		UE_LOG(LogURLabEditor, Log, TEXT("[MjbFastPath] editor launch complete"));
+	}
+	else
+	{
+		UE_LOG(LogURLabEditor, Error, TEXT("[MjbFastPath] editor launch failed: %s"), *Err);
 	}
 
 	TickHandle.Reset();

@@ -220,6 +220,40 @@ URLABEDITOR_API bool RemoveQuickConvertSync(
 	FString& OutError);
 
 /**
+ * One discovered fast-path owner: a live sim a renderer can connect to. Read
+ * from the shared registry directory (the entries a FastPathOwner writes).
+ */
+struct FMjbOwnerInfo
+{
+	FString InstanceId;
+	FString Scene;
+	FString Host;
+	FString Control; // REQ/REP control endpoint (serves the MJB)
+	FString Bus;     // geoms transform-bus endpoint
+	int32 Ngeom = 0;
+	int32 Pid = 0;
+};
+
+/**
+ * Read the shared registry directory and return every live fast-path owner
+ * (entries whose capabilities include "fastpath_owner"). Stale entries (older
+ * than the TTL, or a dead pid) are skipped. Used by the server browser and the
+ * -URLabFastDiscover CLI path.
+ */
+URLABEDITOR_API bool DiscoverFastPathOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError);
+
+/**
+ * Stand up a fast-path render scene from a live owner, in one call: fetch the
+ * owner's MJB and bus endpoint over its control channel, then build the scene
+ * (clean level + lighting + persistent AMjbScene) from those wire bytes. No
+ * shared file. bFreshLevel behaves as in LaunchFastPathSync.
+ */
+URLABEDITOR_API bool LaunchFastPathFromOwnerSync(
+	const FString& ControlEndpoint,
+	bool bFreshLevel,
+	FString& OutError);
+
+/**
  * Stand up an MJB fast-path render scene in the editor world, in one call.
  *
  * When bFreshLevel is true, first switches to a clean dedicated level

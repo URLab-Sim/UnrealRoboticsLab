@@ -1,0 +1,19 @@
+<mujoco model="plugins">
+<!-- a built-in engine plugin instance (cable elasticity) activated via extension and used by a composite -->
+  <extension>
+    <plugin plugin="mujoco.elasticity.cable">
+      <instance name="cable_inst">
+        <config key="twist" value="1e7"/>
+        <config key="bend" value="4e6"/>
+      </instance>
+    </plugin>
+  </extension>
+
+  <worldbody>
+    <composite type="cable" curve="s" count="5 1 1" size="0.5" offset="0 0 1" initial="none">
+      <plugin plugin="mujoco.elasticity.cable" instance="cable_inst"/>
+      <joint kind="main" damping="0.01"/>
+      <geom type="capsule" size="0.005"/>
+    </composite>
+  </worldbody>
+</mujoco>

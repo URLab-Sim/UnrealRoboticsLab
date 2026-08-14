@@ -6,6 +6,7 @@
 #include "MjBridgeServerSubsystem.h"
 
 #include "Bridge/BridgeServerConfigUtils.h"
+#include "Bridge/InstanceRegistry.h"
 #include "URLabEditorLogging.h"
 
 void UURLabBridgeServerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -40,21 +41,56 @@ void UURLabBridgeServerSubsystem::StartServer()
 	{
 		Server = NewObject<UURLabBridgeServer>(this, TEXT("EditorBridgeServer"));
 	}
-	const FString Endpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), Config.StepPort);
+	Server->SetInstanceConfig(Config);
+	const FString Endpoint = FString::Printf(TEXT("tcp://%s:%d"), *Config.BindAddress, Config.StepPort);
 	Server->Start(Endpoint);
-	Server->EnsureShmBound(); // open req.shm/rep.shm under "live"
+	Server->EnsureShmBound(Config.InstanceId); // empty id -> "live" (single editor)
+
+	CachedUrlabVersion.Reset();
+	if (const FURLabRpcDispatcher* Dispatcher = Server->GetDispatcher())
+		CachedUrlabVersion = Dispatcher->URLabVersion;
+	FURLabInstanceRegistry::WriteEntry(Config, CachedUrlabVersion,
+		/*bManagerPresent=*/false, /*bBusy=*/false);
+
+	// Refresh the registry entry on a ticker so its mtime stays fresh (discovery
+	// treats a too-old entry as dead) and its `busy` tracks the live lease.
+	if (!HeartbeatHandle.IsValid())
+	{
+		HeartbeatHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateUObject(this, &UURLabBridgeServerSubsystem::RefreshRegistryHeartbeat),
+			/*DelaySeconds=*/10.0f);
+	}
+
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[BridgeServer] started on %s (rpc_transports=%d)"),
-		*Endpoint, Server->GetRpcTransports().Num());
+		TEXT("[BridgeServer] started instance='%s' index=%d bind=%s step=%d state=%d cam_base=%d "
+			 "(rpc_transports=%d)"),
+		Config.InstanceId.IsEmpty() ? TEXT("live") : *Config.InstanceId,
+		Config.InstanceIndex, *Config.BindAddress, Config.StepPort, Config.StatePort,
+		Config.CamBasePort, Server->GetRpcTransports().Num());
 }
 
 void UURLabBridgeServerSubsystem::StopServer()
 {
 	if (!Server)
 		return;
+	if (HeartbeatHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(HeartbeatHandle);
+		HeartbeatHandle.Reset();
+	}
 	Server->Stop();
 	Server = nullptr;
+	FURLabInstanceRegistry::RemoveEntry(Config);
 	UE_LOG(LogURLabEditor, Log, TEXT("[BridgeServer] stopped"));
+}
+
+bool UURLabBridgeServerSubsystem::RefreshRegistryHeartbeat(float /*DeltaTime*/)
+{
+	if (!Server)
+		return false; // server gone: stop ticking
+	FURLabInstanceRegistry::RefreshEntry(Config, CachedUrlabVersion,
+		/*bManagerPresent=*/false, /*bBusy=*/Server->IsLeaseHeld());
+	return true; // keep ticking
 }
 
 bool UURLabBridgeServerSubsystem::IsRunning() const
@@ -66,4 +102,5 @@ void UURLabBridgeServerSubsystem::ReloadConfig()
 {
 	Config = FURLabBridgeServerConfig{}; // reset to defaults
 	URLabBridgeServerConfigUtils::LoadFromIni(Config);
+	URLabBridgeServerConfigUtils::ApplyEnvAndCommandLineOverrides(Config);
 }

@@ -62,7 +62,7 @@ sequenceDiagram
     end
     loop policy
         C->>S: step { n_steps, observations, per_articulation }
-        S-->>C: step_ok { time, step, sim_time, wall_time, per_articulation, ... }
+        S-->>C: step_ok { time, step, sim_time, wall_time, arts, scene, ... }
     end
 ```
 
@@ -96,6 +96,12 @@ Reply (`hello_ok`), notable fields:
   "mujoco_version_int": 3xy,
   "manager_present": true,
   "shm_session_dir": "C:/.../Saved/URLabShm/<session_id>",
+  "shm_rpc": {
+    "session": "live",
+    "req_path": "C:/.../live/req.shm", "rep_path": "C:/.../live/rep.shm",
+    "req_event": "Local\\URLab_live_req_ready", "rep_event": "Local\\URLab_live_rep_ready",
+    "req_stride": 1048576, "rep_stride": 16777216, "n_buffers": 2, "header_size": 64
+  },
   "mjb": "<bytes>",
   "articulations": [ ... ],
   "entities": { ... },
@@ -114,6 +120,14 @@ Reply (`hello_ok`), notable fields:
   `mjb_base64` / `mjb_size` for JSON clients). Load it via a temp-file
   round-trip into `mujoco.MjModel`.
 - `shm_session_dir` is the absolute SHM region directory.
+- `shm_rpc` is the explicit SHM RPC contract — use it verbatim instead of
+  assuming `session="live"` or re-deriving names. It carries the `req`/`rep`
+  file paths, the Windows wake-up event names, the per-direction slot
+  `stride`, the buffer count, and the 64-byte header size. The bridge should
+  **poll the rep `sequence`** (header: `buffer_stride`@8, `n_buffers`@12,
+  `sequence` u64@16, `latest_idx` u32@24; slots start at `header_size`) as a
+  fallback — the `Local\` event doesn't cross logon-session/elevation, so an
+  event-only wait can stall out the recv timeout.
 
 ### Articulations block
 
@@ -139,12 +153,12 @@ model.
     "joints": {}, "sensors": {}, "bodies": {}
   },
   "camera_topics": {
-    "head_rgbd": {
+    "g1/head_rgbd": {
       "mode": "depth",
       "resolution": [848, 480],
       "fovy": 58.0,
       "zmq_endpoint": "tcp://127.0.0.1:5558",
-      "zmq_topic": "g1/camera/head_rgbd"
+      "zmq_topic": "g1/head_rgbd"
     }
   }
 }
@@ -282,9 +296,10 @@ request uses the same `per_articulation` shape as direct.
   "op": "step_ok",
   "time": 0.042,
   "step": 21,
+  "frame_id": 21,
   "sim_time": { "sec": 0, "nsec": 42000000 },
   "wall_time": { "sec": 1714125000, "nsec": 123000000 },
-  "per_articulation": {
+  "arts": {
     "g1": {
       "qpos": ["..."], "qvel": ["..."], "ctrl": ["..."], "act": ["..."],
       "sensors": { "imu_gyro": ["..."] },
@@ -292,12 +307,19 @@ request uses the same `per_articulation` shape as direct.
       "actions": 0
     }
   },
-  "entities": {
+  "scene": {
     "pallet":    { "qpos": ["..."], "qvel": ["..."], "xpos": ["..."], "xquat": ["..."] },
     "terrain_a": { "xpos": ["..."], "xquat": ["..."] }
   }
 }
 ```
+
+The observation blocks are named on the output side by what they contain:
+`arts` is the per-articulation state (keyed by articulation name), `scene`
+is the non-articulation dynamic bodies. The `step` *request* still carries
+control input under `per_articulation` — input and output are separate
+concerns. The streamed `state/full` snapshot uses the identical `arts` /
+`scene` shape (plus `op: "state_full"`).
 
 - `time` is `mjData->time`. `sim_time` / `wall_time` are
   ROS-Time-aligned `{sec, nsec}` blocks: `sim_time` mirrors `time` at
@@ -307,28 +329,121 @@ request uses the same `per_articulation` shape as direct.
   `UMjTwistController`: `twist.linear` carries `(vx, vy, 0)`,
   `twist.angular` carries `(0, 0, yaw_rate)`; `actions` is a discrete
   bitfield.
+- `sensors` values are raw MuJoCo SI in the MuJoCo frame (`mjData->sensordata`
+  verbatim), consistent with `qpos` / `qvel` / body poses. No UE unit or
+  handedness transform is applied on the wire.
 - The fields present per articulation follow the observation level (see
   [Observation levels](#observation-levels)).
+- `frame_id` is the post-step render-snapshot id (monotonic, bumped once
+  per step). It is the key for camera association: the frame that shows
+  *this* step's state is tagged with this `frame_id`. Pass it back as a
+  camera `frame_id` request (below) to fetch the matching image.
 
 ### Camera observations
 
-When `include_cameras` is non-false, the reply gains a `cameras` block:
+Camera capture is **decoupled from stepping** (like MuJoCo `simulate`): UE
+captures asynchronously into a per-camera history ring and the step never
+blocks on rendering. `include_cameras` retrieval is **non-blocking** — it
+reads from the ring; a frame that isn't ready yet is simply omitted and the
+client retries (or fetches by `frame_id` on a later step).
+
+When `include_cameras` resolves a frame, the reply gains a `cameras` block:
 
 ```json
 "cameras": {
-  "head_rgbd": { "width": 848, "height": 480, "dtype": "float32", "data": "<bytes>" },
-  "wrist_rgb": { "width": 640, "height": 480, "dtype": "bgra8",   "data": "<bytes>" }
+  "head_rgbd":       { "width": 848, "height": 480, "frame_id": 21, "sim_time": 0.042, "dtype": "float32", "data": "<bytes>" },
+  "base_wrist_rgb":  { "width": 640, "height": 480, "frame_id": 21, "sim_time": 0.042, "dtype": "bgra8",   "data": "<bytes>" }
 }
 ```
 
-`dtype` is `bgra8` (4 bytes/pixel) for Real / Semantic / Instance and
-`float32` for Depth. The bridge swaps Real to RGBA on receive and keeps
-seg modes BGRA so consumers can map color to class id.
+Each camera carries the `frame_id` / `sim_time` of the state it shows, so a
+client can confirm it got the post-step frame. `dtype` is `bgra8` (4
+bytes/pixel) for Real / Semantic / Instance and `float32` for Depth. The
+bridge swaps Real to RGBA on receive and keeps seg modes BGRA so consumers
+can map color to class id.
 
-`include_cameras` accepts `true` (every camera, latest cached frame),
-`false`, or a per-camera object like `{"head_rgbd": "sync"}`. `"sync"`
-blocks the step until UE captures a fresh frame; `"latest"` returns the
-cached one.
+**Camera keys are canonical**: the single `<art>/<part>` name, where `<art>`
+is the articulation name and `<part>` is the MJCF camera name with the art
+prefix stripped, both sanitized to `[A-Za-z0-9_]` (e.g. art `g1`, camera
+`g1_head_rgbd` → `g1/head_rgbd`). This one string is the `camera_topics` key,
+the `zmq_topic`, and the key the SHM/ZMQ transports and `include_cameras`
+requests use; the SHM file is `cam_<art>_<part>.shm`.
+
+`include_cameras` accepts:
+
+- `true` — every registered camera, latest available frame.
+- `false` — no cameras.
+- a per-camera object, where each value is one of:
+  - `"latest"` (or legacy `"sync"`) — latest available frame from the ring.
+  - a number `N` — the frame showing post-step state `>= N` (pass the step
+    reply's `frame_id`). The deterministic "image for this step" path.
+  - `{ "frame_id": N }` — same, explicit.
+
+Typical downstream flow (post-step image, full step rate via one-step
+pipelining): `result = step(...)` then on the *next* step request
+`include_cameras = { "<cam>": result.frame_id }`.
+
+**Capture gating / streaming:** a camera captures only while it is
+broadcast-enabled or has been requested recently. UE's `bEnableAllCameras`
+now defaults **off**, so dedicated ZMQ/SHM pub streams must be turned on per
+camera via [`set_camera_streaming`](#set_camera_streaming) (or rely on
+`include_cameras`, which auto-activates capture). Oversize replies on the
+SHM RPC transport (e.g. large multi-camera frames) return a
+`reply_too_large` error so the bridge re-routes that one request to ZMQ.
+
+### Server-side camera waits (`wait_cameras`, `render`)
+
+`include_cameras` retrieval is non-blocking by default: a frame that
+is not ready is omitted and the client retries. Two optional `step`
+fields trade that round-trip for a server-side wait, for eval loops that
+want the deterministic post-step image without polling.
+
+- `wait_cameras` (bool): block the reply until every requested camera
+  has the frame this step produced (`frame_id >= this step`), instead of
+  the client polling with a min `frame_id` and eating a round trip per
+  miss. `camera_timeout_ms` (number) bounds the wait; on expiry the
+  reply returns whatever is available.
+- `render` (string): force a capture for the requested cameras this
+  step. Two values:
+  - `render: "sync"`: drive an immediate capture and wait for the fresh
+    frame (`frame_id == this step`). Flushes the game thread, so it is
+    the highest-latency, lowest-throughput path; use it when you need the
+    image that exactly matches this step.
+  - `render: "async"`: kick the capture but return the
+    most-recently-completed frame (typically one step stale) without
+    waiting, so back-to-back requests overlap render and readback for
+    higher throughput. (`async` was formerly named `pipelined`.)
+
+  Both are eval-oriented, not for interactive use. An unrecognised
+  `render` string is ignored (neither sync nor async).
+
+### Camera stream frames
+
+Camera pixels are delivered on the dedicated PUB socket / SHM ring, not
+in the step reply (the `cameras` block above is a snapshot the server
+lifts off the same streams). Each streamed frame is prefixed with a
+fixed 40-byte little-endian metadata header (`FMjCameraFrameMeta`,
+magic `"UCM1"`) so a consumer can associate the pixels with the step
+that produced them. The Python side unpacks it as `"<IIQdIId"`:
+
+| Offset | Field | Type | Meaning |
+|---|---|---|---|
+| 0 | `magic` | u32 | `0x314D4355` (`"UCM1"`), frame guard |
+| 4 | `version` | u32 | header version (`2`) |
+| 8 | `frame_id` | u64 | post-step render-snapshot id this frame shows |
+| 16 | `sim_time` | f64 | sim clock of the shown state, seconds |
+| 24 | `width` | u32 | pixels |
+| 28 | `height` | u32 | pixels |
+| 32 | `capture_unix_time` | f64 | Unix-epoch seconds (UTC) when the frame's GPU readback was requested (v2+) |
+
+`capture_unix_time` shares the clock with the state stream's
+`wall_time` and Python's `time.time()`, so content latency is
+`time.time() - capture_unix_time` with no cross-process clock sync.
+`version 1` headers are 32 bytes (no `capture_unix_time`); a v1 consumer
+that stops reading after `height` still parses a v2 frame, and a v2
+consumer reports `capture_unix_time` as absent on a v1 frame. `frame_id`
+is the ordering / freshness key; the SHM ring and multipart transports
+carry their own sequence counter on top of this header.
 
 ## `reset`
 
@@ -510,8 +625,67 @@ m/s^2, magnetic in gauss. Accepted fields: `timestep`, `gravity`,
 `solver` (`pgs` / `cg` / `newton`), `noslip_iterations`,
 `noslip_tolerance`, `ccd_iterations`, `ccd_tolerance`,
 `enable_multiccd`, `enable_sleep`, `sleep_tolerance`, plus the raw
-`disableflags` / `enableflags` masks and `num_worker_threads`. An
-unknown integrator / cone / solver string returns `bad_value`.
+`disableflags` / `enableflags` masks and `num_worker_threads` (the
+`mju_threadpool` worker count; the reply also echoes the read-only
+`max_worker_threads` CPU-core clamp). An unknown integrator / cone /
+solver string returns `bad_value`.
+
+### `set_camera_streaming`
+
+Enables/disables per-camera ZMQ/SHM broadcast streams at runtime. Needed
+because `bEnableAllCameras` now defaults off: a camera only runs its pub
+streams while broadcast-enabled (here) or requested via `include_cameras`.
+Keys are canonical camera names. Each value is `true` / `false` (both
+transports) or `{ "zmq": bool, "shm": bool }` (per-transport; omitting both
+sub-fields enables both).
+
+```json
+{ "op": "set_camera_streaming", "session_id": "uuid-v4",
+  "cameras": { "base_wrist_rgb": { "zmq": true, "shm": false },
+               "head_rgbd": true } }
+```
+
+The reply is keyed by canonical name; each entry carries `streaming`,
+`zmq`, `shm`, and (when ZMQ is on) the bound `zmq_endpoint` / `zmq_topic`
+to subscribe to.
+
+### `set_camera_delay`
+
+Emulates real-camera latency per camera. The stream serves the newest
+frame whose `capture_time + sampled_delay <= now`, so the feed lags by
+the configured delay. Applied server-side (UE), so every client and
+transport sees the already-delayed stream. Keys are canonical camera
+names. Each value is either a bare number (fixed delay in seconds) or an
+object:
+
+```json
+{ "op": "set_camera_delay", "session_id": "uuid-v4",
+  "cameras": {
+    "head_rgbd": 0.05,
+    "base_wrist_rgb": { "delay_s": 0.08, "jitter_s": 0.01,
+                        "clock": "wall", "seed": 7,
+                        "on_state_change": true, "max_fps": 30.0 } } }
+```
+
+- `delay_s`: base latency in seconds.
+- `jitter_s`: symmetric uniform half-range; effective delay is
+  `U(delay_s - jitter_s, delay_s + jitter_s)` clamped `>= 0`, drawn from
+  a seeded per-camera RNG so it is reproducible.
+- `clock`: `"sim"` (measure the delay in SimTime, deterministic,
+  default) or `"wall"` (wall-clock, real-latency emulation).
+- `seed`: RNG seed for the jitter draw (`0` derives one from the name).
+- `on_state_change`: capture / read back only when the physics state
+  advanced, skipping redundant GPU work between steps (default on).
+- `max_fps`: optional hard wall-clock cap on capture rate (`0` =
+  uncapped).
+
+`delay_s = 0` with no jitter restores the zero-latency path. The reply
+(`set_camera_delay_ok`) is keyed by canonical name; each entry echoes the
+applied `delay_s` / `jitter_s` / `clock` / `on_state_change` / `max_fps`.
+A camera name that does not resolve is skipped (logged, not an error); a
+`cameras` object with no usable entries returns `bad_request`, and a
+missing `cameras` object returns `missing_field`. The game-thread apply
+returns `timeout` if it does not complete within 5 s.
 
 ## Recording
 
@@ -572,7 +746,7 @@ Their wire names mirror the Python methods; see
 
 - `scene`: `import_xml`, `create_level`, `load_level`, `save_level`,
   `current_level`, `ensure_manager`, `spawn_actor`, `spawn_grid`,
-  `spawn_light`, `destroy_actor`, `destroy_asset`,
+  `spawn_light`, `remove_actor`, `destroy_asset`,
   `set_actor_transform`, `duplicate_actor`, `actor_hierarchy`,
   `snapshot`.
 - `sim` (PIE lifecycle): `begin_pie`, `stop_pie`, `pie_status`.
@@ -588,6 +762,37 @@ Their wire names mirror the Python methods; see
 `compile_failed` / `timeout` / `ready`) plus a `compile_error` string,
 and on `ready` embeds a fresh handshake-shaped `handshake_payload` so
 the client re-discovers without an extra `hello`.
+
+### Async editor ops (`op_started` / `op_status`)
+
+Long editor ops (`import_xml`, level create / load / save, some spawns)
+block the game thread for seconds. Rather than hold the single RPC
+worker for the whole run, the server kicks the work onto a game-thread
+ticker and replies immediately with `op_started`:
+
+```json
+{ "op": "op_started", "job_id": "job_42", "state": "running" }
+```
+
+The client then polls `op_status` with the `job_id` until the job goes
+terminal:
+
+```json
+{ "op": "op_status", "session_id": "uuid-v4", "job_id": "job_42" }
+
+{ "op": "op_status_ok", "job_id": "job_42", "state": "done",
+  "result": { "op": "import_xml_ok", "...": "..." } }
+```
+
+- `state` is `running`, `done`, or `failed`. `progress` is an optional
+  human string while `running`.
+- On a terminal `state`, `result` carries the original handler reply
+  (the `<op>_ok` payload, or an `error` reply that sets `state` to
+  `failed`). The job is popped when first reported terminal, so a second
+  `op_status` for the same `job_id` returns `unknown_job`.
+- A handler may still answer synchronously with its `<op>_ok`; clients
+  accept both the async (`op_started` + poll) and direct forms.
+- `op_status` with an empty / missing `job_id` returns `bad_request`.
 
 ## Errors
 
@@ -628,6 +833,10 @@ Codes raised by the dispatcher and op handlers:
 | `replay_session_not_found` | `set_active` / `start` named an unloaded session. |
 | `replay_requires_stepped` | `replay_start` issued while in `live`. |
 | `step_timeout` | A direct-mode step did not complete within 5 s. |
+| `timeout` | A game-thread apply did not complete in time (e.g. `set_camera_delay` after 5 s). |
+| `reply_too_large` | The reply exceeded the SHM RPC slot (e.g. large multi-camera frames). The bridge re-routes that one request over ZMQ. |
+| `wrong_transport` | An op not served on the current transport was received on it (e.g. an editor-only or oversize op on the runtime-only SHM RPC). Message `use_zmq`; the bridge retries on ZMQ. |
+| `unknown_job` | `op_status` named a `job_id` that was already collected or never existed. |
 | `shutting_down` | The bridge began draining mid-op (server stop / editor close). |
 
 Editor ops add their own per-op failure codes (for example

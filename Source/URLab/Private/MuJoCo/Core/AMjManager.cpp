@@ -21,10 +21,16 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Gen/Elements/Options/MjCompiler.gen.h"
+#include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
 #include "EngineUtils.h"
 #include "Transport/NetworkManager.h"
 #include "MuJoCo/Input/MjInputHandler.h"
@@ -36,9 +42,15 @@
 #include "Blueprint/UserWidget.h"
 #include "Transport/ZmqPublishTransport.h"
 #include "Transport/ZmqSubscribeTransport.h"
-#include "Transport/ZmqRpcTransport.h"
 #include "Bridge/RpcDispatcher.h"
-#include "Transport/SnapshotProducer.h"
+#include "Bridge/BridgeServerConfig.h"
+#include "Bridge/BridgeServerConfigUtils.h"
+#include "State/MjMsgpackEncoder.h"
+#include "State/MjStateTypes.h"
+#include "State/MjCanonicalName.h"
+#include "State/MjObservationLevel.h"
+#include "UserChannels/MjUserChannelComponent.h"
+#include "Urdf/UrdfExporter.h"
 #include "Transport/ShmPublishTransport.h"
 #include "Transport/ShmRpcTransport.h"
 #include "MuJoCo/Core/MjSimulationState.h"
@@ -59,22 +71,79 @@ AAMjManager::AAMjManager()
 	NetworkManager = CreateDefaultSubobject<UMjNetworkManager>(TEXT("NetworkManager"));
 	InputHandler = CreateDefaultSubobject<UMjInputHandler>(TEXT("InputHandler"));
 	Perturbation = CreateDefaultSubobject<UMjPerturbation>(TEXT("Perturbation"));
+
+	// The scene is one MuJoCo spec and this is its root. Sections hang off
+	// it rather than off the actor directly, because a spec with two roots
+	// is not a spec -- and the writer walks exactly this tree.
+	SceneSpec = CreateDefaultSubobject<UMjModel>(TEXT("SceneSpec"));
+	SceneOption = CreateDefaultSubobject<UMjOption>(TEXT("SceneOption"));
+	SceneFlags = CreateDefaultSubobject<UMjFlag>(TEXT("SceneFlags"));
+	SceneCompiler = CreateDefaultSubobject<UMjCompiler>(TEXT("SceneCompiler"));
+	SceneOption->SetupAttachment(SceneSpec);
+	SceneFlags->SetupAttachment(SceneOption);
+	SceneCompiler->SetupAttachment(SceneSpec);
+	if (RootComponent == nullptr)
+	{
+		RootComponent = SceneSpec;
+	}
+
+	// URLab's two departures from MuJoCo's own defaults, authored rather than
+	// hard-coded so they show up in the details panel and in written MJCF.
+	// Everything else stays unset, which is what leaves MuJoCo's default in
+	// place: a value written here is written into every scene, and MuJoCo is
+	// free to change its own mind between versions.
+	SceneOption->Integrator = EMjIntegrator::implicitfast;
+	SceneCompiler->Conflict = EMjConflict::merge;
 }
 
-// --- Forwarding shims: PreCompile, PostCompile, Compile, ApplyOptions ---
-// Actual implementations live in UMjPhysicsEngine.
-
-void AAMjManager::PreCompile()
+FSpecRef AAMjManager::GetSceneSpec() const
 {
-	if (PhysicsEngine)
-		PhysicsEngine->PreCompile();
+	return FSpecRef::OverActor(const_cast<AAMjManager&>(*this));
 }
 
-void AAMjManager::PostCompile()
+void AAMjManager::RefreshStateCaches()
 {
-	if (PhysicsEngine)
-		PhysicsEngine->PostCompile();
 	BuildEntityCache();
+	// Rebuild the state-IR producer cache off the same trigger as the entity
+	// cache (initial compile + every recompile). Both run on the game thread.
+	StateCollector.Init(this);
+	StateCollector.RebuildProducerCacheGameThread();
+	// Re-export the URDF(s) so the robot_description matches the fresh model.
+	ExportRobotDescriptions();
+}
+
+void AAMjManager::ExportRobotDescriptions()
+{
+	RobotDescriptions.Reset();
+	if (!PhysicsEngine || !PhysicsEngine->m_model)
+		return;
+
+	const mjModel* Model = PhysicsEngine->m_model;
+	const FString RootDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLab"), TEXT("UrdfExport"));
+	const FUrdfExportConfig Cfg;
+
+	for (AMjArticulation* Art : GetAllArticulations())
+	{
+		if (!Art)
+			continue;
+		const FString RawName = Art->GetName();
+		const FName Segment = FMjCanonicalName::ArtSegment(Art);
+		const FString SegmentStr = Segment.ToString();
+		const FString OutDir = FPaths::Combine(RootDir, SegmentStr);
+
+		const FUrdfModel Urdf = FUrdfExporter::ExportToDir(
+			Model, SegmentStr, RawName, OutDir, Cfg);
+		if (Urdf.Links.Num() == 0)
+			continue;
+
+		RobotDescriptions.Add(Segment, Urdf.Xml);
+		for (const FString& W : Urdf.Warnings)
+			UE_LOG(LogURLab, Warning, TEXT("[URDF] %s: %s"), *SegmentStr, *W);
+		UE_LOG(LogURLab, Log,
+			TEXT("[URDF] %s: %d links, %d joints, %d meshes -> %s"),
+			*SegmentStr, Urdf.Links.Num(), Urdf.Joints.Num(), Urdf.MeshIds.Num(),
+			*FPaths::Combine(OutDir, TEXT("model.urdf")));
+	}
 }
 
 void AAMjManager::BuildEntityCache()
@@ -107,15 +176,15 @@ void AAMjManager::BuildEntityCache()
 		Actor->GetComponents<UMjBody>(Bodies);
 		for (UMjBody* B : Bodies)
 		{
-			if (!B || B->bIsDefault)
+			if (B == nullptr)
 				continue;
-			int32 Id = B->GetMjID();
+			const int32 Id = B->GetBoundId().Get(-1);
 			if (Id < 0 || Id >= m->nbody)
 				continue;
 
 			FMjEntityRecord Rec;
 			Rec.MjId = Id;
-			Rec.Name = B->GetMjName();
+			Rec.Name = B->MjName.Get(B->GetName());
 			Rec.BodyComp = B;
 			if (m->body_jntnum && m->body_jntadr)
 			{
@@ -140,6 +209,8 @@ void AAMjManager::Compile()
 	m_articulations = PhysicsEngine->m_articulations;
 	m_heightfieldActors = PhysicsEngine->m_heightfieldActors;
 	m_ArticulationMap = PhysicsEngine->m_ArticulationMap;
+
+	RefreshStateCaches();
 }
 
 void AAMjManager::BeginPlay()
@@ -186,12 +257,31 @@ void AAMjManager::BeginPlay()
 		// Cooked path: no editor subsystem. Manager owns its bridge and
 		// brings up both RPC transports inline. Bridge owns all RPC
 		// transports; manager only owns publish/subscribe streams.
+		FURLabBridgeServerConfig CookedConfig;
+		URLabBridgeServerConfigUtils::LoadFromIni(CookedConfig);
+		URLabBridgeServerConfigUtils::ApplyEnvAndCommandLineOverrides(CookedConfig);
+
 		BridgeServer = NewObject<UURLabBridgeServer>(this, TEXT("BridgeServer"));
 		BridgeServer->SetOwnedByManager(true);
-		BridgeServer->Start();          // ZMQ on tcp://0.0.0.0:5559
-		BridgeServer->EnsureShmBound(); // SHM under "live"
+		BridgeServer->SetInstanceConfig(CookedConfig);
+		const FString StepEndpoint = FString::Printf(TEXT("tcp://%s:%d"),
+			*CookedConfig.BindAddress, CookedConfig.StepPort);
+		BridgeServer->Start(StepEndpoint);
+		BridgeServer->EnsureShmBound(CookedConfig.InstanceId);
 	}
 	BridgeServer->RegisterManager(this);
+
+	// Bind external (ROS) transports if their module is present. No-op when
+	// URLabRos is not loaded (its factory hooks are unbound), so non-ROS builds
+	// and non-ROS users are unaffected. This is what starts in-process ROS
+	// publishing/services for a live session.
+	BridgeServer->EnsureExternalTransportsBound();
+
+	// State PUB binds the configured address + port so farm instances don't
+	// collide; single-editor defaults reproduce tcp://0.0.0.0:5555.
+	const FURLabBridgeServerConfig& NetConfig = BridgeServer->GetInstanceConfig();
+	const FString StateEndpoint = FString::Printf(TEXT("tcp://%s:%d"),
+		*NetConfig.BindAddress, NetConfig.StatePort);
 
 	// Auto-create the streaming transports (PIE-only producers — they
 	// tap PhysicsEngine pre/post-step callbacks). Bridge-style UObject
@@ -204,12 +294,13 @@ void AAMjManager::BeginPlay()
 			this, TEXT("AutoZmqBroadcaster"));
 		if (Broadcaster)
 		{
+			Broadcaster->ZmqEndpoint = StateEndpoint;
 			Broadcaster->SetOwningManager(this);
 			if (Broadcaster->TransportInit())
 			{
 				ManagerOwnedPublishTransports.Add(Broadcaster);
 				UE_LOG(LogURLab, Log,
-					TEXT("[AAMjManager] Created UURLabZmqPublishTransport (tcp://0.0.0.0:5555)"));
+					TEXT("[AAMjManager] Created UURLabZmqPublishTransport (%s)"), *StateEndpoint);
 			}
 		}
 
@@ -240,7 +331,6 @@ void AAMjManager::BeginPlay()
 		}
 	}
 
-	// Compile via PhysicsEngine (also discovers ZMQ components in PreCompile)
 	Compile();
 	if (NetworkManager)
 		NetworkManager->UpdateCameraStreamingState();
@@ -300,37 +390,16 @@ void AAMjManager::BeginPlay()
 			}
 		});
 
-		// Build the state_full snapshot once per physics step and fan it
-		// out to every IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). This
-		// is the only place BuildStateSnapshot runs per step.
+		// Build the state IR once per physics step, encode it to the canonical
+		// msgpack `state_full` snapshot, and fan the bytes out to every
+		// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). This runs inside the
+		// engine's CallbackMutex, so the collector's persistent snapshot buffer
+		// never races an on-demand Collect from an RPC step reply.
 		TWeakObjectPtr<AAMjManager> WeakSelf(this);
 		PhysicsEngine->RegisterPostStepCallback(
 			[WeakSelf](mjModel* m, mjData* d) {
-				AAMjManager* Self = WeakSelf.Get();
-				if (!Self)
-					return;
-
-				TArray<IMjSnapshotPublisher*> Pubs;
-				{
-					FScopeLock Lock(&Self->SnapshotPublishersMutex);
-					Pubs.Reserve(Self->SnapshotPublishers.Num());
-					for (const FRegisteredSnapshotPublisher& R : Self->SnapshotPublishers)
-					{
-						if (R.Publisher && R.Owner.IsValid())
-							Pubs.Add(R.Publisher);
-					}
-				}
-				if (Pubs.Num() == 0)
-					return;
-
-				FURLabRpcDispatcher* Disp = Self->GetStepDispatcher();
-				const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
-				TArray<uint8> Buf = FMjSnapshotProducer::BuildStateSnapshot(
-					Self, m, d, StepIdx);
-				if (Buf.Num() == 0)
-					return;
-				for (IMjSnapshotPublisher* Pub : Pubs)
-					Pub->PublishSnapshot(Buf);
+				if (AAMjManager* Self = WeakSelf.Get())
+					Self->FanOutStateSnapshot(m, d);
 			});
 
 		PhysicsEngine->RunMujocoAsync();
@@ -395,6 +464,188 @@ void AAMjManager::UnregisterSnapshotPublisher(IMjSnapshotPublisher* Publisher)
 	});
 }
 
+void AAMjManager::RegisterStateProducer(TScriptInterface<IMjStateProducer> Producer)
+{
+	UObject* Obj = Producer.GetObject();
+	if (!Obj)
+		return;
+	{
+		FScopeLock Lock(&StateProducersMutex);
+		for (const TWeakObjectPtr<UObject>& P : StateProducers)
+		{
+			if (P.Get() == Obj)
+				return; // already registered
+		}
+		StateProducers.Add(Obj);
+	}
+	StateCollector.MarkProducerCacheDirty();
+}
+
+void AAMjManager::UnregisterStateProducer(TScriptInterface<IMjStateProducer> Producer)
+{
+	UObject* Obj = Producer.GetObject();
+	if (!Obj)
+		return;
+	{
+		FScopeLock Lock(&StateProducersMutex);
+		StateProducers.RemoveAll([Obj](const TWeakObjectPtr<UObject>& P) {
+			return P.Get() == Obj;
+		});
+	}
+	StateCollector.MarkProducerCacheDirty();
+}
+
+void AAMjManager::GetStateProducers(TArray<TWeakObjectPtr<UObject>>& Out) const
+{
+	FScopeLock Lock(&StateProducersMutex);
+	Out = StateProducers;
+}
+
+namespace
+{
+// The canonical art segment a user-channel component contributes under, or empty
+// for scene scope. Mirrors the collector's producer scope resolution.
+FString UserChannelScopeSegment(const UMjUserChannelComponent* Comp)
+{
+	if (!Comp)
+		return FString();
+	AActor* Owner = Comp->GetOwner();
+	if (const AMjArticulation* Art = Cast<AMjArticulation>(Owner))
+		return FMjCanonicalName::ArtSegment(Art).ToString();
+	return FString();
+}
+} // namespace
+
+bool AAMjManager::ApplyUserChannelInput(FName ArtOrNone, FName Channel,
+	const FMjUserChannel& Value)
+{
+	const FString TargetScope = ArtOrNone.IsNone() ? FString() : ArtOrNone.ToString();
+
+	TArray<TWeakObjectPtr<UObject>> Producers;
+	GetStateProducers(Producers);
+
+	bool bApplied = false;
+	for (const TWeakObjectPtr<UObject>& Weak : Producers)
+	{
+		UMjUserChannelComponent* Comp = Cast<UMjUserChannelComponent>(Weak.Get());
+		if (!Comp)
+			continue;
+		if (UserChannelScopeSegment(Comp) != TargetScope)
+			continue;
+		EMjUserChannelKind Declared;
+		if (!Comp->GetDeclaredInputKind(Channel, Declared))
+			continue;
+		if (Comp->ApplyInput(Channel, Value))
+			bApplied = true;
+	}
+	return bApplied;
+}
+
+void AAMjManager::GetUserInputChannels(TArray<FMjUserInputChannelInfo>& Out) const
+{
+	TArray<TWeakObjectPtr<UObject>> Producers;
+	GetStateProducers(Producers);
+
+	for (const TWeakObjectPtr<UObject>& Weak : Producers)
+	{
+		UMjUserChannelComponent* Comp = Cast<UMjUserChannelComponent>(Weak.Get());
+		if (!Comp)
+			continue;
+		const FString Scope = UserChannelScopeSegment(Comp);
+		TArray<TPair<FName, EMjUserChannelKind>> Declared;
+		Comp->GetDeclaredInputChannels(Declared);
+		for (const TPair<FName, EMjUserChannelKind>& Pair : Declared)
+		{
+			FMjUserInputChannelInfo Info;
+			Info.ArtSegment = Scope;
+			Info.Channel = Pair.Key;
+			Info.Kind = Pair.Value;
+			Out.Add(MoveTemp(Info));
+		}
+	}
+}
+
+void AAMjManager::RegisterStateConsumer(IMjStateConsumer* Consumer, UObject* OwnerObj)
+{
+	if (!Consumer || !OwnerObj)
+		return;
+	FScopeLock Lock(&StateConsumersMutex);
+	for (const FRegisteredStateConsumer& R : StateConsumers)
+	{
+		if (R.Consumer == Consumer)
+			return; // already registered
+	}
+	StateConsumers.Add({OwnerObj, Consumer});
+}
+
+void AAMjManager::UnregisterStateConsumer(IMjStateConsumer* Consumer)
+{
+	if (!Consumer)
+		return;
+	FScopeLock Lock(&StateConsumersMutex);
+	StateConsumers.RemoveAll([Consumer](const FRegisteredStateConsumer& R) {
+		return R.Consumer == Consumer;
+	});
+}
+
+void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
+{
+	// Build the state IR once per physics step, encode it to the canonical
+	// msgpack `state_full` snapshot, and fan the bytes out to every
+	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). Registered IMjStateConsumers
+	// receive the same typed IR and run their own encoders. Runs inside the
+	// engine's CallbackMutex, so the collector's persistent snapshot buffer never
+	// races an on-demand Collect from an RPC step reply.
+	TArray<IMjSnapshotPublisher*> Pubs;
+	{
+		FScopeLock Lock(&SnapshotPublishersMutex);
+		Pubs.Reserve(SnapshotPublishers.Num());
+		for (const FRegisteredSnapshotPublisher& R : SnapshotPublishers)
+		{
+			if (R.Publisher && R.Owner.IsValid())
+				Pubs.Add(R.Publisher);
+		}
+	}
+
+	TArray<IMjStateConsumer*> Consumers;
+	{
+		FScopeLock Lock(&StateConsumersMutex);
+		Consumers.Reserve(StateConsumers.Num());
+		for (const FRegisteredStateConsumer& R : StateConsumers)
+		{
+			if (R.Consumer && R.Owner.IsValid())
+				Consumers.Add(R.Consumer);
+		}
+	}
+
+	// bPublishersPaused gates the msgpack byte fan-out only: it is set on
+	// Direct / Puppet mode entry so the step reply is the sole delivery to the
+	// stepping client (no double-write). A typed consumer is a distinct sink, so
+	// it receives the IR every step in all modes regardless of the pause.
+	const bool bByteFanOut = Pubs.Num() > 0
+						  && !bPublishersPaused.load(std::memory_order_acquire);
+
+	if (!bByteFanOut && Consumers.Num() == 0)
+		return;
+
+	FURLabRpcDispatcher* Disp = GetStepDispatcher();
+	const int64 StepIdx = Disp ? Disp->GetStepCounter() : 0;
+	const FMjStateSnapshot& Snap = StateCollector.Collect(m, d, StepIdx);
+
+	for (IMjStateConsumer* Consumer : Consumers)
+		Consumer->ConsumeState(Snap);
+
+	if (!bByteFanOut)
+		return;
+
+	TArray<uint8> Buf = FMjMsgpackEncoder::EncodeSnapshotBytes(
+		Snap, EObservationLevel::Standard);
+	if (Buf.Num() == 0)
+		return;
+	for (IMjSnapshotPublisher* Pub : Pubs)
+		Pub->PublishSnapshot(Buf);
+}
+
 void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
 	// Stop the physics async thread BEFORE Super::EndPlay so PostStep
@@ -425,7 +676,12 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 					kShutdownTimeoutSec);
 			}
 		}
-		PhysicsEngine->ClearCallbacks();
+		// Clearing callbacks takes CallbackMutex, which a wedged worker holds for
+		// its whole iteration. Only safe once the worker has provably exited;
+		// on the detach path the callbacks leak with the rest of the accepted
+		// leak rather than deadlock PIE-stop.
+		if (bAsyncExited)
+			PhysicsEngine->ClearCallbacks();
 	}
 
 	// Manager-owned transports aren't UActorComponents, so EndPlay
@@ -468,23 +724,10 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	// detached thread may still be executing mj_step and reading these.
 	if (PhysicsEngine && bAsyncExited)
 	{
-		if (PhysicsEngine->m_data)
-		{
-			mj_deleteData(PhysicsEngine->m_data);
-			PhysicsEngine->m_data = nullptr;
-		}
-		if (PhysicsEngine->m_model)
-		{
-			mj_deleteModel(PhysicsEngine->m_model);
-			PhysicsEngine->m_model = nullptr;
-		}
-		if (PhysicsEngine->m_spec)
-		{
-			mj_deleteVFS(&PhysicsEngine->m_vfs);
-			mj_deleteSpec(PhysicsEngine->m_spec);
-			PhysicsEngine->m_spec = nullptr;
-		}
-
+		// The model belongs to the compiled scene, which also owns the specs it
+		// was compiled from and knows the order they have to go in, so the two
+		// pointers cannot be freed on their own.
+		PhysicsEngine->ReleaseCompiledScene();
 		PhysicsEngine->m_heightfieldActors.Empty();
 		PhysicsEngine->m_articulations.Empty();
 		PhysicsEngine->m_MujocoComponents.Empty();
@@ -500,7 +743,21 @@ void AAMjManager::Tick(float DeltaTime)
 		return;
 	}
 
-	const TArray<AMjArticulation*> Arts = PhysicsEngine->GetAllArticulations();
+	ApplyLatestRenderState();
+}
+
+void AAMjManager::ApplyLatestRenderState()
+{
+	if (!PhysicsEngine || !PhysicsEngine->IsInitialized())
+	{
+		return;
+	}
+
+	// Ask the live-mode worker to publish a fresh snapshot; it copies the
+	// full state only when a consumer (this tick) has requested one.
+	PhysicsEngine->bSnapshotWanted.store(true, std::memory_order_release);
+
+	const TArray<AMjArticulation*>& Arts = PhysicsEngine->GetAllArticulations();
 	const TArray<UMjQuickConvertComponent*> Quicks = PhysicsEngine->GetAllQuickComponents();
 
 	PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& Snap) {
@@ -518,12 +775,37 @@ void AAMjManager::Tick(float DeltaTime)
 				Quick->ApplyRenderState(Snap);
 			}
 		}
+		// Record which post-step state the actors now reflect so cameras can
+		// tag their readbacks with it (frame_id association for the bridge).
+		LastAppliedRenderFrameId.store(Snap.FrameId, std::memory_order_release);
+		LastAppliedRenderSimTime.store(Snap.SimTime, std::memory_order_release);
 	});
 }
 
 AAMjManager* AAMjManager::GetManager()
 {
 	return Instance;
+}
+
+UMjPhysicsEngine* AAMjManager::ResolveEngine(const UObject* WorldCtx)
+{
+	if (AAMjManager* Manager = GetManager())
+	{
+		if (Manager->PhysicsEngine)
+			return Manager->PhysicsEngine;
+	}
+	if (WorldCtx)
+	{
+		if (UWorld* World = WorldCtx->GetWorld())
+		{
+			for (TActorIterator<AAMjManager> It(World); It; ++It)
+			{
+				if (It->PhysicsEngine)
+					return It->PhysicsEngine;
+			}
+		}
+	}
+	return nullptr;
 }
 
 void AAMjManager::SetPaused(bool bPaused)
@@ -566,6 +848,10 @@ bool AAMjManager::CompileModel()
 	m_heightfieldActors = PhysicsEngine->m_heightfieldActors;
 	m_ArticulationMap = PhysicsEngine->m_ArticulationMap;
 
+	// Component ids/views were re-bound; rebuild the state-IR caches so the
+	// collector's weak ptrs and entity table match the fresh model.
+	RefreshStateCaches();
+
 	return Result;
 }
 
@@ -574,7 +860,7 @@ AMjArticulation* AAMjManager::GetArticulation(const FString& ActorName) const
 	return PhysicsEngine ? PhysicsEngine->GetArticulation(ActorName) : nullptr;
 }
 
-TArray<AMjArticulation*> AAMjManager::GetAllArticulations() const
+const TArray<AMjArticulation*>& AAMjManager::GetAllArticulations() const
 {
 	return PhysicsEngine ? PhysicsEngine->GetAllArticulations() : m_articulations;
 }

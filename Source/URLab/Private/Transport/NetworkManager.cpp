@@ -22,7 +22,7 @@
 
 #include "Transport/NetworkManager.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "Utils/URLabLogging.h"
 
 UMjNetworkManager::UMjNetworkManager()
@@ -40,11 +40,19 @@ void UMjNetworkManager::UpdateCameraStreamingState()
 	{
 		if (Cam)
 		{
-			Cam->bEnableZmqBroadcast = bEnableAllCameras;
-			Cam->bEnableShmBroadcast = bEnableAllCameras;
-			Cam->SetStreamingEnabled(bEnableAllCameras);
+			// bEnableAllCameras forces every camera to broadcast (legacy
+			// "stream all"). Otherwise respect each camera's own broadcast
+			// flags; cameras with neither set stay dormant and only capture
+			// when requested (per-camera capture gating in TickComponent).
+			if (bEnableAllCameras)
+			{
+				Cam->bEnableZmqBroadcast = true;
+				Cam->bEnableShmBroadcast = true;
+			}
+			const bool bStream = Cam->bEnableZmqBroadcast || Cam->bEnableShmBroadcast;
+			Cam->SetStreamingEnabled(bStream);
 			Count++;
-			UE_LOG(LogURLabNet, Log, TEXT(" - %s Camera: %s on Actor: %s"), bEnableAllCameras ? TEXT("Enabled") : TEXT("Disabled"), *Cam->GetName(), Cam->GetOwner() ? *Cam->GetOwner()->GetName() : TEXT("None"));
+			UE_LOG(LogURLabNet, Log, TEXT(" - %s Camera: %s on Actor: %s"), bStream ? TEXT("Streaming") : TEXT("Dormant"), *Cam->GetName(), Cam->GetOwner() ? *Cam->GetOwner()->GetName() : TEXT("None"));
 		}
 	}
 	UE_LOG(LogURLabNet, Log, TEXT("Global camera toggle processed %d cameras."), Count);
@@ -55,14 +63,29 @@ void UMjNetworkManager::RegisterCamera(UMjCamera* Cam)
 	if (!Cam)
 		return;
 	FScopeLock Lock(&CameraMutex);
-	ActiveCameras.AddUnique(Cam);
+	const int32 PortIndex = ActiveCameras.AddUnique(Cam);
+	// Each camera seeds a distinct port upward from the instance's CamBasePort
+	// (CamBasePort + index), so co-located cameras and co-located editor render
+	// servers never share a port. Assigned before any SetStreamingEnabled below.
+	Cam->SetStreamPortIndex(PortIndex);
 
-	// Sync newly registered camera to the current global toggle state
-	Cam->bEnableZmqBroadcast = bEnableAllCameras;
-	Cam->bEnableShmBroadcast = bEnableAllCameras;
-	Cam->SetStreamingEnabled(bEnableAllCameras);
+	// bEnableAllCameras forces broadcast on (legacy "stream all"). Otherwise
+	// honour the camera's authored broadcast flags. A camera with no broadcast
+	// stays dormant (no GPU capture) until a client requests it via
+	// include_cameras, at which point per-camera gating spins it up.
+	if (bEnableAllCameras)
+	{
+		Cam->bEnableZmqBroadcast = true;
+		Cam->bEnableShmBroadcast = true;
+	}
+	const bool bStream = Cam->bEnableZmqBroadcast || Cam->bEnableShmBroadcast;
+	if (bStream)
+	{
+		Cam->SetStreamingEnabled(true);
+	}
 
-	UE_LOG(LogURLabNet, Log, TEXT("UMjNetworkManager: Registered Camera %s. Total: %d"), *Cam->GetName(), ActiveCameras.Num());
+	UE_LOG(LogURLabNet, Log, TEXT("UMjNetworkManager: Registered Camera %s (%s). Total: %d"),
+		*Cam->GetName(), bStream ? TEXT("streaming") : TEXT("dormant"), ActiveCameras.Num());
 }
 
 void UMjNetworkManager::UnregisterCamera(UMjCamera* Cam)
@@ -74,7 +97,7 @@ void UMjNetworkManager::UnregisterCamera(UMjCamera* Cam)
 	UE_LOG(LogURLabNet, Log, TEXT("UMjNetworkManager: Unregistered Camera %s. Total: %d"), *Cam->GetName(), ActiveCameras.Num());
 }
 
-TArray<UMjCamera*> UMjNetworkManager::GetActiveCameras()
+TArray<TObjectPtr<UMjCamera>> UMjNetworkManager::GetActiveCameras()
 {
 	FScopeLock Lock(&CameraMutex);
 	return ActiveCameras;

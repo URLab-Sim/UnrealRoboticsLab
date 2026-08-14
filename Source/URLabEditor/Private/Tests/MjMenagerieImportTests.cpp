@@ -3,12 +3,42 @@
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
 #include "mujoco/mujoco.h"
+
+namespace
+{
+/**
+ * How many of a Blueprint's spec elements an `<actuator>` section admits.
+ *
+ * There is no one actuator class to count: <motor> and <position> are different
+ * elements, so the question is which schema element kinds are actuator kinds,
+ * and that is what the runtime library classifies.
+ */
+int32 CountActuatorTemplates(const UBlueprint* Blueprint)
+{
+	if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr)
+	{
+		return 0;
+	}
+	int32 Count = 0;
+	for (const USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+	{
+		if (UMjActuatorRuntime::IsActuator(Cast<UMjNodeComponent>(Node->ComponentTemplate)))
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+} // namespace
 
 // ============================================================================
 // URLab.Import.MenagerieH1
@@ -44,10 +74,11 @@ bool FMjImportMenagerieH1::RunTest(const FString& Parameters)
 	AddInfo(FString::Printf(TEXT("Native MuJoCo: %d bodies, %d joints, %d actuators, %d geoms"),
 		(int32)S.NativeBodyCount, (int32)S.NativeJointCount, (int32)S.NativeActuatorCount, (int32)S.NativeGeomCount));
 
-	// Check Blueprint has components (note: defaults are included in raw count)
+	// Check Blueprint has components (note: default-class children are included
+	// in the raw count -- they are elements of the same classes, under <default>)
 	int32 BPBodies = S.CountTemplates<UMjBody>();
 	int32 BPJoints = S.CountTemplates<UMjJoint>();
-	int32 BPActuators = S.CountTemplates<UMjActuator>();
+	int32 BPActuators = CountActuatorTemplates(S.Blueprint);
 	int32 BPGeoms = S.CountTemplates<UMjGeom>();
 
 	AddInfo(FString::Printf(TEXT("Blueprint: %d bodies, %d joints, %d actuators, %d geoms (includes defaults)"),

@@ -99,6 +99,7 @@ nav:
     - Debug Visualization: guides/debug.md
     - Interaction: guides/interaction.md
     - Recording & Replay: guides/recording.md
+    - ROS 2 Integration: guides/ros.md
   - Python & External Control:
     - Overview: python/index.md
     - Quickstart: python/quickstart.md
@@ -107,13 +108,15 @@ nav:
     - Protocol Reference: reference/protocol.md
   - Concepts:
     - Architecture: concepts/architecture.md
+    - The Component Model: concepts/model.md
+    - Generation: concepts/generation.md
     - Networking: concepts/networking.md
-    - Codegen: concepts/codegen.md
     - MJCF Support: concepts/mjcf_support.md
   - Contributing:
     - Building from Source: contributing/building.md
-    - Codegen: contributing/codegen.md
+    - Regenerating the Profile: contributing/generation.md
     - Bumping MuJoCo: contributing/bumping_mujoco.md
+    - mjSpec Architecture: architecture_mjspec.md
   - Troubleshooting: troubleshooting.md
   - Roadmap: roadmap.md
   - Changelog: changelog.md
@@ -268,9 +271,7 @@ nav:
 #       - FMjCompilerSettings: api/utils/fmjcompilersettings.md
 #       - GeomView: api/utils/geomview.md
 #       - JointView: api/utils/jointview.md
-#       - MjOrientationUtils: api/utils/mjorientationutils.md
 #       - MujocoUtils: api/utils/mujocoutils.md
-#       - MujocoXmlUtils: api/utils/mujocoxmlutils.md
 #       - SensorView: api/utils/sensorview.md
 #       - TendonView: api/utils/tendonview.md
 #     - Other:

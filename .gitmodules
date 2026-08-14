@@ -1,5 +1,7 @@
 [submodule "third_party/MuJoCo/src"]
 	path = third_party/MuJoCo/src
+	# Upstream MuJoCo. The engine is built from it, and the ProtoSpec generator
+	# reads src/xml/mjcf.schema and doc/generate/mjcf_schema.py from it.
 	url = https://github.com/google-deepmind/mujoco
 [submodule "third_party/CoACD/src"]
 	path = third_party/CoACD/src

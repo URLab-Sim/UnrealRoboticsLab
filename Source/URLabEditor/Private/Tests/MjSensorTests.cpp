@@ -20,23 +20,41 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
+// Sensors authored into a spec, compiled, and read back.
+//
+// A sensor is a child of the `<sensor>` section and its kind is its element
+// class, so authoring one is two Add calls: the section, then the leaf. The
+// reads all go through UMjSensorRuntime, which takes the element and resolves
+// the model and the address itself.
+
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointVelSensor.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjJointpos.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjJointvel.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjSensor.gen.h"
 #include "Engine/World.h"
 #include "mujoco/mujoco.h"
 
+namespace MjSensorTests
+{
+/** The `<sensor>` section of the session's articulation, created on demand. */
+UMjSensor* SensorSection(FMjUESession& Sess)
+{
+	return Sess.Add<UMjSensor>(Sess.Robot->Spec);
+}
+} // namespace MjSensorTests
+
 // ============================================================================
 // URLab.Sensor.JointPosSensor_Binds
-//   Verify that a UMjJointPosSensor targeting a hinge joint receives a valid
-//   sensor ID after compilation, and that nsensor == 1.
+//   Verify that a <jointpos> targeting a hinge joint receives a valid sensor ID
+//   after compilation, and that nsensor == 1.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointPosSensorBinds,
 	"URLab.Sensor.JointPosSensor_Binds",
@@ -44,16 +62,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointPosSensorBinds,
 
 bool FMjSensorJointPosSensorBinds::RunTest(const FString& Parameters)
 {
-	UMjJointPosSensor* Sensor = nullptr;
+	UMjJointpos* Sensor = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Sensor](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Sensor = NewObject<UMjJointPosSensor>(Sess.Robot, TEXT("TestSensor"));
-			Sensor->TargetName = TEXT("TestJoint");
-			Sensor->RegisterComponent();
+			Sensor = Sess.Add<UMjJointpos>(MjSensorTests::SensorSection(Sess), TEXT("TestSensor"));
+			Sensor->Joint = TEXT("TestJoint");
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -64,8 +80,8 @@ bool FMjSensorJointPosSensorBinds::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Sensor should not be null after Init"), Sensor);
 	if (Sensor)
 	{
-		TestTrue(TEXT("Sensor->m_SensorView.id should be >= 0 after Bind()"),
-			Sensor->m_SensorView.id >= 0);
+		TestTrue(TEXT("Sensor should be bound after the compile"), Sensor->GetBoundId().IsSet());
+		TestTrue(TEXT("Sensor's bound id should be >= 0"), Sensor->GetBoundId().Get(-1) >= 0);
 	}
 
 	TestEqual(TEXT("Manager->PhysicsEngine->m_model->nsensor should be 1"),
@@ -86,16 +102,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointPosSensorGetReading,
 
 bool FMjSensorJointPosSensorGetReading::RunTest(const FString& Parameters)
 {
-	UMjJointPosSensor* Sensor = nullptr;
+	UMjJointpos* Sensor = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Sensor](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Sensor = NewObject<UMjJointPosSensor>(Sess.Robot, TEXT("TestSensor"));
-			Sensor->TargetName = TEXT("TestJoint");
-			Sensor->RegisterComponent();
+			Sensor = Sess.Add<UMjJointpos>(MjSensorTests::SensorSection(Sess), TEXT("TestSensor"));
+			Sensor->Joint = TEXT("TestJoint");
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -111,10 +125,10 @@ bool FMjSensorJointPosSensorGetReading::RunTest(const FString& Parameters)
 	}
 
 	// Drive the joint to 1.5 rad and propagate through kinematics
-	S.Joint->SetPosition(1.5f);
-	mj_forward(S.Manager->PhysicsEngine->m_model, S.Manager->PhysicsEngine->m_data);
+	UMjJointRuntime::SetPosition(S.Joint, 1.5f);
+	S.Manager->PhysicsEngine->ForwardSync();
 
-	TArray<float> Reading = Sensor->GetReading();
+	TArray<float> Reading = UMjSensorRuntime::GetReading(Sensor);
 	TestTrue(TEXT("GetReading() should return at least one element"), Reading.Num() > 0);
 
 	if (Reading.Num() > 0)
@@ -129,8 +143,8 @@ bool FMjSensorJointPosSensorGetReading::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Sensor.JointPosSensor_DimMatchesModel
-//   Verify that the Dim reported by the sensor component matches the value
-//   stored in sensor_dim[] of the compiled mjModel (should be 1 for jointpos).
+//   Verify that the dimension reported for the sensor matches the value stored
+//   in sensor_dim[] of the compiled mjModel (should be 1 for jointpos).
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointPosSensorDimMatchesModel,
 	"URLab.Sensor.JointPosSensor_DimMatchesModel",
@@ -138,16 +152,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointPosSensorDimMatchesModel,
 
 bool FMjSensorJointPosSensorDimMatchesModel::RunTest(const FString& Parameters)
 {
-	UMjJointPosSensor* Sensor = nullptr;
+	UMjJointpos* Sensor = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Sensor](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Sensor = NewObject<UMjJointPosSensor>(Sess.Robot, TEXT("TestSensor"));
-			Sensor->TargetName = TEXT("TestJoint");
-			Sensor->RegisterComponent();
+			Sensor = Sess.Add<UMjJointpos>(MjSensorTests::SensorSection(Sess), TEXT("TestSensor"));
+			Sensor->Joint = TEXT("TestJoint");
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -156,12 +168,21 @@ bool FMjSensorJointPosSensorDimMatchesModel::RunTest(const FString& Parameters)
 	}
 
 	TestNotNull(TEXT("Sensor should not be null"), Sensor);
-	if (Sensor && Sensor->m_SensorView.id >= 0)
+	// The id is read from the model by name so the comparison has an independent
+	// left-hand side: the library resolving the same width off the element's own
+	// bound id is what is under test.
+	const int32 ModelId = S.MjId(mjOBJ_SENSOR, TEXT("TestSensor"));
+	if (Sensor && ModelId >= 0)
 	{
-		int ModelDim = S.Manager->PhysicsEngine->m_model->sensor_dim[Sensor->m_SensorView.id];
-		TestEqual(TEXT("Sensor->Dim should match model's sensor_dim for this sensor"),
-			Sensor->Dim, ModelDim);
-		TestEqual(TEXT("JointPos sensor Dim should be 1"), Sensor->Dim, 1);
+		const int32 ModelDim = S.Manager->PhysicsEngine->m_model->sensor_dim[ModelId];
+		TestEqual(TEXT("GetDimension should match the model's sensor_dim for this sensor"),
+			UMjSensorRuntime::GetDimension(Sensor), ModelDim);
+		TestEqual(TEXT("JointPos sensor dimension should be 1"),
+			UMjSensorRuntime::GetDimension(Sensor), 1);
+	}
+	else
+	{
+		AddError(TEXT("the sensor did not reach the compiled model"));
 	}
 
 	S.Cleanup();
@@ -170,8 +191,8 @@ bool FMjSensorJointPosSensorDimMatchesModel::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Sensor.MultipleSensors_AllBind
-//   Two hinge joints, each with its own UMjJointPosSensor.  Both sensor IDs
-//   must be >= 0 after compilation, and nsensor must equal 2.
+//   Two hinge joints, each with its own <jointpos>.  Both sensor IDs must be
+//   >= 0 after compilation, and nsensor must equal 2.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorMultipleSensorsAllBind,
 	"URLab.Sensor.MultipleSensors_AllBind",
@@ -179,41 +200,31 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorMultipleSensorsAllBind,
 
 bool FMjSensorMultipleSensorsAllBind::RunTest(const FString& Parameters)
 {
-	UMjJointPosSensor* Sensor1 = nullptr;
-	UMjJointPosSensor* Sensor2 = nullptr;
+	UMjJointpos* Sensor1 = nullptr;
+	UMjJointpos* Sensor2 = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Sensor1, &Sensor2](FMjUESession& Sess) {
 			// Configure the default joint as a hinge
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-
-			// First sensor targets the default joint
-			Sensor1 = NewObject<UMjJointPosSensor>(Sess.Robot, TEXT("TestSensor1"));
-			Sensor1->TargetName = TEXT("TestJoint");
-			Sensor1->RegisterComponent();
+			Sess.Joint->SetType(EMjJointType::hinge);
 
 			// Second body + joint hierarchy
-			UMjBody* Body2 = NewObject<UMjBody>(Sess.Robot, TEXT("Body2"));
-			Body2->RegisterComponent();
-			Body2->AttachToComponent(Sess.Body, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjBody* Body2 = Sess.Add<UMjBody>(Sess.Body, TEXT("Body2"));
 
-			UMjJoint* Joint2 = NewObject<UMjJoint>(Sess.Robot, TEXT("TestJoint2"));
-			Joint2->Type = EMjJointType::Hinge;
-			Joint2->bOverride_Type = true;
-			Joint2->RegisterComponent();
-			Joint2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjGeom* Geom2 = Sess.Add<UMjGeom>(Body2, TEXT("Geom2"));
+			Geom2->SetSize({0.1});
 
-			UMjGeom* Geom2 = NewObject<UMjGeom>(Sess.Robot, TEXT("Geom2"));
-			Geom2->size = {0.1f, 0.1f, 0.1f};
-			Geom2->bOverride_size = true;
-			Geom2->RegisterComponent();
-			Geom2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjJoint* Joint2 = Sess.Add<UMjJoint>(Body2, TEXT("TestJoint2"));
+			Joint2->SetType(EMjJointType::hinge);
 
-			// Second sensor targets the second joint
-			Sensor2 = NewObject<UMjJointPosSensor>(Sess.Robot, TEXT("TestSensor2"));
-			Sensor2->TargetName = TEXT("TestJoint2");
-			Sensor2->RegisterComponent();
+			// One <sensor> section holds both leaves, as MJCF has it.
+			UMjSensor* Section = MjSensorTests::SensorSection(Sess);
+
+			Sensor1 = Sess.Add<UMjJointpos>(Section, TEXT("TestSensor1"));
+			Sensor1->Joint = TEXT("TestJoint");
+
+			Sensor2 = Sess.Add<UMjJointpos>(Section, TEXT("TestSensor2"));
+			Sensor2->Joint = TEXT("TestJoint2");
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -226,13 +237,11 @@ bool FMjSensorMultipleSensorsAllBind::RunTest(const FString& Parameters)
 
 	if (Sensor1)
 	{
-		TestTrue(TEXT("Sensor1->m_SensorView.id should be >= 0"),
-			Sensor1->m_SensorView.id >= 0);
+		TestTrue(TEXT("Sensor1's bound id should be >= 0"), Sensor1->GetBoundId().Get(-1) >= 0);
 	}
 	if (Sensor2)
 	{
-		TestTrue(TEXT("Sensor2->m_SensorView.id should be >= 0"),
-			Sensor2->m_SensorView.id >= 0);
+		TestTrue(TEXT("Sensor2's bound id should be >= 0"), Sensor2->GetBoundId().Get(-1) >= 0);
 	}
 
 	TestEqual(TEXT("Manager->PhysicsEngine->m_model->nsensor should be 2"),
@@ -244,8 +253,8 @@ bool FMjSensorMultipleSensorsAllBind::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Sensor.JointVelSensor_Binds
-//   Verify that a UMjJointVelSensor targeting a hinge joint receives a valid
-//   sensor ID (>= 0) after compilation.
+//   Verify that a <jointvel> targeting a hinge joint receives a valid sensor ID
+//   (>= 0) after compilation.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointVelSensorBinds,
 	"URLab.Sensor.JointVelSensor_Binds",
@@ -253,16 +262,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorJointVelSensorBinds,
 
 bool FMjSensorJointVelSensorBinds::RunTest(const FString& Parameters)
 {
-	UMjJointVelSensor* Sensor = nullptr;
+	UMjJointvel* Sensor = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Sensor](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Sensor = NewObject<UMjJointVelSensor>(Sess.Robot, TEXT("TestVelSensor"));
-			Sensor->TargetName = TEXT("TestJoint");
-			Sensor->RegisterComponent();
+			Sensor = Sess.Add<UMjJointvel>(MjSensorTests::SensorSection(Sess), TEXT("TestVelSensor"));
+			Sensor->Joint = TEXT("TestJoint");
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -273,8 +280,7 @@ bool FMjSensorJointVelSensorBinds::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Sensor should not be null after Init"), Sensor);
 	if (Sensor)
 	{
-		TestTrue(TEXT("Sensor->m_SensorView.id should be >= 0 after Bind()"),
-			Sensor->m_SensorView.id >= 0);
+		TestTrue(TEXT("Sensor's bound id should be >= 0"), Sensor->GetBoundId().Get(-1) >= 0);
 	}
 
 	S.Cleanup();
@@ -283,9 +289,9 @@ bool FMjSensorJointVelSensorBinds::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Sensor.SensorViewModelPointer
-//   After compilation the sensor's internal SensorView._m pointer must equal
-//   the Manager's compiled mjModel pointer, confirming Bind() was called with
-//   the correct model.
+//   The sensor has to have bound against the model the manager compiled, and
+//   nothing but the id says so now: the id it carries must be the id its
+//   compiled name resolves to in that model.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorSensorViewModelPointer,
 	"URLab.Sensor.SensorViewModelPointer",
@@ -293,16 +299,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSensorSensorViewModelPointer,
 
 bool FMjSensorSensorViewModelPointer::RunTest(const FString& Parameters)
 {
-	UMjJointPosSensor* Sensor = nullptr;
+	UMjJointpos* Sensor = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Sensor](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Sensor = NewObject<UMjJointPosSensor>(Sess.Robot, TEXT("TestSensor"));
-			Sensor->TargetName = TEXT("TestJoint");
-			Sensor->RegisterComponent();
+			Sensor = Sess.Add<UMjJointpos>(MjSensorTests::SensorSection(Sess), TEXT("TestSensor"));
+			Sensor->Joint = TEXT("TestJoint");
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -313,8 +317,11 @@ bool FMjSensorSensorViewModelPointer::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Sensor should not be null"), Sensor);
 	if (Sensor)
 	{
-		TestTrue(TEXT("Sensor->m_SensorView._m should point to Manager->PhysicsEngine->m_model"),
-			Sensor->m_SensorView._m == S.Manager->PhysicsEngine->m_model);
+		const int32 FromModel = S.MjId(mjOBJ_SENSOR, TEXT("TestSensor"));
+		TestTrue(TEXT("the sensor survived the compile"), FromModel >= 0);
+		TestTrue(TEXT("the sensor is bound"), Sensor->GetBoundId().IsSet());
+		TestEqual(TEXT("Sensor's bound id is the id its name resolves to in the manager's model"),
+			Sensor->GetBoundId().Get(-1), FromModel);
 	}
 
 	S.Cleanup();

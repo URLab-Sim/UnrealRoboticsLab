@@ -21,6 +21,7 @@
 #include "ShmRpcTransport.generated.h"
 
 class FRunnableThread;
+class FSmStepTransportRunnable;
 
 /**
  * @class UURLabShmRpcTransport
@@ -37,8 +38,8 @@ class FRunnableThread;
  * inner-loop transport (1 kHz controller channels). Editor-only ops
  * (`import_xml`, `spawn_actor`, `list_actors`, etc.) get a
  * `wrong_transport: use_zmq` reply via the base class's
- * `AcceptsEditorOps()=false` short-circuit. The bridge-side client
- * auto-routes editor ops to ZMQ; nothing needs to be re-tried.
+ * `AcceptsEditorOps()=false` short-circuit. The request is never executed
+ * here, so the client can safely re-route such ops to ZMQ.
  */
 UCLASS()
 class URLAB_API UURLabShmRpcTransport : public UURLabRpcTransport
@@ -48,18 +49,38 @@ class URLAB_API UURLabShmRpcTransport : public UURLabRpcTransport
 public:
 	UURLabShmRpcTransport();
 
-	/** Per-buffer slot size. Step replies are tiny (~few KB) but the
-	 *  hello reply embeds the MJB, which can be many MB for mesh-heavy
-	 *  scenes. 1 MiB is a workable default; bump higher for large MJBs.
-	 *  Replies that exceed the stride get a `reply_too_large` error so
-	 *  the bridge can fall back to ZMQ for that specific RPC. */
+	/** Request-slot size (bridge -> UE). Step requests are small (qpos /
+	 *  qvel / ctrl arrays), so 1 MiB is ample. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
 	int32 BufferStride = 1024 * 1024;
 
-	/** Optional explicit session id (defaults to "live"; mirrors the
-	 *  publisher's path scheme). */
+	/** Reply-slot size (UE -> bridge). The ring is a fixed mmap sized once at
+	 *  open. Replies that exceed it are NOT dropped — they get an immediate
+	 *  `wrong_transport` reply so the bridge re-routes that request to ZMQ
+	 *  (the designed fallback for oversize replies). 16 MiB comfortably holds
+	 *  the hello MJB and a single HD frame over SHM; multi-camera or 4K
+	 *  `include_cameras` replies exceed it and fall back to ZMQ. Note the
+	 *  fast image path is the per-camera cam_*.shm / ZMQ streams, NOT this
+	 *  reply slot. Raise this only if you specifically want large inline
+	 *  camera replies carried over the SHM RPC channel. The bridge reads the
+	 *  actual stride from the SHM header (offset 8), so it adapts without a
+	 *  hardcoded size. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
+	int32 ReplyBufferStride = 16 * 1024 * 1024;
+
+	/** Optional explicit session label. The resolved session id used for the
+	 *  SHM files and kernel event names is always made unique per editor
+	 *  process (see TransportInit), so many render-server instances on one
+	 *  host never collide; this label just prefixes that unique id. Defaults
+	 *  to "live". */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|SHM")
 	FString SessionId;
+
+	/** Step-RPC port of the owning instance. Set by the bridge before
+	 *  TransportInit purely to keep the resolved session name traceable back
+	 *  to the instance; 0 means the name relies on the process id alone for
+	 *  uniqueness. */
+	int32 InstancePort = 0;
 
 	/** How long the worker thread waits between sequence checks
 	 *  (microseconds). On Windows the worker waits on a named event, so
@@ -76,10 +97,24 @@ public:
 	/** SHM scope narrowing: editor ops never reach the dispatcher on
 	 *  this transport. */
 	virtual bool AcceptsEditorOps() const override { return false; }
+	virtual void AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const override;
 
 	/** Resolved on-disk paths (set after TransportInit). */
 	FString GetReqPath() const { return ReqPath; }
 	FString GetRepPath() const { return RepPath; }
+
+	// --- Explicit contract for the hello handshake ---
+	// The bridge must use these verbatim instead of guessing: the req/rep
+	// file paths, the per-direction Windows event names, the slot strides and
+	// buffer count. With these it can open exactly the regions UE created and
+	// poll the rep sequence as a fallback if the named-event wakeup doesn't
+	// cross its process/session boundary (see project_shm_rpc_5s_followup).
+	FString GetSessionId() const { return ResolvedSessionId; }
+	FString GetReqEventName() const { return ReqEventName; }
+	FString GetRepEventName() const { return RepEventName; }
+	int32 GetReqStride() const { return BufferStride; }
+	int32 GetRepStride() const { return ReplyBufferStride; }
+	int32 GetNumBuffers() const { return 2; }
 
 private:
 	FMjShmRegion ReqRegion; // bridge writes, UE reads
@@ -87,6 +122,12 @@ private:
 
 	FString ReqPath;
 	FString RepPath;
+
+	/** Session id actually used (defaults to "live") and the resolved Windows
+	 *  event names, captured in TransportInit so the hello can advertise them. */
+	FString ResolvedSessionId;
+	FString ReqEventName;
+	FString RepEventName;
 
 	/** Named-event handles for kernel-wakeup signalling. Bridge calls
 	 *  SetEvent on `ReqReadyEvent` after writing req.shm; UE's worker
@@ -97,6 +138,9 @@ private:
 	void* RepReadyEvent = nullptr;
 
 	FRunnableThread* WorkerThread = nullptr;
+	/** Runnable driving WorkerThread. FRunnableThread does not own it, so the
+	 *  transport keeps the pointer and deletes it at shutdown. */
+	FSmStepTransportRunnable* WorkerRunnable = nullptr;
 	std::atomic<bool> bStop{false};
 	bool bInitialized = false;
 

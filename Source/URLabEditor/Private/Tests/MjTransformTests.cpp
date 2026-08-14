@@ -23,8 +23,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Utils/MJHelper.h"
-#include "MuJoCo/Utils/MjUtils.h"
-#include "MuJoCo/Utils/MjOrientationUtils.h"
+#include "MuJoCo/Utils/URLabAxisConv.h"
 #include "mujoco/mujoco.h"
 
 // ============================================================================
@@ -38,7 +37,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformPosScale,
 bool FMjTransformPosScale::RunTest(const FString& Parameters)
 {
 	double mjPos[3] = {1.0, 2.0, 3.0};
-	FVector uePos = MjUtils::MjToUEPosition(mjPos);
+	FVector uePos = URLabAxisConv::MjPositionToUe(mjPos);
 
 	TestEqual(TEXT("UE X should be 100 cm"), uePos.X, 100.0);
 	TestEqual(TEXT("UE Y should be -200 cm (Y negated)"), uePos.Y, -200.0);
@@ -57,7 +56,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformYNegation,
 bool FMjTransformYNegation::RunTest(const FString& Parameters)
 {
 	double mjPos[3] = {0.0, 5.0, 0.0};
-	FVector uePos = MjUtils::MjToUEPosition(mjPos);
+	FVector uePos = URLabAxisConv::MjPositionToUe(mjPos);
 
 	TestEqual(TEXT("UE X should be 0"), uePos.X, 0.0);
 	TestEqual(TEXT("UE Y should be -500 cm"), uePos.Y, -500.0);
@@ -89,9 +88,9 @@ bool FMjTransformPosRoundTrip::RunTest(const FString& Parameters)
 	for (const FCase& C : Cases)
 	{
 		double in[3] = {C.x, C.y, C.z};
-		FVector ue = MjUtils::MjToUEPosition(in);
+		FVector ue = URLabAxisConv::MjPositionToUe(in);
 		double out[3] = {0, 0, 0};
-		MjUtils::UEToMjPosition(ue, out);
+		URLabAxisConv::UePositionToMj(ue, out);
 
 		TestTrue(FString::Printf(TEXT("RoundTrip X for (%.2f,%.2f,%.2f)"), C.x, C.y, C.z),
 			FMath::Abs((float)(out[0] - C.x)) < 1e-4f);
@@ -114,7 +113,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformQuatIdentity,
 bool FMjTransformQuatIdentity::RunTest(const FString& Parameters)
 {
 	double q[4] = {1.0, 0.0, 0.0, 0.0}; // MuJoCo: w,x,y,z
-	FQuat ueQuat = MjUtils::MjToUERotation(q);
+	FQuat ueQuat = URLabAxisConv::MjQuatToUe(q);
 
 	// Identity should have W≈1, X≈Y≈Z≈0
 	TestTrue(TEXT("Identity W≈1"), FMath::Abs(FMath::Abs(ueQuat.W) - 1.0f) < 0.01f);
@@ -127,7 +126,7 @@ bool FMjTransformQuatIdentity::RunTest(const FString& Parameters)
 // ============================================================================
 // URLab.Transform.QuatRoundTrip
 //   UEToMjRotation(MjToUERotation(q)) should recover original q
-//   NOTE: This test documents the KNOWN BUG in MjUtils quat conversion.
+//   NOTE: This test specs the KNOWN BUG in MjUtils quat conversion.
 //   If it passes, the bug has been fixed.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformQuatRoundTrip,
@@ -151,9 +150,9 @@ bool FMjTransformQuatRoundTrip::RunTest(const FString& Parameters)
 	for (const FCase& C : Cases)
 	{
 		double in[4] = {C.w, C.x, C.y, C.z};
-		FQuat ueQ = MjUtils::MjToUERotation(in);
+		FQuat ueQ = URLabAxisConv::MjQuatToUe(in);
 		double out[4] = {0, 0, 0, 0};
-		MjUtils::UEToMjRotation(ueQ, out);
+		URLabAxisConv::UeQuatToMj(ueQ, out);
 
 		// Normalize: quats q and -q represent the same rotation
 		bool bW = FMath::Abs((float)(out[0] - C.w)) < 0.01f || FMath::Abs((float)(out[0] + C.w)) < 0.01f;
@@ -172,7 +171,7 @@ bool FMjTransformQuatRoundTrip::RunTest(const FString& Parameters)
 // URLab.Transform.MJHelperQuatRoundTrip
 //   Tests the legacy MJHelper::MJQuatToUE / UEQuatToMJ round-trip.
 //   KNOWN BUG: both functions use the same formula so they are NOT inverses.
-//   This test documents the current (broken) behaviour.
+//   This test specs the current (broken) behaviour.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformMJHelperQuatRoundTrip,
 	"URLab.Transform.MJHelperQuatRoundTrip",
@@ -247,8 +246,9 @@ bool FMjTransformGravityScale::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Transform.JointAxis
-//   UE axis (0,1,0) exported to MuJoCo should become (0,-1,0) due to Y-negation.
-//   KNOWN BUG (Step 3.5): MjJoint::ExportTo does not negate Y.
+//   The conversion utility itself: an Unreal axis (0,1,0) is MuJoCo (0,-1,0).
+//   This is about MjUtils, not about authoring -- a spec stores MJCF's own
+//   frame verbatim, and the handedness flip lives only where UE and MuJoCo meet.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformJointAxis,
 	"URLab.Transform.JointAxis",
@@ -263,7 +263,8 @@ bool FMjTransformJointAxis::RunTest(const FString& Parameters)
 	TestEqual(TEXT("MJ axis X should be 0"), mjAxis.X, 0.0);
 	TestEqual(TEXT("MJ axis Y should be -1"), mjAxis.Y, -1.0);
 	TestEqual(TEXT("MJ axis Z should be 0"), mjAxis.Z, 0.0);
-	AddInfo(TEXT("Joint axis transform verified. See Step 3.5 to verify UMjJoint::ExportTo applies this."));
+	AddInfo(TEXT("Joint axis transform verified. This is the MJ/UE frame rule itself, not a spec read: "
+				 "an authored <joint axis> is already in MuJoCo's frame and reaches the compiler unchanged."));
 	return true;
 }
 
@@ -465,93 +466,5 @@ bool FMjTransformJointAxisRoundTrip::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Export: MJ X = 0"), FMath::Abs((float)mjAxisOut[0]) < 1e-5f);
 	TestTrue(TEXT("Export: MJ Y = 1"), FMath::Abs((float)mjAxisOut[1] - 1.0f) < 1e-5f);
 	TestTrue(TEXT("Export: MJ Z = 0"), FMath::Abs((float)mjAxisOut[2]) < 1e-5f);
-	return true;
-}
-
-// ============================================================================
-// URLab.Transform.MixedEulerSeq
-//   Per-axis intrinsic/extrinsic euler handling (Plan 2.7).
-//   "xYz" = intrinsic-X, extrinsic-Y, intrinsic-Z.
-//   Cross-check: pure intrinsic "xyz" and pure extrinsic "XYZ" must also match
-//   the known-correct implementations (Q1*Q2*Q3 and Q3*Q2*Q1 respectively).
-//   For the mixed case, a 90° extrinsic-Y followed by 90° intrinsic-X must
-//   compose correctly (rotation order verifiable by hand).
-// ============================================================================
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjTransformMixedEulerSeq,
-	"URLab.Transform.MixedEulerSeq",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-bool FMjTransformMixedEulerSeq::RunTest(const FString& Parameters)
-{
-	// Helper: compare two MuJoCo quats (w,x,y,z), accounting for double-cover.
-	auto QuatNearlyEqual = [&](const char* Label, const double A[4], const double B[4], double Eps = 1e-4) -> bool {
-		// q and -q are the same rotation
-		bool SameSign = FMath::Abs((float)(A[0] - B[0])) < (float)Eps
-					 && FMath::Abs((float)(A[1] - B[1])) < (float)Eps
-					 && FMath::Abs((float)(A[2] - B[2])) < (float)Eps
-					 && FMath::Abs((float)(A[3] - B[3])) < (float)Eps;
-		bool OppSign = FMath::Abs((float)(A[0] + B[0])) < (float)Eps
-					&& FMath::Abs((float)(A[1] + B[1])) < (float)Eps
-					&& FMath::Abs((float)(A[2] + B[2])) < (float)Eps
-					&& FMath::Abs((float)(A[3] + B[3])) < (float)Eps;
-		TestTrue(FString(UTF8_TO_TCHAR(Label)), SameSign || OppSign);
-		return SameSign || OppSign;
-	};
-
-	const double Pi2 = UE_PI / 2.0; // 90 degrees
-
-	// --- Case 1: pure all-intrinsic "xyz" (90°, 0°, 0°) ---
-	// Expected: Q1 * Q2 * Q3 = (cos45, sin45, 0, 0) * identity * identity
-	double intrinsic[4];
-	MjOrientationUtils::EulerToQuat(Pi2, 0, 0, TEXT("xyz"), intrinsic);
-	double expected_x90[4] = {FMath::Cos(Pi2 / 2.0), FMath::Sin(Pi2 / 2.0), 0.0, 0.0};
-	QuatNearlyEqual("AllIntrinsic xyz 90-0-0 matches x90", intrinsic, expected_x90);
-
-	// --- Case 2: pure all-extrinsic "XYZ" (0°, 0°, 90°) ---
-	// "XYZ" (0,0,90°): only Q3 is non-trivial → result = Q3 * Q2 * Q1 = z-90
-	double extrinsic[4];
-	MjOrientationUtils::EulerToQuat(0, 0, Pi2, TEXT("XYZ"), extrinsic);
-	double expected_z90[4] = {FMath::Cos(Pi2 / 2.0), 0.0, 0.0, FMath::Sin(Pi2 / 2.0)};
-	QuatNearlyEqual("AllExtrinsic XYZ 0-0-90 matches z90", extrinsic, expected_z90);
-
-	// --- Case 3: mixed "xY" style — test "xYz" (90°, 90°, 0°) ---
-	// Step 0: intrinsic-x 90° → R = Rx90 = (c45, s45, 0, 0)
-	// Step 1: extrinsic-Y 90° → R = Ry90 * R  (pre-multiply)
-	// Step 2: intrinsic-z  0° → no-op
-	//
-	// Ry90 * Rx90:
-	//   Ry90 = (c45, 0, s45, 0)
-	//   Product (w,x,y,z):
-	//     w = c45*c45 - 0*s45   = 0.5
-	//     x = c45*s45 + 0*0     = 0.5
-	//     y = c45*0   + s45*c45 = 0.5
-	//     z = c45*0   - s45*s45 = -0.5   (Ry_w*Rx_z - Ry_z*Rx_x)
-	// Note: quat product (a)*(b): w=aw*bw - ax*bx - ay*by - az*bz, etc.
-	// Ry90=(c,0,s,0), Rx90=(c,s,0,0), c=cos45=0.7071, s=sin45=0.7071
-	//   w = c*c - 0*s - s*0 - 0*0 = c^2 = 0.5
-	//   x = c*s + 0*c + s*0 - 0*0 = c*s = 0.5
-	//   y = c*0 - 0*s + s*c + 0*0... let me use standard formula:
-	// (a*b).w = a.w*b.w - a.x*b.x - a.y*b.y - a.z*b.z
-	// (a*b).x = a.w*b.x + a.x*b.w + a.y*b.z - a.z*b.y
-	// (a*b).y = a.w*b.y - a.x*b.z + a.y*b.w + a.z*b.x
-	// (a*b).z = a.w*b.z + a.x*b.y - a.y*b.x + a.z*b.w
-	// Ry=(c,0,s,0) * Rx=(c,s,0,0):
-	//   w = c*c - 0*s - s*0 - 0*0 = 0.5
-	//   x = c*s + 0*c + s*0 - 0*0 = cs = 0.5
-	//   y = c*0 - 0*0 + s*c + 0*s = cs = 0.5
-	//   z = c*0 + 0*0 - s*s + 0*c = -s^2 = -0.5
-	double mixed[4];
-	MjOrientationUtils::EulerToQuat(Pi2, Pi2, 0, TEXT("xYz"), mixed);
-	double expected_mixed[4] = {0.5, 0.5, 0.5, -0.5};
-	QuatNearlyEqual("Mixed xYz (90,90,0) matches hand calc", mixed, expected_mixed);
-
-	// --- Case 4: all-intrinsic "xyz" == all-extrinsic "ZYX" reversed angles ---
-	// This is a well-known identity: intrinsic xyz(a,b,c) == extrinsic ZYX(c,b,a)
-	double intr[4];
-	MjOrientationUtils::EulerToQuat(Pi2 / 3.0, Pi2 / 4.0, Pi2 / 5.0, TEXT("xyz"), intr);
-	double extr[4];
-	MjOrientationUtils::EulerToQuat(Pi2 / 5.0, Pi2 / 4.0, Pi2 / 3.0, TEXT("ZYX"), extr);
-	QuatNearlyEqual("Intrinsic xyz(a,b,c) == Extrinsic ZYX(c,b,a)", intr, extr);
-
 	return true;
 }

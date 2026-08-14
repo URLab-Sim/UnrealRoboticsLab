@@ -8,7 +8,9 @@ done
 
 # Resolve INSTALL_DIR to an absolute per-package path. URLab.Build.cs expects
 # headers/libs/dlls under install/<dep>/, matching the .ps1 layout.
-INSTALL_DIR="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")/MuJoCo"
+INSTALL_ROOT="$(cd "$(dirname "$INSTALL_DIR")" && pwd)/$(basename "$INSTALL_DIR")"
+INSTALL_DIR="$INSTALL_ROOT/MuJoCo"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Wipe any prior install of THIS package only - cmake --install is additive
 # and would otherwise leave stale files behind across version bumps.
@@ -65,6 +67,27 @@ cmake --build . --config "$BUILD_TYPE"
 
 echo "Installing MuJoCo..."
 cmake --install . --config "$BUILD_TYPE"
+
+# MuJoCo builds its first-party plugins (PID actuator, elasticity, sensor, SDF)
+# as separate shared libraries but installs none of them -- upstream expects
+# `simulate` to pick them up out of the build tree. URLab loads them at module
+# startup, so they have to be part of the install: a model naming `mujoco.pid`
+# does not build without one.
+PLUGIN_OUT="$INSTALL_DIR/lib/mujoco_plugin"
+mkdir -p "$PLUGIN_OUT"
+PLUGIN_COUNT=0
+for LIB in lib/*.so bin/*.so; do
+    [ -e "$LIB" ] || continue
+    case "$(basename "$LIB")" in
+        libmujoco.so*) continue ;;
+    esac
+    cp -f "$LIB" "$PLUGIN_OUT/"
+    echo "Installed plugin $(basename "$LIB")"
+    PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
+done
+if [ "$PLUGIN_COUNT" -eq 0 ]; then
+    echo "WARNING: no MuJoCo plugin libraries found to install"
+fi
 
 cd ../..
 

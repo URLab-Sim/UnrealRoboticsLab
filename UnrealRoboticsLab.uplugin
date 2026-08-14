@@ -1,7 +1,7 @@
 {
 	"FileVersion": 3,
 	"Version": 1,
-	"VersionName": "0.1-alpha",
+	"VersionName": "0.6.0-beta",
 	"FriendlyName": "Unreal Robotics Lab (URLab)",
 	"Description": "MuJoCo physics simulation plugin for Unreal Engine — drag-and-drop MJCF import, 40+ sensors, ZMQ networking, debug visualization, and record/replay.",
 	"Category": "Simulation",
@@ -17,6 +17,11 @@
 	"Modules": [
 		{
 			"Name": "URLab",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
+			"Name": "URLabRos",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
 		},

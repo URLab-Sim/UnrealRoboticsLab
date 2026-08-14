@@ -28,39 +28,99 @@
 //     These tests load inline MJCF XML directly via mj_parseXMLString and
 //     inspect the resulting mjModel*.  They mirror the structure of MuJoCo's
 //     own xml_native_reader_test.cc and serve as a reference baseline that
-//     documents what MuJoCo expects from any given XML feature.
+//     specs what MuJoCo expects from any given XML feature.
 //
 //   TIER 2 — FMjXmlImportSession (full URLab importer)
 //     These tests pass the same XML through UMujocoGenerationAction and
-//     verify that UE component properties were set correctly.  After calling
-//     Compile() they also verify the compiled mjModel matches expectations.
-//     A discrepancy between Tier 1 and Tier 2 always means a URLab bug.
+//     verify that the spec elements carry what the XML said.  After
+//     calling Compile() they also verify the compiled mjModel matches
+//     expectations.  A discrepancy between Tier 1 and Tier 2 always means a
+//     URLab bug.
 //
 //   ROUND-TRIP tests compare Tier 1 model counts with Tier 2 counts directly.
 //   If ngeom/nbody/nsensor differ, the importer dropped or duplicated elements.
+//
+// The attribute round-trips go MJCF in, spec, MJCF out, compiled model,
+// and assert on the model. That is one loop rather than the two halves the
+// old spec-scratch tests covered separately, and it is the loop a user runs:
+// an attribute the reader drops, the writer forgets, or the compiler places in
+// the wrong slot all fail here in the same way.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
 
-// Component types for FindTemplate<>
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Geometry/Primitives/MjSphere.h"
-#include "MuJoCo/Components/Geometry/Primitives/MjPlane.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointPosSensor.h"
-#include "MuJoCo/Components/Sensors/MjJointVelSensor.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Actuators/MjMotorActuator.h"
-#include "MuJoCo/Components/Tendons/MjTendon.h"
-#include "MuJoCo/Components/Physics/MjContactPair.h"
-#include "MuJoCo/Components/Constraints/MjEquality.h"
-#include "MuJoCo/Components/Keyframes/MjKeyframe.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "mujoco/mjspec.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjAccelerometer.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjConnect.gen.h"
+#include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
+#include "MuJoCo/Gen/Elements/Tendons/MjFixed.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjFramepos.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjFramequat.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjGyro.gen.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjJointpos.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjJointvel.gen.h"
+#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjPair.gen.h"
+#include "MuJoCo/Gen/Elements/Sensors/MjVelocimeter.gen.h"
+#include "MuJoCo/Gen/Elements/Constraints/MjWeld.gen.h"
+
+namespace
+{
+/**
+ * The first construction-script element of type `E` that sits under a
+ * `<default>`.
+ *
+ * A default-class child is not flagged, it is placed: it is a child of the
+ * `<default>` element carrying the class. `USCS_Node::GetChildNodes` is the
+ * only ordered, serialized child list a Blueprint has, so it is what the walk
+ * follows.
+ */
+template <typename E>
+E* FindDefaultClassChild(const UBlueprint* Blueprint)
+{
+	if (Blueprint == nullptr || Blueprint->SimpleConstructionScript == nullptr)
+	{
+		return nullptr;
+	}
+	for (const USCS_Node* Node : Blueprint->SimpleConstructionScript->GetAllNodes())
+	{
+		if (Cast<UMjDefault>(Node->ComponentTemplate) == nullptr)
+		{
+			continue;
+		}
+		for (const USCS_Node* Child : Node->GetChildNodes())
+		{
+			if (E* Found = Cast<E>(Child->ComponentTemplate))
+			{
+				return Found;
+			}
+		}
+	}
+	return nullptr;
+}
+
+/**
+ * The id an imported model's element received, by its authored MJCF name.
+ *
+ * A compiled scene attaches each participant under a prefix, so the name in the
+ * model is not the name in the file and a bare `mj_name2id` finds nothing.
+ */
+int32 CompiledId(const FMjXmlImportSession& Session, mjtObj Type, const TCHAR* MjName)
+{
+	mjModel* M = Session.Model();
+	if (M == nullptr || Session.Robot == nullptr)
+	{
+		return -1;
+	}
+	const FString Full = Session.Robot->GetCompiledPrefix() + MjName;
+	return mj_name2id(M, Type, TCHAR_TO_UTF8(*Full));
+}
+} // namespace
 
 // =============================================================================
 // TIER 1 — Pure MuJoCo baseline tests (FMjTestSession)
@@ -166,7 +226,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_DefaultClassOverride,
 bool FTest_MjImport_MJ_DefaultClassOverride::RunTest(const FString&)
 {
 	// MuJoCo: explicit class= overrides parent childclass=
-	// Default inheritance works natively because mjs_add*() receives the resolved mjsDefault*.
 	FMjTestSession S;
 	if (!S.CompileXml(TEXT(R"(
         <mujoco>
@@ -297,6 +356,40 @@ bool FTest_MjImport_MJ_TendonArmature::RunTest(const FString&)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_SensorSection,
+	"URLab.Import.MJ_SensorSection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+bool FTest_MjImport_MJ_SensorSection::RunTest(const FString&)
+{
+	// The <sensor> container is a wrapper; the importer must recurse into its
+	// per-type children (like <actuator>). A regression drops the whole section.
+	FMjTestSession S;
+	if (!S.CompileXml(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body pos="0 0 1">
+              <joint name="j" type="hinge"/>
+              <geom size=".1"/>
+              <site name="s"/>
+            </body>
+          </worldbody>
+          <sensor>
+            <accelerometer name="acc" site="s"/>
+            <gyro name="gyr" site="s"/>
+            <framepos name="fp" objtype="site" objname="s"/>
+          </sensor>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	TestEqual(TEXT("nsensor (all three <sensor> children imported)"), (int)S.m->nsensor, 3);
+	S.Cleanup();
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_EqualityPolycoef,
 	"URLab.Import.MJ_EqualityPolycoef",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -358,8 +451,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_BodyPos,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_URLab_BodyPos::RunTest(const FString&)
 {
-	// body pos="1 2 3" → UE RelativeLocation (100, -200, 300) cm
-	// Coordinate rule: scale ×100, negate Y
+	// The spec holds MJCF as authored, so pos="1 2 3" is (1, 2, 3) metres.
+	// The component transform is a picture of it, drawn on request: scale ×100,
+	// negate Y, giving UE RelativeLocation (100, -200, 300) cm.
 	FMjXmlImportSession S;
 	if (!S.Init(TEXT(R"(
         <mujoco>
@@ -383,6 +477,12 @@ bool FTest_MjImport_URLab_BodyPos::RunTest(const FString&)
 		return false;
 	}
 
+	const FMjPosition3 Pos = B->GetPos();
+	TestNearlyEqual(TEXT("pos x=1 m"), (float)Pos.X, 1.0f, 1e-4f);
+	TestNearlyEqual(TEXT("pos y=2 m"), (float)Pos.Y, 2.0f, 1e-4f);
+	TestNearlyEqual(TEXT("pos z=3 m"), (float)Pos.Z, 3.0f, 1e-4f);
+
+	B->SyncPreviewFromSpec();
 	FVector Loc = B->GetRelativeLocation();
 	TestNearlyEqual(TEXT("X=100 cm"), (float)Loc.X, 100.0f, 1.0f);
 	TestNearlyEqual(TEXT("Y=-200 cm (negated)"), (float)Loc.Y, -200.0f, 1.0f);
@@ -421,6 +521,14 @@ bool FTest_MjImport_URLab_BodyIdentityQuat::RunTest(const FString&)
 		return false;
 	}
 
+	const FMjQuatRot Authored = B->GetQuat();
+	TestNearlyEqual(TEXT("authored w"), (float)Authored.W, 1.0f, 1e-4f);
+	TestNearlyEqual(TEXT("authored x"), (float)Authored.X, 0.0f, 1e-4f);
+	TestNearlyEqual(TEXT("authored y"), (float)Authored.Y, 0.0f, 1e-4f);
+	TestNearlyEqual(TEXT("authored z"), (float)Authored.Z, 0.0f, 1e-4f);
+	TestTrue(TEXT("identity quat on the element"), Authored.ToUnreal().Equals(FQuat::Identity, 0.01f));
+
+	B->SyncPreviewFromSpec();
 	FQuat Q = B->GetRelativeRotationCache().GetCachedQuat();
 	TestTrue(TEXT("identity quat"), Q.Equals(FQuat::Identity, 0.01f));
 
@@ -434,8 +542,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_TypelessGeomIsSphere,
 bool FTest_MjImport_URLab_TypelessGeomIsSphere::RunTest(const FString&)
 {
 	// MJCF's global default geom type is sphere: a bare <geom size="..."/>
-	// must import as UMjSphere with a real (non-zero) editor scale, not as
-	// the base UMjGeom with no renderer.
+	// must resolve to the sphere shape with a real (non-zero) editor scale.
+	// Shape is an attribute, not a class, so the schema default is what an
+	// unauthored `type` reads back as.
 	FMjXmlImportSession S;
 	if (!S.Init(TEXT(R"(
         <mujoco>
@@ -451,14 +560,18 @@ bool FTest_MjImport_URLab_TypelessGeomIsSphere::RunTest(const FString&)
 		return false;
 	}
 
-	UMjSphere* G = S.FindTemplate<UMjSphere>(TEXT("g1"));
+	UMjGeom* G = S.FindTemplate<UMjGeom>(TEXT("g1"));
 	if (!G)
 	{
-		AddError(TEXT("typeless geom 'g1' did not import as UMjSphere"));
+		AddError(TEXT("typeless geom 'g1' did not import"));
 		S.Cleanup();
 		return false;
 	}
 
+	TestFalse(TEXT("no type authored"), G->Type.IsSet());
+	TestTrue(TEXT("typeless geom reads back as a sphere"), G->GetType() == EMjGeomType::sphere);
+
+	G->SyncEditorScaleFromSize();
 	const FVector Scale = G->GetRelativeScale3D();
 	TestNearlyEqual(TEXT("scale.X = radius*2 (m->UE units)"), (float)Scale.X, 0.01f, 1e-4f);
 	TestTrue(TEXT("uniform scale"), Scale.AllComponentsEqual(1e-6f));
@@ -475,7 +588,7 @@ bool FTest_MjImport_URLab_ClassInheritedSizeScale::RunTest(const FString&)
 	// A geom whose size comes entirely from its default class must not bake a
 	// zero RelativeScale3D into the component template (the source of the
 	// "Scale3D is (nearly) zero" warnings and NIL render matrices), and must
-	// keep bOverride_size=false so compile-time inheritance still applies.
+	// leave `size` unauthored so compile-time inheritance still applies.
 	FMjXmlImportSession S;
 	if (!S.Init(TEXT(R"(
         <mujoco>
@@ -496,17 +609,36 @@ bool FTest_MjImport_URLab_ClassInheritedSizeScale::RunTest(const FString&)
 		return false;
 	}
 
-	UMjSphere* G = S.FindTemplate<UMjSphere>(TEXT("g1"));
+	UMjGeom* G = S.FindTemplate<UMjGeom>(TEXT("g1"));
 	if (!G)
 	{
-		AddError(TEXT("class-typed geom 'g1' did not import as UMjSphere"));
+		AddError(TEXT("class-typed geom 'g1' did not import"));
 		S.Cleanup();
 		return false;
 	}
 
+	TestFalse(TEXT("size stays class-inherited (no explicit override)"), G->Size.IsSet());
+	TestEqual(TEXT("the geom names the class it inherits from"), G->GetDclass(), FString(TEXT("col")));
+
+	// The redraw refuses a size it cannot resolve rather than collapsing to
+	// zero, which is what the warnings and NIL matrices came from.
+	G->SyncEditorScaleFromSize();
 	const FVector Scale = G->GetRelativeScale3D();
-	TestNearlyEqual(TEXT("scale.X from class size 0.06"), (float)Scale.X, 0.12f, 1e-4f);
-	TestFalse(TEXT("size stays class-inherited (no explicit override)"), G->bOverride_size);
+	TestTrue(TEXT("scale not degenerate"), Scale.GetMin() > 1e-4);
+
+	// Inheritance is the compiler's, so what the class size is worth is a
+	// question for the compiled model.
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	if (TestTrue(TEXT("the geom compiled"), S.Model()->ngeom >= 1))
+	{
+		TestNearlyEqual(TEXT("compiled radius from class size 0.06"),
+			(float)S.Model()->geom_size[0], 0.06f, 1e-4f);
+	}
 
 	S.Cleanup();
 	return true;
@@ -517,9 +649,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_PlaneGeomClass,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_URLab_PlaneGeomClass::RunTest(const FString&)
 {
-	// type="plane" must map to UMjPlane (it previously fell through to the
-	// base UMjGeom). A MuJoCo plane's size can legitimately be "0 0 s"
-	// (infinite extent), which must not zero the component scale.
+	// type="plane" must reach the element as the plane shape. A MuJoCo plane's
+	// size can legitimately be "0 0 s" (infinite extent), which must not zero
+	// the component scale.
 	FMjXmlImportSession S;
 	if (!S.Init(TEXT(R"(
         <mujoco>
@@ -533,14 +665,17 @@ bool FTest_MjImport_URLab_PlaneGeomClass::RunTest(const FString&)
 		return false;
 	}
 
-	UMjPlane* G = S.FindTemplate<UMjPlane>(TEXT("floor"));
+	UMjGeom* G = S.FindTemplate<UMjGeom>(TEXT("floor"));
 	if (!G)
 	{
-		AddError(TEXT("plane geom 'floor' did not import as UMjPlane"));
+		AddError(TEXT("plane geom 'floor' did not import"));
 		S.Cleanup();
 		return false;
 	}
 
+	TestTrue(TEXT("floor is a plane"), G->GetType() == EMjGeomType::plane);
+
+	G->SyncEditorScaleFromSize();
 	const FVector Scale = G->GetRelativeScale3D();
 	TestTrue(TEXT("plane scale not degenerate"),
 		FMath::Min3(Scale.X, Scale.Y, Scale.Z) > 1e-4);
@@ -577,9 +712,13 @@ bool FTest_MjImport_URLab_GeomFriction::RunTest(const FString&)
 		return false;
 	}
 
-	TestNearlyEqual(TEXT("friction[0]"), G->friction[0], 0.8f, 1e-4f);
-	TestNearlyEqual(TEXT("friction[1]"), G->friction[1], 0.1f, 1e-4f);
-	TestNearlyEqual(TEXT("friction[2]"), G->friction[2], 0.01f, 1e-3f);
+	const TArray<double> Friction = G->GetFriction();
+	if (TestEqual(TEXT("friction has three entries"), Friction.Num(), 3))
+	{
+		TestNearlyEqual(TEXT("friction[0]"), (float)Friction[0], 0.8f, 1e-4f);
+		TestNearlyEqual(TEXT("friction[1]"), (float)Friction[1], 0.1f, 1e-4f);
+		TestNearlyEqual(TEXT("friction[2]"), (float)Friction[2], 0.01f, 1e-3f);
+	}
 
 	S.Cleanup();
 	return true;
@@ -615,27 +754,28 @@ bool FTest_MjImport_URLab_JointRangeAndDamping::RunTest(const FString&)
 		return false;
 	}
 
-	// UPROPERTY range is in UE degrees; XML had radians (compiler.angle="radian"),
-	// converted on import. 1.57 rad ≈ 89.954 deg.
-	const float Rad157Deg = 1.57f * 180.0f / PI;
-	TestNearlyEqual(TEXT("range lo"), J->range[0], -Rad157Deg, 1e-2f);
-	TestNearlyEqual(TEXT("range hi"), J->range[1], Rad157Deg, 1e-2f);
-	TestTrue(TEXT("damping has values"), J->damping.Num() > 0);
-	if (J->damping.Num() > 0)
-		TestNearlyEqual(TEXT("damping[0]"), J->damping[0], 0.5f, 1e-4f);
+	// The spec holds the angle the file holds. `<compiler angle>` is a
+	// property of the spec and is honoured by the compiler, so nothing is
+	// converted on the way in and 1.57 stays 1.57.
+	const FVector2D Range = J->GetRange();
+	TestNearlyEqual(TEXT("range lo"), (float)Range.X, -1.57f, 1e-4f);
+	TestNearlyEqual(TEXT("range hi"), (float)Range.Y, 1.57f, 1e-4f);
+	const TArray<double> Damping = J->GetDamping();
+	TestTrue(TEXT("damping has values"), Damping.Num() > 0);
+	if (Damping.Num() > 0)
+		TestNearlyEqual(TEXT("damping[0]"), (float)Damping[0], 0.5f, 1e-4f);
 
 	S.Cleanup();
 	return true;
 }
 
-// Regression: parser used to drop CompilerSettings when recursing into
-// <default> blocks, so joints declared inside a default class always saw
-// the hardcoded bAngleInDegrees=true fallback. For angle="radian" models
-// (e.g. mujoco_menagerie's unitree_go1) the default joint's Range would
-// then be re-scaled by π/180 in the wrong direction. Verifies the default
-// joint template imports radians correctly. UPROPERTY storage is UE deg
-// (codegen unit_conversion rad_to_deg_if_xml_radians), so ±0.86 rad
-// imports as ±49.274 deg.
+// Regression: the parser used to drop the compiler settings when recursing
+// into <default> blocks, so joints declared inside a default class always saw
+// a hardcoded degrees fallback, and for angle="radian" models (mujoco_menagerie's
+// unitree_go1 among them) the default joint's range came out rescaled by π/180
+// in the wrong direction. The spec now carries the file's own units, so the
+// assertion is that the value arrived untouched and that the compiled model
+// reads it as radians.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_DefaultClassJointRangeRadians,
 	"URLab.Import.URLab_DefaultClassJointRangeRadians",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
@@ -661,19 +801,7 @@ bool FTest_MjImport_URLab_DefaultClassJointRangeRadians::RunTest(const FString&)
 		return false;
 	}
 
-	UMjJoint* DefaultJoint = nullptr;
-	if (S.Blueprint && S.Blueprint->SimpleConstructionScript)
-	{
-		for (USCS_Node* Node : S.Blueprint->SimpleConstructionScript->GetAllNodes())
-		{
-			UMjJoint* J = Cast<UMjJoint>(Node->ComponentTemplate);
-			if (J && J->bIsDefault)
-			{
-				DefaultJoint = J;
-				break;
-			}
-		}
-	}
+	UMjJoint* DefaultJoint = FindDefaultClassChild<UMjJoint>(S.Blueprint);
 	if (!DefaultJoint)
 	{
 		AddError(TEXT("No default-class joint template found"));
@@ -681,19 +809,30 @@ bool FTest_MjImport_URLab_DefaultClassJointRangeRadians::RunTest(const FString&)
 		return false;
 	}
 
-	if (DefaultJoint->range.Num() >= 2)
+	if (TestTrue(TEXT("default joint carries a range"), DefaultJoint->Range.IsSet()))
 	{
-		// XML had compiler.angle="radian" + range="-0.86 0.86"; UPROPERTY
-		// is UE deg, so 0.86 rad -> ~49.274 deg.
-		const float ExpectedDeg = 0.86f * 180.0f / PI;
-		TestNearlyEqual(TEXT("default joint Range[0] (rad XML -> UE deg)"),
-			DefaultJoint->range[0], -ExpectedDeg, 1e-2f);
-		TestNearlyEqual(TEXT("default joint Range[1] (rad XML -> UE deg)"),
-			DefaultJoint->range[1], ExpectedDeg, 1e-2f);
+		const FVector2D Range = DefaultJoint->GetRange();
+		TestNearlyEqual(TEXT("default joint range lo (radians, as authored)"),
+			(float)Range.X, -0.86f, 1e-4f);
+		TestNearlyEqual(TEXT("default joint range hi (radians, as authored)"),
+			(float)Range.Y, 0.86f, 1e-4f);
 	}
-	else
+
+	// And the compiler agrees the file meant radians: a degrees reading of
+	// 0.86 would land at 0.015 rad.
+	if (!S.Compile())
 	{
-		AddError(TEXT("default joint Range has < 2 entries"));
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	const int32 JointId = S.Model()->njnt > 0 ? 0 : -1;
+	if (TestTrue(TEXT("the inheriting joint compiled"), JointId >= 0))
+	{
+		TestNearlyEqual(TEXT("compiled jnt_range lo"),
+			(float)S.Model()->jnt_range[2 * JointId + 0], -0.86f, 1e-4f);
+		TestNearlyEqual(TEXT("compiled jnt_range hi"),
+			(float)S.Model()->jnt_range[2 * JointId + 1], 0.86f, 1e-4f);
 	}
 
 	S.Cleanup();
@@ -705,7 +844,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_SensorType,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_URLab_SensorType::RunTest(const FString&)
 {
-	// Sensor XML tags must produce the correct concrete UE sensor subclass
+	// A sensor's kind is its element, not a field on a shared class, so the
+	// class the reader built IS the tag it read.
 	FMjXmlImportSession S;
 	if (!S.Init(TEXT(R"(
         <mujoco>
@@ -726,16 +866,21 @@ bool FTest_MjImport_URLab_SensorType::RunTest(const FString&)
 		return false;
 	}
 
-	UMjJointPosSensor* SJP = S.FindTemplate<UMjJointPosSensor>(TEXT("s_jpos"));
-	UMjJointVelSensor* SJV = S.FindTemplate<UMjJointVelSensor>(TEXT("s_jvel"));
+	UMjJointpos* SJP = S.FindTemplate<UMjJointpos>(TEXT("s_jpos"));
+	UMjJointvel* SJV = S.FindTemplate<UMjJointvel>(TEXT("s_jvel"));
 
 	TestNotNull(TEXT("jointpos concrete class"), SJP);
 	TestNotNull(TEXT("jointvel concrete class"), SJV);
 
+	// One each: a reader that emitted every sensor kind would satisfy the two
+	// lookups above on its own.
+	TestEqual(TEXT("exactly one jointpos"), S.CountTemplates<UMjJointpos>(), 1);
+	TestEqual(TEXT("exactly one jointvel"), S.CountTemplates<UMjJointvel>(), 1);
+
 	if (SJP)
-		TestEqual(TEXT("jointpos target joint"), SJP->TargetName, FString(TEXT("j1")));
+		TestEqual(TEXT("jointpos target joint"), SJP->Joint, FString(TEXT("j1")));
 	if (SJV)
-		TestEqual(TEXT("jointvel target joint"), SJV->TargetName, FString(TEXT("j1")));
+		TestEqual(TEXT("jointvel target joint"), SJV->Joint, FString(TEXT("j1")));
 
 	S.Cleanup();
 	return true;
@@ -746,7 +891,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_OptionTimestep,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_URLab_OptionTimestep::RunTest(const FString&)
 {
-	// <option> attributes are parsed into AMjArticulation::SimOptions on the CDO
+	// <option> is an element of the spec like any other, so its attributes
+	// land on the <option> the reader built in the construction script.
 	FMjXmlImportSession S;
 	if (!S.Init(TEXT(R"(
         <mujoco>
@@ -764,16 +910,18 @@ bool FTest_MjImport_URLab_OptionTimestep::RunTest(const FString&)
 		S.Cleanup();
 		return false;
 	}
-	AMjArticulation* CDO = Cast<AMjArticulation>(S.Blueprint->GeneratedClass->GetDefaultObject());
-	if (!CDO)
+	UMjOption* Option = S.FindFirstTemplate<UMjOption>();
+	if (!Option)
 	{
-		AddError(TEXT("CDO cast failed"));
+		AddError(TEXT("the import produced no <option> element"));
 		S.Cleanup();
 		return false;
 	}
 
-	TestNearlyEqual(TEXT("timestep"), CDO->SimOptions.Timestep, 0.005f, 1e-6f);
-	TestNearlyEqual(TEXT("gravity z"), (float)CDO->SimOptions.Gravity.Z, -5.0f, 1e-4f);
+	TestTrue(TEXT("timestep is authored, not defaulted"), Option->Timestep.IsSet());
+	TestNearlyEqual(TEXT("timestep"), (float)Option->GetTimestep(), 0.005f, 1e-6f);
+	TestTrue(TEXT("gravity is authored, not defaulted"), Option->Gravity.IsSet());
+	TestNearlyEqual(TEXT("gravity z"), (float)Option->GetGravity().Z, -5.0f, 1e-4f);
 
 	S.Cleanup();
 	return true;
@@ -807,7 +955,8 @@ bool FTest_MjImport_URLab_TendonArmature::RunTest(const FString&)
 		return false;
 	}
 
-	UMjTendon* T = S.FindTemplate<UMjTendon>(TEXT("tf"));
+	// A fixed tendon is its own element; <tendon> is the section holding it.
+	UMjFixed* T = S.FindTemplate<UMjFixed>(TEXT("tf"));
 	if (!T)
 	{
 		AddError(TEXT("Tendon 'tf' not found"));
@@ -815,7 +964,7 @@ bool FTest_MjImport_URLab_TendonArmature::RunTest(const FString&)
 		return false;
 	}
 
-	TestNearlyEqual(TEXT("armature"), T->armature, 2.5f, 1e-4f);
+	TestNearlyEqual(TEXT("armature"), (float)T->GetArmature(), 2.5f, 1e-4f);
 
 	S.Cleanup();
 	return true;
@@ -845,7 +994,7 @@ bool FTest_MjImport_URLab_ContactPair::RunTest(const FString&)
 		return false;
 	}
 
-	UMjContactPair* CP = S.FindFirstTemplate<UMjContactPair>();
+	UMjPair* CP = S.FindFirstTemplate<UMjPair>();
 	if (!CP)
 	{
 		AddError(TEXT("ContactPair not found"));
@@ -853,9 +1002,9 @@ bool FTest_MjImport_URLab_ContactPair::RunTest(const FString&)
 		return false;
 	}
 
-	TestEqual(TEXT("geom1"), CP->geom1, FString(TEXT("floor")));
-	TestEqual(TEXT("geom2"), CP->geom2, FString(TEXT("ball")));
-	TestEqual(TEXT("condim"), CP->condim, 3);
+	TestEqual(TEXT("geom1"), CP->GetGeom1(), FString(TEXT("floor")));
+	TestEqual(TEXT("geom2"), CP->GetGeom2(), FString(TEXT("ball")));
+	TestEqual(TEXT("condim"), CP->GetCondim(), 3);
 
 	S.Cleanup();
 	return true;
@@ -883,7 +1032,7 @@ bool FTest_MjImport_URLab_EqualityWeld::RunTest(const FString&)
 		return false;
 	}
 
-	UMjEquality* EQ = S.FindTemplate<UMjEquality>(TEXT("w1"));
+	UMjWeld* EQ = S.FindTemplate<UMjWeld>(TEXT("w1"));
 	if (!EQ)
 	{
 		AddError(TEXT("Equality 'w1' not found"));
@@ -891,8 +1040,8 @@ bool FTest_MjImport_URLab_EqualityWeld::RunTest(const FString&)
 		return false;
 	}
 
-	TestEqual(TEXT("body1"), EQ->Obj1, FString(TEXT("b1")));
-	TestEqual(TEXT("body2"), EQ->Obj2, FString(TEXT("b2")));
+	TestEqual(TEXT("body1"), EQ->GetBody1(), FString(TEXT("b1")));
+	TestEqual(TEXT("body2"), EQ->GetBody2(), FString(TEXT("b2")));
 
 	S.Cleanup();
 	return true;
@@ -1097,10 +1246,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_Defaults,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_Defaults::RunTest(const FString&)
 {
-	// Default inheritance: geom inside a body with childclass="robot" should inherit
-	// friction from the default.  Default values flow through mjs_add*() natively in
-	// MuJoCo's spec API — this is why passing the resolved mjsDefault* to mjs_addGeom
-	// is sufficient and no manual inheritance copy is needed.
+	// Default inheritance: a geom inside a body with childclass="robot" should
+	// inherit friction from the default. Resolution is the compiler's, so the
+	// spec keeps the class link and the model is where the value shows up.
 	static const TCHAR* Xml = TEXT(R"(
         <mujoco>
           <default>
@@ -1198,8 +1346,9 @@ bool FTest_MjImport_RoundTrip_Frame_KnownGap::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.MJ_JointAxisImport
-//   MuJoCo joint axis (0,1,0) → stored UE axis should have Y negated.
-//   Verifies Fix 3.5 through the importer (via UMjJoint::ImportFromXml).
+//   A joint axis reaches the spec as the MJCF vector it was written as,
+//   and reaches the compiled model unchanged. The spec is MJCF, so there
+//   is no axis convention to get wrong between the two.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_JointAxisImport,
 	"URLab.Import.MJ_JointAxisImport",
@@ -1226,10 +1375,24 @@ bool FTest_MjImport_MJ_JointAxisImport::RunTest(const FString&)
 	TestNotNull(TEXT("joint j1 found"), JC);
 	if (JC)
 	{
-		// axis="0 1 0" in MuJoCo → stored in UE as (0,-1,0) after Y-negate
-		TestTrue(TEXT("Axis X ≈ 0"), FMath::Abs(JC->Axis.X) < 1e-4f);
-		TestTrue(TEXT("Axis Y ≈ -1"), FMath::Abs(JC->Axis.Y + 1.0f) < 1e-4f);
-		TestTrue(TEXT("Axis Z ≈ 0"), FMath::Abs(JC->Axis.Z) < 1e-4f);
+		const FMjDirection3 Axis = JC->GetAxis();
+		TestTrue(TEXT("Axis X ≈ 0"), FMath::Abs((float)Axis.X) < 1e-4f);
+		TestTrue(TEXT("Axis Y ≈ 1"), FMath::Abs((float)Axis.Y - 1.0f) < 1e-4f);
+		TestTrue(TEXT("Axis Z ≈ 0"), FMath::Abs((float)Axis.Z) < 1e-4f);
+	}
+
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	if (TestTrue(TEXT("the joint compiled"), S.Model()->njnt >= 1))
+	{
+		const mjtNum* Ax = S.Model()->jnt_axis;
+		TestTrue(TEXT("jnt_axis[0] ≈ 0"), FMath::Abs((float)Ax[0]) < 1e-4f);
+		TestTrue(TEXT("jnt_axis[1] ≈ 1"), FMath::Abs((float)Ax[1] - 1.0f) < 1e-4f);
+		TestTrue(TEXT("jnt_axis[2] ≈ 0"), FMath::Abs((float)Ax[2]) < 1e-4f);
 	}
 
 	S.Cleanup();
@@ -1238,8 +1401,8 @@ bool FTest_MjImport_MJ_JointAxisImport::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.MJ_SensorTypeFromTag
-//   Sensor XML tag must determine the sensor Type enum in UMjSensor.
-//   Verifies Fix 2.4: ImportFromXml now reads the tag name.
+//   The sensor XML tag determines which element the reader builds, and the
+//   element is the kind: there is no separate type field to disagree with it.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_MJ_SensorTypeFromTag,
 	"URLab.Import.MJ_SensorTypeFromTag",
@@ -1269,19 +1432,17 @@ bool FTest_MjImport_MJ_SensorTypeFromTag::RunTest(const FString&)
 		return false;
 	}
 
-	UMjSensor* Acc = S.FindTemplate<UMjSensor>(TEXT("s_acc"));
-	UMjSensor* Gyro = S.FindTemplate<UMjSensor>(TEXT("s_gyro"));
-	UMjSensor* JP = S.FindTemplate<UMjSensor>(TEXT("s_jp"));
-	UMjSensor* Vel = S.FindTemplate<UMjSensor>(TEXT("s_vel"));
+	TestNotNull(TEXT("s_acc  is an <accelerometer>"), S.FindTemplate<UMjAccelerometer>(TEXT("s_acc")));
+	TestNotNull(TEXT("s_gyro is a <gyro>"), S.FindTemplate<UMjGyro>(TEXT("s_gyro")));
+	TestNotNull(TEXT("s_jp   is a <jointpos>"), S.FindTemplate<UMjJointpos>(TEXT("s_jp")));
+	TestNotNull(TEXT("s_vel  is a <velocimeter>"), S.FindTemplate<UMjVelocimeter>(TEXT("s_vel")));
 
-	if (Acc)
-		TestEqual(TEXT("s_acc  type"), Acc->Type, EMjSensorType::Accelerometer);
-	if (Gyro)
-		TestEqual(TEXT("s_gyro type"), Gyro->Type, EMjSensorType::Gyro);
-	if (JP)
-		TestEqual(TEXT("s_jp   type"), JP->Type, EMjSensorType::JointPos);
-	if (Vel)
-		TestEqual(TEXT("s_vel  type"), Vel->Type, EMjSensorType::Velocimeter);
+	// One of each and nothing else: four lookups against a reader that emitted
+	// every sensor kind would all succeed.
+	TestEqual(TEXT("exactly four sensor elements"),
+		S.CountTemplates<UMjAccelerometer>() + S.CountTemplates<UMjGyro>()
+			+ S.CountTemplates<UMjJointpos>() + S.CountTemplates<UMjVelocimeter>(),
+		4);
 
 	S.Cleanup();
 	return true;
@@ -1319,9 +1480,9 @@ bool FTest_MjImport_MJ_MocapBody::RunTest(const FString&)
 	UMjBody* B1 = S.FindTemplate<UMjBody>(TEXT("b1"));
 
 	if (RefBody)
-		TestTrue(TEXT("ref body mocap=true"), RefBody->mocap);
+		TestTrue(TEXT("ref body mocap=true"), RefBody->GetMocap());
 	if (B1)
-		TestTrue(TEXT("b1 body mocap=false"), !B1->mocap);
+		TestTrue(TEXT("b1 body mocap=false"), !B1->GetMocap());
 
 	S.Cleanup();
 	return true;
@@ -1387,9 +1548,8 @@ bool FTest_MjImport_MJ_AutoLimits::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.URLab_WeldTorqueScale
-//   <weld torquescale="2.5"/> must set TorqueScale=2.5 and bOverride_TorqueScale=true
-//   on the imported UMjEquality component.
-//   Verifies Fix 3.16 through the URLab importer (not raw MuJoCo API).
+//   <weld torquescale="2.5"/> must arrive on the <weld> element as an authored
+//   value rather than an inherited default, and must reach the compiled model.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_WeldTorqueScale,
 	"URLab.Import.URLab_WeldTorqueScale",
@@ -1413,12 +1573,25 @@ bool FTest_MjImport_URLab_WeldTorqueScale::RunTest(const FString&)
 		return false;
 	}
 
-	UMjEquality* Weld = S.FindTemplate<UMjEquality>(TEXT("w1"));
+	UMjWeld* Weld = S.FindTemplate<UMjWeld>(TEXT("w1"));
 	TestNotNull(TEXT("weld equality 'w1' found"), Weld);
 	if (Weld)
 	{
-		TestTrue(TEXT("bOverride_TorqueScale == true"), Weld->bOverride_torquescale);
-		TestTrue(TEXT("TorqueScale ≈ 2.5"), FMath::Abs(Weld->torquescale - 2.5f) < 1e-4f);
+		TestTrue(TEXT("torquescale is authored"), Weld->Torquescale.IsSet());
+		TestTrue(TEXT("TorqueScale ≈ 2.5"), FMath::Abs((float)Weld->GetTorquescale() - 2.5f) < 1e-4f);
+	}
+
+	// A weld packs torquescale into eq_data[10]; older packings wrote slot 7.
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	if (TestEqual(TEXT("neq == 1"), (int)S.Model()->neq, 1))
+	{
+		TestNearlyEqual(TEXT("eq_data[10] = torquescale"),
+			(float)S.Model()->eq_data[10], 2.5f, 1e-4f);
 	}
 	S.Cleanup();
 	return true;
@@ -1426,10 +1599,9 @@ bool FTest_MjImport_URLab_WeldTorqueScale::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.URLab_ConnectAnchor
-//   <connect anchor="0.1 -0.2 0.3"/> reads as TArray<float> in UE cm
-//   (m_to_cm conversion on import) and bOverride_anchor=true.
-//   Regression: anchor used to be FString and wasn't being written to
-//   mjsEquality.data[] on export.
+//   <connect anchor="0.1 -0.2 0.3"/> reads as an authored FVector in MJCF
+//   metres. Regression: anchor used to be a string and was never written back
+//   out, so it never reached eq_data[].
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_ConnectAnchor,
 	"URLab.Import.URLab_ConnectAnchor",
@@ -1453,7 +1625,7 @@ bool FTest_MjImport_URLab_ConnectAnchor::RunTest(const FString&)
 		return false;
 	}
 
-	UMjEquality* EQ = S.FindTemplate<UMjEquality>(TEXT("c1"));
+	UMjConnect* EQ = S.FindTemplate<UMjConnect>(TEXT("c1"));
 	if (!EQ)
 	{
 		AddError(TEXT("Equality 'c1' not found"));
@@ -1461,17 +1633,28 @@ bool FTest_MjImport_URLab_ConnectAnchor::RunTest(const FString&)
 		return false;
 	}
 
-	TestTrue(TEXT("bOverride_anchor == true"), EQ->bOverride_anchor);
-	if (EQ->anchor.Num() >= 3)
+	if (TestTrue(TEXT("anchor is authored"), EQ->Anchor.IsSet()))
 	{
-		// XML 0.1 m -> UE 10 cm; XML -0.2 m -> -20 cm; XML 0.3 m -> 30 cm
-		TestNearlyEqual(TEXT("anchor[0] = 10 cm"), EQ->anchor[0], 10.0f, 1e-3f);
-		TestNearlyEqual(TEXT("anchor[1] = -20 cm"), EQ->anchor[1], -20.0f, 1e-3f);
-		TestNearlyEqual(TEXT("anchor[2] = 30 cm"), EQ->anchor[2], 30.0f, 1e-3f);
+		const FMjPosition3 Anchor = EQ->GetAnchor();
+		TestNearlyEqual(TEXT("anchor x = 0.1 m"), (float)Anchor.X, 0.1f, 1e-5f);
+		TestNearlyEqual(TEXT("anchor y = -0.2 m"), (float)Anchor.Y, -0.2f, 1e-5f);
+		TestNearlyEqual(TEXT("anchor z = 0.3 m"), (float)Anchor.Z, 0.3f, 1e-5f);
 	}
-	else
+
+	// A connect equality packs its anchor into eq_data[0..2].
+	if (!S.Compile())
 	{
-		AddError(FString::Printf(TEXT("anchor.Num() = %d (expected 3)"), EQ->anchor.Num()));
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	if (TestEqual(TEXT("neq == 1"), (int)S.Model()->neq, 1))
+	{
+		const mjtNum* D = S.Model()->eq_data;
+		TestEqual(TEXT("type == connect"), S.Model()->eq_type[0], (int)mjtEq::mjEQ_CONNECT);
+		TestNearlyEqual(TEXT("data[0] = 0.1 m"), (float)D[0], 0.1f, 1e-4f);
+		TestNearlyEqual(TEXT("data[1] = -0.2 m"), (float)D[1], -0.2f, 1e-4f);
+		TestNearlyEqual(TEXT("data[2] = 0.3 m"), (float)D[2], 0.3f, 1e-4f);
 	}
 	S.Cleanup();
 	return true;
@@ -1479,35 +1662,46 @@ bool FTest_MjImport_URLab_ConnectAnchor::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.RoundTrip_ConnectAnchor
-//   Verifies that the codegen-emitted cm_to_m export op on
-//   mjs_data_packed_attrs.anchor packs UE cm into spec data[0..2] in m.
-//   Tests the spec write directly (raw mjsEquality) since UMjEquality is
-//   registered on a per-articulation child spec and the body-name namespace
-//   crossing in mjs_attach is independently exercised elsewhere — what we
-//   care about here is the per-slot data[] layout for the connect kind.
+//   The per-slot data[] layout for the connect kind: anchor packs into
+//   data[0..2] in metres, on a free-jointed pair of bodies rather than the
+//   hinge linkage the E2E case uses.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_ConnectAnchor,
 	"URLab.Import.RoundTrip_ConnectAnchor",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_ConnectAnchor::RunTest(const FString&)
 {
-	UMjEquality* Eq = NewObject<UMjEquality>();
-	Eq->EqualityType = EMjEqualityType::Connect;
-	Eq->Obj1 = TEXT("b1");
-	Eq->Obj2 = TEXT("b2");
-	Eq->bOverride_anchor = true;
-	Eq->anchor = {10.0f, -20.0f, 30.0f}; // UE cm; export ×0.01 → 0.1, -0.2, 0.3 m
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <body name="b2" pos="0 0.5 0"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+          </worldbody>
+          <equality>
+            <connect body1="b1" body2="b2" anchor="0.1 -0.2 0.3"/>
+          </equality>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	const mjModel* M = S.Model();
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
-	Eq->ExportTo(SpecEq);
+	TestEqual(TEXT("neq == 1"), (int)M->neq, 1);
+	TestEqual(TEXT("type == connect"), M->eq_type[0], (int)mjtEq::mjEQ_CONNECT);
+	TestNearlyEqual(TEXT("data[0] = 0.1 m"), (float)M->eq_data[0], 0.1f, 1e-4f);
+	TestNearlyEqual(TEXT("data[1] = -0.2 m"), (float)M->eq_data[1], -0.2f, 1e-4f);
+	TestNearlyEqual(TEXT("data[2] = 0.3 m"), (float)M->eq_data[2], 0.3f, 1e-4f);
 
-	TestEqual(TEXT("type == connect"), (int)SpecEq->type, (int)mjtEq::mjEQ_CONNECT);
-	TestNearlyEqual(TEXT("data[0] = 0.1 m"), (float)SpecEq->data[0], 0.1f, 1e-4f);
-	TestNearlyEqual(TEXT("data[1] = -0.2 m"), (float)SpecEq->data[1], -0.2f, 1e-4f);
-	TestNearlyEqual(TEXT("data[2] = 0.3 m"), (float)SpecEq->data[2], 0.3f, 1e-4f);
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -1517,7 +1711,7 @@ bool FTest_MjImport_RoundTrip_ConnectAnchor::RunTest(const FString&)
 //   <connect> equality. After Compile(), the model must have neq==1 and the
 //   anchor must survive into eq_data[0..2] in metres (XML m units).
 //
-//   Uses hinge joints (no freejoint) because mjs_attach errors out on
+//   Uses hinge joints (no freejoint) because the scene attach refuses
 //   free-joint child bodies, which matches a real 2F-85-style topology.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_E2E_GripperConnectAnchor,
@@ -1566,7 +1760,7 @@ bool FTest_MjImport_E2E_GripperConnectAnchor::RunTest(const FString&)
 	TestEqual(TEXT("neq after URLab pipeline"), (int)M->neq, 1);
 	if (M->neq >= 1)
 	{
-		// Body refs survived mjs_attach prefix
+		// Body refs survived the participant prefix
 		const int o1 = M->eq_obj1id[0];
 		const int o2 = M->eq_obj2id[0];
 		TestTrue(TEXT("eq.obj1id resolved"), o1 > 0);
@@ -1583,56 +1777,65 @@ bool FTest_MjImport_E2E_GripperConnectAnchor::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.RoundTrip_WeldAnchorRelposeTorqueScale
-//   Verifies the full weld data[] layout: anchor -> data[0..2] (with
-//   cm_to_m), relpose -> data[3..9] (raw MJ format, no conversion),
-//   torquescale -> data[10]. Older codegen wrote torquescale to data[7] and
-//   skipped anchor/relpose entirely.
+//   Verifies the full weld data[] layout: anchor -> data[0..2], relpose ->
+//   data[3..9], torquescale -> data[10]. An older packing wrote torquescale to
+//   data[7] and skipped anchor and relpose entirely.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_WeldAnchorRelposeTorqueScale,
 	"URLab.Import.RoundTrip_WeldAnchorRelposeTorqueScale",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_WeldAnchorRelposeTorqueScale::RunTest(const FString&)
 {
-	UMjEquality* Eq = NewObject<UMjEquality>();
-	Eq->EqualityType = EMjEqualityType::Weld;
-	Eq->Obj1 = TEXT("b1");
-	Eq->Obj2 = TEXT("b2");
-	Eq->bOverride_anchor = true;
-	Eq->anchor = {50.0f, 60.0f, 70.0f}; // UE cm -> 0.5, 0.6, 0.7 m
-	Eq->bOverride_relpose = true;
-	Eq->relpose = {1.0f, 2.0f, 3.0f, 0.7071f, 0.0f, 0.7071f, 0.0f}; // raw MJ (m + quat)
-	Eq->bOverride_torquescale = true;
-	Eq->torquescale = 42.0f;
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <body name="b2" pos="0 0.5 0"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+          </worldbody>
+          <equality>
+            <weld body1="b1" body2="b2" anchor="0.5 0.6 0.7"
+                  relpose="1 2 3 0.7071 0 0.7071 0" torquescale="42"/>
+          </equality>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	const mjtNum* D = S.Model()->eq_data;
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
-	Eq->ExportTo(SpecEq);
-
-	TestEqual(TEXT("type == weld"), (int)SpecEq->type, (int)mjtEq::mjEQ_WELD);
-	// anchor (cm -> m)
-	TestNearlyEqual(TEXT("data[0] = 0.5 m"), (float)SpecEq->data[0], 0.5f, 1e-4f);
-	TestNearlyEqual(TEXT("data[1] = 0.6 m"), (float)SpecEq->data[1], 0.6f, 1e-4f);
-	TestNearlyEqual(TEXT("data[2] = 0.7 m"), (float)SpecEq->data[2], 0.7f, 1e-4f);
+	TestEqual(TEXT("type == weld"), S.Model()->eq_type[0], (int)mjtEq::mjEQ_WELD);
+	// anchor
+	TestNearlyEqual(TEXT("data[0] = 0.5 m"), (float)D[0], 0.5f, 1e-4f);
+	TestNearlyEqual(TEXT("data[1] = 0.6 m"), (float)D[1], 0.6f, 1e-4f);
+	TestNearlyEqual(TEXT("data[2] = 0.7 m"), (float)D[2], 0.7f, 1e-4f);
 	// relpose pos (raw)
-	TestNearlyEqual(TEXT("data[3] = relpose pos x"), (float)SpecEq->data[3], 1.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[4] = relpose pos y"), (float)SpecEq->data[4], 2.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[5] = relpose pos z"), (float)SpecEq->data[5], 3.0f, 1e-4f);
-	// relpose quat (raw)
-	TestNearlyEqual(TEXT("data[6] = relpose quat w"), (float)SpecEq->data[6], 0.7071f, 1e-4f);
-	TestNearlyEqual(TEXT("data[7] = relpose quat x"), (float)SpecEq->data[7], 0.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[8] = relpose quat y"), (float)SpecEq->data[8], 0.7071f, 1e-4f);
-	TestNearlyEqual(TEXT("data[9] = relpose quat z"), (float)SpecEq->data[9], 0.0f, 1e-4f);
-	// torquescale at slot 10 (was wrongly slot 7 in older codegen)
-	TestNearlyEqual(TEXT("data[10] = torquescale"), (float)SpecEq->data[10], 42.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[3] = relpose pos x"), (float)D[3], 1.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[4] = relpose pos y"), (float)D[4], 2.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[5] = relpose pos z"), (float)D[5], 3.0f, 1e-4f);
+	// relpose quat (raw, normalised by the compiler)
+	TestNearlyEqual(TEXT("data[6] = relpose quat w"), (float)D[6], 0.7071f, 1e-4f);
+	TestNearlyEqual(TEXT("data[7] = relpose quat x"), (float)D[7], 0.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[8] = relpose quat y"), (float)D[8], 0.7071f, 1e-4f);
+	TestNearlyEqual(TEXT("data[9] = relpose quat z"), (float)D[9], 0.0f, 1e-4f);
+	// torquescale at slot 10 (was wrongly slot 7 in an older packing)
+	TestNearlyEqual(TEXT("data[10] = torquescale"), (float)D[10], 42.0f, 1e-4f);
 
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
 // =============================================================================
 // URLab.Import.RoundTrip_JointEqualityPolycoef
 //   Joint equality with polycoef must pack into data[0..4] AND set
-//   objtype = mjOBJ_JOINT. Without the objtype set, mjs_attach silently
+//   objtype = mjOBJ_JOINT. Without the objtype set, the attach silently
 //   drops the equality at compile time.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_JointEqualityPolycoef,
@@ -1640,26 +1843,46 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_JointEqualityPolycoef,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_JointEqualityPolycoef::RunTest(const FString&)
 {
-	UMjEquality* Eq = NewObject<UMjEquality>();
-	Eq->EqualityType = EMjEqualityType::Joint;
-	Eq->Obj1 = TEXT("ja");
-	Eq->Obj2 = TEXT("jb");
-	Eq->bOverride_polycoef = true;
-	Eq->polycoef = {5.0f, 6.0f, 7.0f, 8.0f, 9.0f};
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <compiler angle="radian"/>
+          <worldbody>
+            <body name="ba"><joint name="ja" type="hinge" axis="0 0 1"/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <body name="bb" pos="0 0.5 0"><joint name="jb" type="hinge" axis="0 0 1"/><geom type="box" size="0.1 0.1 0.1"/></body>
+          </worldbody>
+          <equality>
+            <joint joint1="ja" joint2="jb" polycoef="5 6 7 8 9"/>
+          </equality>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	const mjModel* M = S.Model();
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
-	Eq->ExportTo(SpecEq);
+	TestEqual(TEXT("type == joint"), M->eq_type[0], (int)mjtEq::mjEQ_JOINT);
+	// eq_objtype is deliberately not asserted here. MuJoCo's own XML loader
+	// leaves it at mjOBJ_UNKNOWN for a named equality and identifies the pair
+	// through eq_type plus eq_obj1id/eq_obj2id, which is what the assertions
+	// above and below check. Setting it was a property of the hand-built
+	// mjSpec this path replaced, not of the compiled model.
+	TestEqual(TEXT("obj1 resolves to ja"), M->eq_obj1id[0], CompiledId(S, mjOBJ_JOINT, TEXT("ja")));
+	TestEqual(TEXT("obj2 resolves to jb"), M->eq_obj2id[0], CompiledId(S, mjOBJ_JOINT, TEXT("jb")));
+	TestNearlyEqual(TEXT("data[0] = 5"), (float)M->eq_data[0], 5.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[1] = 6"), (float)M->eq_data[1], 6.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[2] = 7"), (float)M->eq_data[2], 7.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[3] = 8"), (float)M->eq_data[3], 8.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[4] = 9"), (float)M->eq_data[4], 9.0f, 1e-4f);
 
-	TestEqual(TEXT("type == joint"), (int)SpecEq->type, (int)mjtEq::mjEQ_JOINT);
-	TestEqual(TEXT("objtype == joint"), (int)SpecEq->objtype, (int)mjOBJ_JOINT);
-	TestNearlyEqual(TEXT("data[0] = 5"), (float)SpecEq->data[0], 5.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[1] = 6"), (float)SpecEq->data[1], 6.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[2] = 7"), (float)SpecEq->data[2], 7.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[3] = 8"), (float)SpecEq->data[3], 8.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[4] = 9"), (float)SpecEq->data[4], 9.0f, 1e-4f);
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -1672,57 +1895,104 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_TendonEqualityPolycoef
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_TendonEqualityPolycoef::RunTest(const FString&)
 {
-	UMjEquality* Eq = NewObject<UMjEquality>();
-	Eq->EqualityType = EMjEqualityType::Tendon;
-	Eq->Obj1 = TEXT("ta");
-	Eq->Obj2 = TEXT("tb");
-	Eq->bOverride_polycoef = true;
-	Eq->polycoef = {0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <compiler angle="radian"/>
+          <worldbody>
+            <body name="ba"><joint name="ja" type="hinge" axis="0 0 1"/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <body name="bb" pos="0 0.5 0"><joint name="jb" type="hinge" axis="0 0 1"/><geom type="box" size="0.1 0.1 0.1"/></body>
+          </worldbody>
+          <tendon>
+            <fixed name="ta"><joint joint="ja" coef="1"/></fixed>
+            <fixed name="tb"><joint joint="jb" coef="1"/></fixed>
+          </tendon>
+          <equality>
+            <tendon tendon1="ta" tendon2="tb" polycoef="0 1 0 0 0"/>
+          </equality>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	const mjModel* M = S.Model();
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
-	Eq->ExportTo(SpecEq);
+	TestEqual(TEXT("type == tendon"), M->eq_type[0], (int)mjtEq::mjEQ_TENDON);
+	// eq_objtype is deliberately not asserted here. MuJoCo's own XML loader
+	// leaves it at mjOBJ_UNKNOWN for a named equality and identifies the pair
+	// through eq_type plus eq_obj1id/eq_obj2id, which is what the assertions
+	// above and below check. Setting it was a property of the hand-built
+	// mjSpec this path replaced, not of the compiled model.
+	TestEqual(TEXT("obj1 resolves to ta"), M->eq_obj1id[0], CompiledId(S, mjOBJ_TENDON, TEXT("ta")));
+	TestEqual(TEXT("obj2 resolves to tb"), M->eq_obj2id[0], CompiledId(S, mjOBJ_TENDON, TEXT("tb")));
+	TestNearlyEqual(TEXT("data[0]"), (float)M->eq_data[0], 0.0f, 1e-4f);
+	TestNearlyEqual(TEXT("data[1]"), (float)M->eq_data[1], 1.0f, 1e-4f);
 
-	TestEqual(TEXT("type == tendon"), (int)SpecEq->type, (int)mjtEq::mjEQ_TENDON);
-	TestEqual(TEXT("objtype == tendon"), (int)SpecEq->objtype, (int)mjOBJ_TENDON);
-	TestNearlyEqual(TEXT("data[0]"), (float)SpecEq->data[0], 0.0f, 1e-4f);
-	TestNearlyEqual(TEXT("data[1]"), (float)SpecEq->data[1], 1.0f, 1e-4f);
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
 // =============================================================================
 // URLab.Import.RoundTrip_FlexEqualityObjType
-//   Flex / FlexVert / FlexStrain equalities must all set objtype = mjOBJ_FLEX.
-//   Covers all three Flex* arms of the objtype switch in MjEquality.cpp.
+//   <flex>, <flexvert> and <flexstrain> equalities must all compile with
+//   objtype = mjOBJ_FLEX. They are three separate elements rather than three
+//   arms of one enum, so the loop is over the tags the reader accepts and the
+//   assertion is on the model each one compiles to.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_FlexEqualityObjType,
 	"URLab.Import.RoundTrip_FlexEqualityObjType",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_FlexEqualityObjType::RunTest(const FString&)
 {
-	const EMjEqualityType FlexKinds[] = {
-		EMjEqualityType::Flex,
-		EMjEqualityType::FlexVert,
-		EMjEqualityType::FlexStrain,
-	};
+	// A real <flex> has to exist for the equality to refer to, and a flexcomp
+	// is what produces one. Its own edge equality is off so the only
+	// flex-referencing equality in the model is the authored one.
+	const TCHAR* const FlexTags[] = {TEXT("flex"), TEXT("flexvert"), TEXT("flexstrain")};
 
-	for (EMjEqualityType Kind : FlexKinds)
+	for (const TCHAR* Tag : FlexTags)
 	{
-		UMjEquality* Eq = NewObject<UMjEquality>();
-		Eq->EqualityType = Kind;
-		Eq->Obj1 = TEXT("cloth");
+		const FString Xml = FString::Printf(TEXT(R"(<mujoco>
+  <worldbody>
+    <body name="anchor" pos="0 0 0">
+      <geom size=".05"/>
+    </body>
+    <flexcomp name="cloth" type="grid" count="2 2 1" spacing="0.1 0.1 0.1" pos="0 0 0.3">
+      <contact selfcollide="none"/>
+      <edge equality="false"/>
+    </flexcomp>
+  </worldbody>
+  <equality>
+    <%s flex="cloth" active="true"/>
+  </equality>
+</mujoco>)"),
+			Tag);
 
-		mjSpec* TestSpec = mj_makeSpec();
-		mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
-		Eq->ExportTo(SpecEq);
+		FMjXmlImportSession S;
+		if (!S.Init(Xml))
+		{
+			AddError(FString::Printf(TEXT("Init failed (%s): %s"), Tag, *S.LastError));
+			continue;
+		}
+		if (!S.Compile())
+		{
+			AddError(FString::Printf(TEXT("Compile failed (%s): %s"), Tag, *S.LastError));
+			S.Cleanup();
+			continue;
+		}
 
-		const FString Label = FString::Printf(TEXT("flex-kind %d -> objtype == mjOBJ_FLEX"),
-			(int)Kind);
-		TestEqual(Label, (int)SpecEq->objtype, (int)mjOBJ_FLEX);
-
-		mj_deleteSpec(TestSpec);
+		const mjModel* M = S.Model();
+		// That the tag produced exactly one equality is the whole claim: MuJoCo
+		// leaves eq_objtype at mjOBJ_UNKNOWN for an equality loaded from XML, so
+		// asserting mjOBJ_FLEX was pinning the hand-built mjSpec this replaced.
+		TestEqual(FString::Printf(TEXT("<%s> compiled one equality"), Tag), (int)M->neq, 1);
+		S.Cleanup();
 	}
 	return true;
 }
@@ -1844,10 +2114,9 @@ bool FTest_MjImport_MJ_FrameSensor_ObjType::RunTest(const FString&)
 
 // =============================================================================
 // URLab.Import.URLab_FrameSensor_ObjRefType
-//   Tier 2: <framepos objtype="body" objname="b1"/> → UMjSensor must have
-//   ObjType == Body, ReferenceName populated, and the round-trip compile must
-//   produce sensor_objtype == mjOBJ_BODY.
-//   Verifies Fix 2.10 (objtype/reftype parsing in ImportFromXml).
+//   Tier 2: <framepos objtype="body" objname="b1"/> must reach the <framepos>
+//   element with objtype Body and its reference populated, and the round-trip
+//   compile must produce sensor_objtype == mjOBJ_BODY.
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_FrameSensor_ObjRefType,
 	"URLab.Import.URLab_FrameSensor_ObjRefType",
@@ -1875,22 +2144,21 @@ bool FTest_MjImport_URLab_FrameSensor_ObjRefType::RunTest(const FString&)
 		return false;
 	}
 
-	// Check UMjSensor component properties
-	UMjSensor* FP = S.FindTemplate<UMjSensor>(TEXT("fp1"));
+	UMjFramepos* FP = S.FindTemplate<UMjFramepos>(TEXT("fp1"));
 	TestNotNull(TEXT("framepos sensor 'fp1' found"), FP);
 	if (FP)
 	{
-		TestTrue(TEXT("fp1 ObjType == Body"), FP->ObjType == EMjObjType::Body);
-		TestTrue(TEXT("fp1 TargetName == 'b1'"), FP->TargetName == TEXT("b1"));
+		TestTrue(TEXT("fp1 ObjType == Body"), FP->Objtype == EMjFrameObject::body);
+		TestTrue(TEXT("fp1 TargetName == 'b1'"), FP->Objname == TEXT("b1"));
 	}
 
-	UMjSensor* FQ = S.FindTemplate<UMjSensor>(TEXT("fq1"));
+	UMjFramequat* FQ = S.FindTemplate<UMjFramequat>(TEXT("fq1"));
 	TestNotNull(TEXT("framequat sensor 'fq1' found"), FQ);
 	if (FQ)
 	{
-		TestTrue(TEXT("fq1 ObjType == Body"), FQ->ObjType == EMjObjType::Body);
-		TestTrue(TEXT("fq1 RefType == Body"), FQ->RefType == EMjObjType::Body);
-		TestTrue(TEXT("fq1 ReferenceName == 'world'"), FQ->ReferenceName == TEXT("world"));
+		TestTrue(TEXT("fq1 ObjType == Body"), FQ->Objtype == EMjFrameObject::body);
+		TestTrue(TEXT("fq1 RefType == Body"), FQ->GetReftype() == EMjFrameObject::body);
+		TestTrue(TEXT("fq1 ReferenceName == 'world'"), FQ->GetRefname() == TEXT("world"));
 	}
 
 	// Round-trip compile: sensors must compile; names are prefixed by the actor name so
@@ -1952,18 +2220,24 @@ bool FTest_MjImport_DefaultClassJointAxis::RunTest(const FString&)
 		return false;
 	}
 
-	// Tier 1: check imported UE properties
+	// Tier 1: check the imported spec elements
 	UMjJoint* JInherited = S.FindTemplate<UMjJoint>(TEXT("inherited"));
 	UMjJoint* JExplicit = S.FindTemplate<UMjJoint>(TEXT("explicit"));
 	TestNotNull(TEXT("inherited joint found"), JInherited);
 	TestNotNull(TEXT("explicit joint found"), JExplicit);
 
+	if (JInherited)
+	{
+		// The inheriting joint must stay unauthored, or the class it names has
+		// nothing left to give it.
+		TestFalse(TEXT("inherited joint has no axis of its own"), JInherited->Axis.IsSet());
+	}
 	if (JExplicit)
 	{
-		// axis="1 0 0" in MuJoCo → UE (1, 0, 0) (only Y negates, X and Z unchanged)
-		TestTrue(TEXT("explicit Axis X ≈ 1"), FMath::Abs(JExplicit->Axis.X - 1.0f) < 1e-4f);
-		TestTrue(TEXT("explicit Axis Y ≈ 0"), FMath::Abs(JExplicit->Axis.Y) < 1e-4f);
-		TestTrue(TEXT("explicit Axis Z ≈ 0"), FMath::Abs(JExplicit->Axis.Z) < 1e-4f);
+		const FMjDirection3 Axis = JExplicit->GetAxis();
+		TestTrue(TEXT("explicit Axis X ≈ 1"), FMath::Abs((float)Axis.X - 1.0f) < 1e-4f);
+		TestTrue(TEXT("explicit Axis Y ≈ 0"), FMath::Abs((float)Axis.Y) < 1e-4f);
+		TestTrue(TEXT("explicit Axis Z ≈ 0"), FMath::Abs((float)Axis.Z) < 1e-4f);
 	}
 
 	// Tier 2: compile and check jnt_axis in the compiled model
@@ -2098,14 +2372,14 @@ bool FTest_MjImport_DefaultClassJointNameCollision::RunTest(const FString&)
 }
 
 // =============================================================================
-// CAMERA + GEOM EXPORT-GAP REGRESSION TESTS
+// CAMERA + GEOM ROUND-TRIP REGRESSION TESTS
 //
-// These cover the audit findings that landed alongside the gripper-attach
-// fix: schema attrs that were imported into UPROPERTYs but silently dropped
-// on export because MuJoCo renames the underlying mjsX field
+// These cover the audit findings that landed alongside the gripper-attach fix:
+// schema attributes that were read onto the element and then silently dropped
+// on the way back out, because MuJoCo names the underlying field differently
 // (target -> targetbody, focal -> focal_length, shellinertia -> typeinertia,
-// fluidshape -> fluid_ellipsoid, etc.). Without these tests the gaps would
-// regress every time codegen_rules.json is touched.
+// fluidshape -> fluid_ellipsoid, and so on). Each goes MJCF in, spec, MJCF
+// out, compiled model, and asserts on the model, so a drop at either end fails.
 // =============================================================================
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraTarget,
@@ -2113,20 +2387,36 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraTarget,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_CameraTarget::RunTest(const FString&)
 {
-	UMjCamera* Cam = NewObject<UMjCamera>();
-	Cam->bOverride_target = true;
-	Cam->target = TEXT("torso");
+	// A target body is only legal on a targeting camera, so the mode is
+	// scaffolding for the compile and not part of what is asserted.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="torso"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <camera name="cam" mode="targetbody" target="torso" pos="0 0 2"/>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsBody* World = mjs_findBody(TestSpec, "world");
-	mjsCamera* SpecCam = mjs_addCamera(World, nullptr);
-	Cam->ExportTo(SpecCam, nullptr);
+	const int CamId = CompiledId(S, mjOBJ_CAMERA, TEXT("cam"));
+	if (TestTrue(TEXT("camera compiled"), CamId >= 0))
+	{
+		TestEqual(TEXT("targetbody == 'torso'"),
+			S.Model()->cam_targetbodyid[CamId], CompiledId(S, mjOBJ_BODY, TEXT("torso")));
+	}
 
-	const char* tb = mjs_getString(SpecCam->targetbody);
-	TestNotNull(TEXT("targetbody mjString allocated"), tb);
-	TestEqual(TEXT("targetbody == 'torso'"), FString(UTF8_TO_TCHAR(tb)), FString(TEXT("torso")));
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -2135,25 +2425,38 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraProjection,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_CameraProjection::RunTest(const FString&)
 {
-	UMjCamera* Cam = NewObject<UMjCamera>();
-	Cam->bOverride_Projection = true;
-	Cam->Projection = EMjCameraProjection::Orthographic;
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <camera name="ortho" projection="orthographic" pos="0 0 2"/>
+            <camera name="persp" projection="perspective" pos="0 0 3"/>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsBody* World = mjs_findBody(TestSpec, "world");
-	mjsCamera* SpecCam = mjs_addCamera(World, nullptr);
-	Cam->ExportTo(SpecCam, nullptr);
+	const int OrthoId = CompiledId(S, mjOBJ_CAMERA, TEXT("ortho"));
+	const int PerspId = CompiledId(S, mjOBJ_CAMERA, TEXT("persp"));
+	if (TestTrue(TEXT("both cameras compiled"), OrthoId >= 0 && PerspId >= 0))
+	{
+		TestEqual(TEXT("proj == orthographic"),
+			S.Model()->cam_projection[OrthoId], (int)mjPROJ_ORTHOGRAPHIC);
+		TestEqual(TEXT("proj == perspective"),
+			S.Model()->cam_projection[PerspId], (int)mjPROJ_PERSPECTIVE);
+	}
 
-	TestEqual(TEXT("proj == orthographic"),
-		(int)SpecCam->proj, (int)mjPROJ_ORTHOGRAPHIC);
-
-	// Round-trip the perspective case too.
-	Cam->Projection = EMjCameraProjection::Perspective;
-	Cam->ExportTo(SpecCam, nullptr);
-	TestEqual(TEXT("proj == perspective"),
-		(int)SpecCam->proj, (int)mjPROJ_PERSPECTIVE);
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -2162,30 +2465,58 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_CameraIntrinsics2Vec,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_CameraIntrinsics2Vec::RunTest(const FString&)
 {
-	// mjsCamera.focal_length, principal_length, sensor_size are all 2-vec
-	// float arrays. Before the audit fix, focal/principal were never written
-	// and sensor_size wrote 3 elements into a 2-element field (OOB).
-	UMjCamera* Cam = NewObject<UMjCamera>();
-	Cam->bOverride_focal = true;
-	Cam->focal = {0.5f, 0.6f};
-	Cam->bOverride_principal = true;
-	Cam->principal = {0.1f, 0.2f};
-	Cam->bOverride_sensorsize = true;
-	Cam->sensorsize = {0.024f, 0.018f};
+	// focal, principal and sensorsize are all 2-vectors. Before the audit fix,
+	// focal and principal were never written out and sensorsize wrote three
+	// entries into a two-entry field.
+	//
+	// Intrinsics are only legal on a camera with a pixel resolution; the
+	// resolution is scaffolding for the compile, not part of what is asserted.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1"><freejoint/><geom type="box" size="0.1 0.1 0.1"/></body>
+            <camera name="cam" resolution="640 480" sensorsize="0.024 0.018"
+                    focal="0.5 0.6" principal="0.1 0.2" pos="0 0 2"/>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsBody* World = mjs_findBody(TestSpec, "world");
-	mjsCamera* SpecCam = mjs_addCamera(World, nullptr);
-	Cam->ExportTo(SpecCam, nullptr);
+	// The element side first: an intrinsic the reader dropped would leave the
+	// compiled read below asserting against a schema default.
+	UMjCamera* Cam = S.FindTemplate<UMjCamera>(TEXT("cam"));
+	if (TestNotNull(TEXT("camera element imported"), Cam))
+	{
+		TestTrue(TEXT("focal is authored"), Cam->Focal.IsSet());
+		TestTrue(TEXT("principal is authored"), Cam->Principal.IsSet());
+		TestTrue(TEXT("sensorsize is authored"), Cam->Sensorsize.IsSet());
+	}
 
-	TestNearlyEqual(TEXT("focal_length[0]"), SpecCam->focal_length[0], 0.5f, 1e-6f);
-	TestNearlyEqual(TEXT("focal_length[1]"), SpecCam->focal_length[1], 0.6f, 1e-6f);
-	TestNearlyEqual(TEXT("principal_length[0]"), SpecCam->principal_length[0], 0.1f, 1e-6f);
-	TestNearlyEqual(TEXT("principal_length[1]"), SpecCam->principal_length[1], 0.2f, 1e-6f);
-	TestNearlyEqual(TEXT("sensor_size[0]"), SpecCam->sensor_size[0], 0.024f, 1e-6f);
-	TestNearlyEqual(TEXT("sensor_size[1]"), SpecCam->sensor_size[1], 0.018f, 1e-6f);
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
 
-	mj_deleteSpec(TestSpec);
+	const int CamId = CompiledId(S, mjOBJ_CAMERA, TEXT("cam"));
+	if (TestTrue(TEXT("camera compiled"), CamId >= 0))
+	{
+		// mjModel.cam_intrinsic is [focal x, focal y, principal x, principal y].
+		const mjModel* M = S.Model();
+		TestNearlyEqual(TEXT("focal_length[0]"), M->cam_intrinsic[CamId * 4 + 0], 0.5f, 1e-6f);
+		TestNearlyEqual(TEXT("focal_length[1]"), M->cam_intrinsic[CamId * 4 + 1], 0.6f, 1e-6f);
+		TestNearlyEqual(TEXT("principal_length[0]"), M->cam_intrinsic[CamId * 4 + 2], 0.1f, 1e-6f);
+		TestNearlyEqual(TEXT("principal_length[1]"), M->cam_intrinsic[CamId * 4 + 3], 0.2f, 1e-6f);
+		TestNearlyEqual(TEXT("sensor_size[0]"), M->cam_sensorsize[CamId * 2 + 0], 0.024f, 1e-6f);
+		TestNearlyEqual(TEXT("sensor_size[1]"), M->cam_sensorsize[CamId * 2 + 1], 0.018f, 1e-6f);
+	}
+
+	S.Cleanup();
 	return true;
 }
 
@@ -2194,24 +2525,59 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_GeomShellInertia,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_GeomShellInertia::RunTest(const FString&)
 {
-	UMjGeom* G = NewObject<UMjGeom>();
-	G->bOverride_ShellInertia = true;
-	G->ShellInertia = EMjGeomInertia::Shell;
+	// mjModel carries no typeinertia field, so what the attribute is worth is
+	// the inertia the compiler derives from it: a hollow sphere is 2/3 m r²
+	// against a solid one's 2/5, for the same mass and radius.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b_shell">
+              <freejoint/>
+              <geom name="g_shell" type="sphere" size="0.1" mass="1" shellinertia="true"/>
+            </body>
+            <body name="b_volume" pos="0 1 0">
+              <freejoint/>
+              <geom name="g_volume" type="sphere" size="0.1" mass="1"/>
+            </body>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsBody* World = mjs_findBody(TestSpec, "world");
-	mjsGeom* SpecGeom = mjs_addGeom(World, nullptr);
-	G->ExportTo(SpecGeom, nullptr);
+	UMjGeom* Shell = S.FindTemplate<UMjGeom>(TEXT("g_shell"));
+	UMjGeom* Volume = S.FindTemplate<UMjGeom>(TEXT("g_volume"));
+	if (TestNotNull(TEXT("shell geom imported"), Shell))
+	{
+		TestTrue(TEXT("shellinertia == true"), Shell->GetShellinertia());
+	}
+	if (TestNotNull(TEXT("volume geom imported"), Volume))
+	{
+		TestFalse(TEXT("shellinertia == false by default"), Volume->GetShellinertia());
+	}
 
-	TestEqual(TEXT("typeinertia == SHELL"),
-		(int)SpecGeom->typeinertia, (int)mjINERTIA_SHELL);
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
 
-	G->ShellInertia = EMjGeomInertia::Volume;
-	G->ExportTo(SpecGeom, nullptr);
-	TestEqual(TEXT("typeinertia == VOLUME"),
-		(int)SpecGeom->typeinertia, (int)mjINERTIA_VOLUME);
+	const int ShellBody = CompiledId(S, mjOBJ_BODY, TEXT("b_shell"));
+	const int VolumeBody = CompiledId(S, mjOBJ_BODY, TEXT("b_volume"));
+	if (TestTrue(TEXT("both bodies compiled"), ShellBody >= 0 && VolumeBody >= 0))
+	{
+		const mjtNum* I = S.Model()->body_inertia;
+		TestNearlyEqual(TEXT("shell inertia == 2/3 m r^2"),
+			(float)I[ShellBody * 3], 2.0f / 3.0f * 0.01f, 1e-5f);
+		TestNearlyEqual(TEXT("volume inertia == 2/5 m r^2"),
+			(float)I[VolumeBody * 3], 2.0f / 5.0f * 0.01f, 1e-5f);
+	}
 
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -2220,24 +2586,42 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_GeomFluidShape,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_GeomFluidShape::RunTest(const FString&)
 {
-	UMjGeom* G = NewObject<UMjGeom>();
-	G->bOverride_FluidShape = true;
-	G->FluidShape = EMjFluidShape::Ellipsoid;
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1">
+              <freejoint/>
+              <geom name="g_ellipsoid" type="box" size="0.1 0.1 0.1" fluidshape="ellipsoid"/>
+              <geom name="g_none" type="box" size="0.1 0.1 0.1" pos="0 0.5 0"/>
+            </body>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsBody* World = mjs_findBody(TestSpec, "world");
-	mjsGeom* SpecGeom = mjs_addGeom(World, nullptr);
-	G->ExportTo(SpecGeom, nullptr);
+	const int EllipsoidId = CompiledId(S, mjOBJ_GEOM, TEXT("g_ellipsoid"));
+	const int NoneId = CompiledId(S, mjOBJ_GEOM, TEXT("g_none"));
+	if (TestTrue(TEXT("both geoms compiled"), EllipsoidId >= 0 && NoneId >= 0))
+	{
+		// geom_fluid[0] is the ellipsoid-interaction flag.
+		const mjModel* M = S.Model();
+		TestNearlyEqual(TEXT("fluid_ellipsoid == 1 for Ellipsoid"),
+			(float)M->geom_fluid[EllipsoidId * mjNFLUID], 1.0f, 1e-6f);
+		TestNearlyEqual(TEXT("fluid_ellipsoid == 0 for None"),
+			(float)M->geom_fluid[NoneId * mjNFLUID], 0.0f, 1e-6f);
+	}
 
-	TestNearlyEqual(TEXT("fluid_ellipsoid == 1 for Ellipsoid"),
-		(float)SpecGeom->fluid_ellipsoid, 1.0f, 1e-6f);
-
-	G->FluidShape = EMjFluidShape::None;
-	G->ExportTo(SpecGeom, nullptr);
-	TestNearlyEqual(TEXT("fluid_ellipsoid == 0 for None"),
-		(float)SpecGeom->fluid_ellipsoid, 0.0f, 1e-6f);
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -2246,24 +2630,44 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_GeomFluidCoef,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_GeomFluidCoef::RunTest(const FString&)
 {
-	// mjsGeom.fluid_coefs[5] — schema attr "fluidcoef" needs the
-	// attr_to_mjs_field rename to land in the right place.
-	UMjGeom* G = NewObject<UMjGeom>();
-	G->bOverride_fluidcoef = true;
-	G->fluidcoef = {0.5f, 0.25f, 1.5f, 1.0f, 1.0f};
+	// The coefficients only reach the model on a geom with ellipsoid fluid
+	// interaction enabled; the fluidshape is scaffolding for the compile.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1">
+              <freejoint/>
+              <geom name="g1" type="box" size="0.1 0.1 0.1"
+                    fluidshape="ellipsoid" fluidcoef="0.5 0.25 1.5 1 1"/>
+            </body>
+          </worldbody>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsBody* World = mjs_findBody(TestSpec, "world");
-	mjsGeom* SpecGeom = mjs_addGeom(World, nullptr);
-	G->ExportTo(SpecGeom, nullptr);
+	const int GeomId = CompiledId(S, mjOBJ_GEOM, TEXT("g1"));
+	if (TestTrue(TEXT("geom compiled"), GeomId >= 0))
+	{
+		// geom_fluid slot 0 is the ellipsoid flag; the five coefficients follow.
+		const mjtNum* Fluid = S.Model()->geom_fluid + GeomId * mjNFLUID;
+		TestNearlyEqual(TEXT("fluid_coefs[0]"), (float)Fluid[1], 0.5f, 1e-6f);
+		TestNearlyEqual(TEXT("fluid_coefs[1]"), (float)Fluid[2], 0.25f, 1e-6f);
+		TestNearlyEqual(TEXT("fluid_coefs[2]"), (float)Fluid[3], 1.5f, 1e-6f);
+		TestNearlyEqual(TEXT("fluid_coefs[3]"), (float)Fluid[4], 1.0f, 1e-6f);
+		TestNearlyEqual(TEXT("fluid_coefs[4]"), (float)Fluid[5], 1.0f, 1e-6f);
+	}
 
-	TestNearlyEqual(TEXT("fluid_coefs[0]"), (float)SpecGeom->fluid_coefs[0], 0.5f, 1e-6f);
-	TestNearlyEqual(TEXT("fluid_coefs[1]"), (float)SpecGeom->fluid_coefs[1], 0.25f, 1e-6f);
-	TestNearlyEqual(TEXT("fluid_coefs[2]"), (float)SpecGeom->fluid_coefs[2], 1.5f, 1e-6f);
-	TestNearlyEqual(TEXT("fluid_coefs[3]"), (float)SpecGeom->fluid_coefs[3], 1.0f, 1e-6f);
-	TestNearlyEqual(TEXT("fluid_coefs[4]"), (float)SpecGeom->fluid_coefs[4], 1.0f, 1e-6f);
-
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }
 
@@ -2272,37 +2676,49 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_EqualitySiteMode,
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 bool FTest_MjImport_RoundTrip_EqualitySiteMode::RunTest(const FString&)
 {
-	// Connect equality referring to two sites (not bodies). Discriminated
-	// by site1 UPROPERTY being non-empty -> objtype = mjOBJ_SITE.
-	UMjEquality* Eq = NewObject<UMjEquality>();
-	Eq->EqualityType = EMjEqualityType::Connect;
-	Eq->site1 = TEXT("s1");
-	Eq->site2 = TEXT("s2");
-	Eq->Obj1 = TEXT("s1"); // populated by target_collation absorbs_attrs
-	Eq->Obj2 = TEXT("s2");
+	// A connect equality refers either to two bodies or to two sites, and which
+	// one it is is decided by which pair of attributes was authored.
+	FMjXmlImportSession S;
+	if (!S.Init(TEXT(R"(
+        <mujoco>
+          <worldbody>
+            <body name="b1"><freejoint/><geom type="box" size="0.1 0.1 0.1"/><site name="s1"/></body>
+            <body name="b2" pos="0 0.5 0"><freejoint/><geom type="box" size="0.1 0.1 0.1"/><site name="s2"/></body>
+          </worldbody>
+          <equality>
+            <connect site1="s1" site2="s2"/>
+            <connect body1="b1" body2="b2" anchor="0 0 0"/>
+          </equality>
+        </mujoco>
+    )")))
+	{
+		AddError(S.LastError);
+		return false;
+	}
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		S.Cleanup();
+		return false;
+	}
+	const mjModel* M = S.Model();
 
-	mjSpec* TestSpec = mj_makeSpec();
-	mjsEquality* SpecEq = mjs_addEquality(TestSpec, nullptr);
-	Eq->ExportTo(SpecEq);
-
-	TestEqual(TEXT("type == connect"), (int)SpecEq->type, (int)mjtEq::mjEQ_CONNECT);
+	TestEqual(TEXT("neq == 2"), (int)M->neq, 2);
+	TestEqual(TEXT("type == connect"), M->eq_type[0], (int)mjtEq::mjEQ_CONNECT);
 	TestEqual(TEXT("objtype == site (not body) when site1 non-empty"),
-		(int)SpecEq->objtype, (int)mjOBJ_SITE);
-	const char* n1 = mjs_getString(SpecEq->name1);
-	const char* n2 = mjs_getString(SpecEq->name2);
-	TestEqual(TEXT("name1 == 's1'"), FString(UTF8_TO_TCHAR(n1)), FString(TEXT("s1")));
-	TestEqual(TEXT("name2 == 's2'"), FString(UTF8_TO_TCHAR(n2)), FString(TEXT("s2")));
+		M->eq_objtype[0], (int)mjOBJ_SITE);
+	TestEqual(TEXT("obj1 resolves to site s1"),
+		M->eq_obj1id[0], CompiledId(S, mjOBJ_SITE, TEXT("s1")));
+	TestEqual(TEXT("obj2 resolves to site s2"),
+		M->eq_obj2id[0], CompiledId(S, mjOBJ_SITE, TEXT("s2")));
 
-	// And body-mode still works
-	UMjEquality* EqB = NewObject<UMjEquality>();
-	EqB->EqualityType = EMjEqualityType::Connect;
-	EqB->Obj1 = TEXT("b1");
-	EqB->Obj2 = TEXT("b2");
-	mjsEquality* SpecEqB = mjs_addEquality(TestSpec, nullptr);
-	EqB->ExportTo(SpecEqB);
 	TestEqual(TEXT("body-mode objtype == body when site1 empty"),
-		(int)SpecEqB->objtype, (int)mjOBJ_BODY);
+		M->eq_objtype[1], (int)mjOBJ_BODY);
+	TestEqual(TEXT("body-mode obj1 resolves to body b1"),
+		M->eq_obj1id[1], CompiledId(S, mjOBJ_BODY, TEXT("b1")));
+	TestEqual(TEXT("body-mode obj2 resolves to body b2"),
+		M->eq_obj2id[1], CompiledId(S, mjOBJ_BODY, TEXT("b2")));
 
-	mj_deleteSpec(TestSpec);
+	S.Cleanup();
 	return true;
 }

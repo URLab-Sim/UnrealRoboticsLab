@@ -61,6 +61,11 @@ public:
 	 *  Default true so new transports are universal unless they opt out. */
 	virtual bool AcceptsEditorOps() const { return true; }
 
+	/** Append transport-specific fields to the hello handshake reply.
+	 *  Called from BuildHandshakePayload for each bound transport.
+	 *  Default no-op; SHM overrides to advertise paths/events/strides. */
+	virtual void AppendHandshakeBlock(TSharedPtr<class FJsonObject>& Reply) const {}
+
 	/** Shared request handler. Concrete transports call this from their
 	 *  worker loop with raw inbound bytes; receives encoded reply bytes
 	 *  ready to ship back. Handles:
@@ -79,6 +84,14 @@ public:
 	 *  bridge. Returns nullptr if the bridge has been torn down —
 	 *  caller should ship a `not_ready` error reply. */
 	FURLabRpcDispatcher* ResolveDispatcher() const;
+
+	/** Encode a reply object to wire bytes using the live session's encoding
+	 *  (msgpack by default, JSON when the handshake selected it). For
+	 *  transports that synthesize a reply outside the normal
+	 *  ProcessRequestBytes path — e.g. a fixed-size transport rejecting an
+	 *  oversize reply with a fast `wrong_transport`/`reply_too_large` error
+	 *  instead of dropping it. */
+	void EncodeReply(const TSharedPtr<class FJsonObject>& Reply, TArray<uint8>& OutBytes) const;
 
 protected:
 	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;

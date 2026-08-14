@@ -39,7 +39,18 @@ if (Test-Path "build.ps1") {
 }
 Pop-Location
 
-# 3. libzmq
+# 3. MjShim - URLab's own, and it links against the MuJoCo installed above, so
+# it has to follow it rather than run in any order.
+Write-Host "`n--- Building MjShim ---" -ForegroundColor Yellow
+Push-Location MjShim
+if (Test-Path "build.ps1") {
+    .\build.ps1 @SharedArgs
+} else {
+    Write-Warning "MjShim/build.ps1 not found!"
+}
+Pop-Location
+
+# 4. libzmq
 Write-Host "`n--- Building libzmq ---" -ForegroundColor Yellow
 Push-Location libzmq
 if (Test-Path "build.ps1") {

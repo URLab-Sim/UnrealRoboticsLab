@@ -35,13 +35,17 @@
 #include "BlueprintEditor.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Geometry/MjSite.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Sensors/MjSensor.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Defaults/MjDefault.h"
+#include "MuJoCo/Spec/MjElementIdentity.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Geometry/MjSite.gen.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjSensorRuntime.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
 
 void SMjArticulationOutliner::Construct(const FArguments& InArgs)
 {
@@ -468,33 +472,84 @@ FString SMjArticulationOutliner::GetTypeLabel(UObject* Comp)
 	return Comp->GetClass()->GetName();
 }
 
+namespace
+{
+#if URLAB_MJ_GEN
+using urlab::spec::psm::ElementType;
+
+/** True when `Comp` is a spec element of one of `Kinds`. */
+bool IsElementOf(UObject* Comp, std::initializer_list<ElementType> Kinds)
+{
+	const UMjNodeComponent* Node = Cast<UMjNodeComponent>(Comp);
+	ElementType Type;
+	if (Node == nullptr || !urlab::spec::MjElementTypeOfNode(*Node, Type))
+	{
+		return false;
+	}
+	for (const ElementType Kind : Kinds)
+	{
+		if (Kind == Type)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+#endif
+} // namespace
+
+// The outliner asks what kind of element a node is, and that is a schema
+// question rather than a C++ one: an actuator has thirteen element classes and
+// no shared base, and a body has a presentation subclass over its generated
+// class. Both are answered by walking to the element the class names.
+
 bool SMjArticulationOutliner::IsBody(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjBody>();
+#if URLAB_MJ_GEN
+	return IsElementOf(Comp, {ElementType::Body});
+#else
+	return false;
+#endif
 }
 bool SMjArticulationOutliner::IsGeom(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjGeom>();
+#if URLAB_MJ_GEN
+	return IsElementOf(Comp, {ElementType::Geom});
+#else
+	return false;
+#endif
 }
 bool SMjArticulationOutliner::IsJoint(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjJoint>();
+#if URLAB_MJ_GEN
+	return IsElementOf(Comp, {ElementType::Joint, ElementType::FreeJoint});
+#else
+	return false;
+#endif
 }
 bool SMjArticulationOutliner::IsSensor(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjSensor>();
+	return UMjSensorRuntime::IsSensor(Cast<UMjNodeComponent>(Comp));
 }
 bool SMjArticulationOutliner::IsActuator(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjActuator>();
+	return UMjActuatorRuntime::IsActuator(Cast<UMjNodeComponent>(Comp));
 }
 bool SMjArticulationOutliner::IsDefault(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjDefault>();
+#if URLAB_MJ_GEN
+	return IsElementOf(Comp, {ElementType::Default});
+#else
+	return false;
+#endif
 }
 bool SMjArticulationOutliner::IsSite(UObject* Comp)
 {
-	return Comp && Comp->IsA<UMjSite>();
+#if URLAB_MJ_GEN
+	return IsElementOf(Comp, {ElementType::Site});
+#else
+	return false;
+#endif
 }
 
 FText SMjArticulationOutliner::GetSummaryText() const

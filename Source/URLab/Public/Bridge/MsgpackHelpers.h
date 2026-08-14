@@ -50,9 +50,16 @@ public:
 	 *  need a separate code path for binary fields. */
 	static bool UnpackToJsonObject(const uint8* Data, int32 Size, TSharedPtr<FJsonObject>& OutObject);
 
-	/** Pack-and-set a binary blob under a JSON object's field. Stores as
-	 *  base64 string with a `__b64__` suffix on the key so PackJsonObject
-	 *  knows to re-emit it as a real msgpack `bin` rather than a string.
-	 *  Used by handshake (MJB) and camera replies (pixel buffers). */
+	/** Pack-and-set a binary blob under a JSON object's field so PackJsonObject
+	 *  emits it as a real msgpack `bin`. Owns a single copy of the bytes (no
+	 *  base64), so the caller's buffer need not outlive the reply. Used by the
+	 *  handshake (MJB blob) and any caller without a shareable source buffer. */
 	static void SetBinaryField(TSharedPtr<FJsonObject>& Obj, const FString& Field, const uint8* Data, int32 Size);
+
+	/** Zero-copy variant of SetBinaryField: packs `Data`/`Size` straight through
+	 *  as msgpack `bin` with no base64 and no intermediate copy. `Keeper` must own
+	 *  the buffer that `Data` points into; it is retained until the reply is packed,
+	 *  so a caller can hand raw pixel bytes directly from a shared frame. */
+	static void SetBinaryFieldShared(TSharedPtr<FJsonObject>& Obj, const FString& Field,
+		const uint8* Data, int32 Size, TSharedPtr<const void, ESPMode::ThreadSafe> Keeper);
 };

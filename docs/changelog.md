@@ -2,9 +2,93 @@
 
 Notable changes to UnrealRoboticsLab, newest first.
 
-URLab is in **alpha**: the public API and on-disk formats are not yet stable, and
-a milestone can include breaking changes. A first **beta** will follow once the
-feature set settles.
+URLab is in **beta**: the public API and on-disk formats are close to stable,
+but a milestone can still include breaking changes. The last alpha is preserved
+on the `alpha` branch and the `v0.5.0-alpha` tag.
+
+## v0.6.0-beta (2026-08-11)
+
+The beta. Components are the model.
+
+**Breaking: MjArticulation assets from any alpha will not open.** Their
+components are the previous generation's classes and nothing migrates them.
+Re-import the MJCF, or stay on the `alpha` branch.
+
+### Added
+
+- **ProtoSpec.** MJCF is now an object model generated from MuJoCo's own
+  `mjcf.schema`, so a version bump regenerates the element tree instead of being
+  hand-followed. Every attribute is stored as a `TOptional`, where unset means
+  the document did not author it and the default class answers instead.
+- **Stock parity.** An imported model compiles to exactly what `mj_loadXML`
+  produces, checked field by field against every robot in a MuJoCo Menagerie
+  checkout (`URLab.Parity.StockDiffMenagerie`, opt-in via `URLAB_MENAGERIE`).
+- **MuJoCo engine plugins.** The first-party plugin libraries are built,
+  installed and loaded, so a model using `mujoco.pid`, cable or shell
+  elasticity, touch grids or SDF shapes compiles and runs.
+- **Attach conflict policy.** `AMjArticulation` exposes MuJoCo's `mjtConflict`
+  so a robot joining a scene can refuse to have its `<option>` replaced.
+- **Convex decomposition, finished.** Right-click a mesh geom in the Blueprint
+  editor's component tree. Threshold and CoACD's extrude are offered where the
+  action is invoked, hulls become real `<mesh>` elements and Unreal assets
+  beside the articulation's own, and the geom references them.
+
+### Changed
+
+- **The XML compile path is gone.** Components are read straight into an
+  `mjSpec`; nothing serialises MJCF text to reach the compiler any more.
+- **MuJoCo 3.11.1.**
+- **An imported model's `<option>` reaches the scene.** The scene's
+  `<compiler conflict>` is `merge`, not MuJoCo's `warning` default: the attach
+  target is a scene nobody authored, so under `warning` every field an import
+  brought lost to a default. Editable on the manager, and per-robot
+  `AttachConflict` still overrides.
+- **Breaking (RPC): the control-owner override is `control_owner`.** It was
+  `source`, which `set_control_source` already uses for `"zmq"` | `"ui"` -- so
+  that op could never pass its own ownership check. Requests that do not set it
+  are unaffected; the owner still falls back to `session_id`.
+- **An articulation carries every top-level section, once.** MJCF admits any of
+  them repeatedly and MuJoCo merges them, so a document with two `<worldbody>`
+  or two `<asset>` blocks no longer reads as sibling components. A section the
+  document never authored is created unset rather than left for the user to
+  conjure, and an unauthored section writes nothing.
+- Line endings are LF in the repository on every platform, and the formatter
+  no longer fights the code generator over the generated tree.
+
+### Fixed
+
+- **`multiccd` follows MuJoCo again.** The scene manager was disabling it on
+  every scene. That mirrored MuJoCo's default when the flag was opt-in; MuJoCo
+  has since moved it to the disable family, where it defaults on, so URLab was
+  overriding it. Convex-convex pairs generated one contact point where MuJoCo
+  generates several, and any scene with mesh or primitive contacts stepped
+  differently from `mj_loadXML` of the same document.
+- **Control values keep their precision.** The step RPC narrowed `ctrl` to
+  `float` on the way to the actuator slots, so a `float64` setpoint arrived
+  rounded and the sim diverged from stock MuJoCo given identical input. The
+  path is `double` end to end, which is what `mjtNum` is.
+- **The PD controller computes in `mjtNum`.** Its law read `d->qpos` and wrote
+  `d->ctrl` through `float` locals, rounding the target and the state it was
+  given. Gains stay `float`, which is how they are authored.
+- **Convex decomposition finds its mesh.** It looked for a child
+  `UStaticMeshComponent`, which is the visualiser's output rather than the
+  authored geometry, and does not exist at all on the Blueprint template the
+  right-click menu runs against. It resolves the geom's `<mesh>` element now,
+  the same source the geom is drawn from.
+- **Reimporting a model no longer crashes the tick.** The articulation's
+  element index held its components without a `UPROPERTY`, so the engine could
+  not see them: a Blueprint recompile reinstanced every component and left the
+  index pointing at the ones it replaced, which the next render-state tick
+  wrote a transform through.
+- **A mesh geom's `rgba` is drawn.** The preview only took a colour from the
+  spec when a material was named, so an authored `rgba` on a mesh geom was
+  dropped and the imported asset's own material showed instead. A geom whose
+  `rgba` is left at MuJoCo's default still keeps its imported materials.
+- Assets whose visual and collision meshes share a basename no longer collide
+  in MuJoCo's VFS, which silently gave collision geometry the visual mesh.
+- A document naming its root default class `main` explicitly no longer loses
+  every class nested inside it.
+- The plugin builds again without the editor, so a game can be packaged.
 
 ## v0.5.0-alpha (2026-06-14)
 

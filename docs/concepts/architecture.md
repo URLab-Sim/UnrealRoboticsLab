@@ -23,7 +23,7 @@ flowchart TB
 
 | Subsystem | File | Responsibility |
 |---|---|---|
-| `UMjPhysicsEngine` | `Source/URLab/Public/MuJoCo/Core/MjPhysicsEngine.h` | Owns `m_spec`, `m_vfs`, `m_model`, `m_data`. Runs the compile pipeline and the async step loop. Exposes step-callback registration. |
+| `UMjPhysicsEngine` | `Source/URLab/Public/MuJoCo/Core/MjPhysicsEngine.h` | Owns the compiled scene (and through it the `mjModel`) plus `m_data`. Runs the compile pipeline and the async step loop. Exposes step-callback registration. |
 | `UMjDebugVisualizer` | `Source/URLab/Public/MuJoCo/Core/MjDebugVisualizer.h` | Captures contact data on the physics thread, renders overlays on the game thread. |
 | `UMjNetworkManager` | `Source/URLab/Public/Transport/NetworkManager.h` | Tracks camera registration and the global camera-streaming toggle. |
 | `UMjInputHandler` | `Source/URLab/Public/MuJoCo/Input/MjInputHandler.h` | Processes simulation hotkeys and dispatches to the other subsystems. |
@@ -32,47 +32,80 @@ Subsystems communicate three ways: step callbacks on `UMjPhysicsEngine` (`Regist
 
 ## Component model
 
-Every MJCF element type maps to a `UMjComponent` subclass attached to an `AMjArticulation` Blueprint. `UMjComponent` derives from `USceneComponent` and implements `IMjSpecElement`. The component tree mirrors the MJCF body hierarchy.
+Every MJCF element type maps to a `UMjNodeComponent` subclass, generated from MuJoCo's own schema, and the tree of those components *is* the model. `UMjNodeComponent` derives from `USceneComponent`, so an element takes part in the components panel, undo, duplication and the viewport gizmo like any other component. An `AMjArticulation` holds one such tree in its `Spec` property.
 
-Two methods drive the lifecycle:
-
-- `RegisterToSpec(wrapper, body)` creates the `mjsElement` during spec construction.
-- `Bind(model, data, prefix)` resolves the compiled MuJoCo ID and caches raw pointers into `mjModel` / `mjData` through lightweight View structs (`BodyView`, `GeomView`, `JointView`, and so on, in `MuJoCo/Utils/MjBind.h`).
-
-Imported articulations and user-built articulations both produce the same `UMjComponent` tree and run through the same compile path. See the [Importing guide](../guides/importing.md) and [Articulations guide](../guides/articulations.md) for the authoring side.
+Imported articulations and user-built articulations are the same tree and run through the same compile path. See [The component model](model.md) for how an element maps onto a component, how defaults and references work, and what the compile does to them. The authoring side is in the [Importing guide](../guides/importing.md) and the [Articulations guide](../guides/articulations.md).
 
 ## Compile pipeline
 
-Compilation runs once at `BeginPlay` (and again on a recompile request). It is owned by `UMjPhysicsEngine` and proceeds in phases.
+Compilation runs once at `BeginPlay` (and again on a recompile request). It is owned by `UMjPhysicsEngine::InstallCompiledSpec` and proceeds in phases.
 
 ```mermaid
 flowchart LR
-    PreC["PreCompile<br/>make spec + VFS,<br/>discover actors,<br/>RegisterToSpec"]
-    Comp["Compile<br/>mj_compile"]
-    Post["PostCompile<br/>Bind views,<br/>build ID maps"]
-    Opt["ApplyOptions +<br/>ApplyThreadPool"]
-    PreC --> Comp --> Post --> Opt
+    Build["Build<br/>component tree<br/>to mjSpec"]
+    Compose["Compose<br/>mjs_attach<br/>per participant"]
+    Compile["Compile<br/>VFS + mj_compile"]
+    Inst["Install<br/>mj_makeData, bind,<br/>options, thread pool"]
+    Build --> Compose --> Compile --> Inst
 ```
 
-1. **PreCompile.** `mj_makeSpec()` creates a fresh spec in radians mode and `mj_defaultVFS()` initialises the virtual file system. The level is scanned with `GetAllActorsOfClass`; each `AMjArticulation`, `UMjQuickConvertComponent`, and `AMjHeightfieldActor` registers its elements. Each articulation builds an isolated child spec, applies its own `SimOptions`, then merges into the root via `mjs_attach()` with an `{ActorName}_` prefix so multi-robot scenes stay namespaced.
-2. **Compile.** `mj_compile(m_spec, &m_vfs)` produces `mjModel*`. On failure the error from `mjs_getError` is logged and shown in an editor dialog; `m_model` / `m_data` stay null and the sim does not start. On success `mj_makeData` allocates `mjData`.
-3. **PostCompile.** Each component's `Bind()` resolves its ID (by `mjs_getId` with bounds validation, falling back to name lookup) and caches pointers. ID and component maps are built for O(1) runtime access.
-4. **Apply options and thread pool.** `ApplyOptions()` writes manager-level overrides into `m_model->opt`; `ApplyThreadPool()` sizes the per-step worker pool (see below).
+1. **Build.** The level is scanned and projected into a scene assembly: a scene root plus one participant per `AMjArticulation`, `UMjQuickConvertComponent` and `AMjHeightfieldActor`, each with the prefix its compiled names will carry. Every participant's component tree is walked once into its own `mjSpec` through `mjs_*` calls, and the assets it names are collected as in-memory bytes. Unnamed elements are given reserved names for the duration of the build so that remote clients have something to refer to.
+2. **Compose.** Each participant spec is attached into the scene spec with `mjs_attach`, under a frame carrying its placement. A failed attach corrupts the target spec beyond recovery, so the build is abandoned rather than retried.
+3. **Compile.** The asset bytes are mounted into a MuJoCo VFS and `mj_compile` produces `mjModel*`. On failure the diagnostics are returned to the caller and the previous model is left untouched — the compile happens before anything is torn down.
+4. **Install.** `mj_makeData` allocates fresh state, the old model and its `mjData` are freed, each element is told the id `mjs_getId` gave it, each articulation's control slots are sized to the scene it compiled into, simulation state is migrated onto the new addresses (see below), and `ApplyThreadPool()` sizes the per-step worker pool.
+
+### Recompiling a running scene
+
+A recompile is a new `mjModel`, and a new model means new addresses: a joint that gained a sibling no longer sits at the same `qpos` slot. Simulation state therefore follows the *element*, not the address. Before the old model is freed, each element's `qpos`/`qvel`, actuator `ctrl`/`act`, and mocap pose are stashed against the element's creation serial; after `mj_makeData`, they are written back at whatever addresses the new binding gives.
+
+- An element that survived the edit keeps its pose.
+- An element that was deleted takes its state with it — the joint that inherits its slot holds its own value.
+- An element that was added starts at the model's own `qpos0`.
+- An element whose shape changed (a hinge become a ball) starts at the defaults, because there is no meaning to carrying three numbers into a slot that now holds four.
+- `time` continues, so a recompile is an edit to a running simulation rather than a new one.
+
+### Compile latency
+
+Measured by `URLab.Perf.CompileLatency`, which prints a `BENCH` line to the run log. The scene is a 28-body robot, each body carrying a geom and a hinge — the shape of the robots people actually import — averaged over five runs after a warm-up. It asserts no threshold: a perf assertion on a shared machine fails for reasons that have nothing to do with the code, so it reports and the reader judges.
+
+Three numbers, because they answer different questions:
+
+| Stage | What it covers |
+|---|---|
+| `write_ms` | serializing the spec to MJCF text. Not on the compile route at all: it is what the bridge handshake and the render-farm upload are handed, and the install still pays for it. |
+| `compile_ms` | building the scene spec and compiling it. Model in hand, nothing installed. |
+| `install_ms` | the whole of `InstallCompiledSpec`: the above, plus the handshake text, joining the physics worker, unbinding, freeing the old model, `mj_makeData`, rebinding every element, sizing control slots, and one step. |
+
+The cost is per element, so it scales with the scene. Run it to get numbers on your own machine:
+
+```powershell
+.\Scripts\build_and_test.ps1 -Engine 'C:\Program Files\Epic Games\UE_5.7' `
+                             -Project 'C:\path\to\your.uproject' `
+                             -Filter 'URLab.Perf.CompileLatency'
+```
 
 !!! note "Debug XML"
     With `bSaveDebugXml` enabled, a successful compile also writes `scene_compiled.xml` and `scene_compiled.mjb` to `Saved/URLab/`. Diff the compiled XML against the source MJCF to spot import or default-inheritance mismatches. See the [Debug guide](../guides/debug.md).
 
 ## Simulation options
 
-The options struct is `FMjOptionGenerated`, declared in `Source/URLab/Public/MuJoCo/Generated/MjOptionGenerated.h`. It is codegen-owned (a mirror of MuJoCo's `MJOPTION_FIELDS`) and is regenerated on a MuJoCo bump; see [Codegen](../contributing/codegen.md). It appears in two places with different semantics:
+`<option>` is an ordinary MJCF element, and URLab holds it as one: a `UMjOption`
+component with a `UMjFlag` child, generated from the schema. Only attributes the
+document actually sets are written, so an unset one keeps whatever MuJoCo decides.
+Values are in MJCF's own units and MuJoCo's own frame -- no cm, no Y-flip.
 
-- `AMjArticulation::SimOptions` defines the native physics settings for one robot. All fields are written to that articulation's child spec before `mjs_attach()`; the per-field `bOverride_*` toggles are ignored here.
-- `UMjPhysicsEngine::Options` (surfaced on the manager) acts as post-compile overrides on `m_model->opt`. Only fields with `bOverride_* = true` are applied, once, after a successful compile.
+The scene's is `AAMjManager::SceneOption` / `SceneFlags`, components of the
+manager's own scene spec, and it is what the `set_sim_options` RPC and the
+Simulate dashboard write. Live edits from either reach the running model through
+`UMjPhysicsEngine::ApplyOptions()`; on a compile the values are simply part of
+the scene spec and are compiled in.
 
-Resolution order is therefore: MuJoCo built-in defaults, then the articulation's `SimOptions` into its child spec, then the manager's selectively-applied overrides onto the compiled model.
-
-!!! warning "Older struct names"
-    Earlier builds used `FMuJoCoOptions` in `MjSimOptions.{h,cpp}`. Those files were removed. The current type is `FMjOptionGenerated`.
+An imported articulation can carry an `<option>` of its own, as an ordinary
+component in its tree. It is not the scene's authority. When the participant is
+attached, MuJoCo's own conflict resolver decides which model-level block
+survives, driven by the `conflict` attribute on the scene's `<compiler>`, and
+URLab logs a warning naming the participant so the resolution is not silent.
+`<size>` is resolved the same way and logged as an info.
 
 ## Physics thread and render snapshot
 
@@ -124,9 +157,11 @@ External Python clients drive physics over a wire. The path splits into a transp
 
 ## Coordinate system
 
-MuJoCo uses right-handed Z-up metres; Unreal uses left-handed Z-up centimetres. Conversions live in `Source/URLab/Public/MuJoCo/Utils/MjUtils.h`:
+MuJoCo uses right-handed Z-up metres; Unreal uses left-handed Z-up centimetres. Conversions live in two places and nowhere else: `Source/URLab/Public/MuJoCo/Spec/MjFrameTypes.h` for authored values, and `Source/URLab/Public/MuJoCo/Utils/URLabAxisConv.h` for the raw arrays read out of `mjModel` and `mjData`. Both do the same thing:
 
 - Position: `X -> X`, `Y -> -Y`, `Z -> Z`; metres x 100 = centimetres.
 - Rotation: MuJoCo quaternion `[w, x, y, z]` maps to an `FQuat` with X and Z negated to flip handedness.
+
+The document itself is never converted. An MJCF attribute is stored exactly as authored, in MuJoCo's frame and units, and conversion happens only where a value becomes an Unreal transform: the editor preview, the editor write-back, the runtime render pass and the runtime input path. An authored `quat` is therefore an `FMjQuatRot`, not an `FQuat` -- the two differ by a permutation and a sign flip, and a distinct type is what stops one being handed to a rotation API by mistake. `FMjQuatRot::ToUnreal()` is the crossing.
 
 ![URLab subsystem and transport overview](../images/placeholder.svg)

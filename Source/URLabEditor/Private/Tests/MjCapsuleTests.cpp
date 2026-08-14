@@ -20,16 +20,29 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
+// A capsule is a <geom> whose `type` attribute says so, not a class of its own.
+// Everything that used to distinguish a capsule component from a box one is a
+// row of a table keyed by that attribute, and the capsule's row is the only one
+// carrying a second mesh -- the two end caps -- because Unreal ships no capsule
+// primitive. So these tests are about one class read through one attribute.
+//
+// The scale case has to ask for the redraw. UMjGeom::SyncEditorScaleFromSize is
+// what draws `size` as a component scale, and it runs on registration and on a
+// details-panel edit; a Blueprint construction-script template is never
+// registered, so the call is explicit here for the same reason the editor makes
+// it explicit after a property change.
+
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
-#include "MuJoCo/Components/Geometry/Primitives/MjCapsule.h"
+#include "MuJoCo/Elements/MjGeom.h"
 #include "mujoco/mujoco.h"
 
 // ============================================================================
 // URLab.Capsule.Import_SizeForm_CreatesUMjCapsule
-//   <geom type="capsule" size="radius halflength"> → UMjCapsule with matching
-//   Radius/HalfLength and parent scale set to cm-convention (X=Y=2R, Z=2H).
+//   <geom type="capsule" size="radius halflength"> reads as a UMjGeom whose
+//   Type is capsule and whose Size is [R, H], and whose drawn scale is the
+//   cm-convention (X=Y=2R, Z=2H) the cap placement depends on.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCapsuleImportSizeForm,
 	"URLab.Capsule.Import_SizeForm_CreatesUMjCapsule",
@@ -53,27 +66,36 @@ bool FMjCapsuleImportSizeForm::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjCapsule* Cap = S.FindTemplate<UMjCapsule>(TEXT("upper"));
-	if (!TestNotNull(TEXT("UMjCapsule 'upper'"), Cap))
+	UMjGeom* Cap = S.FindTemplate<UMjGeom>(TEXT("upper"));
+	if (!TestNotNull(TEXT("UMjGeom 'upper'"), Cap))
 		return false;
 
-	TestEqual(TEXT("Radius"), Cap->Radius, 0.05f);
-	TestEqual(TEXT("HalfLength"), Cap->HalfLength, 0.15f);
+	TestEqual(TEXT("Type"), static_cast<int32>(Cap->GetType()), static_cast<int32>(EMjGeomType::capsule));
 
-	// Parent scale should map radius → 2R (cm-to-UE), halflength → 2H.
+	const TArray<double> Size = Cap->GetSize();
+	if (TestEqual(TEXT("Size carries [radius, halflength]"), Size.Num(), 2))
+	{
+		TestEqual(TEXT("Radius"), Size[0], 0.05);
+		TestEqual(TEXT("HalfLength"), Size[1], 0.15);
+	}
+
+	// Component scale should map radius → 2R (cm-to-UE), halflength → 2H.
+	Cap->SyncEditorScaleFromSize();
 	const FVector Scale = Cap->GetRelativeScale3D();
-	TestTrue(TEXT("Scale.X ≈ 0.1"), FMath::IsNearlyEqual(Scale.X, 0.1f, 1e-4f));
-	TestTrue(TEXT("Scale.Y ≈ 0.1"), FMath::IsNearlyEqual(Scale.Y, 0.1f, 1e-4f));
-	TestTrue(TEXT("Scale.Z ≈ 0.3"), FMath::IsNearlyEqual(Scale.Z, 0.3f, 1e-4f));
+	TestTrue(TEXT("Scale.X ≈ 0.1"), FMath::IsNearlyEqual(Scale.X, 0.1, 1e-4));
+	TestTrue(TEXT("Scale.Y ≈ 0.1"), FMath::IsNearlyEqual(Scale.Y, 0.1, 1e-4));
+	TestTrue(TEXT("Scale.Z ≈ 0.3"), FMath::IsNearlyEqual(Scale.Z, 0.3, 1e-4));
 
 	return true;
 }
 
 // ============================================================================
 // URLab.Capsule.Import_FromToForm_ResolvedByBase
-//   <geom type="capsule" fromto="...">. Base UMjGeom resolves fromto into
-//   pos/quat/size[1]; the capsule subclass just reads the resolved values.
-//   HalfLength should equal |B-A| / 2.
+//   <geom type="capsule" fromto="..."> is a compile directive, not stored data.
+//   Import folds it to pos/quat/size exactly as MuJoCo's compiler does, so the
+//   attribute is gone and the half-length it implied is in size[1]. Endpoints
+//   0.3 m apart along +Z -> half-length 0.15 m, radius still from size[0], and
+//   the compiled model is the same either way.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCapsuleImportFromTo,
 	"URLab.Capsule.Import_FromToForm_ResolvedByBase",
@@ -81,7 +103,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjCapsuleImportFromTo,
 
 bool FMjCapsuleImportFromTo::RunTest(const FString& Parameters)
 {
-	// Endpoints 0.3 m apart along +Z → halflength 0.15 m. Radius from size[0].
 	const TCHAR* Xml = TEXT(R"(<mujoco>
   <worldbody>
     <body name="arm" pos="0 0 1">
@@ -98,13 +119,53 @@ bool FMjCapsuleImportFromTo::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjCapsule* Cap = S.FindTemplate<UMjCapsule>(TEXT("upper"));
-	if (!TestNotNull(TEXT("UMjCapsule 'upper'"), Cap))
+	UMjGeom* Cap = S.FindTemplate<UMjGeom>(TEXT("upper"));
+	if (!TestNotNull(TEXT("UMjGeom 'upper'"), Cap))
 		return false;
 
-	TestEqual(TEXT("Radius (from size)"), Cap->Radius, 0.05f);
+	TestFalse(TEXT("fromto does not survive import"), Cap->HasFromto());
+
+	const TArray<double> Size = Cap->GetSize();
+	if (TestEqual(TEXT("Size carries radius and half-length"), Size.Num(), 2))
+	{
+		TestEqual(TEXT("Radius (from size)"), Size[0], 0.05);
+		TestEqual(TEXT("Half-length (from fromto)"), Size[1], 0.15);
+	}
+
+	// Midpoint of the two endpoints, in the body's frame.
+	const FMjPosition3 Pos = Cap->GetPos();
+	TestEqual(TEXT("pos X is the midpoint"), Pos.X, 0.0);
+	TestEqual(TEXT("pos Y is the midpoint"), Pos.Y, 0.0);
+	TestEqual(TEXT("pos Z is the midpoint"), Pos.Z, 0.0);
+
+	if (!S.Compile())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	const mjModel* M = S.Model();
+	if (!TestNotNull(TEXT("compiled model"), (void*)M))
+		return false;
+
+	// Found by shape rather than by name: the scene assembly prefixes compiled
+	// names with the actor's, and there is only one geom in this model.
+	int32 GeomId = -1;
+	for (int i = 0; i < M->ngeom; ++i)
+	{
+		if (M->geom_type[i] == mjGEOM_CAPSULE)
+		{
+			GeomId = i;
+			break;
+		}
+	}
+	if (!TestTrue(TEXT("the capsule is in the compiled model"), GeomId >= 0))
+		return false;
+
+	TestTrue(TEXT("radius ≈ 0.05"),
+		FMath::IsNearlyEqual((float)M->geom_size[GeomId * 3 + 0], 0.05f, 1e-4f));
 	TestTrue(TEXT("HalfLength resolved to ~0.15"),
-		FMath::IsNearlyEqual(Cap->HalfLength, 0.15f, 1e-4f));
+		FMath::IsNearlyEqual((float)M->geom_size[GeomId * 3 + 1], 0.15f, 1e-4f));
 	return true;
 }
 

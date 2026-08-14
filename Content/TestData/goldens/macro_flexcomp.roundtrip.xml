@@ -1,0 +1,15 @@
+<mujoco model="macro_flexcomp">
+  <default>
+    <default class="flex_default">
+      <geom rgba="0.2 0.6 0.9 1"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="flex_root" childclass="flex_default" pos="0 0 2">
+      <geom name="flex_anchor" type="sphere" size="0.02"/>
+      <flexcomp name="cloth" type="grid" dim="2" count="4 4 1" spacing="0.1 0.1 0.1" radius="0.01" mass="1">
+        <edge equality="true"/>
+      </flexcomp>
+    </body>
+  </worldbody>
+</mujoco>

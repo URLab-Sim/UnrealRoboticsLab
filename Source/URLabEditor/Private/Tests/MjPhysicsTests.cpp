@@ -24,9 +24,11 @@
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
+#include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjJointRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
 #include "Engine/World.h"
 #include "mujoco/mujoco.h"
 
@@ -138,8 +140,9 @@ bool FMjPhysicsGravityApplied::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Physics.GeomViewBoundToModel
-//   The GeomView's internal model pointer must match Manager->PhysicsEngine->m_model,
-//   confirming that Bind() was called with the correct model after compilation.
+//   An element retains an id and nothing else, so "bound to the right model" is
+//   the statement that the id it carries is the id its compiled name resolves to
+//   in the model the manager holds.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsGeomViewBoundToModel,
 	"URLab.Physics.GeomViewBoundToModel",
@@ -154,8 +157,11 @@ bool FMjPhysicsGeomViewBoundToModel::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	TestTrue(TEXT("Geom->m_GeomView._m should equal Manager->PhysicsEngine->m_model"),
-		S.Geom->m_GeomView._m == S.Manager->PhysicsEngine->m_model);
+	const int32 FromModel = S.MjId(mjOBJ_GEOM, TEXT("TestGeom"));
+	TestTrue(TEXT("the geom survived the compile"), FromModel >= 0);
+	TestTrue(TEXT("Geom should be bound"), S.Geom->GetBoundId().IsSet());
+	TestEqual(TEXT("Geom's bound id is the id its name resolves to in the manager's model"),
+		S.Geom->GetBoundId().Get(-1), FromModel);
 
 	S.Cleanup();
 	return true;
@@ -174,20 +180,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsJointSetAndGetPosition,
 bool FMjPhysicsJointSetAndGetPosition::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& S) {
-			S.Joint->Type = EMjJointType::Hinge;
-			S.Joint->bOverride_Type = true;
+	if (!S.Init([](FMjUESession& Sess) {
+			Sess.Joint->SetType(EMjJointType::hinge);
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	S.Joint->SetPosition(1.2f);
+	UMjJointRuntime::SetPosition(S.Joint, 1.2f);
 	mj_forward(S.Manager->PhysicsEngine->m_model, S.Manager->PhysicsEngine->m_data);
 
-	TestTrue(TEXT("Joint->GetPosition() should equal 1.2f within 0.001"),
-		FMath::Abs(S.Joint->GetPosition() - 1.2f) < 0.001f);
+	TestTrue(TEXT("GetPosition() should equal 1.2f within 0.001"),
+		FMath::Abs(UMjJointRuntime::GetPosition(S.Joint) - 1.2f) < 0.001f);
 
 	S.Cleanup();
 	return true;
@@ -205,9 +210,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsJointGetPositionAfterStep,
 bool FMjPhysicsJointGetPositionAfterStep::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& S) {
-			S.Joint->Type = EMjJointType::Hinge;
-			S.Joint->bOverride_Type = true;
+	if (!S.Init([](FMjUESession& Sess) {
+			Sess.Joint->SetType(EMjJointType::hinge);
 		}))
 	{
 		AddError(S.LastError);
@@ -216,8 +220,8 @@ bool FMjPhysicsJointGetPositionAfterStep::RunTest(const FString& Parameters)
 
 	S.Step(5);
 
-	TestTrue(TEXT("Joint->GetPosition() should be a finite value after 5 steps"),
-		FMath::IsFinite(S.Joint->GetPosition()));
+	TestTrue(TEXT("GetPosition() should be a finite value after 5 steps"),
+		FMath::IsFinite(UMjJointRuntime::GetPosition(S.Joint)));
 
 	S.Cleanup();
 	return true;
@@ -257,8 +261,7 @@ bool FMjPhysicsResetResetsTime::RunTest(const FString& Parameters)
 // ============================================================================
 // URLab.Physics.GravityScaleIntegration
 //   ApplyOptions() must divide UE cm/s² by 100 before writing to mjOpt.
-//   Set Gravity=(0,0,-980) cm/s² → m_model->opt.gravity[2] must ≈ -9.80 m/s².
-//   Verifies Fix 3.6.
+//   Set <option gravity="0 0 -9.80"> → m_model->opt.gravity[2] must ≈ -9.80.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsGravityScaleIntegration,
 	"URLab.Physics.GravityScaleIntegration",
@@ -268,7 +271,7 @@ bool FMjPhysicsGravityScaleIntegration::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.Gravity = FVector(0.0f, 0.0f, -980.0f); // 9.80 m/s² earth gravity
+			Sess.Manager->SceneOption->Gravity = FMjDirection3(0.0, 0.0, -9.80); // earth gravity, MJCF units
 		}))
 	{
 		AddError(S.LastError);
@@ -279,7 +282,7 @@ bool FMjPhysicsGravityScaleIntegration::RunTest(const FString& Parameters)
 		FMath::Abs((float)S.Manager->PhysicsEngine->m_model->opt.gravity[0]) < 1e-5f);
 	TestTrue(TEXT("gravity Y ≈ 0"),
 		FMath::Abs((float)S.Manager->PhysicsEngine->m_model->opt.gravity[1]) < 1e-5f);
-	TestTrue(TEXT("gravity Z ≈ -9.80 m/s² (divided by 100 from -980 cm/s²)"),
+	TestTrue(TEXT("gravity Z ≈ -9.80 m/s²"),
 		FMath::Abs((float)(S.Manager->PhysicsEngine->m_model->opt.gravity[2] + 9.80f)) < 0.05f);
 
 	S.Cleanup();
@@ -287,30 +290,28 @@ bool FMjPhysicsGravityScaleIntegration::RunTest(const FString& Parameters)
 }
 
 // ============================================================================
-// URLab.Physics.GravityYNegate_Integration
-//   Y component of gravity must be negated (UE→MuJoCo handedness flip).
-//   Set Gravity=(0,100,0) cm/s² → m_model->opt.gravity[1] must ≈ -1.0 m/s².
-//   Verifies Fix 3.6 Y-negate path.
+// URLab.Physics.GravityFrame_Integration
+//   The spec holds MuJoCo's own frame, so <option gravity="0 1 0">
+//   reaches m_model->opt.gravity[1] unchanged.
 // ============================================================================
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsGravityYNegate_Integration,
-	"URLab.Physics.GravityYNegate_Integration",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsGravityFrame_Integration,
+	"URLab.Physics.GravityFrame_Integration",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FMjPhysicsGravityYNegate_Integration::RunTest(const FString& Parameters)
+bool FMjPhysicsGravityFrame_Integration::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bOverride_Gravity = true;
-			Sess.Manager->PhysicsEngine->Options.Gravity = FVector(0.0f, 100.0f, 0.0f); // 1 m/s² along UE +Y
+			Sess.Manager->SceneOption->Gravity = FMjDirection3(0.0, 1.0, 0.0); // 1 m/s² along MuJoCo +Y
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	// UE +Y → MuJoCo -Y (handedness flip)
-	TestTrue(TEXT("gravity Y ≈ -1.0 m/s² (negated from +100 cm/s²)"),
-		FMath::Abs((float)(S.Manager->PhysicsEngine->m_model->opt.gravity[1] + 1.0f)) < 0.05f);
+	// No handedness flip: <option gravity> is MuJoCo's own frame on both sides.
+	TestTrue(TEXT("gravity Y ≈ +1.0 m/s², carried through unchanged"),
+		FMath::Abs((float)(S.Manager->PhysicsEngine->m_model->opt.gravity[1] - 1.0f)) < 0.05f);
 
 	S.Cleanup();
 	return true;
@@ -318,8 +319,10 @@ bool FMjPhysicsGravityYNegate_Integration::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Physics.JointAxis_Compile
-//   UMjJoint with Axis=(0,1,0) must export MuJoCo jnt_axis (0,-1,0).
-//   Verifies Fix 3.5: axis is treated as a direction vector with Y-negate.
+//   The spec holds MuJoCo's own frame, so an authored axis of (0,1,0)
+//   reaches jnt_axis as (0,1,0). The handedness fix belongs to the editor
+//   preview, which derives a component transform from the authored pose; it is
+//   not applied to authored attribute values on the way to the compiler.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsJointAxis_Compile,
 	"URLab.Physics.JointAxis_Compile",
@@ -329,33 +332,22 @@ bool FMjPhysicsJointAxis_Compile::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-			Sess.Joint->Axis = FVector(0.0f, 1.0f, 0.0f);
-			Sess.Joint->bOverride_Axis = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
+			Sess.Joint->SetAxis(FMjDirection3(0.0, 1.0, 0.0));
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	// Locate the hinge joint by type — name lookup is fragile due to UE component naming.
-	// The session has exactly one user joint. Find it by iterating jnt_type[].
-	int jid = -1;
-	for (int j = 0; j < S.Manager->PhysicsEngine->m_model->njnt; ++j)
-	{
-		if (S.Manager->PhysicsEngine->m_model->jnt_type[j] == mjJNT_HINGE)
-		{
-			jid = j;
-			break;
-		}
-	}
+	const int jid = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
 	TestTrue(TEXT("hinge joint found in compiled model"), jid >= 0);
 	if (jid >= 0)
 	{
 		const mjtNum* ax = &S.Manager->PhysicsEngine->m_model->jnt_axis[3 * jid];
 		TestTrue(TEXT("MJ jnt_axis X ≈ 0"), FMath::Abs((float)ax[0]) < 1e-4f);
-		TestTrue(TEXT("MJ jnt_axis Y ≈ -1"), FMath::Abs((float)(ax[1] + 1.0f)) < 1e-4f);
+		TestTrue(TEXT("MJ jnt_axis Y ≈ 1, carried through unchanged"),
+			FMath::Abs((float)(ax[1] - 1.0f)) < 1e-4f);
 		TestTrue(TEXT("MJ jnt_axis Z ≈ 0"), FMath::Abs((float)ax[2]) < 1e-4f);
 	}
 
@@ -369,7 +361,7 @@ bool FMjPhysicsJointAxis_Compile::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Physics.Sleep_EnableFlagSet
-//   When Options.bEnableSleep is true, ApplyOptions() must set mjENBL_SLEEP.
+//   When <flag sleep="enable"> is authored, ApplyOptions() must set mjENBL_SLEEP.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsSleep_EnableFlagSet,
 	"URLab.Physics.Sleep_EnableFlagSet",
@@ -379,18 +371,17 @@ bool FMjPhysicsSleep_EnableFlagSet::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
-			Sess.Manager->PhysicsEngine->Options.SleepTolerance = 1e-3f;
+			Sess.Manager->SceneFlags->Sleep = EMjEnable::enable;
+			Sess.Manager->SceneOption->SleepTolerance = 1e-3;
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
-	TestTrue(TEXT("mjENBL_SLEEP bit set when bEnableSleep=true"),
-		(S.Manager->PhysicsEngine->m_model->opt.enableflags & MJ_ENBL_SLEEP) != 0);
-	TestTrue(TEXT("sleep_tolerance matches Options.SleepTolerance"),
+	TestTrue(TEXT("mjENBL_SLEEP bit set when sleep=enable"),
+		(S.Manager->PhysicsEngine->m_model->opt.enableflags & mjENBL_SLEEP) != 0);
+	TestTrue(TEXT("sleep_tolerance matches the authored <option sleep_tolerance>"),
 		FMath::Abs((float)S.Manager->PhysicsEngine->m_model->opt.sleep_tolerance - 1e-3f) < 1e-6f);
 
 	S.Cleanup();
@@ -399,7 +390,7 @@ bool FMjPhysicsSleep_EnableFlagSet::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Physics.Sleep_DisableFlagClear
-//   When Options.bEnableSleep is false (default), mjENBL_SLEEP must NOT be set.
+//   With no authored <flag sleep>, mjENBL_SLEEP must NOT be set.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsSleep_DisableFlagClear,
 	"URLab.Physics.Sleep_DisableFlagClear",
@@ -414,9 +405,8 @@ bool FMjPhysicsSleep_DisableFlagClear::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	constexpr int MJ_ENBL_SLEEP = 1 << 5;
-	TestTrue(TEXT("mjENBL_SLEEP NOT set when bEnableSleep=false (default)"),
-		(S.Manager->PhysicsEngine->m_model->opt.enableflags & MJ_ENBL_SLEEP) == 0);
+	TestTrue(TEXT("mjENBL_SLEEP NOT set when <flag sleep> is unauthored"),
+		(S.Manager->PhysicsEngine->m_model->opt.enableflags & mjENBL_SLEEP) == 0);
 
 	S.Cleanup();
 	return true;
@@ -434,14 +424,14 @@ bool FMjPhysicsSleep_BodyIsAwakeByDefault::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
+			Sess.Manager->SceneFlags->Sleep = EMjEnable::enable;
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	int BodyId = S.Body->GetMj().id;
+	const int32 BodyId = S.Body->GetBoundId().Get(-1);
 	TestTrue(TEXT("Body ID is valid"), BodyId > 0);
 	if (BodyId > 0)
 	{
@@ -465,7 +455,7 @@ bool FMjPhysicsSleep_IsAwakeReturnsTrue::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
+			Sess.Manager->SceneFlags->Sleep = EMjEnable::enable;
 		}))
 	{
 		AddError(S.LastError);
@@ -480,8 +470,11 @@ bool FMjPhysicsSleep_IsAwakeReturnsTrue::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Physics.Sleep_BodySleepPolicyAllowed
-//   SleepPolicy=Allowed on UMjBody must compile to mjSLEEP_ALLOWED (4) in
-//   the model's tree_sleep_policy for that body's tree.
+//   <body sleep="allowed"> must compile to mjSLEEP_ALLOWED in the model's
+//   tree_sleep_policy for that body's tree. The schema enum and mjtSleepPolicy
+//   do not share ordinals -- the schema has four spellings and MuJoCo six
+//   policies -- so the authored value is EMjBodySleep::allowed and the
+//   compiled value is mjSLEEP_ALLOWED, and this is where the two are joined.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjPhysicsSleep_BodySleepPolicyAllowed,
 	"URLab.Physics.Sleep_BodySleepPolicyAllowed",
@@ -491,16 +484,15 @@ bool FMjPhysicsSleep_BodySleepPolicyAllowed::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
-			Sess.Body->SleepPolicy = EMjBodySleepPolicy::Allowed;
-			Sess.Body->bOverride_SleepPolicy = true; // v8: explicit toggle required to write per-body policy
+			Sess.Manager->SceneFlags->Sleep = EMjEnable::enable;
+			Sess.Body->SetSleep(EMjBodySleep::allowed);
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	int BodyId = S.Body->GetMj().id;
+	const int32 BodyId = S.Body->GetBoundId().Get(-1);
 	TestTrue(TEXT("Body ID valid"), BodyId > 0);
 	if (BodyId > 0)
 	{
@@ -508,9 +500,9 @@ bool FMjPhysicsSleep_BodySleepPolicyAllowed::RunTest(const FString& Parameters)
 		TestTrue(TEXT("TreeId valid"), TreeId >= 0);
 		if (TreeId >= 0)
 		{
-			// mjSLEEP_ALLOWED = 4
-			TestTrue(TEXT("tree_sleep_policy == mjSLEEP_ALLOWED (4)"),
-				S.Manager->PhysicsEngine->m_model->tree_sleep_policy[TreeId] == 4);
+			TestEqual(TEXT("tree_sleep_policy == mjSLEEP_ALLOWED"),
+				(int)S.Manager->PhysicsEngine->m_model->tree_sleep_policy[TreeId],
+				(int)mjSLEEP_ALLOWED);
 		}
 	}
 
@@ -530,14 +522,14 @@ bool FMjPhysicsSleep_WakeBodyRestoresAwakeState::RunTest(const FString& Paramete
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
+			Sess.Manager->SceneFlags->Sleep = EMjEnable::enable;
 		}))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
-	int BodyId = S.Body->GetMj().id;
+	const int32 BodyId = S.Body->GetBoundId().Get(-1);
 	TestTrue(TEXT("Body ID valid"), BodyId > 0);
 	if (BodyId > 0)
 	{
@@ -579,7 +571,7 @@ bool FMjPhysicsSleep_ForceSleepBody::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Manager->PhysicsEngine->Options.bEnableSleep = true;
+			Sess.Manager->SceneFlags->Sleep = EMjEnable::enable;
 		}))
 	{
 		AddError(S.LastError);

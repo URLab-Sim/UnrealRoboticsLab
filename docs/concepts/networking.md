@@ -112,20 +112,22 @@ See the [Sensors and Cameras guide](../guides/sensors_cameras.md).
 
 ## Streaming wire format
 
-In `live` mode the continuous PUB streams are the channel any
-cross-language consumer reads (the ROS 2 bridge included). The rows are
-fixed binary, and topics are `{ArticPrefix}/{suffix}`.
+There is one snapshot per physics tick, not one message per element.
+The physics thread hands `FMjStateCollector` the model and data, the
+collector produces a transport-neutral `FMjStateSnapshot`, and
+`FMjMsgpackEncoder` turns that into a single msgpack blob that every
+publisher sends whole through `IMjSnapshotPublisher::PublishSnapshot`.
+The ROS transport reads the same snapshot and publishes it as ROS
+messages instead.
 
-| Topic | Source | Row layout |
-|---|---|---|
-| `{prefix}/base_state/{name}` | `UMjFreeJoint::BuildBinaryPayload` | `13 x float32` (52 bytes): `pos[3]`, `quat[4]` ordered **xyzw**, `linvel[3]`, `angvel[3]` |
-| `{prefix}/sensor/{name}` | `UMjSensor::BuildBinaryPayload` | `int32 id`, `int32 dim`, `float[dim]` |
-| `{prefix}/joint/{name}` | `UMjJoint::BuildBinaryPayload` | `int32 id`, `float pos`, `float vel`, `float acc` |
+The snapshot carries `op`, `time`, `step`, a `scene` object, and an
+`arts` object keyed by articulation name. Each articulation holds
+`qpos`, `qvel`, `ctrl`, `act`, `actuator_force`, a `sensors` object and
+a `bodies` object keyed by name, plus `twist` and `actions` when the
+articulation has a twist controller.
 
-!!! warning "Free-joint row format"
-    The `base_state` row is 13 float32 values with the quaternion in
-    `xyzw` order, and it includes linear and angular velocity. It is not
-    7 float64 values and not `wxyz`.
+How much of that is sent is set by `EObservationLevel`: `Minimal`,
+`Standard`, or `Full`.
 
 For the full Python-facing wire contract (handshake, step / reset,
 runtime mutators, error codes) see

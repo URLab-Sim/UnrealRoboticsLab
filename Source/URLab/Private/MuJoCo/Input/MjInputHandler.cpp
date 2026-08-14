@@ -56,7 +56,7 @@ private:
 };
 #include "Cinematics/MjOrbitCameraActor.h"
 #include "Cinematics/MjKeyframeCameraActor.h"
-#include "MuJoCo/Components/Forces/MjImpulseLauncher.h"
+#include "MuJoCo/Forces/MjImpulseLauncher.h"
 #include "Utils/URLabLogging.h"
 
 UMjInputHandler::UMjInputHandler()

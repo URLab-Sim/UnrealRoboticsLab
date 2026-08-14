@@ -38,15 +38,26 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "MjTestHelpers.h"
-#include "Bridge/OpRegistry.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/OpRegistry.h"
 #include "Bridge/BridgeServer.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Bridge/MsgpackHelpers.h"
-#include "MuJoCo/Components/Controllers/MjPDController.h"
-#include "MuJoCo/Components/Sensors/MjCamera.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
+#include "Bridge/RpcErrorCodes.h"
+#include "State/MjStateCollector.h"
+#include "State/MjMsgpackEncoder.h"
+#include "State/MjStateTypes.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Controllers/MjPDController.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjActuator.gen.h"
+#include "MuJoCo/Gen/Elements/Joints/MjJoint.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjPosition.gen.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -114,7 +125,7 @@ bool FMjStepServerNoManagerGuard::RunTest(const FString& Parameters)
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
 		TestEqual(*FString::Printf(TEXT("op %s -> no_active_manager"), *Op),
-			Code, FString(TEXT("no_active_manager")));
+			Code, FString(URLabError::NoActiveManager));
 	};
 
 	AssertNoManager(TEXT("step"));
@@ -257,9 +268,11 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 	}
 
 	Disp->SetActiveStepMode(EStepMode::Direct);
-	TestTrue(TEXT("Direct mode flips manager pause flag true"),
+	TestTrue(TEXT("Direct mode flips manager (state/ctrl) pause flag true"),
 		S.Manager->bPublishersPaused.load());
-	TestTrue(TEXT("Direct mode flips camera pause flag true"),
+	// Cameras stream in EVERY step mode now (decoupled from the step reply),
+	// so the camera publisher pause flag must stay false regardless of mode.
+	TestFalse(TEXT("Direct mode keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 	TestEqual(TEXT("ActiveStepMode reflects the switch"),
 		(int)Disp->GetActiveStepMode(), (int)EStepMode::Direct);
@@ -267,12 +280,14 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 	Disp->SetActiveStepMode(EStepMode::Live);
 	TestFalse(TEXT("Live resets manager pause flag"),
 		S.Manager->bPublishersPaused.load());
-	TestFalse(TEXT("Live resets camera pause flag"),
+	TestFalse(TEXT("Live keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 
 	Disp->SetActiveStepMode(EStepMode::Puppet);
-	TestTrue(TEXT("Puppet mode flips pause flag true"),
+	TestTrue(TEXT("Puppet mode flips manager pause flag true"),
 		S.Manager->bPublishersPaused.load());
+	TestFalse(TEXT("Puppet mode keeps camera publishers live"),
+		FCameraZmqWorker::bPublishersPaused.load());
 
 	// Cleanup: leave the camera worker pause flag reset for downstream tests.
 	Disp->SetActiveStepMode(EStepMode::Live);
@@ -282,14 +297,15 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 1b. EffectiveStepMode mirrors the resolved mode (regression: live 10 Hz lock)
-//     The physics loop paces off Manager->EffectiveStepMode. StepMode defaults
-//     to Auto; if that does not resolve to Live the loop falls into the
-//     step-request wait path and ticks at the 100 ms timeout (~10 Hz) instead
-//     of running real-time.
+// 1b. The engine's resolved step mode tracks the dispatcher (regression: live
+//     10 Hz lock). The physics loop paces off PhysicsEngine->GetStepMode().
+//     StepMode defaults to Auto; if that does not resolve to Live the loop
+//     falls into the step-request wait path and ticks at the 100 ms timeout
+//     (~10 Hz) instead of running real-time. Each SetActiveStepMode must push
+//     the resolved mode down to the engine via the step strategy's OnEnter.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerEffectiveMode,
-	"URLab.StepServer.EffectiveStepMode",
+	"URLab.StepServer.ResolvedStepMode",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
@@ -301,11 +317,12 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// StepMode is Auto by default; RegisterManager must resolve+mirror it to Live.
+	// StepMode is Auto by default; RegisterManager must resolve it to Live and
+	// push that down to the engine the physics worker paces off.
 	TestEqual(TEXT("configured StepMode is Auto"),
 		(int)S.Manager->StepMode, (int)EStepMode::Auto);
-	TestEqual(TEXT("EffectiveStepMode resolves Auto -> Live"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Live);
+	TestEqual(TEXT("engine resolves Auto -> Live"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Live);
 
 	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
 	if (!Disp)
@@ -316,16 +333,16 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 	}
 
 	Disp->SetActiveStepMode(EStepMode::Direct);
-	TestEqual(TEXT("EffectiveStepMode tracks Direct"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Direct);
+	TestEqual(TEXT("engine tracks Direct"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Direct);
 
 	Disp->SetActiveStepMode(EStepMode::Puppet);
-	TestEqual(TEXT("EffectiveStepMode tracks Puppet"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Puppet);
+	TestEqual(TEXT("engine tracks Puppet"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Puppet);
 
 	Disp->SetActiveStepMode(EStepMode::Live);
-	TestEqual(TEXT("EffectiveStepMode tracks Live"),
-		(int)S.Manager->EffectiveStepMode.load(), (int)EStepMode::Live);
+	TestEqual(TEXT("engine tracks Live"),
+		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Live);
 
 	S.Cleanup();
 	return true;
@@ -527,7 +544,9 @@ bool FMjStepServerSessionId::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 5. Puppet mode push-state writes qpos/qvel and fires OnPostStep
+// 5. Puppet mode: a step RPC pushes qpos/qvel/time inline and fires OnPostStep.
+//    Drives the real dispatch path (SetActiveStepMode(Puppet) + step op) rather
+//    than a dead test-only queue.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerPuppetHandler,
 	"URLab.StepServer.PuppetHandler",
@@ -550,6 +569,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 		return false;
 	}
 	Disp->SetActiveStepMode(EStepMode::Puppet);
+	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
 
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
@@ -565,28 +585,24 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 		OnPostStepCount++;
 	};
 
-	// Build a push-state request that sets qpos[0] and qvel[0] to known values.
-	FMjPushStateRequest Req;
-	Req.QPos.SetNum(m->nq);
-	Req.QVel.SetNum(m->nv);
-	if (m->nq > 0)
-		Req.QPos[0] = 0.42;
-	if (m->nv > 0)
-		Req.QVel[0] = 0.13;
-	Req.Time = 1.5;
+	// Build a step request that pushes a full qpos/qvel with known slot-0 values.
+	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
+	Req->SetStringField(TEXT("op"), TEXT("step"));
+	Req->SetStringField(TEXT("session_id"), TEXT("test-session"));
+	TArray<TSharedPtr<FJsonValue>> QPos;
+	for (int i = 0; i < m->nq; ++i)
+		QPos.Add(MakeShared<FJsonValueNumber>(i == 0 ? 0.42 : 0.0));
+	TArray<TSharedPtr<FJsonValue>> QVel;
+	for (int i = 0; i < m->nv; ++i)
+		QVel.Add(MakeShared<FJsonValueNumber>(i == 0 ? 0.13 : 0.0));
+	Req->SetArrayField(TEXT("qpos"), QPos);
+	Req->SetArrayField(TEXT("qvel"), QVel);
+	Req->SetNumberField(TEXT("time"), 1.5);
 
-	Disp->EnqueuePushStateRequestForTest(MoveTemp(Req));
-
-	// Drive the engine's CustomStepHandler explicitly. The puppet handler
-	// dequeues, writes, calls mj_forward, and fires OnPostStep.
-	if (S.Manager->PhysicsEngine->CustomStepHandler)
-	{
-		S.Manager->PhysicsEngine->CustomStepHandler(m, d);
-	}
-	else
-	{
-		AddError(TEXT("CustomStepHandler not installed in Puppet mode"));
-	}
+	TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
+	FString Op;
+	Reply->TryGetStringField(TEXT("op"), Op);
+	TestEqual(TEXT("puppet step -> step_ok"), Op, FString(TEXT("step_ok")));
 
 	if (m->nq > 0)
 		TestEqual(TEXT("qpos[0] written"), (double)d->qpos[0], 0.42, 1e-9);
@@ -603,7 +619,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 6. Direct mode ApplyStepCtrl writes ctrl through actuator NetworkValue
+// 6. Direct mode ApplyStepCtrl writes ctrl for the named actuator
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerDirectCtrl,
 	"URLab.StepServer.DirectCtrl",
@@ -614,12 +630,14 @@ bool FMjStepServerDirectCtrl::RunTest(const FString& Parameters)
 	// Articulation with one slide joint + position actuator
 	FMjUESession S;
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Slide;
-			UMjActuator* A = NewObject<UMjActuator>(Sess.Robot, TEXT("TestActuator"));
-			A->Type = EMjActuatorType::Position;
-			A->TargetName = Sess.Joint->GetName();
-			A->RegisterComponent();
-			A->AttachToComponent(Sess.Robot->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+			Sess.Joint->SetType(EMjJointType::slide);
+			// The actuator kind is the element: <position> under the spec's
+			// <actuator> section, rather than an enum on one actuator class.
+			UMjActuator* Section = Sess.Add<UMjActuator>(Sess.Robot->Spec);
+			if (Section == nullptr)
+				return;
+			if (UMjPosition* A = Sess.Add<UMjPosition>(Section, TEXT("TestActuator")))
+				A->SetJoint(Sess.Joint->MjName.GetValue());
 		}))
 	{
 		// The session may not finish due to actuator wiring. Skip without erroring.
@@ -647,29 +665,36 @@ bool FMjStepServerDirectCtrl::RunTest(const FString& Parameters)
 		return true;
 	}
 	AMjArticulation* Art = Arts[0];
-	TArray<UMjActuator*> Acts = Art->GetActuators();
+	TArray<UMjNodeComponent*> Acts = Art->GetActuators();
 	if (Acts.Num() == 0)
 	{
 		AddInfo(TEXT("Skipping DirectCtrl: articulation has no actuators"));
 		S.Cleanup();
 		return true;
 	}
-	FString Local = Acts[0]->GetMjName();
-	FString Pfx = Art->GetName() + TEXT("_");
+	const int32 Aid = S.MjId(mjOBJ_ACTUATOR, TEXT("TestActuator"));
+	if (Aid < 0)
+	{
+		AddInfo(TEXT("Skipping DirectCtrl: actuator did not compile"));
+		S.Cleanup();
+		return true;
+	}
+	FString Local = Acts[0]->MjName.Get(Acts[0]->GetName());
+	FString Pfx = Art->GetCompiledPrefix();
 	if (Local.StartsWith(Pfx))
 		Local = Local.Mid(Pfx.Len());
 	Req.PerArticulationCtrl.FindOrAdd(Art->GetName()).Add({Local, 0.7f});
 	// Force raw write so the test path doesn't depend on a live controller.
 	Req.PerArticulationControlMode.Add(Art->GetName(), TEXT("raw"));
 
-	// ApplyStepCtrl stages writes on each actuator's NetworkValue. The
-	// copy into d->ctrl happens inside Art->ApplyControls(...) once per
-	// sub-step; passing bSkipController=true mirrors the bridge's
-	// control_mode="raw" path so we land NetworkValue → d->ctrl without
-	// controller transformation.
+	// ApplyStepCtrl stages control on the articulation's network slot for the
+	// named actuator; the copy into d->ctrl happens inside ApplyControls once
+	// per sub-step. control_mode="raw" is the bridge's bypass -- ApplyStepCtrl
+	// writes d->ctrl outright and ApplyControls(bSkipController) leaves it
+	// alone, so what lands is the requested value untransformed.
 	FURLabRpcDispatcher::ApplyStepCtrl(S.Manager, Req, m, d);
 	Art->ApplyControls(/*bSkipController=*/true);
-	TestEqual(TEXT("d->ctrl[0] written by raw path"), (double)d->ctrl[0], 0.7, 1e-6);
+	TestEqual(TEXT("d->ctrl written by raw path"), (double)d->ctrl[Aid], 0.7, 1e-6);
 
 	S.Cleanup();
 	return true;
@@ -821,9 +846,17 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// The IR is built once; the msgpack encoder applies the observation-level
+	// filter. RebuildProducerCacheGameThread runs at PostCompile, but call it
+	// explicitly so the test does not depend on that ordering.
+	FMjStateCollector& Collector = S.Manager->GetStateCollector();
+	Collector.Init(S.Manager);
+	Collector.RebuildProducerCacheGameThread();
+	const FMjStateSnapshot& Snap = Collector.Collect(m, d, 0);
+
 	// Minimal: qpos / qvel only.
-	TSharedPtr<FJsonObject> Min = FURLabRpcDispatcher::BuildStepObservations(
-		S.Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Minimal);
+	TSharedPtr<FJsonObject> Min = FMjMsgpackEncoder::EncodeArts(
+		Snap, EObservationLevel::Minimal);
 	TestTrue(TEXT("Minimal returns object"), Min.IsValid());
 	if (Min.IsValid() && Min->Values.Num() > 0)
 	{
@@ -841,8 +874,8 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 	}
 
 	// Standard: minimal + ctrl + act + sensors.
-	TSharedPtr<FJsonObject> Std = FURLabRpcDispatcher::BuildStepObservations(
-		S.Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Standard);
+	TSharedPtr<FJsonObject> Std = FMjMsgpackEncoder::EncodeArts(
+		Snap, EObservationLevel::Standard);
 	if (Std.IsValid() && Std->Values.Num() > 0)
 	{
 		const TSharedPtr<FJsonObject>* Art = nullptr;
@@ -859,8 +892,8 @@ bool FMjStepServerObservationLevels::RunTest(const FString& Parameters)
 	}
 
 	// Full: standard + bodies + actuator_force.
-	TSharedPtr<FJsonObject> Full = FURLabRpcDispatcher::BuildStepObservations(
-		S.Manager, m, d, FURLabRpcDispatcher::EObservationLevel::Full);
+	TSharedPtr<FJsonObject> Full = FMjMsgpackEncoder::EncodeArts(
+		Snap, EObservationLevel::Full);
 	if (Full.IsValid() && Full->Values.Num() > 0)
 	{
 		const TSharedPtr<FJsonObject>* Art = nullptr;
@@ -922,7 +955,7 @@ bool FMjStepServerXfrcApplied::RunTest(const FString& Parameters)
 	UMjBody* B = nullptr;
 	for (UMjBody* Bd : Bodies)
 	{
-		if (Bd && !Bd->bIsDefault)
+		if (Bd && Bd->GetBoundId().IsSet())
 		{
 			B = Bd;
 			break;
@@ -934,15 +967,16 @@ bool FMjStepServerXfrcApplied::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	int32 BodyId = B->GetMjID();
+	int32 BodyId = B->GetBoundId().GetValue();
 	if (BodyId <= 0 || BodyId >= m->nbody)
 	{
 		S.Cleanup();
 		return true;
 	}
 
-	// Resolve the actual body name from the compiled model (the test
-	// helper doesn't set MjName explicitly, so we read mj_id2name).
+	// Resolve the body name from the compiled model rather than the spec:
+	// scene assembly prefixes every participant's names, so the authored name
+	// is not the one ApplyStepCtrl has to match.
 	const char* BodyNameC = mj_id2name(m, mjOBJ_BODY, BodyId);
 	if (!BodyNameC)
 	{
@@ -971,7 +1005,10 @@ bool FMjStepServerXfrcApplied::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 11. ApplyControls is gated when StepMode == Puppet
+// 11. ApplyControls gate input: the physics worker skips its ApplyControls pass
+//     when the resolved step mode is Puppet (client pushes qpos/qvel directly).
+//     The worker reads ResolvedStepMode, surfaced by GetStepMode(); verify
+//     SetStepMode drives that authoritative value the gate keys off.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerApplyControlsGate,
 	"URLab.StepServer.ApplyControlsGate",
@@ -979,11 +1016,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerApplyControlsGate,
 
 bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 {
-	// Verify that AAMjManager::StepMode == Puppet causes the engine's
-	// ApplyControls call site to be skipped. The engine's async loop is
-	// not running in tests, but the gate logic is observable through the
-	// StepMode property that the call site reads on each iteration. The
-	// critical invariant: StepMode is a UPROPERTY visible to the gate.
 	FMjUESession S;
 	if (!S.Init())
 	{
@@ -991,29 +1023,29 @@ bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Initial mode is Auto.
-	TestEqual(TEXT("Default StepMode is Auto"),
-		(int)S.Manager->StepMode, (int)EStepMode::Auto);
-
-	// Puppet mode — the engine's ApplyControls gate should now report skip.
-	S.Manager->StepMode = EStepMode::Puppet;
-	TestEqual(TEXT("StepMode set to Puppet"),
-		(int)S.Manager->StepMode, (int)EStepMode::Puppet);
-
-	// The gate itself: in MjPhysicsEngine.cpp we call
-	//   if (Cast<AAMjManager>(GetOwner())->StepMode == EStepMode::Puppet) skip;
-	// This unit-level test verifies the property is reachable via Cast,
-	// mirroring the gate's own access pattern.
-	AAMjManager* OwnerMgr = Cast<AAMjManager>(S.Manager->PhysicsEngine->GetOwner());
-	TestNotNull(TEXT("PhysicsEngine owner is AAMjManager"), OwnerMgr);
-	if (OwnerMgr)
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+	if (!Engine)
 	{
-		TestEqual(TEXT("Engine sees Puppet StepMode through GetOwner()"),
-			(int)OwnerMgr->StepMode, (int)EStepMode::Puppet);
+		AddError(TEXT("Manager has no PhysicsEngine"));
+		S.Cleanup();
+		return false;
 	}
 
-	// Restore so other tests aren't affected.
-	S.Manager->StepMode = EStepMode::Auto;
+	// The gate in RunMujocoAsync is `bSkipApplyControls = (Mode == Puppet)`,
+	// where Mode == ResolvedStepMode. SetStepMode is the single writer.
+	Engine->SetStepMode(EStepMode::Puppet);
+	TestEqual(TEXT("resolved mode is Puppet (ApplyControls skipped)"),
+		(int)Engine->GetStepMode(), (int)EStepMode::Puppet);
+
+	Engine->SetStepMode(EStepMode::Direct);
+	TestEqual(TEXT("resolved mode is Direct (ApplyControls runs)"),
+		(int)Engine->GetStepMode(), (int)EStepMode::Direct);
+
+	// Auto resolves to Live, and Live runs the ApplyControls pass too.
+	Engine->SetStepMode(EStepMode::Auto);
+	TestEqual(TEXT("Auto resolves to Live (ApplyControls runs)"),
+		(int)Engine->GetStepMode(), (int)EStepMode::Live);
+
 	S.Cleanup();
 	return true;
 }
@@ -1085,6 +1117,64 @@ bool FMjStepServerDirectHandler::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
+// 12b. Render frame id advances only when the sim state actually advances.
+//      An idle worker wake (step handler dequeues nothing) must report no
+//      advance and leave the frame id unchanged; a real step bumps it by one.
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerFrameIdGating,
+	"URLab.StepServer.FrameIdGating",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjStepServerFrameIdGating::RunTest(const FString& Parameters)
+{
+	FMjUESession S;
+	if (!S.Init())
+	{
+		AddError(S.LastError);
+		return false;
+	}
+
+	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
+	if (!Disp)
+	{
+		AddError(TEXT("Manager has no StepDispatcher"));
+		S.Cleanup();
+		return false;
+	}
+	Disp->SetActiveStepMode(EStepMode::Direct);
+
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
+	mjModel* m = Engine->GetModel();
+	mjData* d = Engine->GetData();
+	if (!m || !d || !Engine->CustomStepHandler)
+	{
+		AddError(TEXT("Direct mode did not install a CustomStepHandler"));
+		S.Cleanup();
+		return false;
+	}
+
+	// Idle wake: empty queue -> no advance, frame id frozen.
+	const int64 IdBefore = (int64)Engine->GetRenderFrameId();
+	const bool bAdvancedIdle = Engine->CustomStepHandler(m, d);
+	TestFalse(TEXT("Empty-queue step reports no advance"), bAdvancedIdle);
+	TestEqual(TEXT("FrameId unchanged on idle wake"),
+		(int64)Engine->GetRenderFrameId(), IdBefore);
+
+	// Real step: a queued request advances and bumps the frame id once.
+	FMjStepRequest Req;
+	Req.NSteps = 1;
+	Disp->EnqueueStepRequestForTest(MoveTemp(Req));
+	const bool bAdvancedStep = Engine->CustomStepHandler(m, d);
+	TestTrue(TEXT("Queued step reports advance"), bAdvancedStep);
+	TestEqual(TEXT("FrameId +1 after a real step"),
+		(int64)Engine->GetRenderFrameId(), IdBefore + 1);
+
+	Disp->SetActiveStepMode(EStepMode::Live);
+	S.Cleanup();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // 13. Perturbation snapshot is reachable from the step server (Puppet path)
 // ---------------------------------------------------------------------------
 #include "MuJoCo/Input/MjPerturbation.h"
@@ -1138,10 +1228,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposByName,
 bool FMjStepServerSetQposByName::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-		}))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 	{
 		AddError(S.LastError);
 		return false;
@@ -1159,8 +1246,13 @@ bool FMjStepServerSetQposByName::RunTest(const FString& Parameters)
 	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
-	int32 Jid = Art->GetJoints()[0]->GetMjID();
+	int32 Jid = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
 	int32 QAddr = m->jnt_qposadr[Jid];
+
+	// Control writes require an explicit claim; the session owns the art.
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
@@ -1194,10 +1286,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposActorId,
 bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-		}))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 	{
 		AddError(S.LastError);
 		return false;
@@ -1208,6 +1297,11 @@ bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 
 	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
+
+	// The claim is keyed by the canonical art name, even when addressed by actor_id.
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
@@ -1229,7 +1323,7 @@ bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
-	int32 Jid = Art->GetJoints()[0]->GetMjID();
+	int32 Jid = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
 	int32 QAddr = m->jnt_qposadr[Jid];
 	TestEqual(TEXT("qpos written via actor_id"), (double)d->qpos[QAddr], 0.91, 1e-9);
 
@@ -1251,22 +1345,15 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 	// A 7-vec request triggers the free-base shortcut and only writes the
 	// free joint slots, leaving the hinge value untouched.
 	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Free;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::free);
 
-			UMjBody* ChildBody = NewObject<UMjBody>(Sess.Robot, TEXT("ChildBody"));
-			ChildBody->RegisterComponent();
-			ChildBody->AttachToComponent(Sess.Body, FAttachmentTransformRules::KeepRelativeTransform);
-			UMjGeom* ChildGeom = NewObject<UMjGeom>(Sess.Robot, TEXT("ChildGeom"));
-			ChildGeom->size = {0.05f, 0.05f, 0.05f};
-			ChildGeom->bOverride_size = true;
-			ChildGeom->RegisterComponent();
-			ChildGeom->AttachToComponent(ChildBody, FAttachmentTransformRules::KeepRelativeTransform);
-			UMjJoint* Hinge = NewObject<UMjJoint>(Sess.Robot, TEXT("ChildHinge"));
-			Hinge->Type = EMjJointType::Hinge;
-			Hinge->bOverride_Type = true;
-			Hinge->RegisterComponent();
-			Hinge->AttachToComponent(ChildBody, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjBodyBase* ChildBody = Sess.Add<UMjBodyBase>(Sess.Body, TEXT("ChildBody"));
+			if (ChildBody == nullptr)
+				return;
+			if (UMjGeomBase* ChildGeom = Sess.Add<UMjGeomBase>(ChildBody, TEXT("ChildGeom")))
+				ChildGeom->SetSize({0.05});
+			if (UMjJoint* Hinge = Sess.Add<UMjJoint>(ChildBody, TEXT("ChildHinge")))
+				Hinge->SetType(EMjJointType::hinge);
 		}))
 	{
 		// Articulation construction with a free base + child can fail in some
@@ -1282,16 +1369,24 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
 
-	TArray<UMjJoint*> JointsArr = Art->GetJoints();
-	if (JointsArr.Num() < 2)
+	// By compiled name rather than by index: the element index is a map, so the
+	// order GetJoints() answers in is not the spec's.
+	const int32 FreeId = S.MjId(mjOBJ_JOINT, TEXT("TestJoint"));
+	const int32 HingeId = S.MjId(mjOBJ_JOINT, TEXT("ChildHinge"));
+	if (FreeId < 0 || HingeId < 0)
 	{
-		AddInfo(FString::Printf(TEXT("Skipping FreeBase: only %d joints compiled"), JointsArr.Num()));
+		AddInfo(FString::Printf(TEXT("Skipping FreeBase: only %d joints compiled"),
+			Art->GetJoints().Num()));
 		S.Cleanup();
 		return true;
 	}
-	int32 FreeAdr = m->jnt_qposadr[JointsArr[0]->GetMjID()];
-	int32 HingeAdr = m->jnt_qposadr[JointsArr[1]->GetMjID()];
+	int32 FreeAdr = m->jnt_qposadr[FreeId];
+	int32 HingeAdr = m->jnt_qposadr[HingeId];
 	d->qpos[HingeAdr] = 1.5; // sentinel -- the shortcut must NOT touch this
+
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
 	Req->SetStringField(TEXT("op"), TEXT("set_qpos"));
@@ -1330,10 +1425,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposErrors,
 bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-		}))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
 	{
 		AddError(S.LastError);
 		return false;
@@ -1343,6 +1435,11 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
 
 	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
+
+	// Own the art so the dim_mismatch path is reached past the control gate.
+	FString ClaimOwner;
+	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+		0.0, false, ClaimOwner);
 
 	// dim_mismatch: 3-vec into a 1-dim hinge articulation.
 	{
@@ -1359,7 +1456,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
-		TestEqual(TEXT("dim_mismatch"), Code, FString(TEXT("dim_mismatch")));
+		TestEqual(TEXT("dim_mismatch"), Code, FString(URLabError::DimMismatch));
 	}
 
 	// unknown_articulation: target with no matching actor_id.
@@ -1374,7 +1471,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
-		TestEqual(TEXT("unknown_articulation"), Code, FString(TEXT("unknown_articulation")));
+		TestEqual(TEXT("unknown_articulation"), Code, FString(URLabError::UnknownArticulation));
 	}
 
 	// missing_field: no target field at all.
@@ -1388,7 +1485,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Reply = Disp->Dispatch(Req);
 		FString Code;
 		Reply->TryGetStringField(TEXT("code"), Code);
-		TestEqual(TEXT("missing_field"), Code, FString(TEXT("missing_field")));
+		TestEqual(TEXT("missing_field"), Code, FString(URLabError::MissingField));
 	}
 
 	S.Cleanup();
@@ -1604,7 +1701,7 @@ bool FMjStepServerShmRejectsEditorOps::RunTest(const FString& Parameters)
 	Reply->TryGetStringField(TEXT("op"), Op);
 	Reply->TryGetStringField(TEXT("code"), Code);
 	TestEqual(TEXT("op == error"), Op, FString(TEXT("error")));
-	TestEqual(TEXT("code == wrong_transport"), Code, FString(TEXT("wrong_transport")));
+	TestEqual(TEXT("code == wrong_transport"), Code, FString(URLabError::WrongTransport));
 
 	// ZMQ stays universal — same payload through ZMQ transport invokes
 	// the dispatcher (which will return its own missing-fields error,
@@ -1619,7 +1716,7 @@ bool FMjStepServerShmRejectsEditorOps::RunTest(const FString& Parameters)
 	if (ZmqReply.IsValid())
 		ZmqReply->TryGetStringField(TEXT("code"), ZmqCode);
 	TestNotEqual(TEXT("ZMQ does not emit wrong_transport"),
-		ZmqCode, FString(TEXT("wrong_transport")));
+		ZmqCode, FString(URLabError::WrongTransport));
 
 	Server->Stop();
 	Server->RemoveFromRoot();
@@ -1836,7 +1933,7 @@ bool FMjStepServerUnknownOpVsNotInEditor::RunTest(const FString& Parameters)
 	FString Code;
 	Reply->TryGetStringField(TEXT("code"), Code);
 	TestEqual(TEXT("unknown_op for genuinely unknown name"),
-		Code, FString(TEXT("unknown_op")));
+		Code, FString(URLabError::UnknownOp));
 
 	Server->Stop();
 	Server->RemoveFromRoot();
@@ -1881,7 +1978,7 @@ bool FMjStepServerRequiredFieldsValidated::RunTest(const FString& Parameters)
 	// registry-level check is supposed to short-circuit BEFORE
 	// OwnerMgr is touched — i.e. this test passes even with no manager.
 	TestEqual(TEXT("missing_field on omitted required field"),
-		Code, FString(TEXT("missing_field")));
+		Code, FString(URLabError::MissingField));
 	TestTrue(TEXT("error message names the field"),
 		Msg.Contains(TEXT("paused")));
 

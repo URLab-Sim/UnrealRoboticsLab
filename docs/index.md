@@ -48,6 +48,8 @@ evaluating, recording, and visualising here.
   Python, for scripted control and running policies.
 - **[Architecture](concepts/architecture.md)** explains how the pieces fit
   together under the hood.
+- **[The Component Model](concepts/model.md)** explains why the Unreal
+  components *are* the MuJoCo model.
 
 </div>
 

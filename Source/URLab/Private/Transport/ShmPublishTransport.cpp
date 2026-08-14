@@ -120,3 +120,13 @@ void UURLabShmPublishTransport::Publish(const FString& /*Topic*/,
 	Hdr->LatestIdx.store(Target, std::memory_order_release);
 	Hdr->Sequence.fetch_add(1, std::memory_order_release);
 }
+
+void UURLabShmPublishTransport::AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const
+{
+	const FString ShmDir = FPaths::GetPath(GetStatePath());
+	if (!ShmDir.IsEmpty())
+	{
+		Reply->SetStringField(TEXT("shm_session_dir"),
+			FPaths::ConvertRelativePathToFull(ShmDir));
+	}
+}

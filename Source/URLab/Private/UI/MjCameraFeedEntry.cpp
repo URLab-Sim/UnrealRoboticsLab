@@ -30,6 +30,17 @@
 #include "Materials/Material.h"
 #include "Styling/SlateTypes.h"
 #include "Fonts/SlateFontInfo.h"
+#include "Utils/URLabLogging.h"
+
+namespace
+{
+// An unnamed <camera> is legal MJCF, so the label falls back to the component
+// name rather than showing a blank row.
+FString CameraLabel(const UMjCamera& Camera)
+{
+	return Camera.MjName.Get(Camera.GetName());
+}
+} // namespace
 
 void UMjCameraFeedEntry::BindToCamera(UMjCamera* InCamera)
 {
@@ -41,7 +52,7 @@ void UMjCameraFeedEntry::BindToCamera(UMjCamera* InCamera)
 
 	if (CameraNameText)
 	{
-		CameraNameText->SetText(FText::FromString(InCamera->MjName));
+		CameraNameText->SetText(FText::FromString(CameraLabel(*InCamera)));
 		FSlateFontInfo FontInfo = CameraNameText->GetFont();
 		FontInfo.Size = 12;
 		FontInfo.TypefaceFontName = TEXT("Bold");
@@ -61,9 +72,12 @@ void UMjCameraFeedEntry::RefreshBrush()
 	if (!RT)
 		return;
 
+	// Read the resolution through the camera's validated accessor so a malformed
+	// `resolution` attribute can never size the preview texture out of bounds.
+	const FIntPoint Res = BoundCamera->CaptureResolution();
 	const float W = 320.f;
-	const float H = (BoundCamera->resolution[0] > 0)
-					  ? W * static_cast<float>(BoundCamera->resolution[1]) / static_cast<float>(BoundCamera->resolution[0])
+	const float H = (Res.X > 0)
+					  ? W * static_cast<float>(Res.Y) / static_cast<float>(Res.X)
 					  : W * 0.75f;
 
 	// Depth RT is R32f — slate can't display it directly. Build (or reuse)
@@ -73,11 +87,11 @@ void UMjCameraFeedEntry::RefreshBrush()
 	if (BoundCamera->CaptureMode == EMjCameraMode::Depth)
 	{
 		if (!DepthPreviewTexture
-			|| DepthPreviewTexture->GetSizeX() != BoundCamera->resolution[0]
-			|| DepthPreviewTexture->GetSizeY() != BoundCamera->resolution[1])
+			|| DepthPreviewTexture->GetSizeX() != Res.X
+			|| DepthPreviewTexture->GetSizeY() != Res.Y)
 		{
 			DepthPreviewTexture = UTexture2D::CreateTransient(
-				BoundCamera->resolution[0], BoundCamera->resolution[1], PF_B8G8R8A8,
+				Res.X, Res.Y, PF_B8G8R8A8,
 				TEXT("URLabDepthPreview"));
 			DepthPreviewTexture->CompressionSettings = TC_VectorDisplacementmap;
 			DepthPreviewTexture->SRGB = false;
@@ -102,7 +116,7 @@ void UMjCameraFeedEntry::RefreshBrush()
 
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjCameraFeedEntry] Brush set: '%s' mode=%s RT=%dx%d display=%.0fx%.0f"),
-		*BoundCamera->MjName, *UEnum::GetValueAsString(BoundCamera->CaptureMode),
+		*CameraLabel(*BoundCamera), *UEnum::GetValueAsString(BoundCamera->CaptureMode),
 		RT->SizeX, RT->SizeY, W, H);
 }
 
@@ -168,7 +182,10 @@ void UMjCameraFeedEntry::UpdateFeed()
 	if (!BoundCamera || !FeedImage || !BoundCamera->RenderTarget)
 		return;
 
-	if (!FeedImage->GetBrush().GetResourceObject())
+	// Rebind whenever the camera's RenderTarget changes identity, not just when
+	// the brush is empty -- set_camera_streaming can rebuild the RenderTarget,
+	// and a stale brush would otherwise freeze on the last frame.
+	if (FeedImage->GetBrush().GetResourceObject() != BoundCamera->RenderTarget)
 	{
 		RefreshBrush();
 	}

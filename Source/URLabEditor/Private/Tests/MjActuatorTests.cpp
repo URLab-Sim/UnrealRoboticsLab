@@ -20,22 +20,39 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
+// Actuators authored into a spec, compiled, and driven.
+//
+// A <motor> is a child of the <actuator> section and its kind is its element
+// class, so authoring one is two Add calls. Driving it goes through
+// UMjActuatorRuntime, which stages onto the articulation's slots rather than
+// onto the element.
+
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Components/Bodies/MjBody.h"
-#include "MuJoCo/Components/Geometry/MjGeom.h"
-#include "MuJoCo/Components/Joints/MjJoint.h"
-#include "MuJoCo/Components/Actuators/MjActuator.h"
-#include "MuJoCo/Components/Actuators/MjMotorActuator.h"
+#include "MuJoCo/Elements/MjActuatorRuntime.h"
+#include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjActuator.gen.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
+#include "MuJoCo/Gen/Elements/Actuators/MjMotor.gen.h"
 #include "Engine/World.h"
 #include "mujoco/mujoco.h"
 
+namespace MjActuatorTests
+{
+/** The `<actuator>` section of the session's articulation. */
+UMjActuator* ActuatorSection(FMjUESession& Sess)
+{
+	return Sess.Add<UMjActuator>(Sess.Robot->Spec);
+}
+} // namespace MjActuatorTests
+
 // ============================================================================
 // URLab.Actuator.MotorActuator_Binds
-//   Verify that a UMjMotorActuator targeting a hinge joint receives a valid
-//   actuator ID after compilation, and that nu == 1.
+//   Verify that a <motor> targeting a hinge joint receives a valid actuator ID
+//   after compilation, and that nu == 1.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorMotorActuatorBinds,
 	"URLab.Actuator.MotorActuator_Binds",
@@ -43,16 +60,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorMotorActuatorBinds,
 
 bool FMjActuatorMotorActuatorBinds::RunTest(const FString& Parameters)
 {
-	UMjMotorActuator* Actuator = nullptr;
+	UMjMotor* Actuator = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Actuator](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Actuator = NewObject<UMjMotorActuator>(Sess.Robot, TEXT("TestActuator"));
-			Actuator->TargetName = TEXT("TestJoint");
-			Actuator->RegisterComponent();
+			Actuator = Sess.Add<UMjMotor>(MjActuatorTests::ActuatorSection(Sess), TEXT("TestActuator"));
+			Actuator->SetJoint(TEXT("TestJoint"));
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -63,8 +78,8 @@ bool FMjActuatorMotorActuatorBinds::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("Actuator should not be null after Init"), Actuator);
 	if (Actuator)
 	{
-		TestTrue(TEXT("Actuator->m_ActuatorView.id should be >= 0 after Bind()"),
-			Actuator->m_ActuatorView.id >= 0);
+		TestTrue(TEXT("Actuator should be bound after the compile"), Actuator->GetBoundId().IsSet());
+		TestTrue(TEXT("Actuator's bound id should be >= 0"), Actuator->GetBoundId().Get(-1) >= 0);
 	}
 
 	TestEqual(TEXT("Manager->PhysicsEngine->m_model->nu should be 1"),
@@ -85,19 +100,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorMotorActuatorSetControl,
 
 bool FMjActuatorMotorActuatorSetControl::RunTest(const FString& Parameters)
 {
-	UMjMotorActuator* Actuator = nullptr;
+	UMjMotor* Actuator = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Actuator](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Actuator = NewObject<UMjMotorActuator>(Sess.Robot, TEXT("TestActuator"));
-			Actuator->TargetName = TEXT("TestJoint");
-			Actuator->RegisterComponent();
+			Actuator = Sess.Add<UMjMotor>(MjActuatorTests::ActuatorSection(Sess), TEXT("TestActuator"));
+			Actuator->SetJoint(TEXT("TestJoint"));
 
-			// ControlSource 0 = ZMQ (returns NetworkValue), 1 = UI (returns InternalValue).
-			// Tests drive control via SetControl() which writes to InternalValue, so set UI source.
+			// ControlSource 0 is the network slot, anything else the UI one.
+			// SetControl writes the UI slot, so the source has to select it for
+			// GetControl to read back what was staged.
 			Sess.Robot->ControlSource = 1;
 		}))
 	{
@@ -113,10 +127,10 @@ bool FMjActuatorMotorActuatorSetControl::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	Actuator->SetControl(5.0f);
+	UMjActuatorRuntime::SetControl(Actuator, 5.0f);
 
 	TestTrue(TEXT("GetControl() should return approximately 5.0 after SetControl(5.0f)"),
-		FMath::Abs(Actuator->GetControl() - 5.0f) < 0.001f);
+		FMath::Abs(UMjActuatorRuntime::GetControl(Actuator) - 5.0f) < 0.001f);
 
 	S.Cleanup();
 	return true;
@@ -124,7 +138,7 @@ bool FMjActuatorMotorActuatorSetControl::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Actuator.NuCountMatchesActuators
-//   A single UMjMotorActuator should result in nu == 1 on the compiled model.
+//   A single <motor> should result in nu == 1 on the compiled model.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorNuCountMatchesActuators,
 	"URLab.Actuator.NuCountMatchesActuators",
@@ -132,16 +146,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorNuCountMatchesActuators,
 
 bool FMjActuatorNuCountMatchesActuators::RunTest(const FString& Parameters)
 {
-	UMjMotorActuator* Actuator = nullptr;
-
 	FMjUESession S;
-	if (!S.Init([&Actuator](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+	if (!S.Init([](FMjUESession& Sess) {
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Actuator = NewObject<UMjMotorActuator>(Sess.Robot, TEXT("TestActuator"));
-			Actuator->TargetName = TEXT("TestJoint");
-			Actuator->RegisterComponent();
+			UMjMotor* Actuator =
+				Sess.Add<UMjMotor>(MjActuatorTests::ActuatorSection(Sess), TEXT("TestActuator"));
+			Actuator->SetJoint(TEXT("TestJoint"));
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -158,8 +169,8 @@ bool FMjActuatorNuCountMatchesActuators::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Actuator.MultipleActuators_AllBind
-//   Two hinge joints, each with its own UMjMotorActuator.  Both actuator IDs
-//   must be >= 0 after compilation and nu must equal 2.
+//   Two hinge joints, each with its own <motor>.  Both actuator IDs must be
+//   >= 0 after compilation and nu must equal 2.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorMultipleActuatorsAllBind,
 	"URLab.Actuator.MultipleActuators_AllBind",
@@ -167,41 +178,31 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorMultipleActuatorsAllBind,
 
 bool FMjActuatorMultipleActuatorsAllBind::RunTest(const FString& Parameters)
 {
-	UMjMotorActuator* Act1 = nullptr;
-	UMjMotorActuator* Act2 = nullptr;
+	UMjMotor* Act1 = nullptr;
+	UMjMotor* Act2 = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Act1, &Act2](FMjUESession& Sess) {
 			// Configure the default joint as a hinge
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
-
-			// First actuator targets the default joint
-			Act1 = NewObject<UMjMotorActuator>(Sess.Robot, TEXT("TestActuator1"));
-			Act1->TargetName = TEXT("TestJoint");
-			Act1->RegisterComponent();
+			Sess.Joint->SetType(EMjJointType::hinge);
 
 			// Second body + joint hierarchy
-			UMjBody* Body2 = NewObject<UMjBody>(Sess.Robot, TEXT("Body2"));
-			Body2->RegisterComponent();
-			Body2->AttachToComponent(Sess.Body, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjBody* Body2 = Sess.Add<UMjBody>(Sess.Body, TEXT("Body2"));
 
-			UMjJoint* Joint2 = NewObject<UMjJoint>(Sess.Robot, TEXT("TestJoint2"));
-			Joint2->Type = EMjJointType::Hinge;
-			Joint2->bOverride_Type = true;
-			Joint2->RegisterComponent();
-			Joint2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjGeom* Geom2 = Sess.Add<UMjGeom>(Body2, TEXT("Geom2"));
+			Geom2->SetSize({0.1});
 
-			UMjGeom* Geom2 = NewObject<UMjGeom>(Sess.Robot, TEXT("Geom2"));
-			Geom2->size = {0.1f, 0.1f, 0.1f};
-			Geom2->bOverride_size = true;
-			Geom2->RegisterComponent();
-			Geom2->AttachToComponent(Body2, FAttachmentTransformRules::KeepRelativeTransform);
+			UMjJoint* Joint2 = Sess.Add<UMjJoint>(Body2, TEXT("TestJoint2"));
+			Joint2->SetType(EMjJointType::hinge);
 
-			// Second actuator targets the second joint
-			Act2 = NewObject<UMjMotorActuator>(Sess.Robot, TEXT("TestActuator2"));
-			Act2->TargetName = TEXT("TestJoint2");
-			Act2->RegisterComponent();
+			// One <actuator> section holds both leaves, as MJCF has it.
+			UMjActuator* Section = MjActuatorTests::ActuatorSection(Sess);
+
+			Act1 = Sess.Add<UMjMotor>(Section, TEXT("TestActuator1"));
+			Act1->SetJoint(TEXT("TestJoint"));
+
+			Act2 = Sess.Add<UMjMotor>(Section, TEXT("TestActuator2"));
+			Act2->SetJoint(TEXT("TestJoint2"));
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -214,13 +215,11 @@ bool FMjActuatorMultipleActuatorsAllBind::RunTest(const FString& Parameters)
 
 	if (Act1)
 	{
-		TestTrue(TEXT("Act1->m_ActuatorView.id should be >= 0"),
-			Act1->m_ActuatorView.id >= 0);
+		TestTrue(TEXT("Act1's bound id should be >= 0"), Act1->GetBoundId().Get(-1) >= 0);
 	}
 	if (Act2)
 	{
-		TestTrue(TEXT("Act2->m_ActuatorView.id should be >= 0"),
-			Act2->m_ActuatorView.id >= 0);
+		TestTrue(TEXT("Act2's bound id should be >= 0"), Act2->GetBoundId().Get(-1) >= 0);
 	}
 
 	TestEqual(TEXT("Manager->PhysicsEngine->m_model->nu should be 2"),
@@ -241,16 +240,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjActuatorMotorActuatorGetForceNoCrashAfterSte
 
 bool FMjActuatorMotorActuatorGetForceNoCrashAfterStep::RunTest(const FString& Parameters)
 {
-	UMjMotorActuator* Actuator = nullptr;
+	UMjMotor* Actuator = nullptr;
 
 	FMjUESession S;
 	if (!S.Init([&Actuator](FMjUESession& Sess) {
-			Sess.Joint->Type = EMjJointType::Hinge;
-			Sess.Joint->bOverride_Type = true;
+			Sess.Joint->SetType(EMjJointType::hinge);
 
-			Actuator = NewObject<UMjMotorActuator>(Sess.Robot, TEXT("TestActuator"));
-			Actuator->TargetName = TEXT("TestJoint");
-			Actuator->RegisterComponent();
+			Actuator = Sess.Add<UMjMotor>(MjActuatorTests::ActuatorSection(Sess), TEXT("TestActuator"));
+			Actuator->SetJoint(TEXT("TestJoint"));
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));
@@ -267,7 +264,7 @@ bool FMjActuatorMotorActuatorGetForceNoCrashAfterStep::RunTest(const FString& Pa
 
 	S.Step(5);
 
-	float Force = Actuator->GetForce();
+	const float Force = UMjActuatorRuntime::GetForce(Actuator);
 	TestTrue(TEXT("GetForce() should return a finite value after 5 steps"),
 		FMath::IsFinite(Force));
 

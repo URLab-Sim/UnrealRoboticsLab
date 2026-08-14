@@ -27,6 +27,7 @@
 #include "Bridge/BridgeServerProvider.h"
 #include "SMjStepModeIndicator.h"
 #include "SMjBridgeServerToggle.h"
+#include "SMjbServerBrowser.h"
 #include "Editor.h"
 #include "ToolMenus.h"
 #include "ToolMenuContext.h"
@@ -177,6 +178,14 @@ void FURLabEditorModule::StartupModule()
 			FText::GetEmpty(),
 			/*bNoIndent=*/true,
 			/*bSearchable=*/false));
+		Section.AddEntry(FToolMenuEntry::InitToolBarButton(
+			"URLabFastPathServers",
+			FUIAction(FExecuteAction::CreateLambda([]() {
+				FGlobalTabmanager::Get()->TryInvokeTab(FTabId(TEXT("MjbServerBrowser")));
+			})),
+			FText::FromString(TEXT("Fast-Path")),
+			FText::FromString(TEXT("Discover fast-path owners and connect a renderer")),
+			FSlateIcon()));
 	}));
 
 	// Register MuJoCo Outliner tab (guard against double registration on hot-reload)
@@ -193,6 +202,19 @@ void FURLabEditorModule::StartupModule()
 								}))
 		.SetDisplayName(FText::FromString(TEXT("MuJoCo Outliner")))
 		.SetTooltipText(FText::FromString(TEXT("Filtered view of MuJoCo articulation components")));
+
+	// Fast-path server browser: discover advertised owners and connect to one.
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjbServerBrowser"));
+	FGlobalTabmanager::Get()->RegisterNomadTabSpawner(
+								TEXT("MjbServerBrowser"),
+								FOnSpawnTab::CreateLambda([](const FSpawnTabArgs& Args) -> TSharedRef<SDockTab> {
+									return SNew(SDockTab)
+										.TabRole(ETabRole::NomadTab)
+										.Label(FText::FromString(TEXT("Fast-Path Servers")))
+											[SNew(SMjbServerBrowser)];
+								}))
+		.SetDisplayName(FText::FromString(TEXT("Fast-Path Servers")))
+		.SetTooltipText(FText::FromString(TEXT("Discover fast-path owners and connect a renderer to one")));
 }
 
 void FURLabEditorModule::ShutdownModule()
@@ -219,6 +241,7 @@ void FURLabEditorModule::ShutdownModule()
 	}
 
 	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjArticulationOutliner"));
+	FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(TEXT("MjbServerBrowser"));
 
 	if (FModuleManager::Get().IsModuleLoaded("PropertyEditor"))
 	{

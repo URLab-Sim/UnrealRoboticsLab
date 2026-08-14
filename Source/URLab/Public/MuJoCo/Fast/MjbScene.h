@@ -41,9 +41,16 @@ class URLAB_API AMjbScene : public AActor
 public:
 	AMjbScene();
 
-	/** Absolute path to a version-matched MJB. */
+	/** Absolute path to a version-matched MJB. Used only when MjbBytes is empty. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	FString MjbFilePath;
+
+	/** In-memory MJB received over the wire from an owner (no shared file). When
+	 *  non-empty this is loaded in preference to MjbFilePath. A UPROPERTY so it
+	 *  survives the editor->PIE duplication, letting the PIE copy rebuild without
+	 *  a file. */
+	UPROPERTY()
+	TArray<uint8> MjbBytes;
 
 	/** Animate joints locally via mj_forward so the scene moves with no owner.
 	 *  Development only -- the real path applies a streamed transform set.
@@ -76,6 +83,20 @@ public:
 	 *  For the editor-world preview: a persistent, static, saveable scene that is
 	 *  never animated outside a play session. Returns geom count or -1. */
 	int32 BuildStaticPreview();
+
+	/** Set the in-memory MJB (received over the wire). Loaded in preference to
+	 *  MjbFilePath on the next build. */
+	void SetMjbBytes(const TArray<uint8>& Bytes) { MjbBytes = Bytes; }
+
+	/**
+	 * Fetch an MJB and its transform-bus endpoint from an owner over a ZMQ
+	 * REQ/REP control channel. Sends a msgpack `{op:"fastpath_hello"}` and reads
+	 * back the owner's `mjb` bytes plus `bus` endpoint. Synchronous with a short
+	 * timeout; safe to call from the editor or a headless driver. Returns false
+	 * with OutError on any failure.
+	 */
+	static bool FetchModelFromOwner(const FString& ControlEndpoint,
+		TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError);
 
 	/** Apply a per-geom world-transform stream: xpos is 3*ngeom, xquat 4*ngeom
 	 *  (wxyz), in MuJoCo world frame. This is the render-time hot path (no

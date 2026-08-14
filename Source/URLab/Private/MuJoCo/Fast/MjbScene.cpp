@@ -26,6 +26,8 @@
 #include "Dom/JsonObject.h"
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Base64.h"
 
 #include "zmq.h"
 
@@ -133,16 +135,118 @@ int32 AMjbScene::BuildStaticPreview()
 	return LoadAndBuild();
 }
 
+bool AMjbScene::FetchModelFromOwner(const FString& ControlEndpoint,
+	TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError)
+{
+	OutMjb.Reset();
+	OutBusEndpoint.Empty();
+	OutError.Empty();
+
+	void* Ctx = zmq_ctx_new();
+	void* Req = zmq_socket(Ctx, ZMQ_REQ);
+	int Timeout = 5000;
+	zmq_setsockopt(Req, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
+	zmq_setsockopt(Req, ZMQ_SNDTIMEO, &Timeout, sizeof(Timeout));
+	int Linger = 0;
+	zmq_setsockopt(Req, ZMQ_LINGER, &Linger, sizeof(Linger));
+
+	bool bOk = false;
+	do
+	{
+		if (zmq_connect(Req, TCHAR_TO_UTF8(*ControlEndpoint)) != 0)
+		{
+			OutError = FString::Printf(TEXT("connect failed: %s"), *ControlEndpoint);
+			break;
+		}
+
+		// Request: {op:"fastpath_hello"}. Both a Python owner and a UE live/direct
+		// owner answer this with their MJB bytes and geoms-bus endpoint.
+		TSharedPtr<FJsonObject> ReqObj = MakeShared<FJsonObject>();
+		ReqObj->SetStringField(TEXT("op"), TEXT("fastpath_hello"));
+		TArray<uint8> ReqBuf;
+		FURLabMsgpackUtil::PackJsonObject(ReqObj, ReqBuf);
+		if (zmq_send(Req, ReqBuf.GetData(), ReqBuf.Num(), 0) < 0)
+		{
+			OutError = TEXT("send failed");
+			break;
+		}
+
+		zmq_msg_t Msg;
+		zmq_msg_init(&Msg);
+		if (zmq_msg_recv(&Msg, Req, 0) < 0)
+		{
+			zmq_msg_close(&Msg);
+			OutError = TEXT("no reply (owner not answering fastpath_hello within timeout)");
+			break;
+		}
+		TSharedPtr<FJsonObject> Reply;
+		const bool bUnpacked = FURLabMsgpackUtil::UnpackToJsonObject(
+			static_cast<const uint8*>(zmq_msg_data(&Msg)), static_cast<int32>(zmq_msg_size(&Msg)), Reply);
+		zmq_msg_close(&Msg);
+		if (!bUnpacked || !Reply.IsValid())
+		{
+			OutError = TEXT("reply was not msgpack");
+			break;
+		}
+
+		// MJB bytes are msgpack bin, which unpacks to a base64 string under the
+		// `__b64__`-suffixed key. Tolerate a plain base64 `mjb` string too.
+		FString B64;
+		if (!Reply->TryGetStringField(TEXT("mjb__b64__"), B64) || B64.IsEmpty())
+		{
+			Reply->TryGetStringField(TEXT("mjb"), B64);
+		}
+		if (B64.IsEmpty() || !FBase64::Decode(B64, OutMjb) || OutMjb.Num() == 0)
+		{
+			FString RemoteErr;
+			Reply->TryGetStringField(TEXT("error"), RemoteErr);
+			OutError = RemoteErr.IsEmpty() ? TEXT("reply carried no mjb") : RemoteErr;
+			break;
+		}
+		Reply->TryGetStringField(TEXT("bus"), OutBusEndpoint);
+		bOk = true;
+	} while (false);
+
+	if (Req)
+	{
+		zmq_close(Req);
+	}
+	if (Ctx)
+	{
+		zmq_ctx_term(Ctx);
+	}
+	return bOk;
+}
+
 int32 AMjbScene::LoadAndBuild()
 {
 	Teardown();
 
-	char Err[1024] = {0};
-	Model = mj_loadModel(TCHAR_TO_UTF8(*MjbFilePath), nullptr);
+	// Prefer an in-memory MJB (received over the wire) over a file path, so a
+	// renderer never needs a shared file. Fall back to reading the file into a
+	// buffer; either way we load from the buffer with mj_loadModelBuffer.
+	TArray<uint8> LocalBytes;
+	const TArray<uint8>* Bytes = nullptr;
+	if (MjbBytes.Num() > 0)
+	{
+		Bytes = &MjbBytes;
+	}
+	else if (!MjbFilePath.IsEmpty() && FFileHelper::LoadFileToArray(LocalBytes, *MjbFilePath))
+	{
+		Bytes = &LocalBytes;
+	}
+	if (!Bytes || Bytes->Num() == 0)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] no MJB to load (bytes empty, file '%s' unreadable)"),
+			*MjbFilePath);
+		return -1;
+	}
+
+	Model = mj_loadModelBuffer(Bytes->GetData(), Bytes->Num());
 	if (!Model)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] mj_loadModel failed for %s (version-mismatched MJB?)"),
-			*MjbFilePath);
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] mj_loadModelBuffer failed (%d bytes; version-mismatched MJB?)"),
+			Bytes->Num());
 		return -1;
 	}
 	Data = mj_makeData(Model);

@@ -68,4 +68,24 @@ struct URLAB_API FURLabBridgeServerConfig
 	 *  up across PIE cycles. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
 	bool bStopOnPIEEnd = false;
+
+	/** Viewer role: when non-empty, this process runs as a read-only VIEWER.
+	 *  It does not own or step physics and does not bind any owner ports;
+	 *  instead it SUBSCRIBES to the owner's viewer bus at this endpoint
+	 *  (e.g. "tcp://127.0.0.1:5560") and renders whatever kinematics the
+	 *  owner broadcasts. Empty (default) = normal owner. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	FString StateSourceEndpoint;
+
+	/** Owner-side viewer broadcast: when true, an owner (direct/live UE, or a
+	 *  farm instance) binds a PUB on ViewerPort and re-broadcasts the raw
+	 *  {t,qpos,qvel} each step so viewers can subscribe. In puppet mode the
+	 *  Python client is the owner and broadcasts instead, so this stays off.
+	 *  Ignored when StateSourceEndpoint is set (a viewer never broadcasts). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	bool bBroadcastViewers = false;
+
+	/** TCP port for the viewer bus (owner PUB / viewer SUB). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	int32 ViewerPort = 5560;
 };

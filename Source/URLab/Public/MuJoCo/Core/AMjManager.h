@@ -364,6 +364,23 @@ public:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UURLabSubscribeTransport>> ManagerOwnedSubscribeTransports;
 
+	/** Read-only viewer role: when set, this process is a VIEWER driven by a
+	 *  remote owner's viewer bus. It owns no bridge/publishers; this transport
+	 *  is the sole input. Null on a normal owner. */
+	UPROPERTY(Transient)
+	TObjectPtr<class UURLabViewerSubscribeTransport> ViewerTransport;
+
+	/** True when this process was started as a viewer (StateSourceEndpoint set). */
+	bool bIsViewerRole = false;
+
+	// Owner-side viewer bus (direct/live). Raw ZMQ PUB bound in BeginPlay and
+	// written from FanOutStateSnapshot (physics thread), mirroring the existing
+	// publish transports. Null unless bBroadcastViewers was set on an owner.
+	void* ViewerPubCtx = nullptr;
+	void* ViewerPubSocket = nullptr;
+	/** Encode {t,qpos,qvel} from (m,d) and PUB it on the viewer bus. */
+	void PublishViewerFrame(struct mjModel_* m, struct mjData_* d);
+
 protected:
 	struct FRegisteredSnapshotPublisher
 	{

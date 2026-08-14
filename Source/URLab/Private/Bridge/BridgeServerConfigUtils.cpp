@@ -67,6 +67,13 @@ void LoadFromIni(FURLabBridgeServerConfig& Out)
 
 	if (File.GetBool(SectionName, TEXT("StopOnPIEEnd"), TmpBool))
 		Out.bStopOnPIEEnd = TmpBool;
+
+	if (File.GetString(SectionName, TEXT("StateSourceEndpoint"), TmpStr))
+		Out.StateSourceEndpoint = TmpStr;
+	if (File.GetBool(SectionName, TEXT("BroadcastViewers"), TmpBool))
+		Out.bBroadcastViewers = TmpBool;
+	if (File.GetInt(SectionName, TEXT("ViewerPort"), TmpInt))
+		Out.ViewerPort = TmpInt;
 }
 
 void SaveToIni(const FURLabBridgeServerConfig& In)
@@ -167,6 +174,15 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 
 	if (ResolveString(TEXT("URLabBindAddress="), TEXT("URLAB_BIND_ADDRESS"), StrVal))
 		Cfg.BindAddress = StrVal;
+
+	// Viewer role + viewer bus. -URLabStateSource=tcp://host:port makes this a
+	// read-only viewer; -URLabBroadcastViewers=1 makes an owner re-broadcast.
+	if (ResolveString(TEXT("URLabStateSource="), TEXT("URLAB_STATE_SOURCE"), StrVal))
+		Cfg.StateSourceEndpoint = StrVal;
+	if (ResolveInt(TEXT("URLabViewerPort="), TEXT("URLAB_VIEWER_PORT"), IntVal))
+		Cfg.ViewerPort = IntVal;
+	if (ResolveInt(TEXT("URLabBroadcastViewers="), TEXT("URLAB_BROADCAST_VIEWERS"), IntVal))
+		Cfg.bBroadcastViewers = (IntVal != 0);
 
 	DerivePorts(Cfg, bStepExplicit, bStateExplicit, bCamExplicit);
 }

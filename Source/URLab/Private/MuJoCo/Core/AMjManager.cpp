@@ -42,6 +42,9 @@
 #include "Blueprint/UserWidget.h"
 #include "Transport/ZmqPublishTransport.h"
 #include "Transport/ZmqSubscribeTransport.h"
+#include "Transport/ViewerSubscribeTransport.h"
+#include "Bridge/MsgpackHelpers.h"
+#include "zmq.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServerConfig.h"
 #include "Bridge/BridgeServerConfigUtils.h"
@@ -241,6 +244,18 @@ void AAMjManager::BeginPlay()
 		}
 	}
 
+	// Viewer role decision: a non-empty StateSourceEndpoint makes this process a
+	// read-only VIEWER. A viewer owns no bridge server and binds no owner ports
+	// (so it can share a host with the owner); it only subscribes to the owner's
+	// viewer bus and renders. Resolve config up front so the whole owner block
+	// below can be skipped.
+	FURLabBridgeServerConfig ViewerCfg;
+	URLabBridgeServerConfigUtils::LoadFromIni(ViewerCfg);
+	URLabBridgeServerConfigUtils::ApplyEnvAndCommandLineOverrides(ViewerCfg);
+	bIsViewerRole = !ViewerCfg.StateSourceEndpoint.IsEmpty();
+
+	if (!bIsViewerRole)
+	{
 	// Resolve a bridge server. In editor builds the URLabEditor module
 	// installs a resolver via URLabBridgeProvider that hands back the
 	// subsystem's server (lifetime spans PIE sessions). Cooked builds
@@ -331,7 +346,48 @@ void AAMjManager::BeginPlay()
 		}
 	}
 
+	// Owner viewer bus: bind a PUB so read-only viewers can subscribe (used by
+	// a direct/live UE owner). In puppet the Python client is the owner and
+	// broadcasts on its own step, so this stays off there.
+	if (ViewerCfg.bBroadcastViewers)
+	{
+		ViewerPubCtx = zmq_ctx_new();
+		ViewerPubSocket = zmq_socket(ViewerPubCtx, ZMQ_PUB);
+		int Linger = 0;
+		zmq_setsockopt(ViewerPubSocket, ZMQ_LINGER, &Linger, sizeof(Linger));
+		const FString Ep = FString::Printf(TEXT("tcp://%s:%d"),
+			*ViewerCfg.BindAddress, ViewerCfg.ViewerPort);
+		if (zmq_bind(ViewerPubSocket, TCHAR_TO_UTF8(*Ep)) != 0)
+		{
+			UE_LOG(LogURLab, Error, TEXT("[AAMjManager] viewer PUB bind failed on %s"), *Ep);
+			zmq_close(ViewerPubSocket);
+			ViewerPubSocket = nullptr;
+			zmq_ctx_term(ViewerPubCtx);
+			ViewerPubCtx = nullptr;
+		}
+		else
+		{
+			UE_LOG(LogURLab, Log, TEXT("[AAMjManager] viewer bus PUB bound on %s"), *Ep);
+		}
+	}
+	} // end owner-only setup (a viewer skips the bridge + owner transports)
+
 	Compile();
+
+	// Viewer role: no owner physics. Pause the engine so it never self-steps,
+	// then subscribe to the owner's viewer bus; the transport's worker thread
+	// applies each received {qpos,qvel} and pushes a render snapshot.
+	if (bIsViewerRole && PhysicsEngine)
+	{
+		PhysicsEngine->SetPaused(true);
+		ViewerTransport = NewObject<UURLabViewerSubscribeTransport>(this, TEXT("ViewerSub"));
+		ViewerTransport->SourceEndpoint = ViewerCfg.StateSourceEndpoint;
+		ViewerTransport->Topic = TEXT("viewer");
+		ViewerTransport->SetOwningManager(this);
+		ViewerTransport->TransportInit();
+		UE_LOG(LogURLab, Log, TEXT("[AAMjManager] Viewer role: state source %s"),
+			*ViewerCfg.StateSourceEndpoint);
+	}
 	if (NetworkManager)
 		NetworkManager->UpdateCameraStreamingState();
 
@@ -588,8 +644,38 @@ void AAMjManager::UnregisterStateConsumer(IMjStateConsumer* Consumer)
 	});
 }
 
+void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
+{
+	if (!ViewerPubSocket || !m || !d)
+		return;
+	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+	Obj->SetNumberField(TEXT("t"), d->time);
+	TArray<TSharedPtr<FJsonValue>> QPos;
+	QPos.Reserve(m->nq);
+	for (int i = 0; i < m->nq; ++i)
+		QPos.Add(MakeShared<FJsonValueNumber>(d->qpos[i]));
+	Obj->SetArrayField(TEXT("qpos"), QPos);
+	TArray<TSharedPtr<FJsonValue>> QVel;
+	QVel.Reserve(m->nv);
+	for (int i = 0; i < m->nv; ++i)
+		QVel.Add(MakeShared<FJsonValueNumber>(d->qvel[i]));
+	Obj->SetArrayField(TEXT("qvel"), QVel);
+
+	TArray<uint8> Buf;
+	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
+	if (Buf.Num() == 0)
+		return;
+	// [topic][payload], matching the Python client's PUB and the UE viewer SUB.
+	zmq_send(ViewerPubSocket, "viewer", 6, ZMQ_SNDMORE | ZMQ_DONTWAIT);
+	zmq_send(ViewerPubSocket, Buf.GetData(), Buf.Num(), ZMQ_DONTWAIT);
+}
+
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
+	// Owner viewer bus: raw {t,qpos,qvel} to any subscribed viewers, every step,
+	// independent of the state_full byte fan-out (which pauses in direct/puppet).
+	PublishViewerFrame(m, d);
+
 	// Build the state IR once per physics step, encode it to the canonical
 	// msgpack `state_full` snapshot, and fan the bytes out to every
 	// IMjSnapshotPublisher (ZMQ PUB, SHM ring, ...). Registered IMjStateConsumers
@@ -648,6 +734,15 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 
 void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Stop the viewer input FIRST: its worker thread applies into the engine
+	// under CallbackMutex, so it must be joined before the engine (and its
+	// model/data) are torn down below.
+	if (ViewerTransport)
+	{
+		ViewerTransport->TransportShutdown();
+		ViewerTransport = nullptr;
+	}
+
 	// Stop the physics async thread BEFORE Super::EndPlay so PostStep
 	// callbacks don't race into resources child components tear down.
 	// Bounded wait: a pathological mj_step can take many seconds; an
@@ -698,6 +793,19 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 			T->TransportShutdown();
 	}
 	ManagerOwnedPublishTransports.Reset();
+
+	// Owner viewer bus: the physics worker (its only writer) has stopped above,
+	// so the PUB can be torn down without racing a send.
+	if (ViewerPubSocket)
+	{
+		zmq_close(ViewerPubSocket);
+		ViewerPubSocket = nullptr;
+	}
+	if (ViewerPubCtx)
+	{
+		zmq_ctx_term(ViewerPubCtx);
+		ViewerPubCtx = nullptr;
+	}
 
 	Super::EndPlay(EndPlayReason);
 	if (Instance == this)

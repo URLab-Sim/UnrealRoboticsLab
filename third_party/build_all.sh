@@ -93,9 +93,15 @@ if [[ -n "$ENGINE" && "$(uname -s)" = "Linux" ]]; then
     # -Wno-missing-template-arg-list-after-template-kw: clang 20 (UE 5.7's
     #     bundled) rejects OpenVDB's `OpT::template eval(...)` syntax that
     #     older clang accepted. CoACD pulls OpenVDB transitively.
-    export CFLAGS="-fPIC -Qunused-arguments -Wno-unknown-warning-option"
-    export CXXFLAGS="-stdlib=libc++ -nostdinc++ -isystem $UE_TC/include/c++/v1 -fPIC -Qunused-arguments -Wno-unknown-warning-option -Wno-missing-template-arg-list-after-template-kw"
-    export LDFLAGS="-stdlib=libc++ -fuse-ld=lld -L$UE_TC/lib64 -Wl,-rpath,$UE_TC/lib64"
+    # --sysroot + --target: build against UE's bundled sysroot (glibc 2.28), the
+    # same one UE links the plugin with. Without it, on a host with a newer glibc
+    # (2.38+) the deps pick up its headers and reference symbols like
+    # __isoc23_sscanf that UE's older glibc lacks -- an undefined-symbol link
+    # error when the static libs are linked into the plugin .so.
+    UE_SYSROOT="--target=x86_64-unknown-linux-gnu --sysroot=$UE_TC"
+    export CFLAGS="$UE_SYSROOT -fPIC -Qunused-arguments -Wno-unknown-warning-option"
+    export CXXFLAGS="$UE_SYSROOT -stdlib=libc++ -nostdinc++ -isystem $UE_TC/include/c++/v1 -fPIC -Qunused-arguments -Wno-unknown-warning-option -Wno-missing-template-arg-list-after-template-kw"
+    export LDFLAGS="$UE_SYSROOT -stdlib=libc++ -fuse-ld=lld -L$UE_TC/lib64 -Wl,-rpath,$UE_TC/lib64"
 fi
 
 mkdir -p "$INSTALL_DIR"
@@ -142,6 +148,18 @@ if [ -f "./build.sh" ]; then
     bash ./build.sh "$INSTALL_DIR" "$BUILD_TYPE" "${SHARED_ARGS[@]}"
 else
     echo "Warning: libzmq/build.sh not found!"
+fi
+cd "$ROOT_DIR"
+
+# 5. ProtoSpec. Built here rather than standalone so it inherits the toolchain +
+# --sysroot env set above: its static libs (tinyxml2, protospec_*) are linked
+# straight into the plugin .so, so they must target UE's glibc exactly. Needs
+# MuJoCo's headers, staged by step 2 above.
+echo -e "\n\e[33m--- Building ProtoSpec ---\e[0m"
+if [ -f "$ROOT_DIR/../protospec/build.sh" ]; then
+    bash "$ROOT_DIR/../protospec/build.sh" "$INSTALL_DIR" "$BUILD_TYPE"
+else
+    echo "Warning: protospec/build.sh not found (skipping)."
 fi
 cd "$ROOT_DIR"
 

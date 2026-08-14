@@ -120,6 +120,9 @@ third_party/install/
 # submodule checkout itself is tracked via the submodule pointer; only the
 # per-build scratch directories inside each submodule are ignored.
 third_party/*/src/build/
+# Per-dep build scratch dirs that sit beside src/ rather than inside it
+# (e.g. third_party/MjShim/build/).
+third_party/*/build/
 
 # Python cache
 __pycache__/

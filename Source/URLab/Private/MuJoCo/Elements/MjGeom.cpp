@@ -75,10 +75,13 @@ struct FGeomShape
 	const TCHAR* CapMeshPath = nullptr;
 };
 
-const TCHAR* const kCubeMesh = TEXT("/Engine/BasicShapes/Cube.Cube");
-const TCHAR* const kSphereMesh = TEXT("/Engine/BasicShapes/Sphere.Sphere");
-const TCHAR* const kCylinderMesh = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
-const TCHAR* const kPlaneMesh = TEXT("/Engine/BasicShapes/Plane.Plane");
+// constexpr (not just const): these initialize the constexpr GGeomShapes[]
+// below, and Clang (unlike MSVC) rejects a non-constexpr pointer in a constant
+// expression. See "Linux portability" notes.
+constexpr const TCHAR* kCubeMesh = TEXT("/Engine/BasicShapes/Cube.Cube");
+constexpr const TCHAR* kSphereMesh = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+constexpr const TCHAR* kCylinderMesh = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+constexpr const TCHAR* kPlaneMesh = TEXT("/Engine/BasicShapes/Plane.Plane");
 
 constexpr FGeomShape GGeomShapes[] = {
 	/* plane     */ {kPlaneMesh, nullptr},

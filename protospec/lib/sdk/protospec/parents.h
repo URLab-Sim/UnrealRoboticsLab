@@ -10,6 +10,7 @@
 
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -21,6 +22,20 @@
 namespace ps::sdk {
 
 namespace mj = ps::mjcf;
+
+namespace parents_detail {
+// True when the profile's Tree offers the erased base-pointer subtree walk
+// (ForEachDescendant + DispatchConcrete). A profile with a common node base --
+// the UE component tree -- sets Tree::kErasedParentWalk to route ParentMap onto
+// a build that instantiates the per-node record step once (behind a single
+// dispatch) instead of over the whole containment closure. The plain profile
+// has no such base and keeps the generic recursive build.
+template <class TR, class = void>
+struct HasErasedWalk : std::false_type {};
+template <class TR>
+struct HasErasedWalk<TR, std::void_t<decltype(TR::kErasedParentWalk)>>
+    : std::bool_constant<TR::kErasedParentWalk> {};
+}  // namespace parents_detail
 
 // A parent lookup + path index over a document, built once and queried many
 // times. Construction is a single whole-tree walk; every element (including
@@ -49,7 +64,18 @@ class ParentMap {
     if (std::optional<ViewOf<P>> nm = P::Doc::Name(model))
       n.name = P::Str::FromUtf8(P::Str::ToUtf8(*nm));
     nodes_[root] = std::move(n);
-    Record(model, root);
+    if constexpr (parents_detail::HasErasedWalk<typename P::Tree>::value) {
+      // Walk the subtree over base node pointers (one instantiation) and record
+      // each node through a single dispatch to its concrete type -- instead of
+      // the recursive generic walk below, which instantiates the record step for
+      // the entire containment closure and costs ~20 GB of compiler memory.
+      P::Tree::ForEachDescendant(model, [this](const auto& child, const void* parent) {
+        P::Tree::DispatchConcrete(
+            child, [this, parent](const auto& e) { this->AddNode(e, parent); });
+      });
+    } else {
+      Record(model, root);
+    }
   }
 
   // Parent of an element, or null when it is the document root or not indexed.
@@ -102,8 +128,10 @@ class ParentMap {
     P::Tree::ForEachChild(e, [&](const auto& c) { Add(c, self); });
   }
 
+  // Record one element's entry. No recursion: the erased walk visits every
+  // descendant itself, and the generic Add below adds the recursion back.
   template <class E>
-  void Add(const E& e, const void* parent) {
+  void AddNode(const E& e, const void* parent) {
     Node n;
     n.parent = parent;
     n.type = ElementTypeOf<P, E>;
@@ -111,6 +139,11 @@ class ParentMap {
       n.name = P::Str::FromUtf8(P::Str::ToUtf8(*nm));
     n.childclass = ChildClass(e);
     nodes_[&e] = std::move(n);
+  }
+
+  template <class E>
+  void Add(const E& e, const void* parent) {
+    AddNode(e, parent);
     Record(e, &e);
   }
 

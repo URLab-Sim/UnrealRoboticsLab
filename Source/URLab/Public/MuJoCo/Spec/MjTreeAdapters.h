@@ -116,6 +116,35 @@ struct TMjTreeAdapter
 		}
 	}
 
+	// --- Erased whole-subtree walk (for ParentMap) ------------------------- //
+	//
+	// ParentMap (protospec/parents.h) builds its index by recursing the tree.
+	// Done generically -- ForEachChild concretizing each child, then recursing
+	// into it -- that instantiates the record step for the entire containment
+	// closure (every element type x every child type, recursively), which is
+	// ~20 GB of Clang memory per TU. This walk keeps the recursion at the BASE
+	// pointer, so it is a single instantiation, and ParentMap dispatches to the
+	// concrete type exactly ONCE per node (a plain switch). The runtime work is
+	// identical. `kErasedParentWalk` opts ParentMap onto this path.
+	static constexpr bool kErasedParentWalk = true;
+
+	template <class Fn>
+	static void ForEachDescendant(const UMjNodeComponent& Root, Fn&& Function)
+	{
+		for (const FMjOrderedChild& Child : OrderedChildren(Root))
+		{
+			Function(*Child.Node, static_cast<const void*>(&Root));
+			ForEachDescendant(*Child.Node, Function);
+		}
+	}
+
+	/** Recover a base node's concrete type and hand it to Function, once. */
+	template <class Fn>
+	static void DispatchConcrete(const UMjNodeComponent& Node, Fn&& Function)
+	{
+		gen::DispatchByType(Node, [&](const auto& Concrete) { Function(Concrete); });
+	}
+
 	template <class E, class Fn>
 	static void ForEachChildAt(E& Parent, Fn&& Function)
 	{
@@ -427,14 +456,39 @@ private:
 	template <class E, class Fn>
 	static void DispatchChild(UMjNodeComponent& Child, Fn&& Function)
 	{
-		if constexpr (std::is_const_v<E>)
+		// Dispatch only among the child types E's schema ADMITS, not the whole
+		// element-type set. A full 144-way gen::DispatchByType here is
+		// instantiated once per parent type by ForEachChild/ForEachChildAt, so
+		// its body fans out 144 x 144 -- O(types^2) -- which is what made the
+		// MJCF reader/writer TUs ~13 GB. ChildSlots is E's admissible (slot,
+		// type) list; a child from OrderedChildren always sits in one of them,
+		// so matching the runtime type against it dispatches to exactly the same
+		// concrete type the full switch would have, at a fraction of the
+		// instantiation. (The type chain compiles to a jump table, so runtime is
+		// unchanged.)
+		using BareE = std::remove_const_t<E>;
+		ps::mjcf::ElementType ChildType;
+		if (!gen::ElementTypeOfNode(Child, ChildType))
 		{
-			gen::DispatchByType(static_cast<const UMjNodeComponent&>(Child), Function);
+			return;
 		}
-		else
-		{
-			gen::DispatchByType(Child, Function);
-		}
+		bool bDispatched = false;
+		gen::ChildSlots(static_cast<const BareE*>(nullptr), [&](int, auto Tag) {
+			using T = typename decltype(Tag)::type;
+			if (bDispatched || gen::TMjElementType<T>::Value != ChildType)
+			{
+				return;
+			}
+			bDispatched = true;
+			if constexpr (std::is_const_v<E>)
+			{
+				Function(static_cast<const T&>(Child));
+			}
+			else
+			{
+				Function(static_cast<T&>(Child));
+			}
+		});
 	}
 
 	static int32 FindSlot(const UMjNodeComponent& Parent, const UMjNodeComponent& Child)

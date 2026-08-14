@@ -7,12 +7,17 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "HAL/CriticalSection.h"
+#include <atomic>
 #include "MjbScene.generated.h"
 
 struct mjModel_;
 struct mjData_;
 class UPrimitiveComponent;
+class UProceduralMeshComponent;
 class UMaterialInterface;
+class FRunnable;
+class FRunnableThread;
 
 /**
  * @class AMjbScene
@@ -41,9 +46,21 @@ public:
 	FString MjbFilePath;
 
 	/** Animate joints locally via mj_forward so the scene moves with no owner.
-	 *  Development only -- the real path applies a streamed transform set. */
+	 *  Development only -- the real path applies a streamed transform set.
+	 *  Ignored once a bus endpoint is connected. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bTestSweep = true;
+
+	/** Owner transform bus endpoint, e.g. "tcp://127.0.0.1:5561". When set, this
+	 *  scene subscribes to a per-geom transform stream and mirrors the owner. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	FString BusEndpoint;
+
+	/** Bitmask of MuJoCo geom groups to render (bit i = group i). Default shows
+	 *  groups 0-2 (visual) and hides 3+ (collision proxies), matching the common
+	 *  menagerie visual/collision split. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	int32 VisibleGroupMask = 0b0000111;
 
 	/** Build the scene from MjbFilePath. Safe to call once. Returns geom count
 	 *  built, or -1 on load failure. */
@@ -58,6 +75,12 @@ public:
 	 *  by the initial rest pose and the owner-less dev sweep. Converts the 3x3
 	 *  orientation to a quaternion. Not used on the streamed render path. */
 	void ApplyFromData();
+
+	/** Worker-thread entry: receive per-geom transform frames off the bus.
+	 *  Public so the bus FRunnable can drive it. */
+	void RunBusLoop();
+	/** Ask the bus worker to stop (called from the FRunnable's Stop). */
+	void SignalBusStop() { bBusStop = true; }
 
 	/** Body actors created (one per MuJoCo body, world included). */
 	int32 NumBodyActors() const { return BodyActors.Num(); }
@@ -80,6 +103,21 @@ private:
 	TArray<TObjectPtr<UPrimitiveComponent>> GeomComps;
 
 	double SweepTime = 0.0;
+
+	// --- transform bus (owner -> this renderer) --------------------------- //
+	void* ZmqCtx = nullptr;
+	void* ZmqSub = nullptr;
+	FRunnable* BusRunnable = nullptr;
+	FRunnableThread* BusThread = nullptr;
+	std::atomic<bool> bBusStop{false};
+	// Latest received per-geom transforms, applied on the game thread in Tick.
+	FCriticalSection FrameMutex;
+	TArray<double> LatestXpos; // 3*ngeom
+	TArray<double> LatestXquat; // 4*ngeom
+	std::atomic<bool> bHasFrame{false};
+
+	void StartBus();
+	void StopBus();
 
 	void BuildBodies();
 	void BuildGeoms();

@@ -22,6 +22,12 @@
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "Utils/URLabLogging.h"
+#include "Bridge/MsgpackHelpers.h"
+#include "Dom/JsonObject.h"
+#include "HAL/Runnable.h"
+#include "HAL/RunnableThread.h"
+
+#include "zmq.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -38,6 +44,31 @@ UStaticMesh* LoadBasic(const TCHAR* Path)
 {
 	return LoadObject<UStaticMesh>(nullptr, Path);
 }
+
+// Drives the transform-bus receive loop on a worker thread.
+class FMjbBusRunnable : public FRunnable
+{
+public:
+	explicit FMjbBusRunnable(AMjbScene* InScene) : Scene(InScene) {}
+	virtual uint32 Run() override
+	{
+		if (Scene)
+		{
+			Scene->RunBusLoop();
+		}
+		return 0;
+	}
+	virtual void Stop() override
+	{
+		if (Scene)
+		{
+			Scene->SignalBusStop();
+		}
+	}
+
+private:
+	AMjbScene* Scene = nullptr;
+};
 } // namespace
 
 AMjbScene::AMjbScene()
@@ -52,6 +83,10 @@ void AMjbScene::BeginPlay()
 	if (!MjbFilePath.IsEmpty())
 	{
 		LoadAndBuild();
+	}
+	if (!BusEndpoint.IsEmpty())
+	{
+		StartBus();
 	}
 }
 
@@ -152,6 +187,14 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	const int32 BodyId = Model->geom_bodyid[G];
 	const int32 MatId = Model->geom_matid[G];
 	const double* Size = Model->geom_size + 3 * G;
+
+	// Geom-group visibility: hide collision/other groups the mask excludes
+	// (default shows 0-2). Matches MuJoCo's group-toggled visualization.
+	const int32 Group = Model->geom_group[G];
+	if (Group < 0 || Group > 30 || !(VisibleGroupMask & (1 << Group)))
+	{
+		return nullptr;
+	}
 
 	// A fully transparent geom is MJCF's "do not draw" (collision/inertial
 	// proxies routinely carry rgba="0 0 0 0"). Honour it.
@@ -348,7 +391,25 @@ void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 void AMjbScene::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	if (!bTestSweep || !Model || !Data)
+
+	// A streamed frame from the owner takes priority: apply it on the game
+	// thread (UE components are not thread-safe). Holds the last pose between
+	// frames; no re-apply needed.
+	if (bHasFrame.load(std::memory_order_acquire))
+	{
+		TArray<double> Xp;
+		TArray<double> Xq;
+		{
+			FScopeLock Lock(&FrameMutex);
+			Xp = LatestXpos;
+			Xq = LatestXquat;
+			bHasFrame.store(false, std::memory_order_release);
+		}
+		ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
+		return;
+	}
+
+	if (!bTestSweep || !Model || !Data || ZmqSub)
 	{
 		return;
 	}
@@ -406,8 +467,148 @@ void AMjbScene::ApplyFromData()
 	}
 }
 
+void AMjbScene::StartBus()
+{
+	if (BusEndpoint.IsEmpty() || ZmqSub)
+	{
+		return;
+	}
+	ZmqCtx = zmq_ctx_new();
+	ZmqSub = zmq_socket(ZmqCtx, ZMQ_SUB);
+	int Timeout = 200;
+	zmq_setsockopt(ZmqSub, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
+	int Linger = 0;
+	zmq_setsockopt(ZmqSub, ZMQ_LINGER, &Linger, sizeof(Linger));
+	int Hwm = 8;
+	zmq_setsockopt(ZmqSub, ZMQ_RCVHWM, &Hwm, sizeof(Hwm));
+	if (zmq_connect(ZmqSub, TCHAR_TO_UTF8(*BusEndpoint)) != 0)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] transform bus connect failed: %s"), *BusEndpoint);
+		zmq_close(ZmqSub);
+		ZmqSub = nullptr;
+		zmq_ctx_term(ZmqCtx);
+		ZmqCtx = nullptr;
+		return;
+	}
+	zmq_setsockopt(ZmqSub, ZMQ_SUBSCRIBE, "geoms", 5);
+	bBusStop = false;
+	BusRunnable = new FMjbBusRunnable(this);
+	BusThread = FRunnableThread::Create(BusRunnable, TEXT("MjbBusSub"));
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] subscribing to transform bus %s"), *BusEndpoint);
+}
+
+void AMjbScene::StopBus()
+{
+	if (!ZmqSub && !ZmqCtx)
+	{
+		return;
+	}
+	bBusStop = true;
+	if (BusThread)
+	{
+		BusThread->WaitForCompletion();
+		delete BusThread;
+		BusThread = nullptr;
+	}
+	delete BusRunnable;
+	BusRunnable = nullptr;
+	if (ZmqSub)
+	{
+		zmq_close(ZmqSub);
+		ZmqSub = nullptr;
+	}
+	if (ZmqCtx)
+	{
+		zmq_ctx_term(ZmqCtx);
+		ZmqCtx = nullptr;
+	}
+}
+
+void AMjbScene::RunBusLoop()
+{
+	const int32 NGeom = Model ? static_cast<int32>(Model->ngeom) : 0;
+	TArray<uint8> Payload;
+	auto RecvPair = [this, &Payload](bool bBlock) -> bool
+	{
+		zmq_msg_t Topic;
+		zmq_msg_init(&Topic);
+		if (zmq_msg_recv(&Topic, ZmqSub, bBlock ? 0 : ZMQ_DONTWAIT) < 0)
+		{
+			zmq_msg_close(&Topic);
+			return false;
+		}
+		int More = 0;
+		size_t Ms = sizeof(More);
+		zmq_getsockopt(ZmqSub, ZMQ_RCVMORE, &More, &Ms);
+		zmq_msg_close(&Topic);
+		if (!More)
+		{
+			return false;
+		}
+		zmq_msg_t Msg;
+		zmq_msg_init(&Msg);
+		if (zmq_msg_recv(&Msg, ZmqSub, 0) < 0)
+		{
+			zmq_msg_close(&Msg);
+			return false;
+		}
+		const int Sz = zmq_msg_size(&Msg);
+		Payload.SetNumUninitialized(Sz);
+		if (Sz > 0)
+		{
+			FMemory::Memcpy(Payload.GetData(), zmq_msg_data(&Msg), Sz);
+		}
+		zmq_msg_close(&Msg);
+		return true;
+	};
+
+	while (!bBusStop.load(std::memory_order_acquire))
+	{
+		if (!RecvPair(true))
+		{
+			continue;
+		}
+		int32 Guard = 0;
+		while (RecvPair(false) && ++Guard < 4096)
+		{
+		}
+		TSharedPtr<FJsonObject> Obj;
+		if (!FURLabMsgpackUtil::UnpackToJsonObject(Payload.GetData(), Payload.Num(), Obj) || !Obj.IsValid())
+		{
+			continue;
+		}
+		TArray<double> Xp;
+		TArray<double> Xq;
+		const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
+		if (Obj->TryGetArrayField(TEXT("xpos"), A) && A)
+		{
+			Xp.Reserve(A->Num());
+			for (const TSharedPtr<FJsonValue>& V : *A)
+			{
+				Xp.Add(V.IsValid() ? V->AsNumber() : 0.0);
+			}
+		}
+		if (Obj->TryGetArrayField(TEXT("xquat"), A) && A)
+		{
+			Xq.Reserve(A->Num());
+			for (const TSharedPtr<FJsonValue>& V : *A)
+			{
+				Xq.Add(V.IsValid() ? V->AsNumber() : 0.0);
+			}
+		}
+		if (Xp.Num() == 3 * NGeom && Xq.Num() == 4 * NGeom)
+		{
+			FScopeLock Lock(&FrameMutex);
+			LatestXpos = MoveTemp(Xp);
+			LatestXquat = MoveTemp(Xq);
+			bHasFrame.store(true, std::memory_order_release);
+		}
+	}
+}
+
 void AMjbScene::Teardown()
 {
+	StopBus();
 	for (TObjectPtr<AActor>& B : BodyActors)
 	{
 		if (B)

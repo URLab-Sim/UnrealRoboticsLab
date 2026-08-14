@@ -799,7 +799,20 @@ bool LaunchFastPathFromOwnerSync(const FString& ControlEndpoint, bool bFreshLeve
 	UE_LOG(LogURLabEditor, Log,
 		TEXT("[MjbFastPath] fetched MJB (%d bytes) + bus %s from owner %s"),
 		Mjb.Num(), *Bus, *ControlEndpoint);
-	return BuildFastPathScene(FString(), Mjb, Bus, ControlEndpoint, bFreshLevel, OutError);
+
+	// Cache the wire MJB to a temp file and drive the scene from that PATH rather
+	// than a multi-MB byte UPROPERTY. The path (a short string) survives the
+	// editor->PIE duplication reliably, so the PIE copy rebuilds from the file; a
+	// large byte array does not always duplicate cleanly.
+	const FString MjbPath = FPaths::Combine(FPaths::ProjectSavedDir(),
+		TEXT("URLab"), TEXT("fastpath_wire.mjb"));
+	IFileManager::Get().MakeDirectory(*FPaths::GetPath(MjbPath), /*Tree=*/true);
+	if (!FFileHelper::SaveArrayToFile(Mjb, *MjbPath))
+	{
+		OutError = FString::Printf(TEXT("could not cache MJB to %s"), *MjbPath);
+		return false;
+	}
+	return BuildFastPathScene(MjbPath, TArray<uint8>(), Bus, ControlEndpoint, bFreshLevel, OutError);
 }
 
 namespace

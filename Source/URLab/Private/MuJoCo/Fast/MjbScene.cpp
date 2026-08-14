@@ -89,18 +89,45 @@ void AMjbScene::BeginPlay()
 
 	// Streaming only ever happens in a running world (PIE / -game). When this
 	// actor is the PIE duplicate of the editor-world preview, its raw mjModel /
-	// mjData pointers and its (transient, non-duplicated) child-actor references
-	// were shallow-copied and are stale -- clear them WITHOUT freeing (the editor
-	// actor still owns its own), so LoadAndBuild rebuilds a clean scene in this
-	// world instead of tearing down the editor's model.
+	// mjData pointers were shallow-copied and are stale -- clear them WITHOUT
+	// freeing (the editor actor still owns its own). Its child body actors are now
+	// persistent, so they DID duplicate into this world: destroy the inherited
+	// copies so we rebuild a single clean streaming scene, not a static overlay.
 	Model = nullptr;
 	Data = nullptr;
+	{
+		TArray<AActor*> Inherited;
+		GetAttachedActors(Inherited);
+		for (AActor* A : Inherited)
+		{
+			if (A)
+			{
+				A->Destroy();
+			}
+		}
+	}
 	BodyActors.Reset();
 	GeomComps.Reset();
+	CameraComps.Reset();
 
-	if (!MjbFilePath.IsEmpty())
+	const bool bHaveModel = !MjbFilePath.IsEmpty() || MjbBytes.Num() > 0;
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjbScene] BeginPlay (game=%d): file='%s' bytes=%d bus='%s' cameras=%d"),
+		GetWorld() && GetWorld()->IsGameWorld(), *MjbFilePath, MjbBytes.Num(),
+		*BusEndpoint, bEnableCameraStreaming);
+
+	if (bHaveModel)
 	{
-		LoadAndBuild();
+		const int32 Geoms = LoadAndBuild();
+		if (Geoms < 0)
+		{
+			UE_LOG(LogURLab, Error, TEXT("[MjbScene] BeginPlay rebuild FAILED (no usable MJB)"));
+		}
+	}
+	else
+	{
+		UE_LOG(LogURLab, Error,
+			TEXT("[MjbScene] BeginPlay: no MJB path or bytes -- nothing to stream (discovery/duplication issue?)"));
 	}
 	if (!BusEndpoint.IsEmpty())
 	{

@@ -377,8 +377,9 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 			Scale = FVector(Size[0], Size[0], Size[1]) * kSizeToScale;
 			break;
 		case mjGEOM_CAPSULE:
-			// Approximated as a cylinder for now (flat ends); rounded caps are a
-			// follow-on. Matches the URDF exporter's capsule handling.
+			// Cylinder shaft; the two rounded end caps are added as sphere child
+			// components below (same as the authoring path). size[0]=radius,
+			// size[1]=half-length of the cylinder part.
 			MeshPath = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
 			Scale = FVector(Size[0], Size[0], Size[1]) * kSizeToScale;
 			break;
@@ -411,6 +412,34 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	Comp->RegisterComponent();
 	Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 	ApplyGeomMaterial(Comp, G);
+
+	// Rounded capsule caps: a sphere at each end of the cylinder shaft, as child
+	// components so they follow the shaft's streamed world transform. The base
+	// cylinder/sphere meshes are 100 units, so the shaft's local half-height is 50
+	// units; a cap sits there. The shaft's own non-uniform scale (r,r,halflen) is
+	// cancelled on the cap's Z (1,1,r/halflen) so each cap stays a sphere of
+	// radius r. Same construction as UMjGeom's VisualizerCap parts.
+	if (Type == mjGEOM_CAPSULE)
+	{
+		if (UStaticMesh* SphereMesh = LoadBasic(TEXT("/Engine/BasicShapes/Sphere.Sphere")))
+		{
+			const double R = Size[0];
+			const double HalfLen = Size[1] > KINDA_SMALL_NUMBER ? Size[1] : R;
+			const FVector CapScale(1.0f, 1.0f, static_cast<float>(R / HalfLen));
+			const double CapZ[2] = {50.0, -50.0};
+			for (int32 S = 0; S < 2; ++S)
+			{
+				UStaticMeshComponent* Cap = NewObject<UStaticMeshComponent>(Body);
+				Cap->SetStaticMesh(SphereMesh);
+				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				Cap->RegisterComponent();
+				Cap->AttachToComponent(Comp, FAttachmentTransformRules::KeepRelativeTransform);
+				Cap->SetRelativeLocation(FVector(0.0, 0.0, CapZ[S]));
+				Cap->SetRelativeScale3D(CapScale);
+				ApplyGeomMaterial(Cap, G);
+			}
+		}
+	}
 	return Comp;
 }
 

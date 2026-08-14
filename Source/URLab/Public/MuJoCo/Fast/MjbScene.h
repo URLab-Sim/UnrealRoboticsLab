@@ -85,6 +85,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	int32 CameraStreamBasePort = 5600;
 
+	/** Cap the rendered camera height (px), downscaling the MJB resolution while
+	 *  keeping aspect. Each camera is a full scene capture, so this keeps many
+	 *  cameras affordable. 0 = honour the MJB resolution exactly. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	int32 CameraMaxHeight = 480;
+
 	/** Also publish camera frames over the shared-memory ring (co-located clients). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bEnableCameraShm = false;

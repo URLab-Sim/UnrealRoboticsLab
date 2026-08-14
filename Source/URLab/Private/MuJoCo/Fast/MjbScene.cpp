@@ -425,6 +425,13 @@ void AMjbScene::BuildCameras()
 	{
 		return;
 	}
+	// Camera capture + streaming is a play-session behaviour (like the transform
+	// stream): only in a running world (PIE / -game). This keeps the editor
+	// preview static and avoids the PIE duplicate double-binding the camera ports.
+	if (!GetWorld() || !GetWorld()->IsGameWorld())
+	{
+		return;
+	}
 	const int32 NCam = static_cast<int32>(Model->ncam);
 	CameraComps.SetNum(NCam);
 	for (int32 C = 0; C < NCam; ++C)
@@ -440,11 +447,24 @@ void AMjbScene::BuildCameras()
 			continue;
 		}
 		Cam->CaptureMode = EMjCameraMode::Real;
+		// Resolution: MuJoCo leaves an unspecified camera at 1x1, so treat <=1 as
+		// "use a sane default". Then optionally cap the height (each camera is a
+		// full scene capture) keeping aspect.
+		int32 W = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C]) : 0;
+		int32 H = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C + 1]) : 0;
+		if (W <= 1 || H <= 1)
+		{
+			W = 640;
+			H = 480;
+		}
+		if (CameraMaxHeight > 0 && H > CameraMaxHeight)
+		{
+			W = FMath::Max(1, FMath::RoundToInt(W * (static_cast<double>(CameraMaxHeight) / H)));
+			H = CameraMaxHeight;
+		}
 		TArray<int32> Res;
-		const int32 W = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C]) : 0;
-		const int32 H = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C + 1]) : 0;
-		Res.Add(W > 0 ? W : 640);
-		Res.Add(H > 0 ? H : 480);
+		Res.Add(W);
+		Res.Add(H);
 		Cam->SetResolution(Res);
 		if (Model->cam_fovy[C] > 0.0)
 		{

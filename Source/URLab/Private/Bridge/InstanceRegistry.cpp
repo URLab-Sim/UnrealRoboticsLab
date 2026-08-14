@@ -82,6 +82,24 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 	TArray<TSharedPtr<FJsonValue>> Caps;
 	for (const FString& Cap : Capabilities())
 		Caps.Add(MakeShared<FJsonValueString>(Cap));
+
+	// A viewer-broadcasting instance is also a fast-path owner: it serves its MJB
+	// over the control channel (fastpath_hello on the step port) and publishes the
+	// geoms transform bus on the viewer port. Advertise that so a fast-path
+	// renderer's server browser can discover and connect to it, exactly like a
+	// Python owner. Off unless this instance broadcasts.
+	if (Cfg.bBroadcastViewers)
+	{
+		Caps.Add(MakeShared<FJsonValueString>(TEXT("fastpath_owner")));
+		const FString Host = FPlatformProcess::ComputerName();
+		Entry->SetStringField(TEXT("role"), TEXT("fastpath_owner"));
+		Entry->SetStringField(TEXT("control"),
+			FString::Printf(TEXT("tcp://%s:%d"), *Host, Cfg.StepPort));
+		Entry->SetStringField(TEXT("bus"),
+			FString::Printf(TEXT("tcp://%s:%d"), *Host, Cfg.ViewerPort));
+		Entry->SetNumberField(TEXT("viewer_port"), Cfg.ViewerPort);
+		Entry->SetStringField(TEXT("scene"), EffectiveInstanceId(Cfg));
+	}
 	Entry->SetArrayField(TEXT("capabilities"), Caps);
 
 	Entry->SetStringField(TEXT("registry_written_at"), FDateTime::UtcNow().ToIso8601());

@@ -336,6 +336,7 @@ private:
 	TSharedPtr<FJsonObject> HandleMeta(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleAcquireLease(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleReleaseLease(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleFastpathHello(const TSharedPtr<FJsonObject>& Req);
 	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
 	// pure data staging on the RPC thread; commit materialises to a temp dir and
 	// drives the existing import_xml editor job.

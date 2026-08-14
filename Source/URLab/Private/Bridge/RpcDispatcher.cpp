@@ -230,6 +230,13 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleReleaseLease(R); },
 		/*Reply=*/{TEXT("op:string")});
 
+	// Fast-path owner handshake (RpcHandlers_Fastpath.cpp): serve the live MJB +
+	// transform-bus endpoint to a fast-path renderer. NoManager so it can report
+	// `not_ready` cleanly when no session is live, matching upload_model_commit.
+	Reg(TEXT("fastpath_hello"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleFastpathHello(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("mjb:object"), TEXT("bus:string"), TEXT("ngeom:int")});
+
 	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
 	// pure data staging (no manager, no editor). Commit drives the existing
 	// import_xml editor job on a materialised temp dir; it self-checks for the
@@ -470,6 +477,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 		return HandleHello(Req);
 	if (Op.Equals(TEXT("meta")))
 		return HandleMeta(Req);
+	// fastpath_hello is also pre-session: a fast-path renderer only wants the MJB
+	// and bus endpoint and never establishes a session. It reads no session_id.
+	if (Op.Equals(TEXT("fastpath_hello")))
+		return HandleFastpathHello(Req);
 
 	{
 		FScopeLock Lock(&DispatchMutex);

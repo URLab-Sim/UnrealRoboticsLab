@@ -678,11 +678,47 @@ void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
 	zmq_send(ViewerPubSocket, Buf.GetData(), Buf.Num(), ZMQ_DONTWAIT);
 }
 
+void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
+{
+	if (!ViewerPubSocket || !m || !d)
+		return;
+	const int NGeom = m->ngeom;
+	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
+	Obj->SetNumberField(TEXT("f"), static_cast<double>(GeomBroadcastFrame++));
+
+	TArray<TSharedPtr<FJsonValue>> XPos;
+	XPos.Reserve(3 * NGeom);
+	for (int i = 0; i < 3 * NGeom; ++i)
+		XPos.Add(MakeShared<FJsonValueNumber>(d->geom_xpos[i]));
+	Obj->SetArrayField(TEXT("xpos"), XPos);
+
+	// MuJoCo stores geom orientation as a 3x3 (geom_xmat); the wire carries wxyz.
+	TArray<TSharedPtr<FJsonValue>> XQuat;
+	XQuat.Reserve(4 * NGeom);
+	double q[4];
+	for (int g = 0; g < NGeom; ++g)
+	{
+		mju_mat2Quat(q, d->geom_xmat + 9 * g);
+		for (int k = 0; k < 4; ++k)
+			XQuat.Add(MakeShared<FJsonValueNumber>(q[k]));
+	}
+	Obj->SetArrayField(TEXT("xquat"), XQuat);
+
+	TArray<uint8> Buf;
+	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
+	if (Buf.Num() == 0)
+		return;
+	zmq_send(ViewerPubSocket, "geoms", 5, ZMQ_SNDMORE | ZMQ_DONTWAIT);
+	zmq_send(ViewerPubSocket, Buf.GetData(), Buf.Num(), ZMQ_DONTWAIT);
+}
+
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
 	// Owner viewer bus: raw {t,qpos,qvel} to any subscribed viewers, every step,
 	// independent of the state_full byte fan-out (which pauses in direct/puppet).
 	PublishViewerFrame(m, d);
+	// Per-geom world transforms on the same bus, for fast-path renderers.
+	PublishGeomFrame(m, d);
 
 	// Build the state IR once per physics step, encode it to the canonical
 	// msgpack `state_full` snapshot, and fan the bytes out to every

@@ -380,6 +380,12 @@ public:
 	void* ViewerPubSocket = nullptr;
 	/** Encode {t,qpos,qvel} from (m,d) and PUB it on the viewer bus. */
 	void PublishViewerFrame(struct mjModel_* m, struct mjData_* d);
+	/** Encode per-geom world transforms {f,xpos,xquat} from (m,d) and PUB them on
+	 *  the same bus under the "geoms" topic, so a fast-path renderer can mirror
+	 *  this owner with no physics. */
+	void PublishGeomFrame(struct mjModel_* m, struct mjData_* d);
+	/** Monotonic frame id for the geoms bus. */
+	uint64 GeomBroadcastFrame = 0;
 
 protected:
 	struct FRegisteredSnapshotPublisher

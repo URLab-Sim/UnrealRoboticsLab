@@ -704,6 +704,25 @@ void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
 	}
 	Obj->SetArrayField(TEXT("xquat"), XQuat);
 
+	// Per-camera world transforms, so a render-server renderer's cameras track.
+	if (m->ncam > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> CxPos;
+		CxPos.Reserve(3 * m->ncam);
+		for (int i = 0; i < 3 * m->ncam; ++i)
+			CxPos.Add(MakeShared<FJsonValueNumber>(d->cam_xpos[i]));
+		Obj->SetArrayField(TEXT("cxpos"), CxPos);
+		TArray<TSharedPtr<FJsonValue>> CxQuat;
+		CxQuat.Reserve(4 * m->ncam);
+		for (int c = 0; c < m->ncam; ++c)
+		{
+			mju_mat2Quat(q, d->cam_xmat + 9 * c);
+			for (int k = 0; k < 4; ++k)
+				CxQuat.Add(MakeShared<FJsonValueNumber>(q[k]));
+		}
+		Obj->SetArrayField(TEXT("cxquat"), CxQuat);
+	}
+
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 	if (Buf.Num() == 0)

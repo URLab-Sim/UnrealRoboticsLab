@@ -22,6 +22,8 @@
 #include "Engine/World.h"
 
 #include "MuJoCo/Spec/MjAssetResolve.h"
+#include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "Utils/URLabLogging.h"
 #include "Bridge/MsgpackHelpers.h"
@@ -339,6 +341,7 @@ int32 AMjbScene::LoadAndBuild()
 
 	BuildBodies();
 	BuildGeoms();
+	BuildCameras();
 	ApplyFromData();
 
 	UE_LOG(LogURLab, Log,
@@ -413,6 +416,90 @@ void AMjbScene::BuildGeoms()
 			// Stable re-index key for the geom -> component map.
 			GeomComps[G]->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbGeom=%d"), G)));
 		}
+	}
+}
+
+void AMjbScene::BuildCameras()
+{
+	if (!bEnableCameraStreaming || !Model || Model->ncam == 0)
+	{
+		return;
+	}
+	const int32 NCam = static_cast<int32>(Model->ncam);
+	CameraComps.SetNum(NCam);
+	for (int32 C = 0; C < NCam; ++C)
+	{
+		// Host the camera under its MuJoCo body actor when it has one, else the
+		// scene actor. Its world pose is driven explicitly each frame regardless.
+		const int32 BodyId = Model->cam_bodyid[C];
+		AActor* Host = (BodyActors.IsValidIndex(BodyId) && BodyActors[BodyId]) ? BodyActors[BodyId].Get() : this;
+
+		UMjCamera* Cam = NewObject<UMjCamera>(Host);
+		if (!Cam)
+		{
+			continue;
+		}
+		Cam->CaptureMode = EMjCameraMode::Real;
+		TArray<int32> Res;
+		const int32 W = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C]) : 0;
+		const int32 H = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C + 1]) : 0;
+		Res.Add(W > 0 ? W : 640);
+		Res.Add(H > 0 ? H : 480);
+		Cam->SetResolution(Res);
+		if (Model->cam_fovy[C] > 0.0)
+		{
+			Cam->SetFovy(Model->cam_fovy[C]);
+		}
+
+		// Transport: one ZMQ PUB per camera (port base + id); no manager here, so
+		// the authored endpoint is used directly. Optional SHM ring alongside.
+		Cam->bEnableZmqBroadcast = true;
+		Cam->ZmqEndpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), CameraStreamBasePort + C);
+		Cam->bEnableShmBroadcast = bEnableCameraShm;
+		Cam->SetStreamPortIndex(C);
+
+		Cam->SetupAttachment(Host->GetRootComponent());
+		Cam->RegisterComponent();
+		// Render every frame: with no AAMjManager the state-change capture gate
+		// never advances, so it would render once then stall without this.
+		Cam->SetCaptureRate(/*bOnStateChange=*/false, /*MaxFps=*/30.0f);
+		Cam->SetStreamingEnabled(true);
+		CameraComps[C] = Cam;
+	}
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] camera server: %d camera(s) streaming from port %d"),
+		NCam, CameraStreamBasePort);
+}
+
+void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
+{
+	for (int32 C = 0; C < CameraComps.Num(); ++C)
+	{
+		UMjCamera* Cam = CameraComps[C];
+		if (!Cam)
+		{
+			continue;
+		}
+		FVector Loc;
+		FQuat Rot;
+		if (Cxpos && Cxquat)
+		{
+			// Streamed camera world transforms (wxyz), same convention as geoms.
+			Loc = URLabAxisConv::MjPositionToUe(Cxpos + 3 * C);
+			Rot = URLabAxisConv::MjQuatToUe(Cxquat + 4 * C);
+		}
+		else if (Data)
+		{
+			// Rest pose from this process's mjData (geom_xmat-style 3x3).
+			double Q[4];
+			mju_mat2Quat(Q, Data->cam_xmat + 9 * C);
+			Loc = URLabAxisConv::MjPositionToUe(Data->cam_xpos + 3 * C);
+			Rot = URLabAxisConv::MjQuatToUe(Q);
+		}
+		else
+		{
+			continue;
+		}
+		Cam->SetWorldLocationAndRotation(Loc, Rot);
 	}
 }
 
@@ -875,6 +962,35 @@ void AMjbScene::Tick(float DeltaSeconds)
 				{
 					ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
 				}
+
+				// Optional camera world transforms, so streamed cameras track
+				// moving bodies. Absent from owners that don't send them; cameras
+				// then stay at their rest pose.
+				if (CameraComps.Num() > 0)
+				{
+					const int32 NCam = CameraComps.Num();
+					TArray<double> Cp, Cq;
+					if (Obj->TryGetArrayField(TEXT("cxpos"), A) && A)
+					{
+						Cp.Reserve(A->Num());
+						for (const TSharedPtr<FJsonValue>& V : *A)
+						{
+							Cp.Add(V.IsValid() ? V->AsNumber() : 0.0);
+						}
+					}
+					if (Obj->TryGetArrayField(TEXT("cxquat"), A) && A)
+					{
+						Cq.Reserve(A->Num());
+						for (const TSharedPtr<FJsonValue>& V : *A)
+						{
+							Cq.Add(V.IsValid() ? V->AsNumber() : 0.0);
+						}
+					}
+					if (Cp.Num() == 3 * NCam && Cq.Num() == 4 * NCam)
+					{
+						ApplyCameraPoses(Cp.GetData(), Cq.GetData());
+					}
+				}
 			}
 			return;
 		}
@@ -936,6 +1052,7 @@ void AMjbScene::ApplyFromData()
 		const FQuat Rot = URLabAxisConv::MjQuatToUe(Quat);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
+	ApplyCameraPoses(nullptr, nullptr); // rest pose from mjData
 }
 
 void AMjbScene::StartBus()

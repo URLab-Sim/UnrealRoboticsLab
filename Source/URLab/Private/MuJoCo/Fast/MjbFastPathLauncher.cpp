@@ -53,6 +53,8 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	Scene->bTestSweep = Bus.IsEmpty(); // no owner -> local dev sweep so it moves
 	Scene->MjbFilePath = Mjb;
 	Scene->BusEndpoint = Bus;
+	// Render-server cameras are opt-in (capture is not free).
+	Scene->bEnableCameraStreaming = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
 	Scene->LoadAndBuild();
 	if (!Bus.IsEmpty())
 	{

@@ -75,6 +75,20 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	int32 VisibleGroupMask = 0b0000111;
 
+	/** Spawn the MJB's cameras and stream their rendered frames over ZMQ/SHM, so
+	 *  this renderer doubles as a render server. Off by default (capture is not
+	 *  free); enable per scene or via -URLabFastCameras. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	bool bEnableCameraStreaming = false;
+
+	/** Base ZMQ port for camera streams; camera i binds CameraStreamBasePort + i. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	int32 CameraStreamBasePort = 5600;
+
+	/** Also publish camera frames over the shared-memory ring (co-located clients). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	bool bEnableCameraShm = false;
+
 	/** Build from MjbFilePath and, if BusEndpoint is set, connect the transform
 	 *  bus. Callable from the editor / Python so a fast-path scene can be stood
 	 *  up live in the editor world without PIE. */
@@ -167,6 +181,11 @@ private:
 	UPROPERTY(Transient)
 	TMap<int32, TObjectPtr<class UTexture2D>> TextureCache;
 
+	// Cameras built from the MJB, indexed by MuJoCo camera id. Empty unless
+	// bEnableCameraStreaming.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UMjCamera>> CameraComps;
+
 	// Indexed by MuJoCo body id / geom id.
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<AActor>> BodyActors;
@@ -207,6 +226,13 @@ private:
 	void BuildBodies();
 	void BuildGeoms();
 	UPrimitiveComponent* BuildGeom(int32 GeomId);
+
+	// Spawn a UMjCamera per MJB camera and start its ZMQ/SHM stream (render
+	// server). No-op unless bEnableCameraStreaming.
+	void BuildCameras();
+	// Place cameras from their world pose. Uses the streamed cam transforms when
+	// present, else this process's mjData rest pose.
+	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
 	class UProceduralMeshComponent* BuildMesh(int32 GeomId, AActor* Body);
 	void ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 GeomId);
 	void Teardown();

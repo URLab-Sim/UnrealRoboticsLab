@@ -52,6 +52,8 @@
 #include "Engine/Light.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Bridge/InstanceRegistry.h"
 
 namespace URLabLevelOps
@@ -657,6 +659,8 @@ bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 	}
 	Scene->BusEndpoint = BusEndpoint;
 	Scene->OwnerControlEndpoint = ControlEndpoint; // for viewer -> owner perturbation
+	// Render-server cameras are opt-in via -URLabFastCameras (capture is not free).
+	Scene->bEnableCameraStreaming = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
 	Scene->Tags.AddUnique(FName(TEXT("URLab.ActorId=fastpath_scene")));
 
 	// Build a STATIC editor preview only: geometry at the rest pose, no bus, no

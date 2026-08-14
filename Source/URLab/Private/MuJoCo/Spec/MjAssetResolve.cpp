@@ -497,3 +497,19 @@ void MjApplyMaterialParameters(UMaterialInstanceDynamic& Instance, const FMjMate
 		Instance.SetTextureParameterValue(MjMaterialRoleParameter(Role), TextureOrNeutral(Texture, Role));
 	}
 }
+
+void MjBindNeutralMaterialTextures(UMaterialInstanceDynamic& Instance)
+{
+	// Every texture slot the master declares must be bound: a MID left with a
+	// role unset keeps the master's editor-default binding, which is not neutral
+	// and multiplies into the colour (dark / tinted / mis-shaded output). Callers
+	// with no textures of their own (the MJB fast path) bind the neutral stand-in
+	// for each role so only BaseColor and the scalar PBR terms drive the look.
+	Instance.SetScalarParameterValue(TEXT("TexRepeatU"), 1.0f);
+	Instance.SetScalarParameterValue(TEXT("TexRepeatV"), 1.0f);
+	for (int32 Index = 0; Index < static_cast<int32>(EMjMaterialRole::Count); ++Index)
+	{
+		const EMjMaterialRole Role = static_cast<EMjMaterialRole>(Index);
+		Instance.SetTextureParameterValue(MjMaterialRoleParameter(Role), TextureOrNeutral(nullptr, Role));
+	}
+}

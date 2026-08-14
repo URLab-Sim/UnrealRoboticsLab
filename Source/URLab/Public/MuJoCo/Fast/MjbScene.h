@@ -72,9 +72,10 @@ public:
 	 *  built, or -1 on load failure. */
 	int32 LoadAndBuild();
 
-	// Tick (and thus apply streamed frames) in the editor viewport, not only in
-	// PIE, so a live render shows straight in the editor.
-	virtual bool ShouldTickIfViewportsOnly() const override { return true; }
+	/** Build geometry only, at the MJB rest pose, with NO bus and NO streaming.
+	 *  For the editor-world preview: a persistent, static, saveable scene that is
+	 *  never animated outside a play session. Returns geom count or -1. */
+	int32 BuildStaticPreview();
 
 	/** Apply a per-geom world-transform stream: xpos is 3*ngeom, xquat 4*ngeom
 	 *  (wxyz), in MuJoCo world frame. This is the render-time hot path (no

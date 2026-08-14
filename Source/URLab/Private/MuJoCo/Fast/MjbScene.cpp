@@ -80,6 +80,18 @@ AMjbScene::AMjbScene()
 void AMjbScene::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Streaming only ever happens in a running world (PIE / -game). When this
+	// actor is the PIE duplicate of the editor-world preview, its raw mjModel /
+	// mjData pointers and its (transient, non-duplicated) child-actor references
+	// were shallow-copied and are stale -- clear them WITHOUT freeing (the editor
+	// actor still owns its own), so LoadAndBuild rebuilds a clean scene in this
+	// world instead of tearing down the editor's model.
+	Model = nullptr;
+	Data = nullptr;
+	BodyActors.Reset();
+	GeomComps.Reset();
+
 	if (!MjbFilePath.IsEmpty())
 	{
 		LoadAndBuild();
@@ -111,6 +123,14 @@ void AMjbScene::Launch()
 	{
 		StartBus();
 	}
+}
+
+int32 AMjbScene::BuildStaticPreview()
+{
+	// Editor-world preview: build geometry at the rest pose and stop. No bus, no
+	// tick -- the scene must never animate outside a play session. When the user
+	// presses Play, the PIE duplicate of this actor connects the bus and streams.
+	return LoadAndBuild();
 }
 
 int32 AMjbScene::LoadAndBuild()
@@ -300,6 +320,11 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	const int32 FaceAdr = Model->mesh_faceadr[MeshId];
 	const int32 FaceNum = Model->mesh_facenum[MeshId];
 	const bool bHasUV = Model->mesh_texcoordadr[MeshId] >= 0;
+	// Face indices are LOCAL to each mesh (0-based); add the per-mesh base
+	// addresses to reach this mesh's slice of the shared vert/normal/uv pools.
+	const int32 VertAdr = Model->mesh_vertadr[MeshId];
+	const int32 NormalAdr = Model->mesh_normaladr[MeshId];
+	const int32 TexAdr = bHasUV ? Model->mesh_texcoordadr[MeshId] : 0;
 
 	// Expand per face-corner so MuJoCo's split vertex/normal/texcoord pools (the
 	// hard-edge rule) are preserved: each corner gets its own vertex carrying the
@@ -314,34 +339,38 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	UVs.Reserve(FaceNum * 3);
 	Tris.Reserve(FaceNum * 3);
 
-	// Y-negation in the conversion mirrors the mesh, so reverse the winding
-	// (0,2,1) to keep faces outward. Normals come straight from MuJoCo.
-	const int32 Order[3] = {0, 2, 1};
+	// Single-sided, one triangle per face. MuJoCo winds faces CCW-from-outside in
+	// its right-handed frame; MjPositionToUe negates Y, a reflection that flips
+	// the winding sense, so MuJoCo's own order (0,1,2) is the front-facing (outward)
+	// order in Unreal. Keep the outward normal as-is. (An earlier reversed order
+	// culled the visible faces -- the "see-through" holes -- and duplicating faces
+	// to hide that introduced coplanar shadow acne / dark self-shadowing; a single
+	// correctly-wound face is both hole-free and correctly lit.)
+	const int32 Order[3] = {0, 1, 2};
 	for (int32 F = 0; F < FaceNum; ++F)
 	{
 		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
 		const int32* FN = Model->mesh_facenormal + 3 * (FaceAdr + F);
 		const int32* FT = bHasUV ? Model->mesh_facetexcoord + 3 * (FaceAdr + F) : nullptr;
-		const int32 Base = Verts.Num();
 		for (int32 C = 0; C < 3; ++C)
 		{
 			const int32 K = Order[C];
-			const int32 Vi = FV[K];
-			const int32 Ni = FN[K];
+			const int32 Vi = FV[K] + VertAdr;
+			const int32 Ni = FN[K] + NormalAdr;
 			Verts.Add(URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * Vi));
 			const double N[3] = {Model->mesh_normal[3 * Ni], Model->mesh_normal[3 * Ni + 1],
 				Model->mesh_normal[3 * Ni + 2]};
 			Normals.Add(URLabAxisConv::MjDirectionToUe(N).GetSafeNormal());
 			if (FT)
 			{
-				const int32 Ti = FT[K];
+				const int32 Ti = FT[K] + TexAdr;
 				UVs.Add(FVector2D(Model->mesh_texcoord[2 * Ti], 1.0f - Model->mesh_texcoord[2 * Ti + 1]));
 			}
 			else
 			{
 				UVs.Add(FVector2D::ZeroVector);
 			}
-			Tris.Add(Base + C);
+			Tris.Add(Verts.Num() - 1);
 		}
 	}
 
@@ -368,21 +397,35 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 		return;
 	}
 	Mid->SetVectorParameterValue(TEXT("BaseColor"), FLinearColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]));
-	// Full PBR params come from the material when the geom has one; sensible
-	// neutral defaults otherwise. Texture roles are the next pass.
+	// Neutralise every texture slot the master declares. Without this the MID
+	// keeps the master's editor-default textures, which tint/darken the output --
+	// this is what made materials look wrong. Real MJB textures are the next pass.
+	MjBindNeutralMaterialTextures(*Mid);
+	// PBR terms. MuJoCo stores metallic/roughness as -1 when "not specified", so
+	// pushing the raw field makes a mirror-smooth, aliased surface. Map exactly
+	// as the authoring path does (MjMetallicFor / MjRoughnessFor): metallic -1 ->
+	// 0, roughness -1 -> 1 - shininess. This is what a material's look depends on.
 	if (MatId >= 0)
 	{
-		Mid->SetScalarParameterValue(TEXT("Metallic"), Model->mat_metallic[MatId]);
-		Mid->SetScalarParameterValue(TEXT("Roughness"), Model->mat_roughness[MatId]);
+		const float RawMetal = Model->mat_metallic[MatId];
+		const float RawRough = Model->mat_roughness[MatId];
+		const float Metallic = FMath::Clamp(RawMetal >= 0.f ? RawMetal : 0.f, 0.f, 1.f);
+		const float Roughness = FMath::Clamp(RawRough >= 0.f ? RawRough : 1.f - Model->mat_shininess[MatId], 0.f, 1.f);
+		Mid->SetScalarParameterValue(TEXT("Metallic"), Metallic);
+		Mid->SetScalarParameterValue(TEXT("Roughness"), Roughness);
 		Mid->SetScalarParameterValue(TEXT("Specular"), FMath::Clamp(Model->mat_specular[MatId], 0.f, 1.f));
 		Mid->SetScalarParameterValue(TEXT("Reflectance"), FMath::Clamp(Model->mat_reflectance[MatId], 0.f, 1.f));
 		Mid->SetScalarParameterValue(TEXT("Emission"), FMath::Max(Model->mat_emission[MatId], 0.f));
 	}
 	else
 	{
+		// No material: MuJoCo draws a matte, non-metallic surface. Keep it matte
+		// so bare meshes never come out shiny.
 		Mid->SetScalarParameterValue(TEXT("Metallic"), 0.0f);
-		Mid->SetScalarParameterValue(TEXT("Roughness"), 0.6f);
+		Mid->SetScalarParameterValue(TEXT("Roughness"), 0.8f);
 		Mid->SetScalarParameterValue(TEXT("Specular"), 0.5f);
+		Mid->SetScalarParameterValue(TEXT("Reflectance"), 0.0f);
+		Mid->SetScalarParameterValue(TEXT("Emission"), 0.0f);
 	}
 }
 
@@ -408,6 +451,16 @@ void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 void AMjbScene::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	// Streaming is a play-session behaviour only. In the editor world this actor
+	// is a static, persistent preview and must never animate from the network or
+	// the dev sweep -- authoring the level shouldn't mutate scene actors. (The
+	// editor preview also never connects the bus, so this is belt-and-suspenders.)
+	const UWorld* W = GetWorld();
+	if (!W || !W->IsGameWorld())
+	{
+		return;
+	}
 
 	// A streamed frame takes priority: copy the newest raw payload out under the
 	// lock, then decode + apply here on the game thread (UE components and all

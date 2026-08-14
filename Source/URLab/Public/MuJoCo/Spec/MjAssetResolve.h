@@ -204,5 +204,16 @@ URLAB_API FMjResolvedMesh MjResolveMesh(const FSpecRef& Spec, const FString& Nam
 URLAB_API void MjApplyMaterialParameters(UMaterialInstanceDynamic& Instance, const FMjMaterialValues& Material,
 	const FLinearColor& BaseColor, const FSpecRef& Spec, const FVector2D& GeomSize);
 
+/**
+ * Bind every texture slot the master declares to its neutral stand-in (white,
+ * or flat-normal for the normal role) and reset the repeat to 1.
+ *
+ * For callers that drive the master by BaseColor + scalar PBR terms only and
+ * carry no textures (the MJB fast path). A slot left unbound keeps the master's
+ * editor-default texture, which tints or darkens the result; this neutralises
+ * all of them so the colour and scalars are the only inputs.
+ */
+URLAB_API void MjBindNeutralMaterialTextures(class UMaterialInstanceDynamic& Instance);
+
 /** The plugin's master material, or null when the content is missing. */
 URLAB_API class UMaterialInterface* MjLoadMasterMaterial();

@@ -90,6 +90,17 @@ public:
 	 *  never animated outside a play session. Returns geom count or -1. */
 	int32 BuildStaticPreview();
 
+	/**
+	 * Rebuild the body->actor and geom->component maps from the tags on the
+	 * already-present child actors, instead of rebuilding geometry from the MJB.
+	 * For a saved scene reopened in the editor: the persistent tagged actors are
+	 * re-indexed so streaming reconnects to them. Loads the model (from MjbBytes
+	 * or MjbFilePath) for sizing if it isn't already. Returns the number of geoms
+	 * re-indexed, or -1 if there is no model / no tagged actors were found.
+	 */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "URLab|Fast")
+	int32 ReindexFromLevel();
+
 	/** Set the in-memory MJB (received over the wire). Loaded in preference to
 	 *  MjbFilePath on the next build. */
 	void SetMjbBytes(const TArray<uint8>& Bytes) { MjbBytes = Bytes; }
@@ -187,6 +198,11 @@ private:
 	// given MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a
 	// bad id.
 	class UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB);
+
+	// Load the mjModel/mjData (from MjbBytes or MjbFilePath) and the master
+	// material, without building any actors. No-op if already loaded. False on
+	// failure.
+	bool LoadModelOnly();
 
 	void BuildBodies();
 	void BuildGeoms();

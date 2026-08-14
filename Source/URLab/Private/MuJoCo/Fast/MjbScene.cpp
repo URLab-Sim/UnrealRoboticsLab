@@ -137,6 +137,64 @@ int32 AMjbScene::BuildStaticPreview()
 	return LoadAndBuild();
 }
 
+int32 AMjbScene::ReindexFromLevel()
+{
+	// Need the model for sizing (nbody/ngeom) and the index space the stream uses.
+	if (!LoadModelOnly())
+	{
+		return -1;
+	}
+	const int32 NBody = static_cast<int32>(Model->nbody);
+	const int32 NGeom = static_cast<int32>(Model->ngeom);
+
+	BodyActors.Reset();
+	BodyActors.SetNum(NBody);
+	GeomComps.Reset();
+	GeomComps.SetNum(NGeom);
+
+	auto TagIndex = [](const FName& Tag, const TCHAR* Prefix) -> int32 {
+		const FString S = Tag.ToString();
+		const int32 PrefixLen = FCString::Strlen(Prefix);
+		return S.StartsWith(Prefix) ? FCString::Atoi(*S.Mid(PrefixLen)) : -1;
+	};
+
+	TArray<AActor*> Children;
+	GetAttachedActors(Children);
+	int32 Found = 0;
+	for (AActor* A : Children)
+	{
+		if (!A)
+		{
+			continue;
+		}
+		for (const FName& Tag : A->Tags)
+		{
+			const int32 BodyId = TagIndex(Tag, TEXT("MjbBody="));
+			if (BodyActors.IsValidIndex(BodyId))
+			{
+				BodyActors[BodyId] = A;
+			}
+		}
+		TArray<UPrimitiveComponent*> Comps;
+		A->GetComponents<UPrimitiveComponent>(Comps);
+		for (UPrimitiveComponent* C : Comps)
+		{
+			for (const FName& Tag : C->ComponentTags)
+			{
+				const int32 GeomId = TagIndex(Tag, TEXT("MjbGeom="));
+				if (GeomComps.IsValidIndex(GeomId))
+				{
+					GeomComps[GeomId] = C;
+					++Found;
+				}
+			}
+		}
+	}
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] re-indexed %d geoms across %d body actors from the level"),
+		Found, Children.Num());
+	return Found > 0 ? Found : -1;
+}
+
 bool AMjbScene::FetchModelFromOwner(const FString& ControlEndpoint,
 	TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError)
 {
@@ -220,10 +278,12 @@ bool AMjbScene::FetchModelFromOwner(const FString& ControlEndpoint,
 	return bOk;
 }
 
-int32 AMjbScene::LoadAndBuild()
+bool AMjbScene::LoadModelOnly()
 {
-	Teardown();
-
+	if (Model)
+	{
+		return true; // already loaded
+	}
 	// Prefer an in-memory MJB (received over the wire) over a file path, so a
 	// renderer never needs a shared file. Fall back to reading the file into a
 	// buffer; either way we load from the buffer with mj_loadModelBuffer.
@@ -241,7 +301,7 @@ int32 AMjbScene::LoadAndBuild()
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] no MJB to load (bytes empty, file '%s' unreadable)"),
 			*MjbFilePath);
-		return -1;
+		return false;
 	}
 
 	Model = mj_loadModelBuffer(Bytes->GetData(), Bytes->Num());
@@ -249,14 +309,14 @@ int32 AMjbScene::LoadAndBuild()
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] mj_loadModelBuffer failed (%d bytes; version-mismatched MJB?)"),
 			Bytes->Num());
-		return -1;
+		return false;
 	}
 	Data = mj_makeData(Model);
 	if (!Data)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] mj_makeData failed"));
 		Teardown();
-		return -1;
+		return false;
 	}
 	// One-shot forward for the rest pose (not stepping; the stream overrides it).
 	mj_forward(Model, Data);
@@ -265,6 +325,16 @@ int32 AMjbScene::LoadAndBuild()
 	if (!Master)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("[MjbScene] master material not found; geoms will be default-lit"));
+	}
+	return true;
+}
+
+int32 AMjbScene::LoadAndBuild()
+{
+	Teardown();
+	if (!LoadModelOnly())
+	{
+		return -1;
 	}
 
 	BuildBodies();
@@ -294,13 +364,19 @@ void AMjbScene::BuildBodies()
 {
 	const int32 NBody = static_cast<int32>(Model->nbody);
 	BodyActors.SetNum(NBody);
+	// In the editor world the body actors are persistent (saveable, re-indexable
+	// -- see ReindexFromLevel); in a play world they are transient scratch actors.
+	const bool bEditorPreview = GetWorld() && !GetWorld()->IsGameWorld();
 	for (int32 B = 0; B < NBody; ++B)
 	{
 		// One lightweight actor per body so the renderer culls per body. World
 		// body (0) holds static geoms (floor); include it.
 		FActorSpawnParameters Params;
 		Params.Owner = this;
-		Params.ObjectFlags |= RF_Transient;
+		if (!bEditorPreview)
+		{
+			Params.ObjectFlags |= RF_Transient;
+		}
 		AActor* Body = GetWorld()->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, Params);
 		if (!Body)
 		{
@@ -310,6 +386,17 @@ void AMjbScene::BuildBodies()
 		Body->SetRootComponent(Root);
 		Root->RegisterComponent();
 		Body->AttachToActor(this, FAttachmentTransformRules::KeepRelativeTransform);
+		// Stable re-index key: the MuJoCo body id, plus the body name for a
+		// readable outliner label. Lets a saved scene rebuild its body->actor map.
+		Body->Tags.Add(FName(*FString::Printf(TEXT("MjbBody=%d"), B)));
+		const char* Name = mj_id2name(Model, mjOBJ_BODY, B);
+		if (bEditorPreview && Name && *Name)
+		{
+			Body->Tags.Add(FName(*FString::Printf(TEXT("MjbBodyName=%s"), ANSI_TO_TCHAR(Name))));
+#if WITH_EDITOR
+			Body->SetActorLabel(FString::Printf(TEXT("Mjb_%s"), ANSI_TO_TCHAR(Name)));
+#endif
+		}
 		BodyActors[B] = Body;
 	}
 }
@@ -321,6 +408,11 @@ void AMjbScene::BuildGeoms()
 	for (int32 G = 0; G < NGeom; ++G)
 	{
 		GeomComps[G] = BuildGeom(G);
+		if (GeomComps[G])
+		{
+			// Stable re-index key for the geom -> component map.
+			GeomComps[G]->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbGeom=%d"), G)));
+		}
 	}
 }
 

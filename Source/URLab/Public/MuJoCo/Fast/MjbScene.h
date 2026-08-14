@@ -62,9 +62,19 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	int32 VisibleGroupMask = 0b0000111;
 
+	/** Build from MjbFilePath and, if BusEndpoint is set, connect the transform
+	 *  bus. Callable from the editor / Python so a fast-path scene can be stood
+	 *  up live in the editor world without PIE. */
+	UFUNCTION(BlueprintCallable, CallInEditor, Category = "URLab|Fast")
+	void Launch();
+
 	/** Build the scene from MjbFilePath. Safe to call once. Returns geom count
 	 *  built, or -1 on load failure. */
 	int32 LoadAndBuild();
+
+	// Tick (and thus apply streamed frames) in the editor viewport, not only in
+	// PIE, so a live render shows straight in the editor.
+	virtual bool ShouldTickIfViewportsOnly() const override { return true; }
 
 	/** Apply a per-geom world-transform stream: xpos is 3*ngeom, xquat 4*ngeom
 	 *  (wxyz), in MuJoCo world frame. This is the render-time hot path (no
@@ -82,6 +92,12 @@ public:
 	/** Ask the bus worker to stop (called from the FRunnable's Stop). */
 	void SignalBusStop() { bBusStop = true; }
 
+	/** Connect the transform bus now (BusEndpoint must be set). Normally driven
+	 *  by BeginPlay; exposed for tests and headless drivers. */
+	void ConnectBus() { StartBus(); }
+	/** True once at least one transform frame has been received off the bus. */
+	bool HasReceivedFrame() const { return bEverReceived.load(std::memory_order_acquire); }
+
 	/** Body actors created (one per MuJoCo body, world included). */
 	int32 NumBodyActors() const { return BodyActors.Num(); }
 	/** Geom render components actually built (skips hidden/mesh/unsupported). */
@@ -89,6 +105,7 @@ public:
 
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+	virtual void BeginDestroy() override;
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
@@ -110,11 +127,15 @@ private:
 	FRunnable* BusRunnable = nullptr;
 	FRunnableThread* BusThread = nullptr;
 	std::atomic<bool> bBusStop{false};
-	// Latest received per-geom transforms, applied on the game thread in Tick.
+	// The worker only copies the newest raw payload into this preallocated buffer
+	// (no UE allocation / no msgpack decode off the game thread). The game thread
+	// decodes + applies it in Tick.
 	FCriticalSection FrameMutex;
-	TArray<double> LatestXpos; // 3*ngeom
-	TArray<double> LatestXquat; // 4*ngeom
-	std::atomic<bool> bHasFrame{false};
+	uint8* RxBuf = nullptr;
+	int32 RxCap = 0;
+	int32 RxSize = 0;
+	bool bRxPending = false; // guarded by FrameMutex
+	std::atomic<bool> bEverReceived{false};
 
 	void StartBus();
 	void StopBus();

@@ -96,6 +96,23 @@ void AMjbScene::EndPlay(const EEndPlayReason::Type Reason)
 	Super::EndPlay(Reason);
 }
 
+void AMjbScene::BeginDestroy()
+{
+	// The editor can destroy/GC this actor without EndPlay; stop the worker
+	// thread before its members are torn down to avoid a use-after-free.
+	StopBus();
+	Super::BeginDestroy();
+}
+
+void AMjbScene::Launch()
+{
+	LoadAndBuild();
+	if (!BusEndpoint.IsEmpty())
+	{
+		StartBus();
+	}
+}
+
 int32 AMjbScene::LoadAndBuild()
 {
 	Teardown();
@@ -392,21 +409,52 @@ void AMjbScene::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	// A streamed frame from the owner takes priority: apply it on the game
-	// thread (UE components are not thread-safe). Holds the last pose between
-	// frames; no re-apply needed.
-	if (bHasFrame.load(std::memory_order_acquire))
+	// A streamed frame takes priority: copy the newest raw payload out under the
+	// lock, then decode + apply here on the game thread (UE components and all
+	// UObject/TArray work must stay on the game thread).
 	{
-		TArray<double> Xp;
-		TArray<double> Xq;
+		TArray<uint8> Local;
 		{
 			FScopeLock Lock(&FrameMutex);
-			Xp = LatestXpos;
-			Xq = LatestXquat;
-			bHasFrame.store(false, std::memory_order_release);
+			if (bRxPending && RxBuf && RxSize > 0)
+			{
+				Local.SetNumUninitialized(RxSize);
+				FMemory::Memcpy(Local.GetData(), RxBuf, RxSize);
+				bRxPending = false;
+			}
 		}
-		ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
-		return;
+		if (Local.Num() > 0)
+		{
+			TSharedPtr<FJsonObject> Obj;
+			if (FURLabMsgpackUtil::UnpackToJsonObject(Local.GetData(), Local.Num(), Obj) && Obj.IsValid())
+			{
+				const int32 NGeom = Model ? static_cast<int32>(Model->ngeom) : 0;
+				TArray<double> Xp;
+				TArray<double> Xq;
+				const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
+				if (Obj->TryGetArrayField(TEXT("xpos"), A) && A)
+				{
+					Xp.Reserve(A->Num());
+					for (const TSharedPtr<FJsonValue>& V : *A)
+					{
+						Xp.Add(V.IsValid() ? V->AsNumber() : 0.0);
+					}
+				}
+				if (Obj->TryGetArrayField(TEXT("xquat"), A) && A)
+				{
+					Xq.Reserve(A->Num());
+					for (const TSharedPtr<FJsonValue>& V : *A)
+					{
+						Xq.Add(V.IsValid() ? V->AsNumber() : 0.0);
+					}
+				}
+				if (NGeom > 0 && Xp.Num() == 3 * NGeom && Xq.Num() == 4 * NGeom)
+				{
+					ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
+				}
+			}
+			return;
+		}
 	}
 
 	if (!bTestSweep || !Model || !Data || ZmqSub)
@@ -491,6 +539,10 @@ void AMjbScene::StartBus()
 		return;
 	}
 	zmq_setsockopt(ZmqSub, ZMQ_SUBSCRIBE, "geoms", 5);
+	RxCap = 8 * 1024 * 1024; // ample for per-geom transform frames
+	RxBuf = static_cast<uint8*>(FMemory::Malloc(RxCap));
+	RxSize = 0;
+	bRxPending = false;
 	bBusStop = false;
 	BusRunnable = new FMjbBusRunnable(this);
 	BusThread = FRunnableThread::Create(BusRunnable, TEXT("MjbBusSub"));
@@ -522,86 +574,62 @@ void AMjbScene::StopBus()
 		zmq_ctx_term(ZmqCtx);
 		ZmqCtx = nullptr;
 	}
+	if (RxBuf)
+	{
+		FMemory::Free(RxBuf);
+		RxBuf = nullptr;
+		RxCap = 0;
+		RxSize = 0;
+		bRxPending = false;
+	}
 }
 
 void AMjbScene::RunBusLoop()
 {
-	const int32 NGeom = Model ? static_cast<int32>(Model->ngeom) : 0;
-	TArray<uint8> Payload;
-	auto RecvPair = [this, &Payload](bool bBlock) -> bool
-	{
-		zmq_msg_t Topic;
-		zmq_msg_init(&Topic);
-		if (zmq_msg_recv(&Topic, ZmqSub, bBlock ? 0 : ZMQ_DONTWAIT) < 0)
-		{
-			zmq_msg_close(&Topic);
-			return false;
-		}
-		int More = 0;
-		size_t Ms = sizeof(More);
-		zmq_getsockopt(ZmqSub, ZMQ_RCVMORE, &More, &Ms);
-		zmq_msg_close(&Topic);
-		if (!More)
-		{
-			return false;
-		}
-		zmq_msg_t Msg;
-		zmq_msg_init(&Msg);
-		if (zmq_msg_recv(&Msg, ZmqSub, 0) < 0)
-		{
-			zmq_msg_close(&Msg);
-			return false;
-		}
-		const int Sz = zmq_msg_size(&Msg);
-		Payload.SetNumUninitialized(Sz);
-		if (Sz > 0)
-		{
-			FMemory::Memcpy(Payload.GetData(), zmq_msg_data(&Msg), Sz);
-		}
-		zmq_msg_close(&Msg);
-		return true;
-	};
-
+	// Worker thread does NO UE allocation and NO msgpack decode: it copies the
+	// newest raw payload into the preallocated RxBuf under the lock and flags it.
+	// The game thread (Tick) decodes + applies. This keeps all UObject / TArray /
+	// FJsonObject work on the game thread.
 	while (!bBusStop.load(std::memory_order_acquire))
 	{
-		if (!RecvPair(true))
+		bool bGot = false;
+		while (true)
 		{
-			continue;
-		}
-		int32 Guard = 0;
-		while (RecvPair(false) && ++Guard < 4096)
-		{
-		}
-		TSharedPtr<FJsonObject> Obj;
-		if (!FURLabMsgpackUtil::UnpackToJsonObject(Payload.GetData(), Payload.Num(), Obj) || !Obj.IsValid())
-		{
-			continue;
-		}
-		TArray<double> Xp;
-		TArray<double> Xq;
-		const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
-		if (Obj->TryGetArrayField(TEXT("xpos"), A) && A)
-		{
-			Xp.Reserve(A->Num());
-			for (const TSharedPtr<FJsonValue>& V : *A)
+			zmq_msg_t Topic;
+			zmq_msg_init(&Topic);
+			// Block (bounded by RCVTIMEO) on the first read of a batch, then
+			// drain non-blocking to the newest.
+			if (zmq_msg_recv(&Topic, ZmqSub, bGot ? ZMQ_DONTWAIT : 0) < 0)
 			{
-				Xp.Add(V.IsValid() ? V->AsNumber() : 0.0);
+				zmq_msg_close(&Topic);
+				break; // timeout / drained
 			}
-		}
-		if (Obj->TryGetArrayField(TEXT("xquat"), A) && A)
-		{
-			Xq.Reserve(A->Num());
-			for (const TSharedPtr<FJsonValue>& V : *A)
+			int More = 0;
+			size_t Ms = sizeof(More);
+			zmq_getsockopt(ZmqSub, ZMQ_RCVMORE, &More, &Ms);
+			zmq_msg_close(&Topic);
+			if (!More)
 			{
-				Xq.Add(V.IsValid() ? V->AsNumber() : 0.0);
+				continue;
 			}
-		}
-		if (Xp.Num() == 3 * NGeom && Xq.Num() == 4 * NGeom)
-		{
-			FScopeLock Lock(&FrameMutex);
-			LatestXpos = MoveTemp(Xp);
-			LatestXquat = MoveTemp(Xq);
-			bHasFrame.store(true, std::memory_order_release);
+			zmq_msg_t Msg;
+			zmq_msg_init(&Msg);
+			if (zmq_msg_recv(&Msg, ZmqSub, 0) < 0)
+			{
+				zmq_msg_close(&Msg);
+				break;
+			}
+			const int32 Sz = static_cast<int32>(zmq_msg_size(&Msg));
+			if (Sz > 0 && Sz <= RxCap && RxBuf)
+			{
+				FScopeLock Lock(&FrameMutex);
+				FMemory::Memcpy(RxBuf, zmq_msg_data(&Msg), Sz);
+				RxSize = Sz;
+				bRxPending = true;
+			}
+			zmq_msg_close(&Msg);
+			bGot = true;
+			bEverReceived.store(true, std::memory_order_release);
 		}
 	}
 }

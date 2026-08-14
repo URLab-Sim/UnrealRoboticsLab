@@ -2146,6 +2146,23 @@ _ADD_CALLS = {
     "mjs_addDefault": ("Spec, ClassName, Def", "mjsDefault"),
 }
 
+# The mjSpec struct each element binds to, read straight from the schema's
+# `element <name> : mjs<Struct>` declarations -- MuJoCo's own grammar file, so
+# authoritative. Used to cross-check the two hand tables above (SPEC_CREATE's
+# constructor and _ADD_CALLS's struct both restate this same fact) against
+# upstream, so a struct rename (mjsHField -> mjsHeightField) or a hand typo
+# fails at generation, by name, instead of surviving to a C++ error.
+def _schema_elem_structs(mjroot: str) -> dict[str, str]:
+    path = os.path.join(mjroot, "src", "xml", "mjcf.schema")
+    out: dict[str, str] = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r"\s*element\s+(\w+)\s*:\s*(mjs\w+)", line)
+            if m:
+                out[m.group(1)] = m.group(2)
+    return out
+
+
 # The creation functions that consume the identity attribute themselves, so the
 # central mjs_setName would be writing a name the element already has.
 _ADD_TAKES_NAME = frozenset({"mjs_addDefault"})
@@ -2302,7 +2319,7 @@ class SpecWritePlan:
         self.by_name: dict[str, SpecElement] = {}
         self.enums_needed: set[str] = set()
         self.problems: list[str] = []
-        self._check_add_calls()
+        self._check_add_calls(mjroot)
         self._build()
         self._check_probed_defaults()
         self.enums_emitted = self._resolve_enums()
@@ -2313,7 +2330,7 @@ class SpecWritePlan:
                 + "\n  ".join(self.problems))
 
     # -- tables ------------------------------------------------------------- #
-    def _check_add_calls(self) -> None:
+    def _check_add_calls(self, mjroot: str) -> None:
         used = {arg for cat, arg in overlay_ue.SPEC_CREATE.values()
                 if cat in _CREATING and arg}
         for name in sorted(used - set(_ADD_CALLS)):
@@ -2323,6 +2340,27 @@ class SpecWritePlan:
         for name in sorted(set(_ADD_CALLS) - used):
             self.problems.append(
                 f"_ADD_CALLS knows {name}, which no SPEC_CREATE row uses")
+
+        # Tie the constructor hand table to MuJoCo's own element->struct binding.
+        # SPEC_CREATE's constructor (via _ADD_CALLS's struct) restates the
+        # schema's `element <name> : mjs<Struct>` fact; cross-check it against the
+        # schema so a mistyped-but-real constructor (a drift the _ADD_CALLS check
+        # above cannot see, and a bogus struct is already caught by
+        # parse_spec_structs) fails here, by name. Elements the schema binds to no
+        # struct (<default>, <freejoint>) carry their struct by hand on purpose
+        # (see _ADD_CALLS) and are left alone.
+        elem_struct = _schema_elem_structs(mjroot)
+        for name, (cat, arg) in sorted(overlay_ue.SPEC_CREATE.items()):
+            if cat not in _CREATING or not arg:
+                continue
+            hdr_struct = _ADD_CALLS.get(arg, (None, None))[1]
+            sch_struct = elem_struct.get(name)
+            if sch_struct is not None and hdr_struct is not None \
+                    and sch_struct != hdr_struct:
+                self.problems.append(
+                    f"<{name}> binds {sch_struct} in the schema but SPEC_CREATE "
+                    f"creates it with {arg} ({hdr_struct}); the constructor and "
+                    "the schema struct have drifted apart")
 
     def _resolve_enums(self) -> set[str]:
         """The enums whose keyword-to-constant switch may be emitted.

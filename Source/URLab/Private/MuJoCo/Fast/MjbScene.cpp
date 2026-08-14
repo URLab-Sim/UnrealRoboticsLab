@@ -16,6 +16,8 @@
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Engine/Texture2D.h"
+#include "TextureResource.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Engine/World.h"
 
@@ -466,11 +468,12 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<int32> Tris;
-	const TArray<FProcMeshTangent> NoTangents;
+	TArray<FProcMeshTangent> Tangents;
 	Verts.Reserve(FaceNum * 3);
 	Normals.Reserve(FaceNum * 3);
 	UVs.Reserve(FaceNum * 3);
 	Tris.Reserve(FaceNum * 3);
+	Tangents.Reserve(FaceNum * 3);
 
 	// Single-sided, one triangle per face. MuJoCo winds faces CCW-from-outside in
 	// its right-handed frame; MjPositionToUe negates Y, a reflection that flips
@@ -485,6 +488,7 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
 		const int32* FN = Model->mesh_facenormal + 3 * (FaceAdr + F);
 		const int32* FT = bHasUV ? Model->mesh_facetexcoord + 3 * (FaceAdr + F) : nullptr;
+		const int32 Base = Verts.Num();
 		for (int32 C = 0; C < 3; ++C)
 		{
 			const int32 K = Order[C];
@@ -505,14 +509,87 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 			}
 			Tris.Add(Verts.Num() - 1);
 		}
+
+		// Per-face tangent from the UV gradient, so normal maps orient correctly.
+		// Assigned to all three corners; degenerate UVs fall back to an edge dir.
+		const FVector E1 = Verts[Base + 1] - Verts[Base];
+		const FVector E2 = Verts[Base + 2] - Verts[Base];
+		const FVector2D D1 = UVs[Base + 1] - UVs[Base];
+		const FVector2D D2 = UVs[Base + 2] - UVs[Base];
+		const double Det = D1.X * D2.Y - D2.X * D1.Y;
+		FVector T = FMath::Abs(Det) > SMALL_NUMBER ? ((E1 * D2.Y - E2 * D1.Y) / Det) : E1;
+		T = T.GetSafeNormal();
+		if (T.IsNearlyZero())
+		{
+			T = FVector::ForwardVector;
+		}
+		for (int32 C = 0; C < 3; ++C)
+		{
+			Tangents.Add(FProcMeshTangent(T, /*bFlipTangentY=*/false));
+		}
 	}
 
 	UProceduralMeshComponent* Pmc = NewObject<UProceduralMeshComponent>(Body);
 	Pmc->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Pmc->RegisterComponent();
 	Pmc->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-	Pmc->CreateMeshSection(0, Verts, Tris, Normals, UVs, TArray<FColor>(), NoTangents, /*bCreateCollision=*/false);
+	Pmc->CreateMeshSection(0, Verts, Tris, Normals, UVs, TArray<FColor>(), Tangents, /*bCreateCollision=*/false);
 	return Pmc;
+}
+
+UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB)
+{
+	if (!Model || TexId < 0 || TexId >= static_cast<int32>(Model->ntex))
+	{
+		return nullptr;
+	}
+	if (const TObjectPtr<UTexture2D>* Found = TextureCache.Find(TexId))
+	{
+		return *Found;
+	}
+	const int32 W = Model->tex_width[TexId];
+	const int32 H = Model->tex_height[TexId];
+	const int32 NC = Model->tex_nchannel[TexId];
+	if (W <= 0 || H <= 0 || NC < 1)
+	{
+		return nullptr;
+	}
+	const uint8* Src = Model->tex_data + Model->tex_adr[TexId];
+
+	UTexture2D* Tex = UTexture2D::CreateTransient(W, H, PF_B8G8R8A8);
+	if (!Tex)
+	{
+		return nullptr;
+	}
+	Tex->SRGB = bSRGB;
+	FTexturePlatformData* PD = Tex->GetPlatformData();
+	uint8* Dst = static_cast<uint8*>(PD->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+	const int32 Pixels = W * H;
+	for (int32 i = 0; i < Pixels; ++i)
+	{
+		uint8 R, Gc, B, A;
+		if (NC >= 3)
+		{
+			R = Src[i * NC + 0];
+			Gc = Src[i * NC + 1];
+			B = Src[i * NC + 2];
+			A = (NC >= 4) ? Src[i * NC + 3] : 255;
+		}
+		else
+		{
+			R = Gc = B = Src[i * NC]; // grayscale replicated
+			A = 255;
+		}
+		Dst[i * 4 + 0] = B; // BGRA8
+		Dst[i * 4 + 1] = Gc;
+		Dst[i * 4 + 2] = R;
+		Dst[i * 4 + 3] = A;
+	}
+	PD->Mips[0].BulkData.Unlock();
+	Tex->UpdateResource();
+
+	TextureCache.Add(TexId, Tex);
+	return Tex;
 }
 
 void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
@@ -530,10 +607,33 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 		return;
 	}
 	Mid->SetVectorParameterValue(TEXT("BaseColor"), FLinearColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]));
-	// Neutralise every texture slot the master declares. Without this the MID
-	// keeps the master's editor-default textures, which tint/darken the output --
-	// this is what made materials look wrong. Real MJB textures are the next pass.
+	// Neutralise every texture slot the master declares first, so any role the
+	// material does not fill samples a neutral (not the master's editor default).
 	MjBindNeutralMaterialTextures(*Mid);
+
+	// Bind the real MJB textures for the roles this material fills. mat_texid is
+	// (nmat x mjNTEXROLE), role order matching EMjMaterialRole after the unused
+	// USER slot (offset +1). Colour roles sample sRGB; data roles linear.
+	if (MatId >= 0)
+	{
+		for (int32 R = 0; R < static_cast<int32>(EMjMaterialRole::Count); ++R)
+		{
+			const int32 TexId = Model->mat_texid[MatId * mjNTEXROLE + R + 1];
+			if (TexId < 0)
+			{
+				continue;
+			}
+			const EMjMaterialRole Role = static_cast<EMjMaterialRole>(R);
+			const bool bSRGB = (Role == EMjMaterialRole::Rgb || Role == EMjMaterialRole::Rgba
+				|| Role == EMjMaterialRole::Emissive);
+			if (UTexture2D* Tex = GetOrBuildTexture(TexId, bSRGB))
+			{
+				Mid->SetTextureParameterValue(MjMaterialRoleParameter(Role), Tex);
+			}
+		}
+		Mid->SetScalarParameterValue(TEXT("TexRepeatU"), Model->mat_texrepeat[MatId * 2 + 0]);
+		Mid->SetScalarParameterValue(TEXT("TexRepeatV"), Model->mat_texrepeat[MatId * 2 + 1]);
+	}
 	// PBR terms. MuJoCo stores metallic/roughness as -1 when "not specified", so
 	// pushing the raw field makes a mirror-smooth, aliased surface. Map exactly
 	// as the authoring path does (MjMetallicFor / MjRoughnessFor): metallic -1 ->
@@ -832,6 +932,7 @@ void AMjbScene::Teardown()
 	}
 	BodyActors.Reset();
 	GeomComps.Reset();
+	TextureCache.Reset();
 	if (Data)
 	{
 		mj_deleteData(Data);

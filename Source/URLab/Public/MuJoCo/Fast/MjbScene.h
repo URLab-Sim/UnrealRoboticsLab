@@ -135,6 +135,12 @@ private:
 	mjData_* Data = nullptr;
 	UMaterialInterface* Master = nullptr;
 
+	// Textures built from the MJB's tex_data, keyed by MuJoCo texture id, so a
+	// texture shared across materials/geoms is built once. Transient; rebuilt on
+	// each LoadAndBuild.
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<class UTexture2D>> TextureCache;
+
 	// Indexed by MuJoCo body id / geom id.
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<AActor>> BodyActors;
@@ -161,6 +167,11 @@ private:
 
 	void StartBus();
 	void StopBus();
+
+	// Build (or fetch from cache) a UTexture2D from the MJB's tex_data for the
+	// given MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a
+	// bad id.
+	class UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB);
 
 	void BuildBodies();
 	void BuildGeoms();

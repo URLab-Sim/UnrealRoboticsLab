@@ -57,4 +57,44 @@ bool FMjbSceneBuildsFromMjb::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+static const TCHAR* kPandaMjb =
+	TEXT("/home/buzz/Documents/urlab_debug/mjb_test/panda.mjb");
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjbSceneBuildsMeshModel,
+	"URLab.Fast.MjbSceneBuildsMeshModel",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+bool FMjbSceneBuildsMeshModel::RunTest(const FString& Parameters)
+{
+	if (!FPaths::FileExists(kPandaMjb))
+	{
+		AddInfo(FString::Printf(TEXT("fixture %s absent; skipping"), kPandaMjb));
+		return true;
+	}
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!TestNotNull(TEXT("editor world"), World))
+	{
+		return false;
+	}
+	AMjbScene* Scene = World->SpawnActor<AMjbScene>();
+	if (!TestNotNull(TEXT("spawned AMjbScene"), Scene))
+	{
+		return false;
+	}
+	Scene->bTestSweep = false;
+	Scene->MjbFilePath = kPandaMjb;
+
+	const int32 NGeom = Scene->LoadAndBuild();
+
+	// panda.mjb: 12 bodies, 81 geoms (many are triangle meshes). We don't pin the
+	// exact built count (some are transparent collision proxies), only that the
+	// mesh path builds a substantial scene without error.
+	TestEqual(TEXT("panda ngeom"), NGeom, 81);
+	TestEqual(TEXT("one actor per body"), Scene->NumBodyActors(), 12);
+	TestTrue(TEXT("mesh geoms built (>30 comps)"), Scene->NumBuiltGeoms() > 30);
+
+	Scene->Destroy();
+	return !HasAnyErrors();
+}
+
 #endif // WITH_EDITOR

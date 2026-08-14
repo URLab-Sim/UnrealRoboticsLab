@@ -12,6 +12,7 @@
 
 #include "Components/StaticMeshComponent.h"
 #include "Components/SceneComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -202,9 +203,14 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 			Scale = FVector(Size[0], Size[1], Size[2]) * kSizeToScale;
 			break;
 		case mjGEOM_MESH:
-			// Follow-on: build a ProceduralMeshComponent from mesh_vert/face.
-			UE_LOG(LogURLab, Verbose, TEXT("[MjbScene] geom %d is a mesh; skipped in this pass"), G);
-			return nullptr;
+		{
+			UProceduralMeshComponent* Pmc = BuildMesh(G, Body);
+			if (Pmc)
+			{
+				ApplyGeomMaterial(Pmc, G);
+			}
+			return Pmc;
+		}
 		default:
 			return nullptr;
 	}
@@ -222,6 +228,69 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 	ApplyGeomMaterial(Comp, G);
 	return Comp;
+}
+
+UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
+{
+	const int32 MeshId = Model->geom_dataid[G];
+	if (MeshId < 0 || MeshId >= static_cast<int32>(Model->nmesh))
+	{
+		return nullptr;
+	}
+	const int32 FaceAdr = Model->mesh_faceadr[MeshId];
+	const int32 FaceNum = Model->mesh_facenum[MeshId];
+	const bool bHasUV = Model->mesh_texcoordadr[MeshId] >= 0;
+
+	// Expand per face-corner so MuJoCo's split vertex/normal/texcoord pools (the
+	// hard-edge rule) are preserved: each corner gets its own vertex carrying the
+	// face's own normal + texcoord index.
+	TArray<FVector> Verts;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<int32> Tris;
+	const TArray<FProcMeshTangent> NoTangents;
+	Verts.Reserve(FaceNum * 3);
+	Normals.Reserve(FaceNum * 3);
+	UVs.Reserve(FaceNum * 3);
+	Tris.Reserve(FaceNum * 3);
+
+	// Y-negation in the conversion mirrors the mesh, so reverse the winding
+	// (0,2,1) to keep faces outward. Normals come straight from MuJoCo.
+	const int32 Order[3] = {0, 2, 1};
+	for (int32 F = 0; F < FaceNum; ++F)
+	{
+		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
+		const int32* FN = Model->mesh_facenormal + 3 * (FaceAdr + F);
+		const int32* FT = bHasUV ? Model->mesh_facetexcoord + 3 * (FaceAdr + F) : nullptr;
+		const int32 Base = Verts.Num();
+		for (int32 C = 0; C < 3; ++C)
+		{
+			const int32 K = Order[C];
+			const int32 Vi = FV[K];
+			const int32 Ni = FN[K];
+			Verts.Add(URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * Vi));
+			const double N[3] = {Model->mesh_normal[3 * Ni], Model->mesh_normal[3 * Ni + 1],
+				Model->mesh_normal[3 * Ni + 2]};
+			Normals.Add(URLabAxisConv::MjDirectionToUe(N).GetSafeNormal());
+			if (FT)
+			{
+				const int32 Ti = FT[K];
+				UVs.Add(FVector2D(Model->mesh_texcoord[2 * Ti], 1.0f - Model->mesh_texcoord[2 * Ti + 1]));
+			}
+			else
+			{
+				UVs.Add(FVector2D::ZeroVector);
+			}
+			Tris.Add(Base + C);
+		}
+	}
+
+	UProceduralMeshComponent* Pmc = NewObject<UProceduralMeshComponent>(Body);
+	Pmc->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Pmc->RegisterComponent();
+	Pmc->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+	Pmc->CreateMeshSection(0, Verts, Tris, Normals, UVs, TArray<FColor>(), NoTangents, /*bCreateCollision=*/false);
+	return Pmc;
 }
 
 void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)

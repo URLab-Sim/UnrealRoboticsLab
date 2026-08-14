@@ -84,6 +84,7 @@ private:
 	void BuildBodies();
 	void BuildGeoms();
 	UPrimitiveComponent* BuildGeom(int32 GeomId);
+	class UProceduralMeshComponent* BuildMesh(int32 GeomId, AActor* Body);
 	void ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 GeomId);
 	void Teardown();
 };

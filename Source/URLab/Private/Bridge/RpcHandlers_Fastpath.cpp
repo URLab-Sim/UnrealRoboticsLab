@@ -31,38 +31,44 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathHello(const TSharedPt
 		return MakeError(URLabError::NotReady,
 			TEXT("no live model to serve (start a live/direct session first)"));
 	}
-	mjModel* m = Mgr->PhysicsEngine->GetModel();
-	if (!m)
-	{
-		return MakeError(URLabError::NotReady, TEXT("model not loaded"));
-	}
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("fastpath_hello_ok"));
 
-	// MJB bytes (msgpack bin), same idiom as the hello handshake.
-	const int Sz = mj_sizeModel(m);
-	TArray<uint8> Buf;
-	Buf.SetNum(Sz);
-	mj_saveModel(m, nullptr, Buf.GetData(), Sz);
-	FURLabMsgpackUtil::SetBinaryField(Reply, TEXT("mjb"), Buf.GetData(), Sz);
-	Reply->SetNumberField(TEXT("ngeom"), m->ngeom);
+	// Serialize the MJB under the engine's fence: a concurrent compile/uninstall
+	// can retire the model pointer between the check and the save. MJB bytes ride
+	// as msgpack bin, the same idiom as the hello handshake.
+	{
+		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
+		mjModel* m = Mgr->PhysicsEngine->GetModel();
+		if (!m)
+		{
+			return MakeError(URLabError::NotReady, TEXT("model not loaded"));
+		}
+		const int Sz = mj_sizeModel(m);
+		if (Sz <= 0)
+		{
+			return MakeError(URLabError::NotReady, TEXT("model has an invalid serialized size"));
+		}
+		TArray<uint8> Buf;
+		Buf.SetNum(Sz);
+		mj_saveModel(m, nullptr, Buf.GetData(), Sz);
+		FURLabMsgpackUtil::SetBinaryField(Reply, TEXT("mjb"), Buf.GetData(), Sz);
+		Reply->SetNumberField(TEXT("ngeom"), m->ngeom);
+	}
 
 	// The geoms transform bus endpoint the renderer subscribes to. This is the
 	// owner's viewer port; the geoms broadcast rides that bus (see
-	// AAMjManager::PublishGeomFrame). Only meaningful when the owner broadcasts.
+	// AAMjManager::PublishGeomFrame). `broadcasting` is set in both cases so the
+	// client never has to treat a missing field as true: false means no transform
+	// stream, so the renderer would only show the rest pose.
 	if (UURLabBridgeServer* Bridge = OwningBridge.Get())
 	{
 		const FURLabBridgeServerConfig& Cfg = Bridge->GetInstanceConfig();
 		const FString Host = FPlatformProcess::ComputerName();
 		Reply->SetStringField(TEXT("bus"),
 			FString::Printf(TEXT("tcp://%s:%d"), *Host, Cfg.ViewerPort));
-		if (!Cfg.bBroadcastViewers)
-		{
-			// Serve the MJB regardless, but warn: with no broadcast there is no
-			// transform stream, so the renderer would only show the rest pose.
-			Reply->SetBoolField(TEXT("broadcasting"), false);
-		}
+		Reply->SetBoolField(TEXT("broadcasting"), Cfg.bBroadcastViewers);
 	}
 	return Reply;
 }

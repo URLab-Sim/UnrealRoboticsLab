@@ -12,6 +12,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
+#include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
@@ -46,14 +47,18 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// Python client can drive over RPC), instead of mirroring an owner's bus.
 	const bool bDirect = FParse::Param(FCommandLine::Get(), TEXT("URLabFastDirect"));
 
-	AMjbScene* Scene = InWorld.SpawnActor<AMjbScene>();
+	// Deferred spawn so the actor's fields are set BEFORE its BeginPlay runs: then
+	// BeginPlay owns the whole build (geometry + camera streaming + Direct/bus
+	// connect) itself. A plain SpawnActor runs BeginPlay immediately with empty
+	// fields, which logs a spurious "no MJB" error and leaves camera streaming
+	// unstarted (BeginPlay is the only caller of StartCameraStreaming).
+	AMjbScene* Scene = InWorld.SpawnActorDeferred<AMjbScene>(
+		AMjbScene::StaticClass(), FTransform::Identity);
 	if (!Scene)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbFastPath] failed to spawn AMjbScene"));
 		return;
 	}
-	// SpawnActor already ran the actor's BeginPlay with empty fields, so build +
-	// connect explicitly now that the flags are set.
 	Scene->RunMode = bDirect ? EMjbRunMode::Direct : EMjbRunMode::Puppet;
 	// Local dev sweep only when there is neither an owner bus nor Direct stepping.
 	Scene->bTestSweep = Bus.IsEmpty() && !bDirect;
@@ -61,15 +66,7 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	Scene->BusEndpoint = Bus;
 	// Render-server cameras are opt-in (capture is not free).
 	Scene->bEnableCameraStreaming = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
-	Scene->LoadAndBuild();
-	if (bDirect)
-	{
-		Scene->StartDirect();
-	}
-	else if (!Bus.IsEmpty())
-	{
-		Scene->ConnectBus();
-	}
+	UGameplayStatics::FinishSpawningActor(Scene, FTransform::Identity);
 	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s mode=%s bus=%s"),
 		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus);

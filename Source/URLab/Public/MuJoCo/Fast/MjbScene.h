@@ -38,14 +38,21 @@ enum class EMjbRunMode : uint8
  * @brief Fast-path render scene built straight from a compiled MJB.
  *
  * Loads an MJB with mj_loadModel (binary deserialize, no MJCF/ProtoSpec/
- * Blueprint), builds ONE lightweight actor per MuJoCo body (so the renderer
- * culls per body) carrying per-geom mesh components, and drives them from a
- * per-geom world-transform stream. It runs NO physics: the owner (a puppet
- * client or a live/direct UE instance) resolves transforms and streams them.
+ * Blueprint) and builds ONE lightweight actor per MuJoCo body (so the renderer
+ * culls per body) carrying per-geom mesh components. It runs in one of two
+ * RunModes:
  *
- * A one-shot mj_forward runs only at load to place the rest pose; the optional
- * bTestSweep animates joints locally (the owner-less "fallback" path) purely so
- * the builder can be exercised without an external owner.
+ * - Puppet (default): the scene runs NO physics. An external owner (a puppet
+ *   client, or another UE instance) resolves transforms and streams them over
+ *   ZMQ; the scene mirrors that per-body/per-geom transform stream.
+ * - Direct: the scene installs its own raw mjModel/mjData into the shared
+ *   UMjPhysicsEngine and renders the stepped state from the engine's thread-safe
+ *   snapshot, so the fast-path instance is a full sim a client can drive by RPC.
+ *
+ * A one-shot mj_forward runs at load to place the rest pose. bTestSweep is an
+ * owner-less dev fallback that animates joints locally so the builder can be
+ * exercised without an owner; it is off by default and ignored in Direct mode
+ * or once a bus is connected.
  */
 UCLASS()
 class URLAB_API AMjbScene : public AActor
@@ -73,10 +80,12 @@ public:
 	EMjbRunMode RunMode = EMjbRunMode::Puppet;
 
 	/** Animate joints locally via mj_forward so the scene moves with no owner.
-	 *  Development only -- the real path applies a streamed transform set.
-	 *  Ignored once a bus endpoint is connected. */
+	 *  Development only -- the real path applies a streamed transform set, and
+	 *  Direct mode steps for real. Off by default so a placed/owner-less scene
+	 *  stays static; the launcher enables it explicitly for the no-owner demo.
+	 *  Ignored once a bus endpoint is connected or in Direct mode. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
-	bool bTestSweep = true;
+	bool bTestSweep = false;
 
 	/** Owner transform bus endpoint, e.g. "tcp://127.0.0.1:5561". When set, this
 	 *  scene subscribes to a per-geom transform stream and mirrors the owner. */
@@ -214,7 +223,10 @@ public:
 private:
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;
-	UMaterialInterface* Master = nullptr;
+	// Rooted so GC can't collect the loaded master material between load and the
+	// (possibly much later, on the PIE-reuse path) creation of its MIDs.
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> Master = nullptr;
 
 	// A content id for the loaded MJB (a hash of its bytes). Cached, persistent
 	// assets live under /Game/URLabFastPath/<ContentHash>/, so an identical model

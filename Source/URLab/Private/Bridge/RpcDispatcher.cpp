@@ -849,25 +849,32 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		}
 
 		// Per-actuator authored kind. The MJB doesn't carry the original
-		// <position> / <velocity> shortcut — they all compile to <general>.
-		TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
-		for (const UMjNodeComponent* Act : Art->GetActuators())
+		// <position> / <velocity> shortcut — they all compile to <general>. Skipped
+		// for a raw shadow: its drive metadata rides raw_actuators below, which is
+		// the single source of truth for a fast-path model.
+		if (!Art->bRawShadow)
 		{
-			if (Act == nullptr)
-				continue;
-			ActTypes->SetStringField(LocalElementName(*Act, Art->GetCompiledPrefix()),
-				ActuatorTypeToString(Act));
+			TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
+			for (const UMjNodeComponent* Act : Art->GetActuators())
+			{
+				if (Act == nullptr)
+					continue;
+				ActTypes->SetStringField(LocalElementName(*Act, Art->GetCompiledPrefix()),
+					ActuatorTypeToString(Act));
+			}
+			ArtObj->SetObjectField(TEXT("actuator_types"), ActTypes);
 		}
-		ArtObj->SetObjectField(TEXT("actuator_types"), ActTypes);
 
 		// Fast-path shadow: element-only, name-bound to a raw mjModel with no
 		// import/compile and no per-articulation name prefix. A client cannot load
 		// the fork MJB (version skew) or prefix-match unprefixed raw names, so ship
 		// the element metadata it needs to drive the model inline, read straight from
-		// the installed raw model.
-		if (Art->bRawShadow)
+		// the installed raw model -- under the engine's fence, since a concurrent
+		// compile/uninstall can retire the model pointer.
+		if (Art->bRawShadow && Manager->PhysicsEngine)
 		{
-			const mjModel* Rm = Manager->PhysicsEngine ? Manager->PhysicsEngine->GetModel() : nullptr;
+			FScopeLock ModelLock(&Manager->PhysicsEngine->CallbackMutex);
+			const mjModel* Rm = Manager->PhysicsEngine->GetModel();
 			if (Rm != nullptr)
 			{
 				ArtObj->SetBoolField(TEXT("raw_model"), true);
@@ -887,7 +894,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 						R.Add(MakeShared<FJsonValueNumber>(Rm->actuator_ctrlrange[2 * A + 1]));
 						AO->SetArrayField(TEXT("ctrlrange"), R);
 					}
-					AO->SetNumberField(TEXT("gear"), Rm->actuator_gear[6 * A]);
+					// Full 6-vector gear, matching the compiled-model client path.
+					TArray<TSharedPtr<FJsonValue>> Gear;
+					for (int32 K = 0; K < 6; ++K)
+					{
+						Gear.Add(MakeShared<FJsonValueNumber>(Rm->actuator_gear[6 * A + K]));
+					}
+					AO->SetArrayField(TEXT("gear"), Gear);
 					AO->SetNumberField(TEXT("trn_type"), Rm->actuator_trntype[A]);
 					if (Rm->actuator_trntype[A] == mjTRN_JOINT || Rm->actuator_trntype[A] == mjTRN_JOINTINPARENT)
 					{
@@ -911,6 +924,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 						(JName && *JName) ? ANSI_TO_TCHAR(JName) : *FString::Printf(TEXT("joint_%d"), J));
 					JO->SetNumberField(TEXT("id"), J);
 					JO->SetNumberField(TEXT("type"), Rm->jnt_type[J]);
+					JO->SetNumberField(TEXT("body_id"), Rm->jnt_bodyid[J]);
 					JO->SetNumberField(TEXT("qpos_adr"), Rm->jnt_qposadr[J]);
 					JO->SetNumberField(TEXT("qvel_adr"), Rm->jnt_dofadr[J]);
 					if (Rm->jnt_limited[J])

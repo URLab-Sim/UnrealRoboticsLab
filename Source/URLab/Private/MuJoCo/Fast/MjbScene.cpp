@@ -231,6 +231,21 @@ void AMjbScene::BeginDestroy()
 	// The editor can destroy/GC this actor without EndPlay; stop the worker
 	// thread before its members are torn down to avoid a use-after-free.
 	StopBus();
+	// Editor-world preview actors never receive EndPlay (so Teardown never runs),
+	// which is the only other place Model/Data are freed -- free them here so the
+	// preview does not leak its mjModel/mjData. On a play-session actor Teardown
+	// already ran and nulled them, so this is a no-op there; the PIE-duplicated
+	// copy nulled its shallow-copied pointers in BeginPlay, so it is safe too.
+	if (Data)
+	{
+		mj_deleteData(Data);
+		Data = nullptr;
+	}
+	if (Model)
+	{
+		mj_deleteModel(Model);
+		Model = nullptr;
+	}
 	Super::BeginDestroy();
 }
 

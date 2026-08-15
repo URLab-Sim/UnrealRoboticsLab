@@ -616,6 +616,18 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 	m_LastCompileError = OutError;
 	return false;
 #else
+	// Raw and compiled installs are mutually exclusive: a live raw model is owned
+	// by a fast-path scene that still aliases m_model/m_data, so compiling over it
+	// would strand that scene (and its shadow articulation). The fast-path scene
+	// must UninstallRawModel first. This never fires on the normal path -- the
+	// manager's BeginPlay compile runs before any raw install.
+	if (bRawModelInstalled)
+	{
+		OutError = TEXT("a raw (fast-path) model is installed; uninstall it before compiling");
+		m_LastCompileError = OutError;
+		return false;
+	}
+
 	UWorld* World = GetWorld();
 	if (World == nullptr)
 	{
@@ -950,6 +962,13 @@ bool UMjPhysicsEngine::InstallRawModel(mjModel* RawModel, mjData* RawData)
 	m_ArticulationMap.Empty();
 	m_LastCompileError.Empty();
 
+	// A raw model has no source MJCF: it is served to clients as the MJB via the
+	// fast-path hello, not as scene text. Drop any previous compiled scene's text
+	// and asset list so "serve the scene XML" RPCs don't hand back a stale model.
+	CompiledXml.Empty();
+	ParticipantXml.Empty();
+	ActiveAssetFiles.Empty();
+
 	ApplyThreadPool();
 
 	// The raw mjData arrives already made (mj_makeData) and forwarded by the
@@ -962,6 +981,13 @@ bool UMjPhysicsEngine::InstallRawModel(mjModel* RawModel, mjData* RawData)
 
 void UMjPhysicsEngine::UninstallRawModel()
 {
+	// A genuine no-op when no raw model is installed -- checked BEFORE the worker
+	// stop-join, so calling this on a compiled scene never halts its worker.
+	if (!bRawModelInstalled)
+	{
+		return;
+	}
+
 	// Stop and JOIN the worker so it is not mid-step against the caller's memory.
 	bShouldStopTask = true;
 	if (StepRequestEvent != nullptr)
@@ -971,11 +997,6 @@ void UMjPhysicsEngine::UninstallRawModel()
 	if (AsyncPhysicsFuture.IsValid())
 	{
 		AsyncPhysicsFuture.Wait();
-	}
-
-	if (!bRawModelInstalled)
-	{
-		return;
 	}
 
 	// Unalias only: the raw model and its data belong to the fast-path scene,

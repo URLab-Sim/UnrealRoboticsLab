@@ -70,20 +70,35 @@ roughness `1-shininess`. Fixed in both the fast path and the authoring/import pa
 so ORM-authored parts are no longer crushed to non-metallic. De-grain preset (Epic
 scalability + film-grain/motion-blur off) is applied on every slave spawn.
 
-## Small things still open
+## What's left
 
+To merge this branch:
 - **Packaged re-cook**: the current cooked exe predates the PBR fixes and only has
-  the bare-plane environment. Re-cook to pick up the PBR fixes and to include any
+  the bare-plane environment. Re-cook to pick up all material fixes and to include
   custom `/Game` levels in the browser dropdown (GateBackyard-scale envs are heavy).
-- **Aloha normal-import smoothing** (task #11): FIXED (`bd3c02b`). Root cause was
-  `clean_meshes.py` marking any mesh a collision geom uses as `smooth_normal`, so
-  aloha's vx300s arm links (which double as collision meshes) skipped the crease
-  split and imported over-smooth. Now only collision-EXCLUSIVE meshes are left
-  smooth; a mesh any visual geom uses is split (the split moves no vertex, so the
-  convex collision hull is unchanged). Stale smooth GLBs auto-regenerate on the
-  next import (editing the script bumps its mtime past the GLBs). The paired
-  **tabletop-texture drop** on that route is still open (the `table` material's
-  diffuse png not coming through) -- not yet investigated.
-- **Owner robustness**: the owner exits if its MuJoCo viewer window is closed.
-- **Optional polish**: per-level default env+origin in the browser; direct
-  origin type-in in the HUD; a camera-feed viewer wired into the browser flow.
+- **Delete this WIP doc** before merge.
+- **PR / merge** into the target branch.
+
+Tech debt (bigger, see memory `project_terminology_and_fastpath_bridge_debt`):
+- **Terminology cleanup**: client / viewer / server / render / slave / owner /
+  puppet are overloaded and mixing; needs a consistent vocabulary pass across code
+  + docs.
+- **Fast-path shadow-articulation bridge**: the shadow-model hack for RPC control
+  (`URLabFastShadow::Build`, `UMjPhysicsEngine::InstallRawModel`) + the raw-mode
+  ctrl NetworkValue dual-write want a cleaner control surface.
+- **God-object extraction** (audit #1, task #21): pull `FMjbAssetBaker` +
+  `FMjbTransportBus` + `FMjbDirectMode` out of the ~2k-line `MjbScene.cpp`.
+
+Optional polish:
+- Per-level default env + origin in the browser (pre-select with the right offset).
+- Direct origin type-in in the HUD (currently nudge-only).
+- Camera-feed viewer wired into the browser flow.
+- Owner exits if its MuJoCo viewer window is closed (minor robustness).
+
+Done this session (for reference): render server + browser; copycat cam; spawn
+origin + base-level; texrepeat/texuniform ground plane; normal-map TC_Normalmap;
+PBR scalar-vs-map (fast + authoring); render de-grain preset; aloha normal-import
+(task #11, both smoothing + tabletop texture).
+
+Parked / unrelated: full mjModel->articulation bake (task #13); packaged-path
+investigation (task #24) is effectively done now.

@@ -1019,8 +1019,11 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	return Comp;
 }
 
-void AMjbScene::BuildMeshArrays(int32 MeshId, TArray<FVector>& Verts, TArray<FVector>& Normals,
-	TArray<FVector2D>& UVs, TArray<int32>& Tris)
+// Crease-split mesh geometry (per-face-corner verts/normals/uvs/tris) from the MJB
+// mesh pool. Pure math over the model -- shared by the editor static-mesh baker and
+// the packaged procedural path. File-local free function (no actor state).
+static void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
+	TArray<FVector>& Normals, TArray<FVector2D>& UVs, TArray<int32>& Tris)
 {
 	Verts.Reset();
 	Normals.Reset();
@@ -1203,7 +1206,7 @@ UStaticMesh* AMjbScene::GetOrBuildStaticMesh(int32 MeshId)
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<int32> Tris;
-	BuildMeshArrays(MeshId, Verts, Normals, UVs, Tris);
+	BuildMeshArrays(Model, MeshId, Verts, Normals, UVs, Tris);
 	if (Verts.Num() < 3 || Tris.Num() < 3)
 	{
 		return nullptr;
@@ -1294,7 +1297,7 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<int32> Tris;
-	BuildMeshArrays(Model->geom_dataid[G], Verts, Normals, UVs, Tris);
+	BuildMeshArrays(Model, Model->geom_dataid[G], Verts, Normals, UVs, Tris);
 	if (Verts.Num() < 3)
 	{
 		return nullptr;

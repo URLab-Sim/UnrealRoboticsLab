@@ -331,10 +331,6 @@ private:
 	// Place cameras from their world pose. Uses the streamed cam transforms when
 	// present, else this process's mjData rest pose.
 	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
-	// Crease-split mesh geometry (verts / normals / uvs / tris, per face-corner)
-	// from the MJB mesh pool -- shared by both the static-mesh and procedural paths.
-	void BuildMeshArrays(int32 MeshId, TArray<FVector>& Verts, TArray<FVector>& Normals,
-		TArray<FVector2D>& UVs, TArray<int32>& Tris);
 	// Editor route: a shared UStaticMesh keyed by mesh id (cheap PIE duplication);
 	// BuildFromMeshDescriptions is editor-only. Null on a bad id.
 	class UStaticMesh* GetOrBuildStaticMesh(int32 MeshId);

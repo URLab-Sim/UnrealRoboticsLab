@@ -280,17 +280,39 @@ EMjMaterialRole MjMaterialRoleFromName(const FString& Name)
 	return EMjMaterialRole::Count;
 }
 
+// Whether a role (or the packed ORM) carries a texture for this material.
+static bool MjHasRoleOrOrm(const FMjMaterialValues& Material, EMjMaterialRole Role)
+{
+	return !Material.TextureNames[static_cast<int32>(Role)].IsEmpty()
+		|| !Material.TextureNames[static_cast<int32>(EMjMaterialRole::Orm)].IsEmpty();
+}
+
 float MjRoughnessFor(const FMjMaterialValues& Material)
 {
-	// MuJoCo's -1 means "the material does not say". Filament reads `shininess`
-	// as glossiness in that case; Unreal's roughness is its complement.
-	const float Value = Material.Roughness >= 0.0f ? Material.Roughness : 1.0f - Material.Shininess;
-	return FMath::Clamp(Value, 0.0f, 1.0f);
+	if (Material.Roughness >= 0.0f)
+	{
+		return FMath::Clamp(Material.Roughness, 0.0f, 1.0f);
+	}
+	// Unset. The master material multiplies scalar * map, so when a roughness (or
+	// packed ORM) map supplies the value the scalar must be the neutral 1.0, else it
+	// would crush the map. With no map, MuJoCo's -1 means "read shininess as
+	// glossiness"; Unreal's roughness is its complement.
+	if (MjHasRoleOrOrm(Material, EMjMaterialRole::Roughness))
+	{
+		return 1.0f;
+	}
+	return FMath::Clamp(1.0f - Material.Shininess, 0.0f, 1.0f);
 }
 
 float MjMetallicFor(const FMjMaterialValues& Material)
 {
-	return FMath::Clamp(Material.Metallic >= 0.0f ? Material.Metallic : 0.0f, 0.0f, 1.0f);
+	if (Material.Metallic >= 0.0f)
+	{
+		return FMath::Clamp(Material.Metallic, 0.0f, 1.0f);
+	}
+	// Unset: neutral 1.0 when a metallic (or packed ORM) map supplies it (the master
+	// material forms scalar * map), else non-metallic.
+	return MjHasRoleOrOrm(Material, EMjMaterialRole::Metallic) ? 1.0f : 0.0f;
 }
 
 FString MjSanitizeAssetName(const FString& Name)
@@ -470,7 +492,12 @@ void MjApplyMaterialParameters(UMaterialInstanceDynamic& Instance, const FMjMate
 	Instance.SetScalarParameterValue(TEXT("Roughness"), MjRoughnessFor(Material));
 	Instance.SetScalarParameterValue(TEXT("Specular"), FMath::Clamp(Material.Specular, 0.0f, 1.0f));
 	Instance.SetScalarParameterValue(TEXT("Reflectance"), FMath::Clamp(Material.Reflectance, 0.0f, 1.0f));
-	Instance.SetScalarParameterValue(TEXT("Emission"), FMath::Max(Material.Emission, 0.0f));
+	// Same scalar*map guard as metallic: an emissive-map material with an unset (0)
+	// emission scalar would show no glow, so pass the map through at unit strength.
+	const bool bHasEmissiveMap =
+		!Material.TextureNames[static_cast<int32>(EMjMaterialRole::Emissive)].IsEmpty();
+	Instance.SetScalarParameterValue(TEXT("Emission"),
+		(bHasEmissiveMap && Material.Emission <= 0.0f) ? 1.0f : FMath::Max(Material.Emission, 0.0f));
 
 	// `settexture` in render_gl3.c: the repeat count is per object, unless the
 	// material asks for it per spatial unit, in which case the geom's own size

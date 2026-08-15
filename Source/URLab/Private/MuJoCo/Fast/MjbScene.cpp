@@ -1546,15 +1546,38 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 	// 0, roughness -1 -> 1 - shininess. This is what a material's look depends on.
 	if (MatId >= 0)
 	{
+		// A metallic / roughness value can come from the scalar OR a map (a dedicated
+		// metallic/roughness texture, or the packed ORM). The master material forms
+		// scalar * map, so when the MAP supplies the value an UNSET scalar (-1) must
+		// become the neutral multiplier 1.0 -- mapping it to 0 (metallic) or
+		// 1-shininess (roughness) would crush the map to nothing. This is why an
+		// ORM-authored part read non-metallic.
+		auto RoleTex = [&](EMjMaterialRole Slot) -> int32
+		{
+			return Model->mat_texid[MatId * mjNTEXROLE + static_cast<int32>(Slot) + 1];
+		};
+		const bool bHasOrm = RoleTex(EMjMaterialRole::Orm) >= 0;
+		const bool bHasMetalMap = bHasOrm || RoleTex(EMjMaterialRole::Metallic) >= 0;
+		const bool bHasRoughMap = bHasOrm || RoleTex(EMjMaterialRole::Roughness) >= 0;
 		const float RawMetal = Model->mat_metallic[MatId];
 		const float RawRough = Model->mat_roughness[MatId];
-		const float Metallic = FMath::Clamp(RawMetal >= 0.f ? RawMetal : 0.f, 0.f, 1.f);
-		const float Roughness = FMath::Clamp(RawRough >= 0.f ? RawRough : 1.f - Model->mat_shininess[MatId], 0.f, 1.f);
+		const float Metallic = FMath::Clamp(
+			RawMetal >= 0.f ? RawMetal : (bHasMetalMap ? 1.f : 0.f), 0.f, 1.f);
+		const float Roughness = FMath::Clamp(
+			RawRough >= 0.f ? RawRough : (bHasRoughMap ? 1.f : 1.f - Model->mat_shininess[MatId]),
+			0.f, 1.f);
 		Mid->SetScalarParameterValue(TEXT("Metallic"), Metallic);
 		Mid->SetScalarParameterValue(TEXT("Roughness"), Roughness);
 		Mid->SetScalarParameterValue(TEXT("Specular"), FMath::Clamp(Model->mat_specular[MatId], 0.f, 1.f));
 		Mid->SetScalarParameterValue(TEXT("Reflectance"), FMath::Clamp(Model->mat_reflectance[MatId], 0.f, 1.f));
-		Mid->SetScalarParameterValue(TEXT("Emission"), FMath::Max(Model->mat_emission[MatId], 0.f));
+		// Same guard as metallic: the emissive scalar multiplies the emissive map, so
+		// an emissive-map material with an unset (0) emission scalar would show no
+		// glow. A material that authors an emissive map means to emit, so pass the
+		// map through at unit strength when the scalar was left at 0.
+		const float RawEmission = Model->mat_emission[MatId];
+		const bool bHasEmissiveMap = RoleTex(EMjMaterialRole::Emissive) >= 0;
+		Mid->SetScalarParameterValue(TEXT("Emission"),
+			(bHasEmissiveMap && RawEmission <= 0.f) ? 1.f : FMath::Max(RawEmission, 0.f));
 	}
 	else
 	{

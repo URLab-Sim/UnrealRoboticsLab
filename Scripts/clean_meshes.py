@@ -103,7 +103,19 @@ def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
         for vi in tri:
             incident[vi].append(fi)
 
+    # Carry texture coords + material through the split. Each duplicated vertex
+    # copies the UV of the original it came from; without this the returned mesh
+    # drops its UVs (a textured mesh like the aloha tabletop loses its texture).
+    src_uv = None
+    src_material = None
+    src_visual = getattr(mesh, "visual", None)
+    if src_visual is not None and getattr(src_visual, "uv", None) is not None \
+            and len(src_visual.uv) == len(verts):
+        src_uv = np.asarray(src_visual.uv)
+        src_material = getattr(src_visual, "material", None)
+
     new_verts = []
+    new_uv = [] if src_uv is not None else None
     # (vertex, face) -> index into new_verts
     remap = {}
     for vi, face_ids in enumerate(incident):
@@ -126,6 +138,8 @@ def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
         for g in groups:
             index = len(new_verts)
             new_verts.append(verts[vi])
+            if new_uv is not None:
+                new_uv.append(src_uv[vi])
             for fi in g[1]:
                 remap[(vi, fi)] = index
 
@@ -137,8 +151,12 @@ def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
     # No custom normals: trimesh's own area-weighted average over the split
     # geometry is the crease result, and it survives export because nothing
     # had to be overridden.
-    return trimesh.Trimesh(vertices=np.asarray(new_verts), faces=new_faces,
-                           process=False)
+    out = trimesh.Trimesh(vertices=np.asarray(new_verts), faces=new_faces,
+                          process=False)
+    if new_uv is not None:
+        out.visual = trimesh.visual.TextureVisuals(
+            uv=np.asarray(new_uv), material=src_material)
+    return out
 
 
 def collision_mesh_names(root):

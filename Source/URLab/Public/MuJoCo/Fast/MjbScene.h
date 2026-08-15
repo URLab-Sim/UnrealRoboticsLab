@@ -85,6 +85,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	int32 CameraStreamBasePort = 5600;
 
+	/** Force a fresh build of the cached, content-hash-keyed assets, ignoring any
+	 *  already on disk. Owner/listener override for "reimport this scene". */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	bool bForceRebuildAssets = false;
+
 	/** Cap the rendered camera height (px), downscaling the MJB resolution while
 	 *  keeping aspect. Each camera is a full scene capture, so this keeps many
 	 *  cameras affordable. 0 = honour the MJB resolution exactly. */
@@ -187,6 +192,11 @@ private:
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;
 	UMaterialInterface* Master = nullptr;
+
+	// A content id for the loaded MJB (a hash of its bytes). Cached, persistent
+	// assets live under /Game/URLabFastPath/<ContentHash>/, so an identical model
+	// reuses one asset set across sessions and a saved level reloads its geometry.
+	FString ContentHash;
 
 	// Textures built from the MJB's tex_data, keyed by MuJoCo texture id, so a
 	// texture shared across materials/geoms is built once. Transient; rebuilt on

@@ -35,6 +35,14 @@
 #include "HAL/RunnableThread.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Base64.h"
+#include "Misc/SecureHash.h"
+#if WITH_EDITOR
+#include "Misc/PackageName.h"
+#include "PackageTools.h"
+#include "UObject/Package.h"
+#include "UObject/SavePackage.h"
+#include "AssetRegistry/AssetRegistryModule.h"
+#endif
 
 #include "zmq.h"
 
@@ -419,6 +427,14 @@ bool AMjbScene::LoadModelOnly()
 	}
 	// One-shot forward for the rest pose (not stepping; the stream overrides it).
 	mj_forward(Model, Data);
+
+	// Content id for the cached, persistent asset folder: a hash of the MJB bytes.
+	// The compiled model IS the content, so an identical model hits the same cache.
+	{
+		uint8 Digest[20];
+		FSHA1::HashBuffer(Bytes->GetData(), Bytes->Num(), Digest);
+		ContentHash = BytesToHex(Digest, 20).Left(16);
+	}
 
 	Master = MjLoadMasterMaterial();
 	if (!Master)
@@ -1092,6 +1108,23 @@ UStaticMesh* AMjbScene::GetOrBuildStaticMesh(int32 MeshId)
 	{
 		return *Found;
 	}
+	// Persistent, content-hashed cache: reuse the on-disk asset if present, so an
+	// identical model doesn't rebuild and a saved level keeps its geometry.
+	FString PackageName;
+	if (!ContentHash.IsEmpty())
+	{
+		PackageName = UPackageTools::SanitizePackageName(
+			FString::Printf(TEXT("/Game/URLabFastPath/%s/SM_%d"), *ContentHash, MeshId));
+		if (!bForceRebuildAssets)
+		{
+			if (UStaticMesh* Existing = LoadObject<UStaticMesh>(nullptr, *PackageName))
+			{
+				StaticMeshCache.Add(MeshId, Existing);
+				return Existing;
+			}
+		}
+	}
+
 	TArray<FVector> Verts;
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
@@ -1138,7 +1171,22 @@ UStaticMesh* AMjbScene::GetOrBuildStaticMesh(int32 MeshId)
 		MeshDesc.CreatePolygon(PolyGroup, TArray<FVertexInstanceID>{Inst[0], Inst[1], Inst[2]});
 	}
 
-	UStaticMesh* Mesh = NewObject<UStaticMesh>(this, NAME_None, RF_Transient);
+	// Persistent when we have a content hash (saved into /Game/URLabFastPath/<hash>/
+	// so a saved level reloads and a re-connect skips the rebuild); transient
+	// otherwise.
+	UStaticMesh* Mesh = nullptr;
+	UPackage* Package = nullptr;
+	if (!PackageName.IsEmpty())
+	{
+		Package = CreatePackage(*PackageName);
+		Package->FullyLoad();
+		Mesh = NewObject<UStaticMesh>(Package, FName(*FString::Printf(TEXT("SM_%d"), MeshId)),
+			RF_Public | RF_Standalone);
+	}
+	else
+	{
+		Mesh = NewObject<UStaticMesh>(this, NAME_None, RF_Transient);
+	}
 	Mesh->GetStaticMaterials().Add(FStaticMaterial());
 	// No mesh distance field: these are puppet-render meshes (no Lumen GI/DFAO), and
 	// the distance-field scene update ensure-spams on their transforms, stalling
@@ -1149,6 +1197,18 @@ UStaticMesh* AMjbScene::GetOrBuildStaticMesh(int32 MeshId)
 	Params.bFastBuild = true;
 	Mesh->NeverStream = true;
 	Mesh->BuildFromMeshDescriptions({&MeshDesc}, Params);
+
+	if (Package)
+	{
+		FAssetRegistryModule::AssetCreated(Mesh);
+		Mesh->MarkPackageDirty();
+		const FString FileName =
+			FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		SaveArgs.SaveFlags = SAVE_NoError;
+		UPackage::SavePackage(Package, Mesh, *FileName, SaveArgs);
+	}
 	StaticMeshCache.Add(MeshId, Mesh);
 	return Mesh;
 }

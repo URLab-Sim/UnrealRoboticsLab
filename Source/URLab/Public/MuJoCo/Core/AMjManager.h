@@ -373,11 +373,16 @@ public:
 	/** True when this process was started as a viewer (StateSourceEndpoint set). */
 	bool bIsViewerRole = false;
 
-	// Owner-side viewer bus (direct/live). Raw ZMQ PUB bound in BeginPlay and
-	// written from FanOutStateSnapshot (physics thread), mirroring the existing
-	// publish transports. Null unless bBroadcastViewers was set on an owner.
-	void* ViewerPubCtx = nullptr;
-	void* ViewerPubSocket = nullptr;
+	// Owner-side viewer bus (direct/live): the "viewer" ({t,qpos,qvel}) and "geoms"
+	// (per-geom transforms) topics, fanned out through the agnostic publish
+	// abstraction (ZMQ now; SHM/ROS/gRPC via new UURLabPublishTransport impls),
+	// on their own endpoint separate from the state bus. Empty unless
+	// bBroadcastViewers was set on an owner. Written from FanOutStateSnapshot
+	// (physics thread); TransportShutdown'd + cleared in EndPlay.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<class UURLabPublishTransport>> ViewerBusTransports;
+	/** Fan a topic's payload out to every viewer-bus publish transport. */
+	void PublishOnViewerBus(const FString& Topic, const TArray<uint8>& Payload);
 	/** Encode {t,qpos,qvel} from (m,d) and PUB it on the viewer bus. */
 	void PublishViewerFrame(struct mjModel_* m, struct mjData_* d);
 	/** Encode per-geom world transforms {f,xpos,xquat} from (m,d) and PUB them on

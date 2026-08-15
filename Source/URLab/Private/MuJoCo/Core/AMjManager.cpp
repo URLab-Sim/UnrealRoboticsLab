@@ -346,28 +346,29 @@ void AAMjManager::BeginPlay()
 		}
 	}
 
-	// Owner viewer bus: bind a PUB so read-only viewers can subscribe (used by
-	// a direct/live UE owner). In puppet the Python client is the owner and
-	// broadcasts on its own step, so this stays off there.
+	// Owner viewer bus: publish the viewer/geoms topics through the agnostic
+	// publish abstraction (used by a direct/live UE owner) so lightweight viewers
+	// and fast-path renderers can subscribe over any transport. In puppet the
+	// Python client is the owner and broadcasts on its own step, so this stays off.
 	if (ViewerCfg.bBroadcastViewers)
 	{
-		ViewerPubCtx = zmq_ctx_new();
-		ViewerPubSocket = zmq_socket(ViewerPubCtx, ZMQ_PUB);
-		int Linger = 0;
-		zmq_setsockopt(ViewerPubSocket, ZMQ_LINGER, &Linger, sizeof(Linger));
 		const FString Ep = FString::Printf(TEXT("tcp://%s:%d"),
 			*ViewerCfg.BindAddress, ViewerCfg.ViewerPort);
-		if (zmq_bind(ViewerPubSocket, TCHAR_TO_UTF8(*Ep)) != 0)
+		UURLabZmqPublishTransport* ViewerZmq = NewObject<UURLabZmqPublishTransport>(
+			this, TEXT("ViewerBusZmqPublisher"));
+		if (ViewerZmq)
 		{
-			UE_LOG(LogURLab, Error, TEXT("[AAMjManager] viewer PUB bind failed on %s"), *Ep);
-			zmq_close(ViewerPubSocket);
-			ViewerPubSocket = nullptr;
-			zmq_ctx_term(ViewerPubCtx);
-			ViewerPubCtx = nullptr;
-		}
-		else
-		{
-			UE_LOG(LogURLab, Log, TEXT("[AAMjManager] viewer bus PUB bound on %s"), *Ep);
+			ViewerZmq->ZmqEndpoint = Ep;
+			ViewerZmq->SetOwningManager(this);
+			if (ViewerZmq->TransportInit())
+			{
+				ViewerBusTransports.Add(ViewerZmq);
+				UE_LOG(LogURLab, Log, TEXT("[AAMjManager] viewer bus publisher bound on %s"), *Ep);
+			}
+			else
+			{
+				UE_LOG(LogURLab, Error, TEXT("[AAMjManager] viewer bus publisher bind failed on %s"), *Ep);
+			}
 		}
 	}
 	} // end owner-only setup (a viewer skips the bridge + owner transports)
@@ -652,9 +653,20 @@ void AAMjManager::UnregisterStateConsumer(IMjStateConsumer* Consumer)
 	});
 }
 
+void AAMjManager::PublishOnViewerBus(const FString& Topic, const TArray<uint8>& Payload)
+{
+	for (const TObjectPtr<UURLabPublishTransport>& Pub : ViewerBusTransports)
+	{
+		if (Pub)
+		{
+			Pub->Publish(Topic, Payload);
+		}
+	}
+}
+
 void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
 {
-	if (!ViewerPubSocket || !m || !d)
+	if (ViewerBusTransports.Num() == 0 || !m || !d)
 		return;
 	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
 	Obj->SetNumberField(TEXT("t"), d->time);
@@ -673,14 +685,12 @@ void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 	if (Buf.Num() == 0)
 		return;
-	// [topic][payload], matching the Python client's PUB and the UE viewer SUB.
-	zmq_send(ViewerPubSocket, "viewer", 6, ZMQ_SNDMORE | ZMQ_DONTWAIT);
-	zmq_send(ViewerPubSocket, Buf.GetData(), Buf.Num(), ZMQ_DONTWAIT);
+	PublishOnViewerBus(TEXT("viewer"), Buf);
 }
 
 void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
 {
-	if (!ViewerPubSocket || !m || !d)
+	if (ViewerBusTransports.Num() == 0 || !m || !d)
 		return;
 	const int NGeom = m->ngeom;
 	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
@@ -727,8 +737,7 @@ void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 	if (Buf.Num() == 0)
 		return;
-	zmq_send(ViewerPubSocket, "geoms", 5, ZMQ_SNDMORE | ZMQ_DONTWAIT);
-	zmq_send(ViewerPubSocket, Buf.GetData(), Buf.Num(), ZMQ_DONTWAIT);
+	PublishOnViewerBus(TEXT("geoms"), Buf);
 }
 
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
@@ -858,17 +867,13 @@ void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	ManagerOwnedPublishTransports.Reset();
 
 	// Owner viewer bus: the physics worker (its only writer) has stopped above,
-	// so the PUB can be torn down without racing a send.
-	if (ViewerPubSocket)
+	// so the publish transports can be torn down without racing a send.
+	for (TObjectPtr<UURLabPublishTransport>& T : ViewerBusTransports)
 	{
-		zmq_close(ViewerPubSocket);
-		ViewerPubSocket = nullptr;
+		if (T)
+			T->TransportShutdown();
 	}
-	if (ViewerPubCtx)
-	{
-		zmq_ctx_term(ViewerPubCtx);
-		ViewerPubCtx = nullptr;
-	}
+	ViewerBusTransports.Reset();
 
 	Super::EndPlay(EndPlayReason);
 	if (Instance == this)

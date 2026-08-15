@@ -12,8 +12,7 @@
 
 class AAMjManager;
 class UMjPhysicsEngine;
-class FRunnable;
-class FRunnableThread;
+class UURLabClientSubscribeTransport;
 
 /**
  * @class UURLabViewerSubscribeTransport
@@ -47,16 +46,11 @@ public:
 
 	void SetOwningManager(AAMjManager* InMgr);
 
-	/** Connect the SUB and spin up the receive thread. */
+	/** Connect the underlying client-subscribe transport and start receiving. */
 	bool TransportInit();
-	/** Stop the receive thread and close the socket. Idempotent. Must run
-	 *  before the physics engine it applies into is torn down. */
+	/** Stop receiving and release the transport. Idempotent. Must run before the
+	 *  physics engine it applies into is torn down. */
 	void TransportShutdown();
-
-	// Called by the worker thread; public so the FRunnable can reach it.
-	void RunReceiveLoop();
-
-	std::atomic<bool> bStop{false};
 
 private:
 	TWeakObjectPtr<AAMjManager> OwningManager;
@@ -64,10 +58,11 @@ private:
 	// (shut down first in AAMjManager::EndPlay). Accessed under its CallbackMutex.
 	UMjPhysicsEngine* Engine = nullptr;
 
-	void* ZmqContext = nullptr;
-	void* Subscriber = nullptr;
-	FRunnable* WorkerRunnable = nullptr;
-	FRunnableThread* WorkerThread = nullptr;
+	// The agnostic client-subscribe transport carrying the owner's "viewer" topic.
+	UPROPERTY(Transient)
+	TObjectPtr<UURLabClientSubscribeTransport> Sub;
+	// Worker-thread delivery: decode a {t,qpos,qvel} frame and apply it.
+	void OnMessage(const FString& Topic, const TArray<uint8>& Payload);
 	bool bIsInitialized = false;
 	// Throttles the model-mismatch warning to once per mismatch episode (re-armed
 	// after any frame that applies), so a wrong-scene viewer is diagnosable

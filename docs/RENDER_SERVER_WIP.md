@@ -75,13 +75,15 @@ scalability + film-grain/motion-blur off) is applied on every slave spawn.
 - **Packaged re-cook**: the current cooked exe predates the PBR fixes and only has
   the bare-plane environment. Re-cook to pick up the PBR fixes and to include any
   custom `/Game` levels in the browser dropdown (GateBackyard-scale envs are heavy).
-- **Aloha normal-import smoothing** (task #11, still open): meshes import
-  over-smoothed on the normal articulation route. `Scripts/clean_meshes.py`
-  does crease-split per mesh (`split_normals_by_crease`, crease dot 0.8), so the
-  likely cause is the split being skipped/lost, not missing logic: (a) `networkx`
-  absent -> `clean_mesh` raises -> GLB skipped -> UE computes smooth normals, or
-  (b) a stale GLB not regenerated. Needs a repro of the aloha import to confirm
-  which. Tabletop-texture drop on that route is the paired half.
+- **Aloha normal-import smoothing** (task #11): FIXED (`bd3c02b`). Root cause was
+  `clean_meshes.py` marking any mesh a collision geom uses as `smooth_normal`, so
+  aloha's vx300s arm links (which double as collision meshes) skipped the crease
+  split and imported over-smooth. Now only collision-EXCLUSIVE meshes are left
+  smooth; a mesh any visual geom uses is split (the split moves no vertex, so the
+  convex collision hull is unchanged). Stale smooth GLBs auto-regenerate on the
+  next import (editing the script bumps its mtime past the GLBs). The paired
+  **tabletop-texture drop** on that route is still open (the `table` material's
+  diffuse png not coming through) -- not yet investigated.
 - **Owner robustness**: the owner exits if its MuJoCo viewer window is closed.
 - **Optional polish**: per-level default env+origin in the browser; direct
   origin type-in in the HUD; a camera-feed viewer wired into the browser flow.

@@ -67,6 +67,19 @@ UStaticMesh* LoadBasic(const TCHAR* Path)
 	return LoadObject<UStaticMesh>(nullptr, Path);
 }
 
+// Fast-path render components never contribute to distance-field lighting or AO.
+// The shared engine primitive meshes (the Plane especially) carry a mesh distance
+// field, and a flat/non-uniformly-scaled primitive yields a degenerate DF matrix
+// that spams "InverseFast: NIL/non-invertible matrix" ensures every frame in -game.
+// Dropping the component from the DF scene removes the cost and the noise.
+void DisableDistanceFields(UPrimitiveComponent* Comp)
+{
+	if (Comp)
+	{
+		Comp->SetAffectDistanceFieldLighting(false);
+	}
+}
+
 // Drives the transform-bus receive loop on a worker thread.
 class FMjbBusRunnable : public FRunnable
 {
@@ -616,6 +629,7 @@ void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
 		UInstancedStaticMeshComponent* Ism = NewObject<UInstancedStaticMeshComponent>(Host);
 		Ism->SetStaticMesh(Mesh);
 		Ism->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		DisableDistanceFields(Ism);
 		Ism->RegisterComponent();
 		Ism->AttachToComponent(Host->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		ApplyGeomMaterial(Ism, GeomIds[0]); // the group shares one material
@@ -894,6 +908,7 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 			UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(Body);
 			Comp->SetStaticMesh(Mesh);
 			Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			DisableDistanceFields(Comp);
 			Comp->RegisterComponent();
 			Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 			ApplyGeomMaterial(Comp, G);
@@ -922,6 +937,7 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	Comp->SetStaticMesh(Mesh);
 	Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	Comp->SetRelativeScale3D(Scale);
+	DisableDistanceFields(Comp);
 	Comp->RegisterComponent();
 	Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 	ApplyGeomMaterial(Comp, G);
@@ -945,6 +961,7 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 				UStaticMeshComponent* Cap = NewObject<UStaticMeshComponent>(Body);
 				Cap->SetStaticMesh(SphereMesh);
 				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+				DisableDistanceFields(Cap);
 				Cap->RegisterComponent();
 				Cap->AttachToComponent(Comp, FAttachmentTransformRules::KeepRelativeTransform);
 				Cap->SetRelativeLocation(FVector(0.0, 0.0, CapZ[S]));

@@ -374,3 +374,109 @@ the raw path -- gone entirely.
   actor). Confirm "Entity" or pick another word.
 - Scope: whole end-state vs. pull out step 3 (one control store / kill the dual-write)
   first as a standalone correctness fix.
+
+## Future API discussion points (2026-08-15, not scoped, user notes)
+
+Two ideas the user raised to capture for later. Both are DISCUSSION ONLY, likely partly
+wrong, meant to seed design when quota is back. Design goal stated by the user: keep the
+RPC/endpoint surface as minimal and uncluttered as possible while accepting a wide range
+of inputs.
+
+### A. Unified `load_model()` RPC (one endpoint, many input formats)
+
+Today loading is split across several paths (fast-path `fastpath_load` with MJB bytes vs
+the authoring import factory that takes an XML path and runs `clean_meshes.py`). The user
+wants a single `load_model()` on both the Python client and UE instances that swallows the
+lot.
+
+Proposed shape (rough):
+
+```
+load_model(payload: bytes, format: {mjb|xml|mjz}, fast_path: bool = False,
+           assets: map<name,bytes> = {}, name: str = ...) -> handle
+```
+
+Behavior sketch:
+- `fast_path = True` (renderer / raw-model path, always resolves to an MJB):
+  - `mjb`  -> load the bytes directly (already the fast path).
+  - `xml (+ assets)` -> feed XML + asset bytes into an `mjSpec` via `mjVFS`, compile,
+    dump the MJB, load it.
+  - `mjz`  -> unpack the self-contained archive, same `mjSpec` -> dump MJB -> load.
+  - i.e. the fast path has ONE real requirement (an MJB); every other format is just a
+    normalize-to-MJB step in front of it.
+- `fast_path = False` (usual `AMjArticulation` authoring import):
+  - Today this path takes a path/XML and cannot accept bytes. To fit the same endpoint it
+    would stage the payload to a temp location (write the XML, expand an mjz's assets to a
+    temp dir, or write asset bytes next to the XML) and reuse the existing import factory +
+    `clean_meshes.py`. "Cannot accept bytes yet" is really "needs a bytes -> temp-files
+    shim in front of the importer."
+
+Initial thoughts / open questions (agent's, to argue about later):
+- Format encoding: explicit `format` field vs sniffing magic bytes (MJB has a header, mjz
+  is a zip `PK\x03\x04`, xml is text). Explicit is less magic and matches the "clean surface"
+  goal; could allow `format=auto` as sugar that sniffs. Lean explicit.
+- Collapsing the input set: `xml + asset bytes` and `mjz` are the SAME internal case once
+  unpacked (an XML plus a VFS of named asset blobs). One simplification worth considering:
+  drop the separate `assets` map and require "XML with assets" to arrive as an mjz (client
+  zips it). Then the wire accepts only two blob kinds, `mjb` and `mjz`, plus bare
+  asset-free `xml` text. Fewer fields, same reach. Counter-argument: forcing a client-side
+  zip is friction for the common "I have an xml and a folder" case; the `assets` map may be
+  nicer ergonomically. Present both.
+- Where normalization runs: UE-side is the general answer (UE instances need this API too
+  and may have no Python client; UE already has `mjSpec`). Client-side normalize-to-MJB
+  would keep the wire trivially "always MJB for fast path" but couples the client to
+  mujoco-python's compiler. Prefer UE-side `mjSpec` compile so the endpoint is uniform for
+  all callers.
+- Return shape: fast path returns a loaded-scene handle; the authoring import returns a
+  Blueprint handle you then `spawn_actor`. Two different return types under one endpoint is
+  a wart. Decide whether `load_model` always returns a uniform handle (and spawning is a
+  separate step for both) or the two arms honestly return different things.
+- Interaction with the Entity redesign: with the bridge addressing by `FMjEntity` (id-slice
+  of the one compiled model), `fast_path` stops being an input-format concern and becomes
+  purely "who renders / who owns the integrator" (the Clock/RenderSource axes above). The
+  format normalization (anything -> MJB) is orthogonal to that. Worth designing
+  `load_model` so `fast_path` maps onto the mode axes rather than being a fourth ad hoc
+  flag.
+
+### B. Blueprint action: split an `AMjArticulation` into per-body articulations
+
+Motivation: a huge XML compiles to a huge Blueprint that is both hard to read and expensive
+to instantiate (see [[project_blueprint_edit_lag_unresolved]]). The user wants a BP action
+on an `AMjArticulation` that separates each top-level body (direct child of `<worldbody>`)
+into its own `AMjArticulation`, duplicating the shared authoring settings, plus a
+"linking" articulation that references them all back into one simulable model.
+
+Sketch:
+- Split: for each top-level body, emit a child articulation carrying that body's subtree
+  plus copies of the shared authoring blocks it needs: `<compiler>`, `<option>`, `<size>`,
+  the referenced `<default>` classes, and only the `<asset>` entries that subtree uses.
+- Link: a parent/composition articulation that re-includes the children (mechanism:
+  `mjSpec` attach with per-child prefixes, the same tool the protospec/mjspec work uses;
+  see [[project_mjspec_migration]] / [[project_protospec_plan]]) and carries the
+  cross-cutting, whole-model-scope data that does not belong to any single child.
+
+The hard part (user already flagged it): an XML can contain data that is inherently
+whole-model, not per-body: `<contact>` pairs/excludes, `<equality>` constraints, tendons,
+and keyframes (a `<key>` qpos/ctrl vector spans the entire model's DoF order). These cannot
+be cleanly pushed down into a single split child. Options to weigh:
+- Keep all cross-body relations on the linking articulation and re-apply them after attach
+  (needs stable name remapping so a `<pair>` still resolves to the right geoms once children
+  are attached with prefixes).
+- Keep keyframes only on the link (they are defined over the recombined model's DoF layout,
+  so they only make sense there anyway).
+- Detect and warn when a split would sever a constraint that spans two children.
+
+Initial thoughts:
+- This is an AUTHORING / instantiation optimization only. At sim time MuJoCo still compiles
+  ONE model, so the children must recombine (via attach) into a single `mjModel`. So this
+  does NOT create multiple simulations, and with the Entity redesign it does not change what
+  the bridge sees either: the compiled model is still one model partitioned into
+  `FMjEntity`s. The split is purely to shrink/organize the Blueprints and speed BP
+  instantiation. Good news: the two ideas are compatible and even reinforcing (per-body BPs
+  map naturally onto per-body entities).
+- `mjSpec` attach with prefixes is almost exactly the "link them back" primitive; the real
+  work is the cross-cutting-data bookkeeping and name remapping, not the attach itself.
+- Round-trip risk: split then link should reproduce the original compiled model bit-for-bit
+  (or provably-equivalent). A golden compiled-model diff test would be the honest gate
+  before trusting it (compare against `scene_compiled.xml`, see
+  [[project_scene_compiled_xml_not_loadable]]).

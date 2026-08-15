@@ -142,14 +142,19 @@ def split_normals_by_crease(mesh, dot_threshold: float = CREASE_DOT):
 
 
 def collision_mesh_names(root):
-    """Mesh names any COLLIDING geom uses, resolved through the class chain.
+    """Classify every mesh a geom uses into (collision, visual) sets.
+
+    Returns two sets: meshes a COLLIDING geom uses, and meshes a VISUAL
+    (non-colliding) geom uses. A mesh can be in both when the model reuses one
+    mesh for a visual geom and a collision geom (aloha does this for the vx300s
+    arm links).
 
     Splitting a vertex so a hard edge shades hard duplicates it. That is what a
     renderer wants and it is invisible to the physics -- no vertex moves, so the
-    shape and its convex hull are unchanged -- but it does change `nmeshvert`,
-    and a collision mesh has no shading to improve. So the split is confined to
-    meshes only visual geoms use, and everything else is left exactly as MuJoCo
-    would have loaded it.
+    shape and its convex hull are unchanged -- but it does change `nmeshvert`.
+    The caller splits any mesh a visual geom uses (even one a collision geom also
+    uses, since the hull is unchanged) and leaves collision-only meshes exactly
+    as MuJoCo would have loaded them.
 
     Whether a geom collides is `contype`/`conaffinity`, both 1 unless something
     says otherwise, and in practice a visual geom gets its zeroes from a
@@ -195,6 +200,7 @@ def collision_mesh_names(root):
         return None
 
     collision = set()
+    visual = set()
 
     def walk(element, inherited_class):
         # `childclass` applies to every descendant that does not name its own.
@@ -210,14 +216,13 @@ def collision_mesh_names(root):
                     collides = (contype is None or contype.strip() != "0") or (
                         conaffinity is None or conaffinity.strip() != "0"
                     )
-                    if collides:
-                        collision.add(mesh)
+                    (collision if collides else visual).add(mesh)
             walk(child, current)
 
     for worldbody in root.findall("worldbody"):
         walk(worldbody, None)
 
-    return collision
+    return collision, visual
 
 
 def clean_mesh(mesh, source_path=None, smooth_normal=False):
@@ -637,10 +642,12 @@ def process_xml(xml_path: Path, out_dir: Path = None,
     # Collect all mesh elements
     mesh_elements = list(root.iter("mesh"))
 
-    # Which of them a colliding geom uses. Those keep MuJoCo's own vertices.
-    collision_meshes = collision_mesh_names(root)
-    if collision_meshes:
-        print(f"Collision meshes (normals left as authored): {len(collision_meshes)}")
+    # Which of them collision vs visual geoms use. A mesh used ONLY by collision
+    # geoms keeps MuJoCo's own vertices; one any visual geom uses is crease-split.
+    collision_meshes, visual_meshes = collision_mesh_names(root)
+    collision_only = collision_meshes - visual_meshes
+    if collision_only:
+        print(f"Collision-only meshes (normals left as authored): {len(collision_only)}")
 
     # Also convert meshes referenced by <flexcomp file="...">
     for flexcomp in root.iter("flexcomp"):
@@ -767,11 +774,12 @@ def process_xml(xml_path: Path, out_dir: Path = None,
         # false, so a model that says nothing gets the crease split.
         smooth_normal = mesh_el.get("smoothnormal", "false").strip().lower() in ("true", "1")
 
-        # A mesh a colliding geom uses is not split, whatever the document says
-        # about its normals: the split is a shading improvement, and paying for
-        # it with a model that no longer matches MuJoCo's is the wrong trade on
-        # geometry nobody looks at.
-        if mesh_name in collision_meshes:
+        # A mesh used ONLY by collision geoms is not split: the split is a shading
+        # improvement on geometry nobody looks at. But a mesh a visual geom uses is
+        # split even if a collision geom reuses it (aloha's arm links), because the
+        # split moves no vertex -- the convex collision hull is identical -- so the
+        # only effect is the render shading hard where it should.
+        if mesh_name in collision_meshes and mesh_name not in visual_meshes:
             smooth_normal = True
 
         if convert_mesh(actual_source, output_glb, smooth_normal):

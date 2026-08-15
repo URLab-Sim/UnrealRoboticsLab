@@ -435,6 +435,24 @@ UMjCamera::UMjCamera()
 void UMjCamera::OnRegister()
 {
 	Super::OnRegister();
+	// The scene-capture is a default subobject attached in the constructor. When
+	// this camera is spawned as part of an actor/Blueprint, RegisterAllComponents
+	// attaches + registers it for us. But when it is created at runtime via
+	// NewObject + RegisterComponent (the MJB fast-path render server), that cascade
+	// does not run, leaving the capture detached at the origin -- so it must be
+	// attached to this component and registered explicitly. Idempotent: a no-op
+	// once it is already parented + registered.
+	if (CaptureComponent)
+	{
+		if (CaptureComponent->GetAttachParent() != this)
+		{
+			CaptureComponent->AttachToComponent(this, FAttachmentTransformRules::KeepRelativeTransform);
+		}
+		if (!CaptureComponent->IsRegistered() && GetWorld())
+		{
+			CaptureComponent->RegisterComponent();
+		}
+	}
 	RefreshCaptureFov();
 }
 

@@ -72,7 +72,9 @@ public class URLab : ModuleRules
 			"AssetRegistry",
 			"ProceduralMeshComponent",
 			"GeometryFramework",
-			"GeometryCore"
+			"GeometryCore",
+			"MeshDescription",
+			"StaticMeshDescription"
 		});
 
 		// Editor-only dependencies for DecomposeMesh and other #if WITH_EDITOR code

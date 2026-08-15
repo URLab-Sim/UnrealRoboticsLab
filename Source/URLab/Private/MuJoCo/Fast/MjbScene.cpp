@@ -14,6 +14,8 @@
 #include "Components/SceneComponent.h"
 #include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "MeshDescription.h"
+#include "StaticMeshAttributes.h"
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Texture2D.h"
@@ -87,25 +89,11 @@ void AMjbScene::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Streaming only ever happens in a running world (PIE / -game). When this
-	// actor is the PIE duplicate of the editor-world preview, its raw mjModel /
-	// mjData pointers were shallow-copied and are stale -- clear them WITHOUT
-	// freeing (the editor actor still owns its own). Its child body actors are now
-	// persistent, so they DID duplicate into this world: destroy the inherited
-	// copies so we rebuild a single clean streaming scene, not a static overlay.
+	// The raw mjModel/mjData pointers were shallow-copied from the editor actor on
+	// the PIE duplication and are stale -- clear them WITHOUT freeing (the editor
+	// actor still owns its own). The transient index maps do not duplicate either.
 	Model = nullptr;
 	Data = nullptr;
-	{
-		TArray<AActor*> Inherited;
-		GetAttachedActors(Inherited);
-		for (AActor* A : Inherited)
-		{
-			if (A)
-			{
-				A->Destroy();
-			}
-		}
-	}
 	BodyActors.Reset();
 	GeomComps.Reset();
 	CameraComps.Reset();
@@ -116,19 +104,60 @@ void AMjbScene::BeginPlay()
 		GetWorld() && GetWorld()->IsGameWorld(), *MjbFilePath, MjbBytes.Num(),
 		*BusEndpoint, bEnableCameraStreaming);
 
-	if (bHaveModel)
-	{
-		const int32 Geoms = LoadAndBuild();
-		if (Geoms < 0)
-		{
-			UE_LOG(LogURLab, Error, TEXT("[MjbScene] BeginPlay rebuild FAILED (no usable MJB)"));
-		}
-	}
-	else
+	if (!bHaveModel)
 	{
 		UE_LOG(LogURLab, Error,
 			TEXT("[MjbScene] BeginPlay: no MJB path or bytes -- nothing to stream (discovery/duplication issue?)"));
+		return;
 	}
+
+	// Reuse the editor-world preview that duplicated into PIE: reload only the
+	// (small) model for the index space and re-wire GeomComps to the already-built
+	// components, instead of destroying every actor and rebuilding all the meshes
+	// (the expensive part). Falls back to a full build when there is no preview to
+	// reuse (e.g. spawned fresh in -game).
+	int32 Geoms = ReindexFromLevel();
+	if (Geoms > 0)
+	{
+		// Dynamic material instances made in the editor world do not survive the
+		// PIE duplication, and the texture cache is transient -- re-apply materials
+		// onto the reused components. Cheap next to a mesh rebuild.
+		for (int32 G = 0; G < GeomComps.Num(); ++G)
+		{
+			if (GeomComps[G])
+			{
+				ApplyGeomMaterial(GeomComps[G], G);
+			}
+		}
+		UE_LOG(LogURLab, Log, TEXT("[MjbScene] BeginPlay reused preview (%d geoms) -- no mesh rebuild"), Geoms);
+	}
+	else
+	{
+		TArray<AActor*> Inherited;
+		GetAttachedActors(Inherited, /*bResetArray=*/true, /*bRecursivelyIncludeAttachedActors=*/true);
+		for (AActor* A : Inherited)
+		{
+			if (A)
+			{
+				A->Destroy();
+			}
+		}
+		BodyActors.Reset();
+		GeomComps.Reset();
+		CameraComps.Reset();
+		Geoms = LoadAndBuild();
+		if (Geoms < 0)
+		{
+			UE_LOG(LogURLab, Error, TEXT("[MjbScene] BeginPlay build FAILED (no usable MJB)"));
+			return;
+		}
+	}
+
+	// The camera components exist already -- built dormant in the preview (reused via
+	// reindex) or by the fallback LoadAndBuild. Turn capture + streaming on for this
+	// play session, so the render server goes live without rebuilding them.
+	StartCameraStreaming();
+
 	if (!BusEndpoint.IsEmpty())
 	{
 		StartBus();
@@ -180,6 +209,8 @@ int32 AMjbScene::ReindexFromLevel()
 	BodyActors.SetNum(NBody);
 	GeomComps.Reset();
 	GeomComps.SetNum(NGeom);
+	CameraComps.Reset();
+	CameraComps.SetNum(static_cast<int32>(Model->ncam));
 
 	auto TagIndex = [](const FName& Tag, const TCHAR* Prefix) -> int32 {
 		const FString S = Tag.ToString();
@@ -187,10 +218,12 @@ int32 AMjbScene::ReindexFromLevel()
 		return S.StartsWith(Prefix) ? FCString::Atoi(*S.Mid(PrefixLen)) : -1;
 	};
 
-	TArray<AActor*> Children;
-	GetAttachedActors(Children);
+	// Recursive: the tagged geom components live on per-geom child actors, which
+	// are grandchildren of this scene (scene -> body actor -> geom actor).
+	TArray<AActor*> AttachedActors;
+	GetAttachedActors(AttachedActors, /*bResetArray=*/true, /*bRecursivelyIncludeAttachedActors=*/true);
 	int32 Found = 0;
-	for (AActor* A : Children)
+	for (AActor* A : AttachedActors)
 	{
 		if (!A)
 		{
@@ -218,9 +251,23 @@ int32 AMjbScene::ReindexFromLevel()
 				}
 			}
 		}
+		// Cameras are UMjCamera scene components (not primitives); re-wire them too.
+		TArray<UMjCamera*> Cams;
+		A->GetComponents<UMjCamera>(Cams);
+		for (UMjCamera* Cam : Cams)
+		{
+			for (const FName& Tag : Cam->ComponentTags)
+			{
+				const int32 CamId = TagIndex(Tag, TEXT("MjbCam="));
+				if (CameraComps.IsValidIndex(CamId))
+				{
+					CameraComps[CamId] = Cam;
+				}
+			}
+		}
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] re-indexed %d geoms across %d body actors from the level"),
-		Found, Children.Num());
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] re-indexed %d geoms across %d attached actors from the level"),
+		Found, AttachedActors.Num());
 	return Found > 0 ? Found : -1;
 }
 
@@ -452,13 +499,11 @@ void AMjbScene::BuildCameras()
 	{
 		return;
 	}
-	// Camera capture + streaming is a play-session behaviour (like the transform
-	// stream): only in a running world (PIE / -game). This keeps the editor
-	// preview static and avoids the PIE duplicate double-binding the camera ports.
-	if (!GetWorld() || !GetWorld()->IsGameWorld())
-	{
-		return;
-	}
+	// Builds the camera components in BOTH the editor preview and a play session, so
+	// the scene has one representation. The components are built DORMANT here (no
+	// render target, no ZMQ bind); StartCameraStreaming() turns capture + streaming
+	// on for a play session only, which is what keeps the editor preview cheap and
+	// avoids the PIE duplicate double-binding the ports.
 	const int32 NCam = static_cast<int32>(Model->ncam);
 	CameraComps.SetNum(NCam);
 	for (int32 C = 0; C < NCam; ++C)
@@ -506,15 +551,40 @@ void AMjbScene::BuildCameras()
 		Cam->SetStreamPortIndex(C);
 
 		Cam->SetupAttachment(Host->GetRootComponent());
+		Cam->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbCam=%d"), C)));
 		Cam->RegisterComponent();
-		// Render every frame: with no AAMjManager the state-change capture gate
-		// never advances, so it would render once then stall without this.
-		Cam->SetCaptureRate(/*bOnStateChange=*/false, /*MaxFps=*/30.0f);
-		Cam->SetStreamingEnabled(true);
 		CameraComps[C] = Cam;
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] camera server: %d camera(s) streaming from port %d"),
-		NCam, CameraStreamBasePort);
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] built %d camera component(s) (dormant)"), NCam);
+}
+
+void AMjbScene::StartCameraStreaming()
+{
+	// Turn dormant cameras into a live render server: set up the render target, bind
+	// the per-camera ZMQ port, and capture every frame. Network config is re-applied
+	// here so it is correct whether the cameras were just built or reused from the
+	// duplicated preview. Play session only.
+	for (int32 C = 0; C < CameraComps.Num(); ++C)
+	{
+		UMjCamera* Cam = CameraComps[C];
+		if (!Cam)
+		{
+			continue;
+		}
+		Cam->bEnableZmqBroadcast = true;
+		Cam->ZmqEndpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), CameraStreamBasePort + C);
+		Cam->bEnableShmBroadcast = bEnableCameraShm;
+		Cam->SetStreamPortIndex(C);
+		// Render every frame: with no AAMjManager the state-change capture gate never
+		// advances, so it would render once then stall without this.
+		Cam->SetCaptureRate(/*bOnStateChange=*/false, /*MaxFps=*/30.0f);
+		Cam->SetStreamingEnabled(true);
+	}
+	if (CameraComps.Num() > 0)
+	{
+		UE_LOG(LogURLab, Log, TEXT("[MjbScene] camera server: %d camera(s) streaming from port %d"),
+			CameraComps.Num(), CameraStreamBasePort);
+	}
 }
 
 void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
@@ -576,7 +646,55 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	{
 		return nullptr;
 	}
-	AActor* Body = BodyActors[BodyId];
+
+	// One actor per geom, attached under its body actor: every geom becomes a
+	// named, individually selectable entry in the outliner (bare components on the
+	// body actor are not surfaced there), and the per-geom transform stream drives
+	// its mesh component directly.
+	const bool bEditorPreview = GetWorld() && !GetWorld()->IsGameWorld();
+	FActorSpawnParameters GeomParams;
+	GeomParams.Owner = this;
+	if (!bEditorPreview)
+	{
+		GeomParams.ObjectFlags |= RF_Transient;
+	}
+	AActor* GeomActor = GetWorld()->SpawnActor<AActor>(AActor::StaticClass(), FTransform::Identity, GeomParams);
+	if (!GeomActor)
+	{
+		return nullptr;
+	}
+	USceneComponent* GeomRoot = NewObject<USceneComponent>(GeomActor, TEXT("GeomRoot"));
+	GeomActor->SetRootComponent(GeomRoot);
+	GeomRoot->RegisterComponent();
+	GeomActor->AttachToActor(BodyActors[BodyId], FAttachmentTransformRules::KeepRelativeTransform);
+	GeomActor->Tags.Add(FName(*FString::Printf(TEXT("MjbGeom=%d"), G)));
+	{
+		// Label by the geom's MJCF name, else its mesh name + id, else the id.
+		const char* GeomName = mj_id2name(Model, mjOBJ_GEOM, G);
+		FString Label;
+		if (GeomName && *GeomName)
+		{
+			Label = ANSI_TO_TCHAR(GeomName);
+		}
+		else if (Model->geom_dataid[G] >= 0)
+		{
+			const char* MeshName = mj_id2name(Model, mjOBJ_MESH, Model->geom_dataid[G]);
+			Label = FString::Printf(TEXT("%s_g%d"), MeshName ? ANSI_TO_TCHAR(MeshName) : TEXT("mesh"), G);
+		}
+		else
+		{
+			Label = FString::Printf(TEXT("geom_%d"), G);
+		}
+		GeomActor->Tags.Add(FName(*FString::Printf(TEXT("MjbGeomName=%s"), *Label)));
+#if WITH_EDITOR
+		if (bEditorPreview)
+		{
+			GeomActor->SetActorLabel(Label);
+		}
+#endif
+	}
+	// The geom actor is the parent for this geom's mesh component(s).
+	AActor* Body = GeomActor;
 
 	// Primitive selection + scale from MuJoCo size semantics. Mesh geoms are a
 	// follow-on (ProceduralMeshComponent); skipped here with a note.
@@ -617,12 +735,32 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 			break;
 		case mjGEOM_MESH:
 		{
+#if WITH_EDITOR
+			// Editor render server: a shared UStaticMesh (built once per mesh id)
+			// referenced by pointer, so the PIE-world duplication stays cheap. Mesh
+			// verts are already in UE units, so the component needs no extra scale.
+			UStaticMesh* Mesh = GetOrBuildStaticMesh(Model->geom_dataid[G]);
+			if (!Mesh)
+			{
+				return nullptr;
+			}
+			UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(Body);
+			Comp->SetStaticMesh(Mesh);
+			Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			Comp->RegisterComponent();
+			Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+			ApplyGeomMaterial(Comp, G);
+			return Comp;
+#else
+			// Packaged game: BuildFromMeshDescriptions is editor-only, so build a
+			// ProceduralMeshComponent that generates its render data at runtime.
 			UProceduralMeshComponent* Pmc = BuildMesh(G, Body);
 			if (Pmc)
 			{
 				ApplyGeomMaterial(Pmc, G);
 			}
 			return Pmc;
+#endif
 		}
 		default:
 			return nullptr;
@@ -671,12 +809,16 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	return Comp;
 }
 
-UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
+void AMjbScene::BuildMeshArrays(int32 MeshId, TArray<FVector>& Verts, TArray<FVector>& Normals,
+	TArray<FVector2D>& UVs, TArray<int32>& Tris)
 {
-	const int32 MeshId = Model->geom_dataid[G];
-	if (MeshId < 0 || MeshId >= static_cast<int32>(Model->nmesh))
+	Verts.Reset();
+	Normals.Reset();
+	UVs.Reset();
+	Tris.Reset();
+	if (!Model || MeshId < 0 || MeshId >= static_cast<int32>(Model->nmesh))
 	{
-		return nullptr;
+		return;
 	}
 	const int32 FaceAdr = Model->mesh_faceadr[MeshId];
 	const int32 FaceNum = Model->mesh_facenum[MeshId];
@@ -687,19 +829,13 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	const int32 NormalAdr = Model->mesh_normaladr[MeshId];
 	const int32 TexAdr = bHasUV ? Model->mesh_texcoordadr[MeshId] : 0;
 
-	// Expand per face-corner so MuJoCo's split vertex/normal/texcoord pools (the
-	// hard-edge rule) are preserved: each corner gets its own vertex carrying the
-	// face's own normal + texcoord index.
-	TArray<FVector> Verts;
-	TArray<FVector> Normals;
-	TArray<FVector2D> UVs;
-	TArray<int32> Tris;
-	TArray<FProcMeshTangent> Tangents;
+	// Expand per face-corner (each corner its own vertex + normal + texcoord). The
+	// static-mesh build later welds coincident positions while keeping the crease
+	// normals; the procedural path uses the expansion directly.
 	Verts.Reserve(FaceNum * 3);
 	Normals.Reserve(FaceNum * 3);
 	UVs.Reserve(FaceNum * 3);
 	Tris.Reserve(FaceNum * 3);
-	Tangents.Reserve(FaceNum * 3);
 
 	// Single-sided, one triangle per face. MuJoCo winds faces CCW-from-outside in
 	// its right-handed frame; MjPositionToUe negates Y, a reflection that flips
@@ -708,26 +844,117 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	// culled the visible faces -- the "see-through" holes -- and duplicating faces
 	// to hide that introduced coplanar shadow acne / dark self-shadowing; a single
 	// correctly-wound face is both hole-free and correctly lit.)
+	// MuJoCo stores ONE averaged normal per vertex (mjCMesh::MakeNormal), so every
+	// hard edge shades soft. Recompute per-corner normals with MuJoCo's own crease
+	// threshold (acos(0.8)) -- the same split clean_meshes.py does on the import
+	// path -- so box/extrusion edges stay sharp while cylinders stay round.
+	// Faces meeting at a vertex are clustered greedily: a face joins the first group
+	// whose running-mean normal it agrees with (dot >= 0.8), else it starts a group;
+	// a corner's normal is its group's averaged normal.
+	constexpr double kCreaseDot = 0.8;
+	const int32 VertNum = static_cast<int32>(Model->mesh_vertnum[MeshId]);
+	TArray<FVector> FaceGeoN;
+	FaceGeoN.SetNumUninitialized(FaceNum);
+	for (int32 F = 0; F < FaceNum; ++F)
+	{
+		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
+		const FVector P0 = URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * (FV[0] + VertAdr));
+		const FVector P1 = URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * (FV[1] + VertAdr));
+		const FVector P2 = URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * (FV[2] + VertAdr));
+		FVector Gn = FVector::CrossProduct(P1 - P0, P2 - P0).GetSafeNormal();
+		// Align outward using MuJoCo's per-vertex normal (sign only); fall back to it
+		// for a degenerate (zero-area) face.
+		const int32* FN = Model->mesh_facenormal + 3 * (FaceAdr + F);
+		const int32 Ni0 = FN[0] + NormalAdr;
+		const double Nm[3] = {Model->mesh_normal[3 * Ni0], Model->mesh_normal[3 * Ni0 + 1],
+			Model->mesh_normal[3 * Ni0 + 2]};
+		const FVector Ref = URLabAxisConv::MjDirectionToUe(Nm).GetSafeNormal();
+		if (Gn.IsNearlyZero())
+		{
+			Gn = Ref;
+		}
+		else if (FVector::DotProduct(Gn, Ref) < 0.0)
+		{
+			Gn = -Gn;
+		}
+		FaceGeoN[F] = Gn;
+	}
+	// Incident faces per local vertex.
+	TArray<TArray<int32, TInlineAllocator<8>>> Incident;
+	Incident.SetNum(FMath::Max(VertNum, 0));
+	for (int32 F = 0; F < FaceNum; ++F)
+	{
+		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
+		for (int32 K = 0; K < 3; ++K)
+		{
+			if (FV[K] >= 0 && FV[K] < VertNum)
+			{
+				Incident[FV[K]].Add(F);
+			}
+		}
+	}
+	// Per-corner crease-averaged normal, indexed [3*F + K].
+	TArray<FVector> CornerN;
+	CornerN.SetNumUninitialized(FaceNum * 3);
+	for (int32 V = 0; V < VertNum; ++V)
+	{
+		const TArray<int32, TInlineAllocator<8>>& Faces = Incident[V];
+		if (Faces.Num() == 0)
+		{
+			continue;
+		}
+		TArray<FVector, TInlineAllocator<8>> GroupSum; // running summed normal per group
+		TArray<int32, TInlineAllocator<16>> FaceGroup; // group index, parallel to Faces
+		FaceGroup.SetNumUninitialized(Faces.Num());
+		for (int32 i = 0; i < Faces.Num(); ++i)
+		{
+			const FVector Fn = FaceGeoN[Faces[i]];
+			int32 GroupIdx = INDEX_NONE;
+			for (int32 g = 0; g < GroupSum.Num(); ++g)
+			{
+				if (FVector::DotProduct(Fn, GroupSum[g].GetSafeNormal()) >= kCreaseDot)
+				{
+					GroupSum[g] += Fn;
+					GroupIdx = g;
+					break;
+				}
+			}
+			FaceGroup[i] = (GroupIdx != INDEX_NONE) ? GroupIdx : GroupSum.Add(Fn);
+		}
+		for (int32 i = 0; i < Faces.Num(); ++i)
+		{
+			const int32 F = Faces[i];
+			const FVector Gn = GroupSum[FaceGroup[i]].GetSafeNormal();
+			const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
+			for (int32 K = 0; K < 3; ++K)
+			{
+				if (FV[K] == V)
+				{
+					CornerN[3 * F + K] = Gn;
+				}
+			}
+		}
+	}
+
 	const int32 Order[3] = {0, 1, 2};
 	for (int32 F = 0; F < FaceNum; ++F)
 	{
 		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
-		const int32* FN = Model->mesh_facenormal + 3 * (FaceAdr + F);
 		const int32* FT = bHasUV ? Model->mesh_facetexcoord + 3 * (FaceAdr + F) : nullptr;
-		const int32 Base = Verts.Num();
 		for (int32 C = 0; C < 3; ++C)
 		{
 			const int32 K = Order[C];
 			const int32 Vi = FV[K] + VertAdr;
-			const int32 Ni = FN[K] + NormalAdr;
 			Verts.Add(URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * Vi));
-			const double N[3] = {Model->mesh_normal[3 * Ni], Model->mesh_normal[3 * Ni + 1],
-				Model->mesh_normal[3 * Ni + 2]};
-			Normals.Add(URLabAxisConv::MjDirectionToUe(N).GetSafeNormal());
+			Normals.Add(CornerN[3 * F + K].GetSafeNormal());
 			if (FT)
 			{
 				const int32 Ti = FT[K] + TexAdr;
-				UVs.Add(FVector2D(Model->mesh_texcoord[2 * Ti], 1.0f - Model->mesh_texcoord[2 * Ti + 1]));
+				// No V flip: MuJoCo stores tex_data bottom-row-first (OpenGL), and
+				// GetOrBuildTexture uploads it row-0-first, so the texture is already
+				// oriented to sample the raw MuJoCo texcoord directly. Flipping V here
+				// (1 - v) double-flips and samples the wrong band of the atlas.
+				UVs.Add(FVector2D(Model->mesh_texcoord[2 * Ti], Model->mesh_texcoord[2 * Ti + 1]));
 			}
 			else
 			{
@@ -735,24 +962,109 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 			}
 			Tris.Add(Verts.Num() - 1);
 		}
+	}
+}
 
-		// Per-face tangent from the UV gradient, so normal maps orient correctly.
-		// Assigned to all three corners; degenerate UVs fall back to an edge dir.
-		const FVector E1 = Verts[Base + 1] - Verts[Base];
-		const FVector E2 = Verts[Base + 2] - Verts[Base];
-		const FVector2D D1 = UVs[Base + 1] - UVs[Base];
-		const FVector2D D2 = UVs[Base + 2] - UVs[Base];
+#if WITH_EDITOR
+UStaticMesh* AMjbScene::GetOrBuildStaticMesh(int32 MeshId)
+{
+	if (const TObjectPtr<UStaticMesh>* Found = StaticMeshCache.Find(MeshId))
+	{
+		return *Found;
+	}
+	TArray<FVector> Verts;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<int32> Tris;
+	BuildMeshArrays(MeshId, Verts, Normals, UVs, Tris);
+	if (Verts.Num() < 3 || Tris.Num() < 3)
+	{
+		return nullptr;
+	}
+
+	// UStaticMesh via a MeshDescription: the render build welds coincident positions
+	// while splitting by our crease normals, so many geoms share one pointer-
+	// referenced asset and the PIE-world duplication copies pointers, not verts.
+	FMeshDescription MeshDesc;
+	FStaticMeshAttributes Attrs(MeshDesc);
+	Attrs.Register();
+	Attrs.GetVertexInstanceUVs().SetNumChannels(1);
+	TVertexAttributesRef<FVector3f> Positions = Attrs.GetVertexPositions();
+	TVertexInstanceAttributesRef<FVector3f> InstNormals = Attrs.GetVertexInstanceNormals();
+	TVertexInstanceAttributesRef<FVector2f> InstUVs = Attrs.GetVertexInstanceUVs();
+
+	const int32 NumVerts = Verts.Num();
+	MeshDesc.ReserveNewVertices(NumVerts);
+	TArray<FVertexID> VertIDs;
+	VertIDs.SetNumUninitialized(NumVerts);
+	for (int32 v = 0; v < NumVerts; ++v)
+	{
+		VertIDs[v] = MeshDesc.CreateVertex();
+		Positions[VertIDs[v]] = FVector3f(Verts[v]);
+	}
+	const FPolygonGroupID PolyGroup = MeshDesc.CreatePolygonGroup();
+	MeshDesc.ReserveNewVertexInstances(Tris.Num());
+	MeshDesc.ReserveNewPolygons(Tris.Num() / 3);
+	for (int32 t = 0; t + 2 < Tris.Num(); t += 3)
+	{
+		FVertexInstanceID Inst[3];
+		for (int32 K = 0; K < 3; ++K)
+		{
+			const int32 Vi = Tris[t + K];
+			Inst[K] = MeshDesc.CreateVertexInstance(VertIDs[Vi]);
+			InstNormals[Inst[K]] = FVector3f(Normals[Vi].GetSafeNormal());
+			InstUVs.Set(Inst[K], 0, FVector2f(UVs[Vi]));
+		}
+		MeshDesc.CreatePolygon(PolyGroup, TArray<FVertexInstanceID>{Inst[0], Inst[1], Inst[2]});
+	}
+
+	UStaticMesh* Mesh = NewObject<UStaticMesh>(this, NAME_None, RF_Transient);
+	Mesh->GetStaticMaterials().Add(FStaticMaterial());
+	// No mesh distance field: these are puppet-render meshes (no Lumen GI/DFAO), and
+	// the distance-field scene update ensure-spams on their transforms, stalling
+	// ~2.5s per ensure (FDistanceFieldSceneData::UpdateDistanceFieldObjectBuffers).
+	Mesh->bGenerateMeshDistanceField = false;
+	UStaticMesh::FBuildMeshDescriptionsParams Params;
+	Params.bBuildSimpleCollision = false;
+	Params.bFastBuild = true;
+	Mesh->NeverStream = true;
+	Mesh->BuildFromMeshDescriptions({&MeshDesc}, Params);
+	StaticMeshCache.Add(MeshId, Mesh);
+	return Mesh;
+}
+#endif // WITH_EDITOR
+
+UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
+{
+	TArray<FVector> Verts;
+	TArray<FVector> Normals;
+	TArray<FVector2D> UVs;
+	TArray<int32> Tris;
+	BuildMeshArrays(Model->geom_dataid[G], Verts, Normals, UVs, Tris);
+	if (Verts.Num() < 3)
+	{
+		return nullptr;
+	}
+
+	// Per-face tangents from the UV gradient (the packaged-game path builds render
+	// data at runtime, so it supplies them); assigned to all three corners.
+	TArray<FProcMeshTangent> Tangents;
+	Tangents.SetNum(Verts.Num());
+	for (int32 t = 0; t + 2 < Tris.Num(); t += 3)
+	{
+		const int32 I0 = Tris[t], I1 = Tris[t + 1], I2 = Tris[t + 2];
+		const FVector E1 = Verts[I1] - Verts[I0];
+		const FVector E2 = Verts[I2] - Verts[I0];
+		const FVector2D D1 = UVs[I1] - UVs[I0];
+		const FVector2D D2 = UVs[I2] - UVs[I0];
 		const double Det = D1.X * D2.Y - D2.X * D1.Y;
-		FVector T = FMath::Abs(Det) > SMALL_NUMBER ? ((E1 * D2.Y - E2 * D1.Y) / Det) : E1;
-		T = T.GetSafeNormal();
-		if (T.IsNearlyZero())
+		FVector Tan = FMath::Abs(Det) > SMALL_NUMBER ? ((E1 * D2.Y - E2 * D1.Y) / Det) : E1;
+		Tan = Tan.GetSafeNormal();
+		if (Tan.IsNearlyZero())
 		{
-			T = FVector::ForwardVector;
+			Tan = FVector::ForwardVector;
 		}
-		for (int32 C = 0; C < 3; ++C)
-		{
-			Tangents.Add(FProcMeshTangent(T, /*bFlipTangentY=*/false));
-		}
+		Tangents[I0] = Tangents[I1] = Tangents[I2] = FProcMeshTangent(Tan, /*bFlipTangentY=*/false);
 	}
 
 	UProceduralMeshComponent* Pmc = NewObject<UProceduralMeshComponent>(Body);
@@ -827,11 +1139,12 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 	const int32 MatId = Model->geom_matid[G];
 	const float* Rgba = (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
 
-	UMaterialInstanceDynamic* Mid = Comp->CreateDynamicMaterialInstance(0, Master);
+	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
 	if (!Mid)
 	{
 		return;
 	}
+	Comp->SetMaterial(0, Mid);
 	Mid->SetVectorParameterValue(TEXT("BaseColor"), FLinearColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]));
 	// Neutralise every texture slot the master declares first, so any role the
 	// material does not fill samples a neutral (not the master's editor default).
@@ -849,12 +1162,12 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 			{
 				continue;
 			}
-			const EMjMaterialRole Role = static_cast<EMjMaterialRole>(R);
-			const bool bSRGB = (Role == EMjMaterialRole::Rgb || Role == EMjMaterialRole::Rgba
-				|| Role == EMjMaterialRole::Emissive);
+			const EMjMaterialRole MatRole = static_cast<EMjMaterialRole>(R);
+			const bool bSRGB = (MatRole == EMjMaterialRole::Rgb || MatRole == EMjMaterialRole::Rgba
+				|| MatRole == EMjMaterialRole::Emissive);
 			if (UTexture2D* Tex = GetOrBuildTexture(TexId, bSRGB))
 			{
-				Mid->SetTextureParameterValue(MjMaterialRoleParameter(Role), Tex);
+				Mid->SetTextureParameterValue(MjMaterialRoleParameter(MatRole), Tex);
 			}
 		}
 		Mid->SetScalarParameterValue(TEXT("TexRepeatU"), Model->mat_texrepeat[MatId * 2 + 0]);
@@ -1224,16 +1537,21 @@ void AMjbScene::RunBusLoop()
 void AMjbScene::Teardown()
 {
 	StopBus();
-	for (TObjectPtr<AActor>& B : BodyActors)
+	// Destroy body actors AND their per-geom child actors (Destroy does not cascade
+	// to attached actors, so gather the whole attached tree first).
+	TArray<AActor*> Attached;
+	GetAttachedActors(Attached, /*bResetArray=*/true, /*bRecursivelyIncludeAttachedActors=*/true);
+	for (AActor* A : Attached)
 	{
-		if (B)
+		if (A)
 		{
-			B->Destroy();
+			A->Destroy();
 		}
 	}
 	BodyActors.Reset();
 	GeomComps.Reset();
 	TextureCache.Reset();
+	StaticMeshCache.Reset();
 	if (Data)
 	{
 		mj_deleteData(Data);

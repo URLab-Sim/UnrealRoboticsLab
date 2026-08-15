@@ -187,6 +187,13 @@ private:
 	UPROPERTY(Transient)
 	TMap<int32, TObjectPtr<class UTexture2D>> TextureCache;
 
+	// Static meshes built from the MJB's mesh pool, keyed by MuJoCo mesh id, so a
+	// mesh shared across geoms is built once and every geom references the same
+	// asset by pointer -- which keeps the PIE world duplication cheap (no embedded
+	// vertex data copied per geom, unlike a ProceduralMeshComponent). Transient.
+	UPROPERTY(Transient)
+	TMap<int32, TObjectPtr<class UStaticMesh>> StaticMeshCache;
+
 	// Cameras built from the MJB, indexed by MuJoCo camera id. Empty unless
 	// bEnableCameraStreaming.
 	UPROPERTY(Transient)
@@ -233,12 +240,25 @@ private:
 	void BuildGeoms();
 	UPrimitiveComponent* BuildGeom(int32 GeomId);
 
-	// Spawn a UMjCamera per MJB camera and start its ZMQ/SHM stream (render
-	// server). No-op unless bEnableCameraStreaming.
+	// Spawn a dormant UMjCamera per MJB camera (built in both the editor preview and
+	// a play session, so there is one representation). No-op unless
+	// bEnableCameraStreaming.
 	void BuildCameras();
+	// Turn the dormant cameras into a live render server (render target + ZMQ/SHM
+	// bind + per-frame capture). Play session only.
+	void StartCameraStreaming();
 	// Place cameras from their world pose. Uses the streamed cam transforms when
 	// present, else this process's mjData rest pose.
 	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
+	// Crease-split mesh geometry (verts / normals / uvs / tris, per face-corner)
+	// from the MJB mesh pool -- shared by both the static-mesh and procedural paths.
+	void BuildMeshArrays(int32 MeshId, TArray<FVector>& Verts, TArray<FVector>& Normals,
+		TArray<FVector2D>& UVs, TArray<int32>& Tris);
+	// Editor route: a shared UStaticMesh keyed by mesh id (cheap PIE duplication);
+	// BuildFromMeshDescriptions is editor-only. Null on a bad id.
+	class UStaticMesh* GetOrBuildStaticMesh(int32 MeshId);
+	// Packaged-game route: a ProceduralMeshComponent that builds render data at
+	// runtime (no editor mesh-build modules).
 	class UProceduralMeshComponent* BuildMesh(int32 GeomId, AActor* Body);
 	void ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 GeomId);
 	void Teardown();

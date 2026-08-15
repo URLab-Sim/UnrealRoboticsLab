@@ -420,6 +420,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Identity")
 	FString ActorId;
 
+	/**
+	 * True for a fast-path "shadow" articulation: element-only, name-bound to a raw
+	 * mjModel with no import/compile behind it and no per-articulation name prefix.
+	 * The handshake ships this articulation's element metadata inline (names, ctrl
+	 * ranges, joint types) so a client can drive it without loading the model or
+	 * prefix-matching. Set by URLabFastShadow::Build.
+	 */
+	UPROPERTY()
+	bool bRawShadow = false;
+
 	UPROPERTY(BlueprintAssignable, Category = "MuJoCo|Events")
 	FOnMjSimulationReset OnSimulationReset;
 

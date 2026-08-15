@@ -71,6 +71,7 @@ AMjArticulation* Build(AAMjManager* Mgr, mjModel_* Model, const FString& ArtId)
 		return nullptr;
 	}
 	Art->ActorId = ArtId;
+	Art->bRawShadow = true;
 
 	// Joints -> qpos/qvel observation. UMjJoint covers 1-DOF (hinge/slide) and
 	// ball joints; a free joint is its own class. DescribeJoint reads the actual

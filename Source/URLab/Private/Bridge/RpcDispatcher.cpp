@@ -860,6 +860,72 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		}
 		ArtObj->SetObjectField(TEXT("actuator_types"), ActTypes);
 
+		// Fast-path shadow: element-only, name-bound to a raw mjModel with no
+		// import/compile and no per-articulation name prefix. A client cannot load
+		// the fork MJB (version skew) or prefix-match unprefixed raw names, so ship
+		// the element metadata it needs to drive the model inline, read straight from
+		// the installed raw model.
+		if (Art->bRawShadow)
+		{
+			const mjModel* Rm = Manager->PhysicsEngine ? Manager->PhysicsEngine->GetModel() : nullptr;
+			if (Rm != nullptr)
+			{
+				ArtObj->SetBoolField(TEXT("raw_model"), true);
+
+				TArray<TSharedPtr<FJsonValue>> RawActs;
+				for (int32 A = 0; A < Rm->nu; ++A)
+				{
+					TSharedPtr<FJsonObject> AO = MakeShared<FJsonObject>();
+					const char* AName = mj_id2name(Rm, mjOBJ_ACTUATOR, A);
+					AO->SetStringField(TEXT("name"),
+						(AName && *AName) ? ANSI_TO_TCHAR(AName) : *FString::Printf(TEXT("act_%d"), A));
+					AO->SetNumberField(TEXT("id"), A);
+					if (Rm->actuator_ctrllimited[A])
+					{
+						TArray<TSharedPtr<FJsonValue>> R;
+						R.Add(MakeShared<FJsonValueNumber>(Rm->actuator_ctrlrange[2 * A]));
+						R.Add(MakeShared<FJsonValueNumber>(Rm->actuator_ctrlrange[2 * A + 1]));
+						AO->SetArrayField(TEXT("ctrlrange"), R);
+					}
+					AO->SetNumberField(TEXT("gear"), Rm->actuator_gear[6 * A]);
+					AO->SetNumberField(TEXT("trn_type"), Rm->actuator_trntype[A]);
+					if (Rm->actuator_trntype[A] == mjTRN_JOINT || Rm->actuator_trntype[A] == mjTRN_JOINTINPARENT)
+					{
+						const int32 Jid = Rm->actuator_trnid[2 * A];
+						const char* JName = (Jid >= 0) ? mj_id2name(Rm, mjOBJ_JOINT, Jid) : nullptr;
+						if (JName && *JName)
+						{
+							AO->SetStringField(TEXT("joint"), ANSI_TO_TCHAR(JName));
+						}
+					}
+					RawActs.Add(MakeShared<FJsonValueObject>(AO));
+				}
+				ArtObj->SetArrayField(TEXT("raw_actuators"), RawActs);
+
+				TArray<TSharedPtr<FJsonValue>> RawJnts;
+				for (int32 J = 0; J < Rm->njnt; ++J)
+				{
+					TSharedPtr<FJsonObject> JO = MakeShared<FJsonObject>();
+					const char* JName = mj_id2name(Rm, mjOBJ_JOINT, J);
+					JO->SetStringField(TEXT("name"),
+						(JName && *JName) ? ANSI_TO_TCHAR(JName) : *FString::Printf(TEXT("joint_%d"), J));
+					JO->SetNumberField(TEXT("id"), J);
+					JO->SetNumberField(TEXT("type"), Rm->jnt_type[J]);
+					JO->SetNumberField(TEXT("qpos_adr"), Rm->jnt_qposadr[J]);
+					JO->SetNumberField(TEXT("qvel_adr"), Rm->jnt_dofadr[J]);
+					if (Rm->jnt_limited[J])
+					{
+						TArray<TSharedPtr<FJsonValue>> R;
+						R.Add(MakeShared<FJsonValueNumber>(Rm->jnt_range[2 * J]));
+						R.Add(MakeShared<FJsonValueNumber>(Rm->jnt_range[2 * J + 1]));
+						JO->SetArrayField(TEXT("range"), R);
+					}
+					RawJnts.Add(MakeShared<FJsonValueObject>(JO));
+				}
+				ArtObj->SetArrayField(TEXT("raw_joints"), RawJnts);
+			}
+		}
+
 		// Per-category map { live_short_name: original_xml_name } for
 		// components whose live name was renamed by SCS / spec-time
 		// dedup. The bridge resolves mjlab patterns against original

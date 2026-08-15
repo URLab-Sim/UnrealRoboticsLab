@@ -111,6 +111,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bEnableCameraStreaming = false;
 
+	/** World offset for the whole scene (UE cm). Lets a render slave drop the MJB
+	 *  at a chosen spot in a curated base level instead of the world origin; added
+	 *  to every geom / camera / copycat placement. Set from -URLabFastOrigin=X,Y,Z. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	FVector SceneOrigin = FVector::ZeroVector;
+
 	/** Base ZMQ port for camera streams; camera i binds CameraStreamBasePort + i. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	int32 CameraStreamBasePort = 5600;
@@ -146,6 +152,18 @@ public:
 	 *  arrive over the wire (an owner streams them to a remote renderer). Game
 	 *  thread only. */
 	void ReloadFromBytes(const TArray<uint8>& NewMjb);
+
+	/**
+	 * Spawn a fast-path render slave into World and return it. Sets the scene up
+	 * from either MjbBytes (over the wire) or MjbFilePath, connects the transform
+	 * bus (Puppet) or steps it in-process (bDirect), and unless bBaseLevel is set,
+	 * spawns a movable light rig + a framing camera at the scene origin so the MJB
+	 * is visible on a bare map. Shared by the -game command-line launcher and the
+	 * runtime server browser so both build an identical slave. Null on failure.
+	 */
+	static AMjbScene* SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
+		const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
+		bool bDirect, bool bBaseLevel, bool bCameras);
 
 	/** Build geometry only, at the MJB rest pose, with NO bus and NO streaming.
 	 *  For the editor-world preview: a persistent, static, saveable scene that is
@@ -295,6 +313,10 @@ private:
 	// Polls until the manager has begun play, then installs the raw model.
 	FTimerHandle DirectInstallTimer;
 
+	// Get-or-spawn the level's manager and cache it in DirectManager. A render
+	// server needs a manager+bridge in BOTH modes: Direct steps through it, and a
+	// Puppet render slave still needs its RPC (fastpath_load scene swaps).
+	AAMjManager* EnsureManager();
 	// Get-or-spawn the manager and arm the deferred install.
 	void BeginDirect();
 	// Install this scene's raw model+data into the manager's engine and start the
@@ -307,7 +329,7 @@ private:
 	// Build (or fetch from cache) a UTexture2D from the MJB's tex_data for the
 	// given MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a
 	// bad id.
-	class UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB);
+	class UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal = false);
 
 	// Load the mjModel/mjData (from MjbBytes or MjbFilePath) and the master
 	// material, without building any actors. No-op if already loaded. False on
@@ -333,6 +355,16 @@ private:
 	// Place cameras from their world pose. Uses the streamed cam transforms when
 	// present, else this process's mjData rest pose.
 	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
+
+	// Copycat: drive the game viewport's view camera from an owner's free/user
+	// camera (MuJoCo world eye position + forward + up), so a render slave mirrors
+	// what the operator sees in MuJoCo's own viewer. Pos/Fwd/Up are MuJoCo-frame.
+	void ApplyUserCamera(const double* Pos, const double* Fwd, const double* Up);
+	// The view camera the copycat drives, cached once it is locked on so a live
+	// scene swap (which can change the player's default view target) does not break
+	// the mirroring. Not attached to this actor, so it survives a geometry rebuild.
+	UPROPERTY()
+	TObjectPtr<class ACameraActor> UserCam;
 	// Editor route: a shared UStaticMesh keyed by mesh id (cheap PIE duplication);
 	// BuildFromMeshDescriptions is editor-only. Null on a bad id.
 	class UStaticMesh* GetOrBuildStaticMesh(int32 MeshId);

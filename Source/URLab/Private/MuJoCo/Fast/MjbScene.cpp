@@ -34,6 +34,15 @@
 #include "MuJoCo/Fast/MjbShadowArticulation.h"
 #include "Transport/ZmqClientSubscribeTransport.h"
 #include "Kismet/GameplayStatics.h"
+#include "Camera/CameraActor.h"
+#include "GameFramework/PlayerController.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/SkyLight.h"
+#include "Engine/Engine.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/SkyLightComponent.h"
 #include "TimerManager.h"
 #include "Utils/URLabLogging.h"
 #include "Bridge/MsgpackHelpers.h"
@@ -226,6 +235,10 @@ void AMjbScene::BeginPlay()
 	}
 	else if (!BusEndpoint.IsEmpty())
 	{
+		// A puppet render slave mirrors an owner's stream but is still a render
+		// server: stand up the manager (hence bridge + RPC) so an owner can push
+		// live scene swaps (fastpath_load) to it over the wire.
+		EnsureManager();
 		StartBus();
 	}
 }
@@ -655,7 +668,7 @@ void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
 		Ism->ComponentTags.Add(MjbIdTag(kTagIsm, GeomIds[0]));
 		for (int32 G : GeomIds)
 		{
-			const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G);
+			const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G) + SceneOrigin;
 			const FQuat Rot = MjMat3ToUeQuat(Data->geom_xmat + 9 * G);
 			Ism->AddInstance(FTransform(Rot, Loc), /*bWorldSpace=*/true);
 			OutHandled.Add(G);
@@ -778,13 +791,13 @@ void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 		if (Cxpos && Cxquat)
 		{
 			// Streamed camera world transforms (wxyz), same convention as geoms.
-			Loc = URLabAxisConv::MjPositionToUe(Cxpos + 3 * C);
+			Loc = URLabAxisConv::MjPositionToUe(Cxpos + 3 * C) + SceneOrigin;
 			Rot = URLabAxisConv::MjQuatToUe(Cxquat + 4 * C);
 		}
 		else if (Data)
 		{
 			// Rest pose from this process's mjData (geom_xmat-style 3x3).
-			Loc = URLabAxisConv::MjPositionToUe(Data->cam_xpos + 3 * C);
+			Loc = URLabAxisConv::MjPositionToUe(Data->cam_xpos + 3 * C) + SceneOrigin;
 			Rot = MjMat3ToUeQuat(Data->cam_xmat + 9 * C);
 		}
 		else
@@ -793,6 +806,46 @@ void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 		}
 		Cam->SetWorldLocationAndRotation(Loc, Rot);
 	}
+}
+
+void AMjbScene::ApplyUserCamera(const double* Pos, const double* Fwd, const double* Up)
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+	if (!PC)
+	{
+		return;
+	}
+	// Lock onto a plain view camera once and keep driving THAT one. The player's
+	// default view target can change across a live scene swap, so re-reading it
+	// every frame silently drops the copycat; the cached actor (not attached to this
+	// scene) survives the geometry rebuild. Re-acquire only if it was destroyed.
+	ACameraActor* Cam = UserCam.Get();
+	if (!Cam)
+	{
+		Cam = Cast<ACameraActor>(PC->GetViewTarget());
+		if (!Cam)
+		{
+			return;
+		}
+		UserCam = Cam;
+	}
+	if (PC->GetViewTarget() != Cam)
+	{
+		PC->SetViewTargetWithBlend(Cam);
+	}
+
+	const FVector FwdUe = URLabAxisConv::MjDirectionToUe(Fwd).GetSafeNormal();
+	const FVector UpUe = URLabAxisConv::MjDirectionToUe(Up).GetSafeNormal();
+	if (FwdUe.IsNearlyZero())
+	{
+		return; // a degenerate frame would spin the view; keep the last good pose
+	}
+	// MuJoCo camera looks along its view direction with +Up; a UE camera looks down
+	// +X with +Z up. MakeFromXZ builds that basis directly from the two vectors.
+	const FVector LocUe = URLabAxisConv::MjPositionToUe(Pos) + SceneOrigin;
+	const FQuat Rot = FRotationMatrix::MakeFromXZ(FwdUe, UpUe).ToQuat();
+	Cam->SetActorLocationAndRotation(LocUe, Rot);
 }
 
 bool AMjbScene::IsGeomVisible(int32 G) const
@@ -1309,7 +1362,7 @@ UProceduralMeshComponent* AMjbScene::BuildMesh(int32 G, AActor* Body)
 	return Pmc;
 }
 
-UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB)
+UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal)
 {
 	if (!Model || TexId < 0 || TexId >= static_cast<int32>(Model->ntex))
 	{
@@ -1382,7 +1435,11 @@ UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB)
 			RF_Public | RF_Standalone);
 		Tex->Source.Init(W, H, 1, 1, TSF_BGRA8, Bgra.GetData());
 		Tex->SRGB = bSRGB;
-		Tex->CompressionSettings = TextureCompressionSettings::TC_Default;
+		// A normal-role map needs the normal-map codec so a SAMPLERTYPE_Normal
+		// sampler decodes it (and so UE stops warning it is not a normal map).
+		Tex->CompressionSettings = bNormal
+			? TextureCompressionSettings::TC_Normalmap
+			: TextureCompressionSettings::TC_Default;
 		Tex->MipGenSettings = TextureMipGenSettings::TMGS_FromTextureGroup;
 		Tex->UpdateResource();
 		FAssetRegistryModule::AssetCreated(Tex);
@@ -1450,13 +1507,38 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 			const EMjMaterialRole MatRole = static_cast<EMjMaterialRole>(R);
 			const bool bSRGB = (MatRole == EMjMaterialRole::Rgb || MatRole == EMjMaterialRole::Rgba
 				|| MatRole == EMjMaterialRole::Emissive);
-			if (UTexture2D* Tex = GetOrBuildTexture(TexId, bSRGB))
+			const bool bNormal = (MatRole == EMjMaterialRole::Normal);
+			if (UTexture2D* Tex = GetOrBuildTexture(TexId, bSRGB, bNormal))
 			{
 				Mid->SetTextureParameterValue(MjMaterialRoleParameter(MatRole), Tex);
 			}
 		}
-		Mid->SetScalarParameterValue(TEXT("TexRepeatU"), Model->mat_texrepeat[MatId * 2 + 0]);
-		Mid->SetScalarParameterValue(TEXT("TexRepeatV"), Model->mat_texrepeat[MatId * 2 + 1]);
+		// texrepeat is tiles across the whole object, unless texuniform makes it
+		// tiles per spatial (length) unit -- then the geom's own size multiplies it
+		// (settexture() in MuJoCo's render_gl3.c). A size-0 plane is drawn as a
+		// finite quad (kInfinitePlaneHalfM half-extent), so use that extent instead
+		// of skipping the multiply; otherwise the ground texture tiles ~size-times
+		// too coarsely versus MuJoCo's own viewer.
+		float RepeatU = Model->mat_texrepeat[MatId * 2 + 0];
+		float RepeatV = Model->mat_texrepeat[MatId * 2 + 1];
+		if (Model->mat_texuniform[MatId])
+		{
+			const bool bPlane = (Model->geom_type[G] == mjGEOM_PLANE);
+			const double Sx = Model->geom_size[3 * G + 0] > 0.0 ? Model->geom_size[3 * G + 0]
+				: (bPlane ? kInfinitePlaneHalfM : 0.0);
+			const double Sy = Model->geom_size[3 * G + 1] > 0.0 ? Model->geom_size[3 * G + 1]
+				: (bPlane ? kInfinitePlaneHalfM : 0.0);
+			if (Sx > 0.0)
+			{
+				RepeatU *= static_cast<float>(Sx);
+			}
+			if (Sy > 0.0)
+			{
+				RepeatV *= static_cast<float>(Sy);
+			}
+		}
+		Mid->SetScalarParameterValue(TEXT("TexRepeatU"), RepeatU);
+		Mid->SetScalarParameterValue(TEXT("TexRepeatV"), RepeatV);
 	}
 	// PBR terms. MuJoCo stores metallic/roughness as -1 when "not specified", so
 	// pushing the raw field makes a mirror-smooth, aliased surface. Map exactly
@@ -1544,7 +1626,7 @@ void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 		{
 			continue;
 		}
-		const FVector Loc = URLabAxisConv::MjPositionToUe(Xpos + 3 * G);
+		const FVector Loc = URLabAxisConv::MjPositionToUe(Xpos + 3 * G) + SceneOrigin;
 		const FQuat Rot = URLabAxisConv::MjQuatToUe(Xquat + 4 * G);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
@@ -1579,7 +1661,7 @@ void AMjbScene::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 		WorldPos[1] = Bxpos[3 * B + 1] + Rotated[1];
 		WorldPos[2] = Bxpos[3 * B + 2] + Rotated[2];
 		mju_mulQuat(WorldQuat, Bxquat + 4 * B, Model->geom_quat + 4 * G);
-		const FVector Loc = URLabAxisConv::MjPositionToUe(WorldPos);
+		const FVector Loc = URLabAxisConv::MjPositionToUe(WorldPos) + SceneOrigin;
 		const FQuat Rot = URLabAxisConv::MjQuatToUe(WorldQuat);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
@@ -1690,6 +1772,19 @@ void AMjbScene::Tick(float DeltaSeconds)
 						ApplyCameraPoses(Cp.GetData(), Cq.GetData());
 					}
 				}
+
+				// Optional free/user camera ("copycat"): the owner mirrors its
+				// MuJoCo-viewer camera as eye position + forward + up, and this
+				// render slave points its game viewport at the same view.
+				{
+					TArray<double> Ucp, Ucf, Ucu;
+					if (ReadArr(TEXT("ucpos"), Ucp) && ReadArr(TEXT("ucfwd"), Ucf) &&
+						ReadArr(TEXT("ucup"), Ucu) &&
+						Ucp.Num() == 3 && Ucf.Num() == 3 && Ucu.Num() == 3)
+					{
+						ApplyUserCamera(Ucp.GetData(), Ucf.GetData(), Ucu.GetData());
+					}
+				}
 			}
 			return;
 		}
@@ -1745,21 +1840,19 @@ void AMjbScene::ApplyFromData()
 			continue;
 		}
 		// mjData stores geom orientation as a 3x3 (geom_xmat); convert to a UE quat.
-		const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G);
+		const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G) + SceneOrigin;
 		const FQuat Rot = MjMat3ToUeQuat(Data->geom_xmat + 9 * G);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
 	ApplyCameraPoses(nullptr, nullptr); // rest pose from mjData
 }
 
-void AMjbScene::BeginDirect()
+AAMjManager* AMjbScene::EnsureManager()
 {
-	if (!Model || !Data)
+	if (AAMjManager* Cached = DirectManager.Get())
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: no model/data to install"));
-		return;
+		return Cached;
 	}
-
 	// Find a manager already in the level (placed, or spawned by something else)
 	// via a level scan rather than the Instance singleton, so a placed manager
 	// that has not begun play yet is still found and we do not double-spawn.
@@ -1777,9 +1870,21 @@ void AMjbScene::BeginDirect()
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		Mgr = GetWorld()->SpawnActor<AAMjManager>(AAMjManager::StaticClass(), Params);
-		UE_LOG(LogURLab, Log, TEXT("[MjbScene] Direct: spawned a manager for in-process stepping"));
+		UE_LOG(LogURLab, Log, TEXT("[MjbScene] spawned a manager (bridge/RPC + stepping context)"));
 	}
 	DirectManager = Mgr;
+	return Mgr;
+}
+
+void AMjbScene::BeginDirect()
+{
+	if (!Model || !Data)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: no model/data to install"));
+		return;
+	}
+
+	EnsureManager();
 
 	// The manager compiles an (empty) scene and starts its worker in its own
 	// BeginPlay; installing before that would be undone. Poll until it has begun
@@ -1877,8 +1982,8 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 	}
 
 	// Rebuild from the new bytes. In Direct mode reinstall into the (retained)
-	// engine; in Puppet mode the transform bus stays connected and delivers the new
-	// owner's frames (mismatched in-flight frames are skipped by the nbody guard).
+	// engine; in Puppet mode reconnect the transform bus, which LoadAndBuild's
+	// Teardown tore down (mismatched in-flight frames are skipped by the nbody guard).
 	MjbBytes = NewMjb;
 	MjbFilePath.Empty(); // bytes take precedence on the next build
 	const int32 Geoms = LoadAndBuild();
@@ -1888,6 +1993,12 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 		return;
 	}
 	StartCameraStreaming();
+	// LoadAndBuild -> Teardown -> StopBus dropped the subscription; bring it back so
+	// the puppet keeps mirroring the owner after the swap.
+	if (!BusEndpoint.IsEmpty())
+	{
+		StartBus();
+	}
 	if (RunMode == EMjbRunMode::Direct && Mgr)
 	{
 		// The manager has long since begun play, so install immediately (the timer
@@ -1896,6 +2007,112 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 		InstallIntoEngine();
 	}
 	UE_LOG(LogURLab, Log, TEXT("[MjbScene] ReloadFromBytes: swapped model -- %d geoms built"), Geoms);
+}
+
+// Bring the render slave up at high quality with the noisy, temporally-accumulated
+// post effects turned down: full scalability groups (Lumen GI / reflections / shadows
+// at Epic so the final-gather grain converges), film grain and motion blur off. This
+// is what makes a movable-light scene read clean instead of grainy. Overridable at
+// runtime from the console (set URLAB_NO_RENDER_QUALITY=1 to skip).
+static void ApplyRenderSlaveQuality()
+{
+	if (!GEngine || FParse::Param(FCommandLine::Get(), TEXT("URLabFastNoQuality")))
+	{
+		return;
+	}
+	static const TCHAR* const Cmds[] = {
+		TEXT("sg.ViewDistanceQuality 4"), TEXT("sg.AntiAliasingQuality 4"),
+		TEXT("sg.ShadowQuality 4"), TEXT("sg.GlobalIlluminationQuality 4"),
+		TEXT("sg.ReflectionQuality 4"), TEXT("sg.PostProcessQuality 4"),
+		TEXT("sg.TextureQuality 4"), TEXT("sg.EffectsQuality 4"),
+		TEXT("sg.FoliageQuality 4"), TEXT("sg.ShadingQuality 4"),
+		TEXT("r.FilmGrain 0"), TEXT("r.MotionBlurQuality 0"),
+		TEXT("r.DefaultFeature.MotionBlur 0"),
+	};
+	for (const TCHAR* Cmd : Cmds)
+	{
+		GEngine->Exec(nullptr, Cmd);
+	}
+}
+
+AMjbScene* AMjbScene::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
+	const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
+	bool bDirect, bool bBaseLevel, bool bCameras)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	ApplyRenderSlaveQuality();
+	// Deferred spawn so the fields are set BEFORE BeginPlay runs; BeginPlay then
+	// owns the whole build (geometry + camera streaming + Direct/bus connect).
+	AMjbScene* Scene = World->SpawnActorDeferred<AMjbScene>(AMjbScene::StaticClass(), FTransform::Identity);
+	if (!Scene)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] SpawnRenderSlave: failed to spawn AMjbScene"));
+		return nullptr;
+	}
+	Scene->RunMode = bDirect ? EMjbRunMode::Direct : EMjbRunMode::Puppet;
+	// Local dev sweep only when there is neither an owner bus nor Direct stepping.
+	Scene->bTestSweep = BusEndpoint.IsEmpty() && !bDirect;
+	Scene->MjbBytes = MjbBytes;
+	Scene->MjbFilePath = MjbFilePath;
+	Scene->BusEndpoint = BusEndpoint;
+	Scene->bEnableCameraStreaming = bCameras;
+	Scene->SceneOrigin = Origin;
+	UGameplayStatics::FinishSpawningActor(Scene, FTransform::Identity);
+
+	// A bare boot map has no lighting, so give the scene its own movable rig unless
+	// it was dropped into a curated base level that brings its own.
+	if (!bBaseLevel)
+	{
+		const FTransform SunXf(FRotator(-46.0, -60.0, 0.0), FVector::ZeroVector);
+		if (ADirectionalLight* Sun =
+				World->SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), SunXf))
+		{
+			if (ULightComponent* L = Sun->GetLightComponent())
+			{
+				L->SetMobility(EComponentMobility::Movable);
+			}
+		}
+		const FTransform FillXf(FRotator(-18.0, 120.0, 0.0), FVector::ZeroVector);
+		if (ADirectionalLight* Fill =
+				World->SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), FillXf))
+		{
+			if (ULightComponent* L = Fill->GetLightComponent())
+			{
+				L->SetMobility(EComponentMobility::Movable);
+				L->SetIntensity(0.4f * L->Intensity);
+				L->SetLightColor(FLinearColor(0.7f, 0.75f, 0.9f));
+				L->SetCastShadows(false);
+			}
+		}
+		if (ASkyLight* Sky = World->SpawnActor<ASkyLight>(ASkyLight::StaticClass()))
+		{
+			if (USkyLightComponent* SkyComp = Sky->GetLightComponent())
+			{
+				SkyComp->SetMobility(EComponentMobility::Movable);
+			}
+		}
+	}
+
+	// Framing camera at the scene origin (the copycat retargets it once an owner
+	// streams its free camera).
+	if (APlayerController* PC = World->GetFirstPlayerController())
+	{
+		const FTransform View(FRotator(-18.0, 0.0, 0.0), FVector(-450.0, 0.0, 190.0) + Origin);
+		if (ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), View))
+		{
+			PC->SetViewTargetWithBlend(Cam);
+		}
+	}
+
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjbScene] SpawnRenderSlave: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
+		bDirect ? TEXT("direct") : TEXT("puppet"),
+		BusEndpoint.IsEmpty() ? TEXT("(none)") : *BusEndpoint, bBaseLevel ? 1 : 0,
+		bCameras ? 1 : 0, MjbBytes.Num(), *Origin.ToString());
+	return Scene;
 }
 
 void AMjbScene::ApplyFromSnapshot()
@@ -1930,7 +2147,7 @@ void AMjbScene::ApplyFromSnapshot()
 			{
 				continue;
 			}
-			const FVector Loc = URLabAxisConv::MjPositionToUe(Snap.GeomXPos.GetData() + 3 * G);
+			const FVector Loc = URLabAxisConv::MjPositionToUe(Snap.GeomXPos.GetData() + 3 * G) + SceneOrigin;
 			const FQuat Rot = MjMat3ToUeQuat(Snap.GeomXMat.GetData() + 9 * G);
 			// Never push a non-finite transform into a component: it poisons the
 			// renderer (distance-field matrix inversion) and hides the real cause.

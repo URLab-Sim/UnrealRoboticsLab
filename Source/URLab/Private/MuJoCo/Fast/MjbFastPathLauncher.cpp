@@ -6,19 +6,41 @@
 #include "MuJoCo/Fast/MjbFastPathLauncher.h"
 
 #include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjbRenderSlaveSubsystem.h"
 #include "Utils/URLabLogging.h"
 
-#include "Camera/CameraActor.h"
-#include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
-#include "Engine/DirectionalLight.h"
-#include "Engine/SkyLight.h"
-#include "Components/DirectionalLightComponent.h"
-#include "Components/SkyLightComponent.h"
+#include "Engine/GameInstance.h"
 #include "EngineUtils.h"
-#include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+
+namespace
+{
+// Parse -URLabFastOrigin=X,Y,Z (UE cm). Zero if absent/malformed.
+// bShouldStopOnSeparator=false so the commas are not treated as token separators.
+FVector ParseFastOrigin()
+{
+	FVector Origin = FVector::ZeroVector;
+	FString OriginStr;
+	if (FParse::Value(FCommandLine::Get(), TEXT("URLabFastOrigin="), OriginStr, false))
+	{
+		TArray<FString> Parts;
+		OriginStr.ParseIntoArray(Parts, TEXT(","));
+		if (Parts.Num() == 3)
+		{
+			Origin = FVector(
+				FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]));
+		}
+		else
+		{
+			UE_LOG(LogURLab, Warning,
+				TEXT("[MjbFastPath] -URLabFastOrigin='%s' is not X,Y,Z; ignoring"), *OriginStr);
+		}
+	}
+	return Origin;
+}
+} // namespace
 
 void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 {
@@ -29,9 +51,45 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	}
 
 	FString Mjb;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) || Mjb.IsEmpty())
+	const bool bHasMjb =
+		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) && !Mjb.IsEmpty();
+	if (!bHasMjb)
 	{
-		return; // not a fast-path renderer launch
+		// No command-line MJB: this is the server-browser boot. Consume a pending
+		// browser join (we just OpenLevel'd into the chosen environment), else show
+		// the browser when asked (-URLabFastBrowser). Anything else is a normal map.
+		if (UGameInstance* GI = InWorld.GetGameInstance())
+		{
+			if (UMjbRenderSlaveSubsystem* Sub = GI->GetSubsystem<UMjbRenderSlaveSubsystem>())
+			{
+				if (Sub->HasPendingJoin())
+				{
+					Sub->ConsumePendingJoin(&InWorld);
+				}
+				else
+				{
+					// -URLabFastAutoJoin[=scene]: headless render-farm node that joins
+					// the first (or scene-matching) owner with no UI. Otherwise
+					// -URLabFastBrowser shows the interactive server browser.
+					FString AutoScene;
+					const bool bAutoJoin =
+						FParse::Value(FCommandLine::Get(), TEXT("URLabFastAutoJoin="), AutoScene)
+						|| FParse::Param(FCommandLine::Get(), TEXT("URLabFastAutoJoin"));
+					if (bAutoJoin)
+					{
+						FString Level;
+						FParse::Value(FCommandLine::Get(), TEXT("URLabFastLevel="), Level);
+						Sub->BeginAutoJoin(AutoScene, Level, ParseFastOrigin(),
+							FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras")));
+					}
+					else if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastBrowser")))
+					{
+						Sub->ShowBrowser();
+					}
+				}
+			}
+		}
+		return;
 	}
 
 	// In PIE the editor-world preview (built by LaunchFastPathSync) is duplicated
@@ -51,77 +109,18 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// Python client can drive over RPC), instead of mirroring an owner's bus.
 	const bool bDirect = FParse::Param(FCommandLine::Get(), TEXT("URLabFastDirect"));
 
-	// Deferred spawn so the actor's fields are set BEFORE its BeginPlay runs: then
-	// BeginPlay owns the whole build (geometry + camera streaming + Direct/bus
-	// connect) itself. A plain SpawnActor runs BeginPlay immediately with empty
-	// fields, which logs a spurious "no MJB" error and leaves camera streaming
-	// unstarted (BeginPlay is the only caller of StartCameraStreaming).
-	AMjbScene* Scene = InWorld.SpawnActorDeferred<AMjbScene>(
-		AMjbScene::StaticClass(), FTransform::Identity);
-	if (!Scene)
-	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbFastPath] failed to spawn AMjbScene"));
-		return;
-	}
-	Scene->RunMode = bDirect ? EMjbRunMode::Direct : EMjbRunMode::Puppet;
-	// Local dev sweep only when there is neither an owner bus nor Direct stepping.
-	Scene->bTestSweep = Bus.IsEmpty() && !bDirect;
-	Scene->MjbFilePath = Mjb;
-	Scene->BusEndpoint = Bus;
-	// Render-server cameras are opt-in (capture is not free).
-	Scene->bEnableCameraStreaming = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
-	UGameplayStatics::FinishSpawningActor(Scene, FTransform::Identity);
-	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s mode=%s bus=%s"),
+	// Base-level mode: the boot map is a curated scene the operator authored (its
+	// own lights, sky, floor, props), so the launcher must NOT populate its default
+	// light rig on top of it. The MJB still loads into whatever map is booted.
+	const bool bBaseLevel = FParse::Param(FCommandLine::Get(), TEXT("URLabFastBaseLevel"));
+
+	const bool bCameras = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
+
+	const FVector Origin = ParseFastOrigin();
+
+	// One shared builder for the -game launcher and the runtime server browser.
+	AMjbScene::SpawnRenderSlave(&InWorld, TArray<uint8>(), Mjb, Bus, Origin, bDirect, bBaseLevel, bCameras);
+	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s mode=%s bus=%s baseLevel=%d"),
 		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
-		Bus.IsEmpty() ? TEXT("(none)") : *Bus);
-
-	// The fast-path renderer's usual home is an empty boot map with no lighting, so
-	// a showcase would render black however well the geometry built. Give the scene
-	// its own light rig -- a key directional sun plus a sky light for ambient fill --
-	// so the MJB is visible on any map. Movable so no bake is needed at runtime.
-	{
-		// Key directional sun (movable, so no bake) -- lights the MJB.
-		const FTransform SunXf(FRotator(-46.0, -60.0, 0.0), FVector::ZeroVector);
-		if (ADirectionalLight* Sun =
-				InWorld.SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), SunXf))
-		{
-			if (ULightComponent* L = Sun->GetLightComponent())
-			{
-				L->SetMobility(EComponentMobility::Movable);
-			}
-		}
-		// A second, dimmer fill from the opposite side so shadowed faces are not
-		// pure black (an empty map has no sky to bounce ambient off).
-		const FTransform FillXf(FRotator(-18.0, 120.0, 0.0), FVector::ZeroVector);
-		if (ADirectionalLight* Fill =
-				InWorld.SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), FillXf))
-		{
-			if (ULightComponent* L = Fill->GetLightComponent())
-			{
-				L->SetMobility(EComponentMobility::Movable);
-				L->SetIntensity(0.4f * L->Intensity);
-				L->SetLightColor(FLinearColor(0.7f, 0.75f, 0.9f));
-				L->SetCastShadows(false);
-			}
-		}
-		// Sky light for gentle ambient fill (captured; harmless if the scene is dark).
-		if (ASkyLight* Sky = InWorld.SpawnActor<ASkyLight>(ASkyLight::StaticClass()))
-		{
-			if (USkyLightComponent* SkyComp = Sky->GetLightComponent())
-			{
-				SkyComp->SetMobility(EComponentMobility::Movable);
-			}
-		}
-	}
-
-	// Frame the scene with a simple view camera (robot ~1 m tall at the origin).
-	if (APlayerController* PC = InWorld.GetFirstPlayerController())
-	{
-		const FTransform View(FRotator(-18.0, 0.0, 0.0), FVector(-450.0, 0.0, 190.0));
-		ACameraActor* Cam = InWorld.SpawnActor<ACameraActor>(ACameraActor::StaticClass(), View);
-		if (Cam)
-		{
-			PC->SetViewTargetWithBlend(Cam);
-		}
-	}
+		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);
 }

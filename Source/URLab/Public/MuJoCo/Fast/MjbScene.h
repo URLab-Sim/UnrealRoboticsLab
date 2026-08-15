@@ -342,5 +342,14 @@ private:
 	// runtime (no editor mesh-build modules).
 	class UProceduralMeshComponent* BuildMesh(int32 GeomId, AActor* Body);
 	void ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 GeomId);
+
+	// --- small model-query helpers (shared by the build + apply paths) ----- //
+	// True if geom G's group is in VisibleGroupMask (visual groups shown, collision
+	// proxies hidden). Reads Model->geom_group; caller must hold a valid Model.
+	bool IsGeomVisible(int32 GeomId) const;
+	// The rgba a geom draws with: its material's when it has one, else its own.
+	// Returns a pointer to 4 floats in the Model; caller must hold a valid Model.
+	const float* GeomRgba(int32 GeomId) const;
+
 	void Teardown();
 };

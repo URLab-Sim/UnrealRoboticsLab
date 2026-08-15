@@ -63,6 +63,43 @@ namespace
 constexpr double kSizeToScale = 2.0;
 constexpr double kInfinitePlaneHalfM = 25.0; // size==0 plane -> 25 m half-extent
 
+// Root of the cached, content-hash-keyed fast-path assets (SM_<id> / T_<id> live
+// under <root>/<hash>/). Also the folder a saved fast-path level reloads from.
+constexpr const TCHAR* kFastPathAssetRoot = TEXT("/Game/URLabFastPath");
+
+// Re-index tag channel: a body/geom/instance/camera carries a "<prefix><id>" name
+// tag so a saved level can map its components back to MuJoCo ids. One maker + one
+// parser keep the writer and reader in lockstep -- no hardcoded prefix lengths.
+constexpr const TCHAR* kTagBody = TEXT("MjbBody=");
+constexpr const TCHAR* kTagGeom = TEXT("MjbGeom=");
+constexpr const TCHAR* kTagIsm = TEXT("MjbIsm=");
+constexpr const TCHAR* kTagCam = TEXT("MjbCam=");
+
+FName MjbIdTag(const TCHAR* Prefix, int32 Id)
+{
+	return FName(*FString::Printf(TEXT("%s%d"), Prefix, Id));
+}
+
+int32 MjbParseIdTag(const FString& Tag, const TCHAR* Prefix)
+{
+	return Tag.StartsWith(Prefix) ? FCString::Atoi(*Tag.Mid(FCString::Strlen(Prefix))) : -1;
+}
+
+// Engine primitive meshes the non-mesh geom types map to.
+constexpr const TCHAR* kBasicPlane = TEXT("/Engine/BasicShapes/Plane.Plane");
+constexpr const TCHAR* kBasicSphere = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+constexpr const TCHAR* kBasicCylinder = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+constexpr const TCHAR* kBasicCube = TEXT("/Engine/BasicShapes/Cube.Cube");
+
+// Convert a MuJoCo 3x3 orientation (row-major geom_xmat/cam_xmat) to a UE quat,
+// via a wxyz quaternion. Shared by every apply/build path that reads mjData mats.
+FQuat MjMat3ToUeQuat(const double* Mat3)
+{
+	double Quat[4];
+	mju_mat2Quat(Quat, Mat3);
+	return URLabAxisConv::MjQuatToUe(Quat);
+}
+
 UStaticMesh* LoadBasic(const TCHAR* Path)
 {
 	return LoadObject<UStaticMesh>(nullptr, Path);
@@ -167,14 +204,10 @@ void AMjbScene::BeginPlay()
 			{
 				for (const FName& Tag : Ism->ComponentTags)
 				{
-					const FString S = Tag.ToString();
-					if (S.StartsWith(TEXT("MjbIsm=")))
+					const int32 RepG = MjbParseIdTag(Tag.ToString(), kTagIsm);
+					if (Model && RepG >= 0 && RepG < static_cast<int32>(Model->ngeom))
 					{
-						const int32 RepG = FCString::Atoi(*S.Mid(7));
-						if (Model && RepG >= 0 && RepG < static_cast<int32>(Model->ngeom))
-						{
-							ApplyGeomMaterial(Ism, RepG);
-						}
+						ApplyGeomMaterial(Ism, RepG);
 					}
 				}
 			}
@@ -283,12 +316,6 @@ int32 AMjbScene::ReindexFromLevel()
 	CameraComps.Reset();
 	CameraComps.SetNum(static_cast<int32>(Model->ncam));
 
-	auto TagIndex = [](const FName& Tag, const TCHAR* Prefix) -> int32 {
-		const FString S = Tag.ToString();
-		const int32 PrefixLen = FCString::Strlen(Prefix);
-		return S.StartsWith(Prefix) ? FCString::Atoi(*S.Mid(PrefixLen)) : -1;
-	};
-
 	// Recursive: the tagged geom components live on per-geom child actors, which
 	// are grandchildren of this scene (scene -> body actor -> geom actor).
 	TArray<AActor*> AttachedActors;
@@ -302,7 +329,7 @@ int32 AMjbScene::ReindexFromLevel()
 		}
 		for (const FName& Tag : A->Tags)
 		{
-			const int32 BodyId = TagIndex(Tag, TEXT("MjbBody="));
+			const int32 BodyId = MjbParseIdTag(Tag.ToString(), kTagBody);
 			if (BodyActors.IsValidIndex(BodyId))
 			{
 				BodyActors[BodyId] = A;
@@ -314,7 +341,7 @@ int32 AMjbScene::ReindexFromLevel()
 		{
 			for (const FName& Tag : C->ComponentTags)
 			{
-				const int32 GeomId = TagIndex(Tag, TEXT("MjbGeom="));
+				const int32 GeomId = MjbParseIdTag(Tag.ToString(), kTagGeom);
 				if (GeomComps.IsValidIndex(GeomId))
 				{
 					GeomComps[GeomId] = C;
@@ -329,7 +356,7 @@ int32 AMjbScene::ReindexFromLevel()
 		{
 			for (const FName& Tag : Cam->ComponentTags)
 			{
-				const int32 CamId = TagIndex(Tag, TEXT("MjbCam="));
+				const int32 CamId = MjbParseIdTag(Tag.ToString(), kTagCam);
 				if (CameraComps.IsValidIndex(CamId))
 				{
 					CameraComps[CamId] = Cam;
@@ -544,7 +571,7 @@ void AMjbScene::BuildBodies()
 		Body->AttachToActor(this, FAttachmentTransformRules::KeepRelativeTransform);
 		// Stable re-index key: the MuJoCo body id, plus the body name for a
 		// readable outliner label. Lets a saved scene rebuild its body->actor map.
-		Body->Tags.Add(FName(*FString::Printf(TEXT("MjbBody=%d"), B)));
+		Body->Tags.Add(MjbIdTag(kTagBody, B));
 		const char* Name = mj_id2name(Model, mjOBJ_BODY, B);
 		if (bEditorPreview && Name && *Name)
 		{
@@ -580,7 +607,7 @@ void AMjbScene::BuildGeoms()
 		if (GeomComps[G])
 		{
 			// Stable re-index key for the geom -> component map.
-			GeomComps[G]->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbGeom=%d"), G)));
+			GeomComps[G]->ComponentTags.Add(MjbIdTag(kTagGeom, G));
 		}
 	}
 }
@@ -610,14 +637,12 @@ void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
 		{
 			continue;
 		}
-		const int32 Group = Model->geom_group[G];
-		if (Group < 0 || Group > 30 || !(VisibleGroupMask & (1 << Group)))
+		if (!IsGeomVisible(G))
 		{
 			continue;
 		}
 		const int32 MatId = Model->geom_matid[G];
-		const float* Rgba = (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
-		if (Rgba[3] <= 0.0f)
+		if (GeomRgba(G)[3] <= 0.0f)
 		{
 			continue;
 		}
@@ -650,13 +675,11 @@ void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
 		Ism->AttachToComponent(Host->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 		ApplyGeomMaterial(Ism, GeomIds[0]); // the group shares one material
 		// Rep-geom in the tag so a reused (PIE-duplicated) scene can re-apply the MID.
-		Ism->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbIsm=%d"), GeomIds[0])));
+		Ism->ComponentTags.Add(MjbIdTag(kTagIsm, GeomIds[0]));
 		for (int32 G : GeomIds)
 		{
-			double Q[4];
-			mju_mat2Quat(Q, Data->geom_xmat + 9 * G);
 			const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G);
-			const FQuat Rot = URLabAxisConv::MjQuatToUe(Q);
+			const FQuat Rot = MjMat3ToUeQuat(Data->geom_xmat + 9 * G);
 			Ism->AddInstance(FTransform(Rot, Loc), /*bWorldSpace=*/true);
 			OutHandled.Add(G);
 		}
@@ -728,7 +751,7 @@ void AMjbScene::BuildCameras()
 		Cam->SetStreamPortIndex(C);
 
 		Cam->SetupAttachment(Host->GetRootComponent());
-		Cam->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbCam=%d"), C)));
+		Cam->ComponentTags.Add(MjbIdTag(kTagCam, C));
 		Cam->RegisterComponent();
 		CameraComps[C] = Cam;
 	}
@@ -784,10 +807,8 @@ void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 		else if (Data)
 		{
 			// Rest pose from this process's mjData (geom_xmat-style 3x3).
-			double Q[4];
-			mju_mat2Quat(Q, Data->cam_xmat + 9 * C);
 			Loc = URLabAxisConv::MjPositionToUe(Data->cam_xpos + 3 * C);
-			Rot = URLabAxisConv::MjQuatToUe(Q);
+			Rot = MjMat3ToUeQuat(Data->cam_xmat + 9 * C);
 		}
 		else
 		{
@@ -797,25 +818,34 @@ void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 	}
 }
 
+bool AMjbScene::IsGeomVisible(int32 G) const
+{
+	const int32 Group = Model->geom_group[G];
+	return Group >= 0 && Group <= 30 && (VisibleGroupMask & (1 << Group)) != 0;
+}
+
+const float* AMjbScene::GeomRgba(int32 G) const
+{
+	const int32 MatId = Model->geom_matid[G];
+	return (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
+}
+
 UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 {
 	const int32 Type = Model->geom_type[G];
 	const int32 BodyId = Model->geom_bodyid[G];
-	const int32 MatId = Model->geom_matid[G];
 	const double* Size = Model->geom_size + 3 * G;
 
 	// Geom-group visibility: hide collision/other groups the mask excludes
 	// (default shows 0-2). Matches MuJoCo's group-toggled visualization.
-	const int32 Group = Model->geom_group[G];
-	if (Group < 0 || Group > 30 || !(VisibleGroupMask & (1 << Group)))
+	if (!IsGeomVisible(G))
 	{
 		return nullptr;
 	}
 
 	// A fully transparent geom is MJCF's "do not draw" (collision/inertial
 	// proxies routinely carry rgba="0 0 0 0"). Honour it.
-	const float* Rgba = (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
-	if (Rgba[3] <= 0.0f)
+	if (GeomRgba(G)[3] <= 0.0f)
 	{
 		return nullptr;
 	}
@@ -844,7 +874,7 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	GeomActor->SetRootComponent(GeomRoot);
 	GeomRoot->RegisterComponent();
 	GeomActor->AttachToActor(BodyActors[BodyId], FAttachmentTransformRules::KeepRelativeTransform);
-	GeomActor->Tags.Add(FName(*FString::Printf(TEXT("MjbGeom=%d"), G)));
+	GeomActor->Tags.Add(MjbIdTag(kTagGeom, G));
 	{
 		// Label by the geom's MJCF name, else its mesh name + id, else the id.
 		const char* GeomName = mj_id2name(Model, mjOBJ_GEOM, G);
@@ -881,33 +911,33 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	{
 		case mjGEOM_PLANE:
 		{
-			MeshPath = TEXT("/Engine/BasicShapes/Plane.Plane");
+			MeshPath = kBasicPlane;
 			const double Hx = Size[0] > 0 ? Size[0] : kInfinitePlaneHalfM;
 			const double Hy = Size[1] > 0 ? Size[1] : kInfinitePlaneHalfM;
 			Scale = FVector(Hx * kSizeToScale, Hy * kSizeToScale, 1.0);
 			break;
 		}
 		case mjGEOM_SPHERE:
-			MeshPath = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+			MeshPath = kBasicSphere;
 			Scale = FVector(Size[0], Size[0], Size[0]) * kSizeToScale;
 			break;
 		case mjGEOM_ELLIPSOID:
-			MeshPath = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+			MeshPath = kBasicSphere;
 			Scale = FVector(Size[0], Size[1], Size[2]) * kSizeToScale;
 			break;
 		case mjGEOM_CYLINDER:
-			MeshPath = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+			MeshPath = kBasicCylinder;
 			Scale = FVector(Size[0], Size[0], Size[1]) * kSizeToScale;
 			break;
 		case mjGEOM_CAPSULE:
 			// Cylinder shaft; the two rounded end caps are added as sphere child
 			// components below (same as the authoring path). size[0]=radius,
 			// size[1]=half-length of the cylinder part.
-			MeshPath = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+			MeshPath = kBasicCylinder;
 			Scale = FVector(Size[0], Size[0], Size[1]) * kSizeToScale;
 			break;
 		case mjGEOM_BOX:
-			MeshPath = TEXT("/Engine/BasicShapes/Cube.Cube");
+			MeshPath = kBasicCube;
 			Scale = FVector(Size[0], Size[1], Size[2]) * kSizeToScale;
 			break;
 		case mjGEOM_MESH:
@@ -966,7 +996,7 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	// radius r. Same construction as UMjGeom's VisualizerCap parts.
 	if (Type == mjGEOM_CAPSULE)
 	{
-		if (UStaticMesh* SphereMesh = LoadBasic(TEXT("/Engine/BasicShapes/Sphere.Sphere")))
+		if (UStaticMesh* SphereMesh = LoadBasic(kBasicSphere))
 		{
 			const double R = Size[0];
 			const double HalfLen = Size[1] > KINDA_SMALL_NUMBER ? Size[1] : R;
@@ -1158,7 +1188,7 @@ UStaticMesh* AMjbScene::GetOrBuildStaticMesh(int32 MeshId)
 	if (!ContentHash.IsEmpty())
 	{
 		PackageName = UPackageTools::SanitizePackageName(
-			FString::Printf(TEXT("/Game/URLabFastPath/%s/SM_%d"), *ContentHash, MeshId));
+			FString::Printf(TEXT("%s/%s/SM_%d"), kFastPathAssetRoot, *ContentHash, MeshId));
 		if (!bForceRebuildAssets)
 		{
 			if (UStaticMesh* Existing = LoadObject<UStaticMesh>(nullptr, *PackageName))
@@ -1323,7 +1353,7 @@ UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB)
 	if (!ContentHash.IsEmpty())
 	{
 		PackageName = UPackageTools::SanitizePackageName(
-			FString::Printf(TEXT("/Game/URLabFastPath/%s/T_%d"), *ContentHash, TexId));
+			FString::Printf(TEXT("%s/%s/T_%d"), kFastPathAssetRoot, *ContentHash, TexId));
 		if (!bForceRebuildAssets)
 		{
 			if (UTexture2D* Existing = LoadObject<UTexture2D>(nullptr, *PackageName))
@@ -1412,7 +1442,7 @@ void AMjbScene::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 		return;
 	}
 	const int32 MatId = Model->geom_matid[G];
-	const float* Rgba = (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
+	const float* Rgba = GeomRgba(G);
 
 	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
 	if (!Mid)
@@ -1735,11 +1765,9 @@ void AMjbScene::ApplyFromData()
 		{
 			continue;
 		}
-		// mjData stores geom orientation as a 3x3 (geom_xmat); convert to wxyz.
-		double Quat[4];
-		mju_mat2Quat(Quat, Data->geom_xmat + 9 * G);
+		// mjData stores geom orientation as a 3x3 (geom_xmat); convert to a UE quat.
 		const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G);
-		const FQuat Rot = URLabAxisConv::MjQuatToUe(Quat);
+		const FQuat Rot = MjMat3ToUeQuat(Data->geom_xmat + 9 * G);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
 	ApplyCameraPoses(nullptr, nullptr); // rest pose from mjData
@@ -1853,10 +1881,8 @@ void AMjbScene::ApplyFromSnapshot()
 			{
 				continue;
 			}
-			double Quat[4];
-			mju_mat2Quat(Quat, Snap.GeomXMat.GetData() + 9 * G);
 			const FVector Loc = URLabAxisConv::MjPositionToUe(Snap.GeomXPos.GetData() + 3 * G);
-			const FQuat Rot = URLabAxisConv::MjQuatToUe(Quat);
+			const FQuat Rot = MjMat3ToUeQuat(Snap.GeomXMat.GetData() + 9 * G);
 			// Never push a non-finite transform into a component: it poisons the
 			// renderer (distance-field matrix inversion) and hides the real cause.
 			if (Loc.ContainsNaN() || Rot.ContainsNaN() || !Rot.IsNormalized())

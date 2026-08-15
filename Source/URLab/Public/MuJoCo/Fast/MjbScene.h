@@ -245,6 +245,11 @@ private:
 
 	void BuildBodies();
 	void BuildGeoms();
+	// Collapse repeated (mesh, material) STATIC world-body geoms into one instanced
+	// component each (one draw call, still per-instance culled). Instances are set
+	// once from the rest pose; the geom ids handled here are added to OutHandled so
+	// BuildGeoms skips them. Editor path only (needs the shared UStaticMesh).
+	void BuildInstancedStatics(TSet<int32>& OutHandled);
 	UPrimitiveComponent* BuildGeom(int32 GeomId);
 
 	// Spawn a dormant UMjCamera per MJB camera (built in both the editor preview and

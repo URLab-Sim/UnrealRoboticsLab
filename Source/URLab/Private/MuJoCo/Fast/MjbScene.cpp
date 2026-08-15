@@ -11,6 +11,7 @@
 #include "MuJoCo/Fast/MjbScene.h"
 
 #include "Components/StaticMeshComponent.h"
+#include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
 #include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -127,6 +128,28 @@ void AMjbScene::BeginPlay()
 			if (GeomComps[G])
 			{
 				ApplyGeomMaterial(GeomComps[G], G);
+			}
+		}
+		// Same for the instanced statics on the world body (their MID is re-applied
+		// via the rep-geom stored in the MjbIsm tag).
+		if (BodyActors.IsValidIndex(0) && BodyActors[0])
+		{
+			TArray<UInstancedStaticMeshComponent*> Isms;
+			BodyActors[0]->GetComponents<UInstancedStaticMeshComponent>(Isms);
+			for (UInstancedStaticMeshComponent* Ism : Isms)
+			{
+				for (const FName& Tag : Ism->ComponentTags)
+				{
+					const FString S = Tag.ToString();
+					if (S.StartsWith(TEXT("MjbIsm=")))
+					{
+						const int32 RepG = FCString::Atoi(*S.Mid(7));
+						if (Model && RepG >= 0 && RepG < static_cast<int32>(Model->ngeom))
+						{
+							ApplyGeomMaterial(Ism, RepG);
+						}
+					}
+				}
 			}
 		}
 		UE_LOG(LogURLab, Log, TEXT("[MjbScene] BeginPlay reused preview (%d geoms) -- no mesh rebuild"), Geoms);
@@ -482,8 +505,21 @@ void AMjbScene::BuildGeoms()
 {
 	const int32 NGeom = static_cast<int32>(Model->ngeom);
 	GeomComps.SetNum(NGeom);
+
+	// Repeated static world-body geoms become instanced components; the rest are
+	// built individually below. GeomComps stays null for instanced geoms -- they are
+	// static, so the transform stream simply never touches them.
+	TSet<int32> Instanced;
+#if WITH_EDITOR
+	BuildInstancedStatics(Instanced);
+#endif
+
 	for (int32 G = 0; G < NGeom; ++G)
 	{
+		if (Instanced.Contains(G))
+		{
+			continue;
+		}
 		GeomComps[G] = BuildGeom(G);
 		if (GeomComps[G])
 		{
@@ -492,6 +528,90 @@ void AMjbScene::BuildGeoms()
 		}
 	}
 }
+
+#if WITH_EDITOR
+void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
+{
+	if (!Model || !Data)
+	{
+		return;
+	}
+	// Only the static world body (id 0): its geoms never move, so instance transforms
+	// are set once here from the rest pose.
+	const int32 WorldBody = 0;
+	if (!BodyActors.IsValidIndex(WorldBody) || !BodyActors[WorldBody])
+	{
+		return;
+	}
+	AActor* Host = BodyActors[WorldBody].Get();
+
+	// Group visible world-body mesh geoms by (mesh id, material id) -- a group only
+	// shares one instanced component if it shares both the mesh and the material.
+	TMap<TPair<int32, int32>, TArray<int32>> Groups;
+	for (int32 G = 0; G < static_cast<int32>(Model->ngeom); ++G)
+	{
+		if (Model->geom_bodyid[G] != WorldBody || Model->geom_type[G] != mjGEOM_MESH)
+		{
+			continue;
+		}
+		const int32 Group = Model->geom_group[G];
+		if (Group < 0 || Group > 30 || !(VisibleGroupMask & (1 << Group)))
+		{
+			continue;
+		}
+		const int32 MatId = Model->geom_matid[G];
+		const float* Rgba = (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
+		if (Rgba[3] <= 0.0f)
+		{
+			continue;
+		}
+		const int32 MeshId = Model->geom_dataid[G];
+		if (MeshId < 0)
+		{
+			continue;
+		}
+		Groups.FindOrAdd(TPair<int32, int32>(MeshId, MatId)).Add(G);
+	}
+
+	int32 NumGroups = 0;
+	for (const TPair<TPair<int32, int32>, TArray<int32>>& KV : Groups)
+	{
+		const TArray<int32>& GeomIds = KV.Value;
+		if (GeomIds.Num() < 2)
+		{
+			continue; // instancing only pays for a repeated mesh
+		}
+		UStaticMesh* Mesh = GetOrBuildStaticMesh(KV.Key.Key);
+		if (!Mesh)
+		{
+			continue;
+		}
+		UInstancedStaticMeshComponent* Ism = NewObject<UInstancedStaticMeshComponent>(Host);
+		Ism->SetStaticMesh(Mesh);
+		Ism->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Ism->RegisterComponent();
+		Ism->AttachToComponent(Host->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		ApplyGeomMaterial(Ism, GeomIds[0]); // the group shares one material
+		// Rep-geom in the tag so a reused (PIE-duplicated) scene can re-apply the MID.
+		Ism->ComponentTags.Add(FName(*FString::Printf(TEXT("MjbIsm=%d"), GeomIds[0])));
+		for (int32 G : GeomIds)
+		{
+			double Q[4];
+			mju_mat2Quat(Q, Data->geom_xmat + 9 * G);
+			const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G);
+			const FQuat Rot = URLabAxisConv::MjQuatToUe(Q);
+			Ism->AddInstance(FTransform(Rot, Loc), /*bWorldSpace=*/true);
+			OutHandled.Add(G);
+		}
+		++NumGroups;
+	}
+	if (NumGroups > 0)
+	{
+		UE_LOG(LogURLab, Log, TEXT("[MjbScene] instanced %d static geoms into %d ISM group(s)"),
+			OutHandled.Num(), NumGroups);
+	}
+}
+#endif // WITH_EDITOR
 
 void AMjbScene::BuildCameras()
 {

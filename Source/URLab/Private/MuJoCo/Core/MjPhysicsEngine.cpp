@@ -1436,6 +1436,15 @@ void UMjPhysicsEngine::RegisterArticulation(AMjArticulation* Articulation)
 	m_ArticulationMap.Add(Articulation->GetName(), Articulation);
 }
 
+void UMjPhysicsEngine::UnregisterArticulation(AMjArticulation* Articulation)
+{
+	if (!Articulation)
+		return;
+	FScopeLock Lock(&CallbackMutex);
+	m_articulations.Remove(Articulation);
+	m_ArticulationMap.Remove(Articulation->GetName());
+}
+
 const TArray<AMjArticulation*>& UMjPhysicsEngine::GetAllArticulations() const
 {
 	return m_articulations;

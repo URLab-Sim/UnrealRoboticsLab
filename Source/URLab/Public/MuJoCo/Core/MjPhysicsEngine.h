@@ -405,6 +405,12 @@ public:
 	 *  array or the name map out from under a step; in practice registration
 	 *  runs at compile time with the worker joined. */
 	void RegisterArticulation(AMjArticulation* Articulation);
+
+	/** Remove an articulation from the registries (symmetric with
+	 *  RegisterArticulation). Used to retire a runtime-built shadow articulation
+	 *  when a raw model is uninstalled, so GetAllArticulations() never hands out
+	 *  a dangling entry. */
+	void UnregisterArticulation(AMjArticulation* Articulation);
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 	FString GetLastCompileError() const;

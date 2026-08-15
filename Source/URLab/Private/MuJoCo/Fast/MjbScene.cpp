@@ -1265,6 +1265,41 @@ void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 	}
 }
 
+void AMjbScene::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
+{
+	if (!Bxpos || !Bxquat || !Model)
+	{
+		return;
+	}
+	const int32 NBody = static_cast<int32>(Model->nbody);
+	for (int32 G = 0; G < GeomComps.Num(); ++G)
+	{
+		UPrimitiveComponent* Comp = GeomComps[G];
+		if (!Comp)
+		{
+			continue;
+		}
+		const int32 B = Model->geom_bodyid[G];
+		if (B < 0 || B >= NBody)
+		{
+			continue;
+		}
+		// geom world = body world  ∘  geom-in-body offset (from the model). The
+		// offset is constant, so the wire only carries the body transforms.
+		double Rotated[3];
+		double WorldPos[3];
+		double WorldQuat[4];
+		mju_rotVecQuat(Rotated, Model->geom_pos + 3 * G, Bxquat + 4 * B);
+		WorldPos[0] = Bxpos[3 * B + 0] + Rotated[0];
+		WorldPos[1] = Bxpos[3 * B + 1] + Rotated[1];
+		WorldPos[2] = Bxpos[3 * B + 2] + Rotated[2];
+		mju_mulQuat(WorldQuat, Bxquat + 4 * B, Model->geom_quat + 4 * G);
+		const FVector Loc = URLabAxisConv::MjPositionToUe(WorldPos);
+		const FQuat Rot = URLabAxisConv::MjQuatToUe(WorldQuat);
+		Comp->SetWorldLocationAndRotation(Loc, Rot);
+	}
+}
+
 void AMjbScene::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -1299,28 +1334,41 @@ void AMjbScene::Tick(float DeltaSeconds)
 			if (FURLabMsgpackUtil::UnpackToJsonObject(Local.GetData(), Local.Num(), Obj) && Obj.IsValid())
 			{
 				const int32 NGeom = Model ? static_cast<int32>(Model->ngeom) : 0;
-				TArray<double> Xp;
-				TArray<double> Xq;
+				const int32 NBody = Model ? static_cast<int32>(Model->nbody) : 0;
 				const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
-				if (Obj->TryGetArrayField(TEXT("xpos"), A) && A)
-				{
-					Xp.Reserve(A->Num());
-					for (const TSharedPtr<FJsonValue>& V : *A)
+				auto ReadArr = [&](const TCHAR* Key, TArray<double>& Out) -> bool {
+					if (Obj->TryGetArrayField(Key, A) && A)
 					{
-						Xp.Add(V.IsValid() ? V->AsNumber() : 0.0);
+						Out.Reserve(A->Num());
+						for (const TSharedPtr<FJsonValue>& V : *A)
+						{
+							Out.Add(V.IsValid() ? V->AsNumber() : 0.0);
+						}
+						return true;
 					}
-				}
-				if (Obj->TryGetArrayField(TEXT("xquat"), A) && A)
+					return false;
+				};
+
+				// Prefer the per-body stream (fewer transforms, covers mocap); fall
+				// back to a per-geom stream from a legacy owner.
+				TArray<double> Bp;
+				TArray<double> Bq;
+				ReadArr(TEXT("bxpos"), Bp);
+				ReadArr(TEXT("bxquat"), Bq);
+				if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
 				{
-					Xq.Reserve(A->Num());
-					for (const TSharedPtr<FJsonValue>& V : *A)
+					ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
+				}
+				else
+				{
+					TArray<double> Xp;
+					TArray<double> Xq;
+					ReadArr(TEXT("xpos"), Xp);
+					ReadArr(TEXT("xquat"), Xq);
+					if (NGeom > 0 && Xp.Num() == 3 * NGeom && Xq.Num() == 4 * NGeom)
 					{
-						Xq.Add(V.IsValid() ? V->AsNumber() : 0.0);
+						ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
 					}
-				}
-				if (NGeom > 0 && Xp.Num() == 3 * NGeom && Xq.Num() == 4 * NGeom)
-				{
-					ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
 				}
 
 				// Optional camera world transforms, so streamed cameras track

@@ -149,6 +149,13 @@ public:
 	 *  physics) — the wire carries quaternions. */
 	void ApplyGeomTransforms(const double* Xpos, const double* Xquat);
 
+	/** Apply a per-BODY world-transform stream: Bxpos is 3*nbody, Bxquat 4*nbody
+	 *  (wxyz), MuJoCo world frame. Each geom's world pose is composed from its
+	 *  body's transform and its body-relative offset (from the model), so the wire
+	 *  carries nbody transforms instead of ngeom — and mocap is covered for free.
+	 *  The preferred stream; ApplyGeomTransforms stays for legacy per-geom owners. */
+	void ApplyBodyTransforms(const double* Bxpos, const double* Bxquat);
+
 	/** Apply straight from this process's mjData (geom_xpos + geom_xmat), used
 	 *  by the initial rest pose and the owner-less dev sweep. Converts the 3x3
 	 *  orientation to a quaternion. Not used on the streamed render path. */

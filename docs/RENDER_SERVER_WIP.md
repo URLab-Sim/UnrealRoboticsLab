@@ -102,3 +102,54 @@ PBR scalar-vs-map (fast + authoring); render de-grain preset; aloha normal-impor
 
 Parked / unrelated: full mjModel->articulation bake (task #13); packaged-path
 investigation (task #24) is effectively done now.
+
+## Tech-debt investigation results (2026-08-15, three read-only analyses)
+
+### 1. Terminology
+Worst collisions: **puppet** = Python authority / UE mirror / RPC step-mode (3);
+**owner** = sim authority / control-claim / lease-holder / UObject (4); **server** =
+BridgeServer / camera-producer / discoverable-sim / "step server" (4); **client** =
+Python driver AND the UE SUB receiver (opposite wire ends). Canonical set: keep
+Client/BridgeServer/Manager/Controller (qualified); ELIMINATE "slave" and "puppet"
+from names; render mirror -> **Renderer** (`EMjbRunMode::Puppet`->`Mirror`); sim
+authority -> **Authority** (not owner); control/lease owner -> **holder**; "render
+server" -> **CameraServer**. Rename plan tiered: Tier 1 internal/safe (purge slave,
+owner->holder); Tier 2 Blueprint enum + fast-path C++ symbols (keep wire strings);
+Tier 3 public Python `StepMode.PUPPET` + wire (aliases, defer). KEEP all wire strings
+(`puppet`/`geoms`/`viewer`/`fastpath_hello`/`fastpath_owner`) unless a protocol bump.
+
+### 2. Fast-path shadow articulation
+Why it exists: the RPC control/observation layer + Python client address everything
+as an `AMjArticulation` by name, but `InstallRawModel` installs a raw mjModel with
+ZERO articulations, so `URLabFastShadow::Build` spawns one geometry-less fake art
+whose per-element components are name-bound to the raw model. Hacky because: (a)
+parallel object graph duplicating the model as N runtime UMjNodeComponents; (b) the
+handshake ALSO ships a separate `raw_actuators`/`raw_joints` description off mjModel
+(model described twice); (c) the ctrl "dual-write" -- raw ctrl reaches `d->ctrl`
+either directly OR via staged NetworkControl slots, decided at two independent sites,
+with a latent clobber (a bSkipController=false pass on a raw art can zero the command).
+Recommendation: **Design C first** (make raw ctrl flow through ONE writer, resolve
+raw-ness once -- a correctness fix, cheap, independently shippable), **then Design A**
+(data-driven raw articulation: keep one thin AMjArticulation as the ActorId/ownership
+anchor but drop the per-element component spawn and read state off the raw model under
+CallbackMutex). Design B (no articulation at all) rejected as too invasive. Main risk
+in A: fence discipline (raw state reads vs ReloadFromBytes/UninstallRawModel).
+
+### 3. MjbScene.cpp god-object extraction
+Extract order (risk-minimizing): **(1) UMjbTransportBus** (smallest: StartBus/StopBus/
+OnBusMessage + Rx buffer; decode stays in Tick via TryPopLatest). **(2) UMjbAssetBaker**
+(biggest LOC: GetOrBuildStaticMesh/GetOrBuildTexture/BuildMesh/ApplyGeomMaterial/
+BuildMeshArrays + caches + the WITH_EDITOR-vs-PMC split; leave BuildGeom in the scene
+delegating to it). **(3) FMjbDirectMode** (most entangled: DirectManager/ShadowArt/
+install-timer/ApplyFromSnapshot). KEY correction: baker + bus must be **UObjects**
+(cached UTexture2D/UStaticMesh/Master/BusTransport are UPROPERTY(Transient) for GC
+rooting -- plain F-structs would need FGCObject); direct mode can be a plain struct
+(weak ptrs + PODs). Stays on the actor: Model/Data ownership, the scene graph
+(GeomComps/CameraComps/BodyActors), `BuildGeom`, and `EnsureManager` (shared by Direct
+AND Puppet). Hard constraint: preserve Teardown order (engine uninstall + shadow
+teardown BEFORE freeing Model/Data).
+
+Cross-cutting: the shadow (item 2 Design A) and FMjbDirectMode (item 3) both touch the
+shadow, and the terminology rename (item 1) touches all fast-path symbols. Suggested
+overall order: shadow Design C (correctness) -> god-object bus+baker (independent of
+shadow) -> shadow Design A -> FMjbDirectMode -> terminology rename pass last.

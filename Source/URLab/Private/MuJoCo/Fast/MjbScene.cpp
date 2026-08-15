@@ -1828,6 +1828,76 @@ void AMjbScene::InstallIntoEngine()
 		(int)Model->nq, (int)Model->nv, (int)Model->nu);
 }
 
+void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
+{
+	if (NewMjb.Num() == 0)
+	{
+		UE_LOG(LogURLab, Warning, TEXT("[MjbScene] ReloadFromBytes: empty MJB, ignoring"));
+		return;
+	}
+
+	// Retire the current model, shadow articulation and geometry, but KEEP the
+	// manager + engine so the swap reuses the same physics + RPC context.
+	AAMjManager* Mgr = DirectManager.Get();
+	if (Mgr && Mgr->PhysicsEngine)
+	{
+		Mgr->PhysicsEngine->UninstallRawModel(); // stop-join worker + unalias
+		URLabFastShadow::Teardown(Mgr, ShadowArt.Get());
+	}
+	ShadowArt.Reset();
+	LastRenderFrameId = 0;
+	bDirectNanLogged = false;
+
+	// Destroy the current geometry tree (body actors + their per-geom child actors;
+	// Destroy does not cascade to attached actors, so gather the whole tree first).
+	TArray<AActor*> Attached;
+	GetAttachedActors(Attached, /*bResetArray=*/true, /*bRecursivelyIncludeAttachedActors=*/true);
+	for (AActor* A : Attached)
+	{
+		if (A)
+		{
+			A->Destroy();
+		}
+	}
+	BodyActors.Reset();
+	GeomComps.Reset();
+	CameraComps.Reset();
+	TextureCache.Reset();
+	StaticMeshCache.Reset();
+	ContentHash.Empty();
+	if (Data)
+	{
+		mj_deleteData(Data);
+		Data = nullptr;
+	}
+	if (Model)
+	{
+		mj_deleteModel(Model);
+		Model = nullptr;
+	}
+
+	// Rebuild from the new bytes. In Direct mode reinstall into the (retained)
+	// engine; in Puppet mode the transform bus stays connected and delivers the new
+	// owner's frames (mismatched in-flight frames are skipped by the nbody guard).
+	MjbBytes = NewMjb;
+	MjbFilePath.Empty(); // bytes take precedence on the next build
+	const int32 Geoms = LoadAndBuild();
+	if (Geoms < 0)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] ReloadFromBytes: build failed for the new MJB"));
+		return;
+	}
+	StartCameraStreaming();
+	if (RunMode == EMjbRunMode::Direct && Mgr)
+	{
+		// The manager has long since begun play, so install immediately (the timer
+		// poll in BeginDirect is only for the first-frame race at level start).
+		DirectManager = Mgr;
+		InstallIntoEngine();
+	}
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] ReloadFromBytes: swapped model -- %d geoms built"), Geoms);
+}
+
 void AMjbScene::ApplyFromSnapshot()
 {
 	AAMjManager* Mgr = DirectManager.Get();

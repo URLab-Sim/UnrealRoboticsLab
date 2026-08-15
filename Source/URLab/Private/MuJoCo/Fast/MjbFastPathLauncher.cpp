@@ -11,6 +11,10 @@
 #include "Camera/CameraActor.h"
 #include "GameFramework/PlayerController.h"
 #include "Engine/World.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/SkyLight.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/SkyLightComponent.h"
 #include "EngineUtils.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
@@ -70,6 +74,45 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s mode=%s bus=%s"),
 		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus);
+
+	// The fast-path renderer's usual home is an empty boot map with no lighting, so
+	// a showcase would render black however well the geometry built. Give the scene
+	// its own light rig -- a key directional sun plus a sky light for ambient fill --
+	// so the MJB is visible on any map. Movable so no bake is needed at runtime.
+	{
+		// Key directional sun (movable, so no bake) -- lights the MJB.
+		const FTransform SunXf(FRotator(-46.0, -60.0, 0.0), FVector::ZeroVector);
+		if (ADirectionalLight* Sun =
+				InWorld.SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), SunXf))
+		{
+			if (ULightComponent* L = Sun->GetLightComponent())
+			{
+				L->SetMobility(EComponentMobility::Movable);
+			}
+		}
+		// A second, dimmer fill from the opposite side so shadowed faces are not
+		// pure black (an empty map has no sky to bounce ambient off).
+		const FTransform FillXf(FRotator(-18.0, 120.0, 0.0), FVector::ZeroVector);
+		if (ADirectionalLight* Fill =
+				InWorld.SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), FillXf))
+		{
+			if (ULightComponent* L = Fill->GetLightComponent())
+			{
+				L->SetMobility(EComponentMobility::Movable);
+				L->SetIntensity(0.4f * L->Intensity);
+				L->SetLightColor(FLinearColor(0.7f, 0.75f, 0.9f));
+				L->SetCastShadows(false);
+			}
+		}
+		// Sky light for gentle ambient fill (captured; harmless if the scene is dark).
+		if (ASkyLight* Sky = InWorld.SpawnActor<ASkyLight>(ASkyLight::StaticClass()))
+		{
+			if (USkyLightComponent* SkyComp = Sky->GetLightComponent())
+			{
+				SkyComp->SetMobility(EComponentMobility::Movable);
+			}
+		}
+	}
 
 	// Frame the scene with a simple view camera (robot ~1 m tall at the origin).
 	if (APlayerController* PC = InWorld.GetFirstPlayerController())

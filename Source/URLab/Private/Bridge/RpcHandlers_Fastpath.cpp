@@ -11,8 +11,14 @@
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Fast/MjbScene.h"
+#include "Utils/URLabLogging.h"
 
 #include "Dom/JsonObject.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "Async/Async.h"
+#include "Misc/Base64.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -70,5 +76,63 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathHello(const TSharedPt
 			FString::Printf(TEXT("tcp://%s:%d"), *Host, Cfg.ViewerPort));
 		Reply->SetBoolField(TEXT("broadcasting"), Cfg.bBroadcastViewers);
 	}
+	return Reply;
+}
+
+// Fast-path live scene swap. An owner/controller ships new MJB bytes; the running
+// render-server renderer retires its current model and rebuilds from the new one
+// without a relaunch. Bytes travel over the wire (msgpack bin -> base64), so a
+// renderer on a different machine than the owner works -- this is a render server.
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr<FJsonObject>& Req)
+{
+	if (!OwnerMgr.IsValid())
+	{
+		return MakeError(URLabError::NotReady, TEXT("no manager to load a fast-path scene into"));
+	}
+
+	// New MJB bytes: msgpack bin arrives as base64 under a `__b64__`-suffixed key
+	// (accept the bare key too, e.g. an already-base64 string).
+	FString B64;
+	if (!Req->TryGetStringField(TEXT("mjb__b64__"), B64) && !Req->TryGetStringField(TEXT("mjb"), B64))
+	{
+		return MakeError(URLabError::BadRequest, TEXT("missing 'mjb' bytes"));
+	}
+	TArray<uint8> Mjb;
+	if (!FBase64::Decode(B64, Mjb) || Mjb.Num() == 0)
+	{
+		return MakeError(URLabError::BadRequest, TEXT("'mjb' is not valid base64 or is empty"));
+	}
+
+	// Finding the renderer (TActorIterator) AND the reload both assert game-thread,
+	// so marshal the whole thing there. Fire-and-forget: acknowledge the accepted
+	// bytes now; the swap happens on the next game tick.
+	const int32 NumBytes = Mjb.Num();
+	TWeakObjectPtr<AAMjManager> WeakMgr = OwnerMgr;
+	AsyncTask(ENamedThreads::GameThread, [WeakMgr, Mjb = MoveTemp(Mjb)]() {
+		AAMjManager* Mgr = WeakMgr.Get();
+		UWorld* World = Mgr ? Mgr->GetWorld() : nullptr;
+		if (World == nullptr)
+		{
+			return;
+		}
+		AMjbScene* Scene = nullptr;
+		for (TActorIterator<AMjbScene> It(World); It; ++It)
+		{
+			Scene = *It;
+			break;
+		}
+		if (Scene != nullptr)
+		{
+			Scene->ReloadFromBytes(Mjb);
+		}
+		else
+		{
+			UE_LOG(LogURLab, Warning, TEXT("[fastpath_load] no fast-path renderer in this world"));
+		}
+	});
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("fastpath_load_ok"));
+	Reply->SetNumberField(TEXT("bytes"), NumBytes);
 	return Reply;
 }

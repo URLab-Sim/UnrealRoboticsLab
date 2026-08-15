@@ -237,6 +237,13 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleFastpathHello(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("mjb:object"), TEXT("bus:string"), TEXT("ngeom:int")});
 
+	// Fast-path live scene swap (RpcHandlers_Fastpath.cpp): an owner/controller
+	// ships new MJB bytes to a running render-server renderer, which retires its
+	// current model and rebuilds from the new one without a relaunch.
+	Reg(TEXT("fastpath_load"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleFastpathLoad(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("bytes:int")});
+
 	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
 	// pure data staging (no manager, no editor). Commit drives the existing
 	// import_xml editor job on a materialised temp dir; it self-checks for the
@@ -481,6 +488,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	// and bus endpoint and never establishes a session. It reads no session_id.
 	if (Op.Equals(TEXT("fastpath_hello")))
 		return HandleFastpathHello(Req);
+	// fastpath_load likewise: an owner/controller pushes a new scene to a render
+	// server without a session handshake -- it just ships the MJB and returns.
+	if (Op.Equals(TEXT("fastpath_load")))
+		return HandleFastpathLoad(Req);
 
 	{
 		FScopeLock Lock(&DispatchMutex);

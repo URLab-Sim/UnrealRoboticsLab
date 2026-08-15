@@ -140,6 +140,13 @@ public:
 	 *  built, or -1 on load failure. */
 	int32 LoadAndBuild();
 
+	/** Live model swap: retire the current model, shadow articulation and geometry
+	 *  (reusing the same manager + engine) and rebuild from new MJB bytes, so a
+	 *  running render-server viewer can switch scenes without a relaunch. The bytes
+	 *  arrive over the wire (an owner streams them to a remote renderer). Game
+	 *  thread only. */
+	void ReloadFromBytes(const TArray<uint8>& NewMjb);
+
 	/** Build geometry only, at the MJB rest pose, with NO bus and NO streaming.
 	 *  For the editor-world preview: a persistent, static, saveable scene that is
 	 *  never animated outside a play session. Returns geom count or -1. */

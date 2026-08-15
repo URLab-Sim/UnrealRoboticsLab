@@ -32,6 +32,7 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Fast/MjbShadowArticulation.h"
+#include "Transport/ZmqClientSubscribeTransport.h"
 #include "Kismet/GameplayStatics.h"
 #include "TimerManager.h"
 #include "Utils/URLabLogging.h"
@@ -118,30 +119,6 @@ void DisableDistanceFields(UPrimitiveComponent* Comp)
 	}
 }
 
-// Drives the transform-bus receive loop on a worker thread.
-class FMjbBusRunnable : public FRunnable
-{
-public:
-	explicit FMjbBusRunnable(AMjbScene* InScene) : Scene(InScene) {}
-	virtual uint32 Run() override
-	{
-		if (Scene)
-		{
-			Scene->RunBusLoop();
-		}
-		return 0;
-	}
-	virtual void Stop() override
-	{
-		if (Scene)
-		{
-			Scene->SignalBusStop();
-		}
-	}
-
-private:
-	AMjbScene* Scene = nullptr;
-};
 } // namespace
 
 AMjbScene::AMjbScene()
@@ -1636,10 +1613,9 @@ void AMjbScene::Tick(float DeltaSeconds)
 		TArray<uint8> Local;
 		{
 			FScopeLock Lock(&FrameMutex);
-			if (bRxPending && RxBuf && RxSize > 0)
+			if (bRxPending && RxFrame.Num() > 0)
 			{
-				Local.SetNumUninitialized(RxSize);
-				FMemory::Memcpy(Local.GetData(), RxBuf, RxSize);
+				Local = RxFrame;
 				bRxPending = false;
 			}
 		}
@@ -1719,7 +1695,7 @@ void AMjbScene::Tick(float DeltaSeconds)
 		}
 	}
 
-	if (!bTestSweep || !Model || !Data || ZmqSub)
+	if (!bTestSweep || !Model || !Data || BusTransport)
 	{
 		return;
 	}
@@ -1925,121 +1901,52 @@ void AMjbScene::ApplyFromSnapshot()
 
 void AMjbScene::StartBus()
 {
-	if (BusEndpoint.IsEmpty() || ZmqSub)
+	if (BusEndpoint.IsEmpty() || BusTransport)
 	{
 		return;
 	}
-	ZmqCtx = zmq_ctx_new();
-	ZmqSub = zmq_socket(ZmqCtx, ZMQ_SUB);
-	int Timeout = 200;
-	zmq_setsockopt(ZmqSub, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
-	int Linger = 0;
-	zmq_setsockopt(ZmqSub, ZMQ_LINGER, &Linger, sizeof(Linger));
-	int Hwm = 8;
-	zmq_setsockopt(ZmqSub, ZMQ_RCVHWM, &Hwm, sizeof(Hwm));
-	if (zmq_connect(ZmqSub, TCHAR_TO_UTF8(*BusEndpoint)) != 0)
+	// The renderer subscribes to the owner's "geoms" broadcast through the agnostic
+	// client-subscribe transport (ZMQ backend today). The worker delivers each
+	// newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
+	UURLabZmqClientSubscribeTransport* Zmq = NewObject<UURLabZmqClientSubscribeTransport>(this);
+	Zmq->Configure(BusEndpoint, TEXT("geoms"),
+		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &AMjbScene::OnBusMessage));
+	if (!Zmq->TransportInit())
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] transform bus connect failed: %s"), *BusEndpoint);
-		zmq_close(ZmqSub);
-		ZmqSub = nullptr;
-		zmq_ctx_term(ZmqCtx);
-		ZmqCtx = nullptr;
 		return;
 	}
-	zmq_setsockopt(ZmqSub, ZMQ_SUBSCRIBE, "geoms", 5);
-	RxCap = 8 * 1024 * 1024; // ample for per-geom transform frames
-	RxBuf = static_cast<uint8*>(FMemory::Malloc(RxCap));
-	RxSize = 0;
+	BusTransport = Zmq;
 	bRxPending = false;
-	bBusStop = false;
-	BusRunnable = new FMjbBusRunnable(this);
-	BusThread = FRunnableThread::Create(BusRunnable, TEXT("MjbBusSub"));
 	UE_LOG(LogURLab, Log, TEXT("[MjbScene] subscribing to transform bus %s"), *BusEndpoint);
 }
 
 void AMjbScene::StopBus()
 {
-	if (!ZmqSub && !ZmqCtx)
+	if (BusTransport)
+	{
+		BusTransport->TransportShutdown();
+		BusTransport = nullptr;
+	}
+	FScopeLock Lock(&FrameMutex);
+	RxFrame.Reset();
+	bRxPending = false;
+}
+
+void AMjbScene::OnBusMessage(const FString& /*Topic*/, const TArray<uint8>& Payload)
+{
+	// Worker thread: no UObject / msgpack work here -- just stash the newest raw
+	// payload for the game thread (Tick) to decode + apply.
+	if (Payload.Num() <= 0)
 	{
 		return;
 	}
-	bBusStop = true;
-	if (BusThread)
 	{
-		BusThread->WaitForCompletion();
-		delete BusThread;
-		BusThread = nullptr;
+		FScopeLock Lock(&FrameMutex);
+		RxFrame = Payload;
+		bRxPending = true;
 	}
-	delete BusRunnable;
-	BusRunnable = nullptr;
-	if (ZmqSub)
-	{
-		zmq_close(ZmqSub);
-		ZmqSub = nullptr;
-	}
-	if (ZmqCtx)
-	{
-		zmq_ctx_term(ZmqCtx);
-		ZmqCtx = nullptr;
-	}
-	if (RxBuf)
-	{
-		FMemory::Free(RxBuf);
-		RxBuf = nullptr;
-		RxCap = 0;
-		RxSize = 0;
-		bRxPending = false;
-	}
-}
-
-void AMjbScene::RunBusLoop()
-{
-	// Worker thread does NO UE allocation and NO msgpack decode: it copies the
-	// newest raw payload into the preallocated RxBuf under the lock and flags it.
-	// The game thread (Tick) decodes + applies. This keeps all UObject / TArray /
-	// FJsonObject work on the game thread.
-	while (!bBusStop.load(std::memory_order_acquire))
-	{
-		bool bGot = false;
-		while (true)
-		{
-			zmq_msg_t Topic;
-			zmq_msg_init(&Topic);
-			// Block (bounded by RCVTIMEO) on the first read of a batch, then
-			// drain non-blocking to the newest.
-			if (zmq_msg_recv(&Topic, ZmqSub, bGot ? ZMQ_DONTWAIT : 0) < 0)
-			{
-				zmq_msg_close(&Topic);
-				break; // timeout / drained
-			}
-			int More = 0;
-			size_t Ms = sizeof(More);
-			zmq_getsockopt(ZmqSub, ZMQ_RCVMORE, &More, &Ms);
-			zmq_msg_close(&Topic);
-			if (!More)
-			{
-				continue;
-			}
-			zmq_msg_t Msg;
-			zmq_msg_init(&Msg);
-			if (zmq_msg_recv(&Msg, ZmqSub, 0) < 0)
-			{
-				zmq_msg_close(&Msg);
-				break;
-			}
-			const int32 Sz = static_cast<int32>(zmq_msg_size(&Msg));
-			if (Sz > 0 && Sz <= RxCap && RxBuf)
-			{
-				FScopeLock Lock(&FrameMutex);
-				FMemory::Memcpy(RxBuf, zmq_msg_data(&Msg), Sz);
-				RxSize = Sz;
-				bRxPending = true;
-			}
-			zmq_msg_close(&Msg);
-			bGot = true;
-			bEverReceived.store(true, std::memory_order_release);
-		}
-	}
+	bEverReceived.store(true, std::memory_order_release);
 }
 
 void AMjbScene::Teardown()

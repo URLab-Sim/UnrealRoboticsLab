@@ -20,6 +20,7 @@ class UMaterialInterface;
 class FRunnable;
 class FRunnableThread;
 class AAMjManager;
+class UURLabClientSubscribeTransport;
 
 /** How a play-session AMjbScene sources its transforms. */
 UENUM(BlueprintType)
@@ -195,12 +196,6 @@ public:
 	 *  orientation to a quaternion. Not used on the streamed render path. */
 	void ApplyFromData();
 
-	/** Worker-thread entry: receive per-geom transform frames off the bus.
-	 *  Public so the bus FRunnable can drive it. */
-	void RunBusLoop();
-	/** Ask the bus worker to stop (called from the FRunnable's Stop). */
-	void SignalBusStop() { bBusStop = true; }
-
 	/** Connect the transform bus now (BusEndpoint must be set). Normally driven
 	 *  by BeginPlay; exposed for tests and headless drivers. */
 	void ConnectBus() { StartBus(); }
@@ -260,23 +255,23 @@ private:
 	double SweepTime = 0.0;
 
 	// --- transform bus (owner -> this renderer) --------------------------- //
-	void* ZmqCtx = nullptr;
-	void* ZmqSub = nullptr;
-	FRunnable* BusRunnable = nullptr;
-	FRunnableThread* BusThread = nullptr;
-	std::atomic<bool> bBusStop{false};
-	// The worker only copies the newest raw payload into this preallocated buffer
-	// (no UE allocation / no msgpack decode off the game thread). The game thread
-	// decodes + applies it in Tick.
+	// The client-subscribe transport that receives the owner's "geoms" broadcast
+	// (ZMQ now; SHM/ROS/gRPC via the transport hook). Owned here.
+	UPROPERTY(Transient)
+	TObjectPtr<UURLabClientSubscribeTransport> BusTransport;
+	// OnBusMessage (worker thread) only copies the newest raw payload here (no UE
+	// allocation / no msgpack decode off the game thread); the game thread decodes
+	// + applies it in Tick.
 	FCriticalSection FrameMutex;
-	uint8* RxBuf = nullptr;
-	int32 RxCap = 0;
-	int32 RxSize = 0;
+	TArray<uint8> RxFrame; // guarded by FrameMutex
 	bool bRxPending = false; // guarded by FrameMutex
 	std::atomic<bool> bEverReceived{false};
 
 	void StartBus();
 	void StopBus();
+	// Worker-thread delivery from BusTransport: stash the newest raw payload for the
+	// game thread to decode + apply.
+	void OnBusMessage(const FString& Topic, const TArray<uint8>& Payload);
 
 	// --- Direct mode (in-process stepping via the shared engine) ---------- //
 	// The manager whose UMjPhysicsEngine steps our raw model. Get-or-spawned at

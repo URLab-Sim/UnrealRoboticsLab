@@ -257,6 +257,36 @@ public:
 	 */
 	void Compile();
 
+	/**
+	 * Adopt an externally-owned raw mjModel + mjData as the live model, with no
+	 * mjSpec compile and no articulations behind it.
+	 *
+	 * The fast-path renderer (AMjbScene) loads a compiled MJB directly with
+	 * mj_loadModelBuffer and owns both pointers; this lets the same instance be
+	 * driven by the step / control / sensor RPC layer, which only ever reaches
+	 * the model through GetModel()/GetData(). The engine aliases the pointers and
+	 * NEVER frees them -- the caller keeps them alive for as long as they are
+	 * installed and deletes them itself. The install stops and joins the physics
+	 * worker (as Compile does); pair it with RunMujocoAsync() to resume stepping.
+	 * Returns false if either pointer is null.
+	 */
+	bool InstallRawModel(mjModel* RawModel, mjData* RawData);
+
+	/**
+	 * Release a raw model installed via InstallRawModel: stop and join the
+	 * physics worker so it is not mid-step against the caller's memory, then
+	 * unalias m_model/m_data WITHOUT freeing them (the caller owns and frees
+	 * them). No-op if no raw model is installed. The fast-path scene calls this
+	 * on EndPlay before it deletes its own mjModel/mjData.
+	 */
+	void UninstallRawModel();
+
+	/** True while a raw (externally-owned) model is installed via InstallRawModel.
+	 *  The engine aliases m_model/m_data but must not free them, and there is no
+	 *  InstalledScene / bound elements behind them: the retire paths (release and
+	 *  the next compile's swap) read this to leave the caller's memory untouched. */
+	bool bRawModelInstalled = false;
+
 	void ApplyOptions();
 
 	/**

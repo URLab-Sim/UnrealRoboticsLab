@@ -742,10 +742,13 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		m_model = InstalledScene->Model;
 		m_data = NewData;
 
-		if (PreviousData != nullptr)
+		// A previous raw model's data belongs to the fast-path scene, not us, so
+		// it is only unaliased above; a previous compiled scene's data is ours.
+		if (PreviousData != nullptr && !bRawModelInstalled)
 		{
 			mj_deleteData(PreviousData);
 		}
+		bRawModelInstalled = false;
 	}
 
 	CompiledXml = NewXml;
@@ -881,18 +884,106 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 void UMjPhysicsEngine::ReleaseCompiledScene()
 {
 	FScopeLock Lock(&CallbackMutex);
-	if (m_data != nullptr)
+	// A raw model and its data are the fast-path scene's, not this component's:
+	// unalias them but never free them. A compiled scene's data is ours to free.
+	if (m_data != nullptr && !bRawModelInstalled)
 	{
 		mj_deleteData(m_data);
-		m_data = nullptr;
 	}
-	// The model is the compiled scene's, not this component's, so it goes when
-	// the scene does and never before the specs it was compiled from.
+	m_data = nullptr;
+	// The model is the compiled scene's (or the fast-path scene's), not this
+	// component's, so it goes when its owner does, never before.
 	m_model = nullptr;
+	bRawModelInstalled = false;
 #if URLAB_MJ_GEN
 	InstalledScene.Reset();
 #endif
 	// The addresses it resolves belong to a model that no longer exists.
+	InstalledBinding = FMjBinding{};
+}
+
+bool UMjPhysicsEngine::InstallRawModel(mjModel* RawModel, mjData* RawData)
+{
+	if (RawModel == nullptr || RawData == nullptr)
+	{
+		return false;
+	}
+
+	// Stop and JOIN the worker before the pointers move -- the same discipline
+	// InstallCompiledSpec uses: the worker can be between its stop check and its
+	// CallbackMutex acquire, and the join is what keeps it off the new model.
+	bShouldStopTask = true;
+	if (StepRequestEvent != nullptr)
+	{
+		StepRequestEvent->Trigger();
+	}
+	if (AsyncPhysicsFuture.IsValid())
+	{
+		AsyncPhysicsFuture.Wait();
+	}
+
+	// The swap, under the fence the worker steps behind. Retire whatever was
+	// installed: a compiled scene owns its model+data and frees the data here; a
+	// previous raw model is the caller's and is only unaliased.
+	{
+		FScopeLock Lock(&CallbackMutex);
+		if (m_data != nullptr && !bRawModelInstalled)
+		{
+			mj_deleteData(m_data);
+		}
+#if URLAB_MJ_GEN
+		InstalledScene.Reset();
+#endif
+		m_model = RawModel;
+		m_data = RawData;
+		bRawModelInstalled = true;
+	}
+
+	// An empty binding that still knows the model, so name-based lookups
+	// (FMjBinding::Find via mj_id2name) resolve against the raw model even
+	// though no spec nodes are bound to it.
+	InstalledBinding = FMjBinding{};
+	InstalledBinding.SetModel(m_model);
+
+	// No articulations or scene contributors back a raw model.
+	m_articulations.Empty();
+	m_ArticulationMap.Empty();
+	m_LastCompileError.Empty();
+
+	ApplyThreadPool();
+
+	// The raw mjData arrives already made (mj_makeData) and forwarded by the
+	// caller; forward once more so the derived quantities a paused scene is read
+	// through are current, then publish the snapshot every consumer reads.
+	mj_forward(m_model, m_data);
+	PushRenderState();
+	return true;
+}
+
+void UMjPhysicsEngine::UninstallRawModel()
+{
+	// Stop and JOIN the worker so it is not mid-step against the caller's memory.
+	bShouldStopTask = true;
+	if (StepRequestEvent != nullptr)
+	{
+		StepRequestEvent->Trigger();
+	}
+	if (AsyncPhysicsFuture.IsValid())
+	{
+		AsyncPhysicsFuture.Wait();
+	}
+
+	if (!bRawModelInstalled)
+	{
+		return;
+	}
+
+	// Unalias only: the raw model and its data belong to the fast-path scene,
+	// which frees them itself.
+	FScopeLock Lock(&CallbackMutex);
+	m_model = nullptr;
+	m_data = nullptr;
+	bRawModelInstalled = false;
 	InstalledBinding = FMjBinding{};
 }
 

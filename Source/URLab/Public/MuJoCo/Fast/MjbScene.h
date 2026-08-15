@@ -13,11 +13,25 @@
 
 struct mjModel_;
 struct mjData_;
+struct FMjRenderSnapshot;
 class UPrimitiveComponent;
 class UProceduralMeshComponent;
 class UMaterialInterface;
 class FRunnable;
 class FRunnableThread;
+class AAMjManager;
+
+/** How a play-session AMjbScene sources its transforms. */
+UENUM(BlueprintType)
+enum class EMjbRunMode : uint8
+{
+	/** Mirror an owner's transform stream over ZMQ. Runs no physics here. */
+	Puppet,
+	/** Step this scene's own model in-process through the shared
+	 *  UMjPhysicsEngine (driven by the RPC layer or free-running) and render the
+	 *  stepped state. Makes the fast-path instance a full sim, not just a mirror. */
+	Direct,
+};
 
 /**
  * @class AMjbScene
@@ -51,6 +65,12 @@ public:
 	 *  a file. */
 	UPROPERTY()
 	TArray<uint8> MjbBytes;
+
+	/** Puppet (mirror an owner) or Direct (step this scene's own model through
+	 *  the shared UMjPhysicsEngine and render it). Direct makes the fast-path
+	 *  instance a full sim a Python client can drive over the existing RPC. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	EMjbRunMode RunMode = EMjbRunMode::Puppet;
 
 	/** Animate joints locally via mj_forward so the scene moves with no owner.
 	 *  Development only -- the real path applies a streamed transform set.
@@ -175,6 +195,9 @@ public:
 	/** Connect the transform bus now (BusEndpoint must be set). Normally driven
 	 *  by BeginPlay; exposed for tests and headless drivers. */
 	void ConnectBus() { StartBus(); }
+	/** Begin Direct stepping now (RunMode must be Direct). Normally driven by
+	 *  BeginPlay; exposed for the -game launcher, which builds after BeginPlay. */
+	void StartDirect() { BeginDirect(); }
 	/** True once at least one transform frame has been received off the bus. */
 	bool HasReceivedFrame() const { return bEverReceived.load(std::memory_order_acquire); }
 
@@ -242,6 +265,27 @@ private:
 
 	void StartBus();
 	void StopBus();
+
+	// --- Direct mode (in-process stepping via the shared engine) ---------- //
+	// The manager whose UMjPhysicsEngine steps our raw model. Get-or-spawned at
+	// BeginPlay; not owned here (weak).
+	TWeakObjectPtr<AAMjManager> DirectManager;
+	// Frame id of the last render snapshot applied, so Tick skips unchanged frames.
+	uint64 LastRenderFrameId = 0;
+	// One-shot: log the first non-finite snapshot transform (diverged physics vs
+	// bad snapshot) without flooding.
+	bool bDirectNanLogged = false;
+	// Polls until the manager has begun play, then installs the raw model.
+	FTimerHandle DirectInstallTimer;
+
+	// Get-or-spawn the manager and arm the deferred install.
+	void BeginDirect();
+	// Install this scene's raw model+data into the manager's engine and start the
+	// physics worker. Retried off DirectInstallTimer until the manager has begun play.
+	void InstallIntoEngine();
+	// Render the geoms + cameras from the engine's published render snapshot
+	// (thread-safe; the worker steps our mjData on another thread).
+	void ApplyFromSnapshot();
 
 	// Build (or fetch from cache) a UTexture2D from the MJB's tex_data for the
 	// given MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a

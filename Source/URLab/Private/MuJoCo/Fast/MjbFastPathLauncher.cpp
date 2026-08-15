@@ -42,6 +42,10 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	FString Bus;
 	FParse::Value(FCommandLine::Get(), TEXT("URLabFastBus="), Bus);
 
+	// Direct: step this MJB in-process through the shared engine (a full sim a
+	// Python client can drive over RPC), instead of mirroring an owner's bus.
+	const bool bDirect = FParse::Param(FCommandLine::Get(), TEXT("URLabFastDirect"));
+
 	AMjbScene* Scene = InWorld.SpawnActor<AMjbScene>();
 	if (!Scene)
 	{
@@ -50,18 +54,25 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	}
 	// SpawnActor already ran the actor's BeginPlay with empty fields, so build +
 	// connect explicitly now that the flags are set.
-	Scene->bTestSweep = Bus.IsEmpty(); // no owner -> local dev sweep so it moves
+	Scene->RunMode = bDirect ? EMjbRunMode::Direct : EMjbRunMode::Puppet;
+	// Local dev sweep only when there is neither an owner bus nor Direct stepping.
+	Scene->bTestSweep = Bus.IsEmpty() && !bDirect;
 	Scene->MjbFilePath = Mjb;
 	Scene->BusEndpoint = Bus;
 	// Render-server cameras are opt-in (capture is not free).
 	Scene->bEnableCameraStreaming = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
 	Scene->LoadAndBuild();
-	if (!Bus.IsEmpty())
+	if (bDirect)
+	{
+		Scene->StartDirect();
+	}
+	else if (!Bus.IsEmpty())
 	{
 		Scene->ConnectBus();
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s bus=%s"),
-		*Mjb, Bus.IsEmpty() ? TEXT("(none, sweep)") : *Bus);
+	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s mode=%s bus=%s"),
+		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
+		Bus.IsEmpty() ? TEXT("(none)") : *Bus);
 
 	// Frame the scene with a simple view camera (robot ~1 m tall at the origin).
 	if (APlayerController* PC = InWorld.GetFirstPlayerController())

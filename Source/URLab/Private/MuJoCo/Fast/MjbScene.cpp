@@ -28,6 +28,11 @@
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
+#include "Kismet/GameplayStatics.h"
+#include "TimerManager.h"
 #include "Utils/URLabLogging.h"
 #include "Bridge/MsgpackHelpers.h"
 #include "Dom/JsonObject.h"
@@ -189,7 +194,13 @@ void AMjbScene::BeginPlay()
 	// play session, so the render server goes live without rebuilding them.
 	StartCameraStreaming();
 
-	if (!BusEndpoint.IsEmpty())
+	// Direct: step this scene's own model through the shared engine and render the
+	// stepped state. Puppet (default): mirror an owner's transform stream.
+	if (RunMode == EMjbRunMode::Direct)
+	{
+		BeginDirect();
+	}
+	else if (!BusEndpoint.IsEmpty())
 	{
 		StartBus();
 	}
@@ -1545,6 +1556,13 @@ void AMjbScene::Tick(float DeltaSeconds)
 		return;
 	}
 
+	// Direct mode renders the engine's stepped state, not a streamed frame.
+	if (RunMode == EMjbRunMode::Direct)
+	{
+		ApplyFromSnapshot();
+		return;
+	}
+
 	// A streamed frame takes priority: copy the newest raw payload out under the
 	// lock, then decode + apply here on the game thread (UE components and all
 	// UObject/TArray work must stay on the game thread).
@@ -1694,6 +1712,149 @@ void AMjbScene::ApplyFromData()
 	ApplyCameraPoses(nullptr, nullptr); // rest pose from mjData
 }
 
+void AMjbScene::BeginDirect()
+{
+	if (!Model || !Data)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: no model/data to install"));
+		return;
+	}
+
+	// Find a manager already in the level (placed, or spawned by something else)
+	// via a level scan rather than the Instance singleton, so a placed manager
+	// that has not begun play yet is still found and we do not double-spawn.
+	AAMjManager* Mgr = nullptr;
+	{
+		TArray<AActor*> Found;
+		UGameplayStatics::GetAllActorsOfClass(GetWorld(), AAMjManager::StaticClass(), Found);
+		if (Found.Num() > 0)
+		{
+			Mgr = Cast<AAMjManager>(Found[0]);
+		}
+	}
+	if (!Mgr)
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Mgr = GetWorld()->SpawnActor<AAMjManager>(AAMjManager::StaticClass(), Params);
+		UE_LOG(LogURLab, Log, TEXT("[MjbScene] Direct: spawned a manager for in-process stepping"));
+	}
+	DirectManager = Mgr;
+
+	// The manager compiles an (empty) scene and starts its worker in its own
+	// BeginPlay; installing before that would be undone. Poll until it has begun
+	// play, then install once.
+	GetWorld()->GetTimerManager().SetTimer(
+		DirectInstallTimer, this, &AMjbScene::InstallIntoEngine, 0.05f, /*bLoop=*/true);
+}
+
+void AMjbScene::InstallIntoEngine()
+{
+	AAMjManager* Mgr = DirectManager.Get();
+	if (!Mgr)
+	{
+		GetWorld()->GetTimerManager().ClearTimer(DirectInstallTimer);
+		return;
+	}
+	if (!Mgr->HasActorBegunPlay())
+	{
+		return; // keep polling until the manager's own BeginPlay has run
+	}
+	GetWorld()->GetTimerManager().ClearTimer(DirectInstallTimer);
+
+	UMjPhysicsEngine* Eng = Mgr->PhysicsEngine;
+	if (!Eng || !Model || !Data)
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: engine/model unavailable at install"));
+		return;
+	}
+	if (!Eng->InstallRawModel(Model, Data))
+	{
+		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: InstallRawModel failed"));
+		return;
+	}
+	// Free-run the sim when no client owns the clock: a client hello promotes the
+	// engine to a client-driven step mode; until then this steps at real time.
+	Eng->bIsPaused = false;
+	Eng->RunMujocoAsync();
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjbScene] Direct: installed raw model (nq=%d nv=%d nu=%d) -- engine stepping"),
+		(int)Model->nq, (int)Model->nv, (int)Model->nu);
+}
+
+void AMjbScene::ApplyFromSnapshot()
+{
+	AAMjManager* Mgr = DirectManager.Get();
+	if (!Mgr || !Mgr->PhysicsEngine || !Model)
+	{
+		return;
+	}
+	const int32 NGeom = static_cast<int32>(Model->ngeom);
+	const int32 NCam = CameraComps.Num();
+
+	Mgr->PhysicsEngine->WithRenderState([this, NGeom, NCam](const FMjRenderSnapshot& Snap)
+	{
+		// Skip a snapshot we have already drawn (the worker publishes one per step;
+		// the game thread renders at its own, usually lower, rate).
+		if (Snap.FrameId == LastRenderFrameId)
+		{
+			return;
+		}
+		LastRenderFrameId = Snap.FrameId;
+
+		if (Snap.GeomXPos.Num() < NGeom * 3 || Snap.GeomXMat.Num() < NGeom * 9)
+		{
+			return;
+		}
+		int32 NanGeoms = 0;
+		for (int32 G = 0; G < GeomComps.Num(); ++G)
+		{
+			UPrimitiveComponent* Comp = GeomComps[G];
+			if (!Comp)
+			{
+				continue;
+			}
+			double Quat[4];
+			mju_mat2Quat(Quat, Snap.GeomXMat.GetData() + 9 * G);
+			const FVector Loc = URLabAxisConv::MjPositionToUe(Snap.GeomXPos.GetData() + 3 * G);
+			const FQuat Rot = URLabAxisConv::MjQuatToUe(Quat);
+			// Never push a non-finite transform into a component: it poisons the
+			// renderer (distance-field matrix inversion) and hides the real cause.
+			if (Loc.ContainsNaN() || Rot.ContainsNaN() || !Rot.IsNormalized())
+			{
+				++NanGeoms;
+				continue;
+			}
+			Comp->SetWorldLocationAndRotation(Loc, Rot);
+		}
+		if (NanGeoms > 0 && !bDirectNanLogged)
+		{
+			bDirectNanLogged = true;
+			UE_LOG(LogURLab, Warning,
+				TEXT("[MjbScene] Direct: %d/%d geoms non-finite at frame %llu (simTime=%.4f) -- physics diverged or bad snapshot"),
+				NanGeoms, GeomComps.Num(), (unsigned long long)Snap.FrameId, Snap.SimTime);
+		}
+
+		// Cameras track the stepped state too. The snapshot carries cam_xmat as a
+		// 3x3; convert to the wxyz quats ApplyCameraPoses expects.
+		if (NCam > 0 && Snap.CamXPos.Num() >= NCam * 3 && Snap.CamXMat.Num() >= NCam * 9)
+		{
+			TArray<double> Cxpos;
+			TArray<double> Cxquat;
+			Cxpos.SetNumUninitialized(NCam * 3);
+			Cxquat.SetNumUninitialized(NCam * 4);
+			for (int32 C = 0; C < NCam; ++C)
+			{
+				Cxpos[3 * C + 0] = Snap.CamXPos[3 * C + 0];
+				Cxpos[3 * C + 1] = Snap.CamXPos[3 * C + 1];
+				Cxpos[3 * C + 2] = Snap.CamXPos[3 * C + 2];
+				mju_mat2Quat(Cxquat.GetData() + 4 * C, Snap.CamXMat.GetData() + 9 * C);
+			}
+			ApplyCameraPoses(Cxpos.GetData(), Cxquat.GetData());
+		}
+	});
+}
+
 void AMjbScene::StartBus()
 {
 	if (BusEndpoint.IsEmpty() || ZmqSub)
@@ -1816,6 +1977,21 @@ void AMjbScene::RunBusLoop()
 void AMjbScene::Teardown()
 {
 	StopBus();
+	if (GetWorld())
+	{
+		GetWorld()->GetTimerManager().ClearTimer(DirectInstallTimer);
+	}
+	// Direct mode aliased our raw model+data into the shared engine. Stop-join the
+	// physics worker and unalias BEFORE the deletes below, so the worker is never
+	// mid-step against memory we are about to free.
+	if (AAMjManager* Mgr = DirectManager.Get())
+	{
+		if (Mgr->PhysicsEngine)
+		{
+			Mgr->PhysicsEngine->UninstallRawModel();
+		}
+	}
+	DirectManager.Reset();
 	// Destroy body actors AND their per-geom child actors (Destroy does not cascade
 	// to attached actors, so gather the whole attached tree first).
 	TArray<AActor*> Attached;

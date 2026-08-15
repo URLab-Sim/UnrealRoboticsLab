@@ -1272,17 +1272,30 @@ UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB)
 	{
 		return nullptr;
 	}
-	const uint8* Src = Model->tex_data + Model->tex_adr[TexId];
 
-	UTexture2D* Tex = UTexture2D::CreateTransient(W, H, PF_B8G8R8A8);
-	if (!Tex)
+#if WITH_EDITOR
+	// Persistent, content-hashed cache (same scheme as the meshes).
+	FString PackageName;
+	if (!ContentHash.IsEmpty())
 	{
-		return nullptr;
+		PackageName = UPackageTools::SanitizePackageName(
+			FString::Printf(TEXT("/Game/URLabFastPath/%s/T_%d"), *ContentHash, TexId));
+		if (!bForceRebuildAssets)
+		{
+			if (UTexture2D* Existing = LoadObject<UTexture2D>(nullptr, *PackageName))
+			{
+				TextureCache.Add(TexId, Existing);
+				return Existing;
+			}
+		}
 	}
-	Tex->SRGB = bSRGB;
-	FTexturePlatformData* PD = Tex->GetPlatformData();
-	uint8* Dst = static_cast<uint8*>(PD->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+#endif
+
+	// Build a BGRA8 buffer from the MJB's tex_data.
+	const uint8* Src = Model->tex_data + Model->tex_adr[TexId];
 	const int32 Pixels = W * H;
+	TArray<uint8> Bgra;
+	Bgra.SetNumUninitialized(Pixels * 4);
 	for (int32 i = 0; i < Pixels; ++i)
 	{
 		uint8 R, Gc, B, A;
@@ -1298,13 +1311,51 @@ UTexture2D* AMjbScene::GetOrBuildTexture(int32 TexId, bool bSRGB)
 			R = Gc = B = Src[i * NC]; // grayscale replicated
 			A = 255;
 		}
-		Dst[i * 4 + 0] = B; // BGRA8
-		Dst[i * 4 + 1] = Gc;
-		Dst[i * 4 + 2] = R;
-		Dst[i * 4 + 3] = A;
+		Bgra[i * 4 + 0] = B;
+		Bgra[i * 4 + 1] = Gc;
+		Bgra[i * 4 + 2] = R;
+		Bgra[i * 4 + 3] = A;
 	}
-	PD->Mips[0].BulkData.Unlock();
-	Tex->UpdateResource();
+
+	UTexture2D* Tex = nullptr;
+#if WITH_EDITOR
+	if (!PackageName.IsEmpty())
+	{
+		// Persistent: a real UTexture2D with source data, saved to the cache folder.
+		UPackage* Package = CreatePackage(*PackageName);
+		Package->FullyLoad();
+		Tex = NewObject<UTexture2D>(Package, FName(*FString::Printf(TEXT("T_%d"), TexId)),
+			RF_Public | RF_Standalone);
+		Tex->Source.Init(W, H, 1, 1, TSF_BGRA8, Bgra.GetData());
+		Tex->SRGB = bSRGB;
+		Tex->CompressionSettings = TextureCompressionSettings::TC_Default;
+		Tex->MipGenSettings = TextureMipGenSettings::TMGS_FromTextureGroup;
+		Tex->UpdateResource();
+		FAssetRegistryModule::AssetCreated(Tex);
+		Tex->MarkPackageDirty();
+		const FString FileName =
+			FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+		SaveArgs.SaveFlags = SAVE_NoError;
+		UPackage::SavePackage(Package, Tex, *FileName, SaveArgs);
+	}
+	else
+#endif
+	{
+		// Transient (packaged, or no content hash): upload straight into the mip.
+		Tex = UTexture2D::CreateTransient(W, H, PF_B8G8R8A8);
+		if (!Tex)
+		{
+			return nullptr;
+		}
+		Tex->SRGB = bSRGB;
+		FTexturePlatformData* PD = Tex->GetPlatformData();
+		uint8* Dst = static_cast<uint8*>(PD->Mips[0].BulkData.Lock(LOCK_READ_WRITE));
+		FMemory::Memcpy(Dst, Bgra.GetData(), Pixels * 4);
+		PD->Mips[0].BulkData.Unlock();
+		Tex->UpdateResource();
+	}
 
 	TextureCache.Add(TexId, Tex);
 	return Tex;

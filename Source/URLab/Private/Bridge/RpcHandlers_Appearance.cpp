@@ -12,9 +12,27 @@
 #include "MuJoCo/Spec/MjAssetResolve.h"
 
 #include "Dom/JsonObject.h"
+#include "Async/Async.h"
+#include "HAL/PlatformProcess.h"
 
 namespace
 {
+/** Run a function on the game thread and block until it finishes. The appearance store walks the
+ *  world with TActorIterator, which asserts game-thread; these RPC handlers run on the step-server
+ *  thread. Runs inline when already on the game thread. */
+void RunOnGameThreadBlocking(TFunctionRef<void()> Fn)
+{
+	if (IsInGameThread())
+	{
+		Fn();
+		return;
+	}
+	FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
+	AsyncTask(ENamedThreads::GameThread, [&Fn, Done]() { Fn(); Done->Trigger(); });
+	Done->Wait();
+	FPlatformProcess::ReturnSynchEventToPool(Done);
+}
+
 /** Read a scalar field into an override slot when the request carries it. */
 void ReadScalar(const TSharedPtr<FJsonObject>& Req, const TCHAR* Field, TOptional<float>& Out)
 {
@@ -88,8 +106,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleResolveGeom(const TSharedPtr<
 	FString Entity;
 	Req->TryGetStringField(TEXT("entity"), Entity);
 
-	const UMjAppearanceStore::FResolution Res = Mgr->GetAppearanceStore()->ResolveGeom(
-		FName(*Geom), Entity.IsEmpty() ? NAME_None : FName(*Entity));
+	UMjAppearanceStore::FResolution Res;
+	RunOnGameThreadBlocking([&]()
+	{
+		Res = Mgr->GetAppearanceStore()->ResolveGeom(
+			FName(*Geom), Entity.IsEmpty() ? NAME_None : FName(*Entity));
+	});
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("resolve_geom_ok"));
@@ -119,27 +141,29 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetGeomAppearance(const TShar
 	const FName GeomName(*Geom);
 	const FName EntityName = Entity.IsEmpty() ? NAME_None : FName(*Entity);
 
-	UMjAppearanceStore* Store = Mgr->GetAppearanceStore();
-
 	bool bClear = false;
 	Req->TryGetBoolField(TEXT("clear"), bClear);
 
 	int32 Applied = 0;
 	bool bFound = false;
-	if (bClear)
+	RunOnGameThreadBlocking([&]()
 	{
-		Applied = Store->ClearOverride(GeomName);
-		// -1 marks "no override was held"; the geom itself may still exist, so a
-		// clear of an unoverridden geom is not an error -- report zero restored.
-		bFound = Applied >= 0;
-		Applied = FMath::Max(Applied, 0);
-	}
-	else
-	{
-		const FMjGeomAppearance Appearance = ParseAppearance(Req);
-		Applied = Store->SetOverride(GeomName, Appearance, EntityName);
-		bFound = Applied > 0;
-	}
+		UMjAppearanceStore* Store = Mgr->GetAppearanceStore();
+		if (bClear)
+		{
+			Applied = Store->ClearOverride(GeomName);
+			// -1 marks "no override was held"; the geom itself may still exist, so a
+			// clear of an unoverridden geom is not an error -- report zero restored.
+			bFound = Applied >= 0;
+			Applied = FMath::Max(Applied, 0);
+		}
+		else
+		{
+			const FMjGeomAppearance Appearance = ParseAppearance(Req);
+			Applied = Store->SetOverride(GeomName, Appearance, EntityName);
+			bFound = Applied > 0;
+		}
+	});
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("set_geom_appearance_ok"));

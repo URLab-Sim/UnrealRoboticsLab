@@ -41,9 +41,11 @@ for; the wire and the Python API are shaped by what the core produces, never the
 ```
                          ONE UE INSTANCE
 
-   SimSource = Owned | Mirror
-   Drive     = FreeRun | Stepped | StatePushed        (Owned only)
-   Overlays  = [Cameras streamed]  [Interactive input]  (independent, optional)
+   SimSource    = Owned | Mirror
+   Drive        = FreeRun | Stepped | StatePushed      (Owned only)
+   Capabilities = any combination, OPEN set:
+                    stream-cameras (model cams and/or own view),
+                    accept-input (xfrc / wrench / drag / requests), ...
 
    Owned:                                Mirror:
    ┌──────────────┐   ┌────────────┐     ┌────────────┐
@@ -57,15 +59,17 @@ for; the wire and the Python API are shaped by what the core produces, never the
      Rpc / Publish                         Subscribe (an owner's
      (obs, ctrl, step, perturb)             Publish topic)
 
-   Overlay: Cameras streamed  -> "render server"
-   Overlay: Interactive input -> "viewer" (xfrc / wrench / drag / requests)
+   "render server" / "viewer" = shorthand for common capability
+   combinations, NOT types in the code.
 ```
 
-A UE instance is described by two axes plus independent optional overlays. That replaces
-`EStepMode{Live,Direct,Puppet,Auto}` + `EMjbRunMode{Puppet,Direct}` +
+A UE instance is described by two axes plus a freely-composable, open set of capabilities. That
+replaces `EStepMode{Live,Direct,Puppet,Auto}` + `EMjbRunMode{Puppet,Direct}` +
 `control_mode{raw,ue_controller}` + `EControlSource{ZMQ,UI}` and the three-meanings-of-"Puppet"
-/ two-meanings-of-"Direct" tangle documented in the WIP doc. "Render server" and "viewer" stop
-being modes and become overlays any instance can carry.
+/ two-meanings-of-"Direct" tangle documented in the WIP doc. Crucially, we do NOT replace those
+enums with a new set of named bundles — "render server" and "viewer" are just labels for common
+capability combinations, so new features are added AS capabilities, never as new modes (see the
+design guard in section 3).
 
 ---
 
@@ -107,18 +111,27 @@ Both have an external integrator, but they pay different costs and expose differ
 So the earlier draft was wrong to blur these: the render server is `Mirror` (cheap), and
 `StatePushed` is a separate, heavier Owned mode you opt into for local data.
 
-### Optional overlays (independent of the two axes)
-- `Cameras streamed` — the instance spawns the model's cameras and streams their frames. This,
-  and only this, makes it a "render server". Applies to Owned or Mirror.
-- `Interactive input` — the instance accepts perturbations: external forces (xfrc), wrenches,
-  drags (like MuJoCo `simulate`), and other basic requests. This makes it a "viewer" (e.g. a VR
-  UE client that looks into an owner and can poke the sim). A `Mirror` viewer forwards the
-  perturbation to the owner, who applies it to its sim; an `Owned` viewer applies it locally.
-  It rides the fast-path RPC (`fastpath_perturb` already exists as the seed).
+### Capabilities: orthogonal, composable, an OPEN set (the anti-lock-in guard)
+On top of the two axes, an instance carries any COMBINATION of capabilities. These are not
+types, not modes, and not mutually exclusive; they compose freely, and the set is meant to GROW
+without ever adding a new mode:
+- `stream-cameras` — publish frames from any cameras the instance has: the model's cameras
+  AND/OR the instance's OWN view camera (e.g. a human or VR client streaming what it sees).
+  Works on Owned or Mirror.
+- `accept-input` — perturbations (xfrc, wrench, drag like MuJoCo `simulate`) and an extensible
+  request set. Applied locally if Owned; forwarded to the owner if Mirror. Rides the fast-path
+  RPC (`fastpath_perturb` is the seed).
+- ...new capabilities slot in HERE, as more of the same, never as a new mode.
 
-"Render server" (cameras out) and "viewer" (interactive input in) are INDEPENDENT overlays, not
-one bundle. A VR viewer is `Mirror` + interactive input, no cameras. A headless camera-farm node
-is `Mirror` + cameras, no input. Both go through the fast path.
+The GUARD (this is the point of the whole redesign, do not violate it): "render server" and
+"viewer" are SHORTHAND for common combinations, not categories in the code. A headless camera
+node is `Mirror` + `stream-cameras`. A VR client is `Mirror` + `accept-input`. A VR client that
+ALSO streams its own view is `Mirror` + `accept-input` + `stream-cameras` — nothing special,
+just another combination. Because these are capabilities and not bundles, wanting "a viewer that
+also streams a camera" needs ZERO new code paths; it is already expressible. If a future feature
+tempts us to add a named mode or a "type" enum, that is the smell we are removing — add it as a
+capability instead. Keep the axes tiny (SimSource, Drive) and let the capability set carry the
+growth.
 
 ### The owner role is uniform and symmetric
 Any `Owned` instance (any Drive) can act as an OWNER: advertise in the registry, serve its
@@ -133,8 +146,10 @@ Owner-ness is not a special mode; it is what an Owned instance exposes.
 - Client integrates externally, UE reconstructs + serves local data: `Owned + StatePushed`.
 - Lightweight renderer mirrors an owner, no physics: `Mirror`.
 - Renderer runs its own sim and is RPC-drivable: `Owned + Stepped` (the duplication is gone).
-- Camera farm node: `Mirror` + cameras overlay.
-- VR / interactive viewer: `Mirror` + interactive-input overlay.
+- Camera farm node: `Mirror` + `stream-cameras`.
+- VR viewer: `Mirror` + `accept-input`.
+- VR viewer that also streams its own view: `Mirror` + `accept-input` + `stream-cameras` — no
+  new code path, just another combination.
 - Any instance slaves to any owner, UE or Python, cross-machine.
 
 `Auto` (start FreeRun, promote on connect) stays a launch policy, not a mode value.
@@ -305,11 +320,12 @@ c. A client integrates externally, pushes state, UE runs `mj_forward` and serves
    data (contacts, derived, sensors) — the deliberately heavier path, NOT the pure render path.
 d. A lightweight renderer mirrors an owner with no physics and no `mj_forward` (the cheap path).
 e. A renderer runs its own sim and is RPC-drivable (= b).
-f. Any instance also streams cameras (render server) — an overlay.
+f. Any instance streams cameras — its model's cameras and/or its own view — as a capability.
 g. Any instance slaves to any owner, UE or Python, cross-machine; and any Owned instance can BE
    an owner for others.
 h. A viewer (e.g. VR) mirrors an owner and sends interactive input back (xfrc / wrench / drag /
-   requests), no cameras — an overlay, through the fast path.
+   requests) as a capability; it can ALSO stream its own view at the same time — capabilities
+   compose, no new mode.
 
 ---
 

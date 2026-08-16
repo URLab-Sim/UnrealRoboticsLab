@@ -211,8 +211,9 @@ Key benefit: when an owner ships `xml` or `mjz` instead of a prebuilt MJB, the R
 with its OWN `libmujoco`, so there is NO version lock and NO skew. That removes the ROOT CAUSE of
 the `raw_actuators`/`raw_joints` re-description (which exists today only because a version-skewed
 MJB cannot be loaded downstream). The MJB path stays as the fast option when versions match.
-`mjz` support is the one net-new piece to verify (whether the codec is compiled into the linked
-lib). This is the SAME normalize-to-`mjModel` front end as the `load_model()` RPC discussed in
+`mjz` IS supported by the pinned lib (audit was wrong): decode via `mju_decodeResource(resource,
+content_type)` -> `mjSpec` (`mujoco.h:1622`) or `mj_parse(file, content_type)` (`:144`) with the
+decoder registry (`mjp_registerDecoder`/`mjp_findDecoder`, `:1566-1576`), then `mj_compile`. This is the SAME normalize-to-`mjModel` front end as the `load_model()` RPC discussed in
 the WIP doc; they must be ONE mechanism, not two. UE runtime already links
 `mj_parseXMLString` / `mj_compile` / `mjVFS`, so xml→mjModel is wiring existing calls.
 
@@ -759,8 +760,9 @@ Each is a NEW workstream, required before phase 4 can delete the shadow without 
   (7 sites), `RpcHandlers_Step.cpp` (13). The mode collapse is NOT engine-confined.
 - Race 2 (BeginDestroy) is LATENT/guarded on the normal path (play nulls in EndPlay; only
   abnormal destroy-without-EndPlay hits it), not a live UAF — still worth fixing, don't overstate.
-- `mjz`: the pinned headers declare only `mj_encode`, NO `mj_decode`/archive-load. Treat as
-  UNAVAILABLE and drop from the format list unless a decoder is confirmed registered in the lib.
+- `mjz`: CORRECTION (auditor was wrong, user + header confirm) — it IS available via
+  `mju_decodeResource`/`mj_parse` + the decoder registry (`mujoco.h:1622,144,1566-1576`). KEEP it;
+  the auditor only searched for a literal `mj_decode`.
 
 ### 16.5 Corrected dependency graph (concurrent vs serial)
 Phases the doc called independent are not:
@@ -806,8 +808,8 @@ FILE there), and by FEATURE elsewhere.
 ### 16.8 Newly-blocking open decisions (add to section 14)
 Drain cadence (16.2.1); full state-injection channel (16.2.2); component-level resolver (16.2.3);
 the actual play render path (16.2.4); ViewerSubscribe's fate (16.2.5); EControlSource behavior
-change accepted? (16.2.6); scope the missing-30% net-new work (16.3) into explicit phases; drop
-`mjz` unless a decoder is confirmed; and the addressable-unit name (still open, blocks Step 0).
+change accepted? (16.2.6); scope the missing-30% net-new work (16.3) into explicit phases; `mjz` KEPT (decoder confirmed in
+the lib); and the addressable-unit name (still open, blocks Step 0).
 
 ### Additions to "functionality that MUST survive" (section 11)
 i. ROS control ingress (cmd_ctrl/cmd_vel/joint_command/claim_control/user-channel) to wire models.

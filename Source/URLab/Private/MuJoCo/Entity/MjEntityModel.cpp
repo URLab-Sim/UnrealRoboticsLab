@@ -75,7 +75,11 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 		for (int B = 1; B < Model->nbody; ++B) { E.BodyIds.Add(B); } // skip world body 0
 		for (int J = 0; J < Model->njnt; ++J) { E.JointIds.Add(J); }
 		for (int A = 0; A < Model->nu; ++A) { E.ActuatorIds.Add(A); }
-		for (int S = 0; S < Model->nsensor; ++S) { E.SensorIds.Add(S); }
+		for (int S = 0; S < Model->nsensor; ++S)
+		{
+			E.SensorIds.Add(S);
+			E.SensorSemantics.Add(MjSensorSemantics::ForSensor(Model, S));
+		}
 		ResolveRoot(Model, E);
 		return Entities;
 	}
@@ -117,7 +121,11 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 	}
 	for (int S = 0; S < Model->nsensor; ++S)
 	{
-		if (FMjEntity* E = EntityForName(MjNameOf(Model, mjOBJ_SENSOR, S))) { E->SensorIds.Add(S); }
+		if (FMjEntity* E = EntityForName(MjNameOf(Model, mjOBJ_SENSOR, S)))
+		{
+			E->SensorIds.Add(S);
+			E->SensorSemantics.Add(MjSensorSemantics::ForSensor(Model, S));
+		}
 	}
 
 	for (FMjEntity& E : Entities)

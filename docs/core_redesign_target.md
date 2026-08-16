@@ -1234,10 +1234,10 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | 0a registry race | main | DONE (build ok) | proto/entity-redesign | fenced rebuild + locked GetArticulation + GetAllArticulations by-value snapshot |
 | 0b/0c/0d fixes | — | skipped | — | low-value hardening of doomed articulation/shadow code; superseded by the rewrite |
 | 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition, GetCompiledPrefix) + built in InstallCompiledSpec; consumers migrate onto it (no dual-run test vs old registry) |
-| 6 wire-model source | — | not started | — | concurrent (unblocks 4) |
+| 6 wire-model source | subagent | done | proto/entity-redesign | `MjModelSource::FromBytes` {mjb,xml,mjz}; mjz via mj_parse+decoder registry; not yet wired to load path |
 | #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |
-| 4N-a ingress+twist | subagent | twist done | proto/entity-redesign | model-only `MjTwistResolve::ForEntity`; ingress iface impl + ROS wiring remain |
-| 4N-b sensor-semantic+FK | subagent | table done | proto/entity-redesign | `MjSensorSemantics::ForSensor` (mirrors SensorKinds); per-body FK remains |
+| 4N-a ingress+twist | subagent | impl done | proto/entity-redesign | `MjTwistResolve` + `FMjEntityControlIngress` (lease-gated buffer writes); ROS wiring remains |
+| 4N-b sensor-semantic+FK | subagent | done | proto/entity-redesign | `MjSensorSemantics::ForSensor` + `MjBodyKinematics::ForEntity`; semantics stored on FMjEntity at build |
 | 4N-c camera registry | subagent | done | proto/entity-redesign | `FMjCameraRegistry::Build/Find`, canonical names via shared FMjCanonicalName |
 | 1 partition | — | not started | — | spine start |
 | 2 observation | — | not started | — | spine |
@@ -1247,7 +1247,7 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | 5-demote + overlay migrate | — | not started | — | spine; needs 1+2+3+4N-b |
 | overlay-manager (full viz) | — | not started | — | after 5-demote |
 | 9 IMjEntity + handles | — | not started | — | rides 1 + 5 |
-| 10 DR override channel | — | not started | — | rides 5 material convergence |
+| 10 DR override channel | subagent | apply done | proto/entity-redesign | `MjAppearance::Apply` drives the MID via shared master params; override registry + RPC remain |
 | 8 vocab + Python | — | not started | — | LAST; breaking-API work |
 
 (Prototype branch: to be cut off `feat/mjb-fast-path` once the doc is fully completed — it is now.)

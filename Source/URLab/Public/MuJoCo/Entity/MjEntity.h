@@ -4,6 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "State/MjStateTypes.h" // EMjSensorSemantic
 
 struct mjModel_;
 typedef mjModel_ mjModel;
@@ -30,6 +31,9 @@ struct URLAB_API FMjEntity
 	TArray<int32> JointIds;
 	TArray<int32> ActuatorIds;
 	TArray<int32> SensorIds;
+
+	/** Parallel to SensorIds: each sensor's ROS semantic, computed at build. */
+	TArray<EMjSensorSemantic> SensorSemantics;
 
 	// Metadata computed once at install and stored alongside the id slices (sensor semantics
 	// parallel to SensorIds, camera canonical names, ...) is filled here by the builder.

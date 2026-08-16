@@ -98,6 +98,13 @@ source IS SimSource; there is no separate render-source axis.
   derived, xpos), renders, and returns obs. UE holds the model but does not integrate. (was
   `EStepMode::Puppet`.)
 
+NOTE — the cheap sibling of `StatePushed` is NOT a Drive. If the client pushes ALREADY-RESOLVED
+transforms and UE just draws them (no `mj_forward`, no local data), that is `SimSource = Mirror`,
+because a Mirror has no local `mjModel` to drive. So the four compute profiles are: `FreeRun`
+(mj_step, continuous), `Stepped` (mj_step, on request), `StatePushed` (mj_forward on pushed
+state), and `Mirror` (no compute at all). The first three are Owned Drives; the fourth is the
+other SimSource. See "Mirror vs StatePushed" below.
+
 ### Mirror vs StatePushed — keep both; they are different trades
 Both have an external integrator, but they pay different costs and expose different data:
 - `Mirror` receives RESOLVED transforms and pays nothing beyond drawing. No contacts, no

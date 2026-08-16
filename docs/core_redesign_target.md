@@ -989,6 +989,11 @@ bind; override survives/clears on reset per policy.
 
 ### Phase 8 — vocabulary rename + Python (LAST, and it is REAL work not a rename — audit)
 Rename across code + docs: Driver / Renderer / Registry / Integrator / ControlLease / Entity.
+DO-NOT-FORGET: rename the whole legacy `Mjb*` fast-path family off the "MuJoCo Binary" prefix (it is
+NOT mjb-specific -- the renderer now also takes xml/mjz). One coherent family rename: `AMjbScene` and
+the extracted `MjbTransportBus` / `MjbAssetBaker` / `MjbDirectMode` -> a Renderer vocabulary;
+`EMjbRunMode` -> the PoseSource/RenderSource axis. Kept as `Mjb*` through the build so extraction/wiring
+stay no-behavior-change; renamed here in one pass (ripples through launchers, RPC handlers, level tags).
 Python is NOT a thin last-minute wrapper: `_walk_model` (`articulation.py:882-995`) is the entire
 source of joints/actuators; `set_control_source` is a public method (`runtime.py:191-208`) that goes
 away with the lease; `enums.py` values ARE the wire strings and `coerce()` HARD-RAISES on unknowns

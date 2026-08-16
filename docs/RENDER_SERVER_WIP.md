@@ -590,3 +590,221 @@ Initial thoughts:
   (or provably-equivalent). A golden compiled-model diff test would be the honest gate
   before trusting it (compare against `scene_compiled.xml`, see
   [[project_scene_compiled_xml_not_loadable]]).
+
+## Full-infrastructure leanness audit (2026-08-15, four-agent synthesis)
+
+The user broadened the mandate from "clean the bridge addressing" to "audit the whole
+control / observation / object-graph / modes / transport stack for leanness and redesign
+main infrastructure where it earns it; it exists is not a reason to keep it." Four read-only
+agents each owned one subsystem; this section reconciles them and is authoritative over the
+proposal + investigation sections above where they conflict. Nothing here is started in code.
+
+### The unifying principle
+There is ONE runtime truth: the compiled `mjModel`/`mjData`, indexed by id. Every other
+structure is exactly one of three supporting roles:
+- AUTHORING: the spec tree, editor-only, its job ends at compile.
+- RENDERING: an actor with meshes/cameras/draw.
+- ADDRESSING: a flat id-slice partition naming which slots a caller may touch.
+Control, observation, and addressing all reduce to "index `mjData` by id." Anything that is
+neither authoring nor rendering nor an id-slice is either a genuine mailbox side-channel
+(user channels) or spaghetti. This single test drives every verdict below.
+
+### Model representations: six today, target four
+Today (object-graph audit): (1) authoring tree `UMjModel:UMjNodeComponent:USceneComponent`
+(`MjModel.gen.h:27`, `AMjArticulation::Spec` `MjArticulation.h:88`); (2) retained runtime
+`mjSpec` `FMjBuiltSpec::Spec` (`MjSpecBuild.h:61`, engine `InstalledScene`
+`MjPhysicsEngine.h:555`); (3) compiled `mjModel`/`mjData`; (4) per-articulation element index
++ control slots (`MjArticulation.h:466-488`); (5) props table `FMjEntityRecord`, bodies-only,
+built by walking `UMjBody` (`AMjManager.h:82`); (6) raw-path shadow
+(`MjbShadowArticulation.cpp:52-108`).
+
+Target FOUR: authoring spec / compiled `mjModel`+`mjData` / addressing partition POD /
+render actor. #4 folds into the control buffer + partition; #5 folds into the partition; #6
+DELETES. #2 (runtime `mjSpec`) is a candidate FIFTH copy to free after `mj_compile` pending a
+use-audit (kept today only because a composed scene spec references participant specs,
+`MjSceneSpec.h:110-116`; if nothing edits the spec in-place after install, free it).
+
+### The addressing unit (naming resolved)
+A flat POD partition built FROM `mjModel` by name-prefix, carrying id slices only
+(`{Name, RootBodyId, bFreeBase, JointIds, ActuatorIds, SensorIds, BodyIds}`). It replaces
+`FMjEntityRecord` + `AMjArticulation`-as-addressing-unit + the shadow, identically for compiled
+and raw paths. NAMING: do not call it `FMjEntity` while `FMjEntityRecord` + the `entities` wire
+block + Python `URLabEntity` already mean "prop". Preferred: name the POD `FMjAddressable` or
+`FMjGroup`, retire `FMjEntityRecord` into it, keep the wire word `entities` for the unified
+list. If `FMjEntity` is insisted on, rename the old struct to `FMjPropRecord` in the same
+change. This is a decision to make before code.
+
+Crucially, the POD does NOT subsume everything. Three classes of non-id-sliceable data attach
+via ONE explicit enrichment side-channel keyed by entity name (NOT a per-element producer
+graph, NOT on the core critical path): (a) compiled-path camera + controller handshake metadata
+(`actuator_types`, controller kind/params/schema, `camera_topics` at `RpcDispatcher.cpp:838-1015`
+-- none of it is on `mjModel`, so the compiled handshake still walks the render actor for it);
+(b) user channels (a real, tested mailbox feature, `MjUserChannelComponent.cpp:383-389`);
+(c) the twist echo (ROS/UI only, below). Same registration `GetStateProducers` already does
+(`AMjManager.cpp:563-567`), minus the per-articulation fan-through, typically 0..few entries.
+
+### Control (audit 1): one engine-owned buffer, one pre-step drain
+Today the same setpoint reaches `d->ctrl` through FOUR-PLUS uncoordinated writers: raw direct
+write (`RpcHandlers_Step.cpp:465-470`), staged-then-`ApplyControls` (`MjArticulation.cpp:504-510`),
+keyframe ctrl-hold (`:485`), Live-mode engine `ApplyControls` (`MjPhysicsEngine.cpp:1238`), Puppet
+push (`MjPhysicsEngine.cpp:580`), `ResetToKeyframe` (`:763`), plus the two controllers. Target:
+one `FMjControlBuffer{Setpoint[nu], Touched, HoldLatch}` owned by the engine, drained pre-step
+under `CallbackMutex` (modeled on the existing `DrainCommands` that already serializes
+mocap/wrench). Per touched id: `Drive==direct` writes the setpoint; `Drive==pd` applies the PD
+law. This DELETES: the `NetworkControl`/`InternalControl` dual slots, `ApplyControls` (both),
+`SkipController`, `OwnedActuatorIds`, and both `ApplyStepCtrl` branches.
+
+Verdicts: `UMjPassthroughController` DELETE (its own header says it is identical to the default
+path; `Drive=direct` IS passthrough). `UMjPDController` KEEP THE LAW, data-ify the packaging
+(gains struct + one free function called in the drain, not a `UObject` + `FindComponentByClass`;
+keep `MjPDControllerTests` pointed at the free function). `EControlSource` + per-art `ControlSource`
++ the `set_control_source` RPC DELETE -- but note this is a BEHAVIOR change, not a rename:
+`ControlSource` is today an active 2-slot input selector (`MjArticulation.cpp:420`) fed into
+controllers, so collapsing to the lease makes control last-write-wins by lease holder. The lease
+(`FMjControlOwnership`) is solid and tested; KEEP, rekey to the entity name.
+
+qpos-hold (redesign HIGH hole 1, confirmed real): a ctrl-only buffer CANNOT represent
+`bHoldViaQpos` (`MjArticulation.cpp:454-478` writes `qpos` + zeroes `qvel`, not ctrl). Add a
+SIBLING state-injection buffer `{Qpos, QposHold}` drained in the same pass, symmetric with
+mocap. Fixes a latent bug for free: today's qpos-hold loops `njnt` scene-wide (`:458`), so in a
+multi-participant scene one entity's hold clobbers others' qpos; the id slice fixes it.
+
+Behavior fix to flag, not hide: Live mode hard-codes `bSkipController=false`
+(`MjPhysicsEngine.cpp:1238`) and never reads `control_mode`, so raw vs ue_controller silently
+means nothing in Live today (raw only works by accident). Unifying Drive fixes this.
+
+### Observation (audit 2): walk entities, index mjData, derive-on-client
+The producer graph exists only to serve the msgpack and ROS paths; the fast-path viewer/geom bus
+already ships raw `{qpos, qvel}` and per-geom poses off `mjData` with ZERO producers
+(`AMjManager.cpp:667-713`) and already renders robots. That is the existence proof. Target: the
+collector walks the addressing partition and copies id slices straight from `mjData` (exactly
+what the existing `entities` block already does, `MjStateCollector.cpp:556-587`). DELETE the
+`FCachedArticulation` producer graph, `Producers` weak-ptr array, `DescribeElement` type-dispatch,
+and the game-thread producer-cache rebuild.
+
+BIGGEST lean win the redesign missed: the Python client already mirrors qpos/qvel and runs
+`mj_forward` locally (`client.py:2246-2276`), regenerating xpos/xquat/sensordata. So the server
+can STOP SENDING body poses and kinematic sensors entirely -- ship qpos/qvel, let the client
+derive the rest. Honest exception: force/actuator/touch sensors depend on `d->ctrl`, and the
+client deliberately does NOT mirror ctrl (to avoid a live PD feedback loop,
+`articulation.py:1278-1284`), so those specific sensors (or a thin ctrl echo) must still ship.
+Net minimal step reply: `{time, step, clock, arts:{qpos, qvel, [force-sensors], [ctrl echo]},
+scene:{xpos, xquat, [qpos, qvel]}}` + an opt-in `user` block. Bodies, kinematic sensors, twist,
+and worldgeoms leave the default wire; the Python `_apply_step_reply` already tolerates their
+absence (guarded `if ... in block`).
+
+Handshake describes the model up to FIVE times (`RpcDispatcher.cpp:773, 823-877, 885-951,
+1027-1054, 795-817`). `raw_actuators`/`raw_joints` exists ONLY because of MJB version skew (the
+client cannot load the fork MJB, `:879-884`); fix the skew (see [[project_mujoco_version_skew]])
+and the whole block dies. WorldGeoms is recomputed every physics step (`MjStateCollector.cpp:529-551`)
+but never encoded to msgpack -- it is ROS-only dead weight on the per-step path.
+
+Producer verdicts: joint qpos/qvel KEEP-AS-CORE (data-ify the container to a flat slice). Sensors
++ actuator ctrl/act/force DATA-IFY (pure id reads; `Semantic`/`TargetJoint` are ROS-only, move
+them). Bodies DELETE from wire (client derives). User channels KEEP-AS-SIDE-CHANNEL (real mailbox
+feature). Twist: it writes ZERO ctrl and has ZERO msgpack consumers -- it is a control ECHO, not
+observation; DELETE from the core wire, keep only for the ROS cmd_vel echo + UI slider.
+WorldGeoms/RefPos/Semantic/TargetJoint move behind the ROS `IMjStateConsumer`, off the per-step
+`Collect()`.
+
+### Object graph (audit 3): thin the actor, delete the shadow
+After control, controllers, and the lease move into the engine, EVERY remaining reason to hand
+the bridge an `AMjArticulation` is rendering (debug draw `MjDebugVisualizer.cpp`; cameras
+`RpcHandlers_Camera.cpp:210`, `RosCameraInfoProvider.cpp:87`; transform apply
+`AMjManager.cpp:936`) plus the state side-channel (`MjStateCollector.cpp:274`). The raw path then
+has ZERO actor consumers, so the shadow deletes cleanly. Verdicts: `UMjNodeComponent`
+authoring-role KEEP (real editor infra), per-step-producer-role THIN-OUT; `UMjBody` KEEP (render
+leaf: pose write-back, mocap, wrench, sleep); runtime element libraries
+`UMj{Joint,Sensor,Actuator,Tendon}Runtime` KEEP as-is (already lean id-indexed stateless statics
+-- and the control-runtime READ accessors are fine, only the WRITE statics collapse);
+`UMjSceneSpec` + `UMj*` spec objects KEEP (authoring, do not persist a runtime mjSpec beside
+them); `AMjArticulation` THIN-OUT hard (loses ~130 lines of control API + `ControlSource` +
+`bRawShadow` + its collector-key role; keeps Spec, element index, cameras, keyframe/possession,
+draw, `ApplyRenderState`; reasonably renamed `AMjModelActor`/`AMjRobot`).
+
+### Modes + transports + lifecycle (audit 4)
+Enum -> axis mapping (all verified): `EStepMode::{Live,Direct,Puppet}` -> Clock
+`{engine,stepped,external}`; `Auto` is a resolution policy, NOT a value (collapsed to Live at
+`MjPhysicsEngine.cpp:1363`; worker never branches on it) -- CONFIRMED. `EMjbRunMode` is PURELY a
+RenderSource axis (`Puppet`->mirror, `Direct`->local spanning engine OR stepped clock,
+`MjbScene.h:31-33`) -- refutes "same as EStepMode.Direct". `control_mode` -> Drive.
+`EControlSource` -> lease (with the behavior-change caveat above). The 3-axis model gains a
+genuine capability (a mirror that also steps, inexpressible today) and newly allows two harmless
+nonsense combos (external-clock+local-render; Drive=controller on a 0-actuator prop) -- document,
+do not guard.
+
+Modes spaghetti: `EStepMode` is branched in ~19 sites / 4 switches and Clock is encoded THREE
+redundant ways -- `ResolvedStepMode` atomic (`MjPhysicsEngine.cpp:1133`), `CustomStepHandler`
+presence (Direct installs one `:1073`, Puppet installs none), and the strategy object. Renaming
+`EStepMode->Clock` is NOT enough; the engine must branch on Clock alone and kill the
+Direct-installs-handler / Puppet-installs-nothing asymmetry. That asymmetry is an active hazard:
+`FPuppetStepMode` installs no handler yet `SetStepMode(Puppet)` unpauses the worker
+(`MjPhysicsEngine.cpp:1368`), so a handler-less worker can free-run `mj_step` on idle wakes
+(`:1255-1265`) while the client believes it owns the integrator -- semantic double-integration,
+worth a live check. Step strategies `FLive/FDirect/FPuppet` themselves KEEP (clean, stateless);
+just de-tangle the `bPublishersPaused` render toggle baked into `OnEnter`.
+
+Transports: the RPC leg is ONE clean interface (`UURLabRpcTransport`, `RpcTransport.h:33`, all
+backends funnel to one dispatcher) -- this is the model to copy, do NOT churn it. The Publish leg
+is also unified. But RECEIVE is duplicated: the main `SubscribeTransport` (control-in) and the
+fast-path `ClientSubscribe`/`ViewerSubscribe` transform bus (`MjbScene::BusTransport`) are
+parallel hierarchies -- the fast-path bus duplicates the main transport role. Target: one
+`Subscribe` base mirroring the RPC base, and the fast-path transform stream becomes a normal
+Publish topic a Renderer subscribes to (3 role-interfaces Rpc/Publish/Subscribe x N backends, no
+bespoke bus). Caveat: `ViewerSubscribe` internals unread; verify it is not a genuinely distinct
+role before merging.
+
+Lifecycle: the MAIN install/teardown paths are transactional and NOT fragile (build-before-retire,
+worker-joined-before-free, shadow retired before model dies) -- do not churn them. But two
+INDEPENDENT, memory-unsafe latent races should be banked NOW as standalone fixes, before any
+redesign: (RACE 1, HIGH) the registry rebuild does `Empty()`+rebuild with NO `CallbackMutex`
+(`InstallCompiledSpec:832-833`, `InstallRawModel:961-962`) while the RPC thread reads unlocked
+(`GetArticulation:1433`, `GetAllArticulations:1469`) -> TMap-rehash / TArray-realloc race; (RACE 2)
+`MjbScene::BeginDestroy:262-271` frees `Model`/`Data` without `UninstallRawModel` -> UAF vs the
+worker if `Teardown` did not run. Both survive/precede the redesign.
+
+### MjbScene god-object
+`MjbScene.cpp` is ~2309 lines that reimplement the compiled component renderer
+(`BuildBodies/BuildGeoms/BuildMesh/GetOrBuildTexture/GetOrBuildStaticMesh/BuildCameras`); only
+`EnsureManager` is shared. The extraction (bus/baker/direct-mode, task #21) still stands, but the
+deeper lean move is to SHARE the renderer between the fast path and the compiled path rather than
+maintain two.
+
+### Canonical vocabulary (adopt across code + docs)
+Driver (the Python authority that steps in puppet/fast-path; retire owner/puppet/client-as-authority);
+Renderer (the UE mirror; retire slave/render-slave/puppet); Registry (discovery layer);
+Integrator (whoever advances `mj_step` = the Clock holder); ControlLease / Writer (arbitration;
+retire EControlSource / "ZMQ vs UI" as an identity); and the addressing unit per the naming
+resolution above.
+
+### Consolidated sequencing
+STANDALONE CORRECTNESS FIXES FIRST (independent of the rewrite, each its own small PR):
+1. Race 1: fence the registry rebuild under `CallbackMutex` (memory-safety, HIGH).
+2. Race 2: `MjbScene::BeginDestroy` must `UninstallRawModel` before freeing.
+3. Live puppet free-run hazard: verify + fix the handler-less unpaused worker.
+4. Move WorldGeoms off the per-step `Collect()` behind the ROS consumer (zero wire change).
+5. Narrowed control unification (the doc's "Design C"): resolve raw-ness / Drive ONCE via a
+   Touched-masked buffer, WITHOUT yet deleting `EControlSource` or touching qpos-hold. Also
+   closes the Live-ignores-control_mode bug.
+
+THEN THE REWRITE:
+6. Addressing partition POD (named per the resolution) + the single enrichment side-channel;
+   dual-run vs the actor registry, assert equality on qpos/qvel/sensordata only.
+7. Observation collapse + derive-on-client (stop sending bodies + kinematic sensors; ROS fields
+   to the side-channel).
+8. Full control buffer: delete dual slots / ApplyControls / SkipController / OwnedActuatorIds /
+   passthrough; data-ify PD; qpos-hold sibling buffer; twist off-core.
+9. Raw path builds the partition from `mjModel`; DELETE the shadow + `raw_*` handshake block
+   (requires the MJB version skew fixed first).
+10. Mode collapse: Clock as the single source of truth (kill the three-way encoding + the
+    handler-presence asymmetry); `EMjbRunMode`->RenderSource; `EControlSource`->lease.
+11. Transport: unify Subscribe; fast-path bus becomes a Publish topic.
+12. Vocabulary rename pass; MjbScene renderer sharing.
+
+### Open decisions for the user (unchanged + refined)
+- NAME of the addressing unit: `FMjAddressable`/`FMjGroup` (retire `FMjEntityRecord`) vs
+  `FMjEntity` (then rename the old struct to `FMjPropRecord`). Decide before code.
+- SCOPE / first PR: the recommendation from all four audits converges -- ship the standalone
+  correctness fixes 1-5 first (they are real bugs, independent, and de-risk the rewrite), and
+  treat 6-12 as the staged redesign after. In particular fixes 1 and 2 are memory-safety and
+  worth doing regardless of whether the redesign ever proceeds.

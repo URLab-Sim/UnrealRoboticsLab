@@ -868,6 +868,12 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		}
 		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);
 		m_entityStructureVersion.Bump();
+
+		// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless
+		// ingress bound to the current model, buffer, lease and partition.
+		m_controlBuffer.Init(m_model->nu);
+		m_controlIngress = MakeUnique<FMjEntityControlIngress>(
+			m_model, m_controlBuffer, m_controlLease, m_entityPartition);
 	}
 
 	// The contributor registries are what the per-frame render pass and the

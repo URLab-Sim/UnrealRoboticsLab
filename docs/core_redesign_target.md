@@ -1246,7 +1246,7 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | 4N-c camera registry | subagent | done | proto/entity-redesign | `FMjCameraRegistry::Build/Find`, canonical names via shared FMjCanonicalName |
 | 1 partition | — | not started | — | spine start |
 | 2 observation | — | not started | — | spine |
-| 3 control (narrow→full) | — | not started | — | spine; HIGH risk |
+| 3 control (entity buffer+drain) | main | store wired | proto/entity-redesign | engine owns FMjControlBuffer/StateInjection/Lease + FMjEntityControlIngress; DRAIN cut-over (delete ApplyControls, PD data-ify) remains — HIGH risk, needs live verify |
 | 4 raw+shadow delete | — | not started | — | spine; needs 6 + 4N |
 | 7 modes+transport | — | not started | — | spine; shares worker loop w/ 3 |
 | 5-demote + overlay migrate | — | not started | — | spine; needs 1+2+3+4N-b |

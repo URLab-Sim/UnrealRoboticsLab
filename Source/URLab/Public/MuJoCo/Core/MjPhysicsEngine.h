@@ -30,6 +30,8 @@
 #include "MuJoCo/Spec/MjSceneAssembly.h"
 #include "MuJoCo/Spec/MjSceneSpec.h"
 #include "MuJoCo/Entity/MjEntity.h"
+#include "MuJoCo/Entity/MjControl.h"
+#include "MuJoCo/Entity/MjEntityControlIngress.h"
 #include <functional>
 #include <atomic>
 #include "MjPhysicsEngine.generated.h"
@@ -245,6 +247,16 @@ public:
 	TArray<FMjEntity> m_entityPartition;
 	FMjEntityStructureVersion m_entityStructureVersion;
 
+	/**
+	 * The single control store: one setpoint buffer + the keyframe state-injection channel + the
+	 * per-entity write lease, plus the shadowless ingress that routes ROS/ZMQ/UI writes into them by
+	 * entity name. Rebuilt on install (the ingress binds the current model + partition).
+	 */
+	FMjControlBuffer m_controlBuffer;
+	FMjStateInjection m_stateInjection;
+	FMjControlLease m_controlLease;
+	TUniquePtr<FMjEntityControlIngress> m_controlIngress;
+
 	/** Error string from the most recent Compile(); empty on success. */
 	FString m_LastCompileError;
 
@@ -416,6 +428,9 @@ public:
 	/** The flat FMjEntity partition built from the compiled model. */
 	const TArray<FMjEntity>& GetEntityPartition() const { return m_entityPartition; }
 	uint64 GetEntityStructureVersion() const { return m_entityStructureVersion.Get(); }
+
+	/** The shadowless control ingress (routes writes into the one control buffer by entity name). */
+	IMjControlIngress* GetControlIngress() const { return m_controlIngress.Get(); }
 
 	/** Register an articulation into the registry the physics worker iterates
 	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the

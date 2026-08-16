@@ -682,16 +682,16 @@ what the existing `entities` block already does, `MjStateCollector.cpp:556-587`)
 `FCachedArticulation` producer graph, `Producers` weak-ptr array, `DescribeElement` type-dispatch,
 and the game-thread producer-cache rebuild.
 
-BIGGEST lean win the redesign missed: the Python client already mirrors qpos/qvel and runs
-`mj_forward` locally (`client.py:2246-2276`), regenerating xpos/xquat/sensordata. So the server
-can STOP SENDING body poses and kinematic sensors entirely -- ship qpos/qvel, let the client
-derive the rest. Honest exception: force/actuator/touch sensors depend on `d->ctrl`, and the
-client deliberately does NOT mirror ctrl (to avoid a live PD feedback loop,
-`articulation.py:1278-1284`), so those specific sensors (or a thin ctrl echo) must still ship.
-Net minimal step reply: `{time, step, clock, arts:{qpos, qvel, [force-sensors], [ctrl echo]},
-scene:{xpos, xquat, [qpos, qvel]}}` + an opt-in `user` block. Bodies, kinematic sensors, twist,
-and worldgeoms leave the default wire; the Python `_apply_step_reply` already tolerates their
-absence (guarded `if ... in block`).
+CORRECTION (user, 2026-08-15): an earlier draft here claimed the server could STOP SENDING obs
+because the Python client runs `mj_forward` locally. That is WRONG and inverts the architecture.
+UE is the observation AUTHORITY in every mode that produces obs (Live, Direct). The Python
+client keeping a local model + `mj_forward` (`client.py:2246-2276`) is at most a per-wrapper
+convenience, NOT the contract, and a non-Python consumer would not have it. The design must NOT
+be driven by client-side derivation, and must NOT be designed Python-API-first (the Python
+client is a thin wrapper). The lean target for observation is a leaner UE-side producer, not a
+thinner wire justified by the client re-deriving. The handshake-describes-model-5x and
+WorldGeoms-off-the-per-step-path findings still stand on their own (they are UE-side redundancy);
+the "derive on the client" reasoning is retracted.
 
 Handshake describes the model up to FIVE times (`RpcDispatcher.cpp:773, 823-877, 885-951,
 1027-1054, 795-817`). `raw_actuators`/`raw_joints` exists ONLY because of MJB version skew (the
@@ -800,6 +800,77 @@ THEN THE REWRITE:
     handler-presence asymmetry); `EMjbRunMode`->RenderSource; `EControlSource`->lease.
 11. Transport: unify Subscribe; fast-path bus becomes a Publish topic.
 12. Vocabulary rename pass; MjbScene renderer sharing.
+
+### Corrected mode + render-server model (code-grounded, 2026-08-15)
+The user corrected the framing: the audits over-abstracted the modes into "3 axes" and
+inverted the observation architecture. This subsection is the ground truth from the enums
+themselves and supersedes the 3-axis framing where they differ. UE is the observation
+AUTHORITY in every mode that produces obs; the client is a thin wrapper; design the CORE UE
+code first, not the wire or the Python API. The "weird nuances" below are the cleanup
+TARGETS of this audit, not constraints to preserve.
+
+Two enums, and they collide by name (this naming IS half the confusion):
+- `EStepMode` (on `UMjPhysicsEngine`, i.e. when UE owns a model; `MjPhysicsEngine.h:65-72`):
+  - `Live` -- physics thread free-runs at the model timestep; publishers stream, control
+    subscriber writes ctrl. UE owns everything.
+  - `Direct` -- physics thread blocks on a step-request queue; RPC writes ctrl, calls
+    `mj_step` n times, returns obs. UE owns the integrator; steps on request.
+  - `Puppet` -- physics thread blocks on a push-state queue; RPC writes qpos/qvel, calls
+    `mj_forward`, returns obs. The CLIENT owns the integrator (MJX/Jax rollouts). This is a
+    THIRD, unrelated meaning of "puppet".
+  - `Auto` -- starts Live, promotes to Direct/Puppet on first client connect.
+- `EMjbRunMode` (on the fast-path renderer `AMjbScene`; `MjbScene.h:26-35`):
+  - `Puppet` (default) -- NO physics; mirror an owner's per-geom transform stream over ZMQ.
+  - `Direct` -- install this scene's OWN raw mjModel/mjData into the shared `UMjPhysicsEngine`
+    and render the stepped state; a full sim a client can drive by RPC.
+
+Mapping to the user's taxonomy: "Live" = `EStepMode::Live`; "Direct" = `EStepMode::Direct`;
+"puppet / render server, 2 slightly different ways" = the renderer's `EMjbRunMode::Puppet`
+(mirror) vs `EMjbRunMode::Direct` (own sim). "Render server" is NOT a mode -- it is any
+renderer PLUS camera streaming (`-URLabFastCameras`). "A render server can slave to any other
+mode" = a Puppet-mirror renderer can attach to a Live owner, a Direct owner, or a Python
+puppet-client owner (per `docs/fast_path_render.md`: an OWNER is a Python puppet client or a
+UE live/direct instance; a RENDERER mirrors it).
+
+Nuances to CLEAN UP (the point of the audit; preserve functionality, kill the confusion):
+1. "Puppet" means three different things (`EStepMode::Puppet` push-state / `EMjbRunMode::Puppet`
+   transform-mirror / a Python "puppet client" owner) and "Direct" means two
+   (`EStepMode::Direct` UE-steps-on-request / `EMjbRunMode::Direct` renderer-owns-a-sim).
+   Rename to a single coherent vocabulary (Integrator-owner axis vs Renderer-sourcing axis).
+2. `EMjbRunMode::Direct` installs a raw model into the SAME shared `UMjPhysicsEngine` the
+   compiled path uses -- so a fast-path renderer in Direct is re-doing what a compiled UE sim
+   already does, via the raw-model + shadow path. Two ways to "own a sim in UE".
+3. `MjbScene.cpp` (~2300 lines) is a second renderer implementation parallel to the compiled
+   component renderer (only `EnsureManager` shared). Two ways to "render a MuJoCo model in UE".
+4. `EStepMode::Puppet` (client-integrated push-state) may fold into Direct (both: UE holds the
+   model, advances on a client request; one pushes ctrl, the other pushes full state) -- verify
+   it is still used before consolidating.
+
+Lean target (functionality that MUST survive, without loss): (a) UE free-runs a sim (Live);
+(b) a client steps UE deterministically and reads obs (Direct); (c) a client that integrates
+externally pushes state and UE renders/serves it (push-state); (d) a lightweight renderer
+mirrors an owner with no physics (transform stream); (e) a renderer runs its own sim and is
+RPC-drivable; (f) any renderer can additionally stream cameras (render server); (g) a renderer
+can slave to any owner. The redesign should express all seven with ONE mode vocabulary, ONE
+"UE owns a sim" path (not compiled-vs-raw+shadow), and ideally ONE renderer implementation
+(share the compiled renderer with the fast path) -- not by deleting any of a-g.
+
+### Custom controllers -- direction (no MuJoCo recompile)
+User constraint: must NOT require recompiling MuJoCo; the MuJoCo-plugin-style controller "may
+be useful" but is uncertain. Grounding from the code: `mjplugin.h` is present in the plugin's
+linked MuJoCo headers (`third_party/install/MuJoCo/include/mujoco/mjplugin.h`) and NOTHING in
+`Source/` registers a plugin today (no `mjp_register*` usage). The plugin registry is exported
+by the already-built `libmujoco`, so a custom actuator plugin authored as UE C++ callbacks and
+registered at UE startup (`mjp_registerPlugin`) does NOT require recompiling MuJoCo -- the model
+just declares `<plugin>`. So the plugin-controller is feasible under the constraint (exact
+registration mechanics to confirm at implementation time). Two orthogonal facts to weigh in the
+followup: (1) a plain PD loop is already NATIVE MuJoCo (`<position>`/`<general>` affine
+gain/bias, kp/kv), so much of the current `UMjPDController` may need no custom code at all; a
+plugin is only for laws native actuators can't express; (2) a plugin runs INSIDE `mj_step`, so
+it composes uniformly across all modes (and a slaved renderer sees its effect through the normal
+state stream), unlike the current UObject controllers that run around the step on the UE side.
+Keyframe (game-thread animation) and twist (teleop input) are NOT control laws and should leave
+the "controller" concept regardless of which route the actuator controllers take.
 
 ### Open decisions for the user (unchanged + refined)
 - NAME of the addressing unit: `FMjAddressable`/`FMjGroup` (retire `FMjEntityRecord`) vs

@@ -308,11 +308,12 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 	if (!OwnerMgr.IsValid())
 		return;
 
-	// If the project pinned a non-Auto mode, lock it now so set_mode
-	// is rejected until the project relaxes.
-	const EStepMode InitMode = (OwnerMgr->StepMode == EStepMode::Auto)
-								 ? EStepMode::Live
-								 : OwnerMgr->StepMode;
+	// If the project pinned a pose source, lock it now so set_mode is rejected
+	// until the project relaxes; an unpinned session resolves to FreeRun and the
+	// client is free to promote.
+	const EMjPoseSource InitMode = OwnerMgr->bPinStepMode
+								 ? OwnerMgr->StepMode
+								 : EMjPoseSource::FreeRun;
 	{
 		// Serialise strategy construction + OnEnter against a concurrent
 		// set_mode / OnManagerGone (PIE-end) touching the same members.
@@ -353,7 +354,7 @@ void FURLabRpcDispatcher::OnManagerGone()
 	{
 		OwnerMgr->bPublishersPaused.store(false, std::memory_order_release);
 		if (OwnerMgr->PhysicsEngine)
-			OwnerMgr->PhysicsEngine->SetStepMode(EStepMode::Live);
+			OwnerMgr->PhysicsEngine->SetPoseSource(EMjPoseSource::FreeRun);
 	}
 	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 	OwnerMgr.Reset();
@@ -367,7 +368,7 @@ void FURLabRpcDispatcher::OnManagerGone()
 	// Per-PIE state resets; the bridge-level session and observation
 	// level stay so the connected client doesn't get session_expired
 	// when a PIE cycle ends or the editor level changes.
-	ActiveStepMode.store(EStepMode::Live, std::memory_order_release);
+	ActiveStepMode.store(EMjPoseSource::FreeRun, std::memory_order_release);
 	StepCounter.store(0, std::memory_order_relaxed);
 }
 

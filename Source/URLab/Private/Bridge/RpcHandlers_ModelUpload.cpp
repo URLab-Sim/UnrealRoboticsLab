@@ -590,14 +590,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelCommit(const TShar
 	// drives after commit. Absent a live model these fields are omitted.
 	if (!StepMode.IsEmpty())
 	{
-		EStepMode Mode = EStepMode::Auto;
+		EMjPoseSource Mode = EMjPoseSource::FreeRun;
 		bool bHaveMode = true;
 		if (StepMode == TEXT("live"))
-			Mode = EStepMode::Live;
+			Mode = EMjPoseSource::FreeRun;
 		else if (StepMode == TEXT("direct"))
-			Mode = EStepMode::Direct;
+			Mode = EMjPoseSource::Stepped;
 		else if (StepMode == TEXT("puppet"))
-			Mode = EStepMode::Puppet;
+			Mode = EMjPoseSource::StatePushed;
 		else
 			bHaveMode = false;
 		if (bHaveMode && OwnerMgr.IsValid())

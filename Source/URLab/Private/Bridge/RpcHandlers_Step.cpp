@@ -59,43 +59,48 @@
 
 namespace
 {
-/** Map enum to wire-format string, matching the Python StepMode enum values. */
-FString StepModeToString(EStepMode Mode)
+/** Map pose source to wire-format string, matching the Python StepMode enum
+ *  values. The wire tokens are the frozen client contract; the collapse onto
+ *  EMjPoseSource must not change them. Mirror never reaches the active-mode
+ *  paths, so it falls through to the "live" default rather than minting a token. */
+FString StepModeToString(EMjPoseSource Mode)
 {
 	switch (Mode)
 	{
-		case EStepMode::Live:
+		case EMjPoseSource::FreeRun:
 			return TEXT("live");
-		case EStepMode::Direct:
+		case EMjPoseSource::Stepped:
 			return TEXT("direct");
-		case EStepMode::Puppet:
+		case EMjPoseSource::StatePushed:
 			return TEXT("puppet");
-		case EStepMode::Auto:
-			return TEXT("auto");
+		case EMjPoseSource::Mirror:
+			break;
 	}
 	return TEXT("live");
 }
 
-bool StepModeFromString(const FString& Str, EStepMode& OutMode)
+bool StepModeFromString(const FString& Str, EMjPoseSource& OutMode)
 {
 	if (Str.Equals(TEXT("live"), ESearchCase::IgnoreCase) || Str.Equals(TEXT("streaming"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EStepMode::Live;
+		OutMode = EMjPoseSource::FreeRun;
 		return true;
 	}
 	if (Str.Equals(TEXT("direct"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EStepMode::Direct;
+		OutMode = EMjPoseSource::Stepped;
 		return true;
 	}
 	if (Str.Equals(TEXT("puppet"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EStepMode::Puppet;
+		OutMode = EMjPoseSource::StatePushed;
 		return true;
 	}
 	if (Str.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EStepMode::Auto;
+		// "auto" is the client-picks promotion policy, not an axis value; it
+		// resolves to FreeRun (matching the old Auto -> Live resolution).
+		OutMode = EMjPoseSource::FreeRun;
 		return true;
 	}
 	return false;
@@ -615,7 +620,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 	if (!Mgr)
 		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
-	if (Mgr->StepMode != EStepMode::Auto)
+	if (Mgr->bPinStepMode)
 	{
 		return MakeError(URLabError::ModeLockedByServer,
 			FString::Printf(TEXT("Project pinned StepMode to %s"), *StepModeToString(Mgr->StepMode)));
@@ -625,11 +630,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 	if (!Req->TryGetStringField(TEXT("mode"), ModeStr))
 		return MakeError(URLabError::MissingField, TEXT("set_mode requires 'mode'"));
 
-	EStepMode NewMode;
+	EMjPoseSource NewMode;
 	if (!StepModeFromString(ModeStr, NewMode))
 		return MakeError(URLabError::BadMode, FString::Printf(TEXT("Unknown mode '%s'"), *ModeStr));
 
-	EStepMode Prev = ActiveStepMode;
+	EMjPoseSource Prev = ActiveStepMode;
 	SetActiveStepMode(NewMode);
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
@@ -647,12 +652,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 // (not anonymous) so RpcDispatcher.h can friend them for internal access.
 struct FLiveStepMode : FStepModeStrategy
 {
-	EStepMode Mode() const override { return EStepMode::Live; }
+	EMjPoseSource Mode() const override { return EMjPoseSource::FreeRun; }
 	void OnEnter(FURLabRpcDispatcher& /*D*/, AAMjManager& Mgr) override
 	{
 		Mgr.bPublishersPaused.store(false, std::memory_order_release);
 		if (Mgr.PhysicsEngine)
-			Mgr.PhysicsEngine->SetStepMode(EStepMode::Live);
+			Mgr.PhysicsEngine->SetPoseSource(EMjPoseSource::FreeRun);
 	}
 	void OnExit(FURLabRpcDispatcher& /*D*/, AAMjManager& /*Mgr*/) override {}
 
@@ -705,12 +710,12 @@ struct FLiveStepMode : FStepModeStrategy
 
 struct FDirectStepMode : FStepModeStrategy
 {
-	EStepMode Mode() const override { return EStepMode::Direct; }
+	EMjPoseSource Mode() const override { return EMjPoseSource::Stepped; }
 	void OnEnter(FURLabRpcDispatcher& D, AAMjManager& Mgr) override
 	{
 		Mgr.bPublishersPaused.store(true, std::memory_order_release);
 		if (Mgr.PhysicsEngine)
-			Mgr.PhysicsEngine->SetStepMode(EStepMode::Direct);
+			Mgr.PhysicsEngine->SetPoseSource(EMjPoseSource::Stepped);
 		D.InstallDirectHandler();
 	}
 	void OnExit(FURLabRpcDispatcher& D, AAMjManager& /*Mgr*/) override
@@ -805,12 +810,12 @@ struct FDirectStepMode : FStepModeStrategy
 
 struct FPuppetStepMode : FStepModeStrategy
 {
-	EStepMode Mode() const override { return EStepMode::Puppet; }
+	EMjPoseSource Mode() const override { return EMjPoseSource::StatePushed; }
 	void OnEnter(FURLabRpcDispatcher& /*D*/, AAMjManager& Mgr) override
 	{
 		Mgr.bPublishersPaused.store(true, std::memory_order_release);
 		if (Mgr.PhysicsEngine)
-			Mgr.PhysicsEngine->SetStepMode(EStepMode::Puppet);
+			Mgr.PhysicsEngine->SetPoseSource(EMjPoseSource::StatePushed);
 	}
 	void OnExit(FURLabRpcDispatcher& /*D*/, AAMjManager& /*Mgr*/) override {}
 
@@ -912,29 +917,28 @@ struct FPuppetStepMode : FStepModeStrategy
 	}
 };
 
-TSharedPtr<FStepModeStrategy> FURLabRpcDispatcher::MakeStepStrategy(EStepMode Mode)
+TSharedPtr<FStepModeStrategy> FURLabRpcDispatcher::MakeStepStrategy(EMjPoseSource Mode)
 {
 	switch (Mode)
 	{
-		case EStepMode::Direct:
+		case EMjPoseSource::Stepped:
 			return MakeShared<FDirectStepMode>();
-		case EStepMode::Puppet:
+		case EMjPoseSource::StatePushed:
 			return MakeShared<FPuppetStepMode>();
-		case EStepMode::Live:
-		case EStepMode::Auto:
+		case EMjPoseSource::FreeRun:
+		case EMjPoseSource::Mirror:
 		default:
 			return MakeShared<FLiveStepMode>();
 	}
 }
 
-void FURLabRpcDispatcher::SetActiveStepMode(EStepMode NewMode)
+void FURLabRpcDispatcher::SetActiveStepMode(EMjPoseSource Mode)
 {
 	// Serialises install/uninstall side effects against concurrent set_mode
 	// calls; Dispatch releases DispatchMutex before handlers.
 	FScopeLock Lock(&DispatchMutex);
 
-	const EStepMode Mode = (NewMode == EStepMode::Auto) ? EStepMode::Live : NewMode;
-	const EStepMode CurMode = ActiveStepMode.load(std::memory_order_acquire);
+	const EMjPoseSource CurMode = ActiveStepMode.load(std::memory_order_acquire);
 	if (Mode == CurMode)
 		return;
 

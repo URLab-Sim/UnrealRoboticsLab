@@ -261,14 +261,25 @@ public:
 	// --- Remote Stepping ---
 
 	/**
-	 * @brief Step mode for the simulation.
+	 * @brief Project pose-source pin for the simulation.
 	 *
-	 * Auto (default) lets the Python client promote to Direct or Puppet on hello.
-	 * Pinning to Live / Direct / Puppet locks the engine and rejects
-	 * mode-switch RPCs with error("mode_locked_by_server").
+	 * Honoured only when bPinStepMode is set: it locks the engine to this pose
+	 * source and rejects mode-switch RPCs with error("mode_locked_by_server").
+	 * When bPinStepMode is false (the default) the client is free to promote to
+	 * Stepped / StatePushed on hello and this value is ignored (the session
+	 * resolves to FreeRun until the client picks).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
-	EStepMode StepMode = EStepMode::Auto;
+	EMjPoseSource StepMode = EMjPoseSource::FreeRun;
+
+	/**
+	 * @brief Pin StepMode as the server-locked pose source.
+	 *
+	 * False (default) is the old "Auto" policy: the client picks. True pins the
+	 * engine to StepMode and rejects set_mode.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
+	bool bPinStepMode = false;
 
 	/**
 	 * @brief Deterministic seed written to m->opt.seed before compile.

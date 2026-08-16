@@ -195,7 +195,7 @@ void AMjbScene::BeginPlay()
 
 	// Direct: step this scene's own model through the shared engine and render the
 	// stepped state. Puppet (default): mirror an owner's transform stream.
-	if (RunMode == EMjbRunMode::Direct)
+	if (RunMode == EMjPoseSource::Stepped)
 	{
 		Direct.Begin(*this);
 	}
@@ -1080,7 +1080,7 @@ void AMjbScene::Tick(float DeltaSeconds)
 	}
 
 	// Direct mode renders the engine's stepped state, not a streamed frame.
-	if (RunMode == EMjbRunMode::Direct)
+	if (RunMode == EMjPoseSource::Stepped)
 	{
 		Direct.ApplyFromSnapshot(*this);
 		return;
@@ -1336,7 +1336,7 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 	{
 		StartBus();
 	}
-	if (RunMode == EMjbRunMode::Direct && Mgr)
+	if (RunMode == EMjPoseSource::Stepped && Mgr)
 	{
 		// The manager has long since begun play, so install immediately (the timer
 		// poll in Direct.Begin is only for the first-frame race at level start).
@@ -1396,7 +1396,7 @@ AMjbScene* AMjbScene::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBy
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] SpawnRenderSlave: failed to spawn AMjbScene"));
 		return nullptr;
 	}
-	Scene->RunMode = bDirect ? EMjbRunMode::Direct : EMjbRunMode::Puppet;
+	Scene->RunMode = bDirect ? EMjPoseSource::Stepped : EMjPoseSource::Mirror;
 	// Local dev sweep only when there is neither an owner bus nor Direct stepping.
 	Scene->bTestSweep = BusEndpoint.IsEmpty() && !bDirect;
 	Scene->MjbBytes = MjbBytes;

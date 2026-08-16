@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "MuJoCo/Fast/MjbDirectMode.h"
+#include "MuJoCo/Entity/MjPoseSource.h"
 #include "MjbScene.generated.h"
 
 struct mjModel_;
@@ -19,37 +20,25 @@ class UMjbAssetBaker;
 class UMjbTransportBus;
 class UTexture;
 
-/** How a play-session AMjbScene sources its transforms. */
-UENUM(BlueprintType)
-enum class EMjbRunMode : uint8
-{
-	/** Mirror an owner's transform stream over ZMQ. Runs no physics here. */
-	Puppet,
-	/** Step this scene's own model in-process through the shared
-	 *  UMjPhysicsEngine (driven by the RPC layer or free-running) and render the
-	 *  stepped state. Makes the fast-path instance a full sim, not just a mirror. */
-	Direct,
-};
-
 /**
  * @class AMjbScene
  * @brief Fast-path render scene built straight from a compiled MJB.
  *
  * Loads an MJB with mj_loadModel (binary deserialize, no MJCF/ProtoSpec/
  * Blueprint) and builds ONE lightweight actor per MuJoCo body (so the renderer
- * culls per body) carrying per-geom mesh components. It runs in one of two
- * RunModes:
+ * culls per body) carrying per-geom mesh components. Its RunMode is one of two
+ * pose sources:
  *
- * - Puppet (default): the scene runs NO physics. An external owner (a puppet
+ * - Mirror (default): the scene runs NO physics. An external owner (a puppet
  *   client, or another UE instance) resolves transforms and streams them over
  *   ZMQ; the scene mirrors that per-body/per-geom transform stream.
- * - Direct: the scene installs its own raw mjModel/mjData into the shared
+ * - Stepped: the scene installs its own raw mjModel/mjData into the shared
  *   UMjPhysicsEngine and renders the stepped state from the engine's thread-safe
  *   snapshot, so the fast-path instance is a full sim a client can drive by RPC.
  *
  * A one-shot mj_forward runs at load to place the rest pose. bTestSweep is an
  * owner-less dev fallback that animates joints locally so the builder can be
- * exercised without an owner; it is off by default and ignored in Direct mode
+ * exercised without an owner; it is off by default and ignored in Stepped mode
  * or once a bus is connected.
  *
  * The mesh/texture/material builders live in UMjbAssetBaker, the transform-bus
@@ -76,11 +65,13 @@ public:
 	UPROPERTY()
 	TArray<uint8> MjbBytes;
 
-	/** Puppet (mirror an owner) or Direct (step this scene's own model through
-	 *  the shared UMjPhysicsEngine and render it). Direct makes the fast-path
-	 *  instance a full sim a Python client can drive over the existing RPC. */
+	/** Mirror (draw an owner's streamed transforms) or Stepped (step this scene's
+	 *  own model through the shared UMjPhysicsEngine and render it). Stepped makes
+	 *  the fast-path instance a full sim a Python client can drive over the
+	 *  existing RPC. Only these two pose sources are meaningful for a fast-path
+	 *  scene; any other value renders as Mirror. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
-	EMjbRunMode RunMode = EMjbRunMode::Puppet;
+	EMjPoseSource RunMode = EMjPoseSource::Mirror;
 
 	/** Animate joints locally via mj_forward so the scene moves with no owner.
 	 *  Development only -- the real path applies a streamed transform set, and

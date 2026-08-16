@@ -30,6 +30,7 @@
 #include "MuJoCo/Spec/MjSceneAssembly.h"
 #include "MuJoCo/Spec/MjSceneSpec.h"
 #include "MuJoCo/Entity/MjEntity.h"
+#include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjControl.h"
 #include "MuJoCo/Entity/MjEntityControlIngress.h"
 #include <functional>
@@ -41,30 +42,6 @@ class AMjArticulation;
 class AMjHeightfieldActor;
 class UMjQuickConvertComponent;
 class UMjSimulationState;
-
-/**
- * @enum EStepMode
- * @brief Controls how the physics engine advances the simulation.
- *
- * - Live: physics thread advances at the model's timestep on its own. Publishers
- *   stream state, control subscriber writes ctrl. Live / streaming workflows.
- * - Direct: physics thread blocks on a step-request queue fed by UURLabZmqRpcTransport.
- *   RPC writes ctrl, calls mj_step n times, returns observations. Deterministic
- *   RL training where UE owns the integrator.
- * - Puppet: physics thread blocks on a push-state queue fed by UURLabZmqRpcTransport.
- *   RPC writes qpos/qvel, calls mj_forward, returns observations. MJX / Jax-owned
- *   rollouts where the client owns the integrator.
- * - Auto: starts Live, hello RPC promotes to Direct or Puppet on first
- *   client connection, demotes back when client disconnects.
- */
-UENUM(BlueprintType)
-enum class EStepMode : uint8
-{
-	Live UMETA(DisplayName = "Live (streaming)"),
-	Direct UMETA(DisplayName = "Direct (RPC step)"),
-	Puppet UMETA(DisplayName = "Puppet (RPC push-state)"),
-	Auto UMETA(DisplayName = "Auto (client picks)")
-};
 
 /**
  * The MJCF a compiled scene was built from, with everything else it needs.
@@ -138,18 +115,18 @@ public:
 	// --- Worker shadow state (lock-free reads on the physics thread) ---
 	//
 	// The physics worker must not read UPROPERTYs (torn cross-thread) or
-	// reach into the owning actor for the step mode. These mirror the
-	// authoritative values: SetPaused / SetSimSpeed / SetStepMode
+	// reach into the owning actor for the pose source. These mirror the
+	// authoritative values: SetPaused / SetSimSpeed / SetPoseSource
 	// (plus PostEditChangeProperty for details-panel edits) keep them in
 	// sync, and RunMujocoAsync seeds them when the worker starts.
 	std::atomic<bool> bPausedAtomic{true};
 	std::atomic<float> SimSpeedAtomic{100.0f};
-	std::atomic<EStepMode> ResolvedStepMode{EStepMode::Live};
+	std::atomic<EMjPoseSource> ResolvedPoseSource{EMjPoseSource::FreeRun};
 
 	/** Set by the game thread each time it consumes the render snapshot; the
-	 *  live-mode worker publishes a new snapshot only when it is set, so the
+	 *  free-run worker publishes a new snapshot only when it is set, so the
 	 *  full-state copy runs at the consumer's frame rate rather than the
-	 *  physics rate. Direct/puppet publish every step (frame association).
+	 *  physics rate. Stepped/StatePushed publish every step (frame association).
 	 *
 	 *  Every WithRenderState visit sets it, so a consumer asks for the next
 	 *  frame by reading this one. Mutable for exactly that: consuming is a
@@ -373,19 +350,18 @@ public:
 	 *  the details panel) and the worker's lock-free shadow. */
 	void SetSimSpeed(float Percent);
 
-	/** Single entry point for the runtime step mode. Stores the resolved mode
-	 *  the worker honours (pacing + whether it runs the UE controller pass;
-	 *  Auto resolves to Live) and unpauses the worker for client-driven modes
-	 *  (direct/puppet) so the async loop calls the step handler and drains the
-	 *  request queue. The RPC dispatcher is the runtime owner; call on every
-	 *  mode change. */
-	void SetStepMode(EStepMode Mode);
+	/** Single entry point for the runtime pose source. Stores the source the
+	 *  worker honours (pacing + whether it runs the UE controller pass) and
+	 *  unpauses the worker for client-driven sources (Stepped/StatePushed) so
+	 *  the async loop calls the step handler and drains the request queue. The
+	 *  RPC dispatcher is the runtime owner and resolves the Auto promotion
+	 *  policy to FreeRun before calling; call on every mode change. */
+	void SetPoseSource(EMjPoseSource Source);
 
-	/** The resolved step mode the physics worker is currently pacing off
-	 *  (Auto already collapsed to Live). This is the authoritative value the
-	 *  loop reads, so it is what regression coverage for the live 10 Hz lock
-	 *  should assert. */
-	EStepMode GetStepMode() const { return ResolvedStepMode.load(std::memory_order_acquire); }
+	/** The pose source the physics worker is currently pacing off. This is the
+	 *  authoritative value the loop reads, so it is what regression coverage for
+	 *  the free-run 10 Hz lock should assert. */
+	EMjPoseSource GetPoseSource() const { return ResolvedPoseSource.load(std::memory_order_acquire); }
 
 	bool IsRunning() const;
 	bool IsInitialized() const;

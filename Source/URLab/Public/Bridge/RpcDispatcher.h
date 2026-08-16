@@ -116,8 +116,8 @@ public:
 	FString GetActiveSessionId() const { return ActiveSessionId; }
 	void SetActiveSessionIdForTest(const FString& Id) { ActiveSessionId = Id; }
 
-	EStepMode GetActiveStepMode() const { return ActiveStepMode; }
-	void SetActiveStepMode(EStepMode NewMode);
+	EMjPoseSource GetActiveStepMode() const { return ActiveStepMode; }
+	void SetActiveStepMode(EMjPoseSource NewMode);
 
 	EObservationLevel GetActiveObservationLevel() const { return ActiveObservationLevel; }
 	void SetActiveObservationLevelForTest(EObservationLevel L) { ActiveObservationLevel = L; }
@@ -260,7 +260,7 @@ private:
 	/** Per-articulation control ownership. Reset per PIE from OnManagerGone. */
 	FMjControlOwnership ControlOwnership;
 
-	std::atomic<EStepMode> ActiveStepMode{EStepMode::Live};
+	std::atomic<EMjPoseSource> ActiveStepMode{EMjPoseSource::FreeRun};
 	std::atomic<EObservationLevel> ActiveObservationLevel{EObservationLevel::Standard};
 	std::atomic<int64> StepCounter{0};
 
@@ -300,7 +300,7 @@ private:
 	 *  mode's per-step work. Swapped by SetActiveStepMode. Shared so an in-flight
 	 *  HandleStep keeps the strategy alive across a concurrent set_mode swap. */
 	TSharedPtr<struct FStepModeStrategy> CurrentStepStrategy;
-	static TSharedPtr<struct FStepModeStrategy> MakeStepStrategy(EStepMode Mode);
+	static TSharedPtr<struct FStepModeStrategy> MakeStepStrategy(EMjPoseSource Mode);
 
 	/** Parse the request-scoped step fields (observation override, camera spec,
 	 *  wait / render flags) shared by every mode into Out. Does NOT mutate any
@@ -392,7 +392,7 @@ struct FStepRequestCommon
 struct FStepModeStrategy
 {
 	virtual ~FStepModeStrategy() = default;
-	virtual EStepMode Mode() const = 0;
+	virtual EMjPoseSource Mode() const = 0;
 	virtual void OnEnter(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
 	virtual void OnExit(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
 	virtual TSharedPtr<FJsonObject> HandleStep(FURLabRpcDispatcher& D,

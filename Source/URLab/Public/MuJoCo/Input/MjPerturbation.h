@@ -101,7 +101,7 @@ public:
 
 	/** Read the latest puppet-mode perturbation sample. The step server
 	 *  calls this after mj_forward to include the perturbation in the
-	 *  reply when StepMode == Puppet. Thread-safe (atomic version load
+	 *  reply when StepMode == StatePushed. Thread-safe (atomic version load
 	 *  + critical-section read of the body / xfrc fields). */
 	FMjPerturbationSample GetLatestPerturbationSample() const;
 

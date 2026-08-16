@@ -422,7 +422,7 @@ void UURLabRosRpcTransport::HandleRosCtrl(const FString& ArtName, const double* 
 
 	// ROS control is a Live-mode surface; direct / puppet bundle control into
 	// their step / push calls, so drop the write outside Live.
-	if (Disp->GetActiveStepMode() != EStepMode::Live)
+	if (Disp->GetActiveStepMode() != EMjPoseSource::FreeRun)
 	{
 		return;
 	}
@@ -471,7 +471,7 @@ void UURLabRosRpcTransport::HandleRosTwist(const FString& ArtName, const double 
 		return;
 	}
 
-	if (Disp->GetActiveStepMode() != EStepMode::Live)
+	if (Disp->GetActiveStepMode() != EMjPoseSource::FreeRun)
 	{
 		return;
 	}
@@ -519,7 +519,7 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 	{
 		return;
 	}
-	if (Disp->GetActiveStepMode() != EStepMode::Live)
+	if (Disp->GetActiveStepMode() != EMjPoseSource::FreeRun)
 	{
 		return;
 	}

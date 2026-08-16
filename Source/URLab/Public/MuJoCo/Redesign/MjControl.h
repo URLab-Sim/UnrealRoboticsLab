@@ -1,0 +1,58 @@
+// Copyright (c) 2026 Jonathan Embley-Riches. Licensed under the Apache License, Version 2.0.
+// UnrealRoboticsLab is independent and not affiliated with Epic Games. See ThirdPartyNotices.txt.
+
+#pragma once
+
+#include "CoreMinimal.h"
+
+/** How a per-entity setpoint reaches d->ctrl. Resolved ONCE, at the pre-step drain (per entity). */
+enum class EMjDrive : uint8
+{
+	Direct,     // write the setpoint straight to d->ctrl
+	Controller  // transform the setpoint through the entity's control law (PD, ...)
+};
+
+/**
+ * The ONE control store (size nu). The single writer is the engine's pre-step drain. Setpoint
+ * PERSISTS across substeps (Touched is NOT cleared each tick), so a set-once value holds across an
+ * n-step request; only touched ids reach d->ctrl (lease-gated writers touch only their own ids).
+ */
+struct URLAB_API FMjControlBuffer
+{
+	TArray<double> Setpoint;   // size nu
+	TBitArray<>    Touched;    // ids a lease holder has written
+
+	void Init(int32 Nu)
+	{
+		Setpoint.Init(0.0, Nu);
+		Touched.Init(false, Nu);
+	}
+};
+
+/**
+ * Keyframe qpos-hold injection, applied FIRST each substep (before the ctrl write pass): write held
+ * qpos, ZERO held DoFs' qvel, skip free joints, and SUPPRESS the ctrl write for held entities'
+ * actuators. Reproduces today's bHoldViaQpos semantics exactly.
+ */
+struct URLAB_API FMjStateInjection
+{
+	TArray<double> Qpos;         // size nq (only HoldMask-covered entries are meaningful)
+	TArray<double> Qvel;         // size nv (zeroed for held DoFs)
+	TBitArray<>    HoldMask;     // per-DoF (nv): this DoF is held
+	TBitArray<>    SuppressCtrl; // per-actuator (nu): skip this id in the ctrl write pass
+};
+
+/**
+ * Exclusive per-entity WRITE LEASE (replaces EControlSource + the dual ZMQ/UI slots). Whoever holds
+ * an entity's lease may write its setpoints; UI grabbing control TAKES the lease, releasing hands it
+ * back to the network. Unclaimed => the default (network) writer is allowed.
+ */
+struct URLAB_API FMjControlLease
+{
+	/** Entity name -> current holder token. Absent => unclaimed. */
+	TMap<FName, FGuid> Holder;
+
+	bool CanWrite(FName Entity, const FGuid& Who) const;
+	bool Claim(FName Entity, const FGuid& Who);
+	void Release(FName Entity, const FGuid& Who);
+};

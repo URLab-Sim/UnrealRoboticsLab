@@ -1224,7 +1224,7 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 ### Implementation progress (per phase — fill in as built)
 | Phase | Owner | Status | Branch/commit | Notes |
 |-------|-------|--------|---------------|-------|
-| STEP 0 contracts | — | not started | — | freeze all headers in §16.7 (incl. lease, IMjEntity handles, mjvOption, DR) |
+| STEP 0 contracts | main | DONE (compiles+links) | proto/entity-redesign | 11 headers under `MuJoCo/Redesign/` + stub cpp; UHT ok; build Succeeded 2026-08-16 |
 | 0a/0b/0c/0d fixes | — | not started | — | correctness fixes + worldgeom; land first |
 | 6 wire-model source | — | not started | — | concurrent (unblocks 4) |
 | #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |

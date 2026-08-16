@@ -216,67 +216,89 @@ the WIP doc; they must be ONE mechanism, not two. UE runtime already links
 
 ---
 
-## 5. One renderer — OPEN PROBLEM, needs investigation (do not treat as solved)
+## 5. One renderer — RESOLVED: approach B (one lightweight structure + pluggable asset source)
 
-This is the hardest part and my earlier "just render from the mjModel at play" was too glib.
-The real constraint, grounded in code:
+Three read-only probes (2026-08-15) settled this, all citations verified. The double-work fear
+does NOT materialize. The clean path is ONE `mjModel`-driven lightweight structure whose per-geom
+ASSET is resolved from whichever cache already has it (imported for authored models, baked for
+wire models) — no rebuild in either case.
 
-- The AUTHORING path pays a ONE-TIME IMPORT cost so the user can edit and author scenes. Import
-  runs `clean_meshes`, produces UE `StaticMesh` assets + materials, and `UMjGeom` builds its
-  render with `SetStaticMesh(SpecMesh.Asset)` / `SetStaticMesh(ImportedMesh)` (`MjGeom.cpp:490,
-  1151`). Those imported assets are the render source at play; nothing is rebuilt from the
-  `mjModel` at play.
-- The FAST path builds meshes FROM the `mjModel` mesh pool at load
-  (`GetOrBuildStaticMesh` / `BuildMesh`) and caches them under `/Game/URLabFastPath/<hash>/`.
+### Why B, from the evidence
+1. NO play-time rebuild to fear. The authoring path builds meshes ONCE at import and persists
+   `/Game` `StaticMesh` assets (idempotent, reused not rebuilt — `MujocoMeshImporter.cpp:258-330`);
+   at play it only instantiates components + `SetStaticMesh`-references them + writes transforms
+   (`MjGeom.cpp:441-520, 490`). The only `BuildFromMeshDescriptions` in the codebase is the fast
+   path. And the blueprint lag is EDIT-time (recompile + construction-script reconstruction, the
+   code is written around it — `MjArticulation.cpp:1251-1275`), not a per-play cost. So rendering
+   an authored model from the lightweight structure at play does not ADD a rebuild — it REPLACES
+   the authoring path's heavier "instantiate hundreds of SCS components + re-resolve every geom
+   through the default-class chain" pass with a lighter per-body build.
+2. The only real divergence is the ASSET SOURCE, which is exactly a pluggable seam. Materials
+   already converge: BOTH paths drive the SAME master `M_MuJoCo_Master` with the same parameter
+   names, and the fast path already calls the shared `MjAssetResolve` helpers (`MjbScene.cpp:496,
+   1493`; `MjGeom.cpp:529`). The `UMjCamera` component is already shared by both. So this is not
+   two structures, it is one structure with two asset sources. (The earlier audit's "only
+   EnsureManager is shared" was wrong — material resolution and the camera component are shared
+   too.)
+3. A unified `Resolve(geomId) -> {StaticMesh, material}` is feasible with NO rebuild: authored
+   resolves the spec element's stored `MeshAsset` (`MjAssetResolve.cpp:409`), wire resolves the
+   content-hashed `SM_<id>` via `LoadObject` (`MjbScene.cpp:1227-1231`), bridged by the
+   already-present `mj_id2name` (`:918`). Both terminal lookups are non-rebuilding.
+4. Bridge/state/control already separates cleanly from rendering: fast Direct drives all of it
+   through a geometry-less shadow `AMjArticulation` (`MjbShadowArticulation.cpp:52-108`). So
+   addressing is not a reason to keep the authoring render tree. (In the target the shadow itself
+   is replaced by the flat addressing partition, section 4/6; the decoupling point stands.)
 
-So if we "unify" by making the authoring path go `AMjArticulation` -> `mjSpec` -> `mjModel` ->
-rebuild-meshes-from-mjModel at play, we THROW AWAY the import and redo the expensive mesh build
-(and possibly at lower fidelity than the imported assets). That is the extra cost the user is
-right to reject. A naive single-render-from-mjModel is NOT acceptable.
+Approach A (keep two render trees, share only helpers) is REJECTED: the duplication is four build
+seams (mesh, texture, transform-apply, geom-type table), not a shared structure. Approach C
+(author into the fast representation) is UNNECESSARY: the shadow already gives the fast path its
+addressing without moving authoring into it, and C is the biggest change to the editor for no
+benefit over B.
 
-The reframe that MIGHT dissolve it (to investigate, not adopt): the renderer is really TWO
-concerns that should be separated:
-1. RENDER STRUCTURE — per-body actors, per-geom components, and transform application. This is
-   generic and can plausibly be ONE lightweight implementation driven by the `mjModel` structure
-   (body/geom ids, which mesh per geom) plus a pose source (snapshot or stream).
-2. ASSET SOURCE — the actual `{StaticMesh, material}` per geom. This must be PLUGGABLE so neither
-   path rebuilds what it already has:
-   - authoring resolves to the IMPORTED assets (by mesh name / geom), already on disk;
-   - fast path resolves to the BAKED-from-mjModel assets, already cached under
-     `/Game/URLabFastPath/<hash>/`.
-   The `mjModel` gives structure; a resolver maps each geom to an already-built asset. No rebuild
-   in either case.
+### What B is, concretely
+- ONE lightweight renderer: one actor per body, per-geom primitive/mesh components, built from
+  the `mjModel` structure (the fast path's `BuildBodies` / `BuildGeoms`), driven by a local
+  snapshot or a mirror stream.
+- ONE asset resolver `geom -> {UStaticMesh|proc, UMaterialInterface}`: imported UE assets when a
+  spec is present (authored), baked-from-`mjModel` otherwise (wire), with a per-geom fallback to
+  the baked path for inline meshes the import never produced.
+- The authoring `AMjArticulation` component tree becomes EDITOR-ONLY (authoring, placement, spec
+  build). It is not the play renderer.
 
-Candidate approaches (this is the investigation, pick after probing):
-- A. SHARE CODE, KEEP TWO REPRESENTATIONS — the authoring path keeps rendering its imported
-  component tree; the fast path keeps building from the mjModel; they share the mesh/material
-  BUILD helpers and the transform-APPLY layer. Least ambitious, zero re-instancing, but does not
-  literally collapse to one renderer.
-- B. ONE STRUCTURE + PLUGGABLE ASSET SOURCE — one lightweight renderer instances per-body actors
-  from the `mjModel` and resolves each geom's mesh/material from the appropriate cache (imported
-  or baked), so nothing rebuilds; the heavy authoring BP tree goes editor-only. Open cost
-  question: re-instancing lightweight actors that REFERENCE existing assets is cheap, but it is
-  still non-zero, and we must confirm it is cheaper than keeping the BP tree.
-- C. AUTHOR INTO THE FAST REPRESENTATION — import bakes directly into the lightweight per-body
-  representation + the `/Game/URLabFastPath` asset cache, so authoring and fast share ONE
-  representation from the start and editing operates on it. Most unified, biggest change to the
-  authoring/editor experience.
+### The enumerable bridges B needs (small, not structural)
+- Give the renderer BOTH a `mjModel` (structure + baked fallback) and, for authored models, a
+  spec ref, bridged by `mj_id2name`.
+- `UMjGeom::OverrideMaterial` (a user pick, not in the model) needs an explicit per-geom override
+  channel.
+- User-attached decorative UE components / child actors under a body or geom need an editor-only
+  declaration OR a reparent-onto-the-body-actor bridge so they follow the physics transform.
+- Blueprint logic / possession / input attached to the `AMjArticulation` pawn
+  (`MjArticulation.h:389-456`): if the pawn becomes editor-only, any gameplay behaviour a user
+  hung on it needs an explicit home (or the lightweight render actor must be possess-able). Niche
+  but real; declare the policy.
+- Packaged path: the fast packaged build is a runtime `UProceduralMeshComponent` with NO asset, so
+  a `UStaticMesh*`-typed resolver can't express it. Either cook the `/Game/URLabFastPath/SM_<id>`
+  assets so packaged has real StaticMeshes, or make the resolver return at component level. Decide
+  during implementation.
 
-Open questions the probe must answer:
-- Does the import store assets in a form a mjModel-driven resolver can look up per geom (by mesh
-  name), or does the import need to change to populate a shared cache?
-- Is the `project_blueprint_edit_lag_unresolved` cost at EDIT time (BP compile) or also at PLAY
-  instantiation? If edit-only, the authoring path's play rendering may already be fine and
-  approach A is enough; if play too, B/C matter more.
-- Fidelity: are imported materials/meshes richer than baked-from-mjModel, and does the resolver
-  preserve that for the authoring path?
+### Out of scope for parity (shared TODO, not a blocker)
+Heightfield, SDF, skin/deformable, and site/tendon VISUAL geometry are not built by the fast path
+today — but they are also not part of the authoring path's PLAY render (sites/tendons are
+debug-draw on the manager; hfield authoring is an editor grid). So unifying does not regress them;
+they are a shared future TODO for both renderers, not a reason to keep two.
 
-RECOMMENDED FIRST PROBE: instrument and measure the authoring path's PLAY-time cost (asset
-resolve vs actor instantiation vs BP compile) and confirm whether a mjModel-structured renderer
-can resolve the imported assets with zero mesh rebuild. That measurement decides A vs B vs C. Do
-NOT commit the renderer unification until it is answered. This gates the mode collapse, so it is
-the highest-value investigation, but it is an INVESTIGATION, not a settled plan. The god-object
-extraction (task #21) is orthogonal cleanup that helps regardless.
+### One remaining live check (validation, not a gate)
+The probes bound the cost SHAPE from code (no rebuild) but not its milliseconds. Since B AVOIDS
+the authoring path's instantiate-hundreds-of-SCS-components + per-geom-resolve pass, it is expected
+to be at least as fast. Confirm with a live editor profile on a large model (aloha / a humanoid)
+that the lightweight play build is not slower than what it replaces. Post-decision validation, not
+a blocker on choosing B.
+
+Net: the renderer unifies on ONE lightweight `mjModel`-driven structure with a pluggable asset
+resolver; materials and cameras are already shared; the authoring tree goes editor-only; the
+losses are three enumerable, bridgeable items. This unblocks the mode collapse (with one
+own-a-sim path and one renderer, `EMjbRunMode` has nothing left to encode). The god-object
+extraction (task #21) is orthogonal cleanup that feeds straight into this renderer.
 
 ---
 
@@ -341,7 +363,7 @@ Do not churn the RPC base; it is the model the others copy.
 | `EStepMode{Live,Direct,Puppet,Auto}` | `Drive{FreeRun,Stepped,StatePushed}` (Auto = policy) |
 | `EMjbRunMode{Puppet,Direct}` | folded into `PoseSource` (Puppet=`Mirror`, Direct=`Stepped`) |
 | compiled path + fast-path raw install + shadow | ONE `UMjPhysicsEngine` install + one partition |
-| `MjbScene` second renderer (~2300 lines) | ONE renderer — OPEN (section 5): unify structure, keep asset source pluggable so neither path rebuilds |
+| `MjbScene` second renderer (~2300 lines) | ONE lightweight `mjModel`-driven renderer + pluggable asset resolver (approach B); authoring tree editor-only |
 | render-server = a bundled mode | two independent overlays: cameras out / interactive input |
 | fast path takes only MJB | receiver normalizes `{mjb, xml+assets, mjz}` to `mjModel`; xml/mjz kills version skew |
 | `raw_actuators`/`raw_joints` + `bRawShadow` | deleted (xml/mjz source removes the root cause) |
@@ -388,8 +410,10 @@ Then the staged core redesign, each phase compiling on its own:
    handshake to one description.
 7. One "UE owns a sim" path: build the partition on the wire-MJB path too, delete the shadow +
    raw handshake block (needs the MJB version-skew fix).
-8. One renderer: OPEN PROBLEM (section 5). Do NOT commit until the first probe answers A/B/C.
-   The `MjbScene` god-object extraction (task #21) is orthogonal cleanup, safe to do meanwhile.
+8. One renderer (approach B, section 5): one lightweight `mjModel`-driven structure + a pluggable
+   `geom -> {mesh, material}` resolver (imported assets for authored, baked for wire); authoring
+   tree goes editor-only; bridge the 4 enumerable authoring-only items. The `MjbScene` god-object
+   extraction (task #21) feeds this. One live profile confirms the play cost post-decision.
 9. Mode collapse: one `PoseSource` axis + composable capabilities; single source of truth for the integrator
    state; retire `EStepMode` / `EMjbRunMode` / `EControlSource`.
 10. Transport: one Subscribe base; fast-path bus becomes a Publish topic.
@@ -417,13 +441,13 @@ Then the staged core redesign, each phase compiling on its own:
   struct). Blocks the addressing phase.
 - `StatePushed` is confirmed KEEP (gives the local instance contacts + derived data a mirror
   can't see); it is distinct from the cheap `Mirror` path and must not be collapsed into it.
-- ONE RENDERER is an OPEN PROBLEM, not a settled plan (section 5). The authoring path renders
-  from IMPORTED assets (paid once at import, `MjGeom.cpp:490/1151`); rebuilding from the mjModel
-  at play would throw that away. Investigation must decide between approach A (share code, keep
-  two representations), B (one structure + pluggable asset source), C (author into the fast
-  representation). RECOMMENDED FIRST PROBE: measure the authoring path's play-time cost breakdown
-  and confirm whether a mjModel-structured renderer can resolve the imported assets with ZERO
-  mesh rebuild. This gates the mode collapse; do not commit the renderer merge before it.
+- ONE RENDERER — RESOLVED to approach B by the 2026-08-15 probes (section 5): one lightweight
+  `mjModel`-driven structure + a pluggable `geom -> {mesh, material}` resolver. Confirmed: no
+  play-time mesh rebuild (authoring builds meshes once at import; BP lag is edit-time); materials
+  + `UMjCamera` already shared; only the asset SOURCE diverges (a pluggable seam). Remaining
+  implementation sub-decisions: the packaged `ProceduralMesh` return type (cook `SM_<id>` vs
+  component-level resolver); and one post-decision live profile that B's play build is not slower
+  than the authoring SCS-instantiate pass it replaces.
 - `mjz` codec availability in the linked `libmujoco` — verify before relying on the mjz source
   format (mjb and xml+assets are already known-feasible).
 - The `load_model()` RPC and the fast-path model source must be ONE normalize-to-`mjModel`

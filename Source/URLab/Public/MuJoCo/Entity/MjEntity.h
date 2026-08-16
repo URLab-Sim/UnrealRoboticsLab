@@ -62,6 +62,9 @@ struct URLAB_API FMjEntityPartition
 	 */
 	TArray<FName> PublicNames;
 	TArray<FString> ActorIds;
+
+	/** Raw path: split each top-level body subtree into its own entity. */
+	bool bBodySubtreeSplit = false;
 };
 
 namespace MjEntityBuilder
@@ -69,3 +72,14 @@ namespace MjEntityBuilder
 	/** Build the entity partition from the live compiled model. Identical for compiled and raw. */
 	URLAB_API TArray<FMjEntity> Build(const mjModel* Model, const FMjEntityPartition& How);
 }
+
+/**
+ * Structure-version signal: bumped whenever the entity partition is rebuilt (recompile / reinstall).
+ * Consumers such as the ROS re-subscribe path poll it to learn the model shape changed.
+ */
+struct URLAB_API FMjEntityStructureVersion
+{
+	uint64 Version = 0;
+	void Bump() { ++Version; }
+	uint64 Get() const { return Version; }
+};

@@ -14,9 +14,12 @@
 #include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjControlIngress.h"
 #include "MuJoCo/Entity/MjGeomAssetResolver.h"
+#include "MuJoCo/Entity/MjEnrichment.h"
 #include "MuJoCo/Entity/MjSensorSemanticTable.h"
+#include "MuJoCo/Entity/MjCameraRegistry.h"
 #include "MuJoCo/Entity/MjEntityApi.h"
 #include "MuJoCo/Entity/MjGeomAppearance.h"
+#include "MuJoCo/Entity/MjOverlayFlags.h"
 
 // --- MjEntity ---------------------------------------------------------------------------------- //
 namespace
@@ -68,8 +71,8 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 		return Entities;
 	}
 
-	// Single root entity over the whole model (raw path: no participant prefixes).
-	if (How.Prefixes.Num() == 0)
+	// Single root entity over the whole model (raw path with no split / no prefixes).
+	if (How.Prefixes.Num() == 0 && !How.bBodySubtreeSplit)
 	{
 		FMjEntity& E = Entities.AddDefaulted_GetRef();
 		for (int B = 1; B < Model->nbody; ++B) { E.BodyIds.Add(B); } // skip world body 0

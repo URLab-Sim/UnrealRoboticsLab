@@ -1026,6 +1026,7 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 		}
 		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);
 	}
+	m_entityStructureVersion.Bump();
 
 	// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless ingress
 	// bound to the current model, buffer, lease and partition. The state injection sized alongside

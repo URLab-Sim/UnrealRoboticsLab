@@ -829,8 +829,15 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		}
 	}
 
-	m_articulations.Empty();
-	m_ArticulationMap.Empty();
+	{
+		// Fence the registry clear against unlocked RPC-thread reads
+		// (GetArticulation / GetAllArticulations); the per-Add RegisterArticulation
+		// below already locks, so every write to m_articulations is serialized and
+		// no reader observes a realloc-in-progress.
+		FScopeLock RegistryLock(&CallbackMutex);
+		m_articulations.Empty();
+		m_ArticulationMap.Empty();
+	}
 	for (AActor* Actor : Actors)
 	{
 		AMjArticulation* Articulation = Cast<AMjArticulation>(Actor);
@@ -1432,6 +1439,8 @@ bool UMjPhysicsEngine::CompileModel()
 
 AMjArticulation* UMjPhysicsEngine::GetArticulation(const FString& ActorName) const
 {
+	// Locked against the registry rebuild (InstallCompiledSpec / InstallRawModel).
+	FScopeLock RegistryLock(&CallbackMutex);
 	if (const AMjArticulation* const* Found = m_ArticulationMap.Find(ActorName))
 		return const_cast<AMjArticulation*>(*Found);
 	// Resolve by UE object name, the user-supplied ActorId, or the canonical public
@@ -1466,8 +1475,11 @@ void UMjPhysicsEngine::UnregisterArticulation(AMjArticulation* Articulation)
 	m_ArticulationMap.Remove(Articulation->GetName());
 }
 
-const TArray<AMjArticulation*>& UMjPhysicsEngine::GetAllArticulations() const
+TArray<AMjArticulation*> UMjPhysicsEngine::GetAllArticulations() const
 {
+	// Copy under the lock so callers never iterate the live array while the
+	// registry is rebuilt on (un)install.
+	FScopeLock RegistryLock(&CallbackMutex);
 	return m_articulations;
 }
 

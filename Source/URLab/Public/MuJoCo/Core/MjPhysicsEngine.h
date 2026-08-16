@@ -398,7 +398,11 @@ public:
 	 *  callers on other threads that need a stable copy must take one themselves.
 	 *  The physics worker iterates the underlying array directly, not through
 	 *  this accessor. */
-	const TArray<AMjArticulation*>& GetAllArticulations() const;
+	// Returns a COPY taken under CallbackMutex: the registry is rebuilt on
+	// (un)install from the game thread while the RPC thread reads it, so handing
+	// out the live array raced a TArray realloc. A pointer-array copy is cheap;
+	// range-for and const-ref-bound callers are unaffected.
+	TArray<AMjArticulation*> GetAllArticulations() const;
 
 	/** Register an articulation into the registry the physics worker iterates
 	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the

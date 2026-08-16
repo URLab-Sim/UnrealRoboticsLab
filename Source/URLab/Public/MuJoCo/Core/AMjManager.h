@@ -196,7 +196,8 @@ public:
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
-	const TArray<AMjArticulation*>& GetAllArticulations() const;
+	// By value: forwards the engine's locked snapshot (see UMjPhysicsEngine::GetAllArticulations).
+	TArray<AMjArticulation*> GetAllArticulations() const;
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	TArray<UMjQuickConvertComponent*> GetAllQuickComponents() const;

@@ -25,7 +25,6 @@
 //
 // Unit tests for the remote-stepping pieces:
 //  - EStepMode dispatch / publisher pause flag semantics
-//  - UMjPDController ApplyConfig / GetCurrentConfig round-trip
 //  - FURLabRpcDispatcher handshake payload shape
 //  - FURLabRpcDispatcher session-id rejection
 //  - Puppet-mode push-state queue: dequeue writes qpos/qvel and fires OnPostStep
@@ -48,7 +47,6 @@
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Controllers/MjPDController.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "MuJoCo/Elements/MjBody.h"
@@ -102,11 +100,6 @@ bool FMjStepServerNoManagerGuard::RunTest(const FString& Parameters)
 			R->SetBoolField(TEXT("paused"), true);
 		if (Op == TEXT("set_sim_speed"))
 			R->SetNumberField(TEXT("percent"), 100.0);
-		if (Op == TEXT("configure_controller"))
-		{
-			R->SetStringField(TEXT("articulation"), TEXT("ignored"));
-			R->SetObjectField(TEXT("params"), MakeShared<FJsonObject>());
-		}
 		if (Op == TEXT("set_qpos"))
 		{
 			R->SetStringField(TEXT("target"), TEXT("ignored"));
@@ -133,7 +126,6 @@ bool FMjStepServerNoManagerGuard::RunTest(const FString& Parameters)
 	AssertNoManager(TEXT("set_mode"));
 	AssertNoManager(TEXT("set_paused"));
 	AssertNoManager(TEXT("set_sim_speed"));
-	AssertNoManager(TEXT("set_control_source"));
 	AssertNoManager(TEXT("set_twist"));
 	AssertNoManager(TEXT("set_qpos"));
 	AssertNoManager(TEXT("set_mocap_pose"));
@@ -141,7 +133,6 @@ bool FMjStepServerNoManagerGuard::RunTest(const FString& Parameters)
 	AssertNoManager(TEXT("get_contacts"));
 	AssertNoManager(TEXT("list_keyframes"));
 	AssertNoManager(TEXT("set_sim_options"));
-	AssertNoManager(TEXT("configure_controller"));
 	AssertNoManager(TEXT("recording_start"));
 	AssertNoManager(TEXT("replay_start"));
 
@@ -345,52 +336,6 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 		(int)S.Manager->PhysicsEngine->GetStepMode(), (int)EStepMode::Live);
 
 	S.Cleanup();
-	return true;
-}
-
-// ---------------------------------------------------------------------------
-// 2. UMjPDController ApplyConfig round-trip
-// ---------------------------------------------------------------------------
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerControllerConfig,
-	"URLab.StepServer.ControllerConfig",
-	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
-
-bool FMjStepServerControllerConfig::RunTest(const FString& Parameters)
-{
-	UMjPDController* Pd = NewObject<UMjPDController>();
-	Pd->DefaultKp = 100.0f;
-	Pd->DefaultKv = 5.0f;
-	Pd->DefaultTorqueLimit = 200.0f;
-
-	// Schema must report the canonical fields.
-	TSharedPtr<FJsonObject> Schema;
-	Pd->GetConfigSchema(Schema);
-	TestTrue(TEXT("Schema has kp"), Schema->HasField(TEXT("kp")));
-	TestTrue(TEXT("Schema has kv"), Schema->HasField(TEXT("kv")));
-	TestTrue(TEXT("Schema has torque_limit"), Schema->HasField(TEXT("torque_limit")));
-	TestTrue(TEXT("Schema has default_kp"), Schema->HasField(TEXT("default_kp")));
-	TestTrue(TEXT("Schema has default_kv"), Schema->HasField(TEXT("default_kv")));
-	TestTrue(TEXT("Schema has default_torque_limit"), Schema->HasField(TEXT("default_torque_limit")));
-
-	// ApplyConfig with only default scalars (no per-joint fields). Should not
-	// crash and should update the default values exposed by GetCurrentConfig.
-	TSharedPtr<FJsonObject> Patch = MakeShared<FJsonObject>();
-	Patch->SetNumberField(TEXT("default_kp"), 250.0);
-	Patch->SetNumberField(TEXT("default_kv"), 12.0);
-	Patch->SetNumberField(TEXT("default_torque_limit"), 88.0);
-	Pd->ApplyConfig(Patch);
-
-	TestEqual(TEXT("DefaultKp updated"), Pd->DefaultKp, 250.0f);
-	TestEqual(TEXT("DefaultKv updated"), Pd->DefaultKv, 12.0f);
-	TestEqual(TEXT("DefaultTorqueLimit updated"), Pd->DefaultTorqueLimit, 88.0f);
-
-	TSharedPtr<FJsonObject> Out;
-	Pd->GetCurrentConfig(Out);
-	double V = 0.0;
-	TestTrue(TEXT("GetCurrentConfig has default_kp"),
-		Out->TryGetNumberField(TEXT("default_kp"), V));
-	TestEqual(TEXT("default_kp matches"), V, 250.0);
-
 	return true;
 }
 
@@ -1026,7 +971,7 @@ bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// The gate in RunMujocoAsync is `bSkipApplyControls = (Mode == Puppet)`,
+	// The gate in RunMujocoAsync runs the control drain unless `Mode == Puppet`,
 	// where Mode == ResolvedStepMode. SetStepMode is the single writer.
 	Engine->SetStepMode(EStepMode::Puppet);
 	TestEqual(TEXT("resolved mode is Puppet (ApplyControls skipped)"),

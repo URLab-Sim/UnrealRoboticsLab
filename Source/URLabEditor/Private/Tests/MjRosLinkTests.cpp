@@ -607,14 +607,13 @@ bool FMjRosCtrlModeGating::RunTest(const FString& Parameters)
 	// Direct mode: the write is dropped, so d->ctrl stays at its initial value.
 	Disp->SetActiveStepMode(EStepMode::Direct);
 	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
-	Art->ApplyControls(/*bSkipController=*/true);
+	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("direct-mode ROS ctrl dropped"), (double)d->ctrl[0], 0.0, 1e-6);
 
-	// Live mode: the same write reaches the actuator staging and lands.
-	// bSkipController=false so ApplyControls reads NetworkValue → d->ctrl.
+	// Live mode: the same write reaches the setpoint buffer and the pre-step drain lands it.
 	Disp->SetActiveStepMode(EStepMode::Live);
 	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
-	Art->ApplyControls(/*bSkipController=*/false);
+	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("live-mode ROS ctrl applies"), (double)d->ctrl[0], 0.5, 1e-6);
 
 	S.Cleanup();
@@ -685,9 +684,9 @@ bool FMjRosCtrlWire::RunTest(const FString& Parameters)
 	const bool bFired = Ros->PublishAndPumpCtrlForTest(Topic, {0.42});
 	TestTrue(TEXT("ROS cmd_ctrl delivered over the wire"), bFired);
 
-	// The callback staged the value on the actuator's NetworkValue; a step copies
-	// it into d->ctrl (mirroring the live physics tick).
-	Art->ApplyControls(/*bSkipController=*/false);
+	// The callback staged the value as the actuator's setpoint; the pre-step drain
+	// copies it into d->ctrl (mirroring the live physics tick).
+	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("wire ctrl landed in d->ctrl"), (double)d->ctrl[0], 0.42, 1e-6);
 
 	Ros->TransportShutdown();
@@ -1034,13 +1033,13 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 	// Direct mode: the jog is dropped, so d->ctrl stays at its initial value.
 	Disp->SetActiveStepMode(EStepMode::Direct);
 	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
-	Art->ApplyControls(/*bSkipController=*/true);
+	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("direct-mode joint_command dropped"), (double)d->ctrl[0], 0.0, 1e-6);
 
 	// Live mode: the same jog stages the actuator's position target.
 	Disp->SetActiveStepMode(EStepMode::Live);
 	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
-	Art->ApplyControls(/*bSkipController=*/false);
+	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("live-mode joint_command applies"), (double)d->ctrl[0], 0.5, 1e-6);
 
 	S.Cleanup();

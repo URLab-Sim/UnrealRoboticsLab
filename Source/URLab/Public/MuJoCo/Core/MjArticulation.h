@@ -31,7 +31,6 @@
 
 #include "MjArticulation.generated.h"
 
-class UMjArticulationController;
 class UMjBody;
 class UMjGeom;
 class UMjNodeComponent;
@@ -130,16 +129,8 @@ public:
 	/** Record that `Node` bound to `Id` in the compiled family `ObjType`. */
 	void IndexBoundElement(UMjNodeComponent& Node, int32 ObjType, int32 Id);
 
-	/** Forget every indexed element. Paired with `ClearControlSlots`. */
+	/** Forget every indexed element. */
 	void ClearElementIndex();
-
-	/**
-	 * Bind this articulation's control-law component, if it has one, to a model.
-	 *
-	 * Runs once per compile on the game thread and caches the result, so the
-	 * physics worker never has to look a component up.
-	 */
-	void BindController(mjModel* Model, mjData* Data);
 
 	/** The element of family `ObjType` that bound to `Id`, or null. */
 	UMjNodeComponent* GetComponentByMjId(int32 ObjType, int32 Id) const;
@@ -155,75 +146,6 @@ public:
 
 	/** Every indexed element of family `ObjType`, in no particular order. */
 	TArray<UMjNodeComponent*> GetComponentsOfFamily(int32 ObjType) const;
-
-	// --- Staged actuator control -------------------------------------------- //
-	//
-	// Two slots per actuator -- one written by the network, one by the UI and
-	// Blueprints -- read by the physics worker on every step. They live here
-	// rather than on the actuator element because the step loop reads all of
-	// them at once: a slot per element means a UObject dereference per actuator
-	// per step on the worker thread, and a plain array means none.
-	//
-	// The ids are the COMPILED SCENE's, not this articulation's. A scene
-	// compiles as one model with each participant prefixed into it, so an
-	// actuator's id indexes the scene's `nu` and the slots are sized to it.
-	// Which of those ids this articulation answers for is the separate question
-	// `GetOwnedActuatorIds` answers, and it is what the step loop iterates: an
-	// articulation writing every slot would push its own unset zeroes over its
-	// neighbours' control.
-
-	/** Size the slots to a compiled model's `nu` and adopt the ids this owns. */
-	void ResetControlSlots(int32 SceneActuatorCount, TArray<int32> OwnedIds);
-
-	/** Forget every slot. Called when the compiled model is discarded. */
-	void ClearControlSlots();
-
-	/** Stage `Value` on `ActuatorId`'s external (ZMQ) slot. */
-	void StageNetworkControl(int32 ActuatorId, double Value);
-
-	/** Stage `Value` on `ActuatorId`'s internal (UI / Blueprint) slot. */
-	void StageInternalControl(int32 ActuatorId, double Value);
-
-	/** Zero both slots of `ActuatorId`. */
-	void ClearStagedControl(int32 ActuatorId);
-
-	/**
-	 * The control this articulation wants on `ActuatorId`, for a control source.
-	 *
-	 * Source 0 is ZMQ and takes the network slot; anything else is the UI and
-	 * takes the internal one. An out-of-range id reads as zero rather than
-	 * refusing.
-	 */
-	double ResolveDesiredControl(int32 ActuatorId, uint8 Source) const;
-
-	/** As above, for this articulation's own `ControlSource`. */
-	double ResolveDesiredControl(int32 ActuatorId) const;
-
-	/** The compiled ids this articulation stages control for. */
-	const TArray<int32>& GetOwnedActuatorIds() const { return OwnedActuatorIds; }
-
-	/** How many slots there are, which is the compiled scene's `nu`. */
-	int32 GetControlSlotCount() const { return ControlSlotCount; }
-
-	/**
-	 * Resolve the staged slots into `d->ctrl` for the ids this articulation owns.
-	 *
-	 * `bSkipController` bypasses the cached controller and writes the staged
-	 * values straight through, which is what a per-step `control_mode="raw"`
-	 * from the wire asks for. Holding-keyframe state always wins.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Runtime")
-	void ApplyControls(bool bSkipController = false);
-
-	/**
-	 * As above, against a model the caller already holds.
-	 *
-	 * What the physics worker calls. The model and data arrive as parameters
-	 * because the worker is not on the game thread and must not go looking for
-	 * them: resolving the engine walks the level's actors, which is a game-thread
-	 * operation and asserts if it is not.
-	 */
-	void ApplyControls(mjModel* Model, mjData* Data, bool bSkipController);
 
 	// --- Runtime discovery -------------------------------------------------- //
 	//
@@ -404,11 +326,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Camera")
 	FVector PossessCameraOffset = FVector(0.0f, 0.0f, 30.0f);
 
-	// --- Identity and control ownership ------------------------------------- //
-
-	/** 0 = ZMQ, 1 = UI. Held as a `uint8` so this header needs no engine enum. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Runtime")
-	uint8 ControlSource = 0;
+	// --- Identity ----------------------------------------------------------- //
 
 	/**
 	 * Bridge-owned identifier echoed in the handshake.
@@ -466,24 +384,6 @@ private:
 	UPROPERTY(Transient)
 	TMap<int32, FMjElementFamily> ElementIndex;
 
-	/**
-	 * Controller cached at compile time so `ApplyControls` can reach it from the
-	 * physics thread without iterating owned components -- that iteration races
-	 * game-thread component mutations and corrupts nearby heap state.
-	 */
-	UPROPERTY(Transient)
-	TObjectPtr<UMjArticulationController> CachedController;
-
+	/** Set while this articulation drives a keyframe hold on the engine, for the UI toggle. */
 	bool bHoldingKeyframe = false;
-	bool bHoldViaQpos = false;
-	TArray<double> HeldKeyframeCtrl;
-	TArray<double> HeldKeyframeQpos;
-
-	// Fixed-size on purpose: a TArray of atomics cannot exist (an atomic is
-	// neither copyable nor movable, and TArray needs one of the two to grow),
-	// and the count is known exactly once, at compile time.
-	TUniquePtr<std::atomic<double>[]> NetworkControl;
-	TUniquePtr<std::atomic<double>[]> InternalControl;
-	int32 ControlSlotCount = 0;
-	TArray<int32> OwnedActuatorIds;
 };

@@ -978,7 +978,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		AddRow(PhysicsBox, TEXT("Iterations"), SceneOption ? (float)SceneOption->Iterations.Get(50) : 50.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 200.0f), true);
 		AddRow(PhysicsBox, TEXT("Sim Speed %"), PE ? PE->SimSpeedPercent : 100.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 100.0f), true);
 		AddRow(PhysicsBox, TEXT("Debug Enabled"), (DV && DV->bShowDebug) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-		AddRow(PhysicsBox, TEXT("Internal Control"), (PE && PE->ControlSource == EControlSource::UI) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 
 		UVerticalBox* VisualsBox = nullptr;
 		CreateSection(ManagerSettingsList, TEXT("VISUALS"), VisualsBox);
@@ -992,7 +991,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			AddRow(VisualsBox, TEXT("Selected Joint Axes"), SelectedArticulation->bDrawDebugJoints ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 			AddRow(VisualsBox, TEXT("Selected Sites"), SelectedArticulation->bDrawDebugSites ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 			AddRow(VisualsBox, TEXT("Selected group 3"), SelectedArticulation->bShowGroup3 ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected Internal ctrl"), SelectedArticulation->ControlSource == (uint8)EControlSource::UI ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 		}
 
 		UVerticalBox* NetworkBox = nullptr;
@@ -1316,16 +1314,7 @@ void UMjSimulateWidget::UpdateMonitorValues()
 						FString Name = Row->GetPropertyName();
 						float Val = 0.0f;
 
-						// Identify if this row is an actuator (controllable)
-						bool bIsActuator = Row->IsControllable();
-
-						// 1. Manage Interactivity (Disable sliders/toggles in ZMQ mode)
-						if (bIsActuator)
-						{
-							Row->SetRowEnabled(ManagerRef->PhysicsEngine && ManagerRef->PhysicsEngine->ControlSource == EControlSource::UI);
-						}
-
-						// 2. Manage Value Updates (Skip if user is dragging)
+						// Skip value updates while the user is dragging
 						if (Row->IsBeingDragged())
 							continue;
 
@@ -1405,19 +1394,6 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 		if (DV)
 			DV->bShowDebug = (NewValue > 0.5f);
 	}
-	else if (OptionName == TEXT("Internal Control"))
-	{
-		uint8 NewSource = (NewValue > 0.5f ? 1 : 0); // 1 = UI, 0 = ZMQ
-		if (PE)
-			PE->ControlSource = (EControlSource)NewSource;
-		// Apply to ALL articulations, not just the selected one
-		for (AMjArticulation* Art : ManagerRef->GetAllArticulations())
-		{
-			if (Art)
-				Art->ControlSource = NewSource;
-		}
-		UpdateMonitorValues(); // force immediate UI refresh of interactivity state
-	}
 	else if (OptionName == TEXT("Global Artic. Collision"))
 	{
 		if (DV)
@@ -1466,14 +1442,6 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 	{
 		SelectedArticulation->bShowGroup3 = (NewValue > 0.5f);
 		SelectedArticulation->UpdateGroup3Visibility();
-	}
-	else if (OptionName == TEXT("Selected Internal ctrl") && SelectedArticulation)
-	{
-		SelectedArticulation->ControlSource = (NewValue > 0.5f) ? (uint8)EControlSource::UI : (uint8)EControlSource::ZMQ;
-		UE_LOG(LogURLab, Log, TEXT("Set '%s' control source to %s"),
-			*SelectedArticulation->GetName(),
-			(NewValue > 0.5f) ? TEXT("Internal (UI)") : TEXT("External (ZMQ)"));
-		UpdateMonitorValues();
 	}
 
 	// Locomotion twist settings

@@ -25,8 +25,6 @@
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "Transport/NetworkManager.h"
-#include "MuJoCo/Controllers/MjArticulationController.h"
-#include "MuJoCo/Controllers/MjPDController.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "zmq.h"
 #include "MuJoCo/Elements/MjCamera.h"
@@ -84,13 +82,6 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 					zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, FilterUtf8.Get(), FilterUtf8.Length());
 				}
 				UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Subscribed to: %s"), *ControlFilter);
-
-				FString GainsFilter = FString::Printf(TEXT("%s/set_gains "), *Artic->GetName());
-				{
-					const FTCHARToUTF8 FilterUtf8(*GainsFilter);
-					zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, FilterUtf8.Get(), FilterUtf8.Length());
-				}
-				UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Subscribed to: %s"), *GainsFilter);
 			}
 		}
 	}
@@ -345,65 +336,6 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 
 		int size = zmq_msg_size(&payload_msg);
 		char* data = (char*)zmq_msg_data(&payload_msg);
-
-		// --- Handle set_gains messages ---
-		if (Topic.Contains(TEXT("/set_gains")))
-		{
-			TArray<char> JsonBuf;
-			JsonBuf.SetNum(size + 1);
-			FMemory::Memcpy(JsonBuf.GetData(), data, size);
-			JsonBuf[size] = '\0';
-			FString JsonStr = UTF8_TO_TCHAR(JsonBuf.GetData());
-
-			TSharedPtr<FJsonObject> Json;
-			TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonStr);
-			if (FJsonSerializer::Deserialize(Reader, Json) && Json.IsValid())
-			{
-				// Legacy `{prefix}/set_gains` topic shape: { "<joint>": {kp, kv, torque_limit}, ... }.
-				// Reshape into the unified ApplyConfig schema: { "kp": {<joint>: v}, "kv": {...}, "torque_limit": {...} }.
-				TSharedPtr<FJsonObject> Reshaped = MakeShared<FJsonObject>();
-				TSharedPtr<FJsonObject> KpMap = MakeShared<FJsonObject>();
-				TSharedPtr<FJsonObject> KvMap = MakeShared<FJsonObject>();
-				TSharedPtr<FJsonObject> TlMap = MakeShared<FJsonObject>();
-				for (const auto& Entry : Json->Values)
-				{
-					const TSharedPtr<FJsonObject>* JointObj = nullptr;
-					if (!Entry.Value->TryGetObject(JointObj) || !JointObj || !JointObj->IsValid())
-						continue;
-					double V = 0.0;
-					if ((*JointObj)->TryGetNumberField(TEXT("kp"), V))
-						KpMap->SetNumberField(Entry.Key, V);
-					if ((*JointObj)->TryGetNumberField(TEXT("kv"), V))
-						KvMap->SetNumberField(Entry.Key, V);
-					if ((*JointObj)->TryGetNumberField(TEXT("torque_limit"), V))
-						TlMap->SetNumberField(Entry.Key, V);
-				}
-				if (KpMap->Values.Num() > 0)
-					Reshaped->SetObjectField(TEXT("kp"), KpMap);
-				if (KvMap->Values.Num() > 0)
-					Reshaped->SetObjectField(TEXT("kv"), KvMap);
-				if (TlMap->Values.Num() > 0)
-					Reshaped->SetObjectField(TEXT("torque_limit"), TlMap);
-
-				AAMjManager* Manager = OwningManager.Get();
-				if (Manager)
-				{
-					for (AMjArticulation* Art : Manager->GetAllArticulations())
-					{
-						if (!Art || !Topic.Contains(Art->GetName()))
-							continue;
-						UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
-						if (!Ctrl)
-							continue;
-						Ctrl->ApplyConfig(Reshaped);
-						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: ApplyConfig on '%s' (kind=%s)"),
-							*Art->GetName(), *Ctrl->GetKindName());
-					}
-				}
-			}
-			zmq_msg_close(&payload_msg);
-			continue;
-		}
 
 		// --- Handle control messages ---
 		if (size >= 4)

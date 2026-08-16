@@ -18,7 +18,6 @@
 #include "InputAction.h"
 #include "InputMappingContext.h"
 
-#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
@@ -291,26 +290,6 @@ void AMjArticulation::IndexBoundElement(UMjNodeComponent& Node, int32 ObjType, i
 void AMjArticulation::ClearElementIndex()
 {
 	ElementIndex.Reset();
-	CachedController = nullptr;
-}
-
-void AMjArticulation::BindController(mjModel* Model, mjData* Data)
-{
-	CachedController = FindComponentByClass<UMjArticulationController>();
-	if (CachedController == nullptr || Model == nullptr || Data == nullptr)
-	{
-		return;
-	}
-
-	TMap<int32, UMjNodeComponent*> Actuators;
-	if (const FMjElementFamily* Family = ElementIndex.Find(mjOBJ_ACTUATOR))
-	{
-		for (const TPair<int32, TObjectPtr<UMjNodeComponent>>& Entry : Family->ById)
-		{
-			Actuators.Add(Entry.Key, Entry.Value);
-		}
-	}
-	CachedController->Bind(Model, Data, Actuators);
 }
 
 UMjNodeComponent* AMjArticulation::GetComponentByMjId(int32 ObjType, int32 Id) const
@@ -352,162 +331,6 @@ TArray<UMjNodeComponent*> AMjArticulation::GetComponentsOfFamily(int32 ObjType) 
 		}
 	}
 	return Out;
-}
-
-// --- Staged actuator control ------------------------------------------------ //
-
-void AMjArticulation::ResetControlSlots(int32 SceneActuatorCount, TArray<int32> OwnedIds)
-{
-	// Reallocated rather than resized: the slots are only ever sized at a
-	// compile, and a compile invalidates every id that indexed the old ones.
-	ControlSlotCount = FMath::Max(0, SceneActuatorCount);
-	if (ControlSlotCount == 0)
-	{
-		NetworkControl.Reset();
-		InternalControl.Reset();
-		OwnedActuatorIds.Reset();
-		return;
-	}
-
-	NetworkControl = MakeUnique<std::atomic<double>[]>(ControlSlotCount);
-	InternalControl = MakeUnique<std::atomic<double>[]>(ControlSlotCount);
-	for (int32 i = 0; i < ControlSlotCount; ++i)
-	{
-		NetworkControl[i].store(0.0, std::memory_order_relaxed);
-		InternalControl[i].store(0.0, std::memory_order_relaxed);
-	}
-
-	OwnedActuatorIds = MoveTemp(OwnedIds);
-	OwnedActuatorIds.RemoveAll([this](int32 Id) { return Id < 0 || Id >= ControlSlotCount; });
-}
-
-void AMjArticulation::ClearControlSlots()
-{
-	NetworkControl.Reset();
-	InternalControl.Reset();
-	ControlSlotCount = 0;
-	OwnedActuatorIds.Reset();
-}
-
-void AMjArticulation::StageNetworkControl(int32 ActuatorId, double Value)
-{
-	if (NetworkControl && ActuatorId >= 0 && ActuatorId < ControlSlotCount)
-	{
-		NetworkControl[ActuatorId].store(Value);
-	}
-}
-
-void AMjArticulation::StageInternalControl(int32 ActuatorId, double Value)
-{
-	if (InternalControl && ActuatorId >= 0 && ActuatorId < ControlSlotCount)
-	{
-		InternalControl[ActuatorId].store(Value);
-	}
-}
-
-void AMjArticulation::ClearStagedControl(int32 ActuatorId)
-{
-	StageNetworkControl(ActuatorId, 0.0);
-	StageInternalControl(ActuatorId, 0.0);
-}
-
-double AMjArticulation::ResolveDesiredControl(int32 ActuatorId, uint8 Source) const
-{
-	if (ActuatorId < 0 || ActuatorId >= ControlSlotCount)
-	{
-		return 0.0f;
-	}
-	if (Source == 0)
-	{
-		return NetworkControl ? NetworkControl[ActuatorId].load() : 0.0;
-	}
-	return InternalControl ? InternalControl[ActuatorId].load() : 0.0;
-}
-
-double AMjArticulation::ResolveDesiredControl(int32 ActuatorId) const
-{
-	return ResolveDesiredControl(ActuatorId, ControlSource);
-}
-
-void AMjArticulation::ApplyControls(bool bSkipController)
-{
-	// Resolving the engine walks the level, so this spelling is game-thread only.
-	// The worker uses the overload below and passes the model it already holds.
-	if (UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this))
-	{
-		ApplyControls(Engine->GetModel(), Engine->GetData(), bSkipController);
-	}
-}
-
-void AMjArticulation::ApplyControls(mjModel* Model, mjData* Data, bool bSkipController)
-{
-	// The element index and the owned-id list are built at compile time on the
-	// game thread with the worker joined, and are only read here. The worker
-	// starts after the install completes, which is what makes them visible.
-	if (Model == nullptr || Data == nullptr)
-	{
-		return;
-	}
-
-	if (bHoldingKeyframe)
-	{
-		if (bHoldViaQpos && HeldKeyframeQpos.Num() > 0)
-		{
-			// A free joint carries the world pose, so holding it would teleport
-			// the robot back to wherever the keyframe was authored.
-			for (int32 j = 0; j < Model->njnt; ++j)
-			{
-				const int32 JointType = Model->jnt_type[j];
-				if (JointType == mjJNT_FREE)
-				{
-					continue;
-				}
-				const int32 QposAdr = Model->jnt_qposadr[j];
-				const int32 DofAdr = Model->jnt_dofadr[j];
-				const int32 NqPos = (JointType == mjJNT_BALL) ? 4 : 1;
-				const int32 NvDof = (JointType == mjJNT_BALL) ? 3 : 1;
-
-				for (int32 k = 0; k < NqPos && (QposAdr + k) < HeldKeyframeQpos.Num(); ++k)
-				{
-					Data->qpos[QposAdr + k] = static_cast<mjtNum>(HeldKeyframeQpos[QposAdr + k]);
-				}
-				for (int32 k = 0; k < NvDof; ++k)
-				{
-					Data->qvel[DofAdr + k] = 0.0;
-				}
-			}
-		}
-		else if (HeldKeyframeCtrl.Num() > 0)
-		{
-			const int32 Count = FMath::Min(HeldKeyframeCtrl.Num(), static_cast<int32>(Model->nu));
-			for (int32 i = 0; i < Count; ++i)
-			{
-				Data->ctrl[i] = static_cast<mjtNum>(HeldKeyframeCtrl[i]);
-			}
-		}
-		return;
-	}
-
-	if (!bSkipController && CachedController != nullptr && CachedController->bEnabled && CachedController->IsBound())
-	{
-		CachedController->ComputeAndApply(Model, Data, ControlSource);
-		return;
-	}
-
-	if (bSkipController)
-	{
-		return;
-	}
-
-	// Only this articulation's own ids: writing every slot would push its unset
-	// zeroes over the control of every other participant in the scene.
-	for (const int32 Id : OwnedActuatorIds)
-	{
-		if (Id >= 0 && Id < Model->nu)
-		{
-			Data->ctrl[Id] = static_cast<mjtNum>(ResolveDesiredControl(Id, ControlSource));
-		}
-	}
 }
 
 // --- Runtime discovery ------------------------------------------------------ //

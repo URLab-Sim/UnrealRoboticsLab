@@ -161,8 +161,6 @@ UMjPhysicsEngine::UMjPhysicsEngine()
 {
 	PrimaryComponentTick.bCanEverTick = false;
 
-	ControlSource = EControlSource::ZMQ;
-
 	// Auto-reset so each Trigger arms exactly one Wait; coalesces bursts.
 	StepRequestEvent = FPlatformProcess::GetSynchEventFromPool(false);
 
@@ -786,7 +784,6 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		}
 		if (AMjArticulation* Articulation = Cast<AMjArticulation>(Actor))
 		{
-			Articulation->ClearControlSlots();
 			Articulation->ClearElementIndex();
 		}
 		ForEachSpecNode(*Actor, UnbindIfAbsent);
@@ -803,11 +800,8 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		}
 	}
 
-	// One pass over the binding does both jobs: it tells each element its id,
-	// and it collects the actuator ids per articulation. The ids are the
-	// scene's, so an articulation's are neither zero-based nor contiguous, and
-	// there is nowhere else they could be recovered from.
-	TMap<AMjArticulation*, TArray<int32>> ActuatorIdsByArticulation;
+	// One pass over the binding tells each element its compiled id and indexes it
+	// on its owning articulation.
 	for (const FMjBinding::FEntry& Entry : InstalledBinding.GetEntries())
 	{
 		if (Entry.Node == nullptr || Entry.Id < 0)
@@ -823,10 +817,6 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 			continue;
 		}
 		Articulation->IndexBoundElement(*Node, Entry.ObjType, Entry.Id);
-		if (Entry.ObjType == mjOBJ_ACTUATOR)
-		{
-			ActuatorIdsByArticulation.FindOrAdd(Articulation).Add(Entry.Id);
-		}
 	}
 
 	{
@@ -845,12 +835,6 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		{
 			continue;
 		}
-		// Sized for every articulation, including ones with no actuators of
-		// their own: the slots are indexed by scene id and an articulation
-		// that had none still has to answer a read without going out of range.
-		Articulation->ResetControlSlots(m_model->nu,
-			ActuatorIdsByArticulation.FindRef(Articulation));
-		Articulation->BindController(m_model, m_data);
 		RegisterArticulation(Articulation);
 	}
 
@@ -1355,16 +1339,6 @@ void UMjPhysicsEngine::RunMujocoAsync()
 
 		bWorkerRunning.store(false, std::memory_order_release);
 	});
-}
-
-void UMjPhysicsEngine::SetControlSource(EControlSource NewSource)
-{
-	ControlSource = NewSource;
-}
-
-EControlSource UMjPhysicsEngine::GetControlSource() const
-{
-	return ControlSource;
 }
 
 void UMjPhysicsEngine::SetPaused(bool bPaused)

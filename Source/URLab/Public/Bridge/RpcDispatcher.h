@@ -321,8 +321,7 @@ private:
 	TArray<FString> RegisteredOpNames;
 
 	/** Who a request writes control as: the optional `control_owner` field,
-	 *  falling back to `session_id`. Named for the ownership gate rather than
-	 *  `source`, which `set_control_source` already spends on "zmq" | "ui". */
+	 *  falling back to `session_id`. Named for the ownership gate. */
 	FString ResolveControlSource(const TSharedPtr<FJsonObject>& Req) const;
 
 	/** Consult the control gate for a write to `ArtKey`. Returns nullptr when
@@ -351,10 +350,8 @@ private:
 	TSharedPtr<FJsonObject> HandleSetPaused(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetCameraStreaming(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetCameraDelay(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleConfigureController(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimOptions(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetSimSpeed(const TSharedPtr<FJsonObject>& Req);
-	TSharedPtr<FJsonObject> HandleSetControlSource(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleClaimControl(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleReleaseControl(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleSetUserChannels(const TSharedPtr<FJsonObject>& Req);

@@ -36,7 +36,6 @@
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Elements/MjJointRuntime.h"
 #include "MuJoCo/Elements/MjBody.h"
-#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -171,10 +170,6 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleSetCameraDelay(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("cameras:object")},
 		/*Required=*/{TEXT("cameras")});
-	Reg(TEXT("configure_controller"), EOpCategory::ManagerRequired, TEXT("runtime"),
-		[this](auto& R) { return HandleConfigureController(R); },
-		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("params:object")},
-		/*Required=*/{TEXT("articulation"), TEXT("params")});
 	Reg(TEXT("set_sim_options"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetSimOptions(R); },
 		{TEXT("op:string")});
@@ -182,9 +177,6 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleSetSimSpeed(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("percent:float")},
 		/*Required=*/{TEXT("percent")});
-	Reg(TEXT("set_control_source"), EOpCategory::ManagerRequired, TEXT("runtime"),
-		[this](auto& R) { return HandleSetControlSource(R); },
-		{TEXT("op:string")});
 	Reg(TEXT("claim_control"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleClaimControl(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("owner:string"), TEXT("ttl_s:float")},
@@ -833,31 +825,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		ArtObj->SetStringField(TEXT("prefix"), FMjCanonicalName::ArtSegment(Art).ToString());
 		ArtObj->SetStringField(TEXT("actor_id"), Art->ActorId);
 		ArtObj->SetStringField(TEXT("actor_name"), Art->GetName());
-
-		// Default control mode follows whether a controller is attached.
-		UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
-		ArtObj->SetStringField(TEXT("default_control_mode"),
-			Ctrl ? TEXT("ue_controller") : TEXT("raw"));
-
-		// Controller block — only when attached. Asks the controller for its
-		// own kind, current params, and schema. ApplyConfig is not called here.
-		if (Ctrl)
-		{
-			TSharedPtr<FJsonObject> CtrlObj = MakeShared<FJsonObject>();
-			CtrlObj->SetStringField(TEXT("kind"), Ctrl->GetKindName());
-
-			TSharedPtr<FJsonObject> Params = MakeShared<FJsonObject>();
-			Ctrl->GetCurrentConfig(Params);
-			if (Params.IsValid())
-				CtrlObj->SetObjectField(TEXT("params"), Params);
-
-			TSharedPtr<FJsonObject> Schema = MakeShared<FJsonObject>();
-			Ctrl->GetConfigSchema(Schema);
-			if (Schema.IsValid())
-				CtrlObj->SetObjectField(TEXT("schema"), Schema);
-
-			ArtObj->SetObjectField(TEXT("controller"), CtrlObj);
-		}
 
 		// Per-actuator authored kind. The MJB doesn't carry the original
 		// <position> / <velocity> shortcut — they all compile to <general>. Skipped

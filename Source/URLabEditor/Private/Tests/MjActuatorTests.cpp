@@ -108,11 +108,6 @@ bool FMjActuatorMotorActuatorSetControl::RunTest(const FString& Parameters)
 
 			Actuator = Sess.Add<UMjMotor>(MjActuatorTests::ActuatorSection(Sess), TEXT("TestActuator"));
 			Actuator->SetJoint(TEXT("TestJoint"));
-
-			// ControlSource 0 is the network slot, anything else the UI one.
-			// SetControl writes the UI slot, so the source has to select it for
-			// GetControl to read back what was staged.
-			Sess.Robot->ControlSource = 1;
 		}))
 	{
 		AddError(FString::Printf(TEXT("FMjUESession::Init failed: %s"), *S.LastError));

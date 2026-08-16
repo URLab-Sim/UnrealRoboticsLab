@@ -42,14 +42,6 @@ class AMjHeightfieldActor;
 class UMjQuickConvertComponent;
 class UMjSimulationState;
 
-// Shared enum: control source for articulations and physics engine
-UENUM(BlueprintType)
-enum class EControlSource : uint8
-{
-	ZMQ UMETA(DisplayName = "External (ZMQ)"),
-	UI UMETA(DisplayName = "Internal (UI)")
-};
-
 /**
  * @enum EStepMode
  * @brief Controls how the physics engine advances the simulation.
@@ -221,9 +213,6 @@ public:
 	/** Saves compiled scene XML and MJB to Saved/URLab/ on each compile. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Debug")
 	bool bSaveDebugXml = false;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Runtime")
-	EControlSource ControlSource;
 
 	// --- Registered Scene Objects ---
 
@@ -408,8 +397,6 @@ public:
 	UMjSimulationState* CaptureSnapshot();
 	/** Restore is scheduled for the next physics step. */
 	void RestoreSnapshot(UMjSimulationState* Snapshot);
-	void SetControlSource(EControlSource NewSource);
-	EControlSource GetControlSource() const;
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
 	/** The live articulation registry. Registration happens in bulk at compile
 	 *  time while the worker thread is stopped and joined, so the
@@ -458,10 +445,10 @@ public:
 	/** Release a qpos keyframe hold (clears the injection masks). */
 	void ReleaseKeyframeHold();
 
-	/** Register an articulation into the registry the physics worker iterates
-	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the
-	 *  array or the name map out from under a step; in practice registration
-	 *  runs at compile time with the worker joined. */
+	/** Register an articulation into the registry the physics worker iterates.
+	 *  Takes CallbackMutex so bulk registration can't tear the array or the name
+	 *  map out from under a step; in practice registration runs at compile time
+	 *  with the worker joined. */
 	void RegisterArticulation(AMjArticulation* Articulation);
 
 	/** Remove an articulation from the registries (symmetric with

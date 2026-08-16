@@ -17,7 +17,6 @@
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Elements/MjJointRuntime.h"
 #include "MuJoCo/Elements/MjBody.h"
-#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
 #include "Utils/URLabLogging.h"

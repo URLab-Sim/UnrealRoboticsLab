@@ -36,7 +36,6 @@
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Elements/MjJointRuntime.h"
 #include "MuJoCo/Elements/MjBody.h"
-#include "MuJoCo/Controllers/MjArticulationController.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
@@ -56,44 +55,6 @@
 #include "Engine/World.h"
 #include "Misc/Guid.h"
 #include "Utils/URLabLogging.h"
-
-// =============================================================================
-// configure_controller
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleConfigureController(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr)
-		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
-
-	FString ArtName;
-	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
-		return MakeError(URLabError::MissingField, TEXT("configure_controller requires 'articulation'"));
-
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
-		return MakeError(URLabError::UnknownArticulation, ArtName);
-
-	UMjArticulationController* Ctrl = Art->FindComponentByClass<UMjArticulationController>();
-	if (!Ctrl)
-		return MakeError(URLabError::NoController, FString::Printf(TEXT("Articulation '%s' has no controller"), *ArtName));
-
-	const TSharedPtr<FJsonObject>* Params = nullptr;
-	if (Req->TryGetObjectField(TEXT("params"), Params) && Params && Params->IsValid())
-	{
-		Ctrl->ApplyConfig(*Params);
-	}
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("configure_controller_ok"));
-	Reply->SetStringField(TEXT("articulation"), ArtName);
-
-	TSharedPtr<FJsonObject> Out = MakeShared<FJsonObject>();
-	Ctrl->GetCurrentConfig(Out);
-	Reply->SetObjectField(TEXT("params"), Out);
-	return Reply;
-}
 
 // =============================================================================
 // set_sim_options
@@ -400,75 +361,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetSimSpeed(const TSharedPtr<
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("set_sim_speed_ok"));
 	Reply->SetNumberField(TEXT("percent"), Effective);
-	return Reply;
-}
-
-// =============================================================================
-// set_control_source
-// =============================================================================
-
-TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetControlSource(const TSharedPtr<FJsonObject>& Req)
-{
-	AAMjManager* Mgr = OwnerMgr.Get();
-	if (!Mgr || !Mgr->PhysicsEngine)
-		return MakeError(URLabError::NotReady, TEXT("PhysicsEngine not initialised"));
-
-	FString SourceStr;
-	if (!Req->TryGetStringField(TEXT("source"), SourceStr))
-		return MakeError(URLabError::MissingField, TEXT("set_control_source requires 'source' (\"zmq\" | \"ui\")"));
-
-	EControlSource NewSource;
-	if (SourceStr.Equals(TEXT("zmq"), ESearchCase::IgnoreCase))
-		NewSource = EControlSource::ZMQ;
-	else if (SourceStr.Equals(TEXT("ui"), ESearchCase::IgnoreCase))
-		NewSource = EControlSource::UI;
-	else
-		return MakeError(URLabError::BadValue, FString::Printf(TEXT("unknown source '%s'"), *SourceStr));
-
-	FString ArtName;
-	Req->TryGetStringField(TEXT("articulation"), ArtName);
-
-	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
-	Reply->SetStringField(TEXT("op"), TEXT("set_control_source_ok"));
-	Reply->SetStringField(TEXT("source"), SourceStr.ToLower());
-
-	if (ArtName.IsEmpty())
-	{
-		// Global flip is a control write across every art, so the source must
-		// own each currently-claimed art (or none may be claimed).
-		const FString Source = ResolveControlSource(Req);
-		for (const auto& Owned : ControlOwnership.GetActiveOwners())
-		{
-			if (!Owned.Value.Equals(Source))
-			{
-				TSharedPtr<FJsonObject> Err = MakeError(TEXT("not_control_owner"),
-					FString::Printf(TEXT("%s owned by %s"), *Owned.Key.ToString(), *Owned.Value));
-				Err->SetStringField(TEXT("owner"), Owned.Value);
-				return Err;
-			}
-		}
-
-		// Global: update engine + every articulation so the per-actor field
-		// doesn't keep stale state after a global flip.
-		Mgr->PhysicsEngine->SetControlSource(NewSource);
-		for (AMjArticulation* Art : Mgr->GetAllArticulations())
-		{
-			if (Art)
-				Art->ControlSource = (uint8)NewSource;
-		}
-		Reply->SetStringField(TEXT("scope"), TEXT("global"));
-	}
-	else
-	{
-		AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-		if (!Art)
-			return MakeError(URLabError::UnknownArticulation, ArtName);
-		if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
-			return Denied;
-		Art->ControlSource = (uint8)NewSource;
-		Reply->SetStringField(TEXT("scope"), TEXT("articulation"));
-		Reply->SetStringField(TEXT("articulation"), ArtName);
-	}
 	return Reply;
 }
 

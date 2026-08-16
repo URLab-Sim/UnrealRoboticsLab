@@ -82,22 +82,14 @@ AMjArticulation* Build(AAMjManager* Mgr, mjModel_* Model, const FString& ArtId)
 		MakeNode(*Art, Cls, mj_id2name(m, mjOBJ_JOINT, J), mjOBJ_JOINT, J);
 	}
 
-	// Actuators -> ctrl control. One generic motor kind for all: control is raw
-	// (the RPC handler writes d->ctrl[boundId] directly) and the state read-back is
-	// kind-independent, so the class only has to classify as an actuator.
-	TArray<int32> OwnedActuatorIds;
-	OwnedActuatorIds.Reserve(m->nu);
+	// Actuators -> ctrl control. One generic motor kind for all: the state read-back
+	// is kind-independent, so the class only has to classify as an actuator.
 	for (int32 A = 0; A < m->nu; ++A)
 	{
 		MakeNode(*Art, UMjMotor::StaticClass(), mj_id2name(m, mjOBJ_ACTUATOR, A), mjOBJ_ACTUATOR, A);
-		OwnedActuatorIds.Add(A);
 	}
 
-	// Size the control slots to the scene's actuator count and register so the
-	// handshake, control resolution, and state collector all resolve the art. No
-	// UMjArticulationController is attached, so control stays raw/staged (the
-	// client's default_control_mode is "raw").
-	Art->ResetControlSlots(m->nu, OwnedActuatorIds);
+	// Register so the handshake, control ingress and state collector all resolve the art.
 	Mgr->PhysicsEngine->RegisterArticulation(Art);
 	Mgr->GetStateCollector().MarkProducerCacheDirty();
 
@@ -117,7 +109,6 @@ void Teardown(AAMjManager* Mgr, AMjArticulation* Art)
 	{
 		Mgr->PhysicsEngine->UnregisterArticulation(Art);
 	}
-	Art->ClearControlSlots();
 	Art->ClearElementIndex();
 	if (Mgr)
 	{

@@ -175,17 +175,6 @@ double UMjActuatorRuntime::GetControl(const UMjNodeComponent* Actuator)
 	return Engine->GetSetpoint(Id);
 }
 
-double UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source)
-{
-	int32 Id = -1;
-	const AMjArticulation* Art = OwningArticulation(Actuator);
-	if (Art == nullptr || !ResolveActuatorId(Actuator, Id))
-	{
-		return 0.0f;
-	}
-	return Art->ResolveDesiredControl(Id, Source);
-}
-
 float UMjActuatorRuntime::GetAppliedControl(const UMjNodeComponent* Actuator)
 {
 	const UMjPhysicsEngine* Engine = nullptr;
@@ -327,11 +316,6 @@ void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent*, double) {}
 void UMjActuatorRuntime::ResetControl(const UMjNodeComponent*) {}
 
 double UMjActuatorRuntime::GetControl(const UMjNodeComponent*)
-{
-	return 0.0;
-}
-
-double UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent*, uint8)
 {
 	return 0.0;
 }

@@ -51,48 +51,35 @@ public:
 	// --- Staged control ---------------------------------------------------- //
 
 	/**
-	 * Stage a control value on the internal (UI and Blueprint) slot.
+	 * Stage a control value as this actuator's setpoint.
 	 *
-	 * Staged, not applied: the physics worker resolves the slots into `d->ctrl`
-	 * at the top of the step it is about to take, so a write from the game
-	 * thread never races the integrator.
+	 * Staged, not applied: the write lands in the engine's one control buffer, which the pre-step
+	 * drain copies into `d->ctrl` at the top of the step it is about to take, so a write from the
+	 * game thread never races the integrator. UI and Blueprint writers land here.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
 	static void SetControl(const UMjNodeComponent* Actuator, double Value);
 
 	/**
-	 * Stage a control value on the external (ZMQ) slot.
+	 * Stage a control value as this actuator's setpoint from a network writer.
 	 *
-	 * The bridge, the ZMQ control subscriber and the ROS transports all land
-	 * here. Which of the two slots reaches `d->ctrl` is the articulation's
-	 * `ControlSource` and not the writer's, so both may be staged at once and
-	 * ownership decided separately.
+	 * The bridge, the ZMQ control subscriber and the ROS transports all land here. Same setpoint
+	 * buffer as SetControl; the difference is only the write-lease identity.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
 	static void SetNetworkControl(const UMjNodeComponent* Actuator, double Value);
 
-	/** Zero both slots. */
+	/** Zero this actuator's setpoint. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
 	static void ResetControl(const UMjNodeComponent* Actuator);
 
-	/** The staged value the articulation's control source selects. */
+	/** This actuator's current setpoint. */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))
 	static double GetControl(const UMjNodeComponent* Actuator);
-
-	/**
-	 * The staged value a named control source selects, ignoring the
-	 * articulation's own.
-	 *
-	 * What a control law wants: it is handed the source for the step it is
-	 * computing rather than reading whatever the articulation is set to, so the
-	 * two cannot disagree mid-step. Source 0 is the network and anything else is
-	 * the UI.
-	 */
-	static double ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source);
 
 	// --- Compiled-model reads ---------------------------------------------- //
 

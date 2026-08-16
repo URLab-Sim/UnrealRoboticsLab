@@ -375,6 +375,116 @@ the raw path -- gone entirely.
 - Scope: whole end-state vs. pull out step 3 (one control store / kill the dual-write)
   first as a standalone correctness fix.
 
+### Investigation findings (2026-08-15, verified against code -- READ THIS)
+
+A second read-only agent verified the redesign section above against the real code. The
+proposal's DIRECTION survives, but several load-bearing citations were wrong and six holes
+surfaced. Treat the corrections below as authoritative over the section above.
+
+**Facts re-checked:**
+- VERIFIED: the Python client owns a full local mjModel/mjData mirror (`client.py:336-337,
+  2316, 2297`; `articulation.py:512, 1017`) -- this, not fact 2, is the real proof that
+  id-slice addressing works. VERIFIED: the shadow (`MjbShadowArticulation.cpp:52-108`), the
+  double model description (`RpcDispatcher.cpp:885-951`), the ctrl dual-write
+  (`RpcHandlers_Step.cpp:452-475` + `MjArticulation.cpp:497-510` + SkipController
+  `1022-1036`).
+- WRONG -- fact 2 mis-attributed: `FMjEntityRecord` (`AMjManager.h:82`) is the COMPILED
+  props table (bodies only, and it has a 4th field `TWeakObjectPtr<UMjBody> BodyComp`), NOT
+  the raw path. The `entities` handshake block is `RpcDispatcher.cpp:1021-1055`, not
+  MjStateCollector. Its cache is BUILT by walking the component graph
+  (`AMjManager.cpp:178-179`); id-index only at read time. So it does not demonstrate
+  "component-free" addressing.
+- WRONG -- `EControlSource` is at `MjPhysicsEngine.h:44` (not `MjArticulation.h:410`, which
+  is a bare `uint8`). It is NOT pure arbitration: it selects the ZMQ vs UI staged slot in
+  `ResolveDesiredControl` (`MjArticulation.cpp:414-425`) and is passed into controllers
+  (`MjPDController.cpp:72`, `MjPassthroughController.cpp:35`).
+- WRONG -- `EMjbRunMode::Direct` is NOT the same as `EStepMode::Direct`: it spans engine-
+  clock AND stepped-clock ("driven by the RPC layer or free-running", `MjbScene.h:31-33`).
+  The 3-axis split still holds (it is actually vindicated by this), but the stated
+  justification was false.
+
+**Six design holes (ranked):**
+1. HIGH -- the nu-sized ctrl setpoint buffer CANNOT represent keyframe qpos-hold.
+   `ApplyControls` has two hold paths (`MjArticulation.cpp:452-489`): `bHoldViaQpos` writes
+   `qpos`+zeroes `qvel` (not ctrl); only ctrl-hold writes `d->ctrl`. A ctrl-only buffer
+   silently regresses qpos-hold. Needs a separate qpos/qvel injection channel (mocap-style;
+   DrainCommands has mocap/wrench but not qpos).
+2. HIGH -- deleting `EControlSource` changes controller semantics (ZMQ+UI can no longer both
+   stage with per-art source selection -> becomes last-write-wins by lease) AND every
+   controller's `ComputeAndApply(Source)` signature changes. Plus `SetNetworkControl` has
+   FOUR ingress callers to re-home: `RpcHandlers_Step.cpp:473`, `ZmqSubscribeTransport.cpp:446`,
+   `RosRpcTransport.cpp:450` + `:571` -- and a third control write exists at
+   `MjPhysicsEngine.cpp:1238` (Live-mode `ApplyControls`).
+3. HIGH -- the producer cache is NOT purely mjData id-slices. `FCachedArticulation`
+   (`MjStateCollector.h:76-85`) also carries `TwistCtrl` (UMjTwistController),
+   `InterfaceProducers` (user-channel IMjStateProducer), plus scene-scoped `SceneProducers`.
+   "Walk FMjEntity[], index mjData" silently drops user channels + twist + scene producers.
+   FMjEntity needs an explicit component-enrichment SIDE-CHANNEL; do not "delete the producer
+   cache entirely."
+4. MED -- deleting the shadow strands ~30 `GetAllArticulations` consumers on the raw path,
+   none listed: `MjDebugVisualizer.cpp` (6), `ZmqSubscribeTransport.cpp` (control subscriber),
+   `MjReplayManager.cpp:235`, `RosCameraInfoProvider.cpp:87`, `MjSimulateWidget.cpp`,
+   `RosRpcTransport.cpp:262`. Each must be repointed at FMjEntity or excluded.
+5. MED -- see the EMjbRunMode/EStepMode correction above.
+6. LOW-MED -- step 1's "dual-run, assert equality" is only feasible for qpos/qvel/sensordata
+   (there is golden-diff precedent in `MjParityGoldenTests`); the observation also includes
+   user-channel/twist data FMjEntity won't produce, so scope the assert.
+
+**Corrected blast radius (add to the section's list):** `MjActuatorRuntime.{h,cpp}`
+(SetNetworkControl/ResolveDesiredControl statics); `RpcHandlers_SimOptions.cpp:410-468`
+(HandleSetControlSource -- the whole `set_control_source` op); `RpcHandlers_ModelUpload.cpp:593`
++ `StepCommands.h:35` (PerArticulationControlMode); `MjPhysicsEngine.cpp:1174-1176, 1238`;
+UI `SMjStepModeIndicator.cpp`, `MjPerturbation.cpp:79`; state producers
+`AMjManager.cpp:538-566`; tests beyond the 4 named: `MjActuatorControlSlotTests`,
+`MjPDControllerTests`, `MjRosLinkTests`, `MjThreadTests`, `MjSnapshotAccessorTests`,
+`MjAttachPolicyTests`.
+
+**Refined recommendation:**
+- Name: "Entity" is defensible (already the Python base class) BUT collides with the existing
+  `FMjEntityRecord` / `entities` handshake block (compiled props, bodies-only). Either rename
+  the old struct or pick a distinct term (`FMjGroup` / `FMjAddressable`). Decide before code.
+- Abstraction: FMjEntity is the right addressing + core-state unit, but keep an explicit
+  component-enrichment side-channel (user channels, twist, scene producers, camera meta,
+  debug draw); it does NOT subsume them.
+- Scope: peel a NARROWED step 3 first -- unify the raw ctrl write so raw-ness resolves once
+  and the owned-id/Touched invariant is explicit, WITHOUT yet deleting `EControlSource` or
+  touching the qpos-hold path. That is exactly the cheap "Design C first" from item 2 above
+  (line ~131) and de-risks holes 1+2 before the big rewrite commits to them. Then FMjEntity
+  for compiled state (with side-channel) -> raw path + shadow deletion -> mode collapse.
+
+**Future API A (load_model) -- MORE ready than the section assumes:**
+- UE runtime already links the whole compile toolchain: `mj_parseXMLString`
+  (`MjSpecWriteHooks.cpp:2034`), `mj_compile` (`MjSceneSpec.cpp:386`), `mjVFS`/`mj_addBufferVFS`
+  (`MjSceneSpec.cpp:377-387`), `mj_saveModel` (`MjPhysicsEngine.cpp:1022`,
+  `RpcHandlers_Fastpath.cpp:61`), `mj_loadModelBuffer` (`MjbScene.cpp:471`). So xml(+assets)->MJB
+  is a recombination of EXISTING runtime calls, not a new dependency.
+- The doc's "authoring import can't accept bytes" is OBSOLETE: `upload_model_manifest/chunk/commit`
+  (`RpcHandlers_ModelUpload.cpp:448-512`) already materializes XML+asset bytes to a temp dir and
+  drives import_xml + clean_meshes; client `URLabClient.upload_model(xml: str|bytes, assets=...)`
+  (`client.py:1771`) already takes bytes. So `load_model(fast_path=False)` is mostly a facade
+  over `upload_model`.
+- mjz is the ONLY net-new piece (no support in either repo; codec only in vendored MuJoCo,
+  maybe not compiled in).
+- Recommended shape: explicit `format` field (auto-sniff optional), KEEP the `assets` map (do
+  not force client-side zip), normalize UE-side via the calls above, map `fast_path` onto the
+  Clock/RenderSource axes. Also add the missing client wrapper for `fastpath_load` (menagerie_swap
+  hand-rolls the op dict at `menagerie_swap.py:251`).
+
+**Future API B (articulation split) -- attach is the easy 10%, keyframes the hard 90%:**
+- `mjs_attach(frame, spec, prefix, "")` is the live compose path (`MjSceneSpec.cpp:532-533`);
+  cross-body data is first-class UE spec objects (`UMjPair`/`UMjExclude`/`UMjContact`/
+  `UMjEquality`/`UMjTendon`/`UMjKey`) referencing partners by name. Anything wholly inside one
+  child survives namespacing free.
+- Genuinely hard: contact/exclude/equality/tendon spanning two children can't be expressed
+  post-attach (no cross-participant prefixed-name resolution exists); keyframes are hardest -- a
+  `<key>` is one flat qpos/ctrl vector over whole-model nq/nu (`UMjKey.Qpos`,
+  `MjArticulation.cpp:814`, sliced `RpcHandlers_Scene.cpp:511`), and nothing fragments/recombines
+  them across participants.
+- Gate: DO NOT diff against `scene_compiled.xml` (known VFS-asset-ref reload problem, see
+  [[project_scene_compiled_xml_not_loadable]]); use the compiled-mjModel FIELD diff
+  (`model_diff_lib.h`) that `MjParityGoldenTests` (`.scene2` p0_/p1_ golden) already runs -- a
+  split-then-link diff is a near-drop-in extension.
+
 ## Future API discussion points (2026-08-15, not scoped, user notes)
 
 Two ideas the user raised to capture for later. Both are DISCUSSION ONLY, likely partly

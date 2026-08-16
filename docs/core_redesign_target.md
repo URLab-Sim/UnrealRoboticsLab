@@ -10,7 +10,7 @@ Both are temporary and get deleted when the redesign lands.
 
 Scope: the CORE UE code (how UE owns a sim, renders it, addresses it, and serves it),
 because that is the product. The Python client is a thin wrapper and is designed last.
-Controllers are deferred (see the WIP doc); this plan touches them only where the single
+The controller-LAW model is lower priority (not dropped); this plan touches it only where the single
 control write-path is load-bearing.
 
 ---
@@ -286,11 +286,12 @@ benefit over B.
   assets so packaged has real StaticMeshes, or make the resolver return at component level. Decide
   during implementation.
 
-### Out of scope for parity (shared TODO, not a blocker)
+### Future parity items (neither renderer does these today — tracked, not dropped)
 Heightfield, SDF, skin/deformable, and site/tendon VISUAL geometry are not built by the fast path
 today — but they are also not part of the authoring path's PLAY render (sites/tendons are
-debug-draw on the manager; hfield authoring is an editor grid). So unifying does not regress them;
-they are a shared future TODO for both renderers, not a reason to keep two.
+debug-draw on the manager; hfield authoring is an editor grid). So unifying does not regress them.
+They are a shared parity backlog for BOTH renderers (tracked in §17), not a reason to keep two, and
+not a regression of anything that works today.
 
 ### One remaining live check (validation, not a gate)
 The probes bound the cost SHAPE from code (no rebuild) but not its milliseconds. Since B AVOIDS
@@ -349,13 +350,15 @@ not subscribed, never draw stale); UE-native/out as above. This is why it stays 
 mode: the flag is identical across PoseSource, only the data plumbing differs, hidden behind the
 resolver.
 
-FOLLOW-ON workstream (after the core renderer prototypes), NOT a blocker. Open questions for the
-implementer: overlay-manager ownership + repointing `UMjDebugVisualizer`'s `GetAllArticulations`
-walk (`:542`) at the entity partition; side-stream granularity (one debug bundle vs per-flag
-topics — decide before phase-7 transport); build-time vs runtime geom filtering (memory cost on
-big models); `TRANSPARENT` vs the rgba.a==0 don't-draw collision; whether to instantiate model
-lights (fidelity, separate from the glyph); streaming qpos to Mirrors for the joint needle; and
-editor-preview vs PIE overlay parity.
+SCOPING (audit-corrected — nothing deferred): the actor-side draws (joints/sites/collision/perturbation)
+MUST migrate onto the overlay manager AS PART OF phase-5-demote (they go homeless otherwise), with a
+parity test. The FULL `mjVIS_*`/`mjRND_*` parity set is its own scoped phase (the overlay-manager phase),
+sequenced after 5-demote — a real phase, not an if-we-want. Open questions for the implementer:
+overlay-manager ownership + repointing `UMjDebugVisualizer`'s `GetAllArticulations` walk (`:542`) at the
+entity partition; side-stream granularity (one debug bundle vs per-flag topics — decide before phase-7
+transport); build-time vs runtime geom filtering (memory cost on big models); `TRANSPARENT` vs the
+rgba.a==0 don't-draw collision; whether to instantiate model lights (fidelity, separate from the glyph);
+streaming qpos to Mirrors for the joint needle; and editor-preview vs PIE overlay parity.
 
 ---
 
@@ -375,14 +378,129 @@ editor-preview vs PIE overlay parity.
 
 ---
 
+## 6A. User-facing API — Option A (`IMjEntity`, one concept, three surfaces)
+
+Decided with the user. EVERYTHING is an Entity; the user touches ONE concept in the editor, at
+runtime, in C++, in Blueprint, and in Python. No duplicated data — the runtime Entity is the
+mjModel-derived view (`author actor -> spec -> mjModel -> FMjEntity`), and the name is the
+identity through-line. Not a hand-maintained second copy.
+
+### The interface (Blueprint + C++)
+`IMjEntity` is a `BlueprintType` face on the runtime entity. It addresses parts by TYPED HANDLES,
+not raw strings (strings are brittle + poor UX): a handle carries the resolved `int32` id + a weak
+entity ref, resolved ONCE and reused.
+```cpp
+// handles (Blueprint-friendly, resolve-once, id-backed)
+FMjJoint    J = Entity->Joint("button");      // author-time: DROPDOWN-picked, not free-typed
+FMjActuator A = Entity->Actuator("door_motor");
+FMjGeom     G = Entity->Geom("can");
+// use — no strings in the hot path, no per-frame lookup, no silent miss
+float p = J.Pos();  J.Vel();  A.SetCtrl(5.0);  G.SetTexture(role, tex);
+```
+Author-time addressing is a DROPDOWN of the entity's actual joints/actuators/geoms (a
+`GetOptions`-backed picker / custom pin), so a typo is impossible and it validates at author time.
+The raw-string form (`Entity->Joint(FName)`) remains as a fallback and is what the model + Python
+wire use underneath.
+
+### Where logic lives (the microwave example)
+- PER-ASSET logic (button linear joint over threshold -> force the door actuator): a logic
+  Blueprint / component that is PART OF THE ASSET, authored in the editor and saved with it, run on
+  the runtime entity actor.
+  ```
+  [Microwave entity BP]  OnConstruct: Button = Joint("button"); Motor = Actuator("door_motor")
+                         Tick:        if Button.Pos() > 0.02: Motor.SetCtrl(5.0)
+  ```
+- SCENE-WIDE logic (microwave door open -> open the fridge): the Level Blueprint or the Manager
+  subsystem, getting entities by name.
+  ```
+  [Level BP] Tick: mw = MjManager.GetEntity("microwave"); fr = MjManager.GetEntity("fridge")
+                   if mw.Joint("door").Pos() > 0.5: fr.Actuator("door_motor").SetCtrl(3.0)
+  ```
+- PYTHON is the same surface over RPC (`client.entity("microwave").joint("button").pos`, `.set_ctrl(...)`).
+  In-UE logic runs on the UE tick (no round-trip, tight reactive behaviour); Python runs host-side
+  (orchestration / RL). Same by-name entity ops; SetCtrl routes through the control buffer + lease.
+
+### The load-bearing rule this forces (splits today's AMjArticulation in two)
+Authored *logic* MUST persist to runtime even though the authored *mesh tree* is editor-only:
+- heavy MESH/component tree -> EDITOR-ONLY, rebuilt at runtime by the shared renderer (approach B);
+- user LOGIC (Blueprint/component) -> rides the runtime entity actor, executes against `IMjEntity`.
+So the runtime entity actor is THIN (no per-joint mesh components) but CAN host logic when the
+asset has it. A headless wire/Mirror node with no authored logic spawns none. Footprint composes:
+id-slice (always) + scriptable handle + logic (if authored) + render (if rendering).
+IMPLEMENTATION NOTE: `IMjEntity` + `FMjJoint`/`FMjActuator`/`FMjGeom` handle types + the picker
+customization are a STEP-0 frozen contract (see 16.7).
+
+---
+
+## 6B. Visual domain randomization (DR) — INVESTIGATED 2026-08-15
+
+User goal: great renders + visual DR (e.g. swap a coke-can texture to a sprite at runtime) WITHOUT
+bloating the mjModel with hundreds of textures. Investigation confirms the swap infra ALREADY
+exists; DR is a thin name-keyed override layer on top.
+
+### The enabling fact
+Every geom already wears a per-instance dynamic MID off ONE parameter-driven master
+`M_MuJoCo_Master` (`MjMasterMaterial.cpp:120-248`). Exposed params: `BaseColor`(vec),
+`Metallic`/`Roughness`/`Specular`/`Reflectance`/`Emission`/`TexRepeatU/V`(scalars), + 9 texture
+slots (`RgbTexture`/`Orm`/`Normal`/... role->param table `MjAssetResolve.cpp:50-68`). The geom's
+live MID is recoverable as `Cast<UMaterialInstanceDynamic>(GeomComps[G]->GetMaterial(0))`. So
+NOTHING needs to become a MID; DR re-drives the existing one.
+
+### Architecture — a name-keyed appearance-override channel, OFF the mjModel
+```cpp
+struct FMjGeomAppearance {                        // all optional; only set fields override
+    TOptional<FLinearColor> BaseColor;
+    TOptional<float> Metallic, Roughness, Specular, Reflectance, Emission;
+    TOptional<FVector2D> TexRepeat;
+    TMap<EMjMaterialRole, FName> TextureBindings; // role -> content-cache key / named UTexture
+};
+// keyed by geom canonical name; lives on the Entity enrichment side-channel (section 6), NOT mjModel
+```
+`ApplyAppearanceOverride(GeomId, FMjGeomAppearance&)` = the back half of `ApplyGeomMaterial`
+(`MjbScene.cpp:1490,1513,1569-1580`) run standalone against the already-built MID — no rebuild, no
+`mjModel` touch. Two tiers: (a) PARAMETRIC (scalar/vector params — base color, hue [compute RGB
+client-side], metallic, roughness — no assets, the default/primary path); (b) TEXTURE-SWAP
+(`SetTextureParameterValue(role, Tex)`). The base pass runs first; the override is the last writer
+and wins; clearing re-runs the base `ApplyGeomMaterial` for that geom. NOTE: `OverrideMaterial`
+(whole-asset replacement) is the tier-(c) escape hatch, NOT the tier-a/b channel.
+
+### Content sourcing (incl. headless nodes) — reuse existing paths
+1. procedural/parametric (no assets — the bulk of practical DR); 2. a UE content library by name
+(cooked in for packaged nodes); 3. Python-PUSHED image bytes REUSING the content-addressed upload
+path (`FURLabAssetCache` + `upload_model_manifest/chunk/commit`, `RpcHandlers_ModelUpload.cpp`) +
+a `GetOrBuildTexture`-from-bytes (reuse the BGRA8 loop `MjbScene.cpp:1401-1468`; packaged already
+falls back to `CreateTransient`). Headless nodes already advertise `content_cache` and receive
+bytes via `fastpath_load`.
+
+### Symmetric API + reaching a Mirror
+UE `IMjEntity` ops: `Geom(name).SetAppearance(...)` / `SetTexture(role, key)` / `SetMaterialParam`
+/ `SetMaterial` / `ClearOverride`. Python follows the `_rpc` idiom (`set_geom_appearance`,
+auto-synthesized) + texture bytes via the existing `upload` path. Overrides are LOW-RATE and do
+NOT ride the per-frame transform bus — they travel as their own RPC to the render node and apply
+on the Mirror's OWN MIDs (like `fastpath_load`). Two NEW Python plumbing bits: geom enumeration
+(not walked today) and `resolve_geom` name reconciliation (UE renames on import — needs the
+original->live geom map in the handshake).
+
+### Boundaries + open items
+Scene DR (lights/post-process/sky) = UE-native per-scene (separate `scene` namespace). Camera DR =
+already designed (`docs/plan_camera_intrinsics.md`), mirror its RPC shape + share the per-episode
+reset hook. Physics/material-property DR (friction/mass) = a MODEL change, DIFFERENT namespace so
+"off the mjModel" stays structural. Open: instanced-statics share one MID (exclude overridden
+geoms or use `PerInstanceCustomData`); override storage on the Entity vs render actor (must survive
+PIE dup); persistence across reset (auto-clear vs client re-push per episode); transparency needs a
+translucent master variant (opaque drops opacity); texture-cache eviction under heavy DR.
+
+---
+
 ## 7. Control (kept minimal here; full detail in the WIP doc)
 
 The load-bearing core property: one engine-owned control store and one pre-step write path
 into `d->ctrl`, replacing today's four-plus uncoordinated writers and the dual staging slots.
 Drive-per-entity (direct vs a control law) is resolved once, at drain. Keyframe qpos-hold
-gets a sibling state-injection buffer. The controller model itself (native MuJoCo actuators for
-PD, an optional UE-C++ MuJoCo plugin for custom laws that needs no MuJoCo recompile, and
-evicting keyframe/twist from "controller") is deferred per current priority.
+gets a sibling state-injection buffer (full spec: phase 3). The controller-LAW model (native MuJoCo
+actuators for PD, an optional UE-C++ MuJoCo plugin for custom laws that needs no MuJoCo recompile,
+evicting keyframe/twist from "controller") is a LATER design detail (lower priority, not dropped) —
+the write-path + lease it depends on ARE in phase 3.
 
 ---
 
@@ -622,8 +740,14 @@ Consumed by the ROS `IMjStateConsumer` and by an OPT-IN msgpack `user` block onl
 compiled `UMjSensorRuntime`/`UMjJointRuntime` DescribeState logic ONLY as ROS enrichment.
 CHANGE: handshake serializes `FMjEntity` + reads ranges/gear/types straight off `mjModel`,
 one code path for compiled and raw. The camera/controller metadata (`RpcDispatcher.cpp:838-1015`)
-comes from the enrichment side-channel (it is not on `mjModel`).
-TEST: `MjStateCollectorTests`, `MjUserChannelTests` rewritten against the partition + side-channel.
+becomes Entity build-time enrichment stored ON the Entity (per the 30% reframe), NOT a
+`TWeakObjectPtr` to an actor component (a wire model has no actor to hold that Producer — audit).
+RE-HOME `StructureVersion`: the bump currently lives in the deleted `RebuildProducerCacheGameThread`
+(`MjStateCollector.cpp:464`); move it onto the entity-partition rebuild here so 4N-a's ROS
+re-subscribe keeps working (see 4N-a). NOTE `WorldGeomCache` is also built in that deleted function
+(`:462`), so phase 0d and phase 2 collide there — coordinate.
+TEST: `MjStateCollectorTests`, `MjUserChannelTests` rewritten against the partition + side-channel;
+a StructureVersion-bumps-on-recompile test.
 
 ### Phase 3 — one control store + one drain (REVISED per locked decisions)
 NEW (PROPOSED): on `UMjPhysicsEngine`
@@ -638,13 +762,26 @@ struct FMjStateInjection {                                                   // 
 ```
 CADENCE (locked decision): the drain is a PER-SUBSTEP hook, NOT once-per-request. `DrainCommands`
 (`MjPhysicsEngine.h:568-604`) is the LOCKING model (mutex + placement), not the cadence. Each
-substep, before `mj_step`: for every actuator id, `Drive==direct` writes `d->ctrl[id]=Setpoint[id]`
-(Setpoint PERSISTS — `Touched` is NOT cleared each substep, so a set-once value holds across the n
-loop); `Drive==controller` RE-EVALUATES the law against the current `d->qpos/qvel` each substep
-(closed loop). Then apply `FMjStateInjection`: write held qpos, ZERO the held DoFs' qvel, skip free
-joints, and for entities in `SuppressCtrl` do NOT write their ctrl. This reproduces today's
-per-substep controller eval (`RpcHandlers_Step.cpp:1038-1046`, `MjPhysicsEngine.cpp:1235-1257`) and
-today's `bHoldViaQpos` semantics (`MjArticulation.cpp:454-478,488`) exactly.
+substep, before `mj_step`, in THIS order (audit-corrected):
+1. STATE INJECTION FIRST: write held qpos, ZERO held DoFs' qvel, skip free joints. Record which
+   entities are held (`SuppressCtrl`).
+2. CTRL WRITE/EVAL, GATED: for every actuator id whose entity is NOT in `SuppressCtrl` — `Drive==direct`
+   writes `d->ctrl[id]=Setpoint[id]` (Setpoint PERSISTS — `Touched` is NOT cleared each substep, a
+   set-once value holds across the n loop); `Drive==controller` RE-EVALUATES the law against current
+   `d->qpos/qvel` (closed loop). A held entity's actuators are SKIPPED entirely here — for BOTH
+   direct and controller drives — reproducing today's early-return at `MjArticulation.cpp:488` which
+   precedes the controller branch at `:491`. (Suppression must gate the WRITE pass, not a later
+   pass; writing then "un-writing" is a no-op bug.)
+PUPPET/STATEPUSHED SKIP (audit): phase 3 lands BEFORE phase 7, so while Puppet mode still exists the
+drain MUST retain today's `bSkipApplyControls=(Mode==Puppet)` skip (`MjPhysicsEngine.cpp:1232`) —
+otherwise the per-substep drain clobbers client-pushed qpos/qvel/ctrl and regresses StatePushed.
+Phase 7 removes the skip when it reworks the clock.
+TOUCHED RESET (audit): today `ApplyControls` writes EVERY owned actuator each pass (pushing 0 for
+never-set ones, `MjArticulation.cpp:504-509`); a `Touched`-gated write leaves untouched actuators at
+whatever is in `d->ctrl`. Define reset semantics so a stale non-zero cannot survive (e.g. zero
+`d->ctrl` for owned-but-untouched ids on install/reset).
+This reproduces today's per-substep controller eval (`RpcHandlers_Step.cpp:1038-1046`,
+`MjPhysicsEngine.cpp:1235-1257`) and `bHoldViaQpos` semantics (`MjArticulation.cpp:454-478,488`) exactly.
 CONTROL SOURCE = LEASE (locked redesign): delete the dual ZMQ/UI slots + the selector. ONE
 `Setpoint` per actuator + an exclusive WRITE LEASE per entity (extend `FMjControlOwnership`,
 `RpcHandlers_Control.cpp`, rekeyed to entity name). Only the lease holder's writes reach `Setpoint`;
@@ -707,9 +844,18 @@ These are mostly parallelizable and IN SCOPE now (locked decision 2:A). Original
 - 4N-a — CONTROL-INGRESS interface (shadowless command target). NEW: an interface keyed by entity
   name that routes writes into the phase-3 `Setpoint` buffer + the lease. REPOINT `RosRpcTransport`
   (`GetAllArticulations :262`, per-write `GetArticulation :436,485,533`, `GetActuators`+ingress
-  `:444-451,545-571`, `FindComponentByClass<UMjTwistController> :490`) and its `GetStructureVersion`
-  sub-rebuild (`:238,366`) onto the entity partition + ingress interface. Restores
-  `cmd_ctrl`/`cmd_vel`/`joint_command`/`claim_control`/user-channel for wire models.
+  `:444-451,545-571`) onto the entity partition + ingress interface. Restores
+  `cmd_ctrl`/`joint_command`/`claim_control`/user-channel for wire models.
+  - TWIST is REIMPLEMENTATION, not a repoint (audit): `cmd_vel` needs the twist->joint mapping that
+    the stateful `UMjTwistController` component computes (`FindComponentByClass :490`,
+    `MjTwistController.h:47`). For a wire model with NO component, reimplement that resolution
+    model-only. Scope it as new logic, not a pointer swap.
+  - STRUCTUREVERSION RE-HOME (audit, cross-track): ROS re-subscribes when the collector's
+    `GetStructureVersion` bumps (`:238,366`), but that counter is bumped ONLY inside
+    `RebuildProducerCacheGameThread` (`MjStateCollector.cpp:464`) which PHASE 2 DELETES. Re-home the
+    bump onto the new entity-partition rebuild; phase 2 (spine) and 4N-a (concurrent) MUST agree on
+    it explicitly (this is a concurrent-track-consumes-a-spine-deleted-symbol hazard — freeze the
+    entity-partition version API in STEP 0).
 - 4N-b — SENSOR-SEMANTIC model-only table + per-body FK. NEW: an `mjtSensor -> EMjSensorSemantic`
   table (none exists) to replace `UMjSensorRuntime::GetSemantic` (`MjStateCollector.cpp:146`), and a
   per-body-id name+pose walk to replace `UMjBody::DescribeState` (`MjBody.cpp:375-395`) for `/tf` +
@@ -720,9 +866,16 @@ These are mostly parallelizable and IN SCOPE now (locked decision 2:A). Original
   move frame `FrameId`/`SimTime` stamping off `AAMjManager`-only (`MjCamera.cpp:790-801`); and keep the
   mirror camera-pose side-stream (`cxpos/cxquat`, `MjbScene.cpp:1770-1797`). Unify the FOUR camera
   egress paths (per-camera ZMQ PUB, per-camera SHM `CameraShmWriter`, `FMjCameraFrameBus`, RPC reply)
-  under the entity model so a lightweight renderer produces STABLE topics/stems.
-TEST: ROS ingress + `/tf`/`/odom` + typed sensors against a wire model with NO shadow; camera
-streaming from the unified renderer with stable canonical names.
+  under the entity model so a lightweight renderer produces STABLE topics/stems. ALSO repoint the
+  cinematic `MjOrbitCameraActor` `Cast<AMjArticulation>` (`:88,102,324`) to an entity-keyed follow
+  target (audit — the one un-scoped actor-keyed consumer the sweep found).
+NOTE ON THE 30% (user reframe): all of the above is Entity BUILD-TIME ENRICHMENT (metadata computed
+once and stored on `FMjEntity` / an entity registry), NOT actor-shaped subsystems. `UMjSensorRuntime`/
+`UMjJointRuntime` are already stateless `UBlueprintFunctionLibrary`s (`MjSensorRuntime.h:70`,
+`MjJointRuntime.h:41`), so the semantic table + per-body FK are genuinely model-derivable. The actor
+is not needed for any of it. The BlueprintType Entity face (6A) carries the scriptable surface.
+TEST: ROS ingress + `cmd_vel` twist + `/tf`/`/odom` + typed sensors against a wire model with NO
+shadow; camera streaming from the unified renderer with stable canonical names.
 
 ### Phase 5 — one renderer (approach B, section 5; REVISED per locked decisions)
 FIRST, pin the ACTUAL play-time authoring render path (audit gap): confirm whether
@@ -754,17 +907,25 @@ PRESERVE the level-save tag scheme (`MjbBody=`/`MjbGeom=`) + `ReindexFromLevel` 
 165-189,292`) — the render-server product depends on it.
 CHANGE: the compiled path renders through this renderer at play; `AMjArticulation`'s `UMjGeom`/
 `UMjBody` tree becomes EDITOR-ONLY. NOTE this demotion is NOT independent of phases 1/2/3 (the bridge
-still addresses/collects/controls through the actor until those move off it — see 16.5); do the
-EXTRACTION early (parallel), the DEMOTION after 1/2/3.
-BRIDGES (enumerable): per-geom `OverrideMaterial` channel (`MjGeom.h:96-97`); a "keep user
-attachments" reparent onto the body actor; a Blueprint-on-pawn policy (`MjArticulation.h:389-456`).
-FOLLOW-ON (separate workstream, investigation running): the MuJoCo-`simulate` visualization
-overlays (section 5 "Render visualization options") layer on this renderer as a composable set.
+still addresses/collects/controls through the actor until those move off it — see 16.5); it also
+needs 4N-b (the compiled path loses its actor sensor/FK producers AT PLAY, not only at phase 4 — add
+edge `4N-b -> 5-demote`); do the EXTRACTION early (parallel), the DEMOTION after 1/2/3 + 4N-b.
+BRIDGES (enumerable): per-geom `OverrideMaterial` channel (`MjGeom.h:96-97`) — also the DR override
+channel (6B); a "keep user attachments" reparent onto the body actor; a Blueprint-on-pawn policy
+(`MjArticulation.h:389-456`); and the authored-LOGIC-persists rule (6A) — logic rides the runtime
+entity actor even though the mesh tree is editor-only. CROSS-MODULE: `MujocoMeshImporter.cpp` is in
+`Source/URLabEditor/`, so the editor-only split spans two modules; assign it to the phase-5 owner.
+COUPLED, NOT FOLLOW-ON (audit): the actor-side viz draws (joints/sites/collision `MjArticulation.cpp:882-1164`;
+perturbation force/select `MjPerturbation.cpp:442-515`) go HOMELESS at this demotion and MUST migrate
+onto the unified renderer's overlay manager AS PART OF 5-demote, with a parity test — not a later
+workstream. `UMjDebugVisualizer`'s `GetAllArticulations` walk (`:542`) repoints at the entity
+partition here too (add to blast-radius). The FULL `mjVIS_*`/`mjRND_*` parity set (section 5, 6B-style
+overlay manager) is its own scoped phase after, but the actor-side-draw migration is in 5-demote.
 LEAN-IN: task #21 (extract `FMjbAssetBaker`/`FMjbTransportBus`/`FMjbDirectMode` from `MjbScene`) IS
 the first, parallelizable slice.
 TEST: golden structure/material parity old-authoring-render vs new renderer on a menagerie model;
-packaged-build render test (ProceduralMesh path); level save/reload-by-tag test; + the live
-play-cost profile (validation, not a gate).
+packaged-build render test (ProceduralMesh path); level save/reload-by-tag test; an overlay-parity
+test (joints/sites/collision/perturbation still draw after demotion); + the live play-cost profile.
 
 ### Phase 6 — model source over the wire ({mjb, xml+assets, mjz})
 CHANGE: the receive path normalizes to `mjModel` using calls the runtime ALREADY links —
@@ -800,6 +961,25 @@ Publish backends but NO Subscribe backend (`MjCamera.cpp:1059-1082` camera SHM i
 `CameraShmWriter`) — either add an SHM Subscribe or scope the unified Subscribe to ZMQ and leave SHM
 publish-only.
 TEST: `MjStepServerTests` + integration tests for BOTH subscribe roles (mirror and mirror+forward).
+
+### Phase 9 — Entity user-facing API (`IMjEntity`, 6A)
+NEW: the `BlueprintType` Entity face + `FMjJoint`/`FMjActuator`/`FMjGeom` typed handles (resolve-once,
+id-backed) + the author-time picker customization (dropdown of the entity's parts). `GetEntity(name)`
+on the manager/subsystem. The AUTHORED-LOGIC-PERSISTS rule: a per-entity logic Blueprint/component
+rides the runtime entity actor and executes against `IMjEntity`, while the mesh tree is editor-only
+(phase 5). Mirror the ops in Python (`client.entity(name).joint(...).pos`, `.set_ctrl(...)`).
+Handles + picker are a STEP-0 frozen contract. TEST: resolve-once handle validity across reset; a
+per-asset behaviour (microwave) + a scene-wide behaviour (Level BP) integration test.
+
+### Phase 10 — Visual domain randomization (6B)
+NEW: the `FMjGeomAppearance` name-keyed override channel + `ApplyAppearanceOverride(GeomId, ...)`
+(the back half of `ApplyGeomMaterial` factored to run against the existing MID). Tier-a parametric
+(MID scalar/vector params) + tier-b texture-swap. Content: procedural first; UE library by name;
+Python-pushed bytes reusing `FURLabAssetCache`/`upload_*` + `GetOrBuildTexture`-from-bytes. Overrides
+reach a Mirror as their OWN low-rate RPC (not the transform bus). Python: geom enumeration +
+`resolve_geom` (NEW plumbing) + `set_geom_appearance` op. Rides phase 5's material convergence.
+TEST: override params land on the geom's MID (pattern `MjGeomMaterialTests.cpp:9-19`); pushed-texture
+bind; override survives/clears on reset per policy.
 
 ### Phase 8 — vocabulary rename + Python (LAST, and it is REAL work not a rename — audit)
 Rename across code + docs: Driver / Renderer / Registry / Integrator / ControlLease / Entity.
@@ -947,14 +1127,20 @@ Phases the doc called independent are not:
   actor until those move off it). The renderer EXTRACTION is independent; the demotion is not.
 - Phase 3 and Phase 7 both rewrite the SAME worker loop (`MjPhysicsEngine.cpp:1224-1266`; the
   `bSkipApplyControls=(Mode==Puppet)` branch `:1232` fuses control + clock). They serialize.
-- Phase 0d and Phase 2 both rewrite `MjStateCollector::Collect()`.
+- Phase 0d and Phase 2 both rewrite `MjStateCollector::Collect()` AND both touch
+  `RebuildProducerCacheGameThread` (0d: WorldGeomCache built there `:462`; 2: deletes it + re-homes
+  the StructureVersion bump `:464`). Coordinate.
 - Phase 4 needs a shadowless ROS command-routing path (16.3) in addition to phase 6.
+- ADDED edges (final audit): `4N-b -> 5-demote` (compiled path loses actor sensor/FK producers at
+  play); `4N-a needs the StructureVersion re-home` (produced by phase-2-deleted code — concurrent
+  track consumes a spine-deleted symbol; freeze the version API in STEP 0); `actor-side-viz-draws ->
+  5-demote` (homeless at demotion, migrate with a parity test, NOT a follow-on).
 
 ```
 Serial spine:   1 -> 2 -> 3(full) -> 4 -> 7 -> 5-demote -> 8
-                6 -> 4 ;  3 -> 7 (shared worker loop)
+                6 -> 4 ;  4N -> 4 ;  4N-b -> 5-demote ;  3 -> 7 (shared worker loop)
 Concurrent from day 1: 0a, 0d, 6, renderer-EXTRACTION(#21)+resolvers,
-                       ROS model-only replacements (semantic table, FK, ingress), camera registry
+                       Entity-enrichment 4N (semantic table, FK, ingress+twist, camera registry)
 ```
 
 ### 16.6 Shared-file contention (merge hotspots)
@@ -969,10 +1155,21 @@ FILE there), and by FEATURE elsewhere.
 
 ### 16.7 Parallel decomposition (contract-first)
 - STEP 0 (serial, coordinator, no logic): the unit is `FMjEntity` (name resolved); land
-  header-only compiling stubs for the frozen contracts — `MjEntity.h` + builder, `FMjControlBuffer` +
-  the FULL state-injection channel, `FMjEnrichment` + EMjEnrichmentScope, a COMMAND-INGRESS
-  interface (not just state), `IMjGeomAssetResolver` at COMPONENT level, `EMjPoseSource` + capability
-  flags, an `mjtSensor->EMjSensorSemantic` table interface, and a renderer-agnostic camera registry.
+  header-only compiling stubs for the frozen contracts —
+  - `MjEntity.h` + builder (+ the entity-partition STRUCTURE-VERSION API, so 4N-a's re-subscribe and
+    phase 2's re-home agree);
+  - `FMjControlBuffer` + the FULL state-injection channel (Qpos/Qvel/HoldMask/SuppressCtrl);
+  - `FMjControlLease` (entity-keyed) — 4N-a writes into buffer+lease, so it must be frozen (audit);
+  - `FMjEnrichment` + `EMjEnrichmentScope` (metadata stored ON the Entity, not a weak actor ptr);
+  - a COMMAND-INGRESS interface (not just state);
+  - `IMjGeomAssetResolver` at COMPONENT level;
+  - `EMjPoseSource` + capability flags;
+  - an `mjtSensor->EMjSensorSemantic` table interface;
+  - a renderer-agnostic camera registry;
+  - `IMjEntity` + the `FMjJoint`/`FMjActuator`/`FMjGeom` typed handles + picker customization (6A);
+  - the `FMjGeomAppearance` DR override channel (6B);
+  - the `mjvOption` overlay flag set (`flags[mjNVISFLAG]/[mjNRNDFLAG]` + group masks) — cross-phase
+    (5-demote + overlay + 7 transport, 1:1 wire passthrough), so freeze it early (audit).
 - STEP 1 (fan out, ~5 agents, no spine files): 0a/0b/0c lifecycle fixes; 6 wire-model normalize;
   renderer extraction (#21) + resolvers; ROS model-only replacements (semantic table + FK + ingress
   routing); 0d worldgeom (coordinate with the phase-2 owner).
@@ -980,11 +1177,14 @@ FILE there), and by FEATURE elsewhere.
   5-demote -> 8`, rebasing each on the last. Ship the phase-3 NARROW cut first (fixes
   Live-ignores-control_mode `MjPhysicsEngine.cpp:1232` independently).
 
-### 16.8 Newly-blocking open decisions (add to section 14)
-Drain cadence (16.2.1); full state-injection channel (16.2.2); component-level resolver (16.2.3);
-the actual play render path (16.2.4); ViewerSubscribe's fate (16.2.5); EControlSource behavior
-change accepted? (16.2.6); scope the missing-30% net-new work (16.3) into explicit phases; `mjz` KEPT (decoder confirmed in
-the lib); and the entity-unit name is RESOLVED = `FMjEntity` (everything is an Entity).
+### 16.8 Newly-blocking open decisions — ALL RESOLVED (see §14 "Decisions locked")
+Drain cadence = per-substep, setpoints persist (16.2.1); full state-injection channel = Qpos/Qvel/
+HoldMask/SuppressCtrl, gate the write pass (16.2.2); component-level resolver (16.2.3); play render
+path CONFIRMED runs at play via `UMjGeom::OnRegister` (16.2.4); ViewerSubscribe KEPT as mirror+forward
+(16.2.5); control = write-LEASE, `EControlSource` deleted (16.2.6); missing-30% is Entity build-time
+enrichment scoped as phases 4N (16.3); `mjz` KEPT; entity-unit name RESOLVED = `FMjEntity`; user-facing
+API = Option A `IMjEntity` + typed handles/pickers; DR = name-keyed appearance override. Nothing
+deferred; the controller-law model is lower priority but its write-path/lease is in phase 3.
 
 ### Additions to "functionality that MUST survive" (section 11)
 i. ROS control ingress (cmd_ctrl/cmd_vel/joint_command/claim_control/user-channel) to wire models.
@@ -992,7 +1192,10 @@ j. Sensor-semantic ROS typing (Imu/Wrench/…) and per-link `/tf` + `/odom`.
 k. Camera streaming from the unified renderer with STABLE canonical topics/SHM stems + frame stamps.
 l. Replay (its own clock handler + forward).
 m. Level save/reload of renderer actors via the `MjbBody=`/`MjbGeom=` tag + reindex.
-n. UI+ZMQ co-drive semantics (or an accepted, documented behavior change).
+n. UI+ZMQ co-drive semantics (now the write-lease: one holder writes, UI claims/releases).
+o. The actor-side viz draws (joints/sites/collision/perturbation) — migrate onto the unified
+   renderer's overlay manager at 5-demote; do NOT regress them.
+p. Blueprint scriptability of an entity by name/handle (the `IMjEntity` face, 6A).
 
 ---
 
@@ -1007,7 +1210,9 @@ each implementation step gets a dated row here so the doc stays current through 
 | 2026-08-15 | Renderer unification (3 probes) | Approach B (lightweight structure + pluggable asset source) | §5 |
 | 2026-08-15 | MuJoCo `simulate` viz parity | mjvOption bitmask overlay manager, 3-tier Mirror policy | §5 |
 | 2026-08-15 | Plan audit (feasibility + completeness x2 rounds) | Anchors fixed; drain cadence / injection / component resolver / 4N-as-Entity-enrichment; dep-graph corrected | §15/§16 |
-| 2026-08-15 | Visual domain randomization | (PENDING — agent running) | §TBD |
+| 2026-08-15 | Visual domain randomization | Name-keyed appearance override re-drives existing per-geom MID; parametric + texture-swap; content via existing upload path; off the mjModel | §6B, phase 10 |
+| 2026-08-15 | User-facing API (Option A) | `IMjEntity` + typed handles + pickers; authored logic persists to runtime, mesh tree editor-only | §6A, phase 9 |
+| 2026-08-15 | Final re-audit (2 auditors) | Direction sound; fixed phase-3 ordering + Puppet skip, StructureVersion re-home, twist reimpl, orbit camera, overlay-migration coupled to 5-demote, +2 frozen contracts, +dep edges | §15/§16 |
 
 ### Decisions locked (pointer — full text in §14 "Decisions locked")
 Entity is the unit (absorbs FMjEntityRecord); per-substep drain + persist; keyframe hold exact;
@@ -1019,8 +1224,22 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 ### Implementation progress (per phase — fill in as built)
 | Phase | Owner | Status | Branch/commit | Notes |
 |-------|-------|--------|---------------|-------|
-| Step 0 contracts | — | not started | — | freeze the headers (see §16.7) |
-| 0a/0b/0c fixes | — | not started | — | correctness fixes, land first |
-| ... | | | | |
+| STEP 0 contracts | — | not started | — | freeze all headers in §16.7 (incl. lease, IMjEntity handles, mjvOption, DR) |
+| 0a/0b/0c/0d fixes | — | not started | — | correctness fixes + worldgeom; land first |
+| 6 wire-model source | — | not started | — | concurrent (unblocks 4) |
+| #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |
+| 4N-a ingress+twist | — | not started | — | concurrent; StructureVersion re-home w/ phase 2 |
+| 4N-b sensor-semantic+FK | — | not started | — | concurrent; gates 5-demote too |
+| 4N-c camera registry | — | not started | — | concurrent; +orbit camera |
+| 1 partition | — | not started | — | spine start |
+| 2 observation | — | not started | — | spine |
+| 3 control (narrow→full) | — | not started | — | spine; HIGH risk |
+| 4 raw+shadow delete | — | not started | — | spine; needs 6 + 4N |
+| 7 modes+transport | — | not started | — | spine; shares worker loop w/ 3 |
+| 5-demote + overlay migrate | — | not started | — | spine; needs 1+2+3+4N-b |
+| overlay-manager (full viz) | — | not started | — | after 5-demote |
+| 9 IMjEntity + handles | — | not started | — | rides 1 + 5 |
+| 10 DR override channel | — | not started | — | rides 5 material convergence |
+| 8 vocab + Python | — | not started | — | LAST; breaking-API work |
 
-(Prototype branch: to be cut off `feat/mjb-fast-path` once the doc is fully completed.)
+(Prototype branch: to be cut off `feat/mjb-fast-path` once the doc is fully completed — it is now.)

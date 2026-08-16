@@ -1571,6 +1571,10 @@ FString UMjCamera::GetActualZmqEndpoint() const
 
 FString UMjCamera::GetCanonicalName() const
 {
+	if (!CanonicalOverride.IsNone())
+	{
+		return CanonicalOverride.ToString();
+	}
 	FName Art, Part;
 	ResolveCameraCanonical(*this, Art, Part);
 	return FMjCanonicalName::Full(Art, Part);

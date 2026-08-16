@@ -84,23 +84,11 @@ public:
 			}
 		};
 
-		for (AMjArticulation* Art : Manager->GetAllArticulations())
-		{
-			if (!Art)
-			{
-				continue;
-			}
-			TArray<UMjCamera*> Cameras;
-			Art->GetComponents<UMjCamera>(Cameras);
-			for (UMjCamera* Cam : Cameras)
-			{
-				AddCamera(Cam);
-			}
-		}
-		// Manager-owned (global) cameras not attached to any articulation.
-		TArray<UMjCamera*> GlobalCameras;
-		Manager->GetComponents<UMjCamera>(GlobalCameras);
-		for (UMjCamera* Cam : GlobalCameras)
+		// CollectCameras is the single enumeration owner: render-view cameras plus
+		// global cameras, articulations alive or gone.
+		TArray<UMjCamera*> Cameras;
+		Manager->CollectCameras(Cameras);
+		for (UMjCamera* Cam : Cameras)
 		{
 			AddCamera(Cam);
 		}

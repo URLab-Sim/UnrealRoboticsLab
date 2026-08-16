@@ -298,28 +298,17 @@ void FURLabRpcDispatcher::ParseStepCommon(const TSharedPtr<FJsonObject>& Req,
 			bool bAll = false;
 			if (Req->TryGetBoolField(TEXT("include_cameras"), bAll) && bAll && Mgr)
 			{
-				auto AddCamera = [&Out](UMjCamera* C) {
-					if (!C)
-						return;
-					Out.CameraSpec.Add(C->GetCanonicalName(), ECameraInclude::Latest);
-				};
-				for (AMjArticulation* Art : Mgr->GetAllArticulations())
+				// CollectCameras is the single enumeration owner: render-view cameras
+				// plus global cameras, keyed by canonical name, articulations alive or
+				// gone. Kept in sync with BuildCameraNameMap so a camera the client asks
+				// for here resolves there.
+				TArray<UMjCamera*> Cameras;
+				Mgr->CollectCameras(Cameras);
+				for (UMjCamera* C : Cameras)
 				{
-					if (!Art)
-						continue;
-					TArray<UMjCamera*> Cams;
-					Art->GetComponents<UMjCamera>(Cams);
-					for (UMjCamera* C : Cams)
-						AddCamera(C);
+					if (C)
+						Out.CameraSpec.Add(C->GetCanonicalName(), ECameraInclude::Latest);
 				}
-				// Global / manager-level cameras: components attached directly to
-				// the manager actor rather than an articulation. The per-art walk
-				// alone dropped these, so `include_cameras: true` covered only
-				// robot-mounted cameras.
-				TArray<UMjCamera*> GlobalCams;
-				Mgr->GetComponents<UMjCamera>(GlobalCams);
-				for (UMjCamera* C : GlobalCams)
-					AddCamera(C);
 			}
 		}
 	}

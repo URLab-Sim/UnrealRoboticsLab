@@ -27,6 +27,7 @@
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Entity/MjEntityActor.h"
 #include "MuJoCo/Fast/MjbScene.h"
 #include "MuJoCo/Entity/MjOverlayRenderer.h"
@@ -1016,7 +1017,7 @@ void AAMjManager::BuildRuntimeView()
 	}
 	View->MarkExternallyDriven();
 	UGameplayStatics::FinishSpawningActor(View, FTransform::Identity);
-	View->BuildFromCompiledModel(Model, Arts);
+	View->BuildFromCompiledModel(Model, Arts, /*bBuildCameras=*/true);
 	CompiledRenderView = View;
 	CompiledViewModel = Model;
 
@@ -1031,9 +1032,20 @@ void AAMjManager::BuildRuntimeView()
 
 void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 {
-	if (CompiledRenderView && Snap.XPos.Num() > 0 && Snap.XQuat.Num() > 0)
+	if (!CompiledRenderView)
+	{
+		return;
+	}
+	if (Snap.XPos.Num() > 0 && Snap.XQuat.Num() > 0)
 	{
 		CompiledRenderView->ApplyBodyTransforms(Snap.XPos.GetData(), Snap.XQuat.GetData());
+	}
+	// Re-homed body-fixed cameras track the stepped state too. Guard on the snapshot
+	// carrying a full cam_xpos/cam_xmat block for every view camera.
+	const int32 NCam = CompiledRenderView->NumCameras();
+	if (NCam > 0 && Snap.CamXPos.Num() >= NCam * 3 && Snap.CamXMat.Num() >= NCam * 9)
+	{
+		CompiledRenderView->ApplyCameraPosesFromMat(Snap.CamXPos.GetData(), Snap.CamXMat.GetData());
 	}
 }
 
@@ -1184,6 +1196,58 @@ TArray<UMjQuickConvertComponent*> AAMjManager::GetAllQuickComponents() const
 TArray<AMjHeightfieldActor*> AAMjManager::GetAllHeightfields() const
 {
 	return PhysicsEngine ? PhysicsEngine->GetAllHeightfields() : m_heightfieldActors;
+}
+
+void AAMjManager::CollectCameras(TArray<UMjCamera*>& Out) const
+{
+	// Global (manager-owned) cameras: attached directly to the manager actor, not to any
+	// articulation or the render view. Always included.
+	{
+		TArray<UMjCamera*> GlobalCameras;
+		GetComponents<UMjCamera>(GlobalCameras);
+		for (UMjCamera* Cam : GlobalCameras)
+		{
+			if (Cam)
+			{
+				Out.Add(Cam);
+			}
+		}
+	}
+
+	// The compiled render view's re-homed body-fixed cameras. When present they are the
+	// canonical owners of the model cameras, so the articulation-mounted cameras below are
+	// skipped: enumerating both would collide on the shared canonical name and double the
+	// GPU capture.
+	const int32 NView = CompiledRenderView ? CompiledRenderView->NumCameras() : 0;
+	if (NView > 0)
+	{
+		for (int32 i = 0; i < NView; ++i)
+		{
+			if (UMjCamera* Cam = CompiledRenderView->GetCamera(i))
+			{
+				Out.Add(Cam);
+			}
+		}
+		return;
+	}
+
+	// Transitional: no view cameras yet, so enumerate the articulation-mounted cameras.
+	for (AMjArticulation* Art : GetAllArticulations())
+	{
+		if (!Art)
+		{
+			continue;
+		}
+		TArray<UMjCamera*> Cameras;
+		Art->GetComponents<UMjCamera>(Cameras);
+		for (UMjCamera* Cam : Cameras)
+		{
+			if (Cam)
+			{
+				Out.Add(Cam);
+			}
+		}
+	}
 }
 
 float AAMjManager::GetSimTime() const

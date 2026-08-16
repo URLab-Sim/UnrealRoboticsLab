@@ -454,6 +454,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
 	FString GetCanonicalName() const;
 
+	/**
+	 * Pin this camera's canonical identity directly, bypassing the owner-actor
+	 * resolution in ResolveCameraCanonical. The compiled render view re-homes a
+	 * model camera onto a lightweight body actor that is not an AMjArticulation,
+	 * so it sets the exact "<art>/<part>" string the articulation path produced
+	 * (computed off the model + entity partition) and the wire topic never
+	 * diverges. None (the default) leaves the owner-actor resolution in force.
+	 */
+	void SetCanonicalIdentity(FName InCanonical) { CanonicalOverride = InCanonical; }
+
 protected:
 	virtual void OnRegister() override;
 	virtual void BeginPlay() override;
@@ -474,6 +484,10 @@ private:
 
 	/** Ordinal within the instance's camera port block. */
 	int32 StreamPortIndex = 0;
+
+	/** When set, the pinned canonical identity GetCanonicalName returns verbatim,
+	 *  bypassing the owner-actor resolution (see SetCanonicalIdentity). */
+	FName CanonicalOverride;
 
 	/**
 	 * Refresh HiddenComponents from the live segmentation pools, so a

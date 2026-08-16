@@ -175,10 +175,12 @@ public:
 	 * geom resolves its component through the imported-asset resolver (the UE assets a
 	 * model import produced), keyed back to the authoring UMjGeom via the participants'
 	 * element indices, with the baked resolver behind it for scene-root/inline
-	 * geometry. Also builds the cameras so body-fixed model cameras re-home onto this
-	 * view. Returns geom count built.
+	 * geometry. When bBuildCameras is set, the model's body-fixed cameras re-home onto
+	 * this view (dormant, named through the camera registry) so the RPC camera surface
+	 * enumerates them independently of the articulation actors. Returns geom count built.
 	 */
-	int32 BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants);
+	int32 BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants,
+		bool bBuildCameras = false);
 
 	/** Flag this scene as the manager-driven compiled view before its BeginPlay runs,
 	 *  so BeginPlay does not try to load an MJB of its own. */
@@ -203,6 +205,21 @@ public:
 	 *  4*ncam). Null pointers fall back to this process's mjData rest pose. Driven by
 	 *  the manager for the compiled play view each frame from the render snapshot. */
 	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
+
+	/** Place cameras from the render snapshot's cam_xpos (3*ncam) + cam_xmat (9*ncam,
+	 *  MuJoCo 3x3), converting each 3x3 to a wxyz quaternion the same way Direct mode
+	 *  does before delegating to ApplyCameraPoses. The compiled-view driver on the
+	 *  manager calls this each render tick. Null pointers are a no-op. */
+	void ApplyCameraPosesFromMat(const double* CamXPos, const double* CamXMat);
+
+	/** Number of camera components built for this view (== model ncam once built). */
+	int32 NumCameras() const { return CameraComps.Num(); }
+
+	/** The camera component for a view camera index, or null (out of range/unbuilt). */
+	class UMjCamera* GetCamera(int32 Index) const
+	{
+		return CameraComps.IsValidIndex(Index) ? CameraComps[Index].Get() : nullptr;
+	}
 
 	/**
 	 * Rebuild the body->actor and geom->component maps from the tags on the
@@ -377,6 +394,14 @@ private:
 	// Turn the dormant cameras into a live render server (render target + ZMQ/SHM
 	// bind + per-frame capture). Play session only.
 	void StartCameraStreaming();
+
+	// Re-home the compiled model's body-fixed cameras onto this play view: one dormant
+	// UMjCamera per model camera on its body actor, named through FMjCameraRegistry so
+	// the canonical "<art>/<part>" identity matches the articulation path. No ZMQ bind
+	// and no capture -- the RPC path enables streaming on demand. Registers each camera
+	// with the camera subsystem + network manager explicitly, because a component added
+	// after the world's BeginPlay may not receive its own.
+	void BuildCompiledViewCameras();
 
 	// Copycat: drive the game viewport's view camera from an owner's free/user
 	// camera (MuJoCo world eye position + forward + up), so a render slave mirrors

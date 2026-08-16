@@ -198,32 +198,18 @@ void FURLabRpcDispatcher::BuildCameraNameMap(AAMjManager* Manager,
 	// One canonical identity per camera: "<art>/<part>" from FMjCanonicalName,
 	// matching the zmq_topic the hello handshake advertises and the camera binds.
 	// First writer wins so a sanitize-collision can't hide an already-registered
-	// distinct camera.
-	auto AddCanonical = [&OutByName](UMjCamera* C) {
+	// distinct camera. CollectCameras is the single enumeration owner (render-view
+	// cameras plus global cameras, articulations alive or gone).
+	TArray<UMjCamera*> Cameras;
+	Manager->CollectCameras(Cameras);
+	for (UMjCamera* C : Cameras)
+	{
 		if (!C)
-			return;
+			continue;
 		UMjCamera*& Slot = OutByName.FindOrAdd(C->GetCanonicalName());
 		if (Slot == nullptr)
 			Slot = C;
-	};
-	for (AMjArticulation* Art : Manager->GetAllArticulations())
-	{
-		if (!Art)
-			continue;
-		TArray<UMjCamera*> Cameras;
-		Art->GetComponents<UMjCamera>(Cameras);
-		for (UMjCamera* C : Cameras)
-			AddCanonical(C);
 	}
-	// Manager-owned (global) cameras: not attached to any articulation. Their
-	// canonical name uses the owning actor name as the art segment (see
-	// UMjCamera::GetCanonicalName). Kept in sync with the include_cameras:true
-	// walk in ParseStepCommon so a global camera the client asks for resolves
-	// here instead of being dropped.
-	TArray<UMjCamera*> GlobalCameras;
-	Manager->GetComponents<UMjCamera>(GlobalCameras);
-	for (UMjCamera* C : GlobalCameras)
-		AddCanonical(C);
 }
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::ApplyCameraStreamingGameThread(

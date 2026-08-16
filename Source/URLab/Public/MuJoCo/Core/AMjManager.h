@@ -39,6 +39,7 @@
 // Forward declarations
 class AMjEntity;
 class AMjHeightfieldActor;
+class UMjCamera;
 class UMjPhysicsEngine;
 class UMjDebugVisualizer;
 class UMjNetworkManager;
@@ -214,6 +215,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
+
+	/**
+	 * Every camera the RPC surface can serve, in one place: the manager's global cameras
+	 * plus the compiled render view's re-homed body-fixed cameras. When the render view
+	 * carries cameras it owns the model cameras, so the transitional articulation-mounted
+	 * cameras are skipped -- enumerating both would collide on the shared canonical name
+	 * and double the GPU capture. Falls back to the articulation cameras only while the
+	 * view has none. Works with the articulations alive or gone.
+	 */
+	void CollectCameras(TArray<UMjCamera*>& Out) const;
 
 	/**
 	 * The visual domain-randomization channel: name-keyed geom appearance overrides

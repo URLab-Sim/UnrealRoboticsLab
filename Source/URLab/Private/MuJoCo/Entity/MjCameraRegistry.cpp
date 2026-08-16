@@ -52,11 +52,13 @@ void FMjCameraRegistry::Build(const mjModel* Model, const TArray<FMjEntity>& Ent
 
 		if (const FMjEntity* Owner = OwningEntity(Name, Entities))
 		{
-			// Same canonical form as ResolveCameraCanonical: "<art>/<part>", the art being the
-			// owning entity's public name and the part the camera name with the compiled
-			// "<entity>_" prefix stripped, both routed through the single naming owner so the
-			// topic/stem strings are identical to the actor-derived path.
-			const FName Art = FName(*FMjCanonicalName::Sanitize(Owner->Name.ToString()));
+			// Same canonical form as ResolveCameraCanonical: "<art>/<part>". The art is the
+			// entity's PublicName -- the ActorId-derived segment FMjCanonicalName::ArtSegment
+			// produced for the articulation (NOT the compiled-prefix stem, which diverges when
+			// the ActorId differs from the UE object name). The part is the camera name with
+			// the compiled "<entity>_" prefix (the object-name stem) stripped, then sanitized.
+			// Both match the actor-derived path so the topic/stem strings are identical.
+			const FName Art = Owner->PublicName;
 			const FString Prefix = Owner->Name.ToString() + TEXT("_");
 			const FString Local = Name.RightChop(Prefix.Len());
 			const FName Part = FName(*FMjCanonicalName::Sanitize(Local));

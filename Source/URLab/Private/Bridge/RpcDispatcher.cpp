@@ -827,6 +827,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 	// Articulations block.
 	TArray<TSharedPtr<FJsonValue>> ArtsArray;
+	// Every camera the RPC surface serves, enumerated once (render-view cameras included).
+	// Each entity's camera_topics filters this by canonical art segment, so a re-homed
+	// camera is reported whether or not the authoring articulation is still alive.
+	TArray<UMjCamera*> AllCameras;
+	Manager->CollectCameras(AllCameras);
 	for (const FMjEntity& E : Manager->PhysicsEngine->GetEntityPartition())
 	{
 		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
@@ -959,16 +964,20 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			ArtObj->SetObjectField(TEXT("original_names"), OriginalNames);
 		}
 
-		// Camera metadata (mode, resolution, fovy, zmq endpoint/topic). Camera
-		// transport config lives only on the components, so read it off the
-		// resolved owning art.
+		// Camera metadata (mode, resolution, fovy, zmq endpoint/topic). Selected from
+		// the one collected camera list by canonical art segment == this entity's public
+		// name, so a body-fixed camera re-homed onto the render view is reported here even
+		// after the authoring articulation is gone.
 		TSharedPtr<FJsonObject> CamMap = MakeShared<FJsonObject>();
-		TArray<UMjCamera*> Cameras;
-		if (Art != nullptr)
-			Art->GetComponents<UMjCamera>(Cameras);
-		for (UMjCamera* Cam : Cameras)
+		const FString EntitySeg = E.PublicName.ToString();
+		for (UMjCamera* Cam : AllCameras)
 		{
 			if (!Cam)
+				continue;
+			const FString CamCanon = Cam->GetCanonicalName();
+			FString CamArtSeg;
+			FString CamPartSeg;
+			if (!CamCanon.Split(TEXT("/"), &CamArtSeg, &CamPartSeg) || CamArtSeg != EntitySeg)
 				continue;
 			TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
 
@@ -1000,7 +1009,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			FString Endpoint = Cam->GetActualZmqEndpoint();
 			Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
 			CamObj->SetStringField(TEXT("zmq_endpoint"), Endpoint);
-			const FString CamCanon = Cam->GetCanonicalName();
 			CamObj->SetStringField(TEXT("zmq_topic"), CamCanon);
 			CamMap->SetObjectField(CamCanon, CamObj);
 		}

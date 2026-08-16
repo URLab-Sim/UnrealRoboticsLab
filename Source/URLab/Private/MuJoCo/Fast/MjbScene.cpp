@@ -28,7 +28,12 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Capture/MjCameraSubsystem.h"
 #include "MuJoCo/Capture/MjCameraTypes.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjCameraRegistry.h"
+#include "MuJoCo/Entity/MjEntity.h"
+#include "Transport/NetworkManager.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Entity/MjAppearanceStore.h"
@@ -295,7 +300,8 @@ bool CompiledGeomNameMatches(const mjModel_* M, int32 G, const FString& Want, bo
 }
 } // namespace
 
-int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants)
+int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants,
+	bool bBuildCameras)
 {
 	Teardown();
 	if (!InModel)
@@ -338,8 +344,13 @@ int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArtic
 	BuildBodies();
 	BuildGeoms();
 	// Body-fixed model cameras (wrist/head) re-home onto this view; the manager places
-	// them each frame via ApplyCameraPoses. Dormant unless camera streaming is enabled.
-	BuildCameras();
+	// them each frame via ApplyCameraPosesFromMat. Built dormant and named through the
+	// camera registry so the RPC surface addresses them by the same canonical identity
+	// the articulation path produced.
+	if (bBuildCameras)
+	{
+		BuildCompiledViewCameras();
+	}
 
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjbScene] compiled play view: nbody=%d ngeom=%d (%d geom comps, %d authored origins)"),
@@ -836,6 +847,106 @@ void AMjbScene::BuildCameras()
 	UE_LOG(LogURLab, Log, TEXT("[MjbScene] built %d camera component(s) (dormant)"), NCam);
 }
 
+void AMjbScene::BuildCompiledViewCameras()
+{
+	if (!Model || Model->ncam == 0)
+	{
+		return;
+	}
+
+	// Canonical identity per camera, computed off the compiled model + the engine's entity
+	// partition. The registry yields the same "<art>/<part>" string ResolveCameraCanonical
+	// produced for the articulation, so a re-homed camera keeps the exact topic/stem the RPC
+	// surface keys on -- the art segment derives from the entity's ActorId (via PublicName),
+	// not the compiled-prefix stem.
+	FMjCameraRegistry Registry;
+	UMjNetworkManager* NetworkManager = nullptr;
+	if (AAMjManager* Manager = AAMjManager::GetManager())
+	{
+		if (Manager->PhysicsEngine)
+		{
+			Registry.Build(Model, Manager->PhysicsEngine->GetEntityPartition());
+		}
+		NetworkManager = Manager->NetworkManager;
+	}
+
+	const int32 NCam = static_cast<int32>(Model->ncam);
+	CameraComps.SetNum(NCam);
+	for (int32 C = 0; C < NCam; ++C)
+	{
+		// Host the camera under its MuJoCo body actor when it has one, else the scene
+		// actor. Its world pose is driven explicitly each render tick regardless.
+		const int32 BodyId = Model->cam_bodyid[C];
+		AActor* Host = (BodyActors.IsValidIndex(BodyId) && BodyActors[BodyId]) ? BodyActors[BodyId].Get() : this;
+
+		UMjCamera* Cam = NewObject<UMjCamera>(Host);
+		if (!Cam)
+		{
+			continue;
+		}
+		Cam->CaptureMode = EMjCameraMode::Real;
+
+		// Resolution: MuJoCo leaves an unspecified camera at 1x1, so treat <=1 as a sane
+		// default. Then optionally cap the height (each camera is a full scene capture),
+		// keeping aspect.
+		int32 W = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C]) : 0;
+		int32 H = Model->cam_resolution ? static_cast<int32>(Model->cam_resolution[2 * C + 1]) : 0;
+		if (W <= 1 || H <= 1)
+		{
+			W = 640;
+			H = 480;
+		}
+		if (CameraMaxHeight > 0 && H > CameraMaxHeight)
+		{
+			W = FMath::Max(1, FMath::RoundToInt(W * (static_cast<double>(CameraMaxHeight) / H)));
+			H = CameraMaxHeight;
+		}
+		TArray<int32> Res;
+		Res.Add(W);
+		Res.Add(H);
+		Cam->SetResolution(Res);
+		if (Model->cam_fovy[C] > 0.0)
+		{
+			Cam->SetFovy(Model->cam_fovy[C]);
+		}
+
+		// Name for logs, then pin the canonical identity from the registry so the wire
+		// topic is stable regardless of the (transient, possibly demoted) host actor name.
+		const char* CamName = mj_id2name(Model, mjOBJ_CAMERA, C);
+		if (CamName && *CamName)
+		{
+			Cam->MjName = FString(UTF8_TO_TCHAR(CamName));
+		}
+		if (Registry.Cameras.IsValidIndex(C))
+		{
+			Cam->SetCanonicalIdentity(Registry.Cameras[C].CanonicalName);
+		}
+
+		// Dormant: no ZMQ bind, no port, no capture. The RPC path (set_camera_streaming /
+		// include_cameras) turns capture + streaming on per camera via SetStreamingEnabled.
+		Cam->SetupAttachment(Host->GetRootComponent());
+		Cam->ComponentTags.Add(MjbIdTag(kTagCam, C));
+		Cam->RegisterComponent();
+
+		// A component added after the world's BeginPlay may never receive its own, so the
+		// registrations UMjCamera::BeginPlay would have done are made explicitly here.
+		if (UWorld* World = GetWorld())
+		{
+			if (UMjCameraSubsystem* Subsystem = World->GetSubsystem<UMjCameraSubsystem>())
+			{
+				Subsystem->RegisterCamera(Cam);
+			}
+		}
+		if (NetworkManager)
+		{
+			NetworkManager->RegisterCamera(Cam);
+		}
+
+		CameraComps[C] = Cam;
+	}
+	UE_LOG(LogURLab, Log, TEXT("[MjbScene] compiled view: re-homed %d body-fixed camera(s) (dormant)"), NCam);
+}
+
 void AMjbScene::StartCameraStreaming()
 {
 	// Turn dormant cameras into a live render server: set up the render target, bind
@@ -894,6 +1005,34 @@ void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 		}
 		Cam->SetWorldLocationAndRotation(Loc, Rot);
 	}
+}
+
+void AMjbScene::ApplyCameraPosesFromMat(const double* CamXPos, const double* CamXMat)
+{
+	if (!CamXPos || !CamXMat)
+	{
+		return;
+	}
+	const int32 NCam = CameraComps.Num();
+	if (NCam == 0)
+	{
+		return;
+	}
+	// The snapshot carries cam_xmat as a MuJoCo 3x3; convert to the wxyz quats
+	// ApplyCameraPoses expects (mju_mat2Quat), then let ApplyCameraPoses apply the
+	// axis convention (URLabAxisConv::MjQuatToUe) -- the exact conversion Direct mode uses.
+	TArray<double> Cxpos;
+	TArray<double> Cxquat;
+	Cxpos.SetNumUninitialized(NCam * 3);
+	Cxquat.SetNumUninitialized(NCam * 4);
+	for (int32 C = 0; C < NCam; ++C)
+	{
+		Cxpos[3 * C + 0] = CamXPos[3 * C + 0];
+		Cxpos[3 * C + 1] = CamXPos[3 * C + 1];
+		Cxpos[3 * C + 2] = CamXPos[3 * C + 2];
+		mju_mat2Quat(Cxquat.GetData() + 4 * C, CamXMat + 9 * C);
+	}
+	ApplyCameraPoses(Cxpos.GetData(), Cxquat.GetData());
 }
 
 void AMjbScene::ApplyUserCamera(const double* Pos, const double* Fwd, const double* Up)

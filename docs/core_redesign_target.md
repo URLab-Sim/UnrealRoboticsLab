@@ -113,6 +113,12 @@ frame and therefore what local data exists:
 OWNER (advertise, serve the model, stream transforms). `Mirror` is downstream and cannot. That
 owner-ness is DERIVED from PoseSource, not a separate axis.
 
+Verified against code (2026-08-15): Mirror applies `bxpos/bxquat` (or legacy `xpos/xquat`)
+streamed transforms with no step (`MjbScene.cpp:1756/1766`); the fast renderer's own-sim Direct
+renders the engine snapshot (`:1710`); StatePushed writes pushed qpos/qvel into `Data` then
+`mj_forward`s (`MjPhysicsEngine.cpp:560-571`). Note we are designing a NEW plan, not ratifying
+these names — the code is the evidence, not the target.
+
 ### Mirror vs StatePushed — keep both; different cost, different data
 - `Mirror` receives already-resolved transforms and pays nothing beyond drawing. No contacts,
   no sensors, no derived data. The cheap render / view path — a render server or VR viewer must
@@ -146,13 +152,16 @@ tempts us to add a named mode or a "type" enum, that is the smell we are removin
 capability instead. Keep the axis tiny (one PoseSource) and let the capability set carry the
 growth.
 
-### The owner role is uniform and symmetric
-Any instance with authoritative live state (`FreeRun` / `Stepped` / `StatePushed`) can act as an
-OWNER: advertise in the registry, serve its model, stream transforms, and accept perturbations.
-Any instance can attach as a `Mirror` to ANY owner, whether that owner is a UE instance or an
-external Python client. So any UE instance can mirror / render-serve / view any other UE instance
-or any Python owner, and vice versa. Owner-ness is not a special mode; it is what an instance
-with live state exposes.
+### The owner role: any process, one-to-many
+An OWNER is any process with authoritative live sim state that advertises, serves its model,
+streams transforms, and accepts perturbations. An owner is NOT UE-specific:
+- a UE instance (`FreeRun` / `Stepped` / `StatePushed`) can be an owner;
+- an external Python or other process can equally be an owner (it holds the sim; it has no UE
+  PoseSource at all — PoseSource describes a UE instance, ownership is a process role).
+An owner serves MANY mirrors at once (one-to-many fan-out): N UE renderers / viewers / camera
+nodes can all attach to the same owner. Any UE instance can attach as a `Mirror` to any owner,
+UE or external. So owner-ness is a process role derived from holding live state, decoupled from
+whether the holder is UE; a single owner feeds an arbitrary fan-out of mirrors.
 
 ### How this expresses every capability, with no duplication
 - UE free-runs a sim: `FreeRun`.
@@ -207,48 +216,67 @@ the WIP doc; they must be ONE mechanism, not two. UE runtime already links
 
 ---
 
-## 5. One renderer (concrete, because the double-build is the real objection)
+## 5. One renderer — OPEN PROBLEM, needs investigation (do not treat as solved)
 
-The honest objection (raised while iterating): the fast path already builds render actors FROM
-the `mjModel`. The compiled/authoring path builds an `AMjArticulation` Blueprint component tree,
-uses it to build the spec, compiles the `mjModel` — and if we THEN also build render actors from
-that `mjModel`, we have instanced the geometry TWICE (the heavy authoring tree AND the
-mjModel-derived tree). That is expensive and is a fair reason to distrust a naive "everything
-renders from the mjModel".
+This is the hardest part and my earlier "just render from the mjModel at play" was too glib.
+The real constraint, grounded in code:
 
-Proposed resolution — separate authoring-time from render-time:
-- EDITOR / authoring: the `AMjArticulation` component tree stays as the authoring + placement +
-  spec-build surface. Unchanged. It is what a user edits, and it is what produces the spec.
-- RUNTIME (a sim is installed, or a mirror is streaming): ONE renderer builds from the
-  `mjModel`, for BOTH the compiled and the fast paths. The heavy authoring component tree is
-  NOT instantiated as a render representation at runtime.
+- The AUTHORING path pays a ONE-TIME IMPORT cost so the user can edit and author scenes. Import
+  runs `clean_meshes`, produces UE `StaticMesh` assets + materials, and `UMjGeom` builds its
+  render with `SetStaticMesh(SpecMesh.Asset)` / `SetStaticMesh(ImportedMesh)` (`MjGeom.cpp:490,
+  1151`). Those imported assets are the render source at play; nothing is rebuilt from the
+  `mjModel` at play.
+- The FAST path builds meshes FROM the `mjModel` mesh pool at load
+  (`GetOrBuildStaticMesh` / `BuildMesh`) and caches them under `/Game/URLabFastPath/<hash>/`.
 
-Why this does not double-instance, and likely gets FASTER:
-- At runtime you build from the `mjModel` ONCE. You never stand up the authoring tree as a
-  second render representation; the compiled path stops rendering its Blueprint tree at play.
-- The authoring Blueprint tree is the known-EXPENSIVE object (huge XML -> huge BP -> slow to
-  instantiate, see `project_blueprint_edit_lag_unresolved`). The mjModel-derived lightweight
-  renderer (one actor per body, no per-element component graph) is CHEAPER. So moving
-  compiled-path runtime rendering onto it should REDUCE cost: the "build from mjModel" work
-  replaces the heavier BP-tree instantiation, it is not added on top.
+So if we "unify" by making the authoring path go `AMjArticulation` -> `mjSpec` -> `mjModel` ->
+rebuild-meshes-from-mjModel at play, we THROW AWAY the import and redo the expensive mesh build
+(and possibly at lower fidelity than the imported assets). That is the extra cost the user is
+right to reject. A naive single-render-from-mjModel is NOT acceptable.
 
-What must be validated before committing (this is a proposal; we iterate):
-1. FIDELITY PARITY — the mjModel-derived renderer must resolve the SAME imported meshes/materials
-   the authoring path used, so the compiled scene looks identical. The compiled path imports
-   those assets and the `mjModel` references them by name, so this should hold, but it is the
-   first thing to prove.
-2. AUTHORING-ONLY VISUALS — anything a user attaches in UE that is not in the `mjModel` (debug
-   widgets, decorative components) needs an explicit bridge or is declared editor-only.
-3. ONE-TIME PLAY COST — building from the `mjModel` at play-start is a cost the compiled path
-   does not pay today; it must be no worse than the BP-tree instantiation it replaces (expected
-   better, per the point above).
+The reframe that MIGHT dissolve it (to investigate, not adopt): the renderer is really TWO
+concerns that should be separated:
+1. RENDER STRUCTURE — per-body actors, per-geom components, and transform application. This is
+   generic and can plausibly be ONE lightweight implementation driven by the `mjModel` structure
+   (body/geom ids, which mesh per geom) plus a pose source (snapshot or stream).
+2. ASSET SOURCE — the actual `{StaticMesh, material}` per geom. This must be PLUGGABLE so neither
+   path rebuilds what it already has:
+   - authoring resolves to the IMPORTED assets (by mesh name / geom), already on disk;
+   - fast path resolves to the BAKED-from-mjModel assets, already cached under
+     `/Game/URLabFastPath/<hash>/`.
+   The `mjModel` gives structure; a resolver maps each geom to an already-built asset. No rebuild
+   in either case.
 
-Net: "one renderer" means the `mjModel` is the SINGLE runtime render source for both paths, and
-the authoring tree is editor-only. This is the biggest lean win and it gates the mode collapse
-(with one own-a-sim path and one renderer, `EMjbRunMode` has nothing left to encode). It needs
-the fidelity-parity proof (item 1) before we commit — that proof is the recommended first probe.
-The god-object extraction tracked as task #21 (asset baker / transport bus / direct mode out of
-`MjbScene`) is a first cut, but the deeper move is this shared runtime renderer.
+Candidate approaches (this is the investigation, pick after probing):
+- A. SHARE CODE, KEEP TWO REPRESENTATIONS — the authoring path keeps rendering its imported
+  component tree; the fast path keeps building from the mjModel; they share the mesh/material
+  BUILD helpers and the transform-APPLY layer. Least ambitious, zero re-instancing, but does not
+  literally collapse to one renderer.
+- B. ONE STRUCTURE + PLUGGABLE ASSET SOURCE — one lightweight renderer instances per-body actors
+  from the `mjModel` and resolves each geom's mesh/material from the appropriate cache (imported
+  or baked), so nothing rebuilds; the heavy authoring BP tree goes editor-only. Open cost
+  question: re-instancing lightweight actors that REFERENCE existing assets is cheap, but it is
+  still non-zero, and we must confirm it is cheaper than keeping the BP tree.
+- C. AUTHOR INTO THE FAST REPRESENTATION — import bakes directly into the lightweight per-body
+  representation + the `/Game/URLabFastPath` asset cache, so authoring and fast share ONE
+  representation from the start and editing operates on it. Most unified, biggest change to the
+  authoring/editor experience.
+
+Open questions the probe must answer:
+- Does the import store assets in a form a mjModel-driven resolver can look up per geom (by mesh
+  name), or does the import need to change to populate a shared cache?
+- Is the `project_blueprint_edit_lag_unresolved` cost at EDIT time (BP compile) or also at PLAY
+  instantiation? If edit-only, the authoring path's play rendering may already be fine and
+  approach A is enough; if play too, B/C matter more.
+- Fidelity: are imported materials/meshes richer than baked-from-mjModel, and does the resolver
+  preserve that for the authoring path?
+
+RECOMMENDED FIRST PROBE: instrument and measure the authoring path's PLAY-time cost (asset
+resolve vs actor instantiation vs BP compile) and confirm whether a mjModel-structured renderer
+can resolve the imported assets with zero mesh rebuild. That measurement decides A vs B vs C. Do
+NOT commit the renderer unification until it is answered. This gates the mode collapse, so it is
+the highest-value investigation, but it is an INVESTIGATION, not a settled plan. The god-object
+extraction (task #21) is orthogonal cleanup that helps regardless.
 
 ---
 
@@ -313,7 +341,7 @@ Do not churn the RPC base; it is the model the others copy.
 | `EStepMode{Live,Direct,Puppet,Auto}` | `Drive{FreeRun,Stepped,StatePushed}` (Auto = policy) |
 | `EMjbRunMode{Puppet,Direct}` | folded into `PoseSource` (Puppet=`Mirror`, Direct=`Stepped`) |
 | compiled path + fast-path raw install + shadow | ONE `UMjPhysicsEngine` install + one partition |
-| `MjbScene` second renderer (~2300 lines) | ONE runtime renderer from `mjModel`; authoring tree is editor-only |
+| `MjbScene` second renderer (~2300 lines) | ONE renderer — OPEN (section 5): unify structure, keep asset source pluggable so neither path rebuilds |
 | render-server = a bundled mode | two independent overlays: cameras out / interactive input |
 | fast path takes only MJB | receiver normalizes `{mjb, xml+assets, mjz}` to `mjModel`; xml/mjz kills version skew |
 | `raw_actuators`/`raw_joints` + `bRawShadow` | deleted (xml/mjz source removes the root cause) |
@@ -360,8 +388,8 @@ Then the staged core redesign, each phase compiling on its own:
    handshake to one description.
 7. One "UE owns a sim" path: build the partition on the wire-MJB path too, delete the shadow +
    raw handshake block (needs the MJB version-skew fix).
-8. One renderer: share the compiled renderer with the fast path; lightweight as an option;
-   finish the `MjbScene` god-object extraction into it.
+8. One renderer: OPEN PROBLEM (section 5). Do NOT commit until the first probe answers A/B/C.
+   The `MjbScene` god-object extraction (task #21) is orthogonal cleanup, safe to do meanwhile.
 9. Mode collapse: one `PoseSource` axis + composable capabilities; single source of truth for the integrator
    state; retire `EStepMode` / `EMjbRunMode` / `EControlSource`.
 10. Transport: one Subscribe base; fast-path bus becomes a Publish topic.
@@ -389,10 +417,13 @@ Then the staged core redesign, each phase compiling on its own:
   struct). Blocks the addressing phase.
 - `StatePushed` is confirmed KEEP (gives the local instance contacts + derived data a mirror
   can't see); it is distinct from the cheap `Mirror` path and must not be collapsed into it.
-- The unified renderer's FIDELITY PARITY (section 5, item 1) is the recommended FIRST probe:
-  prove the mjModel-derived runtime renderer resolves the same imported meshes/materials as the
-  authoring tree, so the compiled scene looks identical and the BP tree can go editor-only. This
-  gates the whole mode collapse.
+- ONE RENDERER is an OPEN PROBLEM, not a settled plan (section 5). The authoring path renders
+  from IMPORTED assets (paid once at import, `MjGeom.cpp:490/1151`); rebuilding from the mjModel
+  at play would throw that away. Investigation must decide between approach A (share code, keep
+  two representations), B (one structure + pluggable asset source), C (author into the fast
+  representation). RECOMMENDED FIRST PROBE: measure the authoring path's play-time cost breakdown
+  and confirm whether a mjModel-structured renderer can resolve the imported assets with ZERO
+  mesh rebuild. This gates the mode collapse; do not commit the renderer merge before it.
 - `mjz` codec availability in the linked `libmujoco` — verify before relying on the mjz source
   format (mjb and xml+assets are already known-feasible).
 - The `load_model()` RPC and the fast-path model source must be ONE normalize-to-`mjModel`
@@ -405,8 +436,10 @@ Then the staged core redesign, each phase compiling on its own:
   local mjModel — it does load the wire MJB and build from it (`MjbScene.cpp:471`).
 - "Render server" (cameras out) and "viewer" (interactive input in) are INDEPENDENT overlays,
   not one bundle; a VR viewer is `Mirror` + input, no cameras.
-- Owner-ness is uniform and DERIVED from PoseSource: any instance with live state
-  (FreeRun/Stepped/StatePushed) can be an owner; any Mirror can attach to any
-  owner (UE or Python).
+- Owner-ness is a PROCESS role, not UE-specific: a UE instance (FreeRun/Stepped/StatePushed) OR
+  an external Python/other process can own; ownership is decoupled from PoseSource (PoseSource
+  describes a UE instance). An owner serves MANY mirrors at once (one-to-many fan-out).
 - Fast-path model source broadens from MJB-only to `{mjb, xml+assets, mjz}`; xml/mjz compiled by
   the receiver removes the version-skew that forces the `raw_*` re-description today.
+- Mode model collapsed from two axes (SimSource + Drive) to ONE (PoseSource); every renderer has
+  an mjModel, so the axis is where the render pose comes from, not whether a model exists.

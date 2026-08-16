@@ -627,6 +627,12 @@ Then the staged core redesign, each phase compiling on its own:
 - The `load_model()` RPC and the fast-path model source must be ONE normalize-to-`mjModel`
   mechanism, not two.
 
+### Migration strategy (user, 2026-08-16)
+Do NOT maintain backwards scaffolding for code being overhauled: no dual-run of new-vs-old, no
+equality tests asserting the new path matches the old, no parallel maintenance. Build the new
+thing, validate it on its own terms, and DELETE the old path as consumers move onto the new one.
+Standalone crash fixes to still-live code are fine; transitional belt-and-suspenders is not.
+
 ### Decisions locked by the user (2026-08-15)
 - ENTITY is the addressing unit — EVERYTHING is an `FMjEntity` (robot or prop); it absorbs the
   old props-only `FMjEntityRecord`. One concept, no collision. (Python `URLabEntity` already fits.)
@@ -1227,7 +1233,7 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | STEP 0 contracts | main | DONE (compiles+links) | proto/entity-redesign | 11 headers under `MuJoCo/Entity/` + `MjEntityModel.cpp`; UHT ok; build Succeeded 2026-08-16 |
 | 0a registry race | main | DONE (build ok) | proto/entity-redesign | fenced rebuild + locked GetArticulation + GetAllArticulations by-value snapshot |
 | 0b/0c/0d fixes | — | skipped | — | low-value hardening of doomed articulation/shadow code; superseded by the rewrite |
-| 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition) + wired into InstallCompiledSpec dual-run |
+| 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition, GetCompiledPrefix) + built in InstallCompiledSpec; consumers migrate onto it (no dual-run test vs old registry) |
 | 6 wire-model source | — | not started | — | concurrent (unblocks 4) |
 | #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |
 | 4N-a ingress+twist | — | not started | — | concurrent; StructureVersion re-home w/ phase 2 |

@@ -27,11 +27,11 @@ namespace
 		return N ? FString(UTF8_TO_TCHAR(N)) : FString();
 	}
 
-	// Compiled element names are "<prefix>/element". An element belongs to Prefix if its name
-	// equals the prefix or is under "<prefix>/".
+	// A participant's compiled prefix (AMjArticulation::GetCompiledPrefix) already ends with '_', so
+	// its elements are named "<prefix><element>" and match by StartsWith.
 	bool BelongsToPrefix(const FString& Name, const FString& Prefix)
 	{
-		return Name == Prefix || Name.StartsWith(Prefix + TEXT("/"));
+		return !Prefix.IsEmpty() && Name.StartsWith(Prefix);
 	}
 
 	// Root of an entity = the highest-in-tree (smallest id) body it owns; free base if that body
@@ -87,7 +87,7 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 	{
 		const int32 Idx = Entities.Num();
 		FMjEntity& E = Entities.AddDefaulted_GetRef();
-		E.Name = FName(*P);
+		E.Name = FName(*(P.EndsWith(TEXT("_")) ? P.LeftChop(1) : P));
 		PrefixToIndex.Add(P, Idx);
 	}
 
@@ -155,7 +155,7 @@ void FMjControlLease::Release(FName Entity, const FGuid& Who)
 }
 
 // --- MjEntityApi handles ----------------------------------------------------------------------- //
-// Not yet backed by a live entity; the runtime entity face fills these in.
+// TODO: back these with the live entity -- read d->qpos/qvel by id; route SetCtrl to the control buffer.
 float FMjJoint::Pos() const { return 0.f; }
 float FMjJoint::Vel() const { return 0.f; }
 void  FMjActuator::SetCtrl(double /*Value*/) const {}
@@ -163,7 +163,7 @@ void  FMjActuator::SetCtrl(double /*Value*/) const {}
 // --- MjCameraRegistry -------------------------------------------------------------------------- //
 void FMjCameraRegistry::Build(const mjModel* /*Model*/, const TArray<FMjEntity>& /*Entities*/)
 {
-	// Enumerates model cameras and computes canonical names from entity prefixes.
+	// TODO: enumerate model cameras and compute canonical names from entity prefixes.
 }
 
 const FMjCameraInfo* FMjCameraRegistry::Find(FName Canonical) const
@@ -174,6 +174,6 @@ const FMjCameraInfo* FMjCameraRegistry::Find(FName Canonical) const
 // --- MjSensorSemantics ------------------------------------------------------------------------- //
 EMjSensorSemantic MjSensorSemantics::ForSensor(const mjModel* /*Model*/, int32 /*SensorId*/)
 {
-	// Maps a sensor's mjtSensor type (with a name heuristic) to its ROS semantic.
+	// TODO: map mjtSensor type (with a name heuristic) to the ROS semantic; Generic until then.
 	return EMjSensorSemantic::Generic;
 }

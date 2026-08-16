@@ -863,7 +863,7 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		{
 			if (Art)
 			{
-				Partition.Prefixes.Add(FMjCanonicalName::ArtSegment(Art).ToString());
+				Partition.Prefixes.Add(Art->GetCompiledPrefix());
 			}
 		}
 		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);

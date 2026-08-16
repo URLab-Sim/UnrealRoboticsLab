@@ -40,94 +40,100 @@ for; the wire and the Python API are shaped by what the core produces, never the
 
 ```
                          ONE UE INSTANCE
+        (ALWAYS loads an mjModel to build its geometry from)
 
-   SimSource    = Owned | Mirror
-   Drive        = FreeRun | Stepped | StatePushed      (Owned only)
+   PoseSource   = FreeRun | Stepped | StatePushed | Mirror
    Capabilities = any combination, OPEN set:
                     stream-cameras (model cams and/or own view),
                     accept-input (xfrc / wrench / drag / requests), ...
 
-   Owned:                                Mirror:
-   ┌──────────────┐   ┌────────────┐     ┌────────────┐
-   │ UMjPhysics   │   │    ONE     │     │    ONE     │  draws a transform
-   │ Engine       │──▶│  Renderer  │     │  Renderer  │◀─ stream, no physics,
-   │ mjModel/Data │   │ (from the  │     │ (from the  │   no mj_forward
-   │ ONE install  │   │  mjModel)  │     │  mjModel)  │
-   └──────┬───────┘   └────────────┘     └────────────┘
-          │ addressing partition                │
-          │ (flat id-slices)                    │
-     Rpc / Publish                         Subscribe (an owner's
-     (obs, ctrl, step, perturb)             Publish topic)
+   ┌──────────────────────────────────────────────────────┐
+   │  mjModel  ──build──▶  geometry  ──▶  ONE Renderer      │
+   │                                                        │
+   │  each frame the render pose comes from ONE PoseSource: │
+   │    FreeRun      UE mj_step, own clock                  │
+   │    Stepped      UE mj_step, on client request          │
+   │    StatePushed  client pushes qpos/qvel; UE mj_forward │
+   │                 (gets contacts / sensors / derived)    │
+   │    Mirror       apply owner's streamed transforms      │
+   │                 (no step, no forward)                  │
+   └──────────────────────────────────────────────────────┘
 
-   "render server" / "viewer" = shorthand for common capability
+   "render server" / "viewer" = shorthand for capability
    combinations, NOT types in the code.
 ```
 
-A UE instance is described by two axes plus a freely-composable, open set of capabilities. That
-replaces `EStepMode{Live,Direct,Puppet,Auto}` + `EMjbRunMode{Puppet,Direct}` +
-`control_mode{raw,ue_controller}` + `EControlSource{ZMQ,UI}` and the three-meanings-of-"Puppet"
-/ two-meanings-of-"Direct" tangle documented in the WIP doc. Crucially, we do NOT replace those
-enums with a new set of named bundles — "render server" and "viewer" are just labels for common
-capability combinations, so new features are added AS capabilities, never as new modes (see the
-design guard in section 3).
+A UE instance is described by ONE axis (PoseSource) plus a freely-composable, open set of
+capabilities. That replaces `EStepMode{Live,Direct,Puppet,Auto}` + `EMjbRunMode{Puppet,Direct}`
++ `control_mode{raw,ue_controller}` + `EControlSource{ZMQ,UI}` and the
+three-meanings-of-"Puppet" / two-meanings-of-"Direct" tangle documented in the WIP doc.
+Crucially, we do NOT replace those enums with a new set of named bundles — "render server" and
+"viewer" are just labels for common capability combinations, so new features are added AS
+capabilities, never as new modes (see the design guard in section 3).
 
 ---
 
 ## 3. The mode model, clean
 
-Two axes plus optional overlays.
+Ground truth from the code (this corrects an earlier draft): EVERY rendering instance loads an
+`mjModel`. It needs one to build its geometry — the fast-path render server does
+`mj_loadModelBuffer` on the wire MJB and builds actors from it (`MjbScene.cpp:471`), then a
+one-shot `mj_forward` for the rest pose (`:486`). So "has a model vs not" is NOT the axis, and
+Mirror is not model-less. The one axis that matters is where each frame's render POSE comes
+from.
 
-### Axis 1 — SimSource: is there a local `mjModel`?
-- `Owned` — this instance's `UMjPhysicsEngine` holds a real `mjModel`/`mjData`. It has the full
-  simulation state locally: contacts, sensors, derived quantities, full obs.
-- `Mirror` — no local `mjModel`. The instance receives already-resolved per-geom transforms
-  from an owner and draws them. No `mj_step`, no `mj_forward`. It has geometry poses only. This
-  is the cheap render / view path (today's fast-path puppet renderer).
-
-SimSource decides both what the renderer draws and what data is available locally. Render
-source IS SimSource; there is no separate render-source axis.
-
-### Axis 2 — Drive: how an Owned sim advances (Owned only)
-- `FreeRun` — UE integrates `mj_step` in real time on its own thread; publishes state,
+### The one axis — PoseSource
+- `FreeRun` — UE steps its own `mjData` in real time on its own thread; publishes state,
   subscribes ctrl. (was `EStepMode::Live`)
-- `Stepped` — UE integrates only on client step requests; the client sends ctrl, UE `mj_step`s
-  n and returns obs. UE owns the integrator. (was `EStepMode::Direct` AND the fast-path
-  `EMjbRunMode::Direct` — these are the same thing and unify here.)
-- `StatePushed` — the CLIENT owns the integrator and `mj_step`s externally (e.g. MJX/Jax);
-  it pushes qpos/qvel; UE runs `mj_forward` to reconstruct the full `mjData` (contacts, sensors,
-  derived, xpos), renders, and returns obs. UE holds the model but does not integrate. (was
-  `EStepMode::Puppet`.)
+- `Stepped` — UE steps its own `mjData` only on client step requests; client sends ctrl, UE
+  `mj_step`s n, returns obs. (was `EStepMode::Direct`, AND the fast renderer's own-sim mode
+  `EMjbRunMode::Direct` — the same thing, unified.)
+- `StatePushed` — the client integrates externally (e.g. MJX/Jax) and pushes qpos/qvel; UE runs
+  `mj_forward` to reconstruct the full `mjData` (contacts, sensors, derived), renders, returns
+  obs. UE holds the model, does not integrate. (was `EStepMode::Puppet`.)
+- `Mirror` — UE applies per-body/geom world transforms streamed from an owner and draws them; no
+  `mj_step`, no `mj_forward`. It still HAS the `mjModel` (that is how it built the geometry) and
+  a rest-pose `mjData`; it just does not advance physics. (was the fast-path
+  `EMjbRunMode::Puppet` / render server.)
 
-NOTE — the cheap sibling of `StatePushed` is NOT a Drive. If the client pushes ALREADY-RESOLVED
-transforms and UE just draws them (no `mj_forward`, no local data), that is `SimSource = Mirror`,
-because a Mirror has no local `mjModel` to drive. So the four compute profiles are: `FreeRun`
-(mj_step, continuous), `Stepped` (mj_step, on request), `StatePushed` (mj_forward on pushed
-state), and `Mirror` (no compute at all). The first three are Owned Drives; the fourth is the
-other SimSource. See "Mirror vs StatePushed" below.
+### Why one axis, not the "Owned vs Mirror + Drive" split I had wrong
+Your instinct was right: `StatePushed` and `Mirror` are SIBLINGS — both take their state from
+OUTSIDE the instance. The old two-axis split hid that and wrongly implied Mirror has no model.
+They are just two points on the same axis. All four differ only in how much UE computes per
+frame and therefore what local data exists:
 
-### Mirror vs StatePushed — keep both; they are different trades
-Both have an external integrator, but they pay different costs and expose different data:
-- `Mirror` receives RESOLVED transforms and pays nothing beyond drawing. No contacts, no
-  sensors, no derived data. This is the pure render-server / viewer path — a render server or a
-  VR viewer must NOT be forced to pay a per-update `mj_forward`.
-- `Owned + StatePushed` receives qpos/qvel and pays one `mj_forward` per update to rebuild the
-  full `mjData` locally, which gives the local instance the diverse data a mirror cannot see
-  (contacts, derived quantities, local sensor reads, local queries). Keep this for clients that
-  want that richness; it is a deliberate cost, not the default render path.
+| PoseSource   | what arrives          | UE computes | local data available       |
+| ------------ | --------------------- | ----------- | -------------------------- |
+| FreeRun      | (nothing; UE drives)  | mj_step     | everything                 |
+| Stepped      | ctrl + step count     | mj_step     | everything                 |
+| StatePushed  | qpos/qvel             | mj_forward  | contacts, sensors, derived |
+| Mirror       | resolved transforms   | nothing     | geometry poses only        |
 
-So the earlier draft was wrong to blur these: the render server is `Mirror` (cheap), and
-`StatePushed` is a separate, heavier Owned mode you opt into for local data.
+`FreeRun` / `Stepped` / `StatePushed` have authoritative live sim state, so they can act as an
+OWNER (advertise, serve the model, stream transforms). `Mirror` is downstream and cannot. That
+owner-ness is DERIVED from PoseSource, not a separate axis.
+
+### Mirror vs StatePushed — keep both; different cost, different data
+- `Mirror` receives already-resolved transforms and pays nothing beyond drawing. No contacts,
+  no sensors, no derived data. The cheap render / view path — a render server or VR viewer must
+  NOT be forced to pay a per-update `mj_forward`.
+- `StatePushed` receives qpos/qvel and pays one `mj_forward` per update to rebuild the full
+  `mjData` locally, giving contacts and derived quantities a Mirror cannot see. A deliberate
+  cost you opt into, not the default render path.
+
+Both load the same `mjModel` over the wire; the difference is only what is pushed each frame
+(resolved transforms vs qpos/qvel) and whether UE runs `mj_forward`.
 
 ### Capabilities: orthogonal, composable, an OPEN set (the anti-lock-in guard)
-On top of the two axes, an instance carries any COMBINATION of capabilities. These are not
+On top of the one axis, an instance carries any COMBINATION of capabilities. These are not
 types, not modes, and not mutually exclusive; they compose freely, and the set is meant to GROW
 without ever adding a new mode:
 - `stream-cameras` — publish frames from any cameras the instance has: the model's cameras
   AND/OR the instance's OWN view camera (e.g. a human or VR client streaming what it sees).
-  Works on Owned or Mirror.
+  Works on any PoseSource.
 - `accept-input` — perturbations (xfrc, wrench, drag like MuJoCo `simulate`) and an extensible
-  request set. Applied locally if Owned; forwarded to the owner if Mirror. Rides the fast-path
-  RPC (`fastpath_perturb` is the seed).
+  request set. Applied locally if the instance runs its own sim (FreeRun/Stepped/StatePushed);
+  forwarded to the owner if Mirror. Rides the fast-path RPC (`fastpath_perturb` is the seed).
 - ...new capabilities slot in HERE, as more of the same, never as a new mode.
 
 The GUARD (this is the point of the whole redesign, do not violate it): "render server" and
@@ -137,29 +143,31 @@ ALSO streams its own view is `Mirror` + `accept-input` + `stream-cameras` — no
 just another combination. Because these are capabilities and not bundles, wanting "a viewer that
 also streams a camera" needs ZERO new code paths; it is already expressible. If a future feature
 tempts us to add a named mode or a "type" enum, that is the smell we are removing — add it as a
-capability instead. Keep the axes tiny (SimSource, Drive) and let the capability set carry the
+capability instead. Keep the axis tiny (one PoseSource) and let the capability set carry the
 growth.
 
 ### The owner role is uniform and symmetric
-Any `Owned` instance (any Drive) can act as an OWNER: advertise in the registry, serve its
-model, stream transforms, and accept perturbations. Any `Mirror` instance can attach to ANY
-owner, whether that owner is a UE instance or an external Python client. So any UE instance can
-mirror / render-serve / view any other UE instance or any Python owner, and vice versa.
-Owner-ness is not a special mode; it is what an Owned instance exposes.
+Any instance with authoritative live state (`FreeRun` / `Stepped` / `StatePushed`) can act as an
+OWNER: advertise in the registry, serve its model, stream transforms, and accept perturbations.
+Any instance can attach as a `Mirror` to ANY owner, whether that owner is a UE instance or an
+external Python client. So any UE instance can mirror / render-serve / view any other UE instance
+or any Python owner, and vice versa. Owner-ness is not a special mode; it is what an instance
+with live state exposes.
 
 ### How this expresses every capability, with no duplication
-- UE free-runs a sim: `Owned + FreeRun`.
-- Client steps UE deterministically and reads obs: `Owned + Stepped`.
-- Client integrates externally, UE reconstructs + serves local data: `Owned + StatePushed`.
+- UE free-runs a sim: `FreeRun`.
+- Client steps UE deterministically and reads obs: `Stepped`.
+- Client integrates externally, UE reconstructs + serves local data: `StatePushed`.
 - Lightweight renderer mirrors an owner, no physics: `Mirror`.
-- Renderer runs its own sim and is RPC-drivable: `Owned + Stepped` (the duplication is gone).
+- Renderer runs its own sim and is RPC-drivable: `Stepped` (the old compiled-vs-fast duplication
+  is gone).
 - Camera farm node: `Mirror` + `stream-cameras`.
 - VR viewer: `Mirror` + `accept-input`.
 - VR viewer that also streams its own view: `Mirror` + `accept-input` + `stream-cameras` — no
   new code path, just another combination.
 - Any instance slaves to any owner, UE or Python, cross-machine.
 
-`Auto` (start FreeRun, promote on connect) stays a launch policy, not a mode value.
+`Auto` (start FreeRun, promote on connect) stays a launch policy, not a PoseSource value.
 
 ---
 
@@ -303,7 +311,7 @@ Do not churn the RPC base; it is the model the others copy.
 | Today | Target |
 |---|---|
 | `EStepMode{Live,Direct,Puppet,Auto}` | `Drive{FreeRun,Stepped,StatePushed}` (Auto = policy) |
-| `EMjbRunMode{Puppet,Direct}` | folded into `SimSource{Mirror,Owned}` |
+| `EMjbRunMode{Puppet,Direct}` | folded into `PoseSource` (Puppet=`Mirror`, Direct=`Stepped`) |
 | compiled path + fast-path raw install + shadow | ONE `UMjPhysicsEngine` install + one partition |
 | `MjbScene` second renderer (~2300 lines) | ONE runtime renderer from `mjModel`; authoring tree is editor-only |
 | render-server = a bundled mode | two independent overlays: cameras out / interactive input |
@@ -328,8 +336,8 @@ c. A client integrates externally, pushes state, UE runs `mj_forward` and serves
 d. A lightweight renderer mirrors an owner with no physics and no `mj_forward` (the cheap path).
 e. A renderer runs its own sim and is RPC-drivable (= b).
 f. Any instance streams cameras — its model's cameras and/or its own view — as a capability.
-g. Any instance slaves to any owner, UE or Python, cross-machine; and any Owned instance can BE
-   an owner for others.
+g. Any instance slaves to any owner, UE or Python, cross-machine; and any instance with live
+   state (FreeRun/Stepped/StatePushed) can BE an owner for others.
 h. A viewer (e.g. VR) mirrors an owner and sends interactive input back (xfrc / wrench / drag /
    requests) as a capability; it can ALSO stream its own view at the same time — capabilities
    compose, no new mode.
@@ -354,7 +362,7 @@ Then the staged core redesign, each phase compiling on its own:
    raw handshake block (needs the MJB version-skew fix).
 8. One renderer: share the compiled renderer with the fast path; lightweight as an option;
    finish the `MjbScene` god-object extraction into it.
-9. Mode collapse: `Drive` + `SimSource` + `Cameras`; single source of truth for the integrator
+9. Mode collapse: one `PoseSource` axis + composable capabilities; single source of truth for the integrator
    state; retire `EStepMode` / `EMjbRunMode` / `EControlSource`.
 10. Transport: one Subscribe base; fast-path bus becomes a Publish topic.
 11. Vocabulary rename pass across code + docs.
@@ -391,11 +399,14 @@ Then the staged core redesign, each phase compiling on its own:
   mechanism, not two.
 
 ### Resolved during iteration (2026-08-15)
-- Mirror (cheap, no `mj_forward`) and `StatePushed` (Owned, pays `mj_forward` for local data)
-  are DIFFERENT and both stay. An earlier draft blurred them.
+- Mirror (cheap, no `mj_forward`) and `StatePushed` (pays `mj_forward` for local data) are
+  DIFFERENT and both stay; they are SIBLINGS on the one PoseSource axis (both externally
+  sourced), not on different axes. An earlier draft blurred them AND wrongly said Mirror has no
+  local mjModel — it does load the wire MJB and build from it (`MjbScene.cpp:471`).
 - "Render server" (cameras out) and "viewer" (interactive input in) are INDEPENDENT overlays,
   not one bundle; a VR viewer is `Mirror` + input, no cameras.
-- Owner-ness is uniform: any Owned UE instance can be an owner; any Mirror can attach to any
+- Owner-ness is uniform and DERIVED from PoseSource: any instance with live state
+  (FreeRun/Stepped/StatePushed) can be an owner; any Mirror can attach to any
   owner (UE or Python).
 - Fast-path model source broadens from MJB-only to `{mjb, xml+assets, mjz}`; xml/mjz compiled by
   the receiver removes the version-skew that forces the `raw_*` re-description today.

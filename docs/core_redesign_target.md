@@ -467,3 +467,181 @@ Then the staged core redesign, each phase compiling on its own:
   the receiver removes the version-skew that forces the `raw_*` re-description today.
 - Mode model collapsed from two axes (SimSource + Drive) to ONE (PoseSource); every renderer has
   an mjModel, so the axis is where the render pose comes from, not whether a model exists.
+
+---
+
+## 15. Implementation detail (per phase)
+
+Concrete enough to prototype and to audit. Anchors in `code font` with line numbers are VERIFIED
+against the current branch; new types/signatures are marked PROPOSED. Paths are under
+`Source/URLab/` unless noted. Each phase compiles and ships on its own.
+
+### Phase 0 — standalone correctness fixes (independent of the redesign)
+These are real bugs; land them first, on this branch, regardless of the rest.
+
+0a. REGISTRY-REBUILD RACE (memory-unsafe). The registry is `Empty()`+rebuilt with no lock
+(`MjPhysicsEngine.cpp` `InstallCompiledSpec:832-833`, `InstallRawModel:961-962`) while the RPC
+thread reads it unlocked (`GetArticulation:1433`, `GetAllArticulations:1469`).
+- FIX: take `CallbackMutex` around the rebuild, and make `GetArticulation`/`GetAllArticulations`
+  either take the lock or return a copied snapshot. Prefer a snapshot (`TArray` copy under lock)
+  so RPC reads never block the worker.
+- TEST: a threaded stress test (install/uninstall in a loop while an RPC thread enumerates) under
+  the existing `MjThreadTests` harness.
+
+0b. `MjbScene::BeginDestroy` UAF: frees `Model`/`Data` without `UninstallRawModel`
+(`MjbScene.cpp:262-271`).
+- FIX: call the engine uninstall (join the worker) before freeing, mirroring `Teardown`
+  (`:2262-2309`).
+- TEST: destroy a Direct-mode `AMjbScene` while its worker is stepping (PIE end).
+
+0c. PUPPET FREE-RUN HAZARD: `FPuppetStepMode` installs no step handler, yet `SetStepMode(Puppet)`
+unpauses the worker (`MjPhysicsEngine.cpp:1368`), so a handler-less worker can free-run `mj_step`
+on idle wakes (`:1255-1265`) while the client believes it owns the integrator.
+- FIX: gate the worker's `mj_step` on the resolved clock being an integrating one; in the
+  external/push-state clock the worker only `mj_forward`s pushed state, never `mj_step`s.
+- TEST: assert `data->time` does not advance under Puppet without a push.
+
+0d. WORLDGEOMS OFF THE PER-STEP PATH: `WorldGeomCache` is rebuilt every physics step
+(`MjStateCollector.cpp:529-551`) but never encoded to msgpack (ROS-only).
+- FIX: move the world-geom collection behind the ROS `IMjStateConsumer`, recomputed on the ROS
+  publish tick (poses only). Zero wire change, zero Python change.
+- TEST: existing `MjStateCollectorTests` still green; ROS providers still receive geometry.
+
+### Phase 1 — addressing partition (compiled path), dual-run
+NEW (PROPOSED): `Public/MuJoCo/Core/MjAddressable.h`
+```cpp
+struct FMjAddressable {                 // replaces FMjEntityRecord + AMjArticulation-as-addr-unit
+    FName Name;                         // stable public name (compiled: participant prefix)
+    int32 RootBodyId; bool bFreeBase;
+    TArray<int32> BodyIds, JointIds, ActuatorIds, SensorIds;   // may be empty
+};
+namespace MjAddressableBuilder {
+    TArray<FMjAddressable> Build(const mjModel* m, const FMjPartition& How);  // by name prefix
+}
+```
+NEW: host `TArray<FMjAddressable> Addressables` on `UMjPhysicsEngine`, built in
+`InstallCompiledSpec` right after compile. NAME the type per section 14 (retire/rename the
+existing `FMjEntityRecord`, `AMjManager.h:82`, to `FMjPropRecord` in the same change).
+DUAL-RUN: build alongside the existing articulation registry; a test asserts the partition's
+name+id-slices match the actor registry (both derive from the same compiled `mjModel`).
+TEST: new `MjAddressableTests` + an equality assert modeled on `MjParityGoldenTests`.
+No behavior change this phase.
+
+### Phase 2 — observation on the partition + one handshake
+CHANGE: `FMjStateCollector` walks `Addressables` and copies id slices from `mjData` (the pattern
+the `entities` block already uses, `RpcDispatcher.cpp:1021-1055`).
+DELETE: `FCachedArticulation` / `Producers` / `RebuildProducerCacheGameThread`
+(`MjStateCollector.h:76-114`) and `DescribeElement`'s type dispatch (`MjStateCollector.cpp:194-230`).
+NEW (PROPOSED): one enrichment side-channel on the manager, keyed by addressable name:
+```cpp
+struct FMjEnrichment { FName Name; TWeakObjectPtr<UObject> Producer; EMjEnrichmentScope Scope; };
+TArray<FMjEnrichment> Enrichments;      // twist ctrl, user-channel comp, scene producer, cam/ctrl meta
+```
+Consumed by the ROS `IMjStateConsumer` and by an OPT-IN msgpack `user` block only. Keep the
+compiled `UMjSensorRuntime`/`UMjJointRuntime` DescribeState logic ONLY as ROS enrichment.
+CHANGE: handshake serializes `FMjAddressable` + reads ranges/gear/types straight off `mjModel`,
+one code path for compiled and raw. The camera/controller metadata (`RpcDispatcher.cpp:838-1015`)
+comes from the enrichment side-channel (it is not on `mjModel`).
+TEST: `MjStateCollectorTests`, `MjUserChannelTests` rewritten against the partition + side-channel.
+
+### Phase 3 — one control store + one drain
+NEW (PROPOSED): on `UMjPhysicsEngine`
+```cpp
+struct FMjControlBuffer   { TArray<double> Setpoint; TBitArray<> Touched, HoldLatch; };   // size nu
+struct FMjStateInjection  { TArray<double> Qpos; TBitArray<> QposHold; };                 // keyframe qpos-hold
+```
+NEW: one pre-step drain in the worker, under `CallbackMutex`, modeled on the existing
+`DrainCommands` (`MjPhysicsEngine.h:568-604`) that already serializes mocap/wrench. Per touched
+id: `Drive==direct` writes `d->ctrl[id]=Setpoint[id]`; `Drive==controller` writes
+`controller.transform(id, Setpoint[id], d)`. Then apply `FMjStateInjection` (qpos-hold, mocap-style).
+CHANGE: `ApplyStepCtrl` (`RpcHandlers_Step.cpp:452-475`) becomes "parse setpoints into
+Setpoint/Touched" — one branch. Re-home the other writers: the 4 `SetNetworkControl` callers
+(`RpcHandlers_Step.cpp:473`, `ZmqSubscribeTransport.cpp:446`, `RosRpcTransport.cpp:450,571`), the
+Live `ApplyControls` (`MjPhysicsEngine.cpp:1238`), the Puppet push (`:580`), and `ResetToKeyframe`
+(`MjArticulation.cpp:763`) all feed the one buffer.
+DELETE: `NetworkControl`/`InternalControl` slot arrays (`MjArticulation.h:181-206,485-488`),
+`ApplyControls` both overloads (`MjArticulation.cpp:432,442`), the `OwnedActuatorIds` gate
+(`:502-510`), `SkipController` (`RpcHandlers_Step.cpp:1022-1046`), `UMjPassthroughController`
+(it IS `Drive=direct`), and `EControlSource` + `set_control_source` (`MjPhysicsEngine.h:44`,
+`RpcHandlers_SimOptions.cpp:410-473`). DATA-IFY `UMjPDController`: keep the law as a free function
+(`torque = Kp(target-pos) - Kv*vel`, `MjPDController.cpp:62-95`) + a `{Kp,Kv,limit}` gains struct,
+drop the `UObject`. Keep `MjPDControllerTests` pointed at the free function.
+FIRST, NARROW CUT (ship before the deletions): route the raw ctrl branch through the Touched-masked
+buffer so raw-ness resolves ONCE, WITHOUT yet deleting `EControlSource` or touching qpos-hold —
+this also fixes Live silently ignoring `control_mode` (`MjPhysicsEngine.cpp:1238`). This is the
+highest-risk area; keyframe-hold ordering vs setpoints is the subtle spot.
+TEST: `MjActuatorControlSlotTests`, `MjStepServerTests`, `MjPDControllerTests`, `MjRosLinkTests`.
+
+### Phase 4 — raw path on the partition; delete the shadow
+CHANGE: `InstallRawModel` builds `FMjAddressable` from the raw `mjModel` (single root or
+body-subtree split).
+DELETE: `MjbShadowArticulation.{h,cpp}` (`:52-108`), the shadow spawn/teardown in `MjbScene`
+(`ShadowArt`, `MjbScene.h:307`; `BeginDirect`/`InstallIntoEngine`), the `raw_actuators`/`raw_joints`
+handshake block + `bRawShadow` (`RpcDispatcher.cpp:885-951`). PREREQUISITE: the wire model source
+(phase 7) or the version-skew fix, so the receiver has a loadable model without re-description.
+REPOINT the ~30 `GetAllArticulations` consumers that resolved through the shadow on the raw path
+(`MjDebugVisualizer.cpp`, `ZmqSubscribeTransport.cpp`, `MjReplayManager.cpp:235`,
+`RosCameraInfoProvider.cpp:87`, `MjSimulateWidget.cpp`, `RosRpcTransport.cpp:262`) at the
+partition or exclude them.
+TEST: live RPC control against a raw/wire model with no shadow (the `MjStepServerTests` path).
+
+### Phase 5 — one renderer (approach B, section 5)
+NEW (PROPOSED): `IMjGeomAssetResolver { FMjGeomAssets Resolve(int32 GeomId) const; }` returning
+`{UStaticMesh* Mesh /*or proc*/, UMaterialInterface* Material}`. Two impls:
+- `FMjBakedAssetResolver` — wraps `GetOrBuildStaticMesh`/`GetOrBuildTexture`/`ApplyGeomMaterial`
+  (`MjbScene.cpp:1212-1592`), keyed by mesh id + `ContentHash` (`:488-494,1223-1231`).
+- `FMjImportedAssetResolver` — holds an `FSpecRef`; per geom does `mj_id2name(m, mjOBJ_MESH,
+  geom_dataid)` (`MjbScene.cpp:918`) -> `MjResolveMesh(Spec, name).Asset` (`MjAssetResolve.cpp:409`)
+  and `MjResolveTexture` (`:342-354`); FALLS BACK to the baked resolver per geom for inline meshes.
+NEW: extract the fast path's structure builder (`BuildBodies:536-575`, `BuildGeoms:577-603`,
+`BuildGeom:863-1050`, `BuildCameras:686-749`) into a reusable renderer that takes `(mjModel*,
+IMjGeomAssetResolver&, poseSource)`. Materials already funnel to `MjApplyMaterialParameters` +
+`M_MuJoCo_Master` in BOTH paths (`MjbScene.cpp:496,1493`; `MjGeom.cpp:529,565-567`) — unify the
+value source (`FMjMaterialValues` from spec OR `mjModel`).
+CHANGE: the compiled path renders through this renderer at play; `AMjArticulation`'s `UMjGeom`/
+`UMjBody` tree becomes EDITOR-ONLY (authoring/placement/spec-build, `MjGeom.cpp:441-520`).
+BRIDGES (enumerable, from the probe): a per-geom `OverrideMaterial` override channel
+(`MjGeom.h:96-97`); a "keep user attachments" declaration reparenting decorative components onto
+the body actor; a policy for Blueprint-on-pawn logic (`MjArticulation.h:389-456`); and the
+packaged `ProceduralMesh` return type (cook `SM_<id>` assets, or widen `FMjGeomAssets` to a
+component-level return — `BuildMesh:1324-1363` has no `UStaticMesh`).
+LEAN-IN: task #21 (extract `FMjbAssetBaker` etc. from `MjbScene`) IS the first slice of this.
+TEST: golden pixel/structure parity between the old authoring render and the new renderer on a
+menagerie model; + the live play-cost profile (validation, not a gate).
+
+### Phase 6 — model source over the wire ({mjb, xml+assets, mjz})
+CHANGE: the receive path normalizes to `mjModel` using calls the runtime ALREADY links —
+`mj_parseXMLString` (`MjSpecWriteHooks.cpp:2034`), `mj_compile` (`MjSceneSpec.cpp:386`), `mjVFS`
+(`:377-387`), `mj_loadModelBuffer` (`MjbScene.cpp:471`). Reuse the existing bytes->temp-dir shim
+(`upload_model_manifest/chunk/commit`, `RpcHandlers_ModelUpload.cpp:448-512`). Unify with the
+`load_model()` RPC as ONE mechanism. `mjz`: VERIFY the codec is compiled into the linked lib
+before relying on it (mjb + xml+assets are known-feasible). BENEFIT: xml/mjz compiled by the
+receiver removes the version skew that forces phase 4's `raw_*` block.
+TEST: `MjModelUploadTests` extended with format tags; a wire model loaded from xml with assets.
+
+### Phase 7 — mode collapse (PoseSource) + transport
+NEW (PROPOSED): `enum class EMjPoseSource : uint8 { FreeRun, Stepped, StatePushed, Mirror };`
+replaces `EStepMode` (`MjPhysicsEngine.h:65-72`) AND `EMjbRunMode` (`MjbScene.h:26-35`). The clock
+gets ONE source of truth (kill the three-way encoding: `ResolvedStepMode` atomic
+`MjPhysicsEngine.cpp:1133`, `CustomStepHandler` presence `:1073`, and the strategy object).
+Capabilities become an open flag set on the instance (`stream-cameras`, `accept-input`), NOT modes.
+CHANGE (transport): one `Subscribe` base mirroring the clean `UURLabRpcTransport`
+(`RpcTransport.h:33`); the fast-path bus (`MjbScene::BusTransport`, `MjbScene.h:286`) becomes a
+normal Publish topic a `Mirror` renderer subscribes to; retire the parallel
+`ClientSubscribe`/`ViewerSubscribe` hierarchies. (Caveat: read `ViewerSubscribe` internals first.)
+TEST: `MjStepServerTests` + a mirror/renderer integration test across the unified Subscribe base.
+
+### Phase 8 — vocabulary rename + Python wrapper (LAST)
+Rename across code + docs: Driver / Renderer / Registry / Integrator / ControlLease / Addressable.
+The Python client is a thin wrapper and is updated last to match the new wire; `enums.py` strings
+change (allowed). This is mechanical once the C++ core lands.
+
+### Cross-phase notes for the auditors
+- Phase order is dependency-driven: 1->2 (partition before collector), 3 independent (control),
+  4 needs 6-or-skew (wire model without shadow), 5 independent of 3/4 (renderer), 7 needs 1+4
+  (partition + no shadow). Phases 0 and 6 can start immediately.
+- Highest risk: phase 3 (control drain — keyframe-hold ordering) and phase 5 (renderer fidelity
+  parity + packaged return type). Everything else is mechanical once the partition exists.
+- Every deletion listed has a test that must be rewritten, not just removed:
+  `MjStateCollectorTests`, `MjStepServerTests`, `MjControlOwnershipTests`, `MjUserChannelTests`,
+  `MjActuatorControlSlotTests`, `MjPDControllerTests`, `MjRosLinkTests`.

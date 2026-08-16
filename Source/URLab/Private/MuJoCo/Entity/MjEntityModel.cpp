@@ -159,21 +159,3 @@ void FMjControlLease::Release(FName Entity, const FGuid& Who)
 float FMjJoint::Pos() const { return 0.f; }
 float FMjJoint::Vel() const { return 0.f; }
 void  FMjActuator::SetCtrl(double /*Value*/) const {}
-
-// --- MjCameraRegistry -------------------------------------------------------------------------- //
-void FMjCameraRegistry::Build(const mjModel* /*Model*/, const TArray<FMjEntity>& /*Entities*/)
-{
-	// TODO: enumerate model cameras and compute canonical names from entity prefixes.
-}
-
-const FMjCameraInfo* FMjCameraRegistry::Find(FName Canonical) const
-{
-	return Cameras.FindByPredicate([Canonical](const FMjCameraInfo& C) { return C.CanonicalName == Canonical; });
-}
-
-// --- MjSensorSemantics ------------------------------------------------------------------------- //
-EMjSensorSemantic MjSensorSemantics::ForSensor(const mjModel* /*Model*/, int32 /*SensorId*/)
-{
-	// TODO: map mjtSensor type (with a name heuristic) to the ROS semantic; Generic until then.
-	return EMjSensorSemantic::Generic;
-}

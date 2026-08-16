@@ -1236,9 +1236,9 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition, GetCompiledPrefix) + built in InstallCompiledSpec; consumers migrate onto it (no dual-run test vs old registry) |
 | 6 wire-model source | — | not started | — | concurrent (unblocks 4) |
 | #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |
-| 4N-a ingress+twist | — | not started | — | concurrent; StructureVersion re-home w/ phase 2 |
-| 4N-b sensor-semantic+FK | — | not started | — | concurrent; gates 5-demote too |
-| 4N-c camera registry | — | not started | — | concurrent; +orbit camera |
+| 4N-a ingress+twist | subagent | twist done | proto/entity-redesign | model-only `MjTwistResolve::ForEntity`; ingress iface impl + ROS wiring remain |
+| 4N-b sensor-semantic+FK | subagent | table done | proto/entity-redesign | `MjSensorSemantics::ForSensor` (mirrors SensorKinds); per-body FK remains |
+| 4N-c camera registry | subagent | done | proto/entity-redesign | `FMjCameraRegistry::Build/Find`, canonical names via shared FMjCanonicalName |
 | 1 partition | — | not started | — | spine start |
 | 2 observation | — | not started | — | spine |
 | 3 control (narrow→full) | — | not started | — | spine; HIGH risk |

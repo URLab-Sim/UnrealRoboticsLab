@@ -838,38 +838,9 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		RegisterArticulation(Articulation);
 	}
 
-	// Build the flat FMjEntity partition from the compiled model, keyed by the same participant
-	// prefixes the articulations use. The version bump lets consumers such as the ROS re-subscribe
-	// path learn the model shape changed.
-	{
-		FMjEntityPartition Partition;
-		for (const AMjArticulation* Art : m_articulations)
-		{
-			if (Art)
-			{
-				// Carry the two actor-only facts (the sanitized wire segment and the ActorId) the
-				// compiled model cannot supply, parallel to the prefix, so the entity keeps the wire
-				// identity the bridge addresses it by.
-				Partition.Prefixes.Add(Art->GetCompiledPrefix());
-				Partition.PublicNames.Add(FMjCanonicalName::ArtSegment(Art));
-				Partition.ActorIds.Add(Art->ActorId);
-			}
-		}
-		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);
-		m_entityStructureVersion.Bump();
-
-		// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless
-		// ingress bound to the current model, buffer, lease and partition. The state injection sized
-		// alongside carries keyframe holds into the pre-step drain.
-		m_controlBuffer.Init(m_model->nu);
-		m_stateInjection.Qpos.Init(0.0, m_model->nq);
-		m_stateInjection.Qvel.Init(0.0, m_model->nv);
-		m_stateInjection.QposMask.Init(false, m_model->nq);
-		m_stateInjection.HoldMask.Init(false, m_model->nv);
-		m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
-		m_controlIngress = MakeUnique<FMjEntityControlIngress>(
-			m_model, m_controlBuffer, m_controlLease, m_entityPartition);
-	}
+	// Build the flat FMjEntity partition + size the control store from the compiled model, keyed by
+	// the participant prefixes the articulations carry.
+	RebuildEntityPartition();
 
 	// The contributor registries are what the per-frame render pass and the
 	// debug visualiser iterate, so they are rebuilt from the same list the
@@ -995,12 +966,79 @@ bool UMjPhysicsEngine::InstallRawModel(mjModel* RawModel, mjData* RawData)
 
 	ApplyThreadPool();
 
+	// A raw model addresses through the same entity path as a compiled one: with no articulations to
+	// prefix-partition it, this yields a single root entity over the whole model. A fast-path shadow
+	// that registers afterwards re-runs this to pick up its wire name.
+	RebuildEntityPartition();
+
 	// The raw mjData arrives already made (mj_makeData) and forwarded by the
 	// caller; forward once more so the derived quantities a paused scene is read
 	// through are current, then publish the snapshot every consumer reads.
 	mj_forward(m_model, m_data);
 	PushRenderState();
 	return true;
+}
+
+void UMjPhysicsEngine::RebuildEntityPartition()
+{
+	if (m_model == nullptr)
+	{
+		return;
+	}
+	// Serialize against the worker's step: the drain reads the buffer/injection this reinitializes.
+	FScopeLock Lock(&CallbackMutex);
+
+	if (bRawModelInstalled)
+	{
+		// A raw model's names are not participant-prefixed, so a prefix partition would bucket
+		// nothing. Give the whole model to one entity and name it after its shadow (if one has
+		// registered) so the wire identity the bridge addresses by survives.
+		FMjEntityPartition RawPartition; // empty prefixes => one root entity over the whole model
+		m_entityPartition = MjEntityBuilder::Build(m_model, RawPartition);
+		if (m_entityPartition.Num() == 1)
+		{
+			for (const AMjArticulation* Art : m_articulations)
+			{
+				if (Art)
+				{
+					m_entityPartition[0].Name = FName(*Art->GetName());
+					m_entityPartition[0].PublicName = FMjCanonicalName::ArtSegment(Art);
+					m_entityPartition[0].ActorId = Art->ActorId;
+					break;
+				}
+			}
+		}
+	}
+	else
+	{
+		FMjEntityPartition Partition;
+		for (const AMjArticulation* Art : m_articulations)
+		{
+			if (Art)
+			{
+				// Carry the two actor-only facts (the sanitized wire segment and the ActorId) the
+				// compiled model cannot supply, parallel to the prefix, so the entity keeps the wire
+				// identity the bridge addresses it by.
+				Partition.Prefixes.Add(Art->GetCompiledPrefix());
+				Partition.PublicNames.Add(FMjCanonicalName::ArtSegment(Art));
+				Partition.ActorIds.Add(Art->ActorId);
+			}
+		}
+		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);
+	}
+	m_entityStructureVersion.Bump();
+
+	// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless ingress
+	// bound to the current model, buffer, lease and partition. The state injection sized alongside
+	// carries keyframe holds into the pre-step drain.
+	m_controlBuffer.Init(m_model->nu);
+	m_stateInjection.Qpos.Init(0.0, m_model->nq);
+	m_stateInjection.Qvel.Init(0.0, m_model->nv);
+	m_stateInjection.QposMask.Init(false, m_model->nq);
+	m_stateInjection.HoldMask.Init(false, m_model->nv);
+	m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
+	m_controlIngress = MakeUnique<FMjEntityControlIngress>(
+		m_model, m_controlBuffer, m_controlLease, m_entityPartition);
 }
 
 void UMjPhysicsEngine::UninstallRawModel()

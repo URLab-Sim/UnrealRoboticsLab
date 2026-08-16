@@ -414,6 +414,13 @@ public:
 
 	/** The flat FMjEntity partition built from the compiled model. */
 	const TArray<FMjEntity>& GetEntityPartition() const { return m_entityPartition; }
+
+	/**
+	 * Rebuild the entity partition + control store from the current model and articulation registry.
+	 * Run at every install; a fast-path shadow re-runs it after registering so the raw model gets its
+	 * wire-named entity. Lock-guarded, so it is safe to call with the worker live.
+	 */
+	void RebuildEntityPartition();
 	uint64 GetEntityStructureVersion() const { return m_entityStructureVersion.Get(); }
 
 	/** The shadowless control ingress (routes writes into the one control buffer by entity name). */

@@ -89,8 +89,10 @@ AMjArticulation* Build(AAMjManager* Mgr, mjModel_* Model, const FString& ArtId)
 		MakeNode(*Art, UMjMotor::StaticClass(), mj_id2name(m, mjOBJ_ACTUATOR, A), mjOBJ_ACTUATOR, A);
 	}
 
-	// Register so the handshake, control ingress and state collector all resolve the art.
+	// Register so the handshake, control ingress and state collector all resolve the art, then
+	// rebuild the entity partition so the raw model's entity carries this shadow's wire name.
 	Mgr->PhysicsEngine->RegisterArticulation(Art);
+	Mgr->PhysicsEngine->RebuildEntityPartition();
 	Mgr->GetStateCollector().MarkProducerCacheDirty();
 
 	UE_LOG(LogURLab, Log,

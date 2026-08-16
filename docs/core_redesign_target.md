@@ -993,3 +993,34 @@ k. Camera streaming from the unified renderer with STABLE canonical topics/SHM s
 l. Replay (its own clock handler + forward).
 m. Level save/reload of renderer actors via the `MjbBody=`/`MjbGeom=` tag + reindex.
 n. UI+ZMQ co-drive semantics (or an accepted, documented behavior change).
+
+---
+
+## 17. Implementation tracking log (living — update as we go)
+
+The single source of truth for progress. Each investigation subagent, each design decision, and
+each implementation step gets a dated row here so the doc stays current through the build.
+
+### Investigations (subagent outputs folded into the plan)
+| Date | Topic | Outcome | Folded into |
+|------|-------|---------|-------------|
+| 2026-08-15 | Renderer unification (3 probes) | Approach B (lightweight structure + pluggable asset source) | §5 |
+| 2026-08-15 | MuJoCo `simulate` viz parity | mjvOption bitmask overlay manager, 3-tier Mirror policy | §5 |
+| 2026-08-15 | Plan audit (feasibility + completeness x2 rounds) | Anchors fixed; drain cadence / injection / component resolver / 4N-as-Entity-enrichment; dep-graph corrected | §15/§16 |
+| 2026-08-15 | Visual domain randomization | (PENDING — agent running) | §TBD |
+
+### Decisions locked (pointer — full text in §14 "Decisions locked")
+Entity is the unit (absorbs FMjEntityRecord); per-substep drain + persist; keyframe hold exact;
+component-level resolver; ViewerSubscribe kept; write-lease control; mjz kept; 30% = Entity
+build-time enrichment (no actor); Blueprint-scriptable via a thin Entity face; user-facing API =
+Option A (one `IMjEntity`, typed handles + author-time pickers, name is the identity underneath);
+authored LOGIC persists to runtime while the mesh tree is editor-only.
+
+### Implementation progress (per phase — fill in as built)
+| Phase | Owner | Status | Branch/commit | Notes |
+|-------|-------|--------|---------------|-------|
+| Step 0 contracts | — | not started | — | freeze the headers (see §16.7) |
+| 0a/0b/0c fixes | — | not started | — | correctness fixes, land first |
+| ... | | | | |
+
+(Prototype branch: to be cut off `feat/mjb-fast-path` once the doc is fully completed.)

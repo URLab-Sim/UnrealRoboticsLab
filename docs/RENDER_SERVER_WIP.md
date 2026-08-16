@@ -3,6 +3,10 @@
 TEMPORARY doc. Delete before merging `feat/mjb-fast-path`. Explains how the
 packaged fast-path render server works and lists the small things still open.
 
+FORWARD companion: [`core_redesign_target.md`](./core_redesign_target.md) describes how the
+clean end-state looks and the plan to get there. This doc is the backward half (the audit +
+evidence + file:line); that one is the shape of the final product.
+
 ## What it is
 
 A MuJoCo **owner** steps a sim and streams it; one or more UE **render slaves**

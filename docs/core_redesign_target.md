@@ -40,71 +40,102 @@ for; the wire and the Python API are shaped by what the core produces, never the
 
 ```
                          ONE UE INSTANCE
-   ┌───────────────────────────────────────────────────────────┐
-   │  configured by three independent settings:                 │
-   │                                                            │
-   │   SimSource   = Owned | External                           │
-   │   Drive       = FreeRun | Stepped | StatePushed  (if Owned)│
-   │   Cameras     = off | streamed                             │
-   │                                                            │
-   │  ┌──────────────┐        ┌───────────────┐                 │
-   │  │ UMjPhysics   │  state │  ONE Renderer │  frames         │
-   │  │ Engine       │───────▶│ (actors,      │────────────────▶│ cameras
-   │  │ (mjModel/    │        │  meshes,      │   (render server │  out
-   │  │  mjData,     │        │  cameras)     │    when Cameras  │
-   │  │  ONE install)│        └───────────────┘    = streamed)  │
-   │  └──────┬───────┘                ▲                          │
-   │         │ addressing partition   │ mirror stream            │
-   │         │ (flat id-slices)       │ (SimSource=External)     │
-   └─────────┼────────────────────────┼──────────────────────────┘
-             │                        │
-        Rpc / Publish            Subscribe (a Publish topic
-        (obs, ctrl, step)         from some owner)
+
+   SimSource = Owned | Mirror
+   Drive     = FreeRun | Stepped | StatePushed        (Owned only)
+   Overlays  = [Cameras streamed]  [Interactive input]  (independent, optional)
+
+   Owned:                                Mirror:
+   ┌──────────────┐   ┌────────────┐     ┌────────────┐
+   │ UMjPhysics   │   │    ONE     │     │    ONE     │  draws a transform
+   │ Engine       │──▶│  Renderer  │     │  Renderer  │◀─ stream, no physics,
+   │ mjModel/Data │   │ (from the  │     │ (from the  │   no mj_forward
+   │ ONE install  │   │  mjModel)  │     │  mjModel)  │
+   └──────┬───────┘   └────────────┘     └────────────┘
+          │ addressing partition                │
+          │ (flat id-slices)                    │
+     Rpc / Publish                         Subscribe (an owner's
+     (obs, ctrl, step, perturb)             Publish topic)
+
+   Overlay: Cameras streamed  -> "render server"
+   Overlay: Interactive input -> "viewer" (xfrc / wrench / drag / requests)
 ```
 
-A UE instance is fully described by three orthogonal settings. That single table replaces
+A UE instance is described by two axes plus independent optional overlays. That replaces
 `EStepMode{Live,Direct,Puppet,Auto}` + `EMjbRunMode{Puppet,Direct}` +
 `control_mode{raw,ue_controller}` + `EControlSource{ZMQ,UI}` and the three-meanings-of-"Puppet"
-/ two-meanings-of-"Direct" tangle documented in the WIP doc.
+/ two-meanings-of-"Direct" tangle documented in the WIP doc. "Render server" and "viewer" stop
+being modes and become overlays any instance can carry.
 
 ---
 
 ## 3. The mode model, clean
 
-### SimSource: does this instance own a sim?
-- `Owned` — this instance's `UMjPhysicsEngine` holds and advances the `mjModel`. It renders
-  its own sim and serves obs.
-- `External` — no local `mjModel`. State arrives from an owner over the wire; the instance is
-  a pure renderer (a mirror). This is today's fast-path puppet renderer.
+Two axes plus optional overlays.
 
-SimSource alone decides what the renderer draws: an Owned instance draws its own sim's
-snapshot; an External instance draws the mirrored stream. There is no separate "render
-source" axis — render source IS SimSource.
+### Axis 1 — SimSource: is there a local `mjModel`?
+- `Owned` — this instance's `UMjPhysicsEngine` holds a real `mjModel`/`mjData`. It has the full
+  simulation state locally: contacts, sensors, derived quantities, full obs.
+- `Mirror` — no local `mjModel`. The instance receives already-resolved per-geom transforms
+  from an owner and draws them. No `mj_step`, no `mj_forward`. It has geometry poses only. This
+  is the cheap render / view path (today's fast-path puppet renderer).
 
-### Drive: how an Owned sim is advanced (only meaningful when SimSource=Owned)
-- `FreeRun` — UE advances `mj_step` in real time on its own thread; publishes state,
+SimSource decides both what the renderer draws and what data is available locally. Render
+source IS SimSource; there is no separate render-source axis.
+
+### Axis 2 — Drive: how an Owned sim advances (Owned only)
+- `FreeRun` — UE integrates `mj_step` in real time on its own thread; publishes state,
   subscribes ctrl. (was `EStepMode::Live`)
-- `Stepped` — UE advances only on client step requests, writing ctrl and returning obs. UE
-  owns the integrator. (was `EStepMode::Direct` AND the fast-path `EMjbRunMode::Direct` — these
-  are THE SAME thing and unify here.)
-- `StatePushed` — UE owns the `mjModel` but the client owns the integrator: the client pushes
-  qpos/qvel, UE runs `mj_forward` and serves obs (MJX/Jax rollouts). (was `EStepMode::Puppet`.)
-  Kept only if still used; otherwise folds into Stepped.
+- `Stepped` — UE integrates only on client step requests; the client sends ctrl, UE `mj_step`s
+  n and returns obs. UE owns the integrator. (was `EStepMode::Direct` AND the fast-path
+  `EMjbRunMode::Direct` — these are the same thing and unify here.)
+- `StatePushed` — the CLIENT owns the integrator and `mj_step`s externally (e.g. MJX/Jax);
+  it pushes qpos/qvel; UE runs `mj_forward` to reconstruct the full `mjData` (contacts, sensors,
+  derived, xpos), renders, and returns obs. UE holds the model but does not integrate. (was
+  `EStepMode::Puppet`.)
 
-### Cameras: off or streamed
-Any instance (Owned or External) can additionally spawn the model's cameras and stream their
-frames over the transport. "Render server" is not a mode; it is `Cameras = streamed`.
+### Mirror vs StatePushed — keep both; they are different trades
+Both have an external integrator, but they pay different costs and expose different data:
+- `Mirror` receives RESOLVED transforms and pays nothing beyond drawing. No contacts, no
+  sensors, no derived data. This is the pure render-server / viewer path — a render server or a
+  VR viewer must NOT be forced to pay a per-update `mj_forward`.
+- `Owned + StatePushed` receives qpos/qvel and pays one `mj_forward` per update to rebuild the
+  full `mjData` locally, which gives the local instance the diverse data a mirror cannot see
+  (contacts, derived quantities, local sensor reads, local queries). Keep this for clients that
+  want that richness; it is a deliberate cost, not the default render path.
+
+So the earlier draft was wrong to blur these: the render server is `Mirror` (cheap), and
+`StatePushed` is a separate, heavier Owned mode you opt into for local data.
+
+### Optional overlays (independent of the two axes)
+- `Cameras streamed` — the instance spawns the model's cameras and streams their frames. This,
+  and only this, makes it a "render server". Applies to Owned or Mirror.
+- `Interactive input` — the instance accepts perturbations: external forces (xfrc), wrenches,
+  drags (like MuJoCo `simulate`), and other basic requests. This makes it a "viewer" (e.g. a VR
+  UE client that looks into an owner and can poke the sim). A `Mirror` viewer forwards the
+  perturbation to the owner, who applies it to its sim; an `Owned` viewer applies it locally.
+  It rides the fast-path RPC (`fastpath_perturb` already exists as the seed).
+
+"Render server" (cameras out) and "viewer" (interactive input in) are INDEPENDENT overlays, not
+one bundle. A VR viewer is `Mirror` + interactive input, no cameras. A headless camera-farm node
+is `Mirror` + cameras, no input. Both go through the fast path.
+
+### The owner role is uniform and symmetric
+Any `Owned` instance (any Drive) can act as an OWNER: advertise in the registry, serve its
+model, stream transforms, and accept perturbations. Any `Mirror` instance can attach to ANY
+owner, whether that owner is a UE instance or an external Python client. So any UE instance can
+mirror / render-serve / view any other UE instance or any Python owner, and vice versa.
+Owner-ness is not a special mode; it is what an Owned instance exposes.
 
 ### How this expresses every capability, with no duplication
 - UE free-runs a sim: `Owned + FreeRun`.
 - Client steps UE deterministically and reads obs: `Owned + Stepped`.
-- Client integrates externally, UE renders/serves: `Owned + StatePushed`.
-- Lightweight renderer mirrors an owner, no physics: `External`.
-- Renderer runs its own sim and is RPC-drivable: `Owned + Stepped` (same as the second case —
-  the duplication is gone).
-- Any renderer also streams cameras: `Cameras = streamed`.
-- A renderer slaves to any owner: an `External` instance points at any owner (Owned-anything,
-  or a Python owner).
+- Client integrates externally, UE reconstructs + serves local data: `Owned + StatePushed`.
+- Lightweight renderer mirrors an owner, no physics: `Mirror`.
+- Renderer runs its own sim and is RPC-drivable: `Owned + Stepped` (the duplication is gone).
+- Camera farm node: `Mirror` + cameras overlay.
+- VR / interactive viewer: `Mirror` + interactive-input overlay.
+- Any instance slaves to any owner, UE or Python, cross-machine.
 
 `Auto` (start FreeRun, promote on connect) stays a launch policy, not a mode value.
 
@@ -127,25 +158,67 @@ The shadow, the `raw_actuators`/`raw_joints` handshake block, and `bRawShadow` a
 The prerequisite is fixing the MJB version skew (see `project_mujoco_version_skew`) so a wire
 MJB loads directly instead of being re-described.
 
+### Model source over the wire: mjb, xml+assets, or mjz
+Today the fast path pulls only a prebuilt MJB. The target accepts three source formats,
+normalized to an `mjModel` by the RECEIVING instance:
+- `mjb` — load directly (`mj_loadModelBuffer`). Fastest, but version-locked to the receiver's
+  `libmujoco`.
+- `xml + asset bytes` — feed into an `mjSpec` via `mjVFS`, `mj_compile` to an `mjModel`.
+- `mjz` — MuJoCo's archive format, read straight into a spec, then compile to an `mjModel`.
+
+Key benefit: when an owner ships `xml` or `mjz` instead of a prebuilt MJB, the RECEIVER compiles
+with its OWN `libmujoco`, so there is NO version lock and NO skew. That removes the ROOT CAUSE of
+the `raw_actuators`/`raw_joints` re-description (which exists today only because a version-skewed
+MJB cannot be loaded downstream). The MJB path stays as the fast option when versions match.
+`mjz` support is the one net-new piece to verify (whether the codec is compiled into the linked
+lib). This is the SAME normalize-to-`mjModel` front end as the `load_model()` RPC discussed in
+the WIP doc; they must be ONE mechanism, not two. UE runtime already links
+`mj_parseXMLString` / `mj_compile` / `mjVFS`, so xml→mjModel is wiring existing calls.
+
 ---
 
-## 5. One renderer
+## 5. One renderer (concrete, because the double-build is the real objection)
 
-Today `MjbScene.cpp` (~2300 lines) is a second renderer (lightweight per-body actors straight
-from an MJB, no `mjData`) parallel to the compiled component renderer. The target is ONE
-renderer that:
+The honest objection (raised while iterating): the fast path already builds render actors FROM
+the `mjModel`. The compiled/authoring path builds an `AMjArticulation` Blueprint component tree,
+uses it to build the spec, compiles the `mjModel` — and if we THEN also build render actors from
+that `mjModel`, we have instanced the geometry TWICE (the heavy authoring tree AND the
+mjModel-derived tree). That is expensive and is a fair reason to distrust a naive "everything
+renders from the mjModel".
 
-- builds its actor/mesh/camera representation from a compiled `mjModel`,
-- is driven either by the local sim's thread-safe snapshot (SimSource=Owned) or by a
-  subscribed transform stream (SimSource=External),
-- exposes the "lightweight, one actor per body, no per-element component graph" property as a
-  fidelity/perf option, not as a separate class.
+Proposed resolution — separate authoring-time from render-time:
+- EDITOR / authoring: the `AMjArticulation` component tree stays as the authoring + placement +
+  spec-build surface. Unchanged. It is what a user edits, and it is what produces the spec.
+- RUNTIME (a sim is installed, or a mirror is streaming): ONE renderer builds from the
+  `mjModel`, for BOTH the compiled and the fast paths. The heavy authoring component tree is
+  NOT instantiated as a render representation at runtime.
 
-This is the single biggest lean win and it gates the mode collapse (once there is one
-own-a-sim path and one renderer, `EMjbRunMode` has nothing left to encode). The god-object
-extraction already tracked as task #21 (asset baker / transport bus / direct mode out of
-`MjbScene`) is the first cut of this, but the deeper move is sharing the compiled renderer
-rather than maintaining two.
+Why this does not double-instance, and likely gets FASTER:
+- At runtime you build from the `mjModel` ONCE. You never stand up the authoring tree as a
+  second render representation; the compiled path stops rendering its Blueprint tree at play.
+- The authoring Blueprint tree is the known-EXPENSIVE object (huge XML -> huge BP -> slow to
+  instantiate, see `project_blueprint_edit_lag_unresolved`). The mjModel-derived lightweight
+  renderer (one actor per body, no per-element component graph) is CHEAPER. So moving
+  compiled-path runtime rendering onto it should REDUCE cost: the "build from mjModel" work
+  replaces the heavier BP-tree instantiation, it is not added on top.
+
+What must be validated before committing (this is a proposal; we iterate):
+1. FIDELITY PARITY — the mjModel-derived renderer must resolve the SAME imported meshes/materials
+   the authoring path used, so the compiled scene looks identical. The compiled path imports
+   those assets and the `mjModel` references them by name, so this should hold, but it is the
+   first thing to prove.
+2. AUTHORING-ONLY VISUALS — anything a user attaches in UE that is not in the `mjModel` (debug
+   widgets, decorative components) needs an explicit bridge or is declared editor-only.
+3. ONE-TIME PLAY COST — building from the `mjModel` at play-start is a cost the compiled path
+   does not pay today; it must be no worse than the BP-tree instantiation it replaces (expected
+   better, per the point above).
+
+Net: "one renderer" means the `mjModel` is the SINGLE runtime render source for both paths, and
+the authoring tree is editor-only. This is the biggest lean win and it gates the mode collapse
+(with one own-a-sim path and one renderer, `EMjbRunMode` has nothing left to encode). It needs
+the fidelity-parity proof (item 1) before we commit — that proof is the recommended first probe.
+The god-object extraction tracked as task #21 (asset baker / transport bus / direct mode out of
+`MjbScene`) is a first cut, but the deeper move is this shared runtime renderer.
 
 ---
 
@@ -208,15 +281,17 @@ Do not churn the RPC base; it is the model the others copy.
 | Today | Target |
 |---|---|
 | `EStepMode{Live,Direct,Puppet,Auto}` | `Drive{FreeRun,Stepped,StatePushed}` (Auto = policy) |
-| `EMjbRunMode{Puppet,Direct}` | folded into `SimSource{External,Owned}` |
+| `EMjbRunMode{Puppet,Direct}` | folded into `SimSource{Mirror,Owned}` |
 | compiled path + fast-path raw install + shadow | ONE `UMjPhysicsEngine` install + one partition |
-| `MjbScene` second renderer (~2300 lines) | ONE renderer, lightweight as a fidelity option |
-| `raw_actuators`/`raw_joints` + `bRawShadow` | deleted (needs MJB version-skew fix first) |
+| `MjbScene` second renderer (~2300 lines) | ONE runtime renderer from `mjModel`; authoring tree is editor-only |
+| render-server = a bundled mode | two independent overlays: cameras out / interactive input |
+| fast path takes only MJB | receiver normalizes `{mjb, xml+assets, mjz}` to `mjModel`; xml/mjz kills version skew |
+| `raw_actuators`/`raw_joints` + `bRawShadow` | deleted (xml/mjz source removes the root cause) |
 | per-element producer cache | walk the partition, index `mjData` + one side-channel |
 | four-plus `d->ctrl` writers | one engine-owned store + one pre-step drain |
 | `EControlSource` 2-slot selector | write lease; one setpoint per id |
 | main Subscribe + fast-path bus + Client/ViewerSubscribe | one Subscribe base; bus = a Publish topic |
-| overloaded owner/puppet/slave/server terms | Driver / Renderer / Registry / Integrator |
+| overloaded owner/puppet/slave/server terms | Driver / Renderer / Registry / Integrator / Viewer |
 
 ---
 
@@ -226,11 +301,15 @@ Every one of these keeps working through the redesign; the redesign only removes
 implementation of each:
 a. UE free-runs a sim in real time.
 b. A client steps UE deterministically and reads obs.
-c. A client integrates externally, pushes state, UE renders and serves it.
-d. A lightweight renderer mirrors an owner with no physics.
+c. A client integrates externally, pushes state, UE runs `mj_forward` and serves the full local
+   data (contacts, derived, sensors) — the deliberately heavier path, NOT the pure render path.
+d. A lightweight renderer mirrors an owner with no physics and no `mj_forward` (the cheap path).
 e. A renderer runs its own sim and is RPC-drivable (= b).
-f. Any renderer also streams cameras (render server).
-g. A renderer slaves to any owner, cross-machine.
+f. Any instance also streams cameras (render server) — an overlay.
+g. Any instance slaves to any owner, UE or Python, cross-machine; and any Owned instance can BE
+   an owner for others.
+h. A viewer (e.g. VR) mirrors an owner and sends interactive input back (xfrc / wrench / drag /
+   requests), no cameras — an overlay, through the fast path.
 
 ---
 
@@ -273,11 +352,27 @@ Then the staged core redesign, each phase compiling on its own:
 
 ---
 
-## 14. Open decisions
+## 14. Open decisions / iteration log
 
 - Name of the addressable unit (`FMjAddressable`/`FMjGroup` vs `FMjEntity` + rename the old
   struct). Blocks the addressing phase.
-- Whether `StatePushed` (client-integrated) is still used; if not, fold it into Stepped.
-- Whether the two renderers merge fully in one pass or the fast renderer is kept as a fidelity
-  profile of the shared renderer. Recommend investigating this first — it is the largest lean
-  win and it gates the mode collapse.
+- `StatePushed` is confirmed KEEP (gives the local instance contacts + derived data a mirror
+  can't see); it is distinct from the cheap `Mirror` path and must not be collapsed into it.
+- The unified renderer's FIDELITY PARITY (section 5, item 1) is the recommended FIRST probe:
+  prove the mjModel-derived runtime renderer resolves the same imported meshes/materials as the
+  authoring tree, so the compiled scene looks identical and the BP tree can go editor-only. This
+  gates the whole mode collapse.
+- `mjz` codec availability in the linked `libmujoco` — verify before relying on the mjz source
+  format (mjb and xml+assets are already known-feasible).
+- The `load_model()` RPC and the fast-path model source must be ONE normalize-to-`mjModel`
+  mechanism, not two.
+
+### Resolved during iteration (2026-08-15)
+- Mirror (cheap, no `mj_forward`) and `StatePushed` (Owned, pays `mj_forward` for local data)
+  are DIFFERENT and both stay. An earlier draft blurred them.
+- "Render server" (cameras out) and "viewer" (interactive input in) are INDEPENDENT overlays,
+  not one bundle; a VR viewer is `Mirror` + input, no cameras.
+- Owner-ness is uniform: any Owned UE instance can be an owner; any Mirror can attach to any
+  owner (UE or Python).
+- Fast-path model source broadens from MJB-only to `{mjb, xml+assets, mjz}`; xml/mjz compiled by
+  the receiver removes the version-skew that forces the `raw_*` re-description today.

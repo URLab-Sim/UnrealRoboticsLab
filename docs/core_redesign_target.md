@@ -633,6 +633,15 @@ equality tests asserting the new path matches the old, no parallel maintenance. 
 thing, validate it on its own terms, and DELETE the old path as consumers move onto the new one.
 Standalone crash fixes to still-live code are fine; transitional belt-and-suspenders is not.
 
+### Controller model (user, 2026-08-16)
+A "controller" is just ENTITY BEHAVIOUR, the same category as the microwave/fridge task logic --
+transferred off the articulation onto the entity, not a separate UObject. PD is data-ified: the
+per-actuator gains ({Kp,Kv,TorqueLimit}) live with the entity (transferred from the articulation's
+authored controller at build; later authored on the entity directly), and the drain runs a pure
+free-function law (`MjPdControl::Compute`) for any actuator that has gains. An actuator with no gains
+is driven directly (setpoint -> ctrl). `UMjPDController` / `ComputeAndApply` / `ControlSource` delete.
+(Chose B over native-actuator conversion so PD stays authorable without a model edit.)
+
 ### Decisions locked by the user (2026-08-15)
 - ENTITY is the addressing unit — EVERYTHING is an `FMjEntity` (robot or prop); it absorbs the
   old props-only `FMjEntityRecord`. One concept, no collision. (Python `URLabEntity` already fits.)

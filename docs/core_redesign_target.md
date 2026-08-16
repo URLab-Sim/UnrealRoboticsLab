@@ -190,7 +190,8 @@ and stands up a shadow so the RPC layer can address it). The target has ONE path
 
 - `UMjPhysicsEngine` owns the compiled `mjModel`/`mjData`, installed once, whether the source
   was an authored spec or a wire MJB.
-- Addressing is a flat partition (`FMjAddressable` / `FMjGroup`, name TBD, see WIP doc)
+- Addressing is a flat partition (`FMjEntity` — everything is one Entity, robot or prop; it
+  absorbs the old props-only `FMjEntityRecord`)
   built FROM the `mjModel` by name-prefix, identical for both origins. No shadow, no
   fabricated per-joint components, no second model description.
 - The render actor is a presentation layer on top, never the thing the bridge addresses.
@@ -304,6 +305,27 @@ losses are three enumerable, bridgeable items. This unblocks the mode collapse (
 own-a-sim path and one renderer, `EMjbRunMode` has nothing left to encode). The god-object
 extraction (task #21) is orthogonal cleanup that feeds straight into this renderer.
 
+### Render visualization options — MuJoCo `simulate` parity + our extras (FURTHER INVESTIGATION)
+User goal: the unified renderer should be able to recreate ALL of MuJoCo `simulate`'s render
+toggles (and the ones we already add that `simulate` lacks, e.g. joints), as composable overlays
+on the one renderer — not a separate mode. This is a dedicated investigation, layered on the
+renderer, NOT a blocker for the core redesign.
+- Catalogue MuJoCo's flags: the visualization flags (`mjtVisFlag` / `mjVIS_*`: convex hull,
+  texture, joint, actuator, camera, light, tendon, range-finder, constraint, inertia,
+  scaled-inertia, perturb force/object, contact point / force / split, transparent, auto-connect,
+  center-of-mass, select, static body, skin, flex*, etc.) AND the render flags (`mjtRndFlag` /
+  `mjRND_*`: shadow, wireframe, reflection, additive, skybox, fog, haze, segment, idcolor,
+  cull-face, etc.). Both enums live in the pinned `mjvisualize.h`.
+- Map each to a UE overlay on the entity/geom render (collision geoms shown/hidden by group is the
+  one we already have; contacts, contact forces, joints/actuators as glyphs, inertia boxes, COM,
+  transparency, convex hull, wireframe, tendons, sites as our extras).
+- Today the fast path FILTERS collision geoms out via the visual-group mask (`IsGeomVisible`,
+  `MjbScene.cpp:851-855`); some overlays exist only in the manager-side `MjDebugVisualizer`. The
+  investigation decides which overlays the unified renderer owns as toggles vs which stay debug.
+- Deliverable: a flag -> UE-overlay mapping table + which are core vs opt-in, added to this doc
+  before implementing the overlay layer. Prototype the core renderer first; overlays are a
+  follow-on workstream.
+
 ---
 
 ## 6. Addressing and observation
@@ -314,7 +336,7 @@ extraction (task #21) is orthogonal cleanup that feeds straight into this render
   physics thread — the pattern the existing `entities` block already uses. No per-element
   producer graph, no game-thread producer-cache rebuild.
 - Non-id-sliceable data attaches through ONE explicit enrichment side-channel keyed by the
-  addressable's name: compiled camera/controller handshake metadata, user channels, and the
+  entity's name: compiled camera/controller handshake metadata, user channels, and the
   ROS-only fields (semantic tags, world geometry). This side-channel is off the per-step core
   path and is consumed by the ROS layer and opt-in clients.
 - UE is the obs authority. The redundant handshake descriptions collapse to one. The client's
@@ -326,7 +348,7 @@ extraction (task #21) is orthogonal cleanup that feeds straight into this render
 
 The load-bearing core property: one engine-owned control store and one pre-step write path
 into `d->ctrl`, replacing today's four-plus uncoordinated writers and the dual staging slots.
-Drive-per-addressable (direct vs a control law) is resolved once, at drain. Keyframe qpos-hold
+Drive-per-entity (direct vs a control law) is resolved once, at drain. Keyframe qpos-hold
 gets a sibling state-injection buffer. The controller model itself (native MuJoCo actuators for
 PD, an optional UE-C++ MuJoCo plugin for custom laws that needs no MuJoCo recompile, and
 evicting keyframe/twist from "controller") is deferred per current priority.
@@ -355,8 +377,8 @@ Do not churn the RPC base; it is the model the others copy.
 - Registry — the discovery layer (registry JSON + hello).
 - Integrator — whoever advances `mj_step`.
 - ControlLease / Writer — write arbitration (retire `EControlSource` as an identity).
-- Addressable (or Entity, name TBD) — the id-slice unit; resolve the collision with the
-  existing bodies-only `FMjEntityRecord` first.
+- Entity — the id-slice unit; EVERYTHING is an Entity (robot or prop), so there is one concept.
+  `FMjEntity` absorbs the old bodies-only `FMjEntityRecord` (which is deleted/folded in).
 
 ---
 
@@ -441,8 +463,9 @@ Then the staged core redesign, each phase compiling on its own:
 
 ## 14. Open decisions / iteration log
 
-- Name of the addressable unit (`FMjAddressable`/`FMjGroup` vs `FMjEntity` + rename the old
-  struct). Blocks the addressing phase.
+- RESOLVED (user, 2026-08-15): the unit is `FMjEntity` — everything is an Entity, robot or prop.
+  It ABSORBS the old props-only `FMjEntityRecord` (deleted/folded in); there is no second concept.
+  (superseding the earlier open question about the name / the old struct).
 - `StatePushed` is confirmed KEEP (gives the local instance contacts + derived data a mirror
   can't see); it is distinct from the cheap `Mirror` path and must not be collapsed into it.
 - ONE RENDERER — RESOLVED to approach B by the 2026-08-15 probes (section 5): one lightweight
@@ -452,10 +475,27 @@ Then the staged core redesign, each phase compiling on its own:
   implementation sub-decisions: the packaged `ProceduralMesh` return type (cook `SM_<id>` vs
   component-level resolver); and one post-decision live profile that B's play build is not slower
   than the authoring SCS-instantiate pass it replaces.
-- `mjz` codec availability in the linked `libmujoco` — verify before relying on the mjz source
-  format (mjb and xml+assets are already known-feasible).
 - The `load_model()` RPC and the fast-path model source must be ONE normalize-to-`mjModel`
   mechanism, not two.
+
+### Decisions locked by the user (2026-08-15)
+- ENTITY is the addressing unit — EVERYTHING is an `FMjEntity` (robot or prop); it absorbs the
+  old props-only `FMjEntityRecord`. One concept, no collision. (Python `URLabEntity` already fits.)
+- Drain cadence: controllers RE-EVALUATE EVERY physics substep (proper feedback loop); direct
+  setpoints PERSIST across substeps (not cleared each tick). (16.2.1)
+- Keyframe hold: preserve TODAY'S EXACT behavior — pin qpos, ZERO qvel for held DoFs, skip free
+  joints, and suppress that entity's ctrl write while holding. (16.2.2)
+- Asset resolver seam is COMPONENT-level (works for editor StaticMesh AND packaged
+  ProceduralMesh); coordinator's job, not a user decision. (16.2.3)
+- `ViewerSubscribe` (mirror + `mj_forward`) is KEPT as a distinct role (it IS StatePushed over
+  subscribe). (16.2.5)
+- Control-source REDESIGN: delete the dual ZMQ/UI slots + selector; ONE command input per actuator
+  + an exclusive WRITE LEASE (ControlLease). Whoever holds the lease writes; UI grabbing control
+  takes the lease, releasing hands it back. (replaces the `EControlSource` "behavior change" Q.)
+- `mjz` is KEPT — decoder confirmed in the pinned lib (`mju_decodeResource`/`mj_parse`).
+- Scope: the missing-30% net-new work (16.3: ROS ingress, sensor-semantic table, per-body FK,
+  camera identity) IS in scope NOW as explicit phases (user chose the thorough path).
+- Implementation parallelism shape is the coordinator's call (contract-first + serial spine).
 
 ### Resolved during iteration (2026-08-15)
 - Mirror (cheap, no `mj_forward`) and `StatePushed` (pays `mj_forward` for local data) are
@@ -512,38 +552,38 @@ on idle wakes (`:1255-1265`) while the client believes it owns the integrator.
 - TEST: existing `MjStateCollectorTests` still green; ROS providers still receive geometry.
 
 ### Phase 1 — addressing partition (compiled path), dual-run
-NEW (PROPOSED): `Public/MuJoCo/Core/MjAddressable.h`
+NEW (PROPOSED): `Public/MuJoCo/Core/MjEntity.h`
 ```cpp
-struct FMjAddressable {                 // replaces FMjEntityRecord + AMjArticulation-as-addr-unit
+struct FMjEntity {                 // replaces FMjEntityRecord + AMjArticulation-as-addr-unit
     FName Name;                         // stable public name (compiled: participant prefix)
     int32 RootBodyId; bool bFreeBase;
     TArray<int32> BodyIds, JointIds, ActuatorIds, SensorIds;   // may be empty
 };
-namespace MjAddressableBuilder {
-    TArray<FMjAddressable> Build(const mjModel* m, const FMjPartition& How);  // by name prefix
+namespace MjEntityBuilder {
+    TArray<FMjEntity> Build(const mjModel* m, const FMjPartition& How);  // by name prefix
 }
 ```
-NEW: host `TArray<FMjAddressable> Addressables` on `UMjPhysicsEngine`, built in
+NEW: host `TArray<FMjEntity> Entities` on `UMjPhysicsEngine`, built in
 `InstallCompiledSpec` right after compile. NAME the type per section 14 (retire/rename the
 existing `FMjEntityRecord`, `AMjManager.h:82`, to `FMjPropRecord` in the same change).
 DUAL-RUN: build alongside the existing articulation registry; a test asserts the partition's
 name+id-slices match the actor registry (both derive from the same compiled `mjModel`).
-TEST: new `MjAddressableTests` + an equality assert modeled on `MjParityGoldenTests`.
+TEST: new `MjEntityTests` + an equality assert modeled on `MjParityGoldenTests`.
 No behavior change this phase.
 
 ### Phase 2 — observation on the partition + one handshake
-CHANGE: `FMjStateCollector` walks `Addressables` and copies id slices from `mjData` (the pattern
+CHANGE: `FMjStateCollector` walks `Entities` and copies id slices from `mjData` (the pattern
 the `entities` block already uses, `RpcDispatcher.cpp:1021-1055`).
 DELETE: `FCachedArticulation` / `Producers` / `RebuildProducerCacheGameThread`
 (`MjStateCollector.h:76-114`) and `DescribeElement`'s type dispatch (`MjStateCollector.cpp:194-230`).
-NEW (PROPOSED): one enrichment side-channel on the manager, keyed by addressable name:
+NEW (PROPOSED): one enrichment side-channel on the manager, keyed by entity name:
 ```cpp
 struct FMjEnrichment { FName Name; TWeakObjectPtr<UObject> Producer; EMjEnrichmentScope Scope; };
 TArray<FMjEnrichment> Enrichments;      // twist ctrl, user-channel comp, scene producer, cam/ctrl meta
 ```
 Consumed by the ROS `IMjStateConsumer` and by an OPT-IN msgpack `user` block only. Keep the
 compiled `UMjSensorRuntime`/`UMjJointRuntime` DescribeState logic ONLY as ROS enrichment.
-CHANGE: handshake serializes `FMjAddressable` + reads ranges/gear/types straight off `mjModel`,
+CHANGE: handshake serializes `FMjEntity` + reads ranges/gear/types straight off `mjModel`,
 one code path for compiled and raw. The camera/controller metadata (`RpcDispatcher.cpp:838-1015`)
 comes from the enrichment side-channel (it is not on `mjModel`).
 TEST: `MjStateCollectorTests`, `MjUserChannelTests` rewritten against the partition + side-channel.
@@ -577,7 +617,7 @@ highest-risk area; keyframe-hold ordering vs setpoints is the subtle spot.
 TEST: `MjActuatorControlSlotTests`, `MjStepServerTests`, `MjPDControllerTests`, `MjRosLinkTests`.
 
 ### Phase 4 — raw path on the partition; delete the shadow
-CHANGE: `InstallRawModel` builds `FMjAddressable` from the raw `mjModel` (single root or
+CHANGE: `InstallRawModel` builds `FMjEntity` from the raw `mjModel` (single root or
 body-subtree split).
 DELETE: `MjbShadowArticulation.{h,cpp}` (`:52-108`), the shadow spawn/teardown in `MjbScene`
 (`ShadowArt`, `MjbScene.h:307`; `BeginDirect`/`InstallIntoEngine`), the `raw_actuators`/`raw_joints`
@@ -636,7 +676,7 @@ normal Publish topic a `Mirror` renderer subscribes to; retire the parallel
 TEST: `MjStepServerTests` + a mirror/renderer integration test across the unified Subscribe base.
 
 ### Phase 8 — vocabulary rename + Python wrapper (LAST)
-Rename across code + docs: Driver / Renderer / Registry / Integrator / ControlLease / Addressable.
+Rename across code + docs: Driver / Renderer / Registry / Integrator / ControlLease / Entity.
 The Python client is a thin wrapper and is updated last to match the new wire; `enums.py` strings
 change (allowed). This is mechanical once the C++ core lands.
 
@@ -715,7 +755,7 @@ Each is a NEW workstream, required before phase 4 can delete the shadow without 
   `GetActuators`+`SetNetworkControl` (`:444-451,545-571`), `FindComponentByClass<UMjTwistController>`
   (`:490`), and `GetStructureVersion()` to rebuild subs (`:238,366`). Deleting the shadow breaks
   `cmd_ctrl`/`cmd_vel`/`joint_command`/`claim_control`/user-channel input for wire models. Needs a
-  shadowless command-routing target (a control-ingress interface keyed by addressable name).
+  shadowless command-routing target (a control-ingress interface keyed by entity name).
 - SENSOR-SEMANTIC model-only table (HIGH). `FMjSensorState::Semantic` comes from
   `UMjSensorRuntime::GetSemantic` (`MjStateCollector.cpp:146`) off the ProtoSpec schema, NOT
   `mjModel`. No `mjtSensor -> EMjSensorSemantic` table exists. `/tf` + `/odom` per-link poses come
@@ -793,8 +833,8 @@ RULE: on the hotspot files, assign ONE owning agent across all colliding phases 
 FILE there), and by FEATURE elsewhere.
 
 ### 16.7 Parallel decomposition (contract-first)
-- STEP 0 (serial, coordinator, no logic): resolve the addressable-unit NAME first; land header-only
-  compiling stubs for the frozen contracts — `MjAddressable.h` + builder, `FMjControlBuffer` +
+- STEP 0 (serial, coordinator, no logic): the unit is `FMjEntity` (name resolved); land
+  header-only compiling stubs for the frozen contracts — `MjEntity.h` + builder, `FMjControlBuffer` +
   the FULL state-injection channel, `FMjEnrichment` + EMjEnrichmentScope, a COMMAND-INGRESS
   interface (not just state), `IMjGeomAssetResolver` at COMPONENT level, `EMjPoseSource` + capability
   flags, an `mjtSensor->EMjSensorSemantic` table interface, and a renderer-agnostic camera registry.
@@ -809,7 +849,7 @@ FILE there), and by FEATURE elsewhere.
 Drain cadence (16.2.1); full state-injection channel (16.2.2); component-level resolver (16.2.3);
 the actual play render path (16.2.4); ViewerSubscribe's fate (16.2.5); EControlSource behavior
 change accepted? (16.2.6); scope the missing-30% net-new work (16.3) into explicit phases; `mjz` KEPT (decoder confirmed in
-the lib); and the addressable-unit name (still open, blocks Step 0).
+the lib); and the entity-unit name is RESOLVED = `FMjEntity` (everything is an Entity).
 
 ### Additions to "functionality that MUST survive" (section 11)
 i. ROS control ingress (cmd_ctrl/cmd_vel/joint_command/claim_control/user-channel) to wire models.

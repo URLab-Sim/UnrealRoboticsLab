@@ -1240,7 +1240,7 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | 0b/0c/0d fixes | — | skipped | — | low-value hardening of doomed articulation/shadow code; superseded by the rewrite |
 | 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition, GetCompiledPrefix) + built in InstallCompiledSpec; consumers migrate onto it (no dual-run test vs old registry) |
 | 6 wire-model source | subagent | done | proto/entity-redesign | `MjModelSource::FromBytes` {mjb,xml,mjz}; mjz via mj_parse+decoder registry; not yet wired to load path |
-| #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |
+| #21 renderer extraction | subagent | done | proto/entity-redesign | `UMjbTransportBus`/`UMjbAssetBaker` (UObjects) + `FMjbDirectMode` out of MjbScene; no behavior change; needs live verify |
 | 4N-a ingress+twist | subagent | impl done | proto/entity-redesign | `MjTwistResolve` + `FMjEntityControlIngress` (lease-gated buffer writes); ROS wiring remains |
 | 4N-b sensor-semantic+FK | subagent | done | proto/entity-redesign | `MjSensorSemantics::ForSensor` + `MjBodyKinematics::ForEntity`; semantics stored on FMjEntity at build |
 | 4N-c camera registry | subagent | done | proto/entity-redesign | `FMjCameraRegistry::Build/Find`, canonical names via shared FMjCanonicalName |

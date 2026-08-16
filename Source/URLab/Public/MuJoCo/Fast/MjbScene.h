@@ -7,20 +7,15 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "HAL/CriticalSection.h"
-#include <atomic>
+#include "MuJoCo/Fast/MjbDirectMode.h"
 #include "MjbScene.generated.h"
 
 struct mjModel_;
 struct mjData_;
-struct FMjRenderSnapshot;
 class UPrimitiveComponent;
-class UProceduralMeshComponent;
-class UMaterialInterface;
-class FRunnable;
-class FRunnableThread;
 class AAMjManager;
-class UURLabClientSubscribeTransport;
+class UMjbAssetBaker;
+class UMjbTransportBus;
 
 /** How a play-session AMjbScene sources its transforms. */
 UENUM(BlueprintType)
@@ -54,6 +49,11 @@ enum class EMjbRunMode : uint8
  * owner-less dev fallback that animates joints locally so the builder can be
  * exercised without an owner; it is off by default and ignored in Direct mode
  * or once a bus is connected.
+ *
+ * The mesh/texture/material builders live in UMjbAssetBaker, the transform-bus
+ * receive plumbing in UMjbTransportBus, and the Direct-mode engine install +
+ * snapshot render in FMjbDirectMode; the scene owns the model/data, the body ->
+ * geom scene graph, and the build orchestration.
  */
 UCLASS()
 class URLAB_API AMjbScene : public AActor
@@ -226,9 +226,9 @@ public:
 	void ConnectBus() { StartBus(); }
 	/** Begin Direct stepping now (RunMode must be Direct). Normally driven by
 	 *  BeginPlay; exposed for the -game launcher, which builds after BeginPlay. */
-	void StartDirect() { BeginDirect(); }
+	void StartDirect() { Direct.Begin(*this); }
 	/** True once at least one transform frame has been received off the bus. */
-	bool HasReceivedFrame() const { return bEverReceived.load(std::memory_order_acquire); }
+	bool HasReceivedFrame() const;
 
 	/** Body actors created (one per MuJoCo body, world included). */
 	int32 NumBodyActors() const { return BodyActors.Num(); }
@@ -241,30 +241,17 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
+	// FMjbDirectMode reaches back into the scene for the model, geom/camera
+	// components and render origin while it drives the shared engine.
+	friend struct FMjbDirectMode;
+
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;
-	// Rooted so GC can't collect the loaded master material between load and the
-	// (possibly much later, on the PIE-reuse path) creation of its MIDs.
-	UPROPERTY(Transient)
-	TObjectPtr<UMaterialInterface> Master = nullptr;
 
-	// A content id for the loaded MJB (a hash of its bytes). Cached, persistent
-	// assets live under /Game/URLabFastPath/<ContentHash>/, so an identical model
-	// reuses one asset set across sessions and a saved level reloads its geometry.
-	FString ContentHash;
-
-	// Textures built from the MJB's tex_data, keyed by MuJoCo texture id, so a
-	// texture shared across materials/geoms is built once. Transient; rebuilt on
-	// each LoadAndBuild.
+	// Builds + caches the meshes/textures/materials for the loaded MJB (content-hash
+	// keyed). A UPROPERTY so its cached assets are GC-rooted through the scene.
 	UPROPERTY(Transient)
-	TMap<int32, TObjectPtr<class UTexture2D>> TextureCache;
-
-	// Static meshes built from the MJB's mesh pool, keyed by MuJoCo mesh id, so a
-	// mesh shared across geoms is built once and every geom references the same
-	// asset by pointer -- which keeps the PIE world duplication cheap (no embedded
-	// vertex data copied per geom, unlike a ProceduralMeshComponent). Transient.
-	UPROPERTY(Transient)
-	TMap<int32, TObjectPtr<class UStaticMesh>> StaticMeshCache;
+	TObjectPtr<UMjbAssetBaker> AssetBaker;
 
 	// Cameras built from the MJB, indexed by MuJoCo camera id. Empty unless
 	// bEnableCameraStreaming.
@@ -280,60 +267,30 @@ private:
 	double SweepTime = 0.0;
 
 	// --- transform bus (owner -> this renderer) --------------------------- //
-	// The client-subscribe transport that receives the owner's "geoms" broadcast
-	// (ZMQ now; SHM/ROS/gRPC via the transport hook). Owned here.
+	// Receive plumbing for the owner's "geoms" broadcast. Lazily created on the
+	// first StartBus; the game thread pulls the newest raw payload each Tick.
 	UPROPERTY(Transient)
-	TObjectPtr<UURLabClientSubscribeTransport> BusTransport;
-	// OnBusMessage (worker thread) only copies the newest raw payload here (no UE
-	// allocation / no msgpack decode off the game thread); the game thread decodes
-	// + applies it in Tick.
-	FCriticalSection FrameMutex;
-	TArray<uint8> RxFrame; // guarded by FrameMutex
-	bool bRxPending = false; // guarded by FrameMutex
-	std::atomic<bool> bEverReceived{false};
+	TObjectPtr<UMjbTransportBus> TransportBus;
 
+	// Ensure + connect the bus (BusEndpoint must be set); drop it. Both no-op safe.
 	void StartBus();
 	void StopBus();
-	// Worker-thread delivery from BusTransport: stash the newest raw payload for the
-	// game thread to decode + apply.
-	void OnBusMessage(const FString& Topic, const TArray<uint8>& Payload);
 
 	// --- Direct mode (in-process stepping via the shared engine) ---------- //
-	// The manager whose UMjPhysicsEngine steps our raw model. Get-or-spawned at
-	// BeginPlay; not owned here (weak).
-	TWeakObjectPtr<AAMjManager> DirectManager;
-	// Direct mode: the geometry-less shadow articulation that lets the RPC layer /
-	// a Python client drive the raw model (built after install, retired at teardown).
-	TWeakObjectPtr<class AMjArticulation> ShadowArt;
-	// Frame id of the last render snapshot applied, so Tick skips unchanged frames.
-	uint64 LastRenderFrameId = 0;
-	// One-shot: log the first non-finite snapshot transform (diverged physics vs
-	// bad snapshot) without flooding.
-	bool bDirectNanLogged = false;
-	// Polls until the manager has begun play, then installs the raw model.
-	FTimerHandle DirectInstallTimer;
+	// Engine install + shadow articulation + snapshot render. A plain struct owned
+	// here (weak actor ptrs + PODs, no GC roots).
+	FMjbDirectMode Direct;
 
-	// Get-or-spawn the level's manager and cache it in DirectManager. A render
+	// Get-or-spawn the level's manager and cache it in Direct.Manager. A render
 	// server needs a manager+bridge in BOTH modes: Direct steps through it, and a
 	// Puppet render slave still needs its RPC (fastpath_load scene swaps).
 	AAMjManager* EnsureManager();
-	// Get-or-spawn the manager and arm the deferred install.
-	void BeginDirect();
-	// Install this scene's raw model+data into the manager's engine and start the
-	// physics worker. Retried off DirectInstallTimer until the manager has begun play.
+	// Timer target for the deferred Direct install: delegates to Direct. A UObject
+	// method so FTimerManager can hold it by weak pointer.
 	void InstallIntoEngine();
-	// Render the geoms + cameras from the engine's published render snapshot
-	// (thread-safe; the worker steps our mjData on another thread).
-	void ApplyFromSnapshot();
 
-	// Build (or fetch from cache) a UTexture2D from the MJB's tex_data for the
-	// given MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a
-	// bad id.
-	class UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal = false);
-
-	// Load the mjModel/mjData (from MjbBytes or MjbFilePath) and the master
-	// material, without building any actors. No-op if already loaded. False on
-	// failure.
+	// Load the mjModel/mjData (from MjbBytes or MjbFilePath) and prime the asset
+	// baker, without building any actors. No-op if already loaded. False on failure.
 	bool LoadModelOnly();
 
 	void BuildBodies();
@@ -365,13 +322,6 @@ private:
 	// the mirroring. Not attached to this actor, so it survives a geometry rebuild.
 	UPROPERTY()
 	TObjectPtr<class ACameraActor> UserCam;
-	// Editor route: a shared UStaticMesh keyed by mesh id (cheap PIE duplication);
-	// BuildFromMeshDescriptions is editor-only. Null on a bad id.
-	class UStaticMesh* GetOrBuildStaticMesh(int32 MeshId);
-	// Packaged-game route: a ProceduralMeshComponent that builds render data at
-	// runtime (no editor mesh-build modules).
-	class UProceduralMeshComponent* BuildMesh(int32 GeomId, AActor* Body);
-	void ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 GeomId);
 
 	// --- small model-query helpers (shared by the build + apply paths) ----- //
 	// True if geom G's group is in VisibleGroupMask (visual groups shown, collision

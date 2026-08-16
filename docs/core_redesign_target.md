@@ -1247,20 +1247,19 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | STEP 0 contracts | main | DONE (compiles+links) | proto/entity-redesign | 11 headers under `MuJoCo/Entity/` + `MjEntityModel.cpp`; UHT ok; build Succeeded 2026-08-16 |
 | 0a registry race | main | DONE (build ok) | proto/entity-redesign | fenced rebuild + locked GetArticulation + GetAllArticulations by-value snapshot |
 | 0b/0c/0d fixes | — | skipped | — | low-value hardening of doomed articulation/shadow code; superseded by the rewrite |
-| 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition, GetCompiledPrefix) + built in InstallCompiledSpec; consumers migrate onto it (no dual-run test vs old registry) |
+| 1 partition | main | DONE | proto/entity-redesign | MjEntityBuilder::Build (prefix partition) + built in InstallCompiledSpec. FMjEntity now carries PublicName (= ArtSegment wire key) + ActorId, fed from the actor at build so observation stays wire-compatible. |
 | 6 wire-model source | subagent | done | proto/entity-redesign | `MjModelSource::FromBytes` {mjb,xml,mjz}; mjz via mj_parse+decoder registry; not yet wired to load path |
 | #21 renderer extraction | subagent | done | proto/entity-redesign | `UMjbTransportBus`/`UMjbAssetBaker` (UObjects) + `FMjbDirectMode` out of MjbScene; no behavior change; needs live verify |
-| 4N-a ingress+twist | subagent | impl done | proto/entity-redesign | `MjTwistResolve` + `FMjEntityControlIngress` (lease-gated buffer writes); ROS wiring remains |
+| 4N-a ingress+twist | subagent | DONE | proto/entity-redesign | `MjTwistResolve` + `FMjEntityControlIngress` (lease-gated buffer writes). ROS/ZMQ/RPC/UI all write via SetControl/SetNetworkControl -> ingress -> buffer -> drain (verified RosRpcTransport.cpp:450,571). |
 | 4N-b sensor-semantic+FK | subagent | done | proto/entity-redesign | `MjSensorSemantics::ForSensor` + `MjBodyKinematics::ForEntity`; semantics stored on FMjEntity at build |
 | 4N-c camera registry | subagent | done | proto/entity-redesign | `FMjCameraRegistry::Build/Find`, canonical names via shared FMjCanonicalName |
-| 1 partition | — | not started | — | spine start |
-| 2 observation | — | not started | — | spine |
-| 3 control (entity buffer+drain) | main | store wired | proto/entity-redesign | engine owns FMjControlBuffer/StateInjection/Lease + FMjEntityControlIngress; DRAIN cut-over (delete ApplyControls, PD data-ify) remains — HIGH risk, needs live verify |
+| 2 observation | main+agents | integrating | proto/entity-redesign | Collector (MjStateCollector.*) + handshake (RpcDispatcher.cpp) both migrated to walk GetEntityPartition() instead of GetAllArticulations(); wire shape preserved via PublicName + a LocalName(Sanitize+prefix-strip) helper. PARITY WATCH: within-entity arrays now ascending-mj-id order (was component order); body-state now per-BodyId (was per-bound-component). Validate vs Python or settle in Phase 8. Awaiting build+test. |
+| 3 control (entity buffer+drain) | main | DONE (455/455) | proto/entity-redesign | c4ce090/3dbdb5b/2eb2b49/5f3ea11. Drain = DrainControlIntoData(m,d): state-injection then setpoint->ctrl, DIRECT-ONLY (no controller branch per user). Wired into Live worker + Direct n-loop; Puppet still skipped. Writers reroute through the ingress via SetControl/SetNetworkControl (no caller change). Keyframe hold data-ified onto the engine injection. DELETED: whole controller subsystem (UMjArticulationController/PD/Passthrough), ApplyControls, staged slots, OwnedActuatorIds, EControlSource, configure_controller/set_control_source RPCs + handshake controller block, UI source toggle. MjPdControl stripped (unreferenced). Needs live verify (automation green). |
 | 4 raw+shadow delete | — | not started | — | spine; needs 6 + 4N |
 | 7 modes+transport | — | not started | — | spine; shares worker loop w/ 3 |
-| 5-demote + overlay migrate | — | not started | — | spine; needs 1+2+3+4N-b |
+| 5 renderer EXTRACTION | agent | integrating | proto/entity-redesign | Component-level resolvers (FMjBakedAssetResolver/FMjImportedAssetResolver) + material convergence + standalone UMjOverlayRenderer, new files; MjbScene delegates BuildGeom to the resolver (no behavior change). DEMOTION half still gated on 1+2. |
 | overlay-manager (full viz) | — | not started | — | after 5-demote |
-| 9 IMjEntity + handles | — | not started | — | rides 1 + 5 |
+| 9 IMjEntity + handles | agent | integrating | proto/entity-redesign | Handle methods (FMjJoint::Pos/Vel via snapshot, FMjActuator::SetCtrl via ingress) implemented; AMjEntity face + GetEntity(FName) + pickers + BP library, new files. Thin actor interim-backed by AMjArticulation until 5-demote. |
 | 10 DR override channel | subagent | apply done | proto/entity-redesign | `MjAppearance::Apply` drives the MID via shared master params; override registry + RPC remain |
 | 8 vocab + Python | — | not started | — | LAST; breaking-API work |
 

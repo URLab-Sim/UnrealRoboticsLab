@@ -814,23 +814,30 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 	// Articulations block.
 	TArray<TSharedPtr<FJsonValue>> ArtsArray;
-	for (AMjArticulation* Art : Manager->GetAllArticulations())
+	for (const FMjEntity& E : Manager->PhysicsEngine->GetEntityPartition())
 	{
-		if (!Art)
-			continue;
-
 		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
-		// The public segment (ActorId-based) is the art's topic / observation
-		// namespace, matching the IR Art.Name the state stream keys arts under.
-		ArtObj->SetStringField(TEXT("prefix"), FMjCanonicalName::ArtSegment(Art).ToString());
-		ArtObj->SetStringField(TEXT("actor_id"), Art->ActorId);
-		ArtObj->SetStringField(TEXT("actor_name"), Art->GetName());
+
+		// The compiled model cannot answer four facts: the ActorId echo, the authored
+		// actuator kind (every shortcut compiled to <general>), the raw-shadow flag, and
+		// camera transport config. Resolve the owning art once by its stable compiled-name
+		// stem to read them off the component tree.
+		AMjArticulation* Art = Manager->GetArticulation(E.Name.ToString());
+
+		// The public segment is the stable partition-derived addressing key that the state
+		// stream keys arts under. The ActorId is read live off the actor so a spawn-time
+		// assignment is echoed even when it post-dates the compile that built the partition.
+		ArtObj->SetStringField(TEXT("prefix"), E.PublicName.ToString());
+		ArtObj->SetStringField(TEXT("actor_id"), Art != nullptr ? Art->ActorId : E.ActorId);
+		ArtObj->SetStringField(TEXT("actor_name"), E.Name.ToString());
+
+		const bool bRawShadow = (Art != nullptr) && Art->bRawShadow;
 
 		// Per-actuator authored kind. The MJB doesn't carry the original
 		// <position> / <velocity> shortcut — they all compile to <general>. Skipped
 		// for a raw shadow: its drive metadata rides raw_actuators below, which is
 		// the single source of truth for a fast-path model.
-		if (!Art->bRawShadow)
+		if (Art != nullptr && !bRawShadow)
 		{
 			TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
 			for (const UMjNodeComponent* Act : Art->GetActuators())
@@ -848,8 +855,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		// the fork MJB (version skew) or prefix-match unprefixed raw names, so ship
 		// the element metadata it needs to drive the model inline, read straight from
 		// the installed raw model -- under the engine's fence, since a concurrent
-		// compile/uninstall can retire the model pointer.
-		if (Art->bRawShadow && Manager->PhysicsEngine)
+		// compile/uninstall can retire the model pointer. Each entity ships only the
+		// actuator / joint ids it owns.
+		if (bRawShadow && Manager->PhysicsEngine)
 		{
 			FScopeLock ModelLock(&Manager->PhysicsEngine->CallbackMutex);
 			const mjModel* Rm = Manager->PhysicsEngine->GetModel();
@@ -858,7 +866,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 				ArtObj->SetBoolField(TEXT("raw_model"), true);
 
 				TArray<TSharedPtr<FJsonValue>> RawActs;
-				for (int32 A = 0; A < Rm->nu; ++A)
+				for (int32 A : E.ActuatorIds)
 				{
 					TSharedPtr<FJsonObject> AO = MakeShared<FJsonObject>();
 					const char* AName = mj_id2name(Rm, mjOBJ_ACTUATOR, A);
@@ -894,7 +902,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 				ArtObj->SetArrayField(TEXT("raw_actuators"), RawActs);
 
 				TArray<TSharedPtr<FJsonValue>> RawJnts;
-				for (int32 J = 0; J < Rm->njnt; ++J)
+				for (int32 J : E.JointIds)
 				{
 					TSharedPtr<FJsonObject> JO = MakeShared<FJsonObject>();
 					const char* JName = mj_id2name(Rm, mjOBJ_JOINT, J);
@@ -937,10 +945,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			ArtObj->SetObjectField(TEXT("original_names"), OriginalNames);
 		}
 
-		// Camera metadata (mode, resolution, fovy, zmq endpoint/topic).
+		// Camera metadata (mode, resolution, fovy, zmq endpoint/topic). Camera
+		// transport config lives only on the components, so read it off the
+		// resolved owning art.
 		TSharedPtr<FJsonObject> CamMap = MakeShared<FJsonObject>();
 		TArray<UMjCamera*> Cameras;
-		Art->GetComponents<UMjCamera>(Cameras);
+		if (Art != nullptr)
+			Art->GetComponents<UMjCamera>(Cameras);
 		for (UMjCamera* Cam : Cameras)
 		{
 			if (!Cam)

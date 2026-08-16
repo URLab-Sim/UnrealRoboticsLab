@@ -847,7 +847,12 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		{
 			if (Art)
 			{
+				// Carry the two actor-only facts (the sanitized wire segment and the ActorId) the
+				// compiled model cannot supply, parallel to the prefix, so the entity keeps the wire
+				// identity the bridge addresses it by.
 				Partition.Prefixes.Add(Art->GetCompiledPrefix());
+				Partition.PublicNames.Add(FMjCanonicalName::ArtSegment(Art));
+				Partition.ActorIds.Add(Art->ActorId);
 			}
 		}
 		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);

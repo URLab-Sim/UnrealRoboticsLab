@@ -26,10 +26,6 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
-#include "MuJoCo/Elements/MjBody.h"
-#include "MuJoCo/Elements/MjActuatorRuntime.h"
-#include "MuJoCo/Elements/MjSensorRuntime.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Components/ActorComponent.h"
 #include "GameFramework/Actor.h"
@@ -37,28 +33,30 @@
 #include "Misc/ScopeExit.h"
 #include "mujoco/mujoco.h"
 
-#if URLAB_MJ_GEN
-#include "MuJoCo/Spec/MjElementIdentity.h"
-#endif
-
 // Element state production lives here rather than on the elements.
 //
 // A joint, a sensor and an actuator carry no per-instance state and so have no
 // hand class to hold an override, and one virtual per leaf would mean 47 sensor
 // overrides of one identical body. Each of these is a pure function of the
-// element's compiled id and the model, so each is a free function keyed on the
-// element family the compile binding already recorded.
+// element's compiled id and the model, so each is a free function keyed on the id
+// the entity owns.
 
 namespace
 {
-/** The IR name of an element: articulation segment plus its own MJCF name. */
-FName ElementSegment(const UMjNodeComponent& Node)
+/** The IR name of an element: its compiled mj name with the entity's "<Name>_"
+ *  prefix stripped, then sanitized. The one place that strip happens on the id path,
+ *  matching FMjCanonicalName::PartSegment on the component path. */
+FName LocalName(const mjModel* m, int32 ObjType, int32 Id, FName EntityName)
 {
-	const AMjArticulation* Art = Cast<AMjArticulation>(Node.GetOwner());
-	return FMjCanonicalName::PartSegment(Art, Node.MjName.Get(Node.GetName()));
+	const char* Raw = mj_id2name(m, ObjType, Id);
+	FString Local = Raw ? FString(UTF8_TO_TCHAR(Raw)) : FString();
+	const FString Prefix = EntityName.ToString() + TEXT("_");
+	if (Local.StartsWith(Prefix))
+		Local = Local.Mid(Prefix.Len());
+	return FName(*FMjCanonicalName::Sanitize(Local));
 }
 
-void DescribeJoint(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjData* d,
+void DescribeJoint(FName EntityName, int32 Id, const mjModel* m, mjData* d,
 	FMjArticulationState& Out)
 {
 	if (Id < 0 || Id >= m->njnt)
@@ -98,7 +96,7 @@ void DescribeJoint(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjD
 	}
 
 	FMjJointState& J = Out.Joints.AddDefaulted_GetRef();
-	J.Name = ElementSegment(Node);
+	J.Name = LocalName(m, mjOBJ_JOINT, Id, EntityName);
 	J.Type = JType;
 	J.QPos.SetNumUninitialized(QSize);
 	J.QVel.SetNumUninitialized(VSize);
@@ -124,8 +122,8 @@ void DescribeJoint(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjD
 	}
 }
 
-void DescribeSensor(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjData* d,
-	FMjArticulationState& Out)
+void DescribeSensor(FName EntityName, int32 Id, EMjSensorSemantic Semantic, const mjModel* m,
+	mjData* d, FMjArticulationState& Out)
 {
 	if (Id < 0 || Id >= m->nsensor)
 	{
@@ -142,8 +140,8 @@ void DescribeSensor(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mj
 	// bodies do. The coordinate and unit fixup belongs to the display-facing
 	// reader and not to the serialisation path.
 	FMjSensorState& S = Out.Sensors.AddDefaulted_GetRef();
-	S.Name = ElementSegment(Node);
-	S.Semantic = UMjSensorRuntime::GetSemantic(&Node);
+	S.Name = LocalName(m, mjOBJ_SENSOR, Id, EntityName);
+	S.Semantic = Semantic;
 	S.Values.SetNumUninitialized(Dim);
 	for (int32 i = 0; i < Dim; ++i)
 	{
@@ -151,7 +149,7 @@ void DescribeSensor(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mj
 	}
 }
 
-void DescribeActuator(const UMjNodeComponent& Node, int32 Id, const mjModel* m, mjData* d,
+void DescribeActuator(FName EntityName, int32 Id, const mjModel* m, mjData* d,
 	FMjArticulationState& Out)
 {
 	if (Id < 0 || Id >= m->nu)
@@ -159,7 +157,7 @@ void DescribeActuator(const UMjNodeComponent& Node, int32 Id, const mjModel* m, 
 		return;
 	}
 	FMjActuatorState& A = Out.Actuators.AddDefaulted_GetRef();
-	A.Name = ElementSegment(Node);
+	A.Name = LocalName(m, mjOBJ_ACTUATOR, Id, EntityName);
 
 	// The transmission target comes out of the compiled model rather than the
 	// spec, so an actuator that reached its joint through a default class is
@@ -170,11 +168,7 @@ void DescribeActuator(const UMjNodeComponent& Node, int32 Id, const mjModel* m, 
 		const int32 JointId = m->actuator_trnid[Id * 2];
 		if (JointId >= 0 && JointId < m->njnt)
 		{
-			if (const char* JointName = mj_id2name(m, mjOBJ_JOINT, JointId))
-			{
-				A.TargetJoint = FMjCanonicalName::PartSegment(
-					Cast<AMjArticulation>(Node.GetOwner()), UTF8_TO_TCHAR(JointName));
-			}
+			A.TargetJoint = LocalName(m, mjOBJ_JOINT, JointId, EntityName);
 		}
 	}
 
@@ -182,51 +176,6 @@ void DescribeActuator(const UMjNodeComponent& Node, int32 Id, const mjModel* m, 
 	A.Ctrl = d->ctrl[Id];
 	A.Act = (ActAdr >= 0) ? d->act[ActAdr] : 0.0;
 	A.Force = d->actuator_force[Id];
-}
-
-/**
- * Declare one element's per-step state.
- *
- * Keyed on the element family rather than on a C++ class, because that is what
- * the element is: a joint and a free joint are one family with one state shape,
- * and 47 sensor leaves are another.
- */
-void DescribeElement(const UMjNodeComponent& Node, const mjModel* m, mjData* d, FMjArticulationState& Out)
-{
-	if (m == nullptr || d == nullptr)
-	{
-		return;
-	}
-
-	// A hand subclass that overrides the virtual answers for itself. The body is
-	// the only one that does, and it is the one whose state is a transform.
-	Node.DescribeState(m, d, Out);
-
-#if URLAB_MJ_GEN
-	const TOptional<int32>& Bound = Node.GetBoundId();
-	if (!Bound.IsSet())
-	{
-		return;
-	}
-	using urlab::spec::psm::ElementType;
-	ElementType Type;
-	if (!urlab::spec::MjElementTypeOfNode(Node, Type))
-	{
-		return;
-	}
-	if (Type == ElementType::Joint || Type == ElementType::FreeJoint)
-	{
-		DescribeJoint(Node, Bound.GetValue(), m, d, Out);
-	}
-	else if (UMjActuatorRuntime::IsActuator(&Node))
-	{
-		DescribeActuator(Node, Bound.GetValue(), m, d, Out);
-	}
-	else if (UMjSensorRuntime::IsSensor(&Node))
-	{
-		DescribeSensor(Node, Bound.GetValue(), m, d, Out);
-	}
-#endif
 }
 } // namespace
 
@@ -268,38 +217,43 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 	if (!Mgr)
 		return;
 
+	if (!Mgr->PhysicsEngine)
+		return;
+
 	// Assemble into a local with no lock held; the physics thread keeps reading
 	// the previous cache meanwhile. Only the swap below is guarded.
-	TArray<FCachedArticulation> NewCache;
-	const TArray<AMjArticulation*>& Arts = Mgr->GetAllArticulations();
-	NewCache.Reserve(Arts.Num());
-	for (AMjArticulation* Art : Arts)
+	const TArray<FMjEntity>& Partition = Mgr->PhysicsEngine->GetEntityPartition();
+	TArray<FCachedEntity> NewCache;
+	NewCache.Reserve(Partition.Num());
+
+	// The owning actor a side-channel scopes under, resolved once per entity by the
+	// entity's name (== the actor's GetName()); an entity with no actor behind it
+	// (a raw prop) simply has no channels. Maps art -> cache index for scoping the
+	// registered producers below.
+	TMap<AMjArticulation*, int32> ArtToRec;
+	for (const FMjEntity& E : Partition)
 	{
-		if (!Art)
-			continue;
+		FCachedEntity Rec;
+		Rec.Name = E.Name;
+		Rec.PublicName = E.PublicName;
+		Rec.BodyIds = E.BodyIds;
+		Rec.JointIds = E.JointIds;
+		Rec.ActuatorIds = E.ActuatorIds;
+		Rec.SensorIds = E.SensorIds;
+		Rec.SensorSemantics = E.SensorSemantics;
 
-		FCachedArticulation Rec;
-		Rec.Art = Art;
-		Rec.ArtSegment = FMjCanonicalName::ArtSegment(Art);
-
-		TArray<UMjNodeComponent*> Components;
-		Art->GetComponents(Components);
-		Rec.Producers.Reserve(Components.Num());
-		for (UMjNodeComponent* Comp : Components)
+		AMjArticulation* Art = Mgr->GetArticulation(E.Name.ToString());
+		if (Art)
 		{
-			if (Comp != nullptr)
-			{
-				Rec.Producers.Add(Comp);
-			}
+			Rec.TwistCtrl = Art->FindComponentByClass<UMjTwistController>();
+			ArtToRec.Add(Art, NewCache.Num());
 		}
-
-		Rec.TwistCtrl = Art->FindComponentByClass<UMjTwistController>();
 		NewCache.Add(MoveTemp(Rec));
 	}
 
-	// Registered IMjStateProducers the art walk cannot discover (user channel
+	// Registered IMjStateProducers the partition cannot discover (user channel
 	// components, scene-level actors). Scope is resolved here on the game thread:
-	// a producer owned by an articulation caches under that art; everything else
+	// a producer owned by an articulation caches under that entity; everything else
 	// is a scene producer. The physics-thread step never does scope logic.
 	TArray<TWeakObjectPtr<UObject>> NewSceneProducers;
 	{
@@ -319,13 +273,9 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 			}
 
 			AMjArticulation* OwningArt = Cast<AMjArticulation>(OwnerActor);
-			FCachedArticulation* Rec = OwningArt
-										 ? NewCache.FindByPredicate([OwningArt](const FCachedArticulation& R) {
-											   return R.Art.Get() == OwningArt;
-										   })
-										 : nullptr;
-			if (Rec)
-				Rec->InterfaceProducers.Add(Obj);
+			const int32* RecIdx = OwningArt ? ArtToRec.Find(OwningArt) : nullptr;
+			if (RecIdx)
+				NewCache[*RecIdx].InterfaceProducers.Add(Obj);
 			else
 				NewSceneProducers.Add(Obj);
 		}
@@ -340,15 +290,14 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 	{
 		if (const mjModel* m = Mgr->PhysicsEngine->GetModel())
 		{
-			// Robot bodies are compiled with the articulation's raw-name prefix; match
-			// by name (the actor name is stable on the game thread) rather than mj ids,
-			// which may not be bound yet when the cache first rebuilds.
+			// Robot bodies are compiled with the entity's raw-name prefix; match by
+			// name rather than mj ids, which may not be bound yet when the cache first
+			// rebuilds.
 			TArray<FString> RobotPrefixes;
-			RobotPrefixes.Reserve(Arts.Num());
-			for (AMjArticulation* Art : Arts)
+			RobotPrefixes.Reserve(Partition.Num());
+			for (const FMjEntity& E : Partition)
 			{
-				if (Art)
-					RobotPrefixes.Add(Art->GetName() + TEXT("_"));
+				RobotPrefixes.Add(E.Name.ToString() + TEXT("_"));
 			}
 
 			// Skip geoms whose (half-extent) box is large enough to be environment
@@ -488,25 +437,39 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 	if (!bCacheValid.load(std::memory_order_acquire))
 		RequestGameThreadRebuild();
 
-	bool bStaleRef = false;
 	{
 		FScopeLock Lock(&CacheMutex);
 		Snapshot.Articulations.Reserve(Cache.Num());
-		for (const FCachedArticulation& Rec : Cache)
+		for (const FCachedEntity& Rec : Cache)
 		{
-			AMjArticulation* Art = Rec.Art.Get();
-			if (!Art)
-			{
-				bStaleRef = true;
-				continue;
-			}
 			FMjArticulationState& ArtState = Snapshot.Articulations.AddDefaulted_GetRef();
-			ArtState.Name = Rec.ArtSegment;
-			for (const TWeakObjectPtr<UMjNodeComponent>& WeakComp : Rec.Producers)
+			ArtState.Name = Rec.PublicName;
+
+			// Bodies: the transform the body component's DescribeState produced, read
+			// straight from mjData by id (same fields, same axis handling).
+			for (int32 BodyId : Rec.BodyIds)
 			{
-				if (const UMjNodeComponent* Comp = WeakComp.Get())
-					DescribeElement(*Comp, m, d, ArtState);
+				if (BodyId < 0 || BodyId >= m->nbody)
+					continue;
+				FMjBodyState& B = ArtState.Bodies.AddDefaulted_GetRef();
+				B.Name = LocalName(m, mjOBJ_BODY, BodyId, Rec.Name);
+				for (int32 i = 0; i < 3; ++i)
+					B.Xpos[i] = d->xpos[BodyId * 3 + i];
+				for (int32 i = 0; i < 4; ++i)
+					B.Xquat[i] = d->xquat[BodyId * 4 + i];
 			}
+			for (int32 JointId : Rec.JointIds)
+				DescribeJoint(Rec.Name, JointId, m, d, ArtState);
+			for (int32 ActuatorId : Rec.ActuatorIds)
+				DescribeActuator(Rec.Name, ActuatorId, m, d, ArtState);
+			for (int32 k = 0; k < Rec.SensorIds.Num(); ++k)
+			{
+				const EMjSensorSemantic Semantic = Rec.SensorSemantics.IsValidIndex(k)
+													 ? Rec.SensorSemantics[k]
+													 : EMjSensorSemantic::Generic;
+				DescribeSensor(Rec.Name, Rec.SensorIds[k], Semantic, m, d, ArtState);
+			}
+
 			if (UMjTwistController* Twist = Rec.TwistCtrl.Get())
 				Twist->DescribeState(m, d, ArtState);
 			for (const TWeakObjectPtr<UObject>& WeakProducer : Rec.InterfaceProducers)
@@ -585,9 +548,6 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 			}
 		}
 	}
-
-	if (bStaleRef)
-		MarkProducerCacheDirty();
 
 	return Snapshot;
 }

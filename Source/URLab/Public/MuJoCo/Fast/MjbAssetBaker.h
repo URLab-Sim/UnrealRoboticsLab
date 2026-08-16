@@ -65,10 +65,6 @@ private:
 	// MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a bad id.
 	UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal = false);
 
-	// The rgba a geom draws with: its material's when it has one, else its own.
-	// Returns a pointer to 4 floats in the model; caller must hold a valid model.
-	const float* GeomRgba(int32 GeomId) const;
-
 	// Borrowed; the owning AMjbScene owns the mjModel/mjData lifetime.
 	mjModel_* Model = nullptr;
 

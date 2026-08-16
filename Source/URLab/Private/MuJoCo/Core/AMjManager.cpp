@@ -26,6 +26,7 @@
 #include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Elements/MjBody.h"
+#include "MuJoCo/Entity/MjEntityActor.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Gen/Elements/Options/MjCompiler.gen.h"
 #include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
@@ -1034,6 +1035,52 @@ bool AAMjManager::CompileModel()
 AMjArticulation* AAMjManager::GetArticulation(const FString& ActorName) const
 {
 	return PhysicsEngine ? PhysicsEngine->GetArticulation(ActorName) : nullptr;
+}
+
+AMjEntity* AAMjManager::GetEntity(FName EntityName)
+{
+	if (PhysicsEngine == nullptr)
+	{
+		return nullptr;
+	}
+
+	bool bKnown = false;
+	for (const FMjEntity& E : PhysicsEngine->GetEntityPartition())
+	{
+		if (E.Name == EntityName)
+		{
+			bKnown = true;
+			break;
+		}
+	}
+	if (!bKnown)
+	{
+		return nullptr;
+	}
+
+	UWorld* World = GetWorld();
+	if (World == nullptr)
+	{
+		return nullptr;
+	}
+
+	// Reuse a face already spawned for this name; a thin AMjEntity persists in the world once created.
+	for (TActorIterator<AMjEntity> It(World); It; ++It)
+	{
+		if (It->GetEntityName() == EntityName)
+		{
+			return *It;
+		}
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.ObjectFlags |= RF_Transient;
+	AMjEntity* Entity = World->SpawnActor<AMjEntity>(SpawnParams);
+	if (Entity != nullptr)
+	{
+		Entity->SetEntityName(EntityName);
+	}
+	return Entity;
 }
 
 TArray<AMjArticulation*> AAMjManager::GetAllArticulations() const

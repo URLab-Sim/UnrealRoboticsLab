@@ -20,6 +20,8 @@
 #include "TextureResource.h"
 
 #include "MuJoCo/Spec/MjAssetResolve.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Entity/MjModelMaterial.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "Utils/URLabLogging.h"
 #if WITH_EDITOR
@@ -39,10 +41,6 @@ namespace
 // Root of the cached, content-hash-keyed fast-path assets (SM_<id> / T_<id> live
 // under <root>/<hash>/). Also the folder a saved fast-path level reloads from.
 constexpr const TCHAR* kFastPathAssetRoot = TEXT("/Game/URLabFastPath");
-
-// size==0 plane -> 25 m half-extent; the finite quad the plane is drawn as, used
-// when scaling per-length texrepeat.
-constexpr double kInfinitePlaneHalfM = 25.0;
 
 // Crease-split mesh geometry (per-face-corner verts/normals/uvs/tris) from the MJB
 // mesh pool. Pure math over the model -- shared by the editor static-mesh baker and
@@ -224,12 +222,6 @@ void UMjbAssetBaker::Reset()
 	Master = nullptr;
 	ContentHash.Empty();
 	Model = nullptr;
-}
-
-const float* UMjbAssetBaker::GeomRgba(int32 G) const
-{
-	const int32 MatId = Model->geom_matid[G];
-	return (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
 }
 
 #if WITH_EDITOR
@@ -502,23 +494,28 @@ void UMjbAssetBaker::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 	{
 		return;
 	}
-	const int32 MatId = Model->geom_matid[G];
-	const float* Rgba = GeomRgba(G);
-
 	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
 	if (!Mid)
 	{
 		return;
 	}
 	Comp->SetMaterial(0, Mid);
-	Mid->SetVectorParameterValue(TEXT("BaseColor"), FLinearColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]));
-	// Neutralise every texture slot the master declares first, so any role the
-	// material does not fill samples a neutral (not the master's editor default).
-	MjBindNeutralMaterialTextures(*Mid);
+
+	// Base colour, the scalar PBR terms and the texrepeat/texuniform mapping are read
+	// off the compiled model as the same FMjMaterialValues the spec path produces, and
+	// written through the one shared material-parameter writer -- so the wire path and
+	// the authored path drive the master material identically. Every texture slot is
+	// bound to its neutral stand-in there (the MJB carries no resolvable texture
+	// names); the model's own images override the roles it fills below.
+	FLinearColor BaseColor;
+	FVector2D GeomSize;
+	const FMjMaterialValues Values = MjMaterialValuesFromModel(Model, G, BaseColor, GeomSize);
+	MjApplyMaterialParameters(*Mid, Values, BaseColor, FSpecRef(), GeomSize);
 
 	// Bind the real MJB textures for the roles this material fills. mat_texid is
 	// (nmat x mjNTEXROLE), role order matching EMjMaterialRole after the unused
 	// USER slot (offset +1). Colour roles sample sRGB; data roles linear.
+	const int32 MatId = Model->geom_matid[G];
 	if (MatId >= 0)
 	{
 		for (int32 R = 0; R < static_cast<int32>(EMjMaterialRole::Count); ++R)
@@ -537,80 +534,5 @@ void UMjbAssetBaker::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 				Mid->SetTextureParameterValue(MjMaterialRoleParameter(MatRole), Tex);
 			}
 		}
-		// texrepeat is tiles across the whole object, unless texuniform makes it
-		// tiles per spatial (length) unit -- then the geom's own size multiplies it
-		// (settexture() in MuJoCo's render_gl3.c). A size-0 plane is drawn as a
-		// finite quad (kInfinitePlaneHalfM half-extent), so use that extent instead
-		// of skipping the multiply; otherwise the ground texture tiles ~size-times
-		// too coarsely versus MuJoCo's own viewer.
-		float RepeatU = Model->mat_texrepeat[MatId * 2 + 0];
-		float RepeatV = Model->mat_texrepeat[MatId * 2 + 1];
-		if (Model->mat_texuniform[MatId])
-		{
-			const bool bPlane = (Model->geom_type[G] == mjGEOM_PLANE);
-			const double Sx = Model->geom_size[3 * G + 0] > 0.0 ? Model->geom_size[3 * G + 0]
-				: (bPlane ? kInfinitePlaneHalfM : 0.0);
-			const double Sy = Model->geom_size[3 * G + 1] > 0.0 ? Model->geom_size[3 * G + 1]
-				: (bPlane ? kInfinitePlaneHalfM : 0.0);
-			if (Sx > 0.0)
-			{
-				RepeatU *= static_cast<float>(Sx);
-			}
-			if (Sy > 0.0)
-			{
-				RepeatV *= static_cast<float>(Sy);
-			}
-		}
-		Mid->SetScalarParameterValue(TEXT("TexRepeatU"), RepeatU);
-		Mid->SetScalarParameterValue(TEXT("TexRepeatV"), RepeatV);
-	}
-	// PBR terms. MuJoCo stores metallic/roughness as -1 when "not specified", so
-	// pushing the raw field makes a mirror-smooth, aliased surface. Map exactly
-	// as the authoring path does (MjMetallicFor / MjRoughnessFor): metallic -1 ->
-	// 0, roughness -1 -> 1 - shininess. This is what a material's look depends on.
-	if (MatId >= 0)
-	{
-		// A metallic / roughness value can come from the scalar OR a map (a dedicated
-		// metallic/roughness texture, or the packed ORM). The master material forms
-		// scalar * map, so when the MAP supplies the value an UNSET scalar (-1) must
-		// become the neutral multiplier 1.0 -- mapping it to 0 (metallic) or
-		// 1-shininess (roughness) would crush the map to nothing. This is why an
-		// ORM-authored part read non-metallic.
-		auto RoleTex = [&](EMjMaterialRole Slot) -> int32
-		{
-			return Model->mat_texid[MatId * mjNTEXROLE + static_cast<int32>(Slot) + 1];
-		};
-		const bool bHasOrm = RoleTex(EMjMaterialRole::Orm) >= 0;
-		const bool bHasMetalMap = bHasOrm || RoleTex(EMjMaterialRole::Metallic) >= 0;
-		const bool bHasRoughMap = bHasOrm || RoleTex(EMjMaterialRole::Roughness) >= 0;
-		const float RawMetal = Model->mat_metallic[MatId];
-		const float RawRough = Model->mat_roughness[MatId];
-		const float Metallic = FMath::Clamp(
-			RawMetal >= 0.f ? RawMetal : (bHasMetalMap ? 1.f : 0.f), 0.f, 1.f);
-		const float Roughness = FMath::Clamp(
-			RawRough >= 0.f ? RawRough : (bHasRoughMap ? 1.f : 1.f - Model->mat_shininess[MatId]),
-			0.f, 1.f);
-		Mid->SetScalarParameterValue(TEXT("Metallic"), Metallic);
-		Mid->SetScalarParameterValue(TEXT("Roughness"), Roughness);
-		Mid->SetScalarParameterValue(TEXT("Specular"), FMath::Clamp(Model->mat_specular[MatId], 0.f, 1.f));
-		Mid->SetScalarParameterValue(TEXT("Reflectance"), FMath::Clamp(Model->mat_reflectance[MatId], 0.f, 1.f));
-		// Same guard as metallic: the emissive scalar multiplies the emissive map, so
-		// an emissive-map material with an unset (0) emission scalar would show no
-		// glow. A material that authors an emissive map means to emit, so pass the
-		// map through at unit strength when the scalar was left at 0.
-		const float RawEmission = Model->mat_emission[MatId];
-		const bool bHasEmissiveMap = RoleTex(EMjMaterialRole::Emissive) >= 0;
-		Mid->SetScalarParameterValue(TEXT("Emission"),
-			(bHasEmissiveMap && RawEmission <= 0.f) ? 1.f : FMath::Max(RawEmission, 0.f));
-	}
-	else
-	{
-		// No material: MuJoCo draws a matte, non-metallic surface. Keep it matte
-		// so bare meshes never come out shiny.
-		Mid->SetScalarParameterValue(TEXT("Metallic"), 0.0f);
-		Mid->SetScalarParameterValue(TEXT("Roughness"), 0.8f);
-		Mid->SetScalarParameterValue(TEXT("Specular"), 0.5f);
-		Mid->SetScalarParameterValue(TEXT("Reflectance"), 0.0f);
-		Mid->SetScalarParameterValue(TEXT("Emission"), 0.0f);
 	}
 }

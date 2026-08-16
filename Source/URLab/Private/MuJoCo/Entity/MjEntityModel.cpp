@@ -6,6 +6,9 @@
 
 #include "mujoco/mujoco.h"
 
+#include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntityActor.h"
 #include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Entity/MjControl.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
@@ -87,11 +90,19 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 	// Prefix partition (compiled path: one entity per participant prefix). Build all entities up
 	// front so the index map stays valid, then bucket every element by prefix.
 	TMap<FString, int32> PrefixToIndex;
-	for (const FString& P : How.Prefixes)
+	for (int32 i = 0; i < How.Prefixes.Num(); ++i)
 	{
+		const FString& P = How.Prefixes[i];
 		const int32 Idx = Entities.Num();
 		FMjEntity& E = Entities.AddDefaulted_GetRef();
 		E.Name = FName(*(P.EndsWith(TEXT("_")) ? P.LeftChop(1) : P));
+		E.PublicName = (How.PublicNames.IsValidIndex(i) && !How.PublicNames[i].IsNone())
+			? How.PublicNames[i]
+			: E.Name;
+		if (How.ActorIds.IsValidIndex(i))
+		{
+			E.ActorId = How.ActorIds[i];
+		}
 		PrefixToIndex.Add(P, Idx);
 	}
 
@@ -163,7 +174,62 @@ void FMjControlLease::Release(FName Entity, const FGuid& Who)
 }
 
 // --- MjEntityApi handles ----------------------------------------------------------------------- //
-// TODO: back these with the live entity -- read d->qpos/qvel by id; route SetCtrl to the control buffer.
-float FMjJoint::Pos() const { return 0.f; }
-float FMjJoint::Vel() const { return 0.f; }
-void  FMjActuator::SetCtrl(double /*Value*/) const {}
+// Each handle carries its resolved id and a weak ref to the AMjEntity that produced it. The reads
+// index the engine's published snapshot at the joint's qpos/dof address; the write routes through the
+// engine's control ingress. SetCtrl needs the entity NAME (the lease key) and the frozen struct holds
+// only the actor, so it reads the name back from the AMjEntity the handle points at.
+namespace
+{
+	const UMjPhysicsEngine* HandleEngine(const TWeakObjectPtr<AActor>& Entity)
+	{
+		return AAMjManager::ResolveEngine(Entity.Get());
+	}
+}
+
+float FMjJoint::Pos() const
+{
+	const UMjPhysicsEngine* Engine = HandleEngine(Entity);
+	const mjModel* Model = Engine ? Engine->GetModel() : nullptr;
+	if (Model == nullptr || Id < 0 || Id >= Model->njnt)
+	{
+		return 0.f;
+	}
+	const int32 Adr = Model->jnt_qposadr[Id];
+	if (Adr < 0 || Adr >= Model->nq)
+	{
+		return 0.f;
+	}
+	return static_cast<float>(MjSnapshotValue(*Engine, Adr,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QPos; }));
+}
+
+float FMjJoint::Vel() const
+{
+	const UMjPhysicsEngine* Engine = HandleEngine(Entity);
+	const mjModel* Model = Engine ? Engine->GetModel() : nullptr;
+	if (Model == nullptr || Id < 0 || Id >= Model->njnt)
+	{
+		return 0.f;
+	}
+	const int32 Adr = Model->jnt_dofadr[Id];
+	if (Adr < 0 || Adr >= Model->nv)
+	{
+		return 0.f;
+	}
+	return static_cast<float>(MjSnapshotValue(*Engine, Adr,
+		[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QVel; }));
+}
+
+void FMjActuator::SetCtrl(double Value) const
+{
+	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(Entity.Get());
+	const AMjEntity* Self = Cast<AMjEntity>(Entity.Get());
+	if (Engine == nullptr || Self == nullptr || Id < 0)
+	{
+		return;
+	}
+	if (IMjControlIngress* Ingress = Engine->GetControlIngress())
+	{
+		Ingress->WriteCtrl(Self->GetEntityName(), Id, Value, MjControlWho::UI());
+	}
+}

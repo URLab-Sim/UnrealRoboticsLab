@@ -42,6 +42,7 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "MjEffectiveDetails.h"
 #include "MjElementVisualizers.h"
 #include "MjFrameTypeCustomizations.h"
+#include "MjEntityPickerCustomization.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
@@ -113,6 +114,10 @@ void FURLabEditorModule::StartupModule()
 	// The MuJoCo frame types render as a single inline row with a unit label,
 	// rather than as an expandable struct of three doubles.
 	FMjFrameTypeCustomization::RegisterAll();
+
+	// The entity part pickers render their name field as a dropdown of the
+	// referenced entity's members, rather than a free-text FName.
+	FMjEntityPickerCustomization::RegisterAll();
 
 	// Joints, sites, lights and cameras have no mesh to preview with, so the
 	// editor drew nothing for them at all. One visualizer against the element
@@ -259,6 +264,7 @@ void FURLabEditorModule::ShutdownModule()
 		UnregisterWithSubclasses(UMjGeom::StaticClass());
 		FMjEffectiveDetails::UnregisterAll();
 		FMjFrameTypeCustomization::UnregisterAll();
+		FMjEntityPickerCustomization::UnregisterAll();
 	}
 
 	if (FModuleManager::Get().IsModuleLoaded("LevelEditor"))

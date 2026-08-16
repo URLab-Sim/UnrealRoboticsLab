@@ -19,6 +19,7 @@
 
 #include "MuJoCo/Fast/MjbAssetBaker.h"
 #include "MuJoCo/Fast/MjbTransportBus.h"
+#include "MuJoCo/Entity/MjBakedAssetResolver.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
@@ -48,11 +49,6 @@ THIRD_PARTY_INCLUDES_END
 
 namespace
 {
-// The engine primitives are 100 cm across / tall, so component scale 1 is a
-// 50 cm half-extent. MJCF sizes are metres: scale = size(m) * 100 / 50.
-constexpr double kSizeToScale = 2.0;
-constexpr double kInfinitePlaneHalfM = 25.0; // size==0 plane -> 25 m half-extent
-
 // Re-index tag channel: a body/geom/instance/camera carries a "<prefix><id>" name
 // tag so a saved level can map its components back to MuJoCo ids. One maker + one
 // parser keep the writer and reader in lockstep -- no hardcoded prefix lengths.
@@ -71,12 +67,6 @@ int32 MjbParseIdTag(const FString& Tag, const TCHAR* Prefix)
 	return Tag.StartsWith(Prefix) ? FCString::Atoi(*Tag.Mid(FCString::Strlen(Prefix))) : -1;
 }
 
-// Engine primitive meshes the non-mesh geom types map to.
-constexpr const TCHAR* kBasicPlane = TEXT("/Engine/BasicShapes/Plane.Plane");
-constexpr const TCHAR* kBasicSphere = TEXT("/Engine/BasicShapes/Sphere.Sphere");
-constexpr const TCHAR* kBasicCylinder = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
-constexpr const TCHAR* kBasicCube = TEXT("/Engine/BasicShapes/Cube.Cube");
-
 // Convert a MuJoCo 3x3 orientation (row-major geom_xmat/cam_xmat) to a UE quat,
 // via a wxyz quaternion. Shared by every apply/build path that reads mjData mats.
 FQuat MjMat3ToUeQuat(const double* Mat3)
@@ -84,11 +74,6 @@ FQuat MjMat3ToUeQuat(const double* Mat3)
 	double Quat[4];
 	mju_mat2Quat(Quat, Mat3);
 	return URLabAxisConv::MjQuatToUe(Quat);
-}
-
-UStaticMesh* LoadBasic(const TCHAR* Path)
-{
-	return LoadObject<UStaticMesh>(nullptr, Path);
 }
 
 // Fast-path render components never contribute to distance-field lighting or AO.
@@ -840,9 +825,7 @@ const float* AMjbScene::GeomRgba(int32 G) const
 
 UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 {
-	const int32 Type = Model->geom_type[G];
 	const int32 BodyId = Model->geom_bodyid[G];
-	const double* Size = Model->geom_size + 3 * G;
 
 	// Geom-group visibility: hide collision/other groups the mask excludes
 	// (default shows 0-2). Matches MuJoCo's group-toggled visualization.
@@ -908,123 +891,11 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 		}
 #endif
 	}
-	// The geom actor is the parent for this geom's mesh component(s).
-	AActor* Body = GeomActor;
-
-	// Primitive selection + scale from MuJoCo size semantics. Mesh geoms are a
-	// follow-on (ProceduralMeshComponent); skipped here with a note.
-	const TCHAR* MeshPath = nullptr;
-	FVector Scale(1, 1, 1);
-	switch (Type)
-	{
-		case mjGEOM_PLANE:
-		{
-			MeshPath = kBasicPlane;
-			const double Hx = Size[0] > 0 ? Size[0] : kInfinitePlaneHalfM;
-			const double Hy = Size[1] > 0 ? Size[1] : kInfinitePlaneHalfM;
-			Scale = FVector(Hx * kSizeToScale, Hy * kSizeToScale, 1.0);
-			break;
-		}
-		case mjGEOM_SPHERE:
-			MeshPath = kBasicSphere;
-			Scale = FVector(Size[0], Size[0], Size[0]) * kSizeToScale;
-			break;
-		case mjGEOM_ELLIPSOID:
-			MeshPath = kBasicSphere;
-			Scale = FVector(Size[0], Size[1], Size[2]) * kSizeToScale;
-			break;
-		case mjGEOM_CYLINDER:
-			MeshPath = kBasicCylinder;
-			Scale = FVector(Size[0], Size[0], Size[1]) * kSizeToScale;
-			break;
-		case mjGEOM_CAPSULE:
-			// Cylinder shaft; the two rounded end caps are added as sphere child
-			// components below (same as the authoring path). size[0]=radius,
-			// size[1]=half-length of the cylinder part.
-			MeshPath = kBasicCylinder;
-			Scale = FVector(Size[0], Size[0], Size[1]) * kSizeToScale;
-			break;
-		case mjGEOM_BOX:
-			MeshPath = kBasicCube;
-			Scale = FVector(Size[0], Size[1], Size[2]) * kSizeToScale;
-			break;
-		case mjGEOM_MESH:
-		{
-#if WITH_EDITOR
-			// Editor render server: a shared UStaticMesh (built once per mesh id)
-			// referenced by pointer, so the PIE-world duplication stays cheap. Mesh
-			// verts are already in UE units, so the component needs no extra scale.
-			UStaticMesh* Mesh = AssetBaker->GetOrBuildStaticMesh(Model->geom_dataid[G]);
-			if (!Mesh)
-			{
-				return nullptr;
-			}
-			UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(Body);
-			Comp->SetStaticMesh(Mesh);
-			Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			DisableDistanceFields(Comp);
-			Comp->RegisterComponent();
-			Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-			AssetBaker->ApplyGeomMaterial(Comp, G);
-			return Comp;
-#else
-			// Packaged game: BuildFromMeshDescriptions is editor-only, so build a
-			// ProceduralMeshComponent that generates its render data at runtime.
-			UProceduralMeshComponent* Pmc = AssetBaker->BuildMesh(G, Body);
-			if (Pmc)
-			{
-				AssetBaker->ApplyGeomMaterial(Pmc, G);
-			}
-			return Pmc;
-#endif
-		}
-		default:
-			return nullptr;
-	}
-
-	UStaticMesh* Mesh = LoadBasic(MeshPath);
-	if (!Mesh)
-	{
-		return nullptr;
-	}
-	UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(Body);
-	Comp->SetStaticMesh(Mesh);
-	Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Comp->SetRelativeScale3D(Scale);
-	DisableDistanceFields(Comp);
-	Comp->RegisterComponent();
-	Comp->AttachToComponent(Body->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-	AssetBaker->ApplyGeomMaterial(Comp, G);
-
-	// Rounded capsule caps: a sphere at each end of the cylinder shaft, as child
-	// components so they follow the shaft's streamed world transform. The base
-	// cylinder/sphere meshes are 100 units, so the shaft's local half-height is 50
-	// units; a cap sits there. The shaft's own non-uniform scale (r,r,halflen) is
-	// cancelled on the cap's Z (1,1,r/halflen) so each cap stays a sphere of
-	// radius r. Same construction as UMjGeom's VisualizerCap parts.
-	if (Type == mjGEOM_CAPSULE)
-	{
-		if (UStaticMesh* SphereMesh = LoadBasic(kBasicSphere))
-		{
-			const double R = Size[0];
-			const double HalfLen = Size[1] > KINDA_SMALL_NUMBER ? Size[1] : R;
-			const FVector CapScale(1.0f, 1.0f, static_cast<float>(R / HalfLen));
-			const double CapZ[2] = {50.0, -50.0};
-			for (int32 S = 0; S < 2; ++S)
-			{
-				UStaticMeshComponent* Cap = NewObject<UStaticMeshComponent>(Body);
-				Cap->SetStaticMesh(SphereMesh);
-				Cap->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-				DisableDistanceFields(Cap);
-				Cap->RegisterComponent();
-				Cap->AttachToComponent(Comp, FAttachmentTransformRules::KeepRelativeTransform);
-				Cap->SetRelativeLocation(FVector(0.0, 0.0, CapZ[S]));
-				Cap->SetRelativeScale3D(CapScale);
-				AssetBaker->ApplyGeomMaterial(Cap, G);
-			}
-		}
-	}
-	return Comp;
+	// The geom actor is the parent for this geom's mesh component(s). The primitive
+	// (and mesh-vs-proc-mesh) build lives in the baked resolver, so the wire path and
+	// a future imported path share one component-creation contract.
+	FMjBakedAssetResolver Resolver(Model, AssetBaker);
+	return Resolver.MakeGeomComponent(G, GeomActor);
 }
 
 void AMjbScene::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE)

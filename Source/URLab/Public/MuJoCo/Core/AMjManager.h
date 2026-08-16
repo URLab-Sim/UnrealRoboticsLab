@@ -37,6 +37,7 @@
 #include "AMjManager.generated.h"
 
 // Forward declarations
+class AMjEntity;
 class AMjHeightfieldActor;
 class UMjPhysicsEngine;
 class UMjDebugVisualizer;
@@ -194,6 +195,14 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Global")
 	AMjArticulation* GetArticulation(const FString& ActorName) const;
+
+	/**
+	 * The runtime face of a compiled entity, by its stable name (the participant-prefix stem). Returns
+	 * the AMjEntity that answers Joint / Actuator / Geom for it, spawning a thin one on first request
+	 * and reusing it after; null when no compiled entity carries that name.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Global")
+	AMjEntity* GetEntity(FName EntityName);
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	// By value: forwards the engine's locked snapshot (see UMjPhysicsEngine::GetAllArticulations).

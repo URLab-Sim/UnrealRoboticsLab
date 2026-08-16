@@ -20,6 +20,16 @@ struct URLAB_API FMjEntity
 	/** Stable public name (compiled: the participant prefix; raw: root / subtree name). */
 	FName Name;
 
+	/**
+	 * The name the wire keys this entity by: the sanitized ActorId when set, else the sanitized
+	 * Name. Distinct from Name (which is the raw compiled-prefix stem) because addressing must
+	 * survive Unreal's volatile actor renaming. Falls back to Name when nothing supplied it.
+	 */
+	FName PublicName;
+
+	/** Bridge-owned identifier echoed in the handshake, or empty. */
+	FString ActorId;
+
 	/** Root body id (for root-link state + free-base detection). */
 	int32 RootBodyId = -1;
 
@@ -44,6 +54,14 @@ struct URLAB_API FMjEntityPartition
 {
 	/** Name prefixes (compiled participants). Empty => a single root entity over the whole model. */
 	TArray<FString> Prefixes;
+
+	/**
+	 * Optional per-prefix actor facts the model cannot supply, parallel to Prefixes: the wire public
+	 * segment and the bridge ActorId. When absent for a prefix, the entity's PublicName falls back to
+	 * its Name and ActorId stays empty.
+	 */
+	TArray<FName> PublicNames;
+	TArray<FString> ActorIds;
 
 	/** Raw path: split each top-level body subtree into its own entity. */
 	bool bBodySubtreeSplit = false;

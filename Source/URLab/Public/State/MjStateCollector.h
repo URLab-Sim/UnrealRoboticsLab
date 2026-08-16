@@ -27,8 +27,6 @@
 #include <atomic>
 
 class AAMjManager;
-class AMjArticulation;
-class UMjNodeComponent;
 class UMjTwistController;
 struct mjModel_;
 struct mjData_;
@@ -39,13 +37,14 @@ typedef mjData_ mjData;
  * The one concrete collector that builds the per-step IR. No producer interface,
  * no registration: it has exactly three fixed steps.
  *
- * - Producer cache (game thread): per articulation, the canonical name and weak
- *   ptrs to its elements; rebuilt on the same triggers as the old broadcast
- *   cache (registry change / recompile / stale weak ptr). Bumps StructureVersion.
+ * - Producer cache (game thread): per entity, the wire public name and the id
+ *   slices it owns, plus weak ptrs to its actor-side channels (twist controller,
+ *   interface producers); rebuilt on the same triggers as the old broadcast cache
+ *   (registry change / recompile). Bumps StructureVersion.
  * - Per-step build (physics thread, post-step): reset the persistent snapshot,
- *   stamp time/step/clock, call DescribeState on each cached component and the
- *   twist controller, then fill Entities from the manager's entity cache indexing
- *   mjData directly.
+ *   stamp time/step/clock, describe each cached entity's bodies / joints /
+ *   actuators / sensors straight from its ids plus the twist controller, then fill
+ *   Entities from the manager's entity cache indexing mjData directly.
  * - On-demand build (RPC step replies): the same Collect(), called under the
  *   engine's CallbackMutex by the dispatcher.
  *
@@ -63,8 +62,8 @@ public:
 	 *  scheduled on the game thread; safe to call from any thread. */
 	void MarkProducerCacheDirty();
 
-	/** Rebuild the producer cache from the manager's live articulation list.
-	 *  Game thread only (walks components). Bumps StructureVersion. */
+	/** Rebuild the producer cache from the engine's entity partition. Game thread
+	 *  only (resolves actor-side channels). Bumps StructureVersion. */
 	void RebuildProducerCacheGameThread();
 
 	/** Build the IR for the current step and return the persistent snapshot. */
@@ -73,14 +72,23 @@ public:
 	uint32 GetStructureVersion() const { return StructureVersion; }
 
 private:
-	struct FCachedArticulation
+	struct FCachedEntity
 	{
-		FName ArtSegment;
-		TWeakObjectPtr<AMjArticulation> Art;
-		TArray<TWeakObjectPtr<UMjNodeComponent>> Producers; // one DescribeElement per step
-		TWeakObjectPtr<UMjTwistController> TwistCtrl;       // UActorComponent; called separately
-		/** IMjStateProducer implementers registered under this art (e.g. user
-		 *  channel components). Any UObject; the collector Casts to the interface. */
+		/** Raw compiled-prefix stem (== the owning actor's GetName()); the prefix
+		 *  the element-key strip removes. */
+		FName Name;
+		/** The wire key this entity's block is stamped with. */
+		FName PublicName;
+		/** The id slices this entity owns, in ascending mj-id order. */
+		TArray<int32> BodyIds;
+		TArray<int32> JointIds;
+		TArray<int32> ActuatorIds;
+		TArray<int32> SensorIds;
+		/** Parallel to SensorIds: each sensor's semantic, resolved at build. */
+		TArray<EMjSensorSemantic> SensorSemantics;
+		TWeakObjectPtr<UMjTwistController> TwistCtrl; // UActorComponent; called separately
+		/** IMjStateProducer implementers registered under this entity's actor (e.g.
+		 *  user channel components). Any UObject; the collector Casts to the interface. */
 		TArray<TWeakObjectPtr<UObject>> InterfaceProducers;
 	};
 
@@ -99,7 +107,7 @@ private:
 	};
 
 	TWeakObjectPtr<AAMjManager> Manager;
-	TArray<FCachedArticulation> Cache;       // built game thread, read physics thread
+	TArray<FCachedEntity> Cache;             // built game thread, read physics thread
 	TArray<FCachedWorldGeom> WorldGeomCache; // built game thread, read physics thread
 	/** Registered IMjStateProducers not owned by any articulation; their
 	 *  DescribeSceneState fills the snapshot's scene-scoped blocks. */

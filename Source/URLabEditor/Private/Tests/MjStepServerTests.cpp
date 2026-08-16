@@ -348,56 +348,62 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerHandshakeActorId,
 
 bool FMjStepServerHandshakeActorId::RunTest(const FString& Parameters)
 {
-	FMjUESession S;
-	if (!S.Init())
+	// The handshake echoes the entity partition's ActorId, captured from the
+	// articulation at compile, so the echo survives the articulation's retirement.
+	// Stamp the id before compile so it flows into the partition the handshake reads.
 	{
-		AddError(S.LastError);
-		return false;
-	}
+		FMjUESession S;
+		if (!S.Init([](FMjUESession& Sess) { Sess.Robot->ActorId = TEXT("robot_a"); }))
+		{
+			AddError(S.LastError);
+			return false;
+		}
 
-	// Stamp an actor id on whatever articulation the test session built.
-	TArray<AMjArticulation*> Arts = S.Manager->GetAllArticulations();
-	if (Arts.Num() == 0 || !Arts[0])
-	{
-		AddInfo(TEXT("No articulation in test session; skipping actor_id check"));
+		TSharedPtr<FJsonObject> Payload =
+			FURLabRpcDispatcher::BuildHandshakePayload(S.Manager, TEXT("uuid"), TEXT("urlab/test"));
+
+		const TArray<TSharedPtr<FJsonValue>>* ArtsArr = nullptr;
+		TestTrue(TEXT("articulations array present"),
+			Payload->TryGetArrayField(TEXT("articulations"), ArtsArr));
+		if (ArtsArr && ArtsArr->Num() > 0)
+		{
+			const TSharedPtr<FJsonObject>& First = (*ArtsArr)[0]->AsObject();
+			FString Got;
+			TestTrue(TEXT("actor_id field present"),
+				First->TryGetStringField(TEXT("actor_id"), Got));
+			TestEqual(TEXT("actor_id echoed"), Got, FString(TEXT("robot_a")));
+		}
+
 		S.Cleanup();
-		return true;
-	}
-	Arts[0]->ActorId = TEXT("robot_a");
-
-	TSharedPtr<FJsonObject> Payload =
-		FURLabRpcDispatcher::BuildHandshakePayload(S.Manager, TEXT("uuid"), TEXT("urlab/test"));
-
-	const TArray<TSharedPtr<FJsonValue>>* ArtsArr = nullptr;
-	TestTrue(TEXT("articulations array present"),
-		Payload->TryGetArrayField(TEXT("articulations"), ArtsArr));
-	if (ArtsArr && ArtsArr->Num() > 0)
-	{
-		const TSharedPtr<FJsonObject>& First = (*ArtsArr)[0]->AsObject();
-		FString Got;
-		TestTrue(TEXT("actor_id field present"),
-			First->TryGetStringField(TEXT("actor_id"), Got));
-		TestEqual(TEXT("actor_id echoed"), Got, FString(TEXT("robot_a")));
 	}
 
 	// Empty ActorId still emits an empty string (consumer doesn't have to
 	// probe for absence).
-	Arts[0]->ActorId = TEXT("");
-	TSharedPtr<FJsonObject> Payload2 =
-		FURLabRpcDispatcher::BuildHandshakePayload(S.Manager, TEXT("uuid2"), TEXT("urlab/test"));
-	const TArray<TSharedPtr<FJsonValue>>* ArtsArr2 = nullptr;
-	Payload2->TryGetArrayField(TEXT("articulations"), ArtsArr2);
-	if (ArtsArr2 && ArtsArr2->Num() > 0)
 	{
-		const TSharedPtr<FJsonObject>& First2 = (*ArtsArr2)[0]->AsObject();
-		FString Got2;
-		TestTrue(TEXT("actor_id field still present (empty)"),
-			First2->TryGetStringField(TEXT("actor_id"), Got2));
-		TestEqual(TEXT("actor_id empty when unset"),
-			Got2, FString(TEXT("")));
+		FMjUESession S;
+		if (!S.Init())
+		{
+			AddError(S.LastError);
+			return false;
+		}
+
+		TSharedPtr<FJsonObject> Payload2 =
+			FURLabRpcDispatcher::BuildHandshakePayload(S.Manager, TEXT("uuid2"), TEXT("urlab/test"));
+		const TArray<TSharedPtr<FJsonValue>>* ArtsArr2 = nullptr;
+		Payload2->TryGetArrayField(TEXT("articulations"), ArtsArr2);
+		if (ArtsArr2 && ArtsArr2->Num() > 0)
+		{
+			const TSharedPtr<FJsonObject>& First2 = (*ArtsArr2)[0]->AsObject();
+			FString Got2;
+			TestTrue(TEXT("actor_id field still present (empty)"),
+				First2->TryGetStringField(TEXT("actor_id"), Got2));
+			TestEqual(TEXT("actor_id empty when unset"),
+				Got2, FString(TEXT("")));
+		}
+
+		S.Cleanup();
 	}
 
-	S.Cleanup();
 	return true;
 }
 
@@ -1227,14 +1233,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerSetQposActorId,
 bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 {
 	FMjUESession S;
-	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); }))
+	if (!S.Init([](FMjUESession& Sess) { Sess.Joint->SetType(EMjJointType::hinge); Sess.Robot->ActorId = TEXT("robot_a"); }))
 	{
 		AddError(S.LastError);
 		return false;
 	}
 
 	AMjArticulation* Art = S.Manager->GetAllArticulations()[0];
-	Art->ActorId = TEXT("robot_a");
 
 	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));

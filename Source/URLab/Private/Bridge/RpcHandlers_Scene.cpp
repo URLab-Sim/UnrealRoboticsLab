@@ -82,9 +82,9 @@ FString ResolveReplayPath(const FString& UserPath, const FString& DefaultBaseNam
 // Two write modes:
 //   - Free-base 7-vec shortcut: len=7 and the first joint is mjJNT_FREE,
 //     writes only the 7 free-joint slots (xyz + quat). Skips dof joints.
-//   - Full per-articulation qpos: len matches the articulation's total qpos
-//     dim (sum of per-joint slot widths in GetJoints() order). Writes the
-//     whole slice.
+//   - Full per-articulation qpos: len matches the entity's total qpos dim
+//     (sum of per-joint slot widths in the entity's JointIds order, ascending
+//     mj id). Writes the whole slice.
 // Always calls mj_forward after the write, mirroring the puppet push-state
 // path so derived quantities (xpos, sensors) reflect the new state.
 // =============================================================================
@@ -99,9 +99,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	if (!m || !d)
 		return MakeError(URLabError::NotReady, TEXT("MjModel/MjData missing"));
 
-	// target/target_by wire shape. target_by="actor_name" looks up via
-	// the manager's GetArticulation (UE name match); default
-	// "actor_id" walks ActorId.
+	// target/target_by wire shape. target_by="actor_name" resolves the entity by its
+	// addressing keys (Name / public segment / ActorId); default "actor_id" walks ActorId.
 	FString Target, By;
 	Req->TryGetStringField(TEXT("target"), Target);
 	Req->TryGetStringField(TEXT("target_by"), By);
@@ -112,28 +111,28 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	}
 	const bool bByName = By.Equals(TEXT("actor_name"), ESearchCase::IgnoreCase);
 
-	AMjArticulation* Art = nullptr;
+	const FMjEntity* Entity = nullptr;
 	if (bByName)
 	{
-		Art = Mgr->GetArticulation(Target);
+		Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, Target);
 	}
-	else
+	else if (Mgr->PhysicsEngine)
 	{
-		for (AMjArticulation* A : Mgr->GetAllArticulations())
+		for (const FMjEntity& E : Mgr->PhysicsEngine->GetEntityPartition())
 		{
-			if (A && A->ActorId.Equals(Target))
+			if (E.ActorId.Equals(Target))
 			{
-				Art = A;
+				Entity = &E;
 				break;
 			}
 		}
 	}
-	if (!Art)
+	if (!Entity)
 	{
 		return MakeError(URLabError::UnknownArticulation, Target);
 	}
 
-	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
+	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(Entity->Name, Req))
 		return Denied;
 
 	const TArray<TSharedPtr<FJsonValue>>* QPosArr = nullptr;
@@ -148,11 +147,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 	};
 	TArray<FJointSlot> Slots;
 	int32 ArtQDim = 0;
-	for (const UMjNodeComponent* J : Art->GetJoints())
+	for (int32 Id : Entity->JointIds)
 	{
-		if (!J)
-			continue;
-		const int32 Id = J->GetBoundId().Get(-1);
 		if (Id < 0 || Id >= m->njnt)
 			continue;
 		int32 Size = 1;
@@ -225,14 +221,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetQpos(const TSharedPtr<FJso
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("set_qpos_ok"));
-	// Echo back the resolved actor identifiers so the caller can
-	// confirm which articulation actually got the write. `target`
-	// matches the request's target field; `actor_name` is the UE
-	// name (always present, even if actor_id was the lookup key).
+	// Echo back the resolved entity identifiers so the caller can
+	// confirm which entity actually got the write. `target` matches
+	// the request's target field; `actor_name` is the entity Name
+	// (always present, even if actor_id was the lookup key).
 	Reply->SetStringField(TEXT("target"), Target);
-	Reply->SetStringField(TEXT("actor_name"), Art->GetName());
-	if (!Art->ActorId.IsEmpty())
-		Reply->SetStringField(TEXT("actor_id"), Art->ActorId);
+	Reply->SetStringField(TEXT("actor_name"), Entity->Name.ToString());
+	if (!Entity->ActorId.IsEmpty())
+		Reply->SetStringField(TEXT("actor_id"), Entity->ActorId);
 	Reply->SetArrayField(TEXT("qpos"), Out);
 	Reply->SetBoolField(TEXT("free_base_shortcut"), bFreeBaseShortcut);
 	return Reply;
@@ -268,20 +264,16 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMocapPose(const TSharedPtr
 
 	{
 		FName ArtKey;
-		for (AMjArticulation* Art : Mgr->GetAllArticulations())
+		if (Mgr->PhysicsEngine)
 		{
-			if (!Art)
-				continue;
-			for (UMjBody* B : Art->GetBodies())
+			for (const FMjEntity& E : Mgr->PhysicsEngine->GetEntityPartition())
 			{
-				if (B && B->MjName.Get(B->GetName()).Equals(Body))
+				if (E.BodyIds.Contains(BodyId))
 				{
-					ArtKey = FName(*Art->GetName());
+					ArtKey = E.Name;
 					break;
 				}
 			}
-			if (!ArtKey.IsNone())
-				break;
 		}
 		if (!ArtKey.IsNone())
 		{

@@ -29,6 +29,8 @@
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Entity/MjEntityActor.h"
+#include "MuJoCo/Entity/MjEntityHandoff.h"
+#include "MuJoCo/Entity/MjEntityLogicComponent.h"
 #include "MuJoCo/Fast/MjbScene.h"
 #include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
@@ -1028,6 +1030,30 @@ void AAMjManager::BuildRuntimeView()
 		OverlayRenderer->RegisterComponent();
 	}
 	OverlayRenderer->SetModel(Model);
+
+	// The render view now carries every pose, camera, and overlay the articulations used to
+	// drive, so the authoring actors are retired. Re-home each art's authored logic onto its
+	// thin runtime entity first (an art with no logic spawns no entity), then destroy the arts.
+	// UnregisterArticulation drops each from both the registry array and the non-UPROPERTY name
+	// map under CallbackMutex, so no consumer resolves a stale actor through GetArticulation.
+	for (AMjArticulation* Art : Arts)
+	{
+		if (!Art)
+			continue;
+		TArray<UMjEntityLogicComponent*> Logic;
+		Art->GetComponents<UMjEntityLogicComponent>(Logic);
+		if (Logic.Num() == 0)
+			continue;
+		if (AMjEntity* E = GetEntity(FName(*Art->GetName())))
+			MjEntityHandoff::TransferAuthoredLogic(Art, E);
+	}
+	for (AMjArticulation* Art : Arts)
+	{
+		if (!Art)
+			continue;
+		PhysicsEngine->UnregisterArticulation(Art);
+		Art->Destroy();
+	}
 }
 
 void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)

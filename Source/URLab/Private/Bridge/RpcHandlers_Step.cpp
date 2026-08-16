@@ -127,10 +127,10 @@ void ApplyPushedState(UMjPhysicsEngine* Engine, const FMjPushStateRequest& Push,
 		Engine->OnPostStep(m, d);
 }
 
-/** Resolve the partition entity a wire key names, matching the same three keys as
- *  AAMjManager::GetArticulation: the compiled-prefix stem (Name), the canonical
- *  public segment (PublicName), or the bridge ActorId. Null when the key is unknown. */
-const FMjEntity* FindEntityByWireKey(const UMjPhysicsEngine* Engine, const FString& WireKey)
+} // namespace
+
+const FMjEntity* FURLabRpcDispatcher::ResolveEntityByWireKey(
+	const UMjPhysicsEngine* Engine, const FString& WireKey)
 {
 	if (Engine == nullptr)
 		return nullptr;
@@ -142,7 +142,6 @@ const FMjEntity* FindEntityByWireKey(const UMjPhysicsEngine* Engine, const FStri
 	}
 	return nullptr;
 }
-} // namespace
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJsonObject>& Req)
 {
@@ -363,7 +362,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 				if (!bCarriesControl)
 					continue;
 
-				const FMjEntity* Entity = FindEntityByWireKey(Mgr->PhysicsEngine, Pair.Key);
+				const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, Pair.Key);
 				const FName Key = Entity ? Entity->Name : FName(*Pair.Key);
 				FString CurrentOwner;
 				if (ControlOwnership.CheckWrite(Key, Source, CurrentOwner)
@@ -442,7 +441,7 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 		// Positional ctrl: write each value onto the entity's actuator ids in ascending mj-id order.
 		for (const TPair<FString, TArray<double>>& Pair : Req.PerArticulationCtrlPositional)
 		{
-			const FMjEntity* Entity = FindEntityByWireKey(Engine, Pair.Key);
+			const FMjEntity* Entity = ResolveEntityByWireKey(Engine, Pair.Key);
 			if (!Entity)
 				continue;
 			const int32 Count = FMath::Min(Pair.Value.Num(), Entity->ActuatorIds.Num());
@@ -455,7 +454,7 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 		// falling back to the name as given for a full or global name) against the model.
 		for (const TPair<FString, TArray<TPair<FString, double>>>& Pair : Req.PerArticulationCtrl)
 		{
-			const FMjEntity* Entity = FindEntityByWireKey(Engine, Pair.Key);
+			const FMjEntity* Entity = ResolveEntityByWireKey(Engine, Pair.Key);
 			if (!Entity && !bRaw)
 				continue;
 			const FName EntityName = Entity ? Entity->Name : FName(*Pair.Key);
@@ -554,14 +553,15 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 		{
 			for (auto& APair : (*PerArt)->Values)
 			{
-				AMjArticulation* Art = Mgr->GetArticulation(APair.Key);
-				if (!Art)
+				const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, APair.Key);
+				if (!Entity)
 					continue;
 				const TSharedPtr<FJsonObject>* QObj = nullptr;
 				if (!APair.Value->TryGetObject(QObj) || !QObj || !QObj->IsValid())
 					continue;
 
-				FString Prefix = Art->GetName() + TEXT("_");
+				const FString Prefix = Entity->Name.IsNone()
+					? FString() : (Entity->Name.ToString() + TEXT("_"));
 				for (auto& JPair : (*QObj)->Values)
 				{
 					FString FullName = Prefix + JPair.Key;

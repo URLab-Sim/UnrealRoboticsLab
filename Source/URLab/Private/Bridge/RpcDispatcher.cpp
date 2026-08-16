@@ -61,34 +61,36 @@
 namespace
 {
 /**
- * The authored kind of an actuator, as the wire spells it.
+ * The authored kind of a compiled actuator, recovered from the model.
  *
- * The kind is the element itself -- a `<position>` is a different element from a
- * `<motor>` -- so this is the element's own MJCF tag and there is no mapping
- * table to keep in step with the schema. The compiled model cannot answer it:
- * every shortcut compiles down to `<general>`.
+ * Every shortcut (`<position>` / `<velocity>` / `<motor>`) compiles down to
+ * `<general>`, but the gain/bias/dyn triple still separates them: a fixed-gain,
+ * no-bias, no-dyn actuator is a `motor`; an affine bias whose position term is
+ * zero (bias = [0, 0, -kv]) is a `velocity` servo, otherwise it is a `position`
+ * servo; an integrator dynamic with an affine bias is `intvelocity`. Anything
+ * else is reported as the compiled `general`. Read straight off the mjModel so
+ * the handshake needs no live articulation.
  */
-FString ActuatorTypeToString(const UMjNodeComponent* Actuator)
+FString ActuatorKindFromModel(const mjModel* M, int32 A)
 {
-#if URLAB_MJ_GEN
-	urlab::spec::psm::ElementType Type;
-	if (Actuator != nullptr && urlab::spec::MjElementTypeOfNode(*Actuator, Type))
+	const int Dyn = M->actuator_dyntype[A];
+	const int Gain = M->actuator_gaintype[A];
+	const int Bias = M->actuator_biastype[A];
+	if (Gain == mjGAIN_FIXED && Bias == mjBIAS_NONE && Dyn == mjDYN_NONE)
 	{
-		return urlab::spec::MjTagOf(Type);
+		return TEXT("motor");
 	}
-#endif
-	return TEXT("motor");
-}
-
-/** An element's authored MJCF name with the articulation prefix taken off. */
-FString LocalElementName(const UMjNodeComponent& Element, const FString& ArtPrefix)
-{
-	FString Name = Element.MjName.Get(Element.GetName());
-	if (Name.StartsWith(ArtPrefix))
+	if (Gain == mjGAIN_FIXED && Bias == mjBIAS_AFFINE && Dyn == mjDYN_NONE)
 	{
-		Name = Name.Mid(ArtPrefix.Len());
+		const mjtNum* Bp = &M->actuator_biasprm[A * mjNBIAS];
+		return (FMath::Abs(Bp[1]) < 1e-12 && FMath::Abs(Bp[2]) > 0.0) ? TEXT("velocity")
+																	  : TEXT("position");
 	}
-	return Name;
+	if (Gain == mjGAIN_FIXED && Bias == mjBIAS_AFFINE && Dyn == mjDYN_INTEGRATOR)
+	{
+		return TEXT("intvelocity");
+	}
+	return TEXT("general");
 }
 
 /** Ops that do NOT count as lease-owner activity: discovery, bootstrap, and
@@ -836,37 +838,41 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 	{
 		TSharedPtr<FJsonObject> ArtObj = MakeShared<FJsonObject>();
 
-		// The compiled model cannot answer four facts: the ActorId echo, the authored
-		// actuator kind (every shortcut compiled to <general>), the raw-shadow flag, and
-		// camera transport config. Resolve the owning art once by its stable compiled-name
-		// stem to read them off the component tree.
-		AMjArticulation* Art = Manager->GetArticulation(E.Name.ToString());
-
 		// The public segment is the stable partition-derived addressing key that the state
-		// stream keys arts under. The ActorId is read live off the actor so a spawn-time
-		// assignment is echoed even when it post-dates the compile that built the partition.
+		// stream keys arts under. The ActorId is carried on the entity from the partition
+		// build, so the echo survives the authoring articulation's retirement at PIE start.
 		ArtObj->SetStringField(TEXT("prefix"), E.PublicName.ToString());
-		ArtObj->SetStringField(TEXT("actor_id"), Art != nullptr ? Art->ActorId : E.ActorId);
+		ArtObj->SetStringField(TEXT("actor_id"), E.ActorId);
 		ArtObj->SetStringField(TEXT("actor_name"), E.Name.ToString());
 
 		const bool bRawModel = (Manager->PhysicsEngine != nullptr)
 			&& Manager->PhysicsEngine->IsRawModelInstalled();
 
 		// Per-actuator authored kind. The MJB doesn't carry the original
-		// <position> / <velocity> shortcut — they all compile to <general>. Skipped
-		// for a raw model: its drive metadata rides raw_actuators below, which is
-		// the single source of truth for a fast-path model (and a raw entity has no art).
-		if (Art != nullptr && !bRawModel)
+		// <position> / <velocity> shortcut (they all compile to <general>), but the
+		// gain/bias/dyn triple still distinguishes them, so recover the kind straight off
+		// the compiled model for the entity's actuator ids, the same model-derived way the
+		// raw path below emits its actuator block. Skipped for a raw model: its drive
+		// metadata rides raw_actuators. Fenced against a concurrent compile/uninstall.
+		if (!bRawModel && Manager->PhysicsEngine)
 		{
-			TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
-			for (const UMjNodeComponent* Act : Art->GetActuators())
+			FScopeLock ModelLock(&Manager->PhysicsEngine->CallbackMutex);
+			const mjModel* Cm = Manager->PhysicsEngine->GetModel();
+			if (Cm != nullptr)
 			{
-				if (Act == nullptr)
-					continue;
-				ActTypes->SetStringField(LocalElementName(*Act, Art->GetCompiledPrefix()),
-					ActuatorTypeToString(Act));
+				const FString Prefix = E.Name.IsNone() ? FString() : (E.Name.ToString() + TEXT("_"));
+				TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
+				for (int32 A : E.ActuatorIds)
+				{
+					const char* AName = mj_id2name(Cm, mjOBJ_ACTUATOR, A);
+					FString Local = (AName && *AName) ? FString(ANSI_TO_TCHAR(AName))
+						: FString::Printf(TEXT("act_%d"), A);
+					if (!Prefix.IsEmpty() && Local.StartsWith(Prefix))
+						Local = Local.Mid(Prefix.Len());
+					ActTypes->SetStringField(Local, ActuatorKindFromModel(Cm, A));
+				}
+				ArtObj->SetObjectField(TEXT("actuator_types"), ActTypes);
 			}
-			ArtObj->SetObjectField(TEXT("actuator_types"), ActTypes);
 		}
 
 		// Fast-path shadow: element-only, name-bound to a raw mjModel with no

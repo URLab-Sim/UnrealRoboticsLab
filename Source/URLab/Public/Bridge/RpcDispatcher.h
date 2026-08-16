@@ -330,6 +330,14 @@ private:
 	TSharedPtr<FJsonObject> RejectIfNotControlOwner(FName ArtKey,
 		const TSharedPtr<FJsonObject>& Req);
 
+	/** Resolve the partition entity a wire key names, matching the same three keys the
+	 *  retired AAMjManager::GetArticulation did: the compiled-prefix stem (Name), the
+	 *  canonical public segment (PublicName), or the bridge ActorId. Null when unknown.
+	 *  The one addressing vocabulary shared by claim / release / step / scene: every
+	 *  ownership key is the resolved entity's Name. */
+	static const FMjEntity* ResolveEntityByWireKey(const UMjPhysicsEngine* Engine,
+		const FString& WireKey);
+
 	// Op handlers
 	TSharedPtr<FJsonObject> HandleHello(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleMeta(const TSharedPtr<FJsonObject>& Req);

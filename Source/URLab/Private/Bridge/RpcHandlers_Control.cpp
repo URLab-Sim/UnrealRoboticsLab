@@ -125,11 +125,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleClaimControl(const TSharedPtr
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
 		return MakeError(URLabError::MissingField, TEXT("claim_control requires 'articulation'"));
 
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
+	// Ownership keys off the entity Name, the same vocabulary the step-path write check
+	// keys by, so a claim matches the writes it is meant to gate.
+	const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
+	if (!Entity)
 		return MakeError(URLabError::UnknownArticulation, ArtName);
 
-	const FName Key(*Art->GetName());
+	const FName Key = Entity->Name;
 	const FString Source = ResolveControlSource(Req);
 
 	double Ttl = 0.0;
@@ -149,7 +151,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleClaimControl(const TSharedPtr
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("claim_control_ok"));
-	Reply->SetStringField(TEXT("articulation"), Art->GetName());
+	Reply->SetStringField(TEXT("articulation"), Key.ToString());
 	Reply->SetStringField(TEXT("owner"), Source);
 	Reply->SetNumberField(TEXT("ttl_s"), Ttl);
 	return Reply;
@@ -165,11 +167,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReleaseControl(const TSharedP
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
 		return MakeError(URLabError::MissingField, TEXT("release_control requires 'articulation'"));
 
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
+	const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
+	if (!Entity)
 		return MakeError(URLabError::UnknownArticulation, ArtName);
 
-	const FName Key(*Art->GetName());
+	const FName Key = Entity->Name;
 	const FString Source = ResolveControlSource(Req);
 
 	if (!ControlOwnership.Release(Key, Source))
@@ -184,7 +186,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReleaseControl(const TSharedP
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("release_control_ok"));
-	Reply->SetStringField(TEXT("articulation"), Art->GetName());
+	Reply->SetStringField(TEXT("articulation"), Key.ToString());
 	return Reply;
 }
 

@@ -113,11 +113,13 @@ frame and therefore what local data exists:
 OWNER (advertise, serve the model, stream transforms). `Mirror` is downstream and cannot. That
 owner-ness is DERIVED from PoseSource, not a separate axis.
 
-Verified against code (2026-08-15): Mirror applies `bxpos/bxquat` (or legacy `xpos/xquat`)
-streamed transforms with no step (`MjbScene.cpp:1756/1766`); the fast renderer's own-sim Direct
-renders the engine snapshot (`:1710`); StatePushed writes pushed qpos/qvel into `Data` then
-`mj_forward`s (`MjPhysicsEngine.cpp:560-571`). Note we are designing a NEW plan, not ratifying
-these names — the code is the evidence, not the target.
+Verified against code (2026-08-15, anchor corrected by audit): Mirror applies `bxpos/bxquat` (or
+legacy `xpos/xquat`) streamed transforms with no step (`MjbScene.cpp:1756/1766`); the fast
+renderer's own-sim Direct renders the engine snapshot (`:1710`); StatePushed does `mj_setState` +
+`mj_forward` on the pushed state at `MjPhysicsEngine.cpp:1218-1219` (driven by `bPendingRestore`),
+plus `FPuppetStepMode::HandleStep`'s inline `mj_forward` (`RpcHandlers_Step.cpp:~884`). (An earlier
+draft mis-cited `MjPhysicsEngine.cpp:560-571`, which is `RestoreState()`, a migration helper.) We
+are designing a NEW plan, not ratifying these names — the code is evidence, not the target.
 
 ### Mirror vs StatePushed — keep both; different cost, different data
 - `Mirror` receives already-resolved transforms and pays nothing beyond drawing. No contacts,
@@ -233,13 +235,14 @@ wire models) — no rebuild in either case.
    an authored model from the lightweight structure at play does not ADD a rebuild — it REPLACES
    the authoring path's heavier "instantiate hundreds of SCS components + re-resolve every geom
    through the default-class chain" pass with a lighter per-body build.
-2. The only real divergence is the ASSET SOURCE, which is exactly a pluggable seam. Materials
-   already converge: BOTH paths drive the SAME master `M_MuJoCo_Master` with the same parameter
-   names, and the fast path already calls the shared `MjAssetResolve` helpers (`MjbScene.cpp:496,
-   1493`; `MjGeom.cpp:529`). The `UMjCamera` component is already shared by both. So this is not
-   two structures, it is one structure with two asset sources. (The earlier audit's "only
-   EnsureManager is shared" was wrong — material resolution and the camera component are shared
-   too.)
+2. The main divergence is the ASSET SOURCE, a pluggable seam. Materials PARTLY converge (audit
+   correction): BOTH paths use the SAME master `M_MuJoCo_Master` and the same parameter-NAME
+   convention (`MjLoadMasterMaterial` `MjbScene.cpp:496`; `MjGeom.cpp:529`), and both share
+   `MjBindNeutralMaterialTextures` (`:1493`) — BUT the fast path applies parameters via its OWN
+   inline `ApplyGeomMaterial` (`MjbScene.cpp:1475-1592`) reading `mjModel` arrays, while the
+   authoring path calls the shared `MjApplyMaterialParameters` (`MjGeom.cpp:567`) off a spec.
+   So material APPLICATION is still a duplicated seam (a 4th seam, alongside mesh/texture/transform)
+   — the unified resolver must converge it, not assume it converged. `UMjCamera` is shared by both.
 3. A unified `Resolve(geomId) -> {StaticMesh, material}` is feasible with NO rebuild: authored
    resolves the spec element's stored `MeshAsset` (`MjAssetResolve.cpp:409`), wire resolves the
    content-hashed `SM_<id>` via `LoadObject` (`MjbScene.cpp:1227-1231`), bridged by the
@@ -645,3 +648,171 @@ change (allowed). This is mechanical once the C++ core lands.
 - Every deletion listed has a test that must be rewritten, not just removed:
   `MjStateCollectorTests`, `MjStepServerTests`, `MjControlOwnershipTests`, `MjUserChannelTests`,
   `MjActuatorControlSlotTests`, `MjPDControllerTests`, `MjRosLinkTests`.
+
+---
+
+## 16. Audit findings — required revisions BEFORE prototyping (2026-08-15)
+
+Two independent adversarial auditors read the plan cold. Verdict: the DIRECTION is sound, but the
+plan is NOT implementable as written. This section is authoritative over sections 3/5/7/15 where
+they conflict. The central correction: the premise "addressing + observation + control all reduce
+to index-mjData-by-id, so the actor + producer graph are deletable" is only ~70% true. The
+missing 30% (sensor semantics, per-body FK, camera identity, ALL ROS control ingress) is keyed on
+the live `AMjArticulation`/`UMjNodeComponent`/`AAMjManager`, NOT on ids, and is NET-NEW work the
+plan never scoped. Phase 4 (delete the shadow) regresses ROS + cameras until that work exists.
+
+### 16.1 Corrected anchors (were cited as VERIFIED, are wrong)
+- StatePushed push: NOT `MjPhysicsEngine.cpp:560-571` (that is `RestoreState()`, migration). It is
+  `mj_setState`+`mj_forward` at `:1218-1219` + `FPuppetStepMode::HandleStep` inline
+  (`RpcHandlers_Step.cpp:~884`). (Fixed inline in section 3.)
+- `CustomStepHandler` presence: NOT `MjPhysicsEngine.cpp:1073` (that is `ApplyOptions`). Real:
+  `FDirectStepMode::OnEnter:734 -> InstallDirectHandler` vs `FPuppetStepMode::OnEnter:829-834`
+  (installs none) in `RpcHandlers_Step.cpp`.
+- Materials: `MjbScene.cpp:1493` is `MjBindNeutralMaterialTextures`, not `MjApplyMaterialParameters`;
+  material APPLICATION is still duplicated (fixed inline in section 5).
+- `PerArticulationControlMode`: `StepCommands.h:36` (`:35` is the comment); `RpcHandlers_ModelUpload.cpp:593`
+  is `EStepMode Mode`, not that field.
+- `NetworkControl`/`InternalControl` atomic arrays: `MjArticulation.h:485-488` (`:181-206` are the
+  staging method decls).
+- WorldGeom (`0d`): the cache is built once on the game thread; `MjStateCollector.cpp:529-551`
+  recomputes the snapshot from it each step. The ROS-only / not-msgpack half is correct; the fix stands.
+
+### 16.2 Design gaps that MUST be resolved before phases 3 / 5 / 7
+1. DRAIN CADENCE (HIGH, blocks phase 3). Controllers recompute PER SUBSTEP today (Direct loops
+   `ApplyControls` inside the n-step loop `RpcHandlers_Step.cpp:1038-1046`; Live before every
+   `mj_step` `MjPhysicsEngine.cpp:1235-1257`). A `DrainCommands`-style ONCE-per-request drain makes
+   a PD controller open-loop for substeps 2..n. Direct setpoints want set-once-persist; controllers
+   want evaluate-every-substep. The single "one drain" abstraction conflates two cadences. DECIDE:
+   the drain is a per-substep hook where direct setpoints persist (do not clear `Touched` each
+   substep) and controllers re-evaluate each substep; specify exactly.
+2. STATE-INJECTION CHANNEL (HIGH, blocks phase 3). `FMjStateInjection{Qpos, QposHold}` is
+   insufficient for keyframe qpos-hold: today's `bHoldViaQpos` (`MjArticulation.cpp:454-478`) also
+   (a) ZEROES qvel for held DoFs, (b) SKIPS free joints, (c) SUPPRESSES that entity's ctrl write
+   (early-return `:488`). Add a qvel channel + free-joint rule + a "hold suppresses ctrl for this
+   entity" rule.
+3. RESOLVER RETURN TYPE (HIGH, blocks phase 5). `{UStaticMesh*, material}` is unrepresentable in
+   PACKAGED builds — `GetOrBuildStaticMesh` is `#if WITH_EDITOR` (ends `MjbScene.cpp:1322`);
+   packaged is a runtime `UProceduralMeshComponent` with no asset (`BuildMesh :1324-1363`). The
+   seam MUST be at COMPONENT level (resolver populates a component), or every wire mesh must be
+   cooked to `SM_<id>` (the current cook does not). Redefine `IMjGeomAssetResolver` accordingly.
+4. PLAY RENDER PATH (blocks phase 5). Section 5's parity anchors (`RebuildVisualizer MjGeom.cpp:441`,
+   `PostEditMove MjArticulation.cpp:1251`) may be EDITOR-preview/edit-time. Pin the ACTUAL play-time
+   authoring render entry point before asserting parity. (Note `MujocoMeshImporter.cpp` is in
+   `Source/URLabEditor/`, a cross-module dependency the "editor-only tree" split must handle.)
+5. `ViewerSubscribe` IS NOT REDUNDANT (blocks phase 7). `UURLabViewerSubscribeTransport` owns a
+   `ClientSubscribe` AND runs `mj_forward` (`ViewerSubscribeTransport.cpp:146`) — it is StatePushed
+   delivered over subscribe, not a cheap Mirror. Do NOT fold it into "a Publish topic a Mirror
+   subscribes to"; keep the forward-reconstruction role.
+6. `EControlSource` DELETION IS A BEHAVIOR CHANGE (phase 3). It selects the ZMQ-vs-UI staged slot
+   (`MjArticulation.cpp:420`) and is fed into every controller (`ComputeAndApply(Source)`). Deleting
+   it makes ZMQ+UI co-drive last-write-wins-by-lease. Confirm acceptable; list under "must survive".
+
+### 16.3 Net-new work the plan did NOT scope (the missing 30%)
+Each is a NEW workstream, required before phase 4 can delete the shadow without regressing:
+- ROS CONTROL INGRESS routing (HIGH). `RosRpcTransport` writes straight through the actor:
+  `GetAllArticulations` (`:262`), per-write `GetArticulation` (`:436,485,533`),
+  `GetActuators`+`SetNetworkControl` (`:444-451,545-571`), `FindComponentByClass<UMjTwistController>`
+  (`:490`), and `GetStructureVersion()` to rebuild subs (`:238,366`). Deleting the shadow breaks
+  `cmd_ctrl`/`cmd_vel`/`joint_command`/`claim_control`/user-channel input for wire models. Needs a
+  shadowless command-routing target (a control-ingress interface keyed by addressable name).
+- SENSOR-SEMANTIC model-only table (HIGH). `FMjSensorState::Semantic` comes from
+  `UMjSensorRuntime::GetSemantic` (`MjStateCollector.cpp:146`) off the ProtoSpec schema, NOT
+  `mjModel`. No `mjtSensor -> EMjSensorSemantic` table exists. `/tf` + `/odom` per-link poses come
+  from `UMjBody::DescribeState` (`MjBody.cpp:375-395`), not an id-slice (which yields only the base
+  pose). "Keep DescribeState as ROS enrichment" transitively keeps the shadow alive — build the
+  model-only replacements (semantic table + per-body-id FK walk) or phase 4 can't land.
+- CAMERA IDENTITY + egress (HIGH). `stream-cameras` is not a clean toggle: the RPC camera surface
+  enumerates only via `GetAllArticulations` (`RpcHandlers_Camera.cpp:210`, can't see fast cameras);
+  `ResolveCameraCanonical` does `Cast<AMjArticulation>` (`MjCamera.cpp:131-143`) so a lightweight
+  body actor gets different topics/SHM stems/handshake keys; frame stamping lives only on
+  `AAMjManager` (`MjCamera.cpp:790-801`); mirror camera poses ride a SEPARATE `cxpos/cxquat` stream
+  (`MjbScene.cpp:1770-1797`) a body-transform-only mirror drops. There are FOUR camera egress paths
+  (per-camera ZMQ PUB, per-camera SHM via `CameraShmWriter`, `FMjCameraFrameBus`, RPC reply). Needs
+  a renderer-agnostic camera registry + canonical-name resolver decoupled from `AMjArticulation`.
+- HANDSHAKE is a RE-PLUMB, not a collapse (MED-HIGH). `actuator_types`/`default_control_mode`/
+  controller block are walked off the live actor (`RpcDispatcher.cpp:838-876`), not `mjModel`. If we
+  stop shipping `mjb`/`mjcf_compiled`, the "one description" must CARRY that per-element metadata on
+  the wire, captured from the actor phase 5 is demoting. Scope it as expansion.
+- REPLAY is a third clock consumer (MED). `MjReplayManager` installs its own `SetCustomStepHandler`
+  (`:385`), walks `GetAllArticulations` (`:235`), runs `mj_forward` (`:1279`). Add to "must survive"
+  and to phase 7's handler model (Direct/Puppet/Replay, not two).
+- LEVEL SAVE/RELOAD tags (MED). The render-server product saves actors tagged `MjbBody=`/`MjbGeom=`
+  and rewires via `ReindexFromLevel` (`MjbScene.cpp:83-84,165-189,292`). The new renderer MUST
+  preserve the tag scheme + reindex path.
+- SHM has no Subscribe backend (MED); camera SHM is a bespoke `CameraShmWriter` not routed through
+  `Publish`. The "one Subscribe base" must add an SHM subscribe or scope ZMQ-only.
+- Python is REAL work, not a rename (HIGH for the bridge phase). `_walk_model` (`articulation.py:882-995`)
+  is the entire source of joints/actuators; `set_control_source` is a public method
+  (`runtime.py:191-208`); `enums.py` values ARE the wire strings and `coerce()` raises on unknowns
+  (`:102`). Breaking-API, hard-raising, not silent. (This feeds the separate bridge redesign.)
+
+### 16.4 Blast-radius gaps (consumers the plan missed)
+- `GetAllArticulations` also at: `RpcHandlers_Step.cpp:178,295,366,430,558,1022`;
+  `RpcHandlers_SimOptions.cpp:74,454,463,489`; `RpcHandlers_Scene.cpp:104,119,123,272`;
+  `RpcHandlers_Control.cpp:128,168`; `AMjManager.cpp:128,936`; `MjStateCollector.cpp:274`;
+  `MjSimulateWidget.cpp:274,799,1414`; `RosRpcTransport.cpp:436,485,533` + `GetStructureVersion :238,366`.
+- `EControlSource` behavior consumers: `MjArticulation.cpp:420,429,493,508`;
+  `MjSimulateWidget.cpp:981,995,1325,1412,1417,1472`; controllers `MjPDController.cpp:72` /
+  `MjPassthroughController.cpp:35`; tests `MjActuatorControlSlotTests`, `MjActuatorTests`,
+  `MjSpecInstallTests`, `MjPDControllerTests`.
+- Mode-enum reach: ~151 refs across 22 files; switch logic in ~13 Source files incl. `MjCamera.cpp`
+  (7 sites), `RpcHandlers_Step.cpp` (13). The mode collapse is NOT engine-confined.
+- Race 2 (BeginDestroy) is LATENT/guarded on the normal path (play nulls in EndPlay; only
+  abnormal destroy-without-EndPlay hits it), not a live UAF — still worth fixing, don't overstate.
+- `mjz`: the pinned headers declare only `mj_encode`, NO `mj_decode`/archive-load. Treat as
+  UNAVAILABLE and drop from the format list unless a decoder is confirmed registered in the lib.
+
+### 16.5 Corrected dependency graph (concurrent vs serial)
+Phases the doc called independent are not:
+- Phase 3 FULL depends on Phase 1 (per-id Drive needs the partition). Only the NARROW cut is
+  partition-free.
+- Phase 5 actor-DEMOTION depends on 1+2+3 (the bridge addresses/collects/controls through the
+  actor until those move off it). The renderer EXTRACTION is independent; the demotion is not.
+- Phase 3 and Phase 7 both rewrite the SAME worker loop (`MjPhysicsEngine.cpp:1224-1266`; the
+  `bSkipApplyControls=(Mode==Puppet)` branch `:1232` fuses control + clock). They serialize.
+- Phase 0d and Phase 2 both rewrite `MjStateCollector::Collect()`.
+- Phase 4 needs a shadowless ROS command-routing path (16.3) in addition to phase 6.
+
+```
+Serial spine:   1 -> 2 -> 3(full) -> 4 -> 7 -> 5-demote -> 8
+                6 -> 4 ;  3 -> 7 (shared worker loop)
+Concurrent from day 1: 0a, 0d, 6, renderer-EXTRACTION(#21)+resolvers,
+                       ROS model-only replacements (semantic table, FK, ingress), camera registry
+```
+
+### 16.6 Shared-file contention (merge hotspots)
+Four-way collisions block naive per-phase parallelism:
+- `MjPhysicsEngine.*` — 0a, 0c, 1, 3, 4, 7 (nearly every phase).
+- `RpcHandlers_Step.cpp` — 2, 3, 4, 7.
+- `MjbScene.*` — 0b, 4, 5, 7.
+Also 2-3 way: `RpcDispatcher.cpp` (2,4), `MjStateCollector.*` (0d,2,4), `MjArticulation.*` (3,5,7),
+`MjCamera.cpp` (5,7), `RosRpcTransport.cpp` (3,4,7), `AMjManager.*` (1,2,4,5,7).
+RULE: on the hotspot files, assign ONE owning agent across all colliding phases (partition work by
+FILE there), and by FEATURE elsewhere.
+
+### 16.7 Parallel decomposition (contract-first)
+- STEP 0 (serial, coordinator, no logic): resolve the addressable-unit NAME first; land header-only
+  compiling stubs for the frozen contracts — `MjAddressable.h` + builder, `FMjControlBuffer` +
+  the FULL state-injection channel, `FMjEnrichment` + EMjEnrichmentScope, a COMMAND-INGRESS
+  interface (not just state), `IMjGeomAssetResolver` at COMPONENT level, `EMjPoseSource` + capability
+  flags, an `mjtSensor->EMjSensorSemantic` table interface, and a renderer-agnostic camera registry.
+- STEP 1 (fan out, ~5 agents, no spine files): 0a/0b/0c lifecycle fixes; 6 wire-model normalize;
+  renderer extraction (#21) + resolvers; ROS model-only replacements (semantic table + FK + ingress
+  routing); 0d worldgeom (coordinate with the phase-2 owner).
+- STEP 2 (serial spine, one owner per hotspot file): `1 -> 2 -> 3(narrow -> full) -> 4 -> 7 ->
+  5-demote -> 8`, rebasing each on the last. Ship the phase-3 NARROW cut first (fixes
+  Live-ignores-control_mode `MjPhysicsEngine.cpp:1232` independently).
+
+### 16.8 Newly-blocking open decisions (add to section 14)
+Drain cadence (16.2.1); full state-injection channel (16.2.2); component-level resolver (16.2.3);
+the actual play render path (16.2.4); ViewerSubscribe's fate (16.2.5); EControlSource behavior
+change accepted? (16.2.6); scope the missing-30% net-new work (16.3) into explicit phases; drop
+`mjz` unless a decoder is confirmed; and the addressable-unit name (still open, blocks Step 0).
+
+### Additions to "functionality that MUST survive" (section 11)
+i. ROS control ingress (cmd_ctrl/cmd_vel/joint_command/claim_control/user-channel) to wire models.
+j. Sensor-semantic ROS typing (Imu/Wrench/…) and per-link `/tf` + `/odom`.
+k. Camera streaming from the unified renderer with STABLE canonical topics/SHM stems + frame stamps.
+l. Replay (its own clock handler + forward).
+m. Level save/reload of renderer actors via the `MjbBody=`/`MjbGeom=` tag + reindex.
+n. UI+ZMQ co-drive semantics (or an accepted, documented behavior change).

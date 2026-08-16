@@ -9,7 +9,9 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 
+#include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -81,8 +83,8 @@ FVector PrimitiveScale(int32 Type, const double* Size)
 	}
 }
 
-// The MakeVisualizerPart pattern from UMjGeom: a query-only static mesh part
-// carrying the named engine primitive (null path leaves the asset unassigned).
+// A query-only static mesh part carrying the named engine primitive (null path
+// leaves the asset unassigned), attached under Body's root.
 UStaticMeshComponent* MakePart(AActor* Body, const TCHAR* MeshPath)
 {
 	UStaticMeshComponent* Part = NewObject<UStaticMeshComponent>(Body);
@@ -104,38 +106,38 @@ UStaticMeshComponent* MakePart(AActor* Body, const TCHAR* MeshPath)
 }
 } // namespace
 
-FMjImportedAssetResolver::FMjImportedAssetResolver(mjModel_* InModel, const FSpecRef& InSpec, UMjbAssetBaker* InBaker)
+FMjImportedAssetResolver::FMjImportedAssetResolver(mjModel_* InModel, UMjbAssetBaker* InBaker,
+	TMap<int32, TWeakObjectPtr<UMjGeom>> InGeomIndex)
 	: Model(InModel)
-	, Spec(InSpec)
+	, GeomIndex(MoveTemp(InGeomIndex))
 	, BakedFallback(InModel, InBaker)
 {
 }
 
-void FMjImportedAssetResolver::ApplyImportedMaterial(UPrimitiveComponent* Comp, int32 G) const
+UMjGeom* FMjImportedAssetResolver::OriginFor(int32 GeomId) const
+{
+	if (const TWeakObjectPtr<UMjGeom>* Found = GeomIndex.Find(GeomId))
+	{
+		return Found->Get();
+	}
+	return nullptr;
+}
+
+void FMjImportedAssetResolver::ApplyImportedMaterial(UPrimitiveComponent* Comp, UMjGeom* Geom, int32 G) const
 {
 	UMaterialInterface* Master = MjLoadMasterMaterial();
-	if (!Master || !Comp)
+	if (!Master || !Comp || !Geom)
 	{
 		return;
 	}
 
-	const int32 MatId = Model->geom_matid[G];
-	FString MaterialName;
-	if (MatId >= 0)
-	{
-		const char* Name = mj_id2name(Model, mjOBJ_MATERIAL, MatId);
-		if (Name)
-		{
-			MaterialName = ANSI_TO_TCHAR(Name);
-		}
-	}
+	// The material the element names, resolved through its own default-class chain
+	// and its own spec -- the prefix-free authored name, not the model's prefixed one.
+	const FSpecRef Spec = FSpecRef::OverOwner(Geom);
 	FMjMaterialValues Values;
-	MjResolveMaterial(Spec, MaterialName, Values);
+	MjResolveMaterial(Spec, Geom->EffectiveMaterialName(), Values);
 
-	// The rgba a geom draws with: its material's when it has one, else its own --
-	// the same convention the compiled model resolves geom_matid by.
-	const float* Rgba = (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
-	const FLinearColor BaseColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]);
+	const FLinearColor BaseColor = Geom->GetEffectiveColor();
 
 	// The planar extent texuniform tiles by (a size-0 plane is drawn as a finite
 	// quad, so report its half-extent rather than zero).
@@ -160,17 +162,23 @@ UPrimitiveComponent* FMjImportedAssetResolver::MakeGeomComponent(int32 G, AActor
 	{
 		return nullptr;
 	}
+
+	// No authoring element bound to this id (scene-root geometry, an inline mesh):
+	// the model is all there is, so the baked resolver draws it.
+	UMjGeom* Geom = OriginFor(G);
+	if (!Geom)
+	{
+		return BakedFallback.MakeGeomComponent(G, Body);
+	}
+
 	const int32 Type = Model->geom_type[G];
 
 	if (Type == mjGEOM_MESH)
 	{
-		// The `<mesh>` element the geom names, resolved to the imported asset. An
-		// inline mesh the importer never produced has no element to find; the baked
-		// resolver draws it from the MJB instead.
-		const char* MeshName = mj_id2name(Model, mjOBJ_MESH, Model->geom_dataid[G]);
-		const FMjResolvedMesh Resolved = MeshName
-			? MjResolveMesh(Spec, ANSI_TO_TCHAR(MeshName))
-			: FMjResolvedMesh();
+		// The `<mesh>` element the geom names, resolved to the imported asset by the
+		// element's own local name. An inline mesh the importer never produced has no
+		// element to find; the baked resolver draws it from the model instead.
+		const FMjResolvedMesh Resolved = MjResolveMesh(FSpecRef::OverOwner(Geom), Geom->EffectiveMeshName());
 		if (!Resolved.Asset)
 		{
 			return BakedFallback.MakeGeomComponent(G, Body);
@@ -183,14 +191,14 @@ UPrimitiveComponent* FMjImportedAssetResolver::MakeGeomComponent(int32 G, AActor
 		Comp->SetStaticMesh(Resolved.Asset);
 		// `<mesh scale>` only: the import already put the asset in the level's units.
 		Comp->SetRelativeScale3D(Resolved.Scale);
-		ApplyImportedMaterial(Comp, G);
+		ApplyImportedMaterial(Comp, Geom, G);
 		return Comp;
 	}
 
 	const FPrimitiveShape Shape = ShapeFor(Type);
 	if (!Shape.MeshPath)
 	{
-		return nullptr;
+		return BakedFallback.MakeGeomComponent(G, Body);
 	}
 	UStaticMeshComponent* Comp = MakePart(Body, Shape.MeshPath);
 	if (!Comp)
@@ -198,7 +206,7 @@ UPrimitiveComponent* FMjImportedAssetResolver::MakeGeomComponent(int32 G, AActor
 		return nullptr;
 	}
 	Comp->SetRelativeScale3D(PrimitiveScale(Type, Model->geom_size + 3 * G));
-	ApplyImportedMaterial(Comp, G);
+	ApplyImportedMaterial(Comp, Geom, G);
 
 	// Rounded capsule caps: a sphere at each end of the cylinder shaft. The base
 	// meshes are 100 units, so the shaft's local half-height is 50; the shaft's own
@@ -227,7 +235,7 @@ UPrimitiveComponent* FMjImportedAssetResolver::MakeGeomComponent(int32 G, AActor
 			Cap->AttachToComponent(Comp, FAttachmentTransformRules::KeepRelativeTransform);
 			Cap->SetRelativeLocation(FVector(0.0, 0.0, CapZ[S]));
 			Cap->SetRelativeScale3D(CapScale);
-			ApplyImportedMaterial(Cap, G);
+			ApplyImportedMaterial(Cap, Geom, G);
 		}
 	}
 	return Comp;

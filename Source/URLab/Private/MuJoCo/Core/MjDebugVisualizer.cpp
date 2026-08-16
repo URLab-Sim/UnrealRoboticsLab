@@ -28,6 +28,7 @@
 #include "MuJoCo/Utils/MjColor.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Fast/MjbScene.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "DrawDebugHelpers.h"
@@ -38,6 +39,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Utils/URLabLogging.h"
 
+#if WITH_EDITOR
 namespace
 {
 // Which body a geom belongs to is a fact of the compiled model, not of the
@@ -56,6 +58,7 @@ int32 GeomBodyId(const mjModel* Model, const UMjGeom* Geom)
 	return Model->geom_bodyid[GeomId];
 }
 } // namespace
+#endif
 
 UMjDebugVisualizer::UMjDebugVisualizer()
 {
@@ -378,6 +381,14 @@ void UMjDebugVisualizer::ToggleVisuals()
 	if (!Manager)
 		return;
 
+	// At play the articulation visuals are the lightweight view's geoms; in the editor
+	// preview they are the authoring meshes.
+	if (AMjbScene* View = Manager->GetCompiledRenderView())
+	{
+		View->SetGeomsVisible(!bVisualsHidden);
+	}
+
+#if WITH_EDITOR
 	for (AMjArticulation* Art : Manager->GetAllArticulations())
 	{
 		if (!Art)
@@ -389,6 +400,7 @@ void UMjDebugVisualizer::ToggleVisuals()
 			SMC->SetVisibility(!bVisualsHidden);
 		}
 	}
+#endif
 	UE_LOG(LogURLab, Log, TEXT("Visuals: %s"), bVisualsHidden ? TEXT("HIDDEN") : TEXT("VISIBLE"));
 }
 
@@ -539,6 +551,43 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 
 	const mjModel* Model = Manager->PhysicsEngine ? Manager->PhysicsEngine->m_model : nullptr;
 
+	// The articulations render through the lightweight play view, so the per-body
+	// overlay swaps the material on that view's geom components (keyed by mj geom id),
+	// grouped by geom_bodyid and coloured by the geom's originating participant.
+	if (AMjbScene* View = Manager->GetCompiledRenderView())
+	{
+		const int32 NGeom = View->NumGeoms();
+		for (int32 G = 0; G < NGeom; ++G)
+		{
+			UStaticMeshComponent* Mesh = Cast<UStaticMeshComponent>(View->GetGeomComponent(G));
+			if (!Mesh || !Model)
+				continue;
+			const int32 BodyId = Model->geom_bodyid[G];
+			if (BodyId < 0)
+				continue;
+
+			uint32 ArtHash = GetTypeHash(View->GetClass()->GetFName());
+			if (UMjGeom* Origin = View->GetGeomOrigin(G))
+			{
+				if (AActor* Owner = Origin->GetOwner())
+					ArtHash = GetTypeHash(Owner->GetClass()->GetFName());
+			}
+
+			ApplyToMesh(Mesh, BodyId, ArtHash);
+
+			TArray<USceneComponent*> Children;
+			Mesh->GetChildrenComponents(true, Children);
+			for (USceneComponent* Child : Children)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+					ApplyToMesh(SMC, BodyId, ArtHash);
+			}
+		}
+	}
+
+#if WITH_EDITOR
+	// The editor preview (and the test harness) keeps the authoring visualizer meshes,
+	// plus any static mesh a caller hung under a geom themselves.
 	for (AMjArticulation* Art : Manager->GetAllArticulations())
 	{
 		if (!Art)
@@ -566,6 +615,7 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 			}
 		}
 	}
+#endif
 
 	for (UMjQuickConvertComponent* QC : Manager->GetAllQuickComponents())
 	{
@@ -714,7 +764,43 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
 
 	const mjModel* Model = Manager->PhysicsEngine ? Manager->PhysicsEngine->m_model : nullptr;
 
-	// Articulation visual meshes — walk geoms and their static-mesh children.
+	// Articulation visual meshes are the lightweight play view's geom components; the
+	// seg cameras render siblings of those, keyed by geom_bodyid and the originating
+	// participant.
+	if (AMjbScene* View = Manager->GetCompiledRenderView())
+	{
+		const int32 NGeom = View->NumGeoms();
+		for (int32 G = 0; G < NGeom; ++G)
+		{
+			UStaticMeshComponent* Mesh = Cast<UStaticMeshComponent>(View->GetGeomComponent(G));
+			if (!Mesh || !Model)
+				continue;
+			const int32 BodyId = Model->geom_bodyid[G];
+			if (BodyId < 0)
+				continue;
+
+			uint32 ArtHash = GetTypeHash(View->GetClass()->GetFName());
+			if (UMjGeom* Origin = View->GetGeomOrigin(G))
+			{
+				if (AActor* Owner = Origin->GetOwner())
+					ArtHash = GetTypeHash(Owner->GetClass()->GetFName());
+			}
+
+			AddSibling(Mesh, BodyId, ArtHash);
+
+			TArray<USceneComponent*> Children;
+			Mesh->GetChildrenComponents(true, Children);
+			for (USceneComponent* Child : Children)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+					AddSibling(SMC, BodyId, ArtHash);
+			}
+		}
+	}
+
+#if WITH_EDITOR
+	// Authoring visual meshes (the editor preview and the test harness), plus any static
+	// mesh a caller hung under a geom themselves.
 	for (AMjArticulation* Art : Manager->GetAllArticulations())
 	{
 		if (!Art)
@@ -740,6 +826,7 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
 			}
 		}
 	}
+#endif
 
 	// Quick-Convert primitives — group hash keyed off the first static mesh.
 	for (UMjQuickConvertComponent* QC : Manager->GetAllQuickComponents())

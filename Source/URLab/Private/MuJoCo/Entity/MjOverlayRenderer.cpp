@@ -6,6 +6,7 @@
 #include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 
@@ -33,30 +34,32 @@ bool GroupVisible(const TArray<uint8>& Mask, int32 Group)
 }
 } // namespace
 
-void UMjOverlayRenderer::SetModel(mjModel_* InModel, mjData_* InData)
+void UMjOverlayRenderer::SetModel(mjModel_* InModel)
 {
 	Model = InModel;
-	Data = InData;
 }
 
-void UMjOverlayRenderer::DrawOverlays() const
+void UMjOverlayRenderer::DrawOverlays(const FMjRenderSnapshot& Snap) const
 {
-	if (!Model || !Data || !GetWorld())
+	if (!Model || !GetWorld())
 	{
 		return;
 	}
 	if (FlagSet(Flags.VisFlags, mjVIS_CONVEXHULL))
 	{
-		DrawCollision();
+		DrawCollision(Snap);
 	}
 	if (FlagSet(Flags.VisFlags, mjVIS_JOINT))
 	{
-		DrawJoints();
+		DrawJoints(Snap);
 	}
-	DrawSites();
+	if (bDrawSites)
+	{
+		DrawSites(Snap);
+	}
 }
 
-void UMjOverlayRenderer::DrawCollision() const
+void UMjOverlayRenderer::DrawCollision(const FMjRenderSnapshot& Snap) const
 {
 	UWorld* World = GetWorld();
 	const mjModel* M = Model;
@@ -66,11 +69,16 @@ void UMjOverlayRenderer::DrawCollision() const
 		{
 			continue;
 		}
-		MjUtils::DrawDebugGeom(World, M, Data, G, FColor::Magenta, 100.0f);
+		if (!Snap.GeomXPos.IsValidIndex(G * 3 + 2) || !Snap.GeomXMat.IsValidIndex(G * 9 + 8))
+		{
+			continue;
+		}
+		MjUtils::DrawDebugGeom(World, M, G, &Snap.GeomXPos[G * 3], &Snap.GeomXMat[G * 9],
+			FColor::Magenta, 100.0f);
 	}
 }
 
-void UMjOverlayRenderer::DrawJoints() const
+void UMjOverlayRenderer::DrawJoints(const FMjRenderSnapshot& Snap) const
 {
 	UWorld* World = GetWorld();
 	const mjModel* M = Model;
@@ -81,23 +89,31 @@ void UMjOverlayRenderer::DrawJoints() const
 		{
 			continue;
 		}
+		if (!Snap.JntXAnchor.IsValidIndex(J * 3 + 2) || !Snap.JntXAxis.IsValidIndex(J * 3 + 2))
+		{
+			continue;
+		}
 
-		const FVector Anchor = URLabAxisConv::MjPositionToUe(Data->xanchor + 3 * J) + SceneOrigin;
-		const FVector Axis = URLabAxisConv::MjDirectionToUe(Data->xaxis + 3 * J);
+		const FVector Anchor = URLabAxisConv::MjPositionToUe(&Snap.JntXAnchor[J * 3]) + SceneOrigin;
+		const FVector Axis = URLabAxisConv::MjDirectionToUe(&Snap.JntXAxis[J * 3]);
 
 		float RangeMin = static_cast<float>(M->jnt_range[J * 2 + 0]);
 		float RangeMax = static_cast<float>(M->jnt_range[J * 2 + 1]);
 		const bool bLimited = RangeMin != 0.0f || RangeMax != 0.0f;
 
-		float CurrentPos = static_cast<float>(Data->qpos[M->jnt_qposadr[J]]);
-		float RefPos = static_cast<float>(M->qpos0[M->jnt_qposadr[J]]);
+		const int32 QAdr = M->jnt_qposadr[J];
+		float CurrentPos = Snap.QPos.IsValidIndex(QAdr) ? static_cast<float>(Snap.QPos[QAdr]) : NAN;
+		float RefPos = static_cast<float>(M->qpos0[QAdr]);
 
 		// MuJoCo stores a slide's travel in metres; the draw helper wants cm.
 		if (Type == mjJNT_SLIDE)
 		{
 			RangeMin *= 100.0f;
 			RangeMax *= 100.0f;
-			CurrentPos *= 100.0f;
+			if (!FMath::IsNaN(CurrentPos))
+			{
+				CurrentPos *= 100.0f;
+			}
 			RefPos *= 100.0f;
 		}
 
@@ -105,7 +121,7 @@ void UMjOverlayRenderer::DrawJoints() const
 	}
 }
 
-void UMjOverlayRenderer::DrawSites() const
+void UMjOverlayRenderer::DrawSites(const FMjRenderSnapshot& Snap) const
 {
 	UWorld* World = GetWorld();
 	const mjModel* M = Model;
@@ -115,8 +131,12 @@ void UMjOverlayRenderer::DrawSites() const
 		{
 			continue;
 		}
+		if (!Snap.SiteXPos.IsValidIndex(S * 3 + 2))
+		{
+			continue;
+		}
 
-		const FVector Pos = URLabAxisConv::MjPositionToUe(Data->site_xpos + 3 * S) + SceneOrigin;
+		const FVector Pos = URLabAxisConv::MjPositionToUe(&Snap.SiteXPos[S * 3]) + SceneOrigin;
 		const float* Rgba = &M->site_rgba[S * 4];
 		FColor Color(static_cast<uint8>(Rgba[0] * 255.0), static_cast<uint8>(Rgba[1] * 255.0),
 			static_cast<uint8>(Rgba[2] * 255.0), 200);

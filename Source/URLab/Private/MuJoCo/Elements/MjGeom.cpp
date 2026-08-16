@@ -442,6 +442,20 @@ FString UMjGeom::EffectiveMeshName() const
 
 void UMjGeom::RebuildVisualizer()
 {
+	// The authoring preview meshes are an editor-world artefact. At play the
+	// lightweight renderer draws the compiled scene, so this geom builds no meshes of
+	// its own (which would double the geometry and fight the lightweight view); any
+	// PIE-carried preview mesh is torn down so nothing double-draws. The element
+	// itself stays, still answering the spec queries the resolver reads.
+	if (const UWorld* World = GetWorld())
+	{
+		if (World->IsGameWorld())
+		{
+			DestroyVisualizer();
+			return;
+		}
+	}
+
 	// A `<default>` partial is an inheritance template, not a geom: MuJoCo never
 	// places it and never draws it, and its `size` is whatever the class chose to
 	// declare -- humanoid's `<default class="body">` declares a capsule and no

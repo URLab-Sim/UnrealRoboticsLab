@@ -9,6 +9,8 @@
 #include "GameFramework/Actor.h"
 #include "MuJoCo/Fast/MjbDirectMode.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
+#include "MuJoCo/Entity/MjGeomAssetResolver.h"
+#include "Templates/UniquePtr.h"
 #include "MjbScene.generated.h"
 
 struct mjModel_;
@@ -16,6 +18,8 @@ struct mjData_;
 struct FMjGeomAppearance;
 class UPrimitiveComponent;
 class AAMjManager;
+class AMjArticulation;
+class UMjGeom;
 class UMjbAssetBaker;
 class UMjbTransportBus;
 class UTexture;
@@ -164,6 +168,43 @@ public:
 	int32 BuildStaticPreview();
 
 	/**
+	 * Build the lightweight play view of an already-compiled scene. The model is
+	 * BORROWED from the shared engine -- this scene never loads, steps or frees it,
+	 * runs no bus and no Direct mode, and is driven externally through
+	 * ApplyBodyTransforms + ApplyCameraPoses from the engine's render snapshot. Each
+	 * geom resolves its component through the imported-asset resolver (the UE assets a
+	 * model import produced), keyed back to the authoring UMjGeom via the participants'
+	 * element indices, with the baked resolver behind it for scene-root/inline
+	 * geometry. Also builds the cameras so body-fixed model cameras re-home onto this
+	 * view. Returns geom count built.
+	 */
+	int32 BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants);
+
+	/** Flag this scene as the manager-driven compiled view before its BeginPlay runs,
+	 *  so BeginPlay does not try to load an MJB of its own. */
+	void MarkExternallyDriven() { bExternallyDriven = true; }
+
+	/** The borrowed/loaded model this scene draws, or null before a build. */
+	const mjModel_* GetModelPtr() const { return Model; }
+
+	/** The render component built for a geom id, or null (hidden/instanced/unbuilt). */
+	UPrimitiveComponent* GetGeomComponent(int32 GeomId) const;
+
+	/** The authoring UMjGeom a compiled geom id came from, or null (scene-root/baked). */
+	UMjGeom* GetGeomOrigin(int32 GeomId) const;
+
+	/** Number of geom slots (== model ngeom once built). */
+	int32 NumGeoms() const { return GeomComps.Num(); }
+
+	/** Show or hide every built geom component (the play-time visuals toggle). */
+	void SetGeomsVisible(bool bVisible);
+
+	/** Place cameras from their world pose (streamed cam transforms wxyz, 3*ncam /
+	 *  4*ncam). Null pointers fall back to this process's mjData rest pose. Driven by
+	 *  the manager for the compiled play view each frame from the render snapshot. */
+	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
+
+	/**
 	 * Rebuild the body->actor and geom->component maps from the tags on the
 	 * already-present child actors, instead of rebuilding geometry from the MJB.
 	 * For a saved scene reopened in the editor: the persistent tagged actors are
@@ -254,6 +295,27 @@ private:
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;
 
+	// False when the model is borrowed from the shared engine (the compiled play
+	// view): Teardown then clears the pointers WITHOUT freeing them.
+	bool bOwnsModel = true;
+
+	// True for the compiled play view: BeginPlay does not touch MjbFilePath/bytes and
+	// Tick never streams, because the manager builds and drives this scene directly.
+	bool bExternallyDriven = false;
+
+	// The instanced-statics collapse shares one baked UStaticMesh across repeated
+	// world-body geoms; the compiled view resolves those geoms through imported assets
+	// instead, so it builds them individually and turns the collapse off.
+	bool bAllowInstancedStatics = true;
+
+	// Per-geom component builder. When set (the compiled view's imported resolver) it
+	// replaces the inline baked resolver BuildGeom uses by default.
+	TUniquePtr<IMjGeomAssetResolver> GeomResolver;
+
+	// Compiled geom id -> the authoring UMjGeom it bound to, for the debug overlays
+	// and segmentation pools that need each geom's originating participant.
+	TMap<int32, TWeakObjectPtr<UMjGeom>> GeomOrigins;
+
 	// Builds + caches the meshes/textures/materials for the loaded MJB (content-hash
 	// keyed). A UPROPERTY so its cached assets are GC-rooted through the scene.
 	UPROPERTY(Transient)
@@ -315,9 +377,6 @@ private:
 	// Turn the dormant cameras into a live render server (render target + ZMQ/SHM
 	// bind + per-frame capture). Play session only.
 	void StartCameraStreaming();
-	// Place cameras from their world pose. Uses the streamed cam transforms when
-	// present, else this process's mjData rest pose.
-	void ApplyCameraPoses(const double* Cxpos, const double* Cxquat);
 
 	// Copycat: drive the game viewport's view camera from an owner's free/user
 	// camera (MuJoCo world eye position + forward + up), so a render slave mirrors

@@ -28,6 +28,8 @@
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Entity/MjEntityActor.h"
+#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Gen/Elements/Options/MjCompiler.gen.h"
 #include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
@@ -496,6 +498,11 @@ void AAMjManager::BeginPlay()
 			UE_LOG(LogURLab, Warning, TEXT("[AAMjManager] Could not load WBP_MjSimulate Blueprint class. Widget not created."));
 		}
 	}
+
+	// The compiled scene renders through one lightweight view at play, not the
+	// authoring mesh tree. Built here (BeginPlay, game worlds only) so it is absent
+	// in automation worlds, which drive rendering without dispatching BeginPlay.
+	BuildRuntimeView();
 }
 
 void AAMjManager::ToggleSimulateWidget()
@@ -808,6 +815,18 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 
 void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Retire the compiled render view before the engine frees its borrowed model.
+	if (CompiledRenderView)
+	{
+		CompiledRenderView->Destroy();
+		CompiledRenderView = nullptr;
+	}
+	CompiledViewModel = nullptr;
+	if (OverlayRenderer)
+	{
+		OverlayRenderer->SetModel(nullptr);
+	}
+
 	// Stop the viewer input FIRST: its worker thread applies into the engine
 	// under CallbackMutex, so it must be joined before the engine (and its
 	// model/data) are torn down below.
@@ -953,11 +972,69 @@ void AAMjManager::ApplyLatestRenderState()
 				Quick->ApplyRenderState(Snap);
 			}
 		}
+		DriveCompiledRenderView(Snap);
 		// Record which post-step state the actors now reflect so cameras can
 		// tag their readbacks with it (frame_id association for the bridge).
 		LastAppliedRenderFrameId.store(Snap.FrameId, std::memory_order_release);
 		LastAppliedRenderSimTime.store(Snap.SimTime, std::memory_order_release);
 	});
+}
+
+void AAMjManager::BuildRuntimeView()
+{
+	UWorld* World = GetWorld();
+	if (GIsAutomationTesting || !World || !World->IsGameWorld() || bIsViewerRole || !PhysicsEngine)
+	{
+		return;
+	}
+	mjModel* Model = PhysicsEngine->GetModel();
+	if (!Model || PhysicsEngine->IsRawModelInstalled())
+	{
+		return;
+	}
+	if (CompiledRenderView && CompiledViewModel == Model)
+	{
+		return;
+	}
+	if (CompiledRenderView)
+	{
+		CompiledRenderView->Destroy();
+		CompiledRenderView = nullptr;
+	}
+
+	const TArray<AMjArticulation*> Arts = PhysicsEngine->GetAllArticulations();
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.ObjectFlags |= RF_Transient;
+	AMjbScene* View = World->SpawnActorDeferred<AMjbScene>(
+		AMjbScene::StaticClass(), FTransform::Identity, this, nullptr,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+	if (!View)
+	{
+		return;
+	}
+	View->MarkExternallyDriven();
+	UGameplayStatics::FinishSpawningActor(View, FTransform::Identity);
+	View->BuildFromCompiledModel(Model, Arts);
+	CompiledRenderView = View;
+	CompiledViewModel = Model;
+
+	if (!OverlayRenderer)
+	{
+		OverlayRenderer = NewObject<UMjOverlayRenderer>(this, TEXT("CompiledOverlayRenderer"));
+		OverlayRenderer->SetupAttachment(GetRootComponent());
+		OverlayRenderer->RegisterComponent();
+	}
+	OverlayRenderer->SetModel(Model);
+}
+
+void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
+{
+	if (CompiledRenderView && Snap.XPos.Num() > 0 && Snap.XQuat.Num() > 0)
+	{
+		CompiledRenderView->ApplyBodyTransforms(Snap.XPos.GetData(), Snap.XQuat.GetData());
+	}
 }
 
 AAMjManager* AAMjManager::GetManager()

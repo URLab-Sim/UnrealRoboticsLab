@@ -24,6 +24,9 @@
 #include "MuJoCo/Entity/MjAppearance.h"
 #include "MuJoCo/Entity/MjGeomAppearance.h"
 #include "MuJoCo/Entity/MjBakedAssetResolver.h"
+#include "MuJoCo/Entity/MjImportedAssetResolver.h"
+#include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
@@ -105,6 +108,13 @@ AMjbScene::AMjbScene()
 void AMjbScene::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// The compiled play view is built and driven by the manager off the shared engine
+	// model; it has no MJB of its own to load and nothing to stand up here.
+	if (bExternallyDriven)
+	{
+		return;
+	}
 
 	// The raw mjModel/mjData pointers were shallow-copied from the editor actor on
 	// the PIE duplication and are stale -- clear them WITHOUT freeing (the editor
@@ -253,6 +263,113 @@ int32 AMjbScene::BuildStaticPreview()
 	// tick -- the scene must never animate outside a play session. When the user
 	// presses Play, the PIE duplicate of this actor connects the bus and streams.
 	return LoadAndBuild();
+}
+
+namespace
+{
+// A cache key for the compiled model's baked fallback assets. The model carries no
+// wire bytes to hash, so this keys on its pool sizes -- stable within a session,
+// which is all the transient fallback cache needs.
+FString CompiledModelContentHash(const mjModel_* M)
+{
+	const FString Key = FString::Printf(TEXT("compiled_%d_%d_%d_%d_%d"),
+		(int)M->nbody, (int)M->ngeom, (int)M->nmesh, (int)M->nq, (int)M->nv);
+	uint8 Digest[20];
+	FSHA1::HashBuffer((const uint8*)TCHAR_TO_ANSI(*Key), Key.Len(), Digest);
+	return BytesToHex(Digest, 20).Left(16);
+}
+
+// Whether geom G answers to a domain-randomization request for `Want`. A raw MJB
+// carries unprefixed names, so it matches exactly. A compiled model prefixes every
+// participant name, so a client's local name matches on the prefix-stripped tail --
+// the same rule UMjAppearanceStore::ResolveMjId uses to find the id.
+bool CompiledGeomNameMatches(const mjModel_* M, int32 G, const FString& Want, bool bAllowTail)
+{
+	const char* Nm = mj_id2name(M, mjOBJ_GEOM, G);
+	if (!Nm || !*Nm)
+	{
+		return false;
+	}
+	const FString Full = ANSI_TO_TCHAR(Nm);
+	return Full == Want || (bAllowTail && Full.EndsWith(TEXT("_") + Want));
+}
+} // namespace
+
+int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants)
+{
+	Teardown();
+	if (!InModel)
+	{
+		return -1;
+	}
+	Model = InModel;
+	Data = nullptr;
+	bOwnsModel = false;
+	bExternallyDriven = true;
+	bAllowInstancedStatics = false;
+
+	// Map every compiled geom id back to the authoring element that bound to it, so
+	// the resolver reads each geom's mesh/material off its own prefix-free spec and
+	// the overlays/segmentation pools can find each geom's originating participant.
+	GeomOrigins.Reset();
+	for (AMjArticulation* Art : Participants)
+	{
+		if (!Art)
+		{
+			continue;
+		}
+		for (UMjGeom* Geom : Art->GetGeoms())
+		{
+			if (Geom && Geom->GetBoundId().IsSet())
+			{
+				GeomOrigins.Add(Geom->GetBoundId().GetValue(), Geom);
+			}
+		}
+	}
+
+	if (!AssetBaker)
+	{
+		AssetBaker = NewObject<UMjbAssetBaker>(this);
+	}
+	AssetBaker->Init(Model, CompiledModelContentHash(Model), false);
+
+	GeomResolver = MakeUnique<FMjImportedAssetResolver>(Model, AssetBaker, GeomOrigins);
+
+	BuildBodies();
+	BuildGeoms();
+	// Body-fixed model cameras (wrist/head) re-home onto this view; the manager places
+	// them each frame via ApplyCameraPoses. Dormant unless camera streaming is enabled.
+	BuildCameras();
+
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjbScene] compiled play view: nbody=%d ngeom=%d (%d geom comps, %d authored origins)"),
+		(int)Model->nbody, (int)Model->ngeom, NumBuiltGeoms(), GeomOrigins.Num());
+	return static_cast<int32>(Model->ngeom);
+}
+
+UPrimitiveComponent* AMjbScene::GetGeomComponent(int32 GeomId) const
+{
+	return GeomComps.IsValidIndex(GeomId) ? GeomComps[GeomId].Get() : nullptr;
+}
+
+UMjGeom* AMjbScene::GetGeomOrigin(int32 GeomId) const
+{
+	if (const TWeakObjectPtr<UMjGeom>* Found = GeomOrigins.Find(GeomId))
+	{
+		return Found->Get();
+	}
+	return nullptr;
+}
+
+void AMjbScene::SetGeomsVisible(bool bVisible)
+{
+	for (const TObjectPtr<UPrimitiveComponent>& Comp : GeomComps)
+	{
+		if (Comp)
+		{
+			Comp->SetVisibility(bVisible, /*bPropagateToChildren=*/true);
+		}
+	}
 }
 
 int32 AMjbScene::ReindexFromLevel()
@@ -552,7 +669,10 @@ void AMjbScene::BuildGeoms()
 	// static, so the transform stream simply never touches them.
 	TSet<int32> Instanced;
 #if WITH_EDITOR
-	BuildInstancedStatics(Instanced);
+	if (bAllowInstancedStatics)
+	{
+		BuildInstancedStatics(Instanced);
+	}
 #endif
 
 	for (int32 G = 0; G < NGeom; ++G)
@@ -896,9 +1016,13 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 		}
 #endif
 	}
-	// The geom actor is the parent for this geom's mesh component(s). The primitive
-	// (and mesh-vs-proc-mesh) build lives in the baked resolver, so the wire path and
-	// a future imported path share one component-creation contract.
+	// The geom actor is the parent for this geom's mesh component(s). The compiled
+	// play view supplies an imported-asset resolver; the wire path builds straight
+	// from the model through the baked resolver. Both share one component contract.
+	if (GeomResolver.IsValid())
+	{
+		return GeomResolver->MakeGeomComponent(G, GeomActor);
+	}
 	FMjBakedAssetResolver Resolver(Model, AssetBaker);
 	return Resolver.MakeGeomComponent(G, GeomActor);
 }
@@ -962,8 +1086,7 @@ int32 AMjbScene::NumGeomsNamed(FName GeomName) const
 		{
 			continue;
 		}
-		const char* Nm = mj_id2name(Model, mjOBJ_GEOM, G);
-		if (Nm && *Nm && Want == ANSI_TO_TCHAR(Nm))
+		if (CompiledGeomNameMatches(Model, G, Want, bExternallyDriven))
 		{
 			++Count;
 		}
@@ -987,8 +1110,7 @@ int32 AMjbScene::ApplyAppearanceOverride(FName GeomName, const FMjGeomAppearance
 		{
 			continue;
 		}
-		const char* Nm = mj_id2name(Model, mjOBJ_GEOM, G);
-		if (!Nm || !*Nm || Want != ANSI_TO_TCHAR(Nm))
+		if (!CompiledGeomNameMatches(Model, G, Want, bExternallyDriven))
 		{
 			continue;
 		}
@@ -1075,6 +1197,13 @@ void AMjbScene::Tick(float DeltaSeconds)
 	// editor preview also never connects the bus, so this is belt-and-suspenders.)
 	const UWorld* W = GetWorld();
 	if (!W || !W->IsGameWorld())
+	{
+		return;
+	}
+
+	// The compiled play view holds no pose source of its own; the manager applies the
+	// engine's render snapshot to it each frame.
+	if (bExternallyDriven)
 	{
 		return;
 	}
@@ -1506,9 +1635,19 @@ void AMjbScene::Teardown()
 	}
 	BodyActors.Reset();
 	GeomComps.Reset();
+	GeomOrigins.Reset();
+	GeomResolver.Reset();
 	if (AssetBaker)
 	{
 		AssetBaker->Reset();
+	}
+	// A borrowed model belongs to the shared engine; clear the pointers without
+	// freeing them.
+	if (!bOwnsModel)
+	{
+		Data = nullptr;
+		Model = nullptr;
+		return;
 	}
 	if (Data)
 	{

@@ -457,6 +457,19 @@ protected:
 	TArray<TWeakObjectPtr<UObject>> StateProducers;
 	mutable FCriticalSection StateProducersMutex;
 
+	/** The one lightweight render view for the compiled play path: an AMjbScene
+	 *  seeded from the borrowed compiled model, drawing the scene geometry from the
+	 *  render snapshot. Spawned at BeginPlay in game worlds only, never in automation. */
+	TObjectPtr<class AMjbScene> CompiledRenderView;
+	TObjectPtr<class UMjOverlayRenderer> OverlayRenderer;
+	const struct mjModel_* CompiledViewModel = nullptr;
+
+	/** Build the compiled render view + overlay once the engine has a model. */
+	void BuildRuntimeView();
+	/** Drive the compiled render view from one render snapshot (game thread, under
+	 *  the render-state lock). */
+	void DriveCompiledRenderView(const struct FMjRenderSnapshot& Snap);
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
@@ -468,6 +481,9 @@ public:
 	 *  Records the applied snapshot's FrameId / SimTime so cameras can tag
 	 *  their readbacks with the post-step state they show. Game thread only. */
 	void ApplyLatestRenderState();
+
+	/** The compiled play render view (approach B), or null in editor / automation. */
+	class AMjbScene* GetCompiledRenderView() const { return CompiledRenderView; }
 
 	/** Render-snapshot id last applied to the actors (post-step state id that
 	 *  the currently-rendered scene reflects). Cameras stamp readbacks with

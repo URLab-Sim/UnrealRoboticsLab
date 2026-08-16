@@ -29,9 +29,6 @@ struct FMjbDirectMode
 	// The manager whose UMjPhysicsEngine steps our raw model. Get-or-spawned at
 	// BeginPlay; not owned here (weak).
 	TWeakObjectPtr<AAMjManager> Manager;
-	// The geometry-less shadow articulation that lets the RPC layer / a Python client
-	// drive the raw model (built after install, retired at teardown).
-	TWeakObjectPtr<AMjArticulation> ShadowArt;
 	// Frame id of the last render snapshot applied, so Tick skips unchanged frames.
 	uint64 LastRenderFrameId = 0;
 	// One-shot: log the first non-finite snapshot transform (diverged physics vs bad

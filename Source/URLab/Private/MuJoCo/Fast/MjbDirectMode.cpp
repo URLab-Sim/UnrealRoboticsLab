@@ -11,7 +11,6 @@
 #include "MuJoCo/Fast/MjbDirectMode.h"
 
 #include "MuJoCo/Fast/MjbScene.h"
-#include "MuJoCo/Fast/MjbShadowArticulation.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
@@ -75,16 +74,18 @@ void FMjbDirectMode::InstallIntoEngine(AMjbScene& Scene)
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: engine/model unavailable at install"));
 		return;
 	}
+	// Name the raw entity from the MJB's base name so the control/observation RPC layer (and a
+	// Python client) address it by a stable prefix -- set BEFORE install so the partition the install
+	// builds carries the name, with no shadow articulation.
+	const FString ArtId = FPaths::GetBaseFilename(Scene.MjbFilePath);
+	const FString RawName = ArtId.IsEmpty() ? TEXT("fastpath") : ArtId;
+	Eng->SetRawEntityIdentity(RawName, RawName);
+
 	if (!Eng->InstallRawModel(Scene.Model, Scene.Data))
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: InstallRawModel failed"));
 		return;
 	}
-	// Stand up the shadow articulation so the control/observation RPC layer (and a
-	// Python client) can drive the raw model by name. Keyed by the MJB's base name
-	// so the client addresses a stable prefix.
-	const FString ArtId = FPaths::GetBaseFilename(Scene.MjbFilePath);
-	ShadowArt = URLabFastShadow::Build(Mgr, Scene.Model, ArtId.IsEmpty() ? TEXT("fastpath") : ArtId);
 
 	// Free-run the sim when no client owns the clock: a client hello promotes the
 	// engine to a client-driven step mode; until then this steps at real time.
@@ -181,11 +182,7 @@ void FMjbDirectMode::Teardown(AMjbScene& Scene)
 		{
 			Mgr->PhysicsEngine->UninstallRawModel();
 		}
-		// The worker is now joined; retire the shadow articulation (unregister +
-		// unbind + destroy) before the model/data are freed.
-		URLabFastShadow::Teardown(Mgr, ShadowArt.Get());
 	}
-	ShadowArt.Reset();
 	Manager.Reset();
 }
 
@@ -198,10 +195,8 @@ void FMjbDirectMode::RetireForReload()
 		if (Mgr->PhysicsEngine)
 		{
 			Mgr->PhysicsEngine->UninstallRawModel(); // stop-join worker + unalias
-			URLabFastShadow::Teardown(Mgr, ShadowArt.Get());
 		}
 	}
-	ShadowArt.Reset();
 	LastRenderFrameId = 0;
 	bNanLogged = false;
 }

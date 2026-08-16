@@ -844,13 +844,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		ArtObj->SetStringField(TEXT("actor_id"), Art != nullptr ? Art->ActorId : E.ActorId);
 		ArtObj->SetStringField(TEXT("actor_name"), E.Name.ToString());
 
-		const bool bRawShadow = (Art != nullptr) && Art->bRawShadow;
+		const bool bRawModel = (Manager->PhysicsEngine != nullptr)
+			&& Manager->PhysicsEngine->IsRawModelInstalled();
 
 		// Per-actuator authored kind. The MJB doesn't carry the original
 		// <position> / <velocity> shortcut — they all compile to <general>. Skipped
-		// for a raw shadow: its drive metadata rides raw_actuators below, which is
-		// the single source of truth for a fast-path model.
-		if (Art != nullptr && !bRawShadow)
+		// for a raw model: its drive metadata rides raw_actuators below, which is
+		// the single source of truth for a fast-path model (and a raw entity has no art).
+		if (Art != nullptr && !bRawModel)
 		{
 			TSharedPtr<FJsonObject> ActTypes = MakeShared<FJsonObject>();
 			for (const UMjNodeComponent* Act : Art->GetActuators())
@@ -870,7 +871,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		// the installed raw model -- under the engine's fence, since a concurrent
 		// compile/uninstall can retire the model pointer. Each entity ships only the
 		// actuator / joint ids it owns.
-		if (bRawShadow && Manager->PhysicsEngine)
+		if (bRawModel && Manager->PhysicsEngine)
 		{
 			FScopeLock ModelLock(&Manager->PhysicsEngine->CallbackMutex);
 			const mjModel* Rm = Manager->PhysicsEngine->GetModel();

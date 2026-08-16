@@ -213,6 +213,11 @@ public:
 	TArray<FMjEntity> m_entityPartition;
 	FMjEntityStructureVersion m_entityStructureVersion;
 
+	/** Wire identity for the single raw-model entity (set by the fast-path scene, else the entity's
+	 *  Name/empty). Lets the raw path name its entity without a shadow articulation. */
+	FString m_rawEntityName;
+	FString m_rawEntityActorId;
+
 	/**
 	 * The single control store: one setpoint buffer + the keyframe state-injection channel + the
 	 * per-entity write lease, plus the shadowless ingress that routes ROS/ZMQ/UI writes into them by
@@ -398,6 +403,19 @@ public:
 	 */
 	void RebuildEntityPartition();
 	uint64 GetEntityStructureVersion() const { return m_entityStructureVersion.Get(); }
+
+	/** True while a raw (fast-path) model is installed instead of a compiled scene. */
+	bool IsRawModelInstalled() const { return bRawModelInstalled; }
+
+	/**
+	 * The wire identity the single raw entity carries, set by the fast-path scene before its raw model
+	 * installs so the partition names the raw entity without a shadow articulation.
+	 */
+	void SetRawEntityIdentity(const FString& Name, const FString& ActorId)
+	{
+		m_rawEntityName = Name;
+		m_rawEntityActorId = ActorId;
+	}
 
 	/** The shadowless control ingress (routes writes into the one control buffer by entity name). */
 	IMjControlIngress* GetControlIngress() const { return m_controlIngress.Get(); }

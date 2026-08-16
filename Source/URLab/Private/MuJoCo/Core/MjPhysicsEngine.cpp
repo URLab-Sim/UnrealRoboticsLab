@@ -991,22 +991,16 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 	if (bRawModelInstalled)
 	{
 		// A raw model's names are not participant-prefixed, so a prefix partition would bucket
-		// nothing. Give the whole model to one entity and name it after its shadow (if one has
-		// registered) so the wire identity the bridge addresses by survives.
+		// nothing. Give the whole model to one entity and name it from the wire identity the
+		// fast-path scene set (no shadow articulation needed) so the bridge can address it.
 		FMjEntityPartition RawPartition; // empty prefixes => one root entity over the whole model
 		m_entityPartition = MjEntityBuilder::Build(m_model, RawPartition);
-		if (m_entityPartition.Num() == 1)
+		if (m_entityPartition.Num() == 1 && !m_rawEntityName.IsEmpty())
 		{
-			for (const AMjArticulation* Art : m_articulations)
-			{
-				if (Art)
-				{
-					m_entityPartition[0].Name = FName(*Art->GetName());
-					m_entityPartition[0].PublicName = FMjCanonicalName::ArtSegment(Art);
-					m_entityPartition[0].ActorId = Art->ActorId;
-					break;
-				}
-			}
+			m_entityPartition[0].Name = FName(*m_rawEntityName);
+			const FString Public = m_rawEntityActorId.IsEmpty() ? m_rawEntityName : m_rawEntityActorId;
+			m_entityPartition[0].PublicName = FName(*FMjCanonicalName::Sanitize(Public));
+			m_entityPartition[0].ActorId = m_rawEntityActorId;
 		}
 	}
 	else

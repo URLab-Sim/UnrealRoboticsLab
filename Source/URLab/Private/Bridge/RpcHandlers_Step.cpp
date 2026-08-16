@@ -30,6 +30,8 @@
 #include "State/MjCanonicalName.h"
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Entity/MjControl.h"
+#include "MuJoCo/Entity/MjControlIngress.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
@@ -436,7 +438,27 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 	{
 		AMjArticulation* Art = Manager->GetArticulation(Pair.Key);
 		if (!Art)
+		{
+			// Shadowless raw path: no articulation backs a raw model. Resolve each actuator by its
+			// (unprefixed) name against the compiled model and stage via the control ingress.
+			UMjPhysicsEngine* Engine = Manager->PhysicsEngine;
+			if (Engine && Engine->IsRawModelInstalled() && m)
+			{
+				if (IMjControlIngress* Ingress = Engine->GetControlIngress())
+				{
+					const FName EntityName(*Pair.Key);
+					for (const TPair<FString, double>& KV : Pair.Value)
+					{
+						const int32 Id = mj_name2id(m, mjOBJ_ACTUATOR, TCHAR_TO_ANSI(*KV.Key));
+						if (Id >= 0)
+						{
+							Ingress->WriteCtrl(EntityName, Id, KV.Value, MjControlWho::Network());
+						}
+					}
+				}
+			}
 			continue;
+		}
 
 		const FString Prefix = Art->GetCompiledPrefix();
 		const TArray<UMjNodeComponent*> Actuators = Art->GetActuators();

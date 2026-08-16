@@ -1264,3 +1264,83 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 | 8 vocab + Python | — | not started | — | LAST; breaking-API work |
 
 (Prototype branch: to be cut off `feat/mjb-fast-path` once the doc is fully completed — it is now.)
+
+## 18. Post-reboot execution plans (scoped 2026-08-16; run verify-as-you-go on a clean editor)
+
+Both need the LIVE editor (RPC camera path: launch editor -> connect :5559 -> the bridge integration
+fixtures author the golden scene + PIE -> `step camera_query="sync"` -> read `cam.latest_frame`). NullRHI
+automation does NOT cover render / render-server, so build-green is necessary but not sufficient — verify
+each with a live render/RPC check before committing.
+
+### 18A. Phase 4 finish — delete the shadow (raw path fully on the partition)
+
+WHY the shadow exists today: `FMjbDirectMode::Install` (`MjbDirectMode.cpp:87`) spawns
+`URLabFastShadow::Build(Mgr, Scene.Model, ArtId=GetBaseFilename(MjbFilePath))` — an `AMjArticulation`
+with element nodes bound to raw ids — SO the RPC control/observation/handshake layer has an articulation
+to resolve the raw model through. Everything it provides now has a partition path except: (a) the raw
+entity's wire NAME, (b) control addressing in `ApplyStepCtrl` (still per-articulation), (c) handshake
+`bRawShadow` gate + raw-path cameras/actuator_types.
+
+Edits, file by file:
+1. `MjPhysicsEngine.h/.cpp`: add `FString m_rawEntityName; FString m_rawEntityActorId;` + a public
+   `SetRawEntityIdentity(FString Name, FString ActorId)`. In `RebuildEntityPartition` RAW branch, name the
+   single entity from those members (drop the `for (Art : m_articulations)` name-from-shadow loop). Add
+   `bool IsRawModelInstalled() const { return bRawModelInstalled; }`.
+2. `MjbDirectMode.cpp:83-87`: replace the `ShadowArt = URLabFastShadow::Build(...)` block with
+   `Eng->SetRawEntityIdentity(ArtId, ArtId);` (call BEFORE the `RebuildEntityPartition` that InstallRawModel
+   already runs — so move SetRawEntityIdentity ahead of InstallRawModel, or have InstallRawModel take the
+   name). Delete the `ShadowArt` member + its teardown in `FMjbDirectMode::Teardown`.
+3. `RpcHandlers_Step.cpp` `ApplyStepCtrl`: add a raw-path branch — when `Mgr->GetArticulation(key)` is null
+   but the key matches a partition entity, resolve each ctrl by name against the model
+   (`mj_name2id(m, mjOBJ_ACTUATOR, localName)`) and `Engine->GetControlIngress()->WriteCtrl(EntityName, id,
+   value, MjControlWho::Network())`. (Raw actuator names are unprefixed, so localName == the wire name.)
+4. `RpcDispatcher.cpp` `BuildHandshakePayload`: gate `raw_actuators`/`raw_joints` on
+   `PhysicsEngine->IsRawModelInstalled()` for the raw entity instead of `Art->bRawShadow`. `actuator_types`
+   for a raw entity: emit model-derived (`"motor"`) — no authored kind exists. `camera_topics` for the raw
+   entity: resolve the `AMjbScene` in the world and read its `CameraComps` instead of the shadow art's
+   `UMjCamera`s (or defer raw camera_topics — render-server cameras stream via the publish/SHM path, not
+   this block).
+5. DELETE: `MjbShadowArticulation.h/.cpp` (git rm), the `#include` + `ShadowArt` in `MjbDirectMode.*`,
+   `AMjArticulation::bRawShadow` (`MjArticulation.h`) + its handshake reads.
+6. VERIFY LIVE: fast-path/render-server Direct scene -> drive ctrl by name (control via the partition, no
+   shadow) -> read state -> render cameras. Assert ctrl + obs + render all work shadowless.
+
+### 18B. Phase 5 finish — demote the authoring tree (play renders via the lightweight renderer)
+
+WHY: at play the compiled path renders through the AUTHORING tree — `AMjManager` -> per-art
+`ApplyRenderState(Snap)` (`MjArticulation.cpp:695`) -> `UMjBody::ApplyRenderState(Snap)` moves the
+`UMjBody` component holding the `UMjGeom` meshes, which `UMjGeom::OnRegister -> RebuildVisualizer`
+(`MjGeom.cpp:346/441`) built (runs at PLAY via SCS). Demotion = at play the authoring tree does NOT render;
+a lightweight mjModel-driven renderer (the Phase-5 EXTRACTION: `AMjbScene`'s `BuildBodies/BuildGeoms` via
+`IMjGeomAssetResolver::MakeGeomComponent`) renders from the partition + render snapshot; authoring tree =
+editor-only.
+
+Edits, file by file:
+1. NEW lightweight render view for the COMPILED path (reuse the extraction): at `BeginPlay` for a compiled
+   scene, build one lightweight actor per body + geoms via `FMjImportedAssetResolver` (authored meshes:
+   `mj_id2name(mjOBJ_MESH) -> MjResolveMesh`, baked fallback), driven by the engine render snapshot
+   (`ApplyBodyTransforms`/`ApplyGeomTransforms` from `Snap.XPos/XQuat`). This is `AMjbScene` minus the MJB
+   load — factor the body/geom build + transform-apply into something the compiled path can spawn, or spawn
+   an `AMjbScene`-like view seeded from the compiled model. `FMjImportedAssetResolver` was restored (revert
+   c6639a4) precisely for this.
+2. `MjGeom.cpp`: guard `OnRegister -> RebuildVisualizer` (`:346`) so at PLAY (`GetWorld()->IsGameWorld()`)
+   it does NOT build the visual meshes; keep for editor preview (`WITH_EDITOR`/`!IsGameWorld`).
+3. `MjBody.cpp` `ApplyRenderState` + `MjArticulation.cpp:695` `ApplyRenderState`: no-op at play (the
+   lightweight renderer owns transforms). `AMjManager` render drive -> drive the lightweight view instead.
+4. Overlay: repoint `MjDebugVisualizer.cpp` (6 `GetAllArticulations` walks) + the actor-side
+   `DrawDebugCollision/Joints/Sites` (`MjArticulation.cpp:724-882`, gated in `Tick`) onto `UMjOverlayRenderer`
+   (restored) driven by the partition + snapshot + `FMjOverlayFlags`.
+5. APawn possession: `AMjArticulation` is an `APawn` (`MjArticulation.h:69`) for possess-camera. With the
+   authoring tree editor-only, make the lightweight render view possess-able (or keep an editor-only logic
+   pawn). Decide + wire `PossessedBy`/the spring-arm onto the render view.
+6. Cross-module: `MujocoMeshImporter.cpp` (URLabEditor) stays editor-only — no change needed, but confirm
+   the play path no longer depends on it.
+7. VERIFY LIVE: golden camera test renders non-black + correct through the demoted path; DR
+   `set_geom_appearance` still changes the frame (override now drives the lightweight renderer's MIDs -
+   `UMjAppearanceStore` already walks both paths); overlay draws still render. RISK: packaged-cook
+   proc-mesh path (editor never exercises it) - cook-test separately.
+
+### 18C. Then Phase 8 (LAST, breaking): Mjb*->Renderer vocab rename + Python client (new ops
+resolve_geom/set_geom_appearance/GetEntity + the observation parity items: within-entity ascending-mj-id
+element order + per-BodyId body-state) + fold `FMjEntityRecord`/props into the partition (merges the wire
+`entities` block into the entity list). All need the live Python round-trip to verify.

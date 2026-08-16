@@ -305,26 +305,57 @@ losses are three enumerable, bridgeable items. This unblocks the mode collapse (
 own-a-sim path and one renderer, `EMjbRunMode` has nothing left to encode). The god-object
 extraction (task #21) is orthogonal cleanup that feeds straight into this renderer.
 
-### Render visualization options — MuJoCo `simulate` parity + our extras (FURTHER INVESTIGATION)
-User goal: the unified renderer should be able to recreate ALL of MuJoCo `simulate`'s render
-toggles (and the ones we already add that `simulate` lacks, e.g. joints), as composable overlays
-on the one renderer — not a separate mode. This is a dedicated investigation, layered on the
-renderer, NOT a blocker for the core redesign.
-- Catalogue MuJoCo's flags: the visualization flags (`mjtVisFlag` / `mjVIS_*`: convex hull,
-  texture, joint, actuator, camera, light, tendon, range-finder, constraint, inertia,
-  scaled-inertia, perturb force/object, contact point / force / split, transparent, auto-connect,
-  center-of-mass, select, static body, skin, flex*, etc.) AND the render flags (`mjtRndFlag` /
-  `mjRND_*`: shadow, wireframe, reflection, additive, skybox, fog, haze, segment, idcolor,
-  cull-face, etc.). Both enums live in the pinned `mjvisualize.h`.
-- Map each to a UE overlay on the entity/geom render (collision geoms shown/hidden by group is the
-  one we already have; contacts, contact forces, joints/actuators as glyphs, inertia boxes, COM,
-  transparency, convex hull, wireframe, tendons, sites as our extras).
-- Today the fast path FILTERS collision geoms out via the visual-group mask (`IsGeomVisible`,
-  `MjbScene.cpp:851-855`); some overlays exist only in the manager-side `MjDebugVisualizer`. The
-  investigation decides which overlays the unified renderer owns as toggles vs which stay debug.
-- Deliverable: a flag -> UE-overlay mapping table + which are core vs opt-in, added to this doc
-  before implementing the overlay layer. Prototype the core renderer first; overlays are a
-  follow-on workstream.
+### Render visualization options — MuJoCo `simulate` parity + our extras (INVESTIGATED 2026-08-15)
+The unified renderer recreates all of `simulate`'s render toggles (31 `mjVIS_*` + 11 `mjRND_*`,
+`mjvisualize.h:106-157`) plus our extras, as ONE composable overlay set — a toggle bitmask, NOT a
+mode. Full flag->overlay table is in the investigation; summary here.
+
+ALREADY EXISTS (reuse; but split across THREE owners today — the key structural finding):
+contacts + contact-force arrows, island coloring, tendon spline-tubes, and seg/depth camera modes
+live in the manager-side `UMjDebugVisualizer` (`MjDebugVisualizer.cpp:105-125,143-284,453-601,
+933-1120,633-819`); joints (our extra, exceeds `simulate` — range arcs + current-pos needle),
+sites (our extra), and collision-geom debug live on the ARTICULATION ACTOR
+(`MjArticulation.cpp:882-1164`); perturbation force + select point live in `UMjPerturbation`
+(`MjPerturbation.cpp:442-515`); geom-group show/hide is a build-time filter (`MjbScene.cpp:851-881`).
+When the authoring tree goes editor-only (phase 5), the actor-side draws become homeless and MUST
+move onto the lightweight renderer.
+
+GAP (net-new overlays): convex hull, texture-toggle, camera/actuator/light glyphs, activation,
+rangefinder, constraint, INERTIA boxes, COM, autoconnect, `mjVIS_STATIC` toggle, `PERTOBJ` ghost,
+`CONTACTSPLIT` tangent (extend the existing normal-only capture), `TRANSPARENT` translucency
+toggle (distinct from today's rgba.a==0 don't-draw), `mjRND_WIREFRAME`, `ADDITIVE`. UE-native
+(scene settings, not per-entity): shadow/reflection/skybox/fog/haze/cull. Out (niche):
+skin/flex/bvh/sdf.
+
+ARCHITECTURE (recommended): hold a `mjvOption`-equivalent flag set on the renderer
+(`flags[mjNVISFLAG]`, `flags[mjNRNDFLAG]`, + the group masks) — the EXACT bitmask `simulate` uses,
+so the wire is a 1:1 passthrough with no translation layer. One `UMjOverlayRenderer` sub-object
+replaces the three scattered owners, grouping flags by TECHNIQUE (the real axis): immediate
+DrawDebug lines/points/arrows (contacts, joints, sites, COM, glyphs, inertia, constraints — the
+bulk, no persistent components; reuse `MjUtils::DrawDebugGeom/Joint`); pooled spline/mesh
+(tendons, pertobj ghost, hull swap; reuse the `TendonSegmentPool` grow-on-demand pattern);
+per-geom MID (texture/transparent/wireframe/additive/island/seg tint; reuse the
+record-original-then-swap pattern); per-geom `SetVisibility` (static + group masks — moving the
+current build-time filter to runtime); camera-capture modes (depth/seg/idcolor STAY in the camera
+pipeline `UMjCamera`, part of `stream-cameras`, sharing the `MjColor::*` functions).
+
+MIRROR DATA POLICY (3-tier, keyed by the flag's data source): Mirror-renderable (from `mjModel` +
+streamed transforms: inertia, COM frames, joint axes, glyphs, texture, transparent, static, hull,
+autoconnect, wireframe, additive, local perturb/select) — first-class, work on every PoseSource;
+needs-Owned-mjData (contacts, force, islands, tendon wrap, activation, rangefinder, subtree-COM,
+constraints) — direct when Owned, and for a Mirror the owner publishes the derived array as a
+DEMAND-DRIVEN Publish side-stream (subscribed only when the overlay is on; grey out in the UI if
+not subscribed, never draw stale); UE-native/out as above. This is why it stays a capability not a
+mode: the flag is identical across PoseSource, only the data plumbing differs, hidden behind the
+resolver.
+
+FOLLOW-ON workstream (after the core renderer prototypes), NOT a blocker. Open questions for the
+implementer: overlay-manager ownership + repointing `UMjDebugVisualizer`'s `GetAllArticulations`
+walk (`:542`) at the entity partition; side-stream granularity (one debug bundle vs per-flag
+topics — decide before phase-7 transport); build-time vs runtime geom filtering (memory cost on
+big models); `TRANSPARENT` vs the rgba.a==0 don't-draw collision; whether to instantiate model
+lights (fidelity, separate from the glyph); streaming qpos to Mirrors for the joint needle; and
+editor-preview vs PIE overlay parity.
 
 ---
 

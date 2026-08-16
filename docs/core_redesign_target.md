@@ -1305,40 +1305,114 @@ Edits, file by file:
 6. VERIFY LIVE: fast-path/render-server Direct scene -> drive ctrl by name (control via the partition, no
    shadow) -> read state -> render cameras. Assert ctrl + obs + render all work shadowless.
 
-### 18B. Phase 5 finish — demote the authoring tree (play renders via the lightweight renderer)
+### 18B. Phase 5 finish — retire `AMjArticulation`/`UMjQuickConvertComponent` at play; everything runs on the Entity
 
-WHY: at play the compiled path renders through the AUTHORING tree — `AMjManager` -> per-art
-`ApplyRenderState(Snap)` (`MjArticulation.cpp:695`) -> `UMjBody::ApplyRenderState(Snap)` moves the
-`UMjBody` component holding the `UMjGeom` meshes, which `UMjGeom::OnRegister -> RebuildVisualizer`
-(`MjGeom.cpp:346/441`) built (runs at PLAY via SCS). Demotion = at play the authoring tree does NOT render;
-a lightweight mjModel-driven renderer (the Phase-5 EXTRACTION: `AMjbScene`'s `BuildBodies/BuildGeoms` via
-`IMjGeomAssetResolver::MakeGeomComponent`) renders from the partition + render snapshot; authoring tree =
-editor-only.
+THE END-STATE (from §6A "Where logic lives" + §7 — NOT a half-measure). At PIE there is NO
+`AMjArticulation` and NO `UMjQuickConvertComponent` in the runtime world. The compiled `mjModel` + the
+`FMjEntity` partition drive ONE renderer (approach B lightweight view). `AMjArticulation` splits in two at
+build: the heavy MESH/component tree is EDITOR-ONLY (rebuilt at runtime by the shared renderer), and the
+authored task LOGIC (the microwave button->door, the scene-wide microwave->fridge) transfers off the
+articulation AT BUILD onto a THIN runtime `AMjEntity` actor that executes against `IMjEntity` typed handles.
+A headless / Mirror / no-logic entity spawns NO actor. Footprint composes: id-slice (always) + scriptable
+handle + logic (if authored) + render (if rendering). Cameras, possession, and user attachments ride the
+entity/renderer. Debug overlays are partition + snapshot driven via `UMjOverlayRenderer` — NO articulation
+walk anywhere at play.
+
+REJECTED (the half-measure that was tried + is broken): keeping `AMjArticulation` alive at play as an
+invisible transform carrier while only gating the meshes off. That leaves the articulation as a second
+transform drive, keeps the overlay/seg walks articulation-shaped, and (measured) hangs the automation suite
+after the camera tests. Do NOT ship it. The renderer/resolver/snapshot-overlay pieces built for it carry
+forward; the "actor stays alive + articulation walks" pieces do not.
 
 Edits, file by file:
-1. NEW lightweight render view for the COMPILED path (reuse the extraction): at `BeginPlay` for a compiled
-   scene, build one lightweight actor per body + geoms via `FMjImportedAssetResolver` (authored meshes:
-   `mj_id2name(mjOBJ_MESH) -> MjResolveMesh`, baked fallback), driven by the engine render snapshot
-   (`ApplyBodyTransforms`/`ApplyGeomTransforms` from `Snap.XPos/XQuat`). This is `AMjbScene` minus the MJB
-   load — factor the body/geom build + transform-apply into something the compiled path can spawn, or spawn
-   an `AMjbScene`-like view seeded from the compiled model. `FMjImportedAssetResolver` was restored (revert
-   c6639a4) precisely for this.
-2. `MjGeom.cpp`: guard `OnRegister -> RebuildVisualizer` (`:346`) so at PLAY (`GetWorld()->IsGameWorld()`)
-   it does NOT build the visual meshes; keep for editor preview (`WITH_EDITOR`/`!IsGameWorld`).
-3. `MjBody.cpp` `ApplyRenderState` + `MjArticulation.cpp:695` `ApplyRenderState`: no-op at play (the
-   lightweight renderer owns transforms). `AMjManager` render drive -> drive the lightweight view instead.
-4. Overlay: repoint `MjDebugVisualizer.cpp` (6 `GetAllArticulations` walks) + the actor-side
-   `DrawDebugCollision/Joints/Sites` (`MjArticulation.cpp:724-882`, gated in `Tick`) onto `UMjOverlayRenderer`
-   (restored) driven by the partition + snapshot + `FMjOverlayFlags`.
-5. APawn possession: `AMjArticulation` is an `APawn` (`MjArticulation.h:69`) for possess-camera. With the
-   authoring tree editor-only, make the lightweight render view possess-able (or keep an editor-only logic
-   pawn). Decide + wire `PossessedBy`/the spring-arm onto the render view.
-6. Cross-module: `MujocoMeshImporter.cpp` (URLabEditor) stays editor-only — no change needed, but confirm
-   the play path no longer depends on it.
-7. VERIFY LIVE: golden camera test renders non-black + correct through the demoted path; DR
-   `set_geom_appearance` still changes the frame (override now drives the lightweight renderer's MIDs -
-   `UMjAppearanceStore` already walks both paths); overlay draws still render. RISK: packaged-cook
-   proc-mesh path (editor never exercises it) - cook-test separately.
+1. RENDERER (carry forward, one renderer): `AMjbScene::BuildFromCompiledModel(mjModel*, arts)` seeded from
+   the engine's borrowed compiled model via the element-index `FMjImportedAssetResolver` (compiled geom id ->
+   originating `UMjGeom` -> `MjResolveMesh(FSpecRef::OverOwner(Geom), EffectiveMeshName())`, baked fallback),
+   driven by `Snap.XPos/XQuat`. Manager spawns ONE view at `BeginPlay` (game world only, skip Mirror/viewer).
+   GUARD it with `!IsRawModelInstalled()` so a fast-path/own-sim raw scene (which already renders its own
+   `AMjbScene`) does not get a second view.
+2. THIN RUNTIME ENTITY: at build/`BeginPlay` (game world), for each `FMjEntity` that has authored logic,
+   spawn/keep a thin `AMjEntity` (Phase-9 actor, today interim-backed by `AMjArticulation`) that carries the
+   authored logic + resolved `IMjEntity` handles. Transfer the authored logic off the articulation at build
+   (the articulation is the editor authoring surface; the entity is the runtime host). No per-joint mesh
+   components on it. Entities with no authored logic spawn no actor — the partition + renderer suffice.
+   OPEN (for the audit/design pass): the exact logic-transfer mechanism — authored logic as a component/BP
+   class that is PART OF THE ASSET and re-instantiated on `AMjEntity`, vs. reparented at BeginPlay; how a
+   user-placed articulation Blueprint's graph reaches the entity. Nail this before coding.
+3. RETIRE THE ARTICULATION AT PLAY: at PIE, `AMjArticulation` + `UMjQuickConvertComponent` do not render,
+   tick physics-render, or drive transforms. `MjGeom::RebuildVisualizer` builds meshes editor-only
+   (`!IsGameWorld`) AND tears down any PIE-carried preview (`DestroyVisualizer(); return;`). Remove the
+   per-art `ApplyRenderState` drive + the quick-component render drive from `AMjManager::ApplyLatestRenderState`
+   (the renderer owns all transforms). Decide the actor's runtime fate: destroyed at BeginPlay after handing
+   off, or spawn-suppressed in game worlds. Confirm no control/observation path calls `Art->GetName()` (entity
+   name must already be model-derived — see the ADDRESSING COLLAPSE note in §17 progress).
+4. CAMERAS + POSSESSION onto the entity/renderer: body-fixed model cameras (wrist/head) attach to the
+   renderer's body components (or a camera host on `AMjEntity`) via the camera registry (`FMjCameraRegistry`,
+   4N-c); the possess-camera/pawn becomes the entity/render view (spring-arm + `PossessedBy` re-homed off the
+   articulation). Verify a possess-camera follows the robot at play with the articulation gone.
+5. OVERLAY fully entity-driven (NO articulation walk): `UMjOverlayRenderer` reads the render SNAPSHOT
+   (`GeomXPos/GeomXMat`, `JntXAnchor/JntXAxis`, `SiteXPos`, `QPos`) via the explicit-pose `DrawDebugGeom`
+   overload. Debug flags come from the manager's global toggles + per-ENTITY flags (NOT `Art->bDrawDebug*`).
+   `MjDebugVisualizer::UpdateBodyOverlays`/`BuildSegPool` walk the renderer's per-geom components keyed by mj
+   geom id (grouped by `geom_bodyid`), not `GetAllArticulations()`. The authoring-geom walk is editor-only.
+6. Cross-module: confirm the play render path has no dependency on `URLabEditor`/`MujocoMeshImporter`
+   (runtime resolver reads already-imported `UStaticMesh` assets, no import call at play).
+7. VERIFY LIVE (NullRHI can't catch render): golden camera test renders non-black + correct through the
+   entity renderer; DR `set_geom_appearance` still recolours the frame (override drives the renderer's MIDs);
+   overlay draws render from the snapshot; possess-camera tracks; a per-asset logic entity (microwave) + a
+   scene-wide Level-BP behaviour both run at play with no `AMjArticulation` present. RISK: packaged-cook
+   proc-mesh path (`UProceduralMeshComponent` vs `UStaticMeshComponent` `Cast` in overlays/seg) — cook-test
+   separately. AND: the full automation suite must reach 457/457 (the half-measure truncated it at 43).
+
+HARDENED (design audit 2026-08-16; full plan in local `docs/plan_demotion_B.md`). Corrections to the above:
+- LIFECYCLE / HANG FIX: build the view + entities from the manager's post-compile handoff at `BeginPlay`,
+  NOT lazily from `ApplyLatestRenderState`. Guard `!GIsAutomationTesting && IsGameWorld() && !bIsViewerRole
+  && !IsRawModelInstalled()`. Root cause of the half-measure's suite truncation: test worlds are
+  `EWorldType::Game` and camera tests call `ApplyLatestRenderState` directly WITHOUT `BeginPlay`, so the lazy
+  spawn fired mid-test and hung the harness. `ApplyLatestRenderState` becomes drive-only (never spawns).
+- CONTROL PORT IS IN-SCOPE (destroy blocker): `ApplyStepCtrl` positional (`RpcHandlers_Step.cpp:184-200`) +
+  named `ctrl_map` (`:463-474`) + owner key (`:373`, `SimOptions.cpp:385`) + `ZmqSubscribeTransport` filters
+  (`:79,143,151`) still resolve ctrl through the live articulation. Port them to model+partition+ingress
+  (mirrors §18A raw path) BEFORE destroying the articulation. Fallback if it slips: neuter-not-destroy.
+- QUICKCONVERT REDESIGN (decided with user 2026-08-16 — supersedes both "no quick-components at play" AND
+  the audit's "keep the writeback as a pose sink"): right-click convert produces a LIGHT prop-TAG on the
+  actor (not the old `UMjQuickConvertComponent` runtime writeback, not a heavy articulation). At compile the
+  tag contributes ONE body+geom to the unified model, using the actor's own StaticMesh as the visual geom; at
+  play the prop renders through the ONE entity renderer like everything else — the runtime pose-writeback
+  onto the user's actor is REMOVED (it was a second render path). The user's source actor is editor-only. Add
+  a right-click "Promote to articulation" editor action to grow a tagged prop into a single-body articulation
+  when it needs joints/actuators/logic. Preserves the loved right-click-autoconvert UX; stays lean for
+  many-props scenes (no per-prop APawn/articulation). PARAMS TO PRESERVE (user-flagged) + expose via the
+  entity/handle surface (§6A): collision fidelity `ComplexMeshRequired` (simple=convex hull vs complex=CoACD)
+  + `CoACDThreshold`; `Static`; `bDrivenByUnreal` (mocap); `friction`/`solref`/`solimp`. TWO couplings — only
+  the sim->actor writeback is removed; `bDrivenByUnreal` actor->sim MOCAP is a real INPUT feature that must
+  SURVIVE (a mocap prop still needs its source transform feeding the sim at play). The component already
+  implements `IMjSceneContributor` (authors one body+free-joint+geom-per-hull, content-hashed OBJ export), so
+  the spec contribution stays; only the writeback goes + the authoring surface becomes the light tag.
+  SEQUENCING: a defined B sub-task AFTER the core articulation demotion + control port land + verify — NOT
+  deferred (B is not complete while the old writeback path still exists).
+- LOGIC TRANSFER: `UMjEntityLogicComponent` (part of the asset) re-instantiated onto `AMjEntity` via a free
+  function `MjEntityHandoff::TransferAuthoredLogic` in the Entity module (NOT `AMjManager` state — keeps the
+  §19 split clean). Existing articulation-BP event graphs do NOT auto-travel: per-asset logic moves into the
+  component (mechanical refactor); scene-wide Level-BP logic is unchanged.
+- RENDER VIEW must also call `BuildCameras()` + `ApplyCameraPoses(Snap.CamXPos, Snap.CamXMat)` (the reference
+  patch omitted cameras); topic identity via `FMjCameraRegistry`.
+- `OnCollision`/`OnSimulationReset` delegates (`MjArticulation.h:341-345`) re-home onto `AMjEntity`.
+- POSSESSION: opt-in `AMjEntityPawn` (not every entity); spring-arm attaches to the render view's body.
+- PER-ENTITY DEBUG FLAGS live on `FMjEntity` (copied from the articulation at build).
+
+### 19. Follow-ons (deferred — AFTER B + Phase 8 are working; do NOT expand current scope into these)
+
+- **Split `AMjManager` (authoring vs runtime).** Today it is monolithic and articulation-centric: it does
+  EDITOR/AUTHORING work (walk placed `AMjArticulation` + `UMjQuickConvertComponent` -> build the spec ->
+  compile -> compiled `mjModel` + assets) AND RUNTIME work (own the physics engine, partition, renderer,
+  cameras, and all networking/transports + control store) in one class built for the old API. Since
+  articulations/quick-components are now editor/authoring-only, at runtime there is nothing to collect — the
+  runtime just receives a compiled model. Target end-state: an EDITOR-TIME scene compiler (authoring actors
+  -> spec -> compiled model) and a LEAN RUNTIME session/subsystem (engine + partition + renderer + cameras +
+  transports). While implementing B, keep `AMjManager` changes minimal + forward-compatible with this split;
+  do NOT entrench more authoring<->runtime coupling. (User-flagged 2026-08-16.) Relates to the §5/§9 leanness
+  goal and the "SIX model reps -> FOUR" reduction.
 
 ### 18C. Then Phase 8 (LAST, breaking): Mjb*->Renderer vocab rename + Python client (new ops
 resolve_geom/set_geom_appearance/GetEntity + the observation parity items: within-entity ascending-mj-id

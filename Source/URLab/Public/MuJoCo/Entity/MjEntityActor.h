@@ -6,9 +6,19 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 
+#include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Entity/MjEntityApi.h"
 
 #include "MjEntityActor.generated.h"
+
+class UMjEntityLogicComponent;
+class UMjGeom;
+
+/** Fired once whenever the engine resets the simulation to its rest / keyframe state. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMjSimulationReset);
+
+/** Fired for a contact touching one of this entity's geoms: self geom, other geom, world contact point. */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMjCollision, UMjGeom*, SelfGeom, UMjGeom*, OtherGeom, FVector, ContactPos);
 
 /**
  * The runtime face of one FMjEntity: a name bound to the compiled model, and the door onto the
@@ -45,8 +55,53 @@ public:
 	virtual FMjActuator Actuator(FName Name) const override;
 	virtual FMjGeom     Geom(FName Name) const override;
 
+	// --- Authored logic hosting --------------------------------------------- //
+
+	/**
+	 * Add a logic host of the given class, stamp it with this entity's name, and register it. The
+	 * build-time handoff re-instantiates each authored component this way, then copies the template's
+	 * properties over the returned instance.
+	 */
+	UMjEntityLogicComponent* AddLogicComponent(TSubclassOf<UMjEntityLogicComponent> LogicClass);
+
+	/** Every logic host currently riding this entity. */
+	void GetLogicComponents(TArray<UMjEntityLogicComponent*>& Out) const;
+
+	// --- Events (re-homed from AMjArticulation) ----------------------------- //
+
+	UPROPERTY(BlueprintAssignable, Category = "MuJoCo|Events")
+	FOnMjSimulationReset OnSimulationReset;
+
+	UPROPERTY(BlueprintAssignable, Category = "MuJoCo|Events")
+	FOnMjCollision OnCollision;
+
+	// --- Per-entity debug overlay ------------------------------------------- //
+
+	/** This entity's per-instance debug-draw intent (unioned with the manager's global toggles). */
+	const FMjEntityDrawFlags& GetOverlayFlags() const { return OverlayFlags; }
+	void SetOverlayFlags(const FMjEntityDrawFlags& InFlags) { OverlayFlags = InFlags; }
+
+	bool GetDrawDebugCollision() const { return OverlayFlags.bDrawDebugCollision; }
+	bool GetDrawDebugJoints() const { return OverlayFlags.bDrawDebugJoints; }
+	bool GetDrawDebugSites() const { return OverlayFlags.bDrawDebugSites; }
+
+	// --- Engine passthrough ------------------------------------------------- //
+
+	/** Hold this entity's qpos on the engine at its current keyframe, for the UI toggle. */
+	void SetKeyframeHold(bool bHold);
+	bool IsHoldingKeyframe() const { return bHoldingKeyframe; }
+
+	/** Show or hide a geom group (group 3 is where collision meshes conventionally live). */
+	void SetGeomGroupVisible(int32 Group, bool bVisible);
+
 private:
 	/** Stable public name of the entity this face addresses. */
 	UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Entity")
 	FName EntityName;
+
+	/** Authored per-instance debug-draw intent, carried onto the partition record at handoff. */
+	FMjEntityDrawFlags OverlayFlags;
+
+	/** Set while this entity drives a keyframe hold on the engine. */
+	bool bHoldingKeyframe = false;
 };

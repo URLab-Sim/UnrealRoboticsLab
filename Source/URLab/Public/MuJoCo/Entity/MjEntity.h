@@ -10,6 +10,22 @@ struct mjModel_;
 typedef mjModel_ mjModel;
 
 /**
+ * Per-entity debug-overlay intent. The manager keeps global toggles; these are the per-instance
+ * additions, copied off the authoring articulation at build. The overlay renderer draws a family
+ * when the global toggle OR any entity's flag is set, reading this off the partition (never off the
+ * articulation actor). POD so it lives inside FMjEntity with no UObject cost.
+ */
+struct FMjEntityDrawFlags
+{
+	bool bDrawDebugCollision = false;
+	bool bDrawDebugJoints = false;
+	bool bDrawDebugSites = false;
+
+	/** True when any family is requested, so a walk can early-out on the common all-off case. */
+	bool Any() const { return bDrawDebugCollision || bDrawDebugJoints || bDrawDebugSites; }
+};
+
+/**
  * The addressing unit: a stable name bound to the slice of MuJoCo ids (in the one compiled model)
  * that a caller treats as one thing. A robot is an entity that owns actuators; a prop is an entity
  * that owns none. It is a view built from the compiled mjModel, not a second copy of it: no
@@ -44,6 +60,9 @@ struct URLAB_API FMjEntity
 
 	/** Parallel to SensorIds: each sensor's ROS semantic, computed at build. */
 	TArray<EMjSensorSemantic> SensorSemantics;
+
+	/** Per-entity debug-overlay intent, copied off the authoring articulation at build. */
+	FMjEntityDrawFlags Overlay;
 
 	// Metadata computed once at install and stored alongside the id slices (sensor semantics
 	// parallel to SensorIds, camera canonical names, ...) is filled here by the builder.

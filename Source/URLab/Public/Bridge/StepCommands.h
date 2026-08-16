@@ -32,6 +32,9 @@ struct FMjStepRequest
 	int32 NSteps = 1;
 	/** prefix -> array of (actuator_name, value). Names are local (no prefix). */
 	TMap<FString, TArray<TPair<FString, double>>> PerArticulationCtrl;
+	/** wire key -> positional ctrl values, indexed in the entity's ascending mj-id
+	 *  actuator order. Resolved against the compiled model at apply time. */
+	TMap<FString, TArray<double>> PerArticulationCtrlPositional;
 	/** Per-articulation control mode: "ue_controller" (default) or "raw". */
 	TMap<FString, FString> PerArticulationControlMode;
 	/** Per-articulation xfrc_applied: prefix -> body_name -> [fx,fy,fz,tx,ty,tz]. */

@@ -26,6 +26,7 @@
 
 #include "GameFramework/Pawn.h"
 
+#include "MuJoCo/Entity/MjEntityActor.h"
 #include "MuJoCo/Gen/MjEnums.gen.h"
 #include "Templates/UniquePtr.h"
 
@@ -61,9 +62,6 @@ struct FMjElementFamily
 	UPROPERTY(Transient)
 	TMap<FString, TObjectPtr<UMjNodeComponent>> ByName;
 };
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnMjSimulationReset);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_ThreeParams(FOnMjCollision, UMjGeom*, SelfGeom, UMjGeom*, OtherGeom, FVector, ContactPos);
 
 UCLASS(config = Game)
 class URLAB_API AMjArticulation : public APawn

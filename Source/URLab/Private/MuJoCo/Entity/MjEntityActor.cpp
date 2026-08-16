@@ -5,6 +5,7 @@
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntityLogicComponent.h"
 #include "MuJoCo/Entity/MjEntityMembers.h"
 
 AMjEntity::AMjEntity()
@@ -40,4 +41,36 @@ FMjActuator AMjEntity::Actuator(FName Name) const
 FMjGeom AMjEntity::Geom(FName Name) const
 {
 	return MakeHandle<FMjGeom>(this, EntityName, EMjEntityMember::Geom, Name);
+}
+
+UMjEntityLogicComponent* AMjEntity::AddLogicComponent(TSubclassOf<UMjEntityLogicComponent> LogicClass)
+{
+	if (LogicClass == nullptr)
+	{
+		return nullptr;
+	}
+
+	UMjEntityLogicComponent* Logic = NewObject<UMjEntityLogicComponent>(this, LogicClass);
+	if (Logic == nullptr)
+	{
+		return nullptr;
+	}
+
+	Logic->OwnerEntityName = EntityName;
+	Logic->RegisterComponent();
+	return Logic;
+}
+
+void AMjEntity::GetLogicComponents(TArray<UMjEntityLogicComponent*>& Out) const
+{
+	GetComponents<UMjEntityLogicComponent>(Out);
+}
+
+void AMjEntity::SetKeyframeHold(bool bHold)
+{
+	bHoldingKeyframe = bHold;
+}
+
+void AMjEntity::SetGeomGroupVisible(int32 Group, bool bVisible)
+{
 }

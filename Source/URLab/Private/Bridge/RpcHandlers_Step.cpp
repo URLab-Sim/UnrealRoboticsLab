@@ -32,6 +32,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Entity/MjControl.h"
 #include "MuJoCo/Entity/MjControlIngress.h"
+#include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
@@ -125,6 +126,22 @@ void ApplyPushedState(UMjPhysicsEngine* Engine, const FMjPushStateRequest& Push,
 	if (Engine->OnPostStep)
 		Engine->OnPostStep(m, d);
 }
+
+/** Resolve the partition entity a wire key names, matching the same three keys as
+ *  AAMjManager::GetArticulation: the compiled-prefix stem (Name), the canonical
+ *  public segment (PublicName), or the bridge ActorId. Null when the key is unknown. */
+const FMjEntity* FindEntityByWireKey(const UMjPhysicsEngine* Engine, const FString& WireKey)
+{
+	if (Engine == nullptr)
+		return nullptr;
+	for (const FMjEntity& Entity : Engine->GetEntityPartition())
+	{
+		if (Entity.Name.ToString() == WireKey || Entity.PublicName.ToString() == WireKey
+			|| Entity.ActorId == WireKey)
+			return &Entity;
+	}
+	return nullptr;
+}
 } // namespace
 
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJsonObject>& Req)
@@ -156,8 +173,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJ
 // the live and direct step paths so both apply the full payload; the live
 // branch previously parsed only the positional ctrl array and silently dropped
 // ctrl_map / xfrc_applied.
-static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req,
-	AAMjManager* Mgr, FMjStepRequest& Out)
+static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req, FMjStepRequest& Out)
 {
 	const TSharedPtr<FJsonObject>* PerArt = nullptr;
 	if (!Req->TryGetObjectField(TEXT("per_articulation"), PerArt) || !PerArt || !PerArt->IsValid())
@@ -177,26 +193,15 @@ static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req,
 			Out.PerArticulationControlMode.Add(Pair.Key, CtlMode);
 		}
 
-		// Positional ctrl array: indexed in articulation actuator order.
+		// Positional ctrl array: kept positional and resolved against the compiled
+		// model's actuator ids at apply time, so it needs no articulation here.
 		const TArray<TSharedPtr<FJsonValue>>* CtrlList = nullptr;
 		if ((*ArtObj)->TryGetArrayField(TEXT("ctrl"), CtrlList) && CtrlList)
 		{
-			if (AMjArticulation* Art = Cast<AMjArticulation>(Mgr->GetArticulation(Pair.Key)))
-			{
-				const TArray<UMjNodeComponent*> Acts = Art->GetActuators();
-				const FString Prefix = Art->GetCompiledPrefix();
-				for (int32 i = 0; i < CtrlList->Num() && i < Acts.Num(); ++i)
-				{
-					const UMjNodeComponent* A = Acts[i];
-					if (!A)
-						continue;
-					FString LocalName = A->MjName.Get(A->GetName());
-					if (LocalName.StartsWith(Prefix))
-						LocalName = LocalName.Mid(Prefix.Len());
-					Out.PerArticulationCtrl.FindOrAdd(Pair.Key).Add(
-						{LocalName, (*CtrlList)[i]->AsNumber()});
-				}
-			}
+			TArray<double>& Positional = Out.PerArticulationCtrlPositional.FindOrAdd(Pair.Key);
+			Positional.Reserve(CtrlList->Num());
+			for (const TSharedPtr<FJsonValue>& V : *CtrlList)
+				Positional.Add(V.IsValid() ? V->AsNumber() : 0.0);
 		}
 
 		// Named ctrl map alternative.
@@ -369,8 +374,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 				if (!bCarriesControl)
 					continue;
 
-				const AMjArticulation* Art = Mgr->GetArticulation(Pair.Key);
-				const FName Key(Art ? *Art->GetName() : *Pair.Key);
+				const FMjEntity* Entity = FindEntityByWireKey(Mgr->PhysicsEngine, Pair.Key);
+				const FName Key = Entity ? Entity->Name : FName(*Pair.Key);
 				FString CurrentOwner;
 				if (ControlOwnership.CheckWrite(Key, Source, CurrentOwner)
 					!= FMjControlOwnership::EWriteCheck::Ok)
@@ -434,54 +439,49 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 {
 	if (!Manager)
 		return;
-	for (auto& Pair : Req.PerArticulationCtrl)
+
+	// Control resolves against the compiled model + entity partition, not the articulation: the
+	// entity supplies the lease key (its compiled-prefix stem) and the actuator id slice, and every
+	// setpoint routes through the one control ingress. The pre-step drain copies each touched
+	// setpoint into d->ctrl per sub-step.
+	UMjPhysicsEngine* Engine = Manager->PhysicsEngine;
+	IMjControlIngress* Ingress = Engine ? Engine->GetControlIngress() : nullptr;
+	if (Ingress && m)
 	{
-		AMjArticulation* Art = Manager->GetArticulation(Pair.Key);
-		if (!Art)
+		const bool bRaw = Engine->IsRawModelInstalled();
+
+		// Positional ctrl: write each value onto the entity's actuator ids in ascending mj-id order.
+		for (const TPair<FString, TArray<double>>& Pair : Req.PerArticulationCtrlPositional)
 		{
-			// Shadowless raw path: no articulation backs a raw model. Resolve each actuator by its
-			// (unprefixed) name against the compiled model and stage via the control ingress.
-			UMjPhysicsEngine* Engine = Manager->PhysicsEngine;
-			if (Engine && Engine->IsRawModelInstalled() && m)
+			const FMjEntity* Entity = FindEntityByWireKey(Engine, Pair.Key);
+			if (!Entity)
+				continue;
+			const int32 Count = FMath::Min(Pair.Value.Num(), Entity->ActuatorIds.Num());
+			for (int32 i = 0; i < Count; ++i)
+				Ingress->WriteCtrl(Entity->Name, Entity->ActuatorIds[i], Pair.Value[i],
+					MjControlWho::Network());
+		}
+
+		// Named ctrl map: resolve each actuator by its compiled name (entity prefix + local name,
+		// falling back to the name as given for a full or global name) against the model.
+		for (const TPair<FString, TArray<TPair<FString, double>>>& Pair : Req.PerArticulationCtrl)
+		{
+			const FMjEntity* Entity = FindEntityByWireKey(Engine, Pair.Key);
+			if (!Entity && !bRaw)
+				continue;
+			const FName EntityName = Entity ? Entity->Name : FName(*Pair.Key);
+			const FString Prefix = (Entity && !Entity->Name.IsNone())
+				? (Entity->Name.ToString() + TEXT("_")) : FString();
+			for (const TPair<FString, double>& KV : Pair.Value)
 			{
-				if (IMjControlIngress* Ingress = Engine->GetControlIngress())
-				{
-					const FName EntityName(*Pair.Key);
-					for (const TPair<FString, double>& KV : Pair.Value)
-					{
-						const int32 Id = mj_name2id(m, mjOBJ_ACTUATOR, TCHAR_TO_ANSI(*KV.Key));
-						if (Id >= 0)
-						{
-							Ingress->WriteCtrl(EntityName, Id, KV.Value, MjControlWho::Network());
-						}
-					}
-				}
+				int32 Id = -1;
+				if (!Prefix.IsEmpty())
+					Id = mj_name2id(m, mjOBJ_ACTUATOR, TCHAR_TO_ANSI(*(Prefix + KV.Key)));
+				if (Id < 0)
+					Id = mj_name2id(m, mjOBJ_ACTUATOR, TCHAR_TO_ANSI(*KV.Key));
+				if (Id >= 0)
+					Ingress->WriteCtrl(EntityName, Id, KV.Value, MjControlWho::Network());
 			}
-			continue;
-		}
-
-		const FString Prefix = Art->GetCompiledPrefix();
-		const TArray<UMjNodeComponent*> Actuators = Art->GetActuators();
-		TMap<FString, UMjNodeComponent*> ByName;
-		ByName.Reserve(Actuators.Num() * 2);
-		for (UMjNodeComponent* A : Actuators)
-		{
-			if (!A)
-				continue;
-			const FString FullName = A->MjName.Get(A->GetName());
-			const FString Local = FullName.StartsWith(Prefix) ? FullName.Mid(Prefix.Len()) : FullName;
-			ByName.Add(Local, A);
-			ByName.Add(FullName, A);
-		}
-
-		// Stage each value as the actuator's setpoint; the pre-step control drain copies every
-		// touched setpoint into d->ctrl each sub-step.
-		for (const TPair<FString, double>& KV : Pair.Value)
-		{
-			UMjNodeComponent** Found = ByName.Find(KV.Key);
-			if (!Found || !*Found)
-				continue;
-			UMjActuatorRuntime::SetNetworkControl(*Found, KV.Value);
 		}
 	}
 
@@ -686,7 +686,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::StepFreeRun(
 	UMjPhysicsEngine* Engine = Mgr->PhysicsEngine;
 
 	FMjStepRequest TmpReq;
-	ParseStepPerArticulation(Req, Mgr, TmpReq);
+	ParseStepPerArticulation(Req, TmpReq);
 
 	TSharedPtr<FJsonObject> Reply;
 	uint64 FrameId = 0;
@@ -736,7 +736,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::StepStepped(
 	Req->TryGetNumberField(TEXT("n_steps"), NSteps);
 	Cmd->Request.NSteps = NSteps > 0 ? NSteps : 1;
 	Cmd->ObservationLevel = Common.ObservationLevel;
-	ParseStepPerArticulation(Req, Mgr, Cmd->Request);
+	ParseStepPerArticulation(Req, Cmd->Request);
 
 	Cmd->Completion = FPlatformProcess::GetSynchEventFromPool(true);
 

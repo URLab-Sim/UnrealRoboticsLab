@@ -524,8 +524,13 @@ Then the staged core redesign, each phase compiling on its own:
   + an exclusive WRITE LEASE (ControlLease). Whoever holds the lease writes; UI grabbing control
   takes the lease, releasing hands it back. (replaces the `EControlSource` "behavior change" Q.)
 - `mjz` is KEPT — decoder confirmed in the pinned lib (`mju_decodeResource`/`mj_parse`).
-- Scope: the missing-30% net-new work (16.3: ROS ingress, sensor-semantic table, per-body FK,
-  camera identity) IS in scope NOW as explicit phases (user chose the thorough path).
+- Scope: the missing-30% work (16.3: ROS ingress, sensor-semantic table, per-body FK, camera
+  identity) IS in scope NOW as explicit phases (user chose the thorough path). REFRAMED: it is
+  mostly ENTITY ENRICHMENT (build-time metadata on `FMjEntity`), NOT actor-shaped subsystems — see
+  phases 4N. The actor is not needed for any of it.
+- Blueprint-scriptable: keep a THIN `BlueprintType` face on the Entity (a lightweight `UMjEntity`
+  handle or the render actor's entity interface) so scripts drive an entity by name without the
+  heavy component graph. User wants BP scriptability preserved where possible.
 - Implementation parallelism shape is the coordinator's call (contract-first + serial spine).
 
 ### Resolved during iteration (2026-08-15)
@@ -680,10 +685,25 @@ REPOINT the ~30 `GetAllArticulations` consumers that resolved through the shadow
 partition or exclude them.
 TEST: live RPC control against a raw/wire model with no shadow (the `MjStepServerTests` path).
 
-### Phases 4N — net-new model-only replacements (the missing 30%; PREREQUISITES for phase 4)
-The shadow cannot die until these exist, because ROS ingress, sensor semantics, per-body FK, and
-camera identity are keyed on the live actor, not on ids (audit 16.3). These are NEW files, mostly
-parallelizable, and are IN SCOPE now (locked decision).
+### Phases 4N — enrich the Entity with build-time metadata (the missing 30%; PREREQUISITES for phase 4)
+REFRAMED (user, 2026-08-15): almost all of the "30%" does NOT need the articulation actor — it
+needs metadata computed ONCE at install and STORED on the `FMjEntity` (or an entity-keyed
+registry), not a live actor walked each frame. So these are Entity ENRICHMENT, not net-new
+actor-shaped subsystems, and they are what lets the shadow die cleanly:
+- ROS control ingress = `Entity.ActuatorIds` + the write lease. No actor.
+- Per-body FK (`/tf`,`/odom`) = walk `Entity.BodyIds` -> `d->xpos/xquat` + body names. No actor.
+  (The audit's "id-slice yields only the base pose" was wrong — the Entity carries all its body ids.)
+- Sensor semantics = computed at BUILD (from the spec when present, else an `mjtSensor`+naming
+  heuristic for bare wire MJBs) and stored on the Entity's sensor list. Not a per-frame component walk.
+- Camera identity = an entity-keyed camera registry (canonical name = entity prefix + camera name),
+  computed once. No `Cast<AMjArticulation>`.
+BLUEPRINT-SCRIPTABLE (locked requirement): keep a THIN `BlueprintType` face on the Entity — a
+lightweight `UMjEntity` handle (or the lightweight render actor exposing an entity interface) so
+scripts can query/drive an entity by name — WITHOUT the heavy per-joint component graph or the
+shadow. Id-slice core + a scriptable surface.
+Residual: a bare wire MJB with no spec gets sensor semantics from a heuristic or shipped metadata.
+These are mostly parallelizable and IN SCOPE now (locked decision 2:A). Original per-consumer detail
+(the actor-keyed call sites to repoint) below.
 - 4N-a — CONTROL-INGRESS interface (shadowless command target). NEW: an interface keyed by entity
   name that routes writes into the phase-3 `Setpoint` buffer + the lease. REPOINT `RosRpcTransport`
   (`GetAllArticulations :262`, per-write `GetArticulation :436,485,533`, `GetActuators`+ingress

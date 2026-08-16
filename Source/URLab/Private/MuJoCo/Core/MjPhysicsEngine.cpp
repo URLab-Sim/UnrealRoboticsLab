@@ -870,8 +870,14 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		m_entityStructureVersion.Bump();
 
 		// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless
-		// ingress bound to the current model, buffer, lease and partition.
+		// ingress bound to the current model, buffer, lease and partition. The state injection sized
+		// alongside carries keyframe holds into the pre-step drain.
 		m_controlBuffer.Init(m_model->nu);
+		m_stateInjection.Qpos.Init(0.0, m_model->nq);
+		m_stateInjection.Qvel.Init(0.0, m_model->nv);
+		m_stateInjection.QposMask.Init(false, m_model->nq);
+		m_stateInjection.HoldMask.Init(false, m_model->nv);
+		m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
 		m_controlIngress = MakeUnique<FMjEntityControlIngress>(
 			m_model, m_controlBuffer, m_controlLease, m_entityPartition);
 	}
@@ -1194,17 +1200,9 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					bPendingReset = false;
 					bAdvanced = true;
 
-					// Zero all actuator control values so stale commands
+					// Zero all setpoints and drop any keyframe hold so stale commands
 					// don't persist after reset.
-					for (AMjArticulation* Art : m_articulations)
-					{
-						if (!Art)
-							continue;
-						for (const int32 Id : Art->GetOwnedActuatorIds())
-						{
-							Art->ClearStagedControl(Id);
-						}
-					}
+					ClearControlBuffer();
 
 					// Snapshot the registry into weak refs under CallbackMutex.
 					// The broadcast runs later on the game thread and must not
@@ -1255,17 +1253,11 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					Cb(m_model, m_data);
 				}
 
-				// Puppet mode: client pushes qpos/qvel/ctrl directly, so
-				// ApplyControls (NetworkValue → d->ctrl) would clobber the
-				// snapshot. Skip the controller pass.
-				const bool bSkipApplyControls = (Mode == EStepMode::Puppet);
-				if (!bSkipApplyControls)
+				// Puppet mode: client pushes qpos/qvel/ctrl directly, so the control drain would
+				// clobber the pushed snapshot. Skip it.
+				if (Mode != EStepMode::Puppet)
 				{
-					for (AMjArticulation* Art : m_articulations)
-					{
-						if (Art)
-							Art->ApplyControls(m_model, m_data, /*bSkipController=*/false);
-					}
+					DrainControlIntoData(m_model, m_data);
 				}
 
 				// A mocap/wrench edit mutates m_data even while paused, so it
@@ -1503,6 +1495,146 @@ TArray<AMjArticulation*> UMjPhysicsEngine::GetAllArticulations() const
 	// registry is rebuilt on (un)install.
 	FScopeLock RegistryLock(&CallbackMutex);
 	return m_articulations;
+}
+
+void UMjPhysicsEngine::DrainControlIntoData(mjModel* Model, mjData* Data)
+{
+	if (Model == nullptr || Data == nullptr)
+	{
+		return;
+	}
+
+	const FMjStateInjection& Inj = m_stateInjection;
+
+	// Keyframe qpos-hold: pin the held qpos and zero the held DoFs' velocity. Free joints are left
+	// out when the hold is set, so a pinned pose never teleports the floating base.
+	if (Inj.QposMask.Num() == Model->nq)
+	{
+		for (int32 q = 0; q < Model->nq; ++q)
+		{
+			if (Inj.QposMask[q])
+			{
+				Data->qpos[q] = static_cast<mjtNum>(Inj.Qpos[q]);
+			}
+		}
+	}
+	if (Inj.HoldMask.Num() == Model->nv)
+	{
+		for (int32 v = 0; v < Model->nv; ++v)
+		{
+			if (Inj.HoldMask[v])
+			{
+				Data->qvel[v] = 0.0;
+			}
+		}
+	}
+
+	// Control write pass: only ids a writer has touched reach d->ctrl (an untouched id keeps whatever
+	// the integrator last saw), and a held entity's actuators are suppressed so a stale setpoint
+	// cannot fight the pinned pose.
+	const FMjControlBuffer& Buf = m_controlBuffer;
+	const bool bHasSuppress = (Inj.SuppressCtrl.Num() == Model->nu);
+	const int32 Nu = FMath::Min(Buf.Setpoint.Num(), static_cast<int32>(Model->nu));
+	for (int32 Id = 0; Id < Nu; ++Id)
+	{
+		if (!Buf.Touched[Id])
+		{
+			continue;
+		}
+		if (bHasSuppress && Inj.SuppressCtrl[Id])
+		{
+			continue;
+		}
+		Data->ctrl[Id] = static_cast<mjtNum>(Buf.Setpoint[Id]);
+	}
+}
+
+double UMjPhysicsEngine::GetSetpoint(int32 ActuatorId) const
+{
+	return m_controlBuffer.Setpoint.IsValidIndex(ActuatorId) ? m_controlBuffer.Setpoint[ActuatorId] : 0.0;
+}
+
+void UMjPhysicsEngine::ClearSetpoint(int32 ActuatorId)
+{
+	if (m_controlBuffer.Setpoint.IsValidIndex(ActuatorId))
+	{
+		m_controlBuffer.Setpoint[ActuatorId] = 0.0;
+		m_controlBuffer.Touched[ActuatorId] = false;
+	}
+}
+
+void UMjPhysicsEngine::ClearControlBuffer()
+{
+	if (m_model == nullptr)
+	{
+		return;
+	}
+	m_controlBuffer.Init(m_model->nu);
+	ReleaseKeyframeHold();
+}
+
+void UMjPhysicsEngine::HoldKeyframe(bool bViaQpos, const TArray<double>& Qpos, const TArray<double>& Ctrl)
+{
+	if (m_model == nullptr)
+	{
+		return;
+	}
+	FMjStateInjection& Inj = m_stateInjection;
+
+	if (bViaQpos && Qpos.Num() > 0)
+	{
+		// Pin every non-free joint's qpos, freeze its DoFs and suppress all ctrl so the solver does
+		// not drive against the pinned pose. Injecting qpos overrides the actuators outright.
+		Inj.QposMask.Init(false, m_model->nq);
+		Inj.HoldMask.Init(false, m_model->nv);
+		Inj.SuppressCtrl.Init(true, m_model->nu);
+		for (int32 j = 0; j < m_model->njnt; ++j)
+		{
+			const int32 JointType = m_model->jnt_type[j];
+			if (JointType == mjJNT_FREE)
+			{
+				continue;
+			}
+			const int32 QAdr = m_model->jnt_qposadr[j];
+			const int32 DAdr = m_model->jnt_dofadr[j];
+			const int32 NqPos = (JointType == mjJNT_BALL) ? 4 : 1;
+			const int32 NvDof = (JointType == mjJNT_BALL) ? 3 : 1;
+			for (int32 k = 0; k < NqPos && (QAdr + k) < Qpos.Num() && (QAdr + k) < Inj.Qpos.Num(); ++k)
+			{
+				Inj.Qpos[QAdr + k] = Qpos[QAdr + k];
+				Inj.QposMask[QAdr + k] = true;
+			}
+			for (int32 k = 0; k < NvDof && (DAdr + k) < Inj.HoldMask.Num(); ++k)
+			{
+				Inj.HoldMask[DAdr + k] = true;
+			}
+		}
+		return;
+	}
+
+	if (Ctrl.Num() > 0)
+	{
+		// Ctrl-hold: park the held ctrl as persistent setpoints and let the drain write them, leaving
+		// the solver in charge of how the pose is reached.
+		const int32 Count = FMath::Min3(Ctrl.Num(), m_controlBuffer.Setpoint.Num(),
+			static_cast<int32>(m_model->nu));
+		for (int32 i = 0; i < Count; ++i)
+		{
+			m_controlBuffer.Setpoint[i] = Ctrl[i];
+			m_controlBuffer.Touched[i] = true;
+		}
+	}
+}
+
+void UMjPhysicsEngine::ReleaseKeyframeHold()
+{
+	if (m_model == nullptr)
+	{
+		return;
+	}
+	m_stateInjection.QposMask.Init(false, m_model->nq);
+	m_stateInjection.HoldMask.Init(false, m_model->nv);
+	m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
 }
 
 TArray<UMjQuickConvertComponent*> UMjPhysicsEngine::GetAllQuickComponents() const

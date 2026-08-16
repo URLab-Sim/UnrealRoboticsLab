@@ -432,6 +432,32 @@ public:
 	/** The shadowless control ingress (routes writes into the one control buffer by entity name). */
 	IMjControlIngress* GetControlIngress() const { return m_controlIngress.Get(); }
 
+	/**
+	 * The single pre-step control pass: apply the keyframe-hold state injection (pin held qpos, zero
+	 * held DoFs) then write every touched setpoint into d->ctrl. Called once per substep by the
+	 * physics worker and by the direct-step handler, both of which own d at the call.
+	 */
+	void DrainControlIntoData(mjModel* Model, mjData* Data);
+
+	/** The setpoint a writer last staged for an actuator, or 0. What the UI reads back to display. */
+	double GetSetpoint(int32 ActuatorId) const;
+
+	/** Zero an actuator's setpoint and mark it untouched (it stops reaching d->ctrl). */
+	void ClearSetpoint(int32 ActuatorId);
+
+	/** Zero the whole control buffer and drop any keyframe hold. Used on simulation reset. */
+	void ClearControlBuffer();
+
+	/**
+	 * Pin a keyframe. Via qpos: hold every non-free joint's qpos and freeze its DoFs, suppressing all
+	 * ctrl so the solver does not drive against the pose. Via ctrl: park the held ctrl as persistent
+	 * setpoints. Arrays are scene-wide (indexed by global qpos / ctrl address).
+	 */
+	void HoldKeyframe(bool bViaQpos, const TArray<double>& Qpos, const TArray<double>& Ctrl);
+
+	/** Release a qpos keyframe hold (clears the injection masks). */
+	void ReleaseKeyframeHold();
+
 	/** Register an articulation into the registry the physics worker iterates
 	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the
 	 *  array or the name map out from under a step; in practice registration

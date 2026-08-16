@@ -799,20 +799,24 @@ bool AMjArticulation::HoldKeyframe(const FString& KeyframeName)
 		return false;
 	}
 
+	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this);
+	if (Engine == nullptr)
+	{
+		return false;
+	}
+
 	// Ctrl first: holding through the actuators leaves the solver in charge of
 	// how the pose is reached, where injecting qpos overrides it outright.
 	if (Target->Ctrl.IsSet() && Target->Ctrl.GetValue().Num() > 0)
 	{
-		HeldKeyframeCtrl = Target->Ctrl.GetValue();
-		bHoldViaQpos = false;
+		Engine->HoldKeyframe(/*bViaQpos=*/false, TArray<double>(), Target->Ctrl.GetValue());
 		bHoldingKeyframe = true;
 		return true;
 	}
 
 	if (Target->Qpos.IsSet() && Target->Qpos.GetValue().Num() > 0)
 	{
-		HeldKeyframeQpos = Target->Qpos.GetValue();
-		bHoldViaQpos = true;
+		Engine->HoldKeyframe(/*bViaQpos=*/true, Target->Qpos.GetValue(), TArray<double>());
 		bHoldingKeyframe = true;
 		return true;
 	}
@@ -824,9 +828,10 @@ bool AMjArticulation::HoldKeyframe(const FString& KeyframeName)
 void AMjArticulation::StopHoldKeyframe()
 {
 	bHoldingKeyframe = false;
-	bHoldViaQpos = false;
-	HeldKeyframeCtrl.Empty();
-	HeldKeyframeQpos.Empty();
+	if (UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this))
+	{
+		Engine->ReleaseKeyframeHold();
+	}
 }
 
 // --- Convenience one-liners ------------------------------------------------- //

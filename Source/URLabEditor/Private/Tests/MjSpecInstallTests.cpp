@@ -280,11 +280,11 @@ bool FMjSpecInstallReadsThroughLibraries::RunTest(const FString& Parameters)
 	return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecInstallSizesControlSlots,
-	"URLab.Doc.InstalledSpecSizesControlSlots",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSpecInstallSizesControlBuffer,
+	"URLab.Doc.InstalledSpecSizesControlBuffer",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FMjSpecInstallSizesControlSlots::RunTest(const FString& Parameters)
+bool FMjSpecInstallSizesControlBuffer::RunTest(const FString& Parameters)
 {
 	MjSpecInstallTests::FScene Scene;
 	if (!Scene.Open())
@@ -305,28 +305,17 @@ bool FMjSpecInstallSizesControlSlots::RunTest(const FString& Parameters)
 	}
 	const int32 ActuatorId = Actuator->GetBoundId().Get(-1);
 
-	AMjArticulation* Art = Scene.Articulation;
-	TestEqual(TEXT("the slots are sized to the compiled scene"), Art->GetControlSlotCount(),
-		static_cast<int32>(Scene.Model()->nu));
-	TestTrue(TEXT("the articulation owns its own actuator"), Art->GetOwnedActuatorIds().Contains(ActuatorId));
-
-	// Staging goes through the element and lands on the articulation's slot
-	// for that element's compiled id: the one thing the two halves have to
-	// agree on for the step loop to write the right ctrl entry.
-	Art->ControlSource = 0;
+	// A write through the element lands on the one engine control buffer at the element's compiled
+	// id, and reads back through the element -- the single setpoint the pre-step drain will apply.
 	UMjActuatorRuntime::SetNetworkControl(Actuator, 0.6f);
-	TestEqual(TEXT("staged on the element, resolved on the articulation"),
-		Art->ResolveDesiredControl(ActuatorId), 0.6);
-	TestEqual(TEXT("and read back through the element"), UMjActuatorRuntime::GetControl(Actuator), 0.6);
+	TestEqual(TEXT("staged on the element, resolved on the engine buffer"),
+		UMjActuatorRuntime::GetControl(Actuator), 0.6);
 
-	Art->ControlSource = 1;
-	TestEqual(TEXT("the UI source does not see the network slot"),
-		UMjActuatorRuntime::GetControl(Actuator), 0.0);
 	UMjActuatorRuntime::SetControl(Actuator, -0.3f);
-	TestEqual(TEXT("but does see its own"), UMjActuatorRuntime::GetControl(Actuator), -0.3);
+	TestEqual(TEXT("a later write replaces the setpoint"), UMjActuatorRuntime::GetControl(Actuator), -0.3);
 
-	// A compiled read is a different question from a staged one: nothing has
-	// stepped, so d->ctrl is still zero while both slots hold values.
+	// A compiled read is a different question from a staged one: nothing has stepped, so d->ctrl is
+	// still zero while the buffer holds the setpoint.
 	TestEqual(TEXT("staging is not applying"), UMjActuatorRuntime::GetAppliedControl(Actuator), 0.0f);
 	return true;
 }

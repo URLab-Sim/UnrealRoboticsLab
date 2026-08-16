@@ -684,17 +684,12 @@ bool FMjStepServerDirectCtrl::RunTest(const FString& Parameters)
 	if (Local.StartsWith(Pfx))
 		Local = Local.Mid(Pfx.Len());
 	Req.PerArticulationCtrl.FindOrAdd(Art->GetName()).Add({Local, 0.7f});
-	// Force raw write so the test path doesn't depend on a live controller.
-	Req.PerArticulationControlMode.Add(Art->GetName(), TEXT("raw"));
 
-	// ApplyStepCtrl stages control on the articulation's network slot for the
-	// named actuator; the copy into d->ctrl happens inside ApplyControls once
-	// per sub-step. control_mode="raw" is the bridge's bypass -- ApplyStepCtrl
-	// writes d->ctrl outright and ApplyControls(bSkipController) leaves it
-	// alone, so what lands is the requested value untransformed.
+	// ApplyStepCtrl stages the value as the actuator's setpoint in the one engine control buffer;
+	// the pre-step drain copies every touched setpoint into d->ctrl once per sub-step.
 	FURLabRpcDispatcher::ApplyStepCtrl(S.Manager, Req, m, d);
-	Art->ApplyControls(/*bSkipController=*/true);
-	TestEqual(TEXT("d->ctrl written by raw path"), (double)d->ctrl[Aid], 0.7, 1e-6);
+	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
+	TestEqual(TEXT("d->ctrl written by the control drain"), (double)d->ctrl[Aid], 0.7, 1e-6);
 
 	S.Cleanup();
 	return true;

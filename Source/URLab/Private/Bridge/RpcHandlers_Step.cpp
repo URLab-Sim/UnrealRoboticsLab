@@ -445,33 +445,14 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 			ByName.Add(FullName, A);
 		}
 
-		// Stage to actuator NetworkValue; AMjArticulation::ApplyControls
-		// copies it into d->ctrl every sub-step. Raw-mode articulations
-		// bypass NetworkValue entirely: d->ctrl is written directly here
-		// and ApplyControls skips its default path for bSkipController.
-		bool bRaw = false;
-		{
-			const FString* Mode = Req.PerArticulationControlMode.Find(
-				FMjCanonicalName::ArtSegment(Art).ToString());
-			if (!Mode)
-				Mode = Req.PerArticulationControlMode.Find(Art->GetName());
-			bRaw = Mode && Mode->Equals(TEXT("raw"), ESearchCase::IgnoreCase);
-		}
+		// Stage each value as the actuator's setpoint; the pre-step control drain copies every
+		// touched setpoint into d->ctrl each sub-step.
 		for (const TPair<FString, double>& KV : Pair.Value)
 		{
 			UMjNodeComponent** Found = ByName.Find(KV.Key);
 			if (!Found || !*Found)
 				continue;
-			if (bRaw && m && d)
-			{
-				const int32 Id = (*Found)->GetBoundId().Get(-1);
-				if (Id >= 0 && Id < m->nu)
-					d->ctrl[Id] = (mjtNum)KV.Value;
-			}
-			else
-			{
-				UMjActuatorRuntime::SetNetworkControl(*Found, KV.Value);
-			}
+			UMjActuatorRuntime::SetNetworkControl(*Found, KV.Value);
 		}
 	}
 
@@ -1015,35 +996,9 @@ void FURLabRpcDispatcher::InstallDirectHandler()
 
 		ApplyStepCtrl(Mgr, Cmd->Request, m, d);
 
-		// control_mode="raw" per articulation bypasses the UE controller
-		// (NetworkValue treated as direct ctrl setpoint). Name-keyed so
-		// adding/removing articulations doesn't shift the mapping. The set is
-		// fixed for this command (registration is compile-time), so read it once.
-		const TArray<AMjArticulation*>& Arts = Mgr->GetAllArticulations();
-		TMap<AMjArticulation*, bool> SkipController;
-		for (AMjArticulation* Art : Arts)
-		{
-			if (!Art)
-				continue;
-			// Clients key control mode by the public segment (ActorId-based); accept
-			// the raw UE name too for callers that still address by it.
-			const FString* Mode = Cmd->Request.PerArticulationControlMode.Find(
-				FMjCanonicalName::ArtSegment(Art).ToString());
-			if (!Mode)
-				Mode = Cmd->Request.PerArticulationControlMode.Find(Art->GetName());
-			const bool bRaw = Mode && Mode->Equals(TEXT("raw"), ESearchCase::IgnoreCase);
-			SkipController.Add(Art, bRaw);
-		}
-
 		for (int32 i = 0; i < Cmd->Request.NSteps; ++i)
 		{
-			for (AMjArticulation* Art : Arts)
-			{
-				if (!Art)
-					continue;
-				const bool* bSkip = SkipController.Find(Art);
-				Art->ApplyControls(m, d, bSkip != nullptr && *bSkip);
-			}
+			Engine->DrainControlIntoData(m, d);
 			mj_step(m, d);
 			if (Engine->OnPostStep)
 				Engine->OnPostStep(m, d);

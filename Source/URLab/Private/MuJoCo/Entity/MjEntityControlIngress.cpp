@@ -15,8 +15,18 @@ FMjEntityControlIngress::FMjEntityControlIngress(const mjModel* InModel, FMjCont
 	, Lease(InLease)
 	, Partition(InPartition)
 {
-	// TODO: engine wiring -- construct one of these against the live buffer/lease/partition and hand
-	// it to the ingress transports (ROS / ZMQ / UI) as their IMjControlIngress.
+}
+
+const FGuid& MjControlWho::Network()
+{
+	static const FGuid Token(0x4E455457, 0x00000000, 0x00000000, 0x00000000);
+	return Token;
+}
+
+const FGuid& MjControlWho::UI()
+{
+	static const FGuid Token(0x55495F55, 0x49000000, 0x00000000, 0x00000000);
+	return Token;
 }
 
 void FMjEntityControlIngress::WriteCtrl(FName Entity, int32 ActuatorId, double Value, const FGuid& Who)

@@ -11,6 +11,8 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjControl.h"
+#include "MuJoCo/Entity/MjControlIngress.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 
 #if URLAB_MJ_GEN
@@ -97,6 +99,26 @@ bool ResolveBound(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngi
 	return true;
 }
 
+/** Route a setpoint into the engine's one control buffer, addressed by the owning entity's name. */
+void WriteSetpoint(const UMjNodeComponent* Actuator, double Value, const FGuid& Who)
+{
+	int32 Id = -1;
+	AMjArticulation* Art = UMjActuatorRuntime::OwningArticulation(Actuator);
+	if (Art == nullptr || !ResolveActuatorId(Actuator, Id))
+	{
+		return;
+	}
+	const UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(Actuator);
+	if (Engine == nullptr)
+	{
+		return;
+	}
+	if (IMjControlIngress* Ingress = Engine->GetControlIngress())
+	{
+		Ingress->WriteCtrl(FName(*Art->GetName()), Id, Value, Who);
+	}
+}
+
 } // namespace
 
 bool UMjActuatorRuntime::IsActuator(const UMjNodeComponent* Node)
@@ -124,43 +146,33 @@ AMjArticulation* UMjActuatorRuntime::OwningArticulation(const UMjNodeComponent* 
 
 void UMjActuatorRuntime::SetControl(const UMjNodeComponent* Actuator, double Value)
 {
-	int32 Id = -1;
-	AMjArticulation* Art = OwningArticulation(Actuator);
-	if (Art != nullptr && ResolveActuatorId(Actuator, Id))
-	{
-		Art->StageInternalControl(Id, Value);
-	}
+	WriteSetpoint(Actuator, Value, MjControlWho::UI());
 }
 
 void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent* Actuator, double Value)
 {
-	int32 Id = -1;
-	AMjArticulation* Art = OwningArticulation(Actuator);
-	if (Art != nullptr && ResolveActuatorId(Actuator, Id))
-	{
-		Art->StageNetworkControl(Id, Value);
-	}
+	WriteSetpoint(Actuator, Value, MjControlWho::Network());
 }
 
 void UMjActuatorRuntime::ResetControl(const UMjNodeComponent* Actuator)
 {
 	int32 Id = -1;
-	AMjArticulation* Art = OwningArticulation(Actuator);
-	if (Art != nullptr && ResolveActuatorId(Actuator, Id))
+	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(Actuator);
+	if (Engine != nullptr && ResolveActuatorId(Actuator, Id))
 	{
-		Art->ClearStagedControl(Id);
+		Engine->ClearSetpoint(Id);
 	}
 }
 
 double UMjActuatorRuntime::GetControl(const UMjNodeComponent* Actuator)
 {
 	int32 Id = -1;
-	const AMjArticulation* Art = OwningArticulation(Actuator);
-	if (Art == nullptr || !ResolveActuatorId(Actuator, Id))
+	const UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(Actuator);
+	if (Engine == nullptr || !ResolveActuatorId(Actuator, Id))
 	{
-		return 0.0f;
+		return 0.0;
 	}
-	return Art->ResolveDesiredControl(Id);
+	return Engine->GetSetpoint(Id);
 }
 
 double UMjActuatorRuntime::ResolveDesiredControl(const UMjNodeComponent* Actuator, uint8 Source)

@@ -36,9 +36,10 @@ struct URLAB_API FMjControlBuffer
  */
 struct URLAB_API FMjStateInjection
 {
-	TArray<double> Qpos;         // size nq (only HoldMask-covered entries are meaningful)
+	TArray<double> Qpos;         // size nq (only QposMask-covered entries are meaningful)
 	TArray<double> Qvel;         // size nv (zeroed for held DoFs)
-	TBitArray<>    HoldMask;     // per-DoF (nv): this DoF is held
+	TBitArray<>    QposMask;     // per-qpos (nq): write this qpos entry from Qpos
+	TBitArray<>    HoldMask;     // per-DoF (nv): zero this DoF's qvel
 	TBitArray<>    SuppressCtrl; // per-actuator (nu): skip this id in the ctrl write pass
 };
 
@@ -56,3 +57,13 @@ struct URLAB_API FMjControlLease
 	bool Claim(FName Entity, const FGuid& Who);
 	void Release(FName Entity, const FGuid& Who);
 };
+
+/**
+ * Stable identity tokens for the two default control writers. The UI takes an entity's lease to
+ * override the network; until it does, both are unclaimed and either is allowed to write.
+ */
+namespace MjControlWho
+{
+	URLAB_API const FGuid& Network();
+	URLAB_API const FGuid& UI();
+}

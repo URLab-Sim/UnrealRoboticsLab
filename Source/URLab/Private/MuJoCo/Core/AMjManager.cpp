@@ -21,6 +21,7 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Entity/MjAppearanceStore.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
@@ -1035,6 +1036,16 @@ bool AAMjManager::CompileModel()
 AMjArticulation* AAMjManager::GetArticulation(const FString& ActorName) const
 {
 	return PhysicsEngine ? PhysicsEngine->GetArticulation(ActorName) : nullptr;
+}
+
+UMjAppearanceStore* AAMjManager::GetAppearanceStore()
+{
+	if (AppearanceStore == nullptr)
+	{
+		AppearanceStore = NewObject<UMjAppearanceStore>(this);
+		AppearanceStore->Init(this);
+	}
+	return AppearanceStore;
 }
 
 AMjEntity* AAMjManager::GetEntity(FName EntityName)

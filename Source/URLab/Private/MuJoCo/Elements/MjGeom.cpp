@@ -19,6 +19,8 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
+#include "MuJoCo/Entity/MjAppearance.h"
+#include "MuJoCo/Entity/MjGeomAppearance.h"
 #include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
@@ -726,6 +728,52 @@ void UMjGeom::ApplyOverrideMaterial(UMaterialInterface* InMaterial)
 	Apply(VisualizerMesh);
 	Apply(VisualizerCapTop);
 	Apply(VisualizerCapBottom);
+}
+
+int32 UMjGeom::ApplyAppearanceOverride(const FMjGeomAppearance* Override,
+	TFunctionRef<UTexture*(FName)> ResolveTexture)
+{
+	// No override re-runs the spec pass, which rebuilds each part's dynamic
+	// instance at the authored appearance -- the clean way to undo a variant.
+	if (Override == nullptr)
+	{
+		ApplySpecMaterial();
+	}
+
+	int32 Applied = 0;
+	auto Drive = [&](UStaticMeshComponent* Part) {
+		if (!IsValid(Part))
+		{
+			return;
+		}
+		if (UMaterialInstanceDynamic* Mid = Cast<UMaterialInstanceDynamic>(Part->GetMaterial(0)))
+		{
+			if (Override != nullptr)
+			{
+				MjAppearance::Apply(Mid, *Override, ResolveTexture);
+			}
+			++Applied;
+		}
+	};
+
+	Drive(VisualizerMesh);
+	Drive(VisualizerCapTop);
+	Drive(VisualizerCapBottom);
+
+	// A mesh geom's picture is a static mesh hung under it rather than one of the
+	// preview parts, so its instance is reached through the child walk.
+	TArray<USceneComponent*> Children;
+	GetChildrenComponents(/*bIncludeAllDescendants=*/true, Children);
+	for (USceneComponent* Child : Children)
+	{
+		UStaticMeshComponent* ChildMesh = Cast<UStaticMeshComponent>(Child);
+		if (ChildMesh != nullptr && ChildMesh != VisualizerMesh && ChildMesh != VisualizerCapTop
+			&& ChildMesh != VisualizerCapBottom)
+		{
+			Drive(ChildMesh);
+		}
+	}
+	return Applied;
 }
 
 void UMjGeom::SetGeomVisibility(bool bNewVisibility)

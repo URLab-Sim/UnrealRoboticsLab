@@ -52,6 +52,7 @@ class UMjModel;
 class UMjOption;
 class UMjSimulationState;
 class UMjBody;
+class UMjAppearanceStore;
 class UMjUserChannelComponent;
 struct FMjUserChannel;
 enum class EMjUserChannelKind : uint8;
@@ -214,6 +215,14 @@ public:
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	TArray<AMjHeightfieldActor*> GetAllHeightfields() const;
 
+	/**
+	 * The visual domain-randomization channel: name-keyed geom appearance overrides
+	 * that re-drive live material instances off the mjModel. Lazily created on first
+	 * request and owned here (so overrides outlive any one render scene and a
+	 * render-server swap can re-apply them). Never null.
+	 */
+	UMjAppearanceStore* GetAppearanceStore();
+
 	/** Non-articulation entity table, rebuilt on every compile; empty until the first. */
 	const TArray<FMjEntityRecord>& GetEntities() const { return EntityCache; }
 
@@ -351,6 +360,12 @@ protected:
 	TMap<FString, AMjArticulation*> m_ArticulationMap;
 
 	TArray<FMjEntityRecord> EntityCache;
+
+	/** Name-keyed geom appearance overrides (visual DR). Lazily created; see
+	 *  GetAppearanceStore. Transient so it is GC-rooted across PIE without
+	 *  serialising the overrides. */
+	UPROPERTY(Transient)
+	TObjectPtr<UMjAppearanceStore> AppearanceStore;
 
 	/** Builds the per-step state IR consumed by the msgpack encoder. */
 	FMjStateCollector StateCollector;

@@ -41,6 +41,8 @@
 
 class UMaterialInterface;
 class UStaticMeshComponent;
+class UTexture;
+struct FMjGeomAppearance;
 
 /**
  * A `<geom>` element, with its editor preview and its mesh tooling.
@@ -104,6 +106,19 @@ public:
 
 	/** Put `InMaterial` on every built-in preview mesh this geom has. */
 	void ApplyOverrideMaterial(UMaterialInterface* InMaterial);
+
+	/**
+	 * Re-drive this geom's live material instances from a domain-randomization
+	 * override, off the shared master material and without touching the mjModel.
+	 *
+	 * A null `Override` restores the authored appearance by re-running the spec
+	 * material pass. Otherwise every preview part's dynamic instance (and any
+	 * child static mesh) takes the override's set fields through
+	 * `MjAppearance::Apply`; `ResolveTexture` maps a binding key to a UTexture.
+	 * Returns the number of instances driven.
+	 */
+	int32 ApplyAppearanceOverride(const FMjGeomAppearance* Override,
+		TFunctionRef<UTexture*(FName)> ResolveTexture);
 
 	/**
 	 * The `material` this geom names, resolved through its default-class chain.

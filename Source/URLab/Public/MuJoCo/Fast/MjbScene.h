@@ -12,10 +12,12 @@
 
 struct mjModel_;
 struct mjData_;
+struct FMjGeomAppearance;
 class UPrimitiveComponent;
 class AAMjManager;
 class UMjbAssetBaker;
 class UMjbTransportBus;
+class UTexture;
 
 /** How a play-session AMjbScene sources its transforms. */
 UENUM(BlueprintType)
@@ -203,6 +205,19 @@ public:
 	 */
 	static bool FetchModelFromOwner(const FString& ControlEndpoint,
 		TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError);
+
+	/**
+	 * Re-drive the live material instance of every geom named `GeomName` from a
+	 * domain-randomization override, without touching the loaded model. A null
+	 * `Override` restores the geom's baked appearance (the base material pass).
+	 * `ResolveTexture` maps a binding key to a UTexture. Returns the count driven.
+	 * This is the fast-path/Mirror half of the symmetric appearance channel.
+	 */
+	int32 ApplyAppearanceOverride(FName GeomName, const FMjGeomAppearance* Override,
+		TFunctionRef<UTexture*(FName)> ResolveTexture);
+
+	/** Number of built geom components carrying `GeomName` in the loaded model. */
+	int32 NumGeomsNamed(FName GeomName) const;
 
 	/** Apply a per-geom world-transform stream: xpos is 3*ngeom, xquat 4*ngeom
 	 *  (wxyz), in MuJoCo world frame. This is the render-time hot path (no

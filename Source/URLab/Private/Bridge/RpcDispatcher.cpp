@@ -210,6 +210,21 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleListKeyframes(R); },
 		{TEXT("op:string"), TEXT("keyframes:array")});
 
+		// Visual domain randomization. resolve_geom reconciles a geom name to a
+		// stable handle (compiled id + live-component census); set_geom_appearance
+		// re-drives that geom's live material off the mjModel (parametric + texture
+		// swap) or, with clear=true, restores its authored appearance.
+		Reg(TEXT("resolve_geom"), EOpCategory::ManagerRequired, TEXT("scene"),
+			[this](auto& R) { return HandleResolveGeom(R); },
+			/*Reply=*/{TEXT("op:string"), TEXT("geom:string"), TEXT("found:bool"),
+				TEXT("handle:string"), TEXT("mj_id:int"), TEXT("authoring:int"), TEXT("fastpath:int")},
+			/*Required=*/{TEXT("geom")});
+		Reg(TEXT("set_geom_appearance"), EOpCategory::ManagerRequired, TEXT("scene"),
+			[this](auto& R) { return HandleSetGeomAppearance(R); },
+			/*Reply=*/{TEXT("op:string"), TEXT("geom:string"), TEXT("applied:int"),
+				TEXT("found:bool"), TEXT("cleared:bool")},
+			/*Required=*/{TEXT("geom")});
+
 	// Cooperative render-farm lease. No-manager: a pool client claims the
 	// process itself, whether or not a scene is loaded.
 	Reg(TEXT("acquire_lease"), EOpCategory::NoManager, TEXT("farm"),

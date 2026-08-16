@@ -361,6 +361,11 @@ private:
 	TSharedPtr<FJsonObject> HandleReadMocapPose(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleGetContacts(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleListKeyframes(const TSharedPtr<FJsonObject>& Req);
+	// Visual domain randomization (RpcHandlers_Appearance.cpp): resolve a geom name
+	// to a stable handle, and set/clear a name-keyed appearance override that
+	// re-drives the geom's live material off the mjModel.
+	TSharedPtr<FJsonObject> HandleResolveGeom(const TSharedPtr<FJsonObject>& Req);
+	TSharedPtr<FJsonObject> HandleSetGeomAppearance(const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleRecording(const FString& Op, const TSharedPtr<FJsonObject>& Req);
 	TSharedPtr<FJsonObject> HandleReplay(const FString& Op, const TSharedPtr<FJsonObject>& Req);
 };

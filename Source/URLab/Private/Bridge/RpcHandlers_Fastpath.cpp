@@ -11,6 +11,7 @@
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjModelSource.h"
 #include "MuJoCo/Fast/MjbScene.h"
 #include "Utils/URLabLogging.h"
 
@@ -90,17 +91,61 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr
 		return MakeError(URLabError::NotReady, TEXT("no manager to load a fast-path scene into"));
 	}
 
-	// New MJB bytes: msgpack bin arrives as base64 under a `__b64__`-suffixed key
-	// (accept the bare key too, e.g. an already-base64 string).
+	// New model bytes: msgpack bin arrives as base64 under a `__b64__`-suffixed key
+	// (accept the bare key too, e.g. an already-base64 string). Accept the `mjb` key
+	// for back-compat and the format-neutral `model` key alongside it.
 	FString B64;
-	if (!Req->TryGetStringField(TEXT("mjb__b64__"), B64) && !Req->TryGetStringField(TEXT("mjb"), B64))
+	if (!Req->TryGetStringField(TEXT("mjb__b64__"), B64) && !Req->TryGetStringField(TEXT("mjb"), B64)
+		&& !Req->TryGetStringField(TEXT("model__b64__"), B64) && !Req->TryGetStringField(TEXT("model"), B64))
 	{
-		return MakeError(URLabError::BadRequest, TEXT("missing 'mjb' bytes"));
+		return MakeError(URLabError::BadRequest, TEXT("missing model bytes"));
 	}
-	TArray<uint8> Mjb;
-	if (!FBase64::Decode(B64, Mjb) || Mjb.Num() == 0)
+	TArray<uint8> Src;
+	if (!FBase64::Decode(B64, Src) || Src.Num() == 0)
 	{
-		return MakeError(URLabError::BadRequest, TEXT("'mjb' is not valid base64 or is empty"));
+		return MakeError(URLabError::BadRequest, TEXT("model bytes are not valid base64 or are empty"));
+	}
+
+	// Normalize whatever form arrived to an mjb buffer with THIS libmujoco, so xml/mjz recompile
+	// locally (immune to MJB version skew) and the existing mjb reload path is reused unchanged.
+	FString Format = TEXT("mjb");
+	Req->TryGetStringField(TEXT("format"), Format);
+	TArray<uint8> Mjb;
+	if (Format.Equals(TEXT("mjb"), ESearchCase::IgnoreCase))
+	{
+		Mjb = MoveTemp(Src);
+	}
+	else
+	{
+		TMap<FString, TArray<uint8>> Assets;
+		const TSharedPtr<FJsonObject>* AssetsObj = nullptr;
+		if (Req->TryGetObjectField(TEXT("assets"), AssetsObj) && AssetsObj && AssetsObj->IsValid())
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& KV : (*AssetsObj)->Values)
+			{
+				TArray<uint8> Bytes;
+				FString AssetB64;
+				if (KV.Value.IsValid() && KV.Value->TryGetString(AssetB64) && FBase64::Decode(AssetB64, Bytes))
+				{
+					Assets.Add(KV.Key, MoveTemp(Bytes));
+				}
+			}
+		}
+		FString Err;
+		mjModel* Compiled = MjModelSource::FromBytes(Src, Format, Assets, Err);
+		if (Compiled == nullptr)
+		{
+			return MakeError(URLabError::BadRequest,
+				FString::Printf(TEXT("model format '%s' did not compile: %s"), *Format, *Err));
+		}
+		const int32 Sz = mj_sizeModel(Compiled);
+		Mjb.SetNumUninitialized(Sz);
+		mj_saveModel(Compiled, nullptr, Mjb.GetData(), Sz);
+		mj_deleteModel(Compiled);
+		if (Mjb.Num() == 0)
+		{
+			return MakeError(URLabError::BadRequest, TEXT("normalized model serialized to zero bytes"));
+		}
 	}
 
 	// Finding the renderer (TActorIterator) AND the reload both assert game-thread,

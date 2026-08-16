@@ -17,13 +17,18 @@
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 
+#include "Materials/MaterialInstanceDynamic.h"
+
 #include "MuJoCo/Fast/MjbAssetBaker.h"
 #include "MuJoCo/Fast/MjbTransportBus.h"
+#include "MuJoCo/Entity/MjAppearance.h"
+#include "MuJoCo/Entity/MjGeomAppearance.h"
 #include "MuJoCo/Entity/MjBakedAssetResolver.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Entity/MjAppearanceStore.h"
 #include "Kismet/GameplayStatics.h"
 #include "Camera/CameraActor.h"
 #include "GameFramework/PlayerController.h"
@@ -943,6 +948,69 @@ void AMjbScene::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVe
 	zmq_ctx_term(Ctx);
 }
 
+int32 AMjbScene::NumGeomsNamed(FName GeomName) const
+{
+	if (!Model)
+	{
+		return 0;
+	}
+	const FString Want = GeomName.ToString();
+	int32 Count = 0;
+	for (int32 G = 0; G < GeomComps.Num(); ++G)
+	{
+		if (!GeomComps[G])
+		{
+			continue;
+		}
+		const char* Nm = mj_id2name(Model, mjOBJ_GEOM, G);
+		if (Nm && *Nm && Want == ANSI_TO_TCHAR(Nm))
+		{
+			++Count;
+		}
+	}
+	return Count;
+}
+
+int32 AMjbScene::ApplyAppearanceOverride(FName GeomName, const FMjGeomAppearance* Override,
+	TFunctionRef<UTexture*(FName)> ResolveTexture)
+{
+	if (!Model)
+	{
+		return 0;
+	}
+	const FString Want = GeomName.ToString();
+	int32 Applied = 0;
+	for (int32 G = 0; G < GeomComps.Num(); ++G)
+	{
+		UPrimitiveComponent* Comp = GeomComps[G];
+		if (!Comp)
+		{
+			continue;
+		}
+		const char* Nm = mj_id2name(Model, mjOBJ_GEOM, G);
+		if (!Nm || !*Nm || Want != ANSI_TO_TCHAR(Nm))
+		{
+			continue;
+		}
+
+		if (Override != nullptr)
+		{
+			if (UMaterialInstanceDynamic* Mid = Cast<UMaterialInstanceDynamic>(Comp->GetMaterial(0)))
+			{
+				MjAppearance::Apply(Mid, *Override, ResolveTexture);
+				++Applied;
+			}
+		}
+		else if (AssetBaker)
+		{
+			// Restore the baked appearance by rebuilding this geom's MID from the model.
+			AssetBaker->ApplyGeomMaterial(Comp, G);
+			++Applied;
+		}
+	}
+	return Applied;
+}
+
 void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 {
 	if (!Xpos || !Xquat)
@@ -1274,6 +1342,13 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 		// poll in Direct.Begin is only for the first-frame race at level start).
 		Direct.Manager = Mgr;
 		InstallIntoEngine();
+	}
+
+	// The swap built fresh MIDs, so any visual-DR overrides the client set on the
+	// retired scene are gone; re-drive them onto the new components by name.
+	if (Mgr)
+	{
+		Mgr->GetAppearanceStore()->ReapplyAll();
 	}
 	UE_LOG(LogURLab, Log, TEXT("[MjbScene] ReloadFromBytes: swapped model -- %d geoms built"), Geoms);
 }

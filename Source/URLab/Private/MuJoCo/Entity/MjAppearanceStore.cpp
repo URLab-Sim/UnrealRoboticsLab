@@ -70,7 +70,32 @@ int32 UMjAppearanceStore::ResolveMjId(FName GeomName) const
 	{
 		return INDEX_NONE;
 	}
-	return mj_name2id(Model, mjOBJ_GEOM, TCHAR_TO_ANSI(*GeomName.ToString()));
+	const FString Want = GeomName.ToString();
+
+	// A raw model carries unprefixed names, so a direct hit resolves it.
+	const int32 Direct = mj_name2id(Model, mjOBJ_GEOM, TCHAR_TO_ANSI(*Want));
+	if (Direct >= 0)
+	{
+		return Direct;
+	}
+
+	// A compiled model prefixes participant names ("<participant>_<local>"), so the client's local
+	// name matches on the prefix-stripped tail. First exact-tail wins (unambiguous for one robot).
+	const FString Tail = TEXT("_") + Want;
+	for (int32 G = 0; G < Model->ngeom; ++G)
+	{
+		const char* Name = mj_id2name(Model, mjOBJ_GEOM, G);
+		if (Name == nullptr)
+		{
+			continue;
+		}
+		const FString Full = FString(UTF8_TO_TCHAR(Name));
+		if (Full == Want || Full.EndsWith(Tail))
+		{
+			return G;
+		}
+	}
+	return INDEX_NONE;
 }
 
 UMjAppearanceStore::FResolution UMjAppearanceStore::ResolveGeom(FName GeomName, FName Entity) const

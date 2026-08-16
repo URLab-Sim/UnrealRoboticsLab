@@ -28,10 +28,7 @@ class UURLabBridgeServer;
 struct FMjStateSnapshot;
 struct FMjStepRequest;
 struct FMjDirectStepCommand;
-struct FStepModeStrategy;
-struct FLiveStepMode;
-struct FDirectStepMode;
-struct FPuppetStepMode;
+struct FStepRequestCommon;
 
 /**
  * @brief Transport-agnostic step-server core.
@@ -50,12 +47,6 @@ struct FPuppetStepMode;
  */
 class URLAB_API FURLabRpcDispatcher
 {
-	// The per-mode strategies own the step body (RpcHandlers_Step.cpp) and reach
-	// into dispatcher internals (queue, counters, camera helpers) to run it.
-	friend struct FLiveStepMode;
-	friend struct FDirectStepMode;
-	friend struct FPuppetStepMode;
-
 public:
 	/** Observation verbosity. minimal=qpos+qvel; standard=+ctrl+act+sensors;
 	 *  full=+body xpos/xquat+actuator forces. */
@@ -284,23 +275,32 @@ private:
 	bool bDirectHandlerInstalled = false;
 
 public:
-	// Public so the per-mode strategy objects can drive them on enter/exit.
-	void InstallDirectHandler();
-	void UninstallDirectHandler();
-
-	/** After a mid-session recompile rebuilt mjModel/mjData, re-run the active
-	 *  strategy's OnEnter (under DispatchMutex) so its step handler is
-	 *  reinstalled onto the fresh engine and the pause / pacing invariants are
-	 *  restored. Called from the engine's recompile path. */
+	/** After a mid-session recompile rebuilt mjModel/mjData, re-apply the active
+	 *  pose source (under DispatchMutex) so its step handler is reinstalled onto
+	 *  the fresh engine and the pause / pacing invariants are restored. Called
+	 *  from the engine's recompile path. */
 	void ReapplyActiveStepMode();
 
 private:
-	/** Per-mode lifecycle + step body strategy: OnEnter installs the handler +
-	 *  sets pause / publisher state, OnExit uninstalls, HandleStep runs the
-	 *  mode's per-step work. Swapped by SetActiveStepMode. Shared so an in-flight
-	 *  HandleStep keeps the strategy alive across a concurrent set_mode swap. */
-	TSharedPtr<struct FStepModeStrategy> CurrentStepStrategy;
-	static TSharedPtr<struct FStepModeStrategy> MakeStepStrategy(EMjPoseSource Mode);
+	void InstallDirectHandler();
+	void UninstallDirectHandler();
+
+	/** Apply a pose source's mode-enter side effects: pause (or unpause) the
+	 *  state/ctrl publishers, push the resolved source to the engine, and install
+	 *  the direct step handler for Stepped. Callers uninstall any prior handler
+	 *  first and hold DispatchMutex. The single point where EMjPoseSource selects
+	 *  the clock behaviour. */
+	void EnterPoseSource(EMjPoseSource Mode, AAMjManager& Mgr);
+
+	/** Per-pose-source step bodies, selected by ActiveStepMode in HandleStep.
+	 *  FreeRun reads UE's autonomous physics; Stepped drives the direct step
+	 *  handler; StatePushed writes the client's pushed integration state. */
+	TSharedPtr<FJsonObject> StepFreeRun(const TSharedPtr<FJsonObject>& Req,
+		const struct FStepRequestCommon& Common);
+	TSharedPtr<FJsonObject> StepStepped(const TSharedPtr<FJsonObject>& Req,
+		const struct FStepRequestCommon& Common);
+	TSharedPtr<FJsonObject> StepStatePushed(const TSharedPtr<FJsonObject>& Req,
+		const struct FStepRequestCommon& Common);
 
 	/** Parse the request-scoped step fields (observation override, camera spec,
 	 *  wait / render flags) shared by every mode into Out. Does NOT mutate any
@@ -371,7 +371,7 @@ private:
 };
 
 /** Request-scoped step fields parsed once per step (ParseStepCommon) and handed
- *  to the active strategy's HandleStep. Nothing here is session state — the
+ *  to the selected pose-source step body. Nothing here is session state — the
  *  observation override applies to this step only. */
 struct FStepRequestCommon
 {
@@ -382,19 +382,4 @@ struct FStepRequestCommon
 	bool bRenderSync = false;
 	bool bRenderAsync = false;
 	int32 CameraTimeoutMs = 200;
-};
-
-/** Per-mode step lifecycle + body. Concrete Live/Direct/Puppet strategies (in
- *  RpcHandlers_Step.cpp) install/uninstall the step handler and set the engine
- *  pause + publisher state on transition, and own the per-step work in
- *  HandleStep, so the mode logic isn't a growing if-chain in HandleStep /
- *  SetActiveStepMode. */
-struct FStepModeStrategy
-{
-	virtual ~FStepModeStrategy() = default;
-	virtual EMjPoseSource Mode() const = 0;
-	virtual void OnEnter(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
-	virtual void OnExit(FURLabRpcDispatcher& Dispatcher, AAMjManager& Mgr) = 0;
-	virtual TSharedPtr<FJsonObject> HandleStep(FURLabRpcDispatcher& D,
-		const TSharedPtr<FJsonObject>& Req, const FStepRequestCommon& Common) = 0;
 };

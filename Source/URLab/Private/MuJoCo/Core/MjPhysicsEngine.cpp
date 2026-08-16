@@ -1172,9 +1172,9 @@ void UMjPhysicsEngine::RunMujocoAsync()
 		FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher();
 		SetPoseSource(Disp ? Disp->GetActiveStepMode()
 						   : (Mgr->bPinStepMode ? Mgr->StepMode : EMjPoseSource::FreeRun));
-		// A recompile rebuilt m_model/m_data under a live session; re-run the
-		// active strategy's OnEnter so its step handler is reinstalled onto the
-		// fresh engine and the pause / pacing invariants are restored.
+		// A recompile rebuilt m_model/m_data under a live session; re-apply the
+		// active pose source so its step handler is reinstalled onto the fresh
+		// engine and the pause / pacing invariants are restored.
 		if (Disp)
 			Disp->ReapplyActiveStepMode();
 	}

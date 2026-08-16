@@ -315,15 +315,14 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 								 ? OwnerMgr->StepMode
 								 : EMjPoseSource::FreeRun;
 	{
-		// Serialise strategy construction + OnEnter against a concurrent
+		// Serialise the mode-enter side effects against a concurrent
 		// set_mode / OnManagerGone (PIE-end) touching the same members.
 		FScopeLock Lock(&DispatchMutex);
 		ActiveStepMode.store(InitMode, std::memory_order_release);
-		// Camera publishers stream in every mode; the strategy's OnEnter handles
-		// the state/ctrl publishers, the engine step mode, and the handler install.
+		// Camera publishers stream in every mode; EnterPoseSource handles the
+		// state/ctrl publishers, the engine pose source, and the handler install.
 		FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
-		CurrentStepStrategy = MakeStepStrategy(InitMode);
-		CurrentStepStrategy->OnEnter(*this, *OwnerMgr);
+		EnterPoseSource(InitMode, *OwnerMgr);
 	}
 
 	// Cached on the game thread; worker threads later use Get() (TActorIterator
@@ -338,13 +337,11 @@ void FURLabRpcDispatcher::Init(AAMjManager* InManager)
 
 void FURLabRpcDispatcher::OnManagerGone()
 {
-	// Serialise handler teardown + strategy reset against a concurrent set_mode
-	// racing PIE-end (would otherwise be a UAF on CurrentStepStrategy / the
-	// handler flags).
+	// Serialise handler teardown against a concurrent set_mode racing PIE-end
+	// (would otherwise be a UAF on the handler flags).
 	FScopeLock Lock(&DispatchMutex);
 
 	UninstallDirectHandler();
-	CurrentStepStrategy.Reset();
 	DrainQueues();
 
 	// Claims are per-PIE: the articulations die with the world.

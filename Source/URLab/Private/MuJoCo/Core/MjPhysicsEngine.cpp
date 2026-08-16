@@ -854,6 +854,22 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		RegisterArticulation(Articulation);
 	}
 
+	// Build the flat FMjEntity partition from the compiled model, keyed by the same participant
+	// prefixes the articulations use. The version bump lets consumers such as the ROS re-subscribe
+	// path learn the model shape changed.
+	{
+		FMjEntityPartition Partition;
+		for (const AMjArticulation* Art : m_articulations)
+		{
+			if (Art)
+			{
+				Partition.Prefixes.Add(FMjCanonicalName::ArtSegment(Art).ToString());
+			}
+		}
+		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);
+		m_entityStructureVersion.Bump();
+	}
+
 	// The contributor registries are what the per-frame render pass and the
 	// debug visualiser iterate, so they are rebuilt from the same list the
 	// compile was given rather than from a second walk of the level.

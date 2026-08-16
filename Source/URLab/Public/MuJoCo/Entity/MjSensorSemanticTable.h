@@ -10,10 +10,10 @@ struct mjModel_;
 typedef mjModel_ mjModel;
 
 /**
- * MODEL-ONLY sensor semantics. Replaces UMjSensorRuntime::GetSemantic (which read the ProtoSpec
- * schema on a live component) with a table over the compiled model: mjtSensor type + a name
- * heuristic -> EMjSensorSemantic. Lets typed ROS messages (Imu/Wrench/...) work for a shadowless
- * wire model. Computed once at build and stored on the FMjEntity (parallel to SensorIds).
+ * Model-only sensor semantics: a table over the compiled model mapping a sensor's mjtSensor type
+ * (with a name heuristic) to its EMjSensorSemantic, so typed ROS messages (Imu/Wrench/...) work
+ * without any per-sensor component. Computed once at build and stored on the FMjEntity, parallel to
+ * SensorIds.
  */
 namespace MjSensorSemantics
 {

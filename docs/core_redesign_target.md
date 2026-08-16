@@ -1224,9 +1224,10 @@ authored LOGIC persists to runtime while the mesh tree is editor-only.
 ### Implementation progress (per phase — fill in as built)
 | Phase | Owner | Status | Branch/commit | Notes |
 |-------|-------|--------|---------------|-------|
-| STEP 0 contracts | main | DONE (compiles+links) | proto/entity-redesign | 11 headers under `MuJoCo/Redesign/` + stub cpp; UHT ok; build Succeeded 2026-08-16 |
+| STEP 0 contracts | main | DONE (compiles+links) | proto/entity-redesign | 11 headers under `MuJoCo/Entity/` + `MjEntityModel.cpp`; UHT ok; build Succeeded 2026-08-16 |
 | 0a registry race | main | DONE (build ok) | proto/entity-redesign | fenced rebuild + locked GetArticulation + GetAllArticulations by-value snapshot |
-| 0b/0c/0d fixes | — | in progress | — | BeginDestroy uninstall / puppet free-run / worldgeom-off-collect |
+| 0b/0c/0d fixes | — | skipped | — | low-value hardening of doomed articulation/shadow code; superseded by the rewrite |
+| 1 partition | main | in progress | proto/entity-redesign | MjEntityBuilder::Build (prefix partition) + wired into InstallCompiledSpec dual-run |
 | 6 wire-model source | — | not started | — | concurrent (unblocks 4) |
 | #21 renderer extraction | — | not started | — | concurrent (feeds phase 5) |
 | 4N-a ingress+twist | — | not started | — | concurrent; StructureVersion re-home w/ phase 2 |

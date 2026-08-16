@@ -32,7 +32,7 @@ struct URLAB_API FMjControlBuffer
 /**
  * Keyframe qpos-hold injection, applied FIRST each substep (before the ctrl write pass): write held
  * qpos, ZERO held DoFs' qvel, skip free joints, and SUPPRESS the ctrl write for held entities'
- * actuators. Reproduces today's bHoldViaQpos semantics exactly.
+ * actuators. This holds a pose by pinning qpos rather than commanding torque.
  */
 struct URLAB_API FMjStateInjection
 {
@@ -43,9 +43,9 @@ struct URLAB_API FMjStateInjection
 };
 
 /**
- * Exclusive per-entity WRITE LEASE (replaces EControlSource + the dual ZMQ/UI slots). Whoever holds
- * an entity's lease may write its setpoints; UI grabbing control TAKES the lease, releasing hands it
- * back to the network. Unclaimed => the default (network) writer is allowed.
+ * Exclusive per-entity WRITE LEASE. Whoever holds an entity's lease may write its setpoints; the UI
+ * grabbing control takes the lease, releasing hands it back to the network. Unclaimed means the
+ * default (network) writer is allowed.
  */
 struct URLAB_API FMjControlLease
 {

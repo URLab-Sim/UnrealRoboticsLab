@@ -7,9 +7,8 @@
 #include "MjPoseSource.generated.h"
 
 /**
- * The ONE mode axis: where each frame's render pose comes from. Replaces EStepMode + EMjbRunMode.
- * Owner-ness (can advertise + serve) is DERIVED (FreeRun/Stepped/StatePushed have live state; Mirror
- * does not). Auto is a launch policy, not a value.
+ * The mode axis: where each frame's render pose comes from. Owner-ness (can advertise and serve) is
+ * derived -- FreeRun/Stepped/StatePushed have live state, Mirror does not.
  */
 UENUM(BlueprintType)
 enum class EMjPoseSource : uint8

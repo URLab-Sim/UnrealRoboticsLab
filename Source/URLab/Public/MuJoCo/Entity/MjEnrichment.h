@@ -15,7 +15,7 @@ enum class EMjEnrichmentScope : uint8
  * The ONE side-channel for data that is NOT an mjData id slice: twist echo, user channels, scene
  * producers, and compiled camera/controller handshake metadata. Keyed by entity name, off the
  * per-step core path, consumed by the ROS layer and opt-in clients. Sparse (0..few), never one per
- * joint -- replaces the deleted per-element producer cache.
+ * joint.
  */
 struct URLAB_API FMjEnrichment
 {

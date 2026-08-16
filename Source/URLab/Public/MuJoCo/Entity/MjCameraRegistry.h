@@ -20,7 +20,7 @@ struct URLAB_API FMjCameraInfo
 /**
  * Renderer-agnostic camera registry. Canonical camera identity is computed once from the model +
  * the entity partition, so ANY renderer (compiled actor OR lightweight body actor) produces the
- * same topics/stems -- the RPC camera surface enumerates THIS, not GetAllArticulations.
+ * same topics/stems. The RPC camera surface enumerates this registry.
  */
 struct URLAB_API FMjCameraRegistry
 {

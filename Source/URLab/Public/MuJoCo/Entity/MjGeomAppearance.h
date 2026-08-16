@@ -7,12 +7,10 @@
 #include "MuJoCo/Spec/MjAssetResolve.h" // EMjMaterialRole
 
 /**
- * A name-keyed appearance override for visual domain randomization. Re-drives a geom's EXISTING
- * dynamic MID (off the one master material) -- parametric (scalar/vector params) + texture-swap.
- * OFF the mjModel entirely: DR variants live as UE content / pushed bytes, keyed by geom name, never
- * baked into the model. Only set fields override; clearing re-runs the base material pass.
- *
- * STEP 0 freezes the shape; phase 10 adds USTRUCT(BlueprintType) if BP-exposed.
+ * A name-keyed appearance override for visual domain randomization. It re-drives a geom's existing
+ * dynamic material instance (off the one master material) -- parametric scalar/vector params plus
+ * texture swaps -- without touching the mjModel: variants live as UE content or pushed bytes keyed
+ * by geom name. Only the set fields override; clearing one re-runs the base material pass.
  */
 struct URLAB_API FMjGeomAppearance
 {

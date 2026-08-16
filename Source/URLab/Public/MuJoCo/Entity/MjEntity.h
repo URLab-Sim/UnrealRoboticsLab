@@ -9,10 +9,10 @@ struct mjModel_;
 typedef mjModel_ mjModel;
 
 /**
- * The ONE addressing unit: a stable name bound to the slice of MuJoCo ids (in the single compiled
- * model) that a caller treats as one thing. EVERYTHING is an FMjEntity -- a robot is one that owns
- * actuators, a prop is one that owns none. Absorbs the old props-only FMjEntityRecord. Built FROM
- * the compiled mjModel (a view), never a hand-maintained second copy. No UObjects; ids only.
+ * The addressing unit: a stable name bound to the slice of MuJoCo ids (in the one compiled model)
+ * that a caller treats as one thing. A robot is an entity that owns actuators; a prop is an entity
+ * that owns none. It is a view built from the compiled mjModel, not a second copy of it: no
+ * UObjects, ids only.
  */
 struct URLAB_API FMjEntity
 {
@@ -31,11 +31,8 @@ struct URLAB_API FMjEntity
 	TArray<int32> ActuatorIds;
 	TArray<int32> SensorIds;
 
-	/**
-	 * Build-time ENRICHMENT (the "30%"): metadata computed once at install and stored HERE, not on
-	 * an actor -- sensor semantics parallel to SensorIds, camera canonical names, etc. Filled by the
-	 * builder; keeps ROS/camera/handshake off the deleted shadow actor.
-	 */
+	// Metadata computed once at install and stored alongside the id slices (sensor semantics
+	// parallel to SensorIds, camera canonical names, ...) is filled here by the builder.
 };
 
 /** How to partition the live model into entities. */
@@ -56,8 +53,7 @@ namespace MjEntityBuilder
 
 /**
  * Structure-version signal: bumped whenever the entity partition is rebuilt (recompile / reinstall).
- * Consumers (ROS re-subscribe) poll it to know the model shape changed. Re-homed here from the
- * deleted MjStateCollector producer-cache rebuild.
+ * Consumers such as the ROS re-subscribe path poll it to learn the model shape changed.
  */
 struct URLAB_API FMjEntityStructureVersion
 {

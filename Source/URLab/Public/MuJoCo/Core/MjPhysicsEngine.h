@@ -29,6 +29,7 @@
 #include "MuJoCo/Spec/MjBinding.h"
 #include "MuJoCo/Spec/MjSceneAssembly.h"
 #include "MuJoCo/Spec/MjSceneSpec.h"
+#include "MuJoCo/Entity/MjEntity.h"
 #include <functional>
 #include <atomic>
 #include "MjPhysicsEngine.generated.h"
@@ -236,6 +237,14 @@ public:
 	/** O(1) articulation lookup. Key = actor name. */
 	TMap<FString, AMjArticulation*> m_ArticulationMap;
 
+	/**
+	 * The flat FMjEntity partition built from the compiled mjModel by participant prefix. Rebuilt on
+	 * install; the structure version bumps so consumers such as the ROS re-subscribe path learn the
+	 * model shape changed.
+	 */
+	TArray<FMjEntity> m_entityPartition;
+	FMjEntityStructureVersion m_entityStructureVersion;
+
 	/** Error string from the most recent Compile(); empty on success. */
 	FString m_LastCompileError;
 
@@ -403,6 +412,10 @@ public:
 	// out the live array raced a TArray realloc. A pointer-array copy is cheap;
 	// range-for and const-ref-bound callers are unaffected.
 	TArray<AMjArticulation*> GetAllArticulations() const;
+
+	/** The flat FMjEntity partition built from the compiled model. */
+	const TArray<FMjEntity>& GetEntityPartition() const { return m_entityPartition; }
+	uint64 GetEntityStructureVersion() const { return m_entityStructureVersion.Get(); }
 
 	/** Register an articulation into the registry the physics worker iterates
 	 *  (ApplyControls). Takes CallbackMutex so bulk registration can't tear the

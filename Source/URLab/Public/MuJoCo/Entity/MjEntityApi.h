@@ -8,13 +8,10 @@
 class AActor;
 
 /**
- * Typed, resolve-once handles for addressing an entity's parts. Each carries the resolved id + a
- * weak entity ref, so per-call use is id-based (no string lookup, no silent miss). Author-time these
- * are DROPDOWN-picked, not free-typed.
- *
- * STEP 0 freezes the SHAPE as plain C++. Phase 9 promotes these to USTRUCT(BlueprintType) + adds the
- * UINTERFACE reflection and the Blueprint picker customization; the string identity underneath is
- * what the model + Python wire use.
+ * Typed, resolve-once handles for addressing an entity's parts. Each carries the resolved id and a
+ * weak entity ref, so per-call use is id-based (no string lookup, no silent miss). In the editor
+ * these are picked from a dropdown rather than typed; the name is the identity the model and the
+ * Python wire use.
  */
 struct URLAB_API FMjJoint
 {
@@ -38,9 +35,9 @@ struct URLAB_API FMjGeom
 };
 
 /**
- * The ONE entity API surface (C++ + Blueprint + mirrored in Python). Resolve a part by name ONCE to
- * a handle, then use the handle. Implemented by the runtime entity face (thin actor) -- authored
- * logic and scene-wide Level-BP logic both script against this.
+ * The entity API surface (C++ and Blueprint, mirrored in Python). Resolve a part by name once to a
+ * handle, then use the handle. Implemented by the runtime entity face; per-asset logic and
+ * scene-wide logic both script against it.
  */
 class URLAB_API IMjEntityApi
 {

@@ -207,11 +207,9 @@ public:
 
 	/**
 	 * The flat FMjEntity partition built from the compiled mjModel by participant prefix. Rebuilt on
-	 * install; the structure version bumps so consumers such as the ROS re-subscribe path learn the
-	 * model shape changed.
+	 * install.
 	 */
 	TArray<FMjEntity> m_entityPartition;
-	FMjEntityStructureVersion m_entityStructureVersion;
 
 	/**
 	 * The single control store: one setpoint buffer + the keyframe state-injection channel + the
@@ -397,7 +395,6 @@ public:
 	 * wire-named entity. Lock-guarded, so it is safe to call with the worker live.
 	 */
 	void RebuildEntityPartition();
-	uint64 GetEntityStructureVersion() const { return m_entityStructureVersion.Get(); }
 
 	/** The shadowless control ingress (routes writes into the one control buffer by entity name). */
 	IMjControlIngress* GetControlIngress() const { return m_controlIngress.Get(); }

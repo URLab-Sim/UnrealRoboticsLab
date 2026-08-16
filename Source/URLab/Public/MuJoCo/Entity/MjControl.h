@@ -5,13 +5,6 @@
 
 #include "CoreMinimal.h"
 
-/** How a per-entity setpoint reaches d->ctrl. Resolved ONCE, at the pre-step drain (per entity). */
-enum class EMjDrive : uint8
-{
-	Direct,     // write the setpoint straight to d->ctrl
-	Controller  // transform the setpoint through the entity's control law (PD, ...)
-};
-
 /**
  * The ONE control store (size nu). The single writer is the engine's pre-step drain. Setpoint
  * PERSISTS across substeps (Touched is NOT cleared each tick), so a set-once value holds across an

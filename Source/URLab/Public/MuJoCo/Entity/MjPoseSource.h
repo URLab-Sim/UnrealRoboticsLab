@@ -18,15 +18,3 @@ enum class EMjPoseSource : uint8
 	StatePushed UMETA(DisplayName = "State-pushed (client integrates, UE mj_forward)"),
 	Mirror      UMETA(DisplayName = "Mirror (draw streamed transforms, no physics)")
 };
-
-/**
- * Composable, OPEN capability set on an instance -- NOT modes. New features are added as
- * capabilities, never as a new mode. "Render server" = StreamCameras; "viewer" = AcceptInput.
- */
-enum class EMjCapability : uint8
-{
-	None          = 0,
-	StreamCameras = 1 << 0,  // publish frames from model cameras and/or own view
-	AcceptInput   = 1 << 1,  // xfrc / wrench / drag / requests (applied locally or forwarded to owner)
-};
-ENUM_CLASS_FLAGS(EMjCapability);

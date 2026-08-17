@@ -6,6 +6,7 @@
 #include "MuJoCo/Fast/MjRendererSubsystem.h"
 
 #include "MuJoCo/Fast/MjRenderer.h"
+#include "MuJoCo/Fast/MjRendererDriverClient.h"
 #include "UI/SMjRendererBrowser.h"
 #include "UI/SMjRendererHud.h"
 #include "Utils/URLabLogging.h"
@@ -65,7 +66,7 @@ bool UMjRendererSubsystem::JoinDriver(const FMjDriverInfo& Driver, const FString
 	OutError.Empty();
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjRenderer::FetchModelFromDriver(Driver.Control, Mjb, Bus, OutError))
+	if (!FMjRendererDriverClient::FetchModel(Driver.Control, Mjb, Bus, OutError))
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] fetch from driver %s failed: %s"),
 			*Driver.Control, *OutError);

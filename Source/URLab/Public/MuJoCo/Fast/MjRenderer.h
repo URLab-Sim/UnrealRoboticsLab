@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "MuJoCo/Fast/MjRendererStepMode.h"
+#include "MuJoCo/Fast/MjRendererOverlay.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjGeomAssetResolver.h"
 #include "Templates/UniquePtr.h"
@@ -256,19 +257,6 @@ public:
 	void SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE);
 
 	/**
-	 * Fetch a model and its transform-bus endpoint from a Driver over a ZMQ
-	 * REQ/REP control channel. Sends a msgpack `{op:"fastpath_hello"}` and reads
-	 * back the Driver's model plus `bus` endpoint. The Driver's `model_format`
-	 * selects the source: `mjb` (default) loads its `mjb` bytes as-is, while `xml`
-	 * recompiles the served MJCF and its `vfs_assets` bundle with this renderer's
-	 * own libmujoco -- immune to MJB version skew -- normalizing either to the MJB
-	 * returned in OutMjb. Synchronous with a short timeout; safe to call from the
-	 * editor or a headless driver. Returns false with OutError on any failure.
-	 */
-	static bool FetchModelFromDriver(const FString& ControlEndpoint,
-		TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError);
-
-	/**
 	 * Re-drive the live material instance of every geom named `GeomName` from a
 	 * domain-randomization override, without touching the loaded model. A null
 	 * `Override` restores the geom's baked appearance (the base material pass).
@@ -370,6 +358,9 @@ private:
 	// FMjRendererStepMode reaches back into the scene for the model, geom/camera
 	// components and render origin while it drives the shared engine.
 	friend struct FMjRendererStepMode;
+	// FMjRendererOverlay reaches back into the scene for the shared overlay parent
+	// material and the manager it walks while it tints this renderer's geoms.
+	friend struct FMjRendererOverlay;
 
 	// Compose a geom's compiled world pose (MuJoCo frame, wxyz) with the mesh-frame
 	// correction its component needs, so a raw imported/converted StaticMesh lands
@@ -438,12 +429,10 @@ private:
 	TArray<TObjectPtr<UPrimitiveComponent>> GeomComps;
 
 	// --- Debug overlay material tint state ---------------------------------- //
-	// Original slot-0 materials on geom components we've overridden, so we can restore.
-	TMap<TWeakObjectPtr<UMeshComponent>, TObjectPtr<UMaterialInterface>> OriginalMaterials;
-	// Original slot-1..N materials for multi-material meshes. Parallel to OriginalMaterials.
-	TMap<TWeakObjectPtr<UMeshComponent>, TMap<int32, TObjectPtr<UMaterialInterface>>> OriginalSlotMaterials;
-	// Dynamic material instances we created per mesh, reused across drives.
-	TMap<TWeakObjectPtr<UMeshComponent>, TObjectPtr<UMaterialInstanceDynamic>> ActiveMIDs;
+	// Records the original per-geom slot materials, the created tint MIDs, and applies
+	// / restores the debug overlay on this renderer's geom components. A plain struct
+	// owned here (its caches never GC-root -- the MIDs live on the mesh components).
+	FMjRendererOverlay Overlay;
 
 	// --- Per-camera segmentation pool --------------------------------------- //
 	// Sibling-mesh pool for InstanceSegmentation-mode cameras. Empty when no subscribers.

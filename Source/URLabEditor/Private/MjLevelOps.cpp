@@ -32,6 +32,7 @@
 #include "Components/SkyLightComponent.h"
 
 #include "MuJoCo/Fast/MjRenderer.h"
+#include "MuJoCo/Fast/MjRendererDriverClient.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
@@ -791,7 +792,7 @@ bool LaunchFastPathFromDriverSync(const FString& ControlEndpoint, bool bFreshLev
 	// Pull the MJB + bus endpoint from the Driver over its control channel.
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjRenderer::FetchModelFromDriver(ControlEndpoint, Mjb, Bus, OutError))
+	if (!FMjRendererDriverClient::FetchModel(ControlEndpoint, Mjb, Bus, OutError))
 	{
 		OutError = FString::Printf(TEXT("driver fetch failed (%s): %s"), *ControlEndpoint, *OutError);
 		return false;

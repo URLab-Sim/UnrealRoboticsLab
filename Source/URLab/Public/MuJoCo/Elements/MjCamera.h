@@ -114,6 +114,93 @@ struct FMjCameraFrame
 };
 
 /**
+ * The frame-history ring: recent frames retained for by-id or latest retrieval.
+ *
+ * Retains recent frames so a client can fetch the one for a specific post-step
+ * state, or the latest. The lock serialises the game thread's push against the
+ * bridge worker thread's fetch. Oldest first, newest last, shared and const so a
+ * fetch is a refcount bump.
+ */
+struct FMjCameraHistory
+{
+	/**
+	 * Store a completed frame in the ring, evicting past the retention window;
+	 * shared, so retention is a refcount bump. With no delay the ring keeps the
+	 * last Capacity frames; with delay it keeps every frame within RetainWindow
+	 * of the newest on the clock bUseWallClock selects. Both are bounded by the
+	 * memory ceiling.
+	 */
+	void PushShared(const TSharedPtr<const FMjCameraFrame>& Frame,
+		int32 Capacity, bool bDelayActive, double RetainWindow, bool bUseWallClock);
+
+	/**
+	 * Fetch a frame from the ring. MinFrameId 0 returns the most recent retained
+	 * frame; otherwise the oldest retained frame whose FrameId is at least
+	 * MinFrameId. Null when nothing matching is retained.
+	 */
+	TSharedPtr<const FMjCameraFrame> GetShared(uint64 MinFrameId) const;
+
+	/** The most recent frame id retained, or 0. */
+	uint64 GetLatestFrameId() const;
+
+	/**
+	 * The newest frame eligible at NowValue whose Seq is beyond AfterSeq. Null
+	 * when nothing newer than AfterSeq is eligible.
+	 */
+	TSharedPtr<const FMjCameraFrame> SelectDelayedShared(double NowValue, uint64 AfterSeq) const;
+
+	/** Serialises the game thread's push against the bridge worker thread's fetch. */
+	mutable FCriticalSection Lock;
+
+	/** Oldest first, newest last. */
+	TArray<TSharedPtr<const FMjCameraFrame>> Frames;
+
+	/**
+	 * The absolute ceiling on retained frames, shared by the fixed-capacity and
+	 * the time-windowed eviction paths so neither can grow past it. Must match
+	 * HistoryCapacity's ClampMax.
+	 */
+	static constexpr int32 MaxHistoryCapacity = 64;
+};
+
+/**
+ * Latency emulation: the seeded jitter RNG and the delayed-publish dedup.
+ *
+ * The delay policy (delay, jitter, clock) lives on UMjCamera as reflected
+ * properties; this owns the state that must not be reflected -- the seeded RNG
+ * whose sequence has to reproduce across runs, and the last published Seq that
+ * makes the delayed stream emit each frame once. Config is passed in per call so
+ * the reflected properties stay the single source of truth.
+ */
+struct FMjCameraDelayModel
+{
+	/**
+	 * Draw an effective delay from DelaySeconds plus jitter, clamped at zero.
+	 * Draws from the RNG only when jitter is configured, so a fixed delay stays
+	 * deterministic and does not advance the stream.
+	 */
+	double SampleDelaySeconds(float DelaySeconds, float JitterSeconds);
+
+	/** Reseed the jitter RNG and re-arm the publish dedup, so a new policy re-selects cleanly. */
+	void Configure(int32 Seed);
+
+	/** The clock value delay maths uses for Frame, per bUseWallClock. */
+	static double FrameClock(const FMjCameraFrame& Frame, bool bUseWallClock);
+
+	/** The current delay-policy clock value: wall-clock, or the applied SimTime. */
+	static double NowClockValue(bool bUseWallClock);
+
+	/** True when latency emulation is configured at all. */
+	static bool IsDelayActive(float DelaySeconds, float JitterSeconds);
+
+	/** Seeds the per-frame jitter draw. Game thread only. */
+	FRandomStream Rng;
+
+	/** The last Seq sent, so the delayed publish emits each frame exactly once. Game thread only. */
+	uint64 LastPublishedSeq = 0;
+};
+
+/**
  * A `<camera>` as an observation device: scene capture, readback, streaming.
  *
  * The GPU readback is fully asynchronous and decoupled from stepping. The
@@ -578,21 +665,9 @@ private:
 	TArray<TSharedPtr<FRHIGPUTextureReadback>> FreeReadbacks;
 
 	// --- Frame history ring ------------------------------------------------------ //
-	//
-	// Retains recent frames so a client can fetch the one for a specific
-	// post-step state, or the latest. HistoryLock serialises the game thread's
-	// push against the bridge worker thread's fetch. Oldest first, newest last,
-	// shared and const so a fetch is a refcount bump.
 
-	mutable FCriticalSection HistoryLock;
-	TArray<TSharedPtr<const FMjCameraFrame>> History;
-
-	/**
-	 * The absolute ceiling on retained frames, shared by the fixed-capacity and
-	 * the time-windowed eviction paths so neither can grow past it. Must match
-	 * HistoryCapacity's ClampMax.
-	 */
-	static constexpr int32 MaxHistoryCapacity = 64;
+	/** The retained recent frames, with the lock that guards them. */
+	FMjCameraHistory History;
 
 	/** Store a completed frame in the ring; shared, so retention is a refcount bump. */
 	void PushFrameToHistoryShared(const TSharedPtr<const FMjCameraFrame>& Frame);
@@ -601,6 +676,9 @@ private:
 	TSharedPtr<const FMjCameraFrame> SelectDelayedFrameShared(double NowValue, uint64 AfterSeq) const;
 
 	// --- Latency emulation state --------------------------------------------------- //
+
+	/** The seeded jitter RNG and the delayed-publish dedup. */
+	FMjCameraDelayModel Delay;
 
 	/** The current delay-policy clock value: wall-clock, or the applied SimTime. */
 	double NowClockValue() const;
@@ -612,7 +690,7 @@ private:
 	double FrameClock(const FMjCameraFrame& Frame) const;
 
 	/** True when latency emulation is configured at all. */
-	bool IsDelayActive() const { return DelaySeconds > 0.0f || DelayJitterSeconds > 0.0f; }
+	bool IsDelayActive() const;
 
 	/**
 	 * Push one frame onto the streaming transports and broadcast it on
@@ -622,13 +700,10 @@ private:
 	void PublishFrameToWorkers(const FMjCameraFrame& Frame);
 
 	/**
-	 * DelayRng seeds the per-frame jitter draw; HarvestSeq tags each harvested
-	 * frame and LastPublishedSeq is the last one sent, so the delayed publish
-	 * emits each frame exactly once. Game thread only.
+	 * Tags each harvested frame; incremented as frames drain from the readback
+	 * pipeline. Game thread only.
 	 */
-	FRandomStream DelayRng;
 	uint64 HarvestSeq = 0;
-	uint64 LastPublishedSeq = 0;
 
 	// --- Capture-rate gating state --------------------------------------------------- //
 	//

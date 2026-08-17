@@ -872,11 +872,11 @@ void UMjCamera::PublishDueDelayedFrames(AAMjManager* Mgr)
 	const double NowVal = bDelayUseWallClock
 							? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
 							: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
-	TSharedPtr<const FMjCameraFrame> Selected = SelectDelayedFrameShared(NowVal, LastPublishedSeq);
+	TSharedPtr<const FMjCameraFrame> Selected = SelectDelayedFrameShared(NowVal, Delay.LastPublishedSeq);
 	if (Selected.IsValid())
 	{
 		PublishFrameToWorkers(*Selected);
-		LastPublishedSeq = Selected->Seq;
+		Delay.LastPublishedSeq = Selected->Seq;
 	}
 }
 
@@ -1286,21 +1286,16 @@ bool UMjCamera::EnqueueReadback(uint64 ShowFrameId, double ShowSimTime, bool bFo
 // Frame history
 // ---------------------------------------------------------------------------
 
-void UMjCamera::PushFrameToHistory(FMjCameraFrame&& Frame)
-{
-	TSharedPtr<FMjCameraFrame> Shared = MakeShared<FMjCameraFrame>(MoveTemp(Frame));
-	PushFrameToHistoryShared(Shared);
-}
-
-void UMjCamera::PushFrameToHistoryShared(const TSharedPtr<const FMjCameraFrame>& Frame)
+void FMjCameraHistory::PushShared(const TSharedPtr<const FMjCameraFrame>& Frame,
+	int32 Capacity, bool bDelayActive, double RetainWindow, bool bUseWallClock)
 {
 	if (!Frame.IsValid())
 	{
 		return;
 	}
 
-	FScopeLock Lock(&HistoryLock);
-	History.Add(Frame);
+	FScopeLock ScopeLock(&Lock);
+	Frames.Add(Frame);
 
 	// A hard frame ceiling regardless of mode: one frame can be megabytes and many
 	// cameras share the budget, so bound worst-case retention. It is the same
@@ -1308,12 +1303,12 @@ void UMjCamera::PushFrameToHistoryShared(const TSharedPtr<const FMjCameraFrame>&
 	// source of truth and cannot disagree.
 	constexpr int32 HardCap = MaxHistoryCapacity;
 
-	if (!IsDelayActive())
+	if (!bDelayActive)
 	{
-		const int32 Cap = FMath::Clamp(HistoryCapacity, 1, HardCap);
-		while (History.Num() > Cap)
+		const int32 Cap = FMath::Clamp(Capacity, 1, HardCap);
+		while (Frames.Num() > Cap)
 		{
-			History.RemoveAt(0);
+			Frames.RemoveAt(0);
 		}
 		return;
 	}
@@ -1322,14 +1317,13 @@ void UMjCamera::PushFrameToHistoryShared(const TSharedPtr<const FMjCameraFrame>&
 	// reveal-time selection always has the frame it needs. A front frame is evicted
 	// only once it is older than the window behind the newest, which is self-sizing
 	// and independent of frame rate, and still capped by the memory ceiling.
-	const double RetainWindow = static_cast<double>(DelaySeconds + DelayJitterSeconds) + 0.10;
-	const double NewestClock = FrameClock(*History.Last());
-	while (History.Num() > 1)
+	const double NewestClock = FMjCameraDelayModel::FrameClock(*Frames.Last(), bUseWallClock);
+	while (Frames.Num() > 1)
 	{
-		const bool bExpired = (NewestClock - FrameClock(*History[0])) > RetainWindow;
-		if (History.Num() > HardCap || bExpired)
+		const bool bExpired = (NewestClock - FMjCameraDelayModel::FrameClock(*Frames[0], bUseWallClock)) > RetainWindow;
+		if (Frames.Num() > HardCap || bExpired)
 		{
-			History.RemoveAt(0);
+			Frames.RemoveAt(0);
 		}
 		else
 		{
@@ -1338,20 +1332,20 @@ void UMjCamera::PushFrameToHistoryShared(const TSharedPtr<const FMjCameraFrame>&
 	}
 }
 
-TSharedPtr<const FMjCameraFrame> UMjCamera::GetFrameShared(uint64 MinFrameId) const
+TSharedPtr<const FMjCameraFrame> FMjCameraHistory::GetShared(uint64 MinFrameId) const
 {
-	FScopeLock Lock(&HistoryLock);
-	if (History.Num() == 0)
+	FScopeLock ScopeLock(&Lock);
+	if (Frames.Num() == 0)
 	{
 		return nullptr;
 	}
 	if (MinFrameId == 0)
 	{
-		return History.Last();
+		return Frames.Last();
 	}
 	// The oldest retained frame at or after the requested step (history is oldest
 	// first), i.e. the frame that shows state at least MinFrameId.
-	for (const TSharedPtr<const FMjCameraFrame>& Frame : History)
+	for (const TSharedPtr<const FMjCameraFrame>& Frame : Frames)
 	{
 		if (Frame->FrameId >= MinFrameId)
 		{
@@ -1359,6 +1353,48 @@ TSharedPtr<const FMjCameraFrame> UMjCamera::GetFrameShared(uint64 MinFrameId) co
 		}
 	}
 	return nullptr;
+}
+
+uint64 FMjCameraHistory::GetLatestFrameId() const
+{
+	FScopeLock ScopeLock(&Lock);
+	return Frames.Num() > 0 ? Frames.Last()->FrameId : 0;
+}
+
+TSharedPtr<const FMjCameraFrame> FMjCameraHistory::SelectDelayedShared(double NowValue, uint64 AfterSeq) const
+{
+	FScopeLock ScopeLock(&Lock);
+	for (int32 i = Frames.Num() - 1; i >= 0; --i)
+	{
+		if (Frames[i]->RevealValue <= NowValue)
+		{
+			// The newest eligible frame. Deliver it only if it is newer than the last
+			// one published, so the stream never repeats or rewinds.
+			if (Frames[i]->Seq > AfterSeq)
+			{
+				return Frames[i];
+			}
+			return nullptr;
+		}
+	}
+	return nullptr;
+}
+
+void UMjCamera::PushFrameToHistory(FMjCameraFrame&& Frame)
+{
+	TSharedPtr<FMjCameraFrame> Shared = MakeShared<FMjCameraFrame>(MoveTemp(Frame));
+	PushFrameToHistoryShared(Shared);
+}
+
+void UMjCamera::PushFrameToHistoryShared(const TSharedPtr<const FMjCameraFrame>& Frame)
+{
+	const double RetainWindow = static_cast<double>(DelaySeconds + DelayJitterSeconds) + 0.10;
+	History.PushShared(Frame, HistoryCapacity, IsDelayActive(), RetainWindow, bDelayUseWallClock);
+}
+
+TSharedPtr<const FMjCameraFrame> UMjCamera::GetFrameShared(uint64 MinFrameId) const
+{
+	return History.GetShared(MinFrameId);
 }
 
 bool UMjCamera::GetFrame(uint64 MinFrameId, FMjCameraFrame& Out) const
@@ -1387,27 +1423,12 @@ TSharedPtr<const FMjCameraFrame> UMjCamera::GetFrameForRequest(uint64 MinFrameId
 
 uint64 UMjCamera::GetLatestFrameId() const
 {
-	FScopeLock Lock(&HistoryLock);
-	return History.Num() > 0 ? History.Last()->FrameId : 0;
+	return History.GetLatestFrameId();
 }
 
 TSharedPtr<const FMjCameraFrame> UMjCamera::SelectDelayedFrameShared(double NowValue, uint64 AfterSeq) const
 {
-	FScopeLock Lock(&HistoryLock);
-	for (int32 i = History.Num() - 1; i >= 0; --i)
-	{
-		if (History[i]->RevealValue <= NowValue)
-		{
-			// The newest eligible frame. Deliver it only if it is newer than the last
-			// one published, so the stream never repeats or rewinds.
-			if (History[i]->Seq > AfterSeq)
-			{
-				return History[i];
-			}
-			return nullptr;
-		}
-	}
-	return nullptr;
+	return History.SelectDelayedShared(NowValue, AfterSeq);
 }
 
 bool UMjCamera::SelectDelayedFrame(double NowValue, uint64 AfterSeq, FMjCameraFrame& Out) const
@@ -1425,14 +1446,14 @@ bool UMjCamera::SelectDelayedFrame(double NowValue, uint64 AfterSeq, FMjCameraFr
 // Latency emulation and capture-rate control
 // ---------------------------------------------------------------------------
 
-double UMjCamera::FrameClock(const FMjCameraFrame& Frame) const
+double FMjCameraDelayModel::FrameClock(const FMjCameraFrame& Frame, bool bUseWallClock)
 {
-	return bDelayUseWallClock ? Frame.CaptureUnixTime : Frame.SimTime;
+	return bUseWallClock ? Frame.CaptureUnixTime : Frame.SimTime;
 }
 
-double UMjCamera::NowClockValue() const
+double FMjCameraDelayModel::NowClockValue(bool bUseWallClock)
 {
-	if (bDelayUseWallClock)
+	if (bUseWallClock)
 	{
 		return (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
 	}
@@ -1440,17 +1461,49 @@ double UMjCamera::NowClockValue() const
 	return Manager ? Manager->GetLastAppliedSimTime() : 0.0;
 }
 
-double UMjCamera::SampleDelaySeconds()
+bool FMjCameraDelayModel::IsDelayActive(float DelaySeconds, float JitterSeconds)
+{
+	return DelaySeconds > 0.0f || JitterSeconds > 0.0f;
+}
+
+double FMjCameraDelayModel::SampleDelaySeconds(float DelaySeconds, float JitterSeconds)
 {
 	double D = static_cast<double>(DelaySeconds);
-	if (DelayJitterSeconds > 0.0f)
+	if (JitterSeconds > 0.0f)
 	{
 		// Draw from the RNG only when jitter is configured, so a fixed delay stays
 		// deterministic and does not advance the stream.
-		const double J = static_cast<double>(DelayJitterSeconds);
-		D += DelayRng.FRandRange(-J, J);
+		const double J = static_cast<double>(JitterSeconds);
+		D += Rng.FRandRange(-J, J);
 	}
 	return FMath::Max(0.0, D);
+}
+
+void FMjCameraDelayModel::Configure(int32 Seed)
+{
+	Rng.Initialize(Seed);
+	// Re-arm the publish dedup, so the new policy re-selects cleanly.
+	LastPublishedSeq = 0;
+}
+
+double UMjCamera::FrameClock(const FMjCameraFrame& Frame) const
+{
+	return FMjCameraDelayModel::FrameClock(Frame, bDelayUseWallClock);
+}
+
+double UMjCamera::NowClockValue() const
+{
+	return FMjCameraDelayModel::NowClockValue(bDelayUseWallClock);
+}
+
+bool UMjCamera::IsDelayActive() const
+{
+	return FMjCameraDelayModel::IsDelayActive(DelaySeconds, DelayJitterSeconds);
+}
+
+double UMjCamera::SampleDelaySeconds()
+{
+	return Delay.SampleDelaySeconds(DelaySeconds, DelayJitterSeconds);
 }
 
 void UMjCamera::SetCameraDelay(float InDelaySeconds, float InJitterSeconds, bool bInUseWallClock, int32 InSeed)
@@ -1459,9 +1512,7 @@ void UMjCamera::SetCameraDelay(float InDelaySeconds, float InJitterSeconds, bool
 	DelayJitterSeconds = FMath::Max(0.0f, InJitterSeconds);
 	bDelayUseWallClock = bInUseWallClock;
 	const int32 Seed = (InSeed != 0) ? InSeed : static_cast<int32>(GetTypeHash(GetCanonicalName()));
-	DelayRng.Initialize(Seed);
-	// Re-arm the publish dedup, so the new policy re-selects cleanly.
-	LastPublishedSeq = 0;
+	Delay.Configure(Seed);
 }
 
 void UMjCamera::SetCaptureRate(bool bInOnStateChange, float InMaxFps)

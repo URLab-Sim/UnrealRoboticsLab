@@ -19,6 +19,7 @@
 #include "Engine/Texture2D.h"
 #include "TextureResource.h"
 
+#include "MuJoCo/Fast/MjAssetSource.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Entity/MjModelMaterial.h"
@@ -42,28 +43,30 @@ namespace
 // under <root>/<hash>/). Also the folder a saved fast-path level reloads from.
 constexpr const TCHAR* kFastPathAssetRoot = TEXT("/Game/URLabFastPath");
 
-// Crease-split mesh geometry (per-face-corner verts/normals/uvs/tris) from the MJB
-// mesh pool. Pure math over the model -- shared by the editor static-mesh baker and
-// the packaged procedural path. File-local free function (no actor state).
-void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
+// Crease-split mesh geometry (per-face-corner verts/normals/uvs/tris) from the
+// mesh pool the asset source hands out. Pure math over that view -- shared by the
+// editor static-mesh baker and the packaged procedural path. File-local free
+// function (no actor state).
+void BuildMeshArrays(const IMjAssetSource& Source, int32 MeshId, TArray<FVector>& Verts,
 	TArray<FVector>& Normals, TArray<FVector2D>& UVs, TArray<int32>& Tris)
 {
 	Verts.Reset();
 	Normals.Reset();
 	UVs.Reset();
 	Tris.Reset();
-	if (!Model || MeshId < 0 || MeshId >= static_cast<int32>(Model->nmesh))
+	const FMjMeshDataView Mesh = Source.GetMeshData(MeshId);
+	if (!Mesh.bValid)
 	{
 		return;
 	}
-	const int32 FaceAdr = Model->mesh_faceadr[MeshId];
-	const int32 FaceNum = Model->mesh_facenum[MeshId];
-	const bool bHasUV = Model->mesh_texcoordadr[MeshId] >= 0;
+	const int32 FaceAdr = Mesh.FaceAdr;
+	const int32 FaceNum = Mesh.FaceNum;
+	const bool bHasUV = Mesh.TexcoordAdr >= 0;
 	// Face indices are LOCAL to each mesh (0-based); add the per-mesh base
 	// addresses to reach this mesh's slice of the shared vert/normal/uv pools.
-	const int32 VertAdr = Model->mesh_vertadr[MeshId];
-	const int32 NormalAdr = Model->mesh_normaladr[MeshId];
-	const int32 TexAdr = bHasUV ? Model->mesh_texcoordadr[MeshId] : 0;
+	const int32 VertAdr = Mesh.VertAdr;
+	const int32 NormalAdr = Mesh.NormalAdr;
+	const int32 TexAdr = bHasUV ? Mesh.TexcoordAdr : 0;
 
 	// Expand per face-corner (each corner its own vertex + normal + texcoord). The
 	// static-mesh build later welds coincident positions while keeping the crease
@@ -88,22 +91,22 @@ void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
 	// whose running-mean normal it agrees with (dot >= 0.8), else it starts a group;
 	// a corner's normal is its group's averaged normal.
 	constexpr double kCreaseDot = 0.8;
-	const int32 VertNum = static_cast<int32>(Model->mesh_vertnum[MeshId]);
+	const int32 VertNum = Mesh.VertNum;
 	TArray<FVector> FaceGeoN;
 	FaceGeoN.SetNumUninitialized(FaceNum);
 	for (int32 F = 0; F < FaceNum; ++F)
 	{
-		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
-		const FVector P0 = URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * (FV[0] + VertAdr));
-		const FVector P1 = URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * (FV[1] + VertAdr));
-		const FVector P2 = URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * (FV[2] + VertAdr));
+		const int32* FV = Mesh.Faces + 3 * (FaceAdr + F);
+		const FVector P0 = URLabAxisConv::MjPositionToUe(Mesh.Verts + 3 * (FV[0] + VertAdr));
+		const FVector P1 = URLabAxisConv::MjPositionToUe(Mesh.Verts + 3 * (FV[1] + VertAdr));
+		const FVector P2 = URLabAxisConv::MjPositionToUe(Mesh.Verts + 3 * (FV[2] + VertAdr));
 		FVector Gn = FVector::CrossProduct(P1 - P0, P2 - P0).GetSafeNormal();
 		// Align outward using MuJoCo's per-vertex normal (sign only); fall back to it
 		// for a degenerate (zero-area) face.
-		const int32* FN = Model->mesh_facenormal + 3 * (FaceAdr + F);
+		const int32* FN = Mesh.FaceNormals + 3 * (FaceAdr + F);
 		const int32 Ni0 = FN[0] + NormalAdr;
-		const double Nm[3] = {Model->mesh_normal[3 * Ni0], Model->mesh_normal[3 * Ni0 + 1],
-			Model->mesh_normal[3 * Ni0 + 2]};
+		const double Nm[3] = {Mesh.Normals[3 * Ni0], Mesh.Normals[3 * Ni0 + 1],
+			Mesh.Normals[3 * Ni0 + 2]};
 		const FVector Ref = URLabAxisConv::MjDirectionToUe(Nm).GetSafeNormal();
 		if (Gn.IsNearlyZero())
 		{
@@ -120,7 +123,7 @@ void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
 	Incident.SetNum(FMath::Max(VertNum, 0));
 	for (int32 F = 0; F < FaceNum; ++F)
 	{
-		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
+		const int32* FV = Mesh.Faces + 3 * (FaceAdr + F);
 		for (int32 K = 0; K < 3; ++K)
 		{
 			if (FV[K] >= 0 && FV[K] < VertNum)
@@ -161,7 +164,7 @@ void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
 		{
 			const int32 F = Faces[i];
 			const FVector Gn = GroupSum[FaceGroup[i]].GetSafeNormal();
-			const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
+			const int32* FV = Mesh.Faces + 3 * (FaceAdr + F);
 			for (int32 K = 0; K < 3; ++K)
 			{
 				if (FV[K] == V)
@@ -175,13 +178,13 @@ void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
 	const int32 Order[3] = {0, 1, 2};
 	for (int32 F = 0; F < FaceNum; ++F)
 	{
-		const int32* FV = Model->mesh_face + 3 * (FaceAdr + F);
-		const int32* FT = bHasUV ? Model->mesh_facetexcoord + 3 * (FaceAdr + F) : nullptr;
+		const int32* FV = Mesh.Faces + 3 * (FaceAdr + F);
+		const int32* FT = bHasUV ? Mesh.FaceTexcoords + 3 * (FaceAdr + F) : nullptr;
 		for (int32 C = 0; C < 3; ++C)
 		{
 			const int32 K = Order[C];
 			const int32 Vi = FV[K] + VertAdr;
-			Verts.Add(URLabAxisConv::MjPositionToUe(Model->mesh_vert + 3 * Vi));
+			Verts.Add(URLabAxisConv::MjPositionToUe(Mesh.Verts + 3 * Vi));
 			Normals.Add(CornerN[3 * F + K].GetSafeNormal());
 			if (FT)
 			{
@@ -190,7 +193,7 @@ void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
 				// GetOrBuildTexture uploads it row-0-first, so the texture is already
 				// oriented to sample the raw MuJoCo texcoord directly. Flipping V here
 				// (1 - v) double-flips and samples the wrong band of the atlas.
-				UVs.Add(FVector2D(Model->mesh_texcoord[2 * Ti], Model->mesh_texcoord[2 * Ti + 1]));
+				UVs.Add(FVector2D(Mesh.Texcoords[2 * Ti], Mesh.Texcoords[2 * Ti + 1]));
 			}
 			else
 			{
@@ -252,7 +255,8 @@ UStaticMesh* UMjRendererAssetBaker::GetOrBuildStaticMesh(int32 MeshId)
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<int32> Tris;
-	BuildMeshArrays(Model, MeshId, Verts, Normals, UVs, Tris);
+	const FMjModelAssetSource AssetSource(Model);
+	BuildMeshArrays(AssetSource, MeshId, Verts, Normals, UVs, Tris);
 	if (Verts.Num() < 3 || Tris.Num() < 3)
 	{
 		return nullptr;
@@ -343,7 +347,8 @@ UProceduralMeshComponent* UMjRendererAssetBaker::BuildMesh(int32 G, AActor* Body
 	TArray<FVector> Normals;
 	TArray<FVector2D> UVs;
 	TArray<int32> Tris;
-	BuildMeshArrays(Model, Model->geom_dataid[G], Verts, Normals, UVs, Tris);
+	const FMjModelAssetSource AssetSource(Model);
+	BuildMeshArrays(AssetSource, Model->geom_dataid[G], Verts, Normals, UVs, Tris);
 	if (Verts.Num() < 3)
 	{
 		return nullptr;
@@ -388,9 +393,11 @@ UTexture2D* UMjRendererAssetBaker::GetOrBuildTexture(int32 TexId, bool bSRGB, bo
 	{
 		return *Found;
 	}
-	const int32 W = Model->tex_width[TexId];
-	const int32 H = Model->tex_height[TexId];
-	const int32 NC = Model->tex_nchannel[TexId];
+	const FMjModelAssetSource AssetSource(Model);
+	const FMjTextureDataView TexView = AssetSource.GetTextureData(TexId);
+	const int32 W = TexView.Width;
+	const int32 H = TexView.Height;
+	const int32 NC = TexView.NumChannels;
 	if (W <= 0 || H <= 0 || NC < 1)
 	{
 		return nullptr;
@@ -414,8 +421,8 @@ UTexture2D* UMjRendererAssetBaker::GetOrBuildTexture(int32 TexId, bool bSRGB, bo
 	}
 #endif
 
-	// Build a BGRA8 buffer from the MJB's tex_data.
-	const uint8* Src = Model->tex_data + Model->tex_adr[TexId];
+	// Build a BGRA8 buffer from the source's pixel bytes.
+	const uint8* Src = TexView.Data;
 	const int32 Pixels = W * H;
 	TArray<uint8> Bgra;
 	Bgra.SetNumUninitialized(Pixels * 4);

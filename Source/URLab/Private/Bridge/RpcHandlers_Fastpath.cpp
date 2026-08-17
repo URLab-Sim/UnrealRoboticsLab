@@ -13,6 +13,7 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "MuJoCo/Fast/MjRenderer.h"
+#include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "Utils/URLabLogging.h"
 
 #include "Dom/JsonObject.h"
@@ -62,6 +63,31 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathHello(const TSharedPt
 		mj_saveModel(m, nullptr, Buf.GetData(), Sz);
 		FURLabMsgpackUtil::SetBinaryField(Reply, TEXT("mjb"), Buf.GetData(), Sz);
 		Reply->SetNumberField(TEXT("ngeom"), m->ngeom);
+	}
+
+	// Advertise the source format so a renderer can recompile locally instead of
+	// loading a version-locked MJB. When the compiled MJCF is available the scene
+	// is served as XML plus its VFS bundle (participant specs + asset files), which
+	// the renderer compiles with its own libmujoco -- immune to MJB version skew.
+	// The MJB above stays as the back-compat fallback for a renderer that does not
+	// read `model_format`. XML is only offered with the assets it references, so a
+	// renderer never receives text it cannot compile.
+	Reply->SetStringField(TEXT("model_format"), TEXT("mjb"));
+	{
+		FMjCompiledScene CompiledScene;
+		FString SceneError;
+		if (Mgr->PhysicsEngine->BuildCompiledScene(CompiledScene, SceneError))
+		{
+			Reply->SetStringField(TEXT("model_format"), TEXT("xml"));
+			Reply->SetStringField(TEXT("xml"), CompiledScene.Xml);
+
+			TSharedPtr<FJsonObject> VfsAssets = MakeShared<FJsonObject>();
+			MjForEachSceneVfsEntry(CompiledScene.AssetFiles, CompiledScene.ParticipantXml,
+				[&VfsAssets](const FString& Name, TArrayView<const uint8> Bytes) {
+					FURLabMsgpackUtil::SetBinaryField(VfsAssets, Name, Bytes.GetData(), Bytes.Num());
+				});
+			Reply->SetObjectField(TEXT("vfs_assets"), VfsAssets);
+		}
 	}
 
 	// The geoms transform bus endpoint the renderer subscribes to. This is the

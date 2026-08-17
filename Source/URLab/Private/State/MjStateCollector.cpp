@@ -26,6 +26,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntityActor.h"
 #include "MuJoCo/Entity/MjEntityPawn.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Components/ActorComponent.h"
@@ -286,8 +287,15 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 					OwnerActor = Comp->GetOwner();
 			}
 
-			AMjArticulation* OwningArt = Cast<AMjArticulation>(OwnerActor);
-			const int32* RecIdx = OwningArt ? NameToRec.Find(OwningArt->GetFName()) : nullptr;
+			// Scope the producer to its owning entity: an authoring articulation keys by its name
+			// (edit-time), a demoted runtime AMjEntity by its entity name (at play, once the
+			// articulation is gone). Anything else is a scene-global producer.
+			FName OwningEntityName = NAME_None;
+			if (const AMjArticulation* OwningArt = Cast<AMjArticulation>(OwnerActor))
+				OwningEntityName = OwningArt->GetFName();
+			else if (const AMjEntity* OwningEntity = Cast<AMjEntity>(OwnerActor))
+				OwningEntityName = OwningEntity->GetEntityName();
+			const int32* RecIdx = !OwningEntityName.IsNone() ? NameToRec.Find(OwningEntityName) : nullptr;
 			if (RecIdx)
 				NewCache[*RecIdx].InterfaceProducers.Add(Obj);
 			else

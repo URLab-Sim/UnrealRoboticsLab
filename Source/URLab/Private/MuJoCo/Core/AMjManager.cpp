@@ -121,6 +121,12 @@ void AAMjManager::RefreshStateCaches()
 	StateCollector.RebuildProducerCacheGameThread();
 	// Re-export the URDF(s) so the robot_description matches the fresh model.
 	ExportRobotDescriptions();
+	// A recompile rebuilds the geom visualizers at their authored appearance, dropping any active DR
+	// override; re-drive them onto the fresh meshes so set_geom_appearance survives a recompile.
+	if (AppearanceStore != nullptr)
+	{
+		AppearanceStore->ReapplyAll();
+	}
 }
 
 void AAMjManager::ExportRobotDescriptions()

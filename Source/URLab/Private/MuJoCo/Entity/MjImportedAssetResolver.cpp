@@ -116,7 +116,7 @@ UStaticMeshComponent* MakePart(AActor* Body, const TCHAR* MeshPath)
 }
 } // namespace
 
-FMjImportedAssetResolver::FMjImportedAssetResolver(mjModel_* InModel, UMjbAssetBaker* InBaker,
+FMjImportedAssetResolver::FMjImportedAssetResolver(mjModel_* InModel, UMjRendererAssetBaker* InBaker,
 	TMap<int32, TWeakObjectPtr<UMjGeom>> InGeomIndex)
 	: Model(InModel)
 	, GeomIndex(MoveTemp(InGeomIndex))

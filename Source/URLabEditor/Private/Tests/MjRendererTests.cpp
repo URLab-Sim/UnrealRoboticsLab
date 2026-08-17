@@ -13,7 +13,7 @@
 #include "Editor.h"
 #include "Engine/World.h"
 
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 
 #if WITH_EDITOR
 
@@ -22,11 +22,11 @@
 static const TCHAR* kPrimitivesMjb =
 	TEXT("/home/buzz/Documents/urlab_debug/mjb_test/primitives.mjb");
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjbSceneBuildsFromMjb,
-	"URLab.Fast.MjbSceneBuildsFromMjb",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRendererBuildsFromMjb,
+	"URLab.Fast.MjRendererBuildsFromMjb",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FMjbSceneBuildsFromMjb::RunTest(const FString& Parameters)
+bool FMjRendererBuildsFromMjb::RunTest(const FString& Parameters)
 {
 	if (!FPaths::FileExists(kPrimitivesMjb))
 	{
@@ -39,8 +39,8 @@ bool FMjbSceneBuildsFromMjb::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	AMjbScene* Scene = World->SpawnActor<AMjbScene>();
-	if (!TestNotNull(TEXT("spawned AMjbScene"), Scene))
+	AMjRenderer* Scene = World->SpawnActor<AMjRenderer>();
+	if (!TestNotNull(TEXT("spawned AMjRenderer"), Scene))
 	{
 		return false;
 	}
@@ -62,11 +62,11 @@ bool FMjbSceneBuildsFromMjb::RunTest(const FString& Parameters)
 static const TCHAR* kPandaMjb =
 	TEXT("/home/buzz/Documents/urlab_debug/mjb_test/panda.mjb");
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjbSceneBuildsMeshModel,
-	"URLab.Fast.MjbSceneBuildsMeshModel",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRendererBuildsMeshModel,
+	"URLab.Fast.MjRendererBuildsMeshModel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FMjbSceneBuildsMeshModel::RunTest(const FString& Parameters)
+bool FMjRendererBuildsMeshModel::RunTest(const FString& Parameters)
 {
 	if (!FPaths::FileExists(kPandaMjb))
 	{
@@ -78,8 +78,8 @@ bool FMjbSceneBuildsMeshModel::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	AMjbScene* Scene = World->SpawnActor<AMjbScene>();
-	if (!TestNotNull(TEXT("spawned AMjbScene"), Scene))
+	AMjRenderer* Scene = World->SpawnActor<AMjRenderer>();
+	if (!TestNotNull(TEXT("spawned AMjRenderer"), Scene))
 	{
 		return false;
 	}
@@ -104,11 +104,11 @@ bool FMjbSceneBuildsMeshModel::RunTest(const FString& Parameters)
 // spawns the fast-path scene from that MJB, connects to the bus, and confirms a
 // frame is received. Skips (informational) when no broadcaster is present, so
 // it never blocks CI; run the demo script first to exercise it for real.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjbSceneReceivesBus,
-	"URLab.Fast.MjbSceneReceivesBus",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRendererReceivesBus,
+	"URLab.Fast.MjRendererReceivesBus",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-bool FMjbSceneReceivesBus::RunTest(const FString& Parameters)
+bool FMjRendererReceivesBus::RunTest(const FString& Parameters)
 {
 	const TCHAR* DemoMjb = TEXT("/tmp/urlab_fastpath.mjb");
 	const TCHAR* Bus = TEXT("tcp://127.0.0.1:5561");
@@ -122,8 +122,8 @@ bool FMjbSceneReceivesBus::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	AMjbScene* Scene = World->SpawnActor<AMjbScene>();
-	if (!TestNotNull(TEXT("spawned AMjbScene"), Scene))
+	AMjRenderer* Scene = World->SpawnActor<AMjRenderer>();
+	if (!TestNotNull(TEXT("spawned AMjRenderer"), Scene))
 	{
 		return false;
 	}

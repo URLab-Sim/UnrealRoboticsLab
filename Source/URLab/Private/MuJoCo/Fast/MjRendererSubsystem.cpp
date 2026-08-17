@@ -3,11 +3,11 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "MuJoCo/Fast/MjbRenderSlaveSubsystem.h"
+#include "MuJoCo/Fast/MjRendererSubsystem.h"
 
-#include "MuJoCo/Fast/MjbScene.h"
-#include "UI/SMjbRenderSlaveBrowser.h"
-#include "UI/SMjbSlaveHud.h"
+#include "MuJoCo/Fast/MjRenderer.h"
+#include "UI/SMjRendererBrowser.h"
+#include "UI/SMjRendererHud.h"
 #include "Utils/URLabLogging.h"
 
 #include "Engine/World.h"
@@ -19,7 +19,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 
-void UMjbRenderSlaveSubsystem::RefreshOwners()
+void UMjRendererSubsystem::RefreshOwners()
 {
 	FString Err;
 	URLabFastPath::DiscoverOwners(Owners, Err);
@@ -29,11 +29,11 @@ void UMjbRenderSlaveSubsystem::RefreshOwners()
 	}
 }
 
-void UMjbRenderSlaveSubsystem::RefreshLevels()
+void UMjRendererSubsystem::RefreshLevels()
 {
 	Levels.Reset();
 	// The bare-plane choice: an empty engine map + the launcher's own light rig.
-	FMjbLevelChoice Plane;
+	FMjRendererLevelChoice Plane;
 	Plane.Name = TEXT("Bare Plane");
 	Levels.Add(MoveTemp(Plane));
 
@@ -52,20 +52,20 @@ void UMjbRenderSlaveSubsystem::RefreshLevels()
 		{
 			continue; // project maps only; skip engine / plugin maps
 		}
-		FMjbLevelChoice C;
+		FMjRendererLevelChoice C;
 		C.Name = A.AssetName.ToString();
 		C.Path = Pkg;
 		Levels.Add(MoveTemp(C));
 	}
 }
 
-bool UMjbRenderSlaveSubsystem::JoinOwner(const FMjbOwnerInfo& Owner, const FString& LevelPath,
+bool UMjRendererSubsystem::JoinOwner(const FMjDriverInfo& Owner, const FString& LevelPath,
 	const FVector& Origin, bool bCameras, FString& OutError)
 {
 	OutError.Empty();
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjbScene::FetchModelFromOwner(Owner.Control, Mjb, Bus, OutError))
+	if (!AMjRenderer::FetchModelFromOwner(Owner.Control, Mjb, Bus, OutError))
 	{
 		UE_LOG(LogURLab, Error, TEXT("[RenderSlave] fetch from owner %s failed: %s"),
 			*Owner.Control, *OutError);
@@ -90,13 +90,13 @@ bool UMjbRenderSlaveSubsystem::JoinOwner(const FMjbOwnerInfo& Owner, const FStri
 	return true;
 }
 
-bool UMjbRenderSlaveSubsystem::ConsumePendingJoin(UWorld* World)
+bool UMjRendererSubsystem::ConsumePendingJoin(UWorld* World)
 {
 	if (!bJoinPending || !World)
 	{
 		return false;
 	}
-	ActiveSlave = AMjbScene::SpawnRenderSlave(World, PendingMjb, FString(), PendingBus, PendingOrigin,
+	ActiveSlave = AMjRenderer::SpawnRenderSlave(World, PendingMjb, FString(), PendingBus, PendingOrigin,
 		/*bDirect=*/false, bPendingBaseLevel, bPendingCameras);
 	bJoinPending = false;
 	PendingMjb.Empty();
@@ -105,7 +105,7 @@ bool UMjbRenderSlaveSubsystem::ConsumePendingJoin(UWorld* World)
 	return true;
 }
 
-void UMjbRenderSlaveSubsystem::BeginAutoJoin(const FString& SceneFilter, const FString& LevelPath,
+void UMjRendererSubsystem::BeginAutoJoin(const FString& SceneFilter, const FString& LevelPath,
 	const FVector& Origin, bool bCameras)
 {
 	AutoScene = SceneFilter;
@@ -122,14 +122,14 @@ void UMjbRenderSlaveSubsystem::BeginAutoJoin(const FString& SceneFilter, const F
 	UE_LOG(LogURLab, Log, TEXT("[RenderSlave] auto-join: polling for owner%s%s"),
 		SceneFilter.IsEmpty() ? TEXT("") : TEXT(" matching "), *SceneFilter);
 	W->GetTimerManager().SetTimer(AutoJoinTimer, this,
-		&UMjbRenderSlaveSubsystem::AutoJoinPoll, 1.0f, /*bLoop=*/true, /*FirstDelay=*/0.5f);
+		&UMjRendererSubsystem::AutoJoinPoll, 1.0f, /*bLoop=*/true, /*FirstDelay=*/0.5f);
 }
 
-void UMjbRenderSlaveSubsystem::AutoJoinPoll()
+void UMjRendererSubsystem::AutoJoinPoll()
 {
 	RefreshOwners();
-	const FMjbOwnerInfo* Pick = nullptr;
-	for (const FMjbOwnerInfo& O : Owners)
+	const FMjDriverInfo* Pick = nullptr;
+	for (const FMjDriverInfo& O : Owners)
 	{
 		if (AutoScene.IsEmpty() || O.Scene.Contains(AutoScene))
 		{
@@ -161,7 +161,7 @@ void UMjbRenderSlaveSubsystem::AutoJoinPoll()
 	}
 }
 
-void UMjbRenderSlaveSubsystem::ShowBrowser()
+void UMjRendererSubsystem::ShowBrowser()
 {
 	if (BrowserWidget.IsValid())
 	{
@@ -181,7 +181,7 @@ void UMjbRenderSlaveSubsystem::ShowBrowser()
 	RefreshLevels();
 	RefreshOwners();
 
-	BrowserWidget = SNew(SMjbRenderSlaveBrowser).Subsystem(this);
+	BrowserWidget = SNew(SMjRendererBrowser).Subsystem(this);
 	VP->AddViewportWidgetContent(BrowserWidget.ToSharedRef(), /*ZOrder=*/100);
 	if (APlayerController* PC = GI->GetFirstLocalPlayerController())
 	{
@@ -194,7 +194,7 @@ void UMjbRenderSlaveSubsystem::ShowBrowser()
 	UE_LOG(LogURLab, Log, TEXT("[RenderSlave] server browser shown"));
 }
 
-void UMjbRenderSlaveSubsystem::HideBrowser()
+void UMjRendererSubsystem::HideBrowser()
 {
 	if (!BrowserWidget.IsValid())
 	{
@@ -216,7 +216,7 @@ void UMjbRenderSlaveSubsystem::HideBrowser()
 	}
 }
 
-void UMjbRenderSlaveSubsystem::ShowHud()
+void UMjRendererSubsystem::ShowHud()
 {
 	if (HudWidget.IsValid())
 	{
@@ -228,7 +228,7 @@ void UMjbRenderSlaveSubsystem::ShowHud()
 	{
 		return;
 	}
-	HudWidget = SNew(SMjbSlaveHud).Subsystem(this);
+	HudWidget = SNew(SMjRendererHud).Subsystem(this);
 	VP->AddViewportWidgetContent(HudWidget.ToSharedRef(), /*ZOrder=*/90);
 	// Game+UI so the render is visible AND the HUD buttons take clicks.
 	if (APlayerController* PC = GI->GetFirstLocalPlayerController())
@@ -241,7 +241,7 @@ void UMjbRenderSlaveSubsystem::ShowHud()
 	}
 }
 
-void UMjbRenderSlaveSubsystem::HideHud()
+void UMjRendererSubsystem::HideHud()
 {
 	if (!HudWidget.IsValid())
 	{
@@ -255,7 +255,7 @@ void UMjbRenderSlaveSubsystem::HideHud()
 	HudWidget.Reset();
 }
 
-void UMjbRenderSlaveSubsystem::ReturnToBrowser()
+void UMjRendererSubsystem::ReturnToBrowser()
 {
 	HideHud();
 	ActiveSlave.Reset();
@@ -272,29 +272,29 @@ void UMjbRenderSlaveSubsystem::ReturnToBrowser()
 	}
 }
 
-void UMjbRenderSlaveSubsystem::NudgeOrigin(const FVector& Delta)
+void UMjRendererSubsystem::NudgeOrigin(const FVector& Delta)
 {
-	if (AMjbScene* S = ActiveSlave.Get())
+	if (AMjRenderer* S = ActiveSlave.Get())
 	{
 		S->SceneOrigin += Delta;
 	}
 }
 
-void UMjbRenderSlaveSubsystem::SetOrigin(const FVector& NewOrigin)
+void UMjRendererSubsystem::SetOrigin(const FVector& NewOrigin)
 {
-	if (AMjbScene* S = ActiveSlave.Get())
+	if (AMjRenderer* S = ActiveSlave.Get())
 	{
 		S->SceneOrigin = NewOrigin;
 	}
 }
 
-FVector UMjbRenderSlaveSubsystem::GetOrigin() const
+FVector UMjRendererSubsystem::GetOrigin() const
 {
-	const AMjbScene* S = ActiveSlave.Get();
+	const AMjRenderer* S = ActiveSlave.Get();
 	return S ? S->SceneOrigin : FVector::ZeroVector;
 }
 
-bool UMjbRenderSlaveSubsystem::HasActiveSlave() const
+bool UMjRendererSubsystem::HasActiveSlave() const
 {
 	return ActiveSlave.IsValid();
 }

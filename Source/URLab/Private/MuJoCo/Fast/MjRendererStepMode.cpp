@@ -8,9 +8,9 @@
 // endorsed by, or sponsored by Epic Games, Inc. This plugin incorporates
 // third-party software: MuJoCo (Apache 2.0). See ThirdPartyNotices.txt.
 
-#include "MuJoCo/Fast/MjbDirectMode.h"
+#include "MuJoCo/Fast/MjRendererStepMode.h"
 
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
@@ -37,11 +37,11 @@ FQuat MjMat3ToUeQuat(const double* Mat3)
 }
 } // namespace
 
-void FMjbDirectMode::Begin(AMjbScene& Scene)
+void FMjRendererStepMode::Begin(AMjRenderer& Scene)
 {
 	if (!Scene.Model || !Scene.Data)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: no model/data to install"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] Direct: no model/data to install"));
 		return;
 	}
 
@@ -51,10 +51,10 @@ void FMjbDirectMode::Begin(AMjbScene& Scene)
 	// BeginPlay; installing before that would be undone. Poll until it has begun
 	// play, then install once.
 	Scene.GetWorld()->GetTimerManager().SetTimer(
-		InstallTimer, &Scene, &AMjbScene::InstallIntoEngine, 0.05f, /*bLoop=*/true);
+		InstallTimer, &Scene, &AMjRenderer::InstallIntoEngine, 0.05f, /*bLoop=*/true);
 }
 
-void FMjbDirectMode::InstallIntoEngine(AMjbScene& Scene)
+void FMjRendererStepMode::InstallIntoEngine(AMjRenderer& Scene)
 {
 	AAMjManager* Mgr = Manager.Get();
 	if (!Mgr)
@@ -71,7 +71,7 @@ void FMjbDirectMode::InstallIntoEngine(AMjbScene& Scene)
 	UMjPhysicsEngine* Eng = Mgr->PhysicsEngine;
 	if (!Eng || !Scene.Model || !Scene.Data)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: engine/model unavailable at install"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] Direct: engine/model unavailable at install"));
 		return;
 	}
 	// Name the raw entity from the MJB's base name so the control/observation RPC layer (and a
@@ -83,7 +83,7 @@ void FMjbDirectMode::InstallIntoEngine(AMjbScene& Scene)
 
 	if (!Eng->InstallRawModel(Scene.Model, Scene.Data))
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] Direct: InstallRawModel failed"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] Direct: InstallRawModel failed"));
 		return;
 	}
 
@@ -92,11 +92,11 @@ void FMjbDirectMode::InstallIntoEngine(AMjbScene& Scene)
 	Eng->bIsPaused = false;
 	Eng->RunMujocoAsync();
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjbScene] Direct: installed raw model (nq=%d nv=%d nu=%d) -- engine stepping"),
+		TEXT("[MjRenderer] Direct: installed raw model (nq=%d nv=%d nu=%d) -- engine stepping"),
 		(int)Scene.Model->nq, (int)Scene.Model->nv, (int)Scene.Model->nu);
 }
 
-void FMjbDirectMode::ApplyFromSnapshot(AMjbScene& Scene)
+void FMjRendererStepMode::ApplyFromSnapshot(AMjRenderer& Scene)
 {
 	AAMjManager* Mgr = Manager.Get();
 	if (!Mgr || !Mgr->PhysicsEngine || !Scene.Model)
@@ -143,7 +143,7 @@ void FMjbDirectMode::ApplyFromSnapshot(AMjbScene& Scene)
 		{
 			bNanLogged = true;
 			UE_LOG(LogURLab, Warning,
-				TEXT("[MjbScene] Direct: %d/%d geoms non-finite at frame %llu (simTime=%.4f) -- physics diverged or bad snapshot"),
+				TEXT("[MjRenderer] Direct: %d/%d geoms non-finite at frame %llu (simTime=%.4f) -- physics diverged or bad snapshot"),
 				NanGeoms, Scene.GeomComps.Num(), (unsigned long long)Snap.FrameId, Snap.SimTime);
 		}
 
@@ -167,7 +167,7 @@ void FMjbDirectMode::ApplyFromSnapshot(AMjbScene& Scene)
 	});
 }
 
-void FMjbDirectMode::Teardown(AMjbScene& Scene)
+void FMjRendererStepMode::Teardown(AMjRenderer& Scene)
 {
 	if (Scene.GetWorld())
 	{
@@ -186,7 +186,7 @@ void FMjbDirectMode::Teardown(AMjbScene& Scene)
 	Manager.Reset();
 }
 
-void FMjbDirectMode::RetireForReload()
+void FMjRendererStepMode::RetireForReload()
 {
 	// Retire the installed model + shadow but KEEP the manager + engine so the swap
 	// reuses the same physics + RPC context.

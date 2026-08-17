@@ -8,7 +8,7 @@
 #include "MuJoCo/Entity/MjBakedAssetResolver.h"
 
 struct mjModel_;
-class UMjbAssetBaker;
+class UMjRendererAssetBaker;
 class UMjGeom;
 class UPrimitiveComponent;
 
@@ -45,7 +45,7 @@ struct FMjMeshFrameInverse
 class URLAB_API FMjImportedAssetResolver : public IMjGeomAssetResolver
 {
 public:
-	FMjImportedAssetResolver(mjModel_* InModel, UMjbAssetBaker* InBaker,
+	FMjImportedAssetResolver(mjModel_* InModel, UMjRendererAssetBaker* InBaker,
 		TMap<int32, TWeakObjectPtr<UMjGeom>> InGeomIndex);
 
 	virtual UPrimitiveComponent* MakeGeomComponent(int32 GeomId, AActor* Body) const override;

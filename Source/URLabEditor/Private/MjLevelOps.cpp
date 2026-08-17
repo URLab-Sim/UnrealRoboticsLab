@@ -31,7 +31,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
 
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
@@ -573,7 +573,7 @@ bool SpawnLightSync(
 namespace
 {
 // Shared builder for both the file-path and wire-bytes launch paths: clean
-// level, lighting, and a persistent static AMjbScene preview. Exactly one of
+// level, lighting, and a persistent static AMjRenderer preview. Exactly one of
 // MjbPath / MjbBytes carries the model.
 bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 	const FString& BusEndpoint, const FString& ControlEndpoint, bool bFreshLevel, FString& OutError)
@@ -644,11 +644,11 @@ bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 
 	// 3) The fast-path scene, built + connected in the editor world so it is
 	//    persistent (not a transient PIE actor) and streams live in the viewport.
-	AMjbScene* Scene = World->SpawnActor<AMjbScene>(
-		AMjbScene::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, Params);
+	AMjRenderer* Scene = World->SpawnActor<AMjRenderer>(
+		AMjRenderer::StaticClass(), FVector::ZeroVector, FRotator::ZeroRotator, Params);
 	if (!Scene)
 	{
-		OutError = TEXT("failed to spawn AMjbScene");
+		OutError = TEXT("failed to spawn AMjRenderer");
 		return false;
 	}
 	Scene->bTestSweep = BusEndpoint.IsEmpty(); // no owner -> local dev sweep in PIE
@@ -688,7 +688,7 @@ bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 	}
 
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[MjbFastPath] built %d geoms (source=%s, bus=%s)"), Geoms,
+		TEXT("[MjRenderer] built %d geoms (source=%s, bus=%s)"), Geoms,
 		MjbBytes.Num() > 0 ? TEXT("wire") : *MjbPath,
 		BusEndpoint.IsEmpty() ? TEXT("(none, sweep)") : *BusEndpoint);
 	return true;
@@ -706,7 +706,7 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 	return BuildFastPathScene(MjbPath, TArray<uint8>(), BusEndpoint, FString(), bFreshLevel, OutError);
 }
 
-bool DiscoverFastPathOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError)
+bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 {
 	OutOwners.Reset();
 	OutError.Empty();
@@ -763,7 +763,7 @@ bool DiscoverFastPathOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError)
 			continue;
 		}
 
-		FMjbOwnerInfo Info;
+		FMjDriverInfo Info;
 		Obj->TryGetStringField(TEXT("instance_id"), Info.InstanceId);
 		Obj->TryGetStringField(TEXT("scene"), Info.Scene);
 		Obj->TryGetStringField(TEXT("host"), Info.Host);
@@ -791,13 +791,13 @@ bool LaunchFastPathFromOwnerSync(const FString& ControlEndpoint, bool bFreshLeve
 	// Pull the MJB + bus endpoint from the owner over its control channel.
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjbScene::FetchModelFromOwner(ControlEndpoint, Mjb, Bus, OutError))
+	if (!AMjRenderer::FetchModelFromOwner(ControlEndpoint, Mjb, Bus, OutError))
 	{
 		OutError = FString::Printf(TEXT("owner fetch failed (%s): %s"), *ControlEndpoint, *OutError);
 		return false;
 	}
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[MjbFastPath] fetched MJB (%d bytes) + bus %s from owner %s"),
+		TEXT("[MjRenderer] fetched MJB (%d bytes) + bus %s from owner %s"),
 		Mjb.Num(), *Bus, *ControlEndpoint);
 
 	// Cache the wire MJB to a temp file and drive the scene from that PATH rather

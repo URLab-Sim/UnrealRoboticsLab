@@ -3,10 +3,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "MuJoCo/Fast/MjbFastPathLauncher.h"
+#include "MuJoCo/Fast/MjRendererLauncher.h"
 
-#include "MuJoCo/Fast/MjbScene.h"
-#include "MuJoCo/Fast/MjbRenderSlaveSubsystem.h"
+#include "MuJoCo/Fast/MjRenderer.h"
+#include "MuJoCo/Fast/MjRendererSubsystem.h"
 #include "Utils/URLabLogging.h"
 
 #include "Engine/World.h"
@@ -35,14 +35,14 @@ FVector ParseFastOrigin()
 		else
 		{
 			UE_LOG(LogURLab, Warning,
-				TEXT("[MjbFastPath] -URLabFastOrigin='%s' is not X,Y,Z; ignoring"), *OriginStr);
+				TEXT("[MjRenderer] -URLabFastOrigin='%s' is not X,Y,Z; ignoring"), *OriginStr);
 		}
 	}
 	return Origin;
 }
 } // namespace
 
-void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
+void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 {
 	Super::OnWorldBeginPlay(InWorld);
 	if (!InWorld.IsGameWorld())
@@ -60,7 +60,7 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		// the browser when asked (-URLabFastBrowser). Anything else is a normal map.
 		if (UGameInstance* GI = InWorld.GetGameInstance())
 		{
-			if (UMjbRenderSlaveSubsystem* Sub = GI->GetSubsystem<UMjbRenderSlaveSubsystem>())
+			if (UMjRendererSubsystem* Sub = GI->GetSubsystem<UMjRendererSubsystem>())
 			{
 				if (Sub->HasPendingJoin())
 				{
@@ -96,10 +96,10 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// into this world and its BeginPlay already rebuilds + streams. Don't spawn a
 	// second scene on top of it. This launcher is the pure -game / packaged path,
 	// where no editor preview exists.
-	for (TActorIterator<AMjbScene> It(&InWorld); It; ++It)
+	for (TActorIterator<AMjRenderer> It(&InWorld); It; ++It)
 	{
 		UE_LOG(LogURLab, Log,
-			TEXT("[MjbFastPath] a fast-path scene already exists in this world; launcher skipping"));
+			TEXT("[MjRenderer] a fast-path scene already exists in this world; launcher skipping"));
 		return;
 	}
 	FString Bus;
@@ -119,8 +119,8 @@ void UMjbFastPathLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	const FVector Origin = ParseFastOrigin();
 
 	// One shared builder for the -game launcher and the runtime server browser.
-	AMjbScene::SpawnRenderSlave(&InWorld, TArray<uint8>(), Mjb, Bus, Origin, bDirect, bBaseLevel, bCameras);
-	UE_LOG(LogURLab, Log, TEXT("[MjbFastPath] launched: mjb=%s mode=%s bus=%s baseLevel=%d"),
+	AMjRenderer::SpawnRenderSlave(&InWorld, TArray<uint8>(), Mjb, Bus, Origin, bDirect, bBaseLevel, bCameras);
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: mjb=%s mode=%s bus=%s baseLevel=%d"),
 		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);
 }

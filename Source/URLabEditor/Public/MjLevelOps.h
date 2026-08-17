@@ -223,7 +223,7 @@ URLABEDITOR_API bool RemoveQuickConvertSync(
  * One discovered fast-path owner: a live sim a renderer can connect to. Read
  * from the shared registry directory (the entries a FastPathOwner writes).
  */
-struct FMjbOwnerInfo
+struct FMjDriverInfo
 {
 	FString InstanceId;
 	FString Scene;
@@ -240,12 +240,12 @@ struct FMjbOwnerInfo
  * than the TTL, or a dead pid) are skipped. Used by the server browser and the
  * -URLabFastDiscover CLI path.
  */
-URLABEDITOR_API bool DiscoverFastPathOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError);
+URLABEDITOR_API bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError);
 
 /**
  * Stand up a fast-path render scene from a live owner, in one call: fetch the
  * owner's MJB and bus endpoint over its control channel, then build the scene
- * (clean level + lighting + persistent AMjbScene) from those wire bytes. No
+ * (clean level + lighting + persistent AMjRenderer) from those wire bytes. No
  * shared file. bFreshLevel behaves as in LaunchFastPathSync.
  */
 URLABEDITOR_API bool LaunchFastPathFromOwnerSync(
@@ -259,7 +259,7 @@ URLABEDITOR_API bool LaunchFastPathFromOwnerSync(
  * When bFreshLevel is true, first switches to a clean dedicated level
  * (`/Game/Levels/FastPathRender`, overwritten) so the render isn't dropped
  * into the project's default map. Adds a movable directional + sky light,
- * then spawns an AMjbScene, points it at MjbPath / BusEndpoint, builds the
+ * then spawns an AMjRenderer, points it at MjbPath / BusEndpoint, builds the
  * geometry, and (when BusEndpoint is set) connects the transform stream.
  *
  * Everything is created as PERSISTENT editor-world actors: the built scene

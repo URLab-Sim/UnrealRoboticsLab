@@ -32,7 +32,7 @@
 #include "MuJoCo/Entity/MjEntityHandoff.h"
 #include "MuJoCo/Entity/MjEntityLogicComponent.h"
 #include "MuJoCo/Entity/MjEntityPawn.h"
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
 #include "MuJoCo/Gen/Elements/Options/MjCompiler.gen.h"
@@ -1005,8 +1005,8 @@ void AAMjManager::BuildRuntimeView()
 	FActorSpawnParameters Params;
 	Params.Owner = this;
 	Params.ObjectFlags |= RF_Transient;
-	AMjbScene* View = World->SpawnActorDeferred<AMjbScene>(
-		AMjbScene::StaticClass(), FTransform::Identity, this, nullptr,
+	AMjRenderer* View = World->SpawnActorDeferred<AMjRenderer>(
+		AMjRenderer::StaticClass(), FTransform::Identity, this, nullptr,
 		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	if (!View)
 	{

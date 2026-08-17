@@ -8,32 +8,32 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Views/SListView.h"
-#include "MuJoCo/Fast/MjbOwnerDiscovery.h"
+#include "MuJoCo/Fast/MjDriverDiscovery.h"
 
-class UMjbRenderSlaveSubsystem;
+class UMjRendererSubsystem;
 class STextComboBox;
 class SEditableTextBox;
 
 /**
  * Runtime (packaged-game) server browser for fast-path render slaves. Lists the
- * live owners the UMjbRenderSlaveSubsystem discovered, an environment picker (bare
+ * live owners the UMjRendererSubsystem discovered, an environment picker (bare
  * plane or any cooked level), a spawn-origin field, and a camera-feeds toggle.
  * Connecting hands the choice back to the subsystem, which pulls the MJB and opens
- * the level. This is the runtime counterpart to the editor's SMjbServerBrowser.
+ * the level. This is the runtime counterpart to the editor's SMjServerBrowser.
  */
-class SMjbRenderSlaveBrowser : public SCompoundWidget
+class SMjRendererBrowser : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMjbRenderSlaveBrowser) {}
-		SLATE_ARGUMENT(TWeakObjectPtr<UMjbRenderSlaveSubsystem>, Subsystem)
+	SLATE_BEGIN_ARGS(SMjRendererBrowser) {}
+		SLATE_ARGUMENT(TWeakObjectPtr<UMjRendererSubsystem>, Subsystem)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
 private:
-	using FOwnerPtr = TSharedPtr<FMjbOwnerInfo>;
+	using FOwnerPtr = TSharedPtr<FMjDriverInfo>;
 
-	TWeakObjectPtr<UMjbRenderSlaveSubsystem> Subsystem;
+	TWeakObjectPtr<UMjRendererSubsystem> Subsystem;
 
 	TArray<FOwnerPtr> Owners;
 	TSharedPtr<SListView<FOwnerPtr>> OwnerList;

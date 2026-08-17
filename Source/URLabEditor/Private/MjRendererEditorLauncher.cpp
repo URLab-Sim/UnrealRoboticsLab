@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "MjbFastPathEditorLauncher.h"
+#include "MjRendererEditorLauncher.h"
 
 #include "MjLevelOps.h"
 #include "URLabEditorLogging.h"
@@ -13,7 +13,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
-void UMjbFastPathEditorLauncher::Initialize(FSubsystemCollectionBase& Collection)
+void UMjRendererEditorLauncher::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
@@ -33,10 +33,10 @@ void UMjbFastPathEditorLauncher::Initialize(FSubsystemCollectionBase& Collection
 	// Defer: the editor world does not exist yet at subsystem init, and the
 	// initial map is still opening. Poll until both have settled, then launch.
 	TickHandle = FTSTicker::GetCoreTicker().AddTicker(
-		FTickerDelegate::CreateUObject(this, &UMjbFastPathEditorLauncher::TryLaunch), 0.25f);
+		FTickerDelegate::CreateUObject(this, &UMjRendererEditorLauncher::TryLaunch), 0.25f);
 }
 
-void UMjbFastPathEditorLauncher::Deinitialize()
+void UMjRendererEditorLauncher::Deinitialize()
 {
 	if (TickHandle.IsValid())
 	{
@@ -46,7 +46,7 @@ void UMjbFastPathEditorLauncher::Deinitialize()
 	Super::Deinitialize();
 }
 
-bool UMjbFastPathEditorLauncher::TryLaunch(float DeltaTime)
+bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 {
 	Waited += DeltaTime;
 
@@ -73,7 +73,7 @@ bool UMjbFastPathEditorLauncher::TryLaunch(float DeltaTime)
 	else if (FParse::Param(Cmd, TEXT("URLabFastDiscover")))
 	{
 		// Auto-discover: connect to the first advertised owner found.
-		TArray<URLabLevelOps::FMjbOwnerInfo> Owners;
+		TArray<URLabLevelOps::FMjDriverInfo> Owners;
 		FString DiscErr;
 		if (!URLabLevelOps::DiscoverFastPathOwners(Owners, DiscErr) || Owners.Num() == 0)
 		{
@@ -81,7 +81,7 @@ bool UMjbFastPathEditorLauncher::TryLaunch(float DeltaTime)
 		}
 		else
 		{
-			UE_LOG(LogURLabEditor, Log, TEXT("[MjbFastPath] discovered %d owner(s); connecting to '%s' (%s)"),
+			UE_LOG(LogURLabEditor, Log, TEXT("[MjRenderer] discovered %d owner(s); connecting to '%s' (%s)"),
 				Owners.Num(), *Owners[0].Scene, *Owners[0].Control);
 			bOk = URLabLevelOps::LaunchFastPathFromOwnerSync(Owners[0].Control, /*bFreshLevel=*/true, Err);
 		}
@@ -97,11 +97,11 @@ bool UMjbFastPathEditorLauncher::TryLaunch(float DeltaTime)
 
 	if (bOk)
 	{
-		UE_LOG(LogURLabEditor, Log, TEXT("[MjbFastPath] editor launch complete"));
+		UE_LOG(LogURLabEditor, Log, TEXT("[MjRenderer] editor launch complete"));
 	}
 	else
 	{
-		UE_LOG(LogURLabEditor, Error, TEXT("[MjbFastPath] editor launch failed: %s"), *Err);
+		UE_LOG(LogURLabEditor, Error, TEXT("[MjRenderer] editor launch failed: %s"), *Err);
 	}
 
 	TickHandle.Reset();

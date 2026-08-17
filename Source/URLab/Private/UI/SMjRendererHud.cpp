@@ -3,9 +3,9 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "UI/SMjbSlaveHud.h"
+#include "UI/SMjRendererHud.h"
 
-#include "MuJoCo/Fast/MjbRenderSlaveSubsystem.h"
+#include "MuJoCo/Fast/MjRendererSubsystem.h"
 
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -16,7 +16,7 @@
 
 #define LOCTEXT_NAMESPACE "MjbSlaveHud"
 
-void SMjbSlaveHud::Construct(const FArguments& InArgs)
+void SMjRendererHud::Construct(const FArguments& InArgs)
 {
 	Subsystem = InArgs._Subsystem;
 
@@ -30,12 +30,12 @@ void SMjbSlaveHud::Construct(const FArguments& InArgs)
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
 			[
 				SNew(SButton).Text(LOCTEXT("Minus", "  -  "))
-				.OnClicked(this, &SMjbSlaveHud::Nudge, Axis, -1)
+				.OnClicked(this, &SMjRendererHud::Nudge, Axis, -1)
 			]
 			+ SHorizontalBox::Slot().AutoWidth().Padding(2, 0)
 			[
 				SNew(SButton).Text(LOCTEXT("Plus", "  +  "))
-				.OnClicked(this, &SMjbSlaveHud::Nudge, Axis, 1)
+				.OnClicked(this, &SMjRendererHud::Nudge, Axis, 1)
 			];
 	};
 
@@ -52,7 +52,7 @@ void SMjbSlaveHud::Construct(const FArguments& InArgs)
 				.Text(LOCTEXT("Back", "<  Server Browser"))
 				.OnClicked_Lambda([this]()
 				{
-					if (UMjbRenderSlaveSubsystem* S = Subsystem.Get())
+					if (UMjRendererSubsystem* S = Subsystem.Get())
 					{
 						S->ReturnToBrowser();
 					}
@@ -85,7 +85,7 @@ void SMjbSlaveHud::Construct(const FArguments& InArgs)
 	];
 }
 
-double SMjbSlaveHud::Step() const
+double SMjRendererHud::Step() const
 {
 	if (StepBox.IsValid())
 	{
@@ -98,9 +98,9 @@ double SMjbSlaveHud::Step() const
 	return 25.0;
 }
 
-FReply SMjbSlaveHud::Nudge(int32 Axis, int32 Sign)
+FReply SMjRendererHud::Nudge(int32 Axis, int32 Sign)
 {
-	if (UMjbRenderSlaveSubsystem* S = Subsystem.Get())
+	if (UMjRendererSubsystem* S = Subsystem.Get())
 	{
 		FVector Delta = FVector::ZeroVector;
 		Delta[Axis] = Sign * Step();
@@ -109,9 +109,9 @@ FReply SMjbSlaveHud::Nudge(int32 Axis, int32 Sign)
 	return FReply::Handled();
 }
 
-FText SMjbSlaveHud::OriginText() const
+FText SMjRendererHud::OriginText() const
 {
-	const UMjbRenderSlaveSubsystem* S = Subsystem.Get();
+	const UMjRendererSubsystem* S = Subsystem.Get();
 	const FVector O = S ? S->GetOrigin() : FVector::ZeroVector;
 	return FText::FromString(
 		FString::Printf(TEXT("Origin  X=%.0f  Y=%.0f  Z=%.0f"), O.X, O.Y, O.Z));

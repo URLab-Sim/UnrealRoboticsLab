@@ -11,7 +11,7 @@
 #include "MjLevelOps.h"
 
 /**
- * @class SMjbServerBrowser
+ * @class SMjServerBrowser
  * @brief Editor panel that lists advertised fast-path owners and connects to one.
  *
  * Polls the shared registry (URLabLevelOps::DiscoverFastPathOwners) every couple
@@ -20,16 +20,16 @@
  * render scene in the editor (URLabLevelOps::LaunchFastPathFromOwnerSync) -- the
  * GUI equivalent of the -URLabFastConnect / -URLabFastDiscover CLI flags.
  */
-class SMjbServerBrowser : public SCompoundWidget
+class SMjServerBrowser : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMjbServerBrowser) {}
+	SLATE_BEGIN_ARGS(SMjServerBrowser) {}
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
 private:
-	using FOwnerPtr = TSharedPtr<URLabLevelOps::FMjbOwnerInfo>;
+	using FOwnerPtr = TSharedPtr<URLabLevelOps::FMjDriverInfo>;
 
 	TSharedRef<ITableRow> OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& Owner);
 	EActiveTimerReturnType RefreshTick(double InCurrentTime, float InDeltaTime);

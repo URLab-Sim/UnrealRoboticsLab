@@ -259,7 +259,7 @@ public:
 	 * Adopt an externally-owned raw mjModel + mjData as the live model, with no
 	 * mjSpec compile and no articulations behind it.
 	 *
-	 * The fast-path renderer (AMjbScene) loads a compiled MJB directly with
+	 * The fast-path renderer (AMjRenderer) loads a compiled MJB directly with
 	 * mj_loadModelBuffer and owns both pointers; this lets the same instance be
 	 * driven by the step / control / sensor RPC layer, which only ever reaches
 	 * the model through GetModel()/GetData(). The engine aliases the pointers and

@@ -7,11 +7,11 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "MuJoCo/Fast/MjbDirectMode.h"
+#include "MuJoCo/Fast/MjRendererStepMode.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjGeomAssetResolver.h"
 #include "Templates/UniquePtr.h"
-#include "MjbScene.generated.h"
+#include "MjRenderer.generated.h"
 
 struct mjModel_;
 struct mjData_;
@@ -21,12 +21,12 @@ class AAMjManager;
 class AMjArticulation;
 class UMjGeom;
 class UMjQuickConvertComponent;
-class UMjbAssetBaker;
-class UMjbTransportBus;
+class UMjRendererAssetBaker;
+class UMjRendererBus;
 class UTexture;
 
 /**
- * @class AMjbScene
+ * @class AMjRenderer
  * @brief Fast-path render scene built straight from a compiled MJB.
  *
  * Loads an MJB with mj_loadModel (binary deserialize, no MJCF/ProtoSpec/
@@ -46,18 +46,18 @@ class UTexture;
  * exercised without an owner; it is off by default and ignored in Stepped mode
  * or once a bus is connected.
  *
- * The mesh/texture/material builders live in UMjbAssetBaker, the transform-bus
- * receive plumbing in UMjbTransportBus, and the Direct-mode engine install +
- * snapshot render in FMjbDirectMode; the scene owns the model/data, the body ->
+ * The mesh/texture/material builders live in UMjRendererAssetBaker, the transform-bus
+ * receive plumbing in UMjRendererBus, and the Direct-mode engine install +
+ * snapshot render in FMjRendererStepMode; the scene owns the model/data, the body ->
  * geom scene graph, and the build orchestration.
  */
 UCLASS()
-class URLAB_API AMjbScene : public AActor
+class URLAB_API AMjRenderer : public AActor
 {
 	GENERATED_BODY()
 
 public:
-	AMjbScene();
+	AMjRenderer();
 
 	/** Absolute path to a version-matched MJB. Used only when MjbBytes is empty. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
@@ -159,7 +159,7 @@ public:
 	 * is visible on a bare map. Shared by the -game command-line launcher and the
 	 * runtime server browser so both build an identical slave. Null on failure.
 	 */
-	static AMjbScene* SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
+	static AMjRenderer* SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
 		const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
 		bool bDirect, bool bBaseLevel, bool bCameras);
 
@@ -312,9 +312,9 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
-	// FMjbDirectMode reaches back into the scene for the model, geom/camera
+	// FMjRendererStepMode reaches back into the scene for the model, geom/camera
 	// components and render origin while it drives the shared engine.
-	friend struct FMjbDirectMode;
+	friend struct FMjRendererStepMode;
 
 	// Compose a geom's compiled world pose (MuJoCo frame, wxyz) with the mesh-frame
 	// correction its component needs, so a raw imported/converted StaticMesh lands
@@ -348,7 +348,7 @@ private:
 	// Builds + caches the meshes/textures/materials for the loaded MJB (content-hash
 	// keyed). A UPROPERTY so its cached assets are GC-rooted through the scene.
 	UPROPERTY(Transient)
-	TObjectPtr<UMjbAssetBaker> AssetBaker;
+	TObjectPtr<UMjRendererAssetBaker> AssetBaker;
 
 	// Cameras built from the MJB, indexed by MuJoCo camera id. Empty unless
 	// bEnableCameraStreaming.
@@ -367,7 +367,7 @@ private:
 	// Receive plumbing for the owner's "geoms" broadcast. Lazily created on the
 	// first StartBus; the game thread pulls the newest raw payload each Tick.
 	UPROPERTY(Transient)
-	TObjectPtr<UMjbTransportBus> TransportBus;
+	TObjectPtr<UMjRendererBus> TransportBus;
 
 	// Ensure + connect the bus (BusEndpoint must be set); drop it. Both no-op safe.
 	void StartBus();
@@ -376,7 +376,7 @@ private:
 	// --- Direct mode (in-process stepping via the shared engine) ---------- //
 	// Engine install + shadow articulation + snapshot render. A plain struct owned
 	// here (weak actor ptrs + PODs, no GC roots).
-	FMjbDirectMode Direct;
+	FMjRendererStepMode Direct;
 
 	// Get-or-spawn the level's manager and cache it in Direct.Manager. A render
 	// server needs a manager+bridge in BOTH modes: Direct steps through it, and a

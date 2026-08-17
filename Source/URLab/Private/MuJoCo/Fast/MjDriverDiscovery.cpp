@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "MuJoCo/Fast/MjbOwnerDiscovery.h"
+#include "MuJoCo/Fast/MjDriverDiscovery.h"
 
 #include "Bridge/InstanceRegistry.h"
 
@@ -17,7 +17,7 @@
 
 namespace URLabFastPath
 {
-bool DiscoverOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError)
+bool DiscoverOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 {
 	OutOwners.Reset();
 	OutError.Empty();
@@ -74,7 +74,7 @@ bool DiscoverOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError)
 			continue;
 		}
 
-		FMjbOwnerInfo Info;
+		FMjDriverInfo Info;
 		Obj->TryGetStringField(TEXT("instance_id"), Info.InstanceId);
 		Obj->TryGetStringField(TEXT("scene"), Info.Scene);
 		Obj->TryGetStringField(TEXT("host"), Info.Host);

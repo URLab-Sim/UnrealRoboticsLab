@@ -7,21 +7,21 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
-#include "MjbFastPathLauncher.generated.h"
+#include "MjRendererLauncher.generated.h"
 
 /**
- * @class UMjbFastPathLauncher
- * @brief Spawns and configures a fast-path AMjbScene from command-line flags,
+ * @class UMjRendererLauncher
+ * @brief Spawns and configures a fast-path AMjRenderer from command-line flags,
  *        so a UE renderer can be launched and connected with no manual actor
  *        placement -- the first step toward CLI-driven / discovered connection.
  *
  * On a game world's BeginPlay, if `-URLabFastMjb=<path>` is present it spawns an
- * AMjbScene (optionally `-URLabFastBus=<endpoint>` to mirror a live owner) and
+ * AMjRenderer (optionally `-URLabFastBus=<endpoint>` to mirror a live owner) and
  * frames it with a view camera. This is a stopgap for the discovery layer:
  * eventually the endpoint + MJB arrive over the wire from an advertised owner.
  */
 UCLASS()
-class URLAB_API UMjbFastPathLauncher : public UWorldSubsystem
+class URLAB_API UMjRendererLauncher : public UWorldSubsystem
 {
 	GENERATED_BODY()
 

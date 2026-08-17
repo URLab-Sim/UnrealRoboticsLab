@@ -490,10 +490,10 @@ protected:
 	TArray<TWeakObjectPtr<UObject>> StateProducers;
 	mutable FCriticalSection StateProducersMutex;
 
-	/** The one lightweight render view for the compiled play path: an AMjbScene
+	/** The one lightweight render view for the compiled play path: an AMjRenderer
 	 *  seeded from the borrowed compiled model, drawing the scene geometry from the
 	 *  render snapshot. Spawned at BeginPlay in game worlds only, never in automation. */
-	TObjectPtr<class AMjbScene> CompiledRenderView;
+	TObjectPtr<class AMjRenderer> CompiledRenderView;
 	TObjectPtr<class UMjOverlayRenderer> OverlayRenderer;
 	const struct mjModel_* CompiledViewModel = nullptr;
 
@@ -516,7 +516,7 @@ public:
 	void ApplyLatestRenderState();
 
 	/** The compiled play render view (approach B), or null in editor / automation. */
-	class AMjbScene* GetCompiledRenderView() const { return CompiledRenderView; }
+	class AMjRenderer* GetCompiledRenderView() const { return CompiledRenderView; }
 
 	/** Render-snapshot id last applied to the actors (post-step state id that
 	 *  the currently-rendered scene reflects). Cameras stamp readbacks with

@@ -3,7 +3,7 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "SMjbServerBrowser.h"
+#include "SMjServerBrowser.h"
 
 #include "URLabEditorLogging.h"
 
@@ -16,7 +16,7 @@
 
 #define LOCTEXT_NAMESPACE "MjbServerBrowser"
 
-void SMjbServerBrowser::Construct(const FArguments& InArgs)
+void SMjServerBrowser::Construct(const FArguments& InArgs)
 {
 	StatusText = LOCTEXT("Idle", "Discovering fast-path owners...");
 
@@ -48,7 +48,7 @@ void SMjbServerBrowser::Construct(const FArguments& InArgs)
 			[
 				SAssignNew(ListView, SListView<FOwnerPtr>)
 				.ListItemsSource(&Owners)
-				.OnGenerateRow(this, &SMjbServerBrowser::OnGenerateRow)
+				.OnGenerateRow(this, &SMjServerBrowser::OnGenerateRow)
 				.SelectionMode(ESelectionMode::Single)
 			]
 		]
@@ -63,25 +63,25 @@ void SMjbServerBrowser::Construct(const FArguments& InArgs)
 	Refresh();
 	// Auto-refresh so owners appear/disappear without the user clicking.
 	RegisterActiveTimer(2.0f,
-		FWidgetActiveTimerDelegate::CreateSP(this, &SMjbServerBrowser::RefreshTick));
+		FWidgetActiveTimerDelegate::CreateSP(this, &SMjServerBrowser::RefreshTick));
 }
 
-EActiveTimerReturnType SMjbServerBrowser::RefreshTick(double, float)
+EActiveTimerReturnType SMjServerBrowser::RefreshTick(double, float)
 {
 	Refresh();
 	return EActiveTimerReturnType::Continue;
 }
 
-void SMjbServerBrowser::Refresh()
+void SMjServerBrowser::Refresh()
 {
-	TArray<URLabLevelOps::FMjbOwnerInfo> Found;
+	TArray<URLabLevelOps::FMjDriverInfo> Found;
 	FString Err;
 	URLabLevelOps::DiscoverFastPathOwners(Found, Err);
 
 	Owners.Reset(Found.Num());
-	for (const URLabLevelOps::FMjbOwnerInfo& O : Found)
+	for (const URLabLevelOps::FMjDriverInfo& O : Found)
 	{
-		Owners.Add(MakeShared<URLabLevelOps::FMjbOwnerInfo>(O));
+		Owners.Add(MakeShared<URLabLevelOps::FMjDriverInfo>(O));
 	}
 	if (!Err.IsEmpty())
 	{
@@ -101,7 +101,7 @@ void SMjbServerBrowser::Refresh()
 	}
 }
 
-TSharedRef<ITableRow> SMjbServerBrowser::OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& OwnerTable)
+TSharedRef<ITableRow> SMjServerBrowser::OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& OwnerTable)
 {
 	const FString Label = FString::Printf(TEXT("%s   @ %s   (%d geoms)   %s"),
 		*Item->Scene, *Item->Host, Item->Ngeom, *Item->Control);
@@ -117,12 +117,12 @@ TSharedRef<ITableRow> SMjbServerBrowser::OnGenerateRow(FOwnerPtr Item, const TSh
 		[
 			SNew(SButton)
 			.Text(LOCTEXT("Connect", "Connect"))
-			.OnClicked(this, &SMjbServerBrowser::OnConnectClicked, Item)
+			.OnClicked(this, &SMjServerBrowser::OnConnectClicked, Item)
 		]
 	];
 }
 
-FReply SMjbServerBrowser::OnConnectClicked(FOwnerPtr Item)
+FReply SMjServerBrowser::OnConnectClicked(FOwnerPtr Item)
 {
 	if (!Item.IsValid())
 	{
@@ -139,7 +139,7 @@ FReply SMjbServerBrowser::OnConnectClicked(FOwnerPtr Item)
 	else
 	{
 		StatusText = FText::FromString(FString::Printf(TEXT("Connect failed: %s"), *Err));
-		UE_LOG(LogURLabEditor, Error, TEXT("[MjbServerBrowser] connect failed: %s"), *Err);
+		UE_LOG(LogURLabEditor, Error, TEXT("[MjServerBrowser] connect failed: %s"), *Err);
 	}
 	return FReply::Handled();
 }

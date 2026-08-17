@@ -27,7 +27,7 @@
 #include "Bridge/BridgeServerProvider.h"
 #include "SMjStepModeIndicator.h"
 #include "SMjBridgeServerToggle.h"
-#include "SMjbServerBrowser.h"
+#include "SMjServerBrowser.h"
 #include "Editor.h"
 #include "ToolMenus.h"
 #include "ToolMenuContext.h"
@@ -218,7 +218,7 @@ void FURLabEditorModule::StartupModule()
 									return SNew(SDockTab)
 										.TabRole(ETabRole::NomadTab)
 										.Label(FText::FromString(TEXT("Fast-Path Servers")))
-											[SNew(SMjbServerBrowser)];
+											[SNew(SMjServerBrowser)];
 								}))
 		.SetDisplayName(FText::FromString(TEXT("Fast-Path Servers")))
 		.SetTooltipText(FText::FromString(TEXT("Discover fast-path owners and connect a renderer to one")));

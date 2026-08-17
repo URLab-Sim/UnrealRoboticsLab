@@ -8,7 +8,7 @@
 #include "Engine/StaticMesh.h"
 #include "GameFramework/Actor.h"
 
-#include "MuJoCo/Fast/MjbAssetBaker.h"
+#include "MuJoCo/Fast/MjRendererAssetBaker.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -44,7 +44,7 @@ void DisableDistanceFields(UPrimitiveComponent* Comp)
 }
 } // namespace
 
-FMjBakedAssetResolver::FMjBakedAssetResolver(mjModel_* InModel, UMjbAssetBaker* InBaker)
+FMjBakedAssetResolver::FMjBakedAssetResolver(mjModel_* InModel, UMjRendererAssetBaker* InBaker)
 	: Model(InModel)
 	, Baker(InBaker)
 {

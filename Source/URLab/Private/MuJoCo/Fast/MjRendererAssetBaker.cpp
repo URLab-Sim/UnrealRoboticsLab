@@ -8,7 +8,7 @@
 // endorsed by, or sponsored by Epic Games, Inc. This plugin incorporates
 // third-party software: MuJoCo (Apache 2.0). See ThirdPartyNotices.txt.
 
-#include "MuJoCo/Fast/MjbAssetBaker.h"
+#include "MuJoCo/Fast/MjRendererAssetBaker.h"
 
 #include "ProceduralMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -203,7 +203,7 @@ void BuildMeshArrays(const mjModel* Model, int32 MeshId, TArray<FVector>& Verts,
 
 } // namespace
 
-void UMjbAssetBaker::Init(mjModel_* InModel, const FString& InContentHash, bool bInForceRebuild)
+void UMjRendererAssetBaker::Init(mjModel_* InModel, const FString& InContentHash, bool bInForceRebuild)
 {
 	Model = InModel;
 	ContentHash = InContentHash;
@@ -211,11 +211,11 @@ void UMjbAssetBaker::Init(mjModel_* InModel, const FString& InContentHash, bool 
 	Master = MjLoadMasterMaterial();
 	if (!Master)
 	{
-		UE_LOG(LogURLab, Warning, TEXT("[MjbScene] master material not found; geoms will be default-lit"));
+		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] master material not found; geoms will be default-lit"));
 	}
 }
 
-void UMjbAssetBaker::Reset()
+void UMjRendererAssetBaker::Reset()
 {
 	TextureCache.Reset();
 	StaticMeshCache.Reset();
@@ -225,7 +225,7 @@ void UMjbAssetBaker::Reset()
 }
 
 #if WITH_EDITOR
-UStaticMesh* UMjbAssetBaker::GetOrBuildStaticMesh(int32 MeshId)
+UStaticMesh* UMjRendererAssetBaker::GetOrBuildStaticMesh(int32 MeshId)
 {
 	if (const TObjectPtr<UStaticMesh>* Found = StaticMeshCache.Find(MeshId))
 	{
@@ -337,7 +337,7 @@ UStaticMesh* UMjbAssetBaker::GetOrBuildStaticMesh(int32 MeshId)
 }
 #endif // WITH_EDITOR
 
-UProceduralMeshComponent* UMjbAssetBaker::BuildMesh(int32 G, AActor* Body)
+UProceduralMeshComponent* UMjRendererAssetBaker::BuildMesh(int32 G, AActor* Body)
 {
 	TArray<FVector> Verts;
 	TArray<FVector> Normals;
@@ -378,7 +378,7 @@ UProceduralMeshComponent* UMjbAssetBaker::BuildMesh(int32 G, AActor* Body)
 	return Pmc;
 }
 
-UTexture2D* UMjbAssetBaker::GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal)
+UTexture2D* UMjRendererAssetBaker::GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal)
 {
 	if (!Model || TexId < 0 || TexId >= static_cast<int32>(Model->ntex))
 	{
@@ -488,7 +488,7 @@ UTexture2D* UMjbAssetBaker::GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNor
 	return Tex;
 }
 
-void UMjbAssetBaker::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
+void UMjRendererAssetBaker::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G)
 {
 	if (!Master || !Comp)
 	{

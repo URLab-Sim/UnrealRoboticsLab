@@ -8,16 +8,16 @@
 #include "CoreMinimal.h"
 #include "EditorSubsystem.h"
 #include "Containers/Ticker.h"
-#include "MjbFastPathEditorLauncher.generated.h"
+#include "MjRendererEditorLauncher.generated.h"
 
 /**
- * @class UMjbFastPathEditorLauncher
+ * @class UMjRendererEditorLauncher
  * @brief Editor-time launcher for the MJB fast-path renderer.
  *
  * When the editor is started with `-URLabFastMjb=<path>` (and optionally
  * `-URLabFastBus=<endpoint>`), this stands up a persistent fast-path render
  * scene in the editor world via URLabLevelOps::LaunchFastPathSync: a clean
- * dedicated level, movable lighting, and a built + connected AMjbScene. It is
+ * dedicated level, movable lighting, and a built + connected AMjRenderer. It is
  * the CLI/automation entry point that replaces the old editor Python script;
  * the same LaunchFastPathSync op is what the bridge / server-browser UI will
  * call interactively.
@@ -26,7 +26,7 @@
  * initial map has settled, so switching to the fresh level is clean.
  */
 UCLASS()
-class URLABEDITOR_API UMjbFastPathEditorLauncher : public UEditorSubsystem
+class URLABEDITOR_API UMjRendererEditorLauncher : public UEditorSubsystem
 {
 	GENERATED_BODY()
 

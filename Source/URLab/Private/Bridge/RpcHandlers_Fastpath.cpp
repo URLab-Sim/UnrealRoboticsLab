@@ -12,7 +12,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjModelSource.h"
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 #include "Utils/URLabLogging.h"
 
 #include "Dom/JsonObject.h"
@@ -25,7 +25,7 @@ THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
 THIRD_PARTY_INCLUDES_END
 
-// Fast-path owner handshake. A fast-path renderer (AMjbScene) sends
+// Fast-path owner handshake. A fast-path renderer (AMjRenderer) sends
 // `fastpath_hello` to pull this owner's compiled MJB and the transform-bus
 // endpoint, so it can build the scene with no shared file and subscribe to the
 // geoms stream. This mirrors what a Python FastPathOwner serves, letting a UE
@@ -160,8 +160,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr
 		{
 			return;
 		}
-		AMjbScene* Scene = nullptr;
-		for (TActorIterator<AMjbScene> It(World); It; ++It)
+		AMjRenderer* Scene = nullptr;
+		for (TActorIterator<AMjRenderer> It(World); It; ++It)
 		{
 			Scene = *It;
 			break;

@@ -8,12 +8,12 @@
 // endorsed by, or sponsored by Epic Games, Inc. This plugin incorporates
 // third-party software: MuJoCo (Apache 2.0). See ThirdPartyNotices.txt.
 
-#include "MuJoCo/Fast/MjbTransportBus.h"
+#include "MuJoCo/Fast/MjRendererBus.h"
 
 #include "Transport/ClientSubscribeTransport.h"
 #include "Utils/URLabLogging.h"
 
-void UMjbTransportBus::Start(const FString& Endpoint)
+void UMjRendererBus::Start(const FString& Endpoint)
 {
 	if (Endpoint.IsEmpty() || BusTransport)
 	{
@@ -23,17 +23,17 @@ void UMjbTransportBus::Start(const FString& Endpoint)
 	// client-subscribe transport (backend chosen by the base). The worker delivers
 	// each newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
 	BusTransport = UURLabClientSubscribeTransport::Create(this, Endpoint, TEXT("geoms"),
-		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &UMjbTransportBus::OnBusMessage));
+		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &UMjRendererBus::OnBusMessage));
 	if (!BusTransport)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] transform bus connect failed: %s"), *Endpoint);
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] transform bus connect failed: %s"), *Endpoint);
 		return;
 	}
 	bRxPending = false;
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] subscribing to transform bus %s"), *Endpoint);
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] subscribing to transform bus %s"), *Endpoint);
 }
 
-void UMjbTransportBus::Stop()
+void UMjRendererBus::Stop()
 {
 	if (BusTransport)
 	{
@@ -45,12 +45,12 @@ void UMjbTransportBus::Stop()
 	bRxPending = false;
 }
 
-bool UMjbTransportBus::IsConnected() const
+bool UMjRendererBus::IsConnected() const
 {
 	return BusTransport != nullptr;
 }
 
-bool UMjbTransportBus::TakeLatestFrame(TArray<uint8>& Out)
+bool UMjRendererBus::TakeLatestFrame(TArray<uint8>& Out)
 {
 	FScopeLock Lock(&FrameMutex);
 	if (bRxPending && RxFrame.Num() > 0)
@@ -62,7 +62,7 @@ bool UMjbTransportBus::TakeLatestFrame(TArray<uint8>& Out)
 	return false;
 }
 
-void UMjbTransportBus::OnBusMessage(const FString& /*Topic*/, const TArray<uint8>& Payload)
+void UMjRendererBus::OnBusMessage(const FString& /*Topic*/, const TArray<uint8>& Payload)
 {
 	// Worker thread: no UObject / msgpack work here -- just stash the newest raw
 	// payload for the game thread (Tick) to decode + apply.

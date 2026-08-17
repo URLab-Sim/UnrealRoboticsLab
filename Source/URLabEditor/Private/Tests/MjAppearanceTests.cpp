@@ -16,7 +16,7 @@
 #include "MuJoCo/Entity/MjAppearanceStore.h"
 #include "MuJoCo/Entity/MjGeomAppearance.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 
 #if WITH_EDITOR
 
@@ -76,7 +76,7 @@ bool FMjAppearanceStoreHoldsOverride::RunTest(const FString& Parameters)
 
 // Fast-path apply walk. Needs a version-matched MJB fixture (shared with the
 // MjbScene tests); skips gracefully when absent so CI stays green. Exercises the
-// store's world walk into AMjbScene::ApplyAppearanceOverride / NumGeomsNamed and
+// store's world walk into AMjRenderer::ApplyAppearanceOverride / NumGeomsNamed and
 // asserts the found-vs-missing plumbing on a real built scene.
 static const TCHAR* kPrimitivesMjb =
 	TEXT("/home/buzz/Documents/urlab_debug/mjb_test/primitives.mjb");
@@ -98,8 +98,8 @@ bool FMjAppearanceStoreWalksFastPath::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	AMjbScene* Scene = World->SpawnActor<AMjbScene>();
-	if (!TestNotNull(TEXT("spawned AMjbScene"), Scene))
+	AMjRenderer* Scene = World->SpawnActor<AMjRenderer>();
+	if (!TestNotNull(TEXT("spawned AMjRenderer"), Scene))
 	{
 		return false;
 	}
@@ -107,7 +107,7 @@ bool FMjAppearanceStoreWalksFastPath::RunTest(const FString& Parameters)
 	Scene->MjbFilePath = kPrimitivesMjb;
 	Scene->LoadAndBuild();
 
-	// Outer the store to the scene so its world (and the built AMjbScene) is walked.
+	// Outer the store to the scene so its world (and the built AMjRenderer) is walked.
 	UMjAppearanceStore* Store = NewObject<UMjAppearanceStore>(Scene);
 	Store->Init(nullptr);
 

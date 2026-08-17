@@ -3,9 +3,9 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "UI/SMjbRenderSlaveBrowser.h"
+#include "UI/SMjRendererBrowser.h"
 
-#include "MuJoCo/Fast/MjbRenderSlaveSubsystem.h"
+#include "MuJoCo/Fast/MjRendererSubsystem.h"
 #include "Utils/URLabLogging.h"
 
 #include "Widgets/Layout/SBorder.h"
@@ -19,7 +19,7 @@
 
 #define LOCTEXT_NAMESPACE "MjbRenderSlaveBrowser"
 
-void SMjbRenderSlaveBrowser::Construct(const FArguments& InArgs)
+void SMjRendererBrowser::Construct(const FArguments& InArgs)
 {
 	Subsystem = InArgs._Subsystem;
 	StatusText = LOCTEXT("Idle", "Discovering fast-path owners...");
@@ -27,7 +27,7 @@ void SMjbRenderSlaveBrowser::Construct(const FArguments& InArgs)
 	if (Subsystem.IsValid())
 	{
 		Subsystem->RefreshLevels();
-		for (const FMjbLevelChoice& L : Subsystem->GetLevels())
+		for (const FMjRendererLevelChoice& L : Subsystem->GetLevels())
 		{
 			LevelNames.Add(MakeShared<FString>(L.Name));
 		}
@@ -114,7 +114,7 @@ void SMjbRenderSlaveBrowser::Construct(const FArguments& InArgs)
 					[
 						SAssignNew(OwnerList, SListView<FOwnerPtr>)
 						.ListItemsSource(&Owners)
-						.OnGenerateRow(this, &SMjbRenderSlaveBrowser::OnGenerateRow)
+						.OnGenerateRow(this, &SMjRendererBrowser::OnGenerateRow)
 						.SelectionMode(ESelectionMode::Single)
 					]
 				]
@@ -130,27 +130,27 @@ void SMjbRenderSlaveBrowser::Construct(const FArguments& InArgs)
 
 	Refresh();
 	RegisterActiveTimer(2.0f,
-		FWidgetActiveTimerDelegate::CreateSP(this, &SMjbRenderSlaveBrowser::RefreshTick));
+		FWidgetActiveTimerDelegate::CreateSP(this, &SMjRendererBrowser::RefreshTick));
 }
 
-EActiveTimerReturnType SMjbRenderSlaveBrowser::RefreshTick(double, float)
+EActiveTimerReturnType SMjRendererBrowser::RefreshTick(double, float)
 {
 	Refresh();
 	return EActiveTimerReturnType::Continue;
 }
 
-void SMjbRenderSlaveBrowser::Refresh()
+void SMjRendererBrowser::Refresh()
 {
-	UMjbRenderSlaveSubsystem* Sub = Subsystem.Get();
+	UMjRendererSubsystem* Sub = Subsystem.Get();
 	if (!Sub)
 	{
 		return;
 	}
 	Sub->RefreshOwners();
 	Owners.Reset();
-	for (const FMjbOwnerInfo& O : Sub->GetOwners())
+	for (const FMjDriverInfo& O : Sub->GetOwners())
 	{
-		Owners.Add(MakeShared<FMjbOwnerInfo>(O));
+		Owners.Add(MakeShared<FMjDriverInfo>(O));
 	}
 	if (Owners.Num() == 0)
 	{
@@ -166,7 +166,7 @@ void SMjbRenderSlaveBrowser::Refresh()
 	}
 }
 
-TSharedRef<ITableRow> SMjbRenderSlaveBrowser::OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& Table)
+TSharedRef<ITableRow> SMjRendererBrowser::OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& Table)
 {
 	const FString Label = FString::Printf(TEXT("%s   @ %s   (%d geoms)   %s"),
 		*Item->Scene, *Item->Host, Item->Ngeom, *Item->Control);
@@ -182,19 +182,19 @@ TSharedRef<ITableRow> SMjbRenderSlaveBrowser::OnGenerateRow(FOwnerPtr Item, cons
 		[
 			SNew(SButton)
 			.Text(LOCTEXT("Connect", "Connect"))
-			.OnClicked(this, &SMjbRenderSlaveBrowser::OnConnect, Item)
+			.OnClicked(this, &SMjRendererBrowser::OnConnect, Item)
 		]
 	];
 }
 
-FString SMjbRenderSlaveBrowser::SelectedLevelPath() const
+FString SMjRendererBrowser::SelectedLevelPath() const
 {
-	UMjbRenderSlaveSubsystem* Sub = Subsystem.Get();
+	UMjRendererSubsystem* Sub = Subsystem.Get();
 	if (!Sub || !SelectedLevelName.IsValid())
 	{
 		return FString();
 	}
-	for (const FMjbLevelChoice& L : Sub->GetLevels())
+	for (const FMjRendererLevelChoice& L : Sub->GetLevels())
 	{
 		if (L.Name == *SelectedLevelName)
 		{
@@ -204,7 +204,7 @@ FString SMjbRenderSlaveBrowser::SelectedLevelPath() const
 	return FString();
 }
 
-FVector SMjbRenderSlaveBrowser::ParseOrigin() const
+FVector SMjRendererBrowser::ParseOrigin() const
 {
 	if (!OriginBox.IsValid())
 	{
@@ -220,9 +220,9 @@ FVector SMjbRenderSlaveBrowser::ParseOrigin() const
 		FCString::Atod(*Parts[1].TrimStartAndEnd()), FCString::Atod(*Parts[2].TrimStartAndEnd()));
 }
 
-FReply SMjbRenderSlaveBrowser::OnConnect(FOwnerPtr Item)
+FReply SMjRendererBrowser::OnConnect(FOwnerPtr Item)
 {
-	UMjbRenderSlaveSubsystem* Sub = Subsystem.Get();
+	UMjRendererSubsystem* Sub = Subsystem.Get();
 	if (!Item.IsValid() || !Sub)
 	{
 		return FReply::Handled();

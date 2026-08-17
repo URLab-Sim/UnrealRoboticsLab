@@ -8,7 +8,7 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 
-class UMjbRenderSlaveSubsystem;
+class UMjRendererSubsystem;
 class SEditableTextBox;
 
 /**
@@ -17,17 +17,17 @@ class SEditableTextBox;
  * size) so the operator can tune where the MJB sits in the level in real time
  * instead of guessing the offset up front.
  */
-class SMjbSlaveHud : public SCompoundWidget
+class SMjRendererHud : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS(SMjbSlaveHud) {}
-		SLATE_ARGUMENT(TWeakObjectPtr<UMjbRenderSlaveSubsystem>, Subsystem)
+	SLATE_BEGIN_ARGS(SMjRendererHud) {}
+		SLATE_ARGUMENT(TWeakObjectPtr<UMjRendererSubsystem>, Subsystem)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
 private:
-	TWeakObjectPtr<UMjbRenderSlaveSubsystem> Subsystem;
+	TWeakObjectPtr<UMjRendererSubsystem> Subsystem;
 	TSharedPtr<SEditableTextBox> StepBox;
 
 	double Step() const;

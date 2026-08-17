@@ -6,7 +6,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MjbAssetBaker.generated.h"
+#include "MjRendererAssetBaker.generated.h"
 
 struct mjModel_;
 class AActor;
@@ -17,7 +17,7 @@ class UTexture2D;
 class UMaterialInterface;
 
 /**
- * @class UMjbAssetBaker
+ * @class UMjRendererAssetBaker
  * @brief Builds (and caches) the meshes / textures / materials for a fast-path MJB.
  *
  * Turns a compiled mjModel's mesh + texture pools into UE render assets: a shared
@@ -29,10 +29,10 @@ class UMaterialInterface;
  *
  * A UObject so the caches (Master, TextureCache, StaticMeshCache) are UPROPERTYs
  * the GC roots between build and use. Holds the model by borrowed pointer (the
- * owning AMjbScene owns its lifetime); Init rebinds it, Reset drops it.
+ * owning AMjRenderer owns its lifetime); Init rebinds it, Reset drops it.
  */
 UCLASS()
-class URLAB_API UMjbAssetBaker : public UObject
+class URLAB_API UMjRendererAssetBaker : public UObject
 {
 	GENERATED_BODY()
 
@@ -65,7 +65,7 @@ private:
 	// MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a bad id.
 	UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal = false);
 
-	// Borrowed; the owning AMjbScene owns the mjModel/mjData lifetime.
+	// Borrowed; the owning AMjRenderer owns the mjModel/mjData lifetime.
 	mjModel_* Model = nullptr;
 
 	// A content id for the loaded MJB (a hash of its bytes). Cached, persistent

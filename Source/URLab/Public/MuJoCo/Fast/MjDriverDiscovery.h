@@ -10,10 +10,10 @@
 /**
  * One discovered fast-path owner: a live sim a render slave can join. Read from
  * the shared registry directory (the entries a FastPathOwner writes). This is the
- * runtime mirror of the editor's URLabLevelOps::FMjbOwnerInfo, usable from a
+ * runtime mirror of the editor's URLabLevelOps::FMjDriverInfo, usable from a
  * packaged game's server browser.
  */
-struct FMjbOwnerInfo
+struct FMjDriverInfo
 {
 	FString InstanceId;
 	FString Scene;
@@ -32,5 +32,5 @@ namespace URLabFastPath
  * the heartbeat TTL are skipped. Returns true on success (an empty list is not an
  * error); false with OutError only on a hard failure.
  */
-URLAB_API bool DiscoverOwners(TArray<FMjbOwnerInfo>& OutOwners, FString& OutError);
+URLAB_API bool DiscoverOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError);
 } // namespace URLabFastPath

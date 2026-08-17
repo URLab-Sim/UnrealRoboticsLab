@@ -8,12 +8,12 @@
 #include "CoreMinimal.h"
 #include "HAL/CriticalSection.h"
 #include <atomic>
-#include "MjbTransportBus.generated.h"
+#include "MjRendererBus.generated.h"
 
 class UURLabClientSubscribeTransport;
 
 /**
- * @class UMjbTransportBus
+ * @class UMjRendererBus
  * @brief Receive plumbing for the owner -> renderer transform bus.
  *
  * Owns the client-subscribe transport that mirrors an owner's "geoms" broadcast
@@ -23,7 +23,7 @@ class UURLabClientSubscribeTransport;
  * apply itself. A UObject so BusTransport is a UPROPERTY the GC roots.
  */
 UCLASS()
-class URLAB_API UMjbTransportBus : public UObject
+class URLAB_API UMjRendererBus : public UObject
 {
 	GENERATED_BODY()
 

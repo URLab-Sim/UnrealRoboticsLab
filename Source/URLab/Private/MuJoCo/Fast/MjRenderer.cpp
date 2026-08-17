@@ -8,7 +8,7 @@
 // endorsed by, or sponsored by Epic Games, Inc. This plugin incorporates
 // third-party software: MuJoCo (Apache 2.0). See ThirdPartyNotices.txt.
 
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
@@ -19,8 +19,8 @@
 
 #include "Materials/MaterialInstanceDynamic.h"
 
-#include "MuJoCo/Fast/MjbAssetBaker.h"
-#include "MuJoCo/Fast/MjbTransportBus.h"
+#include "MuJoCo/Fast/MjRendererAssetBaker.h"
+#include "MuJoCo/Fast/MjRendererBus.h"
 #include "MuJoCo/Entity/MjAppearance.h"
 #include "MuJoCo/Entity/MjGeomAppearance.h"
 #include "MuJoCo/Entity/MjBakedAssetResolver.h"
@@ -105,13 +105,13 @@ void DisableDistanceFields(UPrimitiveComponent* Comp)
 
 } // namespace
 
-AMjbScene::AMjbScene()
+AMjRenderer::AMjRenderer()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 }
 
-void AMjbScene::BeginPlay()
+void AMjRenderer::BeginPlay()
 {
 	Super::BeginPlay();
 
@@ -133,14 +133,14 @@ void AMjbScene::BeginPlay()
 
 	const bool bHaveModel = !MjbFilePath.IsEmpty() || MjbBytes.Num() > 0;
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjbScene] BeginPlay (game=%d): file='%s' bytes=%d bus='%s' cameras=%d"),
+		TEXT("[MjRenderer] BeginPlay (game=%d): file='%s' bytes=%d bus='%s' cameras=%d"),
 		GetWorld() && GetWorld()->IsGameWorld(), *MjbFilePath, MjbBytes.Num(),
 		*BusEndpoint, bEnableCameraStreaming);
 
 	if (!bHaveModel)
 	{
 		UE_LOG(LogURLab, Error,
-			TEXT("[MjbScene] BeginPlay: no MJB path or bytes -- nothing to stream (discovery/duplication issue?)"));
+			TEXT("[MjRenderer] BeginPlay: no MJB path or bytes -- nothing to stream (discovery/duplication issue?)"));
 		return;
 	}
 
@@ -180,7 +180,7 @@ void AMjbScene::BeginPlay()
 				}
 			}
 		}
-		UE_LOG(LogURLab, Log, TEXT("[MjbScene] BeginPlay reused preview (%d geoms) -- no mesh rebuild"), Geoms);
+		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] BeginPlay reused preview (%d geoms) -- no mesh rebuild"), Geoms);
 	}
 	else
 	{
@@ -199,7 +199,7 @@ void AMjbScene::BeginPlay()
 		Geoms = LoadAndBuild();
 		if (Geoms < 0)
 		{
-			UE_LOG(LogURLab, Error, TEXT("[MjbScene] BeginPlay build FAILED (no usable MJB)"));
+			UE_LOG(LogURLab, Error, TEXT("[MjRenderer] BeginPlay build FAILED (no usable MJB)"));
 			return;
 		}
 	}
@@ -225,13 +225,13 @@ void AMjbScene::BeginPlay()
 	}
 }
 
-void AMjbScene::EndPlay(const EEndPlayReason::Type Reason)
+void AMjRenderer::EndPlay(const EEndPlayReason::Type Reason)
 {
 	Teardown();
 	Super::EndPlay(Reason);
 }
 
-void AMjbScene::BeginDestroy()
+void AMjRenderer::BeginDestroy()
 {
 	// The editor can destroy/GC this actor without EndPlay; stop the worker
 	// thread before its members are torn down to avoid a use-after-free.
@@ -254,7 +254,7 @@ void AMjbScene::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-void AMjbScene::Launch()
+void AMjRenderer::Launch()
 {
 	LoadAndBuild();
 	if (!BusEndpoint.IsEmpty())
@@ -263,7 +263,7 @@ void AMjbScene::Launch()
 	}
 }
 
-int32 AMjbScene::BuildStaticPreview()
+int32 AMjRenderer::BuildStaticPreview()
 {
 	// Editor-world preview: build geometry at the rest pose and stop. No bus, no
 	// tick -- the scene must never animate outside a play session. When the user
@@ -301,7 +301,7 @@ bool CompiledGeomNameMatches(const mjModel_* M, int32 G, const FString& Want, bo
 }
 } // namespace
 
-int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants,
+int32 AMjRenderer::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants,
 	const TArray<UMjQuickConvertComponent*>& QuickProps, bool bBuildCameras)
 {
 	Teardown();
@@ -357,7 +357,7 @@ int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArtic
 
 	if (!AssetBaker)
 	{
-		AssetBaker = NewObject<UMjbAssetBaker>(this);
+		AssetBaker = NewObject<UMjRendererAssetBaker>(this);
 	}
 	AssetBaker->Init(Model, CompiledModelContentHash(Model), false);
 
@@ -375,17 +375,17 @@ int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArtic
 	}
 
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjbScene] compiled play view: nbody=%d ngeom=%d (%d geom comps, %d authored origins)"),
+		TEXT("[MjRenderer] compiled play view: nbody=%d ngeom=%d (%d geom comps, %d authored origins)"),
 		(int)Model->nbody, (int)Model->ngeom, NumBuiltGeoms(), GeomOrigins.Num());
 	return static_cast<int32>(Model->ngeom);
 }
 
-UPrimitiveComponent* AMjbScene::GetGeomComponent(int32 GeomId) const
+UPrimitiveComponent* AMjRenderer::GetGeomComponent(int32 GeomId) const
 {
 	return GeomComps.IsValidIndex(GeomId) ? GeomComps[GeomId].Get() : nullptr;
 }
 
-UMjGeom* AMjbScene::GetGeomOrigin(int32 GeomId) const
+UMjGeom* AMjRenderer::GetGeomOrigin(int32 GeomId) const
 {
 	if (const TWeakObjectPtr<UMjGeom>* Found = GeomOrigins.Find(GeomId))
 	{
@@ -394,7 +394,7 @@ UMjGeom* AMjbScene::GetGeomOrigin(int32 GeomId) const
 	return nullptr;
 }
 
-void AMjbScene::SetGeomsVisible(bool bVisible)
+void AMjRenderer::SetGeomsVisible(bool bVisible)
 {
 	for (const TObjectPtr<UPrimitiveComponent>& Comp : GeomComps)
 	{
@@ -405,7 +405,7 @@ void AMjbScene::SetGeomsVisible(bool bVisible)
 	}
 }
 
-int32 AMjbScene::ReindexFromLevel()
+int32 AMjRenderer::ReindexFromLevel()
 {
 	// Need the model for sizing (nbody/ngeom) and the index space the stream uses.
 	if (!LoadModelOnly())
@@ -470,12 +470,12 @@ int32 AMjbScene::ReindexFromLevel()
 			}
 		}
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] re-indexed %d geoms across %d attached actors from the level"),
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] re-indexed %d geoms across %d attached actors from the level"),
 		Found, AttachedActors.Num());
 	return Found > 0 ? Found : -1;
 }
 
-bool AMjbScene::FetchModelFromOwner(const FString& ControlEndpoint,
+bool AMjRenderer::FetchModelFromOwner(const FString& ControlEndpoint,
 	TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError)
 {
 	OutMjb.Reset();
@@ -558,7 +558,7 @@ bool AMjbScene::FetchModelFromOwner(const FString& ControlEndpoint,
 	return bOk;
 }
 
-bool AMjbScene::LoadModelOnly()
+bool AMjRenderer::LoadModelOnly()
 {
 	if (Model)
 	{
@@ -579,7 +579,7 @@ bool AMjbScene::LoadModelOnly()
 	}
 	if (!Bytes || Bytes->Num() == 0)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] no MJB to load (bytes empty, file '%s' unreadable)"),
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] no MJB to load (bytes empty, file '%s' unreadable)"),
 			*MjbFilePath);
 		return false;
 	}
@@ -587,14 +587,14 @@ bool AMjbScene::LoadModelOnly()
 	Model = mj_loadModelBuffer(Bytes->GetData(), Bytes->Num());
 	if (!Model)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] mj_loadModelBuffer failed (%d bytes; version-mismatched MJB?)"),
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] mj_loadModelBuffer failed (%d bytes; version-mismatched MJB?)"),
 			Bytes->Num());
 		return false;
 	}
 	Data = mj_makeData(Model);
 	if (!Data)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] mj_makeData failed"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] mj_makeData failed"));
 		Teardown();
 		return false;
 	}
@@ -613,13 +613,13 @@ bool AMjbScene::LoadModelOnly()
 	// Prime the asset baker for this model (loads the shared master material).
 	if (!AssetBaker)
 	{
-		AssetBaker = NewObject<UMjbAssetBaker>(this);
+		AssetBaker = NewObject<UMjRendererAssetBaker>(this);
 	}
 	AssetBaker->Init(Model, ContentHash, bForceRebuildAssets);
 	return true;
 }
 
-int32 AMjbScene::LoadAndBuild()
+int32 AMjRenderer::LoadAndBuild()
 {
 	Teardown();
 	if (!LoadModelOnly())
@@ -633,12 +633,12 @@ int32 AMjbScene::LoadAndBuild()
 	ApplyFromData();
 
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjbScene] built from %s: nbody=%d ngeom=%d (%d geom comps built, %d body actors)"),
+		TEXT("[MjRenderer] built from %s: nbody=%d ngeom=%d (%d geom comps built, %d body actors)"),
 		*MjbFilePath, (int)Model->nbody, (int)Model->ngeom, NumBuiltGeoms(), BodyActors.Num());
 	return Model->ngeom;
 }
 
-int32 AMjbScene::NumBuiltGeoms() const
+int32 AMjRenderer::NumBuiltGeoms() const
 {
 	int32 N = 0;
 	for (const TObjectPtr<UPrimitiveComponent>& C : GeomComps)
@@ -651,7 +651,7 @@ int32 AMjbScene::NumBuiltGeoms() const
 	return N;
 }
 
-USceneComponent* AMjbScene::GetBodyRootComponent(int32 BodyId) const
+USceneComponent* AMjRenderer::GetBodyRootComponent(int32 BodyId) const
 {
 	if (!BodyActors.IsValidIndex(BodyId) || !BodyActors[BodyId])
 	{
@@ -660,7 +660,7 @@ USceneComponent* AMjbScene::GetBodyRootComponent(int32 BodyId) const
 	return BodyActors[BodyId]->GetRootComponent();
 }
 
-void AMjbScene::BuildBodies()
+void AMjRenderer::BuildBodies()
 {
 	const int32 NBody = static_cast<int32>(Model->nbody);
 	BodyActors.SetNum(NBody);
@@ -701,7 +701,7 @@ void AMjbScene::BuildBodies()
 	}
 }
 
-void AMjbScene::BuildGeoms()
+void AMjRenderer::BuildGeoms()
 {
 	const int32 NGeom = static_cast<int32>(Model->ngeom);
 	GeomComps.SetNum(NGeom);
@@ -733,7 +733,7 @@ void AMjbScene::BuildGeoms()
 }
 
 #if WITH_EDITOR
-void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
+void AMjRenderer::BuildInstancedStatics(TSet<int32>& OutHandled)
 {
 	if (!Model || !Data)
 	{
@@ -807,13 +807,13 @@ void AMjbScene::BuildInstancedStatics(TSet<int32>& OutHandled)
 	}
 	if (NumGroups > 0)
 	{
-		UE_LOG(LogURLab, Log, TEXT("[MjbScene] instanced %d static geoms into %d ISM group(s)"),
+		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] instanced %d static geoms into %d ISM group(s)"),
 			OutHandled.Num(), NumGroups);
 	}
 }
 #endif // WITH_EDITOR
 
-void AMjbScene::BuildCameras()
+void AMjRenderer::BuildCameras()
 {
 	if (!bEnableCameraStreaming || !Model || Model->ncam == 0)
 	{
@@ -875,10 +875,10 @@ void AMjbScene::BuildCameras()
 		Cam->RegisterComponent();
 		CameraComps[C] = Cam;
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] built %d camera component(s) (dormant)"), NCam);
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] built %d camera component(s) (dormant)"), NCam);
 }
 
-void AMjbScene::BuildCompiledViewCameras()
+void AMjRenderer::BuildCompiledViewCameras()
 {
 	if (!Model || Model->ncam == 0)
 	{
@@ -975,10 +975,10 @@ void AMjbScene::BuildCompiledViewCameras()
 
 		CameraComps[C] = Cam;
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] compiled view: re-homed %d body-fixed camera(s) (dormant)"), NCam);
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] compiled view: re-homed %d body-fixed camera(s) (dormant)"), NCam);
 }
 
-void AMjbScene::StartCameraStreaming()
+void AMjRenderer::StartCameraStreaming()
 {
 	// Turn dormant cameras into a live render server: set up the render target, bind
 	// the per-camera ZMQ port, and capture every frame. Network config is re-applied
@@ -1002,12 +1002,12 @@ void AMjbScene::StartCameraStreaming()
 	}
 	if (CameraComps.Num() > 0)
 	{
-		UE_LOG(LogURLab, Log, TEXT("[MjbScene] camera server: %d camera(s) streaming from port %d"),
+		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] camera server: %d camera(s) streaming from port %d"),
 			CameraComps.Num(), CameraStreamBasePort);
 	}
 }
 
-void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
+void AMjRenderer::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 {
 	for (int32 C = 0; C < CameraComps.Num(); ++C)
 	{
@@ -1038,7 +1038,7 @@ void AMjbScene::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
 	}
 }
 
-void AMjbScene::ApplyCameraPosesFromMat(const double* CamXPos, const double* CamXMat)
+void AMjRenderer::ApplyCameraPosesFromMat(const double* CamXPos, const double* CamXMat)
 {
 	if (!CamXPos || !CamXMat)
 	{
@@ -1066,7 +1066,7 @@ void AMjbScene::ApplyCameraPosesFromMat(const double* CamXPos, const double* Cam
 	ApplyCameraPoses(Cxpos.GetData(), Cxquat.GetData());
 }
 
-void AMjbScene::ApplyUserCamera(const double* Pos, const double* Fwd, const double* Up)
+void AMjRenderer::ApplyUserCamera(const double* Pos, const double* Fwd, const double* Up)
 {
 	UWorld* World = GetWorld();
 	APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
@@ -1106,19 +1106,19 @@ void AMjbScene::ApplyUserCamera(const double* Pos, const double* Fwd, const doub
 	Cam->SetActorLocationAndRotation(LocUe, Rot);
 }
 
-bool AMjbScene::IsGeomVisible(int32 G) const
+bool AMjRenderer::IsGeomVisible(int32 G) const
 {
 	const int32 Group = Model->geom_group[G];
 	return Group >= 0 && Group <= 30 && (VisibleGroupMask & (1 << Group)) != 0;
 }
 
-const float* AMjbScene::GeomRgba(int32 G) const
+const float* AMjRenderer::GeomRgba(int32 G) const
 {
 	const int32 MatId = Model->geom_matid[G];
 	return (MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->geom_rgba + 4 * G);
 }
 
-UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
+UPrimitiveComponent* AMjRenderer::BuildGeom(int32 G)
 {
 	const int32 BodyId = Model->geom_bodyid[G];
 
@@ -1197,7 +1197,7 @@ UPrimitiveComponent* AMjbScene::BuildGeom(int32 G)
 	return Resolver.MakeGeomComponent(G, GeomActor);
 }
 
-void AMjbScene::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE)
+void AMjRenderer::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE)
 {
 	if (OwnerControlEndpoint.IsEmpty() || BodyId < 0)
 	{
@@ -1242,7 +1242,7 @@ void AMjbScene::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVe
 	zmq_ctx_term(Ctx);
 }
 
-int32 AMjbScene::NumGeomsNamed(FName GeomName) const
+int32 AMjRenderer::NumGeomsNamed(FName GeomName) const
 {
 	if (!Model)
 	{
@@ -1264,7 +1264,7 @@ int32 AMjbScene::NumGeomsNamed(FName GeomName) const
 	return Count;
 }
 
-int32 AMjbScene::ApplyAppearanceOverride(FName GeomName, const FMjGeomAppearance* Override,
+int32 AMjRenderer::ApplyAppearanceOverride(FName GeomName, const FMjGeomAppearance* Override,
 	TFunctionRef<UTexture*(FName)> ResolveTexture)
 {
 	if (!Model)
@@ -1303,7 +1303,7 @@ int32 AMjbScene::ApplyAppearanceOverride(FName GeomName, const FMjGeomAppearance
 	return Applied;
 }
 
-void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
+void AMjRenderer::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 {
 	if (!Xpos || !Xquat)
 	{
@@ -1325,7 +1325,7 @@ void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 	}
 }
 
-void AMjbScene::CorrectMeshFrameWorld(int32 GeomId, double* WorldPos, double* WorldQuat) const
+void AMjRenderer::CorrectMeshFrameWorld(int32 GeomId, double* WorldPos, double* WorldQuat) const
 {
 	if (!GeomResolver.IsValid())
 	{
@@ -1351,7 +1351,7 @@ void AMjbScene::CorrectMeshFrameWorld(int32 GeomId, double* WorldPos, double* Wo
 	WorldQuat[3] = Composed[3];
 }
 
-void AMjbScene::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
+void AMjRenderer::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 {
 	if (!Bxpos || !Bxquat || !Model)
 	{
@@ -1387,7 +1387,7 @@ void AMjbScene::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 	}
 }
 
-void AMjbScene::Tick(float DeltaSeconds)
+void AMjRenderer::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
@@ -1549,7 +1549,7 @@ void AMjbScene::Tick(float DeltaSeconds)
 	ApplyFromData();
 }
 
-void AMjbScene::ApplyFromData()
+void AMjRenderer::ApplyFromData()
 {
 	if (!Model || !Data)
 	{
@@ -1574,7 +1574,7 @@ void AMjbScene::ApplyFromData()
 	ApplyCameraPoses(nullptr, nullptr); // rest pose from mjData
 }
 
-AAMjManager* AMjbScene::EnsureManager()
+AAMjManager* AMjRenderer::EnsureManager()
 {
 	if (AAMjManager* Cached = Direct.Manager.Get())
 	{
@@ -1597,23 +1597,23 @@ AAMjManager* AMjbScene::EnsureManager()
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		Mgr = GetWorld()->SpawnActor<AAMjManager>(AAMjManager::StaticClass(), Params);
-		UE_LOG(LogURLab, Log, TEXT("[MjbScene] spawned a manager (bridge/RPC + stepping context)"));
+		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] spawned a manager (bridge/RPC + stepping context)"));
 	}
 	Direct.Manager = Mgr;
 	return Mgr;
 }
 
-void AMjbScene::InstallIntoEngine()
+void AMjRenderer::InstallIntoEngine()
 {
-	// Timer target for the deferred Direct install; the logic lives in FMjbDirectMode.
+	// Timer target for the deferred Direct install; the logic lives in FMjRendererStepMode.
 	Direct.InstallIntoEngine(*this);
 }
 
-void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
+void AMjRenderer::ReloadFromBytes(const TArray<uint8>& NewMjb)
 {
 	if (NewMjb.Num() == 0)
 	{
-		UE_LOG(LogURLab, Warning, TEXT("[MjbScene] ReloadFromBytes: empty MJB, ignoring"));
+		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] ReloadFromBytes: empty MJB, ignoring"));
 		return;
 	}
 
@@ -1659,7 +1659,7 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 	const int32 Geoms = LoadAndBuild();
 	if (Geoms < 0)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] ReloadFromBytes: build failed for the new MJB"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] ReloadFromBytes: build failed for the new MJB"));
 		return;
 	}
 	StartCameraStreaming();
@@ -1683,7 +1683,7 @@ void AMjbScene::ReloadFromBytes(const TArray<uint8>& NewMjb)
 	{
 		Mgr->GetAppearanceStore()->ReapplyAll();
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjbScene] ReloadFromBytes: swapped model -- %d geoms built"), Geoms);
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] ReloadFromBytes: swapped model -- %d geoms built"), Geoms);
 }
 
 // Bring the render slave up at high quality with the noisy, temporally-accumulated
@@ -1712,7 +1712,7 @@ static void ApplyRenderSlaveQuality()
 	}
 }
 
-AMjbScene* AMjbScene::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
+AMjRenderer* AMjRenderer::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
 	const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
 	bool bDirect, bool bBaseLevel, bool bCameras)
 {
@@ -1723,10 +1723,10 @@ AMjbScene* AMjbScene::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBy
 	ApplyRenderSlaveQuality();
 	// Deferred spawn so the fields are set BEFORE BeginPlay runs; BeginPlay then
 	// owns the whole build (geometry + camera streaming + Direct/bus connect).
-	AMjbScene* Scene = World->SpawnActorDeferred<AMjbScene>(AMjbScene::StaticClass(), FTransform::Identity);
+	AMjRenderer* Scene = World->SpawnActorDeferred<AMjRenderer>(AMjRenderer::StaticClass(), FTransform::Identity);
 	if (!Scene)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjbScene] SpawnRenderSlave: failed to spawn AMjbScene"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] SpawnRenderSlave: failed to spawn AMjRenderer"));
 		return nullptr;
 	}
 	Scene->RunMode = bDirect ? EMjPoseSource::Stepped : EMjPoseSource::Mirror;
@@ -1785,14 +1785,14 @@ AMjbScene* AMjbScene::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBy
 	}
 
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjbScene] SpawnRenderSlave: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
+		TEXT("[MjRenderer] SpawnRenderSlave: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
 		bDirect ? TEXT("direct") : TEXT("puppet"),
 		BusEndpoint.IsEmpty() ? TEXT("(none)") : *BusEndpoint, bBaseLevel ? 1 : 0,
 		bCameras ? 1 : 0, MjbBytes.Num(), *Origin.ToString());
 	return Scene;
 }
 
-void AMjbScene::StartBus()
+void AMjRenderer::StartBus()
 {
 	if (BusEndpoint.IsEmpty())
 	{
@@ -1800,12 +1800,12 @@ void AMjbScene::StartBus()
 	}
 	if (!TransportBus)
 	{
-		TransportBus = NewObject<UMjbTransportBus>(this);
+		TransportBus = NewObject<UMjRendererBus>(this);
 	}
 	TransportBus->Start(BusEndpoint);
 }
 
-void AMjbScene::StopBus()
+void AMjRenderer::StopBus()
 {
 	if (TransportBus)
 	{
@@ -1813,12 +1813,12 @@ void AMjbScene::StopBus()
 	}
 }
 
-bool AMjbScene::HasReceivedFrame() const
+bool AMjRenderer::HasReceivedFrame() const
 {
 	return TransportBus ? TransportBus->HasEverReceived() : false;
 }
 
-void AMjbScene::Teardown()
+void AMjRenderer::Teardown()
 {
 	StopBus();
 	// Direct mode aliased our raw model+data into the shared engine. Stop-join the

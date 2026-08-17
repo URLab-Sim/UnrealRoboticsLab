@@ -28,7 +28,7 @@
 #include "MuJoCo/Utils/MjColor.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Elements/MjGeom.h"
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "DrawDebugHelpers.h"
@@ -383,7 +383,7 @@ void UMjDebugVisualizer::ToggleVisuals()
 
 	// At play the articulation visuals are the lightweight view's geoms; in the editor
 	// preview they are the authoring meshes.
-	if (AMjbScene* View = Manager->GetCompiledRenderView())
+	if (AMjRenderer* View = Manager->GetCompiledRenderView())
 	{
 		View->SetGeomsVisible(!bVisualsHidden);
 	}
@@ -554,7 +554,7 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 	// The articulations render through the lightweight play view, so the per-body
 	// overlay swaps the material on that view's geom components (keyed by mj geom id),
 	// grouped by geom_bodyid and coloured by the geom's originating participant.
-	if (AMjbScene* View = Manager->GetCompiledRenderView())
+	if (AMjRenderer* View = Manager->GetCompiledRenderView())
 	{
 		const int32 NGeom = View->NumGeoms();
 		for (int32 G = 0; G < NGeom; ++G)
@@ -767,7 +767,7 @@ void UMjDebugVisualizer::BuildSegPool(EMjCameraMode mode)
 	// Articulation visual meshes are the lightweight play view's geom components; the
 	// seg cameras render siblings of those, keyed by geom_bodyid and the originating
 	// participant.
-	if (AMjbScene* View = Manager->GetCompiledRenderView())
+	if (AMjRenderer* View = Manager->GetCompiledRenderView())
 	{
 		const int32 NGeom = View->NumGeoms();
 		for (int32 G = 0; G < NGeom; ++G)

@@ -7,8 +7,8 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
-#include "MuJoCo/Fast/MjbOwnerDiscovery.h"
-#include "MjbRenderSlaveSubsystem.generated.h"
+#include "MuJoCo/Fast/MjDriverDiscovery.h"
+#include "MjRendererSubsystem.generated.h"
 
 /**
  * A choice of environment to drop a joined render slave into. An empty Path means
@@ -16,7 +16,7 @@
  * a set Path is a curated level the slave is dropped into with its own lighting.
  */
 USTRUCT()
-struct FMjbLevelChoice
+struct FMjRendererLevelChoice
 {
 	GENERATED_BODY()
 	UPROPERTY()
@@ -26,18 +26,18 @@ struct FMjbLevelChoice
 };
 
 /**
- * @class UMjbRenderSlaveSubsystem
+ * @class UMjRendererSubsystem
  * @brief Packaged-game server browser + join flow for a fast-path render slave.
  *
  * Discovers advertised fast-path owners from the shared registry, lists the
  * cooked levels the operator can drop a joined slave into, and performs the join:
  * pull the owner's MJB over the wire (fastpath_hello), open the chosen level, and
  * spawn the puppet render slave there. Lives on the GameInstance so a pending join
- * survives the OpenLevel transition. The UI (SMjbRenderSlaveBrowser) is a thin
+ * survives the OpenLevel transition. The UI (SMjRendererBrowser) is a thin
  * view over this subsystem.
  */
 UCLASS()
-class URLAB_API UMjbRenderSlaveSubsystem : public UGameInstanceSubsystem
+class URLAB_API UMjRendererSubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 
@@ -45,12 +45,12 @@ public:
 	// --- discovery -------------------------------------------------------- //
 	/** Rescan the registry for live fast-path owners. */
 	void RefreshOwners();
-	const TArray<FMjbOwnerInfo>& GetOwners() const { return Owners; }
+	const TArray<FMjDriverInfo>& GetOwners() const { return Owners; }
 
 	// --- environments ----------------------------------------------------- //
 	/** Rebuild the level list ("Bare Plane" + every cooked /Game world). */
 	void RefreshLevels();
-	const TArray<FMjbLevelChoice>& GetLevels() const { return Levels; }
+	const TArray<FMjRendererLevelChoice>& GetLevels() const { return Levels; }
 
 	// --- join ------------------------------------------------------------- //
 	/**
@@ -59,7 +59,7 @@ public:
 	 * bare-plane choice, else LevelPath). The pending join is consumed on the new
 	 * world by ConsumePendingJoin. Returns false + OutError if the fetch fails.
 	 */
-	bool JoinOwner(const FMjbOwnerInfo& Owner, const FString& LevelPath,
+	bool JoinOwner(const FMjDriverInfo& Owner, const FString& LevelPath,
 		const FVector& Origin, bool bCameras, FString& OutError);
 
 	/** Spawn a pending browser-driven join into World, if one is queued. Returns
@@ -97,8 +97,8 @@ public:
 	bool HasActiveSlave() const;
 
 private:
-	TArray<FMjbOwnerInfo> Owners;
-	TArray<FMjbLevelChoice> Levels;
+	TArray<FMjDriverInfo> Owners;
+	TArray<FMjRendererLevelChoice> Levels;
 
 	// Pending join carried across the OpenLevel transition.
 	bool bJoinPending = false;
@@ -108,11 +108,11 @@ private:
 	bool bPendingBaseLevel = false;
 	bool bPendingCameras = false;
 
-	TSharedPtr<class SMjbRenderSlaveBrowser> BrowserWidget;
-	TSharedPtr<class SMjbSlaveHud> HudWidget;
+	TSharedPtr<class SMjRendererBrowser> BrowserWidget;
+	TSharedPtr<class SMjRendererHud> HudWidget;
 	// The active slave (for live origin tuning) + the map the browser lives on
 	// (so ReturnToBrowser can OpenLevel back to it).
-	TWeakObjectPtr<class AMjbScene> ActiveSlave;
+	TWeakObjectPtr<class AMjRenderer> ActiveSlave;
 	FName HomeMap;
 
 	// Headless auto-join state.

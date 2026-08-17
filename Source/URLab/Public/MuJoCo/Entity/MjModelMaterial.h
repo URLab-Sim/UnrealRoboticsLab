@@ -18,7 +18,7 @@ struct mjModel_;
  * MjRoughnessFor fold it), and a role's TextureNames slot is filled with a
  * non-empty marker when the material carries that texture role, so the
  * scalar-vs-map guards inside MjApplyMaterialParameters read the model exactly
- * as UMjbAssetBaker::ApplyGeomMaterial did inline. The MJB's textures live in
+ * as UMjRendererAssetBaker::ApplyGeomMaterial did inline. The MJB's textures live in
  * tex_data and are bound by the baker afterward; this only carries their
  * presence, never a resolvable name.
  *

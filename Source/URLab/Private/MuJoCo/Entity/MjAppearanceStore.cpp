@@ -21,7 +21,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Elements/MjGeom.h"
-#include "MuJoCo/Fast/MjbScene.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -118,7 +118,7 @@ UMjAppearanceStore::FResolution UMjAppearanceStore::ResolveGeom(FName GeomName, 
 			continue;
 		}
 
-		if (AMjbScene* Scene = Cast<AMjbScene>(Actor))
+		if (AMjRenderer* Scene = Cast<AMjRenderer>(Actor))
 		{
 			Out.FastpathComponents += Scene->NumGeomsNamed(GeomName);
 			continue;
@@ -164,7 +164,7 @@ int32 UMjAppearanceStore::ApplyToWorld(FName GeomName, FName Entity, const FMjGe
 		// Fast path: the scene owns its tagged geom components and re-drives their
 		// MIDs (or restores the base pass) itself. A model's geom names are global,
 		// so an entity scope does not narrow it.
-		if (AMjbScene* Scene = Cast<AMjbScene>(Actor))
+		if (AMjRenderer* Scene = Cast<AMjRenderer>(Actor))
 		{
 			Applied += Scene->ApplyAppearanceOverride(GeomName, Override, Resolver);
 			continue;

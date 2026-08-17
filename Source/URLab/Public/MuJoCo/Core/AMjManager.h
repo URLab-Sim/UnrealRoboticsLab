@@ -498,6 +498,10 @@ protected:
 	 *  the render-state lock). */
 	void DriveCompiledRenderView(const struct FMjRenderSnapshot& Snap);
 
+	/** The one runtime debug-overlay drive: mjModel + snapshot driven via UMjOverlayRenderer, in every
+	 *  runtime mode (compiled view / mirror / raw). The articulation debug-draw is edit-time only. */
+	void DriveOverlays(const struct FMjRenderSnapshot& Snap);
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 

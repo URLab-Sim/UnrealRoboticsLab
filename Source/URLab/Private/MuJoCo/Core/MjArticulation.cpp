@@ -618,6 +618,15 @@ void AMjArticulation::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// The articulation debug-draw is the EDIT-TIME authoring preview only. At runtime the single
+	// visualization path is the mjModel/snapshot overlay renderer (AAMjManager::DriveOverlays), so the
+	// articulation never self-draws at play -- and once demoted it no longer exists there anyway.
+	const UWorld* World = GetWorld();
+	if (World != nullptr && World->IsGameWorld())
+	{
+		return;
+	}
+
 	if (bDrawDebugCollision)
 	{
 		DrawDebugCollision();

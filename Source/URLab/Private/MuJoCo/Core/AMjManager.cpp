@@ -914,9 +914,9 @@ void AAMjManager::ApplyLatestRenderState()
 	PhysicsEngine->bSnapshotWanted.store(true, std::memory_order_release);
 
 	PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& Snap) {
-		// One transform drive, never two: the compiled render view owns the geometry once articulations
-		// are demoted at play; only the paths where BuildRuntimeView early-returned (raw model / viewer /
-		// automation) still have live articulations to drive as the fallback.
+		// Geometry, one drive never two: the compiled render view owns it once articulations are demoted;
+		// the paths where BuildRuntimeView early-returned (raw model / viewer / automation) still have
+		// live articulations to drive as the fallback (a mirror/raw renderer draws its own geometry).
 		if (CompiledRenderView)
 		{
 			DriveCompiledRenderView(Snap);
@@ -931,6 +931,10 @@ void AAMjManager::ApplyLatestRenderState()
 				}
 			}
 		}
+		// Debug overlays are ONE runtime path on the mjModel + snapshot, driven in every runtime mode
+		// (compiled / mirror / raw) -- never through the articulation, which draws only the edit-time
+		// authoring preview.
+		DriveOverlays(Snap);
 		// Record which post-step state the actors now reflect so cameras can
 		// tag their readbacks with it (frame_id association for the bridge).
 		LastAppliedRenderFrameId.store(Snap.FrameId, std::memory_order_release);
@@ -1049,10 +1053,49 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 	{
 		CompiledRenderView->ApplyCameraPosesFromMat(Snap.CamXPos.GetData(), Snap.CamXMat.GetData());
 	}
+}
 
-	// Debug wireframe overlays (collision hulls / joints / sites) draw from the
-	// snapshot; intent is the manager's global toggles OR any entity's own flags.
-	if (OverlayRenderer && DebugVisualizer)
+void AAMjManager::DriveOverlays(const FMjRenderSnapshot& Snap)
+{
+	// The one runtime visualization path: mjModel + snapshot driven, in EVERY runtime mode (compiled
+	// view / mirror / raw) -- not through the articulation, which now draws only the edit-time
+	// authoring preview. Lazily create the overlay renderer and bind it to the live model each drive.
+	if (PhysicsEngine == nullptr || DebugVisualizer == nullptr)
+	{
+		return;
+	}
+	mjModel* OverlayModel = PhysicsEngine->GetModel();
+	if (OverlayModel == nullptr)
+	{
+		return;
+	}
+	if (OverlayRenderer == nullptr)
+	{
+		OverlayRenderer = NewObject<UMjOverlayRenderer>(this, TEXT("RuntimeOverlayRenderer"));
+		OverlayRenderer->SetupAttachment(GetRootComponent());
+		OverlayRenderer->RegisterComponent();
+	}
+	OverlayRenderer->SetModel(OverlayModel);
+	// Align overlays with whatever renderer draws the geometry: the compiled view at the manager, or a
+	// mirror/raw renderer at its placed origin.
+	FVector OverlayOrigin = FVector::ZeroVector;
+	if (CompiledRenderView)
+	{
+		OverlayOrigin = CompiledRenderView->GetActorLocation();
+	}
+	else if (UWorld* OverlayWorld = GetWorld())
+	{
+		for (TActorIterator<AMjRenderer> It(OverlayWorld); It; ++It)
+		{
+			if (*It)
+			{
+				OverlayOrigin = It->GetActorLocation();
+				break;
+			}
+		}
+	}
+	OverlayRenderer->SceneOrigin = OverlayOrigin;
+
 	{
 		bool bCollision = DebugVisualizer->bGlobalDrawDebugCollision;
 		bool bJoints = DebugVisualizer->bGlobalDrawDebugJoints;

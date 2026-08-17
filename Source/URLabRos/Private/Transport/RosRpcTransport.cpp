@@ -411,11 +411,18 @@ void UURLabRosRpcTransport::HandleRosCtrl(const FString& ArtName, const double* 
 		return;
 	}
 
+	UURLabBridgeServer* Bridge = GetOwningBridge();
+	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
+	if (!Mgr || !Mgr->PhysicsEngine)
+	{
+		return;
+	}
+
 	// Ownership gate first: a ROS write to an art this source does not own is
 	// dropped. Ok also heartbeats the claim.
 	const FName ArtKey(*ArtName);
 	FString CurrentOwner;
-	if (Disp->GetControlOwnership().CheckWrite(ArtKey, RosControlSourceId(), CurrentOwner)
+	if (Mgr->PhysicsEngine->CheckControlWrite(ArtKey, RosControlSourceId(), CurrentOwner)
 		!= FMjControlOwnership::EWriteCheck::Ok)
 	{
 		return;
@@ -428,14 +435,8 @@ void UURLabRosRpcTransport::HandleRosCtrl(const FString& ArtName, const double* 
 		return;
 	}
 
-	UURLabBridgeServer* Bridge = GetOwningBridge();
-	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
-	if (!Mgr)
-	{
-		return;
-	}
 	const FMjEntity* Entity = FURLabRpcDispatcher::ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
-	IMjControlIngress* Ingress = Mgr->PhysicsEngine ? Mgr->PhysicsEngine->GetControlIngress() : nullptr;
+	IMjControlIngress* Ingress = Mgr->PhysicsEngine->GetControlIngress();
 	if (!Entity || !Ingress)
 	{
 		return;
@@ -446,7 +447,7 @@ void UURLabRosRpcTransport::HandleRosCtrl(const FString& ArtName, const double* 
 	const int32 N = FMath::Min<int32>(Count, Entity->ActuatorIds.Num());
 	for (int32 i = 0; i < N; ++i)
 	{
-		Ingress->WriteCtrl(Entity->Name, Entity->ActuatorIds[i], Values[i], MjControlWho::Network());
+		Ingress->WriteCtrl(Entity->Name, Entity->ActuatorIds[i], Values[i]);
 	}
 }
 
@@ -461,9 +462,16 @@ void UURLabRosRpcTransport::HandleRosTwist(const FString& ArtName, const double 
 		return;
 	}
 
+	UURLabBridgeServer* Bridge = GetOwningBridge();
+	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
+	if (!Mgr || !Mgr->PhysicsEngine)
+	{
+		return;
+	}
+
 	const FName ArtKey(*ArtName);
 	FString CurrentOwner;
-	if (Disp->GetControlOwnership().CheckWrite(ArtKey, RosControlSourceId(), CurrentOwner)
+	if (Mgr->PhysicsEngine->CheckControlWrite(ArtKey, RosControlSourceId(), CurrentOwner)
 		!= FMjControlOwnership::EWriteCheck::Ok)
 	{
 		return;
@@ -474,14 +482,8 @@ void UURLabRosRpcTransport::HandleRosTwist(const FString& ArtName, const double 
 		return;
 	}
 
-	UURLabBridgeServer* Bridge = GetOwningBridge();
-	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
-	if (!Mgr)
-	{
-		return;
-	}
 	const FMjEntity* Entity = FURLabRpcDispatcher::ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
-	IMjControlIngress* Ingress = Mgr->PhysicsEngine ? Mgr->PhysicsEngine->GetControlIngress() : nullptr;
+	IMjControlIngress* Ingress = Mgr->PhysicsEngine->GetControlIngress();
 	if (!Entity || !Ingress)
 	{
 		return;
@@ -491,7 +493,7 @@ void UURLabRosRpcTransport::HandleRosTwist(const FString& ArtName, const double 
 	// the entity's slide (linear) and hinge (angular) base joints, reproducing the (vx, vy, yaw_rate)
 	// convention the set_twist RPC uses.
 	Ingress->WriteTwist(Entity->Name, FVector(Linear[0], Linear[1], Linear[2]),
-		FVector(Angular[0], Angular[1], Angular[2]), MjControlWho::Network());
+		FVector(Angular[0], Angular[1], Angular[2]));
 }
 
 void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
@@ -505,11 +507,18 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 		return;
 	}
 
+	UURLabBridgeServer* Bridge = GetOwningBridge();
+	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
+	if (!Mgr || !Mgr->PhysicsEngine)
+	{
+		return;
+	}
+
 	// Same gating as cmd_ctrl: ownership first (also heartbeats the claim), then
 	// Live mode only.
 	const FName ArtKey(*ArtName);
 	FString CurrentOwner;
-	if (Disp->GetControlOwnership().CheckWrite(ArtKey, RosControlSourceId(), CurrentOwner)
+	if (Mgr->PhysicsEngine->CheckControlWrite(ArtKey, RosControlSourceId(), CurrentOwner)
 		!= FMjControlOwnership::EWriteCheck::Ok)
 	{
 		return;
@@ -519,14 +528,8 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 		return;
 	}
 
-	UURLabBridgeServer* Bridge = GetOwningBridge();
-	AAMjManager* Mgr = Bridge ? Bridge->GetActiveManager() : nullptr;
-	if (!Mgr)
-	{
-		return;
-	}
 	const FMjEntity* Entity = FURLabRpcDispatcher::ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
-	IMjControlIngress* Ingress = Mgr->PhysicsEngine ? Mgr->PhysicsEngine->GetControlIngress() : nullptr;
+	IMjControlIngress* Ingress = Mgr->PhysicsEngine->GetControlIngress();
 	if (!Entity || !Ingress || !Names || !Positions)
 	{
 		return;
@@ -547,7 +550,7 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 			Mgr->PhysicsEngine, Entity->Name, JointName);
 		if (ActId >= 0)
 		{
-			Ingress->WriteCtrl(Entity->Name, ActId, Positions[i], MjControlWho::Network());
+			Ingress->WriteCtrl(Entity->Name, ActId, Positions[i]);
 		}
 	}
 }

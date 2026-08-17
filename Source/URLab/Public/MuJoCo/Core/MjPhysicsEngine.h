@@ -32,6 +32,7 @@
 #include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjControl.h"
+#include "MuJoCo/Entity/ControlOwnership.h"
 #include "MuJoCo/Entity/MjEntityControlIngress.h"
 #include <functional>
 #include <atomic>
@@ -225,14 +226,21 @@ public:
 	FString m_rawEntityActorId;
 
 	/**
-	 * The single control store: one setpoint buffer + the keyframe state-injection channel + the
-	 * per-entity write lease, plus the shadowless ingress that routes ROS/ZMQ/UI writes into them by
-	 * entity name. Rebuilt on install (the ingress binds the current model + partition).
+	 * The single control store: one setpoint buffer + the keyframe state-injection channel, plus the
+	 * shadowless ingress that routes ROS/ZMQ/UI writes into them by entity name. Rebuilt on install
+	 * (the ingress binds the current model + partition).
 	 */
 	FMjControlBuffer m_controlBuffer;
 	FMjStateInjection m_stateInjection;
-	FMjControlLease m_controlLease;
 	TUniquePtr<FMjEntityControlIngress> m_controlIngress;
+
+	/**
+	 * The one control-write arbiter, engine-owned so the ingress, the RPC layer and the UI reach a
+	 * single instance. Every control write carries a source id and must own the target entity before
+	 * it applies; its own mutex makes the pass-throughs below safe from any thread. Per-PIE: it dies
+	 * with the engine, and OnManagerGone resets it explicitly at world teardown.
+	 */
+	FMjControlOwnership m_controlOwnership;
 
 	/** Error string from the most recent Compile(); empty on success. */
 	FString m_LastCompileError;
@@ -433,6 +441,38 @@ public:
 
 	/** The shadowless control ingress (routes writes into the one control buffer by entity name). */
 	IMjControlIngress* GetControlIngress() const { return m_controlIngress.Get(); }
+
+	// --- Control-write arbitration (engine-owned) ----------------------
+	//
+	// Thin pass-throughs to the one FMjControlOwnership. Its own mutex makes
+	// them safe from the RPC transport threads, the ROS executor and the game
+	// thread alike.
+
+	/** Claim `Entity` for `Source`; `bForce` steals a live claim (operator override). */
+	FMjControlOwnership::EClaimResult ClaimControl(FName Entity, const FString& Source, double Ttl,
+		bool bForce, FString& OutOwner)
+	{
+		return m_controlOwnership.Claim(Entity, Source, Ttl, bForce, OutOwner);
+	}
+
+	/** Release `Entity` when `Source` owns it; false when the source is not the current owner. */
+	bool ReleaseControl(FName Entity, const FString& Source)
+	{
+		return m_controlOwnership.Release(Entity, Source);
+	}
+
+	/** The control-write gate: Ok also heartbeats the claim; an unclaimed entity is NotOwner. */
+	FMjControlOwnership::EWriteCheck CheckControlWrite(FName Entity, const FString& Source,
+		FString& OutOwner)
+	{
+		return m_controlOwnership.CheckWrite(Entity, Source, OutOwner);
+	}
+
+	/** Snapshot of currently-held claims, entity -> owner. */
+	TMap<FName, FString> GetControlOwners() { return m_controlOwnership.GetActiveOwners(); }
+
+	/** The arbiter itself, for the deterministic clock seam and the per-PIE reset. */
+	FMjControlOwnership& GetControlOwnership() { return m_controlOwnership; }
 
 	/**
 	 * The single pre-step control pass: apply the keyframe-hold state injection (pin held qpos, zero

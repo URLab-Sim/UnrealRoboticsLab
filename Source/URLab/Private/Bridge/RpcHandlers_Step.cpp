@@ -365,7 +365,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 				const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, Pair.Key);
 				const FName Key = Entity ? Entity->Name : FName(*Pair.Key);
 				FString CurrentOwner;
-				if (ControlOwnership.CheckWrite(Key, Source, CurrentOwner)
+				if (Mgr->PhysicsEngine->CheckControlWrite(Key, Source, CurrentOwner)
 					!= FMjControlOwnership::EWriteCheck::Ok)
 				{
 					TSharedPtr<FJsonObject> Err = MakeError(TEXT("not_control_owner"),
@@ -446,8 +446,7 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 				continue;
 			const int32 Count = FMath::Min(Pair.Value.Num(), Entity->ActuatorIds.Num());
 			for (int32 i = 0; i < Count; ++i)
-				Ingress->WriteCtrl(Entity->Name, Entity->ActuatorIds[i], Pair.Value[i],
-					MjControlWho::Network());
+				Ingress->WriteCtrl(Entity->Name, Entity->ActuatorIds[i], Pair.Value[i]);
 		}
 
 		// Named ctrl map: resolve each actuator by its compiled name (entity prefix + local name,
@@ -468,7 +467,7 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 				if (Id < 0)
 					Id = mj_name2id(m, mjOBJ_ACTUATOR, TCHAR_TO_ANSI(*KV.Key));
 				if (Id >= 0)
-					Ingress->WriteCtrl(EntityName, Id, KV.Value, MjControlWho::Network());
+					Ingress->WriteCtrl(EntityName, Id, KV.Value);
 			}
 		}
 	}

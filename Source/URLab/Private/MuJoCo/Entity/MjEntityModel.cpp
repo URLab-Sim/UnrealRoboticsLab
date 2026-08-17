@@ -148,38 +148,11 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 	return Entities;
 }
 
-// --- MjControlLease ---------------------------------------------------------------------------- //
-bool FMjControlLease::CanWrite(FName Entity, const FGuid& Who) const
-{
-	const FGuid* Held = Holder.Find(Entity);
-	return Held == nullptr || *Held == Who; // unclaimed => default writer allowed
-}
-
-bool FMjControlLease::Claim(FName Entity, const FGuid& Who)
-{
-	const FGuid* Held = Holder.Find(Entity);
-	if (Held && *Held != Who)
-	{
-		return false;
-	}
-	Holder.Add(Entity, Who);
-	return true;
-}
-
-void FMjControlLease::Release(FName Entity, const FGuid& Who)
-{
-	const FGuid* Held = Holder.Find(Entity);
-	if (Held && *Held == Who)
-	{
-		Holder.Remove(Entity);
-	}
-}
-
 // --- MjEntityApi handles ----------------------------------------------------------------------- //
 // Each handle carries its resolved id and a weak ref to the AMjEntity that produced it. The reads
 // index the engine's published snapshot at the joint's qpos/dof address; the write routes through the
-// engine's control ingress. SetCtrl needs the entity NAME (the lease key) and the frozen struct holds
-// only the actor, so it reads the name back from the AMjEntity the handle points at.
+// engine's control ingress. SetCtrl needs the entity NAME and the frozen struct holds only the actor,
+// so it reads the name back from the AMjEntity the handle points at.
 namespace
 {
 	const UMjPhysicsEngine* HandleEngine(const TWeakObjectPtr<AActor>& Entity)
@@ -232,6 +205,6 @@ void FMjActuator::SetCtrl(double Value) const
 	}
 	if (IMjControlIngress* Ingress = Engine->GetControlIngress())
 	{
-		Ingress->WriteCtrl(Self->GetEntityName(), Id, Value, MjControlWho::UI());
+		Ingress->WriteCtrl(Self->GetEntityName(), Id, Value);
 	}
 }

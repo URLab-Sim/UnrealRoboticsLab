@@ -1683,7 +1683,12 @@ void UMjSimulateWidget::HandleActuatorChanged(float NewValue, const FString& Opt
 
 	if (IMjControlIngress* Ingress = PE->GetControlIngress())
 	{
-		Ingress->WriteCtrl(SelectedEntityName, Id, NewValue, MjControlWho::UI());
+		// Moving a control slider is the UI grabbing control: claim the entity for a short window,
+		// force-stealing from any network owner, so an active UI drive preempts the network stream. The
+		// TTL hands control back to the network automatically once the user stops touching the sliders.
+		FString PrevOwner;
+		PE->ClaimControl(SelectedEntityName, TEXT("ui"), /*Ttl=*/2.0, /*bForce=*/true, PrevOwner);
+		Ingress->WriteCtrl(SelectedEntityName, Id, NewValue);
 	}
 }
 

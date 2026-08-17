@@ -101,9 +101,13 @@ FString FURLabRpcDispatcher::ResolveControlSource(const TSharedPtr<FJsonObject>&
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::RejectIfNotControlOwner(FName ArtKey,
 	const TSharedPtr<FJsonObject>& Req)
 {
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr || !Mgr->PhysicsEngine)
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
+
 	const FString Source = ResolveControlSource(Req);
 	FString CurrentOwner;
-	if (ControlOwnership.CheckWrite(ArtKey, Source, CurrentOwner)
+	if (Mgr->PhysicsEngine->CheckControlWrite(ArtKey, Source, CurrentOwner)
 		== FMjControlOwnership::EWriteCheck::Ok)
 	{
 		return nullptr;
@@ -140,7 +144,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleClaimControl(const TSharedPtr
 	Req->TryGetBoolField(TEXT("force"), bForce);
 
 	FString CurrentOwner;
-	if (ControlOwnership.Claim(Key, Source, Ttl, bForce, CurrentOwner)
+	if (Mgr->PhysicsEngine->ClaimControl(Key, Source, Ttl, bForce, CurrentOwner)
 		== FMjControlOwnership::EClaimResult::AlreadyOwned)
 	{
 		TSharedPtr<FJsonObject> Err = MakeError(TEXT("control_claimed"),
@@ -174,10 +178,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReleaseControl(const TSharedP
 	const FName Key = Entity->Name;
 	const FString Source = ResolveControlSource(Req);
 
-	if (!ControlOwnership.Release(Key, Source))
+	if (!Mgr->PhysicsEngine->ReleaseControl(Key, Source))
 	{
 		FString CurrentOwner;
-		ControlOwnership.CheckWrite(Key, Source, CurrentOwner);
+		Mgr->PhysicsEngine->CheckControlWrite(Key, Source, CurrentOwner);
 		TSharedPtr<FJsonObject> Err = MakeError(TEXT("not_control_owner"),
 			FString::Printf(TEXT("%s owned by %s"), *Key.ToString(), *CurrentOwner));
 		Err->SetStringField(TEXT("owner"), CurrentOwner);

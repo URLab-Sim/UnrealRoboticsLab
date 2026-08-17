@@ -64,8 +64,8 @@ public:
 	/**
 	 * Stage a control value as this actuator's setpoint from a network writer.
 	 *
-	 * The bridge, the ZMQ control subscriber and the ROS transports all land here. Same setpoint
-	 * buffer as SetControl; the difference is only the write-lease identity.
+	 * The bridge, the ZMQ control subscriber and the ROS transports all land here, in the same
+	 * setpoint buffer as SetControl.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Actuator",
 		meta = (DefaultToSelf = "Actuator", ScriptMethod))

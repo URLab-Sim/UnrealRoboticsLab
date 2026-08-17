@@ -33,7 +33,7 @@
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
 #include "MjTestHelpers.h"
-#include "Bridge/ControlOwnership.h"
+#include "MuJoCo/Entity/ControlOwnership.h"
 #include "Bridge/RpcDispatcher.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
@@ -128,7 +128,7 @@ bool FMjControlOwnershipClaimAndSteal::RunTest(const FString& Parameters)
 	// The old owner's next write is rejected.
 	FString CurrentOwner;
 	TestTrue(TEXT("old owner A no longer owns"),
-		Disp->GetControlOwnership().CheckWrite(Key, TEXT("A"), CurrentOwner)
+		S.Manager->PhysicsEngine->GetControlOwnership().CheckWrite(Key, TEXT("A"), CurrentOwner)
 			== FMjControlOwnership::EWriteCheck::NotOwner);
 	TestEqual(TEXT("owner is now B"), CurrentOwner, FString(TEXT("B")));
 
@@ -393,10 +393,11 @@ bool FMjControlOwnershipReleaseAndReset::RunTest(const FString& Parameters)
 	TestEqual(TEXT("freed art re-claimable"), CtrlOwnReplyOp(ReClaim), FString(TEXT("claim_control_ok")));
 
 	// OnManagerGone drops every claim (arts die with the world).
+	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
 	Disp->OnManagerGone();
 	FString Cur;
 	TestTrue(TEXT("OnManagerGone cleared claims"),
-		Disp->GetControlOwnership().CheckWrite(Key, TEXT("B"), Cur)
+		Engine->GetControlOwnership().CheckWrite(Key, TEXT("B"), Cur)
 			== FMjControlOwnership::EWriteCheck::NotOwner);
 
 	S.Cleanup();

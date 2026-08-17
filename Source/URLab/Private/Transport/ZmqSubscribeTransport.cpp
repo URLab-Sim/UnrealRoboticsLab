@@ -329,7 +329,6 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 			if (Manager && Manager->PhysicsEngine)
 			{
 				IMjControlIngress* Ingress = Manager->PhysicsEngine->GetControlIngress();
-				FURLabRpcDispatcher* Dispatcher = Manager->GetStepDispatcher();
 
 				// Assumes x86-64 alignment and little-endian. For cross-platform, use memcpy + ntohl.
 				int32 NumControls = *(int32*)(data);
@@ -352,11 +351,11 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 						{
 							// A remote RPC owner takes exclusive control of its entity's actuators;
 							// the network stream stays hands-off until the claim is released.
-							const bool bOwnedElsewhere = Dispatcher
-								&& Dispatcher->GetControlOwnership().GetActiveOwners().Contains(*EntityName);
+							const bool bOwnedElsewhere =
+								Manager->PhysicsEngine->GetControlOwners().Contains(*EntityName);
 							if (!bOwnedElsewhere && Ingress)
 							{
-								Ingress->WriteCtrl(*EntityName, Idx, Value, MjControlWho::Network());
+								Ingress->WriteCtrl(*EntityName, Idx, Value);
 							}
 						}
 						else if (bShouldLog)

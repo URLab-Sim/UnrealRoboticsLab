@@ -100,7 +100,7 @@ bool ResolveBound(const UMjNodeComponent* Node, const UMjPhysicsEngine*& OutEngi
 }
 
 /** Route a setpoint into the engine's one control buffer, addressed by the owning entity's name. */
-void WriteSetpoint(const UMjNodeComponent* Actuator, double Value, const FGuid& Who)
+void WriteSetpoint(const UMjNodeComponent* Actuator, double Value)
 {
 	int32 Id = -1;
 	AMjArticulation* Art = UMjActuatorRuntime::OwningArticulation(Actuator);
@@ -115,7 +115,7 @@ void WriteSetpoint(const UMjNodeComponent* Actuator, double Value, const FGuid& 
 	}
 	if (IMjControlIngress* Ingress = Engine->GetControlIngress())
 	{
-		Ingress->WriteCtrl(FName(*Art->GetName()), Id, Value, Who);
+		Ingress->WriteCtrl(FName(*Art->GetName()), Id, Value);
 	}
 }
 
@@ -146,12 +146,12 @@ AMjArticulation* UMjActuatorRuntime::OwningArticulation(const UMjNodeComponent* 
 
 void UMjActuatorRuntime::SetControl(const UMjNodeComponent* Actuator, double Value)
 {
-	WriteSetpoint(Actuator, Value, MjControlWho::UI());
+	WriteSetpoint(Actuator, Value);
 }
 
 void UMjActuatorRuntime::SetNetworkControl(const UMjNodeComponent* Actuator, double Value)
 {
-	WriteSetpoint(Actuator, Value, MjControlWho::Network());
+	WriteSetpoint(Actuator, Value);
 }
 
 void UMjActuatorRuntime::ResetControl(const UMjNodeComponent* Actuator)

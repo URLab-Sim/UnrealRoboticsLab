@@ -57,7 +57,7 @@
 #include "MuJoCo/Gen/Elements/Actuators/MjPosition.gen.h"
 #include "UserChannels/MjUserChannelComponent.h"
 #include "Bridge/BridgeServer.h"
-#include "Bridge/ControlOwnership.h"
+#include "MuJoCo/Entity/ControlOwnership.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Dom/JsonValue.h"
 #include "Dom/JsonObject.h"
@@ -540,7 +540,7 @@ bool FMjRosControlOwnershipAcrossSurfaces::RunTest(const FString& Parameters)
 	}
 
 	// TTL frees a dropped ROS owner: past the TTL, another source can claim.
-	FMjControlOwnership& Own = Disp->GetControlOwnership();
+	FMjControlOwnership& Own = S.Manager->PhysicsEngine->GetControlOwnership();
 	Own.Reset();
 	Own.SetClockOverrideForTest(0.0);
 	FString Cur;
@@ -602,7 +602,7 @@ bool FMjRosCtrlModeGating::RunTest(const FString& Parameters)
 
 	// Grant ROS ownership so ownership never blocks; the mode is the only gate.
 	FString Cur;
-	Disp->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 
 	// Direct mode: the write is dropped, so d->ctrl stays at its initial value.
 	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
@@ -675,7 +675,7 @@ bool FMjRosCtrlWire::RunTest(const FString& Parameters)
 	// Own the art as the ROS source and stay in Live mode so the marshalled write
 	// is applied rather than dropped.
 	FString Cur;
-	Disp->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
 
 	const FString Segment = FMjCanonicalName::ArtSegment(Art).ToString();
@@ -1028,7 +1028,7 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 
 	// Grant ROS ownership so the mode is the only gate.
 	FString Cur;
-	Disp->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 
 	// Direct mode: the jog is dropped, so d->ctrl stays at its initial value.
 	Disp->SetActiveStepMode(EMjPoseSource::Stepped);

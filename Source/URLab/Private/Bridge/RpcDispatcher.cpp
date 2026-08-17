@@ -357,14 +357,15 @@ void FURLabRpcDispatcher::OnManagerGone()
 	UninstallDirectHandler();
 	DrainQueues();
 
-	// Claims are per-PIE: the articulations die with the world.
-	ControlOwnership.Reset();
-
 	if (OwnerMgr.IsValid())
 	{
 		OwnerMgr->bPublishersPaused.store(false, std::memory_order_release);
 		if (OwnerMgr->PhysicsEngine)
+		{
+			// Claims are per-PIE: the articulations die with the world.
+			OwnerMgr->PhysicsEngine->GetControlOwnership().Reset();
 			OwnerMgr->PhysicsEngine->SetPoseSource(EMjPoseSource::FreeRun);
+		}
 	}
 	FCameraZmqWorker::bPublishersPaused.store(false, std::memory_order_release);
 	OwnerMgr.Reset();

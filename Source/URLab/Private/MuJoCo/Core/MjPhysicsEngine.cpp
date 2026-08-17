@@ -1039,8 +1039,8 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 	m_entityStructureVersion.Bump();
 
 	// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless ingress
-	// bound to the current model, buffer, lease and partition. The state injection sized alongside
-	// carries keyframe holds into the pre-step drain.
+	// bound to the current model, buffer and partition. The state injection sized alongside carries
+	// keyframe holds into the pre-step drain.
 	m_controlBuffer.Init(m_model->nu);
 	m_stateInjection.Qpos.Init(0.0, m_model->nq);
 	m_stateInjection.Qvel.Init(0.0, m_model->nv);
@@ -1048,7 +1048,7 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 	m_stateInjection.HoldMask.Init(false, m_model->nv);
 	m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
 	m_controlIngress = MakeUnique<FMjEntityControlIngress>(
-		m_model, m_controlBuffer, m_controlLease, m_entityPartition);
+		m_model, m_controlBuffer, m_entityPartition);
 }
 
 bool UMjPhysicsEngine::SetEntityOverlayFlags(FName EntityName, const FMjEntityDrawFlags& Flags)

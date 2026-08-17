@@ -1198,7 +1198,7 @@ bool FMjStepServerSetQposByName::RunTest(const FString& Parameters)
 
 	// Control writes require an explicit claim; the session owns the art.
 	FString ClaimOwner;
-	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
 		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
@@ -1246,7 +1246,7 @@ bool FMjStepServerSetQposActorId::RunTest(const FString& Parameters)
 
 	// The claim is keyed by the canonical art name, even when addressed by actor_id.
 	FString ClaimOwner;
-	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
 		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
@@ -1331,7 +1331,7 @@ bool FMjStepServerSetQposFreeBase::RunTest(const FString& Parameters)
 	d->qpos[HingeAdr] = 1.5; // sentinel -- the shortcut must NOT touch this
 
 	FString ClaimOwner;
-	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
 		0.0, false, ClaimOwner);
 
 	TSharedPtr<FJsonObject> Req = MakeShared<FJsonObject>();
@@ -1384,7 +1384,7 @@ bool FMjStepServerSetQposErrors::RunTest(const FString& Parameters)
 
 	// Own the art so the dim_mismatch path is reached past the control gate.
 	FString ClaimOwner;
-	Disp->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
+	S.Manager->PhysicsEngine->GetControlOwnership().Claim(FName(*Art->GetName()), TEXT("test-session"),
 		0.0, false, ClaimOwner);
 
 	// dim_mismatch: 3-vec into a 1-dim hinge articulation.

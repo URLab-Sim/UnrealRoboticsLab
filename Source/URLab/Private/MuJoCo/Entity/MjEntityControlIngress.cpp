@@ -8,33 +8,15 @@
 #include "MuJoCo/Entity/MjTwistResolve.h"
 
 FMjEntityControlIngress::FMjEntityControlIngress(const mjModel* InModel, FMjControlBuffer& InBuffer,
-                                                 FMjControlLease& InLease,
                                                  const TArray<FMjEntity>& InPartition)
 	: Model(InModel)
 	, Buffer(InBuffer)
-	, Lease(InLease)
 	, Partition(InPartition)
 {
 }
 
-const FGuid& MjControlWho::Network()
+void FMjEntityControlIngress::WriteCtrl(FName Entity, int32 ActuatorId, double Value)
 {
-	static const FGuid Token(0x4E455457, 0x00000000, 0x00000000, 0x00000000);
-	return Token;
-}
-
-const FGuid& MjControlWho::UI()
-{
-	static const FGuid Token(0x55495F55, 0x49000000, 0x00000000, 0x00000000);
-	return Token;
-}
-
-void FMjEntityControlIngress::WriteCtrl(FName Entity, int32 ActuatorId, double Value, const FGuid& Who)
-{
-	if (!Lease.CanWrite(Entity, Who))
-	{
-		return;
-	}
 	if (ActuatorId < 0 || ActuatorId >= Buffer.Setpoint.Num())
 	{
 		return;
@@ -44,8 +26,7 @@ void FMjEntityControlIngress::WriteCtrl(FName Entity, int32 ActuatorId, double V
 	Buffer.Touched[ActuatorId] = true;
 }
 
-void FMjEntityControlIngress::WriteTwist(FName Entity, const FVector& Linear, const FVector& Angular,
-                                         const FGuid& Who)
+void FMjEntityControlIngress::WriteTwist(FName Entity, const FVector& Linear, const FVector& Angular)
 {
 	const FMjEntity* E = FindEntity(Entity);
 	if (!E)
@@ -53,11 +34,11 @@ void FMjEntityControlIngress::WriteTwist(FName Entity, const FVector& Linear, co
 		return;
 	}
 
-	// Model-only resolution of the base twist, then route each setpoint through the lease-gated write
-	// path so the twist obeys the same lease as a direct actuator write.
+	// Model-only resolution of the base twist, then route each setpoint through the same write path
+	// as a direct actuator write.
 	for (const TPair<int32, double>& Setpoint : MjTwistResolve::ForEntity(Model, *E, Linear, Angular))
 	{
-		WriteCtrl(Entity, Setpoint.Key, Setpoint.Value, Who);
+		WriteCtrl(Entity, Setpoint.Key, Setpoint.Value);
 	}
 }
 

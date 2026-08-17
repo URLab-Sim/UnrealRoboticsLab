@@ -16,7 +16,6 @@
 
 #include "CoreMinimal.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "Bridge/ControlOwnership.h"
 #include "State/MjObservationLevel.h"
 #include "Dom/JsonObject.h"
 #include "Containers/Queue.h"
@@ -117,10 +116,6 @@ public:
 	void SetUseJsonEncoding(bool bUse) { bUseJsonEncoding.store(bUse, std::memory_order_release); }
 
 	int64 GetStepCounter() const { return StepCounter.load(std::memory_order_acquire); }
-
-	/** Per-articulation control arbitration shared by every control write.
-	 *  Exposed so tests can drive claims and the deterministic clock seam. */
-	FMjControlOwnership& GetControlOwnership() { return ControlOwnership; }
 
 	/** Worker threads read the replay manager via this cache instead of
 	 *  TActorIterator (which asserts IsInGameThread). */
@@ -247,9 +242,6 @@ private:
 	FCriticalSection DispatchMutex;
 
 	FString ActiveSessionId;
-
-	/** Per-articulation control ownership. Reset per PIE from OnManagerGone. */
-	FMjControlOwnership ControlOwnership;
 
 	std::atomic<EMjPoseSource> ActiveStepMode{EMjPoseSource::FreeRun};
 	std::atomic<EObservationLevel> ActiveObservationLevel{EObservationLevel::Standard};

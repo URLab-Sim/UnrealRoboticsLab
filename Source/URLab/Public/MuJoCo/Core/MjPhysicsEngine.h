@@ -450,14 +450,7 @@ public:
 	/** Zero the whole control buffer and drop any keyframe hold. Used on simulation reset. */
 	void ClearControlBuffer();
 
-	/**
-	 * Pin a keyframe. Via qpos: hold every non-free joint's qpos and freeze its DoFs, suppressing all
-	 * ctrl so the solver does not drive against the pose. Via ctrl: park the held ctrl as persistent
-	 * setpoints. Arrays are scene-wide (indexed by global qpos / ctrl address).
-	 */
-	void HoldKeyframe(bool bViaQpos, const TArray<double>& Qpos, const TArray<double>& Ctrl);
-
-	/** Release a qpos keyframe hold (clears the injection masks). */
+	/** Clear the injection masks so the pre-step drain applies no state injection. */
 	void ReleaseKeyframeHold();
 
 	/** Register an articulation into the registry the physics worker iterates.

@@ -66,11 +66,6 @@ void AMjEntity::GetLogicComponents(TArray<UMjEntityLogicComponent*>& Out) const
 	GetComponents<UMjEntityLogicComponent>(Out);
 }
 
-void AMjEntity::SetKeyframeHold(bool bHold)
-{
-	bHoldingKeyframe = bHold;
-}
-
 void AMjEntity::SetGeomGroupVisible(int32 Group, bool bVisible)
 {
 }

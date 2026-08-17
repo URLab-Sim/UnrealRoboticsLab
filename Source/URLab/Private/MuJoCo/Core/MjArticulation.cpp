@@ -553,108 +553,15 @@ bool AMjArticulation::ResetToKeyframe(const FString& KeyframeName)
 		return false;
 	}
 
-	const mjtNum* KeyQpos = Model->key_qpos + KeyId * Model->nq;
-	const mjtNum* KeyQvel = Model->key_qvel + KeyId * Model->nv;
-	const mjtNum* KeyCtrl = Model->key_ctrl + KeyId * Model->nu;
-
-	// Free joints hold the world pose. mj_resetDataKeyframe would set those too,
-	// which throws the robot across the scene when all that was wanted is a pose.
-	for (int32 j = 0; j < Model->njnt; ++j)
-	{
-		const int32 JointType = Model->jnt_type[j];
-		if (JointType == mjJNT_FREE)
-		{
-			continue;
-		}
-		const int32 QposAdr = Model->jnt_qposadr[j];
-		const int32 DofAdr = Model->jnt_dofadr[j];
-
-		const int32 NqPos = (JointType == mjJNT_BALL) ? 4 : 1;
-		for (int32 k = 0; k < NqPos; ++k)
-		{
-			Data->qpos[QposAdr + k] = KeyQpos[QposAdr + k];
-		}
-		const int32 NvDof = (JointType == mjJNT_BALL) ? 3 : 1;
-		for (int32 k = 0; k < NvDof; ++k)
-		{
-			Data->qvel[DofAdr + k] = KeyQvel[DofAdr + k];
-		}
-	}
-
-	for (int32 i = 0; i < Model->nu; ++i)
-	{
-		Data->ctrl[i] = KeyCtrl[i];
-	}
+	// Whole-model load, exactly as MuJoCo simulate's "Load key": mj_resetDataKeyframe sets qpos
+	// (free joints included), qvel, act, ctrl and mocap, then forwards.
+	mj_resetDataKeyframe(Model, Data, KeyId);
 
 	// Not a bare mj_forward: the accessors answer from the published snapshot, so
 	// a reset nobody publishes is a reset nobody can read. ForwardSync is the one
 	// place the forward pass and the publish happen as a single operation.
 	Engine->ForwardSync();
 	return true;
-}
-
-bool AMjArticulation::HoldKeyframe(const FString& KeyframeName)
-{
-	TArray<UMjNodeComponent*> Keys = GetKeyframes();
-	UMjKey* Target = nullptr;
-
-	if (KeyframeName.IsEmpty() && Keys.Num() > 0)
-	{
-		Target = Cast<UMjKey>(Keys[0]);
-	}
-	else
-	{
-		for (UMjNodeComponent* Node : Keys)
-		{
-			const bool bMatches = Node != nullptr
-							   && ((Node->MjName.IsSet() && Node->MjName.GetValue() == KeyframeName) || Node->GetName() == KeyframeName);
-			if (bMatches)
-			{
-				Target = Cast<UMjKey>(Node);
-				break;
-			}
-		}
-	}
-
-	if (Target == nullptr)
-	{
-		UE_LOG(LogURLab, Warning, TEXT("HoldKeyframe: '%s' not found on '%s'"), *KeyframeName, *GetName());
-		return false;
-	}
-
-	UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this);
-	if (Engine == nullptr)
-	{
-		return false;
-	}
-
-	// Ctrl first: holding through the actuators leaves the solver in charge of
-	// how the pose is reached, where injecting qpos overrides it outright.
-	if (Target->Ctrl.IsSet() && Target->Ctrl.GetValue().Num() > 0)
-	{
-		Engine->HoldKeyframe(/*bViaQpos=*/false, TArray<double>(), Target->Ctrl.GetValue());
-		bHoldingKeyframe = true;
-		return true;
-	}
-
-	if (Target->Qpos.IsSet() && Target->Qpos.GetValue().Num() > 0)
-	{
-		Engine->HoldKeyframe(/*bViaQpos=*/true, Target->Qpos.GetValue(), TArray<double>());
-		bHoldingKeyframe = true;
-		return true;
-	}
-
-	UE_LOG(LogURLab, Warning, TEXT("HoldKeyframe: '%s' has neither ctrl nor qpos"), *KeyframeName);
-	return false;
-}
-
-void AMjArticulation::StopHoldKeyframe()
-{
-	bHoldingKeyframe = false;
-	if (UMjPhysicsEngine* Engine = AAMjManager::ResolveEngine(this))
-	{
-		Engine->ReleaseKeyframeHold();
-	}
 }
 
 // --- Convenience one-liners ------------------------------------------------- //

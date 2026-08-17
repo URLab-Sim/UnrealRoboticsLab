@@ -1614,59 +1614,6 @@ void UMjPhysicsEngine::ClearControlBuffer()
 	ReleaseKeyframeHold();
 }
 
-void UMjPhysicsEngine::HoldKeyframe(bool bViaQpos, const TArray<double>& Qpos, const TArray<double>& Ctrl)
-{
-	if (m_model == nullptr)
-	{
-		return;
-	}
-	FMjStateInjection& Inj = m_stateInjection;
-
-	if (bViaQpos && Qpos.Num() > 0)
-	{
-		// Pin every non-free joint's qpos, freeze its DoFs and suppress all ctrl so the solver does
-		// not drive against the pinned pose. Injecting qpos overrides the actuators outright.
-		Inj.QposMask.Init(false, m_model->nq);
-		Inj.HoldMask.Init(false, m_model->nv);
-		Inj.SuppressCtrl.Init(true, m_model->nu);
-		for (int32 j = 0; j < m_model->njnt; ++j)
-		{
-			const int32 JointType = m_model->jnt_type[j];
-			if (JointType == mjJNT_FREE)
-			{
-				continue;
-			}
-			const int32 QAdr = m_model->jnt_qposadr[j];
-			const int32 DAdr = m_model->jnt_dofadr[j];
-			const int32 NqPos = (JointType == mjJNT_BALL) ? 4 : 1;
-			const int32 NvDof = (JointType == mjJNT_BALL) ? 3 : 1;
-			for (int32 k = 0; k < NqPos && (QAdr + k) < Qpos.Num() && (QAdr + k) < Inj.Qpos.Num(); ++k)
-			{
-				Inj.Qpos[QAdr + k] = Qpos[QAdr + k];
-				Inj.QposMask[QAdr + k] = true;
-			}
-			for (int32 k = 0; k < NvDof && (DAdr + k) < Inj.HoldMask.Num(); ++k)
-			{
-				Inj.HoldMask[DAdr + k] = true;
-			}
-		}
-		return;
-	}
-
-	if (Ctrl.Num() > 0)
-	{
-		// Ctrl-hold: park the held ctrl as persistent setpoints and let the drain write them, leaving
-		// the solver in charge of how the pose is reached.
-		const int32 Count = FMath::Min3(Ctrl.Num(), m_controlBuffer.Setpoint.Num(),
-			static_cast<int32>(m_model->nu));
-		for (int32 i = 0; i < Count; ++i)
-		{
-			m_controlBuffer.Setpoint[i] = Ctrl[i];
-			m_controlBuffer.Touched[i] = true;
-		}
-	}
-}
-
 void UMjPhysicsEngine::ReleaseKeyframeHold()
 {
 	if (m_model == nullptr)

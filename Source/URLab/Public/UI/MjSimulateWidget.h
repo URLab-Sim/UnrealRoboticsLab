@@ -211,10 +211,6 @@ private:
 	UPROPERTY()
 	UButton* ResetToKeyframeButton = nullptr;
 
-	/** @brief Hold/Stop Hold toggle button. */
-	UPROPERTY()
-	UButton* HoldKeyframeButton = nullptr;
-
 	/** @brief Handles keyframe dropdown selection. */
 	UFUNCTION()
 	void OnKeyframeSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
@@ -225,10 +221,6 @@ private:
 	/** @brief Handles Reset to Keyframe button click. */
 	UFUNCTION()
 	void HandleResetToKeyframe();
-
-	/** @brief Handles Hold Keyframe button click. */
-	UFUNCTION()
-	void HandleHoldKeyframe();
 
 	/** @brief Dropdown of watchable members (joint / sensor) on the selected entity. */
 	UPROPERTY()

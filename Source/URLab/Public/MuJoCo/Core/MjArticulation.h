@@ -236,29 +236,13 @@ public:
 	TArray<FString> GetKeyframeNames() const;
 
 	/**
-	 * Teleport to a named keyframe's joint angles, once.
+	 * Load a named keyframe into the whole model, once.
 	 *
-	 * Free joints are left alone: `mj_resetDataKeyframe` would set the world
-	 * position too, which throws the robot across the scene when all the caller
-	 * wanted was a pose.
+	 * Uses `mj_resetDataKeyframe`, exactly as MuJoCo simulate's "Load key": qpos
+	 * (free joints included), qvel, act, ctrl and mocap are all set from the key.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframes")
 	bool ResetToKeyframe(const FString& KeyframeName = TEXT(""));
-
-	/**
-	 * Drive continuously to a keyframe until released.
-	 *
-	 * Prefers the keyframe's `ctrl`, which holds the pose through the actuators.
-	 * Falls back to injecting its `qpos` directly, which holds it kinematically.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframes")
-	bool HoldKeyframe(const FString& KeyframeName = TEXT(""));
-
-	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Keyframes")
-	void StopHoldKeyframe();
-
-	UFUNCTION(BlueprintPure, Category = "MuJoCo|Keyframes")
-	bool IsHoldingKeyframe() const { return bHoldingKeyframe; }
 
 	// --- Convenience one-liners --------------------------------------------- //
 
@@ -371,7 +355,4 @@ private:
 	/** Keyed by `mjtObj`. Sparse: a family with no elements has no entry. */
 	UPROPERTY(Transient)
 	TMap<int32, FMjElementFamily> ElementIndex;
-
-	/** Set while this articulation drives a keyframe hold on the engine, for the UI toggle. */
-	bool bHoldingKeyframe = false;
 };

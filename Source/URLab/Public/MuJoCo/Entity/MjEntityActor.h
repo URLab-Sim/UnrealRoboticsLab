@@ -87,10 +87,6 @@ public:
 
 	// --- Engine passthrough ------------------------------------------------- //
 
-	/** Hold this entity's qpos on the engine at its current keyframe, for the UI toggle. */
-	void SetKeyframeHold(bool bHold);
-	bool IsHoldingKeyframe() const { return bHoldingKeyframe; }
-
 	/** Show or hide a geom group (group 3 is where collision meshes conventionally live). */
 	void SetGeomGroupVisible(int32 Group, bool bVisible);
 
@@ -101,7 +97,4 @@ private:
 
 	/** Authored per-instance debug-draw intent, carried onto the partition record at handoff. */
 	FMjEntityDrawFlags OverlayFlags;
-
-	/** Set while this entity drives a keyframe hold on the engine. */
-	bool bHoldingKeyframe = false;
 };

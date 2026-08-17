@@ -118,9 +118,9 @@ namespace
 		return nullptr;
 	}
 
-	/** Teleport the live data to a scene keyframe's non-free-joint qpos/qvel and its ctrl, then publish.
-	 *  Mirrors the retired AMjArticulation::ResetToKeyframe: free joints keep their world pose so the
-	 *  body is not thrown across the scene. */
+	/** Load a scene keyframe into the live data as MuJoCo simulate does: mj_resetDataKeyframe sets the
+	 *  whole model (qpos including free joints, qvel, act, ctrl, mocap) then forwards, and ForwardSync
+	 *  publishes the result. */
 	void ApplyKeyframeReset(UMjPhysicsEngine* Engine, int32 KeyId)
 	{
 		mjModel* Model = Engine ? Engine->GetModel() : nullptr;
@@ -129,33 +129,7 @@ namespace
 		{
 			return;
 		}
-		const mjtNum* KeyQpos = Model->key_qpos + KeyId * Model->nq;
-		const mjtNum* KeyQvel = Model->key_qvel + KeyId * Model->nv;
-		const mjtNum* KeyCtrl = Model->key_ctrl + KeyId * Model->nu;
-		for (int32 j = 0; j < Model->njnt; ++j)
-		{
-			const int32 JointType = Model->jnt_type[j];
-			if (JointType == mjJNT_FREE)
-			{
-				continue;
-			}
-			const int32 QposAdr = Model->jnt_qposadr[j];
-			const int32 DofAdr = Model->jnt_dofadr[j];
-			const int32 NqPos = (JointType == mjJNT_BALL) ? 4 : 1;
-			for (int32 k = 0; k < NqPos; ++k)
-			{
-				Data->qpos[QposAdr + k] = KeyQpos[QposAdr + k];
-			}
-			const int32 NvDof = (JointType == mjJNT_BALL) ? 3 : 1;
-			for (int32 k = 0; k < NvDof; ++k)
-			{
-				Data->qvel[DofAdr + k] = KeyQvel[DofAdr + k];
-			}
-		}
-		for (int32 i = 0; i < Model->nu; ++i)
-		{
-			Data->ctrl[i] = KeyCtrl[i];
-		}
+		mj_resetDataKeyframe(Model, Data, KeyId);
 		Engine->ForwardSync();
 	}
 
@@ -995,8 +969,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			KeyframeSelector->RemoveFromParent();
 		if (ResetToKeyframeButton)
 			ResetToKeyframeButton->RemoveFromParent();
-		if (HoldKeyframeButton)
-			HoldKeyframeButton->RemoveFromParent();
 		if (WatchSelector)
 			WatchSelector->RemoveFromParent();
 		ReplayEnabledCheckBoxes.Empty();
@@ -1131,25 +1103,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			ResetToKeyframeButton->OnClicked.AddDynamic(this, &UMjSimulateWidget::HandleResetToKeyframe);
 		}
 		if (UVerticalBoxSlot* BoxSlot = SimulationBox->AddChildToVerticalBox(ResetToKeyframeButton))
-		{
-			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
-		}
-
-		if (!HoldKeyframeButton)
-		{
-			HoldKeyframeButton = NewObject<UButton>(this);
-			UTextBlock* BtnText = NewObject<UTextBlock>(HoldKeyframeButton);
-			BtnText->SetText(FText::FromString(TEXT("Hold Keyframe")));
-			BtnText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-			BtnText->SetJustification(ETextJustify::Center);
-			FSlateFontInfo FontInfo = BtnText->GetFont();
-			FontInfo.Size = 14;
-			BtnText->SetFont(FontInfo);
-			HoldKeyframeButton->AddChild(BtnText);
-			HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.6f, 0.3f, 1.0f));
-			HoldKeyframeButton->OnClicked.AddDynamic(this, &UMjSimulateWidget::HandleHoldKeyframe);
-		}
-		if (UVerticalBoxSlot* BoxSlot = SimulationBox->AddChildToVerticalBox(HoldKeyframeButton))
 		{
 			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
 		}
@@ -1805,7 +1758,7 @@ void UMjSimulateWidget::HandleTwistOptionChanged(float NewValue, const FString& 
 
 void UMjSimulateWidget::OnKeyframeSelected(FString SelectedItem, ESelectInfo::Type SelectionType)
 {
-	// Just stores the selection — ResetToKeyframe/HoldKeyframe use it
+	// Just stores the selection — HandleResetToKeyframe uses it
 	UE_LOG(LogURLab, Verbose, TEXT("Keyframe selected: %s"), *SelectedItem);
 }
 
@@ -1935,87 +1888,5 @@ void UMjSimulateWidget::HandleResetToKeyframe()
 			ApplyKeyframeReset(PE, Key.Value);
 			break;
 		}
-	}
-}
-
-void UMjSimulateWidget::HandleHoldKeyframe()
-{
-	if (SelectedEntityName.IsNone() || !ManagerRef || !ManagerRef->PhysicsEngine)
-		return;
-
-	UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
-	AMjEntity* Entity = ManagerRef->GetEntity(SelectedEntityName);
-
-	if (Entity && Entity->IsHoldingKeyframe())
-	{
-		PE->ReleaseKeyframeHold();
-		Entity->SetKeyframeHold(false);
-
-		// Update button to "Hold Keyframe" (green)
-		if (HoldKeyframeButton)
-		{
-			if (UTextBlock* Txt = Cast<UTextBlock>(HoldKeyframeButton->GetChildAt(0)))
-				Txt->SetText(FText::FromString(TEXT("Hold Keyframe")));
-			HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.6f, 0.3f, 1.0f));
-		}
-		return;
-	}
-
-	const mjModel* M = PE->GetModel();
-	if (!KeyframeSelector || M == nullptr)
-		return;
-
-	const FString KeyframeName = KeyframeSelector->GetSelectedOption();
-	int32 KeyId = -1;
-	for (const TPair<FString, int32>& Key : EntityKeyframes(M, SelectedEntityName))
-	{
-		if (Key.Key == KeyframeName)
-		{
-			KeyId = Key.Value;
-			break;
-		}
-	}
-	if (KeyId < 0)
-		return;
-
-	// Prefer holding through the actuators (ctrl) when the keyframe carries any, so the solver reaches
-	// the pose; otherwise pin the pose kinematically via qpos. Both arrays are scene-wide, as the engine
-	// injection expects.
-	TArray<double> Ctrl;
-	bool bAnyCtrl = false;
-	Ctrl.Reserve(M->nu);
-	for (int32 i = 0; i < M->nu; ++i)
-	{
-		const double C = M->key_ctrl[KeyId * M->nu + i];
-		Ctrl.Add(C);
-		bAnyCtrl |= (C != 0.0);
-	}
-
-	if (bAnyCtrl)
-	{
-		PE->HoldKeyframe(/*bViaQpos=*/false, TArray<double>(), Ctrl);
-	}
-	else
-	{
-		TArray<double> Qpos;
-		Qpos.Reserve(M->nq);
-		for (int32 i = 0; i < M->nq; ++i)
-		{
-			Qpos.Add(M->key_qpos[KeyId * M->nq + i]);
-		}
-		PE->HoldKeyframe(/*bViaQpos=*/true, Qpos, TArray<double>());
-	}
-
-	if (Entity)
-	{
-		Entity->SetKeyframeHold(true);
-	}
-
-	// Update button to "Stop Hold" (red)
-	if (HoldKeyframeButton)
-	{
-		if (UTextBlock* Txt = Cast<UTextBlock>(HoldKeyframeButton->GetChildAt(0)))
-			Txt->SetText(FText::FromString(TEXT("Stop Hold")));
-		HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.6f, 0.2f, 0.2f, 1.0f));
 	}
 }

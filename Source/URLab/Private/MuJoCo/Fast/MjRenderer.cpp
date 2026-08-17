@@ -55,7 +55,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Utils/URLabLogging.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Dom/JsonObject.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Base64.h"

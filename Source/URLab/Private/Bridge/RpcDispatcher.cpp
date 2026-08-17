@@ -24,7 +24,7 @@
 #include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
 #include "Bridge/StepCommands.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"

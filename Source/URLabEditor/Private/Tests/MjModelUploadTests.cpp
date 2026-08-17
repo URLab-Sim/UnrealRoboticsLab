@@ -36,7 +36,7 @@
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
-#include "Bridge/AssetCache.h"
+#include "Utils/AssetCache.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/RpcErrorCodes.h"

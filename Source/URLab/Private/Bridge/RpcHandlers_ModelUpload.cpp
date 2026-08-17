@@ -34,12 +34,12 @@
 
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/RpcErrorCodes.h"
-#include "Bridge/AssetCache.h"
+#include "Utils/AssetCache.h"
 #include "Bridge/OpRegistry.h"
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Utils/URLabLogging.h"
 
 #include "HAL/FileManager.h"

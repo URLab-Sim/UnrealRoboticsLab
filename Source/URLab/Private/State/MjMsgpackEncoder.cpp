@@ -22,7 +22,7 @@
 
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjStateTypes.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 
 namespace
 {

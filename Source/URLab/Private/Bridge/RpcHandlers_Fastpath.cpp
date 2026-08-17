@@ -7,7 +7,7 @@
 #include "Bridge/RpcErrorCodes.h"
 #include "Bridge/BridgeServer.h"
 #include "Bridge/BridgeServerConfig.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"

@@ -17,7 +17,7 @@
 #include "Misc/FileHelper.h"
 #include "Modules/ModuleManager.h"
 
-#include "Bridge/AssetCache.h"
+#include "Utils/AssetCache.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Elements/MjGeom.h"

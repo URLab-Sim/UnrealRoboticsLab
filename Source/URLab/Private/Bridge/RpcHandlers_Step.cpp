@@ -24,7 +24,7 @@
 #include "Bridge/RpcErrorCodes.h"
 #include "Bridge/OpRegistry.h"
 #include "Bridge/StepCommands.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
 #include "State/MjCanonicalName.h"

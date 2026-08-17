@@ -22,7 +22,7 @@
 
 #include "Transport/RosOutputProvider.h"
 #include "State/MjStateTypes.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 

@@ -52,7 +52,7 @@
 #include "Transport/ZmqPublishTransport.h"
 #include "Transport/ZmqSubscribeTransport.h"
 #include "Transport/ViewerSubscribeTransport.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "zmq.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Transport/SnapshotPublisher.h"

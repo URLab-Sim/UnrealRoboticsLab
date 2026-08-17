@@ -7,7 +7,7 @@
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/OpRegistry.h"
 #include "Bridge/BridgeServer.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "State/MjStateTypes.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"

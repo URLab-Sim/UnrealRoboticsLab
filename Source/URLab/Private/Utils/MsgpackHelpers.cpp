@@ -20,7 +20,7 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"

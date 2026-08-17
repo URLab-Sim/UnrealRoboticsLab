@@ -41,7 +41,7 @@
 #include "Bridge/OpRegistry.h"
 #include "Bridge/BridgeServer.h"
 #include "Transport/ZmqRpcTransport.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Bridge/RpcErrorCodes.h"
 #include "State/MjStateCollector.h"
 #include "State/MjMsgpackEncoder.h"
@@ -1607,7 +1607,7 @@ bool FMjStepServerStopDrains::RunTest(const FString& Parameters)
 // ---------------------------------------------------------------------------
 #include "Transport/ShmRpcTransport.h"
 #include "Transport/ZmqRpcTransport.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerShmRejectsEditorOps,
 	"URLab.StepServer.ShmRejectsEditorOps",

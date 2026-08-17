@@ -7,7 +7,7 @@
 #include "Bridge/BridgeServer.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/RpcErrorCodes.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Bridge/OpRegistry.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"

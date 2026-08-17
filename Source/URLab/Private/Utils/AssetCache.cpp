@@ -20,7 +20,7 @@
 // This plugin incorporates third-party software: MuJoCo (Apache 2.0),
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
-#include "Bridge/AssetCache.h"
+#include "Utils/AssetCache.h"
 
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"

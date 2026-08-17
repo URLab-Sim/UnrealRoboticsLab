@@ -16,7 +16,7 @@
 #include "Transport/ClientSubscribeTransport.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
-#include "Bridge/MsgpackHelpers.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Utils/URLabLogging.h"
 #include "Dom/JsonObject.h"
 

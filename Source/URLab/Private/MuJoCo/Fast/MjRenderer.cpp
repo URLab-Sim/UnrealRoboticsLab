@@ -1927,7 +1927,7 @@ static void ApplyRendererQuality()
 
 AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbBytes,
 	const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
-	bool bDirect, bool bBaseLevel, bool bCameras)
+	bool bStepped, bool bBaseLevel, bool bCameras)
 {
 	if (!World)
 	{
@@ -1942,9 +1942,9 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] SpawnRenderer: failed to spawn AMjRenderer"));
 		return nullptr;
 	}
-	Scene->RunMode = bDirect ? EMjPoseSource::Stepped : EMjPoseSource::Mirror;
+	Scene->RunMode = bStepped ? EMjPoseSource::Stepped : EMjPoseSource::Mirror;
 	// Local dev sweep only when there is neither a Driver bus nor Direct stepping.
-	Scene->bTestSweep = BusEndpoint.IsEmpty() && !bDirect;
+	Scene->bTestSweep = BusEndpoint.IsEmpty() && !bStepped;
 	Scene->MjbBytes = MjbBytes;
 	Scene->MjbFilePath = MjbFilePath;
 	Scene->BusEndpoint = BusEndpoint;
@@ -1999,7 +1999,7 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjRenderer] SpawnRenderer: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
-		bDirect ? TEXT("direct") : TEXT("puppet"),
+		bStepped ? TEXT("direct") : TEXT("puppet"),
 		BusEndpoint.IsEmpty() ? TEXT("(none)") : *BusEndpoint, bBaseLevel ? 1 : 0,
 		bCameras ? 1 : 0, MjbBytes.Num(), *Origin.ToString());
 	return Scene;

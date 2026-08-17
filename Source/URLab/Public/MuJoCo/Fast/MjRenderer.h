@@ -154,14 +154,14 @@ public:
 	/**
 	 * Spawn a fast-path Renderer into World and return it. Sets the scene up
 	 * from either MjbBytes (over the wire) or MjbFilePath, connects the transform
-	 * bus (Puppet) or steps it in-process (bDirect), and unless bBaseLevel is set,
+	 * bus (Puppet) or steps it in-process (bStepped), and unless bBaseLevel is set,
 	 * spawns a movable light rig + a framing camera at the scene origin so the MJB
 	 * is visible on a bare map. Shared by the -game command-line launcher and the
 	 * runtime server browser so both build an identical Renderer. Null on failure.
 	 */
 	static AMjRenderer* SpawnRenderer(UWorld* World, const TArray<uint8>& MjbBytes,
 		const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
-		bool bDirect, bool bBaseLevel, bool bCameras);
+		bool bStepped, bool bBaseLevel, bool bCameras);
 
 	/** Build geometry only, at the MJB rest pose, with NO bus and NO streaming.
 	 *  For the editor-world preview: a persistent, static, saveable scene that is

@@ -76,9 +76,9 @@ void UMjPerturbation::BeginPlay()
 			if (!m || !d || !Manager || !Manager->PhysicsEngine)
 				return;
 			const bool bRunning = Manager->PhysicsEngine->IsRunning();
-			const bool bPuppet = (Manager->StepMode == EMjPoseSource::StatePushed);
+			const bool bStatePushed = (Manager->StepMode == EMjPoseSource::StatePushed);
 
-			if (bPuppet)
+			if (bStatePushed)
 			{
 				// In puppet mode the client owns d, so directly writing
 				// xfrc_applied here would clobber whatever the client's

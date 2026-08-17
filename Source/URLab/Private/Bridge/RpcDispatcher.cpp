@@ -849,6 +849,35 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		ArtObj->SetStringField(TEXT("actor_id"), E.ActorId);
 		ArtObj->SetStringField(TEXT("actor_name"), E.Name.ToString());
 
+		// Root body + free-base offsets, folded in from the retired standalone `entities` block so
+		// every entity (robot or free-base body) carries them on one wire element. A state-pushing
+		// client writes the base pose/vel back through the free joint's qpos/qvel addresses.
+		ArtObj->SetNumberField(TEXT("id"), E.RootBodyId);
+		ArtObj->SetBoolField(TEXT("has_free_base"), E.bFreeBase);
+		if (E.bFreeBase && Manager->PhysicsEngine)
+		{
+			FScopeLock ModelLock(&Manager->PhysicsEngine->CallbackMutex);
+			const mjModel* Fm = Manager->PhysicsEngine->GetModel();
+			if (Fm != nullptr && E.RootBodyId >= 0 && E.RootBodyId < Fm->nbody
+				&& Fm->body_jntnum && Fm->body_jntadr)
+			{
+				const int FirstJnt = Fm->body_jntadr[E.RootBodyId];
+				const int NumJnt = Fm->body_jntnum[E.RootBodyId];
+				if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < Fm->njnt
+					&& Fm->jnt_type[FirstJnt] == mjJNT_FREE)
+				{
+					ArtObj->SetNumberField(TEXT("free_joint_id"), FirstJnt);
+					ArtObj->SetNumberField(TEXT("qpos_offset"), Fm->jnt_qposadr[FirstJnt]);
+					ArtObj->SetNumberField(TEXT("qvel_offset"), Fm->jnt_dofadr[FirstJnt]);
+					const char* JntName = mj_id2name(Fm, mjOBJ_JOINT, FirstJnt);
+					if (JntName)
+					{
+						ArtObj->SetStringField(TEXT("free_joint"), UTF8_TO_TCHAR(JntName));
+					}
+				}
+			}
+		}
+
 		const bool bRawModel = (Manager->PhysicsEngine != nullptr)
 			&& Manager->PhysicsEngine->IsRawModelInstalled();
 
@@ -1026,43 +1055,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 
 		ArtsArray.Add(MakeShared<FJsonValueObject>(ArtObj));
 	}
-	Reply->SetArrayField(TEXT("articulations"), ArtsArray);
-
-	// Non-articulation entities. Anything dynamic in the world that isn't
-	// an articulation (props, free-jointed scene objects) is keyed by
-	// name with id + free-base flag so the bridge can wrap it as a
-	// `URLabEntity` at handshake time. Articulations don't appear here --
-	// they have their own typed block above.
-	{
-		TSharedPtr<FJsonObject> EntitiesObj = MakeShared<FJsonObject>();
-		for (const FMjEntityRecord& R : Manager->GetEntities())
-		{
-			TSharedPtr<FJsonObject> EntObj = MakeShared<FJsonObject>();
-			EntObj->SetNumberField(TEXT("id"), R.MjId);
-			EntObj->SetBoolField(TEXT("has_free_base"), R.bHasFreeBase);
-			// For free-base entities, also report the joint's qpos / qvel
-			// offsets in MjData so puppet-mode clients can write back.
-			if (R.bHasFreeBase && R.MjId >= 0 && R.MjId < m->nbody && m->body_jntnum && m->body_jntadr)
-			{
-				int FirstJnt = m->body_jntadr[R.MjId];
-				int NumJnt = m->body_jntnum[R.MjId];
-				if (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
-				{
-					EntObj->SetNumberField(TEXT("free_joint_id"), FirstJnt);
-					EntObj->SetNumberField(TEXT("qpos_offset"), m->jnt_qposadr[FirstJnt]);
-					EntObj->SetNumberField(TEXT("qvel_offset"), m->jnt_dofadr[FirstJnt]);
-					const char* JntName = mj_id2name(m, mjOBJ_JOINT, FirstJnt);
-					if (JntName)
-					{
-						EntObj->SetStringField(TEXT("free_joint"),
-							UTF8_TO_TCHAR(JntName));
-					}
-				}
-			}
-			EntitiesObj->SetObjectField(R.Name, EntObj);
-		}
-		Reply->SetObjectField(TEXT("entities"), EntitiesObj);
-	}
+	// One unified entity list: robots and free-base bodies alike are partition entities, each
+	// carrying its full descriptor plus the folded-in root-body / free-base fields. The bridge
+	// wraps every element as an entity (the rich subtype when it owns actuators/joints).
+	Reply->SetArrayField(TEXT("entities"), ArtsArray);
 
 	// Reserved for future scene-level cameras.
 	Reply->SetObjectField(TEXT("global_cameras"), MakeShared<FJsonObject>());

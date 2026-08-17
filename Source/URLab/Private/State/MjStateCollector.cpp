@@ -528,26 +528,28 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 		}
 	}
 
-	// Non-articulation entities: raw MjIds with no component, read straight from
-	// mjData. Prefer the manager's entity cache, which the compile rebuilt.
-	if (Mgr)
+	// Per-entity root-body state, read straight from mjData by the entity's root body id. Sourced
+	// from the one partition (robots and free-base bodies alike) so the retired non-articulation
+	// world-walk is gone; a free-base entity also carries its root joint's qpos/qvel for writeback.
+	if (Mgr && Mgr->PhysicsEngine)
 	{
-		const TArray<FMjEntityRecord>& Entities = Mgr->GetEntities();
-		Snapshot.Entities.Reserve(Entities.Num());
-		for (const FMjEntityRecord& Ent : Entities)
+		const TArray<FMjEntity>& Partition = Mgr->PhysicsEngine->GetEntityPartition();
+		Snapshot.Entities.Reserve(Partition.Num());
+		for (const FMjEntity& Ent : Partition)
 		{
-			if (Ent.MjId < 0 || Ent.MjId >= m->nbody)
+			const int32 BodyId = Ent.RootBodyId;
+			if (BodyId < 0 || BodyId >= m->nbody)
 				continue;
 			FMjEntityState& E = Snapshot.Entities.AddDefaulted_GetRef();
-			E.Name = FName(*Ent.Name);
-			E.bFreeBase = Ent.bHasFreeBase;
+			E.Name = Ent.Name;
+			E.bFreeBase = Ent.bFreeBase;
 			for (int i = 0; i < 3; ++i)
-				E.Xpos[i] = d->xpos[Ent.MjId * 3 + i];
+				E.Xpos[i] = d->xpos[BodyId * 3 + i];
 			for (int i = 0; i < 4; ++i)
-				E.Xquat[i] = d->xquat[Ent.MjId * 4 + i];
-			if (Ent.bHasFreeBase && m->body_jntnum && m->body_jntadr)
+				E.Xquat[i] = d->xquat[BodyId * 4 + i];
+			if (Ent.bFreeBase && m->body_jntnum && m->body_jntadr)
 			{
-				const int FirstJnt = m->body_jntadr[Ent.MjId];
+				const int FirstJnt = m->body_jntadr[BodyId];
 				if (FirstJnt >= 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE)
 				{
 					const int QAddr = m->jnt_qposadr[FirstJnt];

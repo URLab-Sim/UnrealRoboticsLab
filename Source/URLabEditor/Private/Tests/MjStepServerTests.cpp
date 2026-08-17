@@ -363,8 +363,8 @@ bool FMjStepServerHandshakeActorId::RunTest(const FString& Parameters)
 			FURLabRpcDispatcher::BuildHandshakePayload(S.Manager, TEXT("uuid"), TEXT("urlab/test"));
 
 		const TArray<TSharedPtr<FJsonValue>>* ArtsArr = nullptr;
-		TestTrue(TEXT("articulations array present"),
-			Payload->TryGetArrayField(TEXT("articulations"), ArtsArr));
+		TestTrue(TEXT("entities array present"),
+			Payload->TryGetArrayField(TEXT("entities"), ArtsArr));
 		if (ArtsArr && ArtsArr->Num() > 0)
 		{
 			const TSharedPtr<FJsonObject>& First = (*ArtsArr)[0]->AsObject();
@@ -390,7 +390,7 @@ bool FMjStepServerHandshakeActorId::RunTest(const FString& Parameters)
 		TSharedPtr<FJsonObject> Payload2 =
 			FURLabRpcDispatcher::BuildHandshakePayload(S.Manager, TEXT("uuid2"), TEXT("urlab/test"));
 		const TArray<TSharedPtr<FJsonValue>>* ArtsArr2 = nullptr;
-		Payload2->TryGetArrayField(TEXT("articulations"), ArtsArr2);
+		Payload2->TryGetArrayField(TEXT("entities"), ArtsArr2);
 		if (ArtsArr2 && ArtsArr2->Num() > 0)
 		{
 			const TSharedPtr<FJsonObject>& First2 = (*ArtsArr2)[0]->AsObject();
@@ -440,7 +440,7 @@ bool FMjStepServerHandshake::RunTest(const FString& Parameters)
 	Payload->TryGetStringField(TEXT("urlab_version"), Ver);
 	TestEqual(TEXT("urlab_version echoed"), Ver, FString(TEXT("urlab/test")));
 
-	TestTrue(TEXT("Has articulations array"), Payload->HasField(TEXT("articulations")));
+	TestTrue(TEXT("Has entities array"), Payload->HasField(TEXT("entities")));
 	TestTrue(TEXT("Has global_cameras object"), Payload->HasField(TEXT("global_cameras")));
 
 	int32 MjbSize = 0;

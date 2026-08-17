@@ -74,28 +74,6 @@ struct FMjUserInputChannelInfo
 };
 
 /**
- * @struct FMjEntityRecord
- * @brief Cached non-articulation entity metadata: a UMjBody whose owner is
- *        not an AMjArticulation (props, free-jointed scene objects, ...).
- *        Built once per compile and consumed by
- *        UURLabZmqPublishTransport for "scene/<name>/state" PUB topics and by
- *        the step server for the `entities` block in step replies.
- *        Articulations have their own typed cache; this struct is for
- *        everything else dynamic in the world.
- */
-struct FMjEntityRecord
-{
-	/** UMjBody MjID after compile. */
-	int32 MjId = -1;
-	/** Compiled name (the same string mj_id2name returns). */
-	FString Name;
-	/** True if the body owns a single mjJNT_FREE joint (qpos[7]/qvel[6]). */
-	bool bHasFreeBase = false;
-	/** Weak ref kept for diagnostics; consumers should index by MjId. */
-	TWeakObjectPtr<UMjBody> BodyComp;
-};
-
-/**
  * @class AAMjManager
  * @brief Thin coordinator actor for the MuJoCo simulation within Unreal Engine.
  *
@@ -250,12 +228,6 @@ public:
 	 */
 	UMjAppearanceStore* GetAppearanceStore();
 
-	/** Non-articulation entity table, rebuilt on every compile; empty until the first. */
-	const TArray<FMjEntityRecord>& GetEntities() const { return EntityCache; }
-
-	/** Refresh the entity cache. Called once per compile, on the game thread. */
-	void BuildEntityCache();
-
 	/** Rebuild the caches the state IR reads (entity table + producer cache) and
 	 *  (re)bind the collector to this manager. Run after every compile / recompile
 	 *  on the game thread. */
@@ -402,8 +374,6 @@ protected:
 
 	/** The pawn the controller held before the first PossessEntity, restored on release. */
 	TWeakObjectPtr<APawn> PrePossessPawn;
-
-	TArray<FMjEntityRecord> EntityCache;
 
 	/** Name-keyed geom appearance overrides (visual DR). Lazily created; see
 	 *  GetAppearanceStore. Transient so it is GC-rooted across PIE without

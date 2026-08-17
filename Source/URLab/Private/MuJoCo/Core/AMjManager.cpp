@@ -115,9 +115,8 @@ FSpecRef AAMjManager::GetSceneSpec() const
 
 void AAMjManager::RefreshStateCaches()
 {
-	BuildEntityCache();
-	// Rebuild the state-IR producer cache off the same trigger as the entity
-	// cache (initial compile + every recompile). Both run on the game thread.
+	// Rebuild the state-IR producer cache on the initial compile + every recompile,
+	// on the game thread.
 	StateCollector.Init(this);
 	StateCollector.RebuildProducerCacheGameThread();
 	// Re-export the URDF(s) so the robot_description matches the fresh model.
@@ -155,57 +154,6 @@ void AAMjManager::ExportRobotDescriptions()
 			TEXT("[URDF] %s: %d links, %d joints, %d meshes -> %s"),
 			*SegmentStr, Urdf.Links.Num(), Urdf.Joints.Num(), Urdf.MeshIds.Num(),
 			*FPaths::Combine(OutDir, TEXT("model.urdf")));
-	}
-}
-
-void AAMjManager::BuildEntityCache()
-{
-	EntityCache.Reset();
-	if (!PhysicsEngine || !PhysicsEngine->m_model)
-		return;
-	UWorld* World = GetWorld();
-	if (!World)
-		return;
-
-	mjModel* m = PhysicsEngine->m_model;
-
-	TSet<AMjArticulation*> ArticSet;
-	for (AMjArticulation* A : PhysicsEngine->m_articulations)
-		if (A)
-			ArticSet.Add(A);
-
-	for (TActorIterator<AActor> It(World); It; ++It)
-	{
-		AActor* Actor = *It;
-		if (!Actor)
-			continue;
-		if (AMjArticulation* AsArt = Cast<AMjArticulation>(Actor))
-		{
-			if (ArticSet.Contains(AsArt))
-				continue;
-		}
-		TArray<UMjBody*> Bodies;
-		Actor->GetComponents<UMjBody>(Bodies);
-		for (UMjBody* B : Bodies)
-		{
-			if (B == nullptr)
-				continue;
-			const int32 Id = B->GetBoundId().Get(-1);
-			if (Id < 0 || Id >= m->nbody)
-				continue;
-
-			FMjEntityRecord Rec;
-			Rec.MjId = Id;
-			Rec.Name = B->MjName.Get(B->GetName());
-			Rec.BodyComp = B;
-			if (m->body_jntnum && m->body_jntadr)
-			{
-				int FirstJnt = m->body_jntadr[Id];
-				int NumJnt = m->body_jntnum[Id];
-				Rec.bHasFreeBase = (FirstJnt >= 0 && NumJnt > 0 && FirstJnt < m->njnt && m->jnt_type[FirstJnt] == mjJNT_FREE);
-			}
-			EntityCache.Add(Rec);
-		}
 	}
 }
 

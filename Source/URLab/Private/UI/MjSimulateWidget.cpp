@@ -130,6 +130,8 @@ namespace
 			return;
 		}
 		mj_resetDataKeyframe(Model, Data, KeyId);
+		// Clear the setpoint store so the next pre-step drain does not overwrite the keyframe's ctrl.
+		Engine->ClearControlBuffer();
 		Engine->ForwardSync();
 	}
 

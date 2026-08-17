@@ -557,6 +557,10 @@ bool AMjArticulation::ResetToKeyframe(const FString& KeyframeName)
 	// (free joints included), qvel, act, ctrl and mocap, then forwards.
 	mj_resetDataKeyframe(Model, Data, KeyId);
 
+	// The keyframe just wrote d->ctrl; clear the setpoint store so the next pre-step drain does not
+	// immediately overwrite it with stale setpoints from prior UI/network writes.
+	Engine->ClearControlBuffer();
+
 	// Not a bare mj_forward: the accessors answer from the published snapshot, so
 	// a reset nobody publishes is a reset nobody can read. ForwardSync is the one
 	// place the forward pass and the publish happen as a single operation.

@@ -838,10 +838,6 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 		RegisterArticulation(Articulation);
 	}
 
-	// Build the flat FMjEntity partition + size the control store from the compiled model, keyed by
-	// the participant prefixes the articulations carry.
-	RebuildEntityPartition();
-
 	// The contributor registries are what the per-frame render pass and the
 	// debug visualiser iterate, so they are rebuilt from the same list the
 	// compile was given rather than from a second walk of the level.
@@ -862,6 +858,11 @@ bool UMjPhysicsEngine::InstallCompiledSpec(FString& OutError)
 			m_heightfieldActors.AddUnique(Heightfield);
 		}
 	}
+
+	// Build the flat FMjEntity partition + size the control store from the compiled model, keyed by the
+	// participant prefixes the articulations carry AND the quick-convert props' scene prefixes -- so it
+	// must run after m_MujocoComponents is populated above, or props are dropped from the partition.
+	RebuildEntityPartition();
 
 	ApplyThreadPool();
 

@@ -24,6 +24,24 @@ class UPrimitiveComponent;
  * (a scene-root floor, an inline mesh) falls back to the baked resolver, so a
  * mixed scene still draws in full.
  */
+/**
+ * The inverse of the pose MuJoCo bakes into a mesh at compile time, in MuJoCo's
+ * own frame (wxyz quat).
+ *
+ * mj_compile recenters a mesh's vertices onto its inertial frame and folds the
+ * shift into the geom's `pos`/`quat`, so a geom that draws the compiled
+ * `mesh_vert` lands correctly at `geom_xpos`/`geom_xmat`. An imported or
+ * converted geom draws the ORIGINAL UStaticMesh, whose vertices still carry the
+ * asset's own origin, so it must undo that recentre to sit where the compiled
+ * geom does. `Pos`/`Quat` compose onto the geom-frame world pose to do exactly
+ * that; an identity value leaves the pose untouched.
+ */
+struct FMjMeshFrameInverse
+{
+	double Pos[3] = {0.0, 0.0, 0.0};
+	double Quat[4] = {1.0, 0.0, 0.0, 0.0};
+};
+
 class URLAB_API FMjImportedAssetResolver : public IMjGeomAssetResolver
 {
 public:
@@ -31,6 +49,12 @@ public:
 		TMap<int32, TWeakObjectPtr<UMjGeom>> InGeomIndex);
 
 	virtual UPrimitiveComponent* MakeGeomComponent(int32 GeomId, AActor* Body) const override;
+
+	// The mesh-frame correction for a geom that draws a raw imported/converted
+	// asset, or null when the geom needs none (a primitive, or a mesh drawn from
+	// the compiled `mesh_vert` through the baked fallback). Recorded when the geom's
+	// component is built.
+	virtual const FMjMeshFrameInverse* FindMeshFrameInverse(int32 GeomId) const override { return MeshFrameInverse.Find(GeomId); }
 
 private:
 	// Apply the geom's authored material onto Comp: resolve the `<material>` the
@@ -41,11 +65,19 @@ private:
 	// The authoring element that bound to a compiled geom id, or null.
 	UMjGeom* OriginFor(int32 GeomId) const;
 
+	// Record the mesh-frame correction a raw-asset mesh geom needs, from the
+	// compiled mesh's baked pos/quat. A no-op for a mesh with no dataid.
+	void RecordMeshFrameInverse(int32 GeomId) const;
+
 	// Borrowed; the owning scene holds the mjModel and baker lifetimes.
 	mjModel_* Model = nullptr;
 
 	// Compiled geom id -> the authoring UMjGeom that bound to it.
 	TMap<int32, TWeakObjectPtr<UMjGeom>> GeomIndex;
+
+	// Compiled geom id -> the mesh-frame correction for the raw asset it draws.
+	// Filled as components are built (MakeGeomComponent is const, so this is too).
+	mutable TMap<int32, FMjMeshFrameInverse> MeshFrameInverse;
 
 	// Draws the geoms no authoring element stands behind.
 	FMjBakedAssetResolver BakedFallback;

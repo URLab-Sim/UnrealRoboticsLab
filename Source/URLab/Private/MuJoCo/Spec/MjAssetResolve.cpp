@@ -407,6 +407,11 @@ FMjResolvedMesh MjResolveMesh(const FSpecRef& Spec, const FString& Name)
 	// so applying one here as well scales the model by a hundred.
 	Out.Scale = FVector(Scale.X, Scale.Y, Scale.Z);
 	Out.Asset = Element->MeshAsset.Get();
+	Out.Materials.Reserve(Element->SourceMaterials.Num());
+	for (const TObjectPtr<UMaterialInterface>& Material : Element->SourceMaterials)
+	{
+		Out.Materials.Add(Material.Get());
+	}
 #endif
 	return Out;
 }

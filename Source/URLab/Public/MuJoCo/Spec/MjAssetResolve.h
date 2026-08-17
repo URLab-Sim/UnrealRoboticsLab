@@ -32,6 +32,7 @@
 #include "MuJoCo/Spec/MjGenHooks.h"
 
 class UMaterialInstanceDynamic;
+class UMaterialInterface;
 class UMjNodeComponent;
 class UStaticMesh;
 class UTexture2D;
@@ -175,6 +176,17 @@ struct URLAB_API FMjResolvedMesh
 	 * the time anything here sees it.
 	 */
 	FVector Scale = FVector::OneVector;
+
+	/**
+	 * The materials the mesh should draw with when it carries its own, per slot.
+	 *
+	 * Empty for an imported `<mesh>` -- the asset already holds the materials the
+	 * import produced, so the component keeps them. A converted prop records its
+	 * source actor mesh component's materials here (overrides included) so the
+	 * render view reproduces exactly what the editor showed. A null entry leaves
+	 * that slot at the asset's own material.
+	 */
+	TArray<UMaterialInterface*> Materials;
 };
 
 /**

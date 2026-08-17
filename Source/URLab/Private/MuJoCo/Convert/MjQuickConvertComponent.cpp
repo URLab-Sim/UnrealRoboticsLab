@@ -44,6 +44,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/StaticMesh.h"
+#include "Materials/MaterialInterface.h"
 #include "GameFramework/Actor.h"
 #include "PhysicsEngine/BodySetup.h"
 
@@ -487,6 +488,17 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 				if (UMjMesh* Imported = Cast<UMjMesh>(&Mesh))
 				{
 					Imported->MeshAsset = VisualAsset;
+					// A visual geom draws the actor's own mesh: carry its materials
+					// (component overrides included) so the view matches the editor.
+					if (VisualAsset != nullptr)
+					{
+						Imported->SourceMaterials.Reset();
+						const TArray<UMaterialInterface*> Materials = Smc->GetMaterials();
+						for (UMaterialInterface* Material : Materials)
+						{
+							Imported->SourceMaterials.Add(Material);
+						}
+					}
 				}
 			}
 			return Hull.Name;

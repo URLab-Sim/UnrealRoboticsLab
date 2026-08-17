@@ -312,6 +312,11 @@ private:
 	// components and render origin while it drives the shared engine.
 	friend struct FMjbDirectMode;
 
+	// Compose a geom's compiled world pose (MuJoCo frame, wxyz) with the mesh-frame
+	// correction its component needs, so a raw imported/converted StaticMesh lands
+	// where the compiled geom is. A no-op for a geom that needs no correction.
+	void CorrectMeshFrameWorld(int32 GeomId, double* WorldPos, double* WorldQuat) const;
+
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;
 

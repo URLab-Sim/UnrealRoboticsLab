@@ -1307,10 +1307,39 @@ void AMjbScene::ApplyGeomTransforms(const double* Xpos, const double* Xquat)
 		{
 			continue;
 		}
-		const FVector Loc = URLabAxisConv::MjPositionToUe(Xpos + 3 * G) + SceneOrigin;
-		const FQuat Rot = URLabAxisConv::MjQuatToUe(Xquat + 4 * G);
+		double WorldPos[3] = {Xpos[3 * G + 0], Xpos[3 * G + 1], Xpos[3 * G + 2]};
+		double WorldQuat[4] = {Xquat[4 * G + 0], Xquat[4 * G + 1], Xquat[4 * G + 2], Xquat[4 * G + 3]};
+		CorrectMeshFrameWorld(G, WorldPos, WorldQuat);
+		const FVector Loc = URLabAxisConv::MjPositionToUe(WorldPos) + SceneOrigin;
+		const FQuat Rot = URLabAxisConv::MjQuatToUe(WorldQuat);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
+}
+
+void AMjbScene::CorrectMeshFrameWorld(int32 GeomId, double* WorldPos, double* WorldQuat) const
+{
+	if (!GeomResolver.IsValid())
+	{
+		return;
+	}
+	const FMjMeshFrameInverse* Inv = GeomResolver->FindMeshFrameInverse(GeomId);
+	if (!Inv)
+	{
+		return;
+	}
+	// World = geom-frame  ∘  inverse-mesh-recentre: rotate the inverse offset into
+	// the geom frame and add it, then fold in the inverse rotation.
+	double Rotated[3];
+	mju_rotVecQuat(Rotated, Inv->Pos, WorldQuat);
+	WorldPos[0] += Rotated[0];
+	WorldPos[1] += Rotated[1];
+	WorldPos[2] += Rotated[2];
+	double Composed[4];
+	mju_mulQuat(Composed, WorldQuat, Inv->Quat);
+	WorldQuat[0] = Composed[0];
+	WorldQuat[1] = Composed[1];
+	WorldQuat[2] = Composed[2];
+	WorldQuat[3] = Composed[3];
 }
 
 void AMjbScene::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
@@ -1342,6 +1371,7 @@ void AMjbScene::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 		WorldPos[1] = Bxpos[3 * B + 1] + Rotated[1];
 		WorldPos[2] = Bxpos[3 * B + 2] + Rotated[2];
 		mju_mulQuat(WorldQuat, Bxquat + 4 * B, Model->geom_quat + 4 * G);
+		CorrectMeshFrameWorld(G, WorldPos, WorldQuat);
 		const FVector Loc = URLabAxisConv::MjPositionToUe(WorldPos) + SceneOrigin;
 		const FQuat Rot = URLabAxisConv::MjQuatToUe(WorldQuat);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
@@ -1523,9 +1553,13 @@ void AMjbScene::ApplyFromData()
 		{
 			continue;
 		}
-		// mjData stores geom orientation as a 3x3 (geom_xmat); convert to a UE quat.
-		const FVector Loc = URLabAxisConv::MjPositionToUe(Data->geom_xpos + 3 * G) + SceneOrigin;
-		const FQuat Rot = MjMat3ToUeQuat(Data->geom_xmat + 9 * G);
+		// mjData stores geom orientation as a 3x3 (geom_xmat); convert to a wxyz quat.
+		double WorldPos[3] = {Data->geom_xpos[3 * G + 0], Data->geom_xpos[3 * G + 1], Data->geom_xpos[3 * G + 2]};
+		double WorldQuat[4];
+		mju_mat2Quat(WorldQuat, Data->geom_xmat + 9 * G);
+		CorrectMeshFrameWorld(G, WorldPos, WorldQuat);
+		const FVector Loc = URLabAxisConv::MjPositionToUe(WorldPos) + SceneOrigin;
+		const FQuat Rot = URLabAxisConv::MjQuatToUe(WorldQuat);
 		Comp->SetWorldLocationAndRotation(Loc, Rot);
 	}
 	ApplyCameraPoses(nullptr, nullptr); // rest pose from mjData

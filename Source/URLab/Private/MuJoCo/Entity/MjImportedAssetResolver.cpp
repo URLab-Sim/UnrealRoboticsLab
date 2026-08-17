@@ -133,6 +133,35 @@ UMjGeom* FMjImportedAssetResolver::OriginFor(int32 GeomId) const
 	return nullptr;
 }
 
+void FMjImportedAssetResolver::RecordMeshFrameInverse(int32 G) const
+{
+	if (!Model)
+	{
+		return;
+	}
+	const int32 MeshId = Model->geom_dataid[G];
+	if (MeshId < 0)
+	{
+		return;
+	}
+	const double* MeshPos = Model->mesh_pos + 3 * MeshId;
+	const double* MeshQuat = Model->mesh_quat + 4 * MeshId;
+
+	// Inverse of the mesh's baked pose (mesh_pos, mesh_quat), in MuJoCo's frame:
+	// quat conjugate, and the position rotated back and negated.
+	FMjMeshFrameInverse Inv;
+	Inv.Quat[0] = MeshQuat[0];
+	Inv.Quat[1] = -MeshQuat[1];
+	Inv.Quat[2] = -MeshQuat[2];
+	Inv.Quat[3] = -MeshQuat[3];
+	double Rotated[3];
+	mju_rotVecQuat(Rotated, MeshPos, Inv.Quat);
+	Inv.Pos[0] = -Rotated[0];
+	Inv.Pos[1] = -Rotated[1];
+	Inv.Pos[2] = -Rotated[2];
+	MeshFrameInverse.Add(G, Inv);
+}
+
 void FMjImportedAssetResolver::ApplyImportedMaterial(UPrimitiveComponent* Comp, UMjGeom* Geom, int32 G) const
 {
 	UMaterialInterface* Master = MjLoadMasterMaterial();
@@ -215,6 +244,19 @@ UPrimitiveComponent* FMjImportedAssetResolver::MakeGeomComponent(int32 G, AActor
 		Comp->SetStaticMesh(Resolved.Asset);
 		// `<mesh scale>` only: the import already put the asset in the level's units.
 		Comp->SetRelativeScale3D(Resolved.Scale);
+		// The materials the source carried, where it carried its own (a converted
+		// prop records its actor mesh component's materials, overrides included).
+		// Applied before the spec pass so a spec that asks for no colour keeps them.
+		for (int32 Slot = 0; Slot < Resolved.Materials.Num(); ++Slot)
+		{
+			if (Resolved.Materials[Slot])
+			{
+				Comp->SetMaterial(Slot, Resolved.Materials[Slot]);
+			}
+		}
+		// The raw asset keeps its own origin; undo the compile-time mesh recentre so
+		// it draws where the compiled geom (and the collider) is.
+		RecordMeshFrameInverse(G);
 		ApplyImportedMaterial(Comp, Geom, G);
 		return Comp;
 	}

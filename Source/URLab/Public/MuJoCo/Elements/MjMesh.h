@@ -32,6 +32,7 @@
 #include "MjMesh.generated.h"
 
 class UStaticMesh;
+class UMaterialInterface;
 
 /**
  * A `<mesh>` element and the Unreal asset it stands for.
@@ -54,6 +55,18 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Mesh")
 	TObjectPtr<UStaticMesh> MeshAsset;
+
+	/**
+	 * The materials the render view draws this mesh with, per slot, when the spec
+	 * asks for no colour of its own.
+	 *
+	 * Left empty by the import pass -- an imported asset already carries its
+	 * materials. A converted prop fills it from its source actor mesh component
+	 * (overrides included), so the play view reproduces the actor's own look
+	 * rather than the asset's bare slots.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInterface>> SourceMaterials;
 
 	/**
 	 * The asset `File` stands for.

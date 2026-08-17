@@ -17,6 +17,8 @@
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
 #include "State/MjStateProducer.h"
+#include "MuJoCo/Spec/MjNodeDiagnostics.h"
+#include "MuJoCo/Spec/MjNodeScale.h"
 
 #include "MjNodeComponent.generated.h"
 
@@ -86,6 +88,14 @@ class URLAB_API UMjNodeComponent : public USceneComponent
 	, public IMjStateProducer
 {
 	GENERATED_BODY()
+
+	// The preview-problem bookkeeping and the scale-policy write-back live as free
+	// functions in `urlab::spec`; they reach the protected preview state
+	// (`PreviewProblemKeys`, `LastPreviewTransform`) through the node reference
+	// they are handed, so the members that forward to them befriend them here.
+	friend void urlab::spec::MjNodeNotePreviewProblem(UMjNodeComponent&, EMjPreviewProblem, const FString&);
+	friend void urlab::spec::MjNodeClearPreviewProblem(UMjNodeComponent&, EMjPreviewProblem);
+	friend void urlab::spec::MjNodeConstrainPreviewScale(UMjNodeComponent&);
 
 public:
 	UMjNodeComponent();

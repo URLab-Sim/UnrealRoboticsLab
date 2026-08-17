@@ -740,6 +740,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		TArray<TSharedPtr<FJsonValue>> Capabilities;
 		for (const FString& Cap : FURLabInstanceRegistry::Capabilities())
 			Capabilities.Add(MakeShared<FJsonValueString>(Cap));
+		// Instance capabilities (composable, orthogonal to the pose source): whether this instance
+		// streams cameras and/or accepts interactive input, so a peer knows what it can ask of it.
+		if (Manager->HasCapability(EMjCapability::StreamCameras))
+			Capabilities.Add(MakeShared<FJsonValueString>(TEXT("stream_cameras")));
+		if (Manager->HasCapability(EMjCapability::AcceptInput))
+			Capabilities.Add(MakeShared<FJsonValueString>(TEXT("accept_input")));
 		Instance->SetArrayField(TEXT("capabilities"), Capabilities);
 
 		Reply->SetObjectField(TEXT("instance"), Instance);

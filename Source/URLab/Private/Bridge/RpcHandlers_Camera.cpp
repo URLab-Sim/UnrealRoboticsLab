@@ -280,6 +280,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetCameraStreaming(
 	if (!Mgr)
 		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
 
+	// Camera streaming is a capability: an instance with StreamCameras off does not publish frames.
+	if (!Mgr->HasCapability(EMjCapability::StreamCameras))
+		return MakeError(URLabError::CapabilityDisabled,
+			TEXT("this instance does not stream cameras (StreamCameras capability is off)"));
+
 	const TSharedPtr<FJsonObject>* CamObj = nullptr;
 	if (!Req->TryGetObjectField(TEXT("cameras"), CamObj) || !CamObj || !CamObj->IsValid())
 		return MakeError(URLabError::MissingField,

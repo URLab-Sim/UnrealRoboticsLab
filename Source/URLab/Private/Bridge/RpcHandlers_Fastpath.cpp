@@ -198,6 +198,12 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TShared
 		return MakeError(URLabError::NotReady,
 			TEXT("no live model to perturb (start a live/direct session first)"));
 	}
+	// Interactive input is a capability: an instance with AcceptInput off refuses forwarded perturbs.
+	if (!Mgr->HasCapability(EMjCapability::AcceptInput))
+	{
+		return MakeError(URLabError::CapabilityDisabled,
+			TEXT("this instance does not accept input (AcceptInput capability is off)"));
+	}
 
 	double BodyNum = -1.0;
 	if (!Req->TryGetNumberField(TEXT("body"), BodyNum) || BodyNum < 0.0)

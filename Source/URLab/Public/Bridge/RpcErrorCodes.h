@@ -43,6 +43,7 @@ inline const TCHAR* StepTimeout = TEXT("step_timeout");
 inline const TCHAR* Timeout = TEXT("timeout");
 inline const TCHAR* ReplyTooLarge = TEXT("reply_too_large");
 inline const TCHAR* WrongTransport = TEXT("wrong_transport");
+inline const TCHAR* CapabilityDisabled = TEXT("capability_disabled");
 inline const TCHAR* UnknownJob = TEXT("unknown_job");
 inline const TCHAR* ShuttingDown = TEXT("shutting_down");
 // Recording

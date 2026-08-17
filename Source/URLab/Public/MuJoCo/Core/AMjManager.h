@@ -27,6 +27,7 @@
 #include "GameFramework/Actor.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjPoseSource.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
 #include "Transport/SnapshotPublisher.h"
@@ -256,6 +257,30 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|UI")
 	bool bAutoCreateSimulateWidget = true;
+
+	// --- Capabilities (composable, orthogonal to the pose source) ---
+
+	/**
+	 * @brief Whether this instance publishes camera frames (its model cameras and/or its own view).
+	 *
+	 * A composable capability, not a mode: it turns the "render server" role on or off independently
+	 * of the pose source, and is advertised in the handshake so peers know this instance streams.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Capabilities")
+	bool bStreamCameras = true;
+
+	/**
+	 * @brief Whether this instance accepts interactive input (xfrc / wrench / drag) into its sim.
+	 *
+	 * A composable capability, not a mode: it turns the "viewer accepts input" role on or off. When
+	 * off, forwarded perturbation input is rejected. Advertised in the handshake.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Capabilities")
+	bool bAcceptInput = true;
+
+	/** True if this instance currently has the given capability enabled. */
+	UFUNCTION(BlueprintPure, Category = "MuJoCo|Capabilities")
+	bool HasCapability(EMjCapability Capability) const;
 
 	// --- Remote Stepping ---
 

@@ -22,7 +22,10 @@ enum class EMjPoseSource : uint8
 /**
  * Composable, OPEN capability set on an instance -- NOT modes. New features are added as
  * capabilities, never as a new mode. "Render server" = StreamCameras; "viewer" = AcceptInput.
+ * Capabilities compose freely with any EMjPoseSource: a Mirror can also stream its own view and
+ * accept input at the same time, with no new mode.
  */
+UENUM(BlueprintType, meta = (Bitflags))
 enum class EMjCapability : uint8
 {
 	None          = 0,

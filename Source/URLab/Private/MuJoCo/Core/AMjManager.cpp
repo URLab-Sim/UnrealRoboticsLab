@@ -1137,6 +1137,19 @@ AAMjManager* AAMjManager::GetManager()
 	return Instance;
 }
 
+bool AAMjManager::HasCapability(EMjCapability Capability) const
+{
+	switch (Capability)
+	{
+		case EMjCapability::StreamCameras:
+			return bStreamCameras;
+		case EMjCapability::AcceptInput:
+			return bAcceptInput;
+		default:
+			return false;
+	}
+}
+
 UMjPhysicsEngine* AAMjManager::ResolveEngine(const UObject* WorldCtx)
 {
 	if (AAMjManager* Manager = GetManager())

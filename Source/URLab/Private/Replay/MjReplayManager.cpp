@@ -23,6 +23,7 @@
 #include "Utils/URLabLogging.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "JsonObjectConverter.h"
 #include "Misc/FileHelper.h"
@@ -211,20 +212,24 @@ void AMjReplayManager::SetActiveSession(const FString& Name)
 
 void AMjReplayManager::RebuildArticulationBindings()
 {
-	// Preserve existing settings (enabled/relpos) for articulations that still match
-	TMap<FString, FReplayArticulationBinding> OldBindings;
+	// Preserve existing settings (enabled/relpos) for entities that still match
+	TMap<FName, FReplayArticulationBinding> OldBindings;
 	for (const FReplayArticulationBinding& B : ArticulationBindings)
 	{
-		if (B.Articulation.IsValid())
+		if (!B.EntityName.IsNone())
 		{
-			OldBindings.Add(B.Articulation->GetName(), B);
+			OldBindings.Add(B.EntityName, B);
 		}
 	}
 	ArticulationBindings.Empty();
 
 	if (!Manager)
 		Manager = AAMjManager::GetManager();
-	if (!Manager)
+	if (!Manager || !Manager->PhysicsEngine)
+		return;
+
+	mjModel* m = Manager->PhysicsEngine->GetModel();
+	if (!m)
 		return;
 
 	TArray<FMjReplayFrame>& Frames = GetActiveFrames();
@@ -232,31 +237,32 @@ void AMjReplayManager::RebuildArticulationBindings()
 		return;
 
 	const FMjReplayFrame& FirstFrame = Frames[0];
-	TArray<AMjArticulation*> Articulations = Manager->GetAllArticulations();
-	UE_LOG(LogURLabReplay, Log, TEXT("RebuildArticulationBindings: %d articulations, %d CSV joints in session '%s'"),
-		Articulations.Num(), FirstFrame.JointStates.Num(), *ActiveSessionName);
+	const TArray<FMjEntity>& Entities = Manager->PhysicsEngine->GetEntityPartition();
+	UE_LOG(LogURLabReplay, Log, TEXT("RebuildArticulationBindings: %d entities, %d CSV joints in session '%s'"),
+		Entities.Num(), FirstFrame.JointStates.Num(), *ActiveSessionName);
 
-	for (AMjArticulation* Art : Articulations)
+	for (const FMjEntity& E : Entities)
 	{
-		if (!Art)
-			continue;
+		const FString EntityName = E.Name.ToString();
+		const FString Prefix = EntityName + TEXT("_");
 
-		FString ActorName = Art->GetName();
-
-		TArray<FString> JointNames = Art->GetJointNames();
-		UE_LOG(LogURLabReplay, Log, TEXT("  Checking articulation '%s' — %d joint names"), *ActorName, JointNames.Num());
 		bool bHasMatch = false;
-		FString FoundPrefix;
-
-		for (const FString& UEJointName : JointNames)
+		for (int32 JointId : E.JointIds)
 		{
-			// Extract the bare joint name by finding the last occurrence of a known separator
+			if (JointId < 0 || JointId >= m->njnt)
+				continue;
+			const char* NameC = mj_id2name(m, mjOBJ_JOINT, JointId);
+			if (!NameC)
+				continue;
+			const FString UEJointName = UTF8_TO_TCHAR(NameC);
+
+			// Extract the bare joint name by stripping the entity prefix
 			// MuJoCo names are like "g1_29dof_beyondmimic_C_1_left_hip_pitch_joint"
-			// We want to compare just "left_hip_pitch_joint" — find it by stripping the actor prefix
+			// We want to compare just "left_hip_pitch_joint" — find it by stripping the entity prefix
 			FString BareJointName = UEJointName;
-			if (UEJointName.StartsWith(ActorName + TEXT("_")))
+			if (UEJointName.StartsWith(Prefix))
 			{
-				BareJointName = UEJointName.Mid(ActorName.Len() + 1);
+				BareJointName = UEJointName.Mid(Prefix.Len());
 			}
 
 			for (auto& Pair : FirstFrame.JointStates)
@@ -275,12 +281,11 @@ void AMjReplayManager::RebuildArticulationBindings()
 		if (bHasMatch)
 		{
 			FReplayArticulationBinding Binding;
-			Binding.Articulation = Art;
-			Binding.InitialPosition = Art->GetActorLocation();
+			Binding.EntityName = E.Name;
 			Binding.bInitialsCaptured = false;
 
-			// Restore previous settings if this articulation was already bound
-			if (FReplayArticulationBinding* Old = OldBindings.Find(ActorName))
+			// Restore previous settings if this entity was already bound
+			if (FReplayArticulationBinding* Old = OldBindings.Find(E.Name))
 			{
 				Binding.bEnabled = Old->bEnabled;
 				Binding.bRelativePosition = Old->bRelativePosition;
@@ -295,7 +300,7 @@ void AMjReplayManager::RebuildArticulationBindings()
 			}
 
 			ArticulationBindings.Add(Binding);
-			UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: Bound articulation '%s'"), *ActorName);
+			UE_LOG(LogURLabReplay, Log, TEXT("ReplayManager: Bound entity '%s'"), *EntityName);
 		}
 	}
 }
@@ -1074,9 +1079,9 @@ void AMjReplayManager::OnReplayStep(mjModel* m, mjData* d)
 			// Find which binding this joint belongs to and extract its bare name
 			for (const FReplayArticulationBinding& B : ArticulationBindings)
 			{
-				if (!B.bEnabled || !B.Articulation.IsValid())
+				if (!B.bEnabled || B.EntityName.IsNone())
 					continue;
-				FString ArtName = B.Articulation->GetName();
+				FString ArtName = B.EntityName.ToString();
 				FString ArtPrefix = ArtName + TEXT("_");
 
 				if (Name.StartsWith(ArtPrefix))
@@ -1150,7 +1155,7 @@ void AMjReplayManager::OnReplayStep(mjModel* m, mjData* d)
 			FReplayArticulationBinding* Binding = nullptr;
 			for (FReplayArticulationBinding& B : ArticulationBindings)
 			{
-				if (B.Articulation.IsValid() && Name.Contains(B.Articulation->GetName()))
+				if (!B.EntityName.IsNone() && Name.Contains(B.EntityName.ToString()))
 				{
 					Binding = &B;
 					break;
@@ -1208,7 +1213,7 @@ void AMjReplayManager::OnReplayStep(mjModel* m, mjData* d)
 						Binding->bInitialsCaptured = true;
 
 						UE_LOG(LogURLabReplay, Log, TEXT("RelPos captured for '%s': MjPos=(%.4f,%.4f,%.4f) CsvStart=(%.4f,%.4f,%.4f)"),
-							*Binding->Articulation->GetName(),
+							*Binding->EntityName.ToString(),
 							Binding->InitialMjPosition.X, Binding->InitialMjPosition.Y, Binding->InitialMjPosition.Z,
 							Binding->CsvStartPosition.X, Binding->CsvStartPosition.Y, Binding->CsvStartPosition.Z);
 					}

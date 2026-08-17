@@ -1032,20 +1032,22 @@ void AAMjManager::BuildRuntimeView()
 	OverlayRenderer->SetModel(Model);
 
 	// The render view now carries every pose, camera, and overlay the articulations used to
-	// drive, so the authoring actors are retired. Re-home each art's authored logic onto its
-	// thin runtime entity first (an art with no logic spawns no entity), then destroy the arts.
-	// UnregisterArticulation drops each from both the registry array and the non-UPROPERTY name
-	// map under CallbackMutex, so no consumer resolves a stale actor through GetArticulation.
+	// drive, so the authoring actors are retired. Re-home each art's authored logic and possess
+	// config onto its thin runtime entity first, then destroy the arts. UnregisterArticulation
+	// drops each from both the registry array and the non-UPROPERTY name map under CallbackMutex,
+	// so no consumer resolves a stale actor through GetArticulation.
 	for (AMjArticulation* Art : Arts)
 	{
 		if (!Art)
 			continue;
+		AMjEntity* E = GetEntity(FName(*Art->GetName()));
+		if (!E)
+			continue;
 		TArray<UMjEntityLogicComponent*> Logic;
 		Art->GetComponents<UMjEntityLogicComponent>(Logic);
-		if (Logic.Num() == 0)
-			continue;
-		if (AMjEntity* E = GetEntity(FName(*Art->GetName())))
+		if (Logic.Num() > 0)
 			MjEntityHandoff::TransferAuthoredLogic(Art, E);
+		MjEntityHandoff::TransferPossessConfig(Art, E);
 	}
 	for (AMjArticulation* Art : Arts)
 	{

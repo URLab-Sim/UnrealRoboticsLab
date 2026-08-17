@@ -30,7 +30,8 @@
 #include "MuJoCo/Gen/Elements/Options/MjFlag.gen.h"
 #include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
 #include "MuJoCo/Gen/MjKeywords.gen.h"
-#include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Entity/MjEntity.h"
+#include "MuJoCo/Entity/MjEntityPawn.h"
 #include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "MuJoCo/Elements/MjSensorRuntime.h"
 #include "MuJoCo/Elements/MjCamera.h"
@@ -54,6 +55,8 @@
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Misc/Guid.h"
+#include "Async/Async.h"
+#include "HAL/PlatformProcess.h"
 #include "Utils/URLabLogging.h"
 
 // =============================================================================
@@ -118,6 +121,22 @@ bool TryReadVec3(const TSharedPtr<FJsonObject>& Obj, const TCHAR* Key, double Ou
 	Out[1] = (*Arr)[1]->AsNumber();
 	Out[2] = (*Arr)[2]->AsNumber();
 	return true;
+}
+
+/** Run a function on the game thread and block until it finishes. Finding the entity's possess
+ *  pawn walks the world with TActorIterator, which asserts game-thread; these RPC handlers run on
+ *  the step-server thread. Runs inline when already on the game thread. */
+void RunOnGameThreadBlocking(TFunctionRef<void()> Fn)
+{
+	if (IsInGameThread())
+	{
+		Fn();
+		return;
+	}
+	FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
+	AsyncTask(ENamedThreads::GameThread, [&Fn, Done]() { Fn(); Done->Trigger(); });
+	Done->Wait();
+	FPlatformProcess::ReturnSynchEventToPool(Done);
 }
 } // namespace
 
@@ -378,18 +397,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJs
 	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
 		return MakeError(URLabError::MissingField, TEXT("set_twist requires 'articulation'"));
 
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
-		return MakeError(URLabError::UnknownArticulation, ArtName);
-
-	if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(FName(*Art->GetName()), Req))
-		return Denied;
-
-	UMjTwistController* TC = Art->FindComponentByClass<UMjTwistController>();
-	if (!TC)
-		return MakeError(URLabError::NoTwistController,
-			FString::Printf(TEXT("Articulation '%s' has no UMjTwistController"), *ArtName));
-
 	// Wire format mirrors how the bridge already reads twist: linear is
 	// (vx, vy, _) m/s, angular is (_, _, yaw_rate) rad/s. Tuple slots
 	// beyond the ones used are accepted but ignored.
@@ -407,7 +414,34 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJs
 	ReadAxis(LinArr, 1, Vy);
 	ReadAxis(AngArr, 2, YawRate);
 
-	TC->SetTwist(Vx, Vy, YawRate);
+	// Twist is a possess/teleop command, not a sim write: it lands on the entity's
+	// possess pawn (re-homed off the retired articulation), which publishes it as the
+	// entity's twist state. Address it by the same entity vocabulary as every other
+	// control op. A key the partition does not know, or an entity with no possess pawn,
+	// is a clean no-op reply rather than an error, so a caller can drive twist without
+	// checking whether an interactive pawn happens to exist.
+	if (const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName))
+	{
+		if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(Entity->Name, Req))
+			return Denied;
+
+		const FName EntityName = Entity->Name;
+		TWeakObjectPtr<AAMjManager> WeakMgr(Mgr);
+		RunOnGameThreadBlocking([WeakMgr, EntityName, Vx, Vy, YawRate]() {
+			AAMjManager* GTMgr = WeakMgr.Get();
+			UWorld* World = GTMgr ? GTMgr->GetWorld() : nullptr;
+			if (!World)
+				return;
+			for (TActorIterator<AMjEntityPawn> It(World); It; ++It)
+			{
+				if (It->OwnerEntityName != EntityName)
+					continue;
+				if (UMjTwistController* TC = It->FindComponentByClass<UMjTwistController>())
+					TC->SetTwist(Vx, Vy, YawRate);
+				break;
+			}
+		});
+	}
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("set_twist_ok"));

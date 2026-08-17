@@ -109,6 +109,11 @@ struct FReplayArticulationBinding
 	UPROPERTY()
 	TWeakObjectPtr<AMjArticulation> Articulation;
 
+	/** @brief Stable entity identity (compiled participant prefix) this binding matches joints by.
+	 *  Replay resolves and filters against this model-derived name, not the actor, so it keeps
+	 *  working when articulation actors are absent at play. */
+	FName EntityName;
+
 	/** @brief Whether this articulation participates in the replay. */
 	UPROPERTY()
 	bool bEnabled = true;

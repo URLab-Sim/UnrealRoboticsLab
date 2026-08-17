@@ -21,11 +21,13 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 #include "Transport/ZmqSubscribeTransport.h"
-#include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Core/AMjManager.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntity.h"
+#include "MuJoCo/Entity/MjControl.h"
+#include "MuJoCo/Entity/MjControlIngress.h"
+#include "Bridge/RpcDispatcher.h"
 #include "Transport/NetworkManager.h"
-#include "MuJoCo/Elements/MjActuatorRuntime.h"
 #include "zmq.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "Serialization/JsonSerializer.h"
@@ -70,19 +72,16 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 	}
 
 	AAMjManager* Manager = OwningManager.Get();
-	if (Manager)
+	if (Manager && Manager->PhysicsEngine)
 	{
-		for (AMjArticulation* Artic : Manager->GetAllArticulations())
+		for (const FMjEntity& E : Manager->PhysicsEngine->GetEntityPartition())
 		{
-			if (Artic)
+			FString ControlFilter = FString::Printf(TEXT("%s/control "), *E.Name.ToString());
 			{
-				FString ControlFilter = FString::Printf(TEXT("%s/control "), *Artic->GetName());
-				{
-					const FTCHARToUTF8 FilterUtf8(*ControlFilter);
-					zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, FilterUtf8.Get(), FilterUtf8.Length());
-				}
-				UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Subscribed to: %s"), *ControlFilter);
+				const FTCHARToUTF8 FilterUtf8(*ControlFilter);
+				zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, FilterUtf8.Get(), FilterUtf8.Length());
 			}
+			UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber Subscribed to: %s"), *ControlFilter);
 		}
 	}
 	else
@@ -126,35 +125,25 @@ void UURLabZmqSubscribeTransport::ShutdownZmqSocket()
 
 void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 {
-	ActuatorCache.Empty();
-	ActuatorToArticulationName.Empty();
+	ActuatorToEntityName.Empty();
 	if (!m)
 		return;
 
 	AAMjManager* Manager = OwningManager.Get();
-	if (!Manager)
+	if (!Manager || !Manager->PhysicsEngine)
 		return;
 
-	for (AMjArticulation* Articulation : Manager->GetAllArticulations())
+	for (const FMjEntity& E : Manager->PhysicsEngine->GetEntityPartition())
 	{
-		if (!Articulation)
-			continue;
-
-		const FName ArtName(*Articulation->GetName());
-		for (UMjNodeComponent* Actuator : Articulation->GetActuators())
+		for (int32 Id : E.ActuatorIds)
 		{
-			if (Actuator == nullptr || !Actuator->GetBoundId().IsSet())
-			{
+			if (Id < 0 || Id >= m->nu)
 				continue;
-			}
-			const int32 Id = Actuator->GetBoundId().GetValue();
-			ActuatorCache.Add(Actuator->MjName.Get(Actuator->GetName()), Id);
-			ActuatorComponentCache.Add(Id, Actuator);
-			ActuatorToArticulationName.Add(Id, ArtName);
+			ActuatorToEntityName.Add(Id, E.Name);
 		}
 	}
 	bCacheBuilt = true;
-	UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber: Built cache for %d actuators"), ActuatorCache.Num());
+	UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber: Built cache for %d actuators"), ActuatorToEntityName.Num());
 }
 
 void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
@@ -163,48 +152,44 @@ void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
 		return;
 
 	AAMjManager* Manager = OwningManager.Get();
-	if (!Manager)
+	if (!Manager || !Manager->PhysicsEngine)
 		return;
 
-	// Broadcast an info message per robot
-	for (AMjArticulation* Articulation : Manager->GetAllArticulations())
+	// Broadcast an info message per entity
+	for (const FMjEntity& E : Manager->PhysicsEngine->GetEntityPartition())
 	{
-		if (!Articulation)
-			continue;
-
-		FString ArticName = Articulation->GetName();
-		FString Prefix = ArticName + "_";
+		FString EntityName = E.Name.ToString();
 
 		TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
 		RootObject->SetStringField("type", "actuator_list");
-		RootObject->SetStringField("robot", ArticName);
+		RootObject->SetStringField("robot", EntityName);
 
 		TArray<TSharedPtr<FJsonValue>> NamesArray;
 		TArray<TSharedPtr<FJsonValue>> IdsArray;
 		TArray<TSharedPtr<FJsonValue>> MinsArray;
 		TArray<TSharedPtr<FJsonValue>> MaxsArray;
 
-		for (auto& Pair : ActuatorCache)
+		for (int32 Id : E.ActuatorIds)
 		{
-			// Only include actuators for this specific robot
-			if (Pair.Key.StartsWith(Prefix))
-			{
-				NamesArray.Add(MakeShareable(new FJsonValueString(Pair.Key)));
-				IdsArray.Add(MakeShareable(new FJsonValueNumber(Pair.Value)));
+			if (Id < 0 || Id >= m->nu)
+				continue;
 
-				static constexpr float kDefaultCtrlMin = -100.0f;
-				static constexpr float kDefaultCtrlMax = 100.0f;
-				int id = Pair.Value;
-				float min_val = kDefaultCtrlMin; // Default reasonable fallback if not limited
-				float max_val = kDefaultCtrlMax;
-				if (m->actuator_ctrllimited[id])
-				{
-					min_val = (float)m->actuator_ctrlrange[id * 2];
-					max_val = (float)m->actuator_ctrlrange[id * 2 + 1];
-				}
-				MinsArray.Add(MakeShareable(new FJsonValueNumber(min_val)));
-				MaxsArray.Add(MakeShareable(new FJsonValueNumber(max_val)));
+			const char* NameC = mj_id2name(m, mjOBJ_ACTUATOR, Id);
+			FString Name = NameC ? UTF8_TO_TCHAR(NameC) : FString::Printf(TEXT("actuator_%d"), Id);
+			NamesArray.Add(MakeShareable(new FJsonValueString(Name)));
+			IdsArray.Add(MakeShareable(new FJsonValueNumber(Id)));
+
+			static constexpr float kDefaultCtrlMin = -100.0f;
+			static constexpr float kDefaultCtrlMax = 100.0f;
+			float min_val = kDefaultCtrlMin; // Default reasonable fallback if not limited
+			float max_val = kDefaultCtrlMax;
+			if (m->actuator_ctrllimited[Id])
+			{
+				min_val = (float)m->actuator_ctrlrange[Id * 2];
+				max_val = (float)m->actuator_ctrlrange[Id * 2 + 1];
 			}
+			MinsArray.Add(MakeShareable(new FJsonValueNumber(min_val)));
+			MaxsArray.Add(MakeShareable(new FJsonValueNumber(max_val)));
 		}
 
 		RootObject->SetArrayField("names", NamesArray);
@@ -341,8 +326,11 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 		if (size >= 4)
 		{
 			AAMjManager* Manager = OwningManager.Get();
-			if (Manager)
+			if (Manager && Manager->PhysicsEngine)
 			{
+				IMjControlIngress* Ingress = Manager->PhysicsEngine->GetControlIngress();
+				FURLabRpcDispatcher* Dispatcher = Manager->GetStepDispatcher();
+
 				// Assumes x86-64 alignment and little-endian. For cross-platform, use memcpy + ntohl.
 				int32 NumControls = *(int32*)(data);
 				int32 ExpectedSize = 4 + NumControls * 8; // 4 + (4 + 4) * N
@@ -360,27 +348,20 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 						int32 Idx = *IDPtr;
 						float Value = *ValPtr;
 
-						if (UMjNodeComponent** ActuatorPtr = ActuatorComponentCache.Find(Idx))
+						if (const FName* EntityName = ActuatorToEntityName.Find(Idx))
 						{
-							if (*ActuatorPtr)
+							// A remote RPC owner takes exclusive control of its entity's actuators;
+							// the network stream stays hands-off until the claim is released.
+							const bool bOwnedElsewhere = Dispatcher
+								&& Dispatcher->GetControlOwnership().GetActiveOwners().Contains(*EntityName);
+							if (!bOwnedElsewhere && Ingress)
 							{
-								FURLabRpcDispatcher* Dispatcher = Manager->GetStepDispatcher();
-								if (Dispatcher)
-								{
-									const FName* ArtName = ActuatorToArticulationName.Find(Idx);
-									if (ArtName && Dispatcher->GetControlOwnership().GetActiveOwners().Contains(*ArtName))
-									{
-										IDPtr = (int32*)((char*)IDPtr + 8);
-										ValPtr = (float*)((char*)ValPtr + 8);
-										continue;
-									}
-								}
-								UMjActuatorRuntime::SetNetworkControl(*ActuatorPtr, Value);
+								Ingress->WriteCtrl(*EntityName, Idx, Value, MjControlWho::Network());
 							}
 						}
 						else if (bShouldLog)
 						{
-							UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: Actuator ID %d not found in cache (cache size: %d)"), Idx, ActuatorComponentCache.Num());
+							UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: Actuator ID %d not found in cache (cache size: %d)"), Idx, ActuatorToEntityName.Num());
 						}
 
 						IDPtr = (int32*)((char*)IDPtr + 8);
@@ -389,7 +370,7 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 
 					if (bShouldLog)
 					{
-						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: Applied %d controls (first val: %.4f, cache size: %d)"), NumControls, NumControls > 0 ? *(float*)(data + 8) : 0.0f, ActuatorComponentCache.Num());
+						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: Applied %d controls (first val: %.4f, cache size: %d)"), NumControls, NumControls > 0 ? *(float*)(data + 8) : 0.0f, ActuatorToEntityName.Num());
 					}
 				}
 				else

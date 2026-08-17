@@ -25,13 +25,11 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "MuJoCo/Core/MjDebugTypes.h"
-#include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MjDebugVisualizer.generated.h"
 
 // Forward declarations
 class AAMjManager;
 class UMaterialInterface;
-class UMjCamera;
 struct FMuJoCoDebugData;
 
 /** Per-body visual overlay mode applied during PIE. */
@@ -228,11 +226,9 @@ public:
 	/** @brief Loads /Engine/BasicShapes/BasicShapeMaterial and records the first vector param name. */
 	void InitializeOverlayMaterial();
 
-	/** @brief Apply per-body overlay MIDs based on DebugShaderMode, or restore originals if Off. */
-	void UpdateBodyOverlays();
-
-	/** @brief Restore original materials recorded at overlay apply time, clear caches. */
-	void ClearBodyOverlays();
+	/** @brief Copy the physics-thread overlay snapshot (per-body awake + island seed)
+	 *         under the debug lock, so the manager can drive the renderer's material tint. */
+	void GetOverlaySnapshot(TArray<int32>& OutBodyAwake, TArray<int32>& OutBodyIslandSeed);
 
 	/** @brief Rebuild / reuse the spline-mesh tendon segment pool based on the latest snapshot. */
 	void UpdateTendonTubes();
@@ -245,70 +241,8 @@ public:
 
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
-	// --- Per-camera segmentation pool ---
-	//
-	// Seg-mode UMjCameras share sibling mesh components rather than each maintaining
-	// their own. Pools are lazy: built on first Acquire, destroyed on last Release.
-	// Only two modes are poolable — InstanceSegmentation and SemanticSegmentation.
-
-	/**
-	 * @brief Subscribe a camera to the sibling-mesh pool for Mode.
-	 *        Builds the pool on first subscription, returns its sibling primitives.
-	 * @param Mode         Must be Semantic- or InstanceSegmentation; other values are a no-op.
-	 * @param Camera       Subscriber; tracked so Release can refcount correctly.
-	 * @param OutSiblings  Populated with the shared sibling primitives for the camera's ShowOnly list.
-	 */
-	void AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
-		TArray<UPrimitiveComponent*>& OutSiblings);
-
-	/**
-	 * @brief Unsubscribe a camera. When the last subscriber leaves, the pool is destroyed.
-	 */
-	void ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera);
-
-	/**
-	 * @brief Snapshot of a currently-live sibling pool. Used for tests and for
-	 *        non-seg URLab cameras that need to hide siblings via HiddenComponents.
-	 */
-	void GetSegPoolSiblings(EMjCameraMode Mode, TArray<UPrimitiveComponent*>& OutSiblings) const;
-
 private:
 	bool bVisualsHidden = false;
-
-	/** Sibling-mesh pool for InstanceSegmentation-mode cameras. Empty when no subscribers. */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> InstanceSegSiblings;
-
-	/** Sibling-mesh pool for SemanticSegmentation-mode cameras. */
-	UPROPERTY(Transient)
-	TArray<TObjectPtr<UStaticMeshComponent>> SemanticSegSiblings;
-
-	TSet<TWeakObjectPtr<UMjCamera>> InstanceSegSubscribers;
-	TSet<TWeakObjectPtr<UMjCamera>> SemanticSegSubscribers;
-
-	/** Returns a mutable ref to the pool matching Mode, or null for non-seg modes. */
-	TArray<TObjectPtr<UStaticMeshComponent>>* GetSegPoolArray(EMjCameraMode Mode);
-	TSet<TWeakObjectPtr<UMjCamera>>* GetSegSubscribers(EMjCameraMode Mode);
-
-	/** Build the seg pool for Mode by walking the world's articulations + quick-convert. */
-	void BuildSegPool(EMjCameraMode Mode);
-
-	/** Destroy all siblings in Mode's pool and clear it. */
-	void DestroySegPool(EMjCameraMode Mode);
-
-	/** Spawn one sibling mesh for a given original. Returns the new component (already registered). */
-	UStaticMeshComponent* SpawnSegSibling(UStaticMeshComponent* Original,
-		int32 BodyId, uint32 GroupHash,
-		EMjCameraMode Mode);
-
-	/** Original slot-0 material on meshes we've overridden, so we can restore. Keyed by mesh component. */
-	TMap<TWeakObjectPtr<class UMeshComponent>, class UMaterialInterface*> OriginalMaterials;
-
-	/** Original slot-1..N materials for multi-material meshes. Parallel to OriginalMaterials. */
-	TMap<TWeakObjectPtr<class UMeshComponent>, TMap<int32, class UMaterialInterface*>> OriginalSlotMaterials;
-
-	/** Dynamic material instances we created per mesh, reused across ticks. */
-	TMap<TWeakObjectPtr<class UMeshComponent>, class UMaterialInstanceDynamic*> ActiveMIDs;
 
 	/** Pool of spline-mesh components used by the tube tendon render style. Grown on demand. */
 	UPROPERTY(Transient)

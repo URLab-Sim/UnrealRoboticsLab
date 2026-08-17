@@ -24,6 +24,13 @@ class UMjQuickConvertComponent;
 class UMjRendererAssetBaker;
 class UMjRendererBus;
 class UTexture;
+class UMjCamera;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
+class UMeshComponent;
+class UStaticMeshComponent;
+enum class EMjCameraMode : uint8;
+enum class EMjDebugShaderMode : uint8;
 
 /**
  * @class AMjRenderer
@@ -309,6 +316,51 @@ public:
 	/** Geom render components actually built (skips hidden/mesh/unsupported). */
 	int32 NumBuiltGeoms() const;
 
+	// --- Debug overlay material tint (owned by the renderer that owns the geoms) ---
+
+	/** Parent material for the per-geom overlay MIDs, probed from engine content. */
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> OverlayParentMaterial = nullptr;
+
+	/** Vector parameter name on OverlayParentMaterial that accepts the overlay colour. */
+	FName OverlayColorParam = NAME_None;
+
+	/** Load /Engine/BasicShapes/BasicShapeMaterial and record its first vector param
+	 *  name, so the overlay MIDs and segmentation siblings have a tint parameter. */
+	void InitializeOverlayMaterial();
+
+	/** Swap per-geom overlay MIDs on this renderer's own geom components, coloured by
+	 *  Mode from the physics-thread island seed / awake snapshot. The visualizer only
+	 *  supplies mode + data; the renderer applies it to the geometry it owns. */
+	void ApplyMaterialOverlay(EMjDebugShaderMode Mode, const TArray<int32>& BodyAwake,
+		const TArray<int32>& BodyIslandSeed, bool bModulateBySleep,
+		float SleepValueScale, float SleepSaturationScale);
+
+	/** Restore the materials recorded at overlay apply time and clear the caches. */
+	void ClearMaterialOverlay();
+
+	// --- Per-camera segmentation pool (siblings of this renderer's geom components) ---
+	//
+	// Seg-mode UMjCameras share sibling mesh components rather than each maintaining
+	// their own. Pools are lazy: built on first Acquire, destroyed on last Release.
+	// Only two modes are poolable — InstanceSegmentation and SemanticSegmentation.
+
+	/**
+	 * Subscribe a camera to the sibling-mesh pool for Mode, building the pool on the
+	 * first subscription and returning its sibling primitives for the camera's
+	 * ShowOnly list. Mode must be Semantic- or InstanceSegmentation; other values are
+	 * a no-op. Camera is tracked so Release can refcount correctly.
+	 */
+	void AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
+		TArray<UPrimitiveComponent*>& OutSiblings);
+
+	/** Unsubscribe a camera. When the last subscriber leaves, the pool is destroyed. */
+	void ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera);
+
+	/** Snapshot of a currently-live sibling pool. Used for tests and for non-seg
+	 *  cameras that hide siblings via HiddenComponents. */
+	void GetSegPoolSiblings(EMjCameraMode Mode, TArray<UPrimitiveComponent*>& OutSiblings) const;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void BeginDestroy() override;
@@ -384,6 +436,40 @@ private:
 	TArray<TObjectPtr<AActor>> BodyActors;
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UPrimitiveComponent>> GeomComps;
+
+	// --- Debug overlay material tint state ---------------------------------- //
+	// Original slot-0 materials on geom components we've overridden, so we can restore.
+	TMap<TWeakObjectPtr<UMeshComponent>, TObjectPtr<UMaterialInterface>> OriginalMaterials;
+	// Original slot-1..N materials for multi-material meshes. Parallel to OriginalMaterials.
+	TMap<TWeakObjectPtr<UMeshComponent>, TMap<int32, TObjectPtr<UMaterialInterface>>> OriginalSlotMaterials;
+	// Dynamic material instances we created per mesh, reused across drives.
+	TMap<TWeakObjectPtr<UMeshComponent>, TObjectPtr<UMaterialInstanceDynamic>> ActiveMIDs;
+
+	// --- Per-camera segmentation pool --------------------------------------- //
+	// Sibling-mesh pool for InstanceSegmentation-mode cameras. Empty when no subscribers.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> InstanceSegSiblings;
+	// Sibling-mesh pool for SemanticSegmentation-mode cameras.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> SemanticSegSiblings;
+	TSet<TWeakObjectPtr<UMjCamera>> InstanceSegSubscribers;
+	TSet<TWeakObjectPtr<UMjCamera>> SemanticSegSubscribers;
+
+	// Mutable ref to the pool / subscriber set matching Mode, or null for non-seg modes.
+	TArray<TObjectPtr<UStaticMeshComponent>>* GetSegPoolArray(EMjCameraMode Mode);
+	TSet<TWeakObjectPtr<UMjCamera>>* GetSegSubscribers(EMjCameraMode Mode);
+	// Build Mode's pool by walking this renderer's geom components (plus the authoring
+	// meshes + quick-convert props in the editor/test harness).
+	void BuildSegPool(EMjCameraMode Mode);
+	// Destroy all siblings in Mode's pool and clear it.
+	void DestroySegPool(EMjCameraMode Mode);
+	// Spawn one sibling mesh for a given original. Returns the new component (registered).
+	UStaticMeshComponent* SpawnSegSibling(UStaticMeshComponent* Original,
+		int32 BodyId, uint32 GroupHash, EMjCameraMode Mode);
+
+	// Resolve the level's manager without spawning one; null in a bare test world with
+	// no manager. Used by the overlay + segmentation walks that reach the articulations.
+	AAMjManager* ResolveManager() const;
 
 	double SweepTime = 0.0;
 

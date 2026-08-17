@@ -27,7 +27,7 @@
 #include "MuJoCo/Capture/MjCameraSubsystem.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Core/MjDebugVisualizer.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 #include "State/MjCanonicalName.h"
 #include "Transport/NetworkManager.h"
 #include "Transport/ShmPublishTransport.h"
@@ -102,20 +102,27 @@ float DeriveFovyDegrees(const UMjCamera& Cam)
 	return 45.0f;
 }
 
-UMjDebugVisualizer* FindDebugVisualizer(UWorld* FallbackWorld = nullptr)
+// The renderer that owns the geom components a seg camera segments: the compiled
+// play view at runtime, or a mirror/raw renderer that draws its own geometry. The
+// segmentation sibling pool lives on it, since it owns the meshes the siblings mirror.
+AMjRenderer* FindRenderer(UWorld* FallbackWorld = nullptr)
 {
 	if (AAMjManager* Manager = AAMjManager::GetManager())
 	{
-		return Manager->DebugVisualizer;
+		if (AMjRenderer* View = Manager->GetCompiledRenderView())
+		{
+			return View;
+		}
 	}
-	// Test and editor worlds do not dispatch BeginPlay, so the singleton may be unset.
+	// Test and editor worlds do not dispatch BeginPlay (the singleton is unset), and a
+	// mirror/raw renderer carries no compiled view, so scan the world for a renderer.
 	if (FallbackWorld)
 	{
-		for (TActorIterator<AAMjManager> It(FallbackWorld); It; ++It)
+		for (TActorIterator<AMjRenderer> It(FallbackWorld); It; ++It)
 		{
-			if (AAMjManager* Manager = *It)
+			if (AMjRenderer* Renderer = *It)
 			{
-				return Manager->DebugVisualizer;
+				return Renderer;
 			}
 		}
 	}
@@ -948,8 +955,8 @@ void UMjCamera::RefreshHiddenComponentsFromSegPools()
 		return;
 	}
 
-	UMjDebugVisualizer* Visualizer = FindDebugVisualizer(GetWorld());
-	if (!Visualizer)
+	AMjRenderer* Renderer = FindRenderer(GetWorld());
+	if (!Renderer)
 	{
 		return;
 	}
@@ -957,14 +964,14 @@ void UMjCamera::RefreshHiddenComponentsFromSegPools()
 	CaptureComponent->HiddenComponents.Reset();
 
 	TArray<UPrimitiveComponent*> Pool;
-	Visualizer->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Pool);
+	Renderer->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Pool);
 	for (UPrimitiveComponent* Sibling : Pool)
 	{
 		CaptureComponent->HiddenComponents.Add(Sibling);
 	}
 
 	Pool.Reset();
-	Visualizer->GetSegPoolSiblings(EMjCameraMode::SemanticSegmentation, Pool);
+	Renderer->GetSegPoolSiblings(EMjCameraMode::SemanticSegmentation, Pool);
 	for (UPrimitiveComponent* Sibling : Pool)
 	{
 		CaptureComponent->HiddenComponents.Add(Sibling);
@@ -1004,10 +1011,10 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 		// ShowOnlyComponents at it. The pool is built lazily on the first subscriber.
 		if (IsSegMode(CaptureMode))
 		{
-			if (UMjDebugVisualizer* Visualizer = FindDebugVisualizer(GetWorld()))
+			if (AMjRenderer* Renderer = FindRenderer(GetWorld()))
 			{
 				TArray<UPrimitiveComponent*> Siblings;
-				Visualizer->AcquireSegPool(CaptureMode, this, Siblings);
+				Renderer->AcquireSegPool(CaptureMode, this, Siblings);
 
 				CaptureComponent->ShowOnlyComponents.Reset();
 				CaptureComponent->ShowOnlyComponents.Reserve(Siblings.Num());
@@ -1022,7 +1029,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			else
 			{
 				UE_LOG(LogURLabImport, Warning,
-					TEXT("[MjCamera] '%s' seg mode requested but no DebugVisualizer found; seg cam will show nothing."),
+					TEXT("[MjCamera] '%s' seg mode requested but no renderer found; seg cam will show nothing."),
 					*CameraLogName(*this));
 			}
 		}
@@ -1122,9 +1129,9 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 		// Release the seg pool first, while CaptureMode still says what we subscribed as.
 		if (IsSegMode(CaptureMode))
 		{
-			if (UMjDebugVisualizer* Visualizer = FindDebugVisualizer(GetWorld()))
+			if (AMjRenderer* Renderer = FindRenderer(GetWorld()))
 			{
-				Visualizer->ReleaseSegPool(CaptureMode, this);
+				Renderer->ReleaseSegPool(CaptureMode, this);
 			}
 			if (CaptureComponent)
 			{

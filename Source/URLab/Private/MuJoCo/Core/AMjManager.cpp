@@ -1077,24 +1077,43 @@ void AAMjManager::DriveOverlays(const FMjRenderSnapshot& Snap)
 	}
 	OverlayRenderer->SetModel(OverlayModel);
 	// Align overlays with whatever renderer draws the geometry: the compiled view at the manager, or a
-	// mirror/raw renderer at its placed origin.
-	FVector OverlayOrigin = FVector::ZeroVector;
-	if (CompiledRenderView)
+	// mirror/raw renderer at its placed origin. That same renderer owns the geom components, so it also
+	// applies the per-body material tint below.
+	AMjRenderer* GeomRenderer = CompiledRenderView;
+	if (!GeomRenderer)
 	{
-		OverlayOrigin = CompiledRenderView->GetActorLocation();
-	}
-	else if (UWorld* OverlayWorld = GetWorld())
-	{
-		for (TActorIterator<AMjRenderer> It(OverlayWorld); It; ++It)
+		if (UWorld* OverlayWorld = GetWorld())
 		{
-			if (*It)
+			for (TActorIterator<AMjRenderer> It(OverlayWorld); It; ++It)
 			{
-				OverlayOrigin = It->GetActorLocation();
-				break;
+				if (*It)
+				{
+					GeomRenderer = *It;
+					break;
+				}
 			}
 		}
 	}
-	OverlayRenderer->SceneOrigin = OverlayOrigin;
+	OverlayRenderer->SceneOrigin = GeomRenderer ? GeomRenderer->GetActorLocation() : FVector::ZeroVector;
+
+	// Per-body material tint (island / segmentation shader mode). The visualizer holds the mode + the
+	// physics-thread island/awake snapshot; the renderer swaps MIDs on the geom components it owns.
+	if (GeomRenderer)
+	{
+		if (DebugVisualizer->DebugShaderMode == EMjDebugShaderMode::Off)
+		{
+			GeomRenderer->ClearMaterialOverlay();
+		}
+		else
+		{
+			TArray<int32> BodyAwake;
+			TArray<int32> BodyIslandSeed;
+			DebugVisualizer->GetOverlaySnapshot(BodyAwake, BodyIslandSeed);
+			GeomRenderer->ApplyMaterialOverlay(DebugVisualizer->DebugShaderMode, BodyAwake, BodyIslandSeed,
+				DebugVisualizer->bModulateBySleep, DebugVisualizer->SleepValueScale,
+				DebugVisualizer->SleepSaturationScale);
+		}
+	}
 
 	{
 		bool bCollision = DebugVisualizer->bGlobalDrawDebugCollision;

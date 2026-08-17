@@ -18,7 +18,12 @@
 #include "Engine/World.h"
 
 #include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "EngineUtils.h"
 
+#include "MuJoCo/Core/MjDebugVisualizer.h"
+#include "MuJoCo/Utils/MjColor.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Fast/MjRendererAssetBaker.h"
 #include "MuJoCo/Fast/MjRendererBus.h"
 #include "MuJoCo/Entity/MjAppearance.h"
@@ -103,6 +108,23 @@ void DisableDistanceFields(UPrimitiveComponent* Comp)
 		Comp->SetAffectDistanceFieldLighting(false);
 	}
 }
+
+#if WITH_EDITOR
+// Which body a geom belongs to is a fact of the compiled model, not of the spec, so
+// it is read out of geom_bodyid at the id the element bound to. Negative when there is
+// no compiled model or the geom did not survive the compile — the set the overlays skip.
+int32 AuthoringGeomBodyId(const mjModel* Model, const UMjGeom* Geom)
+{
+	if (!Model || !Geom || !Geom->GetBoundId().IsSet())
+		return -1;
+
+	const int32 GeomId = Geom->GetBoundId().GetValue();
+	if (GeomId < 0 || GeomId >= Model->ngeom)
+		return -1;
+
+	return Model->geom_bodyid[GeomId];
+}
+#endif
 
 } // namespace
 
@@ -403,6 +425,590 @@ void AMjRenderer::SetGeomsVisible(bool bVisible)
 		{
 			Comp->SetVisibility(bVisible, /*bPropagateToChildren=*/true);
 		}
+	}
+}
+
+AAMjManager* AMjRenderer::ResolveManager() const
+{
+	if (AAMjManager* Mgr = AAMjManager::GetManager())
+	{
+		return Mgr;
+	}
+	// The singleton is only set at BeginPlay, which a test/editor world does not
+	// dispatch; fall back to a level scan so the authoring walks still find it.
+	if (UWorld* World = GetWorld())
+	{
+		for (TActorIterator<AAMjManager> It(World); It; ++It)
+		{
+			if (AAMjManager* Mgr = *It)
+			{
+				return Mgr;
+			}
+		}
+	}
+	return nullptr;
+}
+
+void AMjRenderer::InitializeOverlayMaterial()
+{
+	if (OverlayParentMaterial)
+	{
+		return;
+	}
+
+	UMaterialInterface* Parent = LoadObject<UMaterialInterface>(
+		nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+	if (!Parent)
+	{
+		UE_LOG(LogURLab, Warning,
+			TEXT("[MjRenderer] failed to load /Engine/BasicShapes/BasicShapeMaterial — overlays disabled"));
+		return;
+	}
+
+	TArray<FMaterialParameterInfo> VecInfos;
+	TArray<FGuid> Guids;
+	Parent->GetAllVectorParameterInfo(VecInfos, Guids);
+	if (VecInfos.Num() == 0)
+	{
+		UE_LOG(LogURLab, Warning,
+			TEXT("[MjRenderer] BasicShapeMaterial exposes no vector params — overlays disabled"));
+		return;
+	}
+
+	// Prefer well-known colour-param names so we don't accidentally drive an emissive tint etc.
+	static const FName PreferredNames[] = {
+		TEXT("Color"), TEXT("BaseColor"), TEXT("Tint"), TEXT("TintColor"), TEXT("DiffuseColor")};
+	FName Chosen = NAME_None;
+	for (const FName& Pref : PreferredNames)
+	{
+		for (const FMaterialParameterInfo& Info : VecInfos)
+		{
+			if (Info.Name == Pref)
+			{
+				Chosen = Pref;
+				break;
+			}
+		}
+		if (!Chosen.IsNone())
+			break;
+	}
+	if (Chosen.IsNone())
+		Chosen = VecInfos[0].Name;
+
+	OverlayParentMaterial = Parent;
+	OverlayColorParam = Chosen;
+}
+
+// ---------------------------------------------------------------------------
+// Debug overlay material tint
+// ---------------------------------------------------------------------------
+
+void AMjRenderer::ClearMaterialOverlay()
+{
+	for (auto& Pair : OriginalMaterials)
+	{
+		UMeshComponent* Mesh = Pair.Key.Get();
+		if (!Mesh)
+			continue;
+		Mesh->SetMaterial(0, Pair.Value);
+
+		if (const TMap<int32, TObjectPtr<UMaterialInterface>>* Extra = OriginalSlotMaterials.Find(Pair.Key))
+		{
+			for (const auto& SlotPair : *Extra)
+			{
+				Mesh->SetMaterial(SlotPair.Key, SlotPair.Value);
+			}
+		}
+	}
+	OriginalMaterials.Reset();
+	OriginalSlotMaterials.Reset();
+	ActiveMIDs.Reset();
+}
+
+void AMjRenderer::ApplyMaterialOverlay(EMjDebugShaderMode Mode, const TArray<int32>& BodyAwake,
+	const TArray<int32>& BodyIslandSeed, bool bModulateBySleep,
+	float SleepValueScale, float SleepSaturationScale)
+{
+	if (Mode == EMjDebugShaderMode::Off)
+	{
+		if (OriginalMaterials.Num() > 0)
+			ClearMaterialOverlay();
+		return;
+	}
+
+	if (!OverlayParentMaterial || OverlayColorParam.IsNone())
+		return;
+
+	AAMjManager* Manager = ResolveManager();
+
+	auto ApplyToMesh = [&](UMeshComponent* Mesh, int32 BodyId, uint32 GroupHash) {
+		if (!Mesh)
+			return;
+
+		const bool bAwake =
+			(BodyAwake.IsValidIndex(BodyId) ? BodyAwake[BodyId] != 0 : true);
+		const int32 Seed =
+			(BodyIslandSeed.IsValidIndex(BodyId) ? BodyIslandSeed[BodyId] : -1);
+
+		TWeakObjectPtr<UMeshComponent> WeakMesh(Mesh);
+		const int32 NumSlots = FMath::Max(1, Mesh->GetNumMaterials());
+
+		if (!OriginalMaterials.Contains(WeakMesh))
+		{
+			OriginalMaterials.Add(WeakMesh, Mesh->GetMaterial(0));
+			for (int32 SlotIdx = 1; SlotIdx < NumSlots; ++SlotIdx)
+			{
+				OriginalSlotMaterials.FindOrAdd(WeakMesh).Add(SlotIdx, Mesh->GetMaterial(SlotIdx));
+			}
+		}
+
+		const bool bColourAsAwake = bAwake || !bModulateBySleep;
+		FLinearColor Color;
+		switch (Mode)
+		{
+			case EMjDebugShaderMode::Island:
+				Color = MjColor::IslandColor(Seed, bColourAsAwake,
+					SleepValueScale, SleepSaturationScale);
+				break;
+			case EMjDebugShaderMode::InstanceSegmentation:
+				Color = MjColor::InstanceSegmentationColor(GroupHash, BodyId, bColourAsAwake,
+					SleepValueScale, SleepSaturationScale);
+				break;
+			case EMjDebugShaderMode::SemanticSegmentation:
+				Color = MjColor::SemanticSegmentationColor(GroupHash, bColourAsAwake,
+					SleepValueScale, SleepSaturationScale);
+				break;
+			default:
+				return;
+		}
+
+		UMaterialInstanceDynamic* MID = nullptr;
+		if (TObjectPtr<UMaterialInstanceDynamic>* Existing = ActiveMIDs.Find(WeakMesh))
+		{
+			MID = *Existing;
+		}
+		if (!MID)
+		{
+			MID = UMaterialInstanceDynamic::Create(OverlayParentMaterial, this);
+			ActiveMIDs.Add(WeakMesh, MID);
+		}
+
+		for (int32 SlotIdx = 0; SlotIdx < NumSlots; ++SlotIdx)
+		{
+			if (Mesh->GetMaterial(SlotIdx) != MID)
+			{
+				Mesh->SetMaterial(SlotIdx, MID);
+			}
+		}
+
+		MID->SetVectorParameterValue(OverlayColorParam, Color);
+	};
+
+	// This renderer draws the geometry, so the per-body overlay swaps the material on
+	// its own geom components (keyed by mj geom id), grouped by geom_bodyid and coloured
+	// by the geom's originating participant.
+	if (Model)
+	{
+		const int32 NGeom = NumGeoms();
+		for (int32 G = 0; G < NGeom; ++G)
+		{
+			UMeshComponent* Mesh = Cast<UMeshComponent>(GetGeomComponent(G));
+			if (!Mesh)
+				continue;
+			const int32 BodyId = Model->geom_bodyid[G];
+			if (BodyId < 0)
+				continue;
+
+			uint32 ArtHash = GetTypeHash(GetClass()->GetFName());
+			if (UMjGeom* Origin = GetGeomOrigin(G))
+			{
+				if (AActor* GeomOwner = Origin->GetOwner())
+					ArtHash = GetTypeHash(GeomOwner->GetClass()->GetFName());
+			}
+
+			ApplyToMesh(Mesh, BodyId, ArtHash);
+
+			TArray<USceneComponent*> ChildComps;
+			Mesh->GetChildrenComponents(true, ChildComps);
+			for (USceneComponent* Child : ChildComps)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+					ApplyToMesh(SMC, BodyId, ArtHash);
+			}
+		}
+	}
+
+	if (!Manager)
+		return;
+
+#if WITH_EDITOR
+	const mjModel* AuthoringModel = Manager->PhysicsEngine ? Manager->PhysicsEngine->m_model : nullptr;
+
+	// The editor preview (and the test harness) keeps the authoring visualizer meshes,
+	// plus any static mesh a caller hung under a geom themselves.
+	for (AMjArticulation* Art : Manager->GetAllArticulations())
+	{
+		if (!Art)
+			continue;
+
+		// Semantic grouping hashes the Blueprint class so two instances share colour.
+		const uint32 ArtHash = GetTypeHash(Art->GetClass()->GetFName());
+
+		for (UMjGeom* Geom : Art->GetGeoms())
+		{
+			const int32 BodyId = AuthoringGeomBodyId(AuthoringModel, Geom);
+			if (BodyId < 0)
+				continue;
+
+			ApplyToMesh(Geom->GetVisualizerMesh(), BodyId, ArtHash);
+
+			TArray<USceneComponent*> ChildComps;
+			Geom->GetChildrenComponents(true, ChildComps);
+			for (USceneComponent* Child : ChildComps)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+				{
+					ApplyToMesh(SMC, BodyId, ArtHash);
+				}
+			}
+		}
+	}
+#endif
+
+	for (UMjQuickConvertComponent* QC : Manager->GetAllQuickComponents())
+	{
+		if (!QC)
+			continue;
+		const int32 BodyId = QC->GetMjBodyId();
+		if (BodyId < 0)
+			continue;
+
+		AActor* GeomOwner = QC->GetOwner();
+		if (!GeomOwner)
+			continue;
+
+		TArray<UStaticMeshComponent*> MeshComps;
+		GeomOwner->GetComponents<UStaticMeshComponent>(MeshComps);
+
+		// Semantic grouping hashes the first static mesh so props sharing a mesh read as one "type".
+		uint32 GroupHash = GetTypeHash(GeomOwner->GetClass()->GetFName());
+		for (UStaticMeshComponent* SMC : MeshComps)
+		{
+			if (SMC && SMC->GetStaticMesh())
+			{
+				GroupHash = GetTypeHash(SMC->GetStaticMesh()->GetFName());
+				break;
+			}
+		}
+
+		for (UStaticMeshComponent* SMC : MeshComps)
+		{
+			ApplyToMesh(SMC, BodyId, GroupHash);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Per-camera segmentation pool
+// ---------------------------------------------------------------------------
+
+TArray<TObjectPtr<UStaticMeshComponent>>* AMjRenderer::GetSegPoolArray(EMjCameraMode Mode)
+{
+	switch (Mode)
+	{
+		case EMjCameraMode::InstanceSegmentation:
+			return &InstanceSegSiblings;
+		case EMjCameraMode::SemanticSegmentation:
+			return &SemanticSegSiblings;
+		default:
+			return nullptr;
+	}
+}
+
+TSet<TWeakObjectPtr<UMjCamera>>* AMjRenderer::GetSegSubscribers(EMjCameraMode Mode)
+{
+	switch (Mode)
+	{
+		case EMjCameraMode::InstanceSegmentation:
+			return &InstanceSegSubscribers;
+		case EMjCameraMode::SemanticSegmentation:
+			return &SemanticSegSubscribers;
+		default:
+			return nullptr;
+	}
+}
+
+UStaticMeshComponent* AMjRenderer::SpawnSegSibling(
+	UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash, EMjCameraMode Mode)
+{
+	if (!Original || !Original->GetStaticMesh())
+		return nullptr;
+	if (!OverlayParentMaterial || OverlayColorParam.IsNone())
+		return nullptr;
+
+	AActor* GeomOwner = Original->GetOwner();
+	if (!GeomOwner)
+		return nullptr;
+
+	UStaticMeshComponent* Sibling = NewObject<UStaticMeshComponent>(GeomOwner);
+	Sibling->SetStaticMesh(Original->GetStaticMesh());
+
+	// Attach to the same parent as the original so it inherits body transforms
+	// for free — no per-tick sync needed.
+	if (USceneComponent* Parent = Original->GetAttachParent())
+	{
+		Sibling->SetupAttachment(Parent);
+	}
+	Sibling->SetRelativeTransform(Original->GetRelativeTransform());
+
+	// Isolation: siblings must not contribute indirect lighting, shadows, or
+	// reflections to other views. bVisibleInSceneCaptureOnly hides the primitive
+	// from the main viewport; the rest prevents secondary lighting/reflection
+	// passes from picking it up (source of the "faint tinge" in viewport
+	// otherwise). Leave bRenderInMainPass at default true — the seg capture's
+	// own rendering uses the main pass.
+	Sibling->bVisibleInSceneCaptureOnly = true;
+	Sibling->SetCastShadow(false);
+	Sibling->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	Sibling->SetGenerateOverlapEvents(false);
+	Sibling->bAffectDynamicIndirectLighting = false;
+	Sibling->bAffectDistanceFieldLighting = false;
+	Sibling->bVisibleInReflectionCaptures = false;
+	Sibling->bVisibleInRealTimeSkyCaptures = false;
+	Sibling->bVisibleInRayTracing = false;
+	Sibling->bReceivesDecals = false;
+
+	// Unlit tint material — parented on the same material the viewport overlay uses.
+	// Seg cameras set CaptureSource = SCS_BaseColor, which bypasses lighting so the
+	// tint value lands in the RT unmodified.
+	UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(OverlayParentMaterial, Sibling);
+	const FLinearColor Tint = (Mode == EMjCameraMode::SemanticSegmentation)
+								? MjColor::SemanticSegmentationColor(GroupHash, /*bAwake=*/true, /*SleepValueScale=*/1.0f, /*SleepSatScale=*/1.0f)
+								: MjColor::InstanceSegmentationColor(GroupHash, BodyId, /*bAwake=*/true, /*SleepValueScale=*/1.0f, /*SleepSatScale=*/1.0f);
+	MID->SetVectorParameterValue(OverlayColorParam, Tint);
+
+	const int32 NumSlots = FMath::Max(1, Original->GetNumMaterials());
+	for (int32 Slot = 0; Slot < NumSlots; ++Slot)
+	{
+		Sibling->SetMaterial(Slot, MID);
+	}
+
+	Sibling->ComponentTags.Add(Mode == EMjCameraMode::InstanceSegmentation
+								   ? FName(TEXT("URLab_Seg_Instance"))
+								   : FName(TEXT("URLab_Seg_Semantic")));
+
+	Sibling->RegisterComponent();
+	return Sibling;
+}
+
+void AMjRenderer::BuildSegPool(EMjCameraMode Mode)
+{
+	TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+	if (!Pool)
+		return;
+
+	Pool->Reset();
+
+	auto AddSibling = [&](UStaticMeshComponent* Original, int32 BodyId, uint32 GroupHash) {
+		if (UStaticMeshComponent* Sib = SpawnSegSibling(Original, BodyId, GroupHash, Mode))
+		{
+			Pool->Add(Sib);
+		}
+	};
+
+	// This renderer's own geom components are the segmentation subjects; the seg cameras
+	// render siblings of those, keyed by geom_bodyid and the originating participant.
+	if (Model)
+	{
+		const int32 NGeom = NumGeoms();
+		for (int32 G = 0; G < NGeom; ++G)
+		{
+			UStaticMeshComponent* Mesh = Cast<UStaticMeshComponent>(GetGeomComponent(G));
+			if (!Mesh)
+				continue;
+			const int32 BodyId = Model->geom_bodyid[G];
+			if (BodyId < 0)
+				continue;
+
+			uint32 ArtHash = GetTypeHash(GetClass()->GetFName());
+			if (UMjGeom* Origin = GetGeomOrigin(G))
+			{
+				if (AActor* GeomOwner = Origin->GetOwner())
+					ArtHash = GetTypeHash(GeomOwner->GetClass()->GetFName());
+			}
+
+			AddSibling(Mesh, BodyId, ArtHash);
+
+			TArray<USceneComponent*> ChildComps;
+			Mesh->GetChildrenComponents(true, ChildComps);
+			for (USceneComponent* Child : ChildComps)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+					AddSibling(SMC, BodyId, ArtHash);
+			}
+		}
+	}
+
+	AAMjManager* Manager = ResolveManager();
+	if (!Manager)
+	{
+		UE_LOG(LogURLab, Log,
+			TEXT("[MjRenderer] Built seg pool mode=%s size=%d"),
+			*UEnum::GetValueAsString(Mode), Pool->Num());
+		return;
+	}
+
+#if WITH_EDITOR
+	const mjModel* AuthoringModel = Manager->PhysicsEngine ? Manager->PhysicsEngine->m_model : nullptr;
+
+	// Authoring visual meshes (the editor preview and the test harness), plus any static
+	// mesh a caller hung under a geom themselves.
+	for (AMjArticulation* Art : Manager->GetAllArticulations())
+	{
+		if (!Art)
+			continue;
+		const uint32 ArtHash = GetTypeHash(Art->GetClass()->GetFName());
+
+		for (UMjGeom* Geom : Art->GetGeoms())
+		{
+			const int32 BodyId = AuthoringGeomBodyId(AuthoringModel, Geom);
+			if (BodyId < 0)
+				continue;
+
+			AddSibling(Geom->GetVisualizerMesh(), BodyId, ArtHash);
+
+			TArray<USceneComponent*> ChildComps;
+			Geom->GetChildrenComponents(true, ChildComps);
+			for (USceneComponent* Child : ChildComps)
+			{
+				if (UStaticMeshComponent* SMC = Cast<UStaticMeshComponent>(Child))
+				{
+					AddSibling(SMC, BodyId, ArtHash);
+				}
+			}
+		}
+	}
+#endif
+
+	// Quick-Convert primitives — group hash keyed off the first static mesh.
+	for (UMjQuickConvertComponent* QC : Manager->GetAllQuickComponents())
+	{
+		if (!QC)
+			continue;
+		const int32 BodyId = QC->GetMjBodyId();
+		if (BodyId < 0)
+			continue;
+
+		AActor* GeomOwner = QC->GetOwner();
+		if (!GeomOwner)
+			continue;
+
+		TArray<UStaticMeshComponent*> MeshComps;
+		GeomOwner->GetComponents<UStaticMeshComponent>(MeshComps);
+
+		uint32 GroupHash = GetTypeHash(GeomOwner->GetClass()->GetFName());
+		for (UStaticMeshComponent* SMC : MeshComps)
+		{
+			if (SMC && SMC->GetStaticMesh())
+			{
+				GroupHash = GetTypeHash(SMC->GetStaticMesh()->GetFName());
+				break;
+			}
+		}
+
+		for (UStaticMeshComponent* SMC : MeshComps)
+		{
+			AddSibling(SMC, BodyId, GroupHash);
+		}
+	}
+
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjRenderer] Built seg pool mode=%s size=%d"),
+		*UEnum::GetValueAsString(Mode), Pool->Num());
+}
+
+void AMjRenderer::DestroySegPool(EMjCameraMode Mode)
+{
+	TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+	if (!Pool)
+		return;
+
+	for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
+	{
+		if (Sib)
+			Sib->DestroyComponent();
+	}
+	Pool->Reset();
+}
+
+void AMjRenderer::AcquireSegPool(EMjCameraMode Mode, UMjCamera* Camera,
+	TArray<UPrimitiveComponent*>& OutSiblings)
+{
+	OutSiblings.Reset();
+
+	TArray<TObjectPtr<UStaticMeshComponent>>* Pool = GetSegPoolArray(Mode);
+	TSet<TWeakObjectPtr<UMjCamera>>* Subs = GetSegSubscribers(Mode);
+	if (!Pool || !Subs)
+		return;
+
+	const bool bFirstSubscriber = Subs->Num() == 0;
+	Subs->Add(Camera);
+
+	if (bFirstSubscriber)
+	{
+		BuildSegPool(Mode);
+	}
+
+	OutSiblings.Reserve(Pool->Num());
+	for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
+	{
+		if (Sib)
+			OutSiblings.Add(Sib);
+	}
+}
+
+void AMjRenderer::ReleaseSegPool(EMjCameraMode Mode, UMjCamera* Camera)
+{
+	TSet<TWeakObjectPtr<UMjCamera>>* Subs = GetSegSubscribers(Mode);
+	if (!Subs)
+		return;
+
+	Subs->Remove(Camera);
+	// Also drop any stale weak pointers so refcount reflects reality.
+	for (auto It = Subs->CreateIterator(); It; ++It)
+	{
+		if (!It->IsValid())
+			It.RemoveCurrent();
+	}
+
+	if (Subs->Num() == 0)
+	{
+		DestroySegPool(Mode);
+	}
+}
+
+void AMjRenderer::GetSegPoolSiblings(EMjCameraMode Mode,
+	TArray<UPrimitiveComponent*>& OutSiblings) const
+{
+	OutSiblings.Reset();
+	const TArray<TObjectPtr<UStaticMeshComponent>>* Pool = nullptr;
+	switch (Mode)
+	{
+		case EMjCameraMode::InstanceSegmentation:
+			Pool = &InstanceSegSiblings;
+			break;
+		case EMjCameraMode::SemanticSegmentation:
+			Pool = &SemanticSegSiblings;
+			break;
+		default:
+			return;
+	}
+
+	OutSiblings.Reserve(Pool->Num());
+	for (const TObjectPtr<UStaticMeshComponent>& Sib : *Pool)
+	{
+		if (Sib)
+			OutSiblings.Add(Sib);
 	}
 }
 
@@ -2050,6 +2656,13 @@ void AMjRenderer::Teardown()
 			A->Destroy();
 		}
 	}
+	// The overlay tint MIDs and seg siblings hang off the geom components we are
+	// about to destroy; drop the caches so a rebuild starts clean.
+	ClearMaterialOverlay();
+	DestroySegPool(EMjCameraMode::InstanceSegmentation);
+	DestroySegPool(EMjCameraMode::SemanticSegmentation);
+	InstanceSegSubscribers.Reset();
+	SemanticSegSubscribers.Reset();
 	BodyActors.Reset();
 	GeomComps.Reset();
 	GeomOrigins.Reset();

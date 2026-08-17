@@ -24,7 +24,7 @@
 #include "Misc/AutomationTest.h"
 #include "Tests/MjTestHelpers.h"
 #include "MuJoCo/Elements/MjCamera.h"
-#include "MuJoCo/Core/MjDebugVisualizer.h"
+#include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "State/MjCanonicalName.h"
@@ -65,6 +65,27 @@ UMjCamera* SpawnCameraAndStream(FMjUESession& Sess, EMjCameraMode Mode)
 		Cam->SetStreamingEnabled(true);
 	}
 	return Cam;
+}
+
+/**
+ * The renderer that owns the segmentation sibling pool, as the seg cameras resolve
+ * it. A bare renderer with no built geometry is enough here: its BuildSegPool walks
+ * the session's authoring articulation meshes in the editor/test harness, so the
+ * pool populates from the same meshes the runtime path segments.
+ */
+AMjRenderer* SpawnSegRenderer(FMjUESession& Sess)
+{
+	if (Sess.World == nullptr)
+	{
+		return nullptr;
+	}
+	FActorSpawnParameters P;
+	AMjRenderer* Renderer = Sess.World->SpawnActor<AMjRenderer>(P);
+	if (Renderer != nullptr)
+	{
+		Renderer->InitializeOverlayMaterial();
+	}
+	return Renderer;
 }
 } // namespace
 
@@ -219,16 +240,15 @@ bool FMjCameraSegPoolRefcount::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	UMjDebugVisualizer* Viz = S.Manager ? S.Manager->FindComponentByClass<UMjDebugVisualizer>() : nullptr;
-	if (!TestNotNull(TEXT("visualizer"), Viz))
+	// The seg pool lives on the renderer that owns the geoms. Its OverlayParentMaterial
+	// is initialized in BeginPlay; test worlds don't dispatch BeginPlay, so the helper
+	// triggers initialization manually.
+	AMjRenderer* Renderer = SpawnSegRenderer(S);
+	if (!TestNotNull(TEXT("renderer"), Renderer))
 	{
 		S.Cleanup();
 		return false;
 	}
-
-	// The visualizer's OverlayParentMaterial is initialized in BeginPlay; test worlds
-	// don't dispatch BeginPlay, so trigger initialization manually.
-	Viz->InitializeOverlayMaterial();
 
 	// FMjUESession's base UMjGeom has no visualizer mesh. Attach a static-mesh child
 	// so BuildSegPool's child walk has something to mirror into a sibling.
@@ -253,11 +273,11 @@ bool FMjCameraSegPoolRefcount::RunTest(const FString& Parameters)
 	}
 
 	TArray<UPrimitiveComponent*> PoolA;
-	Viz->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamA, PoolA);
+	Renderer->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamA, PoolA);
 	TestTrue(TEXT("pool has entries after first acquire"), PoolA.Num() > 0);
 
 	TArray<UPrimitiveComponent*> PoolB;
-	Viz->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamB, PoolB);
+	Renderer->AcquireSegPool(EMjCameraMode::InstanceSegmentation, CamB, PoolB);
 	TestEqual(TEXT("second acquire sees same pool size"), PoolB.Num(), PoolA.Num());
 	if (PoolA.Num() > 0 && PoolB.Num() > 0)
 	{
@@ -265,14 +285,14 @@ bool FMjCameraSegPoolRefcount::RunTest(const FString& Parameters)
 	}
 
 	// First release — pool should still exist because CamB still subscribed.
-	Viz->ReleaseSegPool(EMjCameraMode::InstanceSegmentation, CamA);
+	Renderer->ReleaseSegPool(EMjCameraMode::InstanceSegmentation, CamA);
 	TArray<UPrimitiveComponent*> Snapshot;
-	Viz->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Snapshot);
+	Renderer->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Snapshot);
 	TestTrue(TEXT("pool still alive after one release"), Snapshot.Num() > 0);
 
 	// Final release — pool should be destroyed.
-	Viz->ReleaseSegPool(EMjCameraMode::InstanceSegmentation, CamB);
-	Viz->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Snapshot);
+	Renderer->ReleaseSegPool(EMjCameraMode::InstanceSegmentation, CamB);
+	Renderer->GetSegPoolSiblings(EMjCameraMode::InstanceSegmentation, Snapshot);
 	TestEqual(TEXT("pool empty after last release"), Snapshot.Num(), 0);
 
 	S.Cleanup();
@@ -298,9 +318,10 @@ bool FMjCameraSegWiresShowOnly::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	if (S.Manager && S.Manager->DebugVisualizer)
+	if (!TestNotNull(TEXT("renderer"), SpawnSegRenderer(S)))
 	{
-		S.Manager->DebugVisualizer->InitializeOverlayMaterial();
+		S.Cleanup();
+		return false;
 	}
 
 	UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -357,9 +378,10 @@ bool FMjCameraNonSegHidesSiblings::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	if (S.Manager && S.Manager->DebugVisualizer)
+	if (!TestNotNull(TEXT("renderer"), SpawnSegRenderer(S)))
 	{
-		S.Manager->DebugVisualizer->InitializeOverlayMaterial();
+		S.Cleanup();
+		return false;
 	}
 
 	UStaticMesh* CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));

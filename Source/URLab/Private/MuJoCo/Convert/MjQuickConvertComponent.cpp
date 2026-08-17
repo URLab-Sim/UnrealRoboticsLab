@@ -29,6 +29,7 @@
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Elements/MjMesh.h"
 #include "MuJoCo/Gen/Elements/Assets/MjAsset.gen.h"
 #include "MuJoCo/Gen/Elements/Joints/MjFreeJoint.gen.h"
 #include "MuJoCo/Gen/Elements/Assets/MjMesh.gen.h"
@@ -462,16 +463,13 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 		const FQuat RelativeRotation = OwnerTransform.GetRotation().Inverse() * Smc->GetComponentQuat();
 		const FVector MeshScale = Smc->GetComponentScale();
 
-		auto AddMeshAsset = [&](const FMjConvertedHull& Hull) {
+		auto AddMeshAsset = [&](const FMjConvertedHull& Hull, UStaticMesh* VisualAsset) {
 			// Two mesh components sharing one static mesh share one <mesh>: the
 			// hull is keyed on the asset and its scale, so a second element of
 			// the same name would be a duplicate MuJoCo rejects outright.
 			if (!EmittedMeshes.Contains(Hull.Name))
 			{
 				EmittedMeshes.Add(Hull.Name);
-				// The generated base: this element's geometry is the hull file the
-				// conversion just wrote, not an imported asset, so there is
-				// nothing for the subclass's reference to hold.
 				UMjMeshBase& Mesh = urlab::spec::FInstanceNodeFactory::Create<UMjMeshBase>(Assets);
 				Mesh.MjName = Hull.Name;
 				// The absolute path: the asset pass resolves `file` against the
@@ -481,6 +479,15 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 				// sharing a hull.
 				Mesh.File = Hull.ObjPath;
 				Mesh.Scale = FMjVec3(MeshScale.X, MeshScale.Y, MeshScale.Z);
+				// The render view resolves a mesh geom to this asset -- materials,
+				// UVs and all -- while the exported OBJ is what MuJoCo compiles
+				// and collides. A visual geom records the actor's own StaticMesh
+				// so the prop draws at full fidelity; a collision-only hull leaves
+				// it null and falls to the model's baked geometry.
+				if (UMjMesh* Imported = Cast<UMjMesh>(&Mesh))
+				{
+					Imported->MeshAsset = VisualAsset;
+				}
 			}
 			return Hull.Name;
 		};
@@ -504,16 +511,16 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 
 		if (ComplexMeshRequired)
 		{
-			// The visual hull is the undecomposed mesh with contact switched
-			// off: it exists so the viewer sees the shape the artist made
-			// rather than the decomposition that collides.
+			// The visual geom is the undecomposed mesh with contact switched off,
+			// drawn from the actor's own StaticMesh: the viewer sees the shape the
+			// artist made rather than the decomposition that collides.
+			UMjGeomBase* Visual = nullptr;
 			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, Owner->GetName(), false, CoACDThreshold))
 			{
-				UMjGeomBase& Visual =
-					AddGeom(FString::Printf(TEXT("Geom_%d_visual"), MeshIndex), AddMeshAsset(Hull));
-				Visual.Contype = 0;
-				Visual.Conaffinity = 0;
-				Visual.Group = 2;
+				Visual = &AddGeom(FString::Printf(TEXT("Geom_%d_visual"), MeshIndex), AddMeshAsset(Hull, Smc->GetStaticMesh()));
+				Visual->Contype = 0;
+				Visual->Conaffinity = 0;
+				Visual->Group = 2;
 				break;
 			}
 
@@ -521,18 +528,31 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, Owner->GetName(), true, CoACDThreshold))
 			{
 				UMjGeomBase& Collision =
-					AddGeom(FString::Printf(TEXT("Geom_%d_%d"), MeshIndex, HullIndex), AddMeshAsset(Hull));
+					AddGeom(FString::Printf(TEXT("Geom_%d_%d"), MeshIndex, HullIndex), AddMeshAsset(Hull, nullptr));
 				Collision.Group = 3;
 				ApplyContact(Collision);
 				++HullIndex;
 			}
+
+			// The collision hulls own the body's inertia, so the visual weighs
+			// nothing and does not double-count it -- but only once there is a hull
+			// to carry the mass, else a decomposition that produced none would leave
+			// the body massless.
+			if (Visual != nullptr && HullIndex > 0)
+			{
+				Visual->Mass = 0.0;
+			}
 		}
 		else
 		{
+			// One geom both draws and collides: it renders the actor's own mesh
+			// (through the <mesh>'s recorded asset) and MuJoCo collides it as that
+			// mesh's convex hull.
 			int32 HullIndex = 0;
 			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, Owner->GetName(), false, CoACDThreshold))
 			{
-				ApplyContact(AddGeom(FString::Printf(TEXT("Geom_%d_%d"), MeshIndex, HullIndex), AddMeshAsset(Hull)));
+				ApplyContact(AddGeom(FString::Printf(TEXT("Geom_%d_%d"), MeshIndex, HullIndex),
+					AddMeshAsset(Hull, Smc->GetStaticMesh())));
 				++HullIndex;
 			}
 		}
@@ -572,39 +592,22 @@ void UMjQuickConvertComponent::TickComponent(float DeltaTime, ELevelTick TickTyp
 	}
 }
 
-void UMjQuickConvertComponent::ApplyRenderState(const FMjRenderSnapshot& Snap)
+void UMjQuickConvertComponent::SetSourceMeshesHiddenInGame(bool bHidden)
 {
 	AActor* Owner = GetOwner();
-
-	if (!m_CreatedBody || !Owner || bDrivenByUnreal)
+	if (Owner == nullptr)
 	{
 		return;
 	}
-
-	const int32 Id = GetMjBodyId();
-	if (Id < 0)
+	TArray<UStaticMeshComponent*> Meshes;
+	Owner->GetComponents(Meshes);
+	for (UStaticMeshComponent* Smc : Meshes)
 	{
-		return;
+		// The actor's own content, not the spec's previews: those are never drawn
+		// by the play view, and the source meshes are what would double-draw.
+		if (Smc != nullptr && !IsSpecPreview(*Smc))
+		{
+			Smc->SetHiddenInGame(bHidden);
+		}
 	}
-
-	const int32 PosIdx = Id * 3;
-	const int32 QuatIdx = Id * 4;
-	if (Snap.XPos.Num() <= PosIdx + 2 || Snap.XQuat.Num() <= QuatIdx + 3)
-	{
-		return;
-	}
-
-	const FVector Pos = URLabAxisConv::MjPositionToUe(&Snap.XPos[PosIdx]);
-	const FQuat Quat = URLabAxisConv::MjQuatToUe(&Snap.XQuat[QuatIdx]);
-
-	// Mirror UMjBody::ApplyRenderState: never apply a zero/NaN snapshot row --
-	// it writes a degenerate transform that NaN-floods the renderer.
-	if (Pos.ContainsNaN() || Quat.ContainsNaN()
-		|| Quat.SizeSquared() < KINDA_SMALL_NUMBER)
-	{
-		return;
-	}
-
-	Owner->SetActorRotation(Quat);
-	Owner->SetActorLocation(Pos);
 }

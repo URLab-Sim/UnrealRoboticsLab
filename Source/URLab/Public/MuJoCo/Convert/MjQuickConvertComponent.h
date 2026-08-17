@@ -41,15 +41,20 @@ class UMjNodeComponent;
  * how accurate a convex decomposition of the actor's mesh needs to be, whether
  * the resulting body moves at all, whether Unreal drives it as a mocap body,
  * and the contact parameters its collision geoms carry. Alongside them sits the
- * per-frame coupling in both directions -- the mocap pose pushed into the
- * engine, and the simulated pose written back onto the actor.
+ * one per-frame coupling that survives: when Unreal drives the body, the actor's
+ * mocap pose is pushed into the engine. The reverse -- writing the simulated
+ * pose back onto the actor -- is gone: the prop renders through the one entity
+ * render view like every other body, from the compiled model, so the actor's
+ * own mesh is hidden at play to keep the prop drawn exactly once.
  *
  * The conversion itself authors a spec on the owning actor -- one body, its
  * free joint, a geom per hull, and a `<mesh>` per exported hull under `<asset>`
  * -- which the scene attaches as an ordinary participant. The hulls have no
  * source file, so one is written: an OBJ under the project's Saved directory,
  * content-hashed so an unchanged mesh is exported once and re-read on every
- * later compile, exactly as an imported robot's meshes are.
+ * later compile, exactly as an imported robot's meshes are. The visual geom's
+ * `<mesh>` also records the actor's own StaticMesh, so the render view draws the
+ * source asset at full fidelity while collision runs on the exported hulls.
  */
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent))
 class URLAB_API UMjQuickConvertComponent : public UActorComponent
@@ -138,8 +143,14 @@ public:
 	/** Pushes the actor's transform into the engine when Unreal drives it. */
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 
-	/** Drives the owning actor from one physics frame. */
-	void ApplyRenderState(const struct FMjRenderSnapshot& Snap);
+	/**
+	 * Hide (or show) the actor's own source meshes in the game world.
+	 *
+	 * The compiled render view draws the converted prop from the model, so the
+	 * actor's authored StaticMeshes must not draw beside it at play. The spec's
+	 * preview parts are left alone -- the view never draws them.
+	 */
+	void SetSourceMeshesHiddenInGame(bool bHidden);
 
 protected:
 	virtual void BeginPlay() override;

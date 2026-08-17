@@ -26,6 +26,7 @@
 #include "MuJoCo/Entity/MjBakedAssetResolver.h"
 #include "MuJoCo/Entity/MjImportedAssetResolver.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Capture/MjCameraSubsystem.h"
@@ -301,7 +302,7 @@ bool CompiledGeomNameMatches(const mjModel_* M, int32 G, const FString& Want, bo
 } // namespace
 
 int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants,
-	bool bBuildCameras)
+	const TArray<UMjQuickConvertComponent*>& QuickProps, bool bBuildCameras)
 {
 	Teardown();
 	if (!InModel)
@@ -329,6 +330,27 @@ int32 AMjbScene::BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArtic
 			if (Geom && Geom->GetBoundId().IsSet())
 			{
 				GeomOrigins.Add(Geom->GetBoundId().GetValue(), Geom);
+			}
+		}
+	}
+	// Right-click-converted props are not articulations, but their visual geoms
+	// are UMjGeom just the same: index them so a prop draws from its own
+	// StaticMesh. The collision hulls index harmlessly -- a hidden group never
+	// reaches the resolver.
+	for (UMjQuickConvertComponent* Quick : QuickProps)
+	{
+		if (!Quick)
+		{
+			continue;
+		}
+		for (const TObjectPtr<UMjNodeComponent>& Node : Quick->GetGeomElements())
+		{
+			if (UMjGeom* Geom = Cast<UMjGeom>(Node))
+			{
+				if (Geom->GetBoundId().IsSet())
+				{
+					GeomOrigins.Add(Geom->GetBoundId().GetValue(), Geom);
+				}
 			}
 		}
 	}

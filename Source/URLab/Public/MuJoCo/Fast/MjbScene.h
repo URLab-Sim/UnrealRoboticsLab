@@ -20,6 +20,7 @@ class UPrimitiveComponent;
 class AAMjManager;
 class AMjArticulation;
 class UMjGeom;
+class UMjQuickConvertComponent;
 class UMjbAssetBaker;
 class UMjbTransportBus;
 class UTexture;
@@ -175,12 +176,14 @@ public:
 	 * geom resolves its component through the imported-asset resolver (the UE assets a
 	 * model import produced), keyed back to the authoring UMjGeom via the participants'
 	 * element indices, with the baked resolver behind it for scene-root/inline
-	 * geometry. When bBuildCameras is set, the model's body-fixed cameras re-home onto
+	 * geometry. QuickProps contributes the right-click-converted props' geoms to the
+	 * same index, so a converted prop draws from its own StaticMesh rather than the
+	 * baked hull. When bBuildCameras is set, the model's body-fixed cameras re-home onto
 	 * this view (dormant, named through the camera registry) so the RPC camera surface
 	 * enumerates them independently of the articulation actors. Returns geom count built.
 	 */
 	int32 BuildFromCompiledModel(mjModel_* InModel, const TArray<AMjArticulation*>& Participants,
-		bool bBuildCameras = false);
+		const TArray<UMjQuickConvertComponent*>& QuickProps, bool bBuildCameras = false);
 
 	/** Flag this scene as the manager-driven compiled view before its BeginPlay runs,
 	 *  so BeginPlay does not try to load an MJB of its own. */

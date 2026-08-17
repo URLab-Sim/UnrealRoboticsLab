@@ -958,7 +958,6 @@ void AAMjManager::ApplyLatestRenderState()
 	PhysicsEngine->bSnapshotWanted.store(true, std::memory_order_release);
 
 	const TArray<AMjArticulation*>& Arts = PhysicsEngine->GetAllArticulations();
-	const TArray<UMjQuickConvertComponent*> Quicks = PhysicsEngine->GetAllQuickComponents();
 
 	PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& Snap) {
 		for (AMjArticulation* Art : Arts)
@@ -966,13 +965,6 @@ void AAMjManager::ApplyLatestRenderState()
 			if (Art)
 			{
 				Art->ApplyRenderState(Snap);
-			}
-		}
-		for (UMjQuickConvertComponent* Quick : Quicks)
-		{
-			if (Quick)
-			{
-				Quick->ApplyRenderState(Snap);
 			}
 		}
 		DriveCompiledRenderView(Snap);
@@ -1006,6 +998,7 @@ void AAMjManager::BuildRuntimeView()
 	}
 
 	const TArray<AMjArticulation*> Arts = PhysicsEngine->GetAllArticulations();
+	const TArray<UMjQuickConvertComponent*> Quicks = PhysicsEngine->GetAllQuickComponents();
 
 	FActorSpawnParameters Params;
 	Params.Owner = this;
@@ -1019,9 +1012,19 @@ void AAMjManager::BuildRuntimeView()
 	}
 	View->MarkExternallyDriven();
 	UGameplayStatics::FinishSpawningActor(View, FTransform::Identity);
-	View->BuildFromCompiledModel(Model, Arts, /*bBuildCameras=*/true);
+	View->BuildFromCompiledModel(Model, Arts, Quicks, /*bBuildCameras=*/true);
 	CompiledRenderView = View;
 	CompiledViewModel = Model;
+
+	// The view now draws each converted prop from the compiled model, so the
+	// source actors' own meshes must not double-draw beside it at play.
+	for (UMjQuickConvertComponent* Quick : Quicks)
+	{
+		if (Quick)
+		{
+			Quick->SetSourceMeshesHiddenInGame(true);
+		}
+	}
 
 	if (!OverlayRenderer)
 	{

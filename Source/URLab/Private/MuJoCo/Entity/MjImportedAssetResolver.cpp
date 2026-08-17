@@ -83,6 +83,16 @@ FVector PrimitiveScale(int32 Type, const double* Size)
 	}
 }
 
+// MuJoCo's default geom colour. An rgba equal to it, componentwise and exactly,
+// is treated as unauthored -- the same test the engine and the editor preview use.
+const FLinearColor kMagicDefaultRgba(0.5f, 0.5f, 0.5f, 1.0f);
+
+bool IsMagicDefaultRgba(const FLinearColor& Color)
+{
+	return Color.R == kMagicDefaultRgba.R && Color.G == kMagicDefaultRgba.G && Color.B == kMagicDefaultRgba.B
+		&& Color.A == kMagicDefaultRgba.A;
+}
+
 // A query-only static mesh part carrying the named engine primitive (null path
 // leaves the asset unassigned), attached under Body's root.
 UStaticMeshComponent* MakePart(AActor* Body, const TCHAR* MeshPath)
@@ -134,10 +144,24 @@ void FMjImportedAssetResolver::ApplyImportedMaterial(UPrimitiveComponent* Comp, 
 	// The material the element names, resolved through its own default-class chain
 	// and its own spec -- the prefix-free authored name, not the model's prefixed one.
 	const FSpecRef Spec = FSpecRef::OverOwner(Geom);
-	FMjMaterialValues Values;
-	MjResolveMaterial(Spec, Geom->EffectiveMaterialName(), Values);
-
+	const FString MaterialName = Geom->EffectiveMaterialName();
 	const FLinearColor BaseColor = Geom->GetEffectiveColor();
+
+	// Parity with the editor preview (UMjGeom::ApplySpecMaterial): an imported mesh
+	// arrives with materials of its own, so overwriting them with a spec colour the
+	// model never asked for is a downgrade. Dress a mesh only where the spec asks --
+	// a named material, or an rgba authored away from the magic default; a converted
+	// prop keeps its own StaticMesh's materials this way. A primitive has nothing of
+	// its own to keep and is dressed either way.
+	const bool bAssetBacked = (Model->geom_type[G] == mjGEOM_MESH);
+	const bool bSpecAsksForColour = !MaterialName.IsEmpty() || !IsMagicDefaultRgba(BaseColor);
+	if (bAssetBacked && !bSpecAsksForColour)
+	{
+		return;
+	}
+
+	FMjMaterialValues Values;
+	MjResolveMaterial(Spec, MaterialName, Values);
 
 	// The planar extent texuniform tiles by (a size-0 plane is drawn as a finite
 	// quad, so report its half-extent rather than zero).

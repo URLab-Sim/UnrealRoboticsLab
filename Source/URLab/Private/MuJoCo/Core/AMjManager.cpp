@@ -1047,6 +1047,9 @@ void AAMjManager::BuildRuntimeView()
 			continue;
 		const FName EntityName(*Art->GetName());
 		MjEntityHandoff::TransferPossessConfig(Art, EntityName);
+		FMjEntity DebugFlags;
+		MjEntityHandoff::TransferDebugFlags(Art, DebugFlags);
+		PhysicsEngine->SetEntityOverlayFlags(EntityName, DebugFlags.Overlay);
 		TArray<UMjEntityLogicComponent*> Logic;
 		Art->GetComponents<UMjEntityLogicComponent>(Logic);
 		if (Logic.Num() > 0)

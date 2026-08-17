@@ -66,6 +66,8 @@ DEFINE_LOG_CATEGORY(LogURLabEditor);
 #include "MuJoCo/Elements/MjBody.h"
 #include "MuJoCo/Gen/Elements/Defaults/MjDefault.gen.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Spec/MjNodeFactories.h"
+#include "MuJoCo/Gen/Elements/MjModel.gen.h"
 #include "SMjArticulationOutliner.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Framework/Docking/WorkspaceItem.h"
@@ -332,6 +334,29 @@ void FURLabEditorModule::BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TAr
 		FText::FromString("CoACD decomposition, free to move under physics"),
 		FSlateIcon(),
 		FUIAction(FExecuteAction::CreateStatic(&FURLabEditorModule::ApplyQuickConvert, WeakActors, false, true)));
+
+	// Promotion only reads on an actor that is already a quick-convert prop, so
+	// the entry is greyed out until one of the selected actors carries the tag.
+	MenuBuilder.AddMenuSeparator();
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Promote to Articulation"),
+		FText::FromString("Replace the tagged prop with an editable single-body MuJoCo Articulation"),
+		FSlateIcon(),
+		FUIAction(
+			FExecuteAction::CreateStatic(&FURLabEditorModule::PromoteToArticulation, WeakActors),
+			FCanExecuteAction::CreateLambda([WeakActors]() {
+				for (const TWeakObjectPtr<AActor>& Weak : WeakActors)
+				{
+					if (AActor* Actor = Weak.Get())
+					{
+						if (Actor->FindComponentByClass<UMjQuickConvertComponent>())
+						{
+							return true;
+						}
+					}
+				}
+				return false;
+			})));
 }
 
 void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex)
@@ -374,6 +399,75 @@ void FURLabEditorModule::ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors
 
 	UE_LOG(LogURLabEditor, Log, TEXT("MuJoCo Quick Convert applied to %d actor(s) [Static=%d, Complex=%d]"),
 		Applied, bStatic, bComplex);
+}
+
+void FURLabEditorModule::PromoteToArticulation(TArray<TWeakObjectPtr<AActor>> Actors)
+{
+#if URLAB_MJ_GEN
+	FScopedTransaction Transaction(FText::FromString("MuJoCo Promote to Articulation"));
+
+	int32 Promoted = 0;
+	for (const TWeakObjectPtr<AActor>& WeakActor : Actors)
+	{
+		AActor* Actor = WeakActor.Get();
+		if (!Actor)
+			continue;
+
+		UMjQuickConvertComponent* Convert = Actor->FindComponentByClass<UMjQuickConvertComponent>();
+		if (!Convert)
+			continue;
+
+		UWorld* World = Actor->GetWorld();
+		if (!World)
+			continue;
+
+		// The articulation stands where the prop stood. Scale is deliberately left
+		// at one: an MJCF frame carries none, and the source scale already rides on
+		// the geoms' mesh assets, so folding it into the actor frame too would apply
+		// it twice.
+		const FTransform Source = Actor->GetActorTransform();
+		const FTransform Placement(Source.GetRotation(), Source.GetLocation(), FVector::OneVector);
+		const FString Label = Actor->GetActorLabel();
+
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		AMjArticulation* Art = World->SpawnActor<AMjArticulation>(
+			AMjArticulation::StaticClass(), Placement, Params);
+		if (!Art || !Art->Spec)
+		{
+			UE_LOG(LogURLabEditor, Warning, TEXT("Promote to Articulation: spawn failed for '%s'."), *Actor->GetName());
+			continue;
+		}
+		Art->Modify();
+
+		TArray<TObjectPtr<UMjNodeComponent>> Geoms;
+		UMjBodyBase* Body = nullptr;
+		{
+			urlab::spec::FMjInstanceScope Scope(*Art);
+			Body = UMjQuickConvertComponent::AuthorConvertedBody(
+				*Actor, *Art->Spec, Convert->GetConvertSettings(), Geoms);
+		}
+		if (!Body)
+		{
+			UE_LOG(LogURLabEditor, Warning,
+				TEXT("Promote to Articulation: '%s' had nothing convertible; removing the empty articulation."),
+				*Actor->GetName());
+			World->DestroyActor(Art);
+			continue;
+		}
+
+		Art->SetActorLabel(Label);
+		Art->GetPackage()->MarkPackageDirty();
+
+		Actor->Modify();
+		World->DestroyActor(Actor);
+		Promoted++;
+	}
+
+	UE_LOG(LogURLabEditor, Log, TEXT("Promoted %d prop(s) to articulation."), Promoted);
+#else
+	UE_LOG(LogURLabEditor, Warning, TEXT("Promote to Articulation requires the generated spec (URLAB_MJ_GEN)."));
+#endif
 }
 
 void FURLabEditorModule::OnActorMoved(AActor* Actor)

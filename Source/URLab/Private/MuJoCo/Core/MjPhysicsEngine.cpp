@@ -1035,6 +1035,20 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 		m_model, m_controlBuffer, m_controlLease, m_entityPartition);
 }
 
+bool UMjPhysicsEngine::SetEntityOverlayFlags(FName EntityName, const FMjEntityDrawFlags& Flags)
+{
+	FScopeLock Lock(&CallbackMutex);
+	for (FMjEntity& Entity : m_entityPartition)
+	{
+		if (Entity.Name == EntityName)
+		{
+			Entity.Overlay = Flags;
+			return true;
+		}
+	}
+	return false;
+}
+
 void UMjPhysicsEngine::UninstallRawModel()
 {
 	// A genuine no-op when no raw model is installed -- checked BEFORE the worker

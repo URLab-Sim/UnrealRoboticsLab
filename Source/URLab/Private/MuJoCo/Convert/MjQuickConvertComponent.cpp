@@ -417,8 +417,42 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 	}
 	MjDestroySpecChildren(*Root);
 
+	urlab::spec::FMjInstanceScope Scope(*Owner);
+	UMjBodyBase* Body = AuthorConvertedBody(*Owner, *Root, GetConvertSettings(), m_GeomElements);
+	if (Body == nullptr)
+	{
+		return;
+	}
+	m_CreatedBody = Body;
+	m_BodyName = GetScenePrefix() + TEXT("body");
+
+	UE_LOG(LogURLab, Log, TEXT("[MjQuickConvert] '%s': authored body '%s' with %d geom(s)."), *Owner->GetName(),
+		*m_BodyName, m_GeomElements.Num());
+#endif
+}
+
+UMjQuickConvertComponent::FConvertSettings UMjQuickConvertComponent::GetConvertSettings() const
+{
+	FConvertSettings S;
+	S.Static = Static;
+	S.ComplexMeshRequired = ComplexMeshRequired;
+	S.bDrivenByUnreal = bDrivenByUnreal;
+	S.CoACDThreshold = CoACDThreshold;
+	S.Friction = friction;
+	S.Solref = solref;
+	S.Solimp = solimp;
+	return S;
+}
+
+#if URLAB_MJ_GEN
+UMjBodyBase* UMjQuickConvertComponent::AuthorConvertedBody(
+	AActor& SourceActor,
+	UMjModel& Root,
+	const FConvertSettings& Settings,
+	TArray<TObjectPtr<UMjNodeComponent>>& OutGeoms)
+{
 	TArray<UStaticMeshComponent*> Meshes;
-	Owner->GetComponents(Meshes);
+	SourceActor.GetComponents(Meshes);
 	Meshes.RemoveAll([](const UStaticMeshComponent* Smc) {
 		return Smc == nullptr || Smc->GetStaticMesh() == nullptr || IsSpecPreview(*Smc);
 	});
@@ -430,27 +464,25 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 	});
 	if (Meshes.Num() == 0)
 	{
-		return;
+		return nullptr;
 	}
 
-	urlab::spec::FMjInstanceScope Scope(*Owner);
-
-	UMjAsset& Assets = urlab::spec::FInstanceNodeFactory::Create<UMjAsset>(*Root);
-	UMjBodyBase& WorldBody = urlab::spec::FInstanceNodeFactory::Create<UMjBodyBase>(*Root);
+	UMjAsset& Assets = urlab::spec::FInstanceNodeFactory::Create<UMjAsset>(Root);
+	UMjBodyBase& WorldBody = urlab::spec::FInstanceNodeFactory::Create<UMjBodyBase>(Root);
 	UMjBodyBase& Body = urlab::spec::FInstanceNodeFactory::Create<UMjBodyBase>(WorldBody);
 	Body.MjName = TEXT("body");
-	m_BodyName = GetScenePrefix() + TEXT("body");
 
-	if (bDrivenByUnreal)
+	if (Settings.bDrivenByUnreal)
 	{
 		Body.Mocap = true;
 	}
-	else if (!Static)
+	else if (!Settings.Static)
 	{
 		urlab::spec::FInstanceNodeFactory::Create<UMjFreeJoint>(Body).MjName = TEXT("free");
 	}
 
-	const FTransform OwnerTransform = Owner->GetActorTransform();
+	const FTransform OwnerTransform = SourceActor.GetActorTransform();
+	const FString HullOwnerName = SourceActor.GetName();
 	TSet<FString> EmittedMeshes;
 	int32 MeshIndex = 0;
 	for (UStaticMeshComponent* Smc : Meshes)
@@ -511,23 +543,23 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 			Geom.Mesh = MeshName;
 			Geom.Pos = FMjPosition3::FromUnreal(RelativeLocation);
 			Geom.Quat = FMjQuatRot::FromUnreal(RelativeRotation);
-			m_GeomElements.Add(&Geom);
+			OutGeoms.Add(&Geom);
 			return Geom;
 		};
 
 		auto ApplyContact = [&](UMjGeomBase& Geom) {
-			Geom.Friction = TArray<double>{friction.X, friction.Y, friction.Z};
-			Geom.Solref = TArray<double>{solref.X, solref.Y};
-			Geom.Solimp = TArray<double>{solimp.X, solimp.Y, solimp.Z};
+			Geom.Friction = TArray<double>{Settings.Friction.X, Settings.Friction.Y, Settings.Friction.Z};
+			Geom.Solref = TArray<double>{Settings.Solref.X, Settings.Solref.Y};
+			Geom.Solimp = TArray<double>{Settings.Solimp.X, Settings.Solimp.Y, Settings.Solimp.Z};
 		};
 
-		if (ComplexMeshRequired)
+		if (Settings.ComplexMeshRequired)
 		{
 			// The visual geom is the undecomposed mesh with contact switched off,
 			// drawn from the actor's own StaticMesh: the viewer sees the shape the
 			// artist made rather than the decomposition that collides.
 			UMjGeomBase* Visual = nullptr;
-			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, Owner->GetName(), false, CoACDThreshold))
+			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, HullOwnerName, false, Settings.CoACDThreshold))
 			{
 				Visual = &AddGeom(FString::Printf(TEXT("Geom_%d_visual"), MeshIndex), AddMeshAsset(Hull, Smc->GetStaticMesh()));
 				Visual->Contype = 0;
@@ -537,7 +569,7 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 			}
 
 			int32 HullIndex = 0;
-			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, Owner->GetName(), true, CoACDThreshold))
+			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, HullOwnerName, true, Settings.CoACDThreshold))
 			{
 				UMjGeomBase& Collision =
 					AddGeom(FString::Printf(TEXT("Geom_%d_%d"), MeshIndex, HullIndex), AddMeshAsset(Hull, nullptr));
@@ -561,7 +593,7 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 			// (through the <mesh>'s recorded asset) and MuJoCo collides it as that
 			// mesh's convex hull.
 			int32 HullIndex = 0;
-			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, Owner->GetName(), false, CoACDThreshold))
+			for (const FMjConvertedHull& Hull : ExportHulls(*Smc, HullOwnerName, false, Settings.CoACDThreshold))
 			{
 				ApplyContact(AddGeom(FString::Printf(TEXT("Geom_%d_%d"), MeshIndex, HullIndex),
 					AddMeshAsset(Hull, Smc->GetStaticMesh())));
@@ -571,12 +603,9 @@ void UMjQuickConvertComponent::AuthorSceneSpec()
 		++MeshIndex;
 	}
 
-	m_CreatedBody = &Body;
-
-	UE_LOG(LogURLab, Log, TEXT("[MjQuickConvert] '%s': authored body '%s' with %d geom(s)."), *Owner->GetName(),
-		*m_BodyName, m_GeomElements.Num());
-#endif
+	return &Body;
 }
+#endif
 
 void UMjQuickConvertComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {

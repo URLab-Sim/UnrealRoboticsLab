@@ -41,6 +41,16 @@ private:
 	static void BuildQuickConvertSubMenu(FMenuBuilder& MenuBuilder, TArray<AActor*> SelectedActors);
 	static void ApplyQuickConvert(TArray<TWeakObjectPtr<AActor>> Actors, bool bStatic, bool bComplex);
 
+	/**
+	 * Replace a quick-convert prop with a single-body MuJoCo Articulation.
+	 *
+	 * The tagged actor compiles to one body already; a promotion re-authors that
+	 * same body -- its free joint, its geoms, its mesh assets and contact
+	 * parameters -- into a first-class AMjArticulation the user can then grow
+	 * (add joints, actuators, logic), and takes the source actor away with it.
+	 */
+	static void PromoteToArticulation(TArray<TWeakObjectPtr<AActor>> Actors);
+
 	void OnObjectModified(UObject* Object);
 
 	/**

@@ -404,6 +404,14 @@ public:
 	void RebuildEntityPartition();
 	uint64 GetEntityStructureVersion() const { return m_entityStructureVersion.Get(); }
 
+	/**
+	 * Write one entity's debug-overlay intent into its partition record, matched by Name. Taken under
+	 * the step lock because the partition is shared with the physics worker, so a per-instance overlay
+	 * flag demoted off an authoring articulation at handoff lands atomically against a live step.
+	 * Returns false when no entity carries EntityName.
+	 */
+	bool SetEntityOverlayFlags(FName EntityName, const FMjEntityDrawFlags& Flags);
+
 	/** True while a raw (fast-path) model is installed instead of a compiled scene. */
 	bool IsRawModelInstalled() const { return bRawModelInstalled; }
 

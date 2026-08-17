@@ -29,6 +29,7 @@
 
 #include "MjQuickConvertComponent.generated.h"
 
+class AActor;
 class UMjBodyBase;
 class UMjModel;
 class UMjNodeComponent;
@@ -117,6 +118,40 @@ public:
 
 	/** The compiled-model body id, or -1 when there is no bound body. */
 	int32 GetMjBodyId() const;
+
+	// --- Conversion, as a value ---------------------------------------------- //
+
+	/** The conversion settings a body is authored from, as a plain value. */
+	struct FConvertSettings
+	{
+		bool Static = false;
+		bool ComplexMeshRequired = false;
+		bool bDrivenByUnreal = false;
+		float CoACDThreshold = 0.05f;
+		FVector3d Friction{1.0, 1.0, 1.0};
+		FVector3d Solref{0.02, 1.0, 0.0};
+		FVector3d Solimp{0.9, 0.95, 0.001};
+	};
+
+	/** This component's settings, so a promotion can carry them onto an art. */
+	FConvertSettings GetConvertSettings() const;
+
+	/**
+	 * Author one converted body under `Root` from `SourceActor`'s static meshes.
+	 *
+	 * A worldbody, the body, its free joint (unless the settings pin it static or
+	 * hand it to Unreal as a mocap body) and a geom per exported hull -- the same
+	 * `<mesh>`-per-hull assets, the same contact parameters. The nodes attach to
+	 * whichever actor the ambient FMjInstanceScope names, so the caller opens the
+	 * scope on the actor that is to own the spec: the converted actor itself for a
+	 * quick convert, or a freshly spawned articulation for a promotion. Returns
+	 * the body element, or null when the actor had nothing convertible on it.
+	 */
+	static UMjBodyBase* AuthorConvertedBody(
+		AActor& SourceActor,
+		UMjModel& Root,
+		const FConvertSettings& Settings,
+		TArray<TObjectPtr<UMjNodeComponent>>& OutGeoms);
 
 	// --- Scene contribution -------------------------------------------------- //
 

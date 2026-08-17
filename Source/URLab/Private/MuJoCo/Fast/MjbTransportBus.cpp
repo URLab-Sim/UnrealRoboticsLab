@@ -10,7 +10,7 @@
 
 #include "MuJoCo/Fast/MjbTransportBus.h"
 
-#include "Transport/ZmqClientSubscribeTransport.h"
+#include "Transport/ClientSubscribeTransport.h"
 #include "Utils/URLabLogging.h"
 
 void UMjbTransportBus::Start(const FString& Endpoint)
@@ -20,17 +20,15 @@ void UMjbTransportBus::Start(const FString& Endpoint)
 		return;
 	}
 	// The renderer subscribes to the owner's "geoms" broadcast through the agnostic
-	// client-subscribe transport (ZMQ backend today). The worker delivers each
-	// newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
-	UURLabZmqClientSubscribeTransport* Zmq = NewObject<UURLabZmqClientSubscribeTransport>(this);
-	Zmq->Configure(Endpoint, TEXT("geoms"),
+	// client-subscribe transport (backend chosen by the base). The worker delivers
+	// each newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
+	BusTransport = UURLabClientSubscribeTransport::Create(this, Endpoint, TEXT("geoms"),
 		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &UMjbTransportBus::OnBusMessage));
-	if (!Zmq->TransportInit())
+	if (!BusTransport)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjbScene] transform bus connect failed: %s"), *Endpoint);
 		return;
 	}
-	BusTransport = Zmq;
 	bRxPending = false;
 	UE_LOG(LogURLab, Log, TEXT("[MjbScene] subscribing to transform bus %s"), *Endpoint);
 }

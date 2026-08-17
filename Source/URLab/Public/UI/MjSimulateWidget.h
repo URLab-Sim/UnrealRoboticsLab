@@ -230,6 +230,25 @@ private:
 	UFUNCTION()
 	void HandleHoldKeyframe();
 
+	/** @brief Dropdown of watchable members (joint / sensor) on the selected entity. */
+	UPROPERTY()
+	UComboBoxString* WatchSelector = nullptr;
+
+	/** @brief Live-value row driven by the Watch selection. */
+	UPROPERTY()
+	TObjectPtr<UMjPropertyRow> WatchValueRow = nullptr;
+
+	/** @brief Resolved id + kind (1 = joint, 2 = sensor, 255 = none) of the watched member. */
+	int32 WatchId = -1;
+	uint8 WatchKind = 255;
+
+	/** @brief Handles Watch dropdown selection: resolves the member id + kind. */
+	UFUNCTION()
+	void OnWatchSelected(FString SelectedItem, ESelectInfo::Type SelectionType);
+
+	/** @brief Rebuilds the Watch dropdown from the selected entity's joints + sensors. */
+	void RefreshWatchDropdown();
+
 	/** @brief Live monitor rows (actuators / joints / sensors) with their resolved
 	 *  model ids and kinds (0 = actuator, 1 = joint, 2 = sensor), rebuilt alongside
 	 *  the entity controls so NativeTick refreshes readings off the render snapshot

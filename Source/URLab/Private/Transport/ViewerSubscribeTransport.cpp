@@ -13,7 +13,7 @@
 
 #include "Transport/ViewerSubscribeTransport.h"
 
-#include "Transport/ZmqClientSubscribeTransport.h"
+#include "Transport/ClientSubscribeTransport.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "Bridge/MsgpackHelpers.h"
@@ -62,17 +62,15 @@ bool UURLabViewerSubscribeTransport::TransportInit()
 	}
 
 	// Receive the "viewer" topic through the agnostic client-subscribe transport
-	// (ZMQ backend today); OnMessage decodes + applies each newest frame.
-	UURLabZmqClientSubscribeTransport* Zmq = NewObject<UURLabZmqClientSubscribeTransport>(this);
-	Zmq->Configure(SourceEndpoint, Topic,
+	// (backend chosen by the base); OnMessage decodes + applies each newest frame.
+	Sub = UURLabClientSubscribeTransport::Create(this, SourceEndpoint, Topic,
 		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(
 			this, &UURLabViewerSubscribeTransport::OnMessage));
-	if (!Zmq->TransportInit())
+	if (!Sub)
 	{
 		UE_LOG(LogURLabNet, Error, TEXT("ViewerSubscribeTransport: connect failed to %s"), *SourceEndpoint);
 		return false;
 	}
-	Sub = Zmq;
 	bIsInitialized = true;
 	UE_LOG(LogURLabNet, Log, TEXT("ViewerSubscribeTransport: subscribing to %s (topic '%s')"),
 		*SourceEndpoint, *Topic);

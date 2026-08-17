@@ -41,6 +41,15 @@ public:
 	DECLARE_DELEGATE_TwoParams(FOnClientMessage, const FString& /*Topic*/,
 		const TArray<uint8>& /*Payload*/);
 
+	/** Construct + connect the configured client-subscribe backend, owned by
+	 *  Outer, delivering `Topic` payloads from `Endpoint` to `Callback`. The
+	 *  backend (ZMQ today; SHM / ROS / gRPC as they are added) is chosen here so
+	 *  every render sink -- the fast-path transform bus and the viewer -- shares
+	 *  one construction seam instead of naming a concrete transport. Returns the
+	 *  started transport, or nullptr if the backend could not connect. */
+	static UURLabClientSubscribeTransport* Create(UObject* Outer,
+		const FString& Endpoint, const FString& Topic, FOnClientMessage Callback);
+
 	/** Source endpoint (e.g. "tcp://host:port"), topic to subscribe, and the
 	 *  delivery callback. Call before TransportInit. */
 	virtual void Configure(const FString& Endpoint, const FString& Topic,

@@ -297,7 +297,7 @@ void UMjSimulateWidget::NativeConstruct()
 
 			// Label for articulation selector
 			UTextBlock* SelectorLabel = NewObject<UTextBlock>(this);
-			SelectorLabel->SetText(FText::FromString(TEXT("Articulation:")));
+			SelectorLabel->SetText(FText::FromString(TEXT("Entity:")));
 			SelectorLabel->SetColorAndOpacity(FSlateColor(FLinearColor::White));
 			if (UHorizontalBoxSlot* LabelSlot = TopBar->AddChildToHorizontalBox(SelectorLabel))
 			{
@@ -997,6 +997,8 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			ResetToKeyframeButton->RemoveFromParent();
 		if (HoldKeyframeButton)
 			HoldKeyframeButton->RemoveFromParent();
+		if (WatchSelector)
+			WatchSelector->RemoveFromParent();
 		ReplayEnabledCheckBoxes.Empty();
 		ReplayRelPosCheckBoxes.Empty();
 
@@ -1080,13 +1082,103 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		return Row;
 	};
 
-	// Manager / Global Settings (Left Panel)
+	// Manager / global panels, arranged to mirror MuJoCo simulate's left-hand
+	// collapsible panels (Simulation, Watch, Physics, Rendering, Group enable),
+	// followed by URLab-specific panels (Network, Snapshots, Replay).
 	if (ManagerSettingsList)
 	{
-		UVerticalBox* PhysicsBox = nullptr;
-		CreateSection(ManagerSettingsList, TEXT("PHYSICS OPTIONS"), PhysicsBox);
+		UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
+		UMjDebugVisualizer* DV = ManagerRef->DebugVisualizer;
+		UMjNetworkManager* NM = ManagerRef->NetworkManager;
+		UMjOption* const SceneOption = ManagerRef->SceneOption;
 
-		// Integrator dropdown (above timestep)
+		UVerticalBox* SimulationBox = nullptr;
+		CreateSection(ManagerSettingsList, TEXT("SIMULATION"), SimulationBox);
+		AddRow(SimulationBox, TEXT("Sim Speed %"), PE ? PE->SimSpeedPercent : 100.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 100.0f), true);
+
+		if (!KeyframeSelector)
+		{
+			KeyframeSelector = NewObject<UComboBoxString>(this);
+			KeyframeSelector->OnSelectionChanged.AddDynamic(this, &UMjSimulateWidget::OnKeyframeSelected);
+
+			FTableRowStyle RowStyle = KeyframeSelector->GetItemStyle();
+			FSlateColor RowBG(FLinearColor(0.15f, 0.15f, 0.18f, 1.0f));
+			FSlateColor RowHover(FLinearColor(0.25f, 0.30f, 0.35f, 1.0f));
+			RowStyle.SetEvenRowBackgroundBrush(FSlateRoundedBoxBrush(RowBG, 0.0f));
+			RowStyle.SetOddRowBackgroundBrush(FSlateRoundedBoxBrush(RowBG, 0.0f));
+			RowStyle.SetEvenRowBackgroundHoveredBrush(FSlateRoundedBoxBrush(RowHover, 0.0f));
+			RowStyle.SetOddRowBackgroundHoveredBrush(FSlateRoundedBoxBrush(RowHover, 0.0f));
+			KeyframeSelector->SetItemStyle(RowStyle);
+		}
+		RefreshKeyframeDropdown();
+		if (UVerticalBoxSlot* BoxSlot = SimulationBox->AddChildToVerticalBox(KeyframeSelector))
+		{
+			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
+		}
+
+		if (!ResetToKeyframeButton)
+		{
+			ResetToKeyframeButton = NewObject<UButton>(this);
+			UTextBlock* BtnText = NewObject<UTextBlock>(ResetToKeyframeButton);
+			BtnText->SetText(FText::FromString(TEXT("Load Keyframe")));
+			BtnText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+			BtnText->SetJustification(ETextJustify::Center);
+			FSlateFontInfo FontInfo = BtnText->GetFont();
+			FontInfo.Size = 14;
+			BtnText->SetFont(FontInfo);
+			ResetToKeyframeButton->AddChild(BtnText);
+			ResetToKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.4f, 0.8f, 1.0f));
+			ResetToKeyframeButton->OnClicked.AddDynamic(this, &UMjSimulateWidget::HandleResetToKeyframe);
+		}
+		if (UVerticalBoxSlot* BoxSlot = SimulationBox->AddChildToVerticalBox(ResetToKeyframeButton))
+		{
+			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
+		}
+
+		if (!HoldKeyframeButton)
+		{
+			HoldKeyframeButton = NewObject<UButton>(this);
+			UTextBlock* BtnText = NewObject<UTextBlock>(HoldKeyframeButton);
+			BtnText->SetText(FText::FromString(TEXT("Hold Keyframe")));
+			BtnText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
+			BtnText->SetJustification(ETextJustify::Center);
+			FSlateFontInfo FontInfo = BtnText->GetFont();
+			FontInfo.Size = 14;
+			BtnText->SetFont(FontInfo);
+			HoldKeyframeButton->AddChild(BtnText);
+			HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.6f, 0.3f, 1.0f));
+			HoldKeyframeButton->OnClicked.AddDynamic(this, &UMjSimulateWidget::HandleHoldKeyframe);
+		}
+		if (UVerticalBoxSlot* BoxSlot = SimulationBox->AddChildToVerticalBox(HoldKeyframeButton))
+		{
+			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
+		}
+
+		UVerticalBox* WatchBox = nullptr;
+		CreateSection(ManagerSettingsList, TEXT("WATCH"), WatchBox);
+		if (!WatchSelector)
+		{
+			WatchSelector = NewObject<UComboBoxString>(this);
+			WatchSelector->OnSelectionChanged.AddDynamic(this, &UMjSimulateWidget::OnWatchSelected);
+
+			FTableRowStyle RowStyle = WatchSelector->GetItemStyle();
+			FSlateColor RowBG(FLinearColor(0.15f, 0.15f, 0.18f, 1.0f));
+			FSlateColor RowHover(FLinearColor(0.25f, 0.30f, 0.35f, 1.0f));
+			RowStyle.SetEvenRowBackgroundBrush(FSlateRoundedBoxBrush(RowBG, 0.0f));
+			RowStyle.SetOddRowBackgroundBrush(FSlateRoundedBoxBrush(RowBG, 0.0f));
+			RowStyle.SetEvenRowBackgroundHoveredBrush(FSlateRoundedBoxBrush(RowHover, 0.0f));
+			RowStyle.SetOddRowBackgroundHoveredBrush(FSlateRoundedBoxBrush(RowHover, 0.0f));
+			WatchSelector->SetItemStyle(RowStyle);
+		}
+		RefreshWatchDropdown();
+		if (UVerticalBoxSlot* BoxSlot = WatchBox->AddChildToVerticalBox(WatchSelector))
+		{
+			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
+		}
+		WatchValueRow = AddRow(WatchBox, TEXT("Value"), 0.0f, EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, false);
+
+		UVerticalBox* PhysicsBox = nullptr;
+		CreateSection(ManagerSettingsList, TEXT("PHYSICS"), PhysicsBox);
 		{
 			UComboBoxString* IntegratorCombo = NewObject<UComboBoxString>(this);
 			IntegratorCombo->AddOption(TEXT("Euler"));
@@ -1109,38 +1201,43 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			}
 			PhysicsBox->AddChildToVerticalBox(IntegratorCombo);
 		}
-
-		UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
-		UMjDebugVisualizer* DV = ManagerRef->DebugVisualizer;
-		UMjNetworkManager* NM = ManagerRef->NetworkManager;
-
-		UMjOption* const SceneOption = ManagerRef->SceneOption;
 		AddRow(PhysicsBox, TEXT("Timestep"), SceneOption ? (float)SceneOption->Timestep.Get(0.002) : 0.002f, EMjPropertyType::Slider, false, FVector2D(0.0001f, 0.05f), true);
 		AddRow(PhysicsBox, TEXT("Iterations"), SceneOption ? (float)SceneOption->Iterations.Get(50) : 50.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 200.0f), true);
-		AddRow(PhysicsBox, TEXT("Sim Speed %"), PE ? PE->SimSpeedPercent : 100.0f, EMjPropertyType::Slider, false, FVector2D(5.0f, 100.0f), true);
-		AddRow(PhysicsBox, TEXT("Debug Enabled"), (DV && DV->bShowDebug) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 
-		UVerticalBox* VisualsBox = nullptr;
-		CreateSection(ManagerSettingsList, TEXT("VISUALS"), VisualsBox);
-		AddRow(VisualsBox, TEXT("Global Artic. Collision"), (DV && DV->bGlobalDrawDebugCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-		AddRow(VisualsBox, TEXT("Global Artic. group 3"), (DV && DV->bGlobalShowGroup3) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-		AddRow(VisualsBox, TEXT("Global Quick Collision"), (DV && DV->bGlobalQuickConvertCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		UVerticalBox* RenderingBox = nullptr;
+		CreateSection(ManagerSettingsList, TEXT("RENDERING"), RenderingBox);
+		AddRow(RenderingBox, TEXT("Contact Point"), (DV && DV->bGlobalDrawDebugContactPoints) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Contact Force"), (DV && DV->bGlobalDrawDebugContactForces) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Center of Mass"), (DV && DV->bGlobalDrawDebugCom) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Inertia"), (DV && DV->bGlobalDrawDebugInertia) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Perturbation"), (DV && DV->bGlobalDrawDebugPerturb) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Collision"), (DV && DV->bGlobalDrawDebugCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Joint"), (DV && DV->bGlobalDrawDebugJoints) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Tendon"), (DV && DV->bGlobalDrawTendons) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Contact Visualization"), (DV && DV->bShowDebug) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		AddRow(RenderingBox, TEXT("Quick Collision"), (DV && DV->bGlobalQuickConvertCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 
 		if (!SelectedEntityName.IsNone())
 		{
 			const FMjEntity* Ent = FindEntity(PE, SelectedEntityName);
 			const FMjEntityDrawFlags Overlay = Ent ? Ent->Overlay : FMjEntityDrawFlags();
-			AddRow(VisualsBox, TEXT("Selected Collision"), Overlay.bDrawDebugCollision ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected Joint Axes"), Overlay.bDrawDebugJoints ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected Sites"), Overlay.bDrawDebugSites ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected group 3"), 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			AddRow(RenderingBox, TEXT("Selected Collision"), Overlay.bDrawDebugCollision ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			AddRow(RenderingBox, TEXT("Selected Joint"), Overlay.bDrawDebugJoints ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			AddRow(RenderingBox, TEXT("Selected Site"), Overlay.bDrawDebugSites ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		}
+
+		UVerticalBox* GroupBox = nullptr;
+		CreateSection(ManagerSettingsList, TEXT("GROUP ENABLE"), GroupBox);
+		AddRow(GroupBox, TEXT("Geom Group 3 (Global)"), (DV && DV->bGlobalShowGroup3) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+		if (!SelectedEntityName.IsNone())
+		{
+			AddRow(GroupBox, TEXT("Selected Geom Group 3"), 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 		}
 
 		UVerticalBox* NetworkBox = nullptr;
 		CreateSection(ManagerSettingsList, TEXT("NETWORK"), NetworkBox);
 		AddRow(NetworkBox, TEXT("Enable All Cameras"), (NM && NM->bEnableAllCameras) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 
-		// Snapshots moved dynamically to panel
 		UVerticalBox* SnapshotBox = nullptr;
 		CreateSection(ManagerSettingsList, TEXT("SNAPSHOTS"), SnapshotBox);
 		if (SnapshotButton)
@@ -1158,82 +1255,14 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			}
 		}
 
-		// Keyframes section
-		UVerticalBox* KeyframeBox = nullptr;
-		CreateSection(ManagerSettingsList, TEXT("KEYFRAMES"), KeyframeBox);
-
-		if (!KeyframeSelector)
-		{
-			KeyframeSelector = NewObject<UComboBoxString>(this);
-			KeyframeSelector->OnSelectionChanged.AddDynamic(this, &UMjSimulateWidget::OnKeyframeSelected);
-
-			// Style matching replay dropdown
-			FTableRowStyle RowStyle = KeyframeSelector->GetItemStyle();
-			FSlateColor RowBG(FLinearColor(0.15f, 0.15f, 0.18f, 1.0f));
-			FSlateColor RowHover(FLinearColor(0.25f, 0.30f, 0.35f, 1.0f));
-			RowStyle.SetEvenRowBackgroundBrush(FSlateRoundedBoxBrush(RowBG, 0.0f));
-			RowStyle.SetOddRowBackgroundBrush(FSlateRoundedBoxBrush(RowBG, 0.0f));
-			RowStyle.SetEvenRowBackgroundHoveredBrush(FSlateRoundedBoxBrush(RowHover, 0.0f));
-			RowStyle.SetOddRowBackgroundHoveredBrush(FSlateRoundedBoxBrush(RowHover, 0.0f));
-			KeyframeSelector->SetItemStyle(RowStyle);
-		}
-		RefreshKeyframeDropdown();
-		if (UVerticalBoxSlot* BoxSlot = KeyframeBox->AddChildToVerticalBox(KeyframeSelector))
-		{
-			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
-		}
-
-		// Reset to Keyframe button
-		if (!ResetToKeyframeButton)
-		{
-			ResetToKeyframeButton = NewObject<UButton>(this);
-			UTextBlock* BtnText = NewObject<UTextBlock>(ResetToKeyframeButton);
-			BtnText->SetText(FText::FromString(TEXT("Reset to Keyframe")));
-			BtnText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-			BtnText->SetJustification(ETextJustify::Center);
-			FSlateFontInfo FontInfo = BtnText->GetFont();
-			FontInfo.Size = 14;
-			BtnText->SetFont(FontInfo);
-			ResetToKeyframeButton->AddChild(BtnText);
-			ResetToKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.4f, 0.8f, 1.0f));
-			ResetToKeyframeButton->OnClicked.AddDynamic(this, &UMjSimulateWidget::HandleResetToKeyframe);
-		}
-		if (UVerticalBoxSlot* BoxSlot = KeyframeBox->AddChildToVerticalBox(ResetToKeyframeButton))
-		{
-			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
-		}
-
-		// Hold Keyframe button
-		if (!HoldKeyframeButton)
-		{
-			HoldKeyframeButton = NewObject<UButton>(this);
-			UTextBlock* BtnText = NewObject<UTextBlock>(HoldKeyframeButton);
-			BtnText->SetText(FText::FromString(TEXT("Hold Keyframe")));
-			BtnText->SetColorAndOpacity(FSlateColor(FLinearColor::White));
-			BtnText->SetJustification(ETextJustify::Center);
-			FSlateFontInfo FontInfo = BtnText->GetFont();
-			FontInfo.Size = 14;
-			BtnText->SetFont(FontInfo);
-			HoldKeyframeButton->AddChild(BtnText);
-			HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.6f, 0.3f, 1.0f));
-			HoldKeyframeButton->OnClicked.AddDynamic(this, &UMjSimulateWidget::HandleHoldKeyframe);
-		}
-		if (UVerticalBoxSlot* BoxSlot = KeyframeBox->AddChildToVerticalBox(HoldKeyframeButton))
-		{
-			BoxSlot->SetPadding(FMargin(0, 5, 0, 5));
-		}
-
-		// Replays moved dynamically to panel
 		UVerticalBox* ReplayBox = nullptr;
-		CreateSection(ManagerSettingsList, TEXT("REPLAY SYSTEM"), ReplayBox);
+		CreateSection(ManagerSettingsList, TEXT("REPLAY"), ReplayBox);
 
-		// Session dropdown
 		if (!ReplaySessionSelector)
 		{
 			ReplaySessionSelector = NewObject<UComboBoxString>(this);
 			ReplaySessionSelector->OnSelectionChanged.AddDynamic(this, &UMjSimulateWidget::OnReplaySessionSelected);
 
-			// Lighten the dropdown row backgrounds for readability
 			FTableRowStyle RowStyle = ReplaySessionSelector->GetItemStyle();
 			FSlateColor RowBG(FLinearColor(0.15f, 0.15f, 0.18f, 1.0f));
 			FSlateColor RowHover(FLinearColor(0.25f, 0.30f, 0.35f, 1.0f));
@@ -1248,7 +1277,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		ReplayBox->AddChildToVerticalBox(ReplaySessionSelector)->SetPadding(FMargin(0, 5, 0, 5));
 		RefreshReplaySessionDropdown();
 
-		// Articulation binding checkboxes
 		RebuildReplayBindingUI(ReplayBox);
 
 		if (RecordButton)
@@ -1266,7 +1294,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			}
 		}
 
-		// Load Replay button
 		if (!LoadCSVButton)
 		{
 			LoadCSVButton = NewObject<UButton>(this);
@@ -1289,7 +1316,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		}
 		ReplayBox->AddChildToVerticalBox(LoadCSVButton)->SetPadding(FMargin(0, 5, 0, 5));
 
-		// Save Recording button
 		if (!SaveRecordingButton)
 		{
 			SaveRecordingButton = NewObject<UButton>(this);
@@ -1326,36 +1352,12 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		return;
 	}
 
-	// Actuators: interactive setpoint sliders, addressed by entity name + actuator id.
-	const TArray<FName> ActNames = MjEntityMembers::Names(PE, SelectedEntityName, EMjEntityMember::Actuator);
-	if (ActNames.Num() > 0)
-	{
-		UVerticalBox* SecBox = nullptr;
-		CreateSection(ArticulationControlList, TEXT("ACTUATORS"), SecBox);
-		for (const FName& ActName : ActNames)
-		{
-			const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Actuator, ActName);
-			if (Id < 0 || Id >= M->nu)
-				continue;
-			const FVector2D Range(static_cast<float>(M->actuator_ctrlrange[2 * Id + 0]),
-				static_cast<float>(M->actuator_ctrlrange[2 * Id + 1]));
-			UMjPropertyRow* Row = AddRow(SecBox, ActName.ToString(), static_cast<float>(PE->GetSetpoint(Id)),
-				EMjPropertyType::Slider, true, Range, false, true);
-			if (Row)
-			{
-				MonitorRows.Add(Row);
-				MonitorIds.Add(Id);
-				MonitorKinds.Add(0);
-			}
-		}
-	}
-
 	// Monitors: Joints — position read from the engine's render snapshot.
 	const TArray<FName> JointNames = MjEntityMembers::Names(PE, SelectedEntityName, EMjEntityMember::Joint);
 	if (JointNames.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
-		CreateSection(ArticulationControlList, TEXT("JOINTS"), SecBox);
+		CreateSection(ArticulationControlList, TEXT("JOINT"), SecBox);
 		for (const FName& JointName : JointNames)
 		{
 			const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Joint, JointName);
@@ -1372,6 +1374,30 @@ void UMjSimulateWidget::RefreshArticulationControls()
 				MonitorRows.Add(Row);
 				MonitorIds.Add(Id);
 				MonitorKinds.Add(1);
+			}
+		}
+	}
+
+	// Actuators: interactive setpoint sliders, addressed by entity name + actuator id.
+	const TArray<FName> ActNames = MjEntityMembers::Names(PE, SelectedEntityName, EMjEntityMember::Actuator);
+	if (ActNames.Num() > 0)
+	{
+		UVerticalBox* SecBox = nullptr;
+		CreateSection(ArticulationControlList, TEXT("CONTROL"), SecBox);
+		for (const FName& ActName : ActNames)
+		{
+			const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Actuator, ActName);
+			if (Id < 0 || Id >= M->nu)
+				continue;
+			const FVector2D Range(static_cast<float>(M->actuator_ctrlrange[2 * Id + 0]),
+				static_cast<float>(M->actuator_ctrlrange[2 * Id + 1]));
+			UMjPropertyRow* Row = AddRow(SecBox, ActName.ToString(), static_cast<float>(PE->GetSetpoint(Id)),
+				EMjPropertyType::Slider, true, Range, false, true);
+			if (Row)
+			{
+				MonitorRows.Add(Row);
+				MonitorIds.Add(Id);
+				MonitorKinds.Add(0);
 			}
 		}
 	}
@@ -1471,7 +1497,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			};
 
 			UVerticalBox* LocoBox = nullptr;
-			CreateSection(ArticulationControlList, TEXT("LOCOMOTION"), LocoBox);
+			CreateSection(ArticulationControlList, TEXT("POSSESSION"), LocoBox);
 			AddTwistRow(LocoBox, TEXT("Max Forward Speed"), TC->MaxVx, FVector2D(0.0f, 2.0f));
 			AddTwistRow(LocoBox, TEXT("Max Strafe Speed"), TC->MaxVy, FVector2D(0.0f, 1.0f));
 			AddTwistRow(LocoBox, TEXT("Max Turn Rate"), TC->MaxYawRate, FVector2D(0.0f, 3.14f));
@@ -1484,13 +1510,33 @@ void UMjSimulateWidget::RefreshArticulationControls()
 
 void UMjSimulateWidget::UpdateMonitorValues()
 {
-	if (SelectedEntityName.IsNone() || MonitorRows.Num() == 0)
+	if (SelectedEntityName.IsNone())
 		return;
 
 	UMjPhysicsEngine* PE = ManagerRef ? ManagerRef->PhysicsEngine : nullptr;
 	const mjModel* M = PE ? PE->GetModel() : nullptr;
 	if (!PE || !M)
 		return;
+
+	if (WatchValueRow && WatchId >= 0)
+	{
+		float WVal = 0.0f;
+		if (WatchKind == 1 && WatchId < M->njnt)
+		{
+			const int32 Adr = M->jnt_qposadr[WatchId];
+			if (Adr >= 0 && Adr < M->nq)
+				WVal = static_cast<float>(MjSnapshotValue(*PE, Adr,
+					[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QPos; }));
+		}
+		else if (WatchKind == 2 && WatchId < M->nsensor)
+		{
+			const int32 Adr = M->sensor_adr[WatchId];
+			if (Adr >= 0 && Adr < M->nsensordata)
+				WVal = static_cast<float>(MjSnapshotValue(*PE, Adr,
+					[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.SensorData; }));
+		}
+		WatchValueRow->SetValue(WVal);
+	}
 
 	for (int32 i = 0; i < MonitorRows.Num(); ++i)
 	{
@@ -1559,12 +1605,42 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 		if (PE)
 			PE->SimSpeedPercent = NewValue;
 	}
-	else if (OptionName == TEXT("Debug Enabled"))
+	else if (OptionName == TEXT("Contact Visualization"))
 	{
 		if (DV)
 			DV->bShowDebug = (NewValue > 0.5f);
 	}
-	else if (OptionName == TEXT("Global Artic. Collision"))
+	else if (OptionName == TEXT("Contact Point"))
+	{
+		if (DV)
+			DV->bGlobalDrawDebugContactPoints = (NewValue > 0.5f);
+	}
+	else if (OptionName == TEXT("Contact Force"))
+	{
+		if (DV)
+			DV->bGlobalDrawDebugContactForces = (NewValue > 0.5f);
+	}
+	else if (OptionName == TEXT("Center of Mass"))
+	{
+		if (DV)
+			DV->bGlobalDrawDebugCom = (NewValue > 0.5f);
+	}
+	else if (OptionName == TEXT("Inertia"))
+	{
+		if (DV)
+			DV->bGlobalDrawDebugInertia = (NewValue > 0.5f);
+	}
+	else if (OptionName == TEXT("Perturbation"))
+	{
+		if (DV)
+			DV->bGlobalDrawDebugPerturb = (NewValue > 0.5f);
+	}
+	else if (OptionName == TEXT("Tendon"))
+	{
+		if (DV)
+			DV->bGlobalDrawTendons = (NewValue > 0.5f);
+	}
+	else if (OptionName == TEXT("Collision"))
 	{
 		if (DV)
 		{
@@ -1572,7 +1648,15 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 			DV->UpdateAllGlobalVisibility();
 		}
 	}
-	else if (OptionName == TEXT("Global Artic. group 3"))
+	else if (OptionName == TEXT("Joint"))
+	{
+		if (DV)
+		{
+			DV->bGlobalDrawDebugJoints = (NewValue > 0.5f);
+			DV->UpdateAllGlobalVisibility();
+		}
+	}
+	else if (OptionName == TEXT("Geom Group 3 (Global)"))
 	{
 		if (DV)
 		{
@@ -1580,7 +1664,7 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 			DV->UpdateAllGlobalVisibility();
 		}
 	}
-	else if (OptionName == TEXT("Global Quick Collision"))
+	else if (OptionName == TEXT("Quick Collision"))
 	{
 		if (DV)
 		{
@@ -1596,8 +1680,8 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 			NM->UpdateCameraStreamingState();
 		}
 	}
-	else if ((OptionName == TEXT("Selected Collision") || OptionName == TEXT("Selected Joint Axes")
-				 || OptionName == TEXT("Selected Sites"))
+	else if ((OptionName == TEXT("Selected Collision") || OptionName == TEXT("Selected Joint")
+				 || OptionName == TEXT("Selected Site"))
 			 && !SelectedEntityName.IsNone() && PE)
 	{
 		const FMjEntity* Ent = FindEntity(PE, SelectedEntityName);
@@ -1605,13 +1689,13 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 		const bool bOn = (NewValue > 0.5f);
 		if (OptionName == TEXT("Selected Collision"))
 			Flags.bDrawDebugCollision = bOn;
-		else if (OptionName == TEXT("Selected Joint Axes"))
+		else if (OptionName == TEXT("Selected Joint"))
 			Flags.bDrawDebugJoints = bOn;
 		else
 			Flags.bDrawDebugSites = bOn;
 		PE->SetEntityOverlayFlags(SelectedEntityName, Flags);
 	}
-	else if (OptionName == TEXT("Selected group 3") && !SelectedEntityName.IsNone())
+	else if (OptionName == TEXT("Selected Geom Group 3") && !SelectedEntityName.IsNone())
 	{
 		if (AMjEntity* Entity = ManagerRef->GetEntity(SelectedEntityName))
 		{
@@ -1746,6 +1830,90 @@ void UMjSimulateWidget::RefreshKeyframeDropdown()
 	if (Names.Num() > 0)
 	{
 		KeyframeSelector->SetSelectedOption(Names.Contains(CurrentSelection) ? CurrentSelection : Names[0]);
+	}
+}
+
+void UMjSimulateWidget::RefreshWatchDropdown()
+{
+	if (!WatchSelector)
+		return;
+
+	const FString CurrentSelection = WatchSelector->GetSelectedOption();
+	WatchSelector->ClearOptions();
+	WatchId = -1;
+	WatchKind = 255;
+
+	UMjPhysicsEngine* PE = ManagerRef ? ManagerRef->PhysicsEngine : nullptr;
+	const mjModel* M = PE ? PE->GetModel() : nullptr;
+	if (SelectedEntityName.IsNone() || M == nullptr)
+		return;
+
+	TArray<FString> Options;
+	for (const FName& JointName : MjEntityMembers::Names(PE, SelectedEntityName, EMjEntityMember::Joint))
+	{
+		Options.Add(TEXT("joint: ") + JointName.ToString());
+	}
+	if (const FMjEntity* Ent = FindEntity(PE, SelectedEntityName))
+	{
+		for (int32 Id : Ent->SensorIds)
+		{
+			if (Id >= 0 && Id < M->nsensor)
+				Options.Add(TEXT("sensor: ") + ShortMemberName(SelectedEntityName, CompiledNameOf(M, mjOBJ_SENSOR, Id)));
+		}
+	}
+
+	for (const FString& Opt : Options)
+	{
+		WatchSelector->AddOption(Opt);
+	}
+	if (Options.Num() > 0)
+	{
+		const FString Pick = Options.Contains(CurrentSelection) ? CurrentSelection : Options[0];
+		WatchSelector->SetSelectedOption(Pick);
+		OnWatchSelected(Pick, ESelectInfo::Direct);
+	}
+}
+
+void UMjSimulateWidget::OnWatchSelected(FString SelectedItem, ESelectInfo::Type SelectionType)
+{
+	WatchId = -1;
+	WatchKind = 255;
+	if (SelectedItem.IsEmpty() || SelectedEntityName.IsNone() || !ManagerRef || !ManagerRef->PhysicsEngine)
+		return;
+
+	UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
+	const mjModel* M = PE->GetModel();
+	if (M == nullptr)
+		return;
+
+	FString Kind, Member;
+	if (!SelectedItem.Split(TEXT(": "), &Kind, &Member))
+		return;
+
+	if (Kind == TEXT("joint"))
+	{
+		const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Joint, FName(*Member));
+		if (Id >= 0 && Id < M->njnt)
+		{
+			WatchId = Id;
+			WatchKind = 1;
+		}
+	}
+	else if (Kind == TEXT("sensor"))
+	{
+		if (const FMjEntity* Ent = FindEntity(PE, SelectedEntityName))
+		{
+			for (int32 Id : Ent->SensorIds)
+			{
+				if (Id >= 0 && Id < M->nsensor
+					&& ShortMemberName(SelectedEntityName, CompiledNameOf(M, mjOBJ_SENSOR, Id)) == Member)
+				{
+					WatchId = Id;
+					WatchKind = 2;
+					break;
+				}
+			}
+		}
 	}
 }
 

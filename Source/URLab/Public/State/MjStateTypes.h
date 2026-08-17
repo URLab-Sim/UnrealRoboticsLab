@@ -24,6 +24,7 @@
 
 #include "CoreMinimal.h"
 #include "MuJoCo/Gen/MjEnums.gen.h"
+#include "MuJoCo/Contracts/MjSensorSemantic.h"
 
 /**
  * Semantically-typed intermediate representation of one physics step. Producers
@@ -36,40 +37,6 @@
  * never allocate. Numeric slots are double so no precision is lost relative to
  * mjData's mjtNum.
  */
-
-/**
- * Coarse grouping of a sensor element. It is what lets a ROS publisher
- * pair gyro+accel into one Imu and route pose-like sensors to tf2. msgpack does
- * not read it.
- */
-enum class EMjSensorSemantic : uint8
-{
-	Generic,
-	Gyro,
-	Accel,
-	Velocity,
-	Force,
-	Torque,
-	Touch,
-	Rangefinder,
-	Magnetometer,
-	JointPos,
-	JointVel,
-	ActuatorPos,
-	ActuatorVel,
-	ActuatorFrc,
-	FramePos,
-	FrameQuat,
-	FrameAxis,
-	FrameLinVel,
-	FrameAngVel,
-	FrameLinAcc,
-	FrameAngAcc,
-	SubtreeCom,
-	SubtreeLinVel,
-	SubtreeAngMom,
-	Clock
-};
 
 /**
  * Sim + wall clock, stored as ROS builtin_interfaces/Time sec/nsec pairs so the

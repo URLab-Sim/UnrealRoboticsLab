@@ -4,7 +4,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "State/MjStateTypes.h" // EMjSensorSemantic
+#include "MuJoCo/Contracts/MjSensorSemantic.h"
 
 struct mjModel_;
 typedef mjModel_ mjModel;

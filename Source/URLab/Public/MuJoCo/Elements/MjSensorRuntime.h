@@ -29,7 +29,7 @@
 #include "CoreMinimal.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 
-#include "State/MjStateTypes.h"
+#include "MuJoCo/Contracts/MjSensorSemantic.h"
 
 #include "MjSensorRuntime.generated.h"
 

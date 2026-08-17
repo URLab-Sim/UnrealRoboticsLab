@@ -134,6 +134,20 @@ void UMjPerturbation::BeginPlay()
 				mju_zero(d->xfrc_applied, 6 * m->nbody);
 				mjv_applyPerturbPose(m, d, &Perturb, 0);
 				mjv_applyPerturbForce(m, d, &Perturb);
+
+				// Publish the same sample the puppet path does so the debug
+				// overlay (mjVIS_PERTURBFORCE / mjVIS_PERTURBOBJ) can read the
+				// active drag in direct modes, not only under puppet stepping.
+				FScopeLock Lock(&LatestSampleMutex);
+				const bool bActive = (Perturb.select > 0 && Perturb.active != 0);
+				const int32 NewBody = bActive ? Perturb.select : -1;
+				if (NewBody != LatestSample.BodyId || bActive)
+				{
+					LatestSample.BodyId = NewBody;
+					for (int i = 0; i < 6; ++i)
+						LatestSample.Xfrc[i] = bActive ? (double)d->xfrc_applied[6 * Perturb.select + i] : 0.0;
+					++LatestSample.Version;
+				}
 			}
 			else
 			{

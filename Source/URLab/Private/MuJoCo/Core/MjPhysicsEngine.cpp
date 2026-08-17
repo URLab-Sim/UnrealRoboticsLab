@@ -1841,6 +1841,31 @@ void UMjPhysicsEngine::PushRenderState()
 	CopyArray(RenderSnapshot.CamXPos, m_data->cam_xpos, NCam * 3);
 	CopyArray(RenderSnapshot.CamXMat, m_data->cam_xmat, NCam * 9);
 
+	// Debug-overlay extras. Subtree COM and inertial frames are cheap memcpys
+	// (mjVIS_COM / mjVIS_INERTIA); contacts run mj_contactForce per contact, so
+	// they are captured only while a contact-viz overlay asked for them.
+	CopyArray(RenderSnapshot.SubtreeCom, m_data->subtree_com, NBody * 3);
+	CopyArray(RenderSnapshot.XiPos, m_data->xipos, NBody * 3);
+	CopyArray(RenderSnapshot.XiMat, m_data->ximat, NBody * 9);
+	if (bContactVizWanted.load(std::memory_order_acquire))
+	{
+		const int32 NCon = m_data->ncon;
+		ResizeIfDifferent(RenderSnapshot.Contacts, NCon);
+		for (int32 i = 0; i < NCon; ++i)
+		{
+			const mjContact& C = m_data->contact[i];
+			FMjContactViz& V = RenderSnapshot.Contacts[i];
+			mju_copy3(V.Pos, C.pos);
+			mju_copy(V.Frame, C.frame, 9);
+			mj_contactForce(m_model, m_data, i, V.Force);
+			V.Dist = C.dist;
+		}
+	}
+	else if (RenderSnapshot.Contacts.Num() != 0)
+	{
+		RenderSnapshot.Contacts.Reset();
+	}
+
 	// Joint / actuator / sensor state.
 	CopyArray(RenderSnapshot.QPos, m_data->qpos, NQ);
 	CopyArray(RenderSnapshot.QVel, m_data->qvel, NV);

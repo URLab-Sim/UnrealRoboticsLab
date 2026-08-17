@@ -118,15 +118,11 @@ protected:
 	UPROPERTY()
 	AAMjManager* ManagerRef;
 
-	UPROPERTY()
-	AMjArticulation* SelectedArticulation;
+	/** @brief The entity currently selected in the dropdown, by its stable model-derived name. */
+	FName SelectedEntityName;
 
-	/** @brief Whether we're currently possessing an articulation. */
+	/** @brief Whether we're currently possessing the selected entity. */
 	bool bIsPossessing = false;
-
-	/** @brief The pawn we were controlling before possession. */
-	UPROPERTY()
-	APawn* OriginalPawn = nullptr;
 
 	/** @brief Cache of active camera feed entries for tick updates and teardown. */
 	UPROPERTY()
@@ -233,6 +229,15 @@ private:
 	/** @brief Handles Hold Keyframe button click. */
 	UFUNCTION()
 	void HandleHoldKeyframe();
+
+	/** @brief Live monitor rows (actuators / joints / sensors) with their resolved
+	 *  model ids and kinds (0 = actuator, 1 = joint, 2 = sensor), rebuilt alongside
+	 *  the entity controls so NativeTick refreshes readings off the render snapshot
+	 *  without walking the widget tree. */
+	UPROPERTY()
+	TArray<TObjectPtr<UMjPropertyRow>> MonitorRows;
+	TArray<int32> MonitorIds;
+	TArray<uint8> MonitorKinds;
 
 	/** @brief Cached session count for detecting changes in NativeTick. */
 	int32 CachedSessionCount = 0;

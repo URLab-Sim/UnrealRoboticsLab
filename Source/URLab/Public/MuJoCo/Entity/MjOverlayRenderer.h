@@ -36,6 +36,13 @@ public:
 	/** Draw the site crosses this frame (our extra, mirroring the authoring toggle). */
 	bool bDrawSites = false;
 
+	/** Active perturbation to visualise (mjVIS_PERTURBFORCE / mjVIS_PERTURBOBJ),
+	 *  refreshed by the owner each frame from UMjPerturbation. Body id < 0 = none. */
+	int32 PerturbBodyId = -1;
+
+	/** Applied perturb wrench on the selected body (force xyz, torque xyz), MuJoCo world. */
+	double PerturbForce[6] = {0, 0, 0, 0, 0, 0};
+
 	/** World offset applied to every drawn primitive (UE cm), matching the render
 	 *  scene's own origin so the overlays land on the geometry, not the world zero. */
 	FVector SceneOrigin = FVector::ZeroVector;
@@ -48,6 +55,10 @@ private:
 	void DrawCollision(const FMjRenderSnapshot& Snap) const;
 	void DrawJoints(const FMjRenderSnapshot& Snap) const;
 	void DrawSites(const FMjRenderSnapshot& Snap) const;
+	void DrawCom(const FMjRenderSnapshot& Snap) const;
+	void DrawInertia(const FMjRenderSnapshot& Snap) const;
+	void DrawContacts(const FMjRenderSnapshot& Snap, bool bPoints, bool bForces) const;
+	void DrawPerturb(const FMjRenderSnapshot& Snap) const;
 
 	// Borrowed; the owning scene holds the mjModel lifetime.
 	mjModel_* Model = nullptr;

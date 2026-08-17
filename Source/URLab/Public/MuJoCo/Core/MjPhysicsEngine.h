@@ -133,6 +133,12 @@ public:
 	 *  const operation on the snapshot and a request for the one after it. */
 	mutable std::atomic<bool> bSnapshotWanted{true};
 
+	/** Set by the overlay path while a contact-viz overlay (mjVIS_CONTACTPOINT /
+	 *  mjVIS_CONTACTFORCE) is enabled. Gates the per-contact mj_contactForce fill
+	 *  in PushRenderState so contact capture stays off the hot path when nobody
+	 *  is drawing contacts. */
+	mutable std::atomic<bool> bContactVizWanted{false};
+
 	/** Worker-thread only. Reset at the top of each worker iteration; a step
 	 *  handler that publishes the render snapshot itself (direct mode captures
 	 *  its exact frame id for the reply) sets this so the loop tail does not
@@ -510,6 +516,11 @@ public:
 	 *  i.e. each step's post-step state). Returned in step replies so a client
 	 *  can fetch the matching camera frame by id. Thread-safe. */
 	uint64 GetRenderFrameId();
+
+	/** Enable/disable per-contact capture in the render snapshot. The contact
+	 *  overlays call this so the mj_contactForce loop only runs while contacts
+	 *  are actually being drawn. Cheap atomic store; safe from any thread. */
+	void SetContactVizWanted(bool bWanted) { bContactVizWanted.store(bWanted, std::memory_order_release); }
 
 	// --- Command channel (UE -> MuJoCo) --------------------------------
 	//

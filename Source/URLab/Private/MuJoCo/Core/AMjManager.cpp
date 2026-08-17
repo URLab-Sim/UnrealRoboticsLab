@@ -1105,7 +1105,37 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 				bSites |= E.Overlay.bDrawDebugSites;
 			}
 		}
-		if (bCollision || bJoints || bSites)
+		const bool bCom = DebugVisualizer->bGlobalDrawDebugCom;
+		const bool bInertia = DebugVisualizer->bGlobalDrawDebugInertia;
+		const bool bContactPoints = DebugVisualizer->bGlobalDrawDebugContactPoints;
+		const bool bContactForces = DebugVisualizer->bGlobalDrawDebugContactForces;
+		const bool bPerturb = DebugVisualizer->bGlobalDrawDebugPerturb;
+
+		// The engine only captures per-contact data when a contact overlay is up.
+		if (PhysicsEngine)
+		{
+			PhysicsEngine->SetContactVizWanted(bContactPoints || bContactForces);
+		}
+
+		// The perturbation component owns the active-drag state; feed the latest
+		// applied wrench + selected body to the renderer for the perturb overlays.
+		OverlayRenderer->PerturbBodyId = -1;
+		if (bPerturb && Perturbation)
+		{
+			const FMjPerturbationSample Sample = Perturbation->GetLatestPerturbationSample();
+			if (Sample.BodyId >= 0)
+			{
+				OverlayRenderer->PerturbBodyId = Sample.BodyId;
+				for (int32 i = 0; i < 6; ++i)
+				{
+					OverlayRenderer->PerturbForce[i] = Sample.Xfrc[i];
+				}
+			}
+		}
+
+		const bool bAny = bCollision || bJoints || bSites || bCom || bInertia
+						  || bContactPoints || bContactForces || bPerturb;
+		if (bAny)
 		{
 			if (OverlayRenderer->Flags.VisFlags.Num() < mjNVISFLAG)
 			{
@@ -1113,6 +1143,12 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 			}
 			OverlayRenderer->Flags.VisFlags[mjVIS_CONVEXHULL] = bCollision ? 1 : 0;
 			OverlayRenderer->Flags.VisFlags[mjVIS_JOINT] = bJoints ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_COM] = bCom ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_INERTIA] = bInertia ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_CONTACTPOINT] = bContactPoints ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_CONTACTFORCE] = bContactForces ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_PERTFORCE] = bPerturb ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_PERTOBJ] = bPerturb ? 1 : 0;
 			OverlayRenderer->bDrawSites = bSites;
 			OverlayRenderer->DrawOverlays(Snap);
 		}

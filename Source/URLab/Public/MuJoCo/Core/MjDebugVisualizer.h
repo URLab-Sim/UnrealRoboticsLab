@@ -95,6 +95,26 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
 	bool bGlobalShowGroup3 = false;
 
+	/** @brief Toggles per-body subtree centre-of-mass markers (mjVIS_COM). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugCom = false;
+
+	/** @brief Toggles equivalent-inertia boxes (mjVIS_INERTIA). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugInertia = false;
+
+	/** @brief Toggles contact points (mjVIS_CONTACTPOINT). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugContactPoints = false;
+
+	/** @brief Toggles contact force arrows (mjVIS_CONTACTFORCE). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugContactForces = false;
+
+	/** @brief Toggles perturbation force/object markers (mjVIS_PERTURBFORCE / mjVIS_PERTURBOBJ). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugPerturb = false;
+
 	/** @brief Toggles debug collision drawing globally for all QuickConvert components. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
 	bool bGlobalQuickConvertCollision = false;

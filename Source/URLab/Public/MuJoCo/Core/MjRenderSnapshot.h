@@ -26,6 +26,20 @@
 #include "mujoco/mujoco.h"
 
 /**
+ * One contact's debug-visualization data, captured post-step for the
+ * mjVIS_CONTACTPOINT / mjVIS_CONTACTFORCE overlays. Filled only while a
+ * consumer has contact viz enabled (see UMjPhysicsEngine::bContactVizWanted),
+ * so the per-contact mj_contactForce call stays off the hot path when unused.
+ */
+struct FMjContactViz
+{
+	mjtNum Pos[3];   // contact point, world frame
+	mjtNum Frame[9]; // contact frame, row-major; row 0 is the contact normal
+	mjtNum Force[6]; // mj_contactForce result: force xyz then torque xyz, contact frame
+	mjtNum Dist;     // signed penetration distance (< 0 penetrating)
+};
+
+/**
  * Single-frame snapshot of MuJoCo state for game-thread consumers.
  *
  * Produced once per step on the physics thread inside
@@ -67,6 +81,21 @@ struct FMjRenderSnapshot
 
 	TArray<mjtNum> CamXPos; // 3 * ncam
 	TArray<mjtNum> CamXMat; // 9 * ncam
+
+	// --- Debug-overlay extras (COM / inertia / contacts) --------------
+
+	/** Body subtree centre of mass (d->subtree_com), world frame. 3 * nbody. mjVIS_COM. */
+	TArray<mjtNum> SubtreeCom;
+
+	/** Body inertial-frame world position (d->xipos). 3 * nbody. mjVIS_INERTIA. */
+	TArray<mjtNum> XiPos;
+
+	/** Body inertial-frame world orientation (d->ximat), row-major. 9 * nbody. mjVIS_INERTIA. */
+	TArray<mjtNum> XiMat;
+
+	/** Per-contact debug data. Empty unless a contact-viz consumer asked for it
+	 *  (UMjPhysicsEngine::SetContactVizWanted); sized to d->ncon when filled. */
+	TArray<FMjContactViz> Contacts;
 
 	// --- Joint / actuator / sensor state ------------------------------
 

@@ -57,6 +57,24 @@ void UMjOverlayRenderer::DrawOverlays(const FMjRenderSnapshot& Snap) const
 	{
 		DrawSites(Snap);
 	}
+	if (FlagSet(Flags.VisFlags, mjVIS_COM))
+	{
+		DrawCom(Snap);
+	}
+	if (FlagSet(Flags.VisFlags, mjVIS_INERTIA))
+	{
+		DrawInertia(Snap);
+	}
+	const bool bContactPoints = FlagSet(Flags.VisFlags, mjVIS_CONTACTPOINT);
+	const bool bContactForces = FlagSet(Flags.VisFlags, mjVIS_CONTACTFORCE);
+	if (bContactPoints || bContactForces)
+	{
+		DrawContacts(Snap, bContactPoints, bContactForces);
+	}
+	if (FlagSet(Flags.VisFlags, mjVIS_PERTFORCE) || FlagSet(Flags.VisFlags, mjVIS_PERTOBJ))
+	{
+		DrawPerturb(Snap);
+	}
 }
 
 void UMjOverlayRenderer::DrawCollision(const FMjRenderSnapshot& Snap) const
@@ -147,5 +165,113 @@ void UMjOverlayRenderer::DrawSites(const FMjRenderSnapshot& Snap) const
 		DrawDebugLine(World, Pos - FVector(CrossSize, 0, 0), Pos + FVector(CrossSize, 0, 0), Color, false, -1, 0, 1.0f);
 		DrawDebugLine(World, Pos - FVector(0, CrossSize, 0), Pos + FVector(0, CrossSize, 0), Color, false, -1, 0, 1.0f);
 		DrawDebugLine(World, Pos - FVector(0, 0, CrossSize), Pos + FVector(0, 0, CrossSize), Color, false, -1, 0, 1.0f);
+	}
+}
+
+void UMjOverlayRenderer::DrawCom(const FMjRenderSnapshot& Snap) const
+{
+	UWorld* World = GetWorld();
+	const mjModel* M = Model;
+	// Body 0 is the world; skip it, matching simulate's per-body subtree markers.
+	for (int32 B = 1; B < static_cast<int32>(M->nbody); ++B)
+	{
+		if (!Snap.SubtreeCom.IsValidIndex(B * 3 + 2))
+		{
+			continue;
+		}
+		const FVector Pos = URLabAxisConv::MjPositionToUe(&Snap.SubtreeCom[B * 3]) + SceneOrigin;
+		DrawDebugSphere(World, Pos, 3.0f, 8, FColor(255, 128, 255), false, -1, 0, 0.5f);
+	}
+}
+
+void UMjOverlayRenderer::DrawInertia(const FMjRenderSnapshot& Snap) const
+{
+	UWorld* World = GetWorld();
+	const mjModel* M = Model;
+	for (int32 B = 1; B < static_cast<int32>(M->nbody); ++B)
+	{
+		const mjtNum Mass = M->body_mass[B];
+		if (Mass <= 0.0)
+		{
+			continue;
+		}
+		if (!Snap.XiPos.IsValidIndex(B * 3 + 2) || !Snap.XiMat.IsValidIndex(B * 9 + 8))
+		{
+			continue;
+		}
+
+		// Equivalent inertia box: solve the uniform-box moments for the full edge
+		// lengths, then halve for the draw extent. Same box simulate renders.
+		const mjtNum* I = &M->body_inertia[B * 3];
+		const mjtNum T = 6.0 * (I[0] + I[1] + I[2]) / Mass;
+		const mjtNum Ex = FMath::Sqrt(FMath::Max(0.0, T - 12.0 * I[0] / Mass));
+		const mjtNum Ey = FMath::Sqrt(FMath::Max(0.0, T - 12.0 * I[1] / Mass));
+		const mjtNum Ez = FMath::Sqrt(FMath::Max(0.0, T - 12.0 * I[2] / Mass));
+
+		const FVector Pos = URLabAxisConv::MjPositionToUe(&Snap.XiPos[B * 3]) + SceneOrigin;
+		mjtNum Quat[4];
+		mju_mat2Quat(Quat, &Snap.XiMat[B * 9]);
+		const FQuat Rot = URLabAxisConv::MjQuatToUe(Quat);
+
+		// Metres -> cm half-extent: full edge * 100 / 2 = * 50.
+		const FVector Extent(Ex * 50.0, Ey * 50.0, Ez * 50.0);
+		DrawDebugBox(World, Pos, Extent, Rot, FColor(120, 180, 255), false, -1, 0, 0.3f);
+	}
+}
+
+void UMjOverlayRenderer::DrawContacts(const FMjRenderSnapshot& Snap, bool bPoints, bool bForces) const
+{
+	UWorld* World = GetWorld();
+	for (const FMjContactViz& C : Snap.Contacts)
+	{
+		const FVector Pos = URLabAxisConv::MjPositionToUe(C.Pos) + SceneOrigin;
+		if (bPoints)
+		{
+			DrawDebugPoint(World, Pos, 8.0f, FColor::Cyan, false, -1);
+		}
+		if (bForces)
+		{
+			// Rotate the contact-frame wrench into world: the frame's rows are its
+			// world-space axes, so world_f = sum_i frame_row_i * force_i.
+			mjtNum FW[3] = {0, 0, 0};
+			for (int32 k = 0; k < 3; ++k)
+			{
+				FW[k] = C.Frame[0 * 3 + k] * C.Force[0] + C.Frame[1 * 3 + k] * C.Force[1]
+						+ C.Frame[2 * 3 + k] * C.Force[2];
+			}
+			const FVector Dir = URLabAxisConv::MjDirectionToUe(FW);
+			// Newtons -> cm at a fixed visual scale; clamp so a big impulse stays on screen.
+			const float LenCm = FMath::Clamp(static_cast<float>(Dir.Size()) * 2.0f, 0.0f, 200.0f);
+			if (LenCm > 0.5f)
+			{
+				const FVector End = Pos + Dir.GetSafeNormal() * LenCm;
+				DrawDebugDirectionalArrow(World, Pos, End, 8.0f, FColor::Red, false, -1, 0, 1.0f);
+			}
+		}
+	}
+}
+
+void UMjOverlayRenderer::DrawPerturb(const FMjRenderSnapshot& Snap) const
+{
+	UWorld* World = GetWorld();
+	if (PerturbBodyId < 0 || !Snap.XPos.IsValidIndex(PerturbBodyId * 3 + 2))
+	{
+		return;
+	}
+	const FVector BodyPos = URLabAxisConv::MjPositionToUe(&Snap.XPos[PerturbBodyId * 3]) + SceneOrigin;
+
+	if (FlagSet(Flags.VisFlags, mjVIS_PERTOBJ))
+	{
+		DrawDebugSphere(World, BodyPos, 6.0f, 10, FColor::Yellow, false, -1, 0, 1.0f);
+	}
+	if (FlagSet(Flags.VisFlags, mjVIS_PERTFORCE))
+	{
+		const FVector Dir = URLabAxisConv::MjDirectionToUe(PerturbForce);
+		const float LenCm = FMath::Clamp(static_cast<float>(Dir.Size()) * 2.0f, 0.0f, 200.0f);
+		if (LenCm > 0.5f)
+		{
+			const FVector End = BodyPos + Dir.GetSafeNormal() * LenCm;
+			DrawDebugDirectionalArrow(World, BodyPos, End, 10.0f, FColor::Orange, false, -1, 0, 1.5f);
+		}
 	}
 }

@@ -24,10 +24,6 @@
 #include "UI/MjPropertyRow.h"
 #include "UI/MjCameraFeedEntry.h"
 #include "MuJoCo/Elements/MjCamera.h"
-#include "MuJoCo/Spec/MjNodeComponent.h"
-#include "MuJoCo/Elements/MjActuatorRuntime.h"
-#include "MuJoCo/Elements/MjJointRuntime.h"
-#include "MuJoCo/Elements/MjSensorRuntime.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
 #include "MuJoCo/Core/MjDebugVisualizer.h"
@@ -45,13 +41,150 @@
 #include "Components/SizeBox.h"
 #include "Components/Spacer.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Entity/MjEntity.h"
+#include "MuJoCo/Entity/MjEntityActor.h"
+#include "MuJoCo/Entity/MjEntityPawn.h"
+#include "MuJoCo/Entity/MjEntityMembers.h"
+#include "MuJoCo/Entity/MjControl.h"
+#include "MuJoCo/Entity/MjControlIngress.h"
 #include "MuJoCo/Input/MjTwistController.h"
+#include "State/MjCanonicalName.h"
 #include "Styling/SlateTypes.h"
 #include "Fonts/SlateFontInfo.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "Replay/MjReplayManager.h"
 #include "Kismet/GameplayStatics.h"
 #include "Components/CheckBox.h"
+
+THIRD_PARTY_INCLUDES_START
+#include "mujoco/mujoco.h"
+THIRD_PARTY_INCLUDES_END
+
+namespace
+{
+	/** The compiled entity carrying this stable name, or null. */
+	const FMjEntity* FindEntity(const UMjPhysicsEngine* Engine, FName EntityName)
+	{
+		if (Engine == nullptr || EntityName.IsNone())
+		{
+			return nullptr;
+		}
+		for (const FMjEntity& E : Engine->GetEntityPartition())
+		{
+			if (E.Name == EntityName)
+			{
+				return &E;
+			}
+		}
+		return nullptr;
+	}
+
+	/** The short name a member is displayed and addressed by: the compiled name with the entity's
+	 *  "<name>_" prefix stripped (matching how the scene assembly attaches a participant). */
+	FString ShortMemberName(FName EntityName, const FString& Compiled)
+	{
+		if (EntityName.IsNone())
+		{
+			return Compiled;
+		}
+		const FString Prefix = EntityName.ToString() + TEXT("_");
+		return Compiled.StartsWith(Prefix) ? Compiled.RightChop(Prefix.Len()) : Compiled;
+	}
+
+	FString CompiledNameOf(const mjModel* Model, int32 ObjType, int32 Id)
+	{
+		const char* N = mj_id2name(Model, ObjType, Id);
+		return N ? FString(UTF8_TO_TCHAR(N)) : FString();
+	}
+
+	/** The twist controller on the entity's possess pawn (re-homed off the articulation at handoff),
+	 *  or null when the entity has no pawn. */
+	UMjTwistController* FindEntityTwist(UWorld* World, FName EntityName)
+	{
+		if (World == nullptr || EntityName.IsNone())
+		{
+			return nullptr;
+		}
+		TArray<AActor*> Pawns;
+		UGameplayStatics::GetAllActorsOfClass(World, AMjEntityPawn::StaticClass(), Pawns);
+		for (AActor* PawnActor : Pawns)
+		{
+			AMjEntityPawn* Pawn = Cast<AMjEntityPawn>(PawnActor);
+			if (Pawn && Pawn->OwnerEntityName == EntityName)
+			{
+				return Pawn->FindComponentByClass<UMjTwistController>();
+			}
+		}
+		return nullptr;
+	}
+
+	/** Teleport the live data to a scene keyframe's non-free-joint qpos/qvel and its ctrl, then publish.
+	 *  Mirrors the retired AMjArticulation::ResetToKeyframe: free joints keep their world pose so the
+	 *  body is not thrown across the scene. */
+	void ApplyKeyframeReset(UMjPhysicsEngine* Engine, int32 KeyId)
+	{
+		mjModel* Model = Engine ? Engine->GetModel() : nullptr;
+		mjData* Data = Engine ? Engine->GetData() : nullptr;
+		if (Model == nullptr || Data == nullptr || KeyId < 0 || KeyId >= Model->nkey)
+		{
+			return;
+		}
+		const mjtNum* KeyQpos = Model->key_qpos + KeyId * Model->nq;
+		const mjtNum* KeyQvel = Model->key_qvel + KeyId * Model->nv;
+		const mjtNum* KeyCtrl = Model->key_ctrl + KeyId * Model->nu;
+		for (int32 j = 0; j < Model->njnt; ++j)
+		{
+			const int32 JointType = Model->jnt_type[j];
+			if (JointType == mjJNT_FREE)
+			{
+				continue;
+			}
+			const int32 QposAdr = Model->jnt_qposadr[j];
+			const int32 DofAdr = Model->jnt_dofadr[j];
+			const int32 NqPos = (JointType == mjJNT_BALL) ? 4 : 1;
+			for (int32 k = 0; k < NqPos; ++k)
+			{
+				Data->qpos[QposAdr + k] = KeyQpos[QposAdr + k];
+			}
+			const int32 NvDof = (JointType == mjJNT_BALL) ? 3 : 1;
+			for (int32 k = 0; k < NvDof; ++k)
+			{
+				Data->qvel[DofAdr + k] = KeyQvel[DofAdr + k];
+			}
+		}
+		for (int32 i = 0; i < Model->nu; ++i)
+		{
+			Data->ctrl[i] = KeyCtrl[i];
+		}
+		Engine->ForwardSync();
+	}
+
+	/** The scene keyframes that belong to an entity, as (display name, key id) pairs: those whose
+	 *  compiled name carries the entity's prefix, with the prefix stripped for display. When none
+	 *  carry it (a single-entity or raw scene where keys are unprefixed) every keyframe is offered. */
+	TArray<TPair<FString, int32>> EntityKeyframes(const mjModel* Model, FName EntityName)
+	{
+		TArray<TPair<FString, int32>> Out;
+		if (Model == nullptr)
+		{
+			return Out;
+		}
+		const FString Prefix = EntityName.IsNone() ? FString() : (EntityName.ToString() + TEXT("_"));
+		TArray<TPair<FString, int32>> Prefixed;
+		TArray<TPair<FString, int32>> All;
+		for (int32 K = 0; K < Model->nkey; ++K)
+		{
+			const FString Name = CompiledNameOf(Model, mjOBJ_KEY, K);
+			const FString Display = Name.IsEmpty() ? FString::Printf(TEXT("key_%d"), K) : Name;
+			All.Add(TPair<FString, int32>(Display, K));
+			if (!Prefix.IsEmpty() && Name.StartsWith(Prefix))
+			{
+				Prefixed.Add(TPair<FString, int32>(Name.RightChop(Prefix.Len()), K));
+			}
+		}
+		return Prefixed.Num() > 0 ? Prefixed : All;
+	}
+} // namespace
 
 void UMjSimulateWidget::NativeConstruct()
 {
@@ -267,24 +400,26 @@ void UMjSimulateWidget::SetupDashboard(AAMjManager* InManager)
 
 	PopulateManagerSettings();
 
-	// Populate Articulation Selector
+	// Populate the entity selector from the compiled partition (the wire/display name is PublicName).
 	if (ArticulationSelector)
 	{
 		ArticulationSelector->ClearOptions();
-		TArray<AMjArticulation*> Articulations = ManagerRef->GetAllArticulations();
-		for (AMjArticulation* Art : Articulations)
+		int32 EntityCount = 0;
+		if (ManagerRef->PhysicsEngine)
 		{
-			if (!Art)
-				continue;
-			ArticulationSelector->AddOption(MjUtils::PrettifyName(Art->GetName()));
+			for (const FMjEntity& E : ManagerRef->PhysicsEngine->GetEntityPartition())
+			{
+				ArticulationSelector->AddOption(MjUtils::PrettifyName(E.PublicName.ToString()));
+				++EntityCount;
+			}
 		}
-		if (Articulations.Num() > 0)
+		if (EntityCount > 0)
 		{
 			ArticulationSelector->SetSelectedIndex(0);
 		}
 		else
 		{
-			// If no articulations found, we still need to build the base UI (Physics, Visuals, Replay etc)
+			// If no entities found, we still need to build the base UI (Physics, Visuals, Replay etc)
 			RefreshArticulationControls();
 		}
 	}
@@ -615,10 +750,11 @@ void UMjSimulateWidget::HandleReplayBindingEnabledChanged(bool bIsChecked)
 		{
 			if (i < ReplayMgr->GetArticulationBindings().Num())
 			{
-				ReplayMgr->GetArticulationBindings()[i].bEnabled = ReplayEnabledCheckBoxes[i]->IsChecked();
+				FReplayArticulationBinding& Binding = ReplayMgr->GetArticulationBindings()[i];
+				Binding.bEnabled = ReplayEnabledCheckBoxes[i]->IsChecked();
 				UE_LOG(LogURLab, Log, TEXT("Replay binding '%s' Enabled=%d"),
-					*ReplayMgr->GetArticulationBindings()[i].Articulation->GetName(),
-					ReplayMgr->GetArticulationBindings()[i].bEnabled);
+					Binding.Articulation.IsValid() ? *Binding.Articulation->GetName() : TEXT("<gone>"),
+					Binding.bEnabled);
 			}
 		}
 	}
@@ -637,10 +773,11 @@ void UMjSimulateWidget::HandleReplayBindingRelPosChanged(bool bIsChecked)
 		{
 			if (i < ReplayMgr->GetArticulationBindings().Num())
 			{
-				ReplayMgr->GetArticulationBindings()[i].bRelativePosition = ReplayRelPosCheckBoxes[i]->IsChecked();
+				FReplayArticulationBinding& Binding = ReplayMgr->GetArticulationBindings()[i];
+				Binding.bRelativePosition = ReplayRelPosCheckBoxes[i]->IsChecked();
 				UE_LOG(LogURLab, Log, TEXT("Replay binding '%s' RelPos=%d"),
-					*ReplayMgr->GetArticulationBindings()[i].Articulation->GetName(),
-					ReplayMgr->GetArticulationBindings()[i].bRelativePosition);
+					Binding.Articulation.IsValid() ? *Binding.Articulation->GetName() : TEXT("<gone>"),
+					Binding.bRelativePosition);
 			}
 		}
 	}
@@ -793,15 +930,18 @@ void UMjSimulateWidget::OnArticulationSelected(FString SelectedItem, ESelectInfo
 		return;
 
 	// Camera feed cleanup is now handled in RefreshArticulationControls.
-	// Find the articulation whose prettified name matches the selection.
-	SelectedArticulation = nullptr;
+	// Find the entity whose prettified public name matches the selection.
+	SelectedEntityName = NAME_None;
 
-	for (AMjArticulation* Art : ManagerRef->GetAllArticulations())
+	if (ManagerRef->PhysicsEngine)
 	{
-		if (MjUtils::PrettifyName(Art->GetName()) == SelectedItem)
+		for (const FMjEntity& E : ManagerRef->PhysicsEngine->GetEntityPartition())
 		{
-			SelectedArticulation = Art;
-			break;
+			if (MjUtils::PrettifyName(E.PublicName.ToString()) == SelectedItem)
+			{
+				SelectedEntityName = E.Name;
+				break;
+			}
 		}
 	}
 
@@ -828,6 +968,11 @@ void UMjSimulateWidget::RefreshArticulationControls()
 			OldFeed->UnbindCamera();
 	}
 	ActiveCameraFeeds.Empty();
+
+	// Monitor rows are recreated below; drop the stale bindings.
+	MonitorRows.Reset();
+	MonitorIds.Reset();
+	MonitorKinds.Reset();
 
 	if (ManagerSettingsList)
 	{
@@ -859,13 +1004,13 @@ void UMjSimulateWidget::RefreshArticulationControls()
 	}
 	ArticulationControlList->ClearChildren();
 
-	if (SelectedArticulation)
+	if (!SelectedEntityName.IsNone())
 	{
-		UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Refreshing controls for %s"), *SelectedArticulation->GetName());
+		UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Refreshing controls for %s"), *SelectedEntityName.ToString());
 	}
 	else
 	{
-		UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Refreshing global controls (No articulation selected)"));
+		UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Refreshing global controls (No entity selected)"));
 	}
 
 	auto CreateSection = [&](UVerticalBox* ParentList, const FString& Title, UVerticalBox*& OutContentBox) {
@@ -903,15 +1048,15 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		}
 	};
 
-	auto AddRow = [&](UVerticalBox* List, const FString& Name, float Initial, EMjPropertyType Type, bool bIsActuator, FVector2D range = FVector2D(0.0f, 1.0f), bool bIsManagerOption = false, UObject* AssociatedObject = nullptr) {
+	auto AddRow = [&](UVerticalBox* List, const FString& Name, float Initial, EMjPropertyType Type, bool bIsActuator, FVector2D range = FVector2D(0.0f, 1.0f), bool bIsManagerOption = false, bool bEntityScoped = false) -> UMjPropertyRow* {
 		UMjPropertyRow* Row = CreateWidget<UMjPropertyRow>(this, PropertyRowClass);
 		if (Row)
 		{
 			FString DisplayName = Name;
-			if (AssociatedObject && !bIsManagerOption)
+			if (bEntityScoped && !bIsManagerOption)
 			{
-				FString ArtName = SelectedArticulation ? SelectedArticulation->GetName() : TEXT("Global");
-				DisplayName = MjUtils::PrettifyName(Name, ArtName);
+				const FString EntityName = SelectedEntityName.IsNone() ? TEXT("Global") : SelectedEntityName.ToString();
+				DisplayName = MjUtils::PrettifyName(Name, EntityName);
 			}
 
 			Row->InitializeProperty(Name, Type, Initial, range, DisplayName);
@@ -925,11 +1070,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 				Row->OnValueChanged.AddDynamic(this, &UMjSimulateWidget::HandleActuatorChanged);
 			}
 
-			if (AssociatedObject)
-			{
-				Row->SetAssociatedObject(AssociatedObject);
-			}
-
 			UVerticalBoxSlot* VerticalSlot = List->AddChildToVerticalBox(Row);
 			if (VerticalSlot)
 			{
@@ -937,6 +1077,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
 				VerticalSlot->SetHorizontalAlignment(HAlign_Fill);
 			}
 		}
+		return Row;
 	};
 
 	// Manager / Global Settings (Left Panel)
@@ -985,12 +1126,14 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		AddRow(VisualsBox, TEXT("Global Artic. group 3"), (DV && DV->bGlobalShowGroup3) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 		AddRow(VisualsBox, TEXT("Global Quick Collision"), (DV && DV->bGlobalQuickConvertCollision) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 
-		if (SelectedArticulation)
+		if (!SelectedEntityName.IsNone())
 		{
-			AddRow(VisualsBox, TEXT("Selected Collision"), SelectedArticulation->bDrawDebugCollision ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected Joint Axes"), SelectedArticulation->bDrawDebugJoints ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected Sites"), SelectedArticulation->bDrawDebugSites ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-			AddRow(VisualsBox, TEXT("Selected group 3"), SelectedArticulation->bShowGroup3 ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			const FMjEntity* Ent = FindEntity(PE, SelectedEntityName);
+			const FMjEntityDrawFlags Overlay = Ent ? Ent->Overlay : FMjEntityDrawFlags();
+			AddRow(VisualsBox, TEXT("Selected Collision"), Overlay.bDrawDebugCollision ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			AddRow(VisualsBox, TEXT("Selected Joint Axes"), Overlay.bDrawDebugJoints ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			AddRow(VisualsBox, TEXT("Selected Sites"), Overlay.bDrawDebugSites ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
+			AddRow(VisualsBox, TEXT("Selected group 3"), 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
 		}
 
 		UVerticalBox* NetworkBox = nullptr;
@@ -1170,67 +1313,116 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		ReplayBox->AddChildToVerticalBox(SaveRecordingButton)->SetPadding(FMargin(0, 5, 0, 5));
 	}
 
-	// --- Articulation-Specific Sections ---
-	if (!SelectedArticulation)
+	// --- Entity-Specific Sections ---
+	if (SelectedEntityName.IsNone())
 		return;
 
-	// Actuators
-	TArray<UMjNodeComponent*> Actuators = SelectedArticulation->GetActuators();
-	if (Actuators.Num() > 0)
+	UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
+	const mjModel* M = PE ? PE->GetModel() : nullptr;
+	const FMjEntity* Ent = FindEntity(PE, SelectedEntityName);
+	if (!PE || !M || !Ent)
+	{
+		InvalidateLayoutAndVolatility();
+		return;
+	}
+
+	// Actuators: interactive setpoint sliders, addressed by entity name + actuator id.
+	const TArray<FName> ActNames = MjEntityMembers::Names(PE, SelectedEntityName, EMjEntityMember::Actuator);
+	if (ActNames.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
 		CreateSection(ArticulationControlList, TEXT("ACTUATORS"), SecBox);
-		for (UMjNodeComponent* Actuator : Actuators)
+		for (const FName& ActName : ActNames)
 		{
-			if (!Actuator)
+			const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Actuator, ActName);
+			if (Id < 0 || Id >= M->nu)
 				continue;
-			const FString ActName = Actuator->MjName.Get(Actuator->GetName());
-
-			const FVector2D range = UMjActuatorRuntime::GetControlRange(Actuator);
-			AddRow(SecBox, ActName, UMjActuatorRuntime::GetControl(Actuator), EMjPropertyType::Slider, true, range, false, Actuator);
+			const FVector2D Range(static_cast<float>(M->actuator_ctrlrange[2 * Id + 0]),
+				static_cast<float>(M->actuator_ctrlrange[2 * Id + 1]));
+			UMjPropertyRow* Row = AddRow(SecBox, ActName.ToString(), static_cast<float>(PE->GetSetpoint(Id)),
+				EMjPropertyType::Slider, true, Range, false, true);
+			if (Row)
+			{
+				MonitorRows.Add(Row);
+				MonitorIds.Add(Id);
+				MonitorKinds.Add(0);
+			}
 		}
 	}
 
-	// Monitors: Joints
-	TArray<UMjNodeComponent*> Joints = SelectedArticulation->GetJoints();
-	if (Joints.Num() > 0)
+	// Monitors: Joints — position read from the engine's render snapshot.
+	const TArray<FName> JointNames = MjEntityMembers::Names(PE, SelectedEntityName, EMjEntityMember::Joint);
+	if (JointNames.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
 		CreateSection(ArticulationControlList, TEXT("JOINTS"), SecBox);
-		for (UMjNodeComponent* Joint : Joints)
+		for (const FName& JointName : JointNames)
 		{
-			if (!Joint)
+			const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Joint, JointName);
+			if (Id < 0 || Id >= M->njnt)
 				continue;
-			const FString JointName = Joint->MjName.Get(Joint->GetName());
-
-			AddRow(SecBox, JointName, UMjJointRuntime::GetPosition(Joint), EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, Joint);
+			const int32 Adr = M->jnt_qposadr[Id];
+			const float Pos = (Adr >= 0 && Adr < M->nq)
+				? static_cast<float>(MjSnapshotValue(*PE, Adr,
+					[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QPos; }))
+				: 0.0f;
+			UMjPropertyRow* Row = AddRow(SecBox, JointName.ToString(), Pos, EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, true);
+			if (Row)
+			{
+				MonitorRows.Add(Row);
+				MonitorIds.Add(Id);
+				MonitorKinds.Add(1);
+			}
 		}
 	}
 
-	// Monitors: Sensors
-	TArray<UMjNodeComponent*> Sensors = SelectedArticulation->GetSensors();
-	if (Sensors.Num() > 0)
+	// Monitors: Sensors — scalar reading read from the render snapshot's sensordata.
+	if (Ent->SensorIds.Num() > 0)
 	{
 		UVerticalBox* SecBox = nullptr;
 		CreateSection(ArticulationControlList, TEXT("SENSORS"), SecBox);
-		for (UMjNodeComponent* Sensor : Sensors)
+		for (int32 Id : Ent->SensorIds)
 		{
-			if (!Sensor)
+			if (Id < 0 || Id >= M->nsensor)
 				continue;
-			const FString SensorName = Sensor->MjName.Get(Sensor->GetName());
-
-			AddRow(SecBox, SensorName, UMjSensorRuntime::GetScalarReading(Sensor), EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, Sensor);
+			const FString SensorName = ShortMemberName(SelectedEntityName, CompiledNameOf(M, mjOBJ_SENSOR, Id));
+			const int32 Adr = M->sensor_adr[Id];
+			const float Val = (Adr >= 0 && Adr < M->nsensordata)
+				? static_cast<float>(MjSnapshotValue(*PE, Adr,
+					[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.SensorData; }))
+				: 0.0f;
+			UMjPropertyRow* Row = AddRow(SecBox, SensorName, Val, EMjPropertyType::LabelOnly, false, FVector2D(0, 0), false, true);
+			if (Row)
+			{
+				MonitorRows.Add(Row);
+				MonitorIds.Add(Id);
+				MonitorKinds.Add(2);
+			}
 		}
 	}
 
 	UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Added %d actuators, %d joints, %d sensors for %s"),
-		Actuators.Num(), Joints.Num(), Sensors.Num(), *SelectedArticulation->GetName());
+		ActNames.Num(), JointNames.Num(), Ent->SensorIds.Num(), *SelectedEntityName.ToString());
 
-	// Camera Feeds (Left Panel)
+	// Camera Feeds (Left Panel): the renderer-agnostic cameras whose canonical art
+	// segment matches this entity (not the retired articulation's UMjCamera components).
 	if (CameraFeedEntryClass && ManagerSettingsList)
 	{
+		TArray<UMjCamera*> AllCameras;
+		ManagerRef->CollectCameras(AllCameras);
+
+		const FString ArtSegment = FMjCanonicalName::Sanitize(Ent->PublicName.ToString());
 		TArray<UMjCamera*> Cameras;
-		SelectedArticulation->GetComponents<UMjCamera>(Cameras);
+		for (UMjCamera* Cam : AllCameras)
+		{
+			if (!Cam)
+				continue;
+			FString CamArt, CamPart;
+			if (Cam->GetCanonicalName().Split(TEXT("/"), &CamArt, &CamPart) && CamArt == ArtSegment)
+			{
+				Cameras.Add(Cam);
+			}
+		}
 
 		if (Cameras.Num() > 0)
 		{
@@ -1254,13 +1446,14 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		}
 
 		UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Added %d camera feeds for %s"),
-			Cameras.Num(), *SelectedArticulation->GetName());
+			Cameras.Num(), *SelectedEntityName.ToString());
 	}
 
-	// Locomotion sliders
+	// Locomotion sliders: the twist controller now lives on the entity's possess pawn
+	// (re-homed off the articulation at handoff), reachable while a pawn exists for it.
 	if (ArticulationControlList && PropertyRowClass)
 	{
-		UMjTwistController* TC = SelectedArticulation->FindComponentByClass<UMjTwistController>();
+		UMjTwistController* TC = FindEntityTwist(GetWorld(), SelectedEntityName);
 		if (TC)
 		{
 			auto AddTwistRow = [&](UVerticalBox* List, const FString& Name, float Initial, FVector2D range) {
@@ -1269,7 +1462,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 				{
 					Row->InitializeProperty(Name, EMjPropertyType::Slider, Initial, range, Name);
 					Row->OnValueChanged.AddDynamic(this, &UMjSimulateWidget::HandleTwistOptionChanged);
-					Row->SetAssociatedObject(TC);
 					if (UVerticalBoxSlot* Slot = List->AddChildToVerticalBox(Row))
 					{
 						Slot->SetPadding(FMargin(0, 2, 0, 2));
@@ -1292,72 +1484,50 @@ void UMjSimulateWidget::RefreshArticulationControls()
 
 void UMjSimulateWidget::UpdateMonitorValues()
 {
-	if (!SelectedArticulation || !ArticulationControlList)
+	if (SelectedEntityName.IsNone() || MonitorRows.Num() == 0)
 		return;
 
-	// We now have ExpandableAreas containing VerticalBoxes all inside ArticulationControlList
-	TArray<UWidget*> TopLevelChildren = ArticulationControlList->GetAllChildren();
-	for (UWidget* TopLevelChild : TopLevelChildren)
+	UMjPhysicsEngine* PE = ManagerRef ? ManagerRef->PhysicsEngine : nullptr;
+	const mjModel* M = PE ? PE->GetModel() : nullptr;
+	if (!PE || !M)
+		return;
+
+	for (int32 i = 0; i < MonitorRows.Num(); ++i)
 	{
-		UExpandableArea* ExpArea = Cast<UExpandableArea>(TopLevelChild);
-		if (ExpArea)
+		UMjPropertyRow* Row = MonitorRows[i];
+		if (!Row || Row->IsBeingDragged())
+			continue;
+
+		const int32 Id = MonitorIds[i];
+		float Val = 0.0f;
+		switch (MonitorKinds[i])
 		{
-			FName BodyName(TEXT("Body"));
-			UVerticalBox* Box = Cast<UVerticalBox>(ExpArea->GetContentForSlot(BodyName));
-			if (Box)
-			{
-				for (UWidget* Child : Box->GetAllChildren())
+			case 0: // actuator: the staged setpoint the UI last wrote
+				Val = static_cast<float>(PE->GetSetpoint(Id));
+				break;
+			case 1: // joint: position from the render snapshot's qpos
+				if (Id >= 0 && Id < M->njnt)
 				{
-					UMjPropertyRow* Row = Cast<UMjPropertyRow>(Child);
-					if (Row && Row->GetPropertyType() != EMjPropertyType::Header)
-					{
-						FString Name = Row->GetPropertyName();
-						float Val = 0.0f;
-
-						// Skip value updates while the user is dragging
-						if (Row->IsBeingDragged())
-							continue;
-
-						// Identify the source of the value
-						if (UObject* RawObj = Row->GetAssociatedObject())
-						{
-							// Actuators, joints and sensors all arrive as the element
-							// base, so the runtime libraries are what tell the three
-							// apart rather than the cast.
-							if (UMjNodeComponent* Node = Cast<UMjNodeComponent>(RawObj))
-							{
-								if (UMjActuatorRuntime::IsActuator(Node))
-								{
-									Val = UMjActuatorRuntime::GetControl(Node);
-								}
-								else if (UMjJointRuntime::IsJoint(Node))
-								{
-									Val = UMjJointRuntime::GetPosition(Node);
-								}
-								else if (UMjSensorRuntime::IsSensor(Node))
-								{
-									Val = UMjSensorRuntime::GetScalarReading(Node);
-								}
-							}
-							else if (Cast<UMjTwistController>(RawObj))
-							{
-								// Twist sliders are user-controlled, don't override their value
-								continue;
-							}
-						}
-						else
-						{
-							// Fallback to name-based lookup for general articulation properties
-							Val = SelectedArticulation->GetJointAngle(Name);
-							if (Val == 0.0f)
-								Val = SelectedArticulation->GetSensorScalar(Name);
-						}
-
-						Row->SetValue(Val);
-					}
+					const int32 Adr = M->jnt_qposadr[Id];
+					if (Adr >= 0 && Adr < M->nq)
+						Val = static_cast<float>(MjSnapshotValue(*PE, Adr,
+							[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.QPos; }));
 				}
-			}
+				break;
+			case 2: // sensor: scalar reading from the render snapshot's sensordata
+				if (Id >= 0 && Id < M->nsensor)
+				{
+					const int32 Adr = M->sensor_adr[Id];
+					if (Adr >= 0 && Adr < M->nsensordata)
+						Val = static_cast<float>(MjSnapshotValue(*PE, Adr,
+							[](const FMjRenderSnapshot& S) -> const TArray<mjtNum>& { return S.SensorData; }));
+				}
+				break;
+			default:
+				break;
 		}
+
+		Row->SetValue(Val);
 	}
 }
 
@@ -1426,22 +1596,27 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 			NM->UpdateCameraStreamingState();
 		}
 	}
-	else if (OptionName == TEXT("Selected Collision") && SelectedArticulation)
+	else if ((OptionName == TEXT("Selected Collision") || OptionName == TEXT("Selected Joint Axes")
+				 || OptionName == TEXT("Selected Sites"))
+			 && !SelectedEntityName.IsNone() && PE)
 	{
-		SelectedArticulation->bDrawDebugCollision = (NewValue > 0.5f);
+		const FMjEntity* Ent = FindEntity(PE, SelectedEntityName);
+		FMjEntityDrawFlags Flags = Ent ? Ent->Overlay : FMjEntityDrawFlags();
+		const bool bOn = (NewValue > 0.5f);
+		if (OptionName == TEXT("Selected Collision"))
+			Flags.bDrawDebugCollision = bOn;
+		else if (OptionName == TEXT("Selected Joint Axes"))
+			Flags.bDrawDebugJoints = bOn;
+		else
+			Flags.bDrawDebugSites = bOn;
+		PE->SetEntityOverlayFlags(SelectedEntityName, Flags);
 	}
-	else if (OptionName == TEXT("Selected Joint Axes") && SelectedArticulation)
+	else if (OptionName == TEXT("Selected group 3") && !SelectedEntityName.IsNone())
 	{
-		SelectedArticulation->bDrawDebugJoints = (NewValue > 0.5f);
-	}
-	else if (OptionName == TEXT("Selected Sites") && SelectedArticulation)
-	{
-		SelectedArticulation->bDrawDebugSites = (NewValue > 0.5f);
-	}
-	else if (OptionName == TEXT("Selected group 3") && SelectedArticulation)
-	{
-		SelectedArticulation->bShowGroup3 = (NewValue > 0.5f);
-		SelectedArticulation->UpdateGroup3Visibility();
+		if (AMjEntity* Entity = ManagerRef->GetEntity(SelectedEntityName))
+		{
+			Entity->SetGeomGroupVisible(3, (NewValue > 0.5f));
+		}
 	}
 
 	// Locomotion twist settings
@@ -1459,25 +1634,32 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 
 void UMjSimulateWidget::HandleActuatorChanged(float NewValue, const FString& OptionName)
 {
-	if (!SelectedArticulation)
+	if (SelectedEntityName.IsNone() || !ManagerRef || !ManagerRef->PhysicsEngine)
 		return;
 
-	SelectedArticulation->SetActuatorControl(OptionName, NewValue);
+	UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
+	const int32 Id = MjEntityMembers::ResolveId(PE, SelectedEntityName, EMjEntityMember::Actuator, FName(*OptionName));
+	if (Id < 0)
+		return;
+
+	if (IMjControlIngress* Ingress = PE->GetControlIngress())
+	{
+		Ingress->WriteCtrl(SelectedEntityName, Id, NewValue, MjControlWho::UI());
+	}
 }
 
 void UMjSimulateWidget::OnPossessClicked()
 {
-	if (!SelectedArticulation)
-		return;
-
-	APlayerController* PC = GetOwningPlayer();
-	if (!PC)
+	if (SelectedEntityName.IsNone() || !ManagerRef)
 		return;
 
 	if (!bIsPossessing)
 	{
-		OriginalPawn = PC->GetPawn();
-		PC->Possess(SelectedArticulation);
+		if (!ManagerRef->PossessEntity(SelectedEntityName))
+		{
+			UE_LOG(LogURLab, Warning, TEXT("Possess: entity '%s' has no possess pawn"), *SelectedEntityName.ToString());
+			return;
+		}
 		bIsPossessing = true;
 
 		if (PossessButton)
@@ -1488,17 +1670,12 @@ void UMjSimulateWidget::OnPossessClicked()
 			}
 		}
 
-		UE_LOG(LogURLab, Log, TEXT("Possessed articulation: %s"), *SelectedArticulation->GetName());
+		UE_LOG(LogURLab, Log, TEXT("Possessed entity: %s"), *SelectedEntityName.ToString());
 	}
 	else
 	{
-		PC->UnPossess();
-		if (OriginalPawn)
-		{
-			PC->Possess(OriginalPawn);
-		}
+		ManagerRef->UnpossessEntity();
 		bIsPossessing = false;
-		OriginalPawn = nullptr;
 
 		if (PossessButton)
 		{
@@ -1508,22 +1685,21 @@ void UMjSimulateWidget::OnPossessClicked()
 			}
 		}
 
-		UE_LOG(LogURLab, Log, TEXT("Released articulation"));
+		UE_LOG(LogURLab, Log, TEXT("Released entity"));
 	}
 }
 
 void UMjSimulateWidget::HandleTwistOptionChanged(float NewValue, const FString& OptionName)
 {
-	if (!SelectedArticulation)
+	if (SelectedEntityName.IsNone())
 	{
-		UE_LOG(LogURLab, Warning, TEXT("HandleTwistOptionChanged: No SelectedArticulation"));
 		return;
 	}
 
-	UMjTwistController* TwistCtrl = SelectedArticulation->FindComponentByClass<UMjTwistController>();
+	UMjTwistController* TwistCtrl = FindEntityTwist(GetWorld(), SelectedEntityName);
 	if (!TwistCtrl)
 	{
-		UE_LOG(LogURLab, Warning, TEXT("HandleTwistOptionChanged: No TwistController on '%s'"), *SelectedArticulation->GetName());
+		UE_LOG(LogURLab, Warning, TEXT("HandleTwistOptionChanged: no twist controller for entity '%s'"), *SelectedEntityName.ToString());
 		return;
 	}
 
@@ -1557,39 +1733,55 @@ void UMjSimulateWidget::RefreshKeyframeDropdown()
 	FString CurrentSelection = KeyframeSelector->GetSelectedOption();
 	KeyframeSelector->ClearOptions();
 
-	if (SelectedArticulation)
+	const mjModel* M = (ManagerRef && ManagerRef->PhysicsEngine) ? ManagerRef->PhysicsEngine->GetModel() : nullptr;
+	if (SelectedEntityName.IsNone() || M == nullptr)
+		return;
+
+	TArray<FString> Names;
+	for (const TPair<FString, int32>& Key : EntityKeyframes(M, SelectedEntityName))
 	{
-		TArray<FString> Names = SelectedArticulation->GetKeyframeNames();
-		for (const FString& Name : Names)
-		{
-			KeyframeSelector->AddOption(Name);
-		}
-		if (Names.Num() > 0)
-		{
-			if (Names.Contains(CurrentSelection))
-				KeyframeSelector->SetSelectedOption(CurrentSelection);
-			else
-				KeyframeSelector->SetSelectedOption(Names[0]);
-		}
+		Names.Add(Key.Key);
+		KeyframeSelector->AddOption(Key.Key);
+	}
+	if (Names.Num() > 0)
+	{
+		KeyframeSelector->SetSelectedOption(Names.Contains(CurrentSelection) ? CurrentSelection : Names[0]);
 	}
 }
 
 void UMjSimulateWidget::HandleResetToKeyframe()
 {
-	if (!SelectedArticulation || !KeyframeSelector)
+	if (SelectedEntityName.IsNone() || !KeyframeSelector || !ManagerRef || !ManagerRef->PhysicsEngine)
 		return;
-	FString KeyframeName = KeyframeSelector->GetSelectedOption();
-	SelectedArticulation->ResetToKeyframe(KeyframeName);
+
+	UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
+	const mjModel* M = PE->GetModel();
+	if (M == nullptr)
+		return;
+
+	const FString KeyframeName = KeyframeSelector->GetSelectedOption();
+	for (const TPair<FString, int32>& Key : EntityKeyframes(M, SelectedEntityName))
+	{
+		if (Key.Key == KeyframeName)
+		{
+			ApplyKeyframeReset(PE, Key.Value);
+			break;
+		}
+	}
 }
 
 void UMjSimulateWidget::HandleHoldKeyframe()
 {
-	if (!SelectedArticulation)
+	if (SelectedEntityName.IsNone() || !ManagerRef || !ManagerRef->PhysicsEngine)
 		return;
 
-	if (SelectedArticulation->IsHoldingKeyframe())
+	UMjPhysicsEngine* PE = ManagerRef->PhysicsEngine;
+	AMjEntity* Entity = ManagerRef->GetEntity(SelectedEntityName);
+
+	if (Entity && Entity->IsHoldingKeyframe())
 	{
-		SelectedArticulation->StopHoldKeyframe();
+		PE->ReleaseKeyframeHold();
+		Entity->SetKeyframeHold(false);
 
 		// Update button to "Hold Keyframe" (green)
 		if (HoldKeyframeButton)
@@ -1598,20 +1790,64 @@ void UMjSimulateWidget::HandleHoldKeyframe()
 				Txt->SetText(FText::FromString(TEXT("Hold Keyframe")));
 			HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.1f, 0.6f, 0.3f, 1.0f));
 		}
+		return;
+	}
+
+	const mjModel* M = PE->GetModel();
+	if (!KeyframeSelector || M == nullptr)
+		return;
+
+	const FString KeyframeName = KeyframeSelector->GetSelectedOption();
+	int32 KeyId = -1;
+	for (const TPair<FString, int32>& Key : EntityKeyframes(M, SelectedEntityName))
+	{
+		if (Key.Key == KeyframeName)
+		{
+			KeyId = Key.Value;
+			break;
+		}
+	}
+	if (KeyId < 0)
+		return;
+
+	// Prefer holding through the actuators (ctrl) when the keyframe carries any, so the solver reaches
+	// the pose; otherwise pin the pose kinematically via qpos. Both arrays are scene-wide, as the engine
+	// injection expects.
+	TArray<double> Ctrl;
+	bool bAnyCtrl = false;
+	Ctrl.Reserve(M->nu);
+	for (int32 i = 0; i < M->nu; ++i)
+	{
+		const double C = M->key_ctrl[KeyId * M->nu + i];
+		Ctrl.Add(C);
+		bAnyCtrl |= (C != 0.0);
+	}
+
+	if (bAnyCtrl)
+	{
+		PE->HoldKeyframe(/*bViaQpos=*/false, TArray<double>(), Ctrl);
 	}
 	else
 	{
-		if (!KeyframeSelector)
-			return;
-		FString KeyframeName = KeyframeSelector->GetSelectedOption();
-		SelectedArticulation->HoldKeyframe(KeyframeName);
-
-		// Update button to "Stop Hold" (red)
-		if (HoldKeyframeButton)
+		TArray<double> Qpos;
+		Qpos.Reserve(M->nq);
+		for (int32 i = 0; i < M->nq; ++i)
 		{
-			if (UTextBlock* Txt = Cast<UTextBlock>(HoldKeyframeButton->GetChildAt(0)))
-				Txt->SetText(FText::FromString(TEXT("Stop Hold")));
-			HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.6f, 0.2f, 0.2f, 1.0f));
+			Qpos.Add(M->key_qpos[KeyId * M->nq + i]);
 		}
+		PE->HoldKeyframe(/*bViaQpos=*/true, Qpos, TArray<double>());
+	}
+
+	if (Entity)
+	{
+		Entity->SetKeyframeHold(true);
+	}
+
+	// Update button to "Stop Hold" (red)
+	if (HoldKeyframeButton)
+	{
+		if (UTextBlock* Txt = Cast<UTextBlock>(HoldKeyframeButton->GetChildAt(0)))
+			Txt->SetText(FText::FromString(TEXT("Stop Hold")));
+		HoldKeyframeButton->SetBackgroundColor(FLinearColor(0.6f, 0.2f, 0.2f, 1.0f));
 	}
 }

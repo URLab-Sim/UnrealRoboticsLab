@@ -1,0 +1,38 @@
+--- DmEnvRpcTransport.cpp
++++ DmEnvRpcTransport.cpp
+@@ -63,7 +64,16 @@
+ 
+                                         if (Transport->GetOwningBridge())
+                                         {
+-                                                Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
++                                                // MUST dispatch ProcessRequestBytes to the Game Thread
++                                                // or else UObjects (Actors, Components) will SIGSEGV
++                                                FEvent* SyncEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
++                                                AsyncTask(ENamedThreads::GameThread, [&]()
++                                                {
++                                                        Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
++                                                        SyncEvent->Trigger();
++                                                });
++                                                SyncEvent->Wait();
++                                                FGenericPlatformProcess::ReturnSynchEventToPool(SyncEvent);
+                                         }
+ 
+                                         urlab::dm_env_rpc::v1::UrlabPacket OutPacket;
+@@ -83,7 +93,16 @@
+ 
+                                         if (Transport->GetOwningBridge())
+                                         {
+-                                                Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
++                                                // MUST dispatch ProcessRequestBytes to the Game Thread
++                                                // or else UObjects (Actors, Components) will SIGSEGV
++                                                FEvent* SyncEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
++                                                AsyncTask(ENamedThreads::GameThread, [&]()
++                                                {
++                                                        Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
++                                                        SyncEvent->Trigger();
++                                                });
++                                                SyncEvent->Wait();
++                                                FGenericPlatformProcess::ReturnSynchEventToPool(SyncEvent);
+                                         }
+ 
+                                         urlab::dm_env_rpc::v1::UrlabPacket OutPacket;

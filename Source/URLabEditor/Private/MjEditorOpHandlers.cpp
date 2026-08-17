@@ -603,18 +603,20 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 	// Dispatcher runs on a worker thread; PIE start must fire on the
 	// game thread. Hop over and wait for the request to be queued.
 	FEvent* QueuedEvent = FPlatformProcess::GetSynchEventFromPool(false);
-	AsyncTask(ENamedThreads::GameThread, [LevelPath, QueuedEvent]() {
+	// Create explicit value copy of string to pass thread boundary
+        FString SafeLevelPath = LevelPath;
+        AsyncTask(ENamedThreads::GameThread, [SafeLevelPath, QueuedEvent]() {
 		if (!GEditor)
 		{
 			QueuedEvent->Trigger();
 			return;
 		}
-		if (!LevelPath.IsEmpty())
+		if (!SafeLevelPath.IsEmpty())
 		{
 			if (ULevelEditorSubsystem* LSub =
 					GEditor->GetEditorSubsystem<ULevelEditorSubsystem>())
 			{
-				LSub->LoadLevel(LevelPath);
+				LSub->LoadLevel(SafeLevelPath);
 			}
 		}
 		FRequestPlaySessionParams Params;
@@ -646,7 +648,7 @@ TSharedPtr<FJsonObject> HandleBeginPie(const TSharedPtr<FJsonObject>& Req)
 	// the game thread; unbounded Wait() would hang the worker.
 	bool bQueued = false;
 	{
-		const double QueueDeadline = FPlatformTime::Seconds() + 10.0;
+		const double QueueDeadline = FPlatformTime::Seconds() + 120.0;
 		while (FPlatformTime::Seconds() < QueueDeadline)
 		{
 			if (QueuedEvent->Wait(FTimespan::FromMilliseconds(50)))

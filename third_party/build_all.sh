@@ -101,7 +101,7 @@ if [[ -n "$ENGINE" && "$(uname -s)" = "Linux" ]]; then
     UE_SYSROOT="--target=x86_64-unknown-linux-gnu --sysroot=$UE_TC"
     export CFLAGS="$UE_SYSROOT -fPIC -Qunused-arguments -Wno-unknown-warning-option"
     export CXXFLAGS="$UE_SYSROOT -stdlib=libc++ -nostdinc++ -isystem $UE_TC/include/c++/v1 -fPIC -Qunused-arguments -Wno-unknown-warning-option -Wno-missing-template-arg-list-after-template-kw"
-    export LDFLAGS="$UE_SYSROOT -stdlib=libc++ -fuse-ld=lld -L$UE_TC/lib64 -Wl,-rpath,$UE_TC/lib64"
+    export LDFLAGS="$UE_SYSROOT -stdlib=libc++ -fuse-ld=lld -L$UE_TC/lib64 -Wl,-rpath,$UE_TC/lib64 -Wl,--undefined-version"
 fi
 
 mkdir -p "$INSTALL_DIR"
@@ -160,6 +160,15 @@ if [ -f "$ROOT_DIR/../protospec/build.sh" ]; then
     bash "$ROOT_DIR/../protospec/build.sh" "$INSTALL_DIR" "$BUILD_TYPE"
 else
     echo "Warning: protospec/build.sh not found (skipping)."
+fi
+cd "$ROOT_DIR"
+
+# 6. gRPC & Protobuf for dm_env_rpc
+echo -e "\n\e[33m--- Building gRPC & Protobuf ---\e[0m"
+if [ -f "$ROOT_DIR/grpc/build.sh" ]; then
+    bash "$ROOT_DIR/grpc/build.sh" "$INSTALL_DIR" "$BUILD_TYPE"
+else
+    echo "Warning: grpc/build.sh not found (skipping)."
 fi
 cd "$ROOT_DIR"
 

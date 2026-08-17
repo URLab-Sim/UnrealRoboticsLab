@@ -4,6 +4,9 @@
 // you may not use this file except in compliance with the License.
 
 #include "MjLevelOps.h"
+#include "FileHelpers.h"
+#include "ShaderCompiler.h"
+#include "ShaderCompiler.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetToolsModule.h"
@@ -111,6 +114,11 @@ bool ImportXmlSync(
 	ImportData->FactoryName = TEXT("MujocoImportFactory");
 
 	TArray<UObject*> Imported = AssetToolsModule.Get().ImportAssetsAutomated(ImportData);
+        if (GShaderCompilingManager)
+        {
+                GShaderCompilingManager->FinishAllCompilation();
+        }
+        FlushRenderingCommands();
 	if (Imported.Num() == 0)
 	{
 		OutError = TEXT("ImportAssetsAutomated returned no objects");
@@ -329,14 +337,17 @@ bool ActorMatchesActorId(AActor* A, const FString& Id)
 
 // /Game/MuJoCoImports/foo  ->  /Game/MuJoCoImports/foo.foo_C
 // /Game/MuJoCoImports/foo.foo_C -> unchanged
+// /Script/Engine.StaticMeshActor -> unchanged
 FString ResolveBpClassPath(const FString& In)
 {
-	if (In.EndsWith(TEXT("_C")))
+	if (In.EndsWith(TEXT("_C")) || In.StartsWith(TEXT("/Script/")))
 		return In;
 	int32 SlashIdx = INDEX_NONE;
 	if (!In.FindLastChar('/', SlashIdx))
 		return In;
 	const FString Stem = In.Mid(SlashIdx + 1);
+	if (In.Contains(TEXT(".")))
+		return In;
 	return FString::Printf(TEXT("%s.%s_C"), *In, *Stem);
 }
 } // namespace
@@ -390,7 +401,15 @@ bool SpawnActorSync(
 	}
 
 	OutBlueprintClassPath = ResolveBpClassPath(BlueprintNameOrPath);
-	UClass* BPClass = LoadObject<UClass>(nullptr, *OutBlueprintClassPath);
+	UClass* BPClass = FindObject<UClass>(nullptr, *OutBlueprintClassPath);
+	if (!BPClass)
+	{
+		BPClass = LoadClass<AActor>(nullptr, *OutBlueprintClassPath);
+	}
+	if (!BPClass)
+	{
+		BPClass = LoadObject<UClass>(nullptr, *OutBlueprintClassPath);
+	}
 	if (!BPClass)
 	{
 		OutError = FString::Printf(TEXT("blueprint class not found: %s"),

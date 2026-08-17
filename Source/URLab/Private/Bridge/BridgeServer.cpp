@@ -250,7 +250,7 @@ bool UURLabBridgeServer::EnsureExternalTransportsBound()
 	bool bHaveRpc = false;
 	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
 	{
-		if (T && T->GetTransportName() == TEXT("ros2-rpc"))
+		if (T && (T->GetTransportName() == TEXT("ros2-rpc") || T->GetTransportName() == TEXT("dm_env_rpc")))
 		{
 			bHaveRpc = true;
 			break;

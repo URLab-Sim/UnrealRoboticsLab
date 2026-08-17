@@ -45,6 +45,7 @@ void UURLabBridgeServerSubsystem::StartServer()
 	const FString Endpoint = FString::Printf(TEXT("tcp://%s:%d"), *Config.BindAddress, Config.StepPort);
 	Server->Start(Endpoint);
 	Server->EnsureShmBound(Config.InstanceId); // empty id -> "live" (single editor)
+	Server->EnsureExternalTransportsBound();
 
 	CachedUrlabVersion.Reset();
 	if (const FURLabRpcDispatcher* Dispatcher = Server->GetDispatcher())

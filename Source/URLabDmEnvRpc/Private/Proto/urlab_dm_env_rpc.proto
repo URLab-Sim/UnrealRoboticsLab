@@ -1,0 +1,35 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package urlab.dm_env_rpc.v1;
+
+import "google/rpc/status.proto";
+
+// Lightweight URLab encapsulation packet carried inside dm_env_rpc's
+// `EnvironmentRequest.extension` and `EnvironmentResponse.extension` (field 15).
+message UrlabPacket {
+  // Operation identifier (e.g. "step", "hello", "spawn_actor", "camera_frame").
+  string op = 1;
+
+  // Serialized MessagePack dictionary payload or binary data.
+  bytes payload = 2;
+
+  // Correlation sequence ID for asynchronous stream matching.
+  int64 sequence_id = 3;
+
+  // Optional status reporting if an error occurred during remote dispatch.
+  google.rpc.Status status = 4;
+}

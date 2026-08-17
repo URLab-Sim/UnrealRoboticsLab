@@ -1,0 +1,298 @@
+// Copyright 2019 DeepMind Technologies Limited. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or  implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ===========================================================================
+syntax = "proto3";
+
+package dm_env_rpc.v1;
+
+import "google/protobuf/any.proto";
+import "google/rpc/status.proto";
+
+// A potentially multi-dimensional array of data, laid out in row-major format.
+// Note, only one data channel should be used at a time.
+message Tensor {
+  message Int8Array {
+    bytes array = 1;
+  }
+  message Int32Array {
+    repeated int32 array = 1;
+  }
+  message Int64Array {
+    repeated int64 array = 1;
+  }
+  message Uint8Array {
+    bytes array = 1;
+  }
+  message Uint32Array {
+    repeated uint32 array = 1;
+  }
+  message Uint64Array {
+    repeated uint64 array = 1;
+  }
+  message FloatArray {
+    repeated float array = 1;
+  }
+  message DoubleArray {
+    repeated double array = 1;
+  }
+  message BoolArray {
+    repeated bool array = 1;
+  }
+  message StringArray {
+    repeated string array = 1;
+  }
+  message ProtoArray {
+    repeated google.protobuf.Any array = 1;
+  }
+
+  // The flattened tensor data.  Data is laid out in row-major order.
+  oneof payload {
+    // LINT.IfChange(Tensor)
+    FloatArray floats = 1;
+    DoubleArray doubles = 2;
+    Int8Array int8s = 3;
+    Int32Array int32s = 4;
+    Int64Array int64s = 5;
+    Uint8Array uint8s = 6;
+    Uint32Array uint32s = 7;
+    Uint64Array uint64s = 8;
+    BoolArray bools = 9;
+    StringArray strings = 10;
+    ProtoArray protos = 11;
+    // LINT.ThenChange(:DataType)
+  }
+
+  // The dimensions of the repeated data fields.  If empty, the data channel
+  // will be treated as a scalar and expected to have exactly one element.
+  //
+  // If the payload has exactly one element, it will be repeated to fill the
+  // shape.
+  //
+  // A negative element in a dimension indicates its size should be determined
+  // based on the number of elements in the payload and the rest of the shape.
+  // For instance, a shape of [-1, 5] means the shape is a matrix with 5 columns
+  // and a variable number of rows.  Only one element in the shape may be set to
+  // a negative value.
+  repeated int32 shape = 15;
+}
+
+// The data type of elements of a tensor.  This must match the types in the
+// Tensor payload oneof.
+enum DataType {
+  // This is the default value indicating no value was set.
+  INVALID_DATA_TYPE = 0;
+
+  // LINT.IfChange(DataType)
+  FLOAT = 1;
+  DOUBLE = 2;
+  INT8 = 3;
+  INT32 = 4;
+  INT64 = 5;
+  UINT8 = 6;
+  UINT32 = 7;
+  UINT64 = 8;
+  BOOL = 9;
+  STRING = 10;
+  PROTO = 11;
+  // LINT.ThenChange(:Tensor)
+}
+
+message TensorSpec {
+  // A human-readable name describing this tensor.
+  string name = 1;
+
+  // The dimensionality of the tensor.  See Tensor.shape for more information.
+  repeated int32 shape = 2;
+
+  // The data type of the elements in the tensor.
+  DataType dtype = 3;
+
+  // Value sub-message that defines the inclusive min/max bounds for numerical
+  // types.
+  message Value {
+    oneof payload {
+      Tensor.FloatArray floats = 9;
+      Tensor.DoubleArray doubles = 10;
+      Tensor.Int8Array int8s = 11;
+      Tensor.Int32Array int32s = 12;
+      Tensor.Int64Array int64s = 13;
+      Tensor.Uint8Array uint8s = 14;
+      Tensor.Uint32Array uint32s = 15;
+      Tensor.Uint64Array uint64s = 16;
+    }
+
+    // Deprecated scalar Value fields. Please use array fields and create a
+    // single element array of the relevant type.
+    reserved 1 to 8;
+  }
+
+  // The minimum value that elements in the tensor can obtain.  Inclusive.
+  Value min = 4;  // Optional
+
+  // The maximum value that elements in the tensor can obtain.  Inclusive.
+  Value max = 5;  // Optional
+}
+
+message CreateWorldRequest {
+  // Settings to create the world with.  This can define the level layout, the
+  // number of agents, the goal or game mode, or other universal settings.
+  // Agent-specific settings, such as anything which would change the action or
+  // observation spec, should go in the JoinWorldRequest.
+  map<string, Tensor> settings = 1;
+}
+message CreateWorldResponse {
+  // The unique name for the world just created.
+  string world_name = 1;
+}
+
+message ActionObservationSpecs {
+  map<uint64, TensorSpec> actions = 1;
+
+  map<uint64, TensorSpec> observations = 2;
+}
+
+message JoinWorldRequest {
+  // The name of the world to join.
+  string world_name = 1;
+
+  // Agent-specific settings which define how to join the world, such as agent
+  // name and class in an RPG.
+  map<string, Tensor> settings = 2;
+}
+message JoinWorldResponse {
+  ActionObservationSpecs specs = 1;
+}
+
+enum EnvironmentStateType {
+  // This is the default value indicating no value was set.  It should never be
+  // sent or received.
+  INVALID_ENVIRONMENT_STATE = 0;
+
+  // The environment is currently in the middle of a sequence.
+  RUNNING = 1;
+
+  // The previously running sequence reached its natural conclusion.
+  TERMINATED = 2;
+
+  // The sequence was interrupted by a reset.
+  INTERRUPTED = 3;
+}
+
+message StepRequest {
+  // The actions to perform on the environment.  If the environment is currently
+  // in a non-RUNNING state, whether because the agent has just called
+  // JoinWorld, the state from the last is StepResponse was TERMINATED or
+  // INTERRUPTED, or a ResetRequest had previously been sent, the actions will
+  // be ignored.
+  map<uint64, Tensor> actions = 1;
+
+  // Array of observations UIDs to return. If not set, no observations are
+  // returned.
+  repeated uint64 requested_observations = 2;
+}
+
+message StepResponse {
+  // If state is not RUNNING, the action on the next StepRequest will be
+  // ignored and the environment will transition to a RUNNING state.
+  EnvironmentStateType state = 1;
+
+  // The observations requested in `StepRequest`.  Observations returned should
+  // match the dimensionality and type specified in `specs.observations`.
+  map<uint64, Tensor> observations = 2;
+}
+
+// The current sequence will be interrupted.  The actions on the next call to
+// StepRequest will be ignored and a new sequence will begin.
+message ResetRequest {
+  // Agents-specific settings to apply for the next sequence, such as changing
+  // class in an RPG.
+  map<string, Tensor> settings = 1;
+}
+message ResetResponse {
+  ActionObservationSpecs specs = 1;
+}
+
+// All connected agents will have their next StepResponse return INTERRUPTED.
+message ResetWorldRequest {
+  string world_name = 1;
+
+  // World settings to apply for the next sequence, such as changing the map or
+  // seed.
+  map<string, Tensor> settings = 2;
+}
+message ResetWorldResponse {}
+
+message LeaveWorldRequest {}
+message LeaveWorldResponse {}
+
+message DestroyWorldRequest {
+  string world_name = 1;
+}
+message DestroyWorldResponse {}
+
+message EnvironmentRequest {
+  oneof payload {
+    CreateWorldRequest create_world = 1;
+    JoinWorldRequest join_world = 2;
+    StepRequest step = 3;
+    ResetRequest reset = 4;
+    ResetWorldRequest reset_world = 5;
+    LeaveWorldRequest leave_world = 6;
+    DestroyWorldRequest destroy_world = 7;
+
+    // If the environment supports a specialized request not covered above it
+    // can be sent this way.
+    //
+    // Slot 15 is the last slot which can be encoded with one byte.  See
+    // https://developers.google.com/protocol-buffers/docs/proto3#assigning-field-numbers
+    google.protobuf.Any extension = 15;
+  }
+
+  // Deprecated property requests. Please use properties extension for future
+  // requests/responses.
+  reserved 8 to 10;
+
+  // Slot corresponds to `error` in the EnvironmentResponse.
+  reserved 16;
+}
+
+message EnvironmentResponse {
+  oneof payload {
+    CreateWorldResponse create_world = 1;
+    JoinWorldResponse join_world = 2;
+    StepResponse step = 3;
+    ResetResponse reset = 4;
+    ResetWorldResponse reset_world = 5;
+    LeaveWorldResponse leave_world = 6;
+    DestroyWorldResponse destroy_world = 7;
+
+    // If the environment supports a specialized response not covered above it
+    // can be sent this way.
+    //
+    // Slot 15 is the last slot which can be encoded with one byte.  See
+    // https://developers.google.com/protocol-buffers/docs/proto3#assigning-field-numbers
+    google.protobuf.Any extension = 15;
+
+    google.rpc.Status error = 16;
+  }
+
+  // Deprecated property responses. Please use properties extension for future
+  // requests/responses.
+  reserved 8 to 10;
+}
+
+service Environment {
+  // Process incoming environment requests.
+  rpc Process(stream EnvironmentRequest) returns (stream EnvironmentResponse) {}
+}

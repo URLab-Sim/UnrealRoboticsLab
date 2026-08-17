@@ -26,6 +26,11 @@
 			"LoadingPhase": "Default"
 		},
 		{
+			"Name": "URLabDmEnvRpc",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+		{
 			"Name": "URLabEditor",
 			"Type": "Editor",
 			"LoadingPhase": "Default"

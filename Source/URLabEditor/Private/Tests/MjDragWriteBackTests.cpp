@@ -39,6 +39,7 @@
 #include "UObject/Package.h"
 
 #include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Elements/MjGeom.h"
 
 namespace MjDragTests
@@ -50,6 +51,7 @@ const TCHAR* const Model = TEXT(R"(<mujoco model="drag">
     <body name="b" pos="0 0 0">
       <geom name="g" type="sphere" size="0.05" pos="0.1 0.2 0.3"/>
       <geom name="still" type="sphere" size="0.05"/>
+      <light name="l" pos="0.1 0.2 0.3"/>
     </body>
   </worldbody>
 </mujoco>
@@ -93,6 +95,20 @@ UMjGeom* TemplateNamed(UBlueprint& Blueprint, const TCHAR* MjName)
 		if (Geom != nullptr && Geom->MjName.IsSet() && Geom->MjName.GetValue() == MjName)
 		{
 			return Geom;
+		}
+	}
+	return nullptr;
+}
+
+/** The element template named `MjName`, whatever its element class. */
+UMjNodeComponent* NodeNamed(UBlueprint& Blueprint, const TCHAR* MjName)
+{
+	for (USCS_Node* Node : Blueprint.SimpleConstructionScript->GetAllNodes())
+	{
+		UMjNodeComponent* Comp = Node != nullptr ? Cast<UMjNodeComponent>(Node->ComponentTemplate) : nullptr;
+		if (Comp != nullptr && Comp->MjName.IsSet() && Comp->MjName.GetValue() == MjName)
+		{
+			return Comp;
 		}
 	}
 	return nullptr;
@@ -222,6 +238,50 @@ bool FMjDragUnmovedTest::RunTest(const FString& Parameters)
 	// a pose it never had.
 	Geom->PostEditComponentMove(true);
 	TestFalse(TEXT("a hook without a move authors no pos"), Geom->HasPos());
+
+	return true;
+}
+
+// ============================================================================
+// URLab.Doc.ARotationDragIsIgnoredByAnElementWithNoQuat
+//   The other subtlety of the write-back: each attribute is authored only where
+//   the element has it. A <light> carries `pos` but no `quat`, so a pure-rotation
+//   drag is not an edit it can make -- the spec must take nothing, and re-reading
+//   it must put the component back to the orientation the light still authors
+//   rather than the one the widget was turned to.
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjDragRotationIgnoredNoQuatTest,
+	"URLab.Doc.ARotationDragIsIgnoredByAnElementWithNoQuat",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjDragRotationIgnoredNoQuatTest::RunTest(const FString& Parameters)
+{
+	using namespace MjDragTests;
+
+	UBlueprint* Blueprint = nullptr;
+	if (ParseAndFind(*this, TEXT("g"), Blueprint) == nullptr)
+	{
+		return false;
+	}
+
+	UMjNodeComponent* Light = NodeNamed(*Blueprint, TEXT("l"));
+	if (!TestNotNull(TEXT("light template"), Light))
+	{
+		return false;
+	}
+
+	// Seed the baseline the write-back compares against, then turn the light with
+	// no translation at all.
+	Light->SyncPreviewFromSpec();
+	Light->SetRelativeRotation(FRotator(45.0, 45.0, 45.0));
+	Light->PostEditComponentMove(true);
+
+	// The spec never took the rotation, because the light has no attribute to take
+	// it into: re-reading the spec snaps the component back to identity rather than
+	// leaving it where it was turned.
+	Light->SyncPreviewFromSpec();
+	TestTrue(TEXT("the rotation a light cannot author was not kept"),
+		Light->GetRelativeRotation().Quaternion().Equals(FQuat::Identity, 1e-4));
 
 	return true;
 }

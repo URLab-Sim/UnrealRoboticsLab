@@ -19,6 +19,7 @@
 #include "State/MjStateProducer.h"
 #include "MuJoCo/Spec/MjNodeDiagnostics.h"
 #include "MuJoCo/Spec/MjNodeScale.h"
+#include "MuJoCo/Spec/MjNodePose.h"
 #include "MuJoCo/Spec/MjNodeEditorCarry.h"
 
 #include "MjNodeComponent.generated.h"
@@ -90,13 +91,16 @@ class URLAB_API UMjNodeComponent : public USceneComponent
 {
 	GENERATED_BODY()
 
-	// The preview-problem bookkeeping and the scale-policy write-back live as free
-	// functions in `urlab::spec`; they reach the protected preview state
-	// (`PreviewProblemKeys`, `LastPreviewTransform`) through the node reference
-	// they are handed, so the members that forward to them befriend them here.
+	// The preview-problem bookkeeping, the scale-policy write-back and the pose
+	// preview / write-back all live as free functions in `urlab::spec`; they reach
+	// the protected preview state (`PreviewProblemKeys`, `LastPreviewTransform`)
+	// through the node reference they are handed, so the members that forward to
+	// them befriend them here.
 	friend void urlab::spec::MjNodeNotePreviewProblem(UMjNodeComponent&, EMjPreviewProblem, const FString&);
 	friend void urlab::spec::MjNodeClearPreviewProblem(UMjNodeComponent&, EMjPreviewProblem);
 	friend void urlab::spec::MjNodeConstrainPreviewScale(UMjNodeComponent&);
+	friend void urlab::spec::MjNodeSyncPreviewFromSpec(UMjNodeComponent&);
+	friend void urlab::spec::MjNodeWriteBackTransformIfChanged(UMjNodeComponent&);
 #if WITH_EDITOR
 	// The editor edit-carry reads the pre-edit snapshot (`PropertyBeforeEdit`,
 	// `PropertyTextBeforeEdit`) the node still owns through the node it is handed.

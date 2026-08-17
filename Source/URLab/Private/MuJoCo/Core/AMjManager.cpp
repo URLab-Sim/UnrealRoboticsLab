@@ -1043,14 +1043,12 @@ void AAMjManager::BuildRuntimeView()
 	{
 		if (!Art)
 			continue;
-		AMjEntity* E = GetEntity(FName(*Art->GetName()));
-		if (!E)
-			continue;
 		TArray<UMjEntityLogicComponent*> Logic;
 		Art->GetComponents<UMjEntityLogicComponent>(Logic);
-		if (Logic.Num() > 0)
+		if (Logic.Num() == 0)
+			continue;
+		if (AMjEntity* E = GetEntity(FName(*Art->GetName())))
 			MjEntityHandoff::TransferAuthoredLogic(Art, E);
-		MjEntityHandoff::TransferPossessConfig(Art, E);
 	}
 	for (AMjArticulation* Art : Arts)
 	{
@@ -1077,6 +1075,35 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 	if (NCam > 0 && Snap.CamXPos.Num() >= NCam * 3 && Snap.CamXMat.Num() >= NCam * 9)
 	{
 		CompiledRenderView->ApplyCameraPosesFromMat(Snap.CamXPos.GetData(), Snap.CamXMat.GetData());
+	}
+
+	// Debug wireframe overlays (collision hulls / joints / sites) draw from the
+	// snapshot; intent is the manager's global toggles OR any entity's own flags.
+	if (OverlayRenderer && DebugVisualizer)
+	{
+		bool bCollision = DebugVisualizer->bGlobalDrawDebugCollision;
+		bool bJoints = DebugVisualizer->bGlobalDrawDebugJoints;
+		bool bSites = false;
+		if (PhysicsEngine)
+		{
+			for (const FMjEntity& E : PhysicsEngine->GetEntityPartition())
+			{
+				bCollision |= E.Overlay.bDrawDebugCollision;
+				bJoints |= E.Overlay.bDrawDebugJoints;
+				bSites |= E.Overlay.bDrawDebugSites;
+			}
+		}
+		if (bCollision || bJoints || bSites)
+		{
+			if (OverlayRenderer->Flags.VisFlags.Num() < mjNVISFLAG)
+			{
+				OverlayRenderer->Flags.VisFlags.SetNumZeroed(mjNVISFLAG);
+			}
+			OverlayRenderer->Flags.VisFlags[mjVIS_CONVEXHULL] = bCollision ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_JOINT] = bJoints ? 1 : 0;
+			OverlayRenderer->bDrawSites = bSites;
+			OverlayRenderer->DrawOverlays(Snap);
+		}
 	}
 }
 

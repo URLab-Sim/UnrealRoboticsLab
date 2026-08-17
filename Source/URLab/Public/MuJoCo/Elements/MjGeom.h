@@ -331,6 +331,20 @@ private:
 	 */
 	void UpdateCapTransforms();
 
+#if WITH_EDITOR
+	/**
+	 * Author the effective primitive type's default size when the geom has no
+	 * usable size of its own or from a `<default>` class. Returns true when it
+	 * authored one.
+	 *
+	 * Never touches a mesh, hfield, sdf or plane geom, and never overrides a size
+	 * a class supplies: a size that is unusable only because a class is partway
+	 * through supplying it is the class's to fix, not this geom's.
+	 */
+	bool DefaultPrimitiveSizeIfMissing();
+
+#endif
+
 	/** The type the current preview was built for; unset before the first build. */
 	TOptional<EMjGeomType> BuiltType;
 

@@ -89,4 +89,24 @@ public:
 	 * portable. False when there is nothing to write or the write failed.
 	 */
 	bool DumpAssetToFile(const FString& BaseDirectory);
+
+#if WITH_EDITOR
+	/**
+	 * Name a hand-added mesh from the asset dropped on it, so it appears in the
+	 * geom mesh pickers without the user typing an MJCF name.
+	 *
+	 * Only when the mesh has no canonical name yet -- no `name` and no `file`, the
+	 * two things `MjAssetElementName` already resolves a reference by. An imported
+	 * mesh has a `file` and a converted one has a name, so neither is touched; and
+	 * the import pass assigns `MeshAsset` directly, never through a details-panel
+	 * edit, so it never reaches this hook at all.
+	 */
+	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+#endif
+
+private:
+#if WITH_EDITOR
+	/** Give this mesh a unique sanitized name derived from `MeshAsset`, when it has none. */
+	void NameFromAssetIfUnnamed();
+#endif
 };

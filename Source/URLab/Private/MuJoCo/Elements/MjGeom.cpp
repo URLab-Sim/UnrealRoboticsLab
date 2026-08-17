@@ -310,6 +310,47 @@ FString ElementName(const UMjNodeComponent& Node)
 	return Node.GetName();
 }
 
+/** Half-extent, in metres, a hand-added primitive is given so it compiles. */
+constexpr double kDefaultPrimitiveHalfExtent = 0.1;
+
+/**
+ * True for the shapes a compile refuses at size zero: a sphere, capsule,
+ * ellipsoid, cylinder or box needs a positive size, and has no asset or infinite
+ * extent to take one from. A plane compiles at size zero (a zero half-extent is
+ * infinite), and a mesh, hfield or sdf takes its shape from elsewhere entirely.
+ */
+bool IsSizeRequiringPrimitive(EMjGeomType Type)
+{
+	switch (Type)
+	{
+		case EMjGeomType::sphere:
+		case EMjGeomType::capsule:
+		case EMjGeomType::ellipsoid:
+		case EMjGeomType::cylinder:
+		case EMjGeomType::box:
+			return true;
+		default:
+			return false;
+	}
+}
+
+/** True when `Size` already gives the type's arity a positive value in every slot. */
+bool IsUsableSize(const TArray<double>& Size, int32 Arity)
+{
+	if (Size.Num() < Arity)
+	{
+		return false;
+	}
+	for (int32 Slot = 0; Slot < Arity; ++Slot)
+	{
+		if (Size[Slot] <= 0.0)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
 #endif // WITH_EDITOR
 
 /**
@@ -885,6 +926,17 @@ void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent
 	const FName Changed = PropertyChangedEvent.GetPropertyName();
 	const FName Member =
 		PropertyChangedEvent.MemberProperty != nullptr ? PropertyChangedEvent.MemberProperty->GetFName() : NAME_None;
+
+	// Picking a primitive type on a geom that has no size to be gives it one, so a
+	// standalone geom the user just typed a shape into compiles rather than
+	// collapsing to a zero-size compile error. The size a class supplies is left
+	// alone; only the geom's own missing or wrongly-shaped size is authored.
+	static const FName TypeName(TEXT("Type"));
+	if ((Changed == TypeName || Member == TypeName) && DefaultPrimitiveSizeIfMissing())
+	{
+		SyncEditorScaleFromSize();
+	}
+
 	if (!Changed.IsNone() && !AffectsGeomPicture(Changed) && !AffectsGeomPicture(Member))
 	{
 		return;
@@ -892,6 +944,39 @@ void UMjGeom::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent
 
 	RebuildVisualizer();
 }
+
+bool UMjGeom::DefaultPrimitiveSizeIfMissing()
+{
+	const FGeomShapeState Shape = EffectiveShapeOf(*this);
+	if (!IsSizeRequiringPrimitive(Shape.Type))
+	{
+		return false;
+	}
+
+	const int32 Arity = urlab::spec::MjSizeArityFor(Shape.Type);
+	if (IsUsableSize(Shape.Size, Arity))
+	{
+		// A size the element or a `<default>` class already supplies is left
+		// alone: authoring over a class would sever the inheritance the model
+		// relies on, and authoring over the user's own value would undo their edit.
+		return false;
+	}
+
+	// An unusable size the geom did NOT author itself came from a class, and a
+	// class that supplies a broken size is the class's to fix -- overriding it here
+	// is exactly the class-inheritance clobber this must not do.
+	if (!Size.IsSet() && Shape.Size.Num() > 0)
+	{
+		return false;
+	}
+
+	TArray<double> Authored;
+	Authored.Init(kDefaultPrimitiveHalfExtent, Arity);
+	Modify();
+	Size = Authored;
+	return true;
+}
+
 #endif
 
 // --- Compiled state --------------------------------------------------------- //

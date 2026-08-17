@@ -16,6 +16,7 @@
 #include "MuJoCo/Spec/MjAssetFiles.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Spec/MjAssetSink.h"
+#include "MuJoCo/Spec/MjSpecRef.h"
 #include "Utils/MeshUtils.h"
 #include "Utils/URLabLogging.h"
 
@@ -77,3 +78,58 @@ bool UMjMesh::DumpAssetToFile(const FString& BaseDirectory)
 	FileAsset = FSoftObjectPath(MeshAsset.Get());
 	return true;
 }
+
+#if WITH_EDITOR
+
+void UMjMesh::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	Super::PostEditChangeProperty(PropertyChangedEvent);
+
+	const FName Changed = PropertyChangedEvent.GetPropertyName();
+	const FName Member = PropertyChangedEvent.MemberProperty != nullptr
+						   ? PropertyChangedEvent.MemberProperty->GetFName()
+						   : NAME_None;
+	static const FName MeshAssetName(GET_MEMBER_NAME_CHECKED(UMjMesh, MeshAsset));
+	if (Changed == MeshAssetName || Member == MeshAssetName)
+	{
+		NameFromAssetIfUnnamed();
+	}
+}
+
+void UMjMesh::NameFromAssetIfUnnamed()
+{
+	if (MeshAsset == nullptr)
+	{
+		return;
+	}
+
+	// The mesh already answers to a name of its own -- an authored MJCF `name`, or
+	// the basename of a `file` the way MuJoCo derives one -- so it is already in
+	// the picker and nothing here renames it. This is the whole of what keeps the
+	// import pass out: it sets `file` before `MeshAsset`, so a mesh it produced
+	// never has an empty element name at the moment an asset lands on it.
+	if (!MjAssetElementName(*this).IsEmpty())
+	{
+		return;
+	}
+
+	const FString Base = MjSanitizeAssetName(MeshAsset->GetName());
+	if (Base.IsEmpty())
+	{
+		return;
+	}
+
+	// Unique among the model's other meshes, so a second hand-added cube does not
+	// take the first one's name and shadow it in the picker.
+	const TArray<FString> Taken = FSpecRef::OverOwner(this).NamesOfType(UMjMesh::StaticClass());
+	FString Candidate = Base;
+	for (int32 Ordinal = 2; Taken.Contains(Candidate); ++Ordinal)
+	{
+		Candidate = FString::Printf(TEXT("%s_%d"), *Base, Ordinal);
+	}
+
+	Modify();
+	MjName = Candidate;
+}
+
+#endif // WITH_EDITOR

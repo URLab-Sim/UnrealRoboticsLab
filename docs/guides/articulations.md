@@ -128,13 +128,12 @@ Use `GetSensorScalar` for scalar sensors (touch, joint position, clock) and `Get
 
 ## Keyframes
 
-An articulation can hold named keyframe poses. From Blueprint or C++ you can teleport to one, hold it, or list them:
+An articulation can load named keyframe poses. From Blueprint or C++ you can load one or list them:
 
-- `ResetToKeyframe(Name)` snaps qpos, qvel, and ctrl to the named keyframe.
-- `HoldKeyframe(Name)` continuously maintains a pose; `StopHoldKeyframe()` releases it.
-- `GetKeyframeNames()` lists the keyframes on this articulation, and `IsHoldingKeyframe()` reports whether one is held.
+- `ResetToKeyframe(Name)` loads the named keyframe exactly as MuJoCo's `simulate` "Load key" does, via `mj_resetDataKeyframe` (whole-model: qpos, qvel, act, ctrl, and mocap), then forwards.
+- `GetKeyframeNames()` lists the keyframes on this articulation.
 
-The [Simulate Dashboard](dashboard.md) exposes these as a keyframe dropdown with Reset and Hold/Stop buttons. For sequenced multi-pose playback with blending, see the keyframe controller in [Controllers](controllers.md).
+The [Simulate Dashboard](dashboard.md) exposes these as a keyframe dropdown with a Load button. For sequenced multi-pose playback with blending, see the keyframe controller in [Controllers](controllers.md).
 
 ## Choosing the control source
 

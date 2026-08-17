@@ -1062,10 +1062,17 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			// it per instance before running several editors as render servers.
 			const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(TEXT("live"));
 			IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
-			FName CanonArt, CanonPart;
-			ResolveCameraCanonical(*this, CanonArt, CanonPart);
+			// Derive the SHM stem from the canonical name (which honors a re-homed camera's pinned
+			// override), so it matches the advertised ZMQ topic; ResolveCameraCanonical's articulation
+			// cast would diverge at play, once the authoring articulation is gone.
+			const FString Canon = GetCanonicalName();
+			FString CanonArtStr, CanonPartStr;
+			if (!Canon.Split(TEXT("/"), &CanonArtStr, &CanonPartStr))
+			{
+				CanonArtStr = Canon;
+			}
 			const FString FileName = FString::Printf(
-				TEXT("cam_%s_%s.shm"), *CanonArt.ToString(), *CanonPart.ToString());
+				TEXT("cam_%s_%s.shm"), *CanonArtStr, *CanonPartStr);
 			const FString FullPath = FPaths::Combine(Dir, FileName);
 
 			ShmWriter = new FCameraShmWriter();

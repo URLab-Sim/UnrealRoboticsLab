@@ -62,6 +62,10 @@ bool FURLabRpcDispatcher::RenderCamerasSync(AAMjManager* Mgr,
 {
 	if (CameraSpec.Num() == 0 || !Mgr)
 		return true;
+	// Camera streaming is a capability: an instance with StreamCameras off publishes no frames, even on
+	// the per-step include_cameras path -- not only via set_camera_streaming.
+	if (!Mgr->HasCapability(EMjCapability::StreamCameras))
+		return true;
 	if (bWait && MinFrameId == 0)
 		return true;
 

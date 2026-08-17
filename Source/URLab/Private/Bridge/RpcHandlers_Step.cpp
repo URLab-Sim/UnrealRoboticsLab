@@ -476,8 +476,9 @@ void FURLabRpcDispatcher::ApplyStepCtrl(AAMjManager* Manager, const FMjStepReque
 	// xfrc_applied writes: per_articulation -> body_name -> 6-vec.
 	// MuJoCo clears d->xfrc_applied on every mj_step, so this is a one-shot
 	// impulse for the next mj_step n_steps loop. Body name lookup tries both
-	// the local (no-prefix) form and the prefixed full name.
-	if (m && d)
+	// the local (no-prefix) form and the prefixed full name. Interactive input is a
+	// capability: an instance with AcceptInput off ignores pushed wrenches.
+	if (m && d && Manager && Manager->HasCapability(EMjCapability::AcceptInput))
 	{
 		for (auto& APair : Req.PerArticulationXfrc)
 		{

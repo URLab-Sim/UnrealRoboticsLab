@@ -1242,6 +1242,146 @@ void AMjRenderer::SendPerturbation(int32 BodyId, const FVector& ForceUE, const F
 	zmq_ctx_term(Ctx);
 }
 
+int32 AMjRenderer::PickBodyIdAlongRay(const FVector& Origin, const FVector& Dir, float& OutDepthCm) const
+{
+	OutDepthCm = 0.0f;
+	if (!Model)
+	{
+		return -1;
+	}
+
+	int32 BestBody = -1;
+	float BestDepth = TNumericLimits<float>::Max();
+
+	// The render geoms carry no query collision, so intersect the cursor ray with each
+	// built geom's world bounding sphere and keep the nearest. The sphere over-grabs a
+	// little versus the mesh, which is the forgiving behaviour a drag-pick wants.
+	for (int32 G = 0; G < GeomComps.Num(); ++G)
+	{
+		const UPrimitiveComponent* Comp = GeomComps[G].Get();
+		if (!Comp || !Comp->IsVisible() || G >= static_cast<int32>(Model->ngeom))
+		{
+			continue;
+		}
+		const int32 BodyId = Model->geom_bodyid[G];
+		if (BodyId <= 0) // body 0 is the static world; never draggable
+		{
+			continue;
+		}
+
+		const FBoxSphereBounds Bounds = Comp->Bounds;
+		const FVector L = Bounds.Origin - Origin;
+		const float Tca = static_cast<float>(FVector::DotProduct(L, Dir));
+		if (Tca < 0.0f)
+		{
+			continue; // sphere is behind the cursor
+		}
+		const float R = static_cast<float>(Bounds.SphereRadius);
+		const float D2 = static_cast<float>(L.SizeSquared()) - Tca * Tca;
+		if (D2 > R * R)
+		{
+			continue; // ray misses the sphere
+		}
+		const float Thc = FMath::Sqrt(R * R - D2);
+		const float Entry = Tca - Thc;
+		const float Depth = Entry > 0.0f ? Entry : Tca; // inside the sphere: grab at center depth
+		if (Depth < BestDepth)
+		{
+			BestDepth = Depth;
+			BestBody = BodyId;
+		}
+	}
+
+	if (BestBody > 0)
+	{
+		OutDepthCm = FMath::Max(BestDepth, 1.0f);
+	}
+	return BestBody;
+}
+
+void AMjRenderer::ProcessMirrorPerturbationInput()
+{
+	// A Mirror never owns physics; forwarding requires an owner to apply the wrench.
+	// (Stepped/externally-driven scenes never reach here -- Tick returns earlier.)
+	if (RunMode != EMjPoseSource::Mirror || OwnerControlEndpoint.IsEmpty() || bExternallyDriven)
+	{
+		return;
+	}
+
+	UWorld* W = GetWorld();
+	APlayerController* PC = W ? W->GetFirstPlayerController() : nullptr;
+	if (!PC)
+	{
+		return;
+	}
+
+	// Ctrl+LMB is the drag gesture, chosen so a plain click still reaches the HUD
+	// buttons and the camera controls unmodified.
+	const bool bCtrl = PC->IsInputKeyDown(EKeys::LeftControl) || PC->IsInputKeyDown(EKeys::RightControl);
+	const bool bDragHeld = bCtrl && PC->IsInputKeyDown(EKeys::LeftMouseButton);
+
+	if (!bDragHeld)
+	{
+		// Release edge: stop the pull and clear the owner's latched wrench so the
+		// body is not left drifting under the last force.
+		if (bMirrorDragActive)
+		{
+			if (MirrorDragBodyId >= 0)
+			{
+				SendPerturbation(MirrorDragBodyId, FVector::ZeroVector, FVector::ZeroVector);
+			}
+			bMirrorDragActive = false;
+			MirrorDragBodyId = -1;
+		}
+		return;
+	}
+
+	FVector CursorOrigin, CursorDir;
+	if (!PC->DeprojectMousePositionToWorld(CursorOrigin, CursorDir))
+	{
+		return;
+	}
+	CursorDir = CursorDir.GetSafeNormal();
+
+	// Press edge: grab the nearest model body under the cursor ray.
+	if (!bMirrorDragActive)
+	{
+		float DepthCm = 0.0f;
+		const int32 BodyId = PickBodyIdAlongRay(CursorOrigin, CursorDir, DepthCm);
+		if (BodyId <= 0)
+		{
+			return; // nothing draggable under the cursor
+		}
+		bMirrorDragActive = true;
+		MirrorDragBodyId = BodyId;
+		MirrorDragDepthCm = DepthCm;
+	}
+
+	USceneComponent* BodyRoot = GetBodyRootComponent(MirrorDragBodyId);
+	if (!BodyRoot)
+	{
+		return;
+	}
+
+	// Pull the grabbed body toward the point on the cursor ray at the grab depth.
+	// The delta is in UE cm; SendPerturbation converts the UE-space vector to the
+	// MuJoCo frame, so it is passed through untouched here. A modest gain turns a
+	// screen-space drag into a spring-like force; the magnitude is clamped so a
+	// large drag can't inject an explosive impulse into the owner's step.
+	const FVector TargetWorld = CursorOrigin + CursorDir * MirrorDragDepthCm;
+	const FVector DeltaUE = TargetWorld - BodyRoot->GetComponentLocation();
+
+	constexpr float PullGain = 2.0f;    // N per cm of cursor offset
+	constexpr float MaxForce = 500.0f;  // N clamp
+	FVector ForceUE = DeltaUE * PullGain;
+	if (ForceUE.SizeSquared() > MaxForce * MaxForce)
+	{
+		ForceUE = ForceUE.GetSafeNormal() * MaxForce;
+	}
+
+	SendPerturbation(MirrorDragBodyId, ForceUE, FVector::ZeroVector);
+}
+
 int32 AMjRenderer::NumGeomsNamed(FName GeomName) const
 {
 	if (!Model)
@@ -1413,6 +1553,14 @@ void AMjRenderer::Tick(float DeltaSeconds)
 	{
 		Direct.ApplyFromSnapshot(*this);
 		return;
+	}
+
+	// Mirror role: this scene runs no physics, so a viewer's drag is forwarded to
+	// the owner (which applies it via xfrc_applied). Guarded on an owner endpoint so
+	// an owner-less placed scene captures no input.
+	if (!OwnerControlEndpoint.IsEmpty())
+	{
+		ProcessMirrorPerturbationInput();
 	}
 
 	// A streamed frame takes priority: pull the newest raw payload from the bus,

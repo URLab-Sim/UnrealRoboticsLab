@@ -293,6 +293,17 @@ debug-draw on the manager; hfield authoring is an editor grid). So unifying does
 They are a shared parity backlog for BOTH renderers (tracked in §17), not a reason to keep two, and
 not a regression of anything that works today.
 
+### Overlay parity — ACTUAL status (2026-08-17, do not over-claim)
+`UMjOverlayRenderer` implements the debug-DRAW subset of MuJoCo simulate's `mjVIS_*`, ~18 of 31:
+convexhull, joint, sites, com, inertia, contactpoint, contactforce, contactsplit, perturbation,
+camera, light, actuator, tendon, rangefinder, constraint, static, autoconnect. NOT drawn: texture,
+activation, select, sclinertia (and transparency is a material property, not an overlay - the earlier
+`mjVIS_TRANSPARENT` bounding-marker "proxy" was removed as misleading). The `mjRND_*` set (0 of 11)
+is NOT implemented: wireframe/additive/etc. are UE render-state (view-mode / material / scene
+settings), not PDI overlays, and belong to the renderer-material path, not this overlay renderer. The
+dead `FMjOverlayFlags::RndFlags` wire field was removed (it had no consumer). "Recreates all of
+simulate's toggles" is the ASPIRATION; the above is what is BUILT.
+
 ### One remaining live check (validation, not a gate)
 The probes bound the cost SHAPE from code (no rebuild) but not its milliseconds. Since B AVOIDS
 the authoring path's instantiate-hundreds-of-SCS-components + per-geom-resolve pass, it is expected
@@ -1223,6 +1234,13 @@ p. Blueprint scriptability of an entity by name/handle (the `IMjEntity` face, 6A
 
 The single source of truth for progress. Each investigation subagent, each design decision, and
 each implementation step gets a dated row here so the doc stays current through the build.
+
+**STATUS CORRECTION (2026-08-17): the rows below UNDER-STATE reality and must not be trusted as
+"remaining work."** Verified in code: shadow deletion (§18A) is DONE (MjbShadowArticulation/bRawShadow
+gone); actor demotion (§18B) is DONE (BuildRuntimeView destroys every articulation at play); the
+overlay manager is BUILT (~18/31 mjVIS_ draws, see §5); mode collapse, one control arbiter (§7, UI
+preempts network), props-as-entities, capabilities, keyframe=mj_resetDataKeyframe, and the Mjb->Renderer
+rename are all landed. Authoritative live status is in the session memory. Rows below are historical.
 
 ### Investigations (subagent outputs folded into the plan)
 | Date | Topic | Outcome | Folded into |

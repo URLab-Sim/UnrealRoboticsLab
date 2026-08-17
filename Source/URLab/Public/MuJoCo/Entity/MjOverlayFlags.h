@@ -15,7 +15,6 @@
 struct URLAB_API FMjOverlayFlags
 {
 	TArray<uint8> VisFlags;   // mjNVISFLAG (mjVIS_*)
-	TArray<uint8> RndFlags;   // mjNRNDFLAG (mjRND_*)
 
 	// Per-group visibility masks (collision-vs-visual, etc.).
 	TArray<uint8> GeomGroup;

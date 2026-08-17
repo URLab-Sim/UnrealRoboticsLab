@@ -67,7 +67,6 @@ private:
 	void DrawConstraints(const FMjRenderSnapshot& Snap) const;
 	void DrawStaticBodies(const FMjRenderSnapshot& Snap) const;
 	void DrawAutoConnect(const FMjRenderSnapshot& Snap) const;
-	void DrawGeomBounds(const FMjRenderSnapshot& Snap) const;
 
 	// Borrowed; the owning scene holds the mjModel lifetime.
 	mjModel_* Model = nullptr;

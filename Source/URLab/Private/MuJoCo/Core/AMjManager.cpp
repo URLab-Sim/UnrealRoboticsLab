@@ -1074,7 +1074,6 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 		const bool bStatic = DebugVisualizer->bGlobalDrawDebugStatic;
 		const bool bAutoConnect = DebugVisualizer->bGlobalDrawDebugAutoConnect;
 		const bool bContactSplit = DebugVisualizer->bGlobalDrawDebugContactSplit;
-		const bool bTransparent = DebugVisualizer->bGlobalDrawDebugTransparent;
 
 		// The engine only captures per-contact data when a contact overlay is up.
 		if (PhysicsEngine)
@@ -1101,7 +1100,7 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 		const bool bAny = bCollision || bJoints || bSites || bCom || bInertia
 						  || bContactPoints || bContactForces || bPerturb
 						  || bCamera || bLight || bActuator || bTendon || bRangefinder
-						  || bConstraint || bStatic || bAutoConnect || bContactSplit || bTransparent;
+						  || bConstraint || bStatic || bAutoConnect || bContactSplit;
 		if (bAny)
 		{
 			if (OverlayRenderer->Flags.VisFlags.Num() < mjNVISFLAG)
@@ -1125,7 +1124,6 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 			OverlayRenderer->Flags.VisFlags[mjVIS_STATIC] = bStatic ? 1 : 0;
 			OverlayRenderer->Flags.VisFlags[mjVIS_AUTOCONNECT] = bAutoConnect ? 1 : 0;
 			OverlayRenderer->Flags.VisFlags[mjVIS_CONTACTSPLIT] = bContactSplit ? 1 : 0;
-			OverlayRenderer->Flags.VisFlags[mjVIS_TRANSPARENT] = bTransparent ? 1 : 0;
 			OverlayRenderer->bDrawSites = bSites;
 			OverlayRenderer->DrawOverlays(Snap);
 		}

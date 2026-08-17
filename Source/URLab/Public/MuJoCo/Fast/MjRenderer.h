@@ -321,6 +321,27 @@ private:
 	// where the compiled geom is. A no-op for a geom that needs no correction.
 	void CorrectMeshFrameWorld(int32 GeomId, double* WorldPos, double* WorldQuat) const;
 
+	// --- Mirror interactive input (viewer -> owner perturbation) ---------- //
+	// Drive a Ctrl+drag pull on a body from the local player's cursor and forward
+	// it to the owner via SendPerturbation. Runs only for a Mirror role with an
+	// owner control endpoint (this scene has no physics of its own to apply it
+	// locally). No-op in every other role. Called from Tick.
+	void ProcessMirrorPerturbationInput();
+
+	// Pick the model body under a cursor ray. The fast-path render components carry no
+	// physics collision, so this ray-tests the built geoms' world bounds directly
+	// instead of a channel trace, and returns the nearest hit geom's body id (via
+	// geom_bodyid) with the along-ray grab distance in OutDepthCm. Returns -1 (world
+	// body excluded) when the ray hits no draggable body.
+	int32 PickBodyIdAlongRay(const FVector& Origin, const FVector& Dir, float& OutDepthCm) const;
+
+	// Active Mirror drag: the body being pulled (-1 = none) and the camera-space
+	// depth of the grab point, so the pull target tracks the cursor ray at the
+	// distance the body was grabbed. bMirrorDragActive gates the per-tick pull.
+	bool bMirrorDragActive = false;
+	int32 MirrorDragBodyId = -1;
+	float MirrorDragDepthCm = 0.0f;
+
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;
 

@@ -444,7 +444,7 @@ void UMjDebugVisualizer::ClearBodyOverlays()
 {
 	for (auto& Pair : OriginalMaterials)
 	{
-		UStaticMeshComponent* mesh = Pair.Key.Get();
+		UMeshComponent* mesh = Pair.Key.Get();
 		if (!mesh)
 			continue;
 		mesh->SetMaterial(0, Pair.Value);
@@ -486,7 +486,7 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 		LocalIslandSeed = DebugData.BodyIslandSeed;
 	}
 
-	auto ApplyToMesh = [&](UStaticMeshComponent* mesh, int32 BodyId, uint32 GroupHash) {
+	auto ApplyToMesh = [&](UMeshComponent* mesh, int32 BodyId, uint32 GroupHash) {
 		if (!mesh)
 			return;
 
@@ -495,7 +495,7 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 		const int32 Seed =
 			(LocalIslandSeed.IsValidIndex(BodyId) ? LocalIslandSeed[BodyId] : -1);
 
-		TWeakObjectPtr<UStaticMeshComponent> WeakMesh(mesh);
+		TWeakObjectPtr<UMeshComponent> WeakMesh(mesh);
 		const int32 NumSlots = FMath::Max(1, mesh->GetNumMaterials());
 
 		if (!OriginalMaterials.Contains(WeakMesh))
@@ -559,7 +559,7 @@ void UMjDebugVisualizer::UpdateBodyOverlays()
 		const int32 NGeom = View->NumGeoms();
 		for (int32 G = 0; G < NGeom; ++G)
 		{
-			UStaticMeshComponent* Mesh = Cast<UStaticMeshComponent>(View->GetGeomComponent(G));
+			UMeshComponent* Mesh = Cast<UMeshComponent>(View->GetGeomComponent(G));
 			if (!Mesh || !Model)
 				continue;
 			const int32 BodyId = Model->geom_bodyid[G];

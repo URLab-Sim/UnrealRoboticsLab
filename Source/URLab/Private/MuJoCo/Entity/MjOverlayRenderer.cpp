@@ -117,10 +117,6 @@ void UMjOverlayRenderer::DrawOverlays(const FMjRenderSnapshot& Snap) const
 	{
 		DrawAutoConnect(Snap);
 	}
-	if (FlagSet(Flags.VisFlags, mjVIS_TRANSPARENT))
-	{
-		DrawGeomBounds(Snap);
-	}
 }
 
 void UMjOverlayRenderer::DrawCollision(const FMjRenderSnapshot& Snap) const
@@ -677,35 +673,3 @@ void UMjOverlayRenderer::DrawAutoConnect(const FMjRenderSnapshot& Snap) const
 	}
 }
 
-void UMjOverlayRenderer::DrawGeomBounds(const FMjRenderSnapshot& Snap) const
-{
-	// The overlay half of mjVIS_TRANSPARENT: a bounding marker so a dynamic geom
-	// stays locatable even when the material path makes it see-through. True geom
-	// transparency is a material property, owned by the renderer, not drawn here.
-	UWorld* World = GetWorld();
-	const mjModel* M = Model;
-	const FColor Colour(200, 200, 255);
-	for (int32 G = 0; G < static_cast<int32>(M->ngeom); ++G)
-	{
-		const int32 Bid = M->geom_bodyid ? M->geom_bodyid[G] : -1;
-		if (Bid < 0 || (M->body_dofnum && M->body_dofnum[Bid] == 0))
-		{
-			continue; // only dynamic geoms, matching simulate's transparent set
-		}
-		if (!GroupVisible(Flags.GeomGroup, M->geom_group[G]))
-		{
-			continue;
-		}
-		if (!Snap.GeomXPos.IsValidIndex(G * 3 + 2))
-		{
-			continue;
-		}
-		const double RBound = M->geom_rbound ? M->geom_rbound[G] : 0.0;
-		if (RBound <= 0.0)
-		{
-			continue;
-		}
-		const FVector Pos = URLabAxisConv::MjPositionToUe(&Snap.GeomXPos[G * 3]) + SceneOrigin;
-		DrawDebugSphere(World, Pos, static_cast<float>(RBound * 100.0), 10, Colour, false, -1, 0, 0.3f);
-	}
-}

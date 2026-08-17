@@ -152,10 +152,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
 	bool bGlobalDrawDebugContactSplit = false;
 
-	/** @brief Toggles dynamic-geom bounding markers, the overlay half of mjVIS_TRANSPARENT.
-	 *  True geom transparency is a material property owned by the renderer, not drawn here. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
-	bool bGlobalDrawDebugTransparent = false;
 
 	/** @brief Toggles debug collision drawing globally for all QuickConvert components. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
@@ -306,13 +302,13 @@ private:
 		EMjCameraMode Mode);
 
 	/** Original slot-0 material on meshes we've overridden, so we can restore. Keyed by mesh component. */
-	TMap<TWeakObjectPtr<class UStaticMeshComponent>, class UMaterialInterface*> OriginalMaterials;
+	TMap<TWeakObjectPtr<class UMeshComponent>, class UMaterialInterface*> OriginalMaterials;
 
 	/** Original slot-1..N materials for multi-material meshes. Parallel to OriginalMaterials. */
-	TMap<TWeakObjectPtr<class UStaticMeshComponent>, TMap<int32, class UMaterialInterface*>> OriginalSlotMaterials;
+	TMap<TWeakObjectPtr<class UMeshComponent>, TMap<int32, class UMaterialInterface*>> OriginalSlotMaterials;
 
 	/** Dynamic material instances we created per mesh, reused across ticks. */
-	TMap<TWeakObjectPtr<class UStaticMeshComponent>, class UMaterialInstanceDynamic*> ActiveMIDs;
+	TMap<TWeakObjectPtr<class UMeshComponent>, class UMaterialInstanceDynamic*> ActiveMIDs;
 
 	/** Pool of spline-mesh components used by the tube tendon render style. Grown on demand. */
 	UPROPERTY(Transient)

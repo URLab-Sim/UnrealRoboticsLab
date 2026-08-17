@@ -115,6 +115,48 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
 	bool bGlobalDrawDebugPerturb = false;
 
+	/** @brief Toggles camera frustum markers (mjVIS_CAMERA). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugCamera = false;
+
+	/** @brief Toggles light position/direction markers (mjVIS_LIGHT). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugLight = false;
+
+	/** @brief Toggles actuator activation glyphs at transmission targets (mjVIS_ACTUATOR). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugActuator = false;
+
+	/** @brief Toggles spatial-tendon wrap-path poly-lines on the overlay renderer (mjVIS_TENDON).
+	 *  Distinct from bGlobalDrawTendons, which drives the smooth spline-mesh tendon style. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugTendon = false;
+
+	/** @brief Toggles rangefinder sensor rays (mjVIS_RANGEFINDER). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugRangefinder = false;
+
+	/** @brief Toggles equality-constraint markers (mjVIS_CONSTRAINT). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugConstraint = false;
+
+	/** @brief Toggles static (world-parented) body markers (mjVIS_STATIC). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugStatic = false;
+
+	/** @brief Toggles body-to-parent connector lines (mjVIS_AUTOCONNECT). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugAutoConnect = false;
+
+	/** @brief When drawing contact forces, split each into normal + tangent components (mjVIS_CONTACTSPLIT). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugContactSplit = false;
+
+	/** @brief Toggles dynamic-geom bounding markers, the overlay half of mjVIS_TRANSPARENT.
+	 *  True geom transparency is a material property owned by the renderer, not drawn here. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
+	bool bGlobalDrawDebugTransparent = false;
+
 	/** @brief Toggles debug collision drawing globally for all QuickConvert components. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = "MuJoCo|Debug")
 	bool bGlobalQuickConvertCollision = false;

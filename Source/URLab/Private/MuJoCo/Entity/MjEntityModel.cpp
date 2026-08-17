@@ -142,6 +142,9 @@ TArray<FMjEntity> MjEntityBuilder::Build(const mjModel* Model, const FMjEntityPa
 	{
 		ResolveRoot(Model, E);
 	}
+	// A prefix that bucketed no bodies (e.g. an empty quick-convert prop that contributed nothing to
+	// the compiled model) has no root and nothing to address, so it is not an entity.
+	Entities.RemoveAll([](const FMjEntity& E) { return E.BodyIds.Num() == 0; });
 	return Entities;
 }
 

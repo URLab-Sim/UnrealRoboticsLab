@@ -1018,6 +1018,21 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 				Partition.ActorIds.Add(Art->ActorId);
 			}
 		}
+		// Quick-convert props are entities too: everything placed in the world is addressable, not just
+		// robots. A prop's scene prefix (owner name + "_") buckets its body + geoms exactly like an
+		// articulation prefix, so it becomes a named partition entity the bridge can observe and drive.
+		for (const UMjQuickConvertComponent* Quick : m_MujocoComponents)
+		{
+			if (Quick == nullptr)
+			{
+				continue;
+			}
+			const AActor* Owner = Quick->GetOwner();
+			const FString OwnerName = Owner ? Owner->GetName() : Quick->GetName();
+			Partition.Prefixes.Add(Quick->GetScenePrefix());
+			Partition.PublicNames.Add(FName(*FMjCanonicalName::Sanitize(OwnerName)));
+			Partition.ActorIds.Add(OwnerName);
+		}
 		m_entityPartition = MjEntityBuilder::Build(m_model, Partition);
 	}
 	m_entityStructureVersion.Bump();
@@ -1885,6 +1900,11 @@ void UMjPhysicsEngine::PushRenderState()
 	CopyArray(RenderSnapshot.Act, m_data->act, m_model->na);
 	CopyArray(RenderSnapshot.TenLength, m_data->ten_length, m_model->ntendon);
 	CopyArray(RenderSnapshot.TenVelocity, m_data->ten_velocity, m_model->ntendon);
+	// Tendon wrap geometry, for the mjVIS_TENDON path overlay.
+	CopyArray(RenderSnapshot.WrapXPos, m_data->wrap_xpos, m_model->nwrap * 6);
+	CopyArray(RenderSnapshot.WrapObj, m_data->wrap_obj, m_model->nwrap * 2);
+	CopyArray(RenderSnapshot.TenWrapAdr, m_data->ten_wrapadr, m_model->ntendon);
+	CopyArray(RenderSnapshot.TenWrapNum, m_data->ten_wrapnum, m_model->ntendon);
 
 	// Sleep state.
 	CopyArray(RenderSnapshot.BodyAwake, m_data->body_awake, NBody);

@@ -907,17 +907,24 @@ void AAMjManager::ApplyLatestRenderState()
 	// full state only when a consumer (this tick) has requested one.
 	PhysicsEngine->bSnapshotWanted.store(true, std::memory_order_release);
 
-	const TArray<AMjArticulation*>& Arts = PhysicsEngine->GetAllArticulations();
-
 	PhysicsEngine->WithRenderState([&](const FMjRenderSnapshot& Snap) {
-		for (AMjArticulation* Art : Arts)
+		// One transform drive, never two: the compiled render view owns the geometry once articulations
+		// are demoted at play; only the paths where BuildRuntimeView early-returned (raw model / viewer /
+		// automation) still have live articulations to drive as the fallback.
+		if (CompiledRenderView)
 		{
-			if (Art)
+			DriveCompiledRenderView(Snap);
+		}
+		else
+		{
+			for (AMjArticulation* Art : PhysicsEngine->GetAllArticulations())
 			{
-				Art->ApplyRenderState(Snap);
+				if (Art)
+				{
+					Art->ApplyRenderState(Snap);
+				}
 			}
 		}
-		DriveCompiledRenderView(Snap);
 		// Record which post-step state the actors now reflect so cameras can
 		// tag their readbacks with it (frame_id association for the bridge).
 		LastAppliedRenderFrameId.store(Snap.FrameId, std::memory_order_release);
@@ -1058,6 +1065,16 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 		const bool bContactPoints = DebugVisualizer->bGlobalDrawDebugContactPoints;
 		const bool bContactForces = DebugVisualizer->bGlobalDrawDebugContactForces;
 		const bool bPerturb = DebugVisualizer->bGlobalDrawDebugPerturb;
+		const bool bCamera = DebugVisualizer->bGlobalDrawDebugCamera;
+		const bool bLight = DebugVisualizer->bGlobalDrawDebugLight;
+		const bool bActuator = DebugVisualizer->bGlobalDrawDebugActuator;
+		const bool bTendon = DebugVisualizer->bGlobalDrawDebugTendon;
+		const bool bRangefinder = DebugVisualizer->bGlobalDrawDebugRangefinder;
+		const bool bConstraint = DebugVisualizer->bGlobalDrawDebugConstraint;
+		const bool bStatic = DebugVisualizer->bGlobalDrawDebugStatic;
+		const bool bAutoConnect = DebugVisualizer->bGlobalDrawDebugAutoConnect;
+		const bool bContactSplit = DebugVisualizer->bGlobalDrawDebugContactSplit;
+		const bool bTransparent = DebugVisualizer->bGlobalDrawDebugTransparent;
 
 		// The engine only captures per-contact data when a contact overlay is up.
 		if (PhysicsEngine)
@@ -1082,7 +1099,9 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 		}
 
 		const bool bAny = bCollision || bJoints || bSites || bCom || bInertia
-						  || bContactPoints || bContactForces || bPerturb;
+						  || bContactPoints || bContactForces || bPerturb
+						  || bCamera || bLight || bActuator || bTendon || bRangefinder
+						  || bConstraint || bStatic || bAutoConnect || bContactSplit || bTransparent;
 		if (bAny)
 		{
 			if (OverlayRenderer->Flags.VisFlags.Num() < mjNVISFLAG)
@@ -1097,6 +1116,16 @@ void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
 			OverlayRenderer->Flags.VisFlags[mjVIS_CONTACTFORCE] = bContactForces ? 1 : 0;
 			OverlayRenderer->Flags.VisFlags[mjVIS_PERTFORCE] = bPerturb ? 1 : 0;
 			OverlayRenderer->Flags.VisFlags[mjVIS_PERTOBJ] = bPerturb ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_CAMERA] = bCamera ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_LIGHT] = bLight ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_ACTUATOR] = bActuator ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_TENDON] = bTendon ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_RANGEFINDER] = bRangefinder ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_CONSTRAINT] = bConstraint ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_STATIC] = bStatic ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_AUTOCONNECT] = bAutoConnect ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_CONTACTSPLIT] = bContactSplit ? 1 : 0;
+			OverlayRenderer->Flags.VisFlags[mjVIS_TRANSPARENT] = bTransparent ? 1 : 0;
 			OverlayRenderer->bDrawSites = bSites;
 			OverlayRenderer->DrawOverlays(Snap);
 		}

@@ -257,6 +257,13 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleFastpathLoad(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("bytes:int")});
 
+	// Fast-path interactive perturbation (RpcHandlers_Fastpath.cpp): a renderer
+	// forwards a viewer drag as an external wrench on a body back to the owner,
+	// which stamps it into the live model's xfrc_applied for its next step.
+	Reg(TEXT("fastpath_perturb"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleFastpathPerturb(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("body:int")});
+
 	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
 	// pure data staging (no manager, no editor). Commit drives the existing
 	// import_xml editor job on a materialised temp dir; it self-checks for the
@@ -503,6 +510,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	// server without a session handshake -- it just ships the MJB and returns.
 	if (Op.Equals(TEXT("fastpath_load")))
 		return HandleFastpathLoad(Req);
+	// fastpath_perturb likewise: a renderer forwards a viewer drag over a short-lived
+	// REQ with no session_id, so it bypasses the registry session gate too.
+	if (Op.Equals(TEXT("fastpath_perturb")))
+		return HandleFastpathPerturb(Req);
 
 	{
 		FScopeLock Lock(&DispatchMutex);
@@ -738,9 +749,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 	{
 		// Editor-time / pre-PIE handshake. Only editor-only ops can run
 		// until PIE starts and a manager registers. Bridge sees the empty
-		// articulations array + manager_present=false and skips
+		// entities array + manager_present=false and skips
 		// auto-promote / streaming SUB startup.
-		Reply->SetArrayField(TEXT("articulations"),
+		Reply->SetArrayField(TEXT("entities"),
 			TArray<TSharedPtr<FJsonValue>>());
 		return Reply;
 	}

@@ -119,6 +119,21 @@ struct FMjRenderSnapshot
 	TArray<mjtNum> TenLength;   // ntendon
 	TArray<mjtNum> TenVelocity; // ntendon
 
+	// --- Tendon wrap geometry (mjVIS_TENDON overlay) ------------------
+	//
+	// The world-frame wrap path each spatial tendon threads through, mirroring
+	// what MuJoCo's own renderer draws. wrap_xpos is declared nwrap x 6, i.e.
+	// 2*nwrap points of xyz, so WrapXPos is 6 * nwrap mjtNum. WrapObj marks each
+	// point's wrap object (-2 = pulley, skipped when connecting). TenWrapAdr /
+	// TenWrapNum slice the point list per tendon (in units of points, so index
+	// j addresses WrapXPos[3*j]). Empty unless a tendon-viz consumer asked for
+	// it, keeping wrap capture off the hot path when unused.
+
+	TArray<mjtNum> WrapXPos;   // 6 * nwrap (2*nwrap points, xyz each), world frame
+	TArray<int32> WrapObj;     // 2 * nwrap; -2 marks a pulley point
+	TArray<int32> TenWrapAdr;  // ntendon; first wrap-point index of the tendon
+	TArray<int32> TenWrapNum;  // ntendon; number of wrap points in the tendon
+
 	// --- Sleep state (IsAwake + debug viz) ----------------------------
 	//
 	// Stored as int because MuJoCo's body_awake is `int*` carrying

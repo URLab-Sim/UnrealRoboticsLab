@@ -181,3 +181,73 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr
 	Reply->SetNumberField(TEXT("bytes"), NumBytes);
 	return Reply;
 }
+
+// Fast-path interactive perturbation. A renderer (Mirror/viewer) forwards a drag
+// as an external force+torque on a body back to this owner; we stamp it into the
+// live model's xfrc_applied so the owner's own step integrates it. The renderer
+// already converts UE world space to MuJoCo (AMjRenderer::SendPerturbation), and
+// MuJoCo's xfrc_applied is [force xyz, torque xyz], so the wire vectors are copied
+// straight through with no further frame or unit change. This mirrors the Python
+// FastPathOwner, whose step loop writes the same 6-vector to data.xfrc_applied; the
+// value persists until the next drag frame overwrites it or a zero wrench clears it.
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TSharedPtr<FJsonObject>& Req)
+{
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr || !Mgr->PhysicsEngine)
+	{
+		return MakeError(URLabError::NotReady,
+			TEXT("no live model to perturb (start a live/direct session first)"));
+	}
+
+	double BodyNum = -1.0;
+	if (!Req->TryGetNumberField(TEXT("body"), BodyNum) || BodyNum < 0.0)
+	{
+		return MakeError(URLabError::BadRequest, TEXT("missing or negative body id"));
+	}
+	const int32 BodyId = static_cast<int32>(BodyNum);
+
+	// Reject an out-of-range id under the fence so a stale renderer can't index past
+	// the model; the pointer can retire between the check and the wrench write.
+	{
+		FScopeLock Lock(&Mgr->PhysicsEngine->CallbackMutex);
+		mjModel* m = Mgr->PhysicsEngine->GetModel();
+		if (!m)
+		{
+			return MakeError(URLabError::NotReady, TEXT("model not loaded"));
+		}
+		if (BodyId >= m->nbody)
+		{
+			return MakeError(URLabError::BadRequest,
+				FString::Printf(TEXT("body id %d out of range (nbody=%d)"), BodyId, m->nbody));
+		}
+	}
+
+	// force / torque are MuJoCo-frame 3-vectors; pad a short/absent array to 3 so a
+	// truncated wire vector can't index past the end, matching the Python owner.
+	auto ReadVec3 = [&Req](const TCHAR* Field, double Out[3]) {
+		Out[0] = Out[1] = Out[2] = 0.0;
+		const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
+		if (Req->TryGetArrayField(Field, Arr) && Arr)
+		{
+			for (int32 i = 0; i < 3 && i < Arr->Num(); ++i)
+			{
+				Out[i] = (*Arr)[i]->AsNumber();
+			}
+		}
+	};
+	double Force[3];
+	double Torque[3];
+	ReadVec3(TEXT("force"), Force);
+	ReadVec3(TEXT("torque"), Torque);
+
+	// The command channel enqueues under CommandMutex and drains into
+	// d->xfrc_applied under CallbackMutex right before mj_step -- the same
+	// thread-safe apply path UMjBody::ApplyForce uses.
+	const double Xfrc[6] = {Force[0], Force[1], Force[2], Torque[0], Torque[1], Torque[2]};
+	Mgr->PhysicsEngine->SubmitWrench(BodyId, Xfrc);
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("fastpath_perturb_ok"));
+	Reply->SetNumberField(TEXT("body"), BodyId);
+	return Reply;
+}

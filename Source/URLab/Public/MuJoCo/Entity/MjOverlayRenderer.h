@@ -57,8 +57,17 @@ private:
 	void DrawSites(const FMjRenderSnapshot& Snap) const;
 	void DrawCom(const FMjRenderSnapshot& Snap) const;
 	void DrawInertia(const FMjRenderSnapshot& Snap) const;
-	void DrawContacts(const FMjRenderSnapshot& Snap, bool bPoints, bool bForces) const;
+	void DrawContacts(const FMjRenderSnapshot& Snap, bool bPoints, bool bForces, bool bSplit) const;
 	void DrawPerturb(const FMjRenderSnapshot& Snap) const;
+	void DrawCameras(const FMjRenderSnapshot& Snap) const;
+	void DrawLights(const FMjRenderSnapshot& Snap) const;
+	void DrawActuators(const FMjRenderSnapshot& Snap) const;
+	void DrawTendons(const FMjRenderSnapshot& Snap) const;
+	void DrawRangefinders(const FMjRenderSnapshot& Snap) const;
+	void DrawConstraints(const FMjRenderSnapshot& Snap) const;
+	void DrawStaticBodies(const FMjRenderSnapshot& Snap) const;
+	void DrawAutoConnect(const FMjRenderSnapshot& Snap) const;
+	void DrawGeomBounds(const FMjRenderSnapshot& Snap) const;
 
 	// Borrowed; the owning scene holds the mjModel lifetime.
 	mjModel_* Model = nullptr;

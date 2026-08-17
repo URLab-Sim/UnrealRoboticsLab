@@ -8,7 +8,7 @@
 #include "CoreMinimal.h"
 
 /**
- * One discovered fast-path owner: a live sim a render slave can join. Read from
+ * One discovered fast-path Driver: a live sim a Renderer can join. Read from
  * the shared registry directory (the entries a FastPathOwner writes). This is the
  * runtime mirror of the editor's URLabLevelOps::FMjDriverInfo, usable from a
  * packaged game's server browser.

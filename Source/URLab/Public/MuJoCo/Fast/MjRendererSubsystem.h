@@ -11,7 +11,7 @@
 #include "MjRendererSubsystem.generated.h"
 
 /**
- * A choice of environment to drop a joined render slave into. An empty Path means
+ * A choice of environment to drop a joined Renderer into. An empty Path means
  * the bare-plane option (an empty engine map plus the launcher's own light rig);
  * a set Path is a curated level the slave is dropped into with its own lighting.
  */
@@ -27,12 +27,12 @@ struct FMjRendererLevelChoice
 
 /**
  * @class UMjRendererSubsystem
- * @brief Packaged-game server browser + join flow for a fast-path render slave.
+ * @brief Packaged-game server browser + join flow for a fast-path Renderer.
  *
- * Discovers advertised fast-path owners from the shared registry, lists the
- * cooked levels the operator can drop a joined slave into, and performs the join:
- * pull the owner's MJB over the wire (fastpath_hello), open the chosen level, and
- * spawn the puppet render slave there. Lives on the GameInstance so a pending join
+ * Discovers advertised fast-path Drivers from the shared registry, lists the
+ * cooked levels the operator can drop a joined Renderer into, and performs the join:
+ * pull the Driver's MJB over the wire (fastpath_hello), open the chosen level, and
+ * spawn the Mirror Renderer there. Lives on the GameInstance so a pending join
  * survives the OpenLevel transition. The UI (SMjRendererBrowser) is a thin
  * view over this subsystem.
  */
@@ -86,15 +86,15 @@ public:
 	/** Overlay the slave HUD (return-to-browser + live origin nudge). */
 	void ShowHud();
 	void HideHud();
-	/** Tear down the current slave and go back to the server browser. */
+	/** Tear down the current Renderer and go back to the server browser. */
 	void ReturnToBrowser();
 
 	// --- live origin tuning ----------------------------------------------- //
-	/** Shift the active slave's spawn origin by Delta (UE cm), applied live. */
+	/** Shift the active Renderer's spawn origin by Delta (UE cm), applied live. */
 	void NudgeOrigin(const FVector& Delta);
 	void SetOrigin(const FVector& NewOrigin);
 	FVector GetOrigin() const;
-	bool HasActiveSlave() const;
+	bool HasActiveRenderer() const;
 
 private:
 	TArray<FMjDriverInfo> Owners;
@@ -110,9 +110,9 @@ private:
 
 	TSharedPtr<class SMjRendererBrowser> BrowserWidget;
 	TSharedPtr<class SMjRendererHud> HudWidget;
-	// The active slave (for live origin tuning) + the map the browser lives on
+	// The active Renderer (for live origin tuning) + the map the browser lives on
 	// (so ReturnToBrowser can OpenLevel back to it).
-	TWeakObjectPtr<class AMjRenderer> ActiveSlave;
+	TWeakObjectPtr<class AMjRenderer> ActiveRenderer;
 	FName HomeMap;
 
 	// Headless auto-join state.

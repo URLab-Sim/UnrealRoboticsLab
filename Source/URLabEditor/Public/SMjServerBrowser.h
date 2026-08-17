@@ -17,7 +17,7 @@
  * Polls the shared registry (URLabLevelOps::DiscoverFastPathOwners) every couple
  * of seconds and shows each live owner (scene, host, geom count, endpoint). The
  * Connect button pulls the owner's MJB over the wire and stands up a fast-path
- * render scene in the editor (URLabLevelOps::LaunchFastPathFromOwnerSync) -- the
+ * render scene in the editor (URLabLevelOps::LaunchFastPathFromDriverSync) -- the
  * GUI equivalent of the -URLabFastConnect / -URLabFastDiscover CLI flags.
  */
 class SMjServerBrowser : public SCompoundWidget

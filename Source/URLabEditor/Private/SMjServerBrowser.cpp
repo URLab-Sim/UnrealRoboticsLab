@@ -129,7 +129,7 @@ FReply SMjServerBrowser::OnConnectClicked(FOwnerPtr Item)
 		return FReply::Handled();
 	}
 	FString Err;
-	const bool bOk = URLabLevelOps::LaunchFastPathFromOwnerSync(
+	const bool bOk = URLabLevelOps::LaunchFastPathFromDriverSync(
 		Item->Control, /*bFreshLevel=*/true, Err);
 	if (bOk)
 	{

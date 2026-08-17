@@ -12,7 +12,7 @@ class UMjRendererSubsystem;
 class SEditableTextBox;
 
 /**
- * On-screen controls shown while a render slave is joined: a button back to the
+ * On-screen controls shown while a Renderer is joined: a button back to the
  * server browser, and live spawn-origin nudge controls (X/Y/Z +/- with a step
  * size) so the operator can tune where the MJB sits in the level in real time
  * instead of guessing the offset up front.

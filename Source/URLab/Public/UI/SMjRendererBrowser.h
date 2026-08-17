@@ -15,7 +15,7 @@ class STextComboBox;
 class SEditableTextBox;
 
 /**
- * Runtime (packaged-game) server browser for fast-path render slaves. Lists the
+ * Runtime (packaged-game) server browser for fast-path Renderers. Lists the
  * live owners the UMjRendererSubsystem discovered, an environment picker (bare
  * plane or any cooked level), a spawn-origin field, and a camera-feeds toggle.
  * Connecting hands the choice back to the subsystem, which pulls the MJB and opens

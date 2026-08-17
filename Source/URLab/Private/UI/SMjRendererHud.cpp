@@ -14,7 +14,7 @@
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/SBoxPanel.h"
 
-#define LOCTEXT_NAMESPACE "MjbSlaveHud"
+#define LOCTEXT_NAMESPACE "MjRendererHud"
 
 void SMjRendererHud::Construct(const FArguments& InArgs)
 {

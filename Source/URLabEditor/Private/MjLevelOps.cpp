@@ -779,7 +779,7 @@ bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 	return true;
 }
 
-bool LaunchFastPathFromOwnerSync(const FString& ControlEndpoint, bool bFreshLevel,
+bool LaunchFastPathFromDriverSync(const FString& ControlEndpoint, bool bFreshLevel,
 	FString& OutError)
 {
 	OutError.Empty();
@@ -788,10 +788,10 @@ bool LaunchFastPathFromOwnerSync(const FString& ControlEndpoint, bool bFreshLeve
 		OutError = TEXT("empty owner control endpoint");
 		return false;
 	}
-	// Pull the MJB + bus endpoint from the owner over its control channel.
+	// Pull the MJB + bus endpoint from the Driver over its control channel.
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjRenderer::FetchModelFromOwner(ControlEndpoint, Mjb, Bus, OutError))
+	if (!AMjRenderer::FetchModelFromDriver(ControlEndpoint, Mjb, Bus, OutError))
 	{
 		OutError = FString::Printf(TEXT("owner fetch failed (%s): %s"), *ControlEndpoint, *OutError);
 		return false;

@@ -243,12 +243,12 @@ struct FMjDriverInfo
 URLABEDITOR_API bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError);
 
 /**
- * Stand up a fast-path render scene from a live owner, in one call: fetch the
- * owner's MJB and bus endpoint over its control channel, then build the scene
+ * Stand up a fast-path render scene from a live Driver, in one call: fetch the
+ * Driver's MJB and bus endpoint over its control channel, then build the scene
  * (clean level + lighting + persistent AMjRenderer) from those wire bytes. No
  * shared file. bFreshLevel behaves as in LaunchFastPathSync.
  */
-URLABEDITOR_API bool LaunchFastPathFromOwnerSync(
+URLABEDITOR_API bool LaunchFastPathFromDriverSync(
 	const FString& ControlEndpoint,
 	bool bFreshLevel,
 	FString& OutError);

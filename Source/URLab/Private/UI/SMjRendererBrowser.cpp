@@ -17,7 +17,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/SBoxPanel.h"
 
-#define LOCTEXT_NAMESPACE "MjbRenderSlaveBrowser"
+#define LOCTEXT_NAMESPACE "MjRendererBrowser"
 
 void SMjRendererBrowser::Construct(const FArguments& InArgs)
 {
@@ -54,7 +54,7 @@ void SMjRendererBrowser::Construct(const FArguments& InArgs)
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 					[
-						SNew(STextBlock).Text(LOCTEXT("Title", "URLab Render Slave  --  Fast-Path Owners"))
+						SNew(STextBlock).Text(LOCTEXT("Title", "URLab Renderer  --  Fast-Path Drivers"))
 					]
 					+ SHorizontalBox::Slot().AutoWidth()
 					[

@@ -67,12 +67,12 @@ bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 	FString Control;
 	if (FParse::Value(Cmd, TEXT("URLabFastConnect="), Control) && !Control.IsEmpty())
 	{
-		// Connect to a named owner: pull its MJB + bus over the control channel.
-		bOk = URLabLevelOps::LaunchFastPathFromOwnerSync(Control, /*bFreshLevel=*/true, Err);
+		// Connect to a named Driver: pull its MJB + bus over the control channel.
+		bOk = URLabLevelOps::LaunchFastPathFromDriverSync(Control, /*bFreshLevel=*/true, Err);
 	}
 	else if (FParse::Param(Cmd, TEXT("URLabFastDiscover")))
 	{
-		// Auto-discover: connect to the first advertised owner found.
+		// Auto-discover: connect to the first advertised Driver found.
 		TArray<URLabLevelOps::FMjDriverInfo> Owners;
 		FString DiscErr;
 		if (!URLabLevelOps::DiscoverFastPathOwners(Owners, DiscErr) || Owners.Num() == 0)
@@ -83,12 +83,12 @@ bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 		{
 			UE_LOG(LogURLabEditor, Log, TEXT("[MjRenderer] discovered %d owner(s); connecting to '%s' (%s)"),
 				Owners.Num(), *Owners[0].Scene, *Owners[0].Control);
-			bOk = URLabLevelOps::LaunchFastPathFromOwnerSync(Owners[0].Control, /*bFreshLevel=*/true, Err);
+			bOk = URLabLevelOps::LaunchFastPathFromDriverSync(Owners[0].Control, /*bFreshLevel=*/true, Err);
 		}
 	}
 	else
 	{
-		// Direct MJB file path (owner-less or hand-specified bus).
+		// Direct MJB file path (Driver-less or hand-specified bus).
 		FString Mjb, Bus;
 		FParse::Value(Cmd, TEXT("URLabFastMjb="), Mjb);
 		FParse::Value(Cmd, TEXT("URLabFastBus="), Bus);

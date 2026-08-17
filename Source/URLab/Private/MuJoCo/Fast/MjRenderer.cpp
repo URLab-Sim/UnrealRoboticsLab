@@ -217,8 +217,8 @@ void AMjRenderer::BeginPlay()
 	}
 	else if (!BusEndpoint.IsEmpty())
 	{
-		// A puppet render slave mirrors an owner's stream but is still a render
-		// server: stand up the manager (hence bridge + RPC) so an owner can push
+		// A Mirror Renderer mirrors a Driver's stream but is still a render
+		// server: stand up the manager (hence bridge + RPC) so a Driver can push
 		// live scene swaps (fastpath_load) to it over the wire.
 		EnsureManager();
 		StartBus();
@@ -475,7 +475,7 @@ int32 AMjRenderer::ReindexFromLevel()
 	return Found > 0 ? Found : -1;
 }
 
-bool AMjRenderer::FetchModelFromOwner(const FString& ControlEndpoint,
+bool AMjRenderer::FetchModelFromDriver(const FString& ControlEndpoint,
 	TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError)
 {
 	OutMjb.Reset();
@@ -1496,9 +1496,9 @@ void AMjRenderer::Tick(float DeltaSeconds)
 					}
 				}
 
-				// Optional free/user camera ("copycat"): the owner mirrors its
+				// Optional free/user camera ("copycat"): the Driver mirrors its
 				// MuJoCo-viewer camera as eye position + forward + up, and this
-				// render slave points its game viewport at the same view.
+				// Renderer points its game viewport at the same view.
 				{
 					TArray<double> Ucp, Ucf, Ucu;
 					if (ReadArr(TEXT("ucpos"), Ucp) && ReadArr(TEXT("ucfwd"), Ucf) &&
@@ -1686,12 +1686,12 @@ void AMjRenderer::ReloadFromBytes(const TArray<uint8>& NewMjb)
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] ReloadFromBytes: swapped model -- %d geoms built"), Geoms);
 }
 
-// Bring the render slave up at high quality with the noisy, temporally-accumulated
+// Bring the Renderer up at high quality with the noisy, temporally-accumulated
 // post effects turned down: full scalability groups (Lumen GI / reflections / shadows
 // at Epic so the final-gather grain converges), film grain and motion blur off. This
 // is what makes a movable-light scene read clean instead of grainy. Overridable at
 // runtime from the console (set URLAB_NO_RENDER_QUALITY=1 to skip).
-static void ApplyRenderSlaveQuality()
+static void ApplyRendererQuality()
 {
 	if (!GEngine || FParse::Param(FCommandLine::Get(), TEXT("URLabFastNoQuality")))
 	{
@@ -1712,7 +1712,7 @@ static void ApplyRenderSlaveQuality()
 	}
 }
 
-AMjRenderer* AMjRenderer::SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
+AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbBytes,
 	const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
 	bool bDirect, bool bBaseLevel, bool bCameras)
 {
@@ -1720,17 +1720,17 @@ AMjRenderer* AMjRenderer::SpawnRenderSlave(UWorld* World, const TArray<uint8>& M
 	{
 		return nullptr;
 	}
-	ApplyRenderSlaveQuality();
+	ApplyRendererQuality();
 	// Deferred spawn so the fields are set BEFORE BeginPlay runs; BeginPlay then
 	// owns the whole build (geometry + camera streaming + Direct/bus connect).
 	AMjRenderer* Scene = World->SpawnActorDeferred<AMjRenderer>(AMjRenderer::StaticClass(), FTransform::Identity);
 	if (!Scene)
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] SpawnRenderSlave: failed to spawn AMjRenderer"));
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] SpawnRenderer: failed to spawn AMjRenderer"));
 		return nullptr;
 	}
 	Scene->RunMode = bDirect ? EMjPoseSource::Stepped : EMjPoseSource::Mirror;
-	// Local dev sweep only when there is neither an owner bus nor Direct stepping.
+	// Local dev sweep only when there is neither a Driver bus nor Direct stepping.
 	Scene->bTestSweep = BusEndpoint.IsEmpty() && !bDirect;
 	Scene->MjbBytes = MjbBytes;
 	Scene->MjbFilePath = MjbFilePath;
@@ -1773,7 +1773,7 @@ AMjRenderer* AMjRenderer::SpawnRenderSlave(UWorld* World, const TArray<uint8>& M
 		}
 	}
 
-	// Framing camera at the scene origin (the copycat retargets it once an owner
+	// Framing camera at the scene origin (the copycat retargets it once a Driver
 	// streams its free camera).
 	if (APlayerController* PC = World->GetFirstPlayerController())
 	{
@@ -1785,7 +1785,7 @@ AMjRenderer* AMjRenderer::SpawnRenderSlave(UWorld* World, const TArray<uint8>& M
 	}
 
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjRenderer] SpawnRenderSlave: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
+		TEXT("[MjRenderer] SpawnRenderer: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
 		bDirect ? TEXT("direct") : TEXT("puppet"),
 		BusEndpoint.IsEmpty() ? TEXT("(none)") : *BusEndpoint, bBaseLevel ? 1 : 0,
 		bCameras ? 1 : 0, MjbBytes.Num(), *Origin.ToString());

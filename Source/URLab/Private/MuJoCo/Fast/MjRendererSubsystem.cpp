@@ -25,7 +25,7 @@ void UMjRendererSubsystem::RefreshOwners()
 	URLabFastPath::DiscoverOwners(Owners, Err);
 	if (!Err.IsEmpty())
 	{
-		UE_LOG(LogURLab, Warning, TEXT("[RenderSlave] owner discovery: %s"), *Err);
+		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] owner discovery: %s"), *Err);
 	}
 }
 
@@ -65,14 +65,14 @@ bool UMjRendererSubsystem::JoinOwner(const FMjDriverInfo& Owner, const FString& 
 	OutError.Empty();
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjRenderer::FetchModelFromOwner(Owner.Control, Mjb, Bus, OutError))
+	if (!AMjRenderer::FetchModelFromDriver(Owner.Control, Mjb, Bus, OutError))
 	{
-		UE_LOG(LogURLab, Error, TEXT("[RenderSlave] fetch from owner %s failed: %s"),
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] fetch from owner %s failed: %s"),
 			*Owner.Control, *OutError);
 		return false;
 	}
 
-	// Prefer the bus the owner reports in the handshake; fall back to its registry
+	// Prefer the bus the Driver reports in the handshake; fall back to its registry
 	// advertisement.
 	PendingBus = Bus.IsEmpty() ? Owner.Bus : Bus;
 	PendingMjb = MoveTemp(Mjb);
@@ -84,7 +84,7 @@ bool UMjRendererSubsystem::JoinOwner(const FMjDriverInfo& Owner, const FString& 
 	HideBrowser();
 	const FString Target = LevelPath.IsEmpty() ? TEXT("/Engine/Maps/Entry") : LevelPath;
 	UE_LOG(LogURLab, Log,
-		TEXT("[RenderSlave] joining owner %s (%d bytes, bus %s) -> level %s origin (%s)"),
+		TEXT("[MjRenderer] joining owner %s (%d bytes, bus %s) -> level %s origin (%s)"),
 		*Owner.Control, PendingMjb.Num(), *PendingBus, *Target, *Origin.ToString());
 	UGameplayStatics::OpenLevel(this, FName(*Target));
 	return true;
@@ -96,11 +96,11 @@ bool UMjRendererSubsystem::ConsumePendingJoin(UWorld* World)
 	{
 		return false;
 	}
-	ActiveSlave = AMjRenderer::SpawnRenderSlave(World, PendingMjb, FString(), PendingBus, PendingOrigin,
+	ActiveRenderer = AMjRenderer::SpawnRenderer(World, PendingMjb, FString(), PendingBus, PendingOrigin,
 		/*bDirect=*/false, bPendingBaseLevel, bPendingCameras);
 	bJoinPending = false;
 	PendingMjb.Empty();
-	UE_LOG(LogURLab, Log, TEXT("[RenderSlave] pending join spawned into %s"), *World->GetMapName());
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] pending join spawned into %s"), *World->GetMapName());
 	ShowHud(); // return-to-browser + live origin tuning
 	return true;
 }
@@ -119,7 +119,7 @@ void UMjRendererSubsystem::BeginAutoJoin(const FString& SceneFilter, const FStri
 	{
 		return;
 	}
-	UE_LOG(LogURLab, Log, TEXT("[RenderSlave] auto-join: polling for owner%s%s"),
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] auto-join: polling for owner%s%s"),
 		SceneFilter.IsEmpty() ? TEXT("") : TEXT(" matching "), *SceneFilter);
 	W->GetTimerManager().SetTimer(AutoJoinTimer, this,
 		&UMjRendererSubsystem::AutoJoinPoll, 1.0f, /*bLoop=*/true, /*FirstDelay=*/0.5f);
@@ -148,12 +148,12 @@ void UMjRendererSubsystem::AutoJoinPoll()
 		}
 		else if (!bOk)
 		{
-			UE_LOG(LogURLab, Warning, TEXT("[RenderSlave] auto-join: fetch failed, retrying (%s)"), *Err);
+			UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] auto-join: fetch failed, retrying (%s)"), *Err);
 		}
 	}
 	else if (++AutoJoinTries > 30) // ~30s
 	{
-		UE_LOG(LogURLab, Warning, TEXT("[RenderSlave] auto-join: no owner found, giving up"));
+		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] auto-join: no owner found, giving up"));
 		if (W)
 		{
 			W->GetTimerManager().ClearTimer(AutoJoinTimer);
@@ -191,7 +191,7 @@ void UMjRendererSubsystem::ShowBrowser()
 		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		PC->SetInputMode(Mode);
 	}
-	UE_LOG(LogURLab, Log, TEXT("[RenderSlave] server browser shown"));
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] server browser shown"));
 }
 
 void UMjRendererSubsystem::HideBrowser()
@@ -258,7 +258,7 @@ void UMjRendererSubsystem::HideHud()
 void UMjRendererSubsystem::ReturnToBrowser()
 {
 	HideHud();
-	ActiveSlave.Reset();
+	ActiveRenderer.Reset();
 	bJoinPending = false;
 	// OpenLevel back to the browser's home map; its BeginPlay re-shows the browser
 	// (no MJB, no pending, -URLabFastBrowser still on the command line).
@@ -274,7 +274,7 @@ void UMjRendererSubsystem::ReturnToBrowser()
 
 void UMjRendererSubsystem::NudgeOrigin(const FVector& Delta)
 {
-	if (AMjRenderer* S = ActiveSlave.Get())
+	if (AMjRenderer* S = ActiveRenderer.Get())
 	{
 		S->SceneOrigin += Delta;
 	}
@@ -282,7 +282,7 @@ void UMjRendererSubsystem::NudgeOrigin(const FVector& Delta)
 
 void UMjRendererSubsystem::SetOrigin(const FVector& NewOrigin)
 {
-	if (AMjRenderer* S = ActiveSlave.Get())
+	if (AMjRenderer* S = ActiveRenderer.Get())
 	{
 		S->SceneOrigin = NewOrigin;
 	}
@@ -290,11 +290,11 @@ void UMjRendererSubsystem::SetOrigin(const FVector& NewOrigin)
 
 FVector UMjRendererSubsystem::GetOrigin() const
 {
-	const AMjRenderer* S = ActiveSlave.Get();
+	const AMjRenderer* S = ActiveRenderer.Get();
 	return S ? S->SceneOrigin : FVector::ZeroVector;
 }
 
-bool UMjRendererSubsystem::HasActiveSlave() const
+bool UMjRendererSubsystem::HasActiveRenderer() const
 {
-	return ActiveSlave.IsValid();
+	return ActiveRenderer.IsValid();
 }

@@ -119,7 +119,7 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	const FVector Origin = ParseFastOrigin();
 
 	// One shared builder for the -game launcher and the runtime server browser.
-	AMjRenderer::SpawnRenderSlave(&InWorld, TArray<uint8>(), Mjb, Bus, Origin, bDirect, bBaseLevel, bCameras);
+	AMjRenderer::SpawnRenderer(&InWorld, TArray<uint8>(), Mjb, Bus, Origin, bDirect, bBaseLevel, bCameras);
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: mjb=%s mode=%s bus=%s baseLevel=%d"),
 		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);

@@ -109,7 +109,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bEnableCameraStreaming = false;
 
-	/** World offset for the whole scene (UE cm). Lets a render slave drop the MJB
+	/** World offset for the whole scene (UE cm). Lets a Renderer drop the MJB
 	 *  at a chosen spot in a curated base level instead of the world origin; added
 	 *  to every geom / camera / copycat placement. Set from -URLabFastOrigin=X,Y,Z. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
@@ -147,19 +147,19 @@ public:
 	/** Live model swap: retire the current model, shadow articulation and geometry
 	 *  (reusing the same manager + engine) and rebuild from new MJB bytes, so a
 	 *  running render-server viewer can switch scenes without a relaunch. The bytes
-	 *  arrive over the wire (an owner streams them to a remote renderer). Game
+	 *  arrive over the wire (a Driver streams them to a remote Renderer). Game
 	 *  thread only. */
 	void ReloadFromBytes(const TArray<uint8>& NewMjb);
 
 	/**
-	 * Spawn a fast-path render slave into World and return it. Sets the scene up
+	 * Spawn a fast-path Renderer into World and return it. Sets the scene up
 	 * from either MjbBytes (over the wire) or MjbFilePath, connects the transform
 	 * bus (Puppet) or steps it in-process (bDirect), and unless bBaseLevel is set,
 	 * spawns a movable light rig + a framing camera at the scene origin so the MJB
 	 * is visible on a bare map. Shared by the -game command-line launcher and the
-	 * runtime server browser so both build an identical slave. Null on failure.
+	 * runtime server browser so both build an identical Renderer. Null on failure.
 	 */
-	static AMjRenderer* SpawnRenderSlave(UWorld* World, const TArray<uint8>& MjbBytes,
+	static AMjRenderer* SpawnRenderer(UWorld* World, const TArray<uint8>& MjbBytes,
 		const FString& MjbFilePath, const FString& BusEndpoint, const FVector& Origin,
 		bool bDirect, bool bBaseLevel, bool bCameras);
 
@@ -249,13 +249,13 @@ public:
 	void SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE);
 
 	/**
-	 * Fetch an MJB and its transform-bus endpoint from an owner over a ZMQ
+	 * Fetch an MJB and its transform-bus endpoint from a Driver over a ZMQ
 	 * REQ/REP control channel. Sends a msgpack `{op:"fastpath_hello"}` and reads
-	 * back the owner's `mjb` bytes plus `bus` endpoint. Synchronous with a short
+	 * back the Driver's `mjb` bytes plus `bus` endpoint. Synchronous with a short
 	 * timeout; safe to call from the editor or a headless driver. Returns false
 	 * with OutError on any failure.
 	 */
-	static bool FetchModelFromOwner(const FString& ControlEndpoint,
+	static bool FetchModelFromDriver(const FString& ControlEndpoint,
 		TArray<uint8>& OutMjb, FString& OutBusEndpoint, FString& OutError);
 
 	/**
@@ -380,7 +380,7 @@ private:
 
 	// Get-or-spawn the level's manager and cache it in Direct.Manager. A render
 	// server needs a manager+bridge in BOTH modes: Direct steps through it, and a
-	// Puppet render slave still needs its RPC (fastpath_load scene swaps).
+	// Mirror Renderer still needs its RPC (fastpath_load scene swaps).
 	AAMjManager* EnsureManager();
 	// Timer target for the deferred Direct install: delegates to Direct. A UObject
 	// method so FTimerManager can hold it by weak pointer.
@@ -416,7 +416,7 @@ private:
 	void BuildCompiledViewCameras();
 
 	// Copycat: drive the game viewport's view camera from an owner's free/user
-	// camera (MuJoCo world eye position + forward + up), so a render slave mirrors
+	// camera (MuJoCo world eye position + forward + up), so a Renderer mirrors
 	// what the operator sees in MuJoCo's own viewer. Pos/Fwd/Up are MuJoCo-frame.
 	void ApplyUserCamera(const double* Pos, const double* Fwd, const double* Up);
 	// The view camera the copycat drives, cached once it is locked on so a live

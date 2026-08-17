@@ -19,6 +19,7 @@
 #include "State/MjStateProducer.h"
 #include "MuJoCo/Spec/MjNodeDiagnostics.h"
 #include "MuJoCo/Spec/MjNodeScale.h"
+#include "MuJoCo/Spec/MjNodeEditorCarry.h"
 
 #include "MjNodeComponent.generated.h"
 
@@ -96,6 +97,11 @@ class URLAB_API UMjNodeComponent : public USceneComponent
 	friend void urlab::spec::MjNodeNotePreviewProblem(UMjNodeComponent&, EMjPreviewProblem, const FString&);
 	friend void urlab::spec::MjNodeClearPreviewProblem(UMjNodeComponent&, EMjPreviewProblem);
 	friend void urlab::spec::MjNodeConstrainPreviewScale(UMjNodeComponent&);
+#if WITH_EDITOR
+	// The editor edit-carry reads the pre-edit snapshot (`PropertyBeforeEdit`,
+	// `PropertyTextBeforeEdit`) the node still owns through the node it is handed.
+	friend void urlab::spec::MjNodeCarryEditToInstances(UMjNodeComponent&, const FSpecRef&, const FPropertyChangedEvent&);
+#endif
 
 public:
 	UMjNodeComponent();
@@ -576,6 +582,21 @@ protected:
 
 namespace urlab::spec
 {
+/**
+ * Visit every component built from `Template`, without a global object scan.
+ *
+ * A construction script's templates instantiate as components of actors of the
+ * Blueprint's generated class, and the object hash answers that directly. The
+ * instances are collected first and visited afterwards, never during: the
+ * traversal runs inside the object hash's own iteration, and what a visitor does
+ * can create UObjects, which is fatal while that iteration is open.
+ *
+ * `Doc` is the template's own spec, resolved by the caller. Nothing to do for a
+ * component that already belongs to an actor: it is an instance, not a template.
+ */
+URLAB_API void MjNodeForEachInstanceOfTemplate(
+	const FSpecRef& Doc, UMjNodeComponent& Template, TFunctionRef<void(UMjNodeComponent&)> Visit);
+
 /**
  * Record, on every element of the spec rooted at `Root`, the reference
  * attributes it carries that name nothing the spec declares.

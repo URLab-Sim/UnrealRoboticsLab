@@ -17,6 +17,8 @@
 #include "MuJoCo/Spec/MjNodeRefOptions.h"
 #include "MuJoCo/Spec/MjNodeDiagnostics.h"
 #include "MuJoCo/Spec/MjNodeScale.h"
+#include "MuJoCo/Spec/MjNodePresentation.h"
+#include "MuJoCo/Spec/MjNodeEditorCarry.h"
 #include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjElementIdentity.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
@@ -310,76 +312,6 @@ bool HasQuatAttribute(UMjNodeComponent& Node)
 	return bHas;
 }
 
-/**
- * Every component built from `Template`, without a global object scan.
- *
- * `UObject::GetArchetypeInstances` answers this by walking every object in the
- * process, which is affordable once and ruinous per gizmo delta. A construction
- * script's templates instantiate as components of actors of the Blueprint's
- * generated class, and the object hash answers that directly.
- *
- * Collected first and visited afterwards, never visited during. The traversal
- * runs inside the object hash's own iteration, and creating a UObject while that
- * is open is fatal, not slow -- "Trying to modify UObject map (FindOrAdd) that
- * is currently being iterated". What a visitor does here reaches
- * `RefreshPresentation`, and a geom's is in the business of creating objects:
- * preview mesh components and a dynamic material instance per part. So the walk
- * gathers and ends, and the work begins after it has closed.
- *
- * Weakly held across that gap. The two phases are no longer one atomic step, and
- * the work is free to destroy components -- rebuilding a visualiser destroys the
- * previous one -- so an entry may be gone by the time its turn comes.
- *
- * Nothing to do for a component that already belongs to an actor: it is an
- * instance, not a template, which is also what keeps the level-editor drag off
- * this path entirely.
- *
- * `Doc` is the template's own spec, resolved by the caller: reaching a spec's
- * root is a walk of its own, and the callers here have already done it.
- */
-void ForEachInstanceOfTemplate(
-	const FSpecRef& Doc, UMjNodeComponent& Template, TFunctionRef<void(UMjNodeComponent&)> Visit)
-{
-#if WITH_EDITOR
-	if (Template.GetOwner() != nullptr)
-	{
-		return;
-	}
-	UBlueprint* Blueprint = Doc.GetGraph() == EMjSpecGraph::Scs ? Doc.GetBlueprint() : nullptr;
-	UClass* Generated = Blueprint != nullptr ? Blueprint->GeneratedClass : nullptr;
-	if (Generated == nullptr)
-	{
-		return;
-	}
-
-	TArray<TWeakObjectPtr<UMjNodeComponent>> Instances;
-	ForEachObjectOfClass(Generated, [&Template, &Instances](UObject* Object) {
-		AActor* Actor = Cast<AActor>(Object);
-		if (Actor == nullptr)
-		{
-			return;
-		}
-		TArray<UMjNodeComponent*> Nodes;
-		Actor->GetComponents(Nodes);
-		for (UMjNodeComponent* Node : Nodes)
-		{
-			if (Node != nullptr && Node->GetArchetype() == &Template)
-			{
-				Instances.Add(Node);
-			}
-		}
-	});
-
-	for (const TWeakObjectPtr<UMjNodeComponent>& Instance : Instances)
-	{
-		if (UMjNodeComponent* Node = Instance.Get())
-		{
-			Visit(*Node);
-		}
-	}
-#endif
-}
-
 // --- References ------------------------------------------------------------ //
 //
 // Every cross-reference in a MuJoCo model is a NAME with a typed target, never a
@@ -588,6 +520,79 @@ bool IsSpatialField(psm::ElementType Type, FName PropertyName)
 }
 } // namespace
 
+namespace urlab::spec
+{
+/**
+ * Every component built from `Template`, without a global object scan.
+ *
+ * `UObject::GetArchetypeInstances` answers this by walking every object in the
+ * process, which is affordable once and ruinous per gizmo delta. A construction
+ * script's templates instantiate as components of actors of the Blueprint's
+ * generated class, and the object hash answers that directly.
+ *
+ * Collected first and visited afterwards, never visited during. The traversal
+ * runs inside the object hash's own iteration, and creating a UObject while that
+ * is open is fatal, not slow -- "Trying to modify UObject map (FindOrAdd) that
+ * is currently being iterated". What a visitor does here reaches
+ * `RefreshPresentation`, and a geom's is in the business of creating objects:
+ * preview mesh components and a dynamic material instance per part. So the walk
+ * gathers and ends, and the work begins after it has closed.
+ *
+ * Weakly held across that gap. The two phases are no longer one atomic step, and
+ * the work is free to destroy components -- rebuilding a visualiser destroys the
+ * previous one -- so an entry may be gone by the time its turn comes.
+ *
+ * Nothing to do for a component that already belongs to an actor: it is an
+ * instance, not a template, which is also what keeps the level-editor drag off
+ * this path entirely.
+ *
+ * `Doc` is the template's own spec, resolved by the caller: reaching a spec's
+ * root is a walk of its own, and the callers here have already done it.
+ */
+void MjNodeForEachInstanceOfTemplate(
+	const FSpecRef& Doc, UMjNodeComponent& Template, TFunctionRef<void(UMjNodeComponent&)> Visit)
+{
+#if WITH_EDITOR
+	if (Template.GetOwner() != nullptr)
+	{
+		return;
+	}
+	UBlueprint* Blueprint = Doc.GetGraph() == EMjSpecGraph::Scs ? Doc.GetBlueprint() : nullptr;
+	UClass* Generated = Blueprint != nullptr ? Blueprint->GeneratedClass : nullptr;
+	if (Generated == nullptr)
+	{
+		return;
+	}
+
+	TArray<TWeakObjectPtr<UMjNodeComponent>> Instances;
+	ForEachObjectOfClass(Generated, [&Template, &Instances](UObject* Object) {
+		AActor* Actor = Cast<AActor>(Object);
+		if (Actor == nullptr)
+		{
+			return;
+		}
+		TArray<UMjNodeComponent*> Nodes;
+		Actor->GetComponents(Nodes);
+		for (UMjNodeComponent* Node : Nodes)
+		{
+			if (Node != nullptr && Node->GetArchetype() == &Template)
+			{
+				Instances.Add(Node);
+			}
+		}
+	});
+
+	for (const TWeakObjectPtr<UMjNodeComponent>& Instance : Instances)
+	{
+		if (UMjNodeComponent* Node = Instance.Get())
+		{
+			Visit(*Node);
+		}
+	}
+#endif
+}
+} // namespace urlab::spec
+
 bool UMjNodeComponent::HasPoseAttributes() const
 {
 	bool bHas = false;
@@ -629,140 +634,26 @@ bool UMjNodeComponent::WriteBackScale(const FVector& Scale)
 
 // --- What an element is in the spec ------------------------------------ //
 
-namespace
-{
-/** True when `Node` is an element of exactly `Wanted`. */
-bool IsElementOfType(const UMjNodeComponent& Node, psm::ElementType Wanted)
-{
-	psm::ElementType Type;
-	return urlab::spec::MjElementTypeOfNode(Node, Type) && Type == Wanted;
-}
-
-/** Offer `Node` and each of its ancestors to `Predicate` until one accepts. */
-template <class Adapter, class Pred>
-bool AnyAncestorMatches(const UMjNodeComponent& Node, Pred&& Predicate)
-{
-	const UMjNodeComponent* Cursor = &Node;
-	// Neither graph can represent a cycle, but a bound is what keeps a tree
-	// corrupted by something else from hanging the editor here.
-	for (int32 Depth = 0; Cursor != nullptr && Depth < 512; ++Depth)
-	{
-		if (Predicate(*Cursor))
-		{
-			return true;
-		}
-		Cursor = Adapter::ParentOf(*Cursor);
-	}
-	return false;
-}
-
-/**
- * The same walk, over whichever object graph holds `Node`'s spec.
- *
- * A component with an owner is in a spawned actor and its parent link is the
- * attachment; a Blueprint template has neither, and its tree is only reachable
- * through the construction script the ambient scope names.
- *
- * Asked once per element by the callers below, so the scope it opens is opened
- * once per element too. That is affordable because a scope nested inside one
- * over the same Blueprint adopts the outer scope's maps and builds none: a pass
- * that already holds one open pays for one, not for one per element.
- */
-template <class Pred>
-bool AnyAncestorInSpec(const UMjNodeComponent& Node, Pred&& Predicate)
-{
-	if (Node.GetOwner() != nullptr)
-	{
-		return AnyAncestorMatches<urlab::spec::FMjInstanceAdapter>(Node, Predicate);
-	}
-#if WITH_EDITOR
-	const FSpecRef Doc = FSpecRef::OverOwner(&Node);
-	if (Doc.GetGraph() == EMjSpecGraph::Scs)
-	{
-		if (UBlueprint* Blueprint = Doc.GetBlueprint())
-		{
-			urlab::spec::FMjScsScope Scope(*Blueprint);
-			return AnyAncestorMatches<urlab::spec::FMjScsAdapter>(Node, Predicate);
-		}
-	}
-#endif
-	return false;
-}
-} // namespace
-
 bool UMjNodeComponent::IsClassPartial() const
 {
-	return AnyAncestorInSpec(
-		*this, [](const UMjNodeComponent& Node) { return IsElementOfType(Node, psm::ElementType::Default); });
+	return urlab::spec::MjNodeIsClassPartial(*this);
 }
 
 bool UMjNodeComponent::IsSharedPresentationInput() const
 {
-	return AnyAncestorInSpec(*this, [](const UMjNodeComponent& Node) {
-		return IsElementOfType(Node, psm::ElementType::Default) || IsElementOfType(Node, psm::ElementType::Asset);
-	});
+	return urlab::spec::MjNodeIsSharedPresentationInput(*this);
 }
 
 // --- Presentation ----------------------------------------------------------- //
 
 void UMjNodeComponent::RefreshPresentation()
 {
-	SyncPreviewFromSpec();
+	urlab::spec::MjNodeRefreshPresentation(*this);
 }
-
-namespace
-{
-template <class Adapter>
-void RefreshSubtree(UMjNodeComponent& Node)
-{
-	Node.RefreshPresentation();
-	for (const urlab::spec::FMjOrderedChild& Child : Adapter::OrderedChildren(Node))
-	{
-		if (Child.Node != nullptr)
-		{
-			RefreshSubtree<Adapter>(*Child.Node);
-		}
-	}
-}
-
-/**
- * Re-derive the picture of every element of an already-resolved spec.
- *
- * Taking the resolved spec rather than a node in it is what lets a fan-out over
- * several specs resolve each of them once: reaching a spec's root is itself a
- * walk, and doing it per pass instead of per query is the difference between
- * one and several.
- */
-void RefreshSpecPresentationOf(const FSpecRef& Doc)
-{
-	UMjNodeComponent* Root = Doc.GetRoot();
-	if (Root == nullptr)
-	{
-		return;
-	}
-
-	// One index for the whole walk. Each node asks the class chain several
-	// questions and a geom asks more, and every one of those used to index the
-	// spec from scratch -- so refreshing N elements cost N whole-spec walks per
-	// question rather than one. The template graph comes with the scope, because
-	// a spec held as Blueprint templates cannot be walked without it.
-	urlab::spec::FMjEffectiveScope Effective(Doc);
-
-#if WITH_EDITOR
-	if (Doc.GetGraph() == EMjSpecGraph::Scs)
-	{
-		RefreshSubtree<urlab::spec::FMjScsAdapter>(*Root);
-		return;
-	}
-#endif
-
-	RefreshSubtree<urlab::spec::FMjInstanceAdapter>(*Root);
-}
-} // namespace
 
 void UMjNodeComponent::RefreshSpecPresentation()
 {
-	RefreshSpecPresentationOf(FSpecRef::OverOwner(this));
+	urlab::spec::MjNodeRefreshSpecPresentation(*this);
 }
 
 bool UMjNodeComponent::ComputePreviewTransform(FTransform& Out)
@@ -975,7 +866,7 @@ void UMjNodeComponent::WriteBackTransformIfChanged()
 	// Attribute by attribute, and only onto an instance that still holds this
 	// element's own pre-drag value: one that had been moved on its own really has
 	// overridden the template and must keep what it authored.
-	ForEachInstanceOfTemplate(FSpecRef::OverOwner(this), *this, [&](UMjNodeComponent& Instance) {
+	urlab::spec::MjNodeForEachInstanceOfTemplate(FSpecRef::OverOwner(this), *this, [&](UMjNodeComponent& Instance) {
 		const bool bTakePos =
 			bPosMoved && Instance.GetRelativeLocation().Equals(Baseline.GetLocation(), MjPreviewEpsilon);
 		const bool bTakeRot = bRotMoved && Instance.GetRelativeRotation().Quaternion().Equals(Baseline.GetRotation(), MjPreviewEpsilon);
@@ -1173,75 +1064,12 @@ void RefreshSpecReferenceDiagnostics(const FSpecRef& Spec)
 	}
 	urlab::spec::MjNoteDanglingReferences<urlab::spec::FMjInstanceAdapter>(*Root);
 }
-
-/**
- * Elements already reported, by identity rather than by object.
- *
- * A component is not the same object from one Blueprint reconstruct to the
- * next, and a rule broken once should be said once -- not on every recompile for
- * the rest of the session. `Serial` survives a reconstruct and a genuinely new
- * element mints a fresh one, so it separates "this again" from "another one".
- *
- * Cleared for an element whose placement becomes legal, because putting the same
- * element somewhere illegal a second time is a new mistake.
- */
-TSet<uint64> GReportedIllegalPlacement;
 #endif // URLAB_MJ_GEN
 } // namespace
 
 void UMjNodeComponent::CheckPlacementLegality()
 {
-#if URLAB_MJ_GEN
-	PlacementProblems.Reset();
-
-	// A class default object is not placed anywhere, and a template is not
-	// registered at all; both reach here only through some other path.
-	if (HasAnyFlags(RF_ClassDefaultObject))
-	{
-		return;
-	}
-
-	const UMjNodeComponent* const Parent = Cast<UMjNodeComponent>(GetAttachParent());
-	if (Parent == nullptr)
-	{
-		// An organisational folder or the actor root: not an element, so the
-		// schema has nothing to say about the pair. The import pass owns where
-		// those go.
-		return;
-	}
-
-	psm::ElementType ChildType{};
-	psm::ElementType ParentType{};
-	if (!urlab::spec::MjElementTypeOfNode(*this, ChildType)
-		|| !urlab::spec::MjElementTypeOfNode(*Parent, ParentType))
-	{
-		return;
-	}
-
-	if (urlab::spec::gen::SlotFor(ParentType, ChildType) >= 0)
-	{
-		GReportedIllegalPlacement.Remove(Serial);
-		return;
-	}
-
-	const FString Message = FString::Printf(
-		TEXT("<%s> is not a legal child of <%s>: it will be dropped when the model compiles"),
-		urlab::spec::gen::TagForElement(ChildType), urlab::spec::gen::TagForElement(ParentType));
-	PlacementProblems.Add(Message);
-
-	// The row above is the persistent surface and is rewritten every time. The
-	// two logs are a transition: said when the element becomes illegally placed,
-	// not once per registration for the rest of the session.
-	if (GReportedIllegalPlacement.Contains(Serial))
-	{
-		return;
-	}
-	GReportedIllegalPlacement.Add(Serial);
-
-	const FString Line = FString::Printf(TEXT("%s: %s"), *MjName.Get(GetName()), *Message);
-	UE_LOG(LogURLab, Warning, TEXT("%s (parent '%s')"), *Line, *Parent->MjName.Get(Parent->GetName()));
-	FMessageLog(TEXT("URLab")).Warning(FText::FromString(Line));
-#endif // URLAB_MJ_GEN
+	urlab::spec::MjNodeCheckPlacementLegality(*this);
 }
 
 void UMjNodeComponent::PostEditComponentMove(bool bFinished)
@@ -1275,61 +1103,7 @@ void UMjNodeComponent::PreEditChange(FProperty* PropertyAboutToChange)
 
 void UMjNodeComponent::CarryEditToInstances(const FSpecRef& Doc, const FPropertyChangedEvent& Event)
 {
-#if URLAB_MJ_GEN
-	FProperty* const Property = PropertyBeforeEdit;
-	const FString Before = PropertyTextBeforeEdit;
-	PropertyBeforeEdit = nullptr;
-	PropertyTextBeforeEdit.Reset();
-
-	if (Property == nullptr || GetOwner() != nullptr)
-	{
-		return;
-	}
-
-	// The snapshot has to belong to the edit that just landed. `PreEditChange`
-	// and `PostEditChangeProperty` are not always a matched pair -- a cancelled
-	// edit fires only the first -- so a stale snapshot must not be spent on the
-	// next property that happens along.
-	const FName Name = Property->GetFName();
-	if (Event.Property != Property && Event.MemberProperty != Property && Event.GetPropertyName() != Name && Event.GetMemberPropertyName() != Name)
-	{
-		return;
-	}
-
-	FString After;
-	Property->ExportTextItem_Direct(After, Property->ContainerPtrToValuePtr<void>(this), nullptr, this, PPF_None);
-	if (After == Before)
-	{
-		return;
-	}
-
-	ForEachInstanceOfTemplate(Doc, *this, [Property, &Before, &After](UMjNodeComponent& Instance) {
-		if (!Instance.IsA(Property->GetOwnerClass()))
-		{
-			return;
-		}
-		void* const Slot = Property->ContainerPtrToValuePtr<void>(&Instance);
-		FString Held;
-		Property->ExportTextItem_Direct(Held, Slot, nullptr, &Instance, PPF_None);
-		if (Held != Before)
-		{
-			// This instance authored its own value: the template is no longer
-			// what decides it, and taking that back would discard the user's edit.
-			return;
-		}
-
-		Instance.Modify();
-		Property->ImportText_Direct(*After, Slot, &Instance, PPF_None);
-
-		FPropertyChangedEvent Carried(Property, EPropertyChangeType::ValueSet);
-		Instance.PostEditChangeProperty(Carried);
-	});
-#else
-	// Without the generated profile there is no spec to walk and no template
-	// graph to find instances in.
-	(void)Doc;
-	(void)Event;
-#endif // URLAB_MJ_GEN
+	urlab::spec::MjNodeCarryEditToInstances(*this, Doc, Event);
 }
 
 void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -1415,7 +1189,7 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	if (IsSharedPresentationInput())
 	{
 		// The edited spec is walked once, from the root already resolved above.
-		RefreshSpecPresentationOf(Doc);
+		urlab::spec::MjNodeRefreshSpecPresentationForSpec(Doc);
 
 		// A Blueprint template's own spec is the template graph, which draws
 		// nothing. What the user is looking at is the preview actor -- and every
@@ -1426,8 +1200,8 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 		// chain, so it gets one walk and one index -- one, not one per element
 		// and not one per question, which is what resolving the instance's root
 		// per query used to cost.
-		ForEachInstanceOfTemplate(Doc, *this, [](UMjNodeComponent& Instance) {
-			RefreshSpecPresentationOf(FSpecRef::OverOwner(&Instance));
+		urlab::spec::MjNodeForEachInstanceOfTemplate(Doc, *this, [](UMjNodeComponent& Instance) {
+			urlab::spec::MjNodeRefreshSpecPresentationForSpec(FSpecRef::OverOwner(&Instance));
 		});
 	}
 

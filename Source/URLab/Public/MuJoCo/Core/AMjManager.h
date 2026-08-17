@@ -28,12 +28,8 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
-#include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServer.h"
-#include "Transport/SnapshotPublisher.h"
 #include "State/MjStateCollector.h"
-#include "State/MjStateProducer.h"
-#include "State/MjStateConsumer.h"
 #include <atomic>
 #include "AMjManager.generated.h"
 
@@ -59,6 +55,11 @@ class UMjAppearanceStore;
 class UMjUserChannelComponent;
 struct FMjUserChannel;
 enum class EMjUserChannelKind : uint8;
+
+class FURLabRpcDispatcher;
+class IMjSnapshotPublisher;
+class IMjStateConsumer;
+class IMjStateProducer;
 
 /**
  * @struct FMjUserInputChannelInfo

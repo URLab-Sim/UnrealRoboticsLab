@@ -31,5 +31,5 @@ namespace MjEntityHandoff
 	URLAB_API void TransferDebugFlags(const AMjArticulation* From, FMjEntity& Entity);
 
 	/** Re-home the possess spring-arm / camera / twist configuration onto the runtime entity. */
-	URLAB_API void TransferPossessConfig(const AMjArticulation* From, AMjEntity* To);
+	URLAB_API void TransferPossessConfig(const AMjArticulation* From, FName EntityName);
 }

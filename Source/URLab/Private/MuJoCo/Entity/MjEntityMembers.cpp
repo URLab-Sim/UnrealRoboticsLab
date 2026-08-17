@@ -5,6 +5,7 @@
 
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjEntity.h"
+#include "State/MjCanonicalName.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -123,6 +124,47 @@ int32 MjEntityMembers::ResolveId(const UMjPhysicsEngine* Engine, FName EntityNam
 		if (Compiled == Wanted || ShortName(EntityName, Compiled) == Wanted)
 		{
 			return Id;
+		}
+	}
+	return -1;
+}
+
+int32 MjEntityMembers::ResolveActuatorForCommand(const UMjPhysicsEngine* Engine, FName EntityName,
+	FName Member)
+{
+	const mjModel* Model = Engine ? Engine->GetModel() : nullptr;
+	const FMjEntity* E = FindEntity(Engine, EntityName);
+	if (Model == nullptr || E == nullptr || Member.IsNone())
+	{
+		return -1;
+	}
+	// The command name arrives already sanitized (it echoes a published joint/actuator name), so the
+	// candidate short names are sanitized the same way before comparison.
+	const FString Wanted = Member.ToString();
+	for (int32 ActId : E->ActuatorIds)
+	{
+		if (ActId < 0 || ActId >= Model->nu)
+		{
+			continue;
+		}
+		const FString ActShort = FMjCanonicalName::Sanitize(
+			ShortName(EntityName, CompiledName(Model, mjOBJ_ACTUATOR, ActId)));
+		if (ActShort == Wanted)
+		{
+			return ActId;
+		}
+		if (Model->actuator_trntype[ActId] == mjTRN_JOINT)
+		{
+			const int32 JointId = Model->actuator_trnid[2 * ActId];
+			if (JointId >= 0 && JointId < Model->njnt)
+			{
+				const FString JointShort = FMjCanonicalName::Sanitize(
+					ShortName(EntityName, CompiledName(Model, mjOBJ_JOINT, JointId)));
+				if (JointShort == Wanted)
+				{
+					return ActId;
+				}
+			}
 		}
 	}
 	return -1;

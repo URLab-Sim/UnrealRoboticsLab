@@ -38,6 +38,7 @@
 
 // Forward declarations
 class AMjEntity;
+class AMjEntityPawn;
 class AMjHeightfieldActor;
 class UMjCamera;
 class UMjPhysicsEngine;
@@ -205,6 +206,21 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Global")
 	AMjEntity* GetEntity(FName EntityName);
+
+	/**
+	 * Possess the interactive pawn for the named entity with the local player controller, replacing the
+	 * retired articulation's possess button. Only an entity that opted in has a pawn -- one is spawned
+	 * and configured off its authoring articulation at the post-compile handoff -- so a name with no
+	 * pawn (a prop, a scene body, an entity that never authored possess) is a clean no-op returning
+	 * false. The pawn's spring-arm camera re-homes onto the render view's root body for the entity so it
+	 * tracks the physics, exactly as the articulation's camera hung off RootBody. Game thread.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Possession")
+	bool PossessEntity(FName EntityName);
+
+	/** Release the possessed entity pawn and return the controller to the pawn it held before. Game thread. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Possession")
+	void UnpossessEntity();
 
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "MuJoCo|Global")
 	// By value: forwards the engine's locked snapshot (see UMjPhysicsEngine::GetAllArticulations).
@@ -380,6 +396,12 @@ public:
 protected:
 	/** O(1) articulation lookup, rebuilt on every compile. Key = actor name. */
 	TMap<FString, AMjArticulation*> m_ArticulationMap;
+
+	/** The entity pawn currently possessed via PossessEntity, or invalid when none. */
+	TWeakObjectPtr<AMjEntityPawn> PossessedEntityPawn;
+
+	/** The pawn the controller held before the first PossessEntity, restored on release. */
+	TWeakObjectPtr<APawn> PrePossessPawn;
 
 	TArray<FMjEntityRecord> EntityCache;
 

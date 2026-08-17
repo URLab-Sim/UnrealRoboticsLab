@@ -56,20 +56,18 @@ namespace MjEntityHandoff
 		Entity.Overlay.bDrawDebugSites = From->bDrawDebugSites;
 	}
 
-	void TransferPossessConfig(const AMjArticulation* From, AMjEntity* To)
+	void TransferPossessConfig(const AMjArticulation* From, FName EntityName)
 	{
-		if (From == nullptr || To == nullptr)
+		if (From == nullptr)
 		{
 			return;
 		}
 
-		UWorld* World = To->GetWorld();
+		UWorld* World = From->GetWorld();
 		if (World == nullptr)
 		{
 			return;
 		}
-
-		const FName EntityName = To->GetEntityName();
 
 		AMjEntityPawn* Pawn = nullptr;
 		for (TActorIterator<AMjEntityPawn> It(World); It; ++It)

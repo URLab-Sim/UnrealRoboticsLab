@@ -26,9 +26,11 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntityPawn.h"
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Components/ActorComponent.h"
 #include "GameFramework/Actor.h"
+#include "EngineUtils.h"
 #include "Async/Async.h"
 #include "Misc/ScopeExit.h"
 #include "mujoco/mujoco.h"
@@ -226,11 +228,26 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 	TArray<FCachedEntity> NewCache;
 	NewCache.Reserve(Partition.Num());
 
-	// The owning actor a side-channel scopes under, resolved once per entity by the
-	// entity's name (== the actor's GetName()); an entity with no actor behind it
-	// (a raw prop) simply has no channels. Maps art -> cache index for scoping the
-	// registered producers below.
-	TMap<AMjArticulation*, int32> ArtToRec;
+	// A possessed entity's twist controller lives on its AMjEntityPawn, spawned by the
+	// possess handoff after the articulations are retired, so it resolves by the entity name
+	// the pawn possesses rather than through the destroyed articulation. Gathered once here;
+	// an unpossessed entity has no pawn and so publishes no twist.
+	TMap<FName, TWeakObjectPtr<UMjTwistController>> PawnTwistByEntity;
+	if (UWorld* World = Mgr->GetWorld())
+	{
+		for (TActorIterator<AMjEntityPawn> It(World); It; ++It)
+		{
+			if (It->OwnerEntityName.IsNone())
+				continue;
+			if (UMjTwistController* TC = It->FindComponentByClass<UMjTwistController>())
+				PawnTwistByEntity.Add(It->OwnerEntityName, TC);
+		}
+	}
+
+	// The scope a side-channel producer attaches under, keyed by the entity name (== the
+	// owning actor's GetName()); an entity with no actor behind it (a raw prop) simply has no
+	// channels. Maps entity name -> cache index for scoping the registered producers below.
+	TMap<FName, int32> NameToRec;
 	for (const FMjEntity& E : Partition)
 	{
 		FCachedEntity Rec;
@@ -242,12 +259,9 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 		Rec.SensorIds = E.SensorIds;
 		Rec.SensorSemantics = E.SensorSemantics;
 
-		AMjArticulation* Art = Mgr->GetArticulation(E.Name.ToString());
-		if (Art)
-		{
-			Rec.TwistCtrl = Art->FindComponentByClass<UMjTwistController>();
-			ArtToRec.Add(Art, NewCache.Num());
-		}
+		if (const TWeakObjectPtr<UMjTwistController>* Found = PawnTwistByEntity.Find(E.Name))
+			Rec.TwistCtrl = *Found;
+		NameToRec.Add(E.Name, NewCache.Num());
 		NewCache.Add(MoveTemp(Rec));
 	}
 
@@ -273,7 +287,7 @@ void FMjStateCollector::RebuildProducerCacheGameThread()
 			}
 
 			AMjArticulation* OwningArt = Cast<AMjArticulation>(OwnerActor);
-			const int32* RecIdx = OwningArt ? ArtToRec.Find(OwningArt) : nullptr;
+			const int32* RecIdx = OwningArt ? NameToRec.Find(OwningArt->GetFName()) : nullptr;
 			if (RecIdx)
 				NewCache[*RecIdx].InterfaceProducers.Add(Obj);
 			else

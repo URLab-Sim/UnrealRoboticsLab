@@ -460,3 +460,50 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetTwist(const TSharedPtr<FJs
 	}
 	return Reply;
 }
+
+// =============================================================================
+// set_possess
+// =============================================================================
+
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPossess(const TSharedPtr<FJsonObject>& Req)
+{
+	AAMjManager* Mgr = OwnerMgr.Get();
+	if (!Mgr)
+		return MakeError(URLabError::NotReady, TEXT("Manager missing"));
+
+	FString ArtName;
+	if (!Req->TryGetStringField(TEXT("articulation"), ArtName))
+		return MakeError(URLabError::MissingField, TEXT("set_possess requires 'articulation'"));
+
+	bool bPossess = true;
+	Req->TryGetBoolField(TEXT("possess"), bPossess);
+
+	// Possession is the interactive successor to the twist command: address the entity by the same
+	// wire vocabulary, and let a name the partition does not know -- or one with no possess pawn --
+	// resolve to a clean not-possessed reply rather than an error, so a caller can drive it without
+	// first checking whether an interactive pawn exists.
+	bool bDidPossess = false;
+	if (const FMjEntity* Entity = ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName))
+	{
+		if (TSharedPtr<FJsonObject> Denied = RejectIfNotControlOwner(Entity->Name, Req))
+			return Denied;
+
+		const FName EntityName = Entity->Name;
+		TWeakObjectPtr<AAMjManager> WeakMgr(Mgr);
+		RunOnGameThreadBlocking([WeakMgr, EntityName, bPossess, &bDidPossess]() {
+			AAMjManager* GTMgr = WeakMgr.Get();
+			if (!GTMgr)
+				return;
+			if (bPossess)
+				bDidPossess = GTMgr->PossessEntity(EntityName);
+			else
+				GTMgr->UnpossessEntity();
+		});
+	}
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("set_possess_ok"));
+	Reply->SetStringField(TEXT("articulation"), ArtName);
+	Reply->SetBoolField(TEXT("possessed"), bPossess && bDidPossess);
+	return Reply;
+}

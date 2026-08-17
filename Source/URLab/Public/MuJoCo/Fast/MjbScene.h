@@ -299,6 +299,10 @@ public:
 
 	/** Body actors created (one per MuJoCo body, world included). */
 	int32 NumBodyActors() const { return BodyActors.Num(); }
+
+	/** Root scene component of the body actor for MuJoCo body id, or null when out of
+	 *  range. The possess camera attaches here so it follows the streamed body transform. */
+	USceneComponent* GetBodyRootComponent(int32 BodyId) const;
 	/** Geom render components actually built (skips hidden/mesh/unsupported). */
 	int32 NumBuiltGeoms() const;
 

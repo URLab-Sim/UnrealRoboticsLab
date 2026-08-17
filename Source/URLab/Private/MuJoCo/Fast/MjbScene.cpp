@@ -651,6 +651,15 @@ int32 AMjbScene::NumBuiltGeoms() const
 	return N;
 }
 
+USceneComponent* AMjbScene::GetBodyRootComponent(int32 BodyId) const
+{
+	if (!BodyActors.IsValidIndex(BodyId) || !BodyActors[BodyId])
+	{
+		return nullptr;
+	}
+	return BodyActors[BodyId]->GetRootComponent();
+}
+
 void AMjbScene::BuildBodies()
 {
 	const int32 NBody = static_cast<int32>(Model->nbody);

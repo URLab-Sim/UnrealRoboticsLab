@@ -14,7 +14,6 @@
 #include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjControlIngress.h"
 #include "MuJoCo/Entity/MjGeomAssetResolver.h"
-#include "MuJoCo/Entity/MjEnrichment.h"
 #include "MuJoCo/Entity/MjSensorSemanticTable.h"
 #include "MuJoCo/Entity/MjCameraRegistry.h"
 #include "MuJoCo/Entity/MjEntityApi.h"

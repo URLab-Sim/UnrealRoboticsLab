@@ -31,6 +31,7 @@
 #include "MuJoCo/Entity/MjEntityActor.h"
 #include "MuJoCo/Entity/MjEntityHandoff.h"
 #include "MuJoCo/Entity/MjEntityLogicComponent.h"
+#include "MuJoCo/Entity/MjEntityPawn.h"
 #include "MuJoCo/Fast/MjbScene.h"
 #include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Spec/MjSpecRef.h"
@@ -46,6 +47,7 @@
 #include "mujoco/mujoco.h"
 
 #include "Kismet/GameplayStatics.h"
+#include "GameFramework/PlayerController.h"
 #include "Blueprint/UserWidget.h"
 #include "Transport/ZmqPublishTransport.h"
 #include "Transport/ZmqSubscribeTransport.h"
@@ -1043,12 +1045,15 @@ void AAMjManager::BuildRuntimeView()
 	{
 		if (!Art)
 			continue;
+		const FName EntityName(*Art->GetName());
+		MjEntityHandoff::TransferPossessConfig(Art, EntityName);
 		TArray<UMjEntityLogicComponent*> Logic;
 		Art->GetComponents<UMjEntityLogicComponent>(Logic);
-		if (Logic.Num() == 0)
-			continue;
-		if (AMjEntity* E = GetEntity(FName(*Art->GetName())))
-			MjEntityHandoff::TransferAuthoredLogic(Art, E);
+		if (Logic.Num() > 0)
+		{
+			if (AMjEntity* E = GetEntity(EntityName))
+				MjEntityHandoff::TransferAuthoredLogic(Art, E);
+		}
 	}
 	for (AMjArticulation* Art : Arts)
 	{
@@ -1057,6 +1062,10 @@ void AAMjManager::BuildRuntimeView()
 		PhysicsEngine->UnregisterArticulation(Art);
 		Art->Destroy();
 	}
+
+	// The handoff spawned each entity's pawn, which now hosts the twist controller the collector
+	// reads; rebuild the producer cache off the pawns so a possessed entity's twist publishes.
+	StateCollector.MarkProducerCacheDirty();
 }
 
 void AAMjManager::DriveCompiledRenderView(const FMjRenderSnapshot& Snap)
@@ -1239,6 +1248,84 @@ AMjEntity* AAMjManager::GetEntity(FName EntityName)
 		Entity->SetEntityName(EntityName);
 	}
 	return Entity;
+}
+
+bool AAMjManager::PossessEntity(FName EntityName)
+{
+	UWorld* World = GetWorld();
+	if (!World)
+	{
+		return false;
+	}
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	if (!PC)
+	{
+		return false;
+	}
+
+	AMjEntityPawn* Pawn = nullptr;
+	for (TActorIterator<AMjEntityPawn> It(World); It; ++It)
+	{
+		if (It->OwnerEntityName == EntityName)
+		{
+			Pawn = *It;
+			break;
+		}
+	}
+	if (!Pawn)
+	{
+		return false;
+	}
+
+	// Re-home the possess camera onto the render view's root body for this entity, so it follows the
+	// stepped physics rather than the fixed placement the pawn spawned at -- the articulation hung its
+	// spring-arm off RootBody for the same reason.
+	if (CompiledRenderView && PhysicsEngine)
+	{
+		for (const FMjEntity& E : PhysicsEngine->GetEntityPartition())
+		{
+			if (E.Name == EntityName)
+			{
+				if (USceneComponent* Body = CompiledRenderView->GetBodyRootComponent(E.RootBodyId))
+				{
+					Pawn->SetTrackedComponent(Body);
+				}
+				break;
+			}
+		}
+	}
+
+	if (PossessedEntityPawn.Get() == Pawn)
+	{
+		return true;
+	}
+	if (!PossessedEntityPawn.IsValid())
+	{
+		PrePossessPawn = PC->GetPawn();
+	}
+	PC->Possess(Pawn);
+	PossessedEntityPawn = Pawn;
+	return true;
+}
+
+void AAMjManager::UnpossessEntity()
+{
+	if (!PossessedEntityPawn.IsValid())
+	{
+		return;
+	}
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? UGameplayStatics::GetPlayerController(World, 0) : nullptr;
+	if (PC)
+	{
+		PC->UnPossess();
+		if (PrePossessPawn.IsValid())
+		{
+			PC->Possess(PrePossessPawn.Get());
+		}
+	}
+	PossessedEntityPawn = nullptr;
+	PrePossessPawn = nullptr;
 }
 
 TArray<AMjArticulation*> AAMjManager::GetAllArticulations() const

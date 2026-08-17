@@ -58,20 +58,19 @@ enum class EMjUserChannelKind : uint8;
  *
  * Control-in surface (Live mode only; direct / puppet bundle control into their
  * step / push calls, so writes are dropped outside Live):
- *  - `/<art>/cmd_ctrl` (`std_msgs/Float64MultiArray`), values in the art's
- *    actuator-list order, staged on each actuator's NetworkValue exactly as
+ *  - `/<art>/cmd_ctrl` (`std_msgs/Float64MultiArray`), values in the entity's
+ *    actuator-list order, routed through `IMjControlIngress::WriteCtrl` exactly as
  *    `ApplyStepCtrl` does;
- *  - `/<art>/cmd_vel` (`geometry_msgs/Twist`), routed to the art's
- *    `UMjTwistController::SetTwist`.
+ *  - `/<art>/cmd_vel` (`geometry_msgs/Twist`), resolved onto the entity's base
+ *    joints through `IMjControlIngress::WriteTwist`.
  * Every write is tagged source id `RosControlSourceId()` and must pass
  * `FMjControlOwnership::CheckWrite` first; a non-owning write is dropped.
  *
- * The subscription set is rebuilt when the articulation registry changes (a
+ * The subscription set is rebuilt when the entity partition changes (a
  * `StructureVersion` bump) or the live manager swaps, mirroring the publish
- * transport's per-art rebuild rule. All rcl handles are created, spun, and
+ * transport's per-entity rebuild rule. All rcl handles are created, spun, and
  * destroyed on the executor thread, per the core's single-thread-per-handle
- * contract; the write targets they reach (`SetNetworkControl`, `SetTwist`,
- * `CheckWrite`) are each already thread-safe.
+ * contract.
  */
 UCLASS()
 class URLABROS_API UURLabRosRpcTransport : public UURLabRpcTransport
@@ -90,22 +89,23 @@ public:
 	 *  `FURLabRosContext` creates. */
 	static FString RosControlSourceId();
 
-	/** Marshal a received `cmd_ctrl` message for `ArtName` into the staging
-	 *  `ApplyStepCtrl` writes to: gate on ownership (`CheckWrite`) then Live mode,
-	 *  and on success stage each value on the art's actuators in list order.
-	 *  Public so the C subscription trampoline can reach it. */
+	/** Marshal a received `cmd_ctrl` message for `ArtName` (the entity wire key) into
+	 *  the control ingress `ApplyStepCtrl` writes to: gate on ownership (`CheckWrite`)
+	 *  then Live mode, and on success route each value onto the entity's actuator ids
+	 *  in list order. Public so the C subscription trampoline can reach it. */
 	void HandleRosCtrl(const FString& ArtName, const double* Values, int32 Count);
 
-	/** Marshal a received `cmd_vel` message for `ArtName` into the art's twist
-	 *  controller, gated identically to HandleRosCtrl. */
+	/** Marshal a received `cmd_vel` message for `ArtName` onto the entity's base
+	 *  joints via the control ingress, gated identically to HandleRosCtrl. */
 	void HandleRosTwist(const FString& ArtName, const double Linear[3],
 		const double Angular[3]);
 
-	/** Marshal a received `sensor_msgs/JointState` on `/<art>/joint_command`: map
-	 *  each named joint to the actuator driving it (shared canonical name) and stage
-	 *  its position target, gated identically to HandleRosCtrl (ownership + Live
-	 *  mode). This is what lets the standard joint_state_publisher_gui jog the art.
-	 *  Public so the C subscription trampoline can reach it. */
+	/** Marshal a received `sensor_msgs/JointState` on `/<art>/joint_command`: resolve
+	 *  each named joint to the actuator driving it (or a named actuator) off the model
+	 *  and route its position target through the control ingress, gated identically to
+	 *  HandleRosCtrl (ownership + Live mode). This is what lets the standard
+	 *  joint_state_publisher_gui jog the entity. Public so the C subscription
+	 *  trampoline can reach it. */
 	void HandleRosJointCommand(const FString& ArtName, const char** Names,
 		const double* Positions, int32 Count);
 

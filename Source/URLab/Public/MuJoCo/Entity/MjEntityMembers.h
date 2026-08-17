@@ -38,4 +38,13 @@ namespace MjEntityMembers
 	 */
 	URLAB_API int32 ResolveId(const UMjPhysicsEngine* Engine, FName EntityName, EMjEntityMember Family,
 		FName Member);
+
+	/**
+	 * The actuator id a jog command name targets within an entity, or -1. A command name (as a
+	 * joint_state_publisher_gui echoes it) matches either the actuator's own sanitized short name or
+	 * the sanitized short name of the single joint a joint-transmission actuator drives -- the latter
+	 * lets a controller command an actuator by the joint it moves.
+	 */
+	URLAB_API int32 ResolveActuatorForCommand(const UMjPhysicsEngine* Engine, FName EntityName,
+		FName Member);
 }

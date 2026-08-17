@@ -190,6 +190,10 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	Reg(TEXT("set_twist"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetTwist(R); },
 		{TEXT("op:string")});
+	Reg(TEXT("set_possess"), EOpCategory::ManagerRequired, TEXT("runtime"),
+		[this](auto& R) { return HandleSetPossess(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("articulation:string"), TEXT("possessed:bool")},
+		/*Required=*/{TEXT("articulation")});
 	Reg(TEXT("set_user_channels"), EOpCategory::ManagerRequired, TEXT("runtime"),
 		[this](auto& R) { return HandleSetUserChannels(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("applied:int"), TEXT("rejected:object")});

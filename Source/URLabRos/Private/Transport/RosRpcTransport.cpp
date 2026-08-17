@@ -36,10 +36,11 @@ FString UURLabRosRpcTransport::RosControlSourceId()
 #include "Bridge/BridgeServer.h"
 #include "Bridge/RpcDispatcher.h"
 #include "MuJoCo/Core/AMjManager.h"
-#include "MuJoCo/Core/MjArticulation.h"
-#include "MuJoCo/Elements/MjActuatorRuntime.h"
-#include "MuJoCo/Input/MjTwistController.h"
-#include "State/MjCanonicalName.h"
+#include "MuJoCo/Core/MjPhysicsEngine.h"
+#include "MuJoCo/Entity/MjEntity.h"
+#include "MuJoCo/Entity/MjEntityMembers.h"
+#include "MuJoCo/Entity/MjControlIngress.h"
+#include "MuJoCo/Entity/MjControl.h"
 #include "State/MjStateTypes.h"
 #include "Dom/JsonObject.h"
 #include "HAL/RunnableThread.h"
@@ -56,10 +57,10 @@ constexpr int64 RosSpinTimeoutNs = 50 * 1000 * 1000; // 50 ms
 constexpr float RosIdleSleepSeconds = 0.02f;
 } // namespace
 
-// Per-articulation command binding. Holds the identity used to resolve + gate the
-// write (Art->GetName(), the GetArticulation + ownership key) and the per-art
-// subscription + service handles. The stable heap address is handed to the core as
-// the callback / service User pointer.
+// Per-entity command binding. Holds the identity used to resolve + gate the write
+// (the entity Name, which keys both the control ownership and the entity-partition
+// lookup) and the per-entity subscription + service handles. The stable heap address
+// is handed to the core as the callback / service User pointer.
 struct FRosArtCommand
 {
 	UURLabRosRpcTransport* Transport = nullptr;
@@ -259,19 +260,19 @@ void UURLabRosRpcTransport::RebuildCommandSubscriptions(UrlabRclContext* Ctx)
 		return;
 	}
 
-	for (AMjArticulation* Art : Mgr->GetAllArticulations())
+	if (!Mgr->PhysicsEngine)
 	{
-		if (!Art)
-		{
-			continue;
-		}
-		// The topic uses the canonical, ROS-legal segment (matching the publish
-		// side); the raw actor name resolves the art and keys ownership.
-		const FString Segment = FMjCanonicalName::ArtSegment(Art).ToString();
+		return;
+	}
+	for (const FMjEntity& Entity : Mgr->PhysicsEngine->GetEntityPartition())
+	{
+		// The topic uses the entity's public wire segment (matching the publish
+		// side); the entity Name resolves the entity and keys ownership.
+		const FString Segment = Entity.PublicName.ToString();
 
 		FRosArtCommand* Cmd = new FRosArtCommand();
 		Cmd->Transport = this;
-		Cmd->ArtName = Art->GetName();
+		Cmd->ArtName = Entity.Name.ToString();
 
 		const FString CtrlTopic = FString::Printf(TEXT("/%s/cmd_ctrl"), *Segment);
 		Cmd->CtrlSub = UrlabRcl_CreateCtrlSub(Ctx, TCHAR_TO_UTF8(*CtrlTopic),
@@ -433,22 +434,19 @@ void UURLabRosRpcTransport::HandleRosCtrl(const FString& ArtName, const double* 
 	{
 		return;
 	}
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
+	const FMjEntity* Entity = FURLabRpcDispatcher::ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
+	IMjControlIngress* Ingress = Mgr->PhysicsEngine ? Mgr->PhysicsEngine->GetControlIngress() : nullptr;
+	if (!Entity || !Ingress)
 	{
 		return;
 	}
 
-	// Float64MultiArray values are in the art's actuator-list order; stage each on
-	// its actuator's NetworkValue, the same path ApplyStepCtrl writes to.
-	TArray<UMjActuator*> Acts = Art->GetActuators();
-	const int32 N = FMath::Min<int32>(Count, Acts.Num());
+	// Float64MultiArray values are in the entity's actuator-list order (ascending mj id); route each
+	// through the one control ingress, the same path ApplyStepCtrl writes to.
+	const int32 N = FMath::Min<int32>(Count, Entity->ActuatorIds.Num());
 	for (int32 i = 0; i < N; ++i)
 	{
-		if (Acts[i])
-		{
-			Acts[i]->SetNetworkControl(static_cast<float>(Values[i]));
-		}
+		Ingress->WriteCtrl(Entity->Name, Entity->ActuatorIds[i], Values[i], MjControlWho::Network());
 	}
 }
 
@@ -482,21 +480,18 @@ void UURLabRosRpcTransport::HandleRosTwist(const FString& ArtName, const double 
 	{
 		return;
 	}
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art)
-	{
-		return;
-	}
-	UMjTwistController* TC = Art->FindComponentByClass<UMjTwistController>();
-	if (!TC)
+	const FMjEntity* Entity = FURLabRpcDispatcher::ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
+	IMjControlIngress* Ingress = Mgr->PhysicsEngine ? Mgr->PhysicsEngine->GetControlIngress() : nullptr;
+	if (!Entity || !Ingress)
 	{
 		return;
 	}
 
-	// geometry_msgs/Twist maps as the set_twist RPC does: linear (vx, vy, _),
-	// angular (_, _, yaw_rate).
-	TC->SetTwist(static_cast<float>(Linear[0]), static_cast<float>(Linear[1]),
-		static_cast<float>(Angular[2]));
+	// geometry_msgs/Twist resolves against the model alone: the ingress projects the base twist onto
+	// the entity's slide (linear) and hinge (angular) base joints, reproducing the (vx, vy, yaw_rate)
+	// convention the set_twist RPC uses.
+	Ingress->WriteTwist(Entity->Name, FVector(Linear[0], Linear[1], Linear[2]),
+		FVector(Angular[0], Angular[1], Angular[2]), MjControlWho::Network());
 }
 
 void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
@@ -530,46 +525,29 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 	{
 		return;
 	}
-	AMjArticulation* Art = Mgr->GetArticulation(ArtName);
-	if (!Art || !Names || !Positions)
+	const FMjEntity* Entity = FURLabRpcDispatcher::ResolveEntityByWireKey(Mgr->PhysicsEngine, ArtName);
+	IMjControlIngress* Ingress = Mgr->PhysicsEngine ? Mgr->PhysicsEngine->GetControlIngress() : nullptr;
+	if (!Entity || !Ingress || !Names || !Positions)
 	{
 		return;
 	}
 
-	// Resolve a commanded name to an actuator two ways: by the joint a
-	// joint-transmission actuator drives (the JointState / URDF joint name a jog
-	// GUI echoes back), and by the actuator's own name. The latter reaches
-	// actuators with no 1-DoF joint target -- e.g. a tendon-driven gripper
-	// actuator -- so a controller can command the gripper as "<actuator>".
-	TMap<FString, UMjActuator*> ByName;
-	TArray<UMjActuator*> Acts = Art->GetActuators();
-	ByName.Reserve(Acts.Num() * 2);
-	for (UMjActuator* Act : Acts)
-	{
-		if (!Act)
-		{
-			continue;
-		}
-		if (Act->TransmissionType == EMjActuatorTrnType::Joint && !Act->TargetName.IsEmpty())
-		{
-			ByName.Add(FMjCanonicalName::PartSegment(Art, Act->TargetName).ToString(), Act);
-		}
-		ByName.Add(FMjCanonicalName::PartSegment(Art, Act->GetMjName()).ToString(), Act);
-	}
-
+	// Resolve each commanded name to an actuator id off the model: by the joint a joint-transmission
+	// actuator drives (the JointState / URDF joint name a jog GUI echoes back) or by the actuator's
+	// own name (reaching actuators with no 1-DoF joint target, e.g. a tendon-driven gripper). The
+	// setpoint then routes through the one control ingress.
 	for (int32 i = 0; i < Count; ++i)
 	{
 		if (!Names[i])
 		{
 			continue;
 		}
-		const FString JointName = UTF8_TO_TCHAR(Names[i]);
-		if (UMjActuator** Found = ByName.Find(JointName))
+		const FName JointName(UTF8_TO_TCHAR(Names[i]));
+		const int32 ActId = MjEntityMembers::ResolveActuatorForCommand(
+			Mgr->PhysicsEngine, Entity->Name, JointName);
+		if (ActId >= 0)
 		{
-			if (*Found)
-			{
-				(*Found)->SetNetworkControl(static_cast<float>(Positions[i]));
-			}
+			Ingress->WriteCtrl(Entity->Name, ActId, Positions[i], MjControlWho::Network());
 		}
 	}
 }

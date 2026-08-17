@@ -12,11 +12,11 @@
 
 /**
  * @class SMjServerBrowser
- * @brief Editor panel that lists advertised fast-path owners and connects to one.
+ * @brief Editor panel that lists advertised fast-path drivers and connects to one.
  *
- * Polls the shared registry (URLabLevelOps::DiscoverFastPathOwners) every couple
- * of seconds and shows each live owner (scene, host, geom count, endpoint). The
- * Connect button pulls the owner's MJB over the wire and stands up a fast-path
+ * Polls the shared registry (URLabLevelOps::DiscoverFastPathDrivers) every couple
+ * of seconds and shows each live driver (scene, host, geom count, endpoint). The
+ * Connect button pulls the driver's MJB over the wire and stands up a fast-path
  * render scene in the editor (URLabLevelOps::LaunchFastPathFromDriverSync) -- the
  * GUI equivalent of the -URLabFastConnect / -URLabFastDiscover CLI flags.
  */
@@ -29,14 +29,14 @@ public:
 	void Construct(const FArguments& InArgs);
 
 private:
-	using FOwnerPtr = TSharedPtr<URLabLevelOps::FMjDriverInfo>;
+	using FDriverPtr = TSharedPtr<URLabLevelOps::FMjDriverInfo>;
 
-	TSharedRef<ITableRow> OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& Owner);
+	TSharedRef<ITableRow> OnGenerateRow(FDriverPtr Item, const TSharedRef<STableViewBase>& Owner);
 	EActiveTimerReturnType RefreshTick(double InCurrentTime, float InDeltaTime);
 	void Refresh();
-	FReply OnConnectClicked(FOwnerPtr Item);
+	FReply OnConnectClicked(FDriverPtr Item);
 
-	TArray<FOwnerPtr> Owners;
-	TSharedPtr<SListView<FOwnerPtr>> ListView;
+	TArray<FDriverPtr> Drivers;
+	TSharedPtr<SListView<FDriverPtr>> ListView;
 	FText StatusText;
 };

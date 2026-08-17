@@ -43,9 +43,9 @@ class URLAB_API UMjRendererSubsystem : public UGameInstanceSubsystem
 
 public:
 	// --- discovery -------------------------------------------------------- //
-	/** Rescan the registry for live fast-path owners. */
-	void RefreshOwners();
-	const TArray<FMjDriverInfo>& GetOwners() const { return Owners; }
+	/** Rescan the registry for live fast-path drivers. */
+	void RefreshDrivers();
+	const TArray<FMjDriverInfo>& GetDrivers() const { return Drivers; }
 
 	// --- environments ----------------------------------------------------- //
 	/** Rebuild the level list ("Bare Plane" + every cooked /Game world). */
@@ -54,12 +54,12 @@ public:
 
 	// --- join ------------------------------------------------------------- //
 	/**
-	 * Join an owner into the chosen environment. Fetches the owner's MJB, records
+	 * Join a driver into the chosen environment. Fetches the driver's MJB, records
 	 * the join as pending, and opens the target level (an empty engine map for the
 	 * bare-plane choice, else LevelPath). The pending join is consumed on the new
 	 * world by ConsumePendingJoin. Returns false + OutError if the fetch fails.
 	 */
-	bool JoinOwner(const FMjDriverInfo& Owner, const FString& LevelPath,
+	bool JoinDriver(const FMjDriverInfo& Driver, const FString& LevelPath,
 		const FVector& Origin, bool bCameras, FString& OutError);
 
 	/** Spawn a pending browser-driven join into World, if one is queued. Returns
@@ -69,8 +69,8 @@ public:
 	bool HasPendingJoin() const { return bJoinPending; }
 
 	/**
-	 * Headless auto-join for a render-farm node: poll discovery until an owner
-	 * appears (whose scene contains SceneFilter, or the first owner when empty) and
+	 * Headless auto-join for a render-farm node: poll discovery until a driver
+	 * appears (whose scene contains SceneFilter, or the first driver when empty) and
 	 * join it into LevelPath at Origin. No UI. Gives up after a bounded wait.
 	 */
 	void BeginAutoJoin(const FString& SceneFilter, const FString& LevelPath,
@@ -97,7 +97,7 @@ public:
 	bool HasActiveRenderer() const;
 
 private:
-	TArray<FMjDriverInfo> Owners;
+	TArray<FMjDriverInfo> Drivers;
 	TArray<FMjRendererLevelChoice> Levels;
 
 	// Pending join carried across the OpenLevel transition.

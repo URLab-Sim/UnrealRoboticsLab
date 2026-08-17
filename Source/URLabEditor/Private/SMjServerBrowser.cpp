@@ -18,7 +18,7 @@
 
 void SMjServerBrowser::Construct(const FArguments& InArgs)
 {
-	StatusText = LOCTEXT("Idle", "Discovering fast-path owners...");
+	StatusText = LOCTEXT("Idle", "Discovering fast-path drivers...");
 
 	ChildSlot
 	[
@@ -31,7 +31,7 @@ void SMjServerBrowser::Construct(const FArguments& InArgs)
 			+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center)
 			[
 				SNew(STextBlock)
-				.Text(LOCTEXT("Title", "Fast-Path Owners"))
+				.Text(LOCTEXT("Title", "Fast-Path Drivers"))
 			]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
@@ -41,13 +41,13 @@ void SMjServerBrowser::Construct(const FArguments& InArgs)
 			]
 		]
 
-		// Owner list.
+		// Driver list.
 		+ SVerticalBox::Slot().FillHeight(1.0f).Padding(6, 0)
 		[
 			SNew(SBorder)
 			[
-				SAssignNew(ListView, SListView<FOwnerPtr>)
-				.ListItemsSource(&Owners)
+				SAssignNew(ListView, SListView<FDriverPtr>)
+				.ListItemsSource(&Drivers)
 				.OnGenerateRow(this, &SMjServerBrowser::OnGenerateRow)
 				.SelectionMode(ESelectionMode::Single)
 			]
@@ -61,7 +61,7 @@ void SMjServerBrowser::Construct(const FArguments& InArgs)
 	];
 
 	Refresh();
-	// Auto-refresh so owners appear/disappear without the user clicking.
+	// Auto-refresh so drivers appear/disappear without the user clicking.
 	RegisterActiveTimer(2.0f,
 		FWidgetActiveTimerDelegate::CreateSP(this, &SMjServerBrowser::RefreshTick));
 }
@@ -76,24 +76,24 @@ void SMjServerBrowser::Refresh()
 {
 	TArray<URLabLevelOps::FMjDriverInfo> Found;
 	FString Err;
-	URLabLevelOps::DiscoverFastPathOwners(Found, Err);
+	URLabLevelOps::DiscoverFastPathDrivers(Found, Err);
 
-	Owners.Reset(Found.Num());
-	for (const URLabLevelOps::FMjDriverInfo& O : Found)
+	Drivers.Reset(Found.Num());
+	for (const URLabLevelOps::FMjDriverInfo& D : Found)
 	{
-		Owners.Add(MakeShared<URLabLevelOps::FMjDriverInfo>(O));
+		Drivers.Add(MakeShared<URLabLevelOps::FMjDriverInfo>(D));
 	}
 	if (!Err.IsEmpty())
 	{
 		StatusText = FText::FromString(FString::Printf(TEXT("Discovery error: %s"), *Err));
 	}
-	else if (Owners.Num() == 0)
+	else if (Drivers.Num() == 0)
 	{
-		StatusText = LOCTEXT("None", "No fast-path owners advertised. Start an owner (e.g. run_fastpath_demo.py).");
+		StatusText = LOCTEXT("None", "No fast-path drivers advertised. Start a driver (e.g. run_fastpath_demo.py).");
 	}
 	else
 	{
-		StatusText = FText::FromString(FString::Printf(TEXT("%d owner(s) available."), Owners.Num()));
+		StatusText = FText::FromString(FString::Printf(TEXT("%d driver(s) available."), Drivers.Num()));
 	}
 	if (ListView.IsValid())
 	{
@@ -101,12 +101,12 @@ void SMjServerBrowser::Refresh()
 	}
 }
 
-TSharedRef<ITableRow> SMjServerBrowser::OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& OwnerTable)
+TSharedRef<ITableRow> SMjServerBrowser::OnGenerateRow(FDriverPtr Item, const TSharedRef<STableViewBase>& OwnerTable)
 {
 	const FString Label = FString::Printf(TEXT("%s   @ %s   (%d geoms)   %s"),
 		*Item->Scene, *Item->Host, Item->Ngeom, *Item->Control);
 
-	return SNew(STableRow<FOwnerPtr>, OwnerTable)
+	return SNew(STableRow<FDriverPtr>, OwnerTable)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(4, 2)
@@ -122,7 +122,7 @@ TSharedRef<ITableRow> SMjServerBrowser::OnGenerateRow(FOwnerPtr Item, const TSha
 	];
 }
 
-FReply SMjServerBrowser::OnConnectClicked(FOwnerPtr Item)
+FReply SMjServerBrowser::OnConnectClicked(FDriverPtr Item)
 {
 	if (!Item.IsValid())
 	{

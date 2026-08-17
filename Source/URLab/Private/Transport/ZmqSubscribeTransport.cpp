@@ -26,7 +26,6 @@
 #include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Entity/MjControl.h"
 #include "MuJoCo/Entity/MjControlIngress.h"
-#include "Bridge/RpcDispatcher.h"
 #include "Transport/NetworkManager.h"
 #include "zmq.h"
 #include "MuJoCo/Elements/MjCamera.h"

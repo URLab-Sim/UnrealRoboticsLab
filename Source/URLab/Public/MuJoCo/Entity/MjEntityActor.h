@@ -85,11 +85,6 @@ public:
 	bool GetDrawDebugJoints() const { return OverlayFlags.bDrawDebugJoints; }
 	bool GetDrawDebugSites() const { return OverlayFlags.bDrawDebugSites; }
 
-	// --- Engine passthrough ------------------------------------------------- //
-
-	/** Show or hide a geom group (group 3 is where collision meshes conventionally live). */
-	void SetGeomGroupVisible(int32 Group, bool bVisible);
-
 private:
 	/** Stable public name of the entity this face addresses. */
 	UPROPERTY(VisibleAnywhere, Category = "MuJoCo|Entity")

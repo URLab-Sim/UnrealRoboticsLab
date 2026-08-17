@@ -65,7 +65,3 @@ void AMjEntity::GetLogicComponents(TArray<UMjEntityLogicComponent*>& Out) const
 {
 	GetComponents<UMjEntityLogicComponent>(Out);
 }
-
-void AMjEntity::SetGeomGroupVisible(int32 Group, bool bVisible)
-{
-}

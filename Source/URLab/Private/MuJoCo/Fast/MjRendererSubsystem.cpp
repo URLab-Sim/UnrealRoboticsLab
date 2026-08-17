@@ -19,13 +19,13 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "AssetRegistry/IAssetRegistry.h"
 
-void UMjRendererSubsystem::RefreshOwners()
+void UMjRendererSubsystem::RefreshDrivers()
 {
 	FString Err;
-	URLabFastPath::DiscoverOwners(Owners, Err);
+	URLabFastPath::DiscoverDrivers(Drivers, Err);
 	if (!Err.IsEmpty())
 	{
-		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] owner discovery: %s"), *Err);
+		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] driver discovery: %s"), *Err);
 	}
 }
 
@@ -59,22 +59,22 @@ void UMjRendererSubsystem::RefreshLevels()
 	}
 }
 
-bool UMjRendererSubsystem::JoinOwner(const FMjDriverInfo& Owner, const FString& LevelPath,
+bool UMjRendererSubsystem::JoinDriver(const FMjDriverInfo& Driver, const FString& LevelPath,
 	const FVector& Origin, bool bCameras, FString& OutError)
 {
 	OutError.Empty();
 	TArray<uint8> Mjb;
 	FString Bus;
-	if (!AMjRenderer::FetchModelFromDriver(Owner.Control, Mjb, Bus, OutError))
+	if (!AMjRenderer::FetchModelFromDriver(Driver.Control, Mjb, Bus, OutError))
 	{
-		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] fetch from owner %s failed: %s"),
-			*Owner.Control, *OutError);
+		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] fetch from driver %s failed: %s"),
+			*Driver.Control, *OutError);
 		return false;
 	}
 
 	// Prefer the bus the Driver reports in the handshake; fall back to its registry
 	// advertisement.
-	PendingBus = Bus.IsEmpty() ? Owner.Bus : Bus;
+	PendingBus = Bus.IsEmpty() ? Driver.Bus : Bus;
 	PendingMjb = MoveTemp(Mjb);
 	PendingOrigin = Origin;
 	bPendingBaseLevel = !LevelPath.IsEmpty();
@@ -84,8 +84,8 @@ bool UMjRendererSubsystem::JoinOwner(const FMjDriverInfo& Owner, const FString& 
 	HideBrowser();
 	const FString Target = LevelPath.IsEmpty() ? TEXT("/Engine/Maps/Entry") : LevelPath;
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjRenderer] joining owner %s (%d bytes, bus %s) -> level %s origin (%s)"),
-		*Owner.Control, PendingMjb.Num(), *PendingBus, *Target, *Origin.ToString());
+		TEXT("[MjRenderer] joining driver %s (%d bytes, bus %s) -> level %s origin (%s)"),
+		*Driver.Control, PendingMjb.Num(), *PendingBus, *Target, *Origin.ToString());
 	UGameplayStatics::OpenLevel(this, FName(*Target));
 	return true;
 }
@@ -119,7 +119,7 @@ void UMjRendererSubsystem::BeginAutoJoin(const FString& SceneFilter, const FStri
 	{
 		return;
 	}
-	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] auto-join: polling for owner%s%s"),
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] auto-join: polling for driver%s%s"),
 		SceneFilter.IsEmpty() ? TEXT("") : TEXT(" matching "), *SceneFilter);
 	W->GetTimerManager().SetTimer(AutoJoinTimer, this,
 		&UMjRendererSubsystem::AutoJoinPoll, 1.0f, /*bLoop=*/true, /*FirstDelay=*/0.5f);
@@ -127,13 +127,13 @@ void UMjRendererSubsystem::BeginAutoJoin(const FString& SceneFilter, const FStri
 
 void UMjRendererSubsystem::AutoJoinPoll()
 {
-	RefreshOwners();
+	RefreshDrivers();
 	const FMjDriverInfo* Pick = nullptr;
-	for (const FMjDriverInfo& O : Owners)
+	for (const FMjDriverInfo& D : Drivers)
 	{
-		if (AutoScene.IsEmpty() || O.Scene.Contains(AutoScene))
+		if (AutoScene.IsEmpty() || D.Scene.Contains(AutoScene))
 		{
-			Pick = &O;
+			Pick = &D;
 			break;
 		}
 	}
@@ -141,10 +141,10 @@ void UMjRendererSubsystem::AutoJoinPoll()
 	if (Pick)
 	{
 		FString Err;
-		const bool bOk = JoinOwner(*Pick, AutoLevel, AutoOrigin, bAutoCameras, Err);
+		const bool bOk = JoinDriver(*Pick, AutoLevel, AutoOrigin, bAutoCameras, Err);
 		if (bOk && W)
 		{
-			W->GetTimerManager().ClearTimer(AutoJoinTimer); // JoinOwner OpenLevels away
+			W->GetTimerManager().ClearTimer(AutoJoinTimer); // JoinDriver OpenLevels away
 		}
 		else if (!bOk)
 		{
@@ -153,7 +153,7 @@ void UMjRendererSubsystem::AutoJoinPoll()
 	}
 	else if (++AutoJoinTries > 30) // ~30s
 	{
-		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] auto-join: no owner found, giving up"));
+		UE_LOG(LogURLab, Warning, TEXT("[MjRenderer] auto-join: no driver found, giving up"));
 		if (W)
 		{
 			W->GetTimerManager().ClearTimer(AutoJoinTimer);
@@ -179,7 +179,7 @@ void UMjRendererSubsystem::ShowBrowser()
 		HomeMap = FName(*W->GetOutermost()->GetName());
 	}
 	RefreshLevels();
-	RefreshOwners();
+	RefreshDrivers();
 
 	BrowserWidget = SNew(SMjRendererBrowser).Subsystem(this);
 	VP->AddViewportWidgetContent(BrowserWidget.ToSharedRef(), /*ZOrder=*/100);

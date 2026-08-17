@@ -144,6 +144,10 @@ void UMjOverlayRenderer::DrawJoints(const FMjRenderSnapshot& Snap) const
 	const mjModel* M = Model;
 	for (int32 J = 0; J < static_cast<int32>(M->njnt); ++J)
 	{
+		if (!GroupVisible(Flags.JointGroup, M->jnt_group[J]))
+		{
+			continue;
+		}
 		const int32 Type = M->jnt_type[J];
 		if (Type != mjJNT_HINGE && Type != mjJNT_SLIDE)
 		{

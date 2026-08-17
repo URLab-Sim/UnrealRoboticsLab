@@ -22,7 +22,7 @@
 void SMjRendererBrowser::Construct(const FArguments& InArgs)
 {
 	Subsystem = InArgs._Subsystem;
-	StatusText = LOCTEXT("Idle", "Discovering fast-path owners...");
+	StatusText = LOCTEXT("Idle", "Discovering fast-path drivers...");
 
 	if (Subsystem.IsValid())
 	{
@@ -107,13 +107,13 @@ void SMjRendererBrowser::Construct(const FArguments& InArgs)
 					]
 				]
 
-				// Owner list.
+				// Driver list.
 				+ SVerticalBox::Slot().FillHeight(1.0f).Padding(4)
 				[
 					SNew(SBorder)
 					[
-						SAssignNew(OwnerList, SListView<FOwnerPtr>)
-						.ListItemsSource(&Owners)
+						SAssignNew(DriverList, SListView<FDriverPtr>)
+						.ListItemsSource(&Drivers)
 						.OnGenerateRow(this, &SMjRendererBrowser::OnGenerateRow)
 						.SelectionMode(ESelectionMode::Single)
 					]
@@ -146,32 +146,32 @@ void SMjRendererBrowser::Refresh()
 	{
 		return;
 	}
-	Sub->RefreshOwners();
-	Owners.Reset();
-	for (const FMjDriverInfo& O : Sub->GetOwners())
+	Sub->RefreshDrivers();
+	Drivers.Reset();
+	for (const FMjDriverInfo& D : Sub->GetDrivers())
 	{
-		Owners.Add(MakeShared<FMjDriverInfo>(O));
+		Drivers.Add(MakeShared<FMjDriverInfo>(D));
 	}
-	if (Owners.Num() == 0)
+	if (Drivers.Num() == 0)
 	{
-		StatusText = LOCTEXT("None", "No fast-path owners advertised. Start an owner (e.g. menagerie_swap.py).");
+		StatusText = LOCTEXT("None", "No fast-path drivers advertised. Start a driver (e.g. menagerie_swap.py).");
 	}
 	else
 	{
-		StatusText = FText::FromString(FString::Printf(TEXT("%d owner(s) available."), Owners.Num()));
+		StatusText = FText::FromString(FString::Printf(TEXT("%d driver(s) available."), Drivers.Num()));
 	}
-	if (OwnerList.IsValid())
+	if (DriverList.IsValid())
 	{
-		OwnerList->RequestListRefresh();
+		DriverList->RequestListRefresh();
 	}
 }
 
-TSharedRef<ITableRow> SMjRendererBrowser::OnGenerateRow(FOwnerPtr Item, const TSharedRef<STableViewBase>& Table)
+TSharedRef<ITableRow> SMjRendererBrowser::OnGenerateRow(FDriverPtr Item, const TSharedRef<STableViewBase>& Table)
 {
 	const FString Label = FString::Printf(TEXT("%s   @ %s   (%d geoms)   %s"),
 		*Item->Scene, *Item->Host, Item->Ngeom, *Item->Control);
 
-	return SNew(STableRow<FOwnerPtr>, Table)
+	return SNew(STableRow<FDriverPtr>, Table)
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.0f).VAlign(VAlign_Center).Padding(6, 3)
@@ -220,7 +220,7 @@ FVector SMjRendererBrowser::ParseOrigin() const
 		FCString::Atod(*Parts[1].TrimStartAndEnd()), FCString::Atod(*Parts[2].TrimStartAndEnd()));
 }
 
-FReply SMjRendererBrowser::OnConnect(FOwnerPtr Item)
+FReply SMjRendererBrowser::OnConnect(FDriverPtr Item)
 {
 	UMjRendererSubsystem* Sub = Subsystem.Get();
 	if (!Item.IsValid() || !Sub)
@@ -228,7 +228,7 @@ FReply SMjRendererBrowser::OnConnect(FOwnerPtr Item)
 		return FReply::Handled();
 	}
 	FString Err;
-	if (Sub->JoinOwner(*Item, SelectedLevelPath(), ParseOrigin(), bCameras, Err))
+	if (Sub->JoinDriver(*Item, SelectedLevelPath(), ParseOrigin(), bCameras, Err))
 	{
 		StatusText = FText::FromString(FString::Printf(TEXT("Joining '%s'..."), *Item->Scene));
 	}

@@ -651,7 +651,7 @@ bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 		OutError = TEXT("failed to spawn AMjRenderer");
 		return false;
 	}
-	Scene->bTestSweep = BusEndpoint.IsEmpty(); // no owner -> local dev sweep in PIE
+	Scene->bTestSweep = BusEndpoint.IsEmpty(); // no driver -> local dev sweep in PIE
 	Scene->MjbFilePath = MjbPath;
 	if (MjbBytes.Num() > 0)
 	{
@@ -706,19 +706,19 @@ bool LaunchFastPathSync(const FString& MjbPath, const FString& BusEndpoint,
 	return BuildFastPathScene(MjbPath, TArray<uint8>(), BusEndpoint, FString(), bFreshLevel, OutError);
 }
 
-bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
+bool DiscoverFastPathDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError)
 {
-	OutOwners.Reset();
+	OutDrivers.Reset();
 	OutError.Empty();
 
 	const FString Dir = FURLabInstanceRegistry::ResolveRegistryDir();
 	IFileManager& FM = IFileManager::Get();
 	if (!FM.DirectoryExists(*Dir))
 	{
-		return true; // no registry yet -> no owners, not an error
+		return true; // no registry yet -> no drivers, not an error
 	}
 
-	// Entries older than this are treated as dead (the owner heartbeats ~10s).
+	// Entries older than this are treated as dead (the driver heartbeats ~10s).
 	constexpr double kTtlSeconds = 30.0;
 	const FDateTime Now = FDateTime::UtcNow();
 
@@ -743,22 +743,22 @@ bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 			continue;
 		}
 
-		// Only fast-path owners (role or capability). Skips ordinary bridge
+		// Only fast-path drivers (role or capability). Skips ordinary bridge
 		// instances that share the same registry directory.
-		bool bIsOwner = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
+		bool bIsDriver = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
 		const TArray<TSharedPtr<FJsonValue>>* Caps = nullptr;
-		if (!bIsOwner && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
+		if (!bIsDriver && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
 		{
 			for (const TSharedPtr<FJsonValue>& V : *Caps)
 			{
 				if (V.IsValid() && V->AsString() == TEXT("fastpath_owner"))
 				{
-					bIsOwner = true;
+					bIsDriver = true;
 					break;
 				}
 			}
 		}
-		if (!bIsOwner)
+		if (!bIsDriver)
 		{
 			continue;
 		}
@@ -773,7 +773,7 @@ bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 		Info.Pid = static_cast<int32>(Obj->GetIntegerField(TEXT("pid")));
 		if (!Info.Control.IsEmpty())
 		{
-			OutOwners.Add(MoveTemp(Info));
+			OutDrivers.Add(MoveTemp(Info));
 		}
 	}
 	return true;
@@ -785,7 +785,7 @@ bool LaunchFastPathFromDriverSync(const FString& ControlEndpoint, bool bFreshLev
 	OutError.Empty();
 	if (ControlEndpoint.IsEmpty())
 	{
-		OutError = TEXT("empty owner control endpoint");
+		OutError = TEXT("empty driver control endpoint");
 		return false;
 	}
 	// Pull the MJB + bus endpoint from the Driver over its control channel.
@@ -793,11 +793,11 @@ bool LaunchFastPathFromDriverSync(const FString& ControlEndpoint, bool bFreshLev
 	FString Bus;
 	if (!AMjRenderer::FetchModelFromDriver(ControlEndpoint, Mjb, Bus, OutError))
 	{
-		OutError = FString::Printf(TEXT("owner fetch failed (%s): %s"), *ControlEndpoint, *OutError);
+		OutError = FString::Printf(TEXT("driver fetch failed (%s): %s"), *ControlEndpoint, *OutError);
 		return false;
 	}
 	UE_LOG(LogURLabEditor, Log,
-		TEXT("[MjRenderer] fetched MJB (%d bytes) + bus %s from owner %s"),
+		TEXT("[MjRenderer] fetched MJB (%d bytes) + bus %s from driver %s"),
 		Mjb.Num(), *Bus, *ControlEndpoint);
 
 	// Cache the wire MJB to a temp file and drive the scene from that PATH rather

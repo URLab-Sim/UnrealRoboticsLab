@@ -220,8 +220,8 @@ URLABEDITOR_API bool RemoveQuickConvertSync(
 	FString& OutError);
 
 /**
- * One discovered fast-path owner: a live sim a renderer can connect to. Read
- * from the shared registry directory (the entries a FastPathOwner writes).
+ * One discovered fast-path driver: a live sim a renderer can connect to. Read
+ * from the shared registry directory (the entries a FastPathDriver writes).
  */
 struct FMjDriverInfo
 {
@@ -235,12 +235,12 @@ struct FMjDriverInfo
 };
 
 /**
- * Read the shared registry directory and return every live fast-path owner
+ * Read the shared registry directory and return every live fast-path driver
  * (entries whose capabilities include "fastpath_owner"). Stale entries (older
  * than the TTL, or a dead pid) are skipped. Used by the server browser and the
  * -URLabFastDiscover CLI path.
  */
-URLABEDITOR_API bool DiscoverFastPathOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError);
+URLABEDITOR_API bool DiscoverFastPathDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError);
 
 /**
  * Stand up a fast-path render scene from a live Driver, in one call: fetch the
@@ -264,7 +264,7 @@ URLABEDITOR_API bool LaunchFastPathFromDriverSync(
  *
  * Everything is created as PERSISTENT editor-world actors: the built scene
  * survives, is saveable/re-indexable, and is never torn down by a PIE session
- * ending. With no bus endpoint the scene runs the owner-less dev sweep so it
+ * ending. With no bus endpoint the scene runs the driver-less dev sweep so it
  * still moves. Returns false with OutError on any hard failure.
  */
 URLABEDITOR_API bool LaunchFastPathSync(

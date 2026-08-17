@@ -17,19 +17,19 @@
 
 namespace URLabFastPath
 {
-bool DiscoverOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
+bool DiscoverDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError)
 {
-	OutOwners.Reset();
+	OutDrivers.Reset();
 	OutError.Empty();
 
 	const FString Dir = FURLabInstanceRegistry::ResolveRegistryDir();
 	IFileManager& FM = IFileManager::Get();
 	if (!FM.DirectoryExists(*Dir))
 	{
-		return true; // no registry yet -> no owners, not an error
+		return true; // no registry yet -> no drivers, not an error
 	}
 
-	// Entries older than this are treated as dead (the owner heartbeats ~10s).
+	// Entries older than this are treated as dead (the driver heartbeats ~10s).
 	constexpr double kTtlSeconds = 30.0;
 	const FDateTime Now = FDateTime::UtcNow();
 
@@ -54,22 +54,22 @@ bool DiscoverOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 			continue;
 		}
 
-		// Only fast-path owners (role or capability). Skips ordinary bridge
+		// Only fast-path drivers (role or capability). Skips ordinary bridge
 		// instances that share the same registry directory.
-		bool bIsOwner = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
+		bool bIsDriver = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
 		const TArray<TSharedPtr<FJsonValue>>* Caps = nullptr;
-		if (!bIsOwner && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
+		if (!bIsDriver && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
 		{
 			for (const TSharedPtr<FJsonValue>& V : *Caps)
 			{
 				if (V.IsValid() && V->AsString() == TEXT("fastpath_owner"))
 				{
-					bIsOwner = true;
+					bIsDriver = true;
 					break;
 				}
 			}
 		}
-		if (!bIsOwner)
+		if (!bIsDriver)
 		{
 			continue;
 		}
@@ -84,7 +84,7 @@ bool DiscoverOwners(TArray<FMjDriverInfo>& OutOwners, FString& OutError)
 		Info.Pid = static_cast<int32>(Obj->GetIntegerField(TEXT("pid")));
 		if (!Info.Control.IsEmpty())
 		{
-			OutOwners.Add(MoveTemp(Info));
+			OutDrivers.Add(MoveTemp(Info));
 		}
 	}
 	return true;

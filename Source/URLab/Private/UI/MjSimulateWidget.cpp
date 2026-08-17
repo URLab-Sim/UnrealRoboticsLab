@@ -1184,10 +1184,6 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		UVerticalBox* GroupBox = nullptr;
 		CreateSection(ManagerSettingsList, TEXT("GROUP ENABLE"), GroupBox);
 		AddRow(GroupBox, TEXT("Geom Group 3 (Global)"), (DV && DV->bGlobalShowGroup3) ? 1.0f : 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-		if (!SelectedEntityName.IsNone())
-		{
-			AddRow(GroupBox, TEXT("Selected Geom Group 3"), 0.0f, EMjPropertyType::Toggle, false, FVector2D(0, 1), true);
-		}
 
 		UVerticalBox* NetworkBox = nullptr;
 		CreateSection(ManagerSettingsList, TEXT("NETWORK"), NetworkBox);
@@ -1649,13 +1645,6 @@ void UMjSimulateWidget::HandleManagerOptionChanged(float NewValue, const FString
 		else
 			Flags.bDrawDebugSites = bOn;
 		PE->SetEntityOverlayFlags(SelectedEntityName, Flags);
-	}
-	else if (OptionName == TEXT("Selected Geom Group 3") && !SelectedEntityName.IsNone())
-	{
-		if (AMjEntity* Entity = ManagerRef->GetEntity(SelectedEntityName))
-		{
-			Entity->SetGeomGroupVisible(3, (NewValue > 0.5f));
-		}
 	}
 
 	// Locomotion twist settings

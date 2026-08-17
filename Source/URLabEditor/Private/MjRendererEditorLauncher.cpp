@@ -17,7 +17,7 @@ void UMjRendererEditorLauncher::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
 
-	// A fast-path renderer launch is requested by any of: an owner control
+	// A fast-path renderer launch is requested by any of: a driver control
 	// endpoint to connect to, a discovery flag, or a direct MJB file path.
 	const TCHAR* Cmd = FCommandLine::Get();
 	FString Ignored;
@@ -73,17 +73,17 @@ bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 	else if (FParse::Param(Cmd, TEXT("URLabFastDiscover")))
 	{
 		// Auto-discover: connect to the first advertised Driver found.
-		TArray<URLabLevelOps::FMjDriverInfo> Owners;
+		TArray<URLabLevelOps::FMjDriverInfo> Drivers;
 		FString DiscErr;
-		if (!URLabLevelOps::DiscoverFastPathOwners(Owners, DiscErr) || Owners.Num() == 0)
+		if (!URLabLevelOps::DiscoverFastPathDrivers(Drivers, DiscErr) || Drivers.Num() == 0)
 		{
-			Err = Owners.Num() == 0 ? TEXT("no fast-path owners advertised") : DiscErr;
+			Err = Drivers.Num() == 0 ? TEXT("no fast-path drivers advertised") : DiscErr;
 		}
 		else
 		{
-			UE_LOG(LogURLabEditor, Log, TEXT("[MjRenderer] discovered %d owner(s); connecting to '%s' (%s)"),
-				Owners.Num(), *Owners[0].Scene, *Owners[0].Control);
-			bOk = URLabLevelOps::LaunchFastPathFromDriverSync(Owners[0].Control, /*bFreshLevel=*/true, Err);
+			UE_LOG(LogURLabEditor, Log, TEXT("[MjRenderer] discovered %d driver(s); connecting to '%s' (%s)"),
+				Drivers.Num(), *Drivers[0].Scene, *Drivers[0].Control);
+			bOk = URLabLevelOps::LaunchFastPathFromDriverSync(Drivers[0].Control, /*bFreshLevel=*/true, Err);
 		}
 	}
 	else

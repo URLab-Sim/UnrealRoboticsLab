@@ -29,16 +29,3 @@ struct URLAB_API FMjControlBuffer
 	}
 };
 
-/**
- * Keyframe qpos-hold injection, applied FIRST each substep (before the ctrl write pass): write held
- * qpos, ZERO held DoFs' qvel, skip free joints, and SUPPRESS the ctrl write for held entities'
- * actuators. This holds a pose by pinning qpos rather than commanding torque.
- */
-struct URLAB_API FMjStateInjection
-{
-	TArray<double> Qpos;         // size nq (only QposMask-covered entries are meaningful)
-	TArray<double> Qvel;         // size nv (zeroed for held DoFs)
-	TBitArray<>    QposMask;     // per-qpos (nq): write this qpos entry from Qpos
-	TBitArray<>    HoldMask;     // per-DoF (nv): zero this DoF's qvel
-	TBitArray<>    SuppressCtrl; // per-actuator (nu): skip this id in the ctrl write pass
-};

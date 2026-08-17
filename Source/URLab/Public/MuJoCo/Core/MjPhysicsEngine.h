@@ -226,12 +226,11 @@ public:
 	FString m_rawEntityActorId;
 
 	/**
-	 * The single control store: one setpoint buffer + the keyframe state-injection channel, plus the
-	 * shadowless ingress that routes ROS/ZMQ/UI writes into them by entity name. Rebuilt on install
-	 * (the ingress binds the current model + partition).
+	 * The single control store: one setpoint buffer plus the shadowless ingress that routes
+	 * ROS/ZMQ/UI writes into it by entity name. Rebuilt on install (the ingress binds the current
+	 * model + partition).
 	 */
 	FMjControlBuffer m_controlBuffer;
-	FMjStateInjection m_stateInjection;
 	TUniquePtr<FMjEntityControlIngress> m_controlIngress;
 
 	/**
@@ -487,11 +486,8 @@ public:
 	/** Zero an actuator's setpoint and mark it untouched (it stops reaching d->ctrl). */
 	void ClearSetpoint(int32 ActuatorId);
 
-	/** Zero the whole control buffer and drop any keyframe hold. Used on simulation reset. */
+	/** Zero the whole control buffer. Used on simulation reset. */
 	void ClearControlBuffer();
-
-	/** Clear the injection masks so the pre-step drain applies no state injection. */
-	void ReleaseKeyframeHold();
 
 	/** Register an articulation into the registry the physics worker iterates.
 	 *  Takes CallbackMutex so bulk registration can't tear the array or the name

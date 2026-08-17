@@ -1039,14 +1039,8 @@ void UMjPhysicsEngine::RebuildEntityPartition()
 	m_entityStructureVersion.Bump();
 
 	// The one control store, keyed by entity: setpoint buffer sized to nu + the shadowless ingress
-	// bound to the current model, buffer and partition. The state injection sized alongside carries
-	// keyframe holds into the pre-step drain.
+	// bound to the current model, buffer and partition.
 	m_controlBuffer.Init(m_model->nu);
-	m_stateInjection.Qpos.Init(0.0, m_model->nq);
-	m_stateInjection.Qvel.Init(0.0, m_model->nv);
-	m_stateInjection.QposMask.Init(false, m_model->nq);
-	m_stateInjection.HoldMask.Init(false, m_model->nv);
-	m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
 	m_controlIngress = MakeUnique<FMjEntityControlIngress>(
 		m_model, m_controlBuffer, m_entityPartition);
 }
@@ -1546,44 +1540,13 @@ void UMjPhysicsEngine::DrainControlIntoData(mjModel* Model, mjData* Data)
 		return;
 	}
 
-	const FMjStateInjection& Inj = m_stateInjection;
-
-	// Keyframe qpos-hold: pin the held qpos and zero the held DoFs' velocity. Free joints are left
-	// out when the hold is set, so a pinned pose never teleports the floating base.
-	if (Inj.QposMask.Num() == Model->nq)
-	{
-		for (int32 q = 0; q < Model->nq; ++q)
-		{
-			if (Inj.QposMask[q])
-			{
-				Data->qpos[q] = static_cast<mjtNum>(Inj.Qpos[q]);
-			}
-		}
-	}
-	if (Inj.HoldMask.Num() == Model->nv)
-	{
-		for (int32 v = 0; v < Model->nv; ++v)
-		{
-			if (Inj.HoldMask[v])
-			{
-				Data->qvel[v] = 0.0;
-			}
-		}
-	}
-
 	// Control write pass: only ids a writer has touched reach d->ctrl (an untouched id keeps whatever
-	// the integrator last saw), and a held entity's actuators are suppressed so a stale setpoint
-	// cannot fight the pinned pose.
+	// the integrator last saw).
 	const FMjControlBuffer& Buf = m_controlBuffer;
-	const bool bHasSuppress = (Inj.SuppressCtrl.Num() == Model->nu);
 	const int32 Nu = FMath::Min(Buf.Setpoint.Num(), static_cast<int32>(Model->nu));
 	for (int32 Id = 0; Id < Nu; ++Id)
 	{
 		if (!Buf.Touched[Id])
-		{
-			continue;
-		}
-		if (bHasSuppress && Inj.SuppressCtrl[Id])
 		{
 			continue;
 		}
@@ -1612,18 +1575,6 @@ void UMjPhysicsEngine::ClearControlBuffer()
 		return;
 	}
 	m_controlBuffer.Init(m_model->nu);
-	ReleaseKeyframeHold();
-}
-
-void UMjPhysicsEngine::ReleaseKeyframeHold()
-{
-	if (m_model == nullptr)
-	{
-		return;
-	}
-	m_stateInjection.QposMask.Init(false, m_model->nq);
-	m_stateInjection.HoldMask.Init(false, m_model->nv);
-	m_stateInjection.SuppressCtrl.Init(false, m_model->nu);
 }
 
 TArray<UMjQuickConvertComponent*> UMjPhysicsEngine::GetAllQuickComponents() const

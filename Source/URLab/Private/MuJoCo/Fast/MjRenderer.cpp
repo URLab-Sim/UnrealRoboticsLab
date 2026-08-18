@@ -150,6 +150,16 @@ void AMjRenderer::BeginPlay()
 	// bus, and the two are mutually exclusive so only one source writes the pose.
 	bForcedRenderOnly = FParse::Param(FCommandLine::Get(), TEXT("URLabFastForcedOnly"));
 
+	// -URLabFastCamMaxHeight=N overrides the per-camera height cap (0 = honour the
+	// model's resolution exactly), so an eval can request higher-res frames than the
+	// 480 default without editing the level.
+	int32 CamMaxHeightArg = -1;
+	if (FParse::Value(FCommandLine::Get(), TEXT("URLabFastCamMaxHeight="), CamMaxHeightArg)
+		&& CamMaxHeightArg >= 0)
+	{
+		CameraMaxHeight = CamMaxHeightArg;
+	}
+
 	// The raw mjModel/mjData pointers were shallow-copied from the editor actor on
 	// the PIE duplication and are stale -- clear them WITHOUT freeing (the editor
 	// actor still owns its own). The transient index maps do not duplicate either.

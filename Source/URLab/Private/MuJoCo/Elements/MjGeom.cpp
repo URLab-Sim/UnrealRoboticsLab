@@ -24,6 +24,7 @@
 #include "MuJoCo/Spec/MjEffective.h"
 #include "MuJoCo/Spec/MjAssetResolve.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
+#include "MuJoCo/Spec/MjNodeFactories.h"
 #include "MuJoCo/Spec/MjScalePolicy.h"
 #include "MuJoCo/Spec/MjTreeAdapters.h"
 #include "MuJoCo/Utils/MjUtils.h"
@@ -386,6 +387,30 @@ void UMjGeom::OnRegister()
 	// before this geom registered has nothing to attach to.
 	Super::OnRegister();
 
+#if WITH_EDITOR && URLAB_MJ_GEN
+	// A geom added by hand from the components panel arrives with no size, and
+	// MuJoCo's true default size is zero, which the compiler rejects: the same
+	// missing-size default a Type edit authors is authored here too, so a fresh
+	// primitive compiles rather than collapsing to a zero-size error. Only for a
+	// genuine hand-add. An imported geom registers as a construction-script
+	// template or the plain NewObject default, so its creation method is never
+	// Instance; a live-instance import registers inside an FMjInstanceScope. Either
+	// alone excludes the import path, and authoring a size across it would clobber
+	// the value a `<default>` class supplies. The game-world guard mirrors
+	// RebuildVisualizer: the play preview authors nothing.
+	const UWorld* const RegisterWorld = GetWorld();
+	const bool bEditorWorld = RegisterWorld == nullptr || !RegisterWorld->IsGameWorld();
+	if (bEditorWorld && !HasAnyFlags(RF_ClassDefaultObject)
+		&& CreationMethod == EComponentCreationMethod::Instance
+		&& urlab::spec::FMjInstanceScope::Current() == nullptr)
+	{
+		if (DefaultPrimitiveSizeIfMissing())
+		{
+			SyncEditorScaleFromSize();
+		}
+	}
+#endif
+
 	RebuildVisualizer();
 }
 
@@ -700,6 +725,13 @@ void UMjGeom::SyncEditorScaleFromSize()
 
 	SetRelativeScale3D(NewScale);
 	UpdateCapTransforms();
+
+	// The write-back's change detector compares the component's relative transform
+	// against this baseline, so a Type switch that rescales here would read as a
+	// user scale-drag on the next hook and author the new scale as if the gizmo had
+	// moved. Refreshed the way the pose sync refreshes it -- to the transform now on
+	// the component -- so the baseline agrees with what was just applied.
+	LastPreviewTransform = GetRelativeTransform();
 }
 
 namespace

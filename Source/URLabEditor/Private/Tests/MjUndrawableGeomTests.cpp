@@ -221,4 +221,64 @@ bool FMjUndrawableGeomIsReported::RunTest(const FString& Parameters)
 	return !HasAnyErrors();
 }
 
+// ============================================================================
+// URLab.Preview.HandAddedPrimitiveGainsDefaultSize
+// ============================================================================
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjHandAddedPrimitiveGainsSize, "URLab.Preview.HandAddedPrimitiveGainsDefaultSize",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FMjHandAddedPrimitiveGainsSize::RunTest(const FString& Parameters)
+{
+	using namespace MjUndrawableGeomTests;
+
+	FScratchDoc Doc;
+	if (!Parse(*this, Doc))
+	{
+		return false;
+	}
+
+	UMjNodeComponent* const MeshArm = Named<UMjNodeComponent>(*Doc.Actor, TEXT("mesh_arm"));
+	UMjNodeComponent* const PlainArm = Named<UMjNodeComponent>(*Doc.Actor, TEXT("plain_arm"));
+	if (MeshArm == nullptr || PlainArm == nullptr)
+	{
+		AddError(TEXT("the fixture's bodies were not imported"));
+		return false;
+	}
+
+	// A hand-add under a body with no class is the schema's own sphere, which needs
+	// a positive size and MuJoCo defaults to zero. Registering it seeds one, so the
+	// geom compiles and previews at a real scale instead of collapsing.
+	UMjGeom* const Primitive = AddGeomUnder(*Doc.Actor, *PlainArm, TEXT("HandAddedSphere"));
+	if (Primitive == nullptr)
+	{
+		AddError(TEXT("could not add a geom by hand"));
+		return false;
+	}
+
+	TestTrue(TEXT("a hand-added class-free primitive authors a size of its own"), Primitive->Size.IsSet());
+
+	FVector Scale = FVector::ZeroVector;
+	if (TestTrue(TEXT("its size resolves to a preview scale"), Primitive->TryPreviewScaleFromSpec(Scale)))
+	{
+		TestTrue(FString::Printf(TEXT("and the scale is non-degenerate, got %s"), *Scale.ToString()),
+			Scale.GetMin() > 1e-4);
+	}
+
+	// The non-clobber. A hand-add under the mesh class inherits `type="mesh"`, which
+	// needs no `size` and takes its shape from an asset, so seeding one would author
+	// over what the class supplies. It stays unsized and undrawable, exactly as it
+	// was before a hand-add seeded anything.
+	UMjGeom* const Inherited = AddGeomUnder(*Doc.Actor, *MeshArm, TEXT("HandAddedUnderMeshArm"));
+	if (Inherited == nullptr)
+	{
+		AddError(TEXT("could not add a geom by hand"));
+		return false;
+	}
+
+	TestFalse(TEXT("a hand-added geom under a mesh class authors no size of its own"), Inherited->Size.IsSet());
+	TestNull(TEXT("and it still builds no preview"), Inherited->GetVisualizerMesh());
+
+	return !HasAnyErrors();
+}
+
 #endif // URLAB_MJ_GEN && WITH_EDITOR

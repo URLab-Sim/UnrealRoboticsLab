@@ -41,6 +41,7 @@
 #include "MuJoCo/Entity/MjCameraRegistry.h"
 #include "MuJoCo/Entity/MjEntity.h"
 #include "Transport/NetworkManager.h"
+#include "Transport/RpcClientTransport.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Entity/MjAppearanceStore.h"
@@ -1808,23 +1809,12 @@ void AMjRenderer::SendPerturbation(int32 BodyId, const FVector& ForceUE, const F
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 
 	// Short-lived REQ; fire the request and read the ack so the REP stays in sync.
-	void* Ctx = zmq_ctx_new();
-	void* Req = zmq_socket(Ctx, ZMQ_REQ);
-	int Timeout = 500;
-	zmq_setsockopt(Req, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
-	zmq_setsockopt(Req, ZMQ_SNDTIMEO, &Timeout, sizeof(Timeout));
-	int Linger = 0;
-	zmq_setsockopt(Req, ZMQ_LINGER, &Linger, sizeof(Linger));
-	if (zmq_connect(Req, TCHAR_TO_UTF8(*OwnerControlEndpoint)) == 0)
+	if (UURLabRpcClientTransport* Client = UURLabRpcClientTransport::Create(this, OwnerControlEndpoint))
 	{
-		zmq_send(Req, Buf.GetData(), Buf.Num(), 0);
-		zmq_msg_t Ack;
-		zmq_msg_init(&Ack);
-		zmq_msg_recv(&Ack, Req, 0); // best-effort ack
-		zmq_msg_close(&Ack);
+		TArray<uint8> Ack;
+		Client->Request(Buf, Ack, 500); // best-effort ack
+		Client->TransportShutdown();
 	}
-	zmq_close(Req);
-	zmq_ctx_term(Ctx);
 }
 
 int32 AMjRenderer::PickBodyIdAlongRay(const FVector& Origin, const FVector& Dir, float& OutDepthCm) const

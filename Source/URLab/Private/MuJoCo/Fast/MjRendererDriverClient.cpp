@@ -11,11 +11,10 @@
 #include "MuJoCo/Fast/MjRendererDriverClient.h"
 
 #include "MuJoCo/Entity/MjModelSource.h"
+#include "Transport/RpcClientTransport.h"
 #include "Utils/MsgpackHelpers.h"
 #include "Dom/JsonObject.h"
 #include "Misc/Base64.h"
-
-#include "zmq.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -28,47 +27,33 @@ bool FMjRendererDriverClient::FetchModel(const FString& ControlEndpoint,
 	OutBusEndpoint.Empty();
 	OutError.Empty();
 
-	void* Ctx = zmq_ctx_new();
-	void* Req = zmq_socket(Ctx, ZMQ_REQ);
-	int Timeout = 5000;
-	zmq_setsockopt(Req, ZMQ_RCVTIMEO, &Timeout, sizeof(Timeout));
-	zmq_setsockopt(Req, ZMQ_SNDTIMEO, &Timeout, sizeof(Timeout));
-	int Linger = 0;
-	zmq_setsockopt(Req, ZMQ_LINGER, &Linger, sizeof(Linger));
+	UURLabRpcClientTransport* Client =
+		UURLabRpcClientTransport::Create(GetTransientPackage(), ControlEndpoint);
+	if (!Client)
+	{
+		OutError = FString::Printf(TEXT("connect failed: %s"), *ControlEndpoint);
+		return false;
+	}
 
 	bool bOk = false;
 	do
 	{
-		if (zmq_connect(Req, TCHAR_TO_UTF8(*ControlEndpoint)) != 0)
-		{
-			OutError = FString::Printf(TEXT("connect failed: %s"), *ControlEndpoint);
-			break;
-		}
-
 		// Request: {op:"fastpath_hello"}. Both a Python owner and a UE live/direct
 		// owner answer this with their MJB bytes and geoms-bus endpoint.
 		TSharedPtr<FJsonObject> ReqObj = MakeShared<FJsonObject>();
 		ReqObj->SetStringField(TEXT("op"), TEXT("fastpath_hello"));
 		TArray<uint8> ReqBuf;
 		FURLabMsgpackUtil::PackJsonObject(ReqObj, ReqBuf);
-		if (zmq_send(Req, ReqBuf.GetData(), ReqBuf.Num(), 0) < 0)
-		{
-			OutError = TEXT("send failed");
-			break;
-		}
 
-		zmq_msg_t Msg;
-		zmq_msg_init(&Msg);
-		if (zmq_msg_recv(&Msg, Req, 0) < 0)
+		TArray<uint8> ReplyBuf;
+		if (!Client->Request(ReqBuf, ReplyBuf, 5000))
 		{
-			zmq_msg_close(&Msg);
 			OutError = TEXT("no reply (owner not answering fastpath_hello within timeout)");
 			break;
 		}
 		TSharedPtr<FJsonObject> Reply;
 		const bool bUnpacked = FURLabMsgpackUtil::UnpackToJsonObject(
-			static_cast<const uint8*>(zmq_msg_data(&Msg)), static_cast<int32>(zmq_msg_size(&Msg)), Reply);
-		zmq_msg_close(&Msg);
+			ReplyBuf.GetData(), ReplyBuf.Num(), Reply);
 		if (!bUnpacked || !Reply.IsValid())
 		{
 			OutError = TEXT("reply was not msgpack");
@@ -157,13 +142,6 @@ bool FMjRendererDriverClient::FetchModel(const FString& ControlEndpoint,
 		bOk = true;
 	} while (false);
 
-	if (Req)
-	{
-		zmq_close(Req);
-	}
-	if (Ctx)
-	{
-		zmq_ctx_term(Ctx);
-	}
+	Client->TransportShutdown();
 	return bOk;
 }

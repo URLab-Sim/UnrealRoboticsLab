@@ -243,12 +243,18 @@ void AMjRenderer::BeginPlay()
 	{
 		Direct.Begin(*this);
 	}
-	else if (!BusEndpoint.IsEmpty() && !bForcedRenderOnly)
+	else if (bForcedRenderOnly)
+	{
+		// Eval regime: the forced request drives the pose, so no bus is connected --
+		// but stand up the manager so its bridge serves the fastpath_render op (which
+		// replaced the renderer's own REP socket).
+		EnsureManager();
+	}
+	else if (!BusEndpoint.IsEmpty())
 	{
 		// A Mirror Renderer mirrors a Driver's stream but is still a render
 		// server: stand up the manager (hence bridge + RPC) so a Driver can push
-		// live scene swaps (fastpath_load) to it over the wire. Skipped in the eval
-		// regime, where the forced-render REP is the one pose driver.
+		// live scene swaps (fastpath_load) to it over the wire.
 		EnsureManager();
 		StartBus();
 	}

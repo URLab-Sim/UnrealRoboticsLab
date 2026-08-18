@@ -12,32 +12,66 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wundef"
-#pragma clang diagnostic ignored "-Wshadow"
-#pragma clang diagnostic ignored "-Wunused-parameter"
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-
 #ifndef PROTOBUF_ENABLE_DEBUG_LOGGING_MAY_LEAK_PII
 #define PROTOBUF_ENABLE_DEBUG_LOGGING_MAY_LEAK_PII 0
 #endif
 
-// Include third-party gRPC & Protobuf headers first before UE defines intrusive macros
+#include "CoreMinimal.h"
+
+// UE's intrusive assertion/formatting macros collide with member names inside
+// grpc/abseil (e.g. absl btree's `verify()`), so undef the whole family across the
+// third-party block and restore it after.
 #pragma push_macro("check")
 #undef check
+#pragma push_macro("checkf")
+#undef checkf
+#pragma push_macro("verify")
+#undef verify
+#pragma push_macro("verifyf")
+#undef verifyf
+#pragma push_macro("ensure")
+#undef ensure
 #pragma push_macro("TEXT")
 #undef TEXT
 #pragma push_macro("PI")
 #undef PI
 
+// grpc/absl on Win64 need the real <windows.h> (MemoryBarrier, Interlocked*, ...),
+// which UE does not include globally. UE's WindowsHWrapper.h is `#pragma once` and
+// CoreMinimal already consumed it, so re-including it is a no-op -- include <windows.h>
+// directly (its own _WINDOWS_ guard is independent of UE's wrapper). WIN32_LEAN_AND_MEAN
+// + NOMINMAX keep min/max/winsock1 out of the gRPC headers, and the Allow/Hide pairs
+// push then pop the platform-type + atomics macros so the UE headers below stay clean.
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include "Windows/AllowWindowsPlatformAtomics.h"
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
+
+THIRD_PARTY_INCLUDES_START
 #include <grpcpp/grpcpp.h>
 #include "dm_env_rpc.grpc.pb.h"
 #include "urlab_dm_env_rpc.pb.h"
+THIRD_PARTY_INCLUDES_END
+
+#if PLATFORM_WINDOWS
+#include "Windows/HideWindowsPlatformAtomics.h"
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
 
 #pragma pop_macro("PI")
 #pragma pop_macro("TEXT")
+#pragma pop_macro("ensure")
+#pragma pop_macro("verifyf")
+#pragma pop_macro("verify")
+#pragma pop_macro("checkf")
 #pragma pop_macro("check")
-#pragma clang diagnostic pop
 
 #include "Transport/DmEnvRpcTransport.h"
 #include "URLabDmEnvRpc.h"

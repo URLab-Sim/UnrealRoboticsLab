@@ -21,13 +21,18 @@ if [ ! -d "$SRC" ]; then
 fi
 
 SRC="$(cd "$SRC" && pwd)"
-BUILD="$SRC/build"
+# Build dir sits BESIDE src, not inside it: gRPC ships a root-level file named
+# 'build', so src/build would collide. third_party/grpc/build is gitignored.
+BUILD="$SCRIPT_DIR/build"
 mkdir -p "$BUILD"
 BUILD="$(cd "$BUILD" && pwd)"
 cd "$BUILD"
 
 echo "Configuring gRPC..."
-cmake .. -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
+# cmake 4.x rejects the pre-3.5 cmake_minimum_required() in gRPC 1.62's bundled
+# deps; this floor is honored as an env var and is harmless on cmake 3.x.
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake "$SRC" -DCMAKE_INSTALL_PREFIX="$INSTALL_DIR" \
          -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
          -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
          -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--undefined-version" \

@@ -16,6 +16,8 @@
 #include "Engine/Blueprint.h"
 
 #include "MuJoCo/Spec/MjSpecRef.h"
+#include "MuJoCo/Gen/MjDispatch.gen.h"
+#include "MuJoCo/Gen/MjElements.gen.h"
 
 namespace urlab::spec
 {
@@ -77,6 +79,36 @@ TArray<FMjOrderedChild> MjOrderedChildrenOf(const FSpecRef& Spec, UMjNodeCompone
 	return Children;
 }
 
+namespace
+{
+/**
+ * Whether a node is one of the actuator shorthands.
+ *
+ * Every actuator element type a `<default>` admits folds onto the class's single
+ * `mjsActuator` template, so they are all leaves of `UMjActuator`. Derived from
+ * that child-slot set rather than a hand list, so a new actuator type is covered
+ * the moment it is generated.
+ */
+bool IsActuatorShorthand(const UMjNodeComponent* Node)
+{
+	if (Node == nullptr)
+	{
+		return false;
+	}
+	static const TSet<psm::ElementType> Kinds = [] {
+		TSet<psm::ElementType> Out;
+		gen::ChildSlots(static_cast<const UMjActuator*>(nullptr),
+			[&Out](int32, auto Tag) {
+				using Leaf = typename decltype(Tag)::type;
+				Out.Add(gen::TMjElementType<Leaf>::Value);
+			});
+		return Out;
+	}();
+	psm::ElementType Type;
+	return gen::ElementTypeOfNode(*Node, Type) && Kinds.Contains(Type);
+}
+} // namespace
+
 void MjSortSpecOrder(TArray<FMjOrderedChild>& Children)
 {
 	Algo::StableSort(Children, [](const FMjOrderedChild& A, const FMjOrderedChild& B) {
@@ -89,6 +121,17 @@ void MjSortSpecOrder(TArray<FMjOrderedChild>& Children)
 		}
 		if (A.Slot != B.Slot)
 		{
+			// Actuator shorthands are the one family whose storage slot lies: a
+			// class folds motor/velocity/position onto a single actuator template
+			// where the document-last one wins, so their per-type slots must not
+			// decide the order. Sort them by source instead, which is the order
+			// MuJoCo's own reader applies them to that template.
+			if (IsActuatorShorthand(A.Node) && IsActuatorShorthand(B.Node)
+				&& A.Node->SourceLine > 0 && B.Node->SourceLine > 0
+				&& A.Node->SourceLine != B.Node->SourceLine)
+			{
+				return A.Node->SourceLine < B.Node->SourceLine;
+			}
 			return A.Slot < B.Slot;
 		}
 		// An unstamped element is one the user just added, and the only honest

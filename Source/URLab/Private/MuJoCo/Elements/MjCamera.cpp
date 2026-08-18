@@ -12,28 +12,26 @@
 #include "Engine/Engine.h"
 #include "Engine/PostProcessVolume.h"
 #include "EngineUtils.h"
-#include "HAL/FileManager.h"
-#include "HAL/Runnable.h"
-#include "HAL/RunnableThread.h"
-#include "HAL/ThreadSafeBool.h"
-#include "Misc/Paths.h"
+#include "HAL/IConsoleManager.h"
+#include "Misc/CoreDelegates.h"
 #include "RHICommandList.h"
 #include "RenderingThread.h"
 
 #include "Bridge/BridgeServer.h"
 #include "Bridge/BridgeServerConfigUtils.h"
-#include "MuJoCo/Capture/CameraShmWriter.h"
 #include "MuJoCo/Capture/MjCameraFrameBus.h"
 #include "MuJoCo/Capture/MjCameraSubsystem.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Core/MjSimClock.h"
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "State/MjCanonicalName.h"
+#include "Transport/CameraPublishTransport.h"
+#include "Transport/MjExternalTransportProvider.h"
 #include "Transport/NetworkManager.h"
-#include "Transport/ShmPublishTransport.h"
+#include "Transport/ShmCameraPublishTransport.h"
+#include "Transport/ZmqCameraPublishTransport.h"
 #include "Utils/URLabLogging.h"
-
-#include "zmq.h"
 
 namespace
 {
@@ -150,6 +148,34 @@ void ResolveCameraCanonical(const UMjCamera& Cam, FName& OutArt, FName& OutPart)
 }
 
 /** What to call a camera in a log line: its MJCF name, or its component name. */
+// Copy-out stage timing. When set, UMjCamera decomposes each harvested frame's
+// GPU-to-game-thread path (issue -> fence-ready -> mapped -> published) and logs
+// a windowed summary. Off by default: a few adds per frame, no wire cost.
+static TAutoConsoleVariable<int32> CVarCamDiag(
+	TEXT("urlab.Cam.Diag"), 0,
+	TEXT("Log camera copy-out stage timing (issue/fence/map/publish). 0=off, 1=on."),
+	ECVF_Default);
+
+// SPEAR-style copy-out: harvest readbacks (poll the fence, map, and publish) on
+// the render thread at render-frame end, so the path never waits for a game tick.
+// A/B against the default game-thread harvest.
+static TAutoConsoleVariable<int32> CVarCamRTHarvest(
+	TEXT("urlab.Cam.RenderThreadHarvest"), 0,
+	TEXT("Harvest camera readbacks on the render thread (SPEAR-style). "
+		 "0=game thread (default), 1=render thread."),
+	ECVF_Default);
+
+// Force-submit streaming readback copies to the RHI thread so their fence signals
+// in-frame instead of quantizing to the next frame boundary. Targets the dominant
+// issue->fence stage of the copy-out. Possible render-thread throughput cost (one
+// ImmediateFlush per capture), so it is opt-in and A/B'd. The sync path already
+// force-submits; this extends it to the streaming path.
+static TAutoConsoleVariable<int32> CVarCamForceSubmit(
+	TEXT("urlab.Cam.ForceSubmit"), 0,
+	TEXT("Force-submit streaming readback copies so the fence signals in-frame. "
+		 "0=off (default), 1=on."),
+	ECVF_Default);
+
 FString CameraLogName(const UMjCamera& Cam)
 {
 	return Cam.MjName.Get(Cam.GetName());
@@ -157,243 +183,10 @@ FString CameraLogName(const UMjCamera& Cam)
 } // namespace
 
 // ---------------------------------------------------------------------------
-// Publisher thread
+// Publish gate
 // ---------------------------------------------------------------------------
 
 std::atomic<bool> FCameraZmqWorker::bPublishersPaused{false};
-
-/**
- * The background thread that publishes camera frames over ZeroMQ.
- *
- * One per streaming camera, owning its own context and PUB socket. The camera
- * pushes finished frames onto a queue; this thread drains to the freshest one
- * and sends it as [topic][meta + pixels], the same layout the SHM transport
- * writes, so both consumers parse identically.
- */
-class FCameraZmqPublisher final : public FRunnable
-{
-public:
-	FCameraZmqPublisher(const FString& InEndpoint, const FString& InTopic, FIntPoint InResolution)
-		: RequestedEndpoint(InEndpoint)
-		, BoundEndpoint(InEndpoint)
-		, Topic(InTopic)
-		, Resolution(InResolution)
-	{
-	}
-
-	virtual ~FCameraZmqPublisher() override { Stop(); }
-
-	virtual bool Init() override
-	{
-		ZmqContext = zmq_ctx_new();
-		if (!ZmqContext)
-		{
-			UE_LOG(LogURLabNet, Error, TEXT("CameraZmqPublisher: zmq_ctx_new failed"));
-			return false;
-		}
-		ZmqPublisher = zmq_socket(ZmqContext, ZMQ_PUB);
-		if (!ZmqPublisher)
-		{
-			UE_LOG(LogURLabNet, Error, TEXT("CameraZmqPublisher: zmq_socket failed"));
-			zmq_ctx_term(ZmqContext);
-			ZmqContext = nullptr;
-			return false;
-		}
-
-		// A live feed only cares about the FRESHEST frame, so keep the send queue
-		// shallow: at HWM=1 the socket holds at most one frame in flight and a slow
-		// consumer gets a near-latest frame instead of draining a backlog.
-		int Hwm = 1;
-		zmq_setsockopt(ZmqPublisher, ZMQ_SNDHWM, &Hwm, sizeof(Hwm));
-		// LINGER=0, so a connected-but-not-reading subscriber can never block
-		// zmq_ctx_term at shutdown; libzmq's default there is infinite.
-		int Linger = 0;
-		zmq_setsockopt(ZmqPublisher, ZMQ_LINGER, &Linger, sizeof(Linger));
-
-		// Auto-increment the port on a bind conflict, so co-located cameras (and
-		// co-located editor processes) do not fight over one port.
-		FString BaseAddr = TEXT("tcp://0.0.0.0:");
-		int32 Port = 5558;
-		if (RequestedEndpoint.Contains(TEXT(":")))
-		{
-			FString Left, Right;
-			RequestedEndpoint.Split(TEXT(":"), &Left, &Right, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-			if (Right.IsNumeric())
-			{
-				Port = FCString::Atoi(*Right);
-				BaseAddr = Left + TEXT(":");
-			}
-		}
-
-		int Rc = -1;
-		for (int32 i = 0; i < 10; ++i)
-		{
-			const FString TryEndpoint = FString::Printf(TEXT("%s%d"), *BaseAddr, Port + i);
-			Rc = zmq_bind(ZmqPublisher, TCHAR_TO_UTF8(*TryEndpoint));
-			if (Rc == 0)
-			{
-				BoundEndpoint = TryEndpoint;
-				break;
-			}
-		}
-
-		if (Rc != 0)
-		{
-			UE_LOG(LogURLabNet, Error,
-				TEXT("CameraZmqPublisher failed to bind ZMQ after 10 retries, starting at %s"),
-				*RequestedEndpoint);
-			// Release the half-open socket and context, so a failed Init leaks nothing.
-			zmq_close(ZmqPublisher);
-			ZmqPublisher = nullptr;
-			zmq_ctx_term(ZmqContext);
-			ZmqContext = nullptr;
-			return false;
-		}
-
-		UE_LOG(LogURLabNet, Log, TEXT("CameraZmqPublisher bound at %s [Topic: %s]"), *BoundEndpoint, *Topic);
-		return true;
-	}
-
-	virtual uint32 Run() override
-	{
-		const int32 ExpectedPixels = Resolution.X * Resolution.Y;
-		while (!bStopThread)
-		{
-			bool bSent = false;
-
-			// Drain to the FRESHEST frame: if the producer outran us, skip the
-			// backlog rather than send stale frames FIFO.
-			FQueuedColorFrame ColorFrame;
-			bool bHaveColor = false;
-			while (FrameQueue.Dequeue(ColorFrame))
-			{
-				bHaveColor = true;
-			}
-			if (bHaveColor)
-			{
-				if (ColorFrame.Pixels.Num() == ExpectedPixels)
-				{
-					SendFrame(ColorFrame.Meta, ColorFrame.Pixels.GetData(),
-						ColorFrame.Pixels.Num() * sizeof(FColor));
-				}
-				bSent = true;
-			}
-
-			FQueuedFloatFrame FloatFrame;
-			bool bHaveFloat = false;
-			while (FloatFrameQueue.Dequeue(FloatFrame))
-			{
-				bHaveFloat = true;
-			}
-			if (bHaveFloat)
-			{
-				if (FloatFrame.Pixels.Num() == ExpectedPixels)
-				{
-					SendFrame(FloatFrame.Meta, FloatFrame.Pixels.GetData(),
-						FloatFrame.Pixels.Num() * sizeof(float));
-				}
-				bSent = true;
-			}
-
-			if (!bSent)
-			{
-				FPlatformProcess::Sleep(0.002f);
-			}
-		}
-		return 0;
-	}
-
-	virtual void Stop() override { bStopThread = true; }
-
-	virtual void Exit() override
-	{
-		if (ZmqPublisher)
-		{
-			zmq_close(ZmqPublisher);
-			ZmqPublisher = nullptr;
-		}
-		if (ZmqContext)
-		{
-			zmq_ctx_term(ZmqContext);
-			ZmqContext = nullptr;
-		}
-	}
-
-	// Enqueue unconditionally: Run drains to the latest frame before sending and
-	// the socket runs at HWM=1, so a backlog here collapses to the freshest frame
-	// rather than streaming FIFO.
-	void PushFrame(const TArray<FColor>& Pixels, const FMjCameraFrameMeta& Meta)
-	{
-		FrameQueue.Enqueue(FQueuedColorFrame{Meta, Pixels});
-	}
-
-	void PushFrame(const TArray<float>& Pixels, const FMjCameraFrameMeta& Meta)
-	{
-		FloatFrameQueue.Enqueue(FQueuedFloatFrame{Meta, Pixels});
-	}
-
-	const FString& GetBoundEndpoint() const { return BoundEndpoint; }
-
-private:
-	/**
-	 * Publish one message as [topic][meta + pixels]. The metadata header is
-	 * prepended to the pixel bytes in a single payload frame, so the ZMQ and SHM
-	 * consumers parse an identical (meta, pixels) layout.
-	 */
-	void SendFrame(const FMjCameraFrameMeta& Meta, const void* Pixels, size_t PixelBytes)
-	{
-		if (FCameraZmqWorker::bPublishersPaused.load(std::memory_order_acquire))
-		{
-			return;
-		}
-		TArray<uint8> Payload;
-		Payload.SetNumUninitialized(sizeof(FMjCameraFrameMeta) + static_cast<int32>(PixelBytes));
-		FMemory::Memcpy(Payload.GetData(), &Meta, sizeof(FMjCameraFrameMeta));
-		FMemory::Memcpy(Payload.GetData() + sizeof(FMjCameraFrameMeta), Pixels, PixelBytes);
-
-		const FString TopicSpace = Topic + TEXT(" ");
-		const FTCHARToUTF8 TopicUtf8(*TopicSpace);
-		if (zmq_send(ZmqPublisher, TopicUtf8.Get(), TopicUtf8.Length(), ZMQ_SNDMORE) < 0)
-		{
-			// Topic frame dropped, e.g. at the high-water mark. Skip the body too,
-			// or the multipart message desyncs.
-			return;
-		}
-		// Best-effort feed: a body dropped under HWM=1 just means this frame is
-		// skipped, and the next push carries a fresher one.
-		zmq_send(ZmqPublisher, Payload.GetData(), Payload.Num(), 0);
-	}
-
-	// Each queued frame carries its metadata header, so Run can prepend it to the
-	// published bytes and the client can associate the frame with the step that
-	// produced it.
-	struct FQueuedColorFrame
-	{
-		FMjCameraFrameMeta Meta;
-		TArray<FColor> Pixels;
-	};
-	struct FQueuedFloatFrame
-	{
-		FMjCameraFrameMeta Meta;
-		TArray<float> Pixels;
-	};
-
-	// Two queues, one per pixel format. Real and segmentation cameras drive the
-	// colour queue, depth cameras the float one. A camera's CaptureMode never
-	// changes after streaming starts, so only one is ever active per publisher.
-	TQueue<FQueuedColorFrame, EQueueMode::Spsc> FrameQueue;
-	TQueue<FQueuedFloatFrame, EQueueMode::Spsc> FloatFrameQueue;
-
-	FString RequestedEndpoint;
-	FString BoundEndpoint;
-	FString Topic;
-	FIntPoint Resolution = FIntPoint::ZeroValue;
-
-	void* ZmqContext = nullptr;
-	void* ZmqPublisher = nullptr;
-
-	FThreadSafeBool bStopThread{false};
-};
 
 // ---------------------------------------------------------------------------
 // Lifetime
@@ -516,6 +309,10 @@ void UMjCamera::BeginPlay()
 
 void UMjCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Stop + drain the render-thread harvest first: it publishes through the
+	// transports SetStreamingEnabled(false) below tears down.
+	UnregisterRenderThreadHarvest();
+
 	if (UWorld* World = GetWorld())
 	{
 		if (UMjCameraSubsystem* Subsystem = World->GetSubsystem<UMjCameraSubsystem>())
@@ -532,19 +329,8 @@ void UMjCamera::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		}
 	}
 
-	if (PublisherThread)
-	{
-		PublisherThread->Kill(true);
-		delete PublisherThread;
-		PublisherThread = nullptr;
-	}
-	if (ZmqPublisher)
-	{
-		delete ZmqPublisher;
-		ZmqPublisher = nullptr;
-	}
-
-	// Stop rendering when the actor is torn down.
+	// Stop rendering and tear down the image-egress transports when the actor is
+	// torn down.
 	if (bStreamingEnabled)
 	{
 		SetStreamingEnabled(false);
@@ -618,11 +404,13 @@ void UMjCamera::UpdateCapturePipeline()
 
 	HarvestCompletedReadbacks();
 
-	if (bStreamingEnabled && bActive)
+	// Manual-capture-only cameras (render-server forced-render mode) still harvest
+	// above, but never auto-capture -- only the on-demand IssueSyncCapture drives
+	// them, so the async stream cannot contend with a forced request.
+	if (bStreamingEnabled && bActive && !bManualCaptureOnly)
 	{
-		AAMjManager* Manager = AAMjManager::GetManager();
-		MaybeCapture(Manager);
-		PublishDueDelayedFrames(Manager);
+		MaybeCapture();
+		PublishDueDelayedFrames();
 	}
 }
 
@@ -654,6 +442,9 @@ void UMjCamera::DispatchReadyReadbacks()
 
 		FInFlightReadback Front = MoveTemp(InFlightReadbacks[0]);
 		InFlightReadbacks.RemoveAt(0);
+		// First game tick that observed the GPU fence signalled: the boundary
+		// between "GPU copy done" and "we noticed", including tick quantization.
+		Front.TFenceReadySeconds = FPlatformTime::Seconds();
 
 		TSharedPtr<FMjCameraFrame> Frame = MakeShared<FMjCameraFrame>();
 		Frame->FrameId = Front.FrameId;
@@ -661,6 +452,8 @@ void UMjCamera::DispatchReadyReadbacks()
 		Frame->Width = Front.Width;
 		Frame->Height = Front.Height;
 		Frame->CaptureUnixTime = Front.CaptureUnixSeconds;
+		Frame->TIssuedSeconds = Front.TIssuedSeconds;
+		Frame->TFenceReadySeconds = Front.TFenceReadySeconds;
 
 		const int32 W = Front.Width;
 		const int32 H = Front.Height;
@@ -677,8 +470,18 @@ void UMjCamera::DispatchReadyReadbacks()
 		// command runs pushes into a still-live queue instead of a freed object.
 		// RowPitch is in PIXELS and at least the width (rows are padded), so the
 		// copy is row-by-row into a tightly packed array.
+		const bool bSplitDiag = CVarCamDiag.GetValueOnGameThread() != 0;
 		ENQUEUE_RENDER_COMMAND(MjCameraMapReadback)
-		([Frame, Gpu, W, H, CapturedMode, Results = ResultsQueue](FRHICommandListImmediate&) {
+		([Frame, Gpu, W, H, CapturedMode, Results = ResultsQueue, bSplitDiag](FRHICommandListImmediate&) {
+			const double RTStart = FPlatformTime::Seconds();
+			if (bSplitDiag)
+			{
+				// Split fence->map into RT scheduling latency (enqueue -> this lambda
+				// actually running) vs the map memcpy itself, to prove where the ~26ms
+				// lives: pipeline/RT-cadence starvation vs real map cost.
+				UE_LOG(LogURLabNet, Log, TEXT("[mapsplit] enqueue->RTstart=%.2f ms"),
+					(RTStart - Frame->TFenceReadySeconds) * 1000.0);
+			}
 			bool bCopied = false;
 			int32 RowPitchPixels = 0;
 			void* Data = Gpu->Lock(RowPitchPixels);
@@ -705,6 +508,15 @@ void UMjCamera::DispatchReadyReadbacks()
 				bCopied = true;
 			}
 			Gpu->Unlock();
+			// Render thread, memcpy out of mapped staging complete. Same clock as
+			// the game-thread publish stamp, so map->publish is the game-thread
+			// bounce that a render-thread publish (SPEAR) would remove.
+			Frame->TMappedSeconds = FPlatformTime::Seconds();
+			if (bSplitDiag)
+			{
+				UE_LOG(LogURLabNet, Log, TEXT("[mapsplit] map-work=%.2f ms"),
+					(Frame->TMappedSeconds - RTStart) * 1000.0);
+			}
 			Results->Enqueue(FCompletedReadback{Frame, Gpu, bCopied});
 		});
 	}
@@ -730,6 +542,11 @@ void UMjCamera::DrainCompletedFrames()
 		{
 			FMjCameraFrame& Frame = *Completed.Frame;
 			Frame.Seq = ++HarvestSeq;
+			// Game thread now holds the mapped pixels: the copy-out is complete
+			// here, before any artificial delay. This is the end of the path a
+			// render-thread publish would shortcut.
+			Frame.TPublishedSeconds = FPlatformTime::Seconds();
+			AccumulateStageTiming(Frame);
 			// Reveal time = capture clock + sampled latency. Stamped here so the
 			// delayed publish can select on it; unused when no delay is configured.
 			Frame.RevealValue = FrameClock(Frame) + SampleDelaySeconds();
@@ -756,6 +573,215 @@ void UMjCamera::DrainCompletedFrames()
 		{
 			FreeReadbacks.Add(Completed.Gpu); // the staging texture is reused in place
 		}
+	}
+}
+
+void UMjCamera::AccumulateStageTiming(const FMjCameraFrame& Frame)
+{
+	if (CVarCamDiag.GetValueOnGameThread() == 0)
+	{
+		return;
+	}
+	// Only frames whose four stamps are all present decompose cleanly; a missing
+	// stamp (still 0) would poison the means, so skip it.
+	if (Frame.TIssuedSeconds <= 0.0 || Frame.TFenceReadySeconds <= 0.0
+		|| Frame.TMappedSeconds <= 0.0 || Frame.TPublishedSeconds <= 0.0)
+	{
+		return;
+	}
+
+	const double IssueToFence = (Frame.TFenceReadySeconds - Frame.TIssuedSeconds) * 1000.0;
+	const double FenceToMap = (Frame.TMappedSeconds - Frame.TFenceReadySeconds) * 1000.0;
+	const double MapToPublish = (Frame.TPublishedSeconds - Frame.TMappedSeconds) * 1000.0;
+	const double Total = (Frame.TPublishedSeconds - Frame.TIssuedSeconds) * 1000.0;
+
+	DiagSumIssueToFence += IssueToFence;
+	DiagSumFenceToMap += FenceToMap;
+	DiagSumMapToPublish += MapToPublish;
+	DiagSumTotal += Total;
+	DiagMaxMapToPublish = FMath::Max(DiagMaxMapToPublish, MapToPublish);
+	DiagMaxTotal = FMath::Max(DiagMaxTotal, Total);
+	++DiagFrames;
+
+	if (DiagFrames >= DiagWindowFrames)
+	{
+		const double Inv = 1.0 / static_cast<double>(DiagFrames);
+		UE_LOG(LogURLabNet, Log,
+			TEXT("[camstage] '%s' N=%d mean(ms): issue->fence=%.2f fence->map=%.2f "
+				 "map->publish=%.2f total=%.2f | max map->publish=%.2f total=%.2f"),
+			*CameraLogName(*this), DiagFrames,
+			DiagSumIssueToFence * Inv, DiagSumFenceToMap * Inv,
+			DiagSumMapToPublish * Inv, DiagSumTotal * Inv,
+			DiagMaxMapToPublish, DiagMaxTotal);
+		DiagFrames = 0;
+		DiagSumIssueToFence = DiagSumFenceToMap = DiagSumMapToPublish = DiagSumTotal = 0.0;
+		DiagMaxMapToPublish = DiagMaxTotal = 0.0;
+	}
+}
+
+void UMjCamera::EnsureRenderThreadHarvestRegistered()
+{
+	if (bRTHarvestRegistered)
+	{
+		return;
+	}
+	RTHarvestHandle = FCoreDelegates::OnEndFrameRT.AddUObject(this, &UMjCamera::OnEndFrameRT_Harvest);
+	bRTHarvestRegistered = true;
+}
+
+void UMjCamera::UnregisterRenderThreadHarvest()
+{
+	if (!bRTHarvestRegistered)
+	{
+		return;
+	}
+	FCoreDelegates::OnEndFrameRT.Remove(RTHarvestHandle);
+	RTHarvestHandle.Reset();
+	bRTHarvestRegistered = false;
+	// Drain any callback already dispatched so nothing touches the transports we
+	// are about to free, then discard the unharvested readbacks.
+	FlushRenderingCommands();
+	FScopeLock Lock(&RTInFlightLock);
+	RTInFlight.Reset();
+}
+
+void UMjCamera::OnEndFrameRT_Harvest()
+{
+	// Render thread, end of frame. Move the ready readbacks out under the lock,
+	// then map + publish them here so the copy-out never crosses a game tick.
+	// Only the render thread produces to the transports in this mode, so the SPSC
+	// ZMQ queue keeps its single-producer contract; the delay path (a second,
+	// game-thread producer) is not supported here -- the A/B runs at delay=0.
+	TArray<FInFlightReadback> Ready;
+	{
+		FScopeLock Lock(&RTInFlightLock);
+		while (RTInFlight.Num() > 0)
+		{
+			FInFlightReadback& Head = RTInFlight[0];
+			if (!Head.Gpu.IsValid())
+			{
+				RTInFlight.RemoveAt(0);
+				continue;
+			}
+			if (!Head.Gpu->IsReady())
+			{
+				break; // FIFO: submission order is completion order.
+			}
+			Head.TFenceReadySeconds = FPlatformTime::Seconds();
+			Ready.Add(MoveTemp(RTInFlight[0]));
+			RTInFlight.RemoveAt(0);
+		}
+	}
+
+	const EMjCameraMode CapturedMode = CaptureMode;
+	for (FInFlightReadback& R : Ready)
+	{
+		TSharedPtr<FMjCameraFrame> Frame = MakeShared<FMjCameraFrame>();
+		Frame->FrameId = R.FrameId;
+		Frame->SimTime = R.SimTime;
+		Frame->Width = R.Width;
+		Frame->Height = R.Height;
+		Frame->CaptureUnixTime = R.CaptureUnixSeconds;
+		Frame->TIssuedSeconds = R.TIssuedSeconds;
+		Frame->TFenceReadySeconds = R.TFenceReadySeconds;
+
+		const int32 W = R.Width;
+		const int32 H = R.Height;
+		int32 RowPitchPixels = 0;
+		void* Data = R.Gpu->Lock(RowPitchPixels);
+		bool bCopied = false;
+		if (Data && W > 0 && H > 0)
+		{
+			if (CapturedMode == EMjCameraMode::Depth)
+			{
+				Frame->Depth.SetNumUninitialized(W * H);
+				const float* Src = static_cast<const float*>(Data);
+				for (int32 y = 0; y < H; ++y)
+				{
+					FMemory::Memcpy(&Frame->Depth[y * W], &Src[y * RowPitchPixels], W * sizeof(float));
+				}
+			}
+			else
+			{
+				Frame->Color.SetNumUninitialized(W * H);
+				const FColor* Src = static_cast<const FColor*>(Data);
+				for (int32 y = 0; y < H; ++y)
+				{
+					FMemory::Memcpy(&Frame->Color[y * W], &Src[y * RowPitchPixels], W * sizeof(FColor));
+				}
+			}
+			bCopied = true;
+		}
+		R.Gpu->Unlock();
+		Frame->TMappedSeconds = FPlatformTime::Seconds();
+
+		if (bCopied)
+		{
+			Frame->Seq = ++HarvestSeq; // sole writer in RT mode (game drain finds nothing)
+			PublishFrameRenderThread(*Frame);
+			Frame->TPublishedSeconds = FPlatformTime::Seconds();
+			AccumulateStageTimingRT(*Frame);
+			PushFrameToHistoryShared(Frame); // lock-guarded ring, safe from any thread
+		}
+		// R.Gpu drops here, freeing its staging texture. No cross-thread recycle
+		// pool in this prototype: allocation churn is a separate axis, not the
+		// copy-out latency under test.
+	}
+}
+
+void UMjCamera::PublishFrameRenderThread(const FMjCameraFrame& Frame)
+{
+	FMjCameraWireFrame Wire;
+	if (!BuildCameraWireFrame(Frame, Wire))
+	{
+		return;
+	}
+	for (UURLabCameraPublishTransport* Transport : CameraPublishers)
+	{
+		if (Transport)
+		{
+			Transport->PublishCameraFrame(Wire);
+		}
+	}
+	// The in-proc FMjCameraFrameBus broadcast is game-thread-only; the render-thread
+	// path serves the streaming transports the A/B measures and skips the bus.
+}
+
+void UMjCamera::AccumulateStageTimingRT(const FMjCameraFrame& Frame)
+{
+	if (CVarCamDiag.GetValueOnRenderThread() == 0)
+	{
+		return;
+	}
+	if (Frame.TIssuedSeconds <= 0.0 || Frame.TFenceReadySeconds <= 0.0
+		|| Frame.TMappedSeconds <= 0.0 || Frame.TPublishedSeconds <= 0.0)
+	{
+		return;
+	}
+	const double IssueToFence = (Frame.TFenceReadySeconds - Frame.TIssuedSeconds) * 1000.0;
+	const double FenceToMap = (Frame.TMappedSeconds - Frame.TFenceReadySeconds) * 1000.0;
+	const double MapToPublish = (Frame.TPublishedSeconds - Frame.TMappedSeconds) * 1000.0;
+	const double Total = (Frame.TPublishedSeconds - Frame.TIssuedSeconds) * 1000.0;
+
+	RTDiagSumIssueToFence += IssueToFence;
+	RTDiagSumFenceToMap += FenceToMap;
+	RTDiagSumMapToPublish += MapToPublish;
+	RTDiagSumTotal += Total;
+	RTDiagMaxTotal = FMath::Max(RTDiagMaxTotal, Total);
+	++RTDiagFrames;
+
+	if (RTDiagFrames >= DiagWindowFrames)
+	{
+		const double Inv = 1.0 / static_cast<double>(RTDiagFrames);
+		UE_LOG(LogURLabNet, Log,
+			TEXT("[camstage-rt] '%s' N=%d mean(ms): issue->fence=%.2f fence->map=%.2f "
+				 "map->publish=%.2f total=%.2f | max total=%.2f"),
+			*CameraLogName(*this), RTDiagFrames,
+			RTDiagSumIssueToFence * Inv, RTDiagSumFenceToMap * Inv,
+			RTDiagSumMapToPublish * Inv, RTDiagSumTotal * Inv, RTDiagMaxTotal);
+		RTDiagFrames = 0;
+		RTDiagSumIssueToFence = RTDiagSumFenceToMap = RTDiagSumMapToPublish = RTDiagSumTotal = 0.0;
+		RTDiagMaxTotal = 0.0;
 	}
 }
 
@@ -794,18 +820,99 @@ void UMjCamera::IssueSyncCapture()
 	}
 	uint64 ShowId = 0;
 	double ShowTime = 0.0;
-	if (AAMjManager* Manager = AAMjManager::GetManager())
+	if (IMjSimClock* Clock = ResolveSimClock())
 	{
-		ShowId = Manager->GetLastAppliedFrameId();
-		ShowTime = Manager->GetLastAppliedSimTime();
+		ShowId = Clock->GetAppliedFrameId();
+		ShowTime = Clock->GetAppliedSimTime();
 	}
 	EnqueueReadback(ShowId, ShowTime, /*bForceSubmit=*/true);
 }
 
-void UMjCamera::MaybeCapture(AAMjManager* Mgr)
+void MjPumpForcedCapture(const TArray<UMjCamera*>& Cams, uint64 TargetFrameId, int32 TimeoutMs)
 {
-	const uint64 AppliedId = Mgr ? Mgr->GetLastAppliedFrameId() : 0;
-	const double AppliedTime = Mgr ? Mgr->GetLastAppliedSimTime() : 0.0;
+	// Bound the pump under the request timeout: it must cover render + readback (and a
+	// cold RT's one-time warm-up) for every requested camera, and capping it means a
+	// genuinely stuck frame frees the caller rather than hanging on the deadline.
+	const double PumpStart = FPlatformTime::Seconds();
+	const double Deadline = PumpStart + FMath::Max(1, TimeoutMs) / 1000.0;
+	const bool bDiag = CVarCamDiag.GetValueOnAnyThread() != 0;
+	TArray<double> ReadyMs;
+	if (bDiag)
+	{
+		ReadyMs.Init(-1.0, Cams.Num());
+	}
+	for (;;)
+	{
+		bool bAllReady = true;
+		for (int32 i = 0; i < Cams.Num(); ++i)
+		{
+			UMjCamera* Cam = Cams[i];
+			if (!Cam)
+			{
+				continue;
+			}
+			Cam->HarvestCompletedReadbacks();
+			const uint64 Have = Cam->GetLatestFrameId();
+			const bool bReady = (TargetFrameId > 0) ? (Have >= TargetFrameId) : (Have > 0);
+			if (!bReady)
+			{
+				bAllReady = false;
+				// Re-issue only while nothing is outstanding, so a cold RT that could not
+				// render on the first attempt retries without piling captures behind an
+				// in-flight one.
+				if (!Cam->HasPendingReadbacks())
+				{
+					Cam->IssueSyncCapture();
+				}
+			}
+			else if (bDiag && ReadyMs.IsValidIndex(i) && ReadyMs[i] < 0.0)
+			{
+				ReadyMs[i] = (FPlatformTime::Seconds() - PumpStart) * 1000.0;
+			}
+		}
+		if (bAllReady || FPlatformTime::Seconds() >= Deadline)
+		{
+			break;
+		}
+		FPlatformProcess::SleepNoStats(0.0002f);
+	}
+	if (bDiag)
+	{
+		FString Line;
+		for (double Ms : ReadyMs)
+		{
+			Line += FString::Printf(TEXT("%.1f "), Ms);
+		}
+		UE_LOG(LogURLab, Log, TEXT("[pump] %d cams, per-cam ready ms (order-issued): %s"),
+			Cams.Num(), *Line);
+	}
+}
+
+void UMjCamera::SetSimClock(UObject* ClockObject)
+{
+	// Store the UObject weakly; ResolveSimClock casts it to the interface on read.
+	InjectedSimClock = ClockObject;
+}
+
+IMjSimClock* UMjCamera::ResolveSimClock() const
+{
+	if (UObject* Obj = InjectedSimClock.Get())
+	{
+		if (IMjSimClock* Clock = Cast<IMjSimClock>(Obj))
+		{
+			return Clock;
+		}
+	}
+	// Fallback: the manager singleton (manager paths, or before injection). Keeps
+	// manager-path behavior identical while the injection seam exists for Mirror.
+	return Cast<IMjSimClock>(AAMjManager::GetManager());
+}
+
+void UMjCamera::MaybeCapture()
+{
+	IMjSimClock* Clock = ResolveSimClock();
+	const uint64 AppliedId = Clock ? Clock->GetAppliedFrameId() : 0;
+	const double AppliedTime = Clock ? Clock->GetAppliedSimTime() : 0.0;
 	const double NowWall = FPlatformTime::Seconds();
 	const bool bFpsOk = (CaptureMaxFps <= 0.0f)
 					 || (NowWall - LastCaptureWallSeconds) >= (1.0 / static_cast<double>(CaptureMaxFps));
@@ -837,7 +944,8 @@ void UMjCamera::MaybeCapture(AAMjManager* Mgr)
 			{
 				CaptureComponent->CaptureScene();
 			}
-			bIssued = EnqueueReadback(AppliedId, AppliedTime);
+			bIssued = EnqueueReadback(AppliedId, AppliedTime,
+				/*bForceSubmit=*/CVarCamForceSubmit.GetValueOnGameThread() != 0);
 		}
 
 		if (bIssued)
@@ -852,7 +960,7 @@ void UMjCamera::MaybeCapture(AAMjManager* Mgr)
 	LastRenderedAppliedTime = AppliedTime;
 }
 
-void UMjCamera::PublishDueDelayedFrames(AAMjManager* Mgr)
+void UMjCamera::PublishDueDelayedFrames()
 {
 	// Publish the delayed selection, the newest frame whose reveal time has
 	// passed, each Seq exactly once, so the stream lags by the configured delay.
@@ -869,9 +977,11 @@ void UMjCamera::PublishDueDelayedFrames(AAMjManager* Mgr)
 	// -- and a caller wanting reveals to advance in real time while paused sets
 	// bDelayUseWallClock. Any pile-up of unrevealed frames is bounded by the
 	// history ring's ceiling.
+	IMjSimClock* Clock = ResolveSimClock();
+	const double AppliedSimTime = Clock ? Clock->GetAppliedSimTime() : 0.0;
 	const double NowVal = bDelayUseWallClock
 							? (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds()
-							: (Mgr ? Mgr->GetLastAppliedSimTime() : 0.0);
+							: AppliedSimTime;
 	TSharedPtr<const FMjCameraFrame> Selected = SelectDelayedFrameShared(NowVal, Delay.LastPublishedSeq);
 	if (Selected.IsValid())
 	{
@@ -1042,56 +1152,47 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			RefreshHiddenComponentsFromSegPools();
 		}
 
-		if (bEnableZmqBroadcast && !ZmqPublisher)
+		// Build the per-camera image-egress transports from the authored broadcast
+		// flags: the ZMQ backend, the SHM backend, and any external backend an
+		// optional transport module installs. Each owns this camera's channel and a
+		// published frame fans out to every one. Guarded so the double enable at
+		// startup (RegisterCamera then BeginPlay) does not stand up a second set.
+		if (CameraPublishers.Num() == 0)
 		{
-			const FString Topic = GetCanonicalName();
-
-			// Bind inside this instance's camera port block, so several editors
-			// acting as render servers never fight over one port.
-			ZmqEndpoint = ResolveStreamEndpoint();
-			ZmqPublisher = new FCameraZmqPublisher(ZmqEndpoint, Topic, CaptureResolution());
-			PublisherThread = FRunnableThread::Create(ZmqPublisher, TEXT("CameraZmqPublisherThread"), 0, TPri_BelowNormal);
-			if (!PublisherThread)
+			if (bEnableZmqBroadcast)
 			{
-				// Drop the publisher rather than hold a runnable nothing drives.
-				UE_LOG(LogURLabNet, Error,
-					TEXT("[MjCamera] '%s' failed to create ZMQ publisher thread; disabling ZMQ broadcast"),
-					*CameraLogName(*this));
-				delete ZmqPublisher;
-				ZmqPublisher = nullptr;
+				// Bind inside this instance's camera port block, so several editors
+				// acting as render servers never fight over one port.
+				ZmqEndpoint = ResolveStreamEndpoint();
+				UURLabZmqCameraPublishTransport* Zmq = NewObject<UURLabZmqCameraPublishTransport>(this);
+				Zmq->Configure(ZmqEndpoint, CaptureResolution());
+				CameraPublishers.Add(Zmq);
 			}
-		}
-
-		// The SHM publisher opens an mmap'd file under the live URLab session dir.
-		if (bEnableShmBroadcast && !ShmWriter)
-		{
-			// The "live" session segment is process-global on one host: parameterise
-			// it per instance before running several editors as render servers.
-			const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(TEXT("live"));
-			IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
-			// Derive the SHM stem from the canonical name (which honors a re-homed camera's pinned
-			// override), so it matches the advertised ZMQ topic; ResolveCameraCanonical's articulation
-			// cast would diverge at play, once the authoring articulation is gone.
-			const FString Canon = GetCanonicalName();
-			FString CanonArtStr, CanonPartStr;
-			if (!Canon.Split(TEXT("/"), &CanonArtStr, &CanonPartStr))
+			if (bEnableShmBroadcast)
 			{
-				CanonArtStr = Canon;
+				UURLabShmCameraPublishTransport* Shm = NewObject<UURLabShmCameraPublishTransport>(this);
+				Shm->Configure(CaptureResolution());
+				CameraPublishers.Add(Shm);
 			}
-			const FString FileName = FString::Printf(
-				TEXT("cam_%s_%s.shm"), *CanonArtStr, *CanonPartStr);
-			const FString FullPath = FPaths::Combine(Dir, FileName);
-
-			ShmWriter = new FCameraShmWriter();
-			if (!ShmWriter->Open(FullPath, CaptureResolution()))
+			// An optional transport module (gRPC / dm_env) may install a camera
+			// egress backend; add it alongside the built-ins when present.
+			if (FMjExternalTransportProvider::MakeCameraPublishTransport.IsBound())
 			{
-				delete ShmWriter;
-				ShmWriter = nullptr;
+				if (UURLabCameraPublishTransport* Ext =
+						FMjExternalTransportProvider::MakeCameraPublishTransport.Execute(this))
+				{
+					CameraPublishers.Add(Ext);
+				}
 			}
-			else
+
+			const FString Canonical = GetCanonicalName();
+			for (UURLabCameraPublishTransport* Transport : CameraPublishers)
 			{
-				UE_LOG(LogURLabNet, Log, TEXT("[MjCamera] '%s' SHM broadcast at %s"),
-					*CameraLogName(*this), *FullPath);
+				if (Transport)
+				{
+					Transport->TransportInit();
+					Transport->OpenCameraChannel(StreamPortIndex, Canonical, StreamPortIndex);
+				}
 			}
 		}
 
@@ -1125,6 +1226,10 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 	else
 	{
 		bStreamingEnabled = false;
+
+		// Stop + drain the render-thread harvest before the transports it publishes
+		// through are torn down below.
+		UnregisterRenderThreadHarvest();
 
 		// Release the seg pool first, while CaptureMode still says what we subscribed as.
 		if (IsSegMode(CaptureMode))
@@ -1167,24 +1272,17 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 		// Drop the target, so the next enable rebuilds it in the current mode.
 		RenderTarget = nullptr;
 
-		if (PublisherThread)
+		// Close every channel and release each transport's backend handles (ZMQ
+		// send threads, SHM regions, external streams).
+		for (UURLabCameraPublishTransport* Transport : CameraPublishers)
 		{
-			PublisherThread->Kill(true);
-			delete PublisherThread;
-			PublisherThread = nullptr;
+			if (Transport)
+			{
+				Transport->CloseCameraChannel(StreamPortIndex);
+				Transport->TransportShutdown();
+			}
 		}
-		if (ZmqPublisher)
-		{
-			delete ZmqPublisher;
-			ZmqPublisher = nullptr;
-		}
-
-		if (ShmWriter)
-		{
-			ShmWriter->Close(/*bDeleteFile=*/true);
-			delete ShmWriter;
-			ShmWriter = nullptr;
-		}
+		CameraPublishers.Reset();
 
 		// Tell any out-of-core image sink to release its per-camera resources.
 		FMjCameraFrameBus::Get().OnStreamStopped.Broadcast(GetCanonicalName());
@@ -1199,9 +1297,9 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 
 void UMjCamera::RequestReadback()
 {
-	if (AAMjManager* Manager = AAMjManager::GetManager())
+	if (IMjSimClock* Clock = ResolveSimClock())
 	{
-		EnqueueReadback(Manager->GetLastAppliedFrameId(), Manager->GetLastAppliedSimTime());
+		EnqueueReadback(Clock->GetAppliedFrameId(), Clock->GetAppliedSimTime());
 	}
 	else
 	{
@@ -1211,8 +1309,26 @@ void UMjCamera::RequestReadback()
 
 bool UMjCamera::EnqueueReadback(uint64 ShowFrameId, double ShowSimTime, bool bForceSubmit)
 {
+	if (!RenderTarget)
+	{
+		return false;
+	}
 	// Pipeline cap: keep at most MaxInFlightReadbacks async copies outstanding.
-	if (!RenderTarget || InFlightReadbacks.Num() >= MaxInFlightReadbacks)
+	// The active list differs by harvest mode, so the cap must count the right one
+	// -- counting the empty game-thread list in RT mode removed all backpressure
+	// and let readbacks pile up, inflating issue->fence.
+	const bool bRTHarvest = CVarCamRTHarvest.GetValueOnGameThread() != 0;
+	int32 InFlightCount;
+	if (bRTHarvest)
+	{
+		FScopeLock Lock(&RTInFlightLock);
+		InFlightCount = RTInFlight.Num();
+	}
+	else
+	{
+		InFlightCount = InFlightReadbacks.Num();
+	}
+	if (InFlightCount >= MaxInFlightReadbacks)
 	{
 		return false;
 	}
@@ -1254,6 +1370,9 @@ bool UMjCamera::EnqueueReadback(uint64 ShowFrameId, double ShowSimTime, bool bFo
 	// Unix-epoch capture time for the wire meta, the same clock as the state
 	// stream's wall_time and Python's time.time().
 	Entry.CaptureUnixSeconds = (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
+	// Monotonic stamp on the same clock as the later stage stamps, for copy-out
+	// timing. Unix time above is for the wire; this is for stage deltas.
+	Entry.TIssuedSeconds = FPlatformTime::Seconds();
 	// The post-step state the harvested pixels show: for a manual capture that is
 	// the current applied id; in every-frame mode the caller passes the id whose
 	// render the target currently holds.
@@ -1278,7 +1397,19 @@ bool UMjCamera::EnqueueReadback(uint64 ShowFrameId, double ShowSimTime, bool bFo
 		}
 	});
 
-	InFlightReadbacks.Add(MoveTemp(Entry));
+	if (CVarCamRTHarvest.GetValueOnGameThread() != 0)
+	{
+		// Render-thread harvest: hand the in-flight readback to the RT list and
+		// ensure the end-of-render-frame poller is registered. The game-thread
+		// harvest (DispatchReadyReadbacks/DrainCompletedFrames) then finds nothing.
+		EnsureRenderThreadHarvestRegistered();
+		FScopeLock Lock(&RTInFlightLock);
+		RTInFlight.Add(MoveTemp(Entry));
+	}
+	else
+	{
+		InFlightReadbacks.Add(MoveTemp(Entry));
+	}
 	return true;
 }
 
@@ -1451,14 +1582,15 @@ double FMjCameraDelayModel::FrameClock(const FMjCameraFrame& Frame, bool bUseWal
 	return bUseWallClock ? Frame.CaptureUnixTime : Frame.SimTime;
 }
 
-double FMjCameraDelayModel::NowClockValue(bool bUseWallClock)
+double FMjCameraDelayModel::NowClockValue(bool bUseWallClock, double AppliedSimTime)
 {
 	if (bUseWallClock)
 	{
 		return (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
 	}
-	const AAMjManager* Manager = AAMjManager::GetManager();
-	return Manager ? Manager->GetLastAppliedSimTime() : 0.0;
+	// The sim-clock "now" is the applied render-state time, supplied by the caller
+	// from IMjSimClock (manager or Mirror), not read from the manager singleton.
+	return AppliedSimTime;
 }
 
 bool FMjCameraDelayModel::IsDelayActive(float DelaySeconds, float JitterSeconds)
@@ -1493,7 +1625,9 @@ double UMjCamera::FrameClock(const FMjCameraFrame& Frame) const
 
 double UMjCamera::NowClockValue() const
 {
-	return FMjCameraDelayModel::NowClockValue(bDelayUseWallClock);
+	IMjSimClock* Clock = ResolveSimClock();
+	const double AppliedSimTime = Clock ? Clock->GetAppliedSimTime() : 0.0;
+	return FMjCameraDelayModel::NowClockValue(bDelayUseWallClock, AppliedSimTime);
 }
 
 bool UMjCamera::IsDelayActive() const
@@ -1525,17 +1659,56 @@ void UMjCamera::SetCaptureRate(bool bInOnStateChange, float InMaxFps)
 // Publishing and identity
 // ---------------------------------------------------------------------------
 
-void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
+bool UMjCamera::BuildCameraWireFrame(const FMjCameraFrame& Frame, FMjCameraWireFrame& Out) const
 {
-	FMjCameraFrameMeta Meta;
-	Meta.FrameId = Frame.FrameId;
-	Meta.SimTime = Frame.SimTime;
-	Meta.Width = static_cast<uint32>(Frame.Width);
-	Meta.Height = static_cast<uint32>(Frame.Height);
+	Out.CameraIndex = StreamPortIndex;
+	Out.Width = Frame.Width;
+	Out.Height = Frame.Height;
+	Out.FrameId = Frame.FrameId;
+	Out.SimTime = Frame.SimTime;
 	// The original capture time, so a delayed frame reports the moment it was
 	// taken and the client's content age reflects the injected latency.
-	Meta.CaptureUnixTime = Frame.CaptureUnixTime;
+	Out.CaptureUnixSeconds = Frame.CaptureUnixTime;
 
+	if (CaptureMode == EMjCameraMode::Depth)
+	{
+		if (Frame.Depth.Num() == 0)
+		{
+			return false;
+		}
+		Out.Dtype = FName(TEXT("float32"));
+		Out.Bytes = reinterpret_cast<const uint8*>(Frame.Depth.GetData());
+		Out.NumBytes = Frame.Depth.Num() * static_cast<int32>(sizeof(float));
+	}
+	else
+	{
+		if (Frame.Color.Num() == 0)
+		{
+			return false;
+		}
+		Out.Dtype = FName(TEXT("bgra8"));
+		Out.Bytes = reinterpret_cast<const uint8*>(Frame.Color.GetData());
+		Out.NumBytes = Frame.Color.Num() * static_cast<int32>(sizeof(FColor));
+	}
+	return true;
+}
+
+void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
+{
+	FMjCameraWireFrame Wire;
+	if (!BuildCameraWireFrame(Frame, Wire))
+	{
+		return;
+	}
+	for (UURLabCameraPublishTransport* Transport : CameraPublishers)
+	{
+		if (Transport)
+		{
+			Transport->PublishCameraFrame(Wire);
+		}
+	}
+
+	// Broadcast the same frame on the in-proc bus for any out-of-core image sink.
 	// The payload points at the frame's pixel buffer and is valid only for the
 	// duration of the broadcast.
 	FMjCameraFramePayload Payload;
@@ -1545,45 +1718,11 @@ void UMjCamera::PublishFrameToWorkers(const FMjCameraFrame& Frame)
 	Payload.bDepth = (CaptureMode == EMjCameraMode::Depth);
 	Payload.SimTime = Frame.SimTime;
 	Payload.FrameId = Frame.FrameId;
-
-	if (CaptureMode == EMjCameraMode::Depth)
-	{
-		if (Frame.Depth.Num() == 0)
-		{
-			return;
-		}
-		if (bEnableZmqBroadcast && ZmqPublisher)
-		{
-			ZmqPublisher->PushFrame(Frame.Depth, Meta);
-		}
-		if (bEnableShmBroadcast && ShmWriter)
-		{
-			ShmWriter->PushFrame(Frame.Depth, Meta);
-		}
-
-		Payload.Data = reinterpret_cast<const uint8*>(Frame.Depth.GetData());
-		Payload.DataNumBytes = Frame.Depth.Num() * static_cast<int32>(sizeof(float));
-		Payload.RowStrideBytes = Frame.Width * static_cast<int32>(sizeof(float));
-	}
-	else
-	{
-		if (Frame.Color.Num() == 0)
-		{
-			return;
-		}
-		if (bEnableZmqBroadcast && ZmqPublisher)
-		{
-			ZmqPublisher->PushFrame(Frame.Color, Meta);
-		}
-		if (bEnableShmBroadcast && ShmWriter)
-		{
-			ShmWriter->PushFrame(Frame.Color, Meta);
-		}
-
-		Payload.Data = reinterpret_cast<const uint8*>(Frame.Color.GetData());
-		Payload.DataNumBytes = Frame.Color.Num() * static_cast<int32>(sizeof(FColor));
-		Payload.RowStrideBytes = Frame.Width * static_cast<int32>(sizeof(FColor));
-	}
+	Payload.Data = Wire.Bytes;
+	Payload.DataNumBytes = Wire.NumBytes;
+	Payload.RowStrideBytes = Payload.bDepth
+								? Frame.Width * static_cast<int32>(sizeof(float))
+								: Frame.Width * static_cast<int32>(sizeof(FColor));
 
 	FMjCameraFrameBus::Get().OnFrameReady.Broadcast(Payload);
 }
@@ -1624,9 +1763,17 @@ FString UMjCamera::ResolveStreamEndpoint() const
 
 FString UMjCamera::GetActualZmqEndpoint() const
 {
-	if (ZmqPublisher)
+	for (const UURLabCameraPublishTransport* Transport : CameraPublishers)
 	{
-		return ZmqPublisher->GetBoundEndpoint();
+		if (const UURLabZmqCameraPublishTransport* Zmq =
+				Cast<UURLabZmqCameraPublishTransport>(Transport))
+		{
+			const FString Bound = Zmq->GetBoundEndpoint(StreamPortIndex);
+			if (!Bound.IsEmpty())
+			{
+				return Bound;
+			}
+		}
 	}
 	// Not streaming yet, e.g. a dormant camera advertised in the hello handshake:
 	// report the endpoint this camera WILL bind from its instance's port block, so

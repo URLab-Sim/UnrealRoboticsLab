@@ -652,7 +652,6 @@ bool BuildFastPathScene(const FString& MjbPath, const TArray<uint8>& MjbBytes,
 		OutError = TEXT("failed to spawn AMjRenderer");
 		return false;
 	}
-	Scene->bTestSweep = BusEndpoint.IsEmpty(); // no driver -> local dev sweep in PIE
 	Scene->MjbFilePath = MjbPath;
 	if (MjbBytes.Num() > 0)
 	{

@@ -26,6 +26,8 @@
 
 class UURLabRpcTransport;
 class UURLabPublishTransport;
+class UURLabClientSubscribeTransport;
+class UURLabCameraPublishTransport;
 class UURLabBridgeServer;
 class AAMjManager;
 
@@ -48,6 +50,8 @@ class AAMjManager;
  */
 DECLARE_DELEGATE_RetVal_OneParam(UURLabRpcTransport*, FMjMakeExternalRpcTransport, UURLabBridgeServer*);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabPublishTransport*, FMjMakeExternalPublishTransport, AAMjManager*);
+DECLARE_DELEGATE_RetVal_OneParam(UURLabClientSubscribeTransport*, FMjMakeExternalClientSubscribeTransport, UObject* /*Outer*/);
+DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalCameraPublishTransport, UObject* /*Outer*/);
 
 struct URLAB_API FMjExternalTransportProvider
 {
@@ -58,6 +62,20 @@ struct URLAB_API FMjExternalTransportProvider
 	/** Creates an external per-step state consumer transport owned by the
 	 *  manager. Unbound when no external module is loaded. */
 	static FMjMakeExternalPublishTransport MakeStatePublishTransport;
+
+	/** Creates an external CLIENT-side render sink -- the position feed a Mirror
+	 *  renderer subscribes to. Returns an unconfigured transport for the given
+	 *  Outer; the caller (UURLabClientSubscribeTransport::Create) then Configures
+	 *  and inits it, exactly as for the built-in ZMQ backend. Unbound => the core
+	 *  falls back to ZMQ, so the pose feed can be non-ZMQ (SHM / gRPC) without the
+	 *  renderer naming a backend. */
+	static FMjMakeExternalClientSubscribeTransport MakeClientSubscribeTransport;
+
+	/** Creates an external per-camera IMAGE egress transport (the role
+	 *  UURLabPublishTransport excludes). Returns an unconfigured transport for the
+	 *  given Outer; the caller opens per-camera channels and inits it. Unbound =>
+	 *  the core uses its built-in camera backend. */
+	static FMjMakeExternalCameraPublishTransport MakeCameraPublishTransport;
 
 	/** True when an external module has installed the control RPC factory. */
 	static bool HasControlRpcTransport();

@@ -28,6 +28,7 @@
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
+#include "MuJoCo/Core/MjSimClock.h"
 #include "Bridge/BridgeServer.h"
 #include "State/MjStateCollector.h"
 #include <atomic>
@@ -88,7 +89,7 @@ struct FMjUserInputChannelInfo
  * External code accesses subsystem state via Manager->PhysicsEngine->X, etc.
  */
 UCLASS()
-class URLAB_API AAMjManager : public AActor
+class URLAB_API AAMjManager : public AActor, public IMjSimClock
 {
 	GENERATED_BODY()
 
@@ -531,6 +532,11 @@ public:
 	{
 		return LastAppliedRenderSimTime.load(std::memory_order_acquire);
 	}
+
+	// --- IMjSimClock: cameras read the applied render state through this, so the
+	// capture/delay pipeline never depends on the AAMjManager singleton. ---
+	virtual uint64 GetAppliedFrameId() const override { return GetLastAppliedFrameId(); }
+	virtual double GetAppliedSimTime() const override { return GetLastAppliedSimTime(); }
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mujoco Physics|Objects")
 	TArray<UMjQuickConvertComponent*> m_MujocoComponents;

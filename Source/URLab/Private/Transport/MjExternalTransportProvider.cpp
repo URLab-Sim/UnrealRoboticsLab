@@ -24,6 +24,8 @@
 
 FMjMakeExternalRpcTransport FMjExternalTransportProvider::MakeControlRpcTransport;
 FMjMakeExternalPublishTransport FMjExternalTransportProvider::MakeStatePublishTransport;
+FMjMakeExternalClientSubscribeTransport FMjExternalTransportProvider::MakeClientSubscribeTransport;
+FMjMakeExternalCameraPublishTransport FMjExternalTransportProvider::MakeCameraPublishTransport;
 
 bool FMjExternalTransportProvider::HasControlRpcTransport()
 {

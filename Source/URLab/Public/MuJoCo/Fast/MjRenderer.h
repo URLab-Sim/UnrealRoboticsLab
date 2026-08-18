@@ -11,7 +11,9 @@
 #include "MuJoCo/Fast/MjRendererOverlay.h"
 #include "MuJoCo/Entity/MjPoseSource.h"
 #include "MuJoCo/Entity/MjGeomAssetResolver.h"
+#include "MuJoCo/Core/MjSimClock.h"
 #include "Templates/UniquePtr.h"
+#include <atomic>
 #include "MjRenderer.generated.h"
 
 struct mjModel_;
@@ -49,10 +51,7 @@ enum class EMjDebugShaderMode : uint8;
  *   UMjPhysicsEngine and renders the stepped state from the engine's thread-safe
  *   snapshot, so the fast-path instance is a full sim a client can drive by RPC.
  *
- * A one-shot mj_forward runs at load to place the rest pose. bTestSweep is an
- * owner-less dev fallback that animates joints locally so the builder can be
- * exercised without an owner; it is off by default and ignored in Stepped mode
- * or once a bus is connected.
+ * A one-shot mj_forward runs at load to place the rest pose.
  *
  * The mesh/texture/material builders live in UMjRendererAssetBaker, the transform-bus
  * receive plumbing in UMjRendererBus, and the Direct-mode engine install +
@@ -60,12 +59,33 @@ enum class EMjDebugShaderMode : uint8;
  * geom scene graph, and the build orchestration.
  */
 UCLASS()
-class URLAB_API AMjRenderer : public AActor
+class URLAB_API AMjRenderer : public AActor, public IMjSimClock
 {
 	GENERATED_BODY()
 
 public:
 	AMjRenderer();
+
+	// --- IMjSimClock: the manager-less render server is its own applied-state
+	// source. In Mirror mode the owner's pose broadcast carries the frame_id /
+	// sim_time it resolved; the render server stores them here so its cameras'
+	// capture-stamping and delay-reveal work exactly as on the manager paths. ---
+	virtual uint64 GetAppliedFrameId() const override
+	{
+		return AppliedFrameId.load(std::memory_order_acquire);
+	}
+	virtual double GetAppliedSimTime() const override
+	{
+		return AppliedSimTime.load(std::memory_order_acquire);
+	}
+
+	/** Record the applied post-step state carried by the latest pose broadcast.
+	 *  Called on the game thread as transforms are applied. */
+	void SetAppliedState(uint64 FrameId, double SimTime)
+	{
+		AppliedFrameId.store(FrameId, std::memory_order_release);
+		AppliedSimTime.store(SimTime, std::memory_order_release);
+	}
 
 	/** Absolute path to a version-matched MJB. Used only when MjbBytes is empty. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
@@ -86,13 +106,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	EMjPoseSource RunMode = EMjPoseSource::Mirror;
 
-	/** Animate joints locally via mj_forward so the scene moves with no owner.
-	 *  Development only -- the real path applies a streamed transform set, and
-	 *  Direct mode steps for real. Off by default so a placed/owner-less scene
-	 *  stays static; the launcher enables it explicitly for the no-owner demo.
-	 *  Ignored once a bus endpoint is connected or in Direct mode. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
-	bool bTestSweep = false;
+	// Eval regime (-URLabFastForcedOnly): the forced-render control REP is the one
+	// pose driver -- cameras are set up but do not auto-capture, and the transform
+	// bus is never connected. When false (Mirror regime) the bus is the one driver
+	// and the REP is not bound, so exactly one source ever writes the rendered pose.
+	bool bForcedRenderOnly = false;
 
 	/** Owner transform bus endpoint, e.g. "tcp://127.0.0.1:5561". When set, this
 	 *  scene subscribes to a per-geom transform stream and mirrors the owner. */
@@ -355,6 +373,29 @@ public:
 	virtual void Tick(float DeltaSeconds) override;
 
 private:
+	// Applied post-step state (IMjSimClock) carried by the latest pose broadcast in
+	// Mirror mode. Read by this actor's cameras for capture-stamping / delay reveal.
+	std::atomic<uint64> AppliedFrameId{0};
+	std::atomic<double> AppliedSimTime{0.0};
+
+	// Forced-render control REP socket (opaque libzmq handles; see StartRenderControl).
+	void* RenderControlCtx = nullptr;
+	void* RenderControlRep = nullptr;
+	int32 RenderControlPort = 0;
+	// Applies the state carried by a forced-render request (poses + cameras + clock).
+	void ApplyForcedRenderState(const TSharedPtr<class FJsonObject>& Req);
+	// Services one forced-render request end to end: apply state, force-capture, pump
+	// the readback to completion (shared MjPumpForcedCapture), and reply multipart.
+	// Runs on a game-thread AsyncTask off the world tick -- inline in Tick starves the
+	// render thread of the frames it polls for (measured ~55 ms vs ~11 ms off-tick).
+	// TReqSeconds is the request-arrival timestamp, for the latency log.
+	void ServeForcedRender(const TSharedPtr<class FJsonObject>& Req, double TReqSeconds);
+	// One forced render is serviced at a time (REP is strict req/rep): a request is
+	// applied + captured + replied on a game-thread AsyncTask (the same context the
+	// manager path uses), so PollRenderControl must not take a new request while one
+	// is in flight.
+	std::atomic<bool> bForcedInFlight{false};
+
 	// FMjRendererStepMode reaches back into the scene for the model, geom/camera
 	// components and render origin while it drives the shared engine.
 	friend struct FMjRendererStepMode;
@@ -460,8 +501,6 @@ private:
 	// no manager. Used by the overlay + segmentation walks that reach the articulations.
 	AAMjManager* ResolveManager() const;
 
-	double SweepTime = 0.0;
-
 	// --- transform bus (owner -> this renderer) --------------------------- //
 	// Receive plumbing for the owner's "geoms" broadcast. Lazily created on the
 	// first StartBus; the game thread pulls the newest raw payload each Tick.
@@ -505,6 +544,16 @@ private:
 	// Turn the dormant cameras into a live render server (render target + ZMQ/SHM
 	// bind + per-frame capture). Play session only.
 	void StartCameraStreaming();
+
+	// --- Forced render control (REQ/REP): "render this exact state, block, return
+	// the fresh frame" for the manager-less render server (its only path was async
+	// PUB). A client sends the state + camera list; the server applies it on the
+	// game thread, force-captures, tight-polls the readback, and replies multipart
+	// (msgpack header + one raw pixel frame per camera). Bound while streaming. ---
+	void StartRenderControl(int32 Port);
+	void StopRenderControl();
+	// Non-blocking: service at most one pending forced-render request. Game thread.
+	void PollRenderControl();
 
 	// Re-home the compiled model's body-fixed cameras onto this play view: one dormant
 	// UMjCamera per model camera on its body actor, named through FMjCameraRegistry so

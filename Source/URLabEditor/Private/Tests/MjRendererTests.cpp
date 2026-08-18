@@ -44,7 +44,6 @@ bool FMjRendererBuildsFromMjb::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	Scene->bTestSweep = false;
 	Scene->MjbFilePath = kPrimitivesMjb;
 
 	const int32 NGeom = Scene->LoadAndBuild();
@@ -83,7 +82,6 @@ bool FMjRendererBuildsMeshModel::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	Scene->bTestSweep = false;
 	Scene->MjbFilePath = kPandaMjb;
 
 	const int32 NGeom = Scene->LoadAndBuild();
@@ -127,7 +125,6 @@ bool FMjRendererReceivesBus::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	Scene->bTestSweep = false;
 	Scene->MjbFilePath = DemoMjb;
 	const int32 NGeom = Scene->LoadAndBuild();
 	Scene->BusEndpoint = Bus;

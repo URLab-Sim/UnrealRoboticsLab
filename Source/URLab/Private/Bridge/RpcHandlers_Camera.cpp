@@ -111,38 +111,17 @@ bool FURLabRpcDispatcher::RenderCamerasSync(AAMjManager* Mgr,
 		if (!bWait)
 			return; // pipelined: kick only, no pump
 
-		// Bound the game-thread pump under the request timeout: it needs to cover
-		// render + readback (and a cold RT's one-time warm-up) for every requested
-		// camera, and capping it means a genuinely stuck frame frees the game thread
-		// rather than freezing it for the whole timeout. The budget scales with the
-		// camera count -- each camera is a separate scene render + readback, so a
-		// single fixed cap (tuned for one camera) starved multi-camera requests and
-		// dropped their tail onto the slow off-thread wait, inflating latency under
-		// load. The worker wait below, off the game thread, remains the real deadline
-		// for anything the pump does not finish.
+		// Drive the readback to completion via the shared forced-capture primitive
+		// (the same one the Mirror forced-render REP uses, so the two never drift).
+		// The budget scales with the camera count -- each camera is a separate scene
+		// render + readback, so a single fixed cap (tuned for one camera) starved
+		// multi-camera requests and dropped their tail onto the slow off-thread wait,
+		// inflating latency under load. The worker wait below, off the game thread,
+		// remains the real deadline for anything the pump does not finish. This runs
+		// on an AsyncTask (off the world tick) so the render thread can produce the
+		// frames it polls for.
 		const int32 MaxPumpMs = FMath::Max(60, Cams.Num() * 50);
-		const double Deadline =
-			FPlatformTime::Seconds() + FMath::Min(FMath::Max(1, TimeoutMs), MaxPumpMs) / 1000.0;
-		for (;;)
-		{
-			bool bAllReady = true;
-			for (UMjCamera* Cam : Cams)
-			{
-				Cam->HarvestCompletedReadbacks();
-				if (Cam->GetLatestFrameId() < MinFrameId)
-				{
-					bAllReady = false;
-					// Re-issue only while nothing is outstanding, so a cold RT that
-					// was not renderable on the first attempt retries without piling
-					// captures behind an in-flight one.
-					if (!Cam->HasPendingReadbacks())
-						Cam->IssueSyncCapture();
-				}
-			}
-			if (bAllReady || FPlatformTime::Seconds() >= Deadline)
-				break;
-			FPlatformProcess::SleepNoStats(0.0002f);
-		}
+		MjPumpForcedCapture(Cams, MinFrameId, FMath::Min(FMath::Max(1, TimeoutMs), MaxPumpMs));
 	});
 
 	// Pipelined mode serves the most-recently-completed frame (up to one step

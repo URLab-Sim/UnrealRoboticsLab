@@ -38,17 +38,9 @@
 #include "MjCamera.generated.h"
 
 class AAMjManager;
-class FCameraShmWriter;
-class FRunnableThread;
-
-/**
- * The ZMQ publisher thread, defined in MjCamera.cpp.
- *
- * Nothing outside the capture pipeline constructs one, so its queues and its
- * libzmq handles stay in that translation unit and this header stays free of
- * both.
- */
-class FCameraZmqPublisher;
+class IMjSimClock;
+class UURLabCameraPublishTransport;
+struct FMjCameraWireFrame;
 
 /**
  * The process-wide publish gate.
@@ -111,6 +103,19 @@ struct FMjCameraFrame
 	 * once. FrameId cannot serve: it repeats across intra-step captures.
 	 */
 	uint64 Seq = 0;
+
+	// --- Copy-out stage timing (urlab.Cam.Diag) --------------------------------
+	// Monotonic FPlatformTime::Seconds() stamps on the same clock across the
+	// render and game threads, so the copy-out path can be decomposed:
+	//   issued -> fence-ready : GPU copy + game-tick poll quantization
+	//   fence  -> mapped      : render-thread map/copy dispatch latency
+	//   mapped -> published   : the game-thread publish bounce (the SPEAR delta;
+	//                           SPEAR publishes on the render thread, ~0 here)
+	// All zero when diagnostics are off; these never touch the wire.
+	double TIssuedSeconds = 0.0;
+	double TFenceReadySeconds = 0.0;
+	double TMappedSeconds = 0.0;
+	double TPublishedSeconds = 0.0;
 };
 
 /**
@@ -187,8 +192,9 @@ struct FMjCameraDelayModel
 	/** The clock value delay maths uses for Frame, per bUseWallClock. */
 	static double FrameClock(const FMjCameraFrame& Frame, bool bUseWallClock);
 
-	/** The current delay-policy clock value: wall-clock, or the applied SimTime. */
-	static double NowClockValue(bool bUseWallClock);
+	/** The current delay-policy clock value: wall-clock, or the supplied applied
+	 *  SimTime (read by the caller from the sim clock, not the manager singleton). */
+	static double NowClockValue(bool bUseWallClock, double AppliedSimTime);
 
 	/** True when latency emulation is configured at all. */
 	static bool IsDelayActive(float DelaySeconds, float JitterSeconds);
@@ -199,6 +205,21 @@ struct FMjCameraDelayModel
 	/** The last Seq sent, so the delayed publish emits each frame exactly once. Game thread only. */
 	uint64 LastPublishedSeq = 0;
 };
+
+/**
+ * Drive a set of cameras to a fresh frame synchronously: tight-poll each camera's
+ * readback until it holds a frame >= TargetFrameId (or any frame at all when
+ * TargetFrameId is 0), re-issuing a capture whenever a camera has none in flight,
+ * bounded by TimeoutMs. Sleep-waits in 0.2 ms slices so it never stalls the render
+ * thread. GAME THREAD ONLY, and it must run OFF the world tick (from an AsyncTask,
+ * not inline in Tick) so the render thread can produce the very frames it polls for
+ * -- blocking inside Tick starves that render and inflates latency several-fold.
+ * The caller issues the first capture (so a pipelined caller can kick without
+ * pumping); this only polls and conditionally re-issues. One forced-capture
+ * primitive shared by the manager RPC path and the Mirror forced-render REP, so the
+ * two never drift.
+ */
+URLAB_API void MjPumpForcedCapture(const TArray<UMjCamera*>& Cams, uint64 TargetFrameId, int32 TimeoutMs);
 
 /**
  * A `<camera>` as an observation device: scene capture, readback, streaming.
@@ -258,6 +279,15 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Capture", meta = (ClampMin = "0.0"))
 	float CaptureMaxFps = 0.0f;
+
+	/**
+	 * Manual-capture-only: the per-frame pipeline harvests completed readbacks but
+	 * never issues an automatic capture. Captures come solely from an on-demand
+	 * IssueSyncCapture (the forced-render path). Used by the render server's
+	 * forced-render mode so the async stream does not compete with the request
+	 * render for the one render thread.
+	 */
+	bool bManualCaptureOnly = false;
 
 	/**
 	 * How many recent frames to retain for by-id retrieval. The ClampMax mirrors
@@ -375,6 +405,11 @@ public:
 
 	/** Configure capture-rate control at runtime. */
 	void SetCaptureRate(bool bInOnStateChange, float InMaxFps);
+
+	/** Inject the applied-render-state source (a UObject implementing IMjSimClock:
+	 *  the manager, or the Mirror render server). Null falls back to the manager
+	 *  singleton, so manager paths work before/without injection. */
+	void SetSimClock(UObject* ClockObject);
 
 	/**
 	 * Allocate the render target and begin capturing, or stop and give the
@@ -583,11 +618,19 @@ private:
 	 */
 	void RefreshHiddenComponentsFromSegPools();
 
+	/** The active sim-time source: the injected one, else the AAMjManager singleton.
+	 *  Every capture-stamp id/time and delay-reveal "now" reads through this, so the
+	 *  pipeline is decoupled from the manager and works on the Mirror path. */
+	IMjSimClock* ResolveSimClock() const;
+
+	/** The injected sim-time source (weak; a UObject implementing IMjSimClock). */
+	TWeakObjectPtr<UObject> InjectedSimClock;
+
 	/** Issue a capture and readback when the fps cap and the state-change gate allow. */
-	void MaybeCapture(AAMjManager* Mgr);
+	void MaybeCapture();
 
 	/** With latency emulation on, publish the newest revealed frame, each Seq once. */
-	void PublishDueDelayedFrames(AAMjManager* Mgr);
+	void PublishDueDelayedFrames();
 
 	// --- Async readback pipeline ------------------------------------------------ //
 	//
@@ -628,9 +671,51 @@ private:
 		int32 Height = 0;
 		/** Unix-epoch seconds at request time, stamped into the wire meta. */
 		double CaptureUnixSeconds = 0.0;
+		/** Monotonic stamps for copy-out stage timing (urlab.Cam.Diag). */
+		double TIssuedSeconds = 0.0;
+		double TFenceReadySeconds = 0.0;
 	};
 	TArray<FInFlightReadback> InFlightReadbacks;
 	static constexpr int32 MaxInFlightReadbacks = 3;
+
+	// --- Copy-out stage-timing accumulators (urlab.Cam.Diag) -------------------
+	// Game-thread only. Summed per harvested frame and logged every
+	// DiagWindowFrames, so enabling diagnostics costs a few adds per frame and
+	// one log line per window, never a per-frame spam.
+	void AccumulateStageTiming(const FMjCameraFrame& Frame);
+	static constexpr int32 DiagWindowFrames = 60;
+	int32 DiagFrames = 0;
+	double DiagSumIssueToFence = 0.0;
+	double DiagSumFenceToMap = 0.0;
+	double DiagSumMapToPublish = 0.0;
+	double DiagSumTotal = 0.0;
+	double DiagMaxMapToPublish = 0.0;
+	double DiagMaxTotal = 0.0;
+
+	// --- Render-thread harvest (urlab.Cam.RenderThreadHarvest) -----------------
+	// The SPEAR-style path: poll the fence, map, and publish on the render thread
+	// at render-frame end, so the copy-out never waits for a game tick. A/B'd
+	// against the default game-thread harvest. Registered lazily while streaming
+	// with the cvar on; unregistered + flushed before transports are torn down so
+	// the render-thread callback can never touch a freed publisher.
+	void EnsureRenderThreadHarvestRegistered();
+	void UnregisterRenderThreadHarvest();
+	void OnEndFrameRT_Harvest();                                 // render thread
+	void PublishFrameRenderThread(const FMjCameraFrame& Frame);  // render thread
+	void AccumulateStageTimingRT(const FMjCameraFrame& Frame);   // render thread
+	FDelegateHandle RTHarvestHandle;
+	bool bRTHarvestRegistered = false;
+	/** In-flight readbacks awaiting a render-thread harvest; guarded by the lock
+	 *  because the game thread (EnqueueReadback) adds and the render thread drains. */
+	FCriticalSection RTInFlightLock;
+	TArray<FInFlightReadback> RTInFlight;
+	// Render-thread-only stage accumulators (single writer: the RT callback).
+	int32 RTDiagFrames = 0;
+	double RTDiagSumIssueToFence = 0.0;
+	double RTDiagSumFenceToMap = 0.0;
+	double RTDiagSumMapToPublish = 0.0;
+	double RTDiagSumTotal = 0.0;
+	double RTDiagMaxTotal = 0.0;
 
 	/** A frame whose map and copy finished, carrying its readback back for recycling. */
 	struct FCompletedReadback
@@ -700,6 +785,14 @@ private:
 	void PublishFrameToWorkers(const FMjCameraFrame& Frame);
 
 	/**
+	 * Fill a borrowed-pixel wire frame from a harvested frame: the metadata plus a
+	 * pointer into the frame's colour or depth buffer, keyed on CaptureMode. The
+	 * pointer is valid only while Frame is, so a transport copies before returning.
+	 * Returns false when the mode's pixel buffer is empty (nothing to publish).
+	 */
+	bool BuildCameraWireFrame(const FMjCameraFrame& Frame, FMjCameraWireFrame& Out) const;
+
+	/**
 	 * Tags each harvested frame; incremented as frames drain from the readback
 	 * pipeline. Game thread only.
 	 */
@@ -729,7 +822,13 @@ private:
 	 */
 	std::atomic<double> LastRequestedSeconds{0.0};
 
-	FCameraZmqPublisher* ZmqPublisher = nullptr;
-	FRunnableThread* PublisherThread = nullptr;
-	FCameraShmWriter* ShmWriter = nullptr;
+	/**
+	 * The per-camera image-egress transports built at stream start from the
+	 * authored broadcast flags: the ZMQ backend when bEnableZmqBroadcast, the SHM
+	 * backend when bEnableShmBroadcast, and any external backend an optional
+	 * transport module installs. Each owns its own channel (this camera); a
+	 * published frame fans out to every entry. Empty while dormant.
+	 */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UURLabCameraPublishTransport>> CameraPublishers;
 };

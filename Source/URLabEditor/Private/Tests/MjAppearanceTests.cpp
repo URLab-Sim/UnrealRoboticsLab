@@ -103,7 +103,6 @@ bool FMjAppearanceStoreWalksFastPath::RunTest(const FString& Parameters)
 	{
 		return false;
 	}
-	Scene->bTestSweep = false;
 	Scene->MjbFilePath = kPrimitivesMjb;
 	Scene->LoadAndBuild();
 

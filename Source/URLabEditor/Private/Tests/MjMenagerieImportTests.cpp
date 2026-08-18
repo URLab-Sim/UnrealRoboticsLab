@@ -149,7 +149,7 @@ bool FMjImportMenagerieVX300s::RunTest(const FString& Parameters)
 		AddWarning(TEXT("Skipping: MUJOCO_MENAGERIE_PATH env var not set"));
 		return true;
 	}
-	FString XmlPath = FPaths::Combine(MenageriePath, TEXT("trossen_vx300s/vx300s.xml"));
+	FString XmlPath = FPaths::Combine(MenageriePath, TEXT("trossen_vx300s/vx300s_ue.xml"));
 
 	if (!FPaths::FileExists(XmlPath))
 	{

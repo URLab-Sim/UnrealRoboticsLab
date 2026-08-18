@@ -286,10 +286,10 @@ bool FMjSkydioImportTest::RunTest(const FString& Parameters)
 	TestNotNull(TEXT("the drone's OBJ imported as a static mesh"), Body.Asset);
 
 	// `<mesh class="x2">` puts scale="0.01 0.01 0.01" on the class, so the
-	// element authors none of it and the chain has to supply it. With the
-	// metre-to-centimetre factor that lands on 1.
-	TestTrue(FString::Printf(TEXT("a class-inherited mesh scale composes to 1, got %s"), *Body.Scale.ToString()),
-		Body.Scale.Equals(FVector(1.0), 1e-4));
+	// element authors none of it and the chain has to supply it. The resolver
+	// returns that raw; the metre-to-centimetre factor lives in the GLB import.
+	TestTrue(FString::Printf(TEXT("a class-inherited mesh scale composes to 0.01, got %s"), *Body.Scale.ToString()),
+		Body.Scale.Equals(FVector(0.01), 1e-4));
 
 	UTexture2D* Skin = MjResolveTexture(Spec, TEXT("X2_lowpoly_texture_SpinningProps_1024"));
 	TestNotNull(TEXT("the drone's PNG imported as a texture"), Skin);

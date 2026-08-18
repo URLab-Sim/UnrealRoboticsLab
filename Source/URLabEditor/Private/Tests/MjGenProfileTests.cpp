@@ -143,7 +143,9 @@ bool RoundTrip(FAutomationTestBase& Test, const FString& Label, const FString& X
  *
  * Include fragments are excluded: a <mujocoinclude> is not a spec and
  * only means anything spliced into the file that includes it, which the reader
- * does during that file's own parse.
+ * does during that file's own parse. A plain <mujoco> wrapper with no
+ * <worldbody> is the same thing in disguise -- an <include> target that cannot
+ * compile standalone -- so a <worldbody> is required as well.
  */
 TArray<FString> CorpusFiles()
 {
@@ -180,7 +182,8 @@ TArray<FString> CorpusFiles()
 	for (const FString& File : Found)
 	{
 		FString Text;
-		if (FFileHelper::LoadFileToString(Text, *File) && Text.Contains(TEXT("<mujoco")) && !Text.Contains(TEXT("<mujocoinclude")))
+		if (FFileHelper::LoadFileToString(Text, *File) && Text.Contains(TEXT("<mujoco"))
+			&& !Text.Contains(TEXT("<mujocoinclude")) && Text.Contains(TEXT("<worldbody")))
 		{
 			Files.Add(File);
 		}
@@ -189,18 +192,34 @@ TArray<FString> CorpusFiles()
 }
 
 /**
- * Where two arrays first disagree, and by how much.
+ * Where two arrays first disagree, and by how much; empty when they agree.
  *
- * `Memcmp` decides the verdict; this decides whether the report is actionable.
- * "compiled models differ at geom_quat" names a field with three hundred numbers
- * in it and leaves the reader to guess which body moved.
+ * The element type decides the test. Float fields (mjtNum/float) compare with a
+ * relative tolerance, because a model authored with euler angles or an
+ * unnormalized quat recompiles to floats that differ in the last bits (~1e-13 in
+ * geom_quat, bvh_aabb) without any real disagreement. Integer and byte fields
+ * compare exactly: a size, index or flag that moved is a structural regression
+ * and has to fail.
+ *
+ * The report names the field's first differing element, since "compiled models
+ * differ at geom_quat" names three hundred numbers and leaves the reader to
+ * guess which body moved.
  */
 template <class T>
-FString FirstDifference(const T* A, const T* B, int32 Rows, int32 Cols)
+FString FieldDifference(const T* A, const T* B, int32 Rows, int32 Cols)
 {
 	for (int32 Index = 0; Index < Rows * Cols; ++Index)
 	{
-		if (A[Index] == B[Index])
+		if constexpr (std::is_floating_point_v<T>)
+		{
+			const double AVal = static_cast<double>(A[Index]);
+			const double BVal = static_cast<double>(B[Index]);
+			if (FMath::Abs(AVal - BVal) <= 1e-9 * (1.0 + FMath::Max(FMath::Abs(AVal), FMath::Abs(BVal))))
+			{
+				continue;
+			}
+		}
+		else if (A[Index] == B[Index])
 		{
 			continue;
 		}
@@ -221,9 +240,7 @@ FString FirstDifference(const T* A, const T* B, int32 Rows, int32 Cols)
 			return FString::Printf(TEXT(", first at %s"), *At);
 		}
 	}
-	// Memcmp saw bytes the value comparison does not: -0.0 against 0.0, or two
-	// spellings of NaN. Worth saying so rather than reporting nothing.
-	return TEXT(", equal by value but not by bytes");
+	return FString();
 }
 
 /**
@@ -299,10 +316,13 @@ bool CompiledModelsAgree(FAutomationTestBase& Test, const FString& Label, const 
 	if (Mismatches == 0)
 	{
 		MJMODEL_POINTERS_PREAMBLE(A)
-#define X(type, name, nr, nc)                                                          \
-	if (FMemory::Memcmp(A->name, B->name, sizeof(type) * (size_t)(A->nr) * (nc)) != 0) \
-	{                                                                                  \
-		Report(TEXT(#name), FirstDifference<type>(A->name, B->name, A->nr, nc));       \
+#define X(type, name, nr, nc)                                                     \
+	{                                                                             \
+		const FString Where = FieldDifference<type>(A->name, B->name, A->nr, nc); \
+		if (!Where.IsEmpty())                                                     \
+		{                                                                         \
+			Report(TEXT(#name), Where);                                           \
+		}                                                                         \
 	}
 		MJMODEL_POINTERS
 #undef X
@@ -311,10 +331,13 @@ bool CompiledModelsAgree(FAutomationTestBase& Test, const FString& Label, const 
 		// tables above reaches them. `X` names a scalar and `XVEC` an array, and
 		// the two need different address expressions -- which is the whole reason
 		// mjxmacro spells them apart.
-#define MJ_COMPARE(FieldLabel, APtr, BPtr, Type, Num)                        \
-	if (FMemory::Memcmp((APtr), (BPtr), sizeof(Type) * (Num)) != 0)          \
-	{                                                                        \
-		Report(FieldLabel, FirstDifference<Type>((APtr), (BPtr), 1, (Num))); \
+#define MJ_COMPARE(FieldLabel, APtr, BPtr, Type, Num)                          \
+	{                                                                          \
+		const FString Where = FieldDifference<Type>((APtr), (BPtr), 1, (Num)); \
+		if (!Where.IsEmpty())                                                  \
+		{                                                                      \
+			Report(FieldLabel, Where);                                         \
+		}                                                                      \
 	}
 
 #define X(type, name, num) MJ_COMPARE(TEXT("opt.") TEXT(#name), &A->opt.name, &B->opt.name, type, num)

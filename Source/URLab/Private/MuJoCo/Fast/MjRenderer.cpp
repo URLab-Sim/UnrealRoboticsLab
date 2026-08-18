@@ -63,8 +63,6 @@
 #include "Misc/Base64.h"
 #include "Misc/SecureHash.h"
 
-#include "zmq.h"
-
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
 THIRD_PARTY_INCLUDES_END
@@ -1307,13 +1305,12 @@ void AMjRenderer::StartCameraStreaming()
 	{
 		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] camera server: %d camera(s) streaming from port %d"),
 			CameraComps.Num(), CameraStreamBasePort);
-		// Forced-render control REP: a client can request an exact-state, blocking,
-		// fresh frame. Derived from the camera base port so it is discoverable. Bound
-		// only in the eval regime, where it is the sole pose driver; the mirror regime
-		// drives from the bus instead, so the two never write the pose together.
+		// Forced-render eval regime: the bridge dispatcher's fastpath_render op drives
+		// exact-state, blocking, fresh captures over the shared transport. This regime
+		// is the sole pose driver; the mirror regime drives from the bus instead, so
+		// the two never write the pose together.
 		if (bForcedRenderOnly)
 		{
-			StartRenderControl(CameraStreamBasePort + 900);
 			// This eval render server only produces the model's SceneCapture frames,
 			// never a player view. Skip the primary-view render each tick so it does
 			// not contend with the captures on the GPU queue (paired with
@@ -1339,45 +1336,6 @@ void AMjRenderer::StartCameraStreaming()
 			}
 		}
 	}
-}
-
-void AMjRenderer::StartRenderControl(int32 Port)
-{
-	if (RenderControlRep || Port <= 0)
-	{
-		return;
-	}
-	RenderControlPort = Port;
-	RenderControlCtx = zmq_ctx_new();
-	RenderControlRep = zmq_socket(RenderControlCtx, ZMQ_REP);
-	int Linger = 0;
-	zmq_setsockopt(RenderControlRep, ZMQ_LINGER, &Linger, sizeof(Linger));
-	const FString Ep = FString::Printf(TEXT("tcp://0.0.0.0:%d"), Port);
-	if (zmq_bind(RenderControlRep, TCHAR_TO_UTF8(*Ep)) != 0)
-	{
-		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] forced-render control bind failed on %s"), *Ep);
-		zmq_close(RenderControlRep);
-		RenderControlRep = nullptr;
-		zmq_ctx_term(RenderControlCtx);
-		RenderControlCtx = nullptr;
-		return;
-	}
-	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] forced-render control REP on %s"), *Ep);
-}
-
-void AMjRenderer::StopRenderControl()
-{
-	if (RenderControlRep)
-	{
-		zmq_close(RenderControlRep);
-		RenderControlRep = nullptr;
-	}
-	if (RenderControlCtx)
-	{
-		zmq_ctx_term(RenderControlCtx);
-		RenderControlCtx = nullptr;
-	}
-	RenderControlPort = 0;
 }
 
 void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
@@ -1426,58 +1384,17 @@ void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
 	SetAppliedState(static_cast<uint64>(Fid), SimTime);
 }
 
-void AMjRenderer::PollRenderControl()
+void AMjRenderer::RenderForcedRequest(const TSharedPtr<FJsonObject>& Req,
+	TArray<UMjCamera*>& OutCams, uint64& OutTargetId)
 {
-	if (!RenderControlRep)
-	{
-		return;
-	}
-
-	// Non-blocking: at most one new request picked up per tick, serviced inline and
-	// synchronously (SPEAR pattern) so the whole exchange completes in this tick.
-	zmq_msg_t Msg;
-	zmq_msg_init(&Msg);
-	const int N = zmq_msg_recv(&Msg, RenderControlRep, ZMQ_DONTWAIT);
-	if (N < 0)
-	{
-		zmq_msg_close(&Msg);
-		return; // EAGAIN: no request waiting
-	}
-	TSharedPtr<FJsonObject> Req;
-	const bool bUnpacked = FURLabMsgpackUtil::UnpackToJsonObject(
-		static_cast<const uint8*>(zmq_msg_data(&Msg)), static_cast<int32>(zmq_msg_size(&Msg)), Req);
-	zmq_msg_close(&Msg);
-
-	if (!bUnpacked || !Req.IsValid())
-	{
-		// Bad request: reply immediately to keep the REP state machine balanced.
-		TSharedPtr<FJsonObject> R = MakeShared<FJsonObject>();
-		R->SetBoolField(TEXT("ok"), false);
-		R->SetStringField(TEXT("error"), TEXT("bad request"));
-		TArray<uint8> Buf;
-		FURLabMsgpackUtil::PackJsonObject(R, Buf);
-		zmq_send(RenderControlRep, Buf.GetData(), Buf.Num(), 0);
-		return;
-	}
-
-	ServeForcedRenderSync(Req);
-}
-
-void AMjRenderer::ServeForcedRenderSync(const TSharedPtr<FJsonObject>& Req)
-{
-	if (!RenderControlRep)
-	{
-		return;
-	}
+	OutCams.Reset();
+	OutTargetId = 0;
 
 	// Apply the exact requested state to the scene actors + clock (bumps
 	// AppliedFrameId/AppliedSimTime first), so the fresh frames stamp against it.
-	const double TReq = FPlatformTime::Seconds();
 	ApplyForcedRenderState(Req);
-	const double TApplied = FPlatformTime::Seconds();
 
 	// The requested camera list: an explicit "cameras" name array, else every camera.
-	TArray<UMjCamera*> Cams;
 	const TArray<TSharedPtr<FJsonValue>>* CamArr = nullptr;
 	if (Req->TryGetArrayField(TEXT("cameras"), CamArr) && CamArr && CamArr->Num() > 0)
 	{
@@ -1488,7 +1405,7 @@ void AMjRenderer::ServeForcedRenderSync(const TSharedPtr<FJsonObject>& Req)
 			{
 				if (C && C->GetCanonicalName() == Name)
 				{
-					Cams.Add(C);
+					OutCams.Add(C);
 					break;
 				}
 			}
@@ -1500,18 +1417,17 @@ void AMjRenderer::ServeForcedRenderSync(const TSharedPtr<FJsonObject>& Req)
 		{
 			if (C)
 			{
-				Cams.Add(C);
+				OutCams.Add(C);
 			}
 		}
 	}
 
 	// The post-step id + applied sim time the fresh frames show.
-	uint64 TargetId = 0;
 	{
 		double T = 0.0;
 		if (Req->TryGetNumberField(TEXT("frame_id"), T))
 		{
-			TargetId = static_cast<uint64>(T);
+			OutTargetId = static_cast<uint64>(T);
 		}
 	}
 	const double SimTime = GetAppliedSimTime();
@@ -1519,78 +1435,14 @@ void AMjRenderer::ServeForcedRenderSync(const TSharedPtr<FJsonObject>& Req)
 	// SPEAR synchronous single-pass: capture each camera's scene (the capture renders
 	// queue ahead on the render thread), then one batched readback + one flush fills
 	// every camera's frame with the freshly-rendered pixels before we reply.
-	for (UMjCamera* C : Cams)
+	for (UMjCamera* C : OutCams)
 	{
 		if (C && C->CaptureComponent && C->CaptureComponent->TextureTarget)
 		{
 			C->CaptureComponent->CaptureScene();
 		}
 	}
-	MjSpearForcedCapture(Cams, TargetId, SimTime);
-
-	// Reply multipart: [msgpack header][cam0 pixels]...[camN pixels]. Pixels stay
-	// raw (no base64) -- the client reads the header then one frame per camera.
-	TSharedPtr<FJsonObject> Hdr = MakeShared<FJsonObject>();
-	Hdr->SetBoolField(TEXT("ok"), true);
-	TArray<TSharedPtr<FJsonValue>> CamMeta;
-	TArray<TArray<uint8>> CamBytes;
-	for (UMjCamera* C : Cams)
-	{
-		if (!C)
-		{
-			continue;
-		}
-		TSharedPtr<const FMjCameraFrame> Frame = C->GetFrameForRequest(TargetId, /*bIgnoreDelay=*/true);
-		TSharedPtr<FJsonObject> M = MakeShared<FJsonObject>();
-		M->SetStringField(TEXT("name"), C->GetCanonicalName());
-		TArray<uint8> Bytes;
-		int32 W = 0, H = 0;
-		double SimT = 0.0;
-		uint64 Fid = 0;
-		FString Dtype = TEXT("bgra8");
-		if (Frame.IsValid())
-		{
-			W = Frame->Width;
-			H = Frame->Height;
-			SimT = Frame->SimTime;
-			Fid = Frame->FrameId;
-			if (Frame->Depth.Num() > 0)
-			{
-				Dtype = TEXT("float32");
-				Bytes.Append(reinterpret_cast<const uint8*>(Frame->Depth.GetData()),
-					Frame->Depth.Num() * static_cast<int32>(sizeof(float)));
-			}
-			else if (Frame->Color.Num() > 0)
-			{
-				Bytes.Append(reinterpret_cast<const uint8*>(Frame->Color.GetData()),
-					Frame->Color.Num() * static_cast<int32>(sizeof(FColor)));
-			}
-		}
-		M->SetNumberField(TEXT("width"), W);
-		M->SetNumberField(TEXT("height"), H);
-		M->SetNumberField(TEXT("frame_id"), static_cast<double>(Fid));
-		M->SetNumberField(TEXT("sim_time"), SimT);
-		M->SetStringField(TEXT("dtype"), Dtype);
-		M->SetNumberField(TEXT("nbytes"), Bytes.Num());
-		CamMeta.Add(MakeShared<FJsonValueObject>(M));
-		CamBytes.Add(MoveTemp(Bytes));
-	}
-	Hdr->SetArrayField(TEXT("cameras"), CamMeta);
-
-	TArray<uint8> HdrBuf;
-	FURLabMsgpackUtil::PackJsonObject(Hdr, HdrBuf);
-	zmq_send(RenderControlRep, HdrBuf.GetData(), HdrBuf.Num(),
-		CamBytes.Num() > 0 ? ZMQ_SNDMORE : 0);
-	for (int32 i = 0; i < CamBytes.Num(); ++i)
-	{
-		zmq_send(RenderControlRep, CamBytes[i].GetData(), CamBytes[i].Num(),
-			(i + 1 < CamBytes.Num()) ? ZMQ_SNDMORE : 0);
-	}
-	const double TSent = FPlatformTime::Seconds();
-	UE_LOG(LogURLab, Log,
-		TEXT("[forced] cams=%d apply=%.1f capture+reply=%.1f total=%.1f ms"),
-		Cams.Num(), (TApplied - TReq) * 1000.0,
-		(TSent - TApplied) * 1000.0, (TSent - TReq) * 1000.0);
+	MjSpearForcedCapture(OutCams, OutTargetId, SimTime);
 }
 
 void AMjRenderer::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)
@@ -2106,11 +1958,6 @@ void AMjRenderer::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	// Service at most one forced-render request per tick (no-op unless the control
-	// REP is bound, i.e. while streaming). Runs on the game thread so it can apply
-	// poses + force the capture inline.
-	PollRenderControl();
-
 	// Streaming is a play-session behaviour only. In the editor world this actor
 	// is a static, persistent preview and must never animate from the network or
 	// the dev sweep -- authoring the level shouldn't mutate scene actors. (The
@@ -2529,7 +2376,6 @@ bool AMjRenderer::HasReceivedFrame() const
 
 void AMjRenderer::Teardown()
 {
-	StopRenderControl();
 	StopBus();
 	// Direct mode aliased our raw model+data into the shared engine. Stop-join the
 	// physics worker and unalias (and clear the deferred-install timer) BEFORE the

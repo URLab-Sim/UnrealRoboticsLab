@@ -177,6 +177,17 @@ public:
 	 *  thread only. */
 	void ReloadFromBytes(const TArray<uint8>& NewMjb);
 
+	/** Forced render: "render this exact state, block, return the fresh frame" for the
+	 *  manager-less render server. Applies the requested poses + camera list + clock to
+	 *  the scene actors, then SPEAR-captures every requested camera synchronously (one
+	 *  batched GPU readback + a single render-thread flush) so the fresh pixels are back
+	 *  before the caller reads them. Game thread only (the capture flushes rendering
+	 *  commands). Fills OutCams with the cameras captured and OutTargetId with the
+	 *  post-step frame id the fresh frames are stamped with, so the fastpath_render RPC
+	 *  handler can serialise the per-camera reply. */
+	void RenderForcedRequest(const TSharedPtr<class FJsonObject>& Req,
+		TArray<class UMjCamera*>& OutCams, uint64& OutTargetId);
+
 	/**
 	 * Spawn a fast-path Renderer into World and return it. Sets the scene up
 	 * from either MjbBytes (over the wire) or MjbFilePath, connects the transform
@@ -378,20 +389,8 @@ private:
 	std::atomic<uint64> AppliedFrameId{0};
 	std::atomic<double> AppliedSimTime{0.0};
 
-	// Forced-render control REP socket (opaque libzmq handles; see StartRenderControl).
-	void* RenderControlCtx = nullptr;
-	void* RenderControlRep = nullptr;
-	int32 RenderControlPort = 0;
 	// Applies the state carried by a forced-render request (poses + cameras + clock).
 	void ApplyForcedRenderState(const TSharedPtr<class FJsonObject>& Req);
-	// A forced render is serviced SYNCHRONOUSLY within one tick (SPEAR's pattern):
-	// apply the exact requested state, capture every requested camera's scene, then
-	// MjSpearForcedCapture does one batched GPU readback + a single render-thread flush
-	// so the fresh pixels are back before the reply is serialized. The single flush
-	// waits on the GPU fence directly, so there is no async multi-tick state machine
-	// and no game-thread poll loop starving the render it depends on. One request at a
-	// time (REP is strict req/rep); the whole exchange completes in the tick it arrives.
-	void ServeForcedRenderSync(const TSharedPtr<class FJsonObject>& Req);
 
 	// FMjRendererStepMode reaches back into the scene for the model, geom/camera
 	// components and render origin while it drives the shared engine.
@@ -541,16 +540,6 @@ private:
 	// Turn the dormant cameras into a live render server (render target + ZMQ/SHM
 	// bind + per-frame capture). Play session only.
 	void StartCameraStreaming();
-
-	// --- Forced render control (REQ/REP): "render this exact state, block, return
-	// the fresh frame" for the manager-less render server (its only path was async
-	// PUB). A client sends the state + camera list; the server applies it on the
-	// game thread, force-captures, tight-polls the readback, and replies multipart
-	// (msgpack header + one raw pixel frame per camera). Bound while streaming. ---
-	void StartRenderControl(int32 Port);
-	void StopRenderControl();
-	// Non-blocking: service at most one pending forced-render request. Game thread.
-	void PollRenderControl();
 
 	// Re-home the compiled model's body-fixed cameras onto this play view: one dormant
 	// UMjCamera per model camera on its body actor, named through FMjCameraRegistry so

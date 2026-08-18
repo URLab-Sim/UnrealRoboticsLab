@@ -264,6 +264,15 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 		[this](auto& R) { return HandleFastpathPerturb(R); },
 		/*Reply=*/{TEXT("op:string"), TEXT("body:int")});
 
+	// Fast-path forced render (RpcHandlers_Fastpath.cpp): a controller ships an exact
+	// post-step state and asks the render server for the fresh pixels of its cameras.
+	// The renderer applies the state + SPEAR-captures synchronously on the game thread
+	// and the reply ships each camera's pixels as msgpack binary. NoManager so it rides
+	// the shared bridge transport with no renderer-owned socket.
+	Reg(TEXT("fastpath_render"), EOpCategory::NoManager, TEXT("farm"),
+		[this](auto& R) { return HandleFastpathRender(R); },
+		/*Reply=*/{TEXT("op:string"), TEXT("ok:bool"), TEXT("cameras:array")});
+
 	// Network model upload (RpcHandlers_ModelUpload.cpp). Manifest + chunk are
 	// pure data staging (no manager, no editor). Commit drives the existing
 	// import_xml editor job on a materialised temp dir; it self-checks for the
@@ -515,6 +524,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::DispatchInternal(const TSharedPtr<F
 	// REQ with no session_id, so it bypasses the registry session gate too.
 	if (Op.Equals(TEXT("fastpath_perturb")))
 		return HandleFastpathPerturb(Req);
+	// fastpath_render likewise: a controller requests an exact-state, blocking, fresh
+	// capture from the render server without a session handshake.
+	if (Op.Equals(TEXT("fastpath_render")))
+		return HandleFastpathRender(Req);
 
 	{
 		FScopeLock Lock(&DispatchMutex);

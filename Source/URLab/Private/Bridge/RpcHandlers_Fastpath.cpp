@@ -12,6 +12,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjModelSource.h"
+#include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "Utils/URLabLogging.h"
@@ -281,5 +282,126 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TShared
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
 	Reply->SetStringField(TEXT("op"), TEXT("fastpath_perturb_ok"));
 	Reply->SetNumberField(TEXT("body"), BodyId);
+	return Reply;
+}
+
+// Fast-path forced render. A controller ships an exact post-step state (per-body and
+// per-camera transforms + clock) and asks the render server for the fresh pixels of one
+// or more cameras. This is the eval freshness path: the renderer applies the state on
+// the game thread and SPEAR-captures synchronously (one batched GPU readback + a single
+// render-thread flush), so the reply carries the exact-state frames -- identical pixels
+// to what the old private REP socket produced. It now rides the shared bridge transport
+// like the other fast-path ops, so there is no renderer-owned socket. With an optional
+// `delay` > 0 each camera's frame is read through its latency ring (the delayed past the
+// stream publishes) instead of exact-fresh.
+TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathRender(const TSharedPtr<FJsonObject>& Req)
+{
+	if (!OwnerMgr.IsValid())
+	{
+		return MakeError(URLabError::NotReady, TEXT("no manager hosting a fast-path render server"));
+	}
+
+	// Optional latency emulation: delay > 0 reads each camera's frame through its
+	// history ring (the delayed past the stream publishes); absent/0 is exact-fresh.
+	double Delay = 0.0;
+	Req->TryGetNumberField(TEXT("delay"), Delay);
+	const bool bIgnoreDelay = !(Delay > 0.0);
+
+	int32 TimeoutMs = 5000;
+	double TimeoutNum = 0.0;
+	if (Req->TryGetNumberField(TEXT("timeout_ms"), TimeoutNum) && TimeoutNum > 0.0)
+	{
+		TimeoutMs = static_cast<int32>(TimeoutNum);
+	}
+
+	// Finding the renderer (TActorIterator) plus the apply + SPEAR capture all assert
+	// game-thread (the capture flushes rendering commands), so marshal the whole thing
+	// there and wait, then serialise the fresh frames here.
+	struct FResult
+	{
+		FEvent* Done = nullptr;
+		bool bFound = false;
+		TArray<TSharedPtr<FJsonValue>> Cameras;
+	};
+	TSharedPtr<FResult, ESPMode::ThreadSafe> Res = MakeShared<FResult, ESPMode::ThreadSafe>();
+	Res->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
+	TWeakObjectPtr<AAMjManager> WeakMgr = OwnerMgr;
+	AsyncTask(ENamedThreads::GameThread, [Res, WeakMgr, Req, bIgnoreDelay]() {
+		AAMjManager* Mgr = WeakMgr.Get();
+		UWorld* World = Mgr ? Mgr->GetWorld() : nullptr;
+		AMjRenderer* Scene = nullptr;
+		if (World != nullptr)
+		{
+			for (TActorIterator<AMjRenderer> It(World); It; ++It)
+			{
+				Scene = *It;
+				break;
+			}
+		}
+		if (Scene != nullptr)
+		{
+			Res->bFound = true;
+
+			TArray<UMjCamera*> Cams;
+			uint64 TargetId = 0;
+			Scene->RenderForcedRequest(Req, Cams, TargetId);
+
+			// Per-camera reply: {name, width, height, frame_id, sim_time, dtype, data}
+			// with pixels shipped as msgpack binary. SetBinaryFieldShared retains the
+			// frame as the keeper, so the buffer stays valid until the reply is packed.
+			for (UMjCamera* C : Cams)
+			{
+				if (!C)
+				{
+					continue;
+				}
+				TSharedPtr<const FMjCameraFrame> Frame = C->GetFrameForRequest(TargetId, bIgnoreDelay);
+				TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
+				CamObj->SetStringField(TEXT("name"), C->GetCanonicalName());
+				if (Frame.IsValid())
+				{
+					CamObj->SetNumberField(TEXT("width"), Frame->Width);
+					CamObj->SetNumberField(TEXT("height"), Frame->Height);
+					CamObj->SetNumberField(TEXT("frame_id"), static_cast<double>(Frame->FrameId));
+					CamObj->SetNumberField(TEXT("sim_time"), Frame->SimTime);
+					if (Frame->Depth.Num() > 0)
+					{
+						CamObj->SetStringField(TEXT("dtype"), TEXT("float32"));
+						FURLabMsgpackUtil::SetBinaryFieldShared(CamObj, TEXT("data"),
+							reinterpret_cast<const uint8*>(Frame->Depth.GetData()),
+							Frame->Depth.Num() * static_cast<int32>(sizeof(float)), Frame);
+					}
+					else if (Frame->Color.Num() > 0)
+					{
+						CamObj->SetStringField(TEXT("dtype"), TEXT("bgra8"));
+						FURLabMsgpackUtil::SetBinaryFieldShared(CamObj, TEXT("data"),
+							reinterpret_cast<const uint8*>(Frame->Color.GetData()),
+							Frame->Color.Num() * static_cast<int32>(sizeof(FColor)), Frame);
+					}
+				}
+				Res->Cameras.Add(MakeShared<FJsonValueObject>(CamObj));
+			}
+		}
+		Res->Done->Trigger();
+	});
+
+	if (!Res->Done->Wait(TimeoutMs))
+	{
+		// The game-thread task still holds a ref to Res and will signal the event, so
+		// leave it in flight rather than returning it to the pool from under the task.
+		return MakeError(URLabError::Timeout, TEXT("fastpath_render game-thread capture timed out"));
+	}
+	FPlatformProcess::ReturnSynchEventToPool(Res->Done);
+	Res->Done = nullptr;
+
+	if (!Res->bFound)
+	{
+		return MakeError(URLabError::NotReady, TEXT("no fast-path renderer in this world"));
+	}
+
+	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+	Reply->SetStringField(TEXT("op"), TEXT("fastpath_render_ok"));
+	Reply->SetBoolField(TEXT("ok"), true);
+	Reply->SetArrayField(TEXT("cameras"), Res->Cameras);
 	return Reply;
 }

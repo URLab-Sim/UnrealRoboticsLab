@@ -50,6 +50,7 @@
 #include "Engine/DirectionalLight.h"
 #include "Engine/SkyLight.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Components/DirectionalLightComponent.h"
@@ -1312,6 +1313,29 @@ void AMjRenderer::StartCameraStreaming()
 		if (bForcedRenderOnly)
 		{
 			StartRenderControl(CameraStreamBasePort + 900);
+			// This eval render server only produces the model's SceneCapture frames,
+			// never a player view. Skip the primary-view render each tick so it does
+			// not contend with the captures on the GPU queue (paired with
+			// -RenderOffScreen, which drops the swapchain present). The SceneCaptures
+			// are independent renders and keep working. Cuts each tick's cost, which
+			// is what bounds the tick-driven forced-render latency.
+			if (UWorld* W = GetWorld())
+			{
+				if (UGameViewportClient* VP = W->GetGameViewport())
+				{
+					VP->bDisableWorldRendering = true;
+				}
+			}
+			// The tick-driven forced render completes in ~1-2 ticks, so its latency is
+			// bounded by the tick interval. Frame-rate smoothing otherwise silently
+			// clamps this headless server toward ~30 fps (a ~33 ms tick), which would
+			// dominate the latency; disable it so ticks run as fast as the captures
+			// allow (paired with -RenderOffScreen so there is no present pacing either).
+			if (GEngine)
+			{
+				GEngine->bSmoothFrameRate = false;
+				GEngine->bUseFixedFrameRate = false;
+			}
 		}
 	}
 }
@@ -1408,15 +1432,8 @@ void AMjRenderer::PollRenderControl()
 		return;
 	}
 
-	// A forced render is applied + captured + replied on a game-thread AsyncTask.
-	// REP is strict req/rep, so while one is in flight we must not recv the next
-	// request (the in-flight task still owes the reply); skip until it clears.
-	if (bForcedInFlight.load())
-	{
-		return;
-	}
-
-	// Non-blocking: at most one pending request per tick.
+	// Non-blocking: at most one new request picked up per tick, serviced inline and
+	// synchronously (SPEAR pattern) so the whole exchange completes in this tick.
 	zmq_msg_t Msg;
 	zmq_msg_init(&Msg);
 	const int N = zmq_msg_recv(&Msg, RenderControlRep, ZMQ_DONTWAIT);
@@ -1442,38 +1459,23 @@ void AMjRenderer::PollRenderControl()
 		return;
 	}
 
-	// Hand the render + tight-poll to a game-thread AsyncTask so it runs OFF the
-	// world tick: pumping inline in Tick starves the render thread of the frames it
-	// polls for (measured ~55 ms/6cam vs ~11 ms off-tick). The task sends the reply
-	// and clears the gate. Both the task and Tick are game-thread, so the REP socket
-	// is never touched concurrently.
-	const double TReq = FPlatformTime::Seconds();
-	bForcedInFlight.store(true);
-	TWeakObjectPtr<AMjRenderer> WeakThis(this);
-	AsyncTask(ENamedThreads::GameThread, [WeakThis, Req, TReq]() {
-		AMjRenderer* Self = WeakThis.Get();
-		if (!Self)
-		{
-			return; // actor gone; StopRenderControl has closed the socket
-		}
-		Self->ServeForcedRender(Req, TReq);
-		Self->bForcedInFlight.store(false);
-	});
+	ServeForcedRenderSync(Req);
 }
 
-void AMjRenderer::ServeForcedRender(const TSharedPtr<FJsonObject>& Req, double TReqSeconds)
+void AMjRenderer::ServeForcedRenderSync(const TSharedPtr<FJsonObject>& Req)
 {
 	if (!RenderControlRep)
 	{
 		return;
 	}
 
-	// Apply the exact requested state to the scene actors + clock, then force a
-	// capture and pump the readback to completion via the shared primitive -- the
-	// same flow the manager path's RenderCamerasSync uses, minus the AAMjManager.
+	// Apply the exact requested state to the scene actors + clock (bumps
+	// AppliedFrameId/AppliedSimTime first), so the fresh frames stamp against it.
+	const double TReq = FPlatformTime::Seconds();
 	ApplyForcedRenderState(Req);
 	const double TApplied = FPlatformTime::Seconds();
 
+	// The requested camera list: an explicit "cameras" name array, else every camera.
 	TArray<UMjCamera*> Cams;
 	const TArray<TSharedPtr<FJsonValue>>* CamArr = nullptr;
 	if (Req->TryGetArrayField(TEXT("cameras"), CamArr) && CamArr && CamArr->Num() > 0)
@@ -1502,6 +1504,7 @@ void AMjRenderer::ServeForcedRender(const TSharedPtr<FJsonObject>& Req, double T
 		}
 	}
 
+	// The post-step id + applied sim time the fresh frames show.
 	uint64 TargetId = 0;
 	{
 		double T = 0.0;
@@ -1510,25 +1513,19 @@ void AMjRenderer::ServeForcedRender(const TSharedPtr<FJsonObject>& Req, double T
 			TargetId = static_cast<uint64>(T);
 		}
 	}
-	int32 TimeoutMs = 200;
-	{
-		double T = 0.0;
-		if (Req->TryGetNumberField(TEXT("timeout_ms"), T))
-		{
-			TimeoutMs = static_cast<int32>(T);
-		}
-	}
+	const double SimTime = GetAppliedSimTime();
 
+	// SPEAR synchronous single-pass: capture each camera's scene (the capture renders
+	// queue ahead on the render thread), then one batched readback + one flush fills
+	// every camera's frame with the freshly-rendered pixels before we reply.
 	for (UMjCamera* C : Cams)
 	{
-		C->IssueSyncCapture();
+		if (C && C->CaptureComponent && C->CaptureComponent->TextureTarget)
+		{
+			C->CaptureComponent->CaptureScene();
+		}
 	}
-
-	// Pump the readback to completion via the shared forced-capture primitive (the
-	// same one the manager RPC path uses). Sleep-waits, does not stall the render
-	// thread; bounded by the request timeout.
-	MjPumpForcedCapture(Cams, TargetId, TimeoutMs);
-	const double TPolled = FPlatformTime::Seconds();
+	MjSpearForcedCapture(Cams, TargetId, SimTime);
 
 	// Reply multipart: [msgpack header][cam0 pixels]...[camN pixels]. Pixels stay
 	// raw (no base64) -- the client reads the header then one frame per camera.
@@ -1538,6 +1535,10 @@ void AMjRenderer::ServeForcedRender(const TSharedPtr<FJsonObject>& Req, double T
 	TArray<TArray<uint8>> CamBytes;
 	for (UMjCamera* C : Cams)
 	{
+		if (!C)
+		{
+			continue;
+		}
 		TSharedPtr<const FMjCameraFrame> Frame = C->GetFrameForRequest(TargetId, /*bIgnoreDelay=*/true);
 		TSharedPtr<FJsonObject> M = MakeShared<FJsonObject>();
 		M->SetStringField(TEXT("name"), C->GetCanonicalName());
@@ -1586,9 +1587,9 @@ void AMjRenderer::ServeForcedRender(const TSharedPtr<FJsonObject>& Req, double T
 	}
 	const double TSent = FPlatformTime::Seconds();
 	UE_LOG(LogURLab, Log,
-		TEXT("[forced] cams=%d apply=%.1f render+poll=%.1f serialize+send=%.1f handler=%.1f ms"),
-		Cams.Num(), (TApplied - TReqSeconds) * 1000.0, (TPolled - TApplied) * 1000.0,
-		(TSent - TPolled) * 1000.0, (TSent - TReqSeconds) * 1000.0);
+		TEXT("[forced] cams=%d apply=%.1f capture+reply=%.1f total=%.1f ms"),
+		Cams.Num(), (TApplied - TReq) * 1000.0,
+		(TSent - TApplied) * 1000.0, (TSent - TReq) * 1000.0);
 }
 
 void AMjRenderer::ApplyCameraPoses(const double* Cxpos, const double* Cxquat)

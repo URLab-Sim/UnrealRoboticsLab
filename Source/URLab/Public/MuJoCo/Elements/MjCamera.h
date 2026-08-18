@@ -222,6 +222,22 @@ struct FMjCameraDelayModel
 URLAB_API void MjPumpForcedCapture(const TArray<UMjCamera*>& Cams, uint64 TargetFrameId, int32 TimeoutMs);
 
 /**
+ * Drive a set of cameras to a fresh frame in one synchronous pass (SPEAR's
+ * pattern). Each camera's scene must already have been captured this frame
+ * (CaptureComponent->CaptureScene()), so those capture renders sit ahead of this
+ * command on the render thread's FIFO queue. A single ENQUEUE_RENDER_COMMAND
+ * enqueues every camera's GPU-to-staging copy, submits them all with one
+ * ImmediateFlush, then blocks on each readback's fence via Lock() -- which waits
+ * on the GPU (D3D12 RHIMapStagingSurface), so no IsReady() poll is needed -- and
+ * memcpys the rows into that camera's frame. One FlushRenderingCommands on the
+ * game thread waits for the whole pass, after which each finished frame is pushed
+ * into its camera's history stamped with FrameId / SimTime, so GetFrameForRequest
+ * returns exactly the state just applied. GAME THREAD ONLY. This is the Mirror
+ * forced-render REP's single-pass readback; the async stream is untouched.
+ */
+URLAB_API void MjSpearForcedCapture(const TArray<UMjCamera*>& Cams, uint64 FrameId, double SimTime);
+
+/**
  * A `<camera>` as an observation device: scene capture, readback, streaming.
  *
  * The GPU readback is fully asynchronous and decoupled from stepping. The
@@ -490,7 +506,17 @@ public:
 	 * still queued for harvest, so the synchronous render path can avoid
 	 * re-issuing a capture over one already in flight.
 	 */
-	bool HasPendingReadbacks() const { return InFlightReadbacks.Num() > 0 || PendingMapCommands > 0; }
+	bool HasPendingReadbacks() const
+	{
+		if (InFlightReadbacks.Num() > 0 || PendingMapCommands > 0)
+		{
+			return true;
+		}
+		// In render-thread-harvest mode the in-flight readback lives on RTInFlight,
+		// not InFlightReadbacks; count it too or a forced re-issue piles captures.
+		FScopeLock Lock(&RTInFlightLock);
+		return RTInFlight.Num() > 0;
+	}
 
 	// --- Frame history -------------------------------------------------------- //
 
@@ -707,7 +733,7 @@ private:
 	bool bRTHarvestRegistered = false;
 	/** In-flight readbacks awaiting a render-thread harvest; guarded by the lock
 	 *  because the game thread (EnqueueReadback) adds and the render thread drains. */
-	FCriticalSection RTInFlightLock;
+	mutable FCriticalSection RTInFlightLock;
 	TArray<FInFlightReadback> RTInFlight;
 	// Render-thread-only stage accumulators (single writer: the RT callback).
 	int32 RTDiagFrames = 0;

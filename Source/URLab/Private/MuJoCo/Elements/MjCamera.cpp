@@ -888,6 +888,123 @@ void MjPumpForcedCapture(const TArray<UMjCamera*>& Cams, uint64 TargetFrameId, i
 	}
 }
 
+void MjSpearForcedCapture(const TArray<UMjCamera*>& Cams, uint64 FrameId, double SimTime)
+{
+	// One synchronous readback pass over every requested camera. The caller has
+	// already issued CaptureComponent->CaptureScene() for each, so those capture
+	// renders are queued ahead of this command on the render thread; enqueuing the
+	// copies here and submitting them with a single flush reads the freshly-rendered
+	// frame. Lock() blocks the render thread on each copy's GPU fence, so there is no
+	// IsReady() poll and no game-tick bounce -- the game thread waits exactly once, on
+	// the FlushRenderingCommands below.
+	struct FSpearItem
+	{
+		UMjCamera* Cam = nullptr;
+		FTextureRHIRef Source;
+		TSharedPtr<FRHIGPUTextureReadback> Readback;
+		TSharedPtr<FMjCameraFrame> Frame;
+		bool bDepth = false;
+	};
+
+	TArray<FSpearItem> Items;
+	Items.Reserve(Cams.Num());
+	for (UMjCamera* Cam : Cams)
+	{
+		if (!Cam || !Cam->RenderTarget)
+		{
+			continue;
+		}
+		Cam->TouchRequested();
+		FTextureRenderTargetResource* Resource = Cam->RenderTarget->GameThread_GetRenderTargetResource();
+		if (!Resource)
+		{
+			continue;
+		}
+		const FIntPoint Size = Resource->GetSizeXY();
+		FTextureRHIRef Source = Resource->GetRenderTargetTexture();
+		// A freshly enabled render target reports its size before its RHI texture
+		// exists; skip a cold camera and let the caller's next request land it.
+		if (Size.X <= 0 || Size.Y <= 0 || !Source.IsValid())
+		{
+			continue;
+		}
+
+		FSpearItem& Item = Items.AddDefaulted_GetRef();
+		Item.Cam = Cam;
+		Item.Source = MoveTemp(Source);
+		Item.Readback = MakeShared<FRHIGPUTextureReadback>(TEXT("MjSpearForcedReadback"));
+		Item.Frame = MakeShared<FMjCameraFrame>();
+		Item.Frame->FrameId = FrameId;
+		Item.Frame->SimTime = SimTime;
+		Item.Frame->Width = Size.X;
+		Item.Frame->Height = Size.Y;
+		Item.Frame->CaptureUnixTime = (FDateTime::UtcNow() - FDateTime(1970, 1, 1)).GetTotalSeconds();
+		Item.bDepth = (Cam->CaptureMode == EMjCameraMode::Depth);
+	}
+
+	if (Items.Num() == 0)
+	{
+		return;
+	}
+
+	// The whole readback -- copy, submit, fence-wait, memcpy -- in one render command,
+	// so the render thread never yields to a game tick mid-pass.
+	ENQUEUE_RENDER_COMMAND(MjSpearForcedCapture)
+	([Items](FRHICommandListImmediate& RHICmdList) {
+		for (const FSpearItem& It : Items)
+		{
+			It.Readback->EnqueueCopy(RHICmdList, It.Source.GetReference());
+		}
+		// Submit every copy to the GPU at once.
+		RHICmdList.ImmediateFlush(EImmediateFlushType::DispatchToRHIThread);
+		for (const FSpearItem& It : Items)
+		{
+			// Lock blocks the render thread on this copy's GPU fence, so the staged
+			// pixels are complete here without a poll. RowPitch is in PIXELS and at
+			// least the width (rows are padded), so the copy is row-by-row into a
+			// tightly packed buffer.
+			int32 RowPitchPixels = 0;
+			void* Mapped = It.Readback->Lock(RowPitchPixels);
+			const int32 W = It.Frame->Width;
+			const int32 H = It.Frame->Height;
+			if (Mapped && W > 0 && H > 0)
+			{
+				if (It.bDepth)
+				{
+					It.Frame->Depth.SetNumUninitialized(W * H);
+					const float* Src = static_cast<const float*>(Mapped);
+					for (int32 y = 0; y < H; ++y)
+					{
+						FMemory::Memcpy(&It.Frame->Depth[y * W], &Src[y * RowPitchPixels], W * sizeof(float));
+					}
+				}
+				else
+				{
+					It.Frame->Color.SetNumUninitialized(W * H);
+					const FColor* Src = static_cast<const FColor*>(Mapped);
+					for (int32 y = 0; y < H; ++y)
+					{
+						FMemory::Memcpy(&It.Frame->Color[y * W], &Src[y * RowPitchPixels], W * sizeof(FColor));
+					}
+				}
+			}
+			It.Readback->Unlock();
+		}
+	});
+
+	// Block the game thread until the pass finished; the frames now hold the
+	// freshly-rendered pixels. Retain each so the reply path (GetFrameForRequest)
+	// hands it straight back.
+	FlushRenderingCommands();
+	for (FSpearItem& It : Items)
+	{
+		if (It.Cam && It.Frame.IsValid())
+		{
+			It.Cam->PushFrameToHistory(MoveTemp(*It.Frame));
+		}
+	}
+}
+
 void UMjCamera::SetSimClock(UObject* ClockObject)
 {
 	// Store the UObject weakly; ResolveSimClock casts it to the interface on read.

@@ -384,17 +384,14 @@ private:
 	int32 RenderControlPort = 0;
 	// Applies the state carried by a forced-render request (poses + cameras + clock).
 	void ApplyForcedRenderState(const TSharedPtr<class FJsonObject>& Req);
-	// Services one forced-render request end to end: apply state, force-capture, pump
-	// the readback to completion (shared MjPumpForcedCapture), and reply multipart.
-	// Runs on a game-thread AsyncTask off the world tick -- inline in Tick starves the
-	// render thread of the frames it polls for (measured ~55 ms vs ~11 ms off-tick).
-	// TReqSeconds is the request-arrival timestamp, for the latency log.
-	void ServeForcedRender(const TSharedPtr<class FJsonObject>& Req, double TReqSeconds);
-	// One forced render is serviced at a time (REP is strict req/rep): a request is
-	// applied + captured + replied on a game-thread AsyncTask (the same context the
-	// manager path uses), so PollRenderControl must not take a new request while one
-	// is in flight.
-	std::atomic<bool> bForcedInFlight{false};
+	// A forced render is serviced SYNCHRONOUSLY within one tick (SPEAR's pattern):
+	// apply the exact requested state, capture every requested camera's scene, then
+	// MjSpearForcedCapture does one batched GPU readback + a single render-thread flush
+	// so the fresh pixels are back before the reply is serialized. The single flush
+	// waits on the GPU fence directly, so there is no async multi-tick state machine
+	// and no game-thread poll loop starving the render it depends on. One request at a
+	// time (REP is strict req/rep); the whole exchange completes in the tick it arrives.
+	void ServeForcedRenderSync(const TSharedPtr<class FJsonObject>& Req);
 
 	// FMjRendererStepMode reaches back into the scene for the model, geom/camera
 	// components and render origin while it drives the shared engine.

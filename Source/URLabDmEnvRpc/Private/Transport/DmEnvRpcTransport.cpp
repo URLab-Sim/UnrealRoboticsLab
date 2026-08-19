@@ -110,17 +110,30 @@ public:
 					TArray<uint8> OutReplyBytes;
 
 					if (Transport->GetOwningBridge())
-                                        {
-                                                FEvent* SyncEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
-                                                // Safely force memory mapping to standard allocations inside lambda to prevent SEGV
-                                                AsyncTask(ENamedThreads::GameThread, [this, &InBytes, &OutReplyBytes, SyncEvent]()
-                                                {
-                                                        Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
-                                                        SyncEvent->Trigger();
-                                                });
-                                                SyncEvent->Wait();
-                                                FGenericPlatformProcess::ReturnSynchEventToPool(SyncEvent);
-                                        }
+					{
+						// Dispatch on a UE-managed BACKGROUND task-graph thread -- not the
+						// game thread. Two constraints force this:
+						//  * ProcessRequestBytes does UE allocations (TArray / JSON / msgpack).
+						//    gRPC invokes us on its own threads, which aren't registered UE
+						//    threads; allocating there SEGVs -- hence the original code hopped
+						//    onto a UE thread first.
+						//  * It must NOT be the game thread: op handlers marshal to the game
+						//    thread and block on it (e.g. fastpath_render enqueues its capture
+						//    as AsyncTask(GameThread) and waits). Running here on the game
+						//    thread queues that capture behind the blocked game thread and
+						//    deadlocks it ("fastpath_render game-thread capture timed out").
+						// A background task-graph thread satisfies both (matches the ZMQ / SHM
+						// model, which run ProcessRequestBytes off the game thread).
+						FEvent* SyncEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
+						AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask,
+							[this, &InBytes, &OutReplyBytes, SyncEvent]()
+							{
+								Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
+								SyncEvent->Trigger();
+							});
+						SyncEvent->Wait();
+						FGenericPlatformProcess::ReturnSynchEventToPool(SyncEvent);
+					}
 
 					urlab::dm_env_rpc::v1::UrlabPacket OutPacket;
 					OutPacket.set_op(InPacket.op());
@@ -138,17 +151,19 @@ public:
 					TArray<uint8> OutReplyBytes;
 
 					if (Transport->GetOwningBridge())
-                                        {
-                                                FEvent* SyncEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
-                                                // Safely force memory mapping to standard allocations inside lambda to prevent SEGV
-                                                AsyncTask(ENamedThreads::GameThread, [this, &InBytes, &OutReplyBytes, SyncEvent]()
-                                                {
-                                                        Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
-                                                        SyncEvent->Trigger();
-                                                });
-                                                SyncEvent->Wait();
-                                                FGenericPlatformProcess::ReturnSynchEventToPool(SyncEvent);
-                                        }
+					{
+						// Same as above: a UE-managed background thread, never the game
+						// thread, so game-thread-marshaling handlers can't deadlock.
+						FEvent* SyncEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
+						AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask,
+							[this, &InBytes, &OutReplyBytes, SyncEvent]()
+							{
+								Transport->ProcessRequestBytes(InBytes, OutReplyBytes);
+								SyncEvent->Trigger();
+							});
+						SyncEvent->Wait();
+						FGenericPlatformProcess::ReturnSynchEventToPool(SyncEvent);
+					}
 
 					urlab::dm_env_rpc::v1::UrlabPacket OutPacket;
 					OutPacket.set_payload(OutReplyBytes.GetData(), OutReplyBytes.Num());

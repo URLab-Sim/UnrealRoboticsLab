@@ -31,6 +31,7 @@
 #include "MuJoCo/Entity/MjBakedAssetResolver.h"
 #include "MuJoCo/Entity/MjImportedAssetResolver.h"
 #include "MuJoCo/Entity/MjModelSource.h"
+#include "MuJoCo/Fast/MjSkyImporter.h"
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Elements/MjGeom.h"
@@ -936,6 +937,13 @@ int32 AMjRenderer::LoadAndBuild()
 	BuildGeoms();
 	BuildCameras();
 	ApplyFromData();
+
+	// Import the model's environment (its <light> elements, headlight fill, and skybox)
+	// so camera renders match MuJoCo's lighting instead of a hardcoded rig / black void.
+	if (UWorld* W = GetWorld())
+	{
+		MjSkyImporter::ApplyMjEnvironment(*W, Model, Data, bBaseLevel, SceneOrigin);
+	}
 
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjRenderer] built from %s: nbody=%d ngeom=%d (%d geom comps built, %d body actors)"),
@@ -2308,42 +2316,13 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 	Scene->MjbFilePath = MjbFilePath;
 	Scene->BusEndpoint = BusEndpoint;
 	Scene->bEnableCameraStreaming = bCameras;
+	Scene->bBaseLevel = bBaseLevel;
 	Scene->SceneOrigin = Origin;
 	UGameplayStatics::FinishSpawningActor(Scene, FTransform::Identity);
 
-	// A bare boot map has no lighting, so give the scene its own movable rig unless
-	// it was dropped into a curated base level that brings its own.
-	if (!bBaseLevel)
-	{
-		const FTransform SunXf(FRotator(-46.0, -60.0, 0.0), FVector::ZeroVector);
-		if (ADirectionalLight* Sun =
-				World->SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), SunXf))
-		{
-			if (ULightComponent* L = Sun->GetLightComponent())
-			{
-				L->SetMobility(EComponentMobility::Movable);
-			}
-		}
-		const FTransform FillXf(FRotator(-18.0, 120.0, 0.0), FVector::ZeroVector);
-		if (ADirectionalLight* Fill =
-				World->SpawnActor<ADirectionalLight>(ADirectionalLight::StaticClass(), FillXf))
-		{
-			if (ULightComponent* L = Fill->GetLightComponent())
-			{
-				L->SetMobility(EComponentMobility::Movable);
-				L->SetIntensity(0.4f * L->Intensity);
-				L->SetLightColor(FLinearColor(0.7f, 0.75f, 0.9f));
-				L->SetCastShadows(false);
-			}
-		}
-		if (ASkyLight* Sky = World->SpawnActor<ASkyLight>(ASkyLight::StaticClass()))
-		{
-			if (USkyLightComponent* SkyComp = Sky->GetLightComponent())
-			{
-				SkyComp->SetMobility(EComponentMobility::Movable);
-			}
-		}
-	}
+	// Lighting is imported from the model in LoadAndBuild (MjSkyImporter): the scene's
+	// own <light> elements + headlight + skybox, so nothing is hardcoded here. A
+	// curated base level (bBaseLevel) keeps its own rig and is left untouched there.
 
 	// Framing camera at the scene origin (the copycat retargets it once a Driver
 	// streams its free camera).

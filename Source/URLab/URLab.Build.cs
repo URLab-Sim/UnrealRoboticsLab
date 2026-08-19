@@ -83,7 +83,8 @@ public class URLab : ModuleRules
 			PrivateDependencyModuleNames.AddRange(new string[]
 			{
 				"UnrealEd",
-				"AssetTools"
+				"AssetTools",
+				"MaterialEditor"  // MjSkyImporter builds the skybox display material at load
 			});
 		}
 

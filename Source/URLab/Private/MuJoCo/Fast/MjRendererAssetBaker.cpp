@@ -94,6 +94,14 @@ void BuildMeshArrays(const IMjAssetSource& Source, int32 MeshId, TArray<FVector>
 	const int32 VertNum = Mesh.VertNum;
 	TArray<FVector> FaceGeoN;
 	FaceGeoN.SetNumUninitialized(FaceNum);
+	// These meshes are CONSISTENTLY wound (verified: ~0% inconsistent shared edges),
+	// so each face's geometric normal (from its winding) is reliable. MuJoCo's stored
+	// per-corner normal is SMOOTH (averaged), so at a sharp edge it points BETWEEN the
+	// adjacent faces -- orienting each face against it individually flips ~40% of a
+	// detailed mesh's correct normals inward, which shades those faces black. Instead
+	// keep the geometric normal and pick ONE outward orientation for the whole mesh by
+	// majority agreement with the smooth normals, flipping the mesh as a unit if needed.
+	int32 OrientVote = 0;
 	for (int32 F = 0; F < FaceNum; ++F)
 	{
 		const int32* FV = Mesh.Faces + 3 * (FaceAdr + F);
@@ -101,22 +109,32 @@ void BuildMeshArrays(const IMjAssetSource& Source, int32 MeshId, TArray<FVector>
 		const FVector P1 = URLabAxisConv::MjPositionToUe(Mesh.Verts + 3 * (FV[1] + VertAdr));
 		const FVector P2 = URLabAxisConv::MjPositionToUe(Mesh.Verts + 3 * (FV[2] + VertAdr));
 		FVector Gn = FVector::CrossProduct(P1 - P0, P2 - P0).GetSafeNormal();
-		// Align outward using MuJoCo's per-vertex normal (sign only); fall back to it
-		// for a degenerate (zero-area) face.
-		const int32* FN = Mesh.FaceNormals + 3 * (FaceAdr + F);
-		const int32 Ni0 = FN[0] + NormalAdr;
-		const double Nm[3] = {Mesh.Normals[3 * Ni0], Mesh.Normals[3 * Ni0 + 1],
-			Mesh.Normals[3 * Ni0 + 2]};
-		const FVector Ref = URLabAxisConv::MjDirectionToUe(Nm).GetSafeNormal();
 		if (Gn.IsNearlyZero())
 		{
-			Gn = Ref;
+			// Degenerate (zero-area) face -- invisible; fall back to the smooth normal.
+			const int32* FN = Mesh.FaceNormals + 3 * (FaceAdr + F);
+			const int32 Ni0 = FN[0] + NormalAdr;
+			const double Nm[3] = {Mesh.Normals[3 * Ni0], Mesh.Normals[3 * Ni0 + 1],
+				Mesh.Normals[3 * Ni0 + 2]};
+			Gn = URLabAxisConv::MjDirectionToUe(Nm).GetSafeNormal();
 		}
-		else if (FVector::DotProduct(Gn, Ref) < 0.0)
+		else
 		{
-			Gn = -Gn;
+			const int32* FN = Mesh.FaceNormals + 3 * (FaceAdr + F);
+			const int32 Ni0 = FN[0] + NormalAdr;
+			const double Nm[3] = {Mesh.Normals[3 * Ni0], Mesh.Normals[3 * Ni0 + 1],
+				Mesh.Normals[3 * Ni0 + 2]};
+			const FVector Ref = URLabAxisConv::MjDirectionToUe(Nm).GetSafeNormal();
+			OrientVote += (FVector::DotProduct(Gn, Ref) >= 0.0) ? 1 : -1;
 		}
 		FaceGeoN[F] = Gn;
+	}
+	if (OrientVote < 0)  // the mesh's winding convention faces inward overall: flip as a unit
+	{
+		for (int32 F = 0; F < FaceNum; ++F)
+		{
+			FaceGeoN[F] = -FaceGeoN[F];
+		}
 	}
 	// Incident faces per local vertex.
 	TArray<TArray<int32, TInlineAllocator<8>>> Incident;

@@ -135,6 +135,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bEnableCameraStreaming = false;
 
+	/** Curated base level: the boot map brings its own lights/sky, so the renderer
+	 *  must NOT import the model's lighting on top of it. Set from -URLabFastBaseLevel. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
+	bool bBaseLevel = false;
+
 	/** World offset for the whole scene (UE cm). Lets a Renderer drop the MJB
 	 *  at a chosen spot in a curated base level instead of the world origin; added
 	 *  to every geom / camera / copycat placement. Set from -URLabFastOrigin=X,Y,Z. */

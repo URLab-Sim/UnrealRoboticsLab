@@ -12,6 +12,7 @@
 
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
+#include "GameFramework/Pawn.h"
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -49,6 +50,15 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	if (!InWorld.IsGameWorld())
 	{
 		return;
+	}
+
+	// Headless render server: the stock GameModeBase auto-spawns a visible ADefaultPawn
+	// (a ~1 m sphere) at the world origin when the level has no PlayerStart, and that
+	// sphere shows up in the MuJoCo cameras (the grey "dome" over the scene). Nothing
+	// here needs a player, so hide every auto-spawned pawn.
+	for (TActorIterator<APawn> PawnIt(&InWorld); PawnIt; ++PawnIt)
+	{
+		PawnIt->SetActorHiddenInGame(true);
 	}
 
 	// The boot model may arrive as a compiled MJB (-URLabFastMjb, version-locked to

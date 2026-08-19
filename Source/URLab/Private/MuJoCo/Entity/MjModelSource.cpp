@@ -3,6 +3,10 @@
 
 #include "MuJoCo/Entity/MjModelSource.h"
 
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
 THIRD_PARTY_INCLUDES_END
@@ -11,10 +15,6 @@ namespace MjModelSource
 {
 namespace
 {
-// Name the mjz archive is mounted under: the ".mjz" extension is what the decoder registry matches
-// against when no explicit content type is given, so the decoder is selected by extension.
-const char* const kMjzMount = "model.mjz";
-
 /** A MuJoCo error slot, or a fallback when it is empty. Never returns an empty string. */
 FString ErrorText(const char* Slot, const TCHAR* Fallback)
 {
@@ -83,33 +83,47 @@ mjModel* FromXml(const TArray<uint8>& Bytes, const TMap<FString, TArray<uint8>>&
 	return Model;
 }
 
-/** MuJoCo archive: mount it, decode through the resource decoder registry to a spec, then compile. */
-mjModel* FromMjz(const TArray<uint8>& Bytes, const TMap<FString, TArray<uint8>>& Assets, FString& OutError)
+/** MuJoCo archive (.mjz): parse from a FILE with the native decoder (which extracts
+ *  the archive's contents into a VFS), then compile WITH that VFS so the model's
+ *  assets resolve. The archive's root model must be named model.xml. */
+mjModel* FromMjzFile(const FString& Path, const TMap<FString, TArray<uint8>>& Assets, FString& OutError)
 {
 	mjVFS Vfs;
 	mj_defaultVFS(&Vfs);
-	// An mjz is normally self-contained; mount any side assets first so a reference into them resolves.
-	MountAssets(Vfs, Assets);
-	if (mj_addBufferVFS(&Vfs, kMjzMount, Bytes.GetData(), Bytes.Num()) != 0)
-	{
-		OutError = TEXT("could not mount the mjz buffer in the VFS");
-		mj_deleteVFS(&Vfs);
-		return nullptr;
-	}
+	MountAssets(Vfs, Assets);  // optional extra assets mounted alongside the archive
 
-	// content_type null: mj_parse opens the mounted resource and finds the decoder by its ".mjz"
-	// extension in the registry, so no MIME string has to be hardcoded here.
+	// content_type "" (empty, not null): mj_parse reads the .mjz from disk, decodes it,
+	// and extracts its files into Vfs. A zip mounted as a VFS *buffer* cannot be decoded
+	// (the zip provider needs a real seekable file), so the byte overload stages a temp
+	// file. mj_compile is then given the SAME Vfs so the extracted assets resolve --
+	// passing a null VFS to compile is what makes an asset-bearing mjz fail to build.
 	char Error[1024] = {0};
-	mjSpec* const Spec = mj_parse(kMjzMount, nullptr, &Vfs, Error, sizeof(Error));
+	mjSpec* const Spec = mj_parse(TCHAR_TO_UTF8(*Path), "", &Vfs, Error, sizeof(Error));
 	if (Spec == nullptr)
 	{
-		OutError = ErrorText(Error, TEXT("mj_parse could not decode the mjz (no decoder registered?)"));
+		OutError = ErrorText(Error, TEXT("mj_parse could not decode the mjz (root model must be model.xml)"));
 		mj_deleteVFS(&Vfs);
 		return nullptr;
 	}
 
-	mjModel* const Model = CompileAndDeleteSpec(Spec, &Vfs, OutError);
+	mjModel* const Model = CompileAndDeleteSpec(Spec, &Vfs, OutError);  // mj_compile(Spec, &Vfs)
 	mj_deleteVFS(&Vfs);
+	return Model;
+}
+
+/** MuJoCo archive from memory (wire bytes): the decoder needs a real file path, so
+ *  stage the bytes to a temp file, decode+compile, then remove it. */
+mjModel* FromMjz(const TArray<uint8>& Bytes, const TMap<FString, TArray<uint8>>& Assets, FString& OutError)
+{
+	const FString TempPath = FPaths::CreateTempFilename(
+		*FPaths::ProjectIntermediateDir(), TEXT("urlab_mjz_"), TEXT(".mjz"));
+	if (!FFileHelper::SaveArrayToFile(Bytes, *TempPath))
+	{
+		OutError = FString::Printf(TEXT("could not stage the mjz to a temp file '%s'"), *TempPath);
+		return nullptr;
+	}
+	mjModel* const Model = FromMjzFile(TempPath, Assets, OutError);
+	IFileManager::Get().Delete(*TempPath);
 	return Model;
 }
 } // namespace
@@ -137,5 +151,66 @@ mjModel* FromBytes(const TArray<uint8>& Bytes, const FString& Format,
 	}
 	OutError = FString::Printf(TEXT("unknown model source format '%s' (expected mjb|xml|mjz)"), *Format);
 	return nullptr;
+}
+
+bool CompileFileToMjb(const FString& Path, const FString& Format,
+	TArray<uint8>& OutMjb, FString& OutError)
+{
+	OutError.Reset();
+	OutMjb.Reset();
+
+	mjModel* Model = nullptr;
+	if (Format.Equals(TEXT("xml"), ESearchCase::IgnoreCase))
+	{
+		// Disk parse+compile: mj_loadXML resolves meshdir/texturedir and every
+		// <include> relative to the file's own directory, so a normal on-disk scene
+		// (e.g. a menagerie scene.xml with an assets/ subdir) needs no VFS mounting.
+		char Error[1024] = {0};
+		Model = mj_loadXML(TCHAR_TO_UTF8(*Path), nullptr, Error, sizeof(Error));
+		if (Model == nullptr)
+		{
+			OutError = ErrorText(Error, TEXT("mj_loadXML failed"));
+			return false;
+		}
+	}
+	else if (Format.Equals(TEXT("mjz"), ESearchCase::IgnoreCase))
+	{
+		// Already on disk -- parse it in place (no temp-file staging needed).
+		Model = FromMjzFile(Path, TMap<FString, TArray<uint8>>(), OutError);
+		if (Model == nullptr)
+		{
+			return false;
+		}
+	}
+	else if (Format.Equals(TEXT("mjb"), ESearchCase::IgnoreCase))
+	{
+		TArray<uint8> Bytes;
+		if (!FFileHelper::LoadFileToArray(Bytes, *Path))
+		{
+			OutError = FString::Printf(TEXT("could not read mjb '%s'"), *Path);
+			return false;
+		}
+		Model = FromMjb(Bytes, OutError);
+		if (Model == nullptr)
+		{
+			return false;
+		}
+	}
+	else
+	{
+		OutError = FString::Printf(TEXT("unknown model file format '%s' (expected mjb|xml|mjz)"), *Format);
+		return false;
+	}
+
+	const int32 Size = mj_sizeModel(Model);
+	OutMjb.SetNumUninitialized(Size);
+	mj_saveModel(Model, nullptr, OutMjb.GetData(), Size);
+	mj_deleteModel(Model);
+	if (OutMjb.Num() == 0)
+	{
+		OutError = TEXT("compiled model serialized to zero bytes");
+		return false;
+	}
+	return true;
 }
 } // namespace MjModelSource

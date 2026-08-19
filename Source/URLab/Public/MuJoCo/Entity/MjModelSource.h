@@ -27,4 +27,17 @@ namespace MjModelSource
  */
 URLAB_API mjModel* FromBytes(const TArray<uint8>& Bytes, const FString& Format,
 	const TMap<FString, TArray<uint8>>& Assets, FString& OutError);
+
+/**
+ * Compile a model file on disk to an MJB buffer with this libmujoco. Format is
+ * "mjb" | "xml" | "mjz" (case-insensitive). For "xml" the file is parsed with
+ * mj_loadXML, so its meshdir/texturedir and <include>s resolve from the file's own
+ * directory on disk -- no side-channel assets needed. "mjz" is decoded as a
+ * self-contained archive; "mjb" is loaded and re-saved. Used by the fast-path
+ * launcher so -URLabFastXml / -URLabFastMjz can boot the render server directly.
+ *
+ * Returns true and fills OutMjb, or false with OutError set.
+ */
+URLAB_API bool CompileFileToMjb(const FString& Path, const FString& Format,
+	TArray<uint8>& OutMjb, FString& OutError);
 } // namespace MjModelSource

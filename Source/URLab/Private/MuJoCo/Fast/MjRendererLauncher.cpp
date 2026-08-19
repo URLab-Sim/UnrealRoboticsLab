@@ -7,6 +7,7 @@
 
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Fast/MjRendererSubsystem.h"
+#include "MuJoCo/Entity/MjModelSource.h"
 #include "Utils/URLabLogging.h"
 
 #include "Engine/World.h"
@@ -50,12 +51,21 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		return;
 	}
 
-	FString Mjb;
+	// The boot model may arrive as a compiled MJB (-URLabFastMjb, version-locked to
+	// this libmujoco) or as source this libmujoco compiles itself: MJCF XML
+	// (-URLabFastXml, assets from the file's own dir) or a .mjz archive
+	// (-URLabFastMjz, unzipped in-engine to xml+assets). xml/mjz are immune to MJB
+	// version skew.
+	FString Mjb, FastXml, FastMjz;
 	const bool bHasMjb =
 		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) && !Mjb.IsEmpty();
-	if (!bHasMjb)
+	const bool bHasXml =
+		FParse::Value(FCommandLine::Get(), TEXT("URLabFastXml="), FastXml) && !FastXml.IsEmpty();
+	const bool bHasMjz =
+		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjz="), FastMjz) && !FastMjz.IsEmpty();
+	if (!bHasMjb && !bHasXml && !bHasMjz)
 	{
-		// No command-line MJB: this is the server-browser boot. Consume a pending
+		// No command-line model: this is the server-browser boot. Consume a pending
 		// browser join (we just OpenLevel'd into the chosen environment), else show
 		// the browser when asked (-URLabFastBrowser). Anything else is a normal map.
 		if (UGameInstance* GI = InWorld.GetGameInstance())
@@ -118,9 +128,33 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 
 	const FVector Origin = ParseFastOrigin();
 
+	// Resolve the boot model to what SpawnRenderer consumes: a file path (MJB) or an
+	// in-memory MJB. xml/mjz are compiled to MJB here with THIS libmujoco (same
+	// normalize step fastpath_load does over the wire), then handed to the renderer's
+	// existing in-memory-MJB path -- so nothing downstream needs to know the source
+	// format. MJB stays a plain file path (no recompile).
+	TArray<uint8> ModelBytes;
+	FString ModelPath = Mjb;
+	FString SourceDesc = Mjb;
+	if (bHasXml || bHasMjz)
+	{
+		const FString SrcPath = bHasXml ? FastXml : FastMjz;
+		const FString Format = bHasXml ? TEXT("xml") : TEXT("mjz");
+		FString Err;
+		if (!MjModelSource::CompileFileToMjb(SrcPath, Format, ModelBytes, Err))
+		{
+			UE_LOG(LogURLab, Error,
+				TEXT("[MjRenderer] could not compile -URLabFast%s='%s': %s"),
+				bHasXml ? TEXT("Xml") : TEXT("Mjz"), *SrcPath, *Err);
+			return;
+		}
+		ModelPath.Empty();  // use the compiled bytes, not a file
+		SourceDesc = FString::Printf(TEXT("%s (%s, %d KB mjb)"), *SrcPath, *Format, ModelBytes.Num() / 1024);
+	}
+
 	// One shared builder for the -game launcher and the runtime server browser.
-	AMjRenderer::SpawnRenderer(&InWorld, TArray<uint8>(), Mjb, Bus, Origin, bDirect, bBaseLevel, bCameras);
-	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: mjb=%s mode=%s bus=%s baseLevel=%d"),
-		*Mjb, bDirect ? TEXT("direct") : TEXT("puppet"),
+	AMjRenderer::SpawnRenderer(&InWorld, ModelBytes, ModelPath, Bus, Origin, bDirect, bBaseLevel, bCameras);
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: model=%s mode=%s bus=%s baseLevel=%d"),
+		*SourceDesc, bDirect ? TEXT("direct") : TEXT("puppet"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);
 }

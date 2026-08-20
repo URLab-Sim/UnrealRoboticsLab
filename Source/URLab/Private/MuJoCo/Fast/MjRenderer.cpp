@@ -151,6 +151,15 @@ void AMjRenderer::BeginPlay()
 	// bus, and the two are mutually exclusive so only one source writes the pose.
 	bForcedRenderOnly = FParse::Param(FCommandLine::Get(), TEXT("URLabFastForcedOnly"));
 
+	// -URLabFastCameras: build + stream the camera components. Honour it here so a
+	// renderer PLACED IN THE MAP (not spawned via SpawnRenderer, which sets this from
+	// its bCameras arg) also enables cameras -- otherwise a client that hot-swaps a
+	// model into the map's placeholder renderer gets no cameras back.
+	if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras")))
+	{
+		bEnableCameraStreaming = true;
+	}
+
 	// -URLabFastCamMaxHeight=N overrides the per-camera height cap (0 = honour the
 	// model's resolution exactly), so an eval can request higher-res frames than the
 	// 480 default without editing the level.
@@ -936,6 +945,7 @@ int32 AMjRenderer::LoadAndBuild()
 	BuildBodies();
 	BuildGeoms();
 	BuildCameras();
+	BuildUserCaptureCamera();  // the returnable free/user camera (independent of ncam)
 	ApplyFromData();
 
 	// Import the model's environment (its <light> elements, headlight fill, and skybox)
@@ -1191,6 +1201,81 @@ void AMjRenderer::BuildCameras()
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] built %d camera component(s) (dormant)"), NCam);
 }
 
+const TCHAR* AMjRenderer::UserCameraName()
+{
+	return TEXT("user");
+}
+
+void AMjRenderer::BuildUserCaptureCamera()
+{
+	// A single capturing free/user camera, independent of the model's cameras.
+	// Hosted on the scene actor (its world pose is driven explicitly each render),
+	// and kept OUT of CameraComps so it never participates in the per-model cxpos
+	// indexing. Built dormant -- StartCameraStreaming turns capture + streaming on,
+	// exactly like the model cameras. Exists even when the model has no cameras of
+	// its own, so an operator's viewpoint is always renderable.
+	if (!bEnableCameraStreaming || !Model)
+	{
+		return;
+	}
+	UMjCamera* Cam = NewObject<UMjCamera>(this);
+	if (!Cam)
+	{
+		return;
+	}
+	Cam->CaptureMode = EMjCameraMode::Real;
+
+	const int32 W = UserCamWidth > 1 ? UserCamWidth : 1280;
+	const int32 H = UserCamHeight > 1 ? UserCamHeight : 720;
+	TArray<int32> Res;
+	Res.Add(W);
+	Res.Add(H);
+	Cam->SetResolution(Res);
+	Cam->SetFovy(45.0);  // MuJoCo's free camera has no model fovy; a sane default
+
+	Cam->MjName = FString(UserCameraName());
+	// Pin the canonical identity so the wire topic and the fastpath_render reply
+	// name are exactly "user", regardless of the (transient) host actor name.
+	Cam->SetCanonicalIdentity(FName(UserCameraName()));
+
+	// Stream on a port PAST the model cameras so nothing collides with them.
+	const int32 PortIndex = static_cast<int32>(Model->ncam);
+	Cam->bEnableZmqBroadcast = true;
+	Cam->ZmqEndpoint = FString::Printf(TEXT("tcp://0.0.0.0:%d"), CameraStreamBasePort + PortIndex);
+	Cam->bEnableShmBroadcast = bEnableCameraShm;
+	Cam->SetStreamPortIndex(PortIndex);
+
+	Cam->SetupAttachment(GetRootComponent());
+	Cam->ComponentTags.Add(MjbIdTag(kTagCam, PortIndex));
+	Cam->RegisterComponent();
+
+	UserCaptureCam = Cam;
+	UE_LOG(LogURLab, Log,
+		TEXT("[MjRenderer] built capturing user camera '%s' %dx%d (port %d, dormant)"),
+		UserCameraName(), W, H, CameraStreamBasePort + PortIndex);
+}
+
+void AMjRenderer::PoseUserCaptureCam(const double* Pos, const double* Fwd, const double* Up)
+{
+	UMjCamera* Cam = UserCaptureCam.Get();
+	if (!Cam || !Pos || !Fwd || !Up)
+	{
+		return;
+	}
+	// Same axis convention as ApplyUserCamera (the on-screen copycat): MuJoCo camera
+	// looks along its view direction with +Up; UE looks down +X with +Z up, so
+	// MakeFromXZ(fwd, up) builds the basis directly.
+	const FVector FwdUe = URLabAxisConv::MjDirectionToUe(Fwd).GetSafeNormal();
+	const FVector UpUe = URLabAxisConv::MjDirectionToUe(Up).GetSafeNormal();
+	if (FwdUe.IsNearlyZero())
+	{
+		return; // keep the last good pose rather than snapping to a degenerate frame
+	}
+	const FVector LocUe = URLabAxisConv::MjPositionToUe(Pos) + SceneOrigin;
+	const FQuat Rot = FRotationMatrix::MakeFromXZ(FwdUe, UpUe).ToQuat();
+	Cam->SetWorldLocationAndRotation(LocUe, Rot);
+}
+
 void AMjRenderer::BuildCompiledViewCameras()
 {
 	if (!Model || Model->ncam == 0)
@@ -1325,6 +1410,20 @@ void AMjRenderer::StartCameraStreaming()
 		}
 		Cam->SetStreamingEnabled(true);
 	}
+	// The capturing user camera streams on the same regime as the model cameras:
+	// manual-capture-only under -URLabFastForcedOnly (driven solely by the forced
+	// request, so it never contends with the request render), else free-running for
+	// the viewer/stream path.
+	if (UMjCamera* UCam = UserCaptureCam.Get())
+	{
+		UCam->SetSimClock(this);
+		UCam->bManualCaptureOnly = bForcedRenderOnly;
+		if (!bForcedRenderOnly)
+		{
+			UCam->SetCaptureRate(/*bOnStateChange=*/false, /*MaxFps=*/30.0f);
+		}
+		UCam->SetStreamingEnabled(true);
+	}
 	if (CameraComps.Num() > 0)
 	{
 		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] camera server: %d camera(s) streaming from port %d"),
@@ -1397,6 +1496,20 @@ void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
 		}
 	}
 
+	// Optional free/user camera pose (ucpos/ucfwd/ucup): drive the returnable "user"
+	// camera so a forced render can include the operator's viewpoint. Absent on
+	// requests that don't move it -- it then holds its last pose.
+	{
+		TArray<double> Ucp, Ucf, Ucu;
+		ReadArr(TEXT("ucpos"), Ucp);
+		ReadArr(TEXT("ucfwd"), Ucf);
+		ReadArr(TEXT("ucup"), Ucu);
+		if (Ucp.Num() == 3 && Ucf.Num() == 3 && Ucu.Num() == 3)
+		{
+			PoseUserCaptureCam(Ucp.GetData(), Ucf.GetData(), Ucu.GetData());
+		}
+	}
+
 	// The applied post-step state this render shows, for capture-stamping.
 	double SimTime = 0.0;
 	double Fid = 0.0;
@@ -1419,19 +1532,28 @@ void AMjRenderer::RenderForcedRequest(const TSharedPtr<FJsonObject>& Req,
 	ApplyForcedRenderState(Req);
 
 	// The requested camera list: an explicit "cameras" name array, else every camera.
+	// The capturing user camera lives OUTSIDE CameraComps (so it never collides with
+	// the per-model cxpos indexing), so it is matched / appended explicitly.
+	UMjCamera* UCam = UserCaptureCam.Get();
 	const TArray<TSharedPtr<FJsonValue>>* CamArr = nullptr;
 	if (Req->TryGetArrayField(TEXT("cameras"), CamArr) && CamArr && CamArr->Num() > 0)
 	{
 		for (const TSharedPtr<FJsonValue>& V : *CamArr)
 		{
 			const FString Name = V.IsValid() ? V->AsString() : FString();
+			bool bMatched = false;
 			for (UMjCamera* C : CameraComps)
 			{
 				if (C && C->GetCanonicalName() == Name)
 				{
 					OutCams.Add(C);
+					bMatched = true;
 					break;
 				}
+			}
+			if (!bMatched && UCam && UCam->GetCanonicalName() == Name)
+			{
+				OutCams.Add(UCam);
 			}
 		}
 	}
@@ -1443,6 +1565,10 @@ void AMjRenderer::RenderForcedRequest(const TSharedPtr<FJsonObject>& Req,
 			{
 				OutCams.Add(C);
 			}
+		}
+		if (UCam)  // "all cameras" includes the user camera
+		{
+			OutCams.Add(UCam);
 		}
 	}
 
@@ -2121,7 +2247,11 @@ void AMjRenderer::Tick(float DeltaSeconds)
 						ReadArr(TEXT("ucup"), Ucu) &&
 						Ucp.Num() == 3 && Ucf.Num() == 3 && Ucu.Num() == 3)
 					{
+						// On-screen copycat (non-headless viewer) ...
 						ApplyUserCamera(Ucp.GetData(), Ucf.GetData(), Ucu.GetData());
+						// ... and the returnable capturing user camera (headless
+						// viewer/stream), so a subscriber gets the operator's viewpoint.
+						PoseUserCaptureCam(Ucp.GetData(), Ucf.GetData(), Ucu.GetData());
 					}
 				}
 			}
@@ -2395,6 +2525,15 @@ void AMjRenderer::Teardown()
 	DestroySegPool(EMjCameraMode::SemanticSegmentation);
 	InstanceSegSubscribers.Reset();
 	SemanticSegSubscribers.Reset();
+	// The capturing user camera is a component on the scene actor (so it is NOT
+	// destroyed by the attached-actor sweep above); tear it down explicitly so a
+	// model reload does not leak its render target or re-bind its stream port.
+	if (UMjCamera* UCam = UserCaptureCam.Get())
+	{
+		UCam->SetStreamingEnabled(false);
+		UCam->DestroyComponent();
+	}
+	UserCaptureCam = nullptr;
 	BodyActors.Reset();
 	GeomComps.Reset();
 	GeomOrigins.Reset();

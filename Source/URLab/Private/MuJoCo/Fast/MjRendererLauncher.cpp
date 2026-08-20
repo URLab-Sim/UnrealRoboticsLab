@@ -17,6 +17,8 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
+#include "mujoco/mujoco.h"
+
 namespace
 {
 // Parse -URLabFastOrigin=X,Y,Z (UE cm). Zero if absent/malformed.
@@ -75,6 +77,43 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjz="), FastMjz) && !FastMjz.IsEmpty();
 	if (!bHasMjb && !bHasXml && !bHasMjz)
 	{
+		// Headless render server with no boot model (-URLabFastServe): stand up a
+		// proper Mirror renderer on a tiny placeholder model -- the exact known-good
+		// path the -URLabFast<model> flags use, so the renderer's EnsureManager brings
+		// up the BridgeServer + gRPC/ZMQ transports AND the renderer is camera-enabled.
+		// The first client load_* then hot-swaps the real model into it. (Spawning a
+		// bare manager instead would build the manager's *interactive* compiled play
+		// view, which is externally-driven and has no capturing cameras.)
+		if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastServe")))
+		{
+			static const char* kPlaceholderXml =
+				"<mujoco><worldbody><geom type=\"box\" size=\"0.05 0.05 0.05\"/></worldbody></mujoco>";
+			TArray<uint8> XmlBytes;
+			XmlBytes.Append(reinterpret_cast<const uint8*>(kPlaceholderXml),
+				FCStringAnsi::Strlen(kPlaceholderXml));
+			FString CompileErr;
+			mjModel* Placeholder = MjModelSource::FromBytes(
+				XmlBytes, TEXT("xml"), TMap<FString, TArray<uint8>>(), CompileErr);
+			if (!Placeholder)
+			{
+				UE_LOG(LogURLab, Error,
+					TEXT("[MjRenderer] -URLabFastServe: placeholder compile failed: %s"), *CompileErr);
+				return;
+			}
+			const int32 Sz = mj_sizeModel(Placeholder);
+			TArray<uint8> PlaceholderMjb;
+			PlaceholderMjb.SetNumUninitialized(Sz);
+			mj_saveModel(Placeholder, nullptr, PlaceholderMjb.GetData(), Sz);
+			mj_deleteModel(Placeholder);
+
+			AMjRenderer::SpawnRenderer(&InWorld, PlaceholderMjb, /*MjbFilePath=*/FString(),
+				/*BusEndpoint=*/FString(), ParseFastOrigin(),
+				/*bStepped=*/false, /*bBaseLevel=*/false, /*bCameras=*/true);
+			UE_LOG(LogURLab, Log,
+				TEXT("[MjRenderer] -URLabFastServe: render server up on placeholder, awaiting client load"));
+			return;
+		}
+
 		// No command-line model: this is the server-browser boot. Consume a pending
 		// browser join (we just OpenLevel'd into the chosen environment), else show
 		// the browser when asked (-URLabFastBrowser). Anything else is a normal map.

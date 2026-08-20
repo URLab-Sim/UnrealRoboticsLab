@@ -195,11 +195,25 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr
 		}
 		if (Scene != nullptr)
 		{
+			// A renderer already exists (launched with a boot model, or spawned by an
+			// earlier load): hot-swap its model in place.
 			Scene->ReloadFromBytes(Mjb);
 		}
 		else
 		{
-			UE_LOG(LogURLab, Warning, TEXT("[fastpath_load] no fast-path renderer in this world"));
+			// No renderer in this world -- the server booted an empty level with no
+			// boot model (the client-driven flow: connect, then load_*). Spawn one now
+			// with the just-received model so the first load call brings the scene into
+			// being, instead of failing every subsequent render. Puppet mode, cameras
+			// on, no bus, origin at zero -- the same configuration the -game launcher's
+			// default (non-baseLevel) path uses. Runtime-safe in a packaged build: the
+			// build falls back to procedural-mesh geoms when WITH_EDITOR is off.
+			AMjRenderer::SpawnRenderer(World, Mjb, /*MjbFilePath=*/FString(),
+				/*BusEndpoint=*/FString(), /*Origin=*/FVector::ZeroVector,
+				/*bStepped=*/false, /*bBaseLevel=*/false, /*bCameras=*/true);
+			UE_LOG(LogURLab, Log,
+				TEXT("[fastpath_load] no renderer in world; spawned one for the loaded model (%d bytes)"),
+				Mjb.Num());
 		}
 	});
 

@@ -564,6 +564,33 @@ private:
 	UPROPERTY()
 	TObjectPtr<class ACameraActor> UserCam;
 
+	// A capturing free/user camera -- the returnable counterpart to the on-screen
+	// copycat above. Built alongside the model's cameras (but kept OUT of
+	// CameraComps so it never collides with the per-model cxpos indexing), streams
+	// like any camera, and is returned under the canonical name "user". Posed from
+	// the same MuJoCo-world (pos, fwd, up) as ApplyUserCamera. Drivable in both the
+	// forced-render path (ucpos in fastpath_render) and the mirror/bus path, so a
+	// client gets its viewpoint back headless (a smooth stream in viewer mode, or a
+	// forced frame in render-server mode). Null until BuildUserCaptureCamera runs.
+	UPROPERTY()
+	TObjectPtr<class UMjCamera> UserCaptureCam;
+
+	// Canonical name the capturing user camera is addressed + returned under.
+	static const TCHAR* UserCameraName();
+
+	// Build the capturing user camera (dormant; StartCameraStreaming turns it on).
+	void BuildUserCaptureCamera();
+	// Point the capturing user camera at a MuJoCo-world eye (pos, fwd, up). No-op
+	// until BuildUserCaptureCamera has run. Shares ApplyUserCamera's axis convention.
+	void PoseUserCaptureCam(const double* Pos, const double* Fwd, const double* Up);
+
+	// Pixel size of the capturing user camera (a viewer camera, so not height-capped
+	// like the eval cameras). Defaults to 1280x720.
+	UPROPERTY()
+	int32 UserCamWidth = 1280;
+	UPROPERTY()
+	int32 UserCamHeight = 720;
+
 	// --- small model-query helpers (shared by the build + apply paths) ----- //
 	// True if geom G's group is in VisibleGroupMask (visual groups shown, collision
 	// proxies hidden). Reads Model->geom_group; caller must hold a valid Model.

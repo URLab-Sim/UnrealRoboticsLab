@@ -78,6 +78,8 @@ THIRD_PARTY_INCLUDES_END
 #include "Bridge/BridgeServer.h"
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Async/Async.h"
 #include "Dom/JsonObject.h"
 
@@ -229,6 +231,15 @@ UURLabDmEnvRpcTransport::UURLabDmEnvRpcTransport()
 
 bool UURLabDmEnvRpcTransport::TransportInit()
 {
+	// -URLabDmEnvPort=N lets several render-server instances share one host on
+	// distinct gRPC ports (default 50051 when absent, so a single instance is
+	// unchanged). The RenderPool's orchestrator passes it per co-located instance.
+	int32 PortOverride = 0;
+	if (FParse::Value(FCommandLine::Get(), TEXT("URLabDmEnvPort="), PortOverride) && PortOverride > 0)
+	{
+		SetListenPort(PortOverride);
+	}
+
 	bShouldStop.store(false);
 	WorkerRunnable = new FURLabDmEnvRpcRunnable(this);
 	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabDmEnvRpcServer"), 0, TPri_AboveNormal);

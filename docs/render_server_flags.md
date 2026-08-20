@@ -36,6 +36,7 @@ client instead (the recommended flow).
 
 | Flag | Meaning |
 |------|---------|
+| `-URLabDmEnvPort=<n>` | gRPC (dm_env_rpc) listen port. Default `50051`. Set a distinct value per instance to run **several render servers on one host** (the `RenderPool` case); pair with a distinct `-URLabInstanceIndex=` so the ZMQ ports don't collide either. Cross-host instances can leave it at the default. |
 | `-URLabFastCamMaxHeight=<n>` | Cap each model camera's capture height (keeps aspect). Caps render cost; `0` = uncapped. Does not affect the `user` camera. |
 | `-URLabFastOrigin=X,Y,Z` | UE-cm world offset applied to all geoms/cameras/user-cam, for tiling several scenes in one level. |
 | `-URLabFastBaseLevel` | The boot map is a curated scene (its own lights/sky/floor); skip importing the model's environment on top of it. |

@@ -7,8 +7,11 @@
 
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Fast/MjRendererSubsystem.h"
+#include "MuJoCo/Fast/DroneViewerPawn.h"
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "Utils/URLabLogging.h"
+
+#include "GameFramework/PlayerController.h"
 
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
@@ -61,6 +64,27 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	for (TActorIterator<APawn> PawnIt(&InWorld); PawnIt; ++PawnIt)
 	{
 		PawnIt->SetActorHiddenInGame(true);
+	}
+
+	// VR / spectator viewer (-URLabVrViewer): fly a free-fly drone camera around the
+	// sim the viewer renders from an owner's state bus (-URLabStateSource sets up the
+	// subscription; the manager does that). Here we just spawn + possess the drone,
+	// after the default pawn is hidden above. Keyboard free-fly (WASD/QE + mouse).
+	if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")))
+	{
+		if (APlayerController* PC = InWorld.GetFirstPlayerController())
+		{
+			const FTransform SpawnTM(FRotator(-15.0, 0.0, 0.0), FVector(-500.0, 0.0, 250.0));
+			if (ADroneViewerPawn* Drone = InWorld.SpawnActor<ADroneViewerPawn>(
+					ADroneViewerPawn::StaticClass(), SpawnTM))
+			{
+				PC->Possess(Drone);
+				PC->SetInputMode(FInputModeGameOnly());
+				PC->bShowMouseCursor = false;
+				UE_LOG(LogURLab, Log,
+					TEXT("[MjRenderer] -URLabVrViewer: drone free-fly camera spawned + possessed"));
+			}
+		}
 	}
 
 	// The boot model may arrive as a compiled MJB (-URLabFastMjb, version-locked to

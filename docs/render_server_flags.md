@@ -52,6 +52,14 @@ client instead (the recommended flow).
 | `-URLabFastLevel=<level>` | Level to open for `-URLabFastAutoJoin`. |
 | `-URLabFastBrowser` | Show the interactive server-browser UI (non-headless). |
 
+## Viewer / peek (subscribe to an owner)
+
+| Flag | Meaning |
+|------|---------|
+| `-URLabBroadcastViewers=1` | On an **owner**, re-broadcast raw kinematics (`{t,qpos,qvel}`) on the `viewer` bus (ZMQ + gRPC `subscribe_viewer`) so viewers can subscribe. |
+| `-URLabStateSource=<endpoint>` | Boot as a read-only **viewer**: subscribe to an owner's `viewer` bus and render its sim. |
+| `-URLabVrViewer` | Spawn + possess a free-fly **drone** camera (WASD + Q/E + mouse; Shift boosts) to fly around the viewed sim. Non-headless. |
+
 ## Editor-only (not runtime)
 
 These live in the `URLabEditor` module and drive the in-editor server browser;

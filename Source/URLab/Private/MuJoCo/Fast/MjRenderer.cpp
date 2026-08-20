@@ -1262,17 +1262,37 @@ void AMjRenderer::PoseUserCaptureCam(const double* Pos, const double* Fwd, const
 	{
 		return;
 	}
-	// Same axis convention as ApplyUserCamera (the on-screen copycat): MuJoCo camera
-	// looks along its view direction with +Up; UE looks down +X with +Z up, so
-	// MakeFromXZ(fwd, up) builds the basis directly.
-	const FVector FwdUe = URLabAxisConv::MjDirectionToUe(Fwd).GetSafeNormal();
-	const FVector UpUe = URLabAxisConv::MjDirectionToUe(Up).GetSafeNormal();
-	if (FwdUe.IsNearlyZero())
+	// Build the MuJoCo camera frame (looks along -z_cam, +y_cam up) from the view
+	// (fwd, up) as a cam_xmat, then reuse the SAME conversion the model cameras use
+	// (MjMat3ToUeQuat). Going through the MuJoCo frame is what makes this correct:
+	// the right-handed -> left-handed change is a handedness flip, not a per-axis Y
+	// negation, so composing MjDirectionToUe on fwd/up and MakeFromXZ mirrors the
+	// orientation. cam_xmat columns are the camera's local axes in world coords:
+	// x = right, y = up, z = -forward.
+	double f[3] = {Fwd[0], Fwd[1], Fwd[2]};
+	double u[3] = {Up[0], Up[1], Up[2]};
+	if (mju_normalize3(f) < 1e-9)
 	{
-		return; // keep the last good pose rather than snapping to a degenerate frame
+		return; // degenerate view direction -- keep the last good pose
 	}
+	mju_normalize3(u);
+	double z[3] = {-f[0], -f[1], -f[2]};
+	double x[3];
+	mju_cross(x, u, z);
+	if (mju_normalize3(x) < 1e-9)
+	{
+		return; // up parallel to view -- keep the last good pose
+	}
+	double y[3];
+	mju_cross(y, z, x);
+	// Row-major 3x3, columns [x y z] (MuJoCo xmat layout).
+	const double Mat[9] = {
+		x[0], y[0], z[0],
+		x[1], y[1], z[1],
+		x[2], y[2], z[2],
+	};
 	const FVector LocUe = URLabAxisConv::MjPositionToUe(Pos) + SceneOrigin;
-	const FQuat Rot = FRotationMatrix::MakeFromXZ(FwdUe, UpUe).ToQuat();
+	const FQuat Rot = MjMat3ToUeQuat(Mat);
 	Cam->SetWorldLocationAndRotation(LocUe, Rot);
 }
 

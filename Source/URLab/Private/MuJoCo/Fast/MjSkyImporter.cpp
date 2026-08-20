@@ -16,6 +16,8 @@
 #include "Components/PointLightComponent.h"
 #include "Components/SkyLightComponent.h"
 #include "Engine/TextureCube.h"
+#include "TextureResource.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -76,7 +78,6 @@ float Luminance(const float* Rgb)
 // stacked vertically in tex_data (height == 6 * width), RGB(A).
 UTextureCube* BuildCubeFromSkybox(const mjModel* Model, int32 TexId)
 {
-#if WITH_EDITOR
 	const int32 W = Model->tex_width[TexId];
 	const int32 H = Model->tex_height[TexId];
 	const int32 NCh = Model->tex_nchannel[TexId];
@@ -96,16 +97,29 @@ UTextureCube* BuildCubeFromSkybox(const mjModel* Model, int32 TexId)
 		Bgra[Px * 4 + 2] = Src[Px * NCh + 0];                    // R
 		Bgra[Px * 4 + 3] = (NCh == 4) ? Src[Px * NCh + 3] : 255; // A
 	}
-	UTextureCube* Cube = NewObject<UTextureCube>(GetTransientPackage(), NAME_None, RF_Transient);
-	Cube->Source.Init(W, W, 6, 1, TSF_BGRA8, Bgra.GetData());
+	// Runtime-safe cube: CreateTransient builds GPU-side PlatformData directly, so
+	// it works in a PACKAGED cook -- unlike UTexture::Source (FTextureSource), which
+	// is editor-only. Mip 0 holds all six BGRA8 faces contiguously.
+	UTextureCube* Cube = UTextureCube::CreateTransient(W, W, PF_B8G8R8A8);
+	if (!Cube)
+	{
+		return nullptr;
+	}
 	Cube->SRGB = true;
-	Cube->CompressionNone = true;
-	Cube->MipGenSettings = TMGS_NoMipmaps;
+	Cube->NeverStream = true;
+	FTexturePlatformData* PD = Cube->GetPlatformData();
+	if (!PD || PD->Mips.Num() == 0)
+	{
+		return nullptr;
+	}
+	FTexture2DMipMap& Mip = PD->Mips[0];
+	const int64 Want = static_cast<int64>(6) * W * W * 4;
+	const int64 Have = Mip.BulkData.GetBulkDataSize();
+	void* Dst = Mip.BulkData.Lock(LOCK_READ_WRITE);
+	FMemory::Memcpy(Dst, Bgra.GetData(), FMath::Min(Want, Have));
+	Mip.BulkData.Unlock();
 	Cube->UpdateResource();
 	return Cube;
-#else
-	return nullptr;
-#endif
 }
 
 // Pull the two gradient endpoint colours out of a MuJoCo skybox texture. MuJoCo bakes the
@@ -141,39 +155,65 @@ bool ExtractGradientEndpoints(const mjModel* Model, int32 TexId, FLinearColor& O
 // keys off direction, not position. The SkyLight handles ambient/reflection separately.
 void BuildSkyDome(UWorld& World, const FLinearColor& Top, const FLinearColor& Bottom, const FVector& SceneOrigin)
 {
-#if WITH_EDITOR
-	UMaterial* Mat = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
-	Mat->SetShadingModel(MSM_Unlit);
-	Mat->TwoSided = true;
+	UMaterialInterface* DomeMat = nullptr;
 
-	auto Make = [Mat](UClass* C) { return UMaterialEditingLibrary::CreateMaterialExpression(Mat, C); };
-	auto* Cam  = Cast<UMaterialExpressionCameraVectorWS>(Make(UMaterialExpressionCameraVectorWS::StaticClass()));
-	auto* MaskZ = Cast<UMaterialExpressionComponentMask>(Make(UMaterialExpressionComponentMask::StaticClass()));
-	auto* MulZ = Cast<UMaterialExpressionMultiply>(Make(UMaterialExpressionMultiply::StaticClass()));
-	auto* AddH = Cast<UMaterialExpressionAdd>(Make(UMaterialExpressionAdd::StaticClass()));
-	auto* ClampT = Cast<UMaterialExpressionClamp>(Make(UMaterialExpressionClamp::StaticClass()));
-	auto* CTop = Cast<UMaterialExpressionConstant3Vector>(Make(UMaterialExpressionConstant3Vector::StaticClass()));
-	auto* CBot = Cast<UMaterialExpressionConstant3Vector>(Make(UMaterialExpressionConstant3Vector::StaticClass()));
-	auto* Lerp = Cast<UMaterialExpressionLinearInterpolate>(Make(UMaterialExpressionLinearInterpolate::StaticClass()));
-	if (!Cam || !MaskZ || !MulZ || !AddH || !ClampT || !CTop || !CBot || !Lerp)
+	// Primary path (works in a PACKAGED cook): a shipped gradient material with "Top"
+	// and "Bottom" vector params, driven by a MaterialInstanceDynamic. Building a
+	// material GRAPH at runtime is editor-only, so the graph lives in the M_MjSkyDome
+	// asset and we only override its parameters here -- the runtime-safe pattern.
+	if (UMaterialInterface* Base = LoadObject<UMaterialInterface>(
+			nullptr, TEXT("/UnrealRoboticsLab/Materials/M_MjSkyDome.M_MjSkyDome")))
 	{
+		if (UMaterialInstanceDynamic* MID =
+				UMaterialInstanceDynamic::Create(Base, GetTransientPackage()))
+		{
+			MID->SetVectorParameterValue(TEXT("Top"), Top);
+			MID->SetVectorParameterValue(TEXT("Bottom"), Bottom);
+			DomeMat = MID;
+		}
+	}
+
+#if WITH_EDITOR
+	// Editor-only fallback if the asset isn't present yet (fresh checkout before the
+	// M_MjSkyDome asset is cooked): build the same graph on a transient material.
+	if (DomeMat == nullptr)
+	{
+		UMaterial* Mat = NewObject<UMaterial>(GetTransientPackage(), NAME_None, RF_Transient);
+		Mat->SetShadingModel(MSM_Unlit);
+		Mat->TwoSided = true;
+
+		auto Make = [Mat](UClass* C) { return UMaterialEditingLibrary::CreateMaterialExpression(Mat, C); };
+		auto* Cam  = Cast<UMaterialExpressionCameraVectorWS>(Make(UMaterialExpressionCameraVectorWS::StaticClass()));
+		auto* MaskZ = Cast<UMaterialExpressionComponentMask>(Make(UMaterialExpressionComponentMask::StaticClass()));
+		auto* MulZ = Cast<UMaterialExpressionMultiply>(Make(UMaterialExpressionMultiply::StaticClass()));
+		auto* AddH = Cast<UMaterialExpressionAdd>(Make(UMaterialExpressionAdd::StaticClass()));
+		auto* ClampT = Cast<UMaterialExpressionClamp>(Make(UMaterialExpressionClamp::StaticClass()));
+		auto* CTop = Cast<UMaterialExpressionConstant3Vector>(Make(UMaterialExpressionConstant3Vector::StaticClass()));
+		auto* CBot = Cast<UMaterialExpressionConstant3Vector>(Make(UMaterialExpressionConstant3Vector::StaticClass()));
+		auto* Lerp = Cast<UMaterialExpressionLinearInterpolate>(Make(UMaterialExpressionLinearInterpolate::StaticClass()));
+		if (Cam && MaskZ && MulZ && AddH && ClampT && CTop && CBot && Lerp)
+		{
+			MaskZ->R = false; MaskZ->G = false; MaskZ->B = true; MaskZ->A = false;
+			MaskZ->Input.Expression = Cam;
+			MulZ->A.Expression = MaskZ; MulZ->ConstB = -0.5f;
+			AddH->A.Expression = MulZ; AddH->ConstB = 0.5f;
+			ClampT->Input.Expression = AddH; ClampT->MinDefault = 0.0f; ClampT->MaxDefault = 1.0f;
+			CTop->Constant = Top;
+			CBot->Constant = Bottom;
+			Lerp->A.Expression = CBot; Lerp->B.Expression = CTop; Lerp->Alpha.Expression = ClampT;
+			Mat->GetEditorOnlyData()->EmissiveColor.Expression = Lerp;
+			Mat->PostEditChange();
+			DomeMat = Mat;
+		}
+	}
+#endif
+
+	if (DomeMat == nullptr)
+	{
+		UE_LOG(LogURLab, Warning,
+			TEXT("[MjSky] sky dome: no material (ship /UnrealRoboticsLab/Materials/M_MjSkyDome)"));
 		return;
 	}
-	// t = saturate(0.5 - 0.5 * CameraVectorWS.z); CameraVectorWS points surface->camera, so its
-	// -z is the outward view ray's z (up). t=1 looking up (->Top), t=0 looking down (->Bottom).
-	MaskZ->R = false; MaskZ->G = false; MaskZ->B = true; MaskZ->A = false;
-	MaskZ->Input.Expression = Cam;
-	MulZ->A.Expression = MaskZ; MulZ->ConstB = -0.5f;
-	AddH->A.Expression = MulZ; AddH->ConstB = 0.5f;
-	ClampT->Input.Expression = AddH; ClampT->MinDefault = 0.0f; ClampT->MaxDefault = 1.0f;
-	CTop->Constant = Top;
-	CBot->Constant = Bottom;
-	Lerp->A.Expression = CBot; Lerp->B.Expression = CTop; Lerp->Alpha.Expression = ClampT;
-	Mat->GetEditorOnlyData()->EmissiveColor.Expression = Lerp;
-	// NOT UMaterialEditingLibrary::RecompileMaterial -- it rebuilds open material-editor windows
-	// via an editor subsystem that does not exist under -game (SIGSEGV). PostEditChange recompiles
-	// the shader for rendering without touching editor UI.
-	Mat->PostEditChange();
 
 	UStaticMesh* Sphere = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Sphere.Sphere"));
 	if (!Sphere)
@@ -190,13 +230,12 @@ void BuildSkyDome(UWorld& World, const FLinearColor& Top, const FLinearColor& Bo
 	UStaticMeshComponent* SM = Dome->GetStaticMeshComponent();
 	SM->SetMobility(EComponentMobility::Movable);
 	SM->SetStaticMesh(Sphere);
-	SM->SetMaterial(0, Mat);
+	SM->SetMaterial(0, DomeMat);
 	SM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	SM->SetCastShadow(false);
 	SM->bReceivesDecals = false;
 	SM->SetWorldLocation(SceneOrigin);
 	SM->SetWorldScale3D(FVector(200.0f)); // BasicShapes/Sphere is ~1m dia -> ~100m radius dome
-#endif
 }
 
 void ClearImported(UWorld& World)

@@ -219,7 +219,13 @@ void ClearImported(UWorld& World)
 void ApplyMjEnvironment(UWorld& World, const mjModel* Model, const mjData* Data, bool bBaseLevel,
 	const FVector& SceneOrigin)
 {
-#if WITH_EDITOR
+	// NOTE: this must run in a PACKAGED cook (WITH_EDITOR=false), not only the
+	// editor binary under -game. The lights + SkyLight below use runtime-safe APIs
+	// only; the two editor-only pieces (BuildCubeFromSkybox's texture Source, and
+	// BuildSkyDome's procedural material) are each internally #if WITH_EDITOR-guarded
+	// with packaged fallbacks (nullptr cubemap / no-op dome), so the whole function
+	// is safe to run everywhere. Do NOT wrap this body in WITH_EDITOR again -- that
+	// silently drops all imported lighting in a packaged build.
 	if (Model == nullptr || bBaseLevel)
 	{
 		return;
@@ -362,6 +368,5 @@ void ApplyMjEnvironment(UWorld& World, const mjModel* Model, const mjData* Data,
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjSky] imported %d light(s), headlight fill=%.2f, skybox=%s"),
 		NLit, SkyIntensity, SkyTex >= 0 ? TEXT("yes") : TEXT("none"));
-#endif
 }
 } // namespace MjSkyImporter

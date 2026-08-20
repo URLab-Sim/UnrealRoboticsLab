@@ -41,6 +41,7 @@
 #include "MuJoCo/Gen/Elements/Options/MjOption.gen.h"
 #include "EngineUtils.h"
 #include "Transport/NetworkManager.h"
+#include "Transport/MjExternalTransportProvider.h"
 #include "MuJoCo/Input/MjInputHandler.h"
 #include "MuJoCo/Input/MjPerturbation.h"
 #include "Replay/MjReplayManager.h"
@@ -632,6 +633,13 @@ void AAMjManager::PublishOnViewerBus(const FString& Topic, const TArray<uint8>& 
 		{
 			Pub->Publish(Topic, Payload);
 		}
+	}
+	// Fan the raw kinematics frame to any external backend (e.g. the gRPC
+	// subscribe_viewer stream) too, so a UE owner serves viewers over gRPC and ZMQ
+	// alike from the same per-step frame.
+	if (Topic == TEXT("viewer") && FMjExternalTransportProvider::OnViewerFrame.IsBound())
+	{
+		FMjExternalTransportProvider::OnViewerFrame.Broadcast(Payload);
 	}
 }
 

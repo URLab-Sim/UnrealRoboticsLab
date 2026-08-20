@@ -74,6 +74,7 @@ THIRD_PARTY_INCLUDES_END
 #pragma pop_macro("check")
 
 #include "Transport/DmEnvRpcTransport.h"
+#include "Transport/MjExternalTransportProvider.h"
 #include "URLabDmEnvRpc.h"
 #include "Bridge/BridgeServer.h"
 #include "HAL/Runnable.h"
@@ -106,6 +107,39 @@ public:
 				urlab::dm_env_rpc::v1::UrlabPacket InPacket;
 				if (Request.extension().UnpackTo(&InPacket))
 				{
+					// subscribe_viewer: this call becomes a dedicated server-stream of
+					// the owner's {t,qpos,qvel} frames (op "viewer_frame") until the
+					// client cancels -- NOT the one-reply-per-request path below. The
+					// client opens a separate Process call for this, so it never blocks
+					// its rpc stream. Requires the owner to broadcast (-URLabBroadcastViewers=1).
+					if (InPacket.op() == "subscribe_viewer")
+					{
+						const int64 Seq = InPacket.sequence_id();
+						uint64 LastSeq = 0;
+						TArray<uint8> Frame;
+						while (!Transport->ShouldStop() && !Context->IsCancelled())
+						{
+							if (Transport->GetViewerFrame(Frame, LastSeq))
+							{
+								urlab::dm_env_rpc::v1::UrlabPacket OutFrame;
+								OutFrame.set_op("viewer_frame");
+								OutFrame.set_sequence_id(Seq);
+								OutFrame.set_payload(Frame.GetData(), Frame.Num());
+								dm_env_rpc::v1::EnvironmentResponse FrameResp;
+								FrameResp.mutable_extension()->PackFrom(OutFrame);
+								if (!Stream->Write(FrameResp))
+								{
+									break;
+								}
+							}
+							else
+							{
+								FPlatformProcess::Sleep(0.005f);  // ~200Hz; only new frames
+							}
+						}
+						continue;  // next Read ends the stream once the client is gone
+					}
+
 					TArray<uint8> InBytes(
 						reinterpret_cast<const uint8*>(InPacket.payload().data()),
 						InPacket.payload().size());
@@ -240,6 +274,11 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 		SetListenPort(PortOverride);
 	}
 
+	// Cache the owner's per-step viewer frame ({t,qpos,qvel}) so a subscribe_viewer
+	// gRPC call can stream it. Bound only while this transport is up.
+	ViewerSinkHandle = FMjExternalTransportProvider::OnViewerFrame.AddLambda(
+		[this](const TArray<uint8>& Bytes) { SetViewerFrame(Bytes); });
+
 	bShouldStop.store(false);
 	WorkerRunnable = new FURLabDmEnvRpcRunnable(this);
 	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabDmEnvRpcServer"), 0, TPri_AboveNormal);
@@ -255,8 +294,32 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 	return true;
 }
 
+void UURLabDmEnvRpcTransport::SetViewerFrame(const TArray<uint8>& Bytes)
+{
+	FScopeLock Lock(&ViewerCacheLock);
+	LatestViewerFrame = Bytes;
+	++ViewerFrameSeq;
+}
+
+bool UURLabDmEnvRpcTransport::GetViewerFrame(TArray<uint8>& Out, uint64& InOutSeq) const
+{
+	FScopeLock Lock(&ViewerCacheLock);
+	if (ViewerFrameSeq == InOutSeq || LatestViewerFrame.Num() == 0)
+	{
+		return false;
+	}
+	Out = LatestViewerFrame;
+	InOutSeq = ViewerFrameSeq;
+	return true;
+}
+
 void UURLabDmEnvRpcTransport::TransportShutdown()
 {
+	if (ViewerSinkHandle.IsValid())
+	{
+		FMjExternalTransportProvider::OnViewerFrame.Remove(ViewerSinkHandle);
+		ViewerSinkHandle.Reset();
+	}
 	bShouldStop.store(true);
 	if (Server)
 	{

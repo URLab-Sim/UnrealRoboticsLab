@@ -54,6 +54,11 @@ DECLARE_DELEGATE_RetVal_OneParam(UURLabPublishTransport*, FMjMakeExternalPublish
 DECLARE_DELEGATE_RetVal_OneParam(UURLabClientSubscribeTransport*, FMjMakeExternalClientSubscribeTransport, UObject* /*Outer*/);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabRpcClientTransport*, FMjMakeExternalRpcClientTransport, UObject* /*Outer*/);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalCameraPublishTransport, UObject* /*Outer*/);
+// Owner -> external module: one raw viewer-bus frame per step ({t,qpos,qvel}
+// msgpack, the same bytes the ZMQ "viewer" PUB carries). An optional module (gRPC)
+// binds this to cache + server-stream the frame to its own subscribers. Multicast
+// so >1 backend can listen; unbound is a no-op.
+DECLARE_MULTICAST_DELEGATE_OneParam(FMjViewerFrameSink, const TArray<uint8>& /*Payload*/);
 
 struct URLAB_API FMjExternalTransportProvider
 {
@@ -87,6 +92,10 @@ struct URLAB_API FMjExternalTransportProvider
 	 *  given Outer; the caller opens per-camera channels and inits it. Unbound =>
 	 *  the core uses its built-in camera backend. */
 	static FMjMakeExternalCameraPublishTransport MakeCameraPublishTransport;
+
+	/** Broadcast one raw viewer-bus frame ({t,qpos,qvel}) per step to any external
+	 *  backend (e.g. gRPC subscribe_viewer). Unbound => no extra fan-out. */
+	static FMjViewerFrameSink OnViewerFrame;
 
 	/** True when an external module has installed the control RPC factory. */
 	static bool HasControlRpcTransport();

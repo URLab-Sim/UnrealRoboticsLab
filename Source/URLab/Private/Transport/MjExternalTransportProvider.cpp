@@ -27,6 +27,7 @@ FMjMakeExternalPublishTransport FMjExternalTransportProvider::MakeStatePublishTr
 FMjMakeExternalClientSubscribeTransport FMjExternalTransportProvider::MakeClientSubscribeTransport;
 FMjMakeExternalRpcClientTransport FMjExternalTransportProvider::MakeRpcClientTransport;
 FMjMakeExternalCameraPublishTransport FMjExternalTransportProvider::MakeCameraPublishTransport;
+FMjViewerFrameSink FMjExternalTransportProvider::OnViewerFrame;
 
 bool FMjExternalTransportProvider::HasControlRpcTransport()
 {

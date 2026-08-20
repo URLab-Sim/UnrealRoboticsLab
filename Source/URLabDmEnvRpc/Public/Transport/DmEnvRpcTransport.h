@@ -62,6 +62,14 @@ public:
 
 	bool ShouldStop() const { return bShouldStop.load(std::memory_order_relaxed); }
 
+	// --- viewer-frame cache: the latest {t,qpos,qvel} the owner produced, fed by
+	// FMjExternalTransportProvider::OnViewerFrame and streamed by a subscribe_viewer
+	// gRPC call. Thread-safe. ---
+	void SetViewerFrame(const TArray<uint8>& Bytes);
+	// Copy the latest frame into Out iff its sequence advanced past InOutSeq (which
+	// is then updated). Returns true when a fresh frame was written.
+	bool GetViewerFrame(TArray<uint8>& Out, uint64& InOutSeq) const;
+
 private:
 	UPROPERTY()
 	int32 ListenPort = 50051;
@@ -71,4 +79,9 @@ private:
 	std::atomic<bool> bShouldStop{false};
 
 	grpc::Server* Server = nullptr;
+
+	mutable FCriticalSection ViewerCacheLock;
+	TArray<uint8> LatestViewerFrame;
+	uint64 ViewerFrameSeq = 0;
+	FDelegateHandle ViewerSinkHandle;
 };

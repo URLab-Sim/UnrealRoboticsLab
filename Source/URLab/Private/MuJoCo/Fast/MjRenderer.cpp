@@ -278,6 +278,14 @@ void AMjRenderer::BeginPlay()
 		EnsureManager();
 		StartBus();
 	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")))
+	{
+		// A VR viewer is a gRPC-driven mirror that KEEPS rendering its main view
+		// (the free-fly drone). Stand up the manager (bridge + RPC) so an owner can
+		// drive it via fastpath_load/render over gRPC -- without the forced-only
+		// regime above, which disables the very main view the drone renders through.
+		EnsureManager();
+	}
 }
 
 void AMjRenderer::EndPlay(const EEndPlayReason::Type Reason)

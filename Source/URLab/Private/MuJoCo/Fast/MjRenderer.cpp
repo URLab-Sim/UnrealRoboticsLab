@@ -2588,13 +2588,19 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 	// curated base level (bBaseLevel) keeps its own rig and is left untouched there.
 
 	// Framing camera at the scene origin (the copycat retargets it once a Driver
-	// streams its free camera).
-	if (APlayerController* PC = World->GetFirstPlayerController())
+	// streams its free camera). Skip it when a VR/drone viewer owns the view
+	// (-URLabVrViewer): the possessed drone pawn IS the viewport, so a static
+	// framing camera would steal it and the free-fly controls would move an
+	// off-screen pawn.
+	if (!FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")))
 	{
-		const FTransform View(FRotator(-18.0, 0.0, 0.0), FVector(-450.0, 0.0, 190.0) + Origin);
-		if (ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), View))
+		if (APlayerController* PC = World->GetFirstPlayerController())
 		{
-			PC->SetViewTargetWithBlend(Cam);
+			const FTransform View(FRotator(-18.0, 0.0, 0.0), FVector(-450.0, 0.0, 190.0) + Origin);
+			if (ACameraActor* Cam = World->SpawnActor<ACameraActor>(ACameraActor::StaticClass(), View))
+			{
+				PC->SetViewTargetWithBlend(Cam);
+			}
 		}
 	}
 

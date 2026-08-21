@@ -16,6 +16,7 @@
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/Pawn.h"
+#include "TimerManager.h"
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -72,19 +73,10 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// after the default pawn is hidden above. Keyboard free-fly (WASD/QE + mouse).
 	if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")))
 	{
-		if (APlayerController* PC = InWorld.GetFirstPlayerController())
-		{
-			const FTransform SpawnTM(FRotator(-15.0, 0.0, 0.0), FVector(-500.0, 0.0, 250.0));
-			if (ADroneViewerPawn* Drone = InWorld.SpawnActor<ADroneViewerPawn>(
-					ADroneViewerPawn::StaticClass(), SpawnTM))
-			{
-				PC->Possess(Drone);
-				PC->SetInputMode(FInputModeGameOnly());
-				PC->bShowMouseCursor = false;
-				UE_LOG(LogURLab, Log,
-					TEXT("[MjRenderer] -URLabVrViewer: drone free-fly camera spawned + possessed"));
-			}
-		}
+		// The PlayerController is frequently not up yet at world BeginPlay (the
+		// packaged boot creates it a few frames later), so defer + retry rather
+		// than silently no-op when GetFirstPlayerController() is null right now.
+		TryPossessVrDrone(&InWorld, 0);
 	}
 
 	// The boot model may arrive as a compiled MJB (-URLabFastMjb, version-locked to
@@ -230,4 +222,59 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: model=%s mode=%s bus=%s baseLevel=%d"),
 		*SourceDesc, bDirect ? TEXT("direct") : TEXT("puppet"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);
+}
+
+void UMjRendererLauncher::TryPossessVrDrone(TWeakObjectPtr<UWorld> WeakWorld, int32 Attempt)
+{
+	UWorld* World = WeakWorld.Get();
+	if (!World)
+	{
+		return;
+	}
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (!PC)
+	{
+		// PC not created yet -- retry shortly. Cap the retries (~5s) so a headless
+		// world with no player never loops forever.
+		if (Attempt < 50)
+		{
+			World->GetTimerManager().SetTimer(
+				VrPossessTimerHandle,
+				FTimerDelegate::CreateUObject(
+					this, &UMjRendererLauncher::TryPossessVrDrone, WeakWorld, Attempt + 1),
+				0.1f, /*bLoop=*/false);
+		}
+		else
+		{
+			UE_LOG(LogURLab, Warning,
+				TEXT("[MjRenderer] -URLabVrViewer: no PlayerController after ~5s; drone not possessed"));
+		}
+		return;
+	}
+
+	// Idempotent: a retry (or a re-entered BeginPlay) must not spawn a second drone.
+	for (TActorIterator<ADroneViewerPawn> It(World); It; ++It)
+	{
+		return;
+	}
+
+	// Hide whatever the PC currently possesses (the GameMode's default sphere pawn),
+	// so it doesn't show up in the drone's view as a grey dome over the scene.
+	if (APawn* Old = PC->GetPawn())
+	{
+		Old->SetActorHiddenInGame(true);
+	}
+
+	const FTransform SpawnTM(FRotator(-15.0, 0.0, 0.0), FVector(-500.0, 0.0, 250.0));
+	if (ADroneViewerPawn* Drone = World->SpawnActor<ADroneViewerPawn>(
+			ADroneViewerPawn::StaticClass(), SpawnTM))
+	{
+		PC->Possess(Drone);
+		PC->SetInputMode(FInputModeGameOnly());
+		PC->bShowMouseCursor = false;
+		UE_LOG(LogURLab, Display,
+			TEXT("[MjRenderer] -URLabVrViewer: drone free-fly camera spawned + possessed (attempt %d)"),
+			Attempt);
+	}
 }

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/TimerHandle.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "MjRendererLauncher.generated.h"
 
@@ -27,4 +28,12 @@ class URLAB_API UMjRendererLauncher : public UWorldSubsystem
 
 public:
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
+
+private:
+	/** Spawn + possess the free-fly drone (`-URLabVrViewer`) once a PlayerController
+	 *  exists. The PC is often not ready at world BeginPlay (esp. in a packaged
+	 *  boot), so this retries itself on a short timer until it succeeds or times out. */
+	void TryPossessVrDrone(TWeakObjectPtr<UWorld> WeakWorld, int32 Attempt);
+
+	FTimerHandle VrPossessTimerHandle;
 };

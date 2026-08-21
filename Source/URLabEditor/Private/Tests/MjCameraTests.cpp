@@ -173,7 +173,7 @@ bool FMjCameraDepthModeConfig::RunTest(const FString& Parameters)
 		// DepthNearCm property now controls only the post-process depth
 		// normalisation (see MjCameraFeedEntry.cpp).
 		TestEqual(TEXT("near clip value"),
-			Cam->CaptureComponent->CustomNearClippingPlane, 0.1f);
+			Cam->CaptureComponent->CustomNearClippingPlane, 5.0f);
 	}
 
 	S.Cleanup();

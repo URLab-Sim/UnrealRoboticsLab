@@ -154,6 +154,15 @@ struct FMjCameraHistory
 	 */
 	TSharedPtr<const FMjCameraFrame> SelectDelayedShared(double NowValue, uint64 AfterSeq) const;
 
+	/**
+	 * The newest frame eligible at TargetClock. When TargetClock is before the oldest
+	 * retained frame (e.g. at t=0 cold-start), returns the oldest retained frame.
+	 */
+	TSharedPtr<const FMjCameraFrame> SelectDelayedByClock(double TargetClock, bool bUseWallClock) const;
+
+	/** Clear all retained history frames. Thread-safe. */
+	void Clear();
+
 	/** Serialises the game thread's push against the bridge worker thread's fetch. */
 	mutable FCriticalSection Lock;
 
@@ -427,6 +436,21 @@ public:
 	 *  singleton, so manager paths work before/without injection. */
 	void SetSimClock(UObject* ClockObject);
 
+	/** Near clipping distance in cm, or <= 0 for default / CVar value. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Rendering")
+	float CustomNearClipCm = 0.0f;
+
+	/** Far clipping distance in cm, or <= 0 for default. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Rendering")
+	float CustomFarClipCm = 0.0f;
+
+	/** Recompute and apply the custom projection matrix from authored or derived intrinsics. */
+	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Camera")
+	void SetupProjectionMatrix();
+
+	/** Set clipping planes in cm directly from mjModel (vis.map.znear/zfar * stat.extent * 100). */
+	void SetClippingPlanes(float InNearClipCm, float InFarClipCm);
+
 	/**
 	 * Allocate the render target and begin capturing, or stop and give the
 	 * capture budget back.
@@ -543,6 +567,16 @@ public:
 	 * bIgnoreDelay opts a caller out when it wants the freshest rendered truth.
 	 */
 	TSharedPtr<const FMjCameraFrame> GetFrameForRequest(uint64 MinFrameId, bool bIgnoreDelay) const;
+
+	/**
+	 * The frame to answer an RPC request with an explicit delay (in seconds).
+	 * If InDelaySeconds > 0.0, selects the newest frame eligible at (NowClock - InDelaySeconds).
+	 * If InDelaySeconds <= 0.0, falls back to standard request routing (camera-configured delay or fresh).
+	 */
+	TSharedPtr<const FMjCameraFrame> GetFrameForRequest(uint64 MinFrameId, double InDelaySeconds) const;
+
+	/** Clear all retained history frames (e.g. on episode reset). Thread-safe. */
+	void ClearHistory();
 
 	/** The most recent frame id retained, or 0. */
 	uint64 GetLatestFrameId() const;

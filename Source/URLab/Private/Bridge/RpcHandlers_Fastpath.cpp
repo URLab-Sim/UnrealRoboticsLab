@@ -319,7 +319,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathRender(const TSharedP
 	// history ring (the delayed past the stream publishes); absent/0 is exact-fresh.
 	double Delay = 0.0;
 	Req->TryGetNumberField(TEXT("delay"), Delay);
-	const bool bIgnoreDelay = !(Delay > 0.0);
 
 	int32 TimeoutMs = 5000;
 	double TimeoutNum = 0.0;
@@ -340,7 +339,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathRender(const TSharedP
 	TSharedPtr<FResult, ESPMode::ThreadSafe> Res = MakeShared<FResult, ESPMode::ThreadSafe>();
 	Res->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
 	TWeakObjectPtr<AAMjManager> WeakMgr = OwnerMgr;
-	AsyncTask(ENamedThreads::GameThread, [Res, WeakMgr, Req, bIgnoreDelay]() {
+	AsyncTask(ENamedThreads::GameThread, [Res, WeakMgr, Req, Delay]() {
 		AAMjManager* Mgr = WeakMgr.Get();
 		UWorld* World = Mgr ? Mgr->GetWorld() : nullptr;
 		AMjRenderer* Scene = nullptr;
@@ -369,7 +368,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathRender(const TSharedP
 				{
 					continue;
 				}
-				TSharedPtr<const FMjCameraFrame> Frame = C->GetFrameForRequest(TargetId, bIgnoreDelay);
+				TSharedPtr<const FMjCameraFrame> Frame = C->GetFrameForRequest(TargetId, Delay);
 				TSharedPtr<FJsonObject> CamObj = MakeShared<FJsonObject>();
 				CamObj->SetStringField(TEXT("name"), C->GetCanonicalName());
 				if (Frame.IsValid())

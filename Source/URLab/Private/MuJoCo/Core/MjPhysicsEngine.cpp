@@ -1323,6 +1323,13 @@ void UMjPhysicsEngine::RunMujocoAsync()
 					else
 					{
 						mj_step(m_model, m_data);
+						// Re-evaluate forward kinematics (body/camera/geom/site/light transforms)
+						// after mj_step so derived arrays (xpos, xquat, cam_xpos, cam_xmat)
+						// reflect post-integration qpos before being read by PushRenderState().
+						mj_kinematics(m_model, m_data);
+						mj_comPos(m_model, m_data);
+						mj_camlight(m_model, m_data);
+
 						// Live/streaming path has no custom handler, so the loop
 						// owns the single post-step notification here. Handlers
 						// call OnPostStep themselves, so the loop must not — that

@@ -176,6 +176,19 @@ static TAutoConsoleVariable<int32> CVarCamForceSubmit(
 		 "0=off (default), 1=on."),
 	ECVF_Default);
 
+// Near clipping plane for scene capture components (in cm, 1 UU = 1 cm).
+// Default is 2.0 cm (20 mm), matching MuJoCo's typical znear = 0.01 * extent.
+static TAutoConsoleVariable<float> CVarCamNearClip(
+	TEXT("urlab.Cam.NearClip"), 2.0f,
+	TEXT("Near clipping plane for camera scene captures in cm (default 2.0 cm = 20 mm, matching MuJoCo znear)."),
+	ECVF_Default);
+
+// Disable autoexposure (eye adaptation) for camera scene captures. 1=disabled, 0=enabled (default).
+static TAutoConsoleVariable<int32> CVarCamDisableAutoExposure(
+	TEXT("urlab.Cam.DisableAutoExposure"), 0,
+	TEXT("Disable eye adaptation / autoexposure for camera scene captures. 1=disabled, 0=enabled (default)."),
+	ECVF_Default);
+
 FString CameraLogName(const UMjCamera& Cam)
 {
 	return Cam.MjName.Get(Cam.GetName());
@@ -291,6 +304,24 @@ void UMjCamera::BeginPlay()
 				break; // the first enabled volume wins
 			}
 		}
+
+		// Explicitly disable motion blur
+		CaptureComponent->ShowFlags.SetMotionBlur(false);
+		CaptureComponent->PostProcessSettings.bOverride_MotionBlurAmount = true;
+		CaptureComponent->PostProcessSettings.MotionBlurAmount = 0.0f;
+		CaptureComponent->PostProcessSettings.bOverride_MotionBlurMax = true;
+		CaptureComponent->PostProcessSettings.MotionBlurMax = 0.0f;
+		CaptureComponent->PostProcessSettings.bOverride_MotionBlurPerObjectSize = true;
+		CaptureComponent->PostProcessSettings.MotionBlurPerObjectSize = 0.0f;
+
+		if (CVarCamDisableAutoExposure.GetValueOnGameThread() != 0 || FParse::Param(FCommandLine::Get(), TEXT("URLabDisableAutoExposure")))
+		{
+			CaptureComponent->ShowFlags.SetEyeAdaptation(false);
+			CaptureComponent->PostProcessSettings.bOverride_AutoExposureMethod = true;
+			CaptureComponent->PostProcessSettings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+			CaptureComponent->PostProcessSettings.bOverride_AutoExposureBias = true;
+			CaptureComponent->PostProcessSettings.AutoExposureBias = 0.0f;
+		}
 	}
 
 	if (bEnableZmqBroadcast)
@@ -350,13 +381,124 @@ FIntPoint UMjCamera::CaptureResolution() const
 	return FIntPoint(W, H);
 }
 
-void UMjCamera::RefreshCaptureFov()
+void UMjCamera::SetClippingPlanes(float InNearClipCm, float InFarClipCm)
 {
-	DerivedFovy = DeriveFovyDegrees(*this);
+	CustomNearClipCm = InNearClipCm;
+	CustomFarClipCm = InFarClipCm;
 	if (CaptureComponent)
 	{
-		CaptureComponent->FOVAngle = HorizontalFOVFromFovy(DerivedFovy, CaptureResolution());
+		float NearClipCm = CustomNearClipCm > 0.0f ? CustomNearClipCm : CVarCamNearClip.GetValueOnGameThread();
+		FParse::Value(FCommandLine::Get(), TEXT("URLabCamNearClip="), NearClipCm);
+		CaptureComponent->bOverride_CustomNearClippingPlane = true;
+		CaptureComponent->CustomNearClippingPlane = FMath::Max(0.01f, NearClipCm);
+		SetupProjectionMatrix();
 	}
+}
+
+void UMjCamera::SetupProjectionMatrix()
+{
+	if (!CaptureComponent)
+	{
+		return;
+	}
+
+	const FIntPoint Res = CaptureResolution();
+	const float W = static_cast<float>(Res.X);
+	const float H = static_cast<float>(Res.Y);
+	if (W <= 0.0f || H <= 0.0f)
+	{
+		return;
+	}
+
+	float Fx = 0.0f;
+	float Fy = 0.0f;
+	float Cx = W * 0.5f;
+	float Cy = H * 0.5f;
+
+	const TArray<float> FocalPixel = HasFocalpixel() ? GetFocalpixel() : TArray<float>();
+	const TArray<float> PrincipalPixel = HasPrincipalpixel() ? GetPrincipalpixel() : TArray<float>();
+	const TArray<float> Sensorsize = HasSensorsize() ? GetSensorsize() : TArray<float>();
+	const TArray<float> Focal = HasFocal() ? GetFocal() : TArray<float>();
+	const TArray<float> Principal = HasPrincipal() ? GetPrincipal() : TArray<float>();
+
+	if (FocalPixel.Num() >= 2 && FocalPixel[0] > 0.0f && FocalPixel[1] > 0.0f)
+	{
+		Fx = FocalPixel[0];
+		Fy = FocalPixel[1];
+		if (PrincipalPixel.Num() >= 1)
+		{
+			Cx = PrincipalPixel[0] + W * 0.5f;
+		}
+		if (PrincipalPixel.Num() >= 2)
+		{
+			Cy = PrincipalPixel[1] + H * 0.5f;
+		}
+	}
+	else if (Focal.Num() >= 2 && Sensorsize.Num() >= 2 && Sensorsize[0] > 0.0f && Sensorsize[1] > 0.0f)
+	{
+		Fx = Focal[0] * (W / Sensorsize[0]);
+		Fy = Focal[1] * (H / Sensorsize[1]);
+		if (Principal.Num() >= 1)
+		{
+			Cx = Principal[0] * (W / Sensorsize[0]) + W * 0.5f;
+		}
+		if (Principal.Num() >= 2)
+		{
+			Cy = Principal[1] * (H / Sensorsize[1]) + H * 0.5f;
+		}
+	}
+	else
+	{
+		DerivedFovy = DeriveFovyDegrees(*this);
+		const float FovyRad = FMath::DegreesToRadians(DerivedFovy);
+		Fy = (H * 0.5f) / FMath::Tan(FovyRad * 0.5f);
+		Fx = Fy;
+		Cx = W * 0.5f;
+		Cy = H * 0.5f;
+	}
+
+	DerivedFovy = 2.0f * FMath::Atan2(H * 0.5f, Fy) * (180.0f / PI);
+	CaptureComponent->FOVAngle = HorizontalFOVFromFovy(DerivedFovy, Res);
+
+	float NearClipCm = CustomNearClipCm > 0.0f ? CustomNearClipCm : CVarCamNearClip.GetValueOnGameThread();
+	FParse::Value(FCommandLine::Get(), TEXT("URLabCamNearClip="), NearClipCm);
+	NearClipCm = FMath::Max(0.01f, NearClipCm);
+	CaptureComponent->bOverride_CustomNearClippingPlane = true;
+	CaptureComponent->CustomNearClippingPlane = NearClipCm;
+
+	// Construct Reversed-Z Perspective Matrix matching Unreal view space (X=Right, Y=Up, Z=Forward)
+	FMatrix CustomProjMatrix;
+	CustomProjMatrix.M[0][0] = 2.0f * Fx / W;
+	CustomProjMatrix.M[0][1] = 0.0f;
+	CustomProjMatrix.M[0][2] = 0.0f;
+	CustomProjMatrix.M[0][3] = 0.0f;
+
+	CustomProjMatrix.M[1][0] = 0.0f;
+	CustomProjMatrix.M[1][1] = 2.0f * Fy / H;
+	CustomProjMatrix.M[1][2] = 0.0f;
+	CustomProjMatrix.M[1][3] = 0.0f;
+
+	// Flip principal point offsets to match Unreal view space handedness
+	CustomProjMatrix.M[2][0] = (W - 2.0f * Cx) / W;
+	CustomProjMatrix.M[2][1] = (2.0f * Cy - H) / H;
+	CustomProjMatrix.M[2][2] = 0.0f; // Infinite far plane for Reversed-Z
+	CustomProjMatrix.M[2][3] = 1.0f;
+
+	CustomProjMatrix.M[3][0] = 0.0f;
+	CustomProjMatrix.M[3][1] = 0.0f;
+	CustomProjMatrix.M[3][2] = NearClipCm;
+	CustomProjMatrix.M[3][3] = 0.0f;
+
+	CaptureComponent->bUseCustomProjectionMatrix = true;
+	CaptureComponent->CustomProjectionMatrix = CustomProjMatrix;
+
+	UE_LOG(LogURLab, Verbose, TEXT("[MjCamera] '%s' projection calibrated: Fx=%.2f Fy=%.2f Cx=%.2f Cy=%.2f Near=%.2f cm"),
+		*CameraLogName(*this), Fx, Fy, Cx, Cy, NearClipCm);
+}
+
+void UMjCamera::RefreshCaptureFov()
+{
+	SetupProjectionMatrix();
 }
 
 // ---------------------------------------------------------------------------
@@ -1138,11 +1280,31 @@ void UMjCamera::SetupRenderTarget()
 	CaptureComponent->bAlwaysPersistRenderingState = true;
 	CaptureComponent->bRenderInMainRenderer = bRenderInMainRenderer;
 	CaptureComponent->MaxViewDistanceOverride = -1.0f;
-	// A 1mm near clip on every capture mode: without it, robot-internal geometry
-	// intrudes on the frustum and produces black-on-black frames when the camera
-	// is mounted inside a body shell.
+
+	// Explicitly disable motion blur
+	CaptureComponent->ShowFlags.SetMotionBlur(false);
+	CaptureComponent->PostProcessSettings.bOverride_MotionBlurAmount = true;
+	CaptureComponent->PostProcessSettings.MotionBlurAmount = 0.0f;
+	CaptureComponent->PostProcessSettings.bOverride_MotionBlurMax = true;
+	CaptureComponent->PostProcessSettings.MotionBlurMax = 0.0f;
+	CaptureComponent->PostProcessSettings.bOverride_MotionBlurPerObjectSize = true;
+	CaptureComponent->PostProcessSettings.MotionBlurPerObjectSize = 0.0f;
+
+	if (CVarCamDisableAutoExposure.GetValueOnGameThread() != 0 || FParse::Param(FCommandLine::Get(), TEXT("URLabDisableAutoExposure")))
+	{
+		CaptureComponent->ShowFlags.SetEyeAdaptation(false);
+		CaptureComponent->PostProcessSettings.bOverride_AutoExposureMethod = true;
+		CaptureComponent->PostProcessSettings.AutoExposureMethod = EAutoExposureMethod::AEM_Manual;
+		CaptureComponent->PostProcessSettings.bOverride_AutoExposureBias = true;
+		CaptureComponent->PostProcessSettings.AutoExposureBias = 0.0f;
+	}
+
+	float NearClipCm = CustomNearClipCm > 0.0f ? CustomNearClipCm : CVarCamNearClip.GetValueOnGameThread();
+	FParse::Value(FCommandLine::Get(), TEXT("URLabCamNearClip="), NearClipCm);
 	CaptureComponent->bOverride_CustomNearClippingPlane = true;
-	CaptureComponent->CustomNearClippingPlane = 0.1f;
+	CaptureComponent->CustomNearClippingPlane = FMath::Max(0.01f, NearClipCm);
+
+	SetupProjectionMatrix();
 
 	switch (CaptureMode)
 	{
@@ -1628,6 +1790,37 @@ TSharedPtr<const FMjCameraFrame> FMjCameraHistory::SelectDelayedShared(double No
 	return nullptr;
 }
 
+TSharedPtr<const FMjCameraFrame> FMjCameraHistory::SelectDelayedByClock(double TargetClock, bool bUseWallClock) const
+{
+	FScopeLock ScopeLock(&Lock);
+	if (Frames.Num() == 0)
+	{
+		return nullptr;
+	}
+	for (int32 i = Frames.Num() - 1; i >= 0; --i)
+	{
+		const double Clock = FMjCameraDelayModel::FrameClock(*Frames[i], bUseWallClock);
+		if (Clock <= TargetClock + 1e-6)
+		{
+			return Frames[i];
+		}
+	}
+	// If all retained frames are newer than TargetClock (e.g. at t=0 cold-start),
+	// return the oldest retained frame, matching REAF cold-start behavior.
+	return Frames[0];
+}
+
+void FMjCameraHistory::Clear()
+{
+	FScopeLock ScopeLock(&Lock);
+	Frames.Reset();
+}
+
+void UMjCamera::ClearHistory()
+{
+	History.Clear();
+}
+
 void UMjCamera::PushFrameToHistory(FMjCameraFrame&& Frame)
 {
 	TSharedPtr<FMjCameraFrame> Shared = MakeShared<FMjCameraFrame>(MoveTemp(Frame));
@@ -1658,15 +1851,26 @@ bool UMjCamera::GetFrame(uint64 MinFrameId, FMjCameraFrame& Out) const
 
 TSharedPtr<const FMjCameraFrame> UMjCamera::GetFrameForRequest(uint64 MinFrameId, bool bIgnoreDelay) const
 {
-	// With latency emulation active, an RPC read must see what the stream is
-	// currently publishing, the delayed past, rather than the undelayed newest
-	// frame, so the two agree. bIgnoreDelay opts out for a caller that explicitly
-	// wants the freshest rendered ground truth.
 	if (!bIgnoreDelay && IsDelayActive())
 	{
-		return SelectDelayedFrameShared(NowClockValue(), 0);
+		const double EffectiveDelay = const_cast<UMjCamera*>(this)->SampleDelaySeconds();
+		if (EffectiveDelay > 0.0)
+		{
+			const double NowClock = NowClockValue();
+			return History.SelectDelayedByClock(NowClock - EffectiveDelay, bDelayUseWallClock);
+		}
 	}
 	return GetFrameShared(MinFrameId);
+}
+
+TSharedPtr<const FMjCameraFrame> UMjCamera::GetFrameForRequest(uint64 MinFrameId, double InDelaySeconds) const
+{
+	if (InDelaySeconds > 0.0)
+	{
+		const double NowClock = NowClockValue();
+		return History.SelectDelayedByClock(NowClock - InDelaySeconds, bDelayUseWallClock);
+	}
+	return GetFrameForRequest(MinFrameId, /*bIgnoreDelay=*/false);
 }
 
 uint64 UMjCamera::GetLatestFrameId() const
@@ -1743,7 +1947,15 @@ double UMjCamera::FrameClock(const FMjCameraFrame& Frame) const
 double UMjCamera::NowClockValue() const
 {
 	IMjSimClock* Clock = ResolveSimClock();
-	const double AppliedSimTime = Clock ? Clock->GetAppliedSimTime() : 0.0;
+	double AppliedSimTime = Clock ? Clock->GetAppliedSimTime() : 0.0;
+	if (!Clock)
+	{
+		FScopeLock ScopeLock(&History.Lock);
+		if (History.Frames.Num() > 0)
+		{
+			AppliedSimTime = History.Frames.Last()->SimTime;
+		}
+	}
 	return FMjCameraDelayModel::NowClockValue(bDelayUseWallClock, AppliedSimTime);
 }
 

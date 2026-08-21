@@ -1181,9 +1181,51 @@ void AMjRenderer::BuildCameras()
 		Res.Add(W);
 		Res.Add(H);
 		Cam->SetResolution(Res);
-		if (Model->cam_fovy[C] > 0.0)
+		const float ZNearCm = (Model->vis.map.znear > 0.0f && Model->stat.extent > 0.0f)
+			? (Model->vis.map.znear * Model->stat.extent * 100.0f)
+			: 2.0f;
+		const float ZFarCm = (Model->vis.map.zfar > 0.0f && Model->stat.extent > 0.0f)
+			? (Model->vis.map.zfar * Model->stat.extent * 100.0f)
+			: 10000.0f;
+		Cam->SetClippingPlanes(ZNearCm, ZFarCm);
+
+		if (Model->cam_sensorsize && Model->cam_sensorsize[2 * C + 1] > 0.0f && Model->cam_intrinsic)
+		{
+			const float SensorW = Model->cam_sensorsize[2 * C];
+			const float SensorH = Model->cam_sensorsize[2 * C + 1];
+			const float* Intrinsic = Model->cam_intrinsic + 4 * C;
+
+			TArray<float> SensorSizeArr;
+			SensorSizeArr.Add(SensorW);
+			SensorSizeArr.Add(SensorH);
+			Cam->SetSensorsize(SensorSizeArr);
+
+			const float FxPx = Intrinsic[0] * (static_cast<float>(W) / SensorW);
+			const float FyPx = Intrinsic[1] * (static_cast<float>(H) / SensorH);
+			const float CxOffsetPx = Intrinsic[2] * (static_cast<float>(W) / SensorW);
+			const float CyOffsetPx = Intrinsic[3] * (static_cast<float>(H) / SensorH);
+
+			TArray<float> FocalPxArr;
+			FocalPxArr.Add(FxPx);
+			FocalPxArr.Add(FyPx);
+			Cam->SetFocalpixel(FocalPxArr);
+
+			TArray<float> PrincipalPxArr;
+			PrincipalPxArr.Add(CxOffsetPx);
+			PrincipalPxArr.Add(CyOffsetPx);
+			Cam->SetPrincipalpixel(PrincipalPxArr);
+		}
+		else if (Model->cam_fovy[C] > 0.0)
 		{
 			Cam->SetFovy(Model->cam_fovy[C]);
+		}
+		Cam->SetupProjectionMatrix();
+
+		const char* CamName = (Model && Model->names) ? mj_id2name(Model, mjOBJ_CAMERA, C) : nullptr;
+		if (CamName && *CamName)
+		{
+			Cam->MjName = FString(UTF8_TO_TCHAR(CamName));
+			Cam->SetCanonicalIdentity(FName(CamName));
 		}
 
 		// Transport: one ZMQ PUB per camera (port base + id); no manager here, so
@@ -1354,10 +1396,46 @@ void AMjRenderer::BuildCompiledViewCameras()
 		Res.Add(W);
 		Res.Add(H);
 		Cam->SetResolution(Res);
-		if (Model->cam_fovy[C] > 0.0)
+
+		const float ZNearCm = (Model->vis.map.znear > 0.0f && Model->stat.extent > 0.0f)
+			? (Model->vis.map.znear * Model->stat.extent * 100.0f)
+			: 2.0f;
+		const float ZFarCm = (Model->vis.map.zfar > 0.0f && Model->stat.extent > 0.0f)
+			? (Model->vis.map.zfar * Model->stat.extent * 100.0f)
+			: 10000.0f;
+		Cam->SetClippingPlanes(ZNearCm, ZFarCm);
+
+		if (Model->cam_sensorsize && Model->cam_sensorsize[2 * C + 1] > 0.0f && Model->cam_intrinsic)
+		{
+			const float SensorW = Model->cam_sensorsize[2 * C];
+			const float SensorH = Model->cam_sensorsize[2 * C + 1];
+			const float* Intrinsic = Model->cam_intrinsic + 4 * C;
+
+			TArray<float> SensorSizeArr;
+			SensorSizeArr.Add(SensorW);
+			SensorSizeArr.Add(SensorH);
+			Cam->SetSensorsize(SensorSizeArr);
+
+			const float FxPx = Intrinsic[0] * (static_cast<float>(W) / SensorW);
+			const float FyPx = Intrinsic[1] * (static_cast<float>(H) / SensorH);
+			const float CxOffsetPx = Intrinsic[2] * (static_cast<float>(W) / SensorW);
+			const float CyOffsetPx = Intrinsic[3] * (static_cast<float>(H) / SensorH);
+
+			TArray<float> FocalPxArr;
+			FocalPxArr.Add(FxPx);
+			FocalPxArr.Add(FyPx);
+			Cam->SetFocalpixel(FocalPxArr);
+
+			TArray<float> PrincipalPxArr;
+			PrincipalPxArr.Add(CxOffsetPx);
+			PrincipalPxArr.Add(CyOffsetPx);
+			Cam->SetPrincipalpixel(PrincipalPxArr);
+		}
+		else if (Model->cam_fovy[C] > 0.0)
 		{
 			Cam->SetFovy(Model->cam_fovy[C]);
 		}
+		Cam->SetupProjectionMatrix();
 
 		// Name for logs, then pin the canonical identity from the registry so the wire
 		// topic is stable regardless of the (transient, possibly demoted) host actor name.
@@ -1495,13 +1573,33 @@ void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
 		}
 	};
 
-	const int32 NBody = Model ? static_cast<int32>(Model->nbody) : 0;
-	TArray<double> Bp, Bq;
-	ReadArr(TEXT("bxpos"), Bp);
-	ReadArr(TEXT("bxquat"), Bq);
-	if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
+	const int32 NGeom = Model ? static_cast<int32>(Model->ngeom) : 0;
+	TArray<double> GPos, GQuat;
+	ReadArr(TEXT("geom_pos"), GPos);
+	ReadArr(TEXT("geom_quat"), GQuat);
+	if (NGeom > 0 && GPos.Num() == 3 * NGeom && GQuat.Num() == 4 * NGeom && Model->geom_pos && Model->geom_quat)
 	{
-		ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
+		FMemory::Memcpy(Model->geom_pos, GPos.GetData(), sizeof(double) * 3 * NGeom);
+		FMemory::Memcpy(Model->geom_quat, GQuat.GetData(), sizeof(double) * 4 * NGeom);
+	}
+
+	TArray<double> Gp, Gq;
+	ReadArr(TEXT("gxpos"), Gp);
+	ReadArr(TEXT("gxquat"), Gq);
+	if (NGeom > 0 && Gp.Num() == 3 * NGeom && Gq.Num() == 4 * NGeom)
+	{
+		ApplyGeomTransforms(Gp.GetData(), Gq.GetData());
+	}
+	else
+	{
+		const int32 NBody = Model ? static_cast<int32>(Model->nbody) : 0;
+		TArray<double> Bp, Bq;
+		ReadArr(TEXT("bxpos"), Bp);
+		ReadArr(TEXT("bxquat"), Bq);
+		if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
+		{
+			ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
+		}
 	}
 
 	if (CameraComps.Num() > 0)
@@ -1537,6 +1635,21 @@ void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
 	if (!Req->TryGetNumberField(TEXT("frame_id"), Fid))
 	{
 		Req->TryGetNumberField(TEXT("f"), Fid);
+	}
+	const double PrevSimTime = GetAppliedSimTime();
+	if (SimTime == 0.0 || SimTime < PrevSimTime)
+	{
+		for (UMjCamera* C : CameraComps)
+		{
+			if (C)
+			{
+				C->ClearHistory();
+			}
+		}
+		if (UMjCamera* UCam = UserCaptureCam.Get())
+		{
+			UCam->ClearHistory();
+		}
 	}
 	SetAppliedState(static_cast<uint64>(Fid), SimTime);
 }

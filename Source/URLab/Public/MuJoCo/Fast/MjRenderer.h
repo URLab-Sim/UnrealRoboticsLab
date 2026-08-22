@@ -282,13 +282,17 @@ public:
 	void SetMjbBytes(const TArray<uint8>& Bytes) { MjbBytes = Bytes; }
 
 	/**
-	 * Push an external force+torque on a MuJoCo body back to the owner, which
-	 * applies it via xfrc_applied on its next step. Force/Torque are in UE world
-	 * space (converted to MuJoCo here). No-op if OwnerControlEndpoint is unset.
-	 * This is the viewer -> owner perturbation path (e.g. a drag in the renderer).
+	 * Forward a drag *intent* to the owner, which runs the real MuJoCo
+	 * `mjv_applyPerturbForce` (mass-scaled, critically-damped spring -- the same
+	 * math as `simulate`'s Ctrl-drag). The mirror has no mjData (velocities, mass
+	 * matrix), so it cannot compute the force itself; it sends the selected body,
+	 * the grab point in the body's LOCAL MuJoCo frame, and the drag target in the
+	 * MuJoCo WORLD frame (both metres), and the owner turns that into xfrc_applied.
+	 * `bActive=false` releases the drag (owner clears the wrench). No-op if
+	 * OwnerControlEndpoint is unset.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "URLab|Fast")
-	void SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE);
+	void SendPerturbation(int32 Select, bool bActive,
+		const double LocalPosMj[3], const double RefSelPosMj[3]);
 
 	/**
 	 * Re-drive the live material instance of every geom named `GeomName` from a
@@ -426,9 +430,19 @@ private:
 	// Active Mirror drag: the body being pulled (-1 = none) and the camera-space
 	// depth of the grab point, so the pull target tracks the cursor ray at the
 	// distance the body was grabbed. bMirrorDragActive gates the per-tick pull.
+	// MirrorGrabLocalMj is the grab point in the grabbed body's LOCAL MuJoCo frame
+	// (metres), captured once on the press edge; the owner recomputes its world
+	// position each step from the live body pose, so the pull tracks the body.
 	bool bMirrorDragActive = false;
 	int32 MirrorDragBodyId = -1;
 	float MirrorDragDepthCm = 0.0f;
+	double MirrorGrabLocalMj[3] = {0.0, 0.0, 0.0};
+
+	// Latest per-body MuJoCo world transforms from the transform bus (Bxpos: 3*nbody,
+	// Bxquat: 4*nbody wxyz), cached each frame by ApplyBodyTransforms so the Mirror
+	// perturb path can map a cursor grab into the MuJoCo frame the owner expects.
+	TArray<double> LastBxpos;
+	TArray<double> LastBxquat;
 
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;

@@ -7,6 +7,7 @@
 
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Fast/MjRendererSubsystem.h"
+#include "MuJoCo/Fast/MjRendererDriverClient.h"
 #include "MuJoCo/Fast/DroneViewerPawn.h"
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "Utils/URLabLogging.h"
@@ -77,6 +78,49 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		// packaged boot creates it a few frames later), so defer + retry rather
 		// than silently no-op when GetFirstPlayerController() is null right now.
 		TryPossessVrDrone(&InWorld, 0);
+	}
+
+	// Join a gRPC OWNER (peek/mirror): fetch its model over gRPC (fastpath_hello),
+	// then spawn a Mirror that subscribes to the owner's transform stream on the
+	// bus the reply advertises (grpc://, so the gRPC subscribe backend is selected).
+	// Pairs with -URLabVrViewer for a free-fly drone view of the live owner sim.
+	FString GrpcJoin;
+	if (FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoin) && !GrpcJoin.IsEmpty())
+	{
+		if (!GrpcJoin.StartsWith(TEXT("grpc://")))
+		{
+			GrpcJoin = TEXT("grpc://") + GrpcJoin;   // scheme selects the gRPC client backend
+		}
+		TArray<uint8> Mjb;
+		FString Bus, Err;
+		if (FMjRendererDriverClient::FetchModel(GrpcJoin, Mjb, Bus, Err) && Mjb.Num() > 0)
+		{
+			if (Bus.IsEmpty())
+			{
+				Bus = GrpcJoin;   // owner didn't advertise a bus -> use the same endpoint
+			}
+			AMjRenderer* Mirror = AMjRenderer::SpawnRenderer(&InWorld, Mjb,
+				/*MjbFilePath=*/FString(), Bus, ParseFastOrigin(),
+				/*bStepped=*/false, /*bBaseLevel=*/false, /*bCameras=*/false);
+			if (Mirror)
+			{
+				// Point the mirror's perturb channel at the owner's gRPC control
+				// endpoint so ctrl-drag forwards fastpath_perturb (the mirror has no
+				// physics; the owner applies the wrench, gated on its accept_input
+				// capability). Without this the drag is a no-op (guarded on an empty
+				// OwnerControlEndpoint).
+				Mirror->OwnerControlEndpoint = GrpcJoin;
+			}
+			UE_LOG(LogURLab, Display,
+				TEXT("[MjRenderer] -URLabFastGrpcJoin: mirroring owner %s (bus %s), %d-byte model"),
+				*GrpcJoin, *Bus, Mjb.Num());
+		}
+		else
+		{
+			UE_LOG(LogURLab, Error,
+				TEXT("[MjRenderer] -URLabFastGrpcJoin: FetchModel('%s') failed: %s"), *GrpcJoin, *Err);
+		}
+		return;
 	}
 
 	// The boot model may arrive as a compiled MJB (-URLabFastMjb, version-locked to

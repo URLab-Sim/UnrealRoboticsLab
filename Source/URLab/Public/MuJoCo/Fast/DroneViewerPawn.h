@@ -49,4 +49,9 @@ private:
 
 	void Turn(float Value);
 	void LookUp(float Value);
+
+	/** True while Ctrl is held: the cursor is shown and fly/look are suspended so
+	 *  the mouse can drive the mirror's Ctrl+LMB drag-perturb (which deprojects the
+	 *  cursor). Cleared on release, restoring free-fly. */
+	bool bGrabMode = false;
 };

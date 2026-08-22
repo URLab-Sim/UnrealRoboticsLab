@@ -15,6 +15,7 @@
 #include "URLabDmEnvRpc.h"
 #include "Transport/MjExternalTransportProvider.h"
 #include "Transport/DmEnvRpcTransport.h"
+#include "Transport/DmEnvRpcClientTransports.h"
 #include "Bridge/BridgeServer.h"
 
 DEFINE_LOG_CATEGORY(LogURLabDmEnvRpc);
@@ -35,6 +36,11 @@ void FURLabDmEnvRpcModule::StartupModule()
 {
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] Module starting up. Registering external transport provider."));
 	FMjExternalTransportProvider::MakeControlRpcTransport.BindStatic(&MakeDmEnvRpcControlTransport);
+	// CLIENT-side gRPC transports (the mirror/peek direction): a Mirror dials an
+	// owner over gRPC for the model (fastpath_hello), perturbs, and the transform
+	// view stream. Selected by the "grpc://" endpoint scheme in the core's Create.
+	FMjExternalTransportProvider::MakeRpcClientTransport.BindStatic(&MakeDmEnvRpcRpcClientTransport);
+	FMjExternalTransportProvider::MakeClientSubscribeTransport.BindStatic(&MakeDmEnvRpcClientSubscribeTransport);
 }
 
 void FURLabDmEnvRpcModule::ShutdownModule()
@@ -43,6 +49,14 @@ void FURLabDmEnvRpcModule::ShutdownModule()
 	if (FMjExternalTransportProvider::MakeControlRpcTransport.IsBound())
 	{
 		FMjExternalTransportProvider::MakeControlRpcTransport.Unbind();
+	}
+	if (FMjExternalTransportProvider::MakeRpcClientTransport.IsBound())
+	{
+		FMjExternalTransportProvider::MakeRpcClientTransport.Unbind();
+	}
+	if (FMjExternalTransportProvider::MakeClientSubscribeTransport.IsBound())
+	{
+		FMjExternalTransportProvider::MakeClientSubscribeTransport.Unbind();
 	}
 }
 

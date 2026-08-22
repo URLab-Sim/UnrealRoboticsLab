@@ -20,6 +20,7 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "EngineUtils.h"
+#include "DrawDebugHelpers.h"
 
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Utils/MjColor.h"
@@ -272,18 +273,27 @@ void AMjRenderer::BeginPlay()
 	}
 	else if (!BusEndpoint.IsEmpty())
 	{
-		// A Mirror Renderer mirrors a Driver's stream but is still a render
-		// server: stand up the manager (hence bridge + RPC) so a Driver can push
-		// live scene swaps (fastpath_load) to it over the wire.
-		EnsureManager();
+		// A subscribe-only mirror (-URLabFastGrpcJoin=<ep>) is the LEAN fast path: a
+		// pure client that only consumes the owner's transform stream, so it needs
+		// no manager/bridge (hence no interactive MjSimulate widget). A serving bus
+		// mirror still stands up the manager so a Driver can push fastpath_load.
+		// NOTE: it's a VALUE flag (-URLabFastGrpcJoin=host:port), so detect it with
+		// FParse::Value -- FParse::Param only matches a bare switch and misses it.
+		FString GrpcJoinEp;
+		const bool bSubscribeOnly =
+			FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoinEp);
+		if (!bSubscribeOnly)
+		{
+			EnsureManager();
+		}
 		StartBus();
 	}
 	else if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")))
 	{
-		// A VR viewer is a gRPC-driven mirror that KEEPS rendering its main view
-		// (the free-fly drone). Stand up the manager (bridge + RPC) so an owner can
-		// drive it via fastpath_load/render over gRPC -- without the forced-only
-		// regime above, which disables the very main view the drone renders through.
+		// A VR viewer with no bus is a gRPC-driven mirror that KEEPS rendering its
+		// main view (the free-fly drone). Stand up the manager (bridge + RPC) so an
+		// owner can drive it via fastpath_load/render over gRPC -- without the
+		// forced-only regime above, which disables the main view the drone renders.
 		EnsureManager();
 	}
 }
@@ -1926,28 +1936,31 @@ UPrimitiveComponent* AMjRenderer::BuildGeom(int32 G)
 	return Resolver.MakeGeomComponent(G, GeomActor);
 }
 
-void AMjRenderer::SendPerturbation(int32 BodyId, const FVector& ForceUE, const FVector& TorqueUE)
+void AMjRenderer::SendPerturbation(int32 Select, bool bActive,
+	const double LocalPosMj[3], const double RefSelPosMj[3])
 {
-	if (OwnerControlEndpoint.IsEmpty() || BodyId < 0)
+	if (OwnerControlEndpoint.IsEmpty() || Select < 0)
 	{
 		return;
 	}
-	double ForceMj[3];
-	double TorqueMj[3];
-	URLabAxisConv::UeDirectionToMj(ForceUE, ForceMj);
-	URLabAxisConv::UeDirectionToMj(TorqueUE, TorqueMj);
 
+	// Forward the drag INTENT (not a force): the owner runs the real
+	// mjv_applyPerturbForce -- a mass-scaled, critically-damped spring. `select` is
+	// the body, `localpos` the grab point in that body's local MuJoCo frame, and
+	// `refselpos` the drag target in the MuJoCo world frame (all metres).
 	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
 	Obj->SetStringField(TEXT("op"), TEXT("fastpath_perturb"));
-	Obj->SetNumberField(TEXT("body"), BodyId);
-	TArray<TSharedPtr<FJsonValue>> F, T;
+	Obj->SetNumberField(TEXT("select"), Select);
+	Obj->SetBoolField(TEXT("active"), bActive);
+	Obj->SetNumberField(TEXT("body"), Select);   // back-compat alias
+	TArray<TSharedPtr<FJsonValue>> LP, RP;
 	for (int32 i = 0; i < 3; ++i)
 	{
-		F.Add(MakeShared<FJsonValueNumber>(ForceMj[i]));
-		T.Add(MakeShared<FJsonValueNumber>(TorqueMj[i]));
+		LP.Add(MakeShared<FJsonValueNumber>(LocalPosMj[i]));
+		RP.Add(MakeShared<FJsonValueNumber>(RefSelPosMj[i]));
 	}
-	Obj->SetArrayField(TEXT("force"), F);
-	Obj->SetArrayField(TEXT("torque"), T);
+	Obj->SetArrayField(TEXT("localpos"), LP);
+	Obj->SetArrayField(TEXT("refselpos"), RP);
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 
@@ -2046,7 +2059,8 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 		{
 			if (MirrorDragBodyId >= 0)
 			{
-				SendPerturbation(MirrorDragBodyId, FVector::ZeroVector, FVector::ZeroVector);
+				const double Zero[3] = {0.0, 0.0, 0.0};
+				SendPerturbation(MirrorDragBodyId, /*bActive=*/false, Zero, Zero);
 			}
 			bMirrorDragActive = false;
 			MirrorDragBodyId = -1;
@@ -2061,7 +2075,9 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 	}
 	CursorDir = CursorDir.GetSafeNormal();
 
-	// Press edge: grab the nearest model body under the cursor ray.
+	// Press edge: grab the nearest model body under the cursor ray, and capture the
+	// grab point in that body's LOCAL MuJoCo frame (so the owner's spring anchors on
+	// the clicked point and tracks the body as it moves/rotates).
 	if (!bMirrorDragActive)
 	{
 		float DepthCm = 0.0f;
@@ -2073,31 +2089,60 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 		bMirrorDragActive = true;
 		MirrorDragBodyId = BodyId;
 		MirrorDragDepthCm = DepthCm;
+
+		// localpos = R_body^-1 * (grab_world_mj - body_pos_mj), from the cached bus
+		// pose. Falls back to the body origin if no transform frame has arrived yet.
+		MirrorGrabLocalMj[0] = MirrorGrabLocalMj[1] = MirrorGrabLocalMj[2] = 0.0;
+		const FVector GrabWorldUE = CursorOrigin + CursorDir * DepthCm;
+		if (LastBxpos.Num() >= 3 * (BodyId + 1) && LastBxquat.Num() >= 4 * (BodyId + 1))
+		{
+			double GrabWorldMj[3];
+			URLabAxisConv::UePositionToMj(GrabWorldUE - SceneOrigin, GrabWorldMj);
+			double Rel[3] = {
+				GrabWorldMj[0] - LastBxpos[3 * BodyId + 0],
+				GrabWorldMj[1] - LastBxpos[3 * BodyId + 1],
+				GrabWorldMj[2] - LastBxpos[3 * BodyId + 2]};
+			double NegQuat[4];
+			mju_negQuat(NegQuat, &LastBxquat[4 * BodyId]);
+			mju_rotVecQuat(MirrorGrabLocalMj, Rel, NegQuat);
+		}
 	}
 
-	USceneComponent* BodyRoot = GetBodyRootComponent(MirrorDragBodyId);
-	if (!BodyRoot)
+	// Drag: the target point on the cursor ray at the grab depth, in MuJoCo world.
+	// The owner turns (select, localpos, refselpos) into a real mjv_applyPerturbForce
+	// -- mass-scaled + critically damped, so it settles on the target instead of
+	// flying off. All magnitude/damping now lives on the owner; the mirror only aims.
+	const FVector TargetWorldUE = CursorOrigin + CursorDir * MirrorDragDepthCm;
+	double RefSelPosMj[3];
+	URLabAxisConv::UePositionToMj(TargetWorldUE - SceneOrigin, RefSelPosMj);
+
+	// Render the perturbation gizmo: a yellow arrow from the live grab point on the
+	// body to the drag target, the way MuJoCo's own Ctrl-drag arrow is. The origin
+	// is the grab point recomputed from the CURRENT streamed body pose
+	// (selpos = body_xpos + R_body * localpos), so it tracks the body as it moves --
+	// the body actor roots aren't animated (the geom components are), so their
+	// location would be stale. (ENABLE_DRAW_DEBUG is on in Development.)
+	if (UWorld* GW = GetWorld())
 	{
-		return;
+		FVector GrabWorldUE = TargetWorldUE;   // fallback if no pose frame yet
+		const int32 B = MirrorDragBodyId;
+		if (LastBxpos.Num() >= 3 * (B + 1) && LastBxquat.Num() >= 4 * (B + 1))
+		{
+			double Rot[3];
+			mju_rotVecQuat(Rot, MirrorGrabLocalMj, &LastBxquat[4 * B]);
+			const double SelPosMj[3] = {
+				LastBxpos[3 * B + 0] + Rot[0],
+				LastBxpos[3 * B + 1] + Rot[1],
+				LastBxpos[3 * B + 2] + Rot[2]};
+			GrabWorldUE = URLabAxisConv::MjPositionToUe(SelPosMj) + SceneOrigin;
+		}
+		DrawDebugDirectionalArrow(GW, GrabWorldUE, TargetWorldUE, 24.0f, FColor::Yellow,
+			/*bPersistent=*/false, /*Life=*/-1.0f, SDPG_Foreground, /*Thickness=*/1.5f);
+		DrawDebugSphere(GW, GrabWorldUE, 4.0f, 10, FColor::Yellow,
+			false, -1.0f, SDPG_Foreground, 0.8f);
 	}
 
-	// Pull the grabbed body toward the point on the cursor ray at the grab depth.
-	// The delta is in UE cm; SendPerturbation converts the UE-space vector to the
-	// MuJoCo frame, so it is passed through untouched here. A modest gain turns a
-	// screen-space drag into a spring-like force; the magnitude is clamped so a
-	// large drag can't inject an explosive impulse into the owner's step.
-	const FVector TargetWorld = CursorOrigin + CursorDir * MirrorDragDepthCm;
-	const FVector DeltaUE = TargetWorld - BodyRoot->GetComponentLocation();
-
-	constexpr float PullGain = 2.0f;    // N per cm of cursor offset
-	constexpr float MaxForce = 500.0f;  // N clamp
-	FVector ForceUE = DeltaUE * PullGain;
-	if (ForceUE.SizeSquared() > MaxForce * MaxForce)
-	{
-		ForceUE = ForceUE.GetSafeNormal() * MaxForce;
-	}
-
-	SendPerturbation(MirrorDragBodyId, ForceUE, FVector::ZeroVector);
+	SendPerturbation(MirrorDragBodyId, /*bActive=*/true, MirrorGrabLocalMj, RefSelPosMj);
 }
 
 int32 AMjRenderer::NumGeomsNamed(FName GeomName) const
@@ -2216,6 +2261,14 @@ void AMjRenderer::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 		return;
 	}
 	const int32 NBody = static_cast<int32>(Model->nbody);
+
+	// Cache the raw MuJoCo body poses so the Mirror perturb path can map a cursor
+	// grab into the MuJoCo frame (it forwards drag intent, not a computed force).
+	LastBxpos.SetNumUninitialized(3 * NBody);
+	LastBxquat.SetNumUninitialized(4 * NBody);
+	FMemory::Memcpy(LastBxpos.GetData(), Bxpos, sizeof(double) * 3 * NBody);
+	FMemory::Memcpy(LastBxquat.GetData(), Bxquat, sizeof(double) * 4 * NBody);
+
 	for (int32 G = 0; G < GeomComps.Num(); ++G)
 	{
 		UPrimitiveComponent* Comp = GeomComps[G];
@@ -2446,10 +2499,19 @@ AAMjManager* AMjRenderer::EnsureManager()
 	}
 	if (!Mgr)
 	{
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		Mgr = GetWorld()->SpawnActor<AAMjManager>(AAMjManager::StaticClass(), Params);
-		UE_LOG(LogURLab, Log, TEXT("[MjRenderer] spawned a manager (bridge/RPC + stepping context)"));
+		// The fast path never wants the interactive MjSimulate widget. The manager
+		// auto-creates it during its compile (which runs on BeginPlay), so spawn
+		// DEFERRED and clear bAutoCreateSimulateWidget before BeginPlay. A fast-path
+		// render server needs the manager only for its bridge/stepping context.
+		Mgr = GetWorld()->SpawnActorDeferred<AAMjManager>(
+			AAMjManager::StaticClass(), FTransform::Identity, /*Owner=*/nullptr,
+			/*Instigator=*/nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		if (Mgr)
+		{
+			Mgr->bAutoCreateSimulateWidget = false;
+			Mgr->FinishSpawning(FTransform::Identity);
+			UE_LOG(LogURLab, Log, TEXT("[MjRenderer] spawned a manager (bridge/RPC; no simulate widget)"));
+		}
 	}
 	Direct.Manager = Mgr;
 	return Mgr;

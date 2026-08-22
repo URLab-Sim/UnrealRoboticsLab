@@ -15,7 +15,10 @@ UURLabClientSubscribeTransport* UURLabClientSubscribeTransport::Create(UObject* 
 	// sink; when none is installed the core uses ZMQ. Either way the caller names
 	// only the role, never the backend.
 	UURLabClientSubscribeTransport* Sub = nullptr;
-	if (FMjExternalTransportProvider::MakeClientSubscribeTransport.IsBound())
+	// Backend by endpoint scheme: "grpc://host:port" uses the external gRPC
+	// subscribe backend when installed; everything else (tcp://) is ZMQ -- so
+	// binding the gRPC hook never hijacks a ZMQ transform bus.
+	if (Endpoint.StartsWith(TEXT("grpc://")) && FMjExternalTransportProvider::MakeClientSubscribeTransport.IsBound())
 	{
 		Sub = FMjExternalTransportProvider::MakeClientSubscribeTransport.Execute(Outer);
 	}

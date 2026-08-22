@@ -14,7 +14,10 @@ UURLabRpcClientTransport* UURLabRpcClientTransport::Create(UObject* Outer, const
 	// client; when none is installed the core uses ZMQ. Either way the caller names
 	// only the role, never the backend.
 	UURLabRpcClientTransport* Client = nullptr;
-	if (FMjExternalTransportProvider::MakeRpcClientTransport.IsBound())
+	// The backend is chosen by the endpoint scheme: "grpc://host:port" uses the
+	// external gRPC client when a module installed it; everything else (tcp://) is
+	// ZMQ. So binding the gRPC hook never hijacks ZMQ owners.
+	if (Endpoint.StartsWith(TEXT("grpc://")) && FMjExternalTransportProvider::MakeRpcClientTransport.IsBound())
 	{
 		Client = FMjExternalTransportProvider::MakeRpcClientTransport.Execute(Outer);
 	}

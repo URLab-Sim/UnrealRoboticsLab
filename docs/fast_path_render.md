@@ -1,5 +1,12 @@
 # MJB fast-path renderer + render server
 
+> **STALE for roles/modes.** This page still uses the old `AMjbScene` /
+> `EMjbRunMode::Puppet` / "slave" vocabulary. For the authoritative, code-verified
+> role & mode model (owner / mirror / render server / viewer / peek / VR),
+> the `EMjPoseSource` / `EMjCapability` axes, the bus wire formats, and the
+> perturbation paths, see [`render_roles.md`](./render_roles.md). The run/demo
+> mechanics below are kept for reference but the architecture section is superseded.
+
 The fast path renders a MuJoCo scene in Unreal **straight from a compiled MJB**,
 running **no physics**. An OWNER (a Python puppet client, or a UE instance in
 live/direct mode) steps the sim and broadcasts per-geom world transforms; a

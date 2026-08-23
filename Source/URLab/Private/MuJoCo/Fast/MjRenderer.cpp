@@ -20,7 +20,6 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "EngineUtils.h"
-#include "DrawDebugHelpers.h"
 
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Utils/MjColor.h"
@@ -2224,6 +2223,12 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 			}
 			bMirrorDragActive = false;
 			MirrorDragBodyId = -1;
+			// Hide the drag gizmo (the drag layer persists until cleared, unlike
+			// the main overlay layer's per-frame rebuild).
+			if (MirrorOverlayRenderer)
+			{
+				MirrorOverlayRenderer->ClearDragSpring();
+			}
 			// Drag over: close the cached REQ client (after the deactivate lands).
 			EndDragTransport();
 		}
@@ -2278,13 +2283,15 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 	double RefSelPosMj[3];
 	URLabAxisConv::UePositionToMj(TargetWorldUE - SceneOrigin, RefSelPosMj);
 
-	// Render the perturbation gizmo: a yellow arrow from the live grab point on the
-	// body to the drag target, the way MuJoCo's own Ctrl-drag arrow is. The origin
-	// is the grab point recomputed from the CURRENT streamed body pose
+	// Render the perturbation gizmo through the SAME pooled-ISM drag layer the
+	// owner's UMjPerturbation uses (source-of-truth 8.5): grab-point marker +
+	// spring arrow from the live grab point on the body to the drag target. The
+	// origin is the grab point recomputed from the CURRENT streamed body pose
 	// (selpos = body_xpos + R_body * localpos), so it tracks the body as it moves --
 	// the body actor roots aren't animated (the geom components are), so their
-	// location would be stale. (ENABLE_DRAW_DEBUG is on in Development.)
-	if (UWorld* GW = GetWorld())
+	// location would be stale. DrawDragSpring clears + refills the drag layer, so
+	// calling it every active-drag frame leaves no stale instances; the release
+	// edge above hides it via ClearDragSpring.
 	{
 		FVector GrabWorldUE = TargetWorldUE;   // fallback if no pose frame yet
 		const int32 B = MirrorDragBodyId;
@@ -2298,10 +2305,10 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 				LastBxpos[3 * B + 2] + Rot[2]};
 			GrabWorldUE = URLabAxisConv::MjPositionToUe(SelPosMj) + SceneOrigin;
 		}
-		DrawDebugDirectionalArrow(GW, GrabWorldUE, TargetWorldUE, 24.0f, FColor::Yellow,
-			/*bPersistent=*/false, /*Life=*/-1.0f, SDPG_Foreground, /*Thickness=*/1.5f);
-		DrawDebugSphere(GW, GrabWorldUE, 4.0f, 10, FColor::Yellow,
-			false, -1.0f, SDPG_Foreground, 0.8f);
+		// The mirror drag is a pure translate spring (grab -> target); no rotate
+		// tangent arm here -- rotation intent is not part of the forwarded drag.
+		GetOrCreateMirrorOverlayRenderer()->DrawDragSpring(GrabWorldUE, TargetWorldUE,
+			/*bTranslate=*/true, /*bRotate=*/false, /*RotTangentEndUE=*/FVector::ZeroVector);
 	}
 
 	SendPerturbation(MirrorDragBodyId, /*bActive=*/true, MirrorGrabLocalMj, RefSelPosMj);
@@ -2553,6 +2560,24 @@ void AMjRenderer::UpdateMirrorSkin(const double* Bxpos, const double* Bxquat)
 	}
 }
 
+UMjOverlayRenderer* AMjRenderer::GetOrCreateMirrorOverlayRenderer()
+{
+	if (!MirrorOverlayRenderer)
+	{
+		MirrorOverlayRenderer = NewObject<UMjOverlayRenderer>(this, TEXT("MirrorOverlayRenderer"));
+		MirrorOverlayRenderer->SetupAttachment(GetRootComponent());
+		MirrorOverlayRenderer->RegisterComponent();
+	}
+	// Rebind every call: the drag path can create the component before the model
+	// exists (SetModel(nullptr) is a safe no-draw), and the overlay feed must see
+	// the model once it is built. DrawDragSpring itself never reads the model.
+	MirrorOverlayRenderer->SetModel(Model);
+	// Align overlays with this renderer's geometry origin (ApplyBodyTransforms adds
+	// the same SceneOrigin to every geom component).
+	MirrorOverlayRenderer->SceneOrigin = SceneOrigin;
+	return MirrorOverlayRenderer;
+}
+
 void AMjRenderer::SynthesizeMirrorOverlays(const TSharedPtr<FJsonObject>& Frame,
 	const double* Bxpos, const double* Bxquat)
 {
@@ -2768,16 +2793,7 @@ void AMjRenderer::SynthesizeMirrorOverlays(const TSharedPtr<FJsonObject>& Frame,
 	}
 
 	// --- Feed the existing overlay renderer (9.2) ------------------------- //
-	if (!MirrorOverlayRenderer)
-	{
-		MirrorOverlayRenderer = NewObject<UMjOverlayRenderer>(this, TEXT("MirrorOverlayRenderer"));
-		MirrorOverlayRenderer->SetupAttachment(GetRootComponent());
-		MirrorOverlayRenderer->RegisterComponent();
-		MirrorOverlayRenderer->SetModel(Model);
-	}
-	// Align overlays with this renderer's geometry origin (ApplyBodyTransforms adds
-	// the same SceneOrigin to every geom component).
-	MirrorOverlayRenderer->SceneOrigin = SceneOrigin;
+	GetOrCreateMirrorOverlayRenderer();
 
 	const int32 NVis = mjNVISFLAG;
 	if (MirrorOverlayRenderer->Flags.VisFlags.Num() < NVis)

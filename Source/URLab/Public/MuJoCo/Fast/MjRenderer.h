@@ -508,6 +508,13 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMjOverlayRenderer> MirrorOverlayRenderer = nullptr;
 
+	// Lazily create + register MirrorOverlayRenderer and refresh its model binding
+	// and SceneOrigin. Shared by SynthesizeMirrorOverlays (per streamed frame) and
+	// the Mirror ctrl-drag gizmo (ProcessMirrorPerturbationInput), so the drag
+	// spring renders through the same pooled-ISM overlay substrate even when the
+	// overlay mask is zero and no debug tier is streamed.
+	UMjOverlayRenderer* GetOrCreateMirrorOverlayRenderer();
+
 	// Decode the streamed debug fields off one render frame + derive the transform-
 	// only overlay poses, then draw the enabled overlays. No-op when the overlay
 	// mask is zero or there is no model. Bxpos/Bxquat are the frame's per-body

@@ -592,11 +592,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleUploadModelCommit(const TShar
 	{
 		EMjStepMode Mode = EMjStepMode::FreeRun;
 		bool bHaveMode = true;
-		if (StepMode == TEXT("live"))
+		if (StepMode == TEXT("freerun"))
 			Mode = EMjStepMode::FreeRun;
-		else if (StepMode == TEXT("direct"))
+		else if (StepMode == TEXT("stepped"))
 			Mode = EMjStepMode::Stepped;
-		else if (StepMode == TEXT("puppet"))
+		else if (StepMode == TEXT("statepushed"))
 			Mode = EMjStepMode::StatePushed;
 		else
 			bHaveMode = false;

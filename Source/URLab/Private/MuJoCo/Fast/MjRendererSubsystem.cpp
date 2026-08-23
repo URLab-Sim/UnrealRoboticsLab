@@ -262,7 +262,7 @@ void UMjRendererSubsystem::ReturnToBrowser()
 	ActiveRenderer.Reset();
 	bJoinPending = false;
 	// OpenLevel back to the browser's home map; its BeginPlay re-shows the browser
-	// (no MJB, no pending, -URLabFastBrowser still on the command line).
+	// (no MJB, no pending, -URLabSourceFind=browse still on the command line).
 	if (!HomeMap.IsNone())
 	{
 		UGameplayStatics::OpenLevel(this, HomeMap);

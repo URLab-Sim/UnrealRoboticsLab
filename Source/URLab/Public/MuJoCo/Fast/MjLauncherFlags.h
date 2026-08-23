@@ -12,12 +12,10 @@
  * @file MjLauncherFlags.h
  * @brief Parsers for the Phase 1.1 five-flag launcher surface (source-of-truth §14).
  *
- * ADDITIVE. These parse the new `-URLab{Drive,SourceFind,Model,Caps,Scene,Net}` flags and hand the
- * caller exactly the same values the legacy `-URLabFast*` / `-URLabVrViewer` / `-URLabStateSource`
- * (etc.) flags produced, so each new flag can be OR'd into the existing legacy read at the site that
- * already writes the underlying field. NOTHING here maps one flag onto another (no alias table / no
- * compat shim): both the old flag and the new flag independently produce the same field value; the
- * legacy readers stay in place this wave (they are deleted in Phase 8/W18).
+ * These parse the `-URLab{Drive,SourceFind,Model,Caps,Scene,Net}` flags — the sole CLI surface after
+ * the Phase 8.4/W18 legacy-flag deletion. The `-URLabFast*` / `-URLabVrViewer` / `-URLabStateSource`
+ * (etc.) references in the per-function docs below name the legacy flag each new flag REPLACED, as a
+ * migration lineage; those legacy readers no longer exist in the codebase.
  *
  * The grammar (source-of-truth §14):
  *   -URLabDrive=sim | stream:<endpoint> | push | await

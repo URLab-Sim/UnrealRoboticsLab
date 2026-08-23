@@ -47,15 +47,15 @@ enum class EMjDebugShaderMode : uint8;
  * @brief The primary per-instance axis: what drives this renderer's rendered pose.
  *
  * Set from -URLabDrive (Phase 1) and by SpawnRenderer (bStepped ? Sim : Stream); when neither names
- * it, BeginPlay derives it from the boot signals (bForcedRenderOnly / -URLabFastServe / BusEndpoint /
- * -URLabFastGrpcJoin / -URLabVrViewer). Phase 1.4 made it the sole axis the BeginPlay fork switches
- * on -- the former EMjPoseSource::RunMode is gone.
+ * it, BeginPlay derives it from the boot signals (bForcedRenderOnly / BusEndpoint / a gRPC join /
+ * -URLabCaps=vr). Phase 1.4 made it the sole axis the BeginPlay fork switches on -- the former
+ * EMjPoseSource::RunMode is gone.
  *
  * - Sim:    owns live physics in the shared UMjPhysicsEngine (producer; the Direct step path).
  * - Stream: no physics; applies a subscribed transform stream (bus / gRPC join / VR mirror).
  * - Push:   no physics; poses arrive per-request via fastpath_render (bForcedRenderOnly).
  * - Await:  no model yet; a served placeholder that becomes push/stream after fastpath_load
- *           (-URLabFastServe).
+ *           (-URLabDrive=await).
  */
 enum class EMjDrive : uint8
 {
@@ -129,7 +129,7 @@ public:
 	UPROPERTY()
 	TArray<uint8> MjbBytes;
 
-	// Eval regime (-URLabFastForcedOnly): the forced-render control REP is the one
+	// Eval regime (-URLabDrive=push): the forced-render control REP is the one
 	// pose driver -- cameras are set up but do not auto-capture, and the transform
 	// bus is never connected. When false (Mirror regime) the bus is the one driver
 	// and the REP is not bound, so exactly one source ever writes the rendered pose.
@@ -137,7 +137,7 @@ public:
 
 	// The primary Drive axis for this instance. Set by SpawnRenderer (bStepped ? Sim : Stream) and
 	// by -URLabDrive; otherwise derived at the top of BeginPlay from the boot signals
-	// (bForcedRenderOnly / -URLabFastServe / BusEndpoint). The BeginPlay fork switches on it directly
+	// (bForcedRenderOnly / BusEndpoint). The BeginPlay fork switches on it directly
 	// (Phase 1.4): Sim owns physics (the old RunMode==Stepped Direct path); Stream/Push/Await are the
 	// transform-mirror consumer substrate (the old RunMode==Mirror). Defaulted to Stream so a
 	// pre-BeginPlay / map-placed read matches the old RunMode==Mirror default.
@@ -162,18 +162,18 @@ public:
 
 	/** Spawn the MJB's cameras and stream their rendered frames over ZMQ/SHM, so
 	 *  this renderer doubles as a render server. Off by default (capture is not
-	 *  free); enable per scene or via -URLabFastCameras. */
+	 *  free); enable per scene or via -URLabCaps=cameras. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bEnableCameraStreaming = false;
 
 	/** Curated base level: the boot map brings its own lights/sky, so the renderer
-	 *  must NOT import the model's lighting on top of it. Set from -URLabFastBaseLevel. */
+	 *  must NOT import the model's lighting on top of it. Set from -URLabScene=base. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	bool bBaseLevel = false;
 
 	/** World offset for the whole scene (UE cm). Lets a Renderer drop the MJB
 	 *  at a chosen spot in a curated base level instead of the world origin; added
-	 *  to every geom / camera / copycat placement. Set from -URLabFastOrigin=X,Y,Z. */
+	 *  to every geom / camera / copycat placement. Set from -URLabScene=origin=X;Y;Z. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
 	FVector SceneOrigin = FVector::ZeroVector;
 

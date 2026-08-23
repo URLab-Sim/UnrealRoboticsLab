@@ -129,12 +129,12 @@ FString BuildCameraEndpoint(const FURLabBridgeServerConfig& Cfg, int32 CameraInd
 
 void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 {
-	// Command line beats environment; a value from either replaces the INI
-	// one. Returns true when a value was found so callers can flag explicit
-	// port overrides (which then survive derivation).
-	auto ResolveString = [](const TCHAR* CmdKey, const TCHAR* EnvKey, FString& Out) -> bool {
-		if (FParse::Value(FCommandLine::Get(), CmdKey, Out))
-			return true;
+	// The legacy per-service -URLab* CLI flags are gone (Phase 8.4); the CLI surface is
+	// now the consolidated -URLabNet= keys read below, which win over these. Env vars and
+	// INI equivalents STAY (source-of-truth §14), so a value from the environment still
+	// replaces the INI one. Returns true when a value was found so callers can flag
+	// explicit port overrides (which then survive derivation).
+	auto ResolveEnvString = [](const TCHAR* EnvKey, FString& Out) -> bool {
 		const FString Env = FPlatformMisc::GetEnvironmentVariable(EnvKey);
 		if (!Env.IsEmpty())
 		{
@@ -143,9 +143,9 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 		}
 		return false;
 	};
-	auto ResolveInt = [&ResolveString](const TCHAR* CmdKey, const TCHAR* EnvKey, int32& Out) -> bool {
+	auto ResolveEnvInt = [&ResolveEnvString](const TCHAR* EnvKey, int32& Out) -> bool {
 		FString Str;
-		if (!ResolveString(CmdKey, EnvKey, Str) || !Str.IsNumeric())
+		if (!ResolveEnvString(EnvKey, Str) || !Str.IsNumeric())
 			return false;
 		Out = FCString::Atoi(*Str);
 		return true;
@@ -154,37 +154,37 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 	FString StrVal;
 	int32 IntVal = 0;
 
-	if (ResolveString(TEXT("URLabInstanceId="), TEXT("URLAB_INSTANCE_ID"), StrVal))
+	if (ResolveEnvString(TEXT("URLAB_INSTANCE_ID"), StrVal))
 		Cfg.InstanceId = StrVal;
-	if (ResolveInt(TEXT("URLabInstanceIndex="), TEXT("URLAB_INSTANCE_INDEX"), IntVal))
+	if (ResolveEnvInt(TEXT("URLAB_INSTANCE_INDEX"), IntVal))
 		Cfg.InstanceIndex = IntVal;
-	if (ResolveInt(TEXT("URLabPortBase="), TEXT("URLAB_PORT_BASE"), IntVal))
+	if (ResolveEnvInt(TEXT("URLAB_PORT_BASE"), IntVal))
 		Cfg.PortBase = IntVal;
-	if (ResolveInt(TEXT("URLabPortStride="), TEXT("URLAB_PORT_STRIDE"), IntVal))
+	if (ResolveEnvInt(TEXT("URLAB_PORT_STRIDE"), IntVal))
 		Cfg.PortStride = IntVal;
 
-	bool bStepExplicit = ResolveInt(TEXT("URLabStepPort="), TEXT("URLAB_STEP_PORT"), IntVal);
+	bool bStepExplicit = ResolveEnvInt(TEXT("URLAB_STEP_PORT"), IntVal);
 	if (bStepExplicit)
 		Cfg.StepPort = IntVal;
-	bool bStateExplicit = ResolveInt(TEXT("URLabStatePort="), TEXT("URLAB_STATE_PORT"), IntVal);
+	bool bStateExplicit = ResolveEnvInt(TEXT("URLAB_STATE_PORT"), IntVal);
 	if (bStateExplicit)
 		Cfg.StatePort = IntVal;
-	bool bCamExplicit = ResolveInt(TEXT("URLabCamBasePort="), TEXT("URLAB_CAM_BASE_PORT"), IntVal);
+	bool bCamExplicit = ResolveEnvInt(TEXT("URLAB_CAM_BASE_PORT"), IntVal);
 	if (bCamExplicit)
 		Cfg.CamBasePort = IntVal;
 
-	if (ResolveString(TEXT("URLabBindAddress="), TEXT("URLAB_BIND_ADDRESS"), StrVal))
+	if (ResolveEnvString(TEXT("URLAB_BIND_ADDRESS"), StrVal))
 		Cfg.BindAddress = StrVal;
 
-	// Owner viewer bus. -URLabBroadcastViewers=1 makes an owner re-broadcast.
-	// (-URLabStateSource is no longer parsed here: the launcher maps it to
-	// -URLabDrive=stream:tcp://<ep>, spawning a transform-mirror AMjRenderer.)
-	if (ResolveInt(TEXT("URLabViewerPort="), TEXT("URLAB_VIEWER_PORT"), IntVal))
+	// Owner viewer bus. URLAB_BROADCAST_VIEWERS makes an owner re-broadcast.
+	// (The state-source viewer role is gone: -URLabDrive=stream:tcp://<ep> spawns a
+	// transform-mirror AMjRenderer instead.)
+	if (ResolveEnvInt(TEXT("URLAB_VIEWER_PORT"), IntVal))
 		Cfg.ViewerPort = IntVal;
-	if (ResolveInt(TEXT("URLabBroadcastViewers="), TEXT("URLAB_BROADCAST_VIEWERS"), IntVal))
+	if (ResolveEnvInt(TEXT("URLAB_BROADCAST_VIEWERS"), IntVal))
 		Cfg.bBroadcastViewers = (IntVal != 0);
 
-	// Phase 1.1: -URLabCaps=publish is the new spelling of -URLabBroadcastViewers=1 (source-of-truth
+	// Phase 1.1: -URLabCaps=publish is the new spelling of broadcast-viewers (source-of-truth
 	// §14). Both write bBroadcastViewers; the cap (negatable: -publish) wins when present.
 	{
 		const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
@@ -227,14 +227,13 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 		if (GetCsvValue(TEXT("URLabNet="), TEXT("bind"), NetVal))
 			Cfg.BindAddress = NetVal;
 
-		// grpc= replaces -URLabDmEnvPort (source-of-truth §14). That port has NO config field: the
-		// gRPC transport reads it straight off the command line (URLabDmEnvPort=,
-		// DmEnvRpcTransport.cpp:272), and that transport file is owned by another agent this wave, so
-		// it cannot be re-plumbed here. To make -URLabNet=grpc= write the same thing the legacy flag
-		// wrote, feed the transport's own reader: append the legacy token to the command line when
-		// -URLabDmEnvPort is absent (config parse runs before EnsureExternalTransportsBound binds the
-		// gRPC server: AMjManager.cpp:221 then :260). Guarded on absence so it stays idempotent
-		// across the multiple ApplyEnvAndCommandLineOverrides calls and the legacy flag still wins.
+		// grpc= is the CLI surface for the gRPC listen port (source-of-truth §14). That port has NO
+		// config field: the gRPC transport reads it straight off the command line as the internal
+		// -URLabDmEnvPort= token (DmEnvRpcTransport.cpp), which lives in a module this file cannot
+		// re-plumb. So -URLabNet=grpc= feeds the transport's own reader by appending that internal
+		// token to the command line (config parse runs before EnsureExternalTransportsBound binds the
+		// gRPC server: AMjManager.cpp). Guarded on absence so it stays idempotent across the multiple
+		// ApplyEnvAndCommandLineOverrides calls.
 		FString GrpcVal, ExistingDmEnv;
 		if (GetCsvValue(TEXT("URLabNet="), TEXT("grpc"), GrpcVal) && GrpcVal.IsNumeric()
 			&& !FParse::Value(FCommandLine::Get(), TEXT("URLabDmEnvPort="), ExistingDmEnv))

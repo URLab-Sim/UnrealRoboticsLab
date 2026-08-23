@@ -38,19 +38,18 @@ int32 ParseEndpointPort(const FString& Endpoint)
 }
 
 /** Resolve the step-RPC endpoint, letting an operator override the port per
- *  editor instance without editing the project INI. Precedence: command-line
- *  `-URLabStepPort=N`, then the `URLAB_STEP_PORT` environment variable, then
- *  the requested endpoint unchanged. This is what lets many render-server
+ *  editor instance without editing the project INI. The CLI surface is now
+ *  `-URLabNet=step=N` (it sets Config.StepPort, which builds the requested
+ *  endpoint before it reaches here); the `URLAB_STEP_PORT` environment variable
+ *  stays as a secondary override (source-of-truth §14). Precedence: env var,
+ *  then the requested endpoint unchanged. This is what lets many render-server
  *  editors run side by side on one host, each on its own port. */
 FString ResolveStepEndpoint(const FString& Requested)
 {
 	int32 OverridePort = 0;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabStepPort="), OverridePort))
-	{
-		const FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("URLAB_STEP_PORT"));
-		if (!Env.IsEmpty() && Env.IsNumeric())
-			OverridePort = FCString::Atoi(*Env);
-	}
+	const FString Env = FPlatformMisc::GetEnvironmentVariable(TEXT("URLAB_STEP_PORT"));
+	if (!Env.IsEmpty() && Env.IsNumeric())
+		OverridePort = FCString::Atoi(*Env);
 	if (OverridePort <= 0)
 		return Requested;
 

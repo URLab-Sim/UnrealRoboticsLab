@@ -71,15 +71,15 @@ EActiveTimerReturnType SMjStepModeIndicator::OnPoll(double, float)
 	switch (Mode)
 	{
 		case EMjStepMode::FreeRun:
-			CachedLabel = FText::FromString(TEXT("URLab: live"));
+			CachedLabel = FText::FromString(TEXT("URLab: freerun"));
 			CachedColor = FLinearColor(0.18f, 0.55f, 0.20f, 1.0f); // green
 			break;
 		case EMjStepMode::Stepped:
-			CachedLabel = FText::FromString(TEXT("URLab: direct"));
+			CachedLabel = FText::FromString(TEXT("URLab: stepped"));
 			CachedColor = FLinearColor(0.85f, 0.55f, 0.10f, 1.0f); // amber
 			break;
 		case EMjStepMode::StatePushed:
-			CachedLabel = FText::FromString(TEXT("URLab: puppet"));
+			CachedLabel = FText::FromString(TEXT("URLab: statepushed"));
 			CachedColor = FLinearColor(0.20f, 0.45f, 0.85f, 1.0f); // blue
 			break;
 	}

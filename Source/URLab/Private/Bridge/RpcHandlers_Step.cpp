@@ -62,46 +62,39 @@
 
 namespace
 {
-/** Map step-mode to wire-format string, matching the Python StepMode enum
- *  values. The wire tokens are the frozen client contract; the enum split onto
- *  EMjStepMode must not change them. The trailing default keeps the switch
- *  total for the compiler. */
+/** Map step-mode to wire-format string. The wire tokens are exactly the
+ *  EMjStepMode enum names (freerun/stepped/statepushed) and are the frozen
+ *  client contract, matched by the Python side. The trailing default keeps the
+ *  switch total for the compiler. */
 FString StepModeToString(EMjStepMode Mode)
 {
 	switch (Mode)
 	{
 		case EMjStepMode::FreeRun:
-			return TEXT("live");
+			return TEXT("freerun");
 		case EMjStepMode::Stepped:
-			return TEXT("direct");
+			return TEXT("stepped");
 		case EMjStepMode::StatePushed:
-			return TEXT("puppet");
+			return TEXT("statepushed");
 	}
-	return TEXT("live");
+	return TEXT("freerun");
 }
 
 bool StepModeFromString(const FString& Str, EMjStepMode& OutMode)
 {
-	if (Str.Equals(TEXT("live"), ESearchCase::IgnoreCase) || Str.Equals(TEXT("streaming"), ESearchCase::IgnoreCase))
+	if (Str.Equals(TEXT("freerun"), ESearchCase::IgnoreCase))
 	{
 		OutMode = EMjStepMode::FreeRun;
 		return true;
 	}
-	if (Str.Equals(TEXT("direct"), ESearchCase::IgnoreCase))
+	if (Str.Equals(TEXT("stepped"), ESearchCase::IgnoreCase))
 	{
 		OutMode = EMjStepMode::Stepped;
 		return true;
 	}
-	if (Str.Equals(TEXT("puppet"), ESearchCase::IgnoreCase))
+	if (Str.Equals(TEXT("statepushed"), ESearchCase::IgnoreCase))
 	{
 		OutMode = EMjStepMode::StatePushed;
-		return true;
-	}
-	if (Str.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
-	{
-		// "auto" is the client-picks promotion policy, not an axis value; it
-		// resolves to FreeRun (matching the old Auto -> Live resolution).
-		OutMode = EMjStepMode::FreeRun;
 		return true;
 	}
 	return false;

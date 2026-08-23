@@ -429,7 +429,7 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	if (TimeText)
 	{
 		// Read active step mode from the dispatcher (if present). Surfaces
-		// live / direct / puppet in packaged builds where the editor
+		// freerun / stepped / statepushed in packaged builds where the editor
 		// toolbar pill (SMjStepModeIndicator) isn't visible.
 		FString ModeStr;
 		if (FURLabRpcDispatcher* Disp = ManagerRef->GetStepDispatcher())
@@ -437,13 +437,13 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 			switch (Disp->GetActiveStepMode())
 			{
 				case EMjStepMode::FreeRun:
-					ModeStr = TEXT("live");
+					ModeStr = TEXT("freerun");
 					break;
 				case EMjStepMode::Stepped:
-					ModeStr = TEXT("direct");
+					ModeStr = TEXT("stepped");
 					break;
 				case EMjStepMode::StatePushed:
-					ModeStr = TEXT("puppet");
+					ModeStr = TEXT("statepushed");
 					break;
 			}
 		}

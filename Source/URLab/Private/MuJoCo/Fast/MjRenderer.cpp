@@ -173,22 +173,16 @@ void AMjRenderer::BeginPlay()
 	// Pick the single pose driver for this session before anything binds: the forced
 	// eval regime owns the render-control REP, the mirror regime owns the transform
 	// bus, and the two are mutually exclusive so only one source writes the pose.
-	// Phase 1.1: -URLabDrive=push is the new spelling of -URLabFastForcedOnly (source-of-truth §14);
-	// both select the forced-render (push) regime that owns the render-control REP.
-	bForcedRenderOnly = FParse::Param(FCommandLine::Get(), TEXT("URLabFastForcedOnly"))
-		|| URLabLauncherFlags::DriveIsPush();
+	// -URLabDrive=push selects the forced-render (push) regime that owns the
+	// render-control REP (source-of-truth §14).
+	bForcedRenderOnly = URLabLauncherFlags::DriveIsPush();
 
-	// -URLabFastCameras: build + stream the camera components. Honour it here so a
+	// -URLabCaps=cameras: build + stream the camera components. Honour it here so a
 	// renderer PLACED IN THE MAP (not spawned via SpawnRenderer, which sets this from
 	// its bCameras arg) also enables cameras -- otherwise a client that hot-swaps a
-	// model into the map's placeholder renderer gets no cameras back.
-	// Phase 1.1: -URLabCaps=cameras is the new spelling of -URLabFastCameras, and (unlike the legacy
-	// flag) is negatable (-cameras) so a headless server can turn the capability OFF from the CLI
-	// (source-of-truth §5/§14). An explicit cap wins over the legacy flag / the SpawnRenderer arg.
-	if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras")))
-	{
-		bEnableCameraStreaming = true;
-	}
+	// model into the map's placeholder renderer gets no cameras back. The cap is
+	// negatable (-cameras) so a headless server can turn the capability OFF from the
+	// CLI (source-of-truth §5/§14); an explicit cap wins over the SpawnRenderer arg.
 	{
 		const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
 		if (Caps.bCameras.IsSet())
@@ -197,15 +191,11 @@ void AMjRenderer::BeginPlay()
 		}
 	}
 
-	// -URLabFastCamMaxHeight=N overrides the per-camera height cap (0 = honour the
+	// -URLabScene=cammax=N overrides the per-camera height cap (0 = honour the
 	// model's resolution exactly), so an eval can request higher-res frames than the
-	// 480 default without editing the level.
-	// Phase 1.1: -URLabScene=cammax=N is the new spelling of -URLabFastCamMaxHeight (source-of-truth §14).
+	// 480 default without editing the level (source-of-truth §14).
 	int32 CamMaxHeightArg = -1;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastCamMaxHeight="), CamMaxHeightArg))
-	{
-		URLabLauncherFlags::SceneCamMaxHeight(CamMaxHeightArg);
-	}
+	URLabLauncherFlags::SceneCamMaxHeight(CamMaxHeightArg);
 	if (CamMaxHeightArg >= 0)
 	{
 		CameraMaxHeight = CamMaxHeightArg;
@@ -299,20 +289,12 @@ void AMjRenderer::BeginPlay()
 	StartCameraStreaming();
 
 	// Resolve the primary Drive axis BEFORE the fork, which switches on it directly (Phase 1.4).
-	// Precedence: -URLabDrive names it explicitly; otherwise SpawnRenderer already set Drive=Sim for
-	// the stepped/Direct path (kept by the Drive==Sim arm below); otherwise it is derived from the
-	// remaining boot signals. Derivation order:
+	// Precedence: -URLabDrive names it explicitly (source-of-truth §14); otherwise SpawnRenderer
+	// already set Drive=Sim for the stepped/Direct path (kept by the Drive==Sim arm below); otherwise
+	// it is derived from the remaining boot signals. Derivation order:
 	//   Drive==Sim (set by SpawnRenderer) -> Sim    (owns physics; the Direct path)
 	//   bForcedRenderOnly                 -> Push   (fastpath_render drives the pose; no bus)
-	//   -URLabFastServe                   -> Await  (served placeholder, no real model yet)
 	//   otherwise (bus / gRPC join / VR / bare mirror) -> Stream (transform-mirror consumer)
-	// FastServe is checked before the bus signal because its placeholder renderer has an empty
-	// BusEndpoint and would otherwise fall through the fork to no branch; -URLabFastGrpcJoin and
-	// -URLabVrViewer are both gRPC-driven mirrors and resolve to Stream.
-	// Phase 1.1: when -URLabDrive is given it names the axis directly (source-of-truth §14); its
-	// value matches what the legacy-signal derivation below produces, since the launcher/BeginPlay
-	// already OR'd -URLabDrive into bForcedRenderOnly / BusEndpoint. Fall back to the legacy
-	// derivation when -URLabDrive is absent.
 	FString DriveStreamEp;
 	const URLabLauncherFlags::EDriveKind DriveKind = URLabLauncherFlags::ParseDrive(DriveStreamEp);
 	if (DriveKind == URLabLauncherFlags::EDriveKind::Sim)
@@ -341,10 +323,6 @@ void AMjRenderer::BeginPlay()
 	{
 		Drive = EMjDrive::Push;
 	}
-	else if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastServe")))
-	{
-		Drive = EMjDrive::Await;
-	}
 	else
 	{
 		Drive = EMjDrive::Stream;
@@ -358,21 +336,17 @@ void AMjRenderer::BeginPlay()
 	// the serve/publish surface. A pure stream/push consumer with neither serve nor
 	// publish is a LEAN transform mirror and has no manager.
 	//
-	// Effective serve/publish: the new -URLabCaps=serve/publish flags name the rule
-	// directly, but the legacy launch shapes (migrated in 1.1) never set them while
-	// still standing up a serving bridge today -- Push serves fastpath_render; a
-	// non-lean bus mirror lets a Driver push fastpath_load; a VR viewer's bridge lets
-	// an owner drive it over gRPC. Those shapes IMPLY serve, so their manager survives
-	// unchanged. The lean subscribe-only gRPC mirror (-URLabFastGrpcJoin=<ep> /
-	// -URLabDrive=stream:grpc://<ep>) never serves and stays manager-less exactly as
-	// before. (-URLabFastGrpcJoin is a VALUE flag, so probe it with FParse::Value.)
+	// Effective serve/publish: the -URLabCaps=serve/publish flags name the rule
+	// directly, but the drive shapes that imply a serving bridge never set them --
+	// Push serves fastpath_render; a non-lean bus mirror lets a Driver push
+	// fastpath_load; a VR viewer's bridge lets an owner drive it over gRPC. Those
+	// shapes IMPLY serve, so their manager survives. The lean subscribe-only gRPC
+	// mirror (-URLabDrive=stream:grpc://<ep>) never serves and stays manager-less.
 	const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
 	FString GrpcJoinEp;
 	const bool bSubscribeOnlyMirror =
-		FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoinEp)
-		|| URLabLauncherFlags::DriveStreamGrpcEndpoint(GrpcJoinEp);
-	const bool bVrView =
-		FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")) || URLabLauncherFlags::CapsWantVr();
+		URLabLauncherFlags::DriveStreamGrpcEndpoint(GrpcJoinEp);
+	const bool bVrView = URLabLauncherFlags::CapsWantVr();
 	const bool bImplicitServe =
 		bForcedRenderOnly                                       // Push: serves fastpath_render
 		|| (!BusEndpoint.IsEmpty() && !bSubscribeOnlyMirror)    // serving bus mirror (not the lean join)
@@ -1623,7 +1597,7 @@ void AMjRenderer::StartCameraStreaming()
 		// capture-stamping and delay reveal read the owner-broadcast frame_id/sim_time
 		// (IMjSimClock) instead of the absent AAMjManager singleton.
 		Cam->SetSimClock(this);
-		// Forced-render-only mode (-URLabFastForcedOnly): the camera is set up (render
+		// Forced-render-only mode (-URLabDrive=push): the camera is set up (render
 		// target + REP-servable) but does NOT auto-capture; only the forced-render
 		// request drives it, so the async stream never competes with the request
 		// render for the single render thread.
@@ -1641,7 +1615,7 @@ void AMjRenderer::StartCameraStreaming()
 		Cam->SetStreamingEnabled(true);
 	}
 	// The capturing user camera streams on the same regime as the model cameras:
-	// manual-capture-only under -URLabFastForcedOnly (driven solely by the forced
+	// manual-capture-only under -URLabDrive=push (driven solely by the forced
 	// request, so it never contends with the request render), else free-running for
 	// the viewer/stream path.
 	if (UMjCamera* UCam = UserCaptureCam.Get())
@@ -3181,9 +3155,8 @@ void AMjRenderer::ReloadFromBytes(const TArray<uint8>& NewMjb)
 // runtime from the console (set URLAB_NO_RENDER_QUALITY=1 to skip).
 static void ApplyRendererQuality()
 {
-	// Phase 1.1: -URLabScene=quality=off is the new spelling of -URLabFastNoQuality (source-of-truth §14).
-	if (!GEngine || FParse::Param(FCommandLine::Get(), TEXT("URLabFastNoQuality"))
-		|| URLabLauncherFlags::SceneNoQuality())
+	// -URLabScene=quality=off skips the cinematic scalability push (source-of-truth §14).
+	if (!GEngine || URLabLauncherFlags::SceneNoQuality())
 	{
 		return;
 	}
@@ -3234,9 +3207,9 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 
 	// Framing camera at the scene origin (the copycat retargets it once a Driver
 	// streams its free camera). Skip it when a VR/drone viewer owns the view
-	// (-URLabVrViewer / Phase 1.1 -URLabCaps=vr): the possessed drone pawn IS the viewport, so a
-	// static framing camera would steal it and the free-fly controls would move an off-screen pawn.
-	if (!FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")) && !URLabLauncherFlags::CapsWantVr())
+	// (-URLabCaps=vr): the possessed drone pawn IS the viewport, so a static framing
+	// camera would steal it and the free-fly controls would move an off-screen pawn.
+	if (!URLabLauncherFlags::CapsWantVr())
 	{
 		if (APlayerController* PC = World->GetFirstPlayerController())
 		{
@@ -3250,7 +3223,7 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 
 	UE_LOG(LogURLab, Log,
 		TEXT("[MjRenderer] SpawnRenderer: mode=%s bus=%s baseLevel=%d cameras=%d bytes=%d origin=(%s)"),
-		bStepped ? TEXT("direct") : TEXT("puppet"),
+		bStepped ? TEXT("sim") : TEXT("stream"),
 		BusEndpoint.IsEmpty() ? TEXT("(none)") : *BusEndpoint, bBaseLevel ? 1 : 0,
 		bCameras ? 1 : 0, MjbBytes.Num(), *Origin.ToString());
 	return Scene;

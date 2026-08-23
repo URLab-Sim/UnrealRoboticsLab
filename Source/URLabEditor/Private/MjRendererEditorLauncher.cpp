@@ -20,16 +20,11 @@ void UMjRendererEditorLauncher::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 
 	// A fast-path renderer launch is requested by any of: a driver control
-	// endpoint to connect to, a discovery flag, or a direct MJB file path.
-	// Phase 1.1: the new -URLab{Drive,SourceFind,Model} flags request an editor launch too
-	// (source-of-truth §14): -URLabDrive=stream:<ctrl> == -URLabFastConnect,
-	// -URLabSourceFind=discover == -URLabFastDiscover, -URLabModel == -URLabFastMjb.
-	const TCHAR* Cmd = FCommandLine::Get();
+	// endpoint to connect to (-URLabDrive=stream:<ctrl>), a discovery flag
+	// (-URLabSourceFind=discover), or a direct model file path (-URLabModel)
+	// (source-of-truth §14).
 	FString Ignored, IgnoredScene, IgnoredFmt;
 	const bool bRequested =
-		(FParse::Value(Cmd, TEXT("URLabFastConnect="), Ignored) && !Ignored.IsEmpty()) ||
-		FParse::Param(Cmd, TEXT("URLabFastDiscover")) ||
-		(FParse::Value(Cmd, TEXT("URLabFastMjb="), Ignored) && !Ignored.IsEmpty()) ||
 		URLabLauncherFlags::DriveStreamEndpoint(Ignored) ||
 		URLabLauncherFlags::SourceFindDiscover(IgnoredScene) ||
 		URLabLauncherFlags::ParseModel(Ignored, IgnoredFmt);
@@ -68,30 +63,23 @@ bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 		return true; // let the initial map finish opening before we switch levels
 	}
 
-	const TCHAR* Cmd = FCommandLine::Get();
 	FString Err;
 	bool bOk = false;
 
-	// Phase 1.1: a bare -URLabDrive=stream:<ctrl> (no -URLabModel) is the new spelling of
-	// -URLabFastConnect (source-of-truth §14): connect to a driver and pull its model over the
-	// control channel. When -URLabModel IS given, the direct model+bus path below owns it instead.
+	// A bare -URLabDrive=stream:<ctrl> (no -URLabModel) connects to a driver and pulls
+	// its model over the control channel (source-of-truth §14). When -URLabModel IS
+	// given, the direct model+bus path below owns it instead.
 	FString ModelPathArg, ModelFmtArg;
 	const bool bHasModelFlag = URLabLauncherFlags::ParseModel(ModelPathArg, ModelFmtArg);
 
-	FString Control;
 	FString DriveStreamEp;
 	FString DiscoverScene;
-	if (FParse::Value(Cmd, TEXT("URLabFastConnect="), Control) && !Control.IsEmpty())
+	if (!bHasModelFlag && URLabLauncherFlags::DriveStreamEndpoint(DriveStreamEp))
 	{
-		// Connect to a named Driver: pull its MJB + bus over the control channel.
-		bOk = URLabLevelOps::LaunchFastPathFromDriverSync(Control, /*bFreshLevel=*/true, Err);
-	}
-	else if (!bHasModelFlag && URLabLauncherFlags::DriveStreamEndpoint(DriveStreamEp))
-	{
-		// -URLabDrive=stream:<ctrl> with no explicit model: same as -URLabFastConnect.
+		// -URLabDrive=stream:<ctrl> with no explicit model: connect to the driver.
 		bOk = URLabLevelOps::LaunchFastPathFromDriverSync(DriveStreamEp, /*bFreshLevel=*/true, Err);
 	}
-	else if (FParse::Param(Cmd, TEXT("URLabFastDiscover")) || URLabLauncherFlags::SourceFindDiscover(DiscoverScene))
+	else if (URLabLauncherFlags::SourceFindDiscover(DiscoverScene))
 	{
 		// Auto-discover: connect to the first advertised Driver found.
 		TArray<URLabLevelOps::FMjDriverInfo> Drivers;
@@ -109,20 +97,16 @@ bool UMjRendererEditorLauncher::TryLaunch(float DeltaTime)
 	}
 	else
 	{
-		// Direct MJB file path (Driver-less or hand-specified bus).
-		// Phase 1.1: -URLabModel=<mjb> == -URLabFastMjb, -URLabDrive=stream:tcp://<bus> == -URLabFastBus
-		// (source-of-truth §14). The editor direct path takes an .mjb file; new-flag model paths of
-		// another format fall through to the legacy MJB read (format-by-extension boot is the -game
-		// launcher's job, §1.2). The legacy flag wins over the new one when both are given.
+		// Direct model file path (Driver-less or hand-specified bus).
+		// -URLabModel=<mjb> + -URLabDrive=stream:tcp://<bus> (source-of-truth §14). The
+		// editor direct path takes an .mjb file; format-by-extension boot for other
+		// formats is the -game launcher's job (§1.2).
 		FString Mjb, Bus;
-		if (!FParse::Value(Cmd, TEXT("URLabFastMjb="), Mjb) && bHasModelFlag && ModelFmtArg == TEXT("mjb"))
+		if (bHasModelFlag && ModelFmtArg == TEXT("mjb"))
 		{
 			Mjb = ModelPathArg;
 		}
-		if (!FParse::Value(Cmd, TEXT("URLabFastBus="), Bus))
-		{
-			URLabLauncherFlags::DriveStreamTcpEndpoint(Bus);
-		}
+		URLabLauncherFlags::DriveStreamTcpEndpoint(Bus);
 		bOk = URLabLevelOps::LaunchFastPathSync(Mjb, Bus, /*bFreshLevel=*/true, Err);
 	}
 

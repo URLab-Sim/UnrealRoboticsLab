@@ -27,10 +27,8 @@
 
 namespace
 {
-// Parse the scene origin (UE cm). Zero if absent/malformed. Phase 1.1: -URLabScene=origin=X;Y;Z
-// (';' separators, since ',' delimits scene keys) writes the same value the legacy
-// -URLabFastOrigin=X,Y,Z did; the new key wins when present, else the legacy flag is read.
-// bShouldStopOnSeparator=false so the legacy commas are not treated as token separators.
+// Parse the scene origin (UE cm). Zero if absent/malformed. -URLabScene=origin=X;Y;Z
+// (';' separators, since ',' delimits scene keys).
 FVector ParseFastOrigin()
 {
 	FVector SceneOriginVec;
@@ -38,25 +36,7 @@ FVector ParseFastOrigin()
 	{
 		return SceneOriginVec;
 	}
-
-	FVector Origin = FVector::ZeroVector;
-	FString OriginStr;
-	if (FParse::Value(FCommandLine::Get(), TEXT("URLabFastOrigin="), OriginStr, false))
-	{
-		TArray<FString> Parts;
-		OriginStr.ParseIntoArray(Parts, TEXT(","));
-		if (Parts.Num() == 3)
-		{
-			Origin = FVector(
-				FCString::Atod(*Parts[0]), FCString::Atod(*Parts[1]), FCString::Atod(*Parts[2]));
-		}
-		else
-		{
-			UE_LOG(LogURLab, Warning,
-				TEXT("[MjRenderer] -URLabFastOrigin='%s' is not X,Y,Z; ignoring"), *OriginStr);
-		}
-	}
-	return Origin;
+	return FVector::ZeroVector;
 }
 } // namespace
 
@@ -77,13 +57,11 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		PawnIt->SetActorHiddenInGame(true);
 	}
 
-	// VR / spectator viewer (-URLabVrViewer): fly a free-fly drone camera around the
-	// sim the viewer renders from an owner's state bus (-URLabStateSource sets up the
-	// subscription; the manager does that). Here we just spawn + possess the drone,
+	// VR / spectator viewer (-URLabCaps=vr): fly a free-fly drone camera around the
+	// sim the viewer renders from an owner's transform bus (-URLabDrive=stream:<ep> sets
+	// up the subscription; the manager does that). Here we just spawn + possess the drone,
 	// after the default pawn is hidden above. Keyboard free-fly (WASD/QE + mouse).
-	// Phase 1.1: -URLabCaps=vr is the new spelling of -URLabVrViewer (source-of-truth §14); both
-	// enable the drone add-on identically.
-	if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")) || URLabLauncherFlags::CapsWantVr())
+	if (URLabLauncherFlags::CapsWantVr())
 	{
 		// The PlayerController is frequently not up yet at world BeginPlay (the
 		// packaged boot creates it a few frames later), so defer + retry rather
@@ -94,17 +72,10 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// Join a gRPC OWNER (peek/mirror): fetch its model over gRPC (fastpath_hello),
 	// then spawn a Mirror that subscribes to the owner's transform stream on the
 	// bus the reply advertises (grpc://, so the gRPC subscribe backend is selected).
-	// Pairs with -URLabVrViewer for a free-fly drone view of the live owner sim.
-	// Phase 1.1: -URLabDrive=stream:grpc://<ep> is the new spelling of -URLabFastGrpcJoin=<ep>
-	// (source-of-truth §14, lean: no serve); both drive the same gRPC-join mirror.
+	// Pairs with -URLabCaps=vr for a free-fly drone view of the live owner sim.
+	// -URLabDrive=stream:grpc://<ep> (source-of-truth §14, lean: no serve).
 	FString GrpcJoin;
-	FString DriveGrpcEp;
-	const bool bLegacyGrpcJoin =
-		FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoin) && !GrpcJoin.IsEmpty();
-	if (!bLegacyGrpcJoin && URLabLauncherFlags::DriveStreamGrpcEndpoint(DriveGrpcEp))
-	{
-		GrpcJoin = DriveGrpcEp;
-	}
+	URLabLauncherFlags::DriveStreamGrpcEndpoint(GrpcJoin);
 	if (!GrpcJoin.IsEmpty())
 	{
 		if (!GrpcJoin.StartsWith(TEXT("grpc://")))
@@ -132,33 +103,26 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 				Mirror->OwnerControlEndpoint = GrpcJoin;
 			}
 			UE_LOG(LogURLab, Display,
-				TEXT("[MjRenderer] -URLabFastGrpcJoin: mirroring owner %s (bus %s), %d-byte model"),
+				TEXT("[MjRenderer] -URLabDrive=stream:grpc: mirroring owner %s (bus %s), %d-byte model"),
 				*GrpcJoin, *Bus, Mjb.Num());
 		}
 		else
 		{
 			UE_LOG(LogURLab, Error,
-				TEXT("[MjRenderer] -URLabFastGrpcJoin: FetchModel('%s') failed: %s"), *GrpcJoin, *Err);
+				TEXT("[MjRenderer] -URLabDrive=stream:grpc: FetchModel('%s') failed: %s"), *GrpcJoin, *Err);
 		}
 		return;
 	}
 
-	// The boot model may arrive as a compiled MJB (-URLabFastMjb, version-locked to
-	// this libmujoco) or as source this libmujoco compiles itself: MJCF XML
-	// (-URLabFastXml, assets from the file's own dir) or a .mjz archive
-	// (-URLabFastMjz, unzipped in-engine to xml+assets). xml/mjz are immune to MJB
-	// version skew.
+	// The boot model may arrive as a compiled MJB (version-locked to this libmujoco)
+	// or as source this libmujoco compiles itself: MJCF XML (assets from the file's
+	// own dir) or a .mjz archive (unzipped in-engine to xml+assets). xml/mjz are
+	// immune to MJB version skew. -URLabModel=<path.{mjb,xml,mjz}> picks the format
+	// by extension (source-of-truth §14, Phase 1.2).
 	FString Mjb, FastXml, FastMjz;
-	bool bHasMjb =
-		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) && !Mjb.IsEmpty();
-	bool bHasXml =
-		FParse::Value(FCommandLine::Get(), TEXT("URLabFastXml="), FastXml) && !FastXml.IsEmpty();
-	bool bHasMjz =
-		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjz="), FastMjz) && !FastMjz.IsEmpty();
-	// Phase 1.1/1.2: -URLabModel=<path.{mjb,xml,mjz}> picks the format by extension and writes the
-	// same field the matching legacy -URLabFast{Mjb,Xml,Mjz} flag would (source-of-truth §14). The
-	// legacy flag wins when both are given.
-	if (!bHasMjb && !bHasXml && !bHasMjz)
+	bool bHasMjb = false;
+	bool bHasXml = false;
+	bool bHasMjz = false;
 	{
 		FString ModelPathArg, ModelFmt;
 		if (URLabLauncherFlags::ParseModel(ModelPathArg, ModelFmt))
@@ -182,16 +146,16 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	}
 	if (!bHasMjb && !bHasXml && !bHasMjz)
 	{
-		// Headless render server with no boot model (-URLabFastServe): stand up a
+		// Headless render server with no boot model (-URLabDrive=await): stand up a
 		// proper Mirror renderer on a tiny placeholder model -- the exact known-good
-		// path the -URLabFast<model> flags use, so the renderer's EnsureManager brings
+		// path the -URLabModel boot uses, so the renderer's EnsureManager brings
 		// up the BridgeServer + gRPC/ZMQ transports AND the renderer is camera-enabled.
 		// The first client load_* then hot-swaps the real model into it. (Spawning a
 		// bare manager instead would build the manager's *interactive* compiled play
 		// view, which is externally-driven and has no capturing cameras.)
-		// Phase 1.1: -URLabDrive=await is the new spelling of -URLabFastServe (source-of-truth §14:
-		// await + serve,cameras); both stand up the placeholder render server awaiting a client load.
-		if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastServe")) || URLabLauncherFlags::DriveIsAwait())
+		// -URLabDrive=await (source-of-truth §14: await + serve,cameras) stands up the
+		// placeholder render server awaiting a client load.
+		if (URLabLauncherFlags::DriveIsAwait())
 		{
 			static const char* kPlaceholderXml =
 				"<mujoco><worldbody><geom type=\"box\" size=\"0.05 0.05 0.05\"/></worldbody></mujoco>";
@@ -204,7 +168,7 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			if (!Placeholder)
 			{
 				UE_LOG(LogURLab, Error,
-					TEXT("[MjRenderer] -URLabFastServe: placeholder compile failed: %s"), *CompileErr);
+					TEXT("[MjRenderer] -URLabDrive=await: placeholder compile failed: %s"), *CompileErr);
 				return;
 			}
 			const int32 Sz = mj_sizeModel(Placeholder);
@@ -217,13 +181,13 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 				/*BusEndpoint=*/FString(), ParseFastOrigin(),
 				/*bStepped=*/false, /*bBaseLevel=*/false, /*bCameras=*/true);
 			UE_LOG(LogURLab, Log,
-				TEXT("[MjRenderer] -URLabFastServe: render server up on placeholder, awaiting client load"));
+				TEXT("[MjRenderer] -URLabDrive=await: render server up on placeholder, awaiting client load"));
 			return;
 		}
 
 		// No command-line model: this is the server-browser boot. Consume a pending
 		// browser join (we just OpenLevel'd into the chosen environment), else show
-		// the browser when asked (-URLabFastBrowser). Anything else is a normal map.
+		// the browser when asked (-URLabSourceFind=browse). Anything else is a normal map.
 		if (UGameInstance* GI = InWorld.GetGameInstance())
 		{
 			if (UMjRendererSubsystem* Sub = GI->GetSubsystem<UMjRendererSubsystem>())
@@ -234,30 +198,20 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 				}
 				else
 				{
-					// -URLabFastAutoJoin[=scene]: headless render-farm node that joins
-					// the first (or scene-matching) owner with no UI. Otherwise
-					// -URLabFastBrowser shows the interactive server browser.
-					// Phase 1.1/1.3: -URLabSourceFind=discover[:scene] / =browse are the new
-					// spellings (source-of-truth §14); each triggers the same finder path.
+					// -URLabSourceFind=discover[:scene]: headless render-farm node that
+					// joins the first (or scene-matching) owner with no UI. Otherwise
+					// -URLabSourceFind=browse shows the interactive server browser
+					// (source-of-truth §14).
 					FString AutoScene;
-					const bool bAutoJoin =
-						FParse::Value(FCommandLine::Get(), TEXT("URLabFastAutoJoin="), AutoScene)
-						|| FParse::Param(FCommandLine::Get(), TEXT("URLabFastAutoJoin"))
-						|| URLabLauncherFlags::SourceFindDiscover(AutoScene);
-					if (bAutoJoin)
+					if (URLabLauncherFlags::SourceFindDiscover(AutoScene))
 					{
 						FString Level;
-						if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastLevel="), Level))
-						{
-							URLabLauncherFlags::SceneLevel(Level);
-						}
+						URLabLauncherFlags::SceneLevel(Level);
 						const bool bCamerasWanted =
-							FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"))
-							|| URLabLauncherFlags::ParseCaps().bCameras.Get(false);
+							URLabLauncherFlags::ParseCaps().bCameras.Get(false);
 						Sub->BeginAutoJoin(AutoScene, Level, ParseFastOrigin(), bCamerasWanted);
 					}
-					else if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastBrowser"))
-						|| URLabLauncherFlags::SourceFindBrowse())
+					else if (URLabLauncherFlags::SourceFindBrowse())
 					{
 						Sub->ShowBrowser();
 					}
@@ -277,30 +231,24 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			TEXT("[MjRenderer] a fast-path scene already exists in this world; launcher skipping"));
 		return;
 	}
-	// Phase 1.1: -URLabDrive=stream:tcp://<ep> is the new spelling of -URLabFastBus=<ep>
-	// (source-of-truth §14); both name the transform bus this scene mirrors.
+	// -URLabDrive=stream:tcp://<ep> names the transform bus this scene mirrors
+	// (source-of-truth §14).
 	FString Bus;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastBus="), Bus))
-	{
-		URLabLauncherFlags::DriveStreamTcpEndpoint(Bus);
-	}
+	URLabLauncherFlags::DriveStreamTcpEndpoint(Bus);
 
-	// Direct: step this MJB in-process through the shared engine (a full sim a
-	// Python client can drive over RPC), instead of mirroring an owner's bus.
-	// Phase 1.1: -URLabDrive=sim is the new spelling of -URLabFastDirect (source-of-truth §14).
-	const bool bDirect = FParse::Param(FCommandLine::Get(), TEXT("URLabFastDirect"))
-		|| URLabLauncherFlags::DriveIsSim();
+	// -URLabDrive=sim: step this MJB in-process through the shared engine (a full sim
+	// a Python client can drive over RPC), instead of mirroring an owner's bus
+	// (source-of-truth §14).
+	const bool bDirect = URLabLauncherFlags::DriveIsSim();
 
 	// Base-level mode: the boot map is a curated scene the operator authored (its
 	// own lights, sky, floor, props), so the launcher must NOT populate its default
 	// light rig on top of it. The MJB still loads into whatever map is booted.
-	// Phase 1.1: -URLabScene=base is the new spelling of -URLabFastBaseLevel (source-of-truth §14).
-	const bool bBaseLevel = FParse::Param(FCommandLine::Get(), TEXT("URLabFastBaseLevel"))
-		|| URLabLauncherFlags::SceneBaseLevel();
+	// -URLabScene=base (source-of-truth §14).
+	const bool bBaseLevel = URLabLauncherFlags::SceneBaseLevel();
 
-	// Phase 1.1: -URLabCaps=cameras is the new spelling of -URLabFastCameras (source-of-truth §14).
-	const bool bCameras = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"))
-		|| URLabLauncherFlags::ParseCaps().bCameras.Get(false);
+	// -URLabCaps=cameras (source-of-truth §14).
+	const bool bCameras = URLabLauncherFlags::ParseCaps().bCameras.Get(false);
 
 	const FVector Origin = ParseFastOrigin();
 
@@ -320,8 +268,8 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		if (!MjModelSource::CompileFileToMjb(SrcPath, Format, ModelBytes, Err))
 		{
 			UE_LOG(LogURLab, Error,
-				TEXT("[MjRenderer] could not compile -URLabFast%s='%s': %s"),
-				bHasXml ? TEXT("Xml") : TEXT("Mjz"), *SrcPath, *Err);
+				TEXT("[MjRenderer] could not compile -URLabModel %s='%s': %s"),
+				bHasXml ? TEXT("(xml)") : TEXT("(mjz)"), *SrcPath, *Err);
 			return;
 		}
 		ModelPath.Empty();  // use the compiled bytes, not a file
@@ -331,7 +279,7 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// One shared builder for the -game launcher and the runtime server browser.
 	AMjRenderer::SpawnRenderer(&InWorld, ModelBytes, ModelPath, Bus, Origin, bDirect, bBaseLevel, bCameras);
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: model=%s mode=%s bus=%s baseLevel=%d"),
-		*SourceDesc, bDirect ? TEXT("direct") : TEXT("puppet"),
+		*SourceDesc, bDirect ? TEXT("sim") : TEXT("stream"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);
 }
 
@@ -359,7 +307,7 @@ void UMjRendererLauncher::TryPossessVrDrone(TWeakObjectPtr<UWorld> WeakWorld, in
 		else
 		{
 			UE_LOG(LogURLab, Warning,
-				TEXT("[MjRenderer] -URLabVrViewer: no PlayerController after ~5s; drone not possessed"));
+				TEXT("[MjRenderer] -URLabCaps=vr: no PlayerController after ~5s; drone not possessed"));
 		}
 		return;
 	}
@@ -385,7 +333,7 @@ void UMjRendererLauncher::TryPossessVrDrone(TWeakObjectPtr<UWorld> WeakWorld, in
 		PC->SetInputMode(FInputModeGameOnly());
 		PC->bShowMouseCursor = false;
 		UE_LOG(LogURLab, Display,
-			TEXT("[MjRenderer] -URLabVrViewer: drone free-fly camera spawned + possessed (attempt %d)"),
+			TEXT("[MjRenderer] -URLabCaps=vr: drone free-fly camera spawned + possessed (attempt %d)"),
 			Attempt);
 	}
 }

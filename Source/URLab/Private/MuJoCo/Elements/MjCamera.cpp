@@ -315,8 +315,8 @@ void UMjCamera::BeginPlay()
 		CaptureComponent->PostProcessSettings.bOverride_MotionBlurPerObjectSize = true;
 		CaptureComponent->PostProcessSettings.MotionBlurPerObjectSize = 0.0f;
 
-		// Phase 1.1: -URLabScene=noexposure is the new spelling of -URLabDisableAutoExposure (source-of-truth §14).
-		if (CVarCamDisableAutoExposure.GetValueOnGameThread() != 0 || FParse::Param(FCommandLine::Get(), TEXT("URLabDisableAutoExposure")) || URLabLauncherFlags::SceneNoAutoExposure())
+		// -URLabScene=noexposure disables auto-exposure/eye-adaptation (source-of-truth §14).
+		if (CVarCamDisableAutoExposure.GetValueOnGameThread() != 0 || URLabLauncherFlags::SceneNoAutoExposure())
 		{
 			CaptureComponent->ShowFlags.SetEyeAdaptation(false);
 			CaptureComponent->PostProcessSettings.bOverride_AutoExposureMethod = true;
@@ -390,11 +390,8 @@ void UMjCamera::SetClippingPlanes(float InNearClipCm, float InFarClipCm)
 	if (CaptureComponent)
 	{
 		float NearClipCm = CustomNearClipCm > 0.0f ? CustomNearClipCm : CVarCamNearClip.GetValueOnGameThread();
-		// Phase 1.1: -URLabScene=camnear=<cm> is the new spelling of -URLabCamNearClip (source-of-truth §14).
-		if (!FParse::Value(FCommandLine::Get(), TEXT("URLabCamNearClip="), NearClipCm))
-		{
-			URLabLauncherFlags::SceneCamNearClipCm(NearClipCm);
-		}
+		// -URLabScene=camnear=<cm> overrides the near clip plane (source-of-truth §14).
+		URLabLauncherFlags::SceneCamNearClipCm(NearClipCm);
 		CaptureComponent->bOverride_CustomNearClippingPlane = true;
 		CaptureComponent->CustomNearClippingPlane = FMath::Max(0.01f, NearClipCm);
 		SetupProjectionMatrix();
@@ -467,11 +464,8 @@ void UMjCamera::SetupProjectionMatrix()
 	CaptureComponent->FOVAngle = HorizontalFOVFromFovy(DerivedFovy, Res);
 
 	float NearClipCm = CustomNearClipCm > 0.0f ? CustomNearClipCm : CVarCamNearClip.GetValueOnGameThread();
-	// Phase 1.1: -URLabScene=camnear=<cm> is the new spelling of -URLabCamNearClip (source-of-truth §14).
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabCamNearClip="), NearClipCm))
-	{
-		URLabLauncherFlags::SceneCamNearClipCm(NearClipCm);
-	}
+	// -URLabScene=camnear=<cm> overrides the near clip plane (source-of-truth §14).
+	URLabLauncherFlags::SceneCamNearClipCm(NearClipCm);
 	NearClipCm = FMath::Max(0.01f, NearClipCm);
 	CaptureComponent->bOverride_CustomNearClippingPlane = true;
 	CaptureComponent->CustomNearClippingPlane = NearClipCm;
@@ -1300,8 +1294,8 @@ void UMjCamera::SetupRenderTarget()
 	CaptureComponent->PostProcessSettings.bOverride_MotionBlurPerObjectSize = true;
 	CaptureComponent->PostProcessSettings.MotionBlurPerObjectSize = 0.0f;
 
-	// Phase 1.1: -URLabScene=noexposure is the new spelling of -URLabDisableAutoExposure (source-of-truth §14).
-	if (CVarCamDisableAutoExposure.GetValueOnGameThread() != 0 || FParse::Param(FCommandLine::Get(), TEXT("URLabDisableAutoExposure")) || URLabLauncherFlags::SceneNoAutoExposure())
+	// -URLabScene=noexposure disables auto-exposure/eye-adaptation (source-of-truth §14).
+	if (CVarCamDisableAutoExposure.GetValueOnGameThread() != 0 || URLabLauncherFlags::SceneNoAutoExposure())
 	{
 		CaptureComponent->ShowFlags.SetEyeAdaptation(false);
 		CaptureComponent->PostProcessSettings.bOverride_AutoExposureMethod = true;
@@ -1311,11 +1305,8 @@ void UMjCamera::SetupRenderTarget()
 	}
 
 	float NearClipCm = CustomNearClipCm > 0.0f ? CustomNearClipCm : CVarCamNearClip.GetValueOnGameThread();
-	// Phase 1.1: -URLabScene=camnear=<cm> is the new spelling of -URLabCamNearClip (source-of-truth §14).
-	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabCamNearClip="), NearClipCm))
-	{
-		URLabLauncherFlags::SceneCamNearClipCm(NearClipCm);
-	}
+	// -URLabScene=camnear=<cm> overrides the near clip plane (source-of-truth §14).
+	URLabLauncherFlags::SceneCamNearClipCm(NearClipCm);
 	CaptureComponent->bOverride_CustomNearClippingPlane = true;
 	CaptureComponent->CustomNearClippingPlane = FMath::Max(0.01f, NearClipCm);
 

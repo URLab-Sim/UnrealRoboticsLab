@@ -5,8 +5,11 @@
 
 #include "CoreMinimal.h"
 
-/** How a per-entity setpoint reaches d->ctrl. Resolved ONCE, at the pre-step drain (per entity). */
-enum class EMjDrive : uint8
+/** How a per-entity setpoint reaches d->ctrl. Resolved ONCE, at the pre-step drain (per entity).
+ *  Renamed from EMjDrive (Phase 0.1): that name is now the render/primary Drive axis on AMjRenderer
+ *  (see MjRenderer.h). This control-drive enum has no references anywhere in the plugin, so the
+ *  rename is mechanical and behavior-preserving. */
+enum class EMjControlDrive : uint8
 {
 	Direct,     // write the setpoint straight to d->ctrl
 	Controller  // transform the setpoint through the entity's control law (PD, ...)

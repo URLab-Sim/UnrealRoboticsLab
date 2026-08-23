@@ -258,6 +258,34 @@ void AMjRenderer::BeginPlay()
 	// play session, so the render server goes live without rebuilding them.
 	StartCameraStreaming();
 
+	// Phase 0.1: name the primary Drive axis from the same five boot signals this fork already
+	// switches on -- BEFORE the fork runs, so it is available and correct. The branch bodies below
+	// are left switching on the old signals (RunMode / bForcedRenderOnly / BusEndpoint); this only
+	// makes Drive available for Phase 1 to rewire onto. Derivation order mirrors the fork:
+	//   RunMode==Stepped              -> Sim    (owns physics; the Direct path)
+	//   bForcedRenderOnly             -> Push   (fastpath_render drives the pose; no bus)
+	//   -URLabFastServe               -> Await  (served placeholder, no real model yet)
+	//   otherwise (bus / gRPC join / VR / bare mirror) -> Stream (transform-mirror consumer)
+	// FastServe is checked before the bus signal because its placeholder renderer has an empty
+	// BusEndpoint and would otherwise fall through the fork to no branch; -URLabFastGrpcJoin and
+	// -URLabVrViewer are both gRPC-driven mirrors and resolve to Stream.
+	if (RunMode == EMjPoseSource::Stepped)
+	{
+		Drive = EMjDrive::Sim;
+	}
+	else if (bForcedRenderOnly)
+	{
+		Drive = EMjDrive::Push;
+	}
+	else if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastServe")))
+	{
+		Drive = EMjDrive::Await;
+	}
+	else
+	{
+		Drive = EMjDrive::Stream;
+	}
+
 	// Direct: step this scene's own model through the shared engine and render the
 	// stepped state. Puppet (default): mirror an owner's transform stream.
 	if (RunMode == EMjPoseSource::Stepped)

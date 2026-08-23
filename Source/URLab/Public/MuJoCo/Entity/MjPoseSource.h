@@ -20,6 +20,27 @@ enum class EMjPoseSource : uint8
 };
 
 /**
+ * Producer-only step-mode: how a `sim` (Producer) instance advances its own physics state. A
+ * consumer (drive=stream|push) has no step-mode -- it has a pose sink, not an engine to advance.
+ *
+ * This is the target replacement for the producer half of EMjPoseSource: it drops `Mirror` (never a
+ * legitimate producer/engine value) so the engine's resolved step-mode can be retyped onto it in
+ * Phase 1.4. Introduced here as a PURE TYPE ADDITION -- no call site references it yet.
+ *
+ * - FreeRun: steps on its own clock.
+ * - Stepped: steps only on a client step request (any transport).
+ * - StatePushed: the client integrates elsewhere and pushes qpos/qvel/ctrl/time; the engine runs
+ *   mj_forward only (no stepping).
+ */
+UENUM(BlueprintType)
+enum class EMjStepMode : uint8
+{
+	FreeRun     UMETA(DisplayName = "Free-run (steps on own clock)"),
+	Stepped     UMETA(DisplayName = "Stepped (steps on client request)"),
+	StatePushed UMETA(DisplayName = "State-pushed (client integrates, engine mj_forward)")
+};
+
+/**
  * Composable, OPEN capability set on an instance -- NOT modes. New features are added as
  * capabilities, never as a new mode. "Render server" = StreamCameras; "viewer" = AcceptInput.
  * Capabilities compose freely with any EMjPoseSource: a Mirror can also stream its own view and

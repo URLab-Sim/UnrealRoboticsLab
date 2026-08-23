@@ -36,6 +36,29 @@ enum class EMjCameraMode : uint8;
 enum class EMjDebugShaderMode : uint8;
 
 /**
+ * @enum EMjDrive
+ * @brief The primary per-instance axis: what drives this renderer's rendered pose.
+ *
+ * Introduced additively (Phase 0.1). BeginPlay derives it from the existing five boot signals
+ * (RunMode==Stepped, bForcedRenderOnly, -URLabFastServe, BusEndpoint, -URLabFastGrpcJoin/
+ * -URLabVrViewer) without yet rewiring the branches -- the value is made available and correct, but
+ * the existing branch bodies still switch on the old signals. A -URLabDrive flag lands in Phase 1.
+ *
+ * - Sim:    owns live physics in the shared UMjPhysicsEngine (producer; RunMode==Stepped today).
+ * - Stream: no physics; applies a subscribed transform stream (bus / gRPC join / VR mirror).
+ * - Push:   no physics; poses arrive per-request via fastpath_render (bForcedRenderOnly today).
+ * - Await:  no model yet; a served placeholder that becomes push/stream after fastpath_load
+ *           (-URLabFastServe today).
+ */
+enum class EMjDrive : uint8
+{
+	Sim,
+	Stream,
+	Push,
+	Await
+};
+
+/**
  * @class AMjRenderer
  * @brief Fast-path render scene built straight from a compiled MJB.
  *
@@ -111,6 +134,13 @@ public:
 	// bus is never connected. When false (Mirror regime) the bus is the one driver
 	// and the REP is not bound, so exactly one source ever writes the rendered pose.
 	bool bForcedRenderOnly = false;
+
+	// The primary Drive axis for this instance (Phase 0.1). Derived at the top of BeginPlay from the
+	// existing boot signals; the branch bodies below it are unchanged for now (they still switch on
+	// RunMode / bForcedRenderOnly / BusEndpoint). Defaulted to Stream -- the transform-mirror
+	// consumer substrate that RunMode==Mirror names today -- so a pre-BeginPlay read matches the old
+	// default. Phase 1 populates this from -URLabDrive; Phase 1.4 rewires RunMode onto it.
+	EMjDrive Drive = EMjDrive::Stream;
 
 	/** Owner transform bus endpoint, e.g. "tcp://127.0.0.1:5561". When set, this
 	 *  scene subscribes to a per-geom transform stream and mirrors the owner. */

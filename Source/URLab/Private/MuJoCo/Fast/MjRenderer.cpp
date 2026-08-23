@@ -1674,23 +1674,17 @@ void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
 		FMemory::Memcpy(Model->geom_quat, GQuat.GetData(), sizeof(double) * 4 * NGeom);
 	}
 
-	TArray<double> Gp, Gq;
-	ReadArr(TEXT("gxpos"), Gp);
-	ReadArr(TEXT("gxquat"), Gq);
-	if (NGeom > 0 && Gp.Num() == 3 * NGeom && Gq.Num() == 4 * NGeom)
+	// Per-body transform stream (bxpos/bxquat): the one wire format. Covers geomless
+	// bodies and mocap; expands to geoms via ApplyBodyTransforms. (The geom_pos/
+	// geom_quat sync above is a distinct static model-offset update, not a transform
+	// stream, and is intentionally kept.)
+	const int32 NBody = Model ? static_cast<int32>(Model->nbody) : 0;
+	TArray<double> Bp, Bq;
+	ReadArr(TEXT("bxpos"), Bp);
+	ReadArr(TEXT("bxquat"), Bq);
+	if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
 	{
-		ApplyGeomTransforms(Gp.GetData(), Gq.GetData());
-	}
-	else
-	{
-		const int32 NBody = Model ? static_cast<int32>(Model->nbody) : 0;
-		TArray<double> Bp, Bq;
-		ReadArr(TEXT("bxpos"), Bp);
-		ReadArr(TEXT("bxquat"), Bq);
-		if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
-		{
-			ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
-		}
+		ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
 	}
 
 	if (CameraComps.Num() > 0)
@@ -2421,7 +2415,6 @@ void AMjRenderer::Tick(float DeltaSeconds)
 			TSharedPtr<FJsonObject> Obj;
 			if (FURLabMsgpackUtil::UnpackToJsonObject(Local.GetData(), Local.Num(), Obj) && Obj.IsValid())
 			{
-				const int32 NGeom = Model ? static_cast<int32>(Model->ngeom) : 0;
 				const int32 NBody = Model ? static_cast<int32>(Model->nbody) : 0;
 
 				// Applied post-step state the owner resolved for this pose payload, so
@@ -2454,8 +2447,9 @@ void AMjRenderer::Tick(float DeltaSeconds)
 					return false;
 				};
 
-				// Prefer the per-body stream (fewer transforms, covers mocap); fall
-				// back to a per-geom stream from a legacy owner.
+				// One per-body transform stream (bxpos/bxquat): fewer transforms than
+				// per-geom, covers mocap + cameras, and carries geomless bodies (the
+				// flex/skin precondition). Expanded to geoms via ApplyBodyTransforms.
 				TArray<double> Bp;
 				TArray<double> Bq;
 				ReadArr(TEXT("bxpos"), Bp);
@@ -2463,17 +2457,6 @@ void AMjRenderer::Tick(float DeltaSeconds)
 				if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
 				{
 					ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
-				}
-				else
-				{
-					TArray<double> Xp;
-					TArray<double> Xq;
-					ReadArr(TEXT("xpos"), Xp);
-					ReadArr(TEXT("xquat"), Xq);
-					if (NGeom > 0 && Xp.Num() == 3 * NGeom && Xq.Num() == 4 * NGeom)
-					{
-						ApplyGeomTransforms(Xp.GetData(), Xq.GetData());
-					}
 				}
 
 				// Optional camera world transforms, so streamed cameras track

@@ -671,27 +671,28 @@ void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
 {
 	if (ViewerBusTransports.Num() == 0 || !m || !d)
 		return;
-	const int NGeom = m->ngeom;
+	// One per-BODY transform frame: bxpos/bxquat straight from d->xpos/d->xquat for
+	// ALL nbody bodies (including the world body and geomless ones -- the latter is
+	// the flex/skin precondition: their driving bodies carry no geom and would be
+	// dropped by a per-geom frame). The consumer expands each geom's world pose from
+	// its body transform and the static body-relative offset (Model->geom_pos/quat),
+	// so the wire carries nbody transforms instead of ngeom and mocap bodies are
+	// covered for free. (d->xquat is already stored wxyz -- no mat2Quat needed.)
+	const int NBody = m->nbody;
 	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
 	Obj->SetNumberField(TEXT("f"), static_cast<double>(GeomBroadcastFrame++));
 
-	TArray<TSharedPtr<FJsonValue>> XPos;
-	XPos.Reserve(3 * NGeom);
-	for (int i = 0; i < 3 * NGeom; ++i)
-		XPos.Add(MakeShared<FJsonValueNumber>(d->geom_xpos[i]));
-	Obj->SetArrayField(TEXT("xpos"), XPos);
+	TArray<TSharedPtr<FJsonValue>> BxPos;
+	BxPos.Reserve(3 * NBody);
+	for (int i = 0; i < 3 * NBody; ++i)
+		BxPos.Add(MakeShared<FJsonValueNumber>(d->xpos[i]));
+	Obj->SetArrayField(TEXT("bxpos"), BxPos);
 
-	// MuJoCo stores geom orientation as a 3x3 (geom_xmat); the wire carries wxyz.
-	TArray<TSharedPtr<FJsonValue>> XQuat;
-	XQuat.Reserve(4 * NGeom);
-	double q[4];
-	for (int g = 0; g < NGeom; ++g)
-	{
-		mju_mat2Quat(q, d->geom_xmat + 9 * g);
-		for (int k = 0; k < 4; ++k)
-			XQuat.Add(MakeShared<FJsonValueNumber>(q[k]));
-	}
-	Obj->SetArrayField(TEXT("xquat"), XQuat);
+	TArray<TSharedPtr<FJsonValue>> BxQuat;
+	BxQuat.Reserve(4 * NBody);
+	for (int i = 0; i < 4 * NBody; ++i)
+		BxQuat.Add(MakeShared<FJsonValueNumber>(d->xquat[i]));
+	Obj->SetArrayField(TEXT("bxquat"), BxQuat);
 
 	// Per-camera world transforms, so a render-server renderer's cameras track.
 	if (m->ncam > 0)
@@ -703,6 +704,7 @@ void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
 		Obj->SetArrayField(TEXT("cxpos"), CxPos);
 		TArray<TSharedPtr<FJsonValue>> CxQuat;
 		CxQuat.Reserve(4 * m->ncam);
+		double q[4];
 		for (int c = 0; c < m->ncam; ++c)
 		{
 			mju_mat2Quat(q, d->cam_xmat + 9 * c);

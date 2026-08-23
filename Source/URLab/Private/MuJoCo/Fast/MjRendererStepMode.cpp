@@ -25,18 +25,6 @@ THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
 THIRD_PARTY_INCLUDES_END
 
-namespace
-{
-// Convert a MuJoCo 3x3 orientation (row-major geom_xmat/cam_xmat) to a UE quat,
-// via a wxyz quaternion.
-FQuat MjMat3ToUeQuat(const double* Mat3)
-{
-	double Quat[4];
-	mju_mat2Quat(Quat, Mat3);
-	return URLabAxisConv::MjQuatToUe(Quat);
-}
-} // namespace
-
 void FMjRendererStepMode::Begin(AMjRenderer& Scene)
 {
 	if (!Scene.Model || !Scene.Data)
@@ -103,10 +91,10 @@ void FMjRendererStepMode::ApplyFromSnapshot(AMjRenderer& Scene)
 	{
 		return;
 	}
-	const int32 NGeom = static_cast<int32>(Scene.Model->ngeom);
+	const int32 NBody = static_cast<int32>(Scene.Model->nbody);
 	const int32 NCam = Scene.CameraComps.Num();
 
-	Mgr->PhysicsEngine->WithRenderState([this, &Scene, NGeom, NCam](const FMjRenderSnapshot& Snap)
+	Mgr->PhysicsEngine->WithRenderState([this, &Scene, NBody, NCam](const FMjRenderSnapshot& Snap)
 	{
 		// Skip a snapshot we have already drawn (the worker publishes one per step;
 		// the game thread renders at its own, usually lower, rate).
@@ -116,36 +104,17 @@ void FMjRendererStepMode::ApplyFromSnapshot(AMjRenderer& Scene)
 		}
 		LastRenderFrameId = Snap.FrameId;
 
-		if (Snap.GeomXPos.Num() < NGeom * 3 || Snap.GeomXMat.Num() < NGeom * 9)
+		// One in-process apply path: drive the geom components from the per-body
+		// transforms through the shared AMjRenderer::ApplyBodyTransforms -- the same
+		// path the compiled view (AAMjManager::DriveCompiledRenderView) and the
+		// bus/mirror consumers use. It reconstructs each geom's world pose from the
+		// body pose plus the model's constant geom-in-body offset, so the rendered
+		// result matches the old per-geom (geom_xpos/geom_xmat) loop.
+		if (Snap.XPos.Num() < NBody * 3 || Snap.XQuat.Num() < NBody * 4)
 		{
 			return;
 		}
-		int32 NanGeoms = 0;
-		for (int32 G = 0; G < Scene.GeomComps.Num(); ++G)
-		{
-			UPrimitiveComponent* Comp = Scene.GeomComps[G];
-			if (!Comp)
-			{
-				continue;
-			}
-			const FVector Loc = URLabAxisConv::MjPositionToUe(Snap.GeomXPos.GetData() + 3 * G) + Scene.SceneOrigin;
-			const FQuat Rot = MjMat3ToUeQuat(Snap.GeomXMat.GetData() + 9 * G);
-			// Never push a non-finite transform into a component: it poisons the
-			// renderer (distance-field matrix inversion) and hides the real cause.
-			if (Loc.ContainsNaN() || Rot.ContainsNaN() || !Rot.IsNormalized())
-			{
-				++NanGeoms;
-				continue;
-			}
-			Comp->SetWorldLocationAndRotation(Loc, Rot);
-		}
-		if (NanGeoms > 0 && !bNanLogged)
-		{
-			bNanLogged = true;
-			UE_LOG(LogURLab, Warning,
-				TEXT("[MjRenderer] Direct: %d/%d geoms non-finite at frame %llu (simTime=%.4f) -- physics diverged or bad snapshot"),
-				NanGeoms, Scene.GeomComps.Num(), (unsigned long long)Snap.FrameId, Snap.SimTime);
-		}
+		Scene.ApplyBodyTransforms(Snap.XPos.GetData(), Snap.XQuat.GetData());
 
 		// Cameras track the stepped state too. The snapshot carries cam_xmat as a
 		// 3x3; convert to the wxyz quats ApplyCameraPoses expects.

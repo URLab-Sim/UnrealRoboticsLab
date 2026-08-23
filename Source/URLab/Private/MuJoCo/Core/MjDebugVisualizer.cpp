@@ -26,9 +26,9 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Core/MjArticulation.h"
+#include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
-#include "DrawDebugHelpers.h"
 #include "Components/SplineMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -66,8 +66,22 @@ void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		HideTendonTubes();
 	}
 
+	// The pooled overlay renderer (source-of-truth 8.5) owns the instanced-mesh
+	// contact decor; it is a sibling component on the same manager actor.
+	UMjOverlayRenderer* OR = GetOwner() ? GetOwner()->FindComponentByClass<UMjOverlayRenderer>() : nullptr;
+
 	if (!bShowDebug)
+	{
+		if (OR)
+		{
+			OR->BeginDebugContacts(); // clears the layer (nothing re-added)
+		}
 		return;
+	}
+	if (!OR)
+	{
+		return;
+	}
 
 	FMuJoCoDebugData LocalDebugData;
 	{
@@ -75,10 +89,7 @@ void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		LocalDebugData = DebugData;
 	}
 
-	UWorld* World = GetWorld();
-	if (!World)
-		return;
-
+	OR->BeginDebugContacts();
 	for (int i = 0; i < LocalDebugData.ContactPoints.Num(); ++i)
 	{
 		float force = 0.0f;
@@ -88,16 +99,18 @@ void UMjDebugVisualizer::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 		float ClampedForce = FMath::Min(force, DebugMaxForce);
 		float VisualLength = ClampedForce * DebugForceScale;
 
-		DrawDebugPoint(World, LocalDebugData.ContactPoints[i], DebugContactPointSize, FColor::Red, false, -1.0f);
+		// ContactPoints / ContactNormals are already UE world-space (captured via
+		// URLabAxisConv). DebugContactPointSize is a DrawDebug pixel size; use a
+		// small cm radius so the pooled marker reads similarly.
+		const float PointRadiusCm = FMath::Max(DebugContactPointSize * 0.25f, 1.0f);
+		OR->AddDebugContactPoint(LocalDebugData.ContactPoints[i], PointRadiusCm, FColor::Red);
 
-		if (i < LocalDebugData.ContactNormals.Num())
+		if (i < LocalDebugData.ContactNormals.Num() && VisualLength > 0.5f)
 		{
-			float ArrowHeadSize = FMath::Clamp(VisualLength * 0.2f, 2.0f, 15.0f);
-
-			DrawDebugDirectionalArrow(World,
+			OR->AddDebugContactArrow(
 				LocalDebugData.ContactPoints[i],
 				LocalDebugData.ContactPoints[i] + LocalDebugData.ContactNormals[i] * VisualLength,
-				ArrowHeadSize, FColor::Yellow, false, -1.0f, 0, DebugContactArrowThickness);
+				FColor::Yellow);
 		}
 	}
 }

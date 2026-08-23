@@ -663,22 +663,161 @@ TSharedPtr<FJsonObject> AAMjManager::BuildRenderFrame(mjModel* m, mjData* d)
 	return Obj;
 }
 
+AAMjManager::FMjRenderDebugCaps AAMjManager::ParseRenderDebugCaps(
+	const TArray<uint8>& SubscribePayload)
+{
+	// The subscribe request negotiates the debug tier per subscription (§8.2):
+	// {contacts:bool, overlay:bool, maxcontacts:int}. Absent/false keys leave the
+	// cap off, so a lean mirror that sends an empty payload gets zero extra bytes.
+	FMjRenderDebugCaps Caps;
+	if (SubscribePayload.Num() == 0)
+		return Caps;
+	TSharedPtr<FJsonObject> Req;
+	if (!FURLabMsgpackUtil::UnpackToJsonObject(
+			SubscribePayload.GetData(), SubscribePayload.Num(), Req)
+		|| !Req.IsValid())
+		return Caps;
+	Req->TryGetBoolField(TEXT("contacts"), Caps.bStreamContacts);
+	Req->TryGetBoolField(TEXT("overlay"), Caps.bStreamOverlay);
+	int32 MaxC = 0;
+	if (Req->TryGetNumberField(TEXT("maxcontacts"), MaxC)
+		|| Req->TryGetNumberField(TEXT("max_contacts"), MaxC))
+	{
+		Caps.MaxContacts = FMath::Max(0, MaxC);
+	}
+	return Caps;
+}
+
 void AAMjManager::AppendRenderDebugFields(TSharedPtr<FJsonObject>& Frame,
 	mjModel* m, mjData* d, const FMjRenderDebugCaps& Caps)
 {
-	// Capability-gated, count-capped debug tier (source-of-truth §8.2). A
-	// subscriber that requests neither StreamContacts nor StreamOverlay pays zero
-	// extra bytes, so bail before touching the frame.
-	if (!Caps.bStreamContacts && !Caps.bStreamOverlay)
+	// Capability-gated, count-capped debug tier (source-of-truth §8.2), computed
+	// straight from (m,d) after the step. A subscriber that requests neither
+	// StreamContacts nor StreamOverlay pays zero extra bytes, so bail before
+	// touching the frame.
+	if ((!Caps.bStreamContacts && !Caps.bStreamOverlay) || !Frame.IsValid() || !m || !d)
 		return;
-	// SEAM (Phase 9.1): compute + serialize the §8.2 debug arrays here, each
-	// count-capped -- contacts[] (<= Caps.MaxContacts) when bStreamContacts, and
-	// the derived-decor bundle (xfrc_applied / subtree_com / ctrl / act /
-	// wrap_xpos / eq / sensor / light) when bStreamOverlay. Phase 2.3 only
-	// establishes the hook; the fields are deferred to Phase 9.1.
-	(void)Frame;
-	(void)m;
-	(void)d;
+
+	auto NumArray = [](const mjtNum* Src, int32 Count) -> TArray<TSharedPtr<FJsonValue>>
+	{
+		TArray<TSharedPtr<FJsonValue>> Out;
+		Out.Reserve(FMath::Max(0, Count));
+		for (int32 i = 0; i < Count; ++i)
+			Out.Add(MakeShared<FJsonValueNumber>(Src[i]));
+		return Out;
+	};
+	auto IntArray = [](const int32* Src, int32 Count) -> TArray<TSharedPtr<FJsonValue>>
+	{
+		TArray<TSharedPtr<FJsonValue>> Out;
+		Out.Reserve(FMath::Max(0, Count));
+		for (int32 i = 0; i < Count; ++i)
+			Out.Add(MakeShared<FJsonValueNumber>(static_cast<double>(Src[i])));
+		return Out;
+	};
+
+	// --- StreamContacts: the contact list, capped at the subscriber's cap ------
+	// contacts[] = [{pos[3], frame[9], dist, force[6], dim, g1, g2}]; force via
+	// mj_contactForce (force:torque in the contact frame). Truncated to
+	// Caps.MaxContacts, mirroring MuJoCo's scn->maxgeom bound.
+	if (Caps.bStreamContacts)
+	{
+		const int32 Ncon = static_cast<int32>(d->ncon);
+		const int32 Cap = (Caps.MaxContacts > 0)
+			? FMath::Min(Ncon, Caps.MaxContacts) : Ncon;
+		TArray<TSharedPtr<FJsonValue>> Contacts;
+		Contacts.Reserve(FMath::Max(0, Cap));
+		for (int32 c = 0; c < Cap; ++c)
+		{
+			const mjContact& Con = d->contact[c];
+			mjtNum Force[6] = {0};
+			mj_contactForce(m, d, c, Force);
+			TSharedPtr<FJsonObject> CObj = MakeShared<FJsonObject>();
+			CObj->SetArrayField(TEXT("pos"), NumArray(Con.pos, 3));
+			CObj->SetArrayField(TEXT("frame"), NumArray(Con.frame, 9));
+			CObj->SetNumberField(TEXT("dist"), Con.dist);
+			CObj->SetArrayField(TEXT("force"), NumArray(Force, 6));
+			CObj->SetNumberField(TEXT("dim"), Con.dim);
+			CObj->SetNumberField(TEXT("g1"), Con.geom[0]);
+			CObj->SetNumberField(TEXT("g2"), Con.geom[1]);
+			Contacts.Add(MakeShared<FJsonValueObject>(CObj));
+		}
+		Frame->SetArrayField(TEXT("contacts"), Contacts);
+	}
+
+	// --- StreamOverlay: the derived-decor bundle, each array capped by its ------
+	// natural model dimension and appended only when that dimension is non-zero.
+	if (Caps.bStreamOverlay)
+	{
+		const int32 NBody = static_cast<int32>(m->nbody);
+		const int32 Nu = static_cast<int32>(m->nu);
+		const int32 Na = static_cast<int32>(m->na);
+		const int32 Nwrap = static_cast<int32>(m->nwrap);
+		const int32 Ntendon = static_cast<int32>(m->ntendon);
+		const int32 Neq = static_cast<int32>(m->neq);
+		const int32 Nsensordata = static_cast<int32>(m->nsensordata);
+		const int32 Nlight = static_cast<int32>(m->nlight);
+
+		// Perturbation / external-force arrows (already computed every step).
+		if (NBody > 0)
+			Frame->SetArrayField(TEXT("xfrc_applied"), NumArray(d->xfrc_applied, 6 * NBody));
+		// CoM spheres.
+		if (NBody > 0)
+			Frame->SetArrayField(TEXT("subtree_com"), NumArray(d->subtree_com, 3 * NBody));
+		// Actuator coloring (ctrl/act interpolation).
+		if (Nu > 0)
+			Frame->SetArrayField(TEXT("ctrl"), NumArray(d->ctrl, Nu));
+		if (Na > 0)
+			Frame->SetArrayField(TEXT("act"), NumArray(d->act, Na));
+		// Tendon wrap paths: 2*nwrap points (6*nwrap mjtNum) + slicing arrays so
+		// the consumer segments the path per tendon.
+		if (Nwrap > 0)
+		{
+			Frame->SetArrayField(TEXT("wrap_xpos"), NumArray(d->wrap_xpos, 6 * Nwrap));
+			Frame->SetArrayField(TEXT("wrap_obj"), IntArray(d->wrap_obj, 2 * Nwrap));
+		}
+		if (Ntendon > 0)
+		{
+			Frame->SetArrayField(TEXT("ten_wrapadr"), IntArray(d->ten_wrapadr, Ntendon));
+			Frame->SetArrayField(TEXT("ten_wrapnum"), IntArray(d->ten_wrapnum, Ntendon));
+		}
+		// Equality-constraint decor: eq_active is the only DYNAMIC quantity a
+		// mirror can't reconstruct (it has eq_type/eq_obj*/eq_data statically).
+		// eq_anchor carries the two world anchor endpoints per equality (body-origin
+		// convention, matching the renderer's connect/weld markers; world body = 0),
+		// so the consumer draws them without replaying the world-body special case.
+		if (Neq > 0)
+		{
+			TArray<TSharedPtr<FJsonValue>> EqActive;
+			EqActive.Reserve(Neq);
+			TArray<TSharedPtr<FJsonValue>> EqAnchor;
+			EqAnchor.Reserve(6 * Neq);
+			for (int32 e = 0; e < Neq; ++e)
+			{
+				EqActive.Add(MakeShared<FJsonValueNumber>(
+					static_cast<double>(d->eq_active[e])));
+				const int32 B1 = m->eq_obj1id[e];
+				const int32 B2 = m->eq_obj2id[e];
+				const mjtNum Zero[3] = {0, 0, 0};
+				const mjtNum* P1 = (B1 > 0 && B1 < NBody) ? &d->xpos[3 * B1] : Zero;
+				const mjtNum* P2 = (B2 > 0 && B2 < NBody) ? &d->xpos[3 * B2] : Zero;
+				for (int32 k = 0; k < 3; ++k)
+					EqAnchor.Add(MakeShared<FJsonValueNumber>(P1[k]));
+				for (int32 k = 0; k < 3; ++k)
+					EqAnchor.Add(MakeShared<FJsonValueNumber>(P2[k]));
+			}
+			Frame->SetArrayField(TEXT("eq_active"), EqActive);
+			Frame->SetArrayField(TEXT("eq_anchor"), EqAnchor);
+		}
+		// Rangefinder / sensor decor.
+		if (Nsensordata > 0)
+			Frame->SetArrayField(TEXT("sensordata"), NumArray(d->sensordata, Nsensordata));
+		// Light glyphs (cameras already ride cxpos/cxquat §8.1; lights do not).
+		if (Nlight > 0)
+		{
+			Frame->SetArrayField(TEXT("light_xpos"), NumArray(d->light_xpos, 3 * Nlight));
+			Frame->SetArrayField(TEXT("light_xdir"), NumArray(d->light_xdir, 3 * Nlight));
+		}
+	}
 }
 
 void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
@@ -692,11 +831,12 @@ void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
 		|| !m || !d)
 		return;
 	TSharedPtr<FJsonObject> Obj = BuildRenderFrame(m, d);
-	// Debug tier carries no extra bytes over the ZMQ bus in 2.3: the topic-per-tier
-	// bus advertises the render tier only, and per-subscription debug caps are
-	// negotiated on the gRPC selector (wired in 2.4 / populated in 9.1). Pass an
-	// empty cap set so the seam stays a no-op.
-	AppendRenderDebugFields(Obj, m, d, FMjRenderDebugCaps{});
+	// Append the capability-gated debug tier (§8.2) for whatever a render
+	// subscriber negotiated (ParseRenderDebugCaps populates ActiveRenderDebugCaps
+	// off the subscribe request). Default is none, so a lean mirror -- and the
+	// topic-per-tier ZMQ bus, which advertises the render tier only -- pays zero
+	// extra bytes. The gRPC render cache re-uses this same assembled frame.
+	AppendRenderDebugFields(Obj, m, d, ActiveRenderDebugCaps);
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 	if (Buf.Num() == 0)

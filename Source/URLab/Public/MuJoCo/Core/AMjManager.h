@@ -460,10 +460,24 @@ public:
 	 *  encoding (ZMQ topic / gRPC format / SHM ring). */
 	TSharedPtr<class FJsonObject> BuildRenderFrame(struct mjModel_* m, struct mjData_* d);
 	/** Capability-gated, count-capped seam that appends the optional debug tier
-	 *  (§8.2) onto a render frame. Phase 2.3 wires the hook (no-op unless a cap is
-	 *  set); Phase 9.1 populates the fields. */
+	 *  (§8.2) onto a render frame, computed straight from (m,d) after the step.
+	 *  Serializes contacts[] (<= Caps.MaxContacts) under StreamContacts, and the
+	 *  derived-decor bundle (xfrc_applied / subtree_com / ctrl / act / wrap paths
+	 *  / eq_active + anchors / sensordata / light xpos+xdir) under StreamOverlay.
+	 *  A subscriber that requested neither cap pays zero extra bytes. */
 	void AppendRenderDebugFields(TSharedPtr<class FJsonObject>& Frame,
 		struct mjModel_* m, struct mjData_* d, const FMjRenderDebugCaps& Caps);
+	/** Parse the debug-tier subscription capabilities off a subscribe request
+	 *  (msgpack payload) into an FMjRenderDebugCaps: `contacts` (bool) toggles
+	 *  StreamContacts, `overlay` (bool) toggles StreamOverlay, and
+	 *  `maxcontacts` (int, alias `max_contacts`) sets the contact cap. Unknown /
+	 *  missing keys leave the corresponding cap off. */
+	static FMjRenderDebugCaps ParseRenderDebugCaps(const TArray<uint8>& SubscribePayload);
+	/** The debug-tier caps a render subscriber negotiated (source-of-truth §8.2).
+	 *  Defaults to none so a lean mirror pays zero extra bytes; a subscribe request
+	 *  that asks for contacts/overlay populates it via ParseRenderDebugCaps and it
+	 *  gates what PublishRenderFrame appends. */
+	FMjRenderDebugCaps ActiveRenderDebugCaps;
 	/** Encode the render tier (+ optional debug fields) from (m,d) and PUB it on
 	 *  the viewer bus under the "render" topic, so a fast-path renderer can mirror
 	 *  this owner with no physics. */

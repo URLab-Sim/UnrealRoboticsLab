@@ -25,11 +25,11 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Elements/MjGeom.h"
+#include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "Utils/URLabLogging.h"
 #include "Components/StaticMeshComponent.h"
-#include "DrawDebugHelpers.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include <mujoco/mujoco.h>
@@ -175,6 +175,14 @@ void UMjPerturbation::TickComponent(float DeltaTime, ELevelTick TickType, FActor
 	if (IsDragging())
 	{
 		DrawDebugSpring();
+	}
+	else if (Manager)
+	{
+		// Not dragging: hide the pooled drag-spring instances (ISM does not auto-expire).
+		if (UMjOverlayRenderer* OR = Manager->FindComponentByClass<UMjOverlayRenderer>())
+		{
+			OR->ClearDragSpring();
+		}
 	}
 }
 
@@ -532,14 +540,22 @@ void UMjPerturbation::DrawDebugSpring() const
 	const FVector SelWorldUE = MjPosToUE(SelWorldMj);
 	const FVector RefSelUE = MjPosToUE(Perturb.refselpos);
 
-	DrawDebugSphere(World, SelWorldUE, 3.0f, 12, FColor::Red, false, -1.0f, 0, 0.5f);
+	// The pooled overlay renderer (source-of-truth 8.5) owns the instanced-mesh
+	// drag decor; feed it the resolved UE-space points. Grab-point marker + spring
+	// (translate) or tangent (rotate) arrow, matching the old DrawDebug spring.
+	UMjOverlayRenderer* OR = Manager->FindComponentByClass<UMjOverlayRenderer>();
+	if (!OR)
+	{
+		return;
+	}
+
+	bool bTranslate = false;
+	bool bRotate = false;
+	FVector RotTangentEndUE = SelWorldUE;
 
 	if ((Perturb.active & mjPERT_TRANSLATE) != 0)
 	{
-		const float Extent = FVector::Dist(SelWorldUE, RefSelUE);
-		const float HeadSize = FMath::Clamp(Extent * 0.25f, 8.0f, 60.0f);
-		DrawDebugDirectionalArrow(World, SelWorldUE, RefSelUE, HeadSize,
-			FColor::Green, false, -1.0f, 0, 1.5f);
+		bTranslate = true;
 	}
 	else if ((Perturb.active & mjPERT_ROTATE) != 0)
 	{
@@ -572,9 +588,10 @@ void UMjPerturbation::DrawDebugSpring() const
 		const float Extent = TangentUE.Size();
 		if (Extent > 2.0f)
 		{
-			const float HeadSize = FMath::Clamp(Extent * 0.25f, 8.0f, 60.0f);
-			DrawDebugDirectionalArrow(World, SelWorldUE, ArrowEnd, HeadSize,
-				FColor::Yellow, false, -1.0f, 0, 1.5f);
+			bRotate = true;
+			RotTangentEndUE = ArrowEnd;
 		}
 	}
+
+	OR->DrawDragSpring(SelWorldUE, RefSelUE, bTranslate, bRotate, RotTangentEndUE);
 }

@@ -106,8 +106,8 @@ public:
 	FString GetActiveSessionId() const { return ActiveSessionId; }
 	void SetActiveSessionIdForTest(const FString& Id) { ActiveSessionId = Id; }
 
-	EMjPoseSource GetActiveStepMode() const { return ActiveStepMode; }
-	void SetActiveStepMode(EMjPoseSource NewMode);
+	EMjStepMode GetActiveStepMode() const { return ActiveStepMode; }
+	void SetActiveStepMode(EMjStepMode NewMode);
 
 	EObservationLevel GetActiveObservationLevel() const { return ActiveObservationLevel; }
 	void SetActiveObservationLevelForTest(EObservationLevel L) { ActiveObservationLevel = L; }
@@ -243,7 +243,7 @@ private:
 
 	FString ActiveSessionId;
 
-	std::atomic<EMjPoseSource> ActiveStepMode{EMjPoseSource::FreeRun};
+	std::atomic<EMjStepMode> ActiveStepMode{EMjStepMode::FreeRun};
 	std::atomic<EObservationLevel> ActiveObservationLevel{EObservationLevel::Standard};
 	std::atomic<int64> StepCounter{0};
 
@@ -288,9 +288,9 @@ private:
 	/** Apply a pose source's mode-enter side effects: pause (or unpause) the
 	 *  state/ctrl publishers, push the resolved source to the engine, and install
 	 *  the direct step handler for Stepped. Callers uninstall any prior handler
-	 *  first and hold DispatchMutex. The single point where EMjPoseSource selects
+	 *  first and hold DispatchMutex. The single point where EMjStepMode selects
 	 *  the clock behaviour. */
-	void EnterPoseSource(EMjPoseSource Mode, AAMjManager& Mgr);
+	void EnterPoseSource(EMjStepMode Mode, AAMjManager& Mgr);
 
 	/** Per-pose-source step bodies, selected by ActiveStepMode in HandleStep.
 	 *  FreeRun reads UE's autonomous physics; Stepped drives the direct step

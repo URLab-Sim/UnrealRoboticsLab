@@ -259,7 +259,7 @@ bool FMjAccessorsUnderStepping::RunTest(const FString& Parameters)
 	const int32 SensorAdr = M->sensor_adr[SensorId];
 
 	Engine->SetPaused(false);
-	Engine->SetPoseSource(EMjPoseSource::FreeRun);
+	Engine->SetPoseSource(EMjStepMode::FreeRun);
 	Engine->RunMujocoAsync();
 
 	// Enough frames that no publish cadence but a per-step one can produce them,

@@ -76,7 +76,7 @@ void UMjPerturbation::BeginPlay()
 			if (!m || !d || !Manager || !Manager->PhysicsEngine)
 				return;
 			const bool bRunning = Manager->PhysicsEngine->IsRunning();
-			const bool bStatePushed = (Manager->StepMode == EMjPoseSource::StatePushed);
+			const bool bStatePushed = (Manager->StepMode == EMjStepMode::StatePushed);
 
 			if (bStatePushed)
 			{

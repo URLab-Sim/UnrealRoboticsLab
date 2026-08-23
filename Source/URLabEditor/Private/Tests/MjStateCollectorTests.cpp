@@ -638,7 +638,7 @@ bool FMjStateStepReplyArts::RunTest(const FString& Parameters)
 		return false;
 	}
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 
 	FMjStateCollector& C = S.Manager->GetStateCollector();
 	C.Init(S.Manager);

@@ -39,16 +39,16 @@ enum class EMjDebugShaderMode : uint8;
  * @enum EMjDrive
  * @brief The primary per-instance axis: what drives this renderer's rendered pose.
  *
- * Introduced additively (Phase 0.1). BeginPlay derives it from the existing five boot signals
- * (RunMode==Stepped, bForcedRenderOnly, -URLabFastServe, BusEndpoint, -URLabFastGrpcJoin/
- * -URLabVrViewer) without yet rewiring the branches -- the value is made available and correct, but
- * the existing branch bodies still switch on the old signals. A -URLabDrive flag lands in Phase 1.
+ * Set from -URLabDrive (Phase 1) and by SpawnRenderer (bStepped ? Sim : Stream); when neither names
+ * it, BeginPlay derives it from the boot signals (bForcedRenderOnly / -URLabFastServe / BusEndpoint /
+ * -URLabFastGrpcJoin / -URLabVrViewer). Phase 1.4 made it the sole axis the BeginPlay fork switches
+ * on -- the former EMjPoseSource::RunMode is gone.
  *
- * - Sim:    owns live physics in the shared UMjPhysicsEngine (producer; RunMode==Stepped today).
+ * - Sim:    owns live physics in the shared UMjPhysicsEngine (producer; the Direct step path).
  * - Stream: no physics; applies a subscribed transform stream (bus / gRPC join / VR mirror).
- * - Push:   no physics; poses arrive per-request via fastpath_render (bForcedRenderOnly today).
+ * - Push:   no physics; poses arrive per-request via fastpath_render (bForcedRenderOnly).
  * - Await:  no model yet; a served placeholder that becomes push/stream after fastpath_load
- *           (-URLabFastServe today).
+ *           (-URLabFastServe).
  */
 enum class EMjDrive : uint8
 {
@@ -64,13 +64,14 @@ enum class EMjDrive : uint8
  *
  * Loads an MJB with mj_loadModel (binary deserialize, no MJCF/ProtoSpec/
  * Blueprint) and builds ONE lightweight actor per MuJoCo body (so the renderer
- * culls per body) carrying per-geom mesh components. Its RunMode is one of two
- * pose sources:
+ * culls per body) carrying per-geom mesh components. Its Drive axis selects the
+ * pose source:
  *
- * - Mirror (default): the scene runs NO physics. An external owner (a puppet
- *   client, or another UE instance) resolves transforms and streams them over
- *   ZMQ; the scene mirrors that per-body/per-geom transform stream.
- * - Stepped: the scene installs its own raw mjModel/mjData into the shared
+ * - Stream/Push/Await (default Stream): the scene runs NO physics. An external
+ *   owner (a puppet client, or another UE instance) resolves transforms and
+ *   streams them over ZMQ; the scene mirrors that per-body/per-geom transform
+ *   stream (push/await receive poses per fastpath_render request instead).
+ * - Sim: the scene installs its own raw mjModel/mjData into the shared
  *   UMjPhysicsEngine and renders the stepped state from the engine's thread-safe
  *   snapshot, so the fast-path instance is a full sim a client can drive by RPC.
  *
@@ -121,25 +122,18 @@ public:
 	UPROPERTY()
 	TArray<uint8> MjbBytes;
 
-	/** Mirror (draw an owner's streamed transforms) or Stepped (step this scene's
-	 *  own model through the shared UMjPhysicsEngine and render it). Stepped makes
-	 *  the fast-path instance a full sim a Python client can drive over the
-	 *  existing RPC. Only these two pose sources are meaningful for a fast-path
-	 *  scene; any other value renders as Mirror. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Fast")
-	EMjPoseSource RunMode = EMjPoseSource::Mirror;
-
 	// Eval regime (-URLabFastForcedOnly): the forced-render control REP is the one
 	// pose driver -- cameras are set up but do not auto-capture, and the transform
 	// bus is never connected. When false (Mirror regime) the bus is the one driver
 	// and the REP is not bound, so exactly one source ever writes the rendered pose.
 	bool bForcedRenderOnly = false;
 
-	// The primary Drive axis for this instance (Phase 0.1). Derived at the top of BeginPlay from the
-	// existing boot signals; the branch bodies below it are unchanged for now (they still switch on
-	// RunMode / bForcedRenderOnly / BusEndpoint). Defaulted to Stream -- the transform-mirror
-	// consumer substrate that RunMode==Mirror names today -- so a pre-BeginPlay read matches the old
-	// default. Phase 1 populates this from -URLabDrive; Phase 1.4 rewires RunMode onto it.
+	// The primary Drive axis for this instance. Set by SpawnRenderer (bStepped ? Sim : Stream) and
+	// by -URLabDrive; otherwise derived at the top of BeginPlay from the boot signals
+	// (bForcedRenderOnly / -URLabFastServe / BusEndpoint). The BeginPlay fork switches on it directly
+	// (Phase 1.4): Sim owns physics (the old RunMode==Stepped Direct path); Stream/Push/Await are the
+	// transform-mirror consumer substrate (the old RunMode==Mirror). Defaulted to Stream so a
+	// pre-BeginPlay / map-placed read matches the old RunMode==Mirror default.
 	EMjDrive Drive = EMjDrive::Stream;
 
 	/** Owner transform bus endpoint, e.g. "tcp://127.0.0.1:5561". When set, this
@@ -357,7 +351,7 @@ public:
 	/** Connect the transform bus now (BusEndpoint must be set). Normally driven
 	 *  by BeginPlay; exposed for tests and headless drivers. */
 	void ConnectBus() { StartBus(); }
-	/** Begin Direct stepping now (RunMode must be Direct). Normally driven by
+	/** Begin Direct stepping now (Drive must be Sim). Normally driven by
 	 *  BeginPlay; exposed for the -game launcher, which builds after BeginPlay. */
 	void StartDirect() { Direct.Begin(*this); }
 	/** True once at least one transform frame has been received off the bus. */

@@ -636,7 +636,7 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReplay(const FString& Op, con
 	}
 	if (Op.Equals(TEXT("replay_start")))
 	{
-		if (ActiveStepMode == EMjPoseSource::FreeRun)
+		if (ActiveStepMode == EMjStepMode::FreeRun)
 			return MakeError(URLabError::ReplayRequiresStepped,
 				TEXT("Switch to direct or puppet before starting replay"));
 		RM->StartReplay();

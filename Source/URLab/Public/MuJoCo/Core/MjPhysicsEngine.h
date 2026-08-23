@@ -122,7 +122,7 @@ public:
 	// sync, and RunMujocoAsync seeds them when the worker starts.
 	std::atomic<bool> bPausedAtomic{true};
 	std::atomic<float> SimSpeedAtomic{100.0f};
-	std::atomic<EMjPoseSource> ResolvedPoseSource{EMjPoseSource::FreeRun};
+	std::atomic<EMjStepMode> ResolvedPoseSource{EMjStepMode::FreeRun};
 
 	/** Set by the game thread each time it consumes the render snapshot; the
 	 *  free-run worker publishes a new snapshot only when it is set, so the
@@ -374,12 +374,12 @@ public:
 	 *  the async loop calls the step handler and drains the request queue. The
 	 *  RPC dispatcher is the runtime owner and resolves the Auto promotion
 	 *  policy to FreeRun before calling; call on every mode change. */
-	void SetPoseSource(EMjPoseSource Source);
+	void SetPoseSource(EMjStepMode Source);
 
 	/** The pose source the physics worker is currently pacing off. This is the
 	 *  authoritative value the loop reads, so it is what regression coverage for
 	 *  the free-run 10 Hz lock should assert. */
-	EMjPoseSource GetPoseSource() const { return ResolvedPoseSource.load(std::memory_order_acquire); }
+	EMjStepMode GetPoseSource() const { return ResolvedPoseSource.load(std::memory_order_acquire); }
 
 	bool IsRunning() const;
 	bool IsInitialized() const;

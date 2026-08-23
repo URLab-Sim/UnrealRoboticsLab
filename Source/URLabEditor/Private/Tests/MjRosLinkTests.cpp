@@ -419,7 +419,7 @@ bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
 	}
 
 	// Direct mode pauses the byte fan-out (bPublishersPaused = true).
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	TestTrue(TEXT("direct mode pauses byte publishers"),
 		S.Manager->bPublishersPaused.load());
 
@@ -435,7 +435,7 @@ bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
 		Fake.Count.load(), 0);
 
 	// Restore Live so downstream tests see a clean cadence, then tear down.
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	Ros->TransportShutdown();
 	S.Manager->UnregisterSnapshotPublisher(&Fake);
 	S.Cleanup();
@@ -605,13 +605,13 @@ bool FMjRosCtrlModeGating::RunTest(const FString& Parameters)
 	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 
 	// Direct mode: the write is dropped, so d->ctrl stays at its initial value.
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("direct-mode ROS ctrl dropped"), (double)d->ctrl[0], 0.0, 1e-6);
 
 	// Live mode: the same write reaches the setpoint buffer and the pre-step drain lands it.
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("live-mode ROS ctrl applies"), (double)d->ctrl[0], 0.5, 1e-6);
@@ -676,7 +676,7 @@ bool FMjRosCtrlWire::RunTest(const FString& Parameters)
 	// is applied rather than dropped.
 	FString Cur;
 	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 
 	const FString Segment = FMjCanonicalName::ArtSegment(Art).ToString();
 	const FString Topic = FString::Printf(TEXT("/%s/cmd_ctrl"), *Segment);
@@ -1031,13 +1031,13 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 
 	// Direct mode: the jog is dropped, so d->ctrl stays at its initial value.
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("direct-mode joint_command dropped"), (double)d->ctrl[0], 0.0, 1e-6);
 
 	// Live mode: the same jog stages the actuator's position target.
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("live-mode joint_command applies"), (double)d->ctrl[0], 0.5, 1e-6);

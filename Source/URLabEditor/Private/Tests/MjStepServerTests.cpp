@@ -258,7 +258,7 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	TestTrue(TEXT("Direct mode flips manager (state/ctrl) pause flag true"),
 		S.Manager->bPublishersPaused.load());
 	// Cameras stream in EVERY step mode now (decoupled from the step reply),
@@ -266,22 +266,22 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 	TestFalse(TEXT("Direct mode keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 	TestEqual(TEXT("ActiveStepMode reflects the switch"),
-		(int)Disp->GetActiveStepMode(), (int)EMjPoseSource::Stepped);
+		(int)Disp->GetActiveStepMode(), (int)EMjStepMode::Stepped);
 
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	TestFalse(TEXT("Live resets manager pause flag"),
 		S.Manager->bPublishersPaused.load());
 	TestFalse(TEXT("Live keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 
-	Disp->SetActiveStepMode(EMjPoseSource::StatePushed);
+	Disp->SetActiveStepMode(EMjStepMode::StatePushed);
 	TestTrue(TEXT("Puppet mode flips manager pause flag true"),
 		S.Manager->bPublishersPaused.load());
 	TestFalse(TEXT("Puppet mode keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 
 	// Cleanup: leave the camera worker pause flag reset for downstream tests.
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 
 	S.Cleanup();
 	return true;
@@ -313,7 +313,7 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 	// paces off.
 	TestFalse(TEXT("StepMode is unpinned by default"), S.Manager->bPinStepMode);
 	TestEqual(TEXT("engine resolves unpinned -> FreeRun"),
-		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjPoseSource::FreeRun);
+		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjStepMode::FreeRun);
 
 	FURLabRpcDispatcher* Disp = S.Manager->GetStepDispatcher();
 	if (!Disp)
@@ -323,17 +323,17 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	TestEqual(TEXT("engine tracks Direct"),
-		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjPoseSource::Stepped);
+		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjStepMode::Stepped);
 
-	Disp->SetActiveStepMode(EMjPoseSource::StatePushed);
+	Disp->SetActiveStepMode(EMjStepMode::StatePushed);
 	TestEqual(TEXT("engine tracks Puppet"),
-		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjPoseSource::StatePushed);
+		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjStepMode::StatePushed);
 
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	TestEqual(TEXT("engine tracks Live"),
-		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjPoseSource::FreeRun);
+		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjStepMode::FreeRun);
 
 	S.Cleanup();
 	return true;
@@ -519,7 +519,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 		S.Cleanup();
 		return false;
 	}
-	Disp->SetActiveStepMode(EMjPoseSource::StatePushed);
+	Disp->SetActiveStepMode(EMjStepMode::StatePushed);
 	Disp->SetActiveSessionIdForTest(TEXT("test-session"));
 
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
@@ -562,7 +562,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 	TestEqual(TEXT("d->time updated"), (double)d->time, 1.5, 1e-9);
 	TestEqual(TEXT("OnPostStep fired exactly once"), OnPostStepCount, 1);
 
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	S.Manager->PhysicsEngine->OnPostStep = nullptr;
 
 	S.Cleanup();
@@ -980,18 +980,18 @@ bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 	// The gate in RunMujocoAsync runs the control drain for FreeRun and Stepped and
 	// skips it for StatePushed (the client pushes qpos/qvel directly), where the
 	// gate reads ResolvedPoseSource. SetPoseSource is the single writer.
-	Engine->SetPoseSource(EMjPoseSource::StatePushed);
+	Engine->SetPoseSource(EMjStepMode::StatePushed);
 	TestEqual(TEXT("resolved source is StatePushed (ApplyControls skipped)"),
-		(int)Engine->GetPoseSource(), (int)EMjPoseSource::StatePushed);
+		(int)Engine->GetPoseSource(), (int)EMjStepMode::StatePushed);
 
-	Engine->SetPoseSource(EMjPoseSource::Stepped);
+	Engine->SetPoseSource(EMjStepMode::Stepped);
 	TestEqual(TEXT("resolved source is Stepped (ApplyControls runs)"),
-		(int)Engine->GetPoseSource(), (int)EMjPoseSource::Stepped);
+		(int)Engine->GetPoseSource(), (int)EMjStepMode::Stepped);
 
 	// FreeRun (the resolution of the unpinned/"auto" policy) runs the pass too.
-	Engine->SetPoseSource(EMjPoseSource::FreeRun);
+	Engine->SetPoseSource(EMjStepMode::FreeRun);
 	TestEqual(TEXT("FreeRun runs ApplyControls"),
-		(int)Engine->GetPoseSource(), (int)EMjPoseSource::FreeRun);
+		(int)Engine->GetPoseSource(), (int)EMjStepMode::FreeRun);
 
 	S.Cleanup();
 	return true;
@@ -1020,7 +1020,7 @@ bool FMjStepServerDirectHandler::RunTest(const FString& Parameters)
 		S.Cleanup();
 		return false;
 	}
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 
 	mjModel* m = S.Manager->PhysicsEngine->GetModel();
 	mjData* d = S.Manager->PhysicsEngine->GetData();
@@ -1056,7 +1056,7 @@ bool FMjStepServerDirectHandler::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("OnPostStep fires once per substep"), OnPostStepCount, 3);
 
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	S.Manager->PhysicsEngine->OnPostStep = nullptr;
 
 	S.Cleanup();
@@ -1088,7 +1088,7 @@ bool FMjStepServerFrameIdGating::RunTest(const FString& Parameters)
 		S.Cleanup();
 		return false;
 	}
-	Disp->SetActiveStepMode(EMjPoseSource::Stepped);
+	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 
 	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
 	mjModel* m = Engine->GetModel();
@@ -1116,7 +1116,7 @@ bool FMjStepServerFrameIdGating::RunTest(const FString& Parameters)
 	TestEqual(TEXT("FrameId +1 after a real step"),
 		(int64)Engine->GetRenderFrameId(), IdBefore + 1);
 
-	Disp->SetActiveStepMode(EMjPoseSource::FreeRun);
+	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	S.Cleanup();
 	return true;
 }

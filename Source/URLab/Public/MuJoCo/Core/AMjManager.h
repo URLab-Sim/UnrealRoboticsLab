@@ -296,7 +296,7 @@ public:
 	 * resolves to FreeRun until the client picks).
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MuJoCo|Remote Stepping")
-	EMjPoseSource StepMode = EMjPoseSource::FreeRun;
+	EMjStepMode StepMode = EMjStepMode::FreeRun;
 
 	/**
 	 * @brief Pin StepMode as the server-locked pose source.

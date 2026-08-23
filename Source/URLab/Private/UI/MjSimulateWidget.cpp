@@ -436,17 +436,14 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 		{
 			switch (Disp->GetActiveStepMode())
 			{
-				case EMjPoseSource::FreeRun:
+				case EMjStepMode::FreeRun:
 					ModeStr = TEXT("live");
 					break;
-				case EMjPoseSource::Stepped:
+				case EMjStepMode::Stepped:
 					ModeStr = TEXT("direct");
 					break;
-				case EMjPoseSource::StatePushed:
+				case EMjStepMode::StatePushed:
 					ModeStr = TEXT("puppet");
-					break;
-				case EMjPoseSource::Mirror:
-					ModeStr = TEXT("mirror");
 					break;
 			}
 		}

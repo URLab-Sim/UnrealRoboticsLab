@@ -276,21 +276,21 @@ void AMjRenderer::BeginPlay()
 	// play session, so the render server goes live without rebuilding them.
 	StartCameraStreaming();
 
-	// Phase 0.1: name the primary Drive axis from the same five boot signals this fork already
-	// switches on -- BEFORE the fork runs, so it is available and correct. The branch bodies below
-	// are left switching on the old signals (RunMode / bForcedRenderOnly / BusEndpoint); this only
-	// makes Drive available for Phase 1 to rewire onto. Derivation order mirrors the fork:
-	//   RunMode==Stepped              -> Sim    (owns physics; the Direct path)
-	//   bForcedRenderOnly             -> Push   (fastpath_render drives the pose; no bus)
-	//   -URLabFastServe               -> Await  (served placeholder, no real model yet)
+	// Resolve the primary Drive axis BEFORE the fork, which switches on it directly (Phase 1.4).
+	// Precedence: -URLabDrive names it explicitly; otherwise SpawnRenderer already set Drive=Sim for
+	// the stepped/Direct path (kept by the Drive==Sim arm below); otherwise it is derived from the
+	// remaining boot signals. Derivation order:
+	//   Drive==Sim (set by SpawnRenderer) -> Sim    (owns physics; the Direct path)
+	//   bForcedRenderOnly                 -> Push   (fastpath_render drives the pose; no bus)
+	//   -URLabFastServe                   -> Await  (served placeholder, no real model yet)
 	//   otherwise (bus / gRPC join / VR / bare mirror) -> Stream (transform-mirror consumer)
 	// FastServe is checked before the bus signal because its placeholder renderer has an empty
 	// BusEndpoint and would otherwise fall through the fork to no branch; -URLabFastGrpcJoin and
 	// -URLabVrViewer are both gRPC-driven mirrors and resolve to Stream.
 	// Phase 1.1: when -URLabDrive is given it names the axis directly (source-of-truth §14); its
 	// value matches what the legacy-signal derivation below produces, since the launcher/BeginPlay
-	// already OR'd -URLabDrive into RunMode / bForcedRenderOnly / BusEndpoint. Fall back to the
-	// legacy derivation when -URLabDrive is absent.
+	// already OR'd -URLabDrive into bForcedRenderOnly / BusEndpoint. Fall back to the legacy
+	// derivation when -URLabDrive is absent.
 	FString DriveStreamEp;
 	const URLabLauncherFlags::EDriveKind DriveKind = URLabLauncherFlags::ParseDrive(DriveStreamEp);
 	if (DriveKind == URLabLauncherFlags::EDriveKind::Sim)
@@ -309,8 +309,10 @@ void AMjRenderer::BeginPlay()
 	{
 		Drive = EMjDrive::Stream;
 	}
-	else if (RunMode == EMjPoseSource::Stepped)
+	else if (Drive == EMjDrive::Sim)
 	{
+		// SpawnRenderer(bStepped=true) already set Drive=Sim before BeginPlay; keep it
+		// (this is the old RunMode==Stepped -> Sim derivation, now that Drive is the axis).
 		Drive = EMjDrive::Sim;
 	}
 	else if (bForcedRenderOnly)
@@ -328,7 +330,7 @@ void AMjRenderer::BeginPlay()
 
 	// Direct: step this scene's own model through the shared engine and render the
 	// stepped state. Puppet (default): mirror an owner's transform stream.
-	if (RunMode == EMjPoseSource::Stepped)
+	if (Drive == EMjDrive::Sim)
 	{
 		Direct.Begin(*this);
 	}
@@ -2103,9 +2105,9 @@ int32 AMjRenderer::PickBodyIdAlongRay(const FVector& Origin, const FVector& Dir,
 
 void AMjRenderer::ProcessMirrorPerturbationInput()
 {
-	// A Mirror never owns physics; forwarding requires an owner to apply the wrench.
-	// (Stepped/externally-driven scenes never reach here -- Tick returns earlier.)
-	if (RunMode != EMjPoseSource::Mirror || OwnerControlEndpoint.IsEmpty() || bExternallyDriven)
+	// A mirror (stream/push/await consumer) never owns physics; forwarding requires an owner to apply
+	// the wrench. A Sim producer never reaches here -- Tick returns earlier.
+	if (Drive == EMjDrive::Sim || OwnerControlEndpoint.IsEmpty() || bExternallyDriven)
 	{
 		return;
 	}
@@ -2391,7 +2393,7 @@ void AMjRenderer::Tick(float DeltaSeconds)
 	}
 
 	// Direct mode renders the engine's stepped state, not a streamed frame.
-	if (RunMode == EMjPoseSource::Stepped)
+	if (Drive == EMjDrive::Sim)
 	{
 		Direct.ApplyFromSnapshot(*this);
 		return;
@@ -2673,7 +2675,7 @@ void AMjRenderer::ReloadFromBytes(const TArray<uint8>& NewMjb)
 	{
 		StartBus();
 	}
-	if (RunMode == EMjPoseSource::Stepped && Mgr)
+	if (Drive == EMjDrive::Sim && Mgr)
 	{
 		// The manager has long since begun play, so install immediately (the timer
 		// poll in Direct.Begin is only for the first-frame race at level start).
@@ -2735,7 +2737,7 @@ AMjRenderer* AMjRenderer::SpawnRenderer(UWorld* World, const TArray<uint8>& MjbB
 		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] SpawnRenderer: failed to spawn AMjRenderer"));
 		return nullptr;
 	}
-	Scene->RunMode = bStepped ? EMjPoseSource::Stepped : EMjPoseSource::Mirror;
+	Scene->Drive = bStepped ? EMjDrive::Sim : EMjDrive::Stream;
 	Scene->MjbBytes = MjbBytes;
 	Scene->MjbFilePath = MjbFilePath;
 	Scene->BusEndpoint = BusEndpoint;

@@ -7,25 +7,28 @@
 #include "MjPoseSource.generated.h"
 
 /**
- * The mode axis: where each frame's render pose comes from. Owner-ness (can advertise and serve) is
- * derived -- FreeRun/Stepped/StatePushed have live state, Mirror does not.
+ * Legacy producer pose axis. Phase 1.4 split this: the engine's producer step-mode moved onto
+ * EMjStepMode (below) and the renderer's consumer notion moved onto EMjDrive (on AMjRenderer), so
+ * `Mirror` -- the consumer value that was never a legitimate engine value -- is gone. With that split
+ * complete this enum has NO remaining references; it is retained (minus `Mirror`) only so its full
+ * deletion can be sequenced separately.
  */
 UENUM(BlueprintType)
 enum class EMjPoseSource : uint8
 {
 	FreeRun     UMETA(DisplayName = "Free-run (UE steps, own clock)"),
 	Stepped     UMETA(DisplayName = "Stepped (UE steps on client request)"),
-	StatePushed UMETA(DisplayName = "State-pushed (client integrates, UE mj_forward)"),
-	Mirror      UMETA(DisplayName = "Mirror (draw streamed transforms, no physics)")
+	StatePushed UMETA(DisplayName = "State-pushed (client integrates, UE mj_forward)")
 };
 
 /**
  * Producer-only step-mode: how a `sim` (Producer) instance advances its own physics state. A
  * consumer (drive=stream|push) has no step-mode -- it has a pose sink, not an engine to advance.
  *
- * This is the target replacement for the producer half of EMjPoseSource: it drops `Mirror` (never a
- * legitimate producer/engine value) so the engine's resolved step-mode can be retyped onto it in
- * Phase 1.4. Introduced here as a PURE TYPE ADDITION -- no call site references it yet.
+ * The engine's resolved step-mode axis (UMjPhysicsEngine::ResolvedPoseSource, the RPC dispatcher's
+ * ActiveStepMode, AMjManager::StepMode) is typed on this since the Phase 1.4 enum split. It drops
+ * `Mirror` -- never a legitimate producer/engine value; the consumer notion it named now lives on
+ * EMjDrive (stream/push) on AMjRenderer.
  *
  * - FreeRun: steps on its own clock.
  * - Stepped: steps only on a client step request (any transport).
@@ -43,8 +46,8 @@ enum class EMjStepMode : uint8
 /**
  * Composable, OPEN capability set on an instance -- NOT modes. New features are added as
  * capabilities, never as a new mode. "Render server" = StreamCameras; "viewer" = AcceptInput.
- * Capabilities compose freely with any EMjPoseSource: a Mirror can also stream its own view and
- * accept input at the same time, with no new mode.
+ * Capabilities compose freely with any Drive/step-mode: a stream/push consumer can also stream its
+ * own view and accept input at the same time, with no new mode.
  */
 UENUM(BlueprintType, meta = (Bitflags))
 enum class EMjCapability : uint8

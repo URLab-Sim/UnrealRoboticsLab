@@ -1189,7 +1189,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 	{
 		FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher();
 		SetPoseSource(Disp ? Disp->GetActiveStepMode()
-						   : (Mgr->bPinStepMode ? Mgr->StepMode : EMjPoseSource::FreeRun));
+						   : (Mgr->bPinStepMode ? Mgr->StepMode : EMjStepMode::FreeRun));
 		// A recompile rebuilt m_model/m_data under a live session; re-apply the
 		// active pose source so its step handler is reinstalled onto the fresh
 		// engine and the pause / pacing invariants are restored.
@@ -1211,7 +1211,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 			// Runtime-resolved pose source, owned by the RPC dispatcher and
 			// seeded from config. Drives the controller pass and the pacer
 			// without a per-iteration actor cast.
-			const EMjPoseSource PoseSource = ResolvedPoseSource.load(std::memory_order_acquire);
+			const EMjStepMode PoseSource = ResolvedPoseSource.load(std::memory_order_acquire);
 
 			// Real-time pacer interval. Read from the model under CallbackMutex
 			// below (a concurrent CompileModel frees m_model, so reading it
@@ -1302,7 +1302,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// StatePushed: the client pushes qpos/qvel/ctrl directly, so the control drain
 				// would clobber the pushed snapshot. Run it for the sources that own the
 				// integrator here (FreeRun, Stepped); skip it for StatePushed.
-				if (PoseSource == EMjPoseSource::FreeRun || PoseSource == EMjPoseSource::Stepped)
+				if (PoseSource == EMjStepMode::FreeRun || PoseSource == EMjStepMode::Stepped)
 				{
 					DrainControlIntoData(m_model, m_data);
 				}
@@ -1361,7 +1361,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 				// publish every step because the client associates frames by id.
 				if (bAdvanced && !bRenderStatePublishedThisStep)
 				{
-					const bool bWantPublish = (PoseSource != EMjPoseSource::FreeRun)
+					const bool bWantPublish = (PoseSource != EMjStepMode::FreeRun)
 										   || bSnapshotWanted.exchange(false, std::memory_order_acq_rel);
 					if (bWantPublish)
 					{
@@ -1385,7 +1385,7 @@ void UMjPhysicsEngine::RunMujocoAsync()
 			// Pace off the resolved pose source: an unpinned session resolves to
 			// FreeRun, so a freshly-started free-run session runs real-time
 			// instead of blocking at ~10 Hz.
-			const bool bUseRealTimePacing = (PoseSource == EMjPoseSource::FreeRun);
+			const bool bUseRealTimePacing = (PoseSource == EMjStepMode::FreeRun);
 			if (bUseRealTimePacing)
 			{
 				const float SpeedFactor = FMath::Clamp(SimSpeedAtomic.load(std::memory_order_acquire), 5.0f, 100.0f) / 100.0f;
@@ -1423,13 +1423,13 @@ void UMjPhysicsEngine::SetSimSpeed(float Percent)
 	SimSpeedAtomic.store(Percent, std::memory_order_release);
 }
 
-void UMjPhysicsEngine::SetPoseSource(EMjPoseSource Source)
+void UMjPhysicsEngine::SetPoseSource(EMjStepMode Source)
 {
 	ResolvedPoseSource.store(Source, std::memory_order_release);
 	// Client-driven sources (Stepped/StatePushed) need the worker unpaused so the
 	// async loop calls the step handler and drains the request queue; the engine
 	// otherwise defaults to paused until the editor UI unpauses.
-	if (Source != EMjPoseSource::FreeRun && bIsPaused)
+	if (Source != EMjStepMode::FreeRun && bIsPaused)
 	{
 		SetPaused(false);
 	}

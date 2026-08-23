@@ -62,48 +62,46 @@
 
 namespace
 {
-/** Map pose source to wire-format string, matching the Python StepMode enum
- *  values. The wire tokens are the frozen client contract; the collapse onto
- *  EMjPoseSource must not change them. Mirror never reaches the active-mode
- *  paths, so it falls through to the "live" default rather than minting a token. */
-FString StepModeToString(EMjPoseSource Mode)
+/** Map step-mode to wire-format string, matching the Python StepMode enum
+ *  values. The wire tokens are the frozen client contract; the enum split onto
+ *  EMjStepMode must not change them. The trailing default keeps the switch
+ *  total for the compiler. */
+FString StepModeToString(EMjStepMode Mode)
 {
 	switch (Mode)
 	{
-		case EMjPoseSource::FreeRun:
+		case EMjStepMode::FreeRun:
 			return TEXT("live");
-		case EMjPoseSource::Stepped:
+		case EMjStepMode::Stepped:
 			return TEXT("direct");
-		case EMjPoseSource::StatePushed:
+		case EMjStepMode::StatePushed:
 			return TEXT("puppet");
-		case EMjPoseSource::Mirror:
-			break;
 	}
 	return TEXT("live");
 }
 
-bool StepModeFromString(const FString& Str, EMjPoseSource& OutMode)
+bool StepModeFromString(const FString& Str, EMjStepMode& OutMode)
 {
 	if (Str.Equals(TEXT("live"), ESearchCase::IgnoreCase) || Str.Equals(TEXT("streaming"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EMjPoseSource::FreeRun;
+		OutMode = EMjStepMode::FreeRun;
 		return true;
 	}
 	if (Str.Equals(TEXT("direct"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EMjPoseSource::Stepped;
+		OutMode = EMjStepMode::Stepped;
 		return true;
 	}
 	if (Str.Equals(TEXT("puppet"), ESearchCase::IgnoreCase))
 	{
-		OutMode = EMjPoseSource::StatePushed;
+		OutMode = EMjStepMode::StatePushed;
 		return true;
 	}
 	if (Str.Equals(TEXT("auto"), ESearchCase::IgnoreCase))
 	{
 		// "auto" is the client-picks promotion policy, not an axis value; it
 		// resolves to FreeRun (matching the old Auto -> Live resolution).
-		OutMode = EMjPoseSource::FreeRun;
+		OutMode = EMjStepMode::FreeRun;
 		return true;
 	}
 	return false;
@@ -386,12 +384,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleStep(const TSharedPtr<FJsonOb
 	// source on the next request.
 	switch (ActiveStepMode.load(std::memory_order_acquire))
 	{
-		case EMjPoseSource::Stepped:
+		case EMjStepMode::Stepped:
 			return StepStepped(Req, Common);
-		case EMjPoseSource::StatePushed:
+		case EMjStepMode::StatePushed:
 			return StepStatePushed(Req, Common);
-		case EMjPoseSource::FreeRun:
-		case EMjPoseSource::Mirror:
+		case EMjStepMode::FreeRun:
 		default:
 			return StepFreeRun(Req, Common);
 	}
@@ -644,11 +641,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetMode(const TSharedPtr<FJso
 	if (!Req->TryGetStringField(TEXT("mode"), ModeStr))
 		return MakeError(URLabError::MissingField, TEXT("set_mode requires 'mode'"));
 
-	EMjPoseSource NewMode;
+	EMjStepMode NewMode;
 	if (!StepModeFromString(ModeStr, NewMode))
 		return MakeError(URLabError::BadMode, FString::Printf(TEXT("Unknown mode '%s'"), *ModeStr));
 
-	EMjPoseSource Prev = ActiveStepMode;
+	EMjStepMode Prev = ActiveStepMode;
 	SetActiveStepMode(NewMode);
 
 	TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
@@ -890,44 +887,42 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::StepStatePushed(
 	return Reply;
 }
 
-void FURLabRpcDispatcher::EnterPoseSource(EMjPoseSource Mode, AAMjManager& Mgr)
+void FURLabRpcDispatcher::EnterPoseSource(EMjStepMode Mode, AAMjManager& Mgr)
 {
-	// The one place EMjPoseSource selects the clock behaviour. Client-driven
+	// The one place EMjStepMode selects the clock behaviour. Client-driven
 	// sources (Stepped / StatePushed) pause the state+ctrl publishers and push
 	// their resolved source to the engine; only Stepped installs a custom step
-	// handler. FreeRun and Mirror run UE's autonomous clock (Mirror is not an
-	// engine clock, so it resolves to FreeRun). Camera publishers stream in
+	// handler. FreeRun runs UE's autonomous clock. Camera publishers stream in
 	// every mode and are cleared separately by the caller. Callers uninstall any
 	// prior direct handler first and hold DispatchMutex.
 	switch (Mode)
 	{
-		case EMjPoseSource::Stepped:
+		case EMjStepMode::Stepped:
 			Mgr.bPublishersPaused.store(true, std::memory_order_release);
 			if (Mgr.PhysicsEngine)
-				Mgr.PhysicsEngine->SetPoseSource(EMjPoseSource::Stepped);
+				Mgr.PhysicsEngine->SetPoseSource(EMjStepMode::Stepped);
 			InstallDirectHandler();
 			break;
-		case EMjPoseSource::StatePushed:
+		case EMjStepMode::StatePushed:
 			Mgr.bPublishersPaused.store(true, std::memory_order_release);
 			if (Mgr.PhysicsEngine)
-				Mgr.PhysicsEngine->SetPoseSource(EMjPoseSource::StatePushed);
+				Mgr.PhysicsEngine->SetPoseSource(EMjStepMode::StatePushed);
 			break;
-		case EMjPoseSource::FreeRun:
-		case EMjPoseSource::Mirror:
+		case EMjStepMode::FreeRun:
 			Mgr.bPublishersPaused.store(false, std::memory_order_release);
 			if (Mgr.PhysicsEngine)
-				Mgr.PhysicsEngine->SetPoseSource(EMjPoseSource::FreeRun);
+				Mgr.PhysicsEngine->SetPoseSource(EMjStepMode::FreeRun);
 			break;
 	}
 }
 
-void FURLabRpcDispatcher::SetActiveStepMode(EMjPoseSource Mode)
+void FURLabRpcDispatcher::SetActiveStepMode(EMjStepMode Mode)
 {
 	// Serialises install/uninstall side effects against concurrent set_mode
 	// calls; Dispatch releases DispatchMutex before handlers.
 	FScopeLock Lock(&DispatchMutex);
 
-	const EMjPoseSource CurMode = ActiveStepMode.load(std::memory_order_acquire);
+	const EMjStepMode CurMode = ActiveStepMode.load(std::memory_order_acquire);
 	if (Mode == CurMode)
 		return;
 

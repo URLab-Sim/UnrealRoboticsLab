@@ -62,7 +62,7 @@ EActiveTimerReturnType SMjStepModeIndicator::OnPoll(double, float)
 	// Read the live runtime mode from the dispatcher, not the static
 	// UPROPERTY default (Mgr->StepMode is the configured pin, not the
 	// currently-active mode after a client set_mode promotion).
-	EMjPoseSource Mode = Mgr->StepMode;
+	EMjStepMode Mode = Mgr->StepMode;
 	if (FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher())
 	{
 		Mode = Disp->GetActiveStepMode();
@@ -70,21 +70,17 @@ EActiveTimerReturnType SMjStepModeIndicator::OnPoll(double, float)
 
 	switch (Mode)
 	{
-		case EMjPoseSource::FreeRun:
+		case EMjStepMode::FreeRun:
 			CachedLabel = FText::FromString(TEXT("URLab: live"));
 			CachedColor = FLinearColor(0.18f, 0.55f, 0.20f, 1.0f); // green
 			break;
-		case EMjPoseSource::Stepped:
+		case EMjStepMode::Stepped:
 			CachedLabel = FText::FromString(TEXT("URLab: direct"));
 			CachedColor = FLinearColor(0.85f, 0.55f, 0.10f, 1.0f); // amber
 			break;
-		case EMjPoseSource::StatePushed:
+		case EMjStepMode::StatePushed:
 			CachedLabel = FText::FromString(TEXT("URLab: puppet"));
 			CachedColor = FLinearColor(0.20f, 0.45f, 0.85f, 1.0f); // blue
-			break;
-		case EMjPoseSource::Mirror:
-			CachedLabel = FText::FromString(TEXT("URLab: mirror"));
-			CachedColor = FLinearColor(0.40f, 0.40f, 0.40f, 1.0f); // grey
 			break;
 	}
 	return EActiveTimerReturnType::Continue;

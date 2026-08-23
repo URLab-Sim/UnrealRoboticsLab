@@ -30,6 +30,7 @@
 // unit, which is worse than not compiling.
 
 #include "CoreMinimal.h"
+#include "IndexTypes.h"
 
 #include "MuJoCo/Gen/Elements/Deformable/MjFlexcomp.gen.h"
 
@@ -156,6 +157,16 @@ private:
 	 * flex's vertex n is this map's welded vertex n.
 	 */
 	TArray<int32> RawToWelded;
+
+	/**
+	 * The one-winding triangle list, in welded vertex ids, that the surface's
+	 * shading normals are accumulated over -- built once with the surface and
+	 * replayed by ApplyFlexWorldPositions every frame, so the normals follow the
+	 * deformation with exactly the build-time topology and orientation. On the
+	 * mirror path this is flex_elem (2D) / flex_shell (3D); on the authored path
+	 * it is the source mesh's own triangles mapped through the weld.
+	 */
+	TArray<UE::Geometry::FIndex3i> NormalTris;
 
 	/** Vertices in the Unreal mesh, before welding. */
 	int32 NumRenderVerts = 0;

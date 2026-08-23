@@ -396,6 +396,58 @@ void UMjFlexcomp::CreateProceduralMesh()
 		}
 	},
 		EDynamicMeshComponentRenderUpdateMode::FullUpdate);
+
+	// The same triangles in welded ids, one entry per drawn face, for the
+	// per-frame normal recompute in ApplyFlexWorldPositions. Welded rather than
+	// raw, so a vertex split at a UV seam still shades smoothly: every raw copy
+	// reads the one normal accumulated for its welded MuJoCo vertex. Stored as
+	// (A, C, B): a UE static mesh winds counter-clockwise in the left-handed
+	// system, so its outward normal is Cross(C-A, B-A) (VectorUtil::Normal,
+	// FStaticMeshOperations) -- the swap makes the recompute's shared
+	// Cross(B-A, C-A) accumulation come out outward here too. Because a sign
+	// slip here shades the whole surface black, the order is not trusted but
+	// voted on against the asset's own authored normals, one whole-mesh flip by
+	// majority (the MjRendererAssetBaker OrientVote pattern). Triangles that
+	// collapse under the weld would contribute a zero cross product, so they
+	// are dropped here instead of re-tested every frame.
+	NormalTris.Reset();
+	NormalTris.Reserve(Indices.Num() / 3);
+	int64 OrientVote = 0;
+	for (int32 i = 0; i + 2 < Indices.Num(); i += 3)
+	{
+		const int32 RawA = Indices[i];
+		const int32 RawB = Indices[i + 1];
+		const int32 RawC = Indices[i + 2];
+		const int32 A = RawToWelded.IsValidIndex(RawA) ? RawToWelded[RawA] : INDEX_NONE;
+		const int32 B = RawToWelded.IsValidIndex(RawB) ? RawToWelded[RawB] : INDEX_NONE;
+		const int32 C = RawToWelded.IsValidIndex(RawC) ? RawToWelded[RawC] : INDEX_NONE;
+		if (A < 0 || B < 0 || C < 0 || A == B || B == C || A == C)
+		{
+			continue;
+		}
+		NormalTris.Add(UE::Geometry::FIndex3i(A, C, B));
+
+		// (A, C, B) through Cross(B-A, C-A) is the geometric normal below.
+		const FVector3f P0 = Positions.VertexPosition(RawA);
+		const FVector3f Geometric = FVector3f::CrossProduct(
+			Positions.VertexPosition(RawC) - P0, Positions.VertexPosition(RawB) - P0);
+		const FVector4f N0 = Vertices.VertexTangentZ(RawA);
+		const FVector4f N1 = Vertices.VertexTangentZ(RawB);
+		const FVector4f N2 = Vertices.VertexTangentZ(RawC);
+		const FVector3f Authored(N0.X + N1.X + N2.X, N0.Y + N1.Y + N2.Y, N0.Z + N1.Z + N2.Z);
+		const float Dot = FVector3f::DotProduct(Geometric, Authored);
+		if (Dot != 0.0f)
+		{
+			OrientVote += (Dot > 0.0f) ? 1 : -1;
+		}
+	}
+	if (OrientVote < 0)
+	{
+		for (UE::Geometry::FIndex3i& T : NormalTris)
+		{
+			Swap(T.B, T.C);
+		}
+	}
 }
 
 void UMjFlexcomp::UpdateProceduralMesh(UMjPhysicsEngine& Engine)
@@ -453,6 +505,34 @@ void UMjFlexcomp::ApplyFlexWorldPositions(const TArray<FVector>& WorldPositions)
 		WeldedPositions[Vert] = ParentTransform.InverseTransformPosition(WorldPositions[Vert]);
 	}
 
+	// Area-weighted vertex normals at this deformed pose, over the same
+	// one-winding welded triangles the surface's normals were built from
+	// (NormalTris), in the same mesh-local space the positions above are in --
+	// so the shading follows the deformation instead of freezing at the build
+	// pose. Same accumulation as BuildModelSurface: N = (B-A) x (C-A), summed
+	// unnormalized so triangle area is the weight. Indices are validated per
+	// frame because a model recompile can resize the flex under a stored list.
+	TArray<FVector> WeldedNormals;
+	if (NormalTris.Num() > 0)
+	{
+		WeldedNormals.Init(FVector::ZeroVector, FlexVertNum);
+		for (const UE::Geometry::FIndex3i& T : NormalTris)
+		{
+			if (T.A < 0 || T.A >= FlexVertNum || T.B < 0 || T.B >= FlexVertNum
+				|| T.C < 0 || T.C >= FlexVertNum)
+			{
+				continue;
+			}
+			const FVector N = FVector::CrossProduct(
+				WeldedPositions[T.B] - WeldedPositions[T.A],
+				WeldedPositions[T.C] - WeldedPositions[T.A]);
+			WeldedNormals[T.A] += N;
+			WeldedNormals[T.B] += N;
+			WeldedNormals[T.C] += N;
+		}
+	}
+
+	bool bWroteNormals = false;
 	DynamicMesh->EditMesh([&](UE::Geometry::FDynamicMesh3& Mesh) {
 		for (int32 Raw = 0; Raw < NumRenderVerts; ++Raw)
 		{
@@ -462,12 +542,43 @@ void UMjFlexcomp::ApplyFlexWorldPositions(const TArray<FVector>& WorldPositions)
 									   : FVector::ZeroVector;
 			Mesh.SetVertex(Raw, FVector3d(Position.X, Position.Y, Position.Z));
 		}
+
+		// Both build paths append exactly one overlay element per raw vertex on
+		// a fresh mesh, so element id == raw vertex id; anything else means the
+		// overlay is not ours to rewrite and the last normals are kept.
+		UE::Geometry::FDynamicMeshNormalOverlay* Normals =
+			(WeldedNormals.Num() > 0 && Mesh.HasAttributes())
+				? Mesh.Attributes()->PrimaryNormals()
+				: nullptr;
+		if (Normals != nullptr && Normals->ElementCount() == NumRenderVerts)
+		{
+			for (int32 Raw = 0; Raw < NumRenderVerts; ++Raw)
+			{
+				const int32 Welded = RawToWelded[Raw];
+				if (Welded < 0 || Welded >= FlexVertNum)
+				{
+					continue;
+				}
+				const FVector Nn = WeldedNormals[Welded].GetSafeNormal();
+				if (Nn.IsNearlyZero())
+				{
+					// Every incident triangle degenerate (or cancelled) this
+					// frame: keep the previous normal rather than writing zero.
+					continue;
+				}
+				Normals->SetElement(Raw, FVector3f(static_cast<float>(Nn.X),
+											 static_cast<float>(Nn.Y), static_cast<float>(Nn.Z)));
+			}
+			bWroteNormals = true;
+		}
 	},
 		EDynamicMeshComponentRenderUpdateMode::NoUpdate);
 
-	// Positions only: the topology, the UVs and the vertex colours are all
-	// unchanged, and the tangent mode recomputes what depends on them.
-	DynamicMesh->FastNotifyPositionsUpdated(/*bNormals=*/false, /*bColors=*/false, /*bUVs=*/false);
+	// Positions plus the normals recomputed from them: the topology, the UVs and
+	// the vertex colours are all unchanged. bNormals=true makes the proxy's
+	// FastUpdateVertices re-read the PrimaryNormals overlay written above and
+	// re-upload it -- it never recomputes normals itself.
+	DynamicMesh->FastNotifyPositionsUpdated(/*bNormals=*/bWroteNormals, /*bColors=*/false, /*bUVs=*/false);
 }
 
 void UMjFlexcomp::UpdateFromBodyTransforms(const mjModel& Model, const double* Bxpos,
@@ -622,7 +733,7 @@ void UMjFlexcomp::BuildModelSurface(const mjModel& Model, const TArray<FVector>&
 	// mirrored 2D faces would cancel their own normals otherwise.
 	const int32 Dim = Model.flex_dim[FlexId];
 	TArray<UE::Geometry::FIndex3i> Tris;
-	TArray<UE::Geometry::FIndex3i> NormalTris;
+	NormalTris.Reset();
 	if (Dim == 2)
 	{
 		const int32 NElem = Model.flex_elemnum[FlexId];
@@ -688,8 +799,8 @@ void UMjFlexcomp::BuildModelSurface(const mjModel& Model, const TArray<FVector>&
 	}
 
 	// Area-weighted vertex normals at this pose (the UMjSkincomp build pattern).
-	// Static from here on: the per-frame writeback moves positions only, exactly
-	// as the authored path keeps its source mesh's rest normals.
+	// NormalTris is kept on the component: ApplyFlexWorldPositions re-runs this
+	// exact accumulation at every deformed pose, so shading follows the surface.
 	TArray<FVector> VertNormals;
 	VertNormals.Init(FVector::ZeroVector, FlexVertNum);
 	for (const UE::Geometry::FIndex3i& T : NormalTris)
@@ -777,6 +888,7 @@ void UMjFlexcomp::ReleaseProceduralMesh()
 	}
 
 	RawToWelded.Reset();
+	NormalTris.Reset();
 	NumRenderVerts = 0;
 	FlexId = INDEX_NONE;
 	FlexVertAdr = 0;

@@ -34,6 +34,10 @@ class UMaterialInstanceDynamic;
 class UMeshComponent;
 class UStaticMeshComponent;
 class UURLabRpcClientTransport;
+class UMjOverlayRenderer;
+class UMjFlexcomp;
+class FJsonObject;
+struct FMjRenderSnapshot;
 enum class EMjCameraMode : uint8;
 enum class EMjDebugShaderMode : uint8;
 
@@ -492,6 +496,32 @@ private:
 	// perturb path can map a cursor grab into the MuJoCo frame the owner expects.
 	TArray<double> LastBxpos;
 	TArray<double> LastBxquat;
+
+	// --- Mirror-side visualization overlays (plan 9.3) --------------------- //
+	// On a stream/push mirror there is no mjData, so mjv_updateScene cannot run.
+	// SynthesizeMirrorOverlays instead builds an FMjRenderSnapshot from the
+	// always-present per-body transforms (+ static model) for the [XFORM]/[MODEL]
+	// overlays and from the streamed capability-gated debug tier (§8.2) for the
+	// [OWNER] overlays, then feeds the existing UMjOverlayRenderer (9.2). Which
+	// overlays draw is chosen by the mj.MirrorOverlayMask console variable.
+	UPROPERTY(Transient)
+	TObjectPtr<UMjOverlayRenderer> MirrorOverlayRenderer = nullptr;
+
+	// Decode the streamed debug fields off one render frame + derive the transform-
+	// only overlay poses, then draw the enabled overlays. No-op when the overlay
+	// mask is zero or there is no model. Bxpos/Bxquat are the frame's per-body
+	// transforms (3*nbody / 4*nbody wxyz, MuJoCo world).
+	void SynthesizeMirrorOverlays(const TSharedPtr<FJsonObject>& Frame,
+		const double* Bxpos, const double* Bxquat);
+
+	// --- Mirror-side flex deformation (plan 9.6) --------------------------- //
+	// Flex vertices are a pure function of (static model) x (per-body transforms),
+	// so a mirror reconstructs them locally (UMjFlexcomp::UpdateFromBodyTransforms,
+	// a replay of mj_flex) with zero per-vertex bytes on the wire. Flexcomp
+	// components are discovered once and driven each streamed frame.
+	void UpdateMirrorFlex(const double* Bxpos, const double* Bxquat);
+	TArray<TWeakObjectPtr<UMjFlexcomp>> MirrorFlexcomps;
+	bool bMirrorFlexcompsCached = false;
 
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;

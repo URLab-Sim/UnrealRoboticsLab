@@ -38,6 +38,10 @@
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Elements/MjFlexcomp.h"
+#include "MuJoCo/Entity/MjOverlayRenderer.h"
+#include "MuJoCo/Entity/MjOverlayFlags.h"
+#include "MuJoCo/Core/MjRenderSnapshot.h"
 #include "MuJoCo/Capture/MjCameraSubsystem.h"
 #include "MuJoCo/Capture/MjCameraTypes.h"
 #include "MuJoCo/Core/MjPhysicsEngine.h"
@@ -66,6 +70,7 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Base64.h"
 #include "Misc/SecureHash.h"
+#include "HAL/IConsoleManager.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -73,6 +78,21 @@ THIRD_PARTY_INCLUDES_END
 
 namespace
 {
+// Which visualization overlays a stream/push mirror draws (plan 9.3). Bit i =
+// mjVIS_<i> (so it maps straight onto UMjOverlayRenderer::Flags.VisFlags), and
+// bit 31 = draw site crosses. 0 (default) = overlays off, so a mirror that wants
+// none pays nothing. Off by default matches the opt-in vis-flag philosophy; a
+// mirror operator flips e.g. `mj.MirrorOverlayMask <mask>` at runtime. The
+// [OWNER] overlays (contacts/CoM/tendons/...) additionally require the owner to
+// stream the debug tier -- i.e. the subscription negotiated StreamContacts /
+// StreamOverlay caps; the [XFORM]/[MODEL] overlays draw with no stream.
+TAutoConsoleVariable<int32> CVarMirrorOverlayMask(
+	TEXT("mj.MirrorOverlayMask"), 0,
+	TEXT("Bitmask of mjVIS_* overlays to draw on a stream/push mirror (bit i = mjVIS_i; ")
+	TEXT("bit 31 = sites). 0 = off."),
+	ECVF_Default);
+constexpr int32 kMirrorOverlaySitesBit = 31;
+
 // Re-index tag channel: a body/geom/instance/camera carries a "<prefix><id>" name
 // tag so a saved level can map its components back to MuJoCo ids. One maker + one
 // parser keep the writer and reader in lockstep -- no hardcoded prefix lengths.
@@ -2438,6 +2458,328 @@ void AMjRenderer::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 	}
 }
 
+void AMjRenderer::UpdateMirrorFlex(const double* Bxpos, const double* Bxquat)
+{
+	if (!Model || Model->nflex == 0 || !Bxpos || !Bxquat)
+	{
+		return;
+	}
+	UWorld* W = GetWorld();
+	if (!W)
+	{
+		return;
+	}
+	const int32 NBody = static_cast<int32>(Model->nbody);
+
+	// Flexcomp components are authored level content (each with a child static
+	// mesh); on a mirror they resolve no local engine, so this renderer drives
+	// them. Discover them once -- a mirror's scene is fixed at load. Weak pointers
+	// tolerate any later teardown.
+	if (!bMirrorFlexcompsCached)
+	{
+		MirrorFlexcomps.Reset();
+		for (TActorIterator<AActor> It(W); It; ++It)
+		{
+			if (AActor* A = *It)
+			{
+				TArray<UMjFlexcomp*> Comps;
+				A->GetComponents<UMjFlexcomp>(Comps);
+				for (UMjFlexcomp* FC : Comps)
+				{
+					if (FC)
+					{
+						MirrorFlexcomps.Add(FC);
+					}
+				}
+			}
+		}
+		bMirrorFlexcompsCached = true;
+	}
+
+	for (const TWeakObjectPtr<UMjFlexcomp>& Ptr : MirrorFlexcomps)
+	{
+		if (UMjFlexcomp* FC = Ptr.Get())
+		{
+			FC->UpdateFromBodyTransforms(*Model, Bxpos, Bxquat, NBody);
+		}
+	}
+}
+
+void AMjRenderer::SynthesizeMirrorOverlays(const TSharedPtr<FJsonObject>& Frame,
+	const double* Bxpos, const double* Bxquat)
+{
+	const int32 Mask = CVarMirrorOverlayMask.GetValueOnGameThread();
+	if (Mask == 0 || !Model || !Bxpos || !Bxquat || !Frame.IsValid())
+	{
+		return;
+	}
+
+	const int32 NBody = static_cast<int32>(Model->nbody);
+	const int32 NGeom = static_cast<int32>(Model->ngeom);
+	const int32 NSite = static_cast<int32>(Model->nsite);
+	const int32 NCam = static_cast<int32>(Model->ncam);
+	const int32 NJnt = static_cast<int32>(Model->njnt);
+
+	// Reader for a flat number array on the frame.
+	const TArray<TSharedPtr<FJsonValue>>* A = nullptr;
+	auto ReadNums = [&](const TCHAR* Key, TArray<double>& Out) {
+		Out.Reset();
+		if (Frame->TryGetArrayField(Key, A) && A)
+		{
+			Out.Reserve(A->Num());
+			for (const TSharedPtr<FJsonValue>& V : *A)
+			{
+				Out.Add(V.IsValid() ? V->AsNumber() : 0.0);
+			}
+		}
+	};
+	auto ReadInts = [&](const TCHAR* Key, TArray<int32>& Out) {
+		Out.Reset();
+		if (Frame->TryGetArrayField(Key, A) && A)
+		{
+			Out.Reserve(A->Num());
+			for (const TSharedPtr<FJsonValue>& V : *A)
+			{
+				Out.Add(V.IsValid() ? static_cast<int32>(V->AsNumber()) : 0);
+			}
+		}
+	};
+
+	FMjRenderSnapshot Snap;
+
+	// --- [XFORM] body transforms (always present) ------------------------- //
+	Snap.XPos.Append(Bxpos, 3 * NBody);
+	Snap.XQuat.Append(Bxquat, 4 * NBody);
+
+	// Compose a child frame from its body: world = body . (localpos, localquat).
+	// Fills a 3-vec world pos and a 9-mat world orientation (what the overlay
+	// snapshot contract stores; the renderer converts back to a quat).
+	auto ComposeChild = [&](int32 Body, const double* LocalPos, const double* LocalQuat,
+							double OutPos[3], double OutMat[9]) {
+		double Rotated[3];
+		mju_rotVecQuat(Rotated, LocalPos, Bxquat + 4 * Body);
+		OutPos[0] = Bxpos[3 * Body + 0] + Rotated[0];
+		OutPos[1] = Bxpos[3 * Body + 1] + Rotated[1];
+		OutPos[2] = Bxpos[3 * Body + 2] + Rotated[2];
+		double WorldQuat[4];
+		mju_mulQuat(WorldQuat, Bxquat + 4 * Body, LocalQuat);
+		mju_quat2Mat(OutMat, WorldQuat);
+	};
+
+	// Geoms ([XFORM]) -- collision-hull overlay.
+	if (NGeom > 0 && Model->geom_bodyid && Model->geom_pos && Model->geom_quat)
+	{
+		Snap.GeomXPos.SetNumUninitialized(3 * NGeom);
+		Snap.GeomXMat.SetNumUninitialized(9 * NGeom);
+		for (int32 G = 0; G < NGeom; ++G)
+		{
+			const int32 B = Model->geom_bodyid[G];
+			if (B < 0 || B >= NBody)
+			{
+				FMemory::Memzero(&Snap.GeomXPos[3 * G], sizeof(double) * 3);
+				FMemory::Memzero(&Snap.GeomXMat[9 * G], sizeof(double) * 9);
+				continue;
+			}
+			ComposeChild(B, Model->geom_pos + 3 * G, Model->geom_quat + 4 * G,
+				&Snap.GeomXPos[3 * G], &Snap.GeomXMat[9 * G]);
+		}
+	}
+
+	// Sites ([XFORM]) -- sites, actuator site transmission, rangefinders.
+	if (NSite > 0 && Model->site_bodyid && Model->site_pos && Model->site_quat)
+	{
+		Snap.SiteXPos.SetNumUninitialized(3 * NSite);
+		Snap.SiteXMat.SetNumUninitialized(9 * NSite);
+		for (int32 S = 0; S < NSite; ++S)
+		{
+			const int32 B = Model->site_bodyid[S];
+			if (B < 0 || B >= NBody)
+			{
+				FMemory::Memzero(&Snap.SiteXPos[3 * S], sizeof(double) * 3);
+				FMemory::Memzero(&Snap.SiteXMat[9 * S], sizeof(double) * 9);
+				continue;
+			}
+			ComposeChild(B, Model->site_pos + 3 * S, Model->site_quat + 4 * S,
+				&Snap.SiteXPos[3 * S], &Snap.SiteXMat[9 * S]);
+		}
+	}
+
+	// Inertial frames ([MODEL]) -- inertia boxes.
+	if (NBody > 0 && Model->body_ipos && Model->body_iquat)
+	{
+		Snap.XiPos.SetNumUninitialized(3 * NBody);
+		Snap.XiMat.SetNumUninitialized(9 * NBody);
+		for (int32 B = 0; B < NBody; ++B)
+		{
+			ComposeChild(B, Model->body_ipos + 3 * B, Model->body_iquat + 4 * B,
+				&Snap.XiPos[3 * B], &Snap.XiMat[9 * B]);
+		}
+	}
+
+	// Joint world anchor + axis ([XFORM]) -- actuator joint transmission.
+	if (NJnt > 0 && Model->jnt_bodyid && Model->jnt_pos && Model->jnt_axis)
+	{
+		Snap.JntXAnchor.SetNumUninitialized(3 * NJnt);
+		Snap.JntXAxis.SetNumUninitialized(3 * NJnt);
+		for (int32 J = 0; J < NJnt; ++J)
+		{
+			const int32 B = Model->jnt_bodyid[J];
+			if (B < 0 || B >= NBody)
+			{
+				FMemory::Memzero(&Snap.JntXAnchor[3 * J], sizeof(double) * 3);
+				FMemory::Memzero(&Snap.JntXAxis[3 * J], sizeof(double) * 3);
+				continue;
+			}
+			double Rotated[3];
+			mju_rotVecQuat(Rotated, Model->jnt_pos + 3 * J, Bxquat + 4 * B);
+			Snap.JntXAnchor[3 * J + 0] = Bxpos[3 * B + 0] + Rotated[0];
+			Snap.JntXAnchor[3 * J + 1] = Bxpos[3 * B + 1] + Rotated[1];
+			Snap.JntXAnchor[3 * J + 2] = Bxpos[3 * B + 2] + Rotated[2];
+			mju_rotVecQuat(&Snap.JntXAxis[3 * J], Model->jnt_axis + 3 * J, Bxquat + 4 * B);
+		}
+	}
+
+	// Cameras ([XFORM/MODEL]) -- camera glyphs. Prefer the streamed cxpos/cxquat
+	// (they capture tracking modes); fall back to composing from the camera body.
+	if (NCam > 0)
+	{
+		TArray<double> Cp, Cq;
+		ReadNums(TEXT("cxpos"), Cp);
+		ReadNums(TEXT("cxquat"), Cq);
+		Snap.CamXPos.SetNumUninitialized(3 * NCam);
+		Snap.CamXMat.SetNumUninitialized(9 * NCam);
+		const bool bStreamed = Cp.Num() == 3 * NCam && Cq.Num() == 4 * NCam;
+		for (int32 C = 0; C < NCam; ++C)
+		{
+			if (bStreamed)
+			{
+				Snap.CamXPos[3 * C + 0] = Cp[3 * C + 0];
+				Snap.CamXPos[3 * C + 1] = Cp[3 * C + 1];
+				Snap.CamXPos[3 * C + 2] = Cp[3 * C + 2];
+				mju_quat2Mat(&Snap.CamXMat[9 * C], &Cq[4 * C]);
+			}
+			else if (Model->cam_bodyid && Model->cam_pos && Model->cam_quat
+					 && Model->cam_bodyid[C] >= 0 && Model->cam_bodyid[C] < NBody)
+			{
+				ComposeChild(Model->cam_bodyid[C], Model->cam_pos + 3 * C, Model->cam_quat + 4 * C,
+					&Snap.CamXPos[3 * C], &Snap.CamXMat[9 * C]);
+			}
+			else
+			{
+				FMemory::Memzero(&Snap.CamXPos[3 * C], sizeof(double) * 3);
+				FMemory::Memzero(&Snap.CamXMat[9 * C], sizeof(double) * 9);
+			}
+		}
+	}
+
+	// --- [OWNER] streamed debug tier (§8.2), present only when the owner ---- //
+	// serialized it (subscription negotiated StreamContacts / StreamOverlay).
+	// Each array is optional; the overlay builders no-op on an empty one.
+	ReadNums(TEXT("subtree_com"), Snap.SubtreeCom);
+	ReadNums(TEXT("xfrc_applied"), Snap.XfrcApplied);
+	ReadNums(TEXT("ctrl"), Snap.Ctrl);
+	ReadNums(TEXT("act"), Snap.Act);
+	ReadNums(TEXT("sensordata"), Snap.SensorData);
+	ReadNums(TEXT("wrap_xpos"), Snap.WrapXPos);
+	ReadInts(TEXT("wrap_obj"), Snap.WrapObj);
+	ReadInts(TEXT("ten_wrapadr"), Snap.TenWrapAdr);
+	ReadInts(TEXT("ten_wrapnum"), Snap.TenWrapNum);
+
+	// Contacts: array of {pos[3], frame[9], dist, force[6]}.
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Contacts = nullptr;
+		if (Frame->TryGetArrayField(TEXT("contacts"), Contacts) && Contacts)
+		{
+			Snap.Contacts.Reserve(Contacts->Num());
+			for (const TSharedPtr<FJsonValue>& CV : *Contacts)
+			{
+				const TSharedPtr<FJsonObject>* CObj = nullptr;
+				if (!CV.IsValid() || !CV->TryGetObject(CObj) || !CObj)
+				{
+					continue;
+				}
+				FMjContactViz Viz;
+				FMemory::Memzero(&Viz, sizeof(Viz));
+				auto FillVec = [&](const TCHAR* Key, mjtNum* Dst, int32 N) {
+					const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
+					if ((*CObj)->TryGetArrayField(Key, Arr) && Arr)
+					{
+						for (int32 i = 0; i < N && i < Arr->Num(); ++i)
+						{
+							Dst[i] = (*Arr)[i].IsValid() ? (*Arr)[i]->AsNumber() : 0.0;
+						}
+					}
+				};
+				FillVec(TEXT("pos"), Viz.Pos, 3);
+				FillVec(TEXT("frame"), Viz.Frame, 9);
+				FillVec(TEXT("force"), Viz.Force, 6);
+				(*CObj)->TryGetNumberField(TEXT("dist"), Viz.Dist);
+				Snap.Contacts.Add(Viz);
+			}
+		}
+	}
+
+	// --- Feed the existing overlay renderer (9.2) ------------------------- //
+	if (!MirrorOverlayRenderer)
+	{
+		MirrorOverlayRenderer = NewObject<UMjOverlayRenderer>(this, TEXT("MirrorOverlayRenderer"));
+		MirrorOverlayRenderer->SetupAttachment(GetRootComponent());
+		MirrorOverlayRenderer->RegisterComponent();
+		MirrorOverlayRenderer->SetModel(Model);
+	}
+	// Align overlays with this renderer's geometry origin (ApplyBodyTransforms adds
+	// the same SceneOrigin to every geom component).
+	MirrorOverlayRenderer->SceneOrigin = SceneOrigin;
+
+	const int32 NVis = mjNVISFLAG;
+	if (MirrorOverlayRenderer->Flags.VisFlags.Num() < NVis)
+	{
+		MirrorOverlayRenderer->Flags.VisFlags.SetNumZeroed(NVis);
+	}
+	for (int32 i = 0; i < NVis; ++i)
+	{
+		MirrorOverlayRenderer->Flags.VisFlags[i] = ((Mask >> i) & 1) ? 1 : 0;
+	}
+	// Joints stay native (excluded); never emit joint decor from the mirror.
+	MirrorOverlayRenderer->Flags.VisFlags[mjVIS_JOINT] = 0;
+	MirrorOverlayRenderer->bDrawSites = ((Mask >> kMirrorOverlaySitesBit) & 1) != 0;
+
+	// Perturbation arrow: xfrc_applied rides the wire for every body, but the
+	// overlay renderer's DrawPerturb draws a single selected body (as simulate
+	// does). Point it at the body carrying the largest applied wrench so the
+	// dominant perturbation shows; all-body xfrc arrows would need a new overlay
+	// entry point (see follow-up note).
+	MirrorOverlayRenderer->PerturbBodyId = -1;
+	if (Snap.XfrcApplied.Num() >= 6 * NBody && NBody > 1)
+	{
+		int32 BestBody = -1;
+		double BestMag = 0.0;
+		for (int32 B = 1; B < NBody; ++B)
+		{
+			double Mag = 0.0;
+			for (int32 k = 0; k < 6; ++k)
+			{
+				Mag += Snap.XfrcApplied[6 * B + k] * Snap.XfrcApplied[6 * B + k];
+			}
+			if (Mag > BestMag)
+			{
+				BestMag = Mag;
+				BestBody = B;
+			}
+		}
+		if (BestBody >= 0 && BestMag > 0.0)
+		{
+			MirrorOverlayRenderer->PerturbBodyId = BestBody;
+			for (int32 k = 0; k < 6; ++k)
+			{
+				MirrorOverlayRenderer->PerturbForce[k] = Snap.XfrcApplied[6 * BestBody + k];
+			}
+		}
+	}
+
+	MirrorOverlayRenderer->DrawOverlays(Snap);
+}
+
 void AMjRenderer::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -2530,6 +2872,17 @@ void AMjRenderer::Tick(float DeltaSeconds)
 				if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
 				{
 					ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
+
+					// Mirror-side flex deformation (9.6): reconstruct flex vertices
+					// from these transforms + the static model and drive the existing
+					// UMjFlexcomp writeback -- no per-vertex bytes on the wire.
+					UpdateMirrorFlex(Bp.GetData(), Bq.GetData());
+
+					// Mirror-side overlays (9.3): synthesize mjvGeom-equivalent decor
+					// from the streamed debug tier (§8.2) + these transforms and feed
+					// the existing overlay renderer (9.2). No-op when no overlay is
+					// enabled (mj.MirrorOverlayMask == 0).
+					SynthesizeMirrorOverlays(Obj, Bp.GetData(), Bq.GetData());
 				}
 
 				// Optional camera world transforms, so streamed cameras track

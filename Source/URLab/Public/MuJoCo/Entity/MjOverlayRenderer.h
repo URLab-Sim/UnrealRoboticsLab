@@ -58,6 +58,13 @@ public:
 	/** Draw the site crosses this frame (our extra, mirroring the authoring toggle). */
 	bool bDrawSites = false;
 
+	/** Draw the net-new-vs-upstream 6-DOF wrench glyph (force arrow + curl/torus
+	 *  torque glyph) for the contact torque (confrc[3:6]) and applied torque
+	 *  (xfrc[3:6]) that upstream computes but never renders. OFF by default: opt-in
+	 *  so it does not clutter the scene unless explicitly enabled. Scaled by
+	 *  vis.map.torque, coloured vis.rgba.contacttorque. See source-of-truth 8.5. */
+	bool bDrawWrench = false;
+
 	/** Active perturbation to visualise (mjVIS_PERTURBFORCE / mjVIS_PERTURBOBJ),
 	 *  refreshed by the owner each frame from UMjPerturbation. Body id < 0 = none. */
 	int32 PerturbBodyId = -1;
@@ -136,6 +143,12 @@ private:
 		float HeadRadiusCm, const FColor& Color, bool bTranslucent);
 	void EmitWireBox(FPoolLayer& Layer, const FVector& Center, const FVector& HalfExtentCm,
 		const FQuat& Rot, float ThicknessCm, const FColor& Color);
+	// Curl/torus-about-axis torque glyph: an arced arrow (a ring of short cylinder
+	// segments closed by a tangent cone head) encircling AxisUE by the right-hand
+	// rule, composed entirely from the existing cylinder/cone primitives. RadiusCm is
+	// the ring radius (already scaled by the caller); the head shows rotation sense.
+	void EmitTorqueGlyph(FPoolLayer& Layer, const FVector& Center, const FVector& AxisUE,
+		float RadiusCm, float TubeRadiusCm, const FColor& Color, bool bTranslucent);
 
 	// Per-overlay builders (main layer). Snapshot-driven, thread-safe off the game thread.
 	void DrawCollision(const FMjRenderSnapshot& Snap);
@@ -152,6 +165,10 @@ private:
 	void DrawConstraints(const FMjRenderSnapshot& Snap);
 	void DrawStaticBodies(const FMjRenderSnapshot& Snap);
 	void DrawAutoConnect(const FMjRenderSnapshot& Snap);
+	// The net-new 6-DOF wrench glyph (opt-in, gated by bDrawWrench). Draws force
+	// arrow + torque curl for every contact (force[6] in the contact frame) and for
+	// every body carrying an applied wrench (xfrc_applied[6], world frame).
+	void DrawWrenchGlyphs(const FMjRenderSnapshot& Snap);
 
 	// Borrowed; the owning scene holds the mjModel lifetime.
 	mjModel_* Model = nullptr;

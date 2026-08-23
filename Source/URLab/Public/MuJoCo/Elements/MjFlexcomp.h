@@ -74,6 +74,19 @@ public:
 	/** Takes the surface with it, rather than orphaning it on the actor. */
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
+	/**
+	 * Drive the surface on a mirror (Drive=stream/push) that has no local
+	 * mjData/engine, deriving this frame's flex vertices from the streamed
+	 * per-body transforms + the static model -- a local replay of MuJoCo's
+	 * mj_flex (engine_core_smooth.c:548-608), so zero per-vertex bytes cross
+	 * the wire. Bxpos is 3*NBody, Bxquat 4*NBody (wxyz), MuJoCo world frame.
+	 * Resolves + builds the surface on first call exactly like the producer
+	 * path, then feeds the same UDynamicMeshComponent writeback. The producer
+	 * (sim) still uses UpdateProceduralMesh's snapshot fast path.
+	 */
+	void UpdateFromBodyTransforms(const mjModel& Model, const double* Bxpos,
+		const double* Bxquat, int32 NBody);
+
 private:
 	/** The child static mesh both the surface and the weld map are built from. */
 	UStaticMeshComponent* FindSourceMesh() const;
@@ -89,6 +102,23 @@ private:
 
 	void CreateProceduralMesh();
 	void UpdateProceduralMesh(UMjPhysicsEngine& Engine);
+
+	/**
+	 * Shared writeback: take this frame's flex vertices in UE world space (one
+	 * per welded MuJoCo flex vertex, indexed [0, FlexVertNum)), transform them
+	 * into the mesh's local space and push them through the dynamic mesh. Both
+	 * the producer snapshot path and the mirror transform path funnel here.
+	 */
+	void ApplyFlexWorldPositions(const TArray<FVector>& WorldPositions);
+
+	/**
+	 * Frame the mirror transform path last wrote this surface (0 = never). Its
+	 * one job is to mark this element as mirror-driven: once non-zero,
+	 * TickComponent keeps the surface when there is no local engine instead of
+	 * releasing it, so the renderer-driven update and this component's own tick
+	 * never fight over tick order.
+	 */
+	uint64 LastExternalDriveFrame = 0;
 
 	/** Drop the surface and every id resolved against a model that is gone. */
 	void ReleaseProceduralMesh();

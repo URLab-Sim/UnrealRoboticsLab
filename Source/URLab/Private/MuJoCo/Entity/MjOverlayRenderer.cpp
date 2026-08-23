@@ -78,6 +78,20 @@ FLinearColor Lin(const FColor& C)
 	return FLinearColor(C);
 }
 
+// A MuJoCo float[4] rgba (0..1) as an FColor. Falls back to the given colour when
+// the model slot is unset (all-zero), so an unstyled model still renders visibly.
+FColor RgbaToColor(const float* Rgba, const FColor& Fallback)
+{
+	if (!Rgba || (Rgba[0] <= 0.f && Rgba[1] <= 0.f && Rgba[2] <= 0.f && Rgba[3] <= 0.f))
+	{
+		return Fallback;
+	}
+	return FColor(static_cast<uint8>(FMath::Clamp(Rgba[0], 0.f, 1.f) * 255.f),
+		static_cast<uint8>(FMath::Clamp(Rgba[1], 0.f, 1.f) * 255.f),
+		static_cast<uint8>(FMath::Clamp(Rgba[2], 0.f, 1.f) * 255.f),
+		static_cast<uint8>(FMath::Clamp(Rgba[3], 0.f, 1.f) * 255.f));
+}
+
 // Rotation whose local +Z maps to the given (assumed non-zero) world direction.
 FQuat ZToDir(const FVector& Dir)
 {
@@ -393,6 +407,51 @@ void UMjOverlayRenderer::EmitWireBox(FPoolLayer& Layer, const FVector& Center,
 	}
 }
 
+void UMjOverlayRenderer::EmitTorqueGlyph(FPoolLayer& Layer, const FVector& Center,
+	const FVector& AxisUE, float RadiusCm, float TubeRadiusCm, const FColor& Color, bool bTranslucent)
+{
+	// Curl-about-axis torque glyph: an arced arrow encircling the torque axis by the
+	// right-hand rule. The ring is a fan of short cylinder segments; the arc is left
+	// slightly open and closed by a cone-headed arrow tangent to the circle so the
+	// rotation sense reads. Built only from the existing cylinder/cone primitives.
+	const FVector Axis = AxisUE.GetSafeNormal();
+	if (Axis.IsNearlyZero() || RadiusCm <= KINDA_SMALL_NUMBER)
+	{
+		return;
+	}
+	// Orthonormal basis in the plane perpendicular to the axis.
+	FVector U, V;
+	Axis.FindBestAxisVectors(U, V);
+
+	constexpr int32 NumSeg = 24;           // full-circle resolution
+	constexpr float ArcFrac = 0.85f;       // leave a gap so the head is visible
+	const float ArcAngle = 2.0f * PI * ArcFrac;
+	const int32 ArcSeg = FMath::Max(2, static_cast<int32>(NumSeg * ArcFrac));
+	const float dT = ArcAngle / static_cast<float>(ArcSeg);
+
+	auto RingPoint = [&](float t) -> FVector {
+		return Center + RadiusCm * (FMath::Cos(t) * U + FMath::Sin(t) * V);
+	};
+
+	FVector Prev = RingPoint(0.0f);
+	for (int32 i = 1; i <= ArcSeg; ++i)
+	{
+		const float t = dT * static_cast<float>(i);
+		const FVector Cur = RingPoint(t);
+		if (i == ArcSeg)
+		{
+			// Final segment as a cone-headed arrow, tangent to the circle, so the
+			// glyph shows the rotation direction (right-hand rule about the axis).
+			EmitArrow(Layer, Prev, Cur, TubeRadiusCm, TubeRadiusCm * 2.5f, Color, bTranslucent);
+		}
+		else
+		{
+			EmitCylinder(Layer, Prev, Cur, TubeRadiusCm, Color, bTranslucent);
+		}
+		Prev = Cur;
+	}
+}
+
 // -----------------------------------------------------------------------------
 // Frame dispatch
 // -----------------------------------------------------------------------------
@@ -466,6 +525,13 @@ void UMjOverlayRenderer::DrawOverlays(const FMjRenderSnapshot& Snap)
 	if (FlagSet(Flags.VisFlags, mjVIS_AUTOCONNECT))
 	{
 		DrawAutoConnect(Snap);
+	}
+	// Net-new-vs-upstream 6-DOF wrench glyph. Opt-in (off by default) so it never
+	// clutters the scene unless the owner explicitly enables it -- gated on its own
+	// flag rather than an mjVIS_* bit, which upstream never draws.
+	if (bDrawWrench)
+	{
+		DrawWrenchGlyphs(Snap);
 	}
 }
 
@@ -1065,5 +1131,95 @@ void UMjOverlayRenderer::DrawAutoConnect(const FMjRenderSnapshot& Snap)
 		const FVector Child = URLabAxisConv::MjPositionToUe(&Snap.XPos[B * 3]) + SceneOrigin;
 		const FVector Par = URLabAxisConv::MjPositionToUe(&Snap.XPos[Parent * 3]) + SceneOrigin;
 		EmitLine(MainLayer, Par, Child, 1.0f, Colour);
+	}
+}
+
+void UMjOverlayRenderer::DrawWrenchGlyphs(const FMjRenderSnapshot& Snap)
+{
+	// The one net-new-vs-upstream overlay (source-of-truth 8.5): a true 6-DOF wrench
+	// glyph -- a force arrow PLUS a curl/torus-about-axis torque glyph -- for the
+	// contact torque (confrc[3:6]) and applied torque (xfrc[3:6]) that MuJoCo computes
+	// but never draws. Force scaling / colours follow the model's own vis.* so an XML
+	// restyle carries; the torque half is scaled by vis.map.torque and coloured
+	// vis.rgba.contacttorque, exactly the unused upstream slot.
+	const mjModel* M = Model;
+
+	const float MapForce = (M->vis.map.force > 0.f) ? M->vis.map.force : 0.005f;
+	const float MapTorque = (M->vis.map.torque > 0.f) ? M->vis.map.torque : 0.1f;
+
+	const FColor ContactForceColor = RgbaToColor(M->vis.rgba.contactforce, FColor(179, 230, 230, 255));
+	const FColor ContactTorqueColor = RgbaToColor(M->vis.rgba.contacttorque, FColor(230, 179, 230, 255));
+	const FColor AppliedForceColor = RgbaToColor(M->vis.rgba.force, FColor(255, 128, 128, 255));
+	// No dedicated "applied torque" slot upstream; reuse the contact-torque colour so
+	// every torque curl reads the same, per the plan.
+	const FColor AppliedTorqueColor = ContactTorqueColor;
+
+	// Force arrow: |force| (world) mapped to cm, clamped to the same visible band the
+	// existing contact/perturb arrows use. Torque ring radius: |torque|*vis.map.torque
+	// (metres) -> cm, similarly clamped.
+	auto ForceLenCm = [&](const FVector& Fw) -> float {
+		return FMath::Clamp(static_cast<float>(Fw.Size()) * (MapForce / 0.005f) * 2.0f, 0.0f, 200.0f);
+	};
+	auto TorqueRadiusCm = [&](const FVector& Tw) -> float {
+		return FMath::Clamp(static_cast<float>(Tw.Size()) * MapTorque * 100.0f, 0.0f, 120.0f);
+	};
+
+	auto EmitWrench = [&](const FVector& OriginUE, const FVector& ForceUE, const FVector& TorqueUE,
+						  const FColor& FColour, const FColor& TColour) {
+		const float FLen = ForceLenCm(ForceUE);
+		if (FLen > 0.5f)
+		{
+			const FVector End = OriginUE + ForceUE.GetSafeNormal() * FLen;
+			EmitArrow(MainLayer, OriginUE, End, 1.0f, 3.0f, FColour, false);
+		}
+		const float TRad = TorqueRadiusCm(TorqueUE);
+		if (TRad > 1.0f)
+		{
+			const float Tube = FMath::Max(TRad * 0.08f, 0.5f);
+			EmitTorqueGlyph(MainLayer, OriginUE, TorqueUE, TRad, Tube, TColour, false);
+		}
+	};
+
+	// --- Contact wrenches: force[6] is (force xyz, torque xyz) in the contact frame.
+	for (const FMjContactViz& C : Snap.Contacts)
+	{
+		const FVector Pos = URLabAxisConv::MjPositionToUe(C.Pos) + SceneOrigin;
+		// contact frame -> world: the frame's rows are its world-space axes, so
+		// world_v = sum_i frame_row_i * v_i (same rotation the force overlay uses).
+		mjtNum Fw[3] = {0, 0, 0};
+		mjtNum Tw[3] = {0, 0, 0};
+		for (int32 k = 0; k < 3; ++k)
+		{
+			Fw[k] = C.Frame[0 * 3 + k] * C.Force[0] + C.Frame[1 * 3 + k] * C.Force[1]
+					+ C.Frame[2 * 3 + k] * C.Force[2];
+			Tw[k] = C.Frame[0 * 3 + k] * C.Force[3] + C.Frame[1 * 3 + k] * C.Force[4]
+					+ C.Frame[2 * 3 + k] * C.Force[5];
+		}
+		EmitWrench(Pos, URLabAxisConv::MjDirectionToUe(Fw), URLabAxisConv::MjDirectionToUe(Tw),
+			ContactForceColor, ContactTorqueColor);
+	}
+
+	// --- Applied wrenches: xfrc_applied is 6*nbody (force xyz, torque xyz), world.
+	for (int32 B = 1; B < static_cast<int32>(M->nbody); ++B)
+	{
+		if (!Snap.XfrcApplied.IsValidIndex(B * 6 + 5) || !Snap.XPos.IsValidIndex(B * 3 + 2))
+		{
+			continue;
+		}
+		const mjtNum* W = &Snap.XfrcApplied[B * 6];
+		mjtNum Mag2 = 0.0;
+		for (int32 k = 0; k < 6; ++k)
+		{
+			Mag2 += W[k] * W[k];
+		}
+		if (Mag2 <= KINDA_SMALL_NUMBER)
+		{
+			continue;
+		}
+		const FVector Pos = URLabAxisConv::MjPositionToUe(&Snap.XPos[B * 3]) + SceneOrigin;
+		const mjtNum Fw[3] = {W[0], W[1], W[2]};
+		const mjtNum Tw[3] = {W[3], W[4], W[5]};
+		EmitWrench(Pos, URLabAxisConv::MjDirectionToUe(Fw), URLabAxisConv::MjDirectionToUe(Tw),
+			AppliedForceColor, AppliedTorqueColor);
 	}
 }

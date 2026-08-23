@@ -7,6 +7,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
+#include "Containers/Ticker.h"
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/BridgeServerConfig.h"
 #include "BridgeServer.generated.h"
@@ -122,6 +123,27 @@ private:
 	/** Construct the dispatcher if needed and wire its back-pointer to this
 	 *  server so no-manager ops (e.g. leasing) can reach per-instance state. */
 	void EnsureDispatcher();
+
+	// --- Broker-less discovery registry (source-of-truth §12) ---
+	// The bridge server owns the registry entry lifecycle so that BOTH the
+	// editor subsystem-owned server AND the cooked/packaged manager-owned
+	// server register: WriteEntry on Start, a 10 s heartbeat refresh, and
+	// RemoveEntry on Stop. This is the single writer — the editor subsystem no
+	// longer writes directly — so an instance never writes two entries.
+
+	/** Write (or overwrite) this instance's registry entry from InstanceConfig.
+	 *  manager_present and busy are derived live. */
+	void WriteRegistryEntry();
+
+	/** Ticker callback: refresh the entry mtime + live busy/manager fields.
+	 *  Returns false (stop ticking) once the dispatcher is gone. */
+	bool RefreshRegistryHeartbeat(float DeltaTime);
+
+	/** Ticker handle for the registry heartbeat; invalid when not running. */
+	FTSTicker::FDelegateHandle RegistryHeartbeatHandle;
+
+	/** URLab version string, cached from the dispatcher at first write. */
+	FString CachedUrlabVersion;
 
 	/** Current lease clock: the test override when set (>= 0), else the wall
 	 *  clock. Callers hold LeaseMutex. */

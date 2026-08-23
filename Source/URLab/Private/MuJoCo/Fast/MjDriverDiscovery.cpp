@@ -17,6 +17,35 @@
 
 namespace URLabFastPath
 {
+const TCHAR* const OwnerRole = TEXT("fastpath_owner");
+
+bool IsOwnerEntry(const TSharedPtr<FJsonObject>& Obj)
+{
+	// Only fast-path drivers (role or capability). Skips ordinary bridge
+	// instances that share the same registry directory. Mirrors the Python
+	// predicate pool.is_owner_entry so both repos agree on what is an owner.
+	if (!Obj.IsValid())
+	{
+		return false;
+	}
+	if (Obj->GetStringField(TEXT("role")) == OwnerRole)
+	{
+		return true;
+	}
+	const TArray<TSharedPtr<FJsonValue>>* Caps = nullptr;
+	if (Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
+	{
+		for (const TSharedPtr<FJsonValue>& V : *Caps)
+		{
+			if (V.IsValid() && V->AsString() == OwnerRole)
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 bool DiscoverDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError)
 {
 	OutDrivers.Reset();
@@ -54,22 +83,10 @@ bool DiscoverDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError)
 			continue;
 		}
 
-		// Only fast-path drivers (role or capability). Skips ordinary bridge
+		// Only fast-path drivers (role or capability); the shared predicate keeps
+		// this rule identical to the Python reader. Skips ordinary bridge
 		// instances that share the same registry directory.
-		bool bIsDriver = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
-		const TArray<TSharedPtr<FJsonValue>>* Caps = nullptr;
-		if (!bIsDriver && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
-		{
-			for (const TSharedPtr<FJsonValue>& V : *Caps)
-			{
-				if (V.IsValid() && V->AsString() == TEXT("fastpath_owner"))
-				{
-					bIsDriver = true;
-					break;
-				}
-			}
-		}
-		if (!bIsDriver)
+		if (!IsOwnerEntry(Obj))
 		{
 			continue;
 		}

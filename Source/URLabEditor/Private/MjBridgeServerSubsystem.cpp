@@ -6,7 +6,6 @@
 #include "MjBridgeServerSubsystem.h"
 
 #include "Bridge/BridgeServerConfigUtils.h"
-#include "Bridge/InstanceRegistry.h"
 #include "URLabEditorLogging.h"
 
 void UURLabBridgeServerSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -46,20 +45,10 @@ void UURLabBridgeServerSubsystem::StartServer()
 	Server->Start(Endpoint);
 	Server->EnsureShmBound(Config.InstanceId); // empty id -> "live" (single editor)
 
-	CachedUrlabVersion.Reset();
-	if (const FURLabRpcDispatcher* Dispatcher = Server->GetDispatcher())
-		CachedUrlabVersion = Dispatcher->URLabVersion;
-	FURLabInstanceRegistry::WriteEntry(Config, CachedUrlabVersion,
-		/*bManagerPresent=*/false, /*bBusy=*/false);
-
-	// Refresh the registry entry on a ticker so its mtime stays fresh (discovery
-	// treats a too-old entry as dead) and its `busy` tracks the live lease.
-	if (!HeartbeatHandle.IsValid())
-	{
-		HeartbeatHandle = FTSTicker::GetCoreTicker().AddTicker(
-			FTickerDelegate::CreateUObject(this, &UURLabBridgeServerSubsystem::RefreshRegistryHeartbeat),
-			/*DelaySeconds=*/10.0f);
-	}
+	// NOTE: the discovery registry entry (write + heartbeat + removal) is now
+	// owned by UURLabBridgeServer's Start/Stop lifecycle, so both the editor
+	// subsystem's server AND cooked/packaged manager-owned servers register.
+	// This subsystem no longer writes it directly (exactly one writer).
 
 	UE_LOG(LogURLabEditor, Log,
 		TEXT("[BridgeServer] started instance='%s' index=%d bind=%s step=%d state=%d cam_base=%d "
@@ -73,24 +62,10 @@ void UURLabBridgeServerSubsystem::StopServer()
 {
 	if (!Server)
 		return;
-	if (HeartbeatHandle.IsValid())
-	{
-		FTSTicker::GetCoreTicker().RemoveTicker(HeartbeatHandle);
-		HeartbeatHandle.Reset();
-	}
+	// Server->Stop() removes this instance's registry entry (bridge-owned).
 	Server->Stop();
 	Server = nullptr;
-	FURLabInstanceRegistry::RemoveEntry(Config);
 	UE_LOG(LogURLabEditor, Log, TEXT("[BridgeServer] stopped"));
-}
-
-bool UURLabBridgeServerSubsystem::RefreshRegistryHeartbeat(float /*DeltaTime*/)
-{
-	if (!Server)
-		return false; // server gone: stop ticking
-	FURLabInstanceRegistry::RefreshEntry(Config, CachedUrlabVersion,
-		/*bManagerPresent=*/false, /*bBusy=*/Server->IsLeaseHeld());
-	return true; // keep ticking
 }
 
 bool UURLabBridgeServerSubsystem::IsRunning() const

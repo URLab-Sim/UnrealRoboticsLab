@@ -5,6 +5,7 @@
 
 #include "Bridge/BridgeServer.h"
 #include "Bridge/RpcDispatcher.h"
+#include "Bridge/InstanceRegistry.h"
 #include "Transport/ZmqRpcTransport.h"
 #include "Transport/ShmRpcTransport.h"
 #include "Transport/RpcTransport.h"
@@ -138,11 +139,50 @@ void UURLabBridgeServer::Start(const FString& StepEndpoint)
 {
 	EnsureDispatcher();
 
-	// Empty endpoint: dispatcher only, no transports (test path).
+	// Empty endpoint: dispatcher only, no transports (test path). Do not
+	// register a discoverable entry for a dispatcher with no wire.
 	if (StepEndpoint.IsEmpty())
 		return;
 
 	EnsureZmqBound(ResolveStepEndpoint(StepEndpoint));
+
+	// Register this instance for broker-less discovery on the bridge-server
+	// lifecycle (source-of-truth §12). This runs for the editor subsystem's
+	// server AND the cooked/packaged AAMjManager-owned server, so a packaged
+	// owner/render server is discoverable by the browser/pool/session too --
+	// previously only the editor subsystem wrote the entry, leaving cooked
+	// instances invisible. The bridge is the single writer.
+	WriteRegistryEntry();
+
+	// Refresh on a ticker so the entry's mtime stays fresh (discovery treats a
+	// too-old entry as dead) and its busy/manager fields track the live state.
+	if (!RegistryHeartbeatHandle.IsValid())
+	{
+		RegistryHeartbeatHandle = FTSTicker::GetCoreTicker().AddTicker(
+			FTickerDelegate::CreateUObject(this, &UURLabBridgeServer::RefreshRegistryHeartbeat),
+			/*DelaySeconds=*/10.0f);
+	}
+}
+
+void UURLabBridgeServer::WriteRegistryEntry()
+{
+	if (CachedUrlabVersion.IsEmpty() && Dispatcher.IsValid())
+		CachedUrlabVersion = Dispatcher->URLabVersion;
+
+	FURLabInstanceRegistry::WriteEntry(InstanceConfig, CachedUrlabVersion,
+		/*bManagerPresent=*/GetActiveManager() != nullptr,
+		/*bBusy=*/IsLeaseHeld());
+}
+
+bool UURLabBridgeServer::RefreshRegistryHeartbeat(float /*DeltaTime*/)
+{
+	if (!IsRunning())
+		return false; // dispatcher gone: stop ticking
+
+	FURLabInstanceRegistry::RefreshEntry(InstanceConfig, CachedUrlabVersion,
+		/*bManagerPresent=*/GetActiveManager() != nullptr,
+		/*bBusy=*/IsLeaseHeld());
+	return true; // keep ticking
 }
 
 bool UURLabBridgeServer::EnsureZmqBound(const FString& Endpoint)
@@ -341,6 +381,15 @@ bool UURLabBridgeServer::EnsureExternalTransportsBound()
 
 void UURLabBridgeServer::Stop()
 {
+	// Stop the discovery heartbeat and drop this instance's registry entry
+	// first, so a shutting-down instance stops advertising immediately.
+	if (RegistryHeartbeatHandle.IsValid())
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(RegistryHeartbeatHandle);
+		RegistryHeartbeatHandle.Reset();
+	}
+	FURLabInstanceRegistry::RemoveEntry(InstanceConfig);
+
 	// Drain before tearing transports down so blocking handlers see the
 	// flag on their next 50ms tick and return `shutting_down` instead of
 	// pinning the worker thread.

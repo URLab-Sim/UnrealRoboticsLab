@@ -22,14 +22,14 @@
 
 #include "Transport/MjExternalTransportProvider.h"
 
-FMjMakeExternalRpcTransport FMjExternalTransportProvider::MakeControlRpcTransport;
-FMjMakeExternalPublishTransport FMjExternalTransportProvider::MakeStatePublishTransport;
-FMjMakeExternalClientSubscribeTransport FMjExternalTransportProvider::MakeClientSubscribeTransport;
-FMjMakeExternalRpcClientTransport FMjExternalTransportProvider::MakeRpcClientTransport;
+TArray<FMjExternalRpcTransportFactory> FMjExternalTransportProvider::ControlRpcTransportFactories;
+TArray<FMjExternalPublishTransportFactory> FMjExternalTransportProvider::StatePublishTransportFactories;
+TMap<FString, FMjMakeExternalClientSubscribeTransport> FMjExternalTransportProvider::ClientSubscribeTransportFactories;
+TMap<FString, FMjMakeExternalRpcClientTransport> FMjExternalTransportProvider::RpcClientTransportFactories;
 FMjMakeExternalCameraPublishTransport FMjExternalTransportProvider::MakeCameraPublishTransport;
 FMjViewerFrameSink FMjExternalTransportProvider::OnViewerFrame;
 
 bool FMjExternalTransportProvider::HasControlRpcTransport()
 {
-	return MakeControlRpcTransport.IsBound();
+	return ControlRpcTransportFactories.Num() > 0;
 }

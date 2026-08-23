@@ -64,37 +64,69 @@ DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalC
 // no-op.
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMjViewerFrameSink, const FString& /*Topic*/, const TArray<uint8>& /*Payload*/);
 
+/**
+ * @struct FMjExternalRpcTransportFactory
+ * @brief One registered server-side control-RPC factory, keyed by the transport
+ *        name its product reports via GetTransportName().
+ *
+ * The name is the dedup key EnsureExternalTransportsBound uses so a factory binds
+ * exactly once per bridge (never a literal like "ros2-rpc"). Registration is a
+ * list, not a single slot, so ROS ("ros2-rpc") and gRPC ("dm_env_rpc") bind side
+ * by side instead of the later-loading module evicting the earlier (H1).
+ */
+struct FMjExternalRpcTransportFactory
+{
+	FName TransportName;
+	FMjMakeExternalRpcTransport Factory;
+};
+
+/**
+ * @struct FMjExternalPublishTransportFactory
+ * @brief One registered server-side state-publish factory, keyed by the transport
+ *        name its product reports via GetTransportName(). Same list-with-name-dedup
+ *        model as FMjExternalRpcTransportFactory, on the manager's fan-out leg.
+ */
+struct FMjExternalPublishTransportFactory
+{
+	FName TransportName;
+	FMjMakeExternalPublishTransport Factory;
+};
+
 struct URLAB_API FMjExternalTransportProvider
 {
-	/** Creates an external request/reply + control-in transport bound to the
-	 *  bridge. Unbound when no external module is loaded. */
-	static FMjMakeExternalRpcTransport MakeControlRpcTransport;
+	/** Registered external request/reply + control-in transport factories, each
+	 *  keyed by the transport name its product reports. Empty when no external
+	 *  module is loaded. EnsureExternalTransportsBound iterates this list, dedups by
+	 *  name, and binds each to the bridge -- so ROS and gRPC control transports
+	 *  coexist (H1) and re-entering PIE never double-binds the same name (H2). Each
+	 *  module APPENDS its factory in StartupModule instead of overwriting a slot. */
+	static TArray<FMjExternalRpcTransportFactory> ControlRpcTransportFactories;
 
-	/** Creates an external per-step state consumer transport owned by the
-	 *  manager. Unbound when no external module is loaded. */
-	static FMjMakeExternalPublishTransport MakeStatePublishTransport;
+	/** Registered external per-step state consumer transport factories, each keyed
+	 *  by transport name, bound onto the manager's fan-out leg. Same list model as
+	 *  the control-RPC leg so >1 producer egress (e.g. ROS) coexists. */
+	static TArray<FMjExternalPublishTransportFactory> StatePublishTransportFactories;
 
-	/** Creates an external CLIENT-side render sink -- the position feed a Mirror
-	 *  renderer subscribes to. Returns an unconfigured transport for the given
-	 *  Outer; the caller (UURLabClientSubscribeTransport::Create) then Configures
-	 *  and inits it, exactly as for the built-in ZMQ backend. Unbound => the core
-	 *  falls back to ZMQ, so the pose feed can be non-ZMQ (SHM / gRPC) without the
-	 *  renderer naming a backend. */
-	static FMjMakeExternalClientSubscribeTransport MakeClientSubscribeTransport;
+	/** External CLIENT-side render sink factories, keyed by endpoint SCHEME (e.g.
+	 *  "grpc", "shm"). UURLabClientSubscribeTransport::Create parses the scheme from
+	 *  the endpoint and selects the matching factory -- so gRPC and SHM each answer
+	 *  their own scheme side by side. The factory returns an unconfigured transport
+	 *  for the given Outer; the caller Configures + inits it exactly as for the
+	 *  built-in ZMQ backend. No entry for a scheme => the core falls back to ZMQ. */
+	static TMap<FString, FMjMakeExternalClientSubscribeTransport> ClientSubscribeTransportFactories;
 
-	/** Creates an external CLIENT-side request/reply transport -- the REQ side a
-	 *  renderer uses to reach an owner/driver (model fetch, perturbation). Returns
-	 *  an unconfigured transport for the given Outer; the caller
-	 *  (UURLabRpcClientTransport::Create) then Configures the endpoint and inits it,
-	 *  exactly as for the built-in ZMQ backend. Unbound => the core falls back to
-	 *  ZMQ, so the request path can be non-ZMQ (SHM / gRPC) without the renderer
-	 *  naming a backend. */
-	static FMjMakeExternalRpcClientTransport MakeRpcClientTransport;
+	/** External CLIENT-side request/reply transport factories, keyed by endpoint
+	 *  SCHEME (e.g. "grpc", "shm"). UURLabRpcClientTransport::Create parses the
+	 *  scheme and selects the matching factory. Returns an unconfigured transport
+	 *  for the given Outer; the caller Configures the endpoint + inits it. No entry
+	 *  for a scheme => the core falls back to ZMQ. */
+	static TMap<FString, FMjMakeExternalRpcClientTransport> RpcClientTransportFactories;
 
 	/** Creates an external per-camera IMAGE egress transport (the role
 	 *  UURLabPublishTransport excludes). Returns an unconfigured transport for the
 	 *  given Outer; the caller opens per-camera channels and inits it. Unbound =>
-	 *  the core uses its built-in camera backend. */
+	 *  the core uses its built-in camera backend. (Single-cast: no module binds it
+	 *  today and its one consumer, MjCamera, has no H1/H2 exposure.) */
 	static FMjMakeExternalCameraPublishTransport MakeCameraPublishTransport;
 
 	/** Broadcast one raw render-bus frame per step to any external backend (e.g. the
@@ -102,6 +134,6 @@ struct URLAB_API FMjExternalTransportProvider
 	 *  Unbound => no extra fan-out. */
 	static FMjViewerFrameSink OnViewerFrame;
 
-	/** True when an external module has installed the control RPC factory. */
+	/** True when at least one external module has registered a control RPC factory. */
 	static bool HasControlRpcTransport();
 };

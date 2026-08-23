@@ -603,44 +603,15 @@ void AAMjManager::PublishOnViewerBus(const FString& Topic, const TArray<uint8>& 
 			Pub->Publish(Topic, Payload);
 		}
 	}
-	// Fan every tier to any external backend (e.g. the gRPC server), tagged by its
-	// topic, so a UE owner serves mirrors over gRPC and ZMQ alike from the same
-	// per-step frame. The backend selects the tier by topic ("render" transforms /
-	// "viewer" qpos) -- no "viewer"-only special case, so the "render" tier reaches
-	// the gRPC sink and pure-gRPC UE<->UE mirroring works (H3).
+	// Fan the render tier to any external backend (e.g. the gRPC server), tagged by
+	// its topic, so a UE owner serves mirrors over gRPC and ZMQ alike from the same
+	// per-step frame. The backend selects the tier by topic ("render" transforms) --
+	// no "viewer"-only special case, so the "render" tier reaches the gRPC sink and
+	// pure-gRPC UE<->UE mirroring works (H3).
 	if (FMjExternalTransportProvider::OnViewerFrame.IsBound())
 	{
 		FMjExternalTransportProvider::OnViewerFrame.Broadcast(Topic, Payload);
 	}
-}
-
-void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
-{
-	// Build/publish when EITHER a ZMQ viewer bus OR an external (gRPC) sink is
-	// bound -- the gRPC egress is no longer hard-coupled to a bound ZMQ bus (H3),
-	// so the qpos tier reaches a pure-gRPC subscriber too.
-	if ((ViewerBusTransports.Num() == 0
-			&& !FMjExternalTransportProvider::OnViewerFrame.IsBound())
-		|| !m || !d)
-		return;
-	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
-	Obj->SetNumberField(TEXT("t"), d->time);
-	TArray<TSharedPtr<FJsonValue>> QPos;
-	QPos.Reserve(m->nq);
-	for (int i = 0; i < m->nq; ++i)
-		QPos.Add(MakeShared<FJsonValueNumber>(d->qpos[i]));
-	Obj->SetArrayField(TEXT("qpos"), QPos);
-	TArray<TSharedPtr<FJsonValue>> QVel;
-	QVel.Reserve(m->nv);
-	for (int i = 0; i < m->nv; ++i)
-		QVel.Add(MakeShared<FJsonValueNumber>(d->qvel[i]));
-	Obj->SetArrayField(TEXT("qvel"), QVel);
-
-	TArray<uint8> Buf;
-	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
-	if (Buf.Num() == 0)
-		return;
-	PublishOnViewerBus(TEXT("viewer"), Buf);
 }
 
 TSharedPtr<FJsonObject> AAMjManager::BuildRenderFrame(mjModel* m, mjData* d)
@@ -735,10 +706,9 @@ void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
 
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
-	// Owner viewer bus: raw {t,qpos,qvel} to any subscribed viewers, every step,
-	// independent of the state_full byte fan-out (which pauses in direct/puppet).
-	PublishViewerFrame(m, d);
-	// Per-body render tier (+ optional debug fields) on the same bus, for fast-path renderers.
+	// Per-body render tier (+ optional debug fields) on the owner viewer bus, for
+	// fast-path renderers -- every step, independent of the state_full byte fan-out
+	// (which pauses in direct/puppet). The qpos render tier was removed (Phase 3.2).
 	PublishRenderFrame(m, d);
 
 	// Build the state IR once per physics step, encode it to the canonical

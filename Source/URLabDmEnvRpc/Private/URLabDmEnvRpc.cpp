@@ -32,32 +32,42 @@ UURLabRpcTransport* MakeDmEnvRpcControlTransport(UURLabBridgeServer* Bridge)
 }
 } // namespace
 
+// The transport name this module's control RPC transport reports via
+// GetTransportName() (UURLabDmEnvRpcTransport). Used as the registration-list key
+// so EnsureExternalTransportsBound dedups by name and this module coexists with
+// ROS instead of evicting it (H1).
+static const FName GDmEnvRpcControlName(TEXT("dm_env_rpc"));
+// The endpoint scheme this module's CLIENT transports answer (grpc://host:port).
+static const FString GDmEnvRpcScheme(TEXT("grpc"));
+
 void FURLabDmEnvRpcModule::StartupModule()
 {
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] Module starting up. Registering external transport provider."));
-	FMjExternalTransportProvider::MakeControlRpcTransport.BindStatic(&MakeDmEnvRpcControlTransport);
+	// APPEND (not overwrite) our control-RPC factory into the registration list so
+	// ROS and gRPC bind side by side (H1). Remove any stale same-name entry first so
+	// a module hot-reload does not double-register.
+	FMjExternalTransportProvider::ControlRpcTransportFactories.RemoveAll(
+		[](const FMjExternalRpcTransportFactory& R) { return R.TransportName == GDmEnvRpcControlName; });
+	FMjExternalTransportProvider::ControlRpcTransportFactories.Add(
+		{ GDmEnvRpcControlName, FMjMakeExternalRpcTransport::CreateStatic(&MakeDmEnvRpcControlTransport) });
+
 	// CLIENT-side gRPC transports (the mirror/peek direction): a Mirror dials an
 	// owner over gRPC for the model (fastpath_hello), perturbs, and the transform
-	// view stream. Selected by the "grpc://" endpoint scheme in the core's Create.
-	FMjExternalTransportProvider::MakeRpcClientTransport.BindStatic(&MakeDmEnvRpcRpcClientTransport);
-	FMjExternalTransportProvider::MakeClientSubscribeTransport.BindStatic(&MakeDmEnvRpcClientSubscribeTransport);
+	// view stream. Registered under the "grpc" scheme so the core's Create selects
+	// them for a "grpc://" endpoint -- side by side with any other scheme's factory.
+	FMjExternalTransportProvider::RpcClientTransportFactories.Add(
+		GDmEnvRpcScheme, FMjMakeExternalRpcClientTransport::CreateStatic(&MakeDmEnvRpcRpcClientTransport));
+	FMjExternalTransportProvider::ClientSubscribeTransportFactories.Add(
+		GDmEnvRpcScheme, FMjMakeExternalClientSubscribeTransport::CreateStatic(&MakeDmEnvRpcClientSubscribeTransport));
 }
 
 void FURLabDmEnvRpcModule::ShutdownModule()
 {
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] Module shutting down."));
-	if (FMjExternalTransportProvider::MakeControlRpcTransport.IsBound())
-	{
-		FMjExternalTransportProvider::MakeControlRpcTransport.Unbind();
-	}
-	if (FMjExternalTransportProvider::MakeRpcClientTransport.IsBound())
-	{
-		FMjExternalTransportProvider::MakeRpcClientTransport.Unbind();
-	}
-	if (FMjExternalTransportProvider::MakeClientSubscribeTransport.IsBound())
-	{
-		FMjExternalTransportProvider::MakeClientSubscribeTransport.Unbind();
-	}
+	FMjExternalTransportProvider::ControlRpcTransportFactories.RemoveAll(
+		[](const FMjExternalRpcTransportFactory& R) { return R.TransportName == GDmEnvRpcControlName; });
+	FMjExternalTransportProvider::RpcClientTransportFactories.Remove(GDmEnvRpcScheme);
+	FMjExternalTransportProvider::ClientSubscribeTransportFactories.Remove(GDmEnvRpcScheme);
 }
 
 IMPLEMENT_MODULE(FURLabDmEnvRpcModule, URLabDmEnvRpc)

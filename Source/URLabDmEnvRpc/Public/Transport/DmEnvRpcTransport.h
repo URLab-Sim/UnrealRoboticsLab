@@ -62,21 +62,12 @@ public:
 
 	bool ShouldStop() const { return bShouldStop.load(std::memory_order_relaxed); }
 
-	// --- viewer-frame cache: the latest {t,qpos,qvel} the owner produced, fed by
-	// FMjExternalTransportProvider::OnViewerFrame and streamed by a subscribe_viewer
-	// gRPC call. Thread-safe. ---
-	void SetViewerFrame(const TArray<uint8>& Bytes);
-	// Copy the latest frame into Out iff its sequence advanced past InOutSeq (which
-	// is then updated). Returns true when a fresh frame was written.
-	bool GetViewerFrame(TArray<uint8>& Out, uint64& InOutSeq) const;
-
-	// --- render-frame cache: the gRPC per-tier seam (analogous to the ZMQ "render"
+	// --- render-frame cache: the gRPC render seam (analogous to the ZMQ "render"
 	// topic and the SHM render ring). Holds the latest render tier (per-body
 	// bxpos/bxquat + optional debug fields, source-of-truth §8.1/§8.2) so a
-	// subscribe(format=render) server-stream can select it. Phase 2.3 establishes
-	// the slot + accessors; Phase 2.4 binds the owner sink that populates it and
-	// adds the subscribe(format=render) stream (H3, decoupling gRPC egress from the
-	// ZMQ viewer bus). Thread-safe. ---
+	// subscribe(format=render) server-stream can select it. Fed by the Phase 2.4
+	// owner sink (H3, decoupling gRPC egress from the ZMQ viewer bus). The qpos
+	// "viewer" frame cache was removed in Phase 3.2. Thread-safe. ---
 	void SetRenderFrame(const TArray<uint8>& Bytes);
 	bool GetRenderFrame(TArray<uint8>& Out, uint64& InOutSeq) const;
 
@@ -92,15 +83,12 @@ private:
 	// on another thread -- atomic so the publish is visible without a data race.
 	std::atomic<grpc::Server*> Server{nullptr};
 
-	mutable FCriticalSection ViewerCacheLock;
-	TArray<uint8> LatestViewerFrame;
-	uint64 ViewerFrameSeq = 0;
+	// Owner render sink handle. Binds FMjExternalTransportProvider::OnViewerFrame and
+	// routes the "render" tier topic -> SetRenderFrame, so the render tier reaches
+	// gRPC without a bound ZMQ bus (H3).
 	FDelegateHandle ViewerSinkHandle;
 
-	// Render-tier cache. Populated by the Phase 2.4 owner sink: the single
-	// ViewerSinkHandle above binds OnViewerFrame and routes by tier topic --
-	// "render" -> SetRenderFrame (here), "viewer" -> SetViewerFrame -- so both
-	// tiers reach gRPC without a bound ZMQ bus (H3).
+	// Render-tier cache. Populated by the owner sink (ViewerSinkHandle above).
 	mutable FCriticalSection RenderCacheLock;
 	TArray<uint8> LatestRenderFrame;
 	uint64 RenderFrameSeq = 0;

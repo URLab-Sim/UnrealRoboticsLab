@@ -108,58 +108,29 @@ public:
 				urlab::dm_env_rpc::v1::UrlabPacket InPacket;
 				if (Request.extension().UnpackTo(&InPacket))
 				{
-					// subscribe / subscribe_viewer: this call becomes a dedicated
-					// server-stream of the owner's frames until the client cancels --
-					// NOT the one-reply-per-request path below. The client opens a
-					// separate Process call for this, so it never blocks its rpc stream.
-					// Requires the owner to broadcast (-URLabBroadcastViewers=1).
+					// subscribe(format=render): this call becomes a dedicated
+					// server-stream of the owner's render frames until the client
+					// cancels -- NOT the one-reply-per-request path below. The client
+					// opens a separate Process call for this, so it never blocks its rpc
+					// stream. Requires the owner to broadcast (-URLabBroadcastViewers=1).
 					//
-					// Tier selection matches the Python owner (owner_server.py:85-101):
-					//   subscribe_viewer            -> qpos tier   (op "viewer_frame", {t,qpos,qvel})
-					//   subscribe {format:"qpos"}   -> qpos tier
-					//   subscribe {format:"render"} -> render tier (op "view_frame", per-body transforms)
-					// "render" is the default for `subscribe` when the format is absent
-					// or unknown. This is the H3 fix: the UE server now speaks the same
-					// subscribe(format=render) contract as the Python owner, so a UE lean
-					// gRPC mirror renders over pure gRPC.
-					if (InPacket.op() == "subscribe" || InPacket.op() == "subscribe_viewer")
+					// The one surviving subscribe is the render tier (op "view_frame",
+					// per-body transforms + optional debug fields). The qpos render tier
+					// (subscribe_viewer / subscribe{format:qpos}, {t,qpos,qvel}) was
+					// removed in Phase 3.2. This is the H3 contract shared with the Python
+					// owner, so a UE lean gRPC mirror renders over pure gRPC.
+					if (InPacket.op() == "subscribe")
 					{
 						const int64 Seq = InPacket.sequence_id();
-						// qpos tier for subscribe_viewer, or subscribe{format:"qpos"};
-						// render tier otherwise.
-						bool bRenderTier = InPacket.op() == "subscribe";
-						if (bRenderTier)
-						{
-							const std::string& ReqPl = InPacket.payload();
-							if (ReqPl.size() > 0)
-							{
-								TSharedPtr<FJsonObject> ReqObj;
-								if (FURLabMsgpackUtil::UnpackToJsonObject(
-										reinterpret_cast<const uint8*>(ReqPl.data()),
-										static_cast<int32>(ReqPl.size()), ReqObj)
-									&& ReqObj.IsValid())
-								{
-									FString Fmt;
-									if (ReqObj->TryGetStringField(TEXT("format"), Fmt)
-										&& Fmt.Equals(TEXT("qpos"), ESearchCase::IgnoreCase))
-									{
-										bRenderTier = false;
-									}
-								}
-							}
-						}
-						const char* const FrameOp = bRenderTier ? "view_frame" : "viewer_frame";
 						uint64 LastSeq = 0;
 						TArray<uint8> Frame;
 						while (!Transport->ShouldStop() && !Context->IsCancelled())
 						{
-							const bool bGotFrame = bRenderTier
-								? Transport->GetRenderFrame(Frame, LastSeq)
-								: Transport->GetViewerFrame(Frame, LastSeq);
+							const bool bGotFrame = Transport->GetRenderFrame(Frame, LastSeq);
 							if (bGotFrame)
 							{
 								urlab::dm_env_rpc::v1::UrlabPacket OutFrame;
-								OutFrame.set_op(FrameOp);
+								OutFrame.set_op("view_frame");
 								OutFrame.set_sequence_id(Seq);
 								OutFrame.set_payload(Frame.GetData(), Frame.Num());
 								dm_env_rpc::v1::EnvironmentResponse FrameResp;
@@ -311,22 +282,17 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 		SetListenPort(PortOverride);
 	}
 
-	// Cache the owner's per-step frames so a subscribe stream can serve them. One
-	// sink, tagged by tier topic: "render" -> the transform tier (streamed as
-	// "view_frame" by subscribe{format:render}); "viewer" -> the {t,qpos,qvel} tier
-	// (streamed as "viewer_frame" by subscribe_viewer / subscribe{format:qpos}).
-	// Binding both tiers here is the H3 fix -- the gRPC egress no longer depends on
-	// a bound ZMQ viewer bus. Bound only while this transport is up.
+	// Cache the owner's per-step render frames so a subscribe stream can serve them.
+	// One sink for the "render" tier (transforms + optional debug), streamed as
+	// "view_frame" by subscribe(format=render). Binding it here is the H3 fix -- the
+	// gRPC egress no longer depends on a bound ZMQ viewer bus. Bound only while this
+	// transport is up. (The qpos "viewer" tier was removed in Phase 3.2.)
 	ViewerSinkHandle = FMjExternalTransportProvider::OnViewerFrame.AddLambda(
 		[this](const FString& Topic, const TArray<uint8>& Bytes)
 		{
 			if (Topic == TEXT("render"))
 			{
 				SetRenderFrame(Bytes);
-			}
-			else if (Topic == TEXT("viewer"))
-			{
-				SetViewerFrame(Bytes);
 			}
 		});
 
@@ -345,30 +311,10 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 	return true;
 }
 
-void UURLabDmEnvRpcTransport::SetViewerFrame(const TArray<uint8>& Bytes)
-{
-	FScopeLock Lock(&ViewerCacheLock);
-	LatestViewerFrame = Bytes;
-	++ViewerFrameSeq;
-}
-
-bool UURLabDmEnvRpcTransport::GetViewerFrame(TArray<uint8>& Out, uint64& InOutSeq) const
-{
-	FScopeLock Lock(&ViewerCacheLock);
-	if (ViewerFrameSeq == InOutSeq || LatestViewerFrame.Num() == 0)
-	{
-		return false;
-	}
-	Out = LatestViewerFrame;
-	InOutSeq = ViewerFrameSeq;
-	return true;
-}
-
 void UURLabDmEnvRpcTransport::SetRenderFrame(const TArray<uint8>& Bytes)
 {
-	// The gRPC per-tier seam (source-of-truth §8.1/§8.2). Fed by the Phase 2.4 owner
-	// render sink; read by a subscribe(format=render) server-stream. Mirrors the
-	// viewer cache so the two tiers select independently.
+	// The gRPC render seam (source-of-truth §8.1/§8.2). Fed by the Phase 2.4 owner
+	// render sink; read by a subscribe(format=render) server-stream.
 	FScopeLock Lock(&RenderCacheLock);
 	LatestRenderFrame = Bytes;
 	++RenderFrameSeq;

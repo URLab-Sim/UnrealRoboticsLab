@@ -430,18 +430,17 @@ public:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UURLabSubscribeTransport>> ManagerOwnedSubscribeTransports;
 
-	// Owner-side viewer bus (direct/live): the "viewer" ({t,qpos,qvel}) and "render"
-	// (per-body transforms + optional debug tier) topics, fanned out through the agnostic publish
+	// Owner-side viewer bus (direct/live): the "render" (per-body transforms +
+	// optional debug tier) topic, fanned out through the agnostic publish
 	// abstraction (ZMQ now; SHM/ROS/gRPC via new UURLabPublishTransport impls),
 	// on their own endpoint separate from the state bus. Empty unless
 	// bBroadcastViewers was set on an owner. Written from FanOutStateSnapshot
-	// (physics thread); TransportShutdown'd + cleared in EndPlay.
+	// (physics thread); TransportShutdown'd + cleared in EndPlay. (The qpos render
+	// tier -- the old "viewer" {t,qpos,qvel} topic -- was removed in Phase 3.2.)
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UURLabPublishTransport>> ViewerBusTransports;
 	/** Fan a topic's payload out to every viewer-bus publish transport. */
 	void PublishOnViewerBus(const FString& Topic, const TArray<uint8>& Payload);
-	/** Encode {t,qpos,qvel} from (m,d) and PUB it on the viewer bus. */
-	void PublishViewerFrame(struct mjModel_* m, struct mjData_* d);
 
 	/** Debug-tier subscription capabilities (source-of-truth §8.2). Gate the
 	 *  optional fields appended to a render frame; a subscriber that requests

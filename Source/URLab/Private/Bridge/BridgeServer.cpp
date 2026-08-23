@@ -243,57 +243,89 @@ bool UURLabBridgeServer::EnsureExternalTransportsBound()
 
 	EnsureDispatcher();
 
-	// RPC / control leg: one external executor transport, persisting across PIE
-	// like the other RPC transports. Its TransportInit brings up the process-wide
-	// context; a false return means the runtime is unavailable, so there is
-	// nothing to bind. Identified by its transport name so the core needs no cast.
-	bool bHaveRpc = false;
-	for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
+	// RPC / control leg: iterate every registered external control-RPC factory and
+	// bind each one that is not already present. Each external transport persists
+	// across PIE like the other RPC transports; its TransportInit brings up the
+	// process-wide context and reports the actual runtime/bind result -- a false
+	// return means that backend is unavailable this run, so it is skipped without
+	// blocking the others. Dedup is by the transport's own GetTransportName(), never
+	// a literal, so re-entering PIE re-matches every already-bound backend
+	// (including "dm_env_rpc") and never accumulates a dead duplicate (H2). Because
+	// this is a list and not a single slot, ROS ("ros2-rpc") and gRPC ("dm_env_rpc")
+	// bind side by side instead of the later one evicting the earlier (H1).
+	bool bAnyRpc = false;
+	for (const FMjExternalRpcTransportFactory& Reg : FMjExternalTransportProvider::ControlRpcTransportFactories)
 	{
-		if (T && T->GetTransportName() == TEXT("ros2-rpc"))
+		if (!Reg.Factory.IsBound())
 		{
-			bHaveRpc = true;
-			break;
+			continue;
 		}
-	}
-	if (!bHaveRpc)
-	{
-		UURLabRpcTransport* External = FMjExternalTransportProvider::MakeControlRpcTransport.Execute(this);
+
+		bool bHaveRpc = false;
+		for (const TObjectPtr<UURLabRpcTransport>& T : RpcTransports)
+		{
+			if (T && T->GetTransportName() == Reg.TransportName.ToString())
+			{
+				bHaveRpc = true;
+				break;
+			}
+		}
+		if (bHaveRpc)
+		{
+			bAnyRpc = true;
+			continue;
+		}
+
+		UURLabRpcTransport* External = Reg.Factory.Execute(this);
 		if (!External || !External->TransportInit())
 		{
 			UE_LOG(LogURLabNet, Log,
-				TEXT("UURLabBridgeServer: external control runtime unavailable; "
-					 "EnsureExternalTransportsBound is a no-op."));
-			return false;
+				TEXT("UURLabBridgeServer: external control runtime '%s' unavailable; skipped."),
+				*Reg.TransportName.ToString());
+			continue;
 		}
 		RpcTransports.Add(External);
 		ApplyPerformanceOverrides();
-		UE_LOG(LogURLabNet, Log, TEXT("UURLabBridgeServer: control RPC transport bound"));
+		bAnyRpc = true;
+		UE_LOG(LogURLabNet, Log,
+			TEXT("UURLabBridgeServer: control RPC transport '%s' bound"),
+			*Reg.TransportName.ToString());
 	}
 
 	// Publish / fan-out leg: registered with the live manager, which owns per-PIE
 	// publish transports and tears them down in EndPlay. When no manager is live
-	// yet the publish leg is deferred to the next call with one present.
+	// yet the publish leg is deferred to the next call with one present. Same
+	// list-with-name-dedup model as the control leg so >1 producer egress coexists.
 	if (AAMjManager* Manager = GetActiveManager())
 	{
-		bool bHavePub = false;
-		for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
+		for (const FMjExternalPublishTransportFactory& Reg : FMjExternalTransportProvider::StatePublishTransportFactories)
 		{
-			if (T && T->GetTransportName() == TEXT("ros2-pub"))
+			if (!Reg.Factory.IsBound())
 			{
-				bHavePub = true;
-				break;
+				continue;
 			}
-		}
-		if (!bHavePub && FMjExternalTransportProvider::MakeStatePublishTransport.IsBound())
-		{
-			UURLabPublishTransport* Pub =
-				FMjExternalTransportProvider::MakeStatePublishTransport.Execute(Manager);
+
+			bool bHavePub = false;
+			for (const TObjectPtr<UURLabPublishTransport>& T : Manager->ManagerOwnedPublishTransports)
+			{
+				if (T && T->GetTransportName() == Reg.TransportName.ToString())
+				{
+					bHavePub = true;
+					break;
+				}
+			}
+			if (bHavePub)
+			{
+				continue;
+			}
+
+			UURLabPublishTransport* Pub = Reg.Factory.Execute(Manager);
 			if (Pub && Pub->TransportInit())
 			{
 				Manager->ManagerOwnedPublishTransports.Add(Pub);
 				UE_LOG(LogURLabNet, Log,
-					TEXT("UURLabBridgeServer: state publish transport registered with manager"));
+					TEXT("UURLabBridgeServer: state publish transport '%s' registered with manager"),
+					*Reg.TransportName.ToString());
 			}
 		}
 	}
@@ -304,7 +336,7 @@ bool UURLabBridgeServer::EnsureExternalTransportsBound()
 				 "publish leg deferred until a manager is live."));
 	}
 
-	return true;
+	return bAnyRpc;
 }
 
 void UURLabBridgeServer::Stop()

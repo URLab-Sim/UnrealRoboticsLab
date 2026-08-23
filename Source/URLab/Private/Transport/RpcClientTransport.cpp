@@ -16,17 +16,21 @@ UURLabRpcClientTransport* UURLabRpcClientTransport::Create(UObject* Outer, const
 	UURLabRpcClientTransport* Client = nullptr;
 	// The backend is chosen by the endpoint scheme (source-of-truth 9.1):
 	// "tcp://host:port" is the built-in ZMQ request/reply client; "grpc://host:port"
-	// and "shm://<session-dir>" are non-ZMQ backends supplied by an optional
-	// external module through the pluggable factory hook -- so binding that hook
-	// never hijacks ZMQ owners. (The per-scheme factory map that lets gRPC and SHM
-	// each answer their own scheme side by side lands in step 5.2; today the one
-	// installed external module answers a non-ZMQ scheme, else the core falls back
-	// to ZMQ.)
-	const bool bExternalScheme =
-		Endpoint.StartsWith(TEXT("grpc://")) || Endpoint.StartsWith(TEXT("shm://"));
-	if (bExternalScheme && FMjExternalTransportProvider::MakeRpcClientTransport.IsBound())
+	// and "shm://<session-dir>" are non-ZMQ backends supplied by optional external
+	// modules. Each module registers its factory in the scheme->factory map under
+	// its own scheme, so gRPC and SHM answer their own scheme side by side and no
+	// registration ever hijacks a ZMQ owner. No entry for a scheme (including "tcp")
+	// => ZMQ fallback.
+	int32 SchemeEnd = INDEX_NONE;
+	Endpoint.FindChar(TEXT(':'), SchemeEnd);
+	const FString Scheme = (SchemeEnd != INDEX_NONE) ? Endpoint.Left(SchemeEnd) : FString();
+	if (const FMjMakeExternalRpcClientTransport* Factory =
+			FMjExternalTransportProvider::RpcClientTransportFactories.Find(Scheme))
 	{
-		Client = FMjExternalTransportProvider::MakeRpcClientTransport.Execute(Outer);
+		if (Factory->IsBound())
+		{
+			Client = Factory->Execute(Outer);
+		}
 	}
 	if (!Client)
 	{

@@ -170,18 +170,38 @@ private:
 FRosCameraImageSink GCameraImageSink;
 } // namespace
 
+// The transport names this module's transports report via GetTransportName()
+// (UURLabRosRpcTransport / UURLabRosPublishTransport). Used as registration-list
+// keys so EnsureExternalTransportsBound dedups by name and ROS coexists with the
+// gRPC control transport instead of being evicted by it (H1).
+static const FName GRosControlName(TEXT("ros2-rpc"));
+static const FName GRosPublishName(TEXT("ros2-pub"));
+
 void FURLabRosModule::StartupModule()
 {
-	FMjExternalTransportProvider::MakeControlRpcTransport.BindStatic(&MakeRosControlRpcTransport);
-	FMjExternalTransportProvider::MakeStatePublishTransport.BindStatic(&MakeRosStatePublishTransport);
+	// APPEND (not overwrite) our factories into the registration lists so ROS and
+	// gRPC bind side by side (H1). Remove any stale same-name entry first so a
+	// module hot-reload does not double-register.
+	FMjExternalTransportProvider::ControlRpcTransportFactories.RemoveAll(
+		[](const FMjExternalRpcTransportFactory& R) { return R.TransportName == GRosControlName; });
+	FMjExternalTransportProvider::ControlRpcTransportFactories.Add(
+		{ GRosControlName, FMjMakeExternalRpcTransport::CreateStatic(&MakeRosControlRpcTransport) });
+
+	FMjExternalTransportProvider::StatePublishTransportFactories.RemoveAll(
+		[](const FMjExternalPublishTransportFactory& R) { return R.TransportName == GRosPublishName; });
+	FMjExternalTransportProvider::StatePublishTransportFactories.Add(
+		{ GRosPublishName, FMjMakeExternalPublishTransport::CreateStatic(&MakeRosStatePublishTransport) });
+
 	GCameraImageSink.Install();
 }
 
 void FURLabRosModule::ShutdownModule()
 {
 	GCameraImageSink.Uninstall();
-	FMjExternalTransportProvider::MakeControlRpcTransport.Unbind();
-	FMjExternalTransportProvider::MakeStatePublishTransport.Unbind();
+	FMjExternalTransportProvider::ControlRpcTransportFactories.RemoveAll(
+		[](const FMjExternalRpcTransportFactory& R) { return R.TransportName == GRosControlName; });
+	FMjExternalTransportProvider::StatePublishTransportFactories.RemoveAll(
+		[](const FMjExternalPublishTransportFactory& R) { return R.TransportName == GRosPublishName; });
 }
 
 IMPLEMENT_MODULE(FURLabRosModule, URLabRos)

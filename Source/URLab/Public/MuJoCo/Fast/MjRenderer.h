@@ -616,6 +616,16 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UMjRendererBus> TransportBus;
 
+	// Debug-overlay tier this mirror negotiates with the owner (Phase 9.3), set
+	// from the -URLabScene=overlay=<mask> consumer boot flag in BeginPlay. When
+	// requested, StartBus passes it into the subscribe transport so the owner
+	// serializes contacts/overlay onto every streamed frame (gRPC path; ZMQ is a
+	// follow-up). Default off -> a lean mirror negotiates nothing. Drawing is still
+	// gated at runtime by the mj.MirrorOverlayMask cvar.
+	bool bRequestDebugContacts = false;
+	bool bRequestDebugOverlay = false;
+	int32 RequestedDebugMaxContacts = 0;   // 0 = uncapped
+
 	// Ensure + connect the bus (BusEndpoint must be set); drop it. Both no-op safe.
 	void StartBus();
 	void StopBus();

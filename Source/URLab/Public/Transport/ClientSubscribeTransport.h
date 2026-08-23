@@ -10,6 +10,29 @@
 #include "ClientSubscribeTransport.generated.h"
 
 /**
+ * @struct FMjRenderDebugCaps
+ * @brief The debug-tier a render mirror asks the owner to serialize onto each
+ * streamed frame (source-of-truth §8.2). Plain POD (no reflection): threaded from
+ * AMjRenderer down through UMjRendererBus into the concrete subscribe transport,
+ * which folds it into its subscribe request. Default is all-off, so a lean mirror
+ * negotiates nothing and pays zero extra bytes.
+ *
+ * The field roles map 1:1 onto the Python owner's `parse_render_debug_caps`
+ * (owner_server.py / fastpath_owner.py): bContacts -> the `contacts` bool
+ * (StreamContacts), bOverlay -> the `overlay` bool (StreamOverlay), MaxContacts ->
+ * the `maxcontacts` int cap (0 = uncapped).
+ */
+struct FMjRenderDebugCaps
+{
+	bool bContacts = false;
+	bool bOverlay = false;
+	int32 MaxContacts = 0;   // 0 = owner streams all contacts
+
+	/** True when the mirror wants any part of the heavier debug tier. */
+	bool WantsAny() const { return bContacts || bOverlay; }
+};
+
+/**
  * @class UURLabClientSubscribeTransport
  * @brief Abstract base for a CLIENT-side receiver of a server's broadcast.
  *
@@ -47,13 +70,28 @@ public:
 	 *  one construction seam instead of naming a concrete transport. Returns the
 	 *  started transport, or nullptr if the backend could not connect. */
 	static UURLabClientSubscribeTransport* Create(UObject* Outer,
-		const FString& Endpoint, const FString& Topic, FOnClientMessage Callback);
+		const FString& Endpoint, const FString& Topic, FOnClientMessage Callback,
+		const FMjRenderDebugCaps& DebugCaps = FMjRenderDebugCaps());
 
 	/** Source endpoint (e.g. "tcp://host:port"), topic to subscribe, and the
 	 *  delivery callback. Call before TransportInit. */
 	virtual void Configure(const FString& Endpoint, const FString& Topic,
 		FOnClientMessage Callback)
 		PURE_VIRTUAL(UURLabClientSubscribeTransport::Configure, );
+
+	/** Ask the owner to serialize the heavier debug tier (contacts/overlay) onto
+	 *  each streamed frame (source-of-truth §8.2). Backends that carry a per-
+	 *  subscription request (gRPC/dm_env) fold these caps into their subscribe
+	 *  payload; the base default is a no-op so a backend that cannot negotiate the
+	 *  tier just streams the lean transform frames. Call before TransportInit
+	 *  (Create does this between Configure and TransportInit).
+	 *
+	 *  ZMQ status: the ZMQ bus is topic-per-tier and advertises the "render"
+	 *  (lean transform) topic only, so requesting the debug tier over ZMQ needs a
+	 *  new topic/control channel -- deferred as a follow-up. The ZMQ backend
+	 *  inherits this no-op, so a ZMQ mirror silently draws only the [XFORM]/[MODEL]
+	 *  overlays that need no stream; gRPC is the debug-overlay demo path. */
+	virtual void SetRenderDebugCaps(const FMjRenderDebugCaps& /*DebugCaps*/) {}
 
 	/** Connect + start the worker. False if the runtime is unavailable. */
 	virtual bool TransportInit()

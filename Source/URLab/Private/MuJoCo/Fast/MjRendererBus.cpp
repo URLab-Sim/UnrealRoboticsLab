@@ -13,7 +13,7 @@
 #include "Transport/ClientSubscribeTransport.h"
 #include "Utils/URLabLogging.h"
 
-void UMjRendererBus::Start(const FString& Endpoint)
+void UMjRendererBus::Start(const FString& Endpoint, const FMjRenderDebugCaps& DebugCaps)
 {
 	if (Endpoint.IsEmpty() || BusTransport)
 	{
@@ -22,8 +22,11 @@ void UMjRendererBus::Start(const FString& Endpoint)
 	// The renderer subscribes to the owner's "render" tier broadcast through the
 	// agnostic client-subscribe transport (backend chosen by the base). The worker
 	// delivers each newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
+	// DebugCaps (default off) is folded into the subscribe request by backends that
+	// carry it (gRPC), so the owner serializes the requested contacts/overlay tier.
 	BusTransport = UURLabClientSubscribeTransport::Create(this, Endpoint, TEXT("render"),
-		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &UMjRendererBus::OnBusMessage));
+		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &UMjRendererBus::OnBusMessage),
+		DebugCaps);
 	if (!BusTransport)
 	{
 		UE_LOG(LogURLab, Error, TEXT("[MjRenderer] transform bus connect failed: %s"), *Endpoint);

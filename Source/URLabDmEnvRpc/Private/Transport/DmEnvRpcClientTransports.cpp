@@ -225,6 +225,14 @@ void UURLabDmEnvRpcClientSubscribeTransport::Configure(
 	OnMessage = InCallback;
 }
 
+void UURLabDmEnvRpcClientSubscribeTransport::SetRenderDebugCaps(const FMjRenderDebugCaps& InDebugCaps)
+{
+	// Record the debug tier the mirror wants; RunLoop folds it into the subscribe
+	// request the next time it (re)connects. Called before TransportInit, so the
+	// first subscribe already carries it.
+	DebugCaps = InDebugCaps;
+}
+
 bool UURLabDmEnvRpcClientSubscribeTransport::TransportInit()
 {
 	if (Endpoint.IsEmpty())
@@ -258,6 +266,24 @@ void UURLabDmEnvRpcClientSubscribeTransport::RunLoop()
 	// selects the render tier.
 	TSharedPtr<FJsonObject> SubObj = MakeShared<FJsonObject>();
 	SubObj->SetStringField(TEXT("format"), TEXT("render"));
+	// Negotiate the heavier debug tier (source-of-truth §8.2). These keys are read
+	// verbatim by the Python owner's parse_render_debug_caps ({contacts, overlay,
+	// maxcontacts}); the owner then serializes contacts / the overlay decor bundle
+	// onto every view_frame, which AMjRenderer decodes (subtree_com/xfrc_applied/
+	// contacts/...). Only emitted when requested, so a lean mirror sends the bare
+	// {format:"render"} and the owner streams zero extra bytes.
+	if (DebugCaps.bContacts)
+	{
+		SubObj->SetBoolField(TEXT("contacts"), true);
+	}
+	if (DebugCaps.bOverlay)
+	{
+		SubObj->SetBoolField(TEXT("overlay"), true);
+	}
+	if (DebugCaps.MaxContacts > 0)
+	{
+		SubObj->SetNumberField(TEXT("maxcontacts"), DebugCaps.MaxContacts);
+	}
 	TArray<uint8> SubPayload;
 	FURLabMsgpackUtil::PackJsonObject(SubObj, SubPayload);
 

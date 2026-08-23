@@ -7,6 +7,7 @@
 
 #include "CoreMinimal.h"
 #include "HAL/CriticalSection.h"
+#include "Transport/ClientSubscribeTransport.h"   // FMjRenderDebugCaps
 #include <atomic>
 #include "MjRendererBus.generated.h"
 
@@ -29,8 +30,10 @@ class URLAB_API UMjRendererBus : public UObject
 
 public:
 	/** Connect to the owner's "render" broadcast at Endpoint and start the worker.
-	 *  No-op if Endpoint is empty or a transport is already connected. */
-	void Start(const FString& Endpoint);
+	 *  No-op if Endpoint is empty or a transport is already connected. DebugCaps
+	 *  (default off) asks the owner to serialize the heavier debug tier
+	 *  (contacts/overlay) onto each frame; only the gRPC backend carries it. */
+	void Start(const FString& Endpoint, const FMjRenderDebugCaps& DebugCaps = FMjRenderDebugCaps());
 	/** Stop + release the transport and drop any buffered frame. Idempotent. */
 	void Stop();
 	/** True while a transport is connected (a bus subscription is live). */

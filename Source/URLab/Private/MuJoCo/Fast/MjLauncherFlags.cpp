@@ -333,4 +333,37 @@ bool SceneNoAutoExposure()
 {
 	return HasCsvToken(TEXT("URLabScene="), TEXT("noexposure"));
 }
+
+bool SceneOverlayMask(int32& OutMask)
+{
+	FString Val;
+	if (!GetCsvValue(TEXT("URLabScene="), TEXT("overlay"), Val))
+	{
+		return false;
+	}
+	Val.TrimStartAndEndInline();
+	// Accept a decimal or 0x-prefixed hex bitmask; anything unparsable => not set.
+	if (Val.StartsWith(TEXT("0x"), ESearchCase::IgnoreCase))
+	{
+		OutMask = static_cast<int32>(FCString::Strtoi(*Val, nullptr, 16));
+		return true;
+	}
+	if (!Val.IsNumeric())
+	{
+		return false;
+	}
+	OutMask = FCString::Atoi(*Val);
+	return true;
+}
+
+bool SceneOverlayMaxContacts(int32& OutMax)
+{
+	FString Val;
+	if (!GetCsvValue(TEXT("URLabScene="), TEXT("maxcontacts"), Val) || !Val.IsNumeric())
+	{
+		return false;
+	}
+	OutMax = FCString::Atoi(*Val);
+	return true;
+}
 } // namespace URLabLauncherFlags

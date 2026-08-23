@@ -52,6 +52,7 @@ class UURLabDmEnvRpcClientSubscribeTransport : public UURLabClientSubscribeTrans
 	GENERATED_BODY()
 public:
 	virtual void Configure(const FString& InEndpoint, const FString& InTopic, FOnClientMessage InCallback) override;
+	virtual void SetRenderDebugCaps(const FMjRenderDebugCaps& InDebugCaps) override;
 	virtual bool TransportInit() override;
 	virtual void TransportShutdown() override;
 	virtual FString GetTransportName() const override { return TEXT("dmenv-grpc-sub"); }
@@ -64,6 +65,13 @@ private:
 	FString Endpoint;   // host:port (grpc:// stripped)
 	FString Topic;
 	FOnClientMessage OnMessage;
+
+	// Debug-tier the mirror negotiates in its subscribe request (source-of-truth
+	// §8.2). Folded into the subscribe payload as {contacts, overlay, maxcontacts}
+	// -- the exact keys the Python owner's parse_render_debug_caps reads. Set once
+	// before TransportInit (Create -> SetRenderDebugCaps), then read only by the
+	// worker when it builds the request, so no locking is needed. Default off.
+	FMjRenderDebugCaps DebugCaps;
 
 	struct FSubState;
 	FSubState* Sub = nullptr;   // PIMPL: grpc channel/stub/context/thread

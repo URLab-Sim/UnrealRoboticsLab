@@ -22,7 +22,7 @@
  *   -URLabSourceFind=discover[:scene] | browse
  *   -URLabModel=<path.{mjb,xml,mjz}>                    (format from extension)
  *   -URLabCaps=serve,publish,cameras,input,vr          (csv; absent=lean; negatable: -input)
- *   -URLabScene=level=<n>,origin=X;Y;Z,base,quality=off,cammax=N,camnear=<cm>,noexposure
+ *   -URLabScene=level=<n>,origin=X;Y;Z,base,quality=off,cammax=N,camnear=<cm>,noexposure,overlay=<mask>,maxcontacts=<n>
  *   -URLabNet=id=,index=,portbase=,stride=,step=,state=,bus=,cam=,grpc=,bind=
  */
 namespace URLabLauncherFlags
@@ -116,4 +116,15 @@ URLAB_API bool SceneCamMaxHeight(int32& OutPx);
 URLAB_API bool SceneCamNearClipCm(float& OutCm);
 /** noexposure — the -URLabDisableAutoExposure equivalent. */
 URLAB_API bool SceneNoAutoExposure();
+/** overlay=<mask> — a debug-overlay CONSUMER boot flag (Phase 9.3). Sets the
+ *  initial `mj.MirrorOverlayMask` cvar (which mjVIS_* overlays a mirror draws) AND
+ *  tells the mirror to negotiate the owner's debug tier (StreamContacts +
+ *  StreamOverlay) so the [OWNER] overlays (contacts/CoM/tendons/...) actually
+ *  arrive on the wire. `<mask>` is a decimal or 0x-hex mjVIS_* bitmask. Returns
+ *  true (filling OutMask) when present; the runtime cvar still toggles drawing. */
+URLAB_API bool SceneOverlayMask(int32& OutMask);
+/** maxcontacts=<n> — optional cap on the contact count the owner serializes onto
+ *  each frame (source-of-truth §8.2; 0/absent = uncapped). Only meaningful with
+ *  overlay=. Returns true (filling OutMax) when present. */
+URLAB_API bool SceneOverlayMaxContacts(int32& OutMax);
 } // namespace URLabLauncherFlags

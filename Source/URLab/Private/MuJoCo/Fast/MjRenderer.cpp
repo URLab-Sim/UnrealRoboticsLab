@@ -201,6 +201,33 @@ void AMjRenderer::BeginPlay()
 		CameraMaxHeight = CamMaxHeightArg;
 	}
 
+	// -URLabScene=overlay=<mask>: the debug-overlay CONSUMER boot flag (Phase 9.3).
+	// It does two things at once: (1) seed the mj.MirrorOverlayMask cvar so the
+	// mirror draws that set of mjVIS_* overlays from frame one, and (2) request the
+	// owner's heavier debug tier (StreamContacts + StreamOverlay) on the
+	// subscription, so the [OWNER] overlays (contacts/CoM/tendons/...) actually ride
+	// the wire. Without (2) only the [XFORM]/[MODEL] overlays (which need no stream)
+	// would ever draw. The runtime cvar still toggles drawing at any time.
+	int32 OverlayMaskArg = 0;
+	if (URLabLauncherFlags::SceneOverlayMask(OverlayMaskArg))
+	{
+		CVarMirrorOverlayMask->Set(OverlayMaskArg, ECVF_SetByCode);
+		// A non-zero mask means the operator wants to SEE debug overlays, so ask the
+		// owner for both debug sub-tiers; the owner (Python fast-path) honours the
+		// request per-subscription and a lean mirror that omits the flag still pays
+		// zero extra bytes.
+		if (OverlayMaskArg != 0)
+		{
+			bRequestDebugContacts = true;
+			bRequestDebugOverlay = true;
+		}
+		int32 MaxContactsArg = 0;
+		if (URLabLauncherFlags::SceneOverlayMaxContacts(MaxContactsArg) && MaxContactsArg > 0)
+		{
+			RequestedDebugMaxContacts = MaxContactsArg;
+		}
+	}
+
 	// The raw mjModel/mjData pointers were shallow-copied from the editor actor on
 	// the PIE duplication and are stale -- clear them WITHOUT freeing (the editor
 	// actor still owns its own). The transient index maps do not duplicate either.
@@ -3239,7 +3266,13 @@ void AMjRenderer::StartBus()
 	{
 		TransportBus = NewObject<UMjRendererBus>(this);
 	}
-	TransportBus->Start(BusEndpoint);
+	// Pass the negotiated debug tier (from -URLabScene=overlay=; default all-off) so
+	// the owner serializes contacts/overlay onto each frame for the gRPC mirror.
+	FMjRenderDebugCaps DebugCaps;
+	DebugCaps.bContacts = bRequestDebugContacts;
+	DebugCaps.bOverlay = bRequestDebugOverlay;
+	DebugCaps.MaxContacts = RequestedDebugMaxContacts;
+	TransportBus->Start(BusEndpoint, DebugCaps);
 }
 
 void AMjRenderer::StopBus()

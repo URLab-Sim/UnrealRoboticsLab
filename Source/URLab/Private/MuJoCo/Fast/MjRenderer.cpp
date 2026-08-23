@@ -10,6 +10,7 @@
 
 #include "MuJoCo/Fast/MjRenderer.h"
 
+#include "Components/DynamicMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Components/SceneComponent.h"
@@ -2473,35 +2474,17 @@ void AMjRenderer::UpdateMirrorFlex(const double* Bxpos, const double* Bxquat)
 	{
 		return;
 	}
-	UWorld* W = GetWorld();
-	if (!W)
+	if (!GetWorld())
 	{
 		return;
 	}
 	const int32 NBody = static_cast<int32>(Model->nbody);
 
-	// Flexcomp components are authored level content (each with a child static
-	// mesh); on a mirror they resolve no local engine, so this renderer drives
-	// them. Discover them once -- a mirror's scene is fixed at load. Weak pointers
-	// tolerate any later teardown.
+	// Discover-or-build once -- a mirror's scene is fixed at load (Teardown
+	// resets the cache so a model reload rebuilds against the new flex table).
 	if (!bMirrorFlexcompsCached)
 	{
-		MirrorFlexcomps.Reset();
-		for (TActorIterator<AActor> It(W); It; ++It)
-		{
-			if (AActor* A = *It)
-			{
-				TArray<UMjFlexcomp*> Comps;
-				A->GetComponents<UMjFlexcomp>(Comps);
-				for (UMjFlexcomp* FC : Comps)
-				{
-					if (FC)
-					{
-						MirrorFlexcomps.Add(FC);
-					}
-				}
-			}
-		}
+		BuildFlexcomps();
 		bMirrorFlexcompsCached = true;
 	}
 
@@ -2509,9 +2492,82 @@ void AMjRenderer::UpdateMirrorFlex(const double* Bxpos, const double* Bxquat)
 	{
 		if (UMjFlexcomp* FC = Ptr.Get())
 		{
-			FC->UpdateFromBodyTransforms(*Model, Bxpos, Bxquat, NBody);
+			const bool bBuilt = FC->GetMirrorFlexId() != INDEX_NONE;
+			// A renderer-built element renders in this scene's frame, like every
+			// rigid geom; authored elements keep today's zero offset.
+			FC->UpdateFromBodyTransforms(*Model, Bxpos, Bxquat, NBody,
+				bBuilt ? SceneOrigin : FVector::ZeroVector);
+
+			// A built element's surface exists only after its first drive: bind
+			// its compiled material/rgba the frame it appears. Authored elements
+			// keep their source mesh's material (bBuilt is false for them).
+			if (bBuilt && AssetBaker && FC->DynamicMesh
+				&& FC->DynamicMesh->GetMaterial(0) == nullptr)
+			{
+				AssetBaker->ApplyFlexMaterial(FC->DynamicMesh, FC->GetMirrorFlexId());
+			}
 		}
 	}
+}
+
+void AMjRenderer::BuildFlexcomps()
+{
+	MirrorFlexcomps.Reset();
+	UWorld* W = GetWorld();
+	if (!W || !Model)
+	{
+		return;
+	}
+
+	// Authored flexcomps first (level content, each with its child static mesh):
+	// a level that ships its own deformables keeps them authoritative. Weak
+	// pointers tolerate any later teardown.
+	for (TActorIterator<AActor> It(W); It; ++It)
+	{
+		if (AActor* A = *It)
+		{
+			TArray<UMjFlexcomp*> Comps;
+			A->GetComponents<UMjFlexcomp>(Comps);
+			for (UMjFlexcomp* FC : Comps)
+			{
+				if (FC)
+				{
+					MirrorFlexcomps.Add(FC);
+				}
+			}
+		}
+	}
+	if (MirrorFlexcomps.Num() > 0 || Model->nflex == 0)
+	{
+		return;
+	}
+
+	// No authored flex content -- the packaged mirror booting an empty map.
+	// Build one renderer-owned element per compiled flex (the UpdateMirrorSkin
+	// pattern); each builds its surface from the model's own flex topology at
+	// its first streamed frame, so a streamed deformable renders with no level
+	// content and no per-vertex bytes on the wire.
+	USceneComponent* Root = GetRootComponent();
+	for (int32 f = 0; f < static_cast<int32>(Model->nflex); ++f)
+	{
+		const FName Name = MakeUniqueObjectName(
+			this, UMjFlexcomp::StaticClass(), *FString::Printf(TEXT("MirrorFlex_%d"), f));
+		UMjFlexcomp* FC = NewObject<UMjFlexcomp>(this, Name);
+		if (!FC)
+		{
+			continue;
+		}
+		FC->SetMirrorFlex(f);
+		if (Root)
+		{
+			FC->SetupAttachment(Root);
+		}
+		FC->RegisterComponent();
+		BuiltMirrorFlexcomps.Add(FC);
+		MirrorFlexcomps.Add(FC);
+	}
+	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] built %d mirror flex element(s) (nflex=%d)"),
+		BuiltMirrorFlexcomps.Num(), (int)Model->nflex);
 }
 
 void AMjRenderer::UpdateMirrorSkin(const double* Bxpos, const double* Bxquat)
@@ -3342,6 +3398,30 @@ void AMjRenderer::Teardown()
 		UCam->DestroyComponent();
 	}
 	UserCaptureCam = nullptr;
+	// The renderer-built mirror deformables (flex + skin) are components on this
+	// actor, so the attached-actor sweep above misses them; destroy + reset so a
+	// model reload rebuilds them against the new model. Authored flexcomps (only
+	// weakly held in MirrorFlexcomps) belong to the level: forgotten, never
+	// destroyed, and rediscovered by the next BuildFlexcomps.
+	for (const TObjectPtr<UMjFlexcomp>& FC : BuiltMirrorFlexcomps)
+	{
+		if (FC)
+		{
+			FC->DestroyComponent();
+		}
+	}
+	BuiltMirrorFlexcomps.Reset();
+	MirrorFlexcomps.Reset();
+	bMirrorFlexcompsCached = false;
+	for (const TObjectPtr<UMjSkincomp>& Skin : MirrorSkincomps)
+	{
+		if (Skin)
+		{
+			Skin->DestroyComponent();
+		}
+	}
+	MirrorSkincomps.Reset();
+	bMirrorSkincompsCreated = false;
 	BodyActors.Reset();
 	GeomComps.Reset();
 	GeomOrigins.Reset();

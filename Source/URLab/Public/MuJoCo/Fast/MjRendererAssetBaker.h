@@ -60,7 +60,18 @@ public:
 	// terms) onto Comp from the master. No-op if the master failed to load.
 	void ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 GeomId);
 
+	// The deformable twin of ApplyGeomMaterial, for the mirror-built flex
+	// surfaces: its material's appearance when flex_matid names one, else its
+	// own flex_rgba over MuJoCo's matte no-material defaults. No-op if the
+	// master failed to load.
+	void ApplyFlexMaterial(UPrimitiveComponent* Comp, int32 FlexId);
+
 private:
+	// Bind the real MJB textures for every role material MatId fills onto Mid
+	// (colour roles sample sRGB, data roles linear). No-op for MatId < 0. Shared
+	// by ApplyGeomMaterial and ApplyFlexMaterial.
+	void BindMaterialRoleTextures(class UMaterialInstanceDynamic& Mid, int32 MatId);
+
 	// Build (or fetch from cache) a UTexture2D from the MJB's tex_data for the given
 	// MuJoCo texture id. bSRGB selects colour vs linear sampling. Null on a bad id.
 	UTexture2D* GetOrBuildTexture(int32 TexId, bool bSRGB, bool bNormal = false);

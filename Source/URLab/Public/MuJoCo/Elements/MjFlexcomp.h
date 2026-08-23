@@ -85,7 +85,21 @@ public:
 	 * (sim) still uses UpdateProceduralMesh's snapshot fast path.
 	 */
 	void UpdateFromBodyTransforms(const mjModel& Model, const double* Bxpos,
-		const double* Bxquat, int32 NBody);
+		const double* Bxquat, int32 NBody, const FVector& WorldOffset = FVector::ZeroVector);
+
+	/**
+	 * Mark this element renderer-created for a mirror (Drive=stream/push): draw
+	 * compiled flex `InFlexId`, building the surface from the model's own flex
+	 * topology (flex_elem / flex_shell) at the first streamed frame -- there is
+	 * no authored child static mesh and no name to resolve, since the mirror
+	 * booted a level with no flex content (AMjRenderer::BuildFlexcomps). Call
+	 * once, after NewObject and before RegisterComponent; also disables the
+	 * self-tick, because the renderer drives this element (like UMjSkincomp).
+	 */
+	void SetMirrorFlex(int32 InFlexId);
+
+	/** The compiled flex a renderer-created element draws; INDEX_NONE if authored. */
+	int32 GetMirrorFlexId() const { return MirrorFlexId; }
 
 private:
 	/** The child static mesh both the surface and the weld map are built from. */
@@ -102,6 +116,17 @@ private:
 
 	void CreateProceduralMesh();
 	void UpdateProceduralMesh(UMjPhysicsEngine& Engine);
+
+	/**
+	 * Build the surface for a renderer-created mirror element from the model's
+	 * own flex topology -- elements for a 2D flex, shell fragments for a 3D one
+	 * -- with this frame's reconstructed vertices (UE world space) as the
+	 * initial pose, so the static shading normals are computed on real geometry.
+	 * The model's topology IS the welded topology, so the weld map is the
+	 * identity. The UMjSkincomp build pattern, replacing the authored path's
+	 * child-static-mesh build.
+	 */
+	void BuildModelSurface(const mjModel& Model, const TArray<FVector>& WorldPositions);
 
 	/**
 	 * Shared writeback: take this frame's flex vertices in UE world space (one
@@ -139,6 +164,13 @@ private:
 	int32 FlexId = INDEX_NONE;
 	int32 FlexVertAdr = 0;
 	int32 FlexVertNum = 0;
+
+	/**
+	 * Renderer-assigned flex index for a mirror-created element (INDEX_NONE for
+	 * an authored one). Unlike FlexId it survives ReleaseProceduralMesh, so a
+	 * model reload re-resolves against the same compiled slot.
+	 */
+	int32 MirrorFlexId = INDEX_NONE;
 
 	/**
 	 * The name `FlexId` was found under, and the check that it still means the

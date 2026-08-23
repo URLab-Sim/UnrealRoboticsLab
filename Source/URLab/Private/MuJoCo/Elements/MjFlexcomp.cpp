@@ -139,6 +139,17 @@ void UMjFlexcomp::TickComponent(float DeltaTime, ELevelTick TickType, FActorComp
 	UpdateProceduralMesh(*Engine);
 }
 
+void UMjFlexcomp::SetMirrorFlex(int32 InFlexId)
+{
+	MirrorFlexId = InFlexId;
+	// Purely renderer-driven (AMjRenderer::UpdateMirrorFlex): a mirror has no
+	// local engine to tick against, and the one thing the authored tick would do
+	// -- release the surface while no engine resolves -- would fight the streamed
+	// drive. Set before registration, so disabling the tick here sticks.
+	PrimaryComponentTick.bCanEverTick = false;
+	PrimaryComponentTick.bStartWithTickEnabled = false;
+}
+
 void UMjFlexcomp::OnComponentDestroyed(bool bDestroyingHierarchy)
 {
 	ReleaseProceduralMesh();
@@ -166,33 +177,48 @@ bool UMjFlexcomp::EnsureFlex(const mjModel& Model)
 	{
 		ReleaseProceduralMesh();
 
-		const FString Name = MjName.Get(FString());
-		if (Name.IsEmpty())
+		if (MirrorFlexId != INDEX_NONE)
 		{
-			return false;
+			// A renderer-created mirror element draws the flex index it was
+			// assigned at creation (one element per compiled flex); there is no
+			// authored name to resolve against the model.
+			if (MirrorFlexId < 0 || MirrorFlexId >= Model.nflex)
+			{
+				return false;
+			}
+			FlexId = MirrorFlexId;
+			ResolvedFlexName = FlexNameAt(Model, FlexId);
 		}
-
-		// The expansion exists in the model and not in the tree, so this
-		// element has no compiled id to index off. The flex carries the
-		// flexcomp's name, under whatever prefix the scene gave this
-		// participant when it attached it, which is the owning actor's.
-		FMjBinding Index;
-		Index.SetModel(&Model);
-
-		const AActor* Owner = GetOwner();
-		const FString Prefix = Owner != nullptr ? Owner->GetName() + TEXT("_") : FString();
-		TArray<int32> Ids = Index.Find(mjOBJ_FLEX, Prefix + Name);
-		if (Ids.Num() == 0)
+		else
 		{
-			Ids = Index.Find(mjOBJ_FLEX, Name);
-		}
-		if (Ids.Num() != 1)
-		{
-			return false;
-		}
+			const FString Name = MjName.Get(FString());
+			if (Name.IsEmpty())
+			{
+				return false;
+			}
 
-		FlexId = Ids[0];
-		ResolvedFlexName = FlexNameAt(Model, FlexId);
+			// The expansion exists in the model and not in the tree, so this
+			// element has no compiled id to index off. The flex carries the
+			// flexcomp's name, under whatever prefix the scene gave this
+			// participant when it attached it, which is the owning actor's.
+			FMjBinding Index;
+			Index.SetModel(&Model);
+
+			const AActor* Owner = GetOwner();
+			const FString Prefix = Owner != nullptr ? Owner->GetName() + TEXT("_") : FString();
+			TArray<int32> Ids = Index.Find(mjOBJ_FLEX, Prefix + Name);
+			if (Ids.Num() == 0)
+			{
+				Ids = Index.Find(mjOBJ_FLEX, Name);
+			}
+			if (Ids.Num() != 1)
+			{
+				return false;
+			}
+
+			FlexId = Ids[0];
+			ResolvedFlexName = FlexNameAt(Model, FlexId);
+		}
 	}
 
 	FlexVertAdr = Model.flex_vertadr[FlexId];
@@ -200,6 +226,14 @@ bool UMjFlexcomp::EnsureFlex(const mjModel& Model)
 
 	if (DynamicMesh == nullptr)
 	{
+		if (MirrorFlexId != INDEX_NONE)
+		{
+			// The ids above are resolved, but a renderer-created element has no
+			// child static mesh: its surface is built from the model topology at
+			// the first streamed frame's positions (BuildModelSurface, called by
+			// UpdateFromBodyTransforms). No surface yet.
+			return false;
+		}
 		if (bSurfaceAttempted)
 		{
 			return false;
@@ -437,19 +471,24 @@ void UMjFlexcomp::ApplyFlexWorldPositions(const TArray<FVector>& WorldPositions)
 }
 
 void UMjFlexcomp::UpdateFromBodyTransforms(const mjModel& Model, const double* Bxpos,
-	const double* Bxquat, int32 NBody)
+	const double* Bxquat, int32 NBody, const FVector& WorldOffset)
 {
 	if (Bxpos == nullptr || Bxquat == nullptr || NBody <= 0)
 	{
 		return;
 	}
 	// Resolve + build the surface on first sight, exactly like the producer tick.
-	if (!EnsureFlex(Model))
+	// A renderer-created mirror element (SetMirrorFlex) has no child static mesh
+	// for EnsureFlex to build from: EnsureFlex resolves its ids and reports "no
+	// surface", and the surface is built below from the model's own topology at
+	// this frame's reconstructed positions instead (the UMjSkincomp pattern).
+	const bool bHaveSurface = EnsureFlex(Model);
+	if (!bHaveSurface && (MirrorFlexId == INDEX_NONE || bSurfaceAttempted))
 	{
 		return;
 	}
-	if (FlexId < 0 || FlexId >= Model.nflex || DynamicMesh == nullptr
-		|| NumRenderVerts == 0 || FlexVertNum <= 0)
+	if (FlexId < 0 || FlexId >= Model.nflex || FlexVertNum <= 0
+		|| (bHaveSurface && (DynamicMesh == nullptr || NumRenderVerts == 0)))
 	{
 		return;
 	}
@@ -535,8 +574,190 @@ void UMjFlexcomp::UpdateFromBodyTransforms(const mjModel& Model, const double* B
 		}
 	}
 
+	// A renderer-created element renders in the mirror's scene frame: apply the
+	// same world offset ApplyBodyTransforms adds to every rigid geom (authored
+	// elements are passed zero, keeping their behaviour unchanged).
+	if (!WorldOffset.IsNearlyZero())
+	{
+		for (FVector& P : WorldPositions)
+		{
+			P += WorldOffset;
+		}
+	}
+
+	if (DynamicMesh == nullptr)
+	{
+		// First streamed frame on a renderer-created element: build the surface
+		// from the model topology at these positions, so the static shading
+		// normals are computed on real geometry rather than a placeholder pose.
+		bSurfaceAttempted = true;
+		BuildModelSurface(Model, WorldPositions);
+		if (DynamicMesh == nullptr)
+		{
+			return;
+		}
+		LastExternalDriveFrame = GFrameCounter;
+		return;
+	}
+
 	LastExternalDriveFrame = GFrameCounter;
 	ApplyFlexWorldPositions(WorldPositions);
+}
+
+void UMjFlexcomp::BuildModelSurface(const mjModel& Model, const TArray<FVector>& WorldPositions)
+{
+	AActor* Owner = GetOwner();
+	if (Owner == nullptr || FlexId < 0 || FlexId >= Model.nflex || FlexVertNum <= 0
+		|| WorldPositions.Num() < FlexVertNum)
+	{
+		return;
+	}
+
+	// The drawable surface, in vertex ids local to this flex (flex_elem and
+	// flex_shell index the flex's own vertex block -- mjv_updateActiveFlex,
+	// engine_vis_visualize.c:3252,3341-3359): a 2D flex's elements are its
+	// triangles and draw both windings, exactly like MuJoCo's flexskin mode; a
+	// 3D flex draws its outward-oriented shell fragments. A 1D flex (lines) has
+	// no surface to mesh. Normals accumulate over one winding only -- the
+	// mirrored 2D faces would cancel their own normals otherwise.
+	const int32 Dim = Model.flex_dim[FlexId];
+	TArray<UE::Geometry::FIndex3i> Tris;
+	TArray<UE::Geometry::FIndex3i> NormalTris;
+	if (Dim == 2)
+	{
+		const int32 NElem = Model.flex_elemnum[FlexId];
+		Tris.Reserve(2 * NElem);
+		NormalTris.Reserve(NElem);
+		for (int32 e = 0; e < NElem; ++e)
+		{
+			const int* E = Model.flex_elem + Model.flex_elemdataadr[FlexId] + e * 3;
+			Tris.Add(UE::Geometry::FIndex3i(E[0], E[1], E[2]));
+			Tris.Add(UE::Geometry::FIndex3i(E[0], E[2], E[1]));
+			NormalTris.Add(UE::Geometry::FIndex3i(E[0], E[1], E[2]));
+		}
+	}
+	else if (Dim == 3)
+	{
+		const int32 NShell = Model.flex_shellnum[FlexId];
+		Tris.Reserve(NShell);
+		NormalTris.Reserve(NShell);
+		for (int32 s = 0; s < NShell; ++s)
+		{
+			const int* S = Model.flex_shell + Model.flex_shelldataadr[FlexId] + s * 3;
+			Tris.Add(UE::Geometry::FIndex3i(S[0], S[1], S[2]));
+			NormalTris.Add(UE::Geometry::FIndex3i(S[0], S[1], S[2]));
+		}
+	}
+	if (Tris.Num() == 0)
+	{
+		return;
+	}
+
+	// The model's own topology IS the welded topology: one render vertex per
+	// MuJoCo flex vertex, so the weld map is the identity.
+	NumRenderVerts = FlexVertNum;
+	RawToWelded.SetNum(NumRenderVerts);
+	for (int32 i = 0; i < NumRenderVerts; ++i)
+	{
+		RawToWelded[i] = i;
+	}
+
+	// Unique per element, as on the authored path.
+	const FName MeshName = MakeUniqueObjectName(
+		Owner, UDynamicMeshComponent::StaticClass(), *(GetName() + TEXT("_FlexMesh")));
+
+	DynamicMesh = NewObject<UDynamicMeshComponent>(Owner, MeshName);
+	DynamicMesh->SetupAttachment(this);
+	DynamicMesh->RegisterComponent();
+	DynamicMesh->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Positions move every frame and nothing recomputes tangents by hand, so
+	// the component derives them itself through MikkTSpace.
+	DynamicMesh->SetTangentsType(EDynamicMeshComponentTangentsMode::AutoCalculated);
+
+	// This frame's positions in the mesh's local space -- the same convention
+	// ApplyFlexWorldPositions writes with on every later frame.
+	const USceneComponent* MeshParent = DynamicMesh->GetAttachParent();
+	const FTransform ParentTransform =
+		MeshParent != nullptr ? MeshParent->GetComponentTransform() : FTransform::Identity;
+	TArray<FVector> Local;
+	Local.SetNum(FlexVertNum);
+	for (int32 v = 0; v < FlexVertNum; ++v)
+	{
+		Local[v] = ParentTransform.InverseTransformPosition(WorldPositions[v]);
+	}
+
+	// Area-weighted vertex normals at this pose (the UMjSkincomp build pattern).
+	// Static from here on: the per-frame writeback moves positions only, exactly
+	// as the authored path keeps its source mesh's rest normals.
+	TArray<FVector> VertNormals;
+	VertNormals.Init(FVector::ZeroVector, FlexVertNum);
+	for (const UE::Geometry::FIndex3i& T : NormalTris)
+	{
+		if (T.A < 0 || T.A >= FlexVertNum || T.B < 0 || T.B >= FlexVertNum
+			|| T.C < 0 || T.C >= FlexVertNum)
+		{
+			continue;
+		}
+		const FVector N = FVector::CrossProduct(Local[T.B] - Local[T.A], Local[T.C] - Local[T.A]);
+		VertNormals[T.A] += N;
+		VertNormals[T.B] += N;
+		VertNormals[T.C] += N;
+	}
+
+	const int32 TexAdr = Model.flex_texcoordadr[FlexId];
+	const bool bHasUVs = TexAdr >= 0 && Model.flex_texcoord != nullptr;
+
+	DynamicMesh->EditMesh([&](UE::Geometry::FDynamicMesh3& Mesh) {
+		Mesh.Clear();
+		Mesh.EnableAttributes();
+		Mesh.Attributes()->SetNumNormalLayers(1);
+		if (bHasUVs)
+		{
+			Mesh.Attributes()->SetNumUVLayers(1);
+		}
+
+		UE::Geometry::FDynamicMeshNormalOverlay* Normals = Mesh.Attributes()->PrimaryNormals();
+		UE::Geometry::FDynamicMeshUVOverlay* UVs = bHasUVs ? Mesh.Attributes()->PrimaryUV() : nullptr;
+
+		// One overlay element per vertex, so triangles index identically below.
+		for (int32 v = 0; v < FlexVertNum; ++v)
+		{
+			Mesh.AppendVertex(FVector3d(Local[v].X, Local[v].Y, Local[v].Z));
+
+			const FVector Nn = VertNormals[v].GetSafeNormal();
+			Normals->AppendElement(FVector3f(
+				static_cast<float>(Nn.X), static_cast<float>(Nn.Y), static_cast<float>(Nn.Z)));
+
+			if (UVs != nullptr)
+			{
+				const float* T = Model.flex_texcoord + 2 * (TexAdr + v);
+				UVs->AppendElement(FVector2f(T[0], T[1]));
+			}
+		}
+
+		// Degenerate triangles are dropped: FDynamicMesh3 rejects them and would
+		// leave the overlays pointing at a triangle that does not exist.
+		for (const UE::Geometry::FIndex3i& T : Tris)
+		{
+			if (T.A == T.B || T.B == T.C || T.A == T.C
+				|| T.A < 0 || T.A >= FlexVertNum || T.B < 0 || T.B >= FlexVertNum
+				|| T.C < 0 || T.C >= FlexVertNum)
+			{
+				continue;
+			}
+			const int32 TriangleId = Mesh.AppendTriangle(T.A, T.B, T.C);
+			if (TriangleId >= 0)
+			{
+				Normals->SetTriangle(TriangleId, T);
+				if (UVs != nullptr)
+				{
+					UVs->SetTriangle(TriangleId, T);
+				}
+			}
+		}
+	},
+		EDynamicMeshComponentRenderUpdateMode::FullUpdate);
 }
 
 void UMjFlexcomp::ReleaseProceduralMesh()

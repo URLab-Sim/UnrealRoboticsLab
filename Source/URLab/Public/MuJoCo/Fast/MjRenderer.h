@@ -531,6 +531,13 @@ private:
 	TArray<TWeakObjectPtr<UMjFlexcomp>> MirrorFlexcomps;
 	bool bMirrorFlexcompsCached = false;
 
+	// The renderer-built mirror flex elements (strong: this actor owns them;
+	// authored ones are only weakly referenced through MirrorFlexcomps).
+	// Destroyed + reset in Teardown, so a model reload rebuilds them against the
+	// new model's flex table.
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMjFlexcomp>> BuiltMirrorFlexcomps;
+
 	// --- Mirror-side skin deformation (plan 9.5) --------------------------- //
 	// A skin is bone-driven linear-blend skinning: every render vertex is a pure
 	// function of (static skin_* arrays) x (the BONE-BODY transforms already on
@@ -656,6 +663,13 @@ private:
 
 	void BuildBodies();
 	void BuildGeoms();
+	// Populate MirrorFlexcomps: authored level flexcomps when the map ships any
+	// (they stay authoritative), else one renderer-owned UMjFlexcomp per compiled
+	// flex, built from the streamed model (the packaged-mirror empty-map case) --
+	// the flex twin of UpdateMirrorSkin's per-skin creation. Called lazily from
+	// UpdateMirrorFlex: the streamed-frame apply is the one path that is
+	// structurally mirror-only, so the owner/local-sim build never runs it.
+	void BuildFlexcomps();
 	// Collapse repeated (mesh, material) STATIC world-body geoms into one instanced
 	// component each (one draw call, still per-instance culled). Instances are set
 	// once from the rest pose; the geom ids handled here are added to OutHandled so

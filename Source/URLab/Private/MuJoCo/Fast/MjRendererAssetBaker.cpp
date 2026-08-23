@@ -537,27 +537,86 @@ void UMjRendererAssetBaker::ApplyGeomMaterial(UPrimitiveComponent* Comp, int32 G
 	const FMjMaterialValues Values = MjMaterialValuesFromModel(Model, G, BaseColor, GeomSize);
 	MjApplyMaterialParameters(*Mid, Values, BaseColor, FSpecRef(), GeomSize);
 
-	// Bind the real MJB textures for the roles this material fills. mat_texid is
-	// (nmat x mjNTEXROLE), role order matching EMjMaterialRole after the unused
-	// USER slot (offset +1). Colour roles sample sRGB; data roles linear.
-	const int32 MatId = Model->geom_matid[G];
+	// Bind the real MJB textures for the roles this material fills.
+	BindMaterialRoleTextures(*Mid, Model->geom_matid[G]);
+}
+
+void UMjRendererAssetBaker::BindMaterialRoleTextures(UMaterialInstanceDynamic& Mid, int32 MatId)
+{
+	if (!Model || MatId < 0)
+	{
+		return;
+	}
+	// mat_texid is (nmat x mjNTEXROLE), role order matching EMjMaterialRole after
+	// the unused USER slot (offset +1). Colour roles sample sRGB; data roles linear.
+	for (int32 R = 0; R < static_cast<int32>(EMjMaterialRole::Count); ++R)
+	{
+		const int32 TexId = Model->mat_texid[MatId * mjNTEXROLE + R + 1];
+		if (TexId < 0)
+		{
+			continue;
+		}
+		const EMjMaterialRole MatRole = static_cast<EMjMaterialRole>(R);
+		const bool bSRGB = (MatRole == EMjMaterialRole::Rgb || MatRole == EMjMaterialRole::Rgba
+			|| MatRole == EMjMaterialRole::Emissive);
+		const bool bNormal = (MatRole == EMjMaterialRole::Normal);
+		if (UTexture2D* Tex = GetOrBuildTexture(TexId, bSRGB, bNormal))
+		{
+			Mid.SetTextureParameterValue(MjMaterialRoleParameter(MatRole), Tex);
+		}
+	}
+}
+
+void UMjRendererAssetBaker::ApplyFlexMaterial(UPrimitiveComponent* Comp, int32 FlexId)
+{
+	if (!Master || !Comp || !Model || FlexId < 0 || FlexId >= Model->nflex)
+	{
+		return;
+	}
+	UMaterialInstanceDynamic* Mid = UMaterialInstanceDynamic::Create(Master, Comp);
+	if (!Mid)
+	{
+		return;
+	}
+	Comp->SetMaterial(0, Mid);
+
+	// The flex twin of MjMaterialValuesFromModel: the material's rgba when
+	// flex_matid names one, else the flex's own flex_rgba over the same matte
+	// no-material defaults a geom gets (shininess 0.2 folds to the 0.8 roughness
+	// MuJoCo's matte look wants). A flex has no planar extent, so the texuniform
+	// term is dropped (size 0).
+	FMjMaterialValues Values;
+	const int32 MatId = Model->flex_matid[FlexId];
+	const float* Rgba =
+		(MatId >= 0) ? (Model->mat_rgba + 4 * MatId) : (Model->flex_rgba + 4 * FlexId);
+	const FLinearColor BaseColor(Rgba[0], Rgba[1], Rgba[2], Rgba[3]);
 	if (MatId >= 0)
 	{
+		Values.bFound = true;
+		Values.Rgba = BaseColor;
+		Values.Emission = Model->mat_emission[MatId];
+		Values.Specular = Model->mat_specular[MatId];
+		Values.Shininess = Model->mat_shininess[MatId];
+		Values.Reflectance = Model->mat_reflectance[MatId];
+		Values.Metallic = Model->mat_metallic[MatId];
+		Values.Roughness = Model->mat_roughness[MatId];
+		Values.TexRepeat =
+			FVector2D(Model->mat_texrepeat[MatId * 2 + 0], Model->mat_texrepeat[MatId * 2 + 1]);
+		Values.bTexUniform = Model->mat_texuniform[MatId] != 0;
+		// Presence markers, so the scalar-vs-map guards inside
+		// MjApplyMaterialParameters read the model exactly as the geom path does.
 		for (int32 R = 0; R < static_cast<int32>(EMjMaterialRole::Count); ++R)
 		{
-			const int32 TexId = Model->mat_texid[MatId * mjNTEXROLE + R + 1];
-			if (TexId < 0)
+			if (Model->mat_texid[MatId * mjNTEXROLE + R + 1] >= 0)
 			{
-				continue;
-			}
-			const EMjMaterialRole MatRole = static_cast<EMjMaterialRole>(R);
-			const bool bSRGB = (MatRole == EMjMaterialRole::Rgb || MatRole == EMjMaterialRole::Rgba
-				|| MatRole == EMjMaterialRole::Emissive);
-			const bool bNormal = (MatRole == EMjMaterialRole::Normal);
-			if (UTexture2D* Tex = GetOrBuildTexture(TexId, bSRGB, bNormal))
-			{
-				Mid->SetTextureParameterValue(MjMaterialRoleParameter(MatRole), Tex);
+				Values.TextureNames[R] = TEXT("*");
 			}
 		}
 	}
+	else
+	{
+		Values.Shininess = 0.2f;
+	}
+	MjApplyMaterialParameters(*Mid, Values, BaseColor, FSpecRef(), FVector2D::ZeroVector);
+	BindMaterialRoleTextures(*Mid, MatId);
 }

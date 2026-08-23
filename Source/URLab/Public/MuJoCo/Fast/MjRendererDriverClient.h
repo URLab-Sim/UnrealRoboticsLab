@@ -24,7 +24,9 @@ struct URLAB_API FMjRendererDriverClient
 	 * selects the source: `mjb` (default) loads its `mjb` bytes as-is, while `xml`
 	 * recompiles the served MJCF and its `vfs_assets` bundle with this renderer's
 	 * own libmujoco -- immune to MJB version skew -- normalizing either to the MJB
-	 * returned in OutMjb. Synchronous with a short timeout; safe to call from the
+	 * returned in OutMjb. MJCF text served under `mjb` by an owner that failed to
+	 * declare `model_format` is detected (an MJB never starts with '<') and
+	 * compiled the same way. Synchronous with a short timeout; safe to call from the
 	 * editor or a headless driver. Returns false with OutError on any failure.
 	 */
 	static bool FetchModel(const FString& ControlEndpoint,

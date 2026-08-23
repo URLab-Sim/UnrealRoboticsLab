@@ -13,6 +13,7 @@
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "Transport/RpcClientTransport.h"
 #include "Utils/MsgpackHelpers.h"
+#include "Utils/URLabLogging.h"
 #include "Dom/JsonObject.h"
 #include "Misc/Base64.h"
 
@@ -66,18 +67,13 @@ bool FMjRendererDriverClient::FetchModel(const FString& ControlEndpoint,
 		FString Format = TEXT("mjb");
 		Reply->TryGetStringField(TEXT("model_format"), Format);
 
-		if (!Format.Equals(TEXT("mjb"), ESearchCase::IgnoreCase))
+		// Compile a non-MJB source (plus the reply's vfs_assets bundle) and
+		// normalize it to an MJB with this libmujoco -- exactly what the push path
+		// does in HandleFastpathLoad. Shared by the declared-format branch and the
+		// undeclared-XML fallback below.
+		auto CompileToMjb = [&Reply, &OutMjb, &OutError](
+			const TArray<uint8>& Src, const FString& SrcFormat) -> bool
 		{
-			// Non-MJB is served as text (MJCF) plus the VFS bundle it references, so
-			// it is normalized to an MJB with this libmujoco -- exactly what the push
-			// path does in HandleFastpathLoad -- and the rest of the load is unchanged.
-			FString Xml;
-			if (!Reply->TryGetStringField(TEXT("xml"), Xml) || Xml.IsEmpty())
-			{
-				OutError = FString::Printf(TEXT("reply advertised format '%s' but carried no xml"), *Format);
-				break;
-			}
-
 			// vfs_assets: each msgpack-bin value arrives base64-encoded under a
 			// `__b64__`-suffixed key; strip the suffix to recover the mount name the
 			// MJCF references, so a VFS built from this map resolves every `file=`.
@@ -99,16 +95,13 @@ bool FMjRendererDriverClient::FetchModel(const FString& ControlEndpoint,
 				}
 			}
 
-			const FTCHARToUTF8 XmlUtf8(*Xml);
-			TArray<uint8> XmlBytes;
-			XmlBytes.Append(reinterpret_cast<const uint8*>(XmlUtf8.Get()), XmlUtf8.Length());
-
 			FString CompileErr;
-			mjModel* Compiled = MjModelSource::FromBytes(XmlBytes, Format, Assets, CompileErr);
+			mjModel* Compiled = MjModelSource::FromBytes(Src, SrcFormat, Assets, CompileErr);
 			if (Compiled == nullptr)
 			{
-				OutError = FString::Printf(TEXT("owner-served %s did not compile: %s"), *Format, *CompileErr);
-				break;
+				OutError = FString::Printf(
+					TEXT("owner-served %s did not compile: %s"), *SrcFormat, *CompileErr);
+				return false;
 			}
 			const int32 Sz = mj_sizeModel(Compiled);
 			OutMjb.SetNumUninitialized(Sz);
@@ -117,6 +110,27 @@ bool FMjRendererDriverClient::FetchModel(const FString& ControlEndpoint,
 			if (OutMjb.Num() == 0)
 			{
 				OutError = TEXT("recompiled model serialized to zero bytes");
+				return false;
+			}
+			return true;
+		};
+
+		if (!Format.Equals(TEXT("mjb"), ESearchCase::IgnoreCase))
+		{
+			// Non-MJB is served as text (MJCF) plus the VFS bundle it references.
+			FString Xml;
+			if (!Reply->TryGetStringField(TEXT("xml"), Xml) || Xml.IsEmpty())
+			{
+				OutError = FString::Printf(TEXT("reply advertised format '%s' but carried no xml"), *Format);
+				break;
+			}
+
+			const FTCHARToUTF8 XmlUtf8(*Xml);
+			TArray<uint8> XmlBytes;
+			XmlBytes.Append(reinterpret_cast<const uint8*>(XmlUtf8.Get()), XmlUtf8.Length());
+
+			if (!CompileToMjb(XmlBytes, Format))
+			{
 				break;
 			}
 			Reply->TryGetStringField(TEXT("bus"), OutBusEndpoint);
@@ -138,6 +152,25 @@ bool FMjRendererDriverClient::FetchModel(const FString& ControlEndpoint,
 			OutError = RemoteErr.IsEmpty() ? TEXT("reply carried no mjb") : RemoteErr;
 			break;
 		}
+
+		// An older owner face may ship MJCF text under `mjb` WITHOUT declaring
+		// model_format (the pre-fix Python ZMQ hello did exactly that). Feeding
+		// text to mj_loadModelBuffer dies later with a misleading
+		// "version-mismatched MJB?"; a real MJB never starts with '<' (its header
+		// is a binary version int), so text here IS a source document -- route it
+		// through the same in-engine compile as a declared xml.
+		if (OutMjb[0] == uint8('<'))
+		{
+			UE_LOG(LogURLab, Warning,
+				TEXT("[MjRenderer] owner served XML text under 'mjb' without model_format "
+					 "(%d bytes); compiling it as MJCF instead"), OutMjb.Num());
+			const TArray<uint8> Src = MoveTemp(OutMjb);
+			if (!CompileToMjb(Src, TEXT("xml")))
+			{
+				break;
+			}
+		}
+
 		Reply->TryGetStringField(TEXT("bus"), OutBusEndpoint);
 		bOk = true;
 	} while (false);

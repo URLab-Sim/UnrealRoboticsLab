@@ -187,6 +187,15 @@ private:
 	FVector MeshExtent[static_cast<int32>(EMjMesh::Count)] = {};
 	float MeshPivotZ[static_cast<int32>(EMjMesh::Count)] = {};
 
+	// Authored master material (/UnrealRoboticsLab/Materials/M_MjOverlay) that reads the
+	// 4-float PerInstanceCustomData (RGBA) written on every instance -> Emissive+BaseColor
+	// (RGB) + Opacity (A), Translucent, Unlit, two-sided. When loaded it renders true
+	// per-instance colour + translucency from a single pool per mesh (the colour key
+	// collapses). Null when the asset is absent -> the OpaqueBaseMaterial + per-pool MID
+	// path below is used instead, so the renderer never hard-depends on the asset.
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> CustomDataMaterial;
+
 	// Fallback overlay material. Per-instance colour is carried both by the per-pool
 	// MID (correct today) and by 4-float PerInstanceCustomData (RGBA, forward-compatible
 	// with an authored master material that reads it). See the .cpp header note.

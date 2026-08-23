@@ -11,20 +11,24 @@
 // authoring. Pools are cleared + refilled each frame (one-frame lifetime, matching
 // the old DrawDebug persist=false path) with high-water-mark component reuse.
 //
-// CONTENT-ASSET GAP (flagged): true per-instance colour + translucency + a
-// jump-flood selection outline all need an authored master material that reads
-// PerInstanceCustomData and is set Translucent / custom-depth -- a .uasset that
-// cannot be created headlessly. Until it exists this renderer falls back to:
+// OVERLAY MASTER MATERIAL: true per-instance colour + translucency come from an
+// authored master material, /UnrealRoboticsLab/Materials/M_MjOverlay, that reads the
+// 4-float PerInstanceCustomData (RGBA) written on every instance -> Emissive+BaseColor
+// (RGB) + Opacity (A), Translucent / Unlit / two-sided. It is authored headlessly by
+// Scripts/Editor/create_overlay_material.py and cook-included via the host project's
+// DirectoriesToAlwaysCook=/UnrealRoboticsLab/Materials. When present, every colour of
+// a mesh shares ONE pool (the colour key collapses) and colour+alpha are per-instance.
+//
+// FALLBACK (asset absent -- not yet authored, or load failed): the renderer degrades
+// to the original path so the build/runtime never hard-depend on the .uasset:
 //   * per-instance colour via a per-(mesh,colour,blend) POOL SPLIT, each pool's
-//     UMaterialInstanceDynamic carrying the colour (correct colour today);
-//   * 4-float PerInstanceCustomData (RGBA) written on every instance regardless,
-//     so swapping in the authored material is plug-and-play (collapse the colour
-//     key, keep the custom data);
-//   * BasicShapeMaterial as the opaque fallback; a translucent engine material is
-//     used when found, else translucent overlays render opaque (alpha in custom
-//     data only);
-//   * custom-depth marking on the selection pool (the outline post-process
-//     material itself is the one remaining authored-asset task).
+//     UMaterialInstanceDynamic carrying the colour (correct colour, opaque);
+//   * BasicShapeMaterial as the opaque base; a translucent engine material is used
+//     when found, else translucent overlays render opaque (alpha in custom data only).
+// The 4-float PerInstanceCustomData (RGBA) is written on every instance in BOTH modes.
+//
+// A jump-flood selection outline still needs its own authored post-process material;
+// the selection pool is marked custom-depth here so that outline can pick it out.
 // -----------------------------------------------------------------------------
 
 #include "MuJoCo/Entity/MjOverlayRenderer.h"
@@ -146,6 +150,23 @@ void UMjOverlayRenderer::EnsureResources()
 		}
 	}
 
+	// Authored master material: reads the 4-float PerInstanceCustomData (RGBA) this
+	// renderer writes on every instance -> Emissive+BaseColor (RGB) + Opacity (A),
+	// Translucent, Unlit, two-sided. When present it renders true per-instance colour
+	// AND translucency from one pool, so the per-colour pool split collapses (all
+	// instances of a mesh share one component regardless of colour/alpha). Authored
+	// headlessly by Scripts/Editor/create_overlay_material.py. If it fails to load
+	// (asset not yet cooked/authored) we fall back to the opaque BasicShapeMaterial +
+	// per-pool MID colour below, so the build/runtime never depend on the asset.
+	CustomDataMaterial = LoadObject<UMaterialInterface>(
+		nullptr, TEXT("/UnrealRoboticsLab/Materials/M_MjOverlay.M_MjOverlay"));
+	if (!CustomDataMaterial)
+	{
+		UE_LOG(LogURLab, Log,
+			TEXT("Overlay renderer: M_MjOverlay not found -- falling back to opaque per-pool tint. "
+				 "Author it with Scripts/Editor/create_overlay_material.py."));
+	}
+
 	// Fallback material: BasicShapeMaterial (opaque). Probe a colour vector param the
 	// same way the tendon overlay does.
 	OpaqueBaseMaterial = LoadObject<UMaterialInterface>(
@@ -196,9 +217,14 @@ UInstancedStaticMeshComponent* UMjOverlayRenderer::GetPool(FPoolLayer& Layer, EM
 		return nullptr;
 	}
 
+	// With the authored PerInstanceCustomData material the colour + alpha live in the
+	// per-instance data, so every colour of a mesh shares ONE pool -- collapse the
+	// colour key. Without it, colour comes from the per-pool MID, so the colour stays
+	// in the key (one component per distinct colour, as before).
+	const uint32 ColorKey = CustomDataMaterial ? 0u : Color.ToPackedARGB();
 	const uint64 Key = (static_cast<uint64>(Mesh) << 34) | (static_cast<uint64>(bCustomDepth ? 1 : 0) << 33)
 					   | (static_cast<uint64>(bTranslucent ? 1 : 0) << 32)
-					   | static_cast<uint64>(Color.ToPackedARGB());
+					   | static_cast<uint64>(ColorKey);
 
 	if (TObjectPtr<UInstancedStaticMeshComponent>* Found = Layer.Pools.Find(Key))
 	{
@@ -221,19 +247,31 @@ UInstancedStaticMeshComponent* UMjOverlayRenderer::GetPool(FPoolLayer& Layer, EM
 	ISM->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	ISM->SetCastShadow(false); // decor casts no shadows (matches mjCAT_DECOR)
 	ISM->SetCanEverAffectNavigation(false);
-	ISM->SetNumCustomDataFloats(4); // RGBA, for a future PerInstanceCustomData material
+	ISM->SetNumCustomDataFloats(4); // RGBA, read by M_MjOverlay's PerInstanceCustomData
 	ISM->RegisterComponent();
 	ISM->AttachToComponent(this, FAttachmentTransformRules::KeepWorldTransform);
 
-	UMaterialInterface* Base = (bTranslucent && TranslucentBaseMaterial)
-								   ? TranslucentBaseMaterial.Get()
-								   : OpaqueBaseMaterial.Get();
-	if (Base)
+	if (CustomDataMaterial)
 	{
-		UMaterialInstanceDynamic* MID = ISM->CreateDynamicMaterialInstance(0, Base);
-		if (MID && !ColorParamName.IsNone())
+		// Authored master material reads per-instance RGBA custom data directly, so it
+		// needs no MID and no colour param -- set it flat on the pool. Colour + alpha
+		// are supplied per instance in AddPrim.
+		ISM->SetMaterial(0, CustomDataMaterial.Get());
+	}
+	else
+	{
+		// Fallback: opaque (or translucent-if-available) base + a per-pool MID carrying
+		// this pool's single colour.
+		UMaterialInterface* Base = (bTranslucent && TranslucentBaseMaterial)
+									   ? TranslucentBaseMaterial.Get()
+									   : OpaqueBaseMaterial.Get();
+		if (Base)
 		{
-			MID->SetVectorParameterValue(ColorParamName, Lin(Color));
+			UMaterialInstanceDynamic* MID = ISM->CreateDynamicMaterialInstance(0, Base);
+			if (MID && !ColorParamName.IsNone())
+			{
+				MID->SetVectorParameterValue(ColorParamName, Lin(Color));
+			}
 		}
 	}
 

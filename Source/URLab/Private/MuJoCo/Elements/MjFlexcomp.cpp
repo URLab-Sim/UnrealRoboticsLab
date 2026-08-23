@@ -730,7 +730,11 @@ void UMjFlexcomp::BuildModelSurface(const mjModel& Model, const TArray<FVector>&
 	// triangles and draw both windings, exactly like MuJoCo's flexskin mode; a
 	// 3D flex draws its outward-oriented shell fragments. A 1D flex (lines) has
 	// no surface to mesh. Normals accumulate over one winding only -- the
-	// mirrored 2D faces would cancel their own normals otherwise.
+	// mirrored 2D faces would cancel their own normals otherwise. That winding is
+	// stored SWAPPED (v0,v2,v1): MjPositionToUe's Y-flip reverses winding sense, so
+	// raw MuJoCo element order yields inward normals (surface lit from inside --
+	// shadows land on the wrong side); the swap makes them outward. Feeds both the
+	// build-time and the per-frame (ApplyFlexWorldPositions) normal accumulation.
 	const int32 Dim = Model.flex_dim[FlexId];
 	TArray<UE::Geometry::FIndex3i> Tris;
 	NormalTris.Reset();
@@ -744,7 +748,7 @@ void UMjFlexcomp::BuildModelSurface(const mjModel& Model, const TArray<FVector>&
 			const int* E = Model.flex_elem + Model.flex_elemdataadr[FlexId] + e * 3;
 			Tris.Add(UE::Geometry::FIndex3i(E[0], E[1], E[2]));
 			Tris.Add(UE::Geometry::FIndex3i(E[0], E[2], E[1]));
-			NormalTris.Add(UE::Geometry::FIndex3i(E[0], E[1], E[2]));
+			NormalTris.Add(UE::Geometry::FIndex3i(E[0], E[2], E[1]));
 		}
 	}
 	else if (Dim == 3)
@@ -756,7 +760,7 @@ void UMjFlexcomp::BuildModelSurface(const mjModel& Model, const TArray<FVector>&
 		{
 			const int* S = Model.flex_shell + Model.flex_shelldataadr[FlexId] + s * 3;
 			Tris.Add(UE::Geometry::FIndex3i(S[0], S[1], S[2]));
-			NormalTris.Add(UE::Geometry::FIndex3i(S[0], S[1], S[2]));
+			NormalTris.Add(UE::Geometry::FIndex3i(S[0], S[2], S[1]));
 		}
 	}
 	if (Tris.Num() == 0)

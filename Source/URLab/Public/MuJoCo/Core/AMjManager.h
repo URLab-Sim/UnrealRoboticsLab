@@ -478,12 +478,32 @@ public:
 	 *  that asks for contacts/overlay populates it via ParseRenderDebugCaps and it
 	 *  gates what PublishRenderFrame appends. */
 	FMjRenderDebugCaps ActiveRenderDebugCaps;
+	/** Guards ActiveRenderDebugCaps: written on a gRPC server thread (a mirror's
+	 *  subscribe, via ApplyRenderDebugCapsFromSubscribe) and read on the physics
+	 *  thread (PublishRenderFrame). Matches the FCriticalSection pattern used by the
+	 *  snapshot/state consumer registries and the gRPC render cache. */
+	mutable FCriticalSection RenderDebugCapsLock;
+	/** Fold a render subscriber's negotiated debug caps -- parsed from its RAW
+	 *  subscribe payload ({contacts, overlay, maxcontacts}) -- into
+	 *  ActiveRenderDebugCaps, thread-safely. Bound to
+	 *  FMjExternalTransportProvider::OnRenderDebugCapsRequested so a UE gRPC owner
+	 *  honors what a mirror asks for (the reverse leg of the render sink). Caps are
+	 *  UNIONed (OR'd), never cleared: with >1 subscriber the owner streams the
+	 *  superset any mirror requested (caps are per-owner, §8.2/9.1). A lean mirror's
+	 *  payload parses to no caps, so a session with only lean subscribers keeps the
+	 *  caps off and pays zero extra bytes. */
+	void ApplyRenderDebugCapsFromSubscribe(const TArray<uint8>& SubscribePayload);
 	/** Encode the render tier (+ optional debug fields) from (m,d) and PUB it on
 	 *  the viewer bus under the "render" topic, so a fast-path renderer can mirror
 	 *  this owner with no physics. */
 	void PublishRenderFrame(struct mjModel_* m, struct mjData_* d);
 	/** Monotonic frame id for the render bus. */
 	uint64 GeomBroadcastFrame = 0;
+	/** Binds FMjExternalTransportProvider::OnRenderDebugCapsRequested (in BeginPlay,
+	 *  on the owning Instance) -> ApplyRenderDebugCapsFromSubscribe, so a mirror's
+	 *  gRPC subscribe reaches this owner's caps. Removed in EndPlay so the gRPC
+	 *  thread never invokes a lambda capturing a destroyed manager. */
+	FDelegateHandle RenderDebugCapsHandle;
 
 protected:
 	struct FRegisteredSnapshotPublisher

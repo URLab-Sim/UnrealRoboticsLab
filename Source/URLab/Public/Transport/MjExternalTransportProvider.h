@@ -63,6 +63,18 @@ DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalC
 // bound ZMQ viewer bus (H3). Multicast so >1 backend can listen; unbound is a
 // no-op.
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMjViewerFrameSink, const FString& /*Topic*/, const TArray<uint8>& /*Payload*/);
+// Render subscriber -> owner (the reverse leg of OnViewerFrame). A mirror's
+// subscribe request negotiates the debug tier (§8.2) by carrying
+// {contacts, overlay, maxcontacts} in its subscribe payload. An external server
+// (gRPC) broadcasts that RAW subscribe payload here when a mirror subscribes; the
+// owning AAMjManager binds this, parses it via ParseRenderDebugCaps, and folds it
+// (union) into its thread-safe ActiveRenderDebugCaps so PublishRenderFrame
+// serializes the requested contact/overlay tier. Carrying the raw bytes (not a
+// typed struct) keeps this header decoupled from AAMjManager::FMjRenderDebugCaps.
+// A lean mirror sends the bare {format:"render"} payload, which parses to no caps,
+// so the owner still streams zero debug bytes. Multicast so a single owner picks
+// it up; unbound (no owner) is a no-op.
+DECLARE_MULTICAST_DELEGATE_OneParam(FMjRenderDebugCapsSink, const TArray<uint8>& /*SubscribePayload*/);
 
 /**
  * @struct FMjExternalRpcTransportFactory
@@ -133,6 +145,13 @@ struct URLAB_API FMjExternalTransportProvider
 	 *  gRPC server), tagged by tier topic ("render" transforms / "viewer" qpos).
 	 *  Unbound => no extra fan-out. */
 	static FMjViewerFrameSink OnViewerFrame;
+
+	/** A render subscriber's negotiated debug-tier caps, carried owner-ward as the
+	 *  raw subscribe payload. Broadcast by an external server (gRPC) when a mirror
+	 *  subscribes; bound by the owning AAMjManager, which parses + unions it into
+	 *  ActiveRenderDebugCaps (thread-safe). The reverse leg of OnViewerFrame.
+	 *  Unbound (no owner listening) => no-op. */
+	static FMjRenderDebugCapsSink OnRenderDebugCapsRequested;
 
 	/** True when at least one external module has registered a control RPC factory. */
 	static bool HasControlRpcTransport();

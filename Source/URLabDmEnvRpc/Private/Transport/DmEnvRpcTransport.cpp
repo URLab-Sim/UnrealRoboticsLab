@@ -121,6 +121,41 @@ public:
 					// owner, so a UE lean gRPC mirror renders over pure gRPC.
 					if (InPacket.op() == "subscribe")
 					{
+						// Route the subscribe's debug-tier negotiation back to the UE
+						// owner. The mirror packs {contacts, overlay, maxcontacts} into
+						// the subscribe payload (DmEnvRpcClientTransports RunLoop); the
+						// owning AAMjManager binds OnRenderDebugCapsRequested and folds
+						// (unions) it into its thread-safe ActiveRenderDebugCaps, so a UE
+						// gRPC owner serializes the requested contacts/overlay tier -- the
+						// reverse leg of the OnViewerFrame render sink. A lean mirror sends
+						// the bare {format:"render"} payload, which parses to no caps, so
+						// the owner still streams zero debug bytes.
+						//
+						// Hop to a UE-managed background thread before broadcasting: the
+						// owner's handler parses the payload via msgpack + JSON, and (per
+						// the ProcessRequestBytes note above) UE JSON/msgpack allocation on
+						// a raw gRPC thread SEGVs. Fire-and-forget -- the caps only need to
+						// land once, and the frame stream below proceeds independently, so
+						// at most the first frame or two after subscribe omit the debug
+						// tier before the caps apply. (AsyncTask enqueues from any thread,
+						// as the request paths below already rely on.) Copy the payload by
+						// value so it outlives this Read iteration.
+						if (FMjExternalTransportProvider::OnRenderDebugCapsRequested.IsBound()
+							&& InPacket.payload().size() > 0)
+						{
+							TArray<uint8> SubBytes(
+								reinterpret_cast<const uint8*>(InPacket.payload().data()),
+								InPacket.payload().size());
+							AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask,
+								[SubBytes = MoveTemp(SubBytes)]()
+								{
+									if (FMjExternalTransportProvider::OnRenderDebugCapsRequested.IsBound())
+									{
+										FMjExternalTransportProvider::OnRenderDebugCapsRequested.Broadcast(SubBytes);
+									}
+								});
+						}
+
 						const int64 Seq = InPacket.sequence_id();
 						uint64 LastSeq = 0;
 						TArray<uint8> Frame;

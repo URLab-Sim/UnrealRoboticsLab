@@ -28,6 +28,7 @@ TMap<FString, FMjMakeExternalClientSubscribeTransport> FMjExternalTransportProvi
 TMap<FString, FMjMakeExternalRpcClientTransport> FMjExternalTransportProvider::RpcClientTransportFactories;
 FMjMakeExternalCameraPublishTransport FMjExternalTransportProvider::MakeCameraPublishTransport;
 FMjViewerFrameSink FMjExternalTransportProvider::OnViewerFrame;
+FMjRenderDebugCapsSink FMjExternalTransportProvider::OnRenderDebugCapsRequested;
 
 bool FMjExternalTransportProvider::HasControlRpcTransport()
 {

@@ -193,6 +193,19 @@ void AAMjManager::BeginPlay()
 	}
 	Instance = this;
 
+	// Route a mirror's gRPC subscribe caps back to this owner. The external server
+	// (URLabDmEnvRpc) broadcasts the raw subscribe payload on a gRPC thread when a
+	// mirror subscribes; fold it (union) into ActiveRenderDebugCaps thread-safely so
+	// a UE gRPC owner -- not just a Python owner -- serializes the requested
+	// contacts/overlay tier. The reverse leg of the OnViewerFrame render sink; only
+	// the owning Instance binds it (the multi-manager guard above returned early for
+	// any other actor). Removed in EndPlay before the manager is torn down.
+	RenderDebugCapsHandle = FMjExternalTransportProvider::OnRenderDebugCapsRequested.AddLambda(
+		[this](const TArray<uint8>& SubscribePayload)
+		{
+			ApplyRenderDebugCapsFromSubscribe(SubscribePayload);
+		});
+
 	// Auto-create ReplayManager BEFORE the dispatcher / ZMQ components so the
 	// dispatcher's Init can cache its pointer. (Transport worker threads later
 	// read this cache to avoid TActorIterator, which asserts IsInGameThread.)
@@ -688,6 +701,24 @@ AAMjManager::FMjRenderDebugCaps AAMjManager::ParseRenderDebugCaps(
 	return Caps;
 }
 
+void AAMjManager::ApplyRenderDebugCapsFromSubscribe(const TArray<uint8>& SubscribePayload)
+{
+	// A render subscriber (e.g. a UE lean gRPC mirror) negotiated the debug tier in
+	// its subscribe payload; parse it with the same reader the Python owner mirrors
+	// (§8.2 {contacts, overlay, maxcontacts}). Runs on a gRPC server thread; the
+	// physics thread reads ActiveRenderDebugCaps in PublishRenderFrame, so publish
+	// under the lock. UNION (never clear): with >1 subscriber the owner streams the
+	// superset any mirror asked for, so a later lean subscribe can't strip a cap an
+	// earlier subscriber requested (caps are per-owner, §9.1). A session of only
+	// lean subscribers parses to no caps and stays at zero extra bytes.
+	const FMjRenderDebugCaps Req = ParseRenderDebugCaps(SubscribePayload);
+	FScopeLock Lock(&RenderDebugCapsLock);
+	ActiveRenderDebugCaps.bStreamContacts |= Req.bStreamContacts;
+	ActiveRenderDebugCaps.bStreamOverlay  |= Req.bStreamOverlay;
+	ActiveRenderDebugCaps.MaxContacts =
+		FMath::Max(ActiveRenderDebugCaps.MaxContacts, Req.MaxContacts);
+}
+
 void AAMjManager::AppendRenderDebugFields(TSharedPtr<FJsonObject>& Frame,
 	mjModel* m, mjData* d, const FMjRenderDebugCaps& Caps)
 {
@@ -835,8 +866,15 @@ void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
 	// subscriber negotiated (ParseRenderDebugCaps populates ActiveRenderDebugCaps
 	// off the subscribe request). Default is none, so a lean mirror -- and the
 	// topic-per-tier ZMQ bus, which advertises the render tier only -- pays zero
-	// extra bytes. The gRPC render cache re-uses this same assembled frame.
-	AppendRenderDebugFields(Obj, m, d, ActiveRenderDebugCaps);
+	// extra bytes. The gRPC render cache re-uses this same assembled frame. Copy the
+	// caps under the lock: a mirror's gRPC subscribe assigns them on a server thread
+	// (ApplyRenderDebugCapsFromSubscribe) while this reads on the physics thread.
+	FMjRenderDebugCaps CapsSnapshot;
+	{
+		FScopeLock Lock(&RenderDebugCapsLock);
+		CapsSnapshot = ActiveRenderDebugCaps;
+	}
+	AppendRenderDebugFields(Obj, m, d, CapsSnapshot);
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 	if (Buf.Num() == 0)
@@ -909,6 +947,14 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 
 void AAMjManager::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	// Unbind the gRPC subscribe-caps route first, so the gRPC server thread can no
+	// longer invoke a lambda capturing this soon-to-be-destroyed manager.
+	if (RenderDebugCapsHandle.IsValid())
+	{
+		FMjExternalTransportProvider::OnRenderDebugCapsRequested.Remove(RenderDebugCapsHandle);
+		RenderDebugCapsHandle.Reset();
+	}
+
 	// Retire the compiled render view before the engine frees its borrowed model.
 	if (CompiledRenderView)
 	{

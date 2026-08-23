@@ -2643,6 +2643,24 @@ AAMjManager* AMjRenderer::EnsureManager()
 			Mgr->bAcceptInput = Caps.bInput.GetValue();
 		}
 	}
+
+	// Phase 6.1 (⚠-2): the NoManager fastpath ops (fastpath_load / fastpath_render)
+	// find their target AMjRenderer through a world resolver on the dispatcher, not
+	// through the manager. Point it at THIS renderer's world so the ops no longer
+	// hard-depend on OwnerMgr; a lean render server (bridge, no manager -- Phase 6.2)
+	// will keep working through the same resolver. With a manager present this is the
+	// same world the ops used via OwnerMgr, so behavior is unchanged. Captured weakly:
+	// the resolver runs on the game thread when an op fires.
+	if (Mgr)
+	{
+		if (FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher())
+		{
+			TWeakObjectPtr<AMjRenderer> WeakThis(this);
+			Disp->SetRenderWorldResolver([WeakThis]() -> UWorld* {
+				return WeakThis.IsValid() ? WeakThis->GetWorld() : nullptr;
+			});
+		}
+	}
 	return Mgr;
 }
 

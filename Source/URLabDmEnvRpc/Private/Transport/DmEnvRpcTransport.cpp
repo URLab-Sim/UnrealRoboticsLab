@@ -282,21 +282,13 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 		SetListenPort(PortOverride);
 	}
 
-	// Cache the owner's per-step render frames so a subscribe stream can serve them.
-	// One sink for the "render" tier (transforms + optional debug), streamed as
-	// "view_frame" by subscribe(format=render). Binding it here is the H3 fix -- the
-	// gRPC egress no longer depends on a bound ZMQ viewer bus. Bound only while this
-	// transport is up. (The qpos "viewer" tier was removed in Phase 3.2.)
-	ViewerSinkHandle = FMjExternalTransportProvider::OnViewerFrame.AddLambda(
-		[this](const FString& Topic, const TArray<uint8>& Bytes)
-		{
-			if (Topic == TEXT("render"))
-			{
-				SetRenderFrame(Bytes);
-			}
-		});
-
+	// Start the worker and block until it reports the REAL bind result before doing
+	// anything that treats this transport as live. std::promise is one-shot, so give
+	// it a fresh instance for this init and grab the paired future up front. (H2b)
 	bShouldStop.store(false);
+	BindResultPromise = std::promise<bool>();
+	std::future<bool> BindResultFuture = BindResultPromise.get_future();
+
 	WorkerRunnable = new FURLabDmEnvRpcRunnable(this);
 	WorkerThread = FRunnableThread::Create(WorkerRunnable, TEXT("URLabDmEnvRpcServer"), 0, TPri_AboveNormal);
 	if (!WorkerThread)
@@ -306,6 +298,42 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 		WorkerRunnable = nullptr;
 		return false;
 	}
+
+	// Wait for the worker to actually bind the port. RunServerLoop sets this to true
+	// once grpc::Server is listening, or false if BuildAndStart() fails to bind (e.g.
+	// :50051 already in use). Blocking here keeps TransportInit honest -- a failed
+	// bind must return false so the caller never registers this as a live transport.
+	const bool bBound = BindResultFuture.get();
+	if (!bBound)
+	{
+		// Bind failed: the worker (RunServerLoop) has already returned. Join and tear
+		// it down. Crucially, no OnViewerFrame sink was registered yet, so a failed
+		// :50051 bind leaves NO live sink copying frames into a dead transport (H2b).
+		UE_LOG(LogURLabDmEnvRpc, Error, TEXT("[URLabDmEnvRpc] dm_env_rpc server failed to bind port %d; transport not registered."), ListenPort);
+		bShouldStop.store(true);
+		WorkerThread->WaitForCompletion();
+		delete WorkerThread;
+		WorkerThread = nullptr;
+		delete WorkerRunnable;
+		WorkerRunnable = nullptr;
+		return false;
+	}
+
+	// Port is bound. Only now cache the owner's per-step render frames so a subscribe
+	// stream can serve them. One sink for the "render" tier (transforms + optional
+	// debug), streamed as "view_frame" by subscribe(format=render). Binding it here is
+	// the H3 fix -- the gRPC egress no longer depends on a bound ZMQ viewer bus. Bound
+	// only while this transport is up (and, per H2b, only after a successful bind, so a
+	// dead transport never holds a live sink). (The qpos "viewer" tier was removed in
+	// Phase 3.2.)
+	ViewerSinkHandle = FMjExternalTransportProvider::OnViewerFrame.AddLambda(
+		[this](const FString& Topic, const TArray<uint8>& Bytes)
+		{
+			if (Topic == TEXT("render"))
+			{
+				SetRenderFrame(Bytes);
+			}
+		});
 
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] URLabDmEnvRpcTransport initialized on port %d."), ListenPort);
 	return true;
@@ -389,11 +417,17 @@ void UURLabDmEnvRpcTransport::RunServerLoop()
 	if (!StartedServer)
 	{
 		UE_LOG(LogURLabDmEnvRpc, Error, TEXT("[URLabDmEnvRpc] Failed to start dm_env_rpc server on %s"), UTF8_TO_TCHAR(ServerAddress.c_str()));
+		// Report the real bind failure back to TransportInit so it returns false and
+		// never registers a live sink for this dead transport (H2b). Returning here
+		// (with the promise satisfied) also unblocks init to tear the worker down.
+		BindResultPromise.set_value(false);
 		return;
 	}
 
 	Server.store(StartedServer.release());
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] dm_env_rpc gRPC server listening on %s"), UTF8_TO_TCHAR(ServerAddress.c_str()));
+	// Port is bound and the server is listening -- unblock TransportInit to proceed.
+	BindResultPromise.set_value(true);
 
 	while (!bShouldStop.load(std::memory_order_relaxed))
 	{

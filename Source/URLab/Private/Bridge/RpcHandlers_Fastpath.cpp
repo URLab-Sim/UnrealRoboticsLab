@@ -28,6 +28,33 @@ THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
 THIRD_PARTY_INCLUDES_END
 
+namespace
+{
+// Resolve the UWorld the NoManager fastpath ops (fastpath_load / fastpath_render)
+// act in. Phase 6.1 (⚠-2): prefer the dispatcher's render-world resolver (set at
+// renderer/bridge standup) so a lean render server with only a bridge -- no
+// AMjManager -- can find its AMjRenderer; fall back to the owning manager's world
+// so behavior is identical whenever a manager is present. Called on the game
+// thread (touches AActor::GetWorld); both arguments carry weak references, so it
+// is safe to invoke from a fire-and-forget AsyncTask.
+UWorld* ResolveFastpathWorld(const TFunction<UWorld*()>& Resolver,
+	const TWeakObjectPtr<AAMjManager>& WeakMgr)
+{
+	if (Resolver)
+	{
+		if (UWorld* World = Resolver())
+		{
+			return World;
+		}
+	}
+	if (AAMjManager* Mgr = WeakMgr.Get())
+	{
+		return Mgr->GetWorld();
+	}
+	return nullptr;
+}
+} // namespace
+
 // Fast-path owner handshake. A fast-path renderer (AMjRenderer) sends
 // `fastpath_hello` to pull this owner's compiled MJB and the transform-bus
 // endpoint, so it can build the scene with no shared file and subscribe to the
@@ -114,9 +141,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathHello(const TSharedPt
 // renderer on a different machine than the owner works -- this is a render server.
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr<FJsonObject>& Req)
 {
-	if (!OwnerMgr.IsValid())
+	// NoManager op (⚠-2): the load targets the AMjRenderer, not the manager. It is
+	// serviceable as long as we can resolve a render world -- from the renderer's
+	// resolver (lean render server, no manager) or, when a manager is present, from
+	// the manager (behavior-preserving fallback).
+	if (!RenderWorldResolver && !OwnerMgr.IsValid())
 	{
-		return MakeError(URLabError::NotReady, TEXT("no manager to load a fast-path scene into"));
+		return MakeError(URLabError::NotReady, TEXT("no renderer world to load a fast-path scene into"));
 	}
 
 	// New model bytes: msgpack bin arrives as base64 under a `__b64__`-suffixed key
@@ -181,9 +212,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr
 	// bytes now; the swap happens on the next game tick.
 	const int32 NumBytes = Mjb.Num();
 	TWeakObjectPtr<AAMjManager> WeakMgr = OwnerMgr;
-	AsyncTask(ENamedThreads::GameThread, [WeakMgr, Mjb = MoveTemp(Mjb)]() {
-		AAMjManager* Mgr = WeakMgr.Get();
-		UWorld* World = Mgr ? Mgr->GetWorld() : nullptr;
+	TFunction<UWorld*()> WorldResolver = RenderWorldResolver;
+	AsyncTask(ENamedThreads::GameThread,
+		[WeakMgr, WorldResolver = MoveTemp(WorldResolver), Mjb = MoveTemp(Mjb)]() {
+		UWorld* World = ResolveFastpathWorld(WorldResolver, WeakMgr);
 		if (World == nullptr)
 		{
 			return;
@@ -353,9 +385,13 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TShared
 // stream publishes) instead of exact-fresh.
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathRender(const TSharedPtr<FJsonObject>& Req)
 {
-	if (!OwnerMgr.IsValid())
+	// NoManager op (⚠-2): the render targets the AMjRenderer, not the manager, so it
+	// needs a render world -- from the renderer's resolver (lean render server, no
+	// manager) or, when a manager is present, from the manager (behavior-preserving
+	// fallback).
+	if (!RenderWorldResolver && !OwnerMgr.IsValid())
 	{
-		return MakeError(URLabError::NotReady, TEXT("no manager hosting a fast-path render server"));
+		return MakeError(URLabError::NotReady, TEXT("no renderer world hosting a fast-path render server"));
 	}
 
 	// Optional latency emulation: delay > 0 reads each camera's frame through its
@@ -382,9 +418,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathRender(const TSharedP
 	TSharedPtr<FResult, ESPMode::ThreadSafe> Res = MakeShared<FResult, ESPMode::ThreadSafe>();
 	Res->Done = FPlatformProcess::GetSynchEventFromPool(/*bIsManualReset=*/false);
 	TWeakObjectPtr<AAMjManager> WeakMgr = OwnerMgr;
-	AsyncTask(ENamedThreads::GameThread, [Res, WeakMgr, Req, Delay]() {
-		AAMjManager* Mgr = WeakMgr.Get();
-		UWorld* World = Mgr ? Mgr->GetWorld() : nullptr;
+	TFunction<UWorld*()> WorldResolver = RenderWorldResolver;
+	AsyncTask(ENamedThreads::GameThread,
+		[Res, WeakMgr, WorldResolver = MoveTemp(WorldResolver), Req, Delay]() {
+		UWorld* World = ResolveFastpathWorld(WorldResolver, WeakMgr);
 		AMjRenderer* Scene = nullptr;
 		if (World != nullptr)
 		{

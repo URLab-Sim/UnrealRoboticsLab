@@ -23,7 +23,9 @@
 
 class AAMjManager;
 class AMjReplayManager;
+class AMjRenderer;
 class UURLabBridgeServer;
+class UWorld;
 struct FMjStateSnapshot;
 struct FMjStepRequest;
 struct FMjDirectStepCommand;
@@ -66,6 +68,20 @@ public:
 	 *  no-manager ops (leasing) can reach per-instance state even before a
 	 *  scene/manager exists. */
 	void SetOwningBridge(UURLabBridgeServer* InBridge);
+
+	/** Resolver for the world the two NoManager fastpath ops (fastpath_load /
+	 *  fastpath_render) act in — the world they scan for (and, for load, spawn
+	 *  into) the target AMjRenderer. Set at renderer/bridge standup so these ops
+	 *  reach the renderer directly instead of through the manager, letting a lean
+	 *  render server (bridge, no AMjManager) answer them (Phase 6.1/6.2). When
+	 *  unset — or when it yields no world — the ops fall back to the owning
+	 *  manager's world, so behavior is identical whenever a manager is present.
+	 *  The functor is invoked on the game thread (it touches AActor::GetWorld),
+	 *  so it must capture weakly. */
+	void SetRenderWorldResolver(TFunction<UWorld*()> InResolver)
+	{
+		RenderWorldResolver = MoveTemp(InResolver);
+	}
 
 	/** Per-manager teardown: drop the manager pointer, uninstall step
 	 *  handlers, drain queues, reset per-PIE state (mode, step counter).
@@ -236,6 +252,12 @@ private:
 	 *  server leaves this null rather than dangling. Reached by the lease
 	 *  ops, which are per-process and independent of any manager. */
 	TWeakObjectPtr<UURLabBridgeServer> OwningBridge;
+
+	/** See SetRenderWorldResolver. Empty by default → the NoManager fastpath ops
+	 *  (fastpath_load / fastpath_render) resolve their world from OwnerMgr. Set
+	 *  at renderer standup; the two ops copy it (weak captures inside) into their
+	 *  game-thread task, so the manager is no longer a hard dependency (⚠-2). */
+	TFunction<UWorld*()> RenderWorldResolver;
 
 	/** Guards ActiveSessionId + step-handler install/uninstall. NOT held
 	 *  across handler bodies — Dispatch releases it before invoking. */

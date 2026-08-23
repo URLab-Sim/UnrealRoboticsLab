@@ -26,12 +26,10 @@
 #include "MuJoCo/Entity/MjEntity.h"
 #include "MuJoCo/Entity/MjControl.h"
 #include "MuJoCo/Entity/MjControlIngress.h"
-#include "Transport/NetworkManager.h"
 #include "zmq.h"
-#include "MuJoCo/Elements/MjCamera.h"
-#include "Serialization/JsonSerializer.h"
 #include "Dom/JsonObject.h"
-#include "Policies/CondensedJsonPrintPolicy.h"
+#include "Dom/JsonValue.h"
+#include "Utils/MsgpackHelpers.h"
 #include "Utils/URLabLogging.h"
 
 void UURLabZmqSubscribeTransport::SetOwningManager(AAMjManager* InMgr)
@@ -90,29 +88,14 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 		zmq_setsockopt(ControlSubscriber, ZMQ_SUBSCRIBE, "control ", 8);
 	}
 
-	// Setup Publisher (Info)
-	InfoPublisher = zmq_socket(ZmqContext, ZMQ_PUB);
-	int rcInfo = zmq_bind(InfoPublisher, TCHAR_TO_UTF8(*InfoEndpoint));
-	if (rcInfo != 0)
-	{
-		UE_LOG(LogURLabNet, Error, TEXT("Failed to bind Info PUB at %s"), *InfoEndpoint);
-		if (GEngine)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
-				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *InfoEndpoint));
-		}
-	}
-
-	// A partially-bound transport cannot function. If either bind failed,
-	// free all resources and leave bIsInitialized=false so callers (and
-	// ShutdownZmqSocket) see the failure instead of a false-positive init.
-	if (rcControl != 0 || rcInfo != 0)
+	// A failed bind means the transport cannot function. Free all resources
+	// and leave bIsInitialized=false so callers (and ShutdownZmqSocket) see
+	// the failure instead of a false-positive init.
+	if (rcControl != 0)
 	{
 		zmq_close(ControlSubscriber);
-		zmq_close(InfoPublisher);
 		zmq_ctx_term(ZmqContext);
 		ControlSubscriber = nullptr;
-		InfoPublisher = nullptr;
 		ZmqContext = nullptr;
 		return;
 	}
@@ -127,11 +110,9 @@ void UURLabZmqSubscribeTransport::ShutdownZmqSocket()
 		return;
 
 	zmq_close(ControlSubscriber);
-	zmq_close(InfoPublisher);
 	zmq_ctx_term(ZmqContext);
 
 	ControlSubscriber = nullptr;
-	InfoPublisher = nullptr;
 	ZmqContext = nullptr;
 	bIsInitialized = false;
 }
@@ -157,92 +138,6 @@ void UURLabZmqSubscribeTransport::BuildCache(mjModel* m)
 	}
 	bCacheBuilt = true;
 	UE_LOG(LogURLabNet, Log, TEXT("ZmqControlSubscriber: Built cache for %d actuators"), ActuatorToEntityName.Num());
-}
-
-void UURLabZmqSubscribeTransport::BroadcastInfo(mjModel* m)
-{
-	if (!InfoPublisher)
-		return;
-
-	AAMjManager* Manager = OwningManager.Get();
-	if (!Manager || !Manager->PhysicsEngine)
-		return;
-
-	// Broadcast an info message per entity
-	for (const FMjEntity& E : Manager->PhysicsEngine->GetEntityPartition())
-	{
-		FString EntityName = E.Name.ToString();
-
-		TSharedPtr<FJsonObject> RootObject = MakeShareable(new FJsonObject);
-		RootObject->SetStringField("type", "actuator_list");
-		RootObject->SetStringField("robot", EntityName);
-
-		TArray<TSharedPtr<FJsonValue>> NamesArray;
-		TArray<TSharedPtr<FJsonValue>> IdsArray;
-		TArray<TSharedPtr<FJsonValue>> MinsArray;
-		TArray<TSharedPtr<FJsonValue>> MaxsArray;
-
-		for (int32 Id : E.ActuatorIds)
-		{
-			if (Id < 0 || Id >= m->nu)
-				continue;
-
-			const char* NameC = mj_id2name(m, mjOBJ_ACTUATOR, Id);
-			FString Name = NameC ? UTF8_TO_TCHAR(NameC) : FString::Printf(TEXT("actuator_%d"), Id);
-			NamesArray.Add(MakeShareable(new FJsonValueString(Name)));
-			IdsArray.Add(MakeShareable(new FJsonValueNumber(Id)));
-
-			static constexpr float kDefaultCtrlMin = -100.0f;
-			static constexpr float kDefaultCtrlMax = 100.0f;
-			float min_val = kDefaultCtrlMin; // Default reasonable fallback if not limited
-			float max_val = kDefaultCtrlMax;
-			if (m->actuator_ctrllimited[Id])
-			{
-				min_val = (float)m->actuator_ctrlrange[Id * 2];
-				max_val = (float)m->actuator_ctrlrange[Id * 2 + 1];
-			}
-			MinsArray.Add(MakeShareable(new FJsonValueNumber(min_val)));
-			MaxsArray.Add(MakeShareable(new FJsonValueNumber(max_val)));
-		}
-
-		RootObject->SetArrayField("names", NamesArray);
-		RootObject->SetArrayField("ids", IdsArray);
-		RootObject->SetArrayField("mins", MinsArray);
-		RootObject->SetArrayField("maxs", MaxsArray);
-
-		// NEW: Include all Cameras for discovery
-		TArray<TSharedPtr<FJsonValue>> CameraArray;
-
-		TArray<UMjCamera*> ActiveCameras = Manager->NetworkManager ? Manager->NetworkManager->GetActiveCameras() : TArray<UMjCamera*>();
-		for (UMjCamera* Cam : ActiveCameras)
-		{
-			if (Cam && Cam->GetWorld() == Manager->GetWorld())
-			{
-				TSharedPtr<FJsonObject> CamObj = MakeShareable(new FJsonObject);
-				CamObj->SetStringField("name", Cam->GetName());
-
-				FString Endpoint = Cam->GetActualZmqEndpoint();
-				// Convert wildcard bind address back to local loopback for the Python client
-				Endpoint.ReplaceInline(TEXT("*"), TEXT("127.0.0.1"));
-				CamObj->SetStringField("endpoint", Endpoint);
-
-				CameraArray.Add(MakeShareable(new FJsonValueObject(CamObj)));
-			}
-		}
-		RootObject->SetArrayField("camera_list", CameraArray);
-
-		FString JsonString;
-		TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&JsonString);
-		FJsonSerializer::Serialize(RootObject.ToSharedRef(), Writer);
-
-		// Send via ZMQ. UTF-8 byte count, not TCHAR count.
-		const FTCHARToUTF8 JsonUtf8(*JsonString);
-		int rc = zmq_send(InfoPublisher, JsonUtf8.Get(), JsonUtf8.Length(), 0);
-		if (rc == -1)
-		{
-			UE_LOG(LogURLabNet, Error, TEXT("ZmqControlSubscriber: FAILED to broadcast Info JSON!"));
-		}
-	}
 }
 
 void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
@@ -278,18 +173,6 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 			return;
 		}
 	}
-
-	// Broadcast Info: frequently at startup (every 50 steps for first 5s),
-	// then periodically (every 500 steps ~1s)
-	static constexpr int32 kInfoBroadcastFast = 50;
-	static constexpr int32 kInfoBroadcastSlow = 500;
-	int BroadcastInterval = (TotalStepCount < 2500) ? kInfoBroadcastFast : kInfoBroadcastSlow;
-	if (++InfoBroadcastCounter >= BroadcastInterval)
-	{
-		BroadcastInfo(m);
-		InfoBroadcastCounter = 0;
-	}
-	TotalStepCount++;
 
 	// Read all available messages from SUB socket (Non-blocking)
 	while (true)
@@ -332,33 +215,45 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 			break;
 		}
 
-		int size = zmq_msg_size(&payload_msg);
-		char* data = (char*)zmq_msg_data(&payload_msg);
+		const int32 PayloadSize = (int32)zmq_msg_size(&payload_msg);
+		const uint8* PayloadData = (const uint8*)zmq_msg_data(&payload_msg);
 
 		// --- Handle control messages ---
-		if (size >= 4)
+		// Payload is a msgpack map `{ids:[...], vals:[...]}` (source-of-truth
+		// §9.3). Parsed via FURLabMsgpackUtil -- bounds-checked, no raw casts.
+		TSharedPtr<FJsonObject> Payload;
+		if (PayloadSize > 0 && FURLabMsgpackUtil::UnpackToJsonObject(PayloadData, PayloadSize, Payload) && Payload.IsValid())
 		{
 			AAMjManager* Manager = OwningManager.Get();
 			if (Manager && Manager->PhysicsEngine)
 			{
 				IMjControlIngress* Ingress = Manager->PhysicsEngine->GetControlIngress();
 
-				// Assumes x86-64 alignment and little-endian. For cross-platform, use memcpy + ntohl.
-				int32 NumControls = *(int32*)(data);
-				int32 ExpectedSize = 4 + NumControls * 8; // 4 + (4 + 4) * N
-
-				if (size >= ExpectedSize)
+				const TArray<TSharedPtr<FJsonValue>>* IdsArr = nullptr;
+				const TArray<TSharedPtr<FJsonValue>>* ValsArr = nullptr;
+				if (Payload->TryGetArrayField(TEXT("ids"), IdsArr) && IdsArr &&
+					Payload->TryGetArrayField(TEXT("vals"), ValsArr) && ValsArr)
 				{
-					int32* IDPtr = (int32*)(data + 4);
-					float* ValPtr = (float*)(data + 8);
+					const int32 NumControls = FMath::Min(IdsArr->Num(), ValsArr->Num());
 
 					static constexpr int32 kControlLogInterval = 500;
-					bool bShouldLog = (++ControlLogCounter % kControlLogInterval == 1); // Log every 500th batch
+					const bool bShouldLog = (++ControlLogCounter % kControlLogInterval == 1); // Log every 500th batch
 
-					for (int i = 0; i < NumControls; ++i)
+					if (IdsArr->Num() != ValsArr->Num())
 					{
-						int32 Idx = *IDPtr;
-						float Value = *ValPtr;
+						UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: ids/vals length mismatch (ids=%d, vals=%d) -- applying %d"),
+							IdsArr->Num(), ValsArr->Num(), NumControls);
+					}
+
+					for (int32 i = 0; i < NumControls; ++i)
+					{
+						const TSharedPtr<FJsonValue>& IdVal = (*IdsArr)[i];
+						const TSharedPtr<FJsonValue>& ValVal = (*ValsArr)[i];
+						if (!IdVal.IsValid() || !ValVal.IsValid())
+							continue;
+
+						const int32 Idx = (int32)IdVal->AsNumber();
+						const double Value = ValVal->AsNumber();
 
 						if (const FName* EntityName = ActuatorToEntityName.Find(Idx))
 						{
@@ -375,21 +270,23 @@ void UURLabZmqSubscribeTransport::PreStep(mjModel* m, mjData* d)
 						{
 							UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: Actuator ID %d not found in cache (cache size: %d)"), Idx, ActuatorToEntityName.Num());
 						}
-
-						IDPtr = (int32*)((char*)IDPtr + 8);
-						ValPtr = (float*)((char*)ValPtr + 8);
 					}
 
-					if (bShouldLog)
+					if (bShouldLog && NumControls > 0)
 					{
-						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: Applied %d controls (first val: %.4f, cache size: %d)"), NumControls, NumControls > 0 ? *(float*)(data + 8) : 0.0f, ActuatorToEntityName.Num());
+						const double FirstVal = (*ValsArr)[0].IsValid() ? (*ValsArr)[0]->AsNumber() : 0.0;
+						UE_LOG(LogURLabNet, Log, TEXT("ZmqControl: Applied %d controls (first val: %.4f, cache size: %d)"), NumControls, FirstVal, ActuatorToEntityName.Num());
 					}
 				}
 				else
 				{
-					UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: Size mismatch — got %d bytes, expected %d (NumControls=%d)"), size, ExpectedSize, NumControls);
+					UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: control payload missing 'ids'/'vals' arrays"));
 				}
 			}
+		}
+		else if (PayloadSize > 0)
+		{
+			UE_LOG(LogURLabNet, Warning, TEXT("ZmqControl: failed to unpack msgpack control payload (%d bytes)"), PayloadSize);
 		}
 
 		zmq_msg_close(&payload_msg);

@@ -17,6 +17,7 @@
 #include "CoreMinimal.h"
 #include "Transport/RpcTransport.h"
 #include <atomic>
+#include <future>
 #include <memory>
 #include "DmEnvRpcTransport.generated.h"
 
@@ -82,6 +83,14 @@ private:
 	// Published by the worker (RunServerLoop) and read/deleted by TransportShutdown
 	// on another thread -- atomic so the publish is visible without a data race.
 	std::atomic<grpc::Server*> Server{nullptr};
+
+	// The worker signals the ACTUAL gRPC bind result here; TransportInit blocks on
+	// the paired future until the :50051 port is bound (true) or the bind fails
+	// (false). This is the H2b fix -- init must not report success (and must not
+	// register the OnViewerFrame sink) before the port is really bound, otherwise a
+	// failed bind leaves a live sink copying every render frame into a dead
+	// transport. Re-assigned fresh each TransportInit (std::promise is one-shot).
+	std::promise<bool> BindResultPromise;
 
 	// Owner render sink handle. Binds FMjExternalTransportProvider::OnViewerFrame and
 	// routes the "render" tier topic -> SetRenderFrame, so the render tier reaches

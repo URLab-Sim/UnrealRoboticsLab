@@ -22,9 +22,15 @@ class AAMjManager;
 
 /**
  * @class UURLabZmqSubscribeTransport
- * @brief ZMQ SUB transport draining inbound control / xfrc messages on
- *        each PreStep, plus a small PUB channel that ships per-actuator
- *        metadata for client-side display.
+ * @brief ZMQ SUB transport draining inbound control messages on each
+ *        PreStep.
+ *
+ * The control-in payload is a msgpack map `{ids:[...], vals:[...]}`
+ * (source-of-truth §9.3) parsed via `FURLabMsgpackUtil` -- no raw
+ * pointer casts, bounds-checked. The legacy ad-hoc little-endian binary
+ * `[i32 n][i32 id, f32 val]*` format and the `:5557` JSON `actuator_list`
+ * info-broadcast PUB have been retired (client-side actuator metadata now
+ * rides the RPC handshake).
  *
  * UObject deriving from `UURLabSubscribeTransport`. Manager creates
  * via `NewObject` + `SetOwningManager` + `TransportInit`; per-step
@@ -42,9 +48,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
 	FString ControlEndpoint = "tcp://0.0.0.0:5556";
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ZMQ")
-	FString InfoEndpoint = "tcp://0.0.0.0:5557";
-
 	void SetOwningManager(AAMjManager* InMgr);
 
 	// UURLabSubscribeTransport contract.
@@ -52,8 +55,8 @@ public:
 	virtual void TransportShutdown() override;
 	virtual FString GetTransportName() const override { return TEXT("zmq-sub"); }
 	/** No-op: this subscriber dispatches messages internally on PreStep
-	 *  (legacy single-channel control + xfrc shape). The Subscribe API
-	 *  is reserved for future ROS-style topic registrations. */
+	 *  (single-channel msgpack control shape). The Subscribe API is
+	 *  reserved for future ROS-style topic registrations. */
 	virtual void Subscribe(const FString& /*Topic*/, FOnMessage /*Callback*/) override {}
 
 	// Per-step (Async / physics thread).
@@ -63,11 +66,8 @@ private:
 	TWeakObjectPtr<AAMjManager> OwningManager;
 	void* ZmqContext = nullptr;
 	void* ControlSubscriber = nullptr;
-	void* InfoPublisher = nullptr;
 	bool bIsInitialized = false;
 
-	int InfoBroadcastCounter = 0;
-	int TotalStepCount = 0;
 	TMap<int32, FName> ActuatorToEntityName;
 	bool bCacheBuilt = false;
 
@@ -76,5 +76,4 @@ private:
 	void InitZmqSocket();
 	void ShutdownZmqSocket();
 	void BuildCache(struct mjModel_* m);
-	void BroadcastInfo(struct mjModel_* m);
 };

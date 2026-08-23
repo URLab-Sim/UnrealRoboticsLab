@@ -251,9 +251,13 @@ void UURLabDmEnvRpcClientSubscribeTransport::RunLoop()
 	{
 		return;
 	}
-	// subscribe payload: {format: "transforms"} -> the owner streams view_frame(bxpos/bxquat).
+	// subscribe payload: {format: "render"} -> the owner streams the render tier as
+	// op "view_frame" (per-body bxpos/bxquat + optional camera/debug fields). The
+	// format token matches the Python owner and the UE server (owner_server.py
+	// _req_format / DmEnvRpcTransport subscribe handling): anything but "qpos"
+	// selects the render tier.
 	TSharedPtr<FJsonObject> SubObj = MakeShared<FJsonObject>();
-	SubObj->SetStringField(TEXT("format"), TEXT("transforms"));
+	SubObj->SetStringField(TEXT("format"), TEXT("render"));
 	TArray<uint8> SubPayload;
 	FURLabMsgpackUtil::PackJsonObject(SubObj, SubPayload);
 

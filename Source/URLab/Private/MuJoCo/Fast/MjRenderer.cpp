@@ -45,6 +45,7 @@
 #include "MuJoCo/Entity/MjEntity.h"
 #include "Transport/NetworkManager.h"
 #include "Transport/RpcClientTransport.h"
+#include "Async/Async.h"
 #include "MuJoCo/Utils/URLabAxisConv.h"
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Entity/MjAppearanceStore.h"
@@ -381,6 +382,7 @@ void AMjRenderer::BeginDestroy()
 {
 	// The editor can destroy/GC this actor without EndPlay; stop the worker
 	// thread before its members are torn down to avoid a use-after-free.
+	EndDragTransport();
 	StopBus();
 	// Editor-world preview actors never receive EndPlay (so Teardown never runs),
 	// which is the only other place Model/Data are freed -- free them here so the
@@ -2031,12 +2033,64 @@ void AMjRenderer::SendPerturbation(int32 Select, bool bActive,
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 
-	// Short-lived REQ; fire the request and read the ack so the REP stays in sync.
-	if (UURLabRpcClientTransport* Client = UURLabRpcClientTransport::Create(this, OwnerControlEndpoint))
+	// H5: one cached REQ client per drag. Create it lazily on the first send and
+	// reuse it for every subsequent tick, so a sustained ctrl-drag no longer
+	// creates/connects/destroys a transport (and blocks the game thread on the ack)
+	// every frame. Torn down by EndDragTransport on release / teardown.
+	if (!DragRpcClient)
+	{
+		DragRpcClient = UURLabRpcClientTransport::Create(this, OwnerControlEndpoint);
+		if (!DragRpcClient)
+		{
+			return; // owner unreachable right now; the next tick retries the connect
+		}
+	}
+
+	// The REQ socket is lockstep and single-threaded, so only one request may be in
+	// flight at a time.
+	const bool bBusy = DragSendTask.IsValid() && !DragSendTask.IsReady();
+	if (bBusy)
+	{
+		if (bActive)
+		{
+			// Drop this active-drag tick: the next idle tick sends the then-current
+			// target, so the drag coalesces to the latest instead of queueing. This
+			// is what keeps the game thread at frame rate against a slow owner.
+			return;
+		}
+		// The release (bActive=false) MUST land -- otherwise the owner keeps the
+		// latched wrench and the body drifts. Wait out the in-flight send (this is
+		// the only place SendPerturbation ever blocks, and only once per drag), then
+		// dispatch the deactivate below.
+		DragSendTask.Wait();
+	}
+
+	// Fire the request on a background task so the game thread never blocks on the
+	// owner's ack. DragRpcClient is kept alive by its UPROPERTY (this actor stays
+	// referenced), and the in-flight guard above means no other thread touches the
+	// socket while this task runs. The ack is best-effort and ignored.
+	UURLabRpcClientTransport* Client = DragRpcClient;
+	DragSendTask = Async(EAsyncExecution::ThreadPool, [Client, Payload = MoveTemp(Buf)]()
 	{
 		TArray<uint8> Ack;
-		Client->Request(Buf, Ack, 500); // best-effort ack
-		Client->TransportShutdown();
+		Client->Request(Payload, Ack, 500);
+	});
+}
+
+void AMjRenderer::EndDragTransport()
+{
+	// The REQ socket is not thread-safe, so it must never be closed under a running
+	// worker: wait out any in-flight send first. This blocks at most once per drag
+	// (on release / teardown), never per tick.
+	if (DragSendTask.IsValid())
+	{
+		DragSendTask.Wait();
+		DragSendTask = TFuture<void>();
+	}
+	if (DragRpcClient)
+	{
+		DragRpcClient->TransportShutdown();
+		DragRpcClient = nullptr;
 	}
 }
 
@@ -2131,6 +2185,8 @@ void AMjRenderer::ProcessMirrorPerturbationInput()
 			}
 			bMirrorDragActive = false;
 			MirrorDragBodyId = -1;
+			// Drag over: close the cached REQ client (after the deactivate lands).
+			EndDragTransport();
 		}
 		return;
 	}
@@ -2785,6 +2841,9 @@ bool AMjRenderer::HasReceivedFrame() const
 
 void AMjRenderer::Teardown()
 {
+	// Join any in-flight perturbation send and drop the cached drag client before we
+	// free anything, so a background REQ worker is never left running past teardown.
+	EndDragTransport();
 	StopBus();
 	// Direct mode aliased our raw model+data into the shared engine. Stop-join the
 	// physics worker and unalias (and clear the deferred-install timer) BEFORE the

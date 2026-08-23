@@ -634,18 +634,25 @@ void AAMjManager::PublishOnViewerBus(const FString& Topic, const TArray<uint8>& 
 			Pub->Publish(Topic, Payload);
 		}
 	}
-	// Fan the raw kinematics frame to any external backend (e.g. the gRPC
-	// subscribe_viewer stream) too, so a UE owner serves viewers over gRPC and ZMQ
-	// alike from the same per-step frame.
-	if (Topic == TEXT("viewer") && FMjExternalTransportProvider::OnViewerFrame.IsBound())
+	// Fan every tier to any external backend (e.g. the gRPC server), tagged by its
+	// topic, so a UE owner serves mirrors over gRPC and ZMQ alike from the same
+	// per-step frame. The backend selects the tier by topic ("render" transforms /
+	// "viewer" qpos) -- no "viewer"-only special case, so the "render" tier reaches
+	// the gRPC sink and pure-gRPC UE<->UE mirroring works (H3).
+	if (FMjExternalTransportProvider::OnViewerFrame.IsBound())
 	{
-		FMjExternalTransportProvider::OnViewerFrame.Broadcast(Payload);
+		FMjExternalTransportProvider::OnViewerFrame.Broadcast(Topic, Payload);
 	}
 }
 
 void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
 {
-	if (ViewerBusTransports.Num() == 0 || !m || !d)
+	// Build/publish when EITHER a ZMQ viewer bus OR an external (gRPC) sink is
+	// bound -- the gRPC egress is no longer hard-coupled to a bound ZMQ bus (H3),
+	// so the qpos tier reaches a pure-gRPC subscriber too.
+	if ((ViewerBusTransports.Num() == 0
+			&& !FMjExternalTransportProvider::OnViewerFrame.IsBound())
+		|| !m || !d)
 		return;
 	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
 	Obj->SetNumberField(TEXT("t"), d->time);
@@ -736,7 +743,13 @@ void AAMjManager::AppendRenderDebugFields(TSharedPtr<FJsonObject>& Frame,
 
 void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
 {
-	if (ViewerBusTransports.Num() == 0 || !m || !d)
+	// Build/publish when EITHER a ZMQ viewer bus OR an external (gRPC) sink is
+	// bound. This is the ⚠-1 unblocker: a UE owner with only a gRPC server (no ZMQ
+	// viewer bus) still produces the render tier, so a UE lean gRPC mirror renders
+	// over pure gRPC (H3) and Phase 3's qpos removal won't kill UE<->UE mirroring.
+	if ((ViewerBusTransports.Num() == 0
+			&& !FMjExternalTransportProvider::OnViewerFrame.IsBound())
+		|| !m || !d)
 		return;
 	TSharedPtr<FJsonObject> Obj = BuildRenderFrame(m, d);
 	// Debug tier carries no extra bytes over the ZMQ bus in 2.3: the topic-per-tier

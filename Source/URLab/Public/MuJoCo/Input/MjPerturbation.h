@@ -93,6 +93,19 @@ public:
 	/** Stop the current drag (mouse release). Selection persists. */
 	void StopDrag();
 
+	/** Apply a forwarded interactive drag INTENT from a remote mirror (the
+	 *  fastpath_perturb op). Drives the same mjv spring a local Ctrl-drag uses:
+	 *  on a new grab it snapshots the anchor pose + localmass for `Select`, and
+	 *  every call updates the spring target so the pre-step callback's
+	 *  mjv_applyPerturbForce tracks the drag. `bActive` false (or an invalid
+	 *  `Select`) releases the drag. `LocalPos` is the grab point in the body's
+	 *  local MuJoCo frame, `RefSelPos` the drag target in the MuJoCo world frame
+	 *  (both metres). Thread-safe: takes the engine CallbackMutex (the same lock
+	 *  the pre-step callback holds), so it is safe to call from the RPC thread --
+	 *  it never touches mjData directly. */
+	void ApplyRemoteDragIntent(int32 Select, bool bActive,
+		const double LocalPos[3], const double RefSelPos[3]);
+
 	/** Is a body currently latched (pert.select > 0)? */
 	bool HasSelection() const { return Perturb.select > 0; }
 

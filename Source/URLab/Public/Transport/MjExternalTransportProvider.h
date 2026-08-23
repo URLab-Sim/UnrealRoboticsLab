@@ -54,11 +54,15 @@ DECLARE_DELEGATE_RetVal_OneParam(UURLabPublishTransport*, FMjMakeExternalPublish
 DECLARE_DELEGATE_RetVal_OneParam(UURLabClientSubscribeTransport*, FMjMakeExternalClientSubscribeTransport, UObject* /*Outer*/);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabRpcClientTransport*, FMjMakeExternalRpcClientTransport, UObject* /*Outer*/);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalCameraPublishTransport, UObject* /*Outer*/);
-// Owner -> external module: one raw viewer-bus frame per step ({t,qpos,qvel}
-// msgpack, the same bytes the ZMQ "viewer" PUB carries). An optional module (gRPC)
-// binds this to cache + server-stream the frame to its own subscribers. Multicast
-// so >1 backend can listen; unbound is a no-op.
-DECLARE_MULTICAST_DELEGATE_OneParam(FMjViewerFrameSink, const TArray<uint8>& /*Payload*/);
+// Owner -> external module: one raw render-bus frame per step, tagged by its tier
+// topic. "render" = per-body transforms + optional debug (source-of-truth §8.1/
+// §8.2, the true mirror payload); "viewer" = {t,qpos,qvel} (the legacy qpos tier).
+// The bytes are identical to what the matching ZMQ topic PUB carries. An optional
+// module (gRPC) binds this to cache + server-stream each tier to its own
+// subscribers, selecting by topic -- so the gRPC egress is decoupled from any
+// bound ZMQ viewer bus (H3). Multicast so >1 backend can listen; unbound is a
+// no-op.
+DECLARE_MULTICAST_DELEGATE_TwoParams(FMjViewerFrameSink, const FString& /*Topic*/, const TArray<uint8>& /*Payload*/);
 
 struct URLAB_API FMjExternalTransportProvider
 {
@@ -93,8 +97,9 @@ struct URLAB_API FMjExternalTransportProvider
 	 *  the core uses its built-in camera backend. */
 	static FMjMakeExternalCameraPublishTransport MakeCameraPublishTransport;
 
-	/** Broadcast one raw viewer-bus frame ({t,qpos,qvel}) per step to any external
-	 *  backend (e.g. gRPC subscribe_viewer). Unbound => no extra fan-out. */
+	/** Broadcast one raw render-bus frame per step to any external backend (e.g. the
+	 *  gRPC server), tagged by tier topic ("render" transforms / "viewer" qpos).
+	 *  Unbound => no extra fan-out. */
 	static FMjViewerFrameSink OnViewerFrame;
 
 	/** True when an external module has installed the control RPC factory. */

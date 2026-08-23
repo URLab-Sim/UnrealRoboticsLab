@@ -13,6 +13,7 @@
 #include "MuJoCo/Entity/MjGeomAssetResolver.h"
 #include "MuJoCo/Core/MjSimClock.h"
 #include "Templates/UniquePtr.h"
+#include "Async/Future.h"
 #include <atomic>
 #include "MjRenderer.generated.h"
 
@@ -32,6 +33,7 @@ class UMaterialInterface;
 class UMaterialInstanceDynamic;
 class UMeshComponent;
 class UStaticMeshComponent;
+class UURLabRpcClientTransport;
 enum class EMjCameraMode : uint8;
 enum class EMjDebugShaderMode : uint8;
 
@@ -461,6 +463,29 @@ private:
 	int32 MirrorDragBodyId = -1;
 	float MirrorDragDepthCm = 0.0f;
 	double MirrorGrabLocalMj[3] = {0.0, 0.0, 0.0};
+
+	// --- Mirror drag: cached async RPC client (H5) ---------------------------- //
+	// A ctrl-drag calls SendPerturbation every input tick. The old path created,
+	// connected, blocked on the ack (up to 500 ms) and destroyed a REQ transport
+	// PER TICK, stalling the game thread every frame against a slow/unresponsive
+	// owner. Instead one REQ client is created lazily on the first send of a drag
+	// and reused for every subsequent tick, and each send runs on a background task
+	// so the game thread never blocks on the owner. The REQ socket is lockstep and
+	// not thread-safe, so at most one send is in flight at a time: while
+	// DragSendTask is running an active-drag tick's send is dropped (the next idle
+	// tick sends the current target -- a natural coalesce to the latest). The
+	// client is torn down on drag end and on actor teardown by EndDragTransport,
+	// which first waits out any in-flight send so the socket is never closed under
+	// the worker. A UPROPERTY so GC keeps the transport alive while the background
+	// task holds a raw pointer to it.
+	UPROPERTY(Transient)
+	TObjectPtr<UURLabRpcClientTransport> DragRpcClient = nullptr;
+	TFuture<void> DragSendTask;
+
+	// Wait for any in-flight perturbation send, then shut down and drop the cached
+	// drag RPC client. Idempotent; called on drag release and from Teardown /
+	// BeginDestroy. Waits at most once per drag (never per tick).
+	void EndDragTransport();
 
 	// Latest per-body MuJoCo world transforms from the transform bus (Bxpos: 3*nbody,
 	// Bxquat: 4*nbody wxyz), cached each frame by ApplyBodyTransforms so the Mirror

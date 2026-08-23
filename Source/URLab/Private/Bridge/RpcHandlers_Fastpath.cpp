@@ -13,6 +13,7 @@
 #include "MuJoCo/Core/MjPhysicsEngine.h"
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "MuJoCo/Elements/MjCamera.h"
+#include "MuJoCo/Input/MjPerturbation.h"
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Spec/MjSceneMjcf.h"
 #include "Utils/URLabLogging.h"
@@ -223,14 +224,18 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathLoad(const TSharedPtr
 	return Reply;
 }
 
-// Fast-path interactive perturbation. A renderer (Mirror/viewer) forwards a drag
-// as an external force+torque on a body back to this owner; we stamp it into the
-// live model's xfrc_applied so the owner's own step integrates it. The renderer
-// already converts UE world space to MuJoCo (AMjRenderer::SendPerturbation), and
-// MuJoCo's xfrc_applied is [force xyz, torque xyz], so the wire vectors are copied
-// straight through with no further frame or unit change. This mirrors the Python
-// FastPathOwner, whose step loop writes the same 6-vector to data.xfrc_applied; the
-// value persists until the next drag frame overwrites it or a zero wrench clears it.
+// Fast-path perturbation. Exactly two shapes ride this op, matching the Python
+// FastPathOwner (fastpath_owner.py):
+//   - interactive drag INTENT {select, active, localpos, refselpos}: the mirror has
+//     no mjData, so it cannot compute a force -- it forwards the grab and THIS owner
+//     runs the real mjv spring (mjv_applyPerturbForce, mass-scaled + critically
+//     damped) on its next step, via the existing UMjPerturbation machinery. Without
+//     this a forwarded drag hit a UE owner as a zero wrench (silent no-op).
+//   - exact wrench {body, force, torque}: applied verbatim to xfrc_applied. The
+//     renderer already converts UE world space to MuJoCo (AMjRenderer::SendPerturbation),
+//     and xfrc_applied is [force xyz, torque xyz], so the vectors are copied straight
+//     through; the value persists until the next frame overwrites or a zero clears it.
+// Intent is recognised by any of its distinctive fields; otherwise it is a wrench.
 TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TSharedPtr<FJsonObject>& Req)
 {
 	AAMjManager* Mgr = OwnerMgr.Get();
@@ -246,6 +251,60 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TShared
 			TEXT("this instance does not accept input (AcceptInput capability is off)"));
 	}
 
+	// force / torque / localpos / refselpos are MuJoCo-frame 3-vectors; pad a
+	// short/absent array to 3 so a truncated wire vector can't index past the end,
+	// matching the Python owner.
+	auto ReadVec3 = [&Req](const TCHAR* Field, double Out[3]) {
+		Out[0] = Out[1] = Out[2] = 0.0;
+		const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
+		if (Req->TryGetArrayField(Field, Arr) && Arr)
+		{
+			for (int32 i = 0; i < 3 && i < Arr->Num(); ++i)
+			{
+				Out[i] = (*Arr)[i]->AsNumber();
+			}
+		}
+	};
+
+	// Drag INTENT: recognised by any of its distinctive fields (mirrors
+	// fastpath_owner.py). Hand it to UMjPerturbation, which updates the mjvPerturb
+	// struct under the engine CallbackMutex and lets its pre-step callback run
+	// mjv_applyPerturbForce on the physics thread -- the RPC thread never touches
+	// mjData directly.
+	if (Req->HasField(TEXT("localpos")) || Req->HasField(TEXT("refselpos")) || Req->HasField(TEXT("active")))
+	{
+		UMjPerturbation* Pert = Mgr->Perturbation;
+		if (!Pert)
+		{
+			return MakeError(URLabError::NotReady,
+				TEXT("this instance has no perturbation component to drive a drag intent"));
+		}
+
+		// `select` is the perturbed body, with a `body` back-compat alias. Bounds and
+		// a released/invalid selection are validated inside ApplyRemoteDragIntent under
+		// the engine fence, where the live model pointer can't retire mid-check.
+		double SelectNum = -1.0;
+		if (!Req->TryGetNumberField(TEXT("select"), SelectNum))
+		{
+			Req->TryGetNumberField(TEXT("body"), SelectNum);
+		}
+		const int32 Select = static_cast<int32>(SelectNum);
+		bool bActive = true;
+		Req->TryGetBoolField(TEXT("active"), bActive);
+		double LocalPos[3];
+		double RefSelPos[3];
+		ReadVec3(TEXT("localpos"), LocalPos);
+		ReadVec3(TEXT("refselpos"), RefSelPos);
+
+		Pert->ApplyRemoteDragIntent(Select, bActive, LocalPos, RefSelPos);
+
+		TSharedPtr<FJsonObject> Reply = MakeShared<FJsonObject>();
+		Reply->SetStringField(TEXT("op"), TEXT("fastpath_perturb_ok"));
+		Reply->SetNumberField(TEXT("select"), Select);
+		return Reply;
+	}
+
+	// Exact wrench {body, force, torque}: applied verbatim to xfrc_applied.
 	double BodyNum = -1.0;
 	if (!Req->TryGetNumberField(TEXT("body"), BodyNum) || BodyNum < 0.0)
 	{
@@ -269,19 +328,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TShared
 		}
 	}
 
-	// force / torque are MuJoCo-frame 3-vectors; pad a short/absent array to 3 so a
-	// truncated wire vector can't index past the end, matching the Python owner.
-	auto ReadVec3 = [&Req](const TCHAR* Field, double Out[3]) {
-		Out[0] = Out[1] = Out[2] = 0.0;
-		const TArray<TSharedPtr<FJsonValue>>* Arr = nullptr;
-		if (Req->TryGetArrayField(Field, Arr) && Arr)
-		{
-			for (int32 i = 0; i < 3 && i < Arr->Num(); ++i)
-			{
-				Out[i] = (*Arr)[i]->AsNumber();
-			}
-		}
-	};
 	double Force[3];
 	double Torque[3];
 	ReadVec3(TEXT("force"), Force);

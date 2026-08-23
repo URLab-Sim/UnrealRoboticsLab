@@ -453,6 +453,53 @@ void UMjPerturbation::StopDrag()
 	Perturb.active = 0;
 }
 
+void UMjPerturbation::ApplyRemoteDragIntent(int32 Select, bool bActive,
+	const double LocalPos[3], const double RefSelPos[3])
+{
+	if (!Manager || !Manager->PhysicsEngine)
+		return;
+
+	// Write Perturb under the engine CallbackMutex -- the same lock the pre-step
+	// callback holds while it reads Perturb and runs mjv_applyPerturbForce, and the
+	// same lock UpdateDrag/HandleSelect take from the game thread. This is the whole
+	// thread-safe hand-off: the RPC thread only touches the mjvPerturb struct here,
+	// never mjData; the physics thread integrates it on its next step.
+	FScopeLock Lock(&Manager->PhysicsEngine->CallbackMutex);
+	const mjModel* m = Manager->PhysicsEngine->m_model;
+	const mjData* d = Manager->PhysicsEngine->m_data;
+	if (!m || !d)
+		return;
+
+	// Released / invalid selection: stop driving. The pre-step callback zeroes
+	// xfrc_applied every tick, so clearing active is enough to let the body settle.
+	if (!bActive || Select <= 0 || Select >= m->nbody)
+	{
+		Perturb.active = 0;
+		return;
+	}
+
+	// New grab (a different body, or not currently dragging): snapshot the anchor
+	// pose + localmass exactly like a local Ctrl-drag start (StartTranslate). The
+	// grab point rides on the wire as localpos, so set it before InitPerturbFields
+	// derives the reference frame from it.
+	const bool bNewGrab = (Perturb.select != Select) || (Perturb.active == 0);
+	Perturb.select = Select;
+	Perturb.flexselect = -1;
+	Perturb.skinselect = -1;
+	mju_copy3(Perturb.localpos, LocalPos);
+	if (bNewGrab)
+	{
+		InitPerturbFieldsLocked(Perturb, m, d, BaseRefPos, BaseRefSelPos, BaseRefQuat);
+		Perturb.active = mjPERT_TRANSLATE;
+	}
+
+	// Every frame: drive the spring target from the wire. mjv_applyPerturbForce
+	// (TRANSLATE) pulls the grab point toward refselpos with a mass-scaled,
+	// critically-damped spring -- identical feel to simulate's Ctrl-drag.
+	mju_copy3(Perturb.localpos, LocalPos);
+	mju_copy3(Perturb.refselpos, RefSelPos);
+}
+
 void UMjPerturbation::DrawDebugSpring() const
 {
 	if (!HasSelection() || !Manager || !Manager->PhysicsEngine)

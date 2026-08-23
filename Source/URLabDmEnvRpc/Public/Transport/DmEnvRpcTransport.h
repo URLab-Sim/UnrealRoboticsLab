@@ -97,8 +97,10 @@ private:
 	uint64 ViewerFrameSeq = 0;
 	FDelegateHandle ViewerSinkHandle;
 
-	// Render-tier cache (populated by the Phase 2.4 sink, which also adds the
-	// RenderSinkHandle that binds the owner's render broadcast).
+	// Render-tier cache. Populated by the Phase 2.4 owner sink: the single
+	// ViewerSinkHandle above binds OnViewerFrame and routes by tier topic --
+	// "render" -> SetRenderFrame (here), "viewer" -> SetViewerFrame -- so both
+	// tiers reach gRPC without a bound ZMQ bus (H3).
 	mutable FCriticalSection RenderCacheLock;
 	TArray<uint8> LatestRenderFrame;
 	uint64 RenderFrameSeq = 0;

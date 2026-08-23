@@ -39,6 +39,7 @@
 #include "MuJoCo/Elements/MjGeom.h"
 #include "MuJoCo/Elements/MjCamera.h"
 #include "MuJoCo/Elements/MjFlexcomp.h"
+#include "MuJoCo/Elements/MjSkincomp.h"
 #include "MuJoCo/Entity/MjOverlayRenderer.h"
 #include "MuJoCo/Entity/MjOverlayFlags.h"
 #include "MuJoCo/Core/MjRenderSnapshot.h"
@@ -2505,6 +2506,52 @@ void AMjRenderer::UpdateMirrorFlex(const double* Bxpos, const double* Bxquat)
 	}
 }
 
+void AMjRenderer::UpdateMirrorSkin(const double* Bxpos, const double* Bxquat)
+{
+	if (!Model || Model->nskin == 0 || !Bxpos || !Bxquat)
+	{
+		return;
+	}
+	const int32 NBody = static_cast<int32>(Model->nbody);
+
+	// Skins have no authored level component (their geometry lives entirely in the
+	// compiled skin_* arrays), so the renderer synthesizes one skin element per
+	// model skin. Do it once -- a mirror's scene is fixed at load. Each element
+	// builds its own UDynamicMeshComponent from the model on first drive.
+	if (!bMirrorSkincompsCreated)
+	{
+		MirrorSkincomps.Reset();
+		USceneComponent* Root = GetRootComponent();
+		const int32 NSkin = static_cast<int32>(Model->nskin);
+		for (int32 s = 0; s < NSkin; ++s)
+		{
+			const FName Name = MakeUniqueObjectName(
+				this, UMjSkincomp::StaticClass(), *FString::Printf(TEXT("MirrorSkin_%d"), s));
+			UMjSkincomp* Skin = NewObject<UMjSkincomp>(this, Name);
+			if (!Skin)
+			{
+				continue;
+			}
+			Skin->SetSkinId(s);
+			if (Root)
+			{
+				Skin->SetupAttachment(Root);
+			}
+			Skin->RegisterComponent();
+			MirrorSkincomps.Add(Skin);
+		}
+		bMirrorSkincompsCreated = true;
+	}
+
+	for (const TObjectPtr<UMjSkincomp>& Ptr : MirrorSkincomps)
+	{
+		if (UMjSkincomp* Skin = Ptr.Get())
+		{
+			Skin->UpdateFromBodyTransforms(*Model, Bxpos, Bxquat, NBody, SceneOrigin);
+		}
+	}
+}
+
 void AMjRenderer::SynthesizeMirrorOverlays(const TSharedPtr<FJsonObject>& Frame,
 	const double* Bxpos, const double* Bxquat)
 {
@@ -2877,6 +2924,14 @@ void AMjRenderer::Tick(float DeltaSeconds)
 					// from these transforms + the static model and drive the existing
 					// UMjFlexcomp writeback -- no per-vertex bytes on the wire.
 					UpdateMirrorFlex(Bp.GetData(), Bq.GetData());
+
+					// Mirror-side skin deformation (9.5): reconstruct each skin's
+					// vertices by linear-blend skinning from these bone-body
+					// transforms + the static skin_* arrays (a replay of
+					// mjv_updateActiveSkin) and drive the renderer-owned
+					// UMjSkincomp UDynamicMeshComponents -- again no per-vertex
+					// bytes on the wire.
+					UpdateMirrorSkin(Bp.GetData(), Bq.GetData());
 
 					// Mirror-side overlays (9.3): synthesize mjvGeom-equivalent decor
 					// from the streamed debug tier (§8.2) + these transforms and feed

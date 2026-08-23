@@ -36,6 +36,7 @@ class UStaticMeshComponent;
 class UURLabRpcClientTransport;
 class UMjOverlayRenderer;
 class UMjFlexcomp;
+class UMjSkincomp;
 class FJsonObject;
 struct FMjRenderSnapshot;
 enum class EMjCameraMode : uint8;
@@ -522,6 +523,20 @@ private:
 	void UpdateMirrorFlex(const double* Bxpos, const double* Bxquat);
 	TArray<TWeakObjectPtr<UMjFlexcomp>> MirrorFlexcomps;
 	bool bMirrorFlexcompsCached = false;
+
+	// --- Mirror-side skin deformation (plan 9.5) --------------------------- //
+	// A skin is bone-driven linear-blend skinning: every render vertex is a pure
+	// function of (static skin_* arrays) x (the BONE-BODY transforms already on
+	// the per-body bus), so a mirror rebuilds the deformed surface locally
+	// (UMjSkincomp::UpdateFromBodyTransforms, a replay of mjv_updateActiveSkin)
+	// with zero per-vertex bytes on the wire -- the same story as flex, but on a
+	// UDynamicMeshComponent, not a runtime USkeletalMesh. Unlike flexcomps, skins
+	// have no authored level component, so the renderer CREATES one skin element
+	// per model skin (once) and drives it each streamed frame.
+	void UpdateMirrorSkin(const double* Bxpos, const double* Bxquat);
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMjSkincomp>> MirrorSkincomps;
+	bool bMirrorSkincompsCreated = false;
 
 	mjModel_* Model = nullptr;
 	mjData_* Data = nullptr;

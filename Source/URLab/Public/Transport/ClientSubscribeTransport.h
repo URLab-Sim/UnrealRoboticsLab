@@ -17,9 +17,8 @@
  * out from the authoritative sim; this connects to that broadcast and delivers
  * each `[topic][payload]` message to a consumer callback. It is the shared
  * shape behind the lightweight render receivers -- the fast-path renderer
- * (AMjRenderer, which applies streamed transforms directly) and the viewer
- * (UURLabViewerSubscribeTransport, which applies {qpos,qvel} + mj_forward) --
- * both of which previously hand-rolled the same raw-libzmq SUB + worker loop.
+ * (AMjRenderer, which applies streamed transforms directly) -- which previously
+ * hand-rolled the same raw-libzmq SUB + worker loop.
  *
  * Deliberately distinct from UURLabSubscribeTransport: that one is server-side
  * control-IN (draining messages into the authoritative mjData before a step);

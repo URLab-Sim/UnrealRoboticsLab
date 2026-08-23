@@ -280,14 +280,11 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathPerturb(const TShared
 				TEXT("this instance has no perturbation component to drive a drag intent"));
 		}
 
-		// `select` is the perturbed body, with a `body` back-compat alias. Bounds and
-		// a released/invalid selection are validated inside ApplyRemoteDragIntent under
-		// the engine fence, where the live model pointer can't retire mid-check.
+		// `select` is the perturbed body. Bounds and a released/invalid selection are
+		// validated inside ApplyRemoteDragIntent under the engine fence, where the live
+		// model pointer can't retire mid-check.
 		double SelectNum = -1.0;
-		if (!Req->TryGetNumberField(TEXT("select"), SelectNum))
-		{
-			Req->TryGetNumberField(TEXT("body"), SelectNum);
-		}
+		Req->TryGetNumberField(TEXT("select"), SelectNum);
 		const int32 Select = static_cast<int32>(SelectNum);
 		bool bActive = true;
 		Req->TryGetBoolField(TEXT("active"), bActive);

@@ -2021,7 +2021,6 @@ void AMjRenderer::SendPerturbation(int32 Select, bool bActive,
 	Obj->SetStringField(TEXT("op"), TEXT("fastpath_perturb"));
 	Obj->SetNumberField(TEXT("select"), Select);
 	Obj->SetBoolField(TEXT("active"), bActive);
-	Obj->SetNumberField(TEXT("body"), Select);   // back-compat alias
 	TArray<TSharedPtr<FJsonValue>> LP, RP;
 	for (int32 i = 0; i < 3; ++i)
 	{

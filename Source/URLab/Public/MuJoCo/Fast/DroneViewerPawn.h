@@ -16,8 +16,8 @@
  * required), and mouse look is bound directly to the mouse axes via BindAxisKey.
  *
  * It renders nothing itself (camera only) -- the sim it flies around is drawn by
- * the viewer's subscribed state (ViewerSubscribeTransport). Spawned + possessed by
- * the launcher on -URLabVrViewer.
+ * the transform-mirror renderer (AMjRenderer, Drive=stream). Spawned + possessed
+ * by the launcher on -URLabVrViewer.
  */
 UCLASS()
 class URLAB_API ADroneViewerPawn : public APawn

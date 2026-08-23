@@ -430,15 +430,6 @@ public:
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UURLabSubscribeTransport>> ManagerOwnedSubscribeTransports;
 
-	/** Read-only viewer role: when set, this process is a VIEWER driven by a
-	 *  remote owner's viewer bus. It owns no bridge/publishers; this transport
-	 *  is the sole input. Null on a normal owner. */
-	UPROPERTY(Transient)
-	TObjectPtr<class UURLabViewerSubscribeTransport> ViewerTransport;
-
-	/** True when this process was started as a viewer (StateSourceEndpoint set). */
-	bool bIsViewerRole = false;
-
 	// Owner-side viewer bus (direct/live): the "viewer" ({t,qpos,qvel}) and "render"
 	// (per-body transforms + optional debug tier) topics, fanned out through the agnostic publish
 	// abstraction (ZMQ now; SHM/ROS/gRPC via new UURLabPublishTransport impls),

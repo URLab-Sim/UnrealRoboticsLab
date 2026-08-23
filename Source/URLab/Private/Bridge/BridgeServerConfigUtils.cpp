@@ -176,10 +176,9 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 	if (ResolveString(TEXT("URLabBindAddress="), TEXT("URLAB_BIND_ADDRESS"), StrVal))
 		Cfg.BindAddress = StrVal;
 
-	// Viewer role + viewer bus. -URLabStateSource=tcp://host:port makes this a
-	// read-only viewer; -URLabBroadcastViewers=1 makes an owner re-broadcast.
-	if (ResolveString(TEXT("URLabStateSource="), TEXT("URLAB_STATE_SOURCE"), StrVal))
-		Cfg.StateSourceEndpoint = StrVal;
+	// Owner viewer bus. -URLabBroadcastViewers=1 makes an owner re-broadcast.
+	// (-URLabStateSource is no longer parsed here: the launcher maps it to
+	// -URLabDrive=stream:tcp://<ep>, spawning a transform-mirror AMjRenderer.)
 	if (ResolveInt(TEXT("URLabViewerPort="), TEXT("URLAB_VIEWER_PORT"), IntVal))
 		Cfg.ViewerPort = IntVal;
 	if (ResolveInt(TEXT("URLabBroadcastViewers="), TEXT("URLAB_BROADCAST_VIEWERS"), IntVal))

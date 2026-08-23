@@ -17,6 +17,7 @@
 #include "MuJoCo/Core/AMjManager.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "Utils/URLabLogging.h"
 
 void UURLabShmPublishTransport::SetOwningManager(AAMjManager* InMgr)
@@ -28,6 +29,20 @@ FString UURLabShmPublishTransport::ResolveSessionDir(const FString& InSessionId)
 {
 	const FString Sid = InSessionId.IsEmpty() ? TEXT("live") : InSessionId;
 	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("URLabShm"), Sid);
+}
+
+FString UURLabShmPublishTransport::MakeInstanceSessionId(const FString& BaseSid,
+	int32 InstancePort)
+{
+	// Mirror UURLabShmRpcTransport::TransportInit verbatim so the state/camera
+	// segments derive their per-instance identity the same way the RPC segment
+	// does. The pid makes the name unique per editor process; the port, when
+	// supplied, keeps it traceable to the instance.
+	const FString Base = BaseSid.IsEmpty() ? FString(TEXT("live")) : BaseSid;
+	const uint32 Pid = FPlatformProcess::GetCurrentProcessId();
+	return InstancePort > 0
+			   ? FString::Printf(TEXT("%s_p%d_%u"), *Base, InstancePort, Pid)
+			   : FString::Printf(TEXT("%s_%u"), *Base, Pid);
 }
 
 bool UURLabShmPublishTransport::TransportInit()
@@ -50,6 +65,14 @@ bool UURLabShmPublishTransport::TransportInit()
 	}
 	if (Sid.IsEmpty())
 		Sid = TEXT("live");
+
+	// Make the segment per-editor-process unique, matching the RPC transport's
+	// scheme, so two render-server instances on one host don't both open the
+	// process-global "live" (or same-labelled) state.shm. The camera transport
+	// applies the identical transform to the same base so state.shm and
+	// cam_*.shm stay co-located under one dir; that dir is advertised to the
+	// client via AppendHandshakeBlock's shm_session_dir.
+	Sid = MakeInstanceSessionId(Sid);
 
 	const FString Dir = ResolveSessionDir(Sid);
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);

@@ -84,6 +84,17 @@ public:
 	/** Convenience: directory holding all SHM files for this session. */
 	static FString ResolveSessionDir(const FString& InSessionId);
 
+	/** Derive a per-process-unique session id from a base label, mirroring the
+	 *  scheme UURLabShmRpcTransport::TransportInit uses (`<base>_p<port>_<pid>`,
+	 *  or `<base>_<pid>` when no port is given). The process id guarantees that
+	 *  co-located editors acting as render servers never share the state/camera
+	 *  SHM segment; a positive port is appended only to keep the name traceable
+	 *  to the instance. The state and camera transports must pass the SAME base
+	 *  and port so both resolve to one dir — the client discovers that dir once
+	 *  via the `shm_session_dir` handshake and opens state.shm and cam_*.shm
+	 *  under it. */
+	static FString MakeInstanceSessionId(const FString& BaseSid, int32 InstancePort = 0);
+
 	// UURLabPublishTransport contract
 	virtual void AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const override;
 

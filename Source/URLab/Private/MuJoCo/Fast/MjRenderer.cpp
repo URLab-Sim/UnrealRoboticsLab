@@ -329,46 +329,64 @@ void AMjRenderer::BeginPlay()
 		Drive = EMjDrive::Stream;
 	}
 
+	// Phase 6.2 (⚠-2): ONE manager-presence rule (source-of-truth §7).
+	//
+	//   AMjManager exists iff  Drive==Sim  ||  serve  ||  publish.
+	//
+	// The manager is the physics/scene host (Drive==Sim owns physics); the bridge is
+	// the serve/publish surface. A pure stream/push consumer with neither serve nor
+	// publish is a LEAN transform mirror and has no manager.
+	//
+	// Effective serve/publish: the new -URLabCaps=serve/publish flags name the rule
+	// directly, but the legacy launch shapes (migrated in 1.1) never set them while
+	// still standing up a serving bridge today -- Push serves fastpath_render; a
+	// non-lean bus mirror lets a Driver push fastpath_load; a VR viewer's bridge lets
+	// an owner drive it over gRPC. Those shapes IMPLY serve, so their manager survives
+	// unchanged. The lean subscribe-only gRPC mirror (-URLabFastGrpcJoin=<ep> /
+	// -URLabDrive=stream:grpc://<ep>) never serves and stays manager-less exactly as
+	// before. (-URLabFastGrpcJoin is a VALUE flag, so probe it with FParse::Value.)
+	const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
+	FString GrpcJoinEp;
+	const bool bSubscribeOnlyMirror =
+		FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoinEp)
+		|| URLabLauncherFlags::DriveStreamGrpcEndpoint(GrpcJoinEp);
+	const bool bVrView =
+		FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")) || URLabLauncherFlags::CapsWantVr();
+	const bool bImplicitServe =
+		bForcedRenderOnly                                       // Push: serves fastpath_render
+		|| (!BusEndpoint.IsEmpty() && !bSubscribeOnlyMirror)    // serving bus mirror (not the lean join)
+		|| bVrView;                                             // VR viewer bridge (gRPC-driven)
+	const bool bServe = Caps.bServe.Get(bImplicitServe);
+	const bool bPublish = Caps.bPublish.Get(false);
+	const bool bWantManager = (Drive == EMjDrive::Sim) || bServe || bPublish;
+
 	// Direct: step this scene's own model through the shared engine and render the
-	// stepped state. Puppet (default): mirror an owner's transform stream.
+	// stepped state. Every other Drive is a transform-mirror consumer.
 	if (Drive == EMjDrive::Sim)
 	{
+		// Owns physics: Direct.Begin() calls EnsureManager() itself (Drive==Sim arm of
+		// the rule), then installs this scene's model into the shared engine.
 		Direct.Begin(*this);
 	}
-	else if (bForcedRenderOnly)
+	else
 	{
-		// Eval regime: the forced request drives the pose, so no bus is connected --
-		// but stand up the manager so its bridge serves the fastpath_render op (which
-		// replaced the renderer's own REP socket).
-		EnsureManager();
-	}
-	else if (!BusEndpoint.IsEmpty())
-	{
-		// A subscribe-only mirror (-URLabFastGrpcJoin=<ep>) is the LEAN fast path: a
-		// pure client that only consumes the owner's transform stream, so it needs
-		// no manager/bridge (hence no interactive MjSimulate widget). A serving bus
-		// mirror still stands up the manager so a Driver can push fastpath_load.
-		// NOTE: it's a VALUE flag (-URLabFastGrpcJoin=host:port), so detect it with
-		// FParse::Value -- FParse::Param only matches a bare switch and misses it.
-		// Phase 1.1: -URLabDrive=stream:grpc://<ep> is the new spelling of -URLabFastGrpcJoin (a lean
-		// subscribe-only mirror, no manager); recognise both so the new flag stays lean too.
-		FString GrpcJoinEp;
-		const bool bSubscribeOnly =
-			FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoinEp)
-			|| URLabLauncherFlags::DriveStreamGrpcEndpoint(GrpcJoinEp);
-		if (!bSubscribeOnly)
+		// The one presence rule for every non-Sim shape. serve/publish -> a manager
+		// (its bridge answers fastpath_load/render/hello over the 6.1 world resolver);
+		// a lean consumer gets none. NOTE: standing up the bridge WITHOUT a full
+		// AMjManager is the §7 target but a larger change than this wave makes safely,
+		// so a serve-without-sim consumer currently gets a full manager (its engine
+		// idles on an empty world) rather than a bare bridge -- see the return notes.
+		if (bWantManager)
 		{
 			EnsureManager();
 		}
-		StartBus();
-	}
-	else if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")) || URLabLauncherFlags::CapsWantVr())
-	{
-		// A VR viewer with no bus is a gRPC-driven mirror that KEEPS rendering its
-		// main view (the free-fly drone). Stand up the manager (bridge + RPC) so an
-		// owner can drive it via fastpath_load/render over gRPC -- without the
-		// forced-only regime above, which disables the main view the drone renders.
-		EnsureManager();
+		// Connect the transform stream for a bus mirror. Push (forced-render) drives
+		// the pose via the fastpath_render op, so it never connects the bus -- preserve
+		// the old Launch() invariant (!BusEndpoint.IsEmpty() && !bForcedRenderOnly).
+		if (!BusEndpoint.IsEmpty() && !bForcedRenderOnly)
+		{
+			StartBus();
+		}
 	}
 }
 

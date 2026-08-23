@@ -102,6 +102,19 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 	}
 	Entry->SetArrayField(TEXT("capabilities"), Caps);
 
+	// Transports a viewer can reach this owner on, in the same shape the Python
+	// owner writes (fastpath_owner.py::_write_registry). UE advertises the ZMQ
+	// control REP + viewer PUB bus; there is no gRPC (dm_env_rpc) endpoint in the
+	// bridge-server config today, so `grpc` is null. Emitted unconditionally so
+	// both writers converge on one schema (source-of-truth §12).
+	TArray<TSharedPtr<FJsonValue>> Transports;
+	Transports.Add(MakeShared<FJsonValueString>(TEXT("zmq")));
+	Entry->SetArrayField(TEXT("transports"), Transports);
+	Entry->SetField(TEXT("grpc"), MakeShared<FJsonValueNull>());
+
+	// Timestamp key is `registry_written_at` (shared with the Python writer and
+	// read by MjDriverDiscovery / pool.read_registry / discover_owners). Value
+	// stays ISO-8601 here; the readers normalize ISO vs int-epoch.
 	Entry->SetStringField(TEXT("registry_written_at"), FDateTime::UtcNow().ToIso8601());
 
 	FString Serialized;

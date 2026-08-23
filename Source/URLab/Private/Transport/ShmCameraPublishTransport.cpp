@@ -39,9 +39,15 @@ void UURLabShmCameraPublishTransport::OpenCameraChannel(int32 CameraIndex,
 		return;
 	}
 
-	// The "live" session segment is process-global on one host: parameterise it
-	// per instance before running several editors as render servers.
-	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(TEXT("live"));
+	// The bare "live" session segment is process-global on one host, so several
+	// editors acting as render servers would all open the same cam_*.shm.
+	// Parameterise it per editor process with the same scheme the RPC and state
+	// segments use (base label + pid). The state transport applies the identical
+	// transform to the same "live" base, so state.shm and cam_*.shm resolve to
+	// one dir; the client learns that dir from the hello's shm_session_dir (set
+	// by UURLabShmPublishTransport::AppendHandshakeBlock) and opens both under it.
+	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(
+		UURLabShmPublishTransport::MakeInstanceSessionId(TEXT("live")));
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 	// Derive the SHM stem from the canonical name (which honors a re-homed camera's
 	// pinned override), so it matches the advertised ZMQ topic.

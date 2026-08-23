@@ -209,6 +209,10 @@ struct UURLabDmEnvRpcClientSubscribeTransport::FSubState
 	std::shared_ptr<grpc::Channel> Channel;
 	std::unique_ptr<dm_env_rpc::v1::Environment::Stub> Stub;
 	grpc::ClientContext* ActiveCtx = nullptr;   // for TryCancel on shutdown
+	// Guards ActiveCtx: the worker sets/clears it around the stack-local Ctx while
+	// TransportShutdown TryCancels it from another thread. Serializing the clear
+	// (before Ctx is destroyed) against the TryCancel prevents a use-after-free.
+	FCriticalSection CtxLock;
 	FRunnable* Runnable = nullptr;
 	FRunnableThread* Thread = nullptr;
 };
@@ -256,7 +260,10 @@ void UURLabDmEnvRpcClientSubscribeTransport::RunLoop()
 	while (!bStop)
 	{
 		grpc::ClientContext Ctx;
-		Sub->ActiveCtx = &Ctx;
+		{
+			FScopeLock CtxScope(&Sub->CtxLock);
+			Sub->ActiveCtx = &Ctx;
+		}
 		auto Stream = Sub->Stub->Process(&Ctx);
 
 		urlab::dm_env_rpc::v1::UrlabPacket InPkt;
@@ -294,7 +301,12 @@ void UURLabDmEnvRpcClientSubscribeTransport::RunLoop()
 		{
 			Stream->Finish();
 		}
-		Sub->ActiveCtx = nullptr;
+		{
+			// Clear under the lock before Ctx leaves scope, so a concurrent
+			// TransportShutdown never TryCancels a destroyed ClientContext.
+			FScopeLock CtxScope(&Sub->CtxLock);
+			Sub->ActiveCtx = nullptr;
+		}
 		if (bStop)
 		{
 			break;
@@ -308,9 +320,14 @@ void UURLabDmEnvRpcClientSubscribeTransport::TransportShutdown()
 	bStop = true;
 	if (Sub)
 	{
-		if (Sub->ActiveCtx)
 		{
-			Sub->ActiveCtx->TryCancel();
+			// Lock only around the cancel -- never across Thread->Kill below, or the
+			// worker (which needs CtxLock to clear ActiveCtx) would deadlock the wait.
+			FScopeLock CtxScope(&Sub->CtxLock);
+			if (Sub->ActiveCtx)
+			{
+				Sub->ActiveCtx->TryCancel();
+			}
 		}
 		if (Sub->Thread)
 		{

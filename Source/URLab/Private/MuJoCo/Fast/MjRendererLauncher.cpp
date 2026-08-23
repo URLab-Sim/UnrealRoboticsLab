@@ -8,6 +8,7 @@
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Fast/MjRendererSubsystem.h"
 #include "MuJoCo/Fast/MjRendererDriverClient.h"
+#include "MuJoCo/Fast/MjLauncherFlags.h"
 #include "MuJoCo/Fast/DroneViewerPawn.h"
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "Utils/URLabLogging.h"
@@ -26,10 +27,18 @@
 
 namespace
 {
-// Parse -URLabFastOrigin=X,Y,Z (UE cm). Zero if absent/malformed.
-// bShouldStopOnSeparator=false so the commas are not treated as token separators.
+// Parse the scene origin (UE cm). Zero if absent/malformed. Phase 1.1: -URLabScene=origin=X;Y;Z
+// (';' separators, since ',' delimits scene keys) writes the same value the legacy
+// -URLabFastOrigin=X,Y,Z did; the new key wins when present, else the legacy flag is read.
+// bShouldStopOnSeparator=false so the legacy commas are not treated as token separators.
 FVector ParseFastOrigin()
 {
+	FVector SceneOriginVec;
+	if (URLabLauncherFlags::SceneOrigin(SceneOriginVec))
+	{
+		return SceneOriginVec;
+	}
+
 	FVector Origin = FVector::ZeroVector;
 	FString OriginStr;
 	if (FParse::Value(FCommandLine::Get(), TEXT("URLabFastOrigin="), OriginStr, false))
@@ -72,7 +81,9 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// sim the viewer renders from an owner's state bus (-URLabStateSource sets up the
 	// subscription; the manager does that). Here we just spawn + possess the drone,
 	// after the default pawn is hidden above. Keyboard free-fly (WASD/QE + mouse).
-	if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")))
+	// Phase 1.1: -URLabCaps=vr is the new spelling of -URLabVrViewer (source-of-truth §14); both
+	// enable the drone add-on identically.
+	if (FParse::Param(FCommandLine::Get(), TEXT("URLabVrViewer")) || URLabLauncherFlags::CapsWantVr())
 	{
 		// The PlayerController is frequently not up yet at world BeginPlay (the
 		// packaged boot creates it a few frames later), so defer + retry rather
@@ -84,8 +95,17 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// then spawn a Mirror that subscribes to the owner's transform stream on the
 	// bus the reply advertises (grpc://, so the gRPC subscribe backend is selected).
 	// Pairs with -URLabVrViewer for a free-fly drone view of the live owner sim.
+	// Phase 1.1: -URLabDrive=stream:grpc://<ep> is the new spelling of -URLabFastGrpcJoin=<ep>
+	// (source-of-truth §14, lean: no serve); both drive the same gRPC-join mirror.
 	FString GrpcJoin;
-	if (FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoin) && !GrpcJoin.IsEmpty())
+	FString DriveGrpcEp;
+	const bool bLegacyGrpcJoin =
+		FParse::Value(FCommandLine::Get(), TEXT("URLabFastGrpcJoin="), GrpcJoin) && !GrpcJoin.IsEmpty();
+	if (!bLegacyGrpcJoin && URLabLauncherFlags::DriveStreamGrpcEndpoint(DriveGrpcEp))
+	{
+		GrpcJoin = DriveGrpcEp;
+	}
+	if (!GrpcJoin.IsEmpty())
 	{
 		if (!GrpcJoin.StartsWith(TEXT("grpc://")))
 		{
@@ -129,12 +149,37 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// (-URLabFastMjz, unzipped in-engine to xml+assets). xml/mjz are immune to MJB
 	// version skew.
 	FString Mjb, FastXml, FastMjz;
-	const bool bHasMjb =
+	bool bHasMjb =
 		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjb="), Mjb) && !Mjb.IsEmpty();
-	const bool bHasXml =
+	bool bHasXml =
 		FParse::Value(FCommandLine::Get(), TEXT("URLabFastXml="), FastXml) && !FastXml.IsEmpty();
-	const bool bHasMjz =
+	bool bHasMjz =
 		FParse::Value(FCommandLine::Get(), TEXT("URLabFastMjz="), FastMjz) && !FastMjz.IsEmpty();
+	// Phase 1.1/1.2: -URLabModel=<path.{mjb,xml,mjz}> picks the format by extension and writes the
+	// same field the matching legacy -URLabFast{Mjb,Xml,Mjz} flag would (source-of-truth §14). The
+	// legacy flag wins when both are given.
+	if (!bHasMjb && !bHasXml && !bHasMjz)
+	{
+		FString ModelPathArg, ModelFmt;
+		if (URLabLauncherFlags::ParseModel(ModelPathArg, ModelFmt))
+		{
+			if (ModelFmt == TEXT("xml"))
+			{
+				FastXml = ModelPathArg;
+				bHasXml = true;
+			}
+			else if (ModelFmt == TEXT("mjz"))
+			{
+				FastMjz = ModelPathArg;
+				bHasMjz = true;
+			}
+			else
+			{
+				Mjb = ModelPathArg;
+				bHasMjb = true;
+			}
+		}
+	}
 	if (!bHasMjb && !bHasXml && !bHasMjz)
 	{
 		// Headless render server with no boot model (-URLabFastServe): stand up a
@@ -144,7 +189,9 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 		// The first client load_* then hot-swaps the real model into it. (Spawning a
 		// bare manager instead would build the manager's *interactive* compiled play
 		// view, which is externally-driven and has no capturing cameras.)
-		if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastServe")))
+		// Phase 1.1: -URLabDrive=await is the new spelling of -URLabFastServe (source-of-truth §14:
+		// await + serve,cameras); both stand up the placeholder render server awaiting a client load.
+		if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastServe")) || URLabLauncherFlags::DriveIsAwait())
 		{
 			static const char* kPlaceholderXml =
 				"<mujoco><worldbody><geom type=\"box\" size=\"0.05 0.05 0.05\"/></worldbody></mujoco>";
@@ -190,18 +237,27 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 					// -URLabFastAutoJoin[=scene]: headless render-farm node that joins
 					// the first (or scene-matching) owner with no UI. Otherwise
 					// -URLabFastBrowser shows the interactive server browser.
+					// Phase 1.1/1.3: -URLabSourceFind=discover[:scene] / =browse are the new
+					// spellings (source-of-truth §14); each triggers the same finder path.
 					FString AutoScene;
 					const bool bAutoJoin =
 						FParse::Value(FCommandLine::Get(), TEXT("URLabFastAutoJoin="), AutoScene)
-						|| FParse::Param(FCommandLine::Get(), TEXT("URLabFastAutoJoin"));
+						|| FParse::Param(FCommandLine::Get(), TEXT("URLabFastAutoJoin"))
+						|| URLabLauncherFlags::SourceFindDiscover(AutoScene);
 					if (bAutoJoin)
 					{
 						FString Level;
-						FParse::Value(FCommandLine::Get(), TEXT("URLabFastLevel="), Level);
-						Sub->BeginAutoJoin(AutoScene, Level, ParseFastOrigin(),
-							FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras")));
+						if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastLevel="), Level))
+						{
+							URLabLauncherFlags::SceneLevel(Level);
+						}
+						const bool bCamerasWanted =
+							FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"))
+							|| URLabLauncherFlags::ParseCaps().bCameras.Get(false);
+						Sub->BeginAutoJoin(AutoScene, Level, ParseFastOrigin(), bCamerasWanted);
 					}
-					else if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastBrowser")))
+					else if (FParse::Param(FCommandLine::Get(), TEXT("URLabFastBrowser"))
+						|| URLabLauncherFlags::SourceFindBrowse())
 					{
 						Sub->ShowBrowser();
 					}
@@ -221,19 +277,30 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 			TEXT("[MjRenderer] a fast-path scene already exists in this world; launcher skipping"));
 		return;
 	}
+	// Phase 1.1: -URLabDrive=stream:tcp://<ep> is the new spelling of -URLabFastBus=<ep>
+	// (source-of-truth §14); both name the transform bus this scene mirrors.
 	FString Bus;
-	FParse::Value(FCommandLine::Get(), TEXT("URLabFastBus="), Bus);
+	if (!FParse::Value(FCommandLine::Get(), TEXT("URLabFastBus="), Bus))
+	{
+		URLabLauncherFlags::DriveStreamTcpEndpoint(Bus);
+	}
 
 	// Direct: step this MJB in-process through the shared engine (a full sim a
 	// Python client can drive over RPC), instead of mirroring an owner's bus.
-	const bool bDirect = FParse::Param(FCommandLine::Get(), TEXT("URLabFastDirect"));
+	// Phase 1.1: -URLabDrive=sim is the new spelling of -URLabFastDirect (source-of-truth §14).
+	const bool bDirect = FParse::Param(FCommandLine::Get(), TEXT("URLabFastDirect"))
+		|| URLabLauncherFlags::DriveIsSim();
 
 	// Base-level mode: the boot map is a curated scene the operator authored (its
 	// own lights, sky, floor, props), so the launcher must NOT populate its default
 	// light rig on top of it. The MJB still loads into whatever map is booted.
-	const bool bBaseLevel = FParse::Param(FCommandLine::Get(), TEXT("URLabFastBaseLevel"));
+	// Phase 1.1: -URLabScene=base is the new spelling of -URLabFastBaseLevel (source-of-truth §14).
+	const bool bBaseLevel = FParse::Param(FCommandLine::Get(), TEXT("URLabFastBaseLevel"))
+		|| URLabLauncherFlags::SceneBaseLevel();
 
-	const bool bCameras = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"));
+	// Phase 1.1: -URLabCaps=cameras is the new spelling of -URLabFastCameras (source-of-truth §14).
+	const bool bCameras = FParse::Param(FCommandLine::Get(), TEXT("URLabFastCameras"))
+		|| URLabLauncherFlags::ParseCaps().bCameras.Get(false);
 
 	const FVector Origin = ParseFastOrigin();
 

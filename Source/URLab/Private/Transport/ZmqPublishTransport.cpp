@@ -83,6 +83,13 @@ void UURLabZmqPublishTransport::InitZmqSocket()
 			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
 				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *ZmqEndpoint));
 		}
+		// Bind failed: free all resources here. bIsInitialized stays false,
+		// so ShutdownZmqSocket early-outs and would otherwise leak the
+		// socket and context. Close both and null the handles.
+		zmq_close(ZmqPublisher);
+		zmq_ctx_term(ZmqContext);
+		ZmqPublisher = nullptr;
+		ZmqContext = nullptr;
 	}
 }
 

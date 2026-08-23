@@ -5,6 +5,7 @@
 
 #include "Bridge/BridgeServerConfigUtils.h"
 
+#include "MuJoCo/Fast/MjLauncherFlags.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
@@ -162,13 +163,13 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 	if (ResolveInt(TEXT("URLabPortStride="), TEXT("URLAB_PORT_STRIDE"), IntVal))
 		Cfg.PortStride = IntVal;
 
-	const bool bStepExplicit = ResolveInt(TEXT("URLabStepPort="), TEXT("URLAB_STEP_PORT"), IntVal);
+	bool bStepExplicit = ResolveInt(TEXT("URLabStepPort="), TEXT("URLAB_STEP_PORT"), IntVal);
 	if (bStepExplicit)
 		Cfg.StepPort = IntVal;
-	const bool bStateExplicit = ResolveInt(TEXT("URLabStatePort="), TEXT("URLAB_STATE_PORT"), IntVal);
+	bool bStateExplicit = ResolveInt(TEXT("URLabStatePort="), TEXT("URLAB_STATE_PORT"), IntVal);
 	if (bStateExplicit)
 		Cfg.StatePort = IntVal;
-	const bool bCamExplicit = ResolveInt(TEXT("URLabCamBasePort="), TEXT("URLAB_CAM_BASE_PORT"), IntVal);
+	bool bCamExplicit = ResolveInt(TEXT("URLabCamBasePort="), TEXT("URLAB_CAM_BASE_PORT"), IntVal);
 	if (bCamExplicit)
 		Cfg.CamBasePort = IntVal;
 
@@ -183,6 +184,65 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 		Cfg.ViewerPort = IntVal;
 	if (ResolveInt(TEXT("URLabBroadcastViewers="), TEXT("URLAB_BROADCAST_VIEWERS"), IntVal))
 		Cfg.bBroadcastViewers = (IntVal != 0);
+
+	// Phase 1.1: -URLabCaps=publish is the new spelling of -URLabBroadcastViewers=1 (source-of-truth
+	// §14). Both write bBroadcastViewers; the cap (negatable: -publish) wins when present.
+	{
+		const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
+		if (Caps.bPublish.IsSet())
+			Cfg.bBroadcastViewers = Caps.bPublish.GetValue();
+	}
+
+	// Phase 1.1: -URLabNet=id=,index=,portbase=,stride=,step=,state=,bus=,cam=,grpc=,bind=
+	// consolidates the legacy per-service net flags (source-of-truth §14). Each sub-key writes the
+	// SAME config field its legacy flag did, and a present net key wins over the legacy read above.
+	{
+		using URLabLauncherFlags::GetCsvValue;
+		FString NetVal;
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("id"), NetVal))
+			Cfg.InstanceId = NetVal;
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("index"), NetVal) && NetVal.IsNumeric())
+			Cfg.InstanceIndex = FCString::Atoi(*NetVal);
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("portbase"), NetVal) && NetVal.IsNumeric())
+			Cfg.PortBase = FCString::Atoi(*NetVal);
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("stride"), NetVal) && NetVal.IsNumeric())
+			Cfg.PortStride = FCString::Atoi(*NetVal);
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("step"), NetVal) && NetVal.IsNumeric())
+		{
+			Cfg.StepPort = FCString::Atoi(*NetVal);
+			bStepExplicit = true;
+		}
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("state"), NetVal) && NetVal.IsNumeric())
+		{
+			Cfg.StatePort = FCString::Atoi(*NetVal);
+			bStateExplicit = true;
+		}
+		// bus= replaces ViewerPort (source-of-truth §14).
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("bus"), NetVal) && NetVal.IsNumeric())
+			Cfg.ViewerPort = FCString::Atoi(*NetVal);
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("cam"), NetVal) && NetVal.IsNumeric())
+		{
+			Cfg.CamBasePort = FCString::Atoi(*NetVal);
+			bCamExplicit = true;
+		}
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("bind"), NetVal))
+			Cfg.BindAddress = NetVal;
+
+		// grpc= replaces -URLabDmEnvPort (source-of-truth §14). That port has NO config field: the
+		// gRPC transport reads it straight off the command line (URLabDmEnvPort=,
+		// DmEnvRpcTransport.cpp:272), and that transport file is owned by another agent this wave, so
+		// it cannot be re-plumbed here. To make -URLabNet=grpc= write the same thing the legacy flag
+		// wrote, feed the transport's own reader: append the legacy token to the command line when
+		// -URLabDmEnvPort is absent (config parse runs before EnsureExternalTransportsBound binds the
+		// gRPC server: AMjManager.cpp:221 then :260). Guarded on absence so it stays idempotent
+		// across the multiple ApplyEnvAndCommandLineOverrides calls and the legacy flag still wins.
+		FString GrpcVal, ExistingDmEnv;
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("grpc"), GrpcVal) && GrpcVal.IsNumeric()
+			&& !FParse::Value(FCommandLine::Get(), TEXT("URLabDmEnvPort="), ExistingDmEnv))
+		{
+			FCommandLine::Append(*FString::Printf(TEXT(" -URLabDmEnvPort=%s"), *GrpcVal));
+		}
+	}
 
 	DerivePorts(Cfg, bStepExplicit, bStateExplicit, bCamExplicit);
 }

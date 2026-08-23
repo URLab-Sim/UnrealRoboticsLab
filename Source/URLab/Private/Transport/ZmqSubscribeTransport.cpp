@@ -59,8 +59,8 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 
 	// Setup Subscriber (Controls)
 	ControlSubscriber = zmq_socket(ZmqContext, ZMQ_SUB);
-	int rc = zmq_bind(ControlSubscriber, TCHAR_TO_UTF8(*ControlEndpoint));
-	if (rc != 0)
+	int rcControl = zmq_bind(ControlSubscriber, TCHAR_TO_UTF8(*ControlEndpoint));
+	if (rcControl != 0)
 	{
 		UE_LOG(LogURLabNet, Error, TEXT("Failed to bind Control SUB at %s"), *ControlEndpoint);
 		if (GEngine)
@@ -92,8 +92,8 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 
 	// Setup Publisher (Info)
 	InfoPublisher = zmq_socket(ZmqContext, ZMQ_PUB);
-	rc = zmq_bind(InfoPublisher, TCHAR_TO_UTF8(*InfoEndpoint));
-	if (rc != 0)
+	int rcInfo = zmq_bind(InfoPublisher, TCHAR_TO_UTF8(*InfoEndpoint));
+	if (rcInfo != 0)
 	{
 		UE_LOG(LogURLabNet, Error, TEXT("Failed to bind Info PUB at %s"), *InfoEndpoint);
 		if (GEngine)
@@ -101,6 +101,20 @@ void UURLabZmqSubscribeTransport::InitZmqSocket()
 			GEngine->AddOnScreenDebugMessage(-1, 10.f, FColor::Red,
 				FString::Printf(TEXT("URLab: ZMQ bind failed on %s — check for port conflicts"), *InfoEndpoint));
 		}
+	}
+
+	// A partially-bound transport cannot function. If either bind failed,
+	// free all resources and leave bIsInitialized=false so callers (and
+	// ShutdownZmqSocket) see the failure instead of a false-positive init.
+	if (rcControl != 0 || rcInfo != 0)
+	{
+		zmq_close(ControlSubscriber);
+		zmq_close(InfoPublisher);
+		zmq_ctx_term(ZmqContext);
+		ControlSubscriber = nullptr;
+		InfoPublisher = nullptr;
+		ZmqContext = nullptr;
+		return;
 	}
 
 	bIsInitialized = true;

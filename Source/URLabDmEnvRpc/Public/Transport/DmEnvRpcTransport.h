@@ -78,7 +78,9 @@ private:
 	FRunnableThread* WorkerThread = nullptr;
 	std::atomic<bool> bShouldStop{false};
 
-	grpc::Server* Server = nullptr;
+	// Published by the worker (RunServerLoop) and read/deleted by TransportShutdown
+	// on another thread -- atomic so the publish is visible without a data race.
+	std::atomic<grpc::Server*> Server{nullptr};
 
 	mutable FCriticalSection ViewerCacheLock;
 	TArray<uint8> LatestViewerFrame;

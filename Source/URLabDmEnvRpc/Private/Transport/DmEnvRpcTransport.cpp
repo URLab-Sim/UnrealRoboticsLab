@@ -321,9 +321,9 @@ void UURLabDmEnvRpcTransport::TransportShutdown()
 		ViewerSinkHandle.Reset();
 	}
 	bShouldStop.store(true);
-	if (Server)
+	if (grpc::Server* S = Server.load())
 	{
-		Server->Shutdown();
+		S->Shutdown();
 	}
 	if (WorkerThread)
 	{
@@ -336,10 +336,12 @@ void UURLabDmEnvRpcTransport::TransportShutdown()
 		delete WorkerRunnable;
 		WorkerRunnable = nullptr;
 	}
-	if (Server)
+	// Safe to delete unsynchronized past WaitForCompletion (worker has exited), but
+	// go through the atomic to keep all access to Server consistent.
+	if (grpc::Server* S = Server.load())
 	{
-		delete Server;
-		Server = nullptr;
+		delete S;
+		Server.store(nullptr);
 	}
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] URLabDmEnvRpcTransport shut down."));
 }
@@ -359,11 +361,9 @@ void UURLabDmEnvRpcTransport::RunServerLoop()
 	FURLabDmEnvRpcServiceImpl Service(this);
 
 	grpc::ServerBuilder Builder;
-    Builder.SetMaxReceiveMessageSize(-1);
-    Builder.SetMaxSendMessageSize(-1);
 	Builder.SetMaxReceiveMessageSize(-1);
-        Builder.SetMaxSendMessageSize(-1);
-        Builder.AddListeningPort(ServerAddress, grpc::InsecureServerCredentials());
+	Builder.SetMaxSendMessageSize(-1);
+	Builder.AddListeningPort(ServerAddress, grpc::InsecureServerCredentials());
 	Builder.RegisterService(&Service);
 
 	std::unique_ptr<grpc::Server> StartedServer = Builder.BuildAndStart();
@@ -373,7 +373,7 @@ void UURLabDmEnvRpcTransport::RunServerLoop()
 		return;
 	}
 
-	Server = StartedServer.release();
+	Server.store(StartedServer.release());
 	UE_LOG(LogURLabDmEnvRpc, Display, TEXT("[URLabDmEnvRpc] dm_env_rpc gRPC server listening on %s"), UTF8_TO_TCHAR(ServerAddress.c_str()));
 
 	while (!bShouldStop.load(std::memory_order_relaxed))
@@ -381,8 +381,8 @@ void UURLabDmEnvRpcTransport::RunServerLoop()
 		FPlatformProcess::Sleep(0.01f);
 	}
 
-	if (Server)
+	if (grpc::Server* S = Server.load())
 	{
-		Server->Shutdown();
+		S->Shutdown();
 	}
 }

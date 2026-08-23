@@ -19,10 +19,10 @@ void UMjRendererBus::Start(const FString& Endpoint)
 	{
 		return;
 	}
-	// The renderer subscribes to the owner's "geoms" broadcast through the agnostic
-	// client-subscribe transport (backend chosen by the base). The worker delivers
-	// each newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
-	BusTransport = UURLabClientSubscribeTransport::Create(this, Endpoint, TEXT("geoms"),
+	// The renderer subscribes to the owner's "render" tier broadcast through the
+	// agnostic client-subscribe transport (backend chosen by the base). The worker
+	// delivers each newest payload to OnBusMessage; the game thread decodes + applies it in Tick.
+	BusTransport = UURLabClientSubscribeTransport::Create(this, Endpoint, TEXT("render"),
 		UURLabClientSubscribeTransport::FOnClientMessage::CreateUObject(this, &UMjRendererBus::OnBusMessage));
 	if (!BusTransport)
 	{

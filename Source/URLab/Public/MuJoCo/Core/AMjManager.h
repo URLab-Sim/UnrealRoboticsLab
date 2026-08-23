@@ -439,8 +439,8 @@ public:
 	/** True when this process was started as a viewer (StateSourceEndpoint set). */
 	bool bIsViewerRole = false;
 
-	// Owner-side viewer bus (direct/live): the "viewer" ({t,qpos,qvel}) and "geoms"
-	// (per-geom transforms) topics, fanned out through the agnostic publish
+	// Owner-side viewer bus (direct/live): the "viewer" ({t,qpos,qvel}) and "render"
+	// (per-body transforms + optional debug tier) topics, fanned out through the agnostic publish
 	// abstraction (ZMQ now; SHM/ROS/gRPC via new UURLabPublishTransport impls),
 	// on their own endpoint separate from the state bus. Empty unless
 	// bBroadcastViewers was set on an owner. Written from FanOutStateSnapshot
@@ -451,11 +451,34 @@ public:
 	void PublishOnViewerBus(const FString& Topic, const TArray<uint8>& Payload);
 	/** Encode {t,qpos,qvel} from (m,d) and PUB it on the viewer bus. */
 	void PublishViewerFrame(struct mjModel_* m, struct mjData_* d);
-	/** Encode per-geom world transforms {f,xpos,xquat} from (m,d) and PUB them on
-	 *  the same bus under the "geoms" topic, so a fast-path renderer can mirror
+
+	/** Debug-tier subscription capabilities (source-of-truth §8.2). Gate the
+	 *  optional fields appended to a render frame; a subscriber that requests
+	 *  neither cap pays zero extra bytes. Phase 2.3 establishes this seam only --
+	 *  the debug fields themselves (contacts / subtree_com / ctrl / act /
+	 *  wrap_xpos / xfrc_applied / eq / sensor / light) are computed + serialized
+	 *  in Phase 9.1. */
+	struct FMjRenderDebugCaps
+	{
+		bool bStreamContacts = false;  // contacts[] (capped at MaxContacts)
+		bool bStreamOverlay = false;   // derived-decor bundle (§8.2)
+		int32 MaxContacts = 0;         // subscriber-set contact cap; 0 => none
+	};
+
+	/** Build the always-present render tier (§8.1: per-body + camera world
+	 *  transforms + frame id) into a fresh JSON object. Shared by every tier
+	 *  encoding (ZMQ topic / gRPC format / SHM ring). */
+	TSharedPtr<class FJsonObject> BuildRenderFrame(struct mjModel_* m, struct mjData_* d);
+	/** Capability-gated, count-capped seam that appends the optional debug tier
+	 *  (§8.2) onto a render frame. Phase 2.3 wires the hook (no-op unless a cap is
+	 *  set); Phase 9.1 populates the fields. */
+	void AppendRenderDebugFields(TSharedPtr<class FJsonObject>& Frame,
+		struct mjModel_* m, struct mjData_* d, const FMjRenderDebugCaps& Caps);
+	/** Encode the render tier (+ optional debug fields) from (m,d) and PUB it on
+	 *  the viewer bus under the "render" topic, so a fast-path renderer can mirror
 	 *  this owner with no physics. */
-	void PublishGeomFrame(struct mjModel_* m, struct mjData_* d);
-	/** Monotonic frame id for the geoms bus. */
+	void PublishRenderFrame(struct mjModel_* m, struct mjData_* d);
+	/** Monotonic frame id for the render bus. */
 	uint64 GeomBroadcastFrame = 0;
 
 protected:

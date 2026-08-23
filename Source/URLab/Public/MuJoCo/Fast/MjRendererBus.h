@@ -16,7 +16,7 @@ class UURLabClientSubscribeTransport;
  * @class UMjRendererBus
  * @brief Receive plumbing for the owner -> renderer transform bus.
  *
- * Owns the client-subscribe transport that mirrors an owner's "geoms" broadcast
+ * Owns the client-subscribe transport that mirrors an owner's "render" broadcast
  * (ZMQ now; SHM/ROS/gRPC via the transport hook). The transport's worker thread
  * only stashes the newest raw payload here (no UObject / msgpack work off the game
  * thread); the game thread pulls it with TakeLatestFrame and does the decode +
@@ -28,7 +28,7 @@ class URLAB_API UMjRendererBus : public UObject
 	GENERATED_BODY()
 
 public:
-	/** Connect to the owner's "geoms" broadcast at Endpoint and start the worker.
+	/** Connect to the owner's "render" broadcast at Endpoint and start the worker.
 	 *  No-op if Endpoint is empty or a transport is already connected. */
 	void Start(const FString& Endpoint);
 	/** Stop + release the transport and drop any buffered frame. Idempotent. */
@@ -42,7 +42,7 @@ public:
 	bool HasEverReceived() const { return bEverReceived.load(std::memory_order_acquire); }
 
 private:
-	// The client-subscribe transport that receives the owner's "geoms" broadcast
+	// The client-subscribe transport that receives the owner's "render" broadcast
 	// (ZMQ now; SHM/ROS/gRPC via the transport hook). Owned here.
 	UPROPERTY(Transient)
 	TObjectPtr<UURLabClientSubscribeTransport> BusTransport;

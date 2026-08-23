@@ -70,6 +70,16 @@ public:
 	// is then updated). Returns true when a fresh frame was written.
 	bool GetViewerFrame(TArray<uint8>& Out, uint64& InOutSeq) const;
 
+	// --- render-frame cache: the gRPC per-tier seam (analogous to the ZMQ "render"
+	// topic and the SHM render ring). Holds the latest render tier (per-body
+	// bxpos/bxquat + optional debug fields, source-of-truth §8.1/§8.2) so a
+	// subscribe(format=render) server-stream can select it. Phase 2.3 establishes
+	// the slot + accessors; Phase 2.4 binds the owner sink that populates it and
+	// adds the subscribe(format=render) stream (H3, decoupling gRPC egress from the
+	// ZMQ viewer bus). Thread-safe. ---
+	void SetRenderFrame(const TArray<uint8>& Bytes);
+	bool GetRenderFrame(TArray<uint8>& Out, uint64& InOutSeq) const;
+
 private:
 	UPROPERTY()
 	int32 ListenPort = 50051;
@@ -86,4 +96,10 @@ private:
 	TArray<uint8> LatestViewerFrame;
 	uint64 ViewerFrameSeq = 0;
 	FDelegateHandle ViewerSinkHandle;
+
+	// Render-tier cache (populated by the Phase 2.4 sink, which also adds the
+	// RenderSinkHandle that binds the owner's render broadcast).
+	mutable FCriticalSection RenderCacheLock;
+	TArray<uint8> LatestRenderFrame;
+	uint64 RenderFrameSeq = 0;
 };

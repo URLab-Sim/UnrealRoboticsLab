@@ -667,17 +667,16 @@ void AAMjManager::PublishViewerFrame(mjModel* m, mjData* d)
 	PublishOnViewerBus(TEXT("viewer"), Buf);
 }
 
-void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
+TSharedPtr<FJsonObject> AAMjManager::BuildRenderFrame(mjModel* m, mjData* d)
 {
-	if (ViewerBusTransports.Num() == 0 || !m || !d)
-		return;
-	// One per-BODY transform frame: bxpos/bxquat straight from d->xpos/d->xquat for
-	// ALL nbody bodies (including the world body and geomless ones -- the latter is
-	// the flex/skin precondition: their driving bodies carry no geom and would be
-	// dropped by a per-geom frame). The consumer expands each geom's world pose from
-	// its body transform and the static body-relative offset (Model->geom_pos/quat),
-	// so the wire carries nbody transforms instead of ngeom and mocap bodies are
-	// covered for free. (d->xquat is already stored wxyz -- no mat2Quat needed.)
+	// The always-present render tier (source-of-truth §8.1): one per-BODY transform
+	// frame -- bxpos/bxquat straight from d->xpos/d->xquat for ALL nbody bodies
+	// (including the world body and geomless ones -- the latter is the flex/skin
+	// precondition: their driving bodies carry no geom and would be dropped by a
+	// per-geom frame). The consumer expands each geom's world pose from its body
+	// transform and the static body-relative offset (Model->geom_pos/quat), so the
+	// wire carries nbody transforms instead of ngeom and mocap bodies are covered
+	// for free. (d->xquat is already stored wxyz -- no mat2Quat needed.)
 	const int NBody = m->nbody;
 	TSharedPtr<FJsonObject> Obj = MakeShared<FJsonObject>();
 	Obj->SetNumberField(TEXT("f"), static_cast<double>(GeomBroadcastFrame++));
@@ -714,11 +713,42 @@ void AAMjManager::PublishGeomFrame(mjModel* m, mjData* d)
 		Obj->SetArrayField(TEXT("cxquat"), CxQuat);
 	}
 
+	return Obj;
+}
+
+void AAMjManager::AppendRenderDebugFields(TSharedPtr<FJsonObject>& Frame,
+	mjModel* m, mjData* d, const FMjRenderDebugCaps& Caps)
+{
+	// Capability-gated, count-capped debug tier (source-of-truth §8.2). A
+	// subscriber that requests neither StreamContacts nor StreamOverlay pays zero
+	// extra bytes, so bail before touching the frame.
+	if (!Caps.bStreamContacts && !Caps.bStreamOverlay)
+		return;
+	// SEAM (Phase 9.1): compute + serialize the §8.2 debug arrays here, each
+	// count-capped -- contacts[] (<= Caps.MaxContacts) when bStreamContacts, and
+	// the derived-decor bundle (xfrc_applied / subtree_com / ctrl / act /
+	// wrap_xpos / eq / sensor / light) when bStreamOverlay. Phase 2.3 only
+	// establishes the hook; the fields are deferred to Phase 9.1.
+	(void)Frame;
+	(void)m;
+	(void)d;
+}
+
+void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
+{
+	if (ViewerBusTransports.Num() == 0 || !m || !d)
+		return;
+	TSharedPtr<FJsonObject> Obj = BuildRenderFrame(m, d);
+	// Debug tier carries no extra bytes over the ZMQ bus in 2.3: the topic-per-tier
+	// bus advertises the render tier only, and per-subscription debug caps are
+	// negotiated on the gRPC selector (wired in 2.4 / populated in 9.1). Pass an
+	// empty cap set so the seam stays a no-op.
+	AppendRenderDebugFields(Obj, m, d, FMjRenderDebugCaps{});
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 	if (Buf.Num() == 0)
 		return;
-	PublishOnViewerBus(TEXT("geoms"), Buf);
+	PublishOnViewerBus(TEXT("render"), Buf);
 }
 
 void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
@@ -726,8 +756,8 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 	// Owner viewer bus: raw {t,qpos,qvel} to any subscribed viewers, every step,
 	// independent of the state_full byte fan-out (which pauses in direct/puppet).
 	PublishViewerFrame(m, d);
-	// Per-geom world transforms on the same bus, for fast-path renderers.
-	PublishGeomFrame(m, d);
+	// Per-body render tier (+ optional debug fields) on the same bus, for fast-path renderers.
+	PublishRenderFrame(m, d);
 
 	// Build the state IR once per physics step, encode it to the canonical
 	// msgpack `state_full` snapshot, and fan the bytes out to every

@@ -91,9 +91,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleFastpathHello(const TSharedPt
 		}
 	}
 
-	// The geoms transform bus endpoint the renderer subscribes to. This is the
-	// owner's viewer port; the geoms broadcast rides that bus (see
-	// AAMjManager::PublishGeomFrame). `broadcasting` is set in both cases so the
+	// The render transform bus endpoint the renderer subscribes to. This is the
+	// owner's viewer port; the render broadcast rides that bus (see
+	// AAMjManager::PublishRenderFrame). `broadcasting` is set in both cases so the
 	// client never has to treat a missing field as true: false means no transform
 	// stream, so the renderer would only show the rest pose.
 	if (UURLabBridgeServer* Bridge = OwningBridge.Get())

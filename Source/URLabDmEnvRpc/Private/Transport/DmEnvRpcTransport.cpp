@@ -313,6 +313,28 @@ bool UURLabDmEnvRpcTransport::GetViewerFrame(TArray<uint8>& Out, uint64& InOutSe
 	return true;
 }
 
+void UURLabDmEnvRpcTransport::SetRenderFrame(const TArray<uint8>& Bytes)
+{
+	// The gRPC per-tier seam (source-of-truth §8.1/§8.2). Fed by the Phase 2.4 owner
+	// render sink; read by a subscribe(format=render) server-stream. Mirrors the
+	// viewer cache so the two tiers select independently.
+	FScopeLock Lock(&RenderCacheLock);
+	LatestRenderFrame = Bytes;
+	++RenderFrameSeq;
+}
+
+bool UURLabDmEnvRpcTransport::GetRenderFrame(TArray<uint8>& Out, uint64& InOutSeq) const
+{
+	FScopeLock Lock(&RenderCacheLock);
+	if (RenderFrameSeq == InOutSeq || LatestRenderFrame.Num() == 0)
+	{
+		return false;
+	}
+	Out = LatestRenderFrame;
+	InOutSeq = RenderFrameSeq;
+	return true;
+}
+
 void UURLabDmEnvRpcTransport::TransportShutdown()
 {
 	if (ViewerSinkHandle.IsValid())

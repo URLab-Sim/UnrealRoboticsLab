@@ -541,7 +541,7 @@ private:
 	AAMjManager* ResolveManager() const;
 
 	// --- transform bus (owner -> this renderer) --------------------------- //
-	// Receive plumbing for the owner's "geoms" broadcast. Lazily created on the
+	// Receive plumbing for the owner's "render" broadcast. Lazily created on the
 	// first StartBus; the game thread pulls the newest raw payload each Tick.
 	UPROPERTY(Transient)
 	TObjectPtr<UMjRendererBus> TransportBus;

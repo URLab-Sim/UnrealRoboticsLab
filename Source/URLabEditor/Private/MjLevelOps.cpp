@@ -34,6 +34,7 @@
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Fast/MjRendererDriverClient.h"
 #include "MuJoCo/Fast/MjLauncherFlags.h"
+#include "MuJoCo/Fast/MjDriverDiscovery.h"
 
 #include "MuJoCo/Core/MjArticulation.h"
 #include "MuJoCo/Convert/MjQuickConvertComponent.h"
@@ -744,22 +745,10 @@ bool DiscoverFastPathDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutErro
 			continue;
 		}
 
-		// Only fast-path drivers (role or capability). Skips ordinary bridge
-		// instances that share the same registry directory.
-		bool bIsDriver = Obj->GetStringField(TEXT("role")) == TEXT("fastpath_owner");
-		const TArray<TSharedPtr<FJsonValue>>* Caps = nullptr;
-		if (!bIsDriver && Obj->TryGetArrayField(TEXT("capabilities"), Caps) && Caps)
-		{
-			for (const TSharedPtr<FJsonValue>& V : *Caps)
-			{
-				if (V.IsValid() && V->AsString() == TEXT("fastpath_owner"))
-				{
-					bIsDriver = true;
-					break;
-				}
-			}
-		}
-		if (!bIsDriver)
+		// Only fast-path drivers (role or capability); the shared predicate keeps
+		// this rule identical to the Python reader (pool.is_owner_entry). Skips
+		// ordinary bridge instances that share the same registry directory.
+		if (!URLabFastPath::IsOwnerEntry(Obj))
 		{
 			continue;
 		}

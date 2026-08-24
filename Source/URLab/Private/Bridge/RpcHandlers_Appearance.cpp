@@ -5,6 +5,7 @@
 
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/RpcErrorCodes.h"
+#include "Bridge/RpcHandlerCommon.h"
 
 #include "MuJoCo/Core/AMjManager.h"
 #include "MuJoCo/Entity/MjAppearanceStore.h"
@@ -12,27 +13,9 @@
 #include "MuJoCo/Spec/MjAssetResolve.h"
 
 #include "Dom/JsonObject.h"
-#include "Async/Async.h"
-#include "HAL/PlatformProcess.h"
 
 namespace
 {
-/** Run a function on the game thread and block until it finishes. The appearance store walks the
- *  world with TActorIterator, which asserts game-thread; these RPC handlers run on the step-server
- *  thread. Runs inline when already on the game thread. */
-void RunOnGameThreadBlocking(TFunctionRef<void()> Fn)
-{
-	if (IsInGameThread())
-	{
-		Fn();
-		return;
-	}
-	FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
-	AsyncTask(ENamedThreads::GameThread, [&Fn, Done]() { Fn(); Done->Trigger(); });
-	Done->Wait();
-	FPlatformProcess::ReturnSynchEventToPool(Done);
-}
-
 /** Read a scalar field into an override slot when the request carries it. */
 void ReadScalar(const TSharedPtr<FJsonObject>& Req, const TCHAR* Field, TOptional<float>& Out)
 {

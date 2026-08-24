@@ -155,4 +155,8 @@ struct URLAB_API FMjExternalTransportProvider
 
 	/** True when at least one external module has registered a control RPC factory. */
 	static bool HasControlRpcTransport();
+
+	/** The scheme portion of an endpoint (the text before the first ':'), the key
+	 *  the client-side factory maps use. Empty when the endpoint carries no scheme. */
+	static FString SchemeOf(const FString& Endpoint);
 };

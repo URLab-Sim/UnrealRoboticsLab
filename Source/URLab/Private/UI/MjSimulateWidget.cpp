@@ -162,6 +162,12 @@ namespace
 	}
 } // namespace
 
+AMjReplayManager* UMjSimulateWidget::ResolveReplayManager() const
+{
+	return Cast<AMjReplayManager>(
+		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+}
+
 void UMjSimulateWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
@@ -452,8 +458,7 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 									 : FString::Printf(TEXT("  [%s]"), *ModeStr);
 
 		// Show replay time if replaying, otherwise sim time
-		AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-			UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+		AMjReplayManager* ReplayMgr = ResolveReplayManager();
 		if (ReplayMgr && ReplayMgr->bIsReplaying)
 		{
 			TArray<FMjReplayFrame>& Frames = ReplayMgr->Sessions.FindOrAdd(ReplayMgr->ActiveSessionName).Frames;
@@ -482,8 +487,7 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 
 	// Update record/replay button text based on ReplayManager state
 	{
-		AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-			UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+		AMjReplayManager* ReplayMgr = ResolveReplayManager();
 
 		if (RecordButton)
 		{
@@ -523,8 +527,7 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 	// Refresh session dropdown and binding UI if session count or bindings changed
 	if (ReplaySessionSelector)
 	{
-		AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-			UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+		AMjReplayManager* ReplayMgr = ResolveReplayManager();
 		if (ReplayMgr)
 		{
 			bool bNeedsRefresh = false;
@@ -622,8 +625,7 @@ void UMjSimulateWidget::OnRecordClicked()
 {
 	if (!ManagerRef)
 		return;
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 		return;
 
@@ -641,8 +643,7 @@ void UMjSimulateWidget::OnReplayClicked()
 {
 	if (!ManagerRef)
 		return;
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 		return;
 
@@ -676,8 +677,7 @@ void UMjSimulateWidget::OnReplaySessionSelected(FString SelectedItem, ESelectInf
 {
 	if (!ManagerRef)
 		return;
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (ReplayMgr)
 	{
 		ReplayMgr->SetActiveSession(SelectedItem);
@@ -692,8 +692,7 @@ void UMjSimulateWidget::OnLoadCSVClicked()
 		UE_LOG(LogURLab, Warning, TEXT("MjSimulateWidget: No ManagerRef"));
 		return;
 	}
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("MjSimulateWidget: No AMjReplayManager in scene! Add one to the level."));
@@ -711,8 +710,7 @@ void UMjSimulateWidget::OnLoadCSVClicked()
 
 void UMjSimulateWidget::HandleReplayBindingEnabledChanged(bool bIsChecked)
 {
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 		return;
 
@@ -735,8 +733,7 @@ void UMjSimulateWidget::HandleReplayBindingEnabledChanged(bool bIsChecked)
 
 void UMjSimulateWidget::HandleReplayBindingRelPosChanged(bool bIsChecked)
 {
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 		return;
 
@@ -761,8 +758,7 @@ void UMjSimulateWidget::OnSaveRecordingClicked()
 	UE_LOG(LogURLab, Log, TEXT("MjSimulateWidget: Save Recording clicked"));
 	if (!ManagerRef)
 		return;
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 	{
 		UE_LOG(LogURLab, Warning, TEXT("MjSimulateWidget: No AMjReplayManager in scene!"));
@@ -776,8 +772,7 @@ void UMjSimulateWidget::RefreshReplaySessionDropdown()
 	if (!ReplaySessionSelector)
 		return;
 
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 		return;
 
@@ -808,8 +803,7 @@ void UMjSimulateWidget::RebuildReplayBindingUI(UVerticalBox* ReplayBox)
 	if (!ReplayBox)
 		return;
 
-	AMjReplayManager* ReplayMgr = Cast<AMjReplayManager>(
-		UGameplayStatics::GetActorOfClass(GetWorld(), AMjReplayManager::StaticClass()));
+	AMjReplayManager* ReplayMgr = ResolveReplayManager();
 	if (!ReplayMgr)
 		return;
 

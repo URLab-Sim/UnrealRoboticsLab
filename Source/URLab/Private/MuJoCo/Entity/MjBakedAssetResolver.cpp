@@ -9,6 +9,7 @@
 #include "GameFramework/Actor.h"
 
 #include "MuJoCo/Fast/MjRendererAssetBaker.h"
+#include "MuJoCo/Utils/MjRenderComponentUtils.h"
 
 THIRD_PARTY_INCLUDES_START
 #include "mujoco/mujoco.h"
@@ -29,18 +30,6 @@ constexpr const TCHAR* kBasicCube = TEXT("/Engine/BasicShapes/Cube.Cube");
 UStaticMesh* LoadBasic(const TCHAR* Path)
 {
 	return LoadObject<UStaticMesh>(nullptr, Path);
-}
-
-// Fast-path render components never contribute to distance-field lighting or AO.
-// The shared engine primitive meshes (the Plane especially) carry a mesh distance
-// field, and a flat/non-uniformly-scaled primitive yields a degenerate DF matrix
-// that spams "InverseFast: NIL/non-invertible matrix" ensures every frame in -game.
-void DisableDistanceFields(UPrimitiveComponent* Comp)
-{
-	if (Comp)
-	{
-		Comp->SetAffectDistanceFieldLighting(false);
-	}
 }
 } // namespace
 

@@ -34,3 +34,10 @@ bool FMjExternalTransportProvider::HasControlRpcTransport()
 {
 	return ControlRpcTransportFactories.Num() > 0;
 }
+
+FString FMjExternalTransportProvider::SchemeOf(const FString& Endpoint)
+{
+	int32 SchemeEnd = INDEX_NONE;
+	Endpoint.FindChar(TEXT(':'), SchemeEnd);
+	return (SchemeEnd != INDEX_NONE) ? Endpoint.Left(SchemeEnd) : FString();
+}

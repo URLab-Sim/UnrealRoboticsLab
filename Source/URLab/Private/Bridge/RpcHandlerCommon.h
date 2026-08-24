@@ -20,3 +20,23 @@
 #include "MuJoCo/Input/MjTwistController.h"
 #include "Transport/NetworkManager.h"
 #include "Utils/URLabLogging.h"
+
+#include "Templates/Function.h"
+#include "Async/Async.h"
+#include "HAL/PlatformProcess.h"
+
+/** Run Fn on the game thread and block until it finishes; runs inline when
+ *  already on the game thread. RPC handlers run on the step-server thread but
+ *  some world walks (TActorIterator) assert game-thread. */
+inline void RunOnGameThreadBlocking(TFunctionRef<void()> Fn)
+{
+	if (IsInGameThread())
+	{
+		Fn();
+		return;
+	}
+	FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
+	AsyncTask(ENamedThreads::GameThread, [&Fn, Done]() { Fn(); Done->Trigger(); });
+	Done->Wait();
+	FPlatformProcess::ReturnSynchEventToPool(Done);
+}

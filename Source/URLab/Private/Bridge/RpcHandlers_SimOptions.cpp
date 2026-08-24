@@ -22,6 +22,7 @@
 
 #include "Bridge/RpcDispatcher.h"
 #include "Bridge/RpcErrorCodes.h"
+#include "Bridge/RpcHandlerCommon.h"
 #include "Bridge/OpRegistry.h"
 #include "Utils/MsgpackHelpers.h"
 #include "MuJoCo/Core/AMjManager.h"
@@ -55,8 +56,6 @@
 #include "EngineUtils.h"
 #include "Engine/World.h"
 #include "Misc/Guid.h"
-#include "Async/Async.h"
-#include "HAL/PlatformProcess.h"
 #include "Utils/URLabLogging.h"
 
 // =============================================================================
@@ -121,22 +120,6 @@ bool TryReadVec3(const TSharedPtr<FJsonObject>& Obj, const TCHAR* Key, double Ou
 	Out[1] = (*Arr)[1]->AsNumber();
 	Out[2] = (*Arr)[2]->AsNumber();
 	return true;
-}
-
-/** Run a function on the game thread and block until it finishes. Finding the entity's possess
- *  pawn walks the world with TActorIterator, which asserts game-thread; these RPC handlers run on
- *  the step-server thread. Runs inline when already on the game thread. */
-void RunOnGameThreadBlocking(TFunctionRef<void()> Fn)
-{
-	if (IsInGameThread())
-	{
-		Fn();
-		return;
-	}
-	FEvent* Done = FPlatformProcess::GetSynchEventFromPool(false);
-	AsyncTask(ENamedThreads::GameThread, [&Fn, Done]() { Fn(); Done->Trigger(); });
-	Done->Wait();
-	FPlatformProcess::ReturnSynchEventToPool(Done);
 }
 } // namespace
 

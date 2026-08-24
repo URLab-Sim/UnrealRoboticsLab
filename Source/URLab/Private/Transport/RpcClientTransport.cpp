@@ -21,9 +21,7 @@ UURLabRpcClientTransport* UURLabRpcClientTransport::Create(UObject* Outer, const
 	// its own scheme, so gRPC and SHM answer their own scheme side by side and no
 	// registration ever hijacks a ZMQ owner. No entry for a scheme (including "tcp")
 	// => ZMQ fallback.
-	int32 SchemeEnd = INDEX_NONE;
-	Endpoint.FindChar(TEXT(':'), SchemeEnd);
-	const FString Scheme = (SchemeEnd != INDEX_NONE) ? Endpoint.Left(SchemeEnd) : FString();
+	const FString Scheme = FMjExternalTransportProvider::SchemeOf(Endpoint);
 	if (const FMjMakeExternalRpcClientTransport* Factory =
 			FMjExternalTransportProvider::RpcClientTransportFactories.Find(Scheme))
 	{

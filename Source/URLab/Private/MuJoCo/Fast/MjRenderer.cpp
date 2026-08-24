@@ -24,6 +24,7 @@
 
 #include "MuJoCo/Core/MjDebugVisualizer.h"
 #include "MuJoCo/Utils/MjColor.h"
+#include "MuJoCo/Utils/MjRenderComponentUtils.h"
 #include "MuJoCo/Spec/MjNodeComponent.h"
 #include "MuJoCo/Fast/MjRendererAssetBaker.h"
 #include "MuJoCo/Fast/MjRendererBus.h"
@@ -119,19 +120,6 @@ FQuat MjMat3ToUeQuat(const double* Mat3)
 	double Quat[4];
 	mju_mat2Quat(Quat, Mat3);
 	return URLabAxisConv::MjQuatToUe(Quat);
-}
-
-// Fast-path render components never contribute to distance-field lighting or AO.
-// The shared engine primitive meshes (the Plane especially) carry a mesh distance
-// field, and a flat/non-uniformly-scaled primitive yields a degenerate DF matrix
-// that spams "InverseFast: NIL/non-invertible matrix" ensures every frame in -game.
-// Dropping the component from the DF scene removes the cost and the noise.
-void DisableDistanceFields(UPrimitiveComponent* Comp)
-{
-	if (Comp)
-	{
-		Comp->SetAffectDistanceFieldLighting(false);
-	}
 }
 
 #if WITH_EDITOR

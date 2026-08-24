@@ -34,6 +34,7 @@ class UComboBoxString;
 class UMjPropertyRow;
 class UMjCameraFeedEntry;
 class UCheckBox;
+class AMjReplayManager;
 
 /**
  * @class UMjSimulateWidget
@@ -189,6 +190,11 @@ protected:
 	virtual void NativeConstruct() override;
 
 private:
+	/** Resolve the (possibly late-added) replay manager in the current world.
+	 *  Non-caching by design: the manager can appear after this widget is live,
+	 *  and a cached pointer would miss it or dangle if it is destroyed. */
+	AMjReplayManager* ResolveReplayManager() const;
+
 	bool bIsMouseEnabled = false;
 
 	/** Dynamically created. */

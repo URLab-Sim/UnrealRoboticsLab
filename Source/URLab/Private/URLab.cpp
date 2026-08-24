@@ -114,11 +114,11 @@ void FURLabModule::StartupModule()
 
 	// Load a shared library and log success/failure. LibraryPattern may
 	// contain `*` so we can match toolset-versioned filenames (libzmq bakes
-	// the MSVC toolset version into its DLL name; building with a different
-	// toolset than the URLab hardcode used to surface as a delay-load
-	// 0xc06d007e on first ZMQ call). BinSubDir is the per-package
-	// subdirectory under third_party/install/<SubDir>/ that holds the
-	// loadable artifact: "bin" on Windows (DLLs), "lib" on Linux (.so).
+	// the MSVC toolset version into its DLL name, so a hardcoded filename
+	// built against the wrong toolset fails as a delay-load 0xc06d007e on
+	// first ZMQ call). BinSubDir is the per-package subdirectory under
+	// third_party/install/<SubDir>/ that holds the loadable artifact: "bin"
+	// on Windows (DLLs), "lib" on Linux (.so).
 	auto LoadDependencyDLL = [&](const FString& LibraryPattern, const FString& SubDir, const FString& BinSubDir) {
 		// Try plugin third-party path first (editor / development).
 		FString DLLPath = ResolveLibraryFile(FPaths::Combine(InstallDir, SubDir, BinSubDir), LibraryPattern);

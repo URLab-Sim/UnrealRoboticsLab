@@ -184,11 +184,9 @@ bool FMjEffectiveDetailsNamesTheClassThatSuppliedTheValue::RunTest(const FString
 			FMjEffectiveDetails::DescribeValue(Schema).ToString(), FString(TEXT("3  (default)")));
 	}
 
-	// `margin` is the case that used to have no answer anywhere: `mjcf.schema`
-	// states no `=` default for it, so the row was blank and the user was left to
-	// read MuJoCo's manual. It is not undefaulted -- `mjs_defaultGeom` initialises
-	// it, and that is the value the compiler merges against -- and the schema
-	// layer now carries it.
+	// `mjcf.schema` states no `=` default for `margin`, but it is not undefaulted --
+	// `mjs_defaultGeom` initialises it, and that is the value the compiler merges
+	// against -- and the schema layer carries it.
 	if (const FOptionalProperty* const Margin = OptionalNamed(*Geom, TEXT("Margin")))
 	{
 		FMjEffectiveValue MarginValue;

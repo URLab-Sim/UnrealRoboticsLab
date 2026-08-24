@@ -31,16 +31,16 @@
 //                             adds one fails here by name rather than silently
 //                             falling through to the refusal.
 //
-//   a refusal is visible      A mesh geom has no scale mapping at all, and its
-//                             handle used to move and do nothing whatever: no
+//   a refusal is visible      A mesh geom has no scale mapping at all. Its
+//                             handle must not simply move and do nothing: no
 //                             edit, no snap, no explanation. It snaps back like
 //                             a body and says which element owns the size.
 //
 //   zero is never authored    A size of zero is not a small geom, it is a model
 //                             that will not compile. The level viewport's scale
 //                             grid steps in 0.25, which is larger than most of a
-//                             robot, so the first drag on a sub-grid geom used to
-//                             author exactly that.
+//                             robot, so the first drag on a sub-grid geom must
+//                             not be allowed to author exactly that.
 //
 //   the actor is an element   Every refusal above rides on `PostEditComponentMove`,
 //                             and the ordinary level gesture -- select the placed
@@ -136,9 +136,8 @@ USCS_Node* NodeOf(UBlueprint& Blueprint, const UMjNodeComponent& Element)
 /**
  * A brand new element under `link`, exactly as the components panel adds one.
  *
- * Never registered and never synced, so it has no cached baseline -- which is
- * the state the lock used to be skipped in, and the only state in which the
- * defect reproduced.
+ * Never registered and never synced, so it has no cached baseline -- the one
+ * state the per-type lock must not skip.
  */
 UMjNodeComponent* AddCold(FAutomationTestBase& Test, UBlueprint& Blueprint, UClass* Class, const TCHAR* Label)
 {
@@ -408,9 +407,8 @@ bool FMjMeshGeomRefusesAScale::RunTest(const FString& Parameters)
 
 	DragScale(*Hull, FVector(3.0, 1.0, 0.5));
 
-	// The refusal, which used to be a handle that moved and did nothing at all.
-	// A mesh geom's picture rides on the mesh asset's own scale, so the scale the
-	// spec implies for the geom component is one.
+	// The refusal: a mesh geom's picture rides on the mesh asset's own scale, so
+	// the scale the spec implies for the geom component is one.
 	TestEqual(TEXT("a mesh geom's scale goes back to what the spec implies"),
 		Hull->GetRelativeScale3D(), FVector::OneVector);
 	TestEqual(TEXT("and the drag authored no size"), AuthoredSize(*Hull).Num(), 0);

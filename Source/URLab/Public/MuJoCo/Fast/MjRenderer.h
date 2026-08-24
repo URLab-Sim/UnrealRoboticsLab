@@ -46,10 +46,9 @@ enum class EMjDebugShaderMode : uint8;
  * @enum EMjDrive
  * @brief The primary per-instance axis: what drives this renderer's rendered pose.
  *
- * Set from -URLabDrive (Phase 1) and by SpawnRenderer (bStepped ? Sim : Stream); when neither names
- * it, BeginPlay derives it from the boot signals (bForcedRenderOnly / BusEndpoint / a gRPC join /
- * -URLabCaps=vr). Phase 1.4 made it the sole axis the BeginPlay fork switches on -- the former
- * EMjPoseSource::RunMode is gone.
+ * Set from -URLabDrive and by SpawnRenderer (bStepped ? Sim : Stream); when neither names it,
+ * BeginPlay derives it from the boot signals (bForcedRenderOnly / BusEndpoint / a gRPC join /
+ * -URLabCaps=vr). It is the sole axis the BeginPlay fork switches on.
  *
  * - Sim:    owns live physics in the shared UMjPhysicsEngine (producer; the Direct step path).
  * - Stream: no physics; applies a subscribed transform stream (bus / gRPC join / VR mirror).
@@ -137,10 +136,9 @@ public:
 
 	// The primary Drive axis for this instance. Set by SpawnRenderer (bStepped ? Sim : Stream) and
 	// by -URLabDrive; otherwise derived at the top of BeginPlay from the boot signals
-	// (bForcedRenderOnly / BusEndpoint). The BeginPlay fork switches on it directly
-	// (Phase 1.4): Sim owns physics (the old RunMode==Stepped Direct path); Stream/Push/Await are the
-	// transform-mirror consumer substrate (the old RunMode==Mirror). Defaulted to Stream so a
-	// pre-BeginPlay / map-placed read matches the old RunMode==Mirror default.
+	// (bForcedRenderOnly / BusEndpoint). The BeginPlay fork switches on it directly: Sim owns
+	// physics (the Direct path); Stream/Push/Await are the transform-mirror consumer substrate.
+	// Defaulted to Stream, a sensible default for a pre-BeginPlay / map-placed read.
 	EMjDrive Drive = EMjDrive::Stream;
 
 	/** Owner transform bus endpoint, e.g. "tcp://127.0.0.1:5561". When set, this
@@ -469,11 +467,11 @@ private:
 	float MirrorDragDepthCm = 0.0f;
 	double MirrorGrabLocalMj[3] = {0.0, 0.0, 0.0};
 
-	// --- Mirror drag: cached async RPC client (H5) ---------------------------- //
-	// A ctrl-drag calls SendPerturbation every input tick. The old path created,
-	// connected, blocked on the ack (up to 500 ms) and destroyed a REQ transport
-	// PER TICK, stalling the game thread every frame against a slow/unresponsive
-	// owner. Instead one REQ client is created lazily on the first send of a drag
+	// --- Mirror drag: cached async RPC client ---------------------------------- //
+	// A ctrl-drag calls SendPerturbation every input tick. Creating, connecting,
+	// blocking on the ack (up to 500 ms) and tearing down a REQ transport PER TICK
+	// would stall the game thread every frame against a slow/unresponsive owner, so
+	// instead one REQ client is created lazily on the first send of a drag
 	// and reused for every subsequent tick, and each send runs on a background task
 	// so the game thread never blocks on the owner. The REQ socket is lockstep and
 	// not thread-safe, so at most one send is in flight at a time: while

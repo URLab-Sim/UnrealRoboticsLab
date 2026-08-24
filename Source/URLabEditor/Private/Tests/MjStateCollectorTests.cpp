@@ -323,7 +323,7 @@ bool FMjStateActuatorParity::RunTest(const FString& Parameters)
 // 5. Sensor values are emitted raw: IR Values == d->sensordata (MuJoCo SI),
 //    while GetReading() applies the MuJoCo -> UE transform on top. For a
 //    framequat the quaternion reorder makes the two provably differ, proving the
-//    transform no longer contaminates the IR.
+//    transform does not contaminate the IR.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStateSensorRawParity,
 	"URLab.State.SensorRawParity",
@@ -715,13 +715,13 @@ bool FMjStateByteFanOutPause::RunTest(const FString& Parameters)
 	FFakeSnapshotPublisher Fake;
 	S.Manager->RegisterSnapshotPublisher(&Fake, S.Manager);
 
-	// Live (unpaused): the fan-out encodes and delivers bytes to the publisher.
+	// Unpaused (FreeRun): the fan-out encodes and delivers bytes to the publisher.
 	S.Manager->bPublishersPaused.store(false);
 	S.Manager->FanOutStateSnapshot(m, d);
 	TestTrue(TEXT("publisher receives bytes when live"), Fake.Count >= 1);
 	TestTrue(TEXT("delivered payload is non-empty"), Fake.LastBytes > 0);
 
-	// Paused (Direct/Puppet): the byte fan-out is suppressed.
+	// Paused (Stepped/StatePushed): the byte fan-out is suppressed.
 	const int32 Before = Fake.Count;
 	S.Manager->bPublishersPaused.store(true);
 	S.Manager->FanOutStateSnapshot(m, d);

@@ -194,10 +194,10 @@ bool FMjThreadModelIntegrity::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Thread.LivePacing
-//   Runs the async worker in live mode for a wall-clock window and checks that
-//   sim time advances at ~real time. Guards two runtime behaviours the headless
-//   suite otherwise can't see: the resolved-step-mode fix (a default Auto scene
-//   used to fall through to the ~10Hz step-event timeout instead of the pacer)
+//   Runs the async worker in FreeRun mode for a wall-clock window and checks
+//   that sim time advances at ~real time. Guards two runtime behaviours the
+//   headless suite otherwise can't see: the resolved-step-mode gate (a default
+//   Auto scene must resolve to the pacer, not the ~10Hz step-event timeout)
 //   and the hybrid-sleep pacer (must hold the rate, not overshoot into slow-mo).
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjThreadLivePacing,
@@ -215,7 +215,7 @@ bool FMjThreadLivePacing::RunTest(const FString& Parameters)
 
 	UMjPhysicsEngine* Engine = S.Manager->PhysicsEngine;
 
-	// Live mode, full speed, unpaused, worker running.
+	// FreeRun mode, full speed, unpaused, worker running.
 	Engine->SetPoseSource(EMjStepMode::FreeRun);
 	Engine->SetSimSpeed(100.0f);
 	Engine->SetPaused(false);

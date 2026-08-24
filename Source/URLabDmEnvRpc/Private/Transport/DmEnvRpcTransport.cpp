@@ -114,11 +114,10 @@ public:
 					// opens a separate Process call for this, so it never blocks its rpc
 					// stream. Requires the owner to broadcast (-URLabBroadcastViewers=1).
 					//
-					// The one surviving subscribe is the render tier (op "view_frame",
-					// per-body transforms + optional debug fields). The qpos render tier
-					// (subscribe_viewer / subscribe{format:qpos}, {t,qpos,qvel}) was
-					// removed in Phase 3.2. This is the H3 contract shared with the Python
-					// owner, so a UE lean gRPC mirror renders over pure gRPC.
+					// Subscribe serves a single tier: the render tier (op "view_frame",
+					// per-body transforms + optional debug fields). This contract is
+					// shared with the Python owner, so a UE lean gRPC mirror renders
+					// over pure gRPC.
 					if (InPacket.op() == "subscribe")
 					{
 						// Route the subscribe's debug-tier negotiation back to the UE
@@ -344,11 +343,10 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 
 	// Port is bound. Only now cache the owner's per-step render frames so a subscribe
 	// stream can serve them. One sink for the "render" tier (transforms + optional
-	// debug), streamed as "view_frame" by subscribe(format=render). Binding it here is
-	// the H3 fix -- the gRPC egress no longer depends on a bound ZMQ viewer bus. Bound
-	// only while this transport is up (and, per H2b, only after a successful bind, so a
-	// dead transport never holds a live sink). (The qpos "viewer" tier was removed in
-	// Phase 3.2.)
+	// debug), streamed as "view_frame" by subscribe(format=render). The gRPC egress
+	// does not depend on a bound ZMQ viewer bus. Bound only while this transport is
+	// up, and only after a successful bind, so a dead transport never holds a live
+	// sink.
 	ViewerSinkHandle = FMjExternalTransportProvider::OnViewerFrame.AddLambda(
 		[this](const FString& Topic, const TArray<uint8>& Bytes)
 		{
@@ -364,8 +362,8 @@ bool UURLabDmEnvRpcTransport::TransportInit()
 
 void UURLabDmEnvRpcTransport::SetRenderFrame(const TArray<uint8>& Bytes)
 {
-	// The gRPC render seam (source-of-truth §8.1/§8.2). Fed by the Phase 2.4 owner
-	// render sink; read by a subscribe(format=render) server-stream.
+	// The gRPC render seam (source-of-truth §8.1/§8.2). Fed by the owner's render
+	// sink; read by a subscribe(format=render) server-stream.
 	FScopeLock Lock(&RenderCacheLock);
 	LatestRenderFrame = Bytes;
 	++RenderFrameSeq;

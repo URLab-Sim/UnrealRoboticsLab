@@ -160,9 +160,8 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleSetPaused(const TSharedPtr<FJ
 
 // Parse the per_articulation control payload -- control_mode, positional ctrl
 // array, named ctrl_map, and xfrc_applied -- into an FMjStepRequest. Shared by
-// the live and direct step paths so both apply the full payload; the live
-// branch previously parsed only the positional ctrl array and silently dropped
-// ctrl_map / xfrc_applied.
+// the live and direct step paths so both apply the full payload (control_mode,
+// ctrl_map, and xfrc_applied included, not just the positional ctrl array).
 static void ParseStepPerArticulation(const TSharedPtr<FJsonObject>& Req, FMjStepRequest& Out)
 {
 	const TSharedPtr<FJsonObject>* PerArt = nullptr;

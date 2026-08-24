@@ -3,11 +3,11 @@
 
 // The Blueprint-facing accessors and the per-step snapshot they read.
 //
-// They used to index live mjData, so a gameplay script asking two questions
-// while the physics thread was mid-step could be answered out of two different
-// steps, or out of memory being written as it was read. They now read the same
-// published snapshot the visual update and the networking path already read,
-// which is one coherent physics frame per step.
+// They read the same published snapshot the visual update and the networking
+// path already read, which is one coherent physics frame per step. Indexing
+// live mjData directly would let a gameplay script asking two questions while
+// the physics thread was mid-step be answered out of two different steps, or
+// out of memory being written as it was read.
 
 #include "CoreMinimal.h"
 #include "Components/LineBatchComponent.h"

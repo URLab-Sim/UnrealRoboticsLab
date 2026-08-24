@@ -620,7 +620,7 @@ void AAMjManager::PublishOnViewerBus(const FString& Topic, const TArray<uint8>& 
 	// its topic, so a UE owner serves mirrors over gRPC and ZMQ alike from the same
 	// per-step frame. The backend selects the tier by topic ("render" transforms) --
 	// no "viewer"-only special case, so the "render" tier reaches the gRPC sink and
-	// pure-gRPC UE<->UE mirroring works (H3).
+	// pure-gRPC UE<->UE mirroring works.
 	if (FMjExternalTransportProvider::OnViewerFrame.IsBound())
 	{
 		FMjExternalTransportProvider::OnViewerFrame.Broadcast(Topic, Payload);
@@ -854,9 +854,9 @@ void AAMjManager::AppendRenderDebugFields(TSharedPtr<FJsonObject>& Frame,
 void AAMjManager::PublishRenderFrame(mjModel* m, mjData* d)
 {
 	// Build/publish when EITHER a ZMQ viewer bus OR an external (gRPC) sink is
-	// bound. This is the ⚠-1 unblocker: a UE owner with only a gRPC server (no ZMQ
-	// viewer bus) still produces the render tier, so a UE lean gRPC mirror renders
-	// over pure gRPC (H3) and Phase 3's qpos removal won't kill UE<->UE mirroring.
+	// bound, so a UE owner with only a gRPC server (no ZMQ viewer bus) still
+	// produces the render tier: a UE lean gRPC mirror renders over pure gRPC with
+	// no dependency on the ZMQ viewer bus.
 	if ((ViewerBusTransports.Num() == 0
 			&& !FMjExternalTransportProvider::OnViewerFrame.IsBound())
 		|| !m || !d)
@@ -886,7 +886,7 @@ void AAMjManager::FanOutStateSnapshot(mjModel* m, mjData* d)
 {
 	// Per-body render tier (+ optional debug fields) on the owner viewer bus, for
 	// fast-path renderers -- every step, independent of the state_full byte fan-out
-	// (which pauses in direct/puppet). The qpos render tier was removed (Phase 3.2).
+	// (which pauses in direct/puppet).
 	PublishRenderFrame(m, d);
 
 	// Build the state IR once per physics step, encode it to the canonical

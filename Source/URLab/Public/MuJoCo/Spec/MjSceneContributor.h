@@ -12,9 +12,9 @@
 //
 // A level's MuJoCo content is not only imported robots. A heightfield actor
 // samples the terrain under it; a quick-convert component turns whatever meshes
-// an actor already carries into collision geometry. Both used to reach into the
-// compiler and add elements to a spec while it was being built, which is a
-// second authoring path and the reason neither survived the cutover.
+// an actor already carries into collision geometry. Neither reaches into the
+// compiler to add elements to a spec while it is being built -- that would be
+// a second authoring path, which is exactly what the design below avoids.
 //
 // They are the same thing as an import, run the other way round: MJCF authored
 // from Unreal content. So they author a spec, exactly the spec an import

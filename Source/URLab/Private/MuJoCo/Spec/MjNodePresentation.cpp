@@ -120,10 +120,10 @@ void RefreshSpecPresentationOf(const FSpecRef& Doc)
 	}
 
 	// One index for the whole walk. Each node asks the class chain several
-	// questions and a geom asks more, and every one of those used to index the
-	// spec from scratch -- so refreshing N elements cost N whole-spec walks per
-	// question rather than one. The template graph comes with the scope, because
-	// a spec held as Blueprint templates cannot be walked without it.
+	// questions and a geom asks more; indexing the spec from scratch for each of
+	// those would cost N whole-spec walks per question instead of one. The
+	// template graph comes with the scope, because a spec held as Blueprint
+	// templates cannot be walked without it.
 	urlab::spec::FMjEffectiveScope Effective(Doc);
 
 #if WITH_EDITOR

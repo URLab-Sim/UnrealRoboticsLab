@@ -12,12 +12,10 @@
 // is not refused: the element is simply absent from the compiled model, and the
 // model still compiles, so the first sign of it is a robot missing a part.
 //
-// The check used to hang off the Blueprint construction script's own edit
-// notification, which meant it saw exactly one of the two ways a user adds a
-// component: the level editor's Add Component, on a placed actor, went
-// unjudged. It now runs on `OnRegister`, which BOTH ways reach, and what it
-// produces is a row on the component rather than a toast that is gone before
-// the next add.
+// The check runs on `OnRegister`, which both ways a user adds a component --
+// the Blueprint construction script and the level editor's Add Component on a
+// placed actor -- reach, and what it produces is a row on the component rather
+// than a toast that is gone before the next add.
 //
 // This drives the level-editor path -- create, attach, register -- because that
 // is the one that had no coverage at all.

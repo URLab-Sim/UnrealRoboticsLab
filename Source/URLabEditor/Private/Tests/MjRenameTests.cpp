@@ -10,11 +10,9 @@
 //
 // Every cross-reference in MuJoCo is a name resolved at compile time: an
 // actuator names the joint it drives, a geom names its material. Renaming the
-// joint in the details panel used to leave the actuator pointing at a name
-// nothing answers to, and nothing said so -- the model simply stopped compiling
-// later, from MuJoCo, with no element to blame. The referrers are corrected in
-// the same transaction, and a name that resolves to nothing is reported on the
-// element carrying it.
+// joint in the details panel corrects every referrer in the same transaction,
+// so nothing is left pointing at a name nothing answers to, and a name that
+// resolves to nothing is reported on the element carrying it.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"

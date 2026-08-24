@@ -16,8 +16,7 @@
  * The counterpart to the server-side control RPC: a renderer sends one request
  * to a remote owner/driver endpoint and blocks for the reply. It is the shared
  * shape behind the fast-path renderer's short-lived REQ calls -- the model
- * fetch (fastpath_hello) and the perturbation ack -- both of which previously
- * hand-rolled the same raw-libzmq REQ round trip.
+ * fetch (fastpath_hello) and the perturbation ack.
  *
  * Concrete backends (ZMQ now; SHM / ROS / gRPC via the external-transport
  * provider hook) own the socket + connection. Request is synchronous: the

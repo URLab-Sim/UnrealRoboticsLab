@@ -13,9 +13,9 @@
 // A geom's shape is an attribute, not a class. `Type` is a TOptional<EMjGeomType>
 // on the generated base and it changes the instant someone picks a different entry
 // in the dropdown, so there is one UMjGeom for all nine shapes rather than one per
-// shape. Everything that used to separate a box component from a sphere component
-// -- which engine primitive to preview with, how MJCF `size` maps onto a component
-// scale, which scale axes the gizmo may move independently -- is one row in a table
+// shape. Everything that separates one shape's preview from another's -- which
+// engine primitive to preview with, how MJCF `size` maps onto a component scale,
+// which scale axes the gizmo may move independently -- is one row in a table
 // keyed by that attribute, and the table lives in MjGeom.cpp.
 //
 // Only the capsule needs more than a row. Unreal ships no capsule primitive, so its

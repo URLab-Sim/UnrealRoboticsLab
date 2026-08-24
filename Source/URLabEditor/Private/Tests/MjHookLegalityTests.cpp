@@ -11,11 +11,11 @@
 // Two elections in the spec write are not field copies: an actuator's
 // transmission and an equality's operands both decide a type and a target
 // together, from whichever spelling the author used. MuJoCo's reader rejects
-// the half-authored combinations at the point of reading; ours used to carry
-// them into the compiler, where they surface as a reference to nothing, naming
-// neither the element nor the line it was authored on. These are the
-// combinations, one test per edge, asserting that the diagnostic arrives here
-// and says which rule was broken.
+// the half-authored combinations at the point of reading; ours rejects them at
+// the point of writing the spec, naming the element and which half of the
+// choice was half-authored instead of letting them reach the compiler as a
+// reference to nothing. These are the combinations, one test per edge,
+// asserting that the diagnostic arrives here and says which rule was broken.
 //
 // The other direction is asserted in the same tests: every legal spelling still
 // builds. A legality check that also rejects something MuJoCo accepts is a

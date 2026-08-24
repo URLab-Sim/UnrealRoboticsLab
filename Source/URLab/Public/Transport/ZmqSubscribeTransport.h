@@ -27,10 +27,8 @@ class AAMjManager;
  *
  * The control-in payload is a msgpack map `{ids:[...], vals:[...]}`
  * (source-of-truth §9.3) parsed via `FURLabMsgpackUtil` -- no raw
- * pointer casts, bounds-checked. The legacy ad-hoc little-endian binary
- * `[i32 n][i32 id, f32 val]*` format and the `:5557` JSON `actuator_list`
- * info-broadcast PUB have been retired (client-side actuator metadata now
- * rides the RPC handshake).
+ * pointer casts, bounds-checked. Client-side actuator metadata rides the
+ * RPC handshake rather than this channel.
  *
  * UObject deriving from `UURLabSubscribeTransport`. Manager creates
  * via `NewObject` + `SetOwningManager` + `TransportInit`; per-step

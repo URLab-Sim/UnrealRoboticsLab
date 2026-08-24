@@ -361,7 +361,7 @@ bool FMjRosPublisherRebuild::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 7. Direct-mode fan-out: ROS publishes every step (distinct consumer) while the
+// 7. Stepped-mode fan-out: ROS publishes every step (distinct consumer) while the
 //    byte publishers stay paused (3.6 rule). A fake IMjSnapshotPublisher stands
 //    in for the ZMQ / SHM byte streams.
 // ---------------------------------------------------------------------------
@@ -418,7 +418,7 @@ bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// Direct mode pauses the byte fan-out (bPublishersPaused = true).
+	// Stepped mode pauses the byte fan-out (bPublishersPaused = true).
 	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	TestTrue(TEXT("direct mode pauses byte publishers"),
 		S.Manager->bPublishersPaused.load());
@@ -434,7 +434,7 @@ bool FMjRosDirectModeFanOut::RunTest(const FString& Parameters)
 	TestEqual(TEXT("byte publisher received nothing while paused"),
 		Fake.Count.load(), 0);
 
-	// Restore Live so downstream tests see a clean cadence, then tear down.
+	// Restore FreeRun so downstream tests see a clean cadence, then tear down.
 	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	Ros->TransportShutdown();
 	S.Manager->UnregisterSnapshotPublisher(&Fake);
@@ -556,8 +556,8 @@ bool FMjRosControlOwnershipAcrossSurfaces::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 9. Mode gating: a marshalled ROS ctrl write is dropped outside Live mode and
-//    applies in Live mode. Ownership is granted first so mode is the only gate;
+// 9. Mode gating: a marshalled ROS ctrl write is dropped outside FreeRun mode and
+//    applies in FreeRun mode. Ownership is granted first so mode is the only gate;
 //    no live ROS runtime is needed (HandleRosCtrl touches no rcl).
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosCtrlModeGating,
@@ -604,13 +604,13 @@ bool FMjRosCtrlModeGating::RunTest(const FString& Parameters)
 	FString Cur;
 	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 
-	// Direct mode: the write is dropped, so d->ctrl stays at its initial value.
+	// Stepped mode: the write is dropped, so d->ctrl stays at its initial value.
 	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("direct-mode ROS ctrl dropped"), (double)d->ctrl[0], 0.0, 1e-6);
 
-	// Live mode: the same write reaches the setpoint buffer and the pre-step drain lands it.
+	// FreeRun mode: the same write reaches the setpoint buffer and the pre-step drain lands it.
 	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	Ros->ApplyRosCtrlForTest(ArtName, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
@@ -672,7 +672,7 @@ bool FMjRosCtrlWire::RunTest(const FString& Parameters)
 	UURLabRosRpcTransport* Ros = NewObject<UURLabRosRpcTransport>(S.Manager);
 	Ros->SetOwningBridge(S.Manager->BridgeServer);
 
-	// Own the art as the ROS source and stay in Live mode so the marshalled write
+	// Own the art as the ROS source and stay in FreeRun mode so the marshalled write
 	// is applied rather than dropped.
 	FString Cur;
 	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
@@ -963,8 +963,8 @@ bool FMjRosClaimService::RunTest(const FString& Parameters)
 
 // ---------------------------------------------------------------------------
 // 15. JointState jog input: a joint_command naming an actuator's canonical joint
-//     is dropped outside Live mode and stages the actuator's position target in
-//     Live mode. Ownership is granted first so mode is the only gate; drives
+//     is dropped outside FreeRun mode and stages the actuator's position target in
+//     FreeRun mode. Ownership is granted first so mode is the only gate; drives
 //     HandleRosJointCommand directly (no live ROS runtime needed).
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjRosJointCommandJog,
@@ -1030,13 +1030,13 @@ bool FMjRosJointCommandJog::RunTest(const FString& Parameters)
 	FString Cur;
 	S.Manager->PhysicsEngine->GetControlOwnership().Claim(Key, RosSrc, 0.0, false, Cur);
 
-	// Direct mode: the jog is dropped, so d->ctrl stays at its initial value.
+	// Stepped mode: the jog is dropped, so d->ctrl stays at its initial value.
 	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);
 	TestEqual(TEXT("direct-mode joint_command dropped"), (double)d->ctrl[0], 0.0, 1e-6);
 
-	// Live mode: the same jog stages the actuator's position target.
+	// FreeRun mode: the same jog stages the actuator's position target.
 	Disp->SetActiveStepMode(EMjStepMode::FreeRun);
 	Ros->ApplyRosJointCommandForTest(ArtName, {JointName}, {0.5});
 	S.Manager->PhysicsEngine->DrainControlIntoData(m, d);

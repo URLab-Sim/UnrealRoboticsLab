@@ -7,11 +7,9 @@
 #include "MjPoseSource.generated.h"
 
 /**
- * Legacy producer pose axis. Phase 1.4 split this: the engine's producer step-mode moved onto
- * EMjStepMode (below) and the renderer's consumer notion moved onto EMjDrive (on AMjRenderer), so
- * `Mirror` -- the consumer value that was never a legitimate engine value -- is gone. With that split
- * complete this enum has NO remaining references; it is retained (minus `Mirror`) only so its full
- * deletion can be sequenced separately.
+ * Unreferenced anywhere in the plugin. Retained only so its deletion can be sequenced separately.
+ * The producer step-mode axis is EMjStepMode (below); the consumer notion is EMjDrive (on
+ * AMjRenderer).
  */
 UENUM(BlueprintType)
 enum class EMjPoseSource : uint8
@@ -26,9 +24,8 @@ enum class EMjPoseSource : uint8
  * consumer (drive=stream|push) has no step-mode -- it has a pose sink, not an engine to advance.
  *
  * The engine's resolved step-mode axis (UMjPhysicsEngine::ResolvedPoseSource, the RPC dispatcher's
- * ActiveStepMode, AMjManager::StepMode) is typed on this since the Phase 1.4 enum split. It drops
- * `Mirror` -- never a legitimate producer/engine value; the consumer notion it named now lives on
- * EMjDrive (stream/push) on AMjRenderer.
+ * ActiveStepMode, AMjManager::StepMode) is typed on this enum. A consumer's stream/push distinction
+ * is a separate axis, on EMjDrive (on AMjRenderer).
  *
  * - FreeRun: steps on its own clock.
  * - Stepped: steps only on a client step request (any transport).

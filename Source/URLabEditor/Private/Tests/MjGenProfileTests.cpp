@@ -6,7 +6,7 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 
-// The Phase 3 gates for the generated MuJoCo spec profile.
+// The round-trip and differential-compile gates for the generated MuJoCo spec profile.
 //
 // Round-trip fixpoint proves the writer emits exactly what the reader accepted,
 // and the differential compile proves that what it emits compiles to the same

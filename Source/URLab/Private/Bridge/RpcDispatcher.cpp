@@ -830,9 +830,9 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		// The text goes out exactly as the scene writer produced it. Every
 		// `file=` in it already names the mount the asset pass chose, and those
 		// mount names are what the VFS below is keyed by; rewriting either end
-		// here would be a second naming convention for the same bytes, and the
-		// one it used to apply -- reducing every reference to its basename --
-		// collapsed two participants' `base.obj` onto one mount.
+		// here would be a second naming convention for the same bytes -- e.g.
+		// reducing every reference to its basename collapses two participants'
+		// `base.obj` onto one mount.
 		FMjCompiledScene Scene;
 		FString SceneError;
 		if (Manager->PhysicsEngine->BuildCompiledScene(Scene, SceneError))
@@ -883,9 +883,10 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 		ArtObj->SetStringField(TEXT("actor_id"), E.ActorId);
 		ArtObj->SetStringField(TEXT("actor_name"), E.Name.ToString());
 
-		// Root body + free-base offsets, folded in from the retired standalone `entities` block so
-		// every entity (robot or free-base body) carries them on one wire element. A state-pushing
-		// client writes the base pose/vel back through the free joint's qpos/qvel addresses.
+		// Root body + free-base offsets are carried on this same element rather than a
+		// separate block, so every entity (robot or free-base body) carries them on one wire
+		// element. A state-pushing client writes the base pose/vel back through the free
+		// joint's qpos/qvel addresses.
 		ArtObj->SetNumberField(TEXT("id"), E.RootBodyId);
 		ArtObj->SetBoolField(TEXT("has_free_base"), E.bFreeBase);
 		if (E.bFreeBase && Manager->PhysicsEngine)
@@ -1018,10 +1019,6 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::BuildHandshakePayload(AAMjManager* 
 			}
 		}
 
-		// Per-category map { live_short_name: original_xml_name } for
-		// components whose live name was renamed by SCS / spec-time
-		// dedup. The bridge resolves mjlab patterns against original
-		// names. Identity entries + default-class templates are skipped.
 		// Live-to-authored name maps, one per category. They are empty and the
 		// wire contract keeps them: the reader writes the MJCF `name` attribute
 		// into the element and nothing renames it afterwards, so an element's

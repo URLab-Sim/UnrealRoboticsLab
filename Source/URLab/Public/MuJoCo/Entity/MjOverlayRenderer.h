@@ -29,8 +29,7 @@ class UMaterialInterface;
  * cylinders. Pools are cleared and refilled each frame (high-water-mark reuse), so
  * the visual is identical to the old one-frame DrawDebug lifetime.
  *
- * Joints are deliberately EXCLUDED -- the plugin renders them natively; this
- * renderer no longer ports DrawJoints.
+ * Joints are deliberately EXCLUDED -- the plugin renders them natively.
  *
  * The topology (geom shapes, site sizes, inertia) comes from the model; every pose
  * comes from the engine's published render snapshot rather than live mjData, so this

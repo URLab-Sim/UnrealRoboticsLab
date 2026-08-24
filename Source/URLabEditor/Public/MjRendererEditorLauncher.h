@@ -18,9 +18,9 @@
  * `-URLabFastBus=<endpoint>`), this stands up a persistent fast-path render
  * scene in the editor world via URLabLevelOps::LaunchFastPathSync: a clean
  * dedicated level, movable lighting, and a built + connected AMjRenderer. It is
- * the CLI/automation entry point that replaces the old editor Python script;
- * the same LaunchFastPathSync op is what the bridge / server-browser UI will
- * call interactively.
+ * the CLI/automation entry point for scripted/headless launches; the same
+ * LaunchFastPathSync op is what the bridge / server-browser UI will call
+ * interactively.
  *
  * The launch is deferred off a ticker until the editor world exists and the
  * initial map has settled, so switching to the fresh level is clean.

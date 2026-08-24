@@ -22,8 +22,7 @@
 // ============================================================================
 // MjRenderFeatureTests.cpp
 //
-// Renderer feature tests for work landed since v0.6.0-beta (source-of-truth §2,
-// §8.5, §14):
+// Renderer feature tests (source-of-truth §2, §8.5, §14):
 //
 //  * Drive parsing from the one launcher flag axis (-URLabDrive), §2 / §14.
 //  * The overlay-mask (mjtVisFlag bit i) decode gating the ISM overlay path, §8.5.

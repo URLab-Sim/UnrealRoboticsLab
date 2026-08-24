@@ -27,16 +27,14 @@
 //   UMjSkincomp::UpdateFromBodyTransforms (CPU LBS vs mjv_updateActiveSkin) --
 // asserted vertex-by-vertex against the streamed per-body transforms.
 //
-// These three tests previously WARNED and returned (assert-nothing stubs). The
-// stubs' premise -- that UpdateFromBodyTransforms cannot run headlessly because
-// it needs a child UStaticMeshComponent surface -- holds only for an AUTHORED
-// flexcomp. A MIRROR element (SetMirrorFlex / SetSkinId, the renderer-created
-// path, MjFlexcomp.cpp:2513 / MjSkincomp) builds its OWN UDynamicMesh surface
-// from the compiled model's topology on the first drive (BuildModelSurface,
-// MjFlexcomp.cpp:699-712; CreateProceduralMesh, MjSkincomp), so the exact code
-// path a stream/push mirror runs IS reachable from a headless automation test.
-// That is what these tests now exercise: a mirror element driven by hand-built
-// bxpos/bxquat, its deformed UDynamicMesh read back vertex-by-vertex.
+// UpdateFromBodyTransforms cannot run headlessly for an AUTHORED flexcomp,
+// which needs a child UStaticMeshComponent surface. A MIRROR element
+// (SetMirrorFlex / SetSkinId, the renderer-created path, MjFlexcomp.cpp:2513 /
+// MjSkincomp) instead builds its OWN UDynamicMesh surface from the compiled
+// model's topology on the first drive (BuildModelSurface, MjFlexcomp.cpp:699-712;
+// CreateProceduralMesh, MjSkincomp), so the exact code path a stream/push mirror
+// runs IS reachable from a headless automation test: a mirror element driven by
+// hand-built bxpos/bxquat, its deformed UDynamicMesh read back vertex-by-vertex.
 // ============================================================================
 
 #include "CoreMinimal.h"

@@ -56,8 +56,8 @@ enum class EMjUserChannelKind : uint8;
  * drives the core wait set through `UrlabRcl_SpinSome`, pumping the per-art
  * command subscriptions and marshalling them into the sim's control write paths.
  *
- * Control-in surface (Live mode only; direct / puppet bundle control into their
- * step / push calls, so writes are dropped outside Live):
+ * Control-in surface (FreeRun step mode only; Stepped / StatePushed bundle
+ * control into their step / push calls, so writes are dropped outside FreeRun):
  *  - `/<art>/cmd_ctrl` (`std_msgs/Float64MultiArray`), values in the entity's
  *    actuator-list order, routed through `IMjControlIngress::WriteCtrl` exactly as
  *    `ApplyStepCtrl` does;
@@ -91,7 +91,7 @@ public:
 
 	/** Marshal a received `cmd_ctrl` message for `ArtName` (the entity wire key) into
 	 *  the control ingress `ApplyStepCtrl` writes to: gate on ownership (`CheckWrite`)
-	 *  then Live mode, and on success route each value onto the entity's actuator ids
+	 *  then that step mode is FreeRun, and on success route each value onto the entity's actuator ids
 	 *  in list order. Public so the C subscription trampoline can reach it. */
 	void HandleRosCtrl(const FString& ArtName, const double* Values, int32 Count);
 
@@ -103,7 +103,7 @@ public:
 	/** Marshal a received `sensor_msgs/JointState` on `/<art>/joint_command`: resolve
 	 *  each named joint to the actuator driving it (or a named actuator) off the model
 	 *  and route its position target through the control ingress, gated identically to
-	 *  HandleRosCtrl (ownership + Live mode). This is what lets the standard
+	 *  HandleRosCtrl (ownership + FreeRun step mode). This is what lets the standard
 	 *  joint_state_publisher_gui jog the entity. Public so the C subscription
 	 *  trampoline can reach it. */
 	void HandleRosJointCommand(const FString& ArtName, const char** Names,
@@ -112,7 +112,7 @@ public:
 	/** Marshal a user-channel input value for `ArtOrNone` (canonical art segment, or
 	 *  None for scene scope) into the declaring component via the core
 	 *  `ApplyUserChannelInput`. Unlike control writes, user-channel input is NOT
-	 *  ownership- or Live-mode-gated: it is app-level data owned by user logic, not
+	 *  ownership- or FreeRun-mode-gated: it is app-level data owned by user logic, not
 	 *  a control write that fights the physics authority. Public for the C
 	 *  subscription trampoline. */
 	void HandleRosUserChannel(FName ArtOrNone, FName Channel, EMjUserChannelKind Kind,

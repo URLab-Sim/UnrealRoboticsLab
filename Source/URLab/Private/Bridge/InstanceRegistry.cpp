@@ -112,10 +112,8 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 
 		// Geom count for display, mirroring fastpath_owner.py's `ngeom` field
 		// (source-of-truth §12's one-schema target). Callers that have not been
-		// updated to pass the model's real geom count advertise 0 (addendum §A5:
-		// previously this key was entirely absent, so a reader's
-		// GetIntegerField silently returned 0 anyway -- now it's an honest 0
-		// instead of a missing key).
+		// updated to pass the model's real geom count advertise 0, so the key is
+		// always present for a reader's GetIntegerField rather than missing.
 		Entry->SetNumberField(TEXT("ngeom"), Ngeom);
 
 		// gRPC (dm_env_rpc) endpoint, when this instance serves one. DmEnvPort is

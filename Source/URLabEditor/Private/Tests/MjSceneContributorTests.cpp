@@ -9,10 +9,10 @@
 // Unreal content becoming MJCF: the inverse of import, held to the same bar.
 //
 // A heightfield samples the level; a quick-convert component turns an actor's
-// meshes into collision geometry. Both used to write into a spec while it was
-// being built. Both now author a spec that the scene attaches as an ordinary
-// participant, which means the thing to assert is not that they ran but that
-// what they authored reached the compiled model with the right numbers in it.
+// meshes into collision geometry. Both author a spec that the scene attaches as
+// an ordinary participant, which means the thing to assert is not that they ran
+// but that what they authored reached the compiled model with the right numbers
+// in it.
 //
 // So each assertion here reads mjModel, not the spec. The elevation is
 // checked against `hfield_data` cell by cell, because the row order is the one

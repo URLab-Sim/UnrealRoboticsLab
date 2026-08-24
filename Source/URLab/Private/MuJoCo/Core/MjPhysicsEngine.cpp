@@ -405,8 +405,7 @@ void ForEachSpecNode(AActor& Actor, TFunctionRef<void(UMjNodeComponent&)> Visit)
 // it -- keyed on the node's creation serial, which is minted once per element
 // and never reissued.
 //
-// The rules follow the retired ProtoSpec compile bridge's `Recompile`,
-// which is the same migration one level down:
+// The migration rules:
 //
 //   * a surviving element's state is written back at its NEW address,
 //   * a deleted element's state is dropped with it,
@@ -1794,10 +1793,10 @@ void UMjPhysicsEngine::PushRenderState()
 	CopyArray(RenderSnapshot.ActuatorForce, m_data->actuator_force, NU);
 	CopyArray(RenderSnapshot.SensorData, m_data->sensordata, NSensorData);
 
-	// The rest of what the Blueprint-facing accessors report. They used to read
-	// live mjData, so a script asking two questions during one step could get
-	// answers from two different steps; these give them the same published
-	// frame everything else already reads.
+	// The rest of what the Blueprint-facing accessors report, copied into the
+	// snapshot so a script asking two questions during one step gets answers
+	// from the same published frame everything else already reads, rather than
+	// two different steps of live mjData.
 	CopyArray(RenderSnapshot.JntXAnchor, m_data->xanchor, m_model->njnt * 3);
 	CopyArray(RenderSnapshot.JntXAxis, m_data->xaxis, m_model->njnt * 3);
 	CopyArray(RenderSnapshot.Ctrl, m_data->ctrl, NU);

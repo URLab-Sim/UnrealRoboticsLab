@@ -8,9 +8,9 @@
 
 // What an import costs, in work rather than in seconds.
 //
-// Three surfaces the reader leans on used to answer every question by walking
-// something whole, and an import asks each of them once per element, so the cost
-// of reading a model was the square of its size:
+// Three surfaces the reader leans on must answer every question in work that
+// does not grow with the model, even though an import asks each of them once
+// per element:
 //
 //   the SCS node map        a whole-Blueprint walk, rebuilt after every node
 //                           the reader created or linked
@@ -18,7 +18,7 @@
 //                           in the spec, built afresh for every attribute query
 //   the dispatch tables     scanned end to end for a class, a tag or a slot
 //
-// Each of the three now carries a counter of the work it did, and this measures
+// Each of the three carries a counter of the work it did, and this measures
 // them across a fourfold change in model size. Counters and not wall clock, on
 // purpose: a stopwatch on a shared machine fails for reasons that have nothing
 // to do with the code, and a count of whole-spec walks says precisely which of

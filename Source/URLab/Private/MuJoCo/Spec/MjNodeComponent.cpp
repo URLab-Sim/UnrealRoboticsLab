@@ -43,8 +43,8 @@ namespace
  * authored `SiblingIndex` collides, which lives entirely inside one session.
  *
  * Nothing that leaves the process is derived from one. The generated names an
- * unnamed element compiles under used to be, and are not: they count their
- * family in document order instead, so they repeat across runs.
+ * unnamed element compiles under are not derived from one either: they count
+ * their family in document order instead, so they repeat across runs.
  */
 std::atomic<uint64> GMjSerialCounter{0};
 } // namespace
@@ -116,9 +116,9 @@ void UMjNodeComponent::SyncPreviewUnderOneScope()
 #if URLAB_MJ_GEN
 	// One index for the whole sync. Syncing a single element resolves its pose,
 	// its scale and -- for a geom -- its mesh and its material through the same
-	// default-class chain, and each of those questions used to index the entire
-	// spec on its own. Registering a model is N of those, which is the shape the
-	// import path already avoids by holding one scope open across its walk.
+	// default-class chain; indexing the entire spec per question would cost N
+	// of those for a model of N elements, the shape the import path already
+	// avoids by holding one scope open across its walk.
 	//
 	// Only where the sync is the whole of the work: inside a pass that already
 	// holds a scope open, this joins it and costs nothing.
@@ -837,9 +837,10 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 
 	// The picture, under one index for the whole of it. Everything below asks the
 	// same spec the same structural questions -- what class chain an element
-	// resolves through, which node holds which template -- and each of those used
-	// to index the spec on its own. It opens after the branches above because
-	// those can rewrite names, and the index is keyed by them.
+	// resolves through, which node holds which template -- and indexing the spec
+	// per question would repeat that walk for each one. It opens after the
+	// branches above because those can rewrite names, and the index is keyed by
+	// them.
 	urlab::spec::FMjEffectiveScope Presentation(Doc);
 
 	// Typing into a spatial attribute has to move the viewport. Which names those
@@ -865,8 +866,8 @@ void UMjNodeComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 		//
 		// Each instance is a spec of its own, with its own root and its own class
 		// chain, so it gets one walk and one index -- one, not one per element
-		// and not one per question, which is what resolving the instance's root
-		// per query used to cost.
+		// and not one per question, avoiding the cost of resolving the instance's
+		// root on every query.
 		urlab::spec::MjNodeForEachInstanceOfTemplate(Doc, *this, [](UMjNodeComponent& Instance) {
 			urlab::spec::MjNodeRefreshSpecPresentationForSpec(FSpecRef::OverOwner(&Instance));
 		});

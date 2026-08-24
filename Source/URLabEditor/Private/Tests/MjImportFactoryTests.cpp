@@ -461,8 +461,8 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 	FFileHelper::SaveStringToFile(FString(kFactoryProbeMjcf), *GoodXml);
 
 	// Well-formed XML that the reader rejects: the preparation step is happy
-	// with it, so the failure lands after the Blueprint has been made, which is
-	// the case that used to leave an empty articulation behind.
+	// with it, so the failure lands after the Blueprint has been made. This
+	// exercises cleanup of that partially-made Blueprint.
 	const FString BadXml = Dir / TEXT("import_bad.xml");
 	FFileHelper::SaveStringToFile(FString(
 									  TEXT("<mujoco model=\"import_bad\">\n")
@@ -514,8 +514,8 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 		Listed.Contains(TEXT("Failed to read MJCF")) || Listed.Contains(TEXT("produced no spec")));
 
 	// The generation action's own dead end -- an articulation Blueprint with
-	// no XML path recorded -- used to be log-only. It now reaches the same
-	// listing, checked the same way: read back, not trusted from the call.
+	// no XML path recorded -- reaches the same listing, checked the same way:
+	// read back, not trusted from the call.
 	{
 		UBlueprint* Blueprint = MakeFactoryScratchBlueprint();
 		if (Blueprint == nullptr)
@@ -543,10 +543,8 @@ bool FMjImportFailedImportLeavesNothing::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Import.ReimportMatchesImport
-//   Reimport used to have no handler at all, so the only way back to a changed
-//   model went round the preparation step. It now runs the identical pipeline,
-//   from the original path the Blueprint recorded rather than from a prepared
-//   copy, and lands on the same spec.
+//   Reimport runs the identical pipeline, from the original path the Blueprint
+//   recorded rather than from a prepared copy, and lands on the same spec.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportReimportMatchesImport,
 	"URLab.Import.ReimportMatchesImport",
@@ -611,10 +609,8 @@ bool FMjImportReimportMatchesImport::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Import.ReimportHonoursStoredIncludeOption
-//   Reimport used to hard-code the external-include option back to its
-//   default, so a model imported with escaping includes allowed lost them on
-//   the very next reimport. The option now travels with the asset: recorded
-//   when `ImportModel` runs (import or reimport alike), read back instead of
+//   The external-include option travels with the asset: recorded when
+//   `ImportModel` runs (import or reimport alike), read back instead of
 //   defaulted the next time `Reimport` runs.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportReimportHonoursStoredIncludeOption,

@@ -21,8 +21,8 @@
 // CoACD (MIT), and libzmq (MPL 2.0). See ThirdPartyNotices.txt for details.
 
 // A capsule is a <geom> whose `type` attribute says so, not a class of its own.
-// Everything that used to distinguish a capsule component from a box one is a
-// row of a table keyed by that attribute, and the capsule's row is the only one
+// What distinguishes a capsule component from a box one is a row of a table
+// keyed by that attribute, and the capsule's row is the only one
 // carrying a second mesh -- the two end caps -- because Unreal ships no capsule
 // primitive. So these tests are about one class read through one attribute.
 //

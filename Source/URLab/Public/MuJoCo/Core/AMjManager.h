@@ -189,12 +189,12 @@ public:
 	AMjEntity* GetEntity(FName EntityName);
 
 	/**
-	 * Possess the interactive pawn for the named entity with the local player controller, replacing the
-	 * retired articulation's possess button. Only an entity that opted in has a pawn -- one is spawned
-	 * and configured off its authoring articulation at the post-compile handoff -- so a name with no
-	 * pawn (a prop, a scene body, an entity that never authored possess) is a clean no-op returning
-	 * false. The pawn's spring-arm camera re-homes onto the render view's root body for the entity so it
-	 * tracks the physics, exactly as the articulation's camera hung off RootBody. Game thread.
+	 * Possess the interactive pawn for the named entity with the local player controller. Only an
+	 * entity that opted in has a pawn -- one is spawned and configured off its authoring articulation
+	 * at the post-compile handoff -- so a name with no pawn (a prop, a scene body, an entity that
+	 * never authored possess) is a clean no-op returning false. The pawn's spring-arm camera re-homes
+	 * onto the render view's root body for the entity so it tracks the physics, exactly as the
+	 * articulation's camera hung off RootBody. Game thread.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "MuJoCo|Possession")
 	bool PossessEntity(FName EntityName);
@@ -435,8 +435,7 @@ public:
 	// abstraction (ZMQ now; SHM/ROS/gRPC via new UURLabPublishTransport impls),
 	// on their own endpoint separate from the state bus. Empty unless
 	// bBroadcastViewers was set on an owner. Written from FanOutStateSnapshot
-	// (physics thread); TransportShutdown'd + cleared in EndPlay. (The qpos render
-	// tier -- the old "viewer" {t,qpos,qvel} topic -- was removed in Phase 3.2.)
+	// (physics thread); TransportShutdown'd + cleared in EndPlay.
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<class UURLabPublishTransport>> ViewerBusTransports;
 	/** Fan a topic's payload out to every viewer-bus publish transport. */
@@ -562,7 +561,7 @@ public:
 	 *  their readbacks with the post-step state they show. Game thread only. */
 	void ApplyLatestRenderState();
 
-	/** The compiled play render view (approach B), or null in editor / automation. */
+	/** The compiled play render view, or null in editor / automation. */
 	class AMjRenderer* GetCompiledRenderView() const { return CompiledRenderView; }
 
 	/** Render-snapshot id last applied to the actors (post-step state id that

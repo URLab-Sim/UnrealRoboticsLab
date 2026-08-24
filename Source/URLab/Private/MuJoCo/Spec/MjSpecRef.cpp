@@ -116,10 +116,10 @@ void SyncPreviewSubtree(UMjNodeComponent& Node)
  * carry `RelativeLocation` into instance construction.
  *
  * One effective-value context for the whole pass. Every node's preview resolves
- * its pose and its scale through the default-class chain, and each of those
- * queries used to index the entire spec on its own, so posing a model of N
- * elements paid N whole-spec walks per question. The scope creates and destroys
- * no nodes, which is what makes holding it open across the walk safe.
+ * its pose and its scale through the default-class chain; indexing the entire
+ * spec per query would cost N whole-spec walks for a model of N elements. The
+ * scope creates and destroys no nodes, which is what makes holding it open
+ * across the walk safe.
  *
  * The reference check rides along here for the same reason the preview does:
  * this is the first moment the whole spec exists, and a reference naming

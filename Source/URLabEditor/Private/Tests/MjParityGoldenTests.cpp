@@ -14,13 +14,11 @@
 // subset. It runs at exact tolerance: a compile that moves a single field is a
 // finding, and judging it is a human's job, never this test's.
 //
-// Nothing is accounted for and nothing is forgiven. A generated `_ps:` name
-// used to be, because its serial came from a process-lifetime counter and so
-// differed between the run that recorded a golden and every run that checked
-// it; the serial is now a per-family ordinal in document order, which repeats,
-// so the recorded name and ours are the same string and the comparison is
-// exact again. A reserved name that moves is a real change in what the document
-// compiles to, and is reported like any other.
+// Nothing is accounted for and nothing is forgiven. A generated `_ps:` name is
+// stable across runs because its serial is a per-family ordinal in document
+// order, which repeats, so the recorded name and ours are the same string and
+// the comparison is exact. A reserved name that moves is a real change in what
+// the document compiles to, and is reported like any other.
 //
 // A missing golden fails. Coverage that disappears -- a golden deleted,
 // renamed, or never staged -- has to be as loud as a mismatch, or the suite

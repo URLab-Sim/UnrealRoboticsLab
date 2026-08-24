@@ -13,8 +13,8 @@
  * ZMQ backend for the client side of request/reply: a ZMQ_REQ connected to a
  * remote owner/driver endpoint. Request sets the send/receive timeout from the
  * per-call budget, sends the payload, and blocks for the single reply frame.
- * This is the single home for the raw-libzmq REQ round trip the fast-path
- * renderer used to hand-roll for its model fetch and perturbation calls.
+ * This is the single home for the raw-libzmq REQ round trip used by the
+ * fast-path renderer's model fetch and perturbation calls.
  */
 UCLASS()
 class URLAB_API UURLabZmqRpcClientTransport : public UURLabRpcClientTransport

@@ -169,7 +169,7 @@ bool FMjTransformQuatRoundTrip::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Transform.MJHelperQuatRoundTrip
-//   Tests the legacy MJHelper::MJQuatToUE / UEQuatToMJ round-trip.
+//   Tests the MJHelper::MJQuatToUE / UEQuatToMJ round-trip.
 //   KNOWN BUG: both functions use the same formula so they are NOT inverses.
 //   This test specs the current (broken) behaviour.
 // ============================================================================

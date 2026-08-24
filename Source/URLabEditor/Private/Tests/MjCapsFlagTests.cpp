@@ -17,7 +17,7 @@
 // ============================================================================
 // MjCapsFlagTests.cpp
 //
-// The Phase 1.1 launcher-flag surface (source-of-truth §14; capability model §5),
+// The launcher-flag surface (source-of-truth §14; capability model §5),
 // grounded in URLabLauncherFlags (MjLauncherFlags.cpp). Covers the flags a
 // discovery/browser-join launch actually reads:
 //

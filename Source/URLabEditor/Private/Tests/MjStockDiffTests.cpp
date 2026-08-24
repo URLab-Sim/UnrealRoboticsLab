@@ -502,11 +502,10 @@ bool FMjStockDiffGeneratedNamesTest::RunTest(const FString& Parameters)
 //   A document with no `model` attribute compiles to exactly what stock
 //   compiles it to, model name included.
 //
-//   This is the difference from stock that used to exist and no longer does:
-//   an unauthored root once compiled under a stand-in name of our own, so the
-//   same document reached a different name table depending on which path built
-//   it. Nothing about the name is special-cased here -- the whole comparison is
-//   asserted empty.
+//   There is no difference from stock here: an unauthored root does not
+//   compile under a stand-in name of our own, so the same document reaches
+//   the same name table regardless of which path built it. Nothing about the
+//   name is special-cased here -- the whole comparison is asserted empty.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStockDiffUntitledModelTest, "URLab.Parity.StockDiffUntitledModel",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

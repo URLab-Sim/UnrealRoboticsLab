@@ -148,9 +148,8 @@ void UURLabBridgeServer::Start(const FString& StepEndpoint)
 	// Register this instance for broker-less discovery on the bridge-server
 	// lifecycle (source-of-truth §12). This runs for the editor subsystem's
 	// server AND the cooked/packaged AAMjManager-owned server, so a packaged
-	// owner/render server is discoverable by the browser/pool/session too --
-	// previously only the editor subsystem wrote the entry, leaving cooked
-	// instances invisible. The bridge is the single writer.
+	// owner/render server is discoverable by the browser/pool/session too.
+	// The bridge is the single writer.
 	WriteRegistryEntry();
 
 	// Refresh on a ticker so the entry's mtime stays fresh (discovery treats a

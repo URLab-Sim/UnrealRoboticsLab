@@ -769,12 +769,12 @@ bool FTest_MjImport_URLab_JointRangeAndDamping::RunTest(const FString&)
 	return true;
 }
 
-// Regression: the parser used to drop the compiler settings when recursing
-// into <default> blocks, so joints declared inside a default class always saw
-// a hardcoded degrees fallback, and for angle="radian" models (mujoco_menagerie's
-// unitree_go1 among them) the default joint's range came out rescaled by π/180
-// in the wrong direction. The spec now carries the file's own units, so the
-// assertion is that the value arrived untouched and that the compiled model
+// Regression: a joint declared inside a <default> block must carry the file's
+// own compiler settings rather than a hardcoded degrees fallback, or an
+// angle="radian" model (mujoco_menagerie's unitree_go1 among them) has its
+// default joint's range rescaled by π/180 in the wrong direction. The spec
+// carries the file's own units when recursing into <default> blocks, so the
+// assertion is that the value arrives untouched and that the compiled model
 // reads it as radians.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_DefaultClassJointRangeRadians,
 	"URLab.Import.URLab_DefaultClassJointRangeRadians",
@@ -1297,7 +1297,7 @@ bool FTest_MjImport_RoundTrip_Defaults::RunTest(const FString&)
 	return true;
 }
 
-// Fix 2.11: <frame> elements are now handled by ImportNodeRecursive.
+// <frame> elements are handled by ImportNodeRecursive.
 // This test verifies that geoms inside a frame are imported correctly and
 // that the geom count in the compiled model matches the MuJoCo baseline.
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_RoundTrip_Frame_KnownGap,
@@ -1600,8 +1600,7 @@ bool FTest_MjImport_URLab_WeldTorqueScale::RunTest(const FString&)
 // =============================================================================
 // URLab.Import.URLab_ConnectAnchor
 //   <connect anchor="0.1 -0.2 0.3"/> reads as an authored FVector in MJCF
-//   metres. Regression: anchor used to be a string and was never written back
-//   out, so it never reached eq_data[].
+//   metres and is written back out, reaching eq_data[].
 // =============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FTest_MjImport_URLab_ConnectAnchor,
 	"URLab.Import.URLab_ConnectAnchor",

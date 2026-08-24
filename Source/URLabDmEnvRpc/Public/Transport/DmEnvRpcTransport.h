@@ -66,9 +66,8 @@ public:
 	// --- render-frame cache: the gRPC render seam (analogous to the ZMQ "render"
 	// topic and the SHM render ring). Holds the latest render tier (per-body
 	// bxpos/bxquat + optional debug fields, source-of-truth §8.1/§8.2) so a
-	// subscribe(format=render) server-stream can select it. Fed by the Phase 2.4
-	// owner sink (H3, decoupling gRPC egress from the ZMQ viewer bus). The qpos
-	// "viewer" frame cache was removed in Phase 3.2. Thread-safe. ---
+	// subscribe(format=render) server-stream can select it. Fed by the owner's
+	// sink, decoupling gRPC egress from the ZMQ viewer bus. Thread-safe. ---
 	void SetRenderFrame(const TArray<uint8>& Bytes);
 	bool GetRenderFrame(TArray<uint8>& Out, uint64& InOutSeq) const;
 
@@ -86,10 +85,10 @@ private:
 
 	// The worker signals the ACTUAL gRPC bind result here; TransportInit blocks on
 	// the paired future until the :50051 port is bound (true) or the bind fails
-	// (false). This is the H2b fix -- init must not report success (and must not
-	// register the OnViewerFrame sink) before the port is really bound, otherwise a
-	// failed bind leaves a live sink copying every render frame into a dead
-	// transport. Re-assigned fresh each TransportInit (std::promise is one-shot).
+	// (false). Init must not report success (and must not register the
+	// OnViewerFrame sink) before the port is really bound, otherwise a failed bind
+	// leaves a live sink copying every render frame into a dead transport.
+	// Re-assigned fresh each TransportInit (std::promise is one-shot).
 	std::promise<bool> BindResultPromise;
 
 	// Owner render sink handle. Binds FMjExternalTransportProvider::OnViewerFrame and

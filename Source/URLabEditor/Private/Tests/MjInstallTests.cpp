@@ -162,10 +162,9 @@ bool FMjInstallOptionAuthorityTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("the authored sleep flag reached the model"), (Installed->opt.enableflags & mjENBL_SLEEP) != 0);
 
 	// The same specs compiled with no engine in the way, so nothing could have
-	// written over the result afterwards. Every field the engine's retired
-	// post-compile stamp used to touch is compared against it: a stamp that ever
-	// disagreed with the compiler used to win silently, and this is the
-	// assertion that would not let it.
+	// written over the result afterwards. Every field is compared directly
+	// against that reference compile, so nothing silently overwriting a field
+	// after install would escape this assertion.
 	const mjspec::FMjCompiledScene Beside = CompileBeside(S);
 	if (!TestTrue(TEXT("the reference compile succeeded"), Beside.IsValid()))
 	{

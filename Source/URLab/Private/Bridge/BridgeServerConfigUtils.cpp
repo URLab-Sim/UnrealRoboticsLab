@@ -129,11 +129,10 @@ FString BuildCameraEndpoint(const FURLabBridgeServerConfig& Cfg, int32 CameraInd
 
 void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 {
-	// The legacy per-service -URLab* CLI flags are gone (Phase 8.4); the CLI surface is
-	// now the consolidated -URLabNet= keys read below, which win over these. Env vars and
-	// INI equivalents STAY (source-of-truth §14), so a value from the environment still
-	// replaces the INI one. Returns true when a value was found so callers can flag
-	// explicit port overrides (which then survive derivation).
+	// The CLI surface is the consolidated -URLabNet= keys read below, which win over
+	// these. Env vars and INI equivalents STAY (source-of-truth §14), so a value from the
+	// environment still replaces the INI one. Returns true when a value was found so
+	// callers can flag explicit port overrides (which then survive derivation).
 	auto ResolveEnvString = [](const TCHAR* EnvKey, FString& Out) -> bool {
 		const FString Env = FPlatformMisc::GetEnvironmentVariable(EnvKey);
 		if (!Env.IsEmpty())
@@ -184,17 +183,17 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 	if (ResolveEnvInt(TEXT("URLAB_BROADCAST_VIEWERS"), IntVal))
 		Cfg.bBroadcastViewers = (IntVal != 0);
 
-	// Phase 1.1: -URLabCaps=publish is the new spelling of broadcast-viewers (source-of-truth
-	// §14). Both write bBroadcastViewers; the cap (negatable: -publish) wins when present.
+	// -URLabCaps=publish also sets broadcast-viewers (source-of-truth §14). Both write
+	// bBroadcastViewers; the cap (negatable: -publish) wins when present.
 	{
 		const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
 		if (Caps.bPublish.IsSet())
 			Cfg.bBroadcastViewers = Caps.bPublish.GetValue();
 	}
 
-	// Phase 1.1: -URLabNet=id=,index=,portbase=,stride=,step=,state=,bus=,cam=,grpc=,bind=
-	// consolidates the legacy per-service net flags (source-of-truth §14). Each sub-key writes the
-	// SAME config field its legacy flag did, and a present net key wins over the legacy read above.
+	// -URLabNet=id=,index=,portbase=,stride=,step=,state=,bus=,cam=,grpc=,bind= is the
+	// consolidated net-flags surface (source-of-truth §14). Each sub-key writes the same
+	// config field the per-service env vars above do, and a present net key wins over them.
 	{
 		using URLabLauncherFlags::GetCsvValue;
 		FString NetVal;

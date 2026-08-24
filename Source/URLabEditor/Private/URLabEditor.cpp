@@ -166,8 +166,8 @@ void FURLabEditorModule::StartupModule()
 
 	// Register the StepMode status indicator into the level editor toolbar.
 	// The indicator is a small Slate widget that polls AAMjManager::Instance
-	// every 0.5s and shows a coloured pill: green=Live, amber=Direct,
-	// blue=Puppet, grey=Auto/none. No asset deps; pure code.
+	// every 0.5s and shows a coloured pill: green=FreeRun, amber=Stepped,
+	// blue=StatePushed, grey=no manager. No asset deps; pure code.
 	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]() {
 		UToolMenu* ToolBar = UToolMenus::Get()->ExtendMenu("LevelEditor.LevelEditorToolBar.PlayToolBar");
 		if (!ToolBar)

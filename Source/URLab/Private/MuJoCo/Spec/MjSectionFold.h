@@ -43,9 +43,9 @@ namespace urlab::spec
 /**
  * True when `Node` states something: an authored attribute, or any child.
  *
- * Presence stopped answering that question the moment every top-level section
- * began to exist. A consumer asking whether a participant said anything about
- * `<option>` used to find out by whether the component was there, and now it
+ * Presence does not answer that question, because every top-level section
+ * always exists: a consumer asking whether a participant said anything about
+ * `<option>` cannot find out by whether the component is there, since it
  * always is -- so the question has to be put to the content instead. This is
  * the writer's own condition for emitting an element, which is what keeps the
  * two agreeing about what an empty section means.

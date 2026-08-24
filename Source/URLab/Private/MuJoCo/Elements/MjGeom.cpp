@@ -908,9 +908,9 @@ namespace
  *
  * Rebuilding a visualiser resolves the shape, the mesh asset, the material and
  * the colour through the default-class chain, which is several whole-spec reads;
- * a geom carries thirty-odd attributes and most of them are physics. Editing
- * `contype` or `group` used to cost what editing `size` costs, which is what
- * made a geom's details panel the slowest one in the editor.
+ * a geom carries thirty-odd attributes and most of them are physics. Limiting
+ * rebuilds to this list keeps editing `contype` or `group` cheap, since neither
+ * affects the picture, unlike `size`.
  *
  * `class` is in the list because it is the chain itself: changing it changes
  * every inherited value at once. Nothing here is a guess about the schema -- the

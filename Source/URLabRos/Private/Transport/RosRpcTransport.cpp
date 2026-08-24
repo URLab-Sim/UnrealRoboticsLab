@@ -428,8 +428,8 @@ void UURLabRosRpcTransport::HandleRosCtrl(const FString& ArtName, const double* 
 		return;
 	}
 
-	// ROS control is a Live-mode surface; direct / puppet bundle control into
-	// their step / push calls, so drop the write outside Live.
+	// ROS control is a FreeRun-mode surface; Stepped / StatePushed bundle control into
+	// their step / push calls, so drop the write outside FreeRun.
 	if (Disp->GetActiveStepMode() != EMjStepMode::FreeRun)
 	{
 		return;
@@ -515,7 +515,7 @@ void UURLabRosRpcTransport::HandleRosJointCommand(const FString& ArtName,
 	}
 
 	// Same gating as cmd_ctrl: ownership first (also heartbeats the claim), then
-	// Live mode only.
+	// FreeRun step mode only.
 	const FName ArtKey(*ArtName);
 	FString CurrentOwner;
 	if (Mgr->PhysicsEngine->CheckControlWrite(ArtKey, RosControlSourceId(), CurrentOwner)
@@ -568,7 +568,7 @@ void UURLabRosRpcTransport::HandleRosUserChannel(FName ArtOrNone, FName Channel,
 	}
 
 	// User-channel input is app-level data owned by user logic: no ownership gate
-	// and no Live-mode gate (unlike control writes, which fight the physics
+	// and no FreeRun-mode gate (unlike control writes, which fight the physics
 	// authority). The declaring component validates the value against its declared
 	// kind.
 	FMjUserChannel Value;

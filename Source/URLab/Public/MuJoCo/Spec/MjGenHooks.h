@@ -32,7 +32,8 @@
 //
 // URLAB_MJ_GEN is 1 when both ProtoSpec and the generated tree are present.
 // Everything under MuJoCo/Doc that depends on generated types is gated on it, so
-// a checkout without them builds the plugin exactly as it did before Phase 3.
+// a checkout without them still builds the plugin, with the generated-dependent
+// code compiled out.
 
 #if defined(URLAB_PROTOSPEC) && URLAB_PROTOSPEC && __has_include("MuJoCo/Gen/MjProfile.gen.h")
 #define URLAB_MJ_GEN 1

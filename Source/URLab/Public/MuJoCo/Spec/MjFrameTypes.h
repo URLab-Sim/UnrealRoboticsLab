@@ -262,8 +262,8 @@ struct FMjQuatRot
  *
  * Blueprint has no math nodes for these types, which is the point: the
  * conversion is a named call whose name carries the frame and unit decision
- * that used to be an unspoken assumption. `FMjVec3` has no entry here, because
- * there is no conversion for it that could be right.
+ * explicitly, rather than leaving it an unspoken assumption. `FMjVec3` has no
+ * entry here, because there is no conversion for it that could be right.
  */
 UCLASS()
 class URLAB_API UMjFrameConversionLibrary : public UBlueprintFunctionLibrary

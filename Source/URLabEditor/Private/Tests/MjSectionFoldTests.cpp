@@ -260,8 +260,7 @@ bool FMjRepeatedWorldbodySectionsFoldTest::RunTest(const FString& Parameters)
 
 	const TArray<UMjBodyBase*> WorldBodies = ChildrenOfType<UMjBodyBase>(Spec, *Root);
 
-	// The whole of the bug: two sections used to leave two siblings, and MuJoCo
-	// has one world body.
+	// Two <worldbody> sections fold into one: MuJoCo has exactly one world body.
 	if (!TestEqual(TEXT("the model root holds exactly one world body"), WorldBodies.Num(), 1))
 	{
 		return false;

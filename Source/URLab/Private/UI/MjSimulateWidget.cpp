@@ -473,8 +473,6 @@ void UMjSimulateWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTim
 		}
 	}
 
-	// Locomotion section is now built inline in RefreshArticulationControls
-
 	// Update Play/Pause Button Text based on real manager state
 	if (PlayPauseButton)
 	{
@@ -896,7 +894,7 @@ void UMjSimulateWidget::OnArticulationSelected(FString SelectedItem, ESelectInfo
 	if (!ManagerRef)
 		return;
 
-	// Camera feed cleanup is now handled in RefreshArticulationControls.
+	// Camera feed cleanup happens in RefreshArticulationControls.
 	// Find the entity whose prettified public name matches the selection.
 	SelectedEntityName = NAME_None;
 
@@ -1373,7 +1371,7 @@ void UMjSimulateWidget::RefreshArticulationControls()
 		ActNames.Num(), JointNames.Num(), Ent->SensorIds.Num(), *SelectedEntityName.ToString());
 
 	// Camera Feeds (Left Panel): the renderer-agnostic cameras whose canonical art
-	// segment matches this entity (not the retired articulation's UMjCamera components).
+	// segment matches this entity (not another entity's UMjCamera components).
 	if (CameraFeedEntryClass && ManagerSettingsList)
 	{
 		TArray<UMjCamera*> AllCameras;

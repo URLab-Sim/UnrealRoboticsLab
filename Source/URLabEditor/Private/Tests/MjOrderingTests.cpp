@@ -9,12 +9,12 @@
 // Where a hand-added element lands among its siblings.
 //
 // Declaration order is semantic in MJCF: the joints under a body, in the order
-// they are declared, ARE the body's qpos layout. Adding a joint in the
-// components panel used to put it at the front of that list, because the panel
-// creates a component with class defaults and spec order defaulted to zero --
-// the first position. Every joint after it shifted by one, and a controller
-// written against the imported model started driving the wrong degree of
-// freedom, silently.
+// they are declared, ARE the body's qpos layout. A joint added in the
+// components panel must land after existing siblings, not at the front: the
+// panel creates a component with class defaults, and if spec order defaulted
+// to zero it would take the first position, shifting every joint after it by
+// one and making a controller written against the imported model silently
+// drive the wrong degree of freedom.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -279,12 +279,11 @@ bool FMjImportedOrderUntouchedTest::RunTest(const FString& Parameters)
 
 // ============================================================================
 // URLab.Perf.ImportChildQueries
-//   The reader adopts once per element, and adopting used to ask the parent for
-//   its children -- resolving every one of their slots through the schema
-//   tables again. A parent of k children paid that k times, so the table work
-//   grew as the square of the tree's width: quadrupling the model multiplied it
-//   by 5.6 rather than by 4. The slots are now resolved once per child and kept
-//   on the parent, checked against the live child list before use.
+//   The reader adopts once per element. Each child's slot is resolved once and
+//   kept on the parent, checked against the live child list before use --
+//   guarding against a parent of k children resolving every child's slot
+//   through the schema tables again, which would grow the table work as the
+//   square of the tree's width instead of linearly with it.
 // ============================================================================
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjImportChildQueriesTest, "URLab.Perf.ImportChildQueries",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

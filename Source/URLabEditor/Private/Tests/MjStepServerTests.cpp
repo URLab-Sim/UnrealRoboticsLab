@@ -27,7 +27,7 @@
 //  - Pose-source dispatch / publisher pause flag semantics
 //  - FURLabRpcDispatcher handshake payload shape
 //  - FURLabRpcDispatcher session-id rejection
-//  - Puppet-mode push-state queue: dequeue writes qpos/qvel and fires OnPostStep
+//  - StatePushed-mode push-state queue: dequeue writes qpos/qvel and fires OnPostStep
 //
 // All tests use FMjUESession (no live ZMQ socket). FMjUESession::Init stands
 // the dispatcher up after Compile(); tests exercise its parser / handler
@@ -261,8 +261,8 @@ bool FMjStepServerPauseFlag::RunTest(const FString& Parameters)
 	Disp->SetActiveStepMode(EMjStepMode::Stepped);
 	TestTrue(TEXT("Direct mode flips manager (state/ctrl) pause flag true"),
 		S.Manager->bPublishersPaused.load());
-	// Cameras stream in EVERY step mode now (decoupled from the step reply),
-	// so the camera publisher pause flag must stay false regardless of mode.
+	// Cameras stream in EVERY step mode (decoupled from the step reply), so
+	// the camera publisher pause flag must stay false regardless of mode.
 	TestFalse(TEXT("Direct mode keeps camera publishers live"),
 		FCameraZmqWorker::bPublishersPaused.load());
 	TestEqual(TEXT("ActiveStepMode reflects the switch"),
@@ -308,9 +308,8 @@ bool FMjStepServerEffectiveMode::RunTest(const FString& Parameters)
 		return false;
 	}
 
-	// The pose source is unpinned by default (the old "Auto" policy); RegisterManager
-	// must resolve it to FreeRun and push that down to the engine the physics worker
-	// paces off.
+	// The pose source is unpinned by default; RegisterManager must resolve it
+	// to FreeRun and push that down to the engine the physics worker paces off.
 	TestFalse(TEXT("StepMode is unpinned by default"), S.Manager->bPinStepMode);
 	TestEqual(TEXT("engine resolves unpinned -> FreeRun"),
 		(int)S.Manager->PhysicsEngine->GetPoseSource(), (int)EMjStepMode::FreeRun);
@@ -495,8 +494,8 @@ bool FMjStepServerSessionId::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 5. Puppet mode: a step RPC pushes qpos/qvel/time inline and fires OnPostStep.
-//    Drives the real dispatch path (SetActiveStepMode(Puppet) + step op) rather
+// 5. StatePushed mode: a step RPC pushes qpos/qvel/time inline and fires OnPostStep.
+//    Drives the real dispatch path (SetActiveStepMode(StatePushed) + step op) rather
 //    than a dead test-only queue.
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerPuppetHandler,
@@ -570,7 +569,7 @@ bool FMjStepServerPuppetHandler::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 6. Direct mode ApplyStepCtrl writes ctrl for the named actuator
+// 6. Stepped mode ApplyStepCtrl writes ctrl for the named actuator
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerDirectCtrl,
 	"URLab.StepServer.DirectCtrl",
@@ -998,7 +997,7 @@ bool FMjStepServerApplyControlsGate::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 12. Direct mode CustomStepHandler installs and processes a queued command
+// 12. Stepped mode CustomStepHandler installs and processes a queued command
 // ---------------------------------------------------------------------------
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjStepServerDirectHandler,
 	"URLab.StepServer.DirectHandler",
@@ -1122,7 +1121,7 @@ bool FMjStepServerFrameIdGating::RunTest(const FString& Parameters)
 }
 
 // ---------------------------------------------------------------------------
-// 13. Perturbation snapshot is reachable from the step server (Puppet path)
+// 13. Perturbation snapshot is reachable from the step server (StatePushed path)
 // ---------------------------------------------------------------------------
 #include "MuJoCo/Input/MjPerturbation.h"
 
@@ -1150,7 +1149,7 @@ bool FMjStepServerPerturbationSnapshot::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Initial BodyId"), Initial.BodyId, -1);
 	TestEqual(TEXT("Initial Version"), (int)Initial.Version, 0);
 
-	// Sanity: the manager pulls a sample every step in Puppet. We can't
+	// Sanity: the manager pulls a sample every step in StatePushed. We can't
 	// exercise the live click-drag input here, but we verify the read-side
 	// contract — multiple GetLatestPerturbationSample() calls return
 	// consistent values without crashing under contention.

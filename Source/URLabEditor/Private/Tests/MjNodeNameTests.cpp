@@ -196,9 +196,9 @@ bool FMjNodeNamesReadableTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("every named element is shown under its own name"), Stranded, 0);
 
 	// The sweep's own guard. `torso_1` is exactly the shape this item removed,
-	// and the rule the sweep used to apply -- "starts with the name and an
-	// underscore" -- accepted it, so the sweep could not have caught a return to
-	// it. Fed the three cases directly, the rule has to sort them.
+	// and a rule that merely looks for "starts with the name and an underscore"
+	// would accept it, so the sweep could not catch a return to it. Fed the
+	// three cases directly, the rule has to sort them.
 	TestFalse(TEXT("an ordinal suffix is not a name"),
 		ShownUnderItsOwnName(TEXT("torso_1"), TEXT("torso"), urlab::spec::psm::ElementType::Geom));
 	TestTrue(TEXT("a type suffix is"),
@@ -226,9 +226,9 @@ bool FMjNodeNamesReadableTest::RunTest(const FString& Parameters)
 	if (TestNotNull(TEXT("the spec has a root node"), RootNode))
 	{
 		// The root is the spec rather than an element, so it has no MJCF
-		// `name` and the naming pass used to skip it -- leaving it on `mujoco_0`,
-		// the one node in the tree whose name names nothing. `<mujoco model=...>`
-		// is the label the spec does carry.
+		// `name`; the naming pass falls back to `<mujoco model=...>`, the label
+		// the spec does carry, rather than leaving it on `mujoco_0`, the one
+		// node in the tree whose name names nothing.
 		TestEqual(TEXT("the spec root is shown under the model's own name"),
 			RootNode->GetVariableName().ToString(), FString(TEXT("Humanoid")));
 

@@ -55,13 +55,12 @@ DECLARE_DELEGATE_RetVal_OneParam(UURLabClientSubscribeTransport*, FMjMakeExterna
 DECLARE_DELEGATE_RetVal_OneParam(UURLabRpcClientTransport*, FMjMakeExternalRpcClientTransport, UObject* /*Outer*/);
 DECLARE_DELEGATE_RetVal_OneParam(UURLabCameraPublishTransport*, FMjMakeExternalCameraPublishTransport, UObject* /*Outer*/);
 // Owner -> external module: one raw render-bus frame per step, tagged by its tier
-// topic. "render" = per-body transforms + optional debug (source-of-truth §8.1/
-// §8.2, the true mirror payload); "viewer" = {t,qpos,qvel} (the legacy qpos tier).
-// The bytes are identical to what the matching ZMQ topic PUB carries. An optional
-// module (gRPC) binds this to cache + server-stream each tier to its own
-// subscribers, selecting by topic -- so the gRPC egress is decoupled from any
-// bound ZMQ viewer bus (H3). Multicast so >1 backend can listen; unbound is a
-// no-op.
+// topic. Currently always "render" -- per-body transforms + optional debug
+// (source-of-truth §8.1/§8.2, the true mirror payload). The bytes are identical
+// to what the matching ZMQ topic PUB carries. An optional module (gRPC) binds
+// this to cache + server-stream the tier to its own subscribers, selecting by
+// topic -- so the gRPC egress is decoupled from any bound ZMQ viewer bus.
+// Multicast so >1 backend can listen; unbound is a no-op.
 DECLARE_MULTICAST_DELEGATE_TwoParams(FMjViewerFrameSink, const FString& /*Topic*/, const TArray<uint8>& /*Payload*/);
 // Render subscriber -> owner (the reverse leg of OnViewerFrame). A mirror's
 // subscribe request negotiates the debug tier (§8.2) by carrying
@@ -142,7 +141,7 @@ struct URLAB_API FMjExternalTransportProvider
 	static FMjMakeExternalCameraPublishTransport MakeCameraPublishTransport;
 
 	/** Broadcast one raw render-bus frame per step to any external backend (e.g. the
-	 *  gRPC server), tagged by tier topic ("render" transforms / "viewer" qpos).
+	 *  gRPC server), tagged by tier topic (currently always "render" transforms).
 	 *  Unbound => no extra fan-out. */
 	static FMjViewerFrameSink OnViewerFrame;
 

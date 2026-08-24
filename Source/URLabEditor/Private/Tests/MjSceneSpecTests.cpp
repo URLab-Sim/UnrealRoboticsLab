@@ -365,7 +365,7 @@ bool FMjSceneSpecSceneNameTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("unnamed: the handshake text names the same scene the model does"), UnnamedText, Unnamed);
 	}
 
-	// Named: the manager's own, which the builder used to overwrite.
+	// Named: the manager's own model name, which the builder does not overwrite.
 	FString Named;
 	FString NamedText;
 	if (SceneNameWith(TEXT("warehouse"), Named, NamedText))
@@ -467,10 +467,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMjSceneSpecManagerAssetsShipTest, "URLab.MuJoC
 bool FMjSceneSpecManagerAssetsShipTest::RunTest(const FString& Parameters)
 {
 	// A manager-authored mesh compiles into the scene, so a client handed the
-	// scene text has to be handed the mesh too. The ship-list used to walk the
-	// participants only, which shipped a document referencing bytes that were
-	// never sent: the client's compile fails, or worse, MuJoCo's basename
-	// fallback finds a participant's file of the same name and it does not.
+	// scene text has to be handed the mesh too. The ship-list walks every
+	// mount, not just the participants: walking participants only would ship
+	// a document referencing bytes that were never sent, so the client's
+	// compile fails, or worse, MuJoCo's basename fallback finds a
+	// participant's file of the same name and it does not.
 	FSceneFixture Fixture;
 	if (!Fixture.Init())
 	{
@@ -850,10 +851,11 @@ bool FMjSceneMjcfMountNamesTest::RunTest(const FString& Parameters)
 	// the dispatcher runs rather than by this test: the scene text verbatim as
 	// `mjcf_compiled`, and a VFS whose entries are the ship-list's mounts read
 	// off disk plus the participant document under the name the scene's
-	// `<model file=...>` row asks for. The dispatcher used to reduce every
-	// `file=` in both documents to its basename before shipping them, which
-	// collapsed the two mounts back onto one and handed the client one mesh
-	// twice -- with the model it shipped alongside still holding two.
+	// `<model file=...>` row asks for. The dispatcher keeps each `file=` in
+	// both documents as authored rather than reducing it to its basename;
+	// reducing to a basename would collapse the two mounts back onto one and
+	// hand the client one mesh twice -- with the model it shipped alongside
+	// still holding two.
 	const TMap<FString, FString> Shipped = Assembly.CollectAssetFiles();
 	TestTrue(TEXT("the ship-list carries the first mount"), Shipped.Contains(TEXT("p0_base.obj")));
 	TestTrue(TEXT("the ship-list carries the second mount"), Shipped.Contains(TEXT("p0_base_2.obj")));
@@ -1184,8 +1186,8 @@ bool FMjSceneSpecAttachFailureTest::RunTest(const FString& Parameters)
 	}
 
 	// The two halves of "correct": a reason at all, and MuJoCo's own reason.
-	// Reading it off the spec after the attach used to be able to come back
-	// with neither, and a caller told only that something failed has nowhere
+	// Reading it off the spec after the attach must not come back with
+	// neither, since a caller told only that something failed has nowhere
 	// to go.
 	TestFalse(TEXT("the diagnostic carries a reason rather than the fallback"),
 		Refusal.Contains(TEXT("no reason given")));

@@ -336,8 +336,8 @@ public:
 	 *
 	 * The model belongs to the compiled scene rather than to this component, so
 	 * it cannot be freed on its own: the specs it was compiled from have to
-	 * outlive it, and only the scene knows that order. Callers that used to
-	 * delete the two pointers call this instead.
+	 * outlive it, and only the scene knows that order. Call this instead of
+	 * freeing the two pointers directly.
 	 */
 	void ReleaseCompiledScene();
 

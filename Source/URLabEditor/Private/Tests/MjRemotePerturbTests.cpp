@@ -22,21 +22,20 @@
 // ============================================================================
 // MjRemotePerturbTests.cpp
 //
-// Tier-1 GAP 1.a (UE, Phase 4.1): a forwarded interactive drag INTENT
-// (fastpath_perturb: {select, active, localpos, refselpos}) must ARM the mjv
-// spring on a UE owner -- UMjPerturbation::ApplyRemoteDragIntent latches the
-// selection + activates mjPERT_TRANSLATE, so the pre-step callback's
-// mjv_applyPerturbForce drives d->xfrc_applied. Pre-4.1 the forwarded intent was
-// ignored, so the spring never armed and the wrench stayed ZERO.
+// A forwarded interactive drag INTENT (fastpath_perturb: {select, active,
+// localpos, refselpos}) ARMs the mjv spring on a UE owner --
+// UMjPerturbation::ApplyRemoteDragIntent latches the selection + activates
+// mjPERT_TRANSLATE, so the pre-step callback's mjv_applyPerturbForce drives
+// d->xfrc_applied.
 //
 // SCOPE NOTE: the wrench magnitude itself (mass-scaled, +x, damped) is produced
 // by the engine PRE-STEP callback, which only runs on the physics worker's step
 // loop -- not reachable from a headless automation step, and the mjvPerturb it
-// reads is private (no getter). This test therefore pins the observable contract
-// the 4.1 fix restored: the intent is no longer a silent no-op -- it arms and
-// releases the spring through the public API. The exact mass-scaled wrench is
-// asserted on the identical code path by the Python test_perturb.py suite and by
-// the Tier-2 UE-owner integration test (URLab.Fast.UeOwnerHonorsForwardedDragIntent).
+// reads is private (no getter). This test therefore pins the observable contract:
+// the intent arms and releases the spring through the public API rather than
+// being a silent no-op. The exact mass-scaled wrench is asserted on the identical
+// code path by the Python test_perturb.py suite and by the Tier-2 UE-owner
+// integration test (URLab.Fast.UeOwnerHonorsForwardedDragIntent).
 // ============================================================================
 
 #include "CoreMinimal.h"

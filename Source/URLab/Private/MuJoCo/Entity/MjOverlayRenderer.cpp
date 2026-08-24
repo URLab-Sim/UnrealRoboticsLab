@@ -508,7 +508,7 @@ void UMjOverlayRenderer::DrawOverlays(const FMjRenderSnapshot& Snap)
 	{
 		DrawCollision(Snap);
 	}
-	// mjVIS_JOINT deliberately EXCLUDED -- joints render natively (DrawJoints dropped).
+	// mjVIS_JOINT deliberately EXCLUDED -- joints render natively.
 	if (bDrawSites)
 	{
 		DrawSites(Snap);

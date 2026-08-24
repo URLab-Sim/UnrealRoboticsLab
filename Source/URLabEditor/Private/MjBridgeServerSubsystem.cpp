@@ -48,7 +48,7 @@ void UURLabBridgeServerSubsystem::StartServer()
 	// NOTE: the discovery registry entry (write + heartbeat + removal) is now
 	// owned by UURLabBridgeServer's Start/Stop lifecycle, so both the editor
 	// subsystem's server AND cooked/packaged manager-owned servers register.
-	// This subsystem no longer writes it directly (exactly one writer).
+	// This subsystem does not write it directly (exactly one writer).
 
 	UE_LOG(LogURLabEditor, Log,
 		TEXT("[BridgeServer] started instance='%s' index=%d bind=%s step=%d state=%d cam_base=%d "

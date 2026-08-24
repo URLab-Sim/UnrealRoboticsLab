@@ -266,11 +266,11 @@ void MjNodeWriteBackTransformIfChanged(UMjNodeComponent& Node)
 	}
 
 	// The scale is settled BEFORE anything is compared, so the comparison and
-	// the spec both see a scale the element can actually hold. The lock used to
-	// run after the early-out below, which meant it never ran at all in the one
-	// case it exists for: a freshly added geom whose baseline was cold and whose
-	// size was unset folded the dragged scale into its own baseline, "nothing
-	// moved", and the non-uniform scale stood.
+	// the spec both see a scale the element can actually hold. Running the lock
+	// after the early-out below instead would mean it never runs at all in the
+	// one case it exists for: a freshly added geom whose baseline is cold and
+	// whose size is unset would fold the dragged scale into its own baseline,
+	// "nothing moved", and the non-uniform scale would stand.
 	//
 	// Guarded on the scale differing, and that guard is the cost, not the
 	// correctness: moving an actor delivers this hook to every descendant, not

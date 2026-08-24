@@ -61,5 +61,5 @@ private:
 
 	// The discovery registry entry (write + heartbeat + removal) is owned by
 	// UURLabBridgeServer's Start/Stop lifecycle so cooked/packaged builds
-	// register too; this subsystem no longer manages it directly.
+	// register too; this subsystem does not manage it directly.
 };

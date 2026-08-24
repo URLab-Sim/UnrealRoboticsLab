@@ -330,8 +330,7 @@ void AMjRenderer::BeginPlay()
 	}
 	else if (Drive == EMjDrive::Sim)
 	{
-		// SpawnRenderer(bStepped=true) already set Drive=Sim before BeginPlay; keep it
-		// (this is the old RunMode==Stepped -> Sim derivation, now that Drive is the axis).
+		// SpawnRenderer(bStepped=true) already set Drive=Sim before BeginPlay; keep it.
 		Drive = EMjDrive::Sim;
 	}
 	else if (bForcedRenderOnly)
@@ -2065,10 +2064,10 @@ void AMjRenderer::SendPerturbation(int32 Select, bool bActive,
 	TArray<uint8> Buf;
 	FURLabMsgpackUtil::PackJsonObject(Obj, Buf);
 
-	// H5: one cached REQ client per drag. Create it lazily on the first send and
-	// reuse it for every subsequent tick, so a sustained ctrl-drag no longer
-	// creates/connects/destroys a transport (and blocks the game thread on the ack)
-	// every frame. Torn down by EndDragTransport on release / teardown.
+	// One cached REQ client per drag: created lazily on the first send and reused for
+	// every subsequent tick, so a sustained ctrl-drag never creates/connects/destroys
+	// a transport (or blocks the game thread on the ack) more than once. Torn down by
+	// EndDragTransport on release / teardown.
 	if (!DragRpcClient)
 	{
 		DragRpcClient = UURLabRpcClientTransport::Create(this, OwnerControlEndpoint);
@@ -3124,11 +3123,11 @@ AAMjManager* AMjRenderer::EnsureManager()
 	}
 	Direct.Manager = Mgr;
 
-	// Phase 1.1: close the CLI capability gap (source-of-truth §5/§14). bStreamCameras and
-	// bAcceptInput were editor/Blueprint-only (AMjManager.h:272,281) — unreachable from the command
-	// line. -URLabCaps=cameras/input (negatable: -input / -cameras) now sets them here. HasCapability
-	// reads these live per request (AMjManager.cpp:1217-1224), so applying them after the manager has
-	// spawned is sufficient. Unset caps leave the manager's existing defaults untouched.
+	// -URLabCaps=cameras/input (negatable: -input / -cameras; source-of-truth §5/§14) sets the
+	// manager's bStreamCameras / bAcceptInput (AMjManager.h:272,281) here, so they are reachable
+	// from the command line. HasCapability reads these live per request (AMjManager.cpp:1217-1224),
+	// so applying them after the manager has spawned is sufficient. Unset caps leave the manager's
+	// existing defaults untouched.
 	if (Mgr)
 	{
 		const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
@@ -3142,13 +3141,12 @@ AAMjManager* AMjRenderer::EnsureManager()
 		}
 	}
 
-	// Phase 6.1 (⚠-2): the NoManager fastpath ops (fastpath_load / fastpath_render)
-	// find their target AMjRenderer through a world resolver on the dispatcher, not
-	// through the manager. Point it at THIS renderer's world so the ops no longer
-	// hard-depend on OwnerMgr; a lean render server (bridge, no manager -- Phase 6.2)
-	// will keep working through the same resolver. With a manager present this is the
-	// same world the ops used via OwnerMgr, so behavior is unchanged. Captured weakly:
-	// the resolver runs on the game thread when an op fires.
+	// The NoManager fastpath ops (fastpath_load / fastpath_render) find their target
+	// AMjRenderer through a world resolver on the dispatcher rather than through the
+	// manager, so a lean render server (bridge, no manager -- source-of-truth §7) can
+	// keep working through the same resolver. Point it at THIS renderer's world; with a
+	// manager present this is the same world the ops used via OwnerMgr, so behavior is
+	// unchanged. Captured weakly: the resolver runs on the game thread when an op fires.
 	if (Mgr)
 	{
 		if (FURLabRpcDispatcher* Disp = Mgr->GetStepDispatcher())

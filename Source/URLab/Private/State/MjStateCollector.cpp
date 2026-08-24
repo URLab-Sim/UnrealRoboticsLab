@@ -536,9 +536,9 @@ const FMjStateSnapshot& FMjStateCollector::Collect(mjModel* m, mjData* d, int64 
 		}
 	}
 
-	// Per-entity root-body state, read straight from mjData by the entity's root body id. Sourced
-	// from the one partition (robots and free-base bodies alike) so the retired non-articulation
-	// world-walk is gone; a free-base entity also carries its root joint's qpos/qvel for writeback.
+	// Per-entity root-body state, read straight from mjData by the entity's root body id, sourced
+	// from the one partition (robots and free-base bodies alike); a free-base entity also carries
+	// its root joint's qpos/qvel for writeback.
 	if (Mgr && Mgr->PhysicsEngine)
 	{
 		const TArray<FMjEntity>& Partition = Mgr->PhysicsEngine->GetEntityPartition();

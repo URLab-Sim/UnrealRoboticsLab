@@ -18,8 +18,8 @@ class FRunnableThread;
  * publisher's endpoint, subscribed to one topic, pumped by a worker thread that
  * blocks for a frame then drains non-blocking to the NEWEST one (a render sink
  * wants the latest state, not a backlog) and delivers it to the consumer
- * callback. This is the single home for the raw-libzmq SUB loop the fast-path
- * renderer and the viewer used to each hand-roll.
+ * callback. This is the single home for the raw-libzmq SUB loop shared by the
+ * fast-path renderer and the viewer.
  */
 UCLASS()
 class URLAB_API UURLabZmqClientSubscribeTransport : public UURLabClientSubscribeTransport

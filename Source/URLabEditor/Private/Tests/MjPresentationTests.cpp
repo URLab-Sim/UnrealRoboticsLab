@@ -655,8 +655,8 @@ bool FMjTemplateAttributeReachesThePreview::RunTest(const FString& Parameters)
 		Instance->Type.IsSet() && Instance->Type.GetValue() == EMjGeomType::box);
 	TestEqual(TEXT("so its picture is the box"), PreviewMeshName(*Instance), FString(TEXT("Cube")));
 
-	// And it survives the reconstruction that used to undo it. This is literally
-	// what FSCSEditorViewportClient runs after a template edit.
+	// And it survives reconstruction. This is literally what FSCSEditorViewportClient
+	// runs after a template edit.
 	Actor->RerunConstructionScripts();
 	UMjGeom* Rebuilt = ComponentNamed<UMjGeom>(*Actor, TEXT("ball"));
 	if (!TestNotNull(TEXT("the geom after reconstruction"), Rebuilt))

@@ -24,10 +24,8 @@
 //
 // Tier-1 GAP 1.d (UE / H9): the async control-in path in
 // UURLabZmqSubscribeTransport decodes a msgpack `{ids:[...], vals:[...]}` map
-// (source-of-truth §9.3) through FURLabMsgpackUtil -- NOT the retired
-// little-endian `[i32 n][i32 id, f32 val]*` binary format parsed with raw
-// `*(int32*)` casts. The decode + the ids/vals extraction it feeds are the
-// bounds-safe layer H9 hardened.
+// (source-of-truth §9.3) through FURLabMsgpackUtil. The decode + the
+// ids/vals extraction it feeds are the bounds-safe layer H9 requires.
 //
 // The socket-read loop itself needs a live SUB socket + a manager, so the pure
 // unit under test here is the msgpack parse the loop delegates to: a well-formed

@@ -10,11 +10,10 @@
 //
 // MuJoCo names elements uniquely within a type, so a body, a geom and a joint
 // may all be called `torso`; Unreal needs one name per component in a Blueprint,
-// so one of the three has to give. The disambiguation is ours, not Unreal's, and
-// it used to be an ordinal: whichever came second read `torso_1` and whichever
-// came third read `torso_2`, which says nothing about either. Since two NAMED
-// elements can only ever collide across types, the type is the real distinction,
-// and that is what the suffix now carries.
+// so one of the three has to give. The disambiguation is ours, not Unreal's:
+// since two NAMED elements can only ever collide across types, the type is the
+// real distinction, and that is what the suffix carries -- not an ordinal that
+// would say nothing about either colliding element.
 //
 // None of this reaches the model. The MJCF name lives in its own field and that
 // field, never the component's Unreal name, is what feeds the spec.

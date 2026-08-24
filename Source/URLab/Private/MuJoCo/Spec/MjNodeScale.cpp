@@ -128,12 +128,12 @@ void MjNodeConstrainPreviewScale(UMjNodeComponent& Node)
 		// disagrees with what will be simulated, and the honest answer is to put
 		// it back rather than to keep a distortion nobody can act on.
 		//
-		// A shape whose `size` is not a scale is the same refusal and used to be
-		// silent: a mesh geom's handle moved, the write-back had nothing to author
-		// and authored nothing, and the component kept a stretch that would never
-		// be simulated. It snaps back to what the spec implies -- which for a mesh
-		// is one, because a mesh geom's own scale says nothing about its picture --
-		// exactly as a body's does.
+		// A shape whose `size` is not a scale is the same refusal, and it is not
+		// silent about it: a mesh geom's handle can move even though the
+		// write-back has nothing to author, so leaving the component stretched
+		// would show a picture that would never be simulated. It snaps back to
+		// what the spec implies -- which for a mesh is one, because a mesh geom's
+		// own scale says nothing about its picture -- exactly as a body's does.
 		if (!Node.TryPreviewScaleFromSpec(Locked))
 		{
 			Locked = FVector::OneVector;
@@ -178,8 +178,8 @@ bool MjNodeWriteBackScale(UMjNodeComponent& Node, const FVector& Scale)
 	// It is not a rare gesture either: the level viewport's scale grid steps in
 	// 0.25 and most of a robot is smaller than that, so the first drag on a
 	// centimetre-scale geom lands exactly on zero. The grid is the editor's and
-	// stays as the user configured it; what changes is that the spec no longer
-	// takes the collapse.
+	// stays as the user configured it; the check above is what keeps the spec
+	// from taking the collapse.
 	for (const double Value : Authored)
 	{
 		if (Value <= 0.0)

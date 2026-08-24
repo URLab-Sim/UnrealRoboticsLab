@@ -49,8 +49,6 @@ struct FStepRequestCommon;
 class URLAB_API FURLabRpcDispatcher
 {
 public:
-	/** Observation verbosity. minimal=qpos+qvel; standard=+ctrl+act+sensors;
-	 *  full=+body xpos/xquat+actuator forces. */
 	/** Per-camera include mode for step replies. */
 	enum class ECameraInclude : uint8
 	{

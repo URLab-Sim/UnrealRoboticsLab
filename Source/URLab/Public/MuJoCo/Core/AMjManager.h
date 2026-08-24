@@ -444,10 +444,9 @@ public:
 
 	/** Debug-tier subscription capabilities (source-of-truth §8.2). Gate the
 	 *  optional fields appended to a render frame; a subscriber that requests
-	 *  neither cap pays zero extra bytes. Phase 2.3 establishes this seam only --
-	 *  the debug fields themselves (contacts / subtree_com / ctrl / act /
-	 *  wrap_xpos / xfrc_applied / eq / sensor / light) are computed + serialized
-	 *  in Phase 9.1. */
+	 *  neither cap pays zero extra bytes. The debug fields themselves (contacts /
+	 *  subtree_com / ctrl / act / wrap_xpos / xfrc_applied / eq / sensor / light)
+	 *  are computed + serialized by AppendRenderDebugFields. */
 	struct FMjRenderDebugCaps
 	{
 		bool bStreamContacts = false;  // contacts[] (capped at MaxContacts)

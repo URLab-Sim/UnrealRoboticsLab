@@ -348,9 +348,12 @@ bool FMjDiscoveryPrunesStale::RunTest(const FString& Parameters)
 {
 	FScopedRegistryDir Scoped;
 
-	WriteRawOwnerEntry(TEXT("fresh_owner"), 4242, TEXT("tcp://testhost:6100"));
+	// Use a guaranteed-live pid for both fixtures so this test isolates the mtime
+	// TTL path from pid-liveness pruning (which is covered by PrunesDeadPidEntries).
+	const int32 LivePid = static_cast<int32>(FPlatformProcess::GetCurrentProcessId());
+	WriteRawOwnerEntry(TEXT("fresh_owner"), LivePid, TEXT("tcp://testhost:6100"));
 	const FString StalePath =
-		WriteRawOwnerEntry(TEXT("stale_owner"), 4243, TEXT("tcp://testhost:6200"));
+		WriteRawOwnerEntry(TEXT("stale_owner"), LivePid, TEXT("tcp://testhost:6200"));
 
 	// Backdate the stale entry two minutes past the 30 s TTL.
 	IFileManager::Get().SetTimeStamp(*StalePath,

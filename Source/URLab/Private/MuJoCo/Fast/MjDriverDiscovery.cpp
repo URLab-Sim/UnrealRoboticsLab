@@ -8,6 +8,7 @@
 #include "Bridge/InstanceRegistry.h"
 
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/DateTime.h"
@@ -99,10 +100,18 @@ bool DiscoverDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError)
 		Obj->TryGetStringField(TEXT("bus"), Info.Bus);
 		Info.Ngeom = static_cast<int32>(Obj->GetIntegerField(TEXT("ngeom")));
 		Info.Pid = static_cast<int32>(Obj->GetIntegerField(TEXT("pid")));
-		if (!Info.Control.IsEmpty())
+		if (Info.Control.IsEmpty())
 		{
-			OutDrivers.Add(MoveTemp(Info));
+			continue;
 		}
+		// A fresh-mtime entry left behind by a crashed/killed driver still has a
+		// valid heartbeat timestamp, so the TTL check alone lets it through. Prune
+		// it here too: dead pid OR stale mtime both mean "not a live driver".
+		if (!FPlatformProcess::IsApplicationRunning(static_cast<uint32>(Info.Pid)))
+		{
+			continue; // dead pid
+		}
+		OutDrivers.Add(MoveTemp(Info));
 	}
 	return true;
 }

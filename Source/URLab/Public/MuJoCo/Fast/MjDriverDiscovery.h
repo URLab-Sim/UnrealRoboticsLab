@@ -42,9 +42,11 @@ URLAB_API bool IsOwnerEntry(const TSharedPtr<FJsonObject>& Obj);
 
 /**
  * Read the shared registry directory and return every live fast-path driver
- * (entries whose role/capabilities include "fastpath_owner"). Entries older than
- * the heartbeat TTL are skipped. Returns true on success (an empty list is not an
- * error); false with OutError only on a hard failure.
+ * (entries whose role/capabilities include "fastpath_owner"). An entry is pruned
+ * when its mtime is older than the heartbeat TTL OR its recorded pid is no longer
+ * a live process (a crash/kill can leave a fresh-mtime file behind). Returns true
+ * on success (an empty list is not an error); false with OutError only on a hard
+ * failure.
  */
 URLAB_API bool DiscoverDrivers(TArray<FMjDriverInfo>& OutDrivers, FString& OutError);
 } // namespace URLabFastPath

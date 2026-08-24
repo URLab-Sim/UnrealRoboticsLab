@@ -249,7 +249,9 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	// `not_ready` cleanly when no session is live, matching upload_model_commit.
 	Reg(TEXT("fastpath_hello"), EOpCategory::NoManager, TEXT("farm"),
 		[this](auto& R) { return HandleFastpathHello(R); },
-		/*Reply=*/{TEXT("op:string"), TEXT("mjb:object"), TEXT("bus:string"), TEXT("ngeom:int")});
+		/*Reply=*/{TEXT("op:string"), TEXT("mjb:object"), TEXT("bus:string"), TEXT("ngeom:int"),
+				   TEXT("model_format:string"), TEXT("xml:string"), TEXT("vfs_assets:object"),
+				   TEXT("broadcasting:bool")});
 
 	// Fast-path live scene swap (RpcHandlers_Fastpath.cpp): an owner/controller
 	// ships new MJB bytes to a running render-server renderer, which retires its
@@ -263,7 +265,7 @@ void FURLabRpcDispatcher::RegisterDispatcherOps()
 	// which stamps it into the live model's xfrc_applied for its next step.
 	Reg(TEXT("fastpath_perturb"), EOpCategory::NoManager, TEXT("farm"),
 		[this](auto& R) { return HandleFastpathPerturb(R); },
-		/*Reply=*/{TEXT("op:string"), TEXT("body:int")});
+		/*Reply=*/{TEXT("op:string"), TEXT("body:int"), TEXT("select:int")});
 
 	// Fast-path forced render (RpcHandlers_Fastpath.cpp): a controller ships an exact
 	// post-step state and asks the render server for the fresh pixels of its cameras.

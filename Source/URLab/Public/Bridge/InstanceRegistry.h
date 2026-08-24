@@ -33,13 +33,18 @@ public:
 	/** Path of this instance's entry file within ResolveRegistryDir(). */
 	static FString ResolveEntryPath(const FURLabBridgeServerConfig& Cfg);
 
-	/** Write (or overwrite) this instance's entry file. */
+	/** Write (or overwrite) this instance's entry file. `Ngeom` is the model's
+	 *  geom count (0 when no model is loaded yet / not applicable); it is
+	 *  advertised as the `ngeom` field for a published owner so a joiner can
+	 *  learn the scene's geom count without connecting first (addendum §A5).
+	 *  Defaulted so existing call sites that predate this parameter keep
+	 *  compiling and simply advertise 0. */
 	static void WriteEntry(const FURLabBridgeServerConfig& Cfg, const FString& UrlabVersion,
-		bool bManagerPresent, bool bBusy);
+		bool bManagerPresent, bool bBusy, int32 Ngeom = 0);
 
 	/** Rewrite the entry to refresh its mtime for the staleness heartbeat. */
 	static void RefreshEntry(const FURLabBridgeServerConfig& Cfg, const FString& UrlabVersion,
-		bool bManagerPresent, bool bBusy);
+		bool bManagerPresent, bool bBusy, int32 Ngeom = 0);
 
 	/** Delete this instance's entry file. Safe when it was never written. */
 	static void RemoveEntry(const FURLabBridgeServerConfig& Cfg);

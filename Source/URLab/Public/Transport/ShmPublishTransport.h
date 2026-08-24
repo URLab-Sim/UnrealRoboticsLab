@@ -95,6 +95,16 @@ public:
 	 *  under it. */
 	static FString MakeInstanceSessionId(const FString& BaseSid, int32 InstancePort = 0);
 
+	/** Resolve the pre-instance base session label exactly as TransportInit
+	 *  does below: the dispatcher's active session id (a fresh GUID minted
+	 *  per `hello`) once one has been issued, else "live". This is the single
+	 *  source of truth for that base so the camera transport — which has no
+	 *  `SessionId` override of its own and lives on a different UObject
+	 *  (owned by the camera, not the manager) — can call MakeInstanceSessionId
+	 *  on the SAME base the state transport used, instead of guessing "live"
+	 *  unconditionally and drifting apart from state.shm after a hello. */
+	static FString ResolveActiveSessionBase(AAMjManager* Mgr);
+
 	// UURLabPublishTransport contract
 	virtual void AppendHandshakeBlock(TSharedPtr<FJsonObject>& Reply) const override;
 

@@ -227,18 +227,35 @@ void ApplyEnvAndCommandLineOverrides(FURLabBridgeServerConfig& Cfg)
 		if (GetCsvValue(TEXT("URLabNet="), TEXT("bind"), NetVal))
 			Cfg.BindAddress = NetVal;
 
-		// grpc= is the CLI surface for the gRPC listen port (source-of-truth §14). That port has NO
-		// config field: the gRPC transport reads it straight off the command line as the internal
+		// grpc= is the CLI surface for the gRPC listen port (source-of-truth §14). The gRPC
+		// transport reads its bind port straight off the command line as the internal
 		// -URLabDmEnvPort= token (DmEnvRpcTransport.cpp), which lives in a module this file cannot
 		// re-plumb. So -URLabNet=grpc= feeds the transport's own reader by appending that internal
 		// token to the command line (config parse runs before EnsureExternalTransportsBound binds the
-		// gRPC server: AMjManager.cpp). Guarded on absence so it stays idempotent across the multiple
-		// ApplyEnvAndCommandLineOverrides calls.
+		// gRPC server: AMjManager.cpp). It ALSO writes Cfg.DmEnvPort (addendum §A6) so the registry
+		// writer (InstanceRegistry.cpp) can advertise the same port as the `grpc` endpoint -- the two
+		// readers must agree on one port. Guarded on absence so the command-line append stays
+		// idempotent across the multiple ApplyEnvAndCommandLineOverrides calls.
 		FString GrpcVal, ExistingDmEnv;
-		if (GetCsvValue(TEXT("URLabNet="), TEXT("grpc"), GrpcVal) && GrpcVal.IsNumeric()
-			&& !FParse::Value(FCommandLine::Get(), TEXT("URLabDmEnvPort="), ExistingDmEnv))
+		if (GetCsvValue(TEXT("URLabNet="), TEXT("grpc"), GrpcVal) && GrpcVal.IsNumeric())
 		{
-			FCommandLine::Append(*FString::Printf(TEXT(" -URLabDmEnvPort=%s"), *GrpcVal));
+			Cfg.DmEnvPort = FCString::Atoi(*GrpcVal);
+			if (!FParse::Value(FCommandLine::Get(), TEXT("URLabDmEnvPort="), ExistingDmEnv))
+			{
+				FCommandLine::Append(*FString::Printf(TEXT(" -URLabDmEnvPort=%s"), *GrpcVal));
+			}
+		}
+		else
+		{
+			// No -URLabNet=grpc= key: still honour a direct -URLabDmEnvPort= (the transport's own
+			// internal token, e.g. set by a prior ApplyEnvAndCommandLineOverrides call or the
+			// RenderPool orchestrator) so Cfg.DmEnvPort matches whatever the transport actually
+			// binds instead of silently keeping the struct default.
+			int32 DirectDmEnvPort = 0;
+			if (FParse::Value(FCommandLine::Get(), TEXT("URLabDmEnvPort="), DirectDmEnvPort) && DirectDmEnvPort > 0)
+			{
+				Cfg.DmEnvPort = DirectDmEnvPort;
+			}
 		}
 	}
 

@@ -31,6 +31,7 @@
 #include "Transport/MjExternalTransportProvider.h"
 #include "Transport/NetworkManager.h"
 #include "Transport/ShmCameraPublishTransport.h"
+#include "Transport/ShmPublishTransport.h"
 #include "Transport/ZmqCameraPublishTransport.h"
 #include "Utils/URLabLogging.h"
 
@@ -1455,8 +1456,14 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 			}
 			if (bEnableShmBroadcast)
 			{
+				// Resolve the SAME base session id the state SHM transport uses
+				// (a hello's GUID once minted, else "live") so cam_*.shm lands
+				// in the same session dir as state.shm instead of drifting to a
+				// stale "live" dir the client never learns about.
+				const FString BaseSessionId = UURLabShmPublishTransport::ResolveActiveSessionBase(
+					AAMjManager::GetManager());
 				UURLabShmCameraPublishTransport* Shm = NewObject<UURLabShmCameraPublishTransport>(this);
-				Shm->Configure(CaptureResolution());
+				Shm->Configure(CaptureResolution(), BaseSessionId);
 				CameraPublishers.Add(Shm);
 			}
 			// An optional transport module (gRPC / dm_env) may install a camera

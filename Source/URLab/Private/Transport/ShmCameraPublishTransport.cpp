@@ -26,9 +26,11 @@
 #include "Transport/ShmPublishTransport.h"
 #include "Utils/URLabLogging.h"
 
-void UURLabShmCameraPublishTransport::Configure(FIntPoint InResolution)
+void UURLabShmCameraPublishTransport::Configure(FIntPoint InResolution,
+	const FString& InBaseSessionId)
 {
 	Resolution = InResolution;
+	BaseSessionId = InBaseSessionId.IsEmpty() ? TEXT("live") : InBaseSessionId;
 }
 
 void UURLabShmCameraPublishTransport::OpenCameraChannel(int32 CameraIndex,
@@ -42,12 +44,15 @@ void UURLabShmCameraPublishTransport::OpenCameraChannel(int32 CameraIndex,
 	// The bare "live" session segment is process-global on one host, so several
 	// editors acting as render servers would all open the same cam_*.shm.
 	// Parameterise it per editor process with the same scheme the RPC and state
-	// segments use (base label + pid). The state transport applies the identical
-	// transform to the same "live" base, so state.shm and cam_*.shm resolve to
-	// one dir; the client learns that dir from the hello's shm_session_dir (set
-	// by UURLabShmPublishTransport::AppendHandshakeBlock) and opens both under it.
+	// segments use (base label + pid). BaseSessionId (set via Configure) is the
+	// SAME resolved base the state transport used — UURLabShmPublishTransport::
+	// ResolveActiveSessionBase, i.e. the dispatcher's active session id once a
+	// hello has minted one, else "live" — so running it through the identical
+	// MakeInstanceSessionId transform lands state.shm and cam_*.shm in one dir;
+	// the client learns that dir from the hello's shm_session_dir (set by
+	// UURLabShmPublishTransport::AppendHandshakeBlock) and opens both under it.
 	const FString Dir = UURLabShmPublishTransport::ResolveSessionDir(
-		UURLabShmPublishTransport::MakeInstanceSessionId(TEXT("live")));
+		UURLabShmPublishTransport::MakeInstanceSessionId(BaseSessionId));
 	IFileManager::Get().MakeDirectory(*Dir, /*Tree=*/true);
 	// Derive the SHM stem from the canonical name (which honors a re-homed camera's
 	// pinned override), so it matches the advertised ZMQ topic.

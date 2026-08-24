@@ -569,6 +569,14 @@ TSharedPtr<FJsonObject> FURLabRpcDispatcher::HandleReset(const TSharedPtr<FJsonO
 
 		StepCounter.store(0, std::memory_order_relaxed);
 
+		// Publish the post-reset pose to the render snapshot now, while we still
+		// hold CallbackMutex (lock order CallbackMutex -> RenderStateMutex),
+		// matching StepStatePushed and the direct step handler. Without this a
+		// paused stepped / state-pushed session's snapshot only refreshes on the
+		// physics loop's idle timeout, so cameras and any render consumer keep
+		// showing the pre-reset pose.
+		Mgr->PhysicsEngine->PushRenderState();
+
 		// Build the reply fields under the lock: the worker wakes on its idle
 		// timeout and can mutate d, tearing reads done after the lock releases.
 		Reply->SetStringField(TEXT("op"), TEXT("reset_ok"));

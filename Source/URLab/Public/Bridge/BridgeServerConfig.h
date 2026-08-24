@@ -88,4 +88,16 @@ struct URLAB_API FURLabBridgeServerConfig
 	/** TCP port for the viewer bus (owner PUB / viewer SUB). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
 	int32 ViewerPort = 5560;
+
+	/** gRPC (dm_env_rpc) listen port this instance serves, when the optional
+	 *  URLabDmEnvRpc module is present. Defaults to the well-known dm_env_rpc
+	 *  port (matches UURLabDmEnvRpcTransport's own default and the Python side's
+	 *  session.DEFAULT_GRPC_PORT) so a broadcasting owner is discoverable by a
+	 *  gRPC mirror-joiner with no extra config. Overridden by -URLabNet=grpc=
+	 *  or a direct -URLabDmEnvPort= (see ApplyEnvAndCommandLineOverrides), which
+	 *  also feeds the transport's own command-line reader so the two stay in
+	 *  sync. Only advertised in the registry (InstanceRegistry.cpp) when this
+	 *  instance is a published owner (bBroadcastViewers); addendum §A6. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "URLab|Bridge")
+	int32 DmEnvPort = 50051;
 };

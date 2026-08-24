@@ -103,6 +103,7 @@ bool OpRefreshesLease(const FString& Op)
 {
 	static const TSet<FString> NonActivityOps = {
 		TEXT("hello"),
+		TEXT("fastpath_hello"),
 		TEXT("meta"),
 		TEXT("pie_status"),
 		TEXT("op_status"),

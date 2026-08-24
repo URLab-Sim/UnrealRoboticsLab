@@ -522,6 +522,18 @@ private:
 	void SynthesizeMirrorOverlays(const TSharedPtr<FJsonObject>& Frame,
 		const double* Bxpos, const double* Bxquat);
 
+	// Drive all mirror-side reconstructions for one applied frame from the
+	// already-applied per-body transforms: flex (9.6), skin (9.5) and overlays
+	// (9.3). Called AFTER ApplyBodyTransforms by BOTH the stream Tick path and the
+	// push/forced-render path (ApplyForcedRenderState), so a push renderer deforms
+	// deformables and synthesizes overlays exactly like the stream. Bxpos/Bxquat
+	// are the frame's per-body transforms (3*nbody / 4*nbody wxyz, MuJoCo world);
+	// Frame carries the streamed debug tier the overlays read. Each callee is
+	// self-guarding (no model / null arrays / zero overlay mask -> no-op), so the
+	// only precondition callers enforce is the bxpos/bxquat size check.
+	void UpdateMirrorDeformablesAndOverlays(const TSharedPtr<FJsonObject>& Frame,
+		const double* Bxpos, const double* Bxquat);
+
 	// --- Mirror-side flex deformation (plan 9.6) --------------------------- //
 	// Flex vertices are a pure function of (static model) x (per-body transforms),
 	// so a mirror reconstructs them locally (UMjFlexcomp::UpdateFromBodyTransforms,

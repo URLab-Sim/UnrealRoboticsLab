@@ -65,7 +65,7 @@ FString FURLabInstanceRegistry::ResolveEntryPath(const FURLabBridgeServerConfig&
 }
 
 void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
-	const FString& UrlabVersion, bool bManagerPresent, bool bBusy)
+	const FString& UrlabVersion, bool bManagerPresent, bool bBusy, int32 Ngeom)
 {
 	TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
 	Entry->SetStringField(TEXT("instance_id"), EffectiveInstanceId(Cfg));
@@ -83,6 +83,16 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 	for (const FString& Cap : Capabilities())
 		Caps.Add(MakeShared<FJsonValueString>(Cap));
 
+	// Transports a viewer can reach this owner on, in the same shape the Python
+	// owner writes (fastpath_owner.py::_write_registry). UE always advertises the
+	// ZMQ control REP + viewer PUB bus; a gRPC (dm_env_rpc) endpoint is added
+	// below only for a published owner that serves one (addendum §A6). Default
+	// to null so a non-broadcasting instance (no dm_env_rpc endpoint to offer)
+	// keeps the old, correct shape.
+	TArray<TSharedPtr<FJsonValue>> Transports;
+	Transports.Add(MakeShared<FJsonValueString>(TEXT("zmq")));
+	TSharedPtr<FJsonValue> GrpcField = MakeShared<FJsonValueNull>();
+
 	// A viewer-broadcasting instance is also a fast-path owner: it serves its MJB
 	// over the control channel (fastpath_hello on the step port) and publishes the
 	// geoms transform bus on the viewer port. Advertise that so a fast-path
@@ -99,18 +109,31 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 			FString::Printf(TEXT("tcp://%s:%d"), *Host, Cfg.ViewerPort));
 		Entry->SetNumberField(TEXT("viewer_port"), Cfg.ViewerPort);
 		Entry->SetStringField(TEXT("scene"), EffectiveInstanceId(Cfg));
+
+		// Geom count for display, mirroring fastpath_owner.py's `ngeom` field
+		// (source-of-truth §12's one-schema target). Callers that have not been
+		// updated to pass the model's real geom count advertise 0 (addendum §A5:
+		// previously this key was entirely absent, so a reader's
+		// GetIntegerField silently returned 0 anyway -- now it's an honest 0
+		// instead of a missing key).
+		Entry->SetNumberField(TEXT("ngeom"), Ngeom);
+
+		// gRPC (dm_env_rpc) endpoint, when this instance serves one. DmEnvPort is
+		// populated from -URLabNet=grpc=/-URLabDmEnvPort=
+		// (BridgeServerConfigUtils::ApplyEnvAndCommandLineOverrides) or defaults to
+		// the well-known dm_env_rpc port; a caller can set it to 0 to suppress the
+		// advertisement (e.g. the URLabDmEnvRpc module is not built into this
+		// binary). Format matches the Python writer's `host:port` shape (no scheme).
+		if (Cfg.DmEnvPort > 0)
+		{
+			Transports.Add(MakeShared<FJsonValueString>(TEXT("grpc")));
+			GrpcField = MakeShared<FJsonValueString>(
+				FString::Printf(TEXT("%s:%d"), *Host, Cfg.DmEnvPort));
+		}
 	}
 	Entry->SetArrayField(TEXT("capabilities"), Caps);
-
-	// Transports a viewer can reach this owner on, in the same shape the Python
-	// owner writes (fastpath_owner.py::_write_registry). UE advertises the ZMQ
-	// control REP + viewer PUB bus; there is no gRPC (dm_env_rpc) endpoint in the
-	// bridge-server config today, so `grpc` is null. Emitted unconditionally so
-	// both writers converge on one schema (source-of-truth §12).
-	TArray<TSharedPtr<FJsonValue>> Transports;
-	Transports.Add(MakeShared<FJsonValueString>(TEXT("zmq")));
 	Entry->SetArrayField(TEXT("transports"), Transports);
-	Entry->SetField(TEXT("grpc"), MakeShared<FJsonValueNull>());
+	Entry->SetField(TEXT("grpc"), GrpcField);
 
 	// Timestamp key is `registry_written_at` (shared with the Python writer and
 	// read by MjDriverDiscovery / pool.read_registry / discover_owners). Value
@@ -127,9 +150,9 @@ void FURLabInstanceRegistry::WriteEntry(const FURLabBridgeServerConfig& Cfg,
 }
 
 void FURLabInstanceRegistry::RefreshEntry(const FURLabBridgeServerConfig& Cfg,
-	const FString& UrlabVersion, bool bManagerPresent, bool bBusy)
+	const FString& UrlabVersion, bool bManagerPresent, bool bBusy, int32 Ngeom)
 {
-	WriteEntry(Cfg, UrlabVersion, bManagerPresent, bBusy);
+	WriteEntry(Cfg, UrlabVersion, bManagerPresent, bBusy, Ngeom);
 }
 
 void FURLabInstanceRegistry::RemoveEntry(const FURLabBridgeServerConfig& Cfg)

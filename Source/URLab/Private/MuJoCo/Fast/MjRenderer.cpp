@@ -1727,6 +1727,11 @@ void AMjRenderer::ApplyForcedRenderState(const TSharedPtr<FJsonObject>& Req)
 	if (NBody > 0 && Bp.Num() == 3 * NBody && Bq.Num() == 4 * NBody)
 	{
 		ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
+
+		// Reconstruct mirror flex (9.6), skin (9.5) and overlays (9.3) from the
+		// applied transforms + static model, exactly like the stream Tick path --
+		// otherwise a push renderer draws deformables frozen and no overlays (§A1).
+		UpdateMirrorDeformablesAndOverlays(Req, Bp.GetData(), Bq.GetData());
 	}
 
 	if (CameraComps.Num() > 0)
@@ -2468,6 +2473,26 @@ void AMjRenderer::ApplyBodyTransforms(const double* Bxpos, const double* Bxquat)
 	}
 }
 
+void AMjRenderer::UpdateMirrorDeformablesAndOverlays(const TSharedPtr<FJsonObject>& Frame,
+	const double* Bxpos, const double* Bxquat)
+{
+	// Mirror-side flex deformation (9.6): reconstruct flex vertices from these
+	// transforms + the static model and drive the existing UMjFlexcomp writeback --
+	// no per-vertex bytes on the wire.
+	UpdateMirrorFlex(Bxpos, Bxquat);
+
+	// Mirror-side skin deformation (9.5): reconstruct each skin's vertices by
+	// linear-blend skinning from these bone-body transforms + the static skin_*
+	// arrays (a replay of mjv_updateActiveSkin) and drive the renderer-owned
+	// UMjSkincomp UDynamicMeshComponents -- again no per-vertex bytes on the wire.
+	UpdateMirrorSkin(Bxpos, Bxquat);
+
+	// Mirror-side overlays (9.3): synthesize mjvGeom-equivalent decor from the
+	// streamed debug tier (§8.2) + these transforms and feed the existing overlay
+	// renderer (9.2). No-op when no overlay is enabled (mj.MirrorOverlayMask == 0).
+	SynthesizeMirrorOverlays(Frame, Bxpos, Bxquat);
+}
+
 void AMjRenderer::UpdateMirrorFlex(const double* Bxpos, const double* Bxquat)
 {
 	if (!Model || Model->nflex == 0 || !Bxpos || !Bxquat)
@@ -2993,24 +3018,10 @@ void AMjRenderer::Tick(float DeltaSeconds)
 				{
 					ApplyBodyTransforms(Bp.GetData(), Bq.GetData());
 
-					// Mirror-side flex deformation (9.6): reconstruct flex vertices
-					// from these transforms + the static model and drive the existing
-					// UMjFlexcomp writeback -- no per-vertex bytes on the wire.
-					UpdateMirrorFlex(Bp.GetData(), Bq.GetData());
-
-					// Mirror-side skin deformation (9.5): reconstruct each skin's
-					// vertices by linear-blend skinning from these bone-body
-					// transforms + the static skin_* arrays (a replay of
-					// mjv_updateActiveSkin) and drive the renderer-owned
-					// UMjSkincomp UDynamicMeshComponents -- again no per-vertex
-					// bytes on the wire.
-					UpdateMirrorSkin(Bp.GetData(), Bq.GetData());
-
-					// Mirror-side overlays (9.3): synthesize mjvGeom-equivalent decor
-					// from the streamed debug tier (§8.2) + these transforms and feed
-					// the existing overlay renderer (9.2). No-op when no overlay is
-					// enabled (mj.MirrorOverlayMask == 0).
-					SynthesizeMirrorOverlays(Obj, Bp.GetData(), Bq.GetData());
+					// Reconstruct mirror flex (9.6), skin (9.5) and overlays (9.3)
+					// from the applied transforms + static model -- no per-vertex
+					// bytes on the wire. Shared with the push/forced-render path.
+					UpdateMirrorDeformablesAndOverlays(Obj, Bp.GetData(), Bq.GetData());
 				}
 
 				// Optional camera world transforms, so streamed cameras track

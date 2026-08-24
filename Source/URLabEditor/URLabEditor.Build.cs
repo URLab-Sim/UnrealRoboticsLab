@@ -55,6 +55,11 @@ public class URLabEditor : ModuleRules
 		{
 			"InputCore",
 			"RenderCore",
+			// Flex/skin replication tests read back UDynamicMeshComponent surfaces
+			// (UDynamicMesh::ProcessMesh / FDynamicMesh3), so the test module links
+			// the geometry runtime directly.
+			"GeometryFramework",
+			"GeometryCore",
 			"DesktopPlatform",
 			"Kismet",
 			"BlueprintGraph",

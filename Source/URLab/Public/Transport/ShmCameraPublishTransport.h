@@ -42,9 +42,13 @@ class URLAB_API UURLabShmCameraPublishTransport : public UURLabCameraPublishTran
 public:
 	UURLabShmCameraPublishTransport() = default;
 
-	/** Supply the frame resolution before opening a channel; it sizes each SHM
-	 *  region and validates a pushed frame's byte count. */
-	void Configure(FIntPoint InResolution);
+	/** Supply the frame resolution and the resolved base session id before
+	 *  opening a channel. The resolution sizes each SHM region and validates
+	 *  a pushed frame's byte count. `InBaseSessionId` must be the SAME base
+	 *  UURLabShmPublishTransport::ResolveActiveSessionBase resolved for the
+	 *  state transport (the caller reads it via that static, e.g. through the
+	 *  owning AAMjManager) — see the co-location comment on OpenCameraChannel. */
+	void Configure(FIntPoint InResolution, const FString& InBaseSessionId);
 
 	// UURLabCameraPublishTransport contract.
 	virtual void OpenCameraChannel(int32 CameraIndex, const FString& CanonicalName,
@@ -58,6 +62,13 @@ public:
 private:
 	/** Frame resolution, used to size each region and validate pushed frames. */
 	FIntPoint Resolution = FIntPoint::ZeroValue;
+
+	/** Pre-instance base session label (e.g. a hello's GUID, or "live" before
+	 *  any hello). Set by Configure; OpenCameraChannel runs it through
+	 *  MakeInstanceSessionId the same way the state transport does, so both
+	 *  land in one dir. Defaults to "live" for safety if Configure is somehow
+	 *  skipped. */
+	FString BaseSessionId = TEXT("live");
 
 	/** One mmap writer per channel. */
 	TMap<int32, TUniquePtr<FCameraShmWriter>> Writers;

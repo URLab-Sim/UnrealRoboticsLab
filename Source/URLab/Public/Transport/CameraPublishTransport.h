@@ -43,7 +43,7 @@ struct FMjCameraWireFrame
  * Channel model: one transport instance multiplexes N cameras, keyed by
  * `CameraIndex`. A per-socket backend (ZMQ) may stand up a socket/thread per
  * channel internally; a single-connection backend (gRPC) may fold every channel
- * onto one stream and ignore `StreamPortIndex`. The renderer sees neither.
+ * onto one stream. The renderer sees neither.
  *
  * Threading: `PublishCameraFrame` is called from a camera's publish worker, OFF
  * the game thread; concrete backends serialise internally, exactly as the ZMQ /
@@ -56,11 +56,8 @@ class URLAB_API UURLabCameraPublishTransport : public UObject
 
 public:
 	/** Register a camera channel before any frame flows (stream start, game
-	 *  thread). `CanonicalName` is the wire identity; `StreamPortIndex` is the
-	 *  backend's per-camera slot (ZMQ port offset / SHM region index) and may be
-	 *  ignored by a multiplexing backend. */
-	virtual void OpenCameraChannel(int32 CameraIndex, const FString& CanonicalName,
-		int32 StreamPortIndex)
+	 *  thread). `CanonicalName` is the wire identity. */
+	virtual void OpenCameraChannel(int32 CameraIndex, const FString& CanonicalName)
 		PURE_VIRTUAL(UURLabCameraPublishTransport::OpenCameraChannel, );
 
 	/** Ship one frame for `Frame.CameraIndex`. Called off the game thread; the

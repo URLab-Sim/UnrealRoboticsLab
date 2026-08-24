@@ -155,7 +155,6 @@ private:
 	mutable FCriticalSection LeaseMutex;
 	bool bLeaseHeld = false;
 	FString LeaseId;
-	FString LeaseOwner;
 	double LeaseTtlSeconds = 0.0;
 	double LeaseLastActivitySeconds = 0.0;
 	double LeaseClockOverrideForTest = -1.0;

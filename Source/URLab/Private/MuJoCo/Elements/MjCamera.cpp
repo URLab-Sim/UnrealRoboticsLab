@@ -1483,7 +1483,7 @@ void UMjCamera::SetStreamingEnabled(bool bEnable)
 				if (Transport)
 				{
 					Transport->TransportInit();
-					Transport->OpenCameraChannel(StreamPortIndex, Canonical, StreamPortIndex);
+					Transport->OpenCameraChannel(StreamPortIndex, Canonical);
 				}
 			}
 		}

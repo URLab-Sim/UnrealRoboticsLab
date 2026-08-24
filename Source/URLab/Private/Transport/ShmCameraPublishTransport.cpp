@@ -34,7 +34,7 @@ void UURLabShmCameraPublishTransport::Configure(FIntPoint InResolution,
 }
 
 void UURLabShmCameraPublishTransport::OpenCameraChannel(int32 CameraIndex,
-	const FString& CanonicalName, int32 StreamPortIndex)
+	const FString& CanonicalName)
 {
 	if (Writers.Contains(CameraIndex))
 	{

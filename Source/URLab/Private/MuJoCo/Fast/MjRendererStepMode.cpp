@@ -167,5 +167,4 @@ void FMjRendererStepMode::RetireForReload()
 		}
 	}
 	LastRenderFrameId = 0;
-	bNanLogged = false;
 }

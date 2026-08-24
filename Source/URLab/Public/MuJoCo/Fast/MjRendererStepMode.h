@@ -31,9 +31,6 @@ struct FMjRendererStepMode
 	TWeakObjectPtr<AAMjManager> Manager;
 	// Frame id of the last render snapshot applied, so Tick skips unchanged frames.
 	uint64 LastRenderFrameId = 0;
-	// One-shot: log the first non-finite snapshot transform (diverged physics vs bad
-	// snapshot) without flooding.
-	bool bNanLogged = false;
 	// Polls until the manager has begun play, then installs the raw model.
 	FTimerHandle InstallTimer;
 

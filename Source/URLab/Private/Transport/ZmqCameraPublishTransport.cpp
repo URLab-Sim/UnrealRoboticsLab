@@ -286,7 +286,7 @@ void UURLabZmqCameraPublishTransport::Configure(const FString& InEndpoint, FIntP
 }
 
 void UURLabZmqCameraPublishTransport::OpenCameraChannel(int32 CameraIndex,
-	const FString& CanonicalName, int32 StreamPortIndex)
+	const FString& CanonicalName)
 {
 	if (Channels.Contains(CameraIndex))
 	{

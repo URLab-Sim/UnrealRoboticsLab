@@ -448,7 +448,6 @@ bool UURLabBridgeServer::IsLeaseHeldInternal(double NowSeconds)
 		// Idle past its TTL: auto-release so the next acquire succeeds.
 		bLeaseHeld = false;
 		LeaseId.Empty();
-		LeaseOwner.Empty();
 	}
 	return bLeaseHeld;
 }
@@ -466,7 +465,6 @@ bool UURLabBridgeServer::TryAcquireLease(const FString& Owner, double TtlSeconds
 
 	bLeaseHeld = true;
 	LeaseId = FGuid::NewGuid().ToString(EGuidFormats::DigitsWithHyphens);
-	LeaseOwner = Owner;
 	LeaseTtlSeconds = TtlSeconds;
 	LeaseLastActivitySeconds = Now;
 	OutLeaseId = LeaseId;
@@ -481,7 +479,6 @@ bool UURLabBridgeServer::ReleaseLease(const FString& InLeaseId)
 
 	bLeaseHeld = false;
 	LeaseId.Empty();
-	LeaseOwner.Empty();
 	return true;
 }
 

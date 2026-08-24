@@ -51,8 +51,7 @@ public:
 	void Configure(FIntPoint InResolution, const FString& InBaseSessionId);
 
 	// UURLabCameraPublishTransport contract.
-	virtual void OpenCameraChannel(int32 CameraIndex, const FString& CanonicalName,
-		int32 StreamPortIndex) override;
+	virtual void OpenCameraChannel(int32 CameraIndex, const FString& CanonicalName) override;
 	virtual void PublishCameraFrame(const FMjCameraWireFrame& Frame) override;
 	virtual void CloseCameraChannel(int32 CameraIndex) override;
 	virtual bool TransportInit() override { return true; }

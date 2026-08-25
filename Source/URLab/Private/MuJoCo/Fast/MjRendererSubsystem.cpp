@@ -7,6 +7,7 @@
 
 #include "MuJoCo/Fast/MjRenderer.h"
 #include "MuJoCo/Fast/MjRendererDriverClient.h"
+#include "MuJoCo/Fast/DroneViewerPawn.h"
 #include "UI/SMjRendererBrowser.h"
 #include "UI/SMjRendererHud.h"
 #include "Utils/URLabLogging.h"
@@ -61,7 +62,7 @@ void UMjRendererSubsystem::RefreshLevels()
 }
 
 bool UMjRendererSubsystem::JoinDriver(const FMjDriverInfo& Driver, const FString& LevelPath,
-	const FVector& Origin, bool bCameras, FString& OutError)
+	const FVector& Origin, bool bCameras, bool bVr, bool bInput, FString& OutError)
 {
 	OutError.Empty();
 	TArray<uint8> Mjb;
@@ -77,16 +78,20 @@ bool UMjRendererSubsystem::JoinDriver(const FMjDriverInfo& Driver, const FString
 	// advertisement.
 	PendingBus = Bus.IsEmpty() ? Driver.Bus : Bus;
 	PendingMjb = MoveTemp(Mjb);
+	PendingControl = Driver.Control;
 	PendingOrigin = Origin;
 	bPendingBaseLevel = !LevelPath.IsEmpty();
 	bPendingCameras = bCameras;
+	bPendingVr = bVr;
+	bPendingInput = bInput;
 	bJoinPending = true;
 
 	HideBrowser();
 	const FString Target = LevelPath.IsEmpty() ? TEXT("/Engine/Maps/Entry") : LevelPath;
 	UE_LOG(LogURLab, Log,
-		TEXT("[MjRenderer] joining driver %s (%d bytes, bus %s) -> level %s origin (%s)"),
-		*Driver.Control, PendingMjb.Num(), *PendingBus, *Target, *Origin.ToString());
+		TEXT("[MjRenderer] joining driver %s (%d bytes, bus %s) -> level %s origin (%s) caps(cameras=%d vr=%d input=%d)"),
+		*Driver.Control, PendingMjb.Num(), *PendingBus, *Target, *Origin.ToString(),
+		bCameras ? 1 : 0, bVr ? 1 : 0, bInput ? 1 : 0);
 	UGameplayStatics::OpenLevel(this, FName(*Target));
 	return true;
 }
@@ -99,20 +104,46 @@ bool UMjRendererSubsystem::ConsumePendingJoin(UWorld* World)
 	}
 	ActiveRenderer = AMjRenderer::SpawnRenderer(World, PendingMjb, FString(), PendingBus, PendingOrigin,
 		/*bDirect=*/false, bPendingBaseLevel, bPendingCameras);
+
+	// Interact cap: point the mirror's perturb channel at the driver's control
+	// endpoint so Ctrl-drag forwards fastpath_perturb intents (the mirror has no
+	// physics; the owner applies the wrench, gated on its own accept_input
+	// capability). SendPerturbation/ProcessMirrorPerturbationInput are guarded on
+	// an empty OwnerControlEndpoint, so leaving it unset keeps the join read-only.
+	if (bPendingInput && !PendingControl.IsEmpty())
+	{
+		if (AMjRenderer* Scene = ActiveRenderer.Get())
+		{
+			Scene->OwnerControlEndpoint = PendingControl;
+		}
+	}
+
+	// VR cap: swap the static framing camera for the possessed free-fly drone.
+	// Same shared entry the -URLabCaps=vr launch path uses (and idempotent, so a
+	// join on a vr-flagged boot never spawns a second drone). Possession
+	// re-targets the view onto the drone after SpawnRenderer's framing camera.
+	if (bPendingVr)
+	{
+		ADroneViewerPawn::SpawnAndPossess(World);
+	}
+
 	bJoinPending = false;
 	PendingMjb.Empty();
+	PendingControl.Empty();
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] pending join spawned into %s"), *World->GetMapName());
 	ShowHud(); // return-to-browser + live origin tuning
 	return true;
 }
 
 void UMjRendererSubsystem::BeginAutoJoin(const FString& SceneFilter, const FString& LevelPath,
-	const FVector& Origin, bool bCameras)
+	const FVector& Origin, bool bCameras, bool bVr, bool bInput)
 {
 	AutoScene = SceneFilter;
 	AutoLevel = LevelPath;
 	AutoOrigin = Origin;
 	bAutoCameras = bCameras;
+	bAutoVr = bVr;
+	bAutoInput = bInput;
 	AutoJoinTries = 0;
 	UGameInstance* GI = GetGameInstance();
 	UWorld* W = GI ? GI->GetWorld() : nullptr;
@@ -142,7 +173,7 @@ void UMjRendererSubsystem::AutoJoinPoll()
 	if (Pick)
 	{
 		FString Err;
-		const bool bOk = JoinDriver(*Pick, AutoLevel, AutoOrigin, bAutoCameras, Err);
+		const bool bOk = JoinDriver(*Pick, AutoLevel, AutoOrigin, bAutoCameras, bAutoVr, bAutoInput, Err);
 		if (bOk && W)
 		{
 			W->GetTimerManager().ClearTimer(AutoJoinTimer); // JoinDriver OpenLevels away

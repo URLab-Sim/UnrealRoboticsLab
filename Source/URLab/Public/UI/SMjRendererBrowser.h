@@ -17,9 +17,10 @@ class SEditableTextBox;
 /**
  * Runtime (packaged-game) server browser for fast-path Renderers. Lists the
  * live drivers the UMjRendererSubsystem discovered, an environment picker (bare
- * plane or any cooked level), a spawn-origin field, and a camera-feeds toggle.
- * Connecting hands the choice back to the subsystem, which pulls the MJB and opens
- * the level. This is the runtime counterpart to the editor's SMjServerBrowser.
+ * plane or any cooked level), a spawn-origin field, and the per-join capability
+ * toggles (camera feeds, VR free-fly drone, interact/perturb). Connecting hands
+ * the choice back to the subsystem, which pulls the MJB and opens the level.
+ * This is the runtime counterpart to the editor's SMjServerBrowser.
  */
 class SMjRendererBrowser : public SCompoundWidget
 {
@@ -43,7 +44,16 @@ private:
 	TSharedPtr<FString> SelectedLevelName;
 
 	TSharedPtr<SEditableTextBox> OriginBox;
+	// Per-join capabilities (the joining-viewer subset of source-of-truth §5;
+	// serve/publish are owner-side and not offered here).
 	bool bCameras = true;
+	// Off by default: the plain flat viewer is the common case; the drone takes
+	// over the whole viewport + input scheme, so it must be an explicit choice.
+	bool bVr = false;
+	// On by default: matches the editor and gRPC join paths, which always wire
+	// the perturb channel; the gesture is a deliberate Ctrl+LMB drag and the
+	// OWNER still gates acceptance via its own accept_input capability.
+	bool bInput = true;
 	FText StatusText;
 
 	EActiveTimerReturnType RefreshTick(double, float);

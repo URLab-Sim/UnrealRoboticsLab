@@ -105,6 +105,30 @@ void SMjRendererBrowser::Construct(const FArguments& InArgs)
 							SNew(STextBlock).Text(LOCTEXT("Cameras", "Camera feeds"))
 						]
 					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+					[
+						SNew(SCheckBox)
+						.IsChecked(bVr ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
+						.OnCheckStateChanged_Lambda([this](ECheckBoxState S)
+						{
+							bVr = (S == ECheckBoxState::Checked);
+						})
+						[
+							SNew(STextBlock).Text(LOCTEXT("Vr", "VR free-fly (drone)"))
+						]
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8, 0, 0, 0)
+					[
+						SNew(SCheckBox)
+						.IsChecked(bInput ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
+						.OnCheckStateChanged_Lambda([this](ECheckBoxState S)
+						{
+							bInput = (S == ECheckBoxState::Checked);
+						})
+						[
+							SNew(STextBlock).Text(LOCTEXT("Input", "Interact (perturb)"))
+						]
+					]
 				]
 
 				// Driver list.
@@ -228,7 +252,7 @@ FReply SMjRendererBrowser::OnConnect(FDriverPtr Item)
 		return FReply::Handled();
 	}
 	FString Err;
-	if (Sub->JoinDriver(*Item, SelectedLevelPath(), ParseOrigin(), bCameras, Err))
+	if (Sub->JoinDriver(*Item, SelectedLevelPath(), ParseOrigin(), bCameras, bVr, bInput, Err))
 	{
 		StatusText = FText::FromString(FString::Printf(TEXT("Joining '%s'..."), *Item->Scene));
 	}

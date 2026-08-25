@@ -17,7 +17,8 @@
  *
  * It renders nothing itself (camera only) -- the sim it flies around is drawn by
  * the transform-mirror renderer (AMjRenderer, Drive=stream). Spawned + possessed
- * by the launcher on -URLabVrViewer.
+ * via SpawnAndPossess: by the launcher on -URLabCaps=vr, or by the server
+ * browser's "VR free-fly" join option.
  */
 UCLASS()
 class URLAB_API ADroneViewerPawn : public APawn
@@ -26,6 +27,18 @@ class URLAB_API ADroneViewerPawn : public APawn
 
 public:
 	ADroneViewerPawn();
+
+	/**
+	 * Spawn + possess the free-fly drone once a PlayerController exists. The one
+	 * shared entry for every path that wants the VR/drone view: the -game launcher
+	 * (-URLabCaps=vr) and the runtime server browser's "VR free-fly" join option.
+	 * The PC is frequently not up yet at world BeginPlay (a packaged boot creates
+	 * it a few frames later), so this retries itself on a short timer (~5 s cap)
+	 * rather than silently no-op. Idempotent: if a drone already exists in the
+	 * world (a retry, a re-entered BeginPlay, or both callers firing) it returns
+	 * without spawning a second one.
+	 */
+	static void SpawnAndPossess(TWeakObjectPtr<UWorld> WeakWorld, int32 Attempt = 0);
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* InInputComponent) override;

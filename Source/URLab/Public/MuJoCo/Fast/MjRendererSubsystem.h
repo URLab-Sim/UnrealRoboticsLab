@@ -58,9 +58,17 @@ public:
 	 * the join as pending, and opens the target level (an empty engine map for the
 	 * bare-plane choice, else LevelPath). The pending join is consumed on the new
 	 * world by ConsumePendingJoin. Returns false + OutError if the fetch fails.
+	 *
+	 * Per-join capabilities (source-of-truth §5, the joining-viewer subset):
+	 *  - bCameras: build + stream the model's cameras on the mirror.
+	 *  - bVr: possess the free-fly drone pawn (ADroneViewerPawn) instead of the
+	 *    static framing camera.
+	 *  - bInput: point the mirror's perturb channel at the driver's control
+	 *    endpoint so Ctrl-drag forwards fastpath_perturb intents (the owner still
+	 *    gates acceptance via its own `input`/AcceptInput capability).
 	 */
 	bool JoinDriver(const FMjDriverInfo& Driver, const FString& LevelPath,
-		const FVector& Origin, bool bCameras, FString& OutError);
+		const FVector& Origin, bool bCameras, bool bVr, bool bInput, FString& OutError);
 
 	/** Spawn a pending browser-driven join into World, if one is queued. Returns
 	 *  true if a slave was spawned (and clears the pending state). */
@@ -72,9 +80,11 @@ public:
 	 * Headless auto-join for a render-farm node: poll discovery until a driver
 	 * appears (whose scene contains SceneFilter, or the first driver when empty) and
 	 * join it into LevelPath at Origin. No UI. Gives up after a bounded wait.
+	 * bCameras/bVr/bInput carry the same per-join capabilities as JoinDriver
+	 * (the launcher fills them from -URLabCaps; all default off = lean).
 	 */
 	void BeginAutoJoin(const FString& SceneFilter, const FString& LevelPath,
-		const FVector& Origin, bool bCameras);
+		const FVector& Origin, bool bCameras, bool bVr, bool bInput);
 
 	// --- browser UI ------------------------------------------------------- //
 	/** Add the server-browser widget to the game viewport (idempotent). */
@@ -104,9 +114,14 @@ private:
 	bool bJoinPending = false;
 	TArray<uint8> PendingMjb;
 	FString PendingBus;
+	// The driver's REQ/REP control endpoint, kept so bPendingInput can point the
+	// spawned mirror's perturb channel back at the owner.
+	FString PendingControl;
 	FVector PendingOrigin = FVector::ZeroVector;
 	bool bPendingBaseLevel = false;
 	bool bPendingCameras = false;
+	bool bPendingVr = false;
+	bool bPendingInput = false;
 
 	TSharedPtr<class SMjRendererBrowser> BrowserWidget;
 	TSharedPtr<class SMjRendererHud> HudWidget;
@@ -120,6 +135,8 @@ private:
 	FString AutoLevel;
 	FVector AutoOrigin = FVector::ZeroVector;
 	bool bAutoCameras = false;
+	bool bAutoVr = false;
+	bool bAutoInput = false;
 	int32 AutoJoinTries = 0;
 	FTimerHandle AutoJoinTimer;
 	void AutoJoinPoll();

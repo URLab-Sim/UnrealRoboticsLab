@@ -6,7 +6,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/TimerHandle.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "MjRendererLauncher.generated.h"
 
@@ -14,12 +13,13 @@
  * @class UMjRendererLauncher
  * @brief Spawns and configures a fast-path AMjRenderer from command-line flags,
  *        so a UE renderer can be launched and connected with no manual actor
- *        placement -- the first step toward CLI-driven / discovered connection.
+ *        placement.
  *
- * On a game world's BeginPlay, if `-URLabFastMjb=<path>` is present it spawns an
- * AMjRenderer (optionally `-URLabFastBus=<endpoint>` to mirror a live owner) and
- * frames it with a view camera. This is a stopgap for the discovery layer:
- * eventually the endpoint + MJB arrive over the wire from an advertised owner.
+ * On a game world's BeginPlay it reads the boot flags (-URLabModel, -URLabDrive,
+ * -URLabCaps, -URLabSourceFind, -URLabScene) to decide whether to join a live
+ * owner over gRPC, load a boot model, auto-join or browse for a discovered
+ * driver, or possess a free-fly VR drone -- then spawns the resulting
+ * AMjRenderer via SpawnRenderer, framing it with a view camera.
  */
 UCLASS()
 class URLAB_API UMjRendererLauncher : public UWorldSubsystem
@@ -28,12 +28,4 @@ class URLAB_API UMjRendererLauncher : public UWorldSubsystem
 
 public:
 	virtual void OnWorldBeginPlay(UWorld& InWorld) override;
-
-private:
-	/** Spawn + possess the free-fly drone (`-URLabVrViewer`) once a PlayerController
-	 *  exists. The PC is often not ready at world BeginPlay (esp. in a packaged
-	 *  boot), so this retries itself on a short timer until it succeeds or times out. */
-	void TryPossessVrDrone(TWeakObjectPtr<UWorld> WeakWorld, int32 Attempt);
-
-	FTimerHandle VrPossessTimerHandle;
 };

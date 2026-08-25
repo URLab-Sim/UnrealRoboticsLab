@@ -13,12 +13,9 @@
 #include "MuJoCo/Entity/MjModelSource.h"
 #include "Utils/URLabLogging.h"
 
-#include "GameFramework/PlayerController.h"
-
 #include "Engine/World.h"
 #include "Engine/GameInstance.h"
 #include "GameFramework/Pawn.h"
-#include "TimerManager.h"
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -63,10 +60,9 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	// after the default pawn is hidden above. Keyboard free-fly (WASD/QE + mouse).
 	if (URLabLauncherFlags::CapsWantVr())
 	{
-		// The PlayerController is frequently not up yet at world BeginPlay (the
-		// packaged boot creates it a few frames later), so defer + retry rather
-		// than silently no-op when GetFirstPlayerController() is null right now.
-		TryPossessVrDrone(&InWorld, 0);
+		// Shared with the server browser's "VR free-fly" join option; the helper
+		// defers + retries internally until the PlayerController exists.
+		ADroneViewerPawn::SpawnAndPossess(&InWorld);
 	}
 
 	// Join a gRPC OWNER (peek/mirror): fetch its model over gRPC (fastpath_hello),
@@ -207,9 +203,14 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 					{
 						FString Level;
 						URLabLauncherFlags::SceneLevel(Level);
-						const bool bCamerasWanted =
-							URLabLauncherFlags::ParseCaps().bCameras.Get(false);
-						Sub->BeginAutoJoin(AutoScene, Level, ParseFastOrigin(), bCamerasWanted);
+						// -URLabCaps threads into the autojoin: cameras/vr/input all
+						// default off (lean) exactly as before; vr is also handled by
+						// the CapsWantVr() possess above, so passing it here is
+						// harmless (SpawnAndPossess is idempotent) but keeps the
+						// autojoin path complete when consumed on the next world.
+						const URLabLauncherFlags::FCaps Caps = URLabLauncherFlags::ParseCaps();
+						Sub->BeginAutoJoin(AutoScene, Level, ParseFastOrigin(),
+							Caps.bCameras.Get(false), Caps.bVr.Get(false), Caps.bInput.Get(false));
 					}
 					else if (URLabLauncherFlags::SourceFindBrowse())
 					{
@@ -281,59 +282,4 @@ void UMjRendererLauncher::OnWorldBeginPlay(UWorld& InWorld)
 	UE_LOG(LogURLab, Log, TEXT("[MjRenderer] launched: model=%s mode=%s bus=%s baseLevel=%d"),
 		*SourceDesc, bDirect ? TEXT("sim") : TEXT("stream"),
 		Bus.IsEmpty() ? TEXT("(none)") : *Bus, bBaseLevel ? 1 : 0);
-}
-
-void UMjRendererLauncher::TryPossessVrDrone(TWeakObjectPtr<UWorld> WeakWorld, int32 Attempt)
-{
-	UWorld* World = WeakWorld.Get();
-	if (!World)
-	{
-		return;
-	}
-
-	APlayerController* PC = World->GetFirstPlayerController();
-	if (!PC)
-	{
-		// PC not created yet -- retry shortly. Cap the retries (~5s) so a headless
-		// world with no player never loops forever.
-		if (Attempt < 50)
-		{
-			World->GetTimerManager().SetTimer(
-				VrPossessTimerHandle,
-				FTimerDelegate::CreateUObject(
-					this, &UMjRendererLauncher::TryPossessVrDrone, WeakWorld, Attempt + 1),
-				0.1f, /*bLoop=*/false);
-		}
-		else
-		{
-			UE_LOG(LogURLab, Warning,
-				TEXT("[MjRenderer] -URLabCaps=vr: no PlayerController after ~5s; drone not possessed"));
-		}
-		return;
-	}
-
-	// Idempotent: a retry (or a re-entered BeginPlay) must not spawn a second drone.
-	for (TActorIterator<ADroneViewerPawn> It(World); It; ++It)
-	{
-		return;
-	}
-
-	// Hide whatever the PC currently possesses (the GameMode's default sphere pawn),
-	// so it doesn't show up in the drone's view as a grey dome over the scene.
-	if (APawn* Old = PC->GetPawn())
-	{
-		Old->SetActorHiddenInGame(true);
-	}
-
-	const FTransform SpawnTM(FRotator(-15.0, 0.0, 0.0), FVector(-500.0, 0.0, 250.0));
-	if (ADroneViewerPawn* Drone = World->SpawnActor<ADroneViewerPawn>(
-			ADroneViewerPawn::StaticClass(), SpawnTM))
-	{
-		PC->Possess(Drone);
-		PC->SetInputMode(FInputModeGameOnly());
-		PC->bShowMouseCursor = false;
-		UE_LOG(LogURLab, Display,
-			TEXT("[MjRenderer] -URLabCaps=vr: drone free-fly camera spawned + possessed (attempt %d)"),
-			Attempt);
-	}
 }

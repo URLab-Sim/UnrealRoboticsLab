@@ -9,6 +9,66 @@
 #include "GameFramework/FloatingPawnMovement.h"
 #include "GameFramework/PlayerController.h"
 #include "Components/InputComponent.h"
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "TimerManager.h"
+#include "Utils/URLabLogging.h"
+
+void ADroneViewerPawn::SpawnAndPossess(TWeakObjectPtr<UWorld> WeakWorld, int32 Attempt)
+{
+	UWorld* World = WeakWorld.Get();
+	if (!World)
+	{
+		return;
+	}
+
+	APlayerController* PC = World->GetFirstPlayerController();
+	if (!PC)
+	{
+		// PC not created yet -- retry shortly. Cap the retries (~5s) so a headless
+		// world with no player never loops forever. The handle is deliberately
+		// local: nothing ever cancels this chain early, and the weak world guard
+		// above ends it if the world goes away.
+		if (Attempt < 50)
+		{
+			FTimerHandle Unused;
+			World->GetTimerManager().SetTimer(Unused,
+				FTimerDelegate::CreateStatic(&ADroneViewerPawn::SpawnAndPossess, WeakWorld, Attempt + 1),
+				0.1f, /*bLoop=*/false);
+		}
+		else
+		{
+			UE_LOG(LogURLab, Warning,
+				TEXT("[MjRenderer] vr drone: no PlayerController after ~5s; drone not possessed"));
+		}
+		return;
+	}
+
+	// Idempotent: a retry (or a re-entered BeginPlay) must not spawn a second drone.
+	for (TActorIterator<ADroneViewerPawn> It(World); It; ++It)
+	{
+		return;
+	}
+
+	// Hide whatever the PC currently possesses (the GameMode's default sphere pawn),
+	// so it doesn't show up in the drone's view as a grey dome over the scene.
+	if (APawn* Old = PC->GetPawn())
+	{
+		Old->SetActorHiddenInGame(true);
+	}
+
+	const FTransform SpawnTM(FRotator(-15.0, 0.0, 0.0), FVector(-500.0, 0.0, 250.0));
+	if (ADroneViewerPawn* Drone = World->SpawnActor<ADroneViewerPawn>(
+			ADroneViewerPawn::StaticClass(), SpawnTM))
+	{
+		PC->Possess(Drone);
+		PC->SetInputMode(FInputModeGameOnly());
+		PC->bShowMouseCursor = false;
+		UE_LOG(LogURLab, Display,
+			TEXT("[MjRenderer] vr drone: free-fly camera spawned + possessed (attempt %d)"),
+			Attempt);
+	}
+}
 
 ADroneViewerPawn::ADroneViewerPawn()
 {
@@ -27,7 +87,7 @@ ADroneViewerPawn::ADroneViewerPawn()
 	bUseControllerRotationPitch = true;
 	bUseControllerRotationYaw = true;
 	bUseControllerRotationRoll = false;
-	AutoPossessPlayer = EAutoReceiveInput::Disabled;  // possessed explicitly by the launcher
+	AutoPossessPlayer = EAutoReceiveInput::Disabled;  // possessed explicitly via SpawnAndPossess
 }
 
 void ADroneViewerPawn::Tick(float DeltaSeconds)

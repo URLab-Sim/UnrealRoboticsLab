@@ -70,8 +70,9 @@ spawn, not over the step RPC.
   capability combinations, not types in the code**.
 
 > **Do not confuse** `EMjCapability::StreamCameras` (`AMjManager::bStreamCameras`, the
-> RPC gate) with `AMjRenderer::bEnableCameraStreaming` (set by `-URLabFastCameras`,
-> which actually *builds & binds* the camera components). One authorizes; the other
+> RPC gate) with `AMjRenderer::bEnableCameraStreaming` (set by `-URLabCaps=cameras`,
+> formerly `-URLabFastCameras`, which actually *builds & binds* the camera components).
+> One authorizes; the other
 > constructs.
 
 ---
@@ -119,7 +120,7 @@ Owners write an atomic JSON entry to the shared registry dir
 "fastpath_owner"`, `capabilities`, `control`, `bus`, `transports`. UE: only when
 `-URLabBroadcastViewers` (`InstanceRegistry.cpp:91-102`). Python: `FastPathOwner._write_registry`
 (`fastpath_owner.py:243-273`, 10 s heartbeat). Consumers discover via the editor server
-browser, `-URLabFastDiscover`, or Python `session.discover_owners`.
+browser, `-URLabSourceFind=discover` (formerly `-URLabFastDiscover`), or Python `session.discover_owners`.
 
 ---
 
@@ -164,45 +165,55 @@ Each role below = a specific (pose-source, capabilities, process) combination.
   `ApplyBodyTransforms` / `ApplyGeomTransforms`). **Sends**: nothing on the hot path;
   forwards perturbation intent on the control channel (see [§4](#4-perturbation)).
 - **Transport**: `BusEndpoint` (ZMQ `tcp://` or gRPC `grpc://` per scheme rule).
-- **Selector**: `-URLabFastBus=<endpoint>`, `-URLabFastGrpcJoin=host:port`,
-  `-URLabFastServe`, `-URLabFastDiscover`/`-URLabFastConnect` (editor), the server
-  browser, or `fastpath_load` on a running server. Absence of `-URLabFastDirect` ⇒
-  Mirror.
+- **Selector**: `-URLabDrive=stream:tcp://<endpoint>` (formerly `-URLabFastBus`),
+  `-URLabDrive=stream:grpc://host:port` (formerly `-URLabFastGrpcJoin`),
+  `-URLabDrive=await` (formerly `-URLabFastServe`), `-URLabSourceFind=discover` (formerly
+  `-URLabFastDiscover`), a directed `-URLabDrive=stream:<control>` with no `-URLabModel`
+  (formerly `-URLabFastConnect`), the server browser, or `fastpath_load` on a running
+  server. Absence of
+  `-URLabDrive=sim` (formerly `-URLabFastDirect`) ⇒ Mirror.
 - **Capabilities**: `AcceptInput` lets it forward drag intent; `StreamCameras` +
-  `-URLabFastCameras` makes it *also* a render server.
+  `-URLabCaps=cameras` (formerly `-URLabFastCameras`) makes it *also* a render server.
 - **Manager**: a Mirror that **serves** (has a bus and is not pure subscribe-only) still
   calls `EnsureManager()` — a manager+bridge is needed in BOTH modes for `fastpath_load`
   scene swaps (`MjRenderer.h:534-537`, `MjRenderer.cpp:285-289`). The one exception is a
-  pure subscribe-only client (`-URLabFastGrpcJoin`), which skips it (`:276-288`).
+  pure subscribe-only client (`-URLabDrive=stream:grpc://...`, formerly `-URLabFastGrpcJoin`), which skips it (`:276-288`).
 
 ### 3.3 RENDER SERVER (`AMjRenderer` + cameras)
 - **What**: a renderer that also builds & streams its cameras. It is **not** a separate
   class — it is any `AMjRenderer` with `bEnableCameraStreaming` on. Two regimes:
-  - **Forced / eval** (`-URLabFastForcedOnly`, `bForcedRenderOnly=true`): the
-    `fastpath_render` RPC is the *sole* pose driver — cameras capture only on request,
-    the transform bus is never connected, primary-view render disabled. Exact-fresh,
-    lowest per-request latency. Typically paired with `-URLabFastServe` (client loads
-    the model and pushes poses via `fastpath_render`).
+  - **Forced / eval** (`-URLabDrive=push`, formerly `-URLabFastForcedOnly`;
+    `bForcedRenderOnly=true`): the `fastpath_render` RPC is the *sole* pose driver —
+    cameras capture only on request, the transform bus is never connected, primary-view
+    render disabled. Exact-fresh, lowest per-request latency. When the client loads the
+    model over the wire instead of preloading it, boot empty with `-URLabDrive=await`
+    (formerly `-URLabFastServe`) plus `-URLabCaps=serve,cameras` — `await` is
+    async-capable and the client's `delay=0` still gives exact forced frames; `push` and
+    `await` are mutually exclusive (Drive is one atomic axis). The client loads the model
+    and pushes poses via `fastpath_render`.
     Client side: `RenderClient` / `RenderPool` (`render_client.py`, `render_pool.py`) —
     the Python *client* computes poses (`poses_from_mjdata` → `bxpos`/`bxquat`) and pulls
     frames synchronously over gRPC (50051). `RenderPool` fans cameras across many
     instances.
-  - **Streaming / viewer** (omit `-URLabFastForcedOnly`): the bus is the driver; cameras
-    auto-capture each frame and stream over ZMQ/SHM.
+  - **Streaming / viewer** (`-URLabDrive=stream:<endpoint>` instead of `push`; formerly:
+    omit `-URLabFastForcedOnly`): the bus is the driver; cameras auto-capture each frame
+    and stream over ZMQ/SHM.
 - **Physics / mjData / mjModel**: same as its `RunMode` (Mirror: no physics; or a
   `Stepped` server steps in-process).
 - **Sends**: camera frames (ZMQ per-camera topics / SHM ring / synchronous
   `fastpath_render` reply). **Receives**: `fastpath_render` (forced) or the `geoms` bus
   (streaming).
-- **Selector**: `-URLabFastCameras` (build cameras) + `-URLabFastForcedOnly` (regime) +
-  a pose source flag. Capability: `StreamCameras` must be on to publish.
+- **Selector**: `-URLabCaps=cameras` (build cameras; formerly `-URLabFastCameras`) +
+  `-URLabDrive=` — the value sets both regime and pose source: `push` (forced, formerly
+  `-URLabFastForcedOnly`), `await` (client-driven), or `stream:<endpoint>` (the bus).
+  Capability: `StreamCameras` must be on to publish.
 
 ### 3.4 STEPPED RENDERER / in-process sim (`AMjRenderer`, `RunMode = Stepped`)
 - **What**: a fast-path scene that installs its own raw `mjModel` into the shared
   `UMjPhysicsEngine` and steps it, so the fast-path instance is a full sim a client
   drives over RPC. Renders the engine's thread-safe snapshot.
 - **Physics / mjData / mjModel**: yes / yes / yes.
-- **Selector**: `-URLabFastDirect` ⇒ `SpawnRenderer(bStepped=true)` ⇒ `RunMode = Stepped`
+- **Selector**: `-URLabDrive=sim` (formerly `-URLabFastDirect`) ⇒ `SpawnRenderer(bStepped=true)` ⇒ `RunMode = Stepped`
   (`MjRendererLauncher.cpp:229`, `MjRenderer.cpp:2647`). Requires `EnsureManager()` +
   `Direct.Begin`.
 - **Note**: `Stepped` is the same idea as the compiled manager's `Stepped` step mode
@@ -225,8 +236,8 @@ Each role below = a specific (pose-source, capabilities, process) combination.
   to the owner's `viewer` bus, applies each `{qpos,qvel}`, and pushes a render snapshot
   (`AMjManager.cpp:344-360`, via `UURLabViewerSubscribeTransport`).
 - **Physics / mjData / mjModel**: no (engine paused) / yes / yes.
-- **Receives**: the `viewer` topic (`{qpos,qvel}`). **Selector**: `-URLabStateSource=<endpoint>`
-  (`BridgeServerConfigUtils.cpp:180-181`).
+- **Receives**: the `viewer` topic (`{qpos,qvel}`). **Selector**: `-URLabDrive=stream:<endpoint>`
+  (formerly `-URLabStateSource=<endpoint>`) (`BridgeServerConfigUtils.cpp:180-181`).
 - **Contrast with Mirror**: a Mirror consumes the `geoms` bus (resolved transforms, no
   model needed to move) with a lightweight per-body render actor; the viewer role
   consumes the `viewer` bus (`qpos/qvel`) through a full manager + compiled model. Same
@@ -236,12 +247,14 @@ Each role below = a specific (pose-source, capabilities, process) combination.
 - **What**: a free-fly "drone" camera pawn (WASD/QE/mouse, Shift boost) that renders
   **nothing itself** — it just flies around whatever render consumer is drawing the sim
   (`DroneViewerPawn.h:12-21`). Process: UE non-headless.
-- **Selector**: `-URLabVrViewer` — spawns + possesses the drone and suppresses the static
+- **Selector**: `-URLabCaps=vr` (formerly `-URLabVrViewer`) — spawns + possesses the drone and suppresses the static
   framing camera (`MjRendererLauncher.cpp:75-81,291-323`; a bus-less VR viewer calls
   `EnsureManager()`, `MjRenderer.cpp:297`).
-- **Pairs with**: a `Mirror` renderer (`-URLabFastBus`/`-URLabFastGrpcJoin`) for
-  interactive Ctrl+LMB drag (the drag path lives on `AMjRenderer`, Mirror only), or a
-  manager viewer role (`-URLabStateSource`) for a `qpos/qvel` peek. Holding Ctrl enters
+- **Pairs with**: a `Mirror` renderer (`-URLabDrive=stream:tcp://...` / `stream:grpc://...`,
+  formerly `-URLabFastBus`/`-URLabFastGrpcJoin`) for interactive Ctrl+LMB drag (the drag
+  path lives on `AMjRenderer`, Mirror only), or a manager viewer role
+  (`-URLabDrive=stream:<endpoint>`, formerly `-URLabStateSource`) for a `qpos/qvel` peek.
+  Holding Ctrl enters
   "grab mode": free-fly suspends and the cursor drives the mirror's drag-perturb
   (`DroneViewerPawn.h:53-56`).
 
@@ -313,7 +326,8 @@ A model reaches a receiver in one of three formats, normalized to an `mjModel`:
 | **xml + assets** | fed into an `mjSpec` via `mjVFS`, `mj_compile`d in-engine | **version-independent** (receiver compiles with its own lib) |
 | **mjz** | archive (root `model.xml`) decoded → `mjSpec` → `mj_compile` in-engine | **version-independent** |
 
-- UE boot flags: `-URLabFastMjb`, `-URLabFastXml`, `-URLabFastMjz`
+- UE boot flag: `-URLabModel=<path.{mjb,xml,mjz}>` (format from extension; formerly
+  `-URLabFastMjb`/`-URLabFastXml`/`-URLabFastMjz`)
   (`MjRendererLauncher.cpp:132-137`; xml/mjz compiled via `MjModelSource::CompileFileToMjb`).
 - Over the wire: `fastpath_load` `{format, model(bytes), assets:{name:b64}}`
   (`render_client.py:230-243`); `fastpath_hello` returns `mjb` (ZMQ) or `xml`/`mjz` +
@@ -330,13 +344,13 @@ A model reaches a receiver in one of three formats, normalized to an `mjModel`:
 |---|---|---|---|---|---|---|---|---|---|---|
 | **Owner (Python)** | Python | n/a (holds sim) | yes | via caller | mjb bytes | `geoms`(per-body)+`viewer`, model, RPC | `fastpath_perturb`, RPC | ZMQ PUB/REP + gRPC | `FastPathOwner(...)` | serves both |
 | **Owner (UE)** | UE game/editor | FreeRun/Stepped/StatePushed | yes¹ | yes | yes | `geoms`(per-geom)+`viewer`, model, RPC | perturb, step/ctrl RPC | ZMQ + gRPC | `-URLabBroadcastViewers=1` | StreamCameras/AcceptInput |
-| **Mirror / Renderer** | UE game/PIE | `Mirror` | no | rest only | yes | drag intent (fwd) | `geoms` bus | ZMQ/gRPC (`BusEndpoint`) | `-URLabFastBus` / `-URLabFastGrpcJoin` / `-URLabFastServe` / browser | AcceptInput (drag) |
-| **Render server (forced)** | UE game | `Mirror` (usu.) | no | rest only | yes | camera frames (reply) | `fastpath_render` | gRPC 50051 | `-URLabFastServe -URLabFastForcedOnly -URLabFastCameras` | StreamCameras |
-| **Render server (streaming)** | UE game | `Mirror` | no | rest only | yes | camera frames (PUB/SHM) | `geoms` bus | ZMQ/SHM + `BusEndpoint` | `-URLabFastCameras` + a bus | StreamCameras |
-| **Stepped renderer** | UE game/PIE | `Stepped` | yes | yes | yes | snapshot / camera | step/ctrl RPC | manager bridge | `-URLabFastDirect` | any |
+| **Mirror / Renderer** | UE game/PIE | `Mirror` | no | rest only | yes | drag intent (fwd) | `geoms` bus | ZMQ/gRPC (`BusEndpoint`) | `-URLabDrive=stream:tcp://…` / `stream:grpc://…` / `-URLabDrive=await` / browser | AcceptInput (drag) |
+| **Render server (forced)** | UE game | `Mirror` (usu.) | no | rest only | yes | camera frames (reply) | `fastpath_render` | gRPC 50051 | `-URLabDrive=await -URLabCaps=serve,cameras` (empty) or `-URLabDrive=push -URLabModel=… -URLabCaps=serve,cameras` (preloaded) | StreamCameras |
+| **Render server (streaming)** | UE game | `Mirror` | no | rest only | yes | camera frames (PUB/SHM) | `geoms` bus | ZMQ/SHM + `BusEndpoint` | `-URLabCaps=cameras` + `-URLabDrive=stream:<endpoint>` | StreamCameras |
+| **Stepped renderer** | UE game/PIE | `Stepped` | yes | yes | yes | snapshot / camera | step/ctrl RPC | manager bridge | `-URLabDrive=sim` | any |
 | **Peek viewer** | Python | n/a (mj_forward only) | no | yes | yes | raw wrench (back) | `viewer` bus | ZMQ SUB / gRPC | `session join --mode viewer` | — |
-| **UE viewer role** | UE game | n/a (engine paused) | no | yes | yes | — | `viewer` bus (`qpos/qvel`) | ZMQ/gRPC subscribe | `-URLabStateSource` | — |
-| **VR / spectator** | UE non-headless | (of its render consumer) | — | — | — | drag intent (via Mirror) | (renders paired consumer) | — | `-URLabVrViewer` (+ bus/state source) | AcceptInput |
+| **UE viewer role** | UE game | n/a (engine paused) | no | yes | yes | — | `viewer` bus (`qpos/qvel`) | ZMQ/gRPC subscribe | `-URLabDrive=stream:<endpoint>` | — |
+| **VR / spectator** | UE non-headless | (of its render consumer) | — | — | — | drag intent (via Mirror) | (renders paired consumer) | — | `-URLabCaps=vr` (+ `-URLabDrive=stream:…`) | AcceptInput |
 
 ¹ Python owner: physics runs in-process; `mjModel`/`mjData` are owned by the caller, not `FastPathOwner`.
 
@@ -346,11 +360,11 @@ A model reaches a receiver in one of three formats, normalized to an `mjModel`:
 
 - **Owner → many Mirrors**: one owner (Python or UE) fans the `geoms` bus to N
   `AMjRenderer` Mirror instances (render nodes / camera farms).
-- **Mirror + cameras = render server**: add `StreamCameras` + `-URLabFastCameras`.
-- **VR viewer + Mirror + owner**: `-URLabVrViewer` drone flies around a Mirror renderer;
+- **Mirror + cameras = render server**: add `StreamCameras` + `-URLabCaps=cameras`.
+- **VR viewer + Mirror + owner**: `-URLabCaps=vr` drone flies around a Mirror renderer;
   Ctrl+drag forwards intent to the owner (Python owner applies it).
 - **Peek viewer + owner**: Python `PeekViewer` subscribes an owner's `viewer` bus.
-- **UE viewer role + owner**: `-URLabStateSource` manager subscribes the `viewer` bus.
+- **UE viewer role + owner**: `-URLabDrive=stream:<endpoint>` (formerly `-URLabStateSource`) manager subscribes the `viewer` bus.
 - **RenderClient/RenderPool + forced render servers**: the Python client steps its own
   sim, pushes poses, and pulls frames from one or many forced render servers over gRPC.
 
@@ -368,10 +382,12 @@ Terms that get conflated — pin them down.
 - **Renderer** — the class `AMjRenderer`. It is a Mirror *or* a Stepped in-process sim
   depending on `RunMode`. "Renderer" alone is ambiguous — say Mirror or Stepped.
 - **Render server** — a Renderer with camera streaming on (`StreamCameras` +
-  `-URLabFastCameras`). Not a distinct class; a capability combination. Comes in
-  forced (`-URLabFastForcedOnly`) and streaming regimes.
+  `-URLabCaps=cameras`). Not a distinct class; a capability combination. Comes in
+  forced (`-URLabDrive=push`, or `-URLabDrive=await` for the empty/client-driven case)
+  and streaming (`-URLabDrive=stream:<endpoint>`) regimes.
 - **Viewer** — a read-only consumer of the `viewer` bus (`{t,qpos,qvel}`): the Python
-  `PeekViewer` (peek) or the UE `AMjManager` viewer role (`-URLabStateSource`). Consumes
+  `PeekViewer` (peek) or the UE `AMjManager` viewer role (`-URLabDrive=stream:<endpoint>`,
+  formerly `-URLabStateSource`). Consumes
   a **different bus** than a Mirror.
 - **Peek / PeekViewer** — specifically the Python `mujoco.viewer` window on the `viewer`
   bus. A kind of viewer.
@@ -406,8 +422,9 @@ Places where the code contradicts itself, or naming misleads:
 
 3. **Two "camera streaming" switches with similar names.**
    `AMjManager::bStreamCameras` (`EMjCapability::StreamCameras`, the RPC authorization
-   gate) vs `AMjRenderer::bEnableCameraStreaming` (set by `-URLabFastCameras`, actually
-   builds the cameras). Both are needed to publish frames; neither implies the other.
+   gate) vs `AMjRenderer::bEnableCameraStreaming` (set by `-URLabCaps=cameras`, formerly
+   `-URLabFastCameras`, actually builds the cameras). Both are needed to publish frames;
+   neither implies the other.
 
 4. **`xfrc_applied` order comments are wrong.** Fast-path writes force-first
    `[fx,fy,fz,tx,ty,tz]`; `MjPhysicsEngine.h:568` / `MjBody.cpp:311` comments say
@@ -420,7 +437,7 @@ Places where the code contradicts itself, or naming misleads:
    over the wire. The drag-intent path is a UE-Mirror → Python-owner contract only.
 
 6. **"Viewer" spans two unrelated consumer mechanisms.** The Python peek and the UE
-   `-URLabStateSource` manager both consume the `viewer` bus, but a Mirror (also loosely
+   `-URLabDrive=stream:<endpoint>` (formerly `-URLabStateSource`) manager both consume the `viewer` bus, but a Mirror (also loosely
    called a "viewer") consumes the `geoms` bus with a completely different actor. Always
    qualify which.
 

@@ -171,7 +171,7 @@ URLAB_ROOT=<root> uv run --no-project --with mujoco --with pyzmq --with msgpack 
   --python 3.11 python scripts/run_fastpath_demo.py <root>/mujoco_menagerie/aloha/scene.xml
 
 # UE renderer + render server (separate terminal):
-<UE>/.../UnrealEditor <root>/URLabTest/URLabTest.uproject -URLabFastDiscover -URLabFastCameras
+<UE>/.../UnrealEditor <root>/URLabTest/URLabTest.uproject -URLabSourceFind=discover -URLabCaps=cameras
 
 # Camera feeds (separate terminal, after pressing Play in UE):
 cd <root>/URLab_Bridge
@@ -187,10 +187,10 @@ UE editor launch flags (read by `UMjbFastPathEditorLauncher`):
 
 | flag | effect |
 |------|--------|
-| `-URLabFastDiscover` | find the first advertised owner and connect |
-| `-URLabFastConnect=tcp://host:port` | connect to a specific owner control endpoint |
-| `-URLabFastMjb=/path.mjb -URLabFastBus=tcp://host:port` | connect with no discovery (explicit) |
-| `-URLabFastCameras` | spawn the MJB's cameras and stream them (render server) |
+| `-URLabSourceFind=discover` | find the first advertised owner and connect. (formerly `-URLabFastDiscover`) |
+| `-URLabDrive=stream:tcp://host:port` (no `-URLabModel`) | connect to a specific owner control endpoint and pull its model over the control channel. (formerly `-URLabFastConnect=tcp://host:port`) |
+| `-URLabModel=/path.mjb -URLabDrive=stream:tcp://host:port` | connect with no discovery (explicit). (formerly `-URLabFastMjb=/path.mjb -URLabFastBus=tcp://host:port`) |
+| `-URLabCaps=cameras` | spawn the MJB's cameras and stream them (render server). (formerly `-URLabFastCameras`) |
 
 **Server browser** (interactive alternative to the CLI): in the editor, open the
 **"Fast-Path Servers"** panel — the **"Fast-Path" toolbar button** (URLab

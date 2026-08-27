@@ -78,7 +78,7 @@ have it. So the overlay source differs by role, but the **renderer (§2) is iden
 | Role | Has `mjData`? | Overlay source |
 |---|---|---|
 | **Owner** (UE `AMjManager` / Python) | yes | call `mjv_updateScene` locally each step |
-| **In-process / Stepped renderer** (`-URLabFastDirect`) | yes | `mjv_updateScene` locally |
+| **In-process / Stepped renderer** (`-URLabDrive=sim`, formerly `-URLabFastDirect`) | yes | `mjv_updateScene` locally |
 | **Peek viewer** (Python, `mj_forward`) | yes (fwd only) | `mjv_updateScene` locally (contacts need a real step; `mj_forward` gives kinematics-only) |
 | **Mirror** (`AMjRenderer`, transforms only) | **no** | **must receive a compact overlay stream** (§4) |
 | **VR/spectator** | no (pairs with a mirror/viewer) | whatever its paired renderer uses |

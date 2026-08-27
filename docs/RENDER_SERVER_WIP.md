@@ -51,13 +51,14 @@ URLAB_PICKER=1 URLAB_LAUNCH_LOCAL=0 uv run python scripts/menagerie_swap.py
 Render slave (editor `-game` now; the cooked `url_proj.exe` takes the same flags):
 
 ```
-url_proj.exe /Engine/Maps/Entry -URLabFastBrowser              # interactive browser
-url_proj.exe /Engine/Maps/Entry -URLabFastAutoJoin[=scene]     # headless render node
+url_proj.exe /Engine/Maps/Entry -URLabSourceFind=browse                 # interactive browser
+url_proj.exe /Engine/Maps/Entry -URLabSourceFind=discover[:scene]       # headless render node
 ```
 
-Flags: `-URLabFastBrowser`, `-URLabFastAutoJoin[=scene]`, `-URLabFastLevel=/Game/...`,
-`-URLabFastOrigin=X,Y,Z` (UE cm), `-URLabFastBaseLevel` (use the map's own lights),
-`-URLabFastCameras`, `-URLabFastNoQuality` (skip the de-grain preset).
+Flags: `-URLabSourceFind=browse` / `-URLabSourceFind=discover[:scene]`; `-URLabCaps=cameras`;
+and the `-URLabScene=` keys `level=/Game/...`, `origin=X;Y;Z` (UE cm), `base` (use the map's
+own lights), `quality=off` (skip the de-grain preset) — combined into one CSV, e.g.
+`-URLabScene=level=/Game/...,origin=0;0;0,base,quality=off`.
 
 In the browser: pick an owner, pick an environment (Bare Plane or any cooked
 `/Game` level), set Origin, Connect. In the HUD: nudge Origin live, or go back to
@@ -831,7 +832,7 @@ Two enums, and they collide by name (this naming IS half the confusion):
 Mapping to the user's taxonomy: "Live" = `EStepMode::Live`; "Direct" = `EStepMode::Direct`;
 "puppet / render server, 2 slightly different ways" = the renderer's `EMjbRunMode::Puppet`
 (mirror) vs `EMjbRunMode::Direct` (own sim). "Render server" is NOT a mode -- it is any
-renderer PLUS camera streaming (`-URLabFastCameras`). "A render server can slave to any other
+renderer PLUS camera streaming (`-URLabCaps=cameras`, formerly `-URLabFastCameras`). "A render server can slave to any other
 mode" = a Puppet-mirror renderer can attach to a Live owner, a Direct owner, or a Python
 puppet-client owner (per `docs/fast_path_render.md`: an OWNER is a Python puppet client or a
 UE live/direct instance; a RENDERER mirrors it).

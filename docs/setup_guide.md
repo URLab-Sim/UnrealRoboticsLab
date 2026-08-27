@@ -38,22 +38,22 @@ the scene directory so mesh/texture paths resolve:
 mjbcompile scene.xml scene.mjb      # prints ver=3011001 — must match the UE MuJoCo
 ```
 Camera resolution comes from `<camera resolution="W H">`; change it and recompile — no
-recook (the launch uses `-URLabFastCamMaxHeight=0`, which honours the model).
+recook (the launch uses `-URLabScene=cammax=0`, which honours the model).
 
 ### 1.3 Launch (headless)
 
 ```bash
 url_proj.exe /Game/FirstPerson/Lvl_FirstPerson \
-  -URLabFastMjb=scene.mjb -URLabFastCameras -URLabFastForcedOnly \
-  -URLabFastCamMaxHeight=0 -RenderOffScreen -nosplash -abslog=server.log
+  -URLabDrive=push -URLabModel=scene.mjb -URLabCaps=serve,cameras \
+  -URLabScene=cammax=0 -RenderOffScreen -nosplash -abslog=server.log
 ```
 | flag | meaning |
 |------|---------|
 | `<map>` | a **lit** level (SkyLight + reflection captures). Unlit maps (`/Engine/Maps/Entry`) leave metallics flat. |
-| `-URLabFastMjb=<file>` | model to load |
-| `-URLabFastForcedOnly` | forced/eval regime — the bridge serves `fastpath_render` |
-| `-URLabFastCameras` | enable camera capture |
-| `-URLabFastCamMaxHeight=N` | camera height cap; `0` = honour the model resolution |
+| `-URLabModel=<file>` | model to load (format from extension). (formerly `-URLabFastMjb=<file>`) |
+| `-URLabDrive=push` | forced/eval regime — the bridge serves `fastpath_render`. (formerly `-URLabFastForcedOnly`) |
+| `-URLabCaps=serve,cameras` | `serve` brings up the bridge + listeners; `cameras` enables camera capture. (formerly `-URLabFastCameras`) |
+| `-URLabScene=cammax=N` | camera height cap; `0` = honour the model resolution. (formerly `-URLabFastCamMaxHeight=N`) |
 | `-RenderOffScreen` | headless |
 
 Wait for `camera server: N camera(s) streaming` in the log, then the bridge step port

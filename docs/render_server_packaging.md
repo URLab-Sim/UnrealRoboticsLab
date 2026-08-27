@@ -23,23 +23,23 @@ dynamically, not from a map, so without this they are missing in the cooked buil
 ## Launching
 
 ```bash
-url_proj.exe <lit-map> -URLabFastMjb=<scene.mjb> -URLabFastCameras -URLabFastForcedOnly \
-             -URLabFastCamMaxHeight=0 -RenderOffScreen -nosplash -abslog=server.log
+url_proj.exe <lit-map> -URLabDrive=push -URLabModel=<scene.mjb> -URLabCaps=serve,cameras \
+             -URLabScene=cammax=0 -RenderOffScreen -nosplash -abslog=server.log
 ```
 
 | flag | meaning |
 |------|---------|
 | `<lit-map>` | a **lit** level — SkyLight + reflection captures — e.g. `/Game/FirstPerson/Lvl_FirstPerson`. An unlit map (`/Engine/Maps/Entry`) leaves metallic PBR looking flat. |
-| `-URLabFastMjb=<file>` | the model to load (version-matched `.mjb`) |
-| `-URLabFastForcedOnly` | forced/eval regime: the bridge serves `fastpath_render`; cameras are manual-capture-only |
-| `-URLabFastCameras` | enable camera capture |
-| `-URLabFastCamMaxHeight=N` | per-camera height cap. `0` = honour the model's `<camera resolution>` exactly. Any `N>0` caps height to `N` (downscaling, keeping aspect). Default cap is 480 (`AMjRenderer::CameraMaxHeight`). |
+| `-URLabModel=<file>` | the model to load (version-matched `.mjb`; format from extension). (formerly `-URLabFastMjb=<file>`) |
+| `-URLabDrive=push` | forced/eval regime: the bridge serves `fastpath_render`; cameras are manual-capture-only. (formerly `-URLabFastForcedOnly`) |
+| `-URLabCaps=serve,cameras` | `serve` brings up the bridge + listeners; `cameras` enables camera capture. (formerly `-URLabFastCameras`) |
+| `-URLabScene=cammax=N` | per-camera height cap. `0` = honour the model's `<camera resolution>` exactly. Any `N>0` caps height to `N` (downscaling, keeping aspect). Default cap is 480 (`AMjRenderer::CameraMaxHeight`). (formerly `-URLabFastCamMaxHeight=N`) |
 | `-RenderOffScreen` | headless rendering |
 
 ### Resolution
 
 Set per-camera resolution in the model (`<camera resolution="1280 960">`) and launch with
-`-URLabFastCamMaxHeight=0`. Changing resolution is then just an MJB recompile — no recook.
+`-URLabScene=cammax=0`. Changing resolution is then just an MJB recompile — no recook.
 
 ### Scalability vs fidelity
 

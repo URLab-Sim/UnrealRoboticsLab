@@ -162,7 +162,7 @@ void UMjLidarPointCloudViz::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	Super::EndPlay(EndPlayReason);
 }
 
-void UMjLidarPointCloudViz::HandleLidarScan(FLidarScan Scan)
+void UMjLidarPointCloudViz::HandleLidarScan(const FLidarScan& Scan)
 {
 	if (bFreeze)
 	{

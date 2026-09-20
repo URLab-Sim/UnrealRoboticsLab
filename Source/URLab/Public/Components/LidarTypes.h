@@ -156,5 +156,10 @@ struct FLidarScan
 	double SimTime = 0.0;
 };
 
-/** Broadcast on the game thread after each completed scan. */
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLidarScan, FLidarScan, Scan);
+/**
+ * Broadcast on the game thread after each completed scan. The payload is
+ * passed by reference and shares storage with the sensor's Last* results:
+ * subscribers must treat it as read-only (copy it if they need to keep or
+ * mutate it).
+ */
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnLidarScan, const FLidarScan&, Scan);

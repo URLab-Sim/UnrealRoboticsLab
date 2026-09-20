@@ -399,7 +399,6 @@ void UMjLidarSensor::PhysicsPostStep(mjModel* m, mjData* d)
 		m_SharedScan.ScanId = ++m_PhysicsScanCounter;
 		m_SharedScan.SimTime = d->time;
 		m_SharedScan.AzCount = AzN;
-		m_SharedScan.ElCount = ElN;
 		for (int32 i = 0; i < 3; ++i)
 		{
 			m_SharedScan.OriginMj[i] = SensorPos[i];

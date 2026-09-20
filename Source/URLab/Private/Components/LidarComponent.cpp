@@ -182,10 +182,13 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 	const bool bWantPoints = OutputMode == ELidarOutputMode::Points || OutputMode == ELidarOutputMode::Both;
 	const bool bWantTargets = OutputMode == ELidarOutputMode::Targets || OutputMode == ELidarOutputMode::Both;
 
+	// HitPositionsCm only feeds the debug draw and the target aggregator; the
+	// common Points-only path (no debug switches) skips the array entirely.
+	const bool bNeedHitPositions = bWantTargets || bDrawDebugPoints || bDrawDebugLines;
 	TArray<FLidarPoint> Points;
 	TArray<FVector> HitPositionsCm;
 	Points.Reserve(bWantPoints ? NumRays : 0);
-	HitPositionsCm.Reserve(NumRays);
+	HitPositionsCm.Reserve(bNeedHitPositions ? NumRays : 0);
 
 	for (int32 i = 0; i < NumRays; ++i)
 	{
@@ -203,7 +206,10 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 		// RangeM exactly coherent.
 		const FVector DirWorld = SensorRot.RotateVector(SphericalDirection(Az, El));
 		const FVector HitPosCm = Origin + DirWorld * (R * 100.0f);
-		HitPositionsCm.Add(HitPosCm);
+		if (bNeedHitPositions)
+		{
+			HitPositionsCm.Add(HitPosCm);
+		}
 
 		if (bWantPoints)
 		{

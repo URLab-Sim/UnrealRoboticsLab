@@ -258,9 +258,9 @@ protected:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 private:
-	/** OnLidarScan handler (broadcast on the game thread; scan passed by value). */
+	/** OnLidarScan handler (broadcast on the game thread; shared payload, treated as read-only). */
 	UFUNCTION()
-	void HandleLidarScan(FLidarScan Scan);
+	void HandleLidarScan(const FLidarScan& Scan);
 
 	/** One buffered visualization point. */
 	struct FVizPoint

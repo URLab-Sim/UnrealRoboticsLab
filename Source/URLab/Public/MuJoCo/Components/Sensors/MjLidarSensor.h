@@ -139,7 +139,6 @@ private:
 		double SimTime = 0.0;
 		int64 ScanId = -1;
 		int32 AzCount = 0;
-		int32 ElCount = 0;
 	};
 	FCriticalSection m_DataMutex;
 	FRawScan m_SharedScan;

@@ -27,6 +27,7 @@
 #include "MuJoCo/Components/Geometry/MjSite.h"
 #include "MuJoCo/Utils/MjUtils.h"
 #include "Utils/URLabLogging.h"
+#include "HAL/PlatformTime.h"
 
 UMjLidarSensor::UMjLidarSensor()
 {
@@ -333,6 +334,7 @@ void UMjLidarSensor::PhysicsPostStep(mjModel* m, mjData* d)
 	}
 
 	// Direction fan: ray index = e * AzN + a (elevation-major).
+	const uint64 FanStartCycles = FPlatformTime::Cycles();
 	m_ScratchVec.SetNumUninitialized(3 * NumRays);
 	{
 		int32 Idx = 0;
@@ -347,6 +349,7 @@ void UMjLidarSensor::PhysicsPostStep(mjModel* m, mjData* d)
 			}
 		}
 	}
+	const uint64 FanCycles = FPlatformTime::Cycles() - FanStartCycles;
 
 	// Geom group filter: bit g of the mask enables group g. All-groups-set is
 	// equivalent to no filter at all (NULL), which skips group exclusion.
@@ -362,16 +365,19 @@ void UMjLidarSensor::PhysicsPostStep(mjModel* m, mjData* d)
 	// Cast all rays from the single sensor origin against the MuJoCo model.
 	m_ScratchDist.SetNumUninitialized(NumRays);
 	m_ScratchGeomId.SetNumUninitialized(NumRays);
+	const uint64 RayStartCycles = FPlatformTime::Cycles();
 	mj_multiRay(m, d, SensorPos, m_ScratchVec.GetData(),
 		bAllGroups ? nullptr : GroupBytes,
 		bHitStaticGeoms ? 1 : 0,
 		BodyExclude,
 		m_ScratchGeomId.GetData(), m_ScratchDist.GetData(), nullptr,
 		NumRays, (mjtNum)MaxR);
+	const uint64 RayCycles = FPlatformTime::Cycles() - RayStartCycles;
 
 	// Post-filter: range noise, then the blind zone. The blind-zone check
 	// runs on the noised return so the published value honours MinRange's
 	// contract ("returns closer than this are discarded").
+	const uint64 FilterStartCycles = FPlatformTime::Cycles();
 	for (int32 i = 0; i < NumRays; ++i)
 	{
 		double& R = m_ScratchDist[i];
@@ -392,6 +398,7 @@ void UMjLidarSensor::PhysicsPostStep(mjModel* m, mjData* d)
 			m_ScratchGeomId[i] = -1;
 		}
 	}
+	const uint64 FilterCycles = FPlatformTime::Cycles() - FilterStartCycles;
 
 	// Publish the raw scan for the game thread.
 	{
@@ -411,6 +418,22 @@ void UMjLidarSensor::PhysicsPostStep(mjModel* m, mjData* d)
 		m_SharedScan.Elevations = m_ScratchEl;
 		m_SharedScan.Ranges = m_ScratchDist;
 		m_SharedScan.GeomIds = m_ScratchGeomId;
+	}
+
+	// Throttled per-scan timing, one line per sensor per ~5 s wall time (fan
+	// = direction grid build, multiray = mj_multiRay against the compiled
+	// model, filter = range noise + blind zone). These numbers size the
+	// remaining serial costs on the physics thread.
+	const double NowSec = FPlatformTime::Seconds();
+	if (NowSec >= m_NextTimingLogSec)
+	{
+		m_NextTimingLogSec = NowSec + 5.0;
+		UE_LOG(LogURLab, Log,
+			TEXT("[MjLidarSensor] '%s' scan: rays=%d fan=%.3fms multiray=%.3fms filter=%.3fms"),
+			*GetName(), NumRays,
+			FPlatformTime::ToMilliseconds64(FanCycles),
+			FPlatformTime::ToMilliseconds64(RayCycles),
+			FPlatformTime::ToMilliseconds64(FilterCycles));
 	}
 }
 

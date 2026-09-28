@@ -25,12 +25,14 @@
 #include "Components/LidarComponent.h"
 #include "Utils/URLabLogging.h"
 
+#include "Async/ParallelFor.h"
 #include "Components/InstancedStaticMeshComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "HAL/PlatformFileManager.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/DateTime.h"
 #include "Misc/FileHelper.h"
@@ -174,8 +176,26 @@ void UMjLidarPointCloudViz::HandleLidarScan(const FLidarScan& Scan)
 		DestroyBackend(); // support switching backends mid-PIE
 	}
 
+	const uint64 AppendStartCycles = FPlatformTime::Cycles();
 	AppendScan(Scan);
+	const uint64 AppendCycles = FPlatformTime::Cycles() - AppendStartCycles;
+	const uint64 BackendStartCycles = FPlatformTime::Cycles();
 	RebuildBackend(Scan);
+	const uint64 BackendCycles = FPlatformTime::Cycles() - BackendStartCycles;
+
+	// Throttled per-scan timing, one line per viz per ~5 s wall time.
+	const double NowSec = FPlatformTime::Seconds();
+	if (NowSec >= m_NextTimingLogSec)
+	{
+		m_NextTimingLogSec = NowSec + 5.0;
+		const TCHAR* BackendName = m_ActiveBackend == EMjLidarVizBackend::BatchedDebug ? TEXT("BatchedDebug")
+			: (m_ActiveBackend == EMjLidarVizBackend::InstancedMesh ? TEXT("InstancedMesh") : TEXT("Niagara"));
+		UE_LOG(LogURLab, Log,
+			TEXT("[MjLidarPointCloudViz] '%s' viz: points=%d append=%.3fms backend(%s)=%.3fms"),
+			*GetName(), m_Cloud.Num(),
+			FPlatformTime::ToMilliseconds64(AppendCycles), BackendName,
+			FPlatformTime::ToMilliseconds64(BackendCycles));
+	}
 }
 
 void UMjLidarPointCloudViz::AppendScan(const FLidarScan& Scan)
@@ -191,16 +211,34 @@ void UMjLidarPointCloudViz::AppendScan(const FLidarScan& Scan)
 	const FMjLidarVizColorContext Ctx = BuildColorContext(Scan.Points);
 
 	const int32 NewCount = Scan.Points.Num();
-	m_Cloud.Reserve(m_Cloud.Num() + NewCount);
-	for (const FLidarPoint& Point : Scan.Points)
+	const int32 OldCount = m_Cloud.Num();
+	m_Cloud.Reserve(OldCount + NewCount);
+	m_Cloud.SetNum(OldCount + NewCount);
+
+	// Per-point color/size is pure math over read-only inputs; fill by index
+	// so dense scans can go wide with identical output.
+	auto FillVizPoint = [&](int32 i)
 	{
-		FVizPoint& VizPoint = m_Cloud.AddDefaulted_GetRef();
+		const FLidarPoint& Point = Scan.Points[i];
+		FVizPoint& VizPoint = m_Cloud[OldCount + i];
 		VizPoint.Pos = Point.WorldPos;
 		VizPoint.Color = ComputePointColor(ColorMode, Point, Ctx);
 		VizPoint.SizeCm = PointSizeCm;
 		if (bScaleSizeByDistance)
 		{
 			VizPoint.SizeCm *= FMath::Clamp(Point.RangeM / 10.0f, 0.25f, 4.0f);
+		}
+	};
+	constexpr int32 ParallelFillMinPoints = 8192;
+	if (NewCount >= ParallelFillMinPoints)
+	{
+		ParallelFor(NewCount, FillVizPoint);
+	}
+	else
+	{
+		for (int32 i = 0; i < NewCount; ++i)
+		{
+			FillVizPoint(i);
 		}
 	}
 	m_ScanCounts.Add(NewCount);
@@ -587,27 +625,59 @@ void UMjLidarPointCloudViz::RebuildInstancedMesh()
 		return;
 	}
 
+	const int32 NumPoints = m_Cloud.Num();
+	constexpr int32 ParallelFillMinPoints = 8192;
+
 	m_IsmComponent->ClearInstances();
 
-	TArray<FTransform> Transforms;
-	Transforms.Reserve(m_Cloud.Num());
-	for (const FVizPoint& VizPoint : m_Cloud)
+	// Instance transforms: pure per-point math, filled by index into scratch
+	// reused across scans.
+	m_ScratchTransforms.SetNum(NumPoints);
+	auto BuildTransform = [&](int32 i)
 	{
 		// The default cube mesh is 100 cm on a side: scale = SizeCm / 100.
-		const float UniformScale = FMath::Max(VizPoint.SizeCm, KINDA_SMALL_NUMBER) / 100.0f;
-		Transforms.Add(FTransform(FQuat::Identity, VizPoint.Pos, FVector(UniformScale)));
+		const float UniformScale = FMath::Max(m_Cloud[i].SizeCm, KINDA_SMALL_NUMBER) / 100.0f;
+		m_ScratchTransforms[i] = FTransform(FQuat::Identity, m_Cloud[i].Pos, FVector(UniformScale));
+	};
+	if (NumPoints >= ParallelFillMinPoints)
+	{
+		ParallelFor(NumPoints, BuildTransform);
 	}
-	m_IsmComponent->AddInstances(Transforms, /*bShouldReturnIndices*/ false, /*bWorldSpace*/ true, /*bUpdateNavigation*/ false);
+	else
+	{
+		for (int32 i = 0; i < NumPoints; ++i)
+		{
+			BuildTransform(i);
+		}
+	}
+	m_IsmComponent->AddInstances(m_ScratchTransforms, /*bShouldReturnIndices*/ false, /*bWorldSpace*/ true, /*bUpdateNavigation*/ false);
 
-	// Per-instance color via Custom Data slots 0..2 (RGB). The batched range
-	// setter's semantics are unverified for this engine build (no Private
-	// sources shipped), so write point by point and dirty the render state
-	// once at the end.
-	for (int32 i = 0; i < m_Cloud.Num(); ++i)
+	// Per-instance color via Custom Data slots 0..2 (RGB), pushed in one
+	// batched range write instead of a per-instance setter loop (the range
+	// covers instances [Start..End] with the floats laid out instance-major,
+	// matching the engine's own MassRepresentation usage).
+	m_ScratchCustomData.SetNum(NumPoints * 3);
+	auto BuildCustomData = [&](int32 i)
 	{
 		const FLinearColor& C = m_Cloud[i].Color;
-		const float CustomData[3] = { C.R, C.G, C.B };
-		m_IsmComponent->SetCustomData(i, TArrayView<const float>(CustomData, 3), /*bMarkRenderStateDirty*/ false);
+		m_ScratchCustomData[3 * i] = C.R;
+		m_ScratchCustomData[3 * i + 1] = C.G;
+		m_ScratchCustomData[3 * i + 2] = C.B;
+	};
+	if (NumPoints >= ParallelFillMinPoints)
+	{
+		ParallelFor(NumPoints, BuildCustomData);
+	}
+	else
+	{
+		for (int32 i = 0; i < NumPoints; ++i)
+		{
+			BuildCustomData(i);
+		}
+	}
+	if (NumPoints > 0)
+	{
+		m_IsmComponent->SetCustomData(0, NumPoints - 1, m_ScratchCustomData, /*bMarkRenderStateDirty*/ false);
 	}
 	m_IsmComponent->MarkRenderStateDirty();
 }

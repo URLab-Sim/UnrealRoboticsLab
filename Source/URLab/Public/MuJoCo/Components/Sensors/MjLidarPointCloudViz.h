@@ -318,4 +318,11 @@ private:
 	TObjectPtr<UNiagaraComponent> m_NiagaraComponent;
 	bool m_bWarnedNoNiagaraSystem = false;
 	bool m_bWarnedNoPointMesh = false;
+
+	// ---- ISM backend scratch (game thread only, reused across scans) ----
+	TArray<FTransform> m_ScratchTransforms;
+	TArray<float> m_ScratchCustomData; // 3 floats per point (RGB custom data)
+
+	// ---- Timing log throttle ----
+	double m_NextTimingLogSec = 0.0; // wall-clock gate for the per-scan timing log
 };

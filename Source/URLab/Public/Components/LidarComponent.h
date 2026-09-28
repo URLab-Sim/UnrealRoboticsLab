@@ -301,4 +301,6 @@ private:
 
 	TArray<float> m_ScratchAz;
 	TArray<float> m_ScratchEl;
+	TArray<int32> m_ScratchHitRays; // ray index per published hit point, reused across scans
+	double m_NextTimingLogSec = 0.0; // wall-clock gate for the throttled per-scan timing log
 };

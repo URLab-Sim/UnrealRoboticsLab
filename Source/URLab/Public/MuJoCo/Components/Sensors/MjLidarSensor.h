@@ -156,6 +156,7 @@ private:
 	TArray<double> m_ScratchDist;  // NumRays
 	TArray<int32> m_ScratchGeomId; // NumRays
 	FRandomStream m_NoiseStream;
+	double m_NextTimingLogSec = 0.0; // wall-clock gate for the throttled per-scan timing log
 
 	// ---- Game-thread-only state ----
 	bool m_bCallbackRegistered = false;

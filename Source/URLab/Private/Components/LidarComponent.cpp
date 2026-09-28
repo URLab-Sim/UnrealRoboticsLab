@@ -25,6 +25,9 @@
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "DrawDebugHelpers.h"
+#include "Async/ParallelFor.h"
+#include "HAL/PlatformTime.h"
+#include "Utils/URLabLogging.h"
 
 ULidarComponent::ULidarComponent()
 {
@@ -187,16 +190,38 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 	const bool bNeedHitPositions = bWantTargets || bDrawDebugPoints || bDrawDebugLines;
 	TArray<FLidarPoint> Points;
 	TArray<FVector> HitPositionsCm;
-	Points.Reserve(bWantPoints ? NumRays : 0);
-	HitPositionsCm.Reserve(bNeedHitPositions ? NumRays : 0);
 
+	const uint64 TotalStartCycles = FPlatformTime::Cycles();
+
+	// Serial hit-index pass (one branch + counter per ray); the per-point
+	// math below then fills by index, identically on the serial and the
+	// parallel path.
+	m_ScratchHitRays.Reset();
+	m_ScratchHitRays.Reserve(NumRays);
 	for (int32 i = 0; i < NumRays; ++i)
 	{
-		const float R = RangesM[i];
-		if (R < 0.0f)
+		if (RangesM[i] >= 0.0f)
 		{
-			continue; // miss (or blind zone)
+			m_ScratchHitRays.Add(i);
 		}
+	}
+	const int32 NumHits = m_ScratchHitRays.Num();
+	const uint64 MapCycles = FPlatformTime::Cycles() - TotalStartCycles;
+
+	if (bWantPoints)
+	{
+		Points.SetNum(NumHits);
+	}
+	if (bNeedHitPositions)
+	{
+		HitPositionsCm.SetNum(NumHits);
+	}
+
+	const uint64 FillStartCycles = FPlatformTime::Cycles();
+	auto FillPoint = [&](int32 p)
+	{
+		const int32 i = m_ScratchHitRays[p];
+		const float R = RangesM[i];
 		const int32 a = i % ClampedAz;
 		const int32 e = i / ClampedAz;
 		const float Az = Azimuths.IsValidIndex(a) ? Azimuths[a] : 0.0f;
@@ -208,12 +233,11 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 		const FVector HitPosCm = Origin + DirWorld * (R * 100.0f);
 		if (bNeedHitPositions)
 		{
-			HitPositionsCm.Add(HitPosCm);
+			HitPositionsCm[p] = HitPosCm;
 		}
-
 		if (bWantPoints)
 		{
-			FLidarPoint& P = Points.AddDefaulted_GetRef();
+			FLidarPoint& P = Points[p];
 			P.WorldPos = HitPosCm;
 			P.AzimuthDeg = Az;
 			P.ElevationDeg = El;
@@ -221,7 +245,24 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 			P.HitSurfaceId = SurfaceIds.IsValidIndex(i) ? SurfaceIds[i] : -1;
 			P.FrameId = ScanId;
 		}
+	};
+
+	// Task dispatch dominates below a few thousand points, so only dense
+	// scans go wide; both paths produce identical output.
+	constexpr int32 ParallelFillMinHits = 8192;
+	const bool bFilledInParallel = NumHits >= ParallelFillMinHits;
+	if (bFilledInParallel)
+	{
+		ParallelFor(NumHits, FillPoint);
 	}
+	else
+	{
+		for (int32 p = 0; p < NumHits; ++p)
+		{
+			FillPoint(p);
+		}
+	}
+	const uint64 FillCycles = FPlatformTime::Cycles() - FillStartCycles;
 
 	// Debug drawing (game thread, world coordinates).
 	if (bDrawDebugPoints || bDrawDebugLines)
@@ -246,9 +287,12 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 
 	LastPoints = MoveTemp(Points);
 	TArray<FLidarTarget> Targets;
+	uint64 TargetsCycles = 0;
 	if (bWantTargets)
 	{
+		const uint64 TargetsStartCycles = FPlatformTime::Cycles();
 		BuildTargets(HitPositionsCm, SimTime, Origin, Targets);
+		TargetsCycles = FPlatformTime::Cycles() - TargetsStartCycles;
 	}
 	LastTargets = MoveTemp(Targets);
 
@@ -261,6 +305,23 @@ void ULidarComponent::PublishRayResults(const FTransform& SensorPose,
 	Scan.Targets = LastTargets;
 	Scan.ScanId = ScanId;
 	Scan.SimTime = SimTime;
+
+	// Throttled per-scan timing, one line per component per ~5 s wall time
+	// (map = hit-index pass, fill = per-point math with par/ser = above/below
+	// the parallel threshold, targets = clustering + track matching).
+	const uint64 TotalCycles = FPlatformTime::Cycles() - TotalStartCycles;
+	const double NowSec = FPlatformTime::Seconds();
+	if (NowSec >= m_NextTimingLogSec)
+	{
+		m_NextTimingLogSec = NowSec + 5.0;
+		UE_LOG(LogURLab, Log,
+			TEXT("[LidarComponent] '%s' publish: rays=%d hits=%d map=%.3fms fill=%.3fms(%s) targets=%.3fms total=%.3fms"),
+			*GetName(), NumRays, NumHits,
+			FPlatformTime::ToMilliseconds64(MapCycles), FPlatformTime::ToMilliseconds64(FillCycles),
+			bFilledInParallel ? TEXT("par") : TEXT("ser"),
+			FPlatformTime::ToMilliseconds64(TargetsCycles), FPlatformTime::ToMilliseconds64(TotalCycles));
+	}
+
 	OnLidarScan.Broadcast(Scan);
 }
 

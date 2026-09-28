@@ -90,6 +90,8 @@ public class URLab : ModuleRules
 			"CinematicCamera",
 			"ImageWrapper",
 			"EnhancedInput",
+			// MjLidarPointCloudViz: Niagara point backend (array DI + component).
+			"Niagara",
 			"Chaos",
 			"Landscape",
 			"Eigen",
